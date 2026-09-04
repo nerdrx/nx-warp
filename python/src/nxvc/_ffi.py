@@ -14,11 +14,13 @@ from __future__ import annotations
 import ctypes
 import ctypes.util
 import os
+import re
 import sys
 from ctypes import (
     POINTER,
     Structure,
     c_char_p,
+    c_double,
     c_int,
     c_int8,
     c_int32,
@@ -34,6 +36,7 @@ from typing import Iterator
 
 __all__ = [
     "NXVC_VERSION",
+    "NXVC_BITSTREAM_MINOR",
     "NXVC_TILE_SIZE",
     "NXVC_MAX_TILES_PER_ROW",
     "Status",
@@ -43,7 +46,9 @@ __all__ = [
     "TileMode",
     "Tool",
     "TOOLS_SUPPORTED",
+    "TOOLS_PHASE1",
     "nxvc_image",
+    "nxvc_view",
     "nxvc_config",
     "nxvc_encode_stats",
     "nxvc_tile_layout",
@@ -59,6 +64,8 @@ __all__ = [
     "search_paths",
     "check",
     "status_string",
+    "version_string",
+    "library_minor",
 ]
 
 # --------------------------------------------------------------------- consts
@@ -66,6 +73,15 @@ __all__ = [
 NXVC_VERSION = 1
 NXVC_MAX_TILES_PER_ROW = 64
 NXVC_TILE_SIZE = 64
+
+#: The revision of ``docs/SYNTAX.md`` that :mod:`nxvc.bitstream` parses.  It is
+#: not carried in the bitstream (forward compatibility is the ``tools`` mask
+#: plus the TLV area); it exists so a build, a conformance-vector set and a
+#: spec revision can be pinned to each other.  3 = the v2 intra tools.  The C
+#: library reports its own with :func:`library_minor`, and it may be **ahead**
+#: of this one while a syntax revision is landing -- the parser then still
+#: reads every structure it knows, and refuses what it does not.
+NXVC_BITSTREAM_MINOR = 3
 
 #: The four-byte magic at the head of every stream: the ASCII bytes ``NXV1``.
 NXVC_MAGIC = 0x3156584E
@@ -171,6 +187,12 @@ class Tool:
     INTRA_DIR = 1 << 17
     XFORM_WAVELET = 1 << 18
     XFORM_4X4_SPLIT = 1 << 19
+    WM_ID = 1 << 20
+    CTX_V2 = 1 << 21
+    SIGN_HIDE = 1 << 22
+    #: Annex D D-5 names this "tool bit 20"; bit 20 was already WM_ID in
+    #: syntax v1.2, so the reference places it at the first free bit.
+    FILTER_CATMULLROM = 1 << 23
 
     _NAMES = [
         (1 << 0, "INTRA_DC_PLANE"),
@@ -193,7 +215,14 @@ class Tool:
         (1 << 17, "INTRA_DIR"),
         (1 << 18, "XFORM_WAVELET"),
         (1 << 19, "XFORM_4X4_SPLIT"),
+        (1 << 20, "WM_ID"),
+        (1 << 21, "CTX_V2"),
+        (1 << 22, "SIGN_HIDE"),
+        (1 << 23, "FILTER_CATMULLROM"),
     ]
+
+    #: The first tool bit that is reserved and must be zero (SYNTAX.md 2.3).
+    RESERVED_FROM = 24
 
     @classmethod
     def names(cls, mask: int) -> list[str]:
@@ -209,7 +238,7 @@ class Tool:
         return out
 
 
-#: ``NXVC_TOOLS_SUPPORTED`` -- what the Phase 1 reference decoder implements.
+#: ``NXVC_TOOLS_SUPPORTED`` -- what the reference decoder implements.
 TOOLS_SUPPORTED = (
     Tool.INTRA_DC_PLANE
     | Tool.TRANSFORM_SKIP
@@ -221,7 +250,20 @@ TOOLS_SUPPORTED = (
     | Tool.NSUB_VAR
     | Tool.PER_TILE_CHROMA
     | Tool.YCOCGR
+    | Tool.WM_ID
+    | Tool.INTRA_DIR
+    | Tool.CTX_V2
+    | Tool.SIGN_HIDE
+    | Tool.INTER
+    | Tool.WARP
+    | Tool.STEREO
 )
+
+#: The Phase 1 (intra-only) subset of :data:`TOOLS_SUPPORTED`.  Kept separate
+#: because ``TOOLS_SUPPORTED`` tracks the reference decoder, which grew the
+#: inter tools in syntax v1.4, while :func:`nxvc.bitstream.phase1_reject_reason`
+#: still has to answer "would an intra-only decoder take this stream?".
+TOOLS_PHASE1 = TOOLS_SUPPORTED & ~(Tool.INTER | Tool.WARP | Tool.STEREO)
 
 # ----------------------------------------------------------------- structures
 
@@ -235,6 +277,21 @@ class nxvc_image(Structure):
     _fields_ = [
         ("plane", u8p * 4),
         ("stride", c_int32 * 4),
+    ]
+
+
+class nxvc_view(Structure):
+    """``nxvc_view``: one eye's pose and FOV, the encoder's only float input."""
+
+    _fields_ = [
+        ("qx", c_double),
+        ("qy", c_double),
+        ("qz", c_double),
+        ("qw", c_double),
+        ("fov_left", c_double),
+        ("fov_right", c_double),
+        ("fov_up", c_double),
+        ("fov_down", c_double),
     ]
 
 
@@ -260,6 +317,30 @@ class nxvc_config(Structure):
         ("profile", c_uint32),
         ("level", c_uint32),
         ("collect_stats", c_uint32),
+        # --- additive since syntax v1.2: encoder-side tuning only.  They pick
+        # different levels and per-tile parameters; they never change how a
+        # stream decodes.
+        ("rdo", c_uint32),
+        ("rdo_lambda_q8", c_uint32),
+        ("qp_search", c_uint32),
+        ("wm_id", c_uint32),
+        # --- additive since syntax v1.3.  intra_dir, ctx_v2 and sign_hide DO
+        # change the bitstream: each sets a tool bit in the stream header.
+        ("intra_dir", c_uint32),
+        ("intra_dir_layer", c_uint32),
+        ("ctx_v2", c_uint32),
+        ("intra_dir_cand", c_uint32),
+        ("sign_hide", c_uint32),
+        # --- additive since syntax v1.4: the Phase 2 inter path.  width/height
+        # are PER EYE; with eyes == 2 the nxvc_image is `eyes * width` wide,
+        # one picture per eye, eye 0 first.
+        ("eyes", c_uint32),
+        ("inter", c_uint32),
+        ("stereo", c_uint32),
+        ("intra_period", c_uint32),
+        ("ref_sel", c_uint32),
+        ("mv_range", c_uint32),
+        ("skip_thresh", c_uint32),
     ]
 
 
@@ -315,6 +396,11 @@ class nxvc_tile_info(Structure):
         ("mv_y", c_int8),
         ("alpha_value", c_uint8),
         ("qp", c_uint8),
+        ("wm_id", c_uint8),
+        ("intra_dir", c_uint8),
+        ("skipped", c_uint8),
+        ("concealed", c_uint8),
+        ("disparity", c_uint16),
     ]
 
 
@@ -355,6 +441,8 @@ class nxvc_frame_info(Structure):
         ("frame_bytes", c_uint32),
         ("pose", c_uint8 * 26),
         ("tile_count", c_uint32),
+        ("warp_present", c_uint32),
+        ("warp", (c_int32 * 9) * 2),
     ]
 
 
@@ -418,6 +506,14 @@ def _repo_root() -> Path | None:
     return None
 
 
+#: Build trees whose library is built with a sanitizer or a fuzzing runtime.
+#: Loading one of those from ctypes aborts the interpreter before main ("ASan
+#: runtime does not come first in initial library list"), so they are searched
+#: last: an ordinary build in the same checkout must win, and NXVC_LIBRARY is
+#: still the way to ask for one of these deliberately.
+_INSTRUMENTED = re.compile(r"asan|ubsan|msan|tsan|lsan|sanitiz|fuzz|coverage")
+
+
 def _build_dirs(root: Path) -> Iterator[Path]:
     """Plausible CMake build trees under an nx-warp checkout, newest first."""
     seen: set[Path] = set()
@@ -428,8 +524,8 @@ def _build_dirs(root: Path) -> Iterator[Path]:
         if entry.name == "build" or entry.name.startswith("build-") or entry.name.startswith("build_"):
             dirs.append(entry)
     # Most recently touched build tree first: that is nearly always the one the
-    # developer means.
-    dirs.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    # developer means -- but never an instrumented one ahead of a plain one.
+    dirs.sort(key=lambda p: (bool(_INSTRUMENTED.search(p.name)), -p.stat().st_mtime))
     for d in dirs:
         for sub in (d / "ref", d, d / "lib"):
             if sub not in seen:
@@ -540,13 +636,16 @@ def _not_found_message(errors: list[str]) -> str:
     lines.extend(f"  {p}" for p in paths) if paths else lines.append("  (none found)")
     lines += [
         "",
-        "NOTE: ref/CMakeLists.txt currently builds nxvc_ref as a STATIC library",
-        "only, so a stock build tree contains libnxvc_ref.a and no shared object.",
-        "These bindings need a shared build.  Ask the ref/ component for an",
-        "`nxvc_ref_shared` target producing libnxvc_ref.so, or build one yourself:",
+        "NOTE: ref/CMakeLists.txt has an `nxvc_ref_shared` target producing",
+        "libnxvc_ref.so, but a build tree only contains it once it is built:",
         "",
-        "  c++ -std=c++20 -O2 -fPIC -shared -Iinclude -Iref/src \\",
-        "      ref/src/*.cpp -o libnxvc_ref.so",
+        "  cmake --build <build-dir> --target nxvc_ref_shared",
+        "",
+        "ctypes cannot load the static libnxvc_ref.a that the default target",
+        "produces.  A library that loads but is missing a symbol these",
+        "bindings declare is REFUSED, not used: it was built from an older",
+        "include/nxvc/nxvc.h, and its structure layouts would disagree with",
+        "these ones silently and corrupt every per-tile record.  Rebuild it.",
         "",
         "Everything that does not need the codec itself -- the bitstream parser",
         "(nxvc.bitstream) and the metrics (nxvc.metrics) -- works without it.",
@@ -594,8 +693,19 @@ def _bind(lib: ctypes.CDLL) -> None:
     lib.nxvc_tile_layout_get.argtypes = [c_uint32, c_uint32, POINTER(nxvc_tile_layout)]
     lib.nxvc_tile_layout_get.restype = None
 
+    lib.nxvc_tile_layout_get_ex.argtypes = [
+        c_uint32,
+        c_uint32,
+        c_uint32,
+        POINTER(nxvc_tile_layout),
+    ]
+    lib.nxvc_tile_layout_get_ex.restype = None
+
     lib.nxvc_status_string.argtypes = [c_int]
     lib.nxvc_status_string.restype = c_char_p
+
+    lib.nxvc_version_string.argtypes = []
+    lib.nxvc_version_string.restype = c_char_p
 
     # encoder -------------------------------------------------------------
     lib.nxvc_encoder_create.argtypes = [POINTER(nxvc_config), POINTER(c_int)]
@@ -617,6 +727,18 @@ def _bind(lib: ctypes.CDLL) -> None:
 
     lib.nxvc_encoder_set_pose.argtypes = [encoder_p, u8p]
     lib.nxvc_encoder_set_pose.restype = None
+
+    lib.nxvc_encoder_set_views.argtypes = [encoder_p, POINTER(nxvc_view), c_uint32]
+    lib.nxvc_encoder_set_views.restype = c_int
+
+    lib.nxvc_encoder_tile_count.argtypes = [encoder_p]
+    lib.nxvc_encoder_tile_count.restype = c_uint32
+
+    lib.nxvc_encoder_set_received_tiles.argtypes = [encoder_p, u8p, c_uint32]
+    lib.nxvc_encoder_set_received_tiles.restype = c_int
+
+    lib.nxvc_encoder_shadow_image.argtypes = [encoder_p, POINTER(nxvc_image)]
+    lib.nxvc_encoder_shadow_image.restype = c_int
 
     lib.nxvc_encoder_encode_frame.argtypes = [
         encoder_p,
@@ -679,6 +801,12 @@ def _bind(lib: ctypes.CDLL) -> None:
     ]
     lib.nxvc_decoder_plane_size.restype = c_int
 
+    lib.nxvc_decoder_set_lost_tiles.argtypes = [decoder_p, u8p, c_uint32]
+    lib.nxvc_decoder_set_lost_tiles.restype = c_int
+
+    lib.nxvc_decoder_tile_count.argtypes = [decoder_p]
+    lib.nxvc_decoder_tile_count.restype = c_uint32
+
     lib.nxvc_decoder_tiles.argtypes = [decoder_p, POINTER(c_uint32)]
     lib.nxvc_decoder_tiles.restype = POINTER(nxvc_tile_info)
 
@@ -711,6 +839,28 @@ def status_string(status: int) -> str:
         Status.ERR_NOMEM: "output buffer too small or allocation failed",
         Status.ERR_VERSION: "magic, version or tool mask refused",
     }.get(int(status), "unknown status")
+
+
+def version_string() -> str | None:
+    """``nxvc_version_string()``, or None when the library is not loaded.
+
+    The C string is ``"nxvc_ref <major>.<minor> (syntax v<major>.<minor>)"``.
+    """
+    if not is_available():
+        return None
+    assert _lib is not None
+    s = _lib.nxvc_version_string()
+    return s.decode("utf-8", "replace") if s else None
+
+
+def library_minor() -> int | None:
+    """``NXVC_BITSTREAM_MINOR`` of the loaded library, parsed out of
+    :func:`version_string`, or None if it is unavailable or unparsable."""
+    text = version_string()
+    if not text:
+        return None
+    m = re.search(r"syntax v(\d+)\.(\d+)", text)
+    return int(m.group(2)) if m else None
 
 
 def check(status: int, what: str = "") -> int:

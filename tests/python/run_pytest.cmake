@@ -58,9 +58,14 @@ if(NOT _pkg EQUAL 0)
   endif()
 endif()
 
-# Point the loader at this build tree.  The end-to-end tests skip themselves
-# with a clear reason when no shared library turns up (ref/ currently builds
-# nxvc_ref as a static library only), so this is best-effort, not required.
+# Point the loader at this build tree.  NXVC_LIBRARY is the nxvc_ref_shared
+# target's file, which only exists once that target has actually been built
+# (`cmake --build <dir> --target nxvc_ref_shared`); the end-to-end tests skip
+# themselves with that command in the reason when it has not been, so this is
+# best-effort, not required.  Setting it explicitly also keeps the loader's
+# own build-tree search -- which would otherwise pick the newest build*/ in the
+# checkout -- from finding a sanitizer build, whose runtime aborts a ctypes
+# process before main.
 if(NXVC_LIBRARY AND EXISTS "${NXVC_LIBRARY}")
   set(ENV{NXVC_LIBRARY} "${NXVC_LIBRARY}")
 endif()

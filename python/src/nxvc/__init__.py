@@ -27,9 +27,11 @@ from __future__ import annotations
 
 from . import bitstream, metrics
 from ._ffi import (
+    NXVC_BITSTREAM_MINOR,
     NXVC_MAGIC,
     NXVC_TILE_SIZE,
     NXVC_VERSION,
+    TOOLS_PHASE1,
     TOOLS_SUPPORTED,
     Chroma,
     ColorSpace,
@@ -43,7 +45,7 @@ from ._ffi import (
 from ._ffi import is_available as _is_available
 from ._ffi import library_path as _library_path
 from ._ffi import load_error as _load_error
-from ._ffi import search_paths, status_string
+from ._ffi import library_minor, search_paths, status_string, version_string
 from ._version import __version__
 
 #: True when the nxvc shared library was found and every symbol bound.
@@ -62,9 +64,11 @@ __all__ = [
     "NXVC_LIBRARY_PATH",
     "NXVC_LOAD_ERROR",
     "NXVC_VERSION",
+    "NXVC_BITSTREAM_MINOR",
     "NXVC_MAGIC",
     "NXVC_TILE_SIZE",
     "TOOLS_SUPPORTED",
+    "TOOLS_PHASE1",
     "Chroma",
     "ColorSpace",
     "ColorTransform",
@@ -76,6 +80,8 @@ __all__ = [
     "require_library",
     "search_paths",
     "status_string",
+    "version_string",
+    "library_minor",
     "bitstream",
     "metrics",
 ]

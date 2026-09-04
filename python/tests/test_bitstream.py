@@ -109,7 +109,11 @@ def test_stream_header_odd_sizes_round_up():
         ({"eyes": 0}, "must be 1 or 2"),
         ({"bit_depth": 12}, "must be 8 or 10"),
         ({"num_layers": 5}, "outside [1, 4]"),
-        ({"tools": 1 << 20}, "reserved tool bits"),
+        ({"tools": 1 << 24}, "reserved tool bits"),
+        (
+            {"tools": nxvc.Tool.LOSSLESS | nxvc.Tool.SIGN_HIDE},
+            "LOSSLESS and SIGN_HIDE are mutually exclusive",
+        ),
     ],
 )
 def test_stream_header_rejects(over, fragment):
@@ -145,11 +149,19 @@ def test_stream_header_truncated():
 
 
 def test_unsupported_tools_reported():
+    """`unsupported_tools` is about the reference decoder, `non_phase1_tools`
+    about an intra-only one.  Since syntax v1.4 they are not the same set."""
     hdr = bs.parse_stream_header(
+        raw_stream_header(tools=nxvc.Tool.INTRA_DC_PLANE | nxvc.Tool.FILTER_CATMULLROM)
+    )
+    assert hdr.unsupported_tools() == nxvc.Tool.FILTER_CATMULLROM
+    assert "FILTER_CATMULLROM" in nxvc.Tool.names(hdr.unsupported_tools())
+
+    inter = bs.parse_stream_header(
         raw_stream_header(tools=nxvc.Tool.INTRA_DC_PLANE | nxvc.Tool.INTER)
     )
-    assert hdr.unsupported_tools() == nxvc.Tool.INTER
-    assert "INTER" in nxvc.Tool.names(hdr.unsupported_tools())
+    assert inter.unsupported_tools() == 0
+    assert inter.non_phase1_tools() == nxvc.Tool.INTER
 
 
 # ------------------------------------------------------------------ TLV area
@@ -253,7 +265,7 @@ def test_tile_resolved_qp_clamps():
         ({"alpha_mode": 3}, "alpha_mode 3 is reserved"),
         ({"nsub_log2": 6}, "nsub_log2 6 exceeds 5"),
         ({"word0_reserved": 1}, "word0 bit 3 must be zero"),
-        ({"word1_reserved": 1}, "word1 bits 26-31 must be zero"),
+        ({"word1_reserved": 1}, "word1 bits 28-31 must be zero"),
     ],
 )
 def test_tile_header_rejects(kwargs, fragment):

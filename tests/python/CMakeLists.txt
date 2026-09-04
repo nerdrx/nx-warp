@@ -12,6 +12,10 @@
 # code 77) rather than failing when that interpreter has no pytest or numpy,
 # and the end-to-end encode/decode tests inside it skip themselves, with the
 # build command in the reason, when no nxvc shared library is found.
+#
+# The suite also parses every bitstream in tests/vectors/ with the pure-Python
+# parser and, when an nxv-info binary is present, compares the two readings
+# field for field.  That part needs no library and no vectors regeneration.
 
 option(NXWARP_PYTHON_TESTS "Register the nxvc Python binding tests with ctest" ON)
 
@@ -42,10 +46,11 @@ endif()
 
 set(_nxvc_py_dir "${CMAKE_SOURCE_DIR}/python")
 
-# ref/ builds nxvc_ref as a STATIC library, which ctypes cannot load.  If a
-# shared target ever appears (nxvc_ref_shared producing libnxvc_ref.so), hand
-# its path to the suite; otherwise the loader still searches this build tree
-# via NXVC_BUILD_DIR and the codec tests skip cleanly when nothing turns up.
+# ref/ builds nxvc_ref as a STATIC library by default, which ctypes cannot
+# load; nxvc_ref_shared produces libnxvc_ref.so beside it.  Hand that target's
+# path to the suite when it is configured; otherwise the loader still searches
+# this build tree via NXVC_BUILD_DIR and the codec tests skip cleanly when
+# nothing turns up.
 set(_nxvc_library "")
 if(TARGET nxvc_ref_shared)
   set(_nxvc_library "$<TARGET_FILE:nxvc_ref_shared>")

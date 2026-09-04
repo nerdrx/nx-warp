@@ -110,6 +110,11 @@ class TileInfo:
     mv_y: int
     alpha_value: int
     qp: int
+    wm_id: int
+    intra_dir: int
+    skipped: int
+    concealed: int
+    disparity: int
 
     _FIELDS = (
         "tile_index",
@@ -131,6 +136,11 @@ class TileInfo:
         "mv_y",
         "alpha_value",
         "qp",
+        "wm_id",
+        "intra_dir",
+        "skipped",
+        "concealed",
+        "disparity",
     )
 
     @classmethod
@@ -227,6 +237,10 @@ class FrameInfo:
     frame_bytes: int
     pose: bytes
     tile_count: int
+    #: Frame flags bit 3 (syntax v1.4): ``warp_ext()`` follows the frame header.
+    warp_present: int = 0
+    #: The nine int32 of ``warp_ext()`` per eye, h00..h22.
+    warp: tuple[tuple[int, ...], ...] = ()
 
     @classmethod
     def _from_c(cls, c: nxvc_frame_info) -> "FrameInfo":
@@ -242,6 +256,8 @@ class FrameInfo:
             frame_bytes=int(c.frame_bytes),
             pose=bytes(bytearray(c.pose)),
             tile_count=int(c.tile_count),
+            warp_present=int(getattr(c, "warp_present", 0)),
+            warp=tuple(tuple(int(v) for v in row) for row in getattr(c, "warp", ())),
         )
 
     @property
@@ -321,6 +337,36 @@ class EncoderConfig:
     level: int = 0
     collect_stats: int = 0
 
+    # --- additive since syntax v1.2: encoder-side tuning.  They change which
+    # levels and per-tile parameters are chosen, never how a stream decodes.
+    #: ``None`` means "whatever ``nxvc_config_default`` chose" -- the reference
+    #: encoder turns rdo and the v2 intra tools on, and pinning a 0 here would
+    #: silently change what a bare ``Encoder(w, h)`` emits.
+    rdo: int | None = None
+    rdo_lambda_q8: int | None = None
+    qp_search: int | None = None
+    wm_id: int | None = None
+
+    # --- additive since syntax v1.3.  These DO change the bitstream: each sets
+    # a tool bit in the stream header and a decoder without it refuses the
+    # stream at the handshake.
+    intra_dir: int | None = None
+    intra_dir_layer: int | None = None
+    ctx_v2: int | None = None
+    intra_dir_cand: int | None = None
+    sign_hide: int | None = None
+
+    # --- additive since syntax v1.4: the Phase 2 inter path.  ``width`` and
+    # ``height`` are per eye; with ``eyes == 2`` the image planes are
+    # ``eyes * width`` samples wide, one picture per eye, eye 0 first.
+    eyes: int | None = None
+    inter: int | None = None
+    stereo: int | None = None
+    intra_period: int | None = None
+    ref_sel: int | None = None
+    mv_range: int | None = None
+    skip_thresh: int | None = None
+
     #: Fields set explicitly by the caller; everything else keeps the C default.
     _explicit: set[str] = field(default_factory=set, repr=False, compare=False)
 
@@ -343,7 +389,10 @@ class EncoderConfig:
         for name in explicit:
             if name == "custom_matrix":
                 continue
-            setattr(c, name, getattr(self, name))
+            value = getattr(self, name)
+            if value is None:  # keep whatever nxvc_config_default() chose
+                continue
+            setattr(c, name, value)
         if self.custom_matrix is not None:
             if len(self.custom_matrix) != 128:
                 raise ValueError(
@@ -471,6 +520,10 @@ class Encoder:
         self.height = int(c.height)
         self.chroma = int(c.chroma)
         self.alpha = bool(c.alpha)
+        #: 1 or 2.  ``width``/``height`` are per eye; with two eyes the image
+        #: planes are ``eyes * width`` samples wide, one picture per eye, eye 0
+        #: first (nxvc.h, syntax v1.4).
+        self.eyes = int(getattr(c, "eyes", 1)) or 1
         self.layout = tile_layout(self.width, self.height)
         self._header_emitted = False
 
@@ -500,7 +553,9 @@ class Encoder:
     # -------------------------------------------------------------- geometry
     @property
     def plane_shapes(self) -> list[tuple[int, int]]:
-        return plane_shapes(self.width, self.height, self.chroma, self.alpha)
+        return plane_shapes(
+            self.width * self.eyes, self.height, self.chroma, self.alpha
+        )
 
     # ---------------------------------------------------------------- header
     def add_tlv(self, type_: int, data: bytes) -> None:

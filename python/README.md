@@ -49,26 +49,32 @@ The loader tries, in order:
 On each of those it accepts `libnxvc_ref.so` or `libnxvc.so` (`.dylib` on
 macOS, `.dll` on Windows).
 
-### There is no shared library yet
+### Building it
 
-`ref/CMakeLists.txt` builds `nxvc_ref` as a **STATIC** library. `ctypes` cannot
-load a `.a`, so out of a stock build tree `nxvc.NXVC_AVAILABLE` is `False` and
-`nxvc.NXVC_LOAD_ERROR` explains exactly this.
-
-> **Request to `ref/`: please add an `nxvc_ref_shared` target producing
-> `libnxvc_ref.so`** (the same sources with `POSITION_INDEPENDENT_CODE ON`, or
-> an `OBJECT` library shared by both). `tests/python/CMakeLists.txt` already
-> looks for a target of that name and hands its path to the test suite, so the
-> end-to-end tests start running the moment it exists. Nothing in `ref/` was
-> modified to add this note.
-
-Until then, build one yourself -- this does not touch the repository:
+`ref/CMakeLists.txt` has an **`nxvc_ref_shared`** target producing
+`libnxvc_ref.so` beside the static `libnxvc_ref.a` that the default target
+builds. `ctypes` cannot load a `.a`, so a build tree has to be asked for it:
 
 ```sh
-c++ -std=c++20 -O2 -fPIC -shared -Iinclude -Iref/src ref/src/*.cpp \
-    -o /run/media/nerdrx/Lex/claude/nx-scratch/nx-warp/libnxvc_ref.so
-export NXVC_LIBRARY=/run/media/nerdrx/Lex/claude/nx-scratch/nx-warp/libnxvc_ref.so
+cmake --build build-ref --target nxvc_ref_shared
+export NXVC_LIBRARY=$PWD/build-ref/ref/libnxvc_ref.so
 ```
+
+`tests/python/CMakeLists.txt` hands that target's path to the pytest suite
+automatically, so through ctest nothing needs setting.
+
+Two loader behaviours are worth knowing:
+
+* A library that loads but is **missing a symbol** this binding declares is
+  refused, not used. It was built from an older `include/nxvc/nxvc.h`, and its
+  structure layouts would disagree with these ones silently -- `nxvc_tile_info`
+  grew four fields between syntax v1.2 and v1.4, so a stale library would hand
+  back per-tile records read at the wrong stride. Rebuild it.
+* Build trees whose name looks instrumented (`asan`, `ubsan`, `tsan`, `fuzz`,
+  `coverage`) are searched **last**. Loading a sanitizer build through `ctypes`
+  aborts the interpreter before `main` -- "ASan runtime does not come first in
+  initial library list" -- and there is no way to detect that without loading
+  it. Point `NXVC_LIBRARY` at one deliberately if you want it.
 
 ---
 
@@ -219,6 +225,23 @@ for the descriptive stream field; `--rgb` implies `--color-space rgb`, as
 SYNTAX.md 2.2 requires. A `nxvc` console script is installed as well, so
 `nxvc info out.nxv` works once the package is on the PATH.
 
+The encoder tuning and v2 intra tool flags mirror `nxv-enc` too:
+
+| flag | what it sets |
+|---|---|
+| `--rdo` / `--no-rdo`, `--rdo-lambda F` | RD trellis quantizer and its lambda |
+| `--qp-search N` | per-tile `qp_delta` searched in `[-N, +N]` |
+| `--wm 0..3\|auto` | per-tile weighting matrix, tool bit 20 `WM_ID` |
+| `--intra-dir off\|on\|layer` | directional intra, tool bit 17; `layer` is the layered form (frame `flags` bit 2, SYNTAX.md 7.5) |
+| `--intra-dir-cand N` | modes RD-checked per block |
+| `--ctx v1\|v2` | 12 or 16 entropy contexts, tool bit 21 `CTX_V2` |
+| `--sign-hide` / `--no-sign-hide` | sign data hiding, tool bit 22 |
+
+Each of them defaults to *unset*, meaning "whatever `nxvc_config_default()`
+chose" -- the reference encoder turns the RD trellis and all three v2 intra
+tools on, and passing an explicit `0` for a flag nobody mentioned would quietly
+turn them off. `EncoderConfig` spells the same thing with `None`.
+
 `info` runs on the pure-Python parser and needs no library. `--library` adds a
 full decode through the reference codec, which is the only thing that can
 validate the entropy-coded payload.
@@ -251,6 +274,15 @@ rate/quality monotonicity, per-tile maps, bit accounting, and a cross-check
 that the pure-Python parser and the C decoder agree tile for tile on the same
 bytes.
 
+`test_vectors.py` runs the parser over **every committed bitstream** in
+`tests/vectors/`: each conformance vector must parse structurally end to end
+(a frame that does not consume exactly its `frame_bytes` is an error, so a
+wrong table-set size or tile-header layout cannot hide), re-pack to the bytes
+it came from, and match the geometry `vectors.md5` records; each rejection
+vector must be refused, either by the parser or by `phase1_reject_reason`. When
+an `nxv-info` binary exists in any build tree its output is parsed and compared
+field for field -- two independent readings of the same 44 files.
+
 `test_version.py` additionally parses `include/nxvc/nxvc.h` and compares every
 struct's **field order, names and integer widths** against `nxvc/_ffi.py`, and
 asserts that every declared function is bound. That is the check that matters:
@@ -262,9 +294,18 @@ caught exactly that when `color_space` and `nxvc_encode_stats` landed.
 
 ## Versioning
 
-`src/nxvc/_version.py` carries the version statically; there is no version
-symbol in the C ABI to derive it from. `python/tests/test_version.py` asserts
+`src/nxvc/_version.py` carries the package version statically. `python/tests/test_version.py` asserts
 it against `project(nxwarp VERSION ...)` in the root `CMakeLists.txt`, and
 asserts `NXVC_VERSION`, the tool-bit numbers and `NXVC_TOOLS_SUPPORTED`
 against `include/nxvc/nxvc.h`, so the two cannot drift apart silently while the
 repository is checked out. Those tests skip when only the wheel is installed.
+
+Two version numbers are in play and they are not the same thing:
+
+* `nxvc.NXVC_VERSION` is the **bitstream version** (1) carried in every stream.
+* `nxvc.NXVC_BITSTREAM_MINOR` is the revision of `docs/SYNTAX.md` that
+  `nxvc.bitstream` parses. `nxvc.library_minor()` reports the loaded C
+  library's, read out of `nxvc_version_string()`. The library may be **ahead**
+  while a syntax revision is landing; `test_version.py` asserts only that the
+  parser is never ahead of the header, since claiming a revision it does not
+  implement is the failure that matters.

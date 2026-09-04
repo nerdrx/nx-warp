@@ -12,12 +12,13 @@ from nxvc import bitstream as bs
 requires_library = pytest.mark.skipif(
     not nxvc.NXVC_AVAILABLE,
     reason=(
-        "the nxvc shared library is not built. ref/CMakeLists.txt builds "
-        "nxvc_ref as a STATIC library only; build a shared one and point "
-        "NXVC_LIBRARY at it:\n"
-        "  c++ -std=c++20 -O2 -fPIC -shared -Iinclude -Iref/src ref/src/*.cpp "
-        "-o libnxvc_ref.so\n"
-        "See python/README.md."
+        "the nxvc shared library was not loaded. ref/ has an nxvc_ref_shared "
+        "target; build it and point NXVC_LIBRARY at the result:\n"
+        "  cmake --build build-ref --target nxvc_ref_shared\n"
+        "  NXVC_LIBRARY=build-ref/ref/libnxvc_ref.so python -m pytest python/tests\n"
+        "A library OLDER than include/nxvc/nxvc.h is refused rather than "
+        "loaded: the struct layouts would disagree silently.  See "
+        "python/README.md, and `python -m nxvc probe` for the full reason."
     ),
 )
 

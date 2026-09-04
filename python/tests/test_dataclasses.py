@@ -35,7 +35,8 @@ def test_stream_header_round_trip():
         eyes=2,
         num_layers=2,
         layer_desc=(0x11, 0x22, 0, 0),
-        tools=nxvc.TOOLS_SUPPORTED,
+        # SYNTAX.md 2.3: LOSSLESS and SIGN_HIDE cannot both be set.
+        tools=nxvc.TOOLS_SUPPORTED & ~nxvc.Tool.SIGN_HIDE,
     )
     raw = hdr.pack()
     assert len(raw) == 64
@@ -216,7 +217,8 @@ def test_stream_info_from_c_struct():
         color_transform=1,
         color_space=nxvc.ColorSpace.RGB,
         alpha=0,
-        tools=nxvc.TOOLS_SUPPORTED,
+        # SYNTAX.md 2.3: LOSSLESS and SIGN_HIDE cannot both be set.
+        tools=nxvc.TOOLS_SUPPORTED & ~nxvc.Tool.SIGN_HIDE,
         ext_len=8,
         ext_tlv_count=1,
         ext_unknown_count=0,
@@ -263,7 +265,9 @@ def test_ctypes_struct_sizes_match_the_c_layout():
     # Hand-computed from nxvc.h with natural alignment; a mismatch means the
     # header and this binding have drifted apart.
     assert ctypes.sizeof(_ffi.nxvc_tile_layout) == 16
-    assert ctypes.sizeof(_ffi.nxvc_tile_info) == 22
+    # 18 u8/u16 through `qp` (22), + wm_id, intra_dir, skipped, concealed (26),
+    # + a 2-aligned u16 `disparity` = 28.
+    assert ctypes.sizeof(_ffi.nxvc_tile_info) == 28
     assert ctypes.sizeof(_ffi.nxvc_image) == ctypes.sizeof(ctypes.c_void_p) * 4 + 16
     # 14 u32 (56) + u64 (64) + layer_desc 4 u32 (80) + 3 u32 (92), rounded up
     # to the struct's 8-byte alignment = 96.

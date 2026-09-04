@@ -23,12 +23,15 @@ from __future__ import annotations
 
 import struct
 from dataclasses import dataclass, field
-from typing import Any, ClassVar, Iterator, Sequence
+from typing import Any, Callable, ClassVar, Iterator, Sequence
 
 from ._ffi import NXVC_MAGIC, ColorSpace, Status, TileMode, Tool
 
 __all__ = [
     "BitstreamError",
+    "FrameSection",
+    "FRAME_SECTIONS",
+    "table_set_bytes",
     "Tlv",
     "StreamHeader",
     "FrameHeader",
@@ -270,10 +273,21 @@ class StreamHeader(_TableStruct):
         return Tool.names(self.tools)
 
     def unsupported_tools(self) -> int:
-        """Tool bits outside what the Phase 1 reference decoder implements."""
+        """Tool bits outside what the reference decoder implements."""
         from ._ffi import TOOLS_SUPPORTED
 
         return self.tools & ~TOOLS_SUPPORTED
+
+    def non_phase1_tools(self) -> int:
+        """Tool bits outside the Phase 1 (intra-only) subset.
+
+        Distinct from :meth:`unsupported_tools` since syntax v1.4: the
+        reference decoder implements the inter tools, an intra-only decoder
+        does not.
+        """
+        from ._ffi import TOOLS_PHASE1
+
+        return self.tools & ~TOOLS_PHASE1
 
     # -------------------------------------------------------------- codec
     @classmethod
@@ -350,9 +364,15 @@ class StreamHeader(_TableStruct):
                 raise BitstreamError(
                     f"layer_desc[{i}] must be zero above num_layers", offset + 16 + 4 * i
                 )
-        if self.tools >> 20:
+        if self.tools >> Tool.RESERVED_FROM:
             raise BitstreamError(
                 f"reserved tool bits set: 0x{self.tools:016x}", offset + 32
+            )
+        # SYNTAX.md 2.3: hiding a sign spends one level step, so the two cannot
+        # both be true (rejection vector r17).
+        if (self.tools & Tool.LOSSLESS) and (self.tools & Tool.SIGN_HIDE):
+            raise BitstreamError(
+                "tool bits LOSSLESS and SIGN_HIDE are mutually exclusive", offset + 32
             )
         if any(self.reserved):
             raise BitstreamError("reserved bytes 43-61 must be zero", offset + 43)
@@ -400,6 +420,13 @@ class FrameHeader(_TableStruct):
     @property
     def stereo_inter_view(self) -> bool:
         return bool(self.flags & 2)
+
+    #: bit 2 of ``flags``: the layered form of directional intra (SYNTAX.md 7.5).
+    #: Requires tool bit 17 ``INTRA_DIR``; the pairing is checked in
+    #: :func:`parse_frame`, which is the first place the stream header is in hand.
+    @property
+    def intra_dir_layer(self) -> bool:
+        return bool(self.flags & 4)
 
     @property
     def custom_matrix(self) -> bool:
@@ -488,7 +515,8 @@ _TILE_WORD1: Sequence[tuple[str, int, int, bool]] = (
     ("ref_sel", 21, 2, False),
     ("tskip", 23, 1, False),
     ("wgt", 24, 2, False),
-    ("word1_reserved", 26, 6, False),
+    ("wm_id", 26, 2, False),
+    ("word1_reserved", 28, 4, False),
 )
 
 #: word0 bitfields: (name, lsb, width, signed)
@@ -498,6 +526,17 @@ _TILE_WORD0: Sequence[tuple[str, int, int, bool]] = (
     ("word0_reserved", 3, 1, False),
     ("tile_index", 4, 12, False),
     ("payload_len", 16, 16, False),
+)
+
+
+#: Optional bytes that follow the fixed 8-byte tile header, in wire order:
+#: ``(description, attribute names, struct format, present-predicate)``.  A
+#: Phase 2 field (SYNTAX.md 4.1's warp parameters) is one more row here and
+#: nothing else -- :attr:`TileHeader.header_size`, ``parse`` and ``pack`` are
+#: all generated from this table.
+_TILE_EXTRAS: Sequence[tuple[str, tuple[str, ...], str, Callable[[Any], bool]]] = (
+    ("tile motion vector", ("mv_x", "mv_y"), "bb", lambda h: bool(h.mv_present)),
+    ("tile constant alpha", ("alpha_value",), "B", lambda h: h.alpha_mode == 1),
 )
 
 
@@ -532,6 +571,7 @@ class TileHeader:
     ref_sel: int = 0
     tskip: int = 0
     wgt: int = 0
+    wm_id: int = 0
     word0_reserved: int = 0
     word1_reserved: int = 0
     mv_x: int = 0
@@ -544,7 +584,11 @@ class TileHeader:
     @property
     def header_size(self) -> int:
         """Header bytes before the payload: 8, plus 2 for an MV, plus 1 for constant alpha."""
-        return 8 + (2 if self.mv_present else 0) + (1 if self.alpha_mode == 1 else 0)
+        return 8 + sum(
+            struct.calcsize("<" + fmt)
+            for _, _, fmt, present in _TILE_EXTRAS
+            if present(self)
+        )
 
     @property
     def total_size(self) -> int:
@@ -579,13 +623,14 @@ class TileHeader:
             values[name] = _get_bits(word1, lsb, width, signed)
         hdr = cls(**values)
         pos = offset + 8
-        if hdr.mv_present:
-            _need(buf, pos, 2, "tile motion vector")
-            hdr.mv_x, hdr.mv_y = struct.unpack_from("<bb", buf, pos)
-            pos += 2
-        if hdr.alpha_mode == 1:
-            _need(buf, pos, 1, "tile constant alpha")
-            hdr.alpha_value = buf[pos]
+        for what, names, fmt, present in _TILE_EXTRAS:
+            if not present(hdr):
+                continue
+            n = struct.calcsize("<" + fmt)
+            _need(buf, pos, n, what)
+            for name, value in zip(names, struct.unpack_from("<" + fmt, buf, pos)):
+                setattr(hdr, name, int(value))
+            pos += n
         if validate:
             hdr.validate(offset)
         return hdr
@@ -598,10 +643,9 @@ class TileHeader:
         for name, lsb, width, _ in _TILE_WORD1:
             word1 = _set_bits(word1, lsb, width, getattr(self, name))
         out = struct.pack("<II", word0, word1)
-        if self.mv_present:
-            out += struct.pack("<bb", self.mv_x, self.mv_y)
-        if self.alpha_mode == 1:
-            out += bytes([self.alpha_value & 0xFF])
+        for _, names, fmt, present in _TILE_EXTRAS:
+            if present(self):
+                out += struct.pack("<" + fmt, *(getattr(self, n) for n in names))
         return out
 
     def validate(self, offset: int = 0) -> None:
@@ -616,7 +660,7 @@ class TileHeader:
         if self.word0_reserved:
             raise BitstreamError("tile word0 bit 3 must be zero", offset)
         if self.word1_reserved:
-            raise BitstreamError("tile word1 bits 26-31 must be zero", offset + 4)
+            raise BitstreamError("tile word1 bits 28-31 must be zero", offset + 4)
 
 
 # ------------------------------------------------------------- parsed entities
@@ -655,6 +699,10 @@ class Frame:
     offset: int
     custom_matrix: bytes | None = None
     table_deltas: dict[int, bytes] = field(default_factory=dict)
+    #: Every :data:`FRAME_SECTIONS` block that was present, by section name:
+    #: ``{name: {key: bytes}}``.  ``custom_matrix`` and ``table_deltas`` above
+    #: are the two named views onto it that v1 callers already use.
+    sections: dict[str, dict[Any, bytes]] = field(default_factory=dict)
 
     @property
     def size(self) -> int:
@@ -686,8 +734,102 @@ class Stream:
 
 #: Bytes of quantization matrix that follow a frame header with quant_matrix 255.
 CUSTOM_MATRIX_BYTES = 128
-#: Bytes of probability-table deltas per transmitted table set.
+#: Bytes of probability-table deltas per transmitted table set, v1 context model
+#: (12 contexts x 16 symbols x 5 bits).
 TABLE_SET_BYTES = 120
+#: ... and under ``CTX_V2`` (16 x 16 x 5).  SYNTAX.md 3.1 and 9.4.
+TABLE_SET_BYTES_V2 = 160
+
+
+def table_set_bytes(tools: int) -> int:
+    """Size of one transmitted probability table set for a stream's ``tools``.
+
+    The stream header's tool mask is what selects it, so a frame cannot be
+    parsed without it -- this is why :func:`parse_frame` takes the stream
+    header rather than only the frame's own bytes.
+    """
+    return TABLE_SET_BYTES_V2 if (tools & Tool.CTX_V2) else TABLE_SET_BYTES
+
+
+@dataclass(frozen=True)
+class FrameSection:
+    """One block of bytes between the frame header and the first tile row.
+
+    ``keys`` returns the instances of the section present in this frame -- an
+    empty list when it is absent, ``[None]`` for a singleton, one entry per
+    repetition otherwise -- and ``size`` its byte length.  Both see the frame
+    header and the stream header, which is everything that gates a section in
+    SYNTAX.md 3.1.
+    """
+
+    name: str
+    keys: Callable[["FrameHeader", "StreamHeader"], Sequence[Any]]
+    size: Callable[["FrameHeader", "StreamHeader", Any], int]
+    what: Callable[[Any], str]
+    #: True when the section holds at most one instance, keyed ``None``.
+    singleton: bool = True
+
+
+#: The sections, **in wire order** (SYNTAX.md 3.1).  Phase 2's `warp_ext`, which
+#: follows the frame header when a `flags` bit is set, is one more row here:
+#: :func:`parse_frame` walks this table and nothing in it is hard-coded.
+FRAME_SECTIONS: Sequence[FrameSection] = (
+    FrameSection(
+        name="custom_matrix",
+        keys=lambda h, s: [None] if h.custom_matrix else [],
+        size=lambda h, s, k: CUSTOM_MATRIX_BYTES,
+        what=lambda k: "custom quantization matrices",
+    ),
+    FrameSection(
+        name="table_deltas",
+        keys=lambda h, s: h.table_sets,
+        size=lambda h, s, k: table_set_bytes(s.tools),
+        what=lambda k: f"probability table set {k}",
+        singleton=False,
+    ),
+)
+
+
+#: Cross-structure rules: a field of one header whose legality is decided by
+#: another.  Each entry is ``(predicate, message)`` and each is a `BITSTREAM`
+#: error, pinned by a rejection vector in ``tests/vectors``.
+_FRAME_RULES: Sequence[tuple[Callable[[Any, Any], bool], str]] = (
+    (
+        lambda h, s: h.intra_dir_layer and not (s.tools & Tool.INTRA_DIR),
+        "frame flags bit 2 (layered directional intra) without tool bit 17 INTRA_DIR",
+    ),
+)
+
+_TILE_RULES: Sequence[tuple[Callable[[Any, Any, Any], bool], str]] = (
+    (
+        lambda t, h, s: t.wm_id != 0 and not (s.tools & Tool.WM_ID),
+        "wm_id != 0 without tool bit 20 WM_ID",
+    ),
+    (
+        lambda t, h, s: t.wm_id != 0 and h.quant_matrix == 255,
+        "wm_id != 0 in a frame carrying custom quantization matrices",
+    ),
+    (
+        lambda t, h, s: t.chroma444 and not s.chroma444,
+        "chroma444 tile in a 4:2:0 stream",
+    ),
+)
+
+
+def _validate_frame_against_stream(
+    hdr: "FrameHeader", stream: "StreamHeader", offset: int
+) -> None:
+    for predicate, message in _FRAME_RULES:
+        if predicate(hdr, stream):
+            raise BitstreamError(message, offset + 34)
+
+
+def _validate_tile_against_stream(
+    tile: "TileHeader", hdr: "FrameHeader", stream: "StreamHeader", offset: int
+) -> None:
+    for predicate, message in _TILE_RULES:
+        if predicate(tile, hdr, stream):
+            raise BitstreamError(f"tile {tile.tile_index}: {message}", offset + 4)
 
 
 def parse_stream_header(buf: bytes, offset: int = 0, *, validate: bool = True) -> StreamHeader:
@@ -708,17 +850,24 @@ def parse_frame(
     end = offset + hdr.frame_bytes
     pos = offset + FrameHeader.SIZE
 
-    custom_matrix = None
-    if hdr.custom_matrix:
-        _need(buf, pos, CUSTOM_MATRIX_BYTES, "custom quantization matrices")
-        custom_matrix = bytes(buf[pos : pos + CUSTOM_MATRIX_BYTES])
-        pos += CUSTOM_MATRIX_BYTES
+    if validate:
+        _validate_frame_against_stream(hdr, stream, offset)
 
-    table_deltas: dict[int, bytes] = {}
-    for k in hdr.table_sets:
-        _need(buf, pos, TABLE_SET_BYTES, f"probability table set {k}")
-        table_deltas[k] = bytes(buf[pos : pos + TABLE_SET_BYTES])
-        pos += TABLE_SET_BYTES
+    sections: dict[str, dict[Any, bytes]] = {}
+    for section in FRAME_SECTIONS:
+        for key in section.keys(hdr, stream):
+            n = section.size(hdr, stream, key)
+            what = section.what(key)
+            _need(buf, pos, n, what)
+            if pos + n > end:
+                raise BitstreamError(
+                    f"{what} runs past frame_bytes {hdr.frame_bytes}", pos
+                )
+            sections.setdefault(section.name, {})[key] = bytes(buf[pos : pos + n])
+            pos += n
+
+    custom_matrix = sections.get("custom_matrix", {}).get(None)
+    table_deltas = dict(sections.get("table_deltas", {}))
 
     rows: list[TileRow] = []
     for row_index in range(stream.tiles_y):
@@ -755,6 +904,8 @@ def parse_frame(
         tiles: list[Tile] = []
         for _ in range(rh.tile_count):
             th = TileHeader.parse(buf, pos, validate=validate)
+            if validate:
+                _validate_tile_against_stream(th, hdr, stream, pos)
             if pos + th.total_size > end:
                 raise BitstreamError(
                     f"tile {th.tile_index} of row {row_index} runs past frame_bytes", pos
@@ -770,7 +921,7 @@ def parse_frame(
         raise BitstreamError(
             f"frame consumed {pos - offset} bytes, frame_bytes says {hdr.frame_bytes}", pos
         )
-    return Frame(hdr, rows, offset, custom_matrix, table_deltas)
+    return Frame(hdr, rows, offset, custom_matrix, table_deltas, sections)
 
 
 def iter_frames(
@@ -801,9 +952,9 @@ def phase1_reject_reason(stream: StreamHeader, frame: Frame | None = None) -> st
     Mirrors SYNTAX.md 12.  Purely advisory: the reference decoder's status is
     the authority, this only explains it without linking against the codec.
     """
-    unsupported = stream.unsupported_tools()
+    unsupported = stream.non_phase1_tools()
     if unsupported:
-        return f"tool bits outside the supported set: {Tool.names(unsupported)}"
+        return f"tool bits outside the Phase 1 set: {Tool.names(unsupported)}"
     if stream.eyes != 1:
         return f"eyes == {stream.eyes}, Phase 1 is monoscopic"
     if stream.num_layers != 1:

@@ -87,7 +87,10 @@ def cmd_info(args: argparse.Namespace) -> int:
     print(f"  tools         {_tools_line(stream.tools)}")
     unsupported = stream.unsupported_tools()
     if unsupported:
-        print(f"                unsupported by the Phase 1 decoder: {Tool.names(unsupported)}")
+        print(f"                unsupported by the reference decoder: {Tool.names(unsupported)}")
+    non_phase1 = stream.non_phase1_tools() & ~unsupported
+    if non_phase1:
+        print(f"                unsupported by the Phase 1 decoder: {Tool.names(non_phase1)}")
     print(
         f"  ext_len       {stream.ext_len} ({len(stream.tlvs)} TLVs, "
         f"{sum(1 for t in stream.tlvs if t.private)} private)"
@@ -105,8 +108,14 @@ def cmd_info(args: argparse.Namespace) -> int:
             f"frame {n} @{offset}: num {h.frame_number}  bytes {h.frame_bytes}  "
             f"qp {h.base_qp}  cqpo {h.chroma_qp_off:+d}  aqpo {h.alpha_qp_off:+d}  "
             f"matrix {h.quant_matrix}  tables 0x{h.tables_present:02x}  "
-            f"flags 0x{h.flags:02x}  tiles {len(frame.tiles)}"
+            f"flags 0x{h.flags:02x}{'  dir-layer' if h.intra_dir_layer else ''}  "
+            f"tiles {len(frame.tiles)}"
         )
+        if h.table_sets:
+            print(
+                f"  tables: sets {h.table_sets}, "
+                f"{bitstream.table_set_bytes(stream.tools)} bytes each"
+            )
         print("  pose:" + "".join(f" {b:02x}" for b in h.pose))
         if args.tiles:
             for tile in frame.tiles:
@@ -115,7 +124,7 @@ def cmd_info(args: argparse.Namespace) -> int:
                     f"  tile {t.tile_index:4d}  {t.mode_name:<9s} res{t.res_level} "
                     f"{'c444' if t.chroma444 else 'c420'} qp{t.resolved_qp(h.base_qp):2d} "
                     f"dq{t.qp_delta:+3d} ts{t.tskip} set{t.table_set} "
-                    f"nsub{t.nsub_log2} {t.payload_len} bytes"
+                    f"nsub{t.nsub_log2} wm{t.wm_id} {t.payload_len} bytes"
                 )
         offset += h.frame_bytes
 
@@ -156,6 +165,7 @@ def _info_json(path, data, stream, frames, error) -> dict:
             "tools": stream.tools,
             "tool_names": stream.tool_names(),
             "unsupported_tools": Tool.names(stream.unsupported_tools()),
+            "non_phase1_tools": Tool.names(stream.non_phase1_tools()),
             "ext_len": stream.ext_len,
             "tlvs": [{"type": t.type, "length": t.length} for t in stream.tlvs],
             "tiles_x": stream.tiles_x,
@@ -171,7 +181,10 @@ def _info_json(path, data, stream, frames, error) -> dict:
                 "alpha_qp_off": f.header.alpha_qp_off,
                 "quant_matrix": f.header.quant_matrix,
                 "tables_present": f.header.tables_present,
+                "table_sets": f.header.table_sets,
+                "table_set_bytes": bitstream.table_set_bytes(stream.tools),
                 "flags": f.header.flags,
+                "intra_dir_layer": f.header.intra_dir_layer,
                 "tile_count": len(f.tiles),
                 "payload_bytes": f.payload_bytes,
                 "tiles": [
@@ -184,6 +197,7 @@ def _info_json(path, data, stream, frames, error) -> dict:
                         "tskip": t.header.tskip,
                         "table_set": t.header.table_set,
                         "nsub_log2": t.header.nsub_log2,
+                        "wm_id": t.header.wm_id,
                         "payload_len": t.header.payload_len,
                     }
                     for t in f.tiles
@@ -242,6 +256,9 @@ def cmd_encode(args: argparse.Namespace) -> int:
 
     tskip = {"off": 0, "on": 1, "auto": 2}[args.tskip]
     nsub = 255 if args.nsub == "auto" else int(args.nsub)
+    # nxv-enc spells the directional-intra choice with one flag: `layer` is the
+    # layered form (frame flag bit 2), which implies the tool itself.
+    intra_dir = {"off": (0, 0), "on": (1, 0), "layer": (1, 1)}.get(args.intra_dir)
 
     kwargs = dict(
         pix=args.pix,
@@ -256,6 +273,25 @@ def cmd_encode(args: argparse.Namespace) -> int:
         color_transform=1 if args.rgb else 0,
         color_space=_color_space(args),
     )
+    # Everything below is "unset means the C default": nxvc_config_default()
+    # turns the RD trellis and the v2 intra tools on, and passing an explicit 0
+    # for a flag the user never mentioned would quietly turn them off.
+    if args.rdo is not None:
+        kwargs["rdo"] = 1 if args.rdo else 0
+    if args.rdo_lambda is not None:
+        kwargs["rdo_lambda_q8"] = int(args.rdo_lambda * 256.0 + 0.5)
+    if args.qp_search:
+        kwargs["qp_search"] = args.qp_search
+    if args.wm is not None:
+        kwargs["wm_id"] = 255 if args.wm == "auto" else int(args.wm)
+    if intra_dir is not None:
+        kwargs["intra_dir"], kwargs["intra_dir_layer"] = intra_dir
+    if args.intra_dir_cand:
+        kwargs["intra_dir_cand"] = args.intra_dir_cand
+    if args.ctx is not None:
+        kwargs["ctx_v2"] = 1 if args.ctx == "v2" else 0
+    if args.sign_hide is not None:
+        kwargs["sign_hide"] = 1 if args.sign_hide else 0
 
     # --frames 0 is "all of them", the nxv-enc meaning; None is what
     # read_planar_yuv spells that with.
@@ -395,6 +431,31 @@ def build_parser() -> argparse.ArgumentParser:
     e.add_argument("--chroma-qp-off", dest="chroma_qp_off", type=int, default=0)
     e.add_argument("--tskip", default="auto", choices=("off", "on", "auto"))
     e.add_argument("--nsub", default="auto", choices=("auto", "0", "1", "2", "3", "4", "5"))
+    # Encoder tuning (syntax v1.2) and the v2 intra tools (v1.3), spelled as
+    # nxv-enc spells them.  Every one defaults to None = "leave the C default".
+    e.add_argument("--rdo", dest="rdo", action="store_const", const=True, default=None,
+                   help="RD trellis quantizer (the reference default)")
+    e.add_argument("--no-rdo", dest="rdo", action="store_const", const=False,
+                   help="plain dead-zone quantizer")
+    e.add_argument("--rdo-lambda", dest="rdo_lambda", type=float, default=None,
+                   help="RD lambda scale (default 0.30)")
+    e.add_argument("--qp-search", dest="qp_search", type=int, default=0,
+                   help="try per-tile qp_delta in [-N, +N]")
+    e.add_argument("--wm", default=None, choices=("0", "1", "2", "3", "auto"),
+                   help="per-tile weighting matrix id (tool bit 20 WM_ID)")
+    e.add_argument("--intra-dir", dest="intra_dir", default=None,
+                   choices=("off", "on", "layer"),
+                   help="directional intra (tool bit 17); `layer` predicts the "
+                        "DC-plane residual instead of the samples")
+    e.add_argument("--intra-dir-cand", dest="intra_dir_cand", type=int, default=0,
+                   help="modes RD-checked per block (0 = the encoder default)")
+    e.add_argument("--ctx", default=None, choices=("v1", "v2"),
+                   help="12 or 16 entropy contexts (tool bit 21 CTX_V2)")
+    e.add_argument("--sign-hide", dest="sign_hide", action="store_const",
+                   const=True, default=None,
+                   help="sign data hiding (tool bit 22; the reference default)")
+    e.add_argument("--no-sign-hide", dest="sign_hide", action="store_const", const=False,
+                   help="code every sign")
     e.set_defaults(func=cmd_encode)
 
     # decode ---------------------------------------------------------------

@@ -39,6 +39,23 @@ def test_version_matches_the_root_cmakelists():
     )
 
 
+def test_bitstream_minor_is_not_ahead_of_the_header():
+    """The parser may lag a syntax revision that is landing; it may not lead.
+
+    ``NXVC_BITSTREAM_MINOR`` in ``nxvc/_ffi.py`` is what
+    :mod:`nxvc.bitstream` actually parses.  The C library reports its own
+    through ``nxvc_version_string()``; while a revision is being written the
+    library can be ahead, and that is not an error.  Claiming a revision the
+    parser does not implement is.
+    """
+    text = (repo() / "include" / "nxvc" / "nxvc.h").read_text()
+    m = re.search(r"#define\s+NXVC_BITSTREAM_MINOR\s+(\d+)", text)
+    assert m, "nxvc.h has no NXVC_BITSTREAM_MINOR"
+    assert nxvc.NXVC_BITSTREAM_MINOR <= int(m.group(1)), (
+        "nxvc/_ffi.py claims a syntax revision newer than include/nxvc/nxvc.h"
+    )
+
+
 def test_bitstream_version_matches_the_header_macro():
     text = (repo() / "include" / "nxvc" / "nxvc.h").read_text()
     m = re.search(r"#define\s+NXVC_VERSION\s+(\d+)", text)
@@ -81,6 +98,7 @@ _C_TO_CTYPES = {
     "int32_t": "c_int",
     "uint64_t": "c_ulong",
     "int64_t": "c_long",
+    "double": "c_double",
 }
 
 
@@ -103,7 +121,7 @@ def _c_struct_fields(header: str, name: str) -> list[tuple[str, str]]:
         ctype, names = m.group(1), m.group(2)
         for n in names.split(","):
             n = n.strip()
-            arr = re.match(r"\*?(\w+)\s*\[(\d+)\]$", n)
+            arr = re.match(r"\*?(\w+)\s*((?:\[\d+\])+)$", n)
             if arr:
                 # `uint8_t *plane[4]` is an array of pointers; `uint8_t pose[26]`
                 # an array of scalars.  The star stays in the type either way so
@@ -126,6 +144,7 @@ def _c_struct_fields(header: str, name: str) -> list[tuple[str, str]]:
         ("nxvc_tile_layout", "nxvc_tile_layout"),
         ("nxvc_encode_stats", "nxvc_encode_stats"),
         ("nxvc_image", "nxvc_image"),
+        ("nxvc_view", "nxvc_view"),
     ],
 )
 def test_ctypes_structs_match_the_header_field_for_field(c_name, py_name):
@@ -158,6 +177,7 @@ def test_ctypes_scalar_types_match_the_header():
         "nxvc_frame_info",
         "nxvc_tile_layout",
         "nxvc_encode_stats",
+        "nxvc_view",
     ):
         declared = dict(
             (name, ctype) for ctype, name in _c_struct_fields(text, c_name)
@@ -166,9 +186,9 @@ def test_ctypes_scalar_types_match_the_header():
             want = _C_TO_CTYPES.get(declared[name])
             if want is None:  # a pointer member; not a scalar
                 continue
-            # An array member (pose[26], layer_desc[4], tiles_res[3]) is
-            # checked on its element type.
-            if hasattr(pytype, "_length_"):
+            # An array member (pose[26], layer_desc[4], warp[2][9]) is checked
+            # on its element type, however many dimensions deep it is.
+            while hasattr(pytype, "_length_"):
                 pytype = pytype._type_
             got = pytype.__name__
             # ctypes aliases: c_uint32 IS c_uint, c_uint64 IS c_ulong on LP64
