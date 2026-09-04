@@ -107,6 +107,24 @@ ways — bit-exactly against `ref/`, and against a float orthonormal DCT-III, so
 any power-of-two gain error fails the test rather than silently halving the
 picture.
 
+## Agreement with Pass A
+
+`vk/decoder/passA/README.md` describes the same coefficient buffer from the
+producing side, and the two descriptions match: coefficients are int16 with a
+fixed `coef_stride` per tile, and inside a tile they run, for each coded plane
+in the order Y, Co, Cg and A (A only when `alpha_mode == 2`), as `nb*nb`
+DC-plane coefficients followed by `nb*nb` blocks of 64. The strides agree too:
+`nxvw_coef_stride_i16()` gives 6240 for 4:2:0 at `res_level` 0 and 16640 for the
+widest 4:4:4-plus-alpha tile, which is Pass A's `kCoefStrideMax`.
+
+**One gap remains between the two passes.** Pass A's binding 1 is a tile
+*descriptor* (byte offset, byte length, coefficient index, cbf index) — what the
+entropy decoder needs — not the tile *record* Pass B reads (binding 1 here:
+`NxvwTileRec`, the two tile-header words plus `alpha_value`). Both are derived
+from the same parsed tile header, so whichever component parses tile headers for
+Pass A can fill in both; nothing needs to be re-parsed. Pass A's cbf-bit and
+status buffers are not inputs to Pass B.
+
 ## Inter prediction hook
 
 v1 codes INTRA tiles only — the CPU reference rejects every other mode. The
