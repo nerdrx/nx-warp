@@ -851,11 +851,28 @@ gain as the 8x8 one.
 | `D1` | 669 | `round(1024 * cos(pi/8)  / sqrt(2))` |
 | `D2` | 277 | `round(1024 * cos(3pi/8) / sqrt(2))` |
 
-The four rows are `+-{D0, D1, D0, D2}` and `+-{D0, D2, -D0, -D1}`. Every pair
-of rows is **exactly** orthogonal (`D0*D0 - D1*D2 - D0*D0 + D2*D1 = 0` and so
-on), and the row norm is `2*D0^2 + D1^2 + D2^2 = 1048578`, two above `2^20`,
-so the gain is `2^10` per dimension to within one part in half a million --
-the same gain the 8x8 flow graph has exactly.
+The four rows are
+
+```
+row0 = { D0,  D1,  D0,  D2}      row2 = { D0, -D2, -D0,  D1}
+row1 = { D0,  D2, -D0, -D1}      row3 = { D0, -D1,  D0, -D2}
+```
+
+and their Gram matrix is exact where it can be. Every row has norm
+`2*D0^2 + D1^2 + D2^2 = 1048578`, two above `2^20`. Four of the six row pairs
+are **exactly** orthogonal, because their cross terms cancel identically
+(`row0.row1 = D0^2 + D1*D2 - D0^2 - D2*D1 = 0`); the two pairs that oppose
+`2*D0^2` against `D1^2 + D2^2` -- `row0.row3` and `row1.row2` -- come to
+**-2**, the same two the norm is off by, since `2*512^2 = 1048576` and
+`669^2 + 277^2 = 1048578`.
+
+So the transform is orthogonal to two parts in `2^20` and its gain is `2^10`
+per dimension to the same accuracy -- the gain the 8x8 flow graph has exactly.
+That is the whole reason for choosing these constants over the natural
+`512*sqrt(2)` scaling: it is what lets 6.5's dequantizer, 6.3's shift chain
+and the tile's own weighting matrix serve both sizes with no second family of
+anything (Appendix A decision 55). The residual error is four orders of
+magnitude below one quantiser step at every legal QP.
 
 **Inverse 1D transform (normative).** Input `x[0..3]` int32, output `y[0..3]`.
 

@@ -240,6 +240,48 @@ int main() {
         }
     }
 
+    // 11b. The 4x4 constants' Gram matrix, exactly as SYNTAX.md 6.7 states
+    //      it: norm 1048578 on the diagonal, zero on four of the six off-
+    //      diagonal pairs and -2 on the two that oppose 2*D0^2 against
+    //      D1^2 + D2^2.  This is the claim the shared dequantizer rests on,
+    //      so it is pinned rather than asserted in prose alone.
+    {
+        const i32 row[4][4] = {{ kD0,  kD1,  kD0,  kD2},
+                               { kD0,  kD2, -kD0, -kD1},
+                               { kD0, -kD2, -kD0,  kD1},
+                               { kD0, -kD1,  kD0, -kD2}};
+        for (int a = 0; a < 4; ++a)
+            for (int b = 0; b < 4; ++b) {
+                i32 dot = 0;
+                for (int k = 0; k < 4; ++k) dot += row[a][k] * row[b][k];
+                i32 want = (a == b) ? 1048578
+                                    : (((a == 0 && b == 3) || (a == 3 && b == 0) ||
+                                        (a == 1 && b == 2) || (a == 2 && b == 1))
+                                           ? -2
+                                           : 0);
+                CHECK(dot == want, "gram[%d][%d] = %d, want %d", a, b, dot, want);
+            }
+        CHECK(2 * kD0 * kD0 + kD1 * kD1 + kD2 * kD2 == 1048578, "row norm");
+
+        // ... and the flow graph really is that matrix.  A single nonzero
+        // coefficient at (0, k) gives dst[y][x] = M[y][0] * M[x][k] * X /
+        // 2^20, so with X = 2^20 / D0 = 2048 every row of dst is row `k` of
+        // the matrix, read down the columns.
+        for (int k = 0; k < 4; ++k) {
+            i32 blk[16] = {}, res[16];
+            blk[k] = 2048;
+            idct4x4(blk, res);
+            for (int y = 0; y < 4; ++y)
+                for (int x = 0; x < 4; ++x) {
+                    i32 want = row[x][k];
+                    i32 got = res[y * 4 + x];
+                    CHECK(got >= want - 1 && got <= want + 1,
+                          "flow graph col %d at (%d,%d): %d, matrix says %d",
+                          k, y, x, got, want);
+                }
+        }
+    }
+
     // 12. The split scan is a permutation of the 64 block-local indices and
     //     is exactly "four 4x4 sub-blocks in raster order, each in 4x4
     //     zigzag" (SYNTAX.md 9.2).  Both halves matter: a scan that is not a
