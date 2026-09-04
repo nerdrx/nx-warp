@@ -382,15 +382,13 @@ For each tile row `row = 0 .. rows - 1` and each eye, in that order:
 | offset | size | field |
 |---|---|---|
 | 0 | u16 | `frame_number` (must equal the frame header's) |
-| 2 | u8 | bits 0-6 `tile_count`; bit 7 `dc_present` |
-| 3 | u8 | *(this row is `row_index`; see the note below)* |
+| 2 | u8 | `row_index` (must equal `row`) |
+| 3 | u8 | bits 0-6 `tile_count`; bit 7 `dc_present` |
 | 4 | u64 | `skip_bitmap` |
 | 12 | u64 | `dc_bitmap`, **iff `dc_present`** |
 | 20 | | `warp_dc()` records, **iff `dc_present`** |
 
-followed by `tile_count` tile structures. The two fields at offsets 2 and 3 are,
-in order, `row_index` (u8, must equal `row`) and the `tile_count` byte; the
-table above lists them by what they carry.
+followed by `tile_count` tile structures.
 
 `tile_count` is seven bits because `cols_per_eye <= 64`, so the eighth was never
 reachable. Bit 7 is `dc_present`: it requires tool bit 24 `WARP_DC`, and when
@@ -416,7 +414,9 @@ and is satisfied for every legal `width` up to the syntax maximum of 4096.
 A skipped tile has no tile structure at all, so every parameter of it is
 derived rather than coded: `res_level` 0, chroma at the stream's own
 resolution, `alpha_mode` 0, `ref_sel` 0, and the vector is the tile's stored
-`last_mv` (section 13.5). Skip requires `INTER` and `warp_present`.
+`last_mv` (section 13.5). Skip requires `INTER` and `warp_present`. A tile
+named by `dc_bitmap` is a skipped tile in every one of those respects; the only
+difference is the `warp_dc()` correction added to its predictor (section 13.9).
 
 `skip_bitmap` is **authoritative**. The transport states the same fact a second
 time, as a directory entry with `dir_len == 0` and `dir_mode == WARP_SKIP`, and
@@ -1771,9 +1771,7 @@ A near-skip is a skipped tile, so its alpha is the derived constant of section
 3.3 and is not corrected; the record is nine bytes whatever `alpha_present`
 says.
 
-For a plane of coded extent `E` -- 64 for luma, 32 for 4:2:0 chroma; a skipped
-tile has `res_level == 0`, so `E` is the full extent -- the correction at
-sample `(x, y)` is
+For a plane of coded extent `E` the correction at sample `(x, y)` is
 
 ```
 shift = log2(2 * E)                          // 7 for E == 64, 6 for E == 32
@@ -1781,7 +1779,10 @@ corr  = dc[p] + ((gx[p] * (2*x + 1 - E) +
                   gy[p] * (2*y + 1 - E) + E) >> shift)
 ```
 
-with an **arithmetic** shift, and the reconstruction is
+with an **arithmetic** shift. A skipped tile has `res_level == 0` and chroma at
+the stream's own resolution (section 3.3), so `E` is the plane's full per-tile
+extent: 64 for luma and for 4:4:4 chroma, 32 for 4:2:0 chroma. The
+reconstruction is
 
 ```
 rec = clamp(W + corr, 0, maxval)
@@ -1793,9 +1794,10 @@ symmetric about the tile centre, so `gx` and `gy` are the full swing of the
 correction across the plane in sample units and `dc` is its value at the
 centre. `gx == gy == 0` leaves `corr == dc` exactly, because `E >> shift` is 0.
 
-Three multiplies-free adds and two multiplies by a per-tile constant, per
-sample, on a tile the decoder was going to write anyway: a near-skip is a skip
-with a bias, not a coded tile.
+Two multiplies by a per-tile constant, three adds and a shift per sample, on a
+tile the decoder was going to write anyway: a near-skip is a skip with a bias,
+not a coded tile. Nothing else about it changes -- same predictor, same
+reference read, same prediction-state rule, same `skip_bitmap` bit.
 
 **Why here and not in the tile.** A tile structure costs 8 header bytes plus a
 4-byte rANS flush per lane before it codes anything, which is 12 to 40 bytes; a
