@@ -305,7 +305,8 @@ void Device::destroy_image(Image &i)
 
 bool Device::create_pipeline(const uint32_t *spv, size_t spv_bytes,
                              const std::vector<VkDescriptorType> &bindings,
-                             uint32_t push_bytes, Pipeline &out, std::string &err)
+                             uint32_t push_bytes, Pipeline &out, std::string &err,
+                             const VkSpecializationInfo *spec)
 {
     std::vector<VkDescriptorSetLayoutBinding> lb(bindings.size());
     for (size_t i = 0; i < bindings.size(); ++i) {
@@ -345,6 +346,7 @@ bool Device::create_pipeline(const uint32_t *spv, size_t spv_bytes,
     cpi.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
     cpi.stage.module = sm;
     cpi.stage.pName = "main";
+    cpi.stage.pSpecializationInfo = spec;
     cpi.layout = out.layout;
     r = vkCreateComputePipelines(dev_, VK_NULL_HANDLE, 1, &cpi, nullptr, &out.pipe);
     vkDestroyShaderModule(dev_, sm, nullptr);

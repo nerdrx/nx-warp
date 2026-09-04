@@ -1,0 +1,352 @@
+/* nxe_host.cpp -- see nxe_host.h.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#include "nxe_host.h"
+
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <cstring>
+
+extern "C" {
+#include "nxe_tables.h"
+}
+
+/* The built-in probability tables come from the reference library: they are a
+ * trained data set, not an algorithm, and a second copy of them in this tree
+ * would be a second thing to keep in step.  `ref/src/tables.cpp` is compiled
+ * into this tool for exactly this declaration. */
+namespace nxvc {
+struct CtxTable {
+    uint16_t freq[16];
+    uint16_t cum[17];
+    uint8_t slot2sym[1024];
+};
+struct TableSet { CtxTable ctx[16]; };
+void build_default_set(TableSet &ts, int set_index, int nctx);
+}  // namespace nxvc
+
+namespace nxe {
+
+/* ------------------------------------------------------------------ setup */
+void setup(const Config &cfg, Frame &f) {
+    nxe_frame_params &fp = f.fp;
+    std::memset(&fp, 0, sizeof fp);
+    fp.width = (uint32_t)(cfg.w / cfg.eyes);
+    fp.height = (uint32_t)cfg.h;
+    fp.eyes = (uint32_t)cfg.eyes;
+    fp.tiles_x = (fp.width + 63) / 64;
+    fp.tiles_y = (fp.height + 63) / 64;
+    fp.ntiles = fp.eyes * fp.tiles_x * fp.tiles_y;
+    fp.chroma420 = cfg.chroma444 ? 0u : 1u;
+    fp.base_qp = (uint32_t)cfg.qp;
+    fp.chroma_qp_off = cfg.chroma_qp_off;
+    fp.nctx = cfg.ctx_v2 ? NXE_NCTX_V2 : NXE_NCTX_V1;
+    fp.sdh = cfg.sign_hide ? 1u : 0u;
+    fp.intra_dir = cfg.intra_dir ? 1u : 0u;
+    fp.dir_layer = cfg.dir_layer ? 1u : 0u;
+    fp.nsub_log2 = (uint32_t)cfg.nsub_log2;
+    fp.quant_matrix = (uint32_t)cfg.matrix;
+    fp.tables_present = 0;                 /* static per-frame tables */
+    fp.frame_flags = 1;                    /* bit 0: tile-map reset */
+    if (cfg.intra_dir && cfg.dir_layer) fp.frame_flags |= 4;
+    fp.ycocgr = 0;
+    for (int i = 0; i < 64; ++i) {
+        int m = cfg.matrix < 0 ? 0 : (cfg.matrix > 3 ? 3 : cfg.matrix);
+        fp.wm_luma[i] = nxe_weight[m][i];
+        fp.wm_chroma[i] = nxe_weight[m == 0 ? 0 : 3][i];
+    }
+
+    f.jobs.assign(fp.ntiles, nxe_tile_job{});
+    for (uint32_t row = 0; row < fp.tiles_y; ++row)
+        for (uint32_t eye = 0; eye < fp.eyes; ++eye)
+            for (uint32_t col = 0; col < fp.tiles_x; ++col) {
+                uint32_t t = row * fp.eyes * fp.tiles_x + eye * fp.tiles_x + col;
+                nxe_tile_job &j = f.jobs[t];
+                j.tile = t;
+                j.col = col;
+                j.row = row;
+                j.eye = eye;
+                j.qp_delta = 0;
+                /* ref's make_tile_params seed; choose_table_sets replaces it. */
+                j.table_set = (uint32_t)((cfg.qp >> 3) < 0 ? 0
+                                         : ((cfg.qp >> 3) > 7 ? 7 : (cfg.qp >> 3)));
+                j.tskip = (uint32_t)cfg.tskip;
+                j.wm_id = (uint32_t)cfg.wm_id;
+                j.chroma444 = cfg.chroma444 ? 1u : 0u;
+                j.res_level = 0;
+                j.mode = 3;                /* NXVC_MODE_INTRA */
+                j.nsub_log2 = (uint32_t)cfg.nsub_log2;
+            }
+
+    int base = 0;
+    for (int p = 0; p < NXE_MAX_PLANES; ++p) {
+        f.plane_size[p] = nxe_plane_size(&fp, &f.jobs[0], p);
+        f.plane_words[p] = f.plane_size[p] * f.plane_size[p] / 2;
+        f.plane_base[p] = base;
+        base += (int)fp.ntiles * f.plane_words[p];
+        f.src[p].assign((size_t)fp.ntiles * f.plane_size[p] * f.plane_size[p], 0);
+    }
+    f.src_packed.assign((size_t)base * 2, 0);   /* u16 halves of `base` words */
+    f.coef.assign((size_t)fp.ntiles * NXE_TILE_COEFS_MAX, 0);
+    f.modes.assign((size_t)fp.ntiles * 3 * 64, 0);
+    f.slots.assign((size_t)fp.ntiles * NXE_TILE_BYTES_MAX, 0);
+    f.tile_bytes.assign(fp.ntiles, 0);
+    f.tile_prefix.assign(fp.ntiles, 0);
+}
+
+void build_tables(const Config &cfg, Frame &f) {
+    std::memset(&f.tabs, 0, sizeof f.tabs);
+    for (int k = 0; k < 8; ++k) {
+        nxvc::TableSet ts;
+        nxvc::build_default_set(ts, k, cfg.ctx_v2 ? 16 : 12);
+        for (int c = 0; c < 16; ++c)
+            for (int s = 0; s < NXE_NUM_SYM; ++s) {
+                f.tabs.freq[k][c][s] = ts.ctx[c].freq[s];
+                f.tabs.cum[k][c][s] = ts.ctx[c].cum[s];
+            }
+    }
+}
+
+/* ------------------------------------------------------------------- input
+ *
+ * This stands in for E0.  The real E0 imports a compositor VkImage; a file of
+ * planar YUV has no import format, so the repack is done here in exactly the
+ * terms `load_tile` uses at res_level 0 and factor 1: a clamped fetch inside
+ * the eye's own sub-picture, so a left-eye tile can never read a right-eye
+ * sample and a frame that is not a multiple of 64 is edge-replicated.
+ */
+static int fetch_clamped(const uint8_t *p, int stride, int w, int h, int x, int y) {
+    x = x < 0 ? 0 : (x >= w ? w - 1 : x);
+    y = y < 0 ? 0 : (y >= h ? h - 1 : y);
+    return p[(size_t)y * stride + x];
+}
+
+bool read_frame(std::FILE *fi, const Config &cfg, Frame &f) {
+    const nxe_frame_params &fp = f.fp;
+    const int W = cfg.w, H = cfg.h;
+    const int cw = cfg.chroma444 ? W : (W + 1) / 2;
+    const int ch = cfg.chroma444 ? H : (H + 1) / 2;
+    static std::vector<uint8_t> Y, U, V;
+    Y.resize((size_t)W * H);
+    U.resize((size_t)cw * ch);
+    V.resize((size_t)cw * ch);
+    if (std::fread(Y.data(), 1, Y.size(), fi) != Y.size()) return false;
+    if (std::fread(U.data(), 1, U.size(), fi) != U.size()) return false;
+    if (std::fread(V.data(), 1, V.size(), fi) != V.size()) return false;
+
+    const uint8_t *pl[3] = {Y.data(), U.data(), V.data()};
+    const int stride[3] = {W, cw, cw};
+    /* Per-eye plane extent, ref's Geometry::pw / ::ph. */
+    const int pw[3] = {(int)fp.width, cfg.chroma444 ? (int)fp.width
+                                                    : ((int)fp.width + 1) / 2,
+                       cfg.chroma444 ? (int)fp.width : ((int)fp.width + 1) / 2};
+    const int ph[3] = {(int)fp.height, cfg.chroma444 ? (int)fp.height
+                                                     : ((int)fp.height + 1) / 2,
+                       cfg.chroma444 ? (int)fp.height : ((int)fp.height + 1) / 2};
+
+    for (uint32_t t = 0; t < fp.ntiles; ++t) {
+        const nxe_tile_job &j = f.jobs[t];
+        for (int p = 0; p < NXE_MAX_PLANES; ++p) {
+            const int size = f.plane_size[p];
+            const int sub = (p && fp.chroma420) ? 2 : 1;
+            const int ox = (int)j.col * (64 / sub), oy = (int)j.row * (64 / sub);
+            const uint8_t *base = pl[p] + (size_t)j.eye * pw[p];
+            int32_t *dst = &f.src[p][(size_t)t * size * size];
+            for (int y = 0; y < size; ++y)
+                for (int x = 0; x < size; ++x)
+                    dst[(size_t)y * size + x] = fetch_clamped(
+                        base, stride[p], pw[p], ph[p], ox + x, oy + y);
+            /* The packed int16 form the GPU reads, two samples per word. */
+            uint16_t *pk = &f.src_packed[(size_t)(f.plane_base[p] +
+                                                  (int)t * f.plane_words[p]) * 2];
+            for (int i = 0; i < size * size; ++i)
+                pk[i] = (uint16_t)(int16_t)dst[i];
+        }
+    }
+    return true;
+}
+
+/* A frame with structure the codec has to work for: a low-frequency pattern
+ * the DC-plane predictor can follow, an edge the directional modes can use, and
+ * enough noise that the residual is never trivially zero.  Integer-only and
+ * seeded by the frame number, so it is the same picture on every machine. */
+void gen_frame(const Config &cfg, Frame &f, uint32_t frame_number) {
+    const nxe_frame_params &fp = f.fp;
+    const uint32_t rng = 0x9E3779B9u ^ (frame_number * 2246822519u);
+    for (uint32_t t = 0; t < fp.ntiles; ++t) {
+        const nxe_tile_job &j = f.jobs[t];
+        for (int p = 0; p < NXE_MAX_PLANES; ++p) {
+            const int size = f.plane_size[p];
+            const int sub = (p && fp.chroma420) ? 2 : 1;
+            const int ox = (int)j.col * (64 / sub), oy = (int)j.row * (64 / sub);
+            int32_t *dst = &f.src[p][(size_t)t * size * size];
+            /* Clamped exactly as read_frame clamps, so a frame that is not a
+             * multiple of 64 is edge-replicated here too and the picture
+             * round-trips through --dump-selftest-yuv unchanged. */
+            const int pw = (int)fp.width / sub, ph = (int)fp.height / sub;
+            for (int y = 0; y < size; ++y)
+                for (int x = 0; x < size; ++x) {
+                    int gx = ox + x, gy = oy + y;
+                    gx = gx >= pw ? pw - 1 : gx;
+                    gy = gy >= ph ? ph - 1 : gy;
+                    int v = 128 + ((gx * 3 + gy * 5 + (int)frame_number * 11) & 63) - 32;
+                    if (((gx + (int)j.eye * 17) >> 4) % 3 == 0) v += 40;   /* edges */
+                    if (p) v = 128 + ((v - 128) >> 2);
+                    /* The noise is a function of position, not of iteration
+                     * order, so a replicated edge sample is the same sample. */
+                    uint32_t r = (uint32_t)(gx * 73856093) ^
+                                 (uint32_t)(gy * 19349663) ^
+                                 (uint32_t)((p + 1) * 83492791) ^ rng;
+                    r ^= r << 13; r ^= r >> 17; r ^= r << 5;
+                    v += (int)(r & 15) - 8;
+                    dst[(size_t)y * size + x] = v < 0 ? 0 : (v > 255 ? 255 : v);
+                }
+            uint16_t *pk = &f.src_packed[(size_t)(f.plane_base[p] +
+                                                  (int)t * f.plane_words[p]) * 2];
+            for (int i = 0; i < size * size; ++i)
+                pk[i] = (uint16_t)(int16_t)dst[i];
+        }
+    }
+}
+
+void fill_modes(const Config &cfg, Frame &f, uint32_t frame_number) {
+    if (!cfg.intra_dir) return;
+    uint32_t x = cfg.dir_mode_seed;
+    if (x == 0) {
+        std::fill(f.modes.begin(), f.modes.end(), (uint8_t)0);
+        return;
+    }
+    x ^= frame_number * 2654435761u;
+    for (size_t i = 0; i < f.modes.size(); ++i) {
+        x ^= x << 13; x ^= x >> 17; x ^= x << 5;   /* xorshift32 */
+        f.modes[i] = (uint8_t)(x % NXE_NUM_INTRA_MODES);
+    }
+}
+
+/* ---------------------------------------------------------- stream header */
+std::vector<uint8_t> stream_header(const Config &cfg, const Frame &f) {
+    std::vector<uint8_t> b;
+    auto u8 = [&](uint32_t v) { b.push_back((uint8_t)v); };
+    auto u16 = [&](uint32_t v) { u8(v); u8(v >> 8); };
+    auto u32 = [&](uint32_t v) { for (int i = 0; i < 4; ++i) u8(v >> (8 * i)); };
+    auto u64 = [&](uint64_t v) { for (int i = 0; i < 8; ++i) u8((uint32_t)(v >> (8 * i))); };
+    uint64_t tools = 1ull << 0;                       /* INTRA_DC_PLANE */
+    if (cfg.tskip) tools |= 1ull << 1;                /* TRANSFORM_SKIP */
+    tools |= 1ull << 2;                               /* RES_LEVEL */
+    if (cfg.chroma444) tools |= 1ull << 3;            /* CHROMA444 */
+    if (cfg.nsub_log2 != 3) tools |= 1ull << 7;       /* NSUB_VAR */
+    if (cfg.wm_id != 0) tools |= 1ull << 20;          /* WM_ID */
+    if (cfg.intra_dir) tools |= 1ull << 17;           /* INTRA_DIR */
+    if (cfg.ctx_v2) tools |= 1ull << 21;              /* CTX_V2 */
+    if (cfg.sign_hide) tools |= 1ull << 22;           /* SIGN_HIDE */
+
+    u32(0x3156584Eu);            /* 'NXV1' */
+    u8(1);                       /* NXVC_VERSION */
+    u8(1);                       /* profile */
+    u8(1);                       /* level */
+    u8(0);                       /* tile_size: 64x64 */
+    u16(f.fp.width);
+    u16(f.fp.height);
+    u8(f.fp.eyes);
+    u8(8);                       /* bit depth */
+    u8(1);                       /* num_layers */
+    u8(cfg.chroma444 ? 1 : 0);
+    for (int i = 0; i < 4; ++i) u32(0);   /* layer_desc */
+    u64(tools);
+    u8(0);                       /* alpha */
+    u8(0);                       /* color_transform */
+    u8(0);                       /* color_space */
+    while (b.size() < 62) u8(0);
+    u16(0);                      /* TLV length */
+    return b;
+}
+
+/* ------------------------------------------------------------ table sets
+ * ref's count_units histogram plus table_set_cost / select_set, in the
+ * reference's own double precision. */
+void choose_table_sets(Frame &f) {
+    static std::vector<uint32_t> ops;
+    ops.resize(NXE_UNIT_MAX_OPS);
+    for (uint32_t t = 0; t < f.fp.ntiles; ++t) {
+        nxe_tile_units tu;
+        nxe_build_units(&f.fp, &f.jobs[t], &tu);
+        const int16_t *coef = &f.coef[(size_t)t * NXE_TILE_COEFS_MAX];
+        const uint8_t *modes = &f.modes[(size_t)t * 3 * 64];
+        uint32_t hist[NXE_MAX_CTX][NXE_NUM_SYM];
+        std::memset(hist, 0, sizeof hist);
+        for (int ui = 0; ui < tu.nunits; ++ui) {
+            int n = nxe_unit_ops(&tu, ui, coef, modes, ops.data());
+            for (int i = 0; i < n; ++i)
+                if (NXE_OP_KIND(ops[i]) == NXE_OP_SYM)
+                    hist[NXE_OP_ARG(ops[i])][NXE_OP_VALUE(ops[i])]++;
+        }
+        double best = 0;
+        int bestk = (int)f.jobs[t].table_set;
+        for (int k = 0; k < 8; ++k) {
+            double bits = 0;
+            for (int c = 0; c < 16; ++c)
+                for (int s = 0; s < NXE_NUM_SYM; ++s)
+                    if (hist[c][s])
+                        bits -= (double)hist[c][s] *
+                                std::log2((double)f.tabs.freq[k][c][s] / 1024.0);
+            if (k == 0 || bits < best) { best = bits; bestk = k; }
+        }
+        f.jobs[t].table_set = (uint32_t)bestk;
+    }
+}
+
+/* -------------------------------------------------------------------- E5 */
+void pack_frame(Frame &f, uint32_t frame_number) {
+    const nxe_frame_params &fp = f.fp;
+    uint32_t run = 0;
+    for (uint32_t t = 0; t < fp.ntiles; ++t) {
+        f.tile_prefix[t] = run;
+        run += f.tile_bytes[t];
+    }
+    const uint32_t total = nxe_e5_frame_bytes(&fp, run);
+    f.out.assign(total, 0);
+    uint8_t pose[26];
+    std::memset(pose, 0, sizeof pose);
+    nxe_frame_params fp2 = fp;
+    fp2.frame_number = frame_number;
+    nxe_e5_frame_header(&fp2, pose, total, f.out.data());
+    const uint32_t rowgroups = fp.tiles_y * fp.eyes;
+    for (uint32_t g = 0; g < rowgroups; ++g) {
+        uint32_t off = NXE_FRAME_HEADER_BYTES + NXE_ROW_HEADER_BYTES * g +
+                       f.tile_prefix[g * fp.tiles_x];
+        nxe_e5_row_header(&fp2, g, f.out.data() + off);
+    }
+    for (uint32_t t = 0; t < fp.ntiles; ++t) {
+        uint32_t off = nxe_e5_tile_offset(&fp, t, f.tile_prefix.data());
+        std::memcpy(f.out.data() + off,
+                    &f.slots[(size_t)t * NXE_TILE_BYTES_MAX], f.tile_bytes[t]);
+    }
+}
+
+void encode_frame_cpu(Frame &f, uint32_t frame_number) {
+    const nxe_frame_params &fp = f.fp;
+    for (uint32_t t = 0; t < fp.ntiles; ++t) {
+        const int32_t *src[NXE_MAX_PLANES];
+        for (int p = 0; p < NXE_MAX_PLANES; ++p)
+            src[p] = &f.src[p][(size_t)t * f.plane_size[p] * f.plane_size[p]];
+        nxe_e3_tile(&fp, &f.jobs[t], src, &f.modes[(size_t)t * 3 * 64],
+                    &f.coef[(size_t)t * NXE_TILE_COEFS_MAX]);
+    }
+    choose_table_sets(f);
+    for (uint32_t t = 0; t < fp.ntiles; ++t) {
+        nxe_tile_units tu;
+        nxe_build_units(&fp, &f.jobs[t], &tu);
+        int len = nxe_e4_tile(&fp, &f.jobs[t], &tu,
+                              &f.coef[(size_t)t * NXE_TILE_COEFS_MAX],
+                              &f.modes[(size_t)t * 3 * 64], &f.tabs,
+                              &f.slots[(size_t)t * NXE_TILE_BYTES_MAX]);
+        f.jobs[t].payload_len = (uint32_t)len;
+        f.tile_bytes[t] = (uint32_t)(NXE_TILE_HEADER_BYTES + len);
+    }
+    pack_frame(f, frame_number);
+}
+
+}  // namespace nxe
