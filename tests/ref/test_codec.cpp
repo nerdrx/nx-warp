@@ -308,5 +308,77 @@ int main() {
         nxvc_decoder_destroy(d);
     }
 
+    // 12. The larger transforms (tool 24) round trip at every size, in both
+    //     chroma formats, alongside every other per-tile lever they have to
+    //     coexist with, and never lose quality against the 8x8 baseline at
+    //     the same QP.  The encoder RD-picks the size, so a larger `xform`
+    //     only adds candidates -- but the decision is D + lambda*R, so it is
+    //     the *cost* that cannot get worse, not the rate and the distortion
+    //     separately.  A candidate is allowed to spend bits to buy quality,
+    //     which it does on smooth material, so only quality is asserted
+    //     one-sided here; the rate bound is a runaway check.
+    {
+        for (int c444 = 0; c444 <= 1; ++c444)
+            for (int kind = 0; kind <= 4; ++kind) {
+                TestImage im = make_image(W, H, c444 != 0, kind, 700 + kind);
+                double base_psnr = 0;
+                size_t base_bytes = 0;
+                for (int xf = 0; xf <= 2; ++xf) {
+                    nxvc_config cfg;
+                    nxvc_config_default(&cfg);
+                    cfg.width = W; cfg.height = H;
+                    cfg.chroma = c444 ? NXVC_CHROMA_444 : NXVC_CHROMA_420;
+                    cfg.base_qp = 24;
+                    cfg.xform_large = (uint32_t)xf;
+                    Coded r;
+                    CHECK(code(cfg, im, r), "xform %d k%d c%d (%s / %s)", xf,
+                          kind, c444, nxvc_status_string(r.enc_status),
+                          nxvc_status_string(r.dec_status));
+                    if (r.out.p[0].empty()) continue;
+                    double ps =
+                        psnr8(im.p[0].data(), r.out.p[0].data(), im.p[0].size());
+                    if (xf == 0) {
+                        base_psnr = ps;
+                        base_bytes = r.frame.size();
+                        continue;
+                    }
+                    CHECK(ps >= base_psnr - 0.25,
+                          "xform %d k%d c%d psnr %.2f vs %.2f", xf, kind, c444,
+                          ps, base_psnr);
+                    CHECK(r.frame.size() <= base_bytes * 3 / 2,
+                          "xform %d k%d c%d %zu B vs %zu B", xf, kind, c444,
+                          r.frame.size(), base_bytes);
+                }
+            }
+    }
+
+    // 13. `xform` composes with the other per-tile levers, and lossless
+    //     silently forces it off (transform skip has no transform).
+    {
+        TestImage im = make_image(W, H, true, 2, 4711);
+        for (int variant = 0; variant < 4; ++variant) {
+            nxvc_config cfg;
+            nxvc_config_default(&cfg);
+            cfg.width = W; cfg.height = H;
+            cfg.chroma = NXVC_CHROMA_444;
+            cfg.base_qp = 22;
+            cfg.xform_large = 2;
+            switch (variant) {
+                case 0: cfg.intra_dir = 1; cfg.ctx_v2 = 1; break;
+                case 1: cfg.transform_skip = 2; break;   // auto
+                case 2: cfg.wm_id = 255; cfg.qp_search = 1; break;
+                case 3: cfg.lossless = 1; break;
+            }
+            Coded r;
+            CHECK(code(cfg, im, r), "xform variant %d (%s / %s)", variant,
+                  nxvc_status_string(r.enc_status),
+                  nxvc_status_string(r.dec_status));
+            if (variant == 3 && !r.out.p[0].empty())
+                for (int p = 0; p < 3; ++p)
+                    CHECK(r.out.p[p] == im.p[p],
+                          "lossless with xform_large plane %d", p);
+        }
+    }
+
     return test_report("test_codec");
 }
