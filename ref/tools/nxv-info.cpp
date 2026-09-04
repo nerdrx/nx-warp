@@ -125,12 +125,23 @@ int main(int argc, char **argv) {
                     else if (t.mv_present || t.skipped)
                         std::snprintf(vec, sizeof vec, " mv%+d,%+d ref%u",
                                       t.mv_x, t.mv_y, t.ref_sel);
+                    // Syntax v1.5: the quadrant deltas and the near-skip's
+                    // correction, printed only on the tiles that carry them.
+                    char v15[64] = "";
+                    if (t.mv_quad)
+                        std::snprintf(v15, sizeof v15,
+                                      " q%+d,%+d/%+d,%+d/%+d,%+d/%+d,%+d",
+                                      t.dmv[0][0], t.dmv[0][1], t.dmv[1][0],
+                                      t.dmv[1][1], t.dmv[2][0], t.dmv[2][1],
+                                      t.dmv[3][0], t.dmv[3][1]);
+                    else if (t.dc_corr)
+                        std::snprintf(v15, sizeof v15, " warp_dc");
                     std::printf("  tile %4u e%u %-9s res%u %s qp%2u dq%+3d ts%u "
-                                "a%u wm%u tab%u ns%u  %5u B%s%s\n",
+                                "a%u wm%u tab%u ns%u  %5u B%s%s%s\n",
                                 i, t.eye, mode_name(t.mode), t.res_level,
                                 t.chroma444 ? "444" : "420", t.qp, t.qp_delta,
                                 t.tskip, t.alpha_mode, t.wm_id, t.table_set,
-                                t.nsub_log2, t.payload_len, vec,
+                                t.nsub_log2, t.payload_len, vec, v15,
                                 t.concealed ? " CONCEALED" : "");
                 }
             }

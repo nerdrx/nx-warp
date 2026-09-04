@@ -281,7 +281,7 @@ static Result build(const VecSpec &v) {
     std::vector<uint8_t> Y((size_t)yw * yh), U((size_t)cw * ch),
         V((size_t)cw * ch), A((size_t)yw * yh, 255);
     MD5 md;
-    int frames = 0;
+    int frames = 0, used_dc = 0, used_quad = 0;
     while (off < r.stream.size()) {
         nxvc_image oi{};
         oi.plane[0] = Y.data(); oi.stride[0] = (int)yw;
@@ -336,30 +336,34 @@ struct InterSpec {
     // drift refresh rule (encoder-side, so it changes the cadence, not the
     // syntax).
     int tools;
+    // Whole-picture luma step per frame: an exposure change, which is the
+    // smooth drift warp_dc() exists to correct and which no motion vector
+    // touches.  Only the warp_dc vectors use it.
+    int bright;
 };
 enum { kToolWarpDc = 1, kToolMvQuad = 2, kToolDrift = 4 };
 
 static const InterSpec kInterVectors[] = {
     // name                     fixes                        w    h  ey 444 qp fr st per rs   yaw   pan obj disp salt
-    {"v45_inter_identity",      "inter/identity",           128, 128, 1, 1, 24, 4, 0, 999, 0,  0.0,  0.0, 0,  0, 0, 0},
-    {"v46_inter_warp_mv",       "inter/integer_mv",         128, 128, 1, 1, 26, 5, 0, 999, 0,  0.7,  2.0, 3,  0, 0, 0},
-    {"v47_inter_static_mv",     "inter/static_mv",          128, 128, 1, 1, 26, 4, 0, 999, 0, 12.0,  0.0, 0,  0, 0, 0},
-    {"v48_inter_warp_sweep",    "inter/warp_sweep",         128, 128, 1, 1, 28, 6, 0, 999, 0,  4.5,  6.0, 2,  0, 0, 0},
-    {"v49_inter_warp_border",   "inter/warp_border",        128,  64, 1, 1, 28, 5, 0, 999, 0,  9.0, 14.0, 5,  0, 0, 0},
-    {"v50_inter_skip_state",    "inter/skip",               128, 128, 1, 1, 22, 4, 0, 999, 0,  0.2,  0.5, 1,  0, 0, 0},
-    {"v51_inter_ref_sel1",      "inter/ref_sel",            128, 128, 1, 1, 26, 6, 0, 999, 1,  0.5,  1.0, 2,  0, 0, 0},
-    {"v52_inter_ref_sel2",      "inter/ref_sel",            128, 128, 1, 1, 26, 7, 0, 999, 2,  0.5,  1.0, 2,  0, 0, 0},
-    {"v53_inter_stereo",        "inter/stereo",             128, 128, 2, 1, 24, 4, 1, 999, 0,  0.0,  0.0, 0, 11, 1, 0},
-    {"v54_inter_stereo_static", "inter/stereo_static_equiv",128, 128, 2, 1, 24, 4, 0, 999, 0,  0.0,  0.0, 0, 11, 1, 0},
-    {"v55_inter_420",           "inter/warp_sweep (4:2:0)", 128, 128, 1, 0, 26, 5, 0, 999, 0,  1.5,  3.0, 3,  0, 0, 0},
-    {"v56_inter_refresh",       "inter/skip (refresh)",     128, 128, 1, 1, 26, 8, 0,   4, 0,  0.4,  1.0, 2,  0, 0, 0},
+    {"v45_inter_identity",      "inter/identity",           128, 128, 1, 1, 24, 4, 0, 999, 0,  0.0,  0.0, 0,  0, 0, 0, 0},
+    {"v46_inter_warp_mv",       "inter/integer_mv",         128, 128, 1, 1, 26, 5, 0, 999, 0,  0.7,  2.0, 3,  0, 0, 0, 0},
+    {"v47_inter_static_mv",     "inter/static_mv",          128, 128, 1, 1, 26, 4, 0, 999, 0, 12.0,  0.0, 0,  0, 0, 0, 0},
+    {"v48_inter_warp_sweep",    "inter/warp_sweep",         128, 128, 1, 1, 28, 6, 0, 999, 0,  4.5,  6.0, 2,  0, 0, 0, 0},
+    {"v49_inter_warp_border",   "inter/warp_border",        128,  64, 1, 1, 28, 5, 0, 999, 0,  9.0, 14.0, 5,  0, 0, 0, 0},
+    {"v50_inter_skip_state",    "inter/skip",               128, 128, 1, 1, 22, 4, 0, 999, 0,  0.2,  0.5, 1,  0, 0, 0, 0},
+    {"v51_inter_ref_sel1",      "inter/ref_sel",            128, 128, 1, 1, 26, 6, 0, 999, 1,  0.5,  1.0, 2,  0, 0, 0, 0},
+    {"v52_inter_ref_sel2",      "inter/ref_sel",            128, 128, 1, 1, 26, 7, 0, 999, 2,  0.5,  1.0, 2,  0, 0, 0, 0},
+    {"v53_inter_stereo",        "inter/stereo",             128, 128, 2, 1, 24, 4, 1, 999, 0,  0.0,  0.0, 0, 11, 1, 0, 0},
+    {"v54_inter_stereo_static", "inter/stereo_static_equiv",128, 128, 2, 1, 24, 4, 0, 999, 0,  0.0,  0.0, 0, 11, 1, 0, 0},
+    {"v55_inter_420",           "inter/warp_sweep (4:2:0)", 128, 128, 1, 0, 26, 5, 0, 999, 0,  1.5,  3.0, 3,  0, 0, 0, 0},
+    {"v56_inter_refresh",       "inter/skip (refresh)",     128, 128, 1, 1, 26, 8, 0,   4, 0,  0.4,  1.0, 2,  0, 0, 0, 0},
     // Syntax v1.5, the inter-efficiency package.  Four streams: each tool on
     // its own, both together, and the drift refresh rule against a short
     // eligibility period and a longer hard cap.
-    {"v57_inter_warp_dc",       "inter/warp_dc",            128, 128, 1, 1, 30, 6, 0, 999, 0,  0.6,  1.0, 1,  0, 0, kToolWarpDc},
-    {"v58_inter_mv_quad",       "inter/mv_quad",            128, 128, 1, 1, 26, 5, 0, 999, 0,  0.7,  2.0, 4,  0, 0, kToolMvQuad},
-    {"v59_inter_quad_dc_420",   "inter/mv_quad (4:2:0)",    128, 128, 1, 0, 28, 6, 0, 999, 0,  1.5,  3.0, 3,  0, 0, kToolWarpDc | kToolMvQuad},
-    {"v60_inter_drift_refresh", "inter/skip (drift refresh)",128,128, 1, 1, 26, 9, 0,   3, 0,  0.4,  1.0, 2,  0, 0, kToolDrift},
+    {"v57_inter_warp_dc",       "inter/warp_dc",            192, 192, 1, 1, 34, 8, 0, 999, 0,  0.15, 0.4, 0,  0, 0, kToolWarpDc, 3},
+    {"v58_inter_mv_quad",       "inter/mv_quad",            128, 128, 1, 1, 26, 5, 0, 999, 0,  0.7,  2.0, 4,  0, 0, kToolMvQuad, 0},
+    {"v59_inter_quad_dc_420",   "inter/mv_quad (4:2:0)",    192, 192, 1, 0, 32, 8, 0, 999, 0,  0.4,  1.2, 3,  0, 0, kToolWarpDc | kToolMvQuad, 3},
+    {"v60_inter_drift_refresh", "inter/skip (drift refresh)",128,128, 1, 1, 26, 9, 0,   3, 0,  0.4,  1.0, 2,  0, 0, kToolDrift, 0},
 };
 static const int kNumInterVectors =
     (int)(sizeof(kInterVectors) / sizeof(kInterVectors[0]));
@@ -401,7 +405,9 @@ static InterFrame make_inter_frame(const InterSpec &v, int f) {
                 const double dx = x - obj_x, dy = y - obj_y;
                 if (v.obj && dx * dx + dy * dy < 17.0 * 17.0)
                     val = 235 - (int)(dx * dx) % 90;
-                s.Y[(size_t)y * s.w + e * v.eye_w + x] = (uint8_t)val;
+                val += v.bright * f;
+                s.Y[(size_t)y * s.w + e * v.eye_w + x] =
+                    (uint8_t)(val < 0 ? 0 : (val > 255 ? 255 : val));
             }
         const int cew = v.c444 ? v.eye_w : v.eye_w / 2;
         const int cf = v.c444 ? 1 : 2;
@@ -495,7 +501,7 @@ static Result build_inter(const InterSpec &v) {
     nxvc_decoder_plane_size(d, 1, &cw, &ch);
     std::vector<uint8_t> Y((size_t)yw * yh), U((size_t)cw * ch), V((size_t)cw * ch);
     MD5 md;
-    int frames = 0;
+    int frames = 0, used_dc = 0, used_quad = 0;
     while (off < r.stream.size()) {
         nxvc_image oi{};
         oi.plane[0] = Y.data(); oi.stride[0] = (int)yw;
@@ -507,11 +513,28 @@ static Result build_inter(const InterSpec &v) {
         md.update(Y.data(), Y.size());
         md.update(U.data(), U.size());
         md.update(V.data(), V.size());
+        uint32_t nt = 0;
+        const nxvc_tile_info *ti = nxvc_decoder_tiles(d, &nt);
+        for (uint32_t i = 0; i < nt; ++i) {
+            used_dc += ti[i].dc_corr ? 1 : 0;
+            used_quad += ti[i].mv_quad ? 1 : 0;
+        }
         off += consumed;
         ++frames;
     }
     nxvc_decoder_destroy(d);
     if (frames != v.frames) { r.err = "frame count mismatch"; return r; }
+    // A vector that asks for a tool and does not exercise it is a vector that
+    // proves nothing.  These are content-dependent decisions, so the rows are
+    // tuned until they fire and this refuses to let them drift back.
+    if ((v.tools & kToolWarpDc) && used_dc == 0) {
+        r.err = "no tile used warp_dc()";
+        return r;
+    }
+    if ((v.tools & kToolMvQuad) && used_quad == 0) {
+        r.err = "no tile used mv_quad";
+        return r;
+    }
     r.decoded_md5 = md.hex();
     r.ok = true;
     return r;
@@ -643,9 +666,9 @@ static const int kNumInterRejects =
 // The two base streams the patches are applied to.  Both are ordinary encoder
 // output; only the fields named above are touched.
 static const InterSpec kRejectBaseMono = {
-    "reject_base_mono", "", 128, 128, 1, 1, 26, 3, 0, 999, 0, 0.7, 2.0, 3, 0, 0, 0};
+    "reject_base_mono", "", 128, 128, 1, 1, 26, 3, 0, 999, 0, 0.7, 2.0, 3, 0, 0, 0, 0};
 static const InterSpec kRejectBaseStereo = {
-    "reject_base_stereo", "", 128, 128, 2, 1, 24, 3, 1, 999, 0, 0.0, 0.0, 0, 11, 1, 0};
+    "reject_base_stereo", "", 128, 128, 2, 1, 24, 3, 1, 999, 0, 0.0, 0.0, 0, 11, 1, 0, 0};
 
 static bool make_inter_reject(int idx, const std::vector<uint8_t> &base,
                               const InterSpec &spec, std::vector<uint8_t> *out,
