@@ -130,6 +130,34 @@ This is the single largest item in the package on PSNR-Y and it is the one to
 be most careful about quoting. **Roughly a third of its PSNR-Y gain is real
 and the rest is the metric.**
 
+### 3.1 The same weight at 4:2:0, and why it is not the same number
+
+The 6:1:1 convention weighs plane MEANS. At 4:4:4 that makes one chroma
+SAMPLE worth 1/6 of a luma sample; at 4:2:0 a chroma plane holds a quarter of
+the samples, so one chroma sample stands for four luma samples and is worth
+4/6 of one. Stating the weight per sample and using the same 0.25 in both
+formats is therefore not the same statement, and it shows:
+
+| `--chroma-weight`, 4:2:0 | BD-rate (PSNR-Y) | BD-rate (PSNR-YCbCr) |
+|---|---|---|
+| 0.25 | -8.00 % | **+4.62 %** |
+| 0.5 | -4.79 % | +0.39 % |
+| **1.0** | -0.96 % | **-0.81 %** |
+| 1.5 | +0.97 % | -0.45 % |
+
+`vr-mixed-512-v2` 4:2:0, 6 frames. 0.25 buys 8 % of PSNR-Y by making the
+picture worse, which is exactly the failure mode section 3 warns about, and
+the weighted metric catches it. The optimum is at 1.0 — which is 0.25 times
+the four luma samples a 4:2:0 chroma sample covers, the same fitted constant
+seen through the same convention. So the encoder states the weight per sample
+at 4:4:4 density and scales it by that area
+(`TileCoder::chroma_dist_weight`). Every 4:4:4 stream is byte-identical
+either way; only subsampled chroma moves.
+
+The honest reading of the two tables together: **the chroma weight is worth
+about 4 to 5 points on the weighted metric at 4:4:4 and about 1 point at
+4:2:0**, and the large PSNR-Y numbers at 4:4:4 are mostly the metric.
+
 ## 3.2 The DC plane in the trellis
 
 `RESULTS-intra.md` left the DC plane on the dead-zone quantizer deliberately:
@@ -229,3 +257,32 @@ It is now worth 0.5 points for 1.8x rather than 0.5 points for 3-10x, which
 is why it is on at `slow` and still off below it.
 
 ---
+
+## 7. What each item is worth on the inter path
+
+`vr-mixed-1024-v2` 4:4:4, 12 frames, `--eyes 2 --inter on`, QP 0/4/8/12 (band
+A), BD-rate of the medium preset against the shipped encoder, then the same
+with one item turned off. A row that is *better* than the "all of it" row is an
+item that is costing quality on this material.
+
+| | BD-rate (PSNR-Y) | BD-rate (PSNR-YCbCr) | encode time |
+|---|---|---|---|
+| **all of it (medium)** | **-13.03 %** | **-7.76 %** | 1.11x |
+| `--mode-lambda 0.25` (the old mode lambda) | -10.19 % | -4.95 % | 1.24x |
+| `--trellis-dc off` | -13.95 % | -8.55 % | 1.09x |
+| `--chroma-weight 1.0` (the old chroma weight) | +1.83 % | +0.68 % | 1.13x |
+| `--mv-rd-qpel off` | -11.08 % | -5.88 % | 0.91x |
+
+Three readings, and the third is the uncomfortable one.
+
+* **The chroma weight is the package.** Turn it off and the rest of the work is
+  worth +1.8 % — i.e. nothing, and slightly worse than nothing. Every other
+  item is measured against a baseline that already has it.
+* **Unifying the mode lambda is worth 2.8 points** and *saves* time, and the
+  quarter-pel RD refinement is worth 2 points for 20 % more time. Both are what
+  they were meant to be.
+* **The DC-plane trellis is worth -0.9 points here**, i.e. it is a small loss on
+  the inter path while being a small gain on the intra path (section 3.2). It
+  is left on because the intra path is the one the Phase 1 gate is stated on
+  and because the two effects are the same size; a future revision that gates
+  it on tile mode has a measurement to beat.
