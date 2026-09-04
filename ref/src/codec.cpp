@@ -526,23 +526,24 @@ static void predict_block(int mode, const IntraRefs &r, const i32 *base,
     }
 }
 
-// Dequantize + inverse transform one transform block of edge `n`.  `c` is
-// that block's coefficient-group storage and `res` its n x n residual in
-// raster order.  Transform skip is defined only for n == 8 (SYNTAX.md 6.6).
-static void residual_block(const i16 *c, const PlaneState &s, int tskip, int n,
+// Dequantize + inverse transform one transform block of the plane's own
+// transform size.  `c` is that block's coefficient-group storage and `res` its
+// n x n residual in raster order, n = 8 << s.xf.  Transform skip forces
+// s.xf == 0 (SYNTAX.md 6.6), so the tskip arm is always 64 values.
+static void residual_block(const i16 *c, const PlaneState &s, int tskip,
                            i32 *res) {
     if (tskip) {
         int t = dequant_step(s.qp, 16);
         for (int i = 0; i < 64; ++i) res[i] = dequant(c[i], t);
         return;
     }
-    const int xf = xform_log2(n) - 3;
+    const int n = xform_edge(s.xf);
     i32 dq[kMaxXform * kMaxXform];
     for (int u = 0; u < n; ++u)
         for (int v = 0; v < n; ++v)
             dq[u * n + v] =
                 dequant(c[group_pos(n, u, v)],
-                        dequant_step(s.qp, weight_at(s.wmat, xf, u, v)));
+                        dequant_step(s.qp, weight_at(s.wmat, s.xf, u, v)));
     idct_2d(n, dq, res);
 }
 
@@ -609,7 +610,7 @@ static void reconstruct_plane(PlaneState &s, const i16 *coefs, int tskip,
                 const i16 *c =
                     bc + ((size_t)by * nblk + bx) * (size_t)xn * xn;
                 i32 res[kMaxXform * kMaxXform];
-                residual_block(c, s, tskip, xn, res);
+                residual_block(c, s, tskip, res);
                 for (int j = 0; j < xn; ++j)
                     for (int i = 0; i < xn; ++i) {
                         int y = by * xn + j, x = bx * xn + i;
@@ -634,7 +635,7 @@ static void reconstruct_plane(PlaneState &s, const i16 *coefs, int tskip,
         for (int bx = 0; bx < nb; ++bx) {
             const i16 *c = bc + ((size_t)by * nb + bx) * 64;
             i32 res[64], P[64];
-            residual_block(c, s, tskip, kBlock, res);
+            residual_block(c, s, tskip, res);
             IntraRefs r;
             build_refs(s.recon.data(), fallback, size, bx, by, r);
             predict_block(s.modes[(size_t)by * nb + bx], r, fallback, size, bx,
@@ -1155,7 +1156,7 @@ static void analyze_plane_dir(PlaneState &s, i16 *coefs, int tskip, int layer,
                 }
                 if (sdh) hide_sign_unit(q, orig, stepv, 64, scan);
                 i32 rr[64];
-                residual_block(q, s, tskip, kBlock, rr);
+                residual_block(q, s, tskip, rr);
                 // exact sample-domain distortion of this candidate
                 double d2 = 0;
                 i32 rec[64];
