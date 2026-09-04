@@ -6,9 +6,9 @@
 # Each mode runs the before column (--xform 8, byte-identical to a build
 # without the tool) and then the after column (--xform auto) on the same
 # material with the same ladder, so the pair is comparable by construction.
-# FRAMES defaults to 12: the machine runs several of these at once and the
-# full 36-frame sequence does not fit in the time budget.  Say so in the
-# results table.
+# FRAMES defaults to 6: the machine runs ten of these at once and the full
+# 36-frame sequence does not fit in the time budget.  Say so in the results
+# table.  Both columns of a pair always use the same count.
 set -u
 export NXQ_SCRATCH=/run/media/nerdrx/Lex/claude/nx-scratch/nx-warp
 export NXQ_CPUS=4-7
@@ -16,7 +16,7 @@ export NXQ_THREADS=4
 WT=/run/media/nerdrx/Lex/claude/nx-warp-wt/xform-a
 export PATH=$WT/build-ref/bin:$PATH
 PY=$NXQ_SCRATCH/venv/bin/python
-FRAMES=${FRAMES:-12}
+FRAMES=${FRAMES:-6}
 SEQ=${SEQ:-vr-mixed-1024-v2}
 cd "$WT/tools/quality" || exit 1
 mkdir -p "$NXQ_SCRATCH/results"
@@ -30,7 +30,7 @@ run_intra() {   # pixfmt  tag  extra-enc-flags
     --anchors x264-intra \
     --qp 0,4,8,12,16,20,24 --anchor-qp 8,12,16,20,24,28 \
     --phase1-anchor x264-intra --phase1-band 100,400 --phase1-tolerance 1.0 \
-    --no-vmaf \
+    --no-vmaf --work "$NXQ_SCRATCH/work-xform-a/intra-$tag-$pf" \
     --out "$NXQ_SCRATCH/results/tourney-xform-a-intra-$tag-$SEQ-$pf.json"
 }
 
@@ -44,6 +44,7 @@ run_inter() {   # pixfmt  band(A|B)  tag  extra-enc-flags
     --codec-enc "nxv-enc --quiet --eyes 2 --inter on --poses $NXQ_SCRATCH/seq/$SEQ.poses.json $extra" \
     --codec-dec "nxv-dec --quiet" --codec-name "nxv-inter-$tag" \
     --anchors x265-p --qp $qp --anchor-qp $aqp --no-vmaf \
+    --work "$NXQ_SCRATCH/work-xform-a/inter$band-$tag-$pf" \
     --out "$NXQ_SCRATCH/results/tourney-xform-a-inter$band-$tag-$SEQ-$pf.json"
 }
 
