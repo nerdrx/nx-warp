@@ -15,7 +15,19 @@ exactly four files:
     python/src/nxvc/bitstream.py   (names only -- checked, not rewritten)
     docs/SYNTAX.md             the section 2.3 table rows
 
-`ref/src/*` needs no edit at all for a renumber.
+`ref/src/*` needs no edit at all for a renumber, because it names tools rather
+than numbering them.
+
+**`tests/ref/vectors.cpp` is the exception, and this script cannot fix it.**
+The reject vectors build malformed headers by poking raw bytes, e.g.
+
+    b[32 + 3] |= 0x01;            // tool bit 24 NEAR_SKIP
+
+which is byte 3 of the u64 `tools` field -- bit 24 spelled as a literal. After
+a renumber that line still sets bit 24, which is now a different tool or no
+tool at all, so the decoder answers `VERSION` ("unsupported tool") where the
+vector expects `BITSTREAM`. `check_literal_pokes()` below reports every such
+line; each one has to be rewritten against the constant by hand.
 
 Two branches ship the same tool under a different name; those are unified onto
 one name first, so the slot is allocated once:
@@ -74,30 +86,44 @@ def write(p, text, before):
         changed.append(p)
 
 
+# Files that *talk about* the rename rather than perform it.  Renaming inside
+# them turns "inter-b's WARP_DC is renamed to NEAR_SKIP" into "inter-b's
+# NEAR_SKIP is renamed to NEAR_SKIP" and, in this file's own case, collapses
+# ALIASES to {"NEAR_SKIP": "NEAR_SKIP"} -- the script quietly eats its own
+# mapping and the documentation of why the bits moved.  Learned the hard way.
+ALIAS_EXEMPT = {
+    "docs/TOOLBITS.md",
+    "docs/MERGE-PLAN.md",
+    "scripts/retool-bits.py",
+}
+
+
 def tracked_files():
     out = subprocess.run(["git", "ls-files"], capture_output=True, text=True,
                          check=True).stdout.split("\n")
     keep = (".h", ".c", ".cc", ".cpp", ".inc", ".py", ".md", ".comp")
-    return [p for p in out if p.endswith(keep) and os.path.exists(p)]
+    return [p for p in out
+            if p.endswith(keep) and os.path.exists(p) and p not in ALIAS_EXEMPT]
 
 
 def apply_aliases():
-    """Unify the duplicate tool names across the whole tree."""
-    if not ALIASES:
+    """Unify the duplicate tool names across the tree.
+
+    Only identifiers are rewritten -- ``NXVC_TOOL_<NAME>`` in C and
+    ``Tool.<NAME>`` in python.  A bare ``WARP_DC`` in prose is left alone: it
+    is as likely to be a sentence about the rename as the symbol itself.
+    """
+    live = {a: b for a, b in ALIASES.items() if a != b}
+    if not live:
         return
-    pat = re.compile(r"\b(%s)\b" % "|".join(map(re.escape, ALIASES)))
+    alt = "|".join(map(re.escape, live))
     for path in tracked_files():
         before = read(path)
-        # Only rename where it is unmistakably a tool name: the bare identifier
-        # is too generic to rewrite blind in prose.
-        text = re.sub(r"\bNXVC_TOOL_(%s)\b" % "|".join(ALIASES),
-                      lambda m: "NXVC_TOOL_" + ALIASES[m.group(1)], before)
-        if path.endswith(".py") or path.endswith(".md"):
-            text = re.sub(r"\b(?:Tool\.)?(%s)\b" % "|".join(ALIASES),
-                          lambda m: m.group(0).replace(m.group(1), ALIASES[m.group(1)]),
-                          text)
+        text = re.sub(r"\bNXVC_TOOL_(%s)\b" % alt,
+                      lambda m: "NXVC_TOOL_" + live[m.group(1)], before)
+        text = re.sub(r"\bTool\.(%s)\b" % alt,
+                      lambda m: "Tool." + live[m.group(1)], text)
         write(path, text, before)
-    _ = pat
 
 
 def present(text, name):
@@ -154,6 +180,24 @@ def patch_syntax(alloc_present):
     write(SYNTAX, text, before)
 
 
+VECTORS_CPP = "tests/ref/vectors.cpp"
+
+
+def check_literal_pokes():
+    """Report reject vectors that spell a tool bit as a raw byte offset.
+
+    These do not survive a renumber; see the module docstring.  Reported, never
+    rewritten: the correct constant depends on what the vector means to test.
+    """
+    if not os.path.exists(VECTORS_CPP):
+        return []
+    bad = []
+    for i, ln in enumerate(read(VECTORS_CPP).splitlines(), 1):
+        if re.search(r"b\[\s*32\s*\+\s*\d+\s*\]\s*\|=", ln):
+            bad.append("%s:%d: %s" % (VECTORS_CPP, i, ln.strip()))
+    return bad
+
+
 def main():
     if not os.path.exists(NXVC_H):
         print("retool-bits: run me from the top of the worktree", file=sys.stderr)
@@ -195,6 +239,17 @@ def main():
         if stray:
             print("retool-bits: WARNING %s has raw tool-bit literals %r; "
                   "check them by hand" % (BITS_PY, stray), file=sys.stderr)
+
+    pokes = check_literal_pokes()
+    if pokes:
+        print("retool-bits: WARNING these reject vectors poke a tool bit as a raw",
+              file=sys.stderr)
+        print("  byte and will NOT survive the renumber (expect VERSION where the",
+              file=sys.stderr)
+        print("  vector wants BITSTREAM).  Rewrite each against the constant:",
+              file=sys.stderr)
+        for l in pokes:
+            print("    " + l, file=sys.stderr)
 
     for n, b in sorted(alloc_present.items(), key=lambda kv: kv[1]):
         print("   bit %-2d  %s" % (b, n))
