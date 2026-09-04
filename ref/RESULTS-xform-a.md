@@ -128,10 +128,52 @@ and a syntax cost of two bits per tile.
 ## 3. Inter, with the same tool
 
 Residuals of warped tiles are smooth, so the tool should help there too. The
-Phase 2 kill test of `RESULTS-inter.md`, band A and band B, `--inter on
---poses`:
+Phase 2 kill test of `RESULTS-inter.md`, band A (the literal 100-300 Mbit band
+of PAPER 2.11), on the same 8-frame 4:4:4 sequence with `--eyes 2 --inter on
+--poses`, `--qp 0,4,8,12` against `x265-p` at `2,8,14,20`:
 
-<!--RESULTS-INTER-TABLE-->
+| | before (`--xform 8`) | after (`--xform auto`) | change |
+|---|---|---|---|
+| **BD-rate vs x265-p, overall** | **+333.00 %** | **+282.73 %** | **-50.3 points** |
+| BD-PSNR | -7.450 dB | -6.743 dB | +0.71 dB |
+| fastest 20 % of frames | +311.57 % | +263.94 % | -47.6 points |
+| the remaining frames | +339.81 % | +288.67 % | -51.1 points |
+
+| QP | before Mbit/s | before PSNR-Y | after Mbit/s | after PSNR-Y | rate | quality |
+|---|---|---|---|---|---|---|
+| 0 | 206.5 | 57.19 | 192.8 | 57.47 | -6.6 % | +0.28 dB |
+| 4 | 140.1 | 55.21 | 128.6 | 55.42 | -8.2 % | +0.21 dB |
+| 8 | 95.0 | 53.04 | 87.5 | 53.21 | -7.9 % | +0.17 dB |
+| 12 | 66.7 | 50.15 | 61.2 | 50.45 | -8.2 % | +0.30 dB |
+
+The tool helps inter about as much as it helps intra, and for the same reason:
+a warped tile's residual is smooth, and a 32x32 transform is what codes a
+smooth residual cheaply. It helps the motion frames and the still frames
+almost equally, which says it is acting on the residual's spectrum rather than
+on the predictor's failure mode.
+
+The kill test still fails, by a margin the tool does not touch. Verbatim:
+
+```
+  Phase 2 kill test (PAPER.md 2.11 item 1):
+    "within 10 percent at rest and at least 30 percent better on the motion frames"
+    at rest   : BD-rate +339.81 % (allowed up to +10 %)  FAIL      <- before
+    on motion : BD-rate +311.57 % (needs -30 % or better)  FAIL
+    VERDICT   : FAIL
+
+  Phase 2 kill test (PAPER.md 2.11 item 1):
+    "within 10 percent at rest and at least 30 percent better on the motion frames"
+    at rest   : BD-rate +288.67 % (allowed up to +10 %)  FAIL      <- after
+    on motion : BD-rate +263.94 % (needs -30 % or better)  FAIL
+    VERDICT   : FAIL
+```
+
+The absolute figures are worse than `RESULTS-inter.md`'s +160.70 % because
+that measurement had 36 frames to amortise its first intra frame over and this
+one has 8; the before/after pair here is internally consistent and that is
+what it is for.
+
+<!--RESULTS-INTER-B-->
 
 ### 3.1 What the encoder actually chooses
 
