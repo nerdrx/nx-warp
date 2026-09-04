@@ -154,11 +154,13 @@ constexpr uint64_t kToolsSupported =
     (1ull << 6) |  // CUSTOM_TABLES
     (1ull << 7) |  // NSUB_VAR
     (1ull << 8) |  // PER_TILE_CHROMA
-    (1ull << 9);   // YCOCGR
+    (1ull << 9) |  // YCOCGR
+    (1ull << 20);  // WM_ID: per-tile weighting-matrix override
 constexpr uint64_t kToolNsubVar = 1ull << 7;
 constexpr uint64_t kToolResLevel = 1ull << 2;
 constexpr uint64_t kToolTransformSkip = 1ull << 1;
 constexpr uint64_t kToolPerTileChroma = 1ull << 8;
+constexpr uint64_t kToolWmId = 1ull << 20;
 
 }  // namespace
 
@@ -194,20 +196,28 @@ bool parse_table_set(const uint8_t *bits120, int set_index,
 }
 
 void resolve_matrices(uint32_t quant_matrix, const uint8_t *custom128,
-                      int32_t out128[128]) {
+                      int32_t out512[512]) {
+    // Set 0: the frame's own pair.
     if (quant_matrix == 255 && custom128) {
         for (int i = 0; i < 64; ++i) {
-            out128[i] = iclamp(custom128[i], 1, 32);
-            out128[64 + i] = iclamp(custom128[64 + i], 1, 32);
+            out512[i] = iclamp(custom128[i], 1, 32);
+            out512[64 + i] = iclamp(custom128[64 + i], 1, 32);
         }
-        return;
+    } else {
+        int m = (int)iclamp((int32_t)quant_matrix, 0, 3);
+        int mc = m == 0 ? 0 : 3;
+        for (int i = 0; i < 64; ++i) {
+            out512[i] = nxvw::kWeightFlat[m * 64 + i];
+            out512[64 + i] = nxvw::kWeightFlat[mc * 64 + i];
+        }
     }
-    int m = (int)iclamp((int32_t)quant_matrix, 0, 3);
-    int mc = m == 0 ? 0 : 3;
-    for (int i = 0; i < 64; ++i) {
-        out128[i] = nxvw::kWeightFlat[m * 64 + i];
-        out128[64 + i] = nxvw::kWeightFlat[mc * 64 + i];
-    }
+    // Sets 1..3: [REF] TileCoder::setup(), wm_id != 0 uses kWeight[wm_id] for
+    // luma and alpha and kWeight[3] for chroma, whatever the frame carries.
+    for (int k = 1; k <= 3; ++k)
+        for (int i = 0; i < 64; ++i) {
+            out512[k * 128 + i] = nxvw::kWeightFlat[k * 64 + i];
+            out512[k * 128 + 64 + i] = nxvw::kWeightFlat[3 * 64 + i];
+        }
 }
 
 // --------------------------------------------------------- stream header
@@ -392,10 +402,11 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
             const uint32_t nsub_log2 = (w1 >> 17) & 7u;
             const uint32_t mv_present = (w1 >> 20) & 1u;
             const uint32_t tskip = (w1 >> 23) & 1u;
+            const uint32_t wm_id = (w1 >> 26) & 3u;
 
             // Exactly the reference's checks, in the reference's order.
             if ((w0 >> 3) & 1) return NXVC_VKD_ERR_BITSTREAM;
-            if (w1 >> 26) return NXVC_VKD_ERR_BITSTREAM;
+            if (w1 >> 28) return NXVC_VKD_ERR_BITSTREAM;
             if (layer != 0 || eye != 0) return NXVC_VKD_ERR_UNSUPPORTED;
             if (mode > 4) return NXVC_VKD_ERR_BITSTREAM;
             if (mode != 3) return NXVC_VKD_ERR_UNSUPPORTED;  // INTRA only
@@ -407,6 +418,12 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
             if (res_level != 0 && !(si.tools & kToolResLevel))
                 return NXVC_VKD_ERR_BITSTREAM;
             if (tskip && !(si.tools & kToolTransformSkip))
+                return NXVC_VKD_ERR_BITSTREAM;
+            if (wm_id != 0 && !(si.tools & kToolWmId))
+                return NXVC_VKD_ERR_BITSTREAM;
+            // A frame that carries its own matrices leaves no room for a
+            // built-in override: the two would silently disagree.
+            if (wm_id != 0 && fp.quant_matrix == 255)
                 return NXVC_VKD_ERR_BITSTREAM;
             if (!chroma444 && si.chroma == 1 &&
                 !(si.tools & kToolPerTileChroma))

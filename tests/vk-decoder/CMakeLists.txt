@@ -6,3 +6,7 @@ endif()
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/passB/CMakeLists.txt)
   add_subdirectory(passB)
 endif()
+# End-to-end tests for the decoder library that drives both passes.
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/conformance/CMakeLists.txt)
+  add_subdirectory(conformance)
+endif()

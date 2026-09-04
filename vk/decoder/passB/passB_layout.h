@@ -12,7 +12,10 @@
 //  binding 0  Coef      readonly  int16[] packed two per uint, tile stride
 //                                 `coefStrideI16` elements (see below)
 //  binding 1  TileRecs  readonly  NxvwTileRec[tileCount]
-//  binding 2  Weights   readonly  int[128]: 64 luma then 64 chroma, Q4
+//  binding 2  Weights   readonly  int[512]: four 128-entry sets of 64 luma
+//                                 then 64 chroma weights, Q4.  Set 0 is the
+//                                 frame's pair; sets 1..3 are the built-in
+//                                 pairs a tile's wm_id selects.
 //  binding 3  uOutRgba8      writeonly  rgba8ui  storage image
 //  binding 4  uOutRgb10a2    writeonly  rgb10_a2ui storage image
 //  binding 5  WarpRecs  readonly  reserved for the inter predictor (3.2.3
@@ -87,6 +90,10 @@ NXVW_FN nxvw_rec_qp_delta(uint w1) {
     return q >= 32 ? q - 64 : q;
 }
 NXVW_FN nxvw_rec_tskip(uint w1) { return int((w1 >> 23) & 1u); }
+// [nxvc_vk_decoder glue, marked edit] per-tile weighting-matrix override,
+// docs/SYNTAX.md 4.1 bits 26-27: 0 means "the frame's matrices", 1..3 name a
+// built-in pair for this tile alone (the degradation ladder's step 1).
+NXVW_FN nxvw_rec_wm_id(uint w1) { return int((w1 >> 26) & 3u); }
 NXVW_FN nxvw_rec_alpha_value(uint w2) { return int(w2 & 0xffu); }
 NXVW_FN nxvw_rec_present(uint w2) { return int((w2 >> 8) & 1u); }
 

@@ -20,7 +20,10 @@ struct PassBInput {
     int tilesY = 0;
     const int16_t *coef = nullptr;      // tilesX*tilesY * push.coefStrideI16
     const NxvwTileRec *recs = nullptr;  // tilesX*tilesY
-    const int *weights = nullptr;       // 128: 64 luma then 64 chroma, Q4
+    // 512: four 128-entry sets of 64 luma then 64 chroma weights, Q4.  Set 0
+    // is the frame's pair; sets 1..3 are the built-in pairs a tile's wm_id
+    // selects.  A caller whose tiles all have wm_id 0 may pass 128 entries.
+    const int *weights = nullptr;
 };
 
 // RGBA8: 4 bytes per pixel, R,G,B,A, tightly packed, imageW*imageH pixels.

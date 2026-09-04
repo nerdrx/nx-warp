@@ -84,7 +84,10 @@ struct FrameParse {
 
     // Pass B inputs.
     std::vector<NxvwTileRec> recs;   // tile_count, raster order
-    int32_t weights[128] = {};       // 64 luma then 64 chroma, Q4
+    // Four 128-entry sets of 64 luma then 64 chroma weights, Q4.  Set 0 is
+    // the frame's pair; sets 1..3 are the built-in pairs a tile's wm_id
+    // selects (docs/SYNTAX.md 4.1, tool bit WM_ID).
+    int32_t weights[512] = {};
     NxvwPassBPush push{};
 
     // Coefficient slots that carry no coded data and must be zeroed by the
@@ -114,8 +117,10 @@ bool parse_table_set(const uint8_t *bits120, int set_index,
                      uint32_t *cum_of_set);
 
 // [REF] resolve_matrices(): 64 luma weights then 64 chroma weights, Q4.
+// out512[0..127] is the frame's luma/chroma pair; out512[k*128 ..] for
+// k = 1..3 is the built-in pair a tile with wm_id == k uses.
 void resolve_matrices(uint32_t quant_matrix, const uint8_t *custom128,
-                      int32_t out128[128]);
+                      int32_t out512[512]);
 
 }  // namespace nxvcvk
 

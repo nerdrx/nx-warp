@@ -142,6 +142,28 @@ NXVW_CONST kA7 = 100;  // 512*sin(pi/16)
 // gain before the final adds.
 NXVW_CONST kOddRound = 256;
 NXVW_CONST kOddShift = 9;
+
+// [SYN] 6.3 mulC4: `(s * C4 + 256) >> 9` written so it never leaves int32.
+//
+// [nxvc_vk_decoder glue, marked edit] the kernel used to compute this as a
+// plain `(s * kC4 + kOddRound) >> kOddShift`.  Dequantized coefficients are
+// clamped to int16, which bounds |P +- Q| at 8.62e7, and 8.62e7 * 362 is
+// 3.12e10 -- outside int32.  docs/SYNTAX.md 6.3 defines the result as the
+// exact mathematical value and gives this two-word identity for it, which
+// ref/src/transform.cpp mul_c4_rnd9() implements.  Without it every stream
+// whose dequantized coefficients saturate decodes differently from the
+// reference (tests/vectors/v35_saturate420).
+//
+// Exact because 512 * hi * C4 is a multiple of 512, so the shift distributes;
+// both partial products stay small (|hi * C4| <= 6.1e7, lo * C4 <= 1.9e5).
+// `>>` on a signed int is arithmetic in GLSL and in C++20, and `& 511` takes
+// the low bits of the two's-complement value, so the split is the same on
+// both sides.
+NXVW_FN nxvw_mul_c4_rnd9(int s) {
+    int hi = s >> kOddShift;
+    int lo = s & (kOddRound * 2 - 1);
+    return hi * kC4 + ((lo * kC4 + kOddRound) >> kOddShift);
+}
 // [SYN] 6.3: rows then columns, both passes writing transposed.  The clamp16
 // after pass 1 is NORMATIVE, so the transpose buffer may be int16.
 // NOTE PAPER 1.4 says "7 bits after the first dimension, 12 after the

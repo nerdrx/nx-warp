@@ -33,7 +33,8 @@ layout(constant_id = 1) const int kPlaneStoreWords = 8192;
 // ------------------------------------------------------------- bindings
 layout(set = 0, binding = 0, std430) readonly buffer Coef { uint w[]; } uCoef;
 layout(set = 0, binding = 1, std430) readonly buffer TileRecs { NxvwTileRec rec[]; } uTiles;
-layout(set = 0, binding = 2, std430) readonly buffer Weights { int m[128]; } uWgt;
+// [marked edit] four 128-entry sets, indexed by the tile's wm_id.
+layout(set = 0, binding = 2, std430) readonly buffer Weights { int m[512]; } uWgt;
 layout(set = 0, binding = 3, rgba8ui) uniform writeonly uimage2D uOutRgba8;
 layout(set = 0, binding = 4, rgb10_a2ui) uniform writeonly uimage2D uOutRgb10a2;
 // Two-plane 4:2:0 YCbCr passthrough output (kOutYcbcr420).
@@ -105,8 +106,10 @@ void idct8_1d(int x0, int x1, int x2, int x3, int x4, int x5, int x6, int x7,
     int O0 = A + C;
     int O3 = B - D;
     int P = A - C, Q = B + D;
-    int O1 = ((P + Q) * kC4 + kOddRound) >> kOddShift;
-    int O2 = ((P - Q) * kC4 + kOddRound) >> kOddShift;
+    // [marked edit] exact product, see nxvw_mul_c4_rnd9 in
+    // syntax_constants.h: (P +- Q) * C4 does not fit int32.
+    int O1 = nxvw_mul_c4_rnd9(P + Q);
+    int O2 = nxvw_mul_c4_rnd9(P - Q);
     y[0] = e0 + O0; y[7] = e0 - O0;
     y[1] = e1 + O1; y[6] = e1 - O1;
     y[2] = e2 + O2; y[5] = e2 - O2;
@@ -195,6 +198,8 @@ void main() {
     int chroma444 = pc.p.chroma420 != 0 ? 0 : nxvw_rec_chroma444(rec.w1);
     int alpha_mode = nxvw_rec_alpha_mode(rec.w1);
     int tskip = nxvw_rec_tskip(rec.w1);
+    // [marked edit] per-tile weighting-matrix override, docs/SYNTAX.md 4.1.
+    int wmSet = nxvw_rec_wm_id(rec.w1) * 128;
     int mode = nxvw_rec_mode(rec.w1);
     int qp = clamp(pc.p.baseQp + nxvw_rec_qp_delta(rec.w1), 0, 63);
 
@@ -243,7 +248,7 @@ void main() {
         int planeQp = qp;
         if (chroma) planeQp = clamp(qp + pc.p.chromaQpOff, 0, 63);
         else if (p == 3) planeQp = clamp(qp + pc.p.alphaQpOff, 0, 63);
-        int wbase = chroma ? 64 : 0;
+        int wbase = wmSet + (chroma ? 64 : 0);
         bool ctChroma = (pc.p.colorTransform == kCtYCoCgR) && chroma;
         int dcOff = ctChroma ? kDcOffsetChromaCT : kDcOffset8;
         int maxval = ctChroma ? kMaxvalChromaCT : kMaxval8;

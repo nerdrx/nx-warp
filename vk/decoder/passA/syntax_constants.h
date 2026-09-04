@@ -183,6 +183,10 @@ NXS_CONST uint kThMvPresentShift = 20, kThMvPresentMask = 1u;
 NXS_CONST uint kThRefSelShift = 21, kThRefSelMask = 3u;
 NXS_CONST uint kThTskipShift = 23, kThTskipMask = 1u;
 NXS_CONST uint kThWgtShift = 24, kThWgtMask = 3u;
+// [nxvc_vk_decoder glue, marked edit] wm_id: a per-tile override of the
+// frame's weighting matrix, 0 = "use the frame's" (docs/SYNTAX.md 4.1, tool
+// bit WM_ID).  It took bits 26-27, which used to be reserved.
+NXS_CONST uint kThWmIdShift = 26, kThWmIdMask = 3u;
 
 NXS_CONST int kMaxResLevel = 2;
 NXS_CONST int kMaxMode = 4;
@@ -192,7 +196,7 @@ NXS_CONST int kAlphaModeCoded = 2;     // alpha plane is entropy-coded
 
 // Reserved bits that a conforming stream sets to zero (SYNTAX.md 4.1).
 NXS_CONST uint kThReservedW0 = 1u << 3;
-NXS_CONST uint kThReservedW1 = 0xfc000000u;  // bits 26..31
+NXS_CONST uint kThReservedW1 = 0xf0000000u;  // bits 28..31 [marked edit]
 
 // Optional bytes between the 8-byte header and the rANS payload, in order:
 //   1. i8 mv_x, i8 mv_y   if mv_present

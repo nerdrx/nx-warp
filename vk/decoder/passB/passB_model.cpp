@@ -30,8 +30,9 @@ inline void idct8_1d(const int *x, int *y) {
     int O0 = A + C;
     int O3 = B - D;
     int P = A - C, Q = B + D;
-    int O1 = ((P + Q) * kC4 + kOddRound) >> kOddShift;
-    int O2 = ((P - Q) * kC4 + kOddRound) >> kOddShift;
+    // [marked edit] exact product, see nxvw_mul_c4_rnd9.
+    int O1 = nxvw_mul_c4_rnd9(P + Q);
+    int O2 = nxvw_mul_c4_rnd9(P - Q);
     y[0] = e0 + O0; y[7] = e0 - O0;
     y[1] = e1 + O1; y[6] = e1 - O1;
     y[2] = e2 + O2; y[5] = e2 - O2;
@@ -101,6 +102,8 @@ void reconstruct_tile(const PassBInput &in, int tile, TilePlanes &tp,
     int mode = nxvw_rec_mode(rec.w1);
     int qp = iclamp(pcp.baseQp + nxvw_rec_qp_delta(rec.w1), 0, 63);
     bool intra = (mode == kModeIntra);  // INTER HOOK, see reconstruct.comp
+    // [marked edit] per-tile weighting-matrix override, docs/SYNTAX.md 4.1.
+    const int wmSet = nxvw_rec_wm_id(rec.w1) * 128;
 
     int nplanes = pcp.alphaPresent != 0 ? 4 : 3;
     int ncoded = nplanes;
@@ -122,7 +125,7 @@ void reconstruct_tile(const PassBInput &in, int tile, TilePlanes &tp,
         int planeQp = qp;
         if (chroma) planeQp = iclamp(qp + pcp.chromaQpOff, 0, 63);
         else if (p == 3) planeQp = iclamp(qp + pcp.alphaQpOff, 0, 63);
-        const int *wmat = in.weights + (chroma ? 64 : 0);
+        const int *wmat = in.weights + wmSet + (chroma ? 64 : 0);
         bool ctChroma = (pcp.colorTransform == kCtYCoCgR) && chroma;
         int dcOff = ctChroma ? kDcOffsetChromaCT : kDcOffset8;
         int maxval = ctChroma ? kMaxvalChromaCT : kMaxval8;

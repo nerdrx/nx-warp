@@ -88,6 +88,22 @@ if(Vulkan_FOUND OR (NXVCVK_DEC_INCLUDE AND NXVCVK_DEC_LIB))
   add_executable(nxvc-vkdec ${CMAKE_CURRENT_SOURCE_DIR}/tools/nxvc-vkdec.cpp)
   target_link_libraries(nxvc-vkdec PRIVATE nxvc_vk_decoder)
   nxvcvk_dec_configure(nxvc-vkdec)
+
+  # tools/quality's `--codec-cmd <prefix>` appends -enc / -dec, so give it a
+  # prefix whose -dec is the GPU decoder and whose -enc is the reference
+  # encoder: `--codec-cmd <build>/bin/nxvgpu` then measures the GPU decode
+  # path with no extra flags.  --codec-enc / --codec-dec still work directly.
+  if(TARGET nxv-enc AND UNIX)
+    add_custom_command(TARGET nxvc-vkdec POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E create_symlink
+              $<TARGET_FILE_NAME:nxvc-vkdec>
+              $<TARGET_FILE_DIR:nxvc-vkdec>/nxvgpu-dec
+      COMMAND ${CMAKE_COMMAND} -E create_symlink
+              $<TARGET_FILE_NAME:nxv-enc>
+              $<TARGET_FILE_DIR:nxvc-vkdec>/nxvgpu-enc
+      COMMENT "nxvgpu-{enc,dec} aliases for tools/quality --codec-cmd"
+      VERBATIM)
+  endif()
   set(NXVCVK_DECODER_BUILT ON CACHE INTERNAL "")
 else()
   message(WARNING "vk/decoder: Vulkan loader/headers not found; "
@@ -96,30 +112,25 @@ else()
 endif()
 
 # ------------------------------------------------------- Android / arm64
-# The library is plain C++20 over the core Vulkan 1.2 API with no desktop-only
-# call in it, so an arm64 NDK build is a normal cross build; android/ links
-# the target above.  This extra target exists only so a host build can prove
-# the sources still *compile* for arm64 without a full NDK toolchain file, and
-# is off unless asked for.
-option(NXVCVK_DECODER_ANDROID_COMPILE_CHECK
-       "Compile nxvc_vk_decoder's sources for arm64 with the NDK clang" OFF)
-if(NXVCVK_DECODER_ANDROID_COMPILE_CHECK AND NOT ANDROID)
-  find_program(NXVCVK_NDK_CLANG aarch64-linux-android29-clang++
-    HINTS $ENV{ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin
-          ${ANDROID_NDK}/toolchains/llvm/prebuilt/linux-x86_64/bin)
-  if(NXVCVK_NDK_CLANG)
-    add_custom_target(nxvc_vk_decoder_android_compile ALL
-      COMMAND ${NXVCVK_NDK_CLANG} -std=c++20 -fsyntax-only -O2
-              -I${CMAKE_SOURCE_DIR}/include
-              -I${CMAKE_CURRENT_SOURCE_DIR}
-              -I${CMAKE_SOURCE_DIR}
-              -I${CMAKE_CURRENT_BINARY_DIR}/passA/generated
-              -I${CMAKE_CURRENT_BINARY_DIR}/passB/generated
-              ${NXVCVK_DEC_SRC}
-      DEPENDS nxvw_passA_spv nxvw_passB_spv
-      COMMENT "arm64 syntax check of nxvc_vk_decoder"
-      VERBATIM)
-  else()
-    message(STATUS "vk/decoder: NDK clang++ not found, arm64 check skipped")
-  endif()
+# Nothing special is needed: the library is plain C++20 over the core Vulkan
+# 1.2 API with no desktop-only call in it, and the NDK supplies both glslc
+# (shader-tools/) and libvulkan, so an arm64 build is a normal cross build of
+# this same target.  android/ links it.
+#
+#   NDK=$ANDROID_SDK/ndk/<version>
+#   cmake -S . -B build-android -G Ninja \
+#     -DCMAKE_TOOLCHAIN_FILE=$NDK/build/cmake/android.toolchain.cmake \
+#     -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-29 \
+#     -DNXWARP_BUILD_VK=ON -DNXWARP_BUILD_TESTS=OFF \
+#     -DNXWARP_BUILD_EXAMPLES=OFF -DNXWARP_BUILD_TRANSPORT=OFF \
+#     -DNXWARP_BUILD_TOOLS=OFF
+#   cmake --build build-android --target nxvc_vk_decoder
+#
+# The one Android-specific decision the library makes is the default output
+# format: NXVC_VKD_OUT_AUTO resolves a 4:2:0 passthrough stream to the
+# two-plane YCbCr store, which is what the client's reprojection shader
+# already samples and which halves reference-slot memory on the headset
+# (docs/INTEGRATION-DECISIONS.md 3).
+if(ANDROID)
+  message(STATUS "vk/decoder: building nxvc_vk_decoder for ${ANDROID_ABI}")
 endif()

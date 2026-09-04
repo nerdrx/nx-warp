@@ -629,7 +629,7 @@ nxvc_vkd_status make_resources(D *d) {
         return st;
     if ((st = make_buf(d, d->bRecs, (VkDeviceSize)ntiles * 16, kSsbo, false)))
         return st;
-    if ((st = make_buf(d, d->bWgt, 128 * 4, kSsbo, false))) return st;
+    if ((st = make_buf(d, d->bWgt, 512 * 4, kSsbo, false))) return st;
 
     // ---- readback
     if (d->flags & NXVC_VKD_FLAG_READBACK) {
@@ -1036,7 +1036,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     d->offRecs = o;
     o = align_up(o + recBytes, 256);
     d->offWgt = o;
-    o = align_up(o + 512, 256);
+    o = align_up(o + sizeof fp.weights, 256);
     if ((st = make_buf(d, d->staging, o, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                        true)))
         return st;
@@ -1045,7 +1045,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     if (descBytes) std::memcpy(sp + d->offDesc, fp.desc.data(), descBytes);
     std::memcpy(sp + d->offTables, fp.cum.data(), tabBytes);
     std::memcpy(sp + d->offRecs, fp.recs.data(), recBytes);
-    std::memcpy(sp + d->offWgt, fp.weights, 512);
+    std::memcpy(sp + d->offWgt, fp.weights, sizeof fp.weights);
 
     // ---- 3. record ----------------------------------------------------
     VKTRY(d, vkResetCommandBuffer(d->cmd, 0));
@@ -1067,7 +1067,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     copy(d->bDesc, d->offDesc, descBytes);
     copy(d->bTables, d->offTables, tabBytes);
     copy(d->bRecs, d->offRecs, recBytes);
-    copy(d->bWgt, d->offWgt, 512);
+    copy(d->bWgt, d->offWgt, sizeof fp.weights);
     // A skipped tile gets no Pass A descriptor, so nothing would zero its
     // coefficient slot.  Zero it here; Pass B then reconstructs it as
     // "no coefficients" over the WARP_SKIP record.
