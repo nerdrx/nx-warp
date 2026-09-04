@@ -22,8 +22,11 @@ import math
 import numpy as np
 from PIL import Image, ImageDraw
 
-CELL = 22          # pixels per tile
+#: Tile cell size in pixels; scaled per run so a 4x4 map and a 32x16 one both
+#: come out legible.  MIN_W keeps the panel titles from being clipped.
+CELL = 22
 PAD = 34           # gutter for titles and the legend
+MIN_W = 620
 CLASS_NAMES = ("flat", "texture", "edge", "text")
 
 
@@ -57,17 +60,18 @@ def ramp(v: np.ndarray, lo: float, hi: float, cold, hot) -> np.ndarray:
     return (np.asarray(cold) * (1 - t) + np.asarray(hot) * t).astype(np.uint8)
 
 
-def panel(rgb: np.ndarray, title: str, eyes: int, tx: int) -> Image.Image:
+def panel(rgb: np.ndarray, title: str, eyes: int, tx: int, cell: int) -> Image.Image:
     h, w = rgb.shape[:2]
-    img = Image.fromarray(rgb).resize((w * CELL, h * CELL), Image.NEAREST)
-    canvas = Image.new("RGB", (img.width, img.height + PAD), (18, 18, 22))
+    img = Image.fromarray(rgb).resize((w * cell, h * cell), Image.NEAREST)
+    canvas = Image.new("RGB", (max(img.width, MIN_W), img.height + PAD),
+                       (18, 18, 22))
     canvas.paste(img, (0, PAD))
     d = ImageDraw.Draw(canvas)
     d.text((4, 10), title, fill=(235, 235, 240))
     # The eye seam, so a stereo map is not read as one wide picture.
     for e in range(1, eyes):
-        x = e * tx * CELL
-        d.line([(x, PAD), (x, canvas.height)], fill=(120, 120, 130), width=1)
+        x = e * tx * cell
+        d.line([(x, PAD), (x, PAD + img.height)], fill=(150, 150, 160), width=1)
     return canvas
 
 
@@ -104,15 +108,18 @@ def main(argv=None) -> int:
                       (2, (200, 170, 70)), (3, (220, 90, 200))):
         cls_rgb[cls == c] = colour
 
+    cols = qp.shape[1]
+    cell = max(12, min(40, MIN_W // max(1, cols)))
+
     panels = [
         panel(qp_rgb, f"coded QP  {qp.min():.0f} (blue) .. {qp.max():.0f} (yellow)",
-              eyes, tx),
-        panel(res_rgb, "res_level  0 full / 1 half (blue) / 2 quarter (orange)",
-              eyes, tx),
-        panel(skip_rgb, "skip  red = temporal ladder, grey = encoder's own WARP_SKIP",
-              eyes, tx),
-        panel(cls_rgb, "class  flat / texture (green) / edge (amber) / text (pink)",
-              eyes, tx),
+              eyes, tx, cell),
+        panel(res_rgb, "res_level: 0 full (dark) / 1 half (blue) / 2 quarter (orange)",
+              eyes, tx, cell),
+        panel(skip_rgb, "skip: red = temporal ladder, grey = encoder's own WARP_SKIP",
+              eyes, tx, cell),
+        panel(cls_rgb, "class: flat (dark) / texture (green) / edge (amber) / text (pink)",
+              eyes, tx, cell),
     ]
     gap = 10
     width = max(p.width for p in panels)

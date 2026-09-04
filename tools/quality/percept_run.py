@@ -81,7 +81,8 @@ def enc_common(seq: Sequence, src: str, out: str) -> list[str]:
 def encode_nxv(args, seq: Sequence, src: str, poses: str | None, out: str,
                *, qp: int | None = None, bitrate: float | None = None,
                temporal: bool = True, foveation: bool = True,
-               panel: int = 2160, rc_map: str | None = None) -> dict:
+               panel: int = 2160, act: float = 1.0,
+               rc_map: str | None = None) -> dict:
     cmd = [args.enc, *enc_common(seq, src, out), "--inter", "on"]
     if poses:
         cmd += ["--poses", poses]
@@ -96,6 +97,7 @@ def encode_nxv(args, seq: Sequence, src: str, poses: str | None, out: str,
             "--rc-fov", "on" if foveation else "off",
             "--rc-temporal", "on" if temporal else "off",
             "--rc-panel", str(panel),
+            "--rc-act", f"{act:g}",
             "--rc-fov-deg", f"{args.hfov:g},{args.hfov:g}",
         ]
         if args.gaze:
@@ -269,6 +271,9 @@ def main(argv=None) -> int:
                     help="foveated standard-codec anchor, or '' to skip it")
     ap.add_argument("--anchor-crf", default="18,24,30,36,42")
     ap.add_argument("--no-fvvdp", action="store_true")
+    ap.add_argument("--arms", default=None,
+                    help="comma-separated subset of the rate-controlled arms "
+                         "to run (default: all of them)")
     args = ap.parse_args(argv)
 
     os.makedirs(args.work, exist_ok=True)
@@ -361,8 +366,15 @@ def main(argv=None) -> int:
         ("rc-spatial", dict(foveation=True, temporal=False, panel=args.panel), rates),
         ("rc-full", dict(foveation=True, temporal=True, panel=args.panel), rates),
         ("rc-matched", dict(foveation=True, temporal=True, panel=view_w), rates),
+        # The same arm with the activity term switched off, which is the one
+        # change that lets the eccentricity term decide the allocation.
+        ("rc-matched-noact",
+         dict(foveation=True, temporal=True, panel=view_w, act=0.0), rates),
     ]
+    want = set(args.arms.split(",")) if args.arms else None
     for arm, kw, arm_rates in arms:
+        if want is not None and arm not in want:
+            continue
         print(f"[{arm}] target-rate sweep (panel {kw['panel']} px/eye)")
         for r in arm_rates:
             br = r * scale

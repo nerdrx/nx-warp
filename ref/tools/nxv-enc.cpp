@@ -122,6 +122,10 @@ static void usage() {
         "                       i.e. the fixed-foveation eye box on the axis\n"
         "  --rc-panel N         pixels per eye of the PANEL the foveation\n"
         "                       decision is made for (default 2160, Pico 4)\n"
+        "  --rc-act F           strength of the activity term dQ_act in QP\n"
+        "                       per octave of log-variance (default 1; 0\n"
+        "                       switches adaptive quantisation off, which is\n"
+        "                       what leaves the eccentricity term in charge)\n"
         "  --rc-fps F           display rate the budget is per-frame of\n"
         "                       (default 90)\n"
         "  --rc-fov-deg H,V     render FOV of one eye the foveation map is\n"
@@ -167,7 +171,7 @@ int main(int argc, char **argv) {
     bool fov_from_cli = false;
     std::string poses_path, skipmap_path;
     int rc_on = 0, rc_fov = 1, rc_temporal = 1, rc_panel = 2160;
-    double rc_bitrate = 40.0, rc_fps = 90.0;
+    double rc_bitrate = 40.0, rc_fps = 90.0, rc_act = 1.0;
     double rc_fov_h = 81.2, rc_fov_v = 81.2;
     double gaze_x = 0.0, gaze_y = 0.0;
     bool gaze_valid = false;
@@ -234,6 +238,7 @@ int main(int argc, char **argv) {
         else if (a == "--rc-panel") rc_panel = std::atoi(val());
         else if (a == "--rc-map") rc_map_path = val();
         else if (a == "--rc-fps") rc_fps = std::atof(val());
+        else if (a == "--rc-act") rc_act = std::atof(val());
         else if (a == "--rc-fov-deg") {
             std::string v = val();
             size_t c = v.find(',');
@@ -512,6 +517,7 @@ int main(int argc, char **argv) {
         dc.fov_h_deg = (float)rc_fov_h;
         dc.fov_v_deg = (float)rc_fov_v;
         dc.panel_px_per_eye = rc_panel;
+        dc.act_strength = (float)rc_act;
         drv = std::make_unique<nxrc::EncDriver>(dc);
         if (drv->tile_count() != tl.tile_count) {
             std::fprintf(stderr, "rc: tile count %zu != encoder's %u\n",

@@ -59,6 +59,7 @@ EncDriver::EncDriver(const EncDriveConfig& cfg) : cfg_(cfg) {
 
     build_foveation();
 
+    rc_.config().act_strength = cfg_.act_strength;
     rc_.reset(n);
     refresh_.reset(n);
     refresh_.config().fps = cfg_.fps;

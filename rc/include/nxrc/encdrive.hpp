@@ -62,6 +62,15 @@ struct EncDriveConfig {
     // after these.
     float overhead_fraction = 0.06f;
 
+    // Strength of the activity term dQ_act (RateConfig::act_strength,
+    // docs/RATECONTROL.md appendix A.2).  It is exposed here, and on the
+    // nxv-enc command line, because it is the one perceptual term that can
+    // out-pull the eccentricity term: dQ_act spans +/-4 QP while dQ_ecc spans
+    // 0..+6, and on content whose centre is busier than its periphery -- which
+    // is what a rendered VR scene looks like -- the two cancel and the
+    // allocation stops being foveated at all.  See ref/RESULTS-percept.md.
+    float act_strength = 1.0f;
+
     // ---- which halves of the ladder are engaged --------------------------
     bool foveation = true;   // --rc-fov:      the eccentricity map at all
     bool temporal  = true;   // --rc-temporal: the refresh scheduler
