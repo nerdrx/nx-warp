@@ -126,11 +126,11 @@ bytes, little endian, sent in the clear and used as AEAD associated data.
 | 62 | `frag_idx` / `frag_count` | 2 + 2 | fragments of an oversize lossless tile, Pro profile only |
 | 66 | `pose_seq` | 16 | index into the client's own pose ring: the render pose the server used |
 | 82 | `path_id` / `path_seq` | 2 + 14 | per-path sequence for loss detection and reordering |
-| 96 | `fec_group` / `fec_idx` / `fec_k` | 8 + 4 + 4 | `fec_idx >= fec_k` marks a parity datagram |
-| 112 | `tx_ts` | 32 | server clock in microseconds, wraps at 71 min |
-| 144 | `payload_len` | 16 | bytes of encrypted payload |
-| 160 | `enc_us` | 16 | encode finish minus render finish for this band, telemetry |
-| 176 | (total) | 192 bits = 24 bytes | |
+| 98 | `fec_group` / `fec_idx` / `fec_k` | 8 + 4 + 4 | `fec_idx >= fec_k` marks a parity datagram |
+| 114 | `tx_ts` | 32 | server clock in microseconds, wraps at 71 min |
+| 146 | `payload_len` | 16 | bytes of encrypted payload |
+| 162 | `enc_us` | 16 | encode finish minus render finish for this band, telemetry |
+| 178 | reserved | 14 | the listed fields sum to 178 bits; the paper's stated total is 192 bits (24 bytes), so 14 bits are unassigned. [TRANSPORT.md](TRANSPORT.md) is normative for the exact layout |
 
 The payload begins with a tile directory of 4 bytes per tile (QP, mode, byte length), then the tile
 bitstreams back to back. A run of 20 average tiles costs about 104 header bytes against 1800 payload
