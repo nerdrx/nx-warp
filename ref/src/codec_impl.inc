@@ -15,13 +15,14 @@ static inline int fetch_clamped(const PlaneRef &pr, int x, int y) {
 }
 
 // ------------------------------------------------------- probability tables
-// Serialize one table set as 12 x 16 five-bit log-domain deltas (120 bytes).
+// Serialize one table set as `nctx` x 16 five-bit log-domain deltas: 120
+// bytes for the 12-context model, 160 for the 16-context one.
 static void serialize_table_set(BitW &bw, const u16 target[kNumCtx][kNumSym],
-                                int set_index, TableSet &decoded) {
-    for (int c = 0; c < kNumCtx; ++c) {
+                                int set_index, int nctx, TableSet &decoded) {
+    for (int c = 0; c < nctx; ++c) {
         u16 f[kNumSym];
         for (int s = 0; s < kNumSym; ++s) {
-            i32 def = kDefaultFreq[set_index][c][s];
+            i32 def = default_freq(nctx, set_index, c, s);
             i32 want = target[c][s] < 1 ? 1 : target[c][s];
             int best = 16, bestErr = -1;
             for (int d = 0; d < 32; ++d) {
@@ -40,12 +41,12 @@ static void serialize_table_set(BitW &bw, const u16 target[kNumCtx][kNumSym],
     }
 }
 
-static bool parse_table_set(BitR &br, int set_index, TableSet &out) {
-    for (int c = 0; c < kNumCtx; ++c) {
+static bool parse_table_set(BitR &br, int set_index, int nctx, TableSet &out) {
+    for (int c = 0; c < nctx; ++c) {
         u16 f[kNumSym];
         for (int s = 0; s < kNumSym; ++s) {
             u32 d = br.get(5);
-            i32 def = kDefaultFreq[set_index][c][s];
+            i32 def = default_freq(nctx, set_index, c, s);
             i32 v = (def * kDeltaMul[d] + 128) >> 8;
             if (v < 1) v = 1;
             if (v > 32767) v = 32767;
@@ -141,6 +142,9 @@ extern "C" nxvc_encoder *nxvc_encoder_create(const nxvc_config *cfg,
         e->cfg.base_qp = 0;
         e->cfg.transform_skip = 1;
         e->cfg.quant_matrix = 0;
+        // Sign data hiding spends one level step to carry the sign, so it is
+        // lossy by construction and cannot coexist with lossless coding.
+        e->cfg.sign_hide = 0;
     }
     e->g.width = cfg->width;
     e->g.height = cfg->height;
@@ -166,7 +170,11 @@ extern "C" nxvc_encoder *nxvc_encoder_create(const nxvc_config *cfg,
     }
     resolve_matrices(e->fp, e->custom_matrix.empty() ? nullptr
                                                      : e->custom_matrix.data());
-    for (int i = 0; i < 8; ++i) build_default_set(e->fp.tabs[i], i);
+    e->fp.nctx = e->cfg.ctx_v2 ? kNumCtxV2 : kNumCtxV1;
+    e->fp.intra_dir = e->cfg.intra_dir ? 1 : 0;
+    e->fp.dir_layer = (e->cfg.intra_dir && e->cfg.intra_dir_layer) ? 1 : 0;
+    e->fp.sdh = e->cfg.sign_hide ? 1 : 0;
+    for (int i = 0; i < 8; ++i) build_default_set(e->fp.tabs[i], i, e->fp.nctx);
     if (st) *st = NXVC_OK;
     return e;
 }
@@ -203,6 +211,9 @@ static u64 encoder_tools(const nxvc_encoder *e) {
     if (e->cfg.color_transform == NXVC_CT_YCOCGR) t |= NXVC_TOOL_YCOCGR;
     if (e->cfg.wm_id != 0 && e->cfg.quant_matrix != 255 && !e->cfg.lossless)
         t |= NXVC_TOOL_WM_ID;
+    if (e->cfg.intra_dir) t |= NXVC_TOOL_INTRA_DIR;
+    if (e->cfg.ctx_v2) t |= NXVC_TOOL_CTX_V2;
+    if (e->cfg.sign_hide) t |= NXVC_TOOL_SIGN_HIDE;
     t |= NXVC_TOOL_RES_LEVEL;
     return t;
 }
@@ -360,7 +371,8 @@ static double tile_distortion(TileCoder &tc) {
     for (int p = 0; p < np; ++p) {
         PlaneState &s = tc.pl[p];
         src = s.samples;
-        reconstruct_plane(s, &tc.coef[plane_coef_offset(tc, p)], tc.tp.tskip);
+        reconstruct_plane(s, &tc.coef[plane_coef_offset(tc, p)], tc.tp.tskip,
+                          tc.intra_dir, tc.dir_layer);
         for (size_t i = 0; i < src.size(); ++i) {
             double d = (double)src[i] - (double)s.samples[i];
             sse += d * d;
@@ -406,11 +418,12 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
     fp.frame_number = (u16)e->frame_number;
     std::memcpy(fp.pose, e->pose, 26);
     fp.flags = 1;  // tile-map reset: every v1 intra frame
+    if (fp.dir_layer) fp.flags |= 4;  // bit 2: the layered form of INTRA_DIR
     std::vector<u8> table_bytes;
     // Table-set selection always scores against the built-in defaults so the
     // histogram pass and the encode pass make identical choices.
     static thread_local TableSet deftabs[8];
-    for (int k = 0; k < 8; ++k) build_default_set(deftabs[k], k);
+    for (int k = 0; k < 8; ++k) build_default_set(deftabs[k], k, fp.nctx);
     auto select_set = [&](const u32 th[kNumCtx][kNumSym], int fallback) {
         double best = 0;
         int bestk = fallback;
@@ -437,6 +450,10 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
 
     // Re-quantize a tile's residual blocks with the RD trellis, using the
     // costs of the table set the plain quantization pass selected.
+    const int dir_cand = e->cfg.intra_dir_cand ? (int)(e->cfg.intra_dir_cand > 8
+                                                          ? 8u
+                                                          : e->cfg.intra_dir_cand)
+                                                : 2;
     auto rdoq_tile = [&](TileCoder &tc, const TableSet *tabs) {
         if (!use_rdo) return;
         RateCost rc;
@@ -444,7 +461,24 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         int np = coded_planes(tc);
         for (int p = 0; p < np; ++p)
             rdoq_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)], tc.tp.tskip,
-                       p == 1 || p == 2, rc, rdo_lambda_scale);
+                       p == 1 || p == 2, rc, rdo_lambda_scale, tc.sdh);
+    };
+
+    // Directional intra fuses prediction, mode decision and quantization into
+    // one raster pass, because each block's references are the reconstruction
+    // of the ones before it.  `pass` 0 is the cheap SATD-only pass that gives
+    // the table-set chooser something to look at; `pass` 1 runs the real
+    // D + lambda*R decision against the table set it picked.
+    auto analyze_tile_dir = [&](TileCoder &tc, const TableSet *tabs, int pass) {
+        RateCost rc;
+        build_rate_cost(tabs[tc.tp.table_set], rc);
+        int np = coded_planes(tc);
+        int mode_ctx = tc.nctx >= kNumCtxV2 ? kCtxMode : 0;
+        for (int p = 0; p < np; ++p)
+            analyze_plane_dir(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
+                              tc.tp.tskip, tc.dir_layer, p == 1 || p == 2, rc,
+                              rdo_lambda_scale, pass && use_rdo,
+                              pass ? dir_cand : 1, mode_ctx, tc.sdh);
     };
 
     // Quantize one already-loaded tile: plain pass, table-set choice, then the
@@ -452,15 +486,26 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
     // and returns the coefficient rate in bits (payload only).
     auto quantize_tile = [&](TileCoder &tc, const TableSet *tabs) -> double {
         int np = coded_planes(tc);
-        for (int p = 0; p < np; ++p)
-            analyze_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
-                          tc.tp.tskip, 1);
+        if (tc.intra_dir) {
+            analyze_tile_dir(tc, tabs, 0);
+        } else {
+            for (int p = 0; p < np; ++p)
+                analyze_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
+                              tc.tp.tskip, 1, tc.sdh);
+        }
         u32 th[kNumCtx][kNumSym];
         std::memset(th, 0, sizeof(th));
         if (count_units(tc.units.data(), (int)tc.units.size(),
                         1 << tc.tp.nsub_log2, th, nullptr))
             tc.tp.table_set = select_set(th, tc.tp.table_set);
-        if (use_rdo) {
+        if (tc.intra_dir) {
+            analyze_tile_dir(tc, tabs, 1);
+            std::memset(th, 0, sizeof(th));
+            if (!count_units(tc.units.data(), (int)tc.units.size(),
+                             1 << tc.tp.nsub_log2, th, nullptr))
+                return 0;
+            tc.tp.table_set = select_set(th, tc.tp.table_set);
+        } else if (use_rdo) {
             rdoq_tile(tc, tabs);
             std::memset(th, 0, sizeof(th));
             if (!count_units(tc.units.data(), (int)tc.units.size(),
@@ -504,15 +549,27 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             if (e->cfg.alpha) tc.tp.alpha_mode = 2;
             tc.build_units();
             int np = coded_planes(tc);
-            for (int p = 0; p < np; ++p)
-                analyze_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
-                              tc.tp.tskip, 1);
+            if (tc.intra_dir) {
+                analyze_tile_dir(tc, deftabs, 0);
+            } else {
+                for (int p = 0; p < np; ++p)
+                    analyze_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
+                                  tc.tp.tskip, 1, tc.sdh);
+            }
             u32 th[kNumCtx][kNumSym];
             std::memset(th, 0, sizeof(th));
             if (count_units(tc.units.data(), (int)tc.units.size(),
                             1 << tc.tp.nsub_log2, th, nullptr)) {
                 int bestk = select_set(th, tc.tp.table_set);
-                if (use_rdo) {
+                if (tc.intra_dir) {
+                    tc.tp.table_set = bestk;
+                    analyze_tile_dir(tc, deftabs, 1);
+                    std::memset(th, 0, sizeof(th));
+                    if (!count_units(tc.units.data(), (int)tc.units.size(),
+                                     1 << tc.tp.nsub_log2, th, nullptr))
+                        continue;
+                    bestk = select_set(th, bestk);
+                } else if (use_rdo) {
                     // The trellis changes the symbol statistics, so the
                     // histogram the tables are trained on must be the
                     // post-trellis one.
@@ -524,7 +581,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                         continue;
                     bestk = select_set(th, bestk);
                 }
-                for (int c = 0; c < kNumCtx; ++c)
+                for (int c = 0; c < fp.nctx; ++c)
                     for (int sy = 0; sy < kNumSym; ++sy)
                         hist[bestk][c][sy] += th[c][sy];
             }
@@ -532,16 +589,16 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         BitW bw;
         for (int k = 0; k < 8; ++k) {
             u32 total = 0;
-            for (int c = 0; c < kNumCtx; ++c)
+            for (int c = 0; c < fp.nctx; ++c)
                 for (int s = 0; s < kNumSym; ++s) total += hist[k][c][s];
             if (total == 0) continue;
             u16 target[kNumCtx][kNumSym];
-            for (int c = 0; c < kNumCtx; ++c) {
+            for (int c = 0; c < fp.nctx; ++c) {
                 u32 sum = 0;
                 for (int s = 0; s < kNumSym; ++s) sum += hist[k][c][s];
                 for (int s = 0; s < kNumSym; ++s) {
                     if (sum == 0) {
-                        target[c][s] = kDefaultFreq[k][c][s];
+                        target[c][s] = default_freq(fp.nctx, k, c, s);
                     } else {
                         u32 v = (u32)(((u64)hist[k][c][s] * 1024) / sum);
                         target[c][s] = (u16)(v < 1 ? 1 : v);
@@ -549,7 +606,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                 }
             }
             fp.tables_present |= (1u << k);
-            serialize_table_set(bw, target, k, fp.tabs[k]);
+            serialize_table_set(bw, target, k, fp.nctx, fp.tabs[k]);
         }
         bw.flush();
         table_bytes = bw.b;
@@ -662,17 +719,18 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                 const TableSet &ts = fp.tabs[tc.tp.table_set];
                 int nplanes_c = coded_planes(tc);
                 size_t ui = 0;
+                const size_t nhead = tc.intra_dir ? 2 : 1;
                 for (int p = 0; p < nplanes_c; ++p) {
                     int ndc = tc.pl[p].nb * tc.pl[p].nb;
                     std::vector<Unit> dc(tc.units.begin() + ui,
-                                         tc.units.begin() + ui + 1);
-                    std::vector<Unit> blk(tc.units.begin() + ui + 1,
-                                          tc.units.begin() + ui + 1 + ndc);
-                    ui += 1 + ndc;
+                                         tc.units.begin() + ui + nhead);
+                    std::vector<Unit> blk(tc.units.begin() + ui + nhead,
+                                          tc.units.begin() + ui + nhead + ndc);
+                    ui += nhead + ndc;
                     u32 hd[kNumCtx][kNumSym], hb[kNumCtx][kNumSym];
                     std::memset(hd, 0, sizeof(hd));
                     std::memset(hb, 0, sizeof(hb));
-                    count_units(dc.data(), 1, 1, hd, nullptr);
+                    count_units(dc.data(), (int)nhead, 1, hd, nullptr);
                     count_units(blk.data(), ndc, 1, hb, nullptr);
                     e->stats.bits_dc_plane += (u64)table_set_cost(hd, ts);
                     u64 bb = (u64)table_set_cost(hb, ts);
@@ -723,6 +781,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             ti.tskip = (u8)tc.tp.tskip;
             ti.wgt = 0;
             ti.wm_id = (u8)tc.tp.wm_id;
+            ti.intra_dir = (u8)tc.intra_dir;
             ti.ref_sel = 0;
             ti.mv_present = 0;
             ti.qp_delta = (i8)tc.tp.qp_delta;
@@ -810,7 +869,7 @@ extern "C" int nxvc_debug_histogram(const nxvc_config *cfg,
         int np = coded_planes(tc);
         for (int p = 0; p < np; ++p)
             analyze_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
-                          tc.tp.tskip, 1);
+                          tc.tp.tskip, 1, tc.sdh);
         count_units(tc.units.data(), (int)tc.units.size(), 8,
                     hist[tc.tp.table_set], nullptr);
     }
@@ -848,9 +907,19 @@ extern "C" int nxvc_debug_tile_histograms(const nxvc_config *cfg,
         load_tile(tc, g, img, t % (int)g.tiles_x, t / (int)g.tiles_x);
         tc.build_units();
         int np = coded_planes(tc);
-        for (int p = 0; p < np; ++p)
-            analyze_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
-                          tc.tp.tskip, 1);
+        if (tc.intra_dir) {
+            RateCost rc;
+            build_rate_cost(fp.tabs[tc.tp.table_set], rc);
+            int mctx = tc.nctx >= kNumCtxV2 ? kCtxMode : 0;
+            for (int p = 0; p < np; ++p)
+                analyze_plane_dir(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
+                                  tc.tp.tskip, tc.dir_layer, p == 1 || p == 2,
+                                  rc, 0.30, true, 2, mctx, tc.sdh);
+        } else {
+            for (int p = 0; p < np; ++p)
+                analyze_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
+                              tc.tp.tskip, 1, tc.sdh);
+        }
         u32 (*h)[kNumSym] = (u32 (*)[kNumSym])(out + (size_t)t * kNumCtx * kNumSym);
         std::memset(h, 0, sizeof(u32) * kNumCtx * kNumSym);
         count_units(tc.units.data(), (int)tc.units.size(), 8, h, nullptr);
@@ -929,7 +998,17 @@ extern "C" nxvc_status nxvc_decoder_parse_stream_header(nxvc_decoder *d,
     if ((si.color_space == NXVC_CS_RGB) !=
         (si.color_transform == NXVC_CT_YCOCGR))
         return NXVC_ERR_BITSTREAM;
+    // SYNTAX.md 2: color_transform == 1 requires chroma_format == 1.  YCoCg-R
+    // chroma is 9-bit and biased by 256 and the transform runs before
+    // subsampling, so a 4:2:0 YCoCg-R stream would push 9-bit chroma through
+    // an 8-bit plane.  The encoder already refuses it; so must the decoder.
+    if (si.color_transform == NXVC_CT_YCOCGR && si.chroma != NXVC_CHROMA_444)
+        return NXVC_ERR_BITSTREAM;
     if (si.tools & ~(u64)NXVC_TOOLS_SUPPORTED) return NXVC_ERR_VERSION;
+    // Sign data hiding moves a level by one step; a lossless stream cannot
+    // carry it, and a decoder that accepted both would not know which.
+    if ((si.tools & NXVC_TOOL_LOSSLESS) && (si.tools & NXVC_TOOL_SIGN_HIDE))
+        return NXVC_ERR_BITSTREAM;
     // Walk the TLV area; unknown types are skipped (forward compatibility).
     size_t p = kStreamHeaderBytes, end = kStreamHeaderBytes + si.ext_len;
     while (p + 4 <= end) {
@@ -1007,6 +1086,13 @@ static nxvc_status parse_frame_header(nxvc_decoder *d, const u8 *buf,
     fp.ref_slots = br.u8v();
     fp.flags = br.u8v();
     br.u8v();  // reserved
+    fp.nctx = (d->si.tools & NXVC_TOOL_CTX_V2) ? kNumCtxV2 : kNumCtxV1;
+    fp.intra_dir = (d->si.tools & NXVC_TOOL_INTRA_DIR) ? 1 : 0;
+    fp.sdh = (d->si.tools & NXVC_TOOL_SIGN_HIDE) ? 1 : 0;
+    fp.dir_layer = (fp.flags >> 2) & 1;
+    // flags bit 2 selects the layered form of directional intra; it is
+    // meaningless, and therefore illegal, without the tool.
+    if (fp.dir_layer && !fp.intra_dir) return NXVC_ERR_BITSTREAM;
     u32 frame_bytes = br.u32v();
     if (!br.ok) return NXVC_ERR_TRUNCATED;
     if (fp.base_qp > 63) return NXVC_ERR_BITSTREAM;
@@ -1022,13 +1108,15 @@ static nxvc_status parse_frame_header(nxvc_decoder *d, const u8 *buf,
         off += 128;
     }
     resolve_matrices(fp, custom);
-    for (int i = 0; i < 8; ++i) build_default_set(fp.tabs[i], i);
+    for (int i = 0; i < 8; ++i) build_default_set(fp.tabs[i], i, fp.nctx);
     for (int k = 0; k < 8; ++k) {
         if (!(fp.tables_present & (1u << k))) continue;
-        if (off + 120 > frame_bytes) return NXVC_ERR_TRUNCATED;
-        BitR bitr{buf + off, 120, 0};
-        if (!parse_table_set(bitr, k, fp.tabs[k])) return NXVC_ERR_BITSTREAM;
-        off += 120;
+        const size_t tbytes = (size_t)fp.nctx * kNumSym * 5 / 8;
+        if (off + tbytes > frame_bytes) return NXVC_ERR_TRUNCATED;
+        BitR bitr{buf + off, tbytes, 0};
+        if (!parse_table_set(bitr, k, fp.nctx, fp.tabs[k]))
+            return NXVC_ERR_BITSTREAM;
+        off += tbytes;
     }
     fi.frame_number = fp.frame_number;
     fi.base_qp = fp.base_qp;
@@ -1137,7 +1225,7 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
                 return NXVC_ERR_BITSTREAM;
             for (int p = 0; p < np; ++p)
                 reconstruct_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
-                                  tp.tskip);
+                                  tp.tskip, tc.intra_dir, tc.dir_layer);
             store_tile(tc, g, img, (int)k, (int)row);
             off += tp.payload_len;
 
@@ -1156,6 +1244,7 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
             ti.tskip = (u8)tp.tskip;
             ti.wgt = (u8)tp.wgt;
             ti.wm_id = (u8)tp.wm_id;
+            ti.intra_dir = (u8)tc.intra_dir;
             ti.ref_sel = (u8)tp.ref_sel;
             ti.mv_present = (u8)tp.mv_present;
             ti.qp_delta = (i8)tp.qp_delta;

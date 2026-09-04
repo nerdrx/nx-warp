@@ -151,11 +151,21 @@ bool finalize_ctx(CtxTable &t) {
     return true;
 }
 
-void build_default_set(TableSet &ts, int set_index) {
+u16 default_freq(int nctx, int set_index, int c, int s) {
     set_index = clamp_i32(set_index, 0, 7);
+    if (nctx >= kNumCtxV2) return kDefaultFreqV2[set_index][c][s];
+    return kDefaultFreq[set_index][c][s];
+}
+
+void build_default_set(TableSet &ts, int set_index, int nctx) {
+    set_index = clamp_i32(set_index, 0, 7);
+    if (nctx < kNumCtxV1) nctx = kNumCtxV1;
     for (int c = 0; c < kNumCtx; ++c) {
+        // Contexts beyond the model's count are never coded; fill them so the
+        // table object is always well formed.
+        int src = c < nctx ? c : 0;
         for (int s = 0; s < kNumSym; ++s)
-            ts.ctx[c].freq[s] = kDefaultFreq[set_index][c][s];
+            ts.ctx[c].freq[s] = default_freq(nctx, set_index, src, s);
         finalize_ctx(ts.ctx[c]);
     }
 }

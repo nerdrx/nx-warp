@@ -11,12 +11,29 @@ constexpr u32 kProbBits = 10;         // M = 2^10
 constexpr u32 kRansMaxLanes = 32;
 
 // ------------------------------------------------------------- coding units
+enum UnitKind : u8 { UNIT_COEF = 0, UNIT_MODE = 1 };
+
+// The intra mode of block `b` is coded relative to a most-probable mode
+// derived from the already-coded left and above modes of the same plane.
+// Both are inside the same unit, so the derivation only ever looks at data the
+// lane has already produced, whatever the interleaved lane schedule does.
+int mpm_of(const u8 *modes, int nbx, int b);
+// The 8 modes other than `mpm`, ascending: index -> mode.
+int nonmpm_mode(int mpm, int idx);
+int nonmpm_index(int mpm, int mode);
+
 struct Unit {
-    i16 *coef;        // ncoef quantized levels, block-local order
+    i16 *coef;        // UNIT_COEF: ncoef quantized levels, block-local order
     const u8 *scan;   // scan_pos -> block-local index
     u16 ncoef;
-    u8 ctx_cbf;       // kCtxCbfLuma / kCtxCbfChroma
-    u8 ctx_last;      // kCtxLastLuma / kCtxLastChroma
+    u8 ctx_cbf;       // kCtxCbfLuma / kCtxCbfChroma / kCtxCbfDc
+    u8 ctx_last;      // kCtxLastLuma / kCtxLastChroma / kCtxLastDc
+    u8 ctx_level;     // kCtxNone = the banded LEVEL contexts; else a context
+    u8 kind;          // UnitKind
+    u8 *modes;        // UNIT_MODE: nbx*nbx intra modes, raster order
+    u8 nbx;           // UNIT_MODE: blocks per edge
+    u8 ctx_mode;      // UNIT_MODE: kCtxNone = bypass coded, else a context
+    u8 sdh;           // UNIT_COEF: 1 = sign data hiding applies
 };
 
 // --------------------------------------------------------------- lane ops
@@ -39,8 +56,11 @@ class LaneMachine {
 
   private:
     enum Phase : u8 {
-        kCbf, kLast, kLastRaw, kLevel, kEscPrefix, kEscSuffix, kSign, kDone
+        kCbf, kLast, kLastRaw, kLevel, kEscPrefix, kEscSuffix, kSign,
+        kModeSym, kModeFlag, kModeIdx, kHidden, kDone
     };
+    void begin_next_unit();
+    void store_magnitude();
     void begin_unit();
     void begin_levels();
     void advance_pos();
@@ -58,6 +78,10 @@ class LaneMachine {
     int esc_bits_ = 0;       // total suffix bits
     int esc_done_ = 0;       // suffix bits consumed
     u32 esc_acc_ = 0;
+    int mb_ = 0;             // UNIT_MODE: block being coded
+    int mpm_ = 0;
+    i32 sum_abs_ = 0;        // sign data hiding: sum of |level| in the unit
+    bool hide_ = false;      // ... and whether this unit hides a sign
 };
 
 // ------------------------------------------------------------ rANS decoder

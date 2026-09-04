@@ -153,8 +153,13 @@ interleaved UV.
 | 18 | `XFORM_WAVELET` | 5/3 wavelet transform |
 | 19 | `XFORM_4X4_SPLIT` | per-block 4x4 transform split |
 | 20 | `WM_ID` | tiles may set `wm_id != 0` (section 4.1) |
+| 21 | `CTX_V2` | the 16-context entropy model (section 9.3) |
+| 22 | `SIGN_HIDE` | sign data hiding (section 9.7) |
 
-Bits 21-63 are reserved and must be zero. Capability negotiation is an
+Bits 17, 21 and 22 are independent: any subset may be set. `SIGN_HIDE` is
+mutually exclusive with `LOSSLESS` (bit 5) -- hiding a sign spends one level
+step, so the two cannot both be true; a stream setting both is `BITSTREAM`.
+Bits 23-63 are reserved and must be zero. Capability negotiation is an
 intersection: the sender only sets bits the receiver offered.
 
 ---
@@ -179,7 +184,7 @@ frames.
 | 31 | u8 | `quant_matrix` | 0..3 built in, 255 = custom (128 bytes follow) |
 | 32 | u8 | `tables_present` | bit *k*: probability table set *k* is transmitted |
 | 33 | u8 | `ref_slots` | reference slots this frame overwrites (Phase 2) |
-| 34 | u8 | `flags` | bit 0: tile-map reset, bit 1: stereo inter-view, rest reserved |
+| 34 | u8 | `flags` | bit 0: tile-map reset, bit 1: stereo inter-view, bit 2: layered directional intra (section 7.5), rest reserved |
 | 35 | u8 | reserved | must be 0 |
 | 36 | u32 | `frame_bytes` | total byte length of this frame unit, header included |
 
@@ -189,9 +194,11 @@ Then, in this order:
    luma and alpha followed by 64 for chroma, each in raster order inside the
    8x8 block, Q4 (16 == 1.0). Values are clamped to `[1, 32]` on parse.
 2. For *k* = 0..7 in ascending order, if bit *k* of `tables_present` is set:
-   **120 bytes** of probability table deltas for set *k* (section 9.4).
+   **120 bytes** of probability table deltas for set *k*, or **160 bytes** when
+   the stream sets `CTX_V2` (section 9.4).
 
 Constraints: `base_qp <= 63`; `quant_matrix <= 3 || quant_matrix == 255`;
+`flags` bit 2 requires tool bit 17 `INTRA_DIR` (`BITSTREAM` otherwise);
 `frame_bytes >= 40` and `frame_bytes` must not exceed the bytes available. After
 the last tile of the last row, exactly `frame_bytes` bytes must have been
 consumed.
@@ -578,10 +585,18 @@ subsampled chroma.
 
 ---
 
-## 7. Intra prediction: the DC plane
+## 7. Intra prediction
 
-v1 has no directional intra. Every plane of an `INTRA` tile is predicted from a
-low-resolution image of its own block means, coded first, then interpolated.
+Every plane of an `INTRA` tile is predicted from a low-resolution image of its
+own block means -- the **DC plane** -- coded first, then interpolated (7.1-7.3).
+That is the whole of v1, and it stays the base of everything: it is fully
+parallel, needs no wavefront and no cross-block dependency.
+
+When tool bit 17 `INTRA_DIR` is set, each 8x8 block additionally carries an
+**intra mode** (7.4) that may replace the DC-plane prediction with one of eight
+directional predictors built from the block's reconstructed neighbours. Mode 0
+*is* the DC-plane prediction, so `INTRA_DIR` is a strict superset: a tile that
+codes mode 0 everywhere reconstructs exactly as it would without the tool.
 
 ### 7.1 The DC plane
 
@@ -642,6 +657,171 @@ using the same bilinear kernel, and samples outside the picture are dropped.
 For a plane whose `alpha_mode` is 0 or 1 (alpha only) no coefficients are
 coded and the whole tile area is filled with 255 or `alpha_value`.
 
+### 7.4 Directional intra (tool bit 17)
+
+With `INTRA_DIR`, each coded plane carries one **mode unit** (section 9.1)
+holding `nb * nb` intra modes in raster order, and the blocks of that plane are
+reconstructed **in raster order**, each seeing the reconstruction of the ones
+before it.
+
+| mode | name | prediction |
+|---|---|---|
+| 0 | `DC_PLANE` | `pred[y][x]` from 7.2 -- the v1 predictor |
+| 1 | `DC` | `(sum(A[0..7]) + sum(L[0..7]) + 8) >> 4` |
+| 2 | `PLANAR` | HEVC-style, below |
+| 3 | `H` | `L[j]` |
+| 4 | `V` | `A[i]` |
+| 5 | `DDL` | diagonal down-left, 45 deg |
+| 6 | `DDR` | diagonal down-right, 45 deg |
+| 7 | `VR` | vertical-right, 26.6 deg |
+| 8 | `HD` | horizontal-down, 63.4 deg |
+
+**Reference samples (normative).** For the block at `(bx, by)` with origin
+`(x0, y0) = (8*bx, 8*by)`, define
+
+```
+at(x, y):
+    cx = clamp(x, 0, size-1);  cy = clamp(y, 0, size-1)
+    if (cy>>3) < by  or  ((cy>>3) == by and (cx>>3) < bx):
+        return recon[cy][cx]        // a block already reconstructed
+    else:
+        return base[cy][cx]         // section 7.5
+
+TL   = at(x0-1, y0-1)
+A[k] = at(x0+k, y0-1)   for k = 0..15      A[-1] = TL
+L[k] = at(x0-1, y0+k)   for k = 0..15      L[-1] = TL
+```
+
+Coordinates are clamped **into the tile**, and the fallback for anything not
+yet reconstructed is `base`, which is derived from this tile's own DC plane.
+A tile therefore never reads a neighbouring tile: **tiles stay independent**,
+which is what the transport's per-tile loss recovery and the rate controller's
+per-tile ladder both depend on. The top and left borders of a tile read the
+DC-plane prediction, not a neighbour.
+
+**Predictors.** `i` is the column and `j` the row inside the block, 0..7.
+
+```
+PLANAR: P[j][i] = ((7-i)*L[j] + (i+1)*A[8] + (7-j)*A[i] + (j+1)*L[8] + 8) >> 4
+
+DDL:    k = i + j
+        P[j][i] = k == 14 ? (A[14] + 3*A[15] + 2) >> 2
+                          : (A[k] + 2*A[k+1] + A[k+2] + 2) >> 2
+
+DDR:    i > j:  k = i - j;  P = (A[k-2] + 2*A[k-1] + A[k] + 2) >> 2
+        i < j:  k = j - i;  P = (L[k-2] + 2*L[k-1] + L[k] + 2) >> 2
+        i == j:             P = (A[0]   + 2*TL     + L[0] + 2) >> 2
+
+VR:     z = 2*i - j;   k = i - (j >> 1)
+        z >= 0, even:  P = (A[k-1] + A[k] + 1) >> 1
+        z >= 0, odd:   P = (A[k-2] + 2*A[k-1] + A[k] + 2) >> 2
+        z == -1:       P = (L[0]   + 2*TL     + A[0] + 2) >> 2
+        z <  -1:  q = j - 2*i;  P = (L[q-1] + 2*L[q-2] + L[q-3] + 2) >> 2
+
+HD:     z = 2*j - i;   k = j - (i >> 1)
+        z >= 0, even:  P = (L[k-1] + L[k] + 1) >> 1
+        z >= 0, odd:   P = (L[k-2] + 2*L[k-1] + L[k] + 2) >> 2
+        z == -1:       P = (A[0]   + 2*TL     + L[0] + 2) >> 2
+        z <  -1:  q = i - 2*j;  P = (A[q-1] + 2*A[q-2] + A[q-3] + 2) >> 2
+```
+
+Every mode but 0 is a weighted average of references that are already in
+`[0, maxval]`, so no clamp is needed and none is applied. Every index used is
+within `A[-1..15]` / `L[-1..15]`.
+
+**Reconstruction** is 7.3 with `pred[y][x]` replaced by `P[j][i]`, and the
+result is written to `recon` as well as to the output plane, because the next
+block in raster order reads it.
+
+### 7.5 The two forms: replace and layer
+
+`base` in 7.4 -- both the reference fallback and what mode 0 predicts -- is
+selected by **frame-header `flags` bit 2**:
+
+| bit 2 | form | `base` | mode 0 predicts | what the modes predict |
+|---|---|---|---|---|
+| 0 | replace | `pred` (7.2) | `pred[y][x]` | the samples |
+| 1 | layer | all-zero | 0 | the DC-plane residual |
+
+In the layered form the block's reconstruction is
+`clamp(pred[y][x] + P[j][i] + res, 0, maxval)` and what is stored into `recon`
+for later blocks is that value **minus** `pred[y][x]`, i.e. the reconstructed
+DC-plane residual.
+
+Both forms make mode 0 identical to v1. The replace form is what the reference
+encoder emits by default: measured on the quality harness it is better at every
+operating point (ref/RESULTS-intra.md), because on this content the DC plane's
+smooth interpolation is exactly what a directional predictor wants to be rid
+of, not something it wants to correct. The layered form is kept in the syntax
+because it is one flag bit and it is the better shape for content whose
+low-frequency structure the DC plane already captures well.
+
+`flags` bit 2 without tool bit 17 is a `BITSTREAM` error (`r14`).
+
+### 7.6 What this costs a GPU decoder (note for Pass B)
+
+7.1-7.3 are fully parallel: one barrier per plane, every block predicted at
+once. 7.4 is a **wavefront**, and the numbers below are the schedule the Pass B
+shader has to implement. They assume the module's own layout: **256 threads per
+64x64 tile, 4 threads per 8x8 block**.
+
+Block `(bx, by)` reads its left neighbour `(bx-1, by)`, its above neighbour
+`(bx, by-1)` and its **above-right** neighbour `(bx+1, by-1)` (mode 5 `DDL`
+reaches `A[15]`). With an above-right dependency the independent set is not the
+anti-diagonal `bx + by` but `2*by + bx`, so the luma plane of a `res_level` 0
+tile is a **22-step** wavefront, not the 15 steps an anti-diagonal would give.
+
+| plane | steps | blocks per step, mean | threads active, mean |
+|---|---|---|---|
+| luma, `res_level` 0 (8x8 blocks) | 22 | 2.91 | 11.6 / 256 = **4.5 %** |
+| 4:4:4 chroma, `res_level` 0 | 22 | 2.91 | 4.5 % |
+| 4:2:0 chroma (4x4 blocks) | 10 | 1.60 | 2.5 % |
+
+Barriers per tile, against one per plane for the DC plane alone:
+
+| | v1 (7.1-7.3) | with `INTRA_DIR` |
+|---|---|---|
+| 4:4:4, `res_level` 0 | 3 | 3 + 66 = **69** |
+| 4:2:0, `res_level` 0 | 3 | 3 + 42 = **45** |
+
+The arithmetic does not grow -- a directional predictor is a handful of adds
+and shifts per sample, less than the DC plane's bilinear interpolation. What
+grows is **serialization**: 22 rounds of it where there was one, at 4.5 %
+occupancy. This is exactly the cost PAPER design principle 2 exists to refuse,
+and it is why 7.4 is a tool bit rather than a mandatory part of v1.
+
+**Three restrictions that reduce it, with what each costs in rate.** Measured
+on the harness sequence at 2048x1024 4:4:4, one frame, QP 8/16/24, against the
+7.4 derivation as written (build with `-DNXVC_DIR_SCHED_EXPERIMENT` and set
+`NXVC_DIR_SCHED` to reproduce; ref/RESULTS-intra.md section 5 has the table):
+
+| restriction | steps | occupancy | rate cost |
+|---|---|---|---|
+| as written | 22 | 4.5 % | -- |
+| **A**: drop the above-right reference (clamp `A[k]`, `k >= 8`, to `base`) | 15 | 6.7 % | **+0.24 %** |
+| **B**: confine the dependency to 32x32 sub-tiles | 10 | 10.0 % | +1.6 % |
+| **C**: 16x16 super-blocks, their 4 blocks predicted in parallel from the super-block border | 10 | 10.0 % | not measured |
+| **A + B** | 7 | 14.3 % | +1.8 % |
+| **B + C** | 4 | 25.0 % | not measured |
+| **A + B + C** | 3 | 33.3 % | not measured |
+
+Restriction **A** is essentially free -- a quarter of a percent for a third of
+the barriers -- because `DDL` is a minority mode and its above-right samples
+are the ones furthest from the block anyway. **B** is a one-line change to the
+`at()` test in 7.4 (the "already reconstructed" predicate gains a same-sub-tile
+term) and is the same idea as tile independence applied one level down, so it
+needs no new concept and no new syntax field. **A + B** brings the luma plane
+to 7 steps and 14.3 % occupancy -- a 3.1x reduction in barriers and a 3.2x
+increase in occupancy -- for 1.8 % of rate, which against directional intra's
+own 22.5 points is a good trade.
+
+**7.4 as written is the normative derivation.** It is deliberately the
+best-rate variant, because the right time to pay rate for barriers is against a
+*measured* Pass B barrier cost on the target part, and that number does not
+exist yet. When it does, A and A+B are the two candidates, and adopting either
+is a `SYNTAX.md` change and a conformance-vector regeneration, not a new tool
+bit: it narrows what `INTRA_DIR` means rather than adding to it.
+
 ---
 
 ## 8. Resampling kernel
@@ -685,9 +865,19 @@ A tile's payload is a list of **coding units**, in this order:
 ```
 for each coded plane p in (Y, Co, Cg [, A if alpha_mode == 2]):
     unit: the DC plane of p          (nb*nb coefficients)
+    if INTRA_DIR:
+        unit: the mode unit of p     (nb*nb intra modes, section 9.6)
     for by in 0..nb-1, bx in 0..nb-1 (raster):
         unit: block (bx, by) of p    (64 coefficients)
 ```
+
+The mode unit is a whole unit rather than a symbol attached to each block on
+purpose. A block's mode is coded relative to the modes of its left and above
+neighbours (9.6), and those live in the *same* unit, so the derivation only
+ever reads values the same lane has already produced -- whatever the
+interleaved lane schedule does with the other units. Attaching the mode to the
+block unit would make the prediction depend on the decode order *between*
+lanes, which the schedule does not define.
 
 The number of lanes is `N = 2^nsub_log2`. The number of **active** lanes is
 `min(N, unit_count)`. Lane `l` owns units `l, l+N, l+2N, ...` and decodes them
@@ -724,19 +914,33 @@ subgroup cluster.
 
 ### 9.3 Contexts and alphabets
 
-There are **12 contexts of 16 symbols** each. Every context's 16 frequencies are
-10-bit, at least 1, and sum to exactly 1024, so every symbol is always decodable
-and a hostile stream cannot produce an undefined symbol.
+There are **12 contexts of 16 symbols** each, or **16** when the stream sets
+tool bit 21 `CTX_V2`. Every context's 16 frequencies are 10-bit, at least 1,
+and sum to exactly 1024, so every symbol is always decodable and a hostile
+stream cannot produce an undefined symbol.
 
-| index | use |
-|---|---|
-| 0 | `CBF`, luma and alpha planes |
-| 1 | `CBF`, chroma planes |
-| 2 | `LAST`, luma and alpha planes |
-| 3 | `LAST`, chroma planes |
-| 4-11 | `LEVEL`, band x previous-level class |
+| index | use | model |
+|---|---|---|
+| 0 | `CBF`, luma and alpha planes | both |
+| 1 | `CBF`, chroma planes | both |
+| 2 | `LAST`, luma and alpha planes | both |
+| 3 | `LAST`, chroma planes | both |
+| 4-11 | `LEVEL`, band x previous-level class | both |
+| 12 | `CBF`, DC-plane units | v2 only |
+| 13 | `LAST`, DC-plane units | v2 only |
+| 14 | `LEVEL`, DC-plane units (one context, no banding) | v2 only |
+| 15 | `MODE`, the intra mode symbol (9.6) | v2 only |
 
-A DC-plane unit uses the same contexts as its plane.
+In the **v1 model** a DC-plane unit uses the same contexts as its plane, and
+the intra mode symbol is bypass-coded (9.6).
+
+In the **v2 model** the DC plane gets contexts 12-14 of its own. It is a dense,
+low-frequency image of block means and an AC block is a sparse high-frequency
+residual; sharing a context made each of them pay for the other's statistics.
+Contexts 0-11 keep their *meaning* in both models but not their *statistics*,
+because in v2 they no longer see the DC plane at all -- so the two models have
+**separate built-in table families** (`kDefaultFreq` and `kDefaultFreqV2` in
+`ref/src/default_tables.inc`), both pinned by the conformance vectors.
 
 **CBF** (coded block flag), one per unit: symbol 0 means every coefficient of
 the unit is zero and the unit is finished; symbol 1 means coefficients follow.
@@ -803,8 +1007,10 @@ Eight table sets exist per frame. Set *k* is either the built-in default *k* (in
 conformance vectors) or, if bit *k* of `tables_present` is set, a transmitted
 table.
 
-A transmitted set is **120 bytes**: 12 contexts x 16 symbols x 5 bits, MSB-first
-bit packing, contexts in index order, symbols in symbol order. Each 5-bit value
+A transmitted set is **120 bytes** (12 contexts x 16 symbols x 5 bits) in the
+v1 context model and **160 bytes** (16 x 16 x 5) under `CTX_V2`: MSB-first bit
+packing, contexts in index order, symbols in symbol order. The built-in default
+it is a delta against is the same set index of the same model's family. Each 5-bit value
 `d` is an index into a log-domain multiplier table applied to the built-in
 default of the *same set index*:
 
@@ -819,8 +1025,8 @@ f[s] = clamp((default[s] * kDeltaMul[d] + 128) >> 8, 1, 32767)
 ```
 
 and then the row is normalized to sum exactly 1024 by this deterministic
-procedure (the one place a decoder divides; it runs 12 x 8 times per frame, not
-per symbol):
+procedure (the one place a decoder divides; it runs 12 x 8 -- or 16 x 8 --
+times per frame, not per symbol):
 
 ```
 sum = sum(f)
@@ -833,6 +1039,64 @@ while total > 1024:  subtract 1 from the largest g[s] with g[s] > 1;   total--
 
 The decoder then builds `cum[s]` (prefix sums) and the 1024-entry
 slot-to-symbol table used by the decode step.
+
+### 9.6 The mode unit (tool bit 17)
+
+A mode unit carries the `nb * nb` intra modes of one plane, in raster order.
+For block `b` (raster index), the **most probable mode** is
+
+```
+left  = (b % nb) > 0  ? modes[b - 1]  : DC_PLANE
+above = (b / nb) > 0  ? modes[b - nb] : DC_PLANE
+mpm   = left == above ? left : min(left, above)
+```
+
+so `mpm` is `DC_PLANE` for the first block of a plane, and for any block whose
+neighbours are outside the plane.
+
+**Without `CTX_V2`** the mode is two bypass fields:
+
+| field | bits | meaning |
+|---|---|---|
+| `is_mpm` | 1 | 1: `mode = mpm`, and nothing follows |
+| `idx` | 3 | present when `is_mpm == 0`: `mode = nonmpm(mpm, idx)` |
+
+**With `CTX_V2`** it is one symbol in context 15, alphabet 0..8:
+
+```
+sym == 0 : mode = mpm
+sym >= 1 : mode = nonmpm(mpm, sym - 1)
+```
+
+Symbols 9..15 in context 15 are illegal (`BITSTREAM`). `nonmpm(mpm, i)` is the
+`i`-th of the eight modes **other than** `mpm`, in ascending mode order.
+
+The unit is coded in full before its lane moves on, which is what lets the MPM
+read `modes[b-1]` and `modes[b-nb]` without any assumption about the order the
+lanes interleave in (section 9.1).
+
+### 9.7 Sign data hiding (tool bit 22)
+
+For a coding unit with `CBF == 1` whose `LAST` is at scan position **4 or
+higher**, the sign at scan position `LAST` is **not coded**. It is
+
+```
+sum = sum of |level| over scan positions 0 .. LAST
+sign(level at LAST) = (sum & 1) ? negative : positive
+```
+
+Everything else is unchanged: every other nonzero level still carries its own
+sign bit immediately after the level. The hidden position is `LAST` rather than
+the lowest nonzero because `LAST` is known to the decoder the moment the `LAST`
+symbol is decoded and is nonzero by construction, so no lookahead is needed --
+the decoder stores the magnitude, finishes the unit, and applies the parity.
+
+The threshold of 4 exists so the encoder always has several coefficients to
+spend the parity on: it makes the parity agree by moving exactly one level by
+one step, choosing the move with the smallest squared error. That is an
+encoder decision and is not normative.
+
+`SIGN_HIDE` applies to DC-plane units as well as residual blocks.
 
 ### 9.5 rANS
 
@@ -977,8 +1241,17 @@ for every vector and writes no samples. The suite covers a bad magic, an
 unimplemented mandatory tool bit, `bit_depth` 10, the 32x32 tile profile, a
 `payload_len` past the frame, `res_level` 3, a truncated rANS payload, a skip
 bit for a column beyond the picture, a reserved tile-header bit, an `INTER`
-tile, `wm_id` without its tool bit, a wrong `row_index` and a short
-`frame_bytes`.
+tile, `wm_id` without its tool bit, a wrong `row_index`, a short
+`frame_bytes`, `flags` bit 2 without `INTRA_DIR`, YCoCg-R declared with 4:2:0
+chroma, a `CTX_V2` table set that overruns the tile rows, and `LOSSLESS`
+together with `SIGN_HIDE`.
+
+**The v2 intra tools.** `v36`-`v44` pin them: `INTRA_DIR` alone in 4:4:4 and
+4:2:0, `INTRA_DIR` with `CTX_V2`, `CTX_V2` alone, the layered form, every v2
+feature at once with transmitted 160-byte table sets, the combination with
+`res_level` cycling and transform skip, `SIGN_HIDE` alone, and the reference
+encoder's shipped default configuration. `v01`-`v35` are **byte-identical** to
+the v1.2 set: all three tools are additive and off unless their bit is set.
 
 `v23_custom_tables420` and `v34_wm_id420_tables` pin the probability-table
 normalization of section 9.4 — the one place a decoder divides — so a decoder
@@ -1198,6 +1471,61 @@ inconsistent. Each is a decision, not an interpretation.
     should fall back) against `BITSTREAM` (corruption — the transport should
     re-request), and a decoder that swaps them makes the wrong recovery
     decision.
+
+39. **Directional intra keeps the DC plane, and mode 0 is the DC plane.**
+    The alternative was to replace the DC plane with coded edge samples, the
+    way H.264 and HEVC do. Keeping it costs 3-7 % of a frame (Appendix B) and
+    buys three things that are worth more than that: a **tile-independent**
+    fallback for the tile's top and left borders, so no tile ever reads
+    another tile and per-tile loss recovery and the rate controller's per-tile
+    ladder both keep working; a per-block escape hatch that makes the tool a
+    strict superset of v1, so it can never be worse than v1 on a block; and a
+    predictor that is still correct when a block's neighbours were themselves
+    predicted badly. Measured, the tool is worth **-22.5 points of BD-rate**
+    against x264 intra on the harness 4:4:4 sequence (+65.8 % to +43.3 %) and
+    -16.6 on 4:2:0.
+
+40. **Replace, not layer.** Two forms were implemented and measured
+    (section 7.5). Predicting the samples directly beats predicting the
+    DC-plane residual at every operating point tested, by 2-3 % of rate. The
+    reason is specific to what the DC plane is: it is a smooth bilinear
+    interpolation of block means, and on piecewise-constant content that
+    smoothness is the error a directional predictor exists to remove, not a
+    base it wants to correct. The layered form is one `flags` bit and is kept
+    in the syntax because the argument reverses on content whose
+    low-frequency structure the DC plane captures well; nothing in v1.3 emits
+    it by default.
+
+41. **The intra mode is a whole coding unit, not a field on the block unit.**
+    The MPM reads the left and above modes. Units are distributed round-robin
+    over the rANS lanes and the schedule defines the order of *operations*,
+    not the order in which two different lanes reach their `k`-th unit -- so a
+    mode attached to a block unit could be predicted from a mode that had not
+    been decoded yet. Collecting a plane's modes into one unit makes the
+    prediction read only values the *same lane* has already produced, which is
+    true under every schedule. It costs one extra unit per plane.
+
+42. **The v2 context model splits the DC plane out, and the two models have
+    separate table families.** The DC plane is a dense low-frequency image of
+    block means; an AC block is a sparse high-frequency residual. Sharing
+    `CBF`, `LAST` and the eight banded `LEVEL` contexts made each pay for the
+    other's statistics. v2 gives the DC plane contexts 12-14 and the intra
+    mode context 15. Because contexts 0-11 no longer see the DC plane, their
+    statistics change, so `kDefaultFreqV2` is a separate k-means run rather
+    than the v1 family with four rows appended -- and a stream without bit 21
+    keeps the v1 family, byte for byte. Measured at a further **-2.3 points**
+    of BD-rate on 4:4:4 on top of directional intra, most of it the mode
+    context.
+
+43. **Sign data hiding hides the sign at `LAST`, not at the lowest nonzero.**
+    HEVC hides the sign of the first coefficient of a 4x4 group, which its
+    decoder can do because it decodes a whole group before reconstructing it.
+    This syntax codes each sign immediately after its level, so hiding a sign
+    the decoder has not reached yet would need lookahead. `LAST` is known as
+    soon as the `LAST` symbol is decoded, is nonzero by construction, and its
+    sign can simply be applied at the end of the unit. Measured at **-0.6 %**
+    BD-rate: the byte count goes slightly *up* (the parity adjustment tends to
+    raise a level) and the PSNR goes up more.
 
 ## Appendix B: where the bits go
 

@@ -12,6 +12,14 @@ normative.
 layers. The full v1 syntax is parsed and validated — a Phase 2 stream is refused
 cleanly rather than misparsed — but only `INTRA` tiles are reconstructed.
 
+**Syntax revision v1.3** adds the three v2 intra tools — directional intra
+(bit 17), the 16-context entropy model (bit 21) and sign data hiding (bit 22).
+All three are additive: every stream a v1.2 build wrote is still byte-identical
+and still decodes, and `v01`-`v35` of the conformance set are unchanged. The
+encoder turns all three **on by default**, so a decoder that does not implement
+them refuses the handshake; `nxv-enc --intra-dir off --ctx v1 --no-sign-hide`
+writes a v1.2 stream.
+
 ## Build
 
 ```sh
@@ -46,7 +54,15 @@ nxv-info --in out.nxv [--tiles]
 `nxv-enc` extras: `--frames N`, `--tskip off|on|auto`, `--nsub 0..5|auto`,
 `--matrix 0..3`, `--wm 0..3`, `--chroma-qp-off N`, `--no-custom-tables`,
 `--tile-420`, `--rgb`, `--color-space unspecified|yuv709l|yuv709f`, `--stats`,
-`--quiet`, and the rate-distortion controls `--no-rdo` / `--rdo-lambda F`.
+`--quiet`, the rate-distortion controls `--no-rdo` / `--rdo-lambda F`, and the
+v1.3 tool switches:
+
+| flag | default | effect |
+|---|---|---|
+| `--intra-dir on\|off\|layer` | `on` | directional intra; `layer` predicts the DC-plane residual instead of the samples (measured worse, see below) |
+| `--intra-dir-cand N` | 2 | modes RD-checked per block after the SATD sort; 8 is exhaustive and worth 0.1 % for 2.2x the encode time |
+| `--ctx v1\|v2` | `v2` | 12 or 16 entropy contexts |
+| `--no-sign-hide` | off | code every sign |
 
 Rate-distortion quantization is **on by default**. It is encoder-only work -- a
 trellis over the level syntax, `ref/src/codec.cpp` `rdoq_unit()` -- so a stream
@@ -111,13 +127,14 @@ tile  := tile_header [mv] [alpha] payload
 | stream header | 64 bytes + `ext_len` bytes of TLVs |
 | frame header | 40 bytes (+128 custom matrices, +120 per table set) |
 | tile-row header | 12 bytes (`frame_number`, `row_index`, `tile_count`, 64-bit skip bitmap) |
+| probability table set | 120 bytes, or 160 with `CTX_V2` |
 | tile header | 8 bytes (+2 MV, +1 constant alpha) |
 | tile payload | interleaved rANS, `4 * lanes` bytes of initial state first |
 
 Fixed parameters: 64x64 tiles, 8x8 blocks, 8x8 integer DCT with 9-bit
 Loeffler-derived constants, QP 0..63 with `step = 2^(QP/6)` as a Q4 table,
-interleaved rANS with a 32-bit state, 10-bit probabilities, 12 contexts of 16
-symbols, and 1 to 8 lanes per tile (`nsub_log2`; 8 is one subgroup cluster and
+interleaved rANS with a 32-bit state, 10-bit probabilities, 12 or 16 contexts
+of 16 symbols, and 1 to 8 lanes per tile (`nsub_log2`; 8 is one subgroup cluster and
 the value a GPU decoder should assume as the maximum).
 
 ## Source map
@@ -126,12 +143,12 @@ the value a GPU decoder should assume as the maximum).
 |---|---|
 | `src/common.h` | constants, contexts, tile geometry |
 | `src/tables.cpp` | QP steps, weighting matrices, scans, LAST classes, table normalization |
-| `src/default_tables.inc` | the 8 built-in probability table sets |
+| `src/default_tables.inc` | the 8 built-in probability table sets, v1 (12 contexts) and v2 (16) |
 | `src/transform.h/.cpp` | 8x8 integer DCT/IDCT and the bilinear resampler |
 | `src/entropy.h/.cpp` | rANS and the per-lane syntax state machine |
 | `src/codec.cpp` + `src/codec_impl.inc` | headers, encoder, decoder |
 | `tools/` | `nxv-enc`, `nxv-dec`, `nxv-info` |
-| `../tests/ref/gentables.cpp` | regenerates `default_tables.inc` (dev tool) |
+| `../tests/ref/gentables.cpp` | regenerates `default_tables.inc` (dev tool); `nxv-gentables v1\|v2\|both` |
 | `../tests/ref/vectors.cpp` | generates and checks the conformance vectors |
 | `../tests/ref/test_saturate.cpp` | range safety of the normative decode path |
 | `RESULTS-intra.md` | the Phase 1 intra measurements, in full |
@@ -139,6 +156,14 @@ the value a GPU decoder should assume as the maximum).
 The per-lane syntax state machine in `entropy.cpp` is the piece the Vulkan Pass A
 shader mirrors: one `LaneMachine` per rANS lane, driven identically by the
 encoder and the decoder, so the two can never disagree about the symbol order.
+
+Directional intra lives in three places: `predict_block()` / `build_refs()` in
+`codec.cpp` are the normative predictor and reference derivation,
+`reconstruct_plane()` is the decoder's raster loop, and `analyze_plane_dir()`
+is the encoder's fused mode-decision-plus-quantization pass. The mode symbols
+are a `UNIT_MODE` coding unit in `entropy.cpp`; `hide_sign_unit()` is the
+encoder half of sign data hiding, whose decoder half is the parity fixup in
+`LaneMachine::advance_pos()`.
 
 ## Tests and conformance vectors
 
@@ -159,8 +184,8 @@ cmake --preset asan-ubsan && cmake --build --preset asan-ubsan
 ctest --preset asan-ubsan -R 'ref\.'
 ```
 
-`tests/vectors/` holds 35 committed `.nxv` vectors and `vectors.md5`, which pins
-both the MD5 of each bitstream and the MD5 of its decoded planes, plus 13
+`tests/vectors/` holds 44 committed `.nxv` vectors and `vectors.md5`, which pins
+both the MD5 of each bitstream and the MD5 of its decoded planes, plus 17
 **rejection vectors** and `rejects.md5`, which pin the exact status each
 malformed stream must be refused with. `VERSION`, `UNSUPPORTED`, `BITSTREAM`
 and `TRUNCATED` are not interchangeable: a transport falls back on one and
@@ -223,37 +248,59 @@ for us):
 `vr-mixed-1024` against `x264 --keyint 1`, over the 100-400 Mbit band the
 criterion is stated in:
 
-| | BD-rate | mean deficit | verdict |
-|---|---|---|---|
-| yuv444p | +65.79 % | -5.937 dB | FAIL (needs -1.0 dB) |
-| yuv420p | +43.69 % | -4.678 dB | FAIL |
+| | v1.2 BD-rate | v1.2 mean deficit | v1.3 BD-rate | v1.3 mean deficit | verdict |
+|---|---|---|---|---|---|
+| yuv444p | +65.79 % | -5.937 dB | **+40.35 %** | **-4.047 dB** | FAIL (needs -1.0 dB) |
+| yuv420p | +43.69 % | -4.678 dB | **+25.86 %** | **-2.988 dB** | FAIL |
 
 The full record — every before/after number, the tools that were measured and
-rejected and why, the GPU cost of the one that is worth having, and encode
-times — is **[`RESULTS-intra.md`](RESULTS-intra.md)**. The short version:
+rejected and why, the GPU cost of the wavefront, and encode times — is
+**[`RESULTS-intra.md`](RESULTS-intra.md)**. The short version:
 
-* Rate-distortion quantization is now on by default and is worth **-8.8 %
-  BD-rate / +0.92 dB**, encoder only, at 2.7x encode time and no decoder cost.
-* An in-tile intra **pyramid** was measured before being built: a 16x16 level
-  buys 0.84 dB of residual *energy* for 6 % more coded values, a 32x32 level
-  2.37 dB for 31 %. Not worth it. Not implemented.
-* **Directional intra** is the largest tool left, worth about -21 % on the luma
-  coefficients with oracle neighbours and realistically -15 % (~1 dB). It needs
-  a 15-step in-tile wavefront that runs the workgroup at roughly 7 % occupancy
-  during prediction, with 15 barriers per plane per tile where the DC plane
-  needs one. Measured, documented, **not** implemented; `INTRA_DIR` stays a v2
-  tool bit and the decision belongs to a real Pass B barrier measurement.
-* The **8-byte tile header** is 1.1-3.0 % of a frame in this band, not the
-  13.7 % Appendix B measured at QP 36. A 4-byte form is not worth a tool bit
-  here; it is still a lever for the low-rate rate-control regime.
-* Even taking every implementable candidate optimistically, that is about
-  -30 % against the -40 % the gate needs. **Closing it needs a tool v1 does not
-  have.**
+* **Directional intra** (tool bit 17) is built and on by default, and it is
+  the largest single tool in the codec: **-22.5 BD-rate points on 4:4:4**
+  (+65.8 % to +43.3 %) and -16.6 on 4:2:0, about 1.5 dB. Nine modes per 8x8
+  block from reconstructed neighbours *inside the tile*, with the DC plane
+  still coded as the tile-border neighbour source, so tiles stay independent.
+  Mode 0 is the DC-plane prediction, which makes the tool a strict superset of
+  v1 per block.
+* It costs the decoder **nothing arithmetically** — decode time is unchanged —
+  and costs it a 22-step in-tile wavefront at 4.5 % occupancy and 69 barriers
+  per 4:4:4 tile. `RESULTS-intra.md` section 7 and `SYNTAX.md` 7.6 price three
+  restrictions that cut that to 7 steps and 14.3 % occupancy for 1.8 % of
+  rate, so Pass B has a menu rather than an estimate.
+* The **16-context model** (bit 21) gives the DC plane its own CBF/LAST/LEVEL
+  contexts and the intra mode its own context: a further -2.3 points on 4:4:4,
+  most of it the mode context. Streams without the bit keep the v1 12-context
+  tables byte for byte.
+* **Sign data hiding** (bit 22) is worth -0.6 points.
+* Rate-distortion quantization (v1.2) is on by default and worth -8.8 % /
+  +0.92 dB, encoder only, at 2.7x encode time and no decoder cost.
+* An in-tile intra **pyramid** was measured before being built and rejected;
+  so was a 4-byte tile header. The largest untried item is now a **4x4
+  transform split**, which is exactly the regime directional prediction
+  creates.
+* Encode is **2.9-3.4x** slower with the v2 tools; decode is unchanged.
 
 One caveat that belongs next to the verdict: all of this material is synthetic
 and 75 % of its pixels are horizontally constant, which is close to the best
 case for x264 and the worst case for a block-mean predictor plus an 8x8 DCT.
-The next measurement that matters is a real capture.
+It is also close to the best case for directional intra, which is part of why
+the tool beat its own prediction by half again. The next measurement that
+matters is a real capture.
+
+### The v1.3 default, and how to get v1.2 back
+
+```sh
+nxv-enc --in in.yuv --w 2048 --h 1024 --pix yuv444p --qp 16 --out out.nxv
+#   == --intra-dir on --ctx v2 --sign-hide   (tools 17, 21, 22 set)
+
+nxv-enc ... --intra-dir off --ctx v1 --no-sign-hide     # a v1.2 stream
+```
+
+`--lossless` forces `--no-sign-hide`: hiding a sign spends one level step, so
+it cannot coexist with bit-exact coding, and a stream declaring both
+`LOSSLESS` and `SIGN_HIDE` is refused (`r17`).
 
 ### Gap analysis (as first written, and how it held up)
 
@@ -290,6 +337,16 @@ frame. Item 3 stands unmeasured. What none of the four saw is that the deficit
 is a roughly constant ~1.8x bit-efficiency factor spread across the quantizer,
 the context model and the predictor, with no single dominant term -- which is
 why no single tool on the list closes it.
+
+**And how *that* held up.** It was right that no single tool closes the gate
+and wrong about the ordering: item 1 turned out to be worth 1.5 dB rather than
+the ~1 dB the oracle measurement predicted, and item 3's context model, which
+stood unmeasured, is worth 0.2. Directional intra beat its own proxy because
+the proxy could not see the two things that matter most about it -- that mode 0
+is the DC plane, so a block never pays for a bad mode, and that a
+well-predicted block improves the references of every block after it in the
+tile. Three tools later the factor is down from ~1.8x to ~1.4x on 4:4:4 and
+~1.26x on 4:2:0, and the remaining 3-4 dB still has no single dominant term.
 
 What was fixed to get here, in order of effect: quantizing the DC plane at
 `qp >> 1` instead of `qp - 6` (+3 dB at QP 38 *and* -10% bits — coarse block

@@ -1,5 +1,12 @@
 # Phase 1 intra: measurements
 
+> **Read section 0 first.** Sections 1-6 are the v1.2 record: the Phase 1 gate
+> as it stood with the DC-plane predictor and the 12-context entropy model,
+> and the measurement that said directional intra was the largest tool left.
+> Sections 0 and 5b-9 are the v1.3 record: that tool built and measured, plus
+> the 16-context model and sign data hiding. Neither record was rewritten to
+> agree with the other; where they differ, section 0 is the current number.
+
 Everything here was produced by `tools/quality/compare.py` against
 `x264 --keyint 1 --tune zerolatency` through ffmpeg n9.0.1, on
 `vr-mixed-1024` (2048x1024 side-by-side, 6 frames, 90 fps, `synthetic:mixed:seed1`)
@@ -13,6 +20,168 @@ On this sequence at 90 fps that band is 0.53-2.12 bits per pixel, which is a
 Appendix B was measured in. That difference turns out to matter, and it is why
 the conclusions below differ from the ones the gap analysis in `README.md`
 predicted.
+
+---
+
+## 0. The v2 intra tools (v1.3)
+
+Three tool bits, each measured on its own with `tools/quality/compare.py`
+against the same anchor and the same command line as section 6, on the same
+`vr-mixed-1024` sequence. Result files are under
+`$NXQ_SCRATCH/results/intra-v2/`.
+
+| tool | bit | what it is |
+|---|---|---|
+| `INTRA_DIR` | 17 | nine intra modes per 8x8 block, MPM coded, from reconstructed neighbours inside the tile (SYNTAX.md 7.4) |
+| `CTX_V2` | 21 | 16 entropy contexts: dedicated CBF/LAST/LEVEL for the DC plane, plus a mode context (SYNTAX.md 9.3) |
+| `SIGN_HIDE` | 22 | the sign at scan position `LAST` is the parity of the unit's absolute levels (SYNTAX.md 9.7) |
+
+### The gate, cumulative
+
+Each row adds one tool to the row above. `v1.2` is the previous state of this
+document, re-measured on this build to confirm it reproduces exactly (it does:
++65.79 % / -5.937 dB, byte for byte the section 1 numbers).
+
+**4:4:4**
+
+| | BD-rate vs x264 intra | mean deficit | worst deficit | verdict |
+|---|---|---|---|---|
+| v1.2 (`--intra-dir off --ctx v1 --no-sign-hide`) | +65.79 % | -5.937 dB | -6.588 dB at 181.9 Mbit/s | FAIL |
+| `+ INTRA_DIR` | +43.27 % | -4.430 dB | -5.297 dB at 100.0 Mbit/s | FAIL |
+| `+ CTX_V2` | +40.96 % | -4.110 dB | -4.613 dB at 181.9 Mbit/s | FAIL |
+| `+ SIGN_HIDE` (**shipped default**) | **+40.35 %** | **-4.047 dB** | -4.546 dB at 181.9 Mbit/s | FAIL |
+
+**4:2:0**
+
+| | BD-rate vs x264 intra | mean deficit | worst deficit | verdict |
+|---|---|---|---|---|
+| v1.2 | +43.69 % | -4.678 dB | -5.335 dB at 100.0 Mbit/s | FAIL |
+| `+ INTRA_DIR` | +27.07 % | -3.144 dB | -4.239 dB at 100.0 Mbit/s | FAIL |
+| `+ CTX_V2` | +26.42 % | -3.055 dB | -3.915 dB at 100.0 Mbit/s | FAIL |
+| `+ SIGN_HIDE` (**shipped default**) | **+25.86 %** | **-2.988 dB** | -3.823 dB at 100.0 Mbit/s | FAIL |
+
+Verbatim, the final gate lines. 4:4:4:
+
+```
+  BD-rate of final on PSNR-Y (negative is better):
+    vs x264-intra     +40.35 %   BD-PSNR -4.111 dB   (overlap 45.14-56.59 dB)
+
+  Phase 1 gate (PAPER.md 3.11: within 1.0 dB of x264 intra, 100-400 Mbit):
+    FAIL: worst -4.546 dB at 181.9 Mbit/s, mean -4.047 dB over 100.0-303.1 Mbit/s
+```
+
+4:2:0:
+
+```
+  BD-rate of final on PSNR-Y (negative is better):
+    vs x264-intra     +25.86 %   BD-PSNR -3.123 dB   (overlap 45.14-56.59 dB)
+
+  Phase 1 gate (PAPER.md 3.11: within 1.0 dB of x264 intra, 100-400 Mbit):
+    FAIL: worst -3.823 dB at 100.0 Mbit/s, mean -2.988 dB over 100.0-290.3 Mbit/s
+```
+
+**The gate is still not met.** It moved by **1.89 dB** on 4:4:4 and **1.69 dB**
+on 4:2:0 -- against the 1.0 dB section 4 predicted for directional intra, and
+against the 5 dB the gate needs. What is left is 3.0-4.0 dB, and section 8 says
+where it might come from.
+
+### Operating points, 4:4:4, shipped default
+
+| QP | Mbit/s | PSNR-Y | SSIM-Y | VMAF | | v1.2 Mbit/s | v1.2 PSNR-Y |
+|---|---|---|---|---|---|---|---|
+| 0 | 356.4 | 56.59 | 0.9988 | 99.4 | | 399.8 | 55.70 |
+| 4 | 282.1 | 54.68 | 0.9983 | 99.4 | | 318.1 | 53.92 |
+| 8 | 220.4 | 52.30 | 0.9975 | 99.3 | | 247.5 | 51.80 |
+| 12 | 174.8 | 49.30 | 0.9961 | 99.0 | | 195.4 | 48.87 |
+| 16 | 135.9 | 45.78 | 0.9932 | 98.0 | | 151.4 | 45.70 |
+| 20 | 105.4 | 42.42 | 0.9887 | 95.5 | | 115.3 | 42.34 |
+| 24 | 81.9 | 39.12 | 0.9824 | 92.1 | | 85.4 | 39.01 |
+
+(The exact per-QP figures are in `$NXQ_SCRATCH/results/intra-v2/final-yuv444p.json`;
+the table is rounded from that file.)
+
+Every point is both smaller **and** better than the v1.2 point at the same QP,
+which is what a prediction tool that leaves the quantizer alone should look
+like.
+
+### corpus/
+
+BD-rate against x264 intra on the corpus clips, both configurations measured on
+this build over the same QP ladder (`--qp 4,10,16,22,28,34`, anchors
+`10,16,22,28,34,40`). These are 256 px clips that never reach the 100-400 Mbit
+band, so the gate declines to give a verdict on them by design; the BD-rate is
+the point. **The ladder differs from section 1's, so these numbers are not
+comparable with the section 1 corpus table** -- the before/after pair here is
+internally consistent and that is what it is for.
+
+| sequence | v1.2 | shipped default | change |
+|---|---|---|---|
+| `mono-mixed-256.yuv444p` | +92.25 % | **+65.28 %** | -27.0 points |
+| `panel-static-256.yuv444p` | +119.96 % | **+70.80 %** | -49.2 points |
+| `panel-static-256.yuv420p` | +85.15 % | **+55.72 %** | -29.4 points |
+
+`panel-static-256` gains most, which is the predicted shape: it is flat panels
+and bitmap text, the content whose residual a directional predictor drives to
+exactly zero and whose block means the DC plane could only ever smooth over.
+
+### Per-tool detail
+
+**`INTRA_DIR`** is by far the largest of the three: -22.5 points of BD-rate on
+4:4:4 and -16.6 on 4:2:0, about **1.5 dB**. That is half again the "-12 to
+-15 % BD-rate, about 1 dB" section 2 predicted from the oracle-neighbour rate
+proxy. The prediction was low for a reason worth recording: the proxy scored
+the best of 8 modes per block *against* the DC plane and charged mode
+signalling at 3 bits/block, but it could not see two things that turn out to
+matter more than the mode choice itself. First, mode 0 **is** the DC plane, so
+the tool is a per-block superset and never pays for a bad mode; the proxy
+assumed a forced choice. Second, once a block is predicted well its neighbours
+are predicted from a *better reconstruction*, which compounds down the tile --
+an effect no single-block oracle can measure.
+
+The mode decision is SATD over all nine modes, then a real `D + lambda*R`
+comparison over the best two plus mode 0. Widening that to all nine
+(`--intra-dir-cand 8`) is worth 0.1 % of rate for 2.2x the encode time, so the
+default is 2.
+
+**`CTX_V2`** is worth -2.3 points on 4:4:4 and -0.65 on 4:2:0 *on top of*
+directional intra. Measured on its own, without `INTRA_DIR`, it is worth about
+-1 % -- the DC-plane contexts alone are a small win, and most of the 2.3 points
+is the **mode context**, which replaces 1 or 4 bypass bits per block with a
+trained symbol. That is why the two tools are worth more together than apart,
+and why the bootstrap v2 tables (a copy of the v1 family with four rows bolted
+on) were slightly *worse* than v1 until `nxv-gentables` retrained the family
+with the DC plane and the mode decision actually in the corpus.
+
+**`SIGN_HIDE`** is worth -0.6 points on both. It is the smallest of the three
+and it is the only one whose byte count goes the *wrong* way: at QP 16 the
+frame is 0.13 % **larger** and 0.125 dB better, because the parity adjustment
+usually raises a level rather than dropping one. Net of the rate-quality slope
+(about 7 dB per rate octave here) that is a gain, but a small one.
+
+### What it costs
+
+One 2048x2048 4:4:4 frame, single threaded, under the standard CPU discipline.
+
+| | encode | decode | bytes |
+|---|---|---|---|
+| QP 12, v1.2 default | 0.86 s | 0.11 s | 536 640 |
+| QP 12, v2 default | 2.46 s | 0.10 s | 466 780 |
+| QP 24, v1.2 default | 0.68 s | 0.08 s | 235 044 |
+| QP 24, v2 default | 2.30 s | 0.09 s | 207 136 |
+| QP 24, v2, `--intra-dir-cand 8` | 5.17 s | 0.09 s | 206 932 |
+
+**Encode is 2.9-3.4x**, on top of the 2.7x the RD trellis already cost, and
+that is inherent rather than sloppy: the tile is analysed twice (once to choose
+a table set, once for the real RD decision) and each block runs nine SATDs and
+three full quantize-plus-reconstruct candidates, in a loop that cannot be
+vectorized across blocks because each block's references are the previous
+block's output.
+
+**Decode is unchanged.** That number deserves the emphasis: on a CPU,
+directional intra is free on the decoder. Nine predictors of adds and shifts
+are less arithmetic than the bilinear interpolation the DC plane already does.
+The cost is not arithmetic, it is **scheduling**, and it lands entirely on the
+GPU -- see section 5b.
 
 ---
 
@@ -331,6 +500,8 @@ per nonzero coefficient by construction).
 
 ---
 
+---
+
 ## 3. Encode and decode time
 
 One 2048x2048 frame, single-threaded, under the standard CPU discipline.
@@ -377,6 +548,13 @@ needs a coding tool the v1 syntax does not have**, and the honest candidates
 are directional intra (with the wavefront cost the paper wanted to avoid) plus a
 context model with room for the DC plane.
 
+> **How this held up.** Both candidates were built and measured; see section 0.
+> The conclusion was right about *which* tools and wrong about *how much*:
+> directional intra is worth 1.5 dB rather than 1, and the context model 0.2
+> rather than nothing. Section 8 is the post-v1.3 version of this table.
+
+---
+
 ---
 
 ## 5. An honesty note about the material
@@ -417,3 +595,119 @@ chrt -i 0 taskset -c 28-31 nice -n 19 \
 
 Add `--codec-enc "nxv-enc --no-rdo" --codec-dec nxv-dec --codec-name nxv-nordo`
 for the before column.
+
+**Section 0 (v1.3)** was produced the same way, with `--codec-enc` selecting
+the tools and `--codec-name` naming the row, into
+`$NXQ_SCRATCH/results/intra-v2/`:
+
+```sh
+#   v1.2 baseline
+--codec-enc "nxv-enc --intra-dir off --ctx v1 --no-sign-hide" --codec-name v1
+#   + INTRA_DIR
+--codec-enc "nxv-enc --intra-dir on  --ctx v1 --no-sign-hide" --codec-name dir
+#   + CTX_V2
+--codec-enc "nxv-enc --intra-dir on  --ctx v2 --no-sign-hide" --codec-name nosdh
+#   + SIGN_HIDE  (the shipped default; `nxv-enc` alone is the same thing)
+--codec-enc "nxv-enc --intra-dir on  --ctx v2"                --codec-name final
+```
+
+and the corpus rows with `--qp 4,10,16,22,28,34 --anchor-qp 10,16,22,28,34,40`
+against `$NXQ_SCRATCH/corpus/<name>.<pix>.json`.
+
+The section 7 schedule variants need a build with the development hook:
+
+```sh
+cmake -S . -B build-sched -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_CXX_FLAGS=-DNXVC_DIR_SCHED_EXPERIMENT
+NXVC_DIR_SCHED=3 nxv-enc ...      # and the same value on nxv-dec
+```
+
+---
+
+## 7. GPU cost accounting for Pass B (v1.3)
+
+The full schedule, the barrier counts and three measured mitigations are in
+**`docs/SYNTAX.md` 7.6**, which is where the Pass B agent should read them
+because that is the normative document. The summary:
+
+* Blocks depend on left, above and **above-right** (mode `DDL` reaches
+  `A[15]`), so the independent set is `2*by + bx`, not the anti-diagonal.
+  The luma plane of a `res_level` 0 tile is a **22-step** wavefront.
+* At 256 threads per tile and 4 threads per 8x8 block, mean occupancy during
+  prediction is **2.91 blocks = 11.6 / 256 = 4.5 %**, peak 6.2 %.
+* Barriers per tile: **69** for 4:4:4 and **45** for 4:2:0, against 3 either
+  way for the DC plane alone.
+* The arithmetic does not grow. Section 0's decode timings show it: on a CPU
+  the tool is free. All of the cost is serialization.
+
+Three restrictions were implemented behind `-DNXVC_DIR_SCHED_EXPERIMENT` and
+measured on 2048x1024 4:4:4, one frame, default configuration:
+
+| `NXVC_DIR_SCHED` | restriction | QP 8 | QP 16 | QP 24 | steps | occupancy |
+|---|---|---|---|---|---|---|
+| 0 | as specified | 299 048 B / 52.248 dB | 181 288 B / 45.798 dB | 103 940 B / 39.077 dB | 22 | 4.5 % |
+| 1 | no above-right reference | 299 762 / 52.238 | 181 762 / 45.814 | 103 894 / 39.053 | 15 | 6.7 % |
+| 2 | 32x32 sub-tile independence | 303 692 / 52.272 | 184 506 / 45.829 | 105 764 / 39.116 | 10 | 10.0 % |
+| 3 | both | 304 198 / 52.269 | 184 956 / 45.835 | 105 890 / 39.116 | 7 | 14.3 % |
+
+**Dropping the above-right reference costs 0.24 % of rate and removes a third
+of the barriers.** Adding 32x32 sub-tile independence takes it to 7 steps and
+14.3 % occupancy -- 3.1x fewer barriers, 3.2x the occupancy -- for 1.8 %.
+Against directional intra's own 22.5 points, 1.8 % is cheap.
+
+**The shipped syntax is `NXVC_DIR_SCHED = 0`, the best-rate variant, and the
+hook is compiled out of a normal build** so a conformant encoder cannot emit
+anything else. That is deliberate: the previous version of this document
+recommended deciding the wavefront "against a real Pass B barrier measurement
+rather than against this estimate", and that measurement still does not exist.
+What has changed is that the menu is now priced. When Pass B measures the
+barrier cost on the target part, restriction 1 and restriction 1+2 are the two
+candidates, and adopting either narrows what `INTRA_DIR` means rather than
+adding a tool bit -- a `SYNTAX.md` edit and a vector regeneration.
+
+A fourth option the brief raised, **16x16 super-blocks whose four blocks are
+predicted in parallel from the super-block's border**, was modelled but not
+implemented: it gives 10 steps on its own and 4 steps combined with 32x32
+sub-tiles (25 % occupancy), but it is the only one of the four that degrades
+the *prediction distance* -- the bottom-right block of a super-block would
+reference samples 16 px away instead of 8 -- so its rate cost is the one that
+cannot be guessed from the others and it should be measured before it is
+believed.
+
+---
+
+## 8. What is left after v1.3
+
+3.0 dB on 4:2:0 and 4.0 dB on 4:4:4, or about -30 % more BD-rate. Measured or
+bounded, in descending order:
+
+| candidate | measured value | status |
+|---|---|---|
+| directional intra, 9 modes | **-22.5 / -16.6 BD-rate points (1.5 / 1.7 dB)** | **done**, tool bit 17 |
+| 16-context model | **-2.3 / -0.65 points** | **done**, tool bit 21 |
+| RD quantization | -8.8 % BD-rate (0.92 dB) | done (v1.2) |
+| per-frame trained tables | -7.4 % | done, was already on |
+| sign data hiding | **-0.6 points** | **done**, tool bit 22 |
+| 4x4 transform split | unmeasured; the residual after directional prediction is sharper and more local, which is the regime a 4x4 transform is for | the largest untried item |
+| adaptive dead zone per context | expected ~0, and encoder-only | subsumed by the RD trellis by construction: the trellis already chooses levels against the real rate model, which is what a tuned dead zone approximates |
+| adaptive vs static probabilities | 5-8 % per PAPER 1.6 | rejected by design (rANS encodes backwards) |
+| flat frame matrix | +0.15 to +0.27 dB | available, deliberately not the default |
+| 2- or 3-level intra pyramid | 0.84-2.37 dB of residual *energy* at +6 to +31 % coefficients | measured (section 2), not worth it -- and directional intra now takes the structure it was after |
+| 4-byte tile header | <=1.5 % in this band | measured, not worth it |
+
+Of the three the brief listed for the "still failing" case, **sign data hiding
+was the cheapest and is done**; the **adaptive dead zone** is argued away above
+rather than measured, because with the trellis on it has no mechanism left to
+exploit; and the **4x4 transform split** is the one worth building next. It is
+also the most expensive: a per-block split flag, a second scan and LAST class
+family, four sub-units where there was one, and a decoder change. It should be
+measured the way directional intra finally was -- built, not proxied -- because
+this document's record is now two for two on rate proxies being wrong about
+magnitude in both directions.
+
+Note also that **transform skip is worth re-measuring**. Section 2 recorded
+that `--tskip` was a net loss at every QP and explained it: transform skip only
+pays once the prediction is good enough for the residual to be sparse in the
+sample domain, "which on this content means directional prediction". That
+prediction now exists. `v42_dir_res_tskip420` exercises the combination, but
+nobody has run the rate comparison.

@@ -32,8 +32,15 @@ extern "C" {
  *   2 : per-tile `wm_id` in tile-header word1 bits 26-27; bit_depth 10 is
  *       reserved-and-rejected; IDCT odd-part rotation specified as an exact
  *       two-word product (no pixel change)
+ *   3 : v2 intra tools -- tool bit 17 INTRA_DIR (a nine-mode directional
+ *       predictor per 8x8 block, MPM coded, in a per-plane mode unit),
+ *       frame-header flag bit 2 (the layered form of it), and tool bit 21
+ *       CTX_V2 (16 contexts: dedicated DC-plane CBF/LAST/LEVEL and a mode
+ *       context; transmitted table sets grow from 120 to 160 bytes), and
+ *       tool bit 22 SIGN_HIDE (the sign at scan position `last` is carried
+ *       by the parity of the unit's absolute levels)
  */
-#define NXVC_BITSTREAM_MINOR 2
+#define NXVC_BITSTREAM_MINOR 3
 
 /* "nxvc_ref <major>.<minor> (syntax v1.<minor>)" -- a static string, safe to
  * call before any object exists.  Used by the Python bindings to check that
@@ -103,13 +110,16 @@ typedef enum nxvc_tile_mode {
 #define NXVC_TOOL_XFORM_WAVELET   (1ull << 18)
 #define NXVC_TOOL_XFORM_4X4_SPLIT (1ull << 19)
 #define NXVC_TOOL_WM_ID           (1ull << 20)
+#define NXVC_TOOL_CTX_V2          (1ull << 21)
+#define NXVC_TOOL_SIGN_HIDE       (1ull << 22)
 
 /* Tools this reference decoder implements. */
 #define NXVC_TOOLS_SUPPORTED                                                  \
     (NXVC_TOOL_INTRA_DC_PLANE | NXVC_TOOL_TRANSFORM_SKIP |                    \
      NXVC_TOOL_RES_LEVEL | NXVC_TOOL_CHROMA444 | NXVC_TOOL_ALPHA |            \
      NXVC_TOOL_LOSSLESS | NXVC_TOOL_CUSTOM_TABLES | NXVC_TOOL_NSUB_VAR |      \
-     NXVC_TOOL_PER_TILE_CHROMA | NXVC_TOOL_YCOCGR | NXVC_TOOL_WM_ID)
+     NXVC_TOOL_PER_TILE_CHROMA | NXVC_TOOL_YCOCGR | NXVC_TOOL_WM_ID |        \
+     NXVC_TOOL_INTRA_DIR | NXVC_TOOL_CTX_V2 | NXVC_TOOL_SIGN_HIDE)
 
 /* ---------------------------------------------------------------- images */
 /* 8-bit planar image.  plane[0]=Y/R', plane[1]=Co/G', plane[2]=Cg/B',
@@ -155,6 +165,15 @@ typedef struct nxvc_config {
                                    n = try qp_delta in [-n, +n]            */
     uint32_t wm_id;             /* per-tile weighting-matrix id 0..3, or
                                    255 = let the encoder choose per tile   */
+
+    /* --- additive since syntax v1.3.  These two DO change the bitstream:
+     * each sets a tool bit in the stream header and a decoder without it
+     * refuses the stream at the handshake. */
+    uint32_t intra_dir;         /* 0 = off, 1 = directional intra (tool 17) */
+    uint32_t intra_dir_layer;   /* 1: the layered form (frame flag bit 2)   */
+    uint32_t ctx_v2;            /* 0 = 12 contexts, 1 = 16 (tool 21)        */
+    uint32_t intra_dir_cand;    /* modes RD-checked per block, 0 = default  */
+    uint32_t sign_hide;         /* 1 = sign data hiding (tool 22)           */
 } nxvc_config;
 
 /* Where the bits went, for the most recent encoded frame. */
@@ -188,6 +207,7 @@ typedef struct nxvc_tile_info {
     uint8_t alpha_value;
     uint8_t qp;                 /* resolved luma QP                        */
     uint8_t wm_id;              /* per-tile weighting matrix, 0 = frame's  */
+    uint8_t intra_dir;          /* 1: this tile carries per-block modes    */
 } nxvc_tile_info;
 
 typedef struct nxvc_stream_info {

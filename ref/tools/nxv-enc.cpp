@@ -22,6 +22,11 @@ static void usage() {
         "  --no-rdo             plain dead-zone quantizer (default: RD trellis)\n"
         "  --rdo-lambda F       RD lambda scale (default 0.30)\n"
         "  --qp-search N        try per-tile qp_delta in [-N, +N] (default 0)\n"
+        "  --intra-dir on|off|layer  directional intra (tool 17); `layer`\n"
+        "                       predicts the DC-plane residual instead\n"
+        "  --intra-dir-cand N   modes RD-checked per block (default 2)\n"
+        "  --ctx v1|v2          12 or 16 entropy contexts (tool 21)\n"
+        "  --no-sign-hide       code every sign (default: hide one per unit)\n"
         "  --chroma-qp-off N    chroma QP offset\n"
         "  --custom-tables      derive and transmit probability tables\n"
         "  --tile-420           code 4:2:0 tiles inside a 4:4:4 stream\n"
@@ -42,6 +47,9 @@ int main(int argc, char **argv) {
     int tskip = 0, nsub = 255, stats = 0;  // nsub 255 = auto lane count
     int color_space = 0;
     int rdo = 1, rdo_lambda_q8 = 0, qp_search = 0, wm = 0;
+    // These mirror nxvc_config_default(): the v2 intra tools are on.
+    int intra_dir = 1, intra_dir_layer = 0, ctx_v2 = 1, dir_cand = 0;
+    int sign_hide = 1;
 
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
@@ -77,6 +85,22 @@ int main(int argc, char **argv) {
         else if (a == "--no-rdo") rdo = 0;
         else if (a == "--rdo-lambda") rdo_lambda_q8 = (int)(std::atof(val()) * 256.0 + 0.5);
         else if (a == "--qp-search") qp_search = std::atoi(val());
+        else if (a == "--intra-dir") {
+            std::string v = val();
+            if (v == "on") { intra_dir = 1; intra_dir_layer = 0; }
+            else if (v == "layer") { intra_dir = 1; intra_dir_layer = 1; }
+            else if (v == "off") intra_dir = 0;
+            else { std::fprintf(stderr, "--intra-dir: on|off|layer\n"); return 2; }
+        }
+        else if (a == "--intra-dir-cand") dir_cand = std::atoi(val());
+        else if (a == "--sign-hide") sign_hide = 1;
+        else if (a == "--no-sign-hide") sign_hide = 0;
+        else if (a == "--ctx") {
+            std::string v = val();
+            if (v == "v2") ctx_v2 = 1;
+            else if (v == "v1") ctx_v2 = 0;
+            else { std::fprintf(stderr, "--ctx: v1|v2\n"); return 2; }
+        }
         else if (a == "--wm") { std::string v = val(); wm = v == "auto" ? 255 : std::atoi(v.c_str()); }
         else if (a == "--chroma-qp-off") chroma_qp_off = std::atoi(val());
         else if (a == "--tskip") {
@@ -105,6 +129,11 @@ int main(int argc, char **argv) {
     cfg.rdo_lambda_q8 = (uint32_t)rdo_lambda_q8;
     cfg.qp_search = (uint32_t)qp_search;
     cfg.wm_id = (uint32_t)wm;
+    cfg.intra_dir = (uint32_t)intra_dir;
+    cfg.intra_dir_layer = (uint32_t)intra_dir_layer;
+    cfg.intra_dir_cand = (uint32_t)dir_cand;
+    cfg.ctx_v2 = (uint32_t)ctx_v2;
+    cfg.sign_hide = (uint32_t)sign_hide;
     cfg.chroma_qp_off = chroma_qp_off;
     cfg.lossless = (uint32_t)lossless;
     cfg.transform_skip = (uint32_t)tskip;

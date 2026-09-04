@@ -58,14 +58,49 @@ inline const u8 *scan_table(int n, bool tskip) {
 }
 
 // ---------------------------------------------------------------- contexts
+// The v1 model has 12 contexts.  The v2 model (tool bit 21, CTX_V2) adds four:
+// dedicated CBF/LAST/LEVEL contexts for the DC plane, whose statistics are
+// nothing like an AC block's, and one context for the intra mode symbol.
+// Contexts 0..11 keep their meaning in both models, but their *statistics*
+// differ (v2 no longer mixes the DC plane into them), so the two models have
+// separate built-in table families.
 enum : int {
     kCtxCbfLuma = 0,
     kCtxCbfChroma = 1,
     kCtxLastLuma = 2,
     kCtxLastChroma = 3,
     kCtxLevelBase = 4,
-    kNumCtx = 12,
+    kNumCtxV1 = 12,
+    kCtxCbfDc = 12,
+    kCtxLastDc = 13,
+    kCtxLevelDc = 14,
+    kCtxMode = 15,
+    kNumCtxV2 = 16,
+    kNumCtx = 16,   // storage; the coded count is kNumCtxV1 or kNumCtxV2
     kNumSym = 16
+};
+
+// "no context selected" for Unit::ctx_level / Unit::ctx_mode.  Context 0 is
+// kCtxCbfLuma, which is never a legal LEVEL or MODE context, so 0 is an
+// unambiguous sentinel -- and, unlike a signed -1, it cannot become 255 and
+// index TableSet::ctx out of bounds if a caller forgets to set the field.
+constexpr int kCtxNone = 0;
+
+// ------------------------------------------------------------ intra modes
+// Per 8x8 block when tool bit 17 (INTRA_DIR) is on.  Mode 0 reproduces the v1
+// predictor exactly, which makes directional intra a strict superset: a tile
+// that wants v1 behaviour codes mode 0 everywhere.
+enum : int {
+    kIntraDcPlane = 0,  // the bilinear DC-plane prediction (v1)
+    kIntraDc = 1,       // mean of the top and left neighbours
+    kIntraPlanar = 2,   // HEVC-style planar
+    kIntraH = 3,        // horizontal
+    kIntraV = 4,        // vertical
+    kIntraDdl = 5,      // diagonal down-left (45 deg)
+    kIntraDdr = 6,      // diagonal down-right (45 deg)
+    kIntraVr = 7,       // vertical-right (26.6 deg)
+    kIntraHd = 8,       // horizontal-down (63.4 deg)
+    kNumIntraModes = 9
 };
 
 // LAST symbol -> [base, raw_bits]
@@ -88,6 +123,12 @@ inline int level_class(int magnitude) {
     return magnitude == 0 ? 0 : (magnitude == 1 ? 1 : 2);
 }
 
+// Sign data hiding (tool bit 22): a unit whose LAST is at scan position
+// kSdhMinLast or beyond does not code the sign at that position; it is the
+// parity of the sum of the unit's absolute levels.  The threshold exists so
+// that the encoder always has several coefficients to spend the parity on.
+constexpr int kSdhMinLast = 4;
+
 constexpr int kEscSym = 15;   // LEVEL escape symbol
 constexpr int kEscOrder = 3;  // Exp-Golomb order
 constexpr int kEscMaxPrefix = 16;
@@ -103,14 +144,18 @@ struct TableSet {
 };
 
 // Built-in default frequencies: [set][ctx][sym], each row sums to 1024.
-extern const u16 kDefaultFreq[8][kNumCtx][kNumSym];
+extern const u16 kDefaultFreq[8][kNumCtxV1][kNumSym];
+// The v2 family, retrained with the DC plane and the mode symbol split out.
+extern const u16 kDefaultFreqV2[8][kNumCtxV2][kNumSym];
 
 // Deterministic normalization of a 16-entry frequency row to sum 1024,
 // every entry >= 1.  Normative (used when parsing custom tables).
 void normalize_freqs(u16 f[kNumSym]);
 // Build cum + slot2sym from freq.  Returns false if the row is illegal.
 bool finalize_ctx(CtxTable &t);
-void build_default_set(TableSet &ts, int set_index);
+void build_default_set(TableSet &ts, int set_index, int nctx = kNumCtxV1);
+// The built-in frequency row for (set, ctx) under a model of `nctx` contexts.
+u16 default_freq(int nctx, int set_index, int c, int s);
 
 // Custom-table log-domain delta multipliers, Q8 (256 == 1.0):
 // kDeltaMul[d + 16] = round(256 * 2^(d/4)) for d in [-16, 15].

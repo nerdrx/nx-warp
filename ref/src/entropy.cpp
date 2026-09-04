@@ -14,6 +14,35 @@ static void eg3_encode(u32 v, int &j, u32 &suffix, int &bits) {
     suffix = n - (1u << b);
 }
 
+// ------------------------------------------------------------ intra modes
+int mpm_of(const u8 *modes, int nbx, int b) {
+    int bx = b % nbx, by = b / nbx;
+    int left = bx > 0 ? modes[b - 1] : kIntraDcPlane;
+    int above = by > 0 ? modes[b - nbx] : kIntraDcPlane;
+    if (left == above) return left;
+    return left < above ? left : above;
+}
+
+int nonmpm_mode(int mpm, int idx) {
+    int n = 0;
+    for (int m = 0; m < kNumIntraModes; ++m) {
+        if (m == mpm) continue;
+        if (n == idx) return m;
+        ++n;
+    }
+    return kIntraDcPlane;
+}
+
+int nonmpm_index(int mpm, int mode) {
+    int n = 0;
+    for (int m = 0; m < kNumIntraModes; ++m) {
+        if (m == mpm) continue;
+        if (m == mode) return n;
+        ++n;
+    }
+    return 0;
+}
+
 // ------------------------------------------------------------ LaneMachine
 void LaneMachine::init(const Unit *units, int nunits, int lane, int nlanes,
                        bool encoding) {
@@ -31,24 +60,41 @@ void LaneMachine::init(const Unit *units, int nunits, int lane, int nlanes,
 
 void LaneMachine::begin_unit() {
     u_ = &units_[ui_];
+    if (u_->kind == UNIT_MODE) {
+        mb_ = 0;
+        if (u_->nbx == 0) { begin_next_unit(); return; }
+        mpm_ = mpm_of(u_->modes, u_->nbx, 0);
+        phase_ = u_->ctx_mode != kCtxNone ? kModeSym : kModeFlag;
+        return;
+    }
     phase_ = kCbf;
+}
+
+void LaneMachine::begin_next_unit() {
+    ui_ += stride_;
+    if (ui_ >= nunits_) phase_ = kDone;
+    else begin_unit();
 }
 
 void LaneMachine::begin_levels() {
     pos_ = last_;
     prev_class_ = 0;
+    sum_abs_ = 0;
+    // The hidden sign is the one at scan position `last`, which is known as
+    // soon as LAST is decoded and is always nonzero.  Its value is settled at
+    // the end of the unit, when the parity of the whole unit is known.
+    hide_ = u_->sdh != 0 && last_ >= kSdhMinLast;
     phase_ = kLevel;
 }
 
 void LaneMachine::advance_pos() {
-    prev_class_ = level_class((int)(mag_ < 0 ? -mag_ : mag_));
+    i32 m = mag_ < 0 ? -mag_ : mag_;
+    prev_class_ = level_class((int)m);
+    sum_abs_ += m;
     if (pos_ == 0) {
-        ui_ += stride_;
-        if (ui_ >= nunits_) {
-            phase_ = kDone;
-        } else {
-            begin_unit();
-        }
+        if (hide_ && (sum_abs_ & 1))
+            u_->coef[u_->scan[last_]] = (i16)(-u_->coef[u_->scan[last_]]);
+        begin_next_unit();
     } else {
         --pos_;
         phase_ = kLevel;
@@ -89,9 +135,34 @@ bool LaneMachine::next(Op &op) {
             op.value = encoding_ ? (u16)(last_ - kLastBase[last_cls_]) : 0;
             return true;
         }
+        case kModeSym: {
+            op.kind = OP_SYM;
+            op.arg = (u8)u_->ctx_mode;
+            op.value = 0;
+            if (encoding_) {
+                int m = u_->modes[mb_];
+                op.value = (u16)(m == mpm_ ? 0 : 1 + nonmpm_index(mpm_, m));
+            }
+            return true;
+        }
+        case kModeFlag: {
+            op.kind = OP_BYPASS;
+            op.arg = 1;
+            op.value = encoding_ ? (u16)(u_->modes[mb_] == mpm_) : 0;
+            return true;
+        }
+        case kModeIdx: {
+            op.kind = OP_BYPASS;
+            op.arg = 3;
+            op.value =
+                encoding_ ? (u16)nonmpm_index(mpm_, u_->modes[mb_]) : 0;
+            return true;
+        }
         case kLevel: {
             op.kind = OP_SYM;
-            op.arg = (u8)level_ctx(pos_, prev_class_);
+            op.arg = (u8)(u_->ctx_level != kCtxNone
+                              ? u_->ctx_level
+                              : level_ctx(pos_, prev_class_));
             op.value = 0;
             if (encoding_) {
                 i32 q = u_->coef[u_->scan[pos_]];
@@ -136,18 +207,64 @@ bool LaneMachine::next(Op &op) {
             if (encoding_) op.value = (u16)(u_->coef[u_->scan[pos_]] < 0);
             return true;
         }
+        case kHidden:
+            return false;  // unreachable: kHidden never asks for an operation
         default:
             return false;
     }
 }
 
+// A magnitude has been decoded at pos_.  Normally its sign follows; for the
+// one hidden position the coefficient is stored provisionally positive and its
+// sign is settled from the unit's parity in advance_pos().
+void LaneMachine::store_magnitude() {
+    if (hide_ && pos_ == last_) {
+        u_->coef[u_->scan[pos_]] = (i16)mag_;
+        advance_pos();
+        return;
+    }
+    phase_ = kSign;
+}
+
+// Commit the mode just decoded for block mb_ and move on.
+static inline void mode_step(u8 *modes, int nbx, int &mb, int &mpm, int mode,
+                             bool &done) {
+    modes[mb] = (u8)mode;
+    ++mb;
+    done = (mb >= nbx * nbx);
+    if (!done) mpm = mpm_of(modes, nbx, mb);
+}
+
 bool LaneMachine::feed(u32 v) {
     switch (phase_) {
+        case kModeSym: {
+            if (v >= (u32)kNumIntraModes) return false;
+            int m = v == 0 ? mpm_ : nonmpm_mode(mpm_, (int)v - 1);
+            bool done = false;
+            mode_step(u_->modes, u_->nbx, mb_, mpm_, m, done);
+            if (done) begin_next_unit();
+            return true;
+        }
+        case kModeFlag: {
+            if (v > 1) return false;
+            if (v == 0) { phase_ = kModeIdx; return true; }
+            bool done = false;
+            mode_step(u_->modes, u_->nbx, mb_, mpm_, mpm_, done);
+            if (done) begin_next_unit(); else phase_ = kModeFlag;
+            return true;
+        }
+        case kModeIdx: {
+            if (v > 7) return false;
+            int m = nonmpm_mode(mpm_, (int)v);
+            bool done = false;
+            mode_step(u_->modes, u_->nbx, mb_, mpm_, m, done);
+            if (done) begin_next_unit(); else phase_ = kModeFlag;
+            return true;
+        }
         case kCbf: {
             if (v > 1) return false;
             if (v == 0) {
-                ui_ += stride_;
-                if (ui_ >= nunits_) phase_ = kDone; else begin_unit();
+                begin_next_unit();
                 return true;
             }
             if (u_->ncoef == 1) {
@@ -191,7 +308,7 @@ bool LaneMachine::feed(u32 v) {
                 advance_pos();
                 return true;
             }
-            phase_ = kSign;
+            store_magnitude();
             return true;
         }
         case kEscPrefix: {
@@ -216,7 +333,7 @@ bool LaneMachine::feed(u32 v) {
             u32 val = n - (1u << kEscOrder);
             if (val > 32752u) return false;
             mag_ = (i32)val + 15;
-            phase_ = kSign;
+            store_magnitude();
             return true;
         }
         case kSign: {
@@ -252,6 +369,7 @@ static bool encode_ops(const std::vector<u8> &lane_of, const std::vector<Op> &op
         int l = lane_of[i];
         u32 f, c;
         if (op.kind == OP_SYM) {
+            if (op.arg >= kNumCtx) return false;
             const CtxTable &t = tabs.ctx[op.arg];
             f = t.freq[op.value];
             c = t.cum[op.value];
@@ -371,6 +489,7 @@ bool count_units(const Unit *units, int nunits, int nlanes,
             if (!lanes[l].next(op)) continue;
             any = true;
             ++n;
+            if (op.kind == OP_SYM && op.arg >= kNumCtx) return false;
             if (op.kind == OP_SYM && hist) hist[op.arg][op.value]++;
             if (!lanes[l].feed(op.value)) return false;
         }
@@ -396,6 +515,7 @@ bool decode_units(const Unit *units, int nunits, int nlanes,
             any = true;
             u32 v;
             if (op.kind == OP_SYM) {
+                if (op.arg >= kNumCtx) return false;
                 if (!rd.decode_sym(l, tabs.ctx[op.arg], v)) return false;
             } else {
                 if (!rd.decode_bypass(l, op.arg, v)) return false;
