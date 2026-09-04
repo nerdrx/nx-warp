@@ -7,8 +7,10 @@
 namespace nxvc {
 
 constexpr u32 kRansL = 1u << 16;      // lower bound of the state interval
-constexpr u32 kProbBits = 10;         // M = 2^10
 constexpr u32 kRansMaxLanes = 32;
+// The renormalization guard: x < freq << kRansShift keeps the encoded state
+// below 2^32 for every legal freq <= kProbTotal - 15.
+constexpr u32 kRansShift = 32 - kProbBits;
 
 // ------------------------------------------------------------- coding units
 enum UnitKind : u8 { UNIT_COEF = 0, UNIT_MODE = 1 };
@@ -43,6 +45,14 @@ struct Unit {
     // own lane has already produced (SYNTAX.md 9.1).
     u8 split_present;
     u8 *split_out;
+    // Tool bit 25 (CTX_V3).  `ucls` is the unit's statistical class, derived
+    // by both sides from the unit's position and never transmitted; `ctx_v3`
+    // says to derive CBF/LAST from it and the lane's own previous unit.
+    // These live beside the split fields on purpose: one coding unit carries
+    // both the detail package's per-block split flag and the entropy
+    // package's lane conditioning state, and neither reads the other.
+    u8 ucls;          // kUclsLuma / kUclsChroma / kUclsDc
+    u8 ctx_v3;        // 1 = derive CBF/LAST from ucls and the lane state
 };
 
 // --------------------------------------------------------------- lane ops
@@ -75,6 +85,10 @@ class LaneMachine {
     void begin_unit();
     void begin_levels();
     void advance_pos();
+    void finish_coef_unit(int cbf);
+    int ctx_cbf() const;
+    int ctx_last() const;
+    int ctx_level(int scan_pos, int prev_class) const;
 
     const Unit *units_ = nullptr;
     int nunits_ = 0, ui_ = 0, stride_ = 1;
@@ -95,6 +109,8 @@ class LaneMachine {
     int mpm_ = 0;
     i32 sum_abs_ = 0;        // sign data hiding: sum of |level| in the unit
     bool hide_ = false;      // ... and whether this unit hides a sign
+    // v3: whether this lane's previous unit of each class was coded.
+    u8 prev_cbf_[kNumUcls] = {0, 0, 0};
 };
 
 // ------------------------------------------------------------ rANS decoder

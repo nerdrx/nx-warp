@@ -483,6 +483,34 @@ on every input, and nothing else in the pipeline tests it. That is also why
 
 ---
 
+## F10 -- the headers harness bounds a plane at 4096, but a stereo plane is 8192 (harness bug)
+
+**Target:** `nxvc_headers_fuzz`
+**Reproducer:** `fuzz/regressions/nxvc_headers_fuzz/F6-stereo-plane-width.bin`
+**Site:** `fuzz/nxvc_headers_fuzz.cpp`, the plane-geometry invariant
+
+Found by a 180-second campaign while the syntax v1.5 entropy package was being
+measured. The input is an ordinary stereo header -- `width` 4096, `eyes` 2,
+`tools` `0xc5`, and **no** v1.5 tool bit -- and it trips
+
+```cpp
+if (w > 4096 || h > 4096) __builtin_trap();
+```
+
+The decoder is right and the harness is wrong. A picture is one eye and
+`width` is per eye (SYNTAX.md 3.3), so `nxvc_decoder_plane_size` correctly
+returns `eyes * width`, which reaches 8192 at the maximum legal width. The
+invariant was written for the Phase 1 mono header and was never widened when
+`eyes == 2` landed in syntax v1.4; nothing had reached a 4096-wide stereo
+header before.
+
+Fixed in the harness by bounding the width at `4096 * eyes`. It is a real gap
+in the fuzzing rather than in the codec, and it was masking everything the
+headers target would otherwise have found past that point in the campaign --
+which is the reason it is written up rather than quietly patched.
+
+---
+
 ## Not findings
 
 Recorded so the next run does not re-triage them.

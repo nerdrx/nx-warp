@@ -40,7 +40,7 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
   tool-bit gating, and the `nxv-enc`, `nxv-dec` and `nxv-info` tools.
 - 32 conformance vectors in `tests/vectors/` with an md5 manifest, covering intra, lossless, alpha,
   resolution levels, custom tables, odd frame sizes and multi-frame streams.
-- Syntax v1.5, the intra detail tools, each behind its own tool bit and measured separately
+- Syntax v1.6, the intra detail tools, each behind its own tool bit and measured separately
   (`ref/RESULTS-detail-a.md`):
   - **`XFORM_4X4_SPLIT` (tool bit 19)**: a per-block 4x4 transform split, signalled by tile-header
     bit 28 plus one bypass bit after a nonzero `CBF`. A 4x4 integer DCT scaled to the 8x8's `2^10`
@@ -58,7 +58,21 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
     Encoder-only, no syntax. The decoder-side reconstruction offset was built, measured and
     **rejected**: it is worse in both rate and quality at every operating point.
 - 29 further conformance vectors and 15 further rejection vectors; `v01`-`v56` and `r01`-`r29` are
-  byte-identical across the v1.5 change, which is what proves both tools additive.
+  byte-identical across the v1.6 change, which is what proves both tools additive.
+- Syntax v1.6, the entropy and context package (`ref/RESULTS-ctx-b.md`): tool bit 25 `CTX_V3`, a
+  neighbour-conditioned context model whose `CBF` and `LAST` contexts are conditioned on whether
+  the previous coefficient unit *the same rANS lane* decoded in the same unit class was coded —
+  causal inside the lane, so it costs the GPU decoder no barrier and no cross-lane read, only a
+  few KiB more of shared cumulative-frequency table; and tool bit 26 `TAB_V2`, a per-row "use the
+  built-in default" flag that takes a transmitted table set from the largest single overhead in a
+  low-rate frame (14.45 %) to 3.41 %. Both ship **off by default**: `vk/decoder/passA` does not
+  implement them, and an encoder default the project's own GPU decoder refuses would make "a
+  default stream" mean two different things.
+- Encoder-side with them, no tool bit: `nxvc_config::table_iters`, which refines the eight
+  per-frame probability table sets by Lloyd iteration over the per-tile histograms and scores each
+  tile against the tables the stream will carry rather than against the built-in ones. `0` means
+  off; leave it unset for the default of 3. Reassignment without retraining was measured at
+  **-1.8 %** — worse than doing nothing — so the two always move together.
 
 **Vulkan**
 

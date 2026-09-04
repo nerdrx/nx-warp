@@ -157,6 +157,8 @@ interleaved UV.
 | 22 | `SIGN_HIDE` | sign data hiding (section 9.7) |
 | 23 | `FILTER_CATMULL_ROM` | Catmull-Rom interpolation in the warp instead of bilinear. **Not defined for version 1** |
 | 24 | `INTRA_CFL` | chroma predicted from the co-located reconstructed luma (section 7.7) |
+| 25 | `CTX_V3` | the neighbour-conditioned entropy model (section 9.9) |
+| 26 | `TAB_V2` | the compact transmitted table set (section 9.4.1) |
 
 Bits 17, 21 and 22 are independent: any subset may be set. `SIGN_HIDE` is
 mutually exclusive with `LOSSLESS` (bit 5) -- hiding a sign spends one level
@@ -182,7 +184,12 @@ MUST refuse a stream that sets either, with a `VERSION` status. Because bit 23
 is refused, **every conforming version 1 stream is bilinear**, in every
 profile, and `profile` selects nothing (section 13.4).
 
-Bits 25-63 are reserved and must be zero. Capability negotiation is an
+`CTX_V3` (bit 25) requires `CTX_V2` (bit 21) and `TAB_V2` (bit 26) requires
+`CUSTOM_TABLES` (bit 6); either on its own is `BITSTREAM`. Both are otherwise
+independent of every other bit -- in particular `CTX_V3` never reads the
+transform size, and `TAB_V2` changes no shader work at all.
+
+Bits 27-63 are reserved and must be zero. Capability negotiation is an
 intersection: the sender only sets bits the receiver offered.
 
 ---
@@ -1403,8 +1410,8 @@ codes a `LAST` below 16 and pays nothing for the other three.
 
 ### 9.3 Contexts and alphabets
 
-There are **12 contexts of 16 symbols** each, or **16** when the stream sets
-tool bit 21 `CTX_V2`. Every context's 16 frequencies are 10-bit, at least 1,
+There are **12 contexts of 16 symbols** each, **16** when the stream sets tool
+bit 21 `CTX_V2`, and **42** when it also sets bit 25 `CTX_V3` (section 9.8). Every context's 16 frequencies are 10-bit, at least 1,
 and sum to exactly 1024, so every symbol is always decodable and a hostile
 stream cannot produce an undefined symbol.
 
@@ -1504,9 +1511,10 @@ conformance vectors) or, if bit *k* of `tables_present` is set, a transmitted
 table.
 
 A transmitted set is **120 bytes** (12 contexts x 16 symbols x 5 bits) in the
-v1 context model and **160 bytes** (16 x 16 x 5) under `CTX_V2`: MSB-first bit
-packing, contexts in index order, symbols in symbol order. The built-in default
-it is a delta against is the same set index of the same model's family. Each 5-bit value
+v1 context model, **160 bytes** (16 x 16 x 5) under `CTX_V2` and **220 bytes**
+(22 x 16 x 5) under `CTX_V3`: MSB-first bit packing, contexts in index order,
+symbols in symbol order. The built-in default it is a delta against is the same
+set index of the same model's family. Each 5-bit value
 `d` is an index into a log-domain multiplier table applied to the built-in
 default of the *same set index*:
 
@@ -1535,6 +1543,37 @@ while total > 1024:  subtract 1 from the largest g[s] with g[s] > 1;   total--
 
 The decoder then builds `cum[s]` (prefix sums) and the 1024-entry
 slot-to-symbol table used by the decode step.
+
+#### 9.4.1 `TAB_V2`: the compact table set (tool bit 24)
+
+Tool bit 24 `TAB_V2` requires `CUSTOM_TABLES` (bit 6); a stream setting it
+without bit 6 is `BITSTREAM`. It changes two things about a **transmitted**
+set, and nothing about the built-in defaults or about the decode step.
+
+1. **A per-row flag.** Each context is preceded by one bit `row_coded`. When
+   it is 1 the row's sixteen 5-bit deltas follow as above. When it is 0 the row
+   **is** the built-in default row of that (set, context), byte for byte: no
+   deltas follow and no normalization is performed (a built-in row already sums
+   to 1024). A row therefore costs 1 bit instead of 81 when the frame's own
+   statistics do not beat the default.
+
+2. **A variable-length table area.** A set is `nctx + 80 * coded_rows` bits
+   rather than a whole number of bytes, so the transmitted sets are one
+   contiguous bit sequence -- sets in ascending index order over
+   `tables_present`, contexts in index order inside each -- **zero-padded to a
+   byte boundary once, after the last set**. The decoder recovers the length of
+   the area as `ceil(bits_read / 8)`; a set that would read past the end of the
+   frame is `TRUNCATED`.
+
+Without the bit every row is coded, the flags are absent, and a set is exactly
+`nctx * 16 * 5` bits, which is a whole number of bytes for every defined
+`nctx` -- so a stream without bit 24 parses exactly as before.
+
+An encoder that finds no row worth coding for a set **must** leave that set's
+`tables_present` bit clear rather than transmit a set of all-zero flags; the
+two are equivalent to the decoder, and the shorter one is normative for the
+reference encoder only (`tables_present` is an encoder choice, so a decoder
+accepts either).
 
 ### 9.6 The mode unit (tool bit 17)
 
@@ -1622,6 +1661,70 @@ DC-plane units and mode units never carry the flag; neither has sub-blocks.
 A value of 1 is legal for any residual block of any coded plane, including
 chroma and alpha, and for any `res_level`, because a block is 8x8 in every
 one of them.
+
+### 9.9 `CTX_V3`: the neighbour-conditioned model (tool bit 25)
+
+Tool bit 25 `CTX_V3` requires `CTX_V2` (bit 21); a stream setting it without
+bit 21 is `BITSTREAM`. It keeps everything v2 says about *which* symbols are
+coded and changes only *which context* each one is coded in. There are **22
+contexts of 16 symbols**, and a third built-in table family
+(`kDefaultFreqV3`).
+
+**Unit class.** Every coefficient unit belongs to one of three classes,
+derived from its position in the tile (9.1) and never transmitted:
+
+| `ucls` | units |
+|---|---|
+| 0 | residual blocks of the luma plane, and of the alpha plane |
+| 1 | residual blocks of a chroma plane |
+| 2 | the DC-plane unit of any plane |
+
+A mode unit (9.6) has no class and does not participate.
+
+**The neighbour flag.** Each rANS lane keeps three flags `prev_cbf[0..2]`, one
+per unit class, **all zero at the start of the tile**. When the lane finishes a
+coefficient unit of class `ucls` it sets `prev_cbf[ucls]` to that unit's `CBF`.
+
+A lane owns units `l, l+N, l+2N, ...` and decodes them in that order (9.1), so
+the unit `prev_cbf[ucls]` describes is always one **this lane has already
+finished**. The derivation is causal inside the lane: it needs no cross-lane
+communication and no barrier beyond the one the schedule already has, whatever
+the interleaved order does with the other lanes. It does depend on `N`, which
+is `2^nsub_log2` from the tile header and is parsed before the payload, so
+nothing about tile independence changes.
+
+For the ordinary tile -- `res_level` 0, `nsub_log2` 3, so `N = 8` and each
+plane is 8x8 blocks -- a lane's units are exactly **one column of blocks**, and
+`prev_cbf` is the `CBF` of the block **directly above**.
+
+**The context assignment.**
+
+| index | use |
+|---|---|
+| 0-5 | `CBF`, `2 * ucls + prev_cbf` |
+| 6-11 | `LAST`, `6 + 2 * ucls + prev_cbf` |
+| 12-19 | `LEVEL`, residual block: `12 + kLevelCtx[band][prev]` |
+| 20 | `LEVEL`, DC-plane unit (one context, no banding, as v2's 14) |
+| 21 | `MODE`, the intra mode symbol (9.6), as v2's 15 |
+
+`band`, `prev` and `kLevelCtx` are exactly 9.3's. `LEVEL` is **not**
+conditioned on the neighbour: the previously decoded level inside the same unit
+already carries that information, and about this unit rather than about the one
+before it. The DC plane keeps one un-banded `LEVEL` context because it is a
+dense low-frequency image whose positions do not separate the way an AC block's
+do -- that is v2's finding and v3 does not revisit it.
+
+Everything else is unchanged: the alphabets, the `LAST` classes, the escape
+code, the sign, sign data hiding and the mode unit's binarisation all read
+exactly as 9.3, 9.6 and 9.7 write them.
+
+**What it costs a GPU decoder.** Nothing per symbol: the context index is one
+add and one table lookup either way, and `prev_cbf` is one store per *unit*, of
+a value the lane has just decoded. Pass A's shared cumulative-frequency table
+grows with the context count -- `s_cum[8][22][16]` is 11264 bytes against 8192
+at 16 contexts -- so a 64-thread workgroup of 8 tiles needs about **13.5 KiB**
+of LDS including the scan tables, against 10 KiB today and a 32 KiB budget. The
+three flags are 3 bits of per-lane state.
 
 ### 9.5 rANS
 
@@ -2428,6 +2531,59 @@ inconsistent. Each is a decision, not an interpretation.
     reconstruction point, so moving that point only adds error the trellis
     must then pay for. It therefore has no tool bit and no syntax; the
     measurement is in ref/RESULTS-detail-a.md section 3.
+60. **The v3 model conditions on the lane's own previous unit, not on a
+    geometric neighbour.** The natural thing to condition a `CBF` on is the
+    block above it. That block is a *different lane's* unit for every plane
+    geometry except the common one, and a lane cannot read another lane's
+    result without a barrier the schedule does not have -- the two lanes are
+    not at the same unit at the same time, and a unit spans many scheduling
+    rounds. Conditioning on "the previous unit
+    this lane finished, in the same unit class" is causal by construction under
+    every schedule, and for the ordinary tile (`res_level` 0, `nsub_log2` 3, so
+    8 lanes over 8x8 blocks) it **is** the block above, because a lane owns
+    exactly one column of blocks. The price is that the context derivation
+    depends on `nsub_log2`; that field is in the tile header and is parsed
+    before the payload, so nothing about tile independence changes.
+
+61. **The neighbour is one bit, not a class.** The brief this model was built
+    to wanted the neighbour split by level magnitude and by a position class as
+    well as by `CBF`. Six layouts were built and retrained --- 2, 3 and 4
+    neighbour classes, each with and without a second `LEVEL` family --- and
+    the **smallest won on rate as well as on size** (`ref/RESULTS-ctx-b.md` 2).
+    Splitting a coded neighbour by `LAST` and by mean magnitude costs twelve
+    more transmitted rows per set and returns less than it costs at every
+    operating point on both pixel formats, and giving `LEVEL` a neighbour
+    family changes the total by 0.01 % over eight points. What survives is
+    "was the lane's previous unit of this class coded at all", on `CBF` and
+    `LAST`: six contexts more than v2.
+
+62. **`CTX_V3` does not re-split the DC plane's `LEVEL` contexts, and it does
+    not read the transform size.** The DC plane keeps one un-banded `LEVEL` context,
+    exactly as v2 gave it; banding a dense low-frequency image by scan position
+    was measured not to pay when v2 was built and the neighbour conditioning
+    does not change that argument. Transform size is not an axis this syntax
+    has: every residual unit is 64 coefficients and every DC-plane unit already
+    has contexts of its own. Tool bit 19 `XFORM_4X4_SPLIT` **is** built (6.8),
+    and it deliberately did not become one: a split unit is still 64
+    coefficients in one coding unit, and all it changes is the *band* a scan
+    position falls in, which 9.3's banding already handles before a context is
+    chosen. The context model still never asks what transform produced the
+    coefficients.
+
+63. **A transmitted table row may say "use the default", and the delta stays a
+    flat 5 bits.** Adding contexts is what a context model is *for*, and the
+    thing that stops it is that a transmitted table set grows linearly with
+    the context count -- 14.45 % of a QP 36 inter frame before this package,
+    the largest single overhead in it. One bit per row meaning "the built-in
+    default row, unchanged", plus dropping a set no row improves, takes that
+    frame's table area from 480 bytes to 109 and a QP 24 one from 800 to 321,
+    because most rows of most sets are already close to the cluster they were
+    trained from. The obvious
+    companion, Exp-Golomb coding the deltas around "no change", was implemented
+    and **measured worse** than the flat 5-bit index: a trained row is not
+    concentrated near its default, it is *shifted* from it, so the small-value
+    code loses more on the shifted symbols than it gains on the unshifted ones.
+    `ref/RESULTS-ctx-b.md` has the numbers.
 
 ## Appendix B: where the bits go
 

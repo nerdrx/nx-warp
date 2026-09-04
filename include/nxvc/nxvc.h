@@ -47,8 +47,16 @@ extern "C" {
  *       picture per eye and row-major/eye-minor tile rows, the four-slot
  *       reference ring addressed by `ref_sel`, and the 12-bit STEREO
  *       `disparity` field replacing mv_x/mv_y.  See docs/SYNTAX.md 8.
+ *   6 : the tournament packages, landed together under one minor bump.
+ *       5 is skipped: eight of the ten tournament branches each set 5 for
+ *       their own package, and a merged stream is none of those eight.
+ *       tool bit 19 XFORM_4X4_SPLIT and 24 INTRA_CFL (the detail package);
+ *       25 CTX_V3, the 27-context neighbour-conditioned model, conditioned
+ *       per coding unit; 26 TAB_V2, the variable-length transmitted table
+ *       set with a per-row "use the built-in default" flag.
+ *       See docs/SYNTAX.md 9.4.1 and 9.8, and docs/TOOLBITS.md.
  */
-#define NXVC_BITSTREAM_MINOR 5
+#define NXVC_BITSTREAM_MINOR 6
 
 /* "nxvc_ref <major>.<minor> (syntax v1.<minor>)" -- a static string, safe to
  * call before any object exists.  Used by the Python bindings to check that
@@ -129,6 +137,15 @@ typedef enum nxvc_tile_mode {
 /* Syntax v1.5: chroma predicted from the co-located reconstructed luma by a
  * per-block linear model (SYNTAX.md 7.7).  Requires INTRA_DIR and CTX_V2. */
 #define NXVC_TOOL_INTRA_CFL       (1ull << 24)
+/* The entropy and context package (docs/TOOLBITS.md 2).  CTX_V3 is the
+ * 27-context neighbour-conditioned model, conditioned per CODING UNIT -- the
+ * 8x8 coefficient group -- never per transform block (MERGE-PLAN 4.5).
+ * TAB_V2 is the variable-length transmitted table set with a per-row "use the
+ * built-in default" flag.  CTX_V3 requires CTX_V2; TAB_V2 requires
+ * CUSTOM_TABLES.  Both ship OFF by default: vk/decoder/passA does not
+ * implement them, so a default stream stays decodable by the Vulkan decoder. */
+#define NXVC_TOOL_CTX_V3          (1ull << 25)
+#define NXVC_TOOL_TAB_V2          (1ull << 26)
 
 /* Tools this reference decoder implements. */
 #define NXVC_TOOLS_SUPPORTED                                                  \
@@ -138,6 +155,7 @@ typedef enum nxvc_tile_mode {
      NXVC_TOOL_PER_TILE_CHROMA | NXVC_TOOL_YCOCGR | NXVC_TOOL_WM_ID |        \
      NXVC_TOOL_INTRA_DIR | NXVC_TOOL_CTX_V2 | NXVC_TOOL_SIGN_HIDE |           \
      NXVC_TOOL_XFORM_4X4_SPLIT | NXVC_TOOL_INTRA_CFL |                        \
+     NXVC_TOOL_CTX_V3 | NXVC_TOOL_TAB_V2 |                                    \
      NXVC_TOOL_INTER | NXVC_TOOL_WARP | NXVC_TOOL_STEREO)
 
 /* ---------------------------------------------------------------- images */
@@ -223,9 +241,33 @@ typedef struct nxvc_config {
      * tool bit: a stream without the bit decodes byte-identically to v1.4.
      * APPENDED, per JUDGE-detail.md merge item 1: the ABI is additive, so a
      * new field goes at the END of the struct.  detail-a inserted these two
-     * mid-struct, which silently moves the offset of every field after them. */
+     * mid-struct, which silently moves the offset of every field after them.
+     * Every package that follows appends after this block, in merge order. */
     uint32_t split4x4;          /* 1 = per-block 4x4 transform split (19)    */
     uint32_t chroma_from_luma;  /* 1 = the CFL chroma intra mode (24)        */
+
+    /* the entropy and context package (docs/TOOLBITS.md 2) */
+    uint32_t ctx_v3;            /* 1 = the 27-context neighbour-conditioned
+                                   model (25); implies ctx_v2.  Conditions
+                                   per CODING UNIT, never per transform
+                                   block -- see docs/SYNTAX.md 9.8          */
+    uint32_t tab_v2;            /* 1 = the compact transmitted-table coding:
+                                   a per-row "use the built-in default" flag
+                                   and a variable-length table area (26).
+                                   Requires custom_tables                   */
+    uint32_t table_iters;       /* Lloyd iterations refining the eight
+                                   per-frame table sets.  Encoder only: it
+                                   changes which set each tile names, never
+                                   how a stream decodes.  0 = OFF (one
+                                   training pass, no reassignment); leave
+                                   unset for the default of 3.  Reassigning
+                                   without retraining is worse than doing
+                                   nothing (-1.8 %), so the two always move
+                                   together -- there is no "reassign only"  */
+    uint32_t table_iters_set;   /* 1 = table_iters is meaningful even at 0.
+                                   Without this a zeroed nxvc_config, which
+                                   is how every caller starts, would mean
+                                   "off" rather than "default"              */
 } nxvc_config;
 
 /* One eye's view for one frame: the orientation the frame was rendered with

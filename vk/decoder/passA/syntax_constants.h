@@ -90,9 +90,36 @@ NXS_CONST int kCtxLastDc = 13;
 NXS_CONST int kCtxLevelDc = 14;
 NXS_CONST int kCtxMode = 15;
 NXS_CONST int kNumCtxV2 = 16;
-// Storage stride of the cumulative-frequency table, always the v2 count so the
-// host uploads one layout whichever model the stream selects.  The coded
-// context count is kNumCtxV1 or kNumCtxV2.
+// [v3, docs/SYNTAX.md 9.8] the v3 context model, stream tool bit 25 CTX_V3
+// (which requires CTX_V2): CBF and LAST are additionally conditioned on
+// `prev_cbf`, whether the previous coefficient unit THIS LANE decoded in the
+// same unit class was coded.  A lane owns units l, l+N, l+2N, ..., so that
+// unit is one the lane has already finished: the kernel keeps three bits of
+// per-lane state and needs no extra barrier and no cross-lane read.  For the
+// ordinary tile (res_level 0, nsub_log2 3) a lane owns one column of blocks,
+// so prev_cbf is the coded flag of the block directly above.
+//
+//   ucls 0 = luma/alpha residual blocks, 1 = chroma blocks, 2 = the DC plane
+//   CBF   context = 2 * ucls + prev_cbf            ->  0..5
+//   LAST  context = 6 + 2 * ucls + prev_cbf        ->  6..11
+//   LEVEL context = 12 + kLevelCtx[band][prev]     -> 12..19  (blocks)
+//   LEVEL context = 20                             (DC plane, un-banded)
+//   MODE  context = 21
+NXS_CONST int kCtxV3CbfBase = 0;
+NXS_CONST int kCtxV3LastBase = 6;
+NXS_CONST int kCtxV3LevelBase = 12;
+NXS_CONST int kCtxV3LevelDc = 20;
+NXS_CONST int kCtxV3Mode = 21;
+NXS_CONST int kNumCtxV3 = 22;
+// Storage stride of the cumulative-frequency table.  The host uploads one
+// layout whichever model the stream selects and contexts past the coded count
+// are simply never named, so the stride is the widest model this kernel
+// implements -- **kNumCtxV2 today**.  The kernel does not implement CTX_V3;
+// nxvc_vkdec_parse.cpp's kToolsSupported does not list tool bit 25, so such a
+// stream is refused with VERSION rather than mis-parsed.  Implementing it is
+// this constant raised to kNumCtxV3, which takes s_cum for a workgroup's 8
+// tiles from 8192 to 11264 bytes (about 13.5 KiB of LDS in total, against a
+// 32 KiB budget), plus three bits of per-lane state and the derivation above.
 NXS_CONST int kNumCtx = 16;
 NXS_CONST int kNumSym = 16;
 
@@ -131,6 +158,13 @@ NXS_CONST int kSdhMinLast = 4;
 NXS_CONST uint kToolFlagCtxV2 = 1u;
 NXS_CONST uint kToolFlagIntraDir = 2u;
 NXS_CONST uint kToolFlagSignHide = 4u;
+// Reserved for CTX_V3 when the kernel implements it; the host refuses tool
+// bit 25 today, so no frame ever carries this flag.
+NXS_CONST uint kToolFlagCtxV3 = 8u;
+// TAB_V2 (tool bit 24) would be a host-side flag only: it changes how the
+// frame's transmitted table sets are parsed, never how a symbol is decoded, so
+// the kernel would receive the same cumulative-frequency upload either way.
+// The host refuses it today for the same reason as bit 25.
 
 // ===========================================================================
 // 3. LAST classes and LEVEL context derivation    [ref/src/tables.cpp]

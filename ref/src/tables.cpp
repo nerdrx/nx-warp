@@ -164,25 +164,25 @@ void normalize_freqs(u16 f[kNumSym]) {
         if (f[s] < 1) f[s] = 1;
         sum += f[s];
     }
-    if (sum == 1024) return;
+    if (sum == kProbTotal) return;
     i32 g[kNumSym];
     i32 total = 0;
     for (int s = 0; s < kNumSym; ++s) {
         // Table construction runs once per frame; integer division is allowed
         // here and never appears in the per-symbol decode path.
-        g[s] = (i32)(((i32)f[s] * 1024) / sum);
+        g[s] = (i32)(((i64)f[s] * kProbTotal) / sum);
         if (g[s] < 1) g[s] = 1;
-        if (g[s] > 1009) g[s] = 1009;  // leave room for the other 15 entries
+        if (g[s] > kProbMax) g[s] = kProbMax;
         total += g[s];
     }
-    while (total < 1024) {
+    while (total < kProbTotal) {
         int best = 0;
         for (int s = 1; s < kNumSym; ++s)
             if (g[s] > g[best]) best = s;
         g[best]++;
         total++;
     }
-    while (total > 1024) {
+    while (total > kProbTotal) {
         int best = -1;
         for (int s = 0; s < kNumSym; ++s)
             if (g[s] > 1 && (best < 0 || g[s] > g[best])) best = s;
@@ -201,7 +201,7 @@ bool finalize_ctx(CtxTable &t) {
         c += t.freq[s];
     }
     t.cum[kNumSym] = (u16)c;
-    if (c != 1024) return false;
+    if (c != kProbTotal) return false;
     for (int s = 0; s < kNumSym; ++s)
         for (int k = t.cum[s]; k < t.cum[s + 1]; ++k) t.slot2sym[k] = (u8)s;
     return true;
@@ -209,8 +209,27 @@ bool finalize_ctx(CtxTable &t) {
 
 u16 default_freq(int nctx, int set_index, int c, int s) {
     set_index = clamp_i32(set_index, 0, 7);
+    if (nctx >= kNumCtxV3) return kDefaultFreqV3[set_index][c][s];
     if (nctx >= kNumCtxV2) return kDefaultFreqV2[set_index][c][s];
     return kDefaultFreq[set_index][c][s];
+}
+
+// The built-in default row of (set, ctx) at the active probability precision.
+// The families in default_tables.inc are stored at 10 bits; a wider kProbBits
+// scales them and renormalizes, so this is the single definition of "the
+// default row" that the delta base, the row-skip fallback and
+// build_default_set all read.
+void default_row(int nctx, int set_index, int c, u16 f[kNumSym]) {
+    for (int s = 0; s < kNumSym; ++s)
+        f[s] = (u16)(default_freq(nctx, set_index, c, s) * (kProbTotal / 1024));
+    if (kProbBits != 10) normalize_freqs(f);
+}
+
+u16 default_row_freq(int nctx, int set_index, int c, int s) {
+    if (kProbBits == 10) return default_freq(nctx, set_index, c, s);
+    u16 f[kNumSym];
+    default_row(nctx, set_index, c, f);
+    return f[s];
 }
 
 void build_default_set(TableSet &ts, int set_index, int nctx) {
@@ -219,9 +238,7 @@ void build_default_set(TableSet &ts, int set_index, int nctx) {
     for (int c = 0; c < kNumCtx; ++c) {
         // Contexts beyond the model's count are never coded; fill them so the
         // table object is always well formed.
-        int src = c < nctx ? c : 0;
-        for (int s = 0; s < kNumSym; ++s)
-            ts.ctx[c].freq[s] = default_freq(nctx, set_index, src, s);
+        default_row(nctx, set_index, c < nctx ? c : 0, ts.ctx[c].freq);
         finalize_ctx(ts.ctx[c]);
     }
 }

@@ -49,7 +49,7 @@ int main() {
                       k, c, s);
                 sum += tabs[k].ctx[c].freq[s];
             }
-            CHECK(sum == 1024, "set %d ctx %d sums to %u", k, c, sum);
+            CHECK(sum == (u32)kProbTotal, "set %d ctx %d sums to %u", k, c, sum);
         }
 
     // 2. Random coefficient fields, every lane count, both scans.
@@ -141,7 +141,7 @@ int main() {
         TableSet skew;
         for (int c = 0; c < kNumCtx; ++c) {
             for (int s = 0; s < kNumSym; ++s) skew.ctx[c].freq[s] = 1;
-            skew.ctx[c].freq[c % kNumSym] = 1024 - 15;
+            skew.ctx[c].freq[c % kNumSym] = (u16)(kProbTotal - 15);
             CHECK(finalize_ctx(skew.ctx[c]), "skew ctx %d finalize", c);
         }
         Rng rng(555);

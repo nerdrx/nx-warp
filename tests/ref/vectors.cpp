@@ -14,6 +14,21 @@
 #include "common.h"
 #include "entropy.h"
 
+// Set one tool bit in the stream header's u64 `tools` field, BY NAME.
+//
+// The obvious spelling -- `b[32 + 3] |= 0x01`, byte 3 of the field at offset
+// 32, which is bit 24 -- survives a tool-bit renumbering unchanged and
+// silently starts testing a different tool, or none: the decoder then answers
+// VERSION ("unsupported tool") where the vector expects BITSTREAM, and the
+// vector that was pinning a real constraint quietly stops pinning anything.
+// docs/MERGE-PLAN.md 4.3.1.  Every tool poke below goes through here.
+static void set_tool(std::vector<uint8_t> &b, uint64_t tool) {
+    for (int i = 0; i < 8; ++i) b[32 + i] |= (uint8_t)(tool >> (8 * i));
+}
+static void clear_tool(std::vector<uint8_t> &b, uint64_t tool) {
+    for (int i = 0; i < 8; ++i) b[32 + i] &= (uint8_t)~(uint8_t)(tool >> (8 * i));
+}
+
 struct VecSpec {
     const char *name;
     int w, h;
@@ -34,78 +49,90 @@ struct VecSpec {
     int wm;           // per-tile weighting-matrix id (0 = frame's matrix)
     int raw;          // != 0: built by build_raw(raw) instead of the encoder
     int dir;          // 0 off, 1 directional intra, 2 its layered form
-    int ctx;          // 0 = 12 contexts, 1 = 16 (CTX_V2)
+    int ctx;          // 0 = 12 contexts, 1 = 16 (CTX_V2), 2 = 22 (CTX_V3)
     int sdh;          // sign data hiding (tool 22)
     int spl;          // 4x4 transform split (tool 19)
     int cfl;          // chroma from luma (tool 24)
+    int tab;          // compact transmitted table sets (TAB_V2, tool 26)
 };
 
 static const VecSpec kVectors[] = {
     // name                     w    h  444 kind qp  ll  a  ts nsub tab t420 ct mat res qpp fr
-    {"v01_intra420_qp12",      192, 128, 0,  1, 12,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v02_intra420_qp24",      192, 128, 0,  1, 24,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v03_intra420_qp36",      192, 128, 0,  1, 36,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v04_intra420_qp51",      192, 128, 0,  1, 51,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v05_intra444_qp24",      192, 128, 1,  1, 24,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v06_gradient420_qp20",   192, 128, 0,  0, 20,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v07_checker420_qp28",    192, 128, 0,  2, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v08_noise420_qp28",      192, 128, 0,  3, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v09_flat420_qp28",       192, 128, 0,  4, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v10_lossless420",        192, 128, 0,  1,  0,  1, 0,  1,  3,  0,  0, 0,  0,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v11_lossless444",        192, 128, 1,  1,  0,  1, 0,  1,  3,  0,  0, 0,  0,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v12_lossless444_alpha",  192, 128, 1,  2,  0,  1, 1,  1,  3,  0,  0, 0,  0,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v13_tskip420_qp16",      192, 128, 0,  2, 16,  0, 0,  1,  3,  0,  0, 0,  0,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v14_alpha420_qp24",      192, 128, 0,  1, 24,  0, 1,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v15_res_cycle420",       192, 128, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  1,  0, 1, 0, 0, 0, 0, 0},
-    {"v16_res_level2_420",     192, 128, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  2,  0, 1, 0, 0, 0, 0, 0},
-    {"v17_res_cycle444",       192, 128, 1,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  1,  0, 1, 0, 0, 0, 0, 0},
-    {"v18_qpmap420",           192, 128, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  1, 1, 0, 0, 0, 0, 0},
-    {"v19_qp_res_map420",      192, 128, 0,  1, 30,  0, 0,  0,  3,  0,  0, 0,  2,  1,  1, 1, 0, 0, 0, 0, 0},
-    {"v20_tile420_in444",      192, 128, 1,  1, 26,  0, 0,  0,  3,  0,  1, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v21_ycocgr444_qp24",     192, 128, 1,  1, 24,  0, 0,  0,  3,  0,  0, 1,  1,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v22_ycocgr_lossless",    192, 128, 1,  1,  0,  1, 0,  1,  3,  0,  0, 1,  0,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v23_custom_tables420",   192, 128, 0,  1, 28,  0, 0,  0,  3,  1,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v24_nsub0_420",          192, 128, 0,  1, 28,  0, 0,  0,  0,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v25_nsub5_420",          192, 128, 0,  1, 28,  0, 0,  0,  5,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v26_nsub_auto_420",      192, 128, 0,  1, 28,  0, 0,  0,255,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v27_matrix0_420",        192, 128, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  0,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v28_matrix3_420",        192, 128, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  3,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v29_odd_size_200x140",   200, 140, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v30_tiny_64x64",          64,  64, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v31_wide_320x64",        320,  64, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v32_multiframe420",      128, 128, 0,  1, 30,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 3, 0, 0, 0, 0, 0},
+    {"v01_intra420_qp12",      192, 128, 0,  1, 12,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v02_intra420_qp24",      192, 128, 0,  1, 24,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v03_intra420_qp36",      192, 128, 0,  1, 36,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v04_intra420_qp51",      192, 128, 0,  1, 51,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v05_intra444_qp24",      192, 128, 1,  1, 24,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v06_gradient420_qp20",   192, 128, 0,  0, 20,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v07_checker420_qp28",    192, 128, 0,  2, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v08_noise420_qp28",      192, 128, 0,  3, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v09_flat420_qp28",       192, 128, 0,  4, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v10_lossless420",        192, 128, 0,  1,  0,  1, 0,  1,  3,  0,  0, 0,  0,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v11_lossless444",        192, 128, 1,  1,  0,  1, 0,  1,  3,  0,  0, 0,  0,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v12_lossless444_alpha",  192, 128, 1,  2,  0,  1, 1,  1,  3,  0,  0, 0,  0,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v13_tskip420_qp16",      192, 128, 0,  2, 16,  0, 0,  1,  3,  0,  0, 0,  0,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v14_alpha420_qp24",      192, 128, 0,  1, 24,  0, 1,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v15_res_cycle420",       192, 128, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  1,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v16_res_level2_420",     192, 128, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  2,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v17_res_cycle444",       192, 128, 1,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  1,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v18_qpmap420",           192, 128, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  1, 1, 0, 0, 0, 0, 0, 0},
+    {"v19_qp_res_map420",      192, 128, 0,  1, 30,  0, 0,  0,  3,  0,  0, 0,  2,  1,  1, 1, 0, 0, 0, 0, 0, 0},
+    {"v20_tile420_in444",      192, 128, 1,  1, 26,  0, 0,  0,  3,  0,  1, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v21_ycocgr444_qp24",     192, 128, 1,  1, 24,  0, 0,  0,  3,  0,  0, 1,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v22_ycocgr_lossless",    192, 128, 1,  1,  0,  1, 0,  1,  3,  0,  0, 1,  0,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v23_custom_tables420",   192, 128, 0,  1, 28,  0, 0,  0,  3,  1,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v24_nsub0_420",          192, 128, 0,  1, 28,  0, 0,  0,  0,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v25_nsub5_420",          192, 128, 0,  1, 28,  0, 0,  0,  5,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v26_nsub_auto_420",      192, 128, 0,  1, 28,  0, 0,  0,255,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v27_matrix0_420",        192, 128, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  0,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v28_matrix3_420",        192, 128, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  3,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v29_odd_size_200x140",   200, 140, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v30_tiny_64x64",          64,  64, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v31_wide_320x64",        320,  64, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v32_multiframe420",      128, 128, 0,  1, 30,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 3, 0, 0, 0, 0, 0, 0},
     // v1.2 additions.
-    {"v33_wm_id444",           192, 128, 1,  1, 24,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 2, 0, 0, 0, 0},
-    {"v34_wm_id420_tables",    192, 128, 0,  1, 30,  0, 0,  0,  3,  1,  0, 0,  2,  0,  0, 1, 3, 0, 0, 0, 0},
+    {"v33_wm_id444",           192, 128, 1,  1, 24,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 2, 0, 0, 0, 0, 0},
+    {"v34_wm_id420_tables",    192, 128, 0,  1, 30,  0, 0,  0,  3,  1,  0, 0,  2,  0,  0, 1, 3, 0, 0, 0, 0, 0},
     // Hand-built: every dequantized coefficient saturates the int16 clamp, so
     // the IDCT runs at its documented worst case (SYNTAX.md 6.3).  This is the
     // vector that pins the odd-part rotation's range; the reference decoder
     // must run it clean under -fsanitize=undefined (ctest ref.saturate).
-    {"v35_saturate420",         64,  64, 0,  4, 63,  0, 0,  0,  3,  0,  0, 0,  2,  0,  0, 1, 0, 1, 0, 0, 0},
+    {"v35_saturate420",         64,  64, 0,  4, 63,  0, 0,  0,  3,  0,  0, 0,  2,  0,  0, 1, 0, 1, 0, 0, 0, 0},
     // v1.3 additions: the v2 intra tools.  dir/ctx are the last two columns.
-    {"v36_dir444_qp16",        192, 128, 1,  1, 16,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 1, 0, 0},
-    {"v37_dir420_qp28",        192, 128, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 1, 0, 0},
-    {"v38_dir_ctxv2_444",      192, 128, 1,  1, 20,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 1, 1, 0},
-    {"v39_ctxv2_only_420",     192, 128, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 1, 0},
-    {"v40_dir_layer420",       192, 128, 0,  2, 24,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 2, 0, 0},
+    {"v36_dir444_qp16",        192, 128, 1,  1, 16,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 1, 0, 0, 0},
+    {"v37_dir420_qp28",        192, 128, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 1, 0, 0, 0},
+    {"v38_dir_ctxv2_444",      192, 128, 1,  1, 20,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 1, 1, 0, 0},
+    {"v39_ctxv2_only_420",     192, 128, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 1, 0, 0},
+    {"v40_dir_layer420",       192, 128, 0,  2, 24,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 2, 0, 0, 0},
     // every v2 feature at once: layered modes, 16 contexts, transmitted
     // tables (160 bytes a set now), res_level cycling and 1 lane per tile.
-    {"v41_dir_ctxv2_tables",   192, 128, 1,  2, 22,  0, 0,  0,  0,  1,  0, 0,  1,  1,  0, 2, 0, 0, 1, 1, 0},
-    {"v42_dir_res_tskip420",   192, 128, 0,  2, 18,  0, 0,  1,255,  1,  0, 0,  0,  1,  1, 1, 0, 0, 1, 1, 0},
+    {"v41_dir_ctxv2_tables",   192, 128, 1,  2, 22,  0, 0,  0,  0,  1,  0, 0,  1,  1,  0, 2, 0, 0, 1, 1, 0, 0},
+    {"v42_dir_res_tskip420",   192, 128, 0,  2, 18,  0, 0,  1,255,  1,  0, 0,  0,  1,  1, 1, 0, 0, 1, 1, 0, 0},
     // sign data hiding, alone and stacked on the rest.  `sdh` is the last
     // column; v44 is the encoder's shipped default configuration.
     {"v43_sdh_only420",        192, 128, 0,  1, 20,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 1},
     {"v44_default444",         192, 128, 1,  1, 20,  0, 0,  0,255,  1,  0, 0,  1,  0,  0, 1, 0, 0, 1, 1, 1},
-    // v1.5 additions: the detail tools (numbered after the Phase 2 set).  `spl` and `cfl` are the last two
-    // columns.  v45/v46 are the 4x4 split alone; v47/v48 are chroma from
-    // luma alone at both co-location factors (444 is f == 1, 420 is f == 2);
-    // v49 is the encoder's v1.5 default configuration with both on, custom
-    // tables and auto lanes.
-    {"v57_split444_qp16",      192, 128, 1,  1, 16,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 1, 1, 1, 1, 0},
-    {"v58_split_res420",       192, 128, 0,  2, 24,  0, 0,  0,  3,  0,  0, 0,  1,  1,  0, 1, 0, 0, 1, 1, 1, 1, 0},
-    {"v59_cfl444_qp20",        192, 128, 1,  1, 20,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 1, 1, 1, 0, 1},
-    {"v60_cfl420_qp28",        192, 128, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 1, 1, 1, 0, 1},
-    {"v61_default_v15_444",    192, 128, 1,  1, 20,  0, 0,  0,255,  1,  0, 0,  1,  0,  0, 1, 0, 0, 1, 1, 1, 1, 1},
+    // --- syntax v1.6, the tournament packages.  One contiguous `v` sequence
+    // in merge order (docs/MERGE-PLAN.md 4.3.2): the detail package first,
+    // then the entropy and context package.  The last three columns are
+    // `spl`, `cfl` and `tab`; `ctx` is 2 for CTX_V3.
+    //
+    // detail: v57/v58 are the 4x4 split alone; v59/v60 are chroma from luma
+    // alone at both co-location factors (444 is f == 1, 420 is f == 2); v61
+    // is the detail package's default configuration with both on.
+    {"v57_split444_qp16",      192, 128, 1,  1, 16,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 1, 1, 1, 1, 0, 0},
+    {"v58_split_res420",       192, 128, 0,  2, 24,  0, 0,  0,  3,  0,  0, 0,  1,  1,  0, 1, 0, 0, 1, 1, 1, 1, 0, 0},
+    {"v59_cfl444_qp20",        192, 128, 1,  1, 20,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 1, 1, 1, 0, 1, 0},
+    {"v60_cfl420_qp28",        192, 128, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 1, 1, 1, 0, 1, 0},
+    {"v61_default_v15_444",    192, 128, 1,  1, 20,  0, 0,  0,255,  1,  0, 0,  1,  0,  0, 1, 0, 0, 1, 1, 1, 1, 1, 0},
+    // entropy and context: v62/v63 are each tool on its own, v64 is both with
+    // directional intra and cycling res_level, and v65 is the package's own
+    // configuration -- CTX_V3 and TAB_V2 both on, which is NOT the shipped
+    // default (both bits ship off; see docs/TOOLBITS.md 7).
+    {"v62_tabv2_420",          192, 128, 0,  1, 30,  0, 0,  0,  3,  1,  0, 0,  1,  0,  0, 1, 0, 0, 0, 1, 0, 0, 0, 1},
+    {"v63_ctxv3_444",          192, 128, 1,  1, 24,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 2, 0, 0, 0, 0},
+    {"v64_ctxv3_tab_res420",   192, 128, 0,  2, 18,  0, 0,  0,255,  1,  0, 0,  1,  1,  0, 2, 0, 0, 1, 2, 1, 0, 0, 1},
+    {"v65_ctxv3_tab_444",      192, 128, 1,  1, 20,  0, 0,  0,255,  1,  0, 0,  1,  0,  0, 1, 0, 0, 1, 2, 1, 0, 0, 1},
 };
 static const int kNumVectors = (int)(sizeof(kVectors) / sizeof(kVectors[0]));
 
@@ -227,10 +254,13 @@ static Result build(const VecSpec &v) {
     cfg.wm_id = (uint32_t)v.wm;
     cfg.intra_dir = v.dir ? 1u : 0u;
     cfg.intra_dir_layer = v.dir == 2 ? 1u : 0u;
-    cfg.ctx_v2 = (uint32_t)v.ctx;
+    cfg.ctx_v2 = v.ctx >= 1 ? 1u : 0u;
+    cfg.ctx_v3 = v.ctx >= 2 ? 1u : 0u;
     cfg.sign_hide = (uint32_t)v.sdh;
     cfg.split4x4 = (uint32_t)v.spl;
     cfg.chroma_from_luma = (uint32_t)v.cfl;
+    cfg.ctx_v3 = v.ctx >= 2 ? 1u : 0u;
+    cfg.tab_v2 = (uint32_t)v.tab;
 
     nxvc_status st;
     nxvc_encoder *e = nxvc_encoder_create(&cfg, &st);
@@ -344,22 +374,27 @@ struct InterSpec {
     int obj;                // moving-disc speed
     int disparity;          // per-eye horizontal offset
     int salt;               // per-frame content reseed (new content everywhere)
+    int ctx;                // 1 = CTX_V2 (v1.4), 2 = CTX_V3 (v1.5)
+    int tab;                // compact transmitted table sets (TAB_V2)
 };
 
 static const InterSpec kInterVectors[] = {
     // name                     fixes                        w    h  ey 444 qp fr st per rs   yaw   pan obj disp salt
-    {"v45_inter_identity",      "inter/identity",           128, 128, 1, 1, 24, 4, 0, 999, 0,  0.0,  0.0, 0,  0, 0},
-    {"v46_inter_warp_mv",       "inter/integer_mv",         128, 128, 1, 1, 26, 5, 0, 999, 0,  0.7,  2.0, 3,  0, 0},
-    {"v47_inter_static_mv",     "inter/static_mv",          128, 128, 1, 1, 26, 4, 0, 999, 0, 12.0,  0.0, 0,  0, 0},
-    {"v48_inter_warp_sweep",    "inter/warp_sweep",         128, 128, 1, 1, 28, 6, 0, 999, 0,  4.5,  6.0, 2,  0, 0},
-    {"v49_inter_warp_border",   "inter/warp_border",        128,  64, 1, 1, 28, 5, 0, 999, 0,  9.0, 14.0, 5,  0, 0},
-    {"v50_inter_skip_state",    "inter/skip",               128, 128, 1, 1, 22, 4, 0, 999, 0,  0.2,  0.5, 1,  0, 0},
-    {"v51_inter_ref_sel1",      "inter/ref_sel",            128, 128, 1, 1, 26, 6, 0, 999, 1,  0.5,  1.0, 2,  0, 0},
-    {"v52_inter_ref_sel2",      "inter/ref_sel",            128, 128, 1, 1, 26, 7, 0, 999, 2,  0.5,  1.0, 2,  0, 0},
-    {"v53_inter_stereo",        "inter/stereo",             128, 128, 2, 1, 24, 4, 1, 999, 0,  0.0,  0.0, 0, 11, 1},
-    {"v54_inter_stereo_static", "inter/stereo_static_equiv",128, 128, 2, 1, 24, 4, 0, 999, 0,  0.0,  0.0, 0, 11, 1},
-    {"v55_inter_420",           "inter/warp_sweep (4:2:0)", 128, 128, 1, 0, 26, 5, 0, 999, 0,  1.5,  3.0, 3,  0, 0},
-    {"v56_inter_refresh",       "inter/skip (refresh)",     128, 128, 1, 1, 26, 8, 0,   4, 0,  0.4,  1.0, 2,  0, 0},
+    {"v45_inter_identity",      "inter/identity",           128, 128, 1, 1, 24, 4, 0, 999, 0,  0.0,  0.0, 0,  0, 0, 1, 0},
+    {"v46_inter_warp_mv",       "inter/integer_mv",         128, 128, 1, 1, 26, 5, 0, 999, 0,  0.7,  2.0, 3,  0, 0, 1, 0},
+    {"v47_inter_static_mv",     "inter/static_mv",          128, 128, 1, 1, 26, 4, 0, 999, 0, 12.0,  0.0, 0,  0, 0, 1, 0},
+    {"v48_inter_warp_sweep",    "inter/warp_sweep",         128, 128, 1, 1, 28, 6, 0, 999, 0,  4.5,  6.0, 2,  0, 0, 1, 0},
+    {"v49_inter_warp_border",   "inter/warp_border",        128,  64, 1, 1, 28, 5, 0, 999, 0,  9.0, 14.0, 5,  0, 0, 1, 0},
+    {"v50_inter_skip_state",    "inter/skip",               128, 128, 1, 1, 22, 4, 0, 999, 0,  0.2,  0.5, 1,  0, 0, 1, 0},
+    {"v51_inter_ref_sel1",      "inter/ref_sel",            128, 128, 1, 1, 26, 6, 0, 999, 1,  0.5,  1.0, 2,  0, 0, 1, 0},
+    {"v52_inter_ref_sel2",      "inter/ref_sel",            128, 128, 1, 1, 26, 7, 0, 999, 2,  0.5,  1.0, 2,  0, 0, 1, 0},
+    {"v53_inter_stereo",        "inter/stereo",             128, 128, 2, 1, 24, 4, 1, 999, 0,  0.0,  0.0, 0, 11, 1, 1, 0},
+    {"v54_inter_stereo_static", "inter/stereo_static_equiv",128, 128, 2, 1, 24, 4, 0, 999, 0,  0.0,  0.0, 0, 11, 1, 1, 0},
+    {"v55_inter_420",           "inter/warp_sweep (4:2:0)", 128, 128, 1, 0, 26, 5, 0, 999, 0,  1.5,  3.0, 3,  0, 0, 1, 0},
+    {"v56_inter_refresh",       "inter/skip (refresh)",     128, 128, 1, 1, 26, 8, 0,   4, 0,  0.4,  1.0, 2,  0, 0, 1, 0},
+    // --- syntax v1.6: the inter path with the new entropy tools on.
+    {"v66_inter_ctxv3",        "inter/warp_sweep (v1.6)",  128, 128, 1, 1, 26, 6, 0, 999, 0,  4.5,  6.0, 2,  0, 0, 2, 1},
+    {"v67_inter_stereo_v3",    "inter/stereo (v1.6)",      128, 128, 2, 1, 24, 4, 1, 999, 0,  0.0,  0.0, 0, 11, 1, 2, 1},
 };
 static const int kNumInterVectors =
     (int)(sizeof(kInterVectors) / sizeof(kInterVectors[0]));
@@ -452,6 +487,10 @@ static Result build_inter(const InterSpec &v) {
     // here and regenerate v45-v56 as its own before/after.
     cfg.split4x4 = 0;
     cfg.chroma_from_luma = 0;
+    // The same reasoning holds for the entropy package's two bits: they ship
+    // off, and the Phase 2 vectors predate them.
+    cfg.ctx_v3 = 0;
+    cfg.tab_v2 = 0;
 
     nxvc_status st;
     nxvc_encoder *e = nxvc_encoder_create(&cfg, &st);
@@ -710,10 +749,10 @@ static bool make_inter_reject(int idx, const std::vector<uint8_t> &base,
             b[f1.frame_off + 33] ^= 0xff;
             break;
         case 8:
-            b[32 + 2] |= 0x80;   // tools bit 23
+            set_tool(b, NXVC_TOOL_FILTER_CATMULLROM);
             break;
         case 9:
-            b[32 + 1] &= (uint8_t)~0x04;   // clear tools bit 10 (INTER)
+            clear_tool(b, NXVC_TOOL_INTER);
             break;
         case 10:
             if (!find_tile(b, f1, -1, 0, &hdr, &opt)) {
@@ -788,6 +827,8 @@ static const RejectSpec kRejects[] = {
     {"r30_cfl_no_dir_ctx",    "INTRA_CFL without INTRA_DIR and CTX_V2",   NXVC_ERR_BITSTREAM,   1},
     {"r31_split_no_tool",     "tile split4x4 without XFORM_4X4_SPLIT",    NXVC_ERR_BITSTREAM,   1},
     {"r32_split_with_tskip",  "tile split4x4 together with tskip",        NXVC_ERR_BITSTREAM,   1},
+    {"r33_tab_v2_no_tables",  "TAB_V2 without CUSTOM_TABLES",             NXVC_ERR_BITSTREAM,   1},
+    {"r34_ctx_v3_no_v2",      "CTX_V3 without CTX_V2",                    NXVC_ERR_BITSTREAM,   1},
 };
 static const int kNumRejects = (int)(sizeof(kRejects) / sizeof(kRejects[0]));
 
@@ -819,7 +860,9 @@ static std::vector<uint8_t> make_reject(int idx, const std::vector<uint8_t> &bas
     uint32_t w0 = get_u32(b, kOffTile0), w1 = get_u32(b, kOffTile0 + 4);
     switch (idx) {
         case 0: b[0] ^= 0x01; break;
-        case 1: b[32 + 7] |= 0x80; break;              // tools bit 63
+        // Bit 63 is reserved and has no name: this vector pins "a decoder
+        // must refuse a reserved tool bit", so the literal IS the subject.
+        case 1: b[32 + 7] |= 0x80; break;
         case 2: b[13] = 10; break;                     // bit_depth
         case 3: b[7] = 1; break;                       // tile_size 32x32
         case 4: put_u32(b, kOffTile0, (w0 & 0xffffu) | (0xf000u << 16)); break;
@@ -837,29 +880,39 @@ static std::vector<uint8_t> make_reject(int idx, const std::vector<uint8_t> &bas
         // SYNTAX.md 2: color_transform 1 requires 4:4:4.  v01 is 4:2:0, so
         // declaring YCoCg-R (and the RGB colour space and tool bit 9 that
         // must accompany it) makes the header self-contradictory.
-        case 14: b[41] = 1; b[42] = 3; b[32 + 1] |= 0x02; break;
+        case 14:
+            b[41] = 1; b[42] = 3;
+            set_tool(b, NXVC_TOOL_YCOCGR);
+            break;
         // A CTX_V2 stream's transmitted table sets are 160 bytes, not 120.
         // Declaring the tool and set 0 without lengthening the frame makes the
         // table run past `frame_bytes`.
         case 15:
-            b[32 + 2] |= 0x20;              // tools bit 21 (CTX_V2)
+            set_tool(b, NXVC_TOOL_CTX_V2);
             b[kOffFrame + 32] |= 0x01;      // tables_present bit 0
             break;
         // Sign data hiding is lossy by construction; the two tool bits are
         // mutually exclusive.
-        case 16: b[32 + 0] |= 0x20; b[32 + 2] |= 0x40; break;
+        case 16:
+            set_tool(b, NXVC_TOOL_LOSSLESS);
+            set_tool(b, NXVC_TOOL_SIGN_HIDE);
+            break;
         // Chroma from luma is a mode inside the CTX_V2 mode symbol of the
         // replace form; v01 has neither INTRA_DIR nor CTX_V2 (SYNTAX.md 7.7).
-        case 17: b[32 + 3] |= 0x01; break;              // tools bit 24
+        case 17: set_tool(b, NXVC_TOOL_INTRA_CFL); break;
         // Tile-header bit 28 without tool bit 19.
         case 18: put_u32(b, kOffTile0 + 4, w1 | (1u << 28)); break;
         // Both tool bits present, but the two tile-header flags are mutually
         // exclusive: a transform-skip block has no sub-block structure.
         case 19:
-            b[32 + 0] |= 0x02;                          // tools bit 1
-            b[32 + 2] |= 0x08;                          // tools bit 19
+            set_tool(b, NXVC_TOOL_TRANSFORM_SKIP);
+            set_tool(b, NXVC_TOOL_XFORM_4X4_SPLIT);
             put_u32(b, kOffTile0 + 4, w1 | (1u << 28) | (1u << 23));
             break;
+        // TAB_V2 only exists inside a transmitted table set, and CTX_V3 only
+        // names a model on top of CTX_V2.
+        case 20: set_tool(b, NXVC_TOOL_TAB_V2); break;
+        case 21: set_tool(b, NXVC_TOOL_CTX_V3); break;
         default: break;
     }
     return b;
