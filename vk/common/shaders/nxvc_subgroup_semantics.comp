@@ -1,0 +1,145 @@
+#version 460
+// nxvc_subgroup_semantics.comp - the conformance kernel behind rule 3.2.6.
+//
+// 3.2.6 says: "Cluster operations use `subgroupBallot` plus masks derived from
+// `gl_SubgroupInvocationID & ~7`, never `subgroupClustered*`".  That rule is
+// only safe if the ballot-and-mask emulation gives *bit-identical* answers on
+// every device and at every subgroup size, because the same SPIR-V binary runs
+// everywhere and the decoder must be bit-exact.
+//
+// This kernel computes, for every invocation, four values that depend only on
+// its aligned group of 8 *global* indices:
+//
+//   x  sum   of v over the cluster        (emulated with subgroupShuffle)
+//   y  max   of v over the cluster        (emulated with subgroupShuffle)
+//   z  popcount of a predicate ballot masked to the cluster
+//   w  the cluster's lane-0 value, fetched with subgroupShuffleXor chains
+//
+// Because a workgroup is a multiple of the subgroup size and full subgroups
+// are required, lane `L` of subgroup `S` is local index `S * size + L`, so an
+// aligned group of 8 lanes is always an aligned group of 8 local indices.  The
+// results are therefore subgroup-size invariant *by construction*, and the
+// host proves it by running the same shader pinned to 8, 16, 32 and 64 and
+// comparing the buffers byte for byte against a CPU reference.
+//
+// Compiled twice: once plain, once with NXVC_HAVE_CLUSTERED so that on devices
+// advertising VK_SUBGROUP_FEATURE_CLUSTERED_BIT the real subgroupClustered*
+// ops act as an independent oracle.  The clustered variant declares the
+// GroupNonUniformClustered SPIR-V capability, which is exactly why it cannot
+// simply be a specialization constant.
+
+#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_KHR_shader_subgroup_ballot : require
+#extension GL_KHR_shader_subgroup_shuffle : require
+#extension GL_KHR_shader_subgroup_arithmetic : require
+#ifdef NXVC_HAVE_CLUSTERED
+#extension GL_KHR_shader_subgroup_clustered : require
+#endif
+
+// Reserved specialization ids, mirrored from nxvc/vk/pipeline.hpp.
+layout(constant_id = 0) const uint SUBGROUP_SIZE = 32;
+layout(constant_id = 2) const uint CLUSTER_WIDTH = 8;
+layout(constant_id = 4) const uint WG_SIZE = 256;
+
+layout(local_size_x_id = 4, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430, set = 0, binding = 0) writeonly buffer Out {
+    uvec4 result[];
+} nxOut;
+
+// One counter, incremented once per invocation whose emulated result differs
+// from the clustered-op oracle.  Always present so the two shader variants
+// share a descriptor set layout.
+layout(std430, set = 0, binding = 1) buffer Mismatch {
+    uint count;
+    uint first_bad_index;
+    uint observed_subgroup_size;  // gl_SubgroupSize as the shader saw it
+    uint spec_subgroup_size;      // what the host thought it pinned
+} nxBad;
+
+layout(push_constant) uniform Push {
+    uint element_count;
+} nxPush;
+
+// A cheap, well-mixed, division-free hash.  Nothing normative depends on it;
+// it only has to be deterministic and to spread bits.
+uint mix32(uint x) {
+    x *= 0x9E3779B9u;
+    x ^= x >> 15;
+    x *= 0x85EBCA6Bu;
+    x ^= x >> 13;
+    return x;
+}
+
+void main() {
+    const uint gid = gl_GlobalInvocationID.x;
+    const bool in_range = gid < nxPush.element_count;
+    const uint v = in_range ? mix32(gid) : 0u;
+
+    // The emulated cluster: 8 consecutive lanes starting at a multiple of 8.
+    const uint lane = gl_SubgroupInvocationID;
+    const uint base = lane & ~(CLUSTER_WIDTH - 1u);
+
+    // --- emulated reductions via shuffle -------------------------------
+    // subgroupShuffle takes a dynamically uniform-per-lane id; every lane in
+    // the cluster reads the same eight lanes, in the same order, so the
+    // reduction is associative-order-independent and exact for integers.
+    uint sum = 0u;
+    uint mx = 0u;
+    for (uint i = 0u; i < CLUSTER_WIDTH; ++i) {
+        const uint other = subgroupShuffle(v, base + i);
+        sum += other;
+        mx = max(mx, other);
+    }
+
+    // --- ballot masked to the cluster ----------------------------------
+    // gl_SubgroupEqMask and friends are uvec4; build the cluster mask the way
+    // 3.2.6 specifies rather than with a clustered op.
+    const uvec4 vote = subgroupBallot((v & 1u) != 0u);
+    uvec4 cluster_mask = uvec4(0u);
+    {
+        const uint word = base >> 5;          // base / 32, no division
+        const uint shift = base & 31u;
+        // CLUSTER_WIDTH is 8 and base is 8-aligned, so the mask never spans
+        // two words.
+        const uint bits = ((1u << CLUSTER_WIDTH) - 1u) << shift;
+        if (word == 0u) cluster_mask.x = bits;
+        else if (word == 1u) cluster_mask.y = bits;
+        else if (word == 2u) cluster_mask.z = bits;
+        else cluster_mask.w = bits;
+    }
+    const uint popcount = subgroupBallotBitCount(vote & cluster_mask);
+
+    // --- cluster lane 0 broadcast --------------------------------------
+    // Walk a lane down to its cluster base with XOR shuffles of 4, 2, 1.
+    // Every shuffle is executed unconditionally by both partners and the
+    // result is *selected* afterwards; putting the shuffle itself inside the
+    // branch would leave the partner lane without a matching call, which is
+    // the classic portability bug this kernel exists to rule out.
+    const uint s4 = subgroupShuffleXor(v, 4u);
+    const uint v4 = ((lane & 4u) != 0u) ? s4 : v;
+    const uint s2 = subgroupShuffleXor(v4, 2u);
+    const uint v2 = ((lane & 2u) != 0u) ? s2 : v4;
+    const uint s1 = subgroupShuffleXor(v2, 1u);
+    const uint lane0 = ((lane & 1u) != 0u) ? s1 : v2;
+
+#ifdef NXVC_HAVE_CLUSTERED
+    const uint oracle_sum = subgroupClusteredAdd(v, 8);
+    const uint oracle_max = subgroupClusteredMax(v, 8);
+    if (in_range && (oracle_sum != sum || oracle_max != mx)) {
+        const uint prev = atomicAdd(nxBad.count, 1u);
+        if (prev == 0u) nxBad.first_bad_index = gid;
+    }
+#endif
+
+    // Record the size the shader actually ran at, once, so the host can prove
+    // the pin took effect rather than trusting the driver.
+    if (gid == 0u) {
+        nxBad.observed_subgroup_size = gl_SubgroupSize;
+        nxBad.spec_subgroup_size = SUBGROUP_SIZE;
+    }
+
+    if (in_range) {
+        nxOut.result[gid] = uvec4(sum, mx, popcount, lane0);
+    }
+}
