@@ -9,7 +9,7 @@ r04_tile_size_32 e42de31baa5f903861a5352e7d80420a UNSUPPORTED 32x32 tiles are a 
 r05_payload_past_row 3a20966982f373036e8e38000dfc397e TRUNCATED payload_len runs past the frame
 r06_res_level3 fb8c6f549beb974f4e030588bce3d812 BITSTREAM res_level 3 is reserved
 r07_truncated_rans f37b4f2a60f043db29391d5d40859f12 TRUNCATED the tile payload is cut short
-r08_skip_bitmap c49987ed7695f3bc5850a758e823e6a7 UNSUPPORTED a skip bit for a column past the picture
+r08_skip_bitmap c49987ed7695f3bc5850a758e823e6a7 BITSTREAM a skip bit for a column past the picture
 r09_reserved_tile_bit 9e23e34ff94a6523fd85a2b8ab347b6c BITSTREAM tile word1 bit 28 is reserved
 r10_mode_inter 65f9f11b834aa1da74f4b2cc2eae897f UNSUPPORTED an INTER tile in a Phase 1 stream
 r11_wm_id_no_tool 5bca6e182068a07b74467ea27c9c96b4 BITSTREAM wm_id != 0 without the WM_ID tool bit
@@ -19,3 +19,16 @@ r14_dir_layer_no_tool 85a9217c99ca1fc8514b5e1856fb79d2 BITSTREAM frame flags bit
 r15_ycocgr_420 432322575b1b0f2bb3432b23bc97f790 BITSTREAM YCoCg-R declared with 4:2:0 chroma
 r16_ctx_v2_short_table 53e88018c062a097aea2542fdd209d74 BITSTREAM CTX_V2 table set overruns the tile rows
 r17_lossless_sign_hide bcf5ebac6266f02562f1252da3cee9ea BITSTREAM LOSSLESS and SIGN_HIDE together
+# --- Phase 2 (Annex D D-21)
+r18_h22_not_one 603b41210fc7359e2f1f8b646ef9d9e8 BITSTREAM warp_ext h22 != 2^29
+r19_entry_range ca52595d7e113bfa3dd42c7d7dfbd9e1 BITSTREAM a warp_ext entry beyond kEntryMax
+r20_den_range 8efe5c3ff7c4d1c9273acb340520e896 BITSTREAM den leaves [2^28, 2^30) at a picture corner
+r21_warp_no_flag 9777834271b7328c37cad057ace40097 BITSTREAM a WARP_MV tile with warp_present == 0
+r22_mode_reserved f174fcfce036a342a973ca4ba36df729 BITSTREAM mode 5 is reserved
+r23_intra_ref_sel 5ec052b5adafb8ea3c523aa20ca54277 BITSTREAM ref_sel != 0 on an INTRA tile
+r24_ref_sel_three 85b96e5f447d81efb50d4c840ad273b0 BITSTREAM ref_sel == 3 is reserved
+r25_ref_slots_wrong c09eb9aef58c449cf00d894b3987bbde BITSTREAM ref_slots != 1 << (frame_number mod 4)
+r26_tool_catmullrom aa06f756a3f12f2e8c2dd840c98f4c1c VERSION tool bit 23 FILTER_CATMULL_ROM in v1
+r27_warp_without_inter d5cbfca69012ee66f8f3a08b380068e4 BITSTREAM the WARP tool bit without INTER
+r28_stereo_left_eye e6d26f35a767e479280c0fa76164b669 BITSTREAM mode STEREO on the left eye
+r29_disparity_reserved 5761574fb60d0ef384241a391184607a BITSTREAM disparity bits 15:12 are not zero

@@ -8,9 +8,24 @@ The normative syntax is **[`docs/SYNTAX.md`](../docs/SYNTAX.md)**. This library
 is that document in executable form; `docs/PAPER.md` is the rationale and is not
 normative.
 
-**Phase 1 scope: intra only.** No inter prediction, no pose warp, no stereo, no
-layers. The full v1 syntax is parsed and validated — a Phase 2 stream is refused
-cleanly rather than misparsed — but only `INTRA` tiles are reconstructed.
+**Scope: intra (Phase 1) and inter (Phase 2).** All five tile modes are
+implemented — `WARP_SKIP`, `STATIC_MV`, `WARP_MV`, `INTRA` and `STEREO` — with
+the pose warp, the four-slot reference ring, one picture per eye, and
+deterministic concealment. Layers are still out of scope. Inter is **opt-in**:
+`nxvc_config_default()` leaves it off, so an existing caller and every syntax
+v1.3 stream are byte-identical to what a v1.3 build produced.
+
+**Syntax revision v1.4** adds the inter path: the frame-header flag
+`warp_present` (bit 3) and the 36-byte-per-eye `warp_ext()` that follows the
+frame header, the four inter tile modes, `eyes == 2` with row-major/eye-minor
+tile rows, and the 12-bit STEREO `disparity` in place of `mv_x`/`mv_y`. See
+[`docs/SYNTAX.md`](../docs/SYNTAX.md) 13 and
+[`RESULTS-inter.md`](RESULTS-inter.md).
+
+The predictor itself is **not implemented here**: `ref/src/inter.h` links
+`nxvc_warp_ref` from [`warp/`](../warp), which owns `warp_tile()`, the corner
+derivation and the saturation rules. `ref/` builds the reference ring, the
+prediction state and the mode decision around it.
 
 **Syntax revision v1.3** adds the three v2 intra tools — directional intra
 (bit 17), the 16-context entropy model (bit 21) and sign data hiding (bit 22).
@@ -64,6 +79,30 @@ v1.3 tool switches:
 | `--ctx v1\|v2` | `v2` | 12 or 16 entropy contexts |
 | `--no-sign-hide` | off | code every sign |
 
+and the v1.4 inter switches:
+
+| flag | default | effect |
+|---|---|---|
+| `--inter on\|off` | `off` | inter prediction; sets tool bits 10 and 11 |
+| `--eyes 1\|2` | 1 | 2 means `--w` is the FULL side-by-side width and each half is a picture |
+| `--poses FILE` | none | the `.poses.json` sidecar the warp matrix is derived from |
+| `--fov H,V` | `95,95` | field of view in degrees, for that derivation |
+| `--intra-period N` | 180 | rolling intra refresh period; 1 forces every tile every frame |
+| `--ref-sel 0..2` | 0 | which reference inter tiles ask for, `N-1-ref_sel` |
+| `--stereo on\|off` | `off` | `STEREO` inter-view mode on the right eye (needs `--eyes 2`) |
+| `--mv-range N` | 16 | coarse integer search radius in samples |
+| `--skip-thresh F` | 1.0 | `WARP_SKIP` early-out gate, multiples of `qstep^2/12` per sample |
+| `--skip-map FILE` | none | per-tile `force_warp_skip` flags from the rate controller |
+| `--mode-lambda F` | 0.25 | lambda of the per-tile mode decision relative to the trellis |
+
+```sh
+# a stereo inter stream from a corpus sequence and its pose log
+nxv-enc --in vr-mixed-1024.yuv420p.yuv --w 2048 --h 1024 --pix yuv420p \
+        --qp 8 --eyes 2 --inter on --poses vr-mixed-1024.poses.json \
+        --out out.nxv
+nxv-info --in out.nxv --tiles      # per-tile mode, vector, ref_sel, warp_ext
+```
+
 Rate-distortion quantization is **on by default**. It is encoder-only work -- a
 trellis over the level syntax, `ref/src/codec.cpp` `rdoq_unit()` -- so a stream
 encoded with it decodes through exactly the same path as one encoded without.
@@ -110,22 +149,58 @@ nxvc_decoder_decode_frame(d, buf, len, &out_img, &consumed);
 ```
 
 Both sides expose the frame's tile layout: `nxvc_tile_layout_get()` for the grid
-and `nxvc_encoder_tiles()` / `nxvc_decoder_tiles()` for the per-tile records
-(mode, resolved QP, `res_level`, `tskip`, `table_set`, payload length).
+(`nxvc_tile_layout_get_ex()` when `eyes == 2`) and `nxvc_encoder_tiles()` /
+`nxvc_decoder_tiles()` for the per-tile records (mode, resolved QP,
+`res_level`, `tskip`, `table_set`, payload length, and for v1.4 the vector,
+`ref_sel`, `ref_delta`, `disparity`, `skipped`, `concealed` and
+`age_since_coded`).
+
+### The inter path
+
+```c
+cfg.eyes = 2; cfg.inter = 1;                 /* width/height are PER EYE */
+nxvc_encoder *e = nxvc_encoder_create(&cfg, &st);
+
+nxvc_view v[2] = { ... };                    /* this frame's per-eye view */
+nxvc_encoder_set_views(e, v, 2);             /* before every encode_frame */
+nxvc_encoder_encode_frame(e, &img, NULL, NULL, buf, sizeof buf, &len);
+```
+
+`nxvc_encoder_set_views()` is the only floating-point input the codec takes; its
+result reaches the decoder already quantised to the nine `int32` of
+`warp_ext()`. The image is `eyes * width` samples wide, eye 0 first.
+
+**The loss/concealment contract.** The decoder is told which tiles the client
+did not get; the encoder is told the same thing and replays the identical
+concealment on its shadow, so it predicts the next frame from what the client
+actually shows:
+
+```c
+nxvc_decoder_set_lost_tiles(d, lost, ntiles);      /* consumed by one frame */
+nxvc_decoder_decode_frame(d, buf, len, &img, &consumed);
+
+nxvc_encoder_set_received_tiles(e, received, ntiles);   /* after encode */
+nxvc_encoder_shadow_image(e, &shadow);                  /* == the decoder */
+```
+
+`tests/ref/test_inter.cpp` asserts that equality byte for byte over 200 frames
+with random tile loss. `nxvc_encoder_set_skip_map()` is the rate controller's
+`force_warp_skip` request (docs/RATECONTROL.md 8.7): applied after the mode
+search, overridden wherever a coded tile is required.
 
 ## Byte layout at a glance
 
 ```
 file  := stream_header ext_area frame*
-frame := frame_header [custom_matrices] [table_sets] tile_row*
-tile_row := row_header tile*
-tile  := tile_header [mv] [alpha] payload
+frame := frame_header [warp_ext] [custom_matrices] [table_sets] tile_row*
+tile_row := row_header tile*                        // eyes * rows of them
+tile  := tile_header [mv | disparity] [alpha] payload
 ```
 
 | structure | size |
 |---|---|
 | stream header | 64 bytes + `ext_len` bytes of TLVs |
-| frame header | 40 bytes (+128 custom matrices, +120 per table set) |
+| frame header | 40 bytes (+`36 * eyes` `warp_ext`, +128 custom matrices, +120 per table set, 160 with `CTX_V2`) |
 | tile-row header | 12 bytes (`frame_number`, `row_index`, `tile_count`, 64-bit skip bitmap) |
 | probability table set | 120 bytes, or 160 with `CTX_V2` |
 | tile header | 8 bytes (+2 MV, +1 constant alpha) |

@@ -305,6 +305,417 @@ static Result build(const VecSpec &v) {
     return r;
 }
 
+
+// ------------------------------------------------------- Phase 2 vectors
+// The twelve inter vectors spec/annex-d-inter-decisions.md D-21 asks for.
+// D-21 names them by what they must fix, not by how they must be produced;
+// each row below says which entry it is.  Where D-21's entry is a *property*
+// rather than a stream -- "STATIC_MV must not read the matrix", "an integer
+// vector under identity equals a shifted tile" -- the property is asserted in
+// tests/ref/test_inter.cpp and warp/'s own suite, and the vector here pins the
+// bitstream and the reconstruction that the property holds for.
+struct InterSpec {
+    const char *name;
+    const char *fixes;      // the D-21 entry
+    int eye_w, h;
+    int eyes;
+    int c444;
+    int qp;
+    int frames;
+    int stereo;
+    int iperiod;            // rolling intra refresh period
+    int ref_sel;
+    double yaw;             // degrees per frame in the pose log
+    double pan;             // picture shift per frame, samples
+    int obj;                // moving-disc speed
+    int disparity;          // per-eye horizontal offset
+    int salt;               // per-frame content reseed (new content everywhere)
+};
+
+static const InterSpec kInterVectors[] = {
+    // name                     fixes                        w    h  ey 444 qp fr st per rs   yaw   pan obj disp salt
+    {"v45_inter_identity",      "inter/identity",           128, 128, 1, 1, 24, 4, 0, 999, 0,  0.0,  0.0, 0,  0, 0},
+    {"v46_inter_warp_mv",       "inter/integer_mv",         128, 128, 1, 1, 26, 5, 0, 999, 0,  0.7,  2.0, 3,  0, 0},
+    {"v47_inter_static_mv",     "inter/static_mv",          128, 128, 1, 1, 26, 4, 0, 999, 0, 12.0,  0.0, 0,  0, 0},
+    {"v48_inter_warp_sweep",    "inter/warp_sweep",         128, 128, 1, 1, 28, 6, 0, 999, 0,  4.5,  6.0, 2,  0, 0},
+    {"v49_inter_warp_border",   "inter/warp_border",        128,  64, 1, 1, 28, 5, 0, 999, 0,  9.0, 14.0, 5,  0, 0},
+    {"v50_inter_skip_state",    "inter/skip",               128, 128, 1, 1, 22, 4, 0, 999, 0,  0.2,  0.5, 1,  0, 0},
+    {"v51_inter_ref_sel1",      "inter/ref_sel",            128, 128, 1, 1, 26, 6, 0, 999, 1,  0.5,  1.0, 2,  0, 0},
+    {"v52_inter_ref_sel2",      "inter/ref_sel",            128, 128, 1, 1, 26, 7, 0, 999, 2,  0.5,  1.0, 2,  0, 0},
+    {"v53_inter_stereo",        "inter/stereo",             128, 128, 2, 1, 24, 4, 1, 999, 0,  0.0,  0.0, 0, 11, 1},
+    {"v54_inter_stereo_static", "inter/stereo_static_equiv",128, 128, 2, 1, 24, 4, 0, 999, 0,  0.0,  0.0, 0, 11, 1},
+    {"v55_inter_420",           "inter/warp_sweep (4:2:0)", 128, 128, 1, 0, 26, 5, 0, 999, 0,  1.5,  3.0, 3,  0, 0},
+    {"v56_inter_refresh",       "inter/skip (refresh)",     128, 128, 1, 1, 26, 8, 0,   4, 0,  0.4,  1.0, 2,  0, 0},
+};
+static const int kNumInterVectors =
+    (int)(sizeof(kInterVectors) / sizeof(kInterVectors[0]));
+
+// The material: a textured plane sampled through a per-frame translation, a
+// disc moving independently of it, and a per-eye horizontal offset.  It is
+// generated here rather than shared with test_inter.cpp so that changing a
+// test can never move a committed conformance digest.
+static int vec_tex(int x, int y) {
+    double v = 128 + 55 * std::sin(x * 0.031) * std::cos(y * 0.027) +
+               30 * std::sin((x * 3 + y * 5) * 0.11) +
+               18 * std::sin((double)(x * x + y * y) * 0.00042);
+    v += ((x / 13 + y / 11) % 2) ? 12 : -12;
+    return v < 0 ? 0 : (v > 255 ? 255 : (int)v);
+}
+
+struct InterFrame {
+    int w = 0, h = 0, cw = 0, ch = 0;
+    std::vector<uint8_t> Y, U, V;
+};
+
+static InterFrame make_inter_frame(const InterSpec &v, int f) {
+    InterFrame s;
+    s.w = v.eye_w * v.eyes;
+    s.h = v.h;
+    s.cw = v.c444 ? s.w : (s.w + 1) / 2;
+    s.ch = v.c444 ? s.h : (s.h + 1) / 2;
+    s.Y.assign((size_t)s.w * s.h, 0);
+    s.U.assign((size_t)s.cw * s.ch, 128);
+    s.V.assign((size_t)s.cw * s.ch, 128);
+    const int obj_x = 20 + v.obj * f, obj_y = 40 + (f % 3);
+    for (int e = 0; e < v.eyes; ++e) {
+        const int ex = e * v.disparity;
+        for (int y = 0; y < v.h; ++y)
+            for (int x = 0; x < v.eye_w; ++x) {
+                int sx = (int)std::lround(x + v.pan * f) + ex + v.salt * f * 37;
+                int sy = (int)std::lround(y) + v.salt * f * 11;
+                int val = vec_tex(sx, sy);
+                const double dx = x - obj_x, dy = y - obj_y;
+                if (v.obj && dx * dx + dy * dy < 17.0 * 17.0)
+                    val = 235 - (int)(dx * dx) % 90;
+                s.Y[(size_t)y * s.w + e * v.eye_w + x] = (uint8_t)val;
+            }
+        const int cew = v.c444 ? v.eye_w : v.eye_w / 2;
+        const int cf = v.c444 ? 1 : 2;
+        for (int y = 0; y < s.ch; ++y)
+            for (int x = 0; x < cew; ++x) {
+                s.U[(size_t)y * s.cw + e * cew + x] =
+                    (uint8_t)(110 + (vec_tex(x * cf + ex, y * cf) >> 3));
+                s.V[(size_t)y * s.cw + e * cew + x] =
+                    (uint8_t)(140 - (vec_tex(y * cf, x * cf + ex) >> 3));
+            }
+    }
+    return s;
+}
+
+static nxvc_view vec_view_yaw(double deg) {
+    nxvc_view v{};
+    const double a = deg * 3.14159265358979323846 / 360.0;
+    v.qy = std::sin(a);
+    v.qw = std::cos(a);
+    const double fh = 95.0 * 3.14159265358979323846 / 360.0;
+    v.fov_left = -fh;
+    v.fov_right = fh;
+    v.fov_up = fh;
+    v.fov_down = -fh;
+    return v;
+}
+
+static Result build_inter(const InterSpec &v) {
+    Result r;
+    nxvc_config cfg;
+    nxvc_config_default(&cfg);
+    cfg.width = (uint32_t)v.eye_w;
+    cfg.height = (uint32_t)v.h;
+    cfg.eyes = (uint32_t)v.eyes;
+    cfg.chroma = v.c444 ? NXVC_CHROMA_444 : NXVC_CHROMA_420;
+    cfg.base_qp = (uint32_t)v.qp;
+    cfg.inter = 1;
+    cfg.stereo = (uint32_t)v.stereo;
+    cfg.intra_period = (uint32_t)v.iperiod;
+    cfg.ref_sel = (uint32_t)v.ref_sel;
+    cfg.custom_tables = 0;
+
+    nxvc_status st;
+    nxvc_encoder *e = nxvc_encoder_create(&cfg, &st);
+    if (!e) { r.err = nxvc_status_string(st); return r; }
+    uint8_t pose[26];
+    for (int i = 0; i < 26; ++i) pose[i] = (uint8_t)(0x10 + i * 7);
+    nxvc_encoder_set_pose(e, pose);
+
+    std::vector<uint8_t> buf(4096);
+    size_t hl = 0;
+    st = nxvc_encoder_stream_header(e, buf.data(), buf.size(), &hl);
+    if (st != NXVC_OK) { r.err = nxvc_status_string(st); return r; }
+    r.stream.assign(buf.begin(), buf.begin() + hl);
+
+    const size_t px = (size_t)v.eye_w * v.eyes * v.h;
+    std::vector<uint8_t> fbuf(px * 8 + (1u << 20));
+    for (int f = 0; f < v.frames; ++f) {
+        InterFrame s = make_inter_frame(v, f);
+        nxvc_image img{};
+        img.plane[0] = s.Y.data(); img.stride[0] = s.w;
+        img.plane[1] = s.U.data(); img.stride[1] = s.cw;
+        img.plane[2] = s.V.data(); img.stride[2] = s.cw;
+        nxvc_view views[2];
+        for (int k = 0; k < v.eyes; ++k) views[k] = vec_view_yaw(v.yaw * f);
+        nxvc_encoder_set_views(e, views, (uint32_t)v.eyes);
+        size_t ol = 0;
+        st = nxvc_encoder_encode_frame(e, &img, nullptr, nullptr, fbuf.data(),
+                                       fbuf.size(), &ol);
+        if (st != NXVC_OK) { r.err = nxvc_status_string(st); return r; }
+        r.stream.insert(r.stream.end(), fbuf.begin(), fbuf.begin() + ol);
+    }
+    nxvc_encoder_destroy(e);
+    r.stream_md5 = md5_hex(r.stream.data(), r.stream.size());
+
+    nxvc_decoder *d = nxvc_decoder_create(&st);
+    size_t off = 0, consumed = 0;
+    st = nxvc_decoder_parse_stream_header(d, r.stream.data(), r.stream.size(),
+                                          &consumed);
+    if (st != NXVC_OK) { r.err = nxvc_status_string(st); return r; }
+    off = consumed;
+    uint32_t yw, yh, cw, ch;
+    nxvc_decoder_plane_size(d, 0, &yw, &yh);
+    nxvc_decoder_plane_size(d, 1, &cw, &ch);
+    std::vector<uint8_t> Y((size_t)yw * yh), U((size_t)cw * ch), V((size_t)cw * ch);
+    MD5 md;
+    int frames = 0;
+    while (off < r.stream.size()) {
+        nxvc_image oi{};
+        oi.plane[0] = Y.data(); oi.stride[0] = (int)yw;
+        oi.plane[1] = U.data(); oi.stride[1] = (int)cw;
+        oi.plane[2] = V.data(); oi.stride[2] = (int)cw;
+        st = nxvc_decoder_decode_frame(d, r.stream.data() + off,
+                                       r.stream.size() - off, &oi, &consumed);
+        if (st != NXVC_OK) { r.err = nxvc_status_string(st); return r; }
+        md.update(Y.data(), Y.size());
+        md.update(U.data(), U.size());
+        md.update(V.data(), V.size());
+        off += consumed;
+        ++frames;
+    }
+    nxvc_decoder_destroy(d);
+    if (frames != v.frames) { r.err = "frame count mismatch"; return r; }
+    r.decoded_md5 = md.hex();
+    r.ok = true;
+    return r;
+}
+
+
+// ------------------------------------------- Phase 2 rejection vectors
+// D-21 again: "the rejection vectors matter more than the positive ones".
+// Each is a legal inter stream with exactly one field corrupted, and the
+// offsets are found by walking the frame rather than hard-coded, so a change
+// in the encoder's mode decision cannot silently make a vector patch the
+// wrong byte.
+struct FrameWalk {
+    size_t frame_off = 0;      // start of the frame unit
+    size_t warp_off = 0;       // warp_ext(), 0 if absent
+    size_t row0_off = 0;       // first tile-row header
+    int eyes = 1, cols = 1, rows = 1;
+    bool warp_present = false;
+};
+
+static uint32_t rd_u32(const std::vector<uint8_t> &b, size_t o) {
+    uint32_t v = 0;
+    for (int i = 0; i < 4; ++i) v |= (uint32_t)b[o + i] << (8 * i);
+    return v;
+}
+static uint64_t rd_u64(const std::vector<uint8_t> &b, size_t o) {
+    uint64_t v = 0;
+    for (int i = 0; i < 8; ++i) v |= (uint64_t)b[o + i] << (8 * i);
+    return v;
+}
+
+// Offset of frame `n` (0-based) in a stream whose header is `hdr_len` bytes.
+static bool frame_offset(const std::vector<uint8_t> &b, size_t hdr_len, int n,
+                         size_t *out) {
+    size_t off = hdr_len;
+    for (int i = 0; i < n; ++i) {
+        if (off + 40 > b.size()) return false;
+        off += rd_u32(b, off + 36);
+    }
+    if (off + 40 > b.size()) return false;
+    *out = off;
+    return true;
+}
+
+static bool walk_frame(const std::vector<uint8_t> &b, size_t hdr_len, int n,
+                       int eyes, int cols, int rows, int nctx, FrameWalk *w) {
+    if (!frame_offset(b, hdr_len, n, &w->frame_off)) return false;
+    const size_t f = w->frame_off;
+    w->eyes = eyes;
+    w->cols = cols;
+    w->rows = rows;
+    const uint32_t flags = b[f + 34];
+    w->warp_present = (flags >> 3) & 1;
+    size_t off = f + 40;
+    if (w->warp_present) {
+        w->warp_off = off;
+        off += (size_t)36 * eyes;
+    }
+    if (b[f + 31] == 255) off += 128;
+    const uint32_t tp = b[f + 32];
+    for (int k = 0; k < 8; ++k)
+        if (tp & (1u << k)) off += (size_t)nctx * 16 * 5 / 8;
+    w->row0_off = off;
+    return true;
+}
+
+// Offset of the header of the first tile matching (mode, eye); -1 for "any".
+// Returns the tile header offset, and through `opt` the offset of its optional
+// area (the mv / disparity bytes).
+static bool find_tile(const std::vector<uint8_t> &b, const FrameWalk &w,
+                      int want_mode, int want_eye, size_t *hdr, size_t *opt) {
+    size_t off = w.row0_off;
+    for (int row = 0; row < w.rows; ++row) {
+        for (int eye = 0; eye < w.eyes; ++eye) {
+            if (off + 12 > b.size()) return false;
+            const uint64_t skip = rd_u64(b, off + 4);
+            off += 12;
+            for (int col = 0; col < w.cols; ++col) {
+                if ((skip >> col) & 1ull) continue;
+                if (off + 8 > b.size()) return false;
+                const uint32_t w0 = rd_u32(b, off), w1 = rd_u32(b, off + 4);
+                const int mode = (int)(w1 & 7);
+                const int mv_present = (int)((w1 >> 20) & 1);
+                const int alpha_mode = (int)((w1 >> 6) & 3);
+                const size_t optoff = off + 8;
+                const size_t plen = (w0 >> 16) & 0xffff;
+                const size_t adv = 8 + (mv_present ? 2u : 0u) +
+                                   (alpha_mode == 1 ? 1u : 0u) + plen;
+                if ((want_mode < 0 || mode == want_mode) &&
+                    (want_eye < 0 || eye == want_eye)) {
+                    *hdr = off;
+                    *opt = optoff;
+                    return true;
+                }
+                off += adv;
+            }
+        }
+    }
+    return false;
+}
+
+struct InterReject {
+    const char *name;
+    const char *why;
+    int expect;
+    int base;      // 0 = the mono inter base, 1 = the stereo one
+};
+
+static const InterReject kInterRejects[] = {
+    {"r18_h22_not_one",        "warp_ext h22 != 2^29",                     NXVC_ERR_BITSTREAM, 0},
+    {"r19_entry_range",        "a warp_ext entry beyond kEntryMax",        NXVC_ERR_BITSTREAM, 0},
+    {"r20_den_range",          "den leaves [2^28, 2^30) at a picture corner", NXVC_ERR_BITSTREAM, 0},
+    {"r21_warp_no_flag",       "a WARP_MV tile with warp_present == 0",    NXVC_ERR_BITSTREAM, 0},
+    {"r22_mode_reserved",      "mode 5 is reserved",                       NXVC_ERR_BITSTREAM, 0},
+    {"r23_intra_ref_sel",      "ref_sel != 0 on an INTRA tile",            NXVC_ERR_BITSTREAM, 0},
+    {"r24_ref_sel_three",      "ref_sel == 3 is reserved",                 NXVC_ERR_BITSTREAM, 0},
+    {"r25_ref_slots_wrong",    "ref_slots != 1 << (frame_number mod 4)",   NXVC_ERR_BITSTREAM, 0},
+    {"r26_tool_catmullrom",    "tool bit 23 FILTER_CATMULL_ROM in v1",     NXVC_ERR_VERSION,   0},
+    {"r27_warp_without_inter", "the WARP tool bit without INTER",          NXVC_ERR_BITSTREAM, 0},
+    {"r28_stereo_left_eye",    "mode STEREO on the left eye",              NXVC_ERR_BITSTREAM, 1},
+    {"r29_disparity_reserved", "disparity bits 15:12 are not zero",        NXVC_ERR_BITSTREAM, 1},
+};
+static const int kNumInterRejects =
+    (int)(sizeof(kInterRejects) / sizeof(kInterRejects[0]));
+
+// The two base streams the patches are applied to.  Both are ordinary encoder
+// output; only the fields named above are touched.
+static const InterSpec kRejectBaseMono = {
+    "reject_base_mono", "", 128, 128, 1, 1, 26, 3, 0, 999, 0, 0.7, 2.0, 3, 0, 0};
+static const InterSpec kRejectBaseStereo = {
+    "reject_base_stereo", "", 128, 128, 2, 1, 24, 3, 1, 999, 0, 0.0, 0.0, 0, 11, 1};
+
+static bool make_inter_reject(int idx, const std::vector<uint8_t> &base,
+                              const InterSpec &spec, std::vector<uint8_t> *out,
+                              std::string *why) {
+    std::vector<uint8_t> b = base;
+    const int cols = (spec.eye_w + 63) / 64, rows = (spec.h + 63) / 64;
+    FrameWalk f0{}, f1{};
+    if (!walk_frame(b, 64, 0, spec.eyes, cols, rows, 16, &f0) ||
+        !walk_frame(b, 64, 1, spec.eyes, cols, rows, 16, &f1)) {
+        *why = "frame walk failed";
+        return false;
+    }
+    size_t hdr = 0, opt = 0;
+    auto patch_w1 = [&](size_t o, uint32_t clear, uint32_t set) {
+        uint32_t w1 = rd_u32(b, o + 4);
+        w1 = (w1 & ~clear) | set;
+        for (int i = 0; i < 4; ++i) b[o + 4 + i] = (uint8_t)(w1 >> (8 * i));
+    };
+    auto put32 = [&](size_t o, uint32_t v) {
+        for (int i = 0; i < 4; ++i) b[o + i] = (uint8_t)(v >> (8 * i));
+    };
+    switch (idx) {
+        case 0:
+            if (!f1.warp_present) { *why = "frame 1 has no warp_ext"; return false; }
+            put32(f1.warp_off + 32, 0x20000001u);
+            break;
+        case 1:
+            if (!f1.warp_present) { *why = "frame 1 has no warp_ext"; return false; }
+            put32(f1.warp_off + 0, 0x40000001u);   // kEntryMax + 1
+            break;
+        case 2:
+            if (!f1.warp_present) { *why = "frame 1 has no warp_ext"; return false; }
+            put32(f1.warp_off + 24, 1u << 24);     // h20: den runs past 2^30
+            break;
+        case 3:
+            // Frame 0 has no warp_ext at all, so a warped mode there is the
+            // "warp_present == 0" case with no offsets to shift.
+            if (!find_tile(b, f0, NXVC_MODE_INTRA, -1, &hdr, &opt)) {
+                *why = "no INTRA tile in frame 0"; return false;
+            }
+            patch_w1(hdr, 7u, (uint32_t)NXVC_MODE_WARP_MV);
+            break;
+        case 4:
+            if (!find_tile(b, f0, NXVC_MODE_INTRA, -1, &hdr, &opt)) {
+                *why = "no INTRA tile in frame 0"; return false;
+            }
+            patch_w1(hdr, 7u, 5u);
+            break;
+        case 5:
+            if (!find_tile(b, f0, NXVC_MODE_INTRA, -1, &hdr, &opt)) {
+                *why = "no INTRA tile in frame 0"; return false;
+            }
+            patch_w1(hdr, 3u << 21, 1u << 21);
+            break;
+        case 6:
+            if (!find_tile(b, f1, NXVC_MODE_WARP_MV, -1, &hdr, &opt) &&
+                !find_tile(b, f1, NXVC_MODE_STATIC_MV, -1, &hdr, &opt)) {
+                *why = "no coded inter tile in frame 1"; return false;
+            }
+            patch_w1(hdr, 3u << 21, 3u << 21);
+            break;
+        case 7:
+            b[f1.frame_off + 33] ^= 0xff;
+            break;
+        case 8:
+            b[32 + 2] |= 0x80;   // tools bit 23
+            break;
+        case 9:
+            b[32 + 1] &= (uint8_t)~0x04;   // clear tools bit 10 (INTER)
+            break;
+        case 10:
+            if (!find_tile(b, f1, -1, 0, &hdr, &opt)) {
+                *why = "no left-eye tile in frame 1"; return false;
+            }
+            patch_w1(hdr, 7u, (uint32_t)NXVC_MODE_STEREO);
+            break;
+        case 11: {
+            FrameWalk fw = f1;
+            size_t h2 = 0, o2 = 0;
+            bool found = false;
+            for (int fr = 1; fr < spec.frames && !found; ++fr) {
+                if (!walk_frame(b, 64, fr, spec.eyes, cols, rows, 16, &fw)) break;
+                found = find_tile(b, fw, NXVC_MODE_STEREO, 1, &h2, &o2);
+            }
+            if (!found) { *why = "no STEREO tile to corrupt"; return false; }
+            b[o2 + 1] |= 0x10;   // disparity bit 12
+            break;
+        }
+        default: break;
+    }
+    *out = b;
+    return true;
+}
+
 static std::string manifest_path(const std::string &dir) {
     return dir + "/vectors.md5";
 }
@@ -341,7 +752,7 @@ static const RejectSpec kRejects[] = {
     {"r05_payload_past_row",  "payload_len runs past the frame",         NXVC_ERR_TRUNCATED,   1},
     {"r06_res_level3",        "res_level 3 is reserved",                 NXVC_ERR_BITSTREAM,   1},
     {"r07_truncated_rans",    "the tile payload is cut short",           NXVC_ERR_TRUNCATED,   1},
-    {"r08_skip_bitmap",       "a skip bit for a column past the picture",NXVC_ERR_UNSUPPORTED, 1},
+    {"r08_skip_bitmap",       "a skip bit for a column past the picture",NXVC_ERR_BITSTREAM,   1},
     {"r09_reserved_tile_bit", "tile word1 bit 28 is reserved",           NXVC_ERR_BITSTREAM,   1},
     {"r10_mode_inter",        "an INTER tile in a Phase 1 stream",       NXVC_ERR_UNSUPPORTED, 1},
     {"r11_wm_id_no_tool",     "wm_id != 0 without the WM_ID tool bit",   NXVC_ERR_BITSTREAM,   1},
@@ -416,9 +827,11 @@ static std::vector<uint8_t> make_reject(int idx, const std::vector<uint8_t> &bas
     return b;
 }
 
-// Decode `data` and return the status the decoder gives, checking that it
-// produced no output before failing is the caller's job (the planes are
-// written into a scratch buffer that is discarded).
+// Decode `data` and return the first non-OK status the decoder gives.  Every
+// frame is walked, not just the first: an inter stream's malformed field is
+// usually in frame 1 or later, since frame 0 has no reference and no
+// warp_ext().  Checking that no output was produced before the failure is the
+// caller's job (the planes go into a scratch buffer that is discarded).
 static int reject_status(const std::vector<uint8_t> &data) {
     nxvc_status st;
     nxvc_decoder *d = nxvc_decoder_create(&st);
@@ -435,8 +848,13 @@ static int reject_status(const std::vector<uint8_t> &data) {
     oi.plane[1] = U.data(); oi.stride[1] = (int)cw;
     oi.plane[2] = V.data(); oi.stride[2] = (int)cw;
     oi.plane[3] = A.data(); oi.stride[3] = (int)yw;
-    st = nxvc_decoder_decode_frame(d, data.data() + consumed,
-                                   data.size() - consumed, &oi, &consumed);
+    size_t off = consumed;
+    while (off < data.size()) {
+        st = nxvc_decoder_decode_frame(d, data.data() + off, data.size() - off,
+                                       &oi, &consumed);
+        if (st != NXVC_OK) break;
+        off += consumed;
+    }
     nxvc_decoder_destroy(d);
     return (int)st;
 }
@@ -482,8 +900,30 @@ int main(int argc, char **argv) {
             std::printf("%-26s %7zu B  %s\n", v.name, r.stream.size(),
                         r.decoded_md5.c_str());
         }
+        // --- Phase 2 (Annex D D-21)
+        std::fprintf(m, "# --- Phase 2 inter vectors (Annex D D-21)\n");
+        for (int i = 0; i < kNumInterVectors; ++i) {
+            const InterSpec &v = kInterVectors[i];
+            Result r = build_inter(v);
+            if (!r.ok) {
+                std::fprintf(stderr, "%s: %s\n", v.name, r.err.c_str());
+                return 1;
+            }
+            std::string path = dir + "/" + v.name + ".nxv";
+            std::FILE *f = std::fopen(path.c_str(), "wb");
+            if (!f) { std::perror(path.c_str()); return 1; }
+            std::fwrite(r.stream.data(), 1, r.stream.size(), f);
+            std::fclose(f);
+            std::fprintf(m, "%s %s %s %d %d %s %d %d\n", v.name,
+                         r.stream_md5.c_str(), r.decoded_md5.c_str(),
+                         v.eye_w * v.eyes, v.h, v.c444 ? "yuv444p" : "yuv420p",
+                         0, v.frames);
+            std::printf("%-26s %7zu B  %s   [%s]\n", v.name, r.stream.size(),
+                        r.decoded_md5.c_str(), v.fixes);
+        }
         std::fclose(m);
-        std::printf("%d vectors written to %s\n", kNumVectors, dir.c_str());
+        std::printf("%d vectors written to %s\n",
+                    kNumVectors + kNumInterVectors, dir.c_str());
 
         // Rejection vectors: the v01 stream with one field corrupted each.
         Result base = build(kVectors[0]);
@@ -521,10 +961,48 @@ int main(int argc, char **argv) {
                         data.size(), status_token(kRejects[i].expect),
                         kRejects[i].why);
         }
+        // --- Phase 2 rejection vectors
+        Result mono = build_inter(kRejectBaseMono);
+        Result ster = build_inter(kRejectBaseStereo);
+        if (!mono.ok || !ster.ok) {
+            std::fprintf(stderr, "inter reject base: %s %s\n",
+                         mono.err.c_str(), ster.err.c_str());
+            return 1;
+        }
+        std::fprintf(rm, "# --- Phase 2 (Annex D D-21)\n");
+        for (int i = 0; i < kNumInterRejects; ++i) {
+            const InterReject &rj = kInterRejects[i];
+            const Result &bs = rj.base ? ster : mono;
+            const InterSpec &sp = rj.base ? kRejectBaseStereo : kRejectBaseMono;
+            std::vector<uint8_t> data;
+            std::string why;
+            if (!make_inter_reject(i, bs.stream, sp, &data, &why)) {
+                std::fprintf(stderr, "%s: %s\n", rj.name, why.c_str());
+                ++bad;
+                continue;
+            }
+            int got = reject_status(data);
+            if (got != rj.expect) {
+                std::fprintf(stderr, "%s: decoder returned %s, expected %s\n",
+                             rj.name, status_token(got), status_token(rj.expect));
+                ++bad;
+                continue;
+            }
+            std::string path = dir + "/" + rj.name + ".nxv";
+            std::FILE *f = std::fopen(path.c_str(), "wb");
+            if (!f) { std::perror(path.c_str()); return 1; }
+            std::fwrite(data.data(), 1, data.size(), f);
+            std::fclose(f);
+            std::fprintf(rm, "%s %s %s %s\n", rj.name,
+                         md5_hex(data.data(), data.size()).c_str(),
+                         status_token(rj.expect), rj.why);
+            std::printf("%-26s %7zu B  rejected as %-12s %s\n", rj.name,
+                        data.size(), status_token(rj.expect), rj.why);
+        }
         std::fclose(rm);
         if (bad) return 1;
-        std::printf("%d rejection vectors written to %s\n", kNumRejects,
-                    dir.c_str());
+        std::printf("%d rejection vectors written to %s\n",
+                    kNumRejects + kNumInterRejects, dir.c_str());
         return 0;
     }
 
@@ -545,11 +1023,15 @@ int main(int argc, char **argv) {
                         dmd5, &w, &h, pix, &alpha, &frames) != 8)
             continue;
         const VecSpec *spec = nullptr;
+        const InterSpec *ispec = nullptr;
         for (int i = 0; i < kNumVectors; ++i)
             if (std::strcmp(kVectors[i].name, name) == 0) spec = &kVectors[i];
-        CHECK(spec != nullptr, "vector %s is in the manifest but not the table",
-              name);
-        if (!spec) continue;
+        for (int i = 0; i < kNumInterVectors; ++i)
+            if (std::strcmp(kInterVectors[i].name, name) == 0)
+                ispec = &kInterVectors[i];
+        CHECK(spec != nullptr || ispec != nullptr,
+              "vector %s is in the manifest but not the table", name);
+        if (!spec && !ispec) continue;
 
         // (a) the committed file decodes to the committed plane MD5
         std::string path = dir + "/" + name + ".nxv";
@@ -608,7 +1090,7 @@ int main(int argc, char **argv) {
               dmd5);
 
         // (b) the encoder still reproduces the same bitstream
-        Result r = build(*spec);
+        Result r = spec ? build(*spec) : build_inter(*ispec);
         CHECK(r.ok, "%s: re-encode failed (%s)", name, r.err.c_str());
         if (r.ok) {
             CHECK(r.stream_md5 == smd5, "%s: encoder output changed", name);
@@ -617,8 +1099,9 @@ int main(int argc, char **argv) {
         ++checked;
     }
     std::fclose(m);
-    CHECK(checked == kNumVectors, "checked %d of %d vectors", checked,
-          kNumVectors);
+    CHECK(checked == kNumVectors + kNumInterVectors,
+          "checked %d of %d vectors", checked,
+          kNumVectors + kNumInterVectors);
 
     // Rejection vectors.
     std::FILE *rm = std::fopen(reject_manifest_path(dir).c_str(), "rb");
@@ -647,7 +1130,8 @@ int main(int argc, char **argv) {
         ++rchecked;
     }
     if (rm) std::fclose(rm);
-    CHECK(rchecked == kNumRejects, "checked %d of %d rejection vectors",
-          rchecked, kNumRejects);
+    CHECK(rchecked == kNumRejects + kNumInterRejects,
+          "checked %d of %d rejection vectors", rchecked,
+          kNumRejects + kNumInterRejects);
     return test_report("test_vectors");
 }

@@ -53,7 +53,7 @@ int main(int argc, char **argv) {
     nxvc_stream_info si;
     nxvc_decoder_stream_info(dec, &si);
     nxvc_tile_layout tl;
-    nxvc_tile_layout_get(si.width, si.height, &tl);
+    nxvc_tile_layout_get_ex(si.width, si.height, si.eyes, &tl);
     std::printf("stream header (%zu bytes)\n", consumed);
     std::printf("  magic         0x%08x\n", si.magic);
     std::printf("  version       %u\n", si.version);
@@ -71,8 +71,8 @@ int main(int argc, char **argv) {
     std::printf("  tools         0x%016llx\n", (unsigned long long)si.tools);
     std::printf("  ext_len       %u (%u TLVs, %u unknown)\n", si.ext_len,
                 si.ext_tlv_count, si.ext_unknown_count);
-    std::printf("  tile grid     %ux%u = %u tiles\n", tl.tiles_x, tl.tiles_y,
-                tl.tile_count);
+    std::printf("  tile grid     %ux%u per eye, cols %u = %u tiles\n",
+                tl.tiles_x, tl.tiles_y, tl.tiles_x * si.eyes, tl.tile_count);
 
     int n = 0;
     while (off < d.size()) {
@@ -91,6 +91,15 @@ int main(int argc, char **argv) {
         std::printf("  pose:");
         for (int i = 0; i < 26; ++i) std::printf(" %02x", fi.pose[i]);
         std::printf("\n");
+        if (fi.warp_present) {
+            for (uint32_t eye = 0; eye < si.eyes; ++eye) {
+                std::printf("  warp_ext eye %u  Q10.21 [%d %d %d / %d %d %d]  "
+                            "Q2.29 [%d %d %d]\n", eye,
+                            fi.warp[eye][0], fi.warp[eye][1], fi.warp[eye][2],
+                            fi.warp[eye][3], fi.warp[eye][4], fi.warp[eye][5],
+                            fi.warp[eye][6], fi.warp[eye][7], fi.warp[eye][8]);
+            }
+        }
         if (tiles) {
             // A full decode is needed to walk the tile headers.
             uint32_t yw, yh, cw, ch;
@@ -110,12 +119,19 @@ int main(int argc, char **argv) {
                 const nxvc_tile_info *ti = nxvc_decoder_tiles(dec, &count);
                 for (uint32_t i = 0; i < count; ++i) {
                     const nxvc_tile_info &t = ti[i];
-                    std::printf("  tile %4u  %-9s res%u %s qp%2u dq%+3d ts%u "
-                                "a%u wm%u tab%u ns%u  %5u B\n",
-                                i, mode_name(t.mode), t.res_level,
+                    char vec[32] = "";
+                    if (t.mode == NXVC_MODE_STEREO)
+                        std::snprintf(vec, sizeof vec, " d%u", t.disparity);
+                    else if (t.mv_present || t.skipped)
+                        std::snprintf(vec, sizeof vec, " mv%+d,%+d ref%u",
+                                      t.mv_x, t.mv_y, t.ref_sel);
+                    std::printf("  tile %4u e%u %-9s res%u %s qp%2u dq%+3d ts%u "
+                                "a%u wm%u tab%u ns%u  %5u B%s%s\n",
+                                i, t.eye, mode_name(t.mode), t.res_level,
                                 t.chroma444 ? "444" : "420", t.qp, t.qp_delta,
                                 t.tskip, t.alpha_mode, t.wm_id, t.table_set,
-                                t.nsub_log2, t.payload_len);
+                                t.nsub_log2, t.payload_len, vec,
+                                t.concealed ? " CONCEALED" : "");
                 }
             }
         }

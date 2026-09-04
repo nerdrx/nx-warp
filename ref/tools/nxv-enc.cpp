@@ -1,4 +1,6 @@
 // nxv-enc: encode raw planar 8-bit YUV frames to an .nxv stream.
+#include <array>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -33,7 +35,27 @@ static void usage() {
         "  --rgb                input planes are R,G,B; apply YCoCg-R\n"
         "  --color-space S      unspecified|yuv709l|yuv709f (YCbCr passthrough)\n"
         "  --stats              print where the bits went\n"
-        "  --quiet\n");
+        "  --quiet\n"
+        "Phase 2 (inter prediction):\n"
+        "  --inter on|off       inter prediction (default off = Phase 1)\n"
+        "  --eyes 1|2           2 = the input frame is side-by-side stereo and\n"
+        "                       --w is its FULL width; each eye is a picture\n"
+        "  --poses FILE         .poses.json sidecar; the per-frame head\n"
+        "                       orientation the warp matrix is derived from\n"
+        "  --fov H,V            field of view in degrees (default 95,95)\n"
+        "  --intra-period N     rolling intra refresh period in frames\n"
+        "                       (default 180; 1 = every tile every frame)\n"
+        "  --ref-sel 0..2       reference distance inter tiles ask for\n"
+        "  --stereo on|off      STEREO inter-view mode on the right eye\n"
+        "  --mv-range N         coarse search radius in samples (default 16)\n"
+        "  --skip-thresh F      WARP_SKIP early-out gate, multiples of the\n"
+        "                       quantiser noise floor qstep^2/12 (default 1)\n"
+        "  --skip-map FILE      per-tile force_warp_skip flags, tile_count\n"
+        "                       bytes per frame (docs/RATECONTROL.md 8.7).\n"
+        "                       Applied after the mode search; the encoder\n"
+        "                       overrides it where a coded tile is required\n"
+        "  --mode-lambda F      lambda scale of the per-tile mode decision,\n"
+        "                       relative to the trellis (default 0.25)\n");
 }
 
 static bool read_exact(std::FILE *f, void *p, size_t n) {
@@ -50,6 +72,10 @@ int main(int argc, char **argv) {
     // These mirror nxvc_config_default(): the v2 intra tools are on.
     int intra_dir = 1, intra_dir_layer = 0, ctx_v2 = 1, dir_cand = 0;
     int sign_hide = 1;
+    int inter = 0, eyes = 1, intra_period = 180, ref_sel = 0, stereo = 0;
+    int mv_range = 16, skip_thresh = 0, mode_lambda = 0;
+    double fov_h = 95.0, fov_v = 95.0;
+    std::string poses_path, skipmap_path;
 
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
@@ -78,6 +104,34 @@ int main(int argc, char **argv) {
             else if (v == "yuv709f") color_space = 2;
             else { std::fprintf(stderr, "--color-space: unspecified|yuv709l|yuv709f\n"); return 2; }
         }
+        else if (a == "--inter") {
+            std::string v = val();
+            if (v == "on") inter = 1;
+            else if (v == "off") inter = 0;
+            else { std::fprintf(stderr, "--inter: on|off\n"); return 2; }
+        }
+        else if (a == "--stereo") {
+            std::string v = val();
+            if (v == "on") stereo = 1;
+            else if (v == "off") stereo = 0;
+            else { std::fprintf(stderr, "--stereo: on|off\n"); return 2; }
+        }
+        else if (a == "--eyes") eyes = std::atoi(val());
+        else if (a == "--poses") poses_path = val();
+        else if (a == "--skip-map") skipmap_path = val();
+        else if (a == "--mode-lambda")
+            mode_lambda = (int)(std::atof(val()) * 256.0 + 0.5);
+        else if (a == "--fov") {
+            std::string v = val();
+            size_t c = v.find(',');
+            fov_h = std::atof(v.c_str());
+            fov_v = c == std::string::npos ? fov_h : std::atof(v.c_str() + c + 1);
+        }
+        else if (a == "--intra-period") intra_period = std::atoi(val());
+        else if (a == "--ref-sel") ref_sel = std::atoi(val());
+        else if (a == "--mv-range") mv_range = std::atoi(val());
+        else if (a == "--skip-thresh")
+            skip_thresh = (int)(std::atof(val()) * 256.0 + 0.5);
         else if (a == "--quiet") quiet = 1;
         else if (a == "--stats") stats = 1;
         else if (a == "--matrix") matrix = std::atoi(val());
@@ -118,10 +172,67 @@ int main(int argc, char **argv) {
         return 2;
     }
 
+    if (eyes != 1 && eyes != 2) {
+        std::fprintf(stderr, "--eyes must be 1 or 2\n");
+        return 2;
+    }
+    if (eyes == 2 && (W % 2)) {
+        std::fprintf(stderr, "--eyes 2 needs an even --w (side-by-side)\n");
+        return 2;
+    }
+    // The per-frame head orientations the warp matrix is derived from.  The
+    // parser is deliberately tiny: it pulls the "orientation_xyzw" arrays out
+    // of the sidecar in file order, which is frame order.
+    std::vector<std::array<double, 4>> orient;
+    if (!poses_path.empty()) {
+        std::FILE *pf = std::fopen(poses_path.c_str(), "rb");
+        if (!pf) { std::perror("open poses"); return 1; }
+        std::string txt;
+        char chunk[4096];
+        size_t got;
+        while ((got = std::fread(chunk, 1, sizeof chunk, pf)) > 0)
+            txt.append(chunk, got);
+        std::fclose(pf);
+        const std::string key = "\"orientation_xyzw\"";
+        size_t pos = 0;
+        while ((pos = txt.find(key, pos)) != std::string::npos) {
+            size_t lb = txt.find('[', pos);
+            size_t rb = txt.find(']', lb == std::string::npos ? pos : lb);
+            if (lb == std::string::npos || rb == std::string::npos) break;
+            std::array<double, 4> q{0, 0, 0, 1};
+            const char *p2 = txt.c_str() + lb + 1;
+            char *end = nullptr;
+            for (int k = 0; k < 4; ++k) {
+                q[k] = std::strtod(p2, &end);
+                if (end == p2) break;
+                p2 = end;
+                while (*p2 == ',' || *p2 == ' ' || *p2 == '\n') ++p2;
+            }
+            orient.push_back(q);
+            pos = rb;
+        }
+        if (orient.empty()) {
+            std::fprintf(stderr, "%s: no orientation_xyzw entries\n",
+                         poses_path.c_str());
+            return 1;
+        }
+        if (!quiet)
+            std::printf("poses: %zu orientations from %s\n", orient.size(),
+                        poses_path.c_str());
+    }
+
     nxvc_config cfg;
     nxvc_config_default(&cfg);
-    cfg.width = (uint32_t)W;
+    cfg.width = (uint32_t)(W / eyes);
     cfg.height = (uint32_t)H;
+    cfg.eyes = (uint32_t)eyes;
+    cfg.inter = (uint32_t)inter;
+    cfg.stereo = (uint32_t)stereo;
+    cfg.intra_period = (uint32_t)(intra_period > 0 ? intra_period : 1);
+    cfg.ref_sel = (uint32_t)(ref_sel < 0 ? 0 : (ref_sel > 2 ? 2 : ref_sel));
+    cfg.mv_range = (uint32_t)(mv_range > 0 ? mv_range : 16);
+    cfg.skip_thresh = (uint32_t)(skip_thresh > 0 ? skip_thresh : 0);
+    cfg.mode_lambda_q8 = (uint32_t)(mode_lambda > 0 ? mode_lambda : 0);
     cfg.chroma = pix == "yuv444p" ? NXVC_CHROMA_444 : NXVC_CHROMA_420;
     cfg.base_qp = (uint32_t)(qp < 0 ? 0 : (qp > 63 ? 63 : qp));
     cfg.quant_matrix = (uint32_t)matrix;
@@ -152,7 +263,7 @@ int main(int argc, char **argv) {
     }
 
     nxvc_tile_layout tl;
-    nxvc_tile_layout_get(cfg.width, cfg.height, &tl);
+    nxvc_tile_layout_get_ex(cfg.width, cfg.height, cfg.eyes, &tl);
     const size_t cw = cfg.chroma == NXVC_CHROMA_444 ? (size_t)W : (size_t)((W + 1) / 2);
     const size_t chh = cfg.chroma == NXVC_CHROMA_444 ? (size_t)H : (size_t)((H + 1) / 2);
     const size_t ysz = (size_t)W * H, csz = cw * chh;
@@ -161,7 +272,7 @@ int main(int argc, char **argv) {
     if (!fi) { std::perror("open input"); return 1; }
     std::FILE *fo = std::fopen(out.c_str(), "wb");
     if (!fo) { std::perror("open output"); return 1; }
-    std::FILE *fr = nullptr, *fq = nullptr;
+    std::FILE *fr = nullptr, *fq = nullptr, *fs = nullptr;
     if (!resmap_path.empty()) {
         fr = std::fopen(resmap_path.c_str(), "rb");
         if (!fr) { std::perror("open res map"); return 1; }
@@ -169,6 +280,10 @@ int main(int argc, char **argv) {
     if (!qpmap_path.empty()) {
         fq = std::fopen(qpmap_path.c_str(), "rb");
         if (!fq) { std::perror("open qp map"); return 1; }
+    }
+    if (!skipmap_path.empty()) {
+        fs = std::fopen(skipmap_path.c_str(), "rb");
+        if (!fs) { std::perror("open skip map"); return 1; }
     }
 
     std::vector<uint8_t> hdr(4096);
@@ -178,7 +293,8 @@ int main(int argc, char **argv) {
     std::fwrite(hdr.data(), 1, hl, fo);
 
     std::vector<uint8_t> Y(ysz), U(csz), V(csz);
-    std::vector<uint8_t> rmap(tl.tile_count), qmap(tl.tile_count);
+    std::vector<uint8_t> rmap(tl.tile_count), qmap(tl.tile_count),
+        smap(tl.tile_count);
     std::vector<uint8_t> outbuf(ysz * 4 + csz * 8 + (1u << 20));
     size_t total = hl;
     int n = 0;
@@ -188,9 +304,40 @@ int main(int argc, char **argv) {
             std::fprintf(stderr, "short frame %d\n", n);
             break;
         }
+        if (inter) {
+            // Both eyes are rendered with the same head orientation; they
+            // differ by the IPD translation, which a rotation-only warp does
+            // not use (PAPER 2.2).
+            nxvc_view views[2];
+            const size_t idx = orient.empty() ? 0
+                                              : (size_t)n < orient.size()
+                                                    ? (size_t)n
+                                                    : orient.size() - 1;
+            for (int k = 0; k < eyes; ++k) {
+                nxvc_view v{};
+                if (!orient.empty()) {
+                    v.qx = orient[idx][0];
+                    v.qy = orient[idx][1];
+                    v.qz = orient[idx][2];
+                    v.qw = orient[idx][3];
+                } else {
+                    v.qw = 1.0;
+                }
+                const double hx = fov_h * 3.14159265358979323846 / 360.0;
+                const double hy = fov_v * 3.14159265358979323846 / 360.0;
+                v.fov_left = -hx;
+                v.fov_right = hx;
+                v.fov_up = hy;
+                v.fov_down = -hy;
+                views[k] = v;
+            }
+            nxvc_encoder_set_views(enc, views, (uint32_t)eyes);
+        }
         const uint8_t *rm = nullptr, *qm = nullptr;
         if (fr && read_exact(fr, rmap.data(), rmap.size())) rm = rmap.data();
         if (fq && read_exact(fq, qmap.data(), qmap.size())) qm = qmap.data();
+        if (fs && read_exact(fs, smap.data(), smap.size()))
+            nxvc_encoder_set_skip_map(enc, smap.data(), (uint32_t)smap.size());
         nxvc_image img{};
         img.plane[0] = Y.data(); img.stride[0] = W;
         img.plane[1] = U.data(); img.stride[1] = (int)cw;
@@ -243,6 +390,7 @@ int main(int argc, char **argv) {
     std::fclose(fi);
     if (fr) std::fclose(fr);
     if (fq) std::fclose(fq);
+    if (fs) std::fclose(fs);
     if (!quiet)
         std::printf("%d frame(s), %zu bytes total, %.4f bpp mean\n", n, total,
                     n ? total * 8.0 / ((double)W * H * n) : 0.0);

@@ -2,7 +2,9 @@
  *
  * This is the bit-exact CPU reference implementation of the NX Warp v1
  * bitstream.  The normative syntax is docs/SYNTAX.md; this library IS the
- * specification in executable form.  Phase 1 scope: INTRA only.
+ * specification in executable form.  Scope: intra (Phase 1) and the Phase 2
+ * inter path -- pose warp, per-tile motion vectors, a four-slot reference
+ * ring, stereo inter-view prediction and deterministic concealment.
  *
  * All integer arithmetic in the normative decode path is int32; no floats,
  * no int64, no division.
@@ -39,8 +41,14 @@ extern "C" {
  *       context; transmitted table sets grow from 120 to 160 bytes), and
  *       tool bit 22 SIGN_HIDE (the sign at scan position `last` is carried
  *       by the parity of the unit's absolute levels)
+ *   4 : Phase 2 inter path -- frame-header flag bit 3 `warp_present` and the
+ *       36-byte-per-eye `warp_ext()` that follows the frame header, inter tile
+ *       modes WARP_SKIP / STATIC_MV / WARP_MV / STEREO, `eyes == 2` with one
+ *       picture per eye and row-major/eye-minor tile rows, the four-slot
+ *       reference ring addressed by `ref_sel`, and the 12-bit STEREO
+ *       `disparity` field replacing mv_x/mv_y.  See docs/SYNTAX.md 8.
  */
-#define NXVC_BITSTREAM_MINOR 3
+#define NXVC_BITSTREAM_MINOR 4
 
 /* "nxvc_ref <major>.<minor> (syntax v1.<minor>)" -- a static string, safe to
  * call before any object exists.  Used by the Python bindings to check that
@@ -112,6 +120,12 @@ typedef enum nxvc_tile_mode {
 #define NXVC_TOOL_WM_ID           (1ull << 20)
 #define NXVC_TOOL_CTX_V2          (1ull << 21)
 #define NXVC_TOOL_SIGN_HIDE       (1ull << 22)
+/* Annex D D-5 names the Catmull-Rom selector "tool bit 20".  Bit 20 was
+ * already taken by WM_ID in syntax v1.2 (shipped, with conformance vectors),
+ * so this reference and docs/SYNTAX.md place it at the first bit that is
+ * actually free.  The substance of D-5 is unchanged: it is undefined in
+ * version 1 and a v1 decoder MUST reject a stream that sets it. */
+#define NXVC_TOOL_FILTER_CATMULLROM (1ull << 23)
 
 /* Tools this reference decoder implements. */
 #define NXVC_TOOLS_SUPPORTED                                                  \
@@ -119,7 +133,8 @@ typedef enum nxvc_tile_mode {
      NXVC_TOOL_RES_LEVEL | NXVC_TOOL_CHROMA444 | NXVC_TOOL_ALPHA |            \
      NXVC_TOOL_LOSSLESS | NXVC_TOOL_CUSTOM_TABLES | NXVC_TOOL_NSUB_VAR |      \
      NXVC_TOOL_PER_TILE_CHROMA | NXVC_TOOL_YCOCGR | NXVC_TOOL_WM_ID |        \
-     NXVC_TOOL_INTRA_DIR | NXVC_TOOL_CTX_V2 | NXVC_TOOL_SIGN_HIDE)
+     NXVC_TOOL_INTRA_DIR | NXVC_TOOL_CTX_V2 | NXVC_TOOL_SIGN_HIDE |           \
+     NXVC_TOOL_INTER | NXVC_TOOL_WARP | NXVC_TOOL_STEREO)
 
 /* ---------------------------------------------------------------- images */
 /* 8-bit planar image.  plane[0]=Y/R', plane[1]=Co/G', plane[2]=Cg/B',
@@ -174,7 +189,44 @@ typedef struct nxvc_config {
     uint32_t ctx_v2;            /* 0 = 12 contexts, 1 = 16 (tool 21)        */
     uint32_t intra_dir_cand;    /* modes RD-checked per block, 0 = default  */
     uint32_t sign_hide;         /* 1 = sign data hiding (tool 22)           */
+
+    /* --- additive since syntax v1.4: the Phase 2 inter path.
+     * `width`/`height` are PER EYE.  With eyes == 2 the nxvc_image passed to
+     * the encoder and filled by the decoder is `eyes * width` samples wide:
+     * one picture per eye, side by side, eye 0 first (Annex D D-3). */
+    uint32_t eyes;              /* 1 or 2; 0 is read as 1                   */
+    uint32_t inter;             /* 1 = inter prediction (tools INTER|WARP)  */
+    uint32_t stereo;            /* 1 = allow STEREO on eye 1 (tool 12)      */
+    uint32_t intra_period;      /* rolling intra refresh period T in frames,
+                                   0 = the default 180 (PAPER 2.6).  Every
+                                   frame 1/T of the tiles are forced INTRA by
+                                   a fixed pseudo-random permutation.  1 = all
+                                   intra every frame.                       */
+    uint32_t ref_sel;           /* 0..2: reference distance inter tiles ask
+                                   for (N-1-ref_sel).  Default 0.           */
+    uint32_t mv_range;          /* coarse integer search radius in samples,
+                                   0 = the default 16 (PAPER 2.3 step 2)    */
+    uint32_t skip_thresh;       /* WARP_SKIP early-out gate, Q8 multiple of
+                                   the quantiser's own noise floor
+                                   (qstep^2 / 12) per sample; 0 = default   */
+    uint32_t mode_lambda_q8;    /* lambda scale of the per-tile MODE
+                                   decision, Q8, relative to the trellis's.
+                                   Below 256 the decision spends more bits to
+                                   keep the reference clean, which is what an
+                                   all-reference stream wants; 0 = default  */
 } nxvc_config;
+
+/* One eye's view for one frame: the orientation the frame was rendered with
+ * and the projection it was rendered through.  The encoder derives the frame's
+ * `warp_ext()` matrix from this eye's view of the previous frame and of this
+ * frame (docs/WARP.md 4).  This is the ONLY floating-point input the codec
+ * takes, it is encoder-side, and its result reaches the decoder already
+ * quantised to the nine int32 of `warp_ext()`. */
+typedef struct nxvc_view {
+    double qx, qy, qz, qw;      /* unit quaternion, OpenXR convention       */
+    double fov_left, fov_right; /* radians, left negative (XrFovf)          */
+    double fov_up, fov_down;    /* radians, down negative                   */
+} nxvc_view;
 
 /* Where the bits went, for the most recent encoded frame. */
 typedef struct nxvc_encode_stats {
@@ -196,6 +248,13 @@ typedef struct nxvc_tile_layout {
 void nxvc_tile_layout_get(uint32_t width, uint32_t height,
                           nxvc_tile_layout *out);
 
+/* The same for a stereo stream: `width`/`height` are per eye, `tiles_x` comes
+ * back as the per-eye column count (`cols_per_eye`) and `tile_count` as
+ * `eyes * cols_per_eye * rows`, which is the length of every per-tile array in
+ * this API and the transport's linear tile index (Annex D D-3). */
+void nxvc_tile_layout_get_ex(uint32_t width, uint32_t height, uint32_t eyes,
+                             nxvc_tile_layout *out);
+
 /* Per-tile record exposed after encode/decode, in raster order. */
 typedef struct nxvc_tile_info {
     uint16_t tile_index;
@@ -208,6 +267,17 @@ typedef struct nxvc_tile_info {
     uint8_t qp;                 /* resolved luma QP                        */
     uint8_t wm_id;              /* per-tile weighting matrix, 0 = frame's  */
     uint8_t intra_dir;          /* 1: this tile carries per-block modes    */
+    /* --- additive since syntax v1.4 */
+    uint8_t skipped;            /* 1: WARP_SKIP via skip_bitmap, not coded  */
+    uint8_t concealed;          /* decoder: the tile was reported lost and
+                                   was reconstructed by clause 6.11         */
+    uint16_t disparity;         /* STEREO: quarter samples, 12 bits used    */
+    uint8_t ref_delta;          /* the transport's advisory copy of ref_sel,
+                                   with the extra value 3 = "no temporal
+                                   reference" for INTRA and STEREO (D-12)   */
+    uint16_t age_since_coded;   /* frames since this tile position last
+                                   carried a coded residual; 0 on the frame
+                                   that coded one, saturating at 65535      */
 } nxvc_tile_info;
 
 typedef struct nxvc_stream_info {
@@ -229,6 +299,9 @@ typedef struct nxvc_frame_info {
     uint32_t frame_bytes;
     uint8_t pose[26];
     uint32_t tile_count;
+    /* --- additive since syntax v1.4 */
+    uint32_t warp_present;      /* frame flags bit 3                        */
+    int32_t warp[2][9];         /* warp_ext(), per eye, h00..h22            */
 } nxvc_frame_info;
 
 /* ---------------------------------------------------------------- encoder */
@@ -248,6 +321,53 @@ nxvc_status nxvc_encoder_add_tlv(nxvc_encoder *enc, uint16_t type,
 
 /* Set the 26 pose bytes copied verbatim into the next frame header. */
 void nxvc_encoder_set_pose(nxvc_encoder *enc, const uint8_t pose[26]);
+
+/* Set the per-eye view of the NEXT frame to be encoded.  `count` must be the
+ * configured `eyes`.  Call it before every nxvc_encoder_encode_frame; the
+ * encoder keeps the previous frame's views itself.  Without it the encoder
+ * emits an identity warp, which is legal and reduces WARP_MV to STATIC_MV. */
+nxvc_status nxvc_encoder_set_views(nxvc_encoder *enc, const nxvc_view *views,
+                                   uint32_t count);
+
+/* Tiles per frame, i.e. the length of the per-tile arrays of this API. */
+uint32_t nxvc_encoder_tile_count(const nxvc_encoder *enc);
+
+/* Ask for tiles to be coded as WARP_SKIP in the NEXT frame
+ * (docs/RATECONTROL.md 8.7).  `skip[t] != 0` is applied AFTER the mode search
+ * and pins `mode = WARP_SKIP`, producing a tile indistinguishable from one the
+ * RD search chose to skip: no new syntax, no new decoder path.
+ *
+ * The encoder OVERRIDES the request wherever correctness requires a coded
+ * tile, and the caller is expected to rely on that rather than to replicate
+ * the conditions:
+ *
+ *   - the tile is due for rolling intra refresh this frame;
+ *   - there is no eligible reference (the first frame, or a tile-map reset,
+ *     which is also how a scene cut reaches the encoder);
+ *   - the stream codes an alpha plane, which a skipped tile cannot carry.
+ *
+ * The flags are consumed by one nxvc_encoder_encode_frame call.  Which tiles
+ * were actually skipped is readable afterwards from nxvc_encoder_tiles():
+ * `skipped`, `age_since_coded` and `ref_delta`. */
+nxvc_status nxvc_encoder_set_skip_map(nxvc_encoder *enc, const uint8_t *skip,
+                                      uint32_t count);
+
+/* --- the loss/concealment hooks (PAPER 2.6, 2.7; docs/TRANSPORT.md 8).
+ *
+ * Tell the encoder which tiles of the frame it JUST encoded the client holds.
+ * `received[t] == 0` means the client did not get tile t, so the encoder
+ * replays clause 6.11 concealment on its shadow copy of that frame -- exactly
+ * what nxvc_decoder_set_lost_tiles makes the decoder do -- and predicts the
+ * next frame from the result.  Call it after encode_frame and before the next
+ * one.  With no call every tile counts as received. */
+nxvc_status nxvc_encoder_set_received_tiles(nxvc_encoder *enc,
+                                            const uint8_t *received,
+                                            uint32_t count);
+
+/* The encoder's shadow reconstruction of the most recently encoded frame,
+ * after any concealment replay.  Written in the same layout the decoder
+ * writes, so a test can compare the two byte for byte. */
+nxvc_status nxvc_encoder_shadow_image(const nxvc_encoder *enc, nxvc_image *img);
 
 /* Encode one frame.  qp_map/res_map are per-tile arrays of tile_count bytes
  * in raster order, or NULL for "use base_qp" / "res_level 0". */
@@ -293,6 +413,17 @@ nxvc_status nxvc_decoder_scan_frame(nxvc_decoder *dec, const uint8_t *buf,
 
 nxvc_status nxvc_decoder_plane_size(const nxvc_decoder *dec, int plane,
                                     uint32_t *w, uint32_t *h);
+
+/* Mark tiles of the NEXT frame as not received.  `lost[t] != 0` makes the
+ * decoder ignore whatever the bitstream carries for tile t and reconstruct it
+ * by clause 6.11: the WARP_SKIP predictor with the tile's stored `last_mv` and
+ * no residual.  The flags are consumed by one decode_frame call.  This is the
+ * decoder half of the shadow contract; the encoder half is
+ * nxvc_encoder_set_received_tiles. */
+nxvc_status nxvc_decoder_set_lost_tiles(nxvc_decoder *dec, const uint8_t *lost,
+                                        uint32_t count);
+
+uint32_t nxvc_decoder_tile_count(const nxvc_decoder *dec);
 
 const nxvc_tile_info *nxvc_decoder_tiles(const nxvc_decoder *dec,
                                          uint32_t *count);

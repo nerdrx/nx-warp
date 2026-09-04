@@ -155,11 +155,25 @@ interleaved UV.
 | 20 | `WM_ID` | tiles may set `wm_id != 0` (section 4.1) |
 | 21 | `CTX_V2` | the 16-context entropy model (section 9.3) |
 | 22 | `SIGN_HIDE` | sign data hiding (section 9.7) |
+| 23 | `FILTER_CATMULL_ROM` | Catmull-Rom interpolation in the warp instead of bilinear. **Not defined for version 1** |
 
 Bits 17, 21 and 22 are independent: any subset may be set. `SIGN_HIDE` is
 mutually exclusive with `LOSSLESS` (bit 5) -- hiding a sign spends one level
 step, so the two cannot both be true; a stream setting both is `BITSTREAM`.
-Bits 23-63 are reserved and must be zero. Capability negotiation is an
+
+`INTER` (bit 10) gates every tile mode other than `INTRA`. `WARP` (bit 11)
+gates `warp_present` and the two warped modes and requires `INTER`; a stream
+setting `WARP` without `INTER` is `BITSTREAM`. `STEREO` (bit 12) requires
+`eyes == 2`.
+
+**Bits 14 and 23 are reject-in-v1.** `BITDEPTH10` has no defined sample
+domain, quantiser scaling or clamp in version 1, and `FILTER_CATMULL_ROM` would
+make the interpolation filter a decoder-visible choice; a version 1 decoder
+MUST refuse a stream that sets either, with a `VERSION` status. Because bit 23
+is refused, **every conforming version 1 stream is bilinear**, in every
+profile, and `profile` selects nothing (section 13.4).
+
+Bits 24-63 are reserved and must be zero. Capability negotiation is an
 intersection: the sender only sets bits the receiver offered.
 
 ---
@@ -183,45 +197,180 @@ frames.
 | 30 | i8 | `alpha_qp_off` | added to the tile QP for A |
 | 31 | u8 | `quant_matrix` | 0..3 built in, 255 = custom (128 bytes follow) |
 | 32 | u8 | `tables_present` | bit *k*: probability table set *k* is transmitted |
-| 33 | u8 | `ref_slots` | reference slots this frame overwrites (Phase 2) |
-| 34 | u8 | `flags` | bit 0: tile-map reset, bit 1: stereo inter-view, bit 2: layered directional intra (section 7.5), rest reserved |
+| 33 | u8 | `ref_slots` | bitmask of the reference-ring slots this frame overwrites, bit *s* for slot *s* (section 13.2) |
+| 34 | u8 | `flags` | bit 0: tile-map reset, bit 1: stereo inter-view, bit 2: layered directional intra (section 7.5), bit 3: `warp_present` (section 3.1.1), bits 4-7 reserved and must be 0 |
 | 35 | u8 | reserved | must be 0 |
 | 36 | u32 | `frame_bytes` | total byte length of this frame unit, header included |
 
 Then, in this order:
 
-1. If `quant_matrix == 255`: **128 bytes** of custom weighting matrices, 64 for
+1. If `flags` bit 3 (`warp_present`) is set: **`36 * eyes` bytes** of
+   `warp_ext()`, section 3.1.1.
+2. If `quant_matrix == 255`: **128 bytes** of custom weighting matrices, 64 for
    luma and alpha followed by 64 for chroma, each in raster order inside the
    8x8 block, Q4 (16 == 1.0). Values are clamped to `[1, 32]` on parse.
-2. For *k* = 0..7 in ascending order, if bit *k* of `tables_present` is set:
+3. For *k* = 0..7 in ascending order, if bit *k* of `tables_present` is set:
    **120 bytes** of probability table deltas for set *k*, or **160 bytes** when
    the stream sets `CTX_V2` (section 9.4).
 
 Constraints: `base_qp <= 63`; `quant_matrix <= 3 || quant_matrix == 255`;
 `flags` bit 2 requires tool bit 17 `INTRA_DIR` (`BITSTREAM` otherwise);
+`flags` bit 3 requires tool bit 11 `WARP`; `flags` bits 4-7 must be zero;
 `frame_bytes >= 40` and `frame_bytes` must not exceed the bytes available. After
 the last tile of the last row, exactly `frame_bytes` bytes must have been
-consumed.
+consumed, `warp_ext()` included.
+
+`frame_number` and the transport's `frame_id` are the same 16-bit counter with
+the same wrap and **must be equal**; a datagram whose `frame_id` disagrees with
+the frame it carries is inconsistent and must be discarded
+(`docs/TRANSPORT.md` 7.2).
+
+`ref_slots` names the ring slots this frame overwrites. On a stream that sets
+`INTER` it must equal `1 << (frame_number mod 4)` and any other value is
+`BITSTREAM`. On a stream with no inter tools there is no reference ring for the
+field to describe, it is inert, and 0 is the value every version 1.1 to 1.3
+encoder writes; it is not checked there. The mask form is kept rather than an
+index so that a version 2 frame writing more than one slot needs no new
+element.
+
+### 3.1.1 `warp_ext()`
+
+Present if and only if `flags` bit 3 (`warp_present`) is set, immediately after
+the 40-byte frame header and before the custom matrices. It is one 36-byte
+record per eye in ascending eye order, each nine little-endian **signed** 32-bit
+integers: the quantised per-eye homography the warped modes predict through.
+
+| off | size | element | format |
+|---|---|---|---|
+| 0 | 4 | `h00` | Q10.21 |
+| 4 | 4 | `h01` | Q10.21 |
+| 8 | 4 | `h02` | Q10.21 |
+| 12 | 4 | `h10` | Q10.21 |
+| 16 | 4 | `h11` | Q10.21 |
+| 20 | 4 | `h12` | Q10.21 |
+| 24 | 4 | `h20` | Q2.29 |
+| 28 | 4 | `h21` | Q2.29 |
+| 32 | 4 | `h22` | Q2.29, must be `0x20000000` |
+
+Rows 0 and 1 are Q10.21 (range +-1024.0, resolution 2^-21); row 2 is Q2.29
+(range +-4.0, resolution 2^-29). A single format cannot hold both ends: the
+translation terms need ten integer bits at any streamed width, and the
+perspective row's entries are of order 5e-5 and need ten *significant* bits
+below it (`docs/WARP.md` 3).
+
+The matrix maps centred integer sample indices of this frame to centred source
+indices of the reference: `(x - ox, y - oy) -> (x_src - ox, y_src - oy)`. The
+origin is **not a field**; it is derived, per eye, as
+
+```
+ox = width  >> 1
+oy = height >> 1
+```
+
+in luma samples. The half-sample convention and the centring are folded into
+the matrix by the encoder, so the decoder subtracts the origin, runs the
+matrix, adds it back, and needs no other geometric parameter.
+
+`h22` is normalised and not free. It is transmitted anyway so that the record
+is nine `int32` and a decoder loads the matrix with one uniform copy.
+
+**A decoder MUST reject** (`BITSTREAM`) a stream in which any of the following
+does not hold, for any eye:
+
+1. `h22 == 0x20000000`;
+2. every entry satisfies `-2^30 <= h <= 2^30` (`kEntryMax`, `docs/WARP.md` 3);
+3. at each of the four picture corners `(cx, cy)` with `cx` in `{-ox, width - ox}`
+   and `cy` in `{-oy, height - oy}`, the denominator
+   `den = h20*cx + h21*cy + h22`, accumulated in 64 bits, fits `int32` and
+   satisfies `2^28 <= den < 2^30`;
+4. `warp_ext()` is present exactly when `warp_present` is set, and
+   `frame_bytes` accounts for its `36 * eyes` bytes.
+
+Condition 3 bounds the whole picture, because `den` is affine in `(cx, cy)`.
+It is what licenses the fixed 32-iteration restoring divide of the corner
+derivation to use a `uint32` remainder. A decoder that accepted a matrix
+violating it would still produce defined, identical output on every
+implementation -- the warp saturates -- but the stream is malformed and
+rejection is the specified behaviour.
+
+Cost: 72 bytes per stereo frame, 6.5 kB/s at 90 Hz. Against a 150 Mbit/s
+working point that is 0.00003 % of the stream, and it stays negligible after
+the transport replicates it into the first datagram of each band.
+
+Why not somewhere else: widening the frame header costs 72 bytes on every
+Phase 1 and every all-intra frame and moves every offset in this section; the
+TLV area of section 2.1 is per *stream*, not per frame, and version 1 defines
+no mandatory TLV type; the tile-row header would replicate the matrix
+`eyes * rows` times -- 68 copies, 4.9 kB per frame at the v1 configuration --
+to buy loss tolerance the transport already provides; and deriving it from the
+pose bytes is impossible for a decoder that does no floating-point arithmetic
+(section 1), which is the whole reason the quantised matrix and not the pose is
+the thing on the wire.
 
 ### 3.2 Pose
 
 The 26 pose bytes are **opaque to the codec**: they are carried, hashed and
 compared byte-wise but never interpreted by the normative decode path (the codec
-does no floating-point arithmetic). Their agreed meaning is
+does no floating-point arithmetic).
 
-```
-u16 quat[4]     IEEE-754 binary16 bit patterns, x y z w
-u16 angvel[3]   IEEE-754 binary16 bit patterns, rad/s
-u32 pos[3]      IEEE-754 binary32 bit patterns, metres
-```
+Their layout is the transport's `pose_header`, which
+[`docs/TRANSPORT.md` 3.3](TRANSPORT.md) **owns**; this document references it
+and does not restate it. There is exactly one 26-byte pose layout in the
+format and it is the integer one: `pose_seq` (u16), four s16 Q15 quaternion
+components, three s32 positions in millimetres x 256, and a u32
+`render_finish_ts`. The `pose` field of a stored frame header and the
+frame/pose header the transport replicates into the first datagram of each band
+are byte-identical, which is what makes that replication argument true rather
+than merely plausible.
 
-= 7 half floats + 3 floats = 26 bytes, matching PAPER 1.2. The transport layer
-also carries a 16-bit `pose_seq` per datagram (PAPER 6.7); that lives in the
-transport header, not here.
+The earlier reading of these bytes as 7 x `binary16` plus 3 x `binary32` is
+**superseded**. It put IEEE bit patterns in the one structure this document
+and the transport share, in a format whose normative paths carry no floating
+point, and it carried neither `pose_seq` -- which the client needs to identify
+the pose in its own ring -- nor `render_finish_ts`. The three half-precision
+angular-velocity components it carried are dropped: angular velocity is a
+client-side quantity, recovered by differentiating the client's own pose ring,
+which `pose_seq` indexes, and nothing in the decoding process reads it.
 
 ### 3.3 Tile-row structure
 
-For each tile row `row = 0 .. ceil(height/64) - 1`, in order:
+**A picture is one eye.** `width` and `height` are per eye, and a stereo frame
+contains `eyes` pictures rather than one picture of double width. The
+transport's tile grid spans the eye pair:
+
+```
+cols_per_eye = ceil(width  / 64)
+rows         = ceil(height / 64)
+cols         = eyes * cols_per_eye
+tile_first   = row * cols + eye * cols_per_eye + tile_index
+```
+
+and inversely, from a linear index `n`: `row = n / cols`, `col = n % cols`,
+`eye = col / cols_per_eye`, `tile_index = col % cols_per_eye`. `tile_index` is
+this document's in-row index; `tile_first` is the transport's linear index
+(`docs/TRANSPORT.md` 1). A decoder must reject a configuration whose transport
+`cols` is not `eyes * cols_per_eye` or whose `rows` is not `ceil(height / 64)`.
+At the v1 target configuration -- 2160 per eye, two eyes -- that is 34 columns
+per eye, `cols = 68`, `rows = 34`, 2312 tiles, which is exactly the transport's
+headline table. Nothing needed widening; this sentence was what was missing.
+
+A frame contains **`eyes * rows`** tile-row structures, ordered **row-major,
+eye-minor**:
+
+```
+for (row = 0; row < rows; row++)
+    for (eye = 0; eye < eyes; eye++)
+        tile_row_header()   then its tiles
+```
+
+`row_index` must equal `row`; **the eye is positional and is not a field of the
+row header**. This order is load-bearing twice: it makes a run of tiles a
+contiguous range of linear indices *and* of bitstream bytes, and it puts the
+whole left-eye row ahead of the right-eye row of the same index, which is what
+lets a `STEREO` tile's dependency on up to three left-eye tiles of the same row
+be satisfied (section 13.6).
+
+For each tile row `row = 0 .. rows - 1` and each eye, in that order:
 
 | offset | size | field |
 |---|---|---|
@@ -232,9 +381,26 @@ For each tile row `row = 0 .. ceil(height/64) - 1`, in order:
 
 followed by `tile_count` tile structures.
 
-Bit *i* of `skip_bitmap` set means tile *i* of this row is `WARP_SKIP` and is
-**not** transmitted. `tile_count` must equal the number of tiles in the row that
-are not marked skipped. In a stored file the row header is written once; in
+Bit *i* of `skip_bitmap` set means tile *i* of this row **of this eye** is
+`WARP_SKIP` and is **not** transmitted. `tile_count` must equal the number of
+tiles in the row that are not marked skipped, and bits at or above
+`cols_per_eye` must be zero. The bitmap therefore covers one row of one eye, so
+the structural bound `ceil(width / 64) <= 64` binds `cols_per_eye`, not `cols`,
+and is satisfied for every legal `width` up to the syntax maximum of 4096.
+
+A skipped tile has no tile structure at all, so every parameter of it is
+derived rather than coded: `res_level` 0, chroma at the stream's own
+resolution, `alpha_mode` 0, `ref_sel` 0, and the vector is the tile's stored
+`last_mv` (section 13.5). Skip requires `INTER` and `warp_present`.
+
+`skip_bitmap` is **authoritative**. The transport states the same fact a second
+time, as a directory entry with `dir_len == 0` and `dir_mode == WARP_SKIP`, and
+the two must agree: if a bitmap bit is set no directory entry for that tile may
+carry `dir_len != 0`, and if a directory entry has `dir_len == 0` the bit must
+be set. On disagreement the decoding process follows `skip_bitmap` and the
+receiver marks the tile UNDECODABLE. The redundancy is worth keeping: the
+bitmap is what makes a skipped tile cost one bit, and the directory entry is
+what lets a receiver account for the tile without holding the row header. In a stored file the row header is written once; in
 transport it is replicated in every datagram of the row, together with the frame
 header (PAPER 6.7), which is why both are small and self-checking.
 
@@ -276,17 +442,67 @@ Two little-endian u32 words. Bits are listed LSB first.
 
 Then, in this order:
 
-1. `i8 mv_x, i8 mv_y` if `mv_present`
+1. if `mv_present`:
+   * `u16 disparity` if `mode == STEREO`
+   * `i8 mv_x, i8 mv_y` otherwise
 2. `u8 alpha_value` if `alpha_mode == 1`
 3. `payload_len` bytes of rANS payload
+
+`mv_x` and `mv_y` are the tile's motion vector **itself**, in quarter samples
+(Q.2), range `[-32, +31.75]` samples. They are **not** a delta from the tile's
+stored previous vector. A delta would make parsing a tile header depend on the
+decoder's per-tile state being correct -- exactly in the cases after a concealed
+frame where the format most needs to recover -- and that destroys the property
+the whole transport design rests on, that a tile is an independently decodable
+bitstream and a datagram is only a loss unit. The stored vector exists for
+`WARP_SKIP` and for concealment, never for parsing (section 13.5).
+
+`disparity` is one little-endian `u16`:
+
+| bits | meaning |
+|---|---|
+| 11:0 | unsigned horizontal disparity in quarter samples, 0 to 4095 (0 to 1023.75 samples) |
+| 15:12 | reserved, must be 0 |
+
+The source position in the decoded first eye lies `disparity` quarter samples
+to the **right** of the tile's own position. There is deliberately **no
+vertical field**: a downward component is what would break a row-pipelined
+decoder's three-left-tile dependency bound, and removing the field makes that
+rule structural rather than a constraint a malformed stream could violate. The
+four reserved bits are where a version 2 signed non-positive `dy` goes. Twelve
+bits is five times the worst case measured on real content (`f * IPD / z` is
+about 200 samples at 30 cm) and covers `z` down to about 6 cm, inside the near
+clip plane of every headset. The field is two bytes, exactly as
+`mv_x` + `mv_y`, so no structure changes size.
 
 Constraints: `res_level != 3`; `alpha_mode != 3`; `nsub_log2 <= 5`;
 `mode <= 4`; word0 bit 3 and word1 bits 28-31 zero; `chroma444` may only be 1 if
 `chroma_format == 1`; `alpha_mode != 0` requires `alpha_present`; `tile_index`
-must equal the tile's position in the row; `wm_id != 0` requires the `WM_ID`
-tool bit and is illegal when the frame carries custom matrices
+must equal the tile's position in the row; `eye` must equal the eye derived from
+the tile's position in the frame (section 3.3); `wm_id != 0` requires the
+`WM_ID` tool bit and is illegal when the frame carries custom matrices
 (`quant_matrix == 255`), because the two would silently disagree about which
 weights apply.
+
+Inter constraints: `mode != INTRA` requires the `INTER` tool bit;
+`mode == WARP_SKIP` or `WARP_MV` requires `warp_present` in the containing
+frame; `mode == STEREO` requires the `STEREO` tool bit, `eye == 1` and
+`mv_present == 1`, and its `disparity` bits 15:12 must be zero.
+`ref_sel == 3` is reserved. For `mode == INTRA` and `mode == STEREO`, `ref_sel`
+must be 0 and **is ignored** by the decoding process.
+
+`ref_sel` is **authoritative**; the transport's `ref_delta` is an advisory copy
+of it with one extra value, 3, meaning "no temporal reference", which is what
+an `INTRA` or `STEREO` tile must carry there. On disagreement the decoding
+process uses `ref_sel` and the receiver marks the tile UNDECODABLE, because it
+cannot account for the tile in its reference model.
+
+The tile's quantiser is `clamp(base_qp + qp_delta, 0, 63)` **from the
+bitstream**. The transport's `dir_qp` must equal that value and is advisory: it
+exists so a receiver can act on a tile's quality -- retransmit priority,
+telemetry, concealment choice -- before parsing the tile. On disagreement the
+decoding process uses `qp_delta` and the receiver counts an integrity fault
+without discarding the tile, since `dir_qp` never affects decoded samples.
 
 ### 4.2 Tile geometry
 
@@ -1168,22 +1384,37 @@ state below `L`, and any renormalization that would read past the payload.
 
 ```
 1. parse the tile header
-2. build the coding-unit list from res_level, chroma444, alpha_mode
+2. build the coding-unit list from res_level, chroma444, alpha_mode, mode
 3. run the interleaved rANS schedule -> int16 coefficients, one array per unit
    (this is GPU Pass A: output is a dense int16 coefficient buffer plus the
    tile record)
-4. for each coded plane:
+4. if mode != INTRA: build the inter predictor W from the reference picture
+   ref_sel selects, the frame's warp_ext matrix and the tile's vector
+   (section 13.3).  If the tile is skipped or concealed, W is the whole
+   reconstruction and steps 5 and 6 do not run.
+5. for each coded plane:
      a. dequantize + inverse-transform the DC plane   -> means M
-     b. planar-interpolate M                          -> pred
-     c. for each block: dequantize, inverse transform (or take the residual
+     b. planar-interpolate M                          -> planar
+     c. pred = planar                     for mode == INTRA
+        pred = clamp(W + planar - dc_offset, 0, maxval)   otherwise
+     d. for each block: dequantize, inverse transform (or take the residual
         directly for tskip), add pred, clamp
-     d. upsample the plane by its factor into the picture
+     e. upsample the plane by its factor into the picture
    (this is GPU Pass B: one workgroup per 64x64 tile)
-5. if color_transform == 1, convert planes 0..2 back to RGB after upsampling
+6. if color_transform == 1, convert planes 0..2 back to RGB after upsampling
+7. store the reconstruction into the reference-ring slot ref_slots names, in
+   the CODED sample domain -- before step 6 -- and apply the prediction-state
+   update of section 13.5
 ```
 
-Nothing in step 4 or 5 depends on any other tile. There is no deblocking filter
-and no loop filter in v1.
+**Tile independence.** Within one eye and one frame, no tile's reconstruction
+depends on any other tile. The single exception is `mode == STEREO`, where a
+right-eye tile reads up to three left-eye tiles of the same row of the same
+frame, which the row order of section 3.3 makes available. There is no other
+intra-frame tile dependency in the format, no deblocking filter and no loop
+filter in v1. Inter tiles depend on *previous* frames, which is a different
+thing: the reference picture is complete and immutable while the frame that
+reads it decodes.
 
 ---
 
@@ -1191,17 +1422,17 @@ and no loop filter in v1.
 
 ```
 file  := stream_header ext_area frame*
-frame := frame_header [custom_matrices] [table_set]* tile_row*
-tile_row := row_header tile*
-tile  := tile_header [mv] [alpha] payload
+frame := frame_header [warp_ext] [custom_matrices] [table_set]* tile_row*
+tile_row := row_header tile*                 // eyes * rows of them
+tile  := tile_header [mv | disparity] [alpha] payload
 ```
 
 | structure | fixed size |
 |---|---|
 | stream header | 64 + `ext_len` |
-| frame header | 40 (+128 if custom matrices, +120 per transmitted table set) |
-| tile-row header | 12 |
-| tile header | 8 (+2 if `mv_present`, +1 if `alpha_mode == 1`) |
+| frame header | 40 (+`36 * eyes` if `warp_present`, +128 if custom matrices, +120 per transmitted table set, or +160 per set when `CTX_V2` is set) |
+| tile-row header | 12, `eyes * rows` of them, row-major eye-minor |
+| tile header | 8 (+2 if `mv_present`, +1 if `alpha_mode == 1`); a skipped tile has none |
 | tile payload | `payload_len`, at least `4 * active_lanes` |
 
 ---
@@ -1212,7 +1443,8 @@ A Phase 1 decoder implements everything above except inter prediction. It must:
 
 * accept `mode == INTRA` and reject `WARP_SKIP`, `STATIC_MV`, `WARP_MV` and
   `STEREO` with an "unsupported" status (not a malformed-bitstream status);
-* reject a nonzero `skip_bitmap` (a skip references a frame it cannot have);
+* reject a nonzero `skip_bitmap` (a skip references a frame it cannot have),
+  and a skip bit at or above `cols_per_eye` as `BITSTREAM` in every profile;
 * reject `eyes != 1`, `num_layers != 1`, `bit_depth != 8`, `layer != 0`,
   `eye != 0`, and any tool bit outside the supported set;
 * parse `mv_present`, `ref_sel` and `wgt` correctly even though it cannot use
@@ -1232,7 +1464,7 @@ families is a real interoperability bug.
 | status | meaning |
 |---|---|
 | `VERSION` | the magic, version or `tools` mask is not something this decoder speaks |
-| `UNSUPPORTED` | legal v1 syntax that this profile does not implement (a Phase 2 tile mode, `bit_depth` 10, 32x32 tiles, a nonzero `skip_bitmap`) |
+| `UNSUPPORTED` | legal v1 syntax that this profile does not implement (a Phase 2 tile mode or a nonzero `skip_bitmap` on a decoder without `INTER`, `bit_depth` 10, 32x32 tiles) |
 | `BITSTREAM` | this cannot be a legal stream at all (a reserved value, a field that disagrees with its position) |
 | `TRUNCATED` | a length ran past the buffer |
 
@@ -1257,6 +1489,211 @@ the v1.2 set: all three tools are additive and off unless their bit is set.
 normalization of section 9.4 — the one place a decoder divides — so a decoder
 that rounds it differently fails on a committed bitstream rather than on
 customer content.
+
+---
+
+## 13. Inter prediction (Phase 2)
+
+Everything in sections 6 to 9 is unchanged by inter prediction: the transform,
+the quantiser, the scan, the contexts and the rANS schedule are the same for
+every mode. What changes is what the residual is measured against, and that is
+the whole of this section.
+
+### 13.1 Modes
+
+| `mode` | name | reference | vector | residual |
+|---|---|---|---|---|
+| 0 | `WARP_SKIP` | `warp(ref[N-1])` | the stored `last_mv` | none |
+| 1 | `STATIC_MV` | `ref[N-1-ref_sel]`, unwarped | coded `mv` | coded |
+| 2 | `WARP_MV` | `warp(ref[N-1-ref_sel])` | coded `mv` | coded |
+| 3 | `INTRA` | none | none | coded |
+| 4 | `STEREO` | the decoded first eye of **this** frame | coded `disparity` | coded |
+
+`STATIC_MV` exists for head-locked content -- menus, HUDs, laser pointers, a
+transport overlay -- where the warp is exactly wrong and the identity predictor
+is exactly right. It does not read `warp_ext()` at all, and neither does
+`STEREO`; a frame carrying either needs no `warp_present`.
+
+### 13.2 The reference ring
+
+Four slots, addressed by `frame_number mod 4`. A frame writes the slot its own
+number names, which is what `ref_slots` states (section 3.1), and reads the
+slot `(frame_number - 1 - ref_sel) mod 4`, whose stored frame number must be
+`frame_number - 1 - ref_sel`; if it is not, the stream is malformed. A slot
+holds the whole reconstructed picture of every eye **in the coded sample
+domain** -- Y/Co/Cg, before the inverse colour transform -- because that is the
+domain the predictor predicts in.
+
+`ref_sel == 3` is reserved, so the reachable references are `N-1`, `N-2` and
+`N-3`; the fourth slot is the one being written. `warp_ext()` describes the
+transform between the picture the frame's tiles reference and this frame, so an
+encoder that uses `ref_sel > 0` derives its matrix against that frame.
+
+### 13.3 The predictor
+
+The predictor is `nxvc_warp_ref` and nothing else: `docs/WARP.md` is normative
+for it and `warp/` is its executable form. Per tile and per plane:
+
+1. The plane's matrix is the frame's, conjugated by the plane's subsampling
+   factor `sub` (1, or 2 for 4:2:0 chroma):
+
+   ```
+   h02' = round_half_away(h02 / sub)      h20' = h20 * sub
+   h12' = round_half_away(h12 / sub)      h21' = h21 * sub
+   ```
+
+   with every other entry unchanged, and the origin
+   `(ox, oy) = (plane_width >> 1, plane_height >> 1)` in that plane's samples.
+   The halving rounds to nearest, ties away from zero, so it is symmetric about
+   zero and identical everywhere; the doubling is exact, because a legal
+   `h20`/`h21` is of order 2^15.
+
+2. The plane's vector is `mv >> 1` for `sub == 2` and `mv` otherwise, an
+   arithmetic shift, in quarter plane-samples.
+
+3. `warp_tile()` produces the block: four corner source coordinates from two
+   64-bit accumulations and a fixed 32-iteration restoring divide each, then
+   integer bilinear interpolation of those corners across the block, then the
+   vector added in Q.6, rounded to Q.4, and one **bilinear** sample with
+   clamp-to-edge per tap. `STATIC_MV` and `STEREO` take the identity corners
+   and never touch the matrix.
+
+4. A tile whose `res_level` is nonzero predicts at full extent and box-averages
+   the predictor down to the coded extent, with the same kernel the encoder
+   uses on the source, so the residual is measured in one domain throughout.
+
+The prediction the residual is added to is then
+
+```
+pred = clamp(W + planar(M) - dc_offset, 0, maxval)
+```
+
+where `W` is the predictor above and `planar(M)` is the DC plane of section 7.2
+built, for an inter tile, from the block means of the **residual**. The
+coding-unit list is therefore identical in every mode -- one DC unit and
+`nb * nb` block units per plane -- and the DC plane doubles as the per-block DC
+correction the warp needs. On a well-predicted tile every DC-plane coefficient
+is zero and the whole structure costs one CBF symbol. An inter tile's block
+means are `dc_offset + a residual mean`, whose range is wider than the sample
+domain on both sides, so they are **not** clamped to it; `dequant` has already
+bounded them.
+
+The **mode unit** of section 9.6 is present only for `mode == INTRA`. An inter
+tile's prediction is the warp, and nine ways of saying nothing is not a tool.
+
+### 13.4 Interpolation filter
+
+Version 1 is **bilinear**, in every profile. The filter is selected by tool bit
+23 `FILTER_CATMULL_ROM`, which is not defined for version 1 and which a version
+1 decoder must refuse (section 2.3), so there is exactly one legal predicted
+sample for every conforming v1 bitstream and `profile` selects nothing.
+
+The evidence is that Catmull-Rom is within **0.05 dB** of bilinear on a single
+step and buys about 2 dB only on long warp chains -- which a higher per-tile
+refresh rate shortens anyway -- set against 16 taps per sample rather than 4 on
+a 4 ms decode budget. The tap table stays normative for the version 2 bit so
+that it has a defined meaning the day it is enabled.
+
+### 13.5 Per-tile prediction state
+
+Six bytes per tile position **per eye**. It is a running history, which is what
+makes it a different object from the transport's four-byte per-slot receiver
+record; the two were compared as if they were one, and they are not.
+
+| off | size | field |
+|---|---|---|
+| 0 | 2 | `last_mv_x`, s16 quarter samples |
+| 2 | 2 | `last_mv_y`, s16 quarter samples |
+| 4 | 2 | `last_disp`, u16 quarter samples, 12 bits used |
+
+13.9 kB at the v1 configuration. Applied **after** a tile is reconstructed:
+
+| `mode` | `last_mv` | `last_disp` |
+|---|---|---|
+| `WARP_MV` | `= (mv_x, mv_y)` | unchanged |
+| `WARP_SKIP` | unchanged (it consumed it) | unchanged |
+| `STATIC_MV` | unchanged | unchanged |
+| `INTRA` | `= (0, 0)` | `= 0` |
+| `STEREO` | unchanged | `= disparity` |
+
+`STATIC_MV` does not update `last_mv` because its vector displaces an
+*unwarped* reference while `WARP_SKIP` and concealment apply the stored vector
+*after* the warp; storing it would conceal from the wrong place. `INTRA` clears
+the state because after a refresh there is no motion history and a stale vector
+is worse than zero. The two fields are separate because a tile may alternate
+between `STEREO` and `WARP_MV`, and a 60-sample disparity is not a motion
+vector.
+
+The whole state is cleared to zero when `tile_map_reset` is set.
+
+### 13.6 Concealment
+
+A tile the client did not receive is reconstructed by running the `WARP_SKIP`
+predictor with the tile's stored `last_mv` and no residual -- exactly a
+legitimately skipped tile, which is why there is no separate concealment path
+to test and why the encoder can replay it. It is deterministic, so an encoder
+holding the same reference and the same state produces the same samples bit for
+bit, which is what lets it predict the next frame from what the client actually
+shows rather than from what it wished it had sent. A concealed tile's
+prediction state does not advance.
+
+`last_disp` is never used for concealment: a concealed right-eye tile conceals
+temporally, from its own eye's previous frame, because the left eye of the
+*current* frame may itself be missing.
+
+### 13.7 What this reference does not do
+
+* **`STEREO` under loss.** Concealing a left-eye tile changes what a `STEREO`
+  tile of the same row was predicted from, and re-deriving that needs a
+  full-frame replay. `nxvc_encoder_set_received_tiles` returns
+  `UNSUPPORTED` for that combination rather than diverging silently.
+* **Chroma tiles are predicted through the 64x64 kernel.** `warp_tile()`
+  produces a fixed 64x64 block, so a 4:2:0 chroma tile, whose extent is 32,
+  takes the top-left quarter of the 64x64 block at the same origin. The
+  samples are the library's, bit for bit, and both sides of the codec do the
+  same thing, so it is exact; what differs from a hypothetical 32x32 kernel is
+  only the span the in-tile corner interpolation is fitted over. A GPU Pass B
+  doing chroma natively at 32x32 must be given the same corner basis.
+
+---
+
+## 14. Phase 2 conformance
+
+A Phase 2 decoder implements section 13 in addition to everything a Phase 1
+decoder implements. It must:
+
+* accept every value of `mode`, and reject `mode` 5 to 7;
+* reject `warp_ext()` violating any of the four conditions of section 3.1.1;
+* reject a warped mode in a frame with `warp_present == 0`, `mode == STEREO`
+  on the left eye or without the `STEREO` tool bit, `ref_sel == 3`, a nonzero
+  `ref_sel` on an `INTRA` or `STEREO` tile, a `disparity` with bits 15:12 set,
+  a `ref_slots` other than `1 << (frame_number mod 4)` on an inter stream, a
+  skip bit for a column beyond `cols_per_eye`, and a skip or an inter mode on a
+  stream without the `INTER` tool bit;
+* reject tool bits 14 and 23 with a `VERSION` status, and the `WARP` bit
+  without `INTER` with a `BITSTREAM` one;
+* reproduce every `decoded_md5` of the `v45`-`v56` vectors.
+
+`v45`-`v56` are the twelve entries Annex D D-21 asks for: an identity warp with
+a repeated picture (every tile `WARP_SKIP`, a bit-exact copy), a warped
+moving-object sequence, a still picture under a 12 deg/frame matrix (where
+`STATIC_MV` must win), a matrix sweep across the accepted envelope, tiles
+straddling the picture edges, the skip and prediction-state rules over four
+frames, `ref_sel` 1 and 2 against the four-slot ring, stereo with real
+disparity, its `STATIC_MV` counterpart, a 4:2:0 inter sequence exercising the
+conjugated chroma matrix, and rolling intra refresh at a period of 4.
+
+Where D-21 states a *property* rather than a stream -- "`STATIC_MV` must not
+change one output bit when the matrix does", "an integer vector under identity
+equals a shifted tile" -- the property is asserted directly, in
+`tests/ref/test_inter.cpp` and in `warp/`'s own suite, and the vector here pins
+the bitstream and the reconstruction it holds for. A digest cannot express
+"changing this field must not change the output"; an assertion can.
+
+`r18`-`r29` are the rejection vectors, and they matter more than the positive
+ones: sections 3 and 4 impose roughly forty MUST-reject conditions, and a
+decoder that accepted every malformed stream would otherwise pass the suite
+completely.
 
 ---
 
@@ -1526,6 +1963,74 @@ inconsistent. Each is a decision, not an interpretation.
     sign can simply be applied at the end of the unit. Measured at **-0.6 %**
     BD-rate: the byte count goes slightly *up* (the parity adjustment tends to
     raise a level) and the PSNR goes up more.
+
+44. **The homography travels in a conditional structure after the frame
+    header, not in the header and not in a TLV.** The 40-byte header has every
+    byte assigned and one reserved; growing it to 112 costs 72 bytes on every
+    frame that cannot use them and moves every offset in section 3.1. The TLV
+    area is per *stream*. A conditional `warp_ext()` leaves every Phase 1 frame
+    byte-identical to what it was, which is why `v01`-`v44` still hash the same
+    after this section was written.
+
+45. **Rows 0 and 1 are Q10.21 and row 2 is Q2.29.** A single Q8.24 format, as
+    the draft paper had it, overflows `int32` by about seven bits on the
+    translation terms at any streamed width; a single Q10.21 cannot resolve the
+    perspective row, whose entries are of order 5e-5 and carry ten significant
+    bits below that. The split-by-row format is the only one of the three that
+    holds both ends, and it is the format `warp/` already implements.
+
+46. **Motion vectors are absolute.** See section 4.1. The saving from a
+    temporal delta is under 2 % of a tile's bits and the cost is that a tile
+    header can no longer be parsed without the decoder's per-tile state being
+    correct -- in exactly the frames after a loss where the format most needs
+    to recover.
+
+47. **The STEREO disparity is a 12-bit field in the tile's optional area, not
+    an Exp-Golomb symbol in the payload.** Putting it in the payload would add
+    a mode-conditional bypass symbol at the head of a tile's coding-unit list,
+    which changes the interleaved lane schedule -- the single most delicate
+    part of the format and the only part with a lane-order dependency -- to
+    save under a tenth of a percent of a tile. Keeping it in the header also
+    preserves the property that a tile header parses without starting the
+    entropy decoder.
+
+48. **A picture is one eye, and the transport's tile grid is the eye pair.**
+    The two documents were measuring different things and neither was wrong;
+    the missing statement was section 3.3's first sentence. Nothing needed
+    widening: `skip_bitmap` stays 64 bits because it covers one row of one eye,
+    and the transport's 68 columns are 34 per eye.
+
+49. **The inter residual is coded against `warp + DC plane`, so the
+    coding-unit list is mode-independent.** The alternative -- dropping the DC
+    unit for inter tiles -- changes the unit list, and therefore the lane
+    schedule, for a structure that costs one CBF symbol when it is not needed.
+    Keeping it also gives the warp a free per-block DC correction, which is the
+    one thing a rotation-only predictor most often needs.
+
+50. **Tile corners are derived, never transmitted.** Four corner displacements
+    per tile as Q4 `int16` -- the paper's Pass A alternative -- holds neither
+    the range nor the resolution: the corner coordinate is Q.6 with a clamp at
+    +-8192 pel and needs 20 bits. Widening it to Q6 `int32` would put 32 bytes
+    per tile, 74 kB per stereo frame, in the bitstream to save eight divides
+    per tile on a path that amortises them over 4096 pixels. The matrix costs
+    72 bytes.
+
+51. **`ref_slots` is enforced only on an inter stream.** Annex D D-10 states
+    the rule for version 1 as a whole. Every syntax v1.1 to v1.3 encoder writes
+    0 there, the field describes a reference ring those streams do not have,
+    and making them retroactively malformed would invalidate the whole
+    committed vector set to enforce a constraint on a value nothing reads.
+    The rule is normative wherever it can mean anything, which is where `INTER`
+    is set.
+
+52. **`warp_present` is frame-flags bit 3 and `FILTER_CATMULL_ROM` is tool bit
+    23.** Annex D D-1 and D-5 name bit 2 and bit 20 respectively. Both were
+    already taken when Annex D was written -- bit 2 by the layered form of
+    directional intra (decision 40) and bit 20 by `WM_ID` -- and both of those
+    are shipped with conformance vectors behind them. The substance of D-1 and
+    D-5 is unchanged; only the bit numbers move, to the first bits that are
+    actually free. This is an erratum against Annex D, recorded here because
+    this document is where the bit numbers live.
 
 ## Appendix B: where the bits go
 

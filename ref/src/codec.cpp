@@ -6,6 +6,7 @@
 
 #include "common.h"
 #include "entropy.h"
+#include "inter.h"
 #include "transform.h"
 
 namespace nxvc {
@@ -61,13 +62,23 @@ struct BitR {
 
 // ---------------------------------------------------------------- geometry
 struct Geometry {
-    u32 width = 0, height = 0;
+    u32 width = 0, height = 0;   // PER EYE (Annex D D-3: a picture is one eye)
+    u32 eyes = 1;
     u32 chroma = 0;       // nxvc_chroma
     u32 color_transform = 0;
     u32 color_space = 0;
     u32 alpha = 0;
-    u32 tiles_x = 0, tiles_y = 0;
-    u32 cw = 0, ch = 0;   // chroma plane dimensions
+    u32 tiles_x = 0, tiles_y = 0;   // per eye: cols_per_eye and rows
+    u32 cw = 0, ch = 0;   // chroma plane dimensions, per eye
+    u32 ntiles() const { return eyes * tiles_x * tiles_y; }
+    // Per-eye extent of plane p, in samples.
+    u32 pw(int p) const { return (p == 1 || p == 2) ? cw : width; }
+    u32 ph(int p) const { return (p == 1 || p == 2) ? ch : height; }
+    // Chroma subsampling factor of plane p (1 or 2), the factor the warp
+    // matrix and the motion vector are conjugated by.
+    int psub(int p) const {
+        return (p == 1 || p == 2) && chroma == NXVC_CHROMA_420 ? 2 : 1;
+    }
     int nplanes() const { return alpha ? 4 : 3; }
     int maxval(int p) const {
         if (color_transform == NXVC_CT_YCOCGR && (p == 1 || p == 2)) return 511;
@@ -100,6 +111,10 @@ struct FrameParams {
     int quant_matrix = 0;
     u32 tables_present = 0;
     u32 ref_slots = 0, flags = 1;
+    int warp_present = 0;       // frame flags bit 3
+    WarpMatrix warp[2];         // warp_ext(), one record per eye
+    int inter = 0;              // stream tool bit 10
+    int stereo = 0;             // stream tool bit 12
     int nctx = kNumCtxV1;   // 12 or 16, from the stream's CTX_V2 tool bit
     int intra_dir = 0;      // stream tool bit 17
     int dir_layer = 0;      // frame flags bit 2
@@ -130,7 +145,16 @@ struct TileParams {
     int qp_delta = 0, table_set = 0, nsub_log2 = 3, mv_present = 0;
     int ref_sel = 0, tskip = 0, wgt = 0, wm_id = 0;
     int mv_x = 0, mv_y = 0, alpha_value = 255;
+    int disparity = 0;   // STEREO only, quarter samples, 12 bits
+    int skipped = 0;     // signalled by skip_bitmap, no tile structure at all
 };
+
+// Does this mode read the frame's warp matrix?  STATIC_MV and STEREO use the
+// identity predictor and do not (Annex D D-1).
+static inline bool mode_needs_warp(int mode) {
+    return mode == NXVC_MODE_WARP_SKIP || mode == NXVC_MODE_WARP_MV;
+}
+static inline bool mode_is_inter(int mode) { return mode != NXVC_MODE_INTRA; }
 
 static void pack_tile_header(BW &bw, const TileParams &t) {
     u32 w0 = ((u32)t.layer & 3) | (((u32)t.eye & 1) << 2) |
@@ -188,7 +212,8 @@ struct PlaneState {
     int maxval = 255, dc_off = 128;
     std::vector<i32> samples;  // size*size, source (encoder) / recon (decoder)
     std::vector<i32> means;    // nb*nb reconstructed block means
-    std::vector<i32> pred;     // size*size, the DC-plane prediction
+    std::vector<i32> pred;     // size*size, the final prediction
+    std::vector<i32> wpred;    // size*size, the inter predictor (empty = intra)
     std::vector<i32> recon;    // size*size, INTRA_DIR: running reconstruction
     std::vector<u8> modes;     // nb*nb, INTRA_DIR: per-block intra mode
 };
@@ -202,6 +227,7 @@ struct TileCoder {
     int dir_layer = 0;   // frame flag bit 2: predict the DC-plane residual
     int sdh = 0;         // stream tool bit 22
     int nctx = kNumCtxV1;
+    int inter = 0;       // tp.mode != INTRA
     PlaneState pl[4];
     std::vector<i16> coef;
     std::vector<Unit> units;
@@ -225,7 +251,11 @@ static inline i32 quantize(i32 c, i32 t, i32 dz) {
 void TileCoder::setup() {
     TileGeom tg = tile_geom(tp.res_level, tp.chroma444);
     nplanes = g->nplanes();
-    intra_dir = fp->intra_dir;
+    inter = mode_is_inter(tp.mode) ? 1 : 0;
+    // The directional predictor and its mode unit belong to INTRA tiles: an
+    // inter tile's prediction is the warp, and a mode unit there would code
+    // nine ways of saying nothing.  SYNTAX.md 9.6.
+    intra_dir = fp->intra_dir && !inter;
     dir_layer = fp->dir_layer;
     sdh = fp->sdh;
     nctx = fp->nctx;
@@ -250,6 +280,7 @@ void TileCoder::setup() {
         s.samples.assign((size_t)s.size * s.size, 0);
         s.means.assign((size_t)s.nb * s.nb, 0);
         s.pred.assign((size_t)s.size * s.size, 0);
+        if (inter) s.wpred.assign((size_t)s.size * s.size, 0);
         if (intra_dir) {
             s.recon.assign((size_t)s.size * s.size, 0);
             s.modes.assign((size_t)s.nb * s.nb, 0);
@@ -489,6 +520,16 @@ static void residual_block(const i16 *c, const PlaneState &s, int tskip,
 
 // The DC plane and the bilinear prediction it drives: s.means and s.pred.
 // Shared by the encoder's analysis pass and the decoder.
+//
+// For an inter tile (s.wpred non-empty) the DC plane codes the block means of
+// the residual against the warp predictor, and the final prediction is
+//
+//     pred = clamp(wpred + planar(means) - dc_offset, 0, maxval)
+//
+// so the unit list, the scan, the contexts and the block syntax are exactly
+// the intra ones and the DC plane doubles as the per-block DC correction the
+// warp needs.  On a well-predicted tile every DC-plane coefficient is zero and
+// the whole structure costs one CBF symbol.
 static void reconstruct_dc_plane(PlaneState &s, const i16 *coefs) {
     const int nb = s.nb, size = s.size;
     const int ndc = nb * nb;
@@ -502,13 +543,23 @@ static void reconstruct_dc_plane(PlaneState &s, const i16 *coefs) {
         idct8x8(in, out);
         for (int i = 0; i < 64; ++i) dc[i] = out[i];
     }
+    // An intra tile's block mean is a sample value and is clamped to the
+    // sample domain.  An inter tile's is `dc_offset + a residual mean`, whose
+    // legal range is wider than the sample domain on both sides; clamping it
+    // there would silently cap the DC correction the warp needs.  dequant()
+    // has already bounded |dc| by 32767.
     for (int i = 0; i < ndc; ++i)
-        s.means[i] = clamp_i32(s.dc_off + dc[i], 0, s.maxval);
+        s.means[i] = s.wpred.empty() ? clamp_i32(s.dc_off + dc[i], 0, s.maxval)
+                                     : s.dc_off + dc[i];
     // planar prediction: bilinear over block centres (8x8 blocks)
     for (int y = 0; y < size; ++y)
         for (int x = 0; x < size; ++x)
             s.pred[(size_t)y * size + x] = bilinear_q4_i32(
                 s.means.data(), nb, nb, nb, 2 * x - 7, 2 * y - 7);
+    if (!s.wpred.empty()) {
+        for (size_t i = 0; i < s.pred.size(); ++i)
+            s.pred[i] = clamp_i32(s.wpred[i] + s.pred[i] - s.dc_off, 0, s.maxval);
+    }
 }
 
 // Reconstruct one plane from its coefficients (normative decode path).
@@ -767,13 +818,20 @@ static void analyze_dc_plane(PlaneState &s, i16 *coefs, int sdh) {
     const int nb = s.nb, size = s.size;
     const int ndc = nb * nb;
     std::vector<i32> m(ndc);
+    const bool inter = !s.wpred.empty();
     for (int by = 0; by < nb; ++by)
         for (int bx = 0; bx < nb; ++bx) {
             i32 sum = 0;
             for (int j = 0; j < 8; ++j)
-                for (int i = 0; i < 8; ++i)
-                    sum += s.samples[(size_t)(by * 8 + j) * size + bx * 8 + i];
-            m[by * nb + bx] = (sum + 32) >> 6;
+                for (int i = 0; i < 8; ++i) {
+                    size_t k = (size_t)(by * 8 + j) * size + bx * 8 + i;
+                    // For an inter tile the DC plane codes the mean of the
+                    // residual, offset back so the quantized quantity is the
+                    // same `m - dc_off` in both paths.
+                    sum += s.samples[k] - (inter ? s.wpred[k] - s.dc_off : 0);
+                }
+            i32 mean = sum >= 0 ? (sum + 32) >> 6 : -((-sum + 32) >> 6);
+            m[by * nb + bx] = mean;
         }
     int dcqp = dc_qp_of(s.qp);
     int tdc = dequant_step(dcqp, 16);
@@ -1099,6 +1157,16 @@ static void analyze_plane_dir(PlaneState &s, i16 *coefs, int tskip, int layer,
 // ============================================================== public API
 using namespace nxvc;
 
+// One tile's mode decision, taken once per frame and reused by the
+// table-training pass and the encoding pass so the two cannot disagree.
+struct TileDecision {
+    int mode = NXVC_MODE_INTRA;
+    int mv_x = 0, mv_y = 0;
+    int ref_sel = 0;
+    int disparity = 0;
+    int skipped = 0;
+};
+
 struct nxvc_encoder {
     nxvc_config cfg{};
     Geometry g;
@@ -1109,6 +1177,27 @@ struct nxvc_encoder {
     u8 pose[26] = {};
     u32 frame_number = 0;
     nxvc_encode_stats stats{};
+
+    // --- Phase 2
+    nxvc::RefRing ring;                      // the encoder's shadow of the client
+    std::vector<nxvc::PredState> state;      // per tile position per eye
+    std::vector<nxvc::PredState> state_pre;  // the same, before this frame
+    std::vector<TileDecision> dec;
+    std::vector<u8> skip_map;                // rc/'s force_warp_skip request
+    std::vector<u16> age_since_coded;        // per tile position per eye
+    std::vector<nxvc_view> views_cur;
+    // The view each ring slot was rendered with, so the matrix a frame emits
+    // is the one between its actual reference (N-1-ref_sel) and itself.
+    std::vector<nxvc_view> views_slot[4];
+    bool have_views = false;
+    int last_slot = -1;          // ring slot the most recent frame wrote
+    u32 last_frame_number = 0;
+    // The encoder's shadow of what the client displays, in the OUTPUT domain,
+    // written through exactly the same store_tile() the decoder uses.
+    std::vector<u8> shadow_plane[4];
+    nxvc_image shadow_img{};
+    int last_warp_present = 0;
+    nxvc::WarpMatrix last_warp[2];
 };
 
 struct nxvc_decoder {
@@ -1118,6 +1207,11 @@ struct nxvc_decoder {
     FrameParams fp;
     nxvc_frame_info fi{};
     std::vector<nxvc_tile_info> tiles;
+
+    // --- Phase 2
+    nxvc::RefRing ring;
+    std::vector<nxvc::PredState> state;
+    std::vector<u8> lost;        // consumed by one decode_frame call
 };
 
 #include "codec_impl.inc"
@@ -1157,13 +1251,29 @@ void nxvc_config_default(nxvc_config *cfg) {
     cfg->ctx_v2 = 1;
     cfg->intra_dir_cand = 0;   // built-in default (2 RD candidates + DC plane)
     cfg->sign_hide = 1;
+    // Phase 2 is opt-in: the default configuration is the Phase 1 one, so an
+    // existing caller and every syntax v1.3 conformance vector keep producing
+    // byte-identical streams.  `--inter on` turns the inter path on.
+    cfg->eyes = 1;
+    cfg->inter = 0;
+    cfg->stereo = 0;
+    cfg->intra_period = 180;   // PAPER 2.6: 2 s at 90 Hz
+    cfg->ref_sel = 0;
+    cfg->mv_range = 16;        // PAPER 2.3 step 2
+    cfg->skip_thresh = 0;      // built-in default
 }
 
 void nxvc_tile_layout_get(uint32_t w, uint32_t h, nxvc_tile_layout *out) {
+    nxvc_tile_layout_get_ex(w, h, 1, out);
+}
+
+void nxvc_tile_layout_get_ex(uint32_t w, uint32_t h, uint32_t eyes,
+                             nxvc_tile_layout *out) {
     if (!out) return;
+    if (eyes == 0) eyes = 1;
     out->tiles_x = (w + 63) / 64;
     out->tiles_y = (h + 63) / 64;
-    out->tile_count = out->tiles_x * out->tiles_y;
+    out->tile_count = eyes * out->tiles_x * out->tiles_y;
     out->tile_size = 64;
 }
 
