@@ -21,10 +21,10 @@ They are not equal, and knowing the order matters when they disagree.
 
 ```mermaid
 flowchart TD
-  REF["ref/ and tests/vectors/\nThe reference codec and its conformance vectors\nNORMATIVE for decoded output"]
-  SYN["docs/SYNTAX.md and the component normative docs\nNORMATIVE for the wire format"]
-  ADR["docs/adr/\nThe decision log: what was decided, why, and what lost"]
-  PAPER["docs/PAPER.md\nThe design narrative and the source of every estimate"]
+  REF["ref/ and tests/vectors/<br/>The reference codec and its conformance vectors<br/>NORMATIVE for decoded output"]
+  SYN["docs/SYNTAX.md and the component normative docs<br/>NORMATIVE for the wire format"]
+  ADR["docs/adr/<br/>The decision log: what was decided, why, and what lost"]
+  PAPER["docs/PAPER.md<br/>The design narrative and the source of every estimate"]
 
   REF -->|"wins over"| SYN
   SYN -->|"wins over"| ADR
@@ -93,14 +93,14 @@ normative, its own specification document:
 | Reference codec | `ref/` | [docs/SYNTAX.md](docs/SYNTAX.md) |
 | Pose warp | `warp/` | WARP.md (in progress) |
 | Transport | `transport/` | [docs/TRANSPORT.md](docs/TRANSPORT.md) |
-| Rate control and foveation | `rc/`, `fov/` | RATECONTROL.md (in progress) |
+| Rate control and foveation | `rc/`, `fov/` | [docs/RATECONTROL.md](docs/RATECONTROL.md) |
 | Vulkan encoder and decoder | `vk/` | derived from SYNTAX.md |
 | Phase 0 benchmark | `bench/` | `bench/README.md` |
 | Android client | `android/` | [docs/INTEGRATION.md](docs/INTEGRATION.md) |
-| Stereo inter-view | `stereo/` | STEREO.md (in progress) |
+| Stereo inter-view | `stereo/` | [docs/STEREO.md](docs/STEREO.md) |
 | Hybrid layering | `hybrid/` | HYBRID.md (in progress) |
 | Platform support | `platform/` | [docs/INTEGRATION.md](docs/INTEGRATION.md) |
-| Engine extension | | XR_EXT_NXWARP.md (in progress) |
+| Engine extension | | [docs/XR_EXT_NXWARP.md](docs/XR_EXT_NXWARP.md) |
 | Quality and conformance tooling | `tools/`, `tests/` | `tools/quality/README.md` |
 | Project documentation | `docs/`, root files | this document |
 

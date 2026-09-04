@@ -4,8 +4,9 @@ A video codec built only for VR streaming: Vulkan compute on both ends, independ
 pose-warped prediction, no IDR, no CPU on the hot path. Library and codec identifier `nxvc`, designed
 for [WiVRn NX](https://github.com/nerdrx/wivrn-nx).
 
-> **Nothing here has been measured.** Every performance figure in this documentation is a design
-> estimate from the paper, labelled as one. The Phase 0 gate has not been run on a device. See
+> **Nothing has been measured on a headset.** Every performance figure in this documentation is a
+> design estimate from the paper, labelled as one. The Phase 0 gate has not been run on a device; a
+> headless host run exists in `bench/results/` and is a regression signal, not the verdict. See
 > [PERFORMANCE.md](PERFORMANCE.md) and [ROADMAP.md](../ROADMAP.md).
 
 ## Start here
@@ -65,7 +66,8 @@ wire format and for behaviour `ref/` does not exercise.
 - **[XR_EXT_NXWARP.md](XR_EXT_NXWARP.md)** - the OpenXR extension carrying velocity, depth and stencil
   from the engine. It changes no bitstream syntax and the codec works without it.
 - **WARP.md** - pose warp (in progress).
-- **RATECONTROL.md** - rate control, allocation and the governor (in progress).
+- **[RATECONTROL.md](RATECONTROL.md)** - rate control, allocation, the degradation ladder and the
+  decode-time governor.
 - **HYBRID.md** - the hybrid hardware-base path (in progress).
 
 ### Integration

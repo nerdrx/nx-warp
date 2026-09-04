@@ -36,30 +36,30 @@ reprojection pass reads at a deadline.
 ```mermaid
 flowchart LR
   subgraph PC["PC (Vulkan compute, vendor neutral)"]
-    APP["App / compositor\nrenders stereo frame"]
-    E0["E0 warp\nwarped reference + corner displacements"]
-    E1["E1 analyze\nSAD, variance, mode, QP, tile lists"]
-    E2["E2 transform\nresidual, 8x8 int DCT, deadzone quant"]
-    E3["E3 reconstruct\ndecoder Pass B, same SPIR-V"]
-    E4["E4 entropy\nrANS backwards, 8 lanes per tile"]
-    E5["E5 packetize\nprefix sum, tile runs, headers"]
-    NET_TX["network thread\nAEAD encrypt, RS parity, sendmmsg"]
-    SHADOW["client shadow ring\nmirror of what the headset holds"]
+    APP["App / compositor<br/>renders stereo frame"]
+    E0["E0 warp<br/>warped reference + corner displacements"]
+    E1["E1 analyze<br/>SAD, variance, mode, QP, tile lists"]
+    E2["E2 transform<br/>residual, 8x8 int DCT, deadzone quant"]
+    E3["E3 reconstruct<br/>decoder Pass B, same SPIR-V"]
+    E4["E4 entropy<br/>rANS backwards, 8 lanes per tile"]
+    E5["E5 packetize<br/>prefix sum, tile runs, headers"]
+    NET_TX["network thread<br/>AEAD encrypt, RS parity, sendmmsg"]
+    SHADOW["client shadow ring<br/>mirror of what the headset holds"]
   end
 
   subgraph AIR["Network"]
-    UDP["UDP datagrams\ntile runs, 1400 B budget\nWiFi 6 and/or USB, striped"]
-    FB["feedback, one per band\nreceived bitmap, decode_us, RTT"]
+    UDP["UDP datagrams<br/>tile runs, 1400 B budget<br/>WiFi 6 and/or USB, striped"]
+    FB["feedback, one per band<br/>received bitmap, decode_us, RTT"]
   end
 
   subgraph HS["Headset (Vulkan compute)"]
-    NET_RX["network thread\nrecvmmsg, AEAD verify, FEC repair"]
-    PA["Pass A entropy decode\n8 tiles per wave"]
-    PB["Pass B reconstruct\none workgroup per 64x64 tile"]
-    PC3["Pass C hybrid enhancement\n(hybrid profile only)"]
-    RING["presentation ring\n4 slots + per-tile metadata"]
-    REPROJ["reprojection pass\nper-tile pose warp to display pose"]
-    XR["xrEndFrame\nruntime timewarp + scanout"]
+    NET_RX["network thread<br/>recvmmsg, AEAD verify, FEC repair"]
+    PA["Pass A entropy decode<br/>8 tiles per wave"]
+    PB["Pass B reconstruct<br/>one workgroup per 64x64 tile"]
+    PC3["Pass C hybrid enhancement<br/>(hybrid profile only)"]
+    RING["presentation ring<br/>4 slots + per-tile metadata"]
+    REPROJ["reprojection pass<br/>per-tile pose warp to display pose"]
+    XR["xrEndFrame<br/>runtime timewarp + scanout"]
   end
 
   APP --> E0 --> E1 --> E2 --> E3 --> E4 --> E5 --> NET_TX --> UDP --> NET_RX
@@ -86,12 +86,12 @@ Five nested objects. Everything in the system is one of them.
 
 ```mermaid
 flowchart TD
-  F["Frame\nframe_id u16, one pose per eye\n2 eyes x 2048..2160 square"]
-  L["Layer 0..3\nNATIVE, or HEVC_NAL / H264_NAL for a hybrid base\nscale 1/1, 1/2, 1/4"]
-  B["Band\n6 tile rows (384 lines), 6 bands per frame\nunit of pipelining, feedback and FEC grouping"]
-  R["Tile run\none datagram: contiguous tiles of one row\n24 B header + 4 B per-tile directory, 1400 B budget"]
-  T["Tile\n64x64 luma, own rANS bitstream\nunit of decode, concealment and reference tracking"]
-  BLK["8x8 block\nunit of transform, CBF and coefficient scan"]
+  F["Frame<br/>frame_id u16, one pose per eye<br/>2 eyes x 2048..2160 square"]
+  L["Layer 0..3<br/>NATIVE, or HEVC_NAL / H264_NAL for a hybrid base<br/>scale 1/1, 1/2, 1/4"]
+  B["Band<br/>6 tile rows (384 lines), 6 bands per frame<br/>unit of pipelining, feedback and FEC grouping"]
+  R["Tile run<br/>one datagram: contiguous tiles of one row<br/>24 B header + 4 B per-tile directory, 1400 B budget"]
+  T["Tile<br/>64x64 luma, own rANS bitstream<br/>unit of decode, concealment and reference tracking"]
+  BLK["8x8 block<br/>unit of transform, CBF and coefficient scan"]
 
   F --> L --> B --> R --> T --> BLK
 ```
@@ -279,20 +279,20 @@ transform and predictor want many lanes per tile (paper 3.2.1).
 ```mermaid
 flowchart TB
   subgraph IN[Inputs]
-    BS["bitstream ring\n(host visible, written by the network thread)"]
-    TT["tile table\n(indirect dispatch counts patched per band)"]
-    REF["reference ring\n4 slots in display format\nRGBA8 or RGB10A2"]
-    HB["hybrid base\nAHardwareBuffer from MediaCodec\n(hybrid profile only)"]
+    BS["bitstream ring<br/>(host visible, written by the network thread)"]
+    TT["tile table<br/>(indirect dispatch counts patched per band)"]
+    REF["reference ring<br/>4 slots in display format<br/>RGBA8 or RGB10A2"]
+    HB["hybrid base<br/>AHardwareBuffer from MediaCodec<br/>(hybrid profile only)"]
   end
 
-  PA["Pass A: entropy decode\n64 threads, 8 tiles per wave, 8 rANS lanes per tile\nLDS: 8 KB cumulative-to-symbol tables"]
-  COEF["coefficient buffer\nint16, block raster, about 16.8 MB per frame"]
-  REC["tile record, 16 B\nmode, 4 corner displacements Q4, QP, MV, flags"]
+  PA["Pass A: entropy decode<br/>64 threads, 8 tiles per wave, 8 rANS lanes per tile<br/>LDS: 8 KB cumulative-to-symbol tables"]
+  COEF["coefficient buffer<br/>int16, block raster, about 16.8 MB per frame"]
+  REC["tile record, 16 B<br/>mode, 4 corner displacements Q4, QP, MV, flags"]
 
-  PB["Pass B: reconstruct\n256 threads, one 64x64 tile\ndequant, 8x8 int DCT rows,\nLDS transpose 8 KB, columns,\npredict, add, clamp, YCoCg-R to RGB"]
-  PCc["Pass C: hybrid enhancement\n256 threads per tile\nbase through YCbCr sampler + warped residual"]
+  PB["Pass B: reconstruct<br/>256 threads, one 64x64 tile<br/>dequant, 8x8 int DCT rows,<br/>LDS transpose 8 KB, columns,<br/>predict, add, clamp, YCoCg-R to RGB"]
+  PCc["Pass C: hybrid enhancement<br/>256 threads per tile<br/>base through YCbCr sampler + warped residual"]
 
-  OUT["frame ring slot N\nstorage image, doubles as the next reference"]
+  OUT["frame ring slot N<br/>storage image, doubles as the next reference"]
 
   BS --> PA
   TT --> PA
@@ -403,15 +403,15 @@ that the encoder replays on its mirror ring.
 
 ```mermaid
 flowchart TD
-  START["encode tile t of frame N"] --> N1{"3x3 neighbourhood of t\nfully acknowledged in N-1?"}
-  N1 -- yes --> R0["ref_delta = 0\nreference N-1"]
+  START["encode tile t of frame N"] --> N1{"3x3 neighbourhood of t<br/>fully acknowledged in N-1?"}
+  N1 -- yes --> R0["ref_delta = 0<br/>reference N-1"]
   N1 -- no --> N2{"fully acknowledged in N-2?"}
-  N2 -- yes --> R1["ref_delta = 1\nreference N-2"]
+  N2 -- yes --> R1["ref_delta = 1<br/>reference N-2"]
   N2 -- no --> N3{"fully acknowledged in N-3?"}
-  N3 -- yes --> R2["ref_delta = 2\nreference N-3"]
-  N3 -- no --> R3["ref_delta = 3\nINTRA, capped size"]
+  N3 -- yes --> R2["ref_delta = 2<br/>reference N-3"]
+  N3 -- no --> R3["ref_delta = 3<br/>INTRA, capped size"]
 
-  R0 --> MODE["mode decision:\nWARP_SKIP, WARP_MV, STATIC_MV, STEREO"]
+  R0 --> MODE["mode decision:<br/>WARP_SKIP, WARP_MV, STATIC_MV, STEREO"]
   R1 --> MODE
   R2 --> MODE
   R3 --> OUT["emit tile"]
@@ -426,10 +426,10 @@ flowchart LR
   subgraph GRID["3x3 neighbourhood that must be acknowledged in frame M"]
     direction TB
     A1["x-1, y-1"] --- A2["x, y-1"] --- A3["x+1, y-1"]
-    B1["x-1, y"] --- B2["TILE t\nx, y"] --- B3["x+1, y"]
+    B1["x-1, y"] --- B2["TILE t<br/>x, y"] --- B3["x+1, y"]
     C1["x-1, y+1"] --- C2["x, y+1"] --- C3["x+1, y+1"]
   end
-  GRID --> WHY["the warp plus MV plus filter margin\nof tile t can read into all eight neighbours\n(paper 4.5)"]
+  GRID --> WHY["the warp plus MV plus filter margin<br/>of tile t can read into all eight neighbours<br/>(paper 4.5)"]
 ```
 
 Consequences (paper 4.5, 6.6, all design estimates):
@@ -564,16 +564,16 @@ Four loops run at four different timescales, on four different variables, so the
 ```mermaid
 flowchart TD
   subgraph FAST["per band, about 1.9 ms"]
-    DEADLINE["deadline controller (4.3)\nvariable: presentation deadline\nsignal: tiles late at the deadline\nrange: 0 to 4 ms earlier"]
+    DEADLINE["deadline controller (4.3)<br/>variable: presentation deadline<br/>signal: tiles late at the deadline<br/>range: 0 to 4 ms earlier"]
   end
   subgraph FRAME["per frame, 11.1 ms"]
-    ALLOC["per-tile allocator (4.6)\nvariable: QP_t and res_level per tile\nsignal: foveation, activity, warped SAD\nmodel: a_t updated from actual bytes"]
+    ALLOC["per-tile allocator (4.6)<br/>variable: QP_t and res_level per tile<br/>signal: foveation, activity, warped SAD<br/>model: a_t updated from actual bytes"]
   end
   subgraph SLOW["100 ms to 1 s"]
-    BITRATE["bitrate controller (4.6)\nvariable: frame bit budget B\nsignal: AIMD loss + BBR delivery rate\nrange: 20 Mbit to 1 Gbit"]
+    BITRATE["bitrate controller (4.6)<br/>variable: frame bit budget B<br/>signal: AIMD loss + BBR delivery rate<br/>range: 20 Mbit to 1 Gbit"]
   end
   subgraph SLOWEST["3 frames down, 2 s up"]
-    GOV["decode-time governor (4.7)\nvariable: pixels of work\nsignal: decode_us and GPU frequency state\nknobs: drop class C enhancement, class C to base,\nfovea radius -10%, drop class B enhancement, 90 to 72 Hz"]
+    GOV["decode-time governor (4.7)<br/>variable: pixels of work<br/>signal: decode_us and GPU frequency state<br/>knobs: drop class C enhancement, class C to base,<br/>fovea radius -10%, drop class B enhancement, 90 to 72 Hz"]
   end
 
   BITRATE --> ALLOC
@@ -611,14 +611,14 @@ No new syntax: every rung uses a v1 tool. The only new thing is the encoder's or
 | `ref/` | bit-exact CPU reference encoder and decoder, the specification | [SYNTAX.md](SYNTAX.md) |
 | `warp/` | pose warp: homography quantisation, integer warp kernel, oracle | WARP.md (in progress) |
 | `transport/` | tile runs, AEAD, FEC, multipath, shadow model, receiver | [TRANSPORT.md](TRANSPORT.md) |
-| `rc/` | rate control: classify, allocate, governor, synthesis harness | RATECONTROL.md (in progress) |
+| `rc/` | rate control: classify, allocate, governor, synthesis harness | [RATECONTROL.md](RATECONTROL.md) |
 | `vk/` | Vulkan context, capability probe, decoder Pass A/B, encoder E0 to E5 | derived from SYNTAX.md |
 | `bench/` | Phase 0 gate app, kernels K1 to K6 | `bench/README.md` |
 | `android/` | headset client: receive path, frame ring, transport glue | [INTEGRATION.md](INTEGRATION.md) |
 | `stereo/` | stereo inter-view prediction study | STEREO.md (in progress) |
 | `hybrid/` | hybrid base-plus-enhancement simulator | HYBRID.md (in progress) |
 | `platform/` | Windows and cross-compilation support | [INTEGRATION.md](INTEGRATION.md) |
-| `fov/` | foveation map generation | RATECONTROL.md (in progress) |
+| `fov/` | foveation map generation | [RATECONTROL.md](RATECONTROL.md) |
 | `tools/` | quality harness, conformance and report tooling | `tools/quality/README.md` |
 | `tests/` | conformance vectors and unit tests | [SYNTAX.md](SYNTAX.md) |
 

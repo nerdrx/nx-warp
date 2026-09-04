@@ -3,10 +3,15 @@
 Every number in this document is a **design estimate** from [docs/PAPER.md](PAPER.md). The "measured"
 column of every table is empty, and it stays empty until the Phase 0 gate runs on real hardware.
 
-> **Nothing in this project has been measured.** The estimates below are back-of-envelope figures from
+> **Nothing has been measured on a headset.** The estimates below are back-of-envelope figures from
 > the design paper, computed from vendor peak numbers and field experience with other workloads. The
 > paper itself says they could be wrong by 2x in either direction (paper 3.1), which is why Phase 0
 > exists before any codec code (paper 7.4).
+>
+> A headless host run of the Phase 0 kernels on a desktop GPU is recorded in `bench/results/`. It is
+> useful as a regression signal while iterating on the shaders, and `bench/README.md` says explicitly
+> that it is never the verdict. The tables below stay empty until the on-device table exists, because
+> a desktop number tells you nothing about an Adreno 650 sharing 11.1 ms with a compositor.
 
 Measurements land in `bench/` (the Phase 0 gate app, kernels K1 to K6) and in `tools/quality/` (the
 bitrate and quality harness). When they do, they are filled in here with the device, driver version

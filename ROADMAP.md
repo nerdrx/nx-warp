@@ -6,16 +6,19 @@ The phases and their exit criteria come from [docs/PAPER.md](docs/PAPER.md) sect
 are reproduced here unchanged. The status column is an honest statement of what is in the repository,
 not a claim that any of it is finished or correct.
 
-> **No exit criterion has been met, because no measurement has been taken.** The Phase 0 gate has not
-> been run on a device: there is no `bench/results/` in the tree. Every performance number anywhere in
-> this project is a design estimate; see [docs/PERFORMANCE.md](docs/PERFORMANCE.md), whose measured
-> column is deliberately empty.
+> **No exit criterion has been met.** The Phase 0 gate has not been run on a headset. A headless host
+> run exists in `bench/results/` (a desktop RADV device), and `bench/README.md` states plainly that
+> host numbers are a regression signal, never the verdict: the gate is the on-device table. Every
+> performance figure elsewhere in this project remains a design estimate; see
+> [docs/PERFORMANCE.md](docs/PERFORMANCE.md), whose measured column is empty until device numbers
+> exist.
 
 ## Phases
 
 | Phase | Weeks | Deliverable | Exit criteria | Status |
 |---|---|---|---|---|
-| **0** | 3 | Adreno benchmark app, capability probe | K1 to K6 measured on a Pico 4; the pure-versus-hybrid decision recorded; the numbers in the tree | **In progress.** The gate app exists (`bench/`, kernels K1 to K6, Android and headless host front ends, thermal mode, self-test against the CPU reference) and a Vulkan capability probe exists (`vk/common`). Nothing has been run on a device. |
+| **0** | 3 | Adreno benchmark app, capability probe | K1 to K6 measured on a Pico 4; the pure-versus-hybrid decision recorded; the numbers in the tree | **In progress.** The gate app exists (`bench/`, kernels K1 to K6, Android and headless host front ends, thermal mode, self-test against the CPU reference) and a Vulkan capability probe exists (`vk/common`). A headless host run has been recorded in
+`bench/results/`; nothing has been run on a headset, which is what the gate requires. |
 | **1** | 8 | Intra-only codec: reference decoder, GPU decoder, GPU encoder, conformance, diff harness, quality harness | Bit-exact on lavapipe, RADV and Adreno; within 1.0 dB PSNR of x264 intra at 100 to 400 Mbit on VR captures; Pass B under 5 ms p50 on Pico 4; encoder under 4 ms on RX 580; fuzz corpus 24 h clean | **In progress.** Reference codec, conformance vectors, Pass A, Pass B, encoder stats passes, quality harness and fuzz targets all exist in the tree. None of the four numeric criteria has been measured. |
 | **2** | 10 | Pose-warped inter, DC-plane intra refresh, skip, per-tile reference tracking | Cross-vendor determinism test green; BD-rate within 15 percent of x265 zerolatency single-reference on head-rotation sequences at 100 to 200 Mbit; 5 percent segment loss shows no drift beyond one refresh period; Pico 4 p99 under 7 ms at 90 Hz | **Started early.** `warp/` (integer homography, warp kernel, CPU oracle) and `transport/shadow` exist ahead of schedule. No measurements. |
 | **3** | 6 | WiVRn NX integration, hybrid mode, telemetry, decode-time governor, FTO review | Glass-to-glass under 40 ms at 150 Mbit on WiFi 6 measured by the existing HUD path; encode plus decode under 12 ms combined; one hour on a Pico 4 without a crash; hybrid mode selectable and functional; FTO review done | **Design only.** `docs/INTEGRATION.md`, `android/` client shell, `hybrid/` simulator and `rc/governor` exist. The FTO review ([ADR-0017](docs/adr/0017-fto-review-scope.md)) has not been performed. |
@@ -35,11 +38,11 @@ does not mean it is complete, correct or wired into anything else.
 | Conformance vectors | `tests/vectors/` | [spec/09-conformance.md](spec/09-conformance.md) | 32 `.nxv` vectors with an md5 manifest, covering intra, lossless, alpha, `res_level`, custom tables, odd sizes, multi-frame |
 | Pose warp | `warp/` | WARP.md (in progress) | Integer homography quantisation, CPU reference warp, warp oracle, `warp_tile.comp` |
 | Transport | `transport/` | [docs/TRANSPORT.md](docs/TRANSPORT.md) | Wire format, packetizer, sender, receiver, AEAD, FEC, multipath, encoder shadow model |
-| Rate control and foveation | `rc/`, `fov/` | RATECONTROL.md (in progress) | Tile classification, allocation, degradation ladder, decode-time governor, synthesis harness, foveation map generation |
+| Rate control and foveation | `rc/`, `fov/` | [docs/RATECONTROL.md](docs/RATECONTROL.md) | Tile classification, allocation, degradation ladder, decode-time governor, synthesis harness, foveation map generation |
 | Vulkan decoder | `vk/decoder/` | derived from the spec | Pass A (rANS decode) and Pass B (reconstruct) with models, layouts and GLSL, runtime self-test |
 | Vulkan encoder | `vk/encoder/` | derived from the spec | E0 convert, E1 stats, E2 prefix, CPU stats reference, YCbCr 2-plane passthrough |
 | Vulkan common | `vk/common/` | | Context, resources, capability probe, probe JSON |
-| Phase 0 benchmark | `bench/` | `bench/README.md` | Kernels K1 to K6, Android NativeActivity and headless host front ends, thermal mode, self-test, report tooling. **No results yet** |
+| Phase 0 benchmark | `bench/` | `bench/README.md` | Kernels K1 to K6, Android NativeActivity and headless host front ends, thermal mode, self-test, report tooling. Host results recorded; **no device results yet** |
 | Android client | `android/` | [docs/INTEGRATION.md](docs/INTEGRATION.md) | Client shell: UDP receive path, frame ring, HUD, feedback |
 | Stereo inter-view | `stereo/` | [docs/STEREO.md](docs/STEREO.md) | CPU experiment, scene and prediction models, recorded simulation results, FTO scoping notes |
 | Hybrid layering | `hybrid/` | HYBRID.md (in progress) | Python simulator: base, enhancement, warp, panorama, metrics, sweep |
@@ -57,17 +60,17 @@ does not mean it is complete, correct or wired into anything else.
 
 ```mermaid
 flowchart TD
-  P0["Phase 0: the bench table\nK1 to K6 on a Pico 4"]
+  P0["Phase 0: the bench table<br/>K1 to K6 on a Pico 4"]
   VERDICT{"K5 p50?"}
-  PURE["Pure compute is the default\non Pico 4"]
-  MIXED["Pure compute at 72 Hz\nor 1.5x foveated reduction;\nhybrid is the default"]
-  HYB["Pico 4 is hybrid only;\npure compute waits for\nAdreno 740 class"]
+  PURE["Pure compute is the default<br/>on Pico 4"]
+  MIXED["Pure compute at 72 Hz<br/>or 1.5x foveated reduction;<br/>hybrid is the default"]
+  HYB["Pico 4 is hybrid only;<br/>pure compute waits for<br/>Adreno 740 class"]
 
-  P1["Phase 1: intra-only codec\nbit-exact on 3 vendors"]
-  P2["Phase 2: pose-warped inter\ncross-vendor determinism"]
-  P3["Phase 3: WiVRn NX integration\nglass to glass under 40 ms"]
+  P1["Phase 1: intra-only codec<br/>bit-exact on 3 vendors"]
+  P2["Phase 2: pose-warped inter<br/>cross-vendor determinism"]
+  P3["Phase 3: WiVRn NX integration<br/>glass to glass under 40 ms"]
   P4["Phase 4: stereo, foveation, depth"]
-  FTO["FTO review\n(4 scoped items)"]
+  FTO["FTO review<br/>(4 scoped items)"]
 
   P0 --> VERDICT
   VERDICT -- "under 5.0 ms" --> PURE

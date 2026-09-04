@@ -30,7 +30,7 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
   tables, patents and open issues.
 - `docs/SYNTAX.md`, the normative bitstream syntax document.
 - `docs/TRANSPORT.md`, the normative transport document.
-- `docs/STEREO.md` and `docs/XR_EXT_NXWARP.md`.
+- `docs/STEREO.md`, `docs/RATECONTROL.md` and `docs/XR_EXT_NXWARP.md`.
 - `docs/INTEGRATION.md` and `docs/INTEGRATION-DECISIONS.md`, the WiVRn NX integration plan.
 
 **Reference codec**
@@ -62,7 +62,8 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
 
 - `bench/`: the Phase 0 gate application from paper 3.4, kernels K1 to K6, with an Android
   NativeActivity front end and a headless host front end, a thermal mode, a self-test against the CPU
-  reference, and report tooling. **No results yet: the gate has not been run on a device.**
+  reference, and report tooling. Host results are recorded in `bench/results/`; **the gate has not been
+  run on a headset**, and host numbers are explicitly not the verdict.
 - `android/`: the client shell, with the UDP receive path, frame ring, HUD and feedback.
 - `platform/`: Windows D3D11 interop probe, an llvm-mingw toolchain file, SPIR-V embedding, and a Wine
   smoke test.
@@ -120,13 +121,14 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
 
 ### Known gaps
 
-- **The Phase 0 gate has not been run on a device.** Every performance number in this project is a
-  design estimate ([docs/PERFORMANCE.md](docs/PERFORMANCE.md)).
+- **The Phase 0 gate has not been run on a headset.** Only a headless host run exists, which
+  `bench/README.md` states is a regression signal rather than the verdict. Every performance figure in
+  this project remains a design estimate ([docs/PERFORMANCE.md](docs/PERFORMANCE.md)).
 - No exit criterion of any phase has been met, because no measurement has been taken
   ([ROADMAP.md](ROADMAP.md)).
 - The freedom-to-operate review is scoped but not performed
   ([ADR-0017](docs/adr/0017-fto-review-scope.md)).
-- `docs/WARP.md`, `docs/RATECONTROL.md` and `docs/HYBRID.md` are in progress.
+- `docs/WARP.md` and `docs/HYBRID.md` are in progress.
 - There is no end-to-end streaming pipeline: components exist, the system does not run.
 
 [Unreleased]: https://github.com/nerdrx/nx-warp/commits/main
