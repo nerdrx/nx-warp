@@ -109,8 +109,7 @@ implement a set bit MUST refuse the stream (clause 8.4).
 **transform skip** — a per-tile mode in which the coded values are residual
 samples rather than transform coefficients [SYNTAX 6.6].
 
-**warp** — the pose-derived homography prediction of clause 6.7.
-[pending WARP.md]
+**warp** — the pose-derived homography prediction of clause 6.7 [R-26].
 
 ## 2.2 Abbreviations
 
@@ -145,7 +144,9 @@ samples rather than transform coefficients [SYNTAX 6.6].
 | `w[i]` | Weighting-matrix entry at raster position `i`, Q4, in `[1, 32]` |
 | `coded_size` | `64 >> res_level`, the coded luma extent of a tile |
 | `cols`, `rows` | Tile columns and rows of a picture |
-| `H` | The quantised per-eye homography [pending WARP.md] |
+| `H` | The quantised per-eye homography, `h00`..`h22` of `warp_ext()` (clause 4.4.2) |
+| `ox`, `oy` | The picture centre, `(width >> 1, height >> 1)`; derived, never transmitted |
+| `cols_per_eye` | `ceil(width / 64)`; the transport's `cols` is `eyes * cols_per_eye` (Annex D **D-3**) |
 
 The mathematical conventions — operator precedence, shift semantics,
 Q-formats, clipping — are specified in clause 3, not here.

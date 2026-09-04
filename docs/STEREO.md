@@ -100,11 +100,20 @@ width, which scales to about 200 px at 2048. Consequences, both required:
 1. The disparity seed must be a **seed**, never a search origin of zero. Without depth or a
    coarse disparity search, STEREO simply does not find its reference.
 2. The MV field width must accommodate it. PAPER 2.3 gives the vector a ±64 px range at quarter
-   pel. That is not enough for near-field content at 2048 px per eye. **Decision: the STEREO
-   vector is coded as an unsigned disparity in quarter-pel with an Exp-Golomb code and no fixed
-   upper bound (practically ±512 px), separately from the ±64 px signed `WARP_MV` vector.** The
-   two never coexist in a tile, so this is a reinterpretation of the same field by mode, not a new
-   field.
+   pel. That is not enough for near-field content at 2048 px per eye. The STEREO vector must
+   therefore be an unsigned disparity in quarter-pel, wide enough for the near field, carried
+   separately from the ±64 px signed `WARP_MV` vector. The two never coexist in a tile, so this is
+   a reinterpretation of the same bytes by mode, not a new field.
+
+   **Superseded (spec reconciliation, `spec/annex-d-inter-decisions.md` D-4).** This document
+   originally decided on an **Exp-Golomb code with no fixed upper bound, in the tile's entropy
+   payload**. That is not what the format carries. The disparity is one unsigned little-endian
+   `u16` in the tile's byte-aligned optional area, in place of `mv_x`/`mv_y`: bits 11:0 are the
+   disparity in quarter samples (0 to 4095, i.e. 0 to 1023.75 samples) and bits 15:12 MUST be 0.
+   Five times the measured worst case, the same two bytes the motion vector occupied, and no
+   change to the coding-unit list of the lane schedule — which is what the Exp-Golomb form would
+   have cost, for under a tenth of a percent of a tile's bits. Bits 15:12 are reserved for the v2
+   signed non-positive `dy` of section 6.1.
 
 ---
 
@@ -180,8 +189,12 @@ disparities into that term would bias the field toward physically wrong values.
 
 STEREO reuses, unchanged:
 
-- the 16-phase 1/16-pel filter table (4-tap Catmull-Rom with integer coefficients over 64, each row
-  summing to exactly 64 so a flat region reproduces exactly; bilinear in the Lite profile);
+- the 16-phase 1/16-pel filter, whichever `docs/WARP.md` section 9 selects. *(Spec reconciliation,
+  `spec/annex-d-inter-decisions.md` D-5: the filter is chosen by tool bit 20 `FILTER_CATMULL_ROM`,
+  which **version 1 does not define**, so a v1 stream is bilinear in every profile — not
+  Catmull-Rom in Full and bilinear in Lite as written below. `profile` selects nothing.)* The
+  4-tap Catmull-Rom table, with integer coefficients over 64 and each row summing to exactly 64 so
+  a flat region reproduces exactly, is normative for the v2 bit;
 - the quarter-pel vector representation, Q.2;
 - the "sum in Q.6, round to Q.4, add half and shift" rounding;
 - clamp-to-edge for out-of-frame reads.
@@ -354,13 +367,18 @@ Answers, in order of what v1 does:
 
 ## 9. Bitstream and profile impact
 
-- **No new syntax.** `STEREO` is mode 3 of the five already reserved in PAPER 2.3's mode table.
-  The vector field is reinterpreted as an unsigned disparity (Section 2.3), the residual, transform
-  and entropy coding are unchanged.
+- **Minimal new syntax.** `STEREO` is the fifth mode of PAPER 2.3's mode table and its field
+  **value is 4**, not 3; "mode 3" above counts ordinally. *(Spec reconciliation,
+  `spec/annex-d-inter-decisions.md` D-22 / Annex C C-23.)* The vector bytes are reinterpreted as
+  an unsigned `disparity` (Section 2.3); the residual, transform and entropy coding are
+  unchanged.
 - **Reference selection.** PAPER 6.6 gives every tile a 2-bit `ref_delta` selecting among N-1, N-2,
-  N-3 and intra. STEREO does not consume a `ref_delta` value: the mode itself names the reference
-  (`left(N)`), so `ref_delta` is not coded for STEREO tiles. Left-eye tiles never carry mode
-  `STEREO`; an encoder that emits one produces a stream a decoder must reject.
+  N-3 and intra. STEREO consumes no reference value: the mode itself names the reference
+  (`left(N)`). *(Spec reconciliation, `spec/annex-d-inter-decisions.md` D-12: the tile header's
+  `ref_sel` bits are **present, MUST be 0 and are ignored** — "not coded" is not expressible in a
+  fixed-width word — and the transport directory's `ref_delta` MUST be 3, "no temporal
+  reference".)* Left-eye tiles never carry mode `STEREO`; an encoder that emits one produces a
+  stream a decoder must reject.
 - **Per-tile state.** `last_mv` holds the disparity for STEREO tiles. Because a tile can alternate
   between STEREO and `WARP_MV` across frames, and the two vectors mean different things, the
   temporal delta predictor must be **per-mode-class**: predict a disparity from the last disparity,

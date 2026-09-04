@@ -122,6 +122,16 @@ A single Q format cannot hold both. The rows therefore carry different formats:
 
 `h22` is normalised to exactly `1.0 == 1 << 29` and is not free.
 
+**Carriage (spec reconciliation, `spec/annex-d-inter-decisions.md` D-1).** The
+nine coefficients travel in a `warp_ext()` structure of 36 bytes per eye
+(`h00` first, `h22` last, each a little-endian `int32`), placed immediately
+after the 40-byte frame header and gated by the frame header's `warp_present`
+flag. `h22` is transmitted although it is fixed, and a decoder rejects any
+value but `0x20000000`. The origin `(ox, oy)` is **not** transmitted: it is
+`(W >> 1, H >> 1)`, which is why the API takes an origin and the bitstream does
+not. The decoder-side rejection rules are the `kEntryMax` and `den` bounds of
+this section, restated normatively in `spec/04` 4.4.3.
+
 Entries within a row share a format because they are summed. The numerator and
 the denominator do not, so the divide carries an explicit compensating shift:
 
@@ -464,6 +474,16 @@ the true fractional offset and only the *taps* are clamped, so a tile that
 straddles the picture edge is bit-identical to one that does not for the samples
 that fall inside (`warp.border`).
 
+**Filter selection (spec reconciliation, `spec/annex-d-inter-decisions.md`
+D-5).** The filter is selected by the bitstream's tool bit 20
+`FILTER_CATMULL_ROM`, not by `profile`, which is informative and selects
+nothing. **Tool bit 20 is not defined for version 1 and a version 1 decoder
+rejects a stream that sets it, so every conforming version 1 stream is
+bilinear** — in every profile. The evidence is `docs/ERRATA.md`'s measurement
+that Catmull-Rom is within 0.05 dB of bilinear on a single step and buys about
+2 dB only on chains, against 16 taps per sample rather than 4. The table below
+stays normative for the version 2 bit; the "Lite"/"Full" labels are historical.
+
 ### Bilinear (Lite profile, `kFilterBilinear`)
 
 Four taps, four loads, weights over 16:
@@ -617,17 +637,29 @@ input, which for integer-only code is most of what there is to prove.
    measures 37.6 % of stereo tiles with disparity beyond the +-16 px coarse
    search range and 2.7 % beyond the +-64 px range of the Q.2 motion vector.
    `STEREO` reuses this module's `kModeStatic` path and therefore inherits the
-   +-64 px limit. A wider, unsigned disparity code is needed before `STEREO`
-   ships (it is Phase 4 and off in the Lite profile, so this does not block v1).
-   Not implemented here.
+   +-64 px limit of the `mv_qpel` argument. Not implemented here.
+
+   *Resolved in the bitstream (spec reconciliation,
+   `spec/annex-d-inter-decisions.md` D-4):* the disparity is a **separate**
+   16-bit unsigned field, 12 bits used, reaching 1023.75 samples, carried in the
+   tile's optional area in place of `mv_x`/`mv_y`. It is not the Q.2 signed
+   vector and it does not share its range. There is no vertical component. When
+   `STEREO` is implemented, this module's `kModeStatic` path takes the disparity
+   through a widened argument; the +-64 px limit above applies only to the
+   temporal vector.
 
 2. **Paper 3.2.3 has Pass A transmit four corner displacements per tile in Q4
    `int16`, while paper 2.10 has Pass B derive the corners from the frame
    header's matrix.** This module implements the latter: `warp_tile()` takes the
-   matrix. The two are reconcilable — a decoder may cache the eight corner values
-   per tile — but Q4 `int16` is *not* sufficient to hold what section 6 produces
-   (Q.6, up to +-8192 pel needs 20 bits), so if the tile record is kept it must
-   widen. The syntax section needs to pick one and the bitstream needs to say so.
+   matrix.
+
+   *Resolved (spec reconciliation, `spec/annex-d-inter-decisions.md` D-7):*
+   **derived, and no corner record is transmitted.** Q4 `int16` cannot hold what
+   section 6 produces (Q.6 up to +-8192 pel needs 20 bits), and widening it to
+   Q6 `int32` would put 32 bytes per tile — 74 kB per stereo frame — in the
+   bitstream to save eight divides per tile amortised over 4096 pixels. A
+   decoder MAY cache the derived corners; that is an implementation matter and
+   is not observable in the bitstream.
 
 3. **No foveation.** Paper 6.8 puts the predictor at the coded resolution against
    a full-resolution reference, and Phase 2 runs unfoveated. Nothing here is

@@ -22,7 +22,7 @@ width. Byte offsets are zero-based. "MUST", "SHOULD", "MAY" have their usual for
 | Name | v1 value | Notes |
 |---|---|---|
 | `tile_size` | 64 | 32 reserved by the stream header (PAPER 6.2), not used by transport |
-| `cols` | 68 | `ceil(4320 / 64)` |
+| `cols` | 68 | `eyes * cols_per_eye`; see below |
 | `rows` | 34 | `ceil(2160 / 64)` |
 | `tiles_per_frame` | 2312 | `cols * rows` |
 | `band_rows` | 6 | PAPER 4.2 |
@@ -34,8 +34,36 @@ width. Byte offsets are zero-based. "MUST", "SHOULD", "MAY" have their usual for
 All of these are runtime configuration in `nxt::StreamConfig`; the table gives the
 v1 defaults for the first target stream. The library does not assume them.
 
+**Eye-to-picture mapping (spec reconciliation, `spec/annex-d-inter-decisions.md`
+D-3).** A *picture* in the bitstream is **one eye**, and the codec's `width` and
+`height` are per eye. This grid spans the eye pair:
+
+```
+cols_per_eye = ceil(width  / 64)     // 34 at width = 2160
+rows         = ceil(height / 64)     // 34
+cols         = eyes * cols_per_eye   // 68
+```
+
+so `cols = 68` is 34 columns of each eye, not 68 columns of one 4320-wide
+picture. A `StreamConfig` whose `cols` is not `eyes * cols_per_eye`, or whose
+`rows` is not `ceil(height / 64)`, is invalid. The bitstream's 64-bit
+`skip_bitmap` covers one row of one eye and therefore binds `cols_per_eye`, not
+`cols`: the configuration above is a legal bitstream, which it appeared not to
+be while this sentence was missing.
+
 **Linear tile index**: `tile_index = row * cols + col`. This is the `tile_first`
-field and the addressing used everywhere. **Band index**: `band = min(row / band_rows,
+field and the addressing used everywhere. In terms of the bitstream's per-eye,
+in-row index:
+
+```
+tile_first = row * cols + eye * cols_per_eye + tile_index_in_row
+eye        = (tile_first % cols) / cols_per_eye
+```
+
+Tile-row headers appear in the bitstream row-major, eye-minor, so a run is a
+contiguous range of linear indices *and* of bitstream bytes, and a whole
+left-eye row precedes the right-eye row of the same index — the ordering
+`docs/STEREO.md` 6.1 needs. **Band index**: `band = min(row / band_rows,
 bands - 1)`. **Tile index within a band**: `tile_in_band = (row - band * band_rows) * cols + col`;
 that is the bit position in the feedback `received_bitmap`.
 
@@ -145,7 +173,7 @@ the ciphertext length equals the plaintext length, so
 | [11:0] | `len` | tile bitstream length in bytes, 0..4095. 0 means an empty (skip) tile |
 | [17:12] | `qp` | 0..63 |
 | [20:18] | `mode` | 0 WARP_SKIP, 1 STATIC_MV, 2 WARP_MV, 3 INTRA, 4 STEREO, 5..7 reserved |
-| [22:21] | `res_level` | 0 full, 1 half, 2 quarter, 3 DC-plane (PAPER 4.6.1) |
+| [22:21] | `res_level` | 0 full, 1 half, 2 quarter; 3 **reserved, MUST NOT be sent** |
 | [23] | `lossless` | this tile is lossless coded |
 | [24] | `chroma444` | this tile is 4:4:4 |
 | [25] | `alpha` | this tile carries an alpha plane |
@@ -160,6 +188,25 @@ datagram and count it as lost (it cannot know where the tile boundaries are).
 > **Decision D2.** The directory is 4 bytes as the paper mandates. In v2 thirty of
 > its thirty-two bits are defined; the class and reference fields moved here from the
 > header precisely so a run no longer has to be homogeneous in them.
+>
+> **Decision D24 (spec reconciliation, `spec/annex-d-inter-decisions.md` D-6,
+> D-12, D-13).** `res_level == 3` does **not** mean "DC-plane only". The
+> bitstream reserves the value and so does this directory; a receiver that finds
+> it marks the tile UNDECODABLE. The degradation ladder's step 4 is
+> `res_level == 2` with only the DC unit coded, which needs no fourth value and
+> no decoder branch.
+>
+> `ref_delta` and `dir_qp` are **advisory copies** of the tile header's
+> `ref_sel` and `clamp(base_qp + qp_delta, 0, 63)`. The bitstream is
+> authoritative in both cases — the transport is codec agnostic and must never
+> be able to change a decoded sample. `ref_delta` MUST equal `ref_sel`, except
+> that an INTRA or STEREO tile carries `ref_delta == 3` ("no temporal
+> reference") while its `ref_sel` bits are zero and ignored. On a `ref_delta`
+> disagreement the receiver marks the tile UNDECODABLE, because it can no longer
+> account for the tile in its reference model; on a `dir_qp` disagreement it
+> counts an integrity fault and decodes normally. The same rule governs a
+> `dir_len == 0` / `dir_mode == WARP_SKIP` entry against the bitstream's
+> `skip_bitmap`, which is authoritative.
 
 ### 3.2 Run homogeneity
 
@@ -189,10 +236,18 @@ of any tile it carries: a run containing one fovea tile is protected as fovea.
 > heavy-tailed real distribution (fovea tiles run 3x the mean) brings the measured
 > mean to 11.3.
 
-### 3.3 Frame/pose header (26 bytes, PAPER 6.7)
+### 3.3 Frame/pose header (`pose_header`, 26 bytes, PAPER 6.7)
 
 Replicated in the first datagram of every band so a client with a gap in its pose
 ring still decodes.
+
+**This document owns the layout, and it is the only 26-byte pose layout in the
+format** (spec reconciliation, `spec/annex-d-inter-decisions.md` D-2). The
+bitstream frame header's 26 opaque `pose` bytes are byte-identical to it;
+`docs/SYNTAX.md` 3.2's alternative layout of 7 x `binary16` + 3 x `binary32` is
+superseded, which is what makes PAPER 6.7's replication argument true rather
+than merely plausible. Angular velocity is not carried: it is a client-side
+quantity recovered from the client's own pose ring, which `pose_seq` indexes.
 
 | off | size | field |
 |---|---|---|
@@ -202,7 +257,14 @@ ring still decodes.
 | 22 | 4 | `render_finish_ts` u32, server clock, microseconds |
 
 The transport treats these 26 bytes as opaque: it copies them and reports their
-presence. Only `render_finish_ts` is read, for telemetry.
+presence. Only `render_finish_ts` is read, for telemetry. The codec treats them
+as opaque too — the decoding process never interprets a pose, because it
+performs no floating-point arithmetic.
+
+`frame_id` and the bitstream's `frame_number` are the same 16-bit counter and
+MUST be equal; a datagram whose `frame_id` disagrees with the frame it carries
+is inconsistent and MUST be discarded (spec reconciliation,
+`spec/annex-d-inter-decisions.md` D-11).
 
 ### 3.4 Oversize tiles and fragmentation
 
@@ -220,6 +282,18 @@ an **oversize tile**.
   `tile_count = 1`, the same `tile_first`, ascending `frag_idx`, and a directory entry
   whose `len` is that fragment's length. The tile is delivered only if all fragments
   arrive; a tile with any fragment missing is a lost tile.
+
+**`dir_len` bounds a fragment, not a tile** (spec reconciliation,
+`spec/annex-d-inter-decisions.md` D-15). The three published limits bound three
+different quantities: the bitstream's `payload_len` (65535) bounds the tile,
+`dir_len` (4095) bounds one fragment in one datagram, and `max_tile_bytes`
+bounds an *unfragmented* tile. Each fragment MUST satisfy
+`dir_len <= min(4095, max_tile_bytes)`, so the reachable maximum at a 1400-byte
+MTU is `4 * 1312 = 5248` bytes. **The ~12 kB worst-case lossless 64x64 4:4:4
+tile of PAPER 1.8 is therefore not transportable at a 1400-byte MTU under any
+fragmentation scheme** and requires `CAP_JUMBO`, where `max_tile_bytes` is 8844
+and one fragment carries it. That is a constraint on the Pro profile and belongs
+in a level.
 
 ---
 
@@ -737,3 +811,4 @@ telemetry, never control input.
 | D21 | **v2**: FEC recovery waits for a parity datagram, not merely for `k` blocks, so reordered groups are never repaired needlessly. `fec_m` is on the wire to make the group's membership known. |
 | D22 | **v2**: FEC group membership within a class and band is by descending payload length, which removes parity padding waste and scatters a group across the band in time. |
 | D23 | **v2**: parity per group is a ratio of the realised `k` (30 / 10 / 0 percent nominal) with a floor of one parity block for class A, instead of a fixed 3 / 1 / 0 per group of any size. |
+| D24 | **Spec reconciliation** (`spec/annex-d-inter-decisions.md`): `res_level == 3` is reserved, not "DC-plane only"; `ref_delta` and `dir_qp` are advisory copies of authoritative bitstream fields with defined disagreement rules; `cols == eyes * cols_per_eye` and a picture is one eye; the 26-byte `pose_header` is the format's only pose layout and this document owns it; `frame_id == frame_number`; `dir_len` bounds a fragment. |

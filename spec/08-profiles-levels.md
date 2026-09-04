@@ -12,9 +12,10 @@ places, and it is important to keep them apart:
 
 The design intent is that `tools` is the only forward-compatibility gate and
 that profiles and levels are shorthand for humans [SYNTAX 2]. That intent has
-a hole in it: at least one bit-exactness-critical choice — the interpolation
-filter — is attached to the profile and to nothing else. See clause 8.2 and
-Annex C issue C-7.
+a hole in it: the interpolation filter, a bit-exactness-critical choice, was
+attached to the profile and to nothing else. Annex D decision **D-5** closes it
+by moving the choice to tool bit 20 and leaving `profile` with no normative
+role at all. See clause 8.2.
 
 ## 8.1 Capability negotiation
 
@@ -33,8 +34,8 @@ skew — without a version bump [TRANSPORT 2.2].
 
 | Profile | Value | Intent [PAPER 1.2, 1.6, 2.2, 6.1] |
 |---|---|---|
-| Lite | 0 | Low-bitrate wireless. Bilinear interpolation in the warp. Bit-plane entropy fallback permitted. Stereo inter-view off. 64x64 tiles |
-| Full | 1 | The default. Catmull-Rom interpolation in the warp. rANS entropy coding |
+| Lite | 0 | Low-bitrate wireless. Bit-plane entropy fallback permitted. Stereo inter-view off. 64x64 tiles |
+| Full | 1 | The default. rANS entropy coding. Stereo inter-view permitted |
 | Pro | 2 | High-bitrate USB / WiFi 7. The only profile in which a lossless tile may be fragmented across up to four datagrams [PAPER 1.8, 6.1] |
 
 **Hybrid is not a profile.** A hybrid stream is one whose `layer_desc[0]` has
@@ -45,14 +46,23 @@ Every profile can be hybrid or pure-compute; the client's `tools` mask and
 two decoders, no fork [PAPER 1.7]. What the hybrid path additionally requires
 of a decoder is unspecified. [pending HYBRID.md]
 
-**The unresolved part.** Bilinear versus Catmull-Rom changes every predicted
-sample, so it is normative in the strongest sense: two decoders that disagree
-about it produce different pictures from the same bitstream and neither can be
-called conforming. Today the only thing that selects it is `profile`, which the
-normative syntax document marks informative, and no tool bit distinguishes the
-two filters. Either `profile` must become normative, or a tool bit
-(`FILTER_CATMULL_ROM`, say) must be defined. Annex C issue C-7.
-[pending WARP.md]
+**The interpolation filter is no longer a profile matter.** Bilinear versus
+Catmull-Rom changes every predicted sample, so it is normative in the strongest
+sense. Annex D decision **D-5** fixes it with a tool bit rather than by making
+`profile` normative:
+
+* tool bit 20 `FILTER_CATMULL_ROM` selects the Annex A.4 table when set and
+  bilinear when clear;
+* **tool bit 20 is not defined for version 1** and a version 1 decoder MUST
+  reject a stream that sets it.
+
+Every conforming version 1 stream is therefore bilinear in every profile, and
+there is exactly one legal predicted sample for any v1 bitstream. The evidence
+is `docs/ERRATA.md`'s measurement that Catmull-Rom is within **0.05 dB** of
+bilinear on a single step and buys about 2 dB only on long warp chains — which
+the same row shows must be shortened by a higher refresh rate regardless — set
+against 16 taps per sample rather than 4 on a 4 ms decode budget. This closes
+Annex C issue C-7.
 
 ## 8.3 Levels
 
@@ -61,24 +71,29 @@ tiles/frame class and max decode work", and neither [R-18] nor [R-19] defines
 a single limit. This clause therefore states the *dimensions* a level must
 constrain and the working points the design assumes, so that a level table can
 be written against something. **None of the numbers below is normative.**
-[pending SYNTAX.md]
+Annex C issue C-27 stays open; it is not on the inter path. [pending SYNTAX.md]
 
 ### 8.3.1 Dimensions a level must constrain
 
 1. **Maximum picture dimensions per eye.** Bounded above by the syntax at
    4096x4096 (`width`, `height` in `[16, 4096]`) and, more tightly, by the
    64-column limit that the 64-bit `skip_bitmap` imposes: 4096 luma samples of
-   width (clause 4.2.1). Annex C issue C-3 is precisely that the transport's
-   own configuration violates this.
+   width **per eye** (clause 4.2.1). The transport's `cols = 68` counts both
+   eyes of the pair and is 34 columns per eye, so it does not violate this;
+   Annex D **D-3** states the mapping and closes Annex C issue C-3.
 2. **Maximum tiles per frame**, which with two eyes and up to four layers is
    not simply `cols * rows`.
 3. **Maximum coded bytes per band**, since the band is the pipelining and
    feedback unit and the receiver's buffers are sized from it.
-4. **Maximum coded bytes per tile.** Three different limits already exist and
-   they do not agree: `payload_len` allows 65535, the transport directory's
-   `dir_len` allows 4095, and the run budget yields
-   `max_tile_bytes = 1400 - 24 - 4 = 1372` for an unfragmented tile
-   [PAPER 4.1, TRANSPORT 3.4]. Annex C issue C-9.
+4. **Maximum coded bytes per tile.** The three published limits bound three
+   different quantities and Annex D **D-15** separates them: `payload_len`
+   (65535) bounds the tile in the bitstream, `dir_len` (4095) bounds one
+   *fragment*, and `max_tile_bytes` (1356 without FEC, 1312 with, at a
+   1400-byte MTU) bounds an unfragmented tile [TRANSPORT 5, D5]. A fragmented
+   lossless tile reaches `4 * max_tile_bytes` = 5248 bytes at that MTU, so the
+   ~12 kB worst-case lossless 4:4:4 tile of [PAPER 1.8] **is not transportable
+   at a 1400-byte MTU at all** and requires `CAP_JUMBO`. That is the constraint
+   a Pro level must assert. This closes Annex C issue C-9.
 5. **Maximum decode work**, which is what the field actually means and what no
    document has yet expressed in countable units. Coded symbols per frame,
    coefficients per frame, or predicted samples per second are the candidates.
@@ -140,17 +155,24 @@ zero.
 | 17 | `INTRA_DIR` | Directional intra |
 | 18 | `XFORM_WAVELET` | 5/3 wavelet transform |
 | 19 | `XFORM_4X4_SPLIT` | Per-block 4x4 transform split |
+| 20 | `FILTER_CATMULL_ROM` | Catmull-Rom interpolation in the warp (Annex A.4) instead of bilinear |
 
-Bits 15 to 19 are declared but their behaviour is specified nowhere: they name
-version 2 tools and the fallbacks of [PAPER 1.6]. A version 1 decoder refuses
-any stream that sets them, which is the correct and sufficient behaviour, but
-it means the mask contains five bits that no document defines. Annex C issue
-C-17.
+Bits 21 to 63 are reserved and MUST be zero.
 
-Bit 14 (`BITDEPTH10`) is different in kind: `bit_depth == 10` is a legal
-stream-header value, so a decoder may be asked to accept it, yet no 10-bit
-sample domain or quantiser scaling is specified (clause 6.2, Annex C issue
-C-14).
+Bits 14 to 20 are **declared but not defined for version 1**, and a version 1
+decoder MUST reject any stream that sets one. That is the correct and
+sufficient forward-compatibility behaviour, and for bits 14 and 20 it is a
+decision rather than an omission:
+
+* Bit 20 `FILTER_CATMULL_ROM` is defined in kind — Annex A.4 is its table and
+  `docs/WARP.md` 9 ratifies it — but version 1 does not enable it, so every
+  version 1 stream is bilinear. Annex D **D-5**, closing Annex C issue C-7.
+* Bit 14 `BITDEPTH10` is refused because no 10-bit sample domain, `qstep`
+  scaling or clamp has been specified or verified. Annex D **D-16** makes
+  `bit_depth == 10` unreachable in version 1 rather than shipping a signallable
+  mode two implementations would diverge on. This closes Annex C issue C-14.
+* Bits 15 to 19 name version 2 tools and the fallbacks of [PAPER 1.6] and
+  remain unspecified. Annex C issue C-17 stays open as a documentation gap.
 
 ## 8.5 The Phase 1 subset
 
@@ -185,6 +207,13 @@ Negotiated at connect and echoed in `caps` on every datagram
 | 5 | `CAP_RLE_FEEDBACK` | The feedback bitmap may use RLE mode |
 | 6–7 | — | Reserved, MUST be 0 |
 
-There is no defined relationship between a transport capability and a tool bit,
-even where they describe the same thing — `CAP_FRAGMENT` and the Pro profile's
-fragmentation rule, for instance. Annex C issue C-18.
+A `tools` bit gates bitstream syntax and decoder behaviour and is enforced by
+refusing the stream at the handshake; a `caps` bit gates wire behaviour and is
+enforced per datagram. They are **orthogonal by design**: the transport is
+codec agnostic and the same bitstream must be carriable with or without FEC,
+multipath, jumbo frames or fragmentation. Annex D decision **D-19** defines
+exactly one coupling, one-directional: `CAP_FRAGMENT` MAY be negotiated only
+for a stream whose `tools` sets `LOSSLESS`, because fragmentation is legal only
+for lossless tiles [TRANSPORT 3.4]. In particular the Pro profile does **not**
+imply `CAP_FRAGMENT`: `profile` is informative and cannot gate a transport
+negotiation. This closes Annex C issue C-18.

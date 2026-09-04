@@ -19,16 +19,36 @@ one tile row, packed to a payload budget (1400 bytes over Ethernet, more on a
 jumbo USB path). The tile remains an independently decodable bitstream; the
 datagram is only the loss unit [PAPER 6.1, TRANSPORT 3].
 
-A run MUST be homogeneous in `stream_id`, `frame_id`, `layer_id`, `ref_delta`,
-`tile_class`, `band` and **tile row**, and its tiles MUST be contiguous and
-ascending in column [TRANSPORT 3.2]. This is how a per-datagram reference
-field is reconciled with per-tile reference choice.
+A run MUST be homogeneous in `stream_id`, `frame_id`, `layer_id`, the
+`LOSSLESS` flag, `band` and **tile row**, and its tiles MUST be contiguous and
+ascending in column [TRANSPORT 3.2]. In wire version 2 `ref_delta` and
+`tile_class` live in the tile directory and may vary freely inside a run, which
+is what lets a run pack to the payload budget instead of ending at a foveation
+class boundary [TRANSPORT D19, D20].
 
-Tiles are addressed **linearly**: `tile_index = row * cols + col`, which is
-`tile_first` in the datagram header. This is a different quantity from the
-bitstream's `tile_index`, which is the position within the row (clause 5.4).
-The band is `min(row / band_rows, bands - 1)`, and the bit position in a
-feedback bitmap is `(row - band * band_rows) * cols + col` [TRANSPORT 1].
+Tiles are addressed **linearly** by `tile_first`, and the mapping between that
+and the bitstream's per-eye, per-row addressing is Annex D decision **D-3**:
+
+```
+cols_per_eye = ceil(width  / 64)          // width is per eye
+rows         = ceil(height / 64)
+cols         = eyes * cols_per_eye        // the transport's cols
+tile_first   = row * cols + eye * cols_per_eye + tile_index
+```
+
+**A picture is one eye**; the transport's tile grid spans the eye pair. At the
+version 1 target — 2160x2160 per eye, two eyes — that is 34 columns per eye,
+`cols = 68`, `rows = 34`, 2312 tiles per frame, exactly [TRANSPORT 1]. The
+64-bit `skip_bitmap` binds `cols_per_eye`, not `cols`, so the transport's
+headline configuration is a legal bitstream. This closes Annex C issue C-3,
+which was a missing sentence rather than a conflict.
+
+The band is `min(row / band_rows, bands - 1)` and the bit position in a
+feedback bitmap is `(row - band * band_rows) * cols + col` [TRANSPORT 1]; both
+are computed on the pair grid, so a band holds the same rows of both eyes.
+Tile-row headers appear row-major, eye-minor (Annex D **D-3**), which is what
+puts a whole left-eye row ahead of the right-eye row of the same index — the
+ordering [STEREO 6.1] needs for a STEREO tile's dependency to be satisfiable.
 
 The plaintext payload is an optional 26-byte frame/pose header, then
 `dg_tile_count` four-byte directory entries, then the concatenated tile
@@ -107,11 +127,18 @@ reference ring addressed by `frame_id mod 4`, and it MUST be able to predict
 from any of the three most recent slots as `ref_sel` / `ref_delta` selects. A
 decoder that keeps only the previous frame cannot decode a conforming stream.
 
-The relationship between the bitstream's `ref_sel` and the transport's
-`ref_delta` is stated in clause 5.4 and is one of the open issues: they are the
-same quantity with different value sets, and no document says which is
-authoritative if a tile header and its datagram header disagree (Annex C issue
-C-16).
+The bitstream's `ref_sel` is **authoritative** and the directory's `ref_delta`
+is an advisory copy carrying the extra value 3 for "no temporal reference".
+They MUST agree; on disagreement the decoding process uses `ref_sel` and the
+receiver marks the tile UNDECODABLE, because it can no longer account for the
+tile in its reference model. Annex D decision **D-12**, closing Annex C issues
+C-16 and C-22. The same authoritative-plus-advisory rule governs `qp_delta`
+against `dir_qp` (Annex D **D-13**) and `skip_bitmap` against a `dir_len == 0`
+directory entry (Annex D **D-14**).
+
+`frame_id` and `frame_number` are the same counter and MUST be equal; a
+datagram whose `frame_id` disagrees with the frame it carries is inconsistent
+and MUST be discarded. Annex D **D-11**, closing Annex C issue C-12.
 
 ## 7.4 Concealment marking
 
@@ -130,7 +157,10 @@ UNDECODABLE), `late` and `recovered` [TRANSPORT 7.3].
 
 A tile is UNDECODABLE — as distinct from concealed — when the directory was
 inconsistent, a fragment is missing, or it references a frame the receiver does
-not hold [TRANSPORT 7.5]. The decoding process treats UNDECODABLE exactly as
+not hold [TRANSPORT 7.5]. Annex D adds four cases: `dir_res_level == 3`
+(**D-6**), a `ref_delta` that disagrees with the tile's `ref_sel` (**D-12**), a
+directory entry that disagrees with `skip_bitmap` (**D-14**), and a tile whose
+header `eye` disagrees with the eye derived from its linear index (**D-3**). The decoding process treats UNDECODABLE exactly as
 it treats a missing tile (clause 6.11); the distinction exists for telemetry
 and for the feedback the encoder acts on.
 
@@ -144,6 +174,7 @@ Referred to [R-19] in full, with no restatement:
 |---|---|
 | AEAD key schedule, per-path subkeys, nonce derivation | [TRANSPORT 4] |
 | Payload budgets and the 44 bytes reserved for FEC | [TRANSPORT 5] |
+| Fragmentation limits; `dir_len` bounds a fragment, not a tile | [TRANSPORT 3.4], Annex D **D-15** |
 | FEC group construction, the protected block, recovery deadline | [TRANSPORT 6] |
 | The deadline controller and its hysteresis | [TRANSPORT 7.4] |
 | Feedback packet layout, band records, RLE bitmaps | [TRANSPORT 8] |

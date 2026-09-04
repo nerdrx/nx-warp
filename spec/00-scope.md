@@ -54,8 +54,9 @@ decoder for every conforming bitstream. There is no tolerance (clause 9.4).
   decoder must know; the rest of `docs/TRANSPORT.md` is normative for the
   transport library and out of scope here.
 * **The pose semantics.** The 26 pose bytes in the frame header are opaque to
-  the decoding process (clause 5.3.2). Their interpretation belongs to the
-  application and to `docs/WARP.md`. [pending WARP.md]
+  the decoding process (clause 5.3.2). There is exactly one 26-byte pose
+  layout in the format and `docs/TRANSPORT.md` 3.3 owns it (Annex D **D-2**);
+  its interpretation belongs to the application, not to this specification.
 
 ## 0.4 Structure of a stream
 
@@ -82,7 +83,7 @@ neighbourhood (clause 7.3).
 |---|---|
 | version 1 | The format specified here. `version` in the stream header is 1 |
 | Phase 1 | The intra-only subset, clause 8.5. A Phase 1 decoder parses the full v1 syntax and refuses inter streams cleanly [SYNTAX 12] |
-| Phase 2 | Adds the pose-warped inter predictor [pending WARP.md] |
+| Phase 2 | Adds the pose-warped inter predictor: `docs/WARP.md` for the predictor, Annex D for its bitstream carriage and the inter-path decisions |
 | v2 | Reserved tools, signalled by tool bits that a v1 decoder refuses (clause 8.4). Not specified here |
 
 ## 0.6 Relationship to the design paper

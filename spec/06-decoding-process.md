@@ -69,9 +69,12 @@ reconstructed and then discarded [SYNTAX decision 28].
 | `color_transform == 1` | `[0, 255]`, offset 128 | `[0, 511]`, offset 256 | `[0, 255]`, offset 128 |
 
 `maxval` is the top of the range; `dc_offset` is the offset. The table is
-stated for 8-bit samples only. `bit_depth == 10` is signalled by a tool bit but
-no 10-bit sample domain, no 10-bit `qstep` scaling and no 10-bit clamp is
-specified anywhere. Recorded as Annex C issue C-14. [pending SYNTAX.md]
+stated for 8-bit samples only, and **version 1 is 8-bit only**: tool bit 14
+`BITDEPTH10` is not defined for version 1 and a version 1 decoder MUST reject a
+stream that sets it or that carries `bit_depth == 10`. Annex D decision
+**D-16** makes the value unreachable rather than shipping a signallable mode
+whose sample domain, `qstep` scaling and clamp no document has verified. This
+closes Annex C issue C-14; the 10-bit tables are a version 2 item.
 
 ## 6.3 Colour conversion
 
@@ -208,8 +211,12 @@ intermediate one bit apart, so they round differently and produce **different
 decoded samples**. The errata declares `docs/SYNTAX.md` authoritative while
 itself stating the other numbers. This clause follows `docs/SYNTAX.md` (7 and
 13), which is the document the conformance vectors were generated against.
-This is a bit-exactness-level contradiction between two normative documents and
-is Annex C issue **C-20**.
+Annex D decision **D-18** settles it: **7 and 13 are normative**, because that
+is what every digest in `tests/vectors/vectors.md5` was generated against and
+changing it would invalidate the whole suite for no gain. `docs/ERRATA.md`
+1.4 must be corrected to state 7 and 13 as the correction rather than as the
+alternative; the edit is listed in `docs/SYNTAX-CHANGES-PHASE2.md`. This closes
+Annex C issue **C-20**.
 
 The forward transform is **not normative**. Any encoder may produce any
 coefficients it likes [SYNTAX 6.4].
@@ -447,12 +454,18 @@ decode: count one-bits until a zero -> j   (j > 16 MUST be rejected)
 
 ## 6.7 Inter prediction: the pose warp
 
-**Status: provisional.** No normative document specifies this process yet. The
-description below is transcribed from `warp/include/nxvc/warp.h` and
-`warp/ref/warp_ref.cpp` at commit `9083dd1`, cross-checked against
-[PAPER 2.2], and is subject to change when `docs/WARP.md` lands. It is not
-sufficient to implement from, for the reason given in clause 6.7.6.
-[pending WARP.md]
+Normative source: `docs/WARP.md` [R-26], with the bitstream carriage of the
+matrix fixed by Annex D **D-1** and the filter selection by Annex D **D-5**.
+`warp/include/nxvc/warp.h`, `warp/ref/warp_ref.cpp` and
+`warp/glsl/warp_tile.comp` are the co-normative implementations.
+
+The matrix is read from `warp_ext()` (clause 4.4.2), one 36-byte record per
+eye, rows 0 and 1 in Q10.21 and row 2 in Q2.29. The origin is
+`(ox, oy) = (width >> 1, height >> 1)` and is not transmitted. The corners are
+**derived** here per tile and are never carried in the bitstream: Annex D
+**D-7** rejects [PAPER 3.2.3]'s four Q4 `int16` corner displacements because
+the corner coordinate is Q.6 clamped at +-8192 pel and needs 20 bits, which Q4
+`int16` holds neither in range nor in resolution.
 
 ### 6.7.1 What the predictor is
 
@@ -558,20 +571,20 @@ precision is vendor-specific, and encoder and decoder run on different vendors,
 so a sampler-based predictor would drift by `+-1` LSB per frame until the next
 refresh [PAPER 3.2.3].
 
-### 6.7.6 Why this clause is not yet implementable
+### 6.7.6 The four things this clause needed, and where they now are
 
-1. **No syntax element carries the homography** (clause 4.4, Annex C issue
-   C-4). Without it the process above has no input.
-2. **The filter is unsignalled.** Bilinear versus Catmull-Rom changes every
-   predicted sample, so it is a normative, bit-exactness-critical choice, yet
-   the only thing that selects it is `profile`, which `docs/SYNTAX.md` marks
-   *informative*, and no tool bit distinguishes them (Annex C issue C-7).
-3. **The vector's coding is unstated.** Whether `mv_x`, `mv_y` are absolute or
-   a delta from the tile's stored vector is asserted only by the paper
-   (Annex C issue C-11).
-4. **The per-tile state** that `WARP_SKIP` and concealment read — the stored
-   last vector — is described only in [PAPER 2.6] and has no normative
-   definition (clause 6.10).
+Every input this clause lacked is fixed in Annex D. Recorded here so that a
+reader of an earlier draft can find the answers.
+
+1. **The homography** is carried by `warp_ext()`, clause 4.4.2, gated by
+   `warp_present`. Annex D **D-1**, closing Annex C issue C-4; the fixed-point
+   formats are Annex D **D-1** citing [WARP.md 3], closing C-2.
+2. **The filter** is selected by tool bit 20 `FILTER_CATMULL_ROM`, undefined in
+   version 1, so **every conforming version 1 stream is bilinear** and
+   `profile` selects nothing. Annex D **D-5**, closing C-7.
+3. **The vector** is absolute, not a delta. Annex D **D-8**, closing C-11.
+4. **The per-tile prediction state** is defined in clause 6.10 as a 6-byte
+   record per tile position per eye. Annex D **D-9**, closing C-15.
 
 ## 6.8 Stereo prediction
 
@@ -634,20 +647,25 @@ forbidden.
   extrapolated as if it were object motion tears the right eye apart on a
   synthesised frame [STEREO 4.1].
 
-### 6.8.4 Two unresolved conflicts with the syntax
+### 6.8.4 The vector and the reference field
 
-1. **The vector coding does not match the syntax.** [STEREO 2.3] decides that
-   the STEREO vector is coded as an **unsigned disparity in quarter samples
-   with an Exp-Golomb code and no fixed upper bound** (practically `+-512`
-   samples), because `f * IPD / z` reaches 60 samples at 1 m and about 200 at
-   30 cm, and 37.6% of tiles in the experiment exceeded the coarse search
-   range. Clause 4.7 codes the vector as two signed bytes `mv_x`, `mv_y` in the
-   tile header, which reaches `+-31.75` samples — **not enough for near-field
-   content**, and not an Exp-Golomb code, and not in the payload. Annex C issue
+1. **The disparity** is the `disparity` element of clause 4.7: one unsigned
+   little-endian `u16` in the tile's optional area, bits 11:0 in quarter
+   samples (0 to 1023.75 samples), bits 15:12 zero. It replaces `mv_x`/`mv_y`
+   for `mode == STEREO`, occupies the same two bytes, and reaches five times
+   [STEREO 2.3]'s measured worst case. Annex D **D-4** supersedes
+   [STEREO 2.3]'s Exp-Golomb-in-the-payload decision, whose cost was a change
+   to the coding-unit list of clause 6.6.3 and therefore to the lane schedule
+   for a saving under a tenth of a percent of a tile. This closes Annex C issue
    **C-21**.
-2. **`ref_sel` is not coded for a STEREO tile** [STEREO 9], because the mode
-   itself names the reference. Clause 4.7 has `ref_sel` as two fixed bits of
-   `word1` that are always present. Annex C issue C-22.
+2. **There is no vertical component**, so [STEREO 6.1]'s horizontal-only rule
+   is structural: a stream cannot express the downward disparity that would
+   deadlock a row-pipelined decoder. Annex D **D-4** closes Annex C issue
+   C-24.
+3. **`ref_sel` is present, MUST be 0, and is ignored** for a STEREO tile, which
+   is what [STEREO 9]'s "not coded" means in a syntax where the two bits of
+   `word1` always exist. The tile's `ref_delta` MUST be 3. Annex D **D-12**
+   closes Annex C issues C-16 and C-22.
 
 ## 6.9 Layered and hybrid prediction
 
@@ -668,17 +686,49 @@ After a tile is reconstructed:
 * the reconstructed samples are written into the reference slot the frame
   overwrites, in display format (RGBA8 or RGB10A2), one image per slot, four
   slots [PAPER 1.3, 6.6];
-* the tile's per-tile state is updated. [PAPER 2.6] specifies 16 bytes —
-  `held_frame_id`, `last_mv`, `age_since_intra`, `concealed_count`, and mode,
-  QP and flags — and [TRANSPORT 7.3] specifies a *different* 4-byte per-tile
-  record — `pose_seq`, `age`, `state`, `late`, `recovered`. The two overlap
-  without agreeing, and only the transport one is normative. The decoder-side
-  state that prediction reads is therefore not normatively defined. Recorded as
-  Annex C issue C-15. [pending WARP.md]
+* the tile's **prediction state** is updated, as defined below.
 
-The paper's rule that `WARP_SKIP` and `STATIC_MV` update the stored vector
-differently — `STATIC_MV` and `INTRA` do not update it — is stated only in the
-pseudo-code of [PAPER 2.10].
+There are two per-tile records in the format and they are different objects
+with different owners; Annex C issue C-15 existed because they were compared as
+if they were one. The transport's 4-byte **receiver record** — `pose_seq`,
+`age`, `state`, `late`, `recovered`, per tile position per ring slot
+[TRANSPORT 7.3] — answers "what do I hold and how old is it" and is unchanged.
+The decoder's **prediction state** is defined here and is 6 bytes per tile
+position **per eye**, not per ring slot, because it is a running history rather
+than a property of a stored frame:
+
+| off | size | field | meaning |
+|---|---|---|---|
+| 0 | 2 | `last_mv_x` | s16, quarter samples |
+| 2 | 2 | `last_mv_y` | s16, quarter samples |
+| 4 | 2 | `last_disp` | u16, quarter samples, 12 bits used |
+
+13.9 kB at the version 1 configuration. `last_mv` and `last_disp` are separate
+fields because a tile may alternate between `STEREO` and `WARP_MV` across
+frames and a 60-sample disparity is not a motion vector: predicting one from
+the other costs the whole delta on the first frame after every switch
+[STEREO 9]. Update rules, applied after reconstruction:
+
+| `mode` | `last_mv` | `last_disp` |
+|---|---|---|
+| `WARP_MV` | set to `(mv_x, mv_y)` | unchanged |
+| `WARP_SKIP` | unchanged (it consumed it) | unchanged |
+| `STATIC_MV` | unchanged | unchanged |
+| `INTRA` | set to `(0, 0)` | set to 0 |
+| `STEREO` | unchanged | set to `disparity` |
+
+`STATIC_MV` does not update `last_mv` [PAPER 2.10]: its vector displaces an
+*unwarped* reference, while `WARP_SKIP` and concealment apply the stored vector
+after the warp, so storing it would conceal from the wrong place. `INTRA`
+clears the state because after a refresh there is no motion history and a stale
+vector is worse than zero. The whole state is cleared when `tile_map_reset` is
+set.
+
+Annex D decision **D-9** closes Annex C issue C-15. [PAPER 2.6]'s 16-byte
+record and [STEREO 9]'s 20-byte variant describe an *encoder-side* structure:
+`held_frame_id`, `age_since_intra` and `concealed_count` are shadow
+bookkeeping, and the decoder's `age` and `state` already live in the transport
+record.
 
 ## 6.11 Concealment
 

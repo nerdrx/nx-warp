@@ -118,9 +118,11 @@ A decoder MUST reject a stream header that violates any of the following
 * `tile_size` bits 1..7 nonzero.
 * `width` or `height` outside `[16, 4096]`, or odd.
 * `ceil(width / 64) > 64`. The tile-row `skip_bitmap` is 64 bits wide, so a
-  picture may not exceed 64 tile columns. **This constraint conflicts with the
-  transport configuration**, which uses `cols = 68` for a 4320-wide stereo
-  picture [TRANSPORT 1]. Recorded as Annex C issue C-3.
+  **picture** may not exceed 64 tile columns. A picture is one eye, so this
+  binds `cols_per_eye = ceil(width / 64)` and never the transport's
+  `cols = eyes * cols_per_eye`. The transport's `cols = 68` for a 4320-wide
+  stereo pair is 34 columns per eye and is legal [TRANSPORT 1]. The eye-to-
+  picture mapping is Annex D decision **D-3**, which closes Annex C issue C-3.
 * `chroma_format`, `color_transform` or `alpha_present` out of range.
 * `color_transform == 1` with `chroma_format != 1`.
 * `color_space == 3` without `color_transform == 1`, or `color_transform == 1`
@@ -168,7 +170,6 @@ frame_header()                                         Descriptor
     frame_flags                                        f(8)
     frame_reserved                                     f(8)
     frame_bytes                                        f(32)
-    homography                                         [pending WARP.md]
 ```
 
 | Offset | Size | Element |
@@ -191,25 +192,69 @@ frame_header()                                         Descriptor
 frame_flags()                                          Descriptor
     tile_map_reset                                     f(1)
     stereo_enable                                      f(1)
-    frame_flags_reserved                               f(6)
+    warp_present                                       f(1)
+    frame_flags_reserved                               f(5)
 ```
-
-**`homography` has no home in the syntax.** The inter predictor requires the
-quantised per-eye homography — nine `int32` per eye [PAPER 2.2], or nine
-`int32` plus an origin in the `warp/` implementation — and **no element of the
-frame header carries it.** The 40-byte frame header is full, and the 26 pose
-bytes are explicitly opaque and explicitly not interpreted by the decoding
-process [SYNTAX 3.2, decision 5]. A Phase 2 stream therefore cannot presently
-be decoded from the syntax as specified. This is the single largest gap in the
-format. Recorded as Annex C issue **C-4**, the highest-priority open issue.
-[pending WARP.md]
 
 ### 4.4.1 Constraints
 
 `base_qp <= 63`; `quant_matrix <= 3` or `quant_matrix == 255`;
 `frame_bytes >= 40` and not beyond the available bytes; after the last tile of
 the last row exactly `frame_bytes` bytes MUST have been consumed
-[SYNTAX 3.1].
+[SYNTAX 3.1]. `ref_slots == 1 << (frame_number mod 4)` (Annex D **D-10**).
+`warp_present` requires the `WARP` tool bit, and any tile with
+`mode == WARP_SKIP` or `mode == WARP_MV` requires `warp_present == 1`
+(Annex D **D-1**).
+
+## 4.4.2 Warp extension
+
+Present if and only if `warp_present` is set, immediately after the 40-byte
+frame header and before `quant_matrices()`. `36 * eyes` bytes: one 36-byte
+record per eye, in ascending eye order. This is Annex D decision **D-1**, which
+closes Annex C issues C-4 and C-2 — the format's largest gap.
+
+```syntax
+warp_ext()                                             Descriptor
+    for (e = 0; e < eyes; e++) {
+        h00[e]                                         s(32)
+        h01[e]                                         s(32)
+        h02[e]                                         s(32)
+        h10[e]                                         s(32)
+        h11[e]                                         s(32)
+        h12[e]                                         s(32)
+        h20[e]                                         s(32)
+        h21[e]                                         s(32)
+        h22[e]                                         s(32)
+    }
+```
+
+| Offset in the record | Size | Element | Format |
+|---|---|---|---|
+| 0 | 4 | `h00` | Q10.21 |
+| 4 | 4 | `h01` | Q10.21 |
+| 8 | 4 | `h02` | Q10.21 |
+| 12 | 4 | `h10` | Q10.21 |
+| 16 | 4 | `h11` | Q10.21 |
+| 20 | 4 | `h12` | Q10.21 |
+| 24 | 4 | `h20` | Q2.29 |
+| 28 | 4 | `h21` | Q2.29 |
+| 32 | 4 | `h22` | Q2.29, MUST be `0x20000000` |
+
+All nine are little-endian two's-complement `int32`. The origin `(ox, oy)` is
+**not** transmitted: it is `(width >> 1, height >> 1)` [WARP.md 2, Annex D
+D-1].
+
+### 4.4.3 Constraints on `warp_ext()`
+
+A decoder MUST reject a frame that violates any of the following
+[WARP.md 3, Annex D D-1]:
+
+* `h22 != 0x20000000`;
+* any entry outside `[-2^30, +2^30]`;
+* at any of the four picture corners `(cx, cy)`,
+  `cx in {-ox, width - ox}`, `cy in {-oy, height - oy}`, the denominator
+  `den = h20*cx + h21*cy + h22` accumulated in 64 bits does not fit `int32` or
+  falls outside `[2^28, 2^30)`.
 
 ## 4.5 Quantisation matrices and probability tables
 
@@ -309,12 +354,24 @@ Then, in order:
 ```syntax
 tile_optional()                                        Descriptor
     if (mv_present) {
-        mv_x                                           s(8)
-        mv_y                                           s(8)
+        if (mode == STEREO)
+            disparity                                  f(16)
+        else {
+            mv_x                                       s(8)
+            mv_y                                       s(8)
+        }
     }
     if (alpha_mode == 1)
         alpha_value                                    f(8)
 ```
+
+For every mode but `STEREO` the vector is two signed bytes. For `STEREO` the
+same two bytes are one unsigned little-endian `disparity`: bits 11:0 are the
+horizontal disparity in quarter samples (0 to 1023.75 samples) and bits 15:12
+MUST be 0. There is no vertical component, which is what makes the
+horizontal-only rule of [STEREO 6.1] structural rather than a constraint a
+stream could violate. Annex D decision **D-4**, closing Annex C issues C-21 and
+C-24.
 
 ### 4.7.1 Constraints
 
@@ -323,9 +380,15 @@ tile_optional()                                        Descriptor
 `chroma_format == 1`; `alpha_mode != 0` requires `alpha_present`; `tile_index`
 equals the tile's position in the row [SYNTAX 4.1].
 
-Note that `res_level == 3` is reserved and MUST be rejected here, while the
-transport tile directory assigns it the meaning "DC-plane only" (clause 4.9).
-Recorded as Annex C issue C-5.
+Additionally: `mode == STEREO` requires `mv_present == 1`, `eye == 1` and
+`stereo_enable`; `disparity` bits 15:12 MUST be 0; `ref_sel` MUST be 0 for
+`mode == INTRA` and `mode == STEREO`, and is ignored by the decoding process in
+both (Annex D **D-12**); `ref_sel == 3` MUST be rejected.
+
+`res_level == 3` is reserved and MUST be rejected here **and in the transport
+directory**: Annex D decision **D-6** resolves Annex C issue C-5 in favour of
+reserved-and-reject in both documents, because "code only the DC plane" is
+`res_level == 2` with only the DC unit coded and needs no fourth value.
 
 ## 4.8 Tile payload
 
@@ -390,17 +453,18 @@ datagram_header()                                      Descriptor
     frame_id                                           f(16)
     tile_first                                         f(16)
     dg_tile_count                                      f(8)
-    layer_id                                           f(4)
-    ref_delta                                          f(2)
+    layer_id                                           f(2)
     frag_idx                                           f(2)
     frag_count                                         f(2)
-    tile_class                                         f(2)
+    fec_class                                          f(2)
     band                                               f(3)
     pose_hdr                                           f(1)
     caps                                               f(8)
     pose_seq                                           f(16)
     path_seq                                           f(14)
     path_id                                            f(2)
+    fec_m                                              f(3)
+    dg_reserved                                        f(1)
     fec_group                                          f(8)
     fec_idx                                            f(4)
     fec_k                                              f(4)
@@ -416,14 +480,32 @@ tile_directory_entry()                                 Descriptor
     dir_lossless                                       f(1)
     dir_chroma444                                      f(1)
     dir_alpha                                          f(1)
-    dir_reserved                                       f(6)
+    tile_class                                         f(2)
+    ref_delta                                          f(2)
+    dir_reserved                                       f(2)
 ```
+
+This is the **version 2** wire format (`NXT_VERSION = 2`), in which `ref_delta`
+and `tile_class` moved from the datagram header into the directory and
+`layer_id` shrank to two bits, the freed bits becoming `fec_class`, `fec_m` and
+one reserved bit [TRANSPORT D19]. A run therefore no longer has to be
+homogeneous in reference choice or foveation class.
 
 The datagram header is 24 bytes, cleartext, and is the complete associated data
 of the AEAD that protects the payload [TRANSPORT 2]. The plaintext payload is
 an optional 26-byte frame/pose header, then `dg_tile_count` four-byte directory
 entries, then the concatenated tile bitstreams [TRANSPORT 3].
 
-**The transport's 26-byte frame/pose header is not the bitstream's `pose`.**
-Both are 26 bytes; their layouts are different and incompatible
-[SYNTAX 3.2 versus TRANSPORT 3.3]. Recorded as Annex C issue C-6.
+**The transport's 26-byte frame/pose header and the bitstream's `pose` are the
+same structure.** There is exactly one 26-byte pose layout in the format, it is
+the integer one of [TRANSPORT 3.3], and `docs/TRANSPORT.md` owns it. Annex D
+decision **D-2**, closing Annex C issue C-6. The layout is restated in
+clause 5.3 for reference only.
+
+The linear tile index `tile_first` and the bitstream's in-row `tile_index` are
+related by Annex D **D-3**:
+
+```
+tile_first = row * cols + eye * cols_per_eye + tile_index
+cols       = eyes * cols_per_eye
+```

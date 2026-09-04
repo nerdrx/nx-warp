@@ -192,23 +192,25 @@ whatever the stated range allows.
 | Q8 | Transport pose position, millimetres | 256 | `int32` [TRANSPORT 3.3] |
 | Q.2 | Per-tile motion vectors (quarter sample) | 4 | `mv_x`, `mv_y` in `[-128, 127]`, i.e. `[-32, 31.75]` samples |
 | Q.6 | Warp corner source coordinates (1/64 sample) | 64 | Saturated to `+-2^18` [warp.h @ 9083dd1] |
-| Q10.21 | Homography rows 0 and 1 | `2^21` | `+-1024.0` [warp.h @ 9083dd1] [pending WARP.md] |
-| Q2.29 | Homography row 2; `h22` is exactly `1 << 29` | `2^29` | Denominator constrained to `[2^28, 2^30)` [warp.h @ 9083dd1] [pending WARP.md] |
+| Q10.21 | Homography rows 0 and 1 | `2^21` | `+-1024.0`, entries bounded by `2^30` [WARP.md 3] |
+| Q2.29 | Homography row 2; `h22` is exactly `1 << 29` | `2^29` | Denominator constrained to `[2^28, 2^30)` [WARP.md 3] |
 | Q.4 | Warp sampling positions (1/16 sample) | 16 | Derived, see clause 6.7 |
 
 Two different Q4 uses appear above (quantiser steps and resampling
 coordinates). They never meet in one expression.
 
-**Note.** `docs/PAPER.md` 2.2 states the homography is quantised to Q8.24 with
-`h22 = 2^24`. `docs/STEREO.md` 5 demonstrates that **this overflows**: with
+**Note.** Three formats for the homography were published and only the split
+one works. `docs/PAPER.md` 2.2's Q8.24 with `h22 = 2^24` **overflows**: with
 centred coordinates the largest coefficient is of order `f` (940 at the Pico 4's
-streamed width) and `940 * 2^24` exceeds `int32` by seven bits. `docs/STEREO.md`
-uses centred coordinates on a common **Q10.21** scale with `h22 = 2^21`, which
-bounds every coefficient by `2^31 / 2^21 = 1024 > f`. The implementation in
-`warp/` also uses Q10.21 for rows 0–1, but Q2.29 with `h22 = 2^29` for row 2 —
-a *split* scale, where `docs/STEREO.md` recommends a common one. So there are
-now three published formats for the same matrix and no normative document.
-Recorded as Annex C issue **C-2**. [pending WARP.md]
+streamed width) and `940 * 2^24` exceeds `int32` by seven bits, as
+`docs/STEREO.md` 5 and `docs/WARP.md` 3 show independently. `docs/STEREO.md`'s
+common **Q10.21** with `h22 = 2^21` fixes the translation end but leaves the
+perspective entries — of order 5e-5 — about ten significant bits, worth a
+quarter-pel of coordinate error at the picture edge. The split scale of
+`docs/WARP.md` 3 (Q10.21 rows 0-1, Q2.29 row 2) is the only one that holds both
+ends, and it is normative: [R-26], Annex D **D-1**, closing Annex C issue
+**C-2**. The cost is one compensating shift in the corner divide,
+`kDivShift = kQCorner + kQDen - kQNum = 14`.
 
 ## 3.8 Pseudo-code
 

@@ -125,10 +125,17 @@ state machines*, this repository. Normative source for clause 7.
 them is defective and must be repaired; neither is to be interpreted.
 Constant tables transcribed into Annex A cite this source by file and commit.
 
-**[R-21]** `docs/WARP.md` — *does not exist at the time of writing.* Intended
-normative source for the integer pose warp, clause 6.7. Until it lands, that
-clause cites `warp/include/nxvc/warp.h` and `warp/ref/warp_ref.cpp` by commit
-and is marked provisional. [pending WARP.md]
+**[R-26]** `docs/WARP.md`, *NX Warp: the pose-warped predictor*, this
+repository. Normative source for the integer pose warp, clause 6.7: the
+fixed-point formats, the restoring divide, the corner derivation, the
+interpolation and the filter tables. It landed while this specification was
+being drafted, closing Annex C issues C-2 and C-29. Its co-normative
+implementations are `warp/ref/warp_ref.cpp`, `warp/glsl/warp_tile.comp` and
+`warp/include/nxvc/warp.h`. The *bitstream carriage* of the matrix is not in
+`docs/WARP.md` and is fixed by Annex D **D-1**.
+
+**[R-21]** *(withdrawn — superseded by [R-26], which is the same document under
+its landed identifier. References to [R-21] elsewhere read as [R-26].)*
 
 **[R-22]** `docs/STEREO.md`, *STEREO mode: inter-view prediction of the right
 eye*, this repository. Normative source for clause 6.8. It landed while this

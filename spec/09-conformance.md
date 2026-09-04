@@ -68,8 +68,10 @@ Every gap here is a place where a decoder could be wrong and conformance
 testing would not notice:
 
 * **No inter vectors.** No `WARP_SKIP`, `WARP_MV`, `STATIC_MV` or `STEREO`
-  stream exists, which follows from clause 6.7 having no syntax for the
-  homography. [pending WARP.md]
+  stream exists. The syntax gap that made them impossible is closed by Annex D
+  **D-1**, and Annex D **D-21** fixes the twelve vectors Phase 2 must add —
+  nine positive and three rejection sets — so that this bullet has a definition
+  to be measured against rather than a promise. They must still be generated.
 * **No multi-eye, multi-layer or 10-bit vectors.**
 * **No custom probability-table vector**, so the normalisation procedure of
   clause 6.6.2 — the one place a decoder divides, and the most easily

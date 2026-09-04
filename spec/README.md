@@ -29,6 +29,7 @@ measure of how far from finished this document set is.
 | Annex A | [`annex-a-tables.md`](annex-a-tables.md) | Normative constant tables |
 | Annex B | [`annex-b-patents.md`](annex-b-patents.md) | Intellectual-property hygiene record (informative) |
 | Annex C | [`annex-c-open-issues.md`](annex-c-open-issues.md) | Open issues, gaps and inter-document conflicts |
+| Annex D | [`annex-d-inter-decisions.md`](annex-d-inter-decisions.md) | **Normative.** The inter-path decisions that close Annex C's blocking issues and the SYNTAX/TRANSPORT boundary disputes |
 
 ## Source documents and their standing
 
@@ -41,10 +42,10 @@ and cross-checks the following, and cites each statement to its source:
 | `docs/TRANSPORT.md` | **normative source** | Wire format, receiver state, reference eligibility |
 | `ref/` (CPU reference codec) | **normative source** | Constant tables, tie-breaks; `docs/SYNTAX.md` §0 makes it co-normative |
 | `docs/STEREO.md` | **normative source** | Inter-view prediction (clause 6.8). Landed during drafting |
-| `docs/ERRATA.md` | **normative source** | Corrections to the paper. Note that it and `docs/SYNTAX.md` currently disagree — Annex C issue C-20 |
+| `docs/ERRATA.md` | **normative source** | Corrections to the paper. Where it and `docs/SYNTAX.md` disagreed on the inverse-transform shifts, Annex D **D-18** settles it at 7/13 and the errata is corrected |
 | `docs/INTEGRATION-DECISIONS.md` | normative source | Origin of the `color_space` element |
-| `warp/` (integer warp implementation) | provisional source | Awaiting `docs/WARP.md`; cited by file and commit |
-| `docs/WARP.md` | *(does not exist yet)* | Integer pose warp — clause 6.7 is `[pending WARP.md]` |
+| `warp/` (integer warp implementation) | **normative source** | Co-normative with `docs/WARP.md`; cited by file and commit |
+| `docs/WARP.md` | **normative source** | Integer pose warp — clause 6.7. Landed during drafting. Its *bitstream carriage* is Annex D **D-1** |
 | `docs/RATECONTROL.md` | informative | Encoder side: tile classification, degradation ladder, foveation. Landed during drafting; no decoder normative content |
 | `docs/HYBRID.md` | *(does not exist yet)* | HEVC base layer — clause 6.9 is `[pending HYBRID.md]` |
 | `docs/PAPER.md` | **informative only** | Design rationale. Where the paper and a component document disagree, the component document wins and the disagreement is logged in Annex C |
@@ -53,6 +54,13 @@ Where a component document has not landed, the clause states what the paper
 says, marks the field or step `[pending <DOC>]`, and Annex C records it. A
 `[pending]` marker is a promise that no implementer should guess here — it is
 never a claim that the behaviour is optional.
+
+**Annex D is different in kind from the rest of this set.** Everywhere else
+this specification transcribes and cross-checks; in Annex D it *decides*, for
+the inter path and for the fields that sit on the `docs/SYNTAX.md` /
+`docs/TRANSPORT.md` boundary, because Phase 2 could not start until someone
+did. Those decisions are normative here and are propagated to the component
+documents by `docs/SYNTAX-CHANGES-PHASE2.md` and Annex D **D-22**.
 
 ## Editorial conventions
 

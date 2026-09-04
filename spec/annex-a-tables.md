@@ -156,9 +156,13 @@ The bilinear filter of the Lite profile needs no table: its weights are
 `16 - f` and `f` per axis, with the product on 256 and a single rounding
 (clause 6.7.5).
 
-**Provisional.** This table lives in `warp/`, which no normative document yet
-ratifies, and nothing in the syntax selects between the two filters. See
-clause 8.2 and Annex C issues C-7 and C-2. [pending WARP.md]
+**Ratified, and unused by version 1.** The table is normative in
+`docs/WARP.md` 9. It is selected by tool bit 20 `FILTER_CATMULL_ROM`, which
+version 1 does not define and a version 1 decoder MUST reject, so **every
+conforming version 1 stream uses the bilinear weights above**. The table stays
+in this annex so that the version 2 bit has a defined meaning the day it is
+enabled rather than a kernel to be re-derived. Annex D decisions **D-5** and
+**D-1**, closing Annex C issues C-7 and C-2.
 
 ## A.5 Scan orders and the LAST class table
 
@@ -341,7 +345,7 @@ const u16 kDefaultFreq[8][kNumCtx][kNumSym] = {
 | Table | Needed by | Status |
 |---|---|---|
 | Level limits | Clause 8.3 | Not defined anywhere [pending SYNTAX.md] |
-| 10-bit sample domain and quantiser scaling | Clause 6.2 | Not defined anywhere [pending SYNTAX.md] |
+| 10-bit sample domain and quantiser scaling | Clause 6.2 | Not needed in version 1: tool bit 14 is undefined and `bit_depth == 10` is rejected (Annex D **D-16**). A version 2 item |
 | Enhancement-layer blend weights for `wgt` | Clause 6.9 | Four values in [R-18], five in [I-1], no blend formula [pending HYBRID.md] |
-| Homography quantisation format | Clause 6.7.2 | Three incompatible published formats [pending WARP.md] |
+| Homography quantisation format | Clause 4.4.2, 6.7.2 | Defined: rows 0-1 Q10.21, row 2 Q2.29, `h22 == 2^29` [WARP.md 3], carried in `warp_ext()` (Annex D **D-1**) |
 | `ENT_BITPLANE`, `INTRA_DIR`, `XFORM_WAVELET`, `XFORM_4X4_SPLIT` constants | Tool bits 16-19 | Declared, never specified. A v1 decoder refuses them, which is sufficient |
