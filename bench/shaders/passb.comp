@@ -1,0 +1,171 @@
+#version 460
+// Pass B: one workgroup per 64x64 tile, 256 threads (PAPER 3.2.3).
+//
+// Compiled twice from this one source:
+//   NXB_PREDICT 0 -> K3 "idct": coefficient load, dequant, 8x8 int DCT
+//                    through LDS, store. Threshold under 2.5 ms p50.
+//   NXB_PREDICT 1 -> the Pass B hf of K5 "full": the above plus the warped
+//                    bit-exact prediction, add, clamp and YCoCg-R to RGB.
+//
+// Thread map: 64 blocks of 8x8, 4 threads per block, each thread owns 2 rows
+// in the row pass and 2 columns in the column pass -- 16 coefficients and
+// 16 output pixels per thread.
+#extension GL_GOOGLE_include_directive : require
+#include "nxb_common.glsl"
+
+#ifndef NXB_PREDICT
+#define NXB_PREDICT 0
+#endif
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+layout(set = 0, binding = 0, std430) readonly buffer Coef    { uint w[];        } uCoef;
+layout(set = 0, binding = 1, std430) readonly buffer Dequant { int  scale[];    } uDeq;
+layout(set = 0, binding = 2, std430) readonly buffer TileRecs{ NxbTileRec rec[];} uTiles;
+layout(set = 0, binding = 3, rgba8ui) uniform writeonly uimage2D uOut;
+#if NXB_PREDICT
+layout(set = 0, binding = 4, rgba8ui) uniform readonly uimage2D uRef;
+#endif
+
+layout(push_constant) uniform Push {
+    ivec2 size;
+    int   tilesX;
+    int   coefWords;    // length of uCoef.w, for the bounds clamp
+} pc;
+
+// 64x64 int16 transpose buffer, packed two to a uint: 8 KB exactly, and no
+// 16-bit storage feature required. Each uint is written by exactly one thread
+// because a thread owns rows 2*sub and 2*sub+1, which are adjacent and
+// 2-aligned in the transposed layout.
+shared uint sLds[NXB_TILE * NXB_TILE / 2];
+
+#if NXB_PREDICT
+ivec4 fetchRef(int x, int y)
+{
+    ivec2 p = ivec2(clamp(x, 0, pc.size.x - 1), clamp(y, 0, pc.size.y - 1));
+    return ivec4(imageLoad(uRef, p));
+}
+#endif
+
+void main()
+{
+    int tileX = int(gl_WorkGroupID.x);
+    int tileY = int(gl_WorkGroupID.y);
+    int tile  = tileY * pc.tilesX + tileX;
+
+    int tid = int(gl_LocalInvocationID.x);
+    int b   = tid >> 2;          // block 0..63
+    int sub = tid & 3;           // which pair of rows / columns
+    int bx  = b & 7;
+    int by  = b >> 3;
+
+    NxbTileRec rec = uTiles.rec[tile];
+    int qp = int(rec.qp) & 63;
+
+    // ------------------------------------------------ row pass (2 rows)
+    int tileWordBase = tile * (NXB_COEFS_PER_TILE / 2);
+
+    for (int hf = 0; hf < 2; ++hf)
+    {
+        int r = (sub << 1) + hf;
+        int F[8];
+
+        // 8 coefficients of one row are 4 consecutive uints.
+        int wbase = tileWordBase + b * 32 + r * 4;
+        for (int k = 0; k < 4; ++k)
+        {
+            uint w = uCoef.w[clamp(wbase + k, 0, pc.coefWords - 1)];
+            int q0 = NXB_UNPACK_LO(w);
+            int q1 = NXB_UNPACK_HI(w);
+
+            int pos0 = r * 8 + k * 2;
+            int pos1 = pos0 + 1;
+            // c = (q * scale[QP][pos] + 8) >> 4, all int32 (PAPER 3.2.3 step 1)
+            F[k * 2 + 0] = NXB_CLAMP(NXB_RSHIFT(q0 * uDeq.scale[qp * 64 + pos0], 4),
+                                     -NXB_DEQUANT_CLAMP, NXB_DEQUANT_CLAMP);
+            F[k * 2 + 1] = NXB_CLAMP(NXB_RSHIFT(q1 * uDeq.scale[qp * 64 + pos1], 4),
+                                     -NXB_DEQUANT_CLAMP, NXB_DEQUANT_CLAMP);
+        }
+
+        nxb_idct8(F);
+
+        // Transposed store. flat = (bx*8 + col) * 64 + (by*8 + r).
+        // The two rows this thread owns land in one uint.
+        for (int col = 0; col < 8; ++col)
+        {
+            int v = NXB_CLAMP(NXB_RSHIFT(F[col], NXB_XFORM_SHIFT1),
+                              -NXB_STAGE1_CLAMP, NXB_STAGE1_CLAMP);
+            int word = (bx * 8 + col) * 32 + by * 4 + sub;
+            if (hf == 0)
+                sLds[word] = uint(v) & 0xffffu;      // low hf first
+            else
+                sLds[word] |= uint(v) << 16;         // then the high hf
+        }
+    }
+
+    barrier();
+
+    // -------------------------------------------- column pass (2 columns)
+    int px0 = tileX * NXB_TILE + bx * 8;
+    int py0 = tileY * NXB_TILE + by * 8;
+
+    for (int hf = 0; hf < 2; ++hf)
+    {
+        int col = (sub << 1) + hf;
+        int F[8];
+
+        int word = (bx * 8 + col) * 32 + by * 4;
+        for (int k = 0; k < 4; ++k)
+        {
+            uint w = sLds[word + k];
+            F[k * 2 + 0] = NXB_UNPACK_LO(w);
+            F[k * 2 + 1] = NXB_UNPACK_HI(w);
+        }
+
+        nxb_idct8(F);
+
+        int x = px0 + col;
+        for (int k = 0; k < 8; ++k)
+        {
+            int res = NXB_CLAMP(NXB_RSHIFT(F[k], NXB_XFORM_SHIFT2),
+                                -NXB_RESIDUAL_CLAMP, NXB_RESIDUAL_CLAMP);
+            int y = py0 + k;
+            if (x >= pc.size.x || y >= pc.size.y)
+                continue;
+
+#if NXB_PREDICT
+            // ---- warped bit-exact prediction (PAPER 3.2.3 step 5)
+            ivec2 d = nxb_warp_delta(rec, x & (NXB_TILE - 1), y & (NXB_TILE - 1));
+            int sx = (x << 4) + d.x;
+            int sy = (y << 4) + d.y;
+            int fx = sx & 15;
+            int fy = sy & 15;
+            int sbx = sx >> 4;
+            int sby = sy >> 4;
+
+            int w00 = (16 - fx) * (16 - fy);
+            int w10 = fx * (16 - fy);
+            int w01 = (16 - fx) * fy;
+            int w11 = fx * fy;
+
+            ivec4 t00 = fetchRef(sbx,     sby);
+            ivec4 t10 = fetchRef(sbx + 1, sby);
+            ivec4 t01 = fetchRef(sbx,     sby + 1);
+            ivec4 t11 = fetchRef(sbx + 1, sby + 1);
+
+            ivec4 acc = w00 * t00 + w10 * t10 + w01 * t01 + w11 * t11;
+            int predY  = NXB_RSHIFT(acc.x, 8);
+            int predCo = NXB_RSHIFT(acc.y, 8);
+            int predCg = NXB_RSHIFT(acc.z, 8);
+
+            // Single-plane residual: it lands on Y, chroma comes from the
+            // predictor (see README, "What the bench does not model").
+            int yv = clamp(predY + res, 0, 255);
+            ivec3 rgb = nxb_ycocgr_to_rgb(yv, predCo - 128, predCg - 128);
+            imageStore(uOut, ivec2(x, y), uvec4(clamp(rgb, 0, 255), 255));
+#else
+            imageStore(uOut, ivec2(x, y), uvec4(uvec3(clamp(res + 128, 0, 255)), 255u));
+#endif
+        }
+    }
+}

@@ -1,0 +1,158 @@
+#version 460
+// K4 / Pass A: interleaved rANS with a shared read pointer (PAPER 3.2.2, 1.6,
+// 6.3). 8 rANS lanes per tile, 8 tiles per 64-thread workgroup, 32-bit state,
+// L = 2^16, 16-bit renormalisation, 10-bit probabilities, 8 contexts.
+// Threshold: under 1.5 ms p50 over all 2048 tiles at 0.5 symbols/pixel.
+//
+// The eight lanes read from one byte stream in a deterministic order. Each
+// lane decides whether it renormalises this step; a subgroup ballot masked to
+// the 8-lane cluster and a bit count give each lane its offset from the shared
+// pointer, and the cluster advances the pointer by the popcount.
+//
+// Portability (PAPER 3.2.6): clusters come from gl_SubgroupInvocationID & ~7,
+// never from subgroupClustered*; subgroup sizes 8..128 all work because every
+// one of them is a multiple of the cluster size.
+#extension GL_GOOGLE_include_directive : require
+#extension GL_KHR_shader_subgroup_basic  : require
+#extension GL_KHR_shader_subgroup_ballot : require
+#include "nxb_common.glsl"
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(set = 0, binding = 0, std430) readonly buffer Bits    { uint w[];  } uBits;
+layout(set = 0, binding = 1, std430) readonly buffer TileOff { uint off[];} uOff;
+layout(set = 0, binding = 2, std430) readonly buffer Tables  { uint w[];  } uTab;
+layout(set = 0, binding = 3, std430) writeonly buffer Coef   { uint w[];  } uCoef;
+
+layout(push_constant) uniform Push {
+    int tileCount;
+    int symsPerLane;    // 256 at 0.5 symbols/pixel over a 64x64 tile
+    int bitWords;       // length of uBits.w, for the bounds clamp
+    int tabWords;
+} pc;
+
+// rANS parameters
+#define NXB_RANS_L      (1u << 16)
+#define NXB_RANS_MBITS  10
+#define NXB_RANS_MASK   1023u
+
+// 8 contexts x 1024 slot->symbol bytes = 8 KB, plus 8 x 16 packed freq/cum.
+shared uint sLut[8 * 256];
+shared uint sFc[8 * 16];
+
+uint readU16(uint byteOff)
+{
+    uint idx = min(byteOff >> 2, uint(pc.bitWords - 1));
+    uint w = uBits.w[idx];
+    return (w >> ((byteOff & 2u) * 8u)) & 0xffffu;
+}
+
+void main()
+{
+    // ---- cooperative table load, once per workgroup (8 tiles share it)
+    for (uint i = gl_LocalInvocationID.x; i < 8u * 256u; i += 64u)
+        sLut[i] = uTab.w[min(i, uint(pc.tabWords - 1))];
+    for (uint i = gl_LocalInvocationID.x; i < 8u * 16u; i += 64u)
+        sFc[i] = uTab.w[min(8u * 256u + i, uint(pc.tabWords - 1))];
+    barrier();
+
+    // ---- lane identity. Derived from the subgroup, not from the local index,
+    // so that an 8-lane cluster is guaranteed not to straddle a subgroup.
+    uint flatLane = gl_SubgroupID * gl_SubgroupSize + gl_SubgroupInvocationID;
+    uint clusterBase = gl_SubgroupInvocationID & ~7u;
+    uint laneInCluster = gl_SubgroupInvocationID & 7u;
+    uint laneMaskLow = (1u << laneInCluster) - 1u;
+
+    uint tile = uint(gl_WorkGroupID.x) * 8u + (flatLane >> 3);
+    bool laneOn = (flatLane < 64u) && (tile < uint(pc.tileCount));
+
+    // ---- initial states: the 8 flush words sit at the head of the tile slot
+    uint slotByte = laneOn ? uOff.off[min(tile, uint(pc.tileCount - 1))] : 0u;
+    uint x = uBits.w[min((slotByte >> 2) + laneInCluster, uint(pc.bitWords - 1))];
+    uint cursor = slotByte + 32u;
+
+    // Lane i owns blocks i, i+8, ... i+56 of the tile (PAPER 1.6 substream
+    // block interleave), 8 blocks, 32 coefficients written per block.
+    uint coefBase = tile * uint(NXB_COEFS_PER_TILE) + laneInCluster * 64u;
+
+    int prevNz = 0;
+    int pending = 0;              // even coefficient waiting for its pair
+    // Nested so that the block index is a loop counter: no OpSDiv anywhere in
+    // the normative path (PAPER 3.7). Both bounds are workgroup-uniform, so
+    // every lane of a cluster reaches every ballot together.
+    int nPerBlock = pc.symsPerLane >> 3;
+
+    for (int blk = 0; blk < 8; ++blk)
+    for (int k = 0; k < nPerBlock; ++k)
+    {
+        // Context is causal within the lane: coefficient band of this position
+        // plus the class of the previous level (PAPER 1.6). Must match
+        // nxb::ransNextCtx in src/core/nxb_rans.h exactly.
+        int band = (k < 1) ? 0 : ((k < 4) ? 1 : ((k < 10) ? 2 : 3));
+        int ctx = band + (prevNz != 0 ? 4 : 0);
+
+        // ------------------------------------------------ main symbol step
+        uint slot = x & NXB_RANS_MASK;
+        uint lw = sLut[uint(ctx) * 256u + (slot >> 2)];
+        uint s = (lw >> ((slot & 3u) * 8u)) & 0xffu;
+        uint fc = sFc[uint(ctx) * 16u + s];
+        uint freq = fc & 0xffffu;
+        uint cum  = fc >> 16;
+        x = freq * (x >> NXB_RANS_MBITS) + slot - cum;
+
+        // renormalise: ballot within the 8-lane cluster
+        {
+            bool need = laneOn && (x < NXB_RANS_L);
+            uvec4 bal = subgroupBallot(need);
+            uint bits = (bal[clusterBase >> 5] >> (clusterBase & 31u)) & 0xffu;
+            uint before = bitCount(bits & laneMaskLow);
+            if (need)
+                x = (x << 16) | readU16(cursor + before * 2u);
+            cursor += uint(bitCount(bits)) * 2u;
+        }
+
+        // ------------------------------------------------ sign bypass bit
+        int level = int(s);
+        int sgn = 0;
+        bool nz = laneOn && (s != 0u);
+        if (nz) { sgn = int(x & 1u); x >>= 1; }
+        {
+            bool need = nz && (x < NXB_RANS_L);
+            uvec4 bal = subgroupBallot(need);
+            uint bits = (bal[clusterBase >> 5] >> (clusterBase & 31u)) & 0xffu;
+            uint before = bitCount(bits & laneMaskLow);
+            if (need)
+                x = (x << 16) | readU16(cursor + before * 2u);
+            cursor += uint(bitCount(bits)) * 2u;
+        }
+
+        // ------------------------------------------------ escape: 8 raw bits
+        bool esc = laneOn && (s == 15u);
+        if (esc) { level = 15 + int(x & 255u); x >>= 8; }
+        {
+            bool need = esc && (x < NXB_RANS_L);
+            uvec4 bal = subgroupBallot(need);
+            uint bits = (bal[clusterBase >> 5] >> (clusterBase & 31u)) & 0xffu;
+            uint before = bitCount(bits & laneMaskLow);
+            if (need)
+                x = (x << 16) | readU16(cursor + before * 2u);
+            cursor += uint(bitCount(bits)) * 2u;
+        }
+
+        int val = (sgn != 0) ? -level : level;
+
+        // ------------------------------------------------ coefficient store
+        // Two int16 per uint; both halves come from this lane, in order.
+        if ((k & 1) == 0)
+        {
+            pending = val;
+        }
+        else if (laneOn)
+        {
+            uint idx = (coefBase + uint(blk) * 512u + uint(k)) >> 1;
+            uCoef.w[idx] = NXB_PACK16(pending, val);
+        }
+
+        prevNz = (level != 0) ? 1 : 0;
+    }
+}

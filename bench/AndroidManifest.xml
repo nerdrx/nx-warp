@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Vulkan 1.1 is the floor: the codec needs subgroup ballot (PAPER 3.2.6). -->
+    <uses-feature android:name="android.hardware.vulkan.version"
+                  android:version="0x00401000"
+                  android:required="true" />
+    <uses-feature android:name="android.hardware.vulkan.level"
+                  android:version="0"
+                  android:required="true" />
+
+    <application
+        android:label="NX Warp Bench"
+        android:hasCode="false"
+        android:allowBackup="false">
+
+        <activity
+            android:name="android.app.NativeActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|density|uiMode"
+            android:resizeableActivity="false"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
+
+            <!-- libnxbench.so -->
+            <meta-data android:name="android.app.lib_name" android:value="nxbench" />
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

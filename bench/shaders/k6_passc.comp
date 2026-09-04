@@ -1,0 +1,80 @@
+#version 460
+// K6 / Pass C: hybrid enhancement (PAPER 3.2.1 row C, 3.5).
+// One workgroup per 64x64 tile, 256 threads.
+//
+// Reads the HEVC base layer through a YCbCr sampler -- one tap, and here the
+// sampler IS allowed, because the base is not in the normative bit-exact path,
+// only the residual is. Reads the warped previous residual with the bit-exact
+// gather-4, adds the decoded delta, writes both the output image and the new
+// residual image.
+//
+// Threshold: Pass C under 2.0 ms p50.
+#extension GL_GOOGLE_include_directive : require
+#include "nxb_common.glsl"
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform sampler2D uBase;                        // YCbCr, external format
+layout(set = 0, binding = 1, rgba8ui) uniform readonly  uimage2D uPrevResid; // signed, biased by 128
+layout(set = 0, binding = 2, rgba8ui) uniform writeonly uimage2D uNewResid;
+layout(set = 0, binding = 3, rgba8ui) uniform writeonly uimage2D uOut;
+layout(set = 0, binding = 4, std430) readonly buffer TileRecs { NxbTileRec rec[]; } uTiles;
+layout(set = 0, binding = 5, std430) readonly buffer Delta    { uint w[];        } uDelta;
+
+layout(push_constant) uniform Push {
+    ivec2 size;
+    int   tilesX;
+    int   deltaWords;
+} pc;
+
+ivec4 fetchResid(int x, int y)
+{
+    ivec2 p = ivec2(clamp(x, 0, pc.size.x - 1), clamp(y, 0, pc.size.y - 1));
+    return ivec4(imageLoad(uPrevResid, p)) - 128;
+}
+
+void main()
+{
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    if (p.x >= pc.size.x || p.y >= pc.size.y)
+        return;
+
+    int tile = (p.y >> 6) * pc.tilesX + (p.x >> 6);
+    NxbTileRec rec = uTiles.rec[tile];
+
+    // ---- base layer: one YCbCr sampler tap (non-normative by design)
+    vec2 uv = (vec2(p) + vec2(0.5)) / vec2(pc.size);
+    vec4 base = textureLod(uBase, uv, 0.0);
+    ivec3 baseRgb = clamp(ivec3(base.rgb * 255.0 + 0.5), 0, 255);
+
+    // ---- warped previous residual, bit-exact gather-4
+    ivec2 d = nxb_warp_delta(rec, p.x & (NXB_TILE - 1), p.y & (NXB_TILE - 1));
+    int sx = (p.x << 4) + d.x;
+    int sy = (p.y << 4) + d.y;
+    int fx = sx & 15;
+    int fy = sy & 15;
+    int bx = sx >> 4;
+    int by = sy >> 4;
+
+    int w00 = (16 - fx) * (16 - fy);
+    int w10 = fx * (16 - fy);
+    int w01 = (16 - fx) * fy;
+    int w11 = fx * fy;
+
+    ivec4 acc = w00 * fetchResid(bx,     by)
+              + w10 * fetchResid(bx + 1, by)
+              + w01 * fetchResid(bx,     by + 1)
+              + w11 * fetchResid(bx + 1, by + 1);
+    ivec3 warped = ivec3(NXB_RSHIFT(acc.x, 8), NXB_RSHIFT(acc.y, 8), NXB_RSHIFT(acc.z, 8));
+
+    // ---- decoded enhancement delta for this pixel
+    int lin = p.y * pc.size.x + p.x;
+    uint dw = uDelta.w[clamp(lin >> 1, 0, pc.deltaWords - 1)];
+    int delta = ((lin & 1) == 0) ? NXB_UNPACK_LO(dw) : NXB_UNPACK_HI(dw);
+
+    ivec3 resid = clamp(warped + ivec3(delta), -128, 127);
+    ivec3 outRgb = clamp(baseRgb + resid, 0, 255);
+
+    imageStore(uNewResid, p, uvec4(uvec3(resid + 128), 255u));
+    imageStore(uOut,      p, uvec4(uvec3(outRgb),      255u));
+}

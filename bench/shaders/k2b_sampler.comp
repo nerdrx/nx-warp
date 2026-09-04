@@ -1,0 +1,34 @@
+#version 460
+// K2b: the same warp with one hardware sampler tap instead of the bit-exact
+// gather-4. Informational only -- it quantifies the price of bit-exactness
+// (PAPER 3.4). Float appears here and ONLY here, because this path is by
+// construction not normative.
+#extension GL_GOOGLE_include_directive : require
+#include "nxb_common.glsl"
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform sampler2D uRefUnorm;
+layout(set = 0, binding = 1, rgba8ui) uniform writeonly uimage2D uOut;
+layout(set = 0, binding = 2, std430) readonly buffer TileRecs { NxbTileRec rec[]; } uTiles;
+
+layout(push_constant) uniform Push {
+    ivec2 size;
+    int   tilesX;
+} pc;
+
+void main()
+{
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    if (p.x >= pc.size.x || p.y >= pc.size.y)
+        return;
+
+    int tile = (p.y >> 6) * pc.tilesX + (p.x >> 6);
+    ivec2 d = nxb_warp_delta(uTiles.rec[tile], p.x & (NXB_TILE - 1), p.y & (NXB_TILE - 1));
+
+    // Same Q4 coordinate, handed to the sampler as a normalised float.
+    vec2 src = (vec2(ivec2(p.x << 4, p.y << 4) + d) * (1.0 / 16.0)) + vec2(0.5);
+    vec4 t = textureLod(uRefUnorm, src / vec2(pc.size), 0.0);
+
+    imageStore(uOut, p, uvec4(clamp(ivec4(t * 255.0 + 0.5), 0, 255)));
+}

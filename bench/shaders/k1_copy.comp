@@ -1,0 +1,21 @@
+#version 460
+// K1: 8.39 Mpixel RGBA8 image-to-image copy through compute.
+// Reports achievable GB/s (PAPER 3.4). This is the bandwidth yardstick every
+// other kernel is judged against.
+#extension GL_GOOGLE_include_directive : require
+#include "nxb_common.glsl"
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 0, rgba8ui) uniform readonly  uimage2D uSrc;
+layout(set = 0, binding = 1, rgba8ui) uniform writeonly uimage2D uDst;
+
+layout(push_constant) uniform Push { ivec2 size; } pc;
+
+void main()
+{
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    if (p.x >= pc.size.x || p.y >= pc.size.y)
+        return;
+    imageStore(uDst, p, imageLoad(uSrc, p));
+}

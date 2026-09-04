@@ -1,0 +1,63 @@
+#version 460
+// K2: per pixel, warp coordinate from the four Q4 corner displacements plus a
+// bit-exact 4-load bilinear from a full-frame reference, then store.
+// Threshold: under 3.0 ms p50 (PAPER 3.4).
+//
+// This is the normative predictor of PAPER 3.2.3 step 5. The hardware sampler
+// is deliberately not used: sampler weight precision is vendor-specific and
+// the encoder always runs on a different vendor than the decoder.
+#extension GL_GOOGLE_include_directive : require
+#include "nxb_common.glsl"
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 0, rgba8ui) uniform readonly  uimage2D uRef;
+layout(set = 0, binding = 1, rgba8ui) uniform writeonly uimage2D uOut;
+layout(set = 0, binding = 2, std430) readonly buffer TileRecs { NxbTileRec rec[]; } uTiles;
+
+layout(push_constant) uniform Push {
+    ivec2 size;        // image extent in pixels
+    int   tilesX;      // tiles per row
+} pc;
+
+// Bounds-clamped integer texel fetch. Never relies on robustBufferAccess.
+ivec4 fetch(int x, int y)
+{
+    ivec2 p = ivec2(clamp(x, 0, pc.size.x - 1), clamp(y, 0, pc.size.y - 1));
+    return ivec4(imageLoad(uRef, p));
+}
+
+void main()
+{
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    if (p.x >= pc.size.x || p.y >= pc.size.y)
+        return;
+
+    int tile = (p.y >> 6) * pc.tilesX + (p.x >> 6);
+    ivec2 d = nxb_warp_delta(uTiles.rec[tile], p.x & (NXB_TILE - 1), p.y & (NXB_TILE - 1));
+
+    // Q4 source coordinate: 4 fractional bits, i.e. 1/16 pel. The 8-bit
+    // bilinear weights below are exactly why Q4 and not Q2 (PAPER 3.2.3).
+    int sx = (p.x << 4) + d.x;
+    int sy = (p.y << 4) + d.y;
+    int fx = sx & 15;
+    int fy = sy & 15;
+    int bx = sx >> 4;
+    int by = sy >> 4;
+
+    int w00 = (16 - fx) * (16 - fy);
+    int w10 = fx * (16 - fy);
+    int w01 = (16 - fx) * fy;
+    int w11 = fx * fy;            // w00+w10+w01+w11 == 256
+
+    ivec4 p00 = fetch(bx,     by);
+    ivec4 p10 = fetch(bx + 1, by);
+    ivec4 p01 = fetch(bx,     by + 1);
+    ivec4 p11 = fetch(bx + 1, by + 1);
+
+    ivec4 acc = w00 * p00 + w10 * p10 + w01 * p01 + w11 * p11;
+    ivec4 res = ivec4(NXB_RSHIFT(acc.x, 8), NXB_RSHIFT(acc.y, 8),
+                      NXB_RSHIFT(acc.z, 8), NXB_RSHIFT(acc.w, 8));
+
+    imageStore(uOut, p, uvec4(clamp(res, 0, 255)));
+}
