@@ -18,9 +18,12 @@ if(NOT NXWARP_QUALITY_TESTS)
   return()
 endif()
 
-# enable_testing() is normally called at the top level; call it here too so the
-# harness tests are still registered when the tree is configured without the
-# codec's own tests/ directory present.
+# The root CMakeLists calls enable_testing() when NXWARP_BUILD_TESTS is ON,
+# which is what generates the top-level CTest configuration. Calling it again
+# here is harmless and keeps this directory self-contained if it is ever
+# configured on its own. Note it does NOT rescue -DNXWARP_BUILD_TESTS=OFF:
+# without the top-level call there is no test configuration for ctest to read,
+# which is the right behaviour for someone who asked for no tests.
 enable_testing()
 
 set(NXWARP_QUALITY_PYTHON "" CACHE FILEPATH
