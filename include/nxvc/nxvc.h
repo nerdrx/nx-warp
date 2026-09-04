@@ -47,8 +47,14 @@ extern "C" {
  *       picture per eye and row-major/eye-minor tile rows, the four-slot
  *       reference ring addressed by `ref_sel`, and the 12-bit STEREO
  *       `disparity` field replacing mv_x/mv_y.  See docs/SYNTAX.md 8.
+ *   5 : the entropy and context package -- tool bit 24 TAB_V2 (a transmitted
+ *       table set gains a per-row "use the built-in default" flag and becomes
+ *       variable length) and tool bit 25 CTX_V3 (22 contexts: CBF and LAST
+ *       conditioned on whether the previous coefficient unit the same rANS
+ *       lane decoded in the same unit class was coded).  See docs/SYNTAX.md
+ *       9.4.1 and 9.8.
  */
-#define NXVC_BITSTREAM_MINOR 4
+#define NXVC_BITSTREAM_MINOR 5
 
 /* "nxvc_ref <major>.<minor> (syntax v1.<minor>)" -- a static string, safe to
  * call before any object exists.  Used by the Python bindings to check that

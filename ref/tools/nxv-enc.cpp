@@ -74,7 +74,7 @@ static void usage() {
         "  --intra-dir on|off|layer  directional intra (tool 17); `layer`\n"
         "                       predicts the DC-plane residual instead\n"
         "  --intra-dir-cand N   modes RD-checked per block (default 2)\n"
-        "  --ctx v1|v2|v3       12, 16 or 42 entropy contexts (tools 21, 25)\n"
+        "  --ctx v1|v2|v3       12, 16 or 22 entropy contexts (tools 21, 25)\n"
         "  --tab v1|v2          transmitted-table coding: flat 5-bit or compact (tool 24)\n"
         "  --table-iters N      Lloyd iterations refining the per-frame table sets (0 = off)\n"
         "  --no-sign-hide       code every sign (default: hide one per unit)\n"
