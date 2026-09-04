@@ -21,6 +21,25 @@ extern "C" {
 #define NXVC_MAX_TILES_PER_ROW 64
 #define NXVC_TILE_SIZE 64
 
+/* Minor revision of docs/SYNTAX.md that this build implements.  It is NOT
+ * carried in the bitstream: forward compatibility is the `tools` mask plus the
+ * TLV area (SYNTAX.md 2.1, 2.3), and a decoder that does not implement a tool
+ * refuses the stream at the handshake.  The constant exists so that a build,
+ * a conformance-vector set and a spec revision can be pinned to each other;
+ * it is bumped whenever a change makes the encoder emit different bytes.
+ *
+ *   1 : initial v1 syntax
+ *   2 : per-tile `wm_id` in tile-header word1 bits 26-27; bit_depth 10 is
+ *       reserved-and-rejected; IDCT odd-part rotation specified as an exact
+ *       two-word product (no pixel change)
+ */
+#define NXVC_BITSTREAM_MINOR 2
+
+/* "nxvc_ref <major>.<minor> (syntax v1.<minor>)" -- a static string, safe to
+ * call before any object exists.  Used by the Python bindings to check that
+ * the shared library matches the header they were built against. */
+const char *nxvc_version_string(void);
+
 /* ---------------------------------------------------------------- status */
 typedef enum nxvc_status {
     NXVC_OK = 0,
@@ -83,13 +102,14 @@ typedef enum nxvc_tile_mode {
 #define NXVC_TOOL_INTRA_DIR       (1ull << 17)
 #define NXVC_TOOL_XFORM_WAVELET   (1ull << 18)
 #define NXVC_TOOL_XFORM_4X4_SPLIT (1ull << 19)
+#define NXVC_TOOL_WM_ID           (1ull << 20)
 
 /* Tools this reference decoder implements. */
 #define NXVC_TOOLS_SUPPORTED                                                  \
     (NXVC_TOOL_INTRA_DC_PLANE | NXVC_TOOL_TRANSFORM_SKIP |                    \
      NXVC_TOOL_RES_LEVEL | NXVC_TOOL_CHROMA444 | NXVC_TOOL_ALPHA |            \
      NXVC_TOOL_LOSSLESS | NXVC_TOOL_CUSTOM_TABLES | NXVC_TOOL_NSUB_VAR |      \
-     NXVC_TOOL_PER_TILE_CHROMA | NXVC_TOOL_YCOCGR)
+     NXVC_TOOL_PER_TILE_CHROMA | NXVC_TOOL_YCOCGR | NXVC_TOOL_WM_ID)
 
 /* ---------------------------------------------------------------- images */
 /* 8-bit planar image.  plane[0]=Y/R', plane[1]=Co/G', plane[2]=Cg/B',
@@ -124,7 +144,17 @@ typedef struct nxvc_config {
     uint32_t custom_tables;     /* 1: derive+transmit probability tables   */
     uint32_t profile;           /* 0=Lite 1=Full 2=Pro (informative)       */
     uint32_t level;             /* informative                             */
-    uint32_t collect_stats;     /* 1: fill nxvc_encoder_stats (slower)     */
+    uint32_t collect_stats;     /* 1: fill nxvc_encode_stats (slower)      */
+
+    /* --- additive since syntax v1.2.  All encoder-side: they change which
+     * levels and per-tile parameters are chosen, never how a stream decodes.
+     * nxvc_config_default() sets rdo = 1 and leaves the tuning fields 0. */
+    uint32_t rdo;               /* 0 = dead-zone only, 1 = RD trellis      */
+    uint32_t rdo_lambda_q8;     /* lambda scale, Q8; 0 = built-in default  */
+    uint32_t qp_search;         /* per-tile QP offsets searched, 0 = off,
+                                   n = try qp_delta in [-n, +n]            */
+    uint32_t wm_id;             /* per-tile weighting-matrix id 0..3, or
+                                   255 = let the encoder choose per tile   */
 } nxvc_config;
 
 /* Where the bits went, for the most recent encoded frame. */
@@ -157,6 +187,7 @@ typedef struct nxvc_tile_info {
     int8_t qp_delta, mv_x, mv_y;
     uint8_t alpha_value;
     uint8_t qp;                 /* resolved luma QP                        */
+    uint8_t wm_id;              /* per-tile weighting matrix, 0 = frame's  */
 } nxvc_tile_info;
 
 typedef struct nxvc_stream_info {

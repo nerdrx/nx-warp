@@ -3,6 +3,26 @@
 namespace nxvc {
 
 // ------------------------------------------------------------------ 1D DCT
+// Exactly ((s * kC4) + 256) >> 9, computed without an int32 overflow.
+//
+// In the inverse flow graph the odd-part rotation operand `P +- Q` reaches
+// +-8.6e7 on legal (if pathological) int16 input, and 8.6e7 * 362 is 3.1e10 --
+// outside int32.  Split the operand as s = 512*hi + lo with hi = s >> 9
+// (arithmetic) and lo = s & 511; then
+//
+//     (s*362 + 256) >> 9 == hi*362 + ((lo*362 + 256) >> 9)
+//
+// because 512*hi*362 is an exact multiple of 512, so the shift distributes.
+// This is a two-word product, not an approximation: it is bit-identical to the
+// mathematical value for every int32 `s` the graph can produce, so no
+// conformance vector changes.  Both partial products are small: |hi*362| <=
+// 6.1e7 and lo*362 <= 1.9e5.  A GPU implementation may use the same identity
+// or a 64-bit multiply; the result is defined to be the exact value.
+static inline i32 mul_c4_rnd9(i32 s) {
+    const i32 hi = s >> 9, lo = s & 511;
+    return hi * kC4 + ((lo * kC4 + 256) >> 9);
+}
+
 // Inverse 1D transform, gain 2^10 relative to the orthonormal DCT-III.
 static inline void idct8_1d(const i32 *x, i32 *y) {
     // even part
@@ -20,8 +40,8 @@ static inline void idct8_1d(const i32 *x, i32 *y) {
     i32 O0 = A + C;
     i32 O3 = B - D;
     i32 P = A - C, Q = B + D;
-    i32 O1 = ((P + Q) * kC4 + 256) >> 9;
-    i32 O2 = ((P - Q) * kC4 + 256) >> 9;
+    i32 O1 = mul_c4_rnd9(P + Q);
+    i32 O2 = mul_c4_rnd9(P - Q);
     y[0] = e0 + O0; y[7] = e0 - O0;
     y[1] = e1 + O1; y[6] = e1 - O1;
     y[2] = e2 + O2; y[5] = e2 - O2;
@@ -34,8 +54,8 @@ static inline void fdct8_1d(const i32 *y, i32 *x) {
     i32 e1 = y[1] + y[6], O1 = y[1] - y[6];
     i32 e2 = y[2] + y[5], O2 = y[2] - y[5];
     i32 e3 = y[3] + y[4], O3 = y[3] - y[4];
-    i32 P = ((O1 + O2) * kC4 + 256) >> 9;
-    i32 Q = ((O1 - O2) * kC4 + 256) >> 9;
+    i32 P = mul_c4_rnd9(O1 + O2);
+    i32 Q = mul_c4_rnd9(O1 - O2);
     i32 A = O0 + P, C = O0 - P;
     i32 B = O3 + Q, D = Q - O3;
     x[1] = A * kA1 + B * kA7;

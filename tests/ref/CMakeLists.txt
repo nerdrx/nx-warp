@@ -31,6 +31,18 @@ set_target_properties(nxv-vectors PROPERTIES CXX_STANDARD 20
 add_test(NAME ref.vectors
          COMMAND nxv-vectors --check ${CMAKE_SOURCE_DIR}/tests/vectors)
 
+# Range safety of the normative decode path.  Its point is to be run under the
+# asan-ubsan preset, where a signed overflow in the inverse transform aborts:
+#   cmake --preset asan-ubsan && cmake --build --preset asan-ubsan
+#   ctest --preset asan-ubsan -R 'ref\.(saturate|vectors)'
+add_executable(ref_test_saturate test_saturate.cpp)
+target_link_libraries(ref_test_saturate PRIVATE nxvc_ref)
+target_include_directories(ref_test_saturate PRIVATE ${NXVC_REF_TEST_INC})
+set_target_properties(ref_test_saturate PROPERTIES CXX_STANDARD 20
+                      CXX_STANDARD_REQUIRED ON)
+add_test(NAME ref.saturate
+         COMMAND ref_test_saturate ${CMAKE_SOURCE_DIR}/tests/vectors)
+
 # End-to-end CLI test: nxv-enc | nxv-dec | nxv-info must agree.
 if(TARGET nxv-enc)
     add_executable(ref_test_cli test_cli.cpp)

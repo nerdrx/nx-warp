@@ -201,6 +201,7 @@ static u64 encoder_tools(const nxvc_encoder *e) {
     if (e->cfg.nsub_log2 != 3) t |= NXVC_TOOL_NSUB_VAR;
     if (e->cfg.tile_chroma420) t |= NXVC_TOOL_PER_TILE_CHROMA;
     if (e->cfg.color_transform == NXVC_CT_YCOCGR) t |= NXVC_TOOL_YCOCGR;
+    if (e->cfg.wm_id != 0) t |= NXVC_TOOL_WM_ID;
     t |= NXVC_TOOL_RES_LEVEL;
     return t;
 }
@@ -396,6 +397,26 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         return bestk;
     };
 
+    // Lambda for the RD trellis, as a multiple of the tile's squared quantizer
+    // step.  0.30 was measured on the quality harness (tools/quality) over the
+    // 100-400 Mbit band; below 0.15 the trellis barely fires, above 0.6 it
+    // starts zeroing structure the eye sees.
+    const double rdo_lambda_scale =
+        e->cfg.rdo_lambda_q8 ? (double)e->cfg.rdo_lambda_q8 / 256.0 : 0.30;
+    const bool use_rdo = e->cfg.rdo != 0 && !e->cfg.lossless;
+
+    // Re-quantize a tile's residual blocks with the RD trellis, using the
+    // costs of the table set the plain quantization pass selected.
+    auto rdoq_tile = [&](TileCoder &tc, const TableSet *tabs) {
+        if (!use_rdo) return;
+        RateCost rc;
+        build_rate_cost(tabs[tc.tp.table_set], rc);
+        int np = coded_planes(tc);
+        for (int p = 0; p < np; ++p)
+            rdoq_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)], tc.tp.tskip,
+                       p == 1 || p == 2, rc, rdo_lambda_scale);
+    };
+
     auto make_tile_params = [&](int t) {
         TileParams tp;
         tp.tile_index = t % (int)g.tiles_x;
@@ -408,6 +429,10 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         tp.table_set = clamp_i32((fp.base_qp + tp.qp_delta) >> 3, 0, 7);
         tp.nsub_log2 = e->cfg.nsub_log2 == 255 ? 3 : (int)e->cfg.nsub_log2;
         tp.tskip = e->cfg.transform_skip == 1 ? 1 : 0;
+        // wm_id is a per-tile override of the frame matrix.  255 asks the
+        // encoder to choose; a frame with custom matrices cannot carry one.
+        if (fp.quant_matrix != 255 && e->cfg.wm_id != 0 && !e->cfg.lossless)
+            tp.wm_id = e->cfg.wm_id == 255 ? 0 : clamp_i32((int)e->cfg.wm_id, 0, 3);
         return tp;
     };
 
@@ -433,6 +458,18 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             if (count_units(tc.units.data(), (int)tc.units.size(),
                             1 << tc.tp.nsub_log2, th, nullptr)) {
                 int bestk = select_set(th, tc.tp.table_set);
+                if (use_rdo) {
+                    // The trellis changes the symbol statistics, so the
+                    // histogram the tables are trained on must be the
+                    // post-trellis one.
+                    tc.tp.table_set = bestk;
+                    rdoq_tile(tc, deftabs);
+                    std::memset(th, 0, sizeof(th));
+                    if (!count_units(tc.units.data(), (int)tc.units.size(),
+                                     1 << tc.tp.nsub_log2, th, nullptr))
+                        continue;
+                    bestk = select_set(th, bestk);
+                }
                 for (int c = 0; c < kNumCtx; ++c)
                     for (int sy = 0; sy < kNumSym; ++sy)
                         hist[bestk][c][sy] += th[c][sy];
@@ -501,6 +538,14 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             // Pick the table set that codes this tile most cheaply.  The
             // eight sets span the QP range, so this is a content-adaptive
             // choice within a fixed, static-per-frame table family.
+            if (use_rdo) {
+                u32 th0[kNumCtx][kNumSym];
+                std::memset(th0, 0, sizeof(th0));
+                if (count_units(tc.units.data(), (int)tc.units.size(),
+                                1 << tc.tp.nsub_log2, th0, nullptr))
+                    tc.tp.table_set = select_set(th0, tc.tp.table_set);
+                rdoq_tile(tc, fp.tabs);
+            }
             {
                 u32 th[kNumCtx][kNumSym];
                 std::memset(th, 0, sizeof(th));
@@ -587,6 +632,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             ti.nsub_log2 = (u8)tc.tp.nsub_log2;
             ti.tskip = (u8)tc.tp.tskip;
             ti.wgt = 0;
+            ti.wm_id = (u8)tc.tp.wm_id;
             ti.ref_sel = 0;
             ti.mv_present = 0;
             ti.qp_delta = (i8)tc.tp.qp_delta;
@@ -947,7 +993,7 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
             TileParams tp;
             unpack_tile_header(w0, w1, tp);
             if ((w0 >> 3) & 1) return NXVC_ERR_BITSTREAM;  // reserved bit
-            if (w1 >> 26) return NXVC_ERR_BITSTREAM;       // reserved field
+            if (w1 >> 28) return NXVC_ERR_BITSTREAM;       // reserved field
             if (tp.layer != 0 || tp.eye != 0) return NXVC_ERR_UNSUPPORTED;
             if (tp.mode > NXVC_MODE_STEREO) return NXVC_ERR_BITSTREAM;
             if (tp.mode != NXVC_MODE_INTRA) return NXVC_ERR_UNSUPPORTED;
@@ -959,6 +1005,12 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
             if (tp.res_level != 0 && !(d->si.tools & NXVC_TOOL_RES_LEVEL))
                 return NXVC_ERR_BITSTREAM;
             if (tp.tskip && !(d->si.tools & NXVC_TOOL_TRANSFORM_SKIP))
+                return NXVC_ERR_BITSTREAM;
+            if (tp.wm_id != 0 && !(d->si.tools & NXVC_TOOL_WM_ID))
+                return NXVC_ERR_BITSTREAM;
+            // A frame that carries its own matrices leaves no room for a
+            // built-in override: the two would silently disagree.
+            if (tp.wm_id != 0 && fp.quant_matrix == 255)
                 return NXVC_ERR_BITSTREAM;
             if (!tp.chroma444 && g.chroma == NXVC_CHROMA_444 &&
                 !(d->si.tools & NXVC_TOOL_PER_TILE_CHROMA))
@@ -1013,6 +1065,7 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
             ti.nsub_log2 = (u8)tp.nsub_log2;
             ti.tskip = (u8)tp.tskip;
             ti.wgt = (u8)tp.wgt;
+            ti.wm_id = (u8)tp.wm_id;
             ti.ref_sel = (u8)tp.ref_sel;
             ti.mv_present = (u8)tp.mv_present;
             ti.qp_delta = (i8)tp.qp_delta;

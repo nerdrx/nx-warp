@@ -124,7 +124,7 @@ struct TileParams {
     int layer = 0, eye = 0, tile_index = 0, payload_len = 0;
     int mode = NXVC_MODE_INTRA, res_level = 0, chroma444 = 0, alpha_mode = 0;
     int qp_delta = 0, table_set = 0, nsub_log2 = 3, mv_present = 0;
-    int ref_sel = 0, tskip = 0, wgt = 0;
+    int ref_sel = 0, tskip = 0, wgt = 0, wm_id = 0;
     int mv_x = 0, mv_y = 0, alpha_value = 255;
 };
 
@@ -143,6 +143,7 @@ static void pack_tile_header(BW &bw, const TileParams &t) {
     w1 |= ((u32)t.ref_sel & 3) << 21;
     w1 |= ((u32)t.tskip & 1) << 23;
     w1 |= ((u32)t.wgt & 3) << 24;
+    w1 |= ((u32)t.wm_id & 3) << 26;
     bw.u32v(w0);
     bw.u32v(w1);
 }
@@ -164,6 +165,7 @@ static void unpack_tile_header(u32 w0, u32 w1, TileParams &t) {
     t.ref_sel = (w1 >> 21) & 3;
     t.tskip = (w1 >> 23) & 1;
     t.wgt = (w1 >> 24) & 3;
+    t.wm_id = (w1 >> 26) & 3;
 }
 
 // ------------------------------------------------------------- tile coding
@@ -221,7 +223,14 @@ void TileCoder::setup() {
         s.nb = s.size / 8;
         s.qp = chroma ? clamp_i32(qp + fp->chroma_qp_off, 0, 63)
                       : (p == 3 ? clamp_i32(qp + fp->alpha_qp_off, 0, 63) : qp);
-        s.wmat = chroma ? fp->wm_chroma : fp->wm_luma;
+        // wm_id 0 means "the frame's matrix"; 1..3 override it with a
+        // built-in pair for this tile alone (the degradation ladder's step 1,
+        // PAPER 4.6.1).  A frame carrying custom matrices forbids wm_id != 0.
+        if (tp.wm_id == 0) {
+            s.wmat = chroma ? fp->wm_chroma : fp->wm_luma;
+        } else {
+            s.wmat = kWeight[chroma ? 3 : tp.wm_id];
+        }
         s.maxval = g->maxval(p);
         s.dc_off = g->dc_offset(p);
         s.samples.assign((size_t)s.size * s.size, 0);
@@ -315,6 +324,139 @@ static void reconstruct_plane(PlaneState &s, const i16 *coefs, int tskip) {
         }
 }
 
+// ------------------------------------------------------------------- RDOQ
+// Rate-distortion optimized quantization.  Encoder only: it changes which
+// levels are coded, never how they are decoded, so it is invisible to
+// docs/SYNTAX.md and to the GPU decoder.
+//
+// The syntax of one coding unit is CBF, then LAST, then the levels from
+// `last` down to 0 in reverse scan order, each level's context depending on
+// the magnitude class of the *previously decoded* level.  That is a Markov
+// chain with three states, so the rate-optimal level assignment is a trellis,
+// not a per-coefficient threshold.  The recursion is
+//
+//   f[p][s] = min over m of ( rate(m | band(p), s) + D(p, m) + f[p-1][cls(m)] )
+//
+// over scan positions p ascending, where `s` is the class of the level at
+// p+1 (the one decoded just before p).  One ascending pass gives every
+// prefix cost, after which every candidate `last` is evaluated in O(1):
+//
+//   cost(L) = rate(CBF=1) + rate(LAST=L) + f_nz[L][0] + (distortion of
+//             zeroing every scan position above L)
+//
+// against the all-zero alternative rate(CBF=0) + the unit's whole energy.
+// Cost is D + lambda*R with D in squared coefficient units, which for this
+// orthonormal transform is squared sample units.
+struct RateCost {
+    i32 sym[kNumCtx][kNumSym];  // Q10 bits
+};
+
+static void build_rate_cost(const TableSet &ts, RateCost &rc) {
+    for (int c = 0; c < kNumCtx; ++c)
+        for (int s = 0; s < kNumSym; ++s) {
+            double f = (double)ts.ctx[c].freq[s] / 1024.0;
+            if (f <= 0) f = 1.0 / 1024.0;
+            rc.sym[c][s] = (i32)(-std::log2(f) * 1024.0 + 0.5);
+        }
+}
+
+// Bypass bits an escape suffix costs for magnitude m >= 15 (Exp-Golomb 3 of
+// m - 15), matching eg3_encode in entropy.cpp exactly.
+static inline int escape_bits(i32 m) {
+    u32 n = (u32)(m - 15) + 8u;
+    int b = 0;
+    while ((n >> (b + 1)) != 0) ++b;
+    return (b - kEscOrder) + 1 + b;  // j ones, one zero, b suffix bits
+}
+
+static inline i32 level_rate(const RateCost &rc, int scan_pos, int prev_class,
+                             i32 m) {
+    int ctx = level_ctx(scan_pos, prev_class);
+    i32 sym = m > 14 ? kEscSym : m;
+    i32 r = rc.sym[ctx][sym];
+    if (m > 14) r += escape_bits(m) << 10;
+    if (m != 0) r += 1 << 10;  // sign, one bypass bit
+    return r;
+}
+
+constexpr double kRdInf = 1e30;
+
+// `orig[i]` is the unquantized value at block-local index i, `step[i]` its
+// reconstruction step (the dequantizer's t, Q4).  Writes the chosen levels
+// back into `coefs`.
+static void rdoq_unit(i16 *coefs, const i32 *orig, const i32 *step, int ncoef,
+                      const u8 *scan, int ctx_cbf, int ctx_last,
+                      const RateCost &rc, double lambda) {
+    double f[64][3], fnz[64];
+    i32 best_m[64][3], best_m_nz[64];
+    double tail = 0;               // energy of scan positions above p
+    double energy = 0;
+    for (int i = 0; i < ncoef; ++i) {
+        double c = orig[i];
+        energy += c * c;
+    }
+    double prev[3] = {0, 0, 0};
+    for (int p = 0; p < ncoef; ++p) {
+        int idx = scan[p];
+        double c = orig[idx];
+        double a = c < 0 ? -c : c;
+        double st = (double)step[idx] / 16.0;
+        i32 m0 = (i32)(a / st);
+        if (m0 > 32767) m0 = 32767;
+        i32 cand[3];
+        int nc = 0;
+        cand[nc++] = 0;
+        if (m0 > 0) cand[nc++] = m0;
+        if (m0 + 1 <= 32767 && m0 + 1 != 0) cand[nc++] = m0 + 1;
+        for (int s = 0; s < 3; ++s) {
+            double best = kRdInf;
+            i32 bm = 0;
+            double bestnz = kRdInf;
+            i32 bmnz = -1;
+            for (int k = 0; k < nc; ++k) {
+                i32 m = cand[k];
+                double d = a - (double)m * st;
+                double cost = d * d + lambda * (level_rate(rc, p, s, m) / 1024.0) +
+                              prev[level_class(m)];
+                if (cost < best) { best = cost; bm = m; }
+                if (m != 0 && cost < bestnz) { bestnz = cost; bmnz = m; }
+            }
+            f[p][s] = best;
+            best_m[p][s] = bm;
+            if (s == 0) { fnz[p] = bestnz; best_m_nz[p] = bmnz; }
+        }
+        for (int s = 0; s < 3; ++s) prev[s] = f[p][s];
+    }
+
+    // Choose `last`.
+    double best_total = rc.sym[ctx_cbf][0] * lambda / 1024.0 + energy;
+    int best_last = -1;
+    tail = 0;
+    for (int p = ncoef - 1; p >= 0; --p) {
+        if (fnz[p] < kRdInf) {
+            double r = rc.sym[ctx_cbf][1];
+            if (ncoef > 1) {
+                int cls = last_class_of(p);
+                r += rc.sym[ctx_last][cls] + (kLastRawBits[cls] << 10);
+            }
+            double total = fnz[p] + tail + lambda * (r / 1024.0);
+            if (total < best_total) { best_total = total; best_last = p; }
+        }
+        double c = orig[scan[p]];
+        tail += c * c;
+    }
+
+    for (int i = 0; i < ncoef; ++i) coefs[i] = 0;
+    if (best_last < 0) return;
+    int s = 0;
+    for (int p = best_last; p >= 0; --p) {
+        i32 m = (p == best_last) ? best_m_nz[p] : best_m[p][s];
+        int idx = scan[p];
+        coefs[idx] = (i16)(orig[idx] < 0 ? -m : m);
+        s = level_class(m);
+    }
+}
+
 // Encoder side: quantize a plane into `coefs` and leave the same
 // reconstruction in s.samples that the decoder will produce.
 static void analyze_plane(PlaneState &s, i16 *coefs, int tskip, int intra_dz) {
@@ -384,6 +526,49 @@ static void analyze_plane(PlaneState &s, i16 *coefs, int tskip, int intra_dz) {
         }
 }
 
+// Re-quantize the residual blocks of a plane with the RD trellis above.  The
+// DC plane is deliberately left on the plain dead-zone quantizer: it is the
+// intra predictor, so a level chosen there changes `pred` for all 64 blocks
+// and the trellis's single-unit distortion model would be wrong about it.
+static void rdoq_plane(PlaneState &s, i16 *coefs, int tskip, bool chroma,
+                       const RateCost &rc, double lambda_scale) {
+    const int nb = s.nb, size = s.size;
+    const int ndc = nb * nb;
+    const double base = (double)kQStep[s.qp] / 16.0;
+    const double lambda = lambda_scale * base * base;
+    const u8 *scan = scan_table(64, tskip != 0);
+    const int ctx_cbf = chroma ? kCtxCbfChroma : kCtxCbfLuma;
+    const int ctx_last = chroma ? kCtxLastChroma : kCtxLastLuma;
+    i32 stepv[64];
+    if (tskip) {
+        int t = dequant_step(s.qp, 16);
+        for (int i = 0; i < 64; ++i) stepv[i] = t;
+    } else {
+        for (int i = 0; i < 64; ++i) stepv[i] = dequant_step(s.qp, s.wmat[i]);
+    }
+    i16 *bc = coefs + ndc;
+    for (int by = 0; by < nb; ++by)
+        for (int bx = 0; bx < nb; ++bx) {
+            i16 *c = bc + ((size_t)by * nb + bx) * 64;
+            i32 res[64];
+            for (int j = 0; j < 8; ++j)
+                for (int i = 0; i < 8; ++i) {
+                    int y = by * 8 + j, x = bx * 8 + i;
+                    res[j * 8 + i] = s.samples[(size_t)y * size + x] -
+                                     s.pred[(size_t)y * size + x];
+                }
+            i32 orig[64];
+            if (tskip) {
+                for (int i = 0; i < 64; ++i) orig[i] = res[i];
+            } else {
+                i16 co[64];
+                fdct8x8(res, co);
+                for (int i = 0; i < 64; ++i) orig[i] = co[i];
+            }
+            rdoq_unit(c, orig, stepv, 64, scan, ctx_cbf, ctx_last, rc, lambda);
+        }
+}
+
 }  // namespace nxvc
 
 // ============================================================== public API
@@ -430,6 +615,13 @@ void nxvc_config_default(nxvc_config *cfg) {
     cfg->custom_tables = 1;
     cfg->profile = 1;
     cfg->level = 1;
+    // Rate-distortion quantization is on by default: it is encoder-only work
+    // that costs no syntax and, measured on the quality harness, is the single
+    // largest remaining win over the plain dead-zone quantizer.
+    cfg->rdo = 1;
+    cfg->rdo_lambda_q8 = 0;   // built-in default
+    cfg->qp_search = 0;
+    cfg->wm_id = 0;           // frame matrix everywhere (see --wm)
 }
 
 void nxvc_tile_layout_get(uint32_t w, uint32_t h, nxvc_tile_layout *out) {
@@ -438,6 +630,13 @@ void nxvc_tile_layout_get(uint32_t w, uint32_t h, nxvc_tile_layout *out) {
     out->tiles_y = (h + 63) / 64;
     out->tile_count = out->tiles_x * out->tiles_y;
     out->tile_size = 64;
+}
+
+#define NXVC_STR2(x) #x
+#define NXVC_STR(x) NXVC_STR2(x)
+const char *nxvc_version_string(void) {
+    return "nxvc_ref " NXVC_STR(NXVC_VERSION) "." NXVC_STR(NXVC_BITSTREAM_MINOR)
+           " (syntax v" NXVC_STR(NXVC_VERSION) "." NXVC_STR(NXVC_BITSTREAM_MINOR) ")";
 }
 
 const char *nxvc_status_string(nxvc_status st) {

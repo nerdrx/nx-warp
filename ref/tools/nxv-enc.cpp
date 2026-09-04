@@ -17,7 +17,11 @@ static void usage() {
         "  --lossless           QP 0 + transform skip (bit exact)\n"
         "  --tskip off|on|auto  transform-skip decision (default off)\n"
         "  --nsub 0..5|auto     rANS lane count log2 (default 3 = 8 lanes)\n"
-        "  --matrix 0..3        weighting matrix (default 1)\n"
+        "  --matrix 0..3        frame weighting matrix (default 1)\n"
+        "  --wm 0..3|auto       per-tile weighting matrix id (default 0)\n"
+        "  --no-rdo             plain dead-zone quantizer (default: RD trellis)\n"
+        "  --rdo-lambda F       RD lambda scale (default 0.30)\n"
+        "  --qp-search N        try per-tile qp_delta in [-N, +N] (default 0)\n"
         "  --chroma-qp-off N    chroma QP offset\n"
         "  --custom-tables      derive and transmit probability tables\n"
         "  --tile-420           code 4:2:0 tiles inside a 4:4:4 stream\n"
@@ -37,6 +41,7 @@ int main(int argc, char **argv) {
     int lossless = 0, tile420 = 0, custom_tables = 1, rgb = 0, quiet = 0;
     int tskip = 0, nsub = 255, stats = 0;  // nsub 255 = auto lane count
     int color_space = 0;
+    int rdo = 1, rdo_lambda_q8 = 0, qp_search = 0, wm = 0;
 
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
@@ -68,6 +73,11 @@ int main(int argc, char **argv) {
         else if (a == "--quiet") quiet = 1;
         else if (a == "--stats") stats = 1;
         else if (a == "--matrix") matrix = std::atoi(val());
+        else if (a == "--rdo") rdo = 1;
+        else if (a == "--no-rdo") rdo = 0;
+        else if (a == "--rdo-lambda") rdo_lambda_q8 = (int)(std::atof(val()) * 256.0 + 0.5);
+        else if (a == "--qp-search") qp_search = std::atoi(val());
+        else if (a == "--wm") { std::string v = val(); wm = v == "auto" ? 255 : std::atoi(v.c_str()); }
         else if (a == "--chroma-qp-off") chroma_qp_off = std::atoi(val());
         else if (a == "--tskip") {
             std::string v = val();
@@ -91,6 +101,10 @@ int main(int argc, char **argv) {
     cfg.chroma = pix == "yuv444p" ? NXVC_CHROMA_444 : NXVC_CHROMA_420;
     cfg.base_qp = (uint32_t)(qp < 0 ? 0 : (qp > 63 ? 63 : qp));
     cfg.quant_matrix = (uint32_t)matrix;
+    cfg.rdo = (uint32_t)rdo;
+    cfg.rdo_lambda_q8 = (uint32_t)rdo_lambda_q8;
+    cfg.qp_search = (uint32_t)qp_search;
+    cfg.wm_id = (uint32_t)wm;
     cfg.chroma_qp_off = chroma_qp_off;
     cfg.lossless = (uint32_t)lossless;
     cfg.transform_skip = (uint32_t)tskip;
