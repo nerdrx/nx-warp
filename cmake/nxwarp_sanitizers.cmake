@@ -15,6 +15,9 @@
 # are instrumented reports false positives, so partial adoption is worse than
 # none.  This is why a sanitizer build is its own build directory.
 #
+# What 'undefined' actually turns on is NXWARP_UBSAN_CHECKS, below -- not
+# clang's `integer` group, which is not about undefined behaviour at all.
+#
 # Related, and separate:
 #   NXWARP_COVERAGE   gcov/llvm-cov instrumentation
 #   NXVC_FUZZ         libFuzzer entry points (the option the nightly grep looks
@@ -28,6 +31,35 @@ set_property(CACHE NXWARP_SANITIZER PROPERTY STRINGS
 
 option(NXWARP_COVERAGE "Instrument for gcov / llvm-cov coverage" OFF)
 option(NXWARP_FUZZ "Build libFuzzer entry points (-fsanitize=fuzzer-no-link)" OFF)
+
+# ---------------------------------------------------------------------------
+# Which UBSan checks 'undefined' means.
+#
+# Deliberately NOT clang's `integer` group. That group bundles
+# implicit-integer-truncation, implicit-integer-sign-change and
+# unsigned-shift-base, none of which are undefined behaviour: they fire on
+# correct, intentional unsigned wraparound and narrowing. The rANS coder does
+# it, hashing does it, and libstdc++ does it in headers we do not control. An
+# earlier version of this file turned the group on and 26 of 45 tests failed
+# on code that was not wrong -- which trains people to ignore the sanitizer,
+# the opposite of the point.
+#
+# The `undefined` group already carries the checks that matter for an
+# integer-only reference codec: signed-integer-overflow, shift, array bounds,
+# null, alignment, object-size, vla-bound, return, float-cast-overflow.
+#
+# This is a cache variable because these flags go through add_compile_options(),
+# which lands *after* CMAKE_CXX_FLAGS -- so a -fno-sanitize=... on the command
+# line cannot undo them. Change the policy here instead:
+#
+#   -DNXWARP_UBSAN_CHECKS=undefined,integer        everything, noise included
+#   -DNXWARP_UBSAN_CHECKS=signed-integer-overflow  just the one you are chasing
+set(NXWARP_UBSAN_CHECKS "undefined,float-divide-by-zero" CACHE STRING
+    "Comma-separated -fsanitize= list meant by NXWARP_SANITIZER=...undefined")
+
+# A UBSan report that does not abort is a report nobody notices in CI. Turn
+# this ON to collect every report in one run instead of stopping at the first.
+option(NXWARP_SANITIZE_RECOVER "Let sanitizer reports continue instead of aborting" OFF)
 
 set(_nxwarp_san_c_flags "")
 set(_nxwarp_san_link_flags "")
@@ -61,24 +93,24 @@ if(NOT NXWARP_SANITIZER STREQUAL "off")
         message(FATAL_ERROR "MemorySanitizer requires clang")
     endif()
 
-    list(JOIN _nxwarp_san_list "," _nxwarp_san_joined)
+    # Expand the bare 'undefined' token into the configured check list.
+    set(_nxwarp_san_expanded "")
+    foreach(_s IN LISTS _nxwarp_san_list)
+        if(_s STREQUAL "undefined")
+            list(APPEND _nxwarp_san_expanded "${NXWARP_UBSAN_CHECKS}")
+        else()
+            list(APPEND _nxwarp_san_expanded "${_s}")
+        endif()
+    endforeach()
+    list(JOIN _nxwarp_san_expanded "," _nxwarp_san_joined)
     list(APPEND _nxwarp_san_c_flags "-fsanitize=${_nxwarp_san_joined}"
                                     -fno-omit-frame-pointer
                                     -fno-optimize-sibling-calls
                                     -g)
     list(APPEND _nxwarp_san_link_flags "-fsanitize=${_nxwarp_san_joined}")
 
-    if("undefined" IN_LIST _nxwarp_san_list)
-        # A UBSan report that does not abort is a report nobody notices in CI.
-        list(APPEND _nxwarp_san_c_flags
-             -fno-sanitize-recover=all
-             -fsanitize=float-divide-by-zero)
-        # The reference codec is integer-only by rule, so the integer overflow
-        # checks are exactly the ones worth having.
-        if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-            list(APPEND _nxwarp_san_c_flags -fsanitize=integer
-                                            -fno-sanitize=unsigned-integer-overflow)
-        endif()
+    if("undefined" IN_LIST _nxwarp_san_list AND NOT NXWARP_SANITIZE_RECOVER)
+        list(APPEND _nxwarp_san_c_flags -fno-sanitize-recover=all)
     endif()
 
     message(STATUS "sanitizers: ${_nxwarp_san_joined}")
@@ -131,6 +163,10 @@ endif()
 
 function(nxwarp_sanitizers_summary)
     message(STATUS "  sanitizer         : ${NXWARP_SANITIZER}")
+    if(NXWARP_SANITIZER MATCHES "undefined")
+        message(STATUS "  ubsan checks      : ${NXWARP_UBSAN_CHECKS}")
+        message(STATUS "  ubsan recovers    : ${NXWARP_SANITIZE_RECOVER}")
+    endif()
     message(STATUS "  coverage          : ${NXWARP_COVERAGE}")
     message(STATUS "  fuzzing           : ${NXWARP_FUZZ}")
 endfunction()

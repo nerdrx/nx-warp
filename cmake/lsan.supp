@@ -1,0 +1,29 @@
+# LeakSanitizer suppressions for the nxvc test suite.
+#
+# Everything in here must be a leak we do NOT own and cannot fix. A suppression
+# for our own allocation is a bug being hidden; delete it and fix the leak.
+# Each entry says which module leaks, why, and how it was observed.
+#
+# Format: one `leak:<substring>` per line, matched against any function or
+# module name in the allocation stack.
+
+# Vulkan ICDs allocate per-process state in a pthread_once initialiser and
+# never free it -- the driver's lifetime is the process's, so from its point of
+# view there is nothing to free. Observed as a 256-byte direct leak from
+# warp.gpu_diff on RADV (AMD RX 7900 XTX, Mesa 1.4.354), where the ICD is
+# dlopen'd and its frames do not even resolve to a module name. The only
+# resolvable frame in that stack is pthread_once, which is why the suppression
+# is written against it.
+#
+# This is narrow in practice: our own code has no pthread_once one-time
+# initialiser that allocates. If that changes, tighten this to the driver
+# module name -- and note the name only resolves on some loaders, which is the
+# whole reason it is not written that way already.
+leak:pthread_once
+
+# The loader itself, when it resolves to a name.
+leak:libvulkan.so
+leak:libVkLayer
+leak:radeonsi_dri.so
+leak:libvulkan_lvp.so
+leak:libvulkan_radeon.so
