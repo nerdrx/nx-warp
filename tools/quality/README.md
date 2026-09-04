@@ -28,6 +28,9 @@ Everything is Python 3 with numpy. There is no C++ here.
 | `compare.py` | run the anchors and the codec, measure, analyse |
 | `report.py` | Markdown + SVG rate-distortion report |
 | `foveated_metrics.py` | eccentricity-weighted PSNR/SSIM (PAPER.md 5.1.2) |
+| `nxq/fvvdp.py` | FovVideoVDP in a headset display model (PAPER.md 5.3) |
+| `nxq/popin.py` | the temporal pop-in metric and the Tursun-Didyk model |
+| `nxq/latency.py` | the motion-to-photon budget reported with every number |
 | `dummy_codec.py` | a mock `nxv-enc`/`nxv-dec` for proving the harness |
 | `tests/` | pytest suite, registered with ctest by `tools/CMakeLists.txt` |
 | `reports/` | generated reports land here (git-ignored) |
@@ -510,6 +513,133 @@ Read the fovea/periphery gap as the check that a foveated anchor is really
 foveating. A flat anchor shows a gap of a few tenths of a dB; `x265-p-refresh`
 with the default map opens several dB between the two. If it does not, the ROI
 side data is not reaching the encoder — see the CRF trap above.
+
+---
+
+## 4b. The metric the paper actually names: `--metric`
+
+PAPER.md 5.3 is blunt that PSNR is the wrong tool, and names four replacements.
+All four are here, behind one option:
+
+```sh
+python3 compare.py --seq $NXQ_SCRATCH/seq/vr-mixed-1024-v2.yuv444p.json \
+    --codec-cmd nxv --anchors x264-intra,x265-p,x265-p-refresh \
+    --qp 0,6,12,18,24 --anchor-qp 8,16,24,32,40 \
+    --metric fvvdp,fov-ssim,popin --foveated-psnr --no-vmaf \
+    --out $NXQ_SCRATCH/results/perceptual.json
+```
+
+| `--metric` | What | Paper |
+|---|---|---|
+| `fvvdp` | FovVideoVDP through the authors' `pyfvvdp`, in a headset display model; JOD per operating point and BD-rate on JOD | 5.3, "primary objective metric" |
+| `fov-ssim` | eccentricity-weighted SSIM with the acuity model of `foveated_metrics.py` | 5.3, "secondary, cheap, per-tile" |
+| `popin` | the temporal tile-refresh metric, weighted by the Tursun and Didyk visibility model of `docs/RATECONTROL.md` 8 | 5.3, "a dedicated pop-in metric" |
+| always on | motion to photon printed under every RD table | 5.3, "latency is a quality metric" |
+
+### FovVideoVDP
+
+Install the reference implementation into the harness venv:
+
+```sh
+$NXQ_SCRATCH/venv/bin/pip install --index-url https://download.pytorch.org/whl/cpu torch
+$NXQ_SCRATCH/venv/bin/pip install pyfvvdp
+```
+
+CPU PyTorch is enough — about 0.6 s per 512x512 frame on four cores. On this
+machine the ROCm build (`--index-url .../whl/rocm6.4`) runs on the 7900 XTX at
+about 0.45 s per 1024x1024 frame, roughly six times faster, and `nxq/fvvdp.py`
+picks the GPU automatically when `torch.cuda.is_available()`. Override with
+`--fvvdp-device cpu`.
+
+The display model is a **headset**, not a monitor: `--fvvdp-headset pico4`
+(default) is 2160x2160 per eye, 100 degrees, 90 Hz, 100 nit sRGB, and the
+equivalent flat display is placed at the reference implementation's own 3 m VR
+viewing distance, from which it derives the panel size and the pixels per
+degree. Every one of those is overridable (`--fvvdp-fov`, `--fvvdp-nits`,
+`--fvvdp-ppd`).
+
+**The ppd follows the sequence, not the panel.** A Pico 4 is 15.81 ppd on axis;
+a 1024 px test clip across the same 100 degrees is 7.50 ppd, and that is what
+is used, because it is what the compared pixels actually subtend. Both numbers
+are in the results JSON. This is the same tan-projection centre density as
+`foveated_metrics.ppd_from_fov`, and a test asserts the three agree.
+
+Fixation is the view centre by default, `--fvvdp-fixation X,Y` for a fixed
+off-centre point, or `--fvvdp-gaze FILE` for a per-frame gaze log. The
+reference implementation takes one fixation per call, so a gaze log is scored
+in **runs of near-constant fixation** (`--fvvdp-gaze-tol`, default 2 degrees)
+and the JODs averaged; the cost is that the temporal filter is re-primed at
+each segment boundary, which is reported as the segment count per view.
+
+An `sbs` sequence is scored per eye and pooled as the **mean** JOD, with the
+worse eye kept as `jod_min`. A JOD is an interval scale, so a mean is
+meaningful; an MSE-domain combination would not be.
+
+> **Three caveats, stated every time a JOD is quoted.** (1) This is not yet the
+> paper's *display space*: 5.3 wants the metric run on the output of the client
+> reprojection shader so that warped-reference concealment is charged for what
+> the eye finally sees, and this harness has no reprojection simulator, so it
+> compares the decoded frame against the source frame. (2) The ppd point above.
+> (3) BD-rate on JOD uses the same Bjontegaard integral as BD-rate on PSNR; the
+> units of the delta-quality column are JOD, where 1 JOD is a 75 percent
+> preference in a pairwise comparison.
+
+### Pop-in
+
+For every tile and every frame pair the metric forms
+
+```
+pop = max(0, mean|dis[t] - dis[t-1]| - mean|ref[t] - ref[t-1]|)
+```
+
+— the frame-to-frame change the **codec** added on top of the change the
+content has, so content motion cancels — and prices it with the visibility
+model at the temporal frequency the refresh cadence excites, giving `C_M` in
+JND units. The result is a **distribution**: count, mean, median, p95, max and
+the fraction above one JND, split into the fovea disc and the periphery.
+`nxq/popin.py` is a numpy port of `rc/src/tvm.cpp` and reproduces the
+sensitivity table of `rc/RESULTS-temporal.md` exactly, so the encoder's
+scheduler and this metric cannot disagree about what is visible.
+
+Refresh events come from a **skip map**, the same `tile_count` bytes per frame
+that `nxv-enc --skip-map` consumes, which the harness can also write:
+
+```sh
+python3 compare.py --seq <seq>.json --write-skip-map ladder.skipmap --ladder 11223
+python3 compare.py --seq <seq>.json \
+    --codec-enc "nxv-enc --eyes 2 --inter on --poses <seq>.poses.json --skip-map ladder.skipmap" \
+    --codec-dec nxv-dec --codec-name nxv-ladder \
+    --anchors x265-p --qp 0,6,12,18,24 --anchor-qp 8,16,24,32,40 \
+    --metric popin --popin-skip-map ladder.skipmap --out results/ladder.json
+```
+
+`--ladder 11223` is Floeter et al.'s tolerated operating point (full rate
+inside 9.05 degrees, 1/2 to 15.55, 1/3 beyond); `12345` is the configuration
+where their discomfort scores start to move. Without `--popin-skip-map` the
+metric scores every frame with `k = 1` and reports `mode: "all-frames"`, which
+measures frame-to-frame instability rather than scheduled pop-in — the two are
+never silently mixed.
+
+The anchors are scored on the *same* refresh events, which makes them the
+control: they code every tile every frame, so whatever `C_M` they show at those
+frames is what the content and the coder produce without any withheld residual.
+
+### Motion to photon
+
+`nxq/latency.py` prints PAPER.md 4.2's budget (pose uplink, render, pipeline,
+compositor phase wait, reprojection and scanout: 25 to 35 ms) under every RD
+table, next to the harness's own measurement of the reference codec's encode
+and decode milliseconds per frame, and says `measured: false`. **It is not a
+motion-to-photon measurement** — 5.3 asks for a photodiode on the panel and an
+IMU on the headset, and neither is attached here. The reference encode time is
+*not* substituted into the budget, because the budget's 6.8 ms assumes the GPU
+encoder and the GPU decoder; the ratio is reported instead. It is printed
+anyway because a rate-distortion table with no latency column invites exactly
+the trade the paper forbids: "a codec that gains 1 JOD by adding 8 ms has
+lost."
+
+The first full run of all three metrics on the v2 sequences is in
+[`reports/perceptual-2026-09-04.md`](reports/perceptual-2026-09-04.md).
 
 ---
 
