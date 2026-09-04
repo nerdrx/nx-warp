@@ -24,16 +24,17 @@ r31_split_no_tool 9e23e34ff94a6523fd85a2b8ab347b6c BITSTREAM tile split4x4 witho
 r32_split_with_tskip b563f9bcf2ad24ddada7327a4acb5414 BITSTREAM tile split4x4 together with tskip
 r33_tab_v2_no_tables 8393c5da1fe16275edfaf13e35920d95 BITSTREAM TAB_V2 without CUSTOM_TABLES
 r34_ctx_v3_no_v2 aa3dc7303646b5e17dbeec43f6153a41 BITSTREAM CTX_V3 without CTX_V2
+r35_ctx_v3_short_table b6ee2bef56884815241e5058176e3c8a BITSTREAM CTX_V3 table set overruns the tile rows
 # --- Phase 2 (Annex D D-21)
-r18_h22_not_one 603b41210fc7359e2f1f8b646ef9d9e8 BITSTREAM warp_ext h22 != 2^29
-r19_entry_range ca52595d7e113bfa3dd42c7d7dfbd9e1 BITSTREAM a warp_ext entry beyond kEntryMax
-r20_den_range 8efe5c3ff7c4d1c9273acb340520e896 BITSTREAM den leaves [2^28, 2^30) at a picture corner
-r21_warp_no_flag 9777834271b7328c37cad057ace40097 BITSTREAM a WARP_MV tile with warp_present == 0
-r22_mode_reserved f174fcfce036a342a973ca4ba36df729 BITSTREAM mode 5 is reserved
-r23_intra_ref_sel 5ec052b5adafb8ea3c523aa20ca54277 BITSTREAM ref_sel != 0 on an INTRA tile
-r24_ref_sel_three 85b96e5f447d81efb50d4c840ad273b0 BITSTREAM ref_sel == 3 is reserved
-r25_ref_slots_wrong c09eb9aef58c449cf00d894b3987bbde BITSTREAM ref_slots != 1 << (frame_number mod 4)
-r26_tool_catmullrom aa06f756a3f12f2e8c2dd840c98f4c1c VERSION tool bit 23 FILTER_CATMULL_ROM in v1
-r27_warp_without_inter d5cbfca69012ee66f8f3a08b380068e4 BITSTREAM the WARP tool bit without INTER
-r28_stereo_left_eye e6d26f35a767e479280c0fa76164b669 BITSTREAM mode STEREO on the left eye
-r29_disparity_reserved 5761574fb60d0ef384241a391184607a BITSTREAM disparity bits 15:12 are not zero
+r18_h22_not_one 7f74cfb23676864d7322d1742ca5c25f BITSTREAM warp_ext h22 != 2^29
+r19_entry_range a4e233fdd08565efe19368e7a85f8a6c BITSTREAM a warp_ext entry beyond kEntryMax
+r20_den_range 9d9670bc3fda56c853478b918108edaf BITSTREAM den leaves [2^28, 2^30) at a picture corner
+r21_warp_no_flag 193415e7929e48e4668f908bb2ab620f BITSTREAM a WARP_MV tile with warp_present == 0
+r22_mode_reserved 4418d940cddc63a70a2603e0cbc0a7df BITSTREAM mode 5 is reserved
+r23_intra_ref_sel 62e8a99deb43210e987f623582a7a7b2 BITSTREAM ref_sel != 0 on an INTRA tile
+r24_ref_sel_three b64f957f9215791fafd1f05a995e0ef4 BITSTREAM ref_sel == 3 is reserved
+r25_ref_slots_wrong 19cd58f1b44dd2eaf6139752698142b8 BITSTREAM ref_slots != 1 << (frame_number mod 4)
+r26_tool_catmullrom 82ab43fa95bee73376064e77b3edf7fd VERSION tool bit 23 FILTER_CATMULL_ROM in v1
+r27_warp_without_inter ca8fd45f6cf1a686f0ee2bedd3f37c6f BITSTREAM the WARP tool bit without INTER
+r28_stereo_left_eye acf145ec0eb2d7ab249e805421e02ca1 BITSTREAM mode STEREO on the left eye
+r29_disparity_reserved 0f994519df8b87dc5d87e9f72ac98efc BITSTREAM disparity bits 15:12 are not zero

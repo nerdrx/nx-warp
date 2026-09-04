@@ -90,27 +90,43 @@ NXS_CONST int kCtxLastDc = 13;
 NXS_CONST int kCtxLevelDc = 14;
 NXS_CONST int kCtxMode = 15;
 NXS_CONST int kNumCtxV2 = 16;
-// [v3, docs/SYNTAX.md 9.8] the v3 context model, stream tool bit 25 CTX_V3
-// (which requires CTX_V2): CBF and LAST are additionally conditioned on
-// `prev_cbf`, whether the previous coefficient unit THIS LANE decoded in the
-// same unit class was coded.  A lane owns units l, l+N, l+2N, ..., so that
-// unit is one the lane has already finished: the kernel keeps three bits of
-// per-lane state and needs no extra barrier and no cross-lane read.  For the
-// ordinary tile (res_level 0, nsub_log2 3) a lane owns one column of blocks,
-// so prev_cbf is the coded flag of the block directly above.
+// [v3, docs/SYNTAX.md 9.9] the v3 context model, stream tool bit 25 CTX_V3
+// (which requires CTX_V2).  It keeps v2's sixteen rows and adds eleven: CBF
+// and LAST are additionally conditioned on the NEIGHBOUR CLASS this lane
+// carries -- 0 nothing to condition on, 1 the previous unit was not coded,
+// 2 coded and sparse (LAST < 4), 3 coded and dense -- and LEVEL splits the
+// coefficient at scan position LAST (two bands) and the DC term of a DC
+// plane.  The class is carried inside one plane's run of block units and
+// reset at every plane boundary; a DC-plane unit neither publishes nor
+// consumes it.
+//
+// The conditioning is per CODING UNIT -- the 8x8 coefficient group -- and
+// never per transform block, so the kernel never has to know the transform
+// size here.  A lane owns units l, l+N, l+2N, ..., so the unit the class
+// describes is one the lane has already finished: two registers of per-lane
+// state, no extra barrier and no cross-lane read.  For the ordinary tile
+// (res_level 0, nsub_log2 3) a lane owns one column of blocks, so the class
+// describes the block directly above.
 //
 //   ucls 0 = luma/alpha residual blocks, 1 = chroma blocks, 2 = the DC plane
-//   CBF   context = 2 * ucls + prev_cbf            ->  0..5
-//   LAST  context = 6 + 2 * ucls + prev_cbf        ->  6..11
-//   LEVEL context = 12 + kLevelCtx[band][prev]     -> 12..19  (blocks)
-//   LEVEL context = 20                             (DC plane, un-banded)
-//   MODE  context = 21
-NXS_CONST int kCtxV3CbfBase = 0;
-NXS_CONST int kCtxV3LastBase = 6;
-NXS_CONST int kCtxV3LevelBase = 12;
-NXS_CONST int kCtxV3LevelDc = 20;
-NXS_CONST int kCtxV3Mode = 21;
-NXS_CONST int kNumCtxV3 = 22;
+//   base_cbf[ucls]  = {0, 1, 12}    base_last[ucls] = {2, 3, 13}
+//   CBF   context = nbr == 0 ? base_cbf[ucls]
+//                            : (ucls == 1 ? 19 : 16) + (nbr - 1)
+//   LAST  context = nbr <  2 ? base_last[ucls] : (ucls == 1 ? 23 : 22)
+//   LEVEL context = 24                       (DC plane, scan position 0)
+//                 = 14                       (DC plane, elsewhere)
+//                 = band < 2 ? 25 : 26       (at scan position LAST)
+//                 = 4 + kLevelCtx[band][prev]            (otherwise)
+//   MODE  context = 15, v2's row unchanged
+NXS_CONST int kCtxCbfLumaN = 16;     // 16..18, + (nbr - 1)
+NXS_CONST int kCtxCbfChromaN = 19;   // 19..21, + (nbr - 1)
+NXS_CONST int kCtxLastLumaN = 22;
+NXS_CONST int kCtxLastChromaN = 23;
+NXS_CONST int kCtxLevelDc0 = 24;
+NXS_CONST int kCtxLevelLastLo = 25;
+NXS_CONST int kCtxLevelLastHi = 26;
+NXS_CONST int kNbrDenseLast = 4;
+NXS_CONST int kNumCtxV3 = 27;
 // Storage stride of the cumulative-frequency table.  The host uploads one
 // layout whichever model the stream selects and contexts past the coded count
 // are simply never named, so the stride is the widest model this kernel
@@ -118,8 +134,9 @@ NXS_CONST int kNumCtxV3 = 22;
 // nxvc_vkdec_parse.cpp's kToolsSupported does not list tool bit 25, so such a
 // stream is refused with VERSION rather than mis-parsed.  Implementing it is
 // this constant raised to kNumCtxV3, which takes s_cum for a workgroup's 8
-// tiles from 8192 to 11264 bytes (about 13.5 KiB of LDS in total, against a
-// 32 KiB budget), plus three bits of per-lane state and the derivation above.
+// tiles from 8192 to 13824 bytes (about 15.5 KiB of LDS in total, against a
+// 32 KiB budget), plus two registers of per-lane state and the derivation
+// above.
 NXS_CONST int kNumCtx = 16;
 NXS_CONST int kNumSym = 16;
 

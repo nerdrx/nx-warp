@@ -59,13 +59,17 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
     **rejected**: it is worse in both rate and quality at every operating point.
 - 29 further conformance vectors and 15 further rejection vectors; `v01`-`v56` and `r01`-`r29` are
   byte-identical across the v1.6 change, which is what proves both tools additive.
-- Syntax v1.6, the entropy and context package (`ref/RESULTS-ctx-b.md`): tool bit 25 `CTX_V3`, a
-  neighbour-conditioned context model whose `CBF` and `LAST` contexts are conditioned on whether
-  the previous coefficient unit *the same rANS lane* decoded in the same unit class was coded —
-  causal inside the lane, so it costs the GPU decoder no barrier and no cross-lane read, only a
-  few KiB more of shared cumulative-frequency table; and tool bit 26 `TAB_V2`, a per-row "use the
-  built-in default" flag that takes a transmitted table set from the largest single overhead in a
-  low-rate frame (14.45 %) to 3.41 %. Both ship **off by default**: `vk/decoder/passA` does not
+- Syntax v1.6, the entropy and context package (`ref/RESULTS-ctx-a.md`, `ref/RESULTS-ctx-b.md`):
+  tool bit 25 `CTX_V3`, a **27-context** model that keeps v2's sixteen rows and adds eleven —
+  `CBF` and `LAST` conditioned on the class of the previous coding unit *the same rANS lane*
+  finished in the same plane (none / uncoded / coded-sparse / coded-dense), `LEVEL` split at scan
+  position `LAST` at two bands, and a row for the DC term of a DC plane. The conditioning is per
+  **coding unit**, the 8x8 coefficient group, never per transform block, so the model never reads
+  a transform size; it is causal inside the lane, so it costs the GPU decoder no barrier and no
+  cross-lane read, only 5.6 KiB more of shared cumulative-frequency table. And tool bit 26
+  `TAB_V2`, a per-row "use the built-in default" flag that takes a transmitted table set from the
+  largest single overhead in a low-rate frame (14.45 %) to 3.41 % — which is what makes a model
+  this wide affordable, and the reason the two had to be measured together. Both ship **off by default**: `vk/decoder/passA` does not
   implement them, and an encoder default the project's own GPU decoder refuses would make "a
   default stream" mean two different things.
 - Encoder-side with them, no tool bit: `nxvc_config::table_iters`, which refines the eight

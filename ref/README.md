@@ -27,10 +27,10 @@ v1.4 build produced, which `ctest -R ref.vectors` checks on every commit. See
 
 v1.6 also adds the entropy and context package: tool bit 26 `TAB_V2` (a
 transmitted probability-table set gains a per-row "use the built-in default"
-flag and becomes variable length) and tool bit 25 `CTX_V3` (a neighbour-
-conditioned model, with `CBF` and `LAST` conditioned on whether the previous
-coefficient unit *the same rANS lane* decoded in the same unit class was
-coded). Both are additive and both ship **off**: `nxv-enc` bare reproduces a
+flag and becomes variable length) and tool bit 25 `CTX_V3` (27 contexts, with
+`CBF` and `LAST` conditioned on the class of the previous **coding unit** the
+same rANS lane finished in the same plane, and `LEVEL` split at scan position
+`LAST` and at the DC term). Both are additive and both ship **off**: `nxv-enc` bare reproduces a
 v1.4 stream byte for byte, and the 56 committed conformance vectors are
 unchanged. See [`docs/SYNTAX.md`](../docs/SYNTAX.md) 9.4.1 and 9.8 and
 [`RESULTS-ctx-b.md`](RESULTS-ctx-b.md).

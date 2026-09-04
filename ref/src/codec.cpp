@@ -116,7 +116,7 @@ struct FrameParams {
     WarpMatrix warp[2];         // warp_ext(), one record per eye
     int inter = 0;              // stream tool bit 10
     int stereo = 0;             // stream tool bit 12
-    int nctx = kNumCtxV1;   // 12, 16 or 42, from the CTX_V2/CTX_V3 tool bits
+    int nctx = kNumCtxV1;   // 12, 16 or 27, from the CTX_V2/CTX_V3 tool bits
     int tab_v2 = 0;         // tool bit 24: the compact table-set coding
     int intra_dir = 0;      // stream tool bit 17
     int split4 = 0;         // stream tool bit 19
@@ -380,6 +380,7 @@ void TileCoder::build_units() {
         u.ctx_level = nctx >= kNumCtxV2 ? (u8)kCtxLevelDc : 0;
         u.ucls = (u8)kUclsDc;
         u.ctx_v3 = (u8)ctx_v3;
+        u.ngrp = 0;   // a DC plane has no block neighbour and is not one
         u.sdh = (u8)sdh;
         units.push_back(u);
         off += ndc;
@@ -405,6 +406,9 @@ void TileCoder::build_units() {
             v.ctx_last = clast;
             v.ucls = (u8)(chroma ? kUclsChroma : kUclsLuma);
             v.ctx_v3 = (u8)ctx_v3;
+            // The neighbour group is the plane: a lane carries its class
+            // across this plane's block units and nothing else.
+            v.ngrp = ctx_v3 ? (u8)(p + 1) : (u8)0;
             v.sdh = (u8)sdh;
             units.push_back(v);
             off += 64;
@@ -924,9 +928,11 @@ struct UnitCtx {
     int v3 = 0;
     int split = 0;                // 1 = four 4x4 sub-blocks
     int split_present = 0;        // 1 = a split flag is coded for this unit
-    int level(int scan_pos, int prev_class) const {
+    // `last` is the unit's LAST scan position: v3 gives that one coefficient
+    // its own contexts, so the rate model has to know where it is.
+    int level(int scan_pos, int last, int prev_class) const {
         const int bp = band_pos(scan_pos, split != 0);
-        if (v3) return v3_ctx_level(ucls, bp, prev_class);
+        if (v3) return v3_ctx_level(ucls, scan_pos, bp, last, prev_class);
         return level_fixed != kCtxNone ? level_fixed
                                        : level_ctx(bp, prev_class);
     }
@@ -937,18 +943,17 @@ static UnitCtx block_ctx(int nctx, bool chroma) {
     UnitCtx u;
     u.ucls = chroma ? kUclsChroma : kUclsLuma;
     u.v3 = nctx >= kNumCtxV3 ? 1 : 0;
-    u.cbf = u.v3 ? v3_ctx_cbf(u.ucls, 0)
-                 : (chroma ? kCtxCbfChroma : kCtxCbfLuma);
-    u.last = u.v3 ? v3_ctx_last(u.ucls, 0)
-                  : (chroma ? kCtxLastChroma : kCtxLastLuma);
-    return u;
+    u.cbf = chroma ? kCtxCbfChroma : kCtxCbfLuma;
+    u.last = chroma ? kCtxLastChroma : kCtxLastLuma;
+    return u;   // neighbour class 0; with_nbr() applies the lane's own
 }
 
-// The same unit with its neighbour flag set: v3 shifts CBF and LAST.
-static UnitCtx with_prev_cbf(UnitCtx u, int prev_cbf) {
+// The same unit with the lane's neighbour class applied: v3 shifts CBF and
+// LAST, and everything else is unchanged.
+static UnitCtx with_nbr(UnitCtx u, int nbr) {
     if (!u.v3) return u;
-    u.cbf = v3_ctx_cbf(u.ucls, prev_cbf);
-    u.last = v3_ctx_last(u.ucls, prev_cbf);
+    u.cbf = v3_ctx_cbf(u.ucls, nbr);
+    u.last = v3_ctx_last(u.ucls, nbr);
     return u;
 }
 
@@ -960,12 +965,14 @@ static UnitCtx with_split(UnitCtx u, int split, int split_present) {
     return u;
 }
 
-// Whether a quantized unit is coded at all -- the neighbour flag it leaves
-// behind, mirroring LaneMachine::finish_coef_unit.  Encoder side.
-static int unit_cbf(const i16 *c, int ncoef) {
-    for (int i = 0; i < ncoef; ++i)
-        if (c[i] != 0) return 1;
-    return 0;
+// The neighbour class a quantized unit leaves behind, mirroring
+// LaneMachine::finish_coef_unit exactly.  Encoder side.  `scan` is needed
+// because the class depends on LAST, which is a scan position.
+static int unit_nbr_class(const i16 *c, int ncoef, const u8 *scan) {
+    int last = -1;
+    for (int p = ncoef - 1; p >= 0; --p)
+        if (c[scan[p]] != 0) { last = p; break; }
+    return nbr_class_of(last < 0 ? 0 : 1, last < 0 ? 0 : last);
 }
 
 // Bypass bits an escape suffix costs for magnitude m >= 15 (Exp-Golomb 3 of
@@ -977,9 +984,12 @@ static inline int escape_bits(i32 m) {
     return (b - kEscOrder) + 1 + b;  // j ones, one zero, b suffix bits
 }
 
+// `last` is the unit's LAST scan position, or -1 for "this position is not
+// the unit's last".  Under v3 the coefficient at LAST has contexts of its
+// own, so the rate model has to be told which case it is pricing.
 static inline i32 level_rate(const RateCost &rc, const UnitCtx &uc,
-                             int scan_pos, int prev_class, i32 m) {
-    int ctx = uc.level(scan_pos, prev_class);
+                             int scan_pos, int last, int prev_class, i32 m) {
+    int ctx = uc.level(scan_pos, last, prev_class);
     i32 sym = m > 14 ? kEscSym : m;
     i32 r = rc.sym[ctx][sym];
     if (m > 14) r += escape_bits(m) << 10;
@@ -1024,11 +1034,21 @@ static void rdoq_unit(i16 *coefs, const i32 *orig, const i32 *step, int ncoef,
             for (int k = 0; k < nc; ++k) {
                 i32 m = cand[k];
                 double d = a - (double)m * st;
+                // Interior position: priced as not-LAST.
                 double cost =
-                    d * d + lambda * (level_rate(rc, uc, p, s, m) / 1024.0) +
-                              prev[level_class(m)];
+                    d * d +
+                    lambda * (level_rate(rc, uc, p, -1, s, m) / 1024.0) +
+                    prev[level_class(m)];
                 if (cost < best) { best = cost; bm = m; }
-                if (m != 0 && cost < bestnz) { bestnz = cost; bmnz = m; }
+                // The nonzero candidate at p is used only when p is chosen as
+                // the unit's LAST, so it is priced in the LAST contexts.
+                if (m != 0) {
+                    double cnz =
+                        d * d +
+                        lambda * (level_rate(rc, uc, p, p, s, m) / 1024.0) +
+                        prev[level_class(m)];
+                    if (cnz < bestnz) { bestnz = cnz; bmnz = m; }
+                }
             }
             f[p][s] = best;
             best_m[p][s] = bm;
@@ -1248,7 +1268,7 @@ static void rdoq_plane(PlaneState &s, i16 *coefs, int tskip, bool chroma,
     const double lambda = lambda_scale * base * base;
     const u8 *scan = scan_table(64, tskip != 0);
     const UnitCtx base_uc = block_ctx(nctx, chroma);
-    u8 prev_cbf[64] = {};
+    u8 nbr[64] = {};
     i32 stepv[64];
     if (tskip) {
         int t = dequant_step(s.qp, 16);
@@ -1279,11 +1299,11 @@ static void rdoq_plane(PlaneState &s, i16 *coefs, int tskip, bool chroma,
             // This lane's previous unit of this class.  bi - nlanes is the
             // unit this lane finished before reaching bi; below nlanes the
             // lane has no predecessor yet and the flag is 0.
-            const UnitCtx uc = with_prev_cbf(
-                base_uc, bi >= nlanes ? prev_cbf[bi - nlanes] : 0);
+            const UnitCtx uc = with_nbr(
+                base_uc, bi >= nlanes ? nbr[bi - nlanes] : 0);
             rdoq_unit(c, orig, stepv, 64, scan, uc, rc, lambda);
             if (sdh) hide_sign_unit(c, orig, stepv, 64, scan);
-            prev_cbf[bi] = (u8)unit_cbf(c, 64);
+            nbr[bi] = (u8)unit_nbr_class(c, 64, scan);
         }
 }
 
@@ -1336,7 +1356,7 @@ static i32 unit_bits(const i16 *c, int ncoef, const u8 *scan,
     for (int p = last; p >= 0; --p) {
         i32 q = c[scan[p]];
         i32 m = q < 0 ? -q : q;
-        r += rc.sym[uc.level(p, prev)][m > 14 ? kEscSym : m];
+        r += rc.sym[uc.level(p, last, prev)][m > 14 ? kEscSym : m];
         if (m > 14) r += escape_bits(m) << 10;
         if (m != 0) r += 1 << 10;
         prev = level_class(m);
@@ -1374,8 +1394,10 @@ static void analyze_plane_dir(PlaneState &s, i16 *coefs, int tskip, int layer,
     // v3 conditions a unit on the previous unit THIS rANS LANE coded.  A lane
     // owns blocks bi, bi+nlanes, bi+2*nlanes, ..., so the encoder's rate model
     // has to walk the same relation the decoder will -- hence nlanes here and
-    // the per-block flag array, not "the block above".
-    u8 prev_cbf[64] = {};
+    // the per-block class array, not "the block above".  The class is per
+    // plane, so the array starts at zero for every plane, which is the
+    // decoder's reset at a group boundary.
+    u8 nbr[64] = {};
     // One scan and one step vector per split choice.  Index 0 is the 8x8
     // transform (or transform skip), index 1 the four 4x4 sub-blocks.
     const u8 *scan[2] = {scan_table(64, tskip != 0), kScan4Split};
@@ -1389,10 +1411,10 @@ static void analyze_plane_dir(PlaneState &s, i16 *coefs, int tskip, int layer,
     for (int by = 0; by < nb; ++by)
         for (int bx = 0; bx < nb; ++bx) {
             const int bi = by * nb + bx;
-            // This lane's previous unit of this class (see analyze_plane).
+            // This lane's previous unit in this plane (see analyze_plane).
             // The split choice is layered on per candidate, below.
-            const UnitCtx uc0 = with_prev_cbf(
-                base_uc, bi >= nlanes ? prev_cbf[bi - nlanes] : 0);
+            const UnitCtx uc0 =
+                with_nbr(base_uc, bi >= nlanes ? nbr[bi - nlanes] : 0);
             i16 *c = bc + (size_t)bi * 64;
             IntraRefs r;
             build_refs(s.recon.data(), fallback, size, bx, by, r);
@@ -1507,9 +1529,9 @@ static void analyze_plane_dir(PlaneState &s, i16 *coefs, int tskip, int layer,
                 s.splits[bi] = (u8)(any ? best_split : 0);
             }
             s.modes[bi] = (u8)best_mode;
-            // The neighbour flag this unit leaves for the lane, mirroring
+            // The neighbour class this unit leaves for the lane, mirroring
             // LaneMachine::finish_coef_unit exactly.
-            prev_cbf[bi] = (u8)unit_cbf(best_c, 64);
+            nbr[bi] = (u8)unit_nbr_class(best_c, 64, scan[best_split]);
             std::memcpy(c, best_c, sizeof best_c);
             for (int j = 0; j < 8; ++j)
                 for (int i = 0; i < 8; ++i)

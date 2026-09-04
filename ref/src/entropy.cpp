@@ -60,6 +60,14 @@ void LaneMachine::init(const Unit *units, int nunits, int lane, int nlanes,
 
 void LaneMachine::begin_unit() {
     u_ = &units_[ui_];
+    // The neighbour class is carried inside one group -- one plane's run of
+    // block units -- and reset at every boundary, so it never leaks from one
+    // plane into the next.  A DC-plane unit has group 0 and so acts as a
+    // boundary in both directions.
+    if (u_->ngrp != ngrp_) {
+        ngrp_ = u_->ngrp;
+        nbr_ = 0;
+    }
     if (u_->kind == UNIT_MODE) {
         mb_ = 0;
         if (u_->nbx == 0) { begin_next_unit(); return; }
@@ -93,25 +101,28 @@ void LaneMachine::begin_next_unit() {
 // The three accessors are the only place a coding context is chosen.  Under
 // the v1/v2 models the unit carries its contexts; under v3 they are derived
 // from the unit's class and this lane's neighbour class, both of which the
-// decoder already holds.  SYNTAX.md 9.8.
+// decoder already holds.  SYNTAX.md 9.9.
 int LaneMachine::ctx_cbf() const {
-    return u_->ctx_v3 ? v3_ctx_cbf(u_->ucls, prev_cbf_[u_->ucls]) : u_->ctx_cbf;
+    return u_->ctx_v3 ? v3_ctx_cbf(u_->ucls, nbr_) : u_->ctx_cbf;
 }
 int LaneMachine::ctx_last() const {
-    return u_->ctx_v3 ? v3_ctx_last(u_->ucls, prev_cbf_[u_->ucls])
-                      : u_->ctx_last;
+    return u_->ctx_v3 ? v3_ctx_last(u_->ucls, nbr_) : u_->ctx_last;
 }
-int LaneMachine::ctx_level(int scan_pos, int prev_class) const {
-    if (u_->ctx_v3) return v3_ctx_level(u_->ucls, scan_pos, prev_class);
+int LaneMachine::ctx_level(int scan_pos, int band_scan_pos,
+                           int prev_class) const {
+    if (u_->ctx_v3)
+        return v3_ctx_level(u_->ucls, scan_pos, band_scan_pos, last_,
+                            prev_class);
     return u_->ctx_level != kCtxNone ? u_->ctx_level
-                                     : level_ctx(scan_pos, prev_class);
+                                     : level_ctx(band_scan_pos, prev_class);
 }
 
-// A coefficient unit is over: record its CBF for the next unit this lane
-// reaches in the same class, and move on.  `cbf` is a value this lane has just
-// decoded, so nothing here reads another lane's state.
+// A coefficient unit is over: publish its neighbour class to the lane and
+// move on.  Both inputs -- the CBF and the LAST -- are values this lane has
+// just decoded, so nothing here reads another lane's state.  A unit outside a
+// neighbour group (a DC plane) publishes nothing.
 void LaneMachine::finish_coef_unit(int cbf) {
-    prev_cbf_[u_->ucls] = (u8)cbf;
+    if (u_->ngrp != 0) nbr_ = (u8)nbr_class_of(cbf, last_);
     begin_next_unit();
 }
 
@@ -214,7 +225,7 @@ bool LaneMachine::next(Op &op) {
             // model.  band_pos() is the detail package's; ctx_level() is the
             // entropy package's; they compose in that order and neither
             // needs to know about the other.
-            op.arg = (u8)ctx_level(band_pos(pos_, split_), prev_class_);
+            op.arg = (u8)ctx_level(pos_, band_pos(pos_, split_), prev_class_);
             op.value = 0;
             if (encoding_) {
                 i32 q = u_->coef[scan_[pos_]];

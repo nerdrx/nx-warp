@@ -204,6 +204,6 @@ int main(int argc, char **argv) {
                   "[8][16][16]");
     if (want == "v3" || want == "both")
         run_model(kNumCtxV3, 1, "kDefaultFreqV3[8][kNumCtxV3][kNumSym]",
-                  "[8][42][16]");
+                  "[8][27][16]");
     return 0;
 }

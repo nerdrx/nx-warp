@@ -105,28 +105,56 @@ enum : int {
 };
 
 // ------------------------------------------------- v3 model (tool bit 25)
-// The v3 model conditions CBF and LAST on `prev_cbf`: whether the *previous
-// coefficient unit the same lane decoded in the same unit class* was coded.
-// A lane owns units l, l+N, l+2N, ..., so that unit is always one this lane
-// has already finished -- the derivation is causal inside the lane and needs
-// no cross-lane communication, whatever the interleaved schedule does.
+// The v3 model keeps v2's sixteen rows and adds eleven, so a unit with
+// nothing to condition on codes exactly as it did under v2 and the new rows
+// only ever see conditioned data.  Three things are conditioned:
 //
-// For the ordinary tile -- res_level 0, nsub_log2 3, so N = 8 lanes over 8x8
-// blocks per plane edge -- a lane's units are exactly one column of blocks, so
-// `prev_cbf` is the coded flag of the block **directly above**.  SYNTAX.md 9.8.
+//   * CBF and LAST on the **neighbour class** the lane carries: 0 = nothing
+//     to condition on, 1 = the previous unit was not coded, 2 = it was coded
+//     and sparse (`LAST < kNbrDenseLast`), 3 = coded and dense.  Four values,
+//     not one bit: the sparse/dense split is a large part of the measured
+//     gain (JUDGE-ctx.md 3, ctx-b's own sweep never tested it).
+//   * LEVEL at scan position LAST, at two bands.  That coefficient is nonzero
+//     by construction, so it cannot share a context with positions that may
+//     be zero.
+//   * the DC term of a DC plane, which is a block mean rather than a residual.
 //
-// Richer classes were measured and rejected: splitting on LAST and on mean
-// magnitude (4 classes), and giving LEVEL its own neighbour family, each cost
-// more in transmitted-table bits than they returned.  ref/RESULTS-ctx-b.md 2.
+// **The conditioning is per CODING UNIT -- the 8x8 coefficient group -- and
+// never per transform block** (docs/MERGE-PLAN.md 4.5, docs/SYNTAX.md 9.9).
+// A lane owns units l, l+N, l+2N, ... and decodes them in that order, so the
+// unit the class describes is always one this lane has already finished: the
+// derivation is causal inside the lane, needs no cross-lane read and no
+// barrier, and never asks what transform produced the coefficients.  For the
+// ordinary tile (res_level 0, nsub_log2 3, N = 8 over 8x8 blocks per plane
+// edge) a lane's units are exactly one column of blocks and the class
+// describes the block **directly above**.
+//
+// The class is carried across one plane's run of block units and reset at
+// every plane boundary, so it never leaks between planes; DC-plane units
+// neither publish nor consume it.
 enum : int {
-    kCtxV3CbfBase = 0,                  // + 2 * ucls + prev_cbf  ->  0..5
-    kCtxV3LastBase = 2 * kNumUcls,      // + 2 * ucls + prev_cbf  ->  6..11
-    kCtxV3LevelBase = 4 * kNumUcls,     // + kLevelCtx[band][prev] -> 12..19
-    kCtxV3LevelDc = kCtxV3LevelBase + 8,
-    kCtxV3Mode = kCtxV3LevelDc + 1,
-    kNumCtxV3 = kCtxV3Mode + 1,         // 22
+    kCtxCbfLumaN = kNumCtxV2,   // 16..18, + (nbr - 1), luma/alpha
+    kCtxCbfChromaN = 19,        // 19..21, + (nbr - 1)
+    kCtxLastLumaN = 22,         // LAST, luma/alpha, neighbour coded
+    kCtxLastChromaN = 23,       // LAST, chroma, neighbour coded
+    kCtxLevelDc0 = 24,          // LEVEL at scan position 0 of a DC plane
+    kCtxLevelLastLo = 25,       // LEVEL at scan position LAST, band 0..1
+    kCtxLevelLastHi = 26,       // LEVEL at scan position LAST, band 2..3
+    kNumCtxV3 = 27,
     kNumCtx = kNumCtxV3   // storage; the coded count is kNumCtxV1/V2/V3
 };
+
+// The number of contexts a stream codes, and therefore the size of a
+// transmitted table set under the fixed-length format.  SYNTAX.md 9.9.
+inline int coded_context_count(bool ctx_v2, bool ctx_v3) {
+    if (ctx_v3) return kNumCtxV3;
+    return ctx_v2 ? kNumCtxV2 : kNumCtxV1;
+}
+
+// A coded unit is "dense" when its LAST is at scan position kNbrDenseLast or
+// beyond.  The same split point as kSdhMinLast, by measurement rather than by
+// construction, which is why they are separate names.
+constexpr int kNbrDenseLast = 4;
 
 // "no context selected" for Unit::ctx_level / Unit::ctx_mode.  Context 0 is
 // kCtxCbfLuma, which is never a legal LEVEL or MODE context, so 0 is an
@@ -219,24 +247,56 @@ constexpr u8 kDeadZoneTskipInter = 24;  // 1/2, the inter transform-skip value
 inline i32 dead_zone(i32 t, int f) { return (t * f) / kDeadZoneUnit; }
 
 // The context the intra mode symbol is coded in, or kCtxNone for the bypass
-// binarisation of the v1 model.
+// binarisation of the v1 model.  v3 keeps v2's row 15 -- the mode-symbol
+// context split was built, retrained and MEASURED WORSE (0.70-1.81 %) and is
+// not in this model.
 inline int mode_context(int nctx) {
-    if (nctx >= kNumCtxV3) return kCtxV3Mode;
     return nctx >= kNumCtxV2 ? kCtxMode : kCtxNone;
 }
 
-inline int v3_ctx_cbf(int ucls, int prev_cbf) {
-    return kCtxV3CbfBase + 2 * ucls + prev_cbf;
+// ------------------------------------------------- v3 context derivation
+// These three are the ONLY places a v3 context is chosen.  Each is arithmetic
+// over the unit's class and the lane's neighbour class -- never a ladder on
+// what the v2 context happened to be, which is what made the model hard to
+// read on the branch it came from.
+//
+// The v2 row a unit class falls back to when there is nothing to condition
+// on.  Indexed by kUclsLuma / kUclsChroma / kUclsDc.
+constexpr int kV3CbfBase[kNumUcls] = {kCtxCbfLuma, kCtxCbfChroma, kCtxCbfDc};
+constexpr int kV3LastBase[kNumUcls] = {kCtxLastLuma, kCtxLastChroma,
+                                       kCtxLastDc};
+
+// `nbr` is the lane's neighbour class: 0 none, 1 uncoded, 2 coded sparse,
+// 3 coded dense.  Class 0 keeps the v2 context.
+inline int v3_ctx_cbf(int ucls, int nbr) {
+    if (nbr == 0) return kV3CbfBase[ucls];
+    return (ucls == kUclsChroma ? kCtxCbfChromaN : kCtxCbfLumaN) + (nbr - 1);
 }
-inline int v3_ctx_last(int ucls, int prev_cbf) {
-    return kCtxV3LastBase + 2 * ucls + prev_cbf;
+// LAST splits coded from not-coded only: the sparse/dense distinction pays on
+// CBF, where it says how likely a coefficient is at all, and not on LAST,
+// where the unit's own magnitudes already say it.
+inline int v3_ctx_last(int ucls, int nbr) {
+    if (nbr < 2) return kV3LastBase[ucls];
+    return ucls == kUclsChroma ? kCtxLastChromaN : kCtxLastLumaN;
 }
-// LEVEL is not conditioned on the neighbour: the previous level inside the
-// unit already says what the neighbour would (RESULTS-ctx-b.md 2).  The DC
-// plane keeps one un-banded context, exactly as v2 gave it.
-inline int v3_ctx_level(int ucls, int scan_pos, int prev_class) {
-    if (ucls == kUclsDc) return kCtxV3LevelDc;
-    return kCtxV3LevelBase + kLevelCtx[band_of(scan_pos)][prev_class];
+// LEVEL is not conditioned on the neighbour -- the previously decoded level
+// inside the same unit already carries that, and about this unit rather than
+// the one before it.  It does split the coefficient at scan position LAST,
+// which is nonzero by construction, and it gives the DC term of a DC plane
+// its own row.  `band_scan_pos` is the scan position AFTER the 4x4-split band
+// mapping (6.8); `scan_pos` and `last` are raw positions in the unit.
+inline int v3_ctx_level(int ucls, int scan_pos, int band_scan_pos, int last,
+                        int prev_class) {
+    if (ucls == kUclsDc) return scan_pos == 0 ? kCtxLevelDc0 : kCtxLevelDc;
+    if (scan_pos == last)
+        return band_of(band_scan_pos) < 2 ? kCtxLevelLastLo : kCtxLevelLastHi;
+    return level_ctx(band_scan_pos, prev_class);
+}
+
+// The neighbour class a finished coefficient unit publishes to its lane.
+inline int nbr_class_of(int cbf, int last) {
+    if (cbf == 0) return 1;
+    return last < kNbrDenseLast ? 2 : 3;
 }
 
 // Sign data hiding (tool bit 22): a unit whose LAST is at scan position

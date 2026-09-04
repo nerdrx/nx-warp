@@ -259,7 +259,6 @@ static Result build(const VecSpec &v) {
     cfg.sign_hide = (uint32_t)v.sdh;
     cfg.split4x4 = (uint32_t)v.spl;
     cfg.chroma_from_luma = (uint32_t)v.cfl;
-    cfg.ctx_v3 = v.ctx >= 2 ? 1u : 0u;
     cfg.tab_v2 = (uint32_t)v.tab;
 
     nxvc_status st;
@@ -477,20 +476,25 @@ static Result build_inter(const InterSpec &v) {
     cfg.stereo = (uint32_t)v.stereo;
     cfg.intra_period = (uint32_t)v.iperiod;
     cfg.ref_sel = (uint32_t)v.ref_sel;
-    cfg.custom_tables = 0;
-    // The Phase 2 set pins the inter path, so it is held at the tool set
-    // Phase 2 defined it with.  The v1.5 intra detail tools are on by default
-    // and would apply to an inter stream's INTRA refresh tiles, but nothing
-    // in this package measured that, and turning them on here would move
-    // twelve conformance vectors that have nothing to do with it.  A package
-    // that measures the intra tools inside inter streams should turn them on
-    // here and regenerate v45-v56 as its own before/after.
+    // TAB_V2 needs a transmitted table set to compact, so a vector that asks
+    // for it asks for custom tables too.
+    cfg.custom_tables = (uint32_t)v.tab;
+    // The v1.6 intra detail tools are on by default and would apply to an
+    // inter stream's INTRA refresh tiles, but nothing in the detail package
+    // measured that, and turning them on here would move twelve conformance
+    // vectors that have nothing to do with it.  v45-v56 are therefore held at
+    // the tool set Phase 2 defined them with.  A package that measures the
+    // intra tools inside inter streams should turn them on here and
+    // regenerate v45-v56 as its own before/after.
     cfg.split4x4 = 0;
     cfg.chroma_from_luma = 0;
-    // The same reasoning holds for the entropy package's two bits: they ship
-    // off, and the Phase 2 vectors predate them.
-    cfg.ctx_v3 = 0;
-    cfg.tab_v2 = 0;
+    // The entropy package's two bits ARE driven from the spec: v66 and v67
+    // exist to exercise CTX_V3 and TAB_V2 inside an inter stream, where the
+    // unit sequence is not the intra one, and a column the builder ignores is
+    // a vector that tests nothing.
+    cfg.ctx_v2 = v.ctx >= 1 ? 1u : 0u;
+    cfg.ctx_v3 = v.ctx >= 2 ? 1u : 0u;
+    cfg.tab_v2 = (uint32_t)v.tab;
 
     nxvc_status st;
     nxvc_encoder *e = nxvc_encoder_create(&cfg, &st);
@@ -829,6 +833,7 @@ static const RejectSpec kRejects[] = {
     {"r32_split_with_tskip",  "tile split4x4 together with tskip",        NXVC_ERR_BITSTREAM,   1},
     {"r33_tab_v2_no_tables",  "TAB_V2 without CUSTOM_TABLES",             NXVC_ERR_BITSTREAM,   1},
     {"r34_ctx_v3_no_v2",      "CTX_V3 without CTX_V2",                    NXVC_ERR_BITSTREAM,   1},
+    {"r35_ctx_v3_short_table","CTX_V3 table set overruns the tile rows",  NXVC_ERR_BITSTREAM,   1},
 };
 static const int kNumRejects = (int)(sizeof(kRejects) / sizeof(kRejects[0]));
 
@@ -913,6 +918,17 @@ static std::vector<uint8_t> make_reject(int idx, const std::vector<uint8_t> &bas
         // names a model on top of CTX_V2.
         case 20: set_tool(b, NXVC_TOOL_TAB_V2); break;
         case 21: set_tool(b, NXVC_TOOL_CTX_V3); break;
+        // A CTX_V3 stream's transmitted table sets are 27 rows, not 16, so
+        // declaring the model and set 0 without lengthening the frame runs the
+        // table area past `frame_bytes`.  The variable-length area of TAB_V2
+        // needs this vector more than the fixed-length one did: under TAB_V2
+        // the area's length is not a function of the context count at all, so
+        // nothing but the TRUNCATED check bounds it.
+        case 22:
+            set_tool(b, NXVC_TOOL_CTX_V2);
+            set_tool(b, NXVC_TOOL_CTX_V3);
+            b[kOffFrame + 32] |= 0x01;      // tables_present bit 0
+            break;
         default: break;
     }
     return b;

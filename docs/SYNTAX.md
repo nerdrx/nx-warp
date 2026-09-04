@@ -1666,9 +1666,13 @@ one of them.
 
 Tool bit 25 `CTX_V3` requires `CTX_V2` (bit 21); a stream setting it without
 bit 21 is `BITSTREAM`. It keeps everything v2 says about *which* symbols are
-coded and changes only *which context* each one is coded in. There are **22
+coded and changes only *which context* each one is coded in. There are **27
 contexts of 16 symbols**, and a third built-in table family
 (`kDefaultFreqV3`).
+
+The model keeps v2's sixteen rows and adds eleven. A unit with nothing to
+condition on codes in exactly the row v2 gave it, so the new rows only ever
+see conditioned data.
 
 **Unit class.** Every coefficient unit belongs to one of three classes,
 derived from its position in the tile (9.1) and never transmitted:
@@ -1681,50 +1685,92 @@ derived from its position in the tile (9.1) and never transmitted:
 
 A mode unit (9.6) has no class and does not participate.
 
-**The neighbour flag.** Each rANS lane keeps three flags `prev_cbf[0..2]`, one
-per unit class, **all zero at the start of the tile**. When the lane finishes a
-coefficient unit of class `ucls` it sets `prev_cbf[ucls]` to that unit's `CBF`.
+**The neighbour class.** Each rANS lane keeps two registers: a neighbour class
+`nbr` and the *group* it belongs to. A **group** is one plane's run of block
+units; a DC-plane unit is in no group. On beginning a unit whose group differs
+from the one the lane holds, the lane sets its group to the new one and resets
+`nbr` to 0. On finishing a coefficient unit that is in a group, the lane sets
 
-A lane owns units `l, l+N, l+2N, ...` and decodes them in that order (9.1), so
-the unit `prev_cbf[ucls]` describes is always one **this lane has already
-finished**. The derivation is causal inside the lane: it needs no cross-lane
-communication and no barrier beyond the one the schedule already has, whatever
-the interleaved order does with the other lanes. It does depend on `N`, which
-is `2^nsub_log2` from the tile header and is parsed before the payload, so
-nothing about tile independence changes.
+| `nbr` | the unit just finished |
+|---|---|
+| 0 | there is none -- start of a group |
+| 1 | `CBF == 0`, not coded |
+| 2 | coded, `LAST < 4` (sparse) |
+| 3 | coded, `LAST >= 4` (dense) |
+
+Four values, not one bit. The sparse/dense split of a coded neighbour is a
+large part of the model's measured gain and is what a one-bit neighbour
+misses.
+
+**This conditioning is per CODING UNIT -- the 8x8 coefficient group -- and
+never per transform block.** A lane owns units `l, l+N, l+2N, ...` and decodes
+them in that order (9.1), so the unit `nbr` describes is always one **this lane
+has already finished**. The derivation is causal inside the lane: it needs no
+cross-lane communication and no barrier beyond the one the schedule already
+has, whatever the interleaved order does with the other lanes. It does depend
+on `N`, which is `2^nsub_log2` from the tile header and is parsed before the
+payload, so nothing about tile independence changes.
+
+The context derivation **never reads the transform size**. A unit that sets
+the 4x4 split flag of 6.8 is still one 64-coefficient coding unit, and the
+only thing the split changes is the band a scan position falls in (9.3),
+which is applied before a `LEVEL` context is chosen. Were a larger transform
+ever to span several coding units, each of them would be conditioned on the
+previous unit its own lane decoded, exactly as an 8x8 block's is, and nothing
+in this section would notice they came from one transform.
 
 For the ordinary tile -- `res_level` 0, `nsub_log2` 3, so `N = 8` and each
 plane is 8x8 blocks -- a lane's units are exactly **one column of blocks**, and
-`prev_cbf` is the `CBF` of the block **directly above**.
+`nbr` describes the block **directly above**.
 
-**The context assignment.**
+**The context assignment.** Rows 0-15 are v2's, unchanged. `base_cbf[ucls]` is
+v2's `CBF` row for the class (0 luma, 1 chroma, 12 DC) and `base_last[ucls]`
+its `LAST` row (2, 3, 13).
 
 | index | use |
 |---|---|
-| 0-5 | `CBF`, `2 * ucls + prev_cbf` |
-| 6-11 | `LAST`, `6 + 2 * ucls + prev_cbf` |
-| 12-19 | `LEVEL`, residual block: `12 + kLevelCtx[band][prev]` |
-| 20 | `LEVEL`, DC-plane unit (one context, no banding, as v2's 14) |
-| 21 | `MODE`, the intra mode symbol (9.6), as v2's 15 |
+| 0-15 | v2's sixteen rows, used whenever there is nothing to condition on |
+| 16-18 | `CBF`, luma/alpha, `nbr` 1..3: `16 + (nbr - 1)` |
+| 19-21 | `CBF`, chroma, `nbr` 1..3: `19 + (nbr - 1)` |
+| 22 | `LAST`, luma/alpha, neighbour coded (`nbr >= 2`) |
+| 23 | `LAST`, chroma, neighbour coded (`nbr >= 2`) |
+| 24 | `LEVEL` at scan position 0 of a DC-plane unit |
+| 25 | `LEVEL` at scan position `LAST`, band 0-1 |
+| 26 | `LEVEL` at scan position `LAST`, band 2-3 |
 
-`band`, `prev` and `kLevelCtx` are exactly 9.3's. `LEVEL` is **not**
-conditioned on the neighbour: the previously decoded level inside the same unit
-already carries that information, and about this unit rather than about the one
-before it. The DC plane keeps one un-banded `LEVEL` context because it is a
-dense low-frequency image whose positions do not separate the way an AC block's
-do -- that is v2's finding and v3 does not revisit it.
+So `CBF` uses `base_cbf[ucls]` when `nbr == 0` and one of 16-21 otherwise;
+`LAST` uses `base_last[ucls]` when `nbr < 2` and 22 or 23 otherwise. `LAST`
+does not split sparse from dense: that distinction says how likely a
+coefficient is at all, which is `CBF`'s question, and by the time `LAST` is
+coded the unit's own `CBF` has already answered it.
+
+`LEVEL` is **not** conditioned on the neighbour -- the previously decoded level
+inside the same unit already carries that information, and about this unit
+rather than about the one before it. It does split two cases v2 shared:
+
+* **the coefficient at scan position `LAST`**, which is nonzero by
+  construction and therefore cannot share a context with positions that may be
+  zero. Two rows, by band, using the band of the scan position after the 4x4
+  split mapping of 6.8;
+* **the DC term of a DC-plane unit** (scan position 0), which is a block mean
+  rather than a residual. Other positions of a DC-plane unit keep v2's single
+  un-banded row 14.
+
+`band`, `prev` and `kLevelCtx` are exactly 9.3's, and the `MODE` symbol keeps
+v2's row 15 -- a mode-symbol context split was built, retrained and measured
+**worse**, and is not in this model.
 
 Everything else is unchanged: the alphabets, the `LAST` classes, the escape
 code, the sign, sign data hiding and the mode unit's binarisation all read
 exactly as 9.3, 9.6 and 9.7 write them.
 
 **What it costs a GPU decoder.** Nothing per symbol: the context index is one
-add and one table lookup either way, and `prev_cbf` is one store per *unit*, of
-a value the lane has just decoded. Pass A's shared cumulative-frequency table
-grows with the context count -- `s_cum[8][22][16]` is 11264 bytes against 8192
-at 16 contexts -- so a 64-thread workgroup of 8 tiles needs about **13.5 KiB**
-of LDS including the scan tables, against 10 KiB today and a 32 KiB budget. The
-three flags are 3 bits of per-lane state.
+compare and one add on registers the lane already holds, then the same table
+lookup. Pass A's shared cumulative-frequency table grows with the context
+count -- `s_cum[8][27][16]` is 13824 bytes against 8192 at 16 contexts -- so a
+64-thread workgroup of 8 tiles needs about **15.5 KiB** of LDS including the
+scan tables, against 10 KiB today and a 32 KiB budget. The per-lane state is
+two registers: a 2-bit class and the group it belongs to.
 
 ### 9.5 rANS
 
@@ -2537,31 +2583,58 @@ inconsistent. Each is a decision, not an interpretation.
     geometry except the common one, and a lane cannot read another lane's
     result without a barrier the schedule does not have -- the two lanes are
     not at the same unit at the same time, and a unit spans many scheduling
-    rounds. Conditioning on "the previous unit
-    this lane finished, in the same unit class" is causal by construction under
-    every schedule, and for the ordinary tile (`res_level` 0, `nsub_log2` 3, so
-    8 lanes over 8x8 blocks) it **is** the block above, because a lane owns
-    exactly one column of blocks. The price is that the context derivation
-    depends on `nsub_log2`; that field is in the tile header and is parsed
-    before the payload, so nothing about tile independence changes.
+    rounds. Conditioning on "the previous CODING UNIT this lane finished, in
+    the same plane" is causal by construction under every schedule, and for the
+    ordinary tile (`res_level` 0, `nsub_log2` 3, so 8 lanes over 8x8 blocks) it
+    **is** the block above, because a lane owns exactly one column of blocks.
+    The price is that the context derivation depends on `nsub_log2`; that field
+    is in the tile header and is parsed before the payload, so nothing about
+    tile independence changes.
 
-61. **The neighbour is one bit, not a class.** The brief this model was built
-    to wanted the neighbour split by level magnitude and by a position class as
-    well as by `CBF`. Six layouts were built and retrained --- 2, 3 and 4
-    neighbour classes, each with and without a second `LEVEL` family --- and
-    the **smallest won on rate as well as on size** (`ref/RESULTS-ctx-b.md` 2).
-    Splitting a coded neighbour by `LAST` and by mean magnitude costs twelve
-    more transmitted rows per set and returns less than it costs at every
-    operating point on both pixel formats, and giving `LEVEL` a neighbour
-    family changes the total by 0.01 % over eight points. What survives is
-    "was the lane's previous unit of this class coded at all", on `CBF` and
-    `LAST`: six contexts more than v2.
+    The unit of conditioning is the **8x8 coefficient group and nothing
+    larger**. Were a transform ever to span several groups, each group would
+    still be conditioned on the previous group its own lane decoded, and the
+    context derivation would not know the transform existed. That keeps this
+    model orthogonal to the transform-size tools and keeps 9.1's rule -- a
+    unit's syntax may depend only on values its own lane has produced --
+    exactly as it was.
 
-62. **`CTX_V3` does not re-split the DC plane's `LEVEL` contexts, and it does
-    not read the transform size.** The DC plane keeps one un-banded `LEVEL` context,
-    exactly as v2 gave it; banding a dense low-frequency image by scan position
-    was measured not to pay when v2 was built and the neighbour conditioning
-    does not change that argument. Transform size is not an axis this syntax
+61. **The neighbour is four classes on `CBF` and two on `LAST` --- and the
+    measurement that said one bit was enough was measuring the wrong thing.**
+    A layout sweep built and retrained six variants --- 2, 3 and 4 neighbour
+    classes, each with and without a second `LEVEL` family --- and concluded
+    that the **smallest won**, on rate as well as on size
+    (`ref/RESULTS-ctx-b.md` 2). That sweep is honest and reproducible, and this
+    model does not follow it, because the sweep was run against a *fixed-length*
+    transmitted table set, where every added context costs 80 bits per set
+    whether or not it earns them. Under `TAB_V2` (9.4.1) a row that stays at
+    its default costs **one bit**, and the arithmetic that made a wide model
+    lose no longer holds: the four-class neighbour plus the two `LEVEL` splits
+    measure -5.42 / -3.95 / -9.93 BD-rate points against the narrow model's
+    -0.53 / -0.66 / -3.52 on the same material and the same settings
+    (`JUDGE-ctx.md` 2).
+
+    What survives: a coded neighbour is split **sparse from dense** at
+    `LAST < 4` on `CBF`, where it says how likely a coefficient is at all, and
+    not on `LAST`, where the unit's own `CBF` has already answered that.
+    `LEVEL` gets no neighbour family --- that part of the sweep stands, and it
+    was worth 0.01 % over eight points.
+
+    The general lesson is worth more than the entry: **a width decision
+    measured under one table format is not a width decision.** The two tools
+    had to be measured together, and separately they each pointed the wrong
+    way.
+
+62. **`CTX_V3` splits `LEVEL` at `LAST` and at the DC term, and nowhere else
+    --- and it does not read the transform size.** The coefficient at scan
+    position `LAST` is nonzero by construction, so sharing a context with
+    positions that may be zero costs it the whole probability mass at symbol 0;
+    two rows by band recover that. The DC term of a DC plane is a block mean
+    rather than a residual and gets its own row. Beyond those two, The DC plane keeps one un-banded `LEVEL` context,
+    the DC plane keeps one un-banded `LEVEL` context, exactly as v2 gave it;
+    banding a dense low-frequency image by scan position was measured not to
+    pay when v2 was built and the neighbour conditioning does not change that
+    argument. Transform size is not an axis this syntax
     has: every residual unit is 64 coefficients and every DC-plane unit already
     has contexts of its own. Tool bit 19 `XFORM_4X4_SPLIT` **is** built (6.8),
     and it deliberately did not become one: a split unit is still 64
@@ -2584,6 +2657,46 @@ inconsistent. Each is a decision, not an interpretation.
     concentrated near its default, it is *shifted* from it, so the small-value
     code loses more on the shifted symbols than it gains on the unshifted ones.
     `ref/RESULTS-ctx-b.md` has the numbers.
+
+64. **`LEVEL` at scan position `LAST` gets its own contexts, and that is where
+    a large part of the model's gain is.** The value coded at `LAST` cannot be
+    zero: `LAST` is defined as the highest scan position with a nonzero
+    coefficient. Coding it in a context shared with positions that may be zero
+    spends the whole probability mass at symbol 0 on an outcome that cannot
+    happen, at every unit in the stream. Two rows, split by band, cost 160 bits
+    per transmitted set -- one bit each under `TAB_V2` when they do not pay --
+    and are among the cheapest coding gains in the whole entropy layer. The
+    narrow model that lost this tournament never tested it.
+
+65. **REJECTED: reassigning tiles to trained tables without retraining.** The
+    encoder scored every tile against the *built-in* table sets even in the
+    emitting pass, where the frame carries trained ones -- a real bug, found
+    independently twice. The obvious fix, reassign each tile against the
+    trained sets, is **worse than doing nothing**: measured at **-1.8 %** at
+    4:4:4 QP 16, it makes the stream *larger*, because assignment and training
+    have to agree and half a Lloyd step disagrees with both. It also has no
+    tool bit and no off switch, so an encoder that ships it cannot reproduce a
+    v1.4 stream at all, and it rewrites four shipped conformance vectors
+    (`v34`, `v41`, `v42`, `v44`) to do it. The whole Lloyd step -- reassign,
+    retrain, repeat -- is what shipped, as `nxvc_config::table_iters`. Recorded
+    so nobody rebuilds the half.
+
+66. **12-bit probabilities are the thing to take at the next version break,
+    and only then.** Widening `kProbBits` from 10 to 12 was built and measured
+    on both models: it is worth well under a percent (one measurement put it at
+    0.23-1.23 %, another at a mean of -0.17 % with two of eight points the
+    wrong way), and the reason it is small is that the binding precision is the
+    **5-bit log-domain delta** of a transmitted row, not the 10-bit total. It
+    changes every stream, so it cannot be additive and cannot have a tool bit;
+    it belongs to a version break, with the delta precision widened at the same
+    time or not at all. `NXVC_PROB_BITS` is the build knob that keeps the
+    option open.
+
+67. **16 rANS lanes were measured and rejected.** Doubling the lane count
+    costs **+6 % to +33 %** in rate: each lane flushes four bytes at the end of
+    a tile, and at the tile sizes this syntax uses the flush is already a
+    visible fraction of a small tile. `nsub_log2` remains a per-tile field so a
+    stream that wants the parallelism can pay for it; the default does not.
 
 ## Appendix B: where the bits go
 

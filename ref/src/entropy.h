@@ -53,6 +53,10 @@ struct Unit {
     // package's lane conditioning state, and neither reads the other.
     u8 ucls;          // kUclsLuma / kUclsChroma / kUclsDc
     u8 ctx_v3;        // 1 = derive CBF/LAST from ucls and the lane state
+    u8 ngrp;          // v3: neighbour group (plane + 1) for block units, 0
+                      // for DC-plane and mode units.  The lane's neighbour
+                      // class is carried within a group and reset between
+                      // groups, so it never leaks across a plane boundary.
 };
 
 // --------------------------------------------------------------- lane ops
@@ -88,7 +92,7 @@ class LaneMachine {
     void finish_coef_unit(int cbf);
     int ctx_cbf() const;
     int ctx_last() const;
-    int ctx_level(int scan_pos, int prev_class) const;
+    int ctx_level(int scan_pos, int band_scan_pos, int prev_class) const;
 
     const Unit *units_ = nullptr;
     int nunits_ = 0, ui_ = 0, stride_ = 1;
@@ -109,8 +113,12 @@ class LaneMachine {
     int mpm_ = 0;
     i32 sum_abs_ = 0;        // sign data hiding: sum of |level| in the unit
     bool hide_ = false;      // ... and whether this unit hides a sign
-    // v3: whether this lane's previous unit of each class was coded.
-    u8 prev_cbf_[kNumUcls] = {0, 0, 0};
+    // v3 neighbour state: the class of the previous coefficient unit this
+    // lane finished in the current group, and which group that was.  Two
+    // registers, written once per unit and read once per unit; no cross-lane
+    // traffic and no barrier.  SYNTAX.md 9.9.
+    u8 nbr_ = 0;
+    u8 ngrp_ = 0;
 };
 
 // ------------------------------------------------------------ rANS decoder

@@ -157,8 +157,8 @@ About 10 KiB, up from 7.5 when the context count was 12 (`docs/SYNTAX.md` 9.3,
 tool bit 21 `CTX_V2`), against a 32 KiB budget for the workgroup's 8 tiles. The
 table is always uploaded at the 16-context stride whichever model the stream
 selects, so the host has one layout to build and contexts past the coded count
-simply are never selected. Implementing `CTX_V3` (tool bit 25, 22 contexts)
-takes `s_cum` to 11264 bytes and the total to about 13.5 KiB. The paper assumed a
+simply are never selected. Implementing `CTX_V3` (tool bit 25, 27 contexts)
+takes `s_cum` to 13824 bytes and the total to about 15.5 KiB. The paper assumed a
 1024-entry `slot2sym` table per context, but a workgroup holds 8 tiles that may
 each name a different `table_set`, and 8 sets x 12 contexts x 1024 bytes does not
 fit. The kernel stores cumulative frequencies instead and finds the symbol with a
@@ -187,22 +187,34 @@ than a derivation: `kCtxNone` means the banded contexts of 9.3, anything else
 is used as-is.
 
 **`CTX_V3` is specified but not implemented here.** `nxvc_vkdec_parse.cpp`
-does not list tool bits 24 or 25 in `kToolsSupported`, so a stream that sets
-either is refused with `VERSION` rather than mis-parsed. What implementing it
-would take is worth writing down, because it is unusually little.
+does not list tool bits 25 or 26 in `kToolsSupported`, so a stream that sets
+either is refused with `VERSION` rather than mis-parsed. That is also why the
+reference encoder ships both **off**: a default stream the project's own GPU
+decoder rejects would make "a default stream" mean two different things. What
+implementing it would take is worth writing down, because it is unusually
+little.
 
-`CTX_V3` (tool bit 25, `docs/SYNTAX.md` 9.8) conditions CBF and LAST on
-`prev_cbf`, whether the previous coefficient unit **this lane** decoded in the
-same unit class was coded. Each lane keeps three bits of state --
-`prev_cbf[ucls]`, all zero at the start of the tile -- and writes one of them
-when it finishes a unit. Because a lane owns units `l, l+N, l+2N, ...`, that
-unit is always one the lane has already finished, so there is **no cross-lane
-read, no extra barrier and no change to the round loop**; the context index
-stays one add and one lookup. It costs LDS: `s_cum` grows from 8192 to 11264
-bytes for the workgroup's 8 tiles. For the ordinary tile a lane owns one column
-of 8x8 blocks, so `prev_cbf` is the coded flag of the block directly above.
+`CTX_V3` (tool bit 25, `docs/SYNTAX.md` 9.9) conditions CBF and LAST on the
+**neighbour class** the lane carries: 0 nothing to condition on, 1 the
+previous coefficient unit **this lane** finished in this plane was not coded,
+2 coded and sparse (`LAST < 4`), 3 coded and dense. Each lane keeps two
+registers -- the class and the plane it belongs to, both reset at a plane
+boundary -- and writes them once when it finishes a unit. Because a lane owns
+units `l, l+N, l+2N, ...`, that unit is always one the lane has already
+finished, so there is **no cross-lane read, no extra barrier and no change to
+the round loop**; the context index stays one compare, one add and one lookup.
 
-`TAB_V2` (tool bit 24) is invisible to the kernel entirely: it only changes how
+The conditioning is per **coding unit** -- the 8x8 coefficient group -- and
+never per transform block, so the kernel never reads a transform size to
+derive a context. It costs LDS: `s_cum` grows from 8192 to 13824 bytes for the
+workgroup's 8 tiles. For the ordinary tile a lane owns one column of 8x8
+blocks, so the class describes the block directly above.
+
+`LEVEL` additionally splits the coefficient at scan position `LAST` into two
+rows by band, and the DC term of a DC plane into one of its own -- both are
+derivations the kernel already has the inputs for.
+
+`TAB_V2` (tool bit 26) is invisible to the kernel entirely: it only changes how
 the host parses the frame's transmitted table sets into the same `cum` upload,
 so it is a change to `nxvc_vkdec_parse.cpp` and nothing else.
 
