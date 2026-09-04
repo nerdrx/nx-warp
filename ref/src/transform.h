@@ -1,5 +1,6 @@
-// 8x8 integer DCT (Loeffler-derived, 9-bit constants) and the resampling
-// kernels.  Everything here is normative; see docs/SYNTAX.md sections 5 and 7.
+// Integer DCT of edge 8, 16 and 32 (Loeffler-derived 8-point core plus the
+// even/odd recursion of docs/SYNTAX.md 6.2) and the resampling kernels.
+// Everything here is normative; see docs/SYNTAX.md sections 6 and 8.
 #pragma once
 #include "common.h"
 
@@ -14,12 +15,25 @@ constexpr i32 kA3 = 426;  // 512*cos(3pi/16)
 constexpr i32 kA5 = 284;  // 512*sin(3pi/16)
 constexpr i32 kA7 = 100;  // 512*sin(pi/16)
 
-// Forward: samples (residual) -> coefficients.  Two passes, >>6 then >>14,
-// with the first-pass result clamped to int16.
-void fdct8x8(const i32 src[64], i16 dst[64]);
-// Inverse: dequantized coefficients -> residual.  Two passes, >>7 then >>13,
-// with the first-pass result clamped to int16.
-void idct8x8(const i32 src[64], i32 dst[64]);
+// The odd half of the length-16 and length-32 transforms, entry [n][j] =
+// round(512 * cos(pi * (2n+1) * (2j+1) / (2N))).  SYNTAX.md 6.2.1; regenerated
+// and checked against that formula by tests/ref/test_transform.cpp.
+extern const i16 kOdd16[8][8];
+extern const i16 kOdd32[16][16];
+
+// Transform edges the format defines, and the largest of them.
+constexpr int kMaxBlock = 32;
+inline bool block_size_ok(int n) { return n == 8 || n == 16 || n == 32; }
+
+// Forward: samples (residual) -> coefficients, `n` x `n`, raster order.
+// Inverse: dequantized coefficients -> residual.  Two passes each, with the
+// first-pass result clamped to int16.  Shifts per size: SYNTAX.md 6.3.
+void fdct_block(const i32 *src, i16 *dst, int n);
+void idct_block(const i32 *src, i32 *dst, int n);
+
+// The 8x8 pair, unchanged: exactly fdct_block/idct_block with n == 8.
+inline void fdct8x8(const i32 src[64], i16 dst[64]) { fdct_block(src, dst, 8); }
+inline void idct8x8(const i32 src[64], i32 dst[64]) { idct_block(src, dst, 8); }
 
 // Bilinear resampling.  `sx`,`sy` are Q4 source coordinates.  Integer only.
 i32 bilinear_q4(const u8 *src, int w, int h, int stride, i32 sx, i32 sy);

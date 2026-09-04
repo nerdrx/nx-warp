@@ -67,6 +67,7 @@ void LaneMachine::begin_unit() {
         phase_ = u_->ctx_mode != kCtxNone ? kModeSym : kModeFlag;
         return;
     }
+    lshift_ = last_shift_of(u_->ncoef);
     phase_ = kCbf;
 }
 
@@ -125,14 +126,15 @@ bool LaneMachine::next(Op &op) {
                 for (int p = u_->ncoef - 1; p >= 0; --p)
                     if (u_->coef[u_->scan[p]] != 0) { lastpos = p; break; }
                 last_ = lastpos;
-                op.value = (u16)last_class_of(lastpos);
+                op.value = (u16)last_class_of(lastpos >> lshift_);
             }
             return true;
         }
         case kLastRaw: {
             op.kind = OP_BYPASS;
-            op.arg = kLastRawBits[last_cls_];
-            op.value = encoding_ ? (u16)(last_ - kLastBase[last_cls_]) : 0;
+            op.arg = (u8)(kLastRawBits[last_cls_] + lshift_);
+            op.value =
+                encoding_ ? (u16)(last_ - (kLastBase[last_cls_] << lshift_)) : 0;
             return true;
         }
         case kModeSym: {
@@ -162,7 +164,7 @@ bool LaneMachine::next(Op &op) {
             op.kind = OP_SYM;
             op.arg = (u8)(u_->ctx_level != kCtxNone
                               ? u_->ctx_level
-                              : level_ctx(pos_, prev_class_));
+                              : level_ctx(pos_, prev_class_, lshift_));
             op.value = 0;
             if (encoding_) {
                 i32 q = u_->coef[u_->scan[pos_]];
@@ -278,9 +280,9 @@ bool LaneMachine::feed(u32 v) {
         case kLast: {
             if (v > 14) return false;
             last_cls_ = (int)v;
-            int base = kLastBase[last_cls_];
+            int base = kLastBase[last_cls_] << lshift_;
             if (base >= u_->ncoef) return false;
-            if (kLastRawBits[last_cls_] > 0) {
+            if (kLastRawBits[last_cls_] + lshift_ > 0) {
                 phase_ = kLastRaw;
                 return true;
             }
@@ -289,7 +291,7 @@ bool LaneMachine::feed(u32 v) {
             return true;
         }
         case kLastRaw: {
-            last_ = kLastBase[last_cls_] + (int)v;
+            last_ = (kLastBase[last_cls_] << lshift_) + (int)v;
             if (last_ >= u_->ncoef) return false;
             begin_levels();
             return true;

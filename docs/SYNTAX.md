@@ -156,6 +156,7 @@ interleaved UV.
 | 21 | `CTX_V2` | the 16-context entropy model (section 9.3) |
 | 22 | `SIGN_HIDE` | sign data hiding (section 9.7) |
 | 23 | `FILTER_CATMULL_ROM` | Catmull-Rom interpolation in the warp instead of bilinear. **Not defined for version 1** |
+| 24 | `XFORM_LARGE` | tiles may set `xform_size != 0`: a 16x16 or 32x32 transform (section 6.7) |
 
 Bits 17, 21 and 22 are independent: any subset may be set. `SIGN_HIDE` is
 mutually exclusive with `LOSSLESS` (bit 5) -- hiding a sign spends one level
@@ -173,7 +174,12 @@ MUST refuse a stream that sets either, with a `VERSION` status. Because bit 23
 is refused, **every conforming version 1 stream is bilinear**, in every
 profile, and `profile` selects nothing (section 13.4).
 
-Bits 24-63 are reserved and must be zero. Capability negotiation is an
+`XFORM_LARGE` (bit 24) gates the tile header's `xform_size` field and nothing
+else. It is independent of every other bit: a stream that never sets it decodes
+byte-identically to a syntax v1.4 stream, and a decoder that does not implement
+it refuses the handshake rather than mis-decoding a tile.
+
+Bits 25-63 are reserved and must be zero. Capability negotiation is an
 intersection: the sender only sets bits the receiver offered.
 
 ---
@@ -438,7 +444,8 @@ Two little-endian u32 words. Bits are listed LSB first.
 | 23 | `tskip` | the whole tile skips the transform |
 | 24-25 | `wgt` | enhancement-layer blend weight: 0, 1/4, 1/2, 3/4 (of the spatial hypothesis) |
 | 26-27 | `wm_id` | per-tile weighting matrix: 0 = the frame's, 1-3 = built-in matrix `wm_id` |
-| 28-31 | reserved | must be 0 |
+| 28-29 | `xform_size` | transform edge of every plane of this tile: 0 = 8x8, 1 = 16x16, 2 = 32x32; 3 reserved (section 6.7) |
+| 30-31 | reserved | must be 0 |
 
 Then, in this order:
 
@@ -476,7 +483,9 @@ clip plane of every headset. The field is two bytes, exactly as
 `mv_x` + `mv_y`, so no structure changes size.
 
 Constraints: `res_level != 3`; `alpha_mode != 3`; `nsub_log2 <= 5`;
-`mode <= 4`; word0 bit 3 and word1 bits 28-31 zero; `chroma444` may only be 1 if
+`mode <= 4`; word0 bit 3 and word1 bits 30-31 zero; `xform_size != 3`;
+`xform_size != 0` requires the `XFORM_LARGE` tool bit and requires
+`tskip == 0`; `chroma444` may only be 1 if
 `chroma_format == 1`; `alpha_mode != 0` requires `alpha_present`; `tile_index`
 must equal the tile's position in the row; `eye` must equal the eye derived from
 the tile's position in the frame (section 3.3); `wm_id != 0` requires the
@@ -598,6 +607,51 @@ These are our own constants, not HEVC's or AV1's matrices. The flow graph is the
 Loeffler-Ligtenberg-Moschytz factorization (1989, expired): 11 multiplies and 29
 adds per 8-point 1D transform.
 
+The 16-point and 32-point transforms of section 6.7 add two constant matrices,
+on the **same 512 scale** as the seven constants above:
+
+```
+Odd16[n][j] = round(512 * cos(pi * (2n+1) * (2j+1) / 32))   n, j in 0..7
+Odd32[n][j] = round(512 * cos(pi * (2n+1) * (2j+1) / 64))   n, j in 0..15
+```
+
+`Odd16`, the odd half of the 16-point transform:
+
+```
+    510,   490,   452,   396,   325,   241,   149,    50
+    490,   325,    50,  -241,  -452,  -510,  -396,  -149
+    452,    50,  -396,  -490,  -149,   325,   510,   241
+    396,  -241,  -490,    50,   510,   149,  -452,  -325
+    325,  -452,  -149,   510,   -50,  -490,   241,   396
+    241,  -510,   325,   149,  -490,   396,    50,  -452
+    149,  -396,   510,  -452,   241,    50,  -325,   490
+     50,  -149,   241,  -325,   396,  -452,   490,  -510
+```
+
+`Odd32`, the odd half of the 32-point transform:
+
+```
+    511,   506,   497,   482,   463,   439,   411,   379,   344,   305,   263,   219,   172,   124,    75,    25
+    506,   463,   379,   263,   124,   -25,  -172,  -305,  -411,  -482,  -511,  -497,  -439,  -344,  -219,   -75
+    497,   379,   172,   -75,  -305,  -463,  -511,  -439,  -263,   -25,   219,   411,   506,   482,   344,   124
+    482,   263,   -75,  -379,  -511,  -411,  -124,   219,   463,   497,   305,   -25,  -344,  -506,  -439,  -172
+    463,   124,  -305,  -511,  -344,    75,   439,   482,   172,  -263,  -506,  -379,    25,   411,   497,   219
+    439,   -25,  -463,  -411,    75,   482,   379,  -124,  -497,  -344,   172,   506,   305,  -219,  -511,  -263
+    411,  -172,  -511,  -124,   439,   379,  -219,  -506,   -75,   463,   344,  -263,  -497,   -25,   482,   305
+    379,  -305,  -439,   219,   482,  -124,  -506,    25,   511,    75,  -497,  -172,   463,   263,  -411,  -344
+    344,  -411,  -263,   463,   172,  -497,   -75,   511,   -25,  -506,   124,   482,  -219,  -439,   305,   379
+    305,  -482,   -25,   497,  -263,  -344,   463,    75,  -506,   219,   379,  -439,  -124,   511,  -172,  -411
+    263,  -511,   219,   305,  -506,   172,   344,  -497,   124,   379,  -482,    75,   411,  -463,    25,   439
+    219,  -497,   411,   -25,  -379,   506,  -263,  -172,   482,  -439,    75,   344,  -511,   305,   124,  -463
+    172,  -439,   506,  -344,    25,   305,  -497,   463,  -219,  -124,   411,  -511,   379,   -75,  -263,   482
+    124,  -344,   482,  -506,   411,  -219,   -25,   263,  -439,   511,  -463,   305,   -75,  -172,   379,  -497
+     75,  -219,   344,  -439,   497,  -511,   482,  -411,   305,  -172,    25,   124,  -263,   379,  -463,   506
+     25,   -75,   124,  -172,   219,  -263,   305,  -344,   379,  -411,   439,  -463,   482,  -497,   506,  -511
+```
+
+The largest absolute row sum is **2613** for `Odd16` and **5215** for `Odd32`;
+both bounds appear in the range analysis of 6.3.
+
 ### 6.2 Inverse 1D transform (normative)
 
 Input `x[0..7]` int32, output `y[0..7]` int32. Gain is exactly `2^10` relative to
@@ -630,31 +684,109 @@ y2 = e2 + O2 ;  y5 = e2 - O2
 y3 = e3 + O3 ;  y4 = e3 - O3
 ```
 
-### 6.3 Inverse 2D transform (normative)
+### 6.2.1 Inverse 1D transform of length 16 and 32 (normative)
 
-`src[64]` are the dequantized coefficients in raster order inside the block,
-index `u * 8 + v` with `u` the vertical and `v` the horizontal frequency.
+A length-`2M` DCT-III is the length-`M` DCT-III of the even-indexed
+coefficients plus a dense `M x M` rotation of the odd-indexed ones. Written
+with the 512-scaled `Odd16` / `Odd32` of 6.1 the even half needs **no
+rescaling at all**, which is the whole reason the constants are on that scale:
 
 ```
-pass 1 (rows):    for each row r: idct8_1d(src[r*8 .. r*8+7]) -> out[0..7]
-                  tmp[c*8 + r] = clamp16((out[c] + 64) >> 7)
-pass 2 (columns): for each row r of tmp: idct8_1d(tmp[r*8 ..]) -> out[0..7]
-                  dst[c*8 + r] = clamp16((out[c] + 4096) >> 13)
+idct16(x[0..15]) -> y[0..15]:
+    e[0..7] = idct8(x[0], x[2], x[4], x[6], x[8], x[10], x[12], x[14])
+    for n in 0 .. 7:
+        o = sum over j in 0 .. 7 of  x[2*j + 1] * Odd16[n][j]
+        y[n]      = e[n] + o
+        y[15 - n] = e[n] - o
+
+idct32(x[0..31]) -> y[0..31]:
+    e[0..15] = idct16(x[0], x[2], ..., x[30])
+    for n in 0 .. 15:
+        o = sum over j in 0 .. 15 of  x[2*j + 1] * Odd32[n][j]
+        y[n]      = e[n] + o
+        y[31 - n] = e[n] - o
+```
+
+The forward transform is the exact transpose: butterfly first, then the
+shorter forward transform on the sums and the transposed rotation on the
+differences.
+
+```
+fdct16(y[0..15]) -> x[0..15]:
+    for n in 0 .. 7:  u[n] = y[n] + y[15 - n] ;  v[n] = y[n] - y[15 - n]
+    x[0], x[2], ..., x[14] = fdct8(u[0..7])
+    for j in 0 .. 7:
+        x[2*j + 1] = sum over n in 0 .. 7 of  v[n] * Odd16[n][j]
+```
+
+and `fdct32` likewise from `fdct16` and `Odd32`.
+
+**Gain.** Each doubling of the length multiplies the gain by `sqrt(2)`:
+
+| length | gain per dimension | 2D gain | shifts must sum to |
+|---|---|---|---|
+| 8 | `2^10` | `2^20` | 20 |
+| 16 | `2^10 * sqrt(2)` | `2^21` | 21 |
+| 32 | `2^11` | `2^22` | 22 |
+
+The 16-point gain is irrational and the **two-dimensional** gain is not: the
+two passes multiply, so every size is exactly unit gain after its shift chain.
+A coefficient of `n * 128` at position 0 of an `n x n` block reconstructs a
+flat 128 at every `n`.
+
+Neither of the two constant matrices is factorised. The multiply counts per
+`n x n` inverse transform are
+
+| n | multiplies per 1D transform | per sample of the block |
+|---|---|---|
+| 8 | 11 | 2.75 |
+| 16 | 11 + 64 = 75 | 9.4 |
+| 32 | 75 + 256 = 331 | 20.7 |
+
+which is the price the decoder pays for the tool and is priced against its
+rate saving in `ref/RESULTS-xform-a.md`. A further factorisation of `Odd16` /
+`Odd32` is possible and would change no bit: the *result* is normative, the
+spelling is not, exactly as for `mulC4` in 6.3.
+
+### 6.3 Inverse 2D transform (normative)
+
+`src[n*n]` are the dequantized coefficients in raster order inside the block,
+index `u * n + v` with `u` the vertical and `v` the horizontal frequency, and
+`n` the block edge of 6.7 (8, 16 or 32).
+
+```
+pass 1 (rows):    for each row r: idctN(src[r*n .. r*n+n-1]) -> out[0..n-1]
+                  tmp[c*n + r] = clamp16((out[c] + (1 << (s1-1))) >> s1)
+pass 2 (columns): for each row r of tmp: idctN(tmp[r*n ..]) -> out[0..n-1]
+                  dst[c*n + r] = clamp16((out[c] + (1 << (s2-1))) >> s2)
 ```
 
 Both passes write transposed, so `dst` comes out in spatial raster order
-`y * 8 + x`. Total shift is 20 and total gain 1, so a coefficient of 1024 at
-position 0 reconstructs a flat 128.
+`y * n + x`. The two shifts sum to log2 of the size's 2D gain (6.2.1), so
+every size is unit gain: a coefficient of `n * 128` at position 0 reconstructs
+a flat 128.
 
 **Shift chain and intermediate ranges** (copy these exactly; the GPU passes
-must match bit for bit):
+must match bit for bit). The worst cases are the largest absolute row sum of
+the exact 1D transform times the largest legal input, so each is attainable:
 
-| stage | shift | rounding | clamp | worst-case magnitude before the shift |
-|---|---|---|---|---|
-| inverse pass 1 | `>> 7` | `+64` | int16 | `1.1e8` at the outputs `y0..y7` |
-| inverse pass 2 | `>> 13` | `+4096` | int16 | `1.1e8` |
-| forward pass 1 | `>> 6` | `+32` | int16 | `511 * 4096 = 2.1e6` |
-| forward pass 2 | `>> 14` | `+8192` | int16 | `32767 * 4096 = 1.3e8` |
+| stage | 8x8 | 16x16 | 32x32 |
+|---|---|---|---|
+| inverse pass 1 shift `s1` | `>> 7`, `+64` | `>> 7`, `+64` | `>> 8`, `+128` |
+| inverse pass 2 shift `s2` | `>> 13`, `+4096` | `>> 14`, `+8192` | `>> 14`, `+8192` |
+| forward pass 1 | `>> 6`, `+32` | `>> 7`, `+64` | `>> 8`, `+128` |
+| forward pass 2 | `>> 14`, `+8192` | `>> 14`, `+8192` | `>> 14`, `+8192` |
+| worst before either inverse pass | `8.9e7` | `1.7e8` | `3.5e8` |
+| worst before forward pass 1 | `1.6e6` | `3.3e6` | `6.6e6` |
+| worst before forward pass 2 | `1.1e8` | `2.1e8` | `4.2e8` |
+
+Every one of those is inside `int32` (`2.1e9`) with at least six times the
+margin. Both passes of both directions clamp their output to int16, so a GPU
+may hold the transpose buffer in `int16` LDS at every size — the first-pass
+shift grows by one per size for exactly that reason: the value entering it
+doubles per size (one more butterfly level), so all three sizes leave the same
+margin, and the forward first pass lands on `25 650` from a full-amplitude
+residual at every size.
 
 **`mulC4` is an exact product, and it is the one place the flow graph leaves
 int32 if written naively.** Dequantized coefficients are clamped to int16
@@ -686,8 +818,8 @@ The same identity applies to the forward transform's `P`/`Q` rotation, whose
 operands are far smaller; it is used there only so that one routine serves
 both directions.
 
-The 1D flow graph has gain exactly `2^10` per dimension, so the two inverse
-shifts must sum to 20 for unit gain; 7 + 13 and 8 + 12 both do. The reference
+The 8-point flow graph has gain exactly `2^10` per dimension, so its two
+inverse shifts must sum to 20 for unit gain; 7 + 13 and 8 + 12 both do. The reference
 uses **7 and 13** because keeping the extra fractional bit through the
 transpose measures better: against a float IDCT on unclamped input the maximum
 error is 0.699 with 7/13 versus 0.784 with 8/12, and the forward-inverse round
@@ -714,9 +846,9 @@ bounds, and is meant to be run under `-fsanitize=undefined`
 
 ### 6.4 Forward 2D transform (informative)
 
-The encoder uses the exact transpose of the flow graph, with shifts `>> 6` after
-the first pass (clamped to int16) and `>> 14` after the second, giving
-coefficients on the orthonormal DCT-II scale. The forward transform is not
+The encoder uses the exact transpose of the flow graph, with the shifts of the
+table in 6.3 (the first pass clamped to int16), giving coefficients on the
+orthonormal DCT-II scale at every size. The forward transform is not
 normative: any encoder may produce any coefficients it likes. It is specified in
 `ref/src/transform.cpp` so results are reproducible.
 
@@ -758,7 +890,19 @@ with the weight `w[i]`:
 * DC-plane coding units: `w[i] = 16` (flat) at every position.
 * Transform-skip blocks: `w[i] = 16` (flat).
 * Normal blocks: the tile's weighting matrix, luma matrix for planes 0 and 3,
-  chroma matrix for planes 1 and 2. The tile's matrix is the frame's when
+  chroma matrix for planes 1 and 2. **Only the 8x8 matrix is ever transmitted
+  or built in.** A block of edge `n > 8` reads it replicated: the weight of
+  coefficient `(u, v)` of an `n x n` block is
+
+  ```
+  k    = log2(n) - 3                      // 0, 1 or 2
+  w[i] = matrix[(u >> k) * 8 + (v >> k)]  // i = u * n + v
+  ```
+
+  so the roll-off covers the same fraction of the frequency plane at every
+  transform size, `w` keeps its range `[1, 32]`, and no extra matrix, no extra
+  syntax and no extra derivation rule exists. The custom matrices of
+  `quant_matrix == 255` are 128 bytes at every size for the same reason. The tile's matrix is the frame's when
   `wm_id == 0`; when `wm_id` is 1, 2 or 3 it is built-in matrix `wm_id` for
   planes 0 and 3 and the built-in chroma matrix (index 3's formula) for planes
   1 and 2, exactly as the frame-level rule below. `wm_id != 0` is illegal in a
@@ -794,10 +938,142 @@ quantized with a flat weight, and the scan order is raster instead of zigzag
 `tskip` + QP 0 is mathematically lossless: the residual is `source - prediction`
 and reconstruction is `clamp(prediction + residual)`.
 
+`tskip == 1` requires `xform_size == 0` (section 4.1). The coded values of a
+transform-skip block are residual samples in raster order, which is a
+statement about an 8x8 neighbourhood; a 1024-sample raster unit is a different
+tool and would need its own measurement, so the syntax refuses the
+combination rather than defining it untested.
+
 **Lossless mode** is `tskip = 1` with a resolved QP of 0 on every plane, and
 `res_level = 0`. `chroma444 = 1` (or a 4:2:0 source) is required for the picture
 itself to be lossless; a 4:2:0 tile is lossless only with respect to its own
 subsampled chroma.
+
+### 6.7 Transform size (tool bit 24)
+
+The tile header's `xform_size` names one transform edge for the whole tile.
+The edge a **plane** actually uses is that edge capped by the plane's own
+coded extent:
+
+```
+xform_edge  = 8 << xform_size                       // 8, 16, 32
+bsize(p)    = min(xform_edge, coded_extent(p))      // 4.2
+nb(p)       = coded_extent(p) / bsize(p)            // blocks per edge
+```
+
+The cap is what makes every combination legal without a constraint: a
+`res_level` 2 tile (16x16 luma) with `xform_size == 2` codes one 16x16 luma
+block, and the 4:2:0 chroma plane of a 64x64 tile with a 32x32 luma transform
+codes one 32x32 chroma block. Both `coded_extent` and `xform_edge` are powers
+of two and `coded_extent >= 8`, so `bsize` is always 8, 16 or 32 and `nb` is
+always a power of two in `[1, 8]`.
+
+| tile | `xform_size` | luma | 4:2:0 chroma | 4:4:4 chroma |
+|---|---|---|---|---|
+| `res_level` 0 | 0 | 8 blocks of 8 | 4 of 8 | 8 of 8 |
+| `res_level` 0 | 1 | 4 blocks of 16 | 2 of 16 | 4 of 16 |
+| `res_level` 0 | 2 | 2 blocks of 32 | 1 of 32 | 2 of 32 |
+| `res_level` 1 | 2 | 1 block of 32 | 1 of 16 | 1 of 32 |
+| `res_level` 2 | 2 | 1 block of 16 | 1 of 8 | 1 of 16 |
+
+Everything downstream follows `bsize` and `nb` by the rules already stated:
+the DC plane holds `nb * nb` values (7.1) and carries its second-level 8x8
+transform only when `nb == 8`, which now happens exactly when `bsize == 8` on
+a full-resolution plane; the planar interpolation reads block centres at
+`bsize` spacing (7.2); the directional predictors are the same formulas with
+the block edge left as `n` (7.4); the weighting matrix is replicated (6.5);
+the scan is the zigzag of the block (9.2); and the LAST classes and the LEVEL
+bands are scaled by the unit's size (9.3).
+
+**Why per tile and not per 32x32 quadrant.** The DC plane is a per-plane
+structure whose resolution *is* the transform grid: `nb * nb` block means for
+the whole plane, interpolated across the whole plane. A per-quadrant size
+would make that grid non-uniform, and the DC plane would have to be split into
+four independently-interpolated pieces with a seam between them — which is the
+one thing the DC-plane predictor exists to avoid. The tile is the smallest
+unit at which the transform size can change without changing what the DC plane
+*is*, and the tile is also the unit of the GPU's workgroup, so a uniform size
+per tile is what keeps 7.6's schedule uniform.
+
+**Interaction with the tools already defined.**
+
+| tool | at 16x16 and 32x32 |
+|---|---|
+| `INTRA_DC_PLANE` (0) | unchanged; the DC plane is `nb * nb`, and at `nb < 8` it is coded flat exactly as a `res_level` tile's already is |
+| `TRANSFORM_SKIP` (1) | mutually exclusive (6.6) |
+| `RES_LEVEL` (2) | independent; the plane cap above resolves every combination |
+| `LOSSLESS` (5) | requires `tskip`, so `xform_size == 0` |
+| `WM_ID` (20) | unchanged; the built-in matrix is replicated like any other (6.5) |
+| `INTRA_DIR` (17) | all nine modes are defined at every size (7.4); the mode unit holds `nb * nb` modes |
+| `CTX_V2` (21), `SIGN_HIDE` (22) | unchanged; no new context and no new symbol (9.3) |
+| `INTER` (10), `WARP` (11), `STEREO` (12) | independent: an inter tile codes the residual against its predictor with the same block structure |
+
+### 6.8 What a 32x32 inverse transform costs a GPU decoder (note for Pass B)
+
+The constraint is `docs/PAPER.md` design principle 2 and `docs/03-vulkan.md`
+3.2.3: **one workgroup of 256 threads per 64x64 tile, no cross-tile state.**
+Nothing here changes that; a larger transform changes how the 256 threads are
+divided and what they hold, not the dispatch.
+
+**The thread mapping.** At 8x8, Pass B gives each 8x8 block 4 threads and each
+thread 2 rows. At 32x32 the natural unit is **one thread per 1D transform**:
+the odd half is a dense 16 x 16 product over all sixteen odd coefficients, so
+splitting one 1D transform across threads means either duplicating the
+16-point even half or an unbalanced 3.4-to-1 split. One row per thread is
+balanced, needs no cross-lane exchange inside a transform, and reads its 32
+coefficients as one coalesced 64-byte load.
+
+A `res_level` 0 4:2:0 tile with `xform_size == 2` therefore has
+
+| plane | blocks | 1D transforms per pass | threads |
+|---|---|---|---|
+| Y (64x64) | 4 of 32x32 | 128 | 128 |
+| Co (32x32) | 1 of 32x32 | 32 | 32 |
+| Cg (32x32) | 1 of 32x32 | 32 | 32 |
+| **total** | 6 | **192** | **192 of 256 = 75 %** |
+
+and all three planes go through both passes together. A 4:4:4 tile has twelve
+32x32 blocks, 384 transforms per pass, so it runs the same schedule in two
+rounds (luma, then the two chroma planes).
+
+**LDS.** The transpose buffer is a whole *plane*, not a block, so it is the
+same size it is at 8x8: `64 x 64 x 2 B = 8192 B` for luma, `32 x 32 x 2 B =
+2048 B` for a 4:2:0 chroma plane. The `clamp16` after pass 1 (6.3) is what
+keeps it `int16` at every size.
+
+| tile | LDS for the transpose | barriers for the inverse transform |
+|---|---|---|
+| 4:2:0, all three planes at once | `8192 + 2*2048 = 12 288 B` | **2** |
+| 4:4:4, two rounds | `8192 B` (reused) or `24 576 B` in one round | 4, or 2 |
+| 4:2:0 at `xform_size == 0`, for comparison | `12 288 B` | 6 (three rounds of 32 blocks) |
+
+**Dependent steps.** Two per round: pass 1 writes the transpose buffer, one
+barrier, pass 2 reads it. The 8x8 schedule needs the same two per round but
+more rounds, because 256 threads at 4 per block cover 64 blocks and a
+`res_level` 0 4:2:0 tile has 96 of them. **Large transforms reduce the number
+of barriers per tile.**
+
+**Registers.** A thread holding a whole 32-point transform has the sixteen odd
+coefficients live while it accumulates sixteen outputs, plus the sixteen
+results of the even half: about **48 int32** at the peak, against 8 + 8 for the
+8x8 form. On hardware with a 64-VGPR full-occupancy budget that is the binding
+constraint rather than LDS, and the fallback is to stage the coefficient
+vector through a second LDS buffer.
+
+**Arithmetic.** This is where the tool is expensive, and 6.2.1 states it: 2.75
+multiplies per sample at 8x8, 9.4 at 16x16, **20.7 at 32x32** — 7.5x the
+multiply count of the 8x8 form for a `res_level` 0 tile. Adds and shifts grow
+with it. Against that, the tool removes barriers, removes rounds, and (7.6)
+cuts the directional-intra wavefront from 22 steps to 4. Whether the trade is
+worth taking on a given part is a Pass B measurement that does not exist yet,
+which is why `xform_size` is per tile and behind a tool bit: a decoder that
+does not want it refuses the bit, and an encoder that knows the decoder is
+arithmetic-bound sends `xform_size == 0`.
+
+The reference Vulkan decoder does **not** implement tool bit 24 today
+(`vk/decoder/nxvc_vkdec_parse.cpp`), so it refuses such a stream at the
+handshake rather than mis-decoding it — the same forward-compatibility gate
+every other unimplemented tool goes through.
 
 ---
 
@@ -816,8 +1092,8 @@ codes mode 0 everywhere reconstructs exactly as it would without the tool.
 
 ### 7.1 The DC plane
 
-For a plane with `nb x nb` blocks (`nb` = 8, 4, 2 or 1), the first coding unit
-of that plane holds `nb * nb` values.
+For a plane with `nb x nb` blocks (`nb` = 8, 4, 2 or 1; section 6.7), the first
+coding unit of that plane holds `nb * nb` values.
 
 **Decoder (normative):**
 
@@ -832,26 +1108,38 @@ for i:  M[i] = clamp(dc_offset + dc[i], 0, maxval)
 ```
 
 `M` is the `nb x nb` array of reconstructed block means. The second-level 8x8
-DCT is applied only when `nb == 8`, which is the 64-block luma plane of a
-`res_level` 0 tile and the chroma plane of a `res_level` 0 4:4:4 tile. Smaller
-DC planes are coded flat: the transform would buy nothing over 16, 4 or 1 value.
+DCT is applied only when `nb == 8`, which is a full-resolution plane with
+`bsize == 8`. Smaller DC planes are coded flat: the transform would buy
+nothing over 16, 4 or 1 value. A 16x16-transform tile therefore has a 4x4 flat
+DC plane and a 32x32-transform tile a 2x2 one, by the rule that was already
+there for `res_level` tiles rather than by a new one.
 
-**Encoder (informative):** the block mean is `(sum of the 64 samples + 32) >> 6`;
+**Encoder (informative):** the block mean is
+`(sum of the bsize^2 samples + (1 << (2*log2(bsize) - 1))) >> (2*log2(bsize))`,
+rounded away from zero — at `bsize == 8` that is `(sum + 32) >> 6`;
 the array of `mean - dc_offset` is transformed (when `nb == 8`), quantized with
 step `tdc` and dead zone `tdc/3`, and the encoder then runs the decoder
 reconstruction above so its prediction is exactly the decoder's.
 
 ### 7.2 Planar prediction
 
-Block `(bx, by)`'s mean sits at the block centre, sample `(bx*8 + 3.5,
-by*8 + 3.5)`. The prediction at sample `(x, y)` is the bilinear interpolation of
-`M` at that grid, with the source coordinate in Q4:
+Block `(bx, by)`'s mean sits at the block centre, sample
+`(bx*bs + (bs-1)/2, by*bs + (bs-1)/2)` with `bs = bsize(p)` (section 6.7). The
+prediction at sample `(x, y)` is the bilinear interpolation of `M` at that
+grid, with the source coordinate in Q4:
 
 ```
-ux = 2 * x - 7        // = ((x - 3.5) / 8) * 16
-uy = 2 * y - 7
+ux = (16 * x - 8 * (bs - 1) + (bs >> 1)) >> log2(bs)
+uy = (16 * y - 8 * (bs - 1) + (bs >> 1)) >> log2(bs)
 pred[y][x] = bilinear(M, nb, nb, ux, uy)      // section 8
 ```
+
+The shift is arithmetic and the `+ (bs >> 1)` is the rounding term of clause
+3.3; at `bs == 8` the numerator is an exact multiple of 8 and the expression
+reduces to `2 * x - 7` for every `x`, which is the v1 formula unchanged. At
+`bs` 16 and 32 the exact coordinate has a half-Q4 fraction (the block centre
+falls between two Q4 positions) and the rounding term settles it the same way
+in both directions.
 
 Sample positions outside the outermost block centres clamp to the edge, which is
 what makes this "planar-like" rather than a true plane fit: the interpolation is
@@ -878,12 +1166,13 @@ coded and the whole tile area is filled with 255 or `alpha_value`.
 With `INTRA_DIR`, each coded plane carries one **mode unit** (section 9.1)
 holding `nb * nb` intra modes in raster order, and the blocks of that plane are
 reconstructed **in raster order**, each seeing the reconstruction of the ones
-before it.
+before it. Everything below is written for a block of edge `n = bsize(p)`
+(section 6.7); at `n == 8` it is the v1.3 derivation character for character.
 
 | mode | name | prediction |
 |---|---|---|
 | 0 | `DC_PLANE` | `pred[y][x]` from 7.2 -- the v1 predictor |
-| 1 | `DC` | `(sum(A[0..7]) + sum(L[0..7]) + 8) >> 4` |
+| 1 | `DC` | mean of the `n` top and `n` left neighbours, below |
 | 2 | `PLANAR` | HEVC-style, below |
 | 3 | `H` | `L[j]` |
 | 4 | `V` | `A[i]` |
@@ -893,20 +1182,23 @@ before it.
 | 8 | `HD` | horizontal-down, 63.4 deg |
 
 **Reference samples (normative).** For the block at `(bx, by)` with origin
-`(x0, y0) = (8*bx, 8*by)`, define
+`(x0, y0) = (n*bx, n*by)` and `b = log2(n)`, define
 
 ```
 at(x, y):
     cx = clamp(x, 0, size-1);  cy = clamp(y, 0, size-1)
-    if (cy>>3) < by  or  ((cy>>3) == by and (cx>>3) < bx):
+    if (cy>>b) < by  or  ((cy>>b) == by and (cx>>b) < bx):
         return recon[cy][cx]        // a block already reconstructed
     else:
         return base[cy][cx]         // section 7.5
 
 TL   = at(x0-1, y0-1)
-A[k] = at(x0+k, y0-1)   for k = 0..15      A[-1] = TL
-L[k] = at(x0-1, y0+k)   for k = 0..15      L[-1] = TL
+A[k] = at(x0+k, y0-1)   for k = 0..2n-1    A[-1] = TL
+L[k] = at(x0-1, y0+k)   for k = 0..2n-1    L[-1] = TL
 ```
+
+The reference arrays are `2n` long at every size, so `DDL` reaches `A[2n-1]`
+and the above-right dependency of 7.6 is one block wide at every size.
 
 Coordinates are clamped **into the tile**, and the fallback for anything not
 yet reconstructed is `base`, which is derived from this tile's own DC plane.
@@ -918,11 +1210,14 @@ DC-plane prediction, not a neighbour.
 **Predictors.** `i` is the column and `j` the row inside the block, 0..7.
 
 ```
-PLANAR: P[j][i] = ((7-i)*L[j] + (i+1)*A[8] + (7-j)*A[i] + (j+1)*L[8] + 8) >> 4
+DC:     P[j][i] = (sum(A[0..n-1]) + sum(L[0..n-1]) + n) >> (b + 1)
+
+PLANAR: P[j][i] = ((n-1-i)*L[j] + (i+1)*A[n]
+                   + (n-1-j)*A[i] + (j+1)*L[n] + n) >> (b + 1)
 
 DDL:    k = i + j
-        P[j][i] = k == 14 ? (A[14] + 3*A[15] + 2) >> 2
-                          : (A[k] + 2*A[k+1] + A[k+2] + 2) >> 2
+        P[j][i] = k == 2n-2 ? (A[2n-2] + 3*A[2n-1] + 2) >> 2
+                            : (A[k] + 2*A[k+1] + A[k+2] + 2) >> 2
 
 DDR:    i > j:  k = i - j;  P = (A[k-2] + 2*A[k-1] + A[k] + 2) >> 2
         i < j:  k = j - i;  P = (L[k-2] + 2*L[k-1] + L[k] + 2) >> 2
@@ -941,9 +1236,34 @@ HD:     z = 2*j - i;   k = j - (i >> 1)
         z <  -1:  q = i - 2*j;  P = (A[q-1] + 2*A[q-2] + A[q-3] + 2) >> 2
 ```
 
+`i` and `j` run over `0..n-1`. `DDR`, `VR` and `HD` are written above without
+an `n` in them because there is none: their index arithmetic depends only on
+`i` and `j`, so the same three formulas serve every size.
+
 Every mode but 0 is a weighted average of references that are already in
 `[0, maxval]`, so no clamp is needed and none is applied. Every index used is
-within `A[-1..15]` / `L[-1..15]`.
+within `A[-1..2n-1]` / `L[-1..2n-1]`: `DDR` reaches `A[-1]` at `k == 1`, `VR`
+reaches `L[-1]` at `q == 2`, and `DDL` reaches `A[2n-1]`.
+
+**Which predictor applies at each size.** All nine, at all three sizes. Mode 0
+is the DC-plane prediction at every size, so `INTRA_DIR` stays a strict
+superset of the DC-plane predictor for every `xform_size`, and the mode
+alphabet, the MPM derivation (9.6) and the mode context are the same nine
+symbols however large the block is.
+
+Restricting the set at the larger sizes was measured and is the wrong way
+round. The modes chosen on `vr-mixed-1024` 4:4:4 at QP 16:
+
+| block | `DC_PLANE` | `DC` | `PLANAR` | `H` | `V` | `DDL` | `DDR` | `VR` | `HD` |
+|---|---|---|---|---|---|---|---|---|---|
+| 8x8 | 76.1 % | 7.6 % | 2.9 % | 5.8 % | 5.0 % | 0.8 % | 0.6 % | 0.6 % | 0.7 % |
+| 16x16 | 42.8 % | 19.6 % | 7.2 % | 15.7 % | 10.3 % | 1.3 % | 0.9 % | 0.8 % | 1.3 % |
+| 32x32 | 54.7 % | 15.2 % | 5.7 % | 10.8 % | 8.7 % | 1.8 % | 0.8 % | 0.7 % | 1.6 % |
+
+The directional predictors are used **more**, not less, as the block grows:
+the DC plane at a 32x32 grid is four block means for a whole tile, so it has
+almost no spatial detail left to give, and the neighbour-based predictors take
+over. (`ref/RESULTS-xform-a.md` section 4.)
 
 **Reconstruction** is 7.3 with `pred[y][x]` replaced by `P[j][i]`, and the
 result is written to `recon` as well as to the output plane, because the next
@@ -992,6 +1312,23 @@ tile is a **22-step** wavefront, not the 15 steps an anti-diagonal would give.
 | luma, `res_level` 0 (8x8 blocks) | 22 | 2.91 | 11.6 / 256 = **4.5 %** |
 | 4:4:4 chroma, `res_level` 0 | 22 | 2.91 | 4.5 % |
 | 4:2:0 chroma (4x4 blocks) | 10 | 1.60 | 2.5 % |
+
+**`xform_size` moves this on its own.** With `nb` blocks per plane edge the
+wavefront is `3*nb - 2` steps, and the fixed thread assignment gives each block
+`256 / nb^2` threads:
+
+| `xform_size` | `nb` (luma, `res_level` 0) | steps | threads per block | occupancy |
+|---|---|---|---|---|
+| 0 (8x8) | 8 | 22 | 4 | 4.5 % |
+| 1 (16x16) | 4 | **10** | 16 | **10.0 %** |
+| 2 (32x32) | 2 | **4** | 64 | **25.0 %** |
+
+Those are the same numbers the restriction table below prices — `xform_size 1`
+lands exactly on restriction **B**, and `xform_size 2` beats **B + C** — except
+that the restrictions cost 1.6 to 1.8 % of rate to buy them and `xform_size`
+*saves* rate on the content where it is chosen (`ref/RESULTS-xform-a.md`).
+Barriers per 4:4:4 tile fall from 3 + 66 to 3 + 30 at 16x16 and 3 + 12 at
+32x32.
 
 Barriers per tile, against one per plane for the DC plane alone:
 
@@ -1084,7 +1421,7 @@ for each coded plane p in (Y, Co, Cg [, A if alpha_mode == 2]):
     if INTRA_DIR:
         unit: the mode unit of p     (nb*nb intra modes, section 9.6)
     for by in 0..nb-1, bx in 0..nb-1 (raster):
-        unit: block (bx, by) of p    (64 coefficients)
+        unit: block (bx, by) of p    (bsize*bsize coefficients)
 ```
 
 The mode unit is a whole unit rather than a symbol attached to each block on
@@ -1110,14 +1447,29 @@ subgroup cluster.
 
 | unit | scan |
 |---|---|
-| 64-coefficient block, `tskip == 0` | 8x8 zigzag |
+| block of edge `n`, `tskip == 0` | `n x n` zigzag |
 | 64-coefficient block, `tskip == 1` | raster (`scan[i] = i`) |
 | DC plane, 64 values | 8x8 zigzag |
 | DC plane, 16 values | 4x4 zigzag |
 | DC plane, 4 values | `0, 1, 2, 3` |
 | DC plane, 1 value | `0` |
 
-8x8 zigzag:
+**The zigzag of an `n x n` block**, for every `n` the format uses (2, 4, 8, 16,
+32), is one rule:
+
+```
+p = 0
+for s in 0 .. 2*(n-1):                     // the anti-diagonal
+    ulo = max(s - n + 1, 0);  uhi = min(s, n - 1)
+    if s is even:  for u = uhi down to ulo:  scan[p++] = u * n + (s - u)
+    else:          for u = ulo up to uhi:    scan[p++] = u * n + (s - u)
+```
+
+with `u` the vertical and `s - u` the horizontal index. `tskip` replaces it
+with the raster order, and `tskip` implies `n == 8` (6.6).
+
+The 8x8 and 4x4 tables below are that rule's output, written out because the
+conformance vectors pin them:
 
 ```
  0,  1,  8, 16,  9,  2,  3, 10, 17, 24, 32, 25, 18, 11,  4,  5,
@@ -1177,15 +1529,38 @@ raw bits.
 | 14 | 48 | 4 | 48..63 |
 | 15 | - | - | reserved, illegal |
 
-`last = base[class] + raw`. The decoder must reject `class == 15`, a `base`
-that is `>= ncoef`, and a resulting `last >= ncoef`. A unit with exactly one
-coefficient codes no `LAST` and has `last = 0`.
+For a unit of at most 64 coefficients, `last = base[class] + raw`. A unit with
+exactly one coefficient codes no `LAST` and has `last = 0`.
+
+**Units larger than 64 coefficients** — a 16x16 block (256) or a 32x32 one
+(1024) — reuse the same 16-symbol class table over the unit's 64 equal-sized
+scan **groups**, with the position inside the group as extra raw bits:
+
+```
+last_shift = 0 while (ncoef >> last_shift) <= 64, else the smallest s with
+             (ncoef >> s) <= 64          // 0 for <= 64, 2 for 256, 4 for 1024
+
+raw is read as (raw_bits[class] + last_shift) bypass bits
+last = (base[class] << last_shift) + raw
+```
+
+The widest raw field is therefore `4 + 4 = 8` bits, one bypass chunk, at every
+size. The decoder must reject `class == 15`, a `base << last_shift` that is
+`>= ncoef`, and a resulting `last >= ncoef`.
+
+This is deliberately **not** a new class table. The classes are a coarse
+logarithmic partition of the scan, and applying them to groups keeps that
+partition covering the same *fraction* of the scan at every size, which is what
+makes the same trained frequencies fit all three. The cost is `last_shift`
+bypass bits — 2 on a 256-coefficient block, 4 on a 1024-coefficient one, once
+per coded unit — against 256 or 1024 coded values.
 
 **LEVEL**, for scan positions `last, last-1, ..., 0` (reverse scan order):
 symbol `min(|q|, 15)`, where 15 is the escape. The context is
 
 ```
-band = 0 if pos == 0, 1 if pos in 1..3, 2 if pos in 4..9, 3 if pos >= 10
+g    = pos >> last_shift                   // the scan group, as for LAST
+band = 0 if g == 0, 1 if g in 1..3, 2 if g in 4..9, 3 if g >= 10
 prev = 0 if the previously decoded level was 0, 1 if its magnitude was 1, else 2
         (prev = 0 at the first position of a unit)
 
@@ -1197,6 +1572,22 @@ prev = 0 if the previously decoded level was 0, 1 if its magnitude was 1, else 2
 
 context index = 4 + that value
 ```
+
+`last_shift` is 0 for every unit of at most 64 coefficients, so this is the v1
+banding unchanged there. At 16x16 and 32x32 the four bands cover the same
+fraction of the scan as they do at 8x8 — positions 0-3 / 4-15 / 16-39 / 40+ at
+16x16, four times that at 32x32 — which is why **no context is added at any
+size**.
+
+A per-size context family was measured before being rejected. Splitting the
+frame's symbol histogram by transform size and coding each size with its own
+perfectly trained table — an oracle, with no signalling cost at all — saves
+**3.17 %** of the coefficient bits on `vr-mixed-1024` 4:4:4 at QP 16. Paying
+for it means transmitting three families instead of one, which on the same
+frame is 2 560 more bytes of `table_sets` against 2 337 bytes saved: a loss
+before the split tables are penalised for being trained on a third of the
+data. Reproduce with `-DNXVC_XFORM_CTX_EXPERIMENT`
+(`ref/RESULTS-xform-a.md` section 4).
 
 The level at position `last` must be nonzero; a decoder must reject a zero
 there.
@@ -1475,8 +1866,9 @@ unimplemented mandatory tool bit, `bit_depth` 10, the 32x32 tile profile, a
 bit for a column beyond the picture, a reserved tile-header bit, an `INTER`
 tile, `wm_id` without its tool bit, a wrong `row_index`, a short
 `frame_bytes`, `flags` bit 2 without `INTRA_DIR`, YCoCg-R declared with 4:2:0
-chroma, a `CTX_V2` table set that overruns the tile rows, and `LOSSLESS`
-together with `SIGN_HIDE`.
+chroma, a `CTX_V2` table set that overruns the tile rows, `LOSSLESS`
+together with `SIGN_HIDE`, a reserved `xform_size`, `xform_size` without its
+tool bit, and `xform_size` on a transform-skip tile.
 
 **The v2 intra tools.** `v36`-`v44` pin them: `INTRA_DIR` alone in 4:4:4 and
 4:2:0, `INTRA_DIR` with `CTX_V2`, `CTX_V2` alone, the layered form, every v2
@@ -1484,6 +1876,16 @@ feature at once with transmitted 160-byte table sets, the combination with
 `res_level` cycling and transform skip, `SIGN_HIDE` alone, and the reference
 encoder's shipped default configuration. `v01`-`v35` are **byte-identical** to
 the v1.2 set: all three tools are additive and off unless their bit is set.
+
+**The large transforms.** `v57`-`v62` pin tool bit 24: 16x16 and 32x32 alone
+in 4:2:0 and 4:4:4, the encoder's per-tile rate-distortion choice with every
+v2 intra tool on, a 32x32 request inside a `res_level`-cycling tile grid
+(where the plane cap of 6.7 produces three different block sizes in one
+frame), and 16x16 with directional intra on 4:4:4 chroma. `v01`-`v56` are
+**byte-identical** to the v1.4 set: the tool is additive and off unless its bit
+is set. The one rejection vector that moved is `r09`, which pinned "tile word1
+bit 28 is reserved" and now pins bit 30, because 28-29 are `xform_size`; the
+old bit-28 stream is now `r31`, which must be refused for the new reason.
 
 `v23_custom_tables420` and `v34_wm_id420_tables` pin the probability-table
 normalization of section 9.4 — the one place a decoder divides — so a decoder
@@ -2031,6 +2433,38 @@ inconsistent. Each is a decision, not an interpretation.
     D-5 is unchanged; only the bit numbers move, to the first bits that are
     actually free. This is an erratum against Annex D, recorded here because
     this document is where the bit numbers live.
+
+53. **The transform size is per tile, and everything downstream is derived
+    from it rather than signalled.** The DC plane's resolution, the planar
+    interpolation grid, the directional predictors' block edge, the weighting
+    matrix, the scan, the LAST classes and the LEVEL bands all follow the
+    block size by a rule; the bitstream gains exactly two bits per tile
+    (section 6.7). Two alternatives were rejected. A per-32x32-quadrant size
+    would split the DC plane, which is a per-plane structure whose resolution
+    *is* the transform grid, into four independently interpolated pieces with
+    a seam between them -- the one artefact the DC-plane predictor exists to
+    avoid. A per-size family of transmitted probability tables was measured:
+    an oracle split saves 3.17 % of the coefficient bits and costs more than
+    that in transmitted tables (section 9.3), so no context was added.
+
+54. **Only the 8x8 weighting matrix is ever transmitted.** A 16x16 or 32x32
+    block reads it replicated by `u >> k`, `v >> k`. Transmitting a matrix per
+    size would triple the 128-byte custom-matrix record and quadruple the
+    built-in table for a roll-off whose shape is a function of *normalised*
+    frequency, which replication already preserves.
+
+55. **The LAST classes and the LEVEL bands scale with the unit, they do not
+    multiply.** A 16x16 or 32x32 unit codes its LAST class over 64 scan groups
+    and `last_shift` raw bits inside the group, and bands its LEVEL contexts by
+    group. That reuses one trained set of frequencies at all three sizes,
+    keeps the widest LAST raw field at 8 bits (one bypass chunk), and costs 2
+    or 4 bypass bits per coded unit against 256 or 1024 coded values.
+
+56. **`tskip` and `xform_size` are mutually exclusive.** Transform skip codes
+    residual samples in raster order, which is a statement about an 8x8
+    neighbourhood; a 1024-sample raster unit is a different tool with its own
+    scan question and its own measurement, and defining it untested would put
+    a shape in the format that no encoder emits and no decoder is exercised on.
 
 ## Appendix B: where the bits go
 

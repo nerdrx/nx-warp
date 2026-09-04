@@ -193,6 +193,8 @@ class Tool:
     #: Annex D D-5 names this "tool bit 20"; bit 20 was already WM_ID in
     #: syntax v1.2, so the reference places it at the first free bit.
     FILTER_CATMULLROM = 1 << 23
+    #: Per-tile 16x16 and 32x32 transforms (syntax v1.5, SYNTAX.md 6.7).
+    XFORM_LARGE = 1 << 24
 
     _NAMES = [
         (1 << 0, "INTRA_DC_PLANE"),
@@ -219,10 +221,11 @@ class Tool:
         (1 << 21, "CTX_V2"),
         (1 << 22, "SIGN_HIDE"),
         (1 << 23, "FILTER_CATMULLROM"),
+        (1 << 24, "XFORM_LARGE"),
     ]
 
     #: The first tool bit that is reserved and must be zero (SYNTAX.md 2.3).
-    RESERVED_FROM = 24
+    RESERVED_FROM = 25
 
     @classmethod
     def names(cls, mask: int) -> list[str]:
@@ -257,6 +260,7 @@ TOOLS_SUPPORTED = (
     | Tool.INTER
     | Tool.WARP
     | Tool.STEREO
+    | Tool.XFORM_LARGE
 )
 
 #: The Phase 1 (intra-only) subset of :data:`TOOLS_SUPPORTED`.  Kept separate
@@ -342,6 +346,7 @@ class nxvc_config(Structure):
         ("mv_range", c_uint32),
         ("skip_thresh", c_uint32),
         ("mode_lambda_q8", c_uint32),
+        ("xform_size", c_uint32),
     ]
 
 
@@ -404,6 +409,7 @@ class nxvc_tile_info(Structure):
         ("disparity", c_uint16),
         ("ref_delta", c_uint8),
         ("age_since_coded", c_uint16),
+        ("xform_size", c_uint8),
     ]
 
 

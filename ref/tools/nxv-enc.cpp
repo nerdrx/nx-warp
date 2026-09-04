@@ -75,6 +75,7 @@ static void usage() {
         "                       predicts the DC-plane residual instead\n"
         "  --intra-dir-cand N   modes RD-checked per block (default 2)\n"
         "  --ctx v1|v2          12 or 16 entropy contexts (tool 21)\n"
+        "  --xform 8|16|32|auto  transform size per tile (tool 24, default 8)\n"
         "  --no-sign-hide       code every sign (default: hide one per unit)\n"
         "  --chroma-qp-off N    chroma QP offset\n"
         "  --custom-tables      derive and transmit probability tables\n"
@@ -121,6 +122,7 @@ int main(int argc, char **argv) {
     int rdo = 1, rdo_lambda_q8 = 0, qp_search = 0, wm = 0;
     // These mirror nxvc_config_default(): the v2 intra tools are on.
     int intra_dir = 1, intra_dir_layer = 0, ctx_v2 = 1, dir_cand = 0;
+    int xform = 0;   // tool 24: 0 = 8x8, 1 = 16x16, 2 = 32x32, 255 = auto
     int sign_hide = 1;
     int inter = 0, eyes = 1, intra_period = 180, ref_sel = 0, stereo = 0;
     int mv_range = 16, skip_thresh = 0, mode_lambda = 0;
@@ -206,6 +208,14 @@ int main(int argc, char **argv) {
             if (v == "v2") ctx_v2 = 1;
             else if (v == "v1") ctx_v2 = 0;
             else { std::fprintf(stderr, "--ctx: v1|v2\n"); return 2; }
+        }
+        else if (a == "--xform") {
+            std::string v = val();
+            if (v == "8") xform = 0;
+            else if (v == "16") xform = 1;
+            else if (v == "32") xform = 2;
+            else if (v == "auto") xform = 255;
+            else { std::fprintf(stderr, "--xform: 8|16|32|auto\n"); return 2; }
         }
         else if (a == "--wm") { std::string v = val(); wm = v == "auto" ? 255 : std::atoi(v.c_str()); }
         else if (a == "--chroma-qp-off") chroma_qp_off = std::atoi(val());
@@ -345,6 +355,7 @@ int main(int argc, char **argv) {
     cfg.intra_dir = (uint32_t)intra_dir;
     cfg.intra_dir_layer = (uint32_t)intra_dir_layer;
     cfg.intra_dir_cand = (uint32_t)dir_cand;
+    cfg.xform_size = (uint32_t)xform;
     cfg.ctx_v2 = (uint32_t)ctx_v2;
     cfg.sign_hide = (uint32_t)sign_hide;
     cfg.chroma_qp_off = chroma_qp_off;

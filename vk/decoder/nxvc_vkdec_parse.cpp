@@ -171,6 +171,10 @@ constexpr uint64_t kToolsSupported =
     (1ull << 20) | // WM_ID: per-tile weighting-matrix override
     (1ull << 21) | // CTX_V2: the 16-context entropy model  [v3]
     (1ull << 22);  // SIGN_HIDE: sign data hiding           [v3]
+// Deliberately absent: bit 24 XFORM_LARGE (SYNTAX.md 6.7).  Pass A's unit
+// walker and Pass B's block loop are written for 64-coefficient blocks; until
+// they carry the 16x16 and 32x32 forms this decoder refuses such a stream at
+// the handshake rather than mis-decoding it.
 constexpr uint64_t kToolLossless = 1ull << 5;
 constexpr uint64_t kToolIntraDir = 1ull << 17;
 constexpr uint64_t kToolCtxV2 = 1ull << 21;

@@ -21,6 +21,23 @@ using u64 = uint64_t;
 
 constexpr int kTile = 64;
 constexpr int kBlock = 8;
+
+// ------------------------------------------------------------ transform size
+// Tile-header field `xform_size` (SYNTAX.md 4.1), gated on tool bit 24
+// XFORM_LARGE.  The transform edge a plane actually uses is capped by the
+// plane's own coded extent, so no combination of res_level, chroma format and
+// xform_size can ask for a block larger than the plane (SYNTAX.md 6.7).
+constexpr int kXformSizes = 3;   // 0 = 8x8, 1 = 16x16, 2 = 32x32; 3 reserved
+inline int xform_edge(int xform_size) { return 8 << xform_size; }
+inline int block_edge_for(int xform_size, int plane_size) {
+    int e = xform_edge(xform_size);
+    return e < plane_size ? e : plane_size;
+}
+inline int log2_of(int v) {
+    int k = 0;
+    while ((1 << k) < v) ++k;
+    return k;
+}
 constexpr int kMaxTilesPerRow = 64;
 
 inline i32 clamp_i32(i32 v, i32 lo, i32 hi) {
@@ -44,14 +61,47 @@ extern const u16 kQStep[64];
 extern const u8 kWeight[4][64];
 
 // -------------------------------------------------------------- scan order
-extern const u8 kZigzag8[64];   // 8x8
-extern const u8 kZigzag4[16];   // 4x4
-extern const u8 kZigzag2[4];    // 2x2
-extern const u8 kRaster8[64];   // transform-skip scan
-extern const u8 kZigzag1[1];
+// Every scan is the diagonal zigzag of SYNTAX.md 9.2 over an edge x edge
+// block: diagonal `s` ascending, its samples taken from the bottom-left when
+// `s` is even and from the top-right when it is odd.  `build_zigzag` is that
+// rule; the four small tables below are its output, kept as constants because
+// they are pinned by the conformance vectors, and `ref.transform` checks that
+// the rule still reproduces them.
+extern const u16 kZigzag8[64];    // 8x8
+extern const u16 kZigzag4[16];    // 4x4
+extern const u16 kZigzag2[4];     // 2x2
+extern const u16 kRaster8[64];    // transform-skip scan
+extern const u16 kZigzag1[1];
 
-inline const u8 *scan_table(int n, bool tskip) {
+// Fill `out` with the zigzag of an `edge` x `edge` block: diagonal `s` runs
+// from (s, 0) upwards when `s` is even and from (0, s) downwards when it is
+// odd, clipped to the block, writing the raster index u*edge + v with u
+// vertical.
+constexpr void build_zigzag(int edge, u16 *out) {
+    int p = 0;
+    for (int s = 0; s <= 2 * (edge - 1); ++s) {
+        const int ulo = s - edge + 1 > 0 ? s - edge + 1 : 0;
+        const int uhi = s < edge - 1 ? s : edge - 1;
+        if ((s & 1) == 0)
+            for (int u = uhi; u >= ulo; --u) out[p++] = (u16)(u * edge + s - u);
+        else
+            for (int u = ulo; u <= uhi; ++u) out[p++] = (u16)(u * edge + s - u);
+    }
+}
+
+template <int kEdge>
+struct ZigzagTable {
+    u16 v[kEdge * kEdge];
+    constexpr ZigzagTable() : v{} { build_zigzag(kEdge, v); }
+};
+// The 16x16 and 32x32 scans are the rule's output, evaluated at compile time.
+inline constexpr ZigzagTable<16> kZigzag16{};
+inline constexpr ZigzagTable<32> kZigzag32{};
+
+inline const u16 *scan_table(int n, bool tskip) {
     if (n == 64) return tskip ? kRaster8 : kZigzag8;
+    if (n == 256) return kZigzag16.v;
+    if (n == 1024) return kZigzag32.v;
     if (n == 16) return kZigzag4;
     if (n == 4) return kZigzag2;
     return kZigzag1;
@@ -108,6 +158,19 @@ extern const u8 kLastBase[16];
 extern const u8 kLastRawBits[16];
 int last_class_of(int pos);  // inverse of the table above
 
+// A unit with more than 64 coefficients (a 16x16 or 32x32 block) reuses the
+// 64-position LAST class table and the four LEVEL bands of the 8x8 block by
+// coding them over its 64 equal-sized scan *groups*: the class names the
+// group and `last_shift` raw bypass bits name the position inside it, so
+// `last = (base[class] << last_shift) + raw` and the LEVEL band of a position
+// is the band of `pos >> last_shift`.  No new context and no new symbol
+// exists at any size; SYNTAX.md 9.2.1 and 9.3.1.
+inline int last_shift_of(int ncoef) {
+    int s = 0;
+    while ((ncoef >> s) > 64) ++s;
+    return s;
+}
+
 inline int band_of(int scan_pos) {
     if (scan_pos == 0) return 0;
     if (scan_pos < 4) return 1;
@@ -116,8 +179,11 @@ inline int band_of(int scan_pos) {
 }
 // band x previous-level class -> one of 8 LEVEL contexts.
 extern const u8 kLevelCtx[4][3];
-inline int level_ctx(int scan_pos, int prev_class) {
-    return kCtxLevelBase + kLevelCtx[band_of(scan_pos)][prev_class];
+// `band_shift` is last_shift_of(ncoef): a 16x16 or 32x32 unit bands its
+// scan by group, so the four bands cover the same fraction of the scan at
+// every transform size.
+inline int level_ctx(int scan_pos, int prev_class, int band_shift) {
+    return kCtxLevelBase + kLevelCtx[band_of(scan_pos >> band_shift)][prev_class];
 }
 inline int level_class(int magnitude) {
     return magnitude == 0 ? 0 : (magnitude == 1 ? 1 : 2);

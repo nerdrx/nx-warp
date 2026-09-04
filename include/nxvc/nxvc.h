@@ -47,8 +47,15 @@ extern "C" {
  *       picture per eye and row-major/eye-minor tile rows, the four-slot
  *       reference ring addressed by `ref_sel`, and the 12-bit STEREO
  *       `disparity` field replacing mv_x/mv_y.  See docs/SYNTAX.md 8.
+ *
+ *   v1.5 adds the large transforms: tool bit 24 XFORM_LARGE and the tile
+ *       header's two-bit `xform_size`, selecting a 16x16 or 32x32 integer DCT
+ *       for every plane of the tile instead of the 8x8 one.  The DC plane,
+ *       the intra predictors, the weighting matrices, the scans and the
+ *       entropy contexts all follow the block size by documented rules; no
+ *       new context and no new symbol exists.  See docs/SYNTAX.md 6.7.
  */
-#define NXVC_BITSTREAM_MINOR 4
+#define NXVC_BITSTREAM_MINOR 5
 
 /* "nxvc_ref <major>.<minor> (syntax v1.<minor>)" -- a static string, safe to
  * call before any object exists.  Used by the Python bindings to check that
@@ -127,6 +134,11 @@ typedef enum nxvc_tile_mode {
  * version 1 and a v1 decoder MUST reject a stream that sets it. */
 #define NXVC_TOOL_FILTER_CATMULLROM (1ull << 23)
 
+/* Per-tile 16x16 and 32x32 transforms (syntax v1.5, SYNTAX.md 6.7).  Gates
+ * tile-header field `xform_size`; a stream that never sets the bit decodes
+ * byte-identically to a v1.4 one. */
+#define NXVC_TOOL_XFORM_LARGE     (1ull << 24)
+
 /* Tools this reference decoder implements. */
 #define NXVC_TOOLS_SUPPORTED                                                  \
     (NXVC_TOOL_INTRA_DC_PLANE | NXVC_TOOL_TRANSFORM_SKIP |                    \
@@ -134,7 +146,8 @@ typedef enum nxvc_tile_mode {
      NXVC_TOOL_LOSSLESS | NXVC_TOOL_CUSTOM_TABLES | NXVC_TOOL_NSUB_VAR |      \
      NXVC_TOOL_PER_TILE_CHROMA | NXVC_TOOL_YCOCGR | NXVC_TOOL_WM_ID |        \
      NXVC_TOOL_INTRA_DIR | NXVC_TOOL_CTX_V2 | NXVC_TOOL_SIGN_HIDE |           \
-     NXVC_TOOL_INTER | NXVC_TOOL_WARP | NXVC_TOOL_STEREO)
+     NXVC_TOOL_INTER | NXVC_TOOL_WARP | NXVC_TOOL_STEREO |                   \
+     NXVC_TOOL_XFORM_LARGE)
 
 /* ---------------------------------------------------------------- images */
 /* 8-bit planar image.  plane[0]=Y/R', plane[1]=Co/G', plane[2]=Cg/B',
@@ -214,6 +227,14 @@ typedef struct nxvc_config {
                                    Below 256 the decision spends more bits to
                                    keep the reference clean, which is what an
                                    all-reference stream wants; 0 = default  */
+
+    /* --- additive since syntax v1.5: the large transforms (tool bit 24).
+     * A nonzero value sets the tool bit, and a decoder without it refuses the
+     * stream at the handshake. */
+    uint32_t xform_size;        /* 0 = 8x8 only (and no tool bit), 1 = 16x16
+                                   on every tile, 2 = 32x32 on every tile,
+                                   255 = let the encoder choose per tile by
+                                   rate-distortion                          */
 } nxvc_config;
 
 /* One eye's view for one frame: the orientation the frame was rendered with
@@ -278,6 +299,8 @@ typedef struct nxvc_tile_info {
     uint16_t age_since_coded;   /* frames since this tile position last
                                    carried a coded residual; 0 on the frame
                                    that coded one, saturating at 65535      */
+    /* --- additive since syntax v1.5 */
+    uint8_t xform_size;         /* 0 = 8x8, 1 = 16x16, 2 = 32x32           */
 } nxvc_tile_info;
 
 typedef struct nxvc_stream_info {

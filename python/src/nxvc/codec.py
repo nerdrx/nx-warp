@@ -117,6 +117,7 @@ class TileInfo:
     disparity: int
     ref_delta: int
     age_since_coded: int
+    xform_size: int
 
     _FIELDS = (
         "tile_index",
@@ -145,6 +146,7 @@ class TileInfo:
         "disparity",
         "ref_delta",
         "age_since_coded",
+        "xform_size",
     )
 
     @classmethod
@@ -371,6 +373,8 @@ class EncoderConfig:
     mv_range: int | None = None
     skip_thresh: int | None = None
     mode_lambda_q8: int | None = None
+    #: 0 = 8x8, 1 = 16x16, 2 = 32x32, 255 = the encoder's per-tile RD choice.
+    xform_size: int | None = None
 
     #: Fields set explicitly by the caller; everything else keeps the C default.
     _explicit: set[str] = field(default_factory=set, repr=False, compare=False)
