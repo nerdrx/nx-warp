@@ -26,20 +26,21 @@ for pix in yuv444p yuv420p; do
   echo "== intra $TAG $pix rc=$?"
 done
 else
-for pix in yuv444p yuv420p; do
+# The kill test, ref/RESULTS-inter.md section 2: band A is the literal
+# 100-300 Mbit of PAPER 2.11, band B is the paper's own bits per pixel.
+# 4:4:4 is the configuration whose verdict RESULTS-inter.md quotes verbatim;
+# 4:2:0 is run at band B as well, which is where a per-tile fixed cost like
+# the vector bytes is the largest fraction of a frame.
+inter_run() {  # <band> <pix> <qp ladder> <anchor ladder>
   $R $PY compare.py \
-    --seq $S/vr-mixed-1024-v2.$pix.json --frames 12 \
+    --seq $S/vr-mixed-1024-v2.$2.json --frames 12 \
     --codec-enc "$BIN/nxv-enc --quiet --eyes 2 --inter on --poses $S/vr-mixed-1024-v2.poses.json $EXTRA" \
     --codec-dec "$BIN/nxv-dec --quiet" --codec-name "nxv-inter-$TAG" \
-    --anchors x265-p --qp 0,4,8,12 --anchor-qp 2,8,14,20 --no-vmaf --no-ssim \
-    --out $OUT/killA-$TAG-$pix.json > $OUT/killA-$TAG-$pix.log 2>&1
-  echo "== killA $TAG $pix rc=$?"
-  $R $PY compare.py \
-    --seq $S/vr-mixed-1024-v2.$pix.json --frames 12 \
-    --codec-enc "$BIN/nxv-enc --quiet --eyes 2 --inter on --poses $S/vr-mixed-1024-v2.poses.json $EXTRA" \
-    --codec-dec "$BIN/nxv-dec --quiet" --codec-name "nxv-inter-$TAG" \
-    --anchors x265-p --qp 18,24,30,36 --anchor-qp 26,32,38,44 --no-vmaf --no-ssim \
-    --out $OUT/killB-$TAG-$pix.json > $OUT/killB-$TAG-$pix.log 2>&1
-  echo "== killB $TAG $pix rc=$?"
-done
+    --anchors x265-p --qp $3 --anchor-qp $4 --no-vmaf --no-ssim \
+    --out $OUT/$1-$TAG-$2.json > $OUT/$1-$TAG-$2.log 2>&1
+  echo "== $1 $TAG $2 rc=$?"
+}
+inter_run killA yuv444p 0,4,8,12 2,8,14,20
+inter_run killB yuv444p 18,24,30,36 26,32,38,44
+inter_run killB yuv420p 18,24,30,36 26,32,38,44
 fi
