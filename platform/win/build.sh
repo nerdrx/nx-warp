@@ -29,9 +29,9 @@ done
 [ "$clean" = 1 ] && rm -rf "$build_dir"
 
 # nice/chrt so a build never competes with the compositor or a VR session.
-NICE=(nice -n 19)
-command -v chrt >/dev/null 2>&1 && NICE=(chrt -i 0 "${NICE[@]}")
-command -v taskset >/dev/null 2>&1 && NICE=(taskset -c 0-3 "${NICE[@]}")
+# shellcheck source=../../scripts/cpu-discipline.sh
+. "$repo/scripts/cpu-discipline.sh"
+nx_cpu_prefix 0-3
 
 # Extra -D flags can be passed through NXWARP_CMAKE_EXTRA (space separated).
 read -r -a extra <<<"${NXWARP_CMAKE_EXTRA:-}"

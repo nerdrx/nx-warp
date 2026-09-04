@@ -25,8 +25,9 @@ fi
 
 mkdir -p assets
 
-NICE=(chrt -i 0 taskset -c 20-23 nice -n 19)
-command -v chrt >/dev/null 2>&1 || NICE=(nice -n 19)
+# shellcheck source=../scripts/cpu-discipline.sh
+. "$(dirname "$(readlink -f "$0")")/../scripts/cpu-discipline.sh"
+nx_cpu_prefix 20-23
 
 # zerolatency shape: no B-frames, headers repeated on every IDR so the decoder
 # can be fed from any keyframe when the clip loops.

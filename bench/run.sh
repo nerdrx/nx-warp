@@ -29,8 +29,9 @@ export ANDROID_HOME="${ANDROID_HOME:-/run/media/nerdrx/Lex/claude/tools/android-
 export ANDROID_SDK_ROOT="$ANDROID_HOME"
 
 # Every compile stays out of the user's way: idle scheduling class, four cores.
-NICE=(chrt -i 0 taskset -c 20-23 nice -n 19)
-if ! command -v chrt >/dev/null 2>&1; then NICE=(nice -n 19); fi
+# shellcheck source=../scripts/cpu-discipline.sh
+. "$(dirname "$(readlink -f "$0")")/../scripts/cpu-discipline.sh"
+nx_cpu_prefix 20-23
 
 ARGS="$*"
 SKIP_BUILD="${NXB_SKIP_BUILD:-0}"
@@ -72,8 +73,21 @@ echo "==> installing"
 adb "${DEV[@]}" install -r -g "$APK" >/dev/null
 
 # The gate wants the display active for the whole run (PAPER 3.4), and a
-# 10-minute thermal pass outlives any sane screen timeout.
-adb "${DEV[@]}" shell svc power stayon usb >/dev/null 2>&1 || true
+# 10-minute thermal pass outlives any sane screen timeout. A Pico that has
+# dozed off parks the GPU at its minimum OPP (305 MHz on the Adreno 650) and
+# every number in the run comes out three times too slow, silently -- so the
+# wake-up is not optional and it happens before every launch, not just once.
+wake_device() {
+  adb "${DEV[@]}" shell "input keyevent KEYCODE_WAKEUP; svc power stayon usb" \
+      >/dev/null 2>&1 || true
+}
+# The clock the run actually got. Printed into the log before and after so a
+# thermally-throttled or asleep run is visible in the artefact, not just live.
+gpuclk() {
+  adb "${DEV[@]}" shell 'cat /sys/class/kgsl/kgsl-3d0/gpuclk 2>/dev/null \
+      || echo "(gpuclk unreadable)"' 2>/dev/null | tr -d '\r'
+}
+wake_device
 
 mkdir -p "$OUT"
 STAMP="$(date +%Y%m%d-%H%M%S)"
@@ -85,6 +99,8 @@ LOCAL_LOG="$OUT/phase0-$DEVNAME-$STAMP.log"
 save_logs() {
   if [ "$(adb "${DEV[@]}" get-state 2>/dev/null)" = "device" ]; then
     {
+      echo "--- gpu clock: before=${GPUCLK_BEFORE:-?} after=$(gpuclk) ---"
+      echo
       echo "--- logcat: nxwarp-bench ---"
       adb "${DEV[@]}" logcat -d -s nxwarp-bench 2>/dev/null || true
       echo
@@ -102,6 +118,9 @@ save_logs() {
 echo "==> running: ${ARGS:-<defaults: K1..K5>}"
 adb "${DEV[@]}" shell am force-stop "$PKG" >/dev/null 2>&1 || true
 adb "${DEV[@]}" shell run-as "$PKG" rm -f "$REMOTE_JSON" >/dev/null 2>&1 || true
+wake_device
+GPUCLK_BEFORE="$(gpuclk)"
+echo "    gpu clock before the run: $GPUCLK_BEFORE"
 adb "${DEV[@]}" logcat -c >/dev/null 2>&1 || true
 adb "${DEV[@]}" logcat -c -b crash >/dev/null 2>&1 || true
 
@@ -118,12 +137,36 @@ if echo "$START_OUT" | grep -qiE "error|exception"; then
   exit 1
 fi
 
+# The pid of the process we just launched. "bench done" is matched against it,
+# because `logcat -c` is advisory -- on this device it routinely leaves the
+# previous run's lines in the buffer, and an unmatched grep then declares
+# victory instantly and pulls a JSON that was never written.
+RUN_PID=""
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  RUN_PID="$(adb "${DEV[@]}" shell pidof "$PKG" 2>/dev/null | tr -d '\r' | awk '{print $1}')"
+  [ -n "$RUN_PID" ] && break
+  sleep 1
+done
+if [ -z "$RUN_PID" ]; then
+  echo "the app did not appear in the process table after am start" >&2
+  save_logs
+  exit 1
+fi
+echo "    app pid: $RUN_PID"
+
+# logcat's own pid column, so a stale "bench done" from an earlier pid cannot
+# satisfy the wait.
+run_finished() {
+  adb "${DEV[@]}" logcat -d -v pid -s nxwarp-bench 2>/dev/null \
+    | grep "bench done" | grep -qw "$RUN_PID"
+}
+
 # --- wait for the run to finish, echoing progress
 echo "==> waiting for the run to finish (Ctrl-C to give up; the app keeps going)"
 DEADLINE=$(( $(date +%s) + ${NXB_TIMEOUT:-3600} ))
 DONE=0
 while [ "$(date +%s)" -lt "$DEADLINE" ]; do
-  if adb "${DEV[@]}" logcat -d -s nxwarp-bench 2>/dev/null | grep -q "bench done"; then
+  if run_finished; then
     DONE=1
     break
   fi
@@ -138,7 +181,7 @@ while [ "$(date +%s)" -lt "$DEADLINE" ]; do
 
   if ! adb "${DEV[@]}" shell pidof "$PKG" >/dev/null 2>&1; then
     # Process gone: either it finished between polls or it died.
-    if adb "${DEV[@]}" logcat -d -s nxwarp-bench 2>/dev/null | grep -q "bench done"; then
+    if run_finished; then
       DONE=1
     else
       echo "the app exited without finishing" >&2
