@@ -135,8 +135,8 @@ typedef enum nxvc_tile_mode {
 #define NXVC_TOOL_WM_ID           (1ull << 20)
 #define NXVC_TOOL_CTX_V2          (1ull << 21)
 #define NXVC_TOOL_SIGN_HIDE       (1ull << 22)
-#define NXVC_TOOL_TAB_V2    (1ull << 27)
-#define NXVC_TOOL_CTX_V3          (1ull << 26)
+#define NXVC_TOOL_TAB_V2    (1ull << 26)
+#define NXVC_TOOL_CTX_V3          (1ull << 25)
 /* Annex D D-5 names the Catmull-Rom selector "tool bit 20".  Bit 20 was
  * already taken by WM_ID in syntax v1.2 (shipped, with conformance vectors),
  * so this reference and docs/SYNTAX.md place it at the first bit that is

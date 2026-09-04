@@ -156,8 +156,8 @@ interleaved UV.
 | 21 | `CTX_V2` | the 16-context entropy model (section 9.3) |
 | 22 | `SIGN_HIDE` | sign data hiding (section 9.7) |
 | 23 | `FILTER_CATMULL_ROM` | Catmull-Rom interpolation in the warp instead of bilinear. **Not defined for version 1** |
-| 26 | `CTX_V3` | the 22-context neighbour-conditioned entropy model (section 9.8) |
-| 27 | `TAB_V2` | the compact transmitted table set (section 9.4.1) |
+| 25 | `CTX_V3` | the 22-context neighbour-conditioned entropy model (section 9.8) |
+| 26 | `TAB_V2` | the compact transmitted table set (section 9.4.1) |
 | 28 | `NEAR_SKIP` | tiles may set `near_skip` (section 13.9) |
 | 29 | `QUAD_MV` | tiles may set `quad_mv` (section 13.10) |
 | 30 | `SUBTILE_INTRA` | tiles may set `sub_intra` (section 13.11) |
