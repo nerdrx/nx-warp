@@ -20,8 +20,11 @@ cmake --build build -j4
 ctest --test-dir build -R 'ref\.'
 ```
 
-C++20, no dependencies beyond the standard library. The library target is
-`nxvc_ref`; the CLIs are `nxv-enc`, `nxv-dec`, `nxv-info` and build alongside it.
+C++20, no dependencies beyond the standard library. The sources build once as
+`nxvc_ref_obj` and link into both `nxvc_ref` (static, what the project uses) and
+`nxvc_ref_shared` (`libnxvc_ref.so`, what the Python bindings load over ctypes);
+the CLIs are `nxv-enc`, `nxv-dec`, `nxv-info` and build alongside them.
+`nxvc_version_string()` reports the build's syntax revision.
 
 ## Tools
 
@@ -41,8 +44,16 @@ nxv-info --in out.nxv [--tiles]
 ```
 
 `nxv-enc` extras: `--frames N`, `--tskip off|on|auto`, `--nsub 0..5|auto`,
-`--matrix 0..3`, `--chroma-qp-off N`, `--no-custom-tables`, `--tile-420`,
-`--rgb`, `--color-space unspecified|yuv709l|yuv709f`, `--stats`, `--quiet`.
+`--matrix 0..3`, `--wm 0..3`, `--chroma-qp-off N`, `--no-custom-tables`,
+`--tile-420`, `--rgb`, `--color-space unspecified|yuv709l|yuv709f`, `--stats`,
+`--quiet`, and the rate-distortion controls `--no-rdo` / `--rdo-lambda F`.
+
+Rate-distortion quantization is **on by default**. It is encoder-only work -- a
+trellis over the level syntax, `ref/src/codec.cpp` `rdoq_unit()` -- so a stream
+encoded with it decodes through exactly the same path as one encoded without.
+It costs about 2.7x encode time and is worth -8.8 % BD-rate; `--no-rdo` gets
+the old dead-zone quantizer back. `--wm` sets the per-tile weighting-matrix id
+that the rate controller's degradation ladder uses.
 
 `--rgb` means planes 0..2 are R, G, B and the codec applies YCoCg-R. Without it
 the planes are coded exactly as given, which is the path a WiVRn capture takes
@@ -122,6 +133,8 @@ the value a GPU decoder should assume as the maximum).
 | `tools/` | `nxv-enc`, `nxv-dec`, `nxv-info` |
 | `../tests/ref/gentables.cpp` | regenerates `default_tables.inc` (dev tool) |
 | `../tests/ref/vectors.cpp` | generates and checks the conformance vectors |
+| `../tests/ref/test_saturate.cpp` | range safety of the normative decode path |
+| `RESULTS-intra.md` | the Phase 1 intra measurements, in full |
 
 The per-lane syntax state machine in `entropy.cpp` is the piece the Vulkan Pass A
 shader mirrors: one `LaneMachine` per rANS lane, driven identically by the
@@ -133,11 +146,26 @@ encoder and the decoder, so the two can never disagree about the symbol order.
 `ref.rans` (round trip on random and pathological streams, truncation, junk),
 `ref.codec` (rate/quality monotonicity, lossless bit-exactness, every tool
 combination, odd picture sizes, multi-frame), `ref.headers` (TLV forward
-compatibility and header validation), `ref.fuzz_smoke` (random and mutated
-streams never crash), `ref.cli` (the three tools end to end) and `ref.vectors`.
+compatibility and header validation), `ref.saturate` (the inverse transform and
+the dequantizer at their documented bounds), `ref.fuzz_smoke` (random and
+mutated streams never crash), `ref.cli` (the three tools end to end) and
+`ref.vectors`.
 
-`tests/vectors/` holds 32 committed `.nxv` vectors and `vectors.md5`, which pins
-both the MD5 of each bitstream and the MD5 of its decoded planes.
+`ref.saturate` exists to be run under the sanitizers, where a signed overflow
+in the normative path aborts instead of being ignored:
+
+```sh
+cmake --preset asan-ubsan && cmake --build --preset asan-ubsan
+ctest --preset asan-ubsan -R 'ref\.'
+```
+
+`tests/vectors/` holds 35 committed `.nxv` vectors and `vectors.md5`, which pins
+both the MD5 of each bitstream and the MD5 of its decoded planes, plus 13
+**rejection vectors** and `rejects.md5`, which pin the exact status each
+malformed stream must be refused with. `VERSION`, `UNSUPPORTED`, `BITSTREAM`
+and `TRUNCATED` are not interchangeable: a transport falls back on one and
+re-requests on another, so a decoder that swaps them recovers wrongly. See
+`docs/SYNTAX.md` 12.
 
 ```sh
 build/tests/ref/nxv-vectors --check    tests/vectors   # ctest runs this
@@ -157,10 +185,12 @@ build-fuzz/tests/ref/nxvc_fuzz_decode -max_len=4096 corpus/
 
 ## Performance
 
-The encoder is written for clarity, but a 2048x2048 4:2:0 intra frame encodes in
-about 0.12 s and decodes in about 0.04 s single-threaded on a desktop core —
-fast enough to drive the quality harness over long sequences. (`--stats` and
-`--custom-tables` each add a pass; `--no-custom-tables` encodes in about 0.07 s.)
+The encoder is written for clarity. On one desktop core, a 2048x2048 4:2:0
+intra frame at QP 28 encodes in about 0.57 s and decodes in 0.07 s; with
+`--no-rdo` the encode is 0.21 s, and with `--no-custom-tables` as well it is
+0.29 s. The decode time is the same either way -- every encoder-side tool here
+is invisible to the decoder by construction. 4:4:4 costs roughly twice as much
+on both sides. Full table in [`RESULTS-intra.md`](RESULTS-intra.md).
 
 ## Where it stands against x264 intra
 
@@ -187,7 +217,45 @@ for us):
 | 0.09 | 47.82 | 42.03 | -5.8 dB |
 | 0.06 | 43.82 | 38.94 | -4.9 dB |
 
-### Gap analysis
+## The Phase 1 gate
+
+**The gate is not met.** Measured by `tools/quality/compare.py` on
+`vr-mixed-1024` against `x264 --keyint 1`, over the 100-400 Mbit band the
+criterion is stated in:
+
+| | BD-rate | mean deficit | verdict |
+|---|---|---|---|
+| yuv444p | +65.79 % | -5.937 dB | FAIL (needs -1.0 dB) |
+| yuv420p | +43.69 % | -4.678 dB | FAIL |
+
+The full record — every before/after number, the tools that were measured and
+rejected and why, the GPU cost of the one that is worth having, and encode
+times — is **[`RESULTS-intra.md`](RESULTS-intra.md)**. The short version:
+
+* Rate-distortion quantization is now on by default and is worth **-8.8 %
+  BD-rate / +0.92 dB**, encoder only, at 2.7x encode time and no decoder cost.
+* An in-tile intra **pyramid** was measured before being built: a 16x16 level
+  buys 0.84 dB of residual *energy* for 6 % more coded values, a 32x32 level
+  2.37 dB for 31 %. Not worth it. Not implemented.
+* **Directional intra** is the largest tool left, worth about -21 % on the luma
+  coefficients with oracle neighbours and realistically -15 % (~1 dB). It needs
+  a 15-step in-tile wavefront that runs the workgroup at roughly 7 % occupancy
+  during prediction, with 15 barriers per plane per tile where the DC plane
+  needs one. Measured, documented, **not** implemented; `INTRA_DIR` stays a v2
+  tool bit and the decision belongs to a real Pass B barrier measurement.
+* The **8-byte tile header** is 1.1-3.0 % of a frame in this band, not the
+  13.7 % Appendix B measured at QP 36. A 4-byte form is not worth a tool bit
+  here; it is still a lever for the low-rate rate-control regime.
+* Even taking every implementable candidate optimistically, that is about
+  -30 % against the -40 % the gate needs. **Closing it needs a tool v1 does not
+  have.**
+
+One caveat that belongs next to the verdict: all of this material is synthetic
+and 75 % of its pixels are horizontally constant, which is close to the best
+case for x264 and the worst case for a block-mean predictor plus an 8x8 DCT.
+The next measurement that matters is a real capture.
+
+### Gap analysis (as first written, and how it held up)
 
 The paper's estimate was "30-40% more bits than x265 intra". On detailed
 content we are inside that and better; on smooth synthetic content we are well
@@ -212,6 +280,16 @@ outside it. The difference is entirely explained, and each part is measurable:
 4. **No RDO beyond a dead-zone quantizer.** x264 at `--crf` runs trellis
    quantization and mode decision. Worth perhaps 0.5-1 dB, and it is pure
    encoder work that changes no bitstream.
+
+**How that analysis held up when it was measured** (`RESULTS-intra.md`): item 4
+was right, and is now done (+0.92 dB). Item 1 was right about the *cause* but
+its size was overstated at the Phase 1 operating point, where directional intra
+is worth about 1 dB rather than the whole gap. Item 2 was wrong for this band:
+the 8-byte header is a low-rate fact, and at 100-400 Mbit it is 3 % of the
+frame. Item 3 stands unmeasured. What none of the four saw is that the deficit
+is a roughly constant ~1.8x bit-efficiency factor spread across the quantizer,
+the context model and the predictor, with no single dominant term -- which is
+why no single tool on the list closes it.
 
 What was fixed to get here, in order of effect: quantizing the DC plane at
 `qp >> 1` instead of `qp - 6` (+3 dB at QP 38 *and* -10% bits — coarse block

@@ -201,7 +201,8 @@ static u64 encoder_tools(const nxvc_encoder *e) {
     if (e->cfg.nsub_log2 != 3) t |= NXVC_TOOL_NSUB_VAR;
     if (e->cfg.tile_chroma420) t |= NXVC_TOOL_PER_TILE_CHROMA;
     if (e->cfg.color_transform == NXVC_CT_YCOCGR) t |= NXVC_TOOL_YCOCGR;
-    if (e->cfg.wm_id != 0) t |= NXVC_TOOL_WM_ID;
+    if (e->cfg.wm_id != 0 && e->cfg.quant_matrix != 255 && !e->cfg.lossless)
+        t |= NXVC_TOOL_WM_ID;
     t |= NXVC_TOOL_RES_LEVEL;
     return t;
 }
@@ -346,6 +347,29 @@ static void store_tile(TileCoder &tc, const Geometry &g, nxvc_image *img,
     }
 }
 
+// Squared error of the reconstruction this tile's coefficients will produce,
+// summed over every coded plane in the *coded* domain (before res_level or
+// chroma upsampling).  The encoder runs the real decoder to get it, so the
+// number is exact for what the tile codes; for a res_level > 0 tile it is the
+// error of the small image, not of the upsampled one, which is the right
+// quantity to compare two candidates for the same tile against.
+static double tile_distortion(TileCoder &tc) {
+    double sse = 0;
+    int np = coded_planes(tc);
+    std::vector<i32> src;
+    for (int p = 0; p < np; ++p) {
+        PlaneState &s = tc.pl[p];
+        src = s.samples;
+        reconstruct_plane(s, &tc.coef[plane_coef_offset(tc, p)], tc.tp.tskip);
+        for (size_t i = 0; i < src.size(); ++i) {
+            double d = (double)src[i] - (double)s.samples[i];
+            sse += d * d;
+        }
+        s.samples.swap(src);
+    }
+    return sse;
+}
+
 // Cheap transform-skip decision: prefer transform skip when the residual is
 // dominated by isolated large jumps (synthetic / text-like content).
 static int tskip_decision(const TileCoder &tc) {
@@ -404,6 +428,12 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
     const double rdo_lambda_scale =
         e->cfg.rdo_lambda_q8 ? (double)e->cfg.rdo_lambda_q8 / 256.0 : 0.30;
     const bool use_rdo = e->cfg.rdo != 0 && !e->cfg.lossless;
+    // Per-tile searches.  wm_id 255 means "choose per tile"; a frame carrying
+    // custom matrices has no built-in matrix to choose from.
+    const int qp_search = e->cfg.lossless ? 0 : (int)(e->cfg.qp_search > 8
+                                                          ? 8u : e->cfg.qp_search);
+    const bool wm_search = e->cfg.wm_id == 255 && fp.quant_matrix != 255 &&
+                           !e->cfg.lossless;
 
     // Re-quantize a tile's residual blocks with the RD trellis, using the
     // costs of the table set the plain quantization pass selected.
@@ -415,6 +445,30 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         for (int p = 0; p < np; ++p)
             rdoq_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)], tc.tp.tskip,
                        p == 1 || p == 2, rc, rdo_lambda_scale);
+    };
+
+    // Quantize one already-loaded tile: plain pass, table-set choice, then the
+    // RD trellis and a second table-set choice.  Leaves `tc` ready to encode
+    // and returns the coefficient rate in bits (payload only).
+    auto quantize_tile = [&](TileCoder &tc, const TableSet *tabs) -> double {
+        int np = coded_planes(tc);
+        for (int p = 0; p < np; ++p)
+            analyze_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
+                          tc.tp.tskip, 1);
+        u32 th[kNumCtx][kNumSym];
+        std::memset(th, 0, sizeof(th));
+        if (count_units(tc.units.data(), (int)tc.units.size(),
+                        1 << tc.tp.nsub_log2, th, nullptr))
+            tc.tp.table_set = select_set(th, tc.tp.table_set);
+        if (use_rdo) {
+            rdoq_tile(tc, tabs);
+            std::memset(th, 0, sizeof(th));
+            if (!count_units(tc.units.data(), (int)tc.units.size(),
+                             1 << tc.tp.nsub_log2, th, nullptr))
+                return 0;
+            tc.tp.table_set = select_set(th, tc.tp.table_set);
+        }
+        return table_set_cost(th, tabs[tc.tp.table_set]);
     };
 
     auto make_tile_params = [&](int t) {
@@ -531,21 +585,57 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                 tc.tp.alpha_value = first;
             }
             tc.build_units();
-            int np = coded_planes(tc);
-            for (int p = 0; p < np; ++p)
-                analyze_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
-                              tc.tp.tskip, 1);
+            // Per-tile mode decision.  Every candidate is a full quantization
+            // of the tile, scored as D + lambda*R with D the exact squared
+            // error of the reconstruction the decoder will produce and R the
+            // coefficient bits plus the tile's fixed cost (an 8-byte header
+            // and 4 bytes of rANS state per active lane).  Off by default:
+            // it costs one full encode per candidate.
+            if (qp_search > 0 || wm_search) {
+                const double base = (double)kQStep[clamp_i32(
+                                        fp.base_qp + tc.tp.qp_delta, 0, 63)] / 16.0;
+                const double lambda = rdo_lambda_scale * base * base;
+                const int qd0 = tc.tp.qp_delta;
+                double best = 0;
+                bool have = false;
+                int best_qd = qd0, best_wm = tc.tp.wm_id;
+                for (int dq = -qp_search; dq <= qp_search; ++dq) {
+                    for (int wm = 0; wm <= (wm_search ? 3 : 0); ++wm) {
+                        TileCoder cand;
+                        cand.g = &g;
+                        cand.fp = &fp;
+                        cand.tp = tc.tp;
+                        cand.tp.qp_delta = clamp_i32(qd0 + dq, -32, 31);
+                        cand.tp.wm_id = wm;
+                        cand.setup();
+                        load_tile(cand, g, img, col, row);
+                        cand.build_units();
+                        double bits = quantize_tile(cand, fp.tabs);
+                        int active = 1 << cand.tp.nsub_log2;
+                        if ((size_t)active > cand.units.size())
+                            active = (int)cand.units.size();
+                        bits += 8 * (kTileHeaderBytes + 4 * active);
+                        double cost = tile_distortion(cand) + lambda * bits;
+                        if (!have || cost < best) {
+                            best = cost;
+                            have = true;
+                            best_qd = cand.tp.qp_delta;
+                            best_wm = wm;
+                        }
+                    }
+                }
+                if (have && (best_qd != tc.tp.qp_delta || best_wm != tc.tp.wm_id)) {
+                    tc.tp.qp_delta = best_qd;
+                    tc.tp.wm_id = best_wm;
+                    tc.setup();
+                    load_tile(tc, g, img, col, row);
+                    tc.build_units();
+                }
+            }
             // Pick the table set that codes this tile most cheaply.  The
             // eight sets span the QP range, so this is a content-adaptive
             // choice within a fixed, static-per-frame table family.
-            if (use_rdo) {
-                u32 th0[kNumCtx][kNumSym];
-                std::memset(th0, 0, sizeof(th0));
-                if (count_units(tc.units.data(), (int)tc.units.size(),
-                                1 << tc.tp.nsub_log2, th0, nullptr))
-                    tc.tp.table_set = select_set(th0, tc.tp.table_set);
-                rdoq_tile(tc, fp.tabs);
-            }
+            quantize_tile(tc, fp.tabs);
             {
                 u32 th[kNumCtx][kNumSym];
                 std::memset(th, 0, sizeof(th));

@@ -82,6 +82,12 @@ Constraints a decoder must check:
 * `chroma_format`, `color_transform` and `alpha_present` must be in range.
 * `color_transform == 1` requires `chroma_format == 1`.
 * `color_space == 3` if and only if `color_transform == 1`.
+* `bit_depth` must be 8. **`bit_depth == 10` is reserved in v1 and must be
+  rejected with an "unsupported" status**, as must the `BITDEPTH10` tool bit.
+  v1 does not define the 10-bit sample domain, the `qstep` scaling or the
+  clamps, so a 10-bit stream has no defined meaning here; specifying it is a
+  v2 item and it is listed in the spec's open issues. The rejection vectors
+  `r03_bit_depth_10` and `r02_unknown_tool` pin both refusals.
 * If `tools` has any bit set that the decoder does not implement, the stream
   must be refused. This is the only forward-compatibility gate; unknown
   *optional* information travels in TLVs instead.
@@ -146,8 +152,9 @@ interleaved UV.
 | 17 | `INTRA_DIR` | directional intra |
 | 18 | `XFORM_WAVELET` | 5/3 wavelet transform |
 | 19 | `XFORM_4X4_SPLIT` | per-block 4x4 transform split |
+| 20 | `WM_ID` | tiles may set `wm_id != 0` (section 4.1) |
 
-Bits 20-63 are reserved and must be zero. Capability negotiation is an
+Bits 21-63 are reserved and must be zero. Capability negotiation is an
 intersection: the sender only sets bits the receiver offered.
 
 ---
@@ -257,7 +264,8 @@ Two little-endian u32 words. Bits are listed LSB first.
 | 21-22 | `ref_sel` | reference slot: 0 newest, 1..3 older |
 | 23 | `tskip` | the whole tile skips the transform |
 | 24-25 | `wgt` | enhancement-layer blend weight: 0, 1/4, 1/2, 3/4 (of the spatial hypothesis) |
-| 26-31 | reserved | must be 0 |
+| 26-27 | `wm_id` | per-tile weighting matrix: 0 = the frame's, 1-3 = built-in matrix `wm_id` |
+| 28-31 | reserved | must be 0 |
 
 Then, in this order:
 
@@ -266,9 +274,12 @@ Then, in this order:
 3. `payload_len` bytes of rANS payload
 
 Constraints: `res_level != 3`; `alpha_mode != 3`; `nsub_log2 <= 5`;
-`mode <= 4`; word0 bit 3 and word1 bits 26-31 zero; `chroma444` may only be 1 if
+`mode <= 4`; word0 bit 3 and word1 bits 28-31 zero; `chroma444` may only be 1 if
 `chroma_format == 1`; `alpha_mode != 0` requires `alpha_present`; `tile_index`
-must equal the tile's position in the row.
+must equal the tile's position in the row; `wm_id != 0` requires the `WM_ID`
+tool bit and is illegal when the frame carries custom matrices
+(`quant_matrix == 255`), because the two would silently disagree about which
+weights apply.
 
 ### 4.2 Tile geometry
 
@@ -387,8 +398,8 @@ O0 = A + C
 O3 = B - D
 P  = A - C
 Q  = B + D
-O1 = ((P + Q) * C4 + 256) >> 9
-O2 = ((P - Q) * C4 + 256) >> 9
+O1 = mulC4(P + Q)          // see 6.3: an exact product, not an int32 one
+O2 = mulC4(P - Q)
 
 y0 = e0 + O0 ;  y7 = e0 - O0
 y1 = e1 + O1 ;  y6 = e1 - O1
@@ -417,10 +428,40 @@ must match bit for bit):
 
 | stage | shift | rounding | clamp | worst-case magnitude before the shift |
 |---|---|---|---|---|
-| inverse pass 1 | `>> 7` | `+64` | int16 | `32767 * 2703 = 8.9e7` (fits int32) |
-| inverse pass 2 | `>> 13` | `+4096` | int16 | `32767 * 2703 = 8.9e7` |
+| inverse pass 1 | `>> 7` | `+64` | int16 | `1.1e8` at the outputs `y0..y7` |
+| inverse pass 2 | `>> 13` | `+4096` | int16 | `1.1e8` |
 | forward pass 1 | `>> 6` | `+32` | int16 | `511 * 4096 = 2.1e6` |
 | forward pass 2 | `>> 14` | `+8192` | int16 | `32767 * 4096 = 1.3e8` |
+
+**`mulC4` is an exact product, and it is the one place the flow graph leaves
+int32 if written naively.** Dequantized coefficients are clamped to int16
+(section 6.5), which bounds the even part and the odd-part terms
+
+```
+|A|, |B| <= 32768 * (A1 + A7) = 32768 * 602 = 1.98e7
+|C|, |D| <= 32768 * (A3 + A5) = 32768 * 710 = 2.33e7
+|P|, |Q| <= 4.31e7          so   |P +- Q| <= 8.62e7
+```
+
+and `8.62e7 * 362 = 3.12e10`, which is **outside int32**. The value
+`(s * C4 + 256) >> 9` is nonetheless well defined, and a decoder must produce
+it exactly. Split `s` into `hi = s >> 9` (arithmetic) and `lo = s & 511`:
+
+```
+mulC4(s):  hi = s >> 9 ; lo = s & 511
+           return hi * C4 + ((lo * C4 + 256) >> 9)
+```
+
+This is exact for every int32 `s`, because `512 * hi * C4` is a multiple of
+512 and the shift therefore distributes; both partial products are small
+(`|hi * C4| <= 6.1e7`, `lo * C4 <= 1.9e5`). An implementation with a cheap
+64-bit multiply may use one instead; the *result* is normative, not the
+spelling. With `mulC4` bounded this way, `|O1|, |O2| <= 6.1e7` and the pass
+outputs `y = e +- O` stay under `1.1e8`, comfortably inside int32.
+
+The same identity applies to the forward transform's `P`/`Q` rotation, whose
+operands are far smaller; it is used there only so that one routine serves
+both directions.
 
 The 1D flow graph has gain exactly `2^10` per dimension, so the two inverse
 shifts must sum to 20 for unit gain; 7 + 13 and 8 + 12 both do. The reference
@@ -435,9 +476,18 @@ would leave a residual gain of 2; see Appendix A item 10.)
 
 The `clamp16` after pass 1 is **normative**: it bounds the intermediate to 16
 bits so a GPU may keep the transpose buffer in `int16` LDS, and it is reachable
-with legal (if pathological) coefficient values. Dequantized coefficients are
-themselves clamped to `int16` (section 6.5), which bounds every product in the
-transform to about `8.9e7`, comfortably inside int32.
+with legal (if pathological) coefficient values. It is also what makes the
+range analysis above apply unchanged to pass 2.
+
+The **dequantizer** has its own bound: the largest step is QP 63 with the
+largest legal weight, `t = (23170 * 32 + 8) >> 4 = 46340`, and the largest
+legal level is 32767, so `q * t = 1.52e9` — inside int32 with room to spare.
+
+Conformance vector `v35_saturate420` carries a tile whose every dequantized
+coefficient saturates the int16 clamp in the sign pattern that maximises
+`|P + Q|`; `ctest -R ref.saturate` decodes it and sweeps the arithmetic at its
+bounds, and is meant to be run under `-fsanitize=undefined`
+(`cmake --preset asan-ubsan`).
 
 ### 6.4 Forward 2D transform (informative)
 
@@ -484,8 +534,12 @@ with the weight `w[i]`:
 
 * DC-plane coding units: `w[i] = 16` (flat) at every position.
 * Transform-skip blocks: `w[i] = 16` (flat).
-* Normal blocks: the frame's weighting matrix, luma matrix for planes 0 and 3,
-  chroma matrix for planes 1 and 2.
+* Normal blocks: the tile's weighting matrix, luma matrix for planes 0 and 3,
+  chroma matrix for planes 1 and 2. The tile's matrix is the frame's when
+  `wm_id == 0`; when `wm_id` is 1, 2 or 3 it is built-in matrix `wm_id` for
+  planes 0 and 3 and the built-in chroma matrix (index 3's formula) for planes
+  1 and 2, exactly as the frame-level rule below. `wm_id != 0` is illegal in a
+  frame with custom matrices.
 
 Weights are in `[1, 32]` and quantized levels in `[-32767, 32767]`, so
 `q * t` never exceeds `1.52e9` and the whole path is int32-safe with no
@@ -906,6 +960,31 @@ the decoder still produces the same pixels **and** that the encoder still
 produces the same bytes. The Vulkan decoder is conformant when it reproduces
 every `decoded_md5` in `tests/vectors/vectors.md5`.
 
+**Rejection vectors.** `tests/vectors/rejects.md5` lists streams that must be
+*refused*, each with the exact status the decoder has to return. Producing no
+output is not enough: the status carries meaning, and confusing the two failure
+families is a real interoperability bug.
+
+| status | meaning |
+|---|---|
+| `VERSION` | the magic, version or `tools` mask is not something this decoder speaks |
+| `UNSUPPORTED` | legal v1 syntax that this profile does not implement (a Phase 2 tile mode, `bit_depth` 10, 32x32 tiles, a nonzero `skip_bitmap`) |
+| `BITSTREAM` | this cannot be a legal stream at all (a reserved value, a field that disagrees with its position) |
+| `TRUNCATED` | a length ran past the buffer |
+
+A decoder is conformant on this suite when it returns exactly the listed status
+for every vector and writes no samples. The suite covers a bad magic, an
+unimplemented mandatory tool bit, `bit_depth` 10, the 32x32 tile profile, a
+`payload_len` past the frame, `res_level` 3, a truncated rANS payload, a skip
+bit for a column beyond the picture, a reserved tile-header bit, an `INTER`
+tile, `wm_id` without its tool bit, a wrong `row_index` and a short
+`frame_bytes`.
+
+`v23_custom_tables420` and `v34_wm_id420_tables` pin the probability-table
+normalization of section 9.4 — the one place a decoder divides — so a decoder
+that rounds it differently fails on a committed bitstream rather than on
+customer content.
+
 ---
 
 ## Appendix A: decisions taken
@@ -1074,6 +1153,51 @@ inconsistent. Each is a decision, not an interpretation.
 
 31. **`nxv-dec` writes alpha as a fourth plane** after V when the stream carries
     one. Raw planar files have no place to say so; `nxv-info` does.
+
+34. **The odd-part rotation is specified as an exact product, not as int32
+    arithmetic.** Writing `((P + Q) * C4 + 256) >> 9` in int32 is undefined
+    behaviour on legal input: `|P + Q|` reaches `8.6e7` and the product is
+    `3.1e10`. The value was always well defined; what was missing was a
+    statement of how to compute it. Section 6.3 gives the two-word split,
+    which is bit-identical to the mathematical value, so **no conformance
+    vector changed** when the reference implementation was corrected. This is
+    a specification fix, not a bitstream change. `ctest -R ref.saturate` under
+    `-fsanitize=undefined` is the regression test.
+
+35. **The inverse shift chain is 7 then 13 with `clamp16` after pass 1.**
+    Restated here because the errata found the pair quoted inconsistently
+    elsewhere: pass 1 is `clamp16((out + 64) >> 7)`, pass 2 is
+    `clamp16((out + 4096) >> 13)`, the two shifts sum to 20 for unit gain, and
+    the pass-1 clamp is normative rather than an implementation convenience
+    (item 11). 8 + 12 also sums to 20 and is **not** conformant.
+
+36. **`wm_id` is a per-tile override, and 0 means "the frame's matrix".**
+    PAPER 4.6.1's degradation ladder needs to drop a *single* tile onto a
+    low-pass weighting matrix without touching the frame, and rate control has
+    no other way to spend step 1. Two of the tile header's reserved bits carry
+    it. Encoding 0 as "inherit" rather than as "matrix 0" is what makes every
+    stream written before this field existed still byte-identical, and it
+    keeps the common case free. The ladder's step-1 matrix is **`wm_id = 2`**,
+    `min(32, 16 + 2s)`, the strongest roll-off the `[1, 32]` weight range can
+    express; it reaches the cap at `s = 8`, so half the coefficient positions
+    are quantized twice as coarsely. A frame with custom matrices refuses
+    `wm_id != 0` rather than defining a precedence rule nobody would remember.
+
+37. **`bit_depth` 10 is reserved and rejected, not tolerated.** The stream
+    header has the field and `tools` has the bit, but v1 defines neither the
+    10-bit sample domain nor the `qstep` scaling nor the clamps for it, so
+    there is nothing for a decoder to be conformant *to*. Accepting the field
+    and guessing would produce two incompatible "10-bit" decoders. Both the
+    field and the tool bit are refused, and `r02`/`r03` pin it.
+
+38. **Rejection is part of conformance and the status is normative.**
+    Appendix A item 30 said the decoder rejects rather than conceals; it did
+    not say *how*. `tests/vectors/rejects.md5` now pins the exact status for
+    thirteen malformed streams. The distinction that matters in practice is
+    `UNSUPPORTED` (a legal stream this build cannot decode — the transport
+    should fall back) against `BITSTREAM` (corruption — the transport should
+    re-request), and a decoder that swaps them makes the wrong recovery
+    decision.
 
 ## Appendix B: where the bits go
 

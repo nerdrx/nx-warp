@@ -111,11 +111,11 @@ int main(int argc, char **argv) {
                 for (uint32_t i = 0; i < count; ++i) {
                     const nxvc_tile_info &t = ti[i];
                     std::printf("  tile %4u  %-9s res%u %s qp%2u dq%+3d ts%u "
-                                "a%u tab%u ns%u  %5u B\n",
+                                "a%u wm%u tab%u ns%u  %5u B\n",
                                 i, mode_name(t.mode), t.res_level,
                                 t.chroma444 ? "444" : "420", t.qp, t.qp_delta,
-                                t.tskip, t.alpha_mode, t.table_set, t.nsub_log2,
-                                t.payload_len);
+                                t.tskip, t.alpha_mode, t.wm_id, t.table_set,
+                                t.nsub_log2, t.payload_len);
                 }
             }
         }
