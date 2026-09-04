@@ -206,7 +206,10 @@ is worth stating plainly because it is the opposite of what the brief expected:
   There is no 4x4 split to condition on (tool bit 19 is still reserved).
 
 The measurement is exact, not noisy: re-running the 22-context variant end to
-end — rebuild, retrain, re-encode — reproduces every byte count.
+end — rebuild, retrain, re-encode — reproduces every byte count. All six rows
+were taken on one intermediate build, before the table refinement of section 4
+existed, so the column is a clean comparison of layouts and its absolute
+numbers are not the shipped ones.
 
 ### The lane-count coupling, and a bug it exposed
 

@@ -2172,10 +2172,12 @@ inconsistent. Each is a decision, not an interpretation.
 56. **A transmitted table row may say "use the default", and the delta stays a
     flat 5 bits.** Adding contexts is what a context model is *for*, and the
     thing that stops it is that a transmitted table set grows linearly with
-    the context count -- 14.5 % of a QP 36 inter frame before this package.
-    One bit per row that means "the built-in default row, unchanged" collapses
-    a v3 set from 420 bytes to about 130 in practice, because most rows of most
-    sets are close to the cluster they were trained from. The obvious
+    the context count -- 14.45 % of a QP 36 inter frame before this package,
+    the largest single overhead in it. One bit per row meaning "the built-in
+    default row, unchanged", plus dropping a set no row improves, takes that
+    frame's table area from 480 bytes to 109 and a QP 24 one from 800 to 321,
+    because most rows of most sets are already close to the cluster they were
+    trained from. The obvious
     companion, Exp-Golomb coding the deltas around "no change", was implemented
     and **measured worse** than the flat 5-bit index: a trained row is not
     concentrated near its default, it is *shifted* from it, so the small-value
