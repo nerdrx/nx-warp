@@ -194,6 +194,43 @@ int main() {
         }
     }
 
+    // 5b. The v3 context model (tool bit 24) over the same axes.  Its
+    // neighbour class is carried by the rANS lane, so the lane count, the
+    // chroma format and the res-level -- everything that changes how many
+    // block units a lane owns and how wide a block row is -- are exactly what
+    // has to round trip (docs/SYNTAX.md 9.8).
+    {
+        TestImage im420 = make_image(W, H, false, 1);
+        TestImage im444 = make_image(W, H, true, 1);
+        nxvc_tile_layout tl;
+        nxvc_tile_layout_get(W, H, &tl);
+        std::vector<uint8_t> rm(tl.tile_count);
+        for (uint32_t i = 0; i < tl.tile_count; ++i) rm[i] = (uint8_t)(i % 3);
+        for (int c444 = 0; c444 <= 1; ++c444)
+            for (int dir = 0; dir <= 1; ++dir)
+                for (int tab = 0; tab <= 1; ++tab)
+                    for (int res = 0; res <= 1; ++res)
+                        for (int n = 0; n <= 5; ++n) {
+                            nxvc_config cfg;
+                            nxvc_config_default(&cfg);
+                            cfg.width = W; cfg.height = H;
+                            cfg.chroma = c444 ? NXVC_CHROMA_444
+                                              : NXVC_CHROMA_420;
+                            cfg.base_qp = 26;
+                            cfg.ctx_v3 = 1;
+                            cfg.intra_dir = (uint32_t)dir;
+                            cfg.custom_tables = (uint32_t)tab;
+                            cfg.nsub_log2 = (uint32_t)n;
+                            Coded r;
+                            CHECK(code(cfg, c444 ? im444 : im420, r,
+                                       nullptr, res ? rm.data() : nullptr),
+                                  "ctx_v3 c444 %d dir %d tab %d res %d nsub %d: "
+                                  "%s / %s", c444, dir, tab, res, n,
+                                  nxvc_status_string(r.enc_status),
+                                  nxvc_status_string(r.dec_status));
+                        }
+    }
+
     // 6. Per-tile QP and resolution maps.
     {
         TestImage im = make_image(W, H, false, 1);

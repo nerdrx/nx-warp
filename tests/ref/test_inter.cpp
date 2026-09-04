@@ -132,6 +132,8 @@ struct Opts {
     // The rate controller's force_warp_skip request, per frame per tile.
     std::vector<std::vector<uint8_t>> skip_map;
     bool compare_shadow = true;
+    int ctx_v3 = 0;      // tool bit 24
+    int vec_ent = 0;     // tool bit 25 (implies ctx_v3)
 };
 
 static Run run(const Opts &o) {
@@ -147,6 +149,8 @@ static Run run(const Opts &o) {
     cfg.stereo = (uint32_t)o.stereo;
     cfg.intra_period = o.intra_period;
     cfg.ref_sel = o.ref_sel;
+    cfg.ctx_v3 = (uint32_t)(o.ctx_v3 || o.vec_ent);
+    cfg.vec_ent = (uint32_t)o.vec_ent;
     cfg.custom_tables = 0;   // keeps the test fast; the path is table-agnostic
 
     nxvc_status st;
@@ -610,6 +614,107 @@ int main(int argc, char **argv) {
                         CHECK(t.ref_delta == 3,
                               "INTRA tile reports ref_delta %u", t.ref_delta);
                 }
+        }
+    }
+
+    // --------------------------------------------------------------- 12
+    // Syntax v1.5.  VEC_ENT moves the tile's vector out of the tile header
+    // into the payload's first coding unit, so the decoder cannot build a
+    // tile's predictor until that tile's entropy decode has run.  The shadow
+    // comparison is exactly the assertion that wants making: if the encoder
+    // and the decoder disagreed about a single vector, the two reconstructions
+    // would diverge and stay diverged.  Run it under loss, where the vector
+    // also has to survive concealment, and in stereo, where the coded value
+    // is an unsigned disparity in a different context.
+    for (int stereo = 0; stereo < 2; ++stereo) {
+        Opts o;
+        o.frames = 40;
+        o.eye_w = 128;
+        o.h = 128;
+        o.qp = 26;
+        o.eyes = stereo ? 2 : 1;
+        o.stereo = stereo;
+        o.disparity = stereo ? 11 : 0;
+        o.salt_per_frame = stereo;
+        o.yaw_per_frame = 0.6;
+        o.pan_per_frame = 2.0;
+        o.intra_period = 12;
+        o.ctx_v3 = 1;
+        o.vec_ent = 1;
+        const uint32_t ntiles = stereo ? 8u : 4u;
+        Rng rng(20260905u + (uint32_t)stereo);
+        o.lost.resize(o.frames);
+        int dropped = 0;
+        for (int f = 1; f < o.frames; ++f) {
+            o.lost[f].assign(ntiles, 0);
+            for (uint32_t t = 0; t < ntiles; ++t) {
+                // With `stereo`, concealing a LEFT-eye tile is refused by
+                // nxvc_encoder_set_received_tiles: a STEREO tile of the same
+                // row was predicted from it and re-deriving that needs a
+                // full-frame replay this reference does not do.  Drop only
+                // right-eye tiles, which is what the tool needs exercised.
+                if (stereo && (t % 4u) < 2u) continue;
+                if ((rng.next() & 7u) == 0) {
+                    o.lost[f][t] = 1;
+                    ++dropped;
+                }
+            }
+        }
+        Run r = run(o);
+        CHECK(r.ok, "vec_ent%s: %s", stereo ? " stereo" : "", r.err.c_str());
+        if (r.ok) {
+            int with_vector = 0;
+            for (size_t f = 1; f < r.dec_tiles.size(); ++f)
+                for (const auto &t : r.dec_tiles[f])
+                    if (t.mv_present && !t.concealed) ++with_vector;
+            CHECK(with_vector > 0,
+                  "vec_ent%s: no tile carried a coded vector at all",
+                  stereo ? " stereo" : "");
+            std::printf("  vec_ent%s: %d coded vectors, %d tiles dropped, "
+                        "encoder == decoder on every frame\n",
+                        stereo ? " stereo" : "", with_vector, dropped);
+        }
+    }
+
+    // Nonzero vectors must actually reach the decoder unchanged.  The shadow
+    // comparison above proves the reconstruction agrees; this proves the
+    // *value* does, by comparing the same sequence coded both ways.  With and
+    // without VEC_ENT the two streams differ in bytes but must choose and
+    // report the same per-tile vectors, because the tool changes where the
+    // vector is written and nothing about how it is decided.
+    {
+        Opts a;
+        a.frames = 8;
+        a.eye_w = 128;
+        a.h = 128;
+        a.qp = 26;
+        a.yaw_per_frame = 0.6;
+        a.pan_per_frame = 2.0;
+        a.ctx_v3 = 1;
+        Opts b = a;
+        b.vec_ent = 1;
+        Run ra = run(a), rb = run(b);
+        CHECK(ra.ok && rb.ok, "vec_ent value equality: %s %s",
+              ra.err.c_str(), rb.err.c_str());
+        if (ra.ok && rb.ok) {
+            size_t compared = 0, nonzero = 0;
+            for (size_t f = 0; f < ra.dec_tiles.size() &&
+                               f < rb.dec_tiles.size(); ++f)
+                for (size_t t = 0; t < ra.dec_tiles[f].size() &&
+                                   t < rb.dec_tiles[f].size(); ++t) {
+                    const nxvc_tile_info &x = ra.dec_tiles[f][t];
+                    const nxvc_tile_info &y = rb.dec_tiles[f][t];
+                    if (x.mode != y.mode || !x.mv_present) continue;
+                    ++compared;
+                    if (x.mv_x || x.mv_y) ++nonzero;
+                    CHECK(x.mv_x == y.mv_x && x.mv_y == y.mv_y,
+                          "frame %zu tile %zu: vector (%d,%d) coded in the "
+                          "header became (%d,%d) coded in the payload",
+                          f, t, x.mv_x, x.mv_y, y.mv_x, y.mv_y);
+                }
+            CHECK(nonzero > 0, "no nonzero vector was compared");
+            std::printf("  vec_ent: %zu vectors round trip identically "
+                        "(%zu nonzero)\n", compared, nonzero);
         }
     }
 
