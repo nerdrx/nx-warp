@@ -22,7 +22,8 @@ struct TileDesc {
     uint32_t coef_offset;  // int16 index of the tile's coefficient region
     uint32_t cbf_offset;   // uint index of the tile's CBF words
     uint32_t mode_offset;  // [v3] uint index of the tile's intra-mode words
-    uint32_t reserved[3];  // zero; the descriptor is a power of two long
+    uint32_t unit_len_offset;  // [sparse] uint index of the length words
+    uint32_t reserved[2];  // zero; the descriptor is a power of two long
 };
 static_assert(sizeof(TileDesc) == kTileDescUints * 4,
               "TileDesc must match the shader's descriptor stride");
@@ -52,6 +53,9 @@ struct Inputs {
     // decode() call covers the tiles of one lane count; the host groups the
     // frame's tiles by nsub_log2 and issues one dispatch per group.
     uint32_t lanes = kLanes;
+    // [sparse] 1 = scan-order slots plus a per-unit length; 0 = the dense
+    // raster-order layout.  Matches the shader's `sparse` push constant.
+    uint32_t sparse = 1;
 };
 
 struct Outputs {
@@ -63,6 +67,9 @@ struct Outputs {
     // always does; a caller that never sets kToolFlagIntraDir still needs it,
     // because the kernel zeroes the region unconditionally.
     uint32_t *modes = nullptr;
+    // [sparse] num_tiles * kUnitLenWordsPerTile, one byte per unit holding
+    // LAST + 1 (0 = the unit is not coded).  Required when `sparse` is set.
+    uint32_t *unit_lens = nullptr;
 };
 
 // Runs every workgroup of the dispatch.  Equivalent to

@@ -291,6 +291,38 @@ NXS_CONST uint kCoefStrideMax = 16640;
 // codes no CBF and its bit is always 0.
 NXS_CONST uint kCbfWordsPerTile = 16;  // 512 bits >= kMaxUnitsPerTile
 
+// ---------------------------------------------------------------------------
+// Sparse coefficient transfer                     [PAPER 3.2.5, ADR 0026]
+// ---------------------------------------------------------------------------
+// The dense layout writes every one of a tile's kCoefStrideMax int16 slots --
+// 12.5 KB for a 4:2:0 tile -- whatever the payload said, which is why Pass B's
+// cost has no slope against payload size.  The sparse layout changes two
+// things and nothing else:
+//
+//   1. inside a unit, coefficient `k` is stored at slot `k` in SCAN order
+//      rather than at `scan_index(scan_id, k)` in raster order.  The unit's
+//      base and its reserved width are unchanged, so every unit still lives
+//      exactly where the dense layout put it and `coef_stride` does not move;
+//   2. Pass A writes one length per unit -- LAST + 1, or 0 for an uncoded
+//      unit -- and touches slots [0, LAST] only.  Slots past LAST are never
+//      written and never read, so the region is not zeroed either.
+//
+// Together those make the bytes that cross between the passes proportional to
+// the coefficients the stream actually coded.  Nothing about the bitstream,
+// the coefficient values or Pass B's output changes: LAST is already in the
+// syntax (9.2) and the scan is already normative (5), so the layout is a pure
+// re-indexing of the same numbers.
+//
+// One byte per unit, four units per uint, index == unit index.  The byte is
+// LAST + 1 in the unit's scan, so 0..kCoefPerBlock; 0 means CBF == 0.  Lanes
+// interleave over units (unit `u` belongs to lane `u % LANES`), so four
+// neighbouring units belong to four different lanes and the write must be an
+// atomicOr into a pre-zeroed word.
+NXS_CONST uint kUnitLensPerWord = 4;
+NXS_CONST uint kUnitLenBits = 8;
+NXS_CONST uint kUnitLenMask = 255u;
+NXS_CONST uint kUnitLenWordsPerTile = 66;  // ceil(kMaxUnitsPerTile / 4)
+
 // [v3] Per-block intra modes, the second thing Pass A produces for Pass B.
 // One 4-bit field per block (modes are 0..8), 8 fields per uint.  A plane's
 // region is a fixed kModesPerPlane slots so that each plane starts on a uint
@@ -310,7 +342,8 @@ NXS_CONST uint kModeWordsPerTile = 32;   // kMaxPlanes * kModeWordsPerPlane
 //   2: int16 index of this tile's coefficient region
 //   3: uint index of this tile's CBF words
 //   4: uint index of this tile's intra-mode words        [v3]
-//   5..7: reserved, zero.  The descriptor is padded to a power of two so the
+//   5: uint index of this tile's unit-length words       [sparse]
+//   6..7: reserved, zero.  The descriptor is padded to a power of two so the
 //         shader addresses it with a shift.
 NXS_CONST uint kTileDescUints = 8;
 NXS_CONST uint kTdBitsOffset = 0;
@@ -318,6 +351,7 @@ NXS_CONST uint kTdBitsLength = 1;
 NXS_CONST uint kTdCoefOffset = 2;
 NXS_CONST uint kTdCbfOffset = 3;
 NXS_CONST uint kTdModeOffset = 4;
+NXS_CONST uint kTdUnitLenOffset = 5;  // uint index of the tile's length words
 
 // Per-tile status codes written to the status SSBO.
 NXS_CONST uint kStatusOk = 0;

@@ -200,15 +200,23 @@ std::vector<uint32_t> load_spv(const Options &opt) {
 struct RunResult {
     size_t coef_mismatch = 0;
     size_t cbf_mismatch = 0;
+    size_t ulen_mismatch = 0;
     size_t status_bad = 0;
     double best_ms = 0.0;
     bool timed = false;
 };
 
+// `coef_fill` is what both the GPU buffer and the CPU model's array start
+// from.  Under the sparse layout Pass A does not zero the coefficient region,
+// so starting both sides from the same non-zero pattern is what proves the
+// kernel wrote exactly the slots the model wrote and no others.
+constexpr int16_t kCoefFill = int16_t(0x5555);
+
 RunResult run_gpu(const Gpu &g, const Options &opt, const Corpus &c,
                   const std::vector<uint32_t> &spv, uint32_t mode,
-                  const std::vector<int16_t> &ref_coef,
-                  const std::vector<uint32_t> &ref_cbf) {
+                  uint32_t sparse, const std::vector<int16_t> &ref_coef,
+                  const std::vector<uint32_t> &ref_cbf,
+                  const std::vector<uint32_t> &ref_ulen) {
     RunResult res;
     const uint32_t num_tiles = uint32_t(c.tiles.size());
 
@@ -225,6 +233,8 @@ RunResult run_gpu(const Gpu &g, const Options &opt, const Corpus &c,
         tiles_flat[t * kTileDescUints + kTdCoefOffset] = c.tiles[t].coef_offset;
         tiles_flat[t * kTileDescUints + kTdCbfOffset] = c.tiles[t].cbf_offset;
         tiles_flat[t * kTileDescUints + kTdModeOffset] = t * kModeWordsPerTile;
+        tiles_flat[t * kTileDescUints + kTdUnitLenOffset] =
+            t * kUnitLenWordsPerTile;
     }
 
     const VkDeviceSize coef_bytes = VkDeviceSize(num_tiles) * c.coef_stride * 2;
@@ -233,6 +243,9 @@ RunResult run_gpu(const Gpu &g, const Options &opt, const Corpus &c,
     // [v3] binding 6: the per-block intra modes Pass A writes for Pass B.
     const VkDeviceSize mode_bytes =
         VkDeviceSize(num_tiles) * kModeWordsPerTile * 4;
+    // [sparse] binding 7: one byte per coding unit, LAST + 1.
+    const VkDeviceSize ulen_bytes =
+        VkDeviceSize(num_tiles) * kUnitLenWordsPerTile * 4;
 
     Buf b_bits = make_buf(g, c.bits.size(), su, dl);
     Buf b_tiles = make_buf(g, tiles_flat.size() * 4, su, dl);
@@ -241,14 +254,17 @@ RunResult run_gpu(const Gpu &g, const Options &opt, const Corpus &c,
     Buf b_cbf = make_buf(g, cbf_bytes, su, dl);
     Buf b_status = make_buf(g, status_bytes, su, dl);
     Buf b_modes = make_buf(g, mode_bytes, su, dl);
+    Buf b_ulen = make_buf(g, ulen_bytes, su, dl);
 
+    std::vector<int16_t> coef_seed(size_t(coef_bytes / 2), kCoefFill);
+    upload(g, b_coef, coef_seed.data(), coef_bytes);
     upload(g, b_bits, c.bits.data(), c.bits.size());
     upload(g, b_tiles, tiles_flat.data(), tiles_flat.size() * 4);
     upload(g, b_tables, c.table_flat.data(), c.table_flat.size() * 4);
 
     // --- descriptors -------------------------------------------------------
-    VkDescriptorSetLayoutBinding binds[7]{};
-    for (uint32_t i = 0; i < 7; ++i) {
+    VkDescriptorSetLayoutBinding binds[8]{};
+    for (uint32_t i = 0; i < 8; ++i) {
         binds[i].binding = i;
         binds[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         binds[i].descriptorCount = 1;
@@ -256,12 +272,12 @@ RunResult run_gpu(const Gpu &g, const Options &opt, const Corpus &c,
     }
     VkDescriptorSetLayoutCreateInfo dli{
         VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
-    dli.bindingCount = 7;
+    dli.bindingCount = 8;
     dli.pBindings = binds;
     VkDescriptorSetLayout dsl;
     VKCHECK(vkCreateDescriptorSetLayout(g.device, &dli, nullptr, &dsl));
 
-    VkPushConstantRange pcr{VK_SHADER_STAGE_COMPUTE_BIT, 0, 20};
+    VkPushConstantRange pcr{VK_SHADER_STAGE_COMPUTE_BIT, 0, 24};
     VkPipelineLayoutCreateInfo pli{
         VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
     pli.setLayoutCount = 1;
@@ -271,7 +287,7 @@ RunResult run_gpu(const Gpu &g, const Options &opt, const Corpus &c,
     VkPipelineLayout plo;
     VKCHECK(vkCreatePipelineLayout(g.device, &pli, nullptr, &plo));
 
-    VkDescriptorPoolSize ps{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 7};
+    VkDescriptorPoolSize ps{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 8};
     VkDescriptorPoolCreateInfo dpi{
         VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
     dpi.maxSets = 1;
@@ -288,11 +304,11 @@ RunResult run_gpu(const Gpu &g, const Options &opt, const Corpus &c,
     VkDescriptorSet dset;
     VKCHECK(vkAllocateDescriptorSets(g.device, &dai, &dset));
 
-    VkBuffer bufs[7] = {b_bits.buf, b_tiles.buf, b_tables.buf, b_coef.buf,
-                        b_cbf.buf,  b_status.buf, b_modes.buf};
-    VkDescriptorBufferInfo dbi[7]{};
-    VkWriteDescriptorSet wr[7]{};
-    for (uint32_t i = 0; i < 7; ++i) {
+    VkBuffer bufs[8] = {b_bits.buf,   b_tiles.buf, b_tables.buf, b_coef.buf,
+                        b_cbf.buf,    b_status.buf, b_modes.buf, b_ulen.buf};
+    VkDescriptorBufferInfo dbi[8]{};
+    VkWriteDescriptorSet wr[8]{};
+    for (uint32_t i = 0; i < 8; ++i) {
         dbi[i] = {bufs[i], 0, VK_WHOLE_SIZE};
         wr[i] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
         wr[i].dstSet = dset;
@@ -301,7 +317,7 @@ RunResult run_gpu(const Gpu &g, const Options &opt, const Corpus &c,
         wr[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         wr[i].pBufferInfo = &dbi[i];
     }
-    vkUpdateDescriptorSets(g.device, 7, wr, 0, nullptr);
+    vkUpdateDescriptorSets(g.device, 8, wr, 0, nullptr);
 
     // --- pipeline ----------------------------------------------------------
     VkShaderModuleCreateInfo smi{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
@@ -353,8 +369,10 @@ RunResult run_gpu(const Gpu &g, const Options &opt, const Corpus &c,
 
     const uint32_t groups = group_count(num_tiles);
     struct Push {
-        uint32_t num_tiles, frame_nplanes, coef_stride, cbf_words, tools;
-    } push{num_tiles, c.frame_nplanes, c.coef_stride, c.cbf_words, c.tools};
+        uint32_t num_tiles, frame_nplanes, coef_stride, cbf_words, tools,
+            sparse;
+    } push{num_tiles, c.frame_nplanes, c.coef_stride,
+           c.cbf_words, c.tools,       sparse};
 
     double best = 1e30;
     for (int it = 0; it < opt.iters; ++it) {
@@ -396,9 +414,11 @@ RunResult run_gpu(const Gpu &g, const Options &opt, const Corpus &c,
     std::vector<int16_t> coef(size_t(coef_bytes / 2));
     std::vector<uint32_t> cbf(size_t(cbf_bytes / 4));
     std::vector<uint32_t> status(num_tiles);
+    std::vector<uint32_t> ulen(size_t(ulen_bytes / 4));
     download(g, b_coef, coef.data(), coef_bytes);
     download(g, b_cbf, cbf.data(), cbf_bytes);
     download(g, b_status, status.data(), status_bytes);
+    download(g, b_ulen, ulen.data(), ulen_bytes);
 
     for (size_t i = 0; i < status.size(); ++i)
         if (status[i] != kStatusOk) ++res.status_bad;
@@ -414,6 +434,17 @@ RunResult run_gpu(const Gpu &g, const Options &opt, const Corpus &c,
         }
     for (size_t i = 0; i < cbf.size(); ++i)
         if (cbf[i] != ref_cbf[i]) ++res.cbf_mismatch;
+    if (sparse)
+        for (size_t i = 0; i < ulen.size(); ++i)
+            if (ulen[i] != ref_ulen[i]) {
+                if (res.ulen_mismatch == 0)
+                    std::fprintf(stderr,
+                                 "  first len mismatch: word %zu (tile %zu) "
+                                 "gpu=%08x cpu=%08x\n",
+                                 i, i / kUnitLenWordsPerTile, ulen[i],
+                                 ref_ulen[i]);
+                ++res.ulen_mismatch;
+            }
 
     if (qpool) vkDestroyQueryPool(g.device, qpool, nullptr);
     vkDestroyPipeline(g.device, pipe, nullptr);
@@ -425,6 +456,7 @@ RunResult run_gpu(const Gpu &g, const Options &opt, const Corpus &c,
     destroy_buf(g, b_tiles);
     destroy_buf(g, b_tables);
     destroy_buf(g, b_coef);
+    destroy_buf(g, b_ulen);
     destroy_buf(g, b_cbf);
     destroy_buf(g, b_status);
     destroy_buf(g, b_modes);
@@ -595,24 +627,35 @@ int main(int argc, char **argv) {
         double(c.total_symbols) / double(c.total_pixels), c.bits.size(),
         double(c.bits.size()) / double(c.tiles.size()), c.coef_stride);
 
-    std::vector<int16_t> cpu_coef(c.expect_coef.size(), 0);
-    std::vector<uint32_t> cpu_cbf(c.expect_cbf.size(), 0);
-    std::vector<uint32_t> cpu_status(c.tiles.size(), 0);
-    {
-        Inputs in = corpus_inputs(c, kReadPtrBallot);
-        std::vector<uint32_t> cpu_modes(size_t(c.tiles.size()) *
-                                        kModeWordsPerTile, 0);
+    // The CPU model in each layout.  The dense one is checked against the
+    // generator's own raster-order expectation; the sparse one is the oracle
+    // the GPU is compared to, and starts from the same fill pattern the GPU
+    // buffer does because Pass A no longer zeroes the region.
+    struct ModelRun {
+        std::vector<int16_t> coef;
+        std::vector<uint32_t> cbf, status, modes, ulen;
+    };
+    ModelRun cpu[2];
+    for (uint32_t sparse = 0; sparse < 2; ++sparse) {
+        ModelRun &m = cpu[sparse];
+        m.coef.assign(c.expect_coef.size(), sparse ? kCoefFill : int16_t(0));
+        m.cbf.assign(c.expect_cbf.size(), 0);
+        m.status.assign(c.tiles.size(), 0);
+        m.modes.assign(size_t(c.tiles.size()) * kModeWordsPerTile, 0);
+        m.ulen.assign(size_t(c.tiles.size()) * kUnitLenWordsPerTile, 0);
+        Inputs in = corpus_inputs(c, kReadPtrBallot, sparse);
         Outputs o;
-        o.coef = cpu_coef.data();
-        o.cbf = cpu_cbf.data();
-        o.status = cpu_status.data();
-        o.modes = cpu_modes.data();
+        o.coef = m.coef.data();
+        o.cbf = m.cbf.data();
+        o.status = m.status.data();
+        o.modes = m.modes.data();
+        o.unit_lens = m.ulen.data();
         decode(in, o);
     }
     // The model must reproduce the generator exactly, or the corpus is bad.
     size_t model_bad = 0;
-    for (size_t i = 0; i < cpu_coef.size(); ++i)
-        if (cpu_coef[i] != c.expect_coef[i]) ++model_bad;
+    for (size_t i = 0; i < cpu[0].coef.size(); ++i)
+        if (cpu[0].coef[i] != c.expect_coef[i]) ++model_bad;
     if (model_bad) {
         std::fprintf(stderr, "CPU model disagrees with the encoder (%zu)\n",
                      model_bad);
@@ -636,18 +679,25 @@ int main(int argc, char **argv) {
     }
 
     int failures = 0;
-    for (uint32_t mode : modes) {
-        const char *mname = mode == kReadPtrBallot ? "ballot" : "lds";
-        RunResult r = run_gpu(g, opt, c, spv, mode, cpu_coef, cpu_cbf);
-        std::printf(
-            "[%s] coef_mismatch=%zu cbf_mismatch=%zu status_bad=%zu", mname,
-            r.coef_mismatch, r.cbf_mismatch, r.status_bad);
-        if (r.timed)
-            std::printf("  decode %.3f ms (%.2f Mtile/s)", r.best_ms,
-                        double(c.tiles.size()) / (r.best_ms * 1000.0));
-        std::printf("\n");
-        if (r.coef_mismatch || r.cbf_mismatch || r.status_bad) ++failures;
-    }
+    for (uint32_t mode : modes)
+        for (uint32_t sparse = 0; sparse < 2; ++sparse) {
+            const char *mname = mode == kReadPtrBallot ? "ballot" : "lds";
+            const ModelRun &m = cpu[sparse];
+            RunResult r = run_gpu(g, opt, c, spv, mode, sparse, m.coef, m.cbf,
+                                  m.ulen);
+            std::printf(
+                "[%s/%s] coef_mismatch=%zu cbf_mismatch=%zu len_mismatch=%zu "
+                "status_bad=%zu",
+                mname, sparse ? "sparse" : "dense", r.coef_mismatch,
+                r.cbf_mismatch, r.ulen_mismatch, r.status_bad);
+            if (r.timed)
+                std::printf("  decode %.3f ms (%.2f Mtile/s)", r.best_ms,
+                            double(c.tiles.size()) / (r.best_ms * 1000.0));
+            std::printf("\n");
+            if (r.coef_mismatch || r.cbf_mismatch || r.ulen_mismatch ||
+                r.status_bad)
+                ++failures;
+        }
 
     vkDestroyCommandPool(g.device, g.pool, nullptr);
     vkDestroyDevice(g.device, nullptr);

@@ -218,6 +218,30 @@ void reconstruct_tile(const PassBInput &in, int tile, TilePlanes &tp,
 
     const int16_t *coefBase = in.coef + (size_t)tile * pcp.coefStrideI16;
 
+    // [sparse] Coefficient `pos` of a unit, by its raster index inside the
+    // unit.  Dense: the slot is the raster index.  Sparse: the unit holds
+    // `len` coefficients in scan order and everything past LAST is zero.
+    auto coef_in = [&](const int16_t *base, int scanId, int len, int pos) {
+        if (!pcp.sparse) return int(base[pos]);
+        int k = nxvw_scan_pos(scanId, pos);
+        return k < len ? int(base[k]) : 0;
+    };
+    const uint32_t *lenWords =
+        in.unit_lens ? in.unit_lens + (size_t)tile * NXVW_UNIT_LEN_WORDS_PER_TILE
+                     : nullptr;
+    auto unit_len = [&](int ui) {
+        if (!pcp.sparse) return kBlock * kBlock;
+        uint32_t w = lenWords[ui / int(NXVW_UNIT_LENS_PER_WORD)];
+        return int((w >> ((uint32_t(ui) % NXVW_UNIT_LENS_PER_WORD) *
+                          NXVW_UNIT_LEN_BITS)) &
+                   NXVW_UNIT_LEN_MASK);
+    };
+    // Unit index of the plane being decoded, [SYN] 9.1.  The mode unit exists
+    // whenever the stream sets INTRA_DIR, which is what Pass A numbers units
+    // by -- not the narrower per-tile `dir` below.
+    int unitBase = 0;
+    const int unitsPerPlaneExtra = pcp.intraDir != 0 ? 2 : 1;
+
     for (int p = 0; p < ncoded; ++p) {
         bool chroma = (p == 1 || p == 2);
         int size = tp.size[p];
@@ -245,9 +269,13 @@ void reconstruct_tile(const PassBInput &in, int tile, TilePlanes &tp,
         // --- DC plane (PAPER 3.2.4)
         int dcqp = nxvw_dc_qp(planeQp);  // [marked edit] qp >> 1, was qp - 6
         int tdc = model_dequant_step(dcqp, kFlatWeight);
-        std::vector<int> dc(ndc);
-        for (int i = 0; i < ndc; ++i) dc[i] = model_dequant(coefBase[i], tdc);
-        if (nb == 8) {
+        const int dcLen = unit_len(unitBase);
+        const int dcScan = nxvw_scan_id(ndc, 0);
+        std::vector<int> dc(ndc, 0);
+        if (dcLen != 0)
+            for (int i = 0; i < ndc; ++i)
+                dc[i] = model_dequant(coef_in(coefBase, dcScan, dcLen, i), tdc);
+        if (nb == 8 && dcLen != 0) {
             int out[64];
             model_idct8x8(dc.data(), out);
             for (int i = 0; i < 64; ++i) dc[i] = out[i];
@@ -282,17 +310,24 @@ void reconstruct_tile(const PassBInput &in, int tile, TilePlanes &tp,
 
         // --- residual blocks
         const int16_t *bc = coefBase + ndc;
+        const int blockScan = nxvw_scan_id(64, tskip);
         for (int b = 0; b < ndc; ++b) {
             int bx = b % nb, by = b / nb;
             const int16_t *c = bc + (size_t)b * 64;
-            int res[64];
-            if (tskip) {
+            const int blockLen = unit_len(unitBase + unitsPerPlaneExtra + b);
+            int res[64] = {};
+            if (blockLen == 0) {
+                // [sparse] An uncoded block transforms to all zeros; the
+                // kernel skips both passes of the IDCT for it.
+            } else if (tskip) {
                 int t = model_dequant_step(planeQp, kFlatWeight);
-                for (int i = 0; i < 64; ++i) res[i] = model_dequant(c[i], t);
+                for (int i = 0; i < 64; ++i)
+                    res[i] = model_dequant(coef_in(c, blockScan, blockLen, i), t);
             } else {
                 int dq[64];
                 for (int i = 0; i < 64; ++i)
-                    dq[i] = model_dequant(c[i], model_dequant_step(planeQp, wmat[i]));
+                    dq[i] = model_dequant(coef_in(c, blockScan, blockLen, i),
+                                          model_dequant_step(planeQp, wmat[i]));
                 model_idct8x8(dq, res);
             }
             if (!dir) {
@@ -340,6 +375,7 @@ void reconstruct_tile(const PassBInput &in, int tile, TilePlanes &tp,
                 }
         }
         coefBase += ndc + ndc * 64;
+        unitBase += unitsPerPlaneExtra + ndc;
     }
 }
 

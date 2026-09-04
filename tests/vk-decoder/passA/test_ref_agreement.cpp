@@ -224,6 +224,10 @@ void check_streams() {
         in.coef_stride = uint32_t(ncoef);
         in.cbf_words = kCbfWordsPerTile;
         in.read_ptr_mode = kReadPtrBallot;
+        // `coef` is ref/'s own raster-order array, so this test compares the
+        // dense layout.  The sparse one is checked GPU-against-model by
+        // nxvc-passA-test and end-to-end by vk.decoder.conformance.
+        in.sparse = 0;
 
         std::vector<uint32_t> modes(kModeWordsPerTile, 0);
         Outputs out;

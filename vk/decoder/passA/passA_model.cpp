@@ -65,6 +65,7 @@ struct Thread {
     bool in_group;
     uint32_t coef_off;
     uint32_t cbf_off;
+    uint32_t ulen_off;  // [sparse]
 
     // main()-local values that survive across the round loop
     uint32_t hdr_off, bs_len;
@@ -195,19 +196,30 @@ void begin_unit(Ctx &c, Thread &g) {
     g.phase = kPhCbf;
 }
 
-void begin_levels(Thread &g) {
+// [sparse] The only place the two layouts differ: scan order stores
+// coefficient `scan_pos` at slot `scan_pos`, dense stores it at the raster
+// index the scan names.
+void store_coef_at(Ctx &c, Thread &g, int scan_pos, int value) {
+    int slot = c.in->sparse ? scan_pos : scan_index(c, g.u_scan, scan_pos);
+    c.out->coef[g.coef_off + uint32_t(g.u_coef + slot)] = int16_t(value);
+}
+
+// [sparse] Publish the unit's coefficient count, LAST + 1.
+void store_unit_len(Ctx &c, Thread &g, int ui, int len) {
+    if (!c.in->sparse) return;
+    c.out->unit_lens[g.ulen_off + uint32_t(ui) / kUnitLensPerWord] |=
+        (uint32_t(len) & kUnitLenMask)
+        << ((uint32_t(ui) % kUnitLensPerWord) * kUnitLenBits);
+}
+
+void begin_levels(Ctx &c, Thread &g) {
+    store_unit_len(c, g, g.ui, g.last + 1);
     g.pos_sp = g.last;
     g.prev_class = 0;
     g.sum_abs = 0;
     g.hide = (g.u_sdh != 0 && g.last >= kSdhMinLast) ? 1 : 0;
     g.hide_mag = 0;
     g.phase = kPhLevel;
-}
-
-void store_coef_at(Ctx &c, Thread &g, int scan_pos, int value) {
-    c.out->coef[g.coef_off +
-                uint32_t(g.u_coef + scan_index(c, g.u_scan, scan_pos))] =
-        int16_t(value);
 }
 
 void advance_pos(Ctx &c, Thread &g) {
@@ -313,7 +325,7 @@ void lane_feed(Ctx &c, Thread &g, uint32_t v) {
             return;
         }
         c.out->cbf[g.cbf_off + uint32_t(g.ui) / 32u] |= 1u << (uint32_t(g.ui) & 31u);
-        if (g.u_ncoef == 1) { g.last = 0; begin_levels(g); return; }
+        if (g.u_ncoef == 1) { g.last = 0; begin_levels(c, g); return; }
         g.phase = kPhLast;
         return;
     }
@@ -324,13 +336,13 @@ void lane_feed(Ctx &c, Thread &g, uint32_t v) {
         if (base >= g.u_ncoef) { fail(c, g, kStatusBadSymbol); return; }
         if (kLastRawBits[g.last_cls] > 0) { g.phase = kPhLastRaw; return; }
         g.last = base;
-        begin_levels(g);
+        begin_levels(c, g);
         return;
     }
     if (g.phase == kPhLastRaw) {
         g.last = kLastBase[g.last_cls] + int(v);
         if (g.last >= g.u_ncoef) { fail(c, g, kStatusBadSymbol); return; }
-        begin_levels(g);
+        begin_levels(c, g);
         return;
     }
     if (g.phase == kPhLevel) {
@@ -442,6 +454,7 @@ void run_group(Ctx &c, uint32_t workgroup_id) {
             g.bs_len = d.bits_length;
             g.coef_off = d.coef_offset;
             g.cbf_off = d.cbf_offset;
+            g.ulen_off = d.unit_len_offset;
             if (g.lane == 0) c.sh.mode_base[g.slot] = int(d.mode_offset);
         }
     }
@@ -498,12 +511,20 @@ void run_group(Ctx &c, uint32_t workgroup_id) {
         }
     }
 
-    // --- zero the coefficient region and CBF words -------------------------
+    // --- zero the CBF, length and mode words -------------------------------
+    // [sparse] The coefficient region is NOT zeroed; see rans_decode.comp.
     for (uint32_t lid = 0; lid < kWorkgroupSize; ++lid) {
         Thread &g = c.th[lid];
         if (!g.valid) continue;
-        for (uint32_t i = uint32_t(g.lane); i < c.in->coef_stride; i += kLanesN)
-            c.out->coef[g.coef_off + i] = 0;
+        if (!c.in->sparse) {
+            for (uint32_t i = uint32_t(g.lane); i < c.in->coef_stride;
+                 i += kLanesN)
+                c.out->coef[g.coef_off + i] = 0;
+        } else {
+            for (uint32_t i = uint32_t(g.lane); i < kUnitLenWordsPerTile;
+                 i += kLanesN)
+                c.out->unit_lens[g.ulen_off + i] = 0u;
+        }
         for (uint32_t i = uint32_t(g.lane); i < c.in->cbf_words; i += kLanesN)
             c.out->cbf[g.cbf_off + i] = 0u;
         for (uint32_t i = uint32_t(g.lane); i < kModeWordsPerTile; i += kLanesN)

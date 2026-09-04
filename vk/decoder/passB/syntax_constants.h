@@ -45,6 +45,46 @@ NXVW_CONST kMinCodedSize = 8;
 // [SYN] 4.1: res_level 3 is reserved.
 NXVW_CONST kMaxResLevel = 2;
 
+// ------------------------------------------------------- inverse scans
+// [sparse] Pass A stores a unit's coefficients in SCAN order and tells Pass B
+// how many of them there are (passA/syntax_constants.h section 8).  Pass B
+// wants them by raster position, so it needs the inverse of each scan:
+// kInv*[raster index] = scan position.  These are the exact inverses of
+// passA's kZigzag8 / kZigzag4 and are checked against them by
+// vk.passB.scan_inverse.  kScanRaster8 (transform skip) and kScanSmall
+// (ncoef 4 or 1) are the identity in both directions and are not tabulated.
+NXVW_CONST kScanZigzag8 = 0;
+NXVW_CONST kScanRaster8 = 1;
+NXVW_CONST kScanZigzag4 = 2;
+NXVW_CONST kScanSmall = 3;
+
+NXVW_ARR(int, kInvZigzag8, 64)
+     0,  1,  5,  6, 14, 15, 27, 28,  2,  4,  7, 13, 16, 26, 29, 42,
+     3,  8, 12, 17, 25, 30, 41, 43,  9, 11, 18, 24, 31, 40, 44, 53,
+    10, 19, 23, 32, 39, 45, 52, 54, 20, 22, 33, 38, 46, 51, 55, 60,
+    21, 34, 37, 47, 50, 56, 59, 61, 35, 36, 48, 49, 57, 58, 62, 63
+NXVW_ARR_END
+
+NXVW_ARR(int, kInvZigzag4, 16)
+     0,  1,  5,  6,  2,  4,  7, 12,  3,  8, 11, 13,  9, 10, 14, 15
+NXVW_ARR_END
+
+// [REF] common.h scan_table(): which scan a unit of `ncoef` coefficients uses.
+// Mirrors passA's nxs_scan_id().
+NXVW_FN nxvw_scan_id(int ncoef, int tskip) {
+    if (ncoef == 64) return tskip != 0 ? kScanRaster8 : kScanZigzag8;
+    if (ncoef == 16) return kScanZigzag4;
+    return kScanSmall;
+}
+
+// Scan position of the coefficient whose raster index inside the unit is
+// `pos`, i.e. the slot Pass A wrote it to under the sparse layout.
+NXVW_FN nxvw_scan_pos(int scan_id, int pos) {
+    if (scan_id == kScanZigzag8) return kInvZigzag8[pos];
+    if (scan_id == kScanZigzag4) return kInvZigzag4[pos];
+    return pos;
+}
+
 // ------------------------------------------------------------ quantizer
 // [SYN] 6.5 qstep[qp] = round(16 * 2^(qp/6)), Q4 (16 == step 1.0).
 // [PAPER] 1.5 "step = 2^(QP/6), QP 0..63".

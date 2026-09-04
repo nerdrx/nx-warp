@@ -264,6 +264,9 @@ struct Case {
     int forceAlphaMode = -1;
     int forceChroma444 = -1;
     int coefMagnitude = 400;   // random coefficient range
+    // [sparse] 1 = build the scan-order layout plus per-unit lengths, which
+    // is what Pass A ships; 0 = the dense raster-order one.
+    int sparse = 1;
 };
 
 struct Scene {
@@ -275,6 +278,9 @@ struct Scene {
     // [v3] per-block intra modes, NXVW_MODE_WORDS_PER_TILE uints per tile.
     // Empty means "mode 0 everywhere", which is the v1 predictor.
     std::vector<uint32_t> modes;
+    // [sparse] one byte per coding unit, NXVW_UNIT_LEN_WORDS_PER_TILE uints
+    // per tile.  Empty when the case is dense.
+    std::vector<uint32_t> unitLens;
     int dirSched = 0;
 };
 
@@ -315,7 +321,14 @@ Scene buildScene(const Case &cs) {
     model_resolve_matrices(cs.quantMatrix, nullptr, sc.weights.data());
 
     sc.recs.resize(ntiles);
-    sc.coef.assign((size_t)ntiles * sc.push.coefStrideI16, 0);
+    sc.push.sparse = cs.sparse;
+    // [sparse] Slots past a unit's LAST are never written by Pass A and must
+    // never be read by Pass B; seeding them with a value no legal coefficient
+    // path can produce is what proves it.
+    sc.coef.assign((size_t)ntiles * sc.push.coefStrideI16,
+                   cs.sparse ? int16_t(0x5555) : int16_t(0));
+    if (cs.sparse)
+        sc.unitLens.assign((size_t)ntiles * NXVW_UNIT_LEN_WORDS_PER_TILE, 0u);
 
     std::uniform_int_distribution<int> dRes(0, kMaxResLevel);
     std::uniform_int_distribution<int> dQpDelta(-8, 8);
@@ -346,18 +359,48 @@ Scene buildScene(const Case &cs) {
         int ncoded = cs.alphaPresent ? 4 : 3;
         if (amode != kAlphaCoded) ncoded = std::min(ncoded, 3);
         int16_t *dst = sc.coef.data() + (size_t)t * sc.push.coefStrideI16;
+        uint32_t *lens =
+            cs.sparse ? sc.unitLens.data() +
+                            (size_t)t * NXVW_UNIT_LEN_WORDS_PER_TILE
+                      : nullptr;
+        int unit = 0;
+        // [sparse] The mode unit occupies one index per plane when the stream
+        // carries modes, exactly as Pass A numbers them.
+        const int unitsPerPlaneExtra = sc.push.intraDir ? 2 : 1;
+        // Writes unit `u`'s coefficients: `ncoef` of them dense, or `len` of
+        // them in scan order plus the published length.
+        auto emit = [&](int u, int ncoef, int len) {
+            if (!cs.sparse) {
+                for (int i = 0; i < ncoef; ++i) {
+                    int v = (dZero(rng) == 0) ? dCoef(rng) : 0;
+                    if (i == 0) v = dCoef(rng);
+                    dst[i] = (int16_t)v;
+                }
+                return;
+            }
+            for (int i = 0; i < len; ++i) {
+                int v = (dZero(rng) == 0) ? dCoef(rng) : 0;
+                if (i == 0 || i == len - 1) v = dCoef(rng);
+                dst[i] = (int16_t)v;
+            }
+            lens[u / (int)NXVW_UNIT_LENS_PER_WORD] |=
+                ((uint32_t)len & NXVW_UNIT_LEN_MASK)
+                << ((uint32_t)(u % (int)NXVW_UNIT_LENS_PER_WORD) *
+                    NXVW_UNIT_LEN_BITS);
+        };
         for (int p = 0; p < ncoded; ++p) {
             int size = nxvw_plane_size(p, res, c444);
             int nb = size >> 3;
             int ndc = nb * nb;
-            for (int i = 0; i < ndc; ++i) *dst++ = (int16_t)dCoef(rng);
-            for (int b = 0; b < ndc; ++b)
-                for (int i = 0; i < 64; ++i) {
-                    // sparse-ish, like a real payload
-                    int v = (dZero(rng) == 0) ? dCoef(rng) : 0;
-                    if (i == 0) v = dCoef(rng);
-                    *dst++ = (int16_t)v;
-                }
+            std::uniform_int_distribution<int> dDcLen(0, ndc);
+            std::uniform_int_distribution<int> dBlkLen(0, 64);
+            emit(unit, ndc, dDcLen(rng));
+            dst += ndc;
+            for (int b = 0; b < ndc; ++b) {
+                emit(unit + unitsPerPlaneExtra + b, 64, dBlkLen(rng));
+                dst += 64;
+            }
+            unit += unitsPerPlaneExtra + ndc;
         }
     }
     return sc;
@@ -436,12 +479,17 @@ bool runGpu(Ctx &c, const Scene &sc, GpuResult &out, int repeats,
     VkDeviceSize modeBytes =
         (VkDeviceSize)ntiles * NXVW_MODE_WORDS_PER_TILE * sizeof(uint32_t);
     VkDeviceSize orderBytes = (VkDeviceSize)ntiles * sizeof(uint32_t);
-    stageBytes = std::max(stageBytes, std::max(modeBytes, orderBytes));
+    // [sparse] binding 9: the per-unit coefficient counts.
+    VkDeviceSize lenBytes =
+        (VkDeviceSize)ntiles * NXVW_UNIT_LEN_WORDS_PER_TILE * sizeof(uint32_t);
+    stageBytes = std::max(stageBytes,
+                          std::max(lenBytes, std::max(modeBytes, orderBytes)));
     Buf bCoef = devBuf(coefBytes);
     Buf bRec = devBuf(recBytes);
     Buf bWgt = devBuf(wgtBytes);
     Buf bModes = devBuf(modeBytes);
     Buf bOrder = devBuf(orderBytes);
+    Buf bLens = devBuf(lenBytes);
 
     auto upload = [&](Buf &dst, const void *src, VkDeviceSize n) {
         std::memcpy(stage.mapped, src, (size_t)n);
@@ -460,6 +508,9 @@ bool runGpu(Ctx &c, const Scene &sc, GpuResult &out, int repeats,
         std::vector<uint32_t> order((size_t)ntiles);
         for (int i = 0; i < ntiles; ++i) order[(size_t)i] = (uint32_t)i;
         upload(bOrder, order.data(), orderBytes);
+        std::vector<uint32_t> lens(sc.unitLens);
+        lens.resize((size_t)ntiles * NXVW_UNIT_LEN_WORDS_PER_TILE, 0u);
+        upload(bLens, lens.data(), lenBytes);
     }
 
     const uint32_t CW = (W + 1) / 2, CH = (H + 1) / 2;
@@ -469,7 +520,7 @@ bool runGpu(Ctx &c, const Scene &sc, GpuResult &out, int repeats,
     Img imgC = createStorageImage(c, VK_FORMAT_R8G8_UINT, CW, CH);
 
     // ---- descriptors
-    VkDescriptorSetLayoutBinding binds[9]{};
+    VkDescriptorSetLayoutBinding binds[10]{};
     for (int i = 0; i < 3; ++i) {
         binds[i].binding = (uint32_t)i;
         binds[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
@@ -482,19 +533,19 @@ bool runGpu(Ctx &c, const Scene &sc, GpuResult &out, int repeats,
         binds[i].descriptorCount = 1;
         binds[i].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
     }
-    for (int i = 7; i < 9; ++i) {
+    for (int i = 7; i < 10; ++i) {
         binds[i].binding = (uint32_t)i;
         binds[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         binds[i].descriptorCount = 1;
         binds[i].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
     }
     VkDescriptorSetLayoutCreateInfo dli{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
-    dli.bindingCount = 9;
+    dli.bindingCount = 10;
     dli.pBindings = binds;
     VkDescriptorSetLayout dsl;
     VKCHECK(vkCreateDescriptorSetLayout(c.dev, &dli, nullptr, &dsl));
 
-    VkDescriptorPoolSize psz[2] = {{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 5},
+    VkDescriptorPoolSize psz[2] = {{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 6},
                                    {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 4}};
     VkDescriptorPoolCreateInfo dpi{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
     dpi.maxSets = 1;
@@ -517,9 +568,10 @@ bool runGpu(Ctx &c, const Scene &sc, GpuResult &out, int repeats,
         {VK_NULL_HANDLE, imgB.view, VK_IMAGE_LAYOUT_GENERAL},
         {VK_NULL_HANDLE, imgY.view, VK_IMAGE_LAYOUT_GENERAL},
         {VK_NULL_HANDLE, imgC.view, VK_IMAGE_LAYOUT_GENERAL}};
-    VkDescriptorBufferInfo dbi2[2] = {{bModes.buf, 0, VK_WHOLE_SIZE},
-                                      {bOrder.buf, 0, VK_WHOLE_SIZE}};
-    VkWriteDescriptorSet w[9]{};
+    VkDescriptorBufferInfo dbi2[3] = {{bModes.buf, 0, VK_WHOLE_SIZE},
+                                      {bOrder.buf, 0, VK_WHOLE_SIZE},
+                                      {bLens.buf, 0, VK_WHOLE_SIZE}};
+    VkWriteDescriptorSet w[10]{};
     for (int i = 0; i < 3; ++i) {
         w[i] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
         w[i].dstSet = dset;
@@ -536,7 +588,7 @@ bool runGpu(Ctx &c, const Scene &sc, GpuResult &out, int repeats,
         w[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
         w[i].pImageInfo = &dii[i - 3];
     }
-    for (int i = 7; i < 9; ++i) {
+    for (int i = 7; i < 10; ++i) {
         w[i] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
         w[i].dstSet = dset;
         w[i].dstBinding = (uint32_t)i;
@@ -544,7 +596,7 @@ bool runGpu(Ctx &c, const Scene &sc, GpuResult &out, int repeats,
         w[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         w[i].pBufferInfo = &dbi2[i - 7];
     }
-    vkUpdateDescriptorSets(c.dev, 9, w, 0, nullptr);
+    vkUpdateDescriptorSets(c.dev, 10, w, 0, nullptr);
 
     // ---- pipeline
     VkShaderModuleCreateInfo smi{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
@@ -691,6 +743,7 @@ bool runGpu(Ctx &c, const Scene &sc, GpuResult &out, int repeats,
     destroyBuffer(c, bWgt);
     destroyBuffer(c, bModes);
     destroyBuffer(c, bOrder);
+    destroyBuffer(c, bLens);
     destroyBuffer(c, stage);
     return true;
 }
@@ -706,6 +759,7 @@ size_t compareCase(Ctx &c, const Case &cs, bool verbose, int &ranOut) {
     in.recs = sc.recs.data();
     in.weights = sc.weights.data();
     in.modes = sc.modes.empty() ? nullptr : sc.modes.data();
+    in.unit_lens = sc.unitLens.empty() ? nullptr : sc.unitLens.data();
     in.dirSched = sc.dirSched;
 
     const size_t npix = (size_t)sc.push.imageW * sc.push.imageH;

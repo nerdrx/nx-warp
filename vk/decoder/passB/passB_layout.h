@@ -23,6 +23,9 @@
 //  binding 7  Modes     readonly  [v3] uint[]: kNxvwModeWordsPerTile packed
 //                                 4-bit per-8x8-block intra modes per tile,
 //                                 written by Pass A (SYNTAX.md 7.4 / 9.6)
+//  binding 9  UnitLens  readonly  [sparse] uint[]: one byte per coding unit,
+//                                 NXVW_UNIT_LEN_WORDS_PER_TILE uints per
+//                                 tile, holding LAST + 1 (0 = not coded)
 //  binding 8  TileOrder readonly  uint[]: workgroup index -> tile index.  The
 //                                 host may permute it to group tiles of like
 //                                 shape into adjacent workgroups; the output
@@ -154,6 +157,10 @@ struct NxvwPassBPush {
     // [v3] frame-header flags bit 2: the layered form, in which the modes
     // predict the DC-plane residual rather than the samples (SYNTAX.md 7.5).
     int dirLayer;
+    // [sparse] 1 = scan-order slots plus the per-unit lengths at binding 9;
+    // 0 = the dense raster-order layout with no lengths.  Must match Pass A's
+    // `sparse` push constant for the same frame.
+    int sparse;
 };
 
 // ------------------------------------------------------------- intra modes
@@ -166,6 +173,21 @@ struct NxvwPassBPush {
 #define NXVW_MODES_PER_UINT 8u
 #define NXVW_MODE_WORDS_PER_PLANE 8
 #define NXVW_MODE_WORDS_PER_TILE 32
+
+// ------------------------------------------------------------- unit lengths
+// [sparse] Pass A stores a unit's coefficients in SCAN order at slots
+// [0, LAST] of the same reserved region the dense layout used, and publishes
+// LAST + 1 here -- one byte per unit, four units per uint, index == unit
+// index.  0 means the unit was not coded at all.  These MUST equal the
+// kUnitLen* constants in passA/syntax_constants.h.
+//
+// Unit index, [SYN] 9.1: planes in order, and inside a plane one DC-plane
+// unit, then (with INTRA_DIR) one mode unit, then nb*nb block units.  A mode
+// unit carries no coefficients and its length stays 0.
+#define NXVW_UNIT_LENS_PER_WORD 4u
+#define NXVW_UNIT_LEN_BITS 8u
+#define NXVW_UNIT_LEN_MASK 255u
+#define NXVW_UNIT_LEN_WORDS_PER_TILE 66
 
 #ifdef __cplusplus
 // Per-tile slot size for a whole dispatch: worst case over res_level, which is

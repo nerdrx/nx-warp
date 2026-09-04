@@ -85,6 +85,13 @@ layout(std430, set = 0, binding = 6) buffer Modes {
     uint data[];
 } u_modes;
 
+// [sparse] One byte per unit, LAST + 1 in the unit's scan (0 = CBF 0).  Read
+// as well as written because the write is an atomicOr into a pre-zeroed word:
+// four neighbouring units belong to four different lanes.
+layout(std430, set = 0, binding = 7) buffer UnitLens {
+    uint data[];
+} u_ulen;
+
 layout(push_constant) uniform Push {
     uint num_tiles;
     uint frame_nplanes;   // 3 or 4
@@ -94,6 +101,11 @@ layout(push_constant) uniform Push {
     // kToolFlagSignHide.  A push constant rather than a specialisation
     // constant so turning a tool on costs no pipeline rebuild.
     uint tools;
+    // [sparse] 1 = scan-order slots plus a per-unit length (syntax_constants.h
+    // section 8); 0 = the dense raster-order layout.  A push constant so the
+    // host can A/B the two layouts without a second pipeline, and because the
+    // branch it selects is workgroup-uniform.
+    uint sparse;
 } pc;
 
 // ---------------------------------------------------------------------------
@@ -181,6 +193,7 @@ int  g_hide_mag;  // magnitude stored provisionally positive at scan pos LAST
 int  g_slot;
 uint g_coef_off;  // int16 index of this tile's region
 uint g_cbf_off;   // uint index of this tile's CBF words
+uint g_ulen_off;  // [sparse] uint index of this tile's unit-length words
 
 int scan_index(int scan_id, int p) {
     return int(s_scan[uint(scan_id * kScanStride + p)]);
@@ -287,7 +300,27 @@ void begin_unit() {
     g_phase = kPhCbf;
 }
 
+// [sparse] The only place the two layouts differ: scan order stores
+// coefficient `scan_pos` at slot `scan_pos`, dense stores it at the raster
+// index the scan names.  The unit's base and reserved width are the same
+// either way.
+void store_coef_at(int scan_pos, int value) {
+    int slot = pc.sparse != 0u ? scan_pos : scan_index(g_u_scan, scan_pos);
+    u_coef.data[g_coef_off + uint(g_u_coef + slot)] = int16_t(value);
+}
+
+// [sparse] Publish the unit's coefficient count, LAST + 1.  atomicOr into a
+// zeroed word: unit `u` belongs to lane `u % LANES`, so the four units sharing
+// a word belong to four different lanes.
+void store_unit_len(int ui, int len) {
+    if (pc.sparse == 0u) return;
+    atomicOr(u_ulen.data[g_ulen_off + uint(ui) / kUnitLensPerWord],
+             (uint(len) & kUnitLenMask)
+                 << ((uint(ui) % kUnitLensPerWord) * kUnitLenBits));
+}
+
 void begin_levels() {
+    store_unit_len(g_ui, g_last + 1);
     g_pos_sp = g_last;
     g_prev_class = 0;
     g_sum_abs = 0;
@@ -297,11 +330,6 @@ void begin_levels() {
     g_hide = (g_u_sdh != 0 && g_last >= kSdhMinLast) ? 1 : 0;
     g_hide_mag = 0;
     g_phase = kPhLevel;
-}
-
-void store_coef_at(int scan_pos, int value) {
-    u_coef.data[g_coef_off + uint(g_u_coef + scan_index(g_u_scan, scan_pos))] =
-        int16_t(value);
 }
 
 void advance_pos() {
@@ -559,6 +587,7 @@ void main() {
         // dispatch can cover any subset of the frame's tiles in any order.
         g_coef_off = u_tiles.data[d + kTdCoefOffset];
         g_cbf_off = u_tiles.data[d + kTdCbfOffset];
+        g_ulen_off = u_tiles.data[d + kTdUnitLenOffset];
         if (lane == 0) s_mode_base[slot] = int(u_tiles.data[d + kTdModeOffset]);
     }
 
@@ -619,10 +648,19 @@ void main() {
     }
     barrier();
 
-    // --- zero the tile's coefficient region and CBF words -------------------
+    // --- zero the tile's CBF, length and mode words -------------------------
+    // [sparse] The coefficient region is NOT zeroed: every slot Pass B reads
+    // is inside [0, LAST] of some unit and every one of those is written
+    // below, explicit zeros included (a zero run inside a unit is stored, see
+    // kPhLevel).  That is the whole of the write-side saving.
     if (valid) {
-        for (uint i = uint(lane); i < pc.coef_stride; i += LANES)
-            u_coef.data[g_coef_off + i] = int16_t(0);
+        if (pc.sparse == 0u) {
+            for (uint i = uint(lane); i < pc.coef_stride; i += LANES)
+                u_coef.data[g_coef_off + i] = int16_t(0);
+        } else {
+            for (uint i = uint(lane); i < kUnitLenWordsPerTile; i += LANES)
+                u_ulen.data[g_ulen_off + i] = 0u;
+        }
         for (uint i = uint(lane); i < pc.cbf_words; i += LANES)
             u_cbf.data[g_cbf_off + i] = 0u;
         // [v3] The mode words are zeroed unconditionally, whether or not the

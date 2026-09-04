@@ -55,6 +55,9 @@ layout(set = 0, binding = 7, std430) readonly buffer Modes { uint w[]; } uModes;
 // write address below is derived from the tile index, so the output image is
 // bit-identical whatever the permutation is.
 layout(set = 0, binding = 8, std430) readonly buffer TileOrder { uint i[]; } uOrder;
+// [sparse] One byte per coding unit, LAST + 1 (0 = not coded).  See
+// passB_layout.h and passA/syntax_constants.h section 8.
+layout(set = 0, binding = 9, std430) readonly buffer UnitLens { uint w[]; } uLens;
 
 layout(push_constant) uniform Push { NxvwPassBPush p; } pc;
 
@@ -76,6 +79,11 @@ shared uint sPlane[kPlaneStoreWords];
 // DC plane: up to 8x8 block means, plus scratch for its second-level IDCT.
 shared int sMeans[64];
 shared int sDcTmp[64];
+// [sparse] Set when any 8x8 block of the current plane names a directional
+// mode other than 0.  Mode 0 predicts from the DC plane alone, so a plane
+// whose modes are all 0 has no dependency between blocks at all and takes the
+// parallel path -- bit-identically, in both the replace and the layered form.
+shared uint sModesNz;
 
 // =========================================================== primitives
 int clamp16(int v) { return clamp(v, kI16Min, kI16Max); }
@@ -100,6 +108,25 @@ uint pack16x2(int lo, int hi) {
 // One coefficient, addressed by int16 element index inside the Coef buffer.
 int coefAt(int elem) {
     return unpack16(uCoef.w[elem >> 1], elem & 1);
+}
+
+// [sparse] One coefficient of a unit, by its RASTER index inside the unit.
+// Dense: the slot is the raster index.  Sparse: the unit holds `len`
+// coefficients in scan order, and everything from LAST + 1 on is zero and was
+// never written by Pass A.
+int coefIn(int unitBase, int scanId, int len, int pos) {
+    if (pc.p.sparse == 0) return coefAt(unitBase + pos);
+    int k = nxvw_scan_pos(scanId, pos);
+    return k < len ? coefAt(unitBase + k) : 0;
+}
+
+// [sparse] LAST + 1 for coding unit `ui` of tile `t`; 0 when the unit is not
+// coded.  Dense streams carry no lengths, so every unit reads as full.
+int unitLen(int tileLenBase, int ui) {
+    if (pc.p.sparse == 0) return kBlock * kBlock;
+    uint w = uLens.w[tileLenBase + ui / int(NXVW_UNIT_LENS_PER_WORD)];
+    return int((w >> ((uint(ui) % NXVW_UNIT_LENS_PER_WORD) * NXVW_UNIT_LEN_BITS)) &
+               NXVW_UNIT_LEN_MASK);
 }
 
 // ------------------------------------------------------------- 1D IDCT
@@ -398,6 +425,13 @@ void main() {
     int sub = tid & 3;     // owns rows / columns 2*sub and 2*sub+1
 
     int coefBase = tileCoefBase;
+    // [sparse] Unit index of the plane about to be decoded, [SYN] 9.1.
+    int tileLenBase = tile * NXVW_UNIT_LEN_WORDS_PER_TILE;
+    int unitBase = 0;
+    // The mode unit exists whenever the STREAM sets INTRA_DIR, which is what
+    // Pass A keys its unit numbering off; `dir` above is narrower because it
+    // also asks whether this tile is an INTRA tile.
+    int unitsPerPlaneExtra = pc.p.intraDir != 0 ? 2 : 1;
 
     for (int p = 0; p < 4; ++p) {
         if (p >= ncoded) break;   // uniform across the workgroup
@@ -418,10 +452,19 @@ void main() {
         // ------------------------------------------------ DC plane (3.2.4)
         int dcqp = nxvw_dc_qp(planeQp);  // [marked edit] qp >> 1, was qp - 6
         int tdc = dequantStep(dcqp, kFlatWeight);
-        if (tid < ndc) sDcTmp[tid] = dequant(coefAt(coefBase + tid), tdc);
+        // [sparse] An uncoded DC unit dequantizes and transforms to all zeros,
+        // so its block means are the plane's DC offset and the second-level
+        // IDCT can be skipped outright.
+        int dcLen = unitLen(tileLenBase, unitBase);
+        int dcScan = nxvw_scan_id(ndc, 0);
+        if (tid == 0) sModesNz = 0u;
+        if (tid < ndc)
+            sDcTmp[tid] = dcLen != 0
+                              ? dequant(coefIn(coefBase, dcScan, dcLen, tid), tdc)
+                              : 0;
         barrier();
 
-        if (nb == 8) {
+        if (nb == 8 && dcLen != 0) {
             // Second-level 8x8 IDCT of the 64 block DCs.  Same two-pass
             // structure as the block transform; 4 threads, 2 rows each.
             int rowv[8], y[8];
@@ -459,32 +502,47 @@ void main() {
         int bx = 0, by = 0;
         if (live) { bx = bIdx % nb; by = bIdx / nb; }
         int blockBase = coefBase + ndc + bIdx * 64;
+        // [sparse] LAST + 1 for this thread's block, and the plane-wide "any
+        // block names a mode other than 0" flag the fast path below turns on.
+        int blockUnit = unitBase + unitsPerPlaneExtra + bIdx;
+        int blockLen = live ? unitLen(tileLenBase, blockUnit) : 0;
+        int blockScan = nxvw_scan_id(64, tskip);
+        bool coded = live && blockLen != 0;
+        if (dir && tid < NXVW_MODE_WORDS_PER_PLANE &&
+            uModes.w[modeBase + p * NXVW_MODE_WORDS_PER_PLANE + tid] != 0u)
+            atomicOr(sModesNz, 1u);
 
         int res0[8], res1[8];   // this thread's 2 columns, 8 rows each
+        for (int c = 0; c < 8; ++c) { res0[c] = 0; res1[c] = 0; }
 
         if (tskip != 0) {
             // Transform skip: dequantized coefficients ARE the residual, in
             // raster order, flat weight.  [REF] reconstruct_plane.
             int t = dequantStep(planeQp, kFlatWeight);
-            if (live) {
+            if (coded) {
                 for (int c = 0; c < 8; ++c) {
-                    res0[c] = dequant(coefAt(blockBase + c * 8 + 2 * sub), t);
-                    res1[c] = dequant(coefAt(blockBase + c * 8 + 2 * sub + 1), t);
+                    res0[c] = dequant(
+                        coefIn(blockBase, blockScan, blockLen, c * 8 + 2 * sub), t);
+                    res1[c] = dequant(
+                        coefIn(blockBase, blockScan, blockLen, c * 8 + 2 * sub + 1), t);
                 }
             }
             barrier();  // keep the barrier count uniform with the DCT path
             barrier();
         } else {
             // Row pass: 2 rows, dequantize with the weighting matrix, 1D IDCT,
-            // write transposed into shared memory.
-            if (live) {
+            // write transposed into shared memory.  [sparse] An uncoded block
+            // transforms to all zeros; skipping it is the whole of the
+            // skip-tile fast path, because a tile with no coded unit has no
+            // coded block either.
+            if (coded) {
                 int y[8];
                 for (int hf = 0; hf < 2; ++hf) {
                     int r = (sub << 1) + hf;
                     int q[8];
                     for (int c = 0; c < 8; ++c) {
                         int pos = r * 8 + c;
-                        q[c] = dequant(coefAt(blockBase + pos),
+                        q[c] = dequant(coefIn(blockBase, blockScan, blockLen, pos),
                                        dequantStep(planeQp, uWgt.m[wbase + pos]));
                     }
                     idct8_1d(q[0], q[1], q[2], q[3], q[4], q[5], q[6], q[7], y);
@@ -502,7 +560,7 @@ void main() {
             }
             barrier();
             // Column pass: rows 2*sub, 2*sub+1 of the transposed block.
-            if (live) {
+            if (coded) {
                 int y[8];
                 for (int hf = 0; hf < 2; ++hf) {
                     int r = (sub << 1) + hf;
@@ -522,7 +580,14 @@ void main() {
         }
 
         // ------------------------------- prediction, add, clamp, write out
-        if (!dir) {
+        // [v3 fast path] `dir` only forces the wavefront when some block of
+        // this plane names a mode other than 0.  Mode 0 is the DC-plane
+        // predictor, which reads no neighbour, so an all-zero mode plane
+        // reconstructs bit-identically down the parallel path -- in the
+        // layered form too, where the store-then-convert pair collapses to
+        // `clamp(pred + res)` exactly as it does here.
+        bool useDir = dir && sModesNz != 0u;
+        if (!useDir) {
             if (live) {
                 int col0 = bx * 8 + 2 * sub;
                 for (int c = 0; c < 8; ++c) {
@@ -610,6 +675,7 @@ void main() {
         }
 
         coefBase += ndc + ndc * 64;
+        unitBase += unitsPerPlaneExtra + ndc;
     }
 
     // ------------------------------------------------- display conversion

@@ -674,7 +674,7 @@ void run_synthetic(bool quick) {
 // PAPER 3.4's decode budget, measured on the shape the headset actually
 // streams: two 2048x2048 eyes at 4:2:0, which is 2048 tiles in one frame.
 // Informational -- it never fails the test.
-int run_bench_qp(int iters, int qp) {
+int run_bench_qp(int iters, int qp, bool dense = false) {
     Case c{"bench_2x2048sq_420", 2048, 4096, 0, 1, qp, 0, 0, 0, 3, 0, 0, 0,
            1,   0,    0, 1};
     std::vector<uint8_t> stream;
@@ -688,6 +688,11 @@ int run_bench_qp(int iters, int qp) {
     nxvc_vkd_create_info ci;
     nxvc_vk_decoder_create_info_default(&ci);
     ci.device_name = device_filter();
+    // [sparse] Ask for the exact coefficient traffic; it costs a copy of the
+    // 264-B-per-tile length buffer after the last timestamp.
+    ci.flags = (getenv("NXVC_NO_COEF_STATS") ? 0u
+                                             : (uint32_t)NXVC_VKD_FLAG_COEF_STATS) |
+               (dense ? (uint32_t)NXVC_VKD_FLAG_DENSE_COEF : 0u);
     nxvc_vk_decoder *dec = nullptr;
     if (nxvc_vk_decoder_create(&ci, &dec) != NXVC_VKD_OK) {
         std::printf("SKIP: %s\n",
@@ -724,11 +729,13 @@ int run_bench_qp(int iters, int qp) {
         "  best of %d: Pass A %.3f ms, Pass B %.3f ms, GPU total %.3f ms, "
         "wall %.3f ms\n"
         "  host parse %.3f ms, record+submit %.3f ms\n"
-        "  coefficient SSBO %.1f MB written by Pass A and read by Pass B\n",
+        "  coefficient SSBO %.2f MB written by Pass A and read by Pass B "
+        "(%s layout; the dense slot is %.1f MB)\n",
         nxvc_vk_decoder_device_name(dec), qp, st.tiles,
         (unsigned long long)st.frame_bytes,
         (unsigned long long)st.payload_bytes, iters, bestA, bestB, bestG, bestT,
-        st.parse_ms, st.submit_ms, (double)st.coef_bytes / 1e6);
+        st.parse_ms, st.submit_ms, (double)st.coef_bytes / 1e6,
+        dense ? "dense" : "sparse", (double)st.coef_slot_bytes / 1e6);
     nxvc_vk_decoder_destroy(dec);
     return 0;
 }
@@ -962,10 +969,13 @@ int run_bench_sort(int iters) {
 // Pass A's cost scales with the symbol rate, so the budget is quoted over a
 // bitrate range rather than at one operating point.
 int run_bench(int iters) {
-    for (int qp : {12, 24, 36}) {
-        int rc = run_bench_qp(iters, qp);
-        if (rc) return rc;
-    }
+    // [sparse] Both layouts at each QP: identical pixels, and the difference
+    // between them is the whole of PAPER 3.2.5's first optimisation.
+    for (int qp : {12, 24, 36})
+        for (bool dense : {false, true}) {
+            int rc = run_bench_qp(iters, qp, dense);
+            if (rc) return rc;
+        }
     int rc = run_bench_dir(iters);
     if (rc) return rc;
     if ((rc = run_bench_overhead(iters))) return rc;

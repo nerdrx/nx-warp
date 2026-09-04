@@ -26,7 +26,10 @@ int check(const char *name, const CorpusConfig &cfg) {
         std::vector<uint32_t> cbf(c.expect_cbf.size(), 0xdeadbeefu);
         std::vector<uint32_t> status(c.tiles.size(), 0xffffffffu);
 
-        Inputs in = corpus_inputs(c, mode);
+        // The corpus' expectation is ref/'s own raster-order array, so this
+        // test runs the dense layout; nxvc-passA-test checks the sparse one
+        // GPU-against-model, and vk.decoder.conformance end to end.
+        Inputs in = corpus_inputs(c, mode, /*sparse=*/0);
         std::vector<uint32_t> modes(size_t(c.tiles.size()) *
                                     kModeWordsPerTile, 0);
         Outputs out;

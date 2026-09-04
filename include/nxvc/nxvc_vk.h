@@ -96,7 +96,19 @@ typedef enum nxvc_vkd_create_flags {
      * this decoder by default.  With the flag set, skipped tiles reconstruct
      * deterministically as WARP_SKIP records over a zeroed coefficient slot,
      * which is the shape the Phase 2 inter predictor plugs into. */
-    NXVC_VKD_FLAG_ALLOW_SKIPPED_TILES = 1u << 3
+    NXVC_VKD_FLAG_ALLOW_SKIPPED_TILES = 1u << 3,
+    /* Use the dense raster-order coefficient layout between Pass A and Pass B
+     * instead of the sparse one (PAPER 3.2.5): every tile writes and reads its
+     * whole 12.5 KB slot whatever the payload said.  The two produce identical
+     * pixels; this exists to measure the difference.  See
+     * vk/decoder/passA/syntax_constants.h section 8. */
+    NXVC_VKD_FLAG_DENSE_COEF = 1u << 4,
+    /* Report the exact coefficient traffic in nxvc_vkd_stats::coef_bytes.  It
+     * costs a copy of the per-unit length buffer (264 B per tile) to host
+     * memory after every Pass A, so it is off by default; without it
+     * coef_bytes reports the reserved slot size, which is what the dense
+     * layout actually moves. */
+    NXVC_VKD_FLAG_COEF_STATS = 1u << 5
 } nxvc_vkd_create_flags;
 
 /* --------------------------------------------------------------- create */
@@ -240,7 +252,10 @@ typedef struct nxvc_vkd_stats {
     uint64_t payload_bytes; /* entropy-coded tile payloads only            */
     uint64_t coef_bytes;    /* coefficient SSBO traffic: written by Pass A
                              * and read back by Pass B, so device traffic is
-                             * about twice this                            */
+                             * about twice this.  Exact only with
+                             * NXVC_VKD_FLAG_COEF_STATS; otherwise the
+                             * reserved slot size.                         */
+    uint64_t coef_slot_bytes; /* what the dense layout would have moved     */
     uint32_t tiles;
     uint32_t tiles_skipped; /* tiles covered by a row skip bitmap          */
     uint32_t tiles_tskip;   /* tiles that skipped the transform            */

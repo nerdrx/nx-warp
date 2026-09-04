@@ -512,6 +512,7 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
             d.coef_offset = tindex * fp.coef_stride;
             d.cbf_offset = tindex * fp.cbf_words;
             d.mode_offset = tindex * kModeWordsPerTile;
+            d.unit_len_offset = tindex * kUnitLenWordsPerTile;
             by_lane[nsub_log2].push_back(d);
             lane_tile[nsub_log2].push_back(tindex);
 
@@ -566,6 +567,9 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
     p.alphaPresent = si.alpha ? 1 : 0;
     p.intraDir = fp.intra_dir;
     p.dirLayer = fp.dir_layer;
+    // [sparse] The caller's choice; parse_frame() has no opinion.  Set after
+    // the call by the decoder, which owns the flag.
+    p.sparse = 1;
     const int c420 = chroma420 ? 1 : 0;
     p.planeWords0 = nxvw::nxvw_plane_store_words(0, c420);
     p.planeWords1 = nxvw::nxvw_plane_store_words(1, c420);

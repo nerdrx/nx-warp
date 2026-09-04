@@ -102,6 +102,7 @@ inline bool build_corpus(const CorpusConfig &cfg, Corpus &out) {
         out.tiles[t].coef_offset = t * stride;
         out.tiles[t].cbf_offset = t * out.cbf_words;
         out.tiles[t].mode_offset = t * kModeWordsPerTile;
+        out.tiles[t].unit_len_offset = t * kUnitLenWordsPerTile;
         out.bits.insert(out.bits.end(), tilebuf.begin(), tilebuf.end());
 
         int16_t *dst = out.expect_coef.data() + size_t(t) * stride;
@@ -122,8 +123,12 @@ inline bool build_corpus(const CorpusConfig &cfg, Corpus &out) {
 }
 
 // Fills `in` to point at `c`.  `mode` is kReadPtrBallot or kReadPtrLdsFallback.
-inline Inputs corpus_inputs(const Corpus &c, uint32_t mode) {
+// `sparse` selects the coefficient layout; the corpus' expected coefficients
+// are the dense ones, so the default here is 0 rather than the shipping 1.
+inline Inputs corpus_inputs(const Corpus &c, uint32_t mode,
+                            uint32_t sparse = 0) {
     Inputs in;
+    in.sparse = sparse;
     in.bits = c.bits.data();
     in.bits_size = c.bits.size();
     in.tiles = c.tiles.data();

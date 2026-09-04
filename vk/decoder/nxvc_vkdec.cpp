@@ -38,6 +38,10 @@ using nxvcvk::FrameParse;
 using nxvcvk::LaneGroup;
 using nxvcvk::StreamInfo;
 
+// Pass A's push constants: num_tiles, frame_nplanes, coef_stride, cbf_words,
+// tools, [sparse] sparse.
+constexpr uint32_t kPassAPushUints = 6;
+
 double now_ms() {
     using clock = std::chrono::steady_clock;
     return std::chrono::duration<double, std::milli>(
@@ -112,6 +116,9 @@ struct nxvc_vk_decoder {
     // ---- buffers
     Buf staging, bBits, bDesc, bTables, bCoef, bCbf, bStatus, bRecs, bWgt,
         bModes, bOrder, bRead;
+    // [sparse] Pass A's per-unit coefficient counts, and a host-visible mirror
+    // that only exists when the caller asked for coefficient statistics.
+    Buf bULen, bULenHost;
     std::vector<uint32_t> order;   // workgroup index -> tile index
     Img imgRgba, imgRgb10, imgLuma, imgCbCr;
 
@@ -170,8 +177,13 @@ void destroy_buf(D *d, Buf &b) {
     b = Buf{};
 }
 
+// `host_cached` asks for a memory type the CPU can *read* at speed.  A plain
+// HOST_VISIBLE|HOST_COHERENT allocation on a discrete GPU is write-combined:
+// writing it is fast and reading it back is roughly 10 MB/s, which is fine for
+// the one status word per tile and ruinous for anything larger.
 nxvc_vkd_status make_buf(D *d, Buf &b, VkDeviceSize size,
-                         VkBufferUsageFlags usage, bool host_visible) {
+                         VkBufferUsageFlags usage, bool host_visible,
+                         bool host_cached = false) {
     if (b.buf && b.size >= size) return NXVC_VKD_OK;
     destroy_buf(d, b);
     if (size == 0) size = 4;
@@ -186,7 +198,11 @@ nxvc_vkd_status make_buf(D *d, Buf &b, VkDeviceSize size,
         host_visible ? (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
                         VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
                      : VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-    int mt = find_memory(d, mr.memoryTypeBits, want);
+    int mt = -1;
+    if (host_cached)
+        mt = find_memory(d, mr.memoryTypeBits,
+                         want | VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
+    if (mt < 0) mt = find_memory(d, mr.memoryTypeBits, want);
     if (mt < 0 && !host_visible) mt = find_memory(d, mr.memoryTypeBits, 0);
     if (mt < 0)
         return seterr(d, NXVC_VKD_ERR_NOMEM, "no memory type for a %llu B buffer",
@@ -413,15 +429,15 @@ nxvc_vkd_status make_layouts(D *d) {
         ci.pBindings = b.data();
         return vkCreateDescriptorSetLayout(d->dev, &ci, nullptr, out);
     };
-    // Pass A: 7 storage buffers (bitstream, descriptors, tables, coefficients,
-    // CBF bits, status, [v3] intra modes).
-    VKTRY(d, set_layout(7, 0, &d->dslA));
+    // Pass A: 8 storage buffers (bitstream, descriptors, tables, coefficients,
+    // CBF bits, status, [v3] intra modes, [sparse] unit lengths).
+    VKTRY(d, set_layout(8, 0, &d->dslA));
     // Pass B: buffers 0-2, images 3-6, then [v3] buffers 7 (modes) and 8 (the
-    // workgroup -> tile map).  The images keep their bindings so nothing that
-    // already referenced them has to move.
+    // workgroup -> tile map) and [sparse] 9 (unit lengths).  The images keep
+    // their bindings so nothing that already referenced them has to move.
     {
-        VkDescriptorSetLayoutBinding b[9]{};
-        for (int i = 0; i < 9; ++i) {
+        VkDescriptorSetLayoutBinding b[10]{};
+        for (int i = 0; i < 10; ++i) {
             b[i].binding = (uint32_t)i;
             b[i].descriptorType = (i >= 3 && i <= 6)
                                       ? VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
@@ -431,13 +447,13 @@ nxvc_vkd_status make_layouts(D *d) {
         }
         VkDescriptorSetLayoutCreateInfo ci{
             VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
-        ci.bindingCount = 9;
+        ci.bindingCount = 10;
         ci.pBindings = b;
         VKTRY(d, vkCreateDescriptorSetLayout(d->dev, &ci, nullptr, &d->dslB));
     }
 
     VkPushConstantRange pcA{VK_SHADER_STAGE_COMPUTE_BIT, 0,
-                            (uint32_t)sizeof(uint32_t) * 5};
+                            (uint32_t)sizeof(uint32_t) * kPassAPushUints};
     VkPipelineLayoutCreateInfo pl{
         VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
     pl.setLayoutCount = 1;
@@ -674,6 +690,18 @@ nxvc_vkd_status make_resources(D *d) {
     if ((st = make_buf(d, d->bOrder, (VkDeviceSize)(ntiles + 1) * 4, kSsbo,
                        false)))
         return st;
+    // [sparse] One byte per coding unit, 264 B per tile against the
+    // coefficient slot's 12.5 KB.  Pass A writes it, Pass B reads it.
+    const VkDeviceSize ulenBytes =
+        (VkDeviceSize)(ntiles + 64) * nxwarp_passA::kUnitLenWordsPerTile * 4;
+    if ((st = make_buf(d, d->bULen, ulenBytes, kSsbo, false))) return st;
+    // Only when the caller asked for the exact coefficient traffic: a
+    // host-visible copy of the same buffer, filled after Pass A.
+    if (d->flags & NXVC_VKD_FLAG_COEF_STATS) {
+        if ((st = make_buf(d, d->bULenHost, ulenBytes,
+                           VK_BUFFER_USAGE_TRANSFER_DST_BIT, true, true)))
+            return st;
+    }
 
     // ---- readback
     if (d->flags & NXVC_VKD_FLAG_READBACK) {
@@ -691,26 +719,28 @@ nxvc_vkd_status make_resources(D *d) {
     }
 
     // ---- descriptor writes
-    VkDescriptorBufferInfo a[7] = {{d->bBits.buf, 0, VK_WHOLE_SIZE},
+    VkDescriptorBufferInfo a[8] = {{d->bBits.buf, 0, VK_WHOLE_SIZE},
                                    {d->bDesc.buf, 0, VK_WHOLE_SIZE},
                                    {d->bTables.buf, 0, VK_WHOLE_SIZE},
                                    {d->bCoef.buf, 0, VK_WHOLE_SIZE},
                                    {d->bCbf.buf, 0, VK_WHOLE_SIZE},
                                    {d->bStatus.buf, 0, VK_WHOLE_SIZE},
-                                   {d->bModes.buf, 0, VK_WHOLE_SIZE}};
+                                   {d->bModes.buf, 0, VK_WHOLE_SIZE},
+                                   {d->bULen.buf, 0, VK_WHOLE_SIZE}};
     VkDescriptorBufferInfo b[3] = {{d->bCoef.buf, 0, VK_WHOLE_SIZE},
                                    {d->bRecs.buf, 0, VK_WHOLE_SIZE},
                                    {d->bWgt.buf, 0, VK_WHOLE_SIZE}};
-    VkDescriptorBufferInfo b2[2] = {{d->bModes.buf, 0, VK_WHOLE_SIZE},
-                                    {d->bOrder.buf, 0, VK_WHOLE_SIZE}};
+    VkDescriptorBufferInfo b2[3] = {{d->bModes.buf, 0, VK_WHOLE_SIZE},
+                                    {d->bOrder.buf, 0, VK_WHOLE_SIZE},
+                                    {d->bULen.buf, 0, VK_WHOLE_SIZE}};
     VkDescriptorImageInfo im[4] = {
         {VK_NULL_HANDLE, d->imgRgba.view, VK_IMAGE_LAYOUT_GENERAL},
         {VK_NULL_HANDLE, d->imgRgb10.view, VK_IMAGE_LAYOUT_GENERAL},
         {VK_NULL_HANDLE, d->imgLuma.view, VK_IMAGE_LAYOUT_GENERAL},
         {VK_NULL_HANDLE, d->imgCbCr.view, VK_IMAGE_LAYOUT_GENERAL}};
-    VkWriteDescriptorSet w[16]{};
+    VkWriteDescriptorSet w[18]{};
     uint32_t nw = 0;
-    for (int i = 0; i < 7; ++i) {
+    for (int i = 0; i < 8; ++i) {
         w[nw] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
         w[nw].dstSet = d->dsetA;
         w[nw].dstBinding = (uint32_t)i;
@@ -737,7 +767,7 @@ nxvc_vkd_status make_resources(D *d) {
         w[nw].pImageInfo = &im[i];
         ++nw;
     }
-    for (int i = 0; i < 2; ++i) {
+    for (int i = 0; i < 3; ++i) {
         w[nw] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
         w[nw].dstSet = d->dsetB;
         w[nw].dstBinding = (uint32_t)(7 + i);
@@ -944,7 +974,8 @@ extern "C" void nxvc_vk_decoder_destroy(nxvc_vk_decoder *d) {
         if (d->pool) vkDestroyCommandPool(d->dev, d->pool, nullptr);
         for (Buf *b : {&d->staging, &d->bBits, &d->bDesc, &d->bTables,
                        &d->bCoef, &d->bCbf, &d->bStatus, &d->bRecs, &d->bWgt,
-                       &d->bModes, &d->bOrder, &d->bRead})
+                       &d->bModes, &d->bOrder, &d->bRead, &d->bULen,
+                       &d->bULenHost})
             destroy_buf(d, *b);
         for (Img *i : {&d->imgRgba, &d->imgRgb10, &d->imgLuma, &d->imgCbCr})
             destroy_img(d, *i);
@@ -1115,6 +1146,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     if (st) return seterr(d, st, "frame: %s",
                           nxvc_vk_decoder_status_string(st));
     if (consumed) *consumed = fp.frame_bytes;
+    fp.push.sparse = (d->flags & NXVC_VKD_FLAG_DENSE_COEF) ? 0 : 1;
     const double t_parse = now_ms();
 
     const uint32_t ntiles = d->si.tile_count;
@@ -1175,10 +1207,20 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     // A skipped tile gets no Pass A descriptor, so nothing would zero its
     // coefficient slot.  Zero it here; Pass B then reconstructs it as
     // "no coefficients" over the WARP_SKIP record.
-    for (uint32_t t : fp.zero_tiles)
-        vkCmdFillBuffer(d->cmd, d->bCoef.buf,
-                        (VkDeviceSize)t * fp.coef_stride * 2,
-                        (VkDeviceSize)fp.coef_stride * 2, 0);
+    // [sparse] ... which under the sparse layout means zeroing its 264 B of
+    // unit lengths rather than its 12.5 KB of coefficient slots: a length of
+    // zero already says "this unit coded nothing".
+    for (uint32_t t : fp.zero_tiles) {
+        if (fp.push.sparse)
+            vkCmdFillBuffer(
+                d->cmd, d->bULen.buf,
+                (VkDeviceSize)t * nxwarp_passA::kUnitLenWordsPerTile * 4,
+                (VkDeviceSize)nxwarp_passA::kUnitLenWordsPerTile * 4, 0);
+        else
+            vkCmdFillBuffer(d->cmd, d->bCoef.buf,
+                            (VkDeviceSize)t * fp.coef_stride * 2,
+                            (VkDeviceSize)fp.coef_stride * 2, 0);
+    }
     buffer_barrier(d->cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
                    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                    VK_ACCESS_TRANSFER_WRITE_BIT,
@@ -1197,8 +1239,9 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
         VkPipeline p;
         if ((st = pipeline_a(d, g.lanes, &p))) return st;
         vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, p);
-        const uint32_t push[5] = {g.limit, fp.frame_nplanes, fp.coef_stride,
-                                  fp.cbf_words, fp.tools};
+        const uint32_t push[kPassAPushUints] = {
+            g.limit,       fp.frame_nplanes,       fp.coef_stride,
+            fp.cbf_words,  fp.tools,               (uint32_t)fp.push.sparse};
         vkCmdPushConstants(d->cmd, d->plA, VK_SHADER_STAGE_COMPUTE_BIT, 0,
                            sizeof push, push);
         const uint32_t tpg = nxwarp_passA::nxs_tiles_per_group(g.lanes);
@@ -1279,6 +1322,18 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     if (d->have_timestamps)
         vkCmdWriteTimestamp(d->cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
                             d->queries, 3);
+    // [sparse] The exact coefficient traffic, on request only.  It is copied
+    // after the last timestamp so it never lands inside a reported pass time.
+    if (d->bULenHost.buf != VK_NULL_HANDLE) {
+        VkBufferCopy c{0, 0, d->bULenHost.size};
+        vkCmdCopyBuffer(d->cmd, d->bULen.buf, d->bULenHost.buf, 1, &c);
+        VkMemoryBarrier mb{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+        mb.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        mb.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+        vkCmdPipelineBarrier(d->cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             VK_PIPELINE_STAGE_HOST_BIT, 0, 1, &mb, 0, nullptr,
+                             0, nullptr);
+    }
     VKTRY(d, vkEndCommandBuffer(d->cmd));
 
     // ---- 4. submit ----------------------------------------------------
@@ -1300,7 +1355,8 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     d->stats.submit_ms = t_submit - t_parse;
     d->stats.frame_bytes = fp.frame_bytes;
     d->stats.payload_bytes = fp.payload_bytes;
-    d->stats.coef_bytes = (uint64_t)ntiles * fp.coef_stride * 2;
+    d->stats.coef_slot_bytes = (uint64_t)ntiles * fp.coef_stride * 2;
+    d->stats.coef_bytes = d->stats.coef_slot_bytes;
     d->stats.tiles = ntiles;
     d->stats.tiles_skipped = fp.tiles_skipped;
     d->stats.tiles_tskip = fp.tiles_tskip;
@@ -1327,6 +1383,25 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
             d->stats.gpu_ms = (double)(ts[3] - ts[0]) * k;
         }
     }
+    // [sparse] The exact number of int16 slots that crossed between the two
+    // passes: the sum of every unit's LAST + 1, plus the length words
+    // themselves, which Pass A writes and Pass B reads like any other input.
+    if (fp.push.sparse && d->bULenHost.mapped) {
+        const uint32_t *lw = (const uint32_t *)d->bULenHost.mapped;
+        uint64_t coefs = 0;
+        const size_t nwords =
+            (size_t)ntiles * nxwarp_passA::kUnitLenWordsPerTile;
+        for (size_t i = 0; i < nwords; ++i) {
+            uint32_t w = lw[i];
+            while (w) {
+                coefs += w & nxwarp_passA::kUnitLenMask;
+                w >>= nxwarp_passA::kUnitLenBits;
+            }
+        }
+        d->stats.coef_bytes =
+            coefs * 2 + (uint64_t)nwords * 4;
+    }
+
     // Pass A reports per tile.  A non-zero status means the entropy decoder
     // refused that tile's payload; the frame's pixels are not conformant, so
     // the call fails rather than handing back a plausible-looking image.

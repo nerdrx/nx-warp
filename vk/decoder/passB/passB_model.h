@@ -27,6 +27,10 @@ struct PassBInput {
     // [v3] Pass A's packed per-block intra modes, NXVW_MODE_WORDS_PER_TILE
     // uints per tile.  May be null when push.intraDir is 0.
     const uint32_t *modes = nullptr;
+    // [sparse] Pass A's per-unit coefficient counts, LAST + 1 with 0 for an
+    // uncoded unit: NXVW_UNIT_LEN_WORDS_PER_TILE uints per tile, four units
+    // per uint.  Required when push.sparse is set, ignored otherwise.
+    const uint32_t *unit_lens = nullptr;
     // [v3] the wavefront schedule the stream was encoded under, kDirSched* in
     // syntax_constants.h.  Matches specialization constant 2 of the kernel.
     int dirSched = 0;
