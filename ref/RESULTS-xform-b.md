@@ -53,6 +53,22 @@ take the large sizes, and a reference encode about 2.2x slower because the
 per-tile search evaluates three transform sizes where it evaluated one
 (section 6).
 
+### Why it is not the default
+
+`nxvc_config_default` leaves `xform_large` at 0, so `nxv-enc` with no flags
+still writes a v1.4 stream and sets no tool bit. That is a **deliberately
+conservative** choice, not a verdict on the measurement: turning it on makes
+this package additive-with-an-asterisk, because the twelve inter vectors
+`v45`-`v56` are built from the default configuration and would all regenerate.
+As it stands **every one of `v01`-`v56` is byte-identical** to the v1.4 set and
+the whole tool is reachable only through one flag and one tool bit, which is
+the property that makes it cheap to review, cheap to revert and safe to ship
+behind a capability handshake.
+
+Flipping it is one line -- `cfg->xform_large = 2` in `nxvc_config_default` --
+plus regenerating `v44`-`v56`, and the numbers above are the case for doing it.
+It belongs to whoever integrates the package, not to the package.
+
 ---
 
 ## 1. The Phase 1 gate, intra
