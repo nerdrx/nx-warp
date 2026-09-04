@@ -308,21 +308,31 @@ The spread is 30 to 34 out of ~32, so **order buys almost nothing**; the
 resolutions in section 4 are the whole cost. Order is therefore chosen for the
 *shape* of the work rather than the file count:
 
-> **`ctx-b` -> `xform-b` -> `detail-a` -> `inter-a` -> `rdo-b`**
+> **`detail-a` -> ctx -> xform -> inter -> `rdo`**
 
-1. **`ctx-b` first.** It is the entropy layer everything else codes through,
-   so landing it first means `xform` and `detail` resolve their entropy hunks
-   against the final context model once, instead of against `CTX_V2` and then
-   again. Its own `compare.py` conflict is scripted.
-2. **`xform-b` second.** It owns the transform generalisation (4.4); every
-   later branch adapts to `fdct_2d`, not the reverse.
-3. **`detail-a` third**, folding its 4x4 into `xform-b`'s family.
-4. **`inter-a` fourth.** Nearly disjoint from the three above, so it lands
-   late and cheaply; it is also the branch whose word1 demand decides whether
-   the extension byte exists, and by this point the intra bits are fixed.
-5. **`rdo-b` last, always.** It is encoder-only and rewrites every vector, so
-   it must be the final input to a single regeneration pass. Putting it
-   anywhere else means regenerating vectors twice.
+1. **`detail-a` first.** `JUDGE-detail.md` reached its verdict first and fixes
+   detail's bits (19 `XFORM_4X4_SPLIT`, 24 `INTRA_CFL`) and its word1 bit 28,
+   so every later package renumbers around them rather than the other way
+   round. It also carries the largest merge-time obligation list
+   (`docs/TOOLBITS.md` 6.1), which is better done against a clean tree than on
+   top of three other packages.
+2. **ctx second.** It is the entropy layer everything else codes through, so
+   landing it early means `xform` resolves its entropy hunks against the final
+   context model once, instead of against `CTX_V2` and then again. `ctx-b`'s
+   `compare.py` conflict is scripted.
+3. **xform third.** It owns the transform generalisation (4.4), and by now it
+   is the package that adapts -- folding `detail-a`'s 4x4 into `fdct_2d` and
+   moving its own `xform_size` down to word1 29-30.
+4. **inter fourth.** Nearly disjoint from the three above, so it lands late
+   and cheaply; it is also the branch whose word1 demand decides whether the
+   extension byte exists, and by this point the intra bits are fixed.
+5. **rdo last, always.** Encoder-only, and it rewrites every vector, so it must
+   be the final input to a single regeneration pass. Putting it anywhere else
+   means regenerating vectors twice.
+
+This supersedes the file-count ranking above, which put `ctx-b` first: the
+spread was 30 to 34 out of ~32, so the ordering is worth almost nothing in
+conflicts and everything in whose bits are already frozen.
 
 Regenerate vectors **once, after the last merge**, never between steps.
 

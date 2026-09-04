@@ -9,7 +9,7 @@
 #   scripts/tourney-merge.sh xform-b detail-a ctx-b inter-a rdo-b
 #
 # Winners are given in any order; the script sorts them into the merge order
-# argued in docs/MERGE-PLAN.md section 5 (ctx, xform, detail, inter, rdo).
+# argued in docs/MERGE-PLAN.md section 5 (detail, ctx, xform, inter, rdo).
 #
 # It will NOT run on merge-main or main: run it on a scratch branch.
 #
@@ -54,14 +54,16 @@ fi
 [ $# -ge 1 ] || die "no winners given" "usage: scripts/tourney-merge.sh <winner> [<winner> ...]"
 
 # --------------------------------------------------------------- merge order
-# docs/MERGE-PLAN.md section 5: entropy first, then the transform it codes
-# through, then detail, then the near-disjoint inter package, then the
-# encoder-only rdo package last so vectors are regenerated exactly once.
+# docs/MERGE-PLAN.md section 5.  detail goes first because JUDGE-detail.md
+# landed first and fixes its bits (19 split, 24 CfL); every later package
+# renumbers around them.  Then the entropy layer the rest codes through, then
+# the transform, then the near-disjoint inter package, then the encoder-only
+# rdo package last so vectors are regenerated exactly once.
 order_key() {
     case "$1" in
-        ctx-*)    echo 1 ;;
-        xform-*)  echo 2 ;;
-        detail-*) echo 3 ;;
+        detail-*) echo 1 ;;
+        ctx-*)    echo 2 ;;
+        xform-*)  echo 3 ;;
         inter-*)  echo 4 ;;
         rdo-*)    echo 5 ;;
         percept|sparse) echo 9 ;;
