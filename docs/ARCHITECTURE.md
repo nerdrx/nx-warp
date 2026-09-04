@@ -152,7 +152,7 @@ Six compute passes per frame, all indirect where the tile count varies, with no 
 |---|---|---|
 | E0 warp | fullscreen, 8x8 threads | build the warped reference from the previous reconstruction and the pose delta; write the warped image and the per-tile corner displacements |
 | E1 analyze | one workgroup per tile | SAD of source against the warped reference at 0 and 8 integer offsets, variance, skip test, structure tensor for the degradation ladder; picks mode and MV; assigns QP = base + foveation + activity + rate feedback; appends the tile index to the inter/intra/skip lists with atomics |
-| E2 transform | one workgroup per listed tile | residual, forward 8x8 integer DCT, deadzone quantisation, RDO-lite coefficient zeroing; writes int16 coefficients and an exact symbol count |
+| E2 transform | one workgroup per listed tile | residual, forward integer DCT of the tile's `xform_size` (8x8, 16x16 or 32x32; SYNTAX.md 6.7), deadzone quantisation, RDO-lite coefficient zeroing; writes int16 coefficients and an exact symbol count |
 | E3 reconstruct | one workgroup per tile | the decoder's Pass B, byte-identical SPIR-V; writes the new reference |
 | E4 entropy | 8 lanes per tile, 8 tiles per group | rANS encoding runs backwards over the symbol list into a per-tile slot of bounded size; writes the actual byte count |
 | E5 packetize | one workgroup of 1024 threads per view | prefix sum of tile sizes, compaction into tile runs, headers written by the shader, segment descriptor table for the network thread; feeds actual bytes versus budget back into the rate-control state buffer |

@@ -14,6 +14,22 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
 
 ### Added
 
+**Bitstream syntax v1.5 -- the large transforms**
+
+- Tool bit 24 `XFORM_LARGE` and the tile header's two-bit `xform_size` (word1 bits 28-29): a 16x16 or
+  32x32 integer DCT for every plane of a tile instead of the 8x8 one. The transforms are the even/odd
+  recursion on the existing Loeffler 8-point core with two constant rotation matrices on the same 512
+  scale, 2D gains of exactly `2^21` and `2^22`, and shift chains 7/14 and 8/14; every intermediate
+  range is stated in `docs/SYNTAX.md` 6.3 and both passes still clamp to int16.
+- The DC plane, the planar interpolation grid, the nine directional predictors, the weighting
+  matrices, the scans and the LAST/LEVEL contexts all follow the block size by documented rules
+  (`docs/SYNTAX.md` 6.5, 6.7, 7.1, 7.2, 7.4, 9.2, 9.3). No entropy context and no symbol is added at
+  any size.
+- `nxv-enc --xform 8|16|32|auto` and `nxvc_config::xform_size`; `auto` is a per-tile rate-distortion
+  choice. Conformance vectors `v57`-`v62` and rejection vectors `r30`-`r32`.
+- Measured in `ref/RESULTS-xform-a.md`, including the two variants that were measured and rejected
+  (a per-32x32-quadrant size and a per-size probability-table family).
+
 **Design**
 
 - The design paper, `docs/PAPER.md`: bitstream and coding tools, prediction and loss concealment, the
