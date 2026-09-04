@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nxvc"
+description = "Python bindings for the NX Warp nxvc video codec (ctypes, no compiled extension)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "NX Warp" }]
+keywords = ["video", "codec", "vr", "nxvc", "nx-warp", "vulkan"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Video",
+]
+
+# numpy is the only runtime dependency: the codec itself is reached through
+# ctypes, so there is nothing to compile and no wheel to match an ABI.
+dependencies = ["numpy>=1.22"]
+
+# Kept in src/nxvc/_version.py, which is import-free so the backend can read it
+# without importing the package.  See the note in that file about why the
+# version is not derived from the C library.
+dynamic = ["version"]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.scripts]
+nxvc = "nxvc.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/nerdrx/nx-warp"
+
+[tool.setuptools.dynamic]
+version = { attr = "nxvc._version.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+nxvc = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = ["error::DeprecationWarning"]
