@@ -529,7 +529,6 @@ def main(argv=None) -> int:
     if frames < seq.frames:
         # --frames must limit the ENCODE as well as the metric window; otherwise
         # every bitrate is inflated by seq.frames / frames. Encode a truncated copy.
-        import dataclasses, tempfile
         trunc_dir = tempfile.mkdtemp(prefix="cmp-trunc-", dir=os.environ.get("NXQ_SCRATCH") or None)
         trunc_path = os.path.join(trunc_dir, f"{seq.name}.first{frames}.yuv")
         fb = seq.fmt.frame_bytes
