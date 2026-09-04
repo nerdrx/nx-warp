@@ -182,9 +182,10 @@ PAPER design principle 2:
    because the `clamp16` after pass 1 is size-independent (6.3).
 
 What it does cost is multiplies: 2.8 per sample at 8x8, 9.4 at 16x16, 20.7 at
-32x32. With 256 threads per tile a 32x32 IDCT is 8 threads per block -- one
-lane per row in pass 1, one per column in pass 2 -- and 2048 multiply-adds per
-thread per block.
+32x32 -- 85k per 64x64 luma plane against 11k. With 256 threads per tile a
+32x32 plane is 128 one-dimensional transforms per pass, so two lanes per row,
+each producing 16 of the 32 outputs from the same 32 inputs, fills the
+workgroup.
 
 ---
 

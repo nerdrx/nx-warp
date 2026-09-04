@@ -998,32 +998,40 @@ predictor and do not apply here: a large-transform tile carries no mode unit
 and has no wavefront (7.7). What changes is the inverse transform, and it stays
 one workgroup per tile:
 
-| | 8x8 | 16x16 | 32x32 |
+| per 64x64 luma plane | 8x8 | 16x16 | 32x32 |
 |---|---|---|---|
-| blocks in a 64x64 luma plane | 64 | 16 | 4 |
-| 1D transforms per plane | 1024 | 512 | 256 |
+| transform blocks | 64 | 16 | 4 |
+| 1D transforms per pass | 512 | 256 | 128 |
+| multiplies per 1D transform | 11 | 75 | 331 |
 | multiplies per sample | 2.8 | 9.4 | 20.7 |
-| dependent steps per plane (2 passes + barrier) | 3 | 3 | 3 |
-| transpose bytes per block (int16) | 128 | 512 | 2048 |
+| multiplies per plane | 11k | 38k | 85k |
+| dependent steps (load, rows, barrier, columns) | 3 | 3 | 3 |
+| int16 transpose LDS | 8192 B | 8192 B | 8192 B |
 
-The dependent-step count does not change with the transform size: both passes
-of every block are independent of every other block, so the schedule is still
-*load, row pass, barrier, column pass* per plane. With the module's 256 threads
-per tile, a 32x32 IDCT is **8 threads per block, one per row and then one per
-column**, four blocks resident at once; a lane owns one row in pass 1 and one
-column in pass 2, and the barrier between them is the transpose.
+**Dependent steps do not change with the transform size.** Both passes of every
+block are independent of every other block, so the schedule is still *load, row
+pass, barrier, column pass* per plane -- 3 steps, against the 22 the
+directional wavefront of 7.6 costs.
 
-LDS: the four resident 32x32 blocks need `4 * 32 * 32 * 2 = 8192` bytes of
-int16 transpose buffer, against `64 * 8 * 8 * 2 = 8192` bytes for the same
-plane's 8x8 blocks -- **identical**, because the clamp to int16 after pass 1
-(6.3) is size-independent and the plane holds the same number of coefficients
-either way. The coefficient staging buffer is likewise the plane, not the
-block. So the tool costs a GPU decoder **no extra LDS and no extra barriers**;
-it costs arithmetic, 7.5x per sample at 32x32, which is 20.7 multiplies per
-sample against the DC plane's bilinear interpolation and the warp's own filter.
-A 32x32 tile has a quarter as many blocks, so the *per-thread* work at 8
-threads per block is `2 * 32` multiply-accumulate rows of 32 -- 2048 MACs per
-thread per block, four blocks per plane in sequence.
+**Thread mapping.** With the module's 256 threads per tile, a 32x32 plane is
+`4 blocks * 32 rows = 128` one-dimensional transforms per pass. One lane per
+row leaves the workgroup half occupied; two lanes per row -- each producing 16
+of the 32 outputs from the same 32 inputs -- fills it, and costs only that the
+nested 16-point even part is computed twice or staged in LDS. The 8x8 case is
+`64 * 8 = 512` 1D transforms per pass, two per lane. Either mapping is one
+barrier per pass, which is the only number the schedule cares about.
+
+**LDS does not change either.** The int16 transpose buffer holds the plane, not
+the block: four 32x32 blocks are `4 * 32 * 32 * 2 = 8192` bytes and sixty-four
+8x8 blocks are `64 * 8 * 8 * 2 = 8192` bytes. They are identical because the
+`clamp16` after pass 1 (6.3) is size-independent and a plane holds the same
+number of coefficients whatever partitions it. The coefficient staging buffer
+is likewise per plane.
+
+So the tool costs a GPU decoder **no extra LDS and no extra barriers**. What it
+costs is arithmetic: 7.4x the multiplies per sample at 32x32, 85k per luma
+plane against 11k -- which is real, and is the number a Pass B implementation
+has to weigh against the rate it buys.
 
 The one hard constraint the design keeps is the one PAPER design principle 2
 sets: **no cross-tile state**. A transform block never crosses a tile edge
