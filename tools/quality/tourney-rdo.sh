@@ -13,7 +13,15 @@ BIN=${NXQ_BIN:-$WT/build-ref/bin}
 OUT=$NXQ_SCRATCH/results/tourney
 S=$NXQ_SCRATCH/seq
 cd $WT/tools/quality
-run() { echo "### $*"; chrt -i 0 taskset -c $NXQ_CPUS nice -n 19 $PY "$@"; }
+# Idempotent: a leg whose --out already exists is skipped, so the script can be
+# resumed after an interruption without re-running the anchors.
+run() {
+  local out=""
+  for a in "$@"; do [ "$prev" = "--out" ] && out=$a; prev=$a; done
+  if [ -n "$out" ] && [ -f "$out" ]; then echo "### skip (have $out)"; return 0; fi
+  echo "### $*"
+  chrt -i 0 taskset -c $NXQ_CPUS nice -n 19 $PY "$@"
+}
 
 # ---- Phase 1 gate: intra, x264-intra anchor, vr-mixed-1024-v2
 for PIX in yuv444p yuv420p; do
