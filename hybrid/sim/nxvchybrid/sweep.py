@@ -173,13 +173,15 @@ def build_jobs(
     seq: str, poses: str, size: int, frames: int, workroot: str,
     totals=DEFAULT_TOTALS_MBIT, scales=DEFAULT_BASE_SCALES, fracs=DEFAULT_BASE_FRACS,
     fps: float = 90.0, weights=codec.WEIGHTS_2BIT, mv_radius: int = 6,
+    anchors: bool = True,
 ) -> list[Job]:
     jobs: list[Job] = []
     common = dict(size=size, frames=frames, fps=fps, seq=seq, poses=poses,
                   workroot=workroot, weights=tuple(weights), mv_radius=mv_radius)
     for t in totals:
-        jobs.append(Job("hevc", t, 1.0, 1.0, **common))
-        jobs.append(Job("pure", t, 0.0, 0.0, **common))
+        if anchors:
+            jobs.append(Job("hevc", t, 1.0, 1.0, **common))
+            jobs.append(Job("pure", t, 0.0, 0.0, **common))
         for s in scales:
             for fr in fracs:
                 jobs.append(Job("hybrid", t, s, fr, **common))

@@ -80,6 +80,7 @@ def cmd_sweep(a) -> int:
     jobs = sweepmod.build_jobs(
         yuv, poses, a.size, a.frames, os.path.join(scratch(), "runs"),
         totals, scales, fracs, a.fps, _weights(a.weights), a.mv_radius,
+        anchors=not a.no_anchors,
     )
     print(f"{len(jobs)} jobs, {a.workers} workers, {a.size}^2 x {a.frames} frames")
     t0 = time.time()
@@ -105,6 +106,7 @@ def cmd_sweep(a) -> int:
         json.dump({
             "size": a.size, "frames": a.frames, "fps": a.fps,
             "weights": a.weights, "mv_radius": a.mv_radius,
+            "note": a.note,
             "encoder": sorted(basemod.available_encoders()),
             "seconds": time.time() - t0,
             "results": results,
@@ -191,6 +193,9 @@ def main(argv=None) -> int:
                                                          "temporal-only"))
     s.add_argument("--mv-radius", type=int, default=6)
     s.add_argument("--workers", type=int, default=4)
+    s.add_argument("--no-anchors", action="store_true",
+                   help="skip the HEVC and pure-codec anchors (for A/B variants)")
+    s.add_argument("--note", default="", help="label carried into the report")
     s.add_argument("--out")
     s.set_defaults(fn=cmd_sweep)
 
