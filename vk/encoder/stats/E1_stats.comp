@@ -1,0 +1,239 @@
+#version 460
+// E1_stats.comp -- per-tile analysis statistics for rate control and the
+// degradation ladder.
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// Paper references: 3.6 (E1 analyze, one group per tile), 4.6 (rate-control
+// inputs: warped SAD, variance, mean luminance), 4.6.1 (log-variance activity
+// and gradient coherence from the structure tensor feed the four tile classes
+// text / edge / texture / flat), 5.2 (dQ_lum, dQ_act, dQ_motion), 3.2.6
+// (subgroup portability).
+//
+// Shape: one workgroup per 64x64 tile, 256 lanes.  Dispatch is (num_tiles,1,1);
+// it is trivially convertible to vkCmdDispatchIndirect once E1 is driven by a
+// tile list rather than the full grid.
+//
+// Outputs one nxe_tile_stats record per tile:
+//   mean luma           <- sum_luma, mean_luma_q8
+//   activity            <- sum_dev_sq (log taken host-side, see tile_stats.h)
+//   gradient coherence  <- j_xx, j_xy, j_yy from 3x3 Sobel
+//   complexity          <- sad against the reference at the tile's offset
+//   retinal slip        <- mv_qx, mv_qy, mv_mag_q4
+//
+// ---------------------------------------------------------------------------
+// Why this is bit-exact against the CPU model on any subgroup size
+// ---------------------------------------------------------------------------
+// Every accumulator is an integer sum.  Integer addition is associative, and
+// the u32 accumulators are associative modulo 2^32, so the reduction tree the
+// hardware happens to build -- 8 lanes on lavapipe, 32 or 64 on RADV depending
+// on what the driver chose that day (paper 3.7: "never assume which") -- cannot
+// change the answer.  The shader reads gl_NumSubgroups and gl_SubgroupID rather
+// than assuming any width, uses only subgroupAdd (core Vulkan 1.1 arithmetic,
+// no clustered ops per 3.2.6), and combines across subgroups through shared
+// memory with a barrier.
+//
+// The only rounding in the kernel is the tile mean, and it is a rounding shift
+// with a literal shift amount, so it is the same everywhere.
+
+#extension GL_GOOGLE_include_directive : require
+#include "nxe_common.glsl"
+
+layout(local_size_x = NXE_WG_SIZE, local_size_y = 1, local_size_z = 1) in;
+
+// Source luma plane, tile-major packed (E0 output).
+layout(std430, binding = 0) readonly buffer SrcPlane { uint w[]; } src;
+// Reference luma plane, same layout.  When has_ref == 0 this may alias src;
+// it is never read in that case.
+layout(std430, binding = 1) readonly buffer RefPlane { uint w[]; } ref_;
+// Per-tile prediction offset in quarter-pel, ivec2 per tile.  This is the hook
+// for E0_warp: today the host writes zeros (previous frame at identity) or a
+// test pattern, tomorrow the warp pass writes the corner-displacement-derived
+// integer offset here.  Only the integer part is used for the SAD; the
+// fractional quarter-pel part is carried through to the record for 5.2's
+// dQ_motion and will drive the bit-exact 4-tap predictor in E2_transform.
+layout(std430, binding = 2) readonly buffer Offsets { ivec2 mv[]; } off;
+layout(std430, binding = 3) writeonly buffer Stats { nxe_tile_stats s[]; } out_;
+
+layout(push_constant) uniform PC {
+    uint width;
+    uint height;
+    uint tiles_x;
+    uint tiles_y;
+    uint plane_y_off;
+    uint plane_co_off;
+    uint plane_cg_off;
+    uint flags;
+    uint plane_words;
+    uint num_tiles;
+    uint has_ref;
+    uint pad_;
+} pc;
+
+// The tile's luma, unpacked to int32 once and reused by the gradient pass, the
+// moment pass and the deviation pass.  16 KB, within the 32 KB Adreno budget
+// so the same shape survives if E1 is ever wanted on a headset.
+shared int s_luma[NXE_TILE_PIXELS];
+
+// Cross-subgroup reduction scratch: 6 lanes wide so one barrier pair covers
+// the whole moment/tensor/SAD reduction.
+#define NXE_RED_LANES 6
+shared uint s_red[NXE_MAX_SUBGROUPS][NXE_RED_LANES];
+
+// Reduce NXE_RED_LANES values at once.  Uniform control flow; every thread
+// leaves with the full workgroup total, so no broadcast step is needed.
+void wg_reduce_n(inout uint v[NXE_RED_LANES]) {
+    uint sg[NXE_RED_LANES];
+    for (int k = 0; k < NXE_RED_LANES; ++k) sg[k] = subgroupAdd(v[k]);
+    if (subgroupElect()) {
+        for (int k = 0; k < NXE_RED_LANES; ++k) s_red[gl_SubgroupID][k] = sg[k];
+    }
+    barrier();
+    uint t[NXE_RED_LANES];
+    for (int k = 0; k < NXE_RED_LANES; ++k) t[k] = 0u;
+    for (uint i = 0u; i < gl_NumSubgroups; ++i) {
+        for (int k = 0; k < NXE_RED_LANES; ++k) t[k] += s_red[i][k];
+    }
+    barrier();   // s_red is reusable after this
+    for (int k = 0; k < NXE_RED_LANES; ++k) v[k] = t[k];
+}
+
+uint wg_reduce1(uint v) {
+    uint sg = subgroupAdd(v);
+    if (subgroupElect()) s_red[gl_SubgroupID][0] = sg;
+    barrier();
+    uint t = 0u;
+    for (uint i = 0u; i < gl_NumSubgroups; ++i) t += s_red[i][0];
+    barrier();
+    return t;
+}
+
+// Clamped luma fetch from a tile-major packed plane at absolute frame coords.
+// The tile-major address arithmetic is 4 shifts and a mad; cheaper than the
+// alternative of keeping a second linear copy of the reference around.
+int fetch_ref(int x, int y) {
+    x = clamp(x, 0, int(pc.width) - 1);
+    y = clamp(y, 0, int(pc.height) - 1);
+    uint tx = uint(x) >> 6;
+    uint ty = uint(y) >> 6;
+    uint t  = ty * pc.tiles_x + tx;
+    uint i  = uint((y & 63) * NXE_TILE_SIZE + (x & 63));
+    uint idx = pc.plane_y_off + t * uint(NXE_LUMA_WORDS_PER_TILE) + (i >> 1);
+    uint w = (idx < pc.plane_words) ? ref_.w[idx] : 0u;
+    return nxe_unpack(w, int(i & 1u));
+}
+
+// In-tile Sobel neighbour, replicating at the tile border.  Confining the
+// gradient to the tile keeps a tile's tensor a function of that tile alone --
+// no cross-tile reads, which the tile-major layout makes expensive and which
+// would couple neighbouring workgroups for a statistic that does not need it.
+int lum(int x, int y) {
+    return s_luma[clamp(y, 0, 63) * NXE_TILE_SIZE + clamp(x, 0, 63)];
+}
+
+void main() {
+    uint tile = gl_WorkGroupID.x;
+    if (tile >= pc.num_tiles) return;
+    uint lid = gl_LocalInvocationID.x;
+
+    uint ybase = nxe_tile_word_base(pc.plane_y_off, tile, uint(NXE_LUMA_WORDS_PER_TILE));
+
+    // ---- load the tile into LDS, fully coalesced (8 words per lane).
+    for (uint w = lid; w < uint(NXE_LUMA_WORDS_PER_TILE); w += uint(NXE_WG_SIZE)) {
+        uint idx = ybase + w;
+        uint packed = (idx < pc.plane_words) ? src.w[idx] : 0u;
+        s_luma[w * 2u + 0u] = nxe_unpack_lo(packed);
+        s_luma[w * 2u + 1u] = nxe_unpack_hi(packed);
+    }
+    barrier();
+
+    uint tx = tile % pc.tiles_x;            // integer div/mod on a workgroup-
+    uint ty = tile / pc.tiles_x;            // uniform value, once per group;
+                                            // outside the normative path.
+    int org_x = int(tx) * NXE_TILE_SIZE;
+    int org_y = int(ty) * NXE_TILE_SIZE;
+
+    ivec2 mvq = (tile < pc.num_tiles) ? off.mv[tile] : ivec2(0);
+    // Integer-pel part of the quarter-pel offset, truncated towards zero the
+    // same way on GPU and CPU: an arithmetic shift would floor, so the sign is
+    // handled explicitly.
+    ivec2 mvi = ivec2(mvq.x / 4, mvq.y / 4);
+
+    // ---- pass 1: moments, structure tensor, SAD.  16 pixels per lane,
+    // strided so the LDS access pattern is bank-conflict friendly.
+    uint acc[NXE_RED_LANES];
+    for (int k = 0; k < NXE_RED_LANES; ++k) acc[k] = 0u;
+
+    for (uint p = lid; p < uint(NXE_TILE_PIXELS); p += uint(NXE_WG_SIZE)) {
+        int px = int(p & 63u);
+        int py = int(p >> 6);
+        int v  = s_luma[p];
+
+        acc[0] += uint(v);
+        acc[1] += uint(v * v);
+
+        // 3x3 Sobel.
+        int nw = lum(px - 1, py - 1), n = lum(px, py - 1), ne = lum(px + 1, py - 1);
+        int we = lum(px - 1, py    ),                      ea = lum(px + 1, py    );
+        int sw = lum(px - 1, py + 1), s = lum(px, py + 1), se = lum(px + 1, py + 1);
+        int gx = (ne + 2 * ea + se) - (nw + 2 * we + sw);
+        int gy = (sw + 2 * s  + se) - (nw + 2 * n  + ne);
+        // Floor shift; documented and mirrored exactly by the CPU model.
+        gx >>= NXE_GRAD_SHIFT;
+        gy >>= NXE_GRAD_SHIFT;
+        acc[2] += uint(gx * gx);
+        acc[3] += uint(gx * gy);
+        acc[4] += uint(gy * gy);
+
+        if (pc.has_ref != 0u) {
+            int r = fetch_ref(org_x + px + mvi.x, org_y + py + mvi.y);
+            acc[5] += uint(abs(v - r));
+        }
+    }
+
+    wg_reduce_n(acc);
+
+    uint sum   = acc[0];
+    uint sumsq = acc[1];
+    int  jxx   = int(acc[2]);
+    int  jxy   = int(acc[3]);
+    int  jyy   = int(acc[4]);
+    uint sad   = acc[5];
+
+    // ---- pass 2: sum of squared deviations about the rounded integer mean.
+    // The tile is already in LDS, so this is one more sweep with no memory
+    // traffic -- the "tiny second pass" the variance needs, kept on the GPU
+    // because it costs almost nothing here and saves rc/ a second read of the
+    // raw moments.  mean_int = round(sum / 4096) = (sum + 2048) >> 12.
+    int mean_int = int((sum + 2048u) >> 12);
+    uint dev = 0u;
+    for (uint p = lid; p < uint(NXE_TILE_PIXELS); p += uint(NXE_WG_SIZE)) {
+        int d = s_luma[p] - mean_int;
+        dev += uint(d * d);
+    }
+    dev = wg_reduce1(dev);
+
+    if (lid == 0u) {
+        uint fl = pc.flags;
+        if (pc.has_ref != 0u) fl |= NXE_TS_F_SAD_VALID;
+        // A tile that reaches past the frame carries replicated samples in its
+        // statistics; rc/ may want to down-weight it.
+        if (uint(org_x + NXE_TILE_SIZE) > pc.width || uint(org_y + NXE_TILE_SIZE) > pc.height)
+            fl |= NXE_TS_F_PADDED;
+
+        nxe_tile_stats o;
+        o.sum_luma     = sum;
+        o.sum_sq_luma  = sumsq;
+        o.mean_luma_q8 = (sum + 8u) >> 4;    // round(sum/4096) in Q8.8
+        o.sum_dev_sq   = dev;
+        o.j_xx         = jxx;
+        o.j_xy         = jxy;
+        o.j_yy         = jyy;
+        o.sad          = sad;
+        o.mv_qx        = mvq.x;
+        o.mv_qy        = mvq.y;
+        o.mv_mag_q4    = nxe_isqrt(uint(mvq.x * mvq.x + mvq.y * mvq.y));
+        o.flags        = fl;
+        out_.s[tile] = o;
+    }
+}

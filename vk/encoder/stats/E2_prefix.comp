@@ -1,0 +1,160 @@
+#version 460
+// E2_prefix.comp -- exclusive prefix sum over per-tile byte sizes.
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// Paper references: 3.6 (E5 packetize begins with "prefix sum of tile sizes,
+// compaction into tile-row segments"), 4.6 (the allocator does "a prefix sum
+// over 2312 entries" to turn per-tile weights into per-tile budgets), 4.1
+// (tile runs: the packetizer needs each tile's byte offset within the frame's
+// compacted bitstream to build segments greedily).
+//
+// The same scan serves both consumers, which is why it is its own kernel
+// rather than a preamble inside E5: rate control wants it before the encode
+// (over predicted sizes and weights) and the packetizer wants it after (over
+// actual sizes).
+//
+// ---------------------------------------------------------------------------
+// Shape: workgroup scan + single-block second level
+// ---------------------------------------------------------------------------
+// Three dispatches of three variants compiled from this one source, selected
+// by -DNXE_E2_PASS:
+//
+//   PASS 0  block scan   ceil(n/1024) groups of 256 lanes.  Each lane owns 4
+//                        consecutive elements, serially sums them, takes part
+//                        in a workgroup-wide exclusive scan of those 4-sums,
+//                        then writes its 4 exclusive results.  Each group also
+//                        writes its total to block_sums[group].
+//   PASS 1  block sums   exactly one group of 256 lanes, exclusive-scans
+//                        block_sums in place and writes the grand total.
+//                        One block suffices because 8192 elements / 1024 per
+//                        block is 8 block sums, and 256 lanes scan up to 256
+//                        blocks (262144 elements) if the cap ever rises.
+//   PASS 2  add offsets  ceil(n/1024) groups add their block offset to the
+//                        block-local results.
+//
+// Two levels are enough for NXE_MAX_TILES = 8192 with a factor of 32 to spare,
+// so no recursion and no decoupled-lookback machinery: at this size the whole
+// scan is a few microseconds and the simple form is the one that is obviously
+// correct on every vendor.
+//
+// Subgroup portability (paper 3.2.6): the intra-workgroup scan is
+// subgroupExclusiveAdd for the intra-subgroup part plus a short serial pass
+// over at most gl_NumSubgroups shared entries for the cross-subgroup part.
+// No assumption about subgroup width anywhere, no clustered ops.  Integer
+// addition is associative, so the result does not depend on the width -- the
+// scan is bit-exact against the CPU model on lavapipe's 8 and RADV's 32 or 64
+// alike.
+//
+// Overflow: sizes are per-tile byte counts, capped at 1372 by paper 4.1, so
+// 8192 tiles total at most 11.2 MB and the u32 running sum cannot wrap.  The
+// shader nevertheless wraps modulo 2^32 rather than saturating, and the CPU
+// model does the same, so a caller feeding it garbage still gets a match
+// rather than undefined behaviour.
+
+#extension GL_GOOGLE_include_directive : require
+#include "nxe_common.glsl"
+
+#ifndef NXE_E2_PASS
+#define NXE_E2_PASS 0
+#endif
+
+layout(local_size_x = NXE_WG_SIZE, local_size_y = 1, local_size_z = 1) in;
+
+// in[i]  : element values (per-tile sizes).  Untouched by every pass.
+layout(std430, binding = 0) readonly  buffer InBuf    { uint v[]; } in_;
+// out[i] : exclusive prefix sum.
+layout(std430, binding = 1)           buffer OutBuf   { uint v[]; } out_;
+// block_sums[b] : pass 0 writes block totals, pass 1 turns them into
+// exclusive block offsets in place.
+layout(std430, binding = 2)           buffer BlockBuf { uint v[]; } blk;
+// total.v[0] : grand total, written by pass 1.
+layout(std430, binding = 3)           buffer TotalBuf { uint v[]; } tot;
+
+layout(push_constant) uniform PC {
+    uint num_elems;
+    uint num_blocks;
+} pc;
+
+shared uint s_sg[NXE_MAX_SUBGROUPS];
+
+// Workgroup-wide exclusive scan of one value per lane.  Returns the exclusive
+// prefix; `total` receives the workgroup sum.  Must be called from uniform
+// control flow (it barriers).
+uint wg_exclusive_scan(uint v, out uint total) {
+    uint sg_ex  = subgroupExclusiveAdd(v);
+    uint sg_tot = subgroupAdd(v);
+    if (subgroupElect()) s_sg[gl_SubgroupID] = sg_tot;
+    barrier();
+
+    uint before = 0u;
+    uint all    = 0u;
+    for (uint i = 0u; i < gl_NumSubgroups; ++i) {
+        uint t = s_sg[i];
+        if (i < gl_SubgroupID) before += t;
+        all += t;
+    }
+    barrier();   // s_sg reusable
+
+    total = all;
+    return before + sg_ex;
+}
+
+#if NXE_E2_PASS == 0
+// -------------------------------------------------------------- block scan
+void main() {
+    uint block = gl_WorkGroupID.x;
+    if (block >= pc.num_blocks) return;
+    uint lid  = gl_LocalInvocationID.x;
+    uint base = block * uint(NXE_E2_BLOCK) + lid * uint(NXE_E2_PER_THREAD);
+
+    uint e[NXE_E2_PER_THREAD];
+    uint mine = 0u;
+    for (uint k = 0u; k < uint(NXE_E2_PER_THREAD); ++k) {
+        uint i = base + k;
+        e[k] = (i < pc.num_elems) ? in_.v[i] : 0u;   // clamped, 3.7
+        mine += e[k];
+    }
+
+    uint block_total;
+    uint off = wg_exclusive_scan(mine, block_total);
+
+    uint run = off;
+    for (uint k = 0u; k < uint(NXE_E2_PER_THREAD); ++k) {
+        uint i = base + k;
+        if (i < pc.num_elems) out_.v[i] = run;
+        run += e[k];
+    }
+
+    if (lid == 0u && block < pc.num_blocks) blk.v[block] = block_total;
+}
+
+#elif NXE_E2_PASS == 1
+// ---------------------------------------------- second level, one workgroup
+void main() {
+    uint lid = gl_LocalInvocationID.x;
+    uint v = (lid < pc.num_blocks) ? blk.v[lid] : 0u;
+
+    uint total;
+    uint ex = wg_exclusive_scan(v, total);
+
+    if (lid < pc.num_blocks) blk.v[lid] = ex;
+    if (lid == 0u) tot.v[0] = total;
+}
+
+#else
+// ------------------------------------------------------- add block offsets
+void main() {
+    uint block = gl_WorkGroupID.x;
+    if (block >= pc.num_blocks) return;
+    uint add = blk.v[block];
+    if (add == 0u) return;                     // block 0 and any empty prefix
+
+    uint lid  = gl_LocalInvocationID.x;
+    uint base = block * uint(NXE_E2_BLOCK) + lid * uint(NXE_E2_PER_THREAD);
+    for (uint k = 0u; k < uint(NXE_E2_PER_THREAD); ++k) {
+        uint i = base + k;
+        if (i < pc.num_elems) out_.v[i] += add;
+    }
+}
+#endif
