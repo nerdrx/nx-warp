@@ -1415,10 +1415,10 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             }
             // A transmitted set costs `nctx * 16 * 5` bits of frame header
             // and is only worth having if the tiles assigned to it save more
-            // than that.  Before this test the encoder sent all eight
-            // whenever any tile used them, which at QP 32 was 6 % of the
-            // frame under the 27-context model (SYNTAX.md 9.4).
-            const double set_bits = (double)fp.nctx * kNumSym * 5;
+            // than that.  Before this test a set was sent whenever any tile
+            // chose it, however little that choice was worth; the test drops
+            // about one set a frame (SYNTAX.md Appendix A decision 57).
+            const double set_bits = (double)(fp.nctx * (int)kNumSym * 5);
             BitW one;
             TableSet cand;
             serialize_table_set(one, target, k, fp.nctx, cand);
