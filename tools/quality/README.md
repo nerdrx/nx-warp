@@ -106,6 +106,60 @@ That writes, for each requested pixel format:
 * `vr-mixed-512.poses.json` — one pose per frame
 * `vr-mixed-512.preview.png` — with `--preview`, frame 0 as an image
 
+#### Version 2: the frames are band-limited, and they say what their ceiling is
+
+Version 1 of the generator took **one bilinear tap** per output sample from a
+panorama at 2.1x the eye's angular resolution. Its frames therefore carried
+energy above the eye's Nyquist; aliasing is not a geometric function of the
+pose, so **no warp of any precision can predict it**, and every warp-prediction
+number measured on that material was partly a measurement of the generator.
+`docs/WARP-AUDIT.md` section 4 priced it: holding the predictor and the pose
+pair fixed and varying only the ground truth moves the ideal-warp ceiling by
+7.2 dB full-frame and 14.4 dB centre.
+
+Version 2 renders band-limited, the way `nxvc-warpsim` does:
+
+| | v1 | v2 |
+|---|---|---|
+| panorama | 8x the eye width (**2.1x** its angular resolution) | 16x (**4.2x**, warpsim's ratio) |
+| pixel-sized features (checkerboards, zone plate, stars) | sized in panorama pixels, so the finest checkerboard had a **0.7 output-pixel period** | sized in **eye pixels**: 4, 8 and 16 output pixels per period |
+| equirectangular pole compression | ignored | latitude-aware longitudinal prefilter to the render's sample rate |
+| samples per output pixel | **1** | **16** (4x4), box filtered, objects and HUD included |
+| measured ideal-warp ceiling, `vr-mixed-1024` | 25.47 dB full / 26.24 dB centre | **29.19 / 38.02 dB** |
+
+Everything else is the same: the same content classes, the same pose profiles,
+the same seeds, the same determinism.
+
+**`--legacy` reproduces version 1 bit for bit.** That is not a courtesy, it is
+what keeps `ref/RESULTS-intra.md` and `ref/RESULTS-inter.md`'s published numbers
+reproducible, and `corpus/MANIFEST.json` still pins the v1 entries with
+`"legacy": true` in their generator block. A test pins the v1 bytes by hash
+against the manifest as it stood before the change
+(`tests/test_synth_v2.py::TestLegacy`).
+
+**Every v2 sequence carries its own ideal-warp PSNR ceiling.** At the end of a
+run the generator warps each frame N-1 by the exact float homography of the
+pose pair and compares it with frame N:
+
+```
+[synth] ideal-warp ceiling: 29.19 dB full-frame, 38.02 dB centre (mean over 35
+        pairs; first pair 28.74 / 36.18 dB)
+[synth]   that is the best PSNR any predictor can reach on this material: read
+          every RD number against it
+```
+
+and stores it in `<name>.poses.json` under `ideal_warp_ceiling`, with the
+per-frame figures and the angular velocity of each pair. The full-frame number
+includes the disocclusion strip on the leading edge, which the encoder answers
+with INTRA and which grows with head speed; the centre crop drops a 1/8 border
+and is the number that describes the predictor. `--no-ceiling` skips the
+measurement; `--supersample N` changes the render's sample count.
+
+The point of storing it is that **an RD number without its ceiling cannot be
+read**. 24.40 dB of warp prediction is a failure against a 35 dB threshold and
+is exactly on target against a 24.43 dB ceiling, and for six months this
+harness only published the first of those two numbers.
+
 The panorama deliberately contains the content classes the paper cares about:
 
 | Content | Why it is there |
@@ -147,7 +201,14 @@ python3 capture/gen_synthetic.py --out $NXQ_SCRATCH/seq --name vr-mixed-2048 \
 
 Generation is deterministic: the same arguments produce byte-identical output
 on any machine, including the built-in 5x7 bitmap font (a system font would
-make PSNR numbers incomparable between machines).
+make PSNR numbers incomparable between machines). `tests/test_synth_v2.py`
+pins that by hash for both the v2 and the `--legacy` output.
+
+Band-limited rendering costs time: 4x4 supersampling is 16 times the samples,
+and the panorama is 4 times wider in each axis. `vr-mixed-1024` (36 frames,
+2048x1024) takes about 19 s in v1 and about 4 minutes in v2, of which a third
+is the 16384x8192 panorama. That is a one-off per sequence and it is the price
+of a ground truth that a predictor can be measured against.
 
 ### 1b. PNG/JPEG sequences and video files
 

@@ -26,7 +26,44 @@ manifest gives byte-identical files on any machine. That is what makes pinning
 their hashes meaningful, and it is why a PSNR measured here is comparable with a
 PSNR measured on a CI runner.
 
-Current synthetic corpus: **19 files, 46.8 MB** across 8 sequences.
+Current synthetic corpus: **41 files, 433.5 MB** across 17 sequences — 8 legacy
+(v1) sequences, their 8 band-limited (v2) replacements, and `vr-mixed-1024-v2`.
+
+## v1 and v2 material
+
+Every synthetic entry exists twice, and the reason is a measurement error rather
+than a taste in test material.
+
+`gen_synthetic.py` version 1 point-sampled its panorama once per output sample
+at 2.1x the eye's angular resolution, so its frames carry aliasing — energy
+above the eye's Nyquist. Aliasing is not a geometric function of the head pose,
+so **no warp of any precision can predict it**, and every warp-prediction number
+measured on that material was partly a measurement of the generator:
+`docs/WARP-AUDIT.md` section 4 prices it at 7.2 dB full-frame and 14.4 dB
+centre-crop of ideal-warp ceiling. Version 2 band-limits (16x panorama, features
+sized in eye pixels, a latitude-aware prefilter, 4x4 box supersampling) and
+`tools/quality/reports/gates-v2-2026-09-04.md` re-runs every gate on it.
+
+| | entries | generator block | use |
+|---|---|---|---|
+| **v1, legacy** | `vr-mixed-256`, … | `"legacy": true` | reproducing a number that was published before 2026-09-04. `fetch.py --sync` regenerates them bit for bit through `gen_synthetic.py --legacy`, and their hashes are unchanged |
+| **v2** | `vr-mixed-256-v2`, … | `"supersample": 4` | **everything new** |
+
+The v1 entries are kept, pinned and reproducible rather than deleted, because a
+result whose material has been deleted is a result nobody can check. Their
+`note` field says what is wrong with them; nothing else about them changed.
+
+**Their pose-log hashes did change** in this commit, and no measurement is
+affected: the pose logs were re-recorded because `docs/WARP-AUDIT.md` section 5
+added `fov_deg` and a `convention` block to the sidecar (schema version 2) and
+the manifest was never re-recorded behind it. The `.yuv` hashes — the pixels
+every number was measured on — are byte for byte what they were.
+
+Each v2 sequence's `<name>.poses.json` additionally carries
+`ideal_warp_ceiling`: the PSNR of frame N-1 warped by the exact float
+homography against frame N, per frame and summarised. That is the best any
+predictor can do on the material, and it is the number an RD result on that
+material has to be read against.
 
 ---
 
@@ -68,7 +105,7 @@ entries[]}`.
 | `source` | string | where the material came from, in words |
 | `license` | string | the honest licence position, including "we are not sure" |
 | `note` | string | why this entry is in the corpus at all |
-| `generator` | object | `synthetic` only: the `gen_synthetic.py` arguments |
+| `generator` | object | `synthetic` only: the `gen_synthetic.py` arguments. `eye_width`, `eye_height`, `motion`, `layout`, `seed`, and optionally `objects`, `no_hud`, `pano_width`, `hfov`, `vfov`, `supersample`, and `legacy` (version 1 material: renders through `--legacy`) |
 | `url_verified` | bool | `external` only: whether the URL was actually reached, and when |
 | `files[]` | array | `{path, sha256, bytes}`, plus `url` for `external` |
 
@@ -113,12 +150,21 @@ the harness's own CPU discipline (`chrt -i 0 taskset -c … nice -n 19`, from
 | `panel-static-256` | text-panel | 512x256 | 6 | 444 + 420 | no objects, no HUD: text, checkers, colour bars, still camera |
 | `stereo-near-256` | stereo-pair | 512x256 | 8 | 444 | 12 near-field discs, so the eyes carry real disparity |
 | `mono-mixed-256` | synthetic-vr | 256x256 | 12 | 444 | one eye, a 4x4 tile grid — small enough that a per-tile table fits on a screen |
+| `vr-mixed-1024-v2` | head-rotation | 2048x1024 | 36 | 444 + 420 | **the sequence the Phase 1 gate and the Phase 2 kill test are run on.** It lived in `$NXQ_SCRATCH/seq` and in a command line inside `ref/RESULTS-inter.md` until 2026-09-04; a gate's material belongs in the manifest |
+
+Each entry above also exists as `<name>-v2` (band-limited; see "v1 and v2
+material"), except `vr-mixed-1024-v2`, which is v2-only — there was never a
+recorded v1 entry to keep.
 
 Each writes `<name>.<pix>.yuv` (headerless planar 8-bit), `<name>.<pix>.json`
 (the harness sequence sidecar) and one shared `<name>.poses.json`.
 
 `mono-mixed-256` is the one to reach for while developing a tile-level tool:
 16 tiles, so `nxvc-example-tilewalk` prints a table you can read.
+
+`fetch.py --sync` passes `--legacy` for an entry whose generator block says
+`"legacy": true` and `--supersample N` for one that names it; everything else
+about the generator's CLI is read, never changed.
 
 **Resolution is deliberately small.** These sequences prove that a measurement
 pipeline is wired up correctly; they do not decide a phase. Nothing at 256 px per

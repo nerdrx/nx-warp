@@ -711,3 +711,102 @@ pays once the prediction is good enough for the residual to be sparse in the
 sample domain, "which on this content means directional prediction". That
 prediction now exists. `v42_dir_res_tskip420` exercises the combination, but
 nobody has run the rate comparison.
+
+---
+
+## 9. v2 material: the gate, band-limited
+
+Section 5 above is an honesty note about the material: everything in this
+document is measured on `gen_synthetic.py`'s synthetic panorama, and that
+content is "close to the best case for x264's directional intra and CABAC and
+close to the worst case for an 8x8 DCT under a smoothly interpolated block-mean
+predictor". It concluded that the deficit was very likely **overstated**
+relative to what a real capture would show.
+
+There is now a second, sharper reason to distrust the v1 material, found by
+`docs/WARP-AUDIT.md`: the v1 generator point-samples a 2.1x panorama once per
+output sample, so the frames carry aliasing at a scale nothing in the coding
+loop can predict. `gen_synthetic.py` version 2 renders from a 4.2x panorama with
+4x4 supersampling and a latitude-aware prefilter; the corpus carries `-v2`
+entries beside the v1 ones and `--legacy` reproduces v1 bit for bit. The full
+report is `tools/quality/reports/gates-v2-2026-09-04.md`; result files are under
+`$NXQ_SCRATCH/results/v2/`.
+
+### The gate
+
+`nxv` at the shipped default (section 0's v1.3 configuration), full 36-frame
+sequences, no `--frames`, both columns re-measured on the same build on the same
+day.
+
+| | BD-rate vs x264-intra | mean deficit | worst deficit | band covered | verdict |
+|---|---:|---:|---:|---|---|
+| v1, 4:4:4 | +36.46 % | -3.757 dB | -4.254 dB at 188.4 Mbit/s | 100.0-312.9 | **FAIL** |
+| **v2, 4:4:4** | **+61.43 %** | **-3.717 dB** | -4.534 dB at 103.7 Mbit/s | 100.0-215.0 | **FAIL** |
+| v1, 4:2:0 | +23.31 % | -2.776 dB | -3.669 dB at 100.0 Mbit/s | 100.0-295.2 | **FAIL** |
+| **v2, 4:2:0** | **+38.17 %** | **-2.356 dB** | -3.296 dB at 101.1 Mbit/s | 100.0-200.7 | **FAIL** |
+
+Verbatim, v2 4:4:4 and v2 4:2:0:
+
+```
+  Phase 1 gate (PAPER.md 3.11: within 1.0 dB of x264 intra, 100-400 Mbit):
+    FAIL: worst -4.534 dB at 103.7 Mbit/s, mean -3.717 dB over 100.0-215.0 Mbit/s
+
+  Phase 1 gate (PAPER.md 3.11: within 1.0 dB of x264 intra, 100-400 Mbit):
+    FAIL: worst -3.296 dB at 101.1 Mbit/s, mean -2.356 dB over 100.0-200.7 Mbit/s
+```
+
+**Section 5's hope is not borne out, and the reason is instructive.** The dB
+deficit — the quantity the gate is actually written in — barely moves: -3.76 to
+-3.72 dB on 4:4:4, and it *improves* on 4:2:0, -2.78 to -2.36 dB. But the
+BD-rate gets 25 points worse in both. Band-limiting makes the material cheaper
+for everyone (our QP-0 4:4:4 point falls from 357.0 to 251.6 Mbit/s, x264's crf-8
+from 312.9 to 215.0), and x264's curve steepens more than ours, because what
+band-limiting deletes is exactly the high-frequency noise that x264 codes well
+and an 8x8 DCT under a block-mean predictor codes badly. Same vertical gap,
+fewer bits underneath it, larger ratio.
+
+The band coverage also shrinks: on v2 4:4:4 QP 0 only reaches 215 Mbit/s, so
+215-400 Mbit/s of the gate's band is unreachable on this material at all. The
+harness scores the covered part, as it always has, but on v2 it is scoring about
+half the band.
+
+The v1 rows here were re-measured through the v2 generator's `--legacy` path
+rather than quoted from section 0 (+40.35 % / +25.86 %). The re-measured
+material is ~1.4 % higher in rate and 0.1 dB lower in PSNR **for both codecs
+identically**, so it is the material and not the encoder, which has not been
+touched since `6674e44`. Every before/after comparison in the v2 report uses
+the same-build, same-day pair.
+
+### Against the wider anchor set, 4:2:0
+
+BD-rate of `nxv` against every anchor that runs on 4:2:0, foveated scoring on,
+same ladders as `tools/quality/reports/anchors-2026-09-04.md`:
+
+| anchor | v1, `nxv` intra | **v2, `nxv` intra** | v2, `nxv-inter` |
+|---|---:|---:|---:|
+| `x264-intra` | +40.3 % | **+84.8 %** | -23.0 % |
+| `x265-intra` | +121.0 % | **+194.2 %** | +27.2 % |
+| `x265-p-refresh` (foveated) | +257.6 % | **+916.5 %** | +348.3 % |
+| `hevc-vulkan` | +295.1 % | **+1129.6 %** | +476.7 % |
+| `av1-svt-p` | +169.6 % | **+482.1 %** | +149.0 % |
+
+Every anchor moves against the intra core, and the inter-capable ones move by an
+order of magnitude, because they collect a 55-62 % discount from band-limiting
+where the intra codecs collect 40-48 %. The `nxv-inter` column is in
+`ref/RESULTS-inter.md` section 9; it is included here only to make the point
+that the +85 % is the *intra core's* number and the codec as a whole is not
+where this table leaves it.
+
+### What this does and does not settle
+
+It settles the aliasing objection: the gate fails on material that is
+band-limited to the render's own sample rate, so the failure is not an artefact
+of a generator sampling its panorama once per pixel.
+
+It does **not** settle section 5's objection, which is about content class, not
+band limiting. The v2 material has the same flat panels, bitmap text,
+checkerboards and star field as the v1 material — they are simply drawn
+correctly now, sized in eye pixels rather than panorama pixels. Section 5's
+recommendation is unchanged and is now the only outstanding one:
+**the next measurement that matters is a real WiVRn capture** per
+`tools/quality/README.md` section 1c.

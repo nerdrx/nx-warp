@@ -490,3 +490,103 @@ python3 ref/warp_chain.py --seq $NXQ_SCRATCH/seq/vr-mixed-1024.yuv444p.json \
 Everything under `chrt -i 0 taskset -c 28-31 nice -n 19`. The conformance side
 is `ctest --test-dir build-ref -R 'ref\.'`, and the same suite under
 `--preset asan-ubsan`, which is where the inter path is required to be clean.
+
+---
+
+## 9. v2 material: every number above, re-run band-limited
+
+Section 3 above closed with an admission: the chain's *starting level* on this
+material — 24.40 dB on the first warped frame of `vr-mixed-1024` — is a property
+of `gen_synthetic.py`'s ground truth rather than of the predictor, because that
+generator point-samples a 2.1x panorama once per output sample and so carries
+aliasing that is not a geometric function of the pose. `docs/WARP-AUDIT.md`
+priced the fix at 7 to 14 dB and declined to make it, because it changes what
+the corpus *is*.
+
+It has now been made. `gen_synthetic.py` version 2 renders from a 4.2x panorama
+with 4x4 supersampling and a latitude-aware prefilter, the corpus carries `-v2`
+entries beside the v1 ones, `--legacy` reproduces v1 bit for bit, and **every
+gate in this document has been re-run on the new material**. The full report,
+with the v1 column beside every v2 number and the material's own ideal-warp
+ceiling measured per frame, is `tools/quality/reports/gates-v2-2026-09-04.md`.
+Result files are under `$NXQ_SCRATCH/results/v2/`.
+
+The ideal-warp ceiling on `vr-mixed-1024` rises from 26.24 dB to **38.02 dB**
+centre-crop, and on its first warped pair from 24.13 dB to **36.18 dB**: the
++12.05 dB the audit predicted, reproduced by an independent implementation.
+
+### The kill test (section 2), on v2 material
+
+BD-rate of `nxv-inter` against `x265-p`, PSNR-Y, same ladders, same velocity
+splits (43.4 deg/s on `vr-mixed-1024`, 129.1 on `vr-turn-256`), full sequences.
+
+**Band A:**
+
+| sequence | v1 overall | **v2 overall** | v2 fastest 20 % | v2 the rest | verdict |
+|---|---:|---:|---:|---:|---|
+| `vr-mixed-1024` 4:4:4 | +160.70 % | **+342.67 %** | +334.59 % | +344.77 % | **FAIL** |
+| `vr-mixed-1024` 4:2:0 | +130.94 % | **+273.44 %** | +265.36 % | +275.57 % | **FAIL** |
+| `vr-turn-256` 4:4:4 | +156.49 % | **+206.17 %** | +183.35 % | +214.09 % | **FAIL** |
+
+**Band B:**
+
+| sequence | v1 overall | **v2 overall** | v2 fastest 20 % | v2 the rest | verdict |
+|---|---:|---:|---:|---:|---|
+| `vr-mixed-1024` 4:4:4 | +469.11 % | **+548.23 %** | +513.93 % | +558.25 % | **FAIL** |
+| `vr-mixed-1024` 4:2:0 | +447.83 % | **+478.92 %** | +455.90 % | +485.52 % | **FAIL** |
+| `vr-turn-256` 4:4:4 | not run | **+219.45 %** | +203.41 % | +224.26 % | **FAIL** |
+
+The verdict is unchanged and the gap is **wider**, which is the opposite of what
+one might hope from cleaner ground truth. The reason is in the anchors: removing
+aliasing hands a motion-compensated encoder a much larger discount than it hands
+an intra codec, because aliasing is precisely the part of the picture that is
+not a geometric function of the pose and therefore cannot be carried across
+frames. Rate at ~51 dB on 4:2:0 falls 39 % for `nxv` intra, 40 % for
+`x264-intra`, 48 % for `x265-intra` and **58 % for `x265-p-refresh`**. v1
+material was quietly taxing the P-anchors with a per-frame noise floor.
+
+The one thing that went the paper's way in section 2 goes the paper's way here
+too, on six more independent runs: the codec loses less ground on the fastest
+20 % of frames than on the rest, by 8 to 31 points. Still worth nothing for the
+same reason as before.
+
+### The warp chain (section 3), on v2 material
+
+| sequence | first warped frame | last | decay | held above 35 dB | verdict |
+|---|---:|---:|---:|---:|---|
+| `vr-mixed-1024` 4:4:4, v1 | 24.40 dB | 18.44 dB | -5.96 dB | **0** | **FAIL** |
+| **`vr-mixed-1024` 4:4:4, v2** | **28.71 dB** | **19.12 dB** | **-9.59 dB** | **0** | **FAIL** |
+| `vr-turn-256` 4:4:4, v1 | 29.48 dB | 19.39 dB | -10.09 dB | **0** | **FAIL** |
+| **`vr-turn-256` 4:4:4, v2** | **30.31 dB** | **22.94 dB** | **-7.37 dB** | **0** | **FAIL** |
+
+**This is what section 3 was waiting for.** The harness artefact it identified is
+gone: the starting level rises 4.31 dB, exactly the direction the audit
+predicted. And the chain still begins 6.3 dB below the bar, still holds it for
+zero frames, and now decays **faster** — -9.59 dB where v1 gave -5.96 dB over
+the same 35 frames and the same poses, because with the aliasing floor lifted
+there is more real detail left for repeated bilinear resampling to grind away.
+
+So the qualification section 3 attached to PAPER 2.11 item 2 can be withdrawn.
+It is no longer "the slope is real and the starting level is the harness": on
+material built specifically to remove that objection, **both** are the
+predictor's, and item 2's consequence stands without an asterisk — the per-tile
+refresh rate must rise and the 2.4 bit budget is wrong.
+
+### One genuinely good number
+
+On band-limited 4:2:0, `nxv-inter` beats `x264-intra` by **-23.0 %** BD-rate
+(-21.0 % foveated). That is the Phase 1 gate's own anchor, beaten, for the first
+time by any configuration of this codec on any material. It is an inter codec
+beating an intra codec on temporally predictable content, which is the easiest
+win in video coding and is not evidence about either gate — but it is the first
+column in this project's tables that is negative, and it is on the honest
+material.
+
+### What did not change
+
+Sections 4 through 8 are untouched. The mode histogram, the two bugs, the
+encode/decode timings and the material caveats are all statements about the
+codec or the harness rather than about the ground truth, and nothing feeding
+them moved. Section 3's "before/after the convention audit" subsection stands as
+the record of how this was found; this section is what it recommended, carried
+out.

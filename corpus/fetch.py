@@ -139,6 +139,14 @@ def generate(entry: dict, root: str, quiet: bool) -> None:
         cmd += ["--vfov", str(g["vfov"])]
     if g.get("no_hud"):
         cmd.append("--no-hud")
+    # Version 1 material: the generator reproduces it bit for bit under
+    # --legacy, which is what keeps every number published on these entries
+    # reproducible after the band-limiting change (docs/WARP-AUDIT.md 4,
+    # tools/quality/reports/gates-v2-2026-09-04.md).
+    if g.get("legacy"):
+        cmd.append("--legacy")
+    elif "supersample" in g:
+        cmd += ["--supersample", str(g["supersample"])]
     # --full is the generator's own guard against filling the disk with
     # accidental multi-gigabyte renders.  Pass it only when the manifest says
     # the entry really is that big.

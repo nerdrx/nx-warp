@@ -86,13 +86,31 @@ _PANEL_LINES = (
 )
 
 
-def make_panorama(width: int = 4096, height: int = 2048, seed: int = 1) -> np.ndarray:
+def make_panorama(width: int = 4096, height: int = 2048, seed: int = 1,
+                  feature_scale: float = 1.0) -> np.ndarray:
     """Build an equirectangular RGB panorama full of codec-hostile content.
 
     Returns an (height, width, 3) uint8 array.  ``width`` spans 360 degrees of
     longitude, ``height`` spans 180 degrees of latitude (top = +90).
+
+    ``feature_scale`` multiplies the size, in panorama pixels, of the features
+    that are defined in pixels rather than in degrees: the three checkerboard
+    periods, the zone plate's chirp rate and the star size.  It exists because
+    those are the *angular* content classes the paper cares about, and a
+    panorama rendered at four times the resolution with the same pixel periods
+    is not a finer picture of the same world, it is a different world with four
+    times the angular frequency -- one that sits above the eye's Nyquist and can
+    only ever be aliasing.  ``1.0`` reproduces version 1 exactly; the v2
+    generator passes the panorama's oversampling ratio (panorama px/deg over
+    the eye's on-axis px/deg, about 5.6), which sizes these features in **eye**
+    pixels: checkerboard periods of 4, 8 and 16 output pixels, and a star about
+    one output pixel across.
+
+    The random draw order does not depend on ``feature_scale``, so the noise,
+    the terrain and the star *positions* are the same for any value of it.
     """
     rng = np.random.default_rng(seed)
+    fs = float(feature_scale)
     img = np.zeros((height, width, 3), np.float32)
 
     lat = (0.5 - (np.arange(height, dtype=np.float32) + 0.5) / height) * 180.0  # +90 .. -90
@@ -118,9 +136,20 @@ def make_panorama(width: int = 4096, height: int = 2048, seed: int = 1) -> np.nd
 
     # 3. Star field high in the sky (isolated impulses: worst case for a
     #    transform codec, and they must not be smeared by the warp).
-    stars = rng.random((height, width)) < 0.00035
+    star_px = max(1, int(round(fs)))
+    stars = rng.random((height, width)) < 0.00035 / (fs * fs)
     stars &= lat[:, None] > 25.0
-    img[stars] = 245.0
+    if star_px == 1:
+        img[stars] = 245.0
+    else:
+        # Keep a star about one eye-pixel across rather than one panorama
+        # pixel, so it survives band-limiting as the isolated impulse it is
+        # meant to be.  A max-dilation, so overlapping stars stay one star.
+        sy, sx = np.nonzero(stars)
+        for dy in range(star_px):
+            yy = np.clip(sy + dy, 0, height - 1)
+            for dx in range(star_px):
+                img[yy, (sx + dx) % width] = 245.0
 
     def band(lat_lo, lat_hi, lon_lo, lon_hi):
         """Index slice for a lat/lon rectangle."""
@@ -138,6 +167,7 @@ def make_panorama(width: int = 4096, height: int = 2048, seed: int = 1) -> np.nd
         if idx is None:
             continue
         rr, cc = np.meshgrid(idx[0].ravel(), idx[1].ravel(), indexing="ij")
+        period = max(1, int(round(period * fs)))
         chk = (((rr // period) + (cc // period)) % 2).astype(np.float32)
         img[idx] = np.stack([chk * 235 + 10] * 3, axis=-1)
 
@@ -147,7 +177,7 @@ def make_panorama(width: int = 4096, height: int = 2048, seed: int = 1) -> np.nd
         rr, cc = np.meshgrid(idx[0].ravel(), idx[1].ravel(), indexing="ij")
         cy, cx = rr.mean(), cc.mean()
         r2 = ((rr - cy) ** 2 + (cc - cx) ** 2).astype(np.float32)
-        z = 0.5 + 0.5 * np.cos(r2 * 0.0016)
+        z = 0.5 + 0.5 * np.cos(r2 * (0.0016 / (fs * fs)))
         img[idx] = np.stack([z * 230 + 12] * 3, axis=-1)
 
     # 6. Dark region: near-black with faint structure. Banding and the shadow
@@ -471,19 +501,25 @@ def _draw_objects(img: np.ndarray, cam: Camera, objs: Objects, R: np.ndarray, ey
         sub[mask] = np.clip(patch * shade, 0, 255)[mask]
 
 
-def _draw_hud(img: np.ndarray, frame: int, eye: str, av: float) -> None:
-    """A head-locked UI panel: the STATIC_MV content class."""
-    h, w = img.shape[:2]
+def _draw_hud(img: np.ndarray, frame: int, eye: str, av: float, ss: int = 1) -> None:
+    """A head-locked UI panel: the STATIC_MV content class.
+
+    ``ss`` is the supersampling factor of *img*: the panel's geometry is
+    computed at the output resolution and then magnified by ``ss``, so a
+    supersampled HUD is an exact ``ss``-times enlargement of the ``ss = 1``
+    one and box-filters back down to the same layout, antialiased.
+    """
+    h, w = img.shape[0] // ss, img.shape[1] // ss
     ph = max(22, h // 12)
     pw = max(90, w // 3)
     y0, x0 = h - ph - max(4, h // 60), max(4, w // 60)
-    img[y0 : y0 + ph, x0 : x0 + pw] = (14, 16, 22)
-    img[y0 + 1 : y0 + ph - 1, x0 + 1 : x0 + pw - 1] = (26, 30, 40)
+    img[y0 * ss : (y0 + ph) * ss, x0 * ss : (x0 + pw) * ss] = (14, 16, 22)
+    img[(y0 + 1) * ss : (y0 + ph - 1) * ss, (x0 + 1) * ss : (x0 + pw - 1) * ss] = (26, 30, 40)
     s = max(1, ph // 18)
-    font5x7.draw_text(img, f"FRAME {frame:04d} {eye}", y0 + 3, x0 + 4, (230, 235, 245), scale=s)
-    font5x7.draw_text(
-        img, f"AV {av:6.1f} DEG/S", y0 + 5 + font5x7.GLYPH_H * s, x0 + 4, (150, 220, 160), scale=s
-    )
+    font5x7.draw_text(img, f"FRAME {frame:04d} {eye}", (y0 + 3) * ss, (x0 + 4) * ss,
+                      (230, 235, 245), scale=s * ss)
+    font5x7.draw_text(img, f"AV {av:6.1f} DEG/S", (y0 + 5 + font5x7.GLYPH_H * s) * ss,
+                      (x0 + 4) * ss, (150, 220, 160), scale=s * ss)
 
 
 def render_view(
@@ -511,6 +547,233 @@ def render_view(
     if hud:
         _draw_hud(out, pose["frame"], "L" if eye == 0 else "R", pose["angular_velocity_deg_s"])
     return out
+
+
+# --- band-limited (v2) rendering ----------------------------------------
+#
+# Version 1 took a single bilinear tap per output sample from a panorama at 2.1x
+# the eye's angular resolution.  That is not a picture of the world, it is a
+# point sample of it: the frames carry energy above the eye's Nyquist, that
+# energy is not a geometric function of the pose, and no warp of any precision
+# can predict it.  docs/WARP-AUDIT.md section 4 prices it at 7.2 dB full-frame
+# and 14.4 dB centre on the ideal-warp ceiling -- more than any predictor change
+# on offer is worth.  Everything below exists to remove it.
+#
+# Three things together band-limit the render:
+#
+#  1. a panorama at 16x the eye width (4.2x its angular resolution, the ratio
+#     `nxvc-warpsim` uses), with the *angular* content of the 4096-wide one
+#     (`feature_scale` above);
+#  2. a latitude-aware longitudinal prefilter, because an equirectangular map's
+#     longitudinal texel spacing shrinks as 1/cos(lat) and a view pitched 25
+#     degrees up reaches latitude 72 at its corner, where the panorama is 3x
+#     finer than anything the renderer samples it at;
+#  3. 4x4 box supersampling of the render itself, which is what turns the
+#     remaining detail into an average rather than a sample.
+
+
+def equirect_ppd(width: int) -> float:
+    """Panorama angular resolution at the equator, pixels per degree."""
+    return width / 360.0
+
+
+def eye_ppd(cam: Camera) -> float:
+    """The eye's angular resolution **at the optical centre**, pixels/degree.
+
+    A rectilinear projection's pixel density is lowest on axis and rises as
+    1/cos^2, so the centre figure is the one to band-limit against: filtering to
+    the average or the edge density would alias in the middle of the picture,
+    which is where the fovea is.
+    """
+    return cam.width / (2.0 * math.tan(math.radians(cam.hfov_deg) * 0.5)) * math.pi / 180.0
+
+
+def prefilter_equirect(pano: np.ndarray, target_ppd: float, max_width: int = 255) -> np.ndarray:
+    """Low-pass an equirectangular panorama to *target_ppd* along longitude.
+
+    Row *r* sits at latitude ``lat`` where one panorama pixel spans
+    ``cos(lat) * 360 / width`` degrees of arc, so the row's angular resolution is
+    ``(width / 360) / cos(lat)`` pixels per degree.  Where that exceeds the rate
+    the renderer samples at, the row is averaged over a box of
+    ``row_ppd / target_ppd`` pixels (rounded to an odd width, wrapping in
+    longitude); where it does not, the row is left alone.
+
+    Latitude needs no filtering: an equirectangular map's *rows* are uniformly
+    spaced in angle, so the vertical rate is the same everywhere and the
+    supersampled box downsample handles it.
+    """
+    ph, pw = pano.shape[:2]
+    lat = (0.5 - (np.arange(ph, dtype=np.float64) + 0.5) / ph) * math.pi
+    cos_lat = np.maximum(np.cos(lat), 1e-9)
+    k = (equirect_ppd(pw) / cos_lat) / max(1e-9, target_ppd)
+    widths = np.clip(2 * np.floor(k * 0.5).astype(np.int64) + 1, 1, max_width)
+    out = pano.copy()
+    for w in np.unique(widths):
+        if w <= 1:
+            continue
+        rows = np.nonzero(widths == w)[0]
+        r = int(w) // 2
+        x = pano[rows].astype(np.float32)
+        padded = np.concatenate([x[:, pw - r :], x, x[:, :r]], axis=1)
+        cs = np.zeros((padded.shape[0], padded.shape[1] + 1, 3), np.float32)
+        np.cumsum(padded, axis=1, out=cs[:, 1:])
+        box = (cs[:, int(w) :] - cs[:, : -int(w)]) / float(w)
+        out[rows] = np.clip(box + 0.5, 0, 255).astype(np.uint8)
+    return out
+
+
+def sample_equirect_u8(pano: np.ndarray, dirs: np.ndarray) -> np.ndarray:
+    """:func:`sample_equirect` without converting the whole panorama to float.
+
+    Identical arithmetic; it gathers uint8 and widens the four gathered corners
+    instead of widening the source.  At a 16384x8192 panorama that is the
+    difference between a 1.6 GB temporary per call and none.
+    """
+    ph, pw = pano.shape[:2]
+    lon = np.arctan2(dirs[..., 0], -dirs[..., 2])
+    lat = np.arcsin(np.clip(dirs[..., 1], -1.0, 1.0))
+    u = (lon / (2 * math.pi) + 0.5) * pw - 0.5
+    v = (0.5 - lat / math.pi) * ph - 0.5
+    u0 = np.floor(u).astype(np.int32)
+    v0 = np.floor(v).astype(np.int32)
+    fu = (u - u0).astype(np.float32)[..., None]
+    fv = (v - v0).astype(np.float32)[..., None]
+    u0m, u1m = u0 % pw, (u0 + 1) % pw
+    v0c = np.clip(v0, 0, ph - 1)
+    v1c = np.clip(v0 + 1, 0, ph - 1)
+    a = pano[v0c, u0m].astype(np.float32)
+    b = pano[v0c, u1m].astype(np.float32)
+    c = pano[v1c, u0m].astype(np.float32)
+    d = pano[v1c, u1m].astype(np.float32)
+    top = a + (b - a) * fu
+    bot = c + (d - c) * fu
+    return top + (bot - top) * fv
+
+
+def box_downsample(img: np.ndarray, ss: int) -> np.ndarray:
+    """Average ``ss x ss`` blocks: the reconstruction filter of the render."""
+    h, w = img.shape[0] // ss, img.shape[1] // ss
+    return img[: h * ss, : w * ss].reshape(h, ss, w, ss, -1).mean(axis=(1, 3))
+
+
+def render_view_ss(
+    pano: np.ndarray,
+    cam: Camera,
+    pose: dict,
+    objs: Objects | None,
+    eye: int,
+    ss: int = 4,
+    hud: bool = True,
+    dirs_hi: np.ndarray | None = None,
+    block: int = 512,
+) -> np.ndarray:
+    """Render one eye band-limited: ``ss x ss`` samples per pixel, box filtered.
+
+    Near-field objects and the HUD are drawn at the supersampled resolution too,
+    so their edges are antialiased rather than being the one hard-aliased thing
+    left in an otherwise band-limited picture.
+    """
+    hi = Camera(cam.width * ss, cam.height * ss, cam.hfov_deg, cam.vfov_deg, cam.ipd_m)
+    if dirs_hi is None:
+        dirs_hi = _ray_grid(hi)
+    R = rot_matrix(
+        math.radians(pose["yaw_deg"]), math.radians(pose["pitch_deg"]), math.radians(pose["roll_deg"])
+    )
+    Rf = R.T.astype(np.float32)
+    img = np.empty((hi.height, hi.width, 3), np.float32)
+    for y0 in range(0, hi.height, block):
+        y1 = min(hi.height, y0 + block)
+        wd = dirs_hi[y0:y1].reshape(-1, 3) @ Rf
+        img[y0:y1] = sample_equirect_u8(pano, wd.reshape(y1 - y0, hi.width, 3))
+    if objs is not None:
+        head = np.asarray(pose["position_xyz"], np.float64)
+        offset = R @ np.array([(-0.5 if eye == 0 else 0.5) * cam.ipd_m, 0.0, 0.0])
+        _draw_objects(img, hi, objs, R, head + offset, pose["time_s"])
+    if hud:
+        _draw_hud(img, pose["frame"], "L" if eye == 0 else "R",
+                  pose["angular_velocity_deg_s"], ss=ss)
+    out = box_downsample(img, ss)
+    return np.clip(out + 0.5, 0, 255).astype(np.uint8)
+
+
+def render_stereo_ss(
+    pano: np.ndarray,
+    cam: Camera,
+    pose: dict,
+    objs: Objects | None,
+    layout: str = "sbs",
+    ss: int = 4,
+    dirs_hi: np.ndarray | None = None,
+    hud: bool = True,
+) -> np.ndarray:
+    """Band-limited :func:`render_stereo`."""
+    if dirs_hi is None:
+        dirs_hi = _ray_grid(Camera(cam.width * ss, cam.height * ss, cam.hfov_deg, cam.vfov_deg))
+    left = render_view_ss(pano, cam, pose, objs, 0, ss, hud, dirs_hi)
+    if layout == "mono":
+        return left
+    right = render_view_ss(pano, cam, pose, objs, 1, ss, hud, dirs_hi)
+    return np.concatenate([left, right], axis=1)
+
+
+# --- the ideal-warp ceiling ----------------------------------------------
+
+
+def ideal_warp(prev: np.ndarray, pose_prev: dict, pose_cur: dict, cam: Camera) -> np.ndarray:
+    """Warp *prev* by the exact float homography from ``pose_prev`` to ``pose_cur``.
+
+    This is the ceiling any integer warp predictor can reach **on this
+    material**: the same geometry the codec's `derive_homography()` quantises,
+    evaluated per pixel in double precision with a bilinear resample, and
+    written from this module's own projection rather than from the codec's, so
+    that agreement between the two is evidence rather than a shared assumption.
+
+    ``prev`` is a single-channel (H, W) image of one eye.  Samples that map
+    outside the previous frame -- the disocclusion strip on the leading edge --
+    clamp to the border, which is what the codec's warp does.
+    """
+    h, w = prev.shape
+    tx = math.tan(math.radians(cam.hfov_deg) * 0.5)
+    ty = math.tan(math.radians(cam.vfov_deg) * 0.5)
+    xs = ((np.arange(w, dtype=np.float64) + 0.5) / w * 2.0 - 1.0) * tx
+    ys = -((np.arange(h, dtype=np.float64) + 0.5) / h * 2.0 - 1.0) * ty
+    d = np.empty((h, w, 3), np.float64)
+    d[..., 0] = xs[None, :]
+    d[..., 1] = ys[:, None]
+    d[..., 2] = -1.0
+    rp = rot_matrix(math.radians(pose_prev["yaw_deg"]), math.radians(pose_prev["pitch_deg"]),
+                    math.radians(pose_prev["roll_deg"]))
+    rc = rot_matrix(math.radians(pose_cur["yaw_deg"]), math.radians(pose_cur["pitch_deg"]),
+                    math.radians(pose_cur["roll_deg"]))
+    rel = rp.T @ rc  # previous-camera-from-current-camera
+    p = d.reshape(-1, 3) @ rel.T
+    z = np.minimum(p[:, 2], -1e-9)  # forward is -Z
+    u = ((p[:, 0] / -z) / tx * 0.5 + 0.5) * w - 0.5
+    v = (0.5 - (p[:, 1] / -z) / ty * 0.5) * h - 0.5
+    u = np.clip(u.reshape(h, w), 0.0, w - 1.0)
+    v = np.clip(v.reshape(h, w), 0.0, h - 1.0)
+    u0 = np.floor(u).astype(np.int64)
+    v0 = np.floor(v).astype(np.int64)
+    u1 = np.minimum(u0 + 1, w - 1)
+    v1 = np.minimum(v0 + 1, h - 1)
+    fu, fv = u - u0, v - v0
+    src = prev.astype(np.float64)
+    top = src[v0, u0] + (src[v0, u1] - src[v0, u0]) * fu
+    bot = src[v1, u0] + (src[v1, u1] - src[v1, u0]) * fu
+    return top + (bot - top) * fv
+
+
+def psnr(a: np.ndarray, b: np.ndarray) -> float:
+    d = np.asarray(a, np.float64) - np.asarray(b, np.float64)
+    mse = float(np.mean(d * d))
+    return 1000.0 if mse <= 0.0 else 10.0 * math.log10(255.0 * 255.0 / mse)
+
+
+def centre_crop(a: np.ndarray, frac: float = 0.125) -> np.ndarray:
+    """Drop a *frac* border on every side (the warpsim convention is 1/8)."""
+    h, w = a.shape[:2]
+    by, bx = int(h * frac), int(w * frac)
+    return a[by : h - by, bx : w - bx]
 
 
 def render_stereo(
