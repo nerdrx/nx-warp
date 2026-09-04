@@ -6,8 +6,8 @@ one was measured and rejected, and one was not reached.**
 
 | # | tool | tool bit | verdict |
 |---|---|---|---|
-| 1 | chroma from luma | 24 `INTRA_CFL` | **built**, on by default, -1.13 % / -0.28 % BD-rate |
-| 2 | 4x4 transform split | 19 `XFORM_4X4_SPLIT` | **built**, on by default, -0.48 % / -0.45 % BD-rate |
+| 1 | chroma from luma | 24 `INTRA_CFL` | **built**, on by default; -1.22 % / -0.24 % of our own rate |
+| 2 | 4x4 transform split | 19 `XFORM_4X4_SPLIT` | **built**, on by default; -0.47 % / -0.47 % of our own rate |
 | 3 | adaptive dead zone per context class | none | **measured and rejected**; +0.10 % at best, five settings, section 3 |
 | 4 | planar / DC-plane refinement | none | not reached; section 6 says what is left and why it is not free |
 
@@ -19,6 +19,14 @@ sequence `$NXQ_SCRATCH/seq` now carries. Every process ran under
 `chrt -i 0 taskset -c 24-27 nice -n 19`. Result files are
 `$NXQ_SCRATCH/results/tourney-detail-b-*.json`; the driver is
 `tools/quality/run-b.sh`.
+
+Two BD-rate numbers appear in this document and they are not the same
+quantity. **BD-rate against x264 intra** is the tourney's metric and the one
+section 1 reports; a tool that saves 1 % of our bits moves it by about 2.2
+points, because the ratio being reported is `r_nxv / r_x264` and `r_nxv` is
+about 2.2x `r_x264` here. **BD-rate of a tool against the same build with it
+off** is what section 2 reports, is what the encoder's own decisions were tuned
+against, and is the number quoted as "of our own rate" above.
 
 > **These numbers are not comparable with `RESULTS-intra.md`.** That document
 > measured the v1 sequence, whose rates at the same QP are about a quarter of
@@ -425,9 +433,10 @@ in the tile header -- has not been measured and is the shape worth trying next,
 because it is the one that costs no extra coded values per block.
 
 The two tools that were built have a common shape worth naming, because it
-predicts where the next one should look. **Both fire on well under 1 % of
-blocks and are each worth about half a percent of the frame**, because the
-blocks they fire on are the expensive ones:
+predicts where the next one should look. **Each fires on a few per cent at
+most of the blocks it could fire on, and each is still worth about half a
+percent of the frame**, because the blocks it fires on are the expensive
+ones:
 
 | | 4:4:4 QP 20 | QP 28 | QP 36 | 4:2:0 QP 20 | QP 28 | QP 36 |
 |---|---|---|---|---|---|---|
@@ -445,10 +454,14 @@ tools also fade to nothing above QP 32, which is where the Phase 1 band ends,
 so neither is a low-rate tool and neither should be expected to help the rate
 controller's regime.
 
-The gate remains what `RESULTS-intra.md` section 8 said it was: 3 to 4 dB
-short, with no single dominant term. Nothing in this package changes that
-conclusion; each tool is a half-percent, and there are not sixty of them
-left.
+The gate is 7.4 dB short on this sequence, against the 3 to 4 dB
+`RESULTS-intra.md` section 8 measured on the v1 material -- the band-limited v2
+sequence is simply harder for us, at every point on the ladder, and that
+difference is larger than everything this package moved put together. The
+structural conclusion is unchanged and is the one that matters: **there is no
+single dominant term left**, and detail tools of this size do not close a gap
+of this size. Each of these two is about half a percent of our own rate, and
+there are not sixty more of them to find.
 
 ---
 
