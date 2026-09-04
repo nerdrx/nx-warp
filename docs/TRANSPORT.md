@@ -1,0 +1,650 @@
+# NX Warp transport: normative wire format and state machines
+
+Version 1 (`NXT_VERSION = 1`). This document is normative for the `nxvc_transport`
+library (`transport/`). It refines PAPER.md sections 4.1 to 4.11, 6.1, 6.6 and 6.7.
+Where the paper leaves something open, or where the paper's arithmetic does not close,
+the decision is recorded here and repeated in Appendix A.
+
+The transport is **codec agnostic**. A tile is an opaque byte blob addressed by
+`(frame_id, layer_id, row, col)` with a `class` and a small decoder-side descriptor
+(`qp`, `mode`, `res_level`). The library contains no sockets and no key exchange:
+the integration supplies datagram buffers, a monotonic clock, and AEAD keys.
+
+Conventions: all multi-byte integers are **little endian**. Bit fields inside a byte
+are listed **LSB first**. `u16`/`u32` mean unsigned little-endian integers of that
+width. Byte offsets are zero-based. "MUST", "SHOULD", "MAY" have their usual force.
+
+---
+
+## 1. Geometry, bands and identifiers
+
+| Name | v1 value | Notes |
+|---|---|---|
+| `tile_size` | 64 | 32 reserved by the stream header (PAPER 6.2), not used by transport |
+| `cols` | 68 | `ceil(4320 / 64)` |
+| `rows` | 34 | `ceil(2160 / 64)` |
+| `tiles_per_frame` | 2312 | `cols * rows` |
+| `band_rows` | 6 | PAPER 4.2 |
+| `bands` | 6 | last band is 4 rows |
+| `tiles_in_band` | 408 | `cols * band_rows`; last band 272 |
+| `ring_slots` | 4 | display-side reference ring (PAPER 4.3, 6.6) |
+| `shadow_frames` | 8 | encoder-side feedback history (PAPER 6.6) |
+
+All of these are runtime configuration in `nxt::StreamConfig`; the table gives the
+v1 defaults for the first target stream. The library does not assume them.
+
+**Linear tile index**: `tile_index = row * cols + col`. This is the `tile_first`
+field and the addressing used everywhere. **Band index**: `band = min(row / band_rows,
+bands - 1)`. **Tile index within a band**: `tile_in_band = (row - band * band_rows) * cols + col`;
+that is the bit position in the feedback `received_bitmap`.
+
+`tile_class` is 0 = A (fovea, quad-layer base), 1 = B (mid eccentricity),
+2 = C (periphery, enhancement layers). Value 3 is reserved and MUST NOT be sent.
+
+`path_id` is 0 or 1 in v1 (`NXT_MAX_PATHS = 2`); the field is 2 bits so 4 paths are
+forward compatible.
+
+---
+
+## 2. Datagram header (24 bytes, cleartext, AEAD associated data)
+
+Every datagram on the downstream (server to client) begins with this fixed 24-byte
+header. It is sent in the clear and is the **complete** associated data for the AEAD
+that protects the payload; a modified header therefore fails the tag check.
+
+| off | size | field | bits | description |
+|---|---|---|---|---|
+| 0 | 1 | `version` | [3:0] | `NXT_VERSION` = 1. A receiver MUST drop other versions. |
+| 0 | 1 | `flags` | [7:4] | see 2.1 |
+| 1 | 1 | `stream_id` | 8 | WiVRn stream (per quad layer / eye-pair geometry) |
+| 2 | 2 | `frame_id` | 16 | wraps every 12.1 min at 90 Hz |
+| 4 | 2 | `tile_first` | 16 | linear tile index of the first tile of the run |
+| 6 | 1 | `tile_count` | 8 | tiles carried, 1..255; **0 marks a parity datagram** |
+| 7 | 1 | `layer_id` | [3:0] | 0 = base, 1..3 = enhancement |
+| 7 | 1 | `ref_delta` | [5:4] | reference frame = `frame_id - 1 - ref_delta`; 3 = intra |
+| 7 | 1 | `frag_idx` | [7:6] | fragment index of an oversize tile, else 0 |
+| 8 | 1 | `frag_count` | [1:0] | fragments minus one (0 = unfragmented), else 0 |
+| 8 | 1 | `tile_class` | [3:2] | 0=A, 1=B, 2=C |
+| 8 | 1 | `band` | [6:4] | 0..6; 7 = not band addressed |
+| 8 | 1 | `pose_hdr` | [7] | payload begins with the 26-byte frame/pose header (PAPER 6.7) |
+| 9 | 1 | `caps` | 8 | negotiated capability echo, see 2.2 |
+| 10 | 2 | `pose_seq` | 16 | index into the client's own 2 s pose ring |
+| 12 | 2 | `path_seq` | [13:0] | per-path datagram sequence, wraps at 16384 |
+| 12 | 2 | `path_id` | [15:14] | sending path |
+| 14 | 1 | `fec_group` | 8 | FEC group number within `(frame_id, band, tile_class)` |
+| 15 | 1 | `fec_idx` | [3:0] | index in the group; `fec_idx >= fec_k` marks parity |
+| 15 | 1 | `fec_k` | [7:4] | data datagrams in the group, 1..10; 0 = no FEC on this datagram |
+| 16 | 4 | `tx_ts` | 32 | server clock, microseconds, wraps 71.6 min |
+| 20 | 2 | `payload_len` | 16 | bytes of ciphertext, **excluding** the 16-byte tag |
+| 22 | 2 | `enc_us` | 16 | encode-finish minus render-finish for this band, telemetry |
+
+Total 192 bits = 24 bytes.
+
+> **Decision D1.** The paper's field list sums to 178 bits, not the stated 192. The
+> 14 free bits are spent here on `frag_count` completion, `tile_class` (2), `band` (3),
+> `pose_hdr` (1) and `caps` (8) — that is 14 bits of new fields plus the 178 already
+> listed, which is 192 exactly. `tile_class` and `band` are on the wire because the
+> receiver must attribute FEC groups and build per-band feedback without decrypting
+> and parsing the payload first.
+
+### 2.1 Flags nibble (byte 0, bits 4..7)
+
+| bit | name | meaning |
+|---|---|---|
+| 4 | `KEYFRAME_RUN` | every tile in the run is intra coded |
+| 5 | `PARTIAL_FRAME` | the sender knows this frame is already incomplete (rate overrun / governor drop) |
+| 6 | `LOSSLESS` | the run carries lossless tiles; fragmentation is legal only with this bit |
+| 7 | `LAST_RUN_OF_FRAME` | last data datagram of `frame_id` on **any** path |
+
+`LAST_RUN_OF_FRAME` is set on exactly one data datagram per frame per stream. It is
+advisory: the receiver's frame completion is driven by the deadline (section 7), not
+by this bit.
+
+### 2.2 Capability byte (`caps`)
+
+Negotiated out of band at connect time and echoed in every datagram. A receiver MUST
+drop a datagram whose `caps` contains a bit it did not negotiate. This lets a
+capability be turned off mid-session (one band of skew) without a version bump.
+
+| bit | name | meaning |
+|---|---|---|
+| 0 | `CAP_FEC` | RS FEC groups are in use; the payload budget is reduced (section 5) |
+| 1 | `CAP_MULTIPATH` | more than one path is active; `path_id` may be non-zero |
+| 2 | `CAP_JUMBO` | the path MTU probe found > 1500; the run budget is the probed value |
+| 3 | `CAP_FRAGMENT` | oversize lossless tiles may be fragmented |
+| 4 | `CAP_POSE_HDR` | `pose_hdr` may be set (PAPER 6.7 pose replication) |
+| 5 | `CAP_RLE_FEEDBACK` | the feedback bitmap may use RLE mode (section 6.2) |
+| 6-7 | reserved | MUST be 0 |
+
+---
+
+## 3. Payload layout
+
+The **plaintext** payload of a data datagram is:
+
+```
+  [26 bytes]  frame/pose header       -- present iff pose_hdr == 1
+  [4*N bytes] tile directory          -- N = tile_count entries, in tile order
+  [ ... ]     tile bitstreams         -- concatenated, in tile order, no padding
+```
+
+The ciphertext on the wire is the AEAD encryption of exactly this, followed by the
+16-byte tag. `payload_len` counts the ciphertext only. For GCM/ChaCha20-Poly1305
+the ciphertext length equals the plaintext length, so
+`plaintext_len == payload_len`.
+
+### 3.1 Tile directory entry (4 bytes, u32 little endian)
+
+| bits | field | description |
+|---|---|---|
+| [11:0] | `len` | tile bitstream length in bytes, 0..4095. 0 means an empty (skip) tile |
+| [17:12] | `qp` | 0..63 |
+| [20:18] | `mode` | 0 WARP_SKIP, 1 STATIC_MV, 2 WARP_MV, 3 INTRA, 4 STEREO, 5..7 reserved |
+| [22:21] | `res_level` | 0 full, 1 half, 2 quarter, 3 DC-plane (PAPER 4.6.1) |
+| [23] | `lossless` | this tile is lossless coded |
+| [24] | `chroma444` | this tile is 4:4:4 |
+| [25] | `alpha` | this tile carries an alpha plane |
+| [31:26] | reserved | MUST be 0 (v2: edge mask / contour mode) |
+
+The sum of all `len` in the directory plus `4*N` plus 26 if `pose_hdr` MUST equal
+the plaintext length. A receiver that finds otherwise MUST discard the whole
+datagram and count it as lost (it cannot know where the tile boundaries are).
+
+> **Decision D2.** The directory is 4 bytes as the paper mandates even though only
+> 24 bits are defined, because the paper's 5.5 % overhead figure is computed from a
+> 4-byte entry. The 8 spare bits are reserved for the v2 edge mask and contour mode
+> of PAPER 4.6.1.
+
+### 3.2 Run homogeneity
+
+A run MUST be homogeneous in `stream_id`, `frame_id`, `layer_id`, `ref_delta`,
+`tile_class`, `band`, and **tile row**, and its tiles MUST be contiguous and
+ascending in `col`.
+
+> **Decision D3.** The paper puts `ref_delta` and `layer_id` in the datagram header
+> but assigns references per tile (4.5). Homogeneity is the only way to reconcile
+> the two without a per-tile reference field. Row homogeneity is already implied by
+> "a contiguous sequence of tiles from one tile row". Class homogeneity is required
+> because FEC parity counts are per class (4.4). The packetizer therefore starts a
+> new run whenever any of those keys changes; this is what makes runs shorter than
+> the MTU in practice and is measured by the simulator.
+
+### 3.3 Frame/pose header (26 bytes, PAPER 6.7)
+
+Replicated in the first datagram of every band so a client with a gap in its pose
+ring still decodes.
+
+| off | size | field |
+|---|---|---|
+| 0 | 2 | `pose_seq` (same value as the datagram header) |
+| 2 | 8 | orientation, 4 x s16 quaternion, Q15, `(x, y, z, w)` |
+| 10 | 12 | position, 3 x s32 millimetres x 256 (Q8) |
+| 22 | 4 | `render_finish_ts` u32, server clock, microseconds |
+
+The transport treats these 26 bytes as opaque: it copies them and reports their
+presence. Only `render_finish_ts` is read, for telemetry.
+
+### 3.4 Oversize tiles and fragmentation
+
+`max_tile_bytes` is `run_payload_budget - 4` (section 5). A tile larger than that is
+an **oversize tile**.
+
+* In normal (lossy) modes the encoder MUST NOT produce one. The rate controller caps
+  the tile and re-encodes at `QP + 6`, at most twice (PAPER 4.1). The transport
+  exposes this as a hook: `Packetizer::OversizePolicy` with
+  `kReject` (return an error to the encoder, the default),
+  `kDropTile` (emit the tile as `len = 0` with `mode = WARP_SKIP` so the client
+  conceals it), and `kFragment`.
+* `kFragment` is legal only when `LOSSLESS` and `CAP_FRAGMENT` are both set. The tile
+  is split into `frag_count + 1` (2..4) fragments, each in its **own** datagram with
+  `tile_count = 1`, the same `tile_first`, ascending `frag_idx`, and a directory entry
+  whose `len` is that fragment's length. The tile is delivered only if all fragments
+  arrive; a tile with any fragment missing is a lost tile.
+
+---
+
+## 4. AEAD, key schedule and nonce derivation
+
+The library defines an abstract `Aead` with `seal(key, nonce, aad, plaintext) ->
+ciphertext||tag` and `open(...)`, tag length 16, nonce length 12. Three
+implementations ship: `NullAead` (a keyed byte-rotation plus a 16-byte
+non-cryptographic tag, for tests and the simulator only, never for a real session),
+`Aes256Gcm` and `ChaCha20Poly1305`, the latter two compiled only when OpenSSL or
+libsodium headers are found.
+
+### 4.1 Key schedule
+
+Per path and per direction:
+
+```
+  subkey(path, dir) = HKDF-SHA256(
+        ikm  = session_key (32 bytes, from the WiVRn NX handshake),
+        salt = session_salt (32 bytes, from the handshake),
+        info = "nxvc-transport/v1" || u8(path_id) || u8(dir),
+        len  = 32)
+```
+
+`dir` is 0 for server to client (datagrams) and 1 for client to server (feedback).
+Per-path subkeys are what PAPER 4.1 calls "per-path subkeys via HKDF".
+
+### 4.2 Nonce (12 bytes, no nonce material on the wire)
+
+```
+  nonce[0]     = stream_id
+  nonce[1]     = path_id            (0..3)
+  nonce[2..3]  = u16 epoch          (rekey counter, both ends)
+  nonce[4..11] = u64 path_seq_ext   (little endian)
+```
+
+`path_seq_ext` is the full 64-bit per-path, per-direction datagram counter. Only its
+low 14 bits travel, in `path_seq`. Both ends extend it:
+
+```
+  extend(expected, seq14):
+      base = expected & ~0x3FFFull
+      for cand in {base + seq14, base + seq14 - 0x4000, base + seq14 + 0x4000}:
+          keep the candidate with the smallest |cand - expected|, cand >= 0
+```
+after which the receiver sets `expected = cand + 1`. A datagram whose extended
+counter is more than `2^13` behind the highest seen is **replay** and MUST be
+dropped. The counter resets to zero only when `epoch` increments; `epoch` increments
+only on rekey. Uniqueness therefore holds within a subkey.
+
+> **Decision D4.** The paper says the nonce is derived from
+> `(stream_id, path_id, path_seq, epoch counter)` but `path_seq` is only 14 bits,
+> which repeats after 16384 datagrams — about 1.2 seconds at 13.5 kpps. Deriving from
+> the *extended* 64-bit counter is the only safe reading and is what is specified here.
+> The extension window (±8192) is far larger than any real reorder on a single path.
+
+---
+
+## 5. Budgets
+
+Let `mtu` be the probed path MTU payload (1400 by default; 4000 or 8900 on a jumbo
+USB path, PAPER 4.1).
+
+```
+  header_bytes      = 24
+  tag_bytes         = 16
+  fec_reserve       = 44   if CAP_FEC else 0        (see section 5.1)
+  run_payload_budget = mtu - header_bytes - tag_bytes - fec_reserve
+  max_tile_bytes     = run_payload_budget - 4
+```
+
+For `mtu = 1400`: `run_payload_budget` is **1360** without FEC and **1316** with FEC;
+`max_tile_bytes` is 1356 / 1312.
+
+> **Decision D5.** PAPER 4.1 states `max_tile_bytes = 1400 - 24 - 4 = 1372`, which
+> omits the 16-byte GCM tag it mandates in the same section, and omits the space the
+> parity datagram needs to carry a padded copy of the largest protected datagram.
+> The correct cap with FEC on at a 1400-byte MTU is **1312 bytes**. The library
+> rounds `run_payload_budget` down to a multiple of 4 so the directory stays aligned.
+
+### 5.1 Why 44 bytes are reserved for FEC
+
+A parity datagram carries `u16 L` plus one parity block of `L + 2` bytes, in a
+24-byte header with a 16-byte tag: `24 + 2 + (L + 2) + 16 = L + 44`. Keeping the
+parity datagram inside the MTU requires `L <= mtu - 44`, and `L` is the largest
+protected data datagram, `24 + payload_len + 16`. Hence the reserve.
+
+---
+
+## 6. FEC (PAPER 4.4)
+
+Reed-Solomon over GF(256), polynomial `0x11D`, systematic, **Cauchy** generator so
+every k-subset of rows is invertible.
+
+```
+  GF(256): x^8 + x^4 + x^3 + x^2 + 1  (0x11D), generator 0x02
+  parity row j, data column i:  G[j][i] = 1 / ((128 + j) XOR i)     j < m, i < k
+```
+
+`k = 10` data datagrams per group; a group with fewer than 10 available datagrams
+uses `k =` that count (PAPER 4.4). Parity per class: A = 3, B = 1, C = 0, scaling to
+2/0/0 below 0.1 % measured loss and 4/2/1 above 2 %. Groups **never cross a band
+boundary**, and (Decision D6) never cross a `tile_class`, a `layer_id` or a `frame_id`
+either, because parity counts are per class and the receiver's recovery deadline is
+per band.
+
+### 6.1 The protected block
+
+The FEC protects **whole datagrams**, headers and tags included, so a recovered
+datagram is indistinguishable from a received one and is authenticated normally.
+
+For data slot `i` of a group, with `D_i` the complete on-wire datagram of length
+`n_i`, and `L = max_i n_i`:
+
+```
+  B_i = u16(n_i) || D_i || 0^(L - n_i)          |B_i| = L + 2
+```
+
+Parity block `P_j` for `j` in `0..m-1` is the GF(256) linear combination
+`P_j = sum_i G[j][i] * B_i` byte-wise. The parity datagram is:
+
+```
+  header (24 bytes, tile_count = 0, fec_idx = k + j, fec_k = k,
+          tile_first = tile_first of slot 0, band/class/layer/frame of the group)
+  AEAD( u16(L) || P_j )      (L + 2 + 2 bytes of ciphertext)
+  tag (16 bytes)
+```
+
+A parity datagram's `payload_len` is `L + 4`.
+
+Recovery: with `r >= k` blocks among the `k + m` present (data slots padded back to
+`B_i` form, parity slots taken from their payloads), take any `k` of them, build the
+`k x k` submatrix of the systematic generator, invert it in GF(256) and multiply.
+Each recovered `B_i` yields `n_i` and then `D_i`, which is then decrypted with the
+header's own `path_id` / `path_seq`. If fewer than `k` blocks are present the group
+is unrecoverable and every missing datagram stays lost.
+
+> **Decision D7.** The paper does not say what the parity covers. Covering the whole
+> datagram is the only choice that survives the loss of a header (which carries
+> `payload_len`, `tile_first` and `tile_count` — without them a recovered payload is
+> unparseable), and it keeps end-to-end authentication: a datagram recovered from
+> parity still has to pass its own tag check.
+
+### 6.2 Recovery deadline
+
+A group is attempted as soon as `k` blocks are present, and abandoned when the band
+deadline (section 7) passes. There is no reorder buffer and no other wait.
+
+---
+
+## 7. Receiver: frame ring, placement and the deadline (PAPER 4.3)
+
+### 7.1 Position-addressed placement
+
+There is no reorder buffer (PAPER 4.8). A datagram is placed by
+`(frame_id mod 4, layer_id, tile_index)` the moment it decrypts and parses. Arrival
+order is irrelevant. A datagram for a `frame_id` older than the ring's oldest live
+slot is dropped; a datagram for a newer `frame_id` **advances** the ring, evicting
+slot `frame_id mod 4` and resetting its per-tile metadata (this is what "tile (N, t)
+lands in slot N mod 4" means once N runs past the ring).
+
+### 7.2 Duplicate suppression
+
+Class A runs are duplicated on both paths (PAPER 4.8). The two copies are
+byte-identical except for `path_id`, `path_seq` and `tx_ts` (and therefore the nonce
+and the tag). Duplicates are suppressed by the key
+
+```
+  data:   (stream_id, frame_id, layer_id, tile_first, frag_idx)
+  parity: (stream_id, frame_id, band, tile_class, layer_id, fec_group, fec_idx)
+```
+
+A second copy is counted in per-path statistics and then discarded. Placement is
+idempotent, so suppression is an optimisation for statistics and FEC accounting, not
+a correctness requirement — except for FEC, where a duplicate MUST NOT be counted
+twice towards the `k` blocks needed.
+
+### 7.3 Per-tile metadata (4 bytes per tile per slot, PAPER 4.3 item 2)
+
+| bits | field |
+|---|---|
+| [15:0] | `pose_seq` |
+| [23:16] | `age` — frames since this position was last decoded, 0 = fresh, 255 saturates |
+| [25:24] | `state` — 0 EMPTY, 1 DECODED, 2 CONCEALED, 3 UNDECODABLE |
+| [26] | `late` — arrived after the band deadline |
+| [27] | `recovered` — arrived via FEC |
+| [31:28] | reserved 0 |
+
+### 7.4 Deadline state machine
+
+Per band, the deadline instant is
+
+```
+  band_deadline(N, b) = predicted_display_time(N)
+                        - reproject_budget - runtime_margin - deadline_offset
+```
+
+`reproject_budget` and `runtime_margin` come from the client (about 3 ms on Pico).
+`deadline_offset` is the controller's output, `0 .. 4 ms`, initially 0.
+
+At the deadline for band `b` of frame `N`:
+
+1. every tile of the band with `state == EMPTY` is marked `CONCEALED` and given
+   `pose_seq` and `age = age(N-1, t) + 1` from slot `(N-1) mod 4`;
+2. the band's feedback packet is generated (section 8);
+3. tiles arriving afterwards are still placed, with `late = 1`, and their `state`
+   becomes `DECODED` (they are valid references and better concealment sources);
+   they are reported as `late_tiles` in the **next** feedback, and for reference
+   tracking a late tile is the same as a received tile (PAPER 4.3 item 5).
+
+Controller (PAPER 4.3): let `miss(N)` be the fraction of the frame's tiles whose
+state at their band deadline was not `DECODED`.
+
+```
+  if miss(N) > 0.10:  consecutive_miss += 1  else  consecutive_miss = 0
+  if consecutive_miss >= 5 and deadline_offset < 4000 us:
+        deadline_offset += 1000 us ; consecutive_miss = 0
+  clean_frames += 1 while miss(N) == 0, reset to 0 otherwise
+  every 90 clean frames (1 s): deadline_offset = max(0, deadline_offset - 200 us)
+```
+
+> **Decision D8.** "Relaxes 0.2 ms per clean second" is implemented as a counter of
+> consecutive frames with **zero** missing tiles, because a frame with one hole is not
+> a clean second in any useful sense. The counter is reset, not decremented, on a miss.
+
+### 7.5 Presentation classification
+
+At an arbitrary present time the receiver classifies each tile of the current slot as
+
+* **fresh** — `state == DECODED` and `age == 0`;
+* **stale** — `state == DECODED` and `age > 0` (a skip tile, or a late arrival for an
+  older frame that was never re-sent);
+* **concealed** — `state == CONCEALED`;
+* **undecodable** — `state == UNDECODABLE` (directory inconsistent, missing fragment,
+  or a reference the client does not hold).
+
+A frame with any concealed tile carries the partial-frame telemetry flag.
+
+---
+
+## 8. Feedback packet (client to server, PAPER 4.4)
+
+One per band, cumulative over the last 3 bands, AEAD protected with the direction-1
+subkey of the path it is sent on, with its own 8-byte header as associated data. It
+is *not* preceded by a datagram header: the uplink has its own small header.
+
+### 8.1 Feedback header (8 bytes)
+
+| off | size | field | description |
+|---|---|---|---|
+| 0 | 1 | `version` [3:0] / `flags` [7:4] | flags: bit4 `DEADLINE_MOVED`, bit5 `PATH0_STALLED`, bit6 `PATH1_STALLED`, bit7 `REKEY_REQ` |
+| 1 | 1 | `stream_id` | |
+| 2 | 2 | `frame_id` | frame of the newest band record |
+| 4 | 1 | `band` | band index of the newest band record |
+| 5 | 1 | `band_count` | number of band records that follow, 1..3 |
+| 6 | 2 | `tiles_in_band` | bit count of a raw bitmap; also validates the geometry |
+
+### 8.2 Band record (20 bytes + bitmap), newest first
+
+| off | size | field |
+|---|---|---|
+| 0 | 2 | `frame_id` |
+| 2 | 1 | `band` |
+| 3 | 1 | `flags`: [1:0] `bitmap_mode`, [2] `complete`, [3] `deadline_missed`, [7:4] reserved 0 |
+| 4 | 4 | `rx_ts_first` (client clock, us) |
+| 8 | 4 | `rx_ts_last` |
+| 12 | 2 | `decode_us` |
+| 14 | 2 | `conceal_tiles` |
+| 16 | 2 | `late_tiles` |
+| 18 | 1 | `fec_recovered` |
+| 19 | 1 | `fec_failed` |
+| 20 | var | bitmap, per `bitmap_mode` |
+
+`bitmap_mode`:
+
+* **0 `RAW`** — `ceil(tiles_in_band / 8)` bytes, bit `i` (LSB first within a byte)
+  set iff tile `i` of the band was received *and* decoded. 51 bytes for a 408-tile band.
+* **1 `ALL`** — zero bytes; every tile of the band was received.
+* **2 `RLE`** — `u8 nruns`, then `nruns` records of `u16 start, u8 len`; each record
+  is a run of consecutive **missing** tiles. Legal only with `CAP_RLE_FEEDBACK`.
+* **3** — reserved, MUST NOT be sent.
+
+The generator picks the smallest legal encoding: `ALL` if nothing is missing, else
+`RLE` if it is shorter than `RAW`, else `RAW`.
+
+> **Decision D9.** The paper's feedback is "about 100 bytes ... cumulative over the
+> last 3 bands", but three raw 51-byte bitmaps alone are 153 bytes, and the full
+> packet with the paper's fields is 225 bytes, giving 0.97 Mbit/s of uplink, not the
+> stated 0.4 Mbit/s. `bitmap_mode` restores the paper's number on average: a clean
+> band costs 20 bytes, a band with two loss bursts costs 26. The simulator measures
+> and reports the real uplink rate. The 225-byte worst case is still under any MTU.
+
+A tile bit is set only if the datagram decrypted **and** the tile bitstream decoded
+without error, so a corrupt-but-delivered tile counts as lost (PAPER 4.4). The
+transport library sets the bit on successful placement and offers
+`Receiver::mark_tile_undecodable()` for the decoder to clear it before the deadline.
+
+### 8.3 Trailer (4 bytes)
+
+| off | size | field |
+|---|---|---|
+| 0 | 1 | `path_loss[0]` — loss fraction, Q8 (`round(loss * 255)`) |
+| 1 | 1 | `path_loss[1]` |
+| 2 | 1 | `path_rtt_ms[0]` — 255 saturates |
+| 3 | 1 | `path_rtt_ms[1]` |
+
+Loss is measured from `path_seq` gaps over a 1-second window, per path, **before**
+FEC recovery. RTT is the sender's echo estimate; the client fills what it knows from
+its own ping/pong and the server overrides with its own measurement when it disagrees.
+
+---
+
+## 9. Reference eligibility (PAPER 4.5, 6.6)
+
+This is the rule the encoder's client shadow implements and the one the receiver's
+real state must match.
+
+**Exactness.** A tile position `t = (row, col)` of frame `M` is *exact* if the sender
+knows, from feedback, that the client holds bit-exact pixels there:
+
+```
+  exact(M, t) =
+      state(M, t) == RECEIVED                            -- feedback bit set
+   or (state(M, t) == CONCEALED                          -- feedback bit clear,
+       and for all t' in N3x3(t): exact(M-1, t'))        -- band feedback did arrive
+```
+
+A position whose band has no feedback yet is `UNKNOWN` and is never exact. The
+recursion terminates at the edge of the 8-frame shadow history, where `exact` is
+false. Grid edges: `N3x3` is clipped to the grid, so a corner has 4 neighbours.
+
+> **Decision D10.** The paper says a concealed tile "is a legal reference" because
+> the concealment warp is deterministic and the encoder replays it. That is only true
+> if the *source* pixels of the warp are themselves exact, and the warp reads across
+> tile borders exactly as prediction does. The recursive definition above is the
+> sharpened rule; it is what makes the shadow provably equal to the receiver's real
+> state, which the fuzz test in `tests/transport/test_shadow_equivalence.cpp` checks
+> under arbitrary loss patterns.
+
+**Reference choice.** For tile `t` of frame `N`:
+
+```
+  for d in 0, 1, 2:
+      M = N - 1 - d
+      if M >= 0 and for all t' in N3x3(t): exact(M, t'):
+            return ref_delta = d
+  return ref_delta = 3          -- intra
+```
+
+That is "the newest frame in {N-1, N-2, N-3} whose 3x3 neighbourhood is fully
+acknowledged" verbatim. With no feedback for four frames every tile goes intra, at
+the capped size — a QP jump, not a stall.
+
+**Concealment marking.** When the sender applies a band's feedback
+(`ClientShadow::apply_feedback`), every tile of that band whose bit is clear is
+marked `CONCEALED` and the sender records the concealment source
+`(M-1, t)` so the encoder's mirror ring can replay the identical warp. Tiles reported
+`late` in a later feedback are upgraded from `CONCEALED` to `RECEIVED` — a late tile
+is a received tile for reference purposes (PAPER 4.3 item 5) — but the upgrade only
+affects frames still inside the 8-frame history.
+
+The rolling intra refresh of 1/180 of tiles per frame (PAPER 6.6) is a safety net on
+top and is the encoder's business, not the transport's; the transport reports which
+positions have been non-exact longest via `ClientShadow::staleness()`.
+
+---
+
+## 10. Multipath (PAPER 4.8)
+
+* **Class A** runs are duplicated on every up path when the combined delivery rate
+  allows it. The library's rule: duplicate iff `n_up >= 2` and
+  `bytes_this_band * (1 + dup_share) <= sum_of_path_capacities * band_period`, where
+  `dup_share` is the class A share of the band's bytes. Duplication is decided once
+  per band, not per datagram, so a band never mixes duplicated and non-duplicated
+  class A runs.
+* **Class B and C** runs are split by weighted round robin (a deficit round robin over
+  bytes) with weights equal to the measured per-path delivery rate.
+* **Stall.** A path stalls when its RTT sample exceeds 3x its minimum-filtered
+  baseline, or when 20 ms pass with no datagram received on it while the other path is
+  flowing. Its weight goes to zero at the next band boundary. Probing resumes with
+  class C runs only, at 1/8 weight, until two consecutive bands arrive with RTT under
+  1.5x baseline.
+* **No reorder buffer.** Tiles are position addressed; the only wait is the FEC
+  group's, bounded by the band deadline.
+
+---
+
+## 11. Telemetry (PAPER 4.9)
+
+Carried on the wire: `tx_ts` and `enc_us` per datagram, `render_finish_ts` in the
+pose header, `rx_ts_first` / `rx_ts_last` / `decode_us` per band record in the
+feedback. Everything else is local.
+
+The library keeps, per band and per frame, a `nxt::BandStamps`:
+
+```
+  render_finish_ts, encode_finish_ts, first_tx_ts, last_tx_ts      (server clock)
+  first_rx_ts, last_rx_ts, decode_finish_ts, deadline_ts           (client clock)
+  clock_offset_us  (per path, supplied by the integration)
+```
+
+and derives `queue_us = first_tx - encode_finish`, `air_us = first_rx - first_tx -
+offset(path)`, `spread_us = last_rx - first_rx`, `decode_us`, `margin_us = deadline -
+decode_finish`. `nxt::Telemetry` aggregates p50/p99 over a 1-second window.
+
+Because the clock offset has 0.3 to 1 ms of error (PAPER 4.11), the deadline
+controller of section 7.4 uses only client-clock quantities. Cross-clock values are
+telemetry, never control input.
+
+---
+
+## 12. Failure modes the library must handle (PAPER 4.11)
+
+| Condition | Library behaviour |
+|---|---|
+| Header version mismatch | drop, count `bad_version` |
+| `caps` bit not negotiated | drop, count `bad_caps` |
+| Tag check failure | drop, count `auth_fail`; never partially place |
+| Replay (counter behind window) | drop, count `replay` |
+| Directory sum != plaintext length | drop whole datagram, count `bad_directory` |
+| `tile_first + tile_count > tiles_per_frame` | drop, count `bad_range` |
+| Run crosses a tile row | drop, count `bad_range` |
+| `frame_id` older than the ring | drop, count `stale_frame` |
+| FEC group with < k blocks at the deadline | abandon, count `fec_failed` |
+| No feedback for 4 frames | shadow reports every tile non-exact, encoder goes intra |
+| Both paths stalled | sender keeps packetizing into the send ring; the integration's socket layer backpressures. The library never blocks. |
+
+---
+
+## Appendix A. Decisions this document makes that the paper leaves open
+
+| # | Decision |
+|---|---|
+| D1 | The header's 14 unspent bits become `frag_count` completion, `tile_class` (2), `band` (3), `pose_hdr` (1) and `caps` (8), reaching the stated 192 bits. |
+| D2 | The tile directory keeps 4 bytes with 8 reserved bits, matching the paper's overhead arithmetic. |
+| D3 | A run is homogeneous in stream, frame, layer, `ref_delta`, class, band and tile row. |
+| D4 | The AEAD nonce uses the **extended 64-bit** per-path counter, not the 14-bit wire field; the extension rule is specified in 4.2. |
+| D5 | `max_tile_bytes` is 1312 at a 1400-byte MTU with FEC on, not the paper's 1372: the paper omits the AEAD tag and the parity datagram's own overhead. |
+| D6 | FEC groups never cross a band, class, layer or frame. |
+| D7 | FEC parity covers the **whole datagram** (header, ciphertext, tag) prefixed by its length and zero padded to the group maximum. Recovered datagrams are authenticated normally. |
+| D8 | "0.2 ms per clean second" is counted in consecutive zero-miss frames, reset (not decremented) by any miss. |
+| D9 | The feedback bitmap gets three encodings (`RAW`, `ALL`, `RLE`) so the average packet meets the paper's 100-byte / 0.4 Mbit/s figure; the raw worst case is 225 bytes / 0.97 Mbit/s. |
+| D10 | Reference exactness is **recursive**: a concealed tile is exact only if the 3x3 neighbourhood it was warped from is itself exact. Without this the shadow is not equal to the receiver's state. |
+| D11 | Parity datagrams are marked by `tile_count == 0` as well as `fec_idx >= fec_k`, so a receiver can classify a datagram without reading the FEC fields. |
+| D12 | `payload_len` excludes the 16-byte tag; the on-wire datagram is `24 + payload_len + 16`. |
+| D13 | The oversize policy is a three-way hook (`kReject`, `kDropTile`, `kFragment`) rather than the paper's implicit "the encoder never does this". |
+| D14 | Feedback packets are AEAD protected with a direction-separated subkey (`dir = 1`), which the paper does not state; without it the uplink is a trivial forgery channel into the reference model. |
+| D15 | A late tile upgrades its shadow state from `CONCEALED` to `RECEIVED` only while the frame is inside the 8-frame shadow history. |

@@ -1,0 +1,275 @@
+#version 450
+//
+// NX Warp -- pose-warped predictor, Pass B shape (paper 3.2.1 / 3.2.3).
+//
+// One workgroup per 64x64 tile, 256 invocations, 16 output pixels each.
+// Bit-exact twin of warp/ref/warp_ref.cpp. Every line below has a counterpart
+// there and the two MUST agree on every bit of every pixel.
+//
+// Portability rules (paper 3.2.6):
+//   * no subgroup ops at all -- the only cross-lane exchange is the four
+//     corner coordinates, which go through shared memory with one barrier
+//   * never assume the workgroup is one subgroup
+//   * no shaderInt64: 64-bit intermediates are (hi,lo) uint pairs built with
+//     umulExtended (OpUMulExtended, core SPIR-V)
+//   * no float anywhere on this path
+//   * no hardware sampler: explicit integer loads only, because sampler weight
+//     precision is vendor-specific and the encoder runs on different silicon
+//     than the decoder (paper 3.2.3)
+//   * same SPIR-V binary on every vendor, no #ifdefs
+//
+// SPDX-License-Identifier: Apache-2.0
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+// --- normative constants, mirror of nxvc/warp.h ---------------------------
+const int  Q_NUM        = 21;
+const int  Q_DEN        = 29;
+const int  Q_CORNER     = 6;
+const int  Q_MV         = 2;
+const int  Q_SAMPLE     = 4;
+const int  DIV_SHIFT    = Q_CORNER + Q_DEN - Q_NUM;   // 14
+const int  TILE         = 64;
+const int  CORNER_CLAMP = 1 << 18;
+const int  DEN_MIN      = 1 << 28;
+const int  DEN_MAX      = 1 << 30;
+
+const int  FILTER_BILINEAR   = 0;
+const int  FILTER_CATMULLROM = 1;
+const int  MODE_WARP   = 0;
+const int  MODE_STATIC = 1;
+
+// Catmull-Rom taps over 64, symmetric, each row sums to exactly 64.
+const int CR[16][4] = int[16][4](
+    int[4](  0,  64,   0,   0),
+    int[4]( -2,  64,   2,   0),
+    int[4]( -3,  61,   6,   0),
+    int[4]( -4,  59,  10,  -1),
+    int[4]( -5,  56,  15,  -2),
+    int[4]( -5,  51,  20,  -2),
+    int[4]( -5,  47,  25,  -3),
+    int[4]( -4,  41,  30,  -3),
+    int[4]( -4,  36,  36,  -4),
+    int[4]( -3,  30,  41,  -4),
+    int[4]( -3,  25,  47,  -5),
+    int[4]( -2,  20,  51,  -5),
+    int[4]( -2,  15,  56,  -5),
+    int[4]( -1,  10,  59,  -4),
+    int[4](  0,   6,  61,  -3),
+    int[4](  0,   2,  64,  -2)
+);
+
+// --- bindings -------------------------------------------------------------
+
+struct TileParam {
+    int h[9];     // Q10.21 rows 0/1, Q2.29 row 2
+    int ox;
+    int oy;
+    int tx;       // tile origin x, in samples
+    int ty;
+    int mvx;      // Q.2
+    int mvy;      // Q.2
+    int filt;
+    int mode;
+    int pad0;
+    int pad1;
+    int pad2;
+};
+
+layout(std430, set = 0, binding = 0) readonly buffer RefBuf {
+    uint refPix[];   // one packed RGBA8 texel per element
+};
+layout(std430, set = 0, binding = 1) writeonly buffer OutBuf {
+    uint outPix[];   // tileIdx*4096 + v*64 + u
+};
+layout(std430, set = 0, binding = 2) readonly buffer ParamBuf {
+    TileParam params[];
+};
+
+layout(push_constant) uniform Push {
+    int ref_w;
+    int ref_h;
+    int ref_stride;   // in texels
+    int max_value;
+} pc;
+
+shared ivec2 sCorner[4];
+
+// --- emulated 64-bit ------------------------------------------------------
+// u64 is (x = lo, y = hi).
+
+uvec2 umul_ext(uint a, uint b) {
+    uint msb, lsb;
+    umulExtended(a, b, msb, lsb);   // OpUMulExtended
+    return uvec2(lsb, msb);
+}
+
+uvec2 imul_ext(int a, int b) {
+    uvec2 r = umul_ext(uint(a), uint(b));
+    // signed_hi = unsigned_hi - (a<0 ? b : 0) - (b<0 ? a : 0)
+    if (a < 0) r.y -= uint(b);
+    if (b < 0) r.y -= uint(a);
+    return r;
+}
+
+uvec2 add64(uvec2 a, uvec2 b) {
+    uint lo = a.x + b.x;
+    uint hi = a.y + b.y + ((lo < a.x) ? 1u : 0u);
+    return uvec2(lo, hi);
+}
+
+uvec2 neg64(uvec2 a) {
+    uint lo = ~a.x + 1u;
+    uint hi = ~a.y + ((lo == 0u) ? 1u : 0u);
+    return uvec2(lo, hi);
+}
+
+uvec2 shl64(uvec2 a, uint n) {
+    if (n == 0u) return a;
+    return uvec2(a.x << n, (a.y << n) | (a.x >> (32u - n)));
+}
+
+uvec2 from_i32(int v) {
+    return uvec2(uint(v), (v < 0) ? 0xffffffffu : 0u);
+}
+
+// Fixed 32-iteration restoring division, branchless.
+// Precondition: d != 0, n.hi < d, d < 2^30.
+uint warp_div(uvec2 n, uint d) {
+    uint rem = n.y;
+    uint q = 0u;
+    for (int k = 31; k >= 0; --k) {
+        rem = (rem << 1) | ((n.x >> uint(k)) & 1u);
+        uint ge = (rem >= d) ? 1u : 0u;
+        rem -= ge * d;
+        q |= ge << uint(k);
+    }
+    return q;
+}
+
+// --- step 1: corners ------------------------------------------------------
+
+int corner_component(int h_a, int h_b, int h_c, int cx, int cy, int den, int origin) {
+    uvec2 num = add64(add64(imul_ext(h_a, cx), imul_ext(h_b, cy)), from_i32(h_c));
+
+    bool neg = (num.y & 0x80000000u) != 0u;
+    uvec2 mag = neg ? neg64(num) : num;
+    mag = shl64(mag, uint(DIV_SHIFT));
+    mag = add64(mag, from_i32(den >> 1));   // round half away from zero
+
+    uint ud = uint(den);
+    int v;
+    if (mag.y >= ud) {
+        v = neg ? -CORNER_CLAMP : CORNER_CLAMP;
+    } else {
+        uint q = warp_div(mag, ud);
+        v = neg ? -int(q) : int(q);
+    }
+    v += origin << Q_CORNER;
+    return clamp(v, -CORNER_CLAMP, CORNER_CLAMP);
+}
+
+void compute_corner(int i, TileParam p) {
+    if (p.mode == MODE_STATIC) {
+        sCorner[i] = ivec2((p.tx + (((i & 1) != 0) ? TILE : 0)) << Q_CORNER,
+                           (p.ty + (((i >> 1) != 0) ? TILE : 0)) << Q_CORNER);
+        return;
+    }
+    int cx = p.tx + (((i & 1) != 0) ? TILE : 0) - p.ox;
+    int cy = p.ty + (((i >> 1) != 0) ? TILE : 0) - p.oy;
+
+    uvec2 d64 = add64(add64(imul_ext(p.h[6], cx), imul_ext(p.h[7], cy)), from_i32(p.h[8]));
+    int den = int(d64.x);
+    bool den_ok = (d64.y == ((den < 0) ? 0xffffffffu : 0u)) && den >= DEN_MIN && den < DEN_MAX;
+    if (!den_ok) {
+        sCorner[i] = ivec2(CORNER_CLAMP, CORNER_CLAMP);
+        return;
+    }
+    sCorner[i] = ivec2(corner_component(p.h[0], p.h[1], p.h[2], cx, cy, den, p.ox),
+                       corner_component(p.h[3], p.h[4], p.h[5], cx, cy, den, p.oy));
+}
+
+// --- step 2: in-tile bilinear interpolation of the corner coordinates -----
+
+int bilerp_corner(int v00, int v10, int v01, int v11, int u, int v) {
+    int top = v00 * (TILE - u) + v10 * u;
+    int bot = v01 * (TILE - u) + v11 * u;
+    int acc = top * (TILE - v) + bot * v;
+    return (acc + (TILE * TILE / 2)) >> 12;   // OpShiftRightArithmetic
+}
+
+// --- step 4: filters ------------------------------------------------------
+
+ivec4 fetch(int x, int y) {
+    x = clamp(x, 0, pc.ref_w - 1);
+    y = clamp(y, 0, pc.ref_h - 1);
+    uint t = refPix[y * pc.ref_stride + x];
+    return ivec4(int(t & 0xffu), int((t >> 8) & 0xffu), int((t >> 16) & 0xffu),
+                 int((t >> 24) & 0xffu));
+}
+
+ivec4 sample_bilinear(int ix, int iy, int fx, int fy) {
+    int gx = 16 - fx;
+    int gy = 16 - fy;
+    ivec4 acc = gx * gy * fetch(ix, iy) + fx * gy * fetch(ix + 1, iy) +
+                gx * fy * fetch(ix, iy + 1) + fx * fy * fetch(ix + 1, iy + 1);
+    return (acc + 128) >> 8;
+}
+
+ivec4 sample_catmullrom(int ix, int iy, int fx, int fy) {
+    ivec4 acc = ivec4(0);
+    for (int j = 0; j < 4; ++j) {
+        ivec4 row = ivec4(0);
+        for (int i = 0; i < 4; ++i) {
+            row += CR[fx][i] * fetch(ix - 1 + i, iy - 1 + j);
+        }
+        acc += CR[fy][j] * row;
+    }
+    return (acc + 2048) >> 12;
+}
+
+// --- entry ----------------------------------------------------------------
+
+void main() {
+    uint tileIdx = gl_WorkGroupID.x;
+    TileParam p = params[tileIdx];
+
+    if (gl_LocalInvocationID.x < 4u) {
+        compute_corner(int(gl_LocalInvocationID.x), p);
+    }
+    barrier();
+    memoryBarrierShared();
+
+    ivec2 c0 = sCorner[0];
+    ivec2 c1 = sCorner[1];
+    ivec2 c2 = sCorner[2];
+    ivec2 c3 = sCorner[3];
+
+    int mvx_q6 = p.mvx << (Q_CORNER - Q_MV);
+    int mvy_q6 = p.mvy << (Q_CORNER - Q_MV);
+
+    for (uint n = 0u; n < 16u; ++n) {
+        uint idx = gl_LocalInvocationID.x + n * 256u;   // 4096 pixels per tile
+        int u = int(idx & 63u);
+        int v = int(idx >> 6);
+
+        int xq6 = bilerp_corner(c0.x, c1.x, c2.x, c3.x, u, v) + mvx_q6;
+        int yq6 = bilerp_corner(c0.y, c1.y, c2.y, c3.y, u, v) + mvy_q6;
+
+        // Q.6 -> Q.4, round half up (paper 2.2 step 4).
+        int xq4 = (xq6 + 2) >> (Q_CORNER - Q_SAMPLE);
+        int yq4 = (yq6 + 2) >> (Q_CORNER - Q_SAMPLE);
+
+        int ix = xq4 >> Q_SAMPLE;
+        int iy = yq4 >> Q_SAMPLE;
+        int fx = xq4 & 15;
+        int fy = yq4 & 15;
+
+        ivec4 s = (p.filt == FILTER_CATMULLROM) ? sample_catmullrom(ix, iy, fx, fy)
+                                                : sample_bilinear(ix, iy, fx, fy);
+        s = clamp(s, ivec4(0), ivec4(pc.max_value));
+
+        outPix[tileIdx * 4096u + idx] =
+            uint(s.x) | (uint(s.y) << 8) | (uint(s.z) << 16) | (uint(s.w) << 24);
+    }
+}
