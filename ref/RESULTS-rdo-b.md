@@ -290,16 +290,21 @@ ladder owns. `--wm auto` asks for it.
 
 ### The presets
 
-BD-rate and encode time against `medium`, 4:4:4 intra, QP 12/18/24/30:
+BD-rate against **v1.4** and encode time against **v1.4**, on both gates:
 
-| preset | BD-rate vs medium | encode time vs medium | vs v1.4 |
-|---|---|---|---|
-| `fast` | +0.38 % | 0.55x | 0.33x |
-| `medium` | -- | 1.0x | 0.60x |
-| `slow` | -0.99 % | 3.5x | 2.1x |
+| preset | Phase 1, 4:4:4 | encode | kill test A, 4:4:4 | encode |
+|---|---|---|---|---|
+| `fast` | -1.2 % | 0.33x | **-2.79 %** | 0.58x |
+| `medium` | **-1.55 %** | 0.57x | **-9.82 %** | 0.81x |
+| `slow` | -2.5 % | 2.0x | **-11.76 %** | 1.7-2.1x |
+
+(Phase 1 `fast` and `slow` are `medium` composed with the +0.38 % / -0.99 % and
+0.55x / 3.5x measured against `medium` on the four-frame ladder; the kill-test
+column is measured directly against v1.4 over 16 frames.)
 
 `slow` is inside the "under 3x today's encode time" budget the package was
-given, and `medium` is 0.6x of it.
+given -- on the inter path it is 1.7-2.1x and reaches **-11.8 %** -- and
+`medium`, the default, is *faster* than v1.4 on both gates.
 
 ---
 
@@ -458,6 +463,9 @@ before: **-9.72 %**. Encode time **0.921x**.
 | Phase 1 gate, 4:2:0 | +60.77 % | +56.31 % | **-1.44 %** | 0.611x |
 | Kill test A, 4:4:4 | +383.41 % vs x265-p | +334.54 % | **-9.82 %** | 0.814x |
 | Kill test A, 4:2:0 | +306.78 % | +265.76 % | **-9.72 %** | 0.921x |
+
+`--preset slow` takes the kill test to **-11.76 %** at 1.7-2.1x the v1.4
+encode time (section 7).
 
 Neither gate's verdict changes: the Phase 1 gate needs 5.8 dB it does not have
 and the kill test needs a different codec, not a different search. Both move in
