@@ -52,7 +52,9 @@ by encoding the same frame with the v1.4 binary and `cmp` -- and plain
 | **4:2:0** v1.5 (**shipped default**) | **+107.47 %** | **-7.396 dB** | -9.410 dB at 100.0 Mbit/s | FAIL |
 
 On 4:4:4 the harness also ran the middle of that, `--split4 off`, which gives
-the cumulative decomposition in the anchor's units:
+the cumulative decomposition in the anchor's units. (The 4:2:0 middle row is
+not here: each harness row is a twenty-minute run and the machine was shared;
+the 4:2:0 per-tool numbers are the probe's, in section 2.)
 
 | 4:4:4, cumulative | BD-rate vs x264 intra | step |
 |---|---|---|
