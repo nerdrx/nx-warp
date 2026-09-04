@@ -264,6 +264,15 @@ NXVW_CONST kDirSchedBoth = 3;
 // The sub-tile is 4x4 blocks = 32x32 samples, so the predicate is a compare
 // of the block indices shifted by this.
 NXVW_CONST kDirSubTileLog2 = 2;
+NXVW_CONST kDirSubTile = 4;  // 1 << kDirSubTileLog2, blocks per sub-tile edge
+
+// Threads the kernel gives one 8x8 block during the INTRA_DIR wavefront.  The
+// transform's four-per-block mapping is not forced on the wavefront: the
+// residual is in shared memory by then, so the step is free to spread over as
+// many threads as it has blocks.  16 threads own two uints each -- rows 2j,
+// 2j+1 of one column pair -- which keeps every shared word owned by exactly
+// one thread, and 16 blocks x 16 threads is the 256-thread workgroup.
+NXVW_CONST kDirLanesPerBlock = 16;
 
 // [SYN] 7.4 predictor rounding.  Every mode but 0 is a weighted average of
 // references already in [0, maxval], so no clamp is needed and none is

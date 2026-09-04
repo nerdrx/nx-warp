@@ -815,22 +815,28 @@ int wavefront_steps(int sched, int nb) {
     return (sched & 1) ? 2 * n - 1 : 3 * n - 2;
 }
 // Mean occupancy during the prediction step: nb*nb blocks spread over S
-// steps at 4 threads each, against the workgroup's 256.  SYNTAX.md 7.6's
-// 4.5 % is this at nb == 8, S == 22.
+// steps at kDirLanesPerBlock threads each, against the workgroup's 256, and
+// never more than 100 %.  SYNTAX.md 7.6's 4.5 % is this at nb == 8, S == 22
+// and the four-threads-per-block mapping the wavefront used to inherit from
+// the transform; reconstruct.comp now stages the residual in shared memory
+// and gives a block 16 threads, so the same schedule runs at 4x that.
 double wavefront_occupancy_pct(int sched, int nb) {
-    return 100.0 * (double)(nb * nb) /
-           (64.0 * (double)wavefront_steps(sched, nb));
+    double per_step = (double)(nb * nb) / (double)wavefront_steps(sched, nb);
+    double pct = 100.0 * per_step * 16.0  /* nxvw::kDirLanesPerBlock */ / 256.0;
+    return pct > 100.0 ? 100.0 : pct;
 }
 
 // Barriers reconstruct.comp actually executes for one tile, counted off the
 // kernel rather than off the idealized schedule.  Per plane: one after the DC
 // dequantize, two more for the second-level IDCT when nb == 8, one after the
 // block means, two for the transform's row/column passes, and then either one
-// prediction barrier (v1) or one per wavefront step (plus one for the layered
-// form's recon -> samples pass).
+// prediction barrier (v1) or one to stage the residual in the sample store
+// plus one per wavefront step (plus one for the layered form's recon ->
+// samples pass).  This is the worst case: [sparse] a plane whose DC unit
+// coded nothing skips the two second-level IDCT barriers.
 int barriers_per_plane(int nb, int dirSteps, bool layer) {
     int b = 4 + (nb == 8 ? 2 : 0) + 2;
-    b += dirSteps > 0 ? dirSteps + (layer ? 1 : 0) : 1;
+    b += dirSteps > 0 ? 1 + dirSteps + (layer ? 1 : 0) : 1;
     return b;
 }
 int barriers_per_tile(int sched, bool c444, bool dir, bool layer) {

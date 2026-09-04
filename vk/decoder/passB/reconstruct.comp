@@ -283,84 +283,127 @@ int dirStepCount(int nb) {
     return (kDirSched & kDirSchedNoAboveRight) != 0 ? 2 * n - 1 : 3 * n - 2;
 }
 
-// P[j*8 + i] for the thread's two columns of one 8x8 block.  `i0` is the
-// first of the two columns inside the block.  Every mode but kIntraDcPlane is
-// a weighted average of references that are already in [0, maxval], so no
-// clamp is needed and none is applied.
-void predictCols(int mode, int A[kIntraRefs], int L[kIntraRefs], int nb,
-                 int bx, int by, int i0, out int P0[8], out int P1[8]) {
-    // A[0] / L[0] are the corner; the spec's A[k] is A[1 + k].
+// ------------------------------------------- enumerating a step's blocks
+// dirStepOf() says which step a block belongs to; these invert it, so the
+// step can be spread over as many threads as it has work instead of over the
+// 4-per-block mapping the transform needs.  The transform's mapping is right
+// for the transform and wrong here: at kDirSched 0 a step of an 8x8-block
+// plane holds four blocks, which is 16 of 256 threads.
+//
+// Without the sub-tile restriction the grid is nb x nb and there is one
+// sub-tile.  With it, every 4x4 group of blocks runs the same schedule at the
+// same time, so the schedule is over a min(nb, 4) inner grid repeated across
+// (nb + 3) / 4 sub-tiles per row -- which is also why the sub-tile schedules
+// have the most work per step.
+int dirInnerEdge(int nb) {
+    return (kDirSched & kDirSchedSubTile) != 0 ? min(nb, 4) : nb;
+}
+// log2 of the sub-tiles per row.  A plane's nb is 1, 2, 4 or 8 ([SYN] 4.2),
+// so the sub-tile grid is 1x1 or 2x2 and every division by it is a shift.
+int dirSubTileGridLog2(int nb) {
+    return ((kDirSched & kDirSchedSubTile) != 0 && nb > kDirSubTile) ? 1 : 0;
+}
+// The inner rows `step` touches: sx + sy == step, or 2*sy + sx == step, with
+// both coordinates inside [0, n).
+int dirInnerFirstRow(int step, int n) {
+    int a = (kDirSched & kDirSchedNoAboveRight) != 0 ? step - (n - 1)
+                                                     : (step - n + 2) >> 1;
+    return max(a, 0);
+}
+int dirInnerLastRow(int step, int n) {
+    int b = (kDirSched & kDirSchedNoAboveRight) != 0 ? step : step >> 1;
+    return min(b, n - 1);
+}
+int dirStepBlocks(int step, int nb) {
+    int n = dirInnerEdge(nb);
+    int rows = dirInnerLastRow(step, n) - dirInnerFirstRow(step, n) + 1;
+    return max(rows, 0) << (2 * dirSubTileGridLog2(nb));
+}
+// The `g`-th block of `step`, 0 <= g < dirStepBlocks(step, nb).
+void dirBlockOfStep(int step, int g, int nb, out int bx, out int by) {
+    int n = dirInnerEdge(nb);
+    int gl = dirSubTileGridLog2(nb);
+    int gi = g >> (2 * gl);
+    int si = g & ((1 << (2 * gl)) - 1);
+    int sy = dirInnerFirstRow(step, n) + gi;
+    int sx = (kDirSched & kDirSchedNoAboveRight) != 0 ? step - sy
+                                                      : step - 2 * sy;
+    bx = ((si & ((1 << gl) - 1)) << kDirSubTileLog2) + sx;
+    by = ((si >> gl) << kDirSubTileLog2) + sy;
+}
+
+// P[j*8 + i] for one sample of one 8x8 block, [SYN] 7.4.  Every mode but
+// kIntraDcPlane is a weighted average of references that are already in
+// [0, maxval], so no clamp is needed and none is applied.  A[0] / L[0] are
+// the corner; the spec's A[k] is A[1 + k].
+int predictOne(int mode, int A[kIntraRefs], int L[kIntraRefs], int nb,
+               int bx, int by, int i, int j) {
     int tl = A[0];
-    for (int j = 0; j < 8; ++j) {
-        for (int h = 0; h < 2; ++h) {
-            int i = i0 + h;
-            int v = 0;
-            if (mode == kIntraDcPlane) {
-                v = dirBase(nb, bx * 8 + i, by * 8 + j);
-            } else if (mode == kIntraDc) {
-                int sum = 0;
-                for (int k = 0; k < 8; ++k) sum += A[1 + k] + L[1 + k];
-                v = (sum + kIntraDcRound) >> kIntraDcShift;
-            } else if (mode == kIntraPlanar) {
-                v = ((7 - i) * L[1 + j] + (i + 1) * A[1 + 8] +
-                     (7 - j) * A[1 + i] + (j + 1) * L[1 + 8] +
-                     kIntraPlanarRound) >> kIntraPlanarShift;
-            } else if (mode == kIntraH) {
-                v = L[1 + j];
-            } else if (mode == kIntraV) {
-                v = A[1 + i];
-            } else if (mode == kIntraDdl) {
-                int k = i + j;
-                v = (k == 14)
-                        ? (A[1 + 14] + 3 * A[1 + 15] + kIntraTap3Round) >> kIntraTap3Shift
-                        : (A[1 + k] + 2 * A[1 + k + 1] + A[1 + k + 2] +
-                           kIntraTap3Round) >> kIntraTap3Shift;
-            } else if (mode == kIntraDdr) {
-                if (i > j) {
-                    int k = i - j;
-                    v = (A[k - 1] + 2 * A[k] + A[1 + k] + kIntraTap3Round) >>
-                        kIntraTap3Shift;
-                } else if (i < j) {
-                    int k = j - i;
-                    v = (L[k - 1] + 2 * L[k] + L[1 + k] + kIntraTap3Round) >>
-                        kIntraTap3Shift;
-                } else {
-                    v = (A[1] + 2 * tl + L[1] + kIntraTap3Round) >> kIntraTap3Shift;
-                }
-            } else if (mode == kIntraVr) {
-                int z = 2 * i - j;
-                int k = i - (j >> 1);
-                if (z >= 0 && (z & 1) == 0)
-                    v = (A[k] + A[1 + k] + kIntraTap2Round) >> kIntraTap2Shift;
-                else if (z >= 0)
-                    v = (A[k - 1] + 2 * A[k] + A[1 + k] + kIntraTap3Round) >>
-                        kIntraTap3Shift;
-                else if (z == -1)
-                    v = (L[1] + 2 * tl + A[1] + kIntraTap3Round) >> kIntraTap3Shift;
-                else {
-                    int q = j - 2 * i;
-                    v = (L[q] + 2 * L[q - 1] + L[q - 2] + kIntraTap3Round) >>
-                        kIntraTap3Shift;
-                }
-            } else {  // kIntraHd
-                int z = 2 * j - i;
-                int k = j - (i >> 1);
-                if (z >= 0 && (z & 1) == 0)
-                    v = (L[k] + L[1 + k] + kIntraTap2Round) >> kIntraTap2Shift;
-                else if (z >= 0)
-                    v = (L[k - 1] + 2 * L[k] + L[1 + k] + kIntraTap3Round) >>
-                        kIntraTap3Shift;
-                else if (z == -1)
-                    v = (A[1] + 2 * tl + L[1] + kIntraTap3Round) >> kIntraTap3Shift;
-                else {
-                    int q = i - 2 * j;
-                    v = (A[q] + 2 * A[q - 1] + A[q - 2] + kIntraTap3Round) >>
-                        kIntraTap3Shift;
-                }
-            }
-            if (h == 0) P0[j] = v; else P1[j] = v;
+    int v = 0;
+    if (mode == kIntraDcPlane) {
+        v = dirBase(nb, bx * 8 + i, by * 8 + j);
+    } else if (mode == kIntraDc) {
+        int sum = 0;
+        for (int k = 0; k < 8; ++k) sum += A[1 + k] + L[1 + k];
+        v = (sum + kIntraDcRound) >> kIntraDcShift;
+    } else if (mode == kIntraPlanar) {
+        v = ((7 - i) * L[1 + j] + (i + 1) * A[1 + 8] +
+             (7 - j) * A[1 + i] + (j + 1) * L[1 + 8] +
+             kIntraPlanarRound) >> kIntraPlanarShift;
+    } else if (mode == kIntraH) {
+        v = L[1 + j];
+    } else if (mode == kIntraV) {
+        v = A[1 + i];
+    } else if (mode == kIntraDdl) {
+        int k = i + j;
+        v = (k == 14)
+                ? (A[1 + 14] + 3 * A[1 + 15] + kIntraTap3Round) >> kIntraTap3Shift
+                : (A[1 + k] + 2 * A[1 + k + 1] + A[1 + k + 2] +
+                   kIntraTap3Round) >> kIntraTap3Shift;
+    } else if (mode == kIntraDdr) {
+        if (i > j) {
+            int k = i - j;
+            v = (A[k - 1] + 2 * A[k] + A[1 + k] + kIntraTap3Round) >>
+                kIntraTap3Shift;
+        } else if (i < j) {
+            int k = j - i;
+            v = (L[k - 1] + 2 * L[k] + L[1 + k] + kIntraTap3Round) >>
+                kIntraTap3Shift;
+        } else {
+            v = (A[1] + 2 * tl + L[1] + kIntraTap3Round) >> kIntraTap3Shift;
+        }
+    } else if (mode == kIntraVr) {
+        int z = 2 * i - j;
+        int k = i - (j >> 1);
+        if (z >= 0 && (z & 1) == 0)
+            v = (A[k] + A[1 + k] + kIntraTap2Round) >> kIntraTap2Shift;
+        else if (z >= 0)
+            v = (A[k - 1] + 2 * A[k] + A[1 + k] + kIntraTap3Round) >>
+                kIntraTap3Shift;
+        else if (z == -1)
+            v = (L[1] + 2 * tl + A[1] + kIntraTap3Round) >> kIntraTap3Shift;
+        else {
+            int q = j - 2 * i;
+            v = (L[q] + 2 * L[q - 1] + L[q - 2] + kIntraTap3Round) >>
+                kIntraTap3Shift;
+        }
+    } else {  // kIntraHd
+        int z = 2 * j - i;
+        int k = j - (i >> 1);
+        if (z >= 0 && (z & 1) == 0)
+            v = (L[k] + L[1 + k] + kIntraTap2Round) >> kIntraTap2Shift;
+        else if (z >= 0)
+            v = (L[k - 1] + 2 * L[k] + L[1 + k] + kIntraTap3Round) >>
+                kIntraTap3Shift;
+        else if (z == -1)
+            v = (A[1] + 2 * tl + L[1] + kIntraTap3Round) >> kIntraTap3Shift;
+        else {
+            int q = i - 2 * j;
+            v = (A[q] + 2 * A[q - 1] + A[q - 2] + kIntraTap3Round) >>
+                kIntraTap3Shift;
         }
     }
+    return v;
 }
 
 // ================================================================= main
@@ -606,40 +649,67 @@ void main() {
             barrier();
         } else {
             // ------------------------------------------ [v3] the wavefront
-            // The residual is already in registers for every block; what has
-            // to be serialized is only the prediction and the add, because a
-            // block reads its neighbours' RECONSTRUCTION.  sPlane holds that
-            // running reconstruction -- in the layered form the reconstructed
-            // DC-plane residual, converted back to samples once the plane is
-            // finished (SYNTAX.md 7.5).
+            // What has to be serialized is only the prediction and the add,
+            // because a block reads its neighbours' RECONSTRUCTION.  sPlane
+            // holds that running reconstruction -- in the layered form the
+            // reconstructed DC-plane residual, converted back to samples once
+            // the plane is finished (SYNTAX.md 7.5).
             //
-            // Step counts and occupancy are SYNTAX.md 7.6's: 22 steps for an
-            // 8x8-block plane under the normative schedule, 15 without the
-            // above-right reference, 7 with 32x32 sub-tiles as well.
-            int myStep = live ? dirStepOf(bx, by) : -1;
+            // The residual goes into sPlane first, at exactly the positions
+            // the block will occupy.  That costs nothing in memory: a block's
+            // own 8x8 region holds its residual until its step and its
+            // reconstruction afterwards, and dirAt() never reads a region
+            // whose block is not done yet -- it reads `base` instead.  What
+            // it buys is that the wavefront no longer inherits the
+            // transform's four-threads-per-block mapping, which is what
+            // capped occupancy at 4.5 %: with the residual in shared memory
+            // the step can spread over as many threads as it has blocks.
+            if (live) {
+                int col0 = bx * 8 + 2 * sub;
+                for (int c = 0; c < 8; ++c) {
+                    int e = (by * 8 + c) * size + col0;
+                    sPlane[store + (e >> 1)] = pack16x2(res0[c], res1[c]);
+                }
+            }
+            barrier();
+
+            // kDirLanesPerBlock threads per block, each owning two uints:
+            // rows 2*jg and 2*jg+1 of column pair `cp`, so every shared word
+            // is still written by exactly one thread.
             int nsteps = dirStepCount(nb);
-            int blockMode = live
-                ? int((uModes.w[modeBase + p * NXVW_MODE_WORDS_PER_PLANE +
-                                bIdx / int(NXVW_MODES_PER_UINT)] >>
-                       (uint(bIdx % int(NXVW_MODES_PER_UINT)) * NXVW_MODE_BITS)) &
-                      NXVW_MODE_MASK)
-                : 0;
-            int i0 = 2 * sub;
+            int slot = tid / kDirLanesPerBlock;
+            int lane = tid - slot * kDirLanesPerBlock;
+            int cp = lane & 3, jg = lane >> 2;
+            int i0 = 2 * cp;
+            const int kSlots = 256 / kDirLanesPerBlock;
             for (int step = 0; step < nsteps; ++step) {
-                if (myStep == step) {
-                    int x0 = bx * 8, y0 = by * 8;
+                int nblocks = dirStepBlocks(step, nb);
+                for (int g = slot; g < nblocks; g += kSlots) {
+                    int wbx, wby;
+                    dirBlockOfStep(step, g, nb, wbx, wby);
+                    int x0 = wbx * 8, y0 = wby * 8;
                     int A[kIntraRefs], L[kIntraRefs];
-                    A[0] = dirAt(store, size, nb, bx, by, x0 - 1, y0 - 1);
+                    A[0] = dirAt(store, size, nb, wbx, wby, x0 - 1, y0 - 1);
                     L[0] = A[0];
                     for (int k = 0; k < 16; ++k) {
-                        A[1 + k] = dirAt(store, size, nb, bx, by, x0 + k, y0 - 1);
-                        L[1 + k] = dirAt(store, size, nb, bx, by, x0 - 1, y0 + k);
+                        A[1 + k] = dirAt(store, size, nb, wbx, wby, x0 + k, y0 - 1);
+                        L[1 + k] = dirAt(store, size, nb, wbx, wby, x0 - 1, y0 + k);
                     }
-                    int P0[8], P1[8];
-                    predictCols(blockMode, A, L, nb, bx, by, i0, P0, P1);
-                    for (int c = 0; c < 8; ++c) {
+                    int b = wby * nb + wbx;
+                    int blockMode =
+                        int((uModes.w[modeBase + p * NXVW_MODE_WORDS_PER_PLANE +
+                                      b / int(NXVW_MODES_PER_UINT)] >>
+                             (uint(b % int(NXVW_MODES_PER_UINT)) * NXVW_MODE_BITS)) &
+                            NXVW_MODE_MASK);
+                    for (int h = 0; h < 2; ++h) {
+                        int c = 2 * jg + h;
                         int yy = y0 + c;
-                        int v0 = P0[c] + res0[c], v1 = P1[c] + res1[c];
+                        int e = yy * size + x0 + i0;
+                        uint packed = sPlane[store + (e >> 1)];
+                        int v0 = predictOne(blockMode, A, L, nb, wbx, wby, i0, c) +
+                                 unpack16(packed, 0);
+                        int v1 = predictOne(blockMode, A, L, nb, wbx, wby, i0 + 1, c) +
+                                 unpack16(packed, 1);
                         int r0, r1;
                         if (pc.p.dirLayer != 0) {
                             // The mode predicts the DC-plane residual; what is
@@ -652,7 +722,6 @@ void main() {
                             r0 = clamp(v0, 0, maxval);
                             r1 = clamp(v1, 0, maxval);
                         }
-                        int e = yy * size + x0 + i0;
                         sPlane[store + (e >> 1)] = pack16x2(r0, r1);
                     }
                 }
