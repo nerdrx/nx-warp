@@ -121,7 +121,46 @@ and a syntax cost of two bits per tile.
 
 ### 4:2:0
 
-<!--RESULTS-INTRA-420-->
+| | before (`--xform 8`) | after (`--xform auto`) | change |
+|---|---|---|---|
+| **BD-rate vs x264-intra, PSNR-Y** | **+40.62 %** | **+19.50 %** | **-21.1 points** |
+| BD-PSNR | -3.437 dB | -1.909 dB | **+1.53 dB** |
+| BD-rate on SSIM-Y | +73.76 % | +46.68 % | -27.1 points |
+| gate: worst deficit | -3.459 dB | **-1.749 dB** | **+1.71 dB** |
+| gate: mean deficit | -2.449 dB | **-1.198 dB** | +1.25 dB |
+
+| QP | before Mbit/s | before PSNR-Y | after Mbit/s | after PSNR-Y | rate | quality |
+|---|---|---|---|---|---|---|
+| 0 | 200.0 | 57.29 | 182.6 | 57.74 | -8.7 % | +0.45 dB |
+| 4 | 153.4 | 55.35 | 136.5 | 55.66 | -11.0 % | +0.31 dB |
+| 8 | 119.3 | 53.31 | 105.1 | 53.57 | -11.9 % | +0.26 dB |
+| 12 | 94.0 | 50.63 | 82.5 | 51.03 | -12.2 % | +0.40 dB |
+| 16 | 74.2 | 47.63 | 64.3 | 48.07 | -13.3 % | +0.44 dB |
+| 20 | 56.2 | 44.49 | 48.2 | 44.93 | -14.2 % | +0.44 dB |
+| 24 | 42.9 | 41.45 | 36.0 | 41.69 | -16.1 % | +0.24 dB |
+
+```
+  Phase 1 gate (PAPER.md 3.11: within 1.0 dB of x264 intra, 100-400 Mbit):
+    FAIL: worst -3.459 dB at 101.1 Mbit/s, mean -2.449 dB over 100.0-200.0 Mbit/s     <- before
+
+  Phase 1 gate (PAPER.md 3.11: within 1.0 dB of x264 intra, 100-400 Mbit):
+    FAIL: worst -1.749 dB at 101.0 Mbit/s, mean -1.198 dB over 100.0-182.6 Mbit/s     <- after
+```
+
+4:2:0 gains more than 4:4:4 does, and it is the configuration the gate is
+closest to meeting: **-1.749 dB worst and -1.198 dB mean against a -1.0 dB
+criterion.** The chroma plane of a 4:2:0 tile is 32x32, so `xform_size == 2`
+codes each chroma plane as a *single* 32x32 block with a one-value DC plane --
+the cheapest possible description of a smooth chroma plane, and smooth chroma
+is most of what a 4:2:0 tile's chroma is.
+
+### Summary
+
+| | 4:4:4 before | 4:4:4 after | 4:2:0 before | 4:2:0 after |
+|---|---|---|---|---|
+| BD-rate vs x264 intra | +64.84 % | **+45.95 %** | +40.62 % | **+19.50 %** |
+| gate mean deficit | -3.835 dB | **-2.844 dB** | -2.449 dB | **-1.198 dB** |
+| gate verdict | FAIL | FAIL | FAIL | FAIL |
 
 ---
 
