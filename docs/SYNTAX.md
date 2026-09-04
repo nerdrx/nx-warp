@@ -156,6 +156,8 @@ interleaved UV.
 | 21 | `CTX_V2` | the 16-context entropy model (section 9.3) |
 | 22 | `SIGN_HIDE` | sign data hiding (section 9.7) |
 | 23 | `FILTER_CATMULL_ROM` | Catmull-Rom interpolation in the warp instead of bilinear. **Not defined for version 1** |
+| 24 | `WARP_DC` | a skipped tile may carry a `warp_dc()` low-frequency correction (section 13.9) |
+| 25 | `MV_QUAD` | a tile may carry four motion vectors, one per quadrant (section 13.8) |
 
 Bits 17, 21 and 22 are independent: any subset may be set. `SIGN_HIDE` is
 mutually exclusive with `LOSSLESS` (bit 5) -- hiding a sign spends one level
@@ -173,7 +175,12 @@ MUST refuse a stream that sets either, with a `VERSION` status. Because bit 23
 is refused, **every conforming version 1 stream is bilinear**, in every
 profile, and `profile` selects nothing (section 13.4).
 
-Bits 24-63 are reserved and must be zero. Capability negotiation is an
+`WARP_DC` (bit 24) and `MV_QUAD` (bit 25) each require `INTER` **and** `WARP`;
+a stream setting either without both is `BITSTREAM`. Both are inert unless a
+tile uses them, so a stream that sets one and never uses it is legal and
+decodes identically to one that does not set it.
+
+Bits 26-63 are reserved and must be zero. Capability negotiation is an
 intersection: the sender only sets bits the receiver offered.
 
 ---
@@ -375,11 +382,29 @@ For each tile row `row = 0 .. rows - 1` and each eye, in that order:
 | offset | size | field |
 |---|---|---|
 | 0 | u16 | `frame_number` (must equal the frame header's) |
-| 2 | u8 | `row_index` (must equal `row`) |
-| 3 | u8 | `tile_count` |
+| 2 | u8 | bits 0-6 `tile_count`; bit 7 `dc_present` |
+| 3 | u8 | *(this row is `row_index`; see the note below)* |
 | 4 | u64 | `skip_bitmap` |
+| 12 | u64 | `dc_bitmap`, **iff `dc_present`** |
+| 20 | | `warp_dc()` records, **iff `dc_present`** |
 
-followed by `tile_count` tile structures.
+followed by `tile_count` tile structures. The two fields at offsets 2 and 3 are,
+in order, `row_index` (u8, must equal `row`) and the `tile_count` byte; the
+table above lists them by what they carry.
+
+`tile_count` is seven bits because `cols_per_eye <= 64`, so the eighth was never
+reachable. Bit 7 is `dc_present`: it requires tool bit 24 `WARP_DC`, and when
+it is set a `u64 dc_bitmap` follows `skip_bitmap`, then one `warp_dc()` record
+(section 13.9) for each set bit of `dc_bitmap`, in **ascending column order**,
+before the first tile structure. A decoder must reject a stream in which
+`dc_present` is set without the tool bit, in which `dc_bitmap` is zero while
+`dc_present` is set (that stream has two encodings and only the short one is
+legal), or in which `dc_bitmap` has a bit set that `skip_bitmap` does not: a
+tile carrying a correction **is** a skipped tile, and the correction is the
+only thing that distinguishes it.
+
+A row that carries no correction carries no `dc_bitmap`, so `WARP_DC` costs a
+stream that does not use it exactly nothing.
 
 Bit *i* of `skip_bitmap` set means tile *i* of this row **of this eye** is
 `WARP_SKIP` and is **not** transmitted. `tile_count` must equal the number of
@@ -438,15 +463,18 @@ Two little-endian u32 words. Bits are listed LSB first.
 | 23 | `tskip` | the whole tile skips the transform |
 | 24-25 | `wgt` | enhancement-layer blend weight: 0, 1/4, 1/2, 3/4 (of the spatial hypothesis) |
 | 26-27 | `wm_id` | per-tile weighting matrix: 0 = the frame's, 1-3 = built-in matrix `wm_id` |
-| 28-31 | reserved | must be 0 |
+| 28 | `mv_quad` | four quarter-pel vector deltas follow the vector (section 13.8) |
+| 29-31 | reserved | must be 0 |
 
 Then, in this order:
 
 1. if `mv_present`:
    * `u16 disparity` if `mode == STEREO`
    * `i8 mv_x, i8 mv_y` otherwise
-2. `u8 alpha_value` if `alpha_mode == 1`
-3. `payload_len` bytes of rANS payload
+2. if `mv_quad`: **8 bytes**, four `i8` pairs `dmv_x, dmv_y` in quadrant order
+   (section 13.8)
+3. `u8 alpha_value` if `alpha_mode == 1`
+4. `payload_len` bytes of rANS payload
 
 `mv_x` and `mv_y` are the tile's motion vector **itself**, in quarter samples
 (Q.2), range `[-32, +31.75]` samples. They are **not** a delta from the tile's
@@ -476,7 +504,7 @@ clip plane of every headset. The field is two bytes, exactly as
 `mv_x` + `mv_y`, so no structure changes size.
 
 Constraints: `res_level != 3`; `alpha_mode != 3`; `nsub_log2 <= 5`;
-`mode <= 4`; word0 bit 3 and word1 bits 28-31 zero; `chroma444` may only be 1 if
+`mode <= 4`; word0 bit 3 and word1 bits 29-31 zero; `chroma444` may only be 1 if
 `chroma_format == 1`; `alpha_mode != 0` requires `alpha_present`; `tile_index`
 must equal the tile's position in the row; `eye` must equal the eye derived from
 the tile's position in the frame (section 3.3); `wm_id != 0` requires the
@@ -489,7 +517,10 @@ Inter constraints: `mode != INTRA` requires the `INTER` tool bit;
 frame; `mode == STEREO` requires the `STEREO` tool bit, `eye == 1` and
 `mv_present == 1`, and its `disparity` bits 15:12 must be zero.
 `ref_sel == 3` is reserved. For `mode == INTRA` and `mode == STEREO`, `ref_sel`
-must be 0 and **is ignored** by the decoding process.
+must be 0 and **is ignored** by the decoding process. `mv_quad` requires tool
+bit 25 `MV_QUAD`, `mv_present == 1`, and `mode == WARP_MV` or
+`mode == STATIC_MV`: it is a set of deltas from the tile vector, so a mode
+without a tile vector has nothing for it to be a delta from.
 
 `ref_sel` is **authoritative**; the transport's `ref_delta` is an advisory copy
 of it with one extra value, 3, meaning "no temporal reference", which is what
@@ -1653,7 +1684,156 @@ temporally, from its own eye's previous frame, because the left eye of the
   samples are the library's, bit for bit, and both sides of the codec do the
   same thing, so it is exact; what differs from a hypothetical 32x32 kernel is
   only the span the in-tile corner interpolation is fitted over. A GPU Pass B
-  doing chroma natively at 32x32 must be given the same corner basis.
+  doing chroma natively at 32x32 must be given the same corner basis -- and,
+  with `mv_quad`, the quadrant split of section 13.8, which is half the
+  plane's own extent and not half the kernel's.
+
+### 13.8 Four vectors per tile (tool bit 25)
+
+A tile with `mv_quad` carries, after its two vector bytes, **eight more**: four
+`i8` pairs, one per 32x32 quadrant of the tile, in the order
+
+| index | quadrant of the tile |
+|---|---|
+| 0 | top-left |
+| 1 | top-right |
+| 2 | bottom-left |
+| 3 | bottom-right |
+
+Each pair is a **delta** from the tile's own vector, in quarter luma samples.
+The vector of quadrant *q* is
+
+```
+mvq_x[q] = mv_x + dmv_x[q]
+mvq_y[q] = mv_y + dmv_y[q]
+```
+
+and **a decoder must reject** (`BITSTREAM`) a tile in which any `mvq` component
+leaves `[-128, +127]`. That is the tile vector's own envelope, so one range
+rule covers every vector the predictor ever sees, and the quadrant vectors are
+exactly as expressible as a tile vector is.
+
+The vectors are deltas rather than four absolute vectors because they are a
+refinement of a vector the same tile header already carries; nothing outside
+this tile is read, so section 4.1's rule that a tile is independently
+parseable is untouched. This is not the case Annex D **D-8** decided: D-8 is
+about deltas from *stored per-tile state*, which a concealed frame invalidates.
+
+**The geometry does not change.** Section 13.3 step 3 is evaluated exactly as
+written -- the four source corners of the **whole tile**, interpolated across
+the whole tile -- and the only thing that varies per quadrant is the Q.6 vector
+added to the interpolated coordinate:
+
+```
+for each sample (u, v) of the tile, 0 <= u, v < extent:
+    q      = (v >= extent/2 ? 2 : 0) + (u >= extent/2 ? 1 : 0)
+    x_q6   = bilerp_corner(cx[0..3], u, v) + (mvq_x[q] << 4)
+    y_q6   = bilerp_corner(cy[0..3], u, v) + (mvq_y[q] << 4)
+```
+
+with `bilerp_corner`, the saturation and the Q.6 -> Q.4 rounding exactly as
+`docs/WARP.md` 6 states them for a single vector. Four equal deltas therefore
+reproduce a tile without `mv_quad` **bit for bit**, which is a structural
+property and not a coincidence: `warp_tile()` is `warp_tile_quad()` with the
+vector replicated, one function in `warp/ref/warp_ref.cpp`.
+
+The corner basis being the whole tile's is what answers 13.7's caveat for this
+tool. A plane the decoder crops out of the 64x64 block -- 4:2:0 chroma, whose
+extent is 32 -- splits its quadrants at **half its own extent**, 16, so a
+chroma quadrant covers the same picture area as the luma quadrant of the same
+index; it does **not** split at 32, which would put the whole chroma tile in
+quadrant 0. `extent` above is the plane's full per-tile extent, before any
+`res_level` box-averaging (13.3 step 4).
+
+Cost to a decoder: one extra compare per sample per axis and a four-entry
+vector table per tile, on top of a predictor that already runs per sample. No
+extra reference traffic, no extra dependency, nothing crossing a tile edge.
+
+Cost on the wire: 8 bytes on the tiles that use it, nothing on the tiles that
+do not.
+
+### 13.9 The near-skip: `warp_dc()` (tool bit 24)
+
+A skipped tile named by `dc_bitmap` (section 3.3) is a **near-skip**: it has no
+tile structure and no residual, exactly like any other skipped tile, and it
+carries one low-frequency correction per plane in the row header's record area.
+
+The record is **nine bytes**, three signed bytes for each of the three coded
+planes in plane order (Y, Co, Cg):
+
+| off | size | field |
+|---|---|---|
+| 0 | i8 | `dc[p]` |
+| 1 | i8 | `gx[p]` |
+| 2 | i8 | `gy[p]` |
+
+A near-skip is a skipped tile, so its alpha is the derived constant of section
+3.3 and is not corrected; the record is nine bytes whatever `alpha_present`
+says.
+
+For a plane of coded extent `E` -- 64 for luma, 32 for 4:2:0 chroma; a skipped
+tile has `res_level == 0`, so `E` is the full extent -- the correction at
+sample `(x, y)` is
+
+```
+shift = log2(2 * E)                          // 7 for E == 64, 6 for E == 32
+corr  = dc[p] + ((gx[p] * (2*x + 1 - E) +
+                  gy[p] * (2*y + 1 - E) + E) >> shift)
+```
+
+with an **arithmetic** shift, and the reconstruction is
+
+```
+rec = clamp(W + corr, 0, maxval)
+```
+
+where `W` is the warp predictor of 13.3. The two ramp terms are the same
+expression in the two axes, which is why one shift serves both; they are
+symmetric about the tile centre, so `gx` and `gy` are the full swing of the
+correction across the plane in sample units and `dc` is its value at the
+centre. `gx == gy == 0` leaves `corr == dc` exactly, because `E >> shift` is 0.
+
+Three multiplies-free adds and two multiplies by a per-tile constant, per
+sample, on a tile the decoder was going to write anyway: a near-skip is a skip
+with a bias, not a coded tile.
+
+**Why here and not in the tile.** A tile structure costs 8 header bytes plus a
+4-byte rANS flush per lane before it codes anything, which is 12 to 40 bytes; a
+correction worth nine cannot live in one. Putting the record in the row header
+also puts it in the structure the transport replicates into the first datagram
+of every band of the row (`docs/TRANSPORT.md` 3.3), so a receiver that holds any
+datagram of a row holds the corrections of that row -- which is what keeps
+clause 6.11's statement that losing a skipped tile is a no-op true.
+
+### 13.10 Refresh (informative)
+
+Nothing in this clause is normative: refresh is an encoder's choice of `mode`
+and every stream it produces is an ordinary one. It is written down because the
+rate it happens at is what `PAPER.md` 2.11 item 2 says the bit budget depends
+on, and because the reference encoder's rule is measurable and was measured
+(`ref/RESULTS-inter-b.md`).
+
+The reference encoder holds an **exact shadow** of the picture the client
+displays: `shadow_plane` is written by the same `store_tile()` the decoder runs,
+and `nxvc_encoder_set_received_tiles()` replays clause 6.11 into it for tiles a
+client did not get. So the error a client is actually showing for a tile is a
+quantity the encoder can measure rather than model, and the reference encoder
+measures it -- mean squared error against the source, over every plane, per
+tile -- and drives refresh from it:
+
+* a tile becomes **eligible** at `intra_period` frames since its last `INTRA`;
+* an eligible tile is refreshed only if its measured drift exceeds
+  `refresh_drift` times the quantiser's own noise floor `qstep^2 / 12`, which
+  is the error the tile's rate was meant to buy;
+* at `refresh_max_age` frames it is refreshed **unconditionally**, whatever the
+  pictures look like. That bound is what a client which joined late or lost a
+  run of frames recovers on, so it must not depend on the content and the drift
+  rule may not defer it.
+
+The age is seeded from a fixed pseudo-random permutation of the tile index at a
+tile-map reset, so refreshes are spread over the period instead of arriving as
+a wave, and with the drift rule off the rule is exactly the fixed 1-in-T
+cadence `PAPER.md` 2.6 describes.
 
 ---
 
@@ -1672,7 +1852,13 @@ decoder implements. It must:
   stream without the `INTER` tool bit;
 * reject tool bits 14 and 23 with a `VERSION` status, and the `WARP` bit
   without `INTER` with a `BITSTREAM` one;
-* reproduce every `decoded_md5` of the `v45`-`v56` vectors.
+* if it implements `WARP_DC` (bit 24): reject `dc_present` without the tool
+  bit, `dc_present` with a zero `dc_bitmap`, and a `dc_bitmap` bit whose
+  `skip_bitmap` bit is clear;
+* if it implements `MV_QUAD` (bit 25): reject `mv_quad` without the tool bit,
+  on a mode other than `WARP_MV` or `STATIC_MV`, without `mv_present`, or with
+  a quadrant vector outside `[-128, +127]`; and reject word1 bit 29;
+* reproduce every `decoded_md5` of the `v45`-`v60` vectors.
 
 `v45`-`v56` are the twelve entries Annex D D-21 asks for: an identity warp with
 a repeated picture (every tile `WARP_SKIP`, a bit-exact copy), a warped
@@ -1690,7 +1876,14 @@ equals a shifted tile" -- the property is asserted directly, in
 the bitstream and the reconstruction it holds for. A digest cannot express
 "changing this field must not change the output"; an assertion can.
 
-`r18`-`r29` are the rejection vectors, and they matter more than the positive
+`v57`-`v60` are the syntax v1.5 vectors: `warp_dc()` on its own, `mv_quad` on
+its own, both together on a 4:2:0 stream (which is where the quadrant split of
+13.8 differs from the kernel's), and the drift refresh rule of 13.10 against a
+short eligibility period and a longer hard cap. `v45`-`v56` are produced with
+every v1.5 tool **off**, so their digests are the v1.4 ones and they are what
+pins the promise that a stream without the new bits decodes as it always did.
+
+`r18`-`r32` are the rejection vectors, and they matter more than the positive
 ones: sections 3 and 4 impose roughly forty MUST-reject conditions, and a
 decoder that accepted every malformed stream would otherwise pass the suite
 completely.
@@ -2031,6 +2224,59 @@ inconsistent. Each is a decision, not an interpretation.
     D-5 is unchanged; only the bit numbers move, to the first bits that are
     actually free. This is an erratum against Annex D, recorded here because
     this document is where the bit numbers live.
+
+53. **Four vectors per tile are deltas from the tile vector, and they change
+    the vector only -- never the geometry.** Both halves are decisions.
+    *Deltas*, because the quadrant term is a refinement of a vector the same
+    8-byte header already carries; nothing outside the tile is read, so the
+    independent-parse property section 4.1 rests on is untouched, and this is
+    not the case Annex D D-8 refused (deltas from *stored state*, which a
+    concealed frame invalidates). *Geometry unchanged*, because a per-quadrant
+    corner basis -- re-deriving four corners per quadrant -- would quadruple
+    the divides, would not be expressible as `warp_tile()` with a replicated
+    vector, and would make "four equal deltas equal no `mv_quad`" a numerical
+    coincidence instead of a structural fact. As specified, `warp_tile()` *is*
+    `warp_tile_quad()` with the vector replicated: one loop, one file.
+    Eight bytes rather than a packed four (4-bit deltas, +-2 samples) because
+    the range then matches the tile vector's exactly and one rejection rule
+    covers both; the encoder pays the eight bytes only where they win, and
+    measured on `vr-turn-256` they win 6.5% of the stream.
+
+54. **The near-skip's correction lives in the tile-row header, not in a tile.**
+    A tile structure costs 8 header bytes plus a 4-byte rANS flush per lane
+    before it codes a single coefficient. A nine-byte correction cannot live
+    inside one and stay worth having, so `warp_dc()` travels in the row header,
+    addressed by a second bitmap, and a near-skip stays what it is: a skipped
+    tile with a bias. The bitmap is gated by a bit taken from `tile_count`
+    (whose top bit was unreachable, since `cols_per_eye <= 64`) so that a row
+    which uses no correction costs nothing at all, which matters because at the
+    codec's own operating point the row headers are 2.5% of the frame.
+    `dc_bitmap` is constrained to a subset of `skip_bitmap` rather than being a
+    third tile class, so `tile_count` keeps its meaning and the tile loop is
+    untouched.
+
+55. **The correction is DC plus one linear ramp per axis, and the ramp is not
+    optional.** Measured on `vr-mixed-1024` at QP 30, the DC term alone
+    recovers a quarter of what the three-term fit recovers, so a DC-only record
+    would be three times cheaper and four times less useful. Making the ramp
+    optional needs a per-tile flag, and the only place to put one is a third
+    bitmap; a fixed nine-byte record that the encoder declines to send is
+    cheaper than a flag that has to be sent to say "no". The two axes are the
+    same expression with the same shift, which is why there is one formula and
+    not two.
+
+56. **Refresh is driven by measured drift against a hard cap, and neither half
+    is sufficient alone.** The encoder holds a bit-exact shadow of the client's
+    picture, so "is this tile stale enough to refresh" is measurable, and the
+    measurement says the blind 1-in-180 cadence is buying insurance the picture
+    does not need: dropping it is worth about 2% BD-rate and costs 0.03 dB.
+    But drift cannot replace the cap, because the thing a cap buys -- a bound
+    on how long a client that joined late or lost a run of frames shows a wrong
+    tile -- is not a property of the encoder's own pictures at all. So the two
+    thresholds are separate: eligibility at `intra_period`, gated by drift; an
+    unconditional refresh at `refresh_max_age`. This is entirely encoder-side
+    and sets no tool bit; it is written into section 13.10 because
+    `PAPER.md` 2.11 item 2 makes the refresh *rate* part of the bit budget.
 
 ## Appendix B: where the bits go
 

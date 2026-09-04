@@ -115,6 +115,8 @@ struct FrameParams {
     WarpMatrix warp[2];         // warp_ext(), one record per eye
     int inter = 0;              // stream tool bit 10
     int stereo = 0;             // stream tool bit 12
+    int warp_dc = 0;            // stream tool bit 24
+    int mv_quad = 0;            // stream tool bit 25
     int nctx = kNumCtxV1;   // 12 or 16, from the stream's CTX_V2 tool bit
     int intra_dir = 0;      // stream tool bit 17
     int dir_layer = 0;      // frame flags bit 2
@@ -147,6 +149,10 @@ struct TileParams {
     int mv_x = 0, mv_y = 0, alpha_value = 255;
     int disparity = 0;   // STEREO only, quarter samples, 12 bits
     int skipped = 0;     // signalled by skip_bitmap, no tile structure at all
+    // Tool bit 25: four vectors, one per 32x32 quadrant, coded as signed
+    // quarter-sample deltas from (mv_x, mv_y).  docs/SYNTAX.md 13.8.
+    int mv_quad = 0;
+    int dmv[4][2] = {};
 };
 
 // Does this mode read the frame's warp matrix?  STATIC_MV and STEREO use the
@@ -172,6 +178,7 @@ static void pack_tile_header(BW &bw, const TileParams &t) {
     w1 |= ((u32)t.tskip & 1) << 23;
     w1 |= ((u32)t.wgt & 3) << 24;
     w1 |= ((u32)t.wm_id & 3) << 26;
+    w1 |= ((u32)t.mv_quad & 1) << 28;
     bw.u32v(w0);
     bw.u32v(w1);
 }
@@ -194,6 +201,7 @@ static void unpack_tile_header(u32 w0, u32 w1, TileParams &t) {
     t.tskip = (w1 >> 23) & 1;
     t.wgt = (w1 >> 24) & 3;
     t.wm_id = (w1 >> 26) & 3;
+    t.mv_quad = (w1 >> 28) & 1;
 }
 
 // ------------------------------------------------------------- tile coding
@@ -1165,6 +1173,10 @@ struct TileDecision {
     int ref_sel = 0;
     int disparity = 0;
     int skipped = 0;
+    int mv_quad = 0;              // tool 25: dmv[] carries four deltas
+    int dmv[4][2] = {};
+    int dc_corr = 0;              // tool 24: a skipped tile carries warp_dc()
+    nxvc::DcCorrection dc;
 };
 
 struct nxvc_encoder {
@@ -1185,6 +1197,11 @@ struct nxvc_encoder {
     std::vector<TileDecision> dec;
     std::vector<u8> skip_map;                // rc/'s force_warp_skip request
     std::vector<u16> age_since_coded;        // per tile position per eye
+    // Drift-driven refresh (docs/SYNTAX.md 13.10): the age since the tile was
+    // last coded INTRA, and the mean squared error the client shadow carried
+    // for it after the previous frame, in the OUTPUT sample domain.
+    std::vector<u16> age_since_intra;
+    std::vector<float> drift;
     std::vector<nxvc_view> views_cur;
     // The view each ring slot was rendered with, so the matrix a frame emits
     // is the one between its actual reference (N-1-ref_sel) and itself.
@@ -1261,6 +1278,16 @@ void nxvc_config_default(nxvc_config *cfg) {
     cfg->ref_sel = 0;
     cfg->mv_range = 16;        // PAPER 2.3 step 2
     cfg->skip_thresh = 0;      // built-in default
+    // The inter-efficiency package (syntax v1.5).  All four are on by
+    // default because they win on the quality harness (ref/RESULTS-inter-b.md)
+    // and all four are inert unless `inter` is set, so a Phase 1 caller and
+    // every syntax v1.1-v1.4 conformance vector keep producing byte-identical
+    // streams.  `--refresh-drift 0 --warp-dc off --mv-quad off` gets the
+    // syntax v1.4 inter path back.
+    cfg->refresh_drift_q8 = 256;   // 1.0 x the quantiser noise floor
+    cfg->refresh_max_age = 720;    // 8 s at 90 Hz; 4 x intra_period
+    cfg->warp_dc = 1;
+    cfg->mv_quad = 1;
 }
 
 void nxvc_tile_layout_get(uint32_t w, uint32_t h, nxvc_tile_layout *out) {

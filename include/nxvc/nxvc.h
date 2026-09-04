@@ -48,7 +48,7 @@ extern "C" {
  *       reference ring addressed by `ref_sel`, and the 12-bit STEREO
  *       `disparity` field replacing mv_x/mv_y.  See docs/SYNTAX.md 8.
  */
-#define NXVC_BITSTREAM_MINOR 4
+#define NXVC_BITSTREAM_MINOR 5
 
 /* "nxvc_ref <major>.<minor> (syntax v1.<minor>)" -- a static string, safe to
  * call before any object exists.  Used by the Python bindings to check that
@@ -126,6 +126,10 @@ typedef enum nxvc_tile_mode {
  * actually free.  The substance of D-5 is unchanged: it is undefined in
  * version 1 and a v1 decoder MUST reject a stream that sets it. */
 #define NXVC_TOOL_FILTER_CATMULLROM (1ull << 23)
+/* Syntax v1.5, the inter-efficiency package.  Both are inter tools and both
+ * require NXVC_TOOL_INTER | NXVC_TOOL_WARP.  See docs/SYNTAX.md 13.8-13.9. */
+#define NXVC_TOOL_WARP_DC         (1ull << 24)  /* near-skip DC correction   */
+#define NXVC_TOOL_MV_QUAD         (1ull << 25)  /* four vectors per tile     */
 
 /* Tools this reference decoder implements. */
 #define NXVC_TOOLS_SUPPORTED                                                  \
@@ -134,7 +138,8 @@ typedef enum nxvc_tile_mode {
      NXVC_TOOL_LOSSLESS | NXVC_TOOL_CUSTOM_TABLES | NXVC_TOOL_NSUB_VAR |      \
      NXVC_TOOL_PER_TILE_CHROMA | NXVC_TOOL_YCOCGR | NXVC_TOOL_WM_ID |        \
      NXVC_TOOL_INTRA_DIR | NXVC_TOOL_CTX_V2 | NXVC_TOOL_SIGN_HIDE |           \
-     NXVC_TOOL_INTER | NXVC_TOOL_WARP | NXVC_TOOL_STEREO)
+     NXVC_TOOL_INTER | NXVC_TOOL_WARP | NXVC_TOOL_STEREO |                   \
+     NXVC_TOOL_WARP_DC | NXVC_TOOL_MV_QUAD)
 
 /* ---------------------------------------------------------------- images */
 /* 8-bit planar image.  plane[0]=Y/R', plane[1]=Co/G', plane[2]=Cg/B',
@@ -214,6 +219,24 @@ typedef struct nxvc_config {
                                    Below 256 the decision spends more bits to
                                    keep the reference clean, which is what an
                                    all-reference stream wants; 0 = default  */
+
+    /* --- additive since syntax v1.5: the inter-efficiency package.
+     * `refresh_drift_q8` and `refresh_max_age` are encoder-side and change no
+     * syntax; `warp_dc` and `mv_quad` each set a tool bit. */
+    uint32_t refresh_drift_q8;  /* drift-driven refresh (docs/SYNTAX.md 13.10).
+                                   A tile that has reached `intra_period` is
+                                   refreshed INTRA only if the error the
+                                   encoder's client shadow measured for it
+                                   exceeds this Q8 multiple of the quantiser
+                                   noise floor (qstep^2 / 12) per sample.
+                                   0 = no drift rule, so `intra_period` is the
+                                   fixed cadence it has always been.         */
+    uint32_t refresh_max_age;   /* hard cap, in frames, on how long a tile may
+                                   go without being coded INTRA whatever the
+                                   drift rule says.  Values at or below
+                                   `intra_period` mean `intra_period`.       */
+    uint32_t warp_dc;           /* 1 = near-skip DC correction (tool 24)     */
+    uint32_t mv_quad;           /* 1 = four vectors per tile (tool 25)       */
 } nxvc_config;
 
 /* One eye's view for one frame: the orientation the frame was rendered with
@@ -278,6 +301,10 @@ typedef struct nxvc_tile_info {
     uint16_t age_since_coded;   /* frames since this tile position last
                                    carried a coded residual; 0 on the frame
                                    that coded one, saturating at 65535      */
+    /* --- additive since syntax v1.5 */
+    uint8_t mv_quad;            /* 1: four quadrant vector deltas (13.8)    */
+    uint8_t dc_corr;            /* 1: a near-skip carrying warp_dc() (13.9) */
+    int8_t dmv[4][2];           /* the quadrant deltas, quarter samples     */
 } nxvc_tile_info;
 
 typedef struct nxvc_stream_info {

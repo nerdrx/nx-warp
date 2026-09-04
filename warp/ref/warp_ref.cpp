@@ -335,31 +335,40 @@ static inline int32_t sample_catmullrom(const RefImage& ref, int32_t ix, int32_t
 // The predictor.
 // ---------------------------------------------------------------------------
 
-void warp_tile(const RefImage& ref,
-               int32_t tile_x,
-               int32_t tile_y,
-               const Homography& H,
-               const int32_t mv_qpel[2],
-               Filter filter,
-               Mode mode,
-               uint16_t* out_tile,
-               int32_t out_stride) {
+void warp_tile_quad(const RefImage& ref,
+                    int32_t tile_x,
+                    int32_t tile_y,
+                    const Homography& H,
+                    const int32_t mv_qpel[4][2],
+                    int32_t quad_split,
+                    Filter filter,
+                    Mode mode,
+                    uint16_t* out_tile,
+                    int32_t out_stride) {
     const TileCorners c = warp_tile_corners(H, tile_x, tile_y, mode);
 
     // mv is Q.2; promoting it to Q.6 is a shift by kQCorner - kQMv == 4.
-    const int32_t mvx_q6 = shl_i32_mod(mv_qpel[0], kQCorner - kQMv);
-    const int32_t mvy_q6 = shl_i32_mod(mv_qpel[1], kQCorner - kQMv);
+    int32_t mvx_q6[4], mvy_q6[4];
+    for (int32_t q = 0; q < 4; ++q) {
+        mvx_q6[q] = shl_i32_mod(mv_qpel[q][0], kQCorner - kQMv);
+        mvy_q6[q] = shl_i32_mod(mv_qpel[q][1], kQCorner - kQMv);
+    }
 
     for (int32_t v = 0; v < kTile; ++v) {
         for (int32_t u = 0; u < kTile; ++u) {
+            // The geometric part is the WHOLE tile's corner basis, evaluated
+            // at (u, v) exactly as it is for a single vector: only the vector
+            // added to it is per quadrant.  That is what makes four equal
+            // vectors bit-identical to warp_tile() (docs/SYNTAX.md 13.8).
+            const int32_t q = (v >= quad_split ? 2 : 0) + (u >= quad_split ? 1 : 0);
             // Saturate and clamp so the "+2" of the Q.6 -> Q.4 step below
             // cannot overflow for a hostile vector. |xq6| is at most
             // kCornerClamp + 4096 in the envelope, far inside kCoordClamp.
             const int32_t xq6 = clamp_i32(
-                sat_add_i32(bilerp_corner(c.x[0], c.x[1], c.x[2], c.x[3], u, v), mvx_q6),
+                sat_add_i32(bilerp_corner(c.x[0], c.x[1], c.x[2], c.x[3], u, v), mvx_q6[q]),
                 -kCoordClamp, kCoordClamp);
             const int32_t yq6 = clamp_i32(
-                sat_add_i32(bilerp_corner(c.y[0], c.y[1], c.y[2], c.y[3], u, v), mvy_q6),
+                sat_add_i32(bilerp_corner(c.y[0], c.y[1], c.y[2], c.y[3], u, v), mvy_q6[q]),
                 -kCoordClamp, kCoordClamp);
 
             // Q.6 -> Q.4, round half up (paper 2.2 step 4: "(c + 2) >> 2").
@@ -381,6 +390,26 @@ void warp_tile(const RefImage& ref,
             }
         }
     }
+}
+
+// One vector for the whole tile is four equal quadrant vectors.  There is one
+// predictor loop in this file and this is it; the split coordinate is inert
+// when the four vectors agree.
+void warp_tile(const RefImage& ref,
+               int32_t tile_x,
+               int32_t tile_y,
+               const Homography& H,
+               const int32_t mv_qpel[2],
+               Filter filter,
+               Mode mode,
+               uint16_t* out_tile,
+               int32_t out_stride) {
+    const int32_t mv4[4][2] = {{mv_qpel[0], mv_qpel[1]},
+                               {mv_qpel[0], mv_qpel[1]},
+                               {mv_qpel[0], mv_qpel[1]},
+                               {mv_qpel[0], mv_qpel[1]}};
+    warp_tile_quad(ref, tile_x, tile_y, H, mv4, kTile / 2, filter, mode,
+                   out_tile, out_stride);
 }
 
 }  // namespace nxvc::warp

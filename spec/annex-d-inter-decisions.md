@@ -40,6 +40,9 @@ owning document. D-21 lists the conformance vectors Phase 2 must add.
 | D-19 | Capability bits and tool bits are orthogonal; one coupling is defined | C-18 |
 | D-20 | Field ownership map | C-1..C-30 boundary set |
 | D-21 | Phase 2 conformance vectors | C-19 (part) |
+| D-23 | Four vectors per tile are deltas from the tile vector and share the tile's corner basis (tool bit 25) | — |
+| D-24 | The near-skip's `warp_dc()` correction travels in the tile-row header, addressed by a bitmap gated by a bit of `tile_count` (tool bit 24) | — |
+| D-25 | Intra refresh is driven by measured client-shadow drift against an unconditional hard cap | — |
 
 Issues left open on purpose: C-10 and C-30 (hybrid, `[pending HYBRID.md]`),
 C-17 (tool bits 15–19, correctly refused by a v1 decoder), C-19 in full (the
@@ -891,6 +894,10 @@ against. Each entry is one stream with a reference reconstruction digest.
 | `reject/homography` | `h22 != 2^29`; an entry beyond `kEntryMax`; `den` outside `[2^28, 2^30)` at a picture corner; `warp_present == 0` with a `WARP_MV` tile |
 | `reject/inter_syntax` | `mode == 5..7`; `res_level == 3`; `disparity` bits 15:12 nonzero; `mode == STEREO` on `eye == 0`; `ref_sel != 0` on an INTRA tile; `ref_slots != 1 << (frame_number mod 4)` |
 | `reject/tools` | tool bits 14, 15–20 set |
+| `inter/warp_dc` | a stream using tool bit 24: `dc_present`, a `dc_bitmap`, and `warp_dc()` records exercised across several frames [D-24] |
+| `inter/mv_quad` | a stream using tool bit 25, and the same stream at 4:2:0, where the quadrant split differs from the kernel's [D-23] |
+| `inter/drift_refresh` | the refresh rule of D-25 against a short eligibility period and a longer hard cap |
+| `reject/v15_syntax` | `dc_present` without tool bit 24; `mv_quad` without tool bit 25; tile header word1 bit 29 set |
 
 The rejection vectors matter more than the positive ones. Clause 4 and clause 5
 impose roughly forty MUST-reject conditions and no vector exercises any of them,
@@ -898,6 +905,100 @@ so a decoder that accepts every malformed stream currently passes the suite
 completely.
 
 ---
+
+## D-23 — Four vectors per tile (tool bit 25)
+
+*The inter-efficiency package, syntax v1.5. Normative text:
+`docs/SYNTAX.md` 13.8; appendix A decision 53.*
+
+A tile with `mv_quad` set (tile header word1 bit 28) carries eight bytes after
+its two vector bytes: four `i8` pairs, one per 32x32 quadrant, in the order
+top-left, top-right, bottom-left, bottom-right. Quadrant *q*'s vector is the
+tile vector plus its pair, and every component of it MUST lie in
+`[-128, +127]` — the tile vector's own envelope, so one rejection rule covers
+every vector the predictor sees.
+
+**Deltas, not absolute vectors, and this does not reopen D-8.** D-8 refused
+deltas *from stored per-tile state*, because a tile must be parseable without
+the decoder's history being correct — exactly the case after a concealed frame.
+These deltas are from a field in the same 8-byte header. Nothing outside the
+tile is read and the independent-parse property is untouched.
+
+**The corner basis is the whole tile's.** Per-quadrant corners would need four
+times the restoring divides of D-7's derivation, and would make "four equal
+deltas equal no `mv_quad`" an arithmetic coincidence rather than a fact. As
+decided, only the Q.6 vector added after the corner interpolation varies, so
+`warp_tile()` is `warp_tile_quad()` with the vector replicated — one loop in
+`warp/ref/warp_ref.cpp`, and the GLSL twin is the same loop with a four-entry
+vector table.
+
+**The quadrant split is half the PLANE's extent.** This is what closes, for
+this tool, the caveat `docs/SYNTAX.md` 13.7 states about chroma being predicted
+through the 64x64 kernel: a 4:2:0 chroma tile occupies the top-left 32x32 of
+that block, so it splits at 16 and its quadrants cover the same picture area as
+the luma tile's. A Pass B doing chroma natively at 32x32 must be given the same
+split.
+
+Rejected: four absolute vectors (eight bytes for a strictly smaller expressible
+set, since the tile vector then carries nothing); packed 4-bit deltas
+(four bytes, but ±2 samples of range and a second rejection rule); a per-8x8
+vector field (32 vectors, 64 bytes, and the tile stops being one predictor
+call).
+
+## D-24 — The near-skip and `warp_dc()` (tool bit 24)
+
+*The inter-efficiency package, syntax v1.5. Normative text:
+`docs/SYNTAX.md` 3.3 and 13.9; appendix A decisions 54 and 55.*
+
+A skipped tile may carry a nine-byte low-frequency correction — `dc`, `gx`,
+`gy` per coded plane — added to the warp predictor before the clamp. It is a
+skip with a bias, not a coded tile: no tile structure, no residual, no rANS.
+
+**In the tile-row header, not in a tile.** A tile structure costs 8 header
+bytes plus a 4-byte rANS flush per lane before it codes a coefficient, so a
+nine-byte correction cannot live in one. The records follow a `dc_bitmap` in
+the row header, in ascending column order; `dc_bitmap` MUST be a subset of
+`skip_bitmap`, which keeps `tile_count` meaning what it meant and leaves the
+tile loop untouched. It also puts the correction inside the structure
+`docs/TRANSPORT.md` 3.3 replicates into the first datagram of every band of the
+row, which is what keeps clause 6.11's "losing a skipped tile is a no-op" true.
+
+**Gated by a bit of `tile_count`.** `cols_per_eye <= 64` (D-3), so
+`tile_count`'s top bit was unreachable; it becomes `dc_present`. A row that
+carries no correction carries no bitmap, so the tool costs a stream that does
+not use it nothing — which matters, because at the codec's own operating point
+an unconditional 8 bytes per row is 2.5% of the frame.
+
+**DC plus a ramp per axis, fixed size.** Measured on `vr-mixed-1024` at QP 30,
+the DC term alone recovers a quarter of what the three-term fit recovers. A
+per-tile "ramp present" flag would need a third bitmap; a fixed record the
+encoder declines to send is cheaper than a flag that has to be sent to say no.
+
+## D-25 — Drift-driven intra refresh
+
+*The inter-efficiency package, syntax v1.5. Encoder-side; no syntax change and
+no tool bit. Informative text: `docs/SYNTAX.md` 13.10; appendix A decision 56.
+This is the "output, wanted" half of `docs/RATECONTROL.md` 8.7, and it adds
+nothing that clause said must not be added.*
+
+The encoder holds a bit-exact shadow of the picture the client displays (D-9's
+state plus `nxvc_encoder_set_received_tiles()`), so the error a client is
+actually showing for a tile is measurable rather than modelled. The reference
+encoder measures it per tile, per frame, over every plane, and refreshes on it:
+
+1. a tile becomes **eligible** at `intra_period` frames since its last `INTRA`;
+2. an eligible tile refreshes only if its drift exceeds `refresh_drift` times
+   `qstep^2 / 12`, the quantiser's own noise floor;
+3. at `refresh_max_age` it refreshes **unconditionally**.
+
+Rule 3 is not a fallback, it is the point: the thing a refresh cap buys is a
+bound on how long a client that joined late or lost a run of frames shows a
+wrong tile, and that is not a property of the encoder's own pictures. Rule 2
+is what makes rule 3's period affordable.
+
+Measured, the blind 1-in-`intra_period` cadence it replaces is insurance the
+picture does not need at the codec's operating point: dropping it is worth
+about 2% BD-rate and costs 0.03 dB (`ref/RESULTS-inter-b.md`).
 
 ## D-22 — Spec-reconciliation edits to component documents
 

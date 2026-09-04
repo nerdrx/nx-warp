@@ -141,7 +141,47 @@ inline i32 plane_mv(i32 mv_qpel, int sub) {
 // parameter.  A GPU Pass B doing chroma at 32x32 natively must be given the
 // same corner basis (see docs/SYNTAX.md 8.4).
 void warp_plane_tile(const nw::RefImage &ref, int tile_x, int tile_y,
-                     const nw::Homography &H, const i32 mv[2], nw::Mode mode,
+                     const nw::Homography &H, const i32 mv[4][2], nw::Mode mode,
                      int extent, i32 *out);
+
+// Replicate one tile vector into the four quadrant vectors the predictor
+// takes.  A tile without `mv_quad` is four equal vectors, and there is one
+// predictor call site rather than two (docs/SYNTAX.md 13.8).
+inline void mv_broadcast(i32 mv_x, i32 mv_y, i32 out[4][2]) {
+    for (int q = 0; q < 4; ++q) { out[q][0] = mv_x; out[q][1] = mv_y; }
+}
+
+// ------------------------------------------------------- warp_dc(), 13.9
+// The low-frequency correction a near-skip tile carries: three signed bytes
+// per coded plane, added to the predictor before the clamp.  For a plane of
+// coded extent E,
+//
+//     corr(x, y) = dc + ((gx * (2x + 1 - E) + gy * (2y + 1 - E) + E) >> s)
+//
+// with `s` such that 1 << s == 2E, so gx is the full swing of the ramp across
+// the plane in sample units and the term is symmetric about the tile centre
+// (the two axes are the same expression, which is why one shift serves both).
+// The shift is arithmetic, so the rounding is toward negative infinity and is
+// one rule rather than two.
+struct DcCorrection {
+    i8 dc[4] = {0, 0, 0, 0};
+    i8 gx[4] = {0, 0, 0, 0};
+    i8 gy[4] = {0, 0, 0, 0};
+};
+
+// log2(2 * extent) for the extents version 1 can produce (8..64).
+inline int dc_corr_shift(int extent) {
+    int s = 1;
+    while ((1 << s) < 2 * extent) ++s;
+    return s;
+}
+
+inline i32 dc_corr_at(const DcCorrection &c, int plane, int extent, int x,
+                      int y) {
+    const int s = dc_corr_shift(extent);
+    const i32 ramp = (i32)c.gx[plane] * (2 * x + 1 - extent) +
+                     (i32)c.gy[plane] * (2 * y + 1 - extent) + extent;
+    return (i32)c.dc[plane] + (ramp >> s);
+}
 
 }  // namespace nxvc

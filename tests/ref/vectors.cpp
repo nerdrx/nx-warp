@@ -330,22 +330,36 @@ struct InterSpec {
     int obj;                // moving-disc speed
     int disparity;          // per-eye horizontal offset
     int salt;               // per-frame content reseed (new content everywhere)
+    // Syntax v1.5 (ref/RESULTS-inter-b.md).  0 is the v1.4 inter path with
+    // every v1.5 tool off, which is what keeps v45-v56 byte-identical to the
+    // digests they were committed with; 1 = warp_dc, 2 = mv_quad, 4 = the
+    // drift refresh rule (encoder-side, so it changes the cadence, not the
+    // syntax).
+    int tools;
 };
+enum { kToolWarpDc = 1, kToolMvQuad = 2, kToolDrift = 4 };
 
 static const InterSpec kInterVectors[] = {
     // name                     fixes                        w    h  ey 444 qp fr st per rs   yaw   pan obj disp salt
-    {"v45_inter_identity",      "inter/identity",           128, 128, 1, 1, 24, 4, 0, 999, 0,  0.0,  0.0, 0,  0, 0},
-    {"v46_inter_warp_mv",       "inter/integer_mv",         128, 128, 1, 1, 26, 5, 0, 999, 0,  0.7,  2.0, 3,  0, 0},
-    {"v47_inter_static_mv",     "inter/static_mv",          128, 128, 1, 1, 26, 4, 0, 999, 0, 12.0,  0.0, 0,  0, 0},
-    {"v48_inter_warp_sweep",    "inter/warp_sweep",         128, 128, 1, 1, 28, 6, 0, 999, 0,  4.5,  6.0, 2,  0, 0},
-    {"v49_inter_warp_border",   "inter/warp_border",        128,  64, 1, 1, 28, 5, 0, 999, 0,  9.0, 14.0, 5,  0, 0},
-    {"v50_inter_skip_state",    "inter/skip",               128, 128, 1, 1, 22, 4, 0, 999, 0,  0.2,  0.5, 1,  0, 0},
-    {"v51_inter_ref_sel1",      "inter/ref_sel",            128, 128, 1, 1, 26, 6, 0, 999, 1,  0.5,  1.0, 2,  0, 0},
-    {"v52_inter_ref_sel2",      "inter/ref_sel",            128, 128, 1, 1, 26, 7, 0, 999, 2,  0.5,  1.0, 2,  0, 0},
-    {"v53_inter_stereo",        "inter/stereo",             128, 128, 2, 1, 24, 4, 1, 999, 0,  0.0,  0.0, 0, 11, 1},
-    {"v54_inter_stereo_static", "inter/stereo_static_equiv",128, 128, 2, 1, 24, 4, 0, 999, 0,  0.0,  0.0, 0, 11, 1},
-    {"v55_inter_420",           "inter/warp_sweep (4:2:0)", 128, 128, 1, 0, 26, 5, 0, 999, 0,  1.5,  3.0, 3,  0, 0},
-    {"v56_inter_refresh",       "inter/skip (refresh)",     128, 128, 1, 1, 26, 8, 0,   4, 0,  0.4,  1.0, 2,  0, 0},
+    {"v45_inter_identity",      "inter/identity",           128, 128, 1, 1, 24, 4, 0, 999, 0,  0.0,  0.0, 0,  0, 0, 0},
+    {"v46_inter_warp_mv",       "inter/integer_mv",         128, 128, 1, 1, 26, 5, 0, 999, 0,  0.7,  2.0, 3,  0, 0, 0},
+    {"v47_inter_static_mv",     "inter/static_mv",          128, 128, 1, 1, 26, 4, 0, 999, 0, 12.0,  0.0, 0,  0, 0, 0},
+    {"v48_inter_warp_sweep",    "inter/warp_sweep",         128, 128, 1, 1, 28, 6, 0, 999, 0,  4.5,  6.0, 2,  0, 0, 0},
+    {"v49_inter_warp_border",   "inter/warp_border",        128,  64, 1, 1, 28, 5, 0, 999, 0,  9.0, 14.0, 5,  0, 0, 0},
+    {"v50_inter_skip_state",    "inter/skip",               128, 128, 1, 1, 22, 4, 0, 999, 0,  0.2,  0.5, 1,  0, 0, 0},
+    {"v51_inter_ref_sel1",      "inter/ref_sel",            128, 128, 1, 1, 26, 6, 0, 999, 1,  0.5,  1.0, 2,  0, 0, 0},
+    {"v52_inter_ref_sel2",      "inter/ref_sel",            128, 128, 1, 1, 26, 7, 0, 999, 2,  0.5,  1.0, 2,  0, 0, 0},
+    {"v53_inter_stereo",        "inter/stereo",             128, 128, 2, 1, 24, 4, 1, 999, 0,  0.0,  0.0, 0, 11, 1, 0},
+    {"v54_inter_stereo_static", "inter/stereo_static_equiv",128, 128, 2, 1, 24, 4, 0, 999, 0,  0.0,  0.0, 0, 11, 1, 0},
+    {"v55_inter_420",           "inter/warp_sweep (4:2:0)", 128, 128, 1, 0, 26, 5, 0, 999, 0,  1.5,  3.0, 3,  0, 0, 0},
+    {"v56_inter_refresh",       "inter/skip (refresh)",     128, 128, 1, 1, 26, 8, 0,   4, 0,  0.4,  1.0, 2,  0, 0, 0},
+    // Syntax v1.5, the inter-efficiency package.  Four streams: each tool on
+    // its own, both together, and the drift refresh rule against a short
+    // eligibility period and a longer hard cap.
+    {"v57_inter_warp_dc",       "inter/warp_dc",            128, 128, 1, 1, 30, 6, 0, 999, 0,  0.6,  1.0, 1,  0, 0, kToolWarpDc},
+    {"v58_inter_mv_quad",       "inter/mv_quad",            128, 128, 1, 1, 26, 5, 0, 999, 0,  0.7,  2.0, 4,  0, 0, kToolMvQuad},
+    {"v59_inter_quad_dc_420",   "inter/mv_quad (4:2:0)",    128, 128, 1, 0, 28, 6, 0, 999, 0,  1.5,  3.0, 3,  0, 0, kToolWarpDc | kToolMvQuad},
+    {"v60_inter_drift_refresh", "inter/skip (drift refresh)",128,128, 1, 1, 26, 9, 0,   3, 0,  0.4,  1.0, 2,  0, 0, kToolDrift},
 };
 static const int kNumInterVectors =
     (int)(sizeof(kInterVectors) / sizeof(kInterVectors[0]));
@@ -429,6 +443,13 @@ static Result build_inter(const InterSpec &v) {
     cfg.intra_period = (uint32_t)v.iperiod;
     cfg.ref_sel = (uint32_t)v.ref_sel;
     cfg.custom_tables = 0;
+    // Every v1.5 tool is opt-in HERE, whatever nxvc_config_default() chose, so
+    // that a row asking for the v1.4 inter path gets it and its committed
+    // digest keeps meaning what it meant.
+    cfg.warp_dc = (v.tools & kToolWarpDc) ? 1u : 0u;
+    cfg.mv_quad = (v.tools & kToolMvQuad) ? 1u : 0u;
+    cfg.refresh_drift_q8 = (v.tools & kToolDrift) ? 256u : 0u;
+    cfg.refresh_max_age = (v.tools & kToolDrift) ? 6u : 0u;
 
     nxvc_status st;
     nxvc_encoder *e = nxvc_encoder_create(&cfg, &st);
@@ -612,6 +633,9 @@ static const InterReject kInterRejects[] = {
     {"r27_warp_without_inter", "the WARP tool bit without INTER",          NXVC_ERR_BITSTREAM, 0},
     {"r28_stereo_left_eye",    "mode STEREO on the left eye",              NXVC_ERR_BITSTREAM, 1},
     {"r29_disparity_reserved", "disparity bits 15:12 are not zero",        NXVC_ERR_BITSTREAM, 1},
+    {"r30_dc_present_no_tool", "dc_present without the WARP_DC tool bit",   NXVC_ERR_BITSTREAM, 0},
+    {"r31_mv_quad_no_tool",    "mv_quad without the MV_QUAD tool bit",      NXVC_ERR_BITSTREAM, 0},
+    {"r32_tile_reserved_29",   "tile header word1 bit 29 is reserved",      NXVC_ERR_BITSTREAM, 0},
 };
 static const int kNumInterRejects =
     (int)(sizeof(kInterRejects) / sizeof(kInterRejects[0]));
@@ -619,9 +643,9 @@ static const int kNumInterRejects =
 // The two base streams the patches are applied to.  Both are ordinary encoder
 // output; only the fields named above are touched.
 static const InterSpec kRejectBaseMono = {
-    "reject_base_mono", "", 128, 128, 1, 1, 26, 3, 0, 999, 0, 0.7, 2.0, 3, 0, 0};
+    "reject_base_mono", "", 128, 128, 1, 1, 26, 3, 0, 999, 0, 0.7, 2.0, 3, 0, 0, 0};
 static const InterSpec kRejectBaseStereo = {
-    "reject_base_stereo", "", 128, 128, 2, 1, 24, 3, 1, 999, 0, 0.0, 0.0, 0, 11, 1};
+    "reject_base_stereo", "", 128, 128, 2, 1, 24, 3, 1, 999, 0, 0.0, 0.0, 0, 11, 1, 0};
 
 static bool make_inter_reject(int idx, const std::vector<uint8_t> &base,
                               const InterSpec &spec, std::vector<uint8_t> *out,
@@ -710,6 +734,24 @@ static bool make_inter_reject(int idx, const std::vector<uint8_t> &base,
             b[o2 + 1] |= 0x10;   // disparity bit 12
             break;
         }
+        case 12:
+            // docs/SYNTAX.md 3.3: bit 7 of tile_count is dc_present, and it
+            // needs tool bit 24.  The base stream does not set the tool.
+            b[f1.row0_off + 3] |= 0x80;
+            break;
+        case 13:
+            if (!find_tile(b, f1, NXVC_MODE_WARP_MV, -1, &hdr, &opt) &&
+                !find_tile(b, f1, NXVC_MODE_STATIC_MV, -1, &hdr, &opt)) {
+                *why = "no coded inter tile in frame 1"; return false;
+            }
+            patch_w1(hdr, 1u << 28, 1u << 28);
+            break;
+        case 14:
+            if (!find_tile(b, f0, NXVC_MODE_INTRA, -1, &hdr, &opt)) {
+                *why = "no INTRA tile in frame 0"; return false;
+            }
+            patch_w1(hdr, 1u << 29, 1u << 29);
+            break;
         default: break;
     }
     *out = b;

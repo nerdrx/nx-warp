@@ -105,7 +105,25 @@ static void usage() {
         "                       Applied after the mode search; the encoder\n"
         "                       overrides it where a coded tile is required\n"
         "  --mode-lambda F      lambda scale of the per-tile mode decision,\n"
-        "                       relative to the trellis (default 0.25)\n");
+        "                       relative to the trellis (default 0.25)\n"
+        "  --refresh-drift F    a tile that has reached --intra-period is\n"
+        "                       refreshed INTRA only if the error the client\n"
+        "                       shadow measured for it passes F times the\n"
+        "                       quantiser noise floor (default 1.0;\n"
+        "                       0 = no drift rule, the fixed cadence)\n"
+        "  --refresh-max-age N  hard cap in frames on the age of a tile's\n"
+        "                       last INTRA, whatever the drift rule says\n"
+        "                       (default 720 = 8 s at 90 Hz)\n"
+        "  --warp-dc on|off     near-skip DC correction, tool bit 24\n"
+        "                       (default on)\n"
+        "  --mv-quad on|off     four vectors per tile, tool bit 25\n"
+        "                       (default on)\n");
+}
+
+// "on" / "off", the spelling every other boolean option on this CLI uses.
+// Returns -1 for anything else.
+static int onoff(const std::string &v) {
+    return v == "on" ? 1 : (v == "off" ? 0 : -1);
 }
 
 static bool read_exact(std::FILE *f, void *p, size_t n) {
@@ -124,6 +142,8 @@ int main(int argc, char **argv) {
     int sign_hide = 1;
     int inter = 0, eyes = 1, intra_period = 180, ref_sel = 0, stereo = 0;
     int mv_range = 16, skip_thresh = 0, mode_lambda = 0;
+    // These mirror nxvc_config_default()'s v1.5 block.
+    int refresh_drift = 256, refresh_max_age = 720, warp_dc = 1, mv_quad = 1;
     double fov_h = 95.0, fov_v = 95.0;
     bool fov_from_cli = false;
     std::string poses_path, skipmap_path;
@@ -172,6 +192,17 @@ int main(int argc, char **argv) {
         else if (a == "--skip-map") skipmap_path = val();
         else if (a == "--mode-lambda")
             mode_lambda = (int)(std::atof(val()) * 256.0 + 0.5);
+        else if (a == "--refresh-drift")
+            refresh_drift = (int)(std::atof(val()) * 256.0 + 0.5);
+        else if (a == "--refresh-max-age") refresh_max_age = std::atoi(val());
+        else if (a == "--warp-dc") {
+            warp_dc = onoff(val());
+            if (warp_dc < 0) { std::fprintf(stderr, "--warp-dc: on|off\n"); return 2; }
+        }
+        else if (a == "--mv-quad") {
+            mv_quad = onoff(val());
+            if (mv_quad < 0) { std::fprintf(stderr, "--mv-quad: on|off\n"); return 2; }
+        }
         else if (a == "--fov") {
             std::string v = val();
             size_t c = v.find(',');
@@ -335,6 +366,10 @@ int main(int argc, char **argv) {
     cfg.mv_range = (uint32_t)(mv_range > 0 ? mv_range : 16);
     cfg.skip_thresh = (uint32_t)(skip_thresh > 0 ? skip_thresh : 0);
     cfg.mode_lambda_q8 = (uint32_t)(mode_lambda > 0 ? mode_lambda : 0);
+    cfg.refresh_drift_q8 = (uint32_t)(refresh_drift > 0 ? refresh_drift : 0);
+    cfg.refresh_max_age = (uint32_t)(refresh_max_age > 0 ? refresh_max_age : 0);
+    cfg.warp_dc = (uint32_t)warp_dc;
+    cfg.mv_quad = (uint32_t)mv_quad;
     cfg.chroma = pix == "yuv444p" ? NXVC_CHROMA_444 : NXVC_CHROMA_420;
     cfg.base_qp = (uint32_t)(qp < 0 ? 0 : (qp > 63 ? 63 : qp));
     cfg.quant_matrix = (uint32_t)matrix;

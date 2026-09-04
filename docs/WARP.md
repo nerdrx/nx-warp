@@ -510,6 +510,34 @@ The vector is a *displacement in the reference picture*, not a correction to the
 matrix. Adding one pixel to `h02` and subtracting 4 from `mv_x` therefore produce
 identical output; this is asserted in `warp.mv`.
 
+### 8.1 Four vectors, one per quadrant
+
+`warp_tile_quad()` takes four vectors instead of one and a `quad_split`, and
+chooses between them per output sample:
+
+```
+q = (v >= quad_split ? 2 : 0) + (u >= quad_split ? 1 : 0)
+X_q6 = interpolated_X + (mv_x[q] << 4)
+Y_q6 = interpolated_Y + (mv_y[q] << 4)
+```
+
+Everything before this line -- the corners of section 6, the interpolation of
+section 7 -- is the **whole tile's** and does not change. So four equal vectors
+reproduce `warp_tile()` exactly, and `warp_tile()` is implemented as this call
+with the vector replicated: there is one predictor loop in
+`warp/ref/warp_ref.cpp` and this is it. `warp.quad` asserts both halves -- four
+equal vectors equal `warp_tile()`, and each quadrant equals the single-vector
+predictor of its own vector restricted to that quadrant.
+
+`quad_split` is a parameter rather than a constant `kTile / 2` because a caller
+that crops a smaller plane out of the 64x64 block -- 4:2:0 chroma, extent 32,
+section 11 limitation 2 -- must split at half of *its* extent for its quadrants
+to cover the same picture area as the luma tile's. `docs/SYNTAX.md` 13.8 is
+normative for which value the codec passes.
+
+The bitstream side is `mv_quad`, tile header word1 bit 28, gated by tool bit 25
+`MV_QUAD`; the four vectors travel as `i8` deltas from the tile vector.
+
 ---
 
 ## 9. Step 4 — sampling

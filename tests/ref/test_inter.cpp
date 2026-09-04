@@ -39,9 +39,11 @@ static inline int tex(int x, int y) {
 // `pan` is the whole-picture shift, `obj` the disc centre, `disp` the per-eye
 // horizontal offset, `salt` a per-frame reseed that makes temporal prediction
 // useless (used to corner the STEREO decision).
+// `bright` is a whole-picture luma step: an exposure change, which is exactly
+// the smooth drift the near-skip's warp_dc() correction exists for.
 static Scene make_scene(int eye_w, int h, int eyes, bool c444, double pan_x,
                         double pan_y, int obj_x, int obj_y, int disp,
-                        int salt = 0) {
+                        int salt = 0, int bright = 0) {
     Scene s;
     s.w = eye_w * eyes;
     s.h = h;
@@ -61,7 +63,9 @@ static Scene make_scene(int eye_w, int h, int eyes, bool c444, double pan_x,
                 int v = tex(sx, sy);
                 const double dx = x - obj_x, dy = y - obj_y;
                 if (dx * dx + dy * dy < 17.0 * 17.0) v = 235 - (int)(dx * dx) % 90;
-                s.Y[(size_t)y * s.w + e * eye_w + x] = (uint8_t)v;
+                v += bright;
+                s.Y[(size_t)y * s.w + e * eye_w + x] =
+                    (uint8_t)(v < 0 ? 0 : (v > 255 ? 255 : v));
             }
         const int cew = c444 ? eye_w : eye_w / 2;
         for (int y = 0; y < s.ch; ++y)
@@ -127,11 +131,15 @@ struct Opts {
     int disparity = 0;
     int salt_per_frame = 0;
     int obj_speed = 3;
+    int bright_per_frame = 0;   // whole-picture luma step per frame
     // Loss injection: lost[frame][tile].  Empty = nothing is lost.
     std::vector<std::vector<uint8_t>> lost;
     // The rate controller's force_warp_skip request, per frame per tile.
     std::vector<std::vector<uint8_t>> skip_map;
     bool compare_shadow = true;
+    // Syntax v1.5.  Defaults mirror nxvc_config_default(): all three on.
+    uint32_t warp_dc = 1, mv_quad = 1;
+    uint32_t refresh_drift_q8 = 256, refresh_max_age = 720;
 };
 
 static Run run(const Opts &o) {
@@ -148,6 +156,10 @@ static Run run(const Opts &o) {
     cfg.intra_period = o.intra_period;
     cfg.ref_sel = o.ref_sel;
     cfg.custom_tables = 0;   // keeps the test fast; the path is table-agnostic
+    cfg.warp_dc = o.warp_dc;
+    cfg.mv_quad = o.mv_quad;
+    cfg.refresh_drift_q8 = o.refresh_drift_q8;
+    cfg.refresh_max_age = o.refresh_max_age;
 
     nxvc_status st;
     nxvc_encoder *e = nxvc_encoder_create(&cfg, &st);
@@ -178,7 +190,7 @@ static Run run(const Opts &o) {
         Scene sc = make_scene(o.eye_w, o.h, o.eyes, o.c444,
                               o.pan_per_frame * f, 0.0,
                               20 + o.obj_speed * f, 40 + (f % 3), o.disparity,
-                              o.salt_per_frame * f);
+                              o.salt_per_frame * f, o.bright_per_frame * f);
         nxvc_image img = image_of(sc);
         std::vector<nxvc_view> views((size_t)o.eyes,
                                      view_yaw(o.yaw_per_frame * f));
@@ -438,12 +450,15 @@ int main(int argc, char **argv) {
     }
 
     // ---------------------------------------------------------------- 5
-    // Rolling intra refresh: with a period of T, every tile is refreshed
-    // exactly once every T frames and about 1/T of the tiles per frame.
+    // Rolling intra refresh: with a period of T and no drift rule, every tile
+    // is refreshed exactly once every T frames and about 1/T of the tiles per
+    // frame.  The drift rule of SYNTAX 13.10 is off here on purpose: this is
+    // the fixed cadence's own test, and case 14 below is the drift rule's.
     {
         Opts o;
         o.frames = 12;
         o.intra_period = 4;
+        o.refresh_drift_q8 = 0;
         o.yaw_per_frame = 0.3;
         o.pan_per_frame = 1.0;
         Run r = run(o);
@@ -609,6 +624,138 @@ int main(int argc, char **argv) {
                     if (t.mode == NXVC_MODE_INTRA)
                         CHECK(t.ref_delta == 3,
                               "INTRA tile reports ref_delta %u", t.ref_delta);
+                }
+        }
+    }
+
+    // ---------------------------------------------------------------- 12
+    // Syntax v1.5: four vectors per tile (SYNTAX 13.8).
+    {
+        Opts o;
+        o.frames = 6;
+        o.qp = 26;
+        o.yaw_per_frame = 0.7;
+        o.pan_per_frame = 2.0;
+        o.obj_speed = 5;   // a disc crossing tile quadrants
+        o.warp_dc = 0;
+        o.refresh_drift_q8 = 0;
+        Opts off = o;
+        off.mv_quad = 0;
+        Run a = run(off), b = run(o);
+        CHECK(a.ok, "mv_quad off: %s", a.err.c_str());
+        CHECK(b.ok, "mv_quad on: %s", b.err.c_str());
+        if (a.ok && b.ok) {
+            int quads = 0;
+            for (const auto &fr : b.dec_tiles)
+                for (const auto &t : fr) {
+                    if (!t.mv_quad) continue;
+                    ++quads;
+                    CHECK(t.mode == NXVC_MODE_WARP_MV ||
+                              t.mode == NXVC_MODE_STATIC_MV,
+                          "mv_quad on mode %u", t.mode);
+                    CHECK(t.mv_present == 1, "mv_quad without mv_present");
+                    for (int q = 0; q < 4; ++q) {
+                        const int ax = (int)t.mv_x + t.dmv[q][0];
+                        const int ay = (int)t.mv_y + t.dmv[q][1];
+                        CHECK(ax >= -128 && ax <= 127 && ay >= -128 && ay <= 127,
+                              "quadrant vector (%d, %d) out of range", ax, ay);
+                    }
+                }
+            CHECK(quads > 0, "no tile chose mv_quad on moving-object material");
+            // The deltas are only ever taken when they pay for their eight
+            // bytes, so the stream must not grow.
+            uint32_t sa = 0, sb = 0;
+            for (auto v : a.frame_bytes) sa += v;
+            for (auto v : b.frame_bytes) sb += v;
+            std::printf("  mv_quad: %d quad tiles, %u -> %u bytes\n", quads, sa,
+                        sb);
+            // The deltas are taken on a SAD comparison that charges their eight
+            // bytes, so the stream may not grow by more than what they cost:
+            // this is a four-tile picture where one tile taking them is the
+            // whole signal, not a rate measurement (that is
+            // ref/RESULTS-inter-b.md).
+            CHECK(sb <= sa + (uint32_t)(8 * quads),
+                  "mv_quad grew the stream by more than its own bytes: "
+                  "%u -> %u over %d quad tiles", sa, sb, quads);
+        }
+    }
+
+    // ---------------------------------------------------------------- 13
+    // Syntax v1.5: the near-skip and warp_dc() (SYNTAX 3.3, 13.9).
+    {
+        Opts o;
+        o.frames = 10;
+        o.qp = 34;
+        o.eye_w = 192;
+        o.h = 192;
+        o.yaw_per_frame = 0.15;
+        o.pan_per_frame = 0.4;
+        o.obj_speed = 0;
+        o.bright_per_frame = 3;
+        o.mv_quad = 0;
+        o.refresh_drift_q8 = 0;
+        Opts off = o;
+        off.warp_dc = 0;
+        Run a = run(off), b = run(o);
+        CHECK(a.ok, "warp_dc off: %s", a.err.c_str());
+        CHECK(b.ok, "warp_dc on: %s", b.err.c_str());
+        if (a.ok && b.ok) {
+            int near_enc = 0, near_dec = 0;
+            for (const auto &fr : b.enc_tiles)
+                for (const auto &t : fr) near_enc += t.dc_corr ? 1 : 0;
+            for (const auto &fr : b.dec_tiles)
+                for (const auto &t : fr) {
+                    if (!t.dc_corr) continue;
+                    ++near_dec;
+                    // 13.9: a near-skip IS a skipped tile.
+                    CHECK(t.skipped == 1, "dc_corr on a coded tile");
+                    CHECK(t.mode == NXVC_MODE_WARP_SKIP,
+                          "dc_corr on mode %u", t.mode);
+                }
+            CHECK(near_enc > 0, "no tile chose the near-skip");
+            CHECK(near_enc == near_dec,
+                  "encoder wrote %d near-skips, decoder saw %d", near_enc,
+                  near_dec);
+            std::printf("  warp_dc: %d near-skip tiles\n", near_dec);
+        }
+        // ... and the same thing under loss, where the shadow comparison in
+        // run() is the whole point: a lost row still carries its corrections,
+        // because they travel in the row header the transport replicates.
+        Opts l = o;
+        l.frames = 6;
+        l.lost.assign(6, {});
+        for (int f = 2; f < 6; ++f) l.lost[f].assign(2 * 2, (uint8_t)(f & 1));
+        Run c = run(l);
+        CHECK(c.ok, "warp_dc under loss: %s", c.err.c_str());
+    }
+
+    // ---------------------------------------------------------------- 14
+    // Syntax v1.5: the refresh rule of SYNTAX 13.10.  The hard cap is
+    // unconditional, so every tile must be INTRA at least once inside it even
+    // when the drift rule would defer every eligible tile.
+    {
+        Opts o;
+        o.frames = 14;
+        o.qp = 24;
+        o.intra_period = 3;
+        o.refresh_max_age = 6;
+        o.refresh_drift_q8 = 1u << 20;   // no tile is ever drifty enough
+        o.warp_dc = 0;
+        o.mv_quad = 0;
+        o.yaw_per_frame = 0.2;
+        o.pan_per_frame = 0.5;
+        Run r = run(o);
+        CHECK(r.ok, "drift refresh: %s", r.err.c_str());
+        if (r.ok && !r.enc_tiles.empty()) {
+            const size_t nt = r.enc_tiles[0].size();
+            std::vector<int> last_intra(nt, 0);
+            for (size_t f = 1; f < r.enc_tiles.size(); ++f)
+                for (size_t t = 0; t < nt; ++t) {
+                    if (r.enc_tiles[f][t].mode == NXVC_MODE_INTRA)
+                        last_intra[t] = (int)f;
+                    CHECK((int)f - last_intra[t] <= (int)o.refresh_max_age,
+                          "tile %zu went %d frames without an INTRA", t,
+                          (int)f - last_intra[t]);
                 }
         }
     }

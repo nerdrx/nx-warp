@@ -14,6 +14,32 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
 
 ### Added
 
+**Bitstream syntax v1.5 -- the inter-efficiency package**
+
+- Tool bit 25 `MV_QUAD`: four motion vectors per tile, one per 32x32 quadrant,
+  coded as `i8` deltas from the tile vector in the eight bytes after it. The
+  warp geometry is unchanged -- every sample still reads the whole tile's
+  corner basis -- so four equal deltas reproduce a tile without `mv_quad` bit
+  for bit, structurally: `warp_tile()` is now `warp_tile_quad()` with the
+  vector replicated. `docs/SYNTAX.md` 13.8, decision 53.
+- Tool bit 24 `WARP_DC`: a skipped tile may carry a nine-byte `warp_dc()`
+  low-frequency correction -- DC plus a linear ramp per axis, per plane --
+  in a second per-row bitmap gated by bit 7 of `tile_count`, so a row that
+  uses none costs nothing. `docs/SYNTAX.md` 3.3 and 13.9, decisions 54 and 55.
+- Drift-driven intra refresh in the reference encoder: the encoder measures the
+  error its exact client shadow carries per tile and refreshes an eligible tile
+  only when that error passes a multiple of the quantiser's noise floor, with
+  an unconditional hard cap for loss recovery. Encoder-side, no syntax change,
+  `nxvc_config::refresh_drift_q8` / `refresh_max_age`, `docs/SYNTAX.md` 13.10,
+  decision 56.
+- Conformance vectors `v57`-`v60` and rejection vectors `r30`-`r32`.
+  `v45`-`v56` are generated with every v1.5 tool off and keep their v1.4
+  digests, except `v56`, whose refresh clock now counts from the tile's actual
+  last `INTRA` rather than from a global frame counter.
+- Measurements: `ref/RESULTS-inter-b.md`.
+
+### Added
+
 **Design**
 
 - The design paper, `docs/PAPER.md`: bitstream and coding tools, prediction and loss concealment, the
