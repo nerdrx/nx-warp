@@ -250,6 +250,12 @@ counter is more than `2^13` behind the highest seen is **replay** and MUST be
 dropped. The counter resets to zero only when `epoch` increments; `epoch` increments
 only on rekey. Uniqueness therefore holds within a subkey.
 
+**Feedback nonce.** The upstream direction has no `path_seq`, so its counter is
+derived from the packet's own header: `counter = frame_ext * bands + band`, where
+`frame_ext` is the 16-bit `frame_id` extended by the same rule against each end's
+own frame counter. Both ends track frames monotonically, so both compute the same
+counter without a wire field.
+
 > **Decision D4.** The paper says the nonce is derived from
 > `(stream_id, path_id, path_seq, epoch counter)` but `path_seq` is only 14 bits,
 > which repeats after 16384 datagrams — about 1.2 seconds at 13.5 kpps. Deriving from
@@ -394,11 +400,12 @@ Per band, the deadline instant is
 
 ```
   band_deadline(N, b) = predicted_display_time(N)
-                        - reproject_budget - runtime_margin - deadline_offset
+                        - reproject_budget - runtime_margin + deadline_offset
 ```
 
 `reproject_budget` and `runtime_margin` come from the client (about 3 ms on Pico).
-`deadline_offset` is the controller's output, `0 .. 4 ms`, initially 0.
+`deadline_offset` is the controller's output, `0 .. 4 ms`, initially 0, and it moves
+the deadline **later** (decision D16).
 
 At the deadline for band `b` of frame `N`:
 
@@ -406,9 +413,19 @@ At the deadline for band `b` of frame `N`:
    `pose_seq` and `age = age(N-1, t) + 1` from slot `(N-1) mod 4`;
 2. the band's feedback packet is generated (section 8);
 3. tiles arriving afterwards are still placed, with `late = 1`, and their `state`
-   becomes `DECODED` (they are valid references and better concealment sources);
-   they are reported as `late_tiles` in the **next** feedback, and for reference
-   tracking a late tile is the same as a received tile (PAPER 4.3 item 5).
+   becomes `DECODED`, so they are displayed and are better concealment sources.
+   They are counted in `late_tiles` but their bit in the `received_bitmap` stays
+   **clear**: a late tile is decoded but never acknowledged (decision D17), so it
+   is not used as a prediction reference by either end.
+
+> **Decision D17.** PAPER 4.3 item 5 says "for reference tracking a late tile is
+> the same as a received tile". It cannot be, because the sender learns about it
+> only if a later cumulative feedback happens to arrive, and any lost feedback
+> then leaves the client holding pixels the sender's shadow believes are concealed
+> — the silent divergence section 4.5 exists to prevent. Marking late tiles
+> decoded-but-unacknowledged keeps the shadow bit-exact under every loss pattern,
+> which `tests/transport/test_shadow.cpp` verifies by fuzzing; the cost is that a
+> late tile only improves this frame's picture, not the next frame's prediction.
 
 Controller (PAPER 4.3): let `miss(N)` be the fraction of the frame's tiles whose
 state at their band deadline was not `DECODED`.
@@ -420,6 +437,13 @@ state at their band deadline was not `DECODED`.
   clean_frames += 1 while miss(N) == 0, reset to 0 otherwise
   every 90 clean frames (1 s): deadline_offset = max(0, deadline_offset - 200 us)
 ```
+
+> **Decision D16.** PAPER 4.3 says the deadline "moves 1 ms earlier ... trading
+> latency for fewer holes". Moving it earlier leaves *less* time for datagrams and
+> therefore produces *more* holes; the stated trade (accept latency, gain
+> completeness) requires moving it **later**, which is what `deadline_offset` does
+> here. With the paper's sign the simulator conceals every tile of every frame on a
+> 300 Mbit/s link.
 
 > **Decision D8.** "Relaxes 0.2 ms per clean second" is implemented as a counter of
 > consecutive frames with **zero** missing tiles, because a frame with one hole is not
@@ -476,7 +500,8 @@ is *not* preceded by a datagram header: the uplink has its own small header.
 `bitmap_mode`:
 
 * **0 `RAW`** — `ceil(tiles_in_band / 8)` bytes, bit `i` (LSB first within a byte)
-  set iff tile `i` of the band was received *and* decoded. 51 bytes for a 408-tile band.
+  set iff tile `i` of the band was received before its band deadline *and* decoded.
+  51 bytes for a 408-tile band.
 * **1 `ALL`** — zero bytes; every tile of the band was received.
 * **2 `RLE`** — `u8 nruns`, then `nruns` records of `u16 start, u8 len`; each record
   is a run of consecutive **missing** tiles. Legal only with `CAP_RLE_FEEDBACK`.
@@ -493,7 +518,11 @@ The generator picks the smallest legal encoding: `ALL` if nothing is missing, el
 > and reports the real uplink rate. The 225-byte worst case is still under any MTU.
 
 A tile bit is set only if the datagram decrypted **and** the tile bitstream decoded
-without error, so a corrupt-but-delivered tile counts as lost (PAPER 4.4). The
+without error **and** it arrived before the band deadline, so a corrupt-but-delivered
+tile and a late tile both count as lost (PAPER 4.4, decision D17). Because the bitmap
+is re-derived from the live ring each time a band is repeated in a cumulative packet,
+every copy of a band's report carries the same bits: losing one feedback packet can
+never change what the sender concludes. The
 transport library sets the bit on successful placement and offers
 `Receiver::mark_tile_undecodable()` for the decoder to clear it before the deadline.
 
@@ -647,4 +676,7 @@ telemetry, never control input.
 | D12 | `payload_len` excludes the 16-byte tag; the on-wire datagram is `24 + payload_len + 16`. |
 | D13 | The oversize policy is a three-way hook (`kReject`, `kDropTile`, `kFragment`) rather than the paper's implicit "the encoder never does this". |
 | D14 | Feedback packets are AEAD protected with a direction-separated subkey (`dir = 1`), which the paper does not state; without it the uplink is a trivial forgery channel into the reference model. |
-| D15 | A late tile upgrades its shadow state from `CONCEALED` to `RECEIVED` only while the frame is inside the 8-frame shadow history. |
+| D15 | Superseded by D17: no late-tile upgrade happens at all. |
+| D16 | The deadline controller moves the deadline **later**, not earlier as PAPER 4.3 words it, because that is what "trading latency for fewer holes" means. |
+| D17 | A tile arriving after its band deadline is decoded and displayed but never acknowledged, so the sender's shadow is provably equal to the client's reference state under any loss pattern. |
+| D18 | The upstream (feedback) AEAD nonce counter is `frame_ext * bands + band`, derived from the feedback header rather than carried on the wire. |
