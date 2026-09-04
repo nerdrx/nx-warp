@@ -147,7 +147,7 @@ struct TileParams {
     int mv_x = 0, mv_y = 0, alpha_value = 255;
     int disparity = 0;   // STEREO only, quarter samples, 12 bits
     int skipped = 0;     // signalled by skip_bitmap, no tile structure at all
-    // --- syntax v1.5, tool bits 24 and 25 (docs/SYNTAX.md 13.9, 13.10)
+    // --- syntax v1.5, tool bits 24 to 26 (docs/SYNTAX.md 13.9 to 13.11)
     int near_skip = 0;      // word1 bit 28: the whole residual is `corr`
     int near_skip_ac = 0;   // word1 bit 29: `corr` carries the two ramps too
     int quad_mv = 0;        // word1 bit 30: `qmv` refines the tile vector
@@ -210,9 +210,9 @@ static void pack_tile_header(BW &bw, const TileParams &t) {
 
 // The optional fields that follow the two header words, in the order
 // SYNTAX.md 4.1 lists them: the vector, the quadrant deltas, the sub-intra
-// quadrant, the constant alpha value, the near-skip correction.  One function writes them and one
-// counts them, so a field can never be written in an order the size does not
-// account for.
+// quadrant, the constant alpha value, the near-skip correction.  One function
+// writes them and one counts them, so a field can never be written in an order
+// the size does not account for.
 static int tile_field_bytes(const TileParams &t) {
     return (t.mv_present ? 2 : 0) + (t.quad_mv ? 4 : 0) +
            (t.sub_intra ? 1 : 0) + (t.alpha_mode == 1 ? 1 : 0) +
@@ -587,18 +587,6 @@ static void residual_block(const i16 *c, const PlaneState &s, int tskip,
     }
 }
 
-// The DC plane and the bilinear prediction it drives: s.means and s.pred.
-// Shared by the encoder's analysis pass and the decoder.
-//
-// For an inter tile (s.wpred non-empty) the DC plane codes the block means of
-// the residual against the warp predictor, and the final prediction is
-//
-//     pred = clamp(wpred + planar(means) - dc_offset, 0, maxval)
-//
-// so the unit list, the scan, the contexts and the block syntax are exactly
-// the intra ones and the DC plane doubles as the per-block DC correction the
-// warp needs.  On a well-predicted tile every DC-plane coefficient is zero and
-// the whole structure costs one CBF symbol.
 // SYNTAX.md 7.2 and 13.3: bilinear planar prediction over the block centres,
 // then, for an inter tile, added to the warp predictor about the plane's DC
 // offset.  Every tile form that produces a `means` field ends here -- the
@@ -624,11 +612,22 @@ static inline int dc_plane_step(const PlaneState &s) {
     return dequant_step(dc_qp_of(s.qp), 16);
 }
 
+// The DC plane and the bilinear prediction it drives: s.means and s.pred.
+// Shared by the encoder's analysis pass and the decoder.
+//
+// For an inter tile (s.wpred non-empty) the DC plane codes the block means of
+// the residual against the warp predictor, and the final prediction is
+//
+//     pred = clamp(wpred + planar(means) - dc_offset, 0, maxval)
+//
+// so the unit list, the scan, the contexts and the block syntax are exactly
+// the intra ones and the DC plane doubles as the per-block DC correction the
+// warp needs.  On a well-predicted tile every DC-plane coefficient is zero and
+// the whole structure costs one CBF symbol.
 static void reconstruct_dc_plane(PlaneState &s, const i16 *coefs) {
-    const int nb = s.nb, size = s.size;
+    const int nb = s.nb;
     const int ndc = nb * nb;
-    int dcqp = dc_qp_of(s.qp);
-    int tdc = dequant_step(dcqp, 16);
+    const int tdc = dc_plane_step(s);
     std::vector<i32> dc(ndc);
     for (int i = 0; i < ndc; ++i) dc[i] = dequant(coefs[i], tdc);
     if (nb == 8) {
