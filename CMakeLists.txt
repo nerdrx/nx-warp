@@ -55,6 +55,11 @@ if(NXWARP_BUILD_TESTS)
   endforeach()
 endif()
 
+option(NXWARP_BUILD_EXAMPLES "Build the examples in examples/" ON)
+if(NXWARP_BUILD_EXAMPLES AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/examples/CMakeLists.txt)
+  add_subdirectory(examples)
+endif()
+
 # Install rules, the find_package(nxvc) package, pkg-config and CPack. These
 # run last because they discover which component targets actually exist rather
 # than being told; a component that has adopted the export convention (see
