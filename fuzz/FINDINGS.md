@@ -55,6 +55,7 @@ re-run.
 | F5 | low | open | ref / spec | the stream header accepts `color_transform == 1` with 4:2:0, which SYNTAX.md section 2 forbids |
 | F6 | -- | fixed here | fuzz | signed overflow in this directory's own warp mutator; found by the mutator rounds the regression runner executes |
 | F7 | medium | open | warp | two signed-overflow / negate-INT_MIN sites in `corner_component()`, in the code that is supposed to be the saturation |
+| F8 | **high** | open | ref | `Unit::ctx_level` / `ctx_mode` are tested for truthiness, so the `-1` their header documents becomes context index 255 and indexes `TableSet::ctx[16]` out of bounds |
 
 Reproducers for a finding that is still **open** live in
 `fuzz/regressions/<target>/open/` and are skipped by the CTest entry so it stays
@@ -284,6 +285,78 @@ the warp owner's decision, not a patch from here.
 
 ---
 
+## F8 -- the v2 `ctx_level` / `ctx_mode` sentinel is `-1` in the header and `0` in the code (high)
+
+**Target:** `nxvc_rans_fuzz` (found while updating the harness for the v2
+entropy model, not by a mutated input -- see "How to reproduce" below).
+**Sites:** `ref/src/entropy.cpp:154`, and `ref/src/entropy.cpp:67` with `:131`
+
+`ref/src/entropy.h` documents both new `Unit` fields with `-1` as the sentinel,
+and both are `i16` -- signed, which only makes sense if a negative value is
+meant to be storable:
+
+```cpp
+i16 ctx_level;    // -1: the banded LEVEL contexts; else a fixed context
+i16 ctx_mode;     // UNIT_MODE: -1 = bypass coded, else a context index
+```
+
+`entropy.cpp` tests them for **truthiness** instead:
+
+```cpp
+// :154
+op.arg = (u8)(u_->ctx_level ? u_->ctx_level : level_ctx(pos_, prev_class_));
+
+// :67
+phase_ = u_->ctx_mode ? kModeSym : kModeFlag;
+// :131
+op.arg = (u8)u_->ctx_mode;
+```
+
+`-1` is truthy, so the documented value takes the "fixed context" branch and
+`(u8)(-1)` is **255**. `op.arg` is then used as an index into
+`TableSet::ctx[kNumCtx]`, which has 16 entries. The result is a reference 239
+entries past the end of the array, and reading `t.slot2sym[slot]` through it
+segfaults:
+
+```
+Program received signal SIGSEGV
+#0 nxvc::RansDecoder::decode_sym (lane=1, ...) ref/src/entropy.cpp:404
+      404      u32 s = t.slot2sym[slot];
+#1 nxvc::decode_units (nunits=25, nlanes=32, len=288) ref/src/entropy.cpp:492
+```
+
+**Why `0` cannot be the intended sentinel.** Context 0 is `kCtxCbfLuma`, a real
+context. If `0` means "banded", then no unit can ever select fixed context 0,
+and the field would not need to be signed. The header is right and the three
+comparisons are wrong; they should be `< 0` (or the field should be `u8` with an
+explicit `kCtxNone` constant, and the header updated to match).
+
+**Severity.** High, because it is a wild array index reachable from a value the
+public-facing internal header documents as normal usage, and because it is new
+code: nothing in the tree passes `-1` today, so no existing test covers it. The
+first caller that follows the header gets memory corruption.
+
+**How to reproduce.** This is not input-dependent, so there is no binary
+reproducer: *every* input crashes. In `fuzz/nxvc_rans_fuzz.cpp`, change
+
+```cpp
+u.ctx_level = 0;   // to -1, the value ref/src/entropy.h documents
+```
+
+rebuild, and run any file from `fuzz/corpus/nxvc_rans_fuzz/`. The harness ships
+with `0` so the target keeps fuzzing; the line carries a comment pointing here.
+
+**Consequence for coverage, worth flagging.** Because of this, `nxvc_rans_fuzz`
+currently drives only the v1 shape: `UNIT_COEF` units with the twelve v1
+contexts. `UNIT_MODE` (intra modes, `kModeSym` / `kModeFlag` / `kModeIdx`) and
+the dedicated DC-plane contexts `kCtxCbfDc` / `kCtxLastDc` / `kCtxLevelDc` /
+`kCtxMode` are **not** fuzzed yet. Once F8 is fixed, the harness should grow
+`UNIT_MODE` units and DC-plane contexts; the invariant to add with them is that
+every decoded mode is `< kNumIntraModes`, since an out-of-range mode indexes a
+predictor table.
+
+---
+
 ## F4 -- the `address+undefined` sanitizer preset is unusable (medium, build)
 
 **Site:** `cmake/nxwarp_sanitizers.cmake`, the `undefined` branch
@@ -417,6 +490,8 @@ Recorded so the next run does not re-triage them.
 * **`hybrid.e2e256` failed once under `ctest --parallel 4` and passes on its
   own.** Load-sensitive, not a sanitizer report; no ASan or UBSan output was
   produced. Worth a look by whoever owns `hybrid/` if it recurs.
+* **`UNIT_MODE` and the v2 DC-plane contexts are not fuzzed yet**, blocked on
+  F8. See the last paragraph of that entry for what to add once it is fixed.
 * **`scan_frame` / `decode_frame` length agreement.** `nxvc_decode_fuzz`
   counts, but does not abort on, a disagreement between the bytes
   `nxvc_decoder_scan_frame` reports and the bytes `nxvc_decoder_decode_frame`

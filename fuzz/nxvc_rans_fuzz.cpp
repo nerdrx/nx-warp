@@ -131,6 +131,20 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         bool chroma = (i & 1) != 0;
         u.ctx_cbf = uint8_t(chroma ? nxvc::kCtxCbfChroma : nxvc::kCtxCbfLuma);
         u.ctx_last = uint8_t(chroma ? nxvc::kCtxLastChroma : nxvc::kCtxLastLuma);
+        // The v2 entropy model (ref/src/entropy.h) added these fields to Unit;
+        // they are set explicitly rather than left to value-initialisation.
+        //
+        // ctx_level is 0, NOT the -1 the header documents as "the banded LEVEL
+        // contexts".  entropy.cpp:154 tests the field for truthiness, so -1
+        // selects a *fixed* context 255 and indexes TableSet::ctx[16] out of
+        // bounds.  0 is what the implementation actually treats as "banded".
+        // This is FINDINGS.md F8; when it is fixed, this becomes -1 and the
+        // ctx_mode line below can stay as it is.
+        u.ctx_level = 0;
+        u.kind = nxvc::UNIT_COEF;
+        u.modes = nullptr;
+        u.nbx = 0;
+        u.ctx_mode = 0;  // same sentinel defect at entropy.cpp:67 and :131
     }
 
     const uint8_t *payload = data + off;
