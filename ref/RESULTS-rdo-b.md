@@ -358,7 +358,61 @@ before: **-1.44 %**. Encode time **0.611x**.
 The gate still fails, by 5.8 dB rather than 6.2. Section 9 is why that is the
 expected result and not a shortfall in this package.
 
-### 8.3 The Phase 2 kill test, band A
+### 8.3 The Phase 2 kill test, band A, 4:4:4
+
+`--eyes 2 --inter on --poses vr-mixed-1024-v2.poses.json --anchors x265-p
+--qp 0,4,8,12 --anchor-qp 2,8,14,20`
+
+| QP | | Mbit/s | PSNR-Y | SSIM-Y |
+|---|---|---|---|---|
+| 0 | before | 611.85 | 57.164 | 0.99885 |
+| | **after** | **623.83** | **57.461** | **0.99894** |
+| 4 | before | 408.76 | 55.193 | 0.99835 |
+| | **after** | **370.80** | **55.300** | **0.99839** |
+| 8 | before | 268.74 | 52.983 | 0.99772 |
+| | **after** | **249.78** | **53.148** | **0.99780** |
+| 12 | before | 183.15 | 50.076 | 0.99652 |
+| | **after** | **166.40** | **50.339** | **0.99671** |
+
+BD-rate against `x265-p`: **+383.41 % before, +334.54 % after**. After against
+before, on the same PSNR-Y: **-9.82 %**. Encode time **0.814x**.
+
+`ref/phase2_verdict.py`, verbatim:
+
+> ```
+> === vr-mixed-1024-v2.yuv444p  (before)
+>   codec nxv-inter against x265-p, PSNR-Y
+>   velocity split at the 20th percentile = 6.3 deg/s (3 of 12 frames)
+>     overall (all frames)          BD-rate +383.41 %  BD-PSNR -7.629 dB
+>     fastest 20 % of frames        BD-rate +354.41 %  BD-PSNR -7.059 dB
+>     the remaining frames          BD-rate +393.35 %  BD-PSNR -7.819 dB
+>   Phase 2 kill test (PAPER.md 2.11 item 1):
+>     "within 10 percent at rest and at least 30 percent better on the motion frames"
+>     at rest   : BD-rate +393.35 % (allowed up to +10 %)  FAIL
+>     on motion : BD-rate +354.41 % (needs -30 % or better)  FAIL
+>     VERDICT   : FAIL
+>
+> === vr-mixed-1024-v2.yuv444p  (after)
+>   codec nxv-inter against x265-p, PSNR-Y
+>   velocity split at the 20th percentile = 6.3 deg/s (3 of 12 frames)
+>     overall (all frames)          BD-rate +334.54 %  BD-PSNR -6.999 dB
+>     fastest 20 % of frames        BD-rate +311.67 %  BD-PSNR -6.508 dB
+>     the remaining frames          BD-rate +342.28 %  BD-PSNR -7.163 dB
+>   Phase 2 kill test (PAPER.md 2.11 item 1):
+>     "within 10 percent at rest and at least 30 percent better on the motion frames"
+>     at rest   : BD-rate +342.28 % (allowed up to +10 %)  FAIL
+>     on motion : BD-rate +311.67 % (needs -30 % or better)  FAIL
+>     VERDICT   : FAIL
+> ```
+
+The kill test still fails and this package was never going to change that:
+`ref/RESULTS-inter.md` 4 already established that most of the gap is the intra
+core the inter path is bolted to, not the inter path. What moves is the part
+an encoder owns, and it moves by **-9.8 %**, of which -3.4 points is the
+double-charged persistence factor and the rest is the rate model, the motion
+search and the trellis together.
+
+### 8.4 The Phase 2 kill test, band A, 4:2:0
 
 *(filled in below)*
 
