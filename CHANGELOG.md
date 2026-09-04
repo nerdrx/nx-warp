@@ -40,6 +40,15 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
   tool-bit gating, and the `nxv-enc`, `nxv-dec` and `nxv-info` tools.
 - 32 conformance vectors in `tests/vectors/` with an md5 manifest, covering intra, lossless, alpha,
   resolution levels, custom tables, odd frame sizes and multi-frame streams.
+- One rate-distortion slope for the whole encoder, `lambda(QP, class) = scale * class * qstep^2`,
+  shared by the coefficient trellis, the directional intra mode, the transform-skip flag, the
+  per-tile QP offset, the inter mode decision and the motion search. A squared error in a chroma
+  sample counts a quarter of one in a luma sample, in every decision. The DC plane is trellised;
+  transform skip and the quarter-pel motion refinement are decided by real rate-distortion rather
+  than by a rule; the per-tile QP offset is a bounded descent over reused analysis instead of an
+  exhaustive sweep. Encoder-side, no syntax change. `ref/RESULTS-rdo-a.md`.
+- `nxv-enc --preset fast|medium|slow`, the encode-time budget, with every knob it sets available on
+  its own.
 
 **Vulkan**
 
