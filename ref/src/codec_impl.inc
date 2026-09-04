@@ -738,7 +738,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         for (int p = 0; p < np; ++p)
             rdoq_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)], tc.tp.tskip,
                        p == 1 || p == 2, tc.nctx, rc, rdo_lambda_scale, tc.cls,
-                       tc.sdh, eff);
+                       tc.chroma_dist_weight(eff.chroma_weight), tc.sdh, eff);
     };
 
     auto analyze_tile_dir = [&](TileCoder &tc, const TableSet *tabs, int pass) {
@@ -750,6 +750,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             analyze_plane_dir(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
                               tc.tp.tskip, tc.dir_layer, p == 1 || p == 2, rc,
                               tc.nctx, rdo_lambda_scale, tc.cls,
+                              tc.chroma_dist_weight(eff.chroma_weight),
                               pass && use_rdo, pass ? eff.dir_cand : 1,
                               mode_ctx, tc.sdh, eff);
     };
@@ -807,7 +808,8 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             c2.build_units();
             const double bits = quantize_tile(c2, tabs);
             const double cost =
-                tile_distortion(c2, eff.chroma_weight) + lam * bits;
+                tile_distortion(c2, c2.chroma_dist_weight(eff.chroma_weight)) +
+                lam * bits;
             if (t == 0 || cost < best_cost) { best_cost = cost; best = t; }
         }
         return best;
@@ -1107,7 +1109,8 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                 int np = coded_planes(tc);
                 for (int p = 0; p < np; ++p) {
                     PlaneState &s = tc.pl[p];
-                    const double w = plane_dist_weight(p, eff.chroma_weight);
+                    const double w = plane_dist_weight(
+                        p, tc.chroma_dist_weight(eff.chroma_weight));
                     for (size_t i = 0; i < s.samples.size(); ++i) {
                         double dd = (double)s.samples[i] -
                                     (double)clamp_i32(s.wpred[i], 0, s.maxval);
@@ -1123,7 +1126,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             if ((size_t)active > tc.units.size()) active = (int)tc.units.size();
             bits += 8 * (kTileHeaderBytes + 4 * active +
                          (tc.tp.mv_present ? 2 : 0));
-            const double d = tile_distortion(tc, eff.chroma_weight);
+            const double d = tile_distortion(tc, tc.chroma_dist_weight(eff.chroma_weight));
             if (dist_out) *dist_out = d;
             return d + lambda * bits;
         };
@@ -1317,7 +1320,10 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                             if ((size_t)active > cand.units.size())
                                 active = (int)cand.units.size();
                             bits += 8 * (kTileHeaderBytes + 4 * active);
-                            return tile_distortion(cand, eff.chroma_weight) + lambda * bits;
+                            return tile_distortion(
+                                       cand,
+                                       cand.chroma_dist_weight(eff.chroma_weight)) +
+                                   lambda * bits;
                         };
                         int best_qd = qd0, best_wm = tc.tp.wm_id;
                         double best = cost_of(qd0, best_wm);
@@ -1673,6 +1679,7 @@ extern "C" int nxvc_debug_tile_histograms(const nxvc_config *cfg,
                 analyze_plane_dir(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
                                   tc.tp.tskip, tc.dir_layer, p == 1 || p == 2,
                                   rc, tc.nctx, kLambdaScaleDefault, tc.cls,
+                                  tc.chroma_dist_weight(kChromaDistWeight),
                                   true, 2, mctx, tc.sdh, Effort{});
         } else {
             for (int p = 0; p < np; ++p)

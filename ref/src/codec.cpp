@@ -281,9 +281,19 @@ inline constexpr double kLambdaScaleDefault = 0.30;
 // fitted on the harness against the 6:1:1 PSNR and NOT against PSNR-Y --
 // ref/RESULTS-rdo-a.md 3, which reports both and says how much of each number
 // is the metric rather than the picture.
+//
+// It is stated PER SAMPLE at 4:4:4 density, and scaled by the area one chroma
+// sample covers.  That scaling is not a detail: the 6:1:1 convention weighs
+// plane MEANS, so at 4:2:0, where a chroma plane has a quarter of the samples,
+// one chroma sample stands for four luma samples and is worth four times as
+// much as the same sample at 4:4:4.  Weighing it at 0.25 in both is what makes
+// a 4:2:0 encode lose 4.6 % on the weighted metric while gaining 8 % on
+// PSNR-Y -- measured, ref/RESULTS-rdo-a.md 3.1.
 inline constexpr double kChromaDistWeight = 0.25;
 
 // Plane index p (0 = Y, 1/2 = Co/Cg, 3 = alpha) to its distortion weight.
+// `chroma_weight` is the caller's per-sample weight, already scaled for the
+// chroma plane's sample density (TileCoder::chroma_dist_weight).
 static inline double plane_dist_weight(int p, double chroma_weight) {
     return (p == 1 || p == 2) ? chroma_weight : 1.0;
 }
@@ -444,6 +454,13 @@ struct TileCoder {
     // implementation, called by setup() and by the per-tile QP search.
     void requant_params();
     void build_units();
+    // `base` (the per-sample weight at 4:4:4) scaled by the area one chroma
+    // sample of THIS tile covers, which is 1 at 4:4:4 and 4 at 4:2:0.
+    double chroma_dist_weight(double base) const {
+        if (pl[1].size <= 0) return base;
+        const double r = (double)pl[0].size / (double)pl[1].size;
+        return base * r * r;
+    }
 };
 
 static inline int dequant_step(int qp, int w) {
@@ -1219,12 +1236,12 @@ static DcRdoq dc_rdoq(bool chroma, int nctx, const RateCost &rc, double lambda,
 
 static void rdoq_plane(PlaneState &s, i16 *coefs, int tskip, bool chroma,
                        int nctx, const RateCost &rc, double lambda_scale,
-                       int cls, int sdh, const Effort &eff) {
+                       int cls, double chroma_w, int sdh, const Effort &eff) {
     const int nb = s.nb, size = s.size;
     const int ndc = nb * nb;
     const double lambda =
         lambda_for(s.qp, cls, lambda_scale,
-                   plane_dist_weight(chroma ? 1 : 0, eff.chroma_weight)).coef;
+                   plane_dist_weight(chroma ? 1 : 0, chroma_w)).coef;
     const bool full = eff.trellis_full;
     const u8 *scan = scan_table(64, tskip != 0);
     const int ctx_cbf = chroma ? kCtxCbfChroma : kCtxCbfLuma;
@@ -1334,13 +1351,13 @@ static i32 unit_bits(const i16 *c, int ncoef, const u8 *scan, int ctx_cbf,
 static void analyze_plane_dir(PlaneState &s, i16 *coefs, int tskip, int layer,
                               bool chroma, const RateCost &rc,
                               int nctx, double lambda_scale, int cls,
-                              bool use_rdo, int ncand, int mode_ctx, int sdh,
-                              const Effort &eff) {
+                              double chroma_w, bool use_rdo, int ncand,
+                              int mode_ctx, int sdh, const Effort &eff) {
     const int nb = s.nb, size = s.size;
     const int ndc = nb * nb;
     const double lambda =
         lambda_for(s.qp, cls, lambda_scale,
-                   plane_dist_weight(chroma ? 1 : 0, eff.chroma_weight)).coef;
+                   plane_dist_weight(chroma ? 1 : 0, chroma_w)).coef;
     const bool full = eff.trellis_full;
     if (use_rdo && eff.trellis_dc) {
         DcRdoq rd = dc_rdoq(chroma, nctx, rc, lambda, eff);
