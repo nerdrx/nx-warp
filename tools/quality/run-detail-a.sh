@@ -18,7 +18,8 @@ PY=$NXQ_SCRATCH/venv/bin/python
 OUT=$NXQ_SCRATCH/results/tourney-detail-a
 mkdir -p "$OUT"
 cd "$WT/tools/quality"
-for PIX in yuv444p yuv420p; do
+# PIX_ONLY restricts the run to one pixel format, for resuming.
+for PIX in ${PIX_ONLY:-yuv444p yuv420p}; do
   chrt -i 0 taskset -c 20-23 nice -n 19 $PY compare.py \
     --seq "$NXQ_SCRATCH/seq/vr-mixed-1024-v2.$PIX.json" --frames 6 \
     --codec-enc "nxv-enc $FLAGS" --codec-dec nxv-dec --codec-name "$NAME" \
