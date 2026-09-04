@@ -421,11 +421,21 @@ per *unit*, of a value the lane has just decoded.
 | barriers per tile | unchanged | unchanged | unchanged |
 | bytes of traffic | unchanged | unchanged | unchanged |
 
-The budget is 32 KiB per workgroup of 8 tiles, so 13.5 KiB leaves room for the
-16-context stride the host uploads and for a wider model later. **No cross-lane
-read, no extra barrier, no change to the round loop** — which is the whole
-reason the conditioning is on the lane's own previous unit rather than on the
-geometric neighbour above (`docs/SYNTAX.md` decision 53).
+The budget is 32 KiB per workgroup of 8 tiles, so 13.5 KiB leaves plenty of
+room for a wider model later. **No cross-lane read, no extra barrier, no change
+to the round loop** — which is the whole reason the conditioning is on the
+lane's own previous unit rather than on the geometric neighbour above
+(`docs/SYNTAX.md` decision 53).
+
+The Vulkan Pass A kernel is **not** changed by this package and could not be
+tested here (`-DNXWARP_BUILD_VK=OFF` is the tournament build). It refuses a
+stream setting either new tool bit with `VERSION`, because
+`vk/decoder/nxvc_vkdec_parse.cpp`'s `kToolsSupported` does not list them, so it
+can never mis-parse one. `vk/decoder/passA/syntax_constants.h` carries the v3
+context constants and the `s_cum` stride the kernel would need, and
+`vk/decoder/passA/README.md` says what implementing each bit costs: for
+`CTX_V3`, the stride and three bits of per-lane state; for `TAB_V2`, a change
+to the host parser and nothing in the shader at all.
 
 `TAB_V2` costs the kernel nothing at all: it changes how the **host** parses
 the frame's table sets into the same cumulative-frequency upload. It costs the

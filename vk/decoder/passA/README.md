@@ -120,15 +120,16 @@ so a `CBF == 0` unit and the padding both read back as zero.
 
 | | bytes |
 |---|---|
-| `s_cum[8][22][16]` | 11264 |
+| `s_cum[8][16][16]` | 8192 |
 | `s_scan[4][64]` | 1024 |
 | per-tile geometry, flags | ~1000 |
 
-About 13.5 KiB, up from 10 when the context count was 16 and 7.5 when it was 12
-(`docs/SYNTAX.md` 9.3 and 9.8, tool bits 21 `CTX_V2` and 25 `CTX_V3`), against
-a 32 KiB budget for the workgroup's 8 tiles. The table is always uploaded at the
-widest model's stride whichever model the stream selects, so the host has one
-layout to build and contexts past the coded count simply are never selected. The paper assumed a
+About 10 KiB, up from 7.5 when the context count was 12 (`docs/SYNTAX.md` 9.3,
+tool bit 21 `CTX_V2`), against a 32 KiB budget for the workgroup's 8 tiles. The
+table is always uploaded at the 16-context stride whichever model the stream
+selects, so the host has one layout to build and contexts past the coded count
+simply are never selected. Implementing `CTX_V3` (tool bit 25, 22 contexts)
+takes `s_cum` to 11264 bytes and the total to about 13.5 KiB. The paper assumed a
 1024-entry `slot2sym` table per context, but a workgroup holds 8 tiles that may
 each name a different `table_set`, and 8 sets x 12 contexts x 1024 bytes does not
 fit. The kernel stores cumulative frequencies instead and finds the symbol with a
@@ -156,6 +157,11 @@ without it, a 1-bit "is MPM" flag and a 3-bit non-MPM index, both bypass.
 than a derivation: `kCtxNone` means the banded contexts of 9.3, anything else
 is used as-is.
 
+**`CTX_V3` is specified but not implemented here.** `nxvc_vkdec_parse.cpp`
+does not list tool bits 24 or 25 in `kToolsSupported`, so a stream that sets
+either is refused with `VERSION` rather than mis-parsed. What implementing it
+would take is worth writing down, because it is unusually little.
+
 `CTX_V3` (tool bit 25, `docs/SYNTAX.md` 9.8) conditions CBF and LAST on
 `prev_cbf`, whether the previous coefficient unit **this lane** decoded in the
 same unit class was coded. Each lane keeps three bits of state --
@@ -167,8 +173,9 @@ stays one add and one lookup. It costs LDS: `s_cum` grows from 8192 to 11264
 bytes for the workgroup's 8 tiles. For the ordinary tile a lane owns one column
 of 8x8 blocks, so `prev_cbf` is the coded flag of the block directly above.
 
-`TAB_V2` (tool bit 24) is invisible to the kernel: it only changes how the host
-parses the frame's transmitted table sets into the same `cum` upload.
+`TAB_V2` (tool bit 24) is invisible to the kernel entirely: it only changes how
+the host parses the frame's transmitted table sets into the same `cum` upload,
+so it is a change to `nxvc_vkdec_parse.cpp` and nothing else.
 
 `SIGN_HIDE` drops the sign at scan position `LAST` when `LAST >= 4` and makes
 it the parity of the sum of the unit's magnitudes. The kernel stores that

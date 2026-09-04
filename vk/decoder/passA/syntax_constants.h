@@ -111,10 +111,16 @@ NXS_CONST int kCtxV3LevelBase = 12;
 NXS_CONST int kCtxV3LevelDc = 20;
 NXS_CONST int kCtxV3Mode = 21;
 NXS_CONST int kNumCtxV3 = 22;
-// Storage stride of the cumulative-frequency table, always the widest model's
-// count so the host uploads one layout whichever model the stream selects.
-// The coded context count is kNumCtxV1, kNumCtxV2 or kNumCtxV3.
-NXS_CONST int kNumCtx = 22;
+// Storage stride of the cumulative-frequency table.  The host uploads one
+// layout whichever model the stream selects and contexts past the coded count
+// are simply never named, so the stride is the widest model this kernel
+// implements -- **kNumCtxV2 today**.  The kernel does not implement CTX_V3;
+// nxvc_vkdec_parse.cpp's kToolsSupported does not list tool bit 25, so such a
+// stream is refused with VERSION rather than mis-parsed.  Implementing it is
+// this constant raised to kNumCtxV3, which takes s_cum for a workgroup's 8
+// tiles from 8192 to 11264 bytes (about 13.5 KiB of LDS in total, against a
+// 32 KiB budget), plus three bits of per-lane state and the derivation above.
+NXS_CONST int kNumCtx = 16;
 NXS_CONST int kNumSym = 16;
 
 // [REF] ref/src/common.h kCtxNone: "no context selected" for a unit's LEVEL or
@@ -152,10 +158,13 @@ NXS_CONST int kSdhMinLast = 4;
 NXS_CONST uint kToolFlagCtxV2 = 1u;
 NXS_CONST uint kToolFlagIntraDir = 2u;
 NXS_CONST uint kToolFlagSignHide = 4u;
+// Reserved for CTX_V3 when the kernel implements it; the host refuses tool
+// bit 25 today, so no frame ever carries this flag.
 NXS_CONST uint kToolFlagCtxV3 = 8u;
-// TAB_V2 (tool bit 24) is a host-side flag only: it changes how the frame's
-// transmitted table sets are parsed, never how a symbol is decoded, so the
-// kernel receives the same cumulative-frequency upload either way.
+// TAB_V2 (tool bit 24) would be a host-side flag only: it changes how the
+// frame's transmitted table sets are parsed, never how a symbol is decoded, so
+// the kernel would receive the same cumulative-frequency upload either way.
+// The host refuses it today for the same reason as bit 25.
 
 // ===========================================================================
 // 3. LAST classes and LEVEL context derivation    [ref/src/tables.cpp]
