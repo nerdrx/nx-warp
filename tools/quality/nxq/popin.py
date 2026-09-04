@@ -488,7 +488,9 @@ def score_sequence(
             k_all.append(np.asarray(k, dtype=np.float64)[sel])
         prev_ref, prev_dis = rf.y, df.y
 
-    cat = lambda xs: np.concatenate(xs) if xs else np.empty(0)  # noqa: E731
+    def cat(xs: list[np.ndarray]) -> np.ndarray:
+        return np.concatenate(xs) if xs else np.empty(0)
+
     cm = cat(cm_all)
     out = {
         "mode": "skip-map" if skip is not None else "all-frames",
