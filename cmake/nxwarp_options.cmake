@@ -39,8 +39,12 @@ if(NOT _nxwarp_multi_config AND NOT CMAKE_BUILD_TYPE)
     message(STATUS "CMAKE_BUILD_TYPE was empty, defaulting to RelWithDebInfo")
 endif()
 
-set(CMAKE_CXX_EXTENSIONS OFF CACHE BOOL "" FORCE)
-set(CMAKE_C_EXTENSIONS OFF CACHE BOOL "" FORCE)
+# Compiler extensions are deliberately left at CMake's default (ON, i.e.
+# -std=gnu++20). Forcing -std=c++20 sounds tidier and is a portability trap:
+# glibc and the mingw headers gate M_PI and friends on __STRICT_ANSI__, so
+# strict mode removes them, and several components use M_PI. Turning this off
+# is a tree-wide source change, not a build-system flag; if we want it, it is
+# its own commit that adds <numbers> to the callers first.
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # Static libraries and CLIs land in one place per build tree; the quality

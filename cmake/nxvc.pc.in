@@ -1,4 +1,7 @@
-prefix=@CMAKE_INSTALL_PREFIX@
+# Relocatable: resolved from where this .pc file actually sits, so moving or
+# unpacking the package elsewhere does not leave the paths pointing at the
+# machine that built it.
+prefix=${pcfiledir}/@NXVC_PC_RELPATH_TO_PREFIX@
 exec_prefix=${prefix}
 libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
 includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@

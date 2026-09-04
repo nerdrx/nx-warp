@@ -42,7 +42,16 @@ set(NXWARP_CMAKE_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/nxvc")
 # shim, not the design.
 # ---------------------------------------------------------------------------
 function(nxwarp_make_exportable tgt)
-    get_target_property(_type ${tgt} TYPE)
+    # install(EXPORT NAMESPACE nxvc::) prepends the namespace to the *target*
+    # name, so nxvc_ref would be exported as nxvc::nxvc_ref. EXPORT_NAME makes
+    # the installed name match the in-tree alias, nxvc::ref, so a consumer's
+    # target_link_libraries line is the same either side of the install.
+    get_target_property(_export_name ${tgt} EXPORT_NAME)
+    if(NOT _export_name)
+        string(REGEX REPLACE "^nxvc_" "" _short "${tgt}")
+        set_property(TARGET ${tgt} PROPERTY EXPORT_NAME "${_short}")
+    endif()
+
     get_target_property(_dirs ${tgt} INTERFACE_INCLUDE_DIRECTORIES)
     if(NOT _dirs)
         set(_dirs "")
@@ -113,8 +122,10 @@ message(STATUS "install: tools      ${NXWARP_INSTALL_TOOLS}")
 # dependency a configure error instead of a link error); this loop only fills
 # in the ones that have not yet.
 # ---------------------------------------------------------------------------
+set(NXWARP_EXPORT_COMPONENTS "")
 foreach(_t IN LISTS NXWARP_INSTALL_LIBS)
     string(REGEX REPLACE "^nxvc_" "" _short "${_t}")
+    list(APPEND NXWARP_EXPORT_COMPONENTS "${_short}")
     if(NOT TARGET nxvc::${_short})
         add_library(nxvc::${_short} ALIAS ${_t})
     endif()
@@ -131,12 +142,56 @@ foreach(_t IN LISTS NXWARP_INSTALL_LIBS)
 endforeach()
 
 if(NXWARP_INSTALL_LIBS)
+    # No INCLUDES DESTINATION: nxwarp_make_exportable has already put the
+    # right $<INSTALL_INTERFACE:...> on each target, and adding it here too
+    # just duplicates the entry in the generated targets file.
     install(TARGETS ${NXWARP_INSTALL_LIBS}
             EXPORT ${NXWARP_EXPORT_NAME}
             ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
             LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-            RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
-            INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
+            RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+endif()
+
+# ---------------------------------------------------------------------------
+# Public dependencies.
+#
+# A component that links OpenSSL::Crypto PUBLIC puts that name into the
+# exported target's link interface, and the consumer's find_package(nxvc)
+# then fails with "target not found" unless the config file has already run
+# find_dependency(OpenSSL). Which packages those are cannot be asked of a
+# variable -- find_package() in a subdirectory sets its _FOUND in that
+# directory's scope, not here -- so read it off the targets themselves.
+# ---------------------------------------------------------------------------
+set(_nxvc_dep_packages "")
+foreach(_t IN LISTS NXWARP_INSTALL_LIBS)
+    get_target_property(_links ${_t} INTERFACE_LINK_LIBRARIES)
+    if(NOT _links)
+        continue()
+    endif()
+    foreach(_l IN LISTS _links)
+        if(_l MATCHES "^([A-Za-z0-9_+-]+)::([A-Za-z0-9_+-]+)$")
+            set(_pkg "${CMAKE_MATCH_1}")
+            set(_comp "${CMAKE_MATCH_2}")
+            # Our own targets are in the export set already.
+            if(_pkg STREQUAL "nxvc" OR _pkg STREQUAL "nxwarp")
+                continue()
+            endif()
+            if(_pkg STREQUAL "OpenSSL")
+                list(APPEND _nxvc_dep_packages "OpenSSL COMPONENTS ${_comp}")
+            else()
+                list(APPEND _nxvc_dep_packages "${_pkg}")
+            endif()
+        endif()
+    endforeach()
+endforeach()
+list(REMOVE_DUPLICATES _nxvc_dep_packages)
+
+set(NXVC_FIND_DEPENDENCIES "")
+foreach(_d IN LISTS _nxvc_dep_packages)
+    string(APPEND NXVC_FIND_DEPENDENCIES "find_dependency(${_d})\n")
+endforeach()
+if(_nxvc_dep_packages)
+    message(STATUS "install: public dependencies  ${_nxvc_dep_packages}")
 endif()
 
 install(TARGETS nxvc_version_header EXPORT ${NXWARP_EXPORT_NAME})
@@ -211,6 +266,21 @@ foreach(_t IN LISTS NXWARP_INSTALL_LIBS)
     set(_nxvc_pc_libs "${_nxvc_pc_libs} -l${_t}")
 endforeach()
 string(STRIP "${_nxvc_pc_libs}" NXVC_PC_LIBS)
+
+# ${pcfiledir} points at <prefix>/${CMAKE_INSTALL_LIBDIR}/pkgconfig; walk back
+# up to <prefix> so the file works wherever the package is unpacked. LIBDIR is
+# 'lib' or 'lib64' or 'lib/x86_64-linux-gnu' depending on the distribution, so
+# count its segments rather than assuming two.
+file(TO_CMAKE_PATH "${CMAKE_INSTALL_LIBDIR}/pkgconfig" _nxvc_pc_dir)
+string(REPLACE "/" ";" _nxvc_pc_segments "${_nxvc_pc_dir}")
+set(NXVC_PC_RELPATH_TO_PREFIX "")
+foreach(_seg IN LISTS _nxvc_pc_segments)
+    if(NXVC_PC_RELPATH_TO_PREFIX)
+        set(NXVC_PC_RELPATH_TO_PREFIX "${NXVC_PC_RELPATH_TO_PREFIX}/..")
+    else()
+        set(NXVC_PC_RELPATH_TO_PREFIX "..")
+    endif()
+endforeach()
 
 configure_file("${CMAKE_CURRENT_LIST_DIR}/nxvc.pc.in"
                "${CMAKE_BINARY_DIR}/nxvc.pc" @ONLY)

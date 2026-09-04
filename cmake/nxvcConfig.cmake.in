@@ -16,17 +16,14 @@ include(CMakeFindDependencyMacro)
 set(NXVC_VERSION_STRING   "@NXVC_VERSION@")
 set(NXVC_VERSION_FULL     "@NXVC_VERSION_FULL@")
 set(NXVC_BITSTREAM_VERSION "@NXWARP_BITSTREAM_VERSION@")
-set(NXVC_BUILT_COMPONENTS "@NXWARP_INSTALL_LIBS@")
+set(NXVC_BUILT_COMPONENTS "@NXWARP_EXPORT_COMPONENTS@")
 set(NXVC_TOOLS            "@NXWARP_INSTALL_TOOLS@")
 
-# Public dependencies of the exported targets.  Each is only searched for when
-# the build that produced this package actually used it.
-if("@OpenSSL_FOUND@")
-    find_dependency(OpenSSL COMPONENTS Crypto)
-endif()
-if("@Vulkan_FOUND@")
-    find_dependency(Vulkan)
-endif()
+# Public dependencies of the exported targets, derived at install time from
+# what the targets actually link (see cmake/nxwarp_install.cmake). Empty when
+# the build had none -- a transport built against the built-in NullAead, for
+# instance, needs no crypto library here.
+@NXVC_FIND_DEPENDENCIES@
 
 include("${CMAKE_CURRENT_LIST_DIR}/@NXWARP_EXPORT_NAME@.cmake")
 
@@ -37,9 +34,7 @@ foreach(_comp IN LISTS nxvc_FIND_COMPONENTS)
     else()
         set(nxvc_${_comp}_FOUND FALSE)
         if(nxvc_FIND_REQUIRED_${_comp})
-            set(nxvc_NOT_FOUND_MESSAGE
-                "nxvc was installed without the '${_comp}' component "
-                "(built: ${NXVC_BUILT_COMPONENTS})")
+            set(nxvc_NOT_FOUND_MESSAGE "nxvc was installed without the '${_comp}' component (built: ${NXVC_BUILT_COMPONENTS})")
         endif()
     endif()
 endforeach()
