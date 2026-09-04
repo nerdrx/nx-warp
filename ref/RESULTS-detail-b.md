@@ -397,17 +397,20 @@ can price them against the wavefront it already has.
 * **Extra LDS: none.** The four 4x4 transposes fit inside the 8x8 transpose
   buffer the block already owns (SYNTAX.md 6.7 clamps each 4x4 pass to int16
   for the same reason 6.3 does).
-* **Arithmetic goes down, not up.** One 8x8 2D inverse transform is
-  `2 * 8 * (11 mul + 29 add) = 640` operations; four 4x4 ones are
-  `4 * 2 * 4 * (2 mul + 6 add) = 256`. A split block is about 2.5x cheaper to
-  reconstruct than an unsplit one, and about 15 % of blocks split at the
-  operating point.
-* **What it does cost is divergence.** With 4 threads per 8x8 block, the
-  natural mapping is one thread per quadrant, so no extra threads are needed --
-  but a wavefront step containing both split and unsplit blocks executes both
-  paths. The worst case is `640 + 256` where it was `640`, i.e. +40 % of the
-  inverse transform in a fully divergent step, against -60 % in a uniform
-  split one. The transform is a small fraction of Pass B either way.
+* **Arithmetic goes down, not up, per split block.** One 8x8 2D inverse
+  transform is `2 * 8 * (11 mul + 29 add) = 640` operations; four 4x4 ones are
+  `4 * 2 * 4 * (2 mul + 6 add) = 256`, so a split block is about 2.5x cheaper
+  to reconstruct. In aggregate this is worth nothing either way: the tool fires
+  on 0.16 % of blocks at QP 20 on 4:4:4 (section 6), so the saving rounds to
+  zero over a tile.
+* **What it does cost is divergence, and that is also near-nothing here.**
+  With 4 threads per 8x8 block, the natural mapping is one thread per quadrant,
+  so no extra threads are needed -- but a wavefront step containing both split
+  and unsplit blocks executes both paths, `640 + 256` where it was `640`. At a
+  0.16 % split rate almost no step is mixed, and the transform is a small
+  fraction of Pass B in any case. The number to carry away is that this tool
+  changes the Pass B schedule not at all; only the arithmetic inside a leaf,
+  and only on the blocks that took it.
 * **Pass A cost: one bypass bit** on blocks with `CBF == 1` and `LAST >= 24`.
   A bypass operation is one step of the same rANS schedule as any other, so it
   costs one schedule slot on those blocks and nothing on the rest.
