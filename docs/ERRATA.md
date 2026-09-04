@@ -23,6 +23,10 @@ the corrected values.
 | 2026-09-04 | 4.2 | Frame complete 6.8 ms on WiFi; only the lower bands reference N-2 | The timeline allots no serialisation time. At 300 Mbit the frame completes in 10.3 ms and 97.6 percent of tiles reference N-2; at 600 Mbit 7.0 ms and 99.7 percent on N-1; 10.5 ms at 150 Mbit; 4.2 ms on USB. The timeline needs about 3x serialisation headroom to hold | transport |
 | 2026-09-04 | 4.8 | Class A duplication budgeted as 35 percent of codec bits | A duplicated datagram duplicates header, tag and parity too: 41 percent of wire bytes. Budget in wire bytes | transport |
 | 2026-09-04 | 4.3 | Deadline controller shifts the deadline earlier to trade latency for fewer holes | Sign is backwards; later gives fewer holes. Also a late tile must be displayed but never acknowledged, or the encoder shadow diverges (TRANSPORT.md D17), and concealed-tile exactness is recursive (D10) | transport |
+| 2026-09-04 | 2.2 | Q8.24 homography; 64x64 tiles stay within 1/16 pel to 250 deg/s | Rows 0/1 Q10.21, row 2 Q2.29, centred coordinates, divide shift 14, 2^30 safety margin (WARP.md). 64x64 tiles cross 1/16 pel at about 150 deg/s; 32x32 holds across the envelope | warp |
+| 2026-09-04 | 2.2 / 2.11 | Catmull-Rom for Full profile; warp-only chains hold above 35 dB for 30 frames | Catmull-Rom is within 0.05 dB of bilinear on a single step and buys about 2 dB only on chains. Chains measure 28.9 / 26.7 / 25.0 dB, so the per-tile refresh rate must rise and the 2.4 bit budget for warped static world (0.01 to 0.08 bpp) is too low: only about 60 percent of warped pixels land within 2 LSB | warp |
+| 2026-09-04 | 2.2 | Core bet | Holds where it matters: centre-crop prediction PSNR is 32.4 to 32.7 dB from 0 to 313 deg/s on adversarial synthetic material; the only speed-dependent loss is the disocclusion strip | warp |
+| 2026-09-04 | 3.2.3 vs 2.10 | Pass A transmits four Q4 int16 corner displacements | Derived from the header matrix on the decoder (2.10); Q4 int16 cannot hold the range (Q.6 up to 8192 pel needs 20 bits) | warp |
 
 ## Paper-internal inconsistencies
 
