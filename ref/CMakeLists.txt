@@ -11,9 +11,9 @@ if(NOT MSVC)
     target_compile_options(nxvc_ref PRIVATE -Wall -Wextra -Wno-unused-parameter)
 endif()
 
-option(NXVC_FUZZ "Build the libFuzzer targets" OFF)
-
-if(NXWARP_BUILD_TOOLS)
+# The reference CLIs are part of the ref deliverable (the quality harness
+# depends on nxv-enc / nxv-dec / nxv-info) and build with the library.
+if(NOT DEFINED NXWARP_BUILD_TOOLS OR NXWARP_BUILD_TOOLS)
     foreach(t nxv-enc nxv-dec nxv-info)
         add_executable(${t} tools/${t}.cpp)
         target_link_libraries(${t} PRIVATE nxvc_ref)

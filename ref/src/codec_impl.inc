@@ -218,13 +218,16 @@ namespace nxvc {
 static void load_tile(TileCoder &tc, const Geometry &g, const nxvc_image *img,
                       int tx, int ty) {
     int np = tc.nplanes;
+    PlaneRef ref[4];
+    for (int p = 0; p < np; ++p) {
+        ref[p].p = img->plane[p];
+        ref[p].stride = img->stride[p];
+        if (p == 1 || p == 2) { ref[p].width = g.cw; ref[p].height = g.ch; }
+        else { ref[p].width = g.width; ref[p].height = g.height; }
+    }
+    const bool ct = (g.color_transform == NXVC_CT_YCOCGR);
     for (int p = 0; p < np; ++p) {
         PlaneState &s = tc.pl[p];
-        PlaneRef pr;
-        pr.p = img->plane[p];
-        pr.stride = img->stride[p];
-        if (p == 1 || p == 2) { pr.width = g.cw; pr.height = g.ch; }
-        else { pr.width = g.width; pr.height = g.height; }
         int full = plane_full_extent(g, p, tc.tp.chroma444);
         int ox, oy;
         plane_tile_origin(g, p, tx, ty, ox, oy);
@@ -233,9 +236,21 @@ static void load_tile(TileCoder &tc, const Geometry &g, const nxvc_image *img,
             for (int x = 0; x < s.size; ++x) {
                 i32 sum = 0;
                 for (int j = 0; j < factor; ++j)
-                    for (int i = 0; i < factor; ++i)
-                        sum += fetch_clamped(pr, ox + x * factor + i,
-                                             oy + y * factor + j);
+                    for (int i = 0; i < factor; ++i) {
+                        int gx = ox + x * factor + i, gy = oy + y * factor + j;
+                        if (ct && p < 3) {
+                            i32 R = fetch_clamped(ref[0], gx, gy);
+                            i32 G = fetch_clamped(ref[1], gx, gy);
+                            i32 B = fetch_clamped(ref[2], gx, gy);
+                            i32 Co = R - B;
+                            i32 t = B + (Co >> 1);
+                            i32 Cg = G - t;
+                            i32 Y = t + (Cg >> 1);
+                            sum += p == 0 ? Y : (p == 1 ? Co + 256 : Cg + 256);
+                        } else {
+                            sum += fetch_clamped(ref[p], gx, gy);
+                        }
+                    }
                 i32 n = factor * factor;
                 s.samples[(size_t)y * s.size + x] = (sum + n / 2) / n;
             }
@@ -243,10 +258,47 @@ static void load_tile(TileCoder &tc, const Geometry &g, const nxvc_image *img,
 }
 
 // Write the reconstructed tile back into the output image.
+static inline i32 upsampled(const PlaneState &s, int factor, int x, int y) {
+    if (factor == 1) return s.samples[(size_t)y * s.size + x];
+    i32 mul = 16 / factor, off = mul / 2 - 8;
+    return bilinear_q4_i32(s.samples.data(), s.size, s.size, s.size,
+                           mul * x + off, mul * y + off);
+}
+
 static void store_tile(TileCoder &tc, const Geometry &g, nxvc_image *img,
                        int tx, int ty) {
     int np = tc.nplanes;
-    for (int p = 0; p < np; ++p) {
+    const bool ct = (g.color_transform == NXVC_CT_YCOCGR);
+    if (ct) {
+        // planes 0..2 are converted back to RGB after upsampling
+        int ox = tx * 64, oy = ty * 64;
+        int f0 = 64 / tc.pl[0].size;
+        int f1 = 64 / tc.pl[1].size;
+        for (int y = 0; y < 64; ++y) {
+            int gy = oy + y;
+            if (gy >= (int)g.height) break;
+            for (int x = 0; x < 64; ++x) {
+                int gx = ox + x;
+                if (gx >= (int)g.width) break;
+                i32 Y = upsampled(tc.pl[0], f0, x, y);
+                i32 Co = upsampled(tc.pl[1], f1, x, y) - 256;
+                i32 Cg = upsampled(tc.pl[2], f1, x, y) - 256;
+                i32 t = Y - (Cg >> 1);
+                i32 G = Cg + t;
+                i32 B = t - (Co >> 1);
+                i32 R = B + Co;
+                img->plane[0][(size_t)gy * img->stride[0] + gx] =
+                    (u8)clamp_i32(R, 0, 255);
+                img->plane[1][(size_t)gy * img->stride[1] + gx] =
+                    (u8)clamp_i32(G, 0, 255);
+                img->plane[2][(size_t)gy * img->stride[2] + gx] =
+                    (u8)clamp_i32(B, 0, 255);
+            }
+        }
+        np = tc.nplanes > 3 ? 4 : 3;
+        if (np < 4) return;
+    }
+    for (int p = ct ? 3 : 0; p < np; ++p) {
         PlaneState &s = tc.pl[p];
         int full = plane_full_extent(g, p, tc.tp.chroma444);
         int ox, oy;
@@ -258,23 +310,13 @@ static void store_tile(TileCoder &tc, const Geometry &g, nxvc_image *img,
         int stride = img->stride[p];
         bool constant_alpha = (p == 3 && tc.tp.alpha_mode != 2);
         i32 cval = tc.tp.alpha_mode == 1 ? tc.tp.alpha_value : 255;
-        // Q4 half-phase mapping, identical to the chroma upsampler.
-        i32 mul = 16 / factor, off = mul / 2 - 8;
         for (int y = 0; y < full; ++y) {
             int gy = oy + y;
             if (gy >= ph) break;
             for (int x = 0; x < full; ++x) {
                 int gx = ox + x;
                 if (gx >= pw) break;
-                i32 v;
-                if (constant_alpha) {
-                    v = cval;
-                } else if (factor == 1) {
-                    v = s.samples[(size_t)y * s.size + x];
-                } else {
-                    v = bilinear_q4_i32(s.samples.data(), s.size, s.size,
-                                        s.size, mul * x + off, mul * y + off);
-                }
+                i32 v = constant_alpha ? cval : upsampled(s, factor, x, y);
                 dst[(size_t)gy * stride + gx] = (u8)clamp_i32(v, 0, 255);
             }
         }

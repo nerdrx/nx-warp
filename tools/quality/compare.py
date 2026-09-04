@@ -501,10 +501,15 @@ def _print_summary(results: dict) -> None:
     for anchor, bd in results.get("bd_rate", {}).get("psnr_y", {}).items():
         if "error" in bd:
             print(f"    vs {anchor:<12} n/a ({bd['error']})")
-        else:
-            print(f"    vs {anchor:<12} {bd['bd_rate_pct']:+8.2f} %   "
-                  f"BD-PSNR {bd['bd_psnr_db']:+6.3f} dB   "
-                  f"(overlap {bd['overlap_lo']:.2f}-{bd['overlap_hi']:.2f} dB)")
+            continue
+        rate = f"{bd['bd_rate_pct']:+8.2f} %" if "bd_rate_pct" in bd else "     n/a"
+        psnr = f"{bd['bd_psnr_db']:+6.3f} dB" if "bd_psnr_db" in bd else "   n/a"
+        span = (f"(overlap {bd['overlap_lo']:.2f}-{bd['overlap_hi']:.2f} dB)"
+                if "overlap_lo" in bd else "")
+        print(f"    vs {anchor:<12} {rate}   BD-PSNR {psnr}   {span}")
+        for key, label in (("bd_rate_error", "BD-rate"), ("bd_psnr_error", "BD-PSNR")):
+            if key in bd:
+                print(f"        {label} unavailable: {bd[key]}")
     p1 = results.get("phase1", {})
     print("\n  Phase 1 gate (PAPER.md 3.11: within 1.0 dB of x264 intra, 100-400 Mbit):")
     if "error" in p1:

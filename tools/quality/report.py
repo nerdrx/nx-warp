@@ -296,9 +296,19 @@ def section(results: dict, plot_rel: str | None, metric: str) -> list[str]:
         for anchor, bd in table.items():
             if "error" in bd:
                 md.append(f"| {anchor} | n/a | n/a | {bd['error']} | {bd.get('method', '')} |")
+                continue
+            # BD-rate and BD-PSNR need overlap on different axes, so one may be
+            # available while the other is not.
+            rate = f"{bd['bd_rate_pct']:+.2f}" if "bd_rate_pct" in bd else "n/a"
+            dist = f"{bd['bd_psnr_db']:+.3f}" if "bd_psnr_db" in bd else "n/a"
+            if "overlap_lo" in bd:
+                span = f"{bd['overlap_lo']:.3f} to {bd['overlap_hi']:.3f}"
             else:
-                md.append(f"| {anchor} | {bd['bd_rate_pct']:+.2f} | {bd['bd_psnr_db']:+.3f} | "
-                          f"{bd['overlap_lo']:.3f} to {bd['overlap_hi']:.3f} | {bd['method']} |")
+                span = "-"
+            notes = [bd[k] for k in ("bd_rate_error", "bd_psnr_error") if k in bd]
+            if notes:
+                span += " (" + "; ".join(notes) + ")"
+            md.append(f"| {anchor} | {rate} | {dist} | {span} | {bd['method']} |")
         md.append("")
 
     p1 = results.get("phase1", {})

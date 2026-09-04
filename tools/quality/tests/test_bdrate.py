@@ -145,10 +145,14 @@ class TestValidation:
         with pytest.raises(ValueError, match="do not overlap"):
             bdrate.bd_rate(RATE_A, PSNR_A, RATE_B, far)
 
-    def test_summary_reports_error_instead_of_raising(self):
+    def test_summary_reports_errors_instead_of_raising(self):
+        """Disjoint quality ranges kill BD-rate; the rates still overlap, so
+        BD-PSNR survives and is reported rather than discarded."""
         far = [p + 40.0 for p in PSNR_A]
         out = bdrate.bd_summary(RATE_A, PSNR_A, RATE_B, far)
-        assert "error" in out and "bd_rate_pct" not in out
+        assert "bd_rate_pct" not in out
+        assert "bd_rate_error" in out
+        assert "bd_psnr_db" in out
 
     def test_summary_happy_path(self):
         out = bdrate.bd_summary(RATE_A, PSNR_A, RATE_B, PSNR_B)
@@ -172,3 +176,40 @@ class TestPchip:
     def test_unknown_method(self):
         with pytest.raises(ValueError, match="unknown method"):
             bdrate.bd_rate(RATE_A, PSNR_A, RATE_B, PSNR_B, method="spline")
+
+
+class TestPartialSummary:
+    """BD-rate and BD-PSNR need overlap on different axes, so one can survive."""
+
+    def test_quality_overlap_without_rate_overlap_keeps_bd_rate(self):
+        # Same quality range, disjoint rate ranges.
+        anchor_r = [100.0, 70.0, 45.0, 28.0]
+        test_r = [900.0, 600.0, 400.0, 260.0]
+        d = [44.0, 41.0, 38.0, 35.0]
+        out = bdrate.bd_summary(anchor_r, d, test_r, d)
+        assert "bd_rate_pct" in out
+        assert "bd_psnr_db" not in out
+        assert "bd_psnr_error" in out
+        assert "error" not in out
+
+    def test_rate_error_message_uses_real_units_not_log10(self):
+        anchor_r = [100.0, 70.0, 45.0, 28.0]
+        test_r = [900.0, 600.0, 400.0, 260.0]
+        d = [44.0, 41.0, 38.0, 35.0]
+        msg = bdrate.bd_summary(anchor_r, d, test_r, d)["bd_psnr_error"]
+        assert "in rate" in msg
+        assert "900" in msg and "28" in msg
+        assert "2.95" not in msg  # log10(900), the old confusing output
+
+    def test_quality_error_message_says_quality(self):
+        r = [100.0, 70.0, 45.0, 28.0]
+        out = bdrate.bd_summary(r, [44.0, 41.0, 38.0, 35.0], r, [84.0, 81.0, 78.0, 75.0])
+        assert "in quality" in out["bd_rate_error"]
+
+    def test_neither_available_sets_error(self):
+        anchor_r = [100.0, 70.0, 45.0, 28.0]
+        test_r = [9000.0, 6000.0, 4000.0, 2600.0]
+        out = bdrate.bd_summary(anchor_r, [44.0, 41.0, 38.0, 35.0],
+                                test_r, [84.0, 81.0, 78.0, 75.0])
+        assert "error" in out
+        assert "bd_rate_pct" not in out and "bd_psnr_db" not in out

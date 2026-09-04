@@ -55,15 +55,17 @@ def _pchip_int(x: np.ndarray, y: np.ndarray, lo: float, hi: float) -> float:
 
 
 def _average_over_overlap(
-    x1: np.ndarray, y1: np.ndarray, x2: np.ndarray, y2: np.ndarray, method: Method
+    x1: np.ndarray, y1: np.ndarray, x2: np.ndarray, y2: np.ndarray, method: Method,
+    axis: str = "x", fmt=lambda v: f"{v:.4g}",
 ) -> tuple[float, float, float]:
     """Mean of y1 and y2 over the overlapping x interval, plus the interval width."""
     lo = max(float(x1.min()), float(x2.min()))
     hi = min(float(x1.max()), float(x2.max()))
     if hi <= lo:
         raise ValueError(
-            f"the two curves do not overlap (anchor spans [{x1.min():.4g}, {x1.max():.4g}], "
-            f"test spans [{x2.min():.4g}, {x2.max():.4g}]); "
+            f"the two curves do not overlap in {axis} "
+            f"(anchor spans [{fmt(x1.min())}, {fmt(x1.max())}], "
+            f"test spans [{fmt(x2.min())}, {fmt(x2.max())}]); "
             "pick matched operating points closer together"
         )
     if method == "cubic":
@@ -91,7 +93,9 @@ def bd_rate(
     """
     r1, d1 = _prepare(rate_anchor, dist_anchor)
     r2, d2 = _prepare(rate_test, dist_test)
-    a1, a2, _ = _average_over_overlap(d1, np.log10(r1), d2, np.log10(r2), method)
+    a1, a2, _ = _average_over_overlap(
+        d1, np.log10(r1), d2, np.log10(r2), method, axis="quality"
+    )
     return float((10.0 ** (a2 - a1) - 1.0) * 100.0)
 
 
@@ -108,7 +112,12 @@ def bd_psnr(
     """
     r1, d1 = _prepare(rate_anchor, dist_anchor)
     r2, d2 = _prepare(rate_test, dist_test)
-    a1, a2, _ = _average_over_overlap(np.log10(r1), d1, np.log10(r2), d2, method)
+    # Report the rate span in real units, not as log10, which is meaningless
+    # to read in an error message.
+    a1, a2, _ = _average_over_overlap(
+        np.log10(r1), d1, np.log10(r2), d2, method,
+        axis="rate", fmt=lambda v: f"{10 ** v:.4g}",
+    )
     return float(a2 - a1)
 
 
@@ -120,15 +129,26 @@ def overlap_range(rate_anchor, dist_anchor, rate_test, dist_test) -> tuple[float
 
 
 def bd_summary(rate_anchor, dist_anchor, rate_test, dist_test, method: Method = "cubic") -> dict:
-    """Both figures plus the overlap, or an ``error`` key if they cannot be computed."""
+    """Both figures plus the overlap.
+
+    The two figures need overlap on *different* axes -- BD-rate needs the
+    quality ranges to overlap, BD-PSNR needs the rate ranges to -- so one can
+    be computable when the other is not.  Each is therefore attempted
+    independently and reported if it succeeds; a failure becomes
+    ``bd_rate_error`` / ``bd_psnr_error`` rather than discarding the figure
+    that did work.  ``error`` is set only when neither is available.
+    """
+    out: dict = {"method": method}
     try:
+        out["bd_rate_pct"] = bd_rate(rate_anchor, dist_anchor, rate_test, dist_test, method)
         lo, hi = overlap_range(rate_anchor, dist_anchor, rate_test, dist_test)
-        return {
-            "bd_rate_pct": bd_rate(rate_anchor, dist_anchor, rate_test, dist_test, method),
-            "bd_psnr_db": bd_psnr(rate_anchor, dist_anchor, rate_test, dist_test, method),
-            "overlap_lo": lo,
-            "overlap_hi": hi,
-            "method": method,
-        }
+        out["overlap_lo"], out["overlap_hi"] = lo, hi
     except ValueError as exc:
-        return {"error": str(exc), "method": method}
+        out["bd_rate_error"] = str(exc)
+    try:
+        out["bd_psnr_db"] = bd_psnr(rate_anchor, dist_anchor, rate_test, dist_test, method)
+    except ValueError as exc:
+        out["bd_psnr_error"] = str(exc)
+    if "bd_rate_pct" not in out and "bd_psnr_db" not in out:
+        out["error"] = out.get("bd_rate_error") or out.get("bd_psnr_error")
+    return out

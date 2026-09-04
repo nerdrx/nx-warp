@@ -1,0 +1,125 @@
+// nxv-info: dump the headers of an .nxv stream.
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <string>
+#include <vector>
+
+#include "nxvc/nxvc.h"
+
+static const char *mode_name(int m) {
+    switch (m) {
+        case NXVC_MODE_WARP_SKIP: return "WARP_SKIP";
+        case NXVC_MODE_STATIC_MV: return "STATIC_MV";
+        case NXVC_MODE_WARP_MV: return "WARP_MV";
+        case NXVC_MODE_INTRA: return "INTRA";
+        case NXVC_MODE_STEREO: return "STEREO";
+    }
+    return "?";
+}
+
+int main(int argc, char **argv) {
+    std::string in;
+    int tiles = 0;
+    for (int i = 1; i < argc; ++i) {
+        std::string a = argv[i];
+        if (a == "--in" && i + 1 < argc) in = argv[++i];
+        else if (a == "--tiles") tiles = 1;
+        else { std::fprintf(stderr, "usage: nxv-info --in file.nxv [--tiles]\n"); return 2; }
+    }
+    if (in.empty()) { std::fprintf(stderr, "usage: nxv-info --in file.nxv [--tiles]\n"); return 2; }
+
+    std::FILE *f = std::fopen(in.c_str(), "rb");
+    if (!f) { std::perror("open"); return 1; }
+    std::fseek(f, 0, SEEK_END);
+    long fsz = std::ftell(f);
+    std::fseek(f, 0, SEEK_SET);
+    std::vector<uint8_t> d((size_t)(fsz > 0 ? fsz : 0));
+    if (d.empty() || std::fread(d.data(), 1, d.size(), f) != d.size()) {
+        std::fprintf(stderr, "read failed\n");
+        return 1;
+    }
+    std::fclose(f);
+
+    nxvc_status st;
+    nxvc_decoder *dec = nxvc_decoder_create(&st);
+    size_t off = 0, consumed = 0;
+    st = nxvc_decoder_parse_stream_header(dec, d.data(), d.size(), &consumed);
+    if (st != NXVC_OK) {
+        std::fprintf(stderr, "stream header: %s\n", nxvc_status_string(st));
+        return 1;
+    }
+    off = consumed;
+    nxvc_stream_info si;
+    nxvc_decoder_stream_info(dec, &si);
+    nxvc_tile_layout tl;
+    nxvc_tile_layout_get(si.width, si.height, &tl);
+    std::printf("stream header (%zu bytes)\n", consumed);
+    std::printf("  magic         0x%08x\n", si.magic);
+    std::printf("  version       %u\n", si.version);
+    std::printf("  profile/level %u/%u\n", si.profile, si.level);
+    std::printf("  tile_size     %s\n", (si.tile_size & 1) ? "32x32" : "64x64");
+    std::printf("  size          %ux%u  eyes %u  bitdepth %u\n", si.width,
+                si.height, si.eyes, si.bit_depth);
+    std::printf("  chroma        %s\n", si.chroma ? "4:4:4" : "4:2:0");
+    std::printf("  color xform   %s\n", si.color_transform ? "YCoCg-R" : "none");
+    std::printf("  alpha         %u\n", si.alpha);
+    std::printf("  layers        %u\n", si.num_layers);
+    std::printf("  tools         0x%016llx\n", (unsigned long long)si.tools);
+    std::printf("  ext_len       %u (%u TLVs, %u unknown)\n", si.ext_len,
+                si.ext_tlv_count, si.ext_unknown_count);
+    std::printf("  tile grid     %ux%u = %u tiles\n", tl.tiles_x, tl.tiles_y,
+                tl.tile_count);
+
+    int n = 0;
+    while (off < d.size()) {
+        nxvc_frame_info fi;
+        st = nxvc_decoder_scan_frame(dec, d.data() + off, d.size() - off, &fi,
+                                     &consumed);
+        if (st != NXVC_OK) {
+            std::fprintf(stderr, "frame %d: %s\n", n, nxvc_status_string(st));
+            return 1;
+        }
+        std::printf("frame %d @%zu: num %u  bytes %u  qp %u  cqpo %d  aqpo %d  "
+                    "matrix %u  tables 0x%02x  refs 0x%02x  flags 0x%02x\n",
+                    n, off, fi.frame_number, fi.frame_bytes, fi.base_qp,
+                    fi.chroma_qp_off, fi.alpha_qp_off, fi.quant_matrix,
+                    fi.tables_present, fi.ref_slots, fi.flags);
+        std::printf("  pose:");
+        for (int i = 0; i < 26; ++i) std::printf(" %02x", fi.pose[i]);
+        std::printf("\n");
+        if (tiles) {
+            // A full decode is needed to walk the tile headers.
+            uint32_t yw, yh, cw, ch;
+            nxvc_decoder_plane_size(dec, 0, &yw, &yh);
+            nxvc_decoder_plane_size(dec, 1, &cw, &ch);
+            std::vector<uint8_t> Y((size_t)yw * yh), U((size_t)cw * ch),
+                V((size_t)cw * ch), A((size_t)yw * yh);
+            nxvc_image img{};
+            img.plane[0] = Y.data(); img.stride[0] = (int)yw;
+            img.plane[1] = U.data(); img.stride[1] = (int)cw;
+            img.plane[2] = V.data(); img.stride[2] = (int)cw;
+            img.plane[3] = A.data(); img.stride[3] = (int)yw;
+            size_t c2;
+            if (nxvc_decoder_decode_frame(dec, d.data() + off, d.size() - off,
+                                          &img, &c2) == NXVC_OK) {
+                uint32_t count = 0;
+                const nxvc_tile_info *ti = nxvc_decoder_tiles(dec, &count);
+                for (uint32_t i = 0; i < count; ++i) {
+                    const nxvc_tile_info &t = ti[i];
+                    std::printf("  tile %4u  %-9s res%u %s qp%2u dq%+3d ts%u "
+                                "a%u tab%u ns%u  %5u B\n",
+                                i, mode_name(t.mode), t.res_level,
+                                t.chroma444 ? "444" : "420", t.qp, t.qp_delta,
+                                t.tskip, t.alpha_mode, t.table_set, t.nsub_log2,
+                                t.payload_len);
+                }
+            }
+        }
+        off += consumed;
+        ++n;
+    }
+    std::printf("%d frame(s)\n", n);
+    nxvc_decoder_destroy(dec);
+    return 0;
+}
