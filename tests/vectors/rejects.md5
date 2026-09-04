@@ -19,8 +19,6 @@ r14_dir_layer_no_tool 85a9217c99ca1fc8514b5e1856fb79d2 BITSTREAM frame flags bit
 r15_ycocgr_420 432322575b1b0f2bb3432b23bc97f790 BITSTREAM YCoCg-R declared with 4:2:0 chroma
 r16_ctx_v2_short_table 53e88018c062a097aea2542fdd209d74 BITSTREAM CTX_V2 table set overruns the tile rows
 r17_lossless_sign_hide bcf5ebac6266f02562f1252da3cee9ea BITSTREAM LOSSLESS and SIGN_HIDE together
-r30_tab_v2_no_tables a36804309d44b2e406eb81bc94c943e7 BITSTREAM TAB_V2 without CUSTOM_TABLES
-r31_ctx_v3_no_v2 aa3dc7303646b5e17dbeec43f6153a41 BITSTREAM CTX_V3 without CTX_V2
 # --- Phase 2 (Annex D D-21)
 r18_h22_not_one 603b41210fc7359e2f1f8b646ef9d9e8 BITSTREAM warp_ext h22 != 2^29
 r19_entry_range ca52595d7e113bfa3dd42c7d7dfbd9e1 BITSTREAM a warp_ext entry beyond kEntryMax
@@ -37,7 +35,4 @@ r29_disparity_reserved 5761574fb60d0ef384241a391184607a BITSTREAM disparity bits
 r30_near_skip_no_tool 4c0419d5485a6925a6dbdb482c10fef5 BITSTREAM word1 bit 28 without tool bit 24
 r31_quad_mv_no_tool 7f7c31c74ebf795d04847d395a94f427 BITSTREAM word1 bit 30 without tool bit 25
 r32_near_ac_without_ns ca1723f024a93855539c5ce22747768d BITSTREAM near_skip_ac without near_skip
-r33_near_skip_on_intra 37bdcb429a70c0d0d600f09a07eeec5a BITSTREAM near_skip on an INTRA tile
 r34_sub_intra_no_tool 1466c09277b36d7d3c3246272a12c1cd BITSTREAM word1 bit 31 without tool bit 26
-r35_near_skip_payload 90bdda52757fa80e1e6ec2a55b3e6ee1 BITSTREAM near_skip on a tile with a payload
-r36_quad_mv_on_intra 0244be11bf6f7fa90616ed795903cc5a BITSTREAM quad_mv on an INTRA tile

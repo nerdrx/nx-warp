@@ -773,7 +773,7 @@ static bool make_inter_reject(int idx, const std::vector<uint8_t> &base,
                     *why = "the coded inter tile has an empty payload";
                     return false;
                 }
-                b[32 + 3] |= 0x01;            // tool bit 24 NEAR_SKIP
+                set_tool(b, NXVC_TOOL_NEAR_SKIP);
                 patch_w1(hdr, 0, 1u << 28);
                 break;
             }
@@ -785,12 +785,12 @@ static bool make_inter_reject(int idx, const std::vector<uint8_t> &base,
             if (idx == 13) patch_w1(hdr, 0, 1u << 30);
             if (idx == 14) patch_w1(hdr, 0, 1u << 29);
             if (idx == 15) {
-                b[32 + 3] |= 0x01;            // tool bit 24 NEAR_SKIP
+                set_tool(b, NXVC_TOOL_NEAR_SKIP);
                 patch_w1(hdr, 0, 1u << 28);   // ... on an INTRA tile
             }
             if (idx == 16) patch_w1(hdr, 0, 1u << 31);
             if (idx == 18) {
-                b[32 + 3] |= 0x02;            // tool bit 25 QUAD_MV
+                set_tool(b, NXVC_TOOL_QUAD_MV);
                 patch_w1(hdr, 0, 1u << 30);   // ... on an INTRA tile
             }
             break;
@@ -847,8 +847,8 @@ static const RejectSpec kRejects[] = {
     {"r15_ycocgr_420",        "YCoCg-R declared with 4:2:0 chroma",       NXVC_ERR_BITSTREAM,   0},
     {"r16_ctx_v2_short_table", "CTX_V2 table set overruns the tile rows",  NXVC_ERR_BITSTREAM,   1},
     {"r17_lossless_sign_hide", "LOSSLESS and SIGN_HIDE together",          NXVC_ERR_BITSTREAM,   0},
-    {"r30_tab_v2_no_tables",  "TAB_V2 without CUSTOM_TABLES",            NXVC_ERR_BITSTREAM,   1},
-    {"r31_ctx_v3_no_v2",      "CTX_V3 without CTX_V2",                   NXVC_ERR_BITSTREAM,   1},
+    {"r37_tab_v2_no_tables",  "TAB_V2 without CUSTOM_TABLES",            NXVC_ERR_BITSTREAM,   1},
+    {"r38_ctx_v3_no_v2",      "CTX_V3 without CTX_V2",                   NXVC_ERR_BITSTREAM,   1},
 };
 static const int kNumRejects = (int)(sizeof(kRejects) / sizeof(kRejects[0]));
 
@@ -864,6 +864,16 @@ static const char *status_token(int st) {
         case NXVC_ERR_VERSION: return "VERSION";
     }
     return "UNKNOWN";
+}
+
+// Set a tool bit in the stream header's u64 `tools` field at offset 32, by
+// name.  The reject vectors used to poke this as a raw byte -- `b[32 + 3] |=
+// 0x01` for bit 24 -- which silently stops testing what it says the moment a
+// tool is renumbered: the decoder answers VERSION for an unallocated bit where
+// the vector expects BITSTREAM.  Always spell the constant.
+static void set_tool(std::vector<uint8_t> &b, uint64_t tool) {
+    for (int i = 0; i < 8; ++i)
+        b[32 + (size_t)i] |= (uint8_t)((tool >> (8 * i)) & 0xff);
 }
 
 static void put_u32(std::vector<uint8_t> &b, size_t off, uint32_t v) {
@@ -911,8 +921,8 @@ static std::vector<uint8_t> make_reject(int idx, const std::vector<uint8_t> &bas
         case 16: b[32 + 0] |= 0x20; b[32 + 2] |= 0x40; break;
         // TAB_V2 (bit 24) only exists inside a transmitted table set, and
         // CTX_V3 (bit 25) only names a model on top of CTX_V2 (bit 21).
-        case 17: b[32 + 3] |= 0x01; break;
-        case 18: b[32 + 3] |= 0x02; break;
+        case 17: set_tool(b, NXVC_TOOL_TAB_V2); break;
+        case 18: set_tool(b, NXVC_TOOL_CTX_V3); break;
         default: break;
     }
     return b;
