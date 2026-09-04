@@ -49,3 +49,4 @@ measurements, and an ADR whose estimate turns out wrong gets superseded, not edi
 | [0022](0022-hybrid-mode-is-not-a-quality-tool.md) | Hybrid mode is not a quality tool, and does not gate Phase 3 | Accepted | 1.7, 3.5, 6.10 |
 | [0023](0023-bit-exactness-stays.md) | Bit-exactness stays; transmitted entropy parameters are a watch item | Accepted | 3.9, 5.4 |
 | [0024](0024-fec-keyed-off-headroom.md) | FEC parity keyed off link headroom, class A always, B and C conditional | Accepted | 4.4, 6.6 |
+| [0025](0025-directional-intra-is-negotiated.md) | Directional intra is a negotiated tool; restriction A is its default schedule | Accepted | 3.2.4, 6.4 |
