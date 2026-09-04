@@ -27,6 +27,7 @@ the corrected values.
 | 2026-09-04 | 2.2 / 2.11 | Catmull-Rom for Full profile; warp-only chains hold above 35 dB for 30 frames | Catmull-Rom is within 0.05 dB of bilinear on a single step and buys about 2 dB only on chains. Chains measure 28.9 / 26.7 / 25.0 dB, so the per-tile refresh rate must rise and the 2.4 bit budget for warped static world (0.01 to 0.08 bpp) is too low: only about 60 percent of warped pixels land within 2 LSB | warp |
 | 2026-09-04 | 2.2 | Core bet | Holds where it matters: centre-crop prediction PSNR is 32.4 to 32.7 dB from 0 to 313 deg/s on adversarial synthetic material; the only speed-dependent loss is the disocclusion strip | warp |
 | 2026-09-04 | 3.2.3 vs 2.10 | Pass A transmits four Q4 int16 corner displacements | Derived from the header matrix on the decoder (2.10); Q4 int16 cannot hold the range (Q.6 up to 8192 pel needs 20 bits) | warp |
+| 2026-09-04 | 5.6 / 5.8 | Competitive landscape as of the paper's drafting | Postdated by visionOS 26.4 Foveated Streaming (alpha required, CloudXR in the OS), VK_KHR_video_encode_quantization_map and VK_KHR_video_encode_intra_refresh (a foveated, IDR-free hardware HEVC streamer is now buildable without this codec; the moat is the decoder interface), and Qualcomm's slice-based low-latency decode claims. See docs/RESEARCH-INDUSTRY.md. The durable positioning: the hardware decoder has the wrong interface, not too little throughput | industry scan |
 
 ## Paper-internal inconsistencies
 
