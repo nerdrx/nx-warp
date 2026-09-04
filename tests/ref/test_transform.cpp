@@ -240,5 +240,41 @@ int main() {
         }
     }
 
+    // 12. The split scan is a permutation of the 64 block-local indices and
+    //     is exactly "four 4x4 sub-blocks in raster order, each in 4x4
+    //     zigzag" (SYNTAX.md 9.2).  Both halves matter: a scan that is not a
+    //     bijection loses coefficients silently, and a scan that does not
+    //     match the sub-block layout would put a sub-block's coefficients
+    //     where the inverse transform does not look for them.
+    {
+        int seen[64] = {};
+        for (int p = 0; p < 64; ++p) {
+            CHECK(kScan4Split[p] < 64, "scan[%d]=%d", p, (int)kScan4Split[p]);
+            seen[kScan4Split[p]]++;
+        }
+        for (int i = 0; i < 64; ++i)
+            CHECK(seen[i] == 1, "index %d appears %d times", i, seen[i]);
+        for (int p = 0; p < 64; ++p) {
+            int sb = p >> 4, sx = sb & 1, sy = sb >> 1;
+            int z = kZigzag4[p & 15];
+            int want = (4 * sy + z / 4) * 8 + 4 * sx + z % 4;
+            CHECK(kScan4Split[p] == want, "scan[%d]=%d, derivation says %d", p,
+                  (int)kScan4Split[p], want);
+        }
+    }
+
+    // 13. weight4() is the tile matrix subsampled by two in each frequency
+    //     axis, for every built-in matrix (SYNTAX.md 6.7).
+    {
+        for (int m = 0; m < 4; ++m)
+            for (int u = 0; u < 4; ++u)
+                for (int v = 0; v < 4; ++v)
+                    CHECK(weight4(kWeight[m], u * 4 + v) ==
+                              kWeight[m][(2 * u) * 8 + 2 * v],
+                          "matrix %d w4[%d][%d]=%d, want %d", m, u, v,
+                          weight4(kWeight[m], u * 4 + v),
+                          (int)kWeight[m][(2 * u) * 8 + 2 * v]);
+    }
+
     return test_report("test_transform");
 }
