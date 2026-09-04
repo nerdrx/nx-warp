@@ -1539,10 +1539,11 @@ exactly one coefficient codes no `LAST` and has `last = 0`.
 scan **groups**, with the position inside the group as extra raw bits:
 
 ```
-last_shift = 0 while (ncoef >> last_shift) <= 64, else the smallest s with
-             (ncoef >> s) <= 64          // 0 for <= 64, 2 for 256, 4 for 1024
+last_shift = the smallest s >= 0 with (ncoef >> s) <= 64
+             // 0 for every unit of at most 64 coefficients, 2 for 256, 4 for 1024
 
-raw is read as (raw_bits[class] + last_shift) bypass bits
+nraw = raw_bits[class] + last_shift
+raw  = nraw > 0 ? bp(nraw) : 0          // no field is read when nraw == 0
 last = (base[class] << last_shift) + raw
 ```
 
