@@ -47,3 +47,4 @@ measurements, and an ADR whose estimate turns out wrong gets superseded, not edi
 | [0020](0020-apache-2-0-and-patent-hygiene.md) | Apache-2.0, and only public-domain or expired coding tools | Accepted | 1.9, 5.7 |
 | [0021](0021-stream-level-color-space-ycbcr-passthrough.md) | Stream-level colour space, with a YCbCr 4:2:0 passthrough path | Accepted | 1.3, amends |
 | [0022](0022-hybrid-mode-is-not-a-quality-tool.md) | Hybrid mode is not a quality tool, and does not gate Phase 3 | Accepted | 1.7, 3.5, 6.10 |
+| [0023](0023-bit-exactness-stays.md) | Bit-exactness stays; transmitted entropy parameters are a watch item | Accepted | 3.9, 5.4 |
