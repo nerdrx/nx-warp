@@ -376,7 +376,7 @@ chroma-from-luma does cost a decoder is scheduling, and that is section 5.
 
 For reference against `RESULTS-intra.md` section 0, which measured the v1.3
 tools at 2.9-3.4x encode on top of the RD trellis's 2.7x: this package is
-another 1.7x on 4:4:4, so a default 4:4:4 encode is now roughly 16x the
+another 1.7x on 4:4:4, so a default 4:4:4 encode is now roughly 15x the
 dead-zone-quantizer baseline the project started from. All of it is encoder
 work and none of it is visible to the decoder.
 
@@ -433,9 +433,10 @@ can price them against the wavefront it already has.
   output tile in LDS pays nothing; one that streams luma to memory as it
   finishes has to keep it, or re-read it.
 * **Arithmetic per chroma block**: 16 co-located luma fetches for the model
-  (each a 2x2 rounded average in 4:2:0), four accumulators over 16 pairs
-  (about 64 multiply-adds), one division, then 64 predictions of one multiply,
-  one shift, one add and a clamp. Against the DC plane's bilinear
+  (each a 2x2 rounded average in 4:2:0), four accumulators over those 16 pairs
+  (32 multiply-adds for `syy` and `syc`, 32 adds for `sy` and `sc`), one
+  division, then 64 predictions of one multiply, one shift, one add and a
+  clamp. Against the DC plane's bilinear
   interpolation this is small.
 * **The division is the one serial part.** `divide()` is 31 dependent
   iterations of shift-compare-subtract, on one lane of the four assigned to a
