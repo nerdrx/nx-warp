@@ -120,6 +120,8 @@ typedef enum nxvc_tile_mode {
 #define NXVC_TOOL_WM_ID           (1ull << 20)
 #define NXVC_TOOL_CTX_V2          (1ull << 21)
 #define NXVC_TOOL_SIGN_HIDE       (1ull << 22)
+#define NXVC_TOOL_TAB_V2    (1ull << 24)
+#define NXVC_TOOL_CTX_V3          (1ull << 25)
 /* Annex D D-5 names the Catmull-Rom selector "tool bit 20".  Bit 20 was
  * already taken by WM_ID in syntax v1.2 (shipped, with conformance vectors),
  * so this reference and docs/SYNTAX.md place it at the first bit that is
@@ -134,7 +136,8 @@ typedef enum nxvc_tile_mode {
      NXVC_TOOL_LOSSLESS | NXVC_TOOL_CUSTOM_TABLES | NXVC_TOOL_NSUB_VAR |      \
      NXVC_TOOL_PER_TILE_CHROMA | NXVC_TOOL_YCOCGR | NXVC_TOOL_WM_ID |        \
      NXVC_TOOL_INTRA_DIR | NXVC_TOOL_CTX_V2 | NXVC_TOOL_SIGN_HIDE |           \
-     NXVC_TOOL_INTER | NXVC_TOOL_WARP | NXVC_TOOL_STEREO)
+     NXVC_TOOL_INTER | NXVC_TOOL_WARP | NXVC_TOOL_STEREO |                    \
+     NXVC_TOOL_TAB_V2 | NXVC_TOOL_CTX_V3)
 
 /* ---------------------------------------------------------------- images */
 /* 8-bit planar image.  plane[0]=Y/R', plane[1]=Co/G', plane[2]=Cg/B',
@@ -214,6 +217,18 @@ typedef struct nxvc_config {
                                    Below 256 the decision spends more bits to
                                    keep the reference clean, which is what an
                                    all-reference stream wants; 0 = default  */
+
+    /* --- additive since syntax v1.5: the entropy and context package.  Both
+     * change the bitstream and each sets its own tool bit. */
+    uint32_t tab_v2;            /* 1 = the compact transmitted-table coding:
+                                   a per-row "use the built-in default" flag
+                                   and Exp-Golomb deltas (tool 24)          */
+    uint32_t ctx_v3;            /* 1 = the 22-context neighbour-conditioned
+                                   model (tool 25); implies ctx_v2          */
+    uint32_t table_iters;       /* extra Lloyd iterations refining the eight
+                                   per-frame table sets.  Encoder only: it
+                                   changes which set each tile names, never
+                                   how a stream decodes.  0 = the default 1 */
 } nxvc_config;
 
 /* One eye's view for one frame: the orientation the frame was rendered with

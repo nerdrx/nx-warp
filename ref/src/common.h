@@ -76,8 +76,42 @@ enum : int {
     kCtxLevelDc = 14,
     kCtxMode = 15,
     kNumCtxV2 = 16,
-    kNumCtx = 16,   // storage; the coded count is kNumCtxV1 or kNumCtxV2
     kNumSym = 16
+};
+
+// ---------------------------------------------------------- unit classes
+// The statistical family a coding unit belongs to.  It is a property of the
+// unit's position in the tile (which plane, DC plane or residual block), so
+// encoder and decoder derive it from the same place and never transmit it.
+enum : int {
+    kUclsLuma = 0,    // residual blocks of the luma or alpha plane
+    kUclsChroma = 1,  // residual blocks of a chroma plane
+    kUclsDc = 2,      // a DC-plane unit of any plane
+    kNumUcls = 3
+};
+
+// ------------------------------------------------- v3 model (tool bit 25)
+// The v3 model conditions CBF and LAST on `prev_cbf`: whether the *previous
+// coefficient unit the same lane decoded in the same unit class* was coded.
+// A lane owns units l, l+N, l+2N, ..., so that unit is always one this lane
+// has already finished -- the derivation is causal inside the lane and needs
+// no cross-lane communication, whatever the interleaved schedule does.
+//
+// For the ordinary tile -- res_level 0, nsub_log2 3, so N = 8 lanes over 8x8
+// blocks per plane edge -- a lane's units are exactly one column of blocks, so
+// `prev_cbf` is the coded flag of the block **directly above**.  SYNTAX.md 9.8.
+//
+// Richer classes were measured and rejected: splitting on LAST and on mean
+// magnitude (4 classes), and giving LEVEL its own neighbour family, each cost
+// more in transmitted-table bits than they returned.  ref/RESULTS-ctx-b.md 2.
+enum : int {
+    kCtxV3CbfBase = 0,                  // + 2 * ucls + prev_cbf  ->  0..5
+    kCtxV3LastBase = 2 * kNumUcls,      // + 2 * ucls + prev_cbf  ->  6..11
+    kCtxV3LevelBase = 4 * kNumUcls,     // + kLevelCtx[band][prev] -> 12..19
+    kCtxV3LevelDc = kCtxV3LevelBase + 8,
+    kCtxV3Mode = kCtxV3LevelDc + 1,
+    kNumCtxV3 = kCtxV3Mode + 1,         // 22
+    kNumCtx = kNumCtxV3   // storage; the coded count is kNumCtxV1/V2/V3
 };
 
 // "no context selected" for Unit::ctx_level / Unit::ctx_mode.  Context 0 is
@@ -123,6 +157,27 @@ inline int level_class(int magnitude) {
     return magnitude == 0 ? 0 : (magnitude == 1 ? 1 : 2);
 }
 
+// The context the intra mode symbol is coded in, or kCtxNone for the bypass
+// binarisation of the v1 model.
+inline int mode_context(int nctx) {
+    if (nctx >= kNumCtxV3) return kCtxV3Mode;
+    return nctx >= kNumCtxV2 ? kCtxMode : kCtxNone;
+}
+
+inline int v3_ctx_cbf(int ucls, int prev_cbf) {
+    return kCtxV3CbfBase + 2 * ucls + prev_cbf;
+}
+inline int v3_ctx_last(int ucls, int prev_cbf) {
+    return kCtxV3LastBase + 2 * ucls + prev_cbf;
+}
+// LEVEL is not conditioned on the neighbour: the previous level inside the
+// unit already says what the neighbour would (RESULTS-ctx-b.md 2).  The DC
+// plane keeps one un-banded context, exactly as v2 gave it.
+inline int v3_ctx_level(int ucls, int scan_pos, int prev_class) {
+    if (ucls == kUclsDc) return kCtxV3LevelDc;
+    return kCtxV3LevelBase + kLevelCtx[band_of(scan_pos)][prev_class];
+}
+
 // Sign data hiding (tool bit 22): a unit whose LAST is at scan position
 // kSdhMinLast or beyond does not code the sign at that position; it is the
 // parity of the sum of the unit's absolute levels.  The threshold exists so
@@ -133,11 +188,27 @@ constexpr int kEscSym = 15;   // LEVEL escape symbol
 constexpr int kEscOrder = 3;  // Exp-Golomb order
 constexpr int kEscMaxPrefix = 16;
 
+// Lloyd iterations the encoder spends refining the eight per-frame table sets
+// (encoder only; see nxvc_config::table_iters).  Three was measured; a fourth
+// is worth under 0.1 % and the objective the iteration minimizes does not
+// include the transmitted table cost, so it should not be run to convergence.
+constexpr int kDefaultTableIters = 3;
+
 // ------------------------------------------------------ probability tables
+// Probability precision M = 2^kProbBits.  Every context's frequencies are at
+// least 1 and sum to exactly kProbTotal.  SYNTAX.md 9.5.
+#ifndef NXVC_PROB_BITS      // development knob; the shipped syntax is 10
+#define NXVC_PROB_BITS 10
+#endif
+constexpr int kProbBits = NXVC_PROB_BITS;
+constexpr i32 kProbTotal = 1 << kProbBits;
+// Leave room for the other 15 entries when a row is renormalized.
+constexpr i32 kProbMax = kProbTotal - (kNumSym - 1);
+
 struct CtxTable {
     u16 freq[kNumSym];
     u16 cum[kNumSym + 1];
-    u8 slot2sym[1024];
+    u8 slot2sym[kProbTotal];
 };
 struct TableSet {
     CtxTable ctx[kNumCtx];
@@ -147,6 +218,8 @@ struct TableSet {
 extern const u16 kDefaultFreq[8][kNumCtxV1][kNumSym];
 // The v2 family, retrained with the DC plane and the mode symbol split out.
 extern const u16 kDefaultFreqV2[8][kNumCtxV2][kNumSym];
+// The v3 family, retrained with the neighbour-conditioned contexts.
+extern const u16 kDefaultFreqV3[8][kNumCtxV3][kNumSym];
 
 // Deterministic normalization of a 16-entry frequency row to sum 1024,
 // every entry >= 1.  Normative (used when parsing custom tables).
@@ -156,6 +229,9 @@ bool finalize_ctx(CtxTable &t);
 void build_default_set(TableSet &ts, int set_index, int nctx = kNumCtxV1);
 // The built-in frequency row for (set, ctx) under a model of `nctx` contexts.
 u16 default_freq(int nctx, int set_index, int c, int s);
+// The same row at the active probability precision (kProbTotal, not 1024).
+void default_row(int nctx, int set_index, int c, u16 f[kNumSym]);
+u16 default_row_freq(int nctx, int set_index, int c, int s);
 
 // Custom-table log-domain delta multipliers, Q8 (256 == 1.0):
 // kDeltaMul[d + 16] = round(256 * 2^(d/4)) for d in [-16, 15].

@@ -15,59 +15,110 @@ static inline int fetch_clamped(const PlaneRef &pr, int x, int y) {
 }
 
 // ------------------------------------------------------- probability tables
-// Serialize one table set as `nctx` x 16 five-bit log-domain deltas: 120
-// bytes for the 12-context model, 160 for the 16-context one.
-static void serialize_table_set(BitW &bw, const u16 target[kNumCtx][kNumSym],
-                                int set_index, int nctx, TableSet &decoded) {
-    for (int c = 0; c < nctx; ++c) {
-        u16 f[kNumSym];
-        for (int s = 0; s < kNumSym; ++s) {
-            i32 def = default_freq(nctx, set_index, c, s);
-            i32 want = target[c][s] < 1 ? 1 : target[c][s];
-            int best = 16, bestErr = -1;
-            for (int d = 0; d < 32; ++d) {
-                i32 v = (def * kDeltaMul[d] + 128) >> 8;
-                if (v < 1) v = 1;
-                int err = v > want ? v - want : want - v;
-                if (bestErr < 0 || err < bestErr) { bestErr = err; best = d; }
-            }
-            bw.put((u32)best, 5);
-            i32 v = (def * kDeltaMul[best] + 128) >> 8;
-            f[s] = (u16)(v < 1 ? 1 : (v > 32767 ? 32767 : v));
+// A context row is 16 log-domain deltas against the built-in default row of
+// the same (set, context).  Without TAB_V2 a delta is a flat 5-bit index, so a
+// row is 80 bits and a table set is 120 bytes for the 12-context model, 160
+// for the 16-context one and 420 for v3.  SYNTAX.md 9.4.
+constexpr int kRowBits = kNumSym * 5;
+
+// Quantize one target row to the delta alphabet and normalize it, exactly as
+// the decoder will.  Writes the 16 deltas into `d` and the decoded row into
+// `f`.  Shared by the encoder's cost decision and its serializer, so the two
+// can never disagree about what a transmitted row would decode to.
+static void quantize_row(const u16 *target, int set_index, int nctx, int c,
+                         u8 d[kNumSym], u16 f[kNumSym]) {
+    for (int s = 0; s < kNumSym; ++s) {
+        i32 def = default_row_freq(nctx, set_index, c, s);
+        i32 want = target[s] < 1 ? 1 : target[s];
+        int best = 16, bestErr = -1;
+        for (int k = 0; k < 32; ++k) {
+            i32 v = (def * kDeltaMul[k] + 128) >> 8;
+            if (v < 1) v = 1;
+            int err = v > want ? v - want : want - v;
+            if (bestErr < 0 || err < bestErr) { bestErr = err; best = k; }
         }
-        normalize_freqs(f);
-        for (int s = 0; s < kNumSym; ++s) decoded.ctx[c].freq[s] = f[s];
+        d[s] = (u8)best;
+        i32 v = (def * kDeltaMul[best] + 128) >> 8;
+        f[s] = (u16)(v < 1 ? 1 : (v > 32767 ? 32767 : v));
+    }
+    normalize_freqs(f);
+}
+
+// Bits `n` symbols distributed as `h` cost under the 10-bit row `f`.
+static double row_cost(const u32 *h, const u16 *f) {
+    double bits = 0;
+    for (int s = 0; s < kNumSym; ++s)
+        if (h[s]) bits -= (double)h[s] * std::log2((double)f[s] / kProbTotal);
+    return bits;
+}
+
+// What a transmitted table set will contain.  Under TAB_V2 (tool bit 24) each
+// context is preceded by a one-bit `row_coded` flag, and a row whose trained
+// version does not save more than the 80 bits it costs is left at the built-in
+// default.  `any` is false when no row pays, in which case the set is not
+// transmitted at all and its `tables_present` bit stays clear.  SYNTAX.md 9.4.
+struct TableSetPlan {
+    u8 d[kNumCtx][kNumSym];    // the quantized deltas of every row
+    u16 f[kNumCtx][kNumSym];   // what each row will decode to
+    bool coded[kNumCtx];
+    bool any = false;
+};
+
+static void plan_table_set(const u16 target[kNumCtx][kNumSym],
+                           const u32 hist[kNumCtx][kNumSym], int set_index,
+                           int nctx, int tab_v2, TableSetPlan &pl) {
+    pl.any = false;
+    for (int c = 0; c < nctx; ++c) {
+        quantize_row(target[c], set_index, nctx, c, pl.d[c], pl.f[c]);
+        pl.coded[c] = true;
+        if (tab_v2) {
+            u16 def[kNumSym];
+            default_row(nctx, set_index, c, def);
+            pl.coded[c] =
+                row_cost(hist[c], def) - row_cost(hist[c], pl.f[c]) > kRowBits;
+            if (!pl.coded[c])
+                for (int s = 0; s < kNumSym; ++s) pl.f[c][s] = def[s];
+        }
+        pl.any = pl.any || pl.coded[c];
+    }
+}
+
+static void serialize_table_set(BitW &bw, const TableSetPlan &pl, int nctx,
+                                int tab_v2, TableSet &decoded) {
+    for (int c = 0; c < nctx; ++c) {
+        if (tab_v2) bw.put(pl.coded[c] ? 1u : 0u, 1);
+        if (pl.coded[c])
+            for (int s = 0; s < kNumSym; ++s) bw.put(pl.d[c][s], 5);
+        for (int s = 0; s < kNumSym; ++s) decoded.ctx[c].freq[s] = pl.f[c][s];
         finalize_ctx(decoded.ctx[c]);
     }
 }
 
-static bool parse_table_set(BitR &br, int set_index, int nctx, TableSet &out) {
+static bool parse_table_set(BitR &br, int set_index, int nctx, int tab_v2,
+                            TableSet &out) {
     for (int c = 0; c < nctx; ++c) {
         u16 f[kNumSym];
+        bool coded = tab_v2 ? br.get(1) != 0 : true;
         for (int s = 0; s < kNumSym; ++s) {
-            u32 d = br.get(5);
-            i32 def = default_freq(nctx, set_index, c, s);
-            i32 v = (def * kDeltaMul[d] + 128) >> 8;
+            i32 def = default_row_freq(nctx, set_index, c, s);
+            if (!coded) { f[s] = (u16)def; continue; }
+            i32 v = (def * kDeltaMul[br.get(5)] + 128) >> 8;
             if (v < 1) v = 1;
             if (v > 32767) v = 32767;
             f[s] = (u16)v;
         }
-        normalize_freqs(f);
+        if (coded) normalize_freqs(f);
         for (int s = 0; s < kNumSym; ++s) out.ctx[c].freq[s] = f[s];
         if (!finalize_ctx(out.ctx[c])) return false;
     }
     return true;
 }
 
-// Cost in Q8 bits of coding `hist` with table set `ts` (encoder side only).
+// Cost in bits of coding `hist` with table set `ts` (encoder side only).
 static double table_set_cost(const u32 hist[kNumCtx][kNumSym],
                              const TableSet &ts) {
     double bits = 0;
-    for (int c = 0; c < kNumCtx; ++c)
-        for (int s = 0; s < kNumSym; ++s)
-            if (hist[c][s])
-                bits -= (double)hist[c][s] *
-                        std::log2((double)ts.ctx[c].freq[s] / 1024.0);
+    for (int c = 0; c < kNumCtx; ++c) bits += row_cost(hist[c], ts.ctx[c].freq);
     return bits;
 }
 
@@ -208,7 +259,11 @@ extern "C" nxvc_encoder *nxvc_encoder_create(const nxvc_config *cfg,
     }
     resolve_matrices(e->fp, e->custom_matrix.empty() ? nullptr
                                                      : e->custom_matrix.data());
-    e->fp.nctx = e->cfg.ctx_v2 ? kNumCtxV2 : kNumCtxV1;
+    if (e->cfg.ctx_v3) e->cfg.ctx_v2 = 1;   // v3 is a refinement of v2
+    e->fp.nctx = e->cfg.ctx_v3   ? kNumCtxV3
+                 : e->cfg.ctx_v2 ? kNumCtxV2
+                                 : kNumCtxV1;
+    e->fp.tab_v2 = e->cfg.custom_tables && e->cfg.tab_v2 ? 1 : 0;
     e->fp.intra_dir = e->cfg.intra_dir ? 1 : 0;
     e->fp.dir_layer = (e->cfg.intra_dir && e->cfg.intra_dir_layer) ? 1 : 0;
     e->fp.sdh = e->cfg.sign_hide ? 1 : 0;
@@ -269,6 +324,8 @@ static u64 encoder_tools(const nxvc_encoder *e) {
         t |= NXVC_TOOL_WM_ID;
     if (e->cfg.intra_dir) t |= NXVC_TOOL_INTRA_DIR;
     if (e->cfg.ctx_v2) t |= NXVC_TOOL_CTX_V2;
+    if (e->cfg.ctx_v3) t |= NXVC_TOOL_CTX_V3;
+    if (e->fp.tab_v2) t |= NXVC_TOOL_TAB_V2;
     if (e->cfg.sign_hide) t |= NXVC_TOOL_SIGN_HIDE;
     if (e->cfg.inter) t |= NXVC_TOOL_INTER | NXVC_TOOL_WARP;
     if (e->cfg.stereo) t |= NXVC_TOOL_STEREO;
@@ -699,11 +756,22 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
     std::vector<u8> table_bytes;
     static thread_local TableSet deftabs[8];
     for (int k = 0; k < 8; ++k) build_default_set(deftabs[k], k, fp.nctx);
-    auto select_set = [&](const u32 th[kNumCtx][kNumSym], int fallback) {
+    // `table_iters` refines the eight per-frame table sets after training:
+    // it re-assigns every tile against the *trained* sets and retrains, which
+    // is one Lloyd iteration on the frame's own statistics.  0 restores the
+    // syntax v1.4 encoder, which always scored a tile against the built-in
+    // sets even when the frame carried trained ones.  Encoder only.
+    const u32 table_iters =
+        e->cfg.table_iters == 255 ? 0u
+                                  : (e->cfg.table_iters ? e->cfg.table_iters
+                                                        : kDefaultTableIters);
+    // The cheapest of `ts` for a tile whose symbols are distributed as `th`.
+    auto select_set = [&](const u32 th[kNumCtx][kNumSym], int fallback,
+                          const TableSet *ts) {
         double best = 0;
         int bestk = fallback;
         for (int k = 0; k < 8; ++k) {
-            double c = table_set_cost(th, deftabs[k]);
+            double c = table_set_cost(th, ts[k]);
             if (k == 0 || c < best) { best = c; bestk = k; }
         }
         return bestk;
@@ -734,17 +802,19 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         int np = coded_planes(tc);
         for (int p = 0; p < np; ++p)
             rdoq_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)], tc.tp.tskip,
-                       p == 1 || p == 2, rc, rdo_lambda_scale, tc.sdh);
+                       p == 1 || p == 2, rc, rdo_lambda_scale, tc.sdh, tc.nctx,
+                       1 << tc.tp.nsub_log2);
     };
 
     auto analyze_tile_dir = [&](TileCoder &tc, const TableSet *tabs, int pass) {
         RateCost rc;
         build_rate_cost(tabs[tc.tp.table_set], rc);
         int np = coded_planes(tc);
-        int mode_ctx = tc.nctx >= kNumCtxV2 ? kCtxMode : 0;
+        int mode_ctx = mode_context(tc.nctx);
         for (int p = 0; p < np; ++p)
             analyze_plane_dir(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
-                              tc.tp.tskip, tc.dir_layer, p == 1 || p == 2, rc,
+                              tc.tp.tskip, tc.dir_layer, tc.nctx,
+                              1 << tc.tp.nsub_log2, p == 1 || p == 2, rc,
                               rdo_lambda_scale, pass && use_rdo,
                               pass ? dir_cand : 1, mode_ctx, tc.sdh);
     };
@@ -765,21 +835,21 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         std::memset(th, 0, sizeof(th));
         if (count_units(tc.units.data(), (int)tc.units.size(),
                         1 << tc.tp.nsub_log2, th, nullptr))
-            tc.tp.table_set = select_set(th, tc.tp.table_set);
+            tc.tp.table_set = select_set(th, tc.tp.table_set, table_iters ? tabs : deftabs);
         if (tc.intra_dir) {
             analyze_tile_dir(tc, tabs, 1);
             std::memset(th, 0, sizeof(th));
             if (!count_units(tc.units.data(), (int)tc.units.size(),
                              1 << tc.tp.nsub_log2, th, nullptr))
                 return 0;
-            tc.tp.table_set = select_set(th, tc.tp.table_set);
+            tc.tp.table_set = select_set(th, tc.tp.table_set, table_iters ? tabs : deftabs);
         } else if (use_rdo) {
             rdoq_tile(tc, tabs);
             std::memset(th, 0, sizeof(th));
             if (!count_units(tc.units.data(), (int)tc.units.size(),
                              1 << tc.tp.nsub_log2, th, nullptr))
                 return 0;
-            tc.tp.table_set = select_set(th, tc.tp.table_set);
+            tc.tp.table_set = select_set(th, tc.tp.table_set, table_iters ? tabs : deftabs);
         }
         return table_set_cost(th, tabs[tc.tp.table_set]);
     };
@@ -1099,6 +1169,11 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
     // ------------------------------------------------------------------
     u32 hist[8][kNumCtx][kNumSym];
     std::memset(hist, 0, sizeof(hist));
+    // Per-tile symbol histograms from the training pass, kept so the table
+    // sets can be refined without quantizing the frame again (below).
+    std::vector<u32> tilehist;
+    if (e->cfg.custom_tables)
+        tilehist.assign((size_t)ntiles * kNumCtx * kNumSym, 0);
     BW body;
     nxvc_status err = NXVC_OK;
 
@@ -1234,19 +1309,35 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                     std::memset(th, 0, sizeof(th));
                     if (count_units(tc.units.data(), (int)tc.units.size(),
                                     1 << tc.tp.nsub_log2, th, nullptr)) {
-                        tc.tp.table_set = select_set(th, tc.tp.table_set);
-                        if (emit && e->cfg.nsub_log2 == 255) {
+                        tc.tp.table_set = select_set(th, tc.tp.table_set, table_iters ? tabs : deftabs);
+                        // The lane count is chosen so the 4-byte-per-lane
+                        // flush stays under a tenth of the payload.  It is
+                        // picked in BOTH passes, because under CTX_V3 the
+                        // contexts follow the lane schedule (SYNTAX.md 9.8):
+                        // training on 8 lanes and coding on 2 would train the
+                        // wrong statistics.
+                        if (e->cfg.nsub_log2 == 255) {
                             double bits =
                                 table_set_cost(th, tabs[tc.tp.table_set]);
                             int n = 0;
                             while (n < 3 && (double)(32 << (n + 1)) <= bits * 0.10)
                                 ++n;
-                            tc.tp.nsub_log2 = n;
+                            if (n != tc.tp.nsub_log2) {
+                                tc.tp.nsub_log2 = n;
+                                std::memset(th, 0, sizeof(th));
+                                count_units(tc.units.data(),
+                                            (int)tc.units.size(), 1 << n, th,
+                                            nullptr);
+                                tc.tp.table_set = select_set(th, tc.tp.table_set, table_iters ? tabs : deftabs);
+                            }
                         }
-                        if (!emit) {
+                        if (!emit && !tilehist.empty()) {
+                            u32 *dst = &tilehist[(size_t)t * kNumCtx * kNumSym];
                             for (int c = 0; c < fp.nctx; ++c)
-                                for (int sy = 0; sy < kNumSym; ++sy)
+                                for (int sy = 0; sy < kNumSym; ++sy) {
                                     hist[tc.tp.table_set][c][sy] += th[c][sy];
+                                    dst[c * kNumSym + sy] = th[c][sy];
+                                }
                         }
                     }
                     if (emit && e->cfg.collect_stats) {
@@ -1369,9 +1460,14 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         for (int t = 0; t < ntiles; ++t) e->dec[t] = TileDecision{};
     }
 
-    if (e->cfg.custom_tables) {
+    // Train the eight table sets on `hist` and serialize the ones that pay.
+    // Leaves fp.tabs holding exactly what a decoder will reconstruct, so the
+    // encoder's own cost model sees the same tables the stream carries.
+    auto train_tables = [&]() {
         BitW bw;
+        fp.tables_present = 0;
         for (int k = 0; k < 8; ++k) {
+            build_default_set(fp.tabs[k], k, fp.nctx);
             u32 total = 0;
             for (int c = 0; c < fp.nctx; ++c)
                 for (int s2 = 0; s2 < kNumSym; ++s2) total += hist[k][c][s2];
@@ -1382,18 +1478,49 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                 for (int s2 = 0; s2 < kNumSym; ++s2) sum += hist[k][c][s2];
                 for (int s2 = 0; s2 < kNumSym; ++s2) {
                     if (sum == 0) {
-                        target[c][s2] = default_freq(fp.nctx, k, c, s2);
+                        target[c][s2] = default_row_freq(fp.nctx, k, c, s2);
                     } else {
-                        u32 v = (u32)(((u64)hist[k][c][s2] * 1024) / sum);
+                        u32 v = (u32)(((u64)hist[k][c][s2] * kProbTotal) / sum);
                         target[c][s2] = (u16)(v < 1 ? 1 : v);
                     }
                 }
             }
+            TableSetPlan pl;
+            plan_table_set(target, hist[k], k, fp.nctx, fp.tab_v2, pl);
+            if (!pl.any) continue;   // every row would be the built-in default
             fp.tables_present |= (1u << k);
-            serialize_table_set(bw, target, k, fp.nctx, fp.tabs[k]);
+            serialize_table_set(bw, pl, fp.nctx, fp.tab_v2, fp.tabs[k]);
         }
         bw.flush();
         table_bytes = bw.b;
+    };
+
+    if (e->cfg.custom_tables) {
+        train_tables();
+        // The training pass assigned each tile to its cheapest *built-in* set,
+        // but the encoding pass will re-choose against the *trained* ones.  A
+        // Lloyd iteration over the stored per-tile histograms makes the two
+        // agree: reassign, retrain, and repeat.  It costs no quantization --
+        // the histograms do not change, only which set they are pooled into.
+        for (u32 it = 0; it < table_iters; ++it) {
+            u32 next[8][kNumCtx][kNumSym];
+            std::memset(next, 0, sizeof(next));
+            for (int t = 0; t < ntiles; ++t) {
+                const u32 (*th)[kNumSym] =
+                    (const u32 (*)[kNumSym])&tilehist[(size_t)t * kNumCtx *
+                                                      kNumSym];
+                u32 total = 0;
+                for (int c = 0; c < fp.nctx; ++c)
+                    for (int sy = 0; sy < kNumSym; ++sy) total += th[c][sy];
+                if (total == 0) continue;
+                int best = select_set(th, 0, fp.tabs);
+                for (int c = 0; c < fp.nctx; ++c)
+                    for (int sy = 0; sy < kNumSym; ++sy)
+                        next[best][c][sy] += th[c][sy];
+            }
+            std::memcpy(hist, next, sizeof(hist));
+            train_tables();
+        }
     }
 
     run_pass(false, true, fp.tabs);
@@ -1547,11 +1674,12 @@ extern "C" int nxvc_debug_tile_histograms(const nxvc_config *cfg,
         if (tc.intra_dir) {
             RateCost rc;
             build_rate_cost(fp.tabs[tc.tp.table_set], rc);
-            int mctx = tc.nctx >= kNumCtxV2 ? kCtxMode : 0;
+            int mctx = mode_context(tc.nctx);
             for (int p = 0; p < np; ++p)
                 analyze_plane_dir(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
-                                  tc.tp.tskip, tc.dir_layer, p == 1 || p == 2,
-                                  rc, 0.30, true, 2, mctx, tc.sdh);
+                                  tc.tp.tskip, tc.dir_layer, tc.nctx, 8,
+                                  p == 1 || p == 2, rc, 0.30, true, 2, mctx,
+                                  tc.sdh);
         } else {
             for (int p = 0; p < np; ++p)
                 analyze_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
@@ -1655,6 +1783,15 @@ extern "C" nxvc_status nxvc_decoder_parse_stream_header(nxvc_decoder *d,
     // carry it, and a decoder that accepted both would not know which.
     if ((si.tools & NXVC_TOOL_LOSSLESS) && (si.tools & NXVC_TOOL_SIGN_HIDE))
         return NXVC_ERR_BITSTREAM;
+    // v3 refines the v2 context model rather than replacing it: it reuses the
+    // DC-plane and mode splits and only says how the rest is conditioned, so
+    // CTX_V3 without CTX_V2 names no model at all.
+    if ((si.tools & NXVC_TOOL_CTX_V3) && !(si.tools & NXVC_TOOL_CTX_V2))
+        return NXVC_ERR_BITSTREAM;
+    // The row-skip flag only exists inside a transmitted table set.
+    if ((si.tools & NXVC_TOOL_TAB_V2) &&
+        !(si.tools & NXVC_TOOL_CUSTOM_TABLES))
+        return NXVC_ERR_BITSTREAM;
     // Walk the TLV area; unknown types are skipped (forward compatibility).
     size_t p = kStreamHeaderBytes, end = kStreamHeaderBytes + si.ext_len;
     while (p + 4 <= end) {
@@ -1736,7 +1873,10 @@ static nxvc_status parse_frame_header(nxvc_decoder *d, const u8 *buf,
     fp.ref_slots = br.u8v();
     fp.flags = br.u8v();
     br.u8v();  // reserved
-    fp.nctx = (d->si.tools & NXVC_TOOL_CTX_V2) ? kNumCtxV2 : kNumCtxV1;
+    fp.nctx = (d->si.tools & NXVC_TOOL_CTX_V3)   ? kNumCtxV3
+              : (d->si.tools & NXVC_TOOL_CTX_V2) ? kNumCtxV2
+                                                 : kNumCtxV1;
+    fp.tab_v2 = (d->si.tools & NXVC_TOOL_TAB_V2) ? 1 : 0;
     fp.intra_dir = (d->si.tools & NXVC_TOOL_INTRA_DIR) ? 1 : 0;
     fp.sdh = (d->si.tools & NXVC_TOOL_SIGN_HIDE) ? 1 : 0;
     fp.dir_layer = (fp.flags >> 2) & 1;
@@ -1802,14 +1942,19 @@ static nxvc_status parse_frame_header(nxvc_decoder *d, const u8 *buf,
     }
     resolve_matrices(fp, custom);
     for (int i = 0; i < 8; ++i) build_default_set(fp.tabs[i], i, fp.nctx);
-    for (int k = 0; k < 8; ++k) {
-        if (!(fp.tables_present & (1u << k))) continue;
-        const size_t tbytes = (size_t)fp.nctx * kNumSym * 5 / 8;
-        if (off + tbytes > frame_bytes) return NXVC_ERR_TRUNCATED;
-        BitR bitr{buf + off, tbytes, 0};
-        if (!parse_table_set(bitr, k, fp.nctx, fp.tabs[k]))
-            return NXVC_ERR_BITSTREAM;
-        off += tbytes;
+    if (fp.tables_present) {
+        // Without TAB_ROW_SKIP every set is exactly `nctx * 16 * 5` bits, a
+        // whole number of bytes.  With it a set is variable length, so all the
+        // transmitted sets are read as one bit sequence that is zero-padded to
+        // a byte boundary at the end.  SYNTAX.md 9.4.
+        BitR bitr{buf + off, frame_bytes - off, 0};
+        for (int k = 0; k < 8; ++k) {
+            if (!(fp.tables_present & (1u << k))) continue;
+            if (!parse_table_set(bitr, k, fp.nctx, fp.tab_v2, fp.tabs[k]))
+                return NXVC_ERR_BITSTREAM;
+        }
+        if (bitr.bit > (frame_bytes - off) * 8) return NXVC_ERR_TRUNCATED;
+        off += (bitr.bit + 7) / 8;
     }
     fi.frame_number = fp.frame_number;
     fi.base_qp = fp.base_qp;

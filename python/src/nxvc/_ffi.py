@@ -342,6 +342,10 @@ class nxvc_config(Structure):
         ("mv_range", c_uint32),
         ("skip_thresh", c_uint32),
         ("mode_lambda_q8", c_uint32),
+        # --- additive since syntax v1.5: the entropy and context package.
+        ("tab_v2", c_uint32),
+        ("ctx_v3", c_uint32),
+        ("table_iters", c_uint32),
     ]
 
 

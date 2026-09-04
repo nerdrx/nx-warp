@@ -115,7 +115,8 @@ struct FrameParams {
     WarpMatrix warp[2];         // warp_ext(), one record per eye
     int inter = 0;              // stream tool bit 10
     int stereo = 0;             // stream tool bit 12
-    int nctx = kNumCtxV1;   // 12 or 16, from the stream's CTX_V2 tool bit
+    int nctx = kNumCtxV1;   // 12, 16 or 42, from the CTX_V2/CTX_V3 tool bits
+    int tab_v2 = 0;         // tool bit 24: the compact table-set coding
     int intra_dir = 0;      // stream tool bit 17
     int dir_layer = 0;      // frame flags bit 2
     int sdh = 0;            // stream tool bit 22
@@ -227,6 +228,7 @@ struct TileCoder {
     int dir_layer = 0;   // frame flag bit 2: predict the DC-plane residual
     int sdh = 0;         // stream tool bit 22
     int nctx = kNumCtxV1;
+    int ctx_v3 = 0;      // stream tool bit 25
     int inter = 0;       // tp.mode != INTRA
     PlaneState pl[4];
     std::vector<i16> coef;
@@ -259,6 +261,7 @@ void TileCoder::setup() {
     dir_layer = fp->dir_layer;
     sdh = fp->sdh;
     nctx = fp->nctx;
+    ctx_v3 = nctx >= kNumCtxV3 ? 1 : 0;
     int qp = clamp_i32(fp->base_qp + tp.qp_delta, 0, 63);
     for (int p = 0; p < nplanes; ++p) {
         PlaneState &s = pl[p];
@@ -315,6 +318,8 @@ void TileCoder::build_units() {
         u.ctx_cbf = nctx >= kNumCtxV2 ? (u8)kCtxCbfDc : ccbf;
         u.ctx_last = nctx >= kNumCtxV2 ? (u8)kCtxLastDc : clast;
         u.ctx_level = nctx >= kNumCtxV2 ? (u8)kCtxLevelDc : 0;
+        u.ucls = (u8)kUclsDc;
+        u.ctx_v3 = (u8)ctx_v3;
         u.sdh = (u8)sdh;
         units.push_back(u);
         off += ndc;
@@ -323,7 +328,9 @@ void TileCoder::build_units() {
             mu.kind = UNIT_MODE;
             mu.modes = s.modes.data();
             mu.nbx = (u8)s.nb;
-            mu.ctx_mode = nctx >= kNumCtxV2 ? (u8)kCtxMode : 0;
+            mu.ctx_mode = nctx >= kNumCtxV3   ? (u8)kCtxV3Mode
+                          : nctx >= kNumCtxV2 ? (u8)kCtxMode
+                                              : 0;
             mu.scan = scan_table(1, false);
             units.push_back(mu);
         }
@@ -334,6 +341,8 @@ void TileCoder::build_units() {
             v.scan = scan_table(64, tp.tskip != 0);
             v.ctx_cbf = ccbf;
             v.ctx_last = clast;
+            v.ucls = (u8)(chroma ? kUclsChroma : kUclsLuma);
+            v.ctx_v3 = (u8)ctx_v3;
             v.sdh = (u8)sdh;
             units.push_back(v);
             off += 64;
@@ -660,10 +669,57 @@ struct RateCost {
 static void build_rate_cost(const TableSet &ts, RateCost &rc) {
     for (int c = 0; c < kNumCtx; ++c)
         for (int s = 0; s < kNumSym; ++s) {
-            double f = (double)ts.ctx[c].freq[s] / 1024.0;
-            if (f <= 0) f = 1.0 / 1024.0;
+            double f = (double)ts.ctx[c].freq[s] / kProbTotal;
+            if (f <= 0) f = 1.0 / kProbTotal;
             rc.sym[c][s] = (i32)(-std::log2(f) * 1024.0 + 0.5);
         }
+}
+
+// The contexts one coding unit is coded in, as the encoder's rate model sees
+// them.  Under v1/v2 they are the unit's fixed fields; under v3 they follow
+// the unit class and the neighbour class (SYNTAX.md 9.8).  The encoder tracks
+// that class in raster order, which is the lane's own chain for every unit
+// except the first `nlanes` of a plane -- a rate-model approximation only:
+// LaneMachine derives the coded context, and it is always exact.
+struct UnitCtx {
+    int cbf = kCtxCbfLuma;
+    int last = kCtxLastLuma;
+    int level_fixed = kCtxNone;   // kCtxNone: the banded LEVEL contexts
+    int ucls = kUclsLuma;
+    int v3 = 0;
+    int level(int scan_pos, int prev_class) const {
+        if (v3) return v3_ctx_level(ucls, scan_pos, prev_class);
+        return level_fixed != kCtxNone ? level_fixed
+                                       : level_ctx(scan_pos, prev_class);
+    }
+};
+
+// The block-unit contexts of one plane under the active model.
+static UnitCtx block_ctx(int nctx, bool chroma) {
+    UnitCtx u;
+    u.ucls = chroma ? kUclsChroma : kUclsLuma;
+    u.v3 = nctx >= kNumCtxV3 ? 1 : 0;
+    u.cbf = u.v3 ? v3_ctx_cbf(u.ucls, 0)
+                 : (chroma ? kCtxCbfChroma : kCtxCbfLuma);
+    u.last = u.v3 ? v3_ctx_last(u.ucls, 0)
+                  : (chroma ? kCtxLastChroma : kCtxLastLuma);
+    return u;
+}
+
+// The same unit with its neighbour flag set: v3 shifts CBF and LAST.
+static UnitCtx with_prev_cbf(UnitCtx u, int prev_cbf) {
+    if (!u.v3) return u;
+    u.cbf = v3_ctx_cbf(u.ucls, prev_cbf);
+    u.last = v3_ctx_last(u.ucls, prev_cbf);
+    return u;
+}
+
+// Whether a quantized unit is coded at all -- the neighbour flag it leaves
+// behind, mirroring LaneMachine::finish_coef_unit.  Encoder side.
+static int unit_cbf(const i16 *c, int ncoef) {
+    for (int i = 0; i < ncoef; ++i)
+        if (c[i] != 0) return 1;
+    return 0;
 }
 
 // Bypass bits an escape suffix costs for magnitude m >= 15 (Exp-Golomb 3 of
@@ -675,9 +731,9 @@ static inline int escape_bits(i32 m) {
     return (b - kEscOrder) + 1 + b;  // j ones, one zero, b suffix bits
 }
 
-static inline i32 level_rate(const RateCost &rc, int scan_pos, int prev_class,
-                             i32 m) {
-    int ctx = level_ctx(scan_pos, prev_class);
+static inline i32 level_rate(const RateCost &rc, const UnitCtx &uc,
+                             int scan_pos, int prev_class, i32 m) {
+    int ctx = uc.level(scan_pos, prev_class);
     i32 sym = m > 14 ? kEscSym : m;
     i32 r = rc.sym[ctx][sym];
     if (m > 14) r += escape_bits(m) << 10;
@@ -691,7 +747,7 @@ constexpr double kRdInf = 1e30;
 // reconstruction step (the dequantizer's t, Q4).  Writes the chosen levels
 // back into `coefs`.
 static void rdoq_unit(i16 *coefs, const i32 *orig, const i32 *step, int ncoef,
-                      const u8 *scan, int ctx_cbf, int ctx_last,
+                      const u8 *scan, const UnitCtx &uc,
                       const RateCost &rc, double lambda) {
     double f[64][3], fnz[64];
     i32 best_m[64][3], best_m_nz[64];
@@ -722,7 +778,7 @@ static void rdoq_unit(i16 *coefs, const i32 *orig, const i32 *step, int ncoef,
             for (int k = 0; k < nc; ++k) {
                 i32 m = cand[k];
                 double d = a - (double)m * st;
-                double cost = d * d + lambda * (level_rate(rc, p, s, m) / 1024.0) +
+                double cost = d * d + lambda * (level_rate(rc, uc, p, s, m) / 1024.0) +
                               prev[level_class(m)];
                 if (cost < best) { best = cost; bm = m; }
                 if (m != 0 && cost < bestnz) { bestnz = cost; bmnz = m; }
@@ -735,15 +791,15 @@ static void rdoq_unit(i16 *coefs, const i32 *orig, const i32 *step, int ncoef,
     }
 
     // Choose `last`.
-    double best_total = rc.sym[ctx_cbf][0] * lambda / 1024.0 + energy;
+    double best_total = rc.sym[uc.cbf][0] * lambda / 1024.0 + energy;
     int best_last = -1;
     tail = 0;
     for (int p = ncoef - 1; p >= 0; --p) {
         if (fnz[p] < kRdInf) {
-            double r = rc.sym[ctx_cbf][1];
+            double r = rc.sym[uc.cbf][1];
             if (ncoef > 1) {
                 int cls = last_class_of(p);
-                r += rc.sym[ctx_last][cls] + (kLastRawBits[cls] << 10);
+                r += rc.sym[uc.last][cls] + (kLastRawBits[cls] << 10);
             }
             double total = fnz[p] + tail + lambda * (r / 1024.0);
             if (total < best_total) { best_total = total; best_last = p; }
@@ -907,14 +963,15 @@ static void analyze_plane(PlaneState &s, i16 *coefs, int tskip, int intra_dz,
 // intra predictor, so a level chosen there changes `pred` for all 64 blocks
 // and the trellis's single-unit distortion model would be wrong about it.
 static void rdoq_plane(PlaneState &s, i16 *coefs, int tskip, bool chroma,
-                       const RateCost &rc, double lambda_scale, int sdh) {
+                       const RateCost &rc, double lambda_scale, int sdh,
+                       int nctx, int nlanes) {
     const int nb = s.nb, size = s.size;
     const int ndc = nb * nb;
     const double base = (double)kQStep[s.qp] / 16.0;
     const double lambda = lambda_scale * base * base;
     const u8 *scan = scan_table(64, tskip != 0);
-    const int ctx_cbf = chroma ? kCtxCbfChroma : kCtxCbfLuma;
-    const int ctx_last = chroma ? kCtxLastChroma : kCtxLastLuma;
+    const UnitCtx base_uc = block_ctx(nctx, chroma);
+    u8 prev_cbf[64] = {};
     i32 stepv[64];
     if (tskip) {
         int t = dequant_step(s.qp, 16);
@@ -941,8 +998,12 @@ static void rdoq_plane(PlaneState &s, i16 *coefs, int tskip, bool chroma,
                 fdct8x8(res, co);
                 for (int i = 0; i < 64; ++i) orig[i] = co[i];
             }
-            rdoq_unit(c, orig, stepv, 64, scan, ctx_cbf, ctx_last, rc, lambda);
+            const int bi = by * nb + bx;
+            const UnitCtx uc = with_prev_cbf(
+                base_uc, bi >= nlanes ? prev_cbf[bi - nlanes] : 0);
+            rdoq_unit(c, orig, stepv, 64, scan, uc, rc, lambda);
             if (sdh) hide_sign_unit(c, orig, stepv, 64, scan);
+            prev_cbf[bi] = (u8)unit_cbf(c, 64);
         }
 }
 
@@ -977,25 +1038,23 @@ static i32 satd8x8(const i32 d[64]) {
 }
 
 // Q10 bits one coding unit costs under `rc`, mirroring the LaneMachine.
-static i32 unit_bits(const i16 *c, int ncoef, const u8 *scan, int ctx_cbf,
-                     int ctx_last, int ctx_level, const RateCost &rc,
-                     int sdh) {
+static i32 unit_bits(const i16 *c, int ncoef, const u8 *scan,
+                     const UnitCtx &uc, const RateCost &rc, int sdh) {
     int last = -1;
     for (int p = ncoef - 1; p >= 0; --p)
         if (c[scan[p]] != 0) { last = p; break; }
-    if (last < 0) return rc.sym[ctx_cbf][0];
-    i32 r = rc.sym[ctx_cbf][1];
+    if (last < 0) return rc.sym[uc.cbf][0];
+    i32 r = rc.sym[uc.cbf][1];
     if (ncoef > 1) {
         int cls = last_class_of(last);
-        r += rc.sym[ctx_last][cls] + (kLastRawBits[cls] << 10);
+        r += rc.sym[uc.last][cls] + (kLastRawBits[cls] << 10);
     }
     if (last >= kSdhMinLast && sdh) r -= 1 << 10;
     int prev = 0;
     for (int p = last; p >= 0; --p) {
         i32 q = c[scan[p]];
         i32 m = q < 0 ? -q : q;
-        int ctx = ctx_level ? ctx_level : level_ctx(p, prev);
-        r += rc.sym[ctx][m > 14 ? kEscSym : m];
+        r += rc.sym[uc.level(p, prev)][m > 14 ? kEscSym : m];
         if (m > 14) r += escape_bits(m) << 10;
         if (m != 0) r += 1 << 10;
         prev = level_class(m);
@@ -1010,6 +1069,7 @@ static i32 unit_bits(const i16 *c, int ncoef, const u8 *scan, int ctx_cbf,
 // of them (plus the DC-plane mode, which is always considered so that the
 // tool can never be worse than v1 on a block).
 static void analyze_plane_dir(PlaneState &s, i16 *coefs, int tskip, int layer,
+                              int nctx, int nlanes,
                               bool chroma, const RateCost &rc,
                               double lambda_scale, bool use_rdo, int ncand,
                               int mode_ctx, int sdh) {
@@ -1028,8 +1088,8 @@ static void analyze_plane_dir(PlaneState &s, i16 *coefs, int tskip, int layer,
     const double base = (double)kQStep[s.qp] / 16.0;
     const double lambda = lambda_scale * base * base;
     const u8 *scan = scan_table(64, tskip != 0);
-    const int ctx_cbf = chroma ? kCtxCbfChroma : kCtxCbfLuma;
-    const int ctx_last = chroma ? kCtxLastChroma : kCtxLastLuma;
+    const UnitCtx base_uc = block_ctx(nctx, chroma);
+    u8 prev_cbf[64] = {};
     i32 stepv[64];
     if (tskip) {
         int t = dequant_step(s.qp, 16);
@@ -1042,6 +1102,8 @@ static void analyze_plane_dir(PlaneState &s, i16 *coefs, int tskip, int layer,
     for (int by = 0; by < nb; ++by)
         for (int bx = 0; bx < nb; ++bx) {
             const int bi = by * nb + bx;
+            const UnitCtx uc = with_prev_cbf(
+                base_uc, bi >= nlanes ? prev_cbf[bi - nlanes] : 0);
             i16 *c = bc + (size_t)bi * 64;
             IntraRefs r;
             build_refs(s.recon.data(), fallback, size, bx, by, r);
@@ -1097,8 +1159,7 @@ static void analyze_plane_dir(PlaneState &s, i16 *coefs, int tskip, int layer,
                 }
                 i16 q[64];
                 if (use_rdo) {
-                    rdoq_unit(q, orig, stepv, 64, scan, ctx_cbf, ctx_last, rc,
-                              lambda);
+                    rdoq_unit(q, orig, stepv, 64, scan, uc, rc, lambda);
                 } else {
                     for (int i = 0; i < 64; ++i)
                         q[i] = (i16)quantize(orig[i], stepv[i], stepv[i] / 3);
@@ -1124,7 +1185,7 @@ static void analyze_plane_dir(PlaneState &s, i16 *coefs, int tskip, int layer,
                         d2 += e * e;
                     }
                 double bits =
-                    unit_bits(q, 64, scan, ctx_cbf, ctx_last, 0, rc, sdh) /
+                    unit_bits(q, 64, scan, uc, rc, sdh) /
                     1024.0;
                 // mode signalling, exactly as the LaneMachine will code it
                 if (m == mpm) {
@@ -1144,6 +1205,7 @@ static void analyze_plane_dir(PlaneState &s, i16 *coefs, int tskip, int layer,
                 }
             }
             s.modes[bi] = (u8)best_mode;
+            prev_cbf[bi] = (u8)unit_cbf(best_c, 64);
             std::memcpy(c, best_c, sizeof best_c);
             for (int j = 0; j < 8; ++j)
                 for (int i = 0; i < 8; ++i)
@@ -1249,6 +1311,9 @@ void nxvc_config_default(nxvc_config *cfg) {
     cfg->intra_dir = 1;
     cfg->intra_dir_layer = 0;  // the replace form, measured better than layer
     cfg->ctx_v2 = 1;
+    cfg->ctx_v3 = 1;
+    cfg->tab_v2 = 1;
+    cfg->table_iters = 0;   // 0 selects kDefaultTableIters; 255 turns it off
     cfg->intra_dir_cand = 0;   // built-in default (2 RD candidates + DC plane)
     cfg->sign_hide = 1;
     // Phase 2 is opt-in: the default configuration is the Phase 1 one, so an

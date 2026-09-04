@@ -76,6 +76,32 @@ void LaneMachine::begin_next_unit() {
     else begin_unit();
 }
 
+// ------------------------------------------------- v3 context derivation
+// The three accessors are the only place a coding context is chosen.  Under
+// the v1/v2 models the unit carries its contexts; under v3 they are derived
+// from the unit's class and this lane's neighbour class, both of which the
+// decoder already holds.  SYNTAX.md 9.8.
+int LaneMachine::ctx_cbf() const {
+    return u_->ctx_v3 ? v3_ctx_cbf(u_->ucls, prev_cbf_[u_->ucls]) : u_->ctx_cbf;
+}
+int LaneMachine::ctx_last() const {
+    return u_->ctx_v3 ? v3_ctx_last(u_->ucls, prev_cbf_[u_->ucls])
+                      : u_->ctx_last;
+}
+int LaneMachine::ctx_level(int scan_pos, int prev_class) const {
+    if (u_->ctx_v3) return v3_ctx_level(u_->ucls, scan_pos, prev_class);
+    return u_->ctx_level != kCtxNone ? u_->ctx_level
+                                     : level_ctx(scan_pos, prev_class);
+}
+
+// A coefficient unit is over: record its CBF for the next unit this lane
+// reaches in the same class, and move on.  `cbf` is a value this lane has just
+// decoded, so nothing here reads another lane's state.
+void LaneMachine::finish_coef_unit(int cbf) {
+    prev_cbf_[u_->ucls] = (u8)cbf;
+    begin_next_unit();
+}
+
 void LaneMachine::begin_levels() {
     pos_ = last_;
     prev_class_ = 0;
@@ -94,7 +120,7 @@ void LaneMachine::advance_pos() {
     if (pos_ == 0) {
         if (hide_ && (sum_abs_ & 1))
             u_->coef[u_->scan[last_]] = (i16)(-u_->coef[u_->scan[last_]]);
-        begin_next_unit();
+        finish_coef_unit(1);
     } else {
         --pos_;
         phase_ = kLevel;
@@ -106,7 +132,7 @@ bool LaneMachine::next(Op &op) {
     switch (phase_) {
         case kCbf: {
             op.kind = OP_SYM;
-            op.arg = u_->ctx_cbf;
+            op.arg = (u8)ctx_cbf();
             op.value = 0;
             if (encoding_) {
                 u32 cbf = 0;
@@ -118,7 +144,7 @@ bool LaneMachine::next(Op &op) {
         }
         case kLast: {
             op.kind = OP_SYM;
-            op.arg = u_->ctx_last;
+            op.arg = (u8)ctx_last();
             op.value = 0;
             if (encoding_) {
                 int lastpos = 0;
@@ -160,9 +186,7 @@ bool LaneMachine::next(Op &op) {
         }
         case kLevel: {
             op.kind = OP_SYM;
-            op.arg = (u8)(u_->ctx_level != kCtxNone
-                              ? u_->ctx_level
-                              : level_ctx(pos_, prev_class_));
+            op.arg = (u8)ctx_level(pos_, prev_class_);
             op.value = 0;
             if (encoding_) {
                 i32 q = u_->coef[u_->scan[pos_]];
@@ -264,7 +288,7 @@ bool LaneMachine::feed(u32 v) {
         case kCbf: {
             if (v > 1) return false;
             if (v == 0) {
-                begin_next_unit();
+                finish_coef_unit(0);
                 return true;
             }
             if (u_->ncoef == 1) {
@@ -381,7 +405,7 @@ static bool encode_ops(const std::vector<u8> &lane_of, const std::vector<Op> &op
         }
         u32 x = state[l];
         // Renormalize so that the encoded state stays below 2^32.
-        if (x >= (f << 22)) {
+        if (x >= (f << kRansShift)) {
             put16(rev, x & 0xffff);
             x >>= 16;
         }
@@ -425,7 +449,7 @@ bool RansDecoder::renorm(u32 &x) {
 
 bool RansDecoder::decode_sym(int lane, const CtxTable &t, u32 &sym) {
     u32 x = state_[lane];
-    u32 slot = x & 1023u;
+    u32 slot = x & (u32)(kProbTotal - 1);
     u32 s = t.slot2sym[slot];
     x = t.freq[s] * (x >> kProbBits) + slot - t.cum[s];
     if (!renorm(x)) return false;
@@ -436,7 +460,7 @@ bool RansDecoder::decode_sym(int lane, const CtxTable &t, u32 &sym) {
 
 bool RansDecoder::decode_bypass(int lane, int nbits, u32 &val) {
     u32 x = state_[lane];
-    u32 slot = x & 1023u;
+    u32 slot = x & (u32)(kProbTotal - 1);
     u32 v = slot >> (kProbBits - nbits);
     u32 f = 1u << (kProbBits - nbits);
     u32 c = v << (kProbBits - nbits);
