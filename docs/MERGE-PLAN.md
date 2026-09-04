@@ -160,6 +160,48 @@ review is the *set* of vector names, since two branches may add different
 keep both, renumbered so no name repeats. That file conflicts in every stack
 and is the one place in this class needing a human.
 
+#### 4.3.1 Reject vectors do not survive a renumber
+
+Found by running the pipeline, not by reading it. The reject vectors build
+malformed headers by poking raw bytes into the stream:
+
+```
+b[32 + 3] |= 0x01;            // tool bit 24 NEAR_SKIP
+```
+
+Byte 3 of the u64 `tools` field at offset 32 **is** bit 24, spelled as a
+literal. After the renumbering pass that line still sets bit 24, which is now
+`INTRA_CFL` or nothing at all, so the decoder answers `VERSION` ("unsupported
+tool") where the vector expects `BITSTREAM`. On the ctx-b + inter-a trial that
+broke five vectors:
+
+```
+r30_tab_v2_no_tables:   decoder returned VERSION, expected BITSTREAM
+r31_ctx_v3_no_v2:       decoder returned VERSION, expected BITSTREAM
+r33_near_skip_on_intra: decoder returned VERSION, expected BITSTREAM
+r35_near_skip_payload:  decoder returned VERSION, expected BITSTREAM
+r36_quad_mv_on_intra:   decoder returned VERSION, expected BITSTREAM
+```
+
+`scripts/retool-bits.py` reports every such line (`check_literal_pokes()`) but
+deliberately does not rewrite them: which constant a poke should become depends
+on what the vector means to test, and guessing would turn a failing vector into
+a passing one that tests nothing. Each has to be rewritten against
+`NXVC_TOOL_<NAME>` by hand -- ten sites today, at `tests/ref/vectors.cpp` lines
+734, 776, 788, 793, 883, 901, 906, 911, 914 and 915.
+
+This also corrects section 4.2's claim: the renumber touches four files *plus*
+`tests/ref/vectors.cpp`, which is the one place tool bits are written as
+numbers rather than names.
+
+#### 4.3.2 Reject vectors collide by number, like the `v57`s
+
+`ctx-b` adds `r30_tab_v2_no_tables` / `r31_ctx_v3_no_v2`; `inter-a` adds
+`r30_near_skip_no_tool` / `r31_quad_mv_no_tool` and `r32`-`r36`. The filenames
+differ so nothing overwrites, but the tree ends with two `r30`s and two `r31`s
+and a `rejects.md5` whose numbering no longer means anything. Renumber the same
+way as the `v` set: in merge order, one contiguous sequence.
+
 ### 4.4 The genuinely semantic conflict: `ref/src/transform.{h,cpp}`
 
 This is the only conflict in the tournament that a careful merge cannot
