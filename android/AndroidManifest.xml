@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- The receive path is the whole point of this app. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <uses-feature android:name="android.hardware.vulkan.version"
+                  android:version="0x00401000"
+                  android:required="true" />
+    <uses-feature android:name="android.hardware.vulkan.level"
+                  android:version="1"
+                  android:required="false" />
+
+    <application
+        android:label="@string/app_name"
+        android:hasCode="false"
+        android:allowBackup="false"
+        android:debuggable="true"
+        tools:ignore="HardcodedDebugMode">
+
+        <!-- Plain NativeActivity. No OpenXR: this is the pre-integration test
+             vehicle, it owns a normal fullscreen swapchain. -->
+        <activity
+            android:name="android.app.NativeActivity"
+            android:label="@string/app_name"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|keyboardHidden|screenSize|screenLayout|density|uiMode"
+            android:resizeableActivity="false"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
+
+            <meta-data android:name="android.app.lib_name"
+                       android:value="nxwarpclient" />
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

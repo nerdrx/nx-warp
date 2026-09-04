@@ -1,0 +1,6 @@
+# AGP's native build directory. The root .gitignore covers build*/ and .gradle/,
+# but not this one, and it fills with several hundred MB of Ninja output.
+.cxx/
+
+# Machine-specific SDK path, written by whoever builds here.
+local.properties

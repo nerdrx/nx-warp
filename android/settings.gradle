@@ -1,0 +1,8 @@
+// NX Warp Android client shell.
+//
+// Single-module build: the root project *is* the application module, the same
+// shape wivrn-nx/client uses. Repositories are declared in build.gradle's
+// buildscript/allprojects blocks rather than here so that the layout matches
+// the sibling project exactly.
+
+rootProject.name = 'nxwarp-client'

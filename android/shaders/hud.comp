@@ -1,0 +1,82 @@
+// HUD overlay: a 5x7 bitmap font blitted over the presented image.
+//
+// Chosen over a fragment pass because the image is already in GENERAL layout for
+// the decode dispatch, so a second compute dispatch costs one pipeline bind and
+// one barrier and needs no render pass, no framebuffer and no vertex data. On a
+// tiler a render pass here would also force a load and store of the whole image
+// for the sake of a few thousand lit texels (PAPER 3.2, 3.7).
+//
+// One invocation per HUD pixel, not per screen pixel: the dispatch covers only
+// the HUD rectangle.
+#version 450
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(binding = 0, rgba8) uniform image2D u_out;
+
+// HUD character cells: low byte = glyph index into the font, next byte = colour
+// index. 0xffffffff means "leave the pixel alone".
+layout(std430, binding = 1) readonly buffer HudText { uint cell[]; } u_hud;
+
+// 5x7 font, seven u32 per glyph, five significant bits per row, bit 4 leftmost.
+layout(std430, binding = 2) readonly buffer Font { uint row[]; } u_font;
+
+layout(push_constant) uniform PC {
+    uvec2 img;        // output image size in pixels
+    uint  cols;
+    uint  rows;
+    uint  scale;      // integer pixel scale of a glyph
+    uint  origin;     // x in low 16 bits, y in high 16
+} pc;
+
+// Colour index -> RGB. Index 0 is body text; the rest flag conditions so the eye
+// finds a bad number without reading it.
+vec3 hud_colour(uint i) {
+    if (i == 1u) return vec3(0.467, 0.000, 1.000);   // #7700FF, headings
+    if (i == 2u) return vec3(0.35, 0.95, 0.55);      // good
+    if (i == 3u) return vec3(0.95, 0.75, 0.20);      // warning
+    if (i == 4u) return vec3(1.00, 0.30, 0.25);      // bad
+    if (i == 5u) return vec3(0.55, 0.60, 0.75);      // dim / units
+    return vec3(0.88, 0.90, 0.96);                   // body
+}
+
+void main() {
+    const uint ox = pc.origin & 0xffffu;
+    const uint oy = pc.origin >> 16;
+
+    const uint gw = 6u * pc.scale;   // glyph advance, 5 wide plus a 1px gap
+    const uint gh = 8u * pc.scale;   // 7 tall plus a 1px gap
+
+    const uvec2 local = gl_GlobalInvocationID.xy;
+    if (local.x >= pc.cols * gw || local.y >= pc.rows * gh) return;
+
+    const uvec2 p = uvec2(ox + local.x, oy + local.y);
+    if (p.x >= pc.img.x || p.y >= pc.img.y) return;
+
+    const uint cx = local.x / gw;
+    const uint cy = local.y / gh;
+    const uint ci = cy * pc.cols + cx;
+    if (ci >= u_hud.cell.length()) return;
+
+    const uint cellv = u_hud.cell[ci];
+    if (cellv == 0xffffffffu) return;               // untouched cell
+
+    const uint glyph  = cellv & 0xffu;
+    const uint colour = (cellv >> 8) & 0xffu;
+
+    // Backdrop: darken rather than replace, so the heatmap stays readable behind
+    // the text and a screenshot still shows which tiles were concealed.
+    const vec4 dst = imageLoad(u_out, ivec2(p));
+    vec3 c = dst.rgb * 0.20;
+
+    const uint px = (local.x % gw) / pc.scale;
+    const uint py = (local.y % gh) / pc.scale;
+    if (px < 5u && py < 7u) {
+        const uint ri = glyph * 7u + py;
+        if (ri < u_font.row.length() && ((u_font.row[ri] >> (4u - px)) & 1u) == 1u) {
+            c = hud_colour(colour);
+        }
+    }
+
+    imageStore(u_out, ivec2(p), vec4(c, 1.0));
+}

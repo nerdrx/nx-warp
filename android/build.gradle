@@ -1,0 +1,97 @@
+// NX Warp standalone Android client shell.
+//
+// Conventions copied from wivrn-nx/client: AGP 8.13, a single root module, the
+// native side built entirely by externalNativeBuild/CMake, arm64 only.
+//
+// Deliberately NOT here (yet):
+//   * OpenXR. This app opens a plain fullscreen Vulkan swapchain. OpenXR arrives
+//     with the WiVRn NX integration, at which point the presentation half of
+//     this shell is replaced by WiVRn's own reprojection pass (PAPER 4.3).
+//   * a signing config. Debug builds only; this is a measurement vehicle.
+
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.13.0'
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+apply plugin: 'com.android.application'
+
+android {
+    namespace = "org.nxwarp.client"
+    ndkVersion = "29.0.14206865"
+
+    defaultConfig {
+        applicationId "org.nxwarp.client"
+        // Vulkan needs 24; AHardwareBuffer/AImageReader (PAPER 3.5, hybrid mode,
+        // not used yet but the manifest should not have to change later) needs 26;
+        // ANativeWindow_setFrameRate and the SCHED_FIFO path want 30.
+        minSdkVersion 30
+        compileSdkVersion 34
+        targetSdkVersion 34
+
+        versionName = project.hasProperty('nxwarp_version') ? nxwarp_version : "0.1.0"
+        versionCode = project.hasProperty('nxwarp_versionCode') ? nxwarp_versionCode.toInteger() : 1
+
+        externalNativeBuild {
+            cmake {
+                arguments = ['-DANDROID_TOOLCHAIN=clang',
+                             '-DANDROID_STL=c++_static',
+                             '-DCMAKE_ANDROID_NDK_VERSION=' + ndkVersion,
+                             '-DCMAKE_EXPORT_COMPILE_COMMANDS=ON']
+                abiFilters 'arm64-v8a'
+            }
+        }
+
+        resValue "string", "app_name", "NX Warp Client"
+    }
+
+    buildTypes {
+        debug {
+            // Keep the native symbols: every number this app prints is only worth
+            // something if the stack that produced it can be inspected.
+            packagingOptions {
+                doNotStrip "*/arm64-v8a/*.so"
+            }
+        }
+        release {
+            minifyEnabled false
+        }
+    }
+
+    sourceSets {
+        main {
+            manifest.srcFile 'AndroidManifest.xml'
+            res.srcDirs = ['resources']
+            assets.srcDirs = ['assets']
+            java.srcDirs = []
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            version = '3.31.5'
+            path 'CMakeLists.txt'
+        }
+    }
+
+    // No Java/Kotlin at all: NativeActivity only.
+    buildFeatures {
+        buildConfig = false
+    }
+
+    lint {
+        abortOnError = false
+    }
+}

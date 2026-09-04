@@ -1,0 +1,128 @@
+// Placeholder "decoder" Pass B: paint every tile by its presentation state.
+//
+// This stands in for PAPER 3.2.3's real Pass B until vk/ lands. It is
+// deliberately trivial -- one texel per invocation, one buffer load per texel --
+// because its job is to prove the ring -> deadline -> present path end to end,
+// not to be fast or to resemble the real reconstruction.
+//
+// NOTE ON THE DISPATCH SHAPE. The real Pass B is "one workgroup per 64x64 tile"
+// with a workgroup of 256 (PAPER 3.2.3), because it reconstructs into a
+// tile-sized region of a full-resolution reference image. This placeholder
+// instead dispatches 16x16 over the luma plane, since it only needs one colour
+// per tile cell. Do not read the dispatch shape here as a statement about the
+// real one.
+//
+// OUTPUT FORMAT. Two planes, 4:2:0, the format the real decoder emits and the
+// one the WiVRn NX client already samples from MediaCodec (PAPER 3.5): full
+// resolution R8 luma, half resolution R8G8 with Cb in R and Cr in G. Every
+// fourth invocation writes the chroma sample for its 2x2 quad. Full-range
+// BT.709 -- this is a debug surface, not a normative one, and the client's
+// present pass inverts exactly this matrix.
+//
+// What it draws is exactly the staleness heatmap PAPER 4.3 and 4.9 ask the HUD
+// for: "the HUD heatmap shows age per tile".
+//
+//   fresh        DECODED, age 0        deep violet
+//   stale        DECODED, age > 0      violet -> amber as age climbs
+//   concealed    CONCEALED             magenta
+//   undecodable  UNDECODABLE           red
+//   empty        EMPTY (pre-deadline)  near black
+//
+// A tile that arrived late (TRANSPORT.md 7.3 bit 26) gets a bright corner pip,
+// because "arrived, but after its band deadline" is the single most interesting
+// event in a timing run and it is invisible in the state alone.
+#version 450
+
+#include "nxc_common.glsl"
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(binding = 0, r8)  uniform writeonly image2D u_luma;
+layout(binding = 1, rg8) uniform writeonly image2D u_chroma;
+
+// Per-tile metadata for the current ring slot: one u32 per tile position.
+layout(std430, binding = 2) readonly buffer TileMeta { uint meta[]; } u_meta;
+
+layout(push_constant) uniform PC {
+    uvec2 img;        // luma plane size in pixels
+    uvec2 grid;       // tile grid: cols, rows
+    uint  band_rows;  // TRANSPORT.md 1, for the band separator lines
+    uint  frame_id;
+} pc;
+
+// Full-range BT.709 RGB -> YCbCr. Cb and Cr are returned already biased by 0.5
+// so they store directly into a UNORM image.
+vec3 rgb_to_ycbcr(vec3 c) {
+    const float y  = dot(c, vec3( 0.2126,  0.7152,  0.0722));
+    const float cb = dot(c, vec3(-0.1146, -0.3854,  0.5000)) + 0.5;
+    const float cr = dot(c, vec3( 0.5000, -0.4542, -0.0458)) + 0.5;
+    return vec3(y, cb, cr);
+}
+
+void main() {
+    const uvec2 p = gl_GlobalInvocationID.xy;
+    if (p.x >= pc.img.x || p.y >= pc.img.y) return;
+
+    // Map the pixel to a tile cell. Integer maths only: this shader is not in
+    // the normative bit-exact path, but the habit is cheap to keep (PAPER 3.7).
+    const uint cx = (p.x * pc.grid.x) / pc.img.x;
+    const uint cy = (p.y * pc.grid.y) / pc.img.y;
+    const uint t  = cy * pc.grid.x + cx;
+
+    uint m = 0u;
+    if (t < u_meta.meta.length()) m = u_meta.meta[t];
+
+    const uint state = meta_state(m);
+    const uint age   = meta_age(m);
+
+    vec3 c;
+    if (state == STATE_DECODED) {
+        if (age == 0u) {
+            c = vec3(0.184, 0.106, 0.420);            // fresh
+        } else {
+            // Age ramp: violet to amber, saturating at 8 frames. Anything past
+            // that is as stale as it needs to look.
+            float k = min(float(age) / 8.0, 1.0);
+            c = mix(vec3(0.184, 0.106, 0.420), vec3(0.90, 0.62, 0.10), k);
+        }
+    } else if (state == STATE_CONCEALED) {
+        c = vec3(0.85, 0.15, 0.45);
+    } else if (state == STATE_UNDECODABLE) {
+        c = vec3(1.00, 0.10, 0.05);
+    } else {
+        c = vec3(0.040, 0.040, 0.070);                // empty
+    }
+
+    // Position of this pixel inside its cell, in "scaled" units: one pixel step
+    // advances these by grid.x / grid.y, so a value below that marks the first
+    // pixel of a cell.
+    const uint x_in = (p.x * pc.grid.x) % pc.img.x;
+    const uint y_in = (p.y * pc.grid.y) % pc.img.y;
+    const bool left_edge = x_in < pc.grid.x;
+    const bool top_edge  = y_in < pc.grid.y;
+
+    // Tile boundaries, and a brighter separator at every band boundary so the
+    // six row bands of PAPER 4.2 are legible at a glance.
+    if (top_edge && (cy % pc.band_rows) == 0u) {
+        c = mix(c, vec3(0.467, 0.000, 1.000), 0.85);   // #7700FF
+    } else if (left_edge || top_edge) {
+        c = mix(c, vec3(0.0), 0.45);
+    }
+
+    // Late-arrival pip in the top-left 3x3 pixels of the cell.
+    if (meta_late(m) == 1u && (x_in / pc.grid.x) < 3u && (y_in / pc.grid.y) < 3u) {
+        c = vec3(0.20, 0.95, 0.85);
+    }
+
+    const vec3 ycc = rgb_to_ycbcr(c);
+    imageStore(u_luma, ivec2(p), vec4(ycc.x, 0.0, 0.0, 1.0));
+
+    // 4:2:0: one chroma sample per 2x2 luma quad, written by the top-left
+    // invocation of the quad. Co-sited rather than box filtered, which is the
+    // cheapest thing that is still correct for flat tile colours -- and the tile
+    // colours here are flat except at the 1px grid lines, where a little chroma
+    // bleed is expected and is itself evidence the subsampling is real.
+    if ((p.x & 1u) == 0u && (p.y & 1u) == 0u) {
+        imageStore(u_chroma, ivec2(p >> 1u), vec4(ycc.y, ycc.z, 0.0, 1.0));
+    }
+}
