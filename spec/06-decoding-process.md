@@ -97,8 +97,9 @@ YCoCg-R domain.
 
 When `color_transform == 0` the planes are output exactly as reconstructed.
 
-The interaction with the forthcoming `color_space` element is unresolved; see
-Annex C issue C-1. [pending SYNTAX.md]
+`color_space` (clause 5.2) does not change this process: it is descriptive
+only, and `color_space == 3` if and only if `color_transform == 1`
+[SYNTAX 2.2].
 
 ## 6.4 Dequantisation, inverse transform, reconstruction
 

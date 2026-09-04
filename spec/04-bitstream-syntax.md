@@ -68,7 +68,7 @@ stream_header()                                        Descriptor
     tools                                              f(64)
     alpha_present                                      f(8)
     color_transform                                    f(8)
-    color_space                                        f(8)     [pending SYNTAX.md]
+    color_space                                        f(8)
     stream_reserved                                    b(19)
     ext_len                                            f(16)
 ```
@@ -90,19 +90,15 @@ stream_header()                                        Descriptor
 | 32 | 8 | `tools` |
 | 40 | 1 | `alpha_present` |
 | 41 | 1 | `color_transform` |
-| 42 | 1 | `color_space` **[pending SYNTAX.md]** |
+| 42 | 1 | `color_space` |
 | 43 | 19 | `stream_reserved`, MUST be zero |
 | 62 | 2 | `ext_len` |
 
-**`color_space` is provisional.** At the time of writing, `docs/SYNTAX.md`
-places 20 reserved bytes at offset 42 and defines no `color_space`. The `ref/`
-agent is adding a `color_space` element (0 = YCoCg-R, 1 = YCbCr passthrough
-with a range flag) because the WiVRn source frames are already 4:2:0 YCbCr.
-This clause reserves offset 42 for it and shortens `stream_reserved` to 19
-bytes so the header stays 64 bytes and `ext_len` stays at offset 62. The exact
-encoding of the range flag — a second byte, or a bit of this one — is not yet
-decided, and its interaction with `color_transform` (clause 5.2.14) must be
-settled. Recorded as Annex C issue C-1. [pending SYNTAX.md]
+`color_space` landed in `docs/SYNTAX.md` 2.2 while this document set was being
+drafted, at offset 42 with `stream_reserved` shortened to 19 bytes, exactly as
+provisionally reserved here. It is **descriptive only** and is tied to
+`color_transform` by an explicit constraint rather than duplicating it; see
+clause 5.2 and Annex C issue C-1, now closed.
 
 **Bit fields of `layer_desc[i]`**, LSB first [SYNTAX 2]:
 
@@ -127,6 +123,9 @@ A decoder MUST reject a stream header that violates any of the following
   picture [TRANSPORT 1]. Recorded as Annex C issue C-3.
 * `chroma_format`, `color_transform` or `alpha_present` out of range.
 * `color_transform == 1` with `chroma_format != 1`.
+* `color_space == 3` without `color_transform == 1`, or `color_transform == 1`
+  without `color_space == 3` — the two are tied in both directions
+  [SYNTAX 2].
 * Any bit set in `tools` that the decoder does not implement (clause 8.4).
 * `layer_desc[i] != 0` for any `i >= num_layers`.
 

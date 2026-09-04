@@ -40,8 +40,10 @@ decoder for every conforming bitstream. There is no tolerance (clause 9.4).
   initial rANS state is at least `L`), or as explicitly informative material.
 * **Rate control, mode decision, motion search, foveation mapping.** These are
   encoder concerns. `docs/PAPER.md` clause 4.6 and `docs/RATECONTROL.md`
-  *(does not exist yet)* describe them; nothing there changes the decoding
-  process. [pending RATECONTROL.md]
+  describe them; nothing in either changes the decoding process. The one place
+  they touch this specification is that the degradation ladder chooses
+  `qp_delta` and `res_level` per tile, both of which are ordinary syntax
+  elements a decoder reads without knowing why they hold the values they do.
 * **The GPU implementation.** `docs/PAPER.md` clause 3 designs a Vulkan
   compute decoder in two dispatches. That design is *one* conforming
   implementation. This specification is written so that a scalar CPU decoder

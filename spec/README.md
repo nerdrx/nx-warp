@@ -45,7 +45,7 @@ and cross-checks the following, and cites each statement to its source:
 | `docs/INTEGRATION-DECISIONS.md` | normative source | Origin of the `color_space` element |
 | `warp/` (integer warp implementation) | provisional source | Awaiting `docs/WARP.md`; cited by file and commit |
 | `docs/WARP.md` | *(does not exist yet)* | Integer pose warp — clause 6.7 is `[pending WARP.md]` |
-| `docs/RATECONTROL.md` | *(does not exist yet)* | Encoder side, informative; no decoder normative content expected |
+| `docs/RATECONTROL.md` | informative | Encoder side: tile classification, degradation ladder, foveation. Landed during drafting; no decoder normative content |
 | `docs/HYBRID.md` | *(does not exist yet)* | HEVC base layer — clause 6.9 is `[pending HYBRID.md]` |
 | `docs/PAPER.md` | **informative only** | Design rationale. Where the paper and a component document disagree, the component document wins and the disagreement is logged in Annex C |
 

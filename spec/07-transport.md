@@ -152,5 +152,5 @@ Referred to [R-19] in full, with no restatement:
 | Failure modes the library must handle | [TRANSPORT 12] |
 
 Rate control, including the degradation ladder that chooses `qp_delta` and
-`res_level` per tile, is an encoder concern and changes nothing in this clause.
-[pending RATECONTROL.md]
+`res_level` per tile, is an encoder concern and changes nothing in this clause
+[I-2].

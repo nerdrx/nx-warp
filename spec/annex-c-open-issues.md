@@ -7,7 +7,7 @@ list.
 
 Each issue names the documents that disagree, states what an implementer cannot
 do today, and says what would close it. Nothing here is a complaint about
-quality — a design this size producing 31 open issues at this stage is normal.
+quality — a design this size producing 29 open issues at this stage is normal.
 What matters is that none of them is *silent*.
 
 **Severity**
@@ -31,7 +31,6 @@ What matters is that none of them is *silent*.
 | C-6 | MAJOR | Two different 26-byte pose layouts | 5.3, 4.9 |
 | C-5 | MAJOR | `res_level == 3` reserved in the syntax, "DC-plane" in the transport | 5.4 |
 | C-14 | MAJOR | `bit_depth == 10` is legal but 10-bit is specified nowhere | 6.2 |
-| C-1 | MAJOR | `color_space` duplicates `color_transform` | 5.2 |
 | C-10 | MAJOR | `wgt`: four weights or five, and no blend formula | 5.4, 6.9 |
 | C-15 | MAJOR | Three incompatible per-tile state definitions | 6.10 |
 | C-11 | MAJOR | Motion vector: delta or absolute, unstated normatively | 5.4 |
@@ -52,9 +51,15 @@ What matters is that none of them is *silent*.
 | C-27 | MINOR | No level limits defined at all | 8.3 |
 | C-28 | MINOR | "No tile depends on another" is false once STEREO exists | 6.1 |
 | C-29 | MINOR | `warp/` cites a `docs/WARP.md` that does not exist | 6.7 |
-| C-31 | MINOR | `docs/RATECONTROL.md` absent | 0.3 |
 
-Counts: **6 blocking, 13 major, 12 minor — 31 open issues.**
+Counts: **6 blocking, 12 major, 11 minor — 29 open issues.**
+
+Closed during drafting, kept for the record:
+
+| ID | Closed by | Resolution |
+|---|---|---|
+| C-1 | `docs/SYNTAX.md` 2.2 | `color_space` landed as a *descriptive* element at offset 42, tied to `color_transform` by "`color_space == 3` if and only if `color_transform == 1`". The two do not duplicate: one says what the codec does, the other what the result means |
+| C-31 | `docs/RATECONTROL.md` | Landed. Informative, as expected; adds no normative decoder behaviour |
 
 ---
 
@@ -188,15 +193,6 @@ scaling is given (`docs/PAPER.md` 1.5 says "the same table with coefficients
 scaled by 4", which is not in the normative document), and no 10-bit clamp is
 defined. A decoder asked for 10 bits has nothing to implement.
 
-### C-1 — `color_space` duplicates `color_transform`
-
-`docs/INTEGRATION-DECISIONS.md` 1 and `docs/ERRATA.md` add a `color_space`
-element: 0 = YCoCg-R computed from RGB, 1 = YCbCr passthrough with a range flag.
-The stream header already has `color_transform`: 1 = YCoCg-R, 0 = planes coded
-as given. **These are the same axis, inverted.** Also unresolved: where the range
-flag lives, and whether `color_transform == 1` still forces `chroma_format == 1`
-when the source is 4:2:0 YCbCr.
-
 ### C-15 — Three per-tile state definitions
 
 `docs/PAPER.md` 2.6: 16 bytes — `held_frame_id`, `last_mv`, `age_since_intra`,
@@ -307,10 +303,6 @@ should be qualified rather than repeated.
 
 **C-29** — `warp/include/nxvc/warp.h` says "See docs/WARP.md for the normative
 prose". That file does not exist. [pending WARP.md]
-
-**C-31** — `docs/RATECONTROL.md` does not exist. Lowest priority of all of
-these: it is informative by design and nothing in the decoding process depends
-on it. [pending RATECONTROL.md]
 
 ---
 

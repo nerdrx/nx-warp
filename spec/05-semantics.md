@@ -87,24 +87,27 @@ is applied internally; `chroma_format` MUST then be 1. With
 `color_transform == 0` the planes are coded exactly as given, which is the path
 used for ordinary YCbCr input.
 
-**`color_space`** identifies how the coded planes were produced
-[INTEGRATION-DECISIONS 1, ERRATA 3.6]:
+**`color_space`** tells the sink what the coded planes *are*, so that a decoder
+can hand them straight to a compositor [SYNTAX 2.2]:
 
-| Value | Meaning | Source of such a stream |
-|---|---|---|
-| 0 | YCoCg-R, computed by the encoder from RGB | Windows helper, RGB compositors |
-| 1 | YCbCr passthrough, planes coded as delivered, with a range flag | WiVRn Linux server |
+| Value | Meaning |
+|---|---|
+| 0 | Unspecified: planes coded as given, range unstated |
+| 1 | YCbCr BT.709, limited range |
+| 2 | YCbCr BT.709, full range |
+| 3 | RGB, which requires `color_transform == 1` (YCoCg-R) |
 
-The transform, quantiser and entropy stages are identical in both; only the
-colour conversion stage of clause 6.3 is present or absent.
+It is **descriptive only**: the transform, quantiser and entropy coder are byte
+for byte identical for every value, so `color_space` changes no decoded sample.
+Values 0 to 2 imply `color_transform == 0` and the planes reach the transform
+stage untouched — the WiVRn Linux path, whose capture is already
+`VK_FORMAT_G8_B8R8_2PLANE_420_UNORM` and is coded as delivered
+[INTEGRATION-DECISIONS 1, ERRATA]. The tie is normative in both directions:
+`color_space == 3` **if and only if** `color_transform == 1`.
 
-**The element is provisional and appears to duplicate `color_transform`.**
-`color_space == 0` is exactly `color_transform == 1` and `color_space == 1` is
-exactly `color_transform == 0`, so as defined the two elements are the same
-axis inverted. It is not yet in `docs/SYNTAX.md`, the placement of the range
-flag is undecided, and one of the two elements should almost certainly be
-removed. Reserved at offset 42. See Annex C issue **C-1**.
-[pending SYNTAX.md]
+The two elements therefore do not duplicate each other: `color_transform` says
+what the codec *does*, `color_space` says what the result *means*. Annex C
+issue C-1 is closed by this definition.
 
 **`stream_reserved`** is 19 bytes that MUST be zero.
 
