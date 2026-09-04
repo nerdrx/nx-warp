@@ -11,6 +11,8 @@
 //   oracle     integer pipeline vs the float oracle (coordinate + pixel error)
 //   range      fixed-point envelope: no int32 overflow anywhere in the
 //              documented worst case, and out-of-envelope poses are rejected
+//   saturate   corners stay inside kCornerClamp for ANY input, both modes
+//              (FINDINGS.md F2/F7 regression)
 //   filters    filter tap tables are normalised and symmetric
 //
 // SPDX-License-Identifier: Apache-2.0
@@ -70,7 +72,9 @@ static int suite_int64() {
 
         const uint32_t sh = rng.u32() % 32u;
         const U64 sl = nxvc_shl64(s, sh);
-        const uint64_t sle = static_cast<uint64_t>(se) << sh;
+        // Masked before the shift: the discarded bits are the point of the
+        // comparison, and -fsanitize=integer flags an unsigned shift that drops them.
+        const uint64_t sle = (static_cast<uint64_t>(se) & (~0ull >> sh)) << sh;
         CHECK(sl.lo == static_cast<uint32_t>(sle) && sl.hi == static_cast<uint32_t>(sle >> 32),
               "shl64 by %u", sh);
 
@@ -561,6 +565,84 @@ static int suite_range() {
     return g_fail;
 }
 
+// FINDINGS.md F2 and F7. warp.h promises every corner is inside
+// +-kCornerClamp; the in-tile interpolation's overflow argument depends on it,
+// and the GLSL twin has to compute the same value. Both were reachable: the
+// kModeStatic path applied no clamp at all (F2), and the kModeWarp path
+// applied it after arithmetic that had already overflowed (F7).
+//
+// This drives warp_tile_corners() and warp_tile() with hostile int32 -- the
+// values a corrupt frame header can carry, not the values derive_homography()
+// can produce -- and requires the contract to hold for every one of them.
+static int suite_saturate() {
+    Rng rng(0x5A7085ull);
+    Picture p = make_picture(96, 96, 2, 255, 17);
+    std::vector<uint16_t> out(static_cast<size_t>(kTile) * kTile * 2);
+
+    // Extreme values that have historically broken this kind of code.
+    const int32_t edges[] = {0,  1,  -1,  2,  -2,
+                             INT32_MAX, INT32_MIN, INT32_MAX - 1, INT32_MIN + 1,
+                             1 << 30, -(1 << 30), 1 << 25, -(1 << 25),
+                             (1 << 24) + 1, kCornerClamp, -kCornerClamp,
+                             65535, -65536, 4160, -9583};
+    const int n_edges = static_cast<int>(sizeof(edges) / sizeof(edges[0]));
+
+    int checked = 0;
+    for (int trial = 0; trial < 60000; ++trial) {
+        Homography H{};
+        for (int i = 0; i < 9; ++i) {
+            // Half the trials are pure edge values, half fully random int32.
+            H.h[i] = (trial & 1) ? edges[rng.range(0, n_edges - 1)]
+                                 : static_cast<int32_t>(rng.u32());
+        }
+        H.ox = (trial & 2) ? edges[rng.range(0, n_edges - 1)]
+                           : static_cast<int32_t>(rng.u32());
+        H.oy = (trial & 4) ? edges[rng.range(0, n_edges - 1)]
+                           : static_cast<int32_t>(rng.u32());
+        const int32_t tx = edges[rng.range(0, n_edges - 1)];
+        const int32_t ty = (trial & 8) ? edges[rng.range(0, n_edges - 1)]
+                                       : static_cast<int32_t>(rng.u32());
+
+        for (Mode m : {kModeWarp, kModeStatic}) {
+            const TileCorners c = warp_tile_corners(H, tx, ty, m);
+            for (int i = 0; i < 4; ++i) {
+                CHECK(c.x[i] >= -kCornerClamp && c.x[i] <= kCornerClamp,
+                      "corner x %d out of clamp, mode=%d tile=(%d,%d) ox=%d", c.x[i], (int)m, tx,
+                      ty, H.ox);
+                CHECK(c.y[i] >= -kCornerClamp && c.y[i] <= kCornerClamp,
+                      "corner y %d out of clamp, mode=%d tile=(%d,%d) oy=%d", c.y[i], (int)m, tx,
+                      ty, H.oy);
+                ++checked;
+            }
+            if (g_fail) return g_fail;
+        }
+    }
+
+    // And the whole predictor with hostile vectors: every written sample must
+    // be a legal sample value, and nothing may run off the reference picture.
+    for (int trial = 0; trial < 4000; ++trial) {
+        Homography H{};
+        for (int i = 0; i < 9; ++i) H.h[i] = static_cast<int32_t>(rng.u32());
+        H.ox = edges[rng.range(0, n_edges - 1)];
+        H.oy = edges[rng.range(0, n_edges - 1)];
+        const int32_t mv[2] = {edges[rng.range(0, n_edges - 1)],
+                               edges[rng.range(0, n_edges - 1)]};
+        const int32_t tx = edges[rng.range(0, n_edges - 1)];
+        const int32_t ty = edges[rng.range(0, n_edges - 1)];
+        const Filter f = (rng.u32() & 1u) ? kFilterCatmullRom : kFilterBilinear;
+        const Mode m = (rng.u32() & 1u) ? kModeStatic : kModeWarp;
+        warp_tile(p.img, tx, ty, H, mv, f, m, out.data(), kTile * 2);
+        for (uint16_t v : out) {
+            CHECK(v <= 255, "sample %u exceeds max_value", v);
+        }
+        if (g_fail) return g_fail;
+    }
+
+    std::printf("saturate: %d corners + 4000 hostile tiles, all inside kCornerClamp (F2/F7)\n",
+                checked);
+    return g_fail;
+}
+
 static int suite_filters() {
     for (int f = 0; f < 16; ++f) {
         int sum = 0;
@@ -606,6 +688,7 @@ int main(int argc, char** argv) {
     if (suite == "interior" || suite == "all") suite_interior();
     if (suite == "oracle" || suite == "all") suite_oracle();
     if (suite == "range" || suite == "all") suite_range();
+    if (suite == "saturate" || suite == "all") suite_saturate();
     if (suite == "filters" || suite == "all") suite_filters();
     if (g_fail) {
         std::printf("\n%d FAILURE(S)\n", g_fail);

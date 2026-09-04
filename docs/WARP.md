@@ -166,6 +166,7 @@ Other constants:
 | `kQMv` | 2 | motion vectors are Q.2 (1/4 pel) |
 | `kQSample` | 4 | sampling positions are Q.4 (1/16 pel) |
 | `kCornerClamp` | `1 << 19` | corner coordinates saturate at +-8192 pel |
+| `kCoordClamp` | `1 << 22` | sampling coordinate saturates after the MV add |
 | `kTile` | 64 | tile side |
 
 ---
@@ -323,6 +324,33 @@ The `mag.hi >= den` branch cannot be taken by any matrix that passed
 produces a *defined, identical* result on every implementation rather than
 undefined behaviour. Outside the validated envelope the predictor guarantees
 determinism, not accuracy.
+
+### Saturation is applied before the arithmetic that would overflow
+
+The decoder receives `H` from a bitstream, not from `derive_homography()`, so
+the out-of-envelope case is exactly the case it must survive. Three rules make
+that survivable without changing any in-envelope result:
+
+- The quotient is negated **through `uint32`** (`0u - q`), because `q` is an
+  unrestricted quotient and `-(int32_t)q` is undefined when `q == 2^31`.
+- The `origin` term is added with a **saturating** add, not a plain one. The
+  plain add overflows before the clamp can see it, so the clamp cannot honour
+  the contract. Saturating add is bit-identical whenever the plain add does not
+  overflow.
+- Every `<<` applied to a value that came off the wire goes through the
+  unsigned pattern (`shl_i32_mod`), which is identical to `v << n` for every
+  input that does not overflow and defined for the rest.
+
+The same three rules apply in `kModeStatic`, which must saturate to
+`kCornerClamp` exactly like `kModeWarp`: the interpolation of section 7 relies
+on `|corner| <= 2^19` for its overflow argument, and the GLSL twin has to
+compute the same value. Both were found by `warp_tile_fuzz`
+(`fuzz/FINDINGS.md` F2 and F7) and are locked in by `warp.saturate`.
+
+After the motion vector is added the coordinate is saturated again, to
+`kCoordClamp`, so that the `+ 2` of the Q.6 -> Q.4 step cannot overflow for a
+hostile vector. In the operational envelope the coordinate is at most
+`kCornerClamp` plus a 64 px vector, about 2^20, so this never binds.
 
 ---
 
@@ -562,6 +590,7 @@ Three cases must be exact, and are tested (`warp.identity`):
 | `warp.interior` | the section 7 table |
 | `warp.oracle` | the section 9 table |
 | `warp.range` | the section 3 envelope; no `int32` overflow, no saturation inside the envelope |
+| `warp.saturate` | corners stay inside `kCornerClamp` for arbitrary `int32` input, both modes (F2/F7 regression) |
 | `warp.filters` | tap table normalised to 64, symmetric, within 1/64 of the exact kernel |
 | `warp.determinism` | one identical output hash from every compiler and optimisation level |
 | `warp.gpu_diff` | zero mismatching pixels, GPU against CPU, on every installed ICD |
@@ -576,6 +605,11 @@ directly inside their fixed-point formats — so a hash mismatch can only come f
 the integer path and never from libm.
 
 `warp.gpu_diff` returns exit code 77 (ctest skip) when no Vulkan ICD is present.
+
+The module is additionally covered by `fuzz/warp_tile_fuzz`, whose checked-in
+reproducers replay on every build through `warp_tile_fuzz_replay`. The
+normative path is UBSan-clean under `-fsanitize=undefined,integer` on hostile
+input, which for integer-only code is most of what there is to prove.
 
 ### Limitations
 

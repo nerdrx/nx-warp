@@ -20,6 +20,15 @@ namespace nxvc::warp {
 // exercises identical logic rather than hiding behind the host's 64-bit ALU.
 // ---------------------------------------------------------------------------
 
+// Modular left shift on uint32. C++ defines unsigned shift as modulo 2^32, so
+// the discarded high bits are well-defined behaviour, but UBSan's
+// unsigned-shift-base check flags them and the fuzz build enables it. Masking
+// first is bit-identical and says "the drop is deliberate" out loud; in every
+// use below the dropped bits are either carried separately or genuinely unused.
+static inline uint32_t shl_u32(uint32_t v, uint32_t n) {
+    return (v & (0xffffffffu >> n)) << n;
+}
+
 U64 nxvc_umul_ext(uint32_t a, uint32_t b) {
     const uint32_t a0 = a & 0xffffu, a1 = a >> 16;
     const uint32_t b0 = b & 0xffffu, b1 = b >> 16;
@@ -30,7 +39,7 @@ U64 nxvc_umul_ext(uint32_t a, uint32_t b) {
     // mid cannot overflow: (2^16-1) + 2*(2^16-1) < 2^18.
     const uint32_t mid = (p00 >> 16) + (p01 & 0xffffu) + (p10 & 0xffffu);
     U64 r;
-    r.lo = (p00 & 0xffffu) | (mid << 16);
+    r.lo = (p00 & 0xffffu) | shl_u32(mid, 16);  // mid >> 16 is carried into hi below
     r.hi = p11 + (p01 >> 16) + (p10 >> 16) + (mid >> 16);
     return r;
 }
@@ -61,8 +70,8 @@ U64 nxvc_neg64(U64 a) {
 U64 nxvc_shl64(U64 a, uint32_t n) {
     U64 r;
     if (n == 0u) return a;
-    r.hi = (a.hi << n) | (a.lo >> (32u - n));
-    r.lo = a.lo << n;
+    r.hi = shl_u32(a.hi, n) | (a.lo >> (32u - n));
+    r.lo = shl_u32(a.lo, n);
     return r;
 }
 
@@ -106,6 +115,29 @@ static inline int32_t sar(int32_t v, int n) {
 
 static inline int32_t clamp_i32(int32_t v, int32_t lo, int32_t hi) {
     return v < lo ? lo : (v > hi ? hi : v);
+}
+
+// Left shift of a signed value through its unsigned pattern. A plain `v << n`
+// is UB the moment v is large enough for a bit to reach the sign position, and
+// every shift below is applied to a value that ultimately comes off the wire.
+// Identical to `v << n` for every input that does not overflow.
+static inline int32_t shl_i32_mod(int32_t v, uint32_t n) {
+    return static_cast<int32_t>(shl_u32(static_cast<uint32_t>(v), n));
+}
+
+// Saturating signed add. Bit-identical to `a + b` whenever that does not
+// overflow, and saturating rather than undefined when it does. Used where the
+// sum is about to be clamped anyway, so saturating is exactly the intent the
+// old add-then-clamp had -- it just could not survive the overflow to express
+// it (FINDINGS.md F7).
+static inline int32_t sat_add_i32(int32_t a, int32_t b) {
+    const uint32_t ua = static_cast<uint32_t>(a);
+    const uint32_t ub = static_cast<uint32_t>(b);
+    const uint32_t s = ua + ub;
+    if ((((ua ^ s) & (ub ^ s)) & 0x80000000u) != 0u) {
+        return a < 0 ? (-2147483647 - 1) : 2147483647;
+    }
+    return static_cast<int32_t>(s);
 }
 
 const int8_t kCatmullRom[16][4] = {
@@ -176,9 +208,15 @@ static inline int32_t corner_component(int32_t h_a, int32_t h_b, int32_t h_c,
         v = neg ? -kCornerClamp : kCornerClamp;
     } else {
         const uint32_t q = nxvc_warp_div(mag, ud);
-        v = neg ? -static_cast<int32_t>(q) : static_cast<int32_t>(q);
+        // Negate through uint32: q is an unrestricted quotient and
+        // -(int32_t)q is UB when q == 2^31 (FINDINGS.md F7). Modular negation
+        // is exact for every q that does not overflow.
+        v = static_cast<int32_t>(neg ? 0u - q : q);
     }
-    v += origin << kQCorner;
+    // Saturate the origin add instead of overflowing into clamp_i32 (F7). The
+    // decoder's contract is to saturate on an out-of-envelope matrix, not to
+    // wrap; the old form could not honour it because the wrap happened first.
+    v = sat_add_i32(v, shl_i32_mod(origin, kQCorner));
     return clamp_i32(v, -kCornerClamp, kCornerClamp);
 }
 
@@ -186,15 +224,27 @@ TileCorners warp_tile_corners(const Homography& H, int32_t tile_x, int32_t tile_
     TileCorners c{};
     if (mode == kModeStatic) {
         // STATIC_MV: the identity predictor, exactly. No homography, no divide.
+        // Saturated exactly like the kModeWarp path below: warp.h promises
+        // every corner is inside +-kCornerClamp, the in-tile interpolation's
+        // overflow argument depends on it, and the GLSL twin has to agree
+        // bit for bit (FINDINGS.md F2).
         for (int i = 0; i < 4; ++i) {
-            c.x[i] = (tile_x + ((i & 1) ? kTile : 0)) << kQCorner;
-            c.y[i] = (tile_y + ((i >> 1) ? kTile : 0)) << kQCorner;
+            const int32_t px = static_cast<int32_t>(static_cast<uint32_t>(tile_x) +
+                                                    ((i & 1) ? uint32_t(kTile) : 0u));
+            const int32_t py = static_cast<int32_t>(static_cast<uint32_t>(tile_y) +
+                                                    ((i >> 1) ? uint32_t(kTile) : 0u));
+            c.x[i] = clamp_i32(shl_i32_mod(px, kQCorner), -kCornerClamp, kCornerClamp);
+            c.y[i] = clamp_i32(shl_i32_mod(py, kQCorner), -kCornerClamp, kCornerClamp);
         }
         return c;
     }
     for (int i = 0; i < 4; ++i) {
-        const int32_t cx = tile_x + ((i & 1) ? kTile : 0) - H.ox;
-        const int32_t cy = tile_y + ((i >> 1) ? kTile : 0) - H.oy;
+        const int32_t cx = static_cast<int32_t>(static_cast<uint32_t>(tile_x) +
+                                                ((i & 1) ? uint32_t(kTile) : 0u) -
+                                                static_cast<uint32_t>(H.ox));
+        const int32_t cy = static_cast<int32_t>(static_cast<uint32_t>(tile_y) +
+                                                ((i >> 1) ? uint32_t(kTile) : 0u) -
+                                                static_cast<uint32_t>(H.oy));
 
         // den fits int32: |h20|,|h21| <= 2^31/2^12 by validation and
         // |cx|,|cy| <= 2^15 for any picture we stream.
@@ -297,13 +347,20 @@ void warp_tile(const RefImage& ref,
     const TileCorners c = warp_tile_corners(H, tile_x, tile_y, mode);
 
     // mv is Q.2; promoting it to Q.6 is a shift by kQCorner - kQMv == 4.
-    const int32_t mvx_q6 = mv_qpel[0] << (kQCorner - kQMv);
-    const int32_t mvy_q6 = mv_qpel[1] << (kQCorner - kQMv);
+    const int32_t mvx_q6 = shl_i32_mod(mv_qpel[0], kQCorner - kQMv);
+    const int32_t mvy_q6 = shl_i32_mod(mv_qpel[1], kQCorner - kQMv);
 
     for (int32_t v = 0; v < kTile; ++v) {
         for (int32_t u = 0; u < kTile; ++u) {
-            int32_t xq6 = bilerp_corner(c.x[0], c.x[1], c.x[2], c.x[3], u, v) + mvx_q6;
-            int32_t yq6 = bilerp_corner(c.y[0], c.y[1], c.y[2], c.y[3], u, v) + mvy_q6;
+            // Saturate and clamp so the "+2" of the Q.6 -> Q.4 step below
+            // cannot overflow for a hostile vector. |xq6| is at most
+            // kCornerClamp + 4096 in the envelope, far inside kCoordClamp.
+            const int32_t xq6 = clamp_i32(
+                sat_add_i32(bilerp_corner(c.x[0], c.x[1], c.x[2], c.x[3], u, v), mvx_q6),
+                -kCoordClamp, kCoordClamp);
+            const int32_t yq6 = clamp_i32(
+                sat_add_i32(bilerp_corner(c.y[0], c.y[1], c.y[2], c.y[3], u, v), mvy_q6),
+                -kCoordClamp, kCoordClamp);
 
             // Q.6 -> Q.4, round half up (paper 2.2 step 4: "(c + 2) >> 2").
             const int32_t xq4 = sar(xq6 + 2, kQCorner - kQSample);

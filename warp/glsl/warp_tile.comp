@@ -31,6 +31,7 @@ const int  Q_SAMPLE     = 4;
 const int  DIV_SHIFT    = Q_CORNER + Q_DEN - Q_NUM;   // 14
 const int  TILE         = 64;
 const int  CORNER_CLAMP = 1 << 19;
+const int  COORD_CLAMP  = 1 << 22;
 const int  DEN_MIN      = 1 << 28;
 const int  DEN_MAX      = 1 << 30;
 
@@ -95,6 +96,25 @@ layout(push_constant) uniform Push {
 
 shared ivec2 sCorner[4];
 
+// --- overflow-safe integer helpers ---------------------------------------
+// Mirrors of the same three helpers in warp_ref.cpp. Every value they touch
+// comes off the wire, so none of them may rely on a shift or an add staying
+// in range; all three are bit-identical to the naive form whenever it does.
+
+uint shl_u32(uint v, uint n) { return (v & (0xffffffffu >> n)) << n; }
+
+int shl_i32_mod(int v, uint n) { return int(shl_u32(uint(v), n)); }
+
+int sat_add_i32(int a, int b) {
+    uint ua = uint(a);
+    uint ub = uint(b);
+    uint s = ua + ub;
+    if ((((ua ^ s) & (ub ^ s)) & 0x80000000u) != 0u) {
+        return (a < 0) ? int(0x80000000u) : 0x7fffffff;
+    }
+    return int(s);
+}
+
 // --- emulated 64-bit ------------------------------------------------------
 // u64 is (x = lo, y = hi).
 
@@ -126,7 +146,7 @@ uvec2 neg64(uvec2 a) {
 
 uvec2 shl64(uvec2 a, uint n) {
     if (n == 0u) return a;
-    return uvec2(a.x << n, (a.y << n) | (a.x >> (32u - n)));
+    return uvec2(shl_u32(a.x, n), shl_u32(a.y, n) | (a.x >> (32u - n)));
 }
 
 uvec2 from_i32(int v) {
@@ -163,20 +183,25 @@ int corner_component(int h_a, int h_b, int h_c, int cx, int cy, int den, int ori
         v = neg ? -CORNER_CLAMP : CORNER_CLAMP;
     } else {
         uint q = warp_div(mag, ud);
-        v = neg ? -int(q) : int(q);
+        // Negate through uint: q is unrestricted and -int(q) is UB at 2^31.
+        v = int(neg ? 0u - q : q);
     }
-    v += origin << Q_CORNER;
+    v = sat_add_i32(v, shl_i32_mod(origin, uint(Q_CORNER)));
     return clamp(v, -CORNER_CLAMP, CORNER_CLAMP);
 }
 
 void compute_corner(int i, TileParam p) {
     if (p.mode == MODE_STATIC) {
-        sCorner[i] = ivec2((p.tx + (((i & 1) != 0) ? TILE : 0)) << Q_CORNER,
-                           (p.ty + (((i >> 1) != 0) ? TILE : 0)) << Q_CORNER);
+        // Saturated exactly like the MODE_WARP path (FINDINGS.md F2).
+        int px = int(uint(p.tx) + (((i & 1) != 0) ? uint(TILE) : 0u));
+        int py = int(uint(p.ty) + (((i >> 1) != 0) ? uint(TILE) : 0u));
+        sCorner[i] = ivec2(
+            clamp(shl_i32_mod(px, uint(Q_CORNER)), -CORNER_CLAMP, CORNER_CLAMP),
+            clamp(shl_i32_mod(py, uint(Q_CORNER)), -CORNER_CLAMP, CORNER_CLAMP));
         return;
     }
-    int cx = p.tx + (((i & 1) != 0) ? TILE : 0) - p.ox;
-    int cy = p.ty + (((i >> 1) != 0) ? TILE : 0) - p.oy;
+    int cx = int(uint(p.tx) + (((i & 1) != 0) ? uint(TILE) : 0u) - uint(p.ox));
+    int cy = int(uint(p.ty) + (((i >> 1) != 0) ? uint(TILE) : 0u) - uint(p.oy));
 
     uvec2 d64 = add64(add64(imul_ext(p.h[6], cx), imul_ext(p.h[7], cy)), from_i32(p.h[8]));
     int den = int(d64.x);
@@ -246,16 +271,18 @@ void main() {
     ivec2 c2 = sCorner[2];
     ivec2 c3 = sCorner[3];
 
-    int mvx_q6 = p.mvx << (Q_CORNER - Q_MV);
-    int mvy_q6 = p.mvy << (Q_CORNER - Q_MV);
+    int mvx_q6 = shl_i32_mod(p.mvx, uint(Q_CORNER - Q_MV));
+    int mvy_q6 = shl_i32_mod(p.mvy, uint(Q_CORNER - Q_MV));
 
     for (uint n = 0u; n < 16u; ++n) {
         uint idx = gl_LocalInvocationID.x + n * 256u;   // 4096 pixels per tile
         int u = int(idx & 63u);
         int v = int(idx >> 6);
 
-        int xq6 = bilerp_corner(c0.x, c1.x, c2.x, c3.x, u, v) + mvx_q6;
-        int yq6 = bilerp_corner(c0.y, c1.y, c2.y, c3.y, u, v) + mvy_q6;
+        int xq6 = clamp(sat_add_i32(bilerp_corner(c0.x, c1.x, c2.x, c3.x, u, v), mvx_q6),
+                        -COORD_CLAMP, COORD_CLAMP);
+        int yq6 = clamp(sat_add_i32(bilerp_corner(c0.y, c1.y, c2.y, c3.y, u, v), mvy_q6),
+                        -COORD_CLAMP, COORD_CLAMP);
 
         // Q.6 -> Q.4, round half up (paper 2.2 step 4).
         int xq4 = (xq6 + 2) >> (Q_CORNER - Q_SAMPLE);

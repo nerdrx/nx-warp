@@ -61,6 +61,12 @@ inline constexpr int32_t kCornerClamp = 1 << 19;
 // rotation -- roughly seven times the 300 deg/s that paper 2.2 calls fast.
 inline constexpr int32_t kEntryMax = 1 << 30;
 
+// Sampling coordinates are saturated here after the motion vector is added,
+// so that the Q.6 -> Q.4 rounding step cannot overflow int32 for any input.
+// Legal values are at most kCornerClamp plus a +-64 px vector (~2^20), so this
+// never binds in the operational envelope.
+inline constexpr int32_t kCoordClamp = 1 << 22;
+
 // Legal range of the homogeneous denominator. The encoder MUST guarantee this
 // for every corner of every tile it emits; the decoder saturates if violated.
 inline constexpr int32_t kDenMin = 1 << 28;  // 0.5
