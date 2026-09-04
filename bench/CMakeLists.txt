@@ -111,7 +111,6 @@ endif()
 
 # ---------------------------------------------------------------- frontends
 if(ANDROID)
-  find_package(game-activity QUIET)
   add_library(nxbench SHARED
     src/android/main.cpp
     src/android/k6_hybrid.cpp

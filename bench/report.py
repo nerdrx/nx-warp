@@ -71,7 +71,7 @@ def main(path):
         if st == "FAIL":
             failed.append(name)
         if not k["ran"]:
-            print("  %-12s %47s %-14s %s" % (name, "", fmt_threshold(k),
+            print("  %-12s %43s   %-14s %s" % (name, "", fmt_threshold(k),
                                              "skip: " + k.get("skip_reason", "")))
             continue
         print("  %-12s %7.3f  %7.3f  %7.3f  %7.3f  %7.3f   %-14s %s" % (
