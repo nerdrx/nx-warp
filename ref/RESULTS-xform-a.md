@@ -7,6 +7,21 @@ decoder. Everything here was produced by `tools/quality/compare.py` and by
 `$NXQ_SCRATCH/results/tourney-xform-a-*.json`. Section 6 reproduces every
 number.
 
+**The four numbers.** On 8 frames of `vr-mixed-1024-v2`, before is the shipped
+default and after is `--xform auto`:
+
+| measurement | before | after | change |
+|---|---|---|---|
+| Phase 1 gate, 4:4:4, BD-rate vs x264 intra | +64.84 % | **+45.95 %** | **-18.9 points** |
+| Phase 1 gate, 4:2:0, BD-rate vs x264 intra | +40.62 % | **+19.50 %** | **-21.1 points** |
+| Phase 2 kill test, band A, BD-rate vs x265-p | +333.00 % | **+282.73 %** | -50.3 points |
+| Phase 2 kill test, band B, BD-rate vs x265-p | +454.96 % | **+398.86 %** | -56.1 points |
+
+Both gates still **FAIL**; the verdicts are quoted verbatim in sections 2 and
+3. The 4:2:0 gate's mean deficit is now -1.198 dB against a -1.0 dB criterion.
+Every operating point of every run is both smaller and better than its before,
+which is the shape a prediction-neutral coding tool should have.
+
 **The premise.** `RESULTS-intra.md` ends with the intra core about 4 dB behind
 x264 intra, and says the deficit is dominated by smooth content: a DC plane of
 8x8 block means plus an 8x8 DCT has no way to spend few bits on a large flat

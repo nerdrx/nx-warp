@@ -20,7 +20,9 @@ and the tile header's two-bit `xform_size`, which selects a 16x16 or 32x32
 integer DCT for every plane of the tile instead of the 8x8 one. It is additive
 and off by default -- `nxv-enc --xform auto` turns the per-tile
 rate-distortion choice on -- and all 56 v1.4 conformance vectors are
-byte-identical. See [`docs/SYNTAX.md`](../docs/SYNTAX.md) 6.7 and
+byte-identical. It is worth **-18.9 BD-rate points on 4:4:4 and -21.1 on
+4:2:0** against x264 intra, and -50 to -56 points against x265-p on the inter
+path. See [`docs/SYNTAX.md`](../docs/SYNTAX.md) 6.7 and
 [`RESULTS-xform-a.md`](RESULTS-xform-a.md).
 
 **Syntax revision v1.4** adds the inter path: the frame-header flag
