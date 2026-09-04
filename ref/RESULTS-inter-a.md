@@ -216,7 +216,40 @@ sample loop.
 
 ---
 
-## 6. PLACEHOLDER-TIME
+## 6. Encode and decode time
+
+`vr-mixed-512-v2` 4:2:0, 12 frames, single-threaded on the 12-15 slice, `-O2`,
+best of three runs on a machine shared with eleven other agents (the spread
+across the three was under 8 % on encode and under 15 % on decode, so the
+minimum is reported and the second decimal is not meant).
+
+| QP | | encode | decode | bitstream |
+|---|---|---|---|---|
+| 8 | baseline | 445.4 ms/frame | 22.7 ms/frame | 443 122 B |
+| 8 | the package | 574.0 ms/frame (**1.29x**) | 25.6 ms/frame (**1.13x**) | 417 740 B (**-5.7 %**) |
+| 24 | baseline | 192.4 ms/frame | 19.4 ms/frame | 76 504 B |
+| 24 | the package | 227.0 ms/frame (**1.18x**) | 20.1 ms/frame (**1.04x**) | 69 866 B (**-8.7 %**) |
+
+**The encoder pays 1.2x to 1.3x**, and almost all of it is the quadrant
+search: 21 candidate deltas, each one prediction of the luma plane of one
+tile, on every tile whose mode search chose `WARP_MV` or `STATIC_MV`. It is
+21 predictions rather than 4 x 21 because a quadrant's samples can be read out
+of a whole-tile prediction at that delta (13.10), so four quadrants are
+searched for the price of one. The near-skip fit is one extra prediction and
+two extra RD scores per tile; sub-tile intra is one more.
+
+**The decoder pays 1.04x to 1.13x, and it does not have to.** The whole of it
+is `ref/`'s deliberately naive quadrant predictor: four `warp_plane_tile()`
+calls per quad tile, three of whose results are thrown away. That
+implementation was chosen because it is obviously correct, and 13.10 states
+normatively that adding the quadrant's vector inside the sample loop is
+bit-identical to it — which is what a GPU does, at no cost over a
+single-vector tile. A CPU decoder that cares can make the same change and get
+the same bytes.
+
+The near-skip tiles pull the other way and are not separable in this
+measurement: each one is a `warp_tile()` and a mean field where a coded tile
+would have been an entropy decode, an inverse transform and a lane flush.
 
 ---
 
