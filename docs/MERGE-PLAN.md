@@ -227,29 +227,38 @@ constants `kD0 = 512`, `kD1 = 669`, `kD2 = 277` for a 4x4 transform.
 
 Taking either side loses the other's tool outright.
 
-**DECISION (fixed by the coordinator, 2026-09-04). One transform family.**
-There is exactly one implementation, `fdct_2d(n)` / `idct_2d(n)` for `n` in
-{4, 8, 16, 32}, built on `xform-b`'s matrix-family recursion. `detail-a`'s
-4x4 becomes the `n == 4` row of that family and its call sites are rewritten
-onto it. The normative invariant the family must satisfy:
+**DECISION (fixed by the coordinator, 2026-09-04). One transform family, and
+`JUDGE-xform.md` picks `tourney/xform-a` to provide it.**
 
-> **The quantiser sees orthonormal coefficients at the v1 reference scale.**
-> The 2D gain is exactly `2^20` at every size; there is **one** qstep table;
-> and there is one weighting rule, `w_N[u][v] = w_8[u >> s][v >> s]` where
-> `s = log2(N) - 3`.
+Merge **`xform-a`**: the DC plane re-gridded onto the transform, `n x n` intra
+predictors, and **its inverse shift chain, which tracks the true per-size
+gain**. `detail-a`'s 4x4 becomes the `n == 4` row of that family.
 
-Each size gets whatever forward/inverse shift split achieves that, and each
-split ships with a documented int32/int16 range proof in `docs/SYNTAX.md`
-section 6. `detail-a`'s constants `kD0 = 512`, `kD1 = 669`, `kD2 = 277` stay
-**if** they already meet the invariant; otherwise they are rescaled to.
+The transform-family invariant is read as **"the quantiser sees orthonormal
+coefficients at every size"**, which `xform-a`'s chain satisfies. The `2^20`
+figure in the earlier statement of the invariant **applies at 8x8**; it is not
+a constant the other sizes must also hit.
+
+**Take from `xform-b`:** the fuzz corpus seeds, the `plane_xform` / `weight_at`
+tests, and the lane-balance statement into `docs/SYNTAX.md` 6.7.
+
+**Do NOT take from `xform-b`:** its `INTRA_DIR` exclusivity, or its shift
+chain.
+
+*Post-merge measured step, not blocking the merge:* graft `xform-b`'s 8x8
+coefficient-group entropy mapping onto `xform-a`'s design and accept it if it
+costs **under 3 of `xform-a`'s 29 points**. It keeps Pass A unchanged, which is
+why it is worth trying at all.
 
 **This is a correctness trap, not a tidiness rule.** The detail judge showed a
 scale that is off by 2x does not fail loudly: it silently shifts the effective
 QP by 6, so every rate and PSNR number stays plausible and every comparison is
 wrong. So the decision carries a mandatory test:
 
-> A new ctest checks the measured 2D gain of **every** size in {4, 8, 16, 32}
-> against a floating-point DCT and requires agreement to within **0.1 %**.
+> A new ctest checks that the dequantized output of **every** size in
+> {4, 8, 16, 32} is orthonormal at the v1 reference scale -- measured against a
+> floating-point DCT, to within **0.1 %**. `xform-a`'s shift chain is what makes
+> this hold per size; the test is what stops it drifting.
 
 Write it as `ref.transform_gain` (or fold it into `ref.transform`), make it run
 under the `asan-ubsan` preset like the rest, and add an Appendix A entry

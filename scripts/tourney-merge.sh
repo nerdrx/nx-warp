@@ -68,7 +68,11 @@ order_key() {
         ctx-b)    echo 20 ;;
         ctx-a)    echo 21 ;;
         ctx-*)    echo 22 ;;
-        xform-*)  echo 30 ;;
+        # JUDGE-xform.md picks xform-a; xform-b contributes tests, fuzz
+        # seeds and one SYNTAX statement only.
+        xform-a)  echo 30 ;;
+        xform-b)  echo 31 ;;
+        xform-*)  echo 32 ;;
         # inter is a COMBINATION too (JUDGE-inter.md): inter-a is the base,
         # inter-b contributes the tile-row-header near-skip syntax and two
         # fixes, so inter-a lands first.
