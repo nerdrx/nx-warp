@@ -401,6 +401,7 @@ then inter, then rdo.
 | | `docs/SYNTAX.md` | inter-a: move its four word1 flags into the extension byte (TOOLBITS 4, option A). inter-b: `quad_mv` takes word1 31, no extension byte |
 | | `tests/ref/vectors.cpp` | renumber `v`/`r` vectors onto one sequence (4.3.2); rewrite the raw tool-bit pokes against constants (4.3.1) |
 | | Appendix A | inter-a contributes **no** entry; ask for one (rules criterion 4) |
+| | **if inter-b wins** | `JUDGE-inter.md` 1.1: its tools-off encoder is **not** byte-identical to v1.4 (+11.5 %). The rolling refresh seeds its phase from `refresh_max_age` (720) instead of `intra_period` (180), so ~3/4 of tiles start past the threshold and are forced INTRA on frame 1. Fix the seed, then **re-measure**: that 11.5 % is the denominator of every delta in `ref/RESULTS-inter-b.md` section 3 |
 | **rdo** | `ref/src/codec.cpp`, `codec_impl.inc`, `ref/tools/nxv-enc.cpp` | encoder-side; take rdo where it only reorders search, keep the other branches' new syntax emission |
 | | all of `tests/vectors/` | regenerate, once, after this step |
 | **final** | `r09_reserved_tile_bit` | word1 is full; move it to word0 bit 3 (TOOLBITS 4.1) and re-hash |
@@ -419,7 +420,12 @@ Baseline to beat, measured on `merge-main` in this worktree:
 
 **Status: the real merge has NOT started, and must not, until
 `JUDGE-xform.md`, `JUDGE-ctx.md`, `JUDGE-inter.md` and `JUDGE-rdo.md` all
-exist.** Only `JUDGE-detail.md` has landed (merge `detail-a`). What has been
+exist.** Only `JUDGE-detail.md` has landed (merge `detail-a`).
+`JUDGE-inter.md` exists but its verdict and merge checklist are still
+`PLACEHOLDER`, so the inter winner -- and with it whether the tile extension
+byte of `docs/TOOLBITS.md` 4 option A is needed at all -- is **not** decided.
+Its section 1.1 is already final and is recorded in section 6 above, because it
+is a merge obligation whichever way the verdict goes. What has been
 done is a dry run of the machinery on `ctx-b` + `inter-a`, on the throwaway
 branch `integ-scratch`, to prove the pipeline builds, renumbers, regenerates
 and tests green -- it is not a claim about who should win. `merge-main` is
