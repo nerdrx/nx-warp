@@ -15,6 +15,16 @@ deterministic concealment. Layers are still out of scope. Inter is **opt-in**:
 `nxvc_config_default()` leaves it off, so an existing caller and every syntax
 v1.3 stream are byte-identical to what a v1.3 build produced.
 
+**Syntax revision v1.5** adds the entropy and context package: tool bit 24
+`TAB_V2` (a transmitted probability-table set gains a per-row "use the built-in
+default" flag and becomes variable length) and tool bit 25 `CTX_V3` (22
+contexts, with `CBF` and `LAST` conditioned on whether the previous coefficient
+unit *the same rANS lane* decoded in the same unit class was coded). Both are
+additive: `nxv-enc --ctx v2 --tab v1 --table-iters 0` reproduces a v1.4 stream
+byte for byte, and the 56 committed conformance vectors are unchanged. See
+[`docs/SYNTAX.md`](../docs/SYNTAX.md) 9.4.1 and 9.8 and
+[`RESULTS-ctx-b.md`](RESULTS-ctx-b.md).
+
 **Syntax revision v1.4** adds the inter path: the frame-header flag
 `warp_present` (bit 3) and the 36-byte-per-eye `warp_ext()` that follows the
 frame header, the four inter tile modes, `eyes == 2` with row-major/eye-minor
@@ -94,6 +104,14 @@ and the v1.4 inter switches:
 | `--skip-thresh F` | 1.0 | `WARP_SKIP` early-out gate, multiples of `qstep^2/12` per sample |
 | `--skip-map FILE` | none | per-tile `force_warp_skip` flags from the rate controller |
 | `--mode-lambda F` | 0.25 | lambda of the per-tile mode decision relative to the trellis |
+
+and the v1.5 entropy switches:
+
+| flag | default | effect |
+|---|---|---|
+| `--ctx v1\|v2\|v3` | `v3` | 12, 16 or 22 entropy contexts (tool bits 21, 25) |
+| `--tab v1\|v2` | `v2` | transmitted-table coding: flat 5-bit deltas, or the compact per-row form (tool bit 24) |
+| `--table-iters N` | 3 | Lloyd iterations refining the eight per-frame table sets; 0 is the v1.4 encoder. **Encoder only** |
 
 ```sh
 # a stereo inter stream from a corpus sequence and its pose log
@@ -202,14 +220,14 @@ tile  := tile_header [mv | disparity] [alpha] payload
 | stream header | 64 bytes + `ext_len` bytes of TLVs |
 | frame header | 40 bytes (+`36 * eyes` `warp_ext`, +128 custom matrices, +120 per table set, 160 with `CTX_V2`) |
 | tile-row header | 12 bytes (`frame_number`, `row_index`, `tile_count`, 64-bit skip bitmap) |
-| probability table set | 120 bytes, or 160 with `CTX_V2` |
+| probability table set | 120 bytes, 160 with `CTX_V2`, 220 with `CTX_V3`; variable and usually far smaller with `TAB_V2` |
 | tile header | 8 bytes (+2 MV, +1 constant alpha) |
 | tile payload | interleaved rANS, `4 * lanes` bytes of initial state first |
 
 Fixed parameters: 64x64 tiles, 8x8 blocks, 8x8 integer DCT with 9-bit
 Loeffler-derived constants, QP 0..63 with `step = 2^(QP/6)` as a Q4 table,
-interleaved rANS with a 32-bit state, 10-bit probabilities, 12 or 16 contexts
-of 16 symbols, and 1 to 8 lanes per tile (`nsub_log2`; 8 is one subgroup cluster and
+interleaved rANS with a 32-bit state, 10-bit probabilities, 12, 16 or 22
+contexts of 16 symbols, and 1 to 8 lanes per tile (`nsub_log2`; 8 is one subgroup cluster and
 the value a GPU decoder should assume as the maximum).
 
 ## Source map
@@ -223,10 +241,11 @@ the value a GPU decoder should assume as the maximum).
 | `src/entropy.h/.cpp` | rANS and the per-lane syntax state machine |
 | `src/codec.cpp` + `src/codec_impl.inc` | headers, encoder, decoder |
 | `tools/` | `nxv-enc`, `nxv-dec`, `nxv-info` |
-| `../tests/ref/gentables.cpp` | regenerates `default_tables.inc` (dev tool); `nxv-gentables v1\|v2\|both` |
+| `../tests/ref/gentables.cpp` | regenerates `default_tables.inc` (dev tool); `nxv-gentables v1\|v2\|v3\|both` |
 | `../tests/ref/vectors.cpp` | generates and checks the conformance vectors |
 | `../tests/ref/test_saturate.cpp` | range safety of the normative decode path |
 | `RESULTS-intra.md` | the Phase 1 intra measurements, in full |
+| `RESULTS-ctx-b.md` | the v1.5 entropy and context package, in full |
 
 The per-lane syntax state machine in `entropy.cpp` is the piece the Vulkan Pass A
 shader mirrors: one `LaneMachine` per rANS lane, driven identically by the
