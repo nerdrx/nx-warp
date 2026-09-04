@@ -861,6 +861,54 @@ Overrun at frame level: if `sum(actual) > 1.15 B`, the pacer stretches the sends
 
 **Bitrate range.** The same loop runs from 20 Mbit/s to 1 Gbit/s. Below about 40 Mbit/s an average tile gets 12 to 25 bytes, so periphery tiles drop to the half-resolution base layer and static content goes to skip tiles while the fovea keeps full resolution. Above 400 Mbit/s the QP floor is reached and remaining bits go to lossless UI tiles and 4:4:4 fovea. No codec or profile switch along the way.
 
+### 4.6.1 The degradation ladder: blur, never block
+
+A design requirement, not a tuning detail: when the budget is short the picture must lose texture
+before it loses structure. H.264 at low bitrate raises QP everywhere and the eye sees 8x8 and 16x16
+blocks. This codec must instead look like a scene whose textures were blurred, or whose surfaces went
+low-poly, while edges, outlines and text stay crisp. Almost all of the machinery already exists;
+the ladder only fixes the order in which rate control spends it.
+
+Per tile, the encoder classifies content once per frame from two cheap statistics it already
+computes for rate control: the log-variance activity term (Section 5.2) and a gradient-coherence
+measure (ratio of structure-tensor eigenvalues over the tile, one pass over the pixels). Four classes
+come out: **text** (UI stencil or high coherence plus high contrast), **edge** (high coherence),
+**texture** (high activity, low coherence), **flat** (low activity). Under budget pressure the
+classes descend different ladders:
+
+| Step | Texture tiles | Flat tiles | Edge tiles | Text tiles |
+|---|---|---|---|---|
+| 1 | Low-pass weighting matrix (Section 1.5) drops high-frequency AC first | Same | QP +2 only | Untouched |
+| 2 | `res_level` 1/2, bilinear upsample | `res_level` 1/2 | Untouched | Untouched |
+| 3 | `res_level` 1/4 | `res_level` 1/4 | Low-pass weighting, QP +4 | Untouched |
+| 4 | DC-plane only: 64 block DCs, planar interpolation | DC-plane only | `res_level` 1/2 | QP +4 within the lossless-or-near class floor |
+
+Each step is what produces the wanted look. Step 1 is blur, because zeroing high-frequency DCT
+coefficients is a low-pass filter, and the weighting matrix makes it a smooth one instead of a
+threshold. Steps 2 and 3 are blur with no blocking at all, because the tile is coded small and
+resampled up. Step 4 is the low-poly look: a tile reduced to its block DCs and planar interpolation
+is a smooth gradient field, the piecewise-planar surface the user described, not a mosaic. Edge and
+text tiles hold their step until the others are exhausted, so outlines and glyphs survive the frame
+that has turned to soft shapes around them.
+
+Cost: the classification is one pass on the encoder GPU per tile and reuses the activity statistic.
+The decoder pays nothing it does not already pay; `res_level` upsampling and DC-plane reconstruction
+are existing v1 tools. No new syntax. The only new thing is the encoder's ordering, and the ladder is
+expressed as the per-class QP floor and `res_level` cap that Section 4.6 feeds into the per-tile bit
+allocation.
+
+Two optional v2 refinements, each behind a tool bit: a 1-bit-per-8x8 edge mask carried in the tile
+payload so the decoder's `res_level` upsampler picks a sharper 4-tap kernel on edge blocks and the
+bilinear elsewhere (about 8 bytes per tile, decoder cost one branch per block); and a per-tile
+"contour" mode that codes the tile as a DC plane plus one straight edge with two side values, which
+is the true low-poly primitive at a few bytes per tile. Neither is needed for the look; both make it
+cheaper.
+
+What "cheaper than H.264" means here, stated plainly: on the Pico 4 the H.264 decoder is fixed
+function and costs no GPU time at all, so this codec cannot beat it on headset GPU cycles. It beats
+it on bits per frame during head motion, on latency by the row-band pipeline, on loss behaviour by
+per-tile references, and on what a low bitrate looks like. Those four are the contest.
+
 ## 4.7 Decode-time governor
 
 The client reports `decode_us` per band and per frame plus a GPU frequency state bit from the Adreno sysfs node. The target is decode at or under 40% of the frame period (4.4 ms at 90 Hz), leaving the reprojection pass and the runtime's own compositor their share.
