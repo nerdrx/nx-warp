@@ -191,6 +191,61 @@ constraint in section 4.1 and it keeps both tools' measured gains, since
 `detail-a`'s split wins on flat 8x8 blocks and `xform`'s large transforms win
 on smooth regions -- they were never competing for the same tiles.
 
+### 4.5 The second semantic conflict: `ctx` x `xform` in the context derivation
+
+Found while resolving the trial merge, and **not** visible in the file counts of
+section 3, because it is two branches rewriting the same function in
+incompatible ways rather than the same lines.
+
+`ctx-b` adds a `UnitCtx` to every coefficient unit carrying `ucls`
+(luma/chroma/DC class) and `ctx_v3`, and routes the LEVEL context through
+`uc.level(scan_pos, prev_class)`.
+
+`xform-b` adds `band_min` to every unit -- the LEVEL band floor for an 8x8
+coefficient group inside a larger transform block, 0 for the group holding the
+block's DC and 3 for the rest -- and routes the same context through
+`level_ctx(scan_pos, prev_class, band_min)`.
+
+Both rewrite `level_rate()`'s signature and both rewrite the unit-emission loop
+in `ref/src/codec.cpp` (10 conflicting hunks). Taking either side silently
+drops the other tool's context model. The merge is
+`uc.level(scan_pos, prev_class, band_min)`, with `UnitCtx` carrying `ucls`,
+`ctx_v3` **and** `band_min` -- but that is not a textual resolution, because it
+raises a normative question neither branch answered:
+
+> does `CTX_V3`'s lane-state conditioning apply per 8x8 coefficient group
+> inside a 32x32 block, or per transform block?
+
+The two readings give different bitstreams. This needs the `ctx` and `xform`
+authors to agree, and the answer belongs in section 9 of `docs/SYNTAX.md` with
+its own Appendix A entry. **The integration pass must not invent it.**
+
+### 4.6 The collision git will not show you
+
+The most dangerous case in the tournament produces **no conflict where it
+matters**. Merging `tourney/ctx-b` then `tourney/inter-a` does conflict, but
+only on `NXVC_TOOLS_SUPPORTED`, `docs/SYNTAX.md` and `tests/ref/vectors.cpp`.
+The `#define` block itself merges **silently and cleanly**, because the two
+branches appended their lines at different points in it, giving a header
+containing:
+
+```
+#define NXVC_TOOL_TAB_V2          (1ull << 24)
+#define NXVC_TOOL_CTX_V3          (1ull << 25)
+#define NXVC_TOOL_NEAR_SKIP       (1ull << 24)   <-- same bit
+#define NXVC_TOOL_QUAD_MV         (1ull << 25)   <-- same bit
+```
+
+Git had no overlapping hunk to complain about, so resolving the three files it
+*did* flag leaves this in place. The result compiles. It produces streams in
+which `TAB_V2` and `NEAR_SKIP` are the same bit.
+
+This is the whole reason `scripts/retool-bits.py` runs unconditionally after
+the merges rather than only when a conflict was seen, and the reason
+`docs/TOOLBITS.md` is a single global table rather than a per-branch note. Any
+merge of two tournament branches that does **not** run the renumbering pass is
+wrong even when git reported success.
+
 ## 5. Recommended merge order
 
 Eight orders were measured end to end, counting conflicted files outside
