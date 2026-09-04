@@ -147,7 +147,11 @@ constexpr int kSdhMinLast = 4;
 // LAST is at scan position kSplitMinLast or beyond.  Below that the block has
 // at most a handful of coefficients spread over four quadrants, which is not a
 // residual four separate transforms can do anything for, and the flag would be
-// pure overhead on the blocks there are most of.  SYNTAX.md 6.7.
+// pure overhead on the blocks there are most of -- coding it unconditionally
+// takes the tool from -0.47 % BD-rate to +0.03 %.  The value is flat between
+// 16 and 32; 24 is kLastBase[12], so the condition is "LAST class 12 or
+// above" and costs a decoder no comparison it was not already making.
+// SYNTAX.md 6.7 and 9.3.
 constexpr int kSplitMinLast = 24;
 
 // A split block stores quadrant `q`'s 4x4 coefficient (u, v) at this

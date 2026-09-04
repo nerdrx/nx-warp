@@ -1418,17 +1418,24 @@ coefficient codes no `LAST` and has `last = 0`.
 **`split4`** (tool bit 19), one bypass bit, coded immediately after `LAST` --
 and only when *all* of: the stream sets bit 19, the unit is a 64-coefficient
 residual block of an `INTRA` tile with `tskip == 0`, `CBF == 1`, and
-`last >= 4`. Otherwise it is not coded and the block is not split. 1 means the
-block is four 4x4 transforms (6.7); 0 means one 8x8 transform.
+`last >= 24`, equivalently `LAST` class 12 or above. Otherwise it is not coded
+and the block is not split. 1 means the block is four 4x4 transforms (6.7);
+0 means one 8x8 transform.
 
-The threshold of 4 exists because a block with fewer than five coded
-coefficients spread over four quadrants is not a residual four separate
-transforms can do anything for, and those are the blocks there are most of: at
-QP 32 on the harness sequence, coding the flag unconditionally costs more rate
-than the split saves. Its placement *after* `LAST` -- rather than before it, or
-in the mode unit -- is what makes the condition expressible at all, and 6.7's
-interleaved coefficient layout is what makes the placement possible, because it
-leaves the scan and the `LAST` classes independent of the flag.
+The threshold exists because a block whose scan ends before position 24 has at
+most a handful of coefficients spread over four quadrants, which is not a
+residual four separate transforms can do anything for -- and those are the
+blocks there are most of. Coding the flag on every block with `CBF == 1`
+instead costs more rate than the split saves: it takes the tool from -0.47 %
+BD-rate to +0.03 %, measured on both chroma formats
+(`ref/RESULTS-detail-b.md` 2). The value is flat between 16 and 32 and 24 is
+chosen because it is exactly `base[12]`, so the condition needs no comparison a
+decoder is not already making.
+
+The flag's placement *after* `LAST` -- rather than before it, or in the mode
+unit -- is what makes that condition expressible at all, and 6.7's interleaved
+coefficient layout is what makes the placement possible, because it leaves the
+scan and the `LAST` classes independent of the flag.
 
 The flag is in the block's own coding unit and not in the mode unit, even
 though it is a per-block decision like the intra mode, because it changes how
@@ -2326,7 +2333,7 @@ inconsistent. Each is a decision, not an interpretation.
     transform and, in any layout where the split changes the scan, its parse.
     A flag in the mode unit would make a block's parse depend on the inter-lane
     schedule. Putting it after `LAST` in the block's own unit also buys the
-    `last >= 4` condition, worth about 0.5 % of rate
+    `last >= 24` condition, worth about 0.5 % of rate
     (`ref/RESULTS-detail-b.md` 2).
 
 54. **A split block interleaves its four quadrants instead of concatenating
