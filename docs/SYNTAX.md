@@ -2032,6 +2032,26 @@ inconsistent. Each is a decision, not an interpretation.
     actually free. This is an erratum against Annex D, recorded here because
     this document is where the bit numbers live.
 
+53. **The encoder's rate-distortion lambda is normative to nothing and is
+    documented anyway.** Every encoder-side decision in `ref/` minimises
+    `D + lambda*R` with `lambda = k * qstep^2`, `k = 0.30` fitted on the
+    quality harness, and `lambda_sad = sqrt(lambda)` wherever the metric is
+    first order (the motion search). A decoder must not care, and none of it
+    sets a tool bit. It is recorded here because three separate expressions of
+    that trade existed in the reference encoder at v1.4 and a reader
+    reasonably assumed one of them was required by the syntax; none is. The
+    per-tile mode decision divides lambda by `kRefPersist = 4`, the number of
+    frames a reconstruction is a reference for, which is the same constant the
+    `WARP_SKIP` excess penalty uses. `ref/RESULTS-rdo-b.md` is the fit.
+
+54. **Encoder effort is a named preset, not a pile of flags.** `nxv-enc
+    --preset fast|medium|slow` sets the trellis candidate set, the motion
+    search stages, the number of directional intra modes RD-checked, and
+    whether the per-tile QP and weighting-matrix search runs. Every stream any
+    preset produces decodes through the identical path; the preset changes only
+    how long the encoder looks for a better one. `medium` is the default and is
+    what `nxvc_config_default()` gives a caller that sets none of the fields.
+
 ## Appendix B: where the bits go
 
 Measured on a 2048x2048 4:2:0 synthetic textured frame, 1024 tiles, default

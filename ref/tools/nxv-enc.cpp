@@ -73,8 +73,12 @@ static void usage() {
         "  --qp-search N        try per-tile qp_delta in [-N, +N] (default 0)\n"
         "  --qp-search-step N   spacing of those candidates (default 2)\n"
         "  --rdoq-effort N      1 fast, 2 medium, 3 full trellis candidates\n"
+        "  --dc-lambda F        DC-plane lambda relative to the AC planes\n"
+        "  --no-dc-rdoq         leave the DC plane on the dead-zone quantizer\n"
         "  --me-effort N        1 fast, 2 hierarchical+SATD, 3 +true-RD qpel\n"
         "  --no-lambda-class    one lambda for every tile, whatever its class\n"
+        "  --lambda-class A,B,C,D  per-class lambda gain: flat, texture,\n"
+        "                       edge, text (default 1,1,1,1)\n"
         "  --intra-dir on|off|layer  directional intra (tool 17); `layer`\n"
         "                       predicts the DC-plane residual instead\n"
         "  --intra-dir-cand N   modes RD-checked per block (default 2)\n"
@@ -137,6 +141,8 @@ int main(int argc, char **argv) {
     int inter = 0, eyes = 1, intra_period = 180, ref_sel = 0, stereo = 0;
     int mv_range = 16, skip_thresh = 0, mode_lambda = 0;
     int rdoq_effort = 0, me_effort = 0, lambda_class_off = 0, qp_step = 0;
+    int lambda_class[4] = {0, 0, 0, 0};
+    int dc_lambda = 0, dc_off = 0;
     double fov_h = 95.0, fov_v = 95.0;
     bool fov_from_cli = false;
     std::string poses_path, skipmap_path;
@@ -205,9 +211,25 @@ int main(int argc, char **argv) {
         else if (a == "--rdo-lambda") rdo_lambda_q8 = (int)(std::atof(val()) * 256.0 + 0.5);
         else if (a == "--qp-search") qp_search = std::atoi(val());
         else if (a == "--qp-search-step") qp_step = std::atoi(val());
+        else if (a == "--dc-lambda") dc_lambda = (int)(std::atof(val()) * 256.0 + 0.5);
+        else if (a == "--no-dc-rdoq") dc_off = 1;
         else if (a == "--rdoq-effort") rdoq_effort = std::atoi(val());
         else if (a == "--me-effort") me_effort = std::atoi(val());
         else if (a == "--no-lambda-class") lambda_class_off = 1;
+        else if (a == "--lambda-class") {
+            // flat,texture,edge,text gains; the fit lives in RESULTS-rdo-b.md
+            std::string v = val();
+            size_t pos = 0;
+            for (int i = 0; i < 4 && pos <= v.size(); ++i) {
+                size_t c = v.find(',', pos);
+                std::string one = v.substr(pos, c == std::string::npos
+                                                    ? std::string::npos
+                                                    : c - pos);
+                lambda_class[i] = (int)(std::atof(one.c_str()) * 256.0 + 0.5);
+                if (c == std::string::npos) break;
+                pos = c + 1;
+            }
+        }
         else if (a == "--preset") {
             // One name for a point on the encode-time / rate curve.  Every
             // knob a preset sets can still be given explicitly afterwards,
@@ -379,7 +401,11 @@ int main(int argc, char **argv) {
     cfg.rdoq_effort = (uint32_t)(rdoq_effort > 0 ? rdoq_effort : 0);
     cfg.me_effort = (uint32_t)(me_effort > 0 ? me_effort : 0);
     cfg.lambda_class_off = (uint32_t)lambda_class_off;
+    for (int i = 0; i < 4; ++i)
+        cfg.lambda_class_q8[i] = (uint32_t)(lambda_class[i] > 0 ? lambda_class[i] : 0);
     cfg.qp_search_step = (uint32_t)(qp_step > 0 ? qp_step : 0);
+    cfg.dc_lambda_q8 = (uint32_t)(dc_lambda > 0 ? dc_lambda : 0);
+    cfg.dc_rdoq_off = (uint32_t)dc_off;
     cfg.qp_search = (uint32_t)qp_search;
     cfg.wm_id = (uint32_t)wm;
     cfg.intra_dir = (uint32_t)intra_dir;

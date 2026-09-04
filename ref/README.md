@@ -69,8 +69,8 @@ nxv-info --in out.nxv [--tiles]
 `nxv-enc` extras: `--frames N`, `--tskip off|on|auto`, `--nsub 0..5|auto`,
 `--matrix 0..3`, `--wm 0..3`, `--chroma-qp-off N`, `--no-custom-tables`,
 `--tile-420`, `--rgb`, `--color-space unspecified|yuv709l|yuv709f`, `--stats`,
-`--quiet`, the rate-distortion controls `--no-rdo` / `--rdo-lambda F`, and the
-v1.3 tool switches:
+`--quiet`, the rate-distortion controls `--no-rdo` / `--rdo-lambda F`, the
+effort preset below, and the v1.3 tool switches:
 
 | flag | default | effect |
 |---|---|---|
@@ -102,6 +102,36 @@ nxv-enc --in vr-mixed-1024.yuv420p.yuv --w 2048 --h 1024 --pix yuv420p \
         --out out.nxv
 nxv-info --in out.nxv --tiles      # per-tile mode, vector, ref_sel, warp_ext
 ```
+
+### Encoder effort: `--preset`
+
+One name for a point on the encode-time / rate curve. Every knob a preset sets
+can still be given explicitly afterwards; the parse is left to right.
+
+| | `fast` | `medium` (default) | `slow` |
+|---|---|---|---|
+| `--rdoq-effort` | 1: nearest level only | 2: `{0, m, m+1}` | 3: adds `m-1` |
+| `--me-effort` | 1: single sweep, SAD | 2: hierarchical, SATD | 3: adds true-RD quarter-pel |
+| `--intra-dir-cand` | 1 | 2 | 4 |
+| `--qp-search` | off | off | `+-2`, step 2 |
+| `--wm` | 0 | 0 | `auto` (per-tile matrix) |
+
+`--no-lambda-class` turns off the per-tile lambda gain and gives every tile the
+same rate-distortion trade whatever its content class.
+
+### One lambda
+
+Every decision the encoder makes -- which levels to code, which intra mode,
+which tile mode, which vector, which per-tile QP offset -- minimises
+`D + lambda*R` with `lambda = 0.30 * qstep^2` from `make_lambda()` in
+`src/codec.cpp`, and `lambda_sad = sqrt(lambda)` wherever the metric is first
+order. The per-tile mode decision divides that lambda by `kRefPersist = 4`,
+because a mode's distortion is displayed for the four frames its reconstruction
+is a reference for while its bits are paid once; that is the same constant the
+`WARP_SKIP` excess penalty uses. Lambda is then scaled per tile by the content
+class of `docs/RATECONTROL.md` 3.3. `ref/RESULTS-rdo-b.md` is the fit and the
+measurement; `docs/SYNTAX.md` Appendix A 53 records that none of it is
+normative.
 
 Rate-distortion quantization is **on by default**. It is encoder-only work -- a
 trellis over the level syntax, `ref/src/codec.cpp` `rdoq_unit()` -- so a stream

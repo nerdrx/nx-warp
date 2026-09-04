@@ -663,6 +663,9 @@ static void reconstruct_plane(PlaneState &s, const i16 *coefs, int tskip,
 // and both parts persist equally.  `--mode-lambda` still overrides.
 constexpr double kLambdaScale = 0.30;
 constexpr double kRefPersist = 4.0;
+// Multiplier on the DC plane's lambda; see analyze_dc_plane.  0 disables the
+// DC trellis entirely and restores the v1.4 dead-zone quantizer there.
+constexpr double kDcLambdaGain = 1.00;
 
 struct Lambda {
     double sse = 0;  // cost = D_sse + sse * R
@@ -720,9 +723,12 @@ static int classify_tile(const i32 *y, int size) {
 // Per-class multiplier on lambda, fitted on the harness
 // (ref/RESULTS-rdo-b.md 2).  1.0 is "spend as the fit says"; below 1.0 the
 // class buys quality with bits, above it the class gives bits away.
-static inline double class_lambda_gain(int cls) {
-    static const double kGain[4] = {0.70, 1.30, 1.00, 0.60};
-    return kGain[cls & 3];
+constexpr double kClassLambdaGain[4] = {1.00, 1.00, 1.00, 1.00};
+
+static inline double class_lambda_gain(int cls, const u32 over[4]) {
+    cls &= 3;
+    if (over && over[cls]) return (double)over[cls] / 256.0;
+    return kClassLambdaGain[cls];
 }
 
 // ------------------------------------------------------------------- RDOQ
@@ -796,7 +802,8 @@ enum RdoqEffort { kRdoqFast = 0, kRdoqMedium = 1, kRdoqFull = 2 };
 // worth exactly one bit and is part of the LAST decision.
 static void rdoq_unit(i16 *coefs, const i32 *orig, const i32 *step, int ncoef,
                       const u8 *scan, int ctx_cbf, int ctx_last,
-                      const RateCost &rc, double lambda, int effort, int sdh) {
+                      const RateCost &rc, double lambda, int effort, int sdh,
+                      int ctx_level = 0) {
     for (int i = 0; i < ncoef; ++i) coefs[i] = 0;
 
     // The exact upper bound on `last`.  Above the highest position whose
@@ -846,8 +853,18 @@ static void rdoq_unit(i16 *coefs, const i32 *orig, const i32 *step, int ncoef,
             for (int k = 0; k < nc; ++k) {
                 i32 m = cand[k];
                 double d = a - (double)m * st;
-                double cost = d * d + lambda * (level_rate(rc, p, sc, m) / 1024.0) +
-                              prev[level_class(m)];
+                // A unit with its own LEVEL context (the DC plane under the
+                // v2 model) has no Markov chain: the three states collapse
+                // and the trellis degenerates to a per-coefficient choice,
+                // which is exactly right and costs nothing to express here.
+                const i32 lr =
+                    ctx_level
+                        ? rc.sym[ctx_level][m > 14 ? kEscSym : m] +
+                              (m > 14 ? (escape_bits(m) << 10) : 0) +
+                              (m != 0 ? (1 << 10) : 0)
+                        : level_rate(rc, p, sc, m);
+                double cost = d * d + lambda * (lr / 1024.0) +
+                              prev[ctx_level ? 0 : level_class(m)];
                 if (cost < best) { best = cost; bm = m; }
                 if (m != 0 && cost < bestnz) { bestnz = cost; bmnz = m; }
             }
@@ -890,7 +907,7 @@ static void rdoq_unit(i16 *coefs, const i32 *orig, const i32 *step, int ncoef,
         i32 m = (p == best_last) ? best_m_nz[p] : best_m[p][sc];
         int idx = scan[p];
         coefs[idx] = (i16)(orig[idx] < 0 ? -m : m);
-        sc = level_class(m);
+        sc = ctx_level ? 0 : level_class(m);
     }
 }
 
@@ -964,7 +981,19 @@ static void hide_sign_unit(i16 *coefs, const i32 *orig, const i32 *step,
 
 // Encoder side: quantize the DC plane and mirror the decoder's
 // reconstruction of it into s.means / s.pred.
-static void analyze_dc_plane(PlaneState &s, i16 *coefs, int sdh) {
+// `rc`, when given, replaces the dead-zone quantizer of the DC plane with the
+// trellis.  The DC plane was left out of RDOQ in v1.2 on the grounds that it
+// is the intra predictor, so a level chosen there changes `pred` for all 64
+// blocks and a single-unit distortion model is wrong about it.  That is true
+// and it is not a reason to leave 30 % of a frame's bits unoptimised: the
+// model is wrong in a KNOWN direction.  A DC error the trellis zeroes is not
+// free, because the AC pass then has to code it back at the AC quantiser's
+// finer step, so the DC plane's true marginal cost is higher than its own
+// squared error says.  `dc_gain` is that correction -- a multiplier below 1
+// on the DC plane's lambda, fitted on the harness (ref/RESULTS-rdo-b.md 4).
+static void analyze_dc_plane(PlaneState &s, i16 *coefs, int sdh,
+                             const RateCost *rc = nullptr, double lambda = 0,
+                             bool ctx_v2 = false, int effort = kRdoqMedium) {
     const int nb = s.nb, size = s.size;
     const int ndc = nb * nb;
     std::vector<i32> m(ndc);
@@ -991,21 +1020,25 @@ static void analyze_dc_plane(PlaneState &s, i16 *coefs, int sdh) {
         i16 out[64];
         for (int i = 0; i < 64; ++i) in[i] = m[i] - s.dc_off;
         fdct8x8(in, out);
-        for (int i = 0; i < 64; ++i) {
-            orig[i] = out[i];
-            coefs[i] = (i16)quantize(out[i], tdc, tdc / 3);
-        }
+        for (int i = 0; i < 64; ++i) orig[i] = out[i];
     } else {
-        for (int i = 0; i < ndc; ++i) {
-            orig[i] = m[i] - s.dc_off;
+        for (int i = 0; i < ndc; ++i) orig[i] = m[i] - s.dc_off;
+    }
+    i32 stepv[64];
+    for (int i = 0; i < ndc; ++i) stepv[i] = tdc;
+    const u8 *dcscan = scan_table(ndc, false);
+    if (rc) {
+        rdoq_unit(coefs, orig, stepv, ndc, dcscan,
+                  ctx_v2 ? kCtxCbfDc : kCtxCbfLuma,
+                  ctx_v2 ? kCtxLastDc : kCtxLastLuma, *rc, lambda, effort, sdh,
+                  ctx_v2 ? kCtxLevelDc : 0);
+    } else {
+        for (int i = 0; i < ndc; ++i)
             coefs[i] = (i16)quantize(orig[i], tdc, tdc / 3);
-        }
     }
-    if (sdh) {
-        i32 stepv[64];
-        for (int i = 0; i < ndc; ++i) stepv[i] = tdc;
-        hide_sign_unit(coefs, orig, stepv, ndc, scan_table(ndc, false));
-    }
+    if (sdh)
+        hide_sign_unit(coefs, orig, stepv, ndc, dcscan, rc, rc ? lambda : 0.0,
+                       rc && ctx_v2 ? kCtxLevelDc : 0);
     reconstruct_dc_plane(s, coefs);
     (void)size;
 }
@@ -1058,10 +1091,17 @@ static void analyze_plane(PlaneState &s, i16 *coefs, int tskip, int intra_dz,
 // and the trellis's single-unit distortion model would be wrong about it.
 static void rdoq_plane(PlaneState &s, i16 *coefs, int tskip, bool chroma,
                        const RateCost &rc, double lambda_scale, int sdh,
-                       int effort) {
+                       int effort, double dc_gain, bool ctx_v2) {
     const int nb = s.nb, size = s.size;
     const int ndc = nb * nb;
     const double lambda = make_lambda(s.qp, lambda_scale).sse;
+    // The DC plane first, and through the trellis too: this pass recomputes
+    // every block's residual from s.pred below, so re-deciding the plane the
+    // predictor is built from stays consistent by construction.
+    if (dc_gain > 0)
+        analyze_dc_plane(s, coefs, sdh, &rc,
+                         make_lambda(dc_qp_of(s.qp), lambda_scale * dc_gain).sse,
+                         ctx_v2, effort);
     const u8 *scan = scan_table(64, tskip != 0);
     const int ctx_cbf = chroma ? kCtxCbfChroma : kCtxCbfLuma;
     const int ctx_last = chroma ? kCtxLastChroma : kCtxLastLuma;
@@ -1163,10 +1203,19 @@ static i32 unit_bits(const i16 *c, int ncoef, const u8 *scan, int ctx_cbf,
 static void analyze_plane_dir(PlaneState &s, i16 *coefs, int tskip, int layer,
                               bool chroma, const RateCost &rc,
                               double lambda_scale, bool use_rdo, int ncand,
-                              int mode_ctx, int sdh, int effort, bool reuse) {
+                              int mode_ctx, int sdh, int effort, bool reuse,
+                              double dc_gain) {
     const int nb = s.nb, size = s.size;
     const int ndc = nb * nb;
-    analyze_dc_plane(s, coefs, sdh);
+    // The DC plane's own quantiser step is coarser (dc_qp_of), so its lambda
+    // is its own, not the AC planes'; `dc_gain` is the correction analyze_dc_plane
+    // documents.
+    if (use_rdo && dc_gain > 0)
+        analyze_dc_plane(s, coefs, sdh, &rc,
+                         make_lambda(dc_qp_of(s.qp), lambda_scale * dc_gain).sse,
+                         mode_ctx != 0, effort);
+    else
+        analyze_dc_plane(s, coefs, sdh);
     if ((int)s.recon.size() != size * size) s.recon.assign((size_t)size * size, 0);
     if ((int)s.modes.size() != ndc) { s.modes.assign((size_t)ndc, 0); reuse = false; }
 
@@ -1406,9 +1455,12 @@ void nxvc_config_default(nxvc_config *cfg) {
     cfg->rdo_lambda_q8 = 0;   // built-in default
     cfg->qp_search = 0;
     cfg->qp_search_step = 0;   // built-in default (2)
+    cfg->dc_lambda_q8 = 0;     // built-in default
+    cfg->dc_rdoq_off = 0;      // the DC plane goes through the trellis
     cfg->rdoq_effort = 0;      // built-in default (medium)
     cfg->me_effort = 0;        // built-in default (medium)
     cfg->lambda_class_off = 0; // per-class lambda on
+    for (int i = 0; i < 4; ++i) cfg->lambda_class_q8[i] = 0;
     cfg->wm_id = 0;           // frame matrix everywhere (see --wm)
     // The v2 intra tools are on by default because they win on the quality
     // harness: together they are worth about -13 % BD-rate at the Phase 1

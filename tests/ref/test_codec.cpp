@@ -1,5 +1,6 @@
 // End-to-end encode/decode: PSNR at several QPs, lossless bit-exactness,
 // every tool combination the Phase 1 encoder can emit.
+#include <cmath>
 #include "test_util.h"
 #include "nxvc/nxvc.h"
 
@@ -306,6 +307,75 @@ int main() {
         }
         CHECK(frames == 4, "decoded %d frames", frames);
         nxvc_decoder_destroy(d);
+    }
+
+    // N. The effort knobs are encoder-side only: every combination must
+    //    still round trip, and all three must land within a few per cent of
+    //    each other on the encoder's OWN cost function, D + lambda*R.  They
+    //    are deliberately not asserted to be monotone in effort: the
+    //    directional-intra raster loop is greedy, so a block that quantises
+    //    better can leave worse references for the blocks after it, and the
+    //    per-frame table training reacts to the result.  What the bound
+    //    catches is a knob that has stopped doing rate-distortion at all.
+    {
+        TestImage im = make_image(W, H, false, 3);
+        for (int qp : {8, 24, 40}) {
+            double best_cost = 1e30, worst_cost = 0;
+            for (int effort = 1; effort <= 3; ++effort) {
+                nxvc_config cfg;
+                nxvc_config_default(&cfg);
+                cfg.width = W; cfg.height = H; cfg.base_qp = qp;
+                cfg.rdoq_effort = (uint32_t)effort;
+                Coded r;
+                CHECK(code(cfg, im, r), "rdoq_effort %d qp %d: %s / %s", effort,
+                      qp, nxvc_status_string(r.enc_status),
+                      nxvc_status_string(r.dec_status));
+                if (r.out.p[0].empty()) continue;
+                double mse = 0;
+                for (size_t i = 0; i < im.p[0].size(); ++i) {
+                    double d = (double)im.p[0][i] - (double)r.out.p[0][i];
+                    mse += d * d;
+                }
+                // The encoder's own cost function, at the encoder's own
+                // lambda: D + 0.30 * qstep^2 * R.  A higher effort level
+                // searches a superset of the lower one's candidates, so it
+                // cannot lose on this measure by more than the table-set
+                // feedback loop's own slack.
+                const double q = std::pow(2.0, qp / 6.0);  // ref/README "step"
+                double cost = mse + 0.30 * q * q * (double)r.frame.size() * 8.0;
+                if (cost < best_cost) best_cost = cost;
+                if (cost > worst_cost) worst_cost = cost;
+            }
+            CHECK(worst_cost <= best_cost * 1.10,
+                  "qp %d: rdoq effort spread %.0f..%.0f is over 10 %%", qp,
+                  best_cost, worst_cost);
+        }
+        // The per-tile QP search and the motion-effort knob must not change
+        // decodability either.
+        for (uint32_t me = 1; me <= 3; ++me) {
+            nxvc_config cfg;
+            nxvc_config_default(&cfg);
+            cfg.width = W; cfg.height = H; cfg.base_qp = 20;
+            cfg.me_effort = me;
+            cfg.qp_search = 2;
+            cfg.qp_search_step = 2;
+            cfg.wm_id = 255;
+            Coded r;
+            CHECK(code(cfg, im, r), "me_effort %u + qp search: %s / %s", me,
+                  nxvc_status_string(r.enc_status),
+                  nxvc_status_string(r.dec_status));
+        }
+        // Turning the content-class lambda off is a supported configuration.
+        {
+            nxvc_config cfg;
+            nxvc_config_default(&cfg);
+            cfg.width = W; cfg.height = H; cfg.base_qp = 24;
+            cfg.lambda_class_off = 1;
+            Coded r;
+            CHECK(code(cfg, im, r), "lambda_class_off: %s / %s",
+                  nxvc_status_string(r.enc_status),
+                  nxvc_status_string(r.dec_status));
+        }
     }
 
     return test_report("test_codec");

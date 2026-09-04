@@ -229,6 +229,12 @@ typedef struct nxvc_config {
     uint32_t lambda_class_off;  /* 1 = one lambda for every tile; 0 = scale
                                    lambda by the tile's content class
                                    (docs/RATECONTROL.md 3.3)               */
+    uint32_t lambda_class_q8[4];/* per-class lambda gain, Q8, in class order
+                                   flat, texture, edge, text; 0 = built in */
+    uint32_t dc_lambda_q8;      /* lambda gain of the DC plane relative to the
+                                   AC planes, Q8; 0 = built-in default      */
+    uint32_t dc_rdoq_off;       /* 1 = leave the DC plane on the dead-zone
+                                   quantizer, as syntax v1.4 did            */
     uint32_t qp_search_step;    /* spacing of the per-tile QP candidates,
                                    0 = the default 2.  With qp_search = n
                                    the candidates are 0, +-step ... +-n     */

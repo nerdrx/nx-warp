@@ -752,6 +752,13 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                                                           : e->cfg.intra_dir_cand)
                                                 : 2;
     const int mv_range = (int)(e->cfg.mv_range ? e->cfg.mv_range : 16u);
+    // Lambda gain of the DC plane relative to the AC planes; 0 leaves the DC
+    // plane on the dead-zone quantizer, as v1.4 did.
+    const double dc_lambda_gain =
+        e->cfg.dc_rdoq_off ? 0.0
+                           : (e->cfg.dc_lambda_q8
+                                  ? (double)e->cfg.dc_lambda_q8 / 256.0
+                                  : kDcLambdaGain);
     const int qp_search_step =
         e->cfg.qp_search_step ? clamp_i32((int)e->cfg.qp_search_step, 1, 8) : 2;
     const u32 intra_period = e->cfg.intra_period ? e->cfg.intra_period : 180u;
@@ -764,7 +771,8 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         int np = coded_planes(tc);
         for (int p = 0; p < np; ++p)
             rdoq_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)], tc.tp.tskip,
-                       p == 1 || p == 2, rc, lambda_scale, tc.sdh, rdoq_effort);
+                       p == 1 || p == 2, rc, lambda_scale, tc.sdh, rdoq_effort,
+                       dc_lambda_gain, tc.nctx >= kNumCtxV2);
     };
 
     auto analyze_tile_dir = [&](TileCoder &tc, const TableSet *tabs, int pass,
@@ -778,7 +786,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                               tc.tp.tskip, tc.dir_layer, p == 1 || p == 2, rc,
                               lambda_scale, pass && use_rdo,
                               pass ? dir_cand : 1, mode_ctx, tc.sdh,
-                              rdoq_effort, reuse);
+                              rdoq_effort, reuse, dc_lambda_gain);
     };
 
     // The tile's lambda scale: the global fitted constant times the gain of
@@ -789,7 +797,8 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         if (!e->cfg.lambda_class_off)
             return rdo_lambda_scale *
                    class_lambda_gain(classify_tile(tc.pl[0].samples.data(),
-                                                   tc.pl[0].size));
+                                                   tc.pl[0].size),
+                                     e->cfg.lambda_class_q8);
         return rdo_lambda_scale;
     };
 
@@ -925,7 +934,8 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             (e->cfg.lambda_class_off
                  ? 1.0
                  : class_lambda_gain(classify_tile(probe.pl[0].samples.data(),
-                                                   lsz)));
+                                                    lsz),
+                                     e->cfg.lambda_class_q8));
         const double mode_scale =
             e->cfg.mode_lambda_q8 ? (double)e->cfg.mode_lambda_q8 / 256.0
                                   : 1.0 / kRefPersist;
@@ -1749,7 +1759,7 @@ extern "C" int nxvc_debug_tile_histograms(const nxvc_config *cfg,
                 analyze_plane_dir(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
                                   tc.tp.tskip, tc.dir_layer, p == 1 || p == 2,
                                   rc, kLambdaScale, true, 2, mctx, tc.sdh,
-                                  kRdoqMedium, false);
+                                  kRdoqMedium, false, kDcLambdaGain);
         } else {
             for (int p = 0; p < np; ++p)
                 analyze_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
