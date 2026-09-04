@@ -3,6 +3,7 @@
 #ifndef NXVC_TRANSPORT_RECEIVER_H
 #define NXVC_TRANSPORT_RECEIVER_H
 
+#include <climits>
 #include <deque>
 #include <map>
 #include <unordered_set>
@@ -67,21 +68,53 @@ class FrameRing {
     bool started_ = false;
 };
 
-// PAPER 4.3 deadline policy.
+// PAPER 4.3 deadline policy, with the relax rule of decision D24.
+//
+// Climbing is unchanged: five consecutive frames missing more than 10 % of
+// their tiles move the deadline 1 ms later, up to 4 ms.  Relaxing no longer
+// waits for 90 consecutive zero-miss frames -- that condition is reachable on a
+// fast link, so the controller relaxed straight back into the miss region and
+// oscillated.  Instead it steps down 250 us only when the *worst* arrival
+// margin over a 180-frame window is still at least 1 ms inside the deadline,
+// and then holds for a full window before considering another step.
 class DeadlineController {
   public:
+    static constexpr int kClimbFrames = 5;
+    static constexpr double kMissFraction = 0.10;
+    // A tile that arrived after its band deadline is direct evidence that the
+    // deadline is too early, and it is a much sharper signal than the miss
+    // fraction: a band that is systematically 1 ms late is only 6 % of a frame,
+    // which sits under kMissFraction forever.
+    static constexpr double kLateFraction = 0.01;
+    static constexpr uint32_t kClimbStepUs = 1000;
+    static constexpr uint32_t kMaxOffsetUs = 4000;
+    static constexpr int kRelaxWindowFrames = 180;   // 2 s at 90 Hz
+    static constexpr int32_t kRelaxMarginUs = 1000;  // slack the worst frame keeps
+    static constexpr uint32_t kRelaxStepUs = 250;
+
     uint32_t offset_us() const { return offset_us_; }
     // `miss_fraction` is the share of the frame's tiles not DECODED at their
-    // band deadlines.
-    void on_frame(double miss_fraction);
+    // band deadlines.  `min_margin_us` is the tightest per-band arrival margin
+    // in the frame (deadline minus last arrival, client clock); pass
+    // kNoMargin for a frame that had a miss or delivered nothing, which is
+    // what the receiver does.
+    static constexpr int32_t kNoMargin = INT32_MIN;
+    // `late_fraction` is the share of the frame's tiles that arrived after
+    // their band deadline (decoded, but too late to be acknowledged).
+    void on_frame(double miss_fraction, int32_t min_margin_us = kNoMargin,
+                  double late_fraction = 0.0);
     bool moved() const { return moved_; }
     void clear_moved() { moved_ = false; }
+    // Worst margin currently in the window, for telemetry.
+    int32_t window_worst_margin_us() const;
+    int window_frames() const { return int(margins_.size()); }
 
   private:
     uint32_t offset_us_ = 0;
     int consecutive_miss_ = 0;
-    int clean_frames_ = 0;
+    int hold_frames_ = 0;  // hysteresis: frames since the last change
     bool moved_ = false;
+    std::deque<int32_t> margins_;
 };
 
 struct ReceiverStats {
@@ -197,7 +230,8 @@ class Receiver {
     // Per-frame miss accounting for the deadline controller.
     uint16_t acct_frame_ = 0;
     bool acct_valid_ = false;
-    uint32_t acct_total_ = 0, acct_missed_ = 0;
+    uint32_t acct_total_ = 0, acct_missed_ = 0, acct_late_ = 0;
+    int32_t acct_min_margin_ = 0;  // tightest band arrival margin in the frame
     uint8_t band_rx_seen_[8] = {0};
     uint32_t band_rx_first_[8] = {0};
     uint32_t band_rx_last_[8] = {0};

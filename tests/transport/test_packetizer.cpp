@@ -92,6 +92,111 @@ void check_units(const StreamConfig& c, const std::vector<SendUnit>& units) {
 
 }  // namespace
 
+// Decision D25: class A parity is unconditional, class B and C are spent only
+// when the link has headroom, with hysteresis at the threshold.
+static void headroom_fec_ladder() {
+    tt::begin("FEC ladder keys off headroom, class A unconditional (D25)");
+    FecPolicy f;
+
+    // No headroom: class A only, and it still gets its floor at small k.
+    f.set_from_headroom(0.0, 0.005, false);
+    TT_EQ(f.parity_for(0, 10), 3);
+    TT_EQ(f.parity_for(0, 1), 1);
+    TT_EQ(f.parity_for(1, 10), 0);
+    TT_EQ(f.parity_for(2, 10), 0);
+
+    // Ample headroom: the paper's full ladder comes back.
+    f.set_from_headroom(0.70, 0.005, false);
+    TT_EQ(f.parity_for(0, 10), 3);
+    TT_EQ(f.parity_for(1, 10), 1);
+    TT_EQ(f.parity_for(2, 10), 0);
+
+    // Right at the gate.
+    f.set_from_headroom(FecPolicy::kBcHeadroom, 0.005, false);
+    TT_EQ(f.parity_for(1, 10), 1);
+    f.set_from_headroom(FecPolicy::kBcHeadroom - 0.01, 0.005, false);
+    TT_EQ(f.parity_for(1, 10), 0);
+
+    // Hysteresis: once B/C are on they survive down to the lower gate, which
+    // stops a link hovering at the threshold from toggling every frame.
+    const double between = (FecPolicy::kBcHeadroomDrop + FecPolicy::kBcHeadroom) / 2;
+    f.set_from_headroom(between, 0.005, true);
+    TT_EQ(f.parity_for(1, 10), 1);
+    f.set_from_headroom(between, 0.005, false);
+    TT_EQ(f.parity_for(1, 10), 0);
+    f.set_from_headroom(FecPolicy::kBcHeadroomDrop - 0.01, 0.005, true);
+    TT_EQ(f.parity_for(1, 10), 0);
+
+    // Loss is the secondary input: it scales the rows that headroom allows,
+    // and never turns class B on when there is no headroom for it.  Critically,
+    // with no headroom the ladder does not climb on loss at all: on a saturated
+    // link the measured loss is largely congestion loss caused by our own
+    // parity, so escalating is a positive feedback loop.
+    f.set_from_headroom(0.0, 0.10, false);
+    TT_EQ(f.parity_for(0, 10), 3);
+    TT_EQ(f.parity_for(1, 10), 0);
+    TT_EQ(f.parity_for(2, 10), 0);
+    // ...and with no loss at all and no headroom, class A is trimmed but kept.
+    f.set_from_headroom(0.0, 0.0, false);
+    TT_EQ(f.parity_for(0, 10), 2);
+    TT_EQ(f.parity_for(1, 10), 0);
+    f.set_from_headroom(0.70, 0.10, false);
+    TT_EQ(f.parity_for(0, 10), 4);
+    TT_EQ(f.parity_for(1, 10), 2);
+    TT_EQ(f.parity_for(2, 10), 1);
+    // Very low loss trims class A but never removes it.
+    f.set_from_headroom(0.70, 0.0, false);
+    TT_EQ(f.parity_for(0, 10), 2);
+    TT_EQ(f.parity_for(0, 2), 1);
+
+    // The shipped default (D25): class A at the nominal ratio and nothing else,
+    // at any loss.  The class B row cost tiles at every headroom measured.
+    for (double loss : {0.0, 0.005, 0.05, 0.30}) {
+        f.set_class_a_only(loss);
+        TT_EQ(f.parity_for(0, 10), loss < 0.001 ? 2 : 3);
+        TT_EQ(f.parity_for(0, 1), 1);
+        TT_EQ(f.parity_for(1, 10), 0);
+        TT_EQ(f.parity_for(2, 10), 0);
+    }
+    tt::end();
+}
+
+// The sender's own headroom estimate, which is what feeds the ladder.
+static void sender_headroom_estimate() {
+    tt::begin("sender headroom estimate and its RTT guard (D25)");
+    StreamConfig c = small_cfg();
+    auto aead = make_null_aead();
+    Key k{}, salt{};
+    Sender tx(c, aead.get(), k, salt);
+    tt::Rng r(9);
+    PoseHeader pose;
+
+    // Nothing measured yet: no headroom is claimed.
+    TT_CHECK(tx.measured_headroom() == 0.0);
+    tx.striper().configure_path(0, 600e6, 3000);
+
+    for (uint16_t f = 0; f < 8; ++f) {
+        tx.begin_frame(f, pose, 0, 0);
+        for (uint8_t band = 0; band < c.bands(); ++band) {
+            Band b = make_band(c, band, r, 90, 2, false);
+            tx.send_band(band, b.tiles, 1000, 500, band + 1 == c.bands());
+        }
+    }
+    tx.begin_frame(8, pose, 0, 0);
+    double h = tx.measured_headroom();
+    // The stream is well under 600 Mbit/s, so there is real headroom, and the
+    // estimate is a fraction.
+    TT_CHECK(h > 0.0);
+    TT_CHECK(h < 1.0);
+    double expect = 1.0 - tx.measured_wire_bps() / 600e6;
+    TT_CHECK(h > expect - 0.01 && h < expect + 0.01);
+
+    // A queue that is filling spends the headroom whatever the rate says.
+    tx.striper().update_rtt(0, 3000 * 2);
+    TT_CHECK(tx.measured_headroom() == 0.0);
+    tt::end();
+}
+
 static void size_invariants() {
     tt::begin("packetizer size and structure invariants");
     StreamConfig c = small_cfg();
@@ -297,6 +402,8 @@ static void budget_arithmetic() {
 
 int main() {
     budget_arithmetic();
+    headroom_fec_ladder();
+    sender_headroom_estimate();
     size_invariants();
     runs_are_homogeneous();
     runs_pack_to_the_mtu();

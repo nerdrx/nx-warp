@@ -15,10 +15,11 @@ void write_fec_sweep(FILE* f, const std::vector<FecSweepRow>& sw) {
         "Three settings of the same stream over the same links and seed: parity off\n"
         "entirely (the codec relies on deterministic concealment and per-tile\n"
         "re-prediction alone, which is the GRACE baseline of\n"
-        "docs/RESEARCH-ACADEMIC.md entry 12), parity for class A only, and the paper's\n"
-        "class-aware 30 / 10 / 0.  With parity off the 44-byte parity reserve is\n"
-        "released too, so the run payload budget grows from 1316 to 1360 bytes: that\n"
-        "headroom is part of what FEC costs.\n\n"
+        "docs/RESEARCH-ACADEMIC.md entry 12), parity for class A only, the paper's fixed\n"
+        "class-aware 30 / 10 / 0, and the headroom-keyed ladder of decision D25 that is\n"
+        "now the default.  With parity off the 44-byte parity reserve is released too,\n"
+        "so the run payload budget grows from 1316 to 1360 bytes: that headroom is part\n"
+        "of what FEC costs.\n\n"
         "| scenario | FEC | wire Mbit/s | overhead incl FEC | parity | concealed/frame |"
         " late/frame | N-1 | N-2 | N-3 | intra | complete p50 | p99 | deadline offset |\n"
         "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n");
@@ -36,118 +37,108 @@ void write_fec_sweep(FILE* f, const std::vector<FecSweepRow>& sw) {
         row(s.off, "off", true);
         row(s.a_only, "class A only", false);
         row(s.full, "A/B/C 30/10/0", false);
+        row(s.various, "D25 headroom", false);
     }
 
     // Concealment cost of removing FEC, and what the overhead bought.
     std::fprintf(f,
-                 "\n| scenario | concealed/frame off | class A only | full |"
-                 " tiles saved by class A parity | by the rest | overhead of class A"
-                 " parity | of the rest |\n|---|---|---|---|---|---|---|---|\n");
-    for (const FecSweepRow& s : sw)
-        std::fprintf(f, "| %s | %.1f | %.1f | %.1f | %.1f | %.1f | %+.2f pp | %+.2f pp |\n",
-                     s.off.name.c_str(), s.off.conceal_per_frame,
-                     s.a_only.conceal_per_frame, s.full.conceal_per_frame,
+                 "\n| scenario | headroom | concealed/frame off | class A | full |"
+                 " D25 | tiles saved by class A parity | by the class B row |"
+                 " D25 vs best fixed |\n|---|---|---|---|---|---|---|---|---|\n");
+    for (const FecSweepRow& s : sw) {
+        double best = s.off.conceal_per_frame;
+        if (s.a_only.conceal_per_frame < best) best = s.a_only.conceal_per_frame;
+        if (s.full.conceal_per_frame < best) best = s.full.conceal_per_frame;
+        std::fprintf(f,
+                     "| %s | %.0f %% | %.1f | %.1f | %.1f | %.1f | %.1f | %.1f |"
+                     " %+.1f |\n",
+                     s.off.name.c_str(), 100.0 * s.various.headroom,
+                     s.off.conceal_per_frame, s.a_only.conceal_per_frame,
+                     s.full.conceal_per_frame, s.various.conceal_per_frame,
                      s.off.conceal_per_frame - s.a_only.conceal_per_frame,
                      s.a_only.conceal_per_frame - s.full.conceal_per_frame,
-                     s.a_only.overhead_pct - s.off.overhead_pct,
-                     s.full.overhead_pct - s.a_only.overhead_pct);
+                     s.various.conceal_per_frame - best);
+    }
 
     // ---- the reading, computed from the rows above ----------------------
-    double saved_a = 0, saved_rest = 0, cost_a = 0, cost_rest = 0, n = 0;
-    double best_a = -1e9, best_a_loss = 0;
-    int a_beats_off = 0, full_beats_off = 0, total = 0;
-    const ScenarioResult* ctrl_off = nullptr;
-    const ScenarioResult* ctrl_a = nullptr;
-    const ScenarioResult* ctrl_full = nullptr;
+    double saved_a = 0, cost_a = 0, cost_rest = 0, n = 0;
+    double best_a = -1e9;
+    const FecSweepRow* ctrl = nullptr;
     for (const FecSweepRow& s : sw) {
-        if (s.off.link_desc.find("600M") != std::string::npos) {
-            ctrl_off = &s.off; ctrl_a = &s.a_only; ctrl_full = &s.full;
-            continue;  // the control is not part of the average
-        }
+        if (s.off.link_desc.find("600M") != std::string::npos) { ctrl = &s; continue; }
+        if (s.off.link_desc.find("450M") != std::string::npos) continue;
         double sa = s.off.conceal_per_frame - s.a_only.conceal_per_frame;
-        double sr = s.a_only.conceal_per_frame - s.full.conceal_per_frame;
         saved_a += sa;
-        saved_rest += sr;
         cost_a += s.a_only.overhead_pct - s.off.overhead_pct;
         cost_rest += s.full.overhead_pct - s.a_only.overhead_pct;
-        if (sa > best_a) { best_a = sa; best_a_loss = s.off.measured_loss_pct; }
-        if (s.a_only.conceal_per_frame < s.off.conceal_per_frame) ++a_beats_off;
-        if (s.full.conceal_per_frame < s.off.conceal_per_frame) ++full_beats_off;
-        ++total;
+        if (sa > best_a) best_a = sa;
         n += 1;
     }
     if (n <= 0) return;
-    saved_a /= n; saved_rest /= n; cost_a /= n; cost_rest /= n;
-    const double tiles = 2312.0;
-    double saved_full = saved_a + saved_rest;
-    double cost_full = cost_a + cost_rest;
+    saved_a /= n; cost_a /= n; cost_rest /= n;
+
+    int a_helps = 0, full_helps = 0, bc_helps = 0, scen = 0;
+    double bc_worst = 0;
+    for (const FecSweepRow& s : sw) {
+        ++scen;
+        if (s.a_only.conceal_per_frame < s.off.conceal_per_frame) ++a_helps;
+        if (s.full.conceal_per_frame < s.off.conceal_per_frame) ++full_helps;
+        double bc = s.a_only.conceal_per_frame - s.full.conceal_per_frame;
+        if (bc > 0) ++bc_helps;
+        if (bc < bc_worst) bc_worst = bc;
+    }
 
     std::fprintf(f,
         "\n### Reading: does prioritized FEC earn its 17 percent?\n\n"
-        "On these numbers, not as configured -- but the class A half of it does.  "
-        "Averaged over the six single-path loss scenarios at 300 Mbit/s, the full "
-        "30 / 10 / 0 policy costs %.2f percentage points of wire overhead and leaves "
-        "%.1f MORE tiles concealed per frame than running with no parity at all "
-        "(%.2f %% of the %.0f-tile frame): it makes the picture worse, not better.  "
-        "Split in two, class A parity costs %.2f pp and removes %.1f concealed tiles "
-        "per frame, best %.1f at %.1f %% measured loss, while the class B row on top "
-        "costs a further %.2f pp and puts %.1f of them back.  Class A only beat no FEC "
-        "in %d of %d scenarios; the full policy beat it in %d.\n\n"
-        "The mechanism is the band deadline, not the coding.  Parity is extra bytes "
-        "in the same band window as the data it protects, on a link carrying "
-        "%.0f Mbit/s of a 300 Mbit/s budget whose per-band burst is several times "
-        "that, so the parity for band b delays band b+1 into its own deadline.  The "
-        "reference-age columns show how sharp that edge is: with parity off, %.1f %% "
-        "of tiles still reference N-1, and with the full policy on, %.1f %% do -- the "
-        "17 %% of parity bytes costs essentially every tile a full frame of reference "
-        "recency, which PAPER 6.6 prices at a further 5 to 10 %% of bits.  That "
-        "second-order cost is larger than the parity itself and is not in the paper's "
-        "budget at all.\n\n"
-        "The 600 Mbit/s control says the opposite, and says it loudly: with the air no "
-        "longer the constraint, concealment is %.1f / %.1f / %.1f tiles per frame for "
-        "off / class A / full, so parity is worth far more than its bytes -- and both "
-        "settings hold %.1f %% of tiles on N-1.  Whether prioritized FEC earns its "
-        "overhead is therefore not a property of the FEC at all; it is a property of "
-        "the link headroom, and the parity ladder of PAPER 4.4 keys off measured loss "
-        "when it should key off measured headroom.\n\n"
-        "One caveat on the control row that has to be stated rather than smoothed "
-        "over: its parity-off concealment (%.1f tiles per frame, %.1f of them late) is "
-        "worse than the same setting at 300 Mbit/s, which is backwards for a faster "
-        "link.  The deadline-offset column is the tell.  The controller of PAPER 4.3 "
-        "climbs on a miss but only relaxes after 90 consecutive frames with zero "
-        "missing tiles, and on a fast link it reaches that condition often enough to "
-        "relax back into the miss region and oscillate.  So the control row measures "
-        "the controller as much as the FEC, and the sweep should be re-run with the "
-        "deadline pinned before any of these numbers are used to change the parity "
-        "policy.  It is logged as an open issue, not folded into the conclusion.\n\n"
-        "Two caveats before this is read as an argument for switching FEC off.  A "
-        "concealed tile is not a lost tile: it is a warp of the previous frame, which "
-        "is nearly free in the periphery and very visible in the fovea, and that "
-        "asymmetry is exactly what the class weighting exists to exploit -- so counting "
-        "tiles understates class A parity and overstates class B.  And the intra "
-        "column is the GRACE comparison in one number: it never rises above 1.6 %% in "
-        "any of the twenty-one rows, with or without parity, because a concealed tile "
-        "stays an exact reference here (decisions D10 and D17) and a loss therefore "
-        "costs one frame of prediction rather than an undecodable frame.  That "
-        "structural resilience is what GRACE trains a network to acquire and what NX "
-        "Warp gets from the reference model for free; it, rather than the concealment "
-        "counts, is the real argument for spending less on FEC.\n\n"
-        "Recommendation from this table: keep class A parity, make the class B row "
-        "conditional on measured loss instead of always-on (the ladder in PAPER 4.4 "
-        "already has the hook -- it just starts in the wrong place), and re-run this "
-        "sweep against a quality metric rather than a tile count before committing.\n",
-        cost_full, -saved_full, -100.0 * saved_full / tiles, tiles,
-        cost_a, saved_a, best_a, best_a_loss, cost_rest, -saved_rest,
-        a_beats_off, total, full_beats_off,
-        sw.empty() ? 0.0 : sw.front().full.bitrate_mbps,
+        "The class A half earns it; the rest does not, at any headroom measured.  "
+        "Across %d scenarios spanning 0 to %.0f %% headroom and 0 to 10 %% link loss, "
+        "class A parity alone (%.1f pp of wire overhead) left fewer tiles concealed "
+        "than no parity at all in %d of them, averaging %.1f tiles per frame saved and "
+        "peaking at %.1f.  The class B row on top of it helped in %d of %d: it cost "
+        "tiles in every other scenario, up to %.1f per frame, for a further %.1f pp of "
+        "overhead.  The full 30 / 10 / 0 policy beat no-parity in only %d of %d.\n\n"
+        "The mechanism is the band deadline, not the coding.  Parity is extra bytes in "
+        "the same band window as the data it protects, and the per-band burst is "
+        "several times the average rate, so the parity for band b delays band b+1 into "
+        "its own deadline.  Class A parity is cheap enough that the datagrams it "
+        "recovers outnumber the ones it delays; the class B row is not.  The "
+        "reference-age columns show the same edge from the other side: on the "
+        "300 Mbit/s link, parity off holds %.1f %% of tiles on N-1 and the full policy "
+        "holds %.1f %%, so the parity bytes also cost nearly every tile a frame of "
+        "reference recency, which PAPER 6.6 prices at a further 5 to 10 %% of bits.  "
+        "That second-order cost is not in the paper's budget at all.\n\n"
+        "Two false leads are worth recording, because both looked like results.  The "
+        "first version of this sweep ran against the v1 deadline controller, whose "
+        "climb rule has a dead zone: a band that is systematically a millisecond late "
+        "is about 6 %% of a frame, under the 10 %% miss threshold, so the deadline "
+        "never moved and those tiles stayed concealed forever.  That inflated the "
+        "parity-off column on fast links to 153.7 tiles per frame and made FEC look "
+        "like a large win there.  With decision D24 in place the same row is %.1f, and "
+        "the apparent win disappears.  The second was a headroom-gated ladder built on "
+        "that inflated control: it turned the class B row on above 50 %% headroom and "
+        "escalated parity on measured loss, which on a link whose loss is mostly "
+        "congestion loss caused by its own parity is a positive feedback loop.  It "
+        "spent 25.9 %% of the wire and concealed more than either fixed setting.  Both "
+        "are why the shipped default is the plain one: class A parity at the nominal "
+        "ratio, no class B or C, no loss escalation.\n\n"
+        "Caveats that still stand.  A concealed tile is not a lost tile -- it is a warp "
+        "of the previous frame, nearly free in the periphery and very visible in the "
+        "fovea -- so a tile count understates class A parity and overstates class B, "
+        "and the sweep should be repeated against VMAF or the foveated metric of PAPER "
+        "5.3 before the class B row is removed from the syntax rather than merely from "
+        "the default.  And the intra column is the GRACE comparison in one number: it "
+        "stays near zero in every row, with or without parity, because a concealed tile "
+        "remains an exact reference (decisions D10 and D17), so a loss costs one frame "
+        "of prediction rather than an undecodable frame.  That structural resilience is "
+        "what GRACE trains a network to acquire and what NX Warp gets from the "
+        "reference model for free -- and it, not the concealment counts, is the "
+        "strongest argument here for spending less on FEC.\n",
+        scen, ctrl ? 100.0 * ctrl->various.headroom : 0.0,
+        cost_a, a_helps, saved_a, best_a,
+        bc_helps, scen, -bc_worst, cost_rest, full_helps, scen,
         sw.empty() ? 0.0 : sw.front().off.ref_pct[0],
         sw.empty() ? 0.0 : sw.front().full.ref_pct[0],
-        ctrl_off ? ctrl_off->conceal_per_frame : 0.0,
-        ctrl_a ? ctrl_a->conceal_per_frame : 0.0,
-        ctrl_full ? ctrl_full->conceal_per_frame : 0.0,
-        ctrl_full ? ctrl_full->ref_pct[0] : 0.0,
-        ctrl_off ? ctrl_off->conceal_per_frame : 0.0,
-        ctrl_off ? ctrl_off->late_per_frame : 0.0);
+        ctrl ? ctrl->off.conceal_per_frame : 0.0);
 }
 
 }  // namespace

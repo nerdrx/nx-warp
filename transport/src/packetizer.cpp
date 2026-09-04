@@ -20,6 +20,35 @@ void FecPolicy::set_from_loss(double loss) {
     }
 }
 
+void FecPolicy::set_from_headroom(double headroom, double loss, bool bc_was_on) {
+    double gate = bc_was_on ? kBcHeadroomDrop : kBcHeadroom;
+    bool room = headroom >= gate;
+
+    // Class A parity is never switched off: a fovea hole is the one artifact
+    // users notice at once (PAPER 4.4), and it measured as a net win at every
+    // headroom in transport/RESULTS.md.
+    min_parity[0] = 1;
+    min_parity[2] = 0;
+
+    if (!room) {
+        // No room.  Class B and C are off, and -- the part PAPER 4.4 gets
+        // wrong -- the loss escalation is off too.  On a saturated link most
+        // measured loss IS congestion loss caused by our own bytes, so
+        // answering it with more parity is a positive feedback loop: more
+        // parity, more queue drops, more measured loss, more parity.  The
+        // ladder may only climb when there is room to absorb the climb.
+        ratio_pct[0] = loss < 0.001 ? 20 : 30;
+        ratio_pct[1] = 0;
+        ratio_pct[2] = 0;
+        min_parity[1] = 0;
+        return;
+    }
+    ratio_pct[0] = loss < 0.001 ? 20 : (loss > 0.02 ? 40 : 30);
+    ratio_pct[1] = loss > 0.02 ? 20 : 10;
+    ratio_pct[2] = loss > 0.02 ? 10 : 0;
+    min_parity[1] = loss > 0.02 ? 1 : 0;
+}
+
 namespace {
 
 // v2: tile_class and ref_delta live in the tile directory, so a run only has

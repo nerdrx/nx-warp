@@ -417,6 +417,71 @@ for three data blocks:
 | nominal | 30 / 10 / 0 | 1 / 0 / 0 |
 | > 2 % | 40 / 20 / 10 | 1 / 1 / 0 |
 
+**What the sender actually spends (v2, decision D25): class A parity only.** The
+table above is the syntax's range, not the policy. Measured over eight scenarios
+spanning 0 to 65 % headroom and 0 to 10 % link loss (`transport/RESULTS.md`), the
+class B row cost concealed tiles in **every one** — up to 45 per frame — and the
+loss escalation cost tiles wherever it fired. The default policy is therefore
+
+```
+  class A: 20 % of k below 0.1 % loss, else 30 %, floor 1 block
+  class B: none.   class C: none.   no escalation on loss.
+```
+
+The headroom machinery below is implemented and tested but is **not** the default,
+because no headroom tested made class B pay. It is kept for the re-run against a
+quality metric that should happen before class B is removed from the syntax rather
+than merely from the policy:
+
+```
+  headroom = 1 - wire_rate / sum(delivery_rate of up paths)      clamped to [0, 1]
+  headroom = 0                       if any up path's RTT > 1.5 x its baseline
+  room     = headroom >= 0.50        (0.42 to stay enabled: hysteresis)
+
+  class A parity   always, floor 1 block
+  if room:   A = 20/30/40 % by loss,  B = 10/20 %,  C = 0/10 %   (the full ladder)
+  else:      A = 20/30 % by loss,     B = 0,        C = 0        (no escalation)
+```
+
+The `else` branch is the part that matters most. On a link with no headroom the
+measured loss is largely **congestion** loss caused by our own bytes, so answering it
+with more parity is a positive feedback loop: more parity, more queue drops, more
+measured loss, more parity. The simulator caught exactly that — the first
+implementation, which kept the paper's loss escalation ungated, spent 23.6 % of the
+wire on parity where the fixed policy spent 17.2 % and concealed *more* tiles for it.
+The ladder may only climb when there is room to absorb the climb.
+
+`wire_rate` is the sender's own EWMA of bytes put on the wire per frame, which it
+knows exactly. `delivery_rate` per path is the integration's BBR estimate (PAPER
+4.6), the same one the striper weights with. The feedback packet contributes the
+two guards: `path_loss` is the ladder's secondary input, and `path_rtt_ms` drives
+the RTT check, because a queue that is filling means the headroom is already spent
+whatever the rate estimate says.
+
+> **Two false leads, recorded because both looked like results.** The first version
+> of this sweep ran against the v1 deadline controller and its climb dead zone
+> (decision D24), which inflated the parity-off column on fast links to 154 concealed
+> tiles per frame and made FEC look like a large win there; with D24 fixed the same
+> row is 38 and the win disappears. The second was a headroom-gated ladder fitted to
+> that inflated control: it enabled class B above 50 % headroom and escalated parity
+> on measured loss, which on a link whose loss is mostly congestion loss caused by its
+> own parity is a positive feedback loop — it spent 25.9 % of the wire and concealed
+> more than either fixed setting. Neither survived measurement.
+
+> **Decision D25.** The paper's ladder keys off measured loss alone, and spends
+> class B and C parity unconditionally. Both are wrong here. Parity is extra bytes in
+> the same band window as the data it protects, so it delays the next band past its
+> deadline; class A parity is cheap enough that the datagrams it recovers outnumber
+> the ones it delays, and the class B row is not, at any headroom measured. Loss is
+> also the wrong variable to escalate on, because on a loaded link most measured loss
+> is congestion loss caused by the parity itself. The policy is therefore class A
+> only, at the nominal ratio, with no escalation.
+>
+> The transport cannot compute `delivery_rate` on its own: the feedback packet
+> (section 8) carries loss and RTT but no received-byte count. A v3 feedback with a
+> 2-byte per-path received-kilobyte field would close that, and is the cheapest way
+> to make the gate self-contained.
+
 `m` travels in the header (`fec_m`), so the receiver knows a group's full membership.
 
 **Group membership (v2, decision D22).** Within one class and band, datagrams are
@@ -811,4 +876,6 @@ telemetry, never control input.
 | D21 | **v2**: FEC recovery waits for a parity datagram, not merely for `k` blocks, so reordered groups are never repaired needlessly. `fec_m` is on the wire to make the group's membership known. |
 | D22 | **v2**: FEC group membership within a class and band is by descending payload length, which removes parity padding waste and scatters a group across the band in time. |
 | D23 | **v2**: parity per group is a ratio of the realised `k` (30 / 10 / 0 percent nominal) with a floor of one parity block for class A, instead of a fixed 3 / 1 / 0 per group of any size. |
+| D24 | **v2**: the deadline relaxes 250 us only when the worst arrival margin over a full 180-frame window keeps 1 ms of slack, with a one-window hold after any change. The v1 rule (90 consecutive zero-miss frames) oscillates on a link with headroom. |
+| D25 | **v2**: the shipped parity policy is class A only at the nominal ratio, with no class B or C and no loss escalation. Measured over eight scenarios from 0 to 65 % headroom, the class B row cost concealed tiles in every one and the escalation cost tiles wherever it fired. `FecPolicy::set_from_headroom` and `Sender::measured_headroom` remain implemented and tested for the quality-metric re-run, but are not the default. |
 | D24 | **Spec reconciliation** (`spec/annex-d-inter-decisions.md`): `res_level == 3` is reserved, not "DC-plane only"; `ref_delta` and `dir_qp` are advisory copies of authoritative bitstream fields with defined disagreement rules; `cols == eyes * cols_per_eye` and a picture is one eye; the 26-byte `pose_header` is the format's only pose layout and this document owns it; `frame_id == frame_number`; `dir_len` bounds a fragment. |

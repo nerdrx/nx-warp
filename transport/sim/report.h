@@ -34,12 +34,15 @@ struct ScenarioResult {
     double path_share[2] = {0, 0};
     double shadow_mismatches = 0;
     double deadline_offset_us = 0;
+    double headroom = 0;          // sender's D25 estimate at the end of the run
+    double bc_parity_frac = 0;    // share of frames the class B/C rows were on
 };
 
 // One loss scenario measured with FEC off, class A parity only, and the full
 // class-aware policy.  docs/RESEARCH-ACADEMIC.md entry 12 (GRACE).
 struct FecSweepRow {
     ScenarioResult off, a_only, full;
+    ScenarioResult various;  // the headroom-keyed default of decision D25
 };
 
 void write_results(const std::string& path, const std::vector<ScenarioResult>& rows,

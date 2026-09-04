@@ -157,8 +157,9 @@ struct Scenario {
     size_t class_break = kClassBreakMin;
     // 0 = no FEC at all (concealment and re-prediction only, the GRACE
     // baseline of docs/RESEARCH-ACADEMIC.md entry 12), 1 = parity for class A
-    // only, 2 = the paper's class-aware 30/10/0.
-    int fec_mode = 2;
+    // only, 2 = the paper's fixed class-aware 30/10/0, 3 = the headroom-keyed
+    // ladder of decision D25, which is the default.
+    int fec_mode = 3;
     int frames = 400;
 };
 
@@ -188,6 +189,7 @@ ScenarioResult run(const Scenario& sc, uint64_t seed, bool v1 = false) {
     tx.scheduler().set_band_span_us(500);
     tx.packetizer().set_class_break_min(sc.class_break);
     Receiver rx(cfg, aead.get(), key, salt);
+    tx.set_auto_fec(sc.fec_mode == 3);
     if (sc.fec_mode == 1) {
         FecPolicy f;
         f.ratio_pct[0] = 30; f.ratio_pct[1] = 0; f.ratio_pct[2] = 0;
@@ -197,6 +199,7 @@ ScenarioResult run(const Scenario& sc, uint64_t seed, bool v1 = false) {
     if (v1) {
         // v1 wire behaviour for the A/B table: class and ref in the run key,
         // fixed 3/1/0 parity per group, transmission-order groups, eager repair.
+        tx.set_auto_fec(false);
         tx.packetizer().set_v1_compat(true);
         FecPolicy f;
         f.ratio_pct[0] = f.ratio_pct[1] = f.ratio_pct[2] = 0;
@@ -260,6 +263,17 @@ ScenarioResult run(const Scenario& sc, uint64_t seed, bool v1 = false) {
     for (uint8_t p = 0; p < links.size(); ++p)
         tx.striper().configure_path(p, links[p].cfg().capacity_bps,
                                     links[p].cfg().base_delay_us * 2);
+    // The RTT the feedback reports is the round trip the client can actually
+    // observe: the datagram's one-way delay plus the uplink.  The sim measures
+    // it from tx_ts so the D25 queue guard responds to real bufferbloat rather
+    // than to a constant.
+    double owd_ewma[kMaxPaths] = {0, 0};
+    for (uint8_t p = 0; p < links.size(); ++p) {
+        uint32_t rt = (links[p].cfg().base_delay_us + uplink.base_delay_us) * 2;
+        tx.striper().configure_path(p, links[p].cfg().capacity_bps, rt);
+        rx.set_path_rtt(p, rt);
+        owd_ewma[p] = double(links[p].cfg().base_delay_us);
+    }
 
     // --- schedule ----------------------------------------------------------
     const uint8_t nbands = cfg.bands();
@@ -278,6 +292,7 @@ ScenarioResult run(const Scenario& sc, uint64_t seed, bool v1 = false) {
     uint64_t tiles_total = 0, tile_byte_total = 0;
     uint64_t concealed_total = 0, late_total = 0;
     uint64_t ip_datagrams = 0;
+    double bc_on_frames = 0;
 
     std::vector<TileOutput> delivered;
 
@@ -292,6 +307,12 @@ ScenarioResult run(const Scenario& sc, uint64_t seed, bool v1 = false) {
                                e.path, now, &delivered);
                 DatagramHeader h;
                 decode_header(e.bytes.data(), &h);
+                double owd = double(int64_t(now) - int64_t(h.tx_ts));
+                if (owd < 0) owd = 0;
+                owd_ewma[e.path] = owd_ewma[e.path] * 0.99 + owd * 0.01;
+                rx.set_path_rtt(e.path,
+                                uint32_t(2.0 * owd_ewma[e.path] +
+                                         2.0 * double(uplink.base_delay_us)));
                 uint32_t bk = (uint32_t(h.frame_id) << 3) | (h.band & 7);
                 uint64_t& s = band_last_rx[bk];
                 s = std::max(s, now);
@@ -345,6 +366,7 @@ ScenarioResult run(const Scenario& sc, uint64_t seed, bool v1 = false) {
         pose.pose_seq = uint16_t(f * 7);
         pose.render_finish_ts = uint32_t(render_finish);
         tx.begin_frame(frame, pose, uint32_t(render_finish), 0);
+        if (tx.packetizer().fec().ratio_pct[1] > 0) bc_on_frames += 1.0;
 
         for (uint8_t b = 0; b < nbands; ++b) {
             uint64_t t_enc = render_finish + uint64_t(b + 1) * enc_per_band;
@@ -501,6 +523,8 @@ ScenarioResult run(const Scenario& sc, uint64_t seed, bool v1 = false) {
                                 : 0.0;
     res.shadow_mismatches = double(shadow_mismatch);
     res.deadline_offset_us = rx.deadline().offset_us();
+    res.headroom = tx.measured_headroom();
+    res.bc_parity_frac = bc_on_frames / std::max(1.0, double(sc.frames));
     (void)shadow_checks;
     (void)ip_datagrams;
     return res;
@@ -555,6 +579,14 @@ int main(int argc, char** argv) {
     }
     {
         Scenario s;
+        s.name = "wifi 450 Mbit/s link";
+        s.wifi_bps = 450e6;
+        s.frames = frames;
+        s.class_break = class_break;
+        scen.push_back(s);
+    }
+    {
+        Scenario s;
         s.name = "wifi 600 Mbit/s headroom";
         s.wifi_bps = 600e6;
         s.frames = frames;
@@ -585,12 +617,14 @@ int main(int argc, char** argv) {
         std::printf("running %-28s ... ", s.name.c_str());
         std::fflush(stdout);
         ScenarioResult r = run(s, seed);
-        rows_v1.push_back(run(s, seed, true));
-        std::printf("%.1f Mbit/s, %.0f dg/s, overhead %.2f%%, conceal %.1f/frame"
-                    "   (v1: %.0f dg/s, %.2f%%, %.1f)\n",
+        // The v1 comparison table only cites four scenarios, so only those pay
+        // for a second pass.
+        bool need_v1 = s.name == "wifi random 0%" || s.name == "wifi 150 Mbit/s link" ||
+                       s.name == "wifi 600 Mbit/s headroom" || s.name == "usb single path";
+        rows_v1.push_back(need_v1 ? run(s, seed, true) : r);
+        std::printf("%.1f Mbit/s, %.0f dg/s, overhead %.2f%%, conceal %.1f/frame%s\n",
                     r.bitrate_mbps, r.datagram_rate, r.overhead_pct, r.conceal_per_frame,
-                    rows_v1.back().datagram_rate, rows_v1.back().overhead_pct,
-                    rows_v1.back().conceal_per_frame);
+                    need_v1 ? "  (+v1)" : "");
         rows.push_back(r);
     }
 
@@ -609,13 +643,16 @@ int main(int argc, char** argv) {
         off.fec_mode = 0;
         Scenario a_only = sc;
         a_only.fec_mode = 1;
+        Scenario full = sc;
+        full.fec_mode = 2;
         FecSweepRow r;
         r.off = run(off, seed);
         r.a_only = run(a_only, seed);
-        r.full = rows[i];
-        std::printf("conceal off %.1f, A %.1f, full %.1f per frame\n",
+        r.full = run(full, seed);
+        r.various = rows[i];  // the D25 default
+        std::printf("off %.1f, A %.1f, full %.1f, D25 %.1f conceal/frame\n",
                     r.off.conceal_per_frame, r.a_only.conceal_per_frame,
-                    r.full.conceal_per_frame);
+                    r.full.conceal_per_frame, r.various.conceal_per_frame);
         sweep.push_back(r);
     }
 

@@ -8,104 +8,116 @@ Wire format v2 (docs/TRANSPORT.md, decisions D19 to D23).
 
 | scenario | link | loss offered / measured | Mbit/s on wire | dg/s | tiles/run | header+dir overhead | overhead incl FEC | overhead incl FEC+IP/UDP | FEC parity | FEC parity bytes | repaired bytes (of which needed) |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| wifi random 0% | wifi6 @300M | 0.0% / 2.41% | 189.5 | 21254 | 11.3 | 7.84% | 21.39% | 23.32% | 17.2% | 34.81 MB | 0.13 MB (0.13 MB) |
-| wifi random 1% | wifi6 @300M | 1.0% / 3.55% | 189.5 | 21254 | 11.3 | 7.84% | 21.39% | 23.32% | 17.2% | 34.81 MB | 1.49 MB (1.49 MB) |
-| wifi random 3% | wifi6 @300M | 3.0% / 5.50% | 189.5 | 21254 | 11.3 | 7.84% | 21.39% | 23.32% | 17.2% | 34.81 MB | 3.98 MB (3.98 MB) |
-| wifi random 5% | wifi6 @300M | 5.0% / 7.46% | 189.5 | 21255 | 11.3 | 7.84% | 21.39% | 23.32% | 17.2% | 34.81 MB | 6.14 MB (6.13 MB) |
-| wifi random 10% | wifi6 @300M | 10.0% / 12.27% | 189.4 | 21259 | 11.3 | 7.84% | 21.39% | 23.31% | 17.2% | 34.80 MB | 9.19 MB (9.18 MB) |
-| wifi burst (A-MPDU) | wifi6 @300M | 0.0% / 5.62% | 189.5 | 21253 | 11.3 | 7.84% | 21.39% | 23.32% | 17.2% | 34.81 MB | 0.21 MB (0.21 MB) |
-| wifi 150 Mbit/s link | wifi6 @150M | 0.0% / 28.10% | 190.0 | 21458 | 11.2 | 7.87% | 21.60% | 23.54% | 17.5% | 35.40 MB | 0.52 MB (0.01 MB) |
-| wifi 600 Mbit/s headroom | wifi6 @600M | 0.0% / 1.80% | 189.5 | 21254 | 11.3 | 7.84% | 21.39% | 23.32% | 17.2% | 34.81 MB | 0.01 MB (0.01 MB) |
-| usb single path | usb-ncm | 0.1% / 6.68% | 189.5 | 21255 | 11.3 | 7.84% | 21.40% | 23.32% | 17.2% | 34.83 MB | 0.04 MB (0.04 MB) |
-| multipath wifi+usb, burst | wifi6 + usb-ncm | 0.0% / 8.57% | 267.1 | 29836 | 9.1 | 7.02% | 23.55% | 25.41% | 21.6% | 59.36 MB | 0.15 MB (0.01 MB) |
+| wifi random 0% | wifi6 @300M | 0.0% / 0.96% | 179.9 | 20325 | 11.3 | 7.84% | 17.21% | 19.25% | 11.3% | 22.85 MB | 0.00 MB (0.00 MB) |
+| wifi random 1% | wifi6 @300M | 1.0% / 2.28% | 181.3 | 20462 | 11.3 | 7.84% | 17.83% | 19.86% | 12.2% | 24.56 MB | 0.73 MB (0.72 MB) |
+| wifi random 3% | wifi6 @300M | 3.0% / 4.30% | 181.3 | 20462 | 11.3 | 7.84% | 17.83% | 19.86% | 12.2% | 24.56 MB | 2.18 MB (2.18 MB) |
+| wifi random 5% | wifi6 @300M | 5.0% / 6.09% | 181.3 | 20460 | 11.3 | 7.84% | 17.83% | 19.86% | 12.2% | 24.56 MB | 3.47 MB (3.47 MB) |
+| wifi random 10% | wifi6 @300M | 10.0% / 11.00% | 181.2 | 20462 | 11.3 | 7.84% | 17.82% | 19.85% | 12.1% | 24.53 MB | 6.32 MB (6.32 MB) |
+| wifi burst (A-MPDU) | wifi6 @300M | 0.0% / 5.20% | 181.2 | 20459 | 11.3 | 7.84% | 17.82% | 19.85% | 12.1% | 24.52 MB | 0.11 MB (0.10 MB) |
+| wifi 150 Mbit/s link | wifi6 @150M | 0.0% / 24.27% | 180.9 | 20564 | 11.2 | 7.87% | 17.67% | 19.72% | 11.9% | 24.06 MB | 0.14 MB (0.01 MB) |
+| wifi 450 Mbit/s link | wifi6 @450M | 0.0% / 1.14% | 180.2 | 20358 | 11.3 | 7.84% | 17.37% | 19.41% | 11.5% | 23.28 MB | 0.00 MB (0.00 MB) |
+| wifi 600 Mbit/s headroom | wifi6 @600M | 0.0% / 2.40% | 180.4 | 20379 | 11.3 | 7.84% | 17.45% | 19.49% | 11.6% | 23.52 MB | 0.00 MB (0.00 MB) |
+| usb single path | usb-ncm | 0.1% / 7.92% | 179.3 | 20268 | 11.3 | 7.84% | 16.94% | 18.99% | 11.0% | 22.13 MB | 0.02 MB (0.02 MB) |
+| multipath wifi+usb, burst | wifi6 + usb-ncm | 0.0% / 8.20% | 258.4 | 28990 | 9.1 | 7.02% | 20.96% | 22.90% | 17.6% | 48.43 MB | 0.10 MB (0.01 MB) |
 
 ## Concealment, references, feedback and latency
 
 | scenario | concealed tiles/frame | late tiles/frame | ref N-1 | ref N-2 | ref N-3 | intra | feedback | mean fb bytes | band latency p50 | p99 | deadline offset | shadow mismatches |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| wifi random 0% | 92.7 | 24.5 | 1.1% | 97.5% | 0.0% | 1.3% | 0.40 Mbit/s | 92 | 8.66 ms | 11.55 ms | 4.0 ms | 0 |
-| wifi random 1% | 111.0 | 24.4 | 1.1% | 97.5% | 0.0% | 1.4% | 0.40 Mbit/s | 93 | 8.50 ms | 11.55 ms | 4.0 ms | 0 |
-| wifi random 3% | 141.3 | 24.1 | 1.1% | 97.5% | 0.0% | 1.4% | 0.42 Mbit/s | 96 | 8.50 ms | 11.55 ms | 4.0 ms | 0 |
-| wifi random 5% | 177.2 | 23.1 | 1.1% | 97.4% | 0.1% | 1.4% | 0.43 Mbit/s | 100 | 8.53 ms | 11.55 ms | 4.0 ms | 0 |
-| wifi random 10% | 274.8 | 23.4 | 1.1% | 97.1% | 0.2% | 1.6% | 0.47 Mbit/s | 110 | 8.52 ms | 11.54 ms | 4.0 ms | 0 |
-| wifi burst (A-MPDU) | 172.2 | 24.2 | 1.1% | 97.5% | 0.0% | 1.4% | 0.42 Mbit/s | 96 | 9.50 ms | 11.61 ms | 4.0 ms | 0 |
-| wifi 150 Mbit/s link | 1421.5 | 796.1 | 0.5% | 31.8% | 0.2% | 67.5% | 0.52 Mbit/s | 121 | 10.50 ms | 12.00 ms | 4.0 ms | 0 |
-| wifi 600 Mbit/s headroom | 44.5 | 6.4 | 99.7% | 0.0% | 0.0% | 0.3% | 0.39 Mbit/s | 90 | 7.00 ms | 8.55 ms | 1.0 ms | 0 |
-| usb single path | 158.0 | 4.8 | 99.6% | 0.0% | 0.0% | 0.4% | 0.39 Mbit/s | 90 | 4.21 ms | 10.30 ms | 3.6 ms | 0 |
-| multipath wifi+usb, burst | 236.1 | 11.0 | 82.6% | 16.5% | 0.0% | 0.8% | 0.40 Mbit/s | 93 | 4.54 ms | 11.00 ms | 4.0 ms | 0 |
+| wifi random 0% | 47.1 | 21.1 | 1.3% | 97.6% | 0.0% | 1.2% | 0.39 Mbit/s | 89 | 8.50 ms | 11.47 ms | 4.0 ms | 0 |
+| wifi random 1% | 70.7 | 23.0 | 1.2% | 97.6% | 0.0% | 1.2% | 0.40 Mbit/s | 92 | 8.50 ms | 11.46 ms | 4.0 ms | 0 |
+| wifi random 3% | 118.2 | 22.4 | 1.2% | 97.5% | 0.0% | 1.2% | 0.42 Mbit/s | 97 | 8.50 ms | 11.47 ms | 4.0 ms | 0 |
+| wifi random 5% | 156.5 | 21.8 | 1.3% | 97.5% | 0.1% | 1.2% | 0.44 Mbit/s | 101 | 8.39 ms | 11.47 ms | 4.0 ms | 0 |
+| wifi random 10% | 264.2 | 20.9 | 1.2% | 97.4% | 0.1% | 1.3% | 0.48 Mbit/s | 112 | 8.47 ms | 11.49 ms | 4.0 ms | 0 |
+| wifi burst (A-MPDU) | 142.4 | 22.8 | 1.2% | 97.6% | 0.0% | 1.2% | 0.40 Mbit/s | 94 | 9.50 ms | 11.58 ms | 4.0 ms | 0 |
+| wifi 150 Mbit/s link | 1413.1 | 812.2 | 0.6% | 32.0% | 0.3% | 67.2% | 0.52 Mbit/s | 121 | 10.50 ms | 12.00 ms | 4.0 ms | 0 |
+| wifi 450 Mbit/s link | 36.6 | 10.7 | 99.6% | 0.0% | 0.0% | 0.4% | 0.39 Mbit/s | 89 | 7.69 ms | 9.50 ms | 2.0 ms | 0 |
+| wifi 600 Mbit/s headroom | 49.1 | 4.3 | 99.9% | 0.0% | 0.0% | 0.1% | 0.39 Mbit/s | 90 | 7.09 ms | 8.55 ms | 1.0 ms | 0 |
+| usb single path | 185.1 | 2.1 | 99.7% | 0.0% | 0.0% | 0.3% | 0.39 Mbit/s | 90 | 4.11 ms | 11.50 ms | 4.0 ms | 0 |
+| multipath wifi+usb, burst | 217.2 | 1.1 | 60.5% | 38.7% | 0.0% | 0.8% | 0.40 Mbit/s | 92 | 4.50 ms | 11.50 ms | 4.0 ms | 0 |
 
 ## Class mix and multipath
 
 | scenario | class A bits | class B bits | class C bits | duplicated datagrams | bytes on path 0 | path 1 | mean tile bytes |
 |---|---|---|---|---|---|---|---|
-| wifi random 0% | 32.6% | 42.0% | 25.5% | 0.0% | 97.6% | 0.0% | 89.5 |
-| wifi random 1% | 32.6% | 42.0% | 25.5% | 0.0% | 96.5% | 0.0% | 89.5 |
-| wifi random 3% | 32.6% | 42.0% | 25.5% | 0.0% | 94.6% | 0.0% | 89.5 |
-| wifi random 5% | 32.6% | 42.0% | 25.4% | 0.0% | 92.6% | 0.0% | 89.5 |
-| wifi random 10% | 32.5% | 42.0% | 25.5% | 0.0% | 87.8% | 0.0% | 89.5 |
-| wifi burst (A-MPDU) | 32.6% | 42.0% | 25.5% | 0.0% | 94.4% | 0.0% | 89.5 |
-| wifi 150 Mbit/s link | 32.1% | 43.5% | 24.3% | 0.0% | 71.5% | 0.0% | 89.5 |
-| wifi 600 Mbit/s headroom | 32.6% | 41.9% | 25.5% | 0.0% | 98.2% | 0.0% | 89.5 |
-| usb single path | 32.6% | 41.9% | 25.4% | 0.0% | 93.3% | 0.0% | 89.5 |
-| multipath wifi+usb, burst | 32.6% | 42.0% | 25.5% | 28.8% | 28.1% | 63.3% | 89.5 |
+| wifi random 0% | 32.6% | 42.0% | 25.5% | 0.0% | 99.0% | 0.0% | 89.5 |
+| wifi random 1% | 32.6% | 42.0% | 25.5% | 0.0% | 97.7% | 0.0% | 89.5 |
+| wifi random 3% | 32.6% | 42.0% | 25.5% | 0.0% | 95.7% | 0.0% | 89.5 |
+| wifi random 5% | 32.6% | 42.0% | 25.4% | 0.0% | 93.9% | 0.0% | 89.5 |
+| wifi random 10% | 32.5% | 42.0% | 25.4% | 0.0% | 89.0% | 0.0% | 89.5 |
+| wifi burst (A-MPDU) | 32.6% | 42.0% | 25.5% | 0.0% | 94.8% | 0.0% | 89.5 |
+| wifi 150 Mbit/s link | 31.8% | 43.8% | 24.4% | 0.0% | 75.3% | 0.0% | 89.5 |
+| wifi 450 Mbit/s link | 32.6% | 41.9% | 25.4% | 0.0% | 98.8% | 0.0% | 89.5 |
+| wifi 600 Mbit/s headroom | 32.6% | 41.9% | 25.4% | 0.0% | 97.6% | 0.0% | 89.5 |
+| usb single path | 32.6% | 41.9% | 25.4% | 0.0% | 92.1% | 0.0% | 89.5 |
+| multipath wifi+usb, burst | 32.6% | 42.0% | 25.5% | 29.5% | 28.9% | 63.0% | 89.5 |
 
 ## Does prioritized FEC earn its overhead?
 
 Three settings of the same stream over the same links and seed: parity off
 entirely (the codec relies on deterministic concealment and per-tile
 re-prediction alone, which is the GRACE baseline of
-docs/RESEARCH-ACADEMIC.md entry 12), parity for class A only, and the paper's
-class-aware 30 / 10 / 0.  With parity off the 44-byte parity reserve is
-released too, so the run payload budget grows from 1316 to 1360 bytes: that
-headroom is part of what FEC costs.
+docs/RESEARCH-ACADEMIC.md entry 12), parity for class A only, the paper's fixed
+class-aware 30 / 10 / 0, and the headroom-keyed ladder of decision D25 that is
+now the default.  With parity off the 44-byte parity reserve is released too,
+so the run payload budget grows from 1316 to 1360 bytes: that headroom is part
+of what FEC costs.
 
 | scenario | FEC | wire Mbit/s | overhead incl FEC | parity | concealed/frame | late/frame | N-1 | N-2 | N-3 | intra | complete p50 | p99 | deadline offset |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| wifi random 0% | off | 161.4 | 7.74 % | 0.0 % | 73.9 | 54.5 | 98.2 % | 0.9 % | 0.0 % | 1.0 % | 8.00 ms | 10.98 ms | 3.0 ms |
-|  | class A only | 181.3 | 17.84 % | 12.2 % | 65.6 | 32.2 | 3.1 % | 95.5 % | 0.0 % | 1.3 % | 8.50 ms | 11.47 ms | 4.0 ms |
+| wifi random 0% | off | 161.4 | 7.74 % | 0.0 % | 53.5 | 34.2 | 33.2 % | 65.8 % | 0.0 % | 1.0 % | 8.07 ms | 11.16 ms | 4.0 ms |
+|  | class A only | 181.3 | 17.84 % | 12.2 % | 47.7 | 21.2 | 1.2 % | 97.6 % | 0.0 % | 1.2 % | 8.32 ms | 11.47 ms | 4.0 ms |
 |  | A/B/C 30/10/0 | 189.5 | 21.39 % | 17.2 % | 92.7 | 24.5 | 1.1 % | 97.5 % | 0.0 % | 1.3 % | 8.66 ms | 11.55 ms | 4.0 ms |
-| wifi random 1% | off | 161.4 | 7.74 % | 0.0 % | 92.3 | 50.9 | 97.7 % | 1.3 % | 0.0 % | 1.0 % | 8.45 ms | 10.96 ms | 3.0 ms |
+|  | D25 headroom | 179.9 | 17.21 % | 11.3 % | 47.1 | 21.1 | 1.3 % | 97.6 % | 0.0 % | 1.2 % | 8.50 ms | 11.47 ms | 4.0 ms |
+| wifi random 1% | off | 161.4 | 7.74 % | 0.0 % | 76.7 | 35.3 | 52.1 % | 46.9 % | 0.0 % | 1.0 % | 8.50 ms | 11.00 ms | 4.0 ms |
 |  | class A only | 181.3 | 17.84 % | 12.2 % | 73.0 | 23.0 | 1.2 % | 97.5 % | 0.0 % | 1.3 % | 8.50 ms | 11.48 ms | 4.0 ms |
 |  | A/B/C 30/10/0 | 189.5 | 21.39 % | 17.2 % | 111.0 | 24.4 | 1.1 % | 97.5 % | 0.0 % | 1.4 % | 8.50 ms | 11.55 ms | 4.0 ms |
+|  | D25 headroom | 181.3 | 17.83 % | 12.2 % | 70.7 | 23.0 | 1.2 % | 97.6 % | 0.0 % | 1.2 % | 8.50 ms | 11.46 ms | 4.0 ms |
 | wifi random 3% | off | 161.4 | 7.74 % | 0.0 % | 133.5 | 49.8 | 97.1 % | 1.9 % | 0.0 % | 0.9 % | 8.00 ms | 10.82 ms | 3.0 ms |
-|  | class A only | 181.3 | 17.84 % | 12.2 % | 120.9 | 31.9 | 3.2 % | 95.5 % | 0.0 % | 1.3 % | 8.25 ms | 11.46 ms | 4.0 ms |
+|  | class A only | 181.3 | 17.84 % | 12.2 % | 114.6 | 24.4 | 1.7 % | 97.1 % | 0.0 % | 1.1 % | 8.52 ms | 11.48 ms | 4.0 ms |
 |  | A/B/C 30/10/0 | 189.5 | 21.39 % | 17.2 % | 141.3 | 24.1 | 1.1 % | 97.5 % | 0.0 % | 1.4 % | 8.50 ms | 11.55 ms | 4.0 ms |
+|  | D25 headroom | 181.3 | 17.83 % | 12.2 % | 118.2 | 22.4 | 1.2 % | 97.5 % | 0.0 % | 1.2 % | 8.50 ms | 11.47 ms | 4.0 ms |
 | wifi random 5% | off | 161.4 | 7.74 % | 0.0 % | 185.1 | 54.8 | 96.1 % | 3.0 % | 0.0 % | 1.0 % | 8.04 ms | 10.95 ms | 3.0 ms |
-|  | class A only | 181.3 | 17.84 % | 12.2 % | 151.4 | 25.6 | 2.0 % | 96.6 % | 0.1 % | 1.3 % | 8.11 ms | 11.47 ms | 4.0 ms |
+|  | class A only | 181.3 | 17.84 % | 12.2 % | 153.3 | 21.9 | 1.2 % | 97.5 % | 0.0 % | 1.2 % | 8.50 ms | 11.48 ms | 4.0 ms |
 |  | A/B/C 30/10/0 | 189.5 | 21.39 % | 17.2 % | 177.2 | 23.1 | 1.1 % | 97.4 % | 0.1 % | 1.4 % | 8.53 ms | 11.55 ms | 4.0 ms |
-| wifi random 10% | off | 161.4 | 7.74 % | 0.0 % | 266.6 | 20.0 | 22.7 % | 75.9 % | 0.2 % | 1.2 % | 8.00 ms | 11.06 ms | 4.0 ms |
+|  | D25 headroom | 181.3 | 17.83 % | 12.2 % | 156.5 | 21.8 | 1.3 % | 97.5 % | 0.1 % | 1.2 % | 8.39 ms | 11.47 ms | 4.0 ms |
+| wifi random 10% | off | 161.4 | 7.74 % | 0.0 % | 261.8 | 19.2 | 16.6 % | 82.1 % | 0.1 % | 1.2 % | 8.00 ms | 11.18 ms | 4.0 ms |
 |  | class A only | 181.2 | 17.82 % | 12.1 % | 260.5 | 23.5 | 1.6 % | 96.8 % | 0.1 % | 1.4 % | 8.16 ms | 11.46 ms | 4.0 ms |
 |  | A/B/C 30/10/0 | 189.4 | 21.39 % | 17.2 % | 274.8 | 23.4 | 1.1 % | 97.1 % | 0.2 % | 1.6 % | 8.52 ms | 11.54 ms | 4.0 ms |
-| wifi burst (A-MPDU) | off | 161.4 | 7.74 % | 0.0 % | 154.3 | 52.1 | 98.0 % | 1.0 % | 0.0 % | 1.0 % | 8.64 ms | 11.00 ms | 3.0 ms |
-|  | class A only | 181.3 | 17.84 % | 12.2 % | 138.9 | 24.7 | 1.5 % | 97.2 % | 0.0 % | 1.2 % | 9.00 ms | 11.51 ms | 4.0 ms |
+|  | D25 headroom | 181.2 | 17.82 % | 12.1 % | 264.2 | 20.9 | 1.2 % | 97.4 % | 0.1 % | 1.3 % | 8.47 ms | 11.49 ms | 4.0 ms |
+| wifi burst (A-MPDU) | off | 161.4 | 7.74 % | 0.0 % | 153.0 | 50.8 | 90.1 % | 8.9 % | 0.0 % | 1.0 % | 8.70 ms | 11.00 ms | 4.0 ms |
+|  | class A only | 181.3 | 17.84 % | 12.2 % | 131.4 | 22.3 | 1.3 % | 97.6 % | 0.0 % | 1.1 % | 9.00 ms | 11.51 ms | 4.0 ms |
 |  | A/B/C 30/10/0 | 189.5 | 21.39 % | 17.2 % | 172.2 | 24.2 | 1.1 % | 97.5 % | 0.0 % | 1.4 % | 9.50 ms | 11.61 ms | 4.0 ms |
-| wifi 600 Mbit/s headroom | off | 161.4 | 7.74 % | 0.0 % | 153.7 | 128.7 | 99.8 % | 0.0 % | 0.0 % | 0.2 % | 6.50 ms | 7.98 ms | 0.0 ms |
+|  | D25 headroom | 181.2 | 17.82 % | 12.1 % | 142.4 | 22.8 | 1.2 % | 97.6 % | 0.0 % | 1.2 % | 9.50 ms | 11.58 ms | 4.0 ms |
+| wifi 450 Mbit/s link | off | 161.4 | 7.74 % | 0.0 % | 68.3 | 52.6 | 99.6 % | 0.0 % | 0.0 % | 0.4 % | 7.16 ms | 8.89 ms | 2.0 ms |
+|  | class A only | 181.3 | 17.85 % | 12.2 % | 50.0 | 8.8 | 99.4 % | 0.0 % | 0.0 % | 0.6 % | 7.96 ms | 9.52 ms | 2.0 ms |
+|  | A/B/C 30/10/0 | 189.5 | 21.39 % | 17.2 % | 51.4 | 11.3 | 99.3 % | 0.0 % | 0.0 % | 0.7 % | 7.55 ms | 9.57 ms | 2.0 ms |
+|  | D25 headroom | 180.2 | 17.37 % | 11.5 % | 36.6 | 10.7 | 99.6 % | 0.0 % | 0.0 % | 0.4 % | 7.69 ms | 9.50 ms | 2.0 ms |
+| wifi 600 Mbit/s headroom | off | 161.4 | 7.74 % | 0.0 % | 38.4 | 5.3 | 99.9 % | 0.0 % | 0.0 % | 0.1 % | 6.74 ms | 8.50 ms | 1.0 ms |
 |  | class A only | 181.3 | 17.85 % | 12.2 % | 40.6 | 5.5 | 99.7 % | 0.0 % | 0.0 % | 0.3 % | 7.00 ms | 8.50 ms | 1.0 ms |
 |  | A/B/C 30/10/0 | 189.5 | 21.39 % | 17.2 % | 44.5 | 6.4 | 99.7 % | 0.0 % | 0.0 % | 0.3 % | 7.00 ms | 8.55 ms | 1.0 ms |
+|  | D25 headroom | 180.4 | 17.45 % | 11.6 % | 49.1 | 4.3 | 99.9 % | 0.0 % | 0.0 % | 0.1 % | 7.09 ms | 8.55 ms | 1.0 ms |
 
-| scenario | concealed/frame off | class A only | full | tiles saved by class A parity | by the rest | overhead of class A parity | of the rest |
-|---|---|---|---|---|---|---|---|
-| wifi random 0% | 73.9 | 65.6 | 92.7 | 8.3 | -27.1 | +10.10 pp | +3.55 pp |
-| wifi random 1% | 92.3 | 73.0 | 111.0 | 19.3 | -38.1 | +10.10 pp | +3.55 pp |
-| wifi random 3% | 133.5 | 120.9 | 141.3 | 12.6 | -20.5 | +10.10 pp | +3.55 pp |
-| wifi random 5% | 185.1 | 151.4 | 177.2 | 33.8 | -25.8 | +10.10 pp | +3.55 pp |
-| wifi random 10% | 266.6 | 260.5 | 274.8 | 6.1 | -14.3 | +10.09 pp | +3.56 pp |
-| wifi burst (A-MPDU) | 154.3 | 138.9 | 172.2 | 15.4 | -33.3 | +10.11 pp | +3.54 pp |
-| wifi 600 Mbit/s headroom | 153.7 | 40.6 | 44.5 | 113.1 | -3.9 | +10.11 pp | +3.54 pp |
+| scenario | headroom | concealed/frame off | class A | full | D25 | tiles saved by class A parity | by the class B row | D25 vs best fixed |
+|---|---|---|---|---|---|---|---|---|
+| wifi random 0% | 0 % | 53.5 | 47.7 | 92.7 | 47.1 | 5.9 | -45.0 | -0.6 |
+| wifi random 1% | 0 % | 76.7 | 73.0 | 111.0 | 70.7 | 3.7 | -38.1 | -2.2 |
+| wifi random 3% | 0 % | 133.5 | 114.6 | 141.3 | 118.2 | 18.9 | -26.8 | +3.6 |
+| wifi random 5% | 0 % | 185.1 | 153.3 | 177.2 | 156.5 | 31.8 | -23.9 | +3.2 |
+| wifi random 10% | 0 % | 261.8 | 260.5 | 274.8 | 264.2 | 1.3 | -14.3 | +3.8 |
+| wifi burst (A-MPDU) | 0 % | 153.0 | 131.4 | 172.2 | 142.4 | 21.6 | -40.8 | +11.0 |
+| wifi 450 Mbit/s link | 60 % | 68.3 | 50.0 | 51.4 | 36.6 | 18.3 | -1.4 | -13.3 |
+| wifi 600 Mbit/s headroom | 70 % | 38.4 | 40.6 | 44.5 | 49.1 | -2.2 | -3.9 | +10.7 |
 
 ### Reading: does prioritized FEC earn its 17 percent?
 
-On these numbers, not as configured -- but the class A half of it does.  Averaged over the six single-path loss scenarios at 300 Mbit/s, the full 30 / 10 / 0 policy costs 13.65 percentage points of wire overhead and leaves 10.6 MORE tiles concealed per frame than running with no parity at all (0.46 % of the 2312-tile frame): it makes the picture worse, not better.  Split in two, class A parity costs 10.10 pp and removes 15.9 concealed tiles per frame, best 33.8 at 5.6 % measured loss, while the class B row on top costs a further 3.55 pp and puts 26.5 of them back.  Class A only beat no FEC in 6 of 6 scenarios; the full policy beat it in 1.
+The class A half earns it; the rest does not, at any headroom measured.  Across 8 scenarios spanning 0 to 70 % headroom and 0 to 10 % link loss, class A parity alone (10.1 pp of wire overhead) left fewer tiles concealed than no parity at all in 7 of them, averaging 13.9 tiles per frame saved and peaking at 31.8.  The class B row on top of it helped in 0 of 8: it cost tiles in every other scenario, up to 45.0 per frame, for a further 3.5 pp of overhead.  The full 30 / 10 / 0 policy beat no-parity in only 2 of 8.
 
-The mechanism is the band deadline, not the coding.  Parity is extra bytes in the same band window as the data it protects, on a link carrying 189 Mbit/s of a 300 Mbit/s budget whose per-band burst is several times that, so the parity for band b delays band b+1 into its own deadline.  The reference-age columns show how sharp that edge is: with parity off, 98.2 % of tiles still reference N-1, and with the full policy on, 1.1 % do -- the 17 % of parity bytes costs essentially every tile a full frame of reference recency, which PAPER 6.6 prices at a further 5 to 10 % of bits.  That second-order cost is larger than the parity itself and is not in the paper's budget at all.
+The mechanism is the band deadline, not the coding.  Parity is extra bytes in the same band window as the data it protects, and the per-band burst is several times the average rate, so the parity for band b delays band b+1 into its own deadline.  Class A parity is cheap enough that the datagrams it recovers outnumber the ones it delays; the class B row is not.  The reference-age columns show the same edge from the other side: on the 300 Mbit/s link, parity off holds 33.2 % of tiles on N-1 and the full policy holds 1.1 %, so the parity bytes also cost nearly every tile a frame of reference recency, which PAPER 6.6 prices at a further 5 to 10 % of bits.  That second-order cost is not in the paper's budget at all.
 
-The 600 Mbit/s control says the opposite, and says it loudly: with the air no longer the constraint, concealment is 153.7 / 40.6 / 44.5 tiles per frame for off / class A / full, so parity is worth far more than its bytes -- and both settings hold 99.7 % of tiles on N-1.  Whether prioritized FEC earns its overhead is therefore not a property of the FEC at all; it is a property of the link headroom, and the parity ladder of PAPER 4.4 keys off measured loss when it should key off measured headroom.
+Two false leads are worth recording, because both looked like results.  The first version of this sweep ran against the v1 deadline controller, whose climb rule has a dead zone: a band that is systematically a millisecond late is about 6 % of a frame, under the 10 % miss threshold, so the deadline never moved and those tiles stayed concealed forever.  That inflated the parity-off column on fast links to 153.7 tiles per frame and made FEC look like a large win there.  With decision D24 in place the same row is 38.4, and the apparent win disappears.  The second was a headroom-gated ladder built on that inflated control: it turned the class B row on above 50 % headroom and escalated parity on measured loss, which on a link whose loss is mostly congestion loss caused by its own parity is a positive feedback loop.  It spent 25.9 % of the wire and concealed more than either fixed setting.  Both are why the shipped default is the plain one: class A parity at the nominal ratio, no class B or C, no loss escalation.
 
-One caveat on the control row that has to be stated rather than smoothed over: its parity-off concealment (153.7 tiles per frame, 128.7 of them late) is worse than the same setting at 300 Mbit/s, which is backwards for a faster link.  The deadline-offset column is the tell.  The controller of PAPER 4.3 climbs on a miss but only relaxes after 90 consecutive frames with zero missing tiles, and on a fast link it reaches that condition often enough to relax back into the miss region and oscillate.  So the control row measures the controller as much as the FEC, and the sweep should be re-run with the deadline pinned before any of these numbers are used to change the parity policy.  It is logged as an open issue, not folded into the conclusion.
-
-Two caveats before this is read as an argument for switching FEC off.  A concealed tile is not a lost tile: it is a warp of the previous frame, which is nearly free in the periphery and very visible in the fovea, and that asymmetry is exactly what the class weighting exists to exploit -- so counting tiles understates class A parity and overstates class B.  And the intra column is the GRACE comparison in one number: it never rises above 1.6 % in any of the twenty-one rows, with or without parity, because a concealed tile stays an exact reference here (decisions D10 and D17) and a loss therefore costs one frame of prediction rather than an undecodable frame.  That structural resilience is what GRACE trains a network to acquire and what NX Warp gets from the reference model for free; it, rather than the concealment counts, is the real argument for spending less on FEC.
-
-Recommendation from this table: keep class A parity, make the class B row conditional on measured loss instead of always-on (the ladder in PAPER 4.4 already has the hook -- it just starts in the wrong place), and re-run this sweep against a quality metric rather than a tile count before committing.
+Caveats that still stand.  A concealed tile is not a lost tile -- it is a warp of the previous frame, nearly free in the periphery and very visible in the fovea -- so a tile count understates class A parity and overstates class B, and the sweep should be repeated against VMAF or the foveated metric of PAPER 5.3 before the class B row is removed from the syntax rather than merely from the default.  And the intra column is the GRACE comparison in one number: it stays near zero in every row, with or without parity, because a concealed tile remains an exact reference (decisions D10 and D17), so a loss costs one frame of prediction rather than an undecodable frame.  That structural resilience is what GRACE trains a network to acquire and what NX Warp gets from the reference model for free -- and it, not the concealment counts, is the strongest argument here for spending less on FEC.
 
 ## v1 to v2: what the wire revision bought
 
@@ -118,37 +130,37 @@ row says otherwise.
 
 | quantity | v1 | v2 | change |
 |---|---|---|---|
-| datagrams per frame | 296 | 236 | -20.1 % |
-| datagrams per second | 26.6 k | 21.3 k | -20.1 % |
+| datagrams per frame | 296 | 226 | -23.6 % |
+| datagrams per second | 26.6 k | 20.3 k | -23.6 % |
 | tiles per run | 8.9 | 11.3 | +27.2 % |
 | overhead, headers and directory only | 8.75 % | 7.84 % | -0.91 pp |
-| overhead including FEC | 24.52 % | 21.39 % | -3.13 pp |
-| overhead including FEC and IPv4/UDP | 26.73 % | 23.32 % | -3.42 pp |
-| blended FEC parity | 20.9 % | 17.2 % | -3.7 pp |
-| bytes repaired by FEC (of which needed) | 0.20 MB (0.19) | 0.13 MB (0.13) | see below |
-| concealed tiles per frame | 202.2 | 92.7 | -109.6 |
-| feedback, mean bytes / rate | 102 B, 0.44 Mbit/s | 92 B, 0.40 Mbit/s | unchanged |
+| overhead including FEC | 24.52 % | 17.21 % | -7.31 pp |
+| overhead including FEC and IPv4/UDP | 26.73 % | 19.25 % | -7.48 pp |
+| blended FEC parity | 20.9 % | 11.3 % | -9.6 pp |
+| bytes repaired by FEC (of which needed) | 0.20 MB (0.19) | 0.00 MB (0.00) | see below |
+| concealed tiles per frame | 202.2 | 47.1 | -155.2 |
+| feedback, mean bytes / rate | 102 B, 0.44 Mbit/s | 89 B, 0.39 Mbit/s | unchanged |
 | frame complete p50, 150 Mbit/s link | 10.50 ms | 10.50 ms | +0.00 ms |
-| frame complete p50, 300 Mbit/s link | 8.65 ms | 8.66 ms | +0.01 ms |
-| frame complete p50, 600 Mbit/s link | 7.07 ms | 7.00 ms | -0.07 ms |
-| frame complete p50, USB | 4.29 ms | 4.21 ms | -0.08 ms |
-| references on N-1 at 300 Mbit/s | 1.1 % | 1.1 % | +0.1 pp |
-| references on N-2 at 300 Mbit/s | 95.8 % | 97.5 % | +1.8 pp |
-| references on N-1 at 600 Mbit/s | 99.6 % | 99.7 % | +0.1 pp |
-| references on N-1 on USB | 99.6 % | 99.6 % | +0.0 pp |
+| frame complete p50, 300 Mbit/s link | 8.65 ms | 8.50 ms | -0.15 ms |
+| frame complete p50, 600 Mbit/s link | 7.07 ms | 7.09 ms | +0.03 ms |
+| frame complete p50, USB | 4.29 ms | 4.11 ms | -0.18 ms |
+| references on N-1 at 300 Mbit/s | 1.1 % | 1.3 % | +0.2 pp |
+| references on N-2 at 300 Mbit/s | 95.8 % | 97.6 % | +1.8 pp |
+| references on N-1 at 600 Mbit/s | 99.6 % | 99.9 % | +0.3 pp |
+| references on N-1 on USB | 99.6 % | 99.7 % | +0.1 pp |
 
 ## Paper claims against these numbers
 
 | PAPER claim | value here | verdict |
 |---|---|---|
 | 4.1: about 90 bytes per 64x64 tile at 150 Mbit / 90 Hz | 89.5 bytes (the generator is calibrated to it) | by construction |
-| 4.1: about 150 datagrams per frame, 13.5 kpps | 236 per frame, 21.3 kpps | **contradicted**, 1.6x the paper |
-| 4.1: 5.5 % overhead (24-byte header + 4-byte directory against 1800 payload bytes) | 7.84 % headers and directory only, 21.39 % with FEC, 23.32 % with FEC and IPv4/UDP | **contradicted** |
-| 4.4: blended FEC overhead about 14.5 % | 17.2 % | **contradicted**, structural (see below) |
-| 4.4: feedback about 100 bytes, 0.4 Mbit/s uplink | 92 bytes mean, 0.40 Mbit/s | holds, with the RLE bitmap of decision D9 |
-| 4.2: frame complete 6.8 ms after render finish on WiFi | 10.50 ms p50 at 150, 8.66 ms at 300, 7.00 ms at 600 Mbit/s, 4.21 ms on USB | see below |
-| 4.5: on WiFi the top bands reference N-1 and the bottom bands N-2 | N-1 for 0.5 % at 150, 1.1 % at 300, 99.7 % at 600 Mbit/s, 99.6 % on USB | see below |
-| 4.8: class A duplication costs at most 35 % of bits | 28.8 % of datagrams duplicated, wire rate 267 vs 189 Mbit/s (+41 %) | **contradicted on the wire**: duplicating a class A datagram duplicates its header, tag and parity too, so 32.6 % of codec bits costs 41 % of wire bytes |
+| 4.1: about 150 datagrams per frame, 13.5 kpps | 226 per frame, 20.3 kpps | **contradicted**, 1.5x the paper |
+| 4.1: 5.5 % overhead (24-byte header + 4-byte directory against 1800 payload bytes) | 7.84 % headers and directory only, 17.21 % with FEC, 19.25 % with FEC and IPv4/UDP | **contradicted** |
+| 4.4: blended FEC overhead about 14.5 % | 11.3 % | **contradicted**, structural (see below) |
+| 4.4: feedback about 100 bytes, 0.4 Mbit/s uplink | 89 bytes mean, 0.39 Mbit/s | holds, with the RLE bitmap of decision D9 |
+| 4.2: frame complete 6.8 ms after render finish on WiFi | 10.50 ms p50 at 150, 8.50 ms at 300, 7.09 ms at 600 Mbit/s, 4.11 ms on USB | see below |
+| 4.5: on WiFi the top bands reference N-1 and the bottom bands N-2 | N-1 for 0.6 % at 150, 1.3 % at 300, 99.9 % at 600 Mbit/s, 99.7 % on USB | see below |
+| 4.8: class A duplication costs at most 35 % of bits | 29.5 % of datagrams duplicated, wire rate 258 vs 180 Mbit/s (+44 %) | **contradicted on the wire**: duplicating a class A datagram duplicates its header, tag and parity too, so 32.6 % of codec bits costs 41 % of wire bytes |
 | 4.4: class shares about 35 / 40 / 25 of bits | 32.6 / 42.0 / 25.5 | by construction |
 | 6.6: the encoder's shadow is an exact mirror of the client | 0 mismatches in every scenario | holds, given decisions D10 and D17 |
 

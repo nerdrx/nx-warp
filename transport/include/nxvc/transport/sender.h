@@ -53,6 +53,17 @@ class Sender {
 
     void set_epoch(uint16_t e) { epoch_ = e; }
 
+    // Decision D25.  When on (the default), the parity ladder is re-derived
+    // each frame from measured headroom and loss instead of being fixed.
+    void set_auto_fec(bool on) { auto_fec_ = on; }
+    bool auto_fec() const { return auto_fec_; }
+    // 1 - wire_rate / delivery_rate over the up paths, clamped to [0, 1].
+    // Zero while any up path's RTT sits above 1.5x its baseline: a growing
+    // queue means the headroom is already spent, whatever the rate says.
+    double measured_headroom() const;
+    double measured_wire_bps() const { return wire_bps_; }
+    double measured_loss() const { return loss_frac_; }
+
     void begin_frame(uint16_t frame_id, const PoseHeader& pose,
                      uint32_t render_finish_us, uint32_t frame_bit_budget);
 
@@ -93,6 +104,11 @@ class Sender {
     BandScheduler sched_;
     ClientShadow shadow_;
 
+    bool auto_fec_ = true;
+    bool bc_parity_on_ = false;
+    double wire_bps_ = 0.0;       // EWMA of our own send rate
+    double loss_frac_ = 0.0;      // worst per-path loss from the last feedback
+    uint64_t frame_wire_bytes_ = 0;
     uint16_t frame_id_ = 0;
     PoseHeader pose_{};
     uint32_t render_finish_us_ = 0;

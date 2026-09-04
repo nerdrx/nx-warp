@@ -14,8 +14,35 @@ Sender::Sender(const StreamConfig& cfg, const Aead* aead, const Key& session_key
     }
 }
 
+double Sender::measured_headroom() const {
+    double rate = 0;
+    bool queue_growing = false;
+    for (uint8_t p = 0; p < kMaxPaths; ++p) {
+        const PathInfo& pi = striper_.path(p);
+        if (!pi.configured || !pi.up || pi.stalled) continue;
+        rate += pi.rate_bps;
+        if (pi.rtt_base_us && pi.rtt_us > (pi.rtt_base_us * 3) / 2) queue_growing = true;
+    }
+    if (rate <= 0.0 || wire_bps_ <= 0.0) return 0.0;
+    if (queue_growing) return 0.0;
+    double h = 1.0 - wire_bps_ / rate;
+    return h < 0.0 ? 0.0 : (h > 1.0 ? 1.0 : h);
+}
+
 void Sender::begin_frame(uint16_t frame_id, const PoseHeader& pose,
                          uint32_t render_finish_us, uint32_t frame_bit_budget) {
+    // Close the previous frame's send-rate estimate before the policy uses it.
+    if (frame_wire_bytes_ > 0 && cfg_.frame_period_us > 0) {
+        double inst = double(frame_wire_bytes_) * 8.0 * 1e6 / double(cfg_.frame_period_us);
+        wire_bps_ = wire_bps_ > 0.0 ? wire_bps_ * 0.75 + inst * 0.25 : inst;
+    }
+    frame_wire_bytes_ = 0;
+    if (auto_fec_) {
+        FecPolicy f = pkt_.fec();
+        f.set_class_a_only(loss_frac_);
+        bc_parity_on_ = false;
+        pkt_.set_fec(f);
+    }
     frame_ext_ = frame_started_ ? extend_seq16(frame_ext_, frame_id) : frame_id;
     frame_started_ = true;
     frame_id_ = frame_id;
@@ -103,6 +130,7 @@ std::vector<Datagram> Sender::send_band(uint8_t band, std::span<const TileInput>
             stats.datagrams++;
             stats.data_datagrams++;
             stats.wire_bytes += d.bytes.size();
+            frame_wire_bytes_ += d.bytes.size();
             stats.header_bytes += kHeaderBytes;
             stats.tag_bytes += kTagBytes;
             stats.dir_bytes += size_t(copy.hdr.tile_count) * kDirEntryBytes;
@@ -132,6 +160,7 @@ std::vector<Datagram> Sender::send_band(uint8_t band, std::span<const TileInput>
                 stats.datagrams++;
                 stats.parity_datagrams++;
                 stats.wire_bytes += d.bytes.size();
+                frame_wire_bytes_ += d.bytes.size();
                 stats.parity_bytes += d.bytes.size();
                 out.push_back(std::move(d));
             }
@@ -169,6 +198,12 @@ bool Sender::on_feedback(std::span<const uint8_t> wire, uint8_t path_id,
     shadow_.add_feedback_bytes(wire.size());
     stats.feedback_packets++;
     stats.feedback_bytes += wire.size();
+    double worst = 0.0;
+    for (uint8_t i = 0; i < kMaxPaths; ++i) {
+        const PathInfo& pi = striper_.path(i);
+        if (pi.configured && pi.up) worst = std::max(worst, double(fb.path_loss[i]) / 255.0);
+    }
+    loss_frac_ = loss_frac_ * 0.75 + worst * 0.25;
     for (uint8_t i = 0; i < kMaxPaths; ++i) {
         if (fb.path_rtt_ms[i]) striper_.update_rtt(i, uint32_t(fb.path_rtt_ms[i]) * 1000);
         // The feedback reports per-path loss; anything short of total loss is

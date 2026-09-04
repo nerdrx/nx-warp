@@ -49,6 +49,30 @@ struct FecPolicy {
     int ratio_pct[3] = {30, 10, 0};
     int min_parity[3] = {1, 0, 0};
     void set_from_loss(double loss_fraction);
+
+    // Decision D25: the ladder keys off measured *headroom* first and loss
+    // second.  Class A parity is unconditional (floor one block); class B and C
+    // parity are spent only when the link has room for them, because on a link
+    // near saturation the parity bytes push more tiles past the band deadline
+    // than they recover.  `headroom` is 1 - wire_rate / delivery_rate.
+    static constexpr double kBcHeadroom = 0.50;      // class B/C gate
+    static constexpr double kBcHeadroomDrop = 0.42;  // hysteresis on the way down
+    void set_from_headroom(double headroom, double loss_fraction, bool bc_was_on);
+
+    // What the sender actually runs by default (decision D25).  Class A parity
+    // at the nominal ratio and nothing else: measured over eight scenarios from
+    // 0 to 65 percent headroom, the class B row cost tiles in every one, and
+    // the loss escalation cost tiles wherever it fired.  `set_from_headroom`
+    // stays available for a future sweep against a quality metric, but is not
+    // the default, because no headroom tested made class B pay.
+    void set_class_a_only(double loss_fraction) {
+        ratio_pct[0] = loss_fraction < 0.001 ? 20 : 30;
+        ratio_pct[1] = 0;
+        ratio_pct[2] = 0;
+        min_parity[0] = 1;
+        min_parity[1] = 0;
+        min_parity[2] = 0;
+    }
     // Parity blocks for a group of k data datagrams of class `cls`.
     int parity_for(uint8_t cls, int k) const {
         if (cls > 2 || k <= 0) return 0;

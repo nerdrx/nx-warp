@@ -52,7 +52,7 @@ struct Pair {
 }  // namespace
 
 static void deadline_state_machine() {
-    tt::begin("deadline controller: 5 bad frames -> +1 ms, capped at 4 ms");
+    tt::begin("deadline controller: climb on miss, capped at 4 ms");
     DeadlineController d;
     TT_EQ(d.offset_us(), 0u);
     for (int i = 0; i < 4; ++i) d.on_frame(0.5);
@@ -62,28 +62,110 @@ static void deadline_state_machine() {
     TT_CHECK(d.moved());
     d.clear_moved();
     // A good frame resets the run.
-    d.on_frame(0.0);
+    d.on_frame(0.0, 0);
     for (int i = 0; i < 4; ++i) d.on_frame(0.5);
     TT_EQ(d.offset_us(), 1000u);
     d.on_frame(0.5);
     TT_EQ(d.offset_us(), 2000u);
-    // Cap at 4 ms.
-    for (int i = 0; i < 100; ++i) d.on_frame(0.9);
+    for (int i = 0; i < 200; ++i) d.on_frame(0.9);
     TT_EQ(d.offset_us(), 4000u);
     // Exactly 10 % missing does not trip it.
     DeadlineController e;
     for (int i = 0; i < 50; ++i) e.on_frame(0.10);
     TT_EQ(e.offset_us(), 0u);
-    // 90 consecutive fully clean frames relax it by 0.2 ms.
-    for (int i = 0; i < 90; ++i) d.on_frame(0.0);
-    TT_EQ(d.offset_us(), 3800u);
-    // A single hole resets the clean run.
-    for (int i = 0; i < 89; ++i) d.on_frame(0.0);
-    d.on_frame(0.001);
-    for (int i = 0; i < 89; ++i) d.on_frame(0.0);
-    TT_EQ(d.offset_us(), 3800u);
     tt::end();
 }
+
+// The 10 % miss threshold has a dead zone: a band that is systematically late
+// is only about 6 % of a frame, so the deadline never moved and those tiles
+// stayed concealed forever.  Late tiles are the sharper signal (D24).
+static void deadline_climbs_on_late_tiles() {
+    tt::begin("deadline climbs on late tiles, not just the miss fraction (D24)");
+    // Below the miss threshold, but tiles are arriving after the deadline.
+    DeadlineController d;
+    for (int i = 0; i < 4; ++i) d.on_frame(0.066, DeadlineController::kNoMargin, 0.056);
+    TT_EQ(d.offset_us(), 0u);
+    d.on_frame(0.066, DeadlineController::kNoMargin, 0.056);
+    TT_EQ(d.offset_us(), 1000u);
+
+    // Loss without lateness must NOT move the deadline: those tiles never
+    // arrived, and a later deadline cannot conjure them.
+    DeadlineController e;
+    for (int i = 0; i < 200; ++i) e.on_frame(0.05, 4000, 0.0);
+    TT_EQ(e.offset_us(), 0u);
+
+    // A trickle of late tiles under the threshold is tolerated.
+    DeadlineController f;
+    for (int i = 0; i < 200; ++i)
+        f.on_frame(0.0, 3000, DeadlineController::kLateFraction);
+    TT_EQ(f.offset_us(), 0u);
+    tt::end();
+}
+
+// Decision D24: the old rule relaxed after 90 consecutive zero-miss frames,
+// which a fast link reaches often enough to relax back into the miss region and
+// oscillate.  The replacement needs a full window of frames that all kept at
+// least kRelaxMarginUs of slack.
+static void deadline_relax_rule() {
+    tt::begin("deadline controller: relax needs a window of real slack (D24)");
+    const int W = DeadlineController::kRelaxWindowFrames;
+    DeadlineController d;
+    for (int i = 0; i < 5; ++i) d.on_frame(0.5);
+    TT_EQ(d.offset_us(), 1000u);
+    d.clear_moved();
+
+    // Clean frames that only just make the deadline do NOT relax it, however
+    // many there are.  This is the case the old rule got wrong.
+    for (int i = 0; i < 4 * W; ++i)
+        d.on_frame(0.0, DeadlineController::kRelaxMarginUs - 1);
+    TT_EQ(d.offset_us(), 1000u);
+    TT_CHECK(!d.moved());
+
+    // A full window with real slack steps down once, by kRelaxStepUs.
+    for (int i = 0; i < W; ++i) d.on_frame(0.0, 3000);
+    TT_EQ(d.offset_us(), 1000u - DeadlineController::kRelaxStepUs);
+    TT_CHECK(d.moved());
+    d.clear_moved();
+
+    // Hysteresis: the very next slack frame must not step again.
+    d.on_frame(0.0, 3000);
+    TT_EQ(d.offset_us(), 1000u - DeadlineController::kRelaxStepUs);
+    // Another full window does.
+    for (int i = 1; i < W; ++i) d.on_frame(0.0, 3000);
+    TT_EQ(d.offset_us(), 1000u - 2 * DeadlineController::kRelaxStepUs);
+
+    // One tight frame anywhere in the window blocks the step.
+    DeadlineController f;
+    for (int i = 0; i < 5; ++i) f.on_frame(0.5);
+    TT_EQ(f.offset_us(), 1000u);
+    for (int i = 0; i < W - 1; ++i) f.on_frame(0.0, 3000);
+    f.on_frame(0.0, 10);  // one frame with almost no slack
+    for (int i = 0; i < W - 1; ++i) f.on_frame(0.0, 3000);
+    TT_EQ(f.offset_us(), 1000u);
+
+    // A frame that missed tiles contributes no slack even if a margin is given.
+    DeadlineController g;
+    for (int i = 0; i < 5; ++i) g.on_frame(0.5);
+    for (int i = 0; i < W; ++i) g.on_frame(0.02, 5000);
+    TT_EQ(g.offset_us(), 1000u);
+
+    // A climb clears the window: the slack measured against the old, earlier
+    // deadline says nothing about the new one.
+    DeadlineController h;
+    for (int i = 0; i < 5; ++i) h.on_frame(0.5);
+    for (int i = 0; i < W - 1; ++i) h.on_frame(0.0, 5000);
+    for (int i = 0; i < 5; ++i) h.on_frame(0.5);
+    TT_EQ(h.offset_us(), 2000u);
+    h.on_frame(0.0, 5000);
+    TT_EQ(h.offset_us(), 2000u);
+
+    // It never relaxes below zero.
+    DeadlineController z;
+    for (int i = 0; i < 20 * W; ++i) z.on_frame(0.0, 5000);
+    TT_EQ(z.offset_us(), 0u);
+    tt::end();
+}
+
 
 static void placement_is_order_independent() {
     tt::begin("placement is position addressed: no reorder buffer");
@@ -321,6 +403,8 @@ static void failure_modes() {
 
 int main() {
     deadline_state_machine();
+    deadline_relax_rule();
+    deadline_climbs_on_late_tiles();
     placement_is_order_independent();
     duplicate_suppression();
     fec_recovery_in_the_live_path();

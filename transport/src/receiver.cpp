@@ -56,27 +56,47 @@ const FrameRing::Slot* FrameRing::find(uint16_t frame_id) const {
 }
 
 // --------------------------------------------------------- DeadlineController
-void DeadlineController::on_frame(double miss_fraction) {
-    if (miss_fraction > 0.10) {
-        if (++consecutive_miss_ >= 5 && offset_us_ < 4000) {
-            offset_us_ += 1000;
+void DeadlineController::on_frame(double miss_fraction, int32_t min_margin_us,
+                                  double late_fraction) {
+    // Climb, never gated by the hold, because a deadline that is too early has
+    // to be fixed at once.  Either signal trips it: too much of the frame
+    // missing, or any material share of it arriving after the deadline.
+    if (miss_fraction > kMissFraction || late_fraction > kLateFraction) {
+        if (++consecutive_miss_ >= kClimbFrames && offset_us_ < kMaxOffsetUs) {
+            offset_us_ += kClimbStepUs;
+            if (offset_us_ > kMaxOffsetUs) offset_us_ = kMaxOffsetUs;
             consecutive_miss_ = 0;
             moved_ = true;
+            margins_.clear();  // the window describes the old deadline
+            hold_frames_ = 0;
         }
     } else {
         consecutive_miss_ = 0;
     }
-    if (miss_fraction == 0.0) {
-        if (++clean_frames_ >= 90) {
-            clean_frames_ = 0;
-            if (offset_us_) {
-                offset_us_ = offset_us_ > 200 ? offset_us_ - 200 : 0;
-                moved_ = true;
-            }
-        }
-    } else {
-        clean_frames_ = 0;
-    }
+
+    // A frame that missed anything contributes no slack, so one bad frame in
+    // the window is enough to block a relax.
+    int32_t m = miss_fraction > 0.0 ? kNoMargin : min_margin_us;
+    margins_.push_back(m);
+    if (int(margins_.size()) > kRelaxWindowFrames) margins_.pop_front();
+    if (hold_frames_ < kRelaxWindowFrames) ++hold_frames_;
+
+    // Relax: only when the window is full, the hysteresis hold has expired and
+    // even the worst frame in it kept kRelaxMarginUs of slack.
+    if (offset_us_ == 0) return;
+    if (int(margins_.size()) < kRelaxWindowFrames) return;
+    if (hold_frames_ < kRelaxWindowFrames) return;
+    if (window_worst_margin_us() < kRelaxMarginUs) return;
+    offset_us_ = offset_us_ > kRelaxStepUs ? offset_us_ - kRelaxStepUs : 0;
+    moved_ = true;
+    hold_frames_ = 0;
+    margins_.clear();
+}
+
+int32_t DeadlineController::window_worst_margin_us() const {
+    int32_t worst = INT32_MAX;
+    for (int32_t v : margins_) worst = v < worst ? v : worst;
+    return margins_.empty() ? kNoMargin : worst;
 }
 
 // ------------------------------------------------------------------- Receiver
@@ -414,16 +434,29 @@ ByteVec Receiver::band_deadline(uint16_t frame_id, uint8_t band, uint64_t now_us
     }
     br.fec_failed = uint8_t(std::min<uint32_t>(255, band_fec_fail_[band]));
 
+    // Arrival margin for this band: how far inside its deadline the last
+    // datagram landed.  A band that missed tiles or received nothing keeps no
+    // slack by definition (decision D24).
+    int32_t band_margin = DeadlineController::kNoMargin;
+    if (missing == 0 && band_rx_seen_[band])
+        band_margin = int32_t(now_us - uint64_t(band_rx_last_[band]));
+
     if (!acct_valid_ || acct_frame_ != frame_id) {
         if (acct_valid_ && acct_total_)
-            deadline_.on_frame(double(acct_missed_) / double(acct_total_));
+            deadline_.on_frame(double(acct_missed_) / double(acct_total_),
+                               acct_min_margin_,
+                               double(acct_late_) / double(acct_total_));
         acct_frame_ = frame_id;
         acct_valid_ = true;
         acct_total_ = 0;
         acct_missed_ = 0;
+        acct_late_ = 0;
+        acct_min_margin_ = INT32_MAX;
     }
     acct_total_ += n;
     acct_missed_ += missing;
+    acct_late_ += band_late_[band];
+    if (band_margin < acct_min_margin_) acct_min_margin_ = band_margin;
 
     recent_bands_.push_front(br);
     while (recent_bands_.size() > kMaxFeedbackBands) recent_bands_.pop_back();
@@ -478,10 +511,10 @@ ByteVec Receiver::band_deadline(uint16_t frame_id, uint8_t band, uint64_t now_us
 
     band_rx_seen_[band] = 0;
     band_rx_first_[band] = 0;
+    band_rx_last_[band] = 0;
     band_late_[band] = 0;
     band_fec_rec_[band] = 0;
     band_fec_fail_[band] = 0;
-    (void)now_us;
     return out;
 }
 
