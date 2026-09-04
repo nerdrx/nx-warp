@@ -63,16 +63,24 @@ supported mask. No renumbering is needed for it in either case.
 ## 2. Bits 24-31: the tournament allocation
 
 **`JUDGE-detail.md` landed first and fixes `detail-a`'s two bits**, so detail
-merges first and every later package renumbers around 19 and 24. That is the
-one external constraint on this table; the rest follows the one-slot-per-tool
-rule.
+merges first and every later package renumbers around 19 and 24.
+**`JUDGE-ctx.md` then merged a combination** -- ctx-a's `CTX_V3` plus ctx-b's
+`TAB_V2` -- and **dropped `VEC_ENT`**, which frees a slot and settles what the
+ctx package's second tool is. The rest follows the one-slot-per-tool rule.
+
+`JUDGE-ctx.md` proposed a slightly different map (25 `XFORM_LARGE`,
+26 `CTX_V3`, 27 `TAB_V2`, 28 `VEC_ENT` reserved), explicitly "offered for
+`JUDGE-xform.md` to adopt or amend". The table below is the coordinator's
+amendment and is the one the merge uses: `VEC_ENT` gets no reservation at all,
+so a dropped tool leaves no bit with a history for a later package to inherit.
 
 | bit | name | tool | branches claiming it | claimed | action |
 |---|---|---|---|---|---|
 | 19 | `XFORM_4X4_SPLIT` | per-block 4x4 split | `detail-a`, `detail-b` | 19 | **fixed by the judge**, no change |
 | 24 | `INTRA_CFL` | chroma-from-luma | `detail-a`, `detail-b` | 24 | **fixed by the judge**, no change |
-| 25 | `CTX_V3` | the third context model | `ctx-a` (24), `ctx-b` (25) | 24 / 25 | **move to 25** |
-| 26 | `VEC_ENT` or `TAB_V2` | the ctx package's second tool | `ctx-a` `VEC_ENT` (25), `ctx-b` `TAB_V2` (24) | 25 / 24 | **move to 26**, named for the winner |
+| 25 | `CTX_V3` | the third context model, **ctx-a's 27-context layout** | `ctx-a` (24), `ctx-b` (25) | 24 / 25 | **move to 25** |
+| 26 | `TAB_V2` | variable-length table sets, **ctx-b's format** | `ctx-b` (24) | 24 | **move to 26** |
+| -- | ~~`VEC_ENT`~~ | vector entropy coding | `ctx-a` (25) | 25 | **DROPPED by `JUDGE-ctx.md`**, no bit allocated |
 | 27 | `XFORM_LARGE` | 16x16 and 32x32 transforms | `xform-a`, `xform-b` | 24 | **move 24 -> 27** |
 | 28 | `NEAR_SKIP` | near-skip DC/ramp correction | `inter-a` `NEAR_SKIP` (24), `inter-b` `WARP_DC` (24) | 24 | **move to 28**; `inter-b` renamed onto `NEAR_SKIP` |
 | 29 | `QUAD_MV` | four quadrant vectors per tile | `inter-a` `QUAD_MV` (25), `inter-b` `MV_QUAD` (25) | 25 | **move to 29**; `inter-b` renamed onto `QUAD_MV` |
@@ -95,7 +103,7 @@ put a second tool on bit 25:
 | bit | claimed by |
 |---|---|
 | 24 | `xform-a` `XFORM_LARGE`, `xform-b` `XFORM_LARGE`, `detail-a` `INTRA_CFL`, `detail-b` `INTRA_CFL`, `ctx-a` `CTX_V3`, `ctx-b` `TAB_V2`, `inter-a` `NEAR_SKIP`, `inter-b` `WARP_DC` |
-| 25 | `ctx-a` `VEC_ENT`, `ctx-b` `CTX_V3`, `inter-a` `QUAD_MV`, `inter-b` `MV_QUAD` |
+| 25 | `ctx-a` `VEC_ENT` (dropped), `ctx-b` `CTX_V3`, `inter-a` `QUAD_MV`, `inter-b` `MV_QUAD` |
 | 26 | `inter-a` `SUBTILE_INTRA` |
 
 Every branch was correct in isolation -- 24 was the next free bit on `main` for
@@ -157,7 +165,7 @@ entirely on the inter verdict.
 |---|---|---|
 | 24-25 | `wgt` | existing |
 | 26-27 | `wm_id` | tool bit 20 `WM_ID` |
-| 28 | `split4x4` | tool bit 19 `XFORM_4X4_SPLIT` -- **as `detail-a` authored it; detail merges first, so this bit does not move** |
+| 28 | `split4x4` | tool bit 19 `XFORM_4X4_SPLIT` -- **as `detail-a` authored it; detail merges first, so this bit does not move**. Meaningful only when `xform_size == 8`; see 4.2 |
 | 29-30 | `xform_size` | tool bit 27 `XFORM_LARGE` -- moved down from `xform`'s 28-29 |
 | 31 | `tile_ext` | tool bit 31 `TILE_EXT` -- one extension byte follows the tile header |
 
@@ -205,7 +213,7 @@ is exactly the "one implementation per idea" the rules ask for the opposite of.
 |---|---|---|
 | 24-25 | `wgt` | existing |
 | 26-27 | `wm_id` | tool bit 20 |
-| 28 | `split4x4` | tool bit 19 `XFORM_4X4_SPLIT` -- **as `detail-a` authored it** |
+| 28 | `split4x4` | tool bit 19 `XFORM_4X4_SPLIT` -- **as `detail-a` authored it**. Meaningful only when `xform_size == 8`; see 4.2 |
 | 29-30 | `xform_size` | tool bit 27 `XFORM_LARGE` -- moved down from `xform`'s 28-29 |
 | 31 | `quad_mv` | tool bit 29 `QUAD_MV` (`inter-b`'s `mv_quad`, renamed) |
 
@@ -218,7 +226,25 @@ touches.
 This is the layout the merge should prefer unless `inter-a` wins on BD-rate by
 a margin that clearly beats the extension byte.
 
-### 4.1 The reserved-tile-bit reject vector
+### 4.2 `split4x4` and `xform_size` compose, they do not merge
+
+Decided: the two stay **separate fields**, because they act at different
+granularities -- `xform_size` is per tile and selects 8, 16 or 32, while
+`split4x4` is per 8x8 block and splits it to 4x4. Collapsing them into one
+size ladder would conflate a tile-level choice with a block-level one.
+
+The rule that lets both be set on the same stream:
+
+> `split4x4` is present and meaningful **only when the tile's
+> `xform_size == 8`**. A tile with `xform_size != 8` and `split4x4 == 1` is
+> **`BITSTREAM`**.
+
+In word1 terms: bit 28 must be zero unless bits 29-30 select the 8x8
+transform, and when bit 28 is zero the payload codes no per-block split flag.
+It needs a rejection vector of its own and an Appendix A entry; see
+`docs/MERGE-PLAN.md` 4.4.
+
+### 4.3 The reserved-tile-bit reject vector
 
 `tests/vectors/r09_reserved_tile_bit.nxv` pins "word1 bits 28-31 must be zero".
 Every layout above consumes those bits, so the vector must move to the highest
@@ -308,8 +334,8 @@ Assuming the trial stack, `NXVC_TOOLS_SUPPORTED` gains, over `merge-main`:
 ```
 NXVC_TOOL_XFORM_4X4_SPLIT   (1ull << 19)   detail-a   (judge-fixed)
 NXVC_TOOL_INTRA_CFL         (1ull << 24)   detail-a   (judge-fixed)
-NXVC_TOOL_CTX_V3            (1ull << 25)   ctx
-NXVC_TOOL_VEC_ENT           (1ull << 26)   ctx-a   -- or TAB_V2 if ctx-b wins
+NXVC_TOOL_CTX_V3            (1ull << 25)   ctx-a's model  (ships OFF by default)
+NXVC_TOOL_TAB_V2            (1ull << 26)   ctx-b's format (ships OFF by default)
 NXVC_TOOL_XFORM_LARGE       (1ull << 27)   xform
 NXVC_TOOL_NEAR_SKIP         (1ull << 28)   inter
 NXVC_TOOL_QUAD_MV           (1ull << 29)   inter
@@ -317,4 +343,14 @@ NXVC_TOOL_SUBTILE_INTRA     (1ull << 30)   inter-a only
 NXVC_TOOL_TILE_EXT          (1ull << 31)   inter-a only, option A
 ```
 
-and `NXVC_BITSTREAM_MINOR` becomes 6.
+and `NXVC_BITSTREAM_MINOR` becomes 6. (`JUDGE-ctx.md` step 13 says v1.5,
+correctly for the ctx package on its own; the tournament merges every package
+under **one** minor bump, and 5 is skipped because eight of the ten branches
+each set 5 for their own package.)
+
+**`CTX_V3` and `TAB_V2` ship OFF by default**, per `JUDGE-ctx.md` step 6 and
+ctx-a's convention: `vk/decoder/passA` does not implement bit 25 yet, so both
+stay out of `kToolsSupported` in `nxvc_vkdec_parse.cpp` and the Vulkan decoder
+refuses them with `VERSION`. That is what keeps the reference encoder's
+**default** output decodable by the Vulkan decoder, which is the property the
+whole tournament's tool-bit discipline exists to protect.

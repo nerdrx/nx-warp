@@ -51,14 +51,22 @@ ALLOC = {
     # merges first and every later package renumbers around 19 and 24.
     "XFORM_4X4_SPLIT": 19,   # detail-a, pre-declared on merge-main
     "INTRA_CFL":       24,   # detail-a
-    "CTX_V3":          25,   # ctx
-    "VEC_ENT":         26,   # ctx-a's second tool
-    "TAB_V2":          26,   # ctx-b's second tool (only one ctx branch wins)
+    "CTX_V3":          25,   # ctx-a's model, per JUDGE-ctx.md
+    "TAB_V2":          26,   # ctx-b's table format, per JUDGE-ctx.md
     "XFORM_LARGE":     27,   # xform
     "NEAR_SKIP":       28,   # inter
     "QUAD_MV":         29,   # inter
     "SUBTILE_INTRA":   30,   # inter-a only
     "TILE_EXT":        31,   # inter-a only, option A
+}
+
+# Tools a judge examined and refused.  If one of these turns up in the merged
+# header, something was merged that should not have been: the name must go,
+# not just move.  JUDGE-ctx.md drops VEC_ENT -- structural decoder cost for no
+# measurable gain -- and it is deliberately left unallocated rather than
+# reassigned, so a later package does not inherit a bit with a history.
+DROPPED = {
+    "VEC_ENT": "JUDGE-ctx.md: dropped, structural cost for nothing measurable",
 }
 
 # Names that mean the same tool.  Applied across the whole tree before the
@@ -213,6 +221,16 @@ def main():
     apply_aliases()
 
     header = read(NXVC_H)
+    for name, why in DROPPED.items():
+        if present(header, name):
+            print("retool-bits: ERROR NXVC_TOOL_%s is in the merged header, but "
+                  "it was dropped." % name, file=sys.stderr)
+            print("  %s" % why, file=sys.stderr)
+            print("  Remove the tool, not just its bit: the #define, the supported "
+                  "mask, the", file=sys.stderr)
+            print("  python mirrors, its syntax section, its vectors and its tests.",
+                  file=sys.stderr)
+            return 1
     alloc_present = {n: b for n, b in ALLOC.items() if present(header, n)}
     if not alloc_present:
         print("retool-bits: no tournament tools in this tree, nothing to do")

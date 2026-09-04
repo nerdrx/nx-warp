@@ -61,13 +61,18 @@ fi
 # rdo package last so vectors are regenerated exactly once.
 order_key() {
     case "$1" in
-        detail-*) echo 1 ;;
-        ctx-*)    echo 2 ;;
-        xform-*)  echo 3 ;;
-        inter-*)  echo 4 ;;
-        rdo-*)    echo 5 ;;
-        percept|sparse) echo 9 ;;
-        *)        echo 8 ;;
+        detail-*) echo 10 ;;
+        # JUDGE-ctx.md merges a COMBINATION, not a branch: ctx-b is the base
+        # (naming, quantize_row, the variable-length table area) and ctx-a's
+        # 27-context model replaces ctx-b's 22.  So ctx-b lands first.
+        ctx-b)    echo 20 ;;
+        ctx-a)    echo 21 ;;
+        ctx-*)    echo 22 ;;
+        xform-*)  echo 30 ;;
+        inter-*)  echo 40 ;;
+        rdo-*)    echo 50 ;;
+        percept|sparse) echo 90 ;;
+        *)        echo 80 ;;
     esac
 }
 
@@ -96,6 +101,17 @@ else
 fi
 
 say "merge order: ${SORTED[*]:-(none, resuming)}"
+case " ${SORTED[*]:-} " in
+    *" ctx-a "*ctx-b*|*" ctx-b "*ctx-a*)
+        info ""
+        info "NOTE: ctx is a COMBINATION, not two merges (JUDGE-ctx.md, 13 steps)."
+        info "  ctx-b is the base; ctx-a's 27-context model REPLACES ctx-b's 22,"
+        info "  re-expressed in ctx-b's accessor shape.  DROP ctx-a's VEC_ENT and"
+        info "  its unconditional table reassignment.  Retrain the v3 tables with"
+        info "  nxv-gentables v3 -- neither branch's kDefaultFreqV3 survives."
+        info "  Both bits ship OFF by default.  See docs/MERGE-PLAN.md 4.7."
+        info "" ;;
+esac
 info "onto branch: $BRANCH"
 info "cpu: $NICE, -j$JOBS"
 
@@ -135,7 +151,12 @@ for b in ${SORTED[@]+"${SORTED[@]}"}; do
         msgs=()
         for f in $left; do
             case "$f" in
-              docs/SYNTAX.md)      msgs+=("$f -- three colliding tables + section numbering: docs/MERGE-PLAN.md 4.1") ;;
+              docs/SYNTAX.md)      msgs+=("$f -- three colliding tables + section numbering: docs/MERGE-PLAN.md 4.1"
+                                          "     DECIDED (4.4): split4x4 and xform_size stay SEPARATE fields."
+                                          "     split4x4 (word1 28, per 8x8 block) is meaningful only when the"
+                                          "     tile's xform_size (word1 29-30, per tile) == 8.  xform_size != 8"
+                                          "     with the split flag set is BITSTREAM -- add the constraint to 4.1"
+                                          "     and 6.8, a rejection vector, and an Appendix A entry.") ;;
               include/nxvc/nxvc.h) msgs+=("$f -- union NXVC_TOOLS_SUPPORTED, renumber per docs/TOOLBITS.md 2: MERGE-PLAN 4.2") ;;
               python/src/nxvc/_ffi.py) msgs+=("$f -- Tool.<NAME>, the names table AND Tool.RESERVED_FROM: MERGE-PLAN 4.2") ;;
               ref/src/transform.*) msgs+=("$f -- DECIDED, see MERGE-PLAN 4.4: ONE family fdct_2d(n)/idct_2d(n)"
