@@ -112,6 +112,15 @@ extern "C" {
  * and E4 has no overflow path. */
 #define NXE_UNIT_MAX_OPS    (3 + 64 * (1 + (NXE_ESC_MAX_PREFIX + 1) + 3 + 1))
 
+/* Per-lane operation scratch in E4.  When a lane's whole operation list fits,
+ * the counting pass materialises it once and the two rANS sweeps index it; when
+ * it does not, they fall back to regenerating one unit at a time, which is
+ * always correct and about three times slower.  2048 covers every measured
+ * frame down to QP 0 (a 4:2:0 tile at QP 0 peaks at 1693 operations per lane),
+ * and it must be at least NXE_UNIT_MAX_OPS because the fallback path writes one
+ * whole unit into the same slot. */
+#define NXE_LANE_OPS_CAP    2048
+
 /* ---------------------------------------------------------------- geometry
  *
  * Coefficients are stored per tile in the reference encoder's coding-unit
@@ -138,10 +147,25 @@ extern "C" {
 #define NXE_TILE_UNIT_SLOTS NXE_TILE_UNITS_MAX
 
 /* Bounded per-tile output slot, paper 3.6: "two bytes per coefficient plus
- * header".  Plus the rANS flush (4 bytes per lane) and the 8-byte tile header
- * E4 writes ahead of the payload. */
-#define NXE_TILE_SLOT_BYTES (8 + 4 * 8 + 2 * NXE_TILE_COEFS_MAX)  /* 25000 */
-#define NXE_TILE_SLOT_WORDS (NXE_TILE_SLOT_BYTES / 4)
+ * header".  The tile header and the rANS flush states sit at the front; the
+ * renormalisation words sit at the *end*, one whole word each, emission e at
+ * word (slot_end - 1 - e).
+ *
+ * A word per 16-bit emission rather than a half word costs twice the scratch
+ * and buys the whole second sweep.  E4 produces bytes back to front, so their
+ * final offsets are only known once the emission count is, which forced a
+ * counting pass and then a placing pass over the same operations.  Anchored at
+ * the end instead, the position of emission e is known the moment it is
+ * produced -- and reading that region forwards yields exactly the order the
+ * bitstream wants, because the sweep produces emissions in descending global
+ * order.  It also removes the read-modify-write: two emissions can no longer
+ * share a word, so there are no atomics and nothing to pre-zero. */
+/* The largest a tile's *output* can be: header, rANS flush, two bytes per
+ * coefficient.  The CPU model writes that contiguously; the GPU slot below is
+ * a scratch layout, not the same thing. */
+#define NXE_TILE_BYTES_MAX  (8 + 4 * 8 + 2 * NXE_TILE_COEFS_MAX)  /* 25000 */
+#define NXE_TILE_SLOT_WORDS (2 + 8 + NXE_TILE_COEFS_MAX)          /* 12490 */
+#define NXE_TILE_SLOT_BYTES (NXE_TILE_SLOT_WORDS * 4)             /* 49960 */
 
 /* Header sizes, ref/src/common.h. */
 #define NXE_STREAM_HEADER_BYTES 64

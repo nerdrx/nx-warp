@@ -83,9 +83,11 @@ typedef struct nxe_tile_units {
  * exclusive cumulative frequencies cum[set][ctx][sym].  This is exactly the
  * buffer the shader binds; `cum` has NXE_NUM_SYM entries per context, not
  * NXE_NUM_SYM+1, because the encoder never needs the final total. */
+/* 32-bit entries, not 16: this struct is uploaded verbatim as the shader's
+ * table buffer, and a std430 uint array is what E4 indexes. */
 typedef struct nxe_tables {
-    uint16_t freq[8][NXE_MAX_CTX][NXE_NUM_SYM];
-    uint16_t cum[8][NXE_MAX_CTX][NXE_NUM_SYM];
+    uint32_t freq[8][NXE_MAX_CTX][NXE_NUM_SYM];
+    uint32_t cum[8][NXE_MAX_CTX][NXE_NUM_SYM];
 } nxe_tables;
 
 /* Build the tile's unit list, mirroring TileCoder::build_units. */

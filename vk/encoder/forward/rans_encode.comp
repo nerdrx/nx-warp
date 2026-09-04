@@ -1,0 +1,402 @@
+#version 460
+// rans_encode.comp -- E4: interleaved rANS over one tile, eight lanes.
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// Paper 3.6: "8 lanes per tile, 8 tiles per group; rANS encoding runs
+// backwards over the symbol list, into a per-tile slot of bounded size;
+// writes actual byte count".  This is that pass.  The algorithm and why it is
+// the reference encoder's answer are written out in rans_cpu.h; the short
+// version:
+//
+//   ref's encode_units drives the lane machines in rounds, one operation per
+//   unfinished lane per round, in lane order.  A lane machine finishes once
+//   and never restarts, so lane l occupies rounds 0..nops[l]-1 and the global
+//   operation order is (round ascending, lane ascending).  rANS encodes that
+//   list backwards, so this kernel sweeps (round descending, lane descending)
+//   with all eight lanes in lockstep.  Each lane's rANS state depends only on
+//   its own operations, so the state updates are parallel; only the byte order
+//   is global, and a running emission counter plus an eight-lane rank inside
+//   the round settles it.
+//
+// The sweep runs twice.  The first pass counts emissions -- that count is the
+// tile's payload length and therefore its size for E2's prefix sum -- and the
+// second places the bytes, which it can only do once the length is known,
+// because the output is written front to back and produced back to front.
+// The sweep is deterministic, so the two passes cannot disagree.
+//
+// Operations are materialised one coding unit at a time into a per-lane global
+// scratch slot.  NXE_UNIT_MAX_OPS is an exact bound on what a unit can emit,
+// so the scratch is fixed and there is no overflow path.
+//
+// Workgroups are persistent: the scratch is indexed by workgroup slot, not by
+// tile, so its size is set by how many tiles are in flight rather than by how
+// many tiles exist.
+
+#extension GL_GOOGLE_include_directive : require
+#include "nxe_enc_common.glsl"
+
+layout(local_size_x = NXE_E4_WG, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430, binding = 0) readonly buffer ParamBuf { nxe_frame_params fp; };
+layout(std430, binding = 1)          buffer JobBuf   { nxe_tile_job jobs[]; };
+layout(std430, binding = 2) readonly buffer CoefBuf  { uint v[]; } coefb;
+layout(std430, binding = 3) readonly buffer ModeBuf  { uint v[]; } modeb;
+// freq[set][ctx][sym] then cum[set][ctx][sym], 8*32*16 uints each.
+layout(std430, binding = 4) readonly buffer TabBuf   { uint v[]; } tabs;
+// The bounded per-tile output slot, NXE_TILE_SLOT_WORDS per tile.
+layout(std430, binding = 5)          buffer SlotBuf  { uint v[]; } slot;
+// Per-tile byte sizes, the input to E2's prefix sum.
+layout(std430, binding = 6)          buffer SizeBuf  { uint v[]; } sizes;
+// Per (workgroup slot, lane) operation scratch, NXE_UNIT_MAX_OPS words each,
+// and the per-unit operation counts that let a lane walk its units backwards.
+layout(std430, binding = 7)          buffer OpBuf    { uint v[]; } ops;
+layout(std430, binding = 8)          buffer SlotOpBuf{ uint v[]; } slotops;
+
+#define TAB_FREQ(set, ctx, sym) tabs.v[uint((set) * 32 * 16 + (ctx) * 16 + (sym))]
+#define TAB_CUM(set, ctx, sym) \
+    tabs.v[uint(8 * 32 * 16 + (set) * 32 * 16 + (ctx) * 16 + (sym))]
+
+shared int  s_emit[8][8];
+shared int  s_nops[8][8];
+shared int  s_rmax;
+
+// ------------------------------------------------------------ per-tile state
+uint g_tile;
+uint g_coefbase;
+int  g_nunits, g_nlanes, g_active;
+int  g_ndc[NXE_MAX_PLANES], g_nb[NXE_MAX_PLANES];
+int  g_coefoff[NXE_MAX_PLANES], g_ustart[NXE_MAX_PLANES];
+int  g_hasmode;
+int  g_tskip, g_sdh, g_v2;
+
+// The unit list of TileCoder::build_units, addressed rather than materialised.
+struct UnitDesc {
+    int coef_off, ncoef, kind, nbx, mode_off;
+    int ctx_cbf, ctx_last, ctx_level, ctx_mode;
+    bool tskip;
+};
+
+UnitDesc unit_desc(int ui) {
+    UnitDesc u;
+    u.coef_off = 0; u.ncoef = 0; u.kind = 0; u.nbx = 0; u.mode_off = 0;
+    u.ctx_cbf = 0; u.ctx_last = 0; u.ctx_level = NXE_CTX_NONE;
+    u.ctx_mode = NXE_CTX_NONE; u.tskip = false;
+    int p = 0;
+    for (int k = NXE_MAX_PLANES - 1; k >= 0; --k)
+        if (ui >= g_ustart[k]) { p = k; break; }
+    int rel = ui - g_ustart[p];
+    bool chroma = (p == 1 || p == 2);
+    int ccbf = chroma ? NXE_CTX_CBF_CHROMA : NXE_CTX_CBF_LUMA;
+    int clast = chroma ? NXE_CTX_LAST_CHROMA : NXE_CTX_LAST_LUMA;
+    if (rel == 0) {                       // the DC plane
+        u.coef_off = g_coefoff[p];
+        u.ncoef = g_ndc[p];
+        u.ctx_cbf = g_v2 != 0 ? NXE_CTX_CBF_DC : ccbf;
+        u.ctx_last = g_v2 != 0 ? NXE_CTX_LAST_DC : clast;
+        u.ctx_level = g_v2 != 0 ? NXE_CTX_LEVEL_DC : NXE_CTX_NONE;
+        return u;
+    }
+    if (g_hasmode != 0 && rel == 1) {     // the mode unit
+        u.kind = 1;
+        u.nbx = g_nb[p];
+        u.mode_off = p;
+        u.ctx_mode = g_v2 != 0 ? NXE_CTX_MODE : NXE_CTX_NONE;
+        return u;
+    }
+    int b = rel - 1 - g_hasmode;
+    u.coef_off = g_coefoff[p] + g_ndc[p] + b * 64;
+    u.ncoef = 64;
+    u.tskip = g_tskip != 0;
+    u.ctx_cbf = ccbf;
+    u.ctx_last = clast;
+    return u;
+}
+
+int coef_at(int level_index) {
+    uint w = g_coefbase + uint(level_index >> 1);
+    w = min(w, uint(coefb.v.length()) - 1u);
+    return nxe_unpack16(coefb.v[w], level_index & 1);
+}
+int mode_at(int plane, int b) {
+    uint idx = g_tile * 3u * 64u + uint(plane) * 64u + uint(b);
+    uint w = idx >> 2;
+    if (w >= uint(modeb.v.length())) return 0;
+    return int((modeb.v[w] >> ((idx & 3u) * 8u)) & 0xffu);
+}
+
+// ------------------------------------------------------------ intra modes
+int mpm_of(int plane, int nbx, int b) {
+    int bx = b % nbx, by = b / nbx;
+    int left = bx > 0 ? mode_at(plane, b - 1) : 0;
+    int above = by > 0 ? mode_at(plane, b - nbx) : 0;
+    if (left == above) return left;
+    return left < above ? left : above;
+}
+int nonmpm_index(int mpm, int mode) {
+    int n = 0;
+    for (int m = 0; m < NXE_NUM_INTRA_MODES; ++m) {
+        if (m == mpm) continue;
+        if (m == mode) return n;
+        ++n;
+    }
+    return 0;
+}
+
+// --------------------------------------------------------- unit -> operations
+// rans_cpu.c's nxe_unit_ops, writing into this lane's scratch slot.
+//
+// Writes are clamped to `g_oplimit`.  The counting pass appends every unit's
+// operations into one contiguous per-lane list so the two sweeps can index it
+// instead of regenerating a unit every time they cross a boundary; when the
+// list does not fit in NXE_LANE_OPS_CAP the clamp drops the tail, the true
+// count still comes back, and the sweeps take the regenerating path.  So the
+// fast path is an optimisation with an exact fallback, not an assumption.
+uint g_oplimit;
+void op_put(uint at, uint w) { if (at < g_oplimit) ops.v[at] = w; }
+
+int unit_ops(int ui, uint opbase) {
+    UnitDesc u = unit_desc(ui);
+    int n = 0;
+
+    if (u.kind == 1) {
+        int nbx = u.nbx;
+        for (int b = 0; b < nbx * nbx; ++b) {
+            int mpm = mpm_of(u.mode_off, nbx, b);
+            int m = mode_at(u.mode_off, b);
+            if (u.ctx_mode != NXE_CTX_NONE) {
+                int v = (m == mpm) ? 0 : 1 + nonmpm_index(mpm, m);
+                op_put(opbase + uint(n++),
+                       NXE_OP_PACK(NXE_OP_SYM, u.ctx_mode, v));
+            } else {
+                op_put(opbase + uint(n++),
+                       NXE_OP_PACK(NXE_OP_BYPASS, 1, (m == mpm) ? 1 : 0));
+                if (m != mpm)
+                    op_put(opbase + uint(n++),
+                           NXE_OP_PACK(NXE_OP_BYPASS, 3,
+                                       nonmpm_index(mpm, m)));
+            }
+        }
+        return n;
+    }
+
+    int ncoef = u.ncoef;
+    int last = -1;
+    for (int p = ncoef - 1; p >= 0; --p)
+        if (coef_at(u.coef_off + nxe_scan(ncoef, u.tskip, p)) != 0) {
+            last = p;
+            break;
+        }
+    op_put(opbase + uint(n++),
+           NXE_OP_PACK(NXE_OP_SYM, u.ctx_cbf, last >= 0 ? 1 : 0));
+    if (last < 0) return n;
+
+    if (ncoef > 1) {
+        int cls = nxe_last_class_of(last);
+        op_put(opbase + uint(n++), NXE_OP_PACK(NXE_OP_SYM, u.ctx_last, cls));
+        if (nxe_last_raw_bits[cls] > 0)
+            op_put(opbase + uint(n++),
+                   NXE_OP_PACK(NXE_OP_BYPASS, nxe_last_raw_bits[cls],
+                               last - nxe_last_base[cls]));
+    } else {
+        last = 0;
+    }
+
+    bool hide = g_sdh != 0 && last >= NXE_SDH_MIN_LAST;
+    int prev = 0;
+    for (int p = last; p >= 0; --p) {
+        int q = coef_at(u.coef_off + nxe_scan(ncoef, u.tskip, p));
+        int m = q < 0 ? -q : q;
+        int ctx = u.ctx_level != NXE_CTX_NONE ? u.ctx_level
+                                              : nxe_level_ctx(p, prev);
+        op_put(opbase + uint(n++),
+               NXE_OP_PACK(NXE_OP_SYM, ctx, m > 14 ? NXE_ESC_SYM : m));
+        if (m > 14) {
+            // Exp-Golomb order 3 of m - 15, ref's eg3_encode.
+            uint nn = uint(m - 15) + (1u << NXE_ESC_ORDER);
+            int b = 0;
+            while ((nn >> uint(b + 1)) != 0u) ++b;
+            int j = b - NXE_ESC_ORDER;
+            int bits = b;
+            uint suf = nn - (1u << uint(b));
+            for (int i = 0; i < j; ++i)
+                op_put(opbase + uint(n++), NXE_OP_PACK(NXE_OP_BYPASS, 1, 1));
+            op_put(opbase + uint(n++), NXE_OP_PACK(NXE_OP_BYPASS, 1, 0));
+            int nchunks = (bits + 7) / 8;
+            int done = 0;
+            while (done < bits) {
+                int chunk = done == 0 ? bits - 8 * (nchunks - 1) : 8;
+                int shift = bits - done - chunk;
+                uint val = (suf >> uint(shift)) & ((1u << uint(chunk)) - 1u);
+                op_put(opbase + uint(n++),
+                       NXE_OP_PACK(NXE_OP_BYPASS, chunk, val));
+                done += chunk;
+            }
+        }
+        if (m != 0 && !(hide && p == last))
+            op_put(opbase + uint(n++),
+                   NXE_OP_PACK(NXE_OP_BYPASS, 1, q < 0 ? 1 : 0));
+        prev = nxe_level_class(m);
+    }
+    return n;
+}
+
+// -------------------------------------------------------------------- main
+void main() {
+    const uint lid = gl_LocalInvocationID.x;
+    const uint sub = lid >> 3;      // tile within the workgroup
+    const int  lane = int(lid & 7u);
+    const uint nwg = gl_NumWorkGroups.x;
+    const uint stride = nwg * uint(NXE_E4_TILES_PER_WG);
+    const uint slot_index = gl_WorkGroupID.x * uint(NXE_E4_TILES_PER_WG) + sub;
+    const uint opbase = (slot_index * 8u + uint(lane)) * uint(NXE_LANE_OPS_CAP);
+    const uint sobase = (slot_index * 8u + uint(lane)) * uint(NXE_TILE_UNIT_SLOTS);
+
+    nxe_init_tables(lid, uint(NXE_E4_WG));
+    barrier();
+
+    // A uniform iteration count keeps every barrier below in uniform control
+    // flow even when the tile count is not a multiple of the batch.
+    const uint iters = (fp.ntiles + stride - 1u) / stride;
+
+    for (uint it = 0u; it < iters; ++it) {
+        g_tile = it * stride + gl_WorkGroupID.x * uint(NXE_E4_TILES_PER_WG) + sub;
+        bool live = g_tile < fp.ntiles;
+        nxe_tile_job job = jobs[live ? g_tile : 0u];
+
+        g_coefbase = g_tile * uint(NXE_TILE_COEF_WORDS);
+        g_tskip = int(job.tskip);
+        g_sdh = int(fp.sdh);
+        g_v2 = fp.nctx >= uint(NXE_NCTX_V2) ? 1 : 0;
+        g_hasmode = int(fp.intra_dir);
+        g_nunits = 0;
+        for (int p = 0; p < NXE_MAX_PLANES; ++p) {
+            int nb = nxe_plane_size(job.chroma444, job.res_level, p) / 8;
+            g_nb[p] = nb;
+            g_ndc[p] = nb * nb;
+            g_coefoff[p] = nxe_plane_coef_offset(job.chroma444, job.res_level, p);
+            g_ustart[p] = g_nunits;
+            g_nunits += 1 + g_hasmode + g_ndc[p];
+        }
+        g_nlanes = 1 << job.nsub_log2;
+        g_active = min(g_nlanes, g_nunits);
+        const int set = int(job.table_set);
+
+        // ---- phase A: the lane's operations, appended into one list, and
+        // the per-unit counts the fallback path needs.
+        g_oplimit = opbase + uint(NXE_LANE_OPS_CAP);
+        int nops = 0, nslots = 0;
+        if (live && lane < g_active) {
+            for (int ui = lane; ui < g_nunits; ui += g_nlanes) {
+                int k = unit_ops(ui, opbase + uint(nops));
+                slotops.v[sobase + uint(nslots)] = uint(k);
+                ++nslots;
+                nops += k;
+            }
+        }
+        // Did the whole list land?  If so the sweeps index it directly; if not
+        // they regenerate a unit at a time, which is the same answer.
+        const bool cached = nops <= NXE_LANE_OPS_CAP;
+        s_nops[sub][lane] = nops;
+        if (lid == 0u) s_rmax = 0;
+        barrier();
+        if (lane == 0) {
+            int r = 0;
+            for (int k = 0; k < 8; ++k) r = max(r, s_nops[sub][k]);
+            atomicMax(s_rmax, r);
+        }
+        barrier();
+        const int R = s_rmax;
+
+        // ---- the sweep.  One pass: an emission's slot word is known the
+        // moment it is produced because the words are anchored at the end.
+        uint state = NXE_RANS_L;
+        int E = 0;
+        {
+            int cur_slot = nslots - 1;
+            int ops_base = cached ? 0 : nops;
+            state = NXE_RANS_L;
+            if (!cached && live && lane < g_active && cur_slot >= 0) {
+                ops_base -= int(slotops.v[sobase + uint(cur_slot)]);
+                unit_ops(lane + cur_slot * g_nlanes, opbase);
+            }
+            int ecount = 0;
+            for (int r = R - 1; r >= 0; --r) {
+                int emit = 0;
+                uint w = 0u;
+                if (live && lane < g_active && r < nops) {
+                    while (r < ops_base) {
+                        --cur_slot;
+                        ops_base -= int(slotops.v[sobase + uint(cur_slot)]);
+                        unit_ops(lane + cur_slot * g_nlanes, opbase);
+                    }
+                    uint op = ops.v[opbase + uint(r - ops_base)];
+                    uint f, c;
+                    if (NXE_OP_KIND(op) == NXE_OP_SYM) {
+                        int ctx = int(NXE_OP_ARG(op)), sym = int(NXE_OP_VALUE(op));
+                        f = TAB_FREQ(set, ctx, sym);
+                        c = TAB_CUM(set, ctx, sym);
+                    } else {
+                        int k = int(NXE_OP_ARG(op));
+                        f = 1u << uint(NXE_PROB_BITS - k);
+                        c = NXE_OP_VALUE(op) << uint(NXE_PROB_BITS - k);
+                    }
+                    uint x = state;
+                    if (x >= (f << 22)) {
+                        emit = 1;
+                        w = x & 0xffffu;
+                        x >>= 16;
+                    }
+                    state = ((x / f) << uint(NXE_PROB_BITS)) + (x % f) + c;
+                }
+                s_emit[sub][lane] = emit;
+                barrier();
+                // Bytes inside a round go lanes descending: the global order is
+                // (round ascending, lane ascending) and this is its reverse.
+                    int rank = ecount;
+                int total = 0;
+                for (int k = 7; k >= 0; --k) {
+                    if (k > lane) rank += s_emit[sub][k];
+                    total += s_emit[sub][k];
+                }
+                if (emit != 0 && live) {
+                    uint wend = (g_tile + 1u) * uint(NXE_TILE_SLOT_WORDS);
+                    slot.v[wend - 1u - uint(rank)] = w;
+                }
+                ecount += total;
+                barrier();
+            }
+            E = ecount;
+        }
+        const int payload = 4 * g_active + 2 * E;
+
+        // ---- the 8-byte tile header and the rANS flush.
+        if (live) {
+            uint w0 = g_tile * uint(NXE_TILE_SLOT_WORDS);
+            if (lane < g_active) slot.v[w0 + 2u + uint(lane)] = state;
+            if (lane == 0) {
+                uint h0 = (job.col & 0xfffu) << 4;
+                h0 |= (job.eye & 1u) << 2;
+                h0 |= (uint(payload) & 0xffffu) << 16;
+                uint h1 = job.mode & 7u;
+                h1 |= (job.res_level & 3u) << 3;
+                h1 |= (job.chroma444 & 1u) << 5;
+                h1 |= uint(job.qp_delta & 0x3f) << 8;
+                h1 |= (job.table_set & 7u) << 14;
+                h1 |= (job.nsub_log2 & 7u) << 17;
+                h1 |= (job.tskip & 1u) << 23;
+                h1 |= (job.wm_id & 3u) << 26;
+                slot.v[w0] = h0;
+                slot.v[w0 + 1u] = h1;
+                jobs[g_tile].payload_len = uint(payload);
+                jobs[g_tile].tile_bytes = uint(NXE_TILE_HEADER_BYTES + payload);
+                jobs[g_tile].nunits = uint(g_nunits);
+                /* E5 needs the active lane count to find where the
+                 * emission words begin. */
+                jobs[g_tile].flags = 1u | (uint(g_active) << 8);
+                sizes.v[g_tile] = uint(NXE_TILE_HEADER_BYTES + payload);
+            }
+        }
+        barrier();
+    }
+}

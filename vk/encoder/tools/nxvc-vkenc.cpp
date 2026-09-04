@@ -31,6 +31,11 @@
 #include "nxe_host.h"
 #include "nxe_vk.h"
 
+namespace nxe {
+int selftest(int device, bool cpu_only, bool print_digests, bool quiet);
+int selftest_dump(const char *prefix);
+}
+
 static void usage() {
     std::fprintf(stderr,
         "usage: nxvc-vkenc --in file.yuv --w W --h H --pix yuv444p|yuv420p\n"
@@ -45,12 +50,17 @@ static void usage() {
         "  --ctx v1|v2          12 or 16 entropy contexts (default v2)\n"
         "  --no-sign-hide       code every sign (default: hide one per unit)\n"
         "  --intra-dir on|off|layer   directional intra, modes from the host\n"
+        "  --dir-mode-seed N    fill the per-block modes from a PRNG (test aid)\n"
         "  --chroma-qp-off N    chroma QP offset\n"
         "  --device N           Vulkan physical device index (default 0)\n"
         "  --cpu                run the CPU models, no Vulkan\n"
         "  --check              run both and diff every intermediate\n"
         "  --bench N            time each pass over N iterations\n"
         "  --list               list Vulkan devices and exit\n"
+        "  --selftest           run the built-in configuration table:\n"
+        "                       GPU against the CPU models, and the CPU\n"
+        "                       models against pinned stream digests\n"
+        "  --print-digests      with --selftest, print them instead\n"
         "  --quiet\n"
         "\n"
         "Exit code 77 means \"no usable Vulkan device\"; ctest reports it as a\n"
@@ -59,7 +69,8 @@ static void usage() {
 
 int main(int argc, char **argv) {
     nxe::Config cfg;
-    bool list = false, check = false;
+    bool list = false, check = false, self = false, digests = false;
+    const char *dump = nullptr;
     std::string pix = "yuv420p";
 
     for (int i = 1; i < argc; ++i) {
@@ -90,17 +101,24 @@ int main(int argc, char **argv) {
             else if (v == "layer") { cfg.intra_dir = true; cfg.dir_layer = true; }
             else cfg.intra_dir = false;
         }
+        else if (a == "--dir-mode-seed") cfg.dir_mode_seed = (uint32_t)std::strtoul(val(), nullptr, 0);
         else if (a == "--device") cfg.device = std::atoi(val());
         else if (a == "--cpu") cfg.cpu_only = true;
         else if (a == "--check") check = true;
         else if (a == "--bench") { cfg.bench = true; cfg.bench_iters = std::atoi(val()); }
         else if (a == "--list") list = true;
+        else if (a == "--selftest") self = true;
+        else if (a == "--print-digests") digests = true;
+        else if (a == "--dump-selftest-yuv") dump = val();
         else if (a == "--quiet") cfg.quiet = true;
         else if (a == "-h" || a == "--help") { usage(); return 0; }
         else { std::fprintf(stderr, "unknown option %s\n", a.c_str()); usage(); return 2; }
     }
 
     if (list) return nxe::vk_list_devices();
+    if (dump) return nxe::selftest_dump(dump);
+    if (self)
+        return nxe::selftest(cfg.device, cfg.cpu_only, digests, cfg.quiet);
 
     if (cfg.in.empty() || cfg.out.empty() || cfg.w <= 0 || cfg.h <= 0) {
         usage();
@@ -150,6 +168,7 @@ int main(int argc, char **argv) {
     int rc = 0;
     while (cfg.frames < 0 || n < cfg.frames) {
         if (!nxe::read_frame(fi, cfg, f)) break;
+        nxe::fill_modes(cfg, f, (uint32_t)n);
         if (cfg.cpu_only) {
             nxe::encode_frame_cpu(f, (uint32_t)n);
         } else if (!gpu.encode_frame(f, (uint32_t)n, check, cfg.quiet)) {

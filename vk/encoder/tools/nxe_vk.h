@@ -24,6 +24,7 @@ int vk_list_devices();
 
 class VkEncoder {
 public:
+    struct Impl;
     VkEncoder();
     ~VkEncoder();
     bool create(const Config &cfg, const Frame &f, std::string &err);
@@ -33,7 +34,6 @@ public:
     void bench(Frame &f, int iters);
 
 private:
-    struct Impl;
     Impl *p_;
 };
 

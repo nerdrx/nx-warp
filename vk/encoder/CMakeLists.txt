@@ -52,6 +52,17 @@ target_include_directories(nxenc_stats_cpu PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/stats)
 set_target_properties(nxenc_stats_cpu PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
+# The bit-exact CPU models of the coding kernels E3, E4 and E5.  Same rule: no
+# Vulkan dependency, so the reference codec and the rate controller can link
+# them, and `nxvc-vkenc --cpu` is a complete encoder on a machine with no GPU.
+add_library(nxenc_forward_cpu STATIC
+  forward/nxe_tables.c
+  forward/forward_cpu.c
+  forward/rans_cpu.c)
+target_include_directories(nxenc_forward_cpu PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/forward)
+set_target_properties(nxenc_forward_cpu PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 if(NXENC_NO_VULKAN)
   return()
 endif()
@@ -100,6 +111,35 @@ nxenc_shader(E2_prefix_p0           E2_prefix.comp  "-DNXE_E2_PASS=0")
 nxenc_shader(E2_prefix_p1           E2_prefix.comp  "-DNXE_E2_PASS=1")
 nxenc_shader(E2_prefix_p2           E2_prefix.comp  "-DNXE_E2_PASS=2")
 
+# E3/E4/E5 live in forward/ and take their variants as *specialization*
+# constants rather than -D, so there is one SPIR-V module for each: the
+# directional-intra switch and the transform edge are set at pipeline creation.
+set(NXENC_FWD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/forward)
+function(nxenc_fwd_shader name src)
+  set(_fdefs "${ARGN}")
+  set(out ${NXENC_GEN_DIR}/${name}.spv.h)
+  add_custom_command(
+    OUTPUT ${out}
+    COMMAND ${CMAKE_COMMAND}
+            -DGLSLC=${NXENC_GLSLC}
+            -DSRC=${NXENC_FWD_DIR}/${src}
+            -DOUT=${out}
+            -DNAME=${name}
+            -DINCDIR=${NXENC_FWD_DIR}
+            -DDEFS=${_fdefs}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/gen_spv.cmake
+    DEPENDS ${NXENC_FWD_DIR}/${src}
+            ${NXENC_FWD_DIR}/nxe_enc_common.glsl
+            ${CMAKE_CURRENT_SOURCE_DIR}/cmake/gen_spv.cmake
+    COMMENT "glslc ${src} -> ${name}.spv.h"
+    VERBATIM)
+  set(NXENC_SPV_HEADERS ${NXENC_SPV_HEADERS} ${out} PARENT_SCOPE)
+endfunction()
+nxenc_fwd_shader(E3_forward      forward.comp)
+nxenc_fwd_shader(E4_rans_encode  rans_encode.comp)
+nxenc_fwd_shader(E5_zero        packetize.comp "-DNXE_E5_PASS=0")
+nxenc_fwd_shader(E5_packetize    packetize.comp "-DNXE_E5_PASS=1")
+
 add_custom_target(nxenc_shaders DEPENDS ${NXENC_SPV_HEADERS})
 
 # ----------------------------------------------------------------- test tool
@@ -117,6 +157,40 @@ if(Vulkan_FOUND)
 else()
   target_include_directories(nxvc-stats-test PRIVATE ${NXENC_VULKAN_INC})
   target_link_libraries(nxvc-stats-test PRIVATE ${NXENC_VULKAN_LIB})
+endif()
+
+# ------------------------------------------------- the GPU encoder harness
+# Links `ref/src/tables.cpp` for the built-in probability tables: those are a
+# trained data set, not an algorithm, and a second copy in this tree would be a
+# second thing to keep in step.  Everything else here is this directory's.
+set(NXENC_REF_TABLES ${CMAKE_CURRENT_SOURCE_DIR}/../../ref/src/tables.cpp)
+if(EXISTS ${NXENC_REF_TABLES})
+  add_executable(nxvc-vkenc
+    tools/nxvc-vkenc.cpp
+    tools/nxe_host.cpp
+    tools/nxe_vk.cpp
+    tools/nxe_selftest.cpp
+    tools/vk_min.cpp
+    ${NXENC_REF_TABLES}
+    ${NXENC_SPV_HEADERS})
+  add_dependencies(nxvc-vkenc nxenc_shaders)
+  target_include_directories(nxvc-vkenc PRIVATE
+    ${NXENC_GEN_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/forward
+    ${CMAKE_CURRENT_SOURCE_DIR}/tools
+    ${CMAKE_CURRENT_SOURCE_DIR}/stats
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../ref/src)
+  target_link_libraries(nxvc-vkenc PRIVATE nxenc_forward_cpu)
+  set_target_properties(nxvc-vkenc PROPERTIES CXX_STANDARD 20)
+  if(Vulkan_FOUND)
+    target_link_libraries(nxvc-vkenc PRIVATE Vulkan::Vulkan)
+  else()
+    target_include_directories(nxvc-vkenc PRIVATE ${NXENC_VULKAN_INC})
+    target_link_libraries(nxvc-vkenc PRIVATE ${NXENC_VULKAN_LIB})
+  endif()
+else()
+  message(STATUS "nxwarp-encoder: ref/src/tables.cpp not found, no nxvc-vkenc")
 endif()
 
 # ------------------------------------------------------------------- ctests

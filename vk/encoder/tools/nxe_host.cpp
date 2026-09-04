@@ -5,6 +5,7 @@
 
 #include "nxe_host.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -91,7 +92,7 @@ void setup(const Config &cfg, Frame &f) {
     f.src_packed.assign((size_t)base * 2, 0);   /* u16 halves of `base` words */
     f.coef.assign((size_t)fp.ntiles * NXE_TILE_COEFS_MAX, 0);
     f.modes.assign((size_t)fp.ntiles * 3 * 64, 0);
-    f.slots.assign((size_t)fp.ntiles * NXE_TILE_SLOT_BYTES, 0);
+    f.slots.assign((size_t)fp.ntiles * NXE_TILE_BYTES_MAX, 0);
     f.tile_bytes.assign(fp.ntiles, 0);
     f.tile_prefix.assign(fp.ntiles, 0);
 }
@@ -166,6 +167,63 @@ bool read_frame(std::FILE *fi, const Config &cfg, Frame &f) {
         }
     }
     return true;
+}
+
+/* A frame with structure the codec has to work for: a low-frequency pattern
+ * the DC-plane predictor can follow, an edge the directional modes can use, and
+ * enough noise that the residual is never trivially zero.  Integer-only and
+ * seeded by the frame number, so it is the same picture on every machine. */
+void gen_frame(const Config &cfg, Frame &f, uint32_t frame_number) {
+    const nxe_frame_params &fp = f.fp;
+    const uint32_t rng = 0x9E3779B9u ^ (frame_number * 2246822519u);
+    for (uint32_t t = 0; t < fp.ntiles; ++t) {
+        const nxe_tile_job &j = f.jobs[t];
+        for (int p = 0; p < NXE_MAX_PLANES; ++p) {
+            const int size = f.plane_size[p];
+            const int sub = (p && fp.chroma420) ? 2 : 1;
+            const int ox = (int)j.col * (64 / sub), oy = (int)j.row * (64 / sub);
+            int32_t *dst = &f.src[p][(size_t)t * size * size];
+            /* Clamped exactly as read_frame clamps, so a frame that is not a
+             * multiple of 64 is edge-replicated here too and the picture
+             * round-trips through --dump-selftest-yuv unchanged. */
+            const int pw = (int)fp.width / sub, ph = (int)fp.height / sub;
+            for (int y = 0; y < size; ++y)
+                for (int x = 0; x < size; ++x) {
+                    int gx = ox + x, gy = oy + y;
+                    gx = gx >= pw ? pw - 1 : gx;
+                    gy = gy >= ph ? ph - 1 : gy;
+                    int v = 128 + ((gx * 3 + gy * 5 + (int)frame_number * 11) & 63) - 32;
+                    if (((gx + (int)j.eye * 17) >> 4) % 3 == 0) v += 40;   /* edges */
+                    if (p) v = 128 + ((v - 128) >> 2);
+                    /* The noise is a function of position, not of iteration
+                     * order, so a replicated edge sample is the same sample. */
+                    uint32_t r = (uint32_t)(gx * 73856093) ^
+                                 (uint32_t)(gy * 19349663) ^
+                                 (uint32_t)((p + 1) * 83492791) ^ rng;
+                    r ^= r << 13; r ^= r >> 17; r ^= r << 5;
+                    v += (int)(r & 15) - 8;
+                    dst[(size_t)y * size + x] = v < 0 ? 0 : (v > 255 ? 255 : v);
+                }
+            uint16_t *pk = &f.src_packed[(size_t)(f.plane_base[p] +
+                                                  (int)t * f.plane_words[p]) * 2];
+            for (int i = 0; i < size * size; ++i)
+                pk[i] = (uint16_t)(int16_t)dst[i];
+        }
+    }
+}
+
+void fill_modes(const Config &cfg, Frame &f, uint32_t frame_number) {
+    if (!cfg.intra_dir) return;
+    uint32_t x = cfg.dir_mode_seed;
+    if (x == 0) {
+        std::fill(f.modes.begin(), f.modes.end(), (uint8_t)0);
+        return;
+    }
+    x ^= frame_number * 2654435761u;
+    for (size_t i = 0; i < f.modes.size(); ++i) {
+        x ^= x << 13; x ^= x >> 17; x ^= x << 5;   /* xorshift32 */
+        f.modes[i] = (uint8_t)(x % NXE_NUM_INTRA_MODES);
+    }
 }
 
 /* ---------------------------------------------------------- stream header */
@@ -264,7 +322,7 @@ void pack_frame(Frame &f, uint32_t frame_number) {
     for (uint32_t t = 0; t < fp.ntiles; ++t) {
         uint32_t off = nxe_e5_tile_offset(&fp, t, f.tile_prefix.data());
         std::memcpy(f.out.data() + off,
-                    &f.slots[(size_t)t * NXE_TILE_SLOT_BYTES], f.tile_bytes[t]);
+                    &f.slots[(size_t)t * NXE_TILE_BYTES_MAX], f.tile_bytes[t]);
     }
 }
 
@@ -284,7 +342,7 @@ void encode_frame_cpu(Frame &f, uint32_t frame_number) {
         int len = nxe_e4_tile(&fp, &f.jobs[t], &tu,
                               &f.coef[(size_t)t * NXE_TILE_COEFS_MAX],
                               &f.modes[(size_t)t * 3 * 64], &f.tabs,
-                              &f.slots[(size_t)t * NXE_TILE_SLOT_BYTES]);
+                              &f.slots[(size_t)t * NXE_TILE_BYTES_MAX]);
         f.jobs[t].payload_len = (uint32_t)len;
         f.tile_bytes[t] = (uint32_t)(NXE_TILE_HEADER_BYTES + len);
     }

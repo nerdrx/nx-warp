@@ -88,9 +88,12 @@ public:
                               Image &out, std::string &err);
     void destroy_image(Image &i);
 
+    // `spec` is optional specialization data; the encoder's coding kernels use
+    // it for the transform edge and the directional-intra switch.
     bool create_pipeline(const uint32_t *spv, size_t spv_bytes,
                          const std::vector<VkDescriptorType> &bindings,
-                         uint32_t push_bytes, Pipeline &out, std::string &err);
+                         uint32_t push_bytes, Pipeline &out, std::string &err,
+                         const VkSpecializationInfo *spec = nullptr);
     void destroy_pipeline(Pipeline &p);
 
     VkDescriptorPool create_descriptor_pool(uint32_t max_sets,

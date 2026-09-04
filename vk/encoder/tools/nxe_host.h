@@ -48,6 +48,11 @@ struct Config {
     bool sign_hide = true;
     bool intra_dir = false;
     bool dir_layer = false;
+    /* Directional intra takes its per-block modes as an input (the search is a
+     * host or E1 job, see forward_cpu.h).  A nonzero seed fills them from a
+     * deterministic PRNG so the tests exercise all nine modes; 0 leaves every
+     * block on mode 0, which reproduces the v1 predictor exactly. */
+    uint32_t dir_mode_seed = 0;
     int device = 0;
     bool cpu_only = false;
     bool bench = false;
@@ -84,6 +89,13 @@ void build_tables(const Config &cfg, Frame &f);
 /* Read one frame of planar 8-bit YUV and lay it out tile-major.  Returns false
  * at end of file. */
 bool read_frame(std::FILE *fi, const Config &cfg, Frame &f);
+
+/* Synthesize one deterministic frame directly into `f`, bypassing the file
+ * reader.  Used by --selftest so the suite needs no test vectors on disk. */
+void gen_frame(const Config &cfg, Frame &f, uint32_t frame_number);
+
+/* Fill the per-block intra mode array from cfg.dir_mode_seed. */
+void fill_modes(const Config &cfg, Frame &f, uint32_t frame_number);
 
 /* The 64-byte stream header, ref's nxvc_encoder_stream_header. */
 std::vector<uint8_t> stream_header(const Config &cfg, const Frame &f);
