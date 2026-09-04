@@ -75,4 +75,5 @@ echo "==> running"
 "${NICE[@]}" "$BUILD/nxbench-host" --out "$JSON" "$@"
 
 echo "==> json: $JSON"
+[ -f "$LOCAL_JSON" ] || { echo "(no result JSON: a --selftest or --k1-sweep run writes none)"; exit 0; }
 python3 "$HERE/report.py" "$JSON"

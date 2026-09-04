@@ -52,6 +52,20 @@ nxb_shader(k2b_sampler k2b_sampler.comp "")
 nxb_shader(k4_rans     k4_rans.comp     "")
 nxb_shader(k6_passc    k6_passc.comp    "")
 nxb_shader(reproject   reproject.comp   "")
+# K1 variants for the bandwidth sweep (--k1-sweep). One source, one -D set
+# each; see shaders/k1_sweep.comp and src/core/nxb_k1sweep.cpp.
+nxb_shader(k1v_base   k1_sweep.comp "-DNXB_K1_STORE=0 -DNXB_K1_WGX=8 -DNXB_K1_WGY=8")
+nxb_shader(k1v_64x1   k1_sweep.comp "-DNXB_K1_STORE=0 -DNXB_K1_WGX=64 -DNXB_K1_WGY=1")
+nxb_shader(k1v_16x16  k1_sweep.comp "-DNXB_K1_STORE=0 -DNXB_K1_WGX=16 -DNXB_K1_WGY=16")
+nxb_shader(k1v_tiled  k1_sweep.comp "-DNXB_K1_STORE=0 -DNXB_K1_WGX=64 -DNXB_K1_WGY=1 -DNXB_K1_TILED=1")
+nxb_shader(k1v_r32ui  k1_sweep.comp "-DNXB_K1_STORE=1 -DNXB_K1_WGX=64 -DNXB_K1_WGY=1")
+nxb_shader(k1v_ssbo   k1_sweep.comp "-DNXB_K1_STORE=2 -DNXB_K1_WGX=64 -DNXB_K1_WGY=1")
+nxb_shader(k1v_ssbo88 k1_sweep.comp "-DNXB_K1_STORE=2 -DNXB_K1_WGX=8 -DNXB_K1_WGY=8")
+nxb_shader(k1v_unorm  k1_sweep.comp "-DNXB_K1_STORE=3 -DNXB_K1_WGX=64 -DNXB_K1_WGY=1")
+nxb_shader(k1v_unorm88 k1_sweep.comp "-DNXB_K1_STORE=3 -DNXB_K1_WGX=8 -DNXB_K1_WGY=8")
+nxb_shader(k1v_r32ui88 k1_sweep.comp "-DNXB_K1_STORE=1 -DNXB_K1_WGX=8 -DNXB_K1_WGY=8")
+nxb_shader(k1v_ssbo1616 k1_sweep.comp "-DNXB_K1_STORE=2 -DNXB_K1_WGX=16 -DNXB_K1_WGY=16")
+
 nxb_shader(passb_k3    passb.comp       "-DNXB_PREDICT=0")
 nxb_shader(passb_k5    passb.comp       "-DNXB_PREDICT=1")
 
@@ -73,7 +87,8 @@ add_library(nxbench_core STATIC
   src/core/nxb_runner.cpp
   src/core/nxb_report.cpp
   src/core/nxb_rans.cpp
-  src/core/nxb_verify.cpp)
+  src/core/nxb_verify.cpp
+  src/core/nxb_k1sweep.cpp)
 add_dependencies(nxbench_core nxb_shaders)
 target_include_directories(nxbench_core PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/src/core ${NXB_GEN_DIR})

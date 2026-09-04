@@ -1,0 +1,81 @@
+#version 460
+// K1 variants, for finding out why a plain RGBA8 copy of 2048x4096 runs at a
+// third of what an Adreno 650 should manage. One source, compiled once per
+// variant; nxb_k1sweep.cpp times each in isolation.
+//
+//   NXB_K1_STORE  0 rgba8ui storage image   (the K1 baseline)
+//                 1 r32ui storage image     (same bytes, one channel)
+//                 2 std430 SSBO of uint     (no image path at all)
+//                 3 rgba8 UNORM image       (normalised, not integer)
+//   NXB_K1_WGX/Y  workgroup shape
+//   NXB_K1_TILED  1: walk 8x8 pixel tiles inside a 64-wide row of tiles, so
+//                 consecutive invocations are 2D-local rather than row-major
+#extension GL_GOOGLE_include_directive : require
+
+#ifndef NXB_K1_STORE
+#define NXB_K1_STORE 0
+#endif
+#ifndef NXB_K1_WGX
+#define NXB_K1_WGX 8
+#endif
+#ifndef NXB_K1_WGY
+#define NXB_K1_WGY 8
+#endif
+#ifndef NXB_K1_TILED
+#define NXB_K1_TILED 0
+#endif
+
+layout(local_size_x = NXB_K1_WGX, local_size_y = NXB_K1_WGY, local_size_z = 1) in;
+
+#if NXB_K1_STORE == 0
+layout(set = 0, binding = 0, rgba8ui) uniform readonly  uimage2D uSrc;
+layout(set = 0, binding = 1, rgba8ui) uniform writeonly uimage2D uDst;
+#elif NXB_K1_STORE == 1
+layout(set = 0, binding = 0, r32ui) uniform readonly  uimage2D uSrc;
+layout(set = 0, binding = 1, r32ui) uniform writeonly uimage2D uDst;
+#elif NXB_K1_STORE == 2
+layout(set = 0, binding = 0, std430) readonly  buffer Src { uint w[]; } uSrc;
+layout(set = 0, binding = 1, std430) writeonly buffer Dst { uint w[]; } uDst;
+#else
+layout(set = 0, binding = 0, rgba8) uniform readonly  image2D uSrc;
+layout(set = 0, binding = 1, rgba8) uniform writeonly image2D uDst;
+#endif
+
+// `tag` changes every dispatch. It is XORed into the value written so that a
+// driver cannot notice it is storing what is already there and skip the write
+// -- which RADV's colour compression does, and which turns the sweep into a
+// measurement of nothing. One XOR per pixel; the bytes moved are unchanged.
+layout(push_constant) uniform Push { ivec2 size; int tag; } pc;
+
+void main()
+{
+#if NXB_K1_TILED
+    // gl_GlobalInvocationID walks the dispatch in workgroup-major order
+    // already; this remaps so that a whole 64x64 tile is covered before moving
+    // on, which is what every other kernel in the bench touches.
+    int lin   = int(gl_GlobalInvocationID.y) * (pc.size.x) + int(gl_GlobalInvocationID.x);
+    int tile  = lin >> 12;                 // 64*64 pixels per tile
+    int inTile = lin & 4095;
+    int tilesX = pc.size.x >> 6;
+    ivec2 p = ivec2(((tile % tilesX) << 6) + (inTile & 63),
+                    ((tile / tilesX) << 6) + (inTile >> 6));
+#else
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+#endif
+
+    if (p.x >= pc.size.x || p.y >= pc.size.y)
+        return;
+
+#if NXB_K1_STORE == 2
+    int i = p.y * pc.size.x + p.x;
+    uDst.w[i] = uSrc.w[i] ^ uint(pc.tag);
+#elif NXB_K1_STORE == 3
+    vec4 v = imageLoad(uSrc, p);
+    v.a = float(pc.tag & 1);
+    imageStore(uDst, p, v);
+#else
+    uvec4 v = imageLoad(uSrc, p);
+    v.a ^= uint(pc.tag);
+    imageStore(uDst, p, v);
+#endif
+}

@@ -24,6 +24,7 @@ bit-exactness and portability rules of PAPER 3.2.6 and 3.7 from the first line.
 ./run.sh --kernels all        # include K6 hybrid
 ./run.sh --thermal 600        # the 10-minute thermal run
 ./run.sh --selftest           # bit-exactness against the CPU reference
+./run.sh --k1-sweep 9         # the K1 copy variants, timed one dispatch at a time
 
 ./run-host.sh                 # same kernels, headless, on this machine
 ./run-host.sh --selftest
@@ -323,6 +324,67 @@ The Pass B kernel also no longer builds its packed word with a read-modify-write
 That is not what fixed the miscompilation -- the single-store form failed under
 stock `-O` too -- but it is one store instead of a load plus a store, and it
 removes the load/store pointer pair that the pass was CSE-ing.
+
+## K1 is slow because the image is an integer format
+
+The gate reports K1 at 5 to 7.6 GB/s, against a 20 GB/s threshold and an
+Adreno 650 that ought to manage 15 to 25. `--k1-sweep` takes that number apart:
+each variant is one dispatch per submit with `vkQueueWaitIdle` on both sides
+and no co-tenant, timed by the device's timestamp pair *and* by the host clock,
+eight dispatches inside the timed region so submit overhead cannot dominate,
+and a per-dispatch tag XORed into the stored value so no driver can elide the
+write.
+
+Pico 4, Adreno 650, GPU at 441.6 MHz, 2048x4096, 67.1 MB moved per dispatch:
+
+| variant | dev ms | host ms | GB/s |
+|---|---|---|---|
+| `rgba8ui` 8x8 -- K1 as shipped | 6.37 | 7.47 | **10.5** |
+| `rgba8ui` 64x1 | 14.54 | 15.86 | 4.6 |
+| `rgba8ui` 16x16 | 16.42 | 17.76 | 4.1 |
+| `rgba8ui` 64x1 tile-major | 19.11 | 20.68 | 3.5 |
+| `r32ui` 8x8 | 6.74 | 7.27 | 10.0 |
+| `r32ui` 64x1 | 14.94 | 15.68 | 4.5 |
+| `rgba8` UNORM 64x1 | 4.50 | 4.94 | **14.9** |
+| `rgba8` UNORM 8x8 | 4.61 | 5.06 | 14.6 |
+| SSBO 64x1 | 5.05 | 5.56 | 13.3 |
+| SSBO 8x8 | 5.38 | 5.94 | 12.5 |
+| SSBO 16x16 | 5.48 | 6.05 | 12.2 |
+
+Four things fall out of it:
+
+- **The timestamps are not the problem.** Device and host times agree within
+  about 10% on every row. The kernel really does take that long.
+- **Integer storage images cost about 3x.** The same copy through an
+  `rgba8` UNORM image runs at 14.9 GB/s and through an SSBO at 13.3; through
+  `rgba8ui` it is 4.6 at the same workgroup shape. `r32ui` is no better, so it
+  is the *integer* image path and not the channel count.
+- **Only the integer path cares about workgroup shape**, and it cares a lot:
+  8x8 is 2.3x faster than 64x1. UNORM and SSBO are flat across every shape
+  tried, which is what a bandwidth-bound copy should look like. Tile-major
+  indexing is the worst of the lot and not worth pursuing.
+- **The hardware is fine.** 14.9 GB/s at 441.6 MHz scales to roughly 19.8 at
+  the part's 587 MHz, which is the threshold. The gate's figure is the
+  `rgba8ui` penalty plus the co-tenant, not a slow GPU.
+
+The co-tenant accounts for the rest of K1's gap and almost nothing elsewhere:
+with `--no-cotenant`, K1 goes from 12.2 ms to 7.2, while K3 (8.28 vs 7.93),
+K4 (9.94 vs 10.13) and K5 (33.3 vs 28.0) do not move in any consistent
+direction. **So K5's ~28 ms is kernel time, not measurement.**
+
+What this does *not* do is license switching the codec's images to UNORM. The
+output is `R8G8B8A8_UINT` because the residual path is bit-exact and a
+normalised format puts a float conversion in it. 8-bit UNORM does round-trip
+exactly, so it is probably safe, but "probably" is not the standard PAPER 3.7
+sets and it needs its own proof and its own `--selftest`. It is the single
+biggest lever measured so far: K3 writes 33.5 MB through exactly this path and
+takes 7.9 ms, which is most of what the integer store alone would cost.
+
+One caveat on every number here: the GPU sat at **441.6 MHz** for all of it,
+not the part's 587 MHz, and the run-to-run spread is wide (K5 measured 28.0 and
+33.3 ms in the same session). `/sys/class/kgsl/kgsl-3d0/gpuclk` is readable and
+`run.sh` now records it either side of a run, but the devfreq nodes that would
+pin it are not reachable without root, so the gate has no clock control.
 
 ## Known gaps
 
