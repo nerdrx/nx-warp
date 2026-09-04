@@ -285,20 +285,30 @@ def run_codec(
 
     out = {"kind": "codec", "available": True, "enc": cli.enc, "dec": cli.dec,
            "rate_control": "qp", "points": []}
+    # The codec CLIs take a whole file, not a frame count, so `--frames N` on a
+    # longer sequence has to truncate the source: encoding all of it and then
+    # dividing its bytes by N reports N/seq.frames of the real bitrate, which
+    # is silent and wrong.  The anchors get their frame count through ffmpeg.
+    src = seq.path
+    if frames and frames < seq.frames:
+        src = os.path.join(work, "src-%dframes.yuv" % frames)
+        if not os.path.exists(src):
+            with open(seq.path, "rb") as fi, open(src, "wb") as fo:
+                fo.write(fi.read(seq.fmt.frame_bytes * frames))
     for qp in qps:
         tag = f"{cli.name}-qp{qp}"
         bs = os.path.join(work, f"{tag}.nxv")
         rec = os.path.join(work, f"{tag}.yuv")
         t0 = time.time()
         try:
-            size = cli.encode(seq.path, seq.fmt, qp, bs)
+            size = cli.encode(src, seq.fmt, qp, bs)
             cli.decode(bs, rec)
         except CodecError as exc:
             print(f"[compare]   {tag}: FAILED -- {exc}", flush=True)
             continue
         enc_s = time.time() - t0
         try:
-            m = measure(seq.path, rec, seq.fmt, fps=seq.fps, do_ssim=do_ssim,
+            m = measure(src, rec, seq.fmt, fps=seq.fps, do_ssim=do_ssim,
                         do_vmaf=do_vmaf, limit=frames, fovea=fovea_scoring)
         except (EOFError, ValueError) as exc:
             print(f"[compare]   {tag}: decoded output does not match the source geometry: {exc}",

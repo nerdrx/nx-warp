@@ -1,0 +1,418 @@
+# Entropy and context modelling: measurements
+
+What the two new tool bits and the encoder-side table refinement are worth,
+measured on the reference codec. The normative text is `docs/SYNTAX.md` 9.4.1
+and 9.8; this document is the record of how each piece was decided, including
+the four things that were built or priced and **rejected**.
+
+Everything was produced under `chrt -i 0 taskset -c 4-7 nice -n 19`, on the
+**v2 band-limited** sequences in `$NXQ_SCRATCH/seq` (`vr-mixed-1024-v2`,
+`vr-mixed-512-v2`), through `tools/quality/compare.py` and ffmpeg n9.0.1.
+Result files are under `$NXQ_SCRATCH/results/tourney-ctx-b/`.
+
+| tool | bit | what it is |
+|---|---|---|
+| `TAB_V2` | 24 | a per-row "use the built-in default" flag in a transmitted table set, and a set nothing improves is not transmitted (SYNTAX.md 9.4.1) |
+| `CTX_V3` | 25 | 22 entropy contexts: CBF and LAST conditioned on whether the previous unit *this lane* decoded in the same unit class was coded (SYNTAX.md 9.8) |
+| — | — | `table_iters`: Lloyd refinement of the eight per-frame table sets. Encoder only, no tool bit, default 3 |
+
+The baseline throughout is the syntax v1.4 shipped default, which the current
+encoder reproduces **byte for byte** with
+`nxv-enc --ctx v2 --tab v1 --table-iters 0`; that identity is pinned by the 56
+committed conformance vectors, all of which are unchanged by this package.
+
+---
+
+## 1. Where the bits went before this package
+
+The package was aimed by `--stats`, not by intuition. On the v2 sequences the
+picture is different from `RESULTS-intra.md` Appendix B, and one line stands
+out.
+
+**2048x1024 4:4:4 intra, one frame**
+
+| | QP 16 | QP 32 |
+|---|---|---|
+| probability tables | 0.57 % | 1.36 % |
+| tile headers | 3.66 % | 11.59 % |
+| rANS init/flush | 5.09 % | 7.73 % |
+| DC planes | 19.95 % | 30.29 % |
+| luma blocks | 39.10 % | 32.40 % |
+| chroma blocks | 11.69 % | 1.46 % |
+
+**2048x1024 4:2:0 stereo inter, frame 5 of 6**
+
+| | QP 4 | QP 24 | QP 36 |
+|---|---|---|---|
+| probability tables | 0.59 % | **4.15 %** | **14.45 %** |
+| tile-row headers | 0.24 % | 1.99 % | 11.56 % |
+| tile headers | 1.81 % | 3.63 % | 8.85 % |
+| rANS init/flush | 3.54 % | 4.93 % | 4.82 % |
+| DC planes | 8.38 % | 11.33 % | 17.79 % |
+| luma blocks | 46.27 % | 54.30 % | 27.02 % |
+
+At the density the paper's bit budget describes, **the transmitted probability
+tables are the largest single overhead in the frame** — 14.45 % at QP 36. That
+is the number that decided the shape of this package: a context model can only
+buy coefficient bits, and at low rate a wider one *costs* more in table bits
+than it can possibly return. `TAB_V2` had to come first.
+
+---
+
+## 2. `CTX_V3`: choosing the context layout
+
+The brief asked for contexts conditioned on the neighbouring block's CBF and
+level magnitude, on a position class, and on transform size. The constraint
+that decides the design is that the conditioning must be **causal inside the
+rANS lane**: the 8 lanes of a tile run in lockstep and a lane cannot read a
+value another lane has not produced yet. The block *above* is a different
+lane's unit for every plane geometry except the common one. What is always
+available is *the previous coefficient unit this lane finished* — and for the
+ordinary tile (`res_level` 0, `nsub_log2` 3, 8x8 blocks) a lane owns exactly
+one column of blocks, so that unit **is** the block above.
+
+Five layouts of that idea were built, each with its own built-in table family
+retrained by `nxv-gentables v3`, and measured as encoded bytes over two frames
+of `vr-mixed-1024-v2`. The neighbour class `nc` is 0 for an uncoded unit and
+splits coded units by `LAST` and by mean magnitude at 4 classes; the `LEVEL`
+split gives the eight banded `LEVEL` contexts a second family for a busy
+neighbour.
+
+Change against `--ctx v2 --tab v2` at the same operating point, negative is
+better; mean over the eight points:
+
+| `nc` classes | `LEVEL` split | contexts | 4:4:4 QP 8/16/24/32 | 4:2:0 QP 8/16/24/32 | mean |
+|---|---|---|---|---|---|
+| 4 | yes | 42 | -2.37 / -1.45 / -1.26 / -1.29 | -1.57 / -2.14 / +0.63 / -1.03 | -1.31 % |
+| 4 | no | 34 | -1.96 / -1.60 / -1.51 / -1.63 | -1.01 / -2.22 / -0.30 / +0.31 | -1.24 % |
+| 3 | no | 28 | -2.10 / -1.86 / -1.58 / -1.92 | -1.38 / -2.22 / -0.27 / -0.08 | -1.43 % |
+| 3 | yes | 36 | -2.30 / -1.34 / -1.55 / -1.39 | -1.61 / -2.17 / +0.35 / -1.02 | -1.38 % |
+| **2** | **no** | **22** | **-2.78 / -1.62 / -1.33 / -1.95** | **-1.51 / -2.49 / -0.05 / -0.86** | **-1.57 %** |
+| 2 | yes | 30 | -2.77 / -1.63 / -1.33 / -1.95 | -1.52 / -2.49 / -0.04 / -0.86 | -1.57 % |
+
+**Two classes wins**, and it wins on rate as well as on parsimony. The result
+is worth stating plainly because it is the opposite of what the brief expected:
+
+* **Level magnitude buys nothing.** Splitting a coded neighbour by `LAST` and
+  by mean magnitude — the "position class" and "level magnitude" axes — costs
+  12 more transmitted rows per set and returns less than it costs, at every
+  operating point on both pixel formats.
+* **`LEVEL` does not want a neighbour axis either.** Rows 5 and 6 differ by
+  0.01 % over eight points, which is nothing: the previously decoded level
+  *inside* the unit already says what the neighbour would, and it says it about
+  this unit rather than about the one above.
+* What is left is one bit — **was the lane's previous unit of this class coded
+  at all** — applied to `CBF` and `LAST`. That is 6 contexts more than v2.
+* **Transform size** is not an axis in this syntax: every residual unit is
+  64 coefficients and every DC-plane unit already has contexts of its own.
+  There is no 4x4 split to condition on (tool bit 19 is still reserved).
+
+The measurement is exact, not noisy: re-running the 22-context variant end to
+end — rebuild, retrain, re-encode — reproduces every byte count.
+
+### The lane-count coupling, and a bug it exposed
+
+Because the conditioning follows the lane schedule, the contexts depend on
+`nsub_log2`. That field is in the tile header and is parsed before the payload,
+so nothing about tile independence changes — but the *encoder* had a latent
+bug that only a lane-dependent context model could expose: it chose the lane
+count in the emitting pass only, so the frame's tables were trained on 8-lane
+statistics and then used to code tiles with 1, 2 or 4 lanes. Choosing it in
+both passes is worth **0.6 % to 1.0 %** on its own and is now unconditional.
+
+---
+
+## 3. `TAB_V2`: making the table set affordable
+
+A transmitted table set is `nctx` rows of sixteen 5-bit log-domain deltas: 120
+bytes at 12 contexts, 160 at 16, 220 at 22. With bit 24 each row is preceded by
+a `row_coded` flag, and a row whose trained version does not beat the built-in
+default by more than the 80 bits it costs is left at the default. A set with no
+coded row is not transmitted at all.
+
+Transmitted-table bytes, shipped layout, against the v1.4 baseline:
+
+| | v1.4: `--ctx v2 --tab v1` | shipped: `--ctx v3 --tab v2` |
+|---|---|---|
+| 4:4:4 intra QP 16, one frame | 640 B (0.57 % of the frame) | 784 B (0.71 %) |
+| 4:4:4 intra QP 32, one frame | 480 B (1.36 %) | 489 B (1.43 %) |
+| 4:2:0 stereo inter QP 24 | 800 B (4.15 %) | **321 B (1.81 %)** |
+| 4:2:0 stereo inter QP 36 | 480 B (**14.45 %**) | **109 B (3.41 %)** |
+
+That is the shape the tool was built for. At high rate a table set is noise and
+`TAB_V2` neither helps nor hurts — the 22-context model transmits six more rows
+than v2 did and the flag pays most of them back. At the paper's own operating
+density it takes the largest single overhead in the frame from 14.45 % to
+3.41 %, and it does it by *not transmitting* the rows and the whole sets that a
+36-tile frame has no statistics to justify.
+
+During the layout sweep, when the model still had 42 contexts, the same flag cut
+a QP 24 4:4:4 frame's table area from 2 100 B to 647 B — 69 %. That measurement
+is why a wider model was affordable enough to test at all.
+
+### Exp-Golomb deltas: built, measured, rejected
+
+The obvious companion was to code the delta itself with a small-value code:
+zigzag `d - 16` around "no change" and Exp-Golomb order 0 it, so an unchanged
+symbol costs 1 bit instead of 5 and the worst case is 11. It was implemented
+and it is **worse** than the flat 5-bit index at every point measured (e.g.
+4:4:4 QP 24: 123 910 B against 123 229 B; QP 32: 71 344 against 70 706).
+
+The reason is worth recording, because it is the same reason the row flag
+works. A trained row is not *concentrated* near its default — it is *shifted*
+from it. The eight built-in sets are k-means centroids, so a frame's statistics
+land near one of them as a row but each symbol moves by a similar multiplier,
+and a code that is cheap only at zero loses more on the shifted symbols than it
+gains on the unshifted ones. The row flag exploits the right structure (whole
+rows that are already right); the small-value code exploits a structure that is
+not there. Reverted; `docs/SYNTAX.md` decision 56 records it.
+
+---
+
+## 4. Finer table-set granularity, as encoder work
+
+The brief asked for per-frame table selection at finer granularity, with the
+table-set cost accounted. The finer granularity that turned out to pay is not
+more sets — it is **using the eight the format already has properly**.
+
+The v1.4 encoder trained set *k* on the tiles that chose *k* against the
+**built-in** sets, and then, in the emitting pass, still scored every tile
+against the built-ins even though the frame carried trained ones. Two things
+follow: the tile is not scored against the tables it will actually be coded
+with, and the training assignment is not the assignment the stream ends up
+using. `table_iters` fixes both — reassign every tile against the trained sets,
+retrain, repeat — and because the per-tile symbol histograms do not change, it
+costs no re-quantization at all, only arithmetic over stored histograms.
+
+4:4:4 / 4:2:0 encoded bytes, `--ctx v3 --tab v2`:
+
+| `--table-iters` | QP 8 | QP 16 | QP 24 | QP 32 |
+|---|---|---|---|---|
+| 0 (v1.4 behaviour) | 380 204 / 324 064 | 218 672 / 198 290 | 121 496 / 117 935 | 68 332 / 70 352 |
+| 1 | 380 876 | 219 408 | 121 778 | 68 712 |
+| **3 (default)** | **380 204 / 324 064** | **218 672 / 198 290** | **121 496 / 117 935** | **68 332 / 70 352** |
+| 6 | 380 154 / 322 970 | 218 738 / 197 307 | 121 278 / 117 183 | 68 364 / 69 872 |
+
+Three iterations is the default: the fourth and later ones are worth under
+0.1 % and the objective they minimize does not include the transmitted table
+cost, so running it to convergence is not obviously right. It is encoder-only —
+`--table-iters 0` restores the v1.4 encoder byte for byte, which is how the
+baseline column of every table in this document was produced.
+
+**More than eight sets was not built.** `table_set` is a 3-bit tile-header
+field and `tables_present` is a byte in the 40-byte frame header; sixteen sets
+needs a bit in each and a second built-in family of sixteen clusters, and the
+measurement above says the eight the format has were not being used properly in
+the first place. That is the cheaper fix and it is done.
+
+---
+
+## 5. The experiment: 12-bit probabilities and 16 lanes
+
+Neither is adopted. Both are measured.
+
+### 16 lanes per tile
+
+`nsub_log2 = 4` is already legal syntax (tool bit 7 `NSUB_VAR`), so this needed
+no code at all. Encoded bytes, `--ctx v3 --tab v2`, against the encoder's own
+per-tile choice:
+
+| | QP 8 | QP 16 | QP 24 | QP 32 |
+|---|---|---|---|---|
+| `--nsub 3` (8 lanes) | 393 528 | 235 712 | 142 098 | 90 904 |
+| `--nsub 4` (16 lanes) | 420 292 | 264 830 | 172 402 | 122 086 |
+| `--nsub auto` (shipped) | 380 204 | 218 672 | 121 496 | 68 332 |
+
+and on the 4:2:0 stereo inter clip, 6 frames: `--nsub 3` / `--nsub 4` /
+`auto` = 693 660 / 741 705 / 676 038 at QP 8, 153 836 / 181 163 / 135 376 at
+QP 24, and 59 476 / **79 229** / 44 599 at QP 36.
+
+**16 lanes is 7 % worse at high rate and 78 % worse at the paper's operating
+density.** The rANS flush is four bytes per lane per tile and a tile at QP 36
+is a few hundred bytes; doubling the lane count doubles a cost that already had
+to be capped at a tenth of the payload, which is why the encoder's `auto` rule
+exists and why it picks *one* lane for most tiles at that rate. It also halves
+the length of each lane's `CTX_V3` chain. The GPU side would want a 128-thread
+workgroup for 8 tiles and twice the per-lane state; there is nothing to buy it
+with. **Rejected.**
+
+### 12-bit probabilities
+
+`kProbBits` is now a named constant with a development knob
+(`-DNXVC_PROB_BITS=12`, the same shape as `NXVC_DIR_SCHED_EXPERIMENT`), and the
+1024 and 1009 literals that used to be scattered through `tables.cpp` are
+`kProbTotal` and `kProbMax`. A full 12-bit build encodes and decodes correctly;
+it fails `ref.vectors` and `ref.saturate` by construction, because those pin a
+10-bit bitstream.
+
+Encoded bytes, `--ctx v3 --tab v2`:
+
+| | 4:4:4 QP 8 | QP 16 | QP 24 | QP 32 | 4:2:0 QP 8 | QP 16 | QP 24 | QP 32 |
+|---|---|---|---|---|---|---|---|---|
+| 10-bit (shipped) | 380 204 | 218 672 | 121 496 | 68 332 | 324 064 | 198 290 | 117 935 | 70 352 |
+| 12-bit | 379 686 | 218 502 | 121 018 | 68 098 | 323 224 | 198 504 | 117 809 | 70 078 |
+| change | -0.14 % | -0.08 % | -0.39 % | -0.34 % | -0.26 % | +0.11 % | +0.11 % | -0.39 % |
+
+**Mean -0.17 %, and two of the eight points go the wrong way.** The decoder
+cost is genuinely near zero — Pass A binary-searches 16 cumulative frequencies,
+which is 4 steps at either precision, and `cum` is 16 uints per context either
+way, so LDS does not move — but the gain is not there to collect. The reason is
+that the precision that binds is not the 10-bit total, it is the **5-bit
+log-domain delta** a transmitted row is quantized to, whose steps are 2^(1/4).
+Widening the total without widening the delta alphabet gives the trained tables
+nowhere to put the extra bits. Not "clearly positive", so not adopted; the
+named constants stay, because they are better than the literals were.
+
+---
+
+## 6. Mode, MV, `ref_delta` and disparity: priced, not built
+
+The brief asked for dedicated contexts and better binarisation for these,
+"since they are pure overhead at low rate". Measured on the stereo inter clip,
+they are not, and the reason is structural rather than statistical.
+
+* **`mode` is a 3-bit field inside a fixed 8-byte tile header** with four
+  reserved bits still unused. Its empirical entropy is 1.51 / 1.32 / 0.76 bits
+  per coded tile at QP 8 / 24 / 36, so a perfect model would save 1.5 to 2.2
+  bits per tile — of a field that is not paid for separately. Entropy-coding it
+  saves exactly zero unless the header itself shrinks, and the 4-byte header
+  was measured and rejected in `RESULTS-intra.md` section 2b.
+* **`ref_delta` is a transport field**, not a bitstream one (SYNTAX.md 4.1); it
+  is an advisory copy of `ref_sel` and costs the bitstream nothing.
+* **The vector is the only variable-length part**: two bytes when
+  `mv_present`, carrying `mv_x`/`mv_y` or the 12-bit `disparity`. Its measured
+  entropy, and the best case if it were coded perfectly:
+
+| | coded tiles | of them with a vector | joint entropy | best-case saving | as % of the frame |
+|---|---|---|---|---|---|
+| QP 8 | 1707 | 291 | 5.19 bit (16 coded) | 393 B of 539 944 | **0.073 %** |
+| QP 24 | 885 | 202 | 5.76 bit | 259 B of 120 847 | **0.21 %** |
+| QP 36 | 655 | 83 | 5.08 bit | 113 B of 43 743 | **0.26 %** |
+
+0.26 % is the *ceiling*, assuming an adaptive model this format does not have
+(the tables are static per frame) and ignoring the cost of the change. And the
+change is not cheap: moving the vector into the payload puts a mode-conditional
+symbol at the head of a tile's coding-unit list, which is exactly what
+`docs/SYNTAX.md` decision 47 already refuses for the disparity, for the same
+reason — it perturbs the interleaved lane schedule, the one part of the format
+with a lane-order dependency, and it ends the property that a tile header
+parses without starting the entropy decoder.
+
+**Not built.** The number is on the record so the next person does not have to
+guess it: at the paper's own operating density the whole of mode, MV and
+disparity coding is worth a quarter of one percent.
+
+---
+
+## 7. What it costs a decoder
+
+Per symbol, nothing. The context index is `base + 2 * ucls + prev_cbf` against
+`base + ucls` — one add and one lookup either way — and `prev_cbf` is one store
+per *unit*, of a value the lane has just decoded.
+
+| | v1 | v2 (bit 21) | v3 (bit 25) |
+|---|---|---|---|
+| contexts | 12 | 16 | 22 |
+| `s_cum[8][nctx][16]`, 8 tiles | 6144 B | 8192 B | **11 264 B** |
+| Pass A LDS total | ~8.5 KiB | ~10 KiB | **~13.5 KiB** |
+| per-lane state added | — | — | 3 bits |
+| dependent steps per tile | unchanged | unchanged | unchanged |
+| barriers per tile | unchanged | unchanged | unchanged |
+| bytes of traffic | unchanged | unchanged | unchanged |
+
+The budget is 32 KiB per workgroup of 8 tiles, so 13.5 KiB leaves room for the
+16-context stride the host uploads and for a wider model later. **No cross-lane
+read, no extra barrier, no change to the round loop** — which is the whole
+reason the conditioning is on the lane's own previous unit rather than on the
+geometric neighbour above (`docs/SYNTAX.md` decision 53).
+
+`TAB_V2` costs the kernel nothing at all: it changes how the **host** parses
+the frame's table sets into the same cumulative-frequency upload. It costs the
+host one extra bit read per context row and a byte-aligned length at the end of
+the table area instead of a fixed one.
+
+`table_iters` is encoder-only and invisible to any decoder.
+
+---
+
+## 8. Conformance
+
+`ctest -R 'ref\.'` is green, and green again under
+`cmake --preset asan-ubsan`. The 56 committed vectors `v01`-`v56` and the 29
+rejection vectors are **byte-identical** to what a v1.4 build produced, which
+is the proof that both tool bits are additive and that the encoder-side
+refinement does not disturb a stream that does not use trained tables.
+
+New:
+
+| vector | what it pins |
+|---|---|
+| `v57_tabv2_420` | `TAB_V2` alone, with transmitted tables |
+| `v58_ctxv3_444` | `CTX_V3` alone, built-in tables only |
+| `v59_ctxv3_tab_res420` | both, with directional intra, cycling `res_level` and `nsub` auto |
+| `v60_default_v15_444` | the shipped default configuration of a v1.5 encoder |
+| `v61_inter_ctxv3` | both, on the inter path |
+| `v62_inter_stereo_v3` | both, stereo, two eyes |
+| `r30_tab_v2_no_tables` | `TAB_V2` without `CUSTOM_TABLES` is `BITSTREAM` |
+| `r31_ctx_v3_no_v2` | `CTX_V3` without `CTX_V2` is `BITSTREAM` |
+
+---
+
+## 9. Reproducing this
+
+```sh
+export NXQ_SCRATCH=/run/media/nerdrx/Lex/claude/nx-scratch/nx-warp
+cmake -S . -B build-ref -G Ninja -DNXWARP_BUILD_VK=OFF -DCMAKE_BUILD_TYPE=Release
+cmake --build build-ref -j4
+export PATH=$PWD/build-ref/bin:$PATH
+cd tools/quality
+
+#   the v1.4 baseline, byte for byte
+--codec-enc "nxv-enc --quiet --ctx v2 --tab v1 --table-iters 0" --codec-name nxv-v14
+#   + TAB_V2
+--codec-enc "nxv-enc --quiet --ctx v2 --tab v2 --table-iters 0" --codec-name nxv-tab
+#   + CTX_V3
+--codec-enc "nxv-enc --quiet --ctx v3 --tab v2 --table-iters 0" --codec-name nxv-ctx
+#   + the table refinement (the shipped default; `nxv-enc` alone is the same)
+--codec-enc "nxv-enc --quiet"                                   --codec-name nxv-final
+```
+
+Phase 1, per pixel format:
+
+```sh
+chrt -i 0 taskset -c 4-7 nice -n 19 $NXQ_SCRATCH/venv/bin/python compare.py \
+  --seq $NXQ_SCRATCH/seq/vr-mixed-1024-v2.yuv444p.json --frames 6 \
+  --codec-enc "..." --codec-dec "nxv-dec --quiet" --codec-name ... \
+  --anchors x264-intra --qp 0,4,8,12,16,20,24 --anchor-qp 22,26,30,34,38,42 \
+  --phase1-anchor x264-intra --phase1-band 100,400 --phase1-tolerance 1.0 \
+  --out $NXQ_SCRATCH/results/tourney-ctx-b/intra-yuv444p-final.json
+```
+
+Phase 2, band A and band B:
+
+```sh
+  --codec-enc "nxv-enc --quiet --eyes 2 --inter on \
+               --poses $NXQ_SCRATCH/seq/vr-mixed-1024-v2.poses.json ..." \
+  --anchors x265-p --no-vmaf \
+  --qp 0,4,8,12    --anchor-qp 2,8,14,20      # band A
+  --qp 18,24,30,36 --anchor-qp 26,32,38,44    # band B
+python3 ref/phase2_verdict.py --results $NXQ_SCRATCH/results/tourney-ctx-b/kill-*.json
+```
+
+The 12-bit experiment of section 5 is a build flag:
+
+```sh
+cmake -S . -B build-p12 -G Ninja -DNXWARP_BUILD_VK=OFF \
+      -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS=-DNXVC_PROB_BITS=12
+```
+
+The context-layout sweep of section 2 was run through a temporary compile knob
+(`NXVC_V3_NC`, `NXVC_V3_LEVEL_SPLIT`) that parameterised `kCtxV3*` in
+`ref/src/common.h`, plus a retrain of the built-in family per variant. The knob
+was **removed when the layout was frozen** — carrying a switch for five
+bitstreams that will never be emitted is worse than carrying the measurement —
+so reproducing the sweep means reinstating it: make `kNumCtxV3` and the four
+`kCtxV3*` bases functions of the two counts, widen `nc_class` back to four
+classes, and for each variant run `nxv-gentables v3` into
+`ref/src/default_tables.inc` before rebuilding. Each variant is about three
+minutes.
