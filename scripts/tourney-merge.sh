@@ -79,7 +79,10 @@ order_key() {
         inter-a)  echo 40 ;;
         inter-b)  echo 41 ;;
         inter-*)  echo 42 ;;
-        rdo-*)    echo 50 ;;
+        # JUDGE-rdo.md: rdo-b is the base, five items port from rdo-a.
+        rdo-b)    echo 50 ;;
+        rdo-a)    echo 51 ;;
+        rdo-*)    echo 52 ;;
         # percept lands LAST, after rdo: its measured result is negative for
         # the spatial ladder, so it merges for the wiring and the rc/ fixes,
         # not for the ladder.  --rc stays off by default.  See MERGE-PLAN 4.8.
