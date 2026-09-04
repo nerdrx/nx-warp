@@ -544,6 +544,16 @@ struct FrameWalk {
     bool warp_present = false;
 };
 
+// Set a tool bit in the stream header's u64 `tools` field at offset 32, by
+// name.  The reject vectors used to poke this as a raw byte -- `b[32 + 3] |=
+// 0x01` for bit 24 -- which silently stops testing what it says the moment a
+// tool is renumbered: the decoder answers VERSION for an unallocated bit where
+// the vector expects BITSTREAM.  Always spell the constant.
+static void set_tool(std::vector<uint8_t> &b, uint64_t tool) {
+    for (int i = 0; i < 8; ++i)
+        b[32 + (size_t)i] |= (uint8_t)((tool >> (8 * i)) & 0xff);
+}
+
 static uint32_t rd_u32(const std::vector<uint8_t> &b, size_t o) {
     uint32_t v = 0;
     for (int i = 0; i < 4; ++i) v |= (uint32_t)b[o + i] << (8 * i);
@@ -864,16 +874,6 @@ static const char *status_token(int st) {
         case NXVC_ERR_VERSION: return "VERSION";
     }
     return "UNKNOWN";
-}
-
-// Set a tool bit in the stream header's u64 `tools` field at offset 32, by
-// name.  The reject vectors used to poke this as a raw byte -- `b[32 + 3] |=
-// 0x01` for bit 24 -- which silently stops testing what it says the moment a
-// tool is renumbered: the decoder answers VERSION for an unallocated bit where
-// the vector expects BITSTREAM.  Always spell the constant.
-static void set_tool(std::vector<uint8_t> &b, uint64_t tool) {
-    for (int i = 0; i < 8; ++i)
-        b[32 + (size_t)i] |= (uint8_t)((tool >> (8 * i)) & 0xff);
 }
 
 static void put_u32(std::vector<uint8_t> &b, size_t off, uint32_t v) {
