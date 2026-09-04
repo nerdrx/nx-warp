@@ -15,6 +15,15 @@ deterministic concealment. Layers are still out of scope. Inter is **opt-in**:
 `nxvc_config_default()` leaves it off, so an existing caller and every syntax
 v1.3 stream are byte-identical to what a v1.3 build produced.
 
+**Syntax revision v1.5** adds the two intra detail tools -- the 4x4 transform
+split (bit 19) and chroma from luma (bit 24) -- plus a named, per-band encoder
+dead zone that changes no syntax at all. Both tools are additive and **off by
+default in `nxvc_config_default()`**: `v01`-`v56` of the conformance set are
+byte-identical to what a v1.4 build produced, which `ctest -R ref.vectors`
+checks on every commit. `nxv-enc --split4x4 on --cfl on` turns them on. See
+[`docs/SYNTAX.md`](../docs/SYNTAX.md) 6.7 and 7.7 and
+[`RESULTS-detail-a.md`](RESULTS-detail-a.md).
+
 **Syntax revision v1.4** adds the inter path: the frame-header flag
 `warp_present` (bit 3) and the 36-byte-per-eye `warp_ext()` that follows the
 frame header, the four inter tile modes, `eyes == 2` with row-major/eye-minor
@@ -78,6 +87,13 @@ v1.3 tool switches:
 | `--intra-dir-cand N` | 2 | modes RD-checked per block after the SATD sort; 8 is exhaustive and worth 0.1 % for 2.2x the encode time |
 | `--ctx v1\|v2` | `v2` | 12 or 16 entropy contexts |
 | `--no-sign-hide` | off | code every sign |
+
+and the v1.5 detail switches:
+
+| flag | default | effect |
+|---|---|---|
+| `--split4x4 on\|off` | `off` | per-block 4x4 transform split; sets tool bit 19 |
+| `--cfl on\|off` | `off` | the chroma-from-luma intra mode; sets tool bit 24, and needs `--intra-dir on --ctx v2` |
 
 and the v1.4 inter switches:
 
@@ -227,10 +243,17 @@ the value a GPU decoder should assume as the maximum).
 | `../tests/ref/vectors.cpp` | generates and checks the conformance vectors |
 | `../tests/ref/test_saturate.cpp` | range safety of the normative decode path |
 | `RESULTS-intra.md` | the Phase 1 intra measurements, in full |
+| `RESULTS-detail-a.md` | the v1.5 detail tools, measured before and after |
 
 The per-lane syntax state machine in `entropy.cpp` is the piece the Vulkan Pass A
 shader mirrors: one `LaneMachine` per rANS lane, driven identically by the
 encoder and the decoder, so the two can never disagree about the symbol order.
+
+The 4x4 split lives in `transform.cpp` (`fdct4x4`/`idct4x4` and the `kD0/D1/D2`
+constants), `kScan4Split` in `tables.cpp`, `residual_block()`/`forward_block()`
+in `codec.cpp`, and the `kSplit` phase of `LaneMachine`. Chroma from luma is
+`cfl_luma()`, `cfl_fit()` and the `kIntraCfl` case of `predict_block()`, with
+`TileCoder::cfl_for()` deciding when the mode exists.
 
 Directional intra lives in three places: `predict_block()` / `build_refs()` in
 `codec.cpp` are the normative predictor and reference derivation,
@@ -259,8 +282,8 @@ cmake --preset asan-ubsan && cmake --build --preset asan-ubsan
 ctest --preset asan-ubsan -R 'ref\.'
 ```
 
-`tests/vectors/` holds 44 committed `.nxv` vectors and `vectors.md5`, which pins
-both the MD5 of each bitstream and the MD5 of its decoded planes, plus 17
+`tests/vectors/` holds 61 committed `.nxv` vectors and `vectors.md5`, which pins
+both the MD5 of each bitstream and the MD5 of its decoded planes, plus 32
 **rejection vectors** and `rejects.md5`, which pin the exact status each
 malformed stream must be refused with. `VERSION`, `UNSUPPORTED`, `BITSTREAM`
 and `TRUNCATED` are not interchangeable: a transport falls back on one and

@@ -104,6 +104,63 @@ void idct8x8(const i32 src[64], i32 dst[64]) {
     }
 }
 
+// ------------------------------------------------------------- 1D DCT, 4pt
+// Inverse, gain 2^10 relative to the orthonormal DCT-III.  The matrix rows
+// are +-{kD0, kD1, kD0, kD2} and +-{kD0, kD2, -kD0, -kD1}; every product is a
+// constant times an int16, so |y| <= 32768 * (kD0+kD1+kD0+kD2) = 6.5e7 and
+// there is no operand like the 8x8's `P +- Q` that needs an exact wide
+// product.  docs/SYNTAX.md 6.7.
+static inline void idct4_1d(const i32 *x, i32 *y) {
+    i32 e0 = (x[0] + x[2]) * kD0;
+    i32 e1 = (x[0] - x[2]) * kD0;
+    i32 o0 = x[1] * kD1 + x[3] * kD2;
+    i32 o1 = x[1] * kD2 - x[3] * kD1;
+    y[0] = e0 + o0; y[3] = e0 - o0;
+    y[1] = e1 + o1; y[2] = e1 - o1;
+}
+
+// Forward: the exact transpose of the flow graph above.
+static inline void fdct4_1d(const i32 *y, i32 *x) {
+    i32 e0 = y[0] + y[3], o0 = y[0] - y[3];
+    i32 e1 = y[1] + y[2], o1 = y[1] - y[2];
+    x[0] = (e0 + e1) * kD0;
+    x[2] = (e0 - e1) * kD0;
+    x[1] = o0 * kD1 + o1 * kD2;
+    x[3] = o0 * kD2 - o1 * kD1;
+}
+
+void fdct4x4(const i32 src[16], i16 dst[16]) {
+    i32 tmp[16], in[4], out[4];
+    for (int r = 0; r < 4; ++r) {
+        for (int c = 0; c < 4; ++c) in[c] = src[r * 4 + c];
+        fdct4_1d(in, out);
+        for (int c = 0; c < 4; ++c)
+            tmp[c * 4 + r] = clamp16((out[c] + 32) >> 6);  // transposed
+    }
+    for (int r = 0; r < 4; ++r) {
+        for (int c = 0; c < 4; ++c) in[c] = tmp[r * 4 + c];
+        fdct4_1d(in, out);
+        for (int c = 0; c < 4; ++c)
+            dst[c * 4 + r] = (i16)clamp16((out[c] + 8192) >> 14);
+    }
+}
+
+void idct4x4(const i32 src[16], i32 dst[16]) {
+    i32 tmp[16], in[4], out[4];
+    for (int r = 0; r < 4; ++r) {
+        for (int c = 0; c < 4; ++c) in[c] = src[r * 4 + c];
+        idct4_1d(in, out);
+        for (int c = 0; c < 4; ++c)
+            tmp[c * 4 + r] = clamp16((out[c] + 64) >> 7);
+    }
+    for (int r = 0; r < 4; ++r) {
+        for (int c = 0; c < 4; ++c) in[c] = tmp[r * 4 + c];
+        idct4_1d(in, out);
+        for (int c = 0; c < 4; ++c)
+            dst[c * 4 + r] = clamp16((out[c] + 4096) >> 13);
+    }
+}
+
 // -------------------------------------------------------------- resampling
 template <typename T>
 static inline i32 bilinear_impl(const T *src, int w, int h, int stride, i32 sx,

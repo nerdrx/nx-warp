@@ -48,6 +48,7 @@ extern const u8 kZigzag8[64];   // 8x8
 extern const u8 kZigzag4[16];   // 4x4
 extern const u8 kZigzag2[4];    // 2x2
 extern const u8 kRaster8[64];   // transform-skip scan
+extern const u8 kScan4Split[64];  // four 4x4 sub-blocks, tool bit 19
 extern const u8 kZigzag1[1];
 
 inline const u8 *scan_table(int n, bool tskip) {
@@ -56,6 +57,17 @@ inline const u8 *scan_table(int n, bool tskip) {
     if (n == 4) return kZigzag2;
     return kZigzag1;
 }
+// The scan of one 64-value residual block.  `split` (tool bit 19) and `tskip`
+// are mutually exclusive by syntax, so the three cases do not overlap.
+inline const u8 *block_scan(bool tskip, bool split) {
+    return split ? kScan4Split : (tskip ? kRaster8 : kZigzag8);
+}
+
+// The 4x4 weighting matrix of a split sub-block is the tile's 8x8 matrix
+// subsampled by two in each frequency axis: w4[u][v] = w8[2u][2v].  Both
+// transforms have the same gain and the same quantiser scale, so no second
+// matrix family exists.  docs/SYNTAX.md 6.7.
+inline int weight4(const u8 *w8, int i4) { return w8[(i4 >> 2) * 16 + (i4 & 3) * 2]; }
 
 // ---------------------------------------------------------------- contexts
 // The v1 model has 12 contexts.  The v2 model (tool bit 21, CTX_V2) adds four:
@@ -100,8 +112,28 @@ enum : int {
     kIntraDdr = 6,      // diagonal down-right (45 deg)
     kIntraVr = 7,       // vertical-right (26.6 deg)
     kIntraHd = 8,       // horizontal-down (63.4 deg)
-    kNumIntraModes = 9
+    kNumIntraModes = 9,
+    // Chroma only, tool bit 24: a linear model of the co-located
+    // reconstructed luma, fitted to the block's own reconstructed
+    // neighbours.  It extends the chroma mode alphabet to 10 and leaves the
+    // luma alphabet at 9.  SYNTAX.md 7.7.
+    kIntraCfl = 9,
+    kNumIntraModesCfl = 10
 };
+
+// ------------------------------------------------------- chroma from luma
+// The model is fitted between two neighbour pairs -- the mean of the two with
+// the smallest co-located luma and the mean of the two with the largest -- so
+// the only division is by their luma difference, which is at most 255.  It is
+// a table: kCflRecip[d] = round(2^15 / d) for d in [1, 255], entry 0 unused.
+// SYNTAX.md 7.7.  Nothing else in the decoding process divides.
+extern const u16 kCflRecip[256];
+// The fitted slope is Q8 and clamped to +-8.0, which bounds a * (L - minL) by
+// 2048 * 255 = 5.2e5 and keeps the whole predictor inside int32.
+constexpr int kCflAlphaBits = 8;
+constexpr int kCflAlphaMax = 8 << kCflAlphaBits;   //  2048
+// The number of neighbour pairs the fit reads: 8 above and 8 to the left.
+constexpr int kCflPairs = 16;
 
 // LAST symbol -> [base, raw_bits]
 extern const u8 kLastBase[16];
@@ -114,6 +146,12 @@ inline int band_of(int scan_pos) {
     if (scan_pos < 10) return 2;
     return 3;
 }
+// In a split block (tool bit 19) the 64 scan positions are four concatenated
+// 4x4 sub-blocks, so the frequency band a position belongs to is its position
+// *within its sub-block*, not within the unit.  docs/SYNTAX.md 9.3.
+inline int band_pos(int scan_pos, bool split) {
+    return split ? (scan_pos & 15) : scan_pos;
+}
 // band x previous-level class -> one of 8 LEVEL contexts.
 extern const u8 kLevelCtx[4][3];
 inline int level_ctx(int scan_pos, int prev_class) {
@@ -122,6 +160,27 @@ inline int level_ctx(int scan_pos, int prev_class) {
 inline int level_class(int magnitude) {
     return magnitude == 0 ? 0 : (magnitude == 1 ? 1 : 2);
 }
+
+// ------------------------------------------------------- encoder dead zone
+// The dead-zone quantizer is `q = floor(|c| / step + f)`.  `f` was a flat 1/3
+// everywhere; it is now per frequency band, because the two units that still
+// use this quantizer rather than the RD trellis -- the DC plane, which is the
+// intra predictor and is deliberately not trellised, and every unit when
+// --no-rdo is in force -- want different tradeoffs at different frequencies.
+// Values are in *forty-eighths* of a step and are indexed by band_of(scan
+// position), the same banding the LEVEL contexts use.  Forty-eighths because
+// the denominator has to divide 3 and 2 exactly -- 16 is the 1/3 these
+// replace and 24 the 1/2 the inter transform-skip path uses, both bit-exact,
+// which is what lets this refactor land without touching one conformance
+// vector -- while still leaving a fine grid to tune on.  Encoder only:
+// nothing in the decoding process depends on them.
+constexpr int kDeadZoneUnit = 48;
+extern const u8 kDeadZoneDc[4];   // the DC plane
+extern const u8 kDeadZoneAc[4];   // residual blocks without the trellis
+constexpr u8 kDeadZoneTskipInter = 24;  // 1/2, the inter transform-skip value
+// The quantizer's rounding term for a step `t` (Q4) and an offset of `f`
+// forty-eighths.  Encoder side, so the division is allowed (SYNTAX.md 6.5).
+inline i32 dead_zone(i32 t, int f) { return (t * f) / kDeadZoneUnit; }
 
 // Sign data hiding (tool bit 22): a unit whose LAST is at scan position
 // kSdhMinLast or beyond does not code the sign at that position; it is the

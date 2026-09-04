@@ -1,6 +1,7 @@
 // nxvc_ref: bitstream syntax, encoder and decoder.  See docs/SYNTAX.md.
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <new>
 
@@ -117,6 +118,8 @@ struct FrameParams {
     int stereo = 0;             // stream tool bit 12
     int nctx = kNumCtxV1;   // 12 or 16, from the stream's CTX_V2 tool bit
     int intra_dir = 0;      // stream tool bit 17
+    int split4 = 0;         // stream tool bit 19
+    int cfl = 0;            // stream tool bit 24
     int dir_layer = 0;      // frame flags bit 2
     int sdh = 0;            // stream tool bit 22
     u8 wm_luma[64] = {}, wm_chroma[64] = {};
@@ -145,6 +148,7 @@ struct TileParams {
     int qp_delta = 0, table_set = 0, nsub_log2 = 3, mv_present = 0;
     int ref_sel = 0, tskip = 0, wgt = 0, wm_id = 0;
     int mv_x = 0, mv_y = 0, alpha_value = 255;
+    int split4 = 0;      // word1 bit 28: blocks may carry a 4x4 split flag
     int disparity = 0;   // STEREO only, quarter samples, 12 bits
     int skipped = 0;     // signalled by skip_bitmap, no tile structure at all
 };
@@ -172,6 +176,7 @@ static void pack_tile_header(BW &bw, const TileParams &t) {
     w1 |= ((u32)t.tskip & 1) << 23;
     w1 |= ((u32)t.wgt & 3) << 24;
     w1 |= ((u32)t.wm_id & 3) << 26;
+    w1 |= ((u32)t.split4 & 1) << 28;
     bw.u32v(w0);
     bw.u32v(w1);
 }
@@ -194,6 +199,7 @@ static void unpack_tile_header(u32 w0, u32 w1, TileParams &t) {
     t.tskip = (w1 >> 23) & 1;
     t.wgt = (w1 >> 24) & 3;
     t.wm_id = (w1 >> 26) & 3;
+    t.split4 = (w1 >> 28) & 1;
 }
 
 // ------------------------------------------------------------- tile coding
@@ -216,6 +222,19 @@ struct PlaneState {
     std::vector<i32> wpred;    // size*size, the inter predictor (empty = intra)
     std::vector<i32> recon;    // size*size, INTRA_DIR: running reconstruction
     std::vector<u8> modes;     // nb*nb, INTRA_DIR: per-block intra mode
+    std::vector<u8> splits;    // nb*nb, XFORM_4X4_SPLIT: per-block split flag
+};
+
+// -------------------------------------------------------- chroma from luma
+// What mode kIntraCfl needs: this tile's reconstructed luma plane, and how a
+// chroma sample maps onto it.  `f` is luma_size / chroma_size and is 1
+// (4:4:4) or 2 (4:2:0).  Empty `luma` means the mode is unavailable.
+struct CflCtx {
+    const i32 *luma = nullptr;
+    int size = 0;      // luma plane edge
+    int f = 1;
+    int maxval = 255;  // of the *chroma* plane
+    bool on() const { return luma != nullptr; }
 };
 
 struct TileCoder {
@@ -226,6 +245,8 @@ struct TileCoder {
     int intra_dir = 0;   // stream tool bit 17
     int dir_layer = 0;   // frame flag bit 2: predict the DC-plane residual
     int sdh = 0;         // stream tool bit 22
+    int split4 = 0;      // tile header bit 28: this tile codes split flags
+    int cfl = 0;         // stream tool bit 24: chroma may use kIntraCfl
     int nctx = kNumCtxV1;
     int inter = 0;       // tp.mode != INTRA
     PlaneState pl[4];
@@ -234,6 +255,11 @@ struct TileCoder {
 
     void setup();
     void build_units();
+    CflCtx cfl_for(int p) const;
+    // Encoder only: drop the tile's split flags once the analysis has chosen
+    // none, so the tile pays no flag bits at all.  The reconstruction is
+    // unchanged because every flag is already zero.
+    void clear_split();
 };
 
 static inline int dequant_step(int qp, int w) {
@@ -241,6 +267,31 @@ static inline int dequant_step(int qp, int w) {
     return (kQStep[qp] * w + 8) >> 4;
 }
 static inline i32 dequant(i32 q, i32 t) { return clamp16((q * t + 8) >> 4); }
+// Development hook for the reconstruction-offset measurement in
+// ref/RESULTS-detail-a.md section 3, which found the offset to be a loss at
+// every operating point and therefore did *not* give it a tool bit.  `d` is
+// Q6 of one quantiser step, applied toward zero.  Build with
+// -DNXVC_RECON_OFFSET_EXPERIMENT and set NXVC_RECON_OFF on both the encoder
+// and the decoder to reproduce; a normal build compiles it out, so no
+// conforming stream can depend on it.
+#ifdef NXVC_RECON_OFFSET_EXPERIMENT
+static int recon_offset_q6() {
+    static const int v = [] {
+        const char *e = std::getenv("NXVC_RECON_OFF");
+        return e ? clamp_i32(std::atoi(e), -32, 32) : 0;
+    }();
+    return v;
+}
+static inline i32 dequant_off(i32 q, i32 t, int d) {
+    i32 c = clamp16((q * t + 8) >> 4);
+    if (!d || !q) return c;
+    i32 o = (t * d + 512) >> 10;
+    return clamp16(q > 0 ? c - o : c + o);
+}
+#else
+static inline int recon_offset_q6() { return 0; }
+static inline i32 dequant_off(i32 q, i32 t, int) { return dequant(q, t); }
+#endif
 static inline i32 quantize(i32 c, i32 t, i32 dz) {
     i32 a = c < 0 ? -c : c;
     i32 q = (a * 16 + dz) / t;   // encoder only: division is non-normative
@@ -258,6 +309,14 @@ void TileCoder::setup() {
     intra_dir = fp->intra_dir && !inter;
     dir_layer = fp->dir_layer;
     sdh = fp->sdh;
+    // The 4x4 split is mutually exclusive with transform skip, whose 64 coded
+    // values are samples in raster order and have no sub-block structure.
+    // Everything else about the tile is unaffected.  SYNTAX.md 6.7.
+    split4 = tp.split4 && !tp.tskip;
+    // Chroma from luma predicts the *samples* from the reconstructed luma
+    // plane, so it belongs to the replace form of directional intra, and to
+    // an intra tile (an inter tile's chroma prediction is the warp).
+    cfl = fp->cfl && intra_dir && !dir_layer;
     nctx = fp->nctx;
     int qp = clamp_i32(fp->base_qp + tp.qp_delta, 0, 63);
     for (int p = 0; p < nplanes; ++p) {
@@ -285,6 +344,7 @@ void TileCoder::setup() {
             s.recon.assign((size_t)s.size * s.size, 0);
             s.modes.assign((size_t)s.nb * s.nb, 0);
         }
+        if (split4) s.splits.assign((size_t)s.nb * s.nb, 0);
     }
 }
 
@@ -323,6 +383,8 @@ void TileCoder::build_units() {
             mu.kind = UNIT_MODE;
             mu.modes = s.modes.data();
             mu.nbx = (u8)s.nb;
+            mu.nmodes = (u8)((cfl && chroma) ? kNumIntraModesCfl
+                                             : kNumIntraModes);
             mu.ctx_mode = nctx >= kNumCtxV2 ? (u8)kCtxMode : 0;
             mu.scan = scan_table(1, false);
             units.push_back(mu);
@@ -332,6 +394,8 @@ void TileCoder::build_units() {
             v.coef = &coef[off];
             v.ncoef = 64;
             v.scan = scan_table(64, tp.tskip != 0);
+            v.split_present = (u8)split4;
+            v.split_out = split4 ? &s.splits[b] : nullptr;
             v.ctx_cbf = ccbf;
             v.ctx_last = clast;
             v.sdh = (u8)sdh;
@@ -339,6 +403,31 @@ void TileCoder::build_units() {
             off += 64;
         }
     }
+}
+
+// The CFL context of plane `p`: this tile's reconstructed luma plane and the
+// chroma/luma scale.  Off (a null `luma`) for luma, alpha, and any tile the
+// tool is not enabled on.
+CflCtx TileCoder::cfl_for(int p) const {
+    CflCtx cf;
+    if (!cfl || (p != 1 && p != 2)) return cf;
+    const PlaneState &y = pl[0], &c = pl[p];
+    if (c.size <= 0) return cf;
+    if (y.size == c.size) cf.f = 1;
+    else if (y.size == 2 * c.size) cf.f = 2;
+    else return cf;   // no other luma:chroma ratio is defined
+    if ((int)y.recon.size() != y.size * y.size) return cf;
+    cf.luma = y.recon.data();
+    cf.size = y.size;
+    cf.maxval = c.maxval;
+    return cf;
+}
+
+void TileCoder::clear_split() {
+    split4 = 0;
+    tp.split4 = 0;
+    for (Unit &u : units) { u.split_present = 0; u.split_out = nullptr; }
+    for (int p = 0; p < 4; ++p) pl[p].splits.clear();
 }
 
 // -------------------------------------------------- directional prediction
@@ -403,10 +492,75 @@ static void build_refs(const i32 *recon, const i32 *fallback, int size, int bx,
     }
 }
 
-// P[j * 8 + i] for one 8x8 block.  Every mode but kIntraDcPlane is a weighted
-// average of in-range references, so no clamp is needed and none is applied.
+// The co-located luma of chroma sample (cx, cy), clamped into the tile.  For
+// f == 2 it is the rounded 2x2 average, the same kernel SYNTAX.md 5.2 uses to
+// subsample chroma, so the two planes are aligned by construction.
+static i32 cfl_luma(const CflCtx &cf, int cx, int cy) {
+    const int n = cf.size;
+    if (cf.f == 1) {
+        int x = clamp_i32(cx, 0, n - 1), y = clamp_i32(cy, 0, n - 1);
+        return cf.luma[(size_t)y * n + x];
+    }
+    int x0 = clamp_i32(2 * cx, 0, n - 1), x1 = clamp_i32(2 * cx + 1, 0, n - 1);
+    int y0 = clamp_i32(2 * cy, 0, n - 1), y1 = clamp_i32(2 * cy + 1, 0, n - 1);
+    return (cf.luma[(size_t)y0 * n + x0] + cf.luma[(size_t)y0 * n + x1] +
+            cf.luma[(size_t)y1 * n + x0] + cf.luma[(size_t)y1 * n + x1] + 2) >>
+           2;
+}
+
+// Fit chroma = base_c + alpha * (luma - base_l) over the block's 16
+// neighbour pairs: the two with the smallest co-located luma give `base`, the
+// two with the largest give the far end, and both ends are averaged so a
+// single noisy neighbour cannot set the slope.  Ties take the lowest index,
+// which makes the choice deterministic.  Normative; SYNTAX.md 7.7.
+struct CflModel {
+    i32 alpha;   // Q8, in [-kCflAlphaMax, kCflAlphaMax - 1]
+    i32 base_l, base_c;
+};
+
+static CflModel cfl_fit(const CflCtx &cf, const IntraRefs &r, int bx, int by) {
+    i32 ln[kCflPairs], cn[kCflPairs];
+    const int x0 = bx * 8, y0 = by * 8;
+    for (int k = 0; k < 8; ++k) {
+        cn[k] = r.a[1 + k];
+        ln[k] = cfl_luma(cf, x0 + k, y0 - 1);
+        cn[8 + k] = r.l[1 + k];
+        ln[8 + k] = cfl_luma(cf, x0 - 1, y0 + k);
+    }
+    int lo0 = 0, lo1 = -1, hi0 = 0, hi1 = -1;
+    for (int k = 1; k < kCflPairs; ++k) {
+        if (ln[k] < ln[lo0]) lo0 = k;
+        if (ln[k] > ln[hi0]) hi0 = k;
+    }
+    for (int k = 0; k < kCflPairs; ++k) {
+        if (k != lo0 && (lo1 < 0 || ln[k] < ln[lo1])) lo1 = k;
+        if (k != hi0 && (hi1 < 0 || ln[k] > ln[hi1])) hi1 = k;
+    }
+    CflModel m{};
+    m.base_l = (ln[lo0] + ln[lo1] + 1) >> 1;
+    m.base_c = (cn[lo0] + cn[lo1] + 1) >> 1;
+    const i32 top_l = (ln[hi0] + ln[hi1] + 1) >> 1;
+    const i32 top_c = (cn[hi0] + cn[hi1] + 1) >> 1;
+    const i32 dl = top_l - m.base_l;          // >= 0, at most 255
+    if (dl == 0) {
+        m.alpha = 0;
+        return m;
+    }
+    // kCflRecip[dl] is 2^15 / dl, so the product is (top_c - base_c)/dl in
+    // Q15; >> 7 brings it to Q8.  |top_c - base_c| <= 511 and kCflRecip <=
+    // 32768, so the product is at most 1.7e7 -- inside int32.
+    const i32 q = (top_c - m.base_c) * (i32)kCflRecip[dl];
+    m.alpha = clamp_i32((q + 64) >> 7, -kCflAlphaMax, kCflAlphaMax - 1);
+    return m;
+}
+
+// P[j * 8 + i] for one 8x8 block.  Every mode but kIntraDcPlane and
+// kIntraCfl is a weighted average of in-range references, so no clamp is
+// needed and none is applied; kIntraCfl clamps because a fitted slope can
+// leave the sample domain.
 static void predict_block(int mode, const IntraRefs &r, const i32 *base,
-                          int size, int bx, int by, i32 P[64]) {
+                          int size, int bx, int by, i32 P[64],
+                          const CflCtx *cf = nullptr) {
     const i32 *A = r.a + 1;  // A[-1] == corner
     const i32 *L = r.l + 1;  // L[-1] == corner
     const i32 tl = r.a[0];
@@ -422,6 +576,17 @@ static void predict_block(int mode, const IntraRefs &r, const i32 *base,
             for (int k = 0; k < 8; ++k) sum += A[k] + L[k];
             i32 dc = (sum + 8) >> 4;
             for (int i = 0; i < 64; ++i) P[i] = dc;
+            return;
+        }
+        case kIntraCfl: {
+            const CflModel m = cfl_fit(*cf, r, bx, by);
+            for (int j = 0; j < 8; ++j)
+                for (int i = 0; i < 8; ++i) {
+                    i32 l = cfl_luma(*cf, bx * 8 + i, by * 8 + j);
+                    P[j * 8 + i] = clamp_i32(
+                        m.base_c + ((m.alpha * (l - m.base_l) + 128) >> 8), 0,
+                        cf->maxval);
+                }
             return;
         }
         case kIntraPlanar:
@@ -504,17 +669,64 @@ static void predict_block(int mode, const IntraRefs &r, const i32 *base,
     }
 }
 
-// Dequantize + inverse transform one residual block.
+// Dequantize + inverse transform one residual block.  With `split` the block
+// is four 4x4 sub-blocks in raster order, each occupying its own quadrant of
+// the 64-value coefficient array and quantized with the tile's matrix
+// subsampled by two (SYNTAX.md 6.7).
 static void residual_block(const i16 *c, const PlaneState &s, int tskip,
-                           i32 res[64]) {
+                           i32 res[64], int split = 0) {
     if (tskip) {
         int t = dequant_step(s.qp, 16);
         for (int i = 0; i < 64; ++i) res[i] = dequant(c[i], t);
+    } else if (split) {
+        const int ro = recon_offset_q6();
+        for (int sb = 0; sb < 4; ++sb) {
+            const int ox = (sb & 1) * 4, oy = (sb >> 1) * 4;
+            i32 dq[16], out[16];
+            for (int k = 0; k < 16; ++k) {
+                int idx = (oy + (k >> 2)) * 8 + ox + (k & 3);
+                dq[k] = dequant_off(c[idx],
+                                    dequant_step(s.qp, weight4(s.wmat, k)), ro);
+            }
+            idct4x4(dq, out);
+            for (int k = 0; k < 16; ++k)
+                res[(oy + (k >> 2)) * 8 + ox + (k & 3)] = out[k];
+        }
     } else {
+        const int ro = recon_offset_q6();
         i32 dq[64];
         for (int i = 0; i < 64; ++i)
-            dq[i] = dequant(c[i], dequant_step(s.qp, s.wmat[i]));
+            dq[i] = dequant_off(c[i], dequant_step(s.qp, s.wmat[i]), ro);
         idct8x8(dq, res);
+    }
+}
+
+// The quantizer step of block-local index `i` under the tile's matrix.
+static inline int block_step(const PlaneState &s, int i, int tskip, int split) {
+    if (tskip) return dequant_step(s.qp, 16);
+    if (split) return dequant_step(s.qp, weight4(s.wmat, ((i >> 3) & 3) * 4 +
+                                                          (i & 3)));
+    return dequant_step(s.qp, s.wmat[i]);
+}
+
+// Forward transform of one 8x8 residual into the block's 64 coefficients,
+// four 4x4 sub-blocks when `split`.  Encoder side (informative).
+static void forward_block(const i32 res[64], i16 co[64], int tskip, int split) {
+    if (tskip) {
+        for (int i = 0; i < 64; ++i) co[i] = (i16)res[i];
+    } else if (split) {
+        for (int sb = 0; sb < 4; ++sb) {
+            const int ox = (sb & 1) * 4, oy = (sb >> 1) * 4;
+            i32 in[16];
+            i16 out[16];
+            for (int k = 0; k < 16; ++k)
+                in[k] = res[(oy + (k >> 2)) * 8 + ox + (k & 3)];
+            fdct4x4(in, out);
+            for (int k = 0; k < 16; ++k)
+                co[(oy + (k >> 2)) * 8 + ox + (k & 3)] = out[k];
+        }
+    } else {
+        fdct8x8(res, co);
     }
 }
 
@@ -568,17 +780,23 @@ static void reconstruct_dc_plane(PlaneState &s, const i16 *coefs) {
 // it; `layer` makes the modes predict the DC-plane residual instead of the
 // samples.  Without `dir` this is the v1 predictor exactly.
 static void reconstruct_plane(PlaneState &s, const i16 *coefs, int tskip,
-                              int dir = 0, int layer = 0) {
+                              int dir = 0, int layer = 0,
+                              const CflCtx *cf = nullptr) {
     const int nb = s.nb, size = s.size;
     const int ndc = nb * nb;
     reconstruct_dc_plane(s, coefs);
     const i16 *bc = coefs + ndc;
+    // Empty when the tile does not carry split flags, in which case every
+    // block uses the 8x8 transform.
+    auto split_of = [&](int b) {
+        return (int)s.splits.size() == ndc ? (int)s.splits[b] : 0;
+    };
     if (!dir) {
         for (int by = 0; by < nb; ++by)
             for (int bx = 0; bx < nb; ++bx) {
                 const i16 *c = bc + ((size_t)by * nb + bx) * 64;
                 i32 res[64];
-                residual_block(c, s, tskip, res);
+                residual_block(c, s, tskip, res, split_of(by * nb + bx));
                 for (int j = 0; j < 8; ++j)
                     for (int i = 0; i < 8; ++i) {
                         int y = by * 8 + j, x = bx * 8 + i;
@@ -603,11 +821,11 @@ static void reconstruct_plane(PlaneState &s, const i16 *coefs, int tskip,
         for (int bx = 0; bx < nb; ++bx) {
             const i16 *c = bc + ((size_t)by * nb + bx) * 64;
             i32 res[64], P[64];
-            residual_block(c, s, tskip, res);
+            residual_block(c, s, tskip, res, split_of(by * nb + bx));
             IntraRefs r;
             build_refs(s.recon.data(), fallback, size, bx, by, r);
             predict_block(s.modes[(size_t)by * nb + bx], r, fallback, size, bx,
-                          by, P);
+                          by, P, cf);
             for (int j = 0; j < 8; ++j)
                 for (int i = 0; i < 8; ++i) {
                     int y = by * 8 + j, x = bx * 8 + i;
@@ -676,8 +894,8 @@ static inline int escape_bits(i32 m) {
 }
 
 static inline i32 level_rate(const RateCost &rc, int scan_pos, int prev_class,
-                             i32 m) {
-    int ctx = level_ctx(scan_pos, prev_class);
+                             i32 m, bool split = false) {
+    int ctx = level_ctx(band_pos(scan_pos, split), prev_class);
     i32 sym = m > 14 ? kEscSym : m;
     i32 r = rc.sym[ctx][sym];
     if (m > 14) r += escape_bits(m) << 10;
@@ -692,7 +910,7 @@ constexpr double kRdInf = 1e30;
 // back into `coefs`.
 static void rdoq_unit(i16 *coefs, const i32 *orig, const i32 *step, int ncoef,
                       const u8 *scan, int ctx_cbf, int ctx_last,
-                      const RateCost &rc, double lambda) {
+                      const RateCost &rc, double lambda, bool split = false) {
     double f[64][3], fnz[64];
     i32 best_m[64][3], best_m_nz[64];
     double tail = 0;               // energy of scan positions above p
@@ -722,7 +940,8 @@ static void rdoq_unit(i16 *coefs, const i32 *orig, const i32 *step, int ncoef,
             for (int k = 0; k < nc; ++k) {
                 i32 m = cand[k];
                 double d = a - (double)m * st;
-                double cost = d * d + lambda * (level_rate(rc, p, s, m) / 1024.0) +
+                double cost = d * d +
+                              lambda * (level_rate(rc, p, s, m, split) / 1024.0) +
                               prev[level_class(m)];
                 if (cost < best) { best = cost; bm = m; }
                 if (m != 0 && cost < bestnz) { bestnz = cost; bmnz = m; }
@@ -812,6 +1031,29 @@ static void hide_sign_unit(i16 *coefs, const i32 *orig, const i32 *step,
     coefs[idx] = (i16)(neg ? -m : m);
 }
 
+// The dead-zone offsets actually used, in forty-eighths of a step.
+// NXVC_DZ_DC / NXVC_DZ_AC override them with four comma-separated values, the
+// development hook the sweep in ref/RESULTS-detail-a.md section 3 was run
+// with.  Encoder-only and no syntax change, so a stream produced under them
+// is as conformant as any other.
+static const u8 *dead_zone_table(bool dc) {
+    static const u8 *dcz = [] {
+        static u8 v[4];
+        std::memcpy(v, kDeadZoneDc, 4);
+        if (const char *e = std::getenv("NXVC_DZ_DC"))
+            std::sscanf(e, "%hhu,%hhu,%hhu,%hhu", &v[0], &v[1], &v[2], &v[3]);
+        return v;
+    }();
+    static const u8 *acz = [] {
+        static u8 v[4];
+        std::memcpy(v, kDeadZoneAc, 4);
+        if (const char *e = std::getenv("NXVC_DZ_AC"))
+            std::sscanf(e, "%hhu,%hhu,%hhu,%hhu", &v[0], &v[1], &v[2], &v[3]);
+        return v;
+    }();
+    return dc ? dcz : acz;
+}
+
 // Encoder side: quantize the DC plane and mirror the decoder's
 // reconstruction of it into s.means / s.pred.
 static void analyze_dc_plane(PlaneState &s, i16 *coefs, int sdh) {
@@ -841,14 +1083,20 @@ static void analyze_dc_plane(PlaneState &s, i16 *coefs, int sdh) {
         i16 out[64];
         for (int i = 0; i < 64; ++i) in[i] = m[i] - s.dc_off;
         fdct8x8(in, out);
-        for (int i = 0; i < 64; ++i) {
-            orig[i] = out[i];
-            coefs[i] = (i16)quantize(out[i], tdc, tdc / 3);
-        }
+        for (int i = 0; i < 64; ++i) orig[i] = out[i];
     } else {
-        for (int i = 0; i < ndc; ++i) {
-            orig[i] = m[i] - s.dc_off;
-            coefs[i] = (i16)quantize(orig[i], tdc, tdc / 3);
+        for (int i = 0; i < ndc; ++i) orig[i] = m[i] - s.dc_off;
+    }
+    // Per-band dead zone: the DC plane is the intra predictor and is
+    // deliberately not trellised, so its rounding offsets are the only knob
+    // it has.  Banded by scan position, as the LEVEL contexts are.
+    {
+        const u8 *dz = dead_zone_table(true);
+        const u8 *sc = scan_table(ndc, false);
+        for (int pp = 0; pp < ndc; ++pp) {
+            int i = sc[pp];
+            coefs[i] = (i16)quantize(orig[i], tdc,
+                                     dead_zone(tdc, dz[band_of(pp)]));
         }
     }
     if (sdh) {
@@ -866,6 +1114,7 @@ static void analyze_plane(PlaneState &s, i16 *coefs, int tskip, int intra_dz,
                           int sdh) {
     const int nb = s.nb, size = s.size;
     const int ndc = nb * nb;
+    const u8 *dzac = dead_zone_table(false);
     analyze_dc_plane(s, coefs, sdh);
     // residual blocks
     i16 *bc = coefs + ndc;
@@ -880,25 +1129,25 @@ static void analyze_plane(PlaneState &s, i16 *coefs, int tskip, int intra_dz,
                                      s.pred[(size_t)y * size + x];
                 }
             i32 orig[64], stepv[64];
+            const u8 *scan = scan_table(64, tskip != 0);
             if (tskip) {
                 int t = dequant_step(s.qp, 16);
-                for (int i = 0; i < 64; ++i) {
-                    orig[i] = res[i];
-                    stepv[i] = t;
-                    c[i] = (i16)quantize(res[i], t, intra_dz ? t / 3 : t / 2);
-                }
+                for (int i = 0; i < 64; ++i) { orig[i] = res[i]; stepv[i] = t; }
             } else {
                 i16 co[64];
                 fdct8x8(res, co);
                 for (int i = 0; i < 64; ++i) {
-                    int t = dequant_step(s.qp, s.wmat[i]);
                     orig[i] = co[i];
-                    stepv[i] = t;
-                    c[i] = (i16)quantize(co[i], t, t / 3);
+                    stepv[i] = dequant_step(s.qp, s.wmat[i]);
                 }
             }
-            if (sdh)
-                hide_sign_unit(c, orig, stepv, 64, scan_table(64, tskip != 0));
+            for (int pp = 0; pp < 64; ++pp) {
+                int i = scan[pp];
+                int f = tskip && !intra_dz ? kDeadZoneTskipInter
+                                           : dzac[band_of(pp)];
+                c[i] = (i16)quantize(orig[i], stepv[i], dead_zone(stepv[i], f));
+            }
+            if (sdh) hide_sign_unit(c, orig, stepv, 64, scan);
         }
 }
 
@@ -978,13 +1227,14 @@ static i32 satd8x8(const i32 d[64]) {
 
 // Q10 bits one coding unit costs under `rc`, mirroring the LaneMachine.
 static i32 unit_bits(const i16 *c, int ncoef, const u8 *scan, int ctx_cbf,
-                     int ctx_last, int ctx_level, const RateCost &rc,
-                     int sdh) {
+                     int ctx_last, int ctx_level, const RateCost &rc, int sdh,
+                     bool split_present = false, bool split = false) {
     int last = -1;
     for (int p = ncoef - 1; p >= 0; --p)
         if (c[scan[p]] != 0) { last = p; break; }
     if (last < 0) return rc.sym[ctx_cbf][0];
     i32 r = rc.sym[ctx_cbf][1];
+    if (split_present) r += 1 << 10;  // the 4x4 split flag, one bypass bit
     if (ncoef > 1) {
         int cls = last_class_of(last);
         r += rc.sym[ctx_last][cls] + (kLastRawBits[cls] << 10);
@@ -994,7 +1244,7 @@ static i32 unit_bits(const i16 *c, int ncoef, const u8 *scan, int ctx_cbf,
     for (int p = last; p >= 0; --p) {
         i32 q = c[scan[p]];
         i32 m = q < 0 ? -q : q;
-        int ctx = ctx_level ? ctx_level : level_ctx(p, prev);
+        int ctx = ctx_level ? ctx_level : level_ctx(band_pos(p, split), prev);
         r += rc.sym[ctx][m > 14 ? kEscSym : m];
         if (m > 14) r += escape_bits(m) << 10;
         if (m != 0) r += 1 << 10;
@@ -1012,7 +1262,8 @@ static i32 unit_bits(const i16 *c, int ncoef, const u8 *scan, int ctx_cbf,
 static void analyze_plane_dir(PlaneState &s, i16 *coefs, int tskip, int layer,
                               bool chroma, const RateCost &rc,
                               double lambda_scale, bool use_rdo, int ncand,
-                              int mode_ctx, int sdh) {
+                              int mode_ctx, int sdh, int split_present,
+                              const CflCtx *cf, int nmodes) {
     const int nb = s.nb, size = s.size;
     const int ndc = nb * nb;
     analyze_dc_plane(s, coefs, sdh);
@@ -1027,15 +1278,15 @@ static void analyze_plane_dir(PlaneState &s, i16 *coefs, int tskip, int layer,
     }
     const double base = (double)kQStep[s.qp] / 16.0;
     const double lambda = lambda_scale * base * base;
-    const u8 *scan = scan_table(64, tskip != 0);
     const int ctx_cbf = chroma ? kCtxCbfChroma : kCtxCbfLuma;
     const int ctx_last = chroma ? kCtxLastChroma : kCtxLastLuma;
-    i32 stepv[64];
-    if (tskip) {
-        int t = dequant_step(s.qp, 16);
-        for (int i = 0; i < 64; ++i) stepv[i] = t;
-    } else {
-        for (int i = 0; i < 64; ++i) stepv[i] = dequant_step(s.qp, s.wmat[i]);
+    // One scan and one step vector per split choice.  Index 0 is the 8x8
+    // transform (or transform skip), index 1 the four 4x4 sub-blocks.
+    const u8 *scan[2] = {scan_table(64, tskip != 0), kScan4Split};
+    i32 stepv[2][64];
+    for (int i = 0; i < 64; ++i) {
+        stepv[0][i] = block_step(s, i, tskip, 0);
+        stepv[1][i] = block_step(s, i, 0, 1);
     }
     i16 *bc = coefs + ndc;
 
@@ -1055,23 +1306,23 @@ static void analyze_plane_dir(PlaneState &s, i16 *coefs, int tskip, int layer,
                     if (layer) v -= s.pred[(size_t)y * size + x];
                     tgt[j * 8 + i] = v;
                 }
-            i32 P[kNumIntraModes][64];
-            i32 cost[kNumIntraModes];
-            for (int m = 0; m < kNumIntraModes; ++m) {
-                predict_block(m, r, fallback, size, bx, by, P[m]);
+            i32 P[kNumIntraModesCfl][64];
+            i32 cost[kNumIntraModesCfl];
+            for (int m = 0; m < nmodes; ++m) {
+                predict_block(m, r, fallback, size, bx, by, P[m], cf);
                 i32 d[64];
                 for (int i = 0; i < 64; ++i) d[i] = tgt[i] - P[m][i];
                 cost[m] = satd8x8(d);
             }
             // candidate list: the DC-plane mode plus the best `ncand` by SATD
-            int cand[kNumIntraModes];
+            int cand[kNumIntraModesCfl];
             int nc = 0;
             cand[nc++] = kIntraDcPlane;
-            bool taken[kNumIntraModes] = {};
+            bool taken[kNumIntraModesCfl] = {};
             taken[kIntraDcPlane] = true;
             for (int k = 0; k < ncand; ++k) {
                 int bm = -1;
-                for (int m = 0; m < kNumIntraModes; ++m)
+                for (int m = 0; m < nmodes; ++m)
                     if (!taken[m] && (bm < 0 || cost[m] < cost[bm])) bm = m;
                 if (bm < 0) break;
                 taken[bm] = true;
@@ -1079,7 +1330,7 @@ static void analyze_plane_dir(PlaneState &s, i16 *coefs, int tskip, int layer,
             }
             const int mpm = mpm_of(s.modes.data(), nb, bi);
             double best = 0;
-            int best_mode = kIntraDcPlane;
+            int best_mode = kIntraDcPlane, best_split = 0;
             i16 best_c[64];
             i32 best_rec[64];
             bool have = false;
@@ -1087,61 +1338,76 @@ static void analyze_plane_dir(PlaneState &s, i16 *coefs, int tskip, int layer,
                 const int m = cand[k];
                 i32 res[64];
                 for (int i = 0; i < 64; ++i) res[i] = tgt[i] - P[m][i];
-                i32 orig[64];
-                if (tskip) {
-                    for (int i = 0; i < 64; ++i) orig[i] = res[i];
-                } else {
+                for (int sp = 0; sp <= (split_present ? 1 : 0); ++sp) {
                     i16 co[64];
-                    fdct8x8(res, co);
+                    forward_block(res, co, tskip, sp);
+                    i32 orig[64];
                     for (int i = 0; i < 64; ++i) orig[i] = co[i];
-                }
-                i16 q[64];
-                if (use_rdo) {
-                    rdoq_unit(q, orig, stepv, 64, scan, ctx_cbf, ctx_last, rc,
-                              lambda);
-                } else {
-                    for (int i = 0; i < 64; ++i)
-                        q[i] = (i16)quantize(orig[i], stepv[i], stepv[i] / 3);
-                }
-                if (sdh) hide_sign_unit(q, orig, stepv, 64, scan);
-                i32 rr[64];
-                residual_block(q, s, tskip, rr);
-                // exact sample-domain distortion of this candidate
-                double d2 = 0;
-                i32 rec[64];
-                for (int j = 0; j < 8; ++j)
-                    for (int i = 0; i < 8; ++i) {
-                        int y = by * 8 + j, x = bx * 8 + i;
-                        i32 v = P[m][j * 8 + i] + rr[j * 8 + i];
-                        i32 full = layer
-                                       ? clamp_i32(s.pred[(size_t)y * size + x] + v,
-                                                   0, s.maxval)
-                                       : clamp_i32(v, 0, s.maxval);
-                        rec[j * 8 + i] =
-                            layer ? full - s.pred[(size_t)y * size + x] : full;
-                        double e = (double)s.samples[(size_t)y * size + x] -
-                                   (double)full;
-                        d2 += e * e;
+                    const i32 *st = stepv[sp];
+                    i16 q[64];
+                    if (use_rdo) {
+                        rdoq_unit(q, orig, st, 64, scan[sp], ctx_cbf, ctx_last,
+                                  rc, lambda, sp != 0);
+                    } else {
+                        const u8 *dz = dead_zone_table(false);
+                        for (int pp = 0; pp < 64; ++pp) {
+                            int i = scan[sp][pp];
+                            q[i] = (i16)quantize(
+                                orig[i], st[i],
+                                dead_zone(st[i], dz[band_of(band_pos(pp, sp != 0))]));
+                        }
                     }
-                double bits =
-                    unit_bits(q, 64, scan, ctx_cbf, ctx_last, 0, rc, sdh) /
-                    1024.0;
-                // mode signalling, exactly as the LaneMachine will code it
-                if (m == mpm) {
-                    bits += mode_ctx ? rc.sym[mode_ctx][0] / 1024.0 : 1.0;
-                } else {
-                    bits += mode_ctx
-                                ? rc.sym[mode_ctx][1 + nonmpm_index(mpm, m)] / 1024.0
-                                : 4.0;
+                    if (sdh) hide_sign_unit(q, orig, st, 64, scan[sp]);
+                    i32 rr[64];
+                    residual_block(q, s, tskip, rr, sp);
+                    // exact sample-domain distortion of this candidate
+                    double d2 = 0;
+                    i32 rec[64];
+                    for (int j = 0; j < 8; ++j)
+                        for (int i = 0; i < 8; ++i) {
+                            int y = by * 8 + j, x = bx * 8 + i;
+                            i32 v = P[m][j * 8 + i] + rr[j * 8 + i];
+                            i32 full =
+                                layer ? clamp_i32(s.pred[(size_t)y * size + x] + v,
+                                                  0, s.maxval)
+                                      : clamp_i32(v, 0, s.maxval);
+                            rec[j * 8 + i] =
+                                layer ? full - s.pred[(size_t)y * size + x] : full;
+                            double e = (double)s.samples[(size_t)y * size + x] -
+                                       (double)full;
+                            d2 += e * e;
+                        }
+                    double bits =
+                        unit_bits(q, 64, scan[sp], ctx_cbf, ctx_last, 0, rc, sdh,
+                                  split_present != 0, sp != 0) /
+                        1024.0;
+                    // mode signalling, exactly as the LaneMachine will code it
+                    if (m == mpm) {
+                        bits += mode_ctx ? rc.sym[mode_ctx][0] / 1024.0 : 1.0;
+                    } else {
+                        bits += mode_ctx ? rc.sym[mode_ctx][1 + nonmpm_index(
+                                               mpm, m, nmodes)] /
+                                               1024.0
+                                         : 4.0;
+                    }
+                    double tc = d2 + lambda * bits;
+                    if (!have || tc < best) {
+                        have = true;
+                        best = tc;
+                        best_mode = m;
+                        best_split = sp;
+                        std::memcpy(best_c, q, sizeof best_c);
+                        std::memcpy(best_rec, rec, sizeof best_rec);
+                    }
                 }
-                double tc = d2 + lambda * bits;
-                if (!have || tc < best) {
-                    have = true;
-                    best = tc;
-                    best_mode = m;
-                    std::memcpy(best_c, q, sizeof best_c);
-                    std::memcpy(best_rec, rec, sizeof best_rec);
-                }
+            }
+            // A block with no coefficients codes no split flag, so its stored
+            // flag must be 0 -- exactly what the decoder will reconstruct.
+            if (split_present) {
+                bool any = false;
+                for (int i = 0; i < 64; ++i)
+                    if (best_c[i]) { any = true; break; }
+                s.splits[bi] = (u8)(any ? best_split : 0);
             }
             s.modes[bi] = (u8)best_mode;
             std::memcpy(c, best_c, sizeof best_c);
@@ -1251,6 +1517,8 @@ void nxvc_config_default(nxvc_config *cfg) {
     cfg->ctx_v2 = 1;
     cfg->intra_dir_cand = 0;   // built-in default (2 RD candidates + DC plane)
     cfg->sign_hide = 1;
+    cfg->split4x4 = 0;         // measured below; see ref/RESULTS-detail-a.md
+    cfg->chroma_from_luma = 0;
     // Phase 2 is opt-in: the default configuration is the Phase 1 one, so an
     // existing caller and every syntax v1.3 conformance vector keep producing
     // byte-identical streams.  `--inter on` turns the inter path on.

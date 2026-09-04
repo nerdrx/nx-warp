@@ -156,10 +156,19 @@ interleaved UV.
 | 21 | `CTX_V2` | the 16-context entropy model (section 9.3) |
 | 22 | `SIGN_HIDE` | sign data hiding (section 9.7) |
 | 23 | `FILTER_CATMULL_ROM` | Catmull-Rom interpolation in the warp instead of bilinear. **Not defined for version 1** |
+| 24 | `INTRA_CFL` | chroma predicted from the co-located reconstructed luma (section 7.7) |
 
 Bits 17, 21 and 22 are independent: any subset may be set. `SIGN_HIDE` is
 mutually exclusive with `LOSSLESS` (bit 5) -- hiding a sign spends one level
 step, so the two cannot both be true; a stream setting both is `BITSTREAM`.
+
+`XFORM_4X4_SPLIT` (bit 19) gates tile-header bit 28 and nothing else; it is
+independent of every other tool. `INTRA_CFL` (bit 24) is **not** independent:
+it adds a tenth mode to the chroma mode alphabet, so it requires `INTRA_DIR`
+(the mode unit exists only with it) and `CTX_V2` (only the v2 mode symbol has
+room for a tenth value), and it predicts samples, so it requires the replace
+form -- frame `flags` bit 2 clear. A stream setting bit 24 without all three
+is `BITSTREAM` (`r30`).
 
 `INTER` (bit 10) gates every tile mode other than `INTRA`. `WARP` (bit 11)
 gates `warp_present` and the two warped modes and requires `INTER`; a stream
@@ -173,7 +182,7 @@ MUST refuse a stream that sets either, with a `VERSION` status. Because bit 23
 is refused, **every conforming version 1 stream is bilinear**, in every
 profile, and `profile` selects nothing (section 13.4).
 
-Bits 24-63 are reserved and must be zero. Capability negotiation is an
+Bits 25-63 are reserved and must be zero. Capability negotiation is an
 intersection: the sender only sets bits the receiver offered.
 
 ---
@@ -438,7 +447,8 @@ Two little-endian u32 words. Bits are listed LSB first.
 | 23 | `tskip` | the whole tile skips the transform |
 | 24-25 | `wgt` | enhancement-layer blend weight: 0, 1/4, 1/2, 3/4 (of the spatial hypothesis) |
 | 26-27 | `wm_id` | per-tile weighting matrix: 0 = the frame's, 1-3 = built-in matrix `wm_id` |
-| 28-31 | reserved | must be 0 |
+| 28 | `split4x4` | this tile's residual blocks carry a 4x4 split flag (section 6.7) |
+| 29-31 | reserved | must be 0 |
 
 Then, in this order:
 
@@ -456,6 +466,10 @@ frame where the format most needs to recover -- and that destroys the property
 the whole transport design rests on, that a tile is an independently decodable
 bitstream and a datagram is only a loss unit. The stored vector exists for
 `WARP_SKIP` and for concealment, never for parsing (section 13.5).
+
+`split4x4` requires tool bit 19 `XFORM_4X4_SPLIT` and is mutually exclusive
+with `tskip`, whose 64 coded values are samples in raster order and have no
+sub-block structure; either violation is `BITSTREAM` (`r31`, `r32`).
 
 `disparity` is one little-endian `u16`:
 
@@ -799,6 +813,107 @@ and reconstruction is `clamp(prediction + residual)`.
 itself to be lossless; a 4:2:0 tile is lossless only with respect to its own
 subsampled chroma.
 
+### 6.7 The 4x4 transform split (tool bit 19)
+
+When tile-header bit 28 `split4x4` is set, each residual block whose `CBF` is
+1 carries a one-bit `split` flag (section 9.8). With `split == 1` the block's
+64 coded values are **four 4x4 sub-blocks** rather than one 8x8 transform.
+The prediction is unchanged: it is still one 8x8 block from one intra mode, so
+the split adds no dependency between blocks and no step to the section 7.6
+wavefront.
+
+**Layout.** Sub-block `sb = 2*sy + sx` (`sx`, `sy` in 0..1) covers samples
+`x in [4*sx, 4*sx+3]`, `y in [4*sy, 4*sy+3]` of the block. Its 16
+coefficients occupy the same quadrant of the block-local 8x8 coefficient
+array: coefficient `(u, v)` of sub-block `(sx, sy)`, `u` vertical and `v`
+horizontal, is at block-local index `(4*sy + u) * 8 + 4*sx + v`. The
+coefficient array is therefore the same 64 values an unsplit block has,
+permuted, and `CBF`, `LAST`, the level chain and the lane schedule are
+untouched. The scan is section 9.2's `split` scan.
+
+**Dequantization** is section 6.5 unchanged, with the weight
+
+```
+w4[u][v] = w[2*u][2*v]        // the tile's 8x8 matrix, subsampled by two
+```
+
+so no second weighting-matrix family and no second quantizer step table
+exist. This is exact because the 4x4 transform below is built to the *same*
+gain as the 8x8 one.
+
+**Constants.** The 1D inverse matrix is
+`M[n][k] = round(1024 * c_k * cos(pi*(2n+1)*k/8))` with `c_0 = 1/2` and
+`c_k = 1/sqrt(2)` otherwise, which takes three distinct magnitudes:
+
+| name | value | equals |
+|---|---|---|
+| `D0` | 512 | `1024 * 1/2` |
+| `D1` | 669 | `round(1024 * cos(pi/8)  / sqrt(2))` |
+| `D2` | 277 | `round(1024 * cos(3pi/8) / sqrt(2))` |
+
+The four rows are `+-{D0, D1, D0, D2}` and `+-{D0, D2, -D0, -D1}`. Every pair
+of rows is **exactly** orthogonal (`D0*D0 - D1*D2 - D0*D0 + D2*D1 = 0` and so
+on), and the row norm is `2*D0^2 + D1^2 + D2^2 = 1048578`, two above `2^20`,
+so the gain is `2^10` per dimension to within one part in half a million --
+the same gain the 8x8 flow graph has exactly.
+
+**Inverse 1D transform (normative).** Input `x[0..3]` int32, output `y[0..3]`.
+
+```
+e0 = (x0 + x2) * D0
+e1 = (x0 - x2) * D0
+o0 =  x1 * D1 + x3 * D2
+o1 =  x1 * D2 - x3 * D1
+y0 = e0 + o0 ;  y3 = e0 - o0
+y1 = e1 + o1 ;  y2 = e1 - o1
+```
+
+**Inverse 2D transform (normative).** `src[16]` are the dequantized
+coefficients in raster order inside the sub-block, index `u * 4 + v`.
+
+```
+pass 1 (rows):    for each row r: idct4_1d(src[r*4 .. r*4+3]) -> out[0..3]
+                  tmp[c*4 + r] = clamp16((out[c] + 64) >> 7)
+pass 2 (columns): for each row r of tmp: idct4_1d(tmp[r*4 ..]) -> out[0..3]
+                  dst[c*4 + r] = clamp16((out[c] + 4096) >> 13)
+```
+
+The transform is orthonormal, so coefficient-domain squared error is
+sample-domain squared error and 6.5's step means the same thing at both sizes.
+Note that "unit gain" is in that sense, not in absolute DC: a flat 4x4 block of
+value `v` has DC `4v`, so a DC coefficient of 1024 reconstructs a flat **256**
+where the 8x8's reconstructs a flat 128. The block has a quarter of the
+samples.
+
+**This is the same shift chain, the same rounding and the same `clamp16` as
+the 8x8 inverse of 6.3**, which is the whole reason the constants were scaled
+to gain `2^10`: a decoder implements one dequantizer, one clamp discipline and
+one transpose convention for both sizes.
+
+**Ranges.** Every product is a constant times a value already clamped to
+int16, so unlike the 8x8's odd-part rotation there is no operand that needs an
+exact wide product -- `mulC4` has no 4x4 counterpart.
+
+| stage | shift | rounding | clamp | worst-case magnitude before the shift |
+|---|---|---|---|---|
+| inverse pass 1 | `>> 7` | `+64` | int16 | `32768 * (2*D0 + D1 + D2) = 6.5e7` |
+| inverse pass 2 | `>> 13` | `+4096` | int16 | `6.5e7` |
+| forward pass 1 | `>> 6` | `+32` | int16 | `511 * 1970 = 1.0e6` |
+| forward pass 2 | `>> 14` | `+8192` | int16 | `32767 * 1970 = 6.5e7` |
+
+All four are comfortably inside int32.
+
+**Forward 2D transform (informative)**, as for 6.4: the exact transpose of the
+flow graph, `>> 6` after the first pass clamped to int16 and `>> 14` after the
+second.
+
+**What it costs a GPU decoder.** Nothing structural. The split changes neither
+the prediction nor its wavefront (7.6) and adds no coding unit, no barrier and
+no LDS: the four sub-blocks of a block are independent of each other and of
+every other block, and 8 four-point transforms are *less* arithmetic than 4
+eight-point ones. The only new work in Pass A is one bypass bit per coded
+block; the only new work in Pass B is a branch on that bit.
+
 ---
 
 ## 7. Intra prediction
@@ -1038,6 +1153,107 @@ exist yet. When it does, A and A+B are the two candidates, and adopting either
 is a `SYNTAX.md` change and a conformance-vector regeneration, not a new tool
 bit: it narrows what `INTRA_DIR` means rather than adding to it.
 
+### 7.7 Chroma from luma (tool bit 24)
+
+With `INTRA_CFL`, the **chroma** planes of an `INTRA` tile gain a tenth intra
+mode:
+
+| mode | name | prediction |
+|---|---|---|
+| 9 | `CFL` | a linear function of the co-located reconstructed luma |
+
+The luma plane keeps its nine-mode alphabet; only chroma mode units use ten
+(section 9.6). Mode 9 in a luma mode unit is `BITSTREAM`.
+
+**What it reads.** The tile's own **reconstructed luma plane**, complete. The
+coding-unit order of 9.1 already decodes plane 0 before planes 1 and 2, so
+this is a dependency on a plane the decoder has finished, never on a
+neighbouring tile: **tiles stay independent.**
+
+**Co-location.** Let `S` be the luma plane's coded edge and `Sc` the chroma
+plane's, and `f = S / Sc`, which is 1 for a 4:4:4 tile and 2 for a 4:2:0 one
+at every `res_level` (section 4.2). No other ratio occurs, and a stream in
+which one would is `BITSTREAM`. The luma value co-located with chroma sample
+`(cx, cy)` is
+
+```
+Lc(cx, cy):
+   f == 1:  Y[clamp(cy, 0, S-1)][clamp(cx, 0, S-1)]
+
+   f == 2:  x0 = clamp(2*cx,   0, S-1) ; x1 = clamp(2*cx+1, 0, S-1)
+            y0 = clamp(2*cy,   0, S-1) ; y1 = clamp(2*cy+1, 0, S-1)
+            (Y[y0][x0] + Y[y0][x1] + Y[y1][x0] + Y[y1][x1] + 2) >> 2
+```
+
+where `Y` is the reconstructed luma plane. The `f == 2` kernel is the rounded
+2x2 average of 5.2, the same one chroma was subsampled with, so the two planes
+are aligned by construction. Coordinates clamp into the tile, so `cy == -1`
+and `cx == -1` are defined.
+
+**Model derivation (normative).** For the chroma block at `(bx, by)` with
+origin `(x0, y0) = (8*bx, 8*by)`, take the 16 neighbour pairs
+
+```
+for k in 0 .. 7:
+    Cn[k]     = A[k]                      Ln[k]     = Lc(x0 + k, y0 - 1)
+    Cn[8 + k] = L[k]                      Ln[8 + k] = Lc(x0 - 1, y0 + k)
+```
+
+with `A` and `L` exactly the reference arrays of 7.4 -- so the chroma side of
+a pair falls back to `base` wherever the neighbour is not yet reconstructed,
+and the tile stays independent.
+
+Select four indices. `lo0` is the index of the smallest `Ln`, `lo1` the index
+of the smallest `Ln` among the remaining fifteen, and `hi0`, `hi1` the same
+for the largest; **every tie takes the lowest index**, which makes the
+selection deterministic. Then
+
+```
+base_l = (Ln[lo0] + Ln[lo1] + 1) >> 1        base_c = (Cn[lo0] + Cn[lo1] + 1) >> 1
+top_l  = (Ln[hi0] + Ln[hi1] + 1) >> 1        top_c  = (Cn[hi0] + Cn[hi1] + 1) >> 1
+dl     = top_l - base_l                       // 0 .. 255
+
+dl == 0:  alpha = 0
+dl >  0:  alpha = clamp((((top_c - base_c) * kCflRecip[dl]) + 64) >> 7,
+                        -2048, 2047)
+```
+
+`kCflRecip[d] = round(2^15 / d)` for `d` in 1..255 is a **256-entry u16
+reciprocal table** -- the third and last place this format divides, and like
+the other two it is a table lookup in the decoding process rather than a
+division opcode (spec/03-conventions.md 3.4). `kCflRecip[0]` is never read.
+The product is `(top_c - base_c) / dl` in Q15 and the `>> 7` brings it to Q8,
+so `alpha` is the fitted slope in chroma units per luma unit, Q8, clamped to
+`+-8.0`.
+
+Both ends are the **mean of two** pairs rather than a single extremum, so one
+noisy neighbour cannot set the slope. `|top_c - base_c| <= 511` and
+`kCflRecip[dl] <= 32768`, so the product is at most `1.7e7` and the whole
+derivation is int32.
+
+**Prediction.**
+
+```
+P[j][i] = clamp(base_c + ((alpha * (Lc(x0 + i, y0 + j) - base_l) + 128) >> 8),
+                0, maxval)
+```
+
+with `maxval` the **chroma** plane's (section 4.3). `|alpha| <= 2048` and
+`|Lc - base_l| <= 255`, so the product is at most `5.2e5`. Unlike the modes of
+7.4 this one is clamped, because a fitted slope can leave the sample domain.
+
+Everything else -- 7.3 reconstruction, the mode unit, `res_level`, the
+weighting matrix -- is unchanged.
+
+**What it costs a GPU decoder.** One **extra dependent step per tile**: the
+chroma planes may no longer be predicted concurrently with luma, so a tile
+that ran luma and chroma in parallel now needs one barrier between them. It is
+one barrier, not a wavefront: within the chroma plane the 7.4 schedule is
+exactly as it was. No extra LDS beyond the reconstructed luma plane, which a
+Pass B tile shader already holds (64x64 int16 = 8 KB). Per block the fit is a
+16-element min/max reduction over two values each -- about 60 ops, once per
+block, against the 64 samples it then predicts.
+
 ---
 
 ## 8. Resampling kernel
@@ -1087,6 +1303,14 @@ for each coded plane p in (Y, Co, Cg [, A if alpha_mode == 2]):
         unit: block (bx, by) of p    (64 coefficients)
 ```
 
+The **4x4 split flag is deliberately *not* in the mode unit** but inside each
+block's own coefficient unit (9.8), for the same reason the modes are in one
+unit: a unit's syntax may depend only on values its own lane has already
+produced, and a plane's mode unit and its block units generally fall in
+different lanes. Putting the flag in the mode unit would make a block's scan
+order depend on another lane's output. In the block unit it is also free
+wherever `CBF` is 0, which at the Phase 1 operating point is most blocks.
+
 The mode unit is a whole unit rather than a symbol attached to each block on
 purpose. A block's mode is coded relative to the modes of its left and above
 neighbours (9.6), and those live in the *same* unit, so the derivation only
@@ -1110,7 +1334,8 @@ subgroup cluster.
 
 | unit | scan |
 |---|---|
-| 64-coefficient block, `tskip == 0` | 8x8 zigzag |
+| 64-coefficient block, `tskip == 0`, `split == 0` | 8x8 zigzag |
+| 64-coefficient block, `split == 1` | the split scan, below |
 | 64-coefficient block, `tskip == 1` | raster (`scan[i] = i`) |
 | DC plane, 64 values | 8x8 zigzag |
 | DC plane, 16 values | 4x4 zigzag |
@@ -1127,6 +1352,28 @@ subgroup cluster.
 ```
 
 4x4 zigzag: `0, 1, 4, 8, 5, 2, 3, 6, 9, 12, 13, 10, 7, 11, 14, 15`.
+
+**The split scan** (tool bit 19) is the four 4x4 sub-blocks of the block in
+raster order, each in 4x4 zigzag, concatenated. It is generated by
+
+```
+scan[p] = (4*sy + z/4) * 8 + 4*sx + z%4
+   with  sb = p >> 4 ;  sx = sb & 1 ;  sy = sb >> 1 ;  z = zigzag4[p & 15]
+```
+
+and is, in full:
+
+```
+ 0,  1,  8, 16,  9,  2,  3, 10, 17, 24, 25, 18, 11, 19, 26, 27,
+ 4,  5, 12, 20, 13,  6,  7, 14, 21, 28, 29, 22, 15, 23, 30, 31,
+32, 33, 40, 48, 41, 34, 35, 42, 49, 56, 57, 50, 43, 51, 58, 59,
+36, 37, 44, 52, 45, 38, 39, 46, 53, 60, 61, 54, 47, 55, 62, 63
+```
+
+Concatenating the sub-blocks rather than interleaving them is what lets
+`LAST` still truncate a tail: a block whose energy is in sub-block 0 -- the
+common case, since the split is chosen exactly where the residual is local --
+codes a `LAST` below 16 and pays nothing for the other three.
 
 ### 9.3 Contexts and alphabets
 
@@ -1185,7 +1432,8 @@ coefficient codes no `LAST` and has `last = 0`.
 symbol `min(|q|, 15)`, where 15 is the escape. The context is
 
 ```
-band = 0 if pos == 0, 1 if pos in 1..3, 2 if pos in 4..9, 3 if pos >= 10
+bp   = pos & 15  in a split block (tool bit 19), else pos
+band = 0 if bp == 0, 1 if bp in 1..3, 2 if bp in 4..9, 3 if bp >= 10
 prev = 0 if the previously decoded level was 0, 1 if its magnitude was 1, else 2
         (prev = 0 at the first position of a unit)
 
@@ -1197,6 +1445,12 @@ prev = 0 if the previously decoded level was 0, 1 if its magnitude was 1, else 2
 
 context index = 4 + that value
 ```
+
+`bp` exists because in a split block the 64 scan positions are four
+concatenated 4x4 sub-blocks, so a position's *frequency* is its position
+within its sub-block; without it every coefficient of sub-blocks 1 to 3 would
+land in band 3 whatever its frequency. Nothing else about the LEVEL contexts
+changes, and `LAST` classes are still taken over the whole 64.
 
 The level at position `last` must be nonzero; a decoder must reject a zero
 there.
@@ -1277,15 +1531,21 @@ neighbours are outside the plane.
 | `is_mpm` | 1 | 1: `mode = mpm`, and nothing follows |
 | `idx` | 3 | present when `is_mpm == 0`: `mode = nonmpm(mpm, idx)` |
 
-**With `CTX_V2`** it is one symbol in context 15, alphabet 0..8:
+**With `CTX_V2`** it is one symbol in context 15, alphabet `0 .. nmodes - 1`:
 
 ```
 sym == 0 : mode = mpm
 sym >= 1 : mode = nonmpm(mpm, sym - 1)
 ```
 
-Symbols 9..15 in context 15 are illegal (`BITSTREAM`). `nonmpm(mpm, i)` is the
-`i`-th of the eight modes **other than** `mpm`, in ascending mode order.
+`nmodes` is 9, or **10 for a chroma plane's mode unit when tool bit 24
+`INTRA_CFL` is set** (section 7.7). Symbols `nmodes .. 15` in context 15 are
+illegal (`BITSTREAM`). `nonmpm(mpm, i)` is the `i`-th of the `nmodes - 1`
+modes **other than** `mpm`, in ascending mode order.
+
+Without `CTX_V2` the non-MPM index is a 3-bit field, which is why `INTRA_CFL`
+requires `CTX_V2`: a tenth mode does not fit in it, and widening that field
+would change the meaning of every existing v1.3 stream's bypass bits.
 
 The unit is coded in full before its lane moves on, which is what lets the MPM
 read `modes[b-1]` and `modes[b-nb]` without any assumption about the order the
@@ -1313,6 +1573,29 @@ one step, choosing the move with the smallest squared error. That is an
 encoder decision and is not normative.
 
 `SIGN_HIDE` applies to DC-plane units as well as residual blocks.
+
+### 9.8 The 4x4 split flag (tool bit 19)
+
+In a tile whose header sets `split4x4` (4.1), every **64-coefficient residual
+block** unit codes one extra element:
+
+| order | element | descriptor |
+|---|---|---|
+| 1 | `CBF` | `ae(ctx_cbf)` |
+| 2 | `split` | `bp(1)`, **only when `CBF == 1`** |
+| 3 | `LAST` | as 9.3 |
+| ... | levels | as 9.3 |
+
+`split` selects the unit's scan (9.2) and its LEVEL banding (9.3) and, in
+reconstruction, the transform of 6.7. A unit with `CBF == 0` codes no flag and
+its `split` is 0 -- which costs nothing, since a block with no coefficients
+reconstructs the same residual either way.
+
+DC-plane units and mode units never carry the flag; neither has sub-blocks.
+
+A value of 1 is legal for any residual block of any coded plane, including
+chroma and alpha, and for any `res_level`, because a block is 8x8 in every
+one of them.
 
 ### 9.5 rANS
 
@@ -1392,14 +1675,17 @@ state below `L`, and any renormalization that would read past the payload.
    ref_sel selects, the frame's warp_ext matrix and the tile's vector
    (section 13.3).  If the tile is skipped or concealed, W is the whole
    reconstruction and steps 5 and 6 do not run.
-5. for each coded plane:
+5. for each coded plane, in the order Y, Co, Cg [, A]:
      a. dequantize + inverse-transform the DC plane   -> means M
      b. planar-interpolate M                          -> planar
      c. pred = planar                     for mode == INTRA
         pred = clamp(W + planar - dc_offset, 0, maxval)   otherwise
-     d. for each block: dequantize, inverse transform (or take the residual
-        directly for tskip), add pred, clamp
+     d. for each block: dequantize, inverse transform -- 8x8, or four 4x4
+        sub-blocks when the block's `split` flag is set (6.7), or the residual
+        taken directly for tskip -- add pred, clamp
      e. upsample the plane by its factor into the picture
+   The plane order is normative when INTRA_CFL is in use: a chroma block in
+   mode CFL reads the finished luma plane of the same tile (7.7).
    (this is GPU Pass B: one workgroup per 64x64 tile)
 6. if color_transform == 1, convert planes 0..2 back to RGB after upsampling
 7. store the reconstruction into the reference-ring slot ref_slots names, in
@@ -1475,8 +1761,10 @@ unimplemented mandatory tool bit, `bit_depth` 10, the 32x32 tile profile, a
 bit for a column beyond the picture, a reserved tile-header bit, an `INTER`
 tile, `wm_id` without its tool bit, a wrong `row_index`, a short
 `frame_bytes`, `flags` bit 2 without `INTRA_DIR`, YCoCg-R declared with 4:2:0
-chroma, a `CTX_V2` table set that overruns the tile rows, and `LOSSLESS`
-together with `SIGN_HIDE`.
+chroma, a `CTX_V2` table set that overruns the tile rows, `LOSSLESS`
+together with `SIGN_HIDE`, `INTRA_CFL` without the three tools it requires
+(`r30`), tile-header `split4x4` without tool bit 19 (`r31`), and `split4x4`
+together with `tskip` (`r32`).
 
 **The v2 intra tools.** `v36`-`v44` pin them: `INTRA_DIR` alone in 4:4:4 and
 4:2:0, `INTRA_DIR` with `CTX_V2`, `CTX_V2` alone, the layered form, every v2
@@ -1484,6 +1772,12 @@ feature at once with transmitted 160-byte table sets, the combination with
 `res_level` cycling and transform skip, `SIGN_HIDE` alone, and the reference
 encoder's shipped default configuration. `v01`-`v35` are **byte-identical** to
 the v1.2 set: all three tools are additive and off unless their bit is set.
+
+**The v1.5 detail tools.** `v57`-`v61` pin them: the 4x4 transform split
+alone in 4:4:4 and 4:2:0, chroma from luma alone in 4:4:4 (`f == 1`) and 4:2:0
+(`f == 2`), and both together in the reference encoder's v1.5 configuration.
+`v01`-`v56` are again **byte-identical**: both tools are additive and off
+unless their bit is set, which `nxv-vectors --check` proves on every commit.
 
 `v23_custom_tables420` and `v34_wm_id420_tables` pin the probability-table
 normalization of section 9.4 — the one place a decoder divides — so a decoder
@@ -2031,6 +2325,83 @@ inconsistent. Each is a decision, not an interpretation.
     D-5 is unchanged; only the bit numbers move, to the first bits that are
     actually free. This is an erratum against Annex D, recorded here because
     this document is where the bit numbers live.
+
+53. **The 4x4 split reuses the block's coding unit rather than making four.**
+    The obvious shape -- four 16-coefficient units where there was one 64 --
+    quadruples the unit count, changes the lane schedule, and pays four `CBF`
+    symbols where one usually says "nothing here". Concatenating the four 4x4
+    scans into the same 64-value unit leaves `CBF`, `LAST`, the level chain
+    and the lane schedule *bit-for-bit unchanged* and turns the whole tool
+    into one new scan table plus one branch in the inverse transform. It also
+    keeps `LAST`'s tail truncation working, which the four-unit form loses:
+    energy concentrated in sub-block 0 codes a `LAST` under 16 and pays
+    nothing for the other three. The cost is that `LAST` cannot skip a leading
+    empty sub-block; measured against the four-unit form's four extra `CBF`
+    symbols per block, that is the better trade at every rate we can reach.
+
+54. **The 4x4 split flag lives in the block's own coding unit, not in the
+    mode unit.** The mode unit is where a per-block flag naturally belongs --
+    it is already a per-block array in raster order -- but a plane's mode unit
+    and its block units generally fall in *different rANS lanes*, and section
+    9.1's contract is that a unit's syntax depends only on values its own lane
+    has already produced. A split flag in the mode unit would make a block's
+    scan order and LEVEL banding depend on another lane's output, which the
+    interleaved schedule does not order. Putting it after `CBF` in the block's
+    own unit is lane-local, and it is also strictly cheaper: a block with no
+    coefficients codes no flag at all.
+
+55. **The 4x4 transform is scaled to the 8x8's gain, so there is one
+    dequantizer.** A 4-point DCT-III built the obvious way has 1D gain
+    `512*sqrt(2)`, which is not a power of two and would need its own shift
+    chain, its own quantiser scale and its own weighting-matrix family.
+    Scaling the constants to `M[n][k] = round(1024 * c_k * cos(...))` gives
+    gain exactly `2^10` per dimension -- the 8x8's -- so 6.5's dequantizer,
+    6.3's `>> 7` / `>> 13` shift chain and the `clamp16` discipline all apply
+    unchanged, and the 4x4 weights are the tile's own matrix subsampled by
+    two. The rounding cost is two parts in `2^20` of row norm. One dequantizer
+    and one clamp rule for both sizes is worth more than that.
+
+56. **Chroma from luma is a tenth *mode*, not a flag.** A per-block flag
+    orthogonal to the mode would cost a bit on every chroma block whether or
+    not the tool ever fires -- 16 bytes per 4:4:4 tile, about 5 % of a QP 16
+    tile. As a tenth symbol value in the trained `MODE` context it costs
+    essentially nothing when it is not used and is cheaper than a flag when it
+    is. The price is that it needs `CTX_V2`: without it the non-MPM index is a
+    3-bit bypass field with room for exactly eight alternatives, and widening
+    that field would reinterpret every existing v1.3 stream's bypass bits.
+
+57. **The CFL model is fitted between two averaged extremes, not by least
+    squares.** A least-squares fit over 16 pairs needs a division by a sum of
+    squares whose range is far too wide for a reciprocal table, and a
+    fixed-iteration divide would put a 32-round loop in the per-block path. The
+    min/max fit divides only by a *luma difference*, which is bounded by 255
+    and therefore a 256-entry table lookup. Averaging the two lowest and the
+    two highest pairs rather than taking single extrema is what keeps one noisy
+    neighbour from setting the slope; it costs one extra selection pass and no
+    arithmetic that was not already there.
+
+58. **CFL reads the reconstructed luma plane, which makes the plane order of
+    9.1 normative.** It was previously a convention. The dependency is on a
+    plane of the *same tile*, already fully decoded by the time chroma starts,
+    so tiles stay independent and the transport's per-tile loss recovery is
+    untouched. What it costs Pass B is one barrier between the luma and chroma
+    planes of a tile -- a shader that predicted all three planes concurrently
+    now cannot. That is one barrier against the 69 that directional intra
+    already spends (7.6), and it buys the whole tool.
+
+59. **The adaptive dead zone got a named table and no tool bit; the
+    reconstruction offset got neither.** The encoder's `f = 1/3` was a magic
+    number in three places; it is now `kDeadZoneDc` / `kDeadZoneAc`, indexed
+    by the same frequency banding the LEVEL contexts use, in sixths of a step
+    so that `2` reproduces the old value exactly. Measured, no other value and
+    no shape beats it by more than 0.5 % of rate at any QP, because the RD
+    trellis already does the job everywhere except the DC plane and the DC
+    plane is insensitive to it. The *decoder-side* reconstruction offset was
+    built and measured too and is worse in both rate and quality at every
+    operating point -- the trellis picks levels against the real
+    reconstruction point, so moving that point only adds error the trellis
+    must then pay for. It therefore has no tool bit and no syntax; the
+    measurement is in ref/RESULTS-detail-a.md section 3.
 
 ## Appendix B: where the bits go
 

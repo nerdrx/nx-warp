@@ -152,5 +152,93 @@ int main() {
         for (int i = 0; i < 64; ++i) CHECK(down[i] == 200, "down[%d]=%d", i, down[i]);
     }
 
+    // 9. The 4x4 transform (SYNTAX.md 6.7): unit gain, the documented ranges,
+    //    and agreement with the float DCT-II it is derived from.
+    {
+        Rng rng(4444);
+        double worst_fwd = 0, worst_rt = 0, sse = 0;
+        int n = 0;
+        for (int it = 0; it < 2000; ++it) {
+            i32 src[16];
+            double din[16], dref[16];
+            for (int i = 0; i < 16; ++i) {
+                src[i] = rng.range(-255, 255);
+                din[i] = src[i];
+            }
+            for (int u = 0; u < 4; ++u)
+                for (int v = 0; v < 4; ++v) {
+                    double t = 0;
+                    for (int y = 0; y < 4; ++y)
+                        for (int x = 0; x < 4; ++x)
+                            t += din[y * 4 + x] *
+                                 std::cos((2 * x + 1) * v * M_PI / 8) *
+                                 std::cos((2 * y + 1) * u * M_PI / 8);
+                    double au = (u == 0) ? 1 / std::sqrt(2.0) : 1;
+                    double av = (v == 0) ? 1 / std::sqrt(2.0) : 1;
+                    dref[u * 4 + v] = t * au * av / 2.0;
+                }
+            i16 co[16];
+            fdct4x4(src, co);
+            for (int i = 0; i < 16; ++i) {
+                double e = std::fabs(co[i] - dref[i]);
+                if (e > worst_fwd) worst_fwd = e;
+            }
+            i32 dq[16], out[16];
+            for (int i = 0; i < 16; ++i) dq[i] = co[i];
+            idct4x4(dq, out);
+            for (int i = 0; i < 16; ++i) {
+                double e = out[i] - src[i];
+                if (std::fabs(e) > worst_rt) worst_rt = std::fabs(e);
+                sse += e * e;
+                ++n;
+            }
+        }
+        CHECK(worst_fwd < 1.5, "fdct4x4 vs float DCT-II: %.3f", worst_fwd);
+        CHECK(worst_rt <= 2, "4x4 round-trip max error %.1f", worst_rt);
+        CHECK(std::sqrt(sse / n) < 0.6, "4x4 round-trip RMS %.3f",
+              std::sqrt(sse / n));
+    }
+
+    // 10. Unit gain, in the sense that matters: the transform is orthonormal,
+    //     so a *flat* block round-trips to itself and coefficient-domain
+    //     squared error is sample-domain squared error.  That is what lets
+    //     both sizes share one dequantiser (SYNTAX.md 6.7, decision 55).  The
+    //     DC of a flat 4x4 of value v is 4v -- 1024 is a flat 256, not the
+    //     8x8's 128, because the block has a quarter of the samples.
+    {
+        i32 src[16] = {}, out[16];
+        src[0] = 1024;
+        idct4x4(src, out);
+        for (int i = 0; i < 16; ++i) CHECK(out[i] == 256, "dc[%d]=%d", i, out[i]);
+        for (int v : {0, 1, 37, 128, 255}) {
+            i32 flat[16];
+            i16 co[16];
+            for (int i = 0; i < 16; ++i) flat[i] = v;
+            fdct4x4(flat, co);
+            CHECK(co[0] == 4 * v, "flat %d -> dc %d", v, (int)co[0]);
+            for (int i = 1; i < 16; ++i) CHECK(co[i] == 0, "flat ac[%d]=%d", i,
+                                               (int)co[i]);
+            i32 dq[16];
+            for (int i = 0; i < 16; ++i) dq[i] = co[i];
+            idct4x4(dq, out);
+            for (int i = 0; i < 16; ++i) CHECK(out[i] == v, "flat rt %d -> %d",
+                                               v, out[i]);
+        }
+    }
+
+    // 11. Range: every dequantized coefficient at the int16 clamp must stay
+    //     inside int32 through both passes, in every sign pattern of a row.
+    {
+        for (int pat = 0; pat < 16; ++pat) {
+            i32 src[16], out[16];
+            for (int i = 0; i < 16; ++i)
+                src[i] = ((pat >> (i & 3)) & 1) ? 32767 : -32768;
+            idct4x4(src, out);
+            for (int i = 0; i < 16; ++i)
+                CHECK(out[i] >= -32768 && out[i] <= 32767, "sat[%d]=%d", i,
+                      out[i]);
+        }
+    }
+
     return test_report("test_transform");
 }

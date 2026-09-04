@@ -48,7 +48,7 @@ extern "C" {
  *       reference ring addressed by `ref_sel`, and the 12-bit STEREO
  *       `disparity` field replacing mv_x/mv_y.  See docs/SYNTAX.md 8.
  */
-#define NXVC_BITSTREAM_MINOR 4
+#define NXVC_BITSTREAM_MINOR 5
 
 /* "nxvc_ref <major>.<minor> (syntax v1.<minor>)" -- a static string, safe to
  * call before any object exists.  Used by the Python bindings to check that
@@ -126,6 +126,9 @@ typedef enum nxvc_tile_mode {
  * actually free.  The substance of D-5 is unchanged: it is undefined in
  * version 1 and a v1 decoder MUST reject a stream that sets it. */
 #define NXVC_TOOL_FILTER_CATMULLROM (1ull << 23)
+/* Syntax v1.5: chroma predicted from the co-located reconstructed luma by a
+ * per-block linear model (SYNTAX.md 7.7).  Requires INTRA_DIR and CTX_V2. */
+#define NXVC_TOOL_INTRA_CFL       (1ull << 24)
 
 /* Tools this reference decoder implements. */
 #define NXVC_TOOLS_SUPPORTED                                                  \
@@ -134,6 +137,7 @@ typedef enum nxvc_tile_mode {
      NXVC_TOOL_LOSSLESS | NXVC_TOOL_CUSTOM_TABLES | NXVC_TOOL_NSUB_VAR |      \
      NXVC_TOOL_PER_TILE_CHROMA | NXVC_TOOL_YCOCGR | NXVC_TOOL_WM_ID |        \
      NXVC_TOOL_INTRA_DIR | NXVC_TOOL_CTX_V2 | NXVC_TOOL_SIGN_HIDE |           \
+     NXVC_TOOL_XFORM_4X4_SPLIT | NXVC_TOOL_INTRA_CFL |                        \
      NXVC_TOOL_INTER | NXVC_TOOL_WARP | NXVC_TOOL_STEREO)
 
 /* ---------------------------------------------------------------- images */
@@ -189,6 +193,11 @@ typedef struct nxvc_config {
     uint32_t ctx_v2;            /* 0 = 12 contexts, 1 = 16 (tool 21)        */
     uint32_t intra_dir_cand;    /* modes RD-checked per block, 0 = default  */
     uint32_t sign_hide;         /* 1 = sign data hiding (tool 22)           */
+
+    /* --- additive since syntax v1.5.  Bitstream tools, each behind its own
+     * tool bit: a stream without the bit decodes byte-identically to v1.4. */
+    uint32_t split4x4;          /* 1 = per-block 4x4 transform split (19)    */
+    uint32_t chroma_from_luma;  /* 1 = the CFL chroma intra mode (24)        */
 
     /* --- additive since syntax v1.4: the Phase 2 inter path.
      * `width`/`height` are PER EYE.  With eyes == 2 the nxvc_image passed to
@@ -267,6 +276,7 @@ typedef struct nxvc_tile_info {
     uint8_t qp;                 /* resolved luma QP                        */
     uint8_t wm_id;              /* per-tile weighting matrix, 0 = frame's  */
     uint8_t intra_dir;          /* 1: this tile carries per-block modes    */
+    uint8_t split4x4;           /* 1: this tile carries 4x4 split flags    */
     /* --- additive since syntax v1.4 */
     uint8_t skipped;            /* 1: WARP_SKIP via skip_bitmap, not coded  */
     uint8_t concealed;          /* decoder: the tile was reported lost and

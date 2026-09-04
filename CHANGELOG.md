@@ -40,6 +40,22 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
   tool-bit gating, and the `nxv-enc`, `nxv-dec` and `nxv-info` tools.
 - 32 conformance vectors in `tests/vectors/` with an md5 manifest, covering intra, lossless, alpha,
   resolution levels, custom tables, odd frame sizes and multi-frame streams.
+- Syntax v1.5, the intra detail tools, each behind its own tool bit and measured separately
+  (`ref/RESULTS-detail-a.md`):
+  - **`XFORM_4X4_SPLIT` (tool bit 19)**: a per-block 4x4 transform split, signalled by tile-header
+    bit 28 plus one bypass bit after a nonzero `CBF`. A 4x4 integer DCT scaled to the 8x8's `2^10`
+    gain, so it reuses the same dequantiser, shift chain and weighting matrices; the four sub-blocks
+    stay in one 64-value coding unit, so `CBF`, `LAST`, the level chain and the lane schedule are
+    unchanged. Costs the GPU decoder no extra dependent step and no LDS.
+  - **`INTRA_CFL` (tool bit 24)**: a tenth chroma intra mode predicting chroma from the co-located
+    reconstructed luma by a per-block linear model fitted to the block's own reconstructed
+    neighbours. Integer throughout, with one 256-entry reciprocal table as its only division.
+    Tile-independent; costs the GPU decoder one barrier per tile.
+  - A named per-band encoder dead zone (`kDeadZoneDc` / `kDeadZoneAc`) replacing the magic `f = 1/3`.
+    Encoder-only, no syntax. The decoder-side reconstruction offset was built, measured and
+    **rejected**: it is worse in both rate and quality at every operating point.
+- 29 further conformance vectors and 15 further rejection vectors; `v01`-`v56` and `r01`-`r29` are
+  byte-identical across the v1.5 change, which is what proves both tools additive.
 
 **Vulkan**
 
