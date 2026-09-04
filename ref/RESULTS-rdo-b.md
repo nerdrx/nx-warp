@@ -473,8 +473,30 @@ the right direction and the encoder is **faster than before in every one of the
 four**, which is the part of the result that was not asked for.
 
 The decode side is untouched, by construction: no tool bit, no syntax change,
-no new arithmetic on the normative path. The measured decode times move by
-under the run-to-run noise of a machine running eight encoders.
+no new arithmetic on the normative path.
+
+### 8.6 Encode and decode time, milliseconds per frame
+
+One 2048x1024 4:4:4 frame, one core of the four, measured directly rather than
+through the harness. Absolute numbers on a machine at load 19; the ratios are
+what carries.
+
+| | encode | decode |
+|---|---|---|
+| **intra, QP 24** | | |
+| v1.4 | 1518 | 62 |
+| `--preset fast` | **502** (0.33x) | 65 |
+| `--preset medium` | **898** (0.59x) | 60 |
+| `--preset slow` | 3275 (2.16x) | 69 |
+| **inter, QP 8, stereo** | | |
+| v1.4 | 1608 | 71 |
+| `--preset fast` | **902** (0.56x) | 76 |
+| `--preset medium` | **1277** (0.79x) | 81 |
+| `--preset slow` | 2839 (1.77x) | 79 |
+
+Decode time is flat to within the noise, which is the whole claim of an
+encoder-side package. The default preset is 0.6-0.8x of v1.4 and `slow` is
+1.8-2.2x, both inside the 3x budget.
 
 ---
 
