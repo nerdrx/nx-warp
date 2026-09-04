@@ -968,13 +968,15 @@ codes one 32x32 chroma block. Both `coded_extent` and `xform_edge` are powers
 of two and `coded_extent >= 8`, so `bsize` is always 8, 16 or 32 and `nb` is
 always a power of two in `[1, 8]`.
 
+Each cell is `nb x nb` blocks of `bsize x bsize`:
+
 | tile | `xform_size` | luma | 4:2:0 chroma | 4:4:4 chroma |
 |---|---|---|---|---|
-| `res_level` 0 | 0 | 8 blocks of 8 | 4 of 8 | 8 of 8 |
-| `res_level` 0 | 1 | 4 blocks of 16 | 2 of 16 | 4 of 16 |
-| `res_level` 0 | 2 | 2 blocks of 32 | 1 of 32 | 2 of 32 |
-| `res_level` 1 | 2 | 1 block of 32 | 1 of 16 | 1 of 32 |
-| `res_level` 2 | 2 | 1 block of 16 | 1 of 8 | 1 of 16 |
+| `res_level` 0 | 0 | 8x8 of 8 | 4x4 of 8 | 8x8 of 8 |
+| `res_level` 0 | 1 | 4x4 of 16 | 2x2 of 16 | 4x4 of 16 |
+| `res_level` 0 | 2 | 2x2 of 32 | 1x1 of 32 | 2x2 of 32 |
+| `res_level` 1 | 2 | 1x1 of 32 | 1x1 of 16 | 1x1 of 32 |
+| `res_level` 2 | 2 | 1x1 of 16 | 1x1 of 8 | 1x1 of 16 |
 
 Everything downstream follows `bsize` and `nb` by the rules already stated:
 the DC plane holds `nb * nb` values (7.1) and carries its second-level 8x8
