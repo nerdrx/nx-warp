@@ -2032,6 +2032,22 @@ inconsistent. Each is a decision, not an interpretation.
     actually free. This is an erratum against Annex D, recorded here because
     this document is where the bit numbers live.
 
+53. **The encoder has one lambda, and chroma distortion is worth a quarter of
+    luma.** Nothing in this document requires an encoder to use any particular
+    rate-distortion slope -- every decision it names is non-normative and a
+    decoder cannot tell what slope produced a stream. It is recorded here for
+    the same reason items 32 and 33 are: it changes what the reference
+    encoder's streams look like, and a reader comparing two of them needs to
+    know why. `lambda(QP, class) = scale * class_weight * qstep(QP)^2`, one
+    formula shared by the coefficient trellis, the directional intra mode, the
+    transform-skip flag, the per-tile QP offset, the inter mode decision and
+    the motion search (which uses its square root, being stated on absolute
+    rather than squared error). A squared error in a Co or Cg sample counts a
+    quarter of one in a Y sample, which is between the JVET reporting
+    convention's 1/6 and the 1 the encoder used to use; the value is fitted on
+    the harness against the 6:1:1 figure, not against PSNR-Y.
+    `ref/RESULTS-rdo-a.md` sections 2 and 3.
+
 ## Appendix B: where the bits go
 
 Measured on a 2048x2048 4:2:0 synthetic textured frame, 1024 tiles, default

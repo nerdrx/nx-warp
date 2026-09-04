@@ -69,8 +69,8 @@ nxv-info --in out.nxv [--tiles]
 `nxv-enc` extras: `--frames N`, `--tskip off|on|auto`, `--nsub 0..5|auto`,
 `--matrix 0..3`, `--wm 0..3`, `--chroma-qp-off N`, `--no-custom-tables`,
 `--tile-420`, `--rgb`, `--color-space unspecified|yuv709l|yuv709f`, `--stats`,
-`--quiet`, the rate-distortion controls `--no-rdo` / `--rdo-lambda F`, and the
-v1.3 tool switches:
+`--quiet`, the rate-distortion controls `--preset`, `--no-rdo`,
+`--rdo-lambda F` and `--chroma-weight F` (below), and the v1.3 tool switches:
 
 | flag | default | effect |
 |---|---|---|
@@ -102,6 +102,30 @@ nxv-enc --in vr-mixed-1024.yuv420p.yuv --w 2048 --h 1024 --pix yuv420p \
         --out out.nxv
 nxv-info --in out.nxv --tiles      # per-tile mode, vector, ref_sel, warp_ext
 ```
+
+### `--preset fast|medium|slow`
+
+The encoder's effort ladder. It changes **only how hard the encoder looks**,
+never what a stream means: a `fast` stream and a `slow` stream decode through
+exactly the same path, and `nxv-info` cannot tell them apart. Every knob it
+sets can be overridden on its own.
+
+| knob | `fast` | `medium` (default) | `slow` | flag |
+|---|---|---|---|---|
+| table-set pre-pass | off | on | on | — |
+| directional modes RD-checked | 2 | 4 | 8 | `--intra-dir-cand N` |
+| rdoq candidate set | narrow | wide | wide | `--trellis-full on\|off` |
+| DC plane trellised | no | yes | yes | `--trellis-dc on\|off` |
+| transform skip | off | off | `auto`, by RD | `--tskip`, `--tskip-rd on\|off` |
+| coarse MV search step | 4 | 2 | 1 | `--mv-step N` |
+| quarter-pel MV by real RD | no | no | yes | `--mv-rd-qpel on\|off` |
+| per-tile QP offset | off | off | +-1, by descent | `--qp-search N\|off` |
+
+Two numbers are shared by every level and are not part of the ladder:
+`--rdo-lambda` (the slope, default 0.30) and `--chroma-weight` (what a squared
+error in a chroma sample is worth against one in a luma sample, default 0.25).
+Both are fitted in [`RESULTS-rdo-a.md`](RESULTS-rdo-a.md), which also carries
+the time/quality table the three levels were chosen from.
 
 Rate-distortion quantization is **on by default**. It is encoder-only work -- a
 trellis over the level syntax, `ref/src/codec.cpp` `rdoq_unit()` -- so a stream

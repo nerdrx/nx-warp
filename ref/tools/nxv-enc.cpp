@@ -64,13 +64,26 @@ static void usage() {
         "  --qp-map FILE        per-tile QP bytes, tile_count per frame\n"
         "  --frames N           encode at most N frames\n"
         "  --lossless           QP 0 + transform skip (bit exact)\n"
-        "  --tskip off|on|auto  transform-skip decision (default off)\n"
+        "  --tskip off|on|auto  transform-skip decision (default off, or\n"
+        "                       auto at --preset slow)\n"
         "  --nsub 0..5|auto     rANS lane count log2 (default 3 = 8 lanes)\n"
         "  --matrix 0..3        frame weighting matrix (default 1)\n"
         "  --wm 0..3|auto       per-tile weighting matrix id (default 0)\n"
+        "  --preset fast|medium|slow   encoder effort (default medium).  It\n"
+        "                       changes only how hard the encoder looks, never\n"
+        "                       what a stream means; see ref/README.md\n"
         "  --no-rdo             plain dead-zone quantizer (default: RD trellis)\n"
-        "  --rdo-lambda F       RD lambda scale (default 0.30)\n"
-        "  --qp-search N        try per-tile qp_delta in [-N, +N] (default 0)\n"
+        "  --rdo-lambda F       RD lambda scale (default 0.30); overrides the\n"
+        "                       preset\n"
+        "  --qp-search N        per-tile qp_delta descent, bounded by N steps\n"
+        "                       each way; 0 = the preset's, `off` = never\n"
+        "  --chroma-weight F    what a squared error in a chroma sample is\n"
+        "                       worth against one in a luma sample, in every\n"
+        "                       RD decision (default 0.25)\n"
+        "  --trellis-dc on|off  trellis the DC plane too (preset default)\n"
+        "  --trellis-full on|off  the wide rdoq candidate set (preset default)\n"
+        "  --tskip-rd on|off    with --tskip auto, decide it by RD instead of\n"
+        "                       the gradient rule (preset default)\n"
         "  --intra-dir on|off|layer  directional intra (tool 17); `layer`\n"
         "                       predicts the DC-plane residual instead\n"
         "  --intra-dir-cand N   modes RD-checked per block (default 2)\n"
@@ -98,6 +111,9 @@ static void usage() {
         "  --ref-sel 0..2       reference distance inter tiles ask for\n"
         "  --stereo on|off      STEREO inter-view mode on the right eye\n"
         "  --mv-range N         coarse search radius in samples (default 16)\n"
+        "  --mv-step N          coarse search step in samples (preset default)\n"
+        "  --mv-rd-qpel on|off  re-score the quarter-pel neighbours of the\n"
+        "                       winning vector by real RD (preset default)\n"
         "  --skip-thresh F      WARP_SKIP early-out gate, multiples of the\n"
         "                       quantiser noise floor qstep^2/12 (default 1)\n"
         "  --skip-map FILE      per-tile force_warp_skip flags, tile_count\n"
@@ -105,8 +121,12 @@ static void usage() {
         "                       Applied after the mode search; the encoder\n"
         "                       overrides it where a coded tile is required\n"
         "  --mode-lambda F      lambda scale of the per-tile mode decision,\n"
-        "                       relative to the trellis (default 0.25)\n");
+        "                       relative to the encoder's one lambda\n"
+        "                       (default 1.0)\n");
 }
+
+// The tri-state config fields: 0 means "whatever --preset said", 1 off, 2 on.
+static int onoff2(const std::string &v) { return v == "on" ? 2 : 1; }
 
 static bool read_exact(std::FILE *f, void *p, size_t n) {
     return std::fread(p, 1, n, f) == n;
@@ -116,7 +136,9 @@ int main(int argc, char **argv) {
     std::string in, out, pix = "yuv420p", resmap_path, qpmap_path;
     int W = 0, H = 0, qp = 24, frames = -1, matrix = 1, chroma_qp_off = 0;
     int lossless = 0, tile420 = 0, custom_tables = 1, rgb = 0, quiet = 0;
-    int tskip = 0, nsub = 255, stats = 0;  // nsub 255 = auto lane count
+    int tskip = -1, nsub = 255, stats = 0;  // nsub 255 = auto lane count
+    int preset = 0, trellis_dc = 0, trellis_full = 0, tskip_rd = 0;
+    int mv_rd_qpel = 0, mv_step = 0, chroma_weight_q8 = 0;
     int color_space = 0;
     int rdo = 1, rdo_lambda_q8 = 0, qp_search = 0, wm = 0;
     // These mirror nxvc_config_default(): the v2 intra tools are on.
@@ -190,7 +212,24 @@ int main(int argc, char **argv) {
         else if (a == "--rdo") rdo = 1;
         else if (a == "--no-rdo") rdo = 0;
         else if (a == "--rdo-lambda") rdo_lambda_q8 = (int)(std::atof(val()) * 256.0 + 0.5);
-        else if (a == "--qp-search") qp_search = std::atoi(val());
+        else if (a == "--qp-search") {
+            std::string v = val();
+            qp_search = (v == "off") ? 255 : std::atoi(v.c_str());
+        }
+        else if (a == "--preset") {
+            std::string v = val();
+            if (v == "medium") preset = 0;
+            else if (v == "fast") preset = 1;
+            else if (v == "slow") preset = 2;
+            else { std::fprintf(stderr, "--preset: fast|medium|slow\n"); return 2; }
+        }
+        else if (a == "--chroma-weight")
+            chroma_weight_q8 = (int)(std::atof(val()) * 256.0 + 0.5);
+        else if (a == "--trellis-dc") trellis_dc = onoff2(val());
+        else if (a == "--trellis-full") trellis_full = onoff2(val());
+        else if (a == "--tskip-rd") tskip_rd = onoff2(val());
+        else if (a == "--mv-rd-qpel") mv_rd_qpel = onoff2(val());
+        else if (a == "--mv-step") mv_step = std::atoi(val());
         else if (a == "--intra-dir") {
             std::string v = val();
             if (v == "on") { intra_dir = 1; intra_dir_layer = 0; }
@@ -341,6 +380,13 @@ int main(int argc, char **argv) {
     cfg.rdo = (uint32_t)rdo;
     cfg.rdo_lambda_q8 = (uint32_t)rdo_lambda_q8;
     cfg.qp_search = (uint32_t)qp_search;
+    cfg.preset = (uint32_t)preset;
+    cfg.trellis_dc = (uint32_t)trellis_dc;
+    cfg.trellis_full = (uint32_t)trellis_full;
+    cfg.tskip_rd = (uint32_t)tskip_rd;
+    cfg.mv_rd_qpel = (uint32_t)mv_rd_qpel;
+    cfg.mv_step = (uint32_t)(mv_step > 0 ? mv_step : 0);
+    cfg.chroma_weight_q8 = (uint32_t)(chroma_weight_q8 > 0 ? chroma_weight_q8 : 0);
     cfg.wm_id = (uint32_t)wm;
     cfg.intra_dir = (uint32_t)intra_dir;
     cfg.intra_dir_layer = (uint32_t)intra_dir_layer;
@@ -349,6 +395,12 @@ int main(int argc, char **argv) {
     cfg.sign_hide = (uint32_t)sign_hide;
     cfg.chroma_qp_off = chroma_qp_off;
     cfg.lossless = (uint32_t)lossless;
+    // Transform skip: off unless asked, EXCEPT at --preset slow, which is
+    // the only effort level whose transform-skip decision is a real
+    // rate-distortion comparison rather than the gradient rule.  The rule
+    // measured worse than never skipping at all (ref/RESULTS-rdo-a.md 5), so
+    // turning `auto` on by default anywhere else would be a regression.
+    if (tskip < 0) tskip = (preset == 2) ? 2 : 0;
     cfg.transform_skip = (uint32_t)tskip;
     cfg.nsub_log2 = (uint32_t)nsub;
     cfg.tile_chroma420 = (uint32_t)tile420;

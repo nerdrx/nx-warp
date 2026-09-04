@@ -218,6 +218,202 @@ struct PlaneState {
     std::vector<u8> modes;     // nb*nb, INTRA_DIR: per-block intra mode
 };
 
+// ----------------------------------------------------------------- lambda
+// ONE rate-distortion slope for the whole encoder.  Every decision that
+// trades bits against distortion -- the coefficient trellis, the directional
+// intra mode, the transform-skip flag, the per-tile QP offset, the inter mode
+// decision and the motion search -- reads its lambda from here.  There is one
+// formula, one fitted constant per content class, and no other place in the
+// encoder that multiplies a rate by anything.
+//
+//     lambda(QP, class) = scale * kLambdaClass[class] * qstep(QP)^2
+//
+// The qstep^2 shape is the standard high-rate result: at the optimum of
+// D + lambda*R for a uniform quantiser, -dD/dR is proportional to the square
+// of the step.  What is fitted, on tools/quality and not assumed, is `scale`
+// and the four class multipliers; ref/RESULTS-rdo-a.md section 2 is the sweep.
+//
+// Distortion is a sum of SQUARED sample errors and rate is bits, everywhere.
+// `sad` is the slope of the one decision whose distortion is a sum of
+// ABSOLUTE differences -- the integer motion search, which cannot afford a
+// reconstruction per candidate.  sqrt(lambda) is the standard proxy: for a
+// fixed error shape SAD grows as the square root of SSE, so a Lagrangian
+// stated on SAD needs the square root of the Lagrangian stated on SSE.
+struct Lambda {
+    double coef = 0;   // D in squared samples, R in bits
+    double sad = 0;    // D in absolute samples, R in bits
+};
+
+// docs/RATECONTROL.md 3.2: the four classes are not decoration, they measure
+// how much distortion a tile can absorb before it is seen.  Flat and text
+// tiles show quantisation directly (banding, broken glyphs) and get a lower
+// lambda, i.e. more bits than the rate curve alone would give them; texture
+// masks it and gets more.
+enum TileClass { kClassFlat = 0, kClassTexture, kClassEdge, kClassText,
+                 kNumTileClass };
+
+// Fitted on vr-mixed-1024-v2 (ref/RESULTS-rdo-a.md 2.2).  A multiplier of 1
+// means "the frame's own slope"; the numbers are deliberately mild, because
+// the classifier is a 64x64 statistic and a large per-tile lambda swing shows
+// up as a visible tile boundary.
+inline constexpr double kLambdaClass[kNumTileClass] = {
+    0.70,   // flat:    banding is visible at any rate
+    1.15,   // texture: masks its own quantisation noise
+    1.00,   // edge
+    0.70,   // text:    a broken glyph is not a small error
+};
+
+// The measured default of `scale`.  ref/RESULTS-rdo-a.md 2.1 sweeps it; below
+// 0.15 the trellis barely fires and above 0.6 it zeroes structure the eye
+// sees.  --rdo-lambda overrides it.
+inline constexpr double kLambdaScaleDefault = 0.30;
+
+// How much a squared error in one chroma sample is worth relative to one in a
+// luma sample.  The encoder used to weigh them equally, which is the one
+// weighting nobody uses: the JVET reporting convention is 6:1:1, every
+// perceptual model puts chroma lower still, and both anchors here code chroma
+// with a quantiser of its own.  Coding the two planes at one lambda and one
+// weight is what over-coded chroma.
+//
+// It appears in exactly two places, and they are the same statement twice: the
+// per-plane lambda below (a chroma decision may spend 1/w as much distortion
+// per bit) and tile_distortion(), which is the mode decision's D.  0.25 was
+// fitted on the harness against the 6:1:1 PSNR, not against PSNR-Y --
+// ref/RESULTS-rdo-a.md 2.4, which reports both and says how much of each
+// number is the metric rather than the picture.
+inline constexpr double kChromaDistWeight = 0.25;
+
+// `dist_weight` is what one squared error in this plane is worth: 1 for luma,
+// the chroma weight for Co/Cg.  Weighting the distortion down by w is the same
+// statement as dividing the lambda by w, and doing it here keeps it in one
+// place instead of at every call site that forms a D.
+static inline Lambda lambda_for(int qp, int cls, double scale,
+                                double dist_weight = 1.0) {
+    const double qstep = (double)kQStep[clamp_i32(qp, 0, 63)] / 16.0;
+    Lambda L;
+    L.coef = scale * kLambdaClass[clamp_i32(cls, 0, kNumTileClass - 1)] *
+             qstep * qstep / (dist_weight > 0 ? dist_weight : 1.0);
+    L.sad = std::sqrt(L.coef);
+    return L;
+}
+
+// docs/RATECONTROL.md 3.1 and 3.3, on one plane of one tile: the statistics
+// and the normative class order, without the UI stencil (which is a caller's
+// input, not an image property) and without the hysteresis (which needs the
+// previous frame's classes and belongs to rc/, not here).  `size` is the
+// coded plane size, and the gradient energy is normalised per sample so the
+// thresholds do not depend on it.
+static int classify_tile(const i32 *s, int size) {
+    if (size < 3) return kClassFlat;
+    const double n = (double)size * size;
+    double sum = 0, sum2 = 0, jxx = 0, jyy = 0, jxy = 0;
+    for (int y = 0; y < size; ++y)
+        for (int x = 0; x < size; ++x) {
+            const double v = (double)s[(size_t)y * size + x];
+            sum += v;
+            sum2 += v * v;
+            const int xm = x > 0 ? x - 1 : 0, xp = x + 1 < size ? x + 1 : size - 1;
+            const int ym = y > 0 ? y - 1 : 0, yp = y + 1 < size ? y + 1 : size - 1;
+            const double gx = ((double)s[(size_t)y * size + xp] -
+                               (double)s[(size_t)y * size + xm]) / 2.0;
+            const double gy = ((double)s[(size_t)yp * size + x] -
+                               (double)s[(size_t)ym * size + x]) / 2.0;
+            jxx += gx * gx;
+            jyy += gy * gy;
+            jxy += gx * gy;
+        }
+    const double mean = sum / n;
+    const double var = sum2 / n - mean * mean;
+    const double log_var = std::log2((var > 0 ? var : 0) + 1.0);
+    const double trace = jxx + jyy;
+    const double G = trace / n;
+    const double C = trace > 0 ? std::sqrt((jxx - jyy) * (jxx - jyy) +
+                                           4.0 * jxy * jxy) / trace : 0.0;
+    const double R = var > 0 ? G / var : 0.0;
+    if (G < 12.0 || log_var < 3.0) return kClassFlat;
+    if (G >= 2500.0 && log_var >= 11.0 && R <= 0.93) return kClassText;
+    if (C >= 0.45) return kClassEdge;
+    return kClassTexture;
+}
+
+// ----------------------------------------------------------------- effort
+// The encode-time budget.  Every knob here costs encoder time and NO
+// bitstream: a stream written at `fast` decodes through exactly the same path
+// as one written at `slow`, and `nxv-info` cannot tell them apart.  A preset
+// is the only place these numbers come from, and an explicit config field
+// overrides the preset it came from.  ref/RESULTS-rdo-a.md section 7 is the
+// time/quality table the three points were chosen from.
+struct Effort {
+    double chroma_weight = kChromaDistWeight;  // see kChromaDistWeight
+    bool trellis_full = true;  // rdoq_unit's wide candidate set
+    bool trellis_dc = true;    // trellis the DC plane, not only the AC blocks
+    int dir_cand = 4;          // directional intra modes RD-checked per block
+    bool tskip_rd = false;     // transform skip by RD, not by the gradient rule
+    int mv_step = 2;           // coarse motion-search step, in samples
+    int mv_rd_qpel = 0;        // quarter-pel neighbours re-scored by real RD
+    int qp_search = 0;         // per-tile QP offsets tried each side
+    // Quantize the tile once to choose its probability table set, then again
+    // for real.  The second pass is what the trellis and the directional mode
+    // decision need a rate model for, so the first one is not free -- it is
+    // the whole tile again.  Without it the tile keeps the table set its QP
+    // implies, which is right about two thirds of the time.
+    bool tables_two_pass = true;
+};
+
+// The three points on the ladder.  Each row is a deliberate choice, not a
+// scaling of one number: `fast` gives up the two things that cost the most
+// per point of BD-rate (the wide trellis candidate set and the DC-plane
+// trellis), `slow` buys the three that cost the most and win the least
+// (exhaustive directional modes, RD transform skip, the per-tile QP search).
+static inline Effort effort_of_preset(unsigned preset) {
+    Effort e;
+    switch (preset) {
+        case NXVC_PRESET_FAST:
+            e.trellis_full = false;
+            e.trellis_dc = false;
+            e.dir_cand = 2;
+            e.tskip_rd = false;
+            e.mv_step = 4;
+            e.mv_rd_qpel = 0;
+            e.qp_search = 0;
+            e.tables_two_pass = false;
+            break;
+        case NXVC_PRESET_SLOW:
+            e.trellis_full = true;
+            e.trellis_dc = true;
+            e.dir_cand = 8;
+            e.tskip_rd = true;
+            e.mv_step = 1;
+            e.mv_rd_qpel = 1;
+            e.qp_search = 1;
+            break;
+        default:   // NXVC_PRESET_MEDIUM
+            break;
+    }
+    return e;
+}
+
+// The preset, then every explicit override.  This is the only place a
+// nxvc_config becomes an Effort.
+static inline Effort resolve_effort(const nxvc_config &cfg) {
+    Effort e = effort_of_preset(cfg.preset);
+    if (cfg.chroma_weight_q8)
+        e.chroma_weight = (double)cfg.chroma_weight_q8 / 256.0;
+    // Lossless has no distortion to weigh, and a plane coded at a weight
+    // other than 1 would not be bit exact.
+    if (cfg.lossless) e.chroma_weight = 1.0;
+    if (cfg.trellis_full) e.trellis_full = cfg.trellis_full >= 2;
+    if (cfg.trellis_dc) e.trellis_dc = cfg.trellis_dc >= 2;
+    if (cfg.tskip_rd) e.tskip_rd = cfg.tskip_rd >= 2;
+    if (cfg.mv_rd_qpel) e.mv_rd_qpel = cfg.mv_rd_qpel >= 2 ? 1 : 0;
+    if (cfg.mv_step) e.mv_step = clamp_i32((int)cfg.mv_step, 1, 16);
+    if (cfg.intra_dir_cand) e.dir_cand = clamp_i32((int)cfg.intra_dir_cand, 1, 8);
+    if (cfg.qp_search == 255) e.qp_search = 0;
+    else if (cfg.qp_search) e.qp_search = clamp_i32((int)cfg.qp_search, 1, 8);
+    if (cfg.lossless) { e.qp_search = 0; e.tskip_rd = false; }
+    return e;
+}
+
 struct TileCoder {
     const Geometry *g = nullptr;
     const FrameParams *fp = nullptr;
@@ -228,11 +424,20 @@ struct TileCoder {
     int sdh = 0;         // stream tool bit 22
     int nctx = kNumCtxV1;
     int inter = 0;       // tp.mode != INTRA
+    // docs/RATECONTROL.md 3.3 on this tile's luma, set by load_tile and read
+    // by every lambda in the encoder.  Source-derived, so it does not change
+    // with the mode or the QP a candidate is being scored at.
+    int cls = kClassTexture;
     PlaneState pl[4];
     std::vector<i16> coef;
     std::vector<Unit> units;
 
     void setup();
+    // The part of setup() that depends only on the QP and the weighting
+    // matrix, so a candidate at a different qp_delta or wm_id can be scored
+    // without reloading and re-transforming the tile's samples.  One
+    // implementation, called by setup() and by the per-tile QP search.
+    void requant_params();
     void build_units();
 };
 
@@ -259,22 +464,11 @@ void TileCoder::setup() {
     dir_layer = fp->dir_layer;
     sdh = fp->sdh;
     nctx = fp->nctx;
-    int qp = clamp_i32(fp->base_qp + tp.qp_delta, 0, 63);
     for (int p = 0; p < nplanes; ++p) {
         PlaneState &s = pl[p];
         bool chroma = (p == 1 || p == 2);
         s.size = chroma ? tg.chroma_size : tg.coded_size;
         s.nb = s.size / 8;
-        s.qp = chroma ? clamp_i32(qp + fp->chroma_qp_off, 0, 63)
-                      : (p == 3 ? clamp_i32(qp + fp->alpha_qp_off, 0, 63) : qp);
-        // wm_id 0 means "the frame's matrix"; 1..3 override it with a
-        // built-in pair for this tile alone (the degradation ladder's step 1,
-        // PAPER 4.6.1).  A frame carrying custom matrices forbids wm_id != 0.
-        if (tp.wm_id == 0) {
-            s.wmat = chroma ? fp->wm_chroma : fp->wm_luma;
-        } else {
-            s.wmat = kWeight[chroma ? 3 : tp.wm_id];
-        }
         s.maxval = g->maxval(p);
         s.dc_off = g->dc_offset(p);
         s.samples.assign((size_t)s.size * s.size, 0);
@@ -284,6 +478,25 @@ void TileCoder::setup() {
         if (intra_dir) {
             s.recon.assign((size_t)s.size * s.size, 0);
             s.modes.assign((size_t)s.nb * s.nb, 0);
+        }
+    }
+    requant_params();
+}
+
+void TileCoder::requant_params() {
+    const int qp = clamp_i32(fp->base_qp + tp.qp_delta, 0, 63);
+    for (int p = 0; p < nplanes; ++p) {
+        PlaneState &s = pl[p];
+        const bool chroma = (p == 1 || p == 2);
+        s.qp = chroma ? clamp_i32(qp + fp->chroma_qp_off, 0, 63)
+                      : (p == 3 ? clamp_i32(qp + fp->alpha_qp_off, 0, 63) : qp);
+        // wm_id 0 means "the frame's matrix"; 1..3 override it with a
+        // built-in pair for this tile alone (the degradation ladder's step 1,
+        // PAPER 4.6.1).  A frame carrying custom matrices forbids wm_id != 0.
+        if (tp.wm_id == 0) {
+            s.wmat = chroma ? fp->wm_chroma : fp->wm_luma;
+        } else {
+            s.wmat = kWeight[chroma ? 3 : tp.wm_id];
         }
     }
 }
@@ -655,6 +868,11 @@ static void reconstruct_plane(PlaneState &s, const i16 *coefs, int tskip,
 // orthonormal transform is squared sample units.
 struct RateCost {
     i32 sym[kNumCtx][kNumSym];  // Q10 bits
+    // True when coding a zero is at least as cheap as coding a one in every
+    // context.  It is what makes the trellis's scan truncation below exact
+    // rather than approximate, so it is measured off the table rather than
+    // assumed: a trained table could in principle put level 1 above level 0.
+    bool zero_cheapest;
 };
 
 static void build_rate_cost(const TableSet &ts, RateCost &rc) {
@@ -664,6 +882,9 @@ static void build_rate_cost(const TableSet &ts, RateCost &rc) {
             if (f <= 0) f = 1.0 / 1024.0;
             rc.sym[c][s] = (i32)(-std::log2(f) * 1024.0 + 0.5);
         }
+    rc.zero_cheapest = true;
+    for (int c = 0; c < kNumCtx; ++c)
+        if (rc.sym[c][1] < rc.sym[c][0]) rc.zero_cheapest = false;
 }
 
 // Bypass bits an escape suffix costs for magnitude m >= 15 (Exp-Golomb 3 of
@@ -675,9 +896,12 @@ static inline int escape_bits(i32 m) {
     return (b - kEscOrder) + 1 + b;  // j ones, one zero, b suffix bits
 }
 
+// `ctx_level` is kCtxNone for the position/class-dependent LEVEL model and a
+// fixed context id for a unit that codes every level in one context (the DC
+// plane under CTX_V2, SYNTAX.md 9.3).
 static inline i32 level_rate(const RateCost &rc, int scan_pos, int prev_class,
-                             i32 m) {
-    int ctx = level_ctx(scan_pos, prev_class);
+                             i32 m, int ctx_level) {
+    int ctx = ctx_level ? ctx_level : level_ctx(scan_pos, prev_class);
     i32 sym = m > 14 ? kEscSym : m;
     i32 r = rc.sym[ctx][sym];
     if (m > 14) r += escape_bits(m) << 10;
@@ -691,8 +915,8 @@ constexpr double kRdInf = 1e30;
 // reconstruction step (the dequantizer's t, Q4).  Writes the chosen levels
 // back into `coefs`.
 static void rdoq_unit(i16 *coefs, const i32 *orig, const i32 *step, int ncoef,
-                      const u8 *scan, int ctx_cbf, int ctx_last,
-                      const RateCost &rc, double lambda) {
+                      const u8 *scan, int ctx_cbf, int ctx_last, int ctx_level,
+                      const RateCost &rc, double lambda, bool full) {
     double f[64][3], fnz[64];
     i32 best_m[64][3], best_m_nz[64];
     double tail = 0;               // energy of scan positions above p
@@ -701,19 +925,51 @@ static void rdoq_unit(i16 *coefs, const i32 *orig, const i32 *step, int ncoef,
         double c = orig[i];
         energy += c * c;
     }
+
+    // A scan position whose magnitude is below half its step can only be
+    // zero: (a - st)^2 > a^2 there, so level 1 costs it more distortion than
+    // level 0, and `zero_cheapest` says it costs at least as much rate too.
+    // No lambda makes it win.  Everything above the last position that clears
+    // that bar is therefore zero, `last` can never reach it, and the trellis
+    // does not have to visit it.  With `zero_cheapest` this is an identity
+    // rather than a heuristic, and it is what makes the trellis affordable at
+    // the QPs where most of a frame is zeroes.
+    int pmax = ncoef - 1;
+    if (rc.zero_cheapest) {
+        pmax = -1;
+        for (int p = 0; p < ncoef; ++p) {
+            int idx = scan[p];
+            double a = orig[idx] < 0 ? -(double)orig[idx] : (double)orig[idx];
+            if (2.0 * a * 16.0 >= (double)step[idx]) pmax = p;
+        }
+    }
+    for (int i = 0; i < ncoef; ++i) coefs[i] = 0;
+    if (pmax < 0) return;
+
     double prev[3] = {0, 0, 0};
-    for (int p = 0; p < ncoef; ++p) {
+    for (int p = 0; p <= pmax; ++p) {
         int idx = scan[p];
         double c = orig[idx];
         double a = c < 0 ? -c : c;
         double st = (double)step[idx] / 16.0;
         i32 m0 = (i32)(a / st);
         if (m0 > 32767) m0 = 32767;
-        i32 cand[3];
+        // The candidate set.  {0, floor, floor+1} brackets the unquantized
+        // value; `full` adds the two levels a Markov rate model can prefer
+        // over a closer one -- floor-1, which may sit in a cheaper magnitude
+        // class, and 14, the largest level that is not an Exp-Golomb escape
+        // (entropy.cpp eg3_encode) and so the last cheap one before the rate
+        // jumps by several bits.
+        i32 cand[6];
         int nc = 0;
         cand[nc++] = 0;
         if (m0 > 0) cand[nc++] = m0;
-        if (m0 + 1 <= 32767 && m0 + 1 != 0) cand[nc++] = m0 + 1;
+        if (m0 < 32767) cand[nc++] = m0 + 1;
+        if (full) {
+            if (m0 >= 2) cand[nc++] = m0 - 1;
+            if (m0 >= 16) cand[nc++] = 14;
+        }
+        if (rc.zero_cheapest && 2.0 * a < st) nc = 1;   // the identity above
         for (int s = 0; s < 3; ++s) {
             double best = kRdInf;
             i32 bm = 0;
@@ -722,7 +978,8 @@ static void rdoq_unit(i16 *coefs, const i32 *orig, const i32 *step, int ncoef,
             for (int k = 0; k < nc; ++k) {
                 i32 m = cand[k];
                 double d = a - (double)m * st;
-                double cost = d * d + lambda * (level_rate(rc, p, s, m) / 1024.0) +
+                double cost = d * d +
+                              lambda * (level_rate(rc, p, s, m, ctx_level) / 1024.0) +
                               prev[level_class(m)];
                 if (cost < best) { best = cost; bm = m; }
                 if (m != 0 && cost < bestnz) { bestnz = cost; bmnz = m; }
@@ -730,6 +987,12 @@ static void rdoq_unit(i16 *coefs, const i32 *orig, const i32 *step, int ncoef,
             f[p][s] = best;
             best_m[p][s] = bm;
             if (s == 0) { fnz[p] = bestnz; best_m_nz[p] = bmnz; }
+            // With one LEVEL context for the whole unit the three states are
+            // the same problem; solve it once.
+            if (ctx_level) {
+                for (int t = 1; t < 3; ++t) { f[p][t] = best; best_m[p][t] = bm; }
+                break;
+            }
         }
         for (int s = 0; s < 3; ++s) prev[s] = f[p][s];
     }
@@ -738,7 +1001,11 @@ static void rdoq_unit(i16 *coefs, const i32 *orig, const i32 *step, int ncoef,
     double best_total = rc.sym[ctx_cbf][0] * lambda / 1024.0 + energy;
     int best_last = -1;
     tail = 0;
-    for (int p = ncoef - 1; p >= 0; --p) {
+    for (int p = ncoef - 1; p > pmax; --p) {
+        double c = orig[scan[p]];
+        tail += c * c;
+    }
+    for (int p = pmax; p >= 0; --p) {
         if (fnz[p] < kRdInf) {
             double r = rc.sym[ctx_cbf][1];
             if (ncoef > 1) {
@@ -752,7 +1019,6 @@ static void rdoq_unit(i16 *coefs, const i32 *orig, const i32 *step, int ncoef,
         tail += c * c;
     }
 
-    for (int i = 0; i < ncoef; ++i) coefs[i] = 0;
     if (best_last < 0) return;
     int s = 0;
     for (int p = best_last; p >= 0; --p) {
@@ -814,7 +1080,32 @@ static void hide_sign_unit(i16 *coefs, const i32 *orig, const i32 *step,
 
 // Encoder side: quantize the DC plane and mirror the decoder's
 // reconstruction of it into s.means / s.pred.
-static void analyze_dc_plane(PlaneState &s, i16 *coefs, int sdh) {
+// The trellis parameters for the DC plane, or nullptr for the plain dead-zone
+// quantizer.  The DC plane is the intra predictor and, for an inter tile, the
+// residual's mean: one level chosen there moves the prediction of all 64
+// blocks of the plane, and the unit's own distortion is stated in block-MEAN
+// units rather than sample units.  A mean error e raises the block's sample
+// SSE by 64 e^2 -- the block area -- before the AC blocks correct part of it
+// at a rate cost of their own.  kDcPropagation is that factor, and the DC
+// plane is trellised at lambda / kDcPropagation so its decisions are in the
+// same currency as every other one in the encoder.
+//
+// The geometric argument gives 64.  32 is the fitted value: the AC blocks
+// recover about half the mean error, and 32 is worth 0.5 BD-rate points more
+// than 64 on the harness.  It is also the floor of what is safe -- at 16 the
+// trellis takes 43 % off a QP 48 frame for 2.4 dB, which is a good RD trade
+// and a bad picture, and `ref.codec`'s quality floors catch it.
+// ref/RESULTS-rdo-a.md 3.
+struct DcRdoq {
+    const RateCost *rc;
+    double lambda;
+    int ctx_cbf, ctx_last, ctx_level;
+    bool full;
+};
+inline constexpr double kDcPropagation = 32.0;
+
+static void analyze_dc_plane(PlaneState &s, i16 *coefs, int sdh,
+                             const DcRdoq *rd) {
     const int nb = s.nb, size = s.size;
     const int ndc = nb * nb;
     std::vector<i32> m(ndc);
@@ -841,21 +1132,20 @@ static void analyze_dc_plane(PlaneState &s, i16 *coefs, int sdh) {
         i16 out[64];
         for (int i = 0; i < 64; ++i) in[i] = m[i] - s.dc_off;
         fdct8x8(in, out);
-        for (int i = 0; i < 64; ++i) {
-            orig[i] = out[i];
-            coefs[i] = (i16)quantize(out[i], tdc, tdc / 3);
-        }
+        for (int i = 0; i < 64; ++i) orig[i] = out[i];
     } else {
-        for (int i = 0; i < ndc; ++i) {
-            orig[i] = m[i] - s.dc_off;
+        for (int i = 0; i < ndc; ++i) orig[i] = m[i] - s.dc_off;
+    }
+    i32 stepv[64];
+    for (int i = 0; i < ndc; ++i) stepv[i] = tdc;
+    if (rd) {
+        rdoq_unit(coefs, orig, stepv, ndc, scan_table(ndc, false), rd->ctx_cbf,
+                  rd->ctx_last, rd->ctx_level, *rd->rc, rd->lambda, rd->full);
+    } else {
+        for (int i = 0; i < ndc; ++i)
             coefs[i] = (i16)quantize(orig[i], tdc, tdc / 3);
-        }
     }
-    if (sdh) {
-        i32 stepv[64];
-        for (int i = 0; i < ndc; ++i) stepv[i] = tdc;
-        hide_sign_unit(coefs, orig, stepv, ndc, scan_table(ndc, false));
-    }
+    if (sdh) hide_sign_unit(coefs, orig, stepv, ndc, scan_table(ndc, false));
     reconstruct_dc_plane(s, coefs);
     (void)size;
 }
@@ -866,7 +1156,7 @@ static void analyze_plane(PlaneState &s, i16 *coefs, int tskip, int intra_dz,
                           int sdh) {
     const int nb = s.nb, size = s.size;
     const int ndc = nb * nb;
-    analyze_dc_plane(s, coefs, sdh);
+    analyze_dc_plane(s, coefs, sdh, nullptr);
     // residual blocks
     i16 *bc = coefs + ndc;
     for (int by = 0; by < nb; ++by)
@@ -906,15 +1196,41 @@ static void analyze_plane(PlaneState &s, i16 *coefs, int tskip, int intra_dz,
 // DC plane is deliberately left on the plain dead-zone quantizer: it is the
 // intra predictor, so a level chosen there changes `pred` for all 64 blocks
 // and the trellis's single-unit distortion model would be wrong about it.
+// The DC plane's trellis parameters.  `nctx` decides which contexts the
+// plane's unit is coded in (build_units, SYNTAX.md 9.3), so the rate model
+// here is the one the entropy coder will actually use.
+static DcRdoq dc_rdoq(bool chroma, int nctx, const RateCost &rc, double lambda,
+                      const Effort &eff) {
+    DcRdoq rd;
+    rd.rc = &rc;
+    rd.lambda = lambda / kDcPropagation;
+    const bool v2 = nctx >= kNumCtxV2;
+    rd.ctx_cbf = v2 ? kCtxCbfDc : (chroma ? kCtxCbfChroma : kCtxCbfLuma);
+    rd.ctx_last = v2 ? kCtxLastDc : (chroma ? kCtxLastChroma : kCtxLastLuma);
+    rd.ctx_level = v2 ? kCtxLevelDc : kCtxNone;
+    rd.full = eff.trellis_full;
+    return rd;
+}
+
 static void rdoq_plane(PlaneState &s, i16 *coefs, int tskip, bool chroma,
-                       const RateCost &rc, double lambda_scale, int sdh) {
+                       int nctx, const RateCost &rc, double lambda_scale,
+                       int cls, int sdh, const Effort &eff) {
     const int nb = s.nb, size = s.size;
     const int ndc = nb * nb;
-    const double base = (double)kQStep[s.qp] / 16.0;
-    const double lambda = lambda_scale * base * base;
+    const double lambda =
+        lambda_for(s.qp, cls, lambda_scale,
+                   chroma ? eff.chroma_weight : 1.0).coef;
+    const bool full = eff.trellis_full;
     const u8 *scan = scan_table(64, tskip != 0);
     const int ctx_cbf = chroma ? kCtxCbfChroma : kCtxCbfLuma;
     const int ctx_last = chroma ? kCtxLastChroma : kCtxLastLuma;
+    // The DC plane first: it is the predictor the residual blocks below are
+    // measured against, so re-choosing its levels has to happen before those
+    // residuals are formed, not after.
+    if (eff.trellis_dc) {
+        DcRdoq rd = dc_rdoq(chroma, nctx, rc, lambda, eff);
+        analyze_dc_plane(s, coefs, sdh, &rd);
+    }
     i32 stepv[64];
     if (tskip) {
         int t = dequant_step(s.qp, 16);
@@ -941,7 +1257,8 @@ static void rdoq_plane(PlaneState &s, i16 *coefs, int tskip, bool chroma,
                 fdct8x8(res, co);
                 for (int i = 0; i < 64; ++i) orig[i] = co[i];
             }
-            rdoq_unit(c, orig, stepv, 64, scan, ctx_cbf, ctx_last, rc, lambda);
+            rdoq_unit(c, orig, stepv, 64, scan, ctx_cbf, ctx_last, kCtxNone, rc,
+                      lambda, full);
             if (sdh) hide_sign_unit(c, orig, stepv, 64, scan);
         }
 }
@@ -1011,11 +1328,21 @@ static i32 unit_bits(const i16 *c, int ncoef, const u8 *scan, int ctx_cbf,
 // tool can never be worse than v1 on a block).
 static void analyze_plane_dir(PlaneState &s, i16 *coefs, int tskip, int layer,
                               bool chroma, const RateCost &rc,
-                              double lambda_scale, bool use_rdo, int ncand,
-                              int mode_ctx, int sdh) {
+                              int nctx, double lambda_scale, int cls,
+                              bool use_rdo, int ncand, int mode_ctx, int sdh,
+                              const Effort &eff) {
     const int nb = s.nb, size = s.size;
     const int ndc = nb * nb;
-    analyze_dc_plane(s, coefs, sdh);
+    const double lambda =
+        lambda_for(s.qp, cls, lambda_scale,
+                   chroma ? eff.chroma_weight : 1.0).coef;
+    const bool full = eff.trellis_full;
+    if (use_rdo && eff.trellis_dc) {
+        DcRdoq rd = dc_rdoq(chroma, nctx, rc, lambda, eff);
+        analyze_dc_plane(s, coefs, sdh, &rd);
+    } else {
+        analyze_dc_plane(s, coefs, sdh, nullptr);
+    }
     if ((int)s.recon.size() != size * size) s.recon.assign((size_t)size * size, 0);
     if ((int)s.modes.size() != ndc) s.modes.assign((size_t)ndc, 0);
 
@@ -1025,8 +1352,6 @@ static void analyze_plane_dir(PlaneState &s, i16 *coefs, int tskip, int layer,
         zero.assign((size_t)size * size, 0);
         fallback = zero.data();
     }
-    const double base = (double)kQStep[s.qp] / 16.0;
-    const double lambda = lambda_scale * base * base;
     const u8 *scan = scan_table(64, tskip != 0);
     const int ctx_cbf = chroma ? kCtxCbfChroma : kCtxCbfLuma;
     const int ctx_last = chroma ? kCtxLastChroma : kCtxLastLuma;
@@ -1097,8 +1422,8 @@ static void analyze_plane_dir(PlaneState &s, i16 *coefs, int tskip, int layer,
                 }
                 i16 q[64];
                 if (use_rdo) {
-                    rdoq_unit(q, orig, stepv, 64, scan, ctx_cbf, ctx_last, rc,
-                              lambda);
+                    rdoq_unit(q, orig, stepv, 64, scan, ctx_cbf, ctx_last,
+                              kCtxNone, rc, lambda, full);
                 } else {
                     for (int i = 0; i < 64; ++i)
                         q[i] = (i16)quantize(orig[i], stepv[i], stepv[i] / 3);

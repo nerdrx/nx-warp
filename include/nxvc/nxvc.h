@@ -88,6 +88,15 @@ typedef enum nxvc_color_space {
     NXVC_CS_RGB = 3           /* requires NXVC_CT_YCOCGR                  */
 } nxvc_color_space;
 
+/* Encoder effort presets.  Encoder-side only: none of them changes what a
+ * stream means or how it decodes, only how long the encoder looks for the
+ * cheapest way to say it. */
+typedef enum nxvc_preset {
+    NXVC_PRESET_MEDIUM = 0,   /* the default */
+    NXVC_PRESET_FAST   = 1,
+    NXVC_PRESET_SLOW   = 2
+} nxvc_preset;
+
 typedef enum nxvc_tile_mode {
     NXVC_MODE_WARP_SKIP = 0,
     NXVC_MODE_STATIC_MV = 1,
@@ -176,7 +185,8 @@ typedef struct nxvc_config {
      * nxvc_config_default() sets rdo = 1 and leaves the tuning fields 0. */
     uint32_t rdo;               /* 0 = dead-zone only, 1 = RD trellis      */
     uint32_t rdo_lambda_q8;     /* lambda scale, Q8; 0 = built-in default  */
-    uint32_t qp_search;         /* per-tile QP offsets searched, 0 = off,
+    uint32_t qp_search;         /* per-tile QP offsets searched: 0 = the
+                                   preset's default, 255 = explicitly off,
                                    n = try qp_delta in [-n, +n]            */
     uint32_t wm_id;             /* per-tile weighting-matrix id 0..3, or
                                    255 = let the encoder choose per tile   */
@@ -209,6 +219,30 @@ typedef struct nxvc_config {
     uint32_t skip_thresh;       /* WARP_SKIP early-out gate, Q8 multiple of
                                    the quantiser's own noise floor
                                    (qstep^2 / 12) per sample; 0 = default   */
+    /* --- additive: the encoder's effort ladder.  Encoder-side, all of it:
+     * a stream written at NXVC_PRESET_FAST decodes through exactly the same
+     * path as one written at NXVC_PRESET_SLOW, and nxv-info cannot tell them
+     * apart.  `preset` sets a default for every knob below; a nonzero field
+     * of this struct overrides the preset it came from.  ref/README.md has
+     * the table and ref/RESULTS-rdo-a.md the time/quality measurement. */
+    uint32_t preset;            /* 0 = medium (the default), 1 = fast,
+                                   2 = slow                                */
+    uint32_t trellis_dc;        /* trellis the DC plane: 0 = preset,
+                                   1 = off, 2 = on                         */
+    uint32_t trellis_full;      /* rdoq candidate set: 0 = preset,
+                                   1 = narrow, 2 = wide                    */
+    uint32_t tskip_rd;          /* transform_skip == 2 decided by RD rather
+                                   than by the gradient rule: 0 = preset,
+                                   1 = off, 2 = on                         */
+    uint32_t mv_rd_qpel;        /* quarter-pel motion candidates re-scored
+                                   by real RD: 0 = preset, 1 = off, 2 = on */
+    uint32_t mv_step;           /* coarse motion-search step in samples,
+                                   0 = preset                              */
+    uint32_t chroma_weight_q8;  /* what one squared error in a chroma sample
+                                   is worth relative to one in a luma sample,
+                                   Q8, in every rate-distortion decision.
+                                   0 = the built-in default.               */
+
     uint32_t mode_lambda_q8;    /* lambda scale of the per-tile MODE
                                    decision, Q8, relative to the trellis's.
                                    Below 256 the decision spends more bits to

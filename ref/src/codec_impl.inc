@@ -350,6 +350,7 @@ static void load_tile(TileCoder &tc, const Geometry &g, const nxvc_image *img,
                 s.samples[(size_t)y * s.size + x] = (sum + n / 2) / n;
             }
     }
+    tc.cls = classify_tile(tc.pl[0].samples.data(), tc.pl[0].size);
 }
 
 // Write the reconstructed tile back into the output image.
@@ -517,19 +518,25 @@ static void reconstruct_skip(TileCoder &tc) {
 // number is exact for what the tile codes; for a res_level > 0 tile it is the
 // error of the small image, not of the upsampled one, which is the right
 // quantity to compare two candidates for the same tile against.
-static double tile_distortion(TileCoder &tc) {
+static double tile_distortion(TileCoder &tc, double chroma_weight) {
     double sse = 0;
     int np = coded_planes(tc);
     std::vector<i32> src;
     for (int p = 0; p < np; ++p) {
         PlaneState &s = tc.pl[p];
+        // The same plane weighting the per-plane lambda uses (codec.cpp
+        // kChromaDistWeight), so the mode decision and the trellis inside it
+        // agree about what a chroma error is worth.
+        const double w = (p == 1 || p == 2) ? chroma_weight : 1.0;
         src = s.samples;
         reconstruct_plane(s, &tc.coef[plane_coef_offset(tc, p)], tc.tp.tskip,
                           tc.intra_dir, tc.dir_layer);
+        double psse = 0;
         for (size_t i = 0; i < src.size(); ++i) {
             double d = (double)src[i] - (double)s.samples[i];
-            sse += d * d;
+            psse += d * d;
         }
+        sse += w * psse;
         s.samples.swap(src);
     }
     return sse;
@@ -709,21 +716,17 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         return bestk;
     };
 
-    // Lambda for the RD trellis, as a multiple of the tile's squared quantizer
-    // step.  0.30 was measured on the quality harness (tools/quality) over the
-    // 100-400 Mbit band; below 0.15 the trellis barely fires, above 0.6 it
-    // starts zeroing structure the eye sees.
-    const double rdo_lambda_scale =
-        e->cfg.rdo_lambda_q8 ? (double)e->cfg.rdo_lambda_q8 / 256.0 : 0.30;
+    // The scale of the encoder's one lambda (codec.cpp `Lambda`).  Fitted on
+    // the quality harness over the 100-400 Mbit band; --rdo-lambda overrides
+    // it and ref/RESULTS-rdo-a.md 2.1 is the sweep.
+    const double rdo_lambda_scale = e->cfg.rdo_lambda_q8
+                                        ? (double)e->cfg.rdo_lambda_q8 / 256.0
+                                        : kLambdaScaleDefault;
     const bool use_rdo = e->cfg.rdo != 0 && !e->cfg.lossless;
-    const int qp_search = e->cfg.lossless ? 0 : (int)(e->cfg.qp_search > 8
-                                                          ? 8u : e->cfg.qp_search);
+    const Effort eff = resolve_effort(e->cfg);
+    const int qp_search = eff.qp_search;
     const bool wm_search = e->cfg.wm_id == 255 && fp.quant_matrix != 255 &&
                            !e->cfg.lossless;
-    const int dir_cand = e->cfg.intra_dir_cand ? (int)(e->cfg.intra_dir_cand > 8
-                                                          ? 8u
-                                                          : e->cfg.intra_dir_cand)
-                                                : 2;
     const int mv_range = (int)(e->cfg.mv_range ? e->cfg.mv_range : 16u);
     const u32 intra_period = e->cfg.intra_period ? e->cfg.intra_period : 180u;
 
@@ -734,7 +737,8 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         int np = coded_planes(tc);
         for (int p = 0; p < np; ++p)
             rdoq_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)], tc.tp.tskip,
-                       p == 1 || p == 2, rc, rdo_lambda_scale, tc.sdh);
+                       p == 1 || p == 2, tc.nctx, rc, rdo_lambda_scale, tc.cls,
+                       tc.sdh, eff);
     };
 
     auto analyze_tile_dir = [&](TileCoder &tc, const TableSet *tabs, int pass) {
@@ -745,43 +749,68 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         for (int p = 0; p < np; ++p)
             analyze_plane_dir(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
                               tc.tp.tskip, tc.dir_layer, p == 1 || p == 2, rc,
-                              rdo_lambda_scale, pass && use_rdo,
-                              pass ? dir_cand : 1, mode_ctx, tc.sdh);
+                              tc.nctx, rdo_lambda_scale, tc.cls,
+                              pass && use_rdo, pass ? eff.dir_cand : 1,
+                              mode_ctx, tc.sdh, eff);
     };
 
     // Quantize one already-loaded tile: plain pass, table-set choice, then the
     // RD trellis and a second table-set choice.  Leaves `tc` ready to encode
     // and returns the coefficient rate in bits (payload only).
     auto quantize_tile = [&](TileCoder &tc, const TableSet *tabs) -> double {
-        int np = coded_planes(tc);
-        if (tc.intra_dir) {
-            analyze_tile_dir(tc, tabs, 0);
-        } else {
+        const int np = coded_planes(tc);
+        u32 th[kNumCtx][kNumSym];
+        auto count = [&]() {
+            std::memset(th, 0, sizeof(th));
+            return count_units(tc.units.data(), (int)tc.units.size(),
+                               1 << tc.tp.nsub_log2, th, nullptr);
+        };
+        // Pass 0.  For a v1 tile this IS the quantization and the trellis
+        // below only refines it; for a directional tile it exists only to
+        // give pass 1 a table set to build a rate model from, and `fast`
+        // skips it and keeps the table set the tile's QP implies.
+        if (!tc.intra_dir) {
             for (int p = 0; p < np; ++p)
                 analyze_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
                               tc.tp.tskip, 1, tc.sdh);
+            if (count()) tc.tp.table_set = select_set(th, tc.tp.table_set);
+            if (!use_rdo) return table_set_cost(th, tabs[tc.tp.table_set]);
+        } else if (eff.tables_two_pass) {
+            analyze_tile_dir(tc, tabs, 0);
+            if (count()) tc.tp.table_set = select_set(th, tc.tp.table_set);
         }
-        u32 th[kNumCtx][kNumSym];
-        std::memset(th, 0, sizeof(th));
-        if (count_units(tc.units.data(), (int)tc.units.size(),
-                        1 << tc.tp.nsub_log2, th, nullptr))
-            tc.tp.table_set = select_set(th, tc.tp.table_set);
-        if (tc.intra_dir) {
-            analyze_tile_dir(tc, tabs, 1);
-            std::memset(th, 0, sizeof(th));
-            if (!count_units(tc.units.data(), (int)tc.units.size(),
-                             1 << tc.tp.nsub_log2, th, nullptr))
-                return 0;
-            tc.tp.table_set = select_set(th, tc.tp.table_set);
-        } else if (use_rdo) {
-            rdoq_tile(tc, tabs);
-            std::memset(th, 0, sizeof(th));
-            if (!count_units(tc.units.data(), (int)tc.units.size(),
-                             1 << tc.tp.nsub_log2, th, nullptr))
-                return 0;
-            tc.tp.table_set = select_set(th, tc.tp.table_set);
-        }
+        // Pass 1: the real one, with a rate model, and then the table set
+        // again because the trellis changed the statistics it was chosen on.
+        if (tc.intra_dir) analyze_tile_dir(tc, tabs, 1);
+        else rdoq_tile(tc, tabs);
+        if (!count()) return 0;
+        tc.tp.table_set = select_set(th, tc.tp.table_set);
         return table_set_cost(th, tabs[tc.tp.table_set]);
+    };
+
+    // Transform skip, decided by the encoder's one lambda instead of by a
+    // gradient rule.  `--tskip auto` at fast and medium keeps the rule, which
+    // is free; at slow the tile is quantised BOTH ways and the cheaper
+    // D + lambda*R wins, which costs one extra quantisation of every tile and
+    // is the only honest answer.  Must be called after the tile's prediction
+    // is in place: the residual is what the flag is about.
+    auto choose_tskip = [&](const TileCoder &tc, const TableSet *tabs) -> int {
+        if (e->cfg.transform_skip != 2) return e->cfg.transform_skip == 1 ? 1 : 0;
+        if (!eff.tskip_rd) return tskip_decision(tc);
+        const int qp = clamp_i32(fp.base_qp + tc.tp.qp_delta, 0, 63);
+        const double lam = lambda_for(qp, tc.cls, rdo_lambda_scale).coef;
+        int best = 0;
+        double best_cost = 0;
+        for (int t = 0; t < 2; ++t) {
+            TileCoder c2 = tc;
+            c2.tp.tskip = t;
+            c2.build_units();
+            const double bits = quantize_tile(c2, tabs);
+            const double cost =
+                tile_distortion(c2, eff.chroma_weight) + lam * bits;
+            if (t == 0 || cost < best_cost) { best_cost = cost; best = t; }
+        }
+        return best;
     };
 
     auto make_tile_params = [&](int t, int eye, int col) {
@@ -859,6 +888,12 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         probe.tp.mode = NXVC_MODE_WARP_MV;   // allocates wpred
         probe.setup();
         load_tile(probe, g, img, eye, col, row);
+        // One lambda for the whole decision, in both domains: the SAD stage of
+        // the motion search uses L.sad, everything after it uses L.coef.
+        // --mode-lambda scales it; see the note at the mode comparison below.
+        const double mode_scale =
+            e->cfg.mode_lambda_q8 ? (double)e->cfg.mode_lambda_q8 / 256.0 : 1.0;
+        const Lambda L = lambda_for(qp, probe.cls, mode_scale * rdo_lambda_scale);
         const int lsz = probe.pl[0].size;
         const i64 npix = (i64)lsz * lsz;
 
@@ -885,6 +920,9 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             (!e->cfg.alpha && skip_sse <= skip_gate * (double)npix))
             return skip_cand;
         i64 best_sad = e->cfg.alpha ? (i64)1 << 62 : sad_pred(probe.pl[0]);
+        // The squared prediction error of the best searched vector, kept for
+        // the INTRA early-out below.
+        double best_pred_sse = skip_sse;
         TileDecision best_inter;
         best_inter.mode = NXVC_MODE_WARP_SKIP;
         best_inter.mv_x = ps.last_mv_x;
@@ -934,9 +972,23 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                 i64 v = sad_translate(sc, dx, dy, 4);
                 if (bsad < 0 || v < bsad) { bsad = v; bx = dx; by = dy; }
             };
+            // The seeds of PAPER 2.3 step 1: zero, this tile's own vector
+            // from the previous frame (the temporal seed) and the vector the
+            // tile to its left just chose (the spatial one).  A hierarchical
+            // search is only as good as where it starts, and on this material
+            // the temporal seed is what makes a step-4 sweep as good as a
+            // step-1 one.
             try_int(0, 0);
-            if (mode != NXVC_MODE_STEREO)
+            if (mode != NXVC_MODE_STEREO) {
                 try_int(ps.last_mv_x >> 2, ps.last_mv_y >> 2);
+                if (col > 0) {
+                    const TileDecision &l =
+                        e->dec[linear_tile(g, row, eye, col - 1)];
+                    if (l.mode == NXVC_MODE_WARP_MV ||
+                        l.mode == NXVC_MODE_STATIC_MV)
+                        try_int(l.mv_x >> 2, l.mv_y >> 2);
+                }
+            }
             if (st) {
                 // Horizontal only, and the disparity is unsigned: the left-eye
                 // source lies to the RIGHT of the right-eye position.
@@ -946,12 +998,21 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                 for (int dx = c0 - 2; dx <= c0 + 2; ++dx)
                     if (dx >= 0) try_int(dx, 0);
             } else {
-                for (int dy = -mv_range; dy <= mv_range; dy += 2)
-                    for (int dx = -mv_range; dx <= mv_range; dx += 2)
+                // Hierarchical: one sweep of the whole +-mv_range window at
+                // `mv_step`, then a step-halving refinement around the winner
+                // down to one sample.  At mv_step 1 the first sweep is already
+                // exhaustive and the refinement is free; at mv_step 4 the
+                // sweep costs a sixteenth and the refinement two more passes.
+                for (int dy = -mv_range; dy <= mv_range; dy += eff.mv_step)
+                    for (int dx = -mv_range; dx <= mv_range; dx += eff.mv_step)
                         try_int(dx, dy);
-                int cx = bx, cy = by;
-                for (int dy = cy - 1; dy <= cy + 1; ++dy)
-                    for (int dx = cx - 1; dx <= cx + 1; ++dx) try_int(dx, dy);
+                for (int step = eff.mv_step; step >= 1; step >>= 1) {
+                    const int cx = bx, cy = by;
+                    for (int dy = -step; dy <= step; dy += step)
+                        for (int dx = -step; dx <= step; dx += step)
+                            if (dx || dy) try_int(cx + dx, cy + dy);
+                    if (step == 1) break;
+                }
             }
 
             // Exact stage: the real predictor, integer neighbours then the
@@ -979,9 +1040,18 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                     for (int dx = -1; dx <= 1; ++dx)
                         try_exact(s2x + dx, s2y + dy);
             }
-            // A coded vector costs about two bytes of header; charge it so a
-            // mode only wins when it is actually better.
-            const i64 bias = (i64)(2.0 * qstep * 8.0);
+            if (qsad >= 0) {
+                predict_tile(probe, g, rp, fp.warp[eye], st ? 0 : eye, col, row,
+                             mode, qx, qy, 1);
+                const double e2 = sse_pred(probe.pl[0]);
+                if (e2 < best_pred_sse) best_pred_sse = e2;
+            }
+            // A coded vector costs exactly two bytes of tile header, and it
+            // costs the same two bytes in every searched mode -- the fields
+            // are fixed length -- so the vector CHOICE has no rate term and
+            // only the choice against WARP_SKIP does.  Charge it on the
+            // encoder's one lambda, in the SAD domain this stage works in.
+            const i64 bias = (i64)(L.sad * 16.0 + 0.5);
             if (qsad >= 0 && qsad + bias < best_sad) {
                 best_sad = qsad + bias;
                 best_inter.mode = mode;
@@ -1002,15 +1072,16 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         // --- the real decision: D + lambda*R of the best inter candidate
         // against INTRA, both fully quantized and reconstructed.
         //
-        // The MODE decision runs at a lower lambda than the within-tile
-        // trellis.  Every frame this codec produces is a reference for the
-        // next three, so a mode that saves bits by leaving distortion in the
-        // picture is charged for that distortion once and paid for it four
-        // times.  The trellis's lambda is a within-tile trade at fixed mode
-        // and is unaffected.
-        const double mode_scale =
-            e->cfg.mode_lambda_q8 ? (double)e->cfg.mode_lambda_q8 / 256.0 : 0.25;
-        const double lambda = mode_scale * rdo_lambda_scale * qstep * qstep;
+        // The mode decision runs at the SAME lambda as the trellis, the
+        // directional mode and the per-tile QP search: one slope for the whole
+        // encoder (codec.cpp, `Lambda`).  It used to run at a quarter of it,
+        // on the argument that a frame is a reference for the next three; that
+        // argument is already carried, and carried correctly, by the
+        // kSkipPersist term below, which charges the EXCESS distortion a skip
+        // leaves in the reference.  Charging it twice biased every coded mode.
+        // --mode-lambda still scales it for anyone who wants the old
+        // behaviour; ref/RESULTS-rdo-a.md 2.3 is the measurement.
+        const double lambda = L.coef;
         auto score = [&](const TileDecision &cand, double *dist_out) -> double {
             TileCoder tc;
             tc.g = &g;
@@ -1019,7 +1090,6 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             apply_decision(tc.tp, cand);
             tc.setup();
             load_tile(tc, g, img, eye, col, row);
-            if (e->cfg.transform_skip == 2) tc.tp.tskip = tskip_decision(tc);
             if (cand.mode != NXVC_MODE_INTRA) {
                 const RefPicture &rp = cand.mode == NXVC_MODE_STEREO
                                            ? e->ring.slot[slot]
@@ -1031,15 +1101,18 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                                                            : cand.mv_x,
                              cand.mode == NXVC_MODE_STEREO ? 0 : cand.mv_y);
             }
+            tc.tp.tskip = choose_tskip(tc, tabs);
             if (cand.mode == NXVC_MODE_WARP_SKIP) {
                 double sse = 0;
                 int np = coded_planes(tc);
                 for (int p = 0; p < np; ++p) {
                     PlaneState &s = tc.pl[p];
+                    const double w =
+                        (p == 1 || p == 2) ? eff.chroma_weight : 1.0;
                     for (size_t i = 0; i < s.samples.size(); ++i) {
                         double dd = (double)s.samples[i] -
                                     (double)clamp_i32(s.wpred[i], 0, s.maxval);
-                        sse += dd * dd;
+                        sse += w * dd * dd;
                     }
                 }
                 if (dist_out) *dist_out = sse;
@@ -1051,7 +1124,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             if ((size_t)active > tc.units.size()) active = (int)tc.units.size();
             bits += 8 * (kTileHeaderBytes + 4 * active +
                          (tc.tp.mv_present ? 2 : 0));
-            const double d = tile_distortion(tc);
+            const double d = tile_distortion(tc, eff.chroma_weight);
             if (dist_out) *dist_out = d;
             return d + lambda * bits;
         };
@@ -1069,14 +1142,51 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         // the error a coded tile would have made costs nothing extra -- which
         // is exactly the repeated-frame case, where every tile must skip.
         constexpr double kSkipPersist = 4.0;
+        // Early termination.  INTRA codes the tile's samples from scratch and
+        // pays a full tile of coefficients for them; it cannot win against a
+        // prediction whose error is already only a few times the quantiser's
+        // own noise floor, because the residual it would have to beat is
+        // already almost nothing.  kIntraGate is the multiple of that floor
+        // below which INTRA is not scored at all -- 8, three doublings above
+        // the WARP_SKIP gate, so it fires only where the margin is not close.
+        // It saves one full quantisation of the tile wherever it fires, which
+        // at the operating point is most of the frame.
+        constexpr double kIntraGate = 8.0;
+        const bool try_intra =
+            !(best_pred_sse <= kIntraGate * qnoise * (double)npix);
         TileDecision intra;
         double d_intra = 0, d_skip = 0, d_inter = 0;
-        const double c_intra = score(intra, &d_intra);
+        const double c_intra = try_intra ? score(intra, &d_intra) : kRdInf;
         double best_cost = c_intra;
-        TileDecision best = intra;
-        double d_ref = d_intra;
+        TileDecision best = try_intra ? intra : skip_cand;
+        double d_ref = try_intra ? d_intra : 1e30;
         if (!best_inter.skipped) {
-            const double c_inter = score(best_inter, &d_inter);
+            double c_inter = score(best_inter, &d_inter);
+            // Quarter-pel refinement by REAL rate-distortion.  The search
+            // above ranks vectors by SAD against the predictor, which is a
+            // proxy for two things it cannot see: what the transform and the
+            // trellis do with the residual, and what the tile actually costs.
+            // At `slow` the winner's four quarter-pel neighbours are re-scored
+            // by encoding them, which is four more full quantisations of the
+            // tile and the last half-decibel available to the search.
+            if (eff.mv_rd_qpel && best_inter.mode != NXVC_MODE_STEREO) {
+                static const int kOff[4][2] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
+                for (int k = 0; k < 4; ++k) {
+                    TileDecision c = best_inter;
+                    c.mv_x = best_inter.mv_x + kOff[k][0];
+                    c.mv_y = best_inter.mv_y + kOff[k][1];
+                    if (c.mv_x < -128 || c.mv_x > 127 || c.mv_y < -128 ||
+                        c.mv_y > 127)
+                        continue;
+                    double dd = 0;
+                    const double cc = score(c, &dd);
+                    if (cc < c_inter) {
+                        c_inter = cc;
+                        d_inter = dd;
+                        best_inter = c;
+                    }
+                }
+            }
             if (c_inter < best_cost) {
                 best_cost = c_inter;
                 best = best_inter;
@@ -1132,8 +1242,6 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                     apply_decision(tc.tp, d);
                     tc.setup();
                     load_tile(tc, g, img, (int)eye, (int)col, (int)row);
-                    if (e->cfg.transform_skip == 2)
-                        tc.tp.tskip = tskip_decision(tc);
                     if (e->cfg.alpha) {
                         bool constant = true;
                         i32 first = tc.pl[3].samples[0];
@@ -1177,55 +1285,68 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                         ti.qp = (u8)clamp_i32(fp.base_qp + tc.tp.qp_delta, 0, 63);
                         continue;
                     }
+                    tc.tp.tskip = choose_tskip(tc, tabs);
                     tc.build_units();
                     if (qp_search > 0 || wm_search) {
-                        const double base =
-                            (double)kQStep[clamp_i32(fp.base_qp + tc.tp.qp_delta,
-                                                     0, 63)] / 16.0;
-                        const double lambda = rdo_lambda_scale * base * base;
+                        // The per-tile QP offset, made cheap enough to leave
+                        // on.  Two things pay for it: the candidate's samples,
+                        // its prediction and its residual do NOT depend on the
+                        // QP, so a candidate is a COPY of the tile with
+                        // requant_params() re-run rather than a reload and a
+                        // second colour transform; and the offset is searched
+                        // by a bounded descent instead of exhaustively -- try
+                        // 0, then the better of -1 and +1, then keep walking
+                        // that way while the cost falls, at most `qp_search`
+                        // steps.  D + lambda*R is convex in the QP offset over
+                        // the range that matters, so the descent finds the
+                        // same minimum an exhaustive sweep does on almost
+                        // every tile at a fraction of the candidates.
+                        // ref/RESULTS-rdo-a.md 6.
                         const int qd0 = tc.tp.qp_delta;
-                        double best = 0;
-                        bool have = false;
+                        const double lambda =
+                            lambda_for(clamp_i32(fp.base_qp + qd0, 0, 63),
+                                       tc.cls, rdo_lambda_scale).coef;
+                        auto cost_of = [&](int qd, int wm) -> double {
+                            TileCoder cand = tc;
+                            cand.tp.qp_delta = clamp_i32(qd, -32, 31);
+                            cand.tp.wm_id = wm;
+                            cand.requant_params();
+                            cand.build_units();
+                            double bits = quantize_tile(cand, fp.tabs);
+                            int active = 1 << cand.tp.nsub_log2;
+                            if ((size_t)active > cand.units.size())
+                                active = (int)cand.units.size();
+                            bits += 8 * (kTileHeaderBytes + 4 * active);
+                            return tile_distortion(cand, eff.chroma_weight) + lambda * bits;
+                        };
                         int best_qd = qd0, best_wm = tc.tp.wm_id;
-                        for (int dq = -qp_search; dq <= qp_search; ++dq) {
-                            for (int wm = 0; wm <= (wm_search ? 3 : 0); ++wm) {
-                                TileCoder cand;
-                                cand.g = &g;
-                                cand.fp = &fp;
-                                cand.tp = tc.tp;
-                                cand.tp.qp_delta = clamp_i32(qd0 + dq, -32, 31);
-                                cand.tp.wm_id = wm;
-                                cand.setup();
-                                load_tile(cand, g, img, (int)eye, (int)col,
-                                          (int)row);
-                                if (d.mode != NXVC_MODE_INTRA)
-                                    for (int p = 0; p < 4; ++p)
-                                        cand.pl[p].wpred = tc.pl[p].wpred;
-                                cand.build_units();
-                                double bits = quantize_tile(cand, fp.tabs);
-                                int active = 1 << cand.tp.nsub_log2;
-                                if ((size_t)active > cand.units.size())
-                                    active = (int)cand.units.size();
-                                bits += 8 * (kTileHeaderBytes + 4 * active);
-                                double cost =
-                                    tile_distortion(cand) + lambda * bits;
-                                if (!have || cost < best) {
-                                    best = cost;
-                                    have = true;
-                                    best_qd = cand.tp.qp_delta;
-                                    best_wm = wm;
+                        double best = cost_of(qd0, best_wm);
+                        if (wm_search)
+                            for (int wm = 1; wm <= 3; ++wm) {
+                                double c = cost_of(qd0, wm);
+                                if (c < best) { best = c; best_wm = wm; }
+                            }
+                        if (qp_search > 0) {
+                            const double cm = cost_of(qd0 - 1, best_wm);
+                            const double cp = cost_of(qd0 + 1, best_wm);
+                            int dir = 0;
+                            if (cm < best && cm <= cp) { dir = -1; best = cm; }
+                            else if (cp < best) { dir = 1; best = cp; }
+                            if (dir) {
+                                best_qd = qd0 + dir;
+                                for (int k = 2; k <= qp_search; ++k) {
+                                    double c = cost_of(qd0 + dir * k, best_wm);
+                                    if (c >= best) break;
+                                    best = c;
+                                    best_qd = qd0 + dir * k;
                                 }
                             }
                         }
-                        if (have && (best_qd != tc.tp.qp_delta ||
-                                     best_wm != tc.tp.wm_id)) {
-                            std::vector<i32> keep[4];
-                            for (int p = 0; p < 4; ++p) keep[p] = tc.pl[p].wpred;
-                            tc.tp.qp_delta = best_qd;
+                        if (best_qd != tc.tp.qp_delta ||
+                            best_wm != tc.tp.wm_id) {
+                            tc.tp.qp_delta = clamp_i32(best_qd, -32, 31);
                             tc.tp.wm_id = best_wm;
-                            tc.setup();
-                            load_tile(tc, g, img, (int)eye, (int)col, (int)row);
-                            for (int p = 0; p < 4; ++p) tc.pl[p].wpred = keep[p];
+                            tc.requant_params();
                             tc.build_units();
                         }
                     }
@@ -1551,7 +1672,8 @@ extern "C" int nxvc_debug_tile_histograms(const nxvc_config *cfg,
             for (int p = 0; p < np; ++p)
                 analyze_plane_dir(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
                                   tc.tp.tskip, tc.dir_layer, p == 1 || p == 2,
-                                  rc, 0.30, true, 2, mctx, tc.sdh);
+                                  rc, tc.nctx, kLambdaScaleDefault, tc.cls,
+                                  true, 2, mctx, tc.sdh, Effort{});
         } else {
             for (int p = 0; p < np; ++p)
                 analyze_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
