@@ -67,6 +67,9 @@ METRIC_LABEL = {
     "fov_psnr_y": "eccentricity-weighted PSNR-Y (dB)",
     "psnr_fovea": "PSNR-Y inside the fovea disc (dB)",
     "psnr_periphery": "PSNR-Y in the periphery (dB)",
+    "fov_ssim_y": "eccentricity-weighted SSIM (Y)",
+    "fvvdp_jod": "FovVideoVDP (JOD)",
+    "popin_p95": "pop-in C_M, 95th percentile (JND)",
 }
 
 #: Extra per-point columns, printed only when --foveated-psnr produced them.
@@ -74,6 +77,13 @@ FOVEATED_COLUMNS = (
     ("fov_psnr_y", "fov-PSNR-Y", "{:.2f}"),
     ("psnr_fovea", "PSNR fovea", "{:.2f}"),
     ("psnr_periphery", "PSNR periph", "{:.2f}"),
+)
+
+#: Extra per-point columns from the PAPER.md 5.3 metric set (``--metric``).
+PERCEPTUAL_COLUMNS = (
+    ("fov_ssim_y", "fov-SSIM", "{:.4f}"),
+    ("fvvdp_jod", "JOD", "{:.3f}"),
+    ("popin_p95", "pop p95", "{:.3f}"),
 )
 
 
@@ -227,7 +237,8 @@ def rd_table(entry: dict, name: str) -> list[str]:
     has_ssim = any("ssim_y" in p for p in pts)
     has_ms = any("ms_ssim_y" in p for p in pts)
     has_vmaf = any("vmaf" in p for p in pts)
-    fov_cols = [c for c in FOVEATED_COLUMNS if any(c[0] in p for p in pts)]
+    fov_cols = [c for c in FOVEATED_COLUMNS + PERCEPTUAL_COLUMNS
+                if any(c[0] in p for p in pts)]
     head = [rc.upper(), "Mbit/s", "kB/frame", "PSNR-Y", "PSNR-YCbCr"]
     if has_ssim:
         head.append("SSIM")
