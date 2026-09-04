@@ -36,7 +36,106 @@ Each row adds one tool to the v1.4 default (`--intra-dir on --ctx v2
 --sign-hide`). `+ INTRA_CFL` is `--split4 off`, `+ XFORM_4X4_SPLIT` is
 `--cfl off`, and the last row is the shipped v1.5 default.
 
-PLACEHOLDER_GATE
+**4:4:4**
+
+| | BD-rate vs x264 intra | mean deficit | worst deficit | verdict |
+|---|---|---|---|---|
+| v1.4 (`--split4 off --cfl off`) | +117.67 % | -7.400 dB | -8.995 dB at 100.0 Mbit/s | FAIL |
+| `+ INTRA_CFL` | PLACEHOLDER_CFL444 | | | FAIL |
+| `+ XFORM_4X4_SPLIT` (**shipped default**) | **+113.91 %** | **-7.362 dB** | -8.987 dB at 100.0 Mbit/s | FAIL |
+
+**4:2:0**
+
+| | BD-rate vs x264 intra | mean deficit | worst deficit | verdict |
+|---|---|---|---|---|
+| v1.4 (`--split4 off --cfl off`) | +109.22 % | -7.415 dB | -9.405 dB at 100.0 Mbit/s | FAIL |
+| `+ INTRA_CFL` | PLACEHOLDER_CFL420 | | | FAIL |
+| `+ XFORM_4X4_SPLIT` (**shipped default**) | **+107.47 %** | **-7.396 dB** | -9.410 dB at 100.0 Mbit/s | FAIL |
+
+Verbatim, the final gate lines. 4:4:4:
+
+```
+  BD-rate of final on PSNR-Y (negative is better):
+    vs x264-intra    +113.91 %   BD-PSNR -7.486 dB   (overlap 38.56-44.65 dB)
+
+  Phase 1 gate (PAPER.md 3.11: within 1.0 dB of x264 intra, 100-400 Mbit):
+    FAIL: worst -8.987 dB at 100.0 Mbit/s, mean -7.362 dB over 100.0-345.3 Mbit/s
+```
+
+and the v1.4 baseline it moved from:
+
+```
+  BD-rate of base on PSNR-Y (negative is better):
+    vs x264-intra    +117.67 %   BD-PSNR -7.514 dB   (overlap 38.56-44.52 dB)
+
+  Phase 1 gate (PAPER.md 3.11: within 1.0 dB of x264 intra, 100-400 Mbit):
+    FAIL: worst -8.995 dB at 100.0 Mbit/s, mean -7.400 dB over 100.0-355.2 Mbit/s
+```
+
+4:2:0:
+
+```
+  BD-rate of final on PSNR-Y (negative is better):
+    vs x264-intra    +107.47 %   BD-PSNR -7.455 dB   (overlap 38.56-44.65 dB)
+
+  Phase 1 gate (PAPER.md 3.11: within 1.0 dB of x264 intra, 100-400 Mbit):
+    FAIL: worst -9.410 dB at 100.0 Mbit/s, mean -7.396 dB over 100.0-335.6 Mbit/s
+```
+
+```
+  BD-rate of base on PSNR-Y (negative is better):
+    vs x264-intra    +109.22 %   BD-PSNR -7.470 dB   (overlap 38.56-44.49 dB)
+
+  Phase 1 gate (PAPER.md 3.11: within 1.0 dB of x264 intra, 100-400 Mbit):
+    FAIL: worst -9.405 dB at 100.0 Mbit/s, mean -7.415 dB over 100.0-337.9 Mbit/s
+```
+
+**The gate is not met, and this package was never going to meet it.** It moved
+by **3.76 BD-rate points on 4:4:4** and **1.75 on 4:2:0** -- that is a 1.76 %
+and a 0.84 % reduction in our own rate at the same quality -- against the
+roughly -50 % the gate still needs. `RESULTS-intra.md` section 8 is the
+document that sets the expectation: after directional intra, the 16-context
+model and sign data hiding, what is left is 3 to 4 dB "with no single dominant
+term", and the two tools here are two more half-percents. They are worth having
+-- both are strictly additive, both cost the decoder almost nothing, and
+neither can make a block worse than v1.4 -- but the honest headline is that
+detail tools of this size do not close this gate.
+
+### Operating points, shipped default against v1.4
+
+**4:4:4**
+
+| QP | Mbit/s | PSNR-Y | SSIM-Y | VMAF | | v1.4 Mbit/s | v1.4 PSNR-Y |
+|---|---|---|---|---|---|---|---|
+| 20 | 345.3 | 44.65 | 0.9917 | 96.4 | | 355.2 | 44.52 |
+| 24 | 264.5 | 41.51 | 0.9866 | 94.3 | | 266.4 | 41.44 |
+| 28 | 198.8 | 38.39 | 0.9780 | 90.0 | | 199.1 | 38.38 |
+| 32 | 150.4 | 35.41 | 0.9660 | 81.7 | | 150.4 | 35.42 |
+| 36 | 117.2 | 32.45 | 0.9522 | 69.9 | | 117.2 | 32.45 |
+| 40 | 93.2 | 29.77 | 0.9382 | 54.7 | | 93.3 | 29.77 |
+
+**4:2:0**
+
+| QP | Mbit/s | PSNR-Y | SSIM-Y | VMAF | | v1.4 Mbit/s | v1.4 PSNR-Y |
+|---|---|---|---|---|---|---|---|
+| 20 | 335.6 | 44.65 | 0.9918 | 96.4 | | 337.9 | 44.49 |
+| 24 | 258.3 | 41.52 | 0.9867 | 94.3 | | 257.5 | 41.44 |
+| 28 | 200.0 | 38.39 | 0.9781 | 90.1 | | 199.6 | 38.37 |
+| 32 | 156.5 | 35.45 | 0.9668 | 81.9 | | 156.4 | 35.45 |
+| 36 | 122.8 | 32.51 | 0.9530 | 69.8 | | 122.8 | 32.51 |
+| 40 | 98.7 | 29.86 | 0.9391 | 54.6 | | 98.7 | 29.86 |
+
+(Rounded from `$NXQ_SCRATCH/results/tourney-detail-b-{base,final}-*.json`.)
+
+The whole gain is at the top of the band and it is almost entirely on 4:4:4:
+-2.8 % of rate at QP 20 and +0.13 dB, against nothing measurable at QP 36 and
+below. On 4:2:0 it is +0.16 dB at QP 20 at the same rate, and again nothing by
+QP 32. Both tools are prediction and transform tools that need something to
+predict and something to transform; at the bottom of the band the residual is
+already three coefficients and neither has anything to work with. That shape --
+a real gain at the operating point a 90 Hz stereo stream would actually run at,
+fading to zero below it -- is worth stating plainly, because a BD-rate over the
+whole ladder averages it away.
 
 ---
 
@@ -64,9 +163,12 @@ Three per cent of chroma blocks carry a third of the chroma bits, and mode 9
 takes those bits out. That is the whole mechanism: the model is exact where
 chroma is a linear function of luma, which on this material is every coloured
 edge, and those are exactly the blocks whose chroma residual was expensive. It
-is not a smooth-area tool -- the DC plane already handles those, and the DC
-plane grows slightly (+3 %) because a CFL block's mean is no longer what the
-DC plane would have predicted.
+is not a smooth-area tool: the DC plane already handles those, and the DC
+plane's own coefficients do not change at all -- `analyze_dc_plane` runs before
+any mode is chosen. Its byte count moves by +3 % only because the tile's
+probability-table set is chosen from the *whole* tile's histogram, which the
+chroma blocks have just changed; the DC plane is paying a share of a table that
+now fits the chroma blocks better than it did.
 
 The tool fades with QP, as a prediction tool that costs a mode symbol should:
 3.1 % of chroma blocks at QP 20, 0.6 % at QP 28, 0.04 % at QP 36 on 4:4:4.
@@ -196,7 +298,47 @@ is not met.
 
 ## 4. What it costs
 
-PLACEHOLDER_COST
+One 2048x1024 frame, single threaded, best of three under the standard CPU
+discipline. The machine was running several other agents' harnesses at the
+time, so the absolute numbers are inflated; the ratios are the point and they
+were measured back to back.
+
+| | encode | decode | bytes |
+|---|---|---|---|
+| 4:4:4 QP 20, v1.4 | 1.55 s | 0.10 s | 82 830 |
+| 4:4:4 QP 20, v1.5 | **2.69 s** | 0.09 s | 80 212 |
+| 4:4:4 QP 28, v1.4 | 1.63 s | 0.12 s | 46 574 |
+| 4:4:4 QP 28, v1.5 | **2.77 s** | 0.14 s | 46 412 |
+| 4:2:0 QP 20, v1.4 | 0.86 s | 0.06 s | 77 988 |
+| 4:2:0 QP 20, v1.5 | **1.04 s** | 0.10 s | 77 430 |
+| 4:2:0 QP 28, v1.4 | 1.10 s | 0.06 s | 46 300 |
+| 4:2:0 QP 28, v1.5 | **1.19 s** | 0.06 s | 46 412 |
+
+**Encode is 1.7x on 4:4:4 and 1.1-1.2x on 4:2:0.** Both tools are paid for in
+the same loop -- `analyze_plane_dir`, which already ran nine SATDs and three
+quantize-plus-reconstruct candidates per block:
+
+* `INTRA_CFL` adds a tenth mode to the SATD sweep of every **chroma** block,
+  and that tenth mode derives a model (including its 31-iteration division)
+  and evaluates 64 predictions before it can be scored. A 4:4:4 tile has 128
+  chroma blocks to a 4:2:0 tile's 32, which is the whole of the difference
+  between the two rows.
+* `XFORM_4X4_SPLIT` adds a fourth quantize-plus-reconstruct candidate to every
+  block -- the winning mode, re-scored with the 4x4 transform. That is about
+  +33 % of the RD work and it is the same on both formats.
+
+**Decode is unchanged**, within the noise of a loaded machine. That is the
+number that matters and it is what both tools were designed for: the split
+makes the inverse transform *cheaper* (four 4x4 transforms are 256 operations
+against one 8x8's 640), and chroma-from-luma replaces a residual with a model
+whose per-sample cost is one multiply, one shift and an add. What
+chroma-from-luma does cost a decoder is scheduling, and that is section 5.
+
+For reference against `RESULTS-intra.md` section 0, which measured the v1.3
+tools at 2.9-3.4x encode on top of the RD trellis's 2.7x: this package is
+another 1.7x on 4:4:4, so a default 4:4:4 encode is now roughly 16x the
+dead-zone-quantizer baseline the project started from. All of it is encoder
+work and none of it is visible to the decoder.
 
 ---
 
