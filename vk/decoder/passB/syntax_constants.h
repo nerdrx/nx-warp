@@ -27,11 +27,13 @@
     }                \
     ;
 #define NXVW_CONST constexpr int
+#define NXVW_FN inline int
 namespace nxvw {
 #else
 #define NXVW_ARR(T, name, n) const T name[n] = T[n](
 #define NXVW_ARR_END );
 #define NXVW_CONST const int
+#define NXVW_FN int
 #endif
 
 // ------------------------------------------------------------- geometry
@@ -63,8 +65,16 @@ NXVW_CONST kQStepShift = 4;
 // [SYN] 6.5 c = clamp16((q * t + 8) >> 4).  Levels are in [-32767, 32767].
 NXVW_CONST kDequantRound = 8;
 NXVW_CONST kDequantShift = 4;
-// [SYN] 6.5 / 7.1: qp(DC plane of p) = max(0, qp(p) - 6), flat weight 16.
-NXVW_CONST kDcQpOffset = 6;
+// [SYN] 6.5 / 7.1 and [REF] codec.cpp dc_qp_of(): the DC plane is quantized
+// at HALF the QP index with a flat weight.
+//
+// [nxvc_vk_decoder glue, marked edit] this was `max(0, qp - 6)` -- the rule
+// that held when Pass B was written.  docs/SYNTAX.md 7.1 line 540 and
+// ref/src/codec.cpp `dc_qp_of(qp) { return qp >> 1; }` now both say qp >> 1,
+// and every conformance vector in tests/vectors decodes wrong under the old
+// rule.  kDcQpOffset is gone rather than retuned so no caller can keep using
+// a subtractive offset.
+NXVW_FN nxvw_dc_qp(int qp) { return qp >> 1; }
 NXVW_CONST kFlatWeight = 16;
 // [SYN] 6.3 clamp16, normative after both transform passes.
 NXVW_CONST kI16Min = -32768;

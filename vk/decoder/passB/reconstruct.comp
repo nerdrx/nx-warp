@@ -250,7 +250,7 @@ void main() {
         int store = planeStoreBase[p];
 
         // ------------------------------------------------ DC plane (3.2.4)
-        int dcqp = max(planeQp - kDcQpOffset, 0);
+        int dcqp = nxvw_dc_qp(planeQp);  // [marked edit] qp >> 1, was qp - 6
         int tdc = dequantStep(dcqp, kFlatWeight);
         if (tid < ndc) sDcTmp[tid] = dequant(coefAt(coefBase + tid), tdc);
         barrier();

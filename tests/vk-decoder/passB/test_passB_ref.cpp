@@ -61,7 +61,7 @@ void ref_reconstruct_plane(int size, int qp, const nxvc::u8 *wmat, int dc_off,
     const int ndc = nb * nb;
     samples.assign((size_t)size * size, 0);
 
-    int dcqp = qp > 6 ? qp - 6 : 0;
+    int dcqp = qp >> 1;  // [REF] codec.cpp dc_qp_of()
     int tdc = ref_dequant_step(dcqp, 16);
     std::vector<int> dc(ndc);
     for (int i = 0; i < ndc; ++i) dc[i] = ref_dequant(coefs[i], tdc);

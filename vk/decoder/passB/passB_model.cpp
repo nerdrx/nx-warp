@@ -128,7 +128,7 @@ void reconstruct_tile(const PassBInput &in, int tile, TilePlanes &tp,
         int maxval = ctChroma ? kMaxvalChromaCT : kMaxval8;
 
         // --- DC plane (PAPER 3.2.4)
-        int dcqp = std::max(planeQp - kDcQpOffset, 0);
+        int dcqp = nxvw_dc_qp(planeQp);  // [marked edit] qp >> 1, was qp - 6
         int tdc = model_dequant_step(dcqp, kFlatWeight);
         std::vector<int> dc(ndc);
         for (int i = 0; i < ndc; ++i) dc[i] = model_dequant(coefBase[i], tdc);

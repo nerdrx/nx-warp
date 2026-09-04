@@ -37,6 +37,11 @@ struct Inputs {
     // Specialisation constant: kReadPtrBallot or kReadPtrLdsFallback.  Both
     // must give identical output; the model implements the emulated ballot.
     uint32_t read_ptr_mode = kReadPtrBallot;
+    // [nxvc_vk_decoder glue, marked edit] rANS lanes per tile, 1 << nsub_log2.
+    // Matches specialisation constant 2 (LANES) of rans_decode.comp.  One
+    // decode() call covers the tiles of one lane count; the host groups the
+    // frame's tiles by nsub_log2 and issues one dispatch per group.
+    uint32_t lanes = kLanes;
 };
 
 struct Outputs {
@@ -49,9 +54,11 @@ struct Outputs {
 // vkCmdDispatch(ceil(num_tiles / kTilesPerGroup), 1, 1).
 void decode(const Inputs &in, const Outputs &out);
 
-// Number of workgroups the host must dispatch for `num_tiles`.
-inline uint32_t group_count(uint32_t num_tiles) {
-    return (num_tiles + kTilesPerGroup - 1) / kTilesPerGroup;
+// Number of workgroups the host must dispatch for `num_tiles` at `lanes`
+// rANS lanes per tile.
+inline uint32_t group_count(uint32_t num_tiles, uint32_t lanes = kLanes) {
+    uint32_t tpg = nxs_tiles_per_group(lanes);
+    return (num_tiles + tpg - 1) / tpg;
 }
 
 }  // namespace nxwarp_passA

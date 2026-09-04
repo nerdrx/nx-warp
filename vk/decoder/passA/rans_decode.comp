@@ -1,16 +1,30 @@
 #version 460
 // NX Warp decoder, Pass A: interleaved rANS entropy decode.
 //
-// One workgroup decodes TILES_PER_GROUP (8) tiles; each tile is decoded by
-// LANES (8) interleaved rANS lanes, so the workgroup is 64 threads.
+// One workgroup decodes TILES_PER_GROUP tiles; each tile is decoded by LANES
+// interleaved rANS lanes.  The workgroup is always 64 threads and
+// TILES_PER_GROUP * LANES <= 64.
 //
-// The eight lanes of a tile share ONE read pointer into the tile's byte
-// stream.  Within a scheduling round the lanes that renormalise consume
-// 16-bit words in ascending lane order; a ballot over the 8-lane cluster
-// plus an exclusive bit count gives each lane its offset, and the cluster
-// advances the pointer by the popcount.  READ_PTR_MODE == 1 selects an
-// LDS-based fallback that computes the identical offsets without any
-// subgroup op, for devices with subgroupSize < 8 or unreliable ballot.
+// The lanes of a tile share ONE read pointer into the tile's byte stream.
+// Within a scheduling round the lanes that renormalise consume 16-bit words
+// in ascending lane order; a ballot over the LANES-wide cluster plus an
+// exclusive bit count gives each lane its offset, and the cluster advances
+// the pointer by the popcount.  READ_PTR_MODE == 1 selects an LDS-based
+// fallback that computes the identical offsets without any subgroup op, for
+// devices with subgroupSize < LANES or unreliable ballot.
+//
+// [nxvc_vk_decoder glue, marked edit] LANES was a compile-time 8 until the
+// tile header's nsub_log2 became a free per-tile field (docs/SYNTAX.md 4.1,
+// vectors v24/v25/v26).  It is now specialisation constant 2 and the host
+// issues one dispatch per distinct lane count present in the frame.  The
+// three other changes in this file carry the same marker:
+//   * the coefficient / CBF base comes from the tile descriptor rather than
+//     from `tile * coef_stride`, so a dispatch may cover an arbitrary subset
+//     of the frame's tiles in any order;
+//   * `active = min(LANES, nunits)` follows ref/src/entropy.cpp
+//     decode_units(), which initialises only that many rANS states;
+//   * threads whose tile slot is >= TILES_PER_GROUP idle through the
+//     schedule (all barriers stay workgroup-uniform).
 //
 // All normative arithmetic is int32/uint32.  There is no float and no
 // division anywhere in the per-symbol path.
@@ -30,6 +44,8 @@
 // ---------------------------------------------------------------------------
 layout(constant_id = 0) const uint READ_PTR_MODE = 0;   // kReadPtrBallot
 layout(constant_id = 1) const uint TILES_PER_GROUP = 8; // kTilesPerGroup
+// [marked edit] 2: rANS lanes per tile, 1 << nsub_log2, 1..32.
+layout(constant_id = 2) const uint LANES = 8;           // kLanes
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
@@ -77,19 +93,20 @@ shared uint s_cum[kNumTableSets * kNumCtx * kNumSym];
 shared uint s_scan[kNumScans * kScanStride];
 
 // Per-tile-slot geometry, filled by lane 0 of each tile.
-shared int s_np[8];              // coded plane count
-shared int s_nb[8 * kMaxPlanes]; // blocks per edge, per plane
-shared int s_unit_base[8 * (kMaxPlanes + 1)];
-shared int s_coef_base[8 * kMaxPlanes];
-shared int s_nunits[8];
-shared int s_tskip[8];
-shared uint s_tabbase[8];        // table_set * kNumCtx * kNumSym
-shared uint s_pay[8];            // byte offset of the rANS payload
-shared uint s_end[8];            // one past the last payload byte
-shared uint s_ok[8];             // status accumulator
+shared int s_np[kMaxSlots];      // coded plane count
+shared int s_nb[kMaxSlots * kMaxPlanes]; // blocks per edge, per plane
+shared int s_unit_base[kMaxSlots * (kMaxPlanes + 1)];
+shared int s_coef_base[kMaxSlots * kMaxPlanes];
+shared int s_nunits[kMaxSlots];
+shared int s_tskip[kMaxSlots];
+shared uint s_tabbase[kMaxSlots];        // table_set * kNumCtx * kNumSym
+shared uint s_pay[kMaxSlots];            // byte offset of the rANS payload
+shared uint s_end[kMaxSlots];            // one past the last payload byte
+shared uint s_ok[kMaxSlots];             // status accumulator
+shared int s_active[kMaxSlots];          // min(LANES, nunits): initialised rANS lanes
 
 // Fallback read-pointer exchange and the workgroup-wide "any lane active".
-shared uint s_renorm[8];
+shared uint s_renorm[kMaxSlots];
 shared uint s_any;
 
 // ---------------------------------------------------------------------------
@@ -193,7 +210,7 @@ void advance_pos() {
 }
 
 void lane_init(int lane) {
-    g_stride = int(kLanes);
+    g_stride = int(LANES);
     g_ui = lane;
     g_last = 0; g_pos_sp = 0; g_prev_class = 0; g_last_cls = 0; g_mag = 0;
     g_esc_j = 0; g_esc_bits = 0; g_esc_done = 0; g_esc_acc = 0u;
@@ -339,8 +356,14 @@ void decode_symbol(uint tabbase, int ctx, uint slot, out uint sym,
 // ---------------------------------------------------------------------------
 void main() {
     uint lid = gl_LocalInvocationID.x;
-    int slot = int(lid >> 3u);
-    int lane = int(lid & 7u);
+    // [marked edit] slot/lane from the LANES specialisation constant.  Threads
+    // whose slot falls outside TILES_PER_GROUP idle but still hit every
+    // barrier; they are clamped to slot 0 so no shared access goes out of
+    // range, and `valid` keeps them from writing anything.
+    uint slot_u = lid / LANES;
+    bool in_group = slot_u < TILES_PER_GROUP;
+    int slot = in_group ? int(slot_u) : 0;
+    int lane = int(lid - slot_u * LANES);
     g_slot = slot;
 
     // --- shared table load -------------------------------------------------
@@ -355,15 +378,16 @@ void main() {
         else if (t == uint(kScanZigzag4)) v = (p < 16u) ? uint(kZigzag4[p]) : p;
         s_scan[i] = v;
     }
-    if (lane == 0) {
+    if (in_group && lane == 0) {
         s_ok[slot] = kStatusOk;
         s_renorm[slot] = 0u;
+        s_active[slot] = 0;
     }
     if (lid == 0u) s_any = 0u;
     barrier();
 
-    uint tile = gl_WorkGroupID.x * TILES_PER_GROUP + uint(slot);
-    bool valid = tile < pc.num_tiles;
+    uint tile = gl_WorkGroupID.x * TILES_PER_GROUP + slot_u;
+    bool valid = in_group && tile < pc.num_tiles;
 
     // --- tile header -------------------------------------------------------
     uint hdr_off = 0u, bs_len = 0u;
@@ -371,8 +395,10 @@ void main() {
         uint d = tile * kTileDescUints;
         hdr_off = u_tiles.data[d + kTdBitsOffset];
         bs_len = u_tiles.data[d + kTdBitsLength];
-        g_coef_off = tile * pc.coef_stride;
-        g_cbf_off = tile * pc.cbf_words;
+        // [marked edit] the descriptor names the destination region, so a
+        // dispatch can cover any subset of the frame's tiles in any order.
+        g_coef_off = u_tiles.data[d + kTdCoefOffset];
+        g_cbf_off = u_tiles.data[d + kTdCbfOffset];
     }
 
     if (valid && lane == 0) {
@@ -395,12 +421,6 @@ void main() {
         uint pay_end = pay + paylen;
         s_end[slot] = pay_end < tile_end ? pay_end : tile_end;
 
-        if (nxs_tile_header_reserved_bad(w0, w1) != 0 ||
-            nsub_log2 != kLanesLog2 ||
-            pay + kLanes * kInitBytesPerLane > s_end[slot]) {
-            s_ok[slot] = kStatusBadHeader;
-        }
-
         int np = nxs_coded_planes(int(pc.frame_nplanes), alpha_mode);
         s_np[slot] = np;
         int ub = 0, cb = 0;
@@ -419,18 +439,26 @@ void main() {
         }
         s_unit_base[slot * (kMaxPlanes + 1) + kMaxPlanes] = ub;
         s_nunits[slot] = ub;
-        // v1 invariant: every legal tile geometry yields at least 9 units, so
-        // all 8 lanes are always active and the payload always carries 8
-        // initial states.  Reject anything else rather than guess.
-        if (ub < int(kLanes)) s_ok[slot] = kStatusBadHeader;
+        // [marked edit] [REF] entropy.cpp decode_units():
+        //   active = min(nlanes, nunits)
+        // rANS states are transmitted for the active lanes only; the lane
+        // machines still stride by nlanes.
+        int nactive = int(LANES) < ub ? int(LANES) : ub;
+        s_active[slot] = nactive;
+
+        if (nxs_tile_header_reserved_bad(w0, w1) != 0 ||
+            (1u << nsub_log2) != LANES ||
+            pay + uint(nactive) * kInitBytesPerLane > s_end[slot]) {
+            s_ok[slot] = kStatusBadHeader;
+        }
     }
     barrier();
 
     // --- zero the tile's coefficient region and CBF words -------------------
     if (valid) {
-        for (uint i = uint(lane); i < pc.coef_stride; i += kLanes)
+        for (uint i = uint(lane); i < pc.coef_stride; i += LANES)
             u_coef.data[g_coef_off + i] = int16_t(0);
-        for (uint i = uint(lane); i < pc.cbf_words; i += kLanes)
+        for (uint i = uint(lane); i < pc.cbf_words; i += LANES)
             u_cbf.data[g_cbf_off + i] = 0u;
     }
     barrier();
@@ -439,10 +467,12 @@ void main() {
 
     // --- rANS init: LANES little-endian uint32 states, lane 0 first --------
     g_end = valid ? s_end[slot] : 0u;
-    g_pos = (valid ? s_pay[slot] : 0u) + kLanes * kInitBytesPerLane;
+    int nactive = valid ? s_active[slot] : 0;
+    g_pos = (valid ? s_pay[slot] : 0u) + uint(nactive) * kInitBytesPerLane;
     g_nunits = valid ? s_nunits[slot] : 0;
     g_phase = kPhDone;
-    if (live) {
+    // [marked edit] lanes at or above `active` carry no rANS state at all.
+    if (live && lane < nactive) {
         g_state = load_u32le(s_pay[slot] + uint(lane) * kInitBytesPerLane);
         if (g_state < kRansL) s_ok[slot] = kStatusBadHeader;
         lane_init(lane);
@@ -454,12 +484,15 @@ void main() {
     // --- cluster mask for the ballot path ----------------------------------
     uvec4 cluster_mask = uvec4(0u);
     if (READ_PTR_MODE == kReadPtrBallot) {
-        uint base = gl_SubgroupInvocationID & ~7u;
-        cluster_mask[base >> 5u] = 0xffu << (base & 31u);
+        // [marked edit] LANES-wide cluster, LANES <= subgroupSize (the host
+        // selects the LDS fallback otherwise).
+        uint base = gl_SubgroupInvocationID & ~(LANES - 1u);
+        uint bits = (LANES >= 32u) ? 0xffffffffu : ((1u << LANES) - 1u);
+        cluster_mask[base >> 5u] = bits << (base & 31u);
     }
 
     // --- scheduling rounds --------------------------------------------------
-    // The reference walks lanes 0..7 in order each round; a lane that is
+    // The reference walks lanes 0..active-1 in order each round; a lane that is
     // finished simply emits nothing.  Byte consumption therefore follows
     // ascending lane order inside a round, which is exactly a prefix count
     // over the renormalisation ballot.
@@ -495,7 +528,7 @@ void main() {
         // unconditional so that control flow stays workgroup-uniform
         // whichever mode the specialisation constant selects.
         if (READ_PTR_MODE != kReadPtrBallot && needs)
-            atomicOr(s_renorm[slot], 1u << uint(lane));
+            atomicOr(s_renorm[slot], 1u << uint(lane));  // LANES <= 32
         if (has_op) s_any = 1u;
         barrier();
 
@@ -528,7 +561,7 @@ void main() {
 
         bool cont = (s_any != 0u);
         barrier();                       // everyone has consumed s_any/s_renorm
-        if (lane == 0) s_renorm[slot] = 0u;
+        if (in_group && lane == 0) s_renorm[slot] = 0u;
         if (lid == 0u) s_any = 0u;
         barrier();                       // flags clear before the next round
         if (!cont) break;

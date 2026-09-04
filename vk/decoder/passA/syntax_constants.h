@@ -264,10 +264,23 @@ NXS_CONST uint kSpecIdWorkgroupTiles = 1;
 NXS_CONST uint kReadPtrBallot = 0;
 NXS_CONST uint kReadPtrLdsFallback = 1;
 
-// Dispatch shape: one workgroup handles kTilesPerGroup tiles with kLanes
-// lanes each -> kTilesPerGroup * kLanes threads.
+// Dispatch shape: one workgroup is always kWorkgroupSize threads and handles
+// TILES_PER_GROUP tiles of LANES lanes each, with TILES_PER_GROUP * LANES <=
+// kWorkgroupSize and TILES_PER_GROUP <= kMaxSlots.  kTilesPerGroup is the
+// v1-default shape (8 tiles x 8 lanes).
+//
+// [nxvc_vk_decoder glue, marked edit] LANES is specialisation constant 2 and
+// no longer fixed at 8; see rans_decode.comp.  nxs_tiles_per_group() is the
+// one place that derives the workgroup shape from a lane count.
 NXS_CONST uint kTilesPerGroup = 8;
 NXS_CONST uint kWorkgroupSize = 64;  // kTilesPerGroup * kLanes
+NXS_CONST uint kMaxSlots = 8;        // shared-array slots per workgroup
+NXS_CONST uint kMaxLanes = 32;       // nsub_log2 <= 5
+
+NXS_FN uint nxs_tiles_per_group(uint lanes) {
+    uint t = kWorkgroupSize / lanes;
+    return t > kMaxSlots ? kMaxSlots : t;
+}
 
 // ---------------------------------------------------------------------------
 // Derived helpers, valid in both languages.

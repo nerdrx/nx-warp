@@ -21,17 +21,18 @@ namespace {
 struct Shared {
     uint32_t cum[kNumTableSets * kNumCtx * kNumSym];
     uint32_t scan[kNumScans * kScanStride];
-    int np[8];
-    int nb[8 * kMaxPlanes];
-    int unit_base[8 * (kMaxPlanes + 1)];
-    int coef_base[8 * kMaxPlanes];
-    int nunits[8];
-    int tskip[8];
-    uint32_t tabbase[8];
-    uint32_t pay[8];
-    uint32_t end[8];
-    uint32_t ok[8];
-    uint32_t renorm[8];
+    int np[kMaxSlots];
+    int nb[kMaxSlots * kMaxPlanes];
+    int unit_base[kMaxSlots * (kMaxPlanes + 1)];
+    int coef_base[kMaxSlots * kMaxPlanes];
+    int nunits[kMaxSlots];
+    int tskip[kMaxSlots];
+    int active[kMaxSlots];
+    uint32_t tabbase[kMaxSlots];
+    uint32_t pay[kMaxSlots];
+    uint32_t end[kMaxSlots];
+    uint32_t ok[kMaxSlots];
+    uint32_t renorm[kMaxSlots];
     uint32_t any;
 };
 
@@ -52,6 +53,8 @@ struct Thread {
     uint32_t esc_acc;
     int u_ncoef, u_scan, u_ctx_cbf, u_ctx_last, u_coef;
     int slot;
+    int lane;
+    bool in_group;
     uint32_t coef_off;
     uint32_t cbf_off;
 
@@ -149,7 +152,7 @@ void advance_pos(Ctx &c, Thread &g) {
 }
 
 void lane_init(Ctx &c, Thread &g, int lane) {
-    g.stride = int(kLanes);
+    g.stride = int(c.in->lanes);
     g.ui = lane;
     g.last = 0; g.pos_sp = 0; g.prev_class = 0; g.last_cls = 0; g.mag = 0;
     g.esc_j = 0; g.esc_bits = 0; g.esc_done = 0; g.esc_acc = 0u;
@@ -297,31 +300,40 @@ void run_group(Ctx &c, uint32_t workgroup_id) {
         else if (t == uint32_t(kScanZigzag4)) v = (p < 16u) ? uint32_t(kZigzag4[p]) : p;
         sh.scan[i] = v;
     }
-    for (int s = 0; s < 8; ++s) { sh.ok[s] = kStatusOk; sh.renorm[s] = 0u; }
+    const uint32_t kLanesN = c.in->lanes;
+    const uint32_t kTPG = nxs_tiles_per_group(kLanesN);
+    for (uint32_t s = 0; s < kMaxSlots; ++s) {
+        sh.ok[s] = kStatusOk;
+        sh.renorm[s] = 0u;
+        sh.active[s] = 0;
+    }
     sh.any = 0u;
 
     for (uint32_t lid = 0; lid < kWorkgroupSize; ++lid) {
         Thread &g = c.th[lid];
         g = Thread{};
-        int slot = int(lid >> 3u);
+        uint32_t slot_u = lid / kLanesN;
+        g.in_group = slot_u < kTPG;
+        int slot = g.in_group ? int(slot_u) : 0;
         g.slot = slot;
-        g.tile = workgroup_id * kTilesPerGroup + uint32_t(slot);
-        g.valid = g.tile < c.in->num_tiles;
+        g.lane = int(lid - slot_u * kLanesN);
+        g.tile = workgroup_id * kTPG + slot_u;
+        g.valid = g.in_group && g.tile < c.in->num_tiles;
         g.hdr_off = 0; g.bs_len = 0;
         if (g.valid) {
             const TileDesc &d = c.in->tiles[g.tile];
             g.hdr_off = d.bits_offset;
             g.bs_len = d.bits_length;
-            g.coef_off = g.tile * c.in->coef_stride;
-            g.cbf_off = g.tile * c.in->cbf_words;
+            g.coef_off = d.coef_offset;
+            g.cbf_off = d.cbf_offset;
         }
     }
 
     // --- tile header (lane 0 of each slot) ---------------------------------
     for (uint32_t lid = 0; lid < kWorkgroupSize; ++lid) {
         Thread &g = c.th[lid];
-        int slot = int(lid >> 3u), lane = int(lid & 7u);
-        if (!(g.valid && lane == 0)) continue;
+        int slot = g.slot;
+        if (!(g.valid && g.lane == 0)) continue;
         uint32_t w0 = load_u32le(c, g.hdr_off);
         uint32_t w1 = load_u32le(c, g.hdr_off + 4u);
         int res_level = int((w1 >> kThResLevelShift) & kThResLevelMask);
@@ -338,12 +350,6 @@ void run_group(Ctx &c, uint32_t workgroup_id) {
         uint32_t tile_end = g.hdr_off + g.bs_len;
         uint32_t pay_end = pay + paylen;
         sh.end[slot] = pay_end < tile_end ? pay_end : tile_end;
-
-        if (nxs_tile_header_reserved_bad(w0, w1) != 0 ||
-            nsub_log2 != kLanesLog2 ||
-            pay + kLanes * kInitBytesPerLane > sh.end[slot]) {
-            sh.ok[slot] = kStatusBadHeader;
-        }
 
         int np = nxs_coded_planes(int(c.in->frame_nplanes), alpha_mode);
         sh.np[slot] = np;
@@ -363,34 +369,41 @@ void run_group(Ctx &c, uint32_t workgroup_id) {
         }
         sh.unit_base[slot * (kMaxPlanes + 1) + kMaxPlanes] = ub;
         sh.nunits[slot] = ub;
-        if (ub < int(kLanes)) sh.ok[slot] = kStatusBadHeader;
+        int nactive = int(kLanesN) < ub ? int(kLanesN) : ub;
+        sh.active[slot] = nactive;
+        if (nxs_tile_header_reserved_bad(w0, w1) != 0 ||
+            (1u << nsub_log2) != kLanesN ||
+            pay + uint32_t(nactive) * kInitBytesPerLane > sh.end[slot]) {
+            sh.ok[slot] = kStatusBadHeader;
+        }
     }
 
     // --- zero the coefficient region and CBF words -------------------------
     for (uint32_t lid = 0; lid < kWorkgroupSize; ++lid) {
         Thread &g = c.th[lid];
-        int lane = int(lid & 7u);
         if (!g.valid) continue;
-        for (uint32_t i = uint32_t(lane); i < c.in->coef_stride; i += kLanes)
+        for (uint32_t i = uint32_t(g.lane); i < c.in->coef_stride; i += kLanesN)
             c.out->coef[g.coef_off + i] = 0;
-        for (uint32_t i = uint32_t(lane); i < c.in->cbf_words; i += kLanes)
+        for (uint32_t i = uint32_t(g.lane); i < c.in->cbf_words; i += kLanesN)
             c.out->cbf[g.cbf_off + i] = 0u;
     }
 
     // --- rANS init ---------------------------------------------------------
     for (uint32_t lid = 0; lid < kWorkgroupSize; ++lid) {
         Thread &g = c.th[lid];
-        int slot = int(lid >> 3u), lane = int(lid & 7u);
+        int slot = g.slot;
         g.live = g.valid && sh.ok[slot] == kStatusOk;
         g.end = g.valid ? sh.end[g.slot] : 0u;
-        g.pos = (g.valid ? sh.pay[g.slot] : 0u) + kLanes * kInitBytesPerLane;
+        int nactive = g.valid ? sh.active[slot] : 0;
+        g.pos = (g.valid ? sh.pay[g.slot] : 0u) +
+                uint32_t(nactive) * kInitBytesPerLane;
         g.nunits = g.valid ? sh.nunits[slot] : 0;
         g.phase = kPhDone;
-        if (g.live) {
+        if (g.live && g.lane < nactive) {
             g.state = load_u32le(
-                c, sh.pay[g.slot] + uint32_t(lane) * kInitBytesPerLane);
+                c, sh.pay[g.slot] + uint32_t(g.lane) * kInitBytesPerLane);
             if (g.state < kRansL) sh.ok[slot] = kStatusBadHeader;
-            lane_init(c, g, lane);
+            lane_init(c, g, g.lane);
         }
     }
     for (uint32_t lid = 0; lid < kWorkgroupSize; ++lid) {
@@ -435,20 +448,21 @@ void run_group(Ctx &c, uint32_t workgroup_id) {
         for (uint32_t lid = 0; lid < kWorkgroupSize; ++lid) {
             Thread &g = c.th[lid];
             if (c.in->read_ptr_mode != kReadPtrBallot && needs[lid])
-                sh.renorm[g.slot] |= 1u << (lid & 7u);
+                sh.renorm[g.slot] |= 1u << uint32_t(g.lane);
             if (has_op[lid]) sh.any = 1u;
         }
 
         for (uint32_t lid = 0; lid < kWorkgroupSize; ++lid) {
             Thread &g = c.th[lid];
-            int slot = int(lid >> 3u), lane = int(lid & 7u);
+            int slot = g.slot, lane = g.lane;
             uint32_t prefix = 0, total = 0;
             if (c.in->read_ptr_mode == kReadPtrBallot) {
-                // Emulated 8-lane cluster ballot: the shader's
+                // Emulated LANES-wide cluster ballot: the shader's
                 // subgroupBallot(needs) & cluster_mask.
                 uint32_t b = 0;
-                for (int l = 0; l < int(kLanes); ++l)
-                    if (needs[uint32_t(slot * 8 + l)]) b |= 1u << l;
+                uint32_t cbase = (lid / kLanesN) * kLanesN;
+                for (uint32_t l = 0; l < kLanesN; ++l)
+                    if (needs[cbase + l]) b |= 1u << l;
                 prefix = uint32_t(__builtin_popcount(b & ((1u << lane) - 1u)));
                 total = uint32_t(__builtin_popcount(b));
             } else {
@@ -478,7 +492,7 @@ void run_group(Ctx &c, uint32_t workgroup_id) {
         }
 
         bool cont = (sh.any != 0u);
-        for (int s = 0; s < 8; ++s) sh.renorm[s] = 0u;
+        for (uint32_t s = 0; s < kMaxSlots; ++s) sh.renorm[s] = 0u;
         sh.any = 0u;
         if (!cont) break;
         if (++round >= kMaxRounds) {
@@ -490,7 +504,7 @@ void run_group(Ctx &c, uint32_t workgroup_id) {
 
     for (uint32_t lid = 0; lid < kWorkgroupSize; ++lid) {
         Thread &g = c.th[lid];
-        if (g.valid && (lid & 7u) == 0) c.out->status[g.tile] = sh.ok[g.slot];
+        if (g.valid && g.lane == 0) c.out->status[g.tile] = sh.ok[g.slot];
     }
 }
 
@@ -500,7 +514,7 @@ void decode(const Inputs &in, const Outputs &out) {
     Ctx c;
     c.in = &in;
     c.out = &out;
-    uint32_t groups = group_count(in.num_tiles);
+    uint32_t groups = group_count(in.num_tiles, in.lanes);
     for (uint32_t wg = 0; wg < groups; ++wg) run_group(c, wg);
 }
 
