@@ -15,6 +15,13 @@ foreach(t transform rans codec headers fuzz_smoke)
     add_test(NAME ref.${t} COMMAND ref_test_${t})
 endforeach()
 
+# Development tool: regenerates ref/src/default_tables.inc.  Not a test.
+add_executable(nxv-gentables gentables.cpp)
+target_link_libraries(nxv-gentables PRIVATE nxvc_ref)
+target_include_directories(nxv-gentables PRIVATE ${NXVC_REF_TEST_INC})
+set_target_properties(nxv-gentables PROPERTIES CXX_STANDARD 20
+                      CXX_STANDARD_REQUIRED ON)
+
 # Conformance vectors: one binary generates and checks them.
 add_executable(nxv-vectors vectors.cpp)
 target_link_libraries(nxv-vectors PRIVATE nxvc_ref)

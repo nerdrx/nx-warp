@@ -1,5 +1,6 @@
 // nxvc_ref: bitstream syntax, encoder and decoder.  See docs/SYNTAX.md.
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <new>
 
@@ -63,6 +64,7 @@ struct Geometry {
     u32 width = 0, height = 0;
     u32 chroma = 0;       // nxvc_chroma
     u32 color_transform = 0;
+    u32 color_space = 0;
     u32 alpha = 0;
     u32 tiles_x = 0, tiles_y = 0;
     u32 cw = 0, ch = 0;   // chroma plane dimensions
@@ -166,6 +168,12 @@ static void unpack_tile_header(u32 w0, u32 w1, TileParams &t) {
 
 // ------------------------------------------------------------- tile coding
 // Per-plane coding state inside one tile.
+// The DC plane is 1/64 of the samples but carries the whole intra predictor,
+// so it is quantized at half the tile's QP index (one step per two QP steps).
+// Coarse block means make the planar prediction blocky, which the AC residual
+// then has to pay for twice over; measured at +3 dB and -10% bits at QP 38.
+static inline int dc_qp_of(int qp) { return qp >> 1; }
+
 struct PlaneState {
     int size = 0;      // coded edge
     int nb = 0;        // blocks per edge
@@ -265,7 +273,7 @@ static void reconstruct_plane(PlaneState &s, const i16 *coefs, int tskip) {
     const int nb = s.nb, size = s.size;
     const int ndc = nb * nb;
     // --- DC plane
-    int dcqp = s.qp > 6 ? s.qp - 6 : 0;
+    int dcqp = dc_qp_of(s.qp);
     int tdc = dequant_step(dcqp, 16);
     std::vector<i32> dc(ndc);
     for (int i = 0; i < ndc; ++i) dc[i] = dequant(coefs[i], tdc);
@@ -322,7 +330,7 @@ static void analyze_plane(PlaneState &s, i16 *coefs, int tskip, int intra_dz) {
                     sum += s.samples[(size_t)(by * 8 + j) * size + bx * 8 + i];
             m[by * nb + bx] = (sum + 32) >> 6;
         }
-    int dcqp = s.qp > 6 ? s.qp - 6 : 0;
+    int dcqp = dc_qp_of(s.qp);
     int tdc = dequant_step(dcqp, 16);
     if (nb == 8) {
         i32 in[64];
@@ -390,6 +398,7 @@ struct nxvc_encoder {
     std::vector<u8> tlv;
     u8 pose[26] = {};
     u32 frame_number = 0;
+    nxvc_encode_stats stats{};
 };
 
 struct nxvc_decoder {
@@ -415,7 +424,10 @@ void nxvc_config_default(nxvc_config *cfg) {
     cfg->color_transform = NXVC_CT_NONE;
     cfg->base_qp = 24;
     cfg->quant_matrix = 1;
-    cfg->nsub_log2 = 3;
+    // Defaults chosen for rate: the rANS flush is 4 bytes per lane, which
+    // dominates cheap tiles, and per-frame tables are worth 10-45%.
+    cfg->nsub_log2 = 255;   // auto, capped at 8 lanes
+    cfg->custom_tables = 1;
     cfg->profile = 1;
     cfg->level = 1;
 }

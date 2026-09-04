@@ -58,6 +58,18 @@ static bool parse_table_set(BitR &br, int set_index, TableSet &out) {
     return true;
 }
 
+// Cost in Q8 bits of coding `hist` with table set `ts` (encoder side only).
+static double table_set_cost(const u32 hist[kNumCtx][kNumSym],
+                             const TableSet &ts) {
+    double bits = 0;
+    for (int c = 0; c < kNumCtx; ++c)
+        for (int s = 0; s < kNumSym; ++s)
+            if (hist[c][s])
+                bits -= (double)hist[c][s] *
+                        std::log2((double)ts.ctx[c].freq[s] / 1024.0);
+    return bits;
+}
+
 // ------------------------------------------------------------ tile helpers
 static size_t plane_coef_offset(const TileCoder &tc, int p) {
     size_t off = 0;
@@ -114,6 +126,10 @@ extern "C" nxvc_encoder *nxvc_encoder_create(const nxvc_config *cfg,
     if (cfg->base_qp > 63) return fail(NXVC_ERR_ARG);
     if (cfg->color_transform == NXVC_CT_YCOCGR && cfg->chroma != NXVC_CHROMA_444)
         return fail(NXVC_ERR_ARG);
+    if (cfg->color_space > 3) return fail(NXVC_ERR_ARG);
+    if ((cfg->color_space == NXVC_CS_RGB) !=
+        (cfg->color_transform == NXVC_CT_YCOCGR))
+        return fail(NXVC_ERR_ARG);
     auto *e = new (std::nothrow) nxvc_encoder();
     if (!e) return fail(NXVC_ERR_NOMEM);
     e->cfg = *cfg;
@@ -126,6 +142,7 @@ extern "C" nxvc_encoder *nxvc_encoder_create(const nxvc_config *cfg,
     e->g.height = cfg->height;
     e->g.chroma = cfg->chroma;
     e->g.color_transform = cfg->color_transform;
+    e->g.color_space = cfg->color_space;
     e->g.alpha = cfg->alpha ? 1 : 0;
     derive_geometry(e->g);
     if (e->g.tiles_x > kMaxTilesPerRow) {
@@ -203,6 +220,7 @@ extern "C" nxvc_status nxvc_encoder_stream_header(nxvc_encoder *e, uint8_t *buf,
     bw.u64v(encoder_tools(e));
     bw.u8v(e->g.alpha);
     bw.u8v(e->g.color_transform);
+    bw.u8v(e->g.color_space);
     while (bw.size() < 62) bw.u8v(0);
     bw.u16v((u32)e->tlv.size());
     bw.raw(e->tlv.data(), e->tlv.size());
@@ -352,6 +370,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         if (!img->plane[p]) return NXVC_ERR_ARG;
 
     e->tiles.assign(ntiles, nxvc_tile_info{});
+    std::memset(&e->stats, 0, sizeof(e->stats));
 
     // ---- optional custom probability tables: histogram pass
     FrameParams fp = e->fp;
@@ -359,6 +378,19 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
     std::memcpy(fp.pose, e->pose, 26);
     fp.flags = 1;  // tile-map reset: every v1 intra frame
     std::vector<u8> table_bytes;
+    // Table-set selection always scores against the built-in defaults so the
+    // histogram pass and the encode pass make identical choices.
+    static thread_local TableSet deftabs[8];
+    for (int k = 0; k < 8; ++k) build_default_set(deftabs[k], k);
+    auto select_set = [&](const u32 th[kNumCtx][kNumSym], int fallback) {
+        double best = 0;
+        int bestk = fallback;
+        for (int k = 0; k < 8; ++k) {
+            double c = table_set_cost(th, deftabs[k]);
+            if (k == 0 || c < best) { best = c; bestk = k; }
+        }
+        return bestk;
+    };
 
     auto make_tile_params = [&](int t) {
         TileParams tp;
@@ -392,8 +424,15 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             for (int p = 0; p < np; ++p)
                 analyze_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
                               tc.tp.tskip, 1);
-            count_units(tc.units.data(), (int)tc.units.size(),
-                        1 << tc.tp.nsub_log2, hist[tc.tp.table_set], nullptr);
+            u32 th[kNumCtx][kNumSym];
+            std::memset(th, 0, sizeof(th));
+            if (count_units(tc.units.data(), (int)tc.units.size(),
+                            1 << tc.tp.nsub_log2, th, nullptr)) {
+                int bestk = select_set(th, tc.tp.table_set);
+                for (int c = 0; c < kNumCtx; ++c)
+                    for (int sy = 0; sy < kNumSym; ++sy)
+                        hist[bestk][c][sy] += th[c][sy];
+            }
         }
         BitW bw;
         for (int k = 0; k < 8; ++k) {
@@ -455,13 +494,60 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             for (int p = 0; p < np; ++p)
                 analyze_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
                               tc.tp.tskip, 1);
-            if (e->cfg.nsub_log2 == 255) {
-                u32 nops = 0;
-                count_units(tc.units.data(), (int)tc.units.size(), 1, nullptr,
-                            &nops);
-                int n = 0;
-                while (n < 5 && (nops >> n) > 128) ++n;
-                tc.tp.nsub_log2 = n;
+            // Pick the table set that codes this tile most cheaply.  The
+            // eight sets span the QP range, so this is a content-adaptive
+            // choice within a fixed, static-per-frame table family.
+            {
+                u32 th[kNumCtx][kNumSym];
+                std::memset(th, 0, sizeof(th));
+                if (count_units(tc.units.data(), (int)tc.units.size(),
+                                1 << tc.tp.nsub_log2, th, nullptr)) {
+                    tc.tp.table_set = select_set(th, tc.tp.table_set);
+                    if (e->cfg.nsub_log2 == 255) {
+                        // Each lane costs a 4-byte rANS flush.  Spend lanes
+                        // only while the flush stays under a tenth of the
+                        // payload, and never more than 8 (one subgroup
+                        // cluster).  Cheap periphery tiles end up at 1 lane,
+                        // fovea tiles at 8.
+                        double bits = table_set_cost(th, fp.tabs[tc.tp.table_set]);
+                        int n = 0;
+                        while (n < 3 && (double)(32 << (n + 1)) <= bits * 0.10)
+                            ++n;
+                        tc.tp.nsub_log2 = n;
+                    }
+                }
+            }
+            if (e->cfg.collect_stats) {
+                // Per-unit symbol streams are independent, so a category's
+                // cost can be measured by histogramming just its units.
+                const TableSet &ts = fp.tabs[tc.tp.table_set];
+                int nplanes_c = coded_planes(tc);
+                size_t ui = 0;
+                for (int p = 0; p < nplanes_c; ++p) {
+                    int ndc = tc.pl[p].nb * tc.pl[p].nb;
+                    std::vector<Unit> dc(tc.units.begin() + ui,
+                                         tc.units.begin() + ui + 1);
+                    std::vector<Unit> blk(tc.units.begin() + ui + 1,
+                                          tc.units.begin() + ui + 1 + ndc);
+                    ui += 1 + ndc;
+                    u32 hd[kNumCtx][kNumSym], hb[kNumCtx][kNumSym];
+                    std::memset(hd, 0, sizeof(hd));
+                    std::memset(hb, 0, sizeof(hb));
+                    count_units(dc.data(), 1, 1, hd, nullptr);
+                    count_units(blk.data(), ndc, 1, hb, nullptr);
+                    e->stats.bits_dc_plane += (u64)table_set_cost(hd, ts);
+                    u64 bb = (u64)table_set_cost(hb, ts);
+                    if (p == 0) e->stats.bits_luma_blocks += bb;
+                    else if (p == 3) e->stats.bits_alpha_blocks += bb;
+                    else e->stats.bits_chroma_blocks += bb;
+                }
+                int active = 1 << tc.tp.nsub_log2;
+                if ((size_t)active > tc.units.size()) active = (int)tc.units.size();
+                e->stats.bytes_rans_init += 4u * (u32)active;
+                e->stats.lanes_total += (u32)active;
+                e->stats.tiles++;
+                if (tc.tp.tskip) e->stats.tiles_tskip++;
+                e->stats.tiles_res[tc.tp.res_level]++;
             }
             std::vector<u8> payload;
             if (!encode_units(tc.units.data(), (int)tc.units.size(),
@@ -477,6 +563,12 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             }
             if (tc.tp.alpha_mode == 1) rowbuf.u8v((u8)tc.tp.alpha_value);
             rowbuf.raw(payload.data(), payload.size());
+            if (e->cfg.collect_stats) {
+                e->stats.bytes_tile_headers +=
+                    kTileHeaderBytes + (tc.tp.mv_present ? 2 : 0) +
+                    (tc.tp.alpha_mode == 1 ? 1 : 0);
+                e->stats.bytes_payload += payload.size();
+            }
 
             nxvc_tile_info &ti = e->tiles[t];
             ti.tile_index = (u16)tc.tp.tile_index;
@@ -498,6 +590,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             ti.qp = (u8)clamp_i32(fp.base_qp + tc.tp.qp_delta, 0, 63);
         }
         body.raw(rowbuf.b.data(), rowbuf.b.size());
+        if (e->cfg.collect_stats) e->stats.bytes_row_headers += kTileRowHeaderBytes;
     }
 
     // ---- frame header
@@ -532,7 +625,104 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
     std::memcpy(o, body.b.data(), body.size());
     o += body.size();
     *out_len = (size_t)(o - buf);
+    if (e->cfg.collect_stats) {
+        e->stats.bytes_total = *out_len;
+        e->stats.bytes_frame_header =
+            kFrameHeaderBytes + (fp.quant_matrix == 255 ? 128 : 0);
+        e->stats.bytes_tables = table_bytes.size();
+    }
     e->frame_number++;
+    return NXVC_OK;
+}
+
+// Development hook used by tests/ref/gentables.cpp to regenerate the built-in
+// probability tables.  Not part of the public ABI and not declared in nxvc.h.
+extern "C" int nxvc_debug_histogram(const nxvc_config *cfg,
+                                    const nxvc_image *img,
+                                    const uint8_t *qp_map,
+                                    const uint8_t *res_map,
+                                    uint32_t hist[8][kNumCtx][kNumSym]) {
+    nxvc_status st;
+    nxvc_encoder *e = nxvc_encoder_create(cfg, &st);
+    if (!e) return -1;
+    const Geometry &g = e->g;
+    FrameParams fp = e->fp;
+    const int ntiles = (int)(g.tiles_x * g.tiles_y);
+    for (int t = 0; t < ntiles; ++t) {
+        TileCoder tc;
+        tc.g = &g;
+        tc.fp = &fp;
+        TileParams tp;
+        tp.tile_index = t % (int)g.tiles_x;
+        tp.mode = NXVC_MODE_INTRA;
+        tp.res_level = res_map ? clamp_i32(res_map[t], 0, 2) : 0;
+        tp.chroma444 = (g.chroma == NXVC_CHROMA_444 && !e->cfg.tile_chroma420);
+        int qp = qp_map ? clamp_i32(qp_map[t], 0, 63) : fp.base_qp;
+        tp.qp_delta = clamp_i32(qp - fp.base_qp, -32, 31);
+        tp.table_set = clamp_i32((fp.base_qp + tp.qp_delta) >> 3, 0, 7);
+        tp.nsub_log2 = 3;
+        tp.tskip = e->cfg.transform_skip == 1 ? 1 : 0;
+        if (e->cfg.alpha) tp.alpha_mode = 2;
+        tc.tp = tp;
+        tc.setup();
+        load_tile(tc, g, img, t % (int)g.tiles_x, t / (int)g.tiles_x);
+        tc.build_units();
+        int np = coded_planes(tc);
+        for (int p = 0; p < np; ++p)
+            analyze_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
+                          tc.tp.tskip, 1);
+        count_units(tc.units.data(), (int)tc.units.size(), 8,
+                    hist[tc.tp.table_set], nullptr);
+    }
+    nxvc_encoder_destroy(e);
+    return 0;
+}
+
+// Development hook: per-tile symbol histograms, used by gentables to cluster
+// the eight built-in table sets.  Writes ntiles * (kNumCtx * kNumSym) u32.
+extern "C" int nxvc_debug_tile_histograms(const nxvc_config *cfg,
+                                          const nxvc_image *img,
+                                          const uint8_t *res_map, uint32_t *out,
+                                          uint32_t max_tiles) {
+    nxvc_status st;
+    nxvc_encoder *e = nxvc_encoder_create(cfg, &st);
+    if (!e) return -1;
+    const Geometry &g = e->g;
+    FrameParams fp = e->fp;
+    const int ntiles = (int)(g.tiles_x * g.tiles_y);
+    if ((u32)ntiles > max_tiles) { nxvc_encoder_destroy(e); return -1; }
+    for (int t = 0; t < ntiles; ++t) {
+        TileCoder tc;
+        tc.g = &g;
+        tc.fp = &fp;
+        TileParams tp;
+        tp.tile_index = t % (int)g.tiles_x;
+        tp.mode = NXVC_MODE_INTRA;
+        tp.res_level = res_map ? clamp_i32(res_map[t], 0, 2) : 0;
+        tp.chroma444 = (g.chroma == NXVC_CHROMA_444 && !e->cfg.tile_chroma420);
+        tp.qp_delta = 0;
+        tp.nsub_log2 = 3;
+        tp.tskip = e->cfg.transform_skip == 1 ? 1 : 0;
+        tc.tp = tp;
+        tc.setup();
+        load_tile(tc, g, img, t % (int)g.tiles_x, t / (int)g.tiles_x);
+        tc.build_units();
+        int np = coded_planes(tc);
+        for (int p = 0; p < np; ++p)
+            analyze_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
+                          tc.tp.tskip, 1);
+        u32 (*h)[kNumSym] = (u32 (*)[kNumSym])(out + (size_t)t * kNumCtx * kNumSym);
+        std::memset(h, 0, sizeof(u32) * kNumCtx * kNumSym);
+        count_units(tc.units.data(), (int)tc.units.size(), 8, h, nullptr);
+    }
+    nxvc_encoder_destroy(e);
+    return ntiles;
+}
+
+extern "C" nxvc_status nxvc_encoder_stats(const nxvc_encoder *e,
+                                          nxvc_encode_stats *out) {
+    if (!e || !out) return NXVC_ERR_ARG;
+    *out = e->stats;
     return NXVC_OK;
 }
 
@@ -578,6 +768,7 @@ extern "C" nxvc_status nxvc_decoder_parse_stream_header(nxvc_decoder *d,
     si.tools = br.u64v();
     si.alpha = br.u8v();
     si.color_transform = br.u8v();
+    si.color_space = br.u8v();
     br.i = 62;
     si.ext_len = br.u16v();
     if (!br.ok) return NXVC_ERR_TRUNCATED;
@@ -587,7 +778,11 @@ extern "C" nxvc_status nxvc_decoder_parse_stream_header(nxvc_decoder *d,
         return NXVC_ERR_BITSTREAM;
     if (si.eyes != 1 || si.bit_depth != 8 || si.num_layers != 1)
         return NXVC_ERR_UNSUPPORTED;
-    if (si.chroma > 1 || si.color_transform > 1 || si.alpha > 1)
+    if (si.chroma > 1 || si.color_transform > 1 || si.alpha > 1 ||
+        si.color_space > 3)
+        return NXVC_ERR_BITSTREAM;
+    if ((si.color_space == NXVC_CS_RGB) !=
+        (si.color_transform == NXVC_CT_YCOCGR))
         return NXVC_ERR_BITSTREAM;
     if (si.tools & ~(u64)NXVC_TOOLS_SUPPORTED) return NXVC_ERR_VERSION;
     // Walk the TLV area; unknown types are skipped (forward compatibility).
@@ -609,6 +804,7 @@ extern "C" nxvc_status nxvc_decoder_parse_stream_header(nxvc_decoder *d,
     d->g.height = si.height;
     d->g.chroma = si.chroma;
     d->g.color_transform = si.color_transform;
+    d->g.color_space = si.color_space;
     d->g.alpha = si.alpha;
     derive_geometry(d->g);
     if (d->g.tiles_x > kMaxTilesPerRow) return NXVC_ERR_BITSTREAM;
@@ -744,10 +940,20 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
             if ((w0 >> 3) & 1) return NXVC_ERR_BITSTREAM;  // reserved bit
             if (w1 >> 26) return NXVC_ERR_BITSTREAM;       // reserved field
             if (tp.layer != 0 || tp.eye != 0) return NXVC_ERR_UNSUPPORTED;
+            if (tp.mode > NXVC_MODE_STEREO) return NXVC_ERR_BITSTREAM;
             if (tp.mode != NXVC_MODE_INTRA) return NXVC_ERR_UNSUPPORTED;
             if (tp.res_level > 2) return NXVC_ERR_BITSTREAM;
             if (tp.alpha_mode == 3) return NXVC_ERR_BITSTREAM;
             if (tp.nsub_log2 > 5) return NXVC_ERR_BITSTREAM;
+            if (tp.nsub_log2 != 3 && !(d->si.tools & NXVC_TOOL_NSUB_VAR))
+                return NXVC_ERR_BITSTREAM;
+            if (tp.res_level != 0 && !(d->si.tools & NXVC_TOOL_RES_LEVEL))
+                return NXVC_ERR_BITSTREAM;
+            if (tp.tskip && !(d->si.tools & NXVC_TOOL_TRANSFORM_SKIP))
+                return NXVC_ERR_BITSTREAM;
+            if (!tp.chroma444 && g.chroma == NXVC_CHROMA_444 &&
+                !(d->si.tools & NXVC_TOOL_PER_TILE_CHROMA))
+                return NXVC_ERR_BITSTREAM;
             if (tp.chroma444 && g.chroma != NXVC_CHROMA_444)
                 return NXVC_ERR_BITSTREAM;
             if (tp.alpha_mode != 0 && !g.alpha) return NXVC_ERR_BITSTREAM;

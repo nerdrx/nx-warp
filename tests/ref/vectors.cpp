@@ -87,6 +87,7 @@ static Result build(const VecSpec &v) {
     cfg.custom_tables = (uint32_t)v.tables;
     cfg.tile_chroma420 = (uint32_t)v.t420;
     cfg.color_transform = (uint32_t)v.ct;
+    cfg.color_space = v.ct ? (uint32_t)NXVC_CS_RGB : (uint32_t)NXVC_CS_YCBCR_709_LIMITED;
     cfg.quant_matrix = (uint32_t)v.matrix;
 
     nxvc_status st;

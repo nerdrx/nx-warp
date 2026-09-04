@@ -22,6 +22,8 @@ static void usage() {
         "  --custom-tables      derive and transmit probability tables\n"
         "  --tile-420           code 4:2:0 tiles inside a 4:4:4 stream\n"
         "  --rgb                input planes are R,G,B; apply YCoCg-R\n"
+        "  --color-space S      unspecified|yuv709l|yuv709f (YCbCr passthrough)\n"
+        "  --stats              print where the bits went\n"
         "  --quiet\n");
 }
 
@@ -32,8 +34,9 @@ static bool read_exact(std::FILE *f, void *p, size_t n) {
 int main(int argc, char **argv) {
     std::string in, out, pix = "yuv420p", resmap_path, qpmap_path;
     int W = 0, H = 0, qp = 24, frames = -1, matrix = 1, chroma_qp_off = 0;
-    int lossless = 0, tile420 = 0, custom_tables = 0, rgb = 0, quiet = 0;
-    int tskip = 0, nsub = 3;
+    int lossless = 0, tile420 = 0, custom_tables = 1, rgb = 0, quiet = 0;
+    int tskip = 0, nsub = 255, stats = 0;  // nsub 255 = auto lane count
+    int color_space = 0;
 
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
@@ -53,8 +56,17 @@ int main(int argc, char **argv) {
         else if (a == "--lossless") lossless = 1;
         else if (a == "--tile-420") tile420 = 1;
         else if (a == "--custom-tables") custom_tables = 1;
+        else if (a == "--no-custom-tables") custom_tables = 0;
         else if (a == "--rgb") rgb = 1;
+        else if (a == "--color-space") {
+            std::string v = val();
+            if (v == "unspecified") color_space = 0;
+            else if (v == "yuv709l") color_space = 1;
+            else if (v == "yuv709f") color_space = 2;
+            else { std::fprintf(stderr, "--color-space: unspecified|yuv709l|yuv709f\n"); return 2; }
+        }
         else if (a == "--quiet") quiet = 1;
+        else if (a == "--stats") stats = 1;
         else if (a == "--matrix") matrix = std::atoi(val());
         else if (a == "--chroma-qp-off") chroma_qp_off = std::atoi(val());
         else if (a == "--tskip") {
@@ -86,6 +98,8 @@ int main(int argc, char **argv) {
     cfg.tile_chroma420 = (uint32_t)tile420;
     cfg.custom_tables = (uint32_t)custom_tables;
     cfg.color_transform = rgb ? NXVC_CT_YCOCGR : NXVC_CT_NONE;
+    cfg.collect_stats = (uint32_t)stats;
+    cfg.color_space = rgb ? (uint32_t)NXVC_CS_RGB : (uint32_t)color_space;
 
     nxvc_status st;
     nxvc_encoder *enc = nxvc_encoder_create(&cfg, &st);
@@ -150,6 +164,36 @@ int main(int argc, char **argv) {
         if (!quiet)
             std::printf("frame %d: %zu bytes  %.4f bpp\n", n, ol,
                         ol * 8.0 / ((double)W * H));
+        if (stats) {
+            nxvc_encode_stats st2;
+            nxvc_encoder_stats(enc, &st2);
+            double px = (double)W * H;
+            auto row = [&](const char *name, double bytes) {
+                std::printf("  %-18s %9.0f B  %6.2f%%  %.5f bpp\n", name, bytes,
+                            100.0 * bytes / (double)st2.bytes_total,
+                            bytes * 8.0 / px);
+            };
+            std::printf("bit breakdown, frame %d (%llu tiles, %.2f lanes/tile, "
+                        "%llu transform-skip)\n", n,
+                        (unsigned long long)st2.tiles,
+                        st2.tiles ? (double)st2.lanes_total / (double)st2.tiles : 0.0,
+                        (unsigned long long)st2.tiles_tskip);
+            row("frame header", (double)st2.bytes_frame_header);
+            row("prob tables", (double)st2.bytes_tables);
+            row("tile-row headers", (double)st2.bytes_row_headers);
+            row("tile headers", (double)st2.bytes_tile_headers);
+            row("rANS init/flush", (double)st2.bytes_rans_init);
+            row("  DC planes", st2.bits_dc_plane / 8.0);
+            row("  luma blocks", st2.bits_luma_blocks / 8.0);
+            row("  chroma blocks", st2.bits_chroma_blocks / 8.0);
+            if (st2.bits_alpha_blocks)
+                row("  alpha blocks", st2.bits_alpha_blocks / 8.0);
+            row("payload total", (double)st2.bytes_payload);
+            std::printf("  res levels 0/1/2: %llu / %llu / %llu\n",
+                        (unsigned long long)st2.tiles_res[0],
+                        (unsigned long long)st2.tiles_res[1],
+                        (unsigned long long)st2.tiles_res[2]);
+        }
         ++n;
     }
     std::fclose(fo);

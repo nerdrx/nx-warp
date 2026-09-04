@@ -43,6 +43,17 @@ typedef enum nxvc_color_transform {
     NXVC_CT_YCOCGR = 1  /* planes are RGB; codec applies YCoCg-R          */
 } nxvc_color_transform;
 
+/* What the coded planes mean.  Purely descriptive: the DCT, quantizer and
+ * entropy coder are identical for every value.  A YCbCr source (WiVRn's
+ * Linux capture path is already VK_FORMAT_G8_B8R8_2PLANE_420_UNORM) is coded
+ * as-is with NXVC_CT_NONE; an RGB source goes through YCoCg-R. */
+typedef enum nxvc_color_space {
+    NXVC_CS_UNSPECIFIED = 0,  /* planes coded as given, range unstated    */
+    NXVC_CS_YCBCR_709_LIMITED = 1,
+    NXVC_CS_YCBCR_709_FULL = 2,
+    NXVC_CS_RGB = 3           /* requires NXVC_CT_YCOCGR                  */
+} nxvc_color_space;
+
 typedef enum nxvc_tile_mode {
     NXVC_MODE_WARP_SKIP = 0,
     NXVC_MODE_STATIC_MV = 1,
@@ -96,6 +107,7 @@ typedef struct nxvc_config {
     uint32_t chroma;            /* nxvc_chroma                             */
     uint32_t bit_depth;         /* 8 only in v1                            */
     uint32_t color_transform;   /* nxvc_color_transform                    */
+    uint32_t color_space;       /* nxvc_color_space (descriptive)          */
     uint32_t alpha;             /* 0/1: code a 4th plane                   */
 
     uint32_t base_qp;           /* 0..63                                   */
@@ -112,7 +124,18 @@ typedef struct nxvc_config {
     uint32_t custom_tables;     /* 1: derive+transmit probability tables   */
     uint32_t profile;           /* 0=Lite 1=Full 2=Pro (informative)       */
     uint32_t level;             /* informative                             */
+    uint32_t collect_stats;     /* 1: fill nxvc_encoder_stats (slower)     */
 } nxvc_config;
+
+/* Where the bits went, for the most recent encoded frame. */
+typedef struct nxvc_encode_stats {
+    uint64_t bytes_total, bytes_frame_header, bytes_tables;
+    uint64_t bytes_row_headers, bytes_tile_headers, bytes_payload;
+    uint64_t bytes_rans_init;   /* 4 bytes per active lane per tile        */
+    uint64_t bits_dc_plane, bits_luma_blocks, bits_chroma_blocks;
+    uint64_t bits_alpha_blocks;
+    uint64_t tiles, tiles_tskip, tiles_res[3], lanes_total;
+} nxvc_encode_stats;
 
 void nxvc_config_default(nxvc_config *cfg);
 
@@ -139,7 +162,7 @@ typedef struct nxvc_tile_info {
 typedef struct nxvc_stream_info {
     uint32_t magic, version, profile, level, tile_size;
     uint32_t width, height, eyes, bit_depth, num_layers;
-    uint32_t chroma, color_transform, alpha;
+    uint32_t chroma, color_transform, color_space, alpha;
     uint64_t tools;
     uint32_t layer_desc[4];
     uint32_t ext_len;
@@ -187,6 +210,9 @@ nxvc_status nxvc_encoder_encode_frame(nxvc_encoder *enc,
 /* Tile records of the most recent encoded frame. */
 const nxvc_tile_info *nxvc_encoder_tiles(const nxvc_encoder *enc,
                                          uint32_t *count);
+
+nxvc_status nxvc_encoder_stats(const nxvc_encoder *enc,
+                               nxvc_encode_stats *out);
 
 /* ---------------------------------------------------------------- decoder */
 typedef struct nxvc_decoder nxvc_decoder;

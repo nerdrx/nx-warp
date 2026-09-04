@@ -62,7 +62,10 @@ int main(int argc, char **argv) {
     std::printf("  size          %ux%u  eyes %u  bitdepth %u\n", si.width,
                 si.height, si.eyes, si.bit_depth);
     std::printf("  chroma        %s\n", si.chroma ? "4:4:4" : "4:2:0");
+    static const char *cs[4] = {"unspecified", "YCbCr BT.709 limited",
+                                "YCbCr BT.709 full", "RGB"};
     std::printf("  color xform   %s\n", si.color_transform ? "YCoCg-R" : "none");
+    std::printf("  color space   %s\n", cs[si.color_space & 3]);
     std::printf("  alpha         %u\n", si.alpha);
     std::printf("  layers        %u\n", si.num_layers);
     std::printf("  tools         0x%016llx\n", (unsigned long long)si.tools);

@@ -11,12 +11,13 @@ static void usage() {
     std::fprintf(stderr,
         "usage: nxv-dec --in out.nxv --out out.yuv [--pix yuv444p|yuv420p]\n"
         "  --frames N   decode at most N frames\n"
+        "  --nv12       write Y then interleaved UV (4:2:0 streams only)\n"
         "  --quiet\n");
 }
 
 int main(int argc, char **argv) {
     std::string in, out, pix;
-    int frames = -1, quiet = 0;
+    int frames = -1, quiet = 0, nv12 = 0;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         auto val = [&]() -> const char * {
@@ -28,6 +29,7 @@ int main(int argc, char **argv) {
         else if (a == "--pix") pix = val();
         else if (a == "--frames") frames = std::atoi(val());
         else if (a == "--quiet") quiet = 1;
+        else if (a == "--nv12") nv12 = 1;
         else if (a == "-h" || a == "--help") { usage(); return 0; }
         else { std::fprintf(stderr, "unknown option %s\n", a.c_str()); return 2; }
     }
@@ -57,6 +59,10 @@ int main(int argc, char **argv) {
     off += consumed;
     nxvc_stream_info si;
     nxvc_decoder_stream_info(dec, &si);
+    if (nv12 && si.chroma != NXVC_CHROMA_420) {
+        std::fprintf(stderr, "--nv12 requires a 4:2:0 stream\n");
+        return 1;
+    }
     const char *want = si.chroma == NXVC_CHROMA_444 ? "yuv444p" : "yuv420p";
     if (!pix.empty() && pix != want) {
         std::fprintf(stderr, "stream is %s, --pix says %s\n", want, pix.c_str());
@@ -84,8 +90,17 @@ int main(int argc, char **argv) {
             return 1;
         }
         std::fwrite(Y.data(), 1, Y.size(), fo);
-        std::fwrite(U.data(), 1, U.size(), fo);
-        std::fwrite(V.data(), 1, V.size(), fo);
+        if (nv12) {
+            std::vector<uint8_t> uv(U.size() * 2);
+            for (size_t i = 0; i < U.size(); ++i) {
+                uv[i * 2] = U[i];
+                uv[i * 2 + 1] = V[i];
+            }
+            std::fwrite(uv.data(), 1, uv.size(), fo);
+        } else {
+            std::fwrite(U.data(), 1, U.size(), fo);
+            std::fwrite(V.data(), 1, V.size(), fo);
+        }
         if (si.alpha) std::fwrite(A.data(), 1, A.size(), fo);
         off += consumed;
         ++n;

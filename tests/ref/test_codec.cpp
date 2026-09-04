@@ -122,6 +122,7 @@ int main() {
             cfg.width = W; cfg.height = H;
             cfg.chroma = NXVC_CHROMA_444;
             cfg.color_transform = NXVC_CT_YCOCGR;
+            cfg.color_space = NXVC_CS_RGB;
             cfg.lossless = 1;
             Coded r;
             CHECK(code(cfg, im, r), "ycocgr lossless kind %d", kind);
@@ -181,6 +182,7 @@ int main() {
                 cfg.custom_tables = (uint32_t)c.tab;
                 cfg.tile_chroma420 = (uint32_t)c.t420;
                 cfg.color_transform = (uint32_t)c.ct;
+                cfg.color_space = c.ct ? (uint32_t)NXVC_CS_RGB : 0u;
                 cfg.base_qp = 26;
                 Coded r;
                 CHECK(code(cfg, c.c444 ? im444 : im420, r),
