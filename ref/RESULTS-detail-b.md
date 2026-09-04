@@ -42,7 +42,93 @@ PLACEHOLDER_GATE
 
 ## 2. Per-tool detail
 
-PLACEHOLDER_PERTOOL
+### `INTRA_CFL` (bit 24)
+
+The larger of the two, and on 4:4:4 by a wide margin. It is also the one whose
+BD-rate against the anchor *understates* it, because the Phase 1 gate is scored
+on **PSNR-Y** and chroma-from-luma does nothing to luma: everything it is worth
+arrives as rate, at the same luma quality.
+
+What it actually does, on one 2048x1024 4:4:4 frame at QP 20 (`nxv-enc
+--stats`, `--split4 off` on both sides):
+
+| | `--cfl off` | `--cfl on` |
+|---|---|---|
+| chroma blocks | 7204 B | **4572 B** (-37 %) |
+| luma blocks | 32811 B | 32638 B |
+| DC planes | 18126 B | 18728 B |
+| frame | 82 830 B | **79 880 B** (-3.6 %) |
+| chroma blocks using mode 9 | 0 | 2053 of 65 536 (**3.1 %**) |
+
+Three per cent of chroma blocks carry a third of the chroma bits, and mode 9
+takes those bits out. That is the whole mechanism: the model is exact where
+chroma is a linear function of luma, which on this material is every coloured
+edge, and those are exactly the blocks whose chroma residual was expensive. It
+is not a smooth-area tool -- the DC plane already handles those, and the DC
+plane grows slightly (+3 %) because a CFL block's mean is no longer what the
+DC plane would have predicted.
+
+The tool fades with QP, as a prediction tool that costs a mode symbol should:
+3.1 % of chroma blocks at QP 20, 0.6 % at QP 28, 0.04 % at QP 36 on 4:4:4.
+The Phase 1 band ends around QP 34, so it is a band tool and not a low-rate
+one.
+
+4:2:0 gets less of it (-0.28 % against -1.13 %) for the obvious reason: its
+chroma is a quarter of the samples and about a third of the bits that 4:4:4's
+is, so a third of a smaller number.
+
+### `XFORM_4X4_SPLIT` (bit 19)
+
+Worth about half a percent on both formats, and the interesting part is how it
+got there, because the first two versions of it were worth **nothing**.
+
+| version | 4:4:4 | 4:2:0 |
+|---|---|---|
+| quadrant-major layout, own 4x4 scan and band mapping, flag after `CBF` | +0.03 % | +0.04 % |
+| interleaved quadrants, flag after `LAST`, `kSplitMinLast = 4` | +0.03 % | +0.04 % |
+| ... `kSplitMinLast = 10` | -0.30 % | -0.29 % |
+| ... `kSplitMinLast = 16` | -0.45 % | -0.46 % |
+| ... **`kSplitMinLast = 24`** (shipped) | **-0.47 %** | **-0.47 %** |
+| ... `kSplitMinLast = 32` | -0.50 % | -0.44 % |
+| ... `kSplitMinLast = 48` | -0.36 % | -0.38 % |
+
+(BD-rate of the tool against the same build with it off, PSNR-Y, QP 20-32 on
+one frame; the full-sequence numbers in section 1 are close to these.)
+
+**The transform was never the problem; the flag was.** A 4x4 transform on a
+block whose residual is genuinely local is worth a lot -- at QP 24 on 4:4:4 the
+quadrant-major version is +0.31 dB for +1.4 % of bytes -- but it is worth
+nothing at all on the blocks with three coefficients in them, and those are
+most of the blocks. Coding one bypass bit on every block with `CBF == 1` spends
+more than the transform saves everywhere except the very top of the band.
+
+The fix is to make the flag conditional on something the decoder already knows
+at that point, and the only such thing is `LAST`. That forces the split to
+leave the scan and the `LAST` classes alone, which forces the interleaved
+coefficient layout of SYNTAX.md 6.7 -- and that layout is, on its own, slightly
+*worse* at compaction than a quadrant-major one with a proper 4x4 scan
+(+0.09 dB against +0.31 dB at QP 24). Taking the worse transform layout to buy
+the conditional flag is what turns +0.03 % into -0.47 %, and it also removes a
+scan table and a band mapping from the specification instead of adding them.
+
+The threshold is flat between 16 and 32; 24 is chosen because it is exactly
+`kLastBase[12]`, so "`LAST` class 12 or above" is the same condition and a
+decoder needs no second comparison.
+
+Two smaller decisions inside the tool, each measured:
+
+* **Weights.** Taking the 8x8 weighting matrix at the matching frequency
+  (`w[2u][2v]`) rather than a flat matrix is worth about 0.2 dB at QP 24 and
+  costs nothing: no second matrix family, nothing transmitted, nothing trained.
+* **Where the encoder looks.** The split is scored only for the mode the
+  unsplit pass chose, not for every mode candidate. The full cross product was
+  not measured; the two-stage version already doubles the per-block
+  quantize-and-reconstruct work, and `RESULTS-intra.md` measured the analogous
+  widening of the mode search (`--intra-dir-cand 8`) at 0.1 % for 2.2x the
+  encode time.
+
+The tool fires on 0.16 % of blocks at QP 20 on 4:4:4 and on none at all by
+QP 36. Like `INTRA_CFL`, it is a band tool.
 
 ---
 

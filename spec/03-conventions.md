@@ -95,13 +95,19 @@ Within the decoding process:
 4. **No division and no remainder** on any per-sample, per-coefficient or
    per-tile path. `OpSDiv`, `OpUDiv`, `OpSRem`, `OpSMod`, `OpUMod` do not
    appear in a conforming decoder's normative shaders [PAPER 3.7]. There are
-   exactly **two** exceptions, both stated where they occur and both bounded:
+   exactly **three** exceptions, each stated where it occurs and each bounded:
    * **probability-table normalisation** (clause 6.6.2), which runs 12 x 8
      times per frame and uses a truncating divide [SYNTAX 9.4];
    * **the corner divide** of the warp (clause 6.7), which is not a division
      opcode at all but a fixed 32-iteration restoring division built from
      shifts, comparisons and subtractions, evaluated four times per tile
-     [PAPER 2.2].
+     [PAPER 2.2];
+   * **the chroma-from-luma slope** (tool bit 24), likewise a fixed
+     31-iteration restoring division, evaluated once per chroma block that
+     codes intra mode 9 and bounded by `0 < d < 2^25` so the running remainder
+     stays in `int32` [SYNTAX 7.7]. Unlike the other two it is exact by
+     construction: it returns `floor(n / d)` for every input it can be given,
+     so no rounding argument is needed to make two implementations agree.
 5. **Every load is bounds-clamped in the decoder.** `robustBufferAccess`
    behaviour differs across vendors (zero versus garbage) and the codec MUST
    NOT depend on it [PAPER 3.7]. Sample fetches outside a picture use
@@ -111,7 +117,7 @@ Within the decoding process:
    measure that an implementation may hoist or elide.
 
 A clause that appears to require a float, a division or a 64-bit opcode outside
-these two exceptions is defective. Report it rather than implementing it.
+these three exceptions is defective. Report it rather than implementing it.
 
 ## 3.5 Functions
 

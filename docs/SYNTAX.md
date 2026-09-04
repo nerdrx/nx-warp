@@ -1194,14 +1194,14 @@ Then, with `cx` and `cy` clamped into the chroma plane first,
 Lco(x, y):
     cx = clamp(x, 0, size-1) ;  cy = clamp(y, 0, size-1)
     if sub == 1:  return recY[cy][cx]
-    x0 = 2*cx ;  y0 = 2*cy
-    return ( recY[y0][x0]   + recY[y0][x0+1]
-           + recY[y0+1][x0] + recY[y0+1][x0+1] + 2 ) >> 2
+    lx = 2*cx ;  ly = 2*cy
+    return ( recY[ly][lx]   + recY[ly][lx+1]
+           + recY[ly+1][lx] + recY[ly+1][lx+1] + 2 ) >> 2
 ```
 
 The 4:2:0 case is the rounded 2x2 average 5.2 already defines as the
 subsampling filter, so the model relates the two planes through the same filter
-that produced them. `2*cx + 1 <= lsize - 1` by construction, so no index leaves
+that produced them. `lx + 1 <= lsize - 1` by construction, so no index leaves
 the plane.
 
 **Model derivation (normative).** For the block at `(bx, by)` with origin
