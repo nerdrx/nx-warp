@@ -87,6 +87,27 @@ Phase 2 kill test of `RESULTS-inter.md`, band A and band B, `--inter on
 
 <!--RESULTS-INTER-TABLE-->
 
+### 3.1 What the encoder actually chooses
+
+`nxv-info --tiles` on one 2048x1024 4:4:4 frame (512 tiles) encoded with
+`--xform auto`:
+
+| QP | 8x8 | 16x16 | 32x32 |
+|---|---|---|---|
+| 4 | 238 | 38 | 236 |
+| 12 | 225 | 54 | 233 |
+| 20 | 256 | 88 | 168 |
+| 28 | 331 | 57 | 124 |
+
+The large transforms win **more** at low QP than at high QP, which is the
+opposite of the naive expectation and is the same fact section 4.3's mode
+histogram shows from the other side. At a coarse quantiser a smooth tile is
+nearly free at any block size -- the DC plane alone already describes it -- so
+the transform size barely matters and the 8x8 form wins on the detailed tiles.
+At a fine quantiser the smooth tiles are where the bits actually are, and that
+is exactly where a 32x32 transform's energy compaction pays. The tool is a
+high-rate tool on this material, and the Phase 1 gate band is a high-rate band.
+
 ---
 
 ## 4. Two variants that were measured and rejected
