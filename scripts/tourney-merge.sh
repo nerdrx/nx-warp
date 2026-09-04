@@ -71,7 +71,11 @@ order_key() {
         xform-*)  echo 30 ;;
         inter-*)  echo 40 ;;
         rdo-*)    echo 50 ;;
-        percept|sparse) echo 90 ;;
+        # percept lands LAST, after rdo: its measured result is negative for
+        # the spatial ladder, so it merges for the wiring and the rc/ fixes,
+        # not for the ladder.  --rc stays off by default.  See MERGE-PLAN 4.8.
+        percept)  echo 70 ;;
+        sparse)   echo 90 ;;
         *)        echo 80 ;;
     esac
 }
@@ -101,6 +105,17 @@ else
 fi
 
 say "merge order: ${SORTED[*]:-(none, resuming)}"
+case " ${SORTED[*]:-} " in
+    *" percept "*)
+        info ""
+        info "NOTE: percept merges LAST, for the rc-to-encoder wiring and the two"
+        info "  rc/ fixes -- NOT for the spatial ladder, whose measured result is"
+        info "  negative (periphery over-degraded, every foveated metric loses)."
+        info "  Keep --rc OFF by default.  Verify the two ABI items are APPENDED:"
+        info "  nxvc_encoder_set_wm_map and nxvc_tile_info::warp_mad_q8, the latter"
+        info "  after detail-a's own appended fields.  See docs/MERGE-PLAN.md 4.8."
+        info "" ;;
+esac
 case " ${SORTED[*]:-} " in
     *" ctx-a "*ctx-b*|*" ctx-b "*ctx-a*)
         info ""
@@ -132,6 +147,16 @@ for b in ${SORTED[@]+"${SORTED[@]}"}; do
         python3 scripts/resolve-compare-py.py tools/quality/compare.py \
             || die "resolve-compare-py.py failed" "Resolve tools/quality/compare.py by hand."
         git add tools/quality/compare.py
+    fi
+
+    # -- scripted resolution 1b: percept's add/add on nxq/fvvdp.py (it carries
+    #    a verbatim copy of tourney/metric's file, which main already merged)
+    #    and the two additive conflicts in tools/quality/README.md.
+    if [ "$b" = percept ]; then
+        python3 scripts/resolve-percept.py \
+            || die "resolve-percept.py failed" \
+                   "Keep MAIN's tools/quality/nxq/fvvdp.py and drop the branch copy;" \
+                   "union the tools/quality/README.md conflicts, ours first."
     fi
 
     # -- scripted resolution 2: conformance vectors are regenerated, never

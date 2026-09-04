@@ -39,9 +39,11 @@ three-way merges, not from `git diff`.
 | `rdo-a` | 10 | **none** | none | **all 56** | 53 |
 | `rdo-b` | 13 | **none** | none | **all 56** | 53-54 |
 
-`tourney/percept` (`8322708`) is **already an ancestor of `merge-main`** --
-`git merge-base --is-ancestor` confirms it. Merging it is a guaranteed no-op
-and the merge script skips it. `tourney/sparse` sits on the same commit.
+`tourney/sparse` (`8322708`) is **already an ancestor of `merge-main`** --
+`git merge-base --is-ancestor` confirms it -- so merging it is a guaranteed
+no-op and the merge script skips it. **`tourney/percept` was on that commit
+too and has since moved to `00e1f4c`**: it is now a real merge of five commits
+and lands at step 7, after `rdo`. See section 4.8.
 
 ## 2. Every branch merges cleanly on its own
 
@@ -393,6 +395,73 @@ minor bump for all packages, so it is v1.6 (`docs/TOOLBITS.md` 7).
 Step 2 is where decision 4.5 applies: the merged model's conditioning is **per
 coding unit**, the 8x8 coefficient group, never per transform block.
 
+### 4.8 percept merges last, and not for the thing it set out to prove
+
+`tourney/percept` (`00e1f4c`) is **no longer the no-op** section 1 recorded.
+It was `8322708` -- the fork point, already an ancestor of `merge-main` -- and
+has since landed five commits of real content:
+
+* **rc-to-encoder wiring**: `nxrc::EncDriver` (`rc/src/encdrive.cpp`) and the
+  `nxv-enc --rc` option family, with `tests/rcenc/test_encdrive.cpp`;
+* **two additive ABI items**: `nxvc_encoder_set_wm_map()` and
+  `nxvc_tile_info::warp_mad_q8` (plus `NXVC_WARP_MAD_UNMEASURED`);
+* **two real `rc/` fixes**: the `update_model` zero-bit-tile fix
+  (`rc/src/allocate.cpp`) and the refresh-scheduler foveal-floor fix
+  (`rc/src/refresh.cpp`);
+* `ref/RESULTS-percept.md` and the `tools/quality/percept_*` scripts.
+
+**Its measured result is negative for the spatial ladder**: the periphery is
+over-degraded and every foveated metric loses. So it merges for the wiring,
+the ABI and the two `rc/` fixes -- which stand on their own -- and **not** for
+the ladder. Consequences:
+
+* **`--rc` stays OFF by default.** The ladder is available to measure, not to
+  ship. This is the same discipline as the tool bits: a package whose measured
+  result is negative does not become the default path.
+* **It merges at step 7, after `rdo`.** It is the only package that touches
+  `rc/`, so nothing later has to resolve against it, and putting it after the
+  single vector-regeneration pass keeps that pass unaffected -- percept changes
+  no normative syntax and allocates no tool bit.
+* **Verify both ABI items are APPENDED.** `warp_mad_q8` is correctly last in
+  `nxvc_tile_info` on the branch, but `detail-a` also appends fields to that
+  struct (`docs/TOOLBITS.md` 6.1, judge item 1) and merges first, so re-check
+  after the merge that the two sets of appends are ordered and neither was
+  interleaved into the middle.
+
+#### The two conflicts, both scripted
+
+`scripts/resolve-percept.py` handles them; `scripts/tourney-merge.sh` calls it
+automatically on the percept step.
+
+* **`tools/quality/nxq/fvvdp.py` is an add/add conflict.** percept forked
+  before `tourney/metric` landed and carries a **verbatim copy** of metric's
+  file, so its RESULTS numbers came from the same code. `merge-main` already
+  merged `tourney/metric`, so **main's copy is kept and the branch's is
+  dropped**. The branch's own header says exactly this: *"If the two branches
+  are merged this file is a duplicate and the `tourney/metric` copy is the one
+  to keep."* Taking the branch side instead would silently revert whatever
+  metric has changed since the copy was taken.
+* **`tools/quality/README.md` conflicts twice, both purely additive** -- the
+  tool table gains percept's three scripts alongside main's `fvvdp`/`popin`/
+  `latency` rows, and percept's `percept_run.py` section sits after main's
+  `--metric` section. Resolution is the union, main's side first.
+
+Verified by dry run: percept merges onto `merge-main` with exactly these two
+conflicts, the resolver clears both, and the result configures and builds
+clean under `asan-ubsan`.
+
+#### OPEN ISSUE: rc spatial ladder calibration
+
+> **rc spatial ladder calibration: periphery over-degradation.** The spatial
+> ladder degrades the periphery further than the acuity model justifies, and
+> every foveated metric loses as a result. Needs (a) **2160-px material** --
+> the current corpus tops out too low for the periphery of the ladder to be
+> exercised at a realistic eccentricity, so the measurement is not testing what
+> the ladder is for; and (b) **the encoder's skip decision fed to the allocator
+> before allocation**, so the allocator stops spending bits against tiles the
+> encoder is about to skip. Until both are in place the ladder cannot be
+> calibrated, and `--rc` stays off by default.
+
 ## 5. Recommended merge order
 
 Eight orders were measured end to end, counting conflicted files outside
@@ -413,7 +482,7 @@ The spread is 30 to 34 out of ~32, so **order buys almost nothing**; the
 resolutions in section 4 are the whole cost. Order is therefore chosen for the
 *shape* of the work rather than the file count:
 
-> **`detail-a` -> `ctx-b` -> `ctx-a` -> xform -> inter -> `rdo`**
+> **`detail-a` -> `ctx-b` -> `ctx-a` -> xform -> inter -> `rdo` -> `percept`**
 
 1. **`detail-a` first.** `JUDGE-detail.md` reached its verdict first and fixes
    detail's bits (19 `XFORM_4X4_SPLIT`, 24 `INTRA_CFL`) and its word1 bit 28,
@@ -434,9 +503,15 @@ resolutions in section 4 are the whole cost. Order is therefore chosen for the
 4. **inter fourth.** Nearly disjoint from the three above, so it lands late
    and cheaply; it is also the branch whose word1 demand decides whether the
    extension byte exists, and by this point the intra bits are fixed.
-5. **rdo last, always.** Encoder-only, and it rewrites every vector, so it must
-   be the final input to a single regeneration pass. Putting it anywhere else
-   means regenerating vectors twice.
+5. **rdo sixth.** Encoder-only, and it rewrites every vector, so it must be the
+   final input to the single vector-regeneration pass. Putting it anywhere
+   else means regenerating vectors twice.
+6. **percept seventh, after rdo (4.8).** It is the only package touching
+   `rc/`, allocates no tool bit and changes no normative syntax, so it cannot
+   disturb the regeneration pass and nothing later resolves against it. It
+   merges for the rc-to-encoder wiring, the two ABI items and the two `rc/`
+   fixes -- **not** for the spatial ladder, whose measured result is negative.
+   `--rc` stays off by default.
 
 This supersedes the file-count ranking above, which put `ctx-b` first: the
 spread was 30 to 34 out of ~32, so the ordering is worth almost nothing in
@@ -476,6 +551,11 @@ then inter, then rdo.
 | | **if inter-b wins** | `JUDGE-inter.md` 1.1: its tools-off encoder is **not** byte-identical to v1.4 (+11.5 %). The rolling refresh seeds its phase from `refresh_max_age` (720) instead of `intra_period` (180), so ~3/4 of tiles start past the threshold and are forced INTRA on frame 1. Fix the seed, then **re-measure**: that 11.5 % is the denominator of every delta in `ref/RESULTS-inter-b.md` section 3 |
 | **rdo** | `ref/src/codec.cpp`, `codec_impl.inc`, `ref/tools/nxv-enc.cpp` | encoder-side; take rdo where it only reorders search, keep the other branches' new syntax emission |
 | | all of `tests/vectors/` | regenerate, once, after this step |
+| **percept** | `tools/quality/nxq/fvvdp.py` | **add/add** -- keep MAIN's (metric's) copy, drop the branch's verbatim duplicate; `scripts/resolve-percept.py` |
+| | `tools/quality/README.md` | union both sides, ours first; same script |
+| | `ref/tools/nxv-enc.cpp` | **`--rc` OFF by default** -- the ladder ships available, not enabled |
+| | `include/nxvc/nxvc.h` | re-verify `nxvc_encoder_set_wm_map` and `nxvc_tile_info::warp_mad_q8` are APPENDED, after detail-a's own appended fields |
+| | open issue | file **rc spatial ladder calibration** (4.8): needs 2160-px material and the encoder's skip decision fed to the allocator before allocation |
 | **final** | `r09_reserved_tile_bit` | word1 is full; move it to word0 bit 3 (TOOLBITS 4.1) and re-hash |
 | | every `RESULTS-*.md` | absolute bitrates measured before the `--frames` fix are ~6x high; ratios survive, absolutes do not |
 
