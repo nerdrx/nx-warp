@@ -719,7 +719,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
     const int qp_search = e->cfg.lossless ? 0 : (int)(e->cfg.qp_search > 8
                                                           ? 8u : e->cfg.qp_search);
     const bool wm_search = e->cfg.wm_id == 255 && fp.quant_matrix != 255 &&
-                           !e->cfg.lossless;
+                           !e->cfg.lossless && e->wm_map.empty();
     const int dir_cand = e->cfg.intra_dir_cand ? (int)(e->cfg.intra_dir_cand > 8
                                                           ? 8u
                                                           : e->cfg.intra_dir_cand)
@@ -797,8 +797,16 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         tp.table_set = clamp_i32((fp.base_qp + tp.qp_delta) >> 3, 0, 7);
         tp.nsub_log2 = e->cfg.nsub_log2 == 255 ? 3 : (int)e->cfg.nsub_log2;
         tp.tskip = e->cfg.transform_skip == 1 ? 1 : 0;
-        if (fp.quant_matrix != 255 && e->cfg.wm_id != 0 && !e->cfg.lossless)
-            tp.wm_id = e->cfg.wm_id == 255 ? 0 : clamp_i32((int)e->cfg.wm_id, 0, 3);
+        if (fp.quant_matrix != 255 && e->cfg.wm_id != 0 && !e->cfg.lossless) {
+            // A per-tile map (nxvc_encoder_set_wm_map) is the rate
+            // controller's ladder speaking and outranks both the stream-wide
+            // id and the per-tile search.
+            tp.wm_id = t < (int)e->wm_map.size()
+                           ? clamp_i32((int)e->wm_map[t], 0, 3)
+                           : (e->cfg.wm_id == 255
+                                  ? 0
+                                  : clamp_i32((int)e->cfg.wm_id, 0, 3));
+        }
         return tp;
     };
 
@@ -866,6 +874,14 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         predict_tile(probe, g, refpic, fp.warp[eye], eye, col, row,
                      NXVC_MODE_WARP_SKIP, ps.last_mv_x, ps.last_mv_y);
         const double skip_sse = sse_pred(probe.pl[0]);
+        // The complexity input of docs/RATECONTROL.md 4.1, measured on the
+        // predictor the search has just built: mean |residual| per luma
+        // sample of WARP_SKIP with the stored vector, in Q8.  Recorded for
+        // every tile that has a reference, including the ones that early-out
+        // below, so the rate controller sees the same number whatever the
+        // mode decision then does with the tile.
+        const unsigned warp_mad_q8 = (unsigned)std::min<i64>(
+            0xFFFEll, (sad_pred(probe.pl[0]) * 256 + npix / 2) / npix);
         // The gate is a SPEED early-out, not a decision: it takes the skip
         // without searching when the predictor's error is already below the
         // quantiser's own noise floor, which no coded residual could improve
@@ -881,6 +897,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         skip_cand.mv_x = ps.last_mv_x;
         skip_cand.mv_y = ps.last_mv_y;
         skip_cand.skipped = 1;
+        skip_cand.warp_mad_q8 = warp_mad_q8;
         if (force_skip ||
             (!e->cfg.alpha && skip_sse <= skip_gate * (double)npix))
             return skip_cand;
@@ -890,6 +907,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         best_inter.mv_x = ps.last_mv_x;
         best_inter.mv_y = ps.last_mv_y;
         best_inter.skipped = 1;
+        best_inter.warp_mad_q8 = warp_mad_q8;
 
         // --- the two searched modes, and STEREO on the right eye.
         struct Cand { int mode; const RefPicture *ref; };
@@ -1090,6 +1108,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             best_cost = c_skip;
             best = skip_cand;
         }
+        best.warp_mad_q8 = warp_mad_q8;
         return best;
     };
 
@@ -1175,6 +1194,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                         ti.table_set = (u8)tc.tp.table_set;
                         ti.qp_delta = (i8)tc.tp.qp_delta;
                         ti.qp = (u8)clamp_i32(fp.base_qp + tc.tp.qp_delta, 0, 63);
+                        ti.warp_mad_q8 = (u16)d.warp_mad_q8;
                         continue;
                     }
                     tc.build_units();
@@ -1348,6 +1368,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                     ti.alpha_value = (u8)tc.tp.alpha_value;
                     ti.skipped = 0;
                     ti.qp = (u8)clamp_i32(fp.base_qp + tc.tp.qp_delta, 0, 63);
+                    ti.warp_mad_q8 = (u16)d.warp_mad_q8;
                 }
                 if (emit) {
                     body.raw(rowbuf.b.data(), rowbuf.b.size());
@@ -1462,6 +1483,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         e->tiles[t].age_since_coded = e->age_since_coded[t];
     }
     e->skip_map.clear();
+    e->wm_map.clear();
     e->last_slot = slot;
     e->last_frame_number = fp.frame_number;
     e->last_warp_present = fp.warp_present;
@@ -1946,6 +1968,7 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
                     // point of clause 6.11.  It is still reported, so a caller
                     // can account for every tile it marked lost.
                     ti.concealed = tile_lost(t) ? 1 : 0;
+                    ti.warp_mad_q8 = NXVC_WARP_MAD_UNMEASURED;
                     continue;
                 }
                 if (off + kTileHeaderBytes > frame_bytes) return NXVC_ERR_TRUNCATED;
@@ -2035,6 +2058,7 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
                     ti.mv_x = (i8)d->state[t].last_mv_x;
                     ti.mv_y = (i8)d->state[t].last_mv_y;
                     ti.qp = (u8)clamp_i32(fp.base_qp + tp.qp_delta, 0, 63);
+                    ti.warp_mad_q8 = NXVC_WARP_MAD_UNMEASURED;
                     continue;
                 }
 
@@ -2096,6 +2120,8 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
                                    ? 3u
                                    : (u8)tp.ref_sel;
                 ti.alpha_value = (u8)tp.alpha_value;
+                // Encoder-side analysis; a decoder never measures it.
+                ti.warp_mad_q8 = NXVC_WARP_MAD_UNMEASURED;
                 ti.qp = (u8)clamp_i32(fp.base_qp + tp.qp_delta, 0, 63);
             }
         }
@@ -2147,6 +2173,21 @@ extern "C" nxvc_status nxvc_encoder_set_skip_map(nxvc_encoder *e,
     if (!e || !skip) return NXVC_ERR_ARG;
     if (count != e->g.ntiles()) return NXVC_ERR_ARG;
     e->skip_map.assign(skip, skip + count);
+    return NXVC_OK;
+}
+
+extern "C" nxvc_status nxvc_encoder_set_wm_map(nxvc_encoder *e,
+                                               const uint8_t *wm,
+                                               uint32_t count) {
+    if (!e || !wm) return NXVC_ERR_ARG;
+    if (count != e->g.ntiles()) return NXVC_ERR_ARG;
+    // The map writes tile-header word1 bits 26-27, which a decoder only
+    // accepts on a stream that declared NXVC_TOOL_WM_ID.  encoder_tools()
+    // sets that bit exactly when these three conditions hold, so refusing
+    // here is the same test read forwards.
+    if (e->cfg.wm_id == 0 || e->cfg.quant_matrix == 255 || e->cfg.lossless)
+        return NXVC_ERR_ARG;
+    e->wm_map.assign(wm, wm + count);
     return NXVC_OK;
 }
 

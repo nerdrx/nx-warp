@@ -1165,6 +1165,12 @@ struct TileDecision {
     int ref_sel = 0;
     int disparity = 0;
     int skipped = 0;
+    // Mean absolute difference per luma sample of the WARP_SKIP predictor with
+    // this tile's stored vector, Q8.  This is the `complexity` input
+    // docs/RATECONTROL.md 4.1 asks the rate controller for; it is measured
+    // here because the mode search computes the predictor anyway.
+    // kWarpMadUnmeasured when there was no reference to measure against.
+    unsigned warp_mad_q8 = 0xFFFFu;
 };
 
 struct nxvc_encoder {
@@ -1184,6 +1190,7 @@ struct nxvc_encoder {
     std::vector<nxvc::PredState> state_pre;  // the same, before this frame
     std::vector<TileDecision> dec;
     std::vector<u8> skip_map;                // rc/'s force_warp_skip request
+    std::vector<u8> wm_map;                  // rc/'s per-tile weighting matrix
     std::vector<u16> age_since_coded;        // per tile position per eye
     std::vector<nxvc_view> views_cur;
     // The view each ring slot was rendered with, so the matrix a frame emits

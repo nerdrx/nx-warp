@@ -96,14 +96,25 @@ uint8_t RefreshScheduler::admissible_divisor(const RefreshInputs& in, size_t i,
     // The k_max bound caps the whole ladder, always.
     uint8_t cap = std::max<uint8_t>(cfg_.k_max_frames, 1u);
 
+    // Foveal floor.  Not a model output: a policy, so that no budget and no
+    // model re-fit can ever put the fovea below full rate.
+    //
+    // It is tested BEFORE the static shortcut below, and the order matters.
+    // `is_static` is a statement about the tile's complexity input, which on
+    // a real encoder is measured on the previous frame
+    // (nxvc_tile_info::warp_mad_q8, docs/RATECONTROL.md 4.1): a tile that was
+    // static last frame and starts moving this one would otherwise be handed
+    // k = k_max and have a residual it really does have withheld, in the
+    // fovea, on the frame the motion starts.  Taking the floor first costs
+    // nothing when the tile is genuinely static -- the encoder's own mode
+    // search skips it anyway, for free -- and removes the one case where a
+    // stale input can reach the middle of the picture.
+    if (fov.ecc_deg[i] <= cfg_.fovea_full_deg) return 1u;
+
     // A static tile is WARP_SKIP in the allocator anyway; there is no
     // residual to withhold, so nothing the model can object to.  It goes
     // straight to the cap, text included.
     if (is_static) return cap;
-
-    // Foveal floor.  Not a model output: a policy, so that no budget and no
-    // model re-fit can ever put the fovea below full rate.
-    if (fov.ecc_deg[i] <= cfg_.fovea_full_deg) return 1u;
 
     cap = std::min<uint8_t>(cap, cfg_.max_k[cls < 4 ? cls : 1]);
     if (cap <= 1) return 1u;

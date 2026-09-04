@@ -117,6 +117,7 @@ class TileInfo:
     disparity: int
     ref_delta: int
     age_since_coded: int
+    warp_mad_q8: int
 
     _FIELDS = (
         "tile_index",
@@ -145,6 +146,7 @@ class TileInfo:
         "disparity",
         "ref_delta",
         "age_since_coded",
+        "warp_mad_q8",
     )
 
     @classmethod

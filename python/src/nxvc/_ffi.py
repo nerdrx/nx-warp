@@ -404,6 +404,7 @@ class nxvc_tile_info(Structure):
         ("disparity", c_uint16),
         ("ref_delta", c_uint8),
         ("age_since_coded", c_uint16),
+        ("warp_mad_q8", c_uint16),
     ]
 
 

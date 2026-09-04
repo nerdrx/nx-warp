@@ -53,4 +53,10 @@ if(NOT DEFINED NXWARP_BUILD_TOOLS OR NXWARP_BUILD_TOOLS)
         target_include_directories(${t} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
         set_target_properties(${t} PROPERTIES CXX_STANDARD 20)
     endforeach()
+    # nxv-enc --rc drives the rate-control library (nxrc::EncDriver).  rc/ is
+    # added after ref/ in the root component list, so the include directory is
+    # named explicitly; the link resolves at generate time.
+    target_link_libraries(nxv-enc PRIVATE nxvc_rcenc)
+    target_include_directories(nxv-enc PRIVATE
+        ${CMAKE_SOURCE_DIR}/rc/include ${CMAKE_SOURCE_DIR}/fov/include)
 endif()

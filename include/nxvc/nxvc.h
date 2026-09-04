@@ -278,7 +278,22 @@ typedef struct nxvc_tile_info {
     uint16_t age_since_coded;   /* frames since this tile position last
                                    carried a coded residual; 0 on the frame
                                    that coded one, saturating at 65535      */
+    uint16_t warp_mad_q8;       /* encoder: mean absolute difference per luma
+                                   sample between the tile and its WARP_SKIP
+                                   predictor (the pose warp plus the tile's
+                                   stored vector), in Q8.  This is the
+                                   `complexity` input docs/RATECONTROL.md 4.1
+                                   asks the rate controller for, measured by
+                                   the mode search that builds the predictor
+                                   anyway.  NXVC_WARP_MAD_UNMEASURED when the
+                                   tile had no eligible reference (the first
+                                   frame, a tile-map reset, or a rolling-intra
+                                   refresh), which is exactly the set of tiles
+                                   whose warped residual does not exist.     */
 } nxvc_tile_info;
+
+/* `warp_mad_q8` when the tile had no warped predictor to measure. */
+#define NXVC_WARP_MAD_UNMEASURED 0xFFFFu
 
 typedef struct nxvc_stream_info {
     uint32_t magic, version, profile, level, tile_size;
@@ -351,6 +366,25 @@ uint32_t nxvc_encoder_tile_count(const nxvc_encoder *enc);
  * `skipped`, `age_since_coded` and `ref_delta`. */
 nxvc_status nxvc_encoder_set_skip_map(nxvc_encoder *enc, const uint8_t *skip,
                                       uint32_t count);
+
+/* Per-tile weighting-matrix id for the NEXT frame: the `wm_id` of
+ * docs/RATECONTROL.md 4.4, which the degradation ladder needs per tile while
+ * `nxvc_config::wm_id` only sets it per stream.
+ *
+ * `wm[t]` is 0..3 and lands verbatim in tile-header word1 bits 26-27 (syntax
+ * v1.2, tool bit NXVC_TOOL_WM_ID), so this changes NO syntax: it is a second
+ * way to choose a field the bitstream already carries.  0 means "the frame's
+ * matrix", as it does in the header.
+ *
+ * The stream must already declare the tool, i.e. the encoder was created with
+ * `cfg.wm_id != 0`, a built-in `quant_matrix` and no `lossless`; otherwise
+ * the call is rejected with NXVC_ERR_ARG rather than silently emitting a
+ * stream whose tile headers a conforming decoder would refuse.  A map
+ * overrides `cfg.wm_id`, including the `wm_id == 255` per-tile search.
+ *
+ * The map is consumed by one nxvc_encoder_encode_frame call. */
+nxvc_status nxvc_encoder_set_wm_map(nxvc_encoder *enc, const uint8_t *wm,
+                                    uint32_t count);
 
 /* --- the loss/concealment hooks (PAPER 2.6, 2.7; docs/TRANSPORT.md 8).
  *

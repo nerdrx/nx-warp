@@ -4,10 +4,12 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "nxvc/nxvc.h"
+#include "nxrc/encdrive.hpp"
 
 // ------------------------------------------------------- tiny JSON scraping
 //
@@ -105,7 +107,44 @@ static void usage() {
         "                       Applied after the mode search; the encoder\n"
         "                       overrides it where a coded tile is required\n"
         "  --mode-lambda F      lambda scale of the per-tile mode decision,\n"
-        "                       relative to the trellis (default 0.25)\n");
+        "                       relative to the trellis (default 0.25)\n"
+        "Perceptual rate control (docs/RATECONTROL.md; no syntax change):\n"
+        "  --rc                 run the rate-control library per frame and\n"
+        "                       feed its per-tile qp / res_level / wm_id /\n"
+        "                       force_warp_skip into the encoder.  Overrides\n"
+        "                       --qp, --qp-map, --res-map, --skip-map, --wm\n"
+        "                       and --matrix\n"
+        "  --rc-bitrate M       target bit rate in Mbit/s (default 40)\n"
+        "  --rc-fov on|off      the foveation map (default on)\n"
+        "  --rc-temporal on|off the per-tile refresh scheduler (default on)\n"
+        "  --gaze x,y           fixation inside one eye, normalised to\n"
+        "                       [-1,1], +x right +y up.  Default: no tracker,\n"
+        "                       i.e. the fixed-foveation eye box on the axis\n"
+        "  --rc-panel N         pixels per eye of the PANEL the foveation\n"
+        "                       decision is made for (default 2160, Pico 4)\n"
+        "  --rc-fps F           display rate the budget is per-frame of\n"
+        "                       (default 90)\n"
+        "  --rc-fov-deg H,V     render FOV of one eye the foveation map is\n"
+        "                       built for (default 81.2,81.2, the Pico 4).\n"
+        "                       This is the headset, not the clip: --fov is\n"
+        "                       the FOV the clip was RENDERED with and drives\n"
+        "                       the warp\n"
+        "  --rc-map FILE        write the per-tile decision of every frame as\n"
+        "                       CSV, for the results harness\n");
+}
+
+// The frame weighting matrix rc mode declares the WM_ID tool with.  Any
+// non-zero id would do; 1 is nxrc::WM_LUMA, the ladder's own default, so a
+// tile the map does not touch keeps the matrix the ladder would have chosen.
+static constexpr uint32_t WM_LUMA_ID = 1;
+
+// Head angular rate between two OpenXR orientation quaternions, deg/s.
+static double head_speed_deg_s(const std::array<double, 4> &a,
+                               const std::array<double, 4> &b, double fps) {
+    double dot = 0.0;
+    for (int i = 0; i < 4; ++i) dot += a[i] * b[i];
+    dot = std::fabs(dot) > 1.0 ? 1.0 : std::fabs(dot);
+    return 2.0 * std::acos(dot) * 180.0 / 3.14159265358979323846 * fps;
 }
 
 static bool read_exact(std::FILE *f, void *p, size_t n) {
@@ -127,6 +166,12 @@ int main(int argc, char **argv) {
     double fov_h = 95.0, fov_v = 95.0;
     bool fov_from_cli = false;
     std::string poses_path, skipmap_path;
+    int rc_on = 0, rc_fov = 1, rc_temporal = 1, rc_panel = 2160;
+    double rc_bitrate = 40.0, rc_fps = 90.0;
+    double rc_fov_h = 81.2, rc_fov_v = 81.2;
+    double gaze_x = 0.0, gaze_y = 0.0;
+    bool gaze_valid = false;
+    std::string rc_map_path;
 
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
@@ -184,6 +229,41 @@ int main(int argc, char **argv) {
         else if (a == "--mv-range") mv_range = std::atoi(val());
         else if (a == "--skip-thresh")
             skip_thresh = (int)(std::atof(val()) * 256.0 + 0.5);
+        else if (a == "--rc") rc_on = 1;
+        else if (a == "--rc-bitrate") rc_bitrate = std::atof(val());
+        else if (a == "--rc-panel") rc_panel = std::atoi(val());
+        else if (a == "--rc-map") rc_map_path = val();
+        else if (a == "--rc-fps") rc_fps = std::atof(val());
+        else if (a == "--rc-fov-deg") {
+            std::string v = val();
+            size_t c = v.find(',');
+            rc_fov_h = std::atof(v.c_str());
+            rc_fov_v = c == std::string::npos ? rc_fov_h
+                                              : std::atof(v.c_str() + c + 1);
+        }
+        else if (a == "--rc-fov") {
+            std::string v = val();
+            if (v == "on") rc_fov = 1;
+            else if (v == "off") rc_fov = 0;
+            else { std::fprintf(stderr, "--rc-fov: on|off\n"); return 2; }
+        }
+        else if (a == "--rc-temporal") {
+            std::string v = val();
+            if (v == "on") rc_temporal = 1;
+            else if (v == "off") rc_temporal = 0;
+            else { std::fprintf(stderr, "--rc-temporal: on|off\n"); return 2; }
+        }
+        else if (a == "--gaze") {
+            std::string v = val();
+            size_t c = v.find(',');
+            if (c == std::string::npos) {
+                std::fprintf(stderr, "--gaze: x,y\n");
+                return 2;
+            }
+            gaze_x = std::atof(v.c_str());
+            gaze_y = std::atof(v.c_str() + c + 1);
+            gaze_valid = true;
+        }
         else if (a == "--quiet") quiet = 1;
         else if (a == "--stats") stats = 1;
         else if (a == "--matrix") matrix = std::atoi(val());
@@ -357,6 +437,25 @@ int main(int argc, char **argv) {
     cfg.collect_stats = (uint32_t)stats;
     cfg.color_space = rgb ? (uint32_t)NXVC_CS_RGB : (uint32_t)color_space;
 
+    if (rc_on) {
+        // The allocator writes an ABSOLUTE per-tile QP and a tile header
+        // carries `qp_delta` in [-32, 31], so the frame's base_qp has to sit
+        // in the middle of the range for every value 0..63 to be reachable.
+        cfg.base_qp = nxrc::EncDriver::kBaseQp;
+        // `wm_id == 0` in a tile header means "the frame's matrix"
+        // (SYNTAX.md 6.5), so the frame matrix must be the flat one for
+        // nxrc's WM_FLAT..WM_CHROMA to address built-in matrices 0..3
+        // directly.  A non-zero cfg.wm_id is also what declares the WM_ID
+        // tool bit; the per-tile map then overrides the value.
+        cfg.quant_matrix = nxrc::EncDriver::kFrameMatrix;
+        cfg.wm_id = WM_LUMA_ID;
+        cfg.qp_search = 0;   // the allocator owns the QP, not a local search
+        if (lossless) {
+            std::fprintf(stderr, "--rc and --lossless are exclusive\n");
+            return 2;
+        }
+    }
+
     nxvc_status st;
     nxvc_encoder *enc = nxvc_encoder_create(&cfg, &st);
     if (!enc) {
@@ -393,6 +492,45 @@ int main(int argc, char **argv) {
     st = nxvc_encoder_stream_header(enc, hdr.data(), hdr.size(), &hl);
     if (st != NXVC_OK) { std::fprintf(stderr, "header: %s\n", nxvc_status_string(st)); return 1; }
     std::fwrite(hdr.data(), 1, hl, fo);
+
+    // The rate-control driver: everything per-tile the encoder is told in
+    // --rc mode comes out of this object (docs/RATECONTROL.md, PAPER.md 4.6).
+    std::unique_ptr<nxrc::EncDriver> drv;
+    std::FILE *fm = nullptr;
+    if (rc_on) {
+        nxrc::EncDriveConfig dc;
+        dc.width = (int)cfg.width;
+        dc.height = (int)cfg.height;
+        dc.eyes = eyes;
+        dc.fps = (float)rc_fps;
+        dc.bitrate_mbps = (float)rc_bitrate;
+        dc.foveation = rc_fov != 0;
+        dc.temporal = rc_temporal != 0;
+        dc.gaze_valid = gaze_valid;
+        dc.gaze_x = (float)gaze_x;
+        dc.gaze_y = (float)gaze_y;
+        dc.fov_h_deg = (float)rc_fov_h;
+        dc.fov_v_deg = (float)rc_fov_v;
+        dc.panel_px_per_eye = rc_panel;
+        drv = std::make_unique<nxrc::EncDriver>(dc);
+        if (drv->tile_count() != tl.tile_count) {
+            std::fprintf(stderr, "rc: tile count %zu != encoder's %u\n",
+                         drv->tile_count(), tl.tile_count);
+            return 1;
+        }
+        if (!rc_map_path.empty()) {
+            fm = std::fopen(rc_map_path.c_str(), "wb");
+            if (!fm) { std::perror("open rc map"); return 1; }
+            std::fprintf(fm, "frame,tile,eye,col,row,ecc_deg,fov_level,class,"
+                             "qp,res_level,wm_id,force_skip,coded,bits,"
+                             "pressure,gate\n");
+        }
+        if (!quiet)
+            std::printf("rc: %.4g Mbit/s at %.4g fps, foveation %s, temporal "
+                        "%s, panel %d px/eye over %.4g deg\n",
+                        rc_bitrate, rc_fps, rc_fov ? "on" : "off",
+                        rc_temporal ? "on" : "off", rc_panel, rc_fov_h);
+    }
 
     std::vector<uint8_t> Y(ysz), U(csz), V(csz);
     std::vector<uint8_t> rmap(tl.tile_count), qmap(tl.tile_count),
@@ -440,6 +578,28 @@ int main(int argc, char **argv) {
         if (fq && read_exact(fq, qmap.data(), qmap.size())) qm = qmap.data();
         if (fs && read_exact(fs, smap.data(), smap.size()))
             nxvc_encoder_set_skip_map(enc, smap.data(), (uint32_t)smap.size());
+        if (drv) {
+            double hs = 0.0;
+            if (orient.size() > 1 && n > 0) {
+                const size_t i1 = (size_t)n < orient.size() ? (size_t)n
+                                                           : orient.size() - 1;
+                hs = head_speed_deg_s(orient[i1 - 1], orient[i1], rc_fps);
+            }
+            drv->set_head_speed((float)hs);
+            drv->analyse(Y.data(), W, n);
+            qm = drv->qp_map().data();
+            rm = drv->res_map().data();
+            st = nxvc_encoder_set_wm_map(enc, drv->wm_map().data(),
+                                         tl.tile_count);
+            if (st != NXVC_OK) {
+                std::fprintf(stderr, "rc: set_wm_map: %s\n",
+                             nxvc_status_string(st));
+                return 1;
+            }
+            if (rc_temporal)
+                nxvc_encoder_set_skip_map(enc, drv->skip_map().data(),
+                                          tl.tile_count);
+        }
         nxvc_image img{};
         img.plane[0] = Y.data(); img.stride[0] = W;
         img.plane[1] = U.data(); img.stride[1] = (int)cw;
@@ -453,9 +613,45 @@ int main(int argc, char **argv) {
         }
         std::fwrite(outbuf.data(), 1, ol, fo);
         total += ol;
-        if (!quiet)
+        if (drv) {
+            uint32_t tc = 0;
+            const nxvc_tile_info *ti = nxvc_encoder_tiles(enc, &tc);
+            if (fm) {
+                const auto &a = drv->alloc();
+                const auto &fv = drv->fov();
+                const auto &cl = drv->classes();
+                const auto &sk = drv->skip_map();
+                const int txe = drv->tiles_x();
+                for (uint32_t t = 0; t < tc; ++t) {
+                    const int row = (int)(t / (unsigned)(txe * eyes));
+                    const int rem = (int)(t % (unsigned)(txe * eyes));
+                    std::fprintf(fm,
+                                 "%d,%u,%d,%d,%d,%.3f,%u,%u,%u,%u,%u,%u,%u,%u,"
+                                 "%.4f,%.5f\n",
+                                 n, t, rem / txe, rem % txe, row,
+                                 (double)fv.ecc_deg[t], fv.level[t], cl[t],
+                                 a.qp[t], a.res_level[t], a.wm_id[t], sk[t],
+                                 ti[t].skipped ? 0u : 1u,
+                                 (unsigned)(ti[t].payload_len * 8),
+                                 (double)a.pressure, (double)drv->stats().gate);
+                }
+            }
+            drv->feedback(ti, tc);
+        }
+        if (!quiet) {
             std::printf("frame %d: %zu bytes  %.4f bpp\n", n, ol,
                         ol * 8.0 / ((double)W * H));
+            if (drv) {
+                const auto &ds = drv->stats();
+                std::printf("  rc: budget %.0f, predicted %.0f, actual %.0f "
+                            "bits; P %.2f, gate %.3f, forced skips %d, "
+                            "encoder skips %d, head %.1f deg/s\n",
+                            (double)ds.budget_bits, (double)ds.predicted_bits,
+                            (double)ds.actual_bits, (double)ds.pressure,
+                            (double)ds.gate, ds.forced_skips, ds.actual_skips,
+                            (double)ds.head_speed_deg_s);
+            }
+        }
         if (stats) {
             nxvc_encode_stats st2;
             nxvc_encoder_stats(enc, &st2);
@@ -493,6 +689,7 @@ int main(int argc, char **argv) {
     if (fr) std::fclose(fr);
     if (fq) std::fclose(fq);
     if (fs) std::fclose(fs);
+    if (fm) std::fclose(fm);
     if (!quiet)
         std::printf("%d frame(s), %zu bytes total, %.4f bpp mean\n", n, total,
                     n ? total * 8.0 / ((double)W * H * n) : 0.0);
