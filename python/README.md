@@ -245,11 +245,18 @@ the build command in the skip reason, when no shared library is found -- so the
 suite is green both with and without the codec.
 
 Coverage: the header parser against hand-assembled byte strings with the
-offsets from SYNTAX.md spelled out; dataclass and ctypes-struct round trips
-(including struct sizes, so an ABI drift is caught); metric identities;
-end-to-end encode/decode with lossless bit-exactness, rate/quality
-monotonicity, per-tile maps, and a cross-check that the pure-Python parser and
-the C decoder agree tile for tile on the same bytes.
+offsets from SYNTAX.md spelled out; dataclass and ctypes-struct round trips;
+metric identities; end-to-end encode/decode with lossless bit-exactness,
+rate/quality monotonicity, per-tile maps, bit accounting, and a cross-check
+that the pure-Python parser and the C decoder agree tile for tile on the same
+bytes.
+
+`test_version.py` additionally parses `include/nxvc/nxvc.h` and compares every
+struct's **field order, names and integer widths** against `nxvc/_ffi.py`, and
+asserts that every declared function is bound. That is the check that matters:
+a field inserted in the middle of a C struct is invisible to every other test
+-- the calls still succeed and the values are silently wrong -- and this suite
+caught exactly that when `color_space` and `nxvc_encode_stats` landed.
 
 ---
 
