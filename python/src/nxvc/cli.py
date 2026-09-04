@@ -338,6 +338,10 @@ def cmd_encode(args: argparse.Namespace) -> int:
         kwargs["ctx_v2"] = 1 if args.ctx == "v2" else 0
     if args.sign_hide is not None:
         kwargs["sign_hide"] = 1 if args.sign_hide else 0
+    if args.split4 is not None:
+        kwargs["split4"] = 1 if args.split4 == "on" else 0
+    if args.cfl is not None:
+        kwargs["cfl"] = 1 if args.cfl == "on" else 0
 
     # --frames 0 is "all of them", the nxv-enc meaning; None is what
     # read_planar_yuv spells that with.
@@ -500,6 +504,11 @@ def build_parser() -> argparse.ArgumentParser:
     e.add_argument("--sign-hide", dest="sign_hide", action="store_const",
                    const=True, default=None,
                    help="sign data hiding (tool bit 22; the reference default)")
+    e.add_argument("--split4", dest="split4", default=None,
+                   choices=("off", "on"),
+                   help="per-block 4x4 transform split (tool bit 19)")
+    e.add_argument("--cfl", dest="cfl", default=None, choices=("off", "on"),
+                   help="chroma from luma (tool bit 24; needs 17 and 21)")
     e.add_argument("--no-sign-hide", dest="sign_hide", action="store_const", const=False,
                    help="code every sign")
     e.set_defaults(func=cmd_encode)

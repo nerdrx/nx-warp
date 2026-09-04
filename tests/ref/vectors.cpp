@@ -109,6 +109,13 @@ static const VecSpec kVectors[] = {
     {"v60_cfl420_qp28",        192, 128, 0,  2, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 1, 1, 1, 0, 1},
     {"v61_split_res_tables420", 192, 128, 0, 2, 18,  0, 0,  0,255,  1,  0, 0,  1,  1,  1, 2, 0, 0, 1, 1, 1, 1, 0},
     {"v62_default444_v15",     192, 128, 1,  1, 20,  0, 0,  0,255,  1,  0, 0,  1,  0,  0, 1, 0, 0, 1, 1, 1, 1, 1},
+    // The two ways the chroma-from-luma model's `sub` can be derived, and the
+    // res_level ladder that moves the plane sizes underneath it: v63 cycles
+    // res_level in 4:2:0 (sub is 2 at levels 0-2 and 1 at the floored level),
+    // v64 puts 4:2:0 tiles inside a 4:4:4 stream so both values occur in one
+    // frame.
+    {"v63_cfl_res420",         192, 128, 0,  2, 22,  0, 0,  0,  3,  0,  0, 0,  1,  1,  0, 1, 0, 0, 1, 1, 1, 1, 1},
+    {"v64_cfl_tile420_in444",  192, 128, 1,  2, 22,  0, 0,  0,  3,  0,  1, 0,  1,  0,  0, 1, 0, 0, 1, 1, 1, 1, 1},
 };
 static const int kNumVectors = (int)(sizeof(kVectors) / sizeof(kVectors[0]));
 

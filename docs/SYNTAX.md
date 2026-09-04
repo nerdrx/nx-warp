@@ -864,8 +864,8 @@ pass 2 (columns): for each row r of tmp: idct4_1d(tmp[r*4 ..]) -> out[0..3]
 |---|---|---|---|---|
 | inverse pass 1 | `>> 7` | `+64` | int16 | `6.5e7` at the outputs `y0..y3` |
 | inverse pass 2 | `>> 14` | `+8192` | int16 | `6.5e7` |
-| forward pass 1 | `>> 6` | `+32` | int16 | `511 * 2048 = 1.0e6` |
-| forward pass 2 | `>> 13` | `+8192` | int16 | `32767 * 2048 = 6.7e7` |
+| forward pass 1 | `>> 6` | `+32` | int16 | `511 * 4 * 512 = 1.0e6` |
+| forward pass 2 | `>> 13` | `+4096` | int16 | `32767 * 4 * 512 = 6.7e7` |
 
 The bound is `|t0|, |t1| <= 2 * 32768 * 512 = 3.4e7` and
 `|t3| <= 32768 * (D1 + D2) = 3.1e7`, so `|y| <= 6.5e7`, comfortably inside
@@ -1754,11 +1754,13 @@ feature at once with transmitted 160-byte table sets, the combination with
 encoder's shipped default configuration. `v01`-`v35` are **byte-identical** to
 the v1.2 set: all three tools are additive and off unless their bit is set.
 
-**The v1.5 intra tools.** `v57`-`v62` pin them: `XFORM_4X4_SPLIT` alone in
+**The v1.5 intra tools.** `v57`-`v64` pin them: `XFORM_4X4_SPLIT` alone in
 4:4:4 and 4:2:0, `INTRA_CFL` alone in 4:4:4 (`sub == 1`) and 4:2:0 (`sub == 2`,
 the subsampling filter in the model), the split with `res_level` and `qp_map`
 cycling and transmitted table sets so the 4x4 transform runs at every plane
-size, and the reference encoder's shipped v1.5 default configuration.
+size, and the reference encoder's shipped v1.5 default configuration, and the two ways
+7.7's `sub` can be derived -- `res_level` cycling in 4:2:0 and 4:2:0 tiles
+inside a 4:4:4 stream, so both values occur, one of them inside a single frame.
 `v01`-`v56` are **byte-identical** to the v1.4 set: both tools are additive and
 off unless their bit is set, and the Phase 2 vectors are pinned to the v1.4
 intra tools so that they keep covering the thing they were written for.

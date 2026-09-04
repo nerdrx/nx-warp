@@ -193,6 +193,7 @@ class Tool:
     #: Annex D D-5 names this "tool bit 20"; bit 20 was already WM_ID in
     #: syntax v1.2, so the reference places it at the first free bit.
     FILTER_CATMULLROM = 1 << 23
+    INTRA_CFL = 1 << 24
 
     _NAMES = [
         (1 << 0, "INTRA_DC_PLANE"),
@@ -219,10 +220,11 @@ class Tool:
         (1 << 21, "CTX_V2"),
         (1 << 22, "SIGN_HIDE"),
         (1 << 23, "FILTER_CATMULLROM"),
+        (1 << 24, "INTRA_CFL"),
     ]
 
     #: The first tool bit that is reserved and must be zero (SYNTAX.md 2.3).
-    RESERVED_FROM = 24
+    RESERVED_FROM = 25
 
     @classmethod
     def names(cls, mask: int) -> list[str]:
@@ -254,6 +256,8 @@ TOOLS_SUPPORTED = (
     | Tool.INTRA_DIR
     | Tool.CTX_V2
     | Tool.SIGN_HIDE
+    | Tool.XFORM_4X4_SPLIT
+    | Tool.INTRA_CFL
     | Tool.INTER
     | Tool.WARP
     | Tool.STEREO
@@ -342,6 +346,10 @@ class nxvc_config(Structure):
         ("mv_range", c_uint32),
         ("skip_thresh", c_uint32),
         ("mode_lambda_q8", c_uint32),
+        # --- additive since syntax v1.5.  Both change the bitstream: each
+        # sets a tool bit in the stream header.
+        ("split4", c_uint32),
+        ("cfl", c_uint32),
     ]
 
 
@@ -364,6 +372,13 @@ class nxvc_encode_stats(Structure):
         ("tiles_tskip", c_uint64),
         ("tiles_res", c_uint64 * 3),
         ("lanes_total", c_uint64),
+        # --- additive since syntax v1.5: how often the two new intra tools
+        # fire.  blocks_coded counts every 8x8 residual block of an INTRA tile
+        # and blocks_chroma the subset in planes 1 and 2.
+        ("blocks_coded", c_uint64),
+        ("blocks_chroma", c_uint64),
+        ("blocks_split4", c_uint64),
+        ("blocks_cfl", c_uint64),
     ]
 
 

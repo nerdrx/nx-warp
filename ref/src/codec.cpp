@@ -334,7 +334,7 @@ void TileCoder::setup() {
         s.means.assign((size_t)s.nb * s.nb, 0);
         s.pred.assign((size_t)s.size * s.size, 0);
         if (inter) s.wpred.assign((size_t)s.size * s.size, 0);
-        if (intra_dir || cfl) {
+        if (intra_dir) {
             s.recon.assign((size_t)s.size * s.size, 0);
             s.modes.assign((size_t)s.nb * s.nb, 0);
         }
@@ -515,8 +515,7 @@ static void cfl_model(const CflCtx &c, const IntraRefs &r, int size, int bx,
     if (den <= 0) {
         alpha = 0;
     } else {
-        const i32 mag = cfl_divide(num < 0 ? -(num << kCflShift)
-                                           : (num << kCflShift), den);
+        const i32 mag = cfl_divide((num < 0 ? -num : num) << kCflShift, den);
         alpha = clamp_i32(num < 0 ? -mag : mag, -kCflAlphaMax, kCflAlphaMax);
     }
     // The mean is a shift because kCflRefs is a power of two.

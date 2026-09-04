@@ -296,6 +296,14 @@ class EncodeStats:
     tiles_tskip: int
     tiles_res: tuple[int, int, int]
     lanes_total: int
+    #: How often the two syntax v1.5 intra tools fire.  ``blocks_coded``
+    #: counts every 8x8 residual block of an INTRA tile and ``blocks_chroma``
+    #: the subset in planes 1 and 2, so those are the denominators of
+    #: ``blocks_split4`` and ``blocks_cfl`` respectively.
+    blocks_coded: int = 0
+    blocks_chroma: int = 0
+    blocks_split4: int = 0
+    blocks_cfl: int = 0
 
     @classmethod
     def _from_c(cls, c: nxvc_encode_stats) -> "EncodeStats":
@@ -371,6 +379,11 @@ class EncoderConfig:
     mv_range: int | None = None
     skip_thresh: int | None = None
     mode_lambda_q8: int | None = None
+
+    # --- additive since syntax v1.5.  Both change the bitstream: each sets a
+    # tool bit in the stream header.
+    split4: int | None = None
+    cfl: int | None = None
 
     #: Fields set explicitly by the caller; everything else keeps the C default.
     _explicit: set[str] = field(default_factory=set, repr=False, compare=False)

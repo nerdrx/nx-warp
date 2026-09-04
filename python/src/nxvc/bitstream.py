@@ -402,6 +402,23 @@ class StreamHeader(_TableStruct):
             raise BitstreamError(
                 "tool bits LOSSLESS and SIGN_HIDE are mutually exclusive", offset + 32
             )
+        # SYNTAX.md 2.3: a split flag is coded only for a block that has a
+        # transform (rejection vector r32).
+        if (self.tools & Tool.LOSSLESS) and (self.tools & Tool.XFORM_4X4_SPLIT):
+            raise BitstreamError(
+                "tool bits LOSSLESS and XFORM_4X4_SPLIT are mutually exclusive",
+                offset + 32,
+            )
+        # SYNTAX.md 2.3: chroma-from-luma is a tenth intra mode, so it needs
+        # the mode unit (INTRA_DIR) and the v2 mode symbol (CTX_V2), whose v1
+        # form has only a 3-bit non-MPM index (rejection vectors r30, r31).
+        if self.tools & Tool.INTRA_CFL:
+            need = Tool.INTRA_DIR | Tool.CTX_V2
+            if (self.tools & need) != need:
+                raise BitstreamError(
+                    "tool bit INTRA_CFL without both INTRA_DIR and CTX_V2",
+                    offset + 32,
+                )
         # SYNTAX.md 14: WARP describes how the inter modes predict, so it says
         # nothing on its own (rejection vector r27).
         if (self.tools & Tool.WARP) and not (self.tools & Tool.INTER):
@@ -960,6 +977,13 @@ _FRAME_RULES: Sequence[tuple[Callable[[Any, Any], bool], str]] = (
     (
         lambda h, s: h.intra_dir_layer and not (s.tools & Tool.INTRA_DIR),
         "frame flags bit 2 (layered directional intra) without tool bit 17 INTRA_DIR",
+    ),
+    (
+        # SYNTAX.md 7.7: mode 9 maps luma samples to chroma samples, and the
+        # layered form's reference plane holds DC-plane residuals instead
+        # (rejection vector r33).
+        lambda h, s: h.intra_dir_layer and bool(s.tools & Tool.INTRA_CFL),
+        "frame flags bit 2 (the layered form) with tool bit 24 INTRA_CFL",
     ),
     (
         lambda h, s: h.warp_present and not (s.tools & Tool.WARP),

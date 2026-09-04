@@ -284,7 +284,7 @@ cmake --preset asan-ubsan && cmake --build --preset asan-ubsan
 ctest --preset asan-ubsan -R 'ref\.'
 ```
 
-`tests/vectors/` holds 62 committed `.nxv` vectors and `vectors.md5`, which pins
+`tests/vectors/` holds 64 committed `.nxv` vectors and `vectors.md5`, which pins
 both the MD5 of each bitstream and the MD5 of its decoded planes, plus 33
 **rejection vectors** and `rejects.md5`, which pin the exact status each
 malformed stream must be refused with. `VERSION`, `UNSUPPORTED`, `BITSTREAM`

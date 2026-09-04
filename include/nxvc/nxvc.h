@@ -193,11 +193,6 @@ typedef struct nxvc_config {
     uint32_t intra_dir_cand;    /* modes RD-checked per block, 0 = default  */
     uint32_t sign_hide;         /* 1 = sign data hiding (tool 22)           */
 
-    /* --- additive since syntax v1.5.  Both change the bitstream. */
-    uint32_t split4;            /* 1 = per-block 4x4 transform split (19)   */
-    uint32_t cfl;               /* 1 = chroma from luma (tool 24); needs
-                                 * intra_dir and ctx_v2                     */
-
     /* --- additive since syntax v1.4: the Phase 2 inter path.
      * `width`/`height` are PER EYE.  With eyes == 2 the nxvc_image passed to
      * the encoder and filled by the decoder is `eyes * width` samples wide:
@@ -222,6 +217,14 @@ typedef struct nxvc_config {
                                    Below 256 the decision spends more bits to
                                    keep the reference clean, which is what an
                                    all-reference stream wants; 0 = default  */
+
+    /* --- additive since syntax v1.5.  Both change the bitstream: each sets a
+     * tool bit and a decoder without it refuses the stream at the handshake.
+     * Appended, like every additive block above, so that a caller compiled
+     * against an older header keeps the same field offsets. */
+    uint32_t split4;            /* 1 = per-block 4x4 transform split (19)   */
+    uint32_t cfl;               /* 1 = chroma from luma (tool 24); needs
+                                 * intra_dir and ctx_v2                     */
 } nxvc_config;
 
 /* One eye's view for one frame: the orientation the frame was rendered with
