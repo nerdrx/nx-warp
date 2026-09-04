@@ -6,6 +6,7 @@
 struct Coded {
     std::vector<uint8_t> header, frame;
     TestImage out;
+    TestImage shadow;   // the encoder's own reconstruction
     nxvc_status enc_status = NXVC_OK, dec_status = NXVC_OK;
 };
 
@@ -31,6 +32,18 @@ static bool code(const nxvc_config &cfg_in, const TestImage &im, Coded &r,
     size_t ol = 0;
     st = nxvc_encoder_encode_frame(e, &img, qp_map, res_map, r.frame.data(),
                                    r.frame.size(), &ol);
+    if (st == NXVC_OK) {
+        // The encoder's own reconstruction, which every in-tile predictor --
+        // the DC plane, the directional modes' neighbours, and the CFL
+        // model's luma -- is derived from.  It has to be the decoder's,
+        // exactly, or the two drift.
+        r.shadow = im;
+        nxvc_image si{};
+        for (int p = 0; p < 4; ++p) si.plane[p] = r.shadow.p[p].data();
+        si.stride[0] = im.w; si.stride[1] = im.cw;
+        si.stride[2] = im.cw; si.stride[3] = im.w;
+        nxvc_encoder_shadow_image(e, &si);
+    }
     nxvc_encoder_destroy(e);
     if (st != NXVC_OK) { r.enc_status = st; return false; }
     r.frame.resize(ol);
@@ -227,6 +240,16 @@ int main() {
                                   c444 ? "444" : "420", spl, cfl, res, qp,
                                   nxvc_status_string(r.enc_status),
                                   nxvc_status_string(r.dec_status));
+                            // The encoder predicted from its own
+                            // reconstruction; it must be the decoder's, byte
+                            // for byte, or CFL and the directional modes are
+                            // reading different neighbours on the two sides.
+                            for (int pl = 0; pl < 3; ++pl)
+                                CHECK(r.shadow.p[pl] == r.out.p[pl],
+                                      "v1.5 %s spl%d cfl%d res%d qp%d: shadow "
+                                      "!= decoder on plane %d",
+                                      c444 ? "444" : "420", spl, cfl, res, qp,
+                                      pl);
                         }
     }
 
