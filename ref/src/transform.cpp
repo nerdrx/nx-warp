@@ -113,51 +113,55 @@ static inline void fdct8_1d(const i32 *y, i32 *x) {
 //
 // per dimension, and the two-dimensional gains are the exact powers 2^20,
 // 2^21 and 2^22 that the shift chains of `kInvShift*` undo.
-#define NXVC_EVEN_ODD_INVERSE(HALF, INNER, ODD)                            \
-    i32 xe[HALF], e[HALF];                                                 \
-    for (int k = 0; k < HALF; ++k) xe[k] = x[2 * k];                       \
-    INNER(xe, e);                                                          \
-    for (int n = 0; n < HALF; ++n) {                                       \
-        i32 o = 0;                                                         \
-        for (int j = 0; j < HALF; ++j) o += x[2 * j + 1] * ODD[n][j];      \
-        y[n] = e[n] + o;                                                   \
-        y[2 * HALF - 1 - n] = e[n] - o;                                    \
-    }
 
-// The exact transpose of the above: the butterfly first, then the length-M
-// forward transform on the sums and the transposed rotation on the
-// differences.
-#define NXVC_EVEN_ODD_FORWARD(HALF, INNER, ODD)                            \
-    i32 u[HALF], v[HALF], xe[HALF];                                        \
-    for (int n = 0; n < HALF; ++n) {                                       \
-        u[n] = y[n] + y[2 * HALF - 1 - n];                                 \
-        v[n] = y[n] - y[2 * HALF - 1 - n];                                 \
-    }                                                                      \
-    INNER(u, xe);                                                          \
-    for (int k = 0; k < HALF; ++k) x[2 * k] = xe[k];                       \
-    for (int j = 0; j < HALF; ++j) {                                       \
-        i32 o = 0;                                                         \
-        for (int n = 0; n < HALF; ++n) o += v[n] * ODD[n][j];              \
-        x[2 * j + 1] = o;                                                  \
+// The inverse recursion.
+template <int kHalf, void (*kInner)(const i32 *, i32 *)>
+static inline void even_odd_inverse(const i32 *x, i32 *y,
+                                    const i16 (&odd)[kHalf][kHalf]) {
+    i32 xe[kHalf], e[kHalf];
+    for (int k = 0; k < kHalf; ++k) xe[k] = x[2 * k];
+    kInner(xe, e);
+    for (int n = 0; n < kHalf; ++n) {
+        i32 o = 0;
+        for (int j = 0; j < kHalf; ++j) o += x[2 * j + 1] * odd[n][j];
+        y[n] = e[n] + o;
+        y[2 * kHalf - 1 - n] = e[n] - o;
     }
+}
 
-// |even| <= 1.1e8 and |odd| <= 32767 * 2613 = 8.6e7, so |y| <= 2.0e8.
+// Its exact transpose: the butterfly first, then the shorter forward
+// transform on the sums and the transposed rotation on the differences.
+template <int kHalf, void (*kInner)(const i32 *, i32 *)>
+static inline void even_odd_forward(const i32 *y, i32 *x,
+                                    const i16 (&odd)[kHalf][kHalf]) {
+    i32 u[kHalf], v[kHalf], xe[kHalf];
+    for (int n = 0; n < kHalf; ++n) {
+        u[n] = y[n] + y[2 * kHalf - 1 - n];
+        v[n] = y[n] - y[2 * kHalf - 1 - n];
+    }
+    kInner(u, xe);
+    for (int k = 0; k < kHalf; ++k) x[2 * k] = xe[k];
+    for (int j = 0; j < kHalf; ++j) {
+        i32 o = 0;
+        for (int n = 0; n < kHalf; ++n) o += v[n] * odd[n][j];
+        x[2 * j + 1] = o;
+    }
+}
+
+// |even| <= 8.9e7 and |odd| <= 32767 * 2613 = 8.6e7, so |y| <= 1.8e8.
 static inline void idct16_1d(const i32 *x, i32 *y) {
-    NXVC_EVEN_ODD_INVERSE(8, idct8_1d, kOdd16)
+    even_odd_inverse<8, idct8_1d>(x, y, kOdd16);
 }
 static inline void fdct16_1d(const i32 *y, i32 *x) {
-    NXVC_EVEN_ODD_FORWARD(8, fdct8_1d, kOdd16)
+    even_odd_forward<8, fdct8_1d>(y, x, kOdd16);
 }
-// |even| <= 2.0e8 and |odd| <= 32767 * 5215 = 1.7e8, so |y| <= 3.7e8.
+// |even| <= 1.8e8 and |odd| <= 32767 * 5215 = 1.7e8, so |y| <= 3.5e8.
 static inline void idct32_1d(const i32 *x, i32 *y) {
-    NXVC_EVEN_ODD_INVERSE(16, idct16_1d, kOdd32)
+    even_odd_inverse<16, idct16_1d>(x, y, kOdd32);
 }
 static inline void fdct32_1d(const i32 *y, i32 *x) {
-    NXVC_EVEN_ODD_FORWARD(16, fdct16_1d, kOdd32)
+    even_odd_forward<16, fdct16_1d>(y, x, kOdd32);
 }
-
-#undef NXVC_EVEN_ODD_INVERSE
-#undef NXVC_EVEN_ODD_FORWARD
 
 // ------------------------------------------------------- the 2D transforms
 // Indexed by log2(n) - 3.  Both passes of both directions write transposed,

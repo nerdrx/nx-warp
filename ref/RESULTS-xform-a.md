@@ -143,6 +143,16 @@ grows, not less: a 32x32 grid gives the DC plane four block means for a whole
 tile, so it has almost no spatial detail left to give and the directional modes
 take over. All nine modes are defined at all three sizes.
 
+### 4.4 What was not tried
+
+The DC plane of a 16x16-transform tile is a 4x4 image of block means and of a
+32x32-transform tile a 2x2 one, and both are coded **flat** -- the second-level
+8x8 DCT fires only at `nb == 8`, by the rule that was already there for
+`res_level` tiles. A 4x4 second-level transform would be a new transform in the
+format for 16 values per plane per tile. It is the obvious next thing to
+measure and it is deliberately not in this package: the syntax is untouched by
+leaving it out, so it stays available.
+
 ---
 
 ## 5. What it costs a GPU decoder
