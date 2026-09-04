@@ -16,13 +16,13 @@ static void header_roundtrip() {
         h.frame_id = uint16_t(r.u32(65536));
         h.tile_first = uint16_t(r.u32(65536));
         h.tile_count = uint8_t(r.u32(256));
-        h.layer_id = uint8_t(r.u32(16));
-        h.ref_delta = uint8_t(r.u32(4));
+        h.layer_id = uint8_t(r.u32(4));
         h.frag_idx = uint8_t(r.u32(4));
         h.frag_count = uint8_t(r.u32(4));
-        h.tile_class = uint8_t(r.u32(4));
+        h.fec_class = uint8_t(r.u32(4));
         h.band = uint8_t(r.u32(8));
         h.pose_hdr = r.u32(2) != 0;
+        h.fec_m = uint8_t(r.u32(8));
         h.caps = uint8_t(r.u32(256));
         h.pose_seq = uint16_t(r.u32(65536));
         h.path_seq = uint16_t(r.u32(16384));
@@ -44,12 +44,12 @@ static void header_roundtrip() {
         TT_EQ(o.tile_first, h.tile_first);
         TT_EQ(o.tile_count, h.tile_count);
         TT_EQ(o.layer_id, h.layer_id);
-        TT_EQ(o.ref_delta, h.ref_delta);
         TT_EQ(o.frag_idx, h.frag_idx);
         TT_EQ(o.frag_count, h.frag_count);
-        TT_EQ(o.tile_class, h.tile_class);
+        TT_EQ(o.fec_class, h.fec_class);
         TT_EQ(o.band, h.band);
         TT_EQ(int(o.pose_hdr), int(h.pose_hdr));
+        TT_EQ(o.fec_m, h.fec_m);
         TT_EQ(o.caps, h.caps);
         TT_EQ(o.pose_seq, h.pose_seq);
         TT_EQ(o.path_seq, h.path_seq);
@@ -71,7 +71,7 @@ static void header_is_24_bytes_and_version_gated() {
     encode_header(h, buf);
     // Nothing beyond byte 23 is touched.
     for (int i = kHeaderBytes; i < 64; ++i) TT_EQ(int(buf[i]), 0);
-    buf[0] = uint8_t((buf[0] & 0xF0) | 0x2);  // version 2
+    buf[0] = uint8_t((buf[0] & 0xF0) | 0x3);  // version 3
     DatagramHeader o;
     TT_CHECK(!decode_header(buf, &o));
     tt::end();
@@ -89,8 +89,10 @@ static void dir_entry_roundtrip() {
         e.lossless = r.u32(2) != 0;
         e.chroma444 = r.u32(2) != 0;
         e.alpha = r.u32(2) != 0;
+        e.tile_class = uint8_t(r.u32(4));
+        e.ref_delta = uint8_t(r.u32(4));
         uint32_t v = pack_dir_entry(e);
-        TT_EQ(v >> 26, 0u);  // reserved bits stay zero
+        TT_EQ(v >> 30, 0u);  // reserved bits stay zero
         TileDirEntry o = unpack_dir_entry(v);
         TT_EQ(o.len, e.len);
         TT_EQ(o.qp, e.qp);
@@ -99,6 +101,8 @@ static void dir_entry_roundtrip() {
         TT_EQ(int(o.lossless), int(e.lossless));
         TT_EQ(int(o.chroma444), int(e.chroma444));
         TT_EQ(int(o.alpha), int(e.alpha));
+        TT_EQ(o.tile_class, e.tile_class);
+        TT_EQ(o.ref_delta, e.ref_delta);
     }
     tt::end();
 }

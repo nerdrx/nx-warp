@@ -11,10 +11,10 @@ void encode_header(const DatagramHeader& h, uint8_t* p) {
     wr16(p + 2, h.frame_id);
     wr16(p + 4, h.tile_first);
     p[6] = h.tile_count;
-    p[7] = uint8_t((h.layer_id & 0x0F) | ((h.ref_delta & 0x03) << 4) |
-                   ((h.frag_idx & 0x03) << 6));
-    p[8] = uint8_t((h.frag_count & 0x03) | ((h.tile_class & 0x03) << 2) |
-                   ((h.band & 0x07) << 4) | (h.pose_hdr ? 0x80 : 0));
+    p[7] = uint8_t((h.layer_id & 0x03) | ((h.frag_idx & 0x03) << 2) |
+                   ((h.frag_count & 0x03) << 4) | ((h.fec_class & 0x03) << 6));
+    p[8] = uint8_t((h.band & 0x07) | (h.pose_hdr ? 0x08 : 0) |
+                   ((h.fec_m & 0x07) << 4));
     p[9] = h.caps;
     wr16(p + 10, h.pose_seq);
     wr16(p + 12, uint16_t((h.path_seq & 0x3FFF) | (uint16_t(h.path_id & 0x03) << 14)));
@@ -32,13 +32,13 @@ bool decode_header(const uint8_t* p, DatagramHeader* o) {
     o->frame_id = rd16(p + 2);
     o->tile_first = rd16(p + 4);
     o->tile_count = p[6];
-    o->layer_id = uint8_t(p[7] & 0x0F);
-    o->ref_delta = uint8_t((p[7] >> 4) & 0x03);
-    o->frag_idx = uint8_t((p[7] >> 6) & 0x03);
-    o->frag_count = uint8_t(p[8] & 0x03);
-    o->tile_class = uint8_t((p[8] >> 2) & 0x03);
-    o->band = uint8_t((p[8] >> 4) & 0x07);
-    o->pose_hdr = (p[8] & 0x80) != 0;
+    o->layer_id = uint8_t(p[7] & 0x03);
+    o->frag_idx = uint8_t((p[7] >> 2) & 0x03);
+    o->frag_count = uint8_t((p[7] >> 4) & 0x03);
+    o->fec_class = uint8_t((p[7] >> 6) & 0x03);
+    o->band = uint8_t(p[8] & 0x07);
+    o->pose_hdr = (p[8] & 0x08) != 0;
+    o->fec_m = uint8_t((p[8] >> 4) & 0x07);
     o->caps = p[9];
     o->pose_seq = rd16(p + 10);
     uint16_t ps = rd16(p + 12);
@@ -57,7 +57,8 @@ uint32_t pack_dir_entry(const TileDirEntry& e) {
     return (uint32_t(e.len) & 0xFFFu) | ((uint32_t(e.qp) & 0x3Fu) << 12) |
            ((uint32_t(e.mode) & 0x7u) << 18) | ((uint32_t(e.res_level) & 0x3u) << 21) |
            (uint32_t(e.lossless) << 23) | (uint32_t(e.chroma444) << 24) |
-           (uint32_t(e.alpha) << 25);
+           (uint32_t(e.alpha) << 25) | ((uint32_t(e.tile_class) & 0x3u) << 26) |
+           ((uint32_t(e.ref_delta) & 0x3u) << 28);
 }
 
 TileDirEntry unpack_dir_entry(uint32_t v) {
@@ -69,6 +70,8 @@ TileDirEntry unpack_dir_entry(uint32_t v) {
     e.lossless = (v >> 23) & 1u;
     e.chroma444 = (v >> 24) & 1u;
     e.alpha = (v >> 25) & 1u;
+    e.tile_class = uint8_t((v >> 26) & 0x3u);
+    e.ref_delta = uint8_t((v >> 28) & 0x3u);
     return e;
 }
 

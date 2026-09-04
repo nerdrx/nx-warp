@@ -23,6 +23,23 @@ bool Link::offer(uint64_t now_us, size_t bytes, uint64_t* arrive_us) {
         ++stalls_;
     }
 
+    // Channel access: once per aggregate the link waits for the medium, which
+    // delays every datagram behind it equally and so preserves order.
+    bytes_since_access_ += bytes;
+    if (bytes_since_access_ >= cfg_.aggregate_bytes) {
+        bytes_since_access_ = 0;
+        double access = 0.0;
+        if (cfg_.jitter_sigma_us > 0.0) {
+            double u = std::max(1e-12, u01());
+            double v = u01();
+            double g = std::sqrt(-2.0 * std::log(u)) * std::cos(6.283185307179586 * v);
+            access = std::fabs(g) * cfg_.jitter_sigma_us;
+        }
+        if (cfg_.jitter_tail_p > 0.0 && u01() < cfg_.jitter_tail_p)
+            access += u01() * double(cfg_.jitter_tail_us);
+        next_free_us_ = std::max(next_free_us_, now_us) + uint64_t(access);
+    }
+
     // Queue depth in bytes at the head of the queue.
     uint64_t start = std::max(now_us, next_free_us_);
     uint64_t backlog_us = start - now_us;
@@ -44,20 +61,8 @@ bool Link::offer(uint64_t now_us, size_t bytes, uint64_t* arrive_us) {
 
     uint64_t serialize = uint64_t(double(bytes) * 8.0 * 1e6 / cfg_.capacity_bps);
     next_free_us_ = start + serialize;
-
-    double jitter = 0.0;
-    if (cfg_.jitter_sigma_us > 0.0) {
-        // Half-normal jitter: delays only, never early.
-        double u = std::max(1e-12, u01());
-        double v = u01();
-        double g = std::sqrt(-2.0 * std::log(u)) * std::cos(6.283185307179586 * v);
-        jitter = std::fabs(g) * cfg_.jitter_sigma_us;
-    }
-    if (cfg_.jitter_tail_p > 0.0 && u01() < cfg_.jitter_tail_p)
-        jitter += u01() * double(cfg_.jitter_tail_us);
-
     delivered_bytes_ += bytes;
-    *arrive_us = next_free_us_ + cfg_.base_delay_us + uint64_t(jitter);
+    *arrive_us = next_free_us_ + cfg_.base_delay_us;
     return true;
 }
 

@@ -41,10 +41,22 @@ struct FrameContext {
     const PoseHeader* pose = nullptr;  // replicated in the first datagram of a band
 };
 
-// Parity counts per class (PAPER 4.4), adjustable by measured loss.
+// Parity per class (PAPER 4.4).  v2 states the class parity as a *ratio* of the
+// realised group size rather than a fixed count, so a short group at the end of
+// a band does not pay 3 parity blocks for 3 data blocks.  Nominal ratios are the
+// paper's 30 / 10 / 0 percent, with a floor of one parity block for class A.
 struct FecPolicy {
-    int parity[3] = {3, 1, 0};
+    int ratio_pct[3] = {30, 10, 0};
+    int min_parity[3] = {1, 0, 0};
     void set_from_loss(double loss_fraction);
+    // Parity blocks for a group of k data datagrams of class `cls`.
+    int parity_for(uint8_t cls, int k) const {
+        if (cls > 2 || k <= 0) return 0;
+        int m = (ratio_pct[cls] * k + 50) / 100;
+        if (m < min_parity[cls]) m = min_parity[cls];
+        if (m > kFecMaxM) m = kFecMaxM;
+        return m;
+    }
 };
 
 class Packetizer {
@@ -56,6 +68,11 @@ class Packetizer {
         : cfg_(cfg), policy_(policy) {}
 
     void set_policy(OversizePolicy p) { policy_ = p; }
+    void set_class_break_min(size_t n) { class_break_min_ = n; }
+    // Reproduce the v1 packetizer for A/B measurement: runs homogeneous in
+    // tile_class and ref_delta, FEC groups in transmission order.
+    void set_v1_compat(bool on) { v1_ = on; }
+    bool v1_compat() const { return v1_; }
     void set_fec(const FecPolicy& f) { fec_ = f; }
     const FecPolicy& fec() const { return fec_; }
 
@@ -71,6 +88,8 @@ class Packetizer {
     OversizePolicy policy_;
     FecPolicy fec_;
     size_t oversize_tiles_ = 0;
+    size_t class_break_min_ = kClassBreakMin;
+    bool v1_ = false;
     uint8_t next_group_ = 0;
 };
 

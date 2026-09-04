@@ -6,26 +6,39 @@
 namespace nxt {
 
 void FecPolicy::set_from_loss(double loss) {
-    // PAPER 4.4: 2/0/0 below 0.1 %, 3/1/0 nominal, 4/2/1 above 2 %.
-    if (loss < 0.001) { parity[0] = 2; parity[1] = 0; parity[2] = 0; }
-    else if (loss > 0.02) { parity[0] = 4; parity[1] = 2; parity[2] = 1; }
-    else { parity[0] = 3; parity[1] = 1; parity[2] = 0; }
+    // PAPER 4.4's ladder, restated as ratios of the realised group size:
+    // 2/0/0 per 10 below 0.1 %, 3/1/0 nominal, 4/2/1 above 2 %.
+    if (loss < 0.001) {
+        ratio_pct[0] = 20; ratio_pct[1] = 0; ratio_pct[2] = 0;
+        min_parity[0] = 1; min_parity[1] = 0; min_parity[2] = 0;
+    } else if (loss > 0.02) {
+        ratio_pct[0] = 40; ratio_pct[1] = 20; ratio_pct[2] = 10;
+        min_parity[0] = 1; min_parity[1] = 1; min_parity[2] = 0;
+    } else {
+        ratio_pct[0] = 30; ratio_pct[1] = 10; ratio_pct[2] = 0;
+        min_parity[0] = 1; min_parity[1] = 0; min_parity[2] = 0;
+    }
 }
 
 namespace {
 
+// v2: tile_class and ref_delta live in the tile directory, so a run only has
+// to be homogeneous in layer, tile row and the lossless flag (the flag selects
+// the fragmentation rules for the whole datagram).
 struct RunKey {
-    uint8_t layer, ref_delta, cls;
+    uint8_t layer;
     uint16_t row;
     bool lossless;
     bool operator!=(const RunKey& o) const {
-        return layer != o.layer || ref_delta != o.ref_delta || cls != o.cls ||
-               row != o.row || lossless != o.lossless;
+        return layer != o.layer || row != o.row || lossless != o.lossless;
     }
 };
 
-RunKey key_of(const TileInput& t) {
-    return RunKey{t.layer_id, t.ref_delta, uint8_t(t.cls), t.row, t.lossless};
+RunKey key_of(const TileInput& t) { return RunKey{t.layer_id, t.row, t.lossless}; }
+
+// v1 additionally keyed the run on tile_class and ref_delta.
+bool same_run_v1(const TileInput& a, const TileInput& b) {
+    return a.cls == b.cls && a.ref_delta == b.ref_delta;
 }
 
 }  // namespace
@@ -51,14 +64,25 @@ Packetizer::Status Packetizer::packetize_band(uint8_t band,
         bool want_pose = pose_first && !pose_placed;
         size_t base = want_pose ? kPoseHeaderBytes : 0;
         uint16_t expect_col = tiles[i].col;
+        uint8_t run_cls = uint8_t(tiles[i].cls);
         while (i < tiles.size()) {
             const TileInput& t = tiles[i];
             if (key_of(t) != k) break;
             if (t.col != expect_col) break;  // non-contiguous
             if (t.bytes.size() > max_tile) break;  // handled below
+            // A class change breaks the run only once it is long enough to be
+            // worth ending; a short run absorbs it and takes the stronger
+            // protection of the two (TRANSPORT.md decision D20).
+            if (v1_) {
+                if (!run.empty() && !same_run_v1(*run.front(), t)) break;
+            } else if (!run.empty() && uint8_t(t.cls) != run_cls &&
+                       run.size() >= class_break_min_) {
+                break;
+            }
             size_t add = kDirEntryBytes + t.bytes.size();
             if (base + payload + add > budget) break;
             if (run.size() >= kMaxTilesPerRun) break;
+            if (uint8_t(t.cls) < run_cls) run_cls = uint8_t(t.cls);
             run.push_back(&t);
             payload += add;
             ++expect_col;
@@ -82,8 +106,7 @@ Packetizer::Status Packetizer::packetize_band(uint8_t band,
                 d.hdr.tile_first = uint16_t(cfg_.tile_index(t.row, t.col));
                 d.hdr.tile_count = 1;
                 d.hdr.layer_id = t.layer_id;
-                d.hdr.ref_delta = t.ref_delta;
-                d.hdr.tile_class = uint8_t(t.cls);
+                d.hdr.fec_class = uint8_t(t.cls);
                 d.hdr.band = band;
                 d.hdr.caps = cfg_.caps;
                 d.hdr.pose_seq = ctx.pose_seq;
@@ -95,8 +118,10 @@ Packetizer::Status Packetizer::packetize_band(uint8_t band,
                 e.len = 0;
                 e.qp = t.qp;
                 e.mode = uint8_t(TileMode::kWarpSkip);
+                e.tile_class = uint8_t(t.cls);
+                e.ref_delta = t.ref_delta;
                 wr32(d.plaintext.data(), pack_dir_entry(e));
-                per_class[uint8_t(t.cls)].push_back(std::move(d));
+                per_class[d.hdr.fec_class].push_back(std::move(d));
                 ++i;
                 continue;
             }
@@ -114,10 +139,9 @@ Packetizer::Status Packetizer::packetize_band(uint8_t band,
                 d.hdr.tile_first = uint16_t(cfg_.tile_index(t.row, t.col));
                 d.hdr.tile_count = 1;
                 d.hdr.layer_id = t.layer_id;
-                d.hdr.ref_delta = t.ref_delta;
                 d.hdr.frag_idx = uint8_t(f);
                 d.hdr.frag_count = uint8_t(nfrag - 1);
-                d.hdr.tile_class = uint8_t(t.cls);
+                d.hdr.fec_class = uint8_t(t.cls);
                 d.hdr.band = band;
                 d.hdr.caps = cfg_.caps;
                 d.hdr.pose_seq = ctx.pose_seq;
@@ -133,9 +157,11 @@ Packetizer::Status Packetizer::packetize_band(uint8_t band,
                 e.lossless = true;
                 e.chroma444 = t.chroma444;
                 e.alpha = t.alpha;
+                e.tile_class = uint8_t(t.cls);
+                e.ref_delta = t.ref_delta;
                 wr32(d.plaintext.data(), pack_dir_entry(e));
                 std::memcpy(d.plaintext.data() + kDirEntryBytes, t.bytes.data() + off, len);
-                per_class[uint8_t(t.cls)].push_back(std::move(d));
+                per_class[d.hdr.fec_class].push_back(std::move(d));
             }
             ++i;
             continue;
@@ -149,8 +175,7 @@ Packetizer::Status Packetizer::packetize_band(uint8_t band,
         d.hdr.tile_first = uint16_t(cfg_.tile_index(t0.row, t0.col));
         d.hdr.tile_count = uint8_t(run.size());
         d.hdr.layer_id = t0.layer_id;
-        d.hdr.ref_delta = t0.ref_delta;
-        d.hdr.tile_class = uint8_t(t0.cls);
+        d.hdr.fec_class = run_cls;
         d.hdr.band = band;
         d.hdr.caps = cfg_.caps;
         d.hdr.pose_seq = ctx.pose_seq;
@@ -178,11 +203,13 @@ Packetizer::Status Packetizer::packetize_band(uint8_t band,
             e.lossless = run[r]->lossless;
             e.chroma444 = run[r]->chroma444;
             e.alpha = run[r]->alpha;
+            e.tile_class = uint8_t(run[r]->cls);
+            e.ref_delta = run[r]->ref_delta;
             wr32(d.plaintext.data() + base + r * kDirEntryBytes, pack_dir_entry(e));
         }
         for (const TileInput* t : run)
             d.plaintext.insert(d.plaintext.end(), t->bytes.begin(), t->bytes.end());
-        per_class[uint8_t(t0.cls)].push_back(std::move(d));
+        per_class[run_cls].push_back(std::move(d));
     }
 
     // Group into FEC units.  Groups never cross band, class, layer or frame
@@ -191,8 +218,10 @@ Packetizer::Status Packetizer::packetize_band(uint8_t band,
     for (int c = 0; c < 3; ++c) {
         auto& v = per_class[c];
         if (v.empty()) continue;
-        int m = fec_.parity[c];
-        if (!cfg_.fec_enabled()) m = 0;
+        // The parity count depends on the realised group size, so it is decided
+        // per group below; a class whose ratio and floor are both zero never
+        // forms a group at all.
+        int m = cfg_.fec_enabled() ? fec_.parity_for(uint8_t(c), kFecMaxK) : 0;
         if (m == 0) {
             for (auto& d : v) {
                 SendUnit u;
@@ -207,6 +236,17 @@ Packetizer::Status Packetizer::packetize_band(uint8_t band,
             }
             continue;
         }
+        // Parity blocks are padded to the longest datagram in their group, so
+        // grouping datagrams of similar length cuts the padding waste.  It also
+        // spreads a group's members across the band in time, which makes a
+        // burst less likely to take more than m members of one group
+        // (TRANSPORT.md decision D22).  Membership is carried by fec_group /
+        // fec_idx, so the receiver does not care about the order.
+        if (!v1_)
+            std::stable_sort(v.begin(), v.end(),
+                             [](const PendingDatagram& a, const PendingDatagram& b) {
+                                 return a.plaintext.size() > b.plaintext.size();
+                             });
         size_t pos = 0;
         while (pos < v.size()) {
             size_t n = std::min<size_t>(kFecMaxK, v.size() - pos);
@@ -215,11 +255,12 @@ Packetizer::Status Packetizer::packetize_band(uint8_t band,
             u.band = band;
             u.layer = v[pos].hdr.layer_id;
             u.group = next_group_++;
-            u.m = m;
+            u.m = fec_.parity_for(uint8_t(c), int(n));
             for (size_t j = 0; j < n; ++j) {
                 v[pos + j].hdr.fec_group = u.group;
                 v[pos + j].hdr.fec_k = uint8_t(n);
                 v[pos + j].hdr.fec_idx = uint8_t(j);
+                v[pos + j].hdr.fec_m = uint8_t(u.m);
                 u.data.push_back(std::move(v[pos + j]));
             }
             out->push_back(std::move(u));

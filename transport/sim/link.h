@@ -13,8 +13,12 @@ struct LinkConfig {
     std::string name = "wifi";
     double capacity_bps = 300e6;
     uint32_t base_delay_us = 3000;
-    double jitter_sigma_us = 400.0;   // lognormal-ish jitter
-    double jitter_tail_p = 0.02;      // probability of a long jitter excursion
+    // Jitter is a channel-access delay charged once per aggregate, not per
+    // datagram: 802.11 delivers an A-MPDU in order, so datagrams on one path
+    // never overtake each other.  The delay shifts the whole aggregate.
+    double jitter_sigma_us = 400.0;
+    uint32_t aggregate_bytes = 32 * 1024;
+    double jitter_tail_p = 0.02;      // probability of a long access excursion
     uint32_t jitter_tail_us = 4000;
 
     double loss_random = 0.0;         // independent loss
@@ -57,6 +61,7 @@ class Link {
     std::mt19937_64 rng_;
     bool bad_ = false;
     uint64_t next_free_us_ = 0;
+    uint64_t bytes_since_access_ = 0;
     uint64_t offered_ = 0, dropped_loss_ = 0, dropped_queue_ = 0, stalls_ = 0;
     uint64_t delivered_bytes_ = 0, max_queue_bytes_ = 0;
     double u01() {

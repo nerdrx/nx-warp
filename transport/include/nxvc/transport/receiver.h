@@ -102,6 +102,8 @@ class Receiver {
 
     void set_epoch(uint16_t e) { epoch_ = e; }
     void set_negotiated_caps(uint8_t c) { caps_ = c; }
+    // v1 repaired a group as soon as k blocks were present; kept for A/B runs.
+    void set_eager_fec(bool on) { eager_fec_ = on; }
 
     // Feed one datagram.  Delivered tiles are appended to `tiles`, whose byte
     // spans point into `scratch` (valid until the next call).
@@ -167,6 +169,7 @@ class Receiver {
     Key subkey_up_[kMaxPaths];
     uint16_t epoch_ = 0;
     uint8_t caps_ = 0xFF;
+    bool eager_fec_ = false;
     uint64_t up_seq_ = 0;  // feedback nonce counter, (frame * bands + band)
     uint64_t frame_ext_ = 0;
     bool frame_started_ = false;

@@ -125,6 +125,7 @@ std::vector<Datagram> Sender::send_band(uint8_t band, std::span<const TileInput>
                 pp.hdr.pose_hdr = false;
                 pp.hdr.fec_group = u.group;
                 pp.hdr.fec_k = uint8_t(u.data.size());
+                pp.hdr.fec_m = uint8_t(u.m);
                 pp.hdr.fec_idx = uint8_t(u.data.size() + g);
                 pp.plaintext = std::move(parity[g]);
                 Datagram d = seal_one(pp, j.path, plan.tx_at(idx++));

@@ -92,7 +92,7 @@ Receiver::Receiver(const StreamConfig& cfg, const Aead* aead, const Key& session
 
 uint64_t Receiver::group_key(const DatagramHeader& h, uint8_t path_id) const {
     return (uint64_t(h.frame_id) << 20) | (uint64_t(h.band & 7) << 17) |
-           (uint64_t(h.tile_class & 3) << 15) | (uint64_t(h.layer_id & 15) << 11) |
+           (uint64_t(h.fec_class & 3) << 15) | (uint64_t(h.layer_id & 15) << 11) |
            (uint64_t(h.fec_group) << 3) | uint64_t(path_id & 3);
 }
 
@@ -181,7 +181,7 @@ bool Receiver::process(std::span<const uint8_t> wire, uint8_t path_id, uint64_t 
 
     if (h.is_parity()) {
         uint64_t dk = (uint64_t(h.fec_group) << 8) | uint64_t(h.fec_idx) |
-                      (uint64_t(h.tile_class) << 24) | (uint64_t(band) << 26) |
+                      (uint64_t(h.fec_class) << 24) | (uint64_t(band) << 26) |
                       (uint64_t(path_id) << 30) | (uint64_t(h.layer_id) << 33);
         if (!slot->seen_parity.insert(dk).second) { ++stats.duplicates; return true; }
         ++stats.parity_datagrams;
@@ -190,7 +190,7 @@ bool Receiver::process(std::span<const uint8_t> wire, uint8_t path_id, uint64_t 
         auto it = groups_.find(gk);
         if (it == groups_.end()) {
             GroupState gs;
-            gs.dec.reset(h.fec_k, kFecMaxM);
+            gs.dec.reset(h.fec_k, h.fec_m ? h.fec_m : kFecMaxM);
             gs.frame_id = h.frame_id;
             gs.band = band;
             gs.path_id = path_id;
@@ -257,8 +257,8 @@ bool Receiver::process(std::span<const uint8_t> wire, uint8_t path_id, uint64_t 
                 t.layer_id = h.layer_id;
                 t.row = cfg_.row_of(ti);
                 t.col = cfg_.col_of(ti);
-                t.cls = TileClass(h.tile_class);
-                t.ref_delta = h.ref_delta;
+                t.cls = TileClass(entries[i].tile_class);
+                t.ref_delta = entries[i].ref_delta;
                 t.pose_seq = h.pose_seq;
                 t.qp = entries[i].qp;
                 t.mode = TileMode(entries[i].mode);
@@ -278,7 +278,7 @@ bool Receiver::process(std::span<const uint8_t> wire, uint8_t path_id, uint64_t 
             auto it = groups_.find(gk);
             if (it == groups_.end()) {
                 GroupState gs;
-                gs.dec.reset(h.fec_k, kFecMaxM);
+                gs.dec.reset(h.fec_k, h.fec_m ? h.fec_m : kFecMaxM);
                 gs.frame_id = h.frame_id;
                 gs.band = band;
                 gs.path_id = path_id;
@@ -293,8 +293,14 @@ bool Receiver::process(std::span<const uint8_t> wire, uint8_t path_id, uint64_t 
     if (h.fec_k > 0 && depth < 2) {
         uint64_t gk = group_key(h, path_id);
         auto it = groups_.find(gk);
+        // Recovery waits until the group's last parity block has arrived (v2,
+        // decision D21).  Parity is sent after its group's data on the same
+        // path, so anything missing at that point was lost, not reordered.  A
+        // group whose tail was itself lost is retried at the band deadline.
         if (it != groups_.end() && !it->second.closed && !it->second.dec.complete() &&
-            it->second.dec.recoverable()) {
+            it->second.dec.recoverable() &&
+            (eager_fec_ || it->second.dec.tail_seen() ||
+             it->second.dec.all_blocks_seen())) {
             std::vector<ByteVec> rec;
             if (it->second.dec.recover(&rec)) {
                 it->second.closed = true;
@@ -325,6 +331,28 @@ ByteVec Receiver::band_deadline(uint16_t frame_id, uint8_t band, uint64_t now_us
     FrameRing::Slot* s = ring_.acquire(frame_id);
     if (!s || band >= cfg_.bands() || path_id >= kMaxPaths) return out;
     if (band < s->band_deadline_passed.size()) s->band_deadline_passed[band] = 1;
+
+    // Last chance to repair this band: a group whose tail parity was itself
+    // lost has not been attempted yet.  This runs before the deadline is marked
+    // passed, so a repaired tile still counts as received.
+    {
+        std::vector<ByteVec> rec;
+        for (auto& kv : groups_) {
+            GroupState& g = kv.second;
+            if (g.frame_id != frame_id || g.band != band) continue;
+            if (g.closed || g.dec.complete() || !g.dec.recoverable()) continue;
+            rec.clear();
+            if (!g.dec.recover(&rec)) continue;
+            g.closed = true;
+            for (ByteVec& r : rec) {
+                ++stats.fec_recovered;
+                stats.fec_recovered_bytes += r.size();
+                ++band_fec_rec_[band];
+                process(std::span<const uint8_t>(r.data(), r.size()), g.path_id, now_us,
+                        true, nullptr, 1);
+            }
+        }
+    }
 
     uint16_t first_row = cfg_.first_row_of_band(band);
     uint32_t n = cfg_.tiles_in_band(band);

@@ -11,7 +11,10 @@
 
 namespace nxt {
 
-inline constexpr uint8_t kVersion = 1;
+// v2 of the wire format: tile_class and ref_delta moved into the tile
+// directory so runs pack to the MTU, the parity count travels in the header,
+// and layer_id shrank to 2 bits.  See docs/TRANSPORT.md decisions D19..D23.
+inline constexpr uint8_t kVersion = 2;
 
 inline constexpr size_t kHeaderBytes = 24;
 inline constexpr size_t kTagBytes = 16;
@@ -29,6 +32,12 @@ inline constexpr int kFecMaxK = 10;
 inline constexpr int kFecMaxM = 4;
 inline constexpr int kMaxTilesPerRun = 255;
 inline constexpr int kMaxFeedbackBands = 3;
+inline constexpr int kMaxLayers = 4;   // layer_id is 2 bits on the wire
+
+// A run absorbs a tile-class change while it is still short, and breaks on one
+// once it has this many tiles.  Keeps runs near the MTU without letting a
+// single fovea tile pull a whole periphery run up to class A protection.
+inline constexpr size_t kClassBreakMin = 24;
 
 // ------------------------------------------------------------------ flags
 enum HeaderFlag : uint8_t {

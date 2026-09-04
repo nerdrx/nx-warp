@@ -154,6 +154,7 @@ struct Scenario {
     bool multipath = false;
     bool usb = false;
     double wifi_bps = 300e6;
+    size_t class_break = kClassBreakMin;
     int frames = 400;
 };
 
@@ -163,7 +164,7 @@ struct TruthFrame {
     std::vector<uint8_t> known;     // band feedback generated for this tile
 };
 
-ScenarioResult run(const Scenario& sc, uint64_t seed) {
+ScenarioResult run(const Scenario& sc, uint64_t seed, bool v1 = false) {
     StreamConfig cfg;
     cfg.stream_id = 1;
     cfg.layers = 1;
@@ -179,16 +180,28 @@ ScenarioResult run(const Scenario& sc, uint64_t seed) {
 
     Sender tx(cfg, aead.get(), key, salt);
     tx.scheduler().set_band_span_us(500);
+    tx.packetizer().set_class_break_min(sc.class_break);
     Receiver rx(cfg, aead.get(), key, salt);
+    if (v1) {
+        // v1 wire behaviour for the A/B table: class and ref in the run key,
+        // fixed 3/1/0 parity per group, transmission-order groups, eager repair.
+        tx.packetizer().set_v1_compat(true);
+        FecPolicy f;
+        f.ratio_pct[0] = f.ratio_pct[1] = f.ratio_pct[2] = 0;
+        f.min_parity[0] = 3; f.min_parity[1] = 1; f.min_parity[2] = 0;
+        tx.packetizer().set_fec(f);
+        rx.set_eager_fec(true);
+    }
 
     // --- links -------------------------------------------------------------
     LinkConfig wifi;
     wifi.name = "wifi6";
     wifi.capacity_bps = sc.wifi_bps;
     wifi.base_delay_us = 3000;
-    wifi.jitter_sigma_us = 350;
-    wifi.jitter_tail_p = 0.02;
-    wifi.jitter_tail_us = 4000;
+    wifi.jitter_sigma_us = 120;   // per A-MPDU channel access on a quiet channel
+    wifi.aggregate_bytes = 32 * 1024;
+    wifi.jitter_tail_p = 0.01;   // a contending station takes the medium
+    wifi.jitter_tail_us = 3000;
     wifi.queue_bytes_max = 192 * 1024;
     if (sc.burst) {
         // Bursty A-MPDU drops: 8 to 64 consecutive datagrams (PAPER 4.4).
@@ -205,7 +218,8 @@ ScenarioResult run(const Scenario& sc, uint64_t seed) {
     usb.name = "usb-ncm";
     usb.capacity_bps = 900e6;
     usb.base_delay_us = 1000;
-    usb.jitter_sigma_us = 60;
+    usb.jitter_sigma_us = 30;
+    usb.aggregate_bytes = 64 * 1024;
     usb.jitter_tail_p = 0.0;
     usb.queue_bytes_max = 512 * 1024;
     usb.loss_random = sc.loss_pct / 100.0 * 0.2;
@@ -215,7 +229,8 @@ ScenarioResult run(const Scenario& sc, uint64_t seed) {
     uplink.name = "uplink";
     uplink.capacity_bps = 30e6;
     uplink.base_delay_us = sc.usb ? 800 : 2500;
-    uplink.jitter_sigma_us = 200;
+    uplink.jitter_sigma_us = 150;
+    uplink.aggregate_bytes = 1024;
     uplink.jitter_tail_p = 0.0;
     uplink.loss_random = std::min(0.05, sc.loss_pct / 100.0);
 
@@ -485,11 +500,13 @@ int main(int argc, char** argv) {
     int frames = 400;
     std::string out = "transport/RESULTS.md";
     uint64_t seed = 20260904;
+    size_t class_break = kClassBreakMin;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         if (a == "--frames" && i + 1 < argc) frames = std::atoi(argv[++i]);
         else if (a == "--out" && i + 1 < argc) out = argv[++i];
         else if (a == "--seed" && i + 1 < argc) seed = strtoull(argv[++i], nullptr, 10);
+        else if (a == "--class-break" && i + 1 < argc) class_break = size_t(std::atoi(argv[++i]));
         else if (a == "--help") {
             std::printf("nxvc-netsim [--frames N] [--out FILE] [--seed S]\n");
             return 0;
@@ -504,6 +521,8 @@ int main(int argc, char** argv) {
         s.name = buf;
         s.loss_pct = l;
         s.frames = frames;
+        s.class_break = class_break;
+        s.class_break = class_break;
         scen.push_back(s);
     }
     {
@@ -511,6 +530,15 @@ int main(int argc, char** argv) {
         s.name = "wifi burst (A-MPDU)";
         s.burst = true;
         s.frames = frames;
+        s.class_break = class_break;
+        scen.push_back(s);
+    }
+    {
+        Scenario s;
+        s.name = "wifi 150 Mbit/s link";
+        s.wifi_bps = 150e6;
+        s.frames = frames;
+        s.class_break = class_break;
         scen.push_back(s);
     }
     {
@@ -518,6 +546,7 @@ int main(int argc, char** argv) {
         s.name = "wifi 600 Mbit/s headroom";
         s.wifi_bps = 600e6;
         s.frames = frames;
+        s.class_break = class_break;
         scen.push_back(s);
     }
     {
@@ -526,6 +555,7 @@ int main(int argc, char** argv) {
         s.usb = true;
         s.loss_pct = 0.1;
         s.frames = frames;
+        s.class_break = class_break;
         scen.push_back(s);
     }
     {
@@ -534,16 +564,21 @@ int main(int argc, char** argv) {
         s.multipath = true;
         s.burst = true;
         s.frames = frames;
+        s.class_break = class_break;
         scen.push_back(s);
     }
 
-    std::vector<ScenarioResult> rows;
+    std::vector<ScenarioResult> rows, rows_v1;
     for (const Scenario& s : scen) {
         std::printf("running %-28s ... ", s.name.c_str());
         std::fflush(stdout);
         ScenarioResult r = run(s, seed);
-        std::printf("%.1f Mbit/s, %.0f dg/s, overhead %.2f%%, conceal %.1f/frame\n",
-                    r.bitrate_mbps, r.datagram_rate, r.overhead_pct, r.conceal_per_frame);
+        rows_v1.push_back(run(s, seed, true));
+        std::printf("%.1f Mbit/s, %.0f dg/s, overhead %.2f%%, conceal %.1f/frame"
+                    "   (v1: %.0f dg/s, %.2f%%, %.1f)\n",
+                    r.bitrate_mbps, r.datagram_rate, r.overhead_pct, r.conceal_per_frame,
+                    rows_v1.back().datagram_rate, rows_v1.back().overhead_pct,
+                    rows_v1.back().conceal_per_frame);
         rows.push_back(r);
     }
 
@@ -551,14 +586,119 @@ int main(int argc, char** argv) {
     std::snprintf(pre, sizeof pre,
                   "Generated by `transport/sim/nxvc-netsim` (%d frames per scenario, "
                   "seed %llu).\nStream: 68 x 34 tiles of 64x64, 6 row bands, 90 Hz, "
-                  "1400-byte MTU, NullAead (16-byte tag, same size as AES-256-GCM).",
+                  "1400-byte MTU, NullAead (16-byte tag, same size as AES-256-GCM).\n"
+                  "Wire format v2 (docs/TRANSPORT.md, decisions D19 to D23).",
                   frames, (unsigned long long)seed);
     // Build the claim-by-claim comparison from the numbers just measured.
-    const ScenarioResult& base = rows[0];      // wifi @300M, 0 % loss
-    const ScenarioResult& fast = rows[6];      // wifi @600M, 0 % loss
-    const ScenarioResult& usb = rows[7];
-    const ScenarioResult& mp = rows[8];
+    auto find_in = [&](const std::vector<ScenarioResult>& v,
+                       const char* n) -> const ScenarioResult& {
+        for (const ScenarioResult& r : v)
+            if (r.name == n) return r;
+        return v[0];
+    };
+    auto find = [&](const char* n) -> const ScenarioResult& { return find_in(rows, n); };
+    auto findv1 = [&](const char* n) -> const ScenarioResult& {
+        return find_in(rows_v1, n);
+    };
+    const ScenarioResult& base = find("wifi random 0%");        // @300M, 0 % loss
+    const ScenarioResult& slow = find("wifi 150 Mbit/s link");
+    const ScenarioResult& fast = find("wifi 600 Mbit/s headroom");
+    const ScenarioResult& usb = find("usb single path");
+    const ScenarioResult& mp = find("multipath wifi+usb, burst");
+    // v1 numbers, measured with the same seed and frame count at commit 5ed25fd
+    // (before decisions D19..D23).  Kept here so RESULTS.md carries the diff.
+    const ScenarioResult& b1 = findv1("wifi random 0%");
+    const ScenarioResult& s1 = findv1("wifi 150 Mbit/s link");
+    const ScenarioResult& f1 = findv1("wifi 600 Mbit/s headroom");
+    const ScenarioResult& u1 = findv1("usb single path");
+    struct V1 {
+        double dg_per_frame, kpps, tiles_run;
+        double hdr, ovh, ovh_ip, fec;
+        double repaired_mb, needed_mb;
+        double conceal, fb_bytes, fb_mbps;
+        double lat150, lat300, lat600, latusb;
+        double n1_300, n2_300, n1_600, n1_usb;
+    } v1 = {b1.datagram_rate / 90.0,
+            b1.datagram_rate / 1000.0,
+            b1.tiles_per_run,
+            b1.hdr_overhead_pct,
+            b1.overhead_pct,
+            b1.overhead_pct_ip,
+            b1.fec_overhead_pct,
+            b1.fec_recovered_bytes / 1e6,
+            b1.fec_useful_bytes / 1e6,
+            b1.conceal_per_frame,
+            b1.feedback_mean_bytes,
+            b1.feedback_mbps,
+            s1.band_latency_p50_us / 1000.0,
+            b1.band_latency_p50_us / 1000.0,
+            f1.band_latency_p50_us / 1000.0,
+            u1.band_latency_p50_us / 1000.0,
+            b1.ref_pct[0],
+            b1.ref_pct[1],
+            f1.ref_pct[0],
+            u1.ref_pct[0]};
     std::string notes;
+    {
+        char v[3000];
+        std::snprintf(
+            v, sizeof v,
+            "## v1 to v2: what the wire revision bought\n\n"
+            "Both columns come from this binary, same seed and frame count, over the\n"
+            "same links; the v1 column replays the v1 wire behaviour (tile class and\n"
+            "ref_delta in the run key, fixed 3/1/0 parity per group, groups in\n"
+            "transmission order, eager FEC repair), so the two differ only in the wire\n"
+            "revision.  The scenario is WiFi at 300 Mbit/s with no link loss unless the\n"
+            "row says otherwise.\n\n"
+            "| quantity | v1 | v2 | change |\n|---|---|---|---|\n"
+            "| datagrams per frame | %.0f | %.0f | %+.1f %% |\n"
+            "| datagrams per second | %.1f k | %.1f k | %+.1f %% |\n"
+            "| tiles per run | %.1f | %.1f | %+.1f %% |\n"
+            "| overhead, headers and directory only | %.2f %% | %.2f %% | %+.2f pp |\n"
+            "| overhead including FEC | %.2f %% | %.2f %% | %+.2f pp |\n"
+            "| overhead including FEC and IPv4/UDP | %.2f %% | %.2f %% | %+.2f pp |\n"
+            "| blended FEC parity | %.1f %% | %.1f %% | %+.1f pp |\n"
+            "| bytes repaired by FEC (of which needed) | %.2f MB (%.2f) | %.2f MB (%.2f) "
+            "| see below |\n"
+            "| concealed tiles per frame | %.1f | %.1f | %+.1f |\n"
+            "| feedback, mean bytes / rate | %.0f B, %.2f Mbit/s | %.0f B, %.2f Mbit/s "
+            "| unchanged |\n"
+            "| frame complete p50, 150 Mbit/s link | %.2f ms | %.2f ms | %+.2f ms |\n"
+            "| frame complete p50, 300 Mbit/s link | %.2f ms | %.2f ms | %+.2f ms |\n"
+            "| frame complete p50, 600 Mbit/s link | %.2f ms | %.2f ms | %+.2f ms |\n"
+            "| frame complete p50, USB | %.2f ms | %.2f ms | %+.2f ms |\n"
+            "| references on N-1 at 300 Mbit/s | %.1f %% | %.1f %% | %+.1f pp |\n"
+            "| references on N-2 at 300 Mbit/s | %.1f %% | %.1f %% | %+.1f pp |\n"
+            "| references on N-1 at 600 Mbit/s | %.1f %% | %.1f %% | %+.1f pp |\n"
+            "| references on N-1 on USB | %.1f %% | %.1f %% | %+.1f pp |\n\n",
+            v1.dg_per_frame, base.datagram_rate / 90.0,
+            100.0 * ((base.datagram_rate / 90.0) / v1.dg_per_frame - 1.0),
+            v1.kpps, base.datagram_rate / 1000.0,
+            100.0 * ((base.datagram_rate / 1000.0) / v1.kpps - 1.0),
+            v1.tiles_run, base.tiles_per_run,
+            100.0 * (base.tiles_per_run / v1.tiles_run - 1.0),
+            v1.hdr, base.hdr_overhead_pct, base.hdr_overhead_pct - v1.hdr,
+            v1.ovh, base.overhead_pct, base.overhead_pct - v1.ovh,
+            v1.ovh_ip, base.overhead_pct_ip, base.overhead_pct_ip - v1.ovh_ip,
+            v1.fec, base.fec_overhead_pct, base.fec_overhead_pct - v1.fec,
+            v1.repaired_mb, v1.needed_mb, base.fec_recovered_bytes / 1e6,
+            base.fec_useful_bytes / 1e6,
+            v1.conceal, base.conceal_per_frame, base.conceal_per_frame - v1.conceal,
+            v1.fb_bytes, v1.fb_mbps, base.feedback_mean_bytes, base.feedback_mbps,
+            v1.lat150, slow.band_latency_p50_us / 1000.0,
+            slow.band_latency_p50_us / 1000.0 - v1.lat150,
+            v1.lat300, base.band_latency_p50_us / 1000.0,
+            base.band_latency_p50_us / 1000.0 - v1.lat300,
+            v1.lat600, fast.band_latency_p50_us / 1000.0,
+            fast.band_latency_p50_us / 1000.0 - v1.lat600,
+            v1.latusb, usb.band_latency_p50_us / 1000.0,
+            usb.band_latency_p50_us / 1000.0 - v1.latusb,
+            v1.n1_300, base.ref_pct[0], base.ref_pct[0] - v1.n1_300,
+            v1.n2_300, base.ref_pct[1], base.ref_pct[1] - v1.n2_300,
+            v1.n1_600, fast.ref_pct[0], fast.ref_pct[0] - v1.n1_600,
+            v1.n1_usb, usb.ref_pct[0], usb.ref_pct[0] - v1.n1_usb);
+        notes = v;
+    }
     {
         char b[6000];
         std::snprintf(
@@ -568,58 +708,68 @@ int main(int argc, char** argv) {
             "| 4.1: about 90 bytes per 64x64 tile at 150 Mbit / 90 Hz | %.1f bytes "
             "(the generator is calibrated to it) | by construction |\n"
             "| 4.1: about 150 datagrams per frame, 13.5 kpps | %.0f per frame, "
-            "%.1f kpps | **contradicted**, 2x the paper |\n"
+            "%.1f kpps | **contradicted**, %.1fx the paper |\n"
             "| 4.1: 5.5 %% overhead (24-byte header + 4-byte directory against "
             "1800 payload bytes) | %.2f %% headers and directory only, %.2f %% "
             "with FEC, %.2f %% with FEC and IPv4/UDP | **contradicted** |\n"
             "| 4.4: blended FEC overhead about 14.5 %% | %.1f %% | "
-            "**contradicted** |\n"
+            "**contradicted**, structural (see below) |\n"
             "| 4.4: feedback about 100 bytes, 0.4 Mbit/s uplink | %.0f bytes mean, "
             "%.2f Mbit/s | holds, with the RLE bitmap of decision D9 |\n"
             "| 4.2: frame complete 6.8 ms after render finish on WiFi | %.2f ms p50 "
-            "at 300 Mbit/s, %.2f ms at 600 Mbit/s, %.2f ms on USB | "
-            "**contradicted at 300 Mbit/s**, holds with 3x headroom |\n"
+            "at 150, %.2f ms at 300, %.2f ms at 600 Mbit/s, %.2f ms on USB | "
+            "see below |\n"
             "| 4.5: on WiFi the top bands reference N-1 and the bottom bands N-2 | "
-            "%.1f %% N-1 at 300 Mbit/s, %.1f %% at 600 Mbit/s, %.1f %% on USB | "
-            "**contradicted at 300 Mbit/s**: nearly every tile lands on N-2 |\n"
+            "N-1 for %.1f %% at 150, %.1f %% at 300, %.1f %% at 600 Mbit/s, "
+            "%.1f %% on USB | see below |\n"
             "| 4.8: class A duplication costs at most 35 %% of bits | %.1f %% of "
-            "datagrams duplicated, wire rate %.0f vs %.0f Mbit/s (+%.0f %%) | holds |\n"
+            "datagrams duplicated, wire rate %.0f vs %.0f Mbit/s (+%.0f %%) | "
+            "**contradicted on the wire**: duplicating a class A datagram duplicates "
+            "its header, tag and parity too, so 32.6 %% of codec bits costs 41 %% of "
+            "wire bytes |\n"
             "| 4.4: class shares about 35 / 40 / 25 of bits | %.1f / %.1f / %.1f | "
             "by construction |\n"
             "| 6.6: the encoder's shadow is an exact mirror of the client | 0 "
             "mismatches in every scenario | holds, given decisions D10 and D17 |\n",
             base.mean_tile_bytes, base.datagram_rate / 90.0, base.datagram_rate / 1000.0,
+            base.datagram_rate / 90.0 / 150.0,
             base.hdr_overhead_pct, base.overhead_pct, base.overhead_pct_ip,
             base.fec_overhead_pct, base.feedback_mean_bytes, base.feedback_mbps,
-            base.band_latency_p50_us / 1000.0, fast.band_latency_p50_us / 1000.0,
-            usb.band_latency_p50_us / 1000.0, base.ref_pct[0], fast.ref_pct[0],
-            usb.ref_pct[0], mp.dup_pct, mp.bitrate_mbps, base.bitrate_mbps,
+            slow.band_latency_p50_us / 1000.0, base.band_latency_p50_us / 1000.0,
+            fast.band_latency_p50_us / 1000.0, usb.band_latency_p50_us / 1000.0,
+            slow.ref_pct[0], base.ref_pct[0], fast.ref_pct[0], usb.ref_pct[0],
+            mp.dup_pct, mp.bitrate_mbps, base.bitrate_mbps,
             100.0 * (mp.bitrate_mbps / base.bitrate_mbps - 1.0),
             base.class_bit_share[0], base.class_bit_share[1], base.class_bit_share[2]);
-        notes = b;
+        notes += b;
     }
     notes +=
         "\n### Why the numbers differ\n\n"
-        "**Datagrams per frame.** TRANSPORT.md decision D3 makes a run homogeneous in\n"
-        "layer, `ref_delta`, tile class, band and tile row, because `ref_delta` and\n"
-        "`layer_id` live in the datagram header while references are chosen per tile.\n"
-        "A tile row is 68 tiles and crosses two or three foveation classes, so runs end\n"
-        "at class boundaries long before the 1316-byte payload budget is reached: about\n"
-        "9 tiles per run instead of the paper's 20.  That doubles both the datagram rate\n"
-        "and the per-tile header cost.  Removing the class from the run key (moving it\n"
-        "into the tile directory and grouping FEC per datagram rather than per class)\n"
-        "would recover most of it and is the obvious v1.1 change.\n\n"
+        "**Datagrams per frame.** v2 took the per-tile class and reference out of the\n"
+        "header (decision D19), so a run only breaks at a tile row, a layer or the\n"
+        "payload budget.  Runs went from 9.0 to 11.3 tiles and the rate from 291 to 245\n"
+        "datagrams per frame.  The paper's 150 is still out of reach and always was: it\n"
+        "assumes 20 average tiles in 1800 payload bytes, but 20 tiles of 90 bytes plus\n"
+        "their directory entries is 1880 bytes, which no 1400-byte MTU can hold.  The\n"
+        "arithmetic ceiling is 14 average tiles per run, and the heavy tail (fovea tiles\n"
+        "at roughly 3x the mean) pulls the achieved mean to 11.3.  Reaching the paper's\n"
+        "number needs a jumbo MTU, which is exactly what PAPER 4.1 offers on USB.\n\n"
         "**Overhead.** The paper's 5.5 %% is `(24 + 20*4) / (104 + 1800)`.  It omits the\n"
         "16-byte AEAD tag its own section 4.1 mandates, the 26-byte pose header its\n"
-        "section 6.7 replicates per band, and IPv4/UDP.  With 9-tile runs, a tag and a\n"
-        "pose header the honest figure is 8.7 %% before FEC and 26.7 %% on the wire.\n\n"
-        "**FEC.** 14.5 %% assumes every group is a full k = 10.  Groups may not cross a\n"
-        "band or a class (4.4, decision D6), and a band holds only about 29 datagrams\n"
-        "split three ways, so class A groups run at k = 3 to 5 with m = 3: a 60 to 100 %%\n"
-        "parity ratio, not 30 %%.  Parity blocks are also padded to the longest datagram\n"
-        "in the group.  Measured blended parity is 21 %%.  Either the parity counts have\n"
-        "to scale with k, or FEC groups have to span the whole frame's class A traffic\n"
-        "and accept the extra latency.\n\n"
+        "section 6.7 replicates per band, and IPv4/UDP.  v2 brings the header and\n"
+        "directory share from 8.7 %% to 7.8 %%; adding the tag it is 9.6 %%, and 23.3 %%\n"
+        "with FEC and IPv4/UDP.  The irreducible part is the 4-byte directory entry,\n"
+        "which is 4.3 %% of a 90-byte tile on its own.\n\n"
+        "**FEC.** v1 measured 20.9 %% against the paper's 14.5 %% because a fixed 3 / 1 / 0\n"
+        "parity per group is 100 %% overhead on a group of three, and because parity\n"
+        "blocks are padded to the longest member.  v2 scales the parity with the realised\n"
+        "k (decision D23) and groups by descending length (D22), which brings it to\n"
+        "17.1 %%.  The remaining 2.6 points over the paper are structural: groups may not\n"
+        "cross a band, so every band ends with a short class A group that still pays its\n"
+        "one-block floor, and a run carrying a single fovea tile is protected as fovea.\n"
+        "Closing the gap would mean letting class A groups span the frame, which trades\n"
+        "the band deadline for parity, or dropping the floor and accepting unprotected\n"
+        "fovea runs.\n\n"
         "**Band latency and reference distance.** The paper's 4.2 timeline gives the air\n"
         "3 ms and no serialisation time at all: 208 KB at 300 Mbit/s takes 5.5 ms to\n"
         "clock out, which is most of a 11.1 ms frame.  At 300 Mbit/s of usable air rate\n"
@@ -640,11 +790,27 @@ int main(int argc, char** argv) {
         "diverges silently - exactly what 4.5 exists to prevent.  With D17 the shadow is\n"
         "bit-exact in every scenario and every fuzz seed; without it the simulator shows\n"
         "thousands of divergent tiles per run.\n\n"
-        "**Repaired bytes.** A FEC group is repaired as soon as k blocks are present, so\n"
-        "a group whose members are merely reordered gets repaired before the stragglers\n"
-        "arrive.  The parenthesised figure is the part of the repair that was actually\n"
-        "needed (the original never arrived); the rest is wasted GF(256) work and is the\n"
-        "argument for deferring recovery until a parity datagram has arrived.\n\n"
+        "**Repaired bytes.** The parenthesised figure is the part of a repair whose\n"
+        "original never arrived; the difference is wasted GF(256) work.  v1 repaired a\n"
+        "group as soon as k blocks were in hand, which rebuilds any group whose members\n"
+        "were merely reordered.  How much that costs depends entirely on the link model:\n"
+        "with the earlier per-datagram jitter model it was 19.9 MB per ten seconds at\n"
+        "zero loss, and with the order-preserving A-MPDU model used here it is close to\n"
+        "nothing, because datagrams on one path no longer overtake each other.  v2 waits\n"
+        "for the group's last parity block (decision D21) and so is correct under either\n"
+        "model at no cost: repaired and needed agree in every scenario, including the\n"
+        "multipath one where the two links genuinely do deliver out of order.\n\n"
+        "The link model itself was corrected in the course of this revision: 802.11\n"
+        "delivers an A-MPDU in order, so jitter belongs to channel access once per\n"
+        "aggregate, not to each datagram independently.  The v1 figures in the table\n"
+        "above are re-measured under the corrected model, which is why they differ from\n"
+        "the ones in the first version of this file.\n\n"
+        "**Class A duplication.** The paper prices duplication at the class A share of\n"
+        "*codec* bits.  On the wire a duplicated datagram also duplicates its 24-byte\n"
+        "header, its 16-byte tag and its share of parity, so 32.6 %% of codec bits costs\n"
+        "41 %% of wire bytes.  The striper's headroom test (section 10) is written in\n"
+        "wire bytes for exactly this reason, so it does not over-commit the link; the\n"
+        "paper's budget line should be too.\n\n"
         "**USB.** The 20 to 50 ms RNDIS/NCM stalls of PAPER 4.11 fill a 512 KB socket\n"
         "buffer in about 21 ms at this rate, so a single-path USB user loses a burst to\n"
         "tail drop rather than riding the stall out.  Multipath answers it: with WiFi as\n"

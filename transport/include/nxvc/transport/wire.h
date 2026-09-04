@@ -14,13 +14,15 @@ struct DatagramHeader {
     uint16_t frame_id = 0;
     uint16_t tile_first = 0;
     uint8_t tile_count = 0;   // 0 == parity datagram
-    uint8_t layer_id = 0;     // 4 bits
-    uint8_t ref_delta = kRefIntra;  // 2 bits
+    uint8_t layer_id = 0;     // 2 bits
     uint8_t frag_idx = 0;     // 2 bits
     uint8_t frag_count = 0;   // 2 bits, fragments-minus-one
-    uint8_t tile_class = 0;   // 2 bits
+    // Protection class of the whole datagram: the highest-priority class of any
+    // tile it carries (v2; per-tile class now lives in the directory).
+    uint8_t fec_class = 0;    // 2 bits
     uint8_t band = 7;         // 3 bits, 7 == not band addressed
     bool pose_hdr = false;
+    uint8_t fec_m = 0;        // 3 bits, parity datagrams in this group
     uint8_t caps = 0;
     uint16_t pose_seq = 0;
     uint16_t path_seq = 0;    // 14 bits
@@ -47,6 +49,8 @@ struct TileDirEntry {
     bool lossless = false;
     bool chroma444 = false;
     bool alpha = false;
+    uint8_t tile_class = 0;          // 2 bits (v2)
+    uint8_t ref_delta = kRefIntra;   // 2 bits (v2)
 };
 
 uint32_t pack_dir_entry(const TileDirEntry& e);

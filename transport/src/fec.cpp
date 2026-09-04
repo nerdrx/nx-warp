@@ -191,6 +191,7 @@ void FecGroupDecoder::reset(int k, int m) {
     k_ = k;
     m_ = m;
     present_ = 0;
+    highest_idx_ = -1;
     block_len_ = 0;
     recovered_ = false;
     data_.assign(size_t(k), {});
@@ -215,6 +216,7 @@ void FecGroupDecoder::add_data(int idx, std::span<const uint8_t> dg) {
     data_[size_t(idx)] = std::move(b);
     have_data_[size_t(idx)] = 1;
     ++present_;
+    if (idx > highest_idx_) highest_idx_ = idx;
     block_len_ = std::max(block_len_, dg.size() + 2);
 }
 
@@ -226,6 +228,7 @@ void FecGroupDecoder::add_parity(int idx, std::span<const uint8_t> payload) {
     parity_[size_t(j)].assign(payload.begin() + 2, payload.end());
     have_parity_[size_t(j)] = 1;
     ++present_;
+    if (idx > highest_idx_) highest_idx_ = idx;
     block_len_ = std::max(block_len_, L + 2);
 }
 

@@ -25,8 +25,10 @@ struct Band {
     std::vector<ByteVec> store;
 };
 
+// `vary_class`: 0 = one class, 1 = random per tile (worst case for run packing),
+// 2 = contiguous column regions, which is what a foveation map actually looks like.
 Band make_band(const StreamConfig& c, uint8_t band, tt::Rng& r, size_t mean_bytes,
-               bool vary_class, bool vary_ref) {
+               int vary_class, bool vary_ref) {
     Band b;
     uint16_t r0 = c.first_row_of_band(band);
     for (uint16_t row = r0; row < r0 + c.rows_in_band(band); ++row)
@@ -34,7 +36,11 @@ Band make_band(const StreamConfig& c, uint8_t band, tt::Rng& r, size_t mean_byte
             TileInput t;
             t.row = row;
             t.col = col;
-            t.cls = vary_class ? TileClass(r.u32(3)) : TileClass::kB;
+            t.cls = vary_class == 0   ? TileClass::kB
+                    : vary_class == 1 ? TileClass(r.u32(3))
+                                      : TileClass(col < c.cols / 3        ? 0
+                                                  : col < 2 * c.cols / 3 ? 1
+                                                                         : 2);
             t.ref_delta = vary_ref ? uint8_t(r.u32(4)) : 0;
             t.qp = uint8_t(r.u32(64));
             t.mode = TileMode(r.u32(5));
@@ -57,7 +63,7 @@ void check_units(const StreamConfig& c, const std::vector<SendUnit>& units) {
             TT_CHECK(kHeaderBytes + d.plaintext.size() + kTagBytes <= c.mtu);
             TT_CHECK(d.hdr.tile_count >= 1);
             TT_EQ(int(d.hdr.band), int(u.band));
-            TT_EQ(int(d.hdr.tile_class), int(uint8_t(u.cls)));
+            TT_EQ(int(d.hdr.fec_class), int(uint8_t(u.cls)));
             TT_EQ(int(d.hdr.layer_id), int(u.layer));
             // Directory consistency: the lengths sum to the plaintext exactly.
             size_t off = d.hdr.pose_hdr ? kPoseHeaderBytes : 0;
@@ -93,7 +99,7 @@ static void size_invariants() {
     for (size_t mean : {8u, 40u, 90u, 400u, 650u}) {
         Packetizer p(c);
         for (uint8_t band = 0; band < c.bands(); ++band) {
-            Band b = make_band(c, band, r, mean, true, true);
+            Band b = make_band(c, band, r, mean, 1, true);
             PoseHeader pose;
             FrameContext ctx;
             ctx.frame_id = 5;
@@ -118,11 +124,11 @@ static void size_invariants() {
 }
 
 static void runs_are_homogeneous() {
-    tt::begin("runs are homogeneous in layer, ref_delta, class and row");
+    tt::begin("runs are homogeneous in layer and row; class/ref per tile");
     StreamConfig c = small_cfg();
     tt::Rng r(7);
     Packetizer p(c);
-    Band b = make_band(c, 0, r, 60, true, true);
+    Band b = make_band(c, 0, r, 60, 1, true);
     PoseHeader pose;
     FrameContext ctx;
     ctx.pose = &pose;
@@ -131,13 +137,47 @@ static void runs_are_homogeneous() {
     for (const SendUnit& u : units)
         for (const PendingDatagram& d : u.data) {
             uint32_t first = d.hdr.tile_first;
+            size_t off = d.hdr.pose_hdr ? kPoseHeaderBytes : 0;
+            uint8_t best = 3;
             for (uint32_t i = 0; i < d.hdr.tile_count; ++i) {
                 const TileInput& t = b.tiles[first + i];
-                TT_EQ(int(t.ref_delta), int(d.hdr.ref_delta));
-                TT_EQ(int(uint8_t(t.cls)), int(d.hdr.tile_class));
+                TileDirEntry e = unpack_dir_entry(
+                    rd32(d.plaintext.data() + off + i * kDirEntryBytes));
+                // v2: the per-tile class and reference live in the directory.
+                TT_EQ(int(e.ref_delta), int(t.ref_delta));
+                TT_EQ(int(e.tile_class), int(uint8_t(t.cls)));
                 TT_EQ(int(t.layer_id), int(d.hdr.layer_id));
+                if (uint8_t(t.cls) < best) best = uint8_t(t.cls);
             }
+            // The datagram takes the strongest protection class it carries.
+            TT_EQ(int(d.hdr.fec_class), int(best));
         }
+    tt::end();
+}
+
+// v2: with the class out of the run key, a run of average tiles must fill the
+// payload budget rather than stopping at a foveation boundary.
+static void runs_pack_to_the_mtu() {
+    tt::begin("runs pack to the MTU (v2): 90-byte tiles give >= 13 per run");
+    StreamConfig c = small_cfg();
+    tt::Rng r(1234);
+    Packetizer p(c);
+    size_t tiles = 0, runs = 0;
+    for (uint8_t band = 0; band < c.bands(); ++band) {
+        Band b = make_band(c, band, r, 45, 2, true);  // contiguous class regions
+        PoseHeader pose;
+        FrameContext ctx;
+        ctx.pose = &pose;
+        std::vector<SendUnit> units;
+        TT_CHECK(p.packetize_band(band, b.tiles, ctx, &units) == Packetizer::Status::kOk);
+        for (const SendUnit& u : units)
+            for (const PendingDatagram& d : u.data) {
+                tiles += d.hdr.tile_count;
+                ++runs;
+            }
+    }
+    double per_run = double(tiles) / double(runs);
+    TT_CHECK(per_run >= 13.0);
     tt::end();
 }
 
@@ -223,7 +263,7 @@ static void sender_datagrams_fit_mtu() {
     tx.begin_frame(1, pose, 0, 0);
     size_t total = 0;
     for (uint8_t band = 0; band < c.bands(); ++band) {
-        Band b = make_band(c, band, r, 120, true, false);
+        Band b = make_band(c, band, r, 120, 2, false);
         auto dgs = tx.send_band(band, b.tiles, 1000, 500, band + 1 == c.bands());
         TT_CHECK(!dgs.empty());
         for (const Datagram& d : dgs) {
@@ -259,6 +299,7 @@ int main() {
     budget_arithmetic();
     size_invariants();
     runs_are_homogeneous();
+    runs_pack_to_the_mtu();
     oversize_policies();
     sender_datagrams_fit_mtu();
     return tt::report("transport.packetizer");

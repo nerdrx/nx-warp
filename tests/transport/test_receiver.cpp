@@ -162,7 +162,16 @@ static void fec_recovery_in_the_live_path() {
         decode_header(d.bytes.data(), &h);
         (h.is_parity() ? parity : data)++;
     }
-    TT_CHECK(parity >= 3);
+    // v2: parity scales with the realised k (30 % for class A, floor 1), so a
+    // two-datagram class A group gets one parity block, not three.
+    TT_CHECK(parity >= 1);
+    FecPolicy pol;
+    TT_EQ(pol.parity_for(0, data), parity);
+    TT_EQ(pol.parity_for(0, 10), 3);
+    TT_EQ(pol.parity_for(0, 2), 1);
+    TT_EQ(pol.parity_for(1, 10), 1);
+    TT_EQ(pol.parity_for(1, 3), 0);
+    TT_EQ(pol.parity_for(2, 10), 0);
 
     std::vector<TileOutput> out;
     int dropped = 0;

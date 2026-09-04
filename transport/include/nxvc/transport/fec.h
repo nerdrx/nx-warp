@@ -66,9 +66,22 @@ class FecGroupDecoder {
     // Returns false if the group is unrecoverable.
     bool recover(std::vector<ByteVec>* out);
     bool has_data(int i) const { return i < int(have_data_.size()) && have_data_[i]; }
+    // v2: `m` is on the wire, so recovery can wait for real evidence of loss
+    // instead of firing whenever k blocks happen to be in hand.
+    bool has_any_parity() const {
+        for (uint8_t v : have_parity_)
+            if (v) return true;
+        return false;
+    }
+    bool all_blocks_seen() const { return present_ >= k_ + m_; }
+    // Highest fec_idx seen.  Once the group's last parity block has arrived,
+    // everything still missing was lost rather than reordered, because parity
+    // is transmitted after its group's data on the same path.
+    int highest_idx() const { return highest_idx_; }
+    bool tail_seen() const { return highest_idx_ >= k_ + m_ - 1; }
 
   private:
-    int k_ = 0, m_ = 0, present_ = 0;
+    int k_ = 0, m_ = 0, present_ = 0, highest_idx_ = -1;
     size_t block_len_ = 0;  // L + 2
     std::vector<ByteVec> data_, parity_;
     std::vector<uint8_t> have_data_, have_parity_;

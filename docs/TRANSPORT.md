@@ -1,6 +1,7 @@
 # NX Warp transport: normative wire format and state machines
 
-Version 1 (`NXT_VERSION = 1`). This document is normative for the `nxvc_transport`
+Version 2 (`NXT_VERSION = 2`). Version 1 was never deployed; the v1 to v2 diff is
+decisions D19 to D23 in Appendix A, and `transport/RESULTS.md` measures it. This document is normative for the `nxvc_transport`
 library (`transport/`). It refines PAPER.md sections 4.1 to 4.11, 6.1, 6.6 and 6.7.
 Where the paper leaves something open, or where the paper's arithmetic does not close,
 the decision is recorded here and repeated in Appendix A.
@@ -60,13 +61,14 @@ that protects the payload; a modified header therefore fails the tag check.
 | 2 | 2 | `frame_id` | 16 | wraps every 12.1 min at 90 Hz |
 | 4 | 2 | `tile_first` | 16 | linear tile index of the first tile of the run |
 | 6 | 1 | `tile_count` | 8 | tiles carried, 1..255; **0 marks a parity datagram** |
-| 7 | 1 | `layer_id` | [3:0] | 0 = base, 1..3 = enhancement |
-| 7 | 1 | `ref_delta` | [5:4] | reference frame = `frame_id - 1 - ref_delta`; 3 = intra |
-| 7 | 1 | `frag_idx` | [7:6] | fragment index of an oversize tile, else 0 |
-| 8 | 1 | `frag_count` | [1:0] | fragments minus one (0 = unfragmented), else 0 |
-| 8 | 1 | `tile_class` | [3:2] | 0=A, 1=B, 2=C |
-| 8 | 1 | `band` | [6:4] | 0..6; 7 = not band addressed |
-| 8 | 1 | `pose_hdr` | [7] | payload begins with the 26-byte frame/pose header (PAPER 6.7) |
+| 7 | 1 | `layer_id` | [1:0] | 0 = base, 1..3 = enhancement |
+| 7 | 1 | `frag_idx` | [3:2] | fragment index of an oversize tile, else 0 |
+| 7 | 1 | `frag_count` | [5:4] | fragments minus one (0 = unfragmented), else 0 |
+| 7 | 1 | `fec_class` | [7:6] | protection class of the **datagram**: the strongest class of any tile it carries |
+| 8 | 1 | `band` | [2:0] | 0..6; 7 = not band addressed |
+| 8 | 1 | `pose_hdr` | [3] | payload begins with the 26-byte frame/pose header (PAPER 6.7) |
+| 8 | 1 | `fec_m` | [6:4] | parity datagrams in this FEC group, 0..4; 0 = no FEC |
+| 8 | 1 | reserved | [7] | MUST be 0 |
 | 9 | 1 | `caps` | 8 | negotiated capability echo, see 2.2 |
 | 10 | 2 | `pose_seq` | 16 | index into the client's own 2 s pose ring |
 | 12 | 2 | `path_seq` | [13:0] | per-path datagram sequence, wraps at 16384 |
@@ -81,11 +83,14 @@ that protects the payload; a modified header therefore fails the tag check.
 Total 192 bits = 24 bytes.
 
 > **Decision D1.** The paper's field list sums to 178 bits, not the stated 192. The
-> 14 free bits are spent here on `frag_count` completion, `tile_class` (2), `band` (3),
-> `pose_hdr` (1) and `caps` (8) — that is 14 bits of new fields plus the 178 already
-> listed, which is 192 exactly. `tile_class` and `band` are on the wire because the
-> receiver must attribute FEC groups and build per-band feedback without decrypting
-> and parsing the payload first.
+> 14 free bits are spent on `frag_count` completion, a class field (2), `band` (3),
+> `pose_hdr` (1) and `caps` (8) — 192 exactly.
+>
+> **Decision D19 (v2).** The per-tile `ref_delta` and `tile_class` move out of the
+> header into the tile directory, and `layer_id` shrinks from 4 bits to 2 (the paper
+> defines exactly four layers). That frees 6 bits, of which 2 become `fec_class` —
+> the *datagram's* protection class, which the receiver needs before it can decrypt
+> — and 3 become `fec_m`. One bit is reserved. The header is still exactly 192 bits.
 
 ### 2.1 Flags nibble (byte 0, bits 4..7)
 
@@ -144,30 +149,45 @@ the ciphertext length equals the plaintext length, so
 | [23] | `lossless` | this tile is lossless coded |
 | [24] | `chroma444` | this tile is 4:4:4 |
 | [25] | `alpha` | this tile carries an alpha plane |
-| [31:26] | reserved | MUST be 0 (v2: edge mask / contour mode) |
+| [27:26] | `tile_class` | 0=A, 1=B, 2=C; 3 reserved (v2) |
+| [29:28] | `ref_delta` | reference frame = `frame_id - 1 - ref_delta`; 3 = intra (v2) |
+| [31:30] | reserved | MUST be 0 (v3: edge mask / contour mode) |
 
 The sum of all `len` in the directory plus `4*N` plus 26 if `pose_hdr` MUST equal
 the plaintext length. A receiver that finds otherwise MUST discard the whole
 datagram and count it as lost (it cannot know where the tile boundaries are).
 
-> **Decision D2.** The directory is 4 bytes as the paper mandates even though only
-> 24 bits are defined, because the paper's 5.5 % overhead figure is computed from a
-> 4-byte entry. The 8 spare bits are reserved for the v2 edge mask and contour mode
-> of PAPER 4.6.1.
+> **Decision D2.** The directory is 4 bytes as the paper mandates. In v2 thirty of
+> its thirty-two bits are defined; the class and reference fields moved here from the
+> header precisely so a run no longer has to be homogeneous in them.
 
 ### 3.2 Run homogeneity
 
-A run MUST be homogeneous in `stream_id`, `frame_id`, `layer_id`, `ref_delta`,
-`tile_class`, `band`, and **tile row**, and its tiles MUST be contiguous and
-ascending in `col`.
+A run MUST be homogeneous in `stream_id`, `frame_id`, `layer_id`, the `LOSSLESS`
+flag and **tile row**, and its tiles MUST be contiguous and ascending in `col`.
+`ref_delta` and `tile_class` may vary freely inside a run.
 
-> **Decision D3.** The paper puts `ref_delta` and `layer_id` in the datagram header
-> but assigns references per tile (4.5). Homogeneity is the only way to reconcile
-> the two without a per-tile reference field. Row homogeneity is already implied by
-> "a contiguous sequence of tiles from one tile row". Class homogeneity is required
-> because FEC parity counts are per class (4.4). The packetizer therefore starts a
-> new run whenever any of those keys changes; this is what makes runs shorter than
-> the MTU in practice and is measured by the simulator.
+The datagram's `fec_class` is the **strongest** (numerically smallest) `tile_class`
+of any tile it carries: a run containing one fovea tile is protected as fovea.
+
+> **Decision D3 (v1).** With `ref_delta` and `tile_class` in the header a run also
+> had to be homogeneous in both. A 68-tile row crosses two or three foveation
+> classes, so runs ended at class boundaries at about 9 tiles instead of filling the
+> payload budget, doubling the datagram rate and the per-tile header cost.
+>
+> **Decision D20 (v2).** Runs pack to the payload budget. To stop a single fovea tile
+> promoting a long periphery run to class A protection, the packetizer breaks a run
+> on a class change once the run already holds `kClassBreakMin` (24) tiles; below
+> that it absorbs the change and takes the stronger class. Measured effect at the
+> paper's tile-size distribution: 11.3 tiles per run against 9.0, and the header and
+> directory overhead falls from 8.7 % to 7.8 %.
+>
+> The ceiling is not 20 tiles. PAPER 4.1 derives 5.5 % from "a run of 20 average
+> tiles ... 1800 payload bytes", but 20 tiles of 90 bytes plus their 4-byte directory
+> entries is 1880 bytes, which does not fit a 1400-byte MTU under any header scheme.
+> At a 1400-byte MTU with FEC the arithmetic ceiling is 14 average tiles, and the
+> heavy-tailed real distribution (fovea tiles run 3x the mean) brings the measured
+> mean to 11.3.
 
 ### 3.3 Frame/pose header (26 bytes, PAPER 6.7)
 
@@ -306,11 +326,32 @@ every k-subset of rows is invertible.
 ```
 
 `k = 10` data datagrams per group; a group with fewer than 10 available datagrams
-uses `k =` that count (PAPER 4.4). Parity per class: A = 3, B = 1, C = 0, scaling to
-2/0/0 below 0.1 % measured loss and 4/2/1 above 2 %. Groups **never cross a band
-boundary**, and (Decision D6) never cross a `tile_class`, a `layer_id` or a `frame_id`
-either, because parity counts are per class and the receiver's recovery deadline is
-per band.
+uses `k =` that count (PAPER 4.4). Groups **never cross a band boundary**, and
+(Decision D6) never cross an `fec_class`, a `layer_id` or a `frame_id` either.
+
+**Parity count (v2).** The paper's 3 / 1 / 0 per ten becomes a *ratio* of the realised
+group size, so a short group at the end of a band does not pay three parity blocks
+for three data blocks:
+
+```
+  m(class, k) = clamp(max(min_parity[class], round(ratio[class] * k / 100)), 0, 4)
+```
+
+| measured loss | ratio A/B/C | floor A/B/C |
+|---|---|---|
+| < 0.1 % | 20 / 0 / 0 | 1 / 0 / 0 |
+| nominal | 30 / 10 / 0 | 1 / 0 / 0 |
+| > 2 % | 40 / 20 / 10 | 1 / 1 / 0 |
+
+`m` travels in the header (`fec_m`), so the receiver knows a group's full membership.
+
+**Group membership (v2, decision D22).** Within one class and band, datagrams are
+grouped by **descending payload length** rather than by transmission order. Parity
+blocks are padded to the longest member (6.1), so grouping datagrams of similar
+length removes most of the padding; it also scatters a group's members across the
+band in time, which makes an A-MPDU burst less likely to take more than `m` members
+of any one group. Membership is carried by `fec_group` and `fec_idx`, so the receiver
+is indifferent to order. Measured effect: blended parity falls from 19.2 % to 17.0 %.
 
 ### 6.1 The protected block
 
@@ -351,8 +392,16 @@ is unrecoverable and every missing datagram stays lost.
 
 ### 6.2 Recovery deadline
 
-A group is attempted as soon as `k` blocks are present, and abandoned when the band
-deadline (section 7) passes. There is no reorder buffer and no other wait.
+A group is attempted once `k` blocks are present **and at least one parity datagram
+has arrived**, and abandoned when the band deadline (section 7) passes. There is no
+reorder buffer and no other wait.
+
+> **Decision D21 (v2).** Attempting as soon as `k` blocks are present repairs groups
+> whose members were merely reordered: at 0 % loss the v1 simulator "recovered"
+> 19.9 MB per ten seconds, none of which was needed. Parity is transmitted after its
+> group's data on the same path, so requiring a parity block is real evidence that
+> something is missing. `fec_m` on the wire additionally lets the decoder size itself
+> exactly instead of assuming the maximum.
 
 ---
 
@@ -568,7 +617,9 @@ false. Grid edges: `N3x3` is clipped to the grid, so a corner has 4 neighbours.
 > state, which the fuzz test in `tests/transport/test_shadow_equivalence.cpp` checks
 > under arbitrary loss patterns.
 
-**Reference choice.** For tile `t` of frame `N`:
+**Reference choice.** The chosen `ref_delta` is written into the tile's directory
+entry (v2), so tiles with different references share a datagram. For tile `t` of
+frame `N`:
 
 ```
   for d in 0, 1, 2:
@@ -680,3 +731,8 @@ telemetry, never control input.
 | D16 | The deadline controller moves the deadline **later**, not earlier as PAPER 4.3 words it, because that is what "trading latency for fewer holes" means. |
 | D17 | A tile arriving after its band deadline is decoded and displayed but never acknowledged, so the sender's shadow is provably equal to the client's reference state under any loss pattern. |
 | D18 | The upstream (feedback) AEAD nonce counter is `frame_ext * bands + band`, derived from the feedback header rather than carried on the wire. |
+| D19 | **v2**: `ref_delta` and `tile_class` move from the header into the tile directory and `layer_id` shrinks to 2 bits; the freed bits become `fec_class` (2), `fec_m` (3) and one reserved bit. The header stays 192 bits. |
+| D20 | **v2**: runs pack to the payload budget, breaking on a tile-class change only once the run holds 24 tiles. The datagram's `fec_class` is the strongest class it carries. The paper's 20-tiles-per-run figure is arithmetically impossible at a 1400-byte MTU; the ceiling is 14 and the measured mean is 11.3. |
+| D21 | **v2**: FEC recovery waits for a parity datagram, not merely for `k` blocks, so reordered groups are never repaired needlessly. `fec_m` is on the wire to make the group's membership known. |
+| D22 | **v2**: FEC group membership within a class and band is by descending payload length, which removes parity padding waste and scatters a group across the band in time. |
+| D23 | **v2**: parity per group is a ratio of the realised `k` (30 / 10 / 0 percent nominal) with a floor of one parity block for class A, instead of a fixed 3 / 1 / 0 per group of any size. |
