@@ -109,6 +109,47 @@ static void plane_tile_origin(const Geometry &g, int p, int tx, int ty, int &ox,
     }
 }
 
+// Every field of nxvc_tile_info that is a copy of a parsed tile header.  Both
+// decoder paths -- the coded tile and the near-skip tile of 13.9 -- report
+// the same thing, so they report it through one function.
+static void fill_tile_info(nxvc_tile_info &ti, const TileParams &tp,
+                           const TileCoder &tc) {
+    ti.tile_index = (u16)tp.tile_index;
+    ti.payload_len = (u16)tp.payload_len;
+    ti.layer = (u8)tp.layer;
+    ti.eye = (u8)tp.eye;
+    ti.mode = (u8)tp.mode;
+    ti.res_level = (u8)tp.res_level;
+    ti.chroma444 = (u8)tp.chroma444;
+    ti.alpha_mode = (u8)tp.alpha_mode;
+    ti.table_set = (u8)tp.table_set;
+    ti.nsub_log2 = (u8)tp.nsub_log2;
+    ti.tskip = (u8)tp.tskip;
+    ti.wgt = (u8)tp.wgt;
+    ti.wm_id = (u8)tp.wm_id;
+    ti.intra_dir = (u8)tc.intra_dir;
+    ti.ref_sel = (u8)tp.ref_sel;
+    ti.mv_present = (u8)tp.mv_present;
+    ti.qp_delta = (i8)tp.qp_delta;
+    ti.mv_x = (i8)tp.mv_x;
+    ti.mv_y = (i8)tp.mv_y;
+    ti.disparity = (u16)tp.disparity;
+    ti.ref_delta =
+        (tp.mode == NXVC_MODE_INTRA || tp.mode == NXVC_MODE_STEREO)
+            ? 3u
+            : (u8)tp.ref_sel;
+    ti.alpha_value = (u8)tp.alpha_value;
+    ti.near_skip = (u8)tp.near_skip;
+    ti.near_skip_ac = (u8)tp.near_skip_ac;
+    ti.quad_mv = (u8)tp.quad_mv;
+    for (int p = 0; p < 3; ++p)
+        for (int k = 0; k < 3; ++k) ti.corr[p][k] = tp.corr[p][k];
+    for (int q = 0; q < 4; ++q) {
+        ti.qmv[q][0] = tp.qmv[q][0];
+        ti.qmv[q][1] = tp.qmv[q][1];
+    }
+}
+
 // ------------------------------------------------------------ tile indexing
 // Annex D D-3.  cols = eyes * cols_per_eye; the linear index is
 // row * cols + eye * cols_per_eye + tile_index, and a frame's tile rows are
@@ -140,6 +181,41 @@ static nw::RefImage ref_image(const RefPicture &rp, const Geometry &g, int p,
     im.channels = 1;
     im.max_value = rp.maxval[p];
     return im;
+}
+
+// ------------------------------------------------------------- intra refresh
+// A fixed pseudo-random permutation of the tile index.  Both refresh schemes
+// use it and neither owns it: the fixed scheme spreads the tiles it forces
+// across the period, the drift scheme staggers the hard-cap clocks so a whole
+// picture's caps do not fall due on one frame.  Either way there is no visible
+// refresh wave, which is the property PAPER 2.6 asks for.
+static inline u32 refresh_stagger(u32 tile) {
+    return (tile * 2654435761u) >> 8;
+}
+
+// Default drift gate, as a multiple of the quantiser noise floor qstep^2/12.
+// Swept over 1 / 2 / 4 / 8 / 16 on vr-mixed-1024-v2; see ref/RESULTS-inter-a.md.
+// Below it a tile's accumulated drift is no worse than what coding the tile
+// would have left behind anyway, so correcting it buys nothing.
+inline constexpr double kDriftGateDefault = 4.0;
+
+// The quadrant-vector search pattern of 13.10, in quarter samples.  A signed
+// nibble reaches -8..+7, so the pattern is a diamond at radius 3 and 6 plus
+// the eight unit neighbours: coarse enough to find a real disagreement
+// between quadrants, fine enough to land on it, and small enough that the
+// whole search is 21 predictions of one tile rather than four searches.
+inline constexpr int kQuadPatternSize = 21;
+inline constexpr int kQuadPattern[kQuadPatternSize][2] = {
+    { 0,  0}, { 3,  0}, {-3,  0}, { 0,  3}, { 0, -3}, { 6,  0}, {-6,  0},
+    { 0,  6}, { 0, -6}, { 3,  3}, { 3, -3}, {-3,  3}, {-3, -3}, { 1,  0},
+    {-1,  0}, { 0,  1}, { 0, -1}, { 1,  1}, { 1, -1}, {-1,  1}, {-1, -1},
+};
+
+// Rolling intra refresh (PAPER 2.6, Annex D).  1/T of the tiles are forced
+// INTRA every frame; each tile is refreshed exactly once every T frames.
+static inline bool refresh_due(u32 tile, u32 frame, u32 period) {
+    if (period <= 1) return true;
+    return ((refresh_stagger(tile) + frame) % period) == 0;
 }
 
 }  // namespace nxvc
@@ -220,6 +296,17 @@ extern "C" nxvc_encoder *nxvc_encoder_create(const nxvc_config *cfg,
     e->state_pre = e->state;
     e->dec.assign(e->g.ntiles(), TileDecision{});
     e->age_since_coded.assign(e->g.ntiles(), 0);
+    e->drift.assign(e->g.ntiles(), 0.0);
+    // The hard-cap clocks start staggered by the same permutation the fixed
+    // refresh uses, so that the caps of a whole picture do not fall due on one
+    // frame.  Without this every tile starts at age 0 and the cap alone would
+    // reintroduce the refresh wave PAPER 2.6 removes.
+    {
+        const u32 cap = e->cfg.intra_period ? e->cfg.intra_period : 180u;
+        e->age_since_intra.assign(e->g.ntiles(), 0);
+        for (u32 t = 0; t < e->g.ntiles(); ++t)
+            e->age_since_intra[t] = (u16)(refresh_stagger(t) % cap);
+    }
     e->views_cur.assign(eyes, nxvc_view{0, 0, 0, 1, -0.8, 0.8, 0.8, -0.8});
     for (int i = 0; i < 4; ++i) e->views_slot[i] = e->views_cur;
     for (int i = 0; i < 4; ++i) ref_alloc(e->ring.slot[i], e->g);
@@ -272,6 +359,8 @@ static u64 encoder_tools(const nxvc_encoder *e) {
     if (e->cfg.sign_hide) t |= NXVC_TOOL_SIGN_HIDE;
     if (e->cfg.inter) t |= NXVC_TOOL_INTER | NXVC_TOOL_WARP;
     if (e->cfg.stereo) t |= NXVC_TOOL_STEREO;
+    if (e->cfg.inter && e->cfg.near_skip) t |= NXVC_TOOL_NEAR_SKIP;
+    if (e->cfg.inter && e->cfg.quad_mv) t |= NXVC_TOOL_QUAD_MV;
     t |= NXVC_TOOL_RES_LEVEL;
     return t;
 }
@@ -466,11 +555,12 @@ static void store_ref_tile(TileCoder &tc, const Geometry &g, RefPicture &rp,
 // domain throughout.
 static void predict_tile(TileCoder &tc, const Geometry &g, const RefPicture &rp,
                          const WarpMatrix &wm, int eye, int tx, int ty,
-                         int mode, int mv_x, int mv_y, int np_limit = 0) {
+                         int mode, int mv_x, int mv_y, int np_limit = 0,
+                         const i8 (*qmv)[2] = nullptr) {
     const nw::Mode wmode =
         mode_needs_warp(mode) ? nw::kModeWarp : nw::kModeStatic;
     const int np = np_limit > 0 ? np_limit : tc.nplanes;
-    static thread_local std::vector<i32> full_buf;
+    static thread_local std::vector<i32> full_buf, quad_buf;
     for (int p = 0; p < np; ++p) {
         PlaneState &s = tc.pl[p];
         if (s.wpred.empty()) s.wpred.assign((size_t)s.size * s.size, 0);
@@ -483,6 +573,29 @@ static void predict_tile(TileCoder &tc, const Geometry &g, const RefPicture &rp,
         const i32 mv[2] = {plane_mv(mv_x, sub), plane_mv(mv_y, sub)};
         full_buf.assign((size_t)full * full, 0);
         warp_plane_tile(im, ox, oy, H, mv, wmode, full, full_buf.data());
+        if (qmv) {
+            // SYNTAX.md 13.10.  A quadrant changes the tile's VECTOR and
+            // nothing else: the four corner source coordinates, and therefore
+            // the in-tile interpolation basis, remain the tile's own.  The
+            // predictor adds the vector per sample after that interpolation
+            // (warp.h, warp_tile), so running the whole tile once per
+            // quadrant vector and keeping each quadrant's quarter is exactly
+            // the same samples an implementation gets by adding the
+            // quadrant's vector inside its sample loop -- which is what a GPU
+            // does, at no extra cost over a single-vector tile.
+            const int half = full / 2;
+            quad_buf.assign((size_t)full * full, 0);
+            for (int q = 0; q < 4; ++q) {
+                const i32 qv[2] = {plane_mv(mv_x + qmv[q][0], sub),
+                                   plane_mv(mv_y + qmv[q][1], sub)};
+                warp_plane_tile(im, ox, oy, H, qv, wmode, full, quad_buf.data());
+                const int x0 = (q & 1) * half, y0 = (q >> 1) * half;
+                for (int y = y0; y < y0 + half; ++y)
+                    for (int x = x0; x < x0 + half; ++x)
+                        full_buf[(size_t)y * full + x] =
+                            quad_buf[(size_t)y * full + x];
+            }
+        }
         const int factor = full / s.size;
         if (factor == 1) {
             for (size_t i = 0; i < s.wpred.size(); ++i) s.wpred[i] = full_buf[i];
@@ -620,14 +733,80 @@ static void finalize_recon(TileCoder &tc) {
                           tc.tp.tskip, tc.intra_dir, tc.dir_layer);
 }
 
-// Rolling intra refresh (PAPER 2.6, Annex D).  1/T of the tiles are forced
-// INTRA every frame, chosen by a fixed pseudo-random permutation of the tile
-// index rather than a column sweep, so there is no visible refresh wave; each
-// tile is refreshed exactly once every T frames.
-static inline bool refresh_due(u32 tile, u32 frame, u32 period) {
-    if (period <= 1) return true;
-    const u32 h = (tile * 2654435761u) >> 8;
-    return ((h + frame) % period) == 0;
+// ------------------------------------------------- near-skip fit (encoder)
+// SYNTAX.md 13.9 codes a per-plane block-mean field as a DC level and, under
+// `near_skip_ac`, one horizontal and one vertical ramp.  This fits that field
+// to the tile's actual prediction error by least squares and quantises it
+// through the DC-plane step, which is the same step a coded DC plane uses --
+// the near-skip form is the DC plane written in three bytes instead of an
+// entropy-coded unit, so it must quantise the same way.
+//
+// The three basis functions 1, gx and gy are orthogonal over the block grid,
+// so the fit is three independent projections and no matrix appears.
+static void fit_near_skip(const TileCoder &tc, int ac, i8 corr[3][3]) {
+    std::memset(corr, 0, 3 * 3);
+    for (int p = 0; p < kNearSkipPlanes && p < tc.nplanes; ++p) {
+        const PlaneState &s = tc.pl[p];
+        const int nb = s.nb, size = s.size;
+        int nb_log2 = 0;
+        while ((1 << nb_log2) < nb) ++nb_log2;
+        double sum = 0, sh = 0, sv = 0, sgg = 0;
+        for (int by = 0; by < nb; ++by)
+            for (int bx = 0; bx < nb; ++bx) {
+                double err = 0;
+                for (int j = 0; j < 8; ++j)
+                    for (int i = 0; i < 8; ++i) {
+                        const size_t k = (size_t)(by * 8 + j) * size + bx * 8 + i;
+                        err += (double)s.samples[k] -
+                               (double)clamp_i32(s.wpred[k], 0, s.maxval);
+                    }
+                err /= 64.0;
+                // The ramp the decoder builds is (g * 2^-nb_log2) times the
+                // dequantised amplitude, with g = 2*b - nb + 1; fit in those
+                // units so the projection and the reconstruction agree.
+                const double gx = (double)(2 * bx - nb + 1) / (double)nb;
+                const double gy = (double)(2 * by - nb + 1) / (double)nb;
+                sum += err;
+                sh += err * gx;
+                sv += err * gy;
+                sgg += gx * gx;
+            }
+        const int t = dc_plane_step(s);
+        auto q = [&](double v) -> i8 {
+            const double a = v < 0 ? -v : v;
+            // Plain rounding, not the dead zone: three bytes for a whole tile
+            // are not where a dead zone earns anything, and biasing the DC of
+            // a near-skip tile towards zero is exactly the drift this form
+            // exists to remove.
+            int lvl = (int)((a * 16.0 + (double)t / 2.0) / (double)t);
+            lvl = clamp_i32(lvl, 0, 127);
+            return (i8)(v < 0 ? -lvl : lvl);
+        };
+        corr[p][0] = q(sum / (double)(nb * nb));
+        if (ac && sgg > 0) {
+            corr[p][1] = q(sh / sgg);
+            corr[p][2] = q(sv / sgg);
+        }
+    }
+}
+
+// Mean squared error, per luma sample and in the coded domain, of a tile's
+// reconstruction against the source it was meant to reproduce.  `src` is the
+// luma the tile was loaded with; `tc.pl[0].samples` is what the client will
+// show.  This is the drift the client shadow has accumulated at this tile
+// position: for a coded tile it is the quantiser's own error, for a tile that
+// has been skipping it is everything the predictor has failed to follow since
+// the last coding, and the two are directly comparable because both are
+// squared error per sample.
+static double tile_drift_mse(const TileCoder &tc, const std::vector<i32> &src) {
+    const PlaneState &s = tc.pl[0];
+    if (src.size() != s.samples.size() || src.empty()) return 0.0;
+    double sse = 0;
+    for (size_t i = 0; i < src.size(); ++i) {
+        const double d = (double)src[i] - (double)s.samples[i];
+        sse += d * d;
+    }
+    return sse / (double)src.size();
 }
 
 }  // namespace nxvc
@@ -809,6 +988,12 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         tp.mv_y = d.mv_y;
         tp.disparity = d.disparity;
         tp.skipped = d.skipped;
+        tp.near_skip = d.near_skip;
+        tp.near_skip_ac = d.near_skip_ac;
+        tp.quad_mv = d.quad_mv;
+        std::memcpy(tp.corr, d.corr, sizeof(tp.corr));
+        std::memcpy(tp.qmv, d.qmv, sizeof(tp.qmv));
+        if (d.near_skip) tp.res_level = 0;
         tp.ref_sel = 0;
         tp.mv_present = 0;
         if (d.mode == NXVC_MODE_WARP_MV || d.mode == NXVC_MODE_STATIC_MV) {
@@ -843,13 +1028,53 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         // two lines: no eligible reference, and a refresh due.  A skipped tile
         // also cannot carry a coded alpha plane, which is checked below.
         if (!have_ref) return d;
-        if (refresh_due((u32)t, (u32)e->frame_number, intra_period)) return d;
-        const bool force_skip =
-            !e->cfg.alpha && t < (int)e->skip_map.size() && e->skip_map[t] != 0;
-
         const nxvc::PredState &ps = e->state[t];
         const int qp = qp_map ? clamp_i32(qp_map[t], 0, 63) : fp.base_qp;
         const double qstep = (double)kQStep[qp] / 16.0;
+        const double qnoise = qstep * qstep / 12.0;
+
+        // ---- the refresh.  Two schemes, one decision point.
+        //
+        // FIXED (drift_refresh == 0): 1/T of the tiles are forced INTRA every
+        // frame, whatever their state.  It refreshes tiles that did not need
+        // it and leaves tiles that did.
+        //
+        // DRIFT-DRIVEN (drift_refresh == 1): the encoder holds an exact client
+        // shadow, so it can measure what the fixed scheme can only assume.
+        // Two rules replace the one:
+        //
+        //   * the HARD CAP.  A tile position may go at most `intra_period`
+        //     frames without an INTRA.  This is the loss-recovery property
+        //     PAPER 2.6 states, and it is a cap rather than a period, so it is
+        //     never *early*.
+        //   * the DRIFT GATE.  A tile whose shadow has drifted further than
+        //     `drift_gate` from the source may not skip.  It does not force
+        //     INTRA: the drift is measured against the reference the tile
+        //     would predict from, and a coded WARP_MV residual usually
+        //     corrects it for fewer bits than a fresh intra tile.  The mode
+        //     decision below picks; the gate only removes the free option.
+        //
+        // The gate is stated as a multiple of the quantiser's own noise floor
+        // qstep^2/12, for the same reason 5.1's skip gate is: it is the error
+        // a *coded* tile would have left behind anyway, so drift below it buys
+        // nothing to correct, at any QP.  That is the rate-distortion content
+        // of the threshold -- the rate of the correction is folded into the
+        // multiplier, because the encoder cannot know it without coding the
+        // tile, and the multiplier is what was swept to set the default.
+        bool skip_forbidden = false;
+        if (e->cfg.drift_refresh) {
+            if (e->age_since_intra[t] >= intra_period) return d;
+            const double gate =
+                qnoise * (e->cfg.drift_gate_q8
+                              ? (double)e->cfg.drift_gate_q8 / 256.0
+                              : kDriftGateDefault);
+            skip_forbidden = e->drift[t] > gate;
+        } else if (refresh_due((u32)t, (u32)e->frame_number, intra_period)) {
+            return d;
+        }
+        const bool force_skip =
+            !skip_forbidden && !e->cfg.alpha &&
+            t < (int)e->skip_map.size() && e->skip_map[t] != 0;
 
         TileCoder probe;
         probe.g = &g;
@@ -872,7 +1097,6 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         // on.  qstep^2/12 is that floor for a uniform quantiser, and
         // `skip_thresh` is the multiple of it the encoder will accept.
         // Everything else goes to the rate-distortion comparison below.
-        const double qnoise = qstep * qstep / 12.0;
         const double skip_gate =
             qnoise * (e->cfg.skip_thresh ? (double)e->cfg.skip_thresh / 256.0
                                          : 1.0);
@@ -882,7 +1106,8 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         skip_cand.mv_y = ps.last_mv_y;
         skip_cand.skipped = 1;
         if (force_skip ||
-            (!e->cfg.alpha && skip_sse <= skip_gate * (double)npix))
+            (!skip_forbidden && !e->cfg.alpha &&
+             skip_sse <= skip_gate * (double)npix))
             return skip_cand;
         i64 best_sad = e->cfg.alpha ? (i64)1 << 62 : sad_pred(probe.pl[0]);
         TileDecision best_inter;
@@ -1029,7 +1254,30 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                              cand.mode,
                              cand.mode == NXVC_MODE_STEREO ? cand.disparity
                                                            : cand.mv_x,
-                             cand.mode == NXVC_MODE_STEREO ? 0 : cand.mv_y);
+                             cand.mode == NXVC_MODE_STEREO ? 0 : cand.mv_y, 0,
+                             cand.quad_mv ? cand.qmv : nullptr);
+            }
+            if (cand.near_skip) {
+                // The near-skip tile's whole cost: the tile header, the
+                // vector if it carries one, the quadrant deltas if it carries
+                // those, and its three or nine correction bytes.  No payload,
+                // no rANS lane flush.
+                double sse = 0;
+                for (int p = 0; p < kNearSkipPlanes && p < tc.nplanes; ++p) {
+                    PlaneState &ps = tc.pl[p];
+                    std::vector<i32> src = ps.samples;
+                    reconstruct_near_skip(ps, cand.corr[p], cand.near_skip_ac);
+                    for (size_t i = 0; i < src.size(); ++i) {
+                        const double dd = (double)src[i] - (double)ps.samples[i];
+                        sse += dd * dd;
+                    }
+                    ps.samples.swap(src);
+                }
+                if (dist_out) *dist_out = sse;
+                const double bits =
+                    8.0 * (kTileHeaderBytes + (tc.tp.mv_present ? 2 : 0) +
+                           (cand.quad_mv ? 4 : 0) + near_skip_bytes(tc.tp));
+                return sse + lambda * bits;
             }
             if (cand.mode == NXVC_MODE_WARP_SKIP) {
                 double sse = 0;
@@ -1050,7 +1298,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             int active = 1 << tc.tp.nsub_log2;
             if ((size_t)active > tc.units.size()) active = (int)tc.units.size();
             bits += 8 * (kTileHeaderBytes + 4 * active +
-                         (tc.tp.mv_present ? 2 : 0));
+                         (tc.tp.mv_present ? 2 : 0) + (cand.quad_mv ? 4 : 0));
             const double d = tile_distortion(tc);
             if (dist_out) *dist_out = d;
             return d + lambda * bits;
@@ -1069,6 +1317,88 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         // the error a coded tile would have made costs nothing extra -- which
         // is exactly the repeated-frame case, where every tile must skip.
         constexpr double kSkipPersist = 4.0;
+
+        // --- QUAD_MV (13.10).  Four vectors, one per 32x32 quadrant, as
+        // deltas from the tile vector.  The search is one pattern of deltas
+        // evaluated ONCE for the whole tile: predicting the tile at mv + d
+        // and reading quadrant q out of it gives exactly the samples a
+        // quadrant carrying delta d would have, because the vector is added
+        // per sample after the tile's corner interpolation.  So four
+        // quadrants are searched for the price of one.
+        auto refine_quad = [&](TileDecision &cand) {
+            if (!e->cfg.quad_mv || cand.skipped) return;
+            if (cand.mode != NXVC_MODE_WARP_MV &&
+                cand.mode != NXVC_MODE_STATIC_MV)
+                return;
+            const int half = lsz / 2;
+            i64 best_q[4] = {-1, -1, -1, -1};
+            i64 zero_total = 0;
+            int bq[4][2] = {};
+            for (int k = 0; k < kQuadPatternSize; ++k) {
+                const int dx = kQuadPattern[k][0], dy = kQuadPattern[k][1];
+                predict_tile(probe, g, refpic, fp.warp[eye], eye, col, row,
+                             cand.mode, cand.mv_x + dx, cand.mv_y + dy, 1);
+                const PlaneState &ps = probe.pl[0];
+                for (int q = 0; q < 4; ++q) {
+                    const int x0 = (q & 1) * half, y0 = (q >> 1) * half;
+                    i64 sad = 0;
+                    for (int y = y0; y < y0 + half; ++y)
+                        for (int x = x0; x < x0 + half; ++x) {
+                            const size_t i = (size_t)y * lsz + x;
+                            const i32 dd =
+                                ps.samples[i] - clamp_i32(ps.wpred[i], 0,
+                                                          ps.maxval);
+                            sad += dd < 0 ? -dd : dd;
+                        }
+                    if (dx == 0 && dy == 0) zero_total += sad;
+                    if (best_q[q] < 0 || sad < best_q[q]) {
+                        best_q[q] = sad;
+                        bq[q][0] = dx;
+                        bq[q][1] = dy;
+                    }
+                }
+            }
+            i64 total = 0;
+            for (int q = 0; q < 4; ++q) total += best_q[q];
+            // Four bytes of deltas, charged the same way the two-byte vector
+            // is charged in the search above.
+            const i64 bias = (i64)(4.0 * qstep * 8.0);
+            if (total + bias >= zero_total) return;
+            cand.quad_mv = 1;
+            for (int q = 0; q < 4; ++q) {
+                cand.qmv[q][0] = (i8)bq[q][0];
+                cand.qmv[q][1] = (i8)bq[q][1];
+            }
+        };
+
+        // --- NEAR_SKIP (13.9).  Fit the DC-and-ramps correction to whatever
+        // predictor `base` describes.  One fit serves both forms: the basis
+        // is orthogonal, so the DC-only candidate is the same fit with the
+        // two ramp bytes dropped.
+        auto fit_near_skip_cand = [&](const TileDecision &base,
+                                      TileDecision &out) {
+            out = base;
+            out.skipped = 0;
+            out.near_skip = 1;
+            out.near_skip_ac = 1;
+            TileCoder ns;
+            ns.g = &g;
+            ns.fp = &fp;
+            ns.tp = make_tile_params(t, eye, col);
+            apply_decision(ns.tp, out);
+            ns.setup();
+            load_tile(ns, g, img, eye, col, row);
+            const RefPicture &rp =
+                out.mode == NXVC_MODE_STEREO ? e->ring.slot[slot] : refpic;
+            predict_tile(ns, g, rp, fp.warp[eye],
+                         out.mode == NXVC_MODE_STEREO ? 0 : eye, col, row,
+                         out.mode,
+                         out.mode == NXVC_MODE_STEREO ? out.disparity : out.mv_x,
+                         out.mode == NXVC_MODE_STEREO ? 0 : out.mv_y, 0,
+                         out.quad_mv ? out.qmv : nullptr);
+            fit_near_skip(ns, 1, out.corr);
+        };
+
         TileDecision intra;
         double d_intra = 0, d_skip = 0, d_inter = 0;
         const double c_intra = score(intra, &d_intra);
@@ -1076,6 +1406,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         TileDecision best = intra;
         double d_ref = d_intra;
         if (!best_inter.skipped) {
+            refine_quad(best_inter);
             const double c_inter = score(best_inter, &d_inter);
             if (c_inter < best_cost) {
                 best_cost = c_inter;
@@ -1083,12 +1414,48 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             }
             if (d_inter < d_ref) d_ref = d_inter;
         }
-        score(skip_cand, &d_skip);
-        const double excess = d_skip > d_ref ? d_skip - d_ref : 0.0;
-        const double c_skip = d_skip + (kSkipPersist - 1.0) * excess + lambda;
-        if (c_skip < best_cost) {
-            best_cost = c_skip;
-            best = skip_cand;
+        // The near-skip candidates: one built on the free WARP_SKIP predictor
+        // -- the case the form exists for, a warped tile with a small smooth
+        // drift -- and, when the search found a better vector, one built on
+        // that.  Each is offered in both forms, which differ by six bytes.
+        if (e->cfg.near_skip && !e->cfg.alpha) {
+            TileDecision bases[2];
+            int nbase = 0;
+            // The skip predictor, but coded as WARP_MV carrying the stored
+            // vector explicitly.  A tile with a header is parsed without the
+            // decoder's per-tile state, and 4.1 is emphatic that a vector in
+            // a header is the vector itself; borrowing `last_mv` for a tile
+            // that has a header would put parsing back inside the state the
+            // transport design keeps it out of.  Two bytes buys that.
+            bases[nbase] = skip_cand;
+            bases[nbase].mode = NXVC_MODE_WARP_MV;
+            bases[nbase].ref_sel = want_d;
+            bases[nbase].skipped = 0;
+            ++nbase;
+            if (!best_inter.skipped) bases[nbase++] = best_inter;
+            for (int b = 0; b < nbase; ++b) {
+                TileDecision ns;
+                fit_near_skip_cand(bases[b], ns);
+                for (int ac = 1; ac >= 0; --ac) {
+                    ns.near_skip_ac = ac;
+                    double d_ns = 0;
+                    const double c_ns = score(ns, &d_ns);
+                    if (c_ns < best_cost) {
+                        best_cost = c_ns;
+                        best = ns;
+                    }
+                    if (d_ns < d_ref) d_ref = d_ns;
+                }
+            }
+        }
+        if (!skip_forbidden) {
+            score(skip_cand, &d_skip);
+            const double excess = d_skip > d_ref ? d_skip - d_ref : 0.0;
+            const double c_skip = d_skip + (kSkipPersist - 1.0) * excess + lambda;
+            if (c_skip < best_cost) {
+                best_cost = c_skip;
+                best = skip_cand;
+            }
         }
         return best;
     };
@@ -1132,6 +1499,13 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                     apply_decision(tc.tp, d);
                     tc.setup();
                     load_tile(tc, g, img, (int)eye, (int)col, (int)row);
+                    // The source luma, kept so the drift of the client shadow
+                    // can be measured against it once the tile is
+                    // reconstructed.  Only the emitting pass measures it: the
+                    // training pass reconstructs the same samples and would
+                    // just write the same number twice.
+                    std::vector<i32> src_luma;
+                    if (emit && e->cfg.drift_refresh) src_luma = tc.pl[0].samples;
                     if (e->cfg.transform_skip == 2)
                         tc.tp.tskip = tskip_decision(tc);
                     if (e->cfg.alpha) {
@@ -1153,14 +1527,45 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                                      (int)col, (int)row, d.mode,
                                      d.mode == NXVC_MODE_STEREO ? d.disparity
                                                                 : d.mv_x,
-                                     d.mode == NXVC_MODE_STEREO ? 0 : d.mv_y);
+                                     d.mode == NXVC_MODE_STEREO ? 0 : d.mv_y, 0,
+                                     d.quad_mv ? d.qmv : nullptr);
+                    }
+                    if (tc.tp.near_skip) {
+                        // 13.9: no coding units, no payload, no lanes.  The
+                        // header, the vector, the quadrant deltas and the
+                        // correction bytes are the whole tile.
+                        for (int p = 0; p < kNearSkipPlanes; ++p)
+                            reconstruct_near_skip(tc.pl[p], tc.tp.corr[p],
+                                                  tc.tp.near_skip_ac);
+                        tc.tp.payload_len = 0;
+                        if (emit) {
+                            pack_tile_header(rowbuf, tc.tp);
+                            emit_tile_fields(rowbuf, tc.tp);
+                            if (e->cfg.collect_stats) {
+                                e->stats.bytes_tile_headers +=
+                                    kTileHeaderBytes + tile_field_bytes(tc.tp);
+                                e->stats.tiles++;
+                            }
+                            store_tile(tc, g, &e->shadow_img, (int)eye,
+                                       (int)col, (int)row);
+                            if (e->cfg.drift_refresh)
+                                e->drift[t] = tile_drift_mse(tc, src_luma);
+                        }
+                        store_ref_tile(tc, g, cur, (int)eye, (int)col, (int)row);
+                        fill_tile_info(e->tiles[t], tc.tp, tc);
+                        e->tiles[t].qp = (u8)clamp_i32(
+                            fp.base_qp + tc.tp.qp_delta, 0, 63);
+                        continue;
                     }
                     if (d.skipped) {
                         reconstruct_skip(tc);
                         store_ref_tile(tc, g, cur, (int)eye, (int)col, (int)row);
-                        if (emit)
+                        if (emit) {
                             store_tile(tc, g, &e->shadow_img, (int)eye, (int)col,
                                        (int)row);
+                            if (e->cfg.drift_refresh)
+                                e->drift[t] = tile_drift_mse(tc, src_luma);
+                        }
                         nxvc_tile_info &ti = e->tiles[t];
                         ti.tile_index = (u16)col;
                         ti.eye = (u8)eye;
@@ -1296,29 +1701,22 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                         }
                         tc.tp.payload_len = (int)payload.size();
                         pack_tile_header(rowbuf, tc.tp);
-                        if (tc.tp.mv_present) {
-                            if (tc.tp.mode == NXVC_MODE_STEREO) {
-                                rowbuf.u16v((u32)(tc.tp.disparity & 0xfff));
-                            } else {
-                                rowbuf.u8v((u8)(i8)tc.tp.mv_x);
-                                rowbuf.u8v((u8)(i8)tc.tp.mv_y);
-                            }
-                        }
-                        if (tc.tp.alpha_mode == 1)
-                            rowbuf.u8v((u8)tc.tp.alpha_value);
+                        emit_tile_fields(rowbuf, tc.tp);
                         rowbuf.raw(payload.data(), payload.size());
                         if (e->cfg.collect_stats) {
                             e->stats.bytes_tile_headers +=
-                                kTileHeaderBytes + (tc.tp.mv_present ? 2 : 0) +
-                                (tc.tp.alpha_mode == 1 ? 1 : 0);
+                                kTileHeaderBytes + tile_field_bytes(tc.tp);
                             e->stats.bytes_payload += payload.size();
                         }
                     }
                     finalize_recon(tc);
                     store_ref_tile(tc, g, cur, (int)eye, (int)col, (int)row);
-                    if (emit)
+                    if (emit) {
                         store_tile(tc, g, &e->shadow_img, (int)eye, (int)col,
                                    (int)row);
+                        if (e->cfg.drift_refresh)
+                            e->drift[t] = tile_drift_mse(tc, src_luma);
+                    }
 
                     nxvc_tile_info &ti = e->tiles[t];
                     ti.tile_index = (u16)tc.tp.tile_index;
@@ -1458,6 +1856,17 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             if (e->age_since_coded[t] < 0xffffu) ++e->age_since_coded[t];
         } else {
             e->age_since_coded[t] = 0;
+        }
+        // The hard-cap clock counts frames since the tile position last
+        // carried an INTRA, which is the only mode that makes the position
+        // independent of every reference before it -- the property the cap
+        // exists to bound.  A coded inter tile resets the drift instead, and
+        // the emit pass has already measured it.
+        if (d.mode == NXVC_MODE_INTRA) {
+            e->age_since_intra[t] = 0;
+            e->drift[t] = 0.0;
+        } else if (e->age_since_intra[t] < 0xffffu) {
+            ++e->age_since_intra[t];
         }
         e->tiles[t].age_since_coded = e->age_since_coded[t];
     }
@@ -1954,7 +2363,9 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
                 TileParams tp;
                 unpack_tile_header(w0, w1, tp);
                 if ((w0 >> 3) & 1) return NXVC_ERR_BITSTREAM;  // reserved bit
-                if (w1 >> 28) return NXVC_ERR_BITSTREAM;       // reserved field
+                // word1 bits 28-30 are near_skip, near_skip_ac and quad_mv
+                // (syntax v1.5); bit 31 is still reserved and must be zero.
+                if (w1 >> 31) return NXVC_ERR_BITSTREAM;
                 if (tp.layer != 0) return NXVC_ERR_UNSUPPORTED;
                 // Annex D D-3: the eye field must agree with the eye the
                 // tile's position in the frame derives.
@@ -1994,6 +2405,29 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
                     return NXVC_ERR_BITSTREAM;
                 if (tp.alpha_mode != 0 && !g.alpha) return NXVC_ERR_BITSTREAM;
                 if ((u32)tp.tile_index != col) return NXVC_ERR_BITSTREAM;
+                // --- syntax v1.5: NEAR_SKIP and QUAD_MV (SYNTAX.md 13.9,
+                // 13.10).  Both are per-tile bits behind a stream tool bit, so
+                // a stream without the tool bit decodes exactly as before.
+                if (tp.near_skip && !(d->si.tools & NXVC_TOOL_NEAR_SKIP))
+                    return NXVC_ERR_BITSTREAM;
+                if (tp.near_skip_ac && !tp.near_skip) return NXVC_ERR_BITSTREAM;
+                if (tp.near_skip) {
+                    // A near-skip tile IS its prediction plus a mean field:
+                    // an intra one would be a picture built from nine bytes,
+                    // a coefficient payload would contradict the bit, a
+                    // res_level would put the correction in a domain the
+                    // upsampler then stretches, and a coded alpha plane has
+                    // no correction defined for it.
+                    if (tp.mode == NXVC_MODE_INTRA) return NXVC_ERR_BITSTREAM;
+                    if (tp.payload_len != 0) return NXVC_ERR_BITSTREAM;
+                    if (tp.res_level != 0) return NXVC_ERR_BITSTREAM;
+                    if (tp.alpha_mode == 2) return NXVC_ERR_BITSTREAM;
+                }
+                if (tp.quad_mv && !(d->si.tools & NXVC_TOOL_QUAD_MV))
+                    return NXVC_ERR_BITSTREAM;
+                if (tp.quad_mv && !(tp.mode == NXVC_MODE_WARP_MV ||
+                                    tp.mode == NXVC_MODE_STATIC_MV))
+                    return NXVC_ERR_BITSTREAM;
                 off = tb.i;
                 if (tp.mv_present) {
                     if (off + 2 > frame_bytes) return NXVC_ERR_TRUNCATED;
@@ -2008,10 +2442,27 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
                     }
                     off += 2;
                 }
+                if (tp.quad_mv) {
+                    if (off + 4 > frame_bytes) return NXVC_ERR_TRUNCATED;
+                    for (int q = 0; q < 4; ++q) {
+                        tp.qmv[q][0] = (i8)sign_nibble(buf[off + q]);
+                        tp.qmv[q][1] = (i8)sign_nibble(buf[off + q] >> 4);
+                    }
+                    off += 4;
+                }
                 if (tp.alpha_mode == 1) {
                     if (off + 1 > frame_bytes) return NXVC_ERR_TRUNCATED;
                     tp.alpha_value = buf[off];
                     off += 1;
+                }
+                if (tp.near_skip) {
+                    const int nb = near_skip_bytes(tp);
+                    if (off + (size_t)nb > frame_bytes) return NXVC_ERR_TRUNCATED;
+                    for (int pl = 0; pl < kNearSkipPlanes; ++pl)
+                        for (int k = 0; k < (tp.near_skip_ac ? 3 : 1); ++k)
+                            tp.corr[pl][k] =
+                                (i8)buf[off + pl * (tp.near_skip_ac ? 3 : 1) + k];
+                    off += (size_t)nb;
                 }
                 if (off + (size_t)tp.payload_len > frame_bytes)
                     return NXVC_ERR_TRUNCATED;
@@ -2055,7 +2506,25 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
                                  (int)col, (int)row, tp.mode,
                                  tp.mode == NXVC_MODE_STEREO ? tp.disparity
                                                              : tp.mv_x,
-                                 tp.mode == NXVC_MODE_STEREO ? 0 : tp.mv_y);
+                                 tp.mode == NXVC_MODE_STEREO ? 0 : tp.mv_y, 0,
+                                 tp.quad_mv ? tp.qmv : nullptr);
+                }
+                if (tp.near_skip) {
+                    for (int pl = 0; pl < kNearSkipPlanes; ++pl)
+                        reconstruct_near_skip(tc.pl[pl], tp.corr[pl],
+                                              tp.near_skip_ac);
+                    if (tc.nplanes > 3) {
+                        PlaneState &a = tc.pl[3];
+                        const i32 av = tp.alpha_mode == 1 ? tp.alpha_value : 255;
+                        for (auto &v : a.samples) v = av;
+                    }
+                    store_tile(tc, g, img, (int)eye, (int)col, (int)row);
+                    store_ref_tile(tc, g, cur, (int)eye, (int)col, (int)row);
+                    nxvc::update_pred_state(d->state[t], tp.mode, tp.mv_x,
+                                            tp.mv_y, tp.disparity);
+                    fill_tile_info(ti, tp, tc);
+                    ti.qp = (u8)clamp_i32(fp.base_qp + tp.qp_delta, 0, 63);
+                    continue;
                 }
                 tc.build_units();
                 int np = coded_planes(tc);
@@ -2071,31 +2540,7 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
                 nxvc::update_pred_state(d->state[t], tp.mode, tp.mv_x, tp.mv_y,
                                         tp.disparity);
 
-                ti.tile_index = (u16)tp.tile_index;
-                ti.payload_len = (u16)tp.payload_len;
-                ti.layer = (u8)tp.layer;
-                ti.eye = (u8)tp.eye;
-                ti.mode = (u8)tp.mode;
-                ti.res_level = (u8)tp.res_level;
-                ti.chroma444 = (u8)tp.chroma444;
-                ti.alpha_mode = (u8)tp.alpha_mode;
-                ti.table_set = (u8)tp.table_set;
-                ti.nsub_log2 = (u8)tp.nsub_log2;
-                ti.tskip = (u8)tp.tskip;
-                ti.wgt = (u8)tp.wgt;
-                ti.wm_id = (u8)tp.wm_id;
-                ti.intra_dir = (u8)tc.intra_dir;
-                ti.ref_sel = (u8)tp.ref_sel;
-                ti.mv_present = (u8)tp.mv_present;
-                ti.qp_delta = (i8)tp.qp_delta;
-                ti.mv_x = (i8)tp.mv_x;
-                ti.mv_y = (i8)tp.mv_y;
-                ti.disparity = (u16)tp.disparity;
-                ti.ref_delta = (tp.mode == NXVC_MODE_INTRA ||
-                                tp.mode == NXVC_MODE_STEREO)
-                                   ? 3u
-                                   : (u8)tp.ref_sel;
-                ti.alpha_value = (u8)tp.alpha_value;
+                fill_tile_info(ti, tp, tc);
                 ti.qp = (u8)clamp_i32(fp.base_qp + tp.qp_delta, 0, 63);
             }
         }

@@ -47,8 +47,15 @@ extern "C" {
  *       picture per eye and row-major/eye-minor tile rows, the four-slot
  *       reference ring addressed by `ref_sel`, and the 12-bit STEREO
  *       `disparity` field replacing mv_x/mv_y.  See docs/SYNTAX.md 8.
+ *   5 : Phase 2 inter efficiency -- tool bit 24 NEAR_SKIP (tile-header word1
+ *       bits 28-29: a warped tile whose whole residual is a DC offset, or a
+ *       DC plus one horizontal and one vertical ramp, carried in three or
+ *       nine signed bytes instead of an entropy-coded payload) and tool bit
+ *       25 QUAD_MV (word1 bit 30: four motion vectors, one per 32x32
+ *       quadrant, as signed nibble deltas from the tile vector, over the
+ *       tile's own warp corner basis).  See docs/SYNTAX.md 13.9 and 13.10.
  */
-#define NXVC_BITSTREAM_MINOR 4
+#define NXVC_BITSTREAM_MINOR 5
 
 /* "nxvc_ref <major>.<minor> (syntax v1.<minor>)" -- a static string, safe to
  * call before any object exists.  Used by the Python bindings to check that
@@ -126,6 +133,11 @@ typedef enum nxvc_tile_mode {
  * actually free.  The substance of D-5 is unchanged: it is undefined in
  * version 1 and a v1 decoder MUST reject a stream that sets it. */
 #define NXVC_TOOL_FILTER_CATMULLROM (1ull << 23)
+/* Phase 2 inter efficiency (docs/SYNTAX.md 13.9 and 13.10).  Both require
+ * INTER; NEAR_SKIP additionally requires WARP only in the sense that its
+ * tiles are warped ones, which the mode already gates. */
+#define NXVC_TOOL_NEAR_SKIP       (1ull << 24)
+#define NXVC_TOOL_QUAD_MV         (1ull << 25)
 
 /* Tools this reference decoder implements. */
 #define NXVC_TOOLS_SUPPORTED                                                  \
@@ -134,7 +146,8 @@ typedef enum nxvc_tile_mode {
      NXVC_TOOL_LOSSLESS | NXVC_TOOL_CUSTOM_TABLES | NXVC_TOOL_NSUB_VAR |      \
      NXVC_TOOL_PER_TILE_CHROMA | NXVC_TOOL_YCOCGR | NXVC_TOOL_WM_ID |        \
      NXVC_TOOL_INTRA_DIR | NXVC_TOOL_CTX_V2 | NXVC_TOOL_SIGN_HIDE |           \
-     NXVC_TOOL_INTER | NXVC_TOOL_WARP | NXVC_TOOL_STEREO)
+     NXVC_TOOL_INTER | NXVC_TOOL_WARP | NXVC_TOOL_STEREO |                    \
+     NXVC_TOOL_NEAR_SKIP | NXVC_TOOL_QUAD_MV)
 
 /* ---------------------------------------------------------------- images */
 /* 8-bit planar image.  plane[0]=Y/R', plane[1]=Co/G', plane[2]=Cg/B',
@@ -201,7 +214,29 @@ typedef struct nxvc_config {
                                    0 = the default 180 (PAPER 2.6).  Every
                                    frame 1/T of the tiles are forced INTRA by
                                    a fixed pseudo-random permutation.  1 = all
-                                   intra every frame.                       */
+                                   intra every frame.  Under drift_refresh
+                                   this is the HARD AGE CAP instead: a tile
+                                   position may go at most T frames without an
+                                   INTRA, and the loss-recovery bound PAPER 2.6
+                                   states is unchanged.                     */
+    uint32_t drift_refresh;     /* 1 = drive the refresh from the measured
+                                   drift of the encoder's client shadow
+                                   instead of the fixed 1-in-T permutation.
+                                   Encoder-side only: it changes which tiles
+                                   are coded, never how one decodes.        */
+    uint32_t drift_gate_q8;     /* drift_refresh gate, Q8 multiple of the
+                                   quantiser's own noise floor (qstep^2 / 12)
+                                   per sample.  A tile whose shadow has
+                                   drifted further than this from the source
+                                   may not skip; 0 = default                */
+    uint32_t near_skip;         /* 1 = allow the DC-correction tile form
+                                   (tool 24).  A warped tile whose drift is
+                                   small and smooth is corrected by three (or
+                                   nine) signed bytes instead of a coded
+                                   residual.                                */
+    uint32_t quad_mv;           /* 1 = allow four motion vectors per tile,
+                                   one per 32x32 quadrant, as nibble deltas
+                                   from the tile vector (tool 25).          */
     uint32_t ref_sel;           /* 0..2: reference distance inter tiles ask
                                    for (N-1-ref_sel).  Default 0.           */
     uint32_t mv_range;          /* coarse integer search radius in samples,
@@ -278,6 +313,13 @@ typedef struct nxvc_tile_info {
     uint16_t age_since_coded;   /* frames since this tile position last
                                    carried a coded residual; 0 on the frame
                                    that coded one, saturating at 65535      */
+    /* --- additive since syntax v1.5 */
+    uint8_t near_skip;          /* word1 bit 28: DC-correction tile form    */
+    uint8_t near_skip_ac;       /* word1 bit 29: plus the two ramps         */
+    uint8_t quad_mv;            /* word1 bit 30: four quadrant vectors      */
+    int8_t corr[3][3];          /* near_skip: [plane][dc, horiz, vert]      */
+    int8_t qmv[4][2];           /* quad_mv: per-quadrant delta, quarter
+                                   samples, raster order TL TR BL BR        */
 } nxvc_tile_info;
 
 typedef struct nxvc_stream_info {

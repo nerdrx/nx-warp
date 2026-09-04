@@ -153,7 +153,8 @@ Both sides expose the frame's tile layout: `nxvc_tile_layout_get()` for the grid
 `nxvc_decoder_tiles()` for the per-tile records (mode, resolved QP,
 `res_level`, `tskip`, `table_set`, payload length, and for v1.4 the vector,
 `ref_sel`, `ref_delta`, `disparity`, `skipped`, `concealed` and
-`age_since_coded`).
+`age_since_coded`, and for v1.5 `near_skip`, `near_skip_ac`, `quad_mv`, the
+three correction bytes per plane and the four quadrant deltas).
 
 ### The inter path
 
@@ -169,6 +170,24 @@ nxvc_encoder_encode_frame(e, &img, NULL, NULL, buf, sizeof buf, &len);
 `nxvc_encoder_set_views()` is the only floating-point input the codec takes; its
 result reaches the decoder already quantised to the nine `int32` of
 `warp_ext()`. The image is `eyes * width` samples wide, eye 0 first.
+
+**The inter-efficiency tools (syntax v1.5).** Three switches, each measured on
+its own in `ref/RESULTS-inter-a.md` and each off by default so that a stream
+without it is byte-identical to a v1.4 one:
+
+```c
+cfg.drift_refresh = 1;   /* schedule the refresh from measured shadow drift
+                            instead of a fixed 1-in-T permutation; intra_period
+                            becomes a hard age cap.  No syntax.  (13.8)      */
+cfg.drift_gate_q8 = 0;   /* the gate, Q8 multiple of qstep^2/12; 0 = default */
+cfg.near_skip = 1;       /* tool bit 24: a warped tile may carry a DC-and-ramps
+                            correction instead of a payload          (13.9)  */
+cfg.quad_mv = 1;         /* tool bit 25: four quadrant vectors as nibble deltas
+                            from the tile vector                     (13.10) */
+```
+
+`nxv-enc` exposes the same four as `--drift-refresh`, `--drift-gate`,
+`--near-skip` and `--quad-mv`.
 
 **The loss/concealment contract.** The decoder is told which tiles the client
 did not get; the encoder is told the same thing and replays the identical

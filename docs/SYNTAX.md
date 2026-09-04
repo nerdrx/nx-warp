@@ -156,6 +156,8 @@ interleaved UV.
 | 21 | `CTX_V2` | the 16-context entropy model (section 9.3) |
 | 22 | `SIGN_HIDE` | sign data hiding (section 9.7) |
 | 23 | `FILTER_CATMULL_ROM` | Catmull-Rom interpolation in the warp instead of bilinear. **Not defined for version 1** |
+| 24 | `NEAR_SKIP` | tiles may set `near_skip` (section 13.9) |
+| 25 | `QUAD_MV` | tiles may set `quad_mv` (section 13.10) |
 
 Bits 17, 21 and 22 are independent: any subset may be set. `SIGN_HIDE` is
 mutually exclusive with `LOSSLESS` (bit 5) -- hiding a sign spends one level
@@ -173,7 +175,8 @@ MUST refuse a stream that sets either, with a `VERSION` status. Because bit 23
 is refused, **every conforming version 1 stream is bilinear**, in every
 profile, and `profile` selects nothing (section 13.4).
 
-Bits 24-63 are reserved and must be zero. Capability negotiation is an
+`NEAR_SKIP` and `QUAD_MV` both require `INTER`, because both are per-tile
+bits on modes only `INTER` allows. Bits 26-63 are reserved and must be zero. Capability negotiation is an
 intersection: the sender only sets bits the receiver offered.
 
 ---
@@ -438,15 +441,20 @@ Two little-endian u32 words. Bits are listed LSB first.
 | 23 | `tskip` | the whole tile skips the transform |
 | 24-25 | `wgt` | enhancement-layer blend weight: 0, 1/4, 1/2, 3/4 (of the spatial hypothesis) |
 | 26-27 | `wm_id` | per-tile weighting matrix: 0 = the frame's, 1-3 = built-in matrix `wm_id` |
-| 28-31 | reserved | must be 0 |
+| 28 | `near_skip` | the residual is a correction field, not a payload (13.9) |
+| 29 | `near_skip_ac` | that field carries the two ramps as well (13.9) |
+| 30 | `quad_mv` | four quadrant vectors follow the tile vector (13.10) |
+| 31 | reserved | must be 0 |
 
 Then, in this order:
 
 1. if `mv_present`:
    * `u16 disparity` if `mode == STEREO`
    * `i8 mv_x, i8 mv_y` otherwise
-2. `u8 alpha_value` if `alpha_mode == 1`
-3. `payload_len` bytes of rANS payload
+2. if `quad_mv`: four bytes of quadrant vector deltas (13.10)
+3. `u8 alpha_value` if `alpha_mode == 1`
+4. if `near_skip`: `3 * (near_skip_ac ? 3 : 1)` correction bytes (13.9)
+5. `payload_len` bytes of rANS payload
 
 `mv_x` and `mv_y` are the tile's motion vector **itself**, in quarter samples
 (Q.2), range `[-32, +31.75]` samples. They are **not** a delta from the tile's
@@ -490,6 +498,12 @@ frame; `mode == STEREO` requires the `STEREO` tool bit, `eye == 1` and
 `mv_present == 1`, and its `disparity` bits 15:12 must be zero.
 `ref_sel == 3` is reserved. For `mode == INTRA` and `mode == STEREO`, `ref_sel`
 must be 0 and **is ignored** by the decoding process.
+
+`near_skip` requires the `NEAR_SKIP` tool bit, `mode != INTRA`,
+`payload_len == 0`, `res_level == 0` and `alpha_mode != 2`; `near_skip_ac`
+requires `near_skip`. `quad_mv` requires the `QUAD_MV` tool bit and
+`mode == WARP_MV` or `mode == STATIC_MV`. Sections 13.9 and 13.10 say why each
+of those is a constraint rather than a convention.
 
 `ref_sel` is **authoritative**; the transport's `ref_delta` is an advisory copy
 of it with one extra value, 3, meaning "no temporal reference", which is what
@@ -1641,6 +1655,7 @@ prediction state does not advance.
 temporally, from its own eye's previous frame, because the left eye of the
 *current* frame may itself be missing.
 
+
 ### 13.7 What this reference does not do
 
 * **`STEREO` under loss.** Concealing a left-eye tile changes what a `STEREO`
@@ -1654,6 +1669,174 @@ temporally, from its own eye's previous frame, because the left eye of the
   same thing, so it is exact; what differs from a hypothetical 32x32 kernel is
   only the span the in-tile corner interpolation is fitted over. A GPU Pass B
   doing chroma natively at 32x32 must be given the same corner basis.
+
+### 13.8 Refresh (encoder side, no syntax)
+
+`WARP_SKIP` puts the raw prediction error straight into the reference and
+leaves it there until the tile is next coded, so something has to bound how
+long a tile position may go uncorrected. The bound is a **rolling intra
+refresh**: a forced `INTRA` on every tile position within a period `T`,
+PAPER.md 2.6's 2 s at 90 Hz.
+
+This is entirely an encoder decision. The bitstream is the same either way,
+which is why this subsection describes two schemes and normatively requires
+neither.
+
+**The fixed scheme.** Every frame, `1/T` of the tile positions are forced
+`INTRA`, chosen by a fixed pseudo-random permutation of the tile index rather
+than a column sweep, so there is no visible refresh wave.
+
+**The drift-driven scheme.** The encoder holds a bit-exact shadow of what the
+client displays (13.6), so it can *measure* the thing the fixed scheme can
+only assume. Two rules replace the one:
+
+* **The hard cap.** A tile position may go at most `T` frames without an
+  `INTRA`. This is the same loss-recovery bound, stated as a ceiling rather
+  than a period, so a refresh is never *early*. The clocks are staggered by
+  the same permutation the fixed scheme uses, so the caps of a picture do not
+  all fall due on one frame.
+* **The drift gate.** A tile position whose shadow has drifted further from
+  the source than `g * qstep^2 / 12` per sample, measured on the frame just
+  encoded, may not take `WARP_SKIP`. It is *not* forced to `INTRA`: the drift
+  is measured against the very reference the tile would predict from, and a
+  coded `WARP_MV` residual usually corrects it for fewer bits than a fresh
+  intra tile. The gate removes the free option; the ordinary
+  rate-distortion decision then picks the mode.
+
+`qstep^2 / 12` is the quantiser's own noise floor, and the gate is stated as a
+multiple of it for the same reason the `WARP_SKIP` early-out is (`ref/`'s
+`skip_thresh`): it is the error a *coded* tile would have left behind anyway,
+so drift below it is not worth correcting, at any QP. That is the
+rate-distortion content of the threshold. The rate of the correction is folded
+into the multiplier `g`, because the encoder cannot know it without coding the
+tile; `g` is the swept constant and `ref/RESULTS-inter-a.md` is the sweep.
+
+### 13.9 Near-skip: the DC-correction tile form (tool bit 24)
+
+A warped tile often drifts by a small, smooth amount -- a shading change, a
+slow exposure ramp, the accumulated rounding of a resampling chain. The
+encoder's only two answers were a `WARP_SKIP` that leaves the drift in the
+reference and a fully coded tile that pays a rANS payload and a lane flush to
+remove it. **Near-skip** is the answer in between: the tile's entire residual
+is a per-plane block-mean field, flat or a pair of ramps, in three or nine
+signed bytes.
+
+Tile-header word1 gains two bits:
+
+| bit | field | notes |
+|---|---|---|
+| 28 | `near_skip` | the tile carries a correction field and no payload |
+| 29 | `near_skip_ac` | the correction field carries the two ramps as well |
+
+Both require tool bit 24 `NEAR_SKIP`. Constraints, each a MUST-reject:
+
+* `near_skip_ac` requires `near_skip`;
+* `near_skip` requires `mode != INTRA` -- a picture built from nine bytes is
+  not a prediction, and the form exists to correct one;
+* `near_skip` requires `payload_len == 0`, `res_level == 0` and
+  `alpha_mode != 2`. A payload would contradict the bit; a `res_level` would
+  put the correction in a domain the reconstruction then stretches; a coded
+  alpha plane has no correction defined for it.
+
+The correction field follows the constant-alpha byte and is
+`3 * (near_skip_ac ? 3 : 1)` bytes: for each of the three colour planes in
+order Y, Co, Cg, one signed byte `c0`, then under `near_skip_ac` two more,
+`c1` and `c2`. Alpha is never corrected.
+
+**Decoding process.** Per plane, with `nb` the plane's blocks per edge and
+`t_dc` the DC-plane quantiser step of 6.5 -- `dequant_step(qp >> 1, 16)`, the
+same step a coded DC plane uses, because this is that DC plane written another
+way:
+
+```
+d0 = dequant(c0, t_dc)
+dh = near_skip_ac ? dequant(c1, t_dc) : 0
+dv = near_skip_ac ? dequant(c2, t_dc) : 0
+
+for by in 0 .. nb-1, bx in 0 .. nb-1:
+    means[by][bx] = dc_offset + d0
+                  + ((dh * (2*bx - nb + 1)) >> log2(nb))
+                  + ((dv * (2*by - nb + 1)) >> log2(nb))
+```
+
+`>>` is arithmetic. `2*bx - nb + 1` runs over `+-(nb-1)` and the shift divides
+it by `nb`, so a corner block sits one step short of the full amplitude --
+the same convention the DC plane's own bilinear interpolation already uses.
+
+From `means` the tile is finished by **exactly** the path 13.3 already
+defines: the planar interpolation of 7.2 over the block centres, then
+`pred = clamp(W + planar(M) - dc_offset, 0, maxval)`. There is no residual to
+add, so the tile's samples *are* `pred`. No new arithmetic is introduced by
+this tool; it introduces a second way of writing a `means` field and nothing
+else.
+
+**What it costs a GPU decoder.** Less than any other tile. No entropy decode,
+no rANS lane flush, no inverse transform: one `warp_tile()`, `nb*nb` means
+from three multiply-shift-adds each, the planar interpolation the DC path
+already runs, and one add per sample. It is strictly cheaper than the coded
+tile it replaces and strictly more expensive than the skip it replaces, by one
+bilinear field.
+
+### 13.10 Quadrant vectors (tool bit 25)
+
+One vector per 64x64 tile is one vector for four thousand samples. Where a
+tile straddles the boundary of an object moving against the background -- a
+hand, a menu edge, a disc -- one half of it wants a different vector from the
+other, and the residual pays for the disagreement over the whole tile.
+
+Tile-header word1 gains one bit:
+
+| bit | field | notes |
+|---|---|---|
+| 30 | `quad_mv` | four quadrant vectors follow the tile vector |
+
+It requires tool bit 25 `QUAD_MV`, and it requires `mode == WARP_MV` or
+`mode == STATIC_MV`, which are the modes that carry a tile vector to refine.
+Word1 bit 31 remains reserved and must be zero.
+
+Four bytes follow the tile's `mv_x`/`mv_y`, before the constant-alpha byte:
+one byte per quadrant in raster order (top-left, top-right, bottom-left,
+bottom-right), bits 3:0 the `x` delta and bits 7:4 the `y` delta, each a
+**signed nibble** in quarter samples, range -8 to +7. The quadrant's vector is
+
+```
+mv_q = (mv_x + dx_q, mv_y + dy_q)
+```
+
+and it is a delta from the tile vector, not a vector of its own: four bytes
+rather than eight, and a tile header still parses without any decoder state
+(4.1).
+
+**The corner basis is the tile's.** This is the whole of the rule, and 13.7's
+caveat is why it has to be said. `warp_tile()` derives four source corner
+coordinates for the tile, interpolates them across the block, and *then* adds
+the motion vector, per sample, in Q.6. A quadrant therefore changes the vector
+and nothing else: it does **not** re-derive corners at 32x32, and an
+implementation that did would produce different samples. Two implementations
+are consequently equivalent and both are conforming:
+
+* run the tile's predictor four times, once per quadrant vector, and keep each
+  quadrant's own 32x32 region -- which is what `ref/` does, because it is
+  obviously correct;
+* run it once and add `mv_q` inside the sample loop, selecting `q` from the
+  sample's position -- which is what a GPU does, at **no cost at all** over a
+  single-vector tile.
+
+They are equivalent because the vector enters as a per-sample constant offset
+after the corner interpolation, so nothing that depends on it is shared
+between quadrants.
+
+For a plane subsampled by `sub`, the quadrant vector is halved by the same
+rule the tile vector is (13.3 step 2), applied to the sum: `mv_q >> 1`. The
+quadrant boundary is the plane's own half extent, 32 luma samples and 16
+chroma samples for 4:2:0.
+
+`last_mv` (13.5) stores the **tile** vector, not a quadrant's. A concealed
+tile has no quadrant structure to conceal with, and the tile vector is the one
+statement about the tile as a whole.
+
+**What it costs a GPU decoder.** Four bytes of traffic and one extra select
+per sample. No new dependency, no cross-tile state, no extra pass.
 
 ---
 
@@ -1672,7 +1855,11 @@ decoder implements. It must:
   stream without the `INTER` tool bit;
 * reject tool bits 14 and 23 with a `VERSION` status, and the `WARP` bit
   without `INTER` with a `BITSTREAM` one;
-* reproduce every `decoded_md5` of the `v45`-`v56` vectors.
+* reject `near_skip` or `quad_mv` without its tool bit, `near_skip_ac`
+  without `near_skip`, `near_skip` on an `INTRA` tile or with a nonzero
+  `payload_len`, `res_level` or `alpha_mode == 2`, `quad_mv` on any mode other
+  than `WARP_MV` and `STATIC_MV`, and a nonzero word1 bit 31;
+* reproduce every `decoded_md5` of the `v45`-`v60` vectors.
 
 `v45`-`v56` are the twelve entries Annex D D-21 asks for: an identity warp with
 a repeated picture (every tile `WARP_SKIP`, a bit-exact copy), a warped
@@ -1690,7 +1877,15 @@ equals a shifted tile" -- the property is asserted directly, in
 the bitstream and the reconstruction it holds for. A digest cannot express
 "changing this field must not change the output"; an assertion can.
 
-`r18`-`r29` are the rejection vectors, and they matter more than the positive
+`v57`-`v60` are the syntax v1.5 additions: a near-skip stream at a coarse
+quantiser on slowly drifting content, a quadrant-vector stream on an object
+moving against a pan, near-skip on 4:2:0 (where `nb` is 4 and the ramp shift
+differs), and one stream with all three tools of the inter-efficiency package
+on at once. Each of the three tools is behind its own bit, so the same
+encoder with the bits off reproduces `v45`-`v56` byte for byte -- which is the
+compatibility claim, stated as a test rather than as a promise.
+
+`r18`-`r33` are the rejection vectors, and they matter more than the positive
 ones: sections 3 and 4 impose roughly forty MUST-reject conditions, and a
 decoder that accepted every malformed stream would otherwise pass the suite
 completely.

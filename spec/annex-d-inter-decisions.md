@@ -40,6 +40,9 @@ owning document. D-21 lists the conformance vectors Phase 2 must add.
 | D-19 | Capability bits and tool bits are orthogonal; one coupling is defined | C-18 |
 | D-20 | Field ownership map | C-1..C-30 boundary set |
 | D-21 | Phase 2 conformance vectors | C-19 (part) |
+| D-23 | The intra refresh may be driven by measured shadow drift; the period becomes a hard age cap. No syntax | — |
+| D-24 | Near-skip: a warped tile whose whole residual is a DC-and-ramps mean field, tool bit 24 | — |
+| D-25 | Four quadrant vectors per tile as signed nibble deltas over the **tile's** corner basis, tool bit 25 | C-15 (part) |
 
 Issues left open on purpose: C-10 and C-30 (hybrid, `[pending HYBRID.md]`),
 C-17 (tool bits 15–19, correctly refused by a v1 decoder), C-19 in full (the
@@ -924,3 +927,131 @@ Edits required in documents outside this annex's scope, listed for their owners
 in `docs/SYNTAX-CHANGES-PHASE2.md`: `docs/SYNTAX.md` in full, `docs/ERRATA.md`
 1.4 (state 7/13 as the correction, D-18), `docs/RATECONTROL.md` ladder step 4
 (no `res_level == 3`, D-6).
+
+---
+
+## D-23 — The refresh may be driven by measured drift
+
+**Decision.** The rolling intra refresh of PAPER.md 2.6 may be scheduled from
+the drift the encoder *measures* between its client shadow and the source,
+rather than from a fixed 1-in-`T` permutation. `intra_period` then means a
+**hard age cap** rather than a period: a tile position may go at most `T`
+frames without an `INTRA`, and the drift measurement can only make a refresh
+*earlier*, never later. `docs/SYNTAX.md` 13.8.
+
+**Why it needs no syntax.** The refresh has never been signalled. A refreshed
+tile is an ordinary `INTRA` tile and a decoder cannot tell -- and has no
+reason to ask -- why the encoder chose it. This is the one thing
+`docs/RATECONTROL.md` 8.7 is emphatic about: "If the Phase 2 agent finds itself
+adding syntax for this, something has gone wrong."
+
+**Why the drift gate does not force `INTRA`.** The drift is measured against
+the reference the tile would predict *from*. A tile whose shadow has drifted
+can usually be corrected by a coded `WARP_MV` residual for far fewer bits than
+a fresh intra tile costs, and forcing `INTRA` would throw that away. So the
+gate removes `WARP_SKIP` from the candidate set and lets the ordinary
+rate-distortion decision choose; only the hard cap forces `INTRA`, because
+only the hard cap is about loss recovery, which no inter mode provides.
+
+**Why the cap is staggered.** The fixed scheme's permutation spread the forced
+refreshes so there is no visible wave. Ages all starting at zero would put a
+whole picture's caps on one frame, so the clocks are initialised from the same
+permutation. The property is preserved, by reusing the thing that provided it
+rather than by re-deriving it.
+
+**Why the threshold is a multiple of `qstep^2/12`.** It is the quantiser's own
+noise floor -- what a *coded* tile would have left behind anyway -- so drift
+below it is not worth correcting at any QP, and the threshold is scale-free
+across the whole ladder. It is the same argument, and the same expression,
+that `ref/RESULTS-inter.md` 5.1 used to fix the skip gate.
+
+**Consequence for `force_warp_skip`.** RATECONTROL 8.7 makes the rate
+controller's flag advisory in one direction: the encoder overrides it where a
+coded tile is required. The drift gate is now a third such override, alongside
+"no eligible reference" and "a refresh is due", and it is the only one that
+can fire from content rather than from schedule.
+
+---
+
+## D-24 — Near-skip: a tile whose whole residual is a mean field
+
+**Decision.** Tool bit 24 `NEAR_SKIP` and tile-header word1 bits 28-29. A
+warped tile may carry, instead of an entropy-coded payload, three signed bytes
+-- one per colour plane -- that are the DC of a block-mean correction, or nine
+that add a horizontal and a vertical ramp. `docs/SYNTAX.md` 13.9.
+
+**Why it exists.** `ref/RESULTS-inter.md` 4 measures the codec at its own
+operating point spending two thirds of its tiles on `WARP_SKIP`, and section 3
+measures the chain those tiles ride decaying at a real slope. The encoder's
+only two answers to a small smooth drift were to leave it in the reference or
+to pay a full coded tile to remove it, and the gap between those two prices is
+most of a tile.
+
+**Why it reuses the DC plane rather than defining a correction.** The DC plane
+of 7.2 already *is* a per-block mean field, already has a quantiser step
+(6.5's `dequant_step(qp >> 1, 16)`), already has a bilinear interpolation to
+samples, and 13.3 already defines how an inter tile adds it to the warp. So
+near-skip introduces no arithmetic at all: it is a second way of writing the
+`means` array, and everything downstream of `means` is the existing path,
+shared in one function. A correction defined in sample space instead would
+have duplicated the interpolation and the clamp.
+
+**Why the ramps are a shift, not a divide.** `(dh * (2*bx - nb + 1)) >> log2(nb)`
+is exact, integer, and identical on every implementation; `nb` is a power of
+two by construction. The corner block landing one step short of the full
+amplitude is the same convention the DC plane's own bilinear step uses, so the
+two forms agree at their boundary instead of meeting at a seam.
+
+**Why `payload_len` must be zero rather than ignored.** A tile that carries
+both a correction field and a payload has two residuals and no defined order
+between them. Making it a MUST-reject is one rule; making it "the payload is
+ignored" would be a rule plus a silent divergence between implementations that
+did and did not decode it.
+
+**Why not a fifth mode.** A mode is a statement about the *prediction*;
+near-skip is a statement about the *residual*, and it is orthogonal to all
+four inter modes. Spending one of the three remaining `mode` values on it
+would have made `WARP_MV` and `STATIC_MV` need one each.
+
+---
+
+## D-25 — Quadrant vectors over the tile's corner basis
+
+**Decision.** Tool bit 25 `QUAD_MV` and tile-header word1 bit 30. A
+`WARP_MV` or `STATIC_MV` tile may carry four vectors, one per 32x32 quadrant,
+as signed nibble deltas from the tile vector in four bytes.
+`docs/SYNTAX.md` 13.10.
+
+**Why deltas and why nibbles.** Four absolute vectors are eight bytes and
+mostly repeat each other; four nibble deltas are four bytes and span
+`+-2` samples about the tile vector, which is the disagreement an object
+boundary inside one tile actually produces. The tile vector remains absolute
+(D-8), so the header still parses with no decoder state.
+
+**Why the corner basis stays the tile's — the decision this entry exists for.**
+13.7 records that `warp_tile()` fits its in-tile interpolation over a fixed
+64x64 corner span, and that a chroma tile at extent 32 therefore takes the
+top-left quarter of the 64x64 block rather than re-deriving corners. A
+quadrant vector raises the same question and gets the same answer, and it has
+to be stated because the alternative is so plausible: a quadrant does **not**
+re-derive corners at 32x32. It changes the vector and nothing else.
+
+That is not a compromise, it is what makes the tool free. The predictor adds
+the motion vector per sample, in Q.6, *after* the corner interpolation
+(`warp/include/nxvc/warp.h`), so nothing that depends on the vector is shared
+between quadrants. A decoder may therefore run the tile predictor four times
+and keep a quarter of each -- which `ref/` does, because it is obviously
+correct -- or run it once and select the quadrant's vector inside the sample
+loop, which is what a GPU does at no cost over a single-vector tile. The two
+are bit-identical by construction rather than by tolerance.
+
+**Why `last_mv` stores the tile vector.** Concealment (13.6) reconstructs a
+tile it never received, so it has no quadrant structure to reconstruct with.
+The tile vector is the one statement about the tile as a whole, and storing a
+quadrant's would conceal three quarters of the tile from the wrong place.
+
+**Why not eight quadrants, or a per-block field.** The cost is in the corner
+select per sample and in the encoder's search, not in the four bytes. 32x32 is
+the largest subdivision that still lets one delta pattern be searched once for
+the whole tile, which is what keeps the encoder's four-quadrant search the
+price of one.
