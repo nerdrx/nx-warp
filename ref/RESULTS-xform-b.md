@@ -12,16 +12,46 @@ off by default; `nxv-enc --xform 32` turns it on. Every stream a v1.4 build
 wrote is byte-identical, and `v01`-`v56` of the conformance set regenerate
 unchanged.
 
-**A caveat that applies to every number below.** The machine was running five
-other codec experiments throughout (load average 25-27 on 32 cores). Rate and
-quality are unaffected by that -- they are deterministic -- but every *time* in
-section 6 is inflated, and only the ratios there are meaningful.
+**A note on the machine.** The comparison runs shared the box with five other
+codec experiments (load average 25-34 on 32 cores). Rate and quality are
+unaffected -- they are deterministic and every run used the same 4-core slice
+-- and the timings in section 6 were **re-measured afterwards on an idle
+machine** (load 6), because the first attempt at them under load was wrong by a
+factor of two in the decoder's disfavour.
 
 ---
 
 ## 0. What it buys, in one table
 
-*(filled in from sections 1 and 2)*
+`before` is the shipped default. `after` is the same encoder with
+`--xform 32`, which sets tool bit 24 and adds 16x16 and 32x32 to the per-tile
+RD search. Nothing else differs, in either direction.
+
+| measurement | anchor | before | after | change |
+|---|---|---|---|---|
+| Phase 1 gate, 4:4:4 | x264-intra | +61.43 % | **+48.24 %** | **-13.19 points** |
+| Phase 1 gate, 4:2:0 | x264-intra | +38.17 % | **+26.69 %** | **-11.48 points** |
+| Phase 2 kill test, band A | x265-p | +342.67 % | **+309.91 %** | **-32.76 points** |
+| Phase 2 kill test, band B | x265-p | +548.23 % | **+488.19 %** | **-60.04 points** |
+
+| gate deficit (PSNR-Y, worst point in band) | before | after | change |
+|---|---|---|---|
+| 4:4:4 | -4.534 dB | **-3.545 dB** | **+0.99 dB** |
+| 4:2:0 | -3.296 dB | **-2.313 dB** | **+0.98 dB** |
+
+Both gates still **FAIL** and both kill tests still **FAIL**; the verdicts are
+quoted verbatim in sections 1 and 2. What the tool does is move the intra gate
+by **a hair under a decibel** on both chroma formats, which against
+`INTRA_DIR`'s 1.89 / 1.69 dB (`ref/RESULTS-intra.md` section 0) makes it the
+second largest single tool in this codec, and it is worth **more** with inter
+on than off -- which is what the residual of a warped tile being smooth
+predicts.
+
+Cost: **no extra LDS and no extra dependent steps** for a GPU decoder
+(section 7), a reference decode 0 to 24 % slower depending on how many tiles
+take the large sizes, and a reference encode about 2.2x slower because the
+per-tile search evaluates three transform sizes where it evaluated one
+(section 6).
 
 ---
 
@@ -91,13 +121,132 @@ on both the sign and the magnitude, and the gate is defined on PSNR-Y.
 
 ### 4:2:0
 
-*(pending)*
+| | BD-rate vs x264 intra | BD-PSNR | worst deficit | mean deficit | verdict |
+|---|---|---|---|---|---|
+| before | +38.17 % | -3.290 dB | -3.296 dB at 101.1 Mbit/s | -2.356 dB | FAIL |
+| **after** | **+26.69 %** | **-2.484 dB** | **-2.313 dB at 102.1 Mbit/s** | **-1.804 dB** | FAIL |
+| change | **-11.48 points** | **+0.81 dB** | **+0.98 dB** | **+0.55 dB** | -- |
+
+Verbatim, `before`:
+
+```
+  BD-rate of nxv-before on PSNR-Y (negative is better):
+    vs x264-intra     +38.17 %   BD-PSNR -3.290 dB   (overlap 46.99-57.22 dB)
+
+  Phase 1 gate (PAPER.md 3.11: within 1.0 dB of x264 intra, 100-400 Mbit):
+    FAIL: worst -3.296 dB at 101.1 Mbit/s, mean -2.356 dB over 100.0-200.7 Mbit/s
+```
+
+and `after`:
+
+```
+  BD-rate of nxv-after on PSNR-Y (negative is better):
+    vs x264-intra     +26.69 %   BD-PSNR -2.484 dB   (overlap 46.99-57.16 dB)
+
+  Phase 1 gate (PAPER.md 3.11: within 1.0 dB of x264 intra, 100-400 Mbit):
+    FAIL: worst -2.313 dB at 102.1 Mbit/s, mean -1.804 dB over 100.0-190.6 Mbit/s
+```
+
+### Operating points, 4:2:0
+
+| QP | before Mbit/s | before PSNR-Y | before SSIM-Y | | after Mbit/s | after PSNR-Y | after SSIM-Y |
+|---|---|---|---|---|---|---|---|
+| 0 | 200.7 | 57.218 | 0.99887 | | **190.6** (-5.0 %) | 57.162 | 0.99886 |
+| 4 | 153.8 | 55.291 | 0.99837 | | **144.3** (-6.2 %) | **55.293** | 0.99832 |
+| 8 | 119.4 | 53.286 | 0.99776 | | **110.6** (-7.4 %) | **53.324** | 0.99764 |
+| 12 | 94.2 | 50.614 | 0.99665 | | **87.5** (-7.1 %) | **50.954** | 0.99665 |
+| 16 | 74.3 | 47.611 | 0.99464 | | **68.8** (-7.4 %) | **47.992** | **0.99476** |
+| 20 | 56.3 | 44.481 | 0.99155 | | **52.6** (-6.6 %) | **44.961** | **0.99177** |
+| 24 | 42.9 | 41.444 | 0.98674 | | **40.1** (-6.6 %) | **41.828** | **0.98694** |
+
+The same shape as 4:4:4: 5 to 7.4 % of the rate for the same or better PSNR at
+every point. The tool helps 4:2:0 slightly less in BD-rate points than 4:4:4
+because half the chroma samples are gone before the transform sees them, and
+because a 4:2:0 tile's 32-sample chroma plane is a *single* 32x32 block whose
+choice the RD then has to make for the whole plane at once.
 
 ---
 
 ## 2. Inter on: the Phase 2 kill test
 
-*(pending)*
+`nxv-enc --eyes 2 --inter on --poses ...`, against `x265-p`, in the two rate
+bands `ref/RESULTS-inter.md` defines, `--no-vmaf` as that document's own runs
+use. `after` adds `--xform 32` and nothing else.
+
+| band | | BD-rate vs x265-p | BD-PSNR | at rest | on motion | verdict |
+|---|---|---|---|---|---|---|
+| A | before | +342.67 % | -7.053 dB | +344.77 % | +334.59 % | FAIL |
+| A | **after** | **+309.91 %** | **-6.525 dB** | **+312.12 %** | **+301.54 %** | FAIL |
+| A | change | **-32.76 points** | **+0.53 dB** | -32.65 | -33.05 | -- |
+| B | before | +548.23 % | -11.472 dB | +558.25 % | +513.93 % | FAIL |
+| B | **after** | **+488.19 %** | **-10.908 dB** | **+496.52 %** | **+459.37 %** | FAIL |
+| B | change | **-60.04 points** | **+0.56 dB** | -61.73 | -54.56 | -- |
+
+Verbatim, band A `after` (`ref/phase2_verdict.py`):
+
+```
+=== vr-mixed-1024-v2.yuv444p  (kill-mixed1024-444-A-after.json)
+  codec nxv-inter-after against x265-p, PSNR-Y
+  velocity split at the 20th percentile = 43.4 deg/s (8 of 36 frames)
+    overall (all frames)          BD-rate +309.91 %  BD-PSNR -6.525 dB
+    fastest 20 % of frames        BD-rate +301.54 %  BD-PSNR -6.307 dB
+    the remaining frames          BD-rate +312.12 %  BD-PSNR -6.587 dB
+  Phase 2 kill test (PAPER.md 2.11 item 1):
+    "within 10 percent at rest and at least 30 percent better on the motion frames"
+    at rest   : BD-rate +312.12 % (allowed up to +10 %)  FAIL
+    on motion : BD-rate +301.54 % (needs -30 % or better)  FAIL
+    VERDICT   : FAIL
+```
+
+and band B `after`:
+
+```
+=== vr-mixed-1024-v2.yuv444p  (kill-mixed1024-444-B-after.json)
+  codec nxv-inter-after against x265-p, PSNR-Y
+  velocity split at the 20th percentile = 43.4 deg/s (8 of 36 frames)
+    overall (all frames)          BD-rate +488.19 %  BD-PSNR -10.908 dB
+    fastest 20 % of frames        BD-rate +459.37 %  BD-PSNR -10.664 dB
+    the remaining frames          BD-rate +496.52 %  BD-PSNR -10.977 dB
+  Phase 2 kill test (PAPER.md 2.11 item 1):
+    "within 10 percent at rest and at least 30 percent better on the motion frames"
+    at rest   : BD-rate +496.52 % (allowed up to +10 %)  FAIL
+    on motion : BD-rate +459.37 % (needs -30 % or better)  FAIL
+    VERDICT   : FAIL
+```
+
+The `before` verdicts are the same two FAILs at +344.77 / +334.59 and
++558.25 / +513.93; the kill test is nowhere near passing in either
+configuration and this tool was never going to change that -- section 3 of
+`ref/RESULTS-inter.md` already establishes that most of the gap is not the
+inter path. What the numbers say is the thing this package was asked to check:
+**the tool is worth more with inter on than with it off**, 33 and 60 BD-rate
+points against 13 and 11, on the same sequence and the same encoder.
+
+That is the prediction that motivated measuring it. A warped tile's residual is
+the difference between the picture and a resampled, homography-warped copy of
+itself: smooth, low-frequency, and spread over the whole tile rather than
+localised at edges -- exactly the signal a 32x32 DCT compacts and an 8x8 one
+does not.
+
+### Operating points, inter, band A
+
+| QP | before Mbit/s | before PSNR-Y | | after Mbit/s | after PSNR-Y |
+|---|---|---|---|---|---|
+| 0 | 204.0 | 57.032 | | **193.7** (-5.0 %) | 56.981 |
+| 4 | 136.3 | 55.049 | | **128.1** (-6.0 %) | **55.105** |
+| 8 | 89.6 | 52.771 | | **83.6** (-6.7 %) | **52.870** |
+| 12 | 61.1 | 49.835 | | **56.1** (-8.1 %) | **50.040** |
+
+### Operating points, inter, band B
+
+| QP | before Mbit/s | before PSNR-Y | | after Mbit/s | after PSNR-Y |
+|---|---|---|---|---|---|
+| 18 | 30.3 | 44.766 | | **28.3** (-6.7 %) | **44.927** |
+| 24 | 13.1 | 39.803 | | **12.2** (-6.7 %) | **39.995** |
+| 30 | 6.2 | 35.225 | | **5.9** (-6.2 %) | **35.335** |
+| 36 | 3.4 | 30.608 | | **3.1** (-6.6 %) | **30.843** |
+
+Every inter point is smaller and better too, down to 3.1 Mbit/s.
 
 ---
 
@@ -185,11 +334,26 @@ Per-tile `xform` histogram from `nxv-info --tiles`, one frame of
 | 24 | 68 | 14 | 46 |
 | 32 | 37 | 54 | 37 |
 
-All three sizes are used at every operating point above QP 8, and the mix moves
-towards the larger sizes as the quantizer coarsens -- which is what the tool is
+The same sweep on the comparison sequence, `vr-mixed-1024-v2` 4:4:4, 6 frames,
+3072 tiles:
+
+| QP | 8x8 | 16x16 | 32x32 |
+|---|---|---|---|
+| 8 | 1930 | 98 | 1044 |
+| 16 | 1402 | 717 | 953 |
+| 24 | 1164 | 1328 | 580 |
+
+All three sizes are used at every operating point but one, and the **share of
+8x8 falls monotonically as the quantizer coarsens** on both sequences -- 77 %
+to 29 % on the 512 clip, 63 % to 38 % on the 1024 one. That is what the tool is
 for: at a fine quantizer the residual has real high-frequency content and an
 8x8 transform localizes it better; at a coarse one the residual is smooth and a
 large transform's DC-adjacent coefficients carry it for fewer symbols.
+
+Which of the two *large* sizes wins is content-dependent and the two sequences
+disagree about it -- 32x32 keeps growing on the 512 clip while 16x16 overtakes
+it on the 1024 one -- which is the argument for having both sizes and letting
+RD choose, rather than picking one and calling it the large transform.
 
 This is also the evidence about the **per-32x32-quadrant** variant, which is
 deliberately not built (`SYNTAX.md` Appendix A item 53; word1 bits 30-31 are
@@ -203,26 +367,47 @@ directional intra was finally held to.
 
 ## 6. Encode and decode time
 
-`vr-mixed-1024-v2` 4:4:4, 6 frames, QP 16, wall clock divided by frames, on a
-loaded machine (see the caveat at the top). The ratios are the number to read.
+`vr-mixed-1024-v2` 4:4:4, 2048x1024, 6 frames, QP 16, wall clock divided by
+frames, on an **idle** machine, `chrt -i 0 taskset -c 8-11 nice -n 19`:
 
 | | encode | decode | bytes |
 |---|---|---|---|
-| `--xform 8` (version 1) | 3359 ms/frame | 127 ms/frame | 672712 |
-| `--xform 16` | 6945 ms/frame | 193 ms/frame | 649052 |
-| `--xform 32` | 8438 ms/frame | 179 ms/frame | 627424 |
+| `--xform 8` (version 1) | 2102 ms/frame | 84.4 ms/frame | 672712 |
+| `--xform 16` | 4091 ms/frame | 80.1 ms/frame | 649052 |
+| `--xform 32` | 4655 ms/frame | 87.2 ms/frame | 627424 |
 
-**Encode is 2.5x**, and it is 2.5x for a boring reason: the per-tile header
-search now evaluates three transform sizes where it evaluated one, and each
-candidate is a full quantize, trellis and reconstruct of the tile. That is an
-encoder choice, not a syntax cost -- an encoder that picked the size from a
-cheap classifier instead of an RD search would pay almost none of it.
+**Encode is 2.2x**, for a boring reason: the per-tile header search now
+evaluates three transform sizes where it evaluated one, and each candidate is a
+full quantize, trellis and reconstruct of the tile. That is an encoder choice,
+not a syntax cost -- an encoder that picked the size from a cheap classifier,
+or that only tried the larger sizes on tiles whose 8x8 residual is already
+nearly empty, would pay almost none of it. The comparison runs saw the same
+ratio end to end: 105.0 s against 199.5 s per operating point on 4:4:4, 44.4
+against 93.6 on 4:2:0.
 
-**Decode is 1.4x**, and that one is real arithmetic: a 32-point 1D transform is
-331 multiplies against the 8-point graph's 11, which is 20.7 multiplies per
-sample against 2.8. The reference decoder is scalar C++ and spends that
-serially; `SYNTAX.md` 6.7 has the GPU accounting, where the same work is 8
-threads per 32x32 block and costs **no extra LDS and no extra barriers**.
+**Decode is between 2 % faster and 24 % slower, and which one depends on the
+rate.** Best of three, same conditions, with the per-tile size mix `nxv-info`
+reports for each stream:
+
+| QP | `--xform 8` | `--xform 32` | change | tiles at 8 / 16 / 32 |
+|---|---|---|---|---|
+| 8 | 88.7 ms/frame | 110.1 ms/frame | **+24 %** | 1930 / 98 / 1044 |
+| 16 | 80.0 ms/frame | 87.3 ms/frame | **+9 %** | 1402 / 717 / 953 |
+| 24 | 80.0 ms/frame | 78.4 ms/frame | **-2 %** | 1164 / 1328 / 580 |
+
+The arithmetic really is 7.4x per sample at 32x32 (331 multiplies per 32-point
+1D transform against the 8-point graph's 11), but the inverse transform is not
+what a decoder spends its time on: at QP 8 a third of the tiles take 32x32 and
+the whole decode grows by a quarter, and by QP 24 the coefficients the entropy
+coder no longer has to decode pay for the transform outright.
+
+The first attempt at this table was taken while the machine was loaded and
+reported 127 -> 179 ms/frame, a 40 % decode regression. That number was
+contention, not arithmetic, and it is recorded here because it is exactly the
+kind of measurement that would have gone into a decision unchallenged.
+
+`SYNTAX.md` 6.7 has the GPU accounting, where the same work costs **no extra
+LDS and no extra barriers** and only the multiply count moves.
 
 ---
 
