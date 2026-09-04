@@ -1,0 +1,47 @@
+name: Risk
+description: An open risk from the paper, with the test that kills or clears it
+title: "Risk: "
+labels: ["type:risk"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A risk without a test is a worry. Every risk issue carries the experiment that
+        resolves it and the threshold that decides which way.
+  - type: textarea
+    id: risk
+    attributes:
+      label: The risk
+      description: What might be untrue, and what breaks if it is.
+    validations:
+      required: true
+  - type: input
+    id: section
+    attributes:
+      label: Paper section
+      description: Risks are enumerated in 1.12, 2.11, 3.12, 4.11 and the integration document's section 5.
+      placeholder: "PAPER 2.11 item 3"
+    validations:
+      required: true
+  - type: textarea
+    id: killtest
+    attributes:
+      label: Kill or verify test
+      description: The measurement that settles it, in enough detail that someone else could run it.
+    validations:
+      required: true
+  - type: textarea
+    id: threshold
+    attributes:
+      label: Threshold and consequence
+      description: The number that decides, and what happens on each side of it.
+      placeholder: |
+        Pass: within 10 percent at rest and 30 percent better on motion frames.
+        Fail: the compression case is withdrawn and the codec's case rests on latency and loss.
+    validations:
+      required: true
+  - type: textarea
+    id: mitigation
+    attributes:
+      label: Fallback if it fails
+      description: The design that already exists for the bad outcome, and what it costs.

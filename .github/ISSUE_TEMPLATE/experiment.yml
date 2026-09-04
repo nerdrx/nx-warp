@@ -1,0 +1,45 @@
+name: Experiment
+description: Measure something and record the number
+title: "Measure: "
+labels: ["type:experiment"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Say what you measured, not what you expect. An experiment closes with a number in the
+        tree, not with an opinion in a comment.
+  - type: textarea
+    id: question
+    attributes:
+      label: The question
+      description: One sentence, answerable by a number.
+    validations:
+      required: true
+  - type: textarea
+    id: method
+    attributes:
+      label: Method
+      description: Exact procedure, hardware, run conditions, sample count, and which percentiles.
+    validations:
+      required: true
+  - type: textarea
+    id: threshold
+    attributes:
+      label: Pass threshold
+      description: The number that decides it, stated before the run. If there is no threshold, say what the result will be used for.
+    validations:
+      required: true
+  - type: input
+    id: hardware
+    attributes:
+      label: Hardware required
+      description: Leave blank if none. If this needs a device, the issue also gets `needs-hardware`.
+      placeholder: "Pico 4 (Adreno 650), display active"
+  - type: textarea
+    id: where
+    attributes:
+      label: Where the result lands
+      description: The file or report that will hold the number when this closes.
+      placeholder: "bench/results/, and the section 3.4 table"
+    validations:
+      required: true

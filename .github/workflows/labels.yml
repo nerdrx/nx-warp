@@ -1,0 +1,46 @@
+name: Labels
+
+# The label set is defined in .github/labels.yml and this workflow makes the
+# repository match it. Edit the file, never the labels in the web UI: anything
+# created by hand is removed the next time this runs.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/labels.yml'
+      - '.github/workflows/labels.yml'
+  pull_request:
+    paths:
+      - '.github/labels.yml'
+      - '.github/workflows/labels.yml'
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: 'Report what would change without changing it'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: labels
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sync labels from .github/labels.yml
+        uses: crazy-max/ghaction-github-labeler@v5
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          yaml-file: .github/labels.yml
+          # A pull request only reports; a push to main applies. Labels are
+          # repository-wide state, so a branch must not be able to change them.
+          dry-run: ${{ github.event_name == 'pull_request' || inputs.dry-run || false }}
+          skip-delete: false

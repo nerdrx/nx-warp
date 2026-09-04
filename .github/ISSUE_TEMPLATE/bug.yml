@@ -1,0 +1,57 @@
+name: Bug
+description: Something behaves differently from the reference codec or the spec
+title: "Fix: "
+labels: ["type:bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The reference decoder in `ref/` is the specification. If a GPU decoder and `ref/`
+        disagree, the GPU is wrong until proven otherwise — say which one you compared against.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happens
+      description: The observed behaviour. Numbers and hashes, not adjectives.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What should happen
+      description: And what says so — the reference decoder, a syntax document section, or a paper section.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: Exact commands, build flags, and the stream or vector involved.
+      placeholder: |
+        cmake -S . -B build -G Ninja -DNXWARP_BUILD_VK=ON
+        ctest --test-dir build -R '^vk' --output-on-failure
+    validations:
+      required: true
+  - type: input
+    id: firstmismatch
+    attributes:
+      label: First mismatching tile and pixel
+      description: If this is a bit-exactness failure, the diff harness reports both. Paste them.
+      placeholder: "tile (17, 4), pixel (33, 12): ref 0x7A3F21FF, gpu 0x7A3F22FF"
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: GPU and driver, ICD, OS, compiler, commit.
+      placeholder: |
+        GPU: Adreno 650, driver 512.xxx / lavapipe 24.x / RADV 24.x
+        Commit: 9083dd1
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before filing
+      options:
+        - label: I checked this against the reference decoder, not only against my expectations
+        - label: I can reproduce it from a clean build

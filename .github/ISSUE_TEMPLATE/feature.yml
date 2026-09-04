@@ -1,0 +1,41 @@
+name: Feature
+description: A new capability to build
+title: "Implement: "
+labels: ["type:feature"]
+body:
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What is missing today, and why it matters now rather than later.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Checkboxes. Each one either measurable or mechanically checkable — "works well" is not a criterion.
+      value: |
+        - [ ] 
+        - [ ] 
+    validations:
+      required: true
+  - type: dropdown
+    id: bitstream
+    attributes:
+      label: Does this change the bitstream?
+      description: If yes, `ref/`, `tests/vectors/`, `docs/SYNTAX.md` and the paper change in one commit.
+      options:
+        - "No"
+        - "Yes"
+        - "Not sure"
+    validations:
+      required: true
+  - type: input
+    id: refs
+    attributes:
+      label: Paper and document sections
+      description: Which sections specify this.
+      placeholder: "PAPER 2.3, 6.5; SYNTAX.md tile header"
+    validations:
+      required: true

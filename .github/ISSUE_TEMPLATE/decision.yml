@@ -1,0 +1,42 @@
+name: Decision
+description: A choice to make and record; closing it means an ADR
+title: "Decide: "
+labels: ["type:decision"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Closing a decision issue means an ADR exists under `docs/adr/`. A decision recorded
+        only in a closed issue is a decision that will be relitigated.
+  - type: textarea
+    id: question
+    attributes:
+      label: The question
+      description: Stated so that the options are distinguishable.
+    validations:
+      required: true
+  - type: textarea
+    id: options
+    attributes:
+      label: Options
+      description: Each with its cost. Include the option of not deciding yet, if it is real.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence needed
+      description: What has to be measured before this can be decided, and which issue measures it.
+  - type: input
+    id: deadline
+    attributes:
+      label: Latest it can be decided
+      description: Bitstream decisions cannot be deferred past the phase that ships the syntax.
+      placeholder: "Before Phase 1 exits — it is a v1 syntax change"
+  - type: checkboxes
+    id: kind
+    attributes:
+      label: Scope
+      options:
+        - label: This changes the bitstream (ref/, vectors, syntax document and paper move together)
+        - label: This changes the wire protocol (client and server must ship together)
