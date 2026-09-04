@@ -40,7 +40,8 @@ green tick — which is the outcome this project should least want. Both now pas
 because the cause is fixed; see sections 2 and 3.
 
 The correction to the finding is that 77 of 79 understates how red `main` was.
-On the same push, three of six CI jobs and one of three Sanitizers jobs failed:
+On the same push, four of the six CI jobs and one of the three Sanitizers jobs
+failed:
 
 | job | why |
 |---|---|
