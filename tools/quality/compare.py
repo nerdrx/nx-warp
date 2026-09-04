@@ -66,12 +66,20 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import foveated_metrics as fov  # noqa: E402
-from nxq import bdrate, cpu, ffmpeg, metrics, qpmap  # noqa: E402
+from nxq import bdrate, cpu, ffmpeg, fvvdp, latency, metrics, popin, qpmap  # noqa: E402
 from nxq.codec import CodecCLI, CodecError  # noqa: E402
 from nxq.sequence import Sequence  # noqa: E402
 from nxq.yuv import Format, read_sequence, read_pose_log  # noqa: E402
 
 DEFAULT_SCRATCH = "/run/media/nerdrx/Lex/claude/nx-scratch/nx-warp"
+
+#: The perceptual metrics of PAPER.md 5.3, selected with ``--metric``.
+#: ``psnr`` and ``ssim`` are always computed; these are the ones that cost
+#: enough to be opt-in.
+PERCEPTUAL_METRICS = ("fvvdp", "fov-ssim", "popin")
+
+#: Which per-point key each of them contributes to the RD tables.
+METRIC_KEYS = {"fvvdp": "fvvdp_jod", "fov-ssim": "fov_ssim_y"}
 
 
 # --- foveated scoring ----------------------------------------------------
@@ -100,13 +108,18 @@ class FoveaScoring:
         }
 
 
-def _fovea_frame(ref_y: np.ndarray, dis_y: np.ndarray, sc: FoveaScoring, cache: dict) -> dict:
+def _fovea_frame(ref_y: np.ndarray, dis_y: np.ndarray, sc: FoveaScoring, cache: dict,
+                 do_ssim: bool = False) -> dict:
     """Foveated metrics for one frame, averaged over the views.
 
     Averaging is on the MSE, not on the dB, because averaging decibels across
-    views is not a mean square error of anything.
+    views is not a mean square error of anything.  The eccentricity-weighted
+    SSIM of PAPER.md 5.3's "secondary, cheap" metric is combined over the views
+    as one weighted mean over both weight maps, which is what a single map over
+    a two-eye image would have given.
     """
     acc: dict[str, list[float]] = {}
+    ssim_num = ssim_den = 0.0
     for (_, rv), (_, dv) in zip(fov._views(ref_y, sc.layout), fov._views(dis_y, sc.layout)):
         key = (rv.shape, sc.weighting)
         if key not in cache:
@@ -121,7 +134,16 @@ def _fovea_frame(ref_y: np.ndarray, dis_y: np.ndarray, sc: FoveaScoring, cache: 
             acc.setdefault("psnr_fovea", []).append(float(sq[inside].mean()))
         if (~inside).any():
             acc.setdefault("psnr_periphery", []).append(float(sq[~inside].mean()))
-    return {k: metrics.psnr_from_mse(float(np.mean(v))) for k, v in acc.items()}
+        if do_ssim:
+            smap = metrics.ssim_map(rv, dv)
+            off = (metrics.gaussian_kernel().size - 1) // 2
+            wc = w[off : off + smap.shape[0], off : off + smap.shape[1]]
+            ssim_num += float((wc * smap).sum())
+            ssim_den += float(wc.sum())
+    out = {k: metrics.psnr_from_mse(float(np.mean(v))) for k, v in acc.items()}
+    if do_ssim and ssim_den > 0:
+        out["fov_ssim_y"] = ssim_num / ssim_den
+    return out
 
 
 # --- measurement ---------------------------------------------------------
@@ -144,13 +166,22 @@ def measure(
     do_vmaf: bool = True,
     limit: int | None = None,
     fovea: FoveaScoring | None = None,
+    fov_ssim: bool = False,
+    fvvdp_runner: "fvvdp.FvvdpRunner | None" = None,
+    popin_scoring: "popin.PopInScoring | None" = None,
+    popin_skip: np.ndarray | None = None,
 ) -> dict:
     """Full-reference metrics between two raw YUV files.
 
     When *fovea* is given, each frame also gets the eccentricity-weighted PSNR
     of ``foveated_metrics.py`` (``fov_psnr_y``) plus the hard fovea/periphery
     split, so the RD curves can be re-read on the metric a foveated encoder is
-    actually optimising.
+    actually optimising, and with *fov_ssim* the eccentricity-weighted SSIM
+    PAPER.md 5.3 names as the cheap secondary.
+
+    *fvvdp_runner* adds the JOD score of the paper's primary metric, and
+    *popin_scoring* the temporal pop-in distribution; both walk the files
+    again, which is why they are opt-in.
     """
     per_frame = []
     ecc_cache: dict = {}
@@ -159,7 +190,7 @@ def measure(
     for i, (r, d) in enumerate(zip(ref_it, dis_it)):
         m = metrics.frame_metrics(r, d, do_ssim=do_ssim, do_ms_ssim=do_ssim)
         if fovea is not None:
-            m.update(_fovea_frame(r.y, d.y, fovea, ecc_cache))
+            m.update(_fovea_frame(r.y, d.y, fovea, ecc_cache, do_ssim=fov_ssim))
         m["frame"] = i
         per_frame.append(m)
     if not per_frame:
@@ -170,6 +201,20 @@ def measure(
         v = ffmpeg.vmaf(ref_path, dis_path, fmt, fps)
         if v is not None:
             out["vmaf"] = v
+    if fvvdp_runner is not None:
+        t0 = time.time()
+        res = fvvdp_runner.score(ref_path, dis_path, fmt, limit=limit)
+        res["wall_s"] = time.time() - t0
+        out["fvvdp"] = res
+        out["fvvdp_jod"] = res["jod"]
+    if popin_scoring is not None:
+        out["popin"] = popin.score_sequence(
+            read_sequence(ref_path, fmt, limit), read_sequence(dis_path, fmt, limit),
+            popin_scoring, skip=popin_skip,
+        )
+        for k in ("popin_p95", "popin_mean", "popin_visible_frac"):
+            if k in out["popin"]:
+                out[k] = out["popin"][k]
     return out
 
 
@@ -181,6 +226,12 @@ def _point_summary(p: dict) -> str:
         extra += f"  SSIM {p['ssim_y']:.4f}"
     if "vmaf" in p:
         extra += f"  VMAF {p['vmaf']:5.1f}"
+    if "fov_ssim_y" in p:
+        extra += f"  fovSSIM {p['fov_ssim_y']:.4f}"
+    if "fvvdp_jod" in p:
+        extra += f"  JOD {p['fvvdp_jod']:6.3f}"
+    if "popin_p95" in p:
+        extra += f"  pop p95 {p['popin_p95']:6.3f}"
     return f"{bits}  {psnr}{extra}"
 
 
@@ -200,6 +251,7 @@ def run_anchor(
     verbose: bool = True,
     fovea_map: qpmap.FoveaMap | None = None,
     fovea_scoring: FoveaScoring | None = None,
+    extra: dict | None = None,
 ) -> dict:
     ok, why = ffmpeg.anchor_available(anchor, seq.fmt)
     if not ok:
@@ -244,17 +296,23 @@ def run_anchor(
         except ffmpeg.FFmpegError as exc:
             print(f"[compare]   {tag}: FAILED -- {exc}", flush=True)
             continue
+        enc_s = time.time() - t0
+        t1 = time.time()
         try:
             ffmpeg.decode_bitstream(bs, seq.fmt, rec)
         except ffmpeg.FFmpegError as exc:
             print(f"[compare]   {tag}: DECODE FAILED -- {exc}", flush=True)
             continue
-        enc_s = time.time() - t0
+        dec_s = time.time() - t1
         m = measure(seq.path, rec, seq.fmt, fps=seq.fps, do_ssim=do_ssim,
-                    do_vmaf=do_vmaf, limit=frames, fovea=fovea_scoring)
+                    do_vmaf=do_vmaf, limit=frames, fovea=fovea_scoring,
+                    **(extra or {}))
         point = {eff_rc: pt, "bytes": enc.size,
                  "bitrate_mbps": bitrate_mbps(enc.size, frames, seq.fps),
-                 "wall_s": enc_s, "cmd": enc.cmdline, **m}
+                 "wall_s": enc_s + dec_s,
+                 "encode_ms_per_frame": enc_s * 1000.0 / max(frames, 1),
+                 "decode_ms_per_frame": dec_s * 1000.0 / max(frames, 1),
+                 "cmd": enc.cmdline, **m}
         out["points"].append(point)
         if verbose:
             print(f"[compare]   {anchor.name} {eff_rc}={pt:<3} {_point_summary(point)}", flush=True)
@@ -277,6 +335,7 @@ def run_codec(
     frames: int,
     verbose: bool = True,
     fovea_scoring: FoveaScoring | None = None,
+    extra: dict | None = None,
 ) -> dict:
     ok, why = cli.available()
     if not ok:
@@ -292,20 +351,25 @@ def run_codec(
         t0 = time.time()
         try:
             size = cli.encode(seq.path, seq.fmt, qp, bs)
+            enc_s = time.time() - t0
+            t1 = time.time()
             cli.decode(bs, rec)
+            dec_s = time.time() - t1
         except CodecError as exc:
             print(f"[compare]   {tag}: FAILED -- {exc}", flush=True)
             continue
-        enc_s = time.time() - t0
         try:
             m = measure(seq.path, rec, seq.fmt, fps=seq.fps, do_ssim=do_ssim,
-                        do_vmaf=do_vmaf, limit=frames, fovea=fovea_scoring)
+                        do_vmaf=do_vmaf, limit=frames, fovea=fovea_scoring,
+                        **(extra or {}))
         except (EOFError, ValueError) as exc:
             print(f"[compare]   {tag}: decoded output does not match the source geometry: {exc}",
                   flush=True)
             continue
         point = {"qp": qp, "bytes": size, "bitrate_mbps": bitrate_mbps(size, frames, seq.fps),
-                 "wall_s": enc_s,
+                 "wall_s": enc_s + dec_s,
+                 "encode_ms_per_frame": enc_s * 1000.0 / max(frames, 1),
+                 "decode_ms_per_frame": dec_s * 1000.0 / max(frames, 1),
                  "cmd": " ".join(shlex.quote(a) for a in
                                  cpu.wrap(cli.encode_argv(seq.path, seq.fmt, qp, bs))),
                  **m}
@@ -479,6 +543,12 @@ def main(argv=None) -> int:
                           "see nxq/qpmap.py")
 
     an = ap.add_argument_group("analysis")
+    an.add_argument("--metric", default="", metavar="LIST",
+                    help="perceptual metrics of PAPER.md 5.3 to add, comma-separated "
+                         f"from {list(PERCEPTUAL_METRICS)}: 'fvvdp' is FovVideoVDP in a "
+                         "headset display model (JOD per point, BD-rate on JOD), "
+                         "'fov-ssim' the eccentricity-weighted SSIM, 'popin' the "
+                         "temporal tile-refresh metric. PSNR and SSIM are always computed")
     an.add_argument("--foveated-psnr", action="store_true",
                     help="also report every RD curve as eccentricity-weighted PSNR "
                          "(foveated_metrics.py) with a centre fixation, so the foveated "
@@ -497,6 +567,27 @@ def main(argv=None) -> int:
                     help="top percent of frames by angular velocity for the Phase 2 split")
     an.add_argument("--no-ssim", action="store_true", help="skip SSIM/MS-SSIM (faster)")
     an.add_argument("--no-vmaf", action="store_true", help="skip VMAF even if libvmaf exists")
+
+    vd = ap.add_argument_group("FovVideoVDP (--metric fvvdp)")
+    fvvdp.add_arguments(vd)
+
+    pi = ap.add_argument_group("pop-in (--metric popin)")
+    pi.add_argument("--popin-skip-map", default=None, metavar="FILE",
+                    help="the per-tile skip map that was handed to the encoder "
+                         "(nxv-enc --skip-map); without it the metric scores every "
+                         "frame and reports mode 'all-frames'")
+    pi.add_argument("--popin-jnd", type=float, default=1.0,
+                    help="JND threshold a pop must exceed to count as visible (default 1.0)")
+    pi.add_argument("--write-skip-map", default=None, metavar="FILE",
+                    help="write a temporal-ladder skip map for this sequence and exit; "
+                         "feed it to nxv-enc --skip-map and back in via --popin-skip-map")
+    pi.add_argument("--ladder", default="11223", choices=sorted(popin.LADDERS),
+                    help="which refresh ladder --write-skip-map builds (default 11223, "
+                         "Floeter et al.'s tolerated operating point)")
+
+    lat = ap.add_argument_group("latency")
+    lat.add_argument("--link", default="wifi6", choices=("wifi6", "usb"),
+                     help="which PAPER.md 4.2 pipeline budget to report (default wifi6)")
 
     out = ap.add_argument_group("output")
     out.add_argument("--out", default=None, help="results JSON path")
@@ -551,14 +642,72 @@ def main(argv=None) -> int:
     except ValueError as exc:
         ap.error(f"--fovea-map: {exc}")
 
+    wanted = [m.strip() for m in args.metric.split(",") if m.strip()]
+    for m in wanted:
+        if m not in PERCEPTUAL_METRICS:
+            ap.error(f"--metric {m!r}: choose from {list(PERCEPTUAL_METRICS)}")
+    want_fvvdp = "fvvdp" in wanted
+    want_fov_ssim = "fov-ssim" in wanted
+    want_popin = "popin" in wanted
+
+    view_w = seq.width // 2 if seq.layout == "sbs" else seq.width
     fovea_scoring = None
-    if args.foveated_psnr:
-        view_w = seq.width // 2 if seq.layout == "sbs" else seq.width
+    if args.foveated_psnr or want_fov_ssim:
         ppd = args.fov_ppd or fov.ppd_from_fov(view_w, args.fov_hfov)
         fovea_scoring = FoveaScoring(
             ppd_center=ppd, layout=seq.layout, weighting=args.fov_weighting,
             fovea_radius_deg=args.fov_radius, hfov_deg=args.fov_hfov,
         )
+
+    # The temporal-ladder skip map is a sequence property, not a codec one, so
+    # it is written here and then given to every encoder run by hand.
+    if args.write_skip_map:
+        ppd = args.fov_ppd or fov.ppd_from_fov(view_w, args.fov_hfov)
+        geo = popin.tile_geometry(seq.height, view_w, ppd, popin.TILE_SIZE)
+        eyes = 2 if seq.layout == "sbs" else 1
+        ecc = geo["ecc_deg"]
+        sched = popin.SkipSchedule.ladder(frames, eyes, ecc,
+                                          rings=popin.LADDERS[args.ladder])
+        sched.write(args.write_skip_map)
+        skipped = float((sched.flags != 0).mean())
+        print(f"[compare] wrote {args.write_skip_map}: {frames} frames x "
+              f"{ecc.shape[0]}x{ecc.shape[1]} tiles ({eyes} eye(s)), ladder "
+              f"{args.ladder}, {100.0 * skipped:.1f}% of tile-frames forced to WARP_SKIP",
+              flush=True)
+        return 0
+
+    fvvdp_runner = None
+    if want_fvvdp:
+        try:
+            fvvdp_runner = fvvdp.FvvdpRunner(
+                fvvdp.scoring_from_args(args, seq.width, seq.layout), seq.fps)
+        except RuntimeError as exc:
+            ap.error(f"--metric fvvdp: {exc}")
+        print(f"[compare] fvvdp   : {fvvdp_runner.describe(view_w, seq.height)}", flush=True)
+
+    popin_scoring = popin_skip = None
+    if want_popin:
+        ppd = args.fov_ppd or fov.ppd_from_fov(view_w, args.fov_hfov)
+        popin_scoring = popin.PopInScoring(
+            ppd_center=ppd, fps=seq.fps, layout=seq.layout,
+            fovea_radius_deg=args.fov_radius, jnd_threshold=args.popin_jnd,
+        )
+        if args.popin_skip_map:
+            eyes = 2 if seq.layout == "sbs" else 1
+            ty = (seq.height + popin.TILE_SIZE - 1) // popin.TILE_SIZE
+            tx = (view_w + popin.TILE_SIZE - 1) // popin.TILE_SIZE
+            popin_skip = popin.SkipSchedule.read(args.popin_skip_map, eyes, ty, tx).flags
+        print(f"[compare] pop-in  : ppd_center {ppd:.2f}, {popin.TILE_SIZE}px tiles, "
+              f"JND threshold {args.popin_jnd:g}, "
+              f"{'skip map ' + args.popin_skip_map if args.popin_skip_map else 'all frames'}",
+              flush=True)
+
+    measure_extra = {
+        "fov_ssim": want_fov_ssim,
+        "fvvdp_runner": fvvdp_runner,
+        "popin_scoring": popin_scoring,
+        "popin_skip": popin_skip,
+    }
 
     work = args.work or os.path.join(DEFAULT_SCRATCH, "work")
     os.makedirs(work, exist_ok=True)
@@ -593,6 +742,14 @@ def main(argv=None) -> int:
         "codec_key": codec_key,
         "fovea_map": fovea_map.to_json(),
         "foveated_scoring": fovea_scoring.to_json() if fovea_scoring else None,
+        "perceptual_metrics": wanted,
+        "fvvdp_scoring": (
+            dict(fvvdp_runner.scoring.to_json(view_w, seq.height),
+                 pyfvvdp_version=fvvdp_runner.version, device=fvvdp_runner.device_name)
+            if fvvdp_runner else None),
+        "popin_scoring": (
+            dict(popin_scoring.to_json(), skip_map=args.popin_skip_map)
+            if popin_scoring else None),
         "codecs": {},
     }
 
@@ -616,13 +773,13 @@ def main(argv=None) -> int:
             results["codecs"][name] = run_anchor(
                 anchor, seq, anchor_points, anchor_rc, workdir,
                 do_ssim=not args.no_ssim, do_vmaf=do_vmaf, frames=frames,
-                fovea_map=fovea_map, fovea_scoring=fovea_scoring,
+                fovea_map=fovea_map, fovea_scoring=fovea_scoring, extra=measure_extra,
             )
 
         print(f"[compare] codec {codec_key} (qp {qps}) ...", flush=True)
         results["codecs"][codec_key] = run_codec(
             cli, seq, qps, workdir, do_ssim=not args.no_ssim, do_vmaf=do_vmaf, frames=frames,
-            fovea_scoring=fovea_scoring,
+            fovea_scoring=fovea_scoring, extra=measure_extra,
         )
     finally:
         if not args.keep_work:
@@ -637,6 +794,25 @@ def main(argv=None) -> int:
     if fovea_scoring:
         for m in ("fov_psnr_y", "psnr_fovea", "psnr_periphery"):
             results["bd_rate"][m] = bd_table(results, codec_key, m)
+    for name in wanted:
+        key = METRIC_KEYS.get(name)
+        if key:
+            results["bd_rate"][key] = bd_table(results, codec_key, key)
+
+    # PAPER.md 5.3: latency is a quality metric and is reported next to every
+    # quality number, even when the harness can only model it.
+    budget = latency.LatencyBudget.usb() if args.link == "usb" else latency.LatencyBudget()
+    results["motion_to_photon"] = {}
+    for name, entry in results["codecs"].items():
+        pts = entry.get("points", [])
+        enc = [p["encode_ms_per_frame"] for p in pts if "encode_ms_per_frame" in p]
+        dec = [p["decode_ms_per_frame"] for p in pts if "decode_ms_per_frame" in p]
+        results["motion_to_photon"][name] = latency.motion_to_photon(
+            budget,
+            encode_ms_per_frame=float(np.mean(enc)) if enc else None,
+            decode_ms_per_frame=float(np.mean(dec)) if dec else None,
+            fps=seq.fps,
+        )
 
     band = tuple(float(x) for x in args.phase1_band.split(","))  # type: ignore[assignment]
     results["phase1"] = phase1_gate(
@@ -679,18 +855,57 @@ def _print_summary(results: dict) -> None:
                 print(f"        {label} unavailable: {bd[key]}")
     for m, label in (("fov_psnr_y", "eccentricity-weighted PSNR-Y"),
                      ("psnr_fovea", "PSNR-Y inside the fovea disc"),
-                     ("psnr_periphery", "PSNR-Y in the periphery")):
+                     ("psnr_periphery", "PSNR-Y in the periphery"),
+                     ("fov_ssim_y", "eccentricity-weighted SSIM (PAPER.md 5.3)"),
+                     ("fvvdp_jod", "FovVideoVDP JOD (PAPER.md 5.3 primary)")):
         table = results.get("bd_rate", {}).get(m)
         if not table:
             continue
+        unit = {"fvvdp_jod": "JOD", "fov_ssim_y": "SSIM"}.get(m, "dB")
         print(f"\n  BD-rate of {ck} on {label} (negative is better):")
         for anchor, bd in table.items():
             if "error" in bd:
                 print(f"    vs {anchor:<15} n/a ({bd['error']})")
                 continue
             rate = f"{bd['bd_rate_pct']:+8.2f} %" if "bd_rate_pct" in bd else "     n/a"
-            psnr = f"{bd['bd_psnr_db']:+6.3f} dB" if "bd_psnr_db" in bd else "   n/a"
-            print(f"    vs {anchor:<15} {rate}   BD-PSNR {psnr}")
+            dq = (f"{bd['bd_psnr_db']:+7.4f} {unit}" if "bd_psnr_db" in bd
+                  else f"   n/a {unit}")
+            print(f"    vs {anchor:<15} {rate}   BD-quality {dq}")
+
+    popin_rows = [
+        (name, p) for name, entry in results.get("codecs", {}).items()
+        for p in entry.get("points", []) if "popin" in p
+    ]
+    if popin_rows:
+        mode = popin_rows[0][1]["popin"]["mode"]
+        print(f"\n  Tile pop-in, C_M in JND units, mode '{mode}' "
+              "(PAPER.md 5.3, model docs/RATECONTROL.md 8.2):")
+        print(f"    {'codec':<16}{'rate':>9}  {'mean':>7}{'p95':>8}{'max':>8}"
+              f"{'>1 JND':>9}{'fovea p95':>11}")
+        for name, p in popin_rows:
+            d = p["popin"]["popin_c_m"]
+            f = p["popin"]["popin_c_m_fovea"]
+            if not d.get("events"):
+                continue
+            fovea = f"{f['p95']:11.3f}" if f.get("events") else f"{'no tiles':>11}"
+            print(f"    {name:<16}{p['bitrate_mbps']:9.1f}  {d['mean']:7.3f}{d['p95']:8.3f}"
+                  f"{d['max']:8.3f}{d['over_threshold_frac'] * 100:8.1f}%{fovea}")
+
+    m2p = results.get("motion_to_photon", {})
+    if m2p:
+        any_entry = next(iter(m2p.values()))
+        print(f"\n  Motion to photon (PAPER.md 5.3: reported alongside every quality "
+              f"number).\n    Budget from PAPER.md 4.2, {any_entry['budget_ms']['link']}: "
+              f"{any_entry['budget_total_ms']:.1f} ms; NOT measured -- "
+              "no photodiode and no IMU here.")
+        print(f"    {'codec':<16}{'enc ms/frame':>14}{'dec ms/frame':>14}"
+              f"{'x the 6.8 ms budget':>22}")
+        for name, e in m2p.items():
+            if "reference_codec_ms_per_frame" not in e:
+                continue
+            print(f"    {name:<16}{e['reference_encode_ms_per_frame']:14.1f}"
+                  f"{e['reference_decode_ms_per_frame']:14.1f}"
+                  f"{e['reference_over_budget']:22.1f}")
 
     p1 = results.get("phase1", {})
     print("\n  Phase 1 gate (PAPER.md 3.11: within 1.0 dB of x264 intra, 100-400 Mbit):")

@@ -186,6 +186,29 @@ def rgb_to_yuv444(rgb: np.ndarray) -> Frame:
     return Frame(yq, uq, vq)
 
 
+def yuv_to_rgb(frame: Frame) -> np.ndarray:
+    """BT.709 limited-range YUV -> RGB (uint8, HxWx3), the exact inverse of
+    :func:`rgb_to_yuv444`.
+
+    4:2:0 chroma is upsampled by pixel replication, which is what a 2x nearest
+    expansion of the codec's own reconstruction grid gives; the metrics that
+    consume this are luminance-driven, so the chroma interpolant is not a
+    meaningful degree of freedom here.
+    """
+    y = (frame.y.astype(np.float32) - 16.0) * (255.0 / 219.0)
+    u = (frame.u.astype(np.float32) - 128.0) * (255.0 / 224.0)
+    v = (frame.v.astype(np.float32) - 128.0) * (255.0 / 224.0)
+    if u.shape != y.shape:
+        sy = y.shape[0] // u.shape[0]
+        sx = y.shape[1] // u.shape[1]
+        u = np.repeat(np.repeat(u, sy, axis=0), sx, axis=1)[: y.shape[0], : y.shape[1]]
+        v = np.repeat(np.repeat(v, sy, axis=0), sx, axis=1)[: y.shape[0], : y.shape[1]]
+    b = u * 1.8556 + y
+    r = v * 1.5748 + y
+    g = (y - 0.2126 * r - 0.0722 * b) / 0.7152
+    return np.clip(np.rint(np.stack((r, g, b), axis=-1)), 0, 255).astype(np.uint8)
+
+
 def downsample_chroma(frame: Frame) -> Frame:
     """4:4:4 -> 4:2:0 by 2x2 box average of the chroma planes."""
     def box(p: np.ndarray) -> np.ndarray:
