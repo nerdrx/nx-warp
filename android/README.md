@@ -212,6 +212,7 @@ itself a result: it bounds what the real client can assume.
 | Date | Device | Profile | Target pps | Achieved pps | Loss | rcvbuf err | ring full | CPU (rx thread) | Notes |
 |---|---|---|---|---|---|---|---|---|---|
 | 2026-09-04 | host loopback (x86_64, 127.0.0.1) | 150mbit | 14940 | 12806 | 0 | 0 | 0 | n/a | wire-format and frame-ring validation only, not a pps measurement |
+| 2026-09-04 | host loopback (x86_64, 127.0.0.1) | ceiling | ramped | 86464 | 0 | 0 | 0 | n/a | sender capability check: the blaster sustains 86 kpps / 892 Mbit/s, so it is not the bottleneck for the 50–100 kpps question |
 | | Pixel 7 (Mali-G710) | 150mbit | | | | | | | |
 | | Pixel 7 (Mali-G710) | 400mbit | | | | | | | |
 | | Pixel 7 (Mali-G710) | 1gbit | | | | | | | |
@@ -228,6 +229,13 @@ frames seen/advanced 528 / 528  deadlines fired      3168
 tiles concealed/late 1304 / 0   deadline offset      0 us
 feedback pkts/bytes  3168 / 228090 (max 93 B, mean 72 B)
 ```
+
+Two things are worth taking from the host runs even though neither is a device
+result. First, the blaster's own model reproduces the paper's arithmetic: at
+1 Gbit/s and 90 Hz it derives 2 tiles per run, 1156 runs per frame and 104 kpps,
+against PAPER 4.1's "about 1000 per frame (90k pps)". Second, it sustains
+86 kpps on loopback, so when a headset is finally attached the sender will not be
+the thing that runs out first.
 
 The mean 72-byte feedback packet is the interesting one: TRANSPORT.md decision D9
 predicts "a clean band costs 20 bytes, a band with two loss bursts costs 26"

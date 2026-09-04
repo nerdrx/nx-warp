@@ -262,6 +262,7 @@ int main(int argc, char** argv) {
     uint64_t last_device_lost = 0, last_device_drops = 0;
     uint64_t feedback_rx = 0, feedback_bytes = 0;
     bool     got_report = false;
+    bool     warned_no_report = false;
 
     // Reports come back on the same socket.
     auto drain_reports = [&]() {
@@ -416,16 +417,45 @@ int main(int argc, char** argv) {
                             send_errors ? "  (ENOBUFS backpressure)" : "");
             }
             if (ceiling) {
-                // Ramp until the device reports loss or the host cannot keep up.
-                const bool device_ok = got_report && last_device_lost == 0 &&
-                                       last_device_drops == 0;
+                // Ramp until the device reports loss, or until the host itself
+                // cannot keep up (in which case the number measured would be the
+                // sender's ceiling, not the receiver's).
                 const bool host_ok = achieved > cur_pps * 0.9;
-                if (device_ok && host_ok && cur_pps < target_pps * 4) {
-                    cur_pps *= 1.35;
-                    std::printf("       ramping to %.0f pps\n", cur_pps);
-                } else if (!device_ok) {
-                    std::printf("       device reporting loss at %.0f pps -- ceiling found\n",
-                                cur_pps);
+
+                if (!got_report) {
+                    // No stats report is NOT evidence of loss -- it usually means
+                    // the app is not running, or the uplink is blocked. Keep
+                    // ramping on the host-side signal alone and say so, rather
+                    // than reporting a ceiling that was never measured.
+                    if (!warned_no_report) {
+                        std::printf("       WARNING: no stats reports from the device yet; "
+                                    "ramping on host-side pacing alone.\n"
+                                    "       The 'ceiling' found this way is the SENDER's, "
+                                    "not the receiver's.\n");
+                        warned_no_report = true;
+                    }
+                    if (host_ok && cur_pps < target_pps * 4) {
+                        cur_pps *= 1.35;
+                        std::printf("       ramping to %.0f pps\n", cur_pps);
+                    } else if (!host_ok) {
+                        std::printf("       host cannot sustain %.0f pps (achieved %.0f) -- "
+                                    "sender bound, not a device result\n", cur_pps, achieved);
+                        ceiling = false;
+                    }
+                } else if (last_device_lost == 0 && last_device_drops == 0) {
+                    if (host_ok && cur_pps < target_pps * 4) {
+                        cur_pps *= 1.35;
+                        std::printf("       ramping to %.0f pps\n", cur_pps);
+                    } else if (!host_ok) {
+                        std::printf("       host cannot sustain %.0f pps (achieved %.0f); "
+                                    "the device is still clean, so this is a SENDER bound\n",
+                                    cur_pps, achieved);
+                        ceiling = false;
+                    }
+                } else {
+                    std::printf("       device reporting loss (%" PRIu64 " lost, %" PRIu64
+                                " ring-full) at %.0f pps -- receive-path ceiling found\n",
+                                last_device_lost, last_device_drops, cur_pps);
                     ceiling = false;
                 }
             }
