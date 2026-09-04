@@ -12,8 +12,8 @@ the package takes; `ref/README.md` is the user-facing summary.
    and the rate they were minimising against was **18.6 % below the rate the
    entropy coder actually charged**. Section 1.
 2. On the Phase 2 kill test the package is worth **-9.8 % BD-rate at 0.81x the
-   v1.4 encode time** (4:4:4; -6.6 % on 4:2:0), of which -3.4 points is one
-   line: the reference-persistence factor was charged twice. Sections 3, 6
+   v1.4 encode time** (4:4:4; -9.7 % at 0.92x on 4:2:0), of which -3.4 points
+   is one line: the reference-persistence factor was charged twice. Sections 3, 6
    and 8.3.
 3. On the Phase 1 gate it is worth **-1.55 % at 0.57x encode time** (4:4:4;
    -1.44 % at 0.61x on 4:2:0). It does not come near the -10 % that was asked
@@ -418,7 +418,55 @@ search and the trellis together.
 
 ### 8.4 The Phase 2 kill test, band A, 4:2:0
 
-*(filled in below)*
+| QP | | Mbit/s | PSNR-Y | SSIM-Y |
+|---|---|---|---|---|
+| 0 | before | 485.85 | 57.159 | 0.99885 |
+| | **after** | **483.21** | **57.404** | **0.99892** |
+| 4 | before | 334.24 | 55.212 | 0.99836 |
+| | **after** | **303.25** | **55.264** | **0.99837** |
+| 8 | before | 228.51 | 52.972 | 0.99772 |
+| | **after** | **211.35** | **53.141** | **0.99779** |
+| 12 | before | 158.31 | 50.088 | 0.99653 |
+| | **after** | **144.16** | **50.347** | **0.99670** |
+
+BD-rate against `x265-p`: **+306.78 % before, +265.76 % after**. After against
+before: **-9.72 %**. Encode time **0.921x**.
+
+> ```
+> === vr-mixed-1024-v2.yuv420p  (before)
+>     overall (all frames)          BD-rate +306.78 %  BD-PSNR -6.720 dB
+>     fastest 20 % of frames        BD-rate +281.69 %  BD-PSNR -6.128 dB
+>     the remaining frames          BD-rate +315.26 %  BD-PSNR -6.917 dB
+>     at rest   : BD-rate +315.26 % (allowed up to +10 %)  FAIL
+>     on motion : BD-rate +281.69 % (needs -30 % or better)  FAIL
+>     VERDICT   : FAIL
+>
+> === vr-mixed-1024-v2.yuv420p  (after)
+>     overall (all frames)          BD-rate +265.76 %  BD-PSNR -6.097 dB
+>     fastest 20 % of frames        BD-rate +246.70 %  BD-PSNR -5.574 dB
+>     the remaining frames          BD-rate +272.10 %  BD-PSNR -6.272 dB
+>     at rest   : BD-rate +272.10 % (allowed up to +10 %)  FAIL
+>     on motion : BD-rate +246.70 % (needs -30 % or better)  FAIL
+>     VERDICT   : FAIL
+> ```
+
+### 8.5 Summary
+
+| measurement | before | after | after vs before | encode time |
+|---|---|---|---|---|
+| Phase 1 gate, 4:4:4 | +77.29 % vs x264-intra | +75.30 % | **-1.55 %** | 0.573x |
+| Phase 1 gate, 4:2:0 | +60.77 % | +56.31 % | **-1.44 %** | 0.611x |
+| Kill test A, 4:4:4 | +383.41 % vs x265-p | +334.54 % | **-9.82 %** | 0.814x |
+| Kill test A, 4:2:0 | +306.78 % | +265.76 % | **-9.72 %** | 0.921x |
+
+Neither gate's verdict changes: the Phase 1 gate needs 5.8 dB it does not have
+and the kill test needs a different codec, not a different search. Both move in
+the right direction and the encoder is **faster than before in every one of the
+four**, which is the part of the result that was not asked for.
+
+The decode side is untouched, by construction: no tool bit, no syntax change,
+no new arithmetic on the normative path. The measured decode times move by
+under the run-to-run noise of a machine running eight encoders.
 
 ---
 
