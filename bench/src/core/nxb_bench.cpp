@@ -59,10 +59,77 @@ int qstep16(int qp)
 } // namespace
 
 // ------------------------------------------------------------------- init
+// Everything the kernels need from the device, checked up front and reported
+// by name. Without this an unsupported limit becomes a SIGABRT somewhere in
+// the middle of resource creation, which on a headset means a black screen and
+// no explanation.
+static bool checkLimits(VkCtx& ctx, const Config& cfg, std::string* why)
+{
+    const VkPhysicalDeviceLimits& L = ctx.props.limits;
+    char buf[256];
+
+    uint32_t biggest = uint32_t(std::max(std::max(cfg.width, cfg.height),
+                                         std::max(cfg.reproW, cfg.reproH)));
+    if (biggest > L.maxImageDimension2D)
+    {
+        snprintf(buf, sizeof buf,
+                 "maxImageDimension2D is %u but the bench needs %u "
+                 "(the reprojection target is %dx%d)",
+                 L.maxImageDimension2D, biggest, cfg.reproW, cfg.reproH);
+        *why = buf; return false;
+    }
+    if (L.maxComputeWorkGroupInvocations < 256)
+    {
+        snprintf(buf, sizeof buf,
+                 "maxComputeWorkGroupInvocations is %u; Pass B needs 256 "
+                 "(PAPER 3.2.3)", L.maxComputeWorkGroupInvocations);
+        *why = buf; return false;
+    }
+    // Pass A: 8 KB of slot-to-symbol table plus 512 B of freq/cum.
+    // Pass B: the 8 KB packed transpose buffer.
+    if (L.maxComputeSharedMemorySize < 8704)
+    {
+        snprintf(buf, sizeof buf,
+                 "maxComputeSharedMemorySize is %u; Pass A needs 8704 B",
+                 L.maxComputeSharedMemorySize);
+        *why = buf; return false;
+    }
+    VkDeviceSize coefBytes = VkDeviceSize(cfg.width / 64) * VkDeviceSize(cfg.height / 64)
+                           * NXB_COEFS_PER_TILE_BYTES;
+    if (coefBytes > L.maxStorageBufferRange)
+    {
+        snprintf(buf, sizeof buf,
+                 "maxStorageBufferRange is %u but the coefficient buffer is %llu B",
+                 L.maxStorageBufferRange, (unsigned long long)coefBytes);
+        *why = buf; return false;
+    }
+
+    // R8G8B8A8_UINT as a storage image is the normative gather format.
+    VkFormatProperties fp{};
+    vkGetPhysicalDeviceFormatProperties(ctx.phys, VK_FORMAT_R8G8B8A8_UINT, &fp);
+    if (!(fp.optimalTilingFeatures & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT))
+    {
+        *why = "R8G8B8A8_UINT is not usable as a storage image on this device";
+        return false;
+    }
+
+    NXB_LOG("limits ok: maxImageDimension2D %u, workgroup invocations %u, "
+            "shared memory %u B", L.maxImageDimension2D,
+            L.maxComputeWorkGroupInvocations, L.maxComputeSharedMemorySize);
+    return true;
+}
+
 bool Bench::init(VkCtx& ctx, const Config& cfg)
 {
     ctx_ = &ctx;
     cfg_ = cfg;
+
+    std::string why;
+    if (!checkLimits(ctx, cfg, &why))
+    {
+        NXB_LOG("DEVICE UNSUITABLE: %s", why.c_str());
+        return false;
+    }
 
     tilesX_ = cfg.width  / 64;
     tilesY_ = cfg.height / 64;

@@ -75,15 +75,47 @@ adb "${DEV[@]}" install -r -g "$APK" >/dev/null
 # 10-minute thermal pass outlives any sane screen timeout.
 adb "${DEV[@]}" shell svc power stayon usb >/dev/null 2>&1 || true
 
+mkdir -p "$OUT"
+STAMP="$(date +%Y%m%d-%H%M%S)"
+LOCAL_JSON="$OUT/phase0-$DEVNAME-$STAMP.json"
+LOCAL_LOG="$OUT/phase0-$DEVNAME-$STAMP.log"
+
+# Saves whatever the device can still tell us, on every exit path. Takes the
+# crash buffer too: a native abort leaves nothing under our own log tag.
+save_logs() {
+  if [ "$(adb "${DEV[@]}" get-state 2>/dev/null)" = "device" ]; then
+    {
+      echo "--- logcat: nxwarp-bench ---"
+      adb "${DEV[@]}" logcat -d -s nxwarp-bench 2>/dev/null || true
+      echo
+      echo "--- logcat: crash buffer ---"
+      adb "${DEV[@]}" logcat -d -b crash 2>/dev/null | tail -100 || true
+      echo
+      echo "--- logcat: anything mentioning the package or Vulkan ---"
+      adb "${DEV[@]}" logcat -d 2>/dev/null \
+        | grep -iE "nxwarp|org\.nxwarp|vulkan|adreno|mali|DEBUG|AndroidRuntime|libc" \
+        | tail -200 || true
+    } > "$LOCAL_LOG" 2>&1
+  fi
+}
+
 echo "==> running: ${ARGS:-<defaults: K1..K5>}"
 adb "${DEV[@]}" shell am force-stop "$PKG" >/dev/null 2>&1 || true
 adb "${DEV[@]}" shell run-as "$PKG" rm -f "$REMOTE_JSON" >/dev/null 2>&1 || true
 adb "${DEV[@]}" logcat -c >/dev/null 2>&1 || true
+adb "${DEV[@]}" logcat -c -b crash >/dev/null 2>&1 || true
 
+# am start reports failures on stdout with a zero exit code, so it has to be
+# read rather than trusted.
 if [ -n "$ARGS" ]; then
-  adb "${DEV[@]}" shell am start -n "$PKG/$ACT" --es args "'$ARGS'" >/dev/null
+  START_OUT="$(adb "${DEV[@]}" shell am start -n "$PKG/$ACT" --es args "'$ARGS'" 2>&1)"
 else
-  adb "${DEV[@]}" shell am start -n "$PKG/$ACT" >/dev/null
+  START_OUT="$(adb "${DEV[@]}" shell am start -n "$PKG/$ACT" 2>&1)"
+fi
+if echo "$START_OUT" | grep -qiE "error|exception"; then
+  echo "am start failed:" >&2
+  echo "$START_OUT" >&2
+  exit 1
 fi
 
 # --- wait for the run to finish, echoing progress
@@ -95,13 +127,24 @@ while [ "$(date +%s)" -lt "$DEADLINE" ]; do
     DONE=1
     break
   fi
+  # A disconnected device is not a crashed app. Distinguish them, or every
+  # unplug looks like a kernel bug.
+  STATE="$(adb "${DEV[@]}" get-state 2>/dev/null || true)"
+  if [ "$STATE" != "device" ]; then
+    echo "device $DEVNAME went away mid-run (adb state: '${STATE:-offline}')" >&2
+    echo "nothing was measured; re-attach it and run again" >&2
+    exit 2
+  fi
+
   if ! adb "${DEV[@]}" shell pidof "$PKG" >/dev/null 2>&1; then
-    # Process gone: either it finished between polls or it crashed.
+    # Process gone: either it finished between polls or it died.
     if adb "${DEV[@]}" logcat -d -s nxwarp-bench 2>/dev/null | grep -q "bench done"; then
       DONE=1
     else
-      echo "the app exited without finishing; last log lines:" >&2
-      adb "${DEV[@]}" logcat -d -s nxwarp-bench DEBUG:E AndroidRuntime:E | tail -40 >&2
+      echo "the app exited without finishing" >&2
+      save_logs
+      echo "diagnostics saved to $LOCAL_LOG" >&2
+      sed -n '1,60p' "$LOCAL_LOG" >&2 2>/dev/null || true
       exit 1
     fi
     break
@@ -111,16 +154,12 @@ done
 
 if [ "$DONE" != "1" ]; then
   echo "timed out waiting for the run" >&2
-  adb "${DEV[@]}" logcat -d -s nxwarp-bench | tail -30 >&2
+  save_logs
+  echo "diagnostics saved to $LOCAL_LOG" >&2
   exit 1
 fi
 
-mkdir -p "$OUT"
-STAMP="$(date +%Y%m%d-%H%M%S)"
-LOCAL_JSON="$OUT/phase0-$DEVNAME-$STAMP.json"
-LOCAL_LOG="$OUT/phase0-$DEVNAME-$STAMP.log"
-
-adb "${DEV[@]}" logcat -d -s nxwarp-bench > "$LOCAL_LOG" 2>/dev/null || true
+save_logs
 
 # Debug APK, so run-as reaches the app's files dir without root.
 if ! adb "${DEV[@]}" exec-out run-as "$PKG" cat "$REMOTE_JSON" > "$LOCAL_JSON" 2>/dev/null \
