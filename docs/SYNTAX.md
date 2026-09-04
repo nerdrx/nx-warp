@@ -66,10 +66,11 @@ size **64 bytes**, followed by a TLV extension area of `ext_len` bytes.
 | 14 | u8 | `num_layers` | 1..4 |
 | 15 | u8 | `chroma_format` | 0 = 4:2:0, 1 = 4:4:4 |
 | 16 | u32 x4 | `layer_desc[4]` | `type(4) : scale(2) : flags(26)`, LSB first. Entries above `num_layers` must be 0 |
-| 32 | u64 | `tools` | mandatory tool bitmask, section 2.2 |
+| 32 | u64 | `tools` | mandatory tool bitmask, section 2.3 |
 | 40 | u8 | `alpha_present` | 0 or 1: the stream carries a 4th plane |
 | 41 | u8 | `color_transform` | 0 = none, 1 = YCoCg-R |
-| 42 | u8 x20 | reserved | must be 0 |
+| 42 | u8 | `color_space` | what the coded planes mean, section 2.3 |
+| 43 | u8 x19 | reserved | must be 0 |
 | 62 | u16 | `ext_len` | byte length of the TLV area that follows |
 
 Constraints a decoder must check:
@@ -80,6 +81,7 @@ Constraints a decoder must check:
 * `ceil(width / 64) <= 64` (the tile-row skip bitmap is 64 bits wide).
 * `chroma_format`, `color_transform` and `alpha_present` must be in range.
 * `color_transform == 1` requires `chroma_format == 1`.
+* `color_space == 3` if and only if `color_transform == 1`.
 * If `tools` has any bit set that the decoder does not implement, the stream
   must be refused. This is the only forward-compatibility gate; unknown
   *optional* information travels in TLVs instead.
@@ -100,7 +102,27 @@ would run past the end makes the stream malformed. **A decoder must skip every
 type it does not recognise.** Types `0x8000`-`0xFFFF` are private. v1 defines no
 mandatory TLV type; anything that must be understood goes in `tools` instead.
 
-### 2.2 Tool bits
+### 2.2 Colour space
+
+`color_space` is **descriptive only**: the transform, quantizer and entropy
+coder are byte for byte identical for every value. It tells the sink what the
+coded planes are, so a decoder can hand them straight to a compositor.
+
+| value | meaning |
+|---|---|
+| 0 | unspecified: planes are coded as given, range unstated |
+| 1 | YCbCr BT.709, limited range |
+| 2 | YCbCr BT.709, full range |
+| 3 | RGB (requires `color_transform == 1`, i.e. YCoCg-R) |
+
+Values 0-2 imply `color_transform == 0`: the planes reach the transform stage
+untouched. This is the WiVRn path on Linux, whose capture is already
+`VK_FORMAT_G8_B8R8_2PLANE_420_UNORM`, so a YCbCr 4:2:0 source is coded as-is
+with no colour conversion in either direction; only an RGB source (the Windows
+helper) pays for YCoCg-R. `nxv-dec --nv12` writes such a stream back as Y plus
+interleaved UV.
+
+### 2.3 Tool bits
 
 | bit | name | meaning |
 |---|---|---|
@@ -390,6 +412,27 @@ Both passes write transposed, so `dst` comes out in spatial raster order
 `y * 8 + x`. Total shift is 20 and total gain 1, so a coefficient of 1024 at
 position 0 reconstructs a flat 128.
 
+**Shift chain and intermediate ranges** (copy these exactly; the GPU passes
+must match bit for bit):
+
+| stage | shift | rounding | clamp | worst-case magnitude before the shift |
+|---|---|---|---|---|
+| inverse pass 1 | `>> 7` | `+64` | int16 | `32767 * 2703 = 8.9e7` (fits int32) |
+| inverse pass 2 | `>> 13` | `+4096` | int16 | `32767 * 2703 = 8.9e7` |
+| forward pass 1 | `>> 6` | `+32` | int16 | `511 * 4096 = 2.1e6` |
+| forward pass 2 | `>> 14` | `+8192` | int16 | `32767 * 4096 = 1.3e8` |
+
+The 1D flow graph has gain exactly `2^10` per dimension, so the two inverse
+shifts must sum to 20 for unit gain; 7 + 13 and 8 + 12 both do. The reference
+uses **7 and 13** because keeping the extra fractional bit through the
+transpose measures better: against a float IDCT on unclamped input the maximum
+error is 0.699 with 7/13 versus 0.784 with 8/12, and the forward-inverse round
+trip on random +-255 residuals has an RMS error of 0.347 versus 0.357. Both
+are within a maximum of 2 LSB, so the choice is precision, not correctness --
+but it is a bitstream choice and 8/12 is *not* conformant.
+(PAPER 1.4's "7 after the first dimension, 12 after the second" sums to 19 and
+would leave a residual gain of 2; see Appendix A item 10.)
+
 The `clamp16` after pass 1 is **normative**: it bounds the intermediate to 16
 bits so a GPU may keep the transpose buffer in `int16` LDS, and it is reachable
 with legal (if pathological) coefficient values. Dequantized coefficients are
@@ -427,7 +470,7 @@ qp_tile   = clamp(base_qp + qp_delta, 0, 63)
 qp(Y)     = qp_tile
 qp(Co,Cg) = clamp(qp_tile + chroma_qp_off, 0, 63)
 qp(A)     = clamp(qp_tile + alpha_qp_off,  0, 63)
-qp(DC plane of a plane p) = max(0, qp(p) - 6)
+qp(DC plane of a plane p) = qp(p) >> 1
 ```
 
 **Dequantization (normative)**, per coefficient at raster position `i`:
@@ -494,7 +537,7 @@ of that plane holds `nb * nb` values.
 **Decoder (normative):**
 
 ```
-tdc  = (qstep[max(0, qp - 6)] * 16 + 8) >> 4          // == qstep[...]
+tdc  = (qstep[qp >> 1] * 16 + 8) >> 4                 // == qstep[qp >> 1]
 for i in 0 .. nb*nb-1:  dc[i] = clamp16((coef[i] * tdc + 8) >> 4)
 
 if nb == 8:  dc = idct8x8(dc)                          // second-level transform
@@ -870,6 +913,20 @@ every `decoded_md5` in `tests/vectors/vectors.md5`.
 Choices this document makes where PAPER.md was silent, ambiguous, or internally
 inconsistent. Each is a decision, not an interpretation.
 
+32. **`table_set` is chosen by cost, not by QP, and the eight built-in sets are
+    statistical clusters.** The field is a free 3-bit index; nothing requires it
+    to track the QP. The eight defaults are k-means centroids of real tile
+    symbol histograms (the distance being the bits a tile would cost under that
+    set), and the reference encoder scores all eight per tile and picks the
+    cheapest. Worth about 30% at QP 24 over keying `table_set = qp >> 3`.
+
+33. **The rANS lane count is chosen per tile by cost.** Every lane costs a
+    4-byte flush, and lanes buy only parallelism, never bits. The reference
+    encoder takes the largest `N` in {1, 2, 4, 8} whose flush stays under a
+    tenth of the tile payload. On a QP 38 frame the flush fell from 33% of the
+    frame to under 10%. `N` is capped at 8 so a tile never needs more than one
+    subgroup cluster.
+
 1. **Five modes in a 3-bit field.** PAPER 1.2 gives `mode(2)` with four modes;
    PAPER 6.5 lists five (`WARP_SKIP`, `WARP_MV`, `STATIC_MV`, `STEREO`,
    `INTRA`). The field is 3 bits and the reserved field at the top of word1
@@ -909,16 +966,18 @@ inconsistent. Each is a decision, not an interpretation.
 8. **The second-level transform applies only when `nb == 8`.** Smaller DC planes
    (16, 4 or 1 value, from `res_level` and 4:2:0) are coded flat.
 
-9. **The DC plane is quantized 6 QP steps finer than its plane** (`max(0, qp-6)`,
-   one halving of the step) with a flat weighting matrix. Coarse means produce
-   visible block banding through the planar interpolation, and the DC plane is
-   1/64 of the coefficients.
+9. **The DC plane is quantized at half the QP index** (`qp >> 1`) with a flat
+   weighting matrix. The DC plane is 1/64 of the coefficients but carries the
+   entire intra predictor: coarse block means make the planar interpolation
+   blocky, and the AC residual then pays for the error in every block. Measured
+   on a synthetic render frame this is worth +3.0 dB *and* -10% bits at QP 38
+   against the `qp - 6` rule first tried, and it is never worse at any QP.
 
-10. **Two-stage inverse shifts are 7 and 13, not 7 and 12.** PAPER 1.4 says
-    "7 bits after the first dimension, 12 after the second"; with the flow graph
-    of section 6.2 the per-pass gain is `2^10`, so 7 + 12 would leave a residual
-    gain of 2. 7 + 13 makes the transform unity-gain, which is what the
-    quantizer assumes.
+10. **Two-stage inverse shifts are 7 and 13.** PAPER 1.4 says "7 bits after the
+    first dimension, 12 after the second"; with the flow graph of section 6.2
+    the per-pass gain is `2^10`, so 7 + 12 leaves a residual gain of 2. Any pair
+    summing to 20 is unity-gain; 7 + 13 is chosen over 8 + 12 on measured
+    precision (section 6.3).
 
 11. **`clamp16` after the first inverse pass is normative**, so the GPU may keep
     the transpose buffer in int16 as PAPER 1.4 intends. Without it the pass-1
@@ -991,35 +1050,62 @@ inconsistent. Each is a decision, not an interpretation.
     upsampling factor may be 8.** Reconstruction always upsamples in one
     bilinear step.
 
-27. **The colour transform is signalled per stream and the API is RGB in, RGB
+27. **`color_space` is a separate, descriptive field from `color_transform`.**
+    The coordinator's integration finding is that WiVRn's Linux capture is
+    already YCbCr 4:2:0, so the common path must code planes as-is; only the
+    Windows helper has RGB. `color_transform` says whether the codec converts,
+    `color_space` says what the planes are. They are tied (`RGB` iff YCoCg-R)
+    but separate, so a later colour space can be added without touching the
+    transform stage.
+
+28. **The colour transform is signalled per stream and the API is RGB in, RGB
     out for YCoCg-R.** The 9-bit chroma of YCoCg-R cannot be handed through an
     8-bit plane API, so the transform is internal: `--rgb`/`NXVC_CT_YCOCGR`
     means "planes 0..2 are R, G, B". The plain YUV path (`--pix yuv420p`) codes
     the given planes directly and is what the quality harness uses.
 
-28. **Edge tiles are coded full-size with edge replication** and the excess is
+29. **Edge tiles are coded full-size with edge replication** and the excess is
     discarded on output. The alternative (partial tiles) would make every tile
     geometry variable for the sake of at most one tile row and column.
 
-29. **The decoder rejects, rather than conceals, a malformed tile.** Concealment
+30. **The decoder rejects, rather than conceals, a malformed tile.** Concealment
     is a transport-layer decision (PAPER 2.7) and needs a reference frame, which
     Phase 1 does not have.
 
-30. **`nxv-dec` writes alpha as a fourth plane** after V when the stream carries
+31. **`nxv-dec` writes alpha as a fourth plane** after V when the stream carries
     one. Raw planar files have no place to say so; `nxv-info` does.
 
-## Appendix B: known costs
+## Appendix B: where the bits go
 
 Measured on a 2048x2048 4:2:0 synthetic textured frame, 1024 tiles, default
-settings (8 lanes, matrix 1, built-in tables):
+encoder settings (per-tile lane count, per-frame probability tables, matrix 1),
+using `nxv-enc --stats`:
 
-| QP | bytes | bpp | fixed cost (8 B header + 32 B rANS init per tile) |
+| | QP 20 | QP 28 | QP 36 |
 |---|---|---|---|
-| 20 | 859020 | 1.639 | 4.8% |
-| 28 | 170988 | 0.326 | 24% |
-| 36 | 115058 | 0.220 | 36% |
+| bytes | 546076 | 108430 | 59786 |
+| bpp | 1.042 | 0.207 | 0.114 |
+| luma PSNR | 35.45 dB | 31.25 dB | 30.23 dB |
+| frame header + tables | 0.03% | 0.15% | 0.47% |
+| tile-row headers | 0.07% | 0.35% | 0.64% |
+| tile headers (8 B each) | 1.5% | 7.6% | 13.7% |
+| rANS flush (4 B per lane) | 6.0% | 4.6% | 6.9% |
+| DC planes | 8.3% | 30.6% | 42.4% |
+| luma blocks | 61.4% | 34.7% | 18.8% |
+| chroma blocks | 1.2% | 3.2% | 0.5% |
+| mean lanes per tile | 8.00 | 1.22 | 1.00 |
 
-The fixed cost is the rANS flush, and it is the first thing to attack in v2: a
-2-byte initial state, or `nsub_log2` chosen per tile (already legal under
-`NSUB_VAR`, and worth about 10% at QP 28 on this material), removes most of it.
-Custom per-frame tables are worth a further 15-20% at QP 28.
+Three things this says to whoever works on v2:
+
+1. **The 8-byte tile header is the floor.** At QP 36 it is 13.7% of the frame
+   and there is nothing the encoder can do about it: it is fixed syntax. A
+   `SKIP` bit or a shorter header form for tiles with a small payload is the
+   obvious v2 lever, and it needs a syntax change, not an encoder change.
+2. **The DC plane dominates at low rate** (42% at QP 36). It is the intra
+   predictor, so its bits buy quality across the whole tile, but it is coded
+   with the same contexts as ordinary blocks even though its statistics are
+   quite different. Dedicated DC-plane contexts (the 12-context budget has no
+   room; 16 would) are the cheapest remaining coding-efficiency win.
+3. **The rANS flush is now under 7%** because the encoder spends lanes only
+   when the payload can carry them. A 2-byte initial state would roughly halve
+   what is left, at the cost of a variable-length state invariant.
