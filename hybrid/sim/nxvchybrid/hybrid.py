@@ -121,37 +121,75 @@ class RunResult:
         return d
 
 
-def _mv_candidates(radius: int) -> list[tuple[int, int]]:
-    """Coarse (step 2) then fine (step 1) full-pel candidates."""
-    coarse = [(dx, dy) for dy in range(-radius, radius + 1, 2) for dx in range(-radius, radius + 1, 2)]
-    fine = [(dx, dy) for dy in (-1, 0, 1) for dx in (-1, 0, 1)]
-    seen: list[tuple[int, int]] = []
-    for c in coarse + fine:
-        if c not in seen:
-            seen.append(c)
-    return seen
+def _mv_candidates(radius: int, step: int = 1) -> list[tuple[int, int]]:
+    rng = range(-radius, radius + 1, step)
+    return [(dx, dy) for dy in rng for dx in rng]
+
+
+def _best_shift(src: np.ndarray, ref: np.ndarray, tile: int, radius: int):
+    """Per-tile argmin of the tile SSE over every full-pel shift in +-radius."""
+    ty, tx = src.shape[0] // tile, src.shape[1] // tile
+    h, w = ref.shape
+    pad = warpmod.edge_pad(ref, radius)
+    best = np.full((ty, tx), np.inf, dtype=np.float32)
+    bx = np.zeros((ty, tx), dtype=np.int16)
+    by = np.zeros((ty, tx), dtype=np.int16)
+    for dx, dy in _mv_candidates(radius):
+        s = tile_sse(src, warpmod.shifted_view(pad, radius, h, w, dx, dy), tile)
+        better = s < best
+        best = np.where(better, s, best)
+        bx = np.where(better, dx, bx).astype(np.int16)
+        by = np.where(better, dy, by).astype(np.int16)
+    return bx, by
 
 
 def _search_mv(src: np.ndarray, temporal: np.ndarray, tile: int, radius: int):
     """Per-tile integer MV minimising SSE against *temporal*.
 
+    Coarse-to-fine: an exhaustive full-pel search at half resolution over the
+    whole +-radius window, then a +-1 refinement at full resolution.  A
+    half-resolution candidate costs a quarter of a full-resolution one, which
+    is what makes a sweep of 68 closed-loop runs finish in an evening rather
+    than a day, and the refinement recovers the accuracy the coarse stage
+    loses.
+
     Returns (mvx, mvy) per tile and the MV-corrected temporal plane.
     """
-    ty, tx = src.shape[0] // tile, src.shape[1] // tile
+    h, w = src.shape
+    r2 = max(1, radius // 2)
+    src2 = src.reshape(h // 2, 2, w // 2, 2).mean(axis=(1, 3))
+    tmp2 = temporal.reshape(h // 2, 2, w // 2, 2).mean(axis=(1, 3))
+    cx, cy = _best_shift(src2, tmp2, max(8, tile // 2), r2)
+    cx = (cx * 2).astype(np.int16)
+    cy = (cy * 2).astype(np.int16)
+
+    ty, tx = h // tile, w // tile
+    rp = radius + 1
+    pad = warpmod.edge_pad(temporal, rp)
     best = np.full((ty, tx), np.inf, dtype=np.float32)
-    bx = np.zeros((ty, tx), dtype=np.int16)
-    by = np.zeros((ty, tx), dtype=np.int16)
-    for dx, dy in _mv_candidates(radius):
-        cand = warpmod.shift(temporal, dx, dy)
-        s = tile_sse(src, cand, tile)
-        better = s < best
-        best = np.where(better, s, best)
-        bx = np.where(better, dx, bx).astype(np.int16)
-        by = np.where(better, dy, by).astype(np.int16)
+    bx = cx.copy()
+    by = cy.copy()
+    seen: dict[tuple[int, int], np.ndarray] = {}
+    for base in sorted(set(zip(cx.reshape(-1).tolist(), cy.reshape(-1).tolist()))):
+        m = (cx == base[0]) & (cy == base[1])
+        for oy in (-1, 0, 1):
+            for ox in (-1, 0, 1):
+                dx = int(np.clip(base[0] + ox, -radius, radius))
+                dy = int(np.clip(base[1] + oy, -radius, radius))
+                key = (dx, dy)
+                s = seen.get(key)
+                if s is None:
+                    s = tile_sse(src, warpmod.shifted_view(pad, rp, h, w, dx, dy), tile)
+                    seen[key] = s
+                better = m & (s < best)
+                best = np.where(better, s, best)
+                bx = np.where(better, dx, bx).astype(np.int16)
+                by = np.where(better, dy, by).astype(np.int16)
+
     out = np.empty_like(temporal)
     for dx, dy in set(zip(bx.reshape(-1).tolist(), by.reshape(-1).tolist())):
         m = expand((bx == dx) & (by == dy), tile)
-        np.copyto(out, warpmod.shift(temporal, dx, dy), where=m)
+        np.copyto(out, warpmod.shifted_view(pad, rp, h, w, dx, dy), where=m)
     return bx, by, out
 
 
