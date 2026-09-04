@@ -231,6 +231,49 @@ int nxvcVkSelfTest(bool prefer_software, uint32_t device_index) {
         return detail;
     });
 
+    // -------------------------------------------------------------- adopt
+    // The WiVRn / Monado path of 3.6: hand the library a device someone else
+    // owns.  Adopting our own handles is a faithful rehearsal -- the adopted
+    // Context must resolve its own function pointers, re-derive the timestamp
+    // bits for the host's queue family, and destroy nothing on the way out.
+    step("context.adopt", [&] {
+        std::vector<std::string> enabled;  // what we know we enabled
+        AdoptInfo ai;
+        ai.instance = ctx->instance();
+        ai.physical_device = ctx->physicalDevice();
+        ai.device = ctx->device();
+        ai.queue = ctx->queue();
+        ai.queue_family = ctx->queueFamily();
+        ai.api_version = ctx->apiVersion();
+        auto borrowed = Context::adopt(ai);
+        if (!borrowed->adopted())
+            throw Error(NXVC_VK_ERR_INTERNAL, "adopted flag not set");
+        if (borrowed->device() != ctx->device())
+            throw Error(NXVC_VK_ERR_INTERNAL, "device handle not carried over");
+        if (borrowed->probe().profile != p.profile)
+            throw Error(NXVC_VK_ERR_INTERNAL, "profile differs after adoption");
+        // Allocate and submit through the borrowed context, then let it die:
+        // if it destroyed the host's device the steps after this one would
+        // fail, and the process would very likely not survive teardown.
+        Buffer b(*borrowed, 64 * 1024, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                 BufferKind::HostUpload, "adopted.buffer");
+        immediate(*borrowed, [&](VkCommandBuffer cmd) {
+            vkCmdFillBuffer(cmd, b.handle(), 0, VK_WHOLE_SIZE, 0x5A5A5A5Au);
+        });
+        b.invalidate();
+        if (b.span<uint32_t>()[0] != 0x5A5A5A5Au)
+            throw Error(NXVC_VK_ERR_INTERNAL, "fill through adopted queue failed");
+        return std::string("allocated and submitted on a borrowed VkDevice, "
+                           "queue family " + std::to_string(borrowed->queueFamily()));
+    });
+
+    // The host device must still be alive after the adopted context died.
+    step("context.adopt_left_device_intact", [&] {
+        Buffer b(*ctx, 4096, VK_BUFFER_USAGE_TRANSFER_DST_BIT, BufferKind::HostUpload);
+        ctx->waitIdle();
+        return "owner still usable";
+    });
+
     // ----------------------------------------------------------- external
     step("external.support", [&] {
         return externalSupport(*ctx).toString();
@@ -240,7 +283,7 @@ int nxvcVkSelfTest(bool prefer_software, uint32_t device_index) {
     bool all_ok = true;
     std::printf("{\n  \"device\": \"%s\",\n", p.device_name);
     std::printf("  \"profile\": \"%s\",\n", nxvc_vk_profile_string(p.profile));
-    std::printf("  \"adopted\": false,\n");
+
     std::printf("  \"steps\": [\n");
     for (size_t i = 0; i < steps.size(); ++i) {
         all_ok = all_ok && steps[i].ok;
