@@ -47,8 +47,14 @@ extern "C" {
  *       picture per eye and row-major/eye-minor tile rows, the four-slot
  *       reference ring addressed by `ref_sel`, and the 12-bit STEREO
  *       `disparity` field replacing mv_x/mv_y.  See docs/SYNTAX.md 8.
+ *   5 : tool bit 24 XFORM_LARGE -- tile-header field `xform` selects a 16x16
+ *       or 32x32 integer DCT for the tile.  The larger sizes extend the same
+ *       constant family as the 8x8 one, reuse the 8x8 weighting matrix, scan,
+ *       LAST classes and contexts through 8x8 coefficient groups, and keep the
+ *       DC-plane predictor unchanged; a large-transform tile carries no intra
+ *       mode unit.  See docs/SYNTAX.md 6.7 and 7.7.
  */
-#define NXVC_BITSTREAM_MINOR 4
+#define NXVC_BITSTREAM_MINOR 5
 
 /* "nxvc_ref <major>.<minor> (syntax v1.<minor>)" -- a static string, safe to
  * call before any object exists.  Used by the Python bindings to check that

@@ -561,7 +561,8 @@ _TILE_WORD1: Sequence[tuple[str, int, int, bool]] = (
     ("tskip", 23, 1, False),
     ("wgt", 24, 2, False),
     ("wm_id", 26, 2, False),
-    ("word1_reserved", 28, 4, False),
+    ("xform", 28, 2, False),
+    ("word1_reserved", 30, 2, False),
 )
 
 #: word0 bitfields: (name, lsb, width, signed)
@@ -631,6 +632,8 @@ class TileHeader:
     tskip: int = 0
     wgt: int = 0
     wm_id: int = 0
+    #: Transform size: 0 = 8x8 (version 1), 1 = 16x16, 2 = 32x32.  SYNTAX.md 6.7.
+    xform: int = 0
     word0_reserved: int = 0
     word1_reserved: int = 0
     mv_x: int = 0
@@ -722,7 +725,15 @@ class TileHeader:
         if self.word0_reserved:
             raise BitstreamError("tile word0 bit 3 must be zero", offset)
         if self.word1_reserved:
-            raise BitstreamError("tile word1 bits 28-31 must be zero", offset + 4)
+            raise BitstreamError("tile word1 bits 30-31 must be zero", offset + 4)
+        # --- SYNTAX.md 6.7 (rejection vectors r30, r32)
+        if self.xform == 3:
+            raise BitstreamError("xform 3 is reserved", offset + 4)
+        if self.xform and self.tskip:
+            raise BitstreamError(
+                "xform != 0 with transform skip: there is no transform to enlarge",
+                offset + 4,
+            )
         # --- SYNTAX.md 4.1 inter constraints that need nothing but this header
         if self.ref_sel == 3:
             raise BitstreamError("ref_sel 3 is reserved", offset + 4)
@@ -982,6 +993,10 @@ _TILE_RULES: Sequence[tuple[Callable[[Any, Any, Any], bool], str]] = (
     (
         lambda t, h, s: t.wm_id != 0 and h.quant_matrix == 255,
         "wm_id != 0 in a frame carrying custom quantization matrices",
+    ),
+    (
+        lambda t, h, s: t.xform != 0 and not (s.tools & Tool.XFORM_LARGE),
+        "xform != 0 without tool bit 24 XFORM_LARGE",
     ),
     (
         lambda t, h, s: t.chroma444 and not s.chroma444,

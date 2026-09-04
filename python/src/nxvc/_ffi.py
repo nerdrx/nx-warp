@@ -77,11 +77,11 @@ NXVC_TILE_SIZE = 64
 #: The revision of ``docs/SYNTAX.md`` that :mod:`nxvc.bitstream` parses.  It is
 #: not carried in the bitstream (forward compatibility is the ``tools`` mask
 #: plus the TLV area); it exists so a build, a conformance-vector set and a
-#: spec revision can be pinned to each other.  4 = the Phase 2 inter path.  The C
+#: spec revision can be pinned to each other.  5 = the larger transforms.  The C
 #: library reports its own with :func:`library_minor`, and it may be **ahead**
 #: of this one while a syntax revision is landing -- the parser then still
 #: reads every structure it knows, and refuses what it does not.
-NXVC_BITSTREAM_MINOR = 4
+NXVC_BITSTREAM_MINOR = 5
 
 #: The four-byte magic at the head of every stream: the ASCII bytes ``NXV1``.
 NXVC_MAGIC = 0x3156584E
@@ -193,6 +193,8 @@ class Tool:
     #: Annex D D-5 names this "tool bit 20"; bit 20 was already WM_ID in
     #: syntax v1.2, so the reference places it at the first free bit.
     FILTER_CATMULLROM = 1 << 23
+    #: Per-tile 16x16 / 32x32 integer DCT, syntax v1.5 (SYNTAX.md 6.7).
+    XFORM_LARGE = 1 << 24
 
     _NAMES = [
         (1 << 0, "INTRA_DC_PLANE"),
@@ -219,10 +221,11 @@ class Tool:
         (1 << 21, "CTX_V2"),
         (1 << 22, "SIGN_HIDE"),
         (1 << 23, "FILTER_CATMULLROM"),
+        (1 << 24, "XFORM_LARGE"),
     ]
 
     #: The first tool bit that is reserved and must be zero (SYNTAX.md 2.3).
-    RESERVED_FROM = 24
+    RESERVED_FROM = 25
 
     @classmethod
     def names(cls, mask: int) -> list[str]:
@@ -257,6 +260,7 @@ TOOLS_SUPPORTED = (
     | Tool.INTER
     | Tool.WARP
     | Tool.STEREO
+    | Tool.XFORM_LARGE
 )
 
 #: The Phase 1 (intra-only) subset of :data:`TOOLS_SUPPORTED`.  Kept separate
@@ -331,6 +335,7 @@ class nxvc_config(Structure):
         ("ctx_v2", c_uint32),
         ("intra_dir_cand", c_uint32),
         ("sign_hide", c_uint32),
+        ("xform_large", c_uint32),
         # --- additive since syntax v1.4: the Phase 2 inter path.  width/height
         # are PER EYE; with eyes == 2 the nxvc_image is `eyes * width` wide,
         # one picture per eye, eye 0 first.
@@ -399,6 +404,7 @@ class nxvc_tile_info(Structure):
         ("qp", c_uint8),
         ("wm_id", c_uint8),
         ("intra_dir", c_uint8),
+        ("xform", c_uint8),
         ("skipped", c_uint8),
         ("concealed", c_uint8),
         ("disparity", c_uint16),
