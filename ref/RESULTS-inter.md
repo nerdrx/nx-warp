@@ -288,10 +288,25 @@ The mode histogram says why. On `vr-mixed-1024` 4:2:0:
 At band A the frame is **majority intra**, because at 48-56 dB almost nothing
 survives the rate-distortion comparison as a skip. The warp is barely engaged,
 so it cannot be the thing that wins or loses. At band B it carries two thirds
-of the picture — and that is precisely where section 3 says the chain is
-already below its threshold. The two failures are the same failure seen from
-two sides: **the predictor is not accurate enough for the rate at which the
-codec wants to lean on it.**
+of the picture — and that is precisely where section 3 says the chain decays.
+
+An earlier revision of this section read "the predictor is not accurate enough
+for the rate at which the codec wants to lean on it". **The convention audit
+(section 3, `docs/WARP-AUDIT.md`) supports only half of that**, and the half it
+removes is the half about accuracy:
+
+* the chain's starting **level** on this material is the *harness*, not the
+  predictor. On these frames the integer path is 0.02 dB from an exact float
+  homography, and on band-limited ground truth the same code reaches 56 dB and
+  stays flat from 22 to 180 deg/s;
+* the chain's **slope** is the predictor's own, and it is what paper 2.11
+  item 2's conclusion rests on.
+
+So the accurate statement is narrower: **the codec leans on a chain that decays,
+at the rate where it leans hardest.** That is a refresh-rate and
+residual-budget problem, not evidence that the warp is inaccurate — and on this
+material it is partly a statement about the material, which point-samples where
+the predictor resamples.
 
 `STATIC_MV` earning 14-19 % everywhere is worth noting on its own. The material
 has a head-locked HUD panel and near-field discs, and the identity predictor
@@ -354,23 +369,26 @@ should spend a little more, not because the measurement demanded it.
 
 ## 6. Encode and decode time
 
-`vr-mixed-1024`, 36 frames, one core of the 4-core slice, `-O2`:
+`vr-mixed-1024`, 36 frames, single-threaded on the 4-core slice, `-O2`.
+Every row was measured with nothing else running.
 
-| configuration | encode | decode |
-|---|---|---|
-| 4:2:0, QP 24, inter | 564 ms/frame | 44.8 ms/frame |
-| 4:2:0, QP 24, intra | 654 ms/frame | 27.3 ms/frame |
-| 4:4:4, QP 24, inter | 819 ms/frame | 54.2 ms/frame |
-| 4:4:4, QP 24, intra | 1236 ms/frame | 45.3 ms/frame |
+| pix | QP | encode, inter | encode, intra | decode, inter | decode, intra |
+|---|---|---|---|---|---|
+| 4:2:0 | 8 | 1199 ms/frame | 761 ms/frame | 47.9 ms/frame | 36.2 ms/frame |
+| 4:2:0 | 24 | **564 ms/frame** | 654 ms/frame | 44.8 ms/frame | 27.3 ms/frame |
+| 4:4:4 | 8 | 1889 ms/frame | 1410 ms/frame | 68.9 ms/frame | 59.3 ms/frame |
+| 4:4:4 | 24 | **819 ms/frame** | 1236 ms/frame | 54.2 ms/frame | 45.3 ms/frame |
 
-At QP 24 **inter encodes faster than intra**: two thirds of the tiles are
-skipped, and a skipped tile costs one warp instead of a full quantisation. At
-QP 8, where the frame is majority intra, it is the other way round —
-1218 ms/frame against 749 for 4:2:0 — because the inter path pays for the
+The encode cost **crosses over with QP**, and the mode histogram of section 4
+says why. At QP 8 the frame is majority `INTRA`, so the inter path pays for the
 search and for scoring three fully-quantised candidates per tile on top of
-everything intra already does.
+everything intra already does: 1.6x (4:2:0) and 1.3x (4:4:4). At QP 24 two
+thirds of the tiles are `WARP_SKIP`, a skipped tile costs one `warp_tile()`
+instead of a full quantisation, and inter encodes **faster than intra** — 0.86x
+and 0.66x. The codec is cheapest to encode exactly where it is meant to run.
 
-Decode is 1.2 to 1.6 times intra. The extra work is one `warp_tile()` per
+Decode is 1.16 to 1.64 times intra (the ratio rises with QP, because
+the intra side gets cheaper while every tile still needs its predictor). The extra work is one `warp_tile()` per
 plane per tile plus the reference-ring write; it is a CPU reference and these
 numbers say nothing about the Vulkan budget except that the warp is not
 dominant.
