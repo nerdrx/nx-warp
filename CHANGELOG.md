@@ -40,6 +40,10 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
   tool-bit gating, and the `nxv-enc`, `nxv-dec` and `nxv-info` tools.
 - 32 conformance vectors in `tests/vectors/` with an md5 manifest, covering intra, lossless, alpha,
   resolution levels, custom tables, odd frame sizes and multi-frame streams.
+- Syntax v1.5, the intra detail tools, both additive and both behind a tool bit: the per-block 4x4
+  transform split (bit 19, `SYNTAX.md` 6.7) and chroma-from-luma prediction (bit 24, `SYNTAX.md` 7.7).
+  On by default; `nxv-enc --split4 off --cfl off` writes a v1.4 stream, byte for byte. Vectors
+  `v57`-`v62` and rejection vectors `r30`-`r33`; measurements in `ref/RESULTS-detail-b.md`.
 
 **Vulkan**
 

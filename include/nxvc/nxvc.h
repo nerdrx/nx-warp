@@ -244,6 +244,13 @@ typedef struct nxvc_encode_stats {
     uint64_t bits_dc_plane, bits_luma_blocks, bits_chroma_blocks;
     uint64_t bits_alpha_blocks;
     uint64_t tiles, tiles_tskip, tiles_res[3], lanes_total;
+    /* --- additive since syntax v1.5.  How often the two new tools fire:
+     * `blocks_coded` counts every 8x8 residual block of an INTRA tile and
+     * `blocks_chroma` the subset in planes 1 and 2; `blocks_split4` is the
+     * blocks coded as four 4x4 transforms and `blocks_cfl` the chroma blocks
+     * predicted from luma (mode 9), so the natural denominator of the first
+     * is `blocks_coded` and of the second `blocks_chroma`. */
+    uint64_t blocks_coded, blocks_chroma, blocks_split4, blocks_cfl;
 } nxvc_encode_stats;
 
 void nxvc_config_default(nxvc_config *cfg);

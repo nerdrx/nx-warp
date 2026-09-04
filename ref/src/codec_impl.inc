@@ -1296,6 +1296,18 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                             else if (p == 3) e->stats.bits_alpha_blocks += bb;
                             else e->stats.bits_chroma_blocks += bb;
                         }
+                        for (int p = 0; p < nplanes_c; ++p) {
+                            const PlaneState &ps = tc.pl[p];
+                            const size_t nb2 = (size_t)ps.nb * ps.nb;
+                            e->stats.blocks_coded += nb2;
+                            if (p == 1 || p == 2) e->stats.blocks_chroma += nb2;
+                            for (size_t b = 0; b < ps.split.size(); ++b)
+                                if (ps.split[b]) e->stats.blocks_split4++;
+                            if (p == 1 || p == 2)
+                                for (size_t b = 0; b < ps.modes.size(); ++b)
+                                    if (ps.modes[b] == kIntraCfl)
+                                        e->stats.blocks_cfl++;
+                        }
                         int active = 1 << tc.tp.nsub_log2;
                         if ((size_t)active > tc.units.size())
                             active = (int)tc.units.size();

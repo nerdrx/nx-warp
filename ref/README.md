@@ -27,6 +27,14 @@ The predictor itself is **not implemented here**: `ref/src/inter.h` links
 derivation and the saturation rules. `ref/` builds the reference ring, the
 prediction state and the mode decision around it.
 
+**Syntax revision v1.5** adds two more intra tools -- the per-block 4x4
+transform split (bit 19) and chroma-from-luma prediction (bit 24). Both are
+additive: every stream a v1.4 build wrote is still byte-identical and still
+decodes, and `v01`-`v56` of the conformance set are unchanged. The encoder
+turns both **on** by default; `nxv-enc --split4 off --cfl off` writes a v1.4
+stream. See [`docs/SYNTAX.md`](../docs/SYNTAX.md) 6.7 and 7.7 and
+[`RESULTS-detail-b.md`](RESULTS-detail-b.md).
+
 **Syntax revision v1.3** adds the three v2 intra tools — directional intra
 (bit 17), the 16-context entropy model (bit 21) and sign data hiding (bit 22).
 All three are additive: every stream a v1.2 build wrote is still byte-identical
@@ -78,6 +86,13 @@ v1.3 tool switches:
 | `--intra-dir-cand N` | 2 | modes RD-checked per block after the SATD sort; 8 is exhaustive and worth 0.1 % for 2.2x the encode time |
 | `--ctx v1\|v2` | `v2` | 12 or 16 entropy contexts |
 | `--no-sign-hide` | off | code every sign |
+
+the v1.5 switches:
+
+| flag | default | effect |
+|---|---|---|
+| `--split4 on\|off` | `on` | per-block 4x4 transform split (tool bit 19) |
+| `--cfl on\|off` | `on` | chroma from luma (tool bit 24; needs 17 and 21) |
 
 and the v1.4 inter switches:
 
@@ -207,7 +222,8 @@ tile  := tile_header [mv | disparity] [alpha] payload
 | tile payload | interleaved rANS, `4 * lanes` bytes of initial state first |
 
 Fixed parameters: 64x64 tiles, 8x8 blocks, 8x8 integer DCT with 9-bit
-Loeffler-derived constants, QP 0..63 with `step = 2^(QP/6)` as a Q4 table,
+Loeffler-derived constants (and, under tool bit 19, a 4x4 DCT built from the
+same graph's even part), QP 0..63 with `step = 2^(QP/6)` as a Q4 table,
 interleaved rANS with a 32-bit state, 10-bit probabilities, 12 or 16 contexts
 of 16 symbols, and 1 to 8 lanes per tile (`nsub_log2`; 8 is one subgroup cluster and
 the value a GPU decoder should assume as the maximum).
@@ -219,7 +235,7 @@ the value a GPU decoder should assume as the maximum).
 | `src/common.h` | constants, contexts, tile geometry |
 | `src/tables.cpp` | QP steps, weighting matrices, scans, LAST classes, table normalization |
 | `src/default_tables.inc` | the 8 built-in probability table sets, v1 (12 contexts) and v2 (16) |
-| `src/transform.h/.cpp` | 8x8 integer DCT/IDCT and the bilinear resampler |
+| `src/transform.h/.cpp` | 8x8 and 4x4 integer DCT/IDCT and the bilinear resampler |
 | `src/entropy.h/.cpp` | rANS and the per-lane syntax state machine |
 | `src/codec.cpp` + `src/codec_impl.inc` | headers, encoder, decoder |
 | `tools/` | `nxv-enc`, `nxv-dec`, `nxv-info` |
@@ -227,10 +243,19 @@ the value a GPU decoder should assume as the maximum).
 | `../tests/ref/vectors.cpp` | generates and checks the conformance vectors |
 | `../tests/ref/test_saturate.cpp` | range safety of the normative decode path |
 | `RESULTS-intra.md` | the Phase 1 intra measurements, in full |
+| `RESULTS-detail-b.md` | the v1.5 intra detail tools, measured |
 
 The per-lane syntax state machine in `entropy.cpp` is the piece the Vulkan Pass A
 shader mirrors: one `LaneMachine` per rANS lane, driven identically by the
 encoder and the decoder, so the two can never disagree about the symbol order.
+
+The 4x4 transform split lives in `fdct4x4`/`idct4x4` (`transform.cpp`), in
+`residual_block()`'s split branch and `split4_index()` (the normative
+quadrant-interleaved coefficient layout), and in `quantize_block()`, which is
+the encoder's single "residual in, levels out" routine and the place the split
+is chosen. Chroma-from-luma is `cfl_model()` and `cfl_luma_at()` in
+`codec.cpp`, reached as one more case of `predict_block()`; `cfl_for()` is what
+hands a chroma plane the luma plane's finished reconstruction.
 
 Directional intra lives in three places: `predict_block()` / `build_refs()` in
 `codec.cpp` are the normative predictor and reference derivation,
@@ -259,8 +284,8 @@ cmake --preset asan-ubsan && cmake --build --preset asan-ubsan
 ctest --preset asan-ubsan -R 'ref\.'
 ```
 
-`tests/vectors/` holds 44 committed `.nxv` vectors and `vectors.md5`, which pins
-both the MD5 of each bitstream and the MD5 of its decoded planes, plus 17
+`tests/vectors/` holds 62 committed `.nxv` vectors and `vectors.md5`, which pins
+both the MD5 of each bitstream and the MD5 of its decoded planes, plus 33
 **rejection vectors** and `rejects.md5`, which pin the exact status each
 malformed stream must be refused with. `VERSION`, `UNSUPPORTED`, `BITSTREAM`
 and `TRUNCATED` are not interchangeable: a transport falls back on one and

@@ -499,6 +499,20 @@ int main(int argc, char **argv) {
             if (st2.bits_alpha_blocks)
                 row("  alpha blocks", st2.bits_alpha_blocks / 8.0);
             row("payload total", (double)st2.bytes_payload);
+            if (st2.blocks_coded)
+                std::printf("  blocks %llu (%llu chroma): %llu split 4x4 "
+                            "(%.2f%%), %llu chroma-from-luma (%.2f%% of "
+                            "chroma)\n",
+                            (unsigned long long)st2.blocks_coded,
+                            (unsigned long long)st2.blocks_chroma,
+                            (unsigned long long)st2.blocks_split4,
+                            100.0 * (double)st2.blocks_split4 /
+                                (double)st2.blocks_coded,
+                            (unsigned long long)st2.blocks_cfl,
+                            st2.blocks_chroma
+                                ? 100.0 * (double)st2.blocks_cfl /
+                                      (double)st2.blocks_chroma
+                                : 0.0);
             std::printf("  res levels 0/1/2: %llu / %llu / %llu\n",
                         (unsigned long long)st2.tiles_res[0],
                         (unsigned long long)st2.tiles_res[1],
