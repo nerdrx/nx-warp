@@ -934,7 +934,7 @@ int run_bench_overhead(int iters) {
     double x[5] = {}, ya[5] = {}, yb[5] = {};
     int n = 0;
     uint32_t tiles = 0;
-    double coefMB = 0;
+    double coefMB[5] = {};
     std::printf("\n-- fixed vs per-byte decode cost, 2048 tiles 4:2:0, "
                 "best of %d\n", iters);
     for (int qp : kQps) {
@@ -944,16 +944,18 @@ int run_bench_overhead(int iters) {
             std::printf("bench: encode failed (%s)\n", err.c_str());
             return 1;
         }
-        BenchRun r = time_stream(stream, iters, 0, 0);
+        BenchRun r = time_stream(stream, iters, 0, 0,
+                                 (uint32_t)NXVC_VKD_FLAG_COEF_STATS);
         if (r.skipped) { std::printf("SKIP: no usable Vulkan device\n"); return 77; }
         if (!r.ok) return 1;
         x[n] = (double)r.payloadBytes / 1e6;
         ya[n] = r.passA;
         yb[n] = r.passB;
         tiles = r.tiles;
-        coefMB = (double)r.coefBytes / 1e6;
-        std::printf("   QP %2d: payload %6.3f MB   Pass A %7.3f ms   "
-                    "Pass B %6.3f ms\n", qp, x[n], ya[n], yb[n]);
+        coefMB[n] = (double)r.coefBytes / 1e6;
+        std::printf("   QP %2d: payload %6.3f MB   coef %6.2f MB   "
+                    "Pass A %7.3f ms   Pass B %6.3f ms\n",
+                    qp, x[n], coefMB[n], ya[n], yb[n]);
         ++n;
     }
     auto fit = [&](const double *y, double &a, double &b) {
@@ -971,9 +973,12 @@ int run_bench_overhead(int iters) {
         "   Pass B: %.3f ms fixed + %.3f ms per MB of payload\n"
         "   per tile at zero payload: Pass A %.1f ns, Pass B %.1f ns "
         "(%u tiles)\n"
-        "   coefficient traffic is %.1f MB at every QP: the layout between the "
-        "passes is dense\n",
-        ia, sa, ib, sb, ia * 1e6 / tiles, ib * 1e6 / tiles, tiles, coefMB);
+        "   [sparse] coefficient traffic now follows the payload, %.2f MB to "
+        "%.2f MB over this ladder, against 25.6 MB at every QP dense.  Pass B "
+        "no longer fits a line as well as it did: the mode-0 fast path is a "
+        "step, not a slope.\n",
+        ia, sa, ib, sb, ia * 1e6 / tiles, ib * 1e6 / tiles, tiles, coefMB[0],
+        coefMB[n - 1]);
     return 0;
 }
 

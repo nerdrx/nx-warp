@@ -615,13 +615,16 @@ bool runGpu(Ctx &c, const Scene &sc, GpuResult &out, int repeats,
     VkPipelineLayout plo;
     VKCHECK(vkCreatePipelineLayout(c.dev, &pli, nullptr, &plo));
 
-    int32_t specData[3] = {(int32_t)sc.cs.outFormat, (int32_t)planeWords,
-                           (int32_t)sc.dirSched};
-    VkSpecializationMapEntry sme[3] = {
+    // 3 (the second store) is left at its kOutNone default: this harness
+    // drives one format at a time.
+    int32_t specData[4] = {(int32_t)sc.cs.outFormat, (int32_t)planeWords,
+                           (int32_t)sc.dirSched, (int32_t)sc.push.sparse};
+    VkSpecializationMapEntry sme[4] = {
         {0, 0, sizeof(int32_t)},
         {1, sizeof(int32_t), sizeof(int32_t)},
-        {2, 2 * sizeof(int32_t), sizeof(int32_t)}};
-    VkSpecializationInfo spec{3, sme, sizeof(specData), specData};
+        {2, 2 * sizeof(int32_t), sizeof(int32_t)},
+        {4, 3 * sizeof(int32_t), sizeof(int32_t)}};
+    VkSpecializationInfo spec{4, sme, sizeof(specData), specData};
 
     VkComputePipelineCreateInfo cpi{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
     cpi.stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};

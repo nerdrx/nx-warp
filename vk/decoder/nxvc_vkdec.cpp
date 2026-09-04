@@ -538,10 +538,11 @@ nxvc_vkd_status pipeline_a(D *d, uint32_t lanes, VkPipeline *out) {
     return NXVC_VKD_OK;
 }
 
-nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2,
+nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2, int32_t sparse,
                            uint32_t store_words, VkPipeline *out) {
     const uint32_t sched = d->dir_sched;
-    uint64_t key = ((uint64_t)(uint32_t)(fmt2 + 1) << 44) |
+    uint64_t key = ((uint64_t)(uint32_t)sparse << 48) |
+                   ((uint64_t)(uint32_t)(fmt2 + 1) << 44) |
                    ((uint64_t)fmt << 40) | ((uint64_t)sched << 32) | store_words;
     auto it = d->pipesB.find(key);
     if (it != d->pipesB.end()) {
@@ -553,10 +554,11 @@ nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2,
         return seterr(d, NXVC_VKD_ERR_UNSUPPORTED,
                       "Pass B needs %zu B of shared memory, device offers %u B",
                       lds, d->props.limits.maxComputeSharedMemorySize);
-    const int32_t data[4] = {(int32_t)fmt, (int32_t)store_words, (int32_t)sched,
-                             fmt2};
-    VkSpecializationMapEntry me[4] = {{0, 0, 4}, {1, 4, 4}, {2, 8, 4}, {3, 12, 4}};
-    VkSpecializationInfo spec{4, me, sizeof(data), data};
+    const int32_t data[5] = {(int32_t)fmt, (int32_t)store_words, (int32_t)sched,
+                             fmt2, sparse};
+    VkSpecializationMapEntry me[5] = {
+        {0, 0, 4}, {1, 4, 4}, {2, 8, 4}, {3, 12, 4}, {4, 16, 4}};
+    VkSpecializationInfo spec{5, me, sizeof(data), data};
     VkComputePipelineCreateInfo ci{
         VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
     ci.stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
@@ -1276,7 +1278,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
         if ((st = pipeline_b(d, d->out_format,
                              fuse ? (int32_t)nxvw::kOutRgba8
                                   : (int32_t)nxvw::kOutNone,
-                             storeWords, &p)))
+                             fp.push.sparse, storeWords, &p)))
             return st;
         vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, p);
         vkCmdDispatch(d->cmd, ntiles, 1, 1);
@@ -1285,7 +1287,8 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     if (d->need_alpha_pass && !fuse) {
         VkPipeline p;
         if ((st = pipeline_b(d, (uint32_t)nxvw::kOutRgba8,
-                             (int32_t)nxvw::kOutNone, storeWords, &p)))
+                             (int32_t)nxvw::kOutNone, fp.push.sparse,
+                             storeWords, &p)))
             return st;
         vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, p);
         vkCmdDispatch(d->cmd, ntiles, 1, 1);

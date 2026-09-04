@@ -159,7 +159,10 @@ struct NxvwPassBPush {
     int dirLayer;
     // [sparse] 1 = scan-order slots plus the per-unit lengths at binding 9;
     // 0 = the dense raster-order layout with no lengths.  Must match Pass A's
-    // `sparse` push constant for the same frame.
+    // `sparse` push constant for the same frame.  The GPU kernel takes it as
+    // specialization constant 4 rather than from here -- it sits inside the
+    // innermost coefficient loop -- so this field is what the CPU model reads
+    // and what the host mirrors into the specialization info.
     int sparse;
 };
 
