@@ -249,16 +249,11 @@ void LaneMachine::store_magnitude() {
     phase_ = kSign;
 }
 
-// Commit the mode just decoded for block mb_.  When the tile carries 4x4
-// split flags the block's flag follows its mode inside the same unit, so the
-// machine goes to kModeSplit and mode_advance() runs when that bit arrives.
+// Commit the mode just decoded for block mb_ and move to the next block of
+// the unit, or finish it.  The next block's MPM reads modes[mb_-1] and
+// modes[mb_-nbx], both of which this lane has just produced (SYNTAX.md 9.6).
 void LaneMachine::mode_commit(int mode) {
     u_->modes[mb_] = (u8)mode;
-    mode_advance();
-}
-
-// Move to the next block of a mode unit, or finish the unit.
-void LaneMachine::mode_advance() {
     ++mb_;
     if (mb_ >= u_->nbx * u_->nbx) { begin_next_unit(); return; }
     mpm_ = mpm_of(u_->modes, u_->nbx, mb_);

@@ -70,7 +70,6 @@ class LaneMachine {
     };
     void begin_next_unit();
     void mode_commit(int mode);
-    void mode_advance();
     void after_cbf();
     void store_magnitude();
     void begin_unit();
