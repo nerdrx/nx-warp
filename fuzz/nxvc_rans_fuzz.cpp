@@ -51,9 +51,17 @@ constexpr int16_t kGuard = int16_t(0x5A5A);
 // SYNTAX.md 9.4: a transmitted table set is 12 contexts x 16 symbols x 5 bits,
 // MSB-first, each 5-bit value indexing kDeltaMul, applied to the built-in
 // default of the same set index and then normalized to sum 1024.
+// SYNTAX.md 9.4 fixes the transmitted set at 12 contexts x 16 symbols x 5 bits
+// == 120 bytes, so the loop bound is the *coded* context count, not the storage
+// count.  ref/src/common.h grew kNumCtx from 12 to 16 for the v2 entropy model
+// (kNumCtxV1 / kNumCtxV2); using kNumCtx here would read 40 bytes past `bits`.
+constexpr int kCodedCtx = nxvc::kNumCtxV1;
+static_assert(kCodedCtx * nxvc::kNumSym * 5 == int(kTableDeltaBytes) * 8,
+              "the transmitted table set is no longer 120 bytes");
+
 bool apply_custom_tables(const uint8_t *bits, int set_index, nxvc::TableSet &ts) {
     size_t bitpos = 0;
-    for (int c = 0; c < nxvc::kNumCtx; ++c) {
+    for (int c = 0; c < kCodedCtx; ++c) {
         nxvc::u16 f[nxvc::kNumSym];
         for (int s = 0; s < nxvc::kNumSym; ++s) {
             uint32_t d = 0;
