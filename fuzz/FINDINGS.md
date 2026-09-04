@@ -56,6 +56,10 @@ re-run.
 | F6 | -- | fixed here | fuzz | signed overflow in this directory's own warp mutator; found by the mutator rounds the regression runner executes |
 | F7 | medium | open | warp | two signed-overflow / negate-INT_MIN sites in `corner_component()`, in the code that is supposed to be the saturation |
 | F8 | **high** | open | ref | `Unit::ctx_level` / `ctx_mode` are tested for truthiness, so the `-1` their header documents becomes context index 255 and indexes `TableSet::ctx[16]` out of bounds |
+| F11 | -- | fixed here | fuzz | the headers harness bounds a plane at 4096, but `width` is per eye, so a stereo plane is 8192; and `run_campaign.sh` let each target overwrite the previous one's libFuzzer logs |
+
+F10 is allocated on `merge-main` and is a deliberate gap here; see F11, which
+is the same defect as that branch's F10. F9 was never used on any branch.
 
 Reproducers for a finding that is still **open** live in
 `fuzz/regressions/<target>/open/` and are skipped by the CTest entry so it stays
@@ -486,28 +490,70 @@ on every input, and nothing else in the pipeline tests it. That is also why
 ## F10 -- the headers harness bounds a plane at 4096, but a stereo plane is 8192 (harness bug)
 
 **Target:** `nxvc_headers_fuzz`
-**Reproducer:** `fuzz/regressions/nxvc_headers_fuzz/F6-stereo-plane-width.bin`
-**Site:** `fuzz/nxvc_headers_fuzz.cpp`, the plane-geometry invariant
+**Reproducers:** `fuzz/regressions/nxvc_headers_fuzz/F6-stereo-plane-width.bin`
+(width 4096, the boundary) and
+`fuzz/regressions/nxvc_headers_fuzz/F11-stereo-plane-width-4094-ci.bin`
+(width 4094, the odd-width case)
+**Sites:** `fuzz/nxvc_headers_fuzz.cpp`, the plane-geometry invariant;
+`fuzz/tools/run_campaign.sh`, the per-target log directory
 
-Found by a 180-second campaign while the syntax v1.5 entropy package was being
-measured. The input is an ordinary stereo header -- `width` 4096, `eyes` 2,
-`tools` `0xc5`, and **no** v1.5 tool bit -- and it trips
+Found **twice, independently**, which is part of what it has to say. First by a
+180-second workstation campaign while the syntax v1.6 entropy package was being
+measured (`tourney/ctx-b`, commit `a041e3a`), at `width` 4096, `eyes` 2, `tools`
+`0xc5` and no new tool bit. That fix never reached `main`, so CI found it again:
+the `Sanitizers` workflow's `fuzz-smoke (60s per target)` job, run
+`33927326224` on `c6e2ffb`, reported `a target reported a crash` with
+`artifacts/nxvc_headers_fuzz/crash-5ca0c279f5f90c081896e8b90694bbf49abb218c` --
+an ordinary stereo stream header, `width` 4094, `height` 64, `eyes` 2, `chroma`
+4:4:4, `tools` `0x09`, `ext_len` 0.
+
+Both trip the harness's own invariant:
 
 ```cpp
 if (w > 4096 || h > 4096) __builtin_trap();
 ```
 
-The decoder is right and the harness is wrong. A picture is one eye and
+**The decoder is right and the harness is wrong.** A picture is one eye and
 `width` is per eye (SYNTAX.md 3.3), so `nxvc_decoder_plane_size` correctly
-returns `eyes * width`, which reaches 8192 at the maximum legal width. The
-invariant was written for the Phase 1 mono header and was never widened when
-`eyes == 2` landed in syntax v1.4; nothing had reached a 4096-wide stereo
-header before.
+returns `eyes * width` -- 8188 at width 4094, 8192 at the maximum legal width.
+The bound was written for the Phase 1 mono header and was never widened when
+`eyes == 2` landed in syntax v1.4. Nothing in
+`fuzz/corpus/nxvc_headers_fuzz/` had a wide stereo header in it, so a campaign
+only reaches it once the mutator builds one.
 
-Fixed in the harness by bounding the width at `4096 * eyes`. It is a real gap
-in the fuzzing rather than in the codec, and it was masking everything the
-headers target would otherwise have found past that point in the campaign --
-which is the reason it is written up rather than quietly patched.
+Fixed in the harness by bounding the width at `4096 * eyes`. There is **no
+bitstream to reject and therefore no `r<n>` vector**: the constraint the
+decoder must enforce is `width <= 4096`, which it already does at
+`ref/src/codec_impl.inc`, and it must go on accepting these streams. The
+behaviour is pinned instead from the other side, by an assertion in
+`tests/ref/test_headers.cpp` case 5 that a 4096-wide stereo header parses and
+reports a luma plane 8192 samples wide -- so `ref.headers` fails if
+`nxvc_decoder_plane_size` ever stops doubling for the second eye. Both
+reproducers are kept: the harness change is one edit, but 4094 and 4096 are
+different inputs and a corpus is cheap.
+
+F11 is deliberately left as a gap in this file's numbering, the way F9 is. The
+number was allocated on `main` for what turned out to be this same defect, and
+renumbering an entry that has already been cited in a commit message is worse
+than a hole in the sequence.
+
+**Second, genuinely new defect: the crash log was thrown away.** The uploaded
+`fuzz-{0..3}.log` in `fuzz-smoke-artifacts` were all clean `DONE` runs, because
+`run_campaign.sh` ran every target with `cd "$OUT"` and libFuzzer writes
+`fuzz-<N>.log` relative to the working directory. Each target overwrote the
+previous target's logs, so the artifact that survived was `warp_tile_fuzz`'s --
+the last target in the loop -- and the stack trace for the target that actually
+crashed was gone. Triage started from the raw crash input rather than from a
+report. Fixed by giving each target its own `$OUT/logs/<target>/`, uploading
+that directory, and printing the tail of any worker log containing a sanitizer
+or libFuzzer error before the script exits non-zero, so the diagnosis survives
+even when the artifact does not.
+
+**Severity: harness, not codec.** No memory-safety consequence in `ref/`. It
+matters because it was aborting the headers target inside the first minute and
+masking everything the campaign would otherwise have reached past it. After the
+fix, a 300-second two-worker campaign from the same corpus, seeded with the
+reproducer, ran 310 252 inputs clean and wrote no artifact.
 
 ---
 
