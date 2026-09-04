@@ -29,6 +29,8 @@ struct Shared {
     int tskip[kMaxSlots];
     int active[kMaxSlots];
     int mode_base[kMaxSlots];
+    // [sparse] Unit lengths, accumulated per tile slot and flushed once.
+    uint32_t ulen[kMaxSlots * kUnitLenWordsPerTile];
     uint32_t tabbase[kMaxSlots];
     uint32_t pay[kMaxSlots];
     uint32_t end[kMaxSlots];
@@ -207,7 +209,8 @@ void store_coef_at(Ctx &c, Thread &g, int scan_pos, int value) {
 // [sparse] Publish the unit's coefficient count, LAST + 1.
 void store_unit_len(Ctx &c, Thread &g, int ui, int len) {
     if (!c.in->sparse) return;
-    c.out->unit_lens[g.ulen_off + uint32_t(ui) / kUnitLensPerWord] |=
+    c.sh.ulen[uint32_t(g.slot) * kUnitLenWordsPerTile +
+              uint32_t(ui) / kUnitLensPerWord] |=
         (uint32_t(len) & kUnitLenMask)
         << ((uint32_t(ui) % kUnitLensPerWord) * kUnitLenBits);
 }
@@ -523,7 +526,7 @@ void run_group(Ctx &c, uint32_t workgroup_id) {
         } else {
             for (uint32_t i = uint32_t(g.lane); i < kUnitLenWordsPerTile;
                  i += kLanesN)
-                c.out->unit_lens[g.ulen_off + i] = 0u;
+                c.sh.ulen[uint32_t(g.slot) * kUnitLenWordsPerTile + i] = 0u;
         }
         for (uint32_t i = uint32_t(g.lane); i < c.in->cbf_words; i += kLanesN)
             c.out->cbf[g.cbf_off + i] = 0u;
@@ -648,6 +651,12 @@ void run_group(Ctx &c, uint32_t workgroup_id) {
     for (uint32_t lid = 0; lid < kWorkgroupSize; ++lid) {
         Thread &g = c.th[lid];
         if (g.valid && g.lane == 0) c.out->status[g.tile] = sh.ok[g.slot];
+        // [sparse] Flush the tile's lengths, as rans_decode.comp does.
+        if (g.valid && c.in->sparse)
+            for (uint32_t i = uint32_t(g.lane); i < kUnitLenWordsPerTile;
+                 i += kLanesN)
+                c.out->unit_lens[g.ulen_off + i] =
+                    sh.ulen[uint32_t(g.slot) * kUnitLenWordsPerTile + i];
     }
 }
 

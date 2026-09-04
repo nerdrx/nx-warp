@@ -130,6 +130,12 @@ shared uint s_ok[kMaxSlots];             // status accumulator
 shared int s_active[kMaxSlots];          // min(LANES, nunits): initialised rANS lanes
 shared int s_mode_base[kMaxSlots];       // uint index of the tile's mode words
 
+// [sparse] Unit lengths are accumulated here and flushed once at the end.
+// Four neighbouring units belong to four different lanes, so the write has to
+// be an atomicOr either way; doing it in LDS turns ~100 global atomics per
+// tile into ~100 local ones plus 66 coalesced stores.  2112 B.
+shared uint s_ulen[kMaxSlots * kUnitLenWordsPerTile];
+
 // Fallback read-pointer exchange and the workgroup-wide "any lane active".
 shared uint s_renorm[kMaxSlots];
 shared uint s_any;
@@ -314,7 +320,8 @@ void store_coef_at(int scan_pos, int value) {
 // a word belong to four different lanes.
 void store_unit_len(int ui, int len) {
     if (pc.sparse == 0u) return;
-    atomicOr(u_ulen.data[g_ulen_off + uint(ui) / kUnitLensPerWord],
+    atomicOr(s_ulen[uint(g_slot) * kUnitLenWordsPerTile +
+                    uint(ui) / kUnitLensPerWord],
              (uint(len) & kUnitLenMask)
                  << ((uint(ui) % kUnitLensPerWord) * kUnitLenBits));
 }
@@ -659,7 +666,7 @@ void main() {
                 u_coef.data[g_coef_off + i] = int16_t(0);
         } else {
             for (uint i = uint(lane); i < kUnitLenWordsPerTile; i += LANES)
-                u_ulen.data[g_ulen_off + i] = 0u;
+                s_ulen[uint(slot) * kUnitLenWordsPerTile + i] = 0u;
         }
         for (uint i = uint(lane); i < pc.cbf_words; i += LANES)
             u_cbf.data[g_cbf_off + i] = 0u;
@@ -778,4 +785,11 @@ void main() {
 
     barrier();
     if (valid && lane == 0) u_status.data[tile] = s_ok[slot];
+    // [sparse] Flush the tile's lengths, coalesced, now that every lane of the
+    // tile has finished.
+    if (valid && pc.sparse != 0u) {
+        for (uint i = uint(lane); i < kUnitLenWordsPerTile; i += LANES)
+            u_ulen.data[g_ulen_off + i] =
+                s_ulen[uint(slot) * kUnitLenWordsPerTile + i];
+    }
 }
