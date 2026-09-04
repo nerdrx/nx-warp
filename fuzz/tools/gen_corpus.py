@@ -25,6 +25,19 @@ import struct
 MAX_VECTOR_BYTES = 8192
 MAX_VECTORS = 8
 
+# Vectors carried whatever the size cap and the count cap say, because they are
+# the only inputs in the tree that reach a syntax the sorted-order sweep above
+# would never get to: a tool bit the decoder has just learned, and the per-tile
+# fields behind it.  A fuzzer cannot invent a valid stream with tool bit 24 set;
+# it can mutate one.  Keep this list to the newest syntax revision.
+ALWAYS_VECTORS = (
+    "v57_near_skip.nxv",       # 13.9  near-skip, DC form
+    "v58_quad_mv.nxv",         # 13.10 quadrant vectors
+    "v59_near_skip_420.nxv",   # 13.9  near-skip at nb == 4
+    "v60_inter_eff_all.nxv",   # 13.8 + 13.9 + 13.10 together
+    "v61_sub_intra.nxv",       # 13.11 sub-tile intra
+)
+
 TARGETS = [
     "nxvc_decode_fuzz",
     "nxvc_headers_fuzz",
@@ -344,7 +357,9 @@ def main():
             if not name.endswith(".nxv"):
                 continue
             path = os.path.join(vecdir, name)
-            if os.path.getsize(path) > MAX_VECTOR_BYTES or copied >= MAX_VECTORS:
+            if name not in ALWAYS_VECTORS and (
+                    os.path.getsize(path) > MAX_VECTOR_BYTES
+                    or copied >= MAX_VECTORS):
                 continue
             # ".nxv" is gitignored outside tests/vectors, so seeds carry a
             # neutral extension or they would never reach the repository.
