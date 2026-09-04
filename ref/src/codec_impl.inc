@@ -1003,9 +1003,10 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         TileDecision d;
         d.mode = NXVC_MODE_INTRA;
         // The two correctness overrides of the rate controller's
-        // force_warp_skip request (docs/RATECONTROL.md 8.7) are exactly these
-        // two lines: no eligible reference, and a refresh due.  A skipped tile
-        // also cannot carry a coded alpha plane, which is checked below.
+        // force_warp_skip request (docs/RATECONTROL.md 8.7) are no eligible
+        // reference -- this line -- and a refresh due, which is the block
+        // below.  A skipped tile also cannot carry a coded alpha plane, which
+        // is checked further down.
         if (!have_ref) return d;
         const nxvc::PredState &ps = e->state[t];
         const int qp = qp_map ? clamp_i32(qp_map[t], 0, 63) : fp.base_qp;
@@ -1094,19 +1095,20 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             return sse_near_skip(probe, DcCorrection{}) -
                    sse_near_skip(probe, dc);
         };
-        auto near_of = [&](const TileDecision &cand, double gain) {
-            TileDecision out = cand;
+        auto near_of = [&](TileDecision cand, const DcCorrection &dc,
+                           double gain) {
             if (gain > dc_rate) {
-                out.dc_corr = 1;
-                fit_dc_correction(probe, out.dc);
+                cand.dc_corr = 1;
+                cand.dc = dc;
             }
-            return out;
+            return cand;
         };
 
         if (force_skip ||
             (!e->cfg.alpha && skip_sse <= skip_gate * (double)npix)) {
             DcCorrection dc;
-            return near_of(skip_cand, fit_near(dc));
+            const double gain = fit_near(dc);
+            return near_of(skip_cand, dc, gain);
         }
         i64 best_sad = e->cfg.alpha ? (i64)1 << 62 : sad_pred(probe.pl[0]);
         TileDecision best_inter;
@@ -1370,7 +1372,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                     d_near + (kSkipPersist - 1.0) * ex + lambda + dc_rate;
                 if (c_near < best_cost) {
                     best_cost = c_near;
-                    best = near_of(skip_cand, gain);
+                    best = near_of(skip_cand, dc, gain);
                 }
             }
         }

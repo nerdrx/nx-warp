@@ -816,6 +816,28 @@ The divide loop is branchless (`ge` multiply-subtract) so its control flow is
 uniform; the reference writes the same loop as a branch for readability and the
 two are required to agree.
 
+### Not yet in the shader: four vectors per tile
+
+`warp_tile_quad()` (section 8.1, tool bit 25 `MV_QUAD`) is in the C++ reference
+and **not** in `warp_tile.comp`. It is stated here rather than left implicit,
+because a Vulkan decoder that does not implement it must refuse a stream that
+sets tool bit 25 -- which it does automatically, since `tools` is the
+forward-compatibility gate (`docs/SYNTAX.md` 2.3) -- and one that does
+implement it needs exactly this and nothing else:
+
+* `TileParam` grows six ints -- `mvx1..mvy3` and `quad_split` -- which fit in
+  the struct's existing `pad0..pad2` plus one 16-byte row. The corner block,
+  the divide, `bilerp_corner` and both filters are untouched.
+* the inner loop picks `q = (v >= quad_split ? 2 : 0) + (u >= quad_split ? 1 : 0)`
+  and indexes a four-entry vector array instead of using `p.mvx`/`p.mvy`.
+
+Cost: one compare per axis per pixel and a four-entry register array per tile.
+No extra reference traffic, no extra `barrier()`, no cross-invocation exchange,
+and the control flow stays uniform within a quadrant and divergent only on the
+two lanes that straddle the split -- which the loop's fixed 16-pixel stride
+already spreads evenly. The `warp.quad` suite is the conformance target it has
+to reproduce.
+
 ### Verified
 
 `nxvc-warpdiff` ran 10 000 random tiles (40 960 000 pixels) per device against
