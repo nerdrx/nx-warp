@@ -51,24 +51,36 @@ by encoding the same frame with the v1.4 binary and `cmp` -- and plain
 | **4:2:0** v1.4 | +109.22 % | -7.415 dB | -9.405 dB at 100.0 Mbit/s | FAIL |
 | **4:2:0** v1.5 (**shipped default**) | **+107.47 %** | **-7.396 dB** | -9.410 dB at 100.0 Mbit/s | FAIL |
 
-On 4:4:4 the harness also ran the middle of that, `--split4 off`, which gives
-the cumulative decomposition in the anchor's units. (The 4:2:0 middle row is
-not here: each harness row is a twenty-minute run and the machine was shared;
-the 4:2:0 per-tool numbers are the probe's, in section 2.)
+The harness also ran the middle of that on both formats, `--split4 off`, which
+gives the cumulative decomposition in the anchor's units:
 
-| 4:4:4, cumulative | BD-rate vs x264 intra | step |
-|---|---|---|
-| v1.4 | +117.67 % | -- |
-| `+ INTRA_CFL` | +115.05 % | **-2.62 points** |
-| `+ XFORM_4X4_SPLIT` (shipped) | +113.91 % | **-1.14 points** |
+| cumulative | 4:4:4 | step | 4:2:0 | step |
+|---|---|---|---|---|
+| v1.4 | +117.67 % | -- | +109.22 % | -- |
+| `+ INTRA_CFL` | +115.05 % | **-2.62 pts** | +108.81 % | **-0.41 pts** |
+| `+ XFORM_4X4_SPLIT` (shipped) | +113.91 % | **-1.14 pts** | +107.47 % | **-1.34 pts** |
+
+In our own rate those steps are -1.20 % and -0.53 % on 4:4:4, -0.20 % and
+-0.64 % on 4:2:0. The 4:4:4 pair matches the section 2 probe closely
+(-1.18 % and -0.45 %); the 4:2:0 split step does not (-0.64 % here against the
+probe's -0.24 % for the split measured on its own). Both numbers are what they
+say they are -- the split alone against v1.4, and the split on top of
+chroma-from-luma -- so on 4:2:0 the two tools are **not** additive the way they
+are on 4:4:4, where -1.18 % and -0.45 % sum to the -1.57 % the probe measures
+for the pair. The shipped configuration is the second measurement.
+
+Why they interact on one format and not the other is **not measured**. The
+candidate worth checking first is the per-tile probability-table choice: it is
+made from the whole tile's histogram, chroma-from-luma changes the chroma half
+of that histogram, and 4:2:0's chroma is a small enough share of a tile that a
+changed table lands mostly on the luma blocks -- which is where the split then
+operates. That is a hypothesis with a mechanism, not a result; `--stats`
+reports the table set per tile and would settle it.
 
 The rest of the per-tool detail is section 2, measured against the same build
 with the other tool off rather than against the anchor, because that is the
 comparison the encoder's own decisions were tuned against and the one that is
-not scaled by the distance to x264. The two agree closely: -2.62 points
-against the anchor is -1.20 % of our own rate and the probe measures -1.18 %
-for the same tool; -1.14 points is -0.53 %, against the probe's -0.45 % for the
-split measured on its own rather than on top of chroma-from-luma.
+not scaled by the distance to x264.
 
 Verbatim, the final gate lines. 4:4:4:
 
@@ -522,10 +534,11 @@ export NXQ_SCRATCH=/run/media/nerdrx/Lex/claude/nx-scratch/nx-warp
 cd tools/quality
 B=$PWD/../../build-ref/bin
 
-./run-b.sh base  yuv444p "$B" --split4 off --cfl off   # the v1.4 encoder
-./run-b.sh final yuv444p "$B"                          # the v1.5 default
-./run-b.sh base  yuv420p "$B" --split4 off --cfl off
-./run-b.sh final yuv420p "$B"
+for pix in yuv444p yuv420p; do
+  ./run-b.sh base  $pix "$B" --split4 off --cfl off   # the v1.4 encoder
+  ./run-b.sh cfl   $pix "$B" --split4 off             # the middle row
+  ./run-b.sh final $pix "$B"                          # the v1.5 default
+done
 ```
 
 `run-b.sh` is the whole invocation, including the QP ladder chosen for the v2
