@@ -136,9 +136,12 @@ normative.
 Rate-distortion quantization is **on by default**. It is encoder-only work -- a
 trellis over the level syntax, `ref/src/codec.cpp` `rdoq_unit()` -- so a stream
 encoded with it decodes through exactly the same path as one encoded without.
-It costs about 2.7x encode time and is worth -8.8 % BD-rate; `--no-rdo` gets
-the old dead-zone quantizer back. `--wm` sets the per-tile weighting-matrix id
-that the rate controller's degradation ladder uses.
+It was worth -8.8 % BD-rate at 2.7x encode time when it was added; since the
+trellis got an exact bound on `last`, the DC plane and a refitted lambda it is
+worth a further -1.6 % on the Phase 1 gate and -9.8 % on the Phase 2 kill test
+at **0.6-0.8x** the v1.4 encode time (`RESULTS-rdo-b.md`). `--no-rdo` gets the
+old dead-zone quantizer back. `--wm` sets the per-tile weighting-matrix id that
+the rate controller's degradation ladder uses.
 
 `--rgb` means planes 0..2 are R, G, B and the codec applies YCoCg-R. Without it
 the planes are coded exactly as given, which is the path a WiVRn capture takes
@@ -380,7 +383,9 @@ rejected and why, the GPU cost of the wavefront, and encode times — is
   tables byte for byte.
 * **Sign data hiding** (bit 22) is worth -0.6 points.
 * Rate-distortion quantization (v1.2) is on by default and worth -8.8 % /
-  +0.92 dB, encoder only, at 2.7x encode time and no decoder cost.
+  +0.92 dB, encoder only, at 2.7x encode time and no decoder cost. v1.5's
+  rate-distortion package (`RESULTS-rdo-b.md`) adds -1.6 % here and -9.8 % on
+  the inter path while making the encode *faster* than v1.4.
 * An in-tile intra **pyramid** was measured before being built and rejected;
   so was a 4-byte tile header. The largest untried item is now a **4x4
   transform split**, which is exactly the regime directional prediction

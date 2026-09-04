@@ -11,14 +11,15 @@ the package takes; `ref/README.md` is the user-facing summary.
 1. Three of the five decision sites were minimising different cost functions,
    and the rate they were minimising against was **18.6 % below the rate the
    entropy coder actually charged**. Section 1.
-2. On the Phase 2 kill test the package is worth **-8.7 % BD-rate at 0.8x the
-   v1.4 encode time**, of which -3.4 points is one line: the
-   reference-persistence factor was charged twice. Sections 3 and 6.
-3. On the Phase 1 gate it is worth **-1.7 % at 0.6x encode time**. It does not
-   come near the -10 % that was asked for, and section 7 says why in numbers:
-   the intra path's search was already close to optimal at v1.4, and what is
-   left of the gap to x264 is the predictor and the tile syntax, not the
-   search.
+2. On the Phase 2 kill test the package is worth **-9.8 % BD-rate at 0.81x the
+   v1.4 encode time** (4:4:4; -6.6 % on 4:2:0), of which -3.4 points is one
+   line: the reference-persistence factor was charged twice. Sections 3, 6
+   and 8.3.
+3. On the Phase 1 gate it is worth **-1.55 % at 0.57x encode time** (4:4:4;
+   -1.44 % at 0.61x on 4:2:0). It does not come near the -10 % that was asked
+   for, and section 9 says why in numbers: the intra path's search was already
+   close to optimal at v1.4, and what is left of the gap to x264 is the
+   predictor and the tile syntax, not the search.
 4. The trellis got **faster, not slower**, and by enough to pay for everything
    else: an exact bound on `last` cut the encode time to 0.55-0.8x with a
    measured BD-rate change of **+0.04 %**. Section 2.
@@ -27,9 +28,12 @@ Measurement discipline: every encode, decode and metric under
 `chrt -i 0 taskset -c 12-15 nice -n 19`, ffmpeg at `-threads 4`, on
 `vr-mixed-1024-v2` (the band-limited v2 sequences), results JSON under
 `$NXQ_SCRATCH/results/tourney-rdo-b-*.json`. The machine was running seven
-other tournament agents throughout, so **the encode times below are ratios
-against a baseline measured in the same minute**, never absolutes; section 8
-gives the absolutes measured separately.
+other tournament agents throughout, so **every encode time below is a ratio
+against a baseline measured in the same session**, never an absolute. On an
+otherwise idle machine the same encoder does a 2048x1024 4:4:4 intra frame in
+about 1.1 s at `medium` against 1.9 s for v1.4; under the load these
+measurements were taken at, both are three times that and the ratio is
+unchanged.
 
 ---
 
