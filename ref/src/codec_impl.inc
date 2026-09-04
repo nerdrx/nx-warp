@@ -130,8 +130,12 @@ extern "C" nxvc_encoder *nxvc_encoder_create(const nxvc_config *cfg,
     if ((cfg->color_space == NXVC_CS_RGB) !=
         (cfg->color_transform == NXVC_CT_YCOCGR))
         return fail(NXVC_ERR_ARG);
-    auto *e = new (std::nothrow) nxvc_encoder();
-    if (!e) return fail(NXVC_ERR_NOMEM);
+    nxvc_encoder *e = nullptr;
+    try {
+        e = new nxvc_encoder();
+    } catch (...) {
+        return fail(NXVC_ERR_NOMEM);
+    }
     e->cfg = *cfg;
     if (e->cfg.lossless) {
         e->cfg.base_qp = 0;
@@ -735,7 +739,12 @@ extern "C" const nxvc_tile_info *nxvc_encoder_tiles(const nxvc_encoder *e,
 
 // ================================================================= decoder
 extern "C" nxvc_decoder *nxvc_decoder_create(nxvc_status *st) {
-    auto *d = new (std::nothrow) nxvc_decoder();
+    nxvc_decoder *d = nullptr;
+    try {
+        d = new nxvc_decoder();
+    } catch (...) {
+        d = nullptr;
+    }
     if (st) *st = d ? NXVC_OK : NXVC_ERR_NOMEM;
     return d;
 }
