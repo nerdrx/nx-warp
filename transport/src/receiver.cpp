@@ -318,11 +318,25 @@ bool Receiver::process(std::span<const uint8_t> wire, uint8_t path_id, uint64_t 
     return true;
 }
 
-void Receiver::mark_tile_undecodable(uint16_t frame_id, uint8_t layer, uint16_t row,
+bool Receiver::mark_tile_undecodable(uint16_t frame_id, uint8_t layer, uint16_t row,
                                      uint16_t col) {
+    // FINDINGS.md F1: row and col arrive from the decoder, which may have taken
+    // them from a header field an attacker controls, so they are checked here
+    // rather than trusted.  cfg_.tile_index() is a plain multiply-add and wraps
+    // happily, so the check has to be on the coordinates, not on the product.
+    if (row >= cfg_.rows || col >= cfg_.cols || layer >= cfg_.layers) {
+        ++stats.bad_range;
+        return false;
+    }
     FrameRing::Slot* s = ring_.find(frame_id);
-    if (!s || layer >= cfg_.layers) return;
-    ring_.at(*s, layer, cfg_.tile_index(row, col)).state = TileState::kUndecodable;
+    if (!s) return false;
+    TileMeta* m = ring_.try_at(*s, layer, cfg_.tile_index(row, col));
+    if (!m) {
+        ++stats.bad_range;
+        return false;
+    }
+    m->state = TileState::kUndecodable;
+    return true;
 }
 
 ByteVec Receiver::band_deadline(uint16_t frame_id, uint8_t band, uint64_t now_us,

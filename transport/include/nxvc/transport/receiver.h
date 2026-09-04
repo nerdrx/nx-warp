@@ -44,8 +44,17 @@ class FrameRing {
     Slot* acquire(uint16_t frame_id);
     Slot* find(uint16_t frame_id);
     const Slot* find(uint16_t frame_id) const;
+    // Unchecked: callers on the datagram path have already validated the range.
     TileMeta& at(Slot& s, uint8_t layer, uint32_t tile) {
         return s.meta[size_t(layer) * cfg_.tiles_per_frame() + tile];
+    }
+    // Range-checked accessor for coordinates that reach the library from
+    // outside the datagram path.  Returns nullptr if (layer, tile) is not on
+    // the grid.  FINDINGS.md F1.
+    TileMeta* try_at(Slot& s, uint8_t layer, uint32_t tile) {
+        if (layer >= cfg_.layers || tile >= cfg_.tiles_per_frame()) return nullptr;
+        size_t i = size_t(layer) * cfg_.tiles_per_frame() + tile;
+        return i < s.meta.size() ? &s.meta[i] : nullptr;
     }
     const StreamConfig& cfg() const { return cfg_; }
     uint16_t newest() const { return newest_; }
@@ -111,7 +120,11 @@ class Receiver {
                      std::vector<TileOutput>* tiles);
 
     // The decoder found a tile's bitstream corrupt: clear its feedback bit.
-    void mark_tile_undecodable(uint16_t frame_id, uint8_t layer, uint16_t row,
+    // `row` and `col` are range checked against the stream geometry, so a
+    // caller that derives them from a malformed header cannot walk the ring.
+    // Returns false (and changes nothing) if the coordinates are off the grid
+    // or the frame is no longer in the ring.
+    bool mark_tile_undecodable(uint16_t frame_id, uint8_t layer, uint16_t row,
                                uint16_t col);
 
     // Run the band deadline: conceal, close FEC groups, build the (encrypted)

@@ -225,6 +225,54 @@ static void concealment_and_feedback() {
     tt::end();
 }
 
+// FINDINGS.md F1: mark_tile_undecodable() took (row, col) on trust and indexed
+// the ring's per-tile metadata with them.  A decoder that derives them from a
+// header field walks off the end; reproducer
+// fuzz/regressions/transport_depacketize_fuzz/F1-mark_tile_undecodable-oob-tile_first-32768.bin
+static void mark_tile_undecodable_bounds() {
+    tt::begin("mark_tile_undecodable rejects off-grid coordinates (F1)");
+    Pair p;
+    PoseHeader pose;
+    p.tx.begin_frame(0, pose, 0, 0);
+    std::vector<TileOutput> out;
+    for (auto& d : p.tx.send_band(0, p.band_tiles(0, 0, TileClass::kC), 100, 10, false))
+        p.rx.on_datagram(std::span<const uint8_t>(d.bytes.data(), d.bytes.size()),
+                         d.path_id, 1000, &out);
+
+    // In range: accepted, and the tile stops counting as received.
+    TT_CHECK(p.rx.mark_tile_undecodable(0, 0, 0, 0));
+    TT_EQ(p.rx.classify(0).undecodable, 1u);
+
+    // The exact reproducer coordinates: tile_first 32768 on a 68-column grid.
+    const uint16_t bad_row = 481, bad_col = 60;
+    TT_EQ(uint32_t(bad_row) * 68u + bad_col, 32768u);
+    uint64_t before = p.rx.stats.bad_range;
+    TT_CHECK(!p.rx.mark_tile_undecodable(0, 0, bad_row, bad_col));
+    TT_EQ(p.rx.stats.bad_range, before + 1);
+
+    // Every axis, including the first value past each edge and the extremes a
+    // 16-bit header field can carry.
+    struct { uint16_t row, col; uint8_t layer; } bad[] = {
+        {p.c.rows, 0, 0},        {0, p.c.cols, 0},        {p.c.rows, p.c.cols, 0},
+        {0, 0, uint8_t(p.c.layers)}, {65535, 65535, 0},   {65535, 0, 0},
+        {0, 65535, 0},           {uint16_t(p.c.rows + 1), uint16_t(p.c.cols + 1), 3},
+    };
+    for (const auto& b : bad) {
+        before = p.rx.stats.bad_range;
+        TT_CHECK(!p.rx.mark_tile_undecodable(0, b.layer, b.row, b.col));
+        TT_EQ(p.rx.stats.bad_range, before + 1);
+    }
+    // Nothing but the one legal call above was written.
+    TT_EQ(p.rx.classify(0).undecodable, 1u);
+
+    // A frame that is not in the ring is rejected without touching bad_range:
+    // the coordinates were fine, the frame simply aged out.
+    before = p.rx.stats.bad_range;
+    TT_CHECK(!p.rx.mark_tile_undecodable(4242, 0, 0, 0));
+    TT_EQ(p.rx.stats.bad_range, before);
+    tt::end();
+}
+
 static void failure_modes() {
     tt::begin("failure modes: version, caps, tag, truncation, stale frame");
     Pair p;
@@ -277,6 +325,7 @@ int main() {
     duplicate_suppression();
     fec_recovery_in_the_live_path();
     concealment_and_feedback();
+    mark_tile_undecodable_bounds();
     failure_modes();
     return tt::report("transport.receiver");
 }

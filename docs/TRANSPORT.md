@@ -701,6 +701,7 @@ telemetry, never control input.
 | Replay (counter behind window) | drop, count `replay` |
 | Directory sum != plaintext length | drop whole datagram, count `bad_directory` |
 | `tile_first + tile_count > tiles_per_frame` | drop, count `bad_range` |
+| `mark_tile_undecodable()` called with `row >= rows`, `col >= cols` or `layer >= layers` | reject, change nothing, return false, count `bad_range` |
 | Run crosses a tile row | drop, count `bad_range` |
 | `frame_id` older than the ring | drop, count `stale_frame` |
 | FEC group with < k blocks at the deadline | abandon, count `fec_failed` |
