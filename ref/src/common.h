@@ -61,9 +61,11 @@ inline const u8 *scan_table(int n, bool tskip) {
 // The v1 model has 12 contexts.  The v2 model (tool bit 21, CTX_V2) adds four:
 // dedicated CBF/LAST/LEVEL contexts for the DC plane, whose statistics are
 // nothing like an AC block's, and one context for the intra mode symbol.
-// Contexts 0..11 keep their meaning in both models, but their *statistics*
-// differ (v2 no longer mixes the DC plane into them), so the two models have
-// separate built-in table families.
+// The v3 model (tool bit 25, CTX_V3) keeps those and conditions CBF and LAST
+// on the lane's previous unit as well; it is laid out below.
+// Contexts 0..11 keep their meaning in v1 and v2, but not their *statistics*
+// (v2 no longer mixes the DC plane into them), so each model has its own
+// built-in table family; v3 renumbers everything and has a third.
 enum : int {
     kCtxCbfLuma = 0,
     kCtxCbfChroma = 1,

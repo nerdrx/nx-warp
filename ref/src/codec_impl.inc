@@ -18,7 +18,7 @@ static inline int fetch_clamped(const PlaneRef &pr, int x, int y) {
 // A context row is 16 log-domain deltas against the built-in default row of
 // the same (set, context).  Without TAB_V2 a delta is a flat 5-bit index, so a
 // row is 80 bits and a table set is 120 bytes for the 12-context model, 160
-// for the 16-context one and 420 for v3.  SYNTAX.md 9.4.
+// for the 16-context one and 220 for v3.  SYNTAX.md 9.4.
 constexpr int kRowBits = kNumSym * 5;
 
 // Quantize one target row to the delta alphabet and normalize it, exactly as
@@ -44,7 +44,7 @@ static void quantize_row(const u16 *target, int set_index, int nctx, int c,
     normalize_freqs(f);
 }
 
-// Bits `n` symbols distributed as `h` cost under the 10-bit row `f`.
+// Bits the symbols counted in `h` cost under the probability row `f`.
 static double row_cost(const u32 *h, const u16 *f) {
     double bits = 0;
     for (int s = 0; s < kNumSym; ++s)

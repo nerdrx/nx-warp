@@ -59,6 +59,104 @@ than it can possibly return. `TAB_V2` had to come first.
 
 ---
 
+## 1b. The Phase 1 gate, before and after
+
+`vr-mixed-1024-v2`, the first 6 frames, against `x264 --keyint 1
+--tune zerolatency`, `--qp 0,4,8,12,16,20,24` against `--anchor-qp
+2,6,10,14,18,22,26`. Each row adds one piece to the row above.
+
+**4:4:4**
+
+| | BD-rate vs x264 intra | mean deficit | worst deficit | verdict |
+|---|---|---|---|---|
+| v1.4 (`--ctx v2 --tab v1 --table-iters 0`) | +68.47 % | -3.945 dB | -4.857 dB at 100.0 Mbit/s | FAIL |
+| `+ TAB_V2` | +68.32 % | -3.939 dB | -4.844 dB at 100.0 Mbit/s | FAIL |
+| `+ CTX_V3` | +67.46 % | -3.891 dB | -4.748 dB at 100.0 Mbit/s | FAIL |
+| `+ table_iters 3` (**shipped default**) | **+66.46 %** | **-3.840 dB** | -4.722 dB at 100.0 Mbit/s | FAIL |
+
+**4:2:0**
+
+| | BD-rate vs x264 intra | mean deficit | worst deficit | verdict |
+|---|---|---|---|---|
+| v1.4 | +43.15 % | -2.501 dB | -3.492 dB at 100.0 Mbit/s | FAIL |
+| `+ TAB_V2` | +43.02 % | -2.496 dB | -3.476 dB at 100.0 Mbit/s | FAIL |
+| `+ CTX_V3` | +42.90 % | -2.526 dB | -3.398 dB at 100.0 Mbit/s | FAIL |
+| `+ table_iters 3` (**shipped default**) | **+41.62 %** | **-2.453 dB** | -3.324 dB at 100.0 Mbit/s | FAIL |
+
+Verbatim, the gate lines. 4:4:4, before and after:
+
+```
+  BD-rate of nxv-v14 on PSNR-Y (negative is better):
+    vs x264-intra     +68.47 %   BD-PSNR -4.492 dB   (overlap 47.69-57.29 dB)
+
+  Phase 1 gate (PAPER.md 3.11: within 1.0 dB of x264 intra, 100-400 Mbit):
+    FAIL: worst -4.857 dB at 100.0 Mbit/s, mean -3.945 dB over 100.0-251.5 Mbit/s
+```
+
+```
+  BD-rate of nxv-final on PSNR-Y (negative is better):
+    vs x264-intra     +66.46 %   BD-PSNR -4.415 dB   (overlap 47.69-57.13 dB)
+
+  Phase 1 gate (PAPER.md 3.11: within 1.0 dB of x264 intra, 100-400 Mbit):
+    FAIL: worst -4.722 dB at 100.0 Mbit/s, mean -3.840 dB over 100.0-246.0 Mbit/s
+```
+
+4:2:0, before and after:
+
+```
+  BD-rate of nxv-v14 on PSNR-Y (negative is better):
+    vs x264-intra     +43.15 %   BD-PSNR -3.349 dB   (overlap 47.69-57.29 dB)
+
+  Phase 1 gate (PAPER.md 3.11: within 1.0 dB of x264 intra, 100-400 Mbit):
+    FAIL: worst -3.492 dB at 100.0 Mbit/s, mean -2.501 dB over 100.0-200.2 Mbit/s
+```
+
+```
+  BD-rate of nxv-final on PSNR-Y (negative is better):
+    vs x264-intra     +41.62 %   BD-PSNR -3.239 dB   (overlap 47.69-57.12 dB)
+
+  Phase 1 gate (PAPER.md 3.11: within 1.0 dB of x264 intra, 100-400 Mbit):
+    FAIL: worst -3.324 dB at 100.0 Mbit/s, mean -2.453 dB over 100.0-196.1 Mbit/s
+```
+
+**The gate is still not met**, and this package was never going to meet it:
+2.0 BD-rate points on 4:4:4 and 1.5 on 4:2:0, 0.10 dB and 0.05 dB of mean
+deficit, against the 2.9 dB and 1.5 dB that are still missing. It is an
+entropy-coding package, and `RESULTS-intra.md` section 8's estimate of what a
+better context model is worth — the "5-8 % per PAPER 1.6" that stood
+unmeasured, and the -2.3 points `CTX_V2` actually returned — is the right
+bracket to read it against. It lands in it.
+
+### Operating points, 4:4:4, before and after
+
+| QP | v1.4 Mbit/s | v1.4 PSNR-Y | shipped Mbit/s | shipped PSNR-Y |
+|---|---|---|---|---|
+| 0 | 251.5 | 57.29 | 246.0 | 57.13 |
+| 4 | 190.1 | 55.35 | 184.9 | 55.30 |
+| 8 | 141.7 | 53.31 | 137.5 | 53.15 |
+| 12 | 106.9 | 50.62 | 104.2 | 50.50 |
+| 16 | 80.7 | 47.61 | 79.1 | 47.41 |
+| 20 | 59.6 | 44.52 | 58.9 | 44.40 |
+| 24 | 44.8 | 41.44 | 43.9 | 41.36 |
+
+Every point is 1.6 % to 3.0 % smaller for 0.02 to 0.20 dB less, which is the
+shape of a pure entropy-coding change: it does not touch the quantizer, so at a
+fixed QP it moves along the rate axis and takes a little quality with it only
+through the rate model the trellis consults.
+
+### A harness bug this measurement had to fix first
+
+`compare.py --frames N` handed the codec CLI the **whole** sequence and then
+divided its bytes by `N`, so on the 36-frame v2 sequences it reported six times
+the real bitrate for the codec while the anchors — which get a frame count
+through ffmpeg — were right. BD-rate is a ratio and survives it; the Phase 1
+gate is stated in Mbit/s and does not. It never bit the shipped Phase 1
+numbers, whose sequence was six frames long, which is why it had not been seen.
+Fixed in `tools/quality/compare.py`; the runs above use a pre-truncated
+6-frame sequence and reproduce with either.
+
+---
+
 ## 2. `CTX_V3`: choosing the context layout
 
 The brief asked for contexts conditioned on the neighbouring block's CBF and
