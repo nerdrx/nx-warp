@@ -111,22 +111,45 @@ extern "C" {
  * hands us RGBA8 or RGB10A2 in the same VkDevice). */
 #define NXE_SRC_RGBA8            0
 #define NXE_SRC_RGB10A2          1
+/* The Linux compositor path: VK_FORMAT_G8_B8R8_2PLANE_420_UNORM, or
+ * G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16 at 10 bits, already foveated and
+ * already 4:2:0.  E0 passes it through without a colour transform; see the
+ * commentary at the head of E0_convert.comp. */
+#define NXE_SRC_YCBCR_2PLANE     2
 
-/* --------------------------------------------------- gradient scaling for E1
+/* --------------------------------------------- gradient operator for E1
  *
- * The structure tensor is accumulated from 3x3 Sobel gradients.  A raw Sobel
- * response on 10-bit input reaches +-4092, so Jxx over 4096 pixels would need
- * 37 bits.  Rather than reach for int64 (unreliable on Adreno, absent on Mali
- * and MoltenVK, paper 3.7) the gradients are arithmetically shifted right by
- * NXE_GRAD_SHIFT before squaring.  That caps |g| at 511 (10-bit) or 127
- * (8-bit), so |Jxx| <= 4096 * 511^2 = 1.07e9 and every accumulator stays in
- * int32 with room to spare.  The shift is a plain floor shift, applied
- * identically on GPU and CPU, so the tensor is bit-exact, not approximate.
+ * The structure tensor uses the SAME operator as the CPU rate controller in
+ * `rc/` (nxrc::compute_one_tile_stats): the central difference
  *
- * rc/ only ever forms the eigenvalue *ratio* (paper 4.6.1's gradient
- * coherence), which is scale-invariant, so the shift costs it nothing.
+ *     gx = (I[x+1] - I[x-1]) / 2,   gy = (I[y+1] - I[y-1]) / 2
+ *
+ * with the neighbour index clamped inside the tile, so a tile's tensor depends
+ * only on that tile.  This is not a free choice.  rc/'s classifier thresholds
+ * (ClassifyConfig::flat_gradient, text_gradient, edge_coherence) are calibrated
+ * in absolute units against that operator; feeding it a Sobel response, whose
+ * magnitude is about 8x larger and whose smoothing changes the coherence of
+ * fine detail, would silently mis-classify every tile in the frame.
+ *
+ * The GPU cannot halve an odd difference without leaving the integers, and
+ * rounding it would be worse than useless: the bias is systematic, and while
+ * it barely moves Jxx it can be tens of percent of Jxy, which is small by
+ * cancellation and is exactly what coherence depends on.  So E1 accumulates
+ * the *undivided* difference d = I[x+1] - I[x-1] and the record carries a
+ * tensor 4x rc/'s, an exact power-of-two rescale that rc_adapter.h undoes.
+ *
+ * Overflow, stated exactly, because these are the tightest accumulators in the
+ * kernel.  With |d| <= 2^n - 1 over 4096 samples:
+ *   8-bit:  Jxx <= 4096 * 255^2  = 2.7e8,  a factor of 16 of headroom.
+ *   10-bit: Jxx <= 4096 * 1023^2 = 4286562304 < 2^32.  Exact, but only just,
+ *           which is why Jxx and Jyy are unsigned rather than signed.
+ * Jxy is bounded by sqrt(Jxx*Jyy) and so has the same 2^32 ceiling in
+ * magnitude -- too much for an int32 -- so it is carried as two unsigned sums,
+ * the positive and negative contributions separately.  Each is individually
+ * bounded by that same sqrt, both are exact, and the adapter subtracts them in
+ * double where the difference is exact for every value they can hold.  One
+ * extra accumulator lane buys an exact signed cross term at every depth.
  */
-#define NXE_GRAD_SHIFT           3
 
 /* --------------------------------------------------------------- the record */
 
@@ -135,10 +158,15 @@ extern "C" {
 #define NXE_TS_F_CHROMA_420      0x00000002u /* chroma planes are decimated   */
 #define NXE_TS_F_PADDED          0x00000004u /* tile extends past the frame   */
 #define NXE_TS_F_SAD_VALID       0x00000008u /* a reference was bound to E1   */
+/* Planes hold YCbCr passthrough rather than YCoCg-R (stream colour_space =
+ * YCbCr).  Nothing in rate control depends on it -- the statistics are luma
+ * statistics either way -- but the flag travels with the record so a consumer
+ * that wants to reason about absolute chroma amplitude can. */
+#define NXE_TS_F_YCBCR           0x00000010u
 
 /*
  * One record per tile, tile index = ty * tiles_x + tx, views concatenated.
- * 48 bytes, all members 4-byte scalars, so the C layout and the std430 layout
+ * 52 bytes, all members 4-byte scalars, so the C layout and the std430 layout
  * of the GLSL mirror are identical with no padding on any ABI in play.
  */
 typedef struct nxe_tile_stats {
@@ -166,22 +194,23 @@ typedef struct nxe_tile_stats {
      * integral is what makes this record bit-exact across vendors. */
     uint32_t sum_dev_sq;
 
-    /* Structure tensor summed over the tile, from 3x3 Sobel gradients scaled
-     * down by NXE_GRAD_SHIFT.  Gradients at the tile border use edge
-     * replication *within the tile*, so a tile's tensor depends only on that
-     * tile -- no cross-tile reads, which the tile-major layout would make
-     * expensive and which would couple neighbouring workgroups.
+    /* Structure tensor summed over the tile.  Gradients at the tile border
+     * clamp *within the tile*, exactly as rc/ does, so a tile's tensor depends
+     * only on that tile -- no cross-tile reads, which the tile-major layout
+     * would make expensive and which would couple neighbouring workgroups.
      *
-     * rc/ derives paper 4.6.1's gradient coherence from these:
+     * Jxy = j_xy_pos - j_xy_neg, formed by rc_adapter.h.  rc/ derives paper
+     * 4.6.1's gradient coherence from these:
      *   tr   = Jxx + Jyy
      *   det  = Jxx*Jyy - Jxy*Jxy
      *   coh  = sqrt(max(0, tr*tr - 4*det)) / max(1, tr)   in [0,1]
      * coh near 1 means one dominant gradient direction (an edge or a glyph
      * stroke), coh near 0 means isotropic detail (texture).  Combined with the
      * activity term above it yields the four classes text/edge/texture/flat. */
-    int32_t j_xx;
-    int32_t j_xy;
-    int32_t j_yy;
+    uint32_t j_xx;
+    uint32_t j_xy_pos;   /* SUM of gx*gy over samples where the product > 0 */
+    uint32_t j_xy_neg;   /* SUM of -(gx*gy) where the product < 0          */
+    uint32_t j_yy;
 
     /* Warped SAD: SUM |src(x,y) - pred(x,y)| over the luma tile, where pred is
      * the reference plane sampled at (x,y) + mv, clamped to the frame.  This
@@ -208,8 +237,8 @@ typedef struct nxe_tile_stats {
     uint32_t flags;
 } nxe_tile_stats;
 
-/* 12 x 4 bytes.  Asserted in stats_cpu.h and against the shader in the test. */
-#define NXE_TILE_STATS_SIZE 48
+/* 13 x 4 bytes.  Asserted in stats_cpu.c and against the shader in the test. */
+#define NXE_TILE_STATS_SIZE 52
 
 /* ------------------------------------------------------- frame parameters
  *
@@ -256,6 +285,10 @@ static inline uint32_t nxe_plane_total_words(uint32_t num_tiles, int chroma_420)
 }
 
 /* Fill in the derived fields of a frame-parameter block. */
+/* `src_fmt` is one of NXE_SRC_*; it only affects the flag bits. */
+static inline void nxe_frame_params_init2(nxe_frame_params *p, uint32_t w, uint32_t h,
+                                          int chroma_420, int depth10, int src_fmt);
+
 static inline void nxe_frame_params_init(nxe_frame_params *p, uint32_t w, uint32_t h,
                                          int chroma_420, int depth10)
 {
@@ -272,6 +305,13 @@ static inline void nxe_frame_params_init(nxe_frame_params *p, uint32_t w, uint32
     p->plane_cg_off = p->plane_co_off + nt * cw;
     p->flags = (uint32_t)(depth10 ? NXE_TS_F_10BIT : 0)
              | (uint32_t)(chroma_420 ? NXE_TS_F_CHROMA_420 : 0);
+}
+
+static inline void nxe_frame_params_init2(nxe_frame_params *p, uint32_t w, uint32_t h,
+                                          int chroma_420, int depth10, int src_fmt)
+{
+    nxe_frame_params_init(p, w, h, chroma_420, depth10);
+    if (src_fmt == NXE_SRC_YCBCR_2PLANE) p->flags |= NXE_TS_F_YCBCR;
 }
 
 #ifdef __cplusplus

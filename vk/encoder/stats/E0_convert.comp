@@ -1,44 +1,81 @@
 #version 460
-// E0_convert.comp -- import-format RGB to YCoCg-R, into tile-major planes.
+// E0_convert.comp -- import-format source to tile-major coded planes.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
 // Paper references: 1.3 (YCoCg-R, chroma decimation), 3.6 (E0 sits at the head
 // of the encoder pipeline), 3.7 (bit-exactness rules).
 //
-// Shape: one workgroup per 64x64 tile, 16x16 = 256 lanes, each lane owning a
-// 4x4 pixel quad.  Dispatch is (tiles_x, tiles_y, 1).  Consecutive lanes in a
+// Shape: one workgroup per 64x64 luma tile, 16x16 = 256 lanes, each lane owning
+// a 4x4 pixel quad.  Dispatch is (tiles_x, tiles_y, 1).  Consecutive lanes in a
 // workgroup row write consecutive words of a tile row, so stores coalesce.
 //
 // Compile-time variants (set by -D from CMake):
-//   NXE_SRC_FMT     NXE_SRC_RGBA8 (0) or NXE_SRC_RGB10A2 (1)
-//   NXE_CHROMA_420  0 = 4:4:4, 1 = 4:2:0
+//   NXE_SRC_FMT      0 RGBA8, 1 RGB10A2, 2 YCbCr 2-plane 4:2:0
+//   NXE_SRC_DEPTH10  0 = 8-bit, 1 = 10-bit  (YCbCr variant only; the RGB
+//                    variants take their depth from the format)
+//   NXE_CHROMA_420   0 = 4:4:4, 1 = 4:2:0   (forced to 1 for YCbCr)
 //
 // ---------------------------------------------------------------------------
-// Colour space and the sRGB / linear question
+// Two source paths, because the two hosts hand us different things
+// ---------------------------------------------------------------------------
+// On Linux the WiVRn compositor's render target reaches the encoder as a
+// VK_FORMAT_G8_B8R8_2PLANE_420_UNORM image (G10X6_B10X6R10X6_2PLANE_420_UNORM_
+// 3PACK16 for 10-bit), already foveated: the colour conversion and the chroma
+// decimation have happened upstream.  On Windows the SteamVR helper hands over
+// RGBA through the D3D11 shared texture (paper 3.8), so the codec has to do
+// the conversion itself.
+//
+// Rather than force one into the other, E0 has both paths and the stream header
+// records which colour space the planes are in:
+//
+//   RGBA8 / RGB10A2  ->  YCoCg-R forward transform, colour_space = YCoCg-R.
+//   YCbCr 2-plane    ->  passthrough, colour_space = YCbCr.  No transform is
+//                        applied at all: the luma plane is copied and the
+//                        interleaved Cb/Cr plane is de-interleaved into the two
+//                        chroma plane slots.
+//
+// Converting the compositor's YCbCr to YCoCg-R would be actively harmful: the
+// matrix is not integer-reversible (paper 1.3 rejects BT.709 YCbCr for exactly
+// that reason), so it would inject a rounding error into every frame before a
+// single bit was coded, and it would cost a full-frame pass to undo on the
+// decoder.  Passthrough costs nothing and loses nothing.  Everything
+// downstream -- transform, quantisation, entropy coding, and all of E1's
+// statistics -- operates on a luma plane and two chroma planes and does not
+// care which colour space produced them.  The one place it matters is the
+// decoder's final output stage, which needs to know which inverse to apply,
+// and that is what the header field is for.
+//
+// Chroma sign convention.  The YCoCg-R path produces signed, zero-centred Co
+// and Cg.  YCbCr's Cb and Cr arrive unsigned and centred on 2^(depth-1), so the
+// passthrough subtracts that midpoint.  Both paths therefore hand the same
+// shape of data to the transform: unsigned luma, signed zero-centred chroma,
+// no branch anywhere downstream.  The subtraction is exactly reversible.
+//
+// ---------------------------------------------------------------------------
+// Colour space and the sRGB / linear question (RGB paths)
 // ---------------------------------------------------------------------------
 // E0 reads the *stored codes* of the source image and never applies a transfer
 // function.  The source view is created with a UINT format (R8G8B8A8_UINT or
 // A2B10G10R10_UINT_PACK32) over the compositor's image, so a _SRGB or _UNORM
 // image yields exactly the integer codes the renderer wrote.
 //
-// This is deliberate, and it is the right choice for three reasons.  YCoCg-R is
-// exactly invertible only over integers, so any linearisation would have to be
-// undone by a second table on the decoder and would stop round-tripping (paper
-// 1.3 relies on the exact round trip through RGB for drift-free references).
-// The quantiser's perceptual model in 5.2 -- the luminance term dQ_lum in
-// particular -- is calibrated on display-referred codes, not on linear light.
-// And a linear-light 8-bit signal would band catastrophically in the shadows,
-// which is the failure 5.2 is explicitly trying to avoid.
+// This is deliberate.  YCoCg-R is exactly invertible only over integers, so any
+// linearisation would have to be undone by a second table on the decoder and
+// would stop round-tripping (paper 1.3 relies on the exact round trip through
+// RGB for drift-free references).  The quantiser's perceptual model in 5.2 --
+// the luminance term dQ_lum in particular -- is calibrated on display-referred
+// codes, not on linear light.  And a linear-light 8-bit signal would band
+// catastrophically in the shadows, which is the failure 5.2 exists to avoid.
 //
 // The consequence for the caller: the source must already be display-referred.
 // A linear-light render target (fp16 scRGB, or a _UNORM image the compositor
 // treats as linear) must be encoded to a display curve *before* E0.  Feeding
 // linear codes in is not an error the shader can detect; it will simply spend
-// its bits in the wrong place.  The reverse case is free: an image whose
-// Vulkan format is _SRGB already stores the encoded codes, and reading it
-// through a UINT view is exactly what we want -- it is the implicit sRGB decode
-// of a _SRGB *sampled* read that we are avoiding.
+// its bits in the wrong place.  The reverse case is free: an image whose Vulkan
+// format is _SRGB already stores the encoded codes, and reading it through a
+// UINT view is exactly what we want -- it is the implicit sRGB decode of a
+// _SRGB *sampled* read that we are avoiding.
 
 #extension GL_GOOGLE_include_directive : require
 #include "nxe_common.glsl"
@@ -46,13 +83,39 @@
 #ifndef NXE_SRC_FMT
 #define NXE_SRC_FMT NXE_SRC_RGBA8
 #endif
+#ifndef NXE_SRC_DEPTH10
+#define NXE_SRC_DEPTH10 0
+#endif
 #ifndef NXE_CHROMA_420
 #define NXE_CHROMA_420 0
 #endif
 
+#if NXE_SRC_FMT == NXE_SRC_YCBCR_2PLANE && NXE_CHROMA_420 == 0
+#error "the YCbCr 2-plane source is 4:2:0; compile it with -DNXE_CHROMA_420=1"
+#endif
+
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
-#if NXE_SRC_FMT == NXE_SRC_RGB10A2
+#if NXE_SRC_FMT == NXE_SRC_YCBCR_2PLANE
+  // Plane views of the multi-planar image, created with
+  // VK_IMAGE_ASPECT_PLANE_0/1_BIT on a MUTABLE_FORMAT image.  For the 8-bit
+  // format the planes are R8_UNORM and R8G8_UNORM, whose UINT views are
+  // R8_UINT and R8G8_UINT.  For the 10-bit 3PACK16 format the planes are
+  // R10X6_UNORM_PACK16 and R10X6G10X6_UNORM_2PACK16, 16-bit format classes
+  // whose compatible UINT views are R16_UINT and R16G16_UINT; the sample sits
+  // in the top 10 bits, hence the shift.
+  #if NXE_SRC_DEPTH10
+    layout(binding = 0, r16ui)  uniform readonly uimage2D u_luma;
+    layout(binding = 2, rg16ui) uniform readonly uimage2D u_chroma;
+    #define NXE_YCBCR_SHIFT 6
+    #define NXE_CHROMA_MID  512
+  #else
+    layout(binding = 0, r8ui)  uniform readonly uimage2D u_luma;
+    layout(binding = 2, rg8ui) uniform readonly uimage2D u_chroma;
+    #define NXE_YCBCR_SHIFT 0
+    #define NXE_CHROMA_MID  128
+  #endif
+#elif NXE_SRC_FMT == NXE_SRC_RGB10A2
 layout(binding = 0, rgb10_a2ui) uniform readonly uimage2D u_src;
 #else
 layout(binding = 0, rgba8ui)    uniform readonly uimage2D u_src;
@@ -83,8 +146,8 @@ layout(push_constant) uniform PC {
 void store(uint idx, uint v) {
     // Bounds-clamped store; robustBufferAccess behaviour differs by vendor
     // (paper 3.7) so the shader never relies on it.  A clamped index can only
-    // occur if the caller under-sized the buffer, which the test harness
-    // asserts against.
+    // occur if the caller under-sized the buffer, which the harness asserts
+    // against.
     if (idx < pc.plane_words) planes.w[idx] = v;
 }
 
@@ -94,7 +157,7 @@ void main() {
     if (tx >= pc.tiles_x || ty >= pc.tiles_y) return;
     uint tile = ty * pc.tiles_x + tx;
 
-    ivec2 org = ivec2(int(tx) * NXE_TILE_SIZE, int(ty) * NXE_TILE_SIZE);
+    ivec2 org  = ivec2(int(tx) * NXE_TILE_SIZE, int(ty) * NXE_TILE_SIZE);
     ivec2 last = ivec2(int(pc.width) - 1, int(pc.height) - 1);
 
     int lx = int(gl_LocalInvocationID.x);   // 0..15 -> pixels 4lx .. 4lx+3
@@ -104,7 +167,49 @@ void main() {
     uint cobase = nxe_tile_word_base(pc.plane_co_off, tile, uint(NXE_CWORDS));
     uint cgbase = nxe_tile_word_base(pc.plane_cg_off, tile, uint(NXE_CWORDS));
 
-    // 4x4 quad of YCoCg-R samples.
+#if NXE_SRC_FMT == NXE_SRC_YCBCR_2PLANE
+    // ------------------------------------------------------- passthrough path
+    // Luma: 4x4 quad copied straight across.
+    int Y[16];
+    for (int j = 0; j < 4; ++j) {
+        for (int i = 0; i < 4; ++i) {
+            ivec2 p = clamp(org + ivec2(lx * 4 + i, ly * 4 + j), ivec2(0), last);
+            Y[j * 4 + i] = int(imageLoad(u_luma, p).r) >> NXE_YCBCR_SHIFT;
+        }
+    }
+    for (int j = 0; j < 4; ++j) {
+        int row = ly * 4 + j;
+        uint wrow = ybase + uint(row * (NXE_TILE_SIZE / 2) + lx * 2);
+        store(wrow + 0u, nxe_pack2(Y[j * 4 + 0], Y[j * 4 + 1]));
+        store(wrow + 1u, nxe_pack2(Y[j * 4 + 2], Y[j * 4 + 3]));
+    }
+
+    // Chroma: already at half resolution, so the lane's 4x4 luma quad maps to
+    // a 2x2 chroma quad read directly.  No filter runs here -- decimating an
+    // already-decimated plane is what a naive RGBA-shaped path would do.
+    ivec2 clast = ivec2(int((pc.width + 1u) >> 1) - 1, int((pc.height + 1u) >> 1) - 1);
+    ivec2 corg  = ivec2(int(tx) * 32, int(ty) * 32);
+    for (int j = 0; j < 2; ++j) {
+        int cb0, cr0, cb1, cr1;
+        {
+            ivec2 p0 = clamp(corg + ivec2(lx * 2 + 0, ly * 2 + j), ivec2(0), clast);
+            ivec2 p1 = clamp(corg + ivec2(lx * 2 + 1, ly * 2 + j), ivec2(0), clast);
+            uvec4 s0 = imageLoad(u_chroma, p0);
+            uvec4 s1 = imageLoad(u_chroma, p1);
+            cb0 = (int(s0.r) >> NXE_YCBCR_SHIFT) - NXE_CHROMA_MID;
+            cr0 = (int(s0.g) >> NXE_YCBCR_SHIFT) - NXE_CHROMA_MID;
+            cb1 = (int(s1.r) >> NXE_YCBCR_SHIFT) - NXE_CHROMA_MID;
+            cr1 = (int(s1.g) >> NXE_YCBCR_SHIFT) - NXE_CHROMA_MID;
+        }
+        int crow = ly * 2 + j;
+        uint wc = uint(crow * (NXE_CSIDE / 2) + lx);
+        // Cb takes the Co slot, Cr the Cg slot.
+        store(cobase + wc, nxe_pack2(cb0, cb1));
+        store(cgbase + wc, nxe_pack2(cr0, cr1));
+    }
+
+#else
+    // ------------------------------------------------------------- RGB path
     int Y[16], CO[16], CG[16];
     for (int j = 0; j < 4; ++j) {
         for (int i = 0; i < 4; ++i) {
@@ -166,5 +271,6 @@ void main() {
         store(cgbase + wrow + 0u, nxe_pack2(CG[j * 4 + 0], CG[j * 4 + 1]));
         store(cgbase + wrow + 1u, nxe_pack2(CG[j * 4 + 2], CG[j * 4 + 3]));
     }
+#endif
 #endif
 }

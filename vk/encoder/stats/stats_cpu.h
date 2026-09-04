@@ -99,6 +99,18 @@ void nxe_e0_convert_cpu(const uint32_t *src_rgba, uint32_t src_w, uint32_t src_h
                         const nxe_frame_params *fp, int chroma_420,
                         uint32_t *dst, uint32_t dst_words);
 
+/* E0 passthrough model for the 2-plane YCbCr compositor source.
+ * `luma` is src_w x src_h, one uint32_t per sample; `chroma` is
+ * ceil(src_w/2) x ceil(src_h/2), two uint32_t per sample (Cb, Cr).  Both are
+ * already shifted down out of any X6 padding by the caller, so the model sees
+ * plain 0..255 or 0..1023 codes.  `mid` is the chroma zero point subtracted on
+ * the way in (128 or 512); see E0_convert.comp for why.
+ */
+void nxe_e0_passthrough_cpu(const uint32_t *luma, const uint32_t *chroma,
+                            uint32_t src_w, uint32_t src_h, int32_t mid,
+                            const nxe_frame_params *fp,
+                            uint32_t *dst, uint32_t dst_words);
+
 /* ------------------------------------------------------------------ E1 model
  *
  * `luma` and `ref_luma` are tile-major packed luma planes (E0 output, offset

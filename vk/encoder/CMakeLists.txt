@@ -87,7 +87,13 @@ nxenc_shader(E0_convert_rgba8_444   E0_convert.comp "-DNXE_SRC_FMT=0 -DNXE_CHROM
 nxenc_shader(E0_convert_rgba8_420   E0_convert.comp "-DNXE_SRC_FMT=0 -DNXE_CHROMA_420=1")
 nxenc_shader(E0_convert_rgb10a2_444 E0_convert.comp "-DNXE_SRC_FMT=1 -DNXE_CHROMA_420=0")
 nxenc_shader(E0_convert_rgb10a2_420 E0_convert.comp "-DNXE_SRC_FMT=1 -DNXE_CHROMA_420=1")
-# E1: one pipeline.
+# E0 YCbCr passthrough: the Linux compositor hands over a 2-plane 4:2:0 image
+# (paper 3.6 runs the encoder on Monado's VkDevice, so we get its native
+# format); the planes are bound as PLANE_0/PLANE_1 UINT views.
+nxenc_shader(E0_convert_ycbcr8_420  E0_convert.comp "-DNXE_SRC_FMT=2 -DNXE_CHROMA_420=1 -DNXE_SRC_DEPTH10=0")
+nxenc_shader(E0_convert_ycbcr10_420 E0_convert.comp "-DNXE_SRC_FMT=2 -DNXE_CHROMA_420=1 -DNXE_SRC_DEPTH10=1")
+# E1: one pipeline, depth-independent (the tensor is accumulated undivided, so
+# nothing in the kernel depends on the source bit depth).
 nxenc_shader(E1_stats               E1_stats.comp   "")
 # E2: block scan, single-block second level, add-offsets.
 nxenc_shader(E2_prefix_p0           E2_prefix.comp  "-DNXE_E2_PASS=0")
@@ -111,4 +117,16 @@ if(Vulkan_FOUND)
 else()
   target_include_directories(nxvc-stats-test PRIVATE ${NXENC_VULKAN_INC})
   target_link_libraries(nxvc-stats-test PRIVATE ${NXENC_VULKAN_LIB})
+endif()
+
+# ------------------------------------------------------------------- ctests
+# When this directory is configured as its own project (build-enc/), wire up
+# tests/vk-encoder so the encoder can be built and tested without the rest of
+# the tree.  Configured from the repo root instead, the root adds that
+# directory itself and this branch does not fire.
+if(PROJECT_NAME STREQUAL "nxwarp_encoder" AND
+   EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/../../tests/vk-encoder/CMakeLists.txt)
+  enable_testing()
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../tests/vk-encoder
+                   ${CMAKE_CURRENT_BINARY_DIR}/tests-vk-encoder)
 endif()

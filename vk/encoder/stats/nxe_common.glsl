@@ -30,8 +30,6 @@
 #define NXE_CHROMA_WORDS_444    2048
 #define NXE_CHROMA_WORDS_420    512
 
-#define NXE_GRAD_SHIFT     3
-
 #define NXE_E2_PER_THREAD  4
 #define NXE_E2_BLOCK       1024
 
@@ -39,20 +37,23 @@
 #define NXE_TS_F_CHROMA_420 0x00000002u
 #define NXE_TS_F_PADDED     0x00000004u
 #define NXE_TS_F_SAD_VALID  0x00000008u
+#define NXE_TS_F_YCBCR      0x00000010u
 
-#define NXE_SRC_RGBA8    0
-#define NXE_SRC_RGB10A2  1
+#define NXE_SRC_RGBA8         0
+#define NXE_SRC_RGB10A2       1
+#define NXE_SRC_YCBCR_2PLANE  2
 
 // ---------------------------------------------------------------- the record
-// std430 layout; 12 tightly packed 4-byte scalars == the C struct.
+// std430 layout; 13 tightly packed 4-byte scalars == the C struct.
 struct nxe_tile_stats {
     uint sum_luma;
     uint sum_sq_luma;
     uint mean_luma_q8;
     uint sum_dev_sq;
-    int  j_xx;
-    int  j_xy;
-    int  j_yy;
+    uint j_xx;
+    uint j_xy_pos;
+    uint j_xy_neg;
+    uint j_yy;
     uint sad;
     int  mv_qx;
     int  mv_qy;

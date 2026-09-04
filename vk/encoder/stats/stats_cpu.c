@@ -84,6 +84,56 @@ void nxe_e0_convert_cpu(const uint32_t *src_rgba, uint32_t src_w, uint32_t src_h
     }
 }
 
+void nxe_e0_passthrough_cpu(const uint32_t *luma, const uint32_t *chroma,
+                            uint32_t src_w, uint32_t src_h, int32_t mid,
+                            const nxe_frame_params *fp,
+                            uint32_t *dst, uint32_t dst_words)
+{
+    /* The compositor source is 4:2:0 by construction. */
+    const uint32_t cwords = (uint32_t)NXE_CHROMA_WORDS_420;
+    const uint32_t cside  = (uint32_t)NXE_CTILE_SIZE_420;
+    const uint32_t cw = (src_w + 1u) >> 1, ch = (src_h + 1u) >> 1;
+    uint32_t ty, tx, j, i;
+
+    memset(dst, 0, (size_t)dst_words * sizeof(uint32_t));
+
+    for (ty = 0; ty < fp->tiles_y; ++ty) {
+        for (tx = 0; tx < fp->tiles_x; ++tx) {
+            uint32_t tile = ty * fp->tiles_x + tx;
+            uint32_t ybase  = fp->plane_y_off  + tile * (uint32_t)NXE_LUMA_WORDS_PER_TILE;
+            uint32_t cobase = fp->plane_co_off + tile * cwords;
+            uint32_t cgbase = fp->plane_cg_off + tile * cwords;
+
+            for (j = 0; j < (uint32_t)NXE_TILE_SIZE; ++j) {
+                for (i = 0; i < (uint32_t)NXE_TILE_SIZE; ++i) {
+                    int32_t x = (int32_t)(tx * NXE_TILE_SIZE + i);
+                    int32_t y = (int32_t)(ty * NXE_TILE_SIZE + j);
+                    if (x > (int32_t)src_w - 1) x = (int32_t)src_w - 1;
+                    if (y > (int32_t)src_h - 1) y = (int32_t)src_h - 1;
+                    nxe_plane_set(dst + ybase, (uint32_t)NXE_LUMA_WORDS_PER_TILE,
+                                  j * NXE_TILE_SIZE + i,
+                                  (int32_t)luma[(size_t)y * src_w + (size_t)x]);
+                }
+            }
+
+            for (j = 0; j < cside; ++j) {
+                for (i = 0; i < cside; ++i) {
+                    int32_t x = (int32_t)(tx * cside + i);
+                    int32_t y = (int32_t)(ty * cside + j);
+                    const uint32_t *p;
+                    if (x > (int32_t)cw - 1) x = (int32_t)cw - 1;
+                    if (y > (int32_t)ch - 1) y = (int32_t)ch - 1;
+                    p = chroma + ((size_t)y * cw + (size_t)x) * 2u;
+                    nxe_plane_set(dst + cobase, cwords, j * cside + i,
+                                  (int32_t)p[0] - mid);
+                    nxe_plane_set(dst + cgbase, cwords, j * cside + i,
+                                  (int32_t)p[1] - mid);
+                }
+            }
+        }
+    }
+}
+
 /* ------------------------------------------------------------------------ E1 */
 
 static int32_t fetch_ref_cpu(const uint32_t *plane, uint32_t plane_words,
@@ -125,7 +175,7 @@ void nxe_e1_stats_cpu(const uint32_t *plane, uint32_t plane_words,
          * two's-complement here exactly as SPIR-V's OpIAdd does, instead of
          * being undefined behaviour in C. */
         uint32_t sum = 0, sumsq = 0, sad = 0;
-        uint32_t jxx = 0, jxy = 0, jyy = 0, dev = 0;
+        uint32_t jxx = 0, jxy_p = 0, jxy_n = 0, jyy = 0, dev = 0;
         int32_t mean_int;
         uint32_t p, flags;
         nxe_tile_stats *o = &out[tile];
@@ -140,25 +190,21 @@ void nxe_e1_stats_cpu(const uint32_t *plane, uint32_t plane_words,
             int32_t v = lum[p];
             int32_t xm = px > 0 ? px - 1 : 0, xp = px < 63 ? px + 1 : 63;
             int32_t ym = py > 0 ? py - 1 : 0, yp = py < 63 ? py + 1 : 63;
-            int32_t nw = lum[ym * NXE_TILE_SIZE + xm];
-            int32_t n  = lum[ym * NXE_TILE_SIZE + px];
-            int32_t ne = lum[ym * NXE_TILE_SIZE + xp];
-            int32_t we = lum[py * NXE_TILE_SIZE + xm];
-            int32_t ea = lum[py * NXE_TILE_SIZE + xp];
-            int32_t sw = lum[yp * NXE_TILE_SIZE + xm];
-            int32_t s  = lum[yp * NXE_TILE_SIZE + px];
-            int32_t se = lum[yp * NXE_TILE_SIZE + xp];
-            int32_t gx = (ne + 2 * ea + se) - (nw + 2 * we + sw);
-            int32_t gy = (sw + 2 * s + se) - (nw + 2 * n + ne);
+            /* Central difference, clamped inside the tile: the operator
+             * nxrc::compute_one_tile_stats() uses. */
+            int32_t gx = lum[py * NXE_TILE_SIZE + xp] - lum[py * NXE_TILE_SIZE + xm];
+            int32_t gy = lum[yp * NXE_TILE_SIZE + px] - lum[ym * NXE_TILE_SIZE + px];
 
             sum   += (uint32_t)v;
             sumsq += (uint32_t)(v * v);
 
-            gx = nxe_sar(gx, NXE_GRAD_SHIFT);
-            gy = nxe_sar(gy, NXE_GRAD_SHIFT);
-            jxx += (uint32_t)(gx * gx);
-            jxy += (uint32_t)(gx * gy);
-            jyy += (uint32_t)(gy * gy);
+            {
+                int32_t xy = gx * gy;
+                jxx += (uint32_t)(gx * gx);
+                if (xy > 0) jxy_p += (uint32_t)xy;
+                else if (xy < 0) jxy_n += (uint32_t)(-xy);
+                jyy += (uint32_t)(gy * gy);
+            }
 
             if (has_ref) {
                 int32_t r = fetch_ref_cpu(ref_plane, plane_words, fp,
@@ -184,9 +230,10 @@ void nxe_e1_stats_cpu(const uint32_t *plane, uint32_t plane_words,
         o->sum_sq_luma  = sumsq;
         o->mean_luma_q8 = (sum + 8u) >> 4;
         o->sum_dev_sq   = dev;
-        o->j_xx         = (int32_t)jxx;
-        o->j_xy         = (int32_t)jxy;
-        o->j_yy         = (int32_t)jyy;
+        o->j_xx         = jxx;
+        o->j_xy_pos     = jxy_p;
+        o->j_xy_neg     = jxy_n;
+        o->j_yy         = jyy;
         o->sad          = sad;
         o->mv_qx        = mvqx;
         o->mv_qy        = mvqy;

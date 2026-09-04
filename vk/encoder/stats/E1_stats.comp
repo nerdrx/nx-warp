@@ -17,7 +17,7 @@
 // Outputs one nxe_tile_stats record per tile:
 //   mean luma           <- sum_luma, mean_luma_q8
 //   activity            <- sum_dev_sq (log taken host-side, see tile_stats.h)
-//   gradient coherence  <- j_xx, j_xy, j_yy from 3x3 Sobel
+//   gradient coherence  <- j_xx, j_xy_pos/neg, j_yy from central differences
 //   complexity          <- sad against the reference at the tile's offset
 //   retinal slip        <- mv_qx, mv_qy, mv_mag_q4
 //
@@ -75,9 +75,9 @@ layout(push_constant) uniform PC {
 // so the same shape survives if E1 is ever wanted on a headset.
 shared int s_luma[NXE_TILE_PIXELS];
 
-// Cross-subgroup reduction scratch: 6 lanes wide so one barrier pair covers
+// Cross-subgroup reduction scratch: 7 lanes wide so one barrier pair covers
 // the whole moment/tensor/SAD reduction.
-#define NXE_RED_LANES 6
+#define NXE_RED_LANES 7
 shared uint s_red[NXE_MAX_SUBGROUPS][NXE_RED_LANES];
 
 // Reduce NXE_RED_LANES values at once.  Uniform control flow; every thread
@@ -123,7 +123,7 @@ int fetch_ref(int x, int y) {
     return nxe_unpack(w, int(i & 1u));
 }
 
-// In-tile Sobel neighbour, replicating at the tile border.  Confining the
+// In-tile neighbour, replicating at the tile border.  Confining the
 // gradient to the tile keeps a tile's tensor a function of that tile alone --
 // no cross-tile reads, which the tile-major layout makes expensive and which
 // would couple neighbouring workgroups for a statistic that does not need it.
@@ -172,33 +172,34 @@ void main() {
         acc[0] += uint(v);
         acc[1] += uint(v * v);
 
-        // 3x3 Sobel.
-        int nw = lum(px - 1, py - 1), n = lum(px, py - 1), ne = lum(px + 1, py - 1);
-        int we = lum(px - 1, py    ),                      ea = lum(px + 1, py    );
-        int sw = lum(px - 1, py + 1), s = lum(px, py + 1), se = lum(px + 1, py + 1);
-        int gx = (ne + 2 * ea + se) - (nw + 2 * we + sw);
-        int gy = (sw + 2 * s  + se) - (nw + 2 * n  + ne);
-        // Floor shift; documented and mirrored exactly by the CPU model.
-        gx >>= NXE_GRAD_SHIFT;
-        gy >>= NXE_GRAD_SHIFT;
+        // Central difference, the operator rc/ calibrated its thresholds
+        // against, with the neighbour clamped inside the tile exactly as rc
+        // clamps it.  The difference is accumulated undivided -- halving it
+        // would need a fraction, and the whole point of this kernel is that it
+        // has none -- so the record's tensor is 4x rc/'s.  See tile_stats.h.
+        int gx = lum(px + 1, py) - lum(px - 1, py);
+        int gy = lum(px, py + 1) - lum(px, py - 1);
+        int xy = gx * gy;
         acc[2] += uint(gx * gx);
-        acc[3] += uint(gx * gy);
-        acc[4] += uint(gy * gy);
+        acc[3] += uint(max(xy, 0));    // positive contributions
+        acc[4] += uint(max(-xy, 0));   // negative contributions, unsigned
+        acc[5] += uint(gy * gy);
 
         if (pc.has_ref != 0u) {
             int r = fetch_ref(org_x + px + mvi.x, org_y + py + mvi.y);
-            acc[5] += uint(abs(v - r));
+            acc[6] += uint(abs(v - r));
         }
     }
 
     wg_reduce_n(acc);
 
-    uint sum   = acc[0];
-    uint sumsq = acc[1];
-    int  jxx   = int(acc[2]);
-    int  jxy   = int(acc[3]);
-    int  jyy   = int(acc[4]);
-    uint sad   = acc[5];
+    uint sum    = acc[0];
+    uint sumsq  = acc[1];
+    uint jxx    = acc[2];
+    uint jxy_p  = acc[3];
+    uint jxy_n  = acc[4];
+    uint jyy    = acc[5];
+    uint sad    = acc[6];
 
     // ---- pass 2: sum of squared deviations about the rounded integer mean.
     // The tile is already in LDS, so this is one more sweep with no memory
@@ -227,7 +228,8 @@ void main() {
         o.mean_luma_q8 = (sum + 8u) >> 4;    // round(sum/4096) in Q8.8
         o.sum_dev_sq   = dev;
         o.j_xx         = jxx;
-        o.j_xy         = jxy;
+        o.j_xy_pos     = jxy_p;
+        o.j_xy_neg     = jxy_n;
         o.j_yy         = jyy;
         o.sad          = sad;
         o.mv_qx        = mvq.x;

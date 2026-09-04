@@ -23,7 +23,10 @@
 
 extern "C" {
 #include "stats_cpu.h"
+#include "rc_adapter.h"
 }
+
+#include <cmath>
 
 #include <algorithm>
 #include <chrono>
@@ -38,13 +41,15 @@ extern "C" {
 #include "E0_convert_rgba8_420.spv.h"
 #include "E0_convert_rgb10a2_444.spv.h"
 #include "E0_convert_rgb10a2_420.spv.h"
+#include "E0_convert_ycbcr8_420.spv.h"
+#include "E0_convert_ycbcr10_420.spv.h"
 #include "E1_stats.spv.h"
 #include "E2_prefix_p0.spv.h"
 #include "E2_prefix_p1.spv.h"
 #include "E2_prefix_p2.spv.h"
 
 static_assert(sizeof(nxe_tile_stats) == NXE_TILE_STATS_SIZE,
-              "nxe_tile_stats must stay 48 tightly packed bytes so the C layout "
+              "nxe_tile_stats must stay tightly packed 4-byte scalars so the C layout "
               "and the std430 layout of the GLSL mirror are identical");
 static_assert(sizeof(nxe_frame_params) == 32, "nxe_frame_params layout");
 static_assert(sizeof(nxe_e0_push) == 36, "nxe_e0_push layout");
@@ -143,11 +148,48 @@ static void pack_image(const std::vector<uint32_t> &rgba, uint32_t w, uint32_t h
     }
 }
 
+// ------------------------------------------------ agreement with rc/'s model
+//
+// A transcription of nxrc::compute_one_tile_stats (rc/src/classify.cpp) in
+// double precision, over one 64x64 luma tile.  It is duplicated here rather
+// than linked because vk/encoder must not depend on rc/ to build -- but the
+// numbers it produces are the ones rc/'s classifier thresholds were calibrated
+// against, so checking the adapter against it is what proves the GPU record can
+// actually drive rate control instead of merely resembling it.
+//
+// If rc/ ever changes its operator, this check fails and E1 has to follow;
+// that is the point of having it.
+struct RcRef { double mean, log_var, jxx, jxy, jyy; };
+
+static RcRef rc_reference(const int32_t *lum)
+{
+    const int n = NXE_TILE_SIZE;
+    double s = 0.0, ss = 0.0;
+    for (int i = 0; i < n * n; ++i) { double v = lum[i]; s += v; ss += v * v; }
+    const double np = double(n) * double(n);
+    RcRef r{};
+    r.mean = s / np;
+    const double var = std::max(0.0, ss / np - (s / np) * (s / np));
+    r.log_var = std::log2(var + 1.0);
+    double a = 0.0, b = 0.0, cc = 0.0;
+    for (int y = 0; y < n; ++y)
+        for (int x = 0; x < n; ++x) {
+            const int xm = std::max(x - 1, 0), xp = std::min(x + 1, n - 1);
+            const int ym = std::max(y - 1, 0), yp = std::min(y + 1, n - 1);
+            const double gx = 0.5 * (double(lum[y * n + xp]) - double(lum[y * n + xm]));
+            const double gy = 0.5 * (double(lum[yp * n + x]) - double(lum[ym * n + x]));
+            a += gx * gx; b += gx * gy; cc += gy * gy;
+        }
+    r.jxx = a; r.jxy = b; r.jyy = cc;
+    return r;
+}
+
 // ------------------------------------------------------------------ helpers
 struct Ctx {
     vkmin::Device dev;
     VkDescriptorPool dpool = VK_NULL_HANDLE;
     vkmin::Pipeline e0[4];         // [depth10][chroma420]
+    vkmin::Pipeline e0ycbcr[2];    // [depth10], 4:2:0 only
     vkmin::Pipeline e1;
     vkmin::Pipeline e2[3];
     bool quiet = false;
@@ -174,12 +216,12 @@ static void image_barrier(VkCommandBuffer cb, VkImage img,
 static void write_set(VkDevice dev, VkDescriptorSet set,
                       const std::vector<VkDescriptorType> &types,
                       const std::vector<VkBuffer> &bufs,
-                      VkImageView view)
+                      const std::vector<VkImageView> &views)
 {
     std::vector<VkDescriptorBufferInfo> bi(types.size());
-    VkDescriptorImageInfo ii{};
+    std::vector<VkDescriptorImageInfo> ii(types.size());
     std::vector<VkWriteDescriptorSet> w;
-    size_t bidx = 0;
+    size_t bidx = 0, vidx = 0;
     for (size_t i = 0; i < types.size(); ++i) {
         VkWriteDescriptorSet ws{};
         ws.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -188,9 +230,9 @@ static void write_set(VkDevice dev, VkDescriptorSet set,
         ws.descriptorCount = 1;
         ws.descriptorType = types[i];
         if (types[i] == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE) {
-            ii.imageView = view;
-            ii.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-            ws.pImageInfo = &ii;
+            ii[i].imageView = views[vidx++];
+            ii[i].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+            ws.pImageInfo = &ii[i];
         } else {
             bi[i] = { bufs[bidx++], 0, VK_WHOLE_SIZE };
             ws.pBufferInfo = &bi[i];
@@ -332,14 +374,15 @@ static bool run_e0_e1(Ctx &c, uint32_t w, uint32_t h, bool depth10, bool c420,
 
     vkmin::Pipeline &p0 = c.e0[(depth10 ? 2 : 0) + (c420 ? 1 : 0)];
     VkDescriptorSet s0 = dev.allocate_set(c.dpool, p0.dsl);
-    VkDescriptorSet s1 = dev.allocate_set(c.dpool, c.e1.dsl);
+    vkmin::Pipeline &p1 = c.e1;
+    VkDescriptorSet s1 = dev.allocate_set(c.dpool, p1.dsl);
     if (s0 == VK_NULL_HANDLE || s1 == VK_NULL_HANDLE) {
         fprintf(stderr, "  descriptor set allocation failed\n");
         return false;
     }
-    write_set(dev.handle(), s0, e0_types, { planes.buf }, img.view);
+    write_set(dev.handle(), s0, e0_types, { planes.buf }, { img.view });
     write_set(dev.handle(), s1, e1_types,
-              { planes.buf, refplanes.buf, mvbuf.buf, stats.buf }, VK_NULL_HANDLE);
+              { planes.buf, refplanes.buf, mvbuf.buf, stats.buf }, {});
 
     nxe_e0_push pc0{};
     pc0.f = fp;
@@ -363,9 +406,9 @@ static bool run_e0_e1(Ctx &c, uint32_t w, uint32_t h, bool depth10, bool c420,
         if (ts && qp) vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, qp, 1);
         dev.barrier_compute_to_compute(cb);
         if (ts && qp) vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, qp, 2);
-        vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, c.e1.pipe);
-        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, c.e1.layout, 0, 1, &s1, 0, nullptr);
-        vkCmdPushConstants(cb, c.e1.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(pc1), &pc1);
+        vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, p1.pipe);
+        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, p1.layout, 0, 1, &s1, 0, nullptr);
+        vkCmdPushConstants(cb, p1.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(pc1), &pc1);
         vkCmdDispatch(cb, num_tiles, 1, 1);
         if (ts && qp) vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, qp, 3);
         dev.barrier_compute_to_host(cb);
@@ -411,7 +454,8 @@ static bool run_e0_e1(Ctx &c, uint32_t w, uint32_t h, bool depth10, bool c420,
             fprintf(stderr, "    E1 tile %u mismatch:\n", t);
 #define F(name, fmt) if (a.name != b.name) fprintf(stderr, "      " #name " gpu " fmt " cpu " fmt "\n", a.name, b.name)
             F(sum_luma, "%u"); F(sum_sq_luma, "%u"); F(mean_luma_q8, "%u");
-            F(sum_dev_sq, "%u"); F(j_xx, "%d"); F(j_xy, "%d"); F(j_yy, "%d");
+            F(sum_dev_sq, "%u"); F(j_xx, "%u"); F(j_xy_pos, "%u");
+            F(j_xy_neg, "%u"); F(j_yy, "%u");
             F(sad, "%u"); F(mv_qx, "%d"); F(mv_qy, "%d"); F(mv_mag_q4, "%u");
             F(flags, "%u");
 #undef F
@@ -420,6 +464,49 @@ static bool run_e0_e1(Ctx &c, uint32_t w, uint32_t h, bool depth10, bool c420,
     }
     fail.e0 += e0bad;
     fail.e1 += e1bad;
+
+    // ---- rc/ agreement.  Only unpadded tiles: rc/'s model averages over the
+    // pixels present in the frame while E0 replicates to fill the tile, so the
+    // two are meant to differ there (see rc_adapter.h).
+    uint64_t rcbad = 0;
+    {
+        std::vector<int32_t> lum(NXE_TILE_PIXELS);
+        for (uint32_t t = 0; t < num_tiles; ++t) {
+            if (gpu_stats[t].flags & NXE_TS_F_PADDED) continue;
+            uint32_t ybase = fp.plane_y_off + t * (uint32_t)NXE_LUMA_WORDS_PER_TILE;
+            for (uint32_t i = 0; i < (uint32_t)NXE_TILE_PIXELS; ++i)
+                lum[i] = nxe_plane_get(cpu_planes.data() + ybase,
+                                       (uint32_t)NXE_LUMA_WORDS_PER_TILE, i);
+            RcRef ref = rc_reference(lum.data());
+            nxe_rc_tile_stats got{};
+            nxe_to_rc_tile_stats(&gpu_stats[t], &got);
+            // Tolerances: the mean is rounded to Q8.8 (1/256), the variance is
+            // taken about the rounded integer mean (at most 1/4 off, which is
+            // far below a log2 threshold spaced at 0.5), and at 10 bits the
+            // tensor loses at most a half LSB per sample to the >>1.
+            const double jtol = 1e-6;   // the rescale is exact at every depth
+            auto rel = [](double a, double b) {
+                double d = std::fabs(a - b), m = std::max(1.0, std::fabs(b));
+                return d / m;
+            };
+            bool bad = std::fabs(got.mean_luma - ref.mean) > 0.01
+                    || std::fabs(got.log_var - ref.log_var) > 0.02
+                    || rel(got.jxx, ref.jxx) > jtol
+                    || rel(got.jyy, ref.jyy) > jtol
+                    || rel(got.jxy, ref.jxy) > jtol;
+            if (bad) {
+                if (rcbad < 3 && !c.quiet)
+                    fprintf(stderr, "    rc-adapter tile %u: mean %.4f/%.4f "
+                            "logvar %.4f/%.4f jxx %.1f/%.1f jxy %.1f/%.1f jyy %.1f/%.1f\n",
+                            t, got.mean_luma, ref.mean, got.log_var, ref.log_var,
+                            got.jxx, ref.jxx, got.jxy, ref.jxy, got.jyy, ref.jyy);
+                ++rcbad;
+            }
+        }
+    }
+    fail.e1 += rcbad;
+    if (rcbad && !c.quiet)
+        fprintf(stderr, "    %" PRIu64 " tiles disagree with the rc/ reference\n", rcbad);
 
     if (!c.quiet)
         printf("  E0/E1 %ux%u %s %s : %u tiles, E0 %s (%" PRIu64 " bad words), "
@@ -454,6 +541,215 @@ static bool run_e0_e1(Ctx &c, uint32_t w, uint32_t h, bool depth10, bool c420,
     dev.destroy_buffer(mvbuf);
     dev.destroy_buffer(stats);
     dev.destroy_image(img);
+    return true;
+}
+
+
+// ------------------------------------------------- E0 YCbCr passthrough test
+//
+// Models the Linux compositor path: a 2-plane 4:2:0 image whose PLANE_0 and
+// PLANE_1 aspects are bound as UINT storage views.  The harness uses separate
+// R8_UINT / R8G8_UINT (R16_UINT / R16G16_UINT at 10 bits) images rather than a
+// real multi-planar image with plane views, because the two are
+// indistinguishable from inside the shader -- a plane view *is* a single-plane
+// image of the compatible format -- and creating one here would drag in
+// disjoint-allocation plumbing that belongs in vk/common, not in the diff test.
+//
+// The 10-bit case uploads samples shifted left by 6, which is exactly how
+// G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16 stores them, so the shader's >>6
+// is exercised against real bit placement rather than a convenient fiction.
+static bool run_e0_ycbcr(Ctx &c, uint32_t w, uint32_t h, bool depth10,
+                         uint64_t seed, Failures &fail)
+{
+    std::string err;
+    auto &dev = c.dev;
+    vkResetDescriptorPool(dev.handle(), c.dpool, 0);
+
+    const uint32_t maxval = depth10 ? 1023u : 255u;
+    const int32_t  mid    = depth10 ? 512 : 128;
+    const uint32_t cw = (w + 1u) >> 1, ch = (h + 1u) >> 1;
+
+    nxe_frame_params fp{};
+    nxe_frame_params_init2(&fp, w, h, 1, depth10 ? 1 : 0, NXE_SRC_YCBCR_2PLANE);
+    const uint32_t num_tiles = fp.tiles_x * fp.tiles_y;
+    const uint32_t plane_words = nxe_plane_total_words(num_tiles, 1);
+
+    Rng rng(seed);
+    // Luma from the RGB generator's green-ish channel so the frame still has
+    // edges, glyph strips and flat patches; chroma independently structured.
+    std::vector<uint32_t> gen;
+    make_source(gen, w, h, maxval, rng);
+    std::vector<uint32_t> luma((size_t)w * h);
+    for (size_t i = 0; i < luma.size(); ++i) luma[i] = gen[i * 4 + 1];
+    std::vector<uint32_t> genc;
+    make_source(genc, cw, ch, maxval, rng);
+    std::vector<uint32_t> chroma((size_t)cw * ch * 2);
+    for (size_t i = 0; i < (size_t)cw * ch; ++i) {
+        chroma[i * 2 + 0] = genc[i * 4 + 0];
+        chroma[i * 2 + 1] = genc[i * 4 + 2];
+    }
+
+    std::vector<uint32_t> cpu_planes(plane_words, 0);
+    nxe_e0_passthrough_cpu(luma.data(), chroma.data(), w, h, mid, &fp,
+                           cpu_planes.data(), plane_words);
+    // E1 must produce the same statistics whichever source filled the luma
+    // plane; the plane layout is identical, so this run is what proves the
+    // kernel is source-agnostic rather than merely believed to be.
+    std::vector<nxe_tile_stats> cpu_stats(num_tiles);
+    nxe_e1_stats_cpu(cpu_planes.data(), plane_words, &fp, cpu_planes.data(),
+                     nullptr, 1, cpu_stats.data(), num_tiles);
+
+    vkmin::Image ly{}, ci{};
+    VkFormat lfmt = depth10 ? VK_FORMAT_R16_UINT : VK_FORMAT_R8_UINT;
+    VkFormat cfmt = depth10 ? VK_FORMAT_R16G16_UINT : VK_FORMAT_R8G8_UINT;
+    if (!dev.create_storage_image(w, h, lfmt, ly, err) ||
+        !dev.create_storage_image(cw, ch, cfmt, ci, err)) {
+        fprintf(stderr, "  ycbcr images: %s\n", err.c_str());
+        return false;
+    }
+
+    const size_t lbytes = (size_t)w * h * (depth10 ? 2 : 1);
+    const size_t cbytes = (size_t)cw * ch * 2 * (depth10 ? 2 : 1);
+    std::vector<uint8_t> lwire(lbytes), cwire(cbytes);
+    if (depth10) {
+        uint16_t *d = (uint16_t *)lwire.data();
+        for (size_t i = 0; i < luma.size(); ++i) d[i] = (uint16_t)(luma[i] << 6);
+        uint16_t *e = (uint16_t *)cwire.data();
+        for (size_t i = 0; i < chroma.size(); ++i) e[i] = (uint16_t)(chroma[i] << 6);
+    } else {
+        for (size_t i = 0; i < luma.size(); ++i) lwire[i] = (uint8_t)luma[i];
+        for (size_t i = 0; i < chroma.size(); ++i) cwire[i] = (uint8_t)chroma[i];
+    }
+
+    vkmin::Buffer staging{}, planes{}, mvbuf{}, stats{};
+    const VkDeviceSize plane_bytes = (VkDeviceSize)plane_words * 4;
+    const VkDeviceSize stats_bytes = (VkDeviceSize)num_tiles * NXE_TILE_STATS_SIZE;
+    VkDeviceSize stage_bytes = std::max<VkDeviceSize>(
+        { (VkDeviceSize)lbytes, (VkDeviceSize)cbytes, plane_bytes, stats_bytes,
+          (VkDeviceSize)num_tiles * 8 });
+    bool ok = dev.create_buffer(stage_bytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+                                             VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                                true, staging, err)
+           && dev.create_buffer(plane_bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                                             VK_BUFFER_USAGE_TRANSFER_SRC_BIT, false, planes, err)
+           && dev.create_buffer((VkDeviceSize)num_tiles * 8,
+                                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                                VK_BUFFER_USAGE_TRANSFER_DST_BIT, false, mvbuf, err)
+           && dev.create_buffer(stats_bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                                             VK_BUFFER_USAGE_TRANSFER_SRC_BIT, false, stats, err);
+    if (!ok) { fprintf(stderr, "  ycbcr buffers: %s\n", err.c_str()); return false; }
+
+    // Zero motion vectors: the passthrough case measures SAD of the frame
+    // against itself, which must come out exactly 0 for every tile -- a cheap
+    // but sharp check on the reference fetch path.
+    std::vector<int32_t> mv(num_tiles * 2, 0);
+    {
+        memcpy(staging.map, mv.data(), mv.size() * 4);
+        VkCommandBuffer cb = dev.begin();
+        VkBufferCopy bc{ 0, 0, mv.size() * 4 };
+        vkCmdCopyBuffer(cb, staging.buf, mvbuf.buf, 1, &bc);
+        if (!dev.submit_and_wait(cb, err)) return false;
+    }
+
+    auto up_image = [&](vkmin::Image &im, const std::vector<uint8_t> &data) {
+        memcpy(staging.map, data.data(), data.size());
+        VkCommandBuffer cb = dev.begin();
+        image_barrier(cb, im.img, VK_IMAGE_LAYOUT_UNDEFINED,
+                      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0, VK_ACCESS_TRANSFER_WRITE_BIT,
+                      VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+        VkBufferImageCopy r{};
+        r.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+        r.imageExtent = { im.w, im.h, 1 };
+        vkCmdCopyBufferToImage(cb, staging.buf, im.img,
+                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &r);
+        image_barrier(cb, im.img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                      VK_IMAGE_LAYOUT_GENERAL, VK_ACCESS_TRANSFER_WRITE_BIT,
+                      VK_ACCESS_SHADER_READ_BIT,
+                      VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        std::string e;
+        return dev.submit_and_wait(cb, e);
+    };
+    if (!up_image(ly, lwire) || !up_image(ci, cwire)) return false;
+
+    const std::vector<VkDescriptorType> yt = {
+        VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_IMAGE };
+    const std::vector<VkDescriptorType> e1_types(4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    vkmin::Pipeline &p0 = c.e0ycbcr[depth10 ? 1 : 0];
+    VkDescriptorSet s0 = dev.allocate_set(c.dpool, p0.dsl);
+    vkmin::Pipeline &p1 = c.e1;
+    VkDescriptorSet s1 = dev.allocate_set(c.dpool, p1.dsl);
+    if (!s0 || !s1) { fprintf(stderr, "  ycbcr descriptor alloc failed\n"); return false; }
+    write_set(dev.handle(), s0, yt, { planes.buf }, { ly.view, ci.view });
+    write_set(dev.handle(), s1, e1_types,
+              { planes.buf, planes.buf, mvbuf.buf, stats.buf }, {});
+
+    nxe_e0_push pc0{}; pc0.f = fp; pc0.plane_words = plane_words;
+    nxe_e1_push pc1{}; pc1.f = fp; pc1.plane_words = plane_words;
+    pc1.num_tiles = num_tiles; pc1.has_ref = 1; pc1.pad_ = 0;
+
+    {
+        VkCommandBuffer cb = dev.begin();
+        vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, p0.pipe);
+        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, p0.layout, 0, 1, &s0, 0, nullptr);
+        vkCmdPushConstants(cb, p0.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(pc0), &pc0);
+        vkCmdDispatch(cb, fp.tiles_x, fp.tiles_y, 1);
+        dev.barrier_compute_to_compute(cb);
+        vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, p1.pipe);
+        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, p1.layout, 0, 1, &s1, 0, nullptr);
+        vkCmdPushConstants(cb, p1.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(pc1), &pc1);
+        vkCmdDispatch(cb, num_tiles, 1, 1);
+        dev.barrier_compute_to_host(cb);
+        if (!dev.submit_and_wait(cb, err)) { fprintf(stderr, "  ycbcr dispatch: %s\n", err.c_str()); return false; }
+    }
+
+    auto download = [&](vkmin::Buffer &srcb, size_t bytes, void *dst) {
+        VkCommandBuffer cb = dev.begin();
+        VkBufferCopy bc{ 0, 0, bytes };
+        vkCmdCopyBuffer(cb, srcb.buf, staging.buf, 1, &bc);
+        std::string e;
+        if (!dev.submit_and_wait(cb, e)) return false;
+        memcpy(dst, staging.map, bytes);
+        return true;
+    };
+    std::vector<uint32_t> gpu_planes(plane_words);
+    std::vector<nxe_tile_stats> gpu_stats(num_tiles);
+    if (!download(planes, plane_bytes, gpu_planes.data())) return false;
+    if (!download(stats, stats_bytes, gpu_stats.data())) return false;
+
+    uint64_t bad0 = 0, bad1 = 0;
+    for (uint32_t i = 0; i < plane_words; ++i) {
+        if (gpu_planes[i] != cpu_planes[i]) {
+            if (bad0 < 4 && !c.quiet)
+                fprintf(stderr, "    E0(YCbCr) word %u: gpu %08x cpu %08x\n",
+                        i, gpu_planes[i], cpu_planes[i]);
+            ++bad0;
+        }
+    }
+    for (uint32_t t = 0; t < num_tiles; ++t) {
+        if (memcmp(&gpu_stats[t], &cpu_stats[t], sizeof(nxe_tile_stats)) != 0) ++bad1;
+        // Self-referenced SAD must be exactly zero.
+        if (gpu_stats[t].sad != 0) {
+            if (!c.quiet)
+                fprintf(stderr, "    E1 tile %u self-SAD is %u, expected 0\n",
+                        t, gpu_stats[t].sad);
+            ++bad1;
+        }
+    }
+    fail.e0 += bad0;
+    fail.e1 += bad1;
+    if (!c.quiet)
+        printf("  E0/E1 %ux%u YCbCr%s 4:2:0 : %u tiles, E0 %s (%" PRIu64 " bad words), "
+               "E1 %s (%" PRIu64 " bad tiles)\n",
+               w, h, depth10 ? "10" : "8 ", num_tiles,
+               bad0 ? "FAIL" : "ok", bad0, bad1 ? "FAIL" : "ok", bad1);
+
+    dev.destroy_buffer(staging);
+    dev.destroy_buffer(planes);
+    dev.destroy_buffer(mvbuf);
+    dev.destroy_buffer(stats);
+    dev.destroy_image(ly);
+    dev.destroy_image(ci);
     return true;
 }
 
@@ -506,7 +802,7 @@ static bool run_e2(Ctx &c, uint32_t n, uint64_t seed, Failures &fail, bool spars
             fprintf(stderr, "  E2 descriptor set allocation failed\n");
             return false;
         }
-        write_set(dev.handle(), sets[p], types, { ib.buf, ob.buf, bb.buf, tb.buf }, VK_NULL_HANDLE);
+        write_set(dev.handle(), sets[p], types, { ib.buf, ob.buf, bb.buf, tb.buf }, {});
     }
 
     nxe_e2_push pc{ n, num_blocks };
@@ -573,6 +869,7 @@ int main(int argc, char **argv)
     uint32_t device_index = 0;
     uint64_t seed = 12345;
     bool list = false, validation = false, bench = true, quiet = false;
+    bool cpu_only = false;
     uint32_t bench_w = 2048, bench_h = 4096, iters = 50;
 
     for (int i = 1; i < argc; ++i) {
@@ -583,13 +880,14 @@ int main(int argc, char **argv)
         else if (a == "--seed") seed = strtoull(next(), nullptr, 10);
         else if (a == "--validation") validation = true;
         else if (a == "--no-bench") bench = false;
+        else if (a == "--cpu-only") cpu_only = true;
         else if (a == "--quiet") quiet = true;
         else if (a == "--bench-w") bench_w = (uint32_t)strtoul(next(), nullptr, 10);
         else if (a == "--bench-h") bench_h = (uint32_t)strtoul(next(), nullptr, 10);
         else if (a == "--iters") iters = (uint32_t)strtoul(next(), nullptr, 10);
         else if (a == "--help" || a == "-h") {
             printf("usage: nxvc-stats-test [--list] [--device N] [--seed S] "
-                   "[--validation] [--no-bench] [--quiet]\n"
+                   "[--validation] [--no-bench] [--quiet] [--cpu-only]\n"
                    "                       [--bench-w W] [--bench-h H] [--iters N]\n");
             return 0;
         } else {
@@ -602,6 +900,40 @@ int main(int argc, char **argv)
     if (st != 0) {
         fprintf(stderr, "CPU model selftest failed (%d)\n", st);
         return 1;
+    }
+
+    if (cpu_only) {
+        // Exercises the CPU models with no Vulkan at all, so CI always has one
+        // test that cannot be skipped for want of an ICD.
+        nxe_frame_params fp{};
+        nxe_frame_params_init(&fp, 300, 180, 1, 0);
+        uint32_t nt = fp.tiles_x * fp.tiles_y;
+        uint32_t pw = nxe_plane_total_words(nt, 1);
+        Rng rng(seed);
+        std::vector<uint32_t> src;
+        make_source(src, 300, 180, 255, rng);
+        std::vector<uint32_t> planes(pw, 0);
+        nxe_e0_convert_cpu(src.data(), 300, 180, &fp, 1, planes.data(), pw);
+        std::vector<nxe_tile_stats> stats(nt);
+        std::vector<int32_t> mv(nt * 2, 0);
+        nxe_e1_stats_cpu(planes.data(), pw, &fp, planes.data(), mv.data(), 1,
+                         stats.data(), nt);
+        // Identity prediction against the source itself: SAD must be zero, and
+        // the moments must be self-consistent.
+        int bad = 0;
+        for (uint32_t t = 0; t < nt; ++t) {
+            if (stats[t].sad != 0) { fprintf(stderr, "tile %u self-SAD %u\n", t, stats[t].sad); ++bad; }
+            if (stats[t].mean_luma_q8 != ((stats[t].sum_luma + 8u) >> 4)) ++bad;
+
+        }
+        std::vector<uint32_t> in(2312), out(2312);
+        for (uint32_t i = 0; i < 2312; ++i) in[i] = rng.below(1373);
+        uint32_t tot = nxe_e2_prefix_cpu(in.data(), out.data(), 2312);
+        uint32_t run = 0;
+        for (uint32_t i = 0; i < 2312; ++i) { if (out[i] != run) ++bad; run += in[i]; }
+        if (run != tot) ++bad;
+        printf("cpu-only: %u tiles, %s\n", nt, bad ? "FAIL" : "PASS");
+        return bad ? 1 : 0;
     }
 
     std::string err;
@@ -674,6 +1006,15 @@ int main(int argc, char **argv)
     for (int i = 0; i < 4 && pok; ++i)
         pok = c.dev.create_pipeline(e0src[i].spv, e0src[i].bytes, e0_types,
                                     sizeof(nxe_e0_push), c.e0[i], err);
+    const std::vector<VkDescriptorType> ycbcr_types = {
+        VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_IMAGE };
+    if (pok) pok = c.dev.create_pipeline(E0_convert_ycbcr8_420_spv,
+                                         sizeof(E0_convert_ycbcr8_420_spv),
+                                         ycbcr_types, sizeof(nxe_e0_push), c.e0ycbcr[0], err);
+    if (pok) pok = c.dev.create_pipeline(E0_convert_ycbcr10_420_spv,
+                                         sizeof(E0_convert_ycbcr10_420_spv),
+                                         ycbcr_types, sizeof(nxe_e0_push), c.e0ycbcr[1], err);
     pok = pok && c.dev.create_pipeline(E1_stats_spv, sizeof(E1_stats_spv), buf4,
                                        sizeof(nxe_e1_push), c.e1, err);
     const uint32_t *e2src[3] = { E2_prefix_p0_spv, E2_prefix_p1_spv, E2_prefix_p2_spv };
@@ -716,6 +1057,23 @@ int main(int argc, char **argv)
         }
     }
 
+    // ---- the compositor's 2-plane 4:2:0 source.  Needs R8G8/R16G16 storage
+    // images, which are extended-format territory just like RGB10A2.
+    const bool can_ycbcr =
+        di.extended_storage_formats &&
+        c.dev.supports_storage_format(VK_FORMAT_R8G8_UINT) &&
+        c.dev.supports_storage_format(VK_FORMAT_R16G16_UINT) &&
+        c.dev.supports_storage_format(VK_FORMAT_R16_UINT);
+    if (!can_ycbcr)
+        printf("note: R8G8/R16G16 storage images unsupported here; "
+               "the YCbCr passthrough variants are not exercised\n");
+    else {
+        for (const auto &cs : cases)
+            for (int d10 = 0; d10 < 2; ++d10)
+                if (!run_e0_ycbcr(c, cs.w, cs.h, d10 != 0, seed + cs.w + d10, fail))
+                    hard_error = true;
+    }
+
     // ---- E2: block boundaries, the 8192-tile cap, and sparse input (many
     // skip tiles is the realistic case at low bitrate, paper 4.6).
     const uint32_t ns[] = { 1, 2, 255, 256, 257, 1023, 1024, 1025, 2048, 2312, 4096, 8192 };
@@ -747,6 +1105,7 @@ int main(int argc, char **argv)
 
     if (c.dpool) vkDestroyDescriptorPool(c.dev.handle(), c.dpool, nullptr);
     for (auto &p : c.e0) c.dev.destroy_pipeline(p);
+    for (auto &p : c.e0ycbcr) c.dev.destroy_pipeline(p);
     c.dev.destroy_pipeline(c.e1);
     for (auto &p : c.e2) c.dev.destroy_pipeline(p);
     c.dev.destroy();
