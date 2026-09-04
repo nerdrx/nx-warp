@@ -172,6 +172,22 @@ $NICE "$GEN" --generate tests/vectors \
            "A generator crash here is a real encoder bug, not a merge artifact."
 info "regenerated: $(git diff --name-only tests/vectors | wc -l) file(s) changed"
 
+# Renumbering two branches' vectors onto one sequence (docs/MERGE-PLAN.md 4.3)
+# orphans the blobs that carried the old names.  They are still tracked, still
+# decode, and are no longer named by either md5 list -- so ref.vectors passes
+# while the tree carries dead conformance vectors.  Drop them.
+mapfile -t live < <(awk '{print $NF}' tests/vectors/vectors.md5 tests/vectors/rejects.md5 2>/dev/null | xargs -rn1 basename)
+stale=0
+for f in tests/vectors/*.nxv; do
+    b=$(basename "$f")
+    printf '%s\n' "${live[@]}" | grep -qx -- "$b" && continue
+    printf '%s\n' "${live[@]}" | grep -qx -- "${b%.nxv}" && continue
+    info "dropping orphaned vector $b"
+    git rm -q --ignore-unmatch -- "$f" || rm -f "$f"
+    stale=$((stale+1))
+done
+[ "$stale" -eq 0 ] || info "dropped $stale orphaned vector(s)"
+
 # ---------------------------------------------------------------------- test
 step=$((step+1))
 say "step $step: ctest ref.* and fuzz.* under $PRESET"
