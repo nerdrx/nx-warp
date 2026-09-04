@@ -27,6 +27,70 @@ section 6 is inflated, and only the ratios there are meaningful.
 
 ## 1. The Phase 1 gate, intra
 
+`before` is the shipped default (`nxv-enc`, tools 17, 21 and 22 on, no tool bit
+24). `after` is the same encoder with `--xform 32`, which sets tool bit 24 and
+adds 16x16 and 32x32 to the per-tile RD search. Nothing else differs.
+
+### 4:4:4
+
+| | BD-rate vs x264 intra | BD-PSNR | worst deficit | mean deficit | verdict |
+|---|---|---|---|---|---|
+| before | +61.43 % | -4.281 dB | -4.534 dB at 103.7 Mbit/s | -3.717 dB | FAIL |
+| **after** | **+48.24 %** | **-3.480 dB** | **-3.545 dB at 103.7 Mbit/s** | **-3.115 dB** | FAIL |
+| change | **-13.19 points** | **+0.80 dB** | **+0.99 dB** | **+0.60 dB** | -- |
+
+Verbatim, `before`:
+
+```
+  BD-rate of nxv-before on PSNR-Y (negative is better):
+    vs x264-intra     +61.43 %   BD-PSNR -4.281 dB   (overlap 47.04-57.21 dB)
+
+  Phase 1 gate (PAPER.md 3.11: within 1.0 dB of x264 intra, 100-400 Mbit):
+    FAIL: worst -4.534 dB at 103.7 Mbit/s, mean -3.717 dB over 100.0-215.0 Mbit/s
+```
+
+and `after`:
+
+```
+  BD-rate of nxv-after on PSNR-Y (negative is better):
+    vs x264-intra     +48.24 %   BD-PSNR -3.480 dB   (overlap 47.04-57.16 dB)
+
+  Phase 1 gate (PAPER.md 3.11: within 1.0 dB of x264 intra, 100-400 Mbit):
+    FAIL: worst -3.545 dB at 103.7 Mbit/s, mean -3.115 dB over 100.0-215.0 Mbit/s
+```
+
+**The gate is still not met** -- it needs 1.0 dB and the deficit is 3.5 -- but
+it moved by **0.99 dB at the worst point**, which against `INTRA_DIR`'s own
+1.89 dB (`ref/RESULTS-intra.md` section 0) is the second largest single tool
+this codec has. On SSIM-Y the BD-rate goes from +103.25 % to +91.38 %, so the
+metrics agree about the direction and the size.
+
+### Operating points, 4:4:4
+
+| QP | before Mbit/s | before PSNR-Y | before SSIM-Y | | after Mbit/s | after PSNR-Y | after SSIM-Y |
+|---|---|---|---|---|---|---|---|
+| 0 | 251.6 | 57.209 | 0.99887 | | **241.5** (-4.0 %) | 57.164 | 0.99886 |
+| 4 | 190.0 | 55.287 | 0.99837 | | **181.5** (-4.5 %) | **55.359** | 0.99836 |
+| 8 | 141.6 | 53.292 | 0.99776 | | **132.0** (-6.8 %) | **53.381** | 0.99769 |
+| 12 | 106.7 | 50.594 | 0.99664 | | **99.5** (-6.7 %) | **50.925** | **0.99666** |
+| 16 | 80.3 | 47.594 | 0.99464 | | **74.9** (-6.7 %) | **47.984** | **0.99477** |
+| 20 | 59.2 | 44.507 | 0.99156 | | **55.4** (-6.5 %) | **44.965** | **0.99180** |
+| 24 | 44.4 | 41.438 | 0.98664 | | **41.3** (-7.0 %) | **41.825** | **0.98687** |
+
+Every point is **both smaller and better**, at every QP but 0, where it is 4 %
+smaller for 0.045 dB. That is the shape a transform tool should have: it is not
+trading quality for rate anywhere, it is coding the same residual with fewer
+symbols. The gain grows from 4 % at QP 0 to 7 % from QP 8 down, which is the
+same trend as the size histogram in section 5 -- the coarser the quantizer, the
+more tiles choose a large transform and the more each one saves.
+
+VMAF was not measured: the machine was running five other codec experiments and
+`libvmaf` at 2048x1024 dominated the wall clock, so `--no-vmaf` is on every run
+here (as it is on `ref/RESULTS-inter.md`'s own runs). PSNR-Y and SSIM-Y agree
+on both the sign and the magnitude, and the gate is defined on PSNR-Y.
+
+### 4:2:0
+
 *(pending)*
 
 ---
