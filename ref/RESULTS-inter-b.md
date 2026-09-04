@@ -101,6 +101,51 @@ PENDING numbers.
 
 ## 5. PENDING — encode and decode time
 
-## 6. PENDING — the warp-only chain
+## 6. The warp-only chain (PAPER.md 2.11 item 2)
+
+`ref/warp_chain.py` raises the `WARP_SKIP` gate above anything real content
+produces and pushes the refresh period past the clip, so frame 0 is an
+ordinary intra frame and every frame after it is nothing but the pose warp of
+its predecessor. **A near-skip is still a skipped tile**, so a `warp_dc()`
+correction is still a warp-only chain -- the tool is measured through this test
+rather than excluded from it, and `--enc-arg=--warp-dc --enc-arg=off` turns it
+off.
+
+`vr-mixed-1024-v2` 4:4:4, 36 frames, QP 8, and `vr-turn-256-v2` 4:4:4, 12
+frames:
+
+| sequence | config | frame 1 | last frame | decay | frames above 35 dB | verdict |
+|---|---|---|---|---|---|---|
+| `vr-mixed-1024-v2` | base | 28.71 dB | 19.12 dB | -9.59 dB | **0** | **FAIL** |
+| `vr-mixed-1024-v2` | all three | 28.79 dB | **21.22 dB** | **-7.57 dB** | **0** | **FAIL** |
+| `vr-turn-256-v2` | base | 30.31 dB | 22.94 dB | -7.37 dB | **0** | **FAIL** |
+| `vr-turn-256-v2` | all three | 30.32 dB | **23.30 dB** | **-7.02 dB** | **0** | **FAIL** |
+
+The verdict is unchanged and was never in reach: the chain starts below the bar
+on this material, which `docs/WARP-AUDIT.md` established is a property of the
+generator's ground truth and of the content it deliberately contains, not of
+the predictor.
+
+**What did change is the slope, which is the half of item 2 the audit left
+standing.** Over 35 warped frames on `vr-mixed-1024-v2` the chain loses 7.57 dB
+instead of 9.59, and the last frame is **2.10 dB** better:
+
+| warped frame | 1 | 5 | 10 | 20 | 35 |
+|---|---|---|---|---|---|
+| base | 28.71 | 25.08 | 24.73 | 19.68 | 19.12 |
+| all three | 28.79 | 25.42 | 25.39 | 21.48 | 21.22 |
+
+**All of it is T2.** Run again with only `--warp-dc off` and the chain is the
+base row to the hundredth of a dB -- 28.71 / 19.12, decay 9.59 -- because in a
+warp-only chain no tile is coded, so `mv_quad` never appears, and the refresh
+period is past the clip, so the drift rule never fires. Nine bytes on a
+skipped tile buy 2 dB of chain, which is what item 2 says the refresh rate
+would otherwise have to buy.
+
+That is the strongest single result in this package and it is not the one the
+rate tables show, because a chain is the regime where the codec leans hardest
+on the warp and the rate tables average over frames where it does not. It is
+also the regime `ref/RESULTS-inter.md` section 4 says the codec spends two
+thirds of its tiles in at the paper's own operating density.
 
 ## 7. PENDING — conformance
