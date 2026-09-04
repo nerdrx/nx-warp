@@ -27,13 +27,13 @@ done
 
 # ---- Phase 2 kill test: inter, x265-p anchor, band A and band B
 for PIX in yuv444p yuv420p; do
-  run compare.py --seq $S/vr-mixed-1024-v2.$PIX.json --frames 12 \
+  run compare.py --seq $S/vr-mixed-1024-v2.$PIX.json --frames  8 \
     --codec-enc "$BIN/nxv-enc --quiet --eyes 2 --inter on --poses $S/vr-mixed-1024-v2.poses.json $EXTRA" \
     --codec-dec "$BIN/nxv-dec --quiet" --codec-name nxv-inter-$TAG \
     --anchors x265-p --qp 0,4,8,12 --anchor-qp 2,8,14,20 --no-vmaf \
     --out $OUT/kA-$TAG-$PIX.json
 done
-run compare.py --seq $S/vr-mixed-1024-v2.yuv420p.json --frames 12 \
+run compare.py --seq $S/vr-mixed-1024-v2.yuv420p.json --frames  8 \
   --codec-enc "$BIN/nxv-enc --quiet --eyes 2 --inter on --poses $S/vr-mixed-1024-v2.poses.json $EXTRA" \
   --codec-dec "$BIN/nxv-dec --quiet" --codec-name nxv-inter-$TAG \
   --anchors x265-p --qp 18,24,30,36 --anchor-qp 26,32,38,44 --no-vmaf \

@@ -118,7 +118,7 @@ sets can be overridden on its own.
 | DC plane trellised | no | yes | yes | `--trellis-dc on\|off` |
 | transform skip | off | off | `auto`, by RD | `--tskip`, `--tskip-rd on\|off` |
 | coarse MV search step | 4 | 2 | 1 | `--mv-step N` |
-| quarter-pel MV by real RD | no | no | yes | `--mv-rd-qpel on\|off` |
+| quarter-pel MV by real RD | no | yes | yes | `--mv-rd-qpel on\|off` |
 | per-tile QP offset | off | off | +-1, by descent | `--qp-search N\|off` |
 
 Two numbers are shared by every level and are not part of the ladder:
