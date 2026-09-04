@@ -62,6 +62,21 @@ def equal_quality_table(doc: dict, metric: str) -> str:
                         + metric, "saving %", "PSNR-Y"])
 
 
+def timing_table(doc: dict) -> str:
+    """Encode and decode seconds per frame, averaged over each arm."""
+    by_arm: dict[str, list[tuple[float, float]]] = {}
+    for p in doc["points"]:
+        if "encode_s_per_frame" not in p:
+            continue
+        by_arm.setdefault(p["arm"], []).append(
+            (p["encode_s_per_frame"], p["decode_s_per_frame"]))
+    rows = [[arm, str(len(v)),
+             fmt(sum(a for a, _ in v) / len(v), 3),
+             fmt(sum(b for _, b in v) / len(v), 3)]
+            for arm, v in by_arm.items()]
+    return table(rows, ["arm", "points", "encode s/frame", "decode s/frame"])
+
+
 def rings_table(doc: dict, key: str) -> str:
     r = doc["rings"].get(key)
     if not r:
@@ -90,6 +105,9 @@ def main(argv=None) -> int:
               f"{doc['ppd_center']:.2f} ppd on axis, rate scale "
               f"{doc['rate_scale']:.4g})\n")
         print(points_table(doc))
+        print("\n**Encode and decode time per frame** (whole frame, both eyes; "
+              "one core at `nice -n 19`)\n")
+        print(timing_table(doc))
         for metric in ("fov_psnr_y", "fov2_psnr_y", "fvvdp"):
             if metric in doc.get("equal_quality", {}):
                 print(f"\n**Bits at equal `{metric}` against the flat-QP curve**\n")
