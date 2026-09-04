@@ -635,6 +635,8 @@ static const InterReject kInterRejects[] = {
     {"r32_near_ac_without_ns", "near_skip_ac without near_skip",           NXVC_ERR_BITSTREAM, 0},
     {"r33_near_skip_on_intra", "near_skip on an INTRA tile",               NXVC_ERR_BITSTREAM, 0},
     {"r34_sub_intra_no_tool",  "word1 bit 31 without tool bit 26",         NXVC_ERR_BITSTREAM, 0},
+    {"r35_near_skip_payload",  "near_skip on a tile with a payload",       NXVC_ERR_BITSTREAM, 0},
+    {"r36_quad_mv_on_intra",   "quad_mv on an INTRA tile",                 NXVC_ERR_BITSTREAM, 0},
 };
 static const int kNumInterRejects =
     (int)(sizeof(kInterRejects) / sizeof(kInterRejects[0]));
@@ -737,7 +739,25 @@ static bool make_inter_reject(int idx, const std::vector<uint8_t> &base,
         case 13:
         case 14:
         case 15:
-        case 16: {
+        case 16:
+        case 17:
+        case 18: {
+            if (idx == 17) {
+                // A coded inter tile with a nonzero payload_len, which
+                // near_skip forbids: 13.9's residual is the correction field
+                // and nothing else.
+                if (!find_tile(b, f1, NXVC_MODE_WARP_MV, -1, &hdr, &opt) &&
+                    !find_tile(b, f1, NXVC_MODE_STATIC_MV, -1, &hdr, &opt)) {
+                    *why = "no coded inter tile in frame 1"; return false;
+                }
+                if ((rd_u32(b, hdr) >> 16) == 0) {
+                    *why = "the coded inter tile has an empty payload";
+                    return false;
+                }
+                b[32 + 3] |= 0x01;            // tool bit 24 NEAR_SKIP
+                patch_w1(hdr, 0, 1u << 28);
+                break;
+            }
             if (!find_tile(b, f0, NXVC_MODE_INTRA, -1, &hdr, &opt)) {
                 *why = "no INTRA tile in frame 0"; return false;
             }
@@ -750,6 +770,10 @@ static bool make_inter_reject(int idx, const std::vector<uint8_t> &base,
                 patch_w1(hdr, 0, 1u << 28);   // ... on an INTRA tile
             }
             if (idx == 16) patch_w1(hdr, 0, 1u << 31);
+            if (idx == 18) {
+                b[32 + 3] |= 0x02;            // tool bit 25 QUAD_MV
+                patch_w1(hdr, 0, 1u << 30);   // ... on an INTRA tile
+            }
             break;
         }
         default: break;

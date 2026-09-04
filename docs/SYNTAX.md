@@ -1939,7 +1939,7 @@ bit, so the same encoder with the bits off reproduces `v45`-`v56` byte for
 byte -- which is the compatibility claim, stated as a test rather than as a
 promise.
 
-`r18`-`r34` are the rejection vectors, and they matter more than the positive
+`r18`-`r36` are the rejection vectors, and they matter more than the positive
 ones: sections 3 and 4 impose roughly forty MUST-reject conditions, and a
 decoder that accepted every malformed stream would otherwise pass the suite
 completely.
