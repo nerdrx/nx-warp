@@ -275,13 +275,18 @@ inline constexpr double kLambdaScaleDefault = 0.30;
 // with a quantiser of its own.  Coding the two planes at one lambda and one
 // weight is what over-coded chroma.
 //
-// It appears in exactly two places, and they are the same statement twice: the
-// per-plane lambda below (a chroma decision may spend 1/w as much distortion
-// per bit) and tile_distortion(), which is the mode decision's D.  0.25 was
-// fitted on the harness against the 6:1:1 PSNR, not against PSNR-Y --
-// ref/RESULTS-rdo-a.md 2.4, which reports both and says how much of each
-// number is the metric rather than the picture.
+// Every distortion in the encoder is weighed by plane_dist_weight() and every
+// lambda by the same number through lambda_for(), which are the same statement
+// twice: weighing a plane's D down by w is dividing its lambda by w.  0.25 was
+// fitted on the harness against the 6:1:1 PSNR and NOT against PSNR-Y --
+// ref/RESULTS-rdo-a.md 3, which reports both and says how much of each number
+// is the metric rather than the picture.
 inline constexpr double kChromaDistWeight = 0.25;
+
+// Plane index p (0 = Y, 1/2 = Co/Cg, 3 = alpha) to its distortion weight.
+static inline double plane_dist_weight(int p, double chroma_weight) {
+    return (p == 1 || p == 2) ? chroma_weight : 1.0;
+}
 
 // `dist_weight` is what one squared error in this plane is worth: 1 for luma,
 // the chroma weight for Co/Cg.  Weighting the distortion down by w is the same
@@ -1219,7 +1224,7 @@ static void rdoq_plane(PlaneState &s, i16 *coefs, int tskip, bool chroma,
     const int ndc = nb * nb;
     const double lambda =
         lambda_for(s.qp, cls, lambda_scale,
-                   chroma ? eff.chroma_weight : 1.0).coef;
+                   plane_dist_weight(chroma ? 1 : 0, eff.chroma_weight)).coef;
     const bool full = eff.trellis_full;
     const u8 *scan = scan_table(64, tskip != 0);
     const int ctx_cbf = chroma ? kCtxCbfChroma : kCtxCbfLuma;
@@ -1335,7 +1340,7 @@ static void analyze_plane_dir(PlaneState &s, i16 *coefs, int tskip, int layer,
     const int ndc = nb * nb;
     const double lambda =
         lambda_for(s.qp, cls, lambda_scale,
-                   chroma ? eff.chroma_weight : 1.0).coef;
+                   plane_dist_weight(chroma ? 1 : 0, eff.chroma_weight)).coef;
     const bool full = eff.trellis_full;
     if (use_rdo && eff.trellis_dc) {
         DcRdoq rd = dc_rdoq(chroma, nctx, rc, lambda, eff);

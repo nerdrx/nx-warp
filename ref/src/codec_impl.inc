@@ -524,10 +524,10 @@ static double tile_distortion(TileCoder &tc, double chroma_weight) {
     std::vector<i32> src;
     for (int p = 0; p < np; ++p) {
         PlaneState &s = tc.pl[p];
-        // The same plane weighting the per-plane lambda uses (codec.cpp
-        // kChromaDistWeight), so the mode decision and the trellis inside it
-        // agree about what a chroma error is worth.
-        const double w = (p == 1 || p == 2) ? chroma_weight : 1.0;
+        // The same plane weighting the per-plane lambda uses, so the mode
+        // decision and the trellis inside it agree about what a chroma error
+        // is worth.
+        const double w = plane_dist_weight(p, chroma_weight);
         src = s.samples;
         reconstruct_plane(s, &tc.coef[plane_coef_offset(tc, p)], tc.tp.tskip,
                           tc.intra_dir, tc.dir_layer);
@@ -1107,8 +1107,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                 int np = coded_planes(tc);
                 for (int p = 0; p < np; ++p) {
                     PlaneState &s = tc.pl[p];
-                    const double w =
-                        (p == 1 || p == 2) ? eff.chroma_weight : 1.0;
+                    const double w = plane_dist_weight(p, eff.chroma_weight);
                     for (size_t i = 0; i < s.samples.size(); ++i) {
                         double dd = (double)s.samples[i] -
                                     (double)clamp_i32(s.wpred[i], 0, s.maxval);
