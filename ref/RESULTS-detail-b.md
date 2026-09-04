@@ -51,10 +51,22 @@ by encoding the same frame with the v1.4 binary and `cmp` -- and plain
 | **4:2:0** v1.4 | +109.22 % | -7.415 dB | -9.405 dB at 100.0 Mbit/s | FAIL |
 | **4:2:0** v1.5 (**shipped default**) | **+107.47 %** | **-7.396 dB** | -9.410 dB at 100.0 Mbit/s | FAIL |
 
-The per-tool split of that is section 2, measured against the same build with
-the other tool off rather than against the anchor, because that is the
+On 4:4:4 the harness also ran the middle of that, `--split4 off`, which gives
+the cumulative decomposition in the anchor's units:
+
+| 4:4:4, cumulative | BD-rate vs x264 intra | step |
+|---|---|---|
+| v1.4 | +117.67 % | -- |
+| `+ INTRA_CFL` | +115.05 % | **-2.62 points** |
+| `+ XFORM_4X4_SPLIT` (shipped) | +113.91 % | **-1.14 points** |
+
+The rest of the per-tool detail is section 2, measured against the same build
+with the other tool off rather than against the anchor, because that is the
 comparison the encoder's own decisions were tuned against and the one that is
-not scaled by the distance to x264.
+not scaled by the distance to x264. The two agree closely: -2.62 points
+against the anchor is -1.20 % of our own rate and the probe measures -1.18 %
+for the same tool; -1.14 points is -0.53 %, against the probe's -0.45 % for the
+split measured on its own rather than on top of chroma-from-luma.
 
 Verbatim, the final gate lines. 4:4:4:
 
@@ -95,7 +107,7 @@ and the v1.4 baseline it moved from:
 ```
 
 **The gate is not met, and this package was never going to meet it.** It moved
-by **3.76 BD-rate points on 4:4:4** and **1.75 on 4:2:0** -- that is a 1.76 %
+by **3.76 BD-rate points on 4:4:4** and **1.75 on 4:2:0** -- that is a 1.73 %
 and a 0.84 % reduction in our own rate at the same quality -- against what the
 gate still needs, which is 6.4 dB of the 7.4 dB deficit, or about **-43 % of
 our own rate** at the 7.4-8.2 dB per rate octave this ladder measures.
@@ -524,7 +536,7 @@ one frame, BD-rate of a configuration against the same build with the tool off
 dead-zone tables, two coefficient layouts) are twenty-odd configurations and
 the full harness run is twenty minutes each. The probe agrees with the harness
 where the two overlap: it puts the pair at -1.57 % of our own rate on 4:4:4,
-against the -1.76 % the harness's +117.67 % to +113.91 % works out to over six
+against the -1.73 % the harness's +117.67 % to +113.91 % works out to over six
 frames and six QPs.
 
 ```sh
