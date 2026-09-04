@@ -290,10 +290,12 @@ of v1.2-v1.4 -- and measured against the v1.4 baseline on both formats. It does
 not measure, so it is not in the tree and the decoder-side half was not built.
 
 `f` is the dead-zone quantizer's only free parameter: `q = floor(|c|/step + f)`.
-`{a, b, c, d}` below is `f * 32` for LEVEL bands 0, 1, 2 and 3 of a DC-plane
-unit; the residual-block table was swept alongside it and is reported where it
-differed. BD-rate is against the v1.4 encoder on the same ladder, PSNR-Y,
-lower is better:
+`{a, b, c, d}` below is `f * 32` for LEVEL bands 0, 1, 2 and 3 of a **DC-plane
+unit**. The residual-block table was held at `{16, 13, 10, 8}` for every row --
+opening the low bands and closing the high ones -- because the DC plane is the
+only unit where the parameter has a mechanism at all, for the reason two
+paragraphs down. BD-rate is against the v1.4 encoder on the same ladder,
+PSNR-Y, lower is better:
 
 | DC-plane `f * 32` | 4:4:4 | 4:2:0 |
 |---|---|---|
