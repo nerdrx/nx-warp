@@ -24,8 +24,12 @@ encoder already runs.
 | `rc/src/classify.cpp` | tile statistics and the four-class classifier |
 | `rc/src/allocate.cpp` | the ladder table, the allocator, the bit model |
 | `rc/src/governor.cpp` | the decode-time governor |
-| `rc/sim/` | `nxvc-rcsim`, writes `rc/RESULTS.md` and `rc/ladder-map.svg` |
-| `tests/rc/` | ctest targets `rc.classify`, `rc.foveation`, `rc.allocate`, `rc.model`, `rc.governor` |
+| `rc/include/nxrc/tvm.hpp` | the peripheral temporal visibility model (section 8.2) |
+| `rc/include/nxrc/refresh.hpp` | the per-tile refresh scheduler (section 8) |
+| `rc/src/tvm.cpp` | Tursun-Didyk, reduced onto the per-tile statistics |
+| `rc/src/refresh.cpp` | the gate search and the temporal invariants |
+| `rc/sim/` | `nxvc-rcsim`, writes `rc/RESULTS.md` and `rc/ladder-map.svg`; `--temporal` writes `rc/RESULTS-temporal.md` and `rc/refresh-map.svg` |
+| `tests/rc/` | ctest targets `rc.classify`, `rc.foveation`, `rc.allocate`, `rc.model`, `rc.governor`, `rc.tvm`, `rc.refresh` |
 
 **Why `fov/` is its own library.** The foveation map has three consumers
 (PAPER.md 5.1.1): the render pass via `VK_KHR_fragment_shading_rate`, the
@@ -47,7 +51,10 @@ extension without dragging the rate controller along. `nxvc_rc` depends on
    foveation_map(lens, gaze)            (one thread per tile)
         |  level[], ecc_deg[], R8 map
         v
-   allocate(B, fov, class, complexity, motion)
+   refresh scheduler (section 8)        (one thread per tile + a gate search)
+        |  force_warp_skip[]: this frame's WARP_SKIP set
+        v
+   allocate(B, fov, class, complexity, motion, force_warp_skip)
         |  per tile: qp, res_level, chroma_mode, wm_id, ladder_step,
         |            dc_plane, skip
         v
@@ -624,6 +631,378 @@ between the CPU model and the GPU. The one place that would change is
 
 ---
 
+---
+
+## 8. The temporal ladder: per-tile refresh
+
+Sections 4.4 to 4.7 decide how much detail a tile keeps. This section decides
+how *often* a tile's residual is sent at all. It is the fourth consumer of the
+foveation map (PAPER.md 5.1.1 names three) and the second axis of 4.6.1's
+ladder, which is purely spatial as the paper writes it.
+
+Implementation: `rc/include/nxrc/tvm.hpp` and `rc/src/tvm.cpp` for the model,
+`rc/include/nxrc/refresh.hpp` and `rc/src/refresh.cpp` for the scheduler,
+`tests/rc/test_tvm.cpp` and `tests/rc/test_refresh.cpp` for the invariants,
+`rc/RESULTS-temporal.md` for the measurements.
+
+Two papers, both from docs/RESEARCH-ACADEMIC.md, both marked "implement now":
+
+* **Flöter, Geringer, Reina, Weiskopf, Ropinski**, *Evaluating Foveated Frame
+  Rate Reduction in Virtual Reality for Head-Mounted Displays*, ETRA 2025,
+  arXiv 2505.03682. 15 participants, 90 Hz HMD, five concentric regions,
+  update rates 1/1 to 1/5 per region. Their finding: **a reduction of 63.6% of
+  the pixels drawn (their FRC 11223 - full rate in the inner three regions,
+  1/2 in the fourth, 1/3 in the fifth) is feasible without users feeling
+  uncomfortable**; discomfort begins at FRC 12233 and even the worst
+  configuration they tested, 12345, kept the discomfort upper quartile at
+  "very little". Their region boundaries come from Mohanto et al. 2022 and are
+  given as diameters of 6.3, 9.1, 18.1 and 31.1 degrees, so as eccentricities
+  3.15, 4.55, 9.05 and 15.55.
+* **Tursun and Didyk**, *Perceptual Visibility Model for Temporal Contrast
+  Changes in Periphery*, ACM TOG 41(6) 2022, doi 10.1145/3564241, arXiv
+  2205.00108. The cost function: given eccentricity, spatial frequency,
+  temporal frequency and contrast, how likely is an observer to see a temporal
+  change. This is what turns Flöter's "the periphery can go slower" into a
+  per-tile decision.
+
+### 8.1 What a temporal step actually is
+
+A tile the scheduler steps down is emitted as **`WARP_SKIP`**, which is the
+mode that already exists (SYNTAX.md, GLOSSARY.md) and which the allocator
+already produces for static tiles (4.8). It is not a frozen tile:
+
+* the decoder's pose warp still moves it with the head every frame, at full
+  frame rate, because `WARP_SKIP` means "predict from the pose-warped
+  reference", not "repeat the pixels";
+* per PAPER.md 2.8 the client also has the residual-motion field for its own
+  in-between frames, so a skipped tile keeps tracking object motion too;
+* what is withheld is only the **residual correction**. The tile drifts by
+  whatever the warp gets wrong, and that drift is exactly what the visibility
+  model is asked to price.
+
+So the decoder needs no new tool, the bitstream needs no new syntax, and a
+skipped tile costs one bit in the row's `skip_bitmap`. The temporal ladder is
+an encoder-side scheduling decision and nothing else. That is the whole reason
+it is worth doing at all.
+
+### 8.2 The visibility model, and what we had to approximate
+
+The paper's model takes a local spatio-temporal DCT of the video, converts
+each band to Weber contrast, scales it by an eccentricity-dependent
+sensitivity, pools over bands and maps the result through a psychometric
+function. We do not have a spatio-temporal DCT and never will on the
+encoder's critical path, so `nxrc::tvm` is a **reduction** of it onto the five
+per-tile statistics 3.1 already produces plus `ecc_deg` from the foveation
+map.
+
+The fitted constants are the paper's, verbatim (their Table 2):
+
+```
+S_DL(x)     = a0 + a1 x + a2 x^2 + a3 x^3
+              a = (3.2714, 0.3830, 0.7669, -0.2555)
+S_SP(x)     = ln(1 + exp(S_DL(x)))                       soft-plus
+T(f_s, e)   = b1 - b2 f_s^b3 + b4 e^q(f_s)
+              b1 = 1.0051, b2 = 0.1830, b3 = 0.9517, b4 = 0.0173
+q(f_s)      = b51 f_s^2 + b52 f_s + b53
+              b51 = -0.1375, b52 = 0.3753, b53 = 2.3855
+U(f_t,f_s,e)= f_t - b6 + b7 f_s + b8 e,   b6 = b7 = b8 = 0
+S           = T(f_s, e) * S_SP(U(f_t, f_s, e))
+C_JND       = S * C                       C = Weber contrast, floor 50 cd/m^2
+C_M         = ( sum |C_JND|^r )^(1/r),    r = 1.9932
+P(detect)   = Weibull, p_g = 0.5, p_l = 0, beta0 = 1.7934, beta1 = 1.5
+```
+
+`f_s` is the paper's `f_h + f_v` in cycles/degree, `f_t` in Hz, `e` in
+degrees. Their experiments cover eccentricities of about 10 to 40 degrees.
+
+Our per-tile reduction, for a tile coded one frame in `k` at `fps`:
+
+```
+f_s   = 2 * asin(sqrt(R/2)) / (2 pi) * ppd_render(theta)      cycles/degree
+dL    = residual_mad * k                                      luma codes
+C     = dL/255 * peak * gamma * (mean/255)^(gamma-1)
+        / max(peak * (mean/255)^gamma, 50 cd/m^2)
+f_t,m = m * fps / k,   amplitude C / (pi m),   m = 1..3
+C_M   = ( sum_m |S(f_t,m, f_s, e') * C/(pi m)|^r )^(1/r)
+```
+
+`R` is the classifier's normalised frequency ratio from 3.1, and the inversion
+is exact for the operator that defines it: `R = E[sin^2(2 pi f_x)] +
+E[sin^2(2 pi f_y)]` over the tile's spectrum, which is why `R = 1.0` for white
+noise. `e'` is `FoveationMap::ecc_deg`, i.e. eccentricity **after** the fixed
+eye box or the gaze pad, the same conservative reading the spatial ladder uses
+(6.3, 6.4).
+
+**Five approximations, all of them ours, none of them in the paper.** They are
+listed here rather than buried because the absolute numbers in
+`rc/RESULTS-temporal.md` are conditional on them.
+
+| # | what | why it is a guess | how much it matters |
+|---|---|---|---|
+| 1 | the De Lange polynomial's argument is read as `ln(1 + f_t)`, not raw Hz | in raw Hz the published cubic peaks at 0.5 Hz and crosses zero at 4.5 Hz, so nothing above 5 Hz would ever be visible. That is not a De Lange curve and not what the paper's figures show. In log-frequency the same four coefficients give a band-pass curve peaking near 10 Hz and reaching zero near 70 Hz, which is the shape the paper says it fits | **the largest one.** Every `C_M` in RESULTS-temporal.md depends on it. The *orderings* do not: all the scheduler needs is that sensitivity falls steeply above 30 Hz. First thing to check against the authors' code |
+| 2 | `f_s` clamped to 4.0 cycles/degree, `e` to 0.5..60 degrees | `T` goes negative above about 5.5 cpd and `q` changes sign at 5.75 cpd, both outside the fit. Clamping keeps `T > 0` and `q > 0`, which is what makes monotonicity in eccentricity a theorem | moderate. It compresses the flat-versus-texture gap of 8.3; uncompressed it would be larger, not smaller, so the clamp is the conservative direction |
+| 3 | the psychometric function is a standard Weibull | the printed form does not evaluate to a probability - it is below `p_g` for every positive `C_M` and does not tend to 1. We use the function that family of parameters describes. At the paper's JND unit `C_M = 1` this gives `P = 0.67` rather than the stated 0.75 | small. The scheduler gates on `C_M` and never on `P`; only the reported probabilities move |
+| 4 | one representative spatial frequency per tile, pooling over temporal harmonics only | the paper pools over a real DCT; we have one number per tile | moderate, and it is why the model is a *ranking* device here rather than an absolute threshold |
+| 5 | luma code to cd/m^2 through a 100 nit, gamma 2.2 display | the panel's real transfer function is not in the library | none, in practice. At HMD luminances every tile in the simulated scene sits below the model's 50 cd/m^2 Weber floor, so the de Vries-Rose clamp is always active and the luminance term is inert. `dQ_lum` and the temporal cost function therefore do not interact |
+
+### 8.3 The combined ordering: spatial step versus temporal step
+
+**The two ladders do not order tiles the same way, and must not be collapsed
+into one scalar.** This is the substantive finding of this section and it
+falls straight out of the model.
+
+The spatial ladder (4.4) gives up **flat first, then texture, then edge, then
+text**, because a flat tile has no spatial detail to lose. Read the model's
+`T(f_s, e)` for the *temporal* case and the order inverts at the top:
+
+Sensitivity `S` at `f_t = 12 Hz`, i.e. what a `k = 6` step at 72 Hz excites:
+
+| tile | `f_s` cpd | `S` at e = 1 deg | `S` at e = 30 deg | ratio |
+|---|---|---|---|---|
+| flat, `R = 0.004` | 0.31 | 4.80 | 415.8 | 87 |
+| texture, `R = 0.97` | 5.40, clamped to 4.0 | 1.69 | 28.4 | 17 |
+
+At the fovea a smooth tile is 2.8x more sensitive to a withheld update than a
+finely textured one; at 30 degrees it is 14.6x more sensitive. Eccentricity
+*multiplies* the gap by five. Note also the raw magnitudes: sensitivity to a
+12 Hz change rises by a factor of 87 between 1 and 30 degrees on a smooth
+tile. The mechanism is the paper's `b4 e^q`
+term with `q` falling from 2.39 at DC to 1.69 at 4 cpd: peripheral vision gets
+**more** sensitive to temporal change with eccentricity, not less - the
+Ferry-Porter direction, the same reason critical flicker fusion rises towards
+the periphery - and it gets more sensitive fastest for low spatial
+frequencies.
+
+`rc/RESULTS-temporal.md` section 2 shows this happening on real tiles: the
+9.1-15.6 degree ring is stepped hardest (duty 0.69 at 20 Mbit/s) while the two
+rings *outside* it are barely touched, because this scene's far field is sky
+above and ground below. A scheduler that ordered by eccentricity alone would
+have done exactly the wrong thing.
+
+So the combined ladder is two axes with one arbiter, not one ordering:
+
+```
+worst-last, per tile:
+
+  S0   spatial step 0             untouched
+  S1   spatial step 1             low-pass matrix           free
+  S2   spatial step 2             res 1/2                   free
+  ---- the spatial ladder has now spent every step that costs no bits ----
+  T1   temporal k = 2             texture and flat, e' > fovea_full_deg
+  S3   spatial step 3             res 1/4, QP +4
+  T2   temporal k = 3
+  S4   spatial step 4             DC plane, QP +4
+  T3   temporal k = 4 and k = 6
+```
+
+Three reasons the temporal ladder waits for the spatial one, in decreasing
+order of how much they settle the question:
+
+1. **A spatial step frees no bits; a temporal step frees nothing but bits.**
+   4.4 is explicit: a ladder step does not reduce a tile's bit share, it
+   redirects the same bits onto fewer, lower-frequency coefficients. Bits come
+   free only when a stepped tile hits its class QP floor. A `WARP_SKIP` tile,
+   by contrast, gives back its entire allocation. Spending a free step before
+   a paid one is not a perceptual judgement, it is arithmetic.
+2. **A spatial artefact is stationary; a temporal one is not.** A blurred
+   peripheral tile is a fixed loss of acuity in the region of the visual field
+   that has least of it. A stale peripheral tile is a *change* signal in the
+   region of the visual field that is best at detecting change. The model's
+   `T` above is the quantitative form of that sentence.
+3. **Empirically, Flöter's own operating point sits there.** Their FRC 11223
+   is full rate in the inner three regions and 1/2 and 1/3 in the outer two,
+   at 63.6% fewer pixels, and it is the most aggressive configuration their
+   participants tolerated. `T1` and `T2` reach that shape and stop; `T3`
+   corresponds to their 12345, which is where their discomfort scores start to
+   move.
+
+The per-class caps in `RefreshConfig::max_k` encode the same argument in the
+other direction: `{ 6, 6, 2, 1 }` for flat, texture, edge, text. Text is never
+stepped (8.5); an edge reaches 1/2 and stops, because a stale edge is a double
+image rather than a blur, which is 4.6.1's "blur, never block" requirement
+restated on the time axis.
+
+### 8.4 The gate, the budget knob, and the coupling to pressure
+
+The scheduler mirrors the spatial pressure search (4.6) exactly, because it
+has to run in the same place: one broadcast frame-level scalar plus a per-tile
+compare, no sort, no per-tile control flow.
+
+The scalar is the **gate** `G`, a visibility threshold in the model's JND
+units. A tile takes the largest divisor its caps allow whose predicted
+visibility is at or under the gate:
+
+```
+k_max(t, G) = max { k in {1,2,3,4,6} :
+                        k <= cap(t)  and  C_M(t, k) <= G }
+
+cap(t)      = 1                        if e'(t) <= fovea_full_deg
+              k_max_frames             if the tile is already static
+              min(max_k[class(t)], k_max_frames)   otherwise
+```
+
+`C_M` is monotone non-decreasing in `k` (`tests/rc/test_tvm.cpp`), so this is
+a scan with an early out. `k_max` is monotone non-decreasing in `G`, so the
+steady-state duty cycle `sum 1/k_t / n` is monotone non-increasing in `G`, so
+the budget search is a real search: 16 log-spaced steps, smallest `G` meeting
+the target, the same shape and the same number of reductions as the pressure
+grid.
+
+Two ways to set `G`, and exactly one is active:
+
+* **Budget mode.** `target_coded_fraction` in (0, 1] is the duty cycle to hit.
+  `target_bits` does the same through an EMA of the measured bits per coded
+  tile, fed back by `update_cost()`. The duty cycle has a hard floor well
+  above zero - the fovea, text, the mandatory refreshes and `k_max_frames` are
+  not for sale - and the target cannot push past it.
+* **Pressure mode**, the default when both are off. `G` interpolates
+  logarithmically from `gate_lo` to `gate_hi` as `AllocResult::pressure` runs
+  from `engage_pressure` (2.0) to `max_pressure` (4.0). Below `engage_pressure`
+  the gate is pinned at `gate_lo` and the temporal ladder does nothing at all.
+  This is 8.3's ordering expressed as a control law.
+
+`G` may tighten immediately - a budget cut is a hard constraint - but relaxes
+at most `gate_slew_up` = 1.35x per frame, so the periphery does not flap
+between two refresh rates. Same asymmetry, and the same reason, as the
+spatial pressure and the decode governor.
+
+Which frame of its `k`-cycle a tile refreshes on is a fixed **van der Corput**
+permutation of the tile id, `refresh_phase()`, so a `k = 2` field refreshes
+half its tiles every frame instead of all of them every other frame. Without
+it the temporal ladder converts a bitrate saving into a bitrate *spike* every
+`k` frames and produces a visible refresh wave. Note the implementation
+detail that cost a test: the bit-reversed id of an `n <= 2^m` tile array only
+has its top `m` bits set, so `reverse(i) % k` is identically zero for every
+power-of-two `k`. The phase is `floor(k * reverse(i) / 2^32)`, which is the
+textbook use of the sequence and is exactly equidistributed.
+
+### 8.5 The invariants, and why the reference chain survives
+
+The scheduler is allowed to make the periphery stale. Six things it is not
+allowed to do, all asserted in `tests/rc/test_refresh.cpp` and all measured in
+`rc/RESULTS-temporal.md` section 6:
+
+1. **The fovea is never below full rate.** `e'(t) <= fovea_full_deg` (8
+   degrees, matching `RateConfig::mid_ring_deg`) forces `k = 1` at every
+   budget and every gate. This is a policy, not a model output, so that no
+   re-fit of the model can ever put the fovea below full rate.
+2. **Text is never skipped unless it is static.** `max_k[Text] = 1`. The
+   exemption is real and not a loophole: a text tile whose warped SAD is under
+   `skip_sad` is *already* `WARP_SKIP` in the allocator (4.8) and has no
+   residual to withhold. A head-locked HUD over a moving scene is the case
+   this protects, and it is the same argument as the `cplx_t` floor in 4.3.
+3. **Every tile is coded at least every `k_max_frames`.** Default 6. The
+   scheduler counts consecutive skips per tile and forces a code at
+   `k_max_frames - 1`, which also caps the ladder, so the bound holds even
+   when the gate changes underneath a tile mid-cycle.
+4. **The rolling intra refresh wins.** A tile in this frame's 1/180 slice
+   (PAPER.md 6.6, ADR-0006) is passed in as `intra_due` and is never turned
+   into a `WARP_SKIP`. The scheduler only ever *adds* skips; it never removes
+   a code the encoder has already decided on.
+5. **Reference eligibility wins.** A tile whose 3x3 acknowledged neighbourhood
+   failed (TRANSPORT.md 9) is going intra anyway, is passed in as
+   `ref_ineligible`, and is likewise never skipped.
+6. **A scene cut codes everything.**
+
+**Why a skipped tile still warps from a valid reference.** This is the
+question ADR-0006 makes it easy to get wrong, and the answer is that the
+temporal ladder does not touch the reference chain at all.
+
+The reference for tile `t` of frame `N` is the newest frame `M` in
+`{N-1, N-2, N-3}` whose 3x3 neighbourhood is fully acknowledged - and `M` is a
+*decoded picture*, not a coded one. A `WARP_SKIP` tile is decoded output like
+any other: the client reconstructs it by warping its own reference and holds
+full-resolution pixels for it. Whether those pixels were reached with a
+residual or without one is invisible to the eligibility rule, which asks only
+whether the client's pixels are bit-exact and acknowledged. The encoder's
+mirror ring replays the identical warp, so the shadow stays exact. Skipping
+therefore cannot make a tile ineligible as a reference and cannot lengthen
+`ref_delta`.
+
+What skipping *does* accumulate is prediction error: the drift the residual
+would have corrected. That is bounded by two things and nothing else - the
+`k_max_frames` bound above, and the rolling intra refresh underneath it - and
+it is priced by the model, which is the entire point of using one. The
+scheduler introduces no new failure mode into the loss model; it makes the
+existing "how stale can a tile get" question have a smaller answer than the
+rolling refresh alone gives it (6 frames rather than 180).
+
+### 8.6 Outputs and GPU mapping
+
+`RefreshResult`, per tile: `divisor` (the chosen `k`), `force_skip` (the
+decision for this frame), `age`, `mandatory`, `visibility` (`C_M`),
+`p_detect`. Per frame: `gate`, `duty_cycle`, `coded_fraction`,
+`mean_visibility`, `max_visibility` and the four counters.
+
+`force_skip` is handed to the allocator as `FrameInputs::force_warp_skip`,
+where it joins the existing static-skip path in `compute_weights()`: weight
+zero, one bit in the row bitmap, and the freed bits redistributed to the
+survivors by the `skip_rounds` loop that already exists (4.8). The scheduler
+runs *before* `allocate()` so that the redistribution happens inside the
+normal allocation, and `AllocResult::skipped_temporal` reports how many of the
+frame's skips it caused.
+
+| stage | shape |
+|---|---|
+| `tile_model` + `tile_visibility` | one thread per tile, pure ALU, no cross-tile reads |
+| gate search | 16 iterations of (one thread per tile + 1 sum reduction) |
+| `schedule` commit | one thread per tile plus a per-tile `age` byte of state |
+
+The gate search evaluates `tile_visibility` up to 5 times per tile per
+iteration (once per ladder entry, with an early out), which is the only place
+this library does real transcendental work: 16 x 5 x 3 harmonics of `pow` and
+`log` per tile. On the GPU that is worth restructuring into a per-tile
+precomputation of `C_M(t, k)` for the five `k` once, into 5 floats of shared
+state, after which the 16 gate iterations are compares. The CPU model does not
+bother.
+
+The only state is one `uint8_t` of `age` per tile. `refresh_phase` is integer
+and portable by construction; the rest is `float` and, like the spatial
+allocator, does not need bit-exact agreement between CPU and GPU because none
+of it reaches the bitstream directly.
+
+### 8.7 What the encoder mode decision in `ref/` must expose
+
+**Phase 2 hook. Nothing in `ref/` has been changed by this work.** The
+scheduler emits `force_skip` and the allocator honours it, but the allocator
+is a model of a decision `ref/`'s mode selection actually makes. For the
+temporal ladder to reach the bitstream, the encoder's per-tile mode decision
+needs one input and one output:
+
+**Input, required:** a per-tile `force_warp_skip` flag, or equivalently a
+per-tile mode override that can pin `mode` to `WARP_SKIP`. Semantics:
+
+* when set, the tile **must** be coded as `mode == WARP_SKIP` with no residual
+  and no vector, exactly as if its rate-distortion search had chosen it;
+* the flag is **advisory in one direction only**. The encoder may ignore it -
+  and must - when the tile is being coded `INTRA` for the rolling refresh, or
+  when reference eligibility forces `ref_delta == 3`, or on a scene cut. The
+  scheduler already refuses to set it in those cases, but the encoder is the
+  authority and the flag must not be able to override a correctness decision;
+* it must apply *after* the mode search, not before, so that a tile whose
+  search would have chosen `WARP_SKIP` anyway is indistinguishable from one
+  that was told to;
+* it changes no syntax. `WARP_SKIP` is an existing mode with an existing
+  encoding (`skip_bitmap` bit, `dir_len == 0` in the transport directory), so
+  this is a scheduling input to the encoder and not a bitstream change. It is
+  the one place the temporal ladder differs from A.5's weighting-matrix
+  problem, which does need syntax.
+
+**Output, wanted:** the per-tile `age_since_coded` the encoder is already
+tracking for the rolling refresh, and the per-tile `ref_delta` chosen by the
+eligibility rule. The scheduler currently takes `intra_due` and
+`ref_ineligible` as spans the caller assembles; if `ref/` exposes them
+directly the caller stops having to shadow that state. This is a convenience,
+not a correctness requirement - the invariants of 8.5 hold with both spans
+empty, because the `k_max_frames` bound does not depend on them.
+
+**Not needed, explicitly:** no new tile mode, no new header field, no decoder
+change, no change to the reference ring, and no change to the eligibility rule
+(8.5 argues why). If the Phase 2 agent finds itself adding syntax for this,
+something has gone wrong.
+
+---
+
 ## Appendix A. Decisions
 
 ### A.1 Departures from PAPER.md, and why
@@ -637,6 +1016,8 @@ between the CPU model and the GPU. The one place that would change is
 | 5 | `QP = 6*log2(a/bits)` | `floor(... + vdc(t))` | plain rounding costs 4% of the frame, biased. Section 4.7 |
 | 6 | ladder engages "under budget pressure" | engages on the per-tile ceiling deficit | a frame can be on budget with blocky periphery tiles. Section 4.6 |
 | 7 | (nothing said) | text exempt from `dQ_act`, `cplx_t` floored at 1 for text | A.2 |
+| 8 | 4.6.1's ladder is purely spatial | a second, temporal axis: per-tile refresh divisor | 2.8 already decouples frame rate; RESEARCH-ACADEMIC entries 3 and 4 say implement. Section 8 |
+| 9 | (nothing said) | the two ladders order tiles *differently* and are arbitrated, not merged | the temporal visibility model is more sensitive in the periphery, not less, and most so for flat tiles - the reverse of the spatial ladder. Section 8.3 |
 
 ### A.2 The sign of the activity term
 
@@ -681,6 +1062,12 @@ replace them. They are isolated in `RateConfig` for that reason.
 | `gain_dc_plane` | 0.12 | bits of a DC-plane tile relative to a full one |
 | `a_init` | 32768 | starting bit model, 0.25 bpp at QP 30 on 4096 samples |
 
+The temporal ladder adds five more, of a different kind - they are readings of
+a published model rather than unmeasured constants of this codec - and they are
+tabulated separately in section 8.2 because the argument for each is specific.
+The one to worry about is the log-frequency reading of the De Lange
+polynomial.
+
 The QP ceilings (38 / 38 / 32 / 26) are also judgement, not measurement: they
 encode "where does an 8x8 DCT at this step size start to show its grid on this
 class of content", which is a subjective-testing question. The simulator's
@@ -711,6 +1098,16 @@ simulator exercises the **control loop** - budget tracking, ladder engagement,
 convergence, governor hysteresis, scene-cut recovery - and says nothing about
 whether the form itself is right for this codec. Confirming that needs the
 real encoder and is the first thing to do when `ref/` can encode a frame.
+
+`RESULTS-temporal.md` inherits all of that and adds one more layer: its
+visibility numbers are a reduction of a psychophysical model (8.2), so they
+rank tiles reliably and predict absolute detection probabilities only as well
+as approximation 1 holds. What that scenario does establish without any
+appeal to the model's calibration is structural: the scheduler is monotone,
+bounded, deterministic, respects every invariant of 8.5, and lands unprompted
+on the refresh pattern a 15-participant user study independently found
+acceptable. The thing it cannot establish, and which needs a headset and
+observers, is where the gate should actually sit.
 
 The scene's per-material statistics are measured from real 64x64 synthetic
 tiles, so the classifier is exercised on genuine numbers even though the

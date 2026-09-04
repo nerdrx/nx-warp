@@ -317,6 +317,15 @@ struct FrameInputs {
     std::span<const float>   slip_deg_s;  // residual MV magnitude, deg/s
     const TileStats*         stats = nullptr;
 
+    // The temporal ladder's decision for this frame, from
+    // RefreshScheduler::schedule() (nxrc/refresh.hpp): 1 = code this tile as
+    // WARP_SKIP whatever its residual, the decoder's warp keeps it moving
+    // and only the residual correction is withheld.  May be empty.  The
+    // allocator treats it exactly like a static tile: weight zero, one bit
+    // in the row bitmap, and its share redistributed to the survivors by the
+    // existing skip_rounds loop.  RATECONTROL.md 8.
+    std::span<const uint8_t> force_warp_skip;
+
     float head_speed_deg_s = 0.0f;
     float intra_ratio      = 0.0f;   // fraction of tiles above the intra threshold
     bool  force_scene_cut  = false;
@@ -344,6 +353,7 @@ struct AllocResult {
     int     clamped_ceiling = 0;     // tiles pinned at their class ceiling
     int     clamped_floor   = 0;     // tiles pinned at their class floor
     int     skipped         = 0;
+    int     skipped_temporal = 0;    // of those, skipped by the temporal ladder
 
     size_t size() const { return qp.size(); }
     void   resize(size_t n);

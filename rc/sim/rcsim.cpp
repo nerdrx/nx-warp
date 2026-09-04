@@ -11,6 +11,7 @@
 #include "nxfov/foveation.hpp"
 #include "render.hpp"
 #include "scene.hpp"
+#include "temporal.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -254,17 +255,24 @@ int main(int argc, char** argv) {
     std::string dump;
     int frames = 400;
     bool quiet = false;
+    bool temporal = false;
 
     for (int i = 1; i < argc; ++i) {
         if (!std::strcmp(argv[i], "--out") && i + 1 < argc) out_dir = argv[++i];
         else if (!std::strcmp(argv[i], "--frames") && i + 1 < argc) frames = std::atoi(argv[++i]);
         else if (!std::strcmp(argv[i], "--dump") && i + 1 < argc) dump = argv[++i];
         else if (!std::strcmp(argv[i], "--quiet")) quiet = true;
+        else if (!std::strcmp(argv[i], "--temporal")) temporal = true;
         else if (!std::strcmp(argv[i], "--help")) {
-            std::printf("nxvc-rcsim [--out DIR] [--frames N] [--dump FILE] [--quiet]\n");
+            std::printf("nxvc-rcsim [--out DIR] [--frames N] [--dump FILE] "
+                        "[--temporal] [--quiet]\n");
             return 0;
         }
     }
+
+    // The temporal-ladder scenario is a separate scene walk with its own
+    // report; RATECONTROL.md 8.
+    if (temporal) return rcsim::run_temporal(out_dir, frames < 40 ? 200 : frames, quiet);
 
     Sim sim;
     sim.init(0xC0FFEEu);

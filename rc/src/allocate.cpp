@@ -222,6 +222,7 @@ void RateController::compute_weights(const FrameInputs& in) {
                              ? float(cfg_.dq_head_fast) : 0.0f;
 
     out_.skipped = 0;
+    out_.skipped_temporal = 0;
     for (size_t i = 0; i < n; ++i) {
         const uint8_t cls = in.cls.empty() ? uint8_t(TileClass::Texture) : in.cls[i];
         const uint8_t lvl = fov.level[i];
@@ -280,9 +281,24 @@ void RateController::compute_weights(const FrameInputs& in) {
         if (is_text) cplx = std::max(cplx, cfg_.cplx_text_floor);
 
         // --- skip decision: a static tile costs one bit in the row bitmap.
-        const bool skip = (!in.complexity.empty() && cplx_raw < cfg_.skip_sad);
+        // Two routes in.  The first is the static test that has always been
+        // here: the pose warp is already good enough.  The second is the
+        // temporal ladder (RATECONTROL.md 8) telling us to withhold this
+        // tile's residual this frame even though it has one; the tile is
+        // still WARP_SKIP on the wire and the decoder cannot tell the two
+        // apart.  Either way the bits go back into the pot through the
+        // skip_rounds redistribution below.
+        const bool skip_static = (!in.complexity.empty() && cplx_raw < cfg_.skip_sad);
+        const bool skip_temporal = (!in.force_warp_skip.empty() &&
+                                    in.force_warp_skip[i] != 0);
+        const bool skip = skip_static || skip_temporal;
         out_.skip[i] = skip ? 1u : 0u;
-        if (skip) { ++out_.skipped; w_[i] = 0.0f; continue; }
+        if (skip) {
+            ++out_.skipped;
+            if (skip_temporal && !skip_static) ++out_.skipped_temporal;
+            w_[i] = 0.0f;
+            continue;
+        }
 
         // w_t = fov_t * percep_t * cplx_t, with every perceptual term
         // expressed in the bit domain as 2^(-dQ/6), and the *foveation*

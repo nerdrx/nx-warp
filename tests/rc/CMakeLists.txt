@@ -2,7 +2,7 @@ if(NOT TARGET nxvc_rc)
   return()
 endif()
 
-foreach(t classify foveation allocate model governor)
+foreach(t classify foveation allocate model governor tvm refresh)
   add_executable(rc_test_${t} test_${t}.cpp)
   target_link_libraries(rc_test_${t} PRIVATE nxvc_rc)
   target_include_directories(rc_test_${t} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

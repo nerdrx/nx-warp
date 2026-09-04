@@ -9,6 +9,8 @@ add_library(nxvc_rc STATIC
     src/classify.cpp
     src/allocate.cpp
     src/governor.cpp
+    src/tvm.cpp
+    src/refresh.cpp
     src/synth.cpp
 )
 target_include_directories(nxvc_rc PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
@@ -20,7 +22,7 @@ if(NOT MSVC)
 endif()
 
 if(NXWARP_BUILD_TOOLS)
-  add_executable(nxvc-rcsim sim/rcsim.cpp sim/scene.cpp sim/render.cpp)
+  add_executable(nxvc-rcsim sim/rcsim.cpp sim/scene.cpp sim/render.cpp sim/temporal.cpp)
   target_link_libraries(nxvc-rcsim PRIVATE nxvc_rc)
   target_include_directories(nxvc-rcsim PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/sim)
   set_target_properties(nxvc-rcsim PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
