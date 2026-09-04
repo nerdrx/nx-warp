@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 320" width="1000" height="320" role="img" aria-label="NX Warp">
+  <title>NX Warp logo (monochrome)</title>
+<!--
+  One ink. The mark is the monochrome variant, the type is currentColor,
+  so a single CSS color or a single plate drives the whole lockup.
+
+  Clear space: one hexagon half-width (128 units here) on every side. Never
+  set the lockup on a mid-tone; it wants the true-black NX ground or paper.
+-->
+  <defs>
+    <mask id="nwm"><rect width="512" height="512" fill="#fff"/><path d="M136,150 L158.75,149.86 L181,149.92 L202.75,150.2 L224,150.68 L244.75,151.37 L265,152.27 L284.75,153.38 L304,154.69 L322.75,156.22 L341,157.95 L358.75,159.89 L376,162.04 M136,220.67 L158.75,219.29 L181,217.97 L202.75,216.73 L224,215.56 L244.75,214.46 L265,213.42 L284.75,212.46 L304,211.56 L322.75,210.74 L341,209.98 L358.75,209.3 L376,208.68 M136,291.33 L158.75,288.71 L181,286.03 L202.75,283.27 L224,280.44 L244.75,277.54 L265,274.58 L284.75,271.54 L304,268.44 L322.75,265.26 L341,262.02 L358.75,258.7 L376,255.32 M136,362 L158.75,358.14 L181,354.08 L202.75,349.8 L224,345.32 L244.75,340.63 L265,335.73 L284.75,330.62 L304,325.31 L322.75,319.78 L341,314.05 L358.75,308.11 L376,301.96 M136,150 L136,220.67 L136,291.33 L136,362 M224,150.68 L224,215.56 L224,280.44 L224,345.32 M304,154.69 L304,211.56 L304,268.44 L304,325.31 M376,162.04 L376,208.68 L376,255.32 L376,301.96" fill="none" stroke="#000" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/></mask>
+  </defs>
+  <g transform="translate(24,32) scale(0.5)">
+    <path d="M240.13,18.49Q256,10 271.87,18.49L470.13,124.51Q486,133 486,151L486,361Q486,379 470.13,387.49L271.87,493.51Q256,502 240.13,493.51L41.87,387.49Q26,379 26,361L26,151Q26,133 41.87,124.51Z" fill="currentColor" mask="url(#nwm)"/>
+  </g>
+  <g font-family="system-ui,-apple-system,&quot;Segoe UI&quot;,Roboto,&quot;Noto Sans&quot;,Cantarell,&quot;DejaVu Sans&quot;,sans-serif">
+    <text x="320" y="176" fill="currentColor" font-size="112" font-weight="600" letter-spacing="-1">NX Warp</text>
+    <text x="326" y="228" fill="currentColor" opacity="0.68" font-size="27" font-weight="600" letter-spacing="6.4">VULKAN COMPUTE VIDEO CODEC</text>
+  </g>
+</svg>
