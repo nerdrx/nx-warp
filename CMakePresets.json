@@ -17,11 +17,16 @@
       "name": "host",
       "hidden": true,
       "inherits": "base",
-      "description": "Host build defaults: every component that has landed, Vulkan on.",
+      "description": "Host build defaults. NXWARP_BUILD_VK is left at the repository default (OFF): vk/ needs the Vulkan headers and an ICD, and a preset that fails to configure on a machine without them is a preset nobody uses. Turn it on with the -vk presets, or -DNXWARP_BUILD_VK=ON.",
       "cacheVariables": {
-        "NXWARP_BUILD_VK": "ON",
         "NXWARP_BUILD_TOOLS": "ON"
       }
+    },
+    {
+      "name": "vk",
+      "hidden": true,
+      "description": "Vulkan on: needs Vulkan headers, the loader, glslang and an ICD.",
+      "cacheVariables": { "NXWARP_BUILD_VK": "ON" }
     },
     {
       "name": "no-vk",
@@ -34,12 +39,18 @@
       "name": "dev",
       "inherits": "host",
       "displayName": "dev - Debug, no sanitizers",
-      "description": "The everyday build. Debug, Ninja, assertions on, instrumentation off so it is fast to rebuild and pleasant to step through.",
+      "description": "The everyday build. Debug, Ninja, assertions on, instrumentation off so it is fast to rebuild and pleasant to step through. CPU components only; use dev-vk for the Vulkan path.",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "NXWARP_SANITIZER": "off",
         "NXWARP_WERROR": "OFF"
       }
+    },
+    {
+      "name": "dev-vk",
+      "inherits": ["vk", "dev"],
+      "displayName": "dev-vk - dev plus the Vulkan encoder/decoder",
+      "description": "dev with NXWARP_BUILD_VK=ON. Needs the Vulkan headers, the loader and glslang; run scripts/bootstrap.sh if configure complains about any of them."
     },
     {
       "name": "release",
@@ -89,7 +100,7 @@
 
     {
       "name": "gcc",
-      "inherits": "host",
+      "inherits": ["vk", "host"],
       "displayName": "gcc - RelWithDebInfo, GCC",
       "description": "Explicit GCC build, mirroring the linux-gcc CI job.",
       "cacheVariables": {
@@ -100,7 +111,7 @@
     },
     {
       "name": "clang",
-      "inherits": "host",
+      "inherits": ["vk", "host"],
       "displayName": "clang - RelWithDebInfo, Clang",
       "description": "Explicit Clang build, mirroring the linux-clang CI job. Two compilers disagreeing about a warning is cheap; two compilers disagreeing about the bitstream is the bug this catches.",
       "cacheVariables": {
@@ -172,6 +183,7 @@
 
   "buildPresets": [
     { "name": "dev",         "configurePreset": "dev" },
+    { "name": "dev-vk",      "configurePreset": "dev-vk" },
     { "name": "release",     "configurePreset": "release" },
     { "name": "release-lto", "configurePreset": "release-lto" },
     { "name": "asan-ubsan",  "configurePreset": "asan-ubsan" },
@@ -198,6 +210,7 @@
       "execution": { "noTestsAction": "ignore", "stopOnFailure": false, "timeout": 600 }
     },
     { "name": "dev",        "inherits": "test-base", "configurePreset": "dev" },
+    { "name": "dev-vk",     "inherits": "test-base", "configurePreset": "dev-vk" },
     { "name": "release",    "inherits": "test-base", "configurePreset": "release" },
     { "name": "gcc",        "inherits": "test-base", "configurePreset": "gcc" },
     { "name": "clang",      "inherits": "test-base", "configurePreset": "clang" },
@@ -227,7 +240,7 @@
     {
       "name": "vk-only",
       "inherits": "test-base",
-      "configurePreset": "dev",
+      "configurePreset": "dev-vk",
       "displayName": "Vulkan tests (needs an ICD; lavapipe is enough)",
       "filter": { "include": { "name": "^vk" } }
     }
