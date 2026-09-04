@@ -199,11 +199,20 @@ info "regenerated: $(git diff --name-only tests/vectors | wc -l) file(s) changed
 # orphans the blobs that carried the old names.  They are still tracked, still
 # decode, and are no longer named by either md5 list -- so ref.vectors passes
 # while the tree carries dead conformance vectors.  Drop them.
-mapfile -t live < <(awk '{print $NF}' tests/vectors/vectors.md5 tests/vectors/rejects.md5 2>/dev/null | xargs -rn1 basename)
+# The vector name is the FIRST field of each non-comment line in both lists.
+# Reading the last field instead yields a list of md5s, every vector then looks
+# orphaned, and the cleanup deletes the entire conformance suite -- which is
+# exactly what happened before this comment existed.
+mapfile -t live < <(awk '!/^#/ && NF {print $1}' \
+    tests/vectors/vectors.md5 tests/vectors/rejects.md5 2>/dev/null)
+if [ ${#live[@]} -lt 2 ]; then
+    die "could not read the vector name lists" \
+        "tests/vectors/vectors.md5 and rejects.md5 must exist and be non-empty;" \
+        "refusing to run the orphan cleanup against an empty list."
+fi
 stale=0
 for f in tests/vectors/*.nxv; do
     b=$(basename "$f")
-    printf '%s\n' "${live[@]}" | grep -qx -- "$b" && continue
     printf '%s\n' "${live[@]}" | grep -qx -- "${b%.nxv}" && continue
     info "dropping orphaned vector $b"
     git rm -q --ignore-unmatch -- "$f" || rm -f "$f"
