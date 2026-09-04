@@ -220,7 +220,11 @@ int main() {
         nxvc_tile_layout_get(W, H, &tl);
         std::vector<uint8_t> rm(tl.tile_count);
         for (uint32_t i = 0; i < tl.tile_count; ++i) rm[i] = (uint8_t)(i % 3);
+        // ct == 1 is YCoCg-R, whose chroma planes are 9-bit: it is the case
+        // that exercises the CFL model's widest chroma range (|top_c -
+        // base_c| <= 511, SYNTAX.md 7.7) and the 4x4 forward transform's.
         for (int c444 = 0; c444 <= 1; ++c444)
+            for (int ct = 0; ct <= (c444 ? 1 : 0); ++ct)
             for (int spl = 0; spl <= 1; ++spl)
                 for (int cfl = 0; cfl <= 1; ++cfl)
                     for (int res = 0; res <= 1; ++res)
@@ -230,14 +234,17 @@ int main() {
                             cfg.width = W; cfg.height = H;
                             cfg.chroma = c444 ? NXVC_CHROMA_444
                                               : NXVC_CHROMA_420;
+                            cfg.color_transform = (uint32_t)ct;
+                            cfg.color_space =
+                                ct ? (uint32_t)NXVC_CS_RGB : 0u;
                             cfg.base_qp = (uint32_t)qp;
                             cfg.split4x4 = (uint32_t)spl;
                             cfg.chroma_from_luma = (uint32_t)cfl;
                             Coded r;
                             CHECK(code(cfg, c444 ? im444 : im420, r, nullptr,
                                        res ? rm.data() : nullptr),
-                                  "v1.5 %s spl%d cfl%d res%d qp%d: %s / %s",
-                                  c444 ? "444" : "420", spl, cfl, res, qp,
+                                  "v1.5 %s ct%d spl%d cfl%d res%d qp%d: %s / %s",
+                                  c444 ? "444" : "420", ct, spl, cfl, res, qp,
                                   nxvc_status_string(r.enc_status),
                                   nxvc_status_string(r.dec_status));
                             // The encoder predicted from its own
@@ -246,10 +253,10 @@ int main() {
                             // reading different neighbours on the two sides.
                             for (int pl = 0; pl < 3; ++pl)
                                 CHECK(r.shadow.p[pl] == r.out.p[pl],
-                                      "v1.5 %s spl%d cfl%d res%d qp%d: shadow "
-                                      "!= decoder on plane %d",
-                                      c444 ? "444" : "420", spl, cfl, res, qp,
-                                      pl);
+                                      "v1.5 %s ct%d spl%d cfl%d res%d qp%d: "
+                                      "shadow != decoder on plane %d",
+                                      c444 ? "444" : "420", ct, spl, cfl, res,
+                                      qp, pl);
                         }
     }
 
