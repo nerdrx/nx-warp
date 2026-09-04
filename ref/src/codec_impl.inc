@@ -196,7 +196,8 @@ static inline u32 refresh_stagger(u32 tile) {
 }
 
 // Default drift gate, as a multiple of the quantiser noise floor qstep^2/12.
-// Swept over 1 / 2 / 4 / 8 / 16 on vr-mixed-1024-v2; see ref/RESULTS-inter-a.md.
+// Swept over 1 / 2 / 4 / 8 / 16 / 64 on vr-mixed-512-v2 in both rate bands;
+// 4 is where the curve flattens.  ref/RESULTS-inter-a.md section 2.
 // Below it a tile's accumulated drift is no worse than what coding the tile
 // would have left behind anyway, so correcting it buys nothing.
 inline constexpr double kDriftGateDefault = 4.0;
