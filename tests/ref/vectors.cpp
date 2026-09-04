@@ -99,9 +99,12 @@ static const VecSpec kVectors[] = {
     // column and is the largest size the encoder may pick per tile, so a
     // vector exercises the RD choice as well as the transform itself.  v45 to
     // v56 are the inter set and are unchanged.
+    // The image kind and QP are chosen so that between them the six vectors
+    // carry every transform size and the per-tile mix: v57 is 16x16 in every
+    // tile, v58 mixes 32x32 with 8x8, v59 is 32x32 in every tile.
     {"v57_xform16_420",        192, 128, 0,  1, 24,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 1},
-    {"v58_xform32_420",        192, 128, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 2},
-    {"v59_xform32_444",        192, 128, 1,  1, 20,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 2},
+    {"v58_xform32_420",        192, 128, 0,  0, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 2},
+    {"v59_xform32_444",        192, 128, 1,  0, 16,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 2},
     // res_level cycling makes the per-plane cap of SYNTAX.md 6.7 bite: a
     // res_level 2 tile's chroma plane is 8 samples wide and stays at 8x8
     // whatever the tile header says.

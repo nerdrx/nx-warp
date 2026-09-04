@@ -1802,12 +1802,15 @@ together with `SIGN_HIDE`, and the three illegal ways to say `xform`:
 `xform == 3` (`r30`), `xform != 0` without tool bit 24 (`r31`) and `xform`
 with `tskip` (`r32`).
 
-**The larger transforms.** `v57`-`v62` pin tool bit 24: 16x16 and 32x32 alone
-in 4:2:0 and 4:4:4, the per-tile mix chosen by the encoder's RD search, a
-`res_level` tile where the per-plane cap of 6.7 bites, the combination with
-`INTRA_DIR` (which the tiles then choose between), and a saturation vector at
-`N = 32` whose every dequantized coefficient sits on the int16 clamp in the
-sign pattern that maximises the pass-1 intermediate. `v01`-`v56` are
+**The larger transforms.** `v57`-`v62` pin tool bit 24. Between them the six
+carry every transform size and the per-tile mix: `v57` is 16x16 in every tile,
+`v58` mixes 32x32 with 8x8, `v59` is 32x32 in every tile of a 4:4:4 stream,
+`v60` cycles `res_level` so the per-plane cap of 6.7 bites (a `res_level` 2
+tile's 16-sample luma caps at 16x16 and its 8-sample chroma at 8x8), `v61`
+declares `INTRA_DIR` and `XFORM_LARGE` together so the tiles choose between
+them, and `v62` is the 32x32 saturation vector: every dequantized coefficient
+on the int16 clamp with the signs aligned to a column of `T_32`, which is the
+pattern that attains the 3.5e8 pass-1 bound of 6.2. `v01`-`v56` are
 **byte-identical** to the v1.4 set.
 
 **The v2 intra tools.** `v36`-`v44` pin them: `INTRA_DIR` alone in 4:4:4 and
