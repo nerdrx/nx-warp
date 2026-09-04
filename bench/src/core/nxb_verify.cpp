@@ -5,6 +5,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <string>
 #include <vector>
 
 namespace nxb {
@@ -62,7 +63,10 @@ void idct8(int F[8])
 
 // Reference Pass B without prediction, for one tile. Output is the 64x64
 // residual mapped exactly as passb.comp with NXB_PREDICT 0 writes it.
-void refTile(const int16_t* coef, int scale, uint8_t out[64][64])
+// stage1 and resid are optional and exist for the --selftest bisect: they are
+// the two intermediates the shader can be asked to dump.
+void refTile(const int16_t* coef, int scale, uint8_t out[64][64],
+             int (*stage1Out)[64] = nullptr, int (*residOut)[64] = nullptr)
 {
     int stage1[64][64];   // [column][row], the transposed layout
 
@@ -93,9 +97,15 @@ void refTile(const int16_t* coef, int scale, uint8_t out[64][64])
             {
                 int res = clampi(rsh(F[k], 12), -2048, 2048);
                 out[by * 8 + k][bx * 8 + col] = uint8_t(clampi(res + 128, 0, 255));
+                if (residOut) residOut[by * 8 + k][bx * 8 + col] = res;
             }
         }
     }
+
+    if (stage1Out)
+        for (int x = 0; x < 64; ++x)
+            for (int y = 0; y < 64; ++y)
+                stage1Out[x][y] = stage1[x][y];
 }
 
 int qstep16ref(int qp)
@@ -176,22 +186,18 @@ bool Bench::verifyPassA(std::string* msg)
     return true;
 }
 
-bool Bench::verifyPassB(std::string* msg)
+// Run K3 once with the given diagnostic selector and copy the first tile row
+// of the output image back to the host. Shared by the conformance check and by
+// the bisect that runs when it fails.
+void Bench::passBReadback(int32_t dbg, std::vector<uint8_t>& out)
 {
-    char buf[256];
-
-    // Restore the CPU coefficients (a K4 pass may have overwritten them).
-    std::vector<int16_t> coefCpu;
-    genCoefficients(coefCpu, tileCount_, cfg_.seed);
-    ctx_->upload(coef_, coefCpu.data(), VkDeviceSize(coefCpu.size() * 2));
-
+    passBDebug_ = dbg;
     ctx_->oneShot([&](VkCommandBuffer cmd) {
         resetQueries(cmd, 0);
         recordKernel(cmd, K3_IDCT, 0);
     });
+    passBDebug_ = 0;
 
-    // Read back the first tile row only: 2048 x 64 pixels is enough to cover
-    // every block position and every thread mapping, and keeps the copy small.
     const uint32_t rows = 64;
     VkDeviceSize bytes = VkDeviceSize(cfg_.width) * rows * 4;
     Buffer host = ctx_->createBuffer(bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
@@ -224,7 +230,120 @@ bool Bench::verifyPassB(std::string* msg)
     });
     outImg_.layout = VK_IMAGE_LAYOUT_GENERAL;
 
-    const uint8_t* got = reinterpret_cast<const uint8_t*>(host.mapped);
+    out.assign(reinterpret_cast<const uint8_t*>(host.mapped),
+               reinterpret_cast<const uint8_t*>(host.mapped) + size_t(bytes));
+    ctx_->destroyBuffer(host);
+}
+
+// Where a Pass B mismatch actually comes from. Three dumps of tile 0, each
+// compared against the same CPU model, narrow it to a stage:
+//   stage 1 wrong  -> the row transform or the packed store
+//   LDS word wrong but stage 1 right (or vice versa) -> the int16 pack/unpack
+//   both right, residual wrong -> the column transform or the final shift
+// Cheap enough to always run on failure, which is when it is wanted.
+void Bench::passBBisect(const std::vector<int16_t>& coefCpu, int scale)
+{
+    uint8_t refPix[64][64];
+    static int refS1[64][64];
+    static int refRes[64][64];
+    refTile(coefCpu.data(), scale, refPix, refS1, refRes);
+
+    // Dequantised coefficients and raw coefficient words in natural block
+    // order, for the two dumps that run before the transform.
+    static int refDeq[64][64];
+    static uint32_t refRaw[64][64];
+    for (int b = 0; b < 64; ++b)
+    {
+        int bx = b & 7, by = b >> 3;
+        for (int r = 0; r < 8; ++r)
+            for (int k = 0; k < 8; ++k)
+            {
+                refDeq[by * 8 + r][bx * 8 + k] =
+                    clampi(rsh(int(coefCpu[size_t(b) * 64 + size_t(r) * 8 + size_t(k)]) * scale, 4),
+                           -8191, 8191);
+                refRaw[by * 8 + r][bx * 8 + k] =
+                    (k < 4) ? (uint32_t(uint16_t(coefCpu[size_t(b) * 64 + size_t(r) * 8 + size_t(k) * 2])) |
+                               (uint32_t(uint16_t(coefCpu[size_t(b) * 64 + size_t(r) * 8 + size_t(k) * 2 + 1])) << 16))
+                            : 0u;
+            }
+    }
+
+    struct Dump { int32_t sel; const char* name; };
+    const Dump dumps[9] = {{8, "LDS store address"},
+                           {9, "LDS load address"},
+                           {7, "LDS word, prefilled"},
+                           {6, "raw coef SSBO word"},
+                           {4, "dequantised coefficient"},
+                           {5, "row pass out (no LDS)"},
+                           {2, "raw packed LDS word"},
+                           {1, "stage1 (LDS read back)"},
+                           {3, "residual, 16-bit"}};
+
+    NXB_LOG("Pass B bisect on tile 0 (dequant scale %d):", scale);
+    for (const Dump& d : dumps)
+    {
+        std::vector<uint8_t> got;
+        passBReadback(d.sel, got);
+
+        long bad = 0;
+        int fx = -1, fy = -1;
+        int32_t gotV = 0, wantV = 0;
+        for (int y = 0; y < 64; ++y)
+            for (int x = 0; x < 64; ++x)
+            {
+                size_t at = (size_t(y) * size_t(cfg_.width) + size_t(x)) * 4;
+                uint32_t g = uint32_t(got[at]) | (uint32_t(got[at + 1]) << 8) |
+                             (uint32_t(got[at + 2]) << 16) | (uint32_t(got[at + 3]) << 24);
+                uint32_t w;
+                if (d.sel == 8 || d.sel == 9)
+                    w = uint32_t(x * 32 + (y >> 1));   // (bx*8+col)*32 + by*4 + sub
+                else if (d.sel == 6)
+                    w = refRaw[y][x];
+                else if (d.sel == 7)
+                    w = (uint32_t(uint16_t(int16_t(refS1[x][y & ~1]))) |
+                         (uint32_t(uint16_t(int16_t(refS1[x][y | 1]))) << 16));
+                else if (d.sel == 4)
+                    w = uint32_t(refDeq[y][x]);
+                else if (d.sel == 5)
+                    w = uint32_t(refS1[x][y]);
+                else if (d.sel == 2)
+                    w = (uint32_t(uint16_t(int16_t(refS1[x][y & ~1]))) |
+                         (uint32_t(uint16_t(int16_t(refS1[x][y | 1]))) << 16));
+                else if (d.sel == 1)
+                    w = uint32_t(refS1[x][y]);
+                else
+                    w = uint32_t(refRes[y][x]);
+
+                if (g != w)
+                {
+                    if (!bad) { fx = x; fy = y; gotV = int32_t(g); wantV = int32_t(w); }
+                    ++bad;
+                }
+            }
+
+        if (bad)
+            NXB_LOG("  %-24s MISMATCH in %ld/4096: first (%d,%d) got 0x%08x (%d) want 0x%08x (%d)",
+                    d.name, bad, fx, fy, uint32_t(gotV), gotV, uint32_t(wantV), wantV);
+        else
+            NXB_LOG("  %-24s ok, all 4096 match", d.name);
+    }
+}
+
+bool Bench::verifyPassB(std::string* msg)
+{
+    char buf[256];
+
+    // Restore the CPU coefficients (a K4 pass may have overwritten them).
+    std::vector<int16_t> coefCpu;
+    genCoefficients(coefCpu, tileCount_, cfg_.seed);
+    ctx_->upload(coef_, coefCpu.data(), VkDeviceSize(coefCpu.size() * 2));
+
+    // Read back the first tile row only: 2048 x 64 pixels is enough to cover
+    // every block position and every thread mapping, and keeps the copy small.
+    std::vector<uint8_t> gotBuf;
+    passBReadback(0, gotBuf);
+    const uint8_t* got = gotBuf.data();
+
     int scale = (qstep16ref(cfg_.qp) * 16) >> 4;
 
     long bad = 0;
@@ -247,10 +366,9 @@ bool Bench::verifyPassB(std::string* msg)
             }
     }
 
-    ctx_->destroyBuffer(host);
-
     if (bad)
     {
+        passBBisect(coefCpu, scale);
         snprintf(buf, sizeof buf,
                  "Pass B MISMATCH: tile %d pixel (%d,%d): got %d want %d",
                  firstTile, firstX, firstY, gotV, wantV);

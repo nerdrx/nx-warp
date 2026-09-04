@@ -97,6 +97,8 @@ public:
     // reference is the specification, the SPIR-V is validated against it).
     bool verifyPassA(std::string* msg);
     bool verifyPassB(std::string* msg);
+    void passBReadback(int32_t dbg, std::vector<uint8_t>& out);
+    void passBBisect(const std::vector<int16_t>& coefCpu, int scale);
 
     bool available(int kid, std::string* why) const;
     double bytesMoved(int kid) const;   // for the K1 GB/s figure
@@ -151,6 +153,11 @@ private:
     int tilesX_ = 0, tilesY_ = 0, tileCount_ = 0;
     int symsPerLane_ = 0;
     bool k6Ready_ = false;
+
+    // Pass B diagnostic dump selector, pushed straight through to the shader.
+    // Zero for every timed run; --selftest raises it only to bisect a
+    // mismatch. See NXB_DBG_* in shaders/passb.comp.
+    int32_t passBDebug_ = 0;
 };
 
 // ------------------------------------------------------------- run driver

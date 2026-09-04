@@ -143,8 +143,12 @@ fi
 # victory instantly and pulls a JSON that was never written.
 RUN_PID=""
 for _ in 1 2 3 4 5 6 7 8 9 10; do
-  RUN_PID="$(adb "${DEV[@]}" shell pidof "$PKG" 2>/dev/null | tr -d '\r' | awk '{print $1}')"
-  [ -n "$RUN_PID" ] && break
+  # `|| true` because adb propagates pidof's exit 1 and `set -o pipefail` then
+  # turns "the app has not started yet" into a silent death of this script.
+  RUN_PID="$(adb "${DEV[@]}" shell pidof "$PKG" 2>/dev/null | tr -d '\r' | awk '{print $1}' || true)"
+  # Not `[ -n ... ] && break`: under `set -e` a false test as the last command
+  # of the loop body kills the script instead of polling again.
+  if [ -n "$RUN_PID" ]; then break; fi
   sleep 1
 done
 if [ -z "$RUN_PID" ]; then
@@ -204,15 +208,28 @@ fi
 
 save_logs
 
-# Debug APK, so run-as reaches the app's files dir without root.
-if ! adb "${DEV[@]}" exec-out run-as "$PKG" cat "$REMOTE_JSON" > "$LOCAL_JSON" 2>/dev/null \
-   || [ ! -s "$LOCAL_JSON" ]; then
-  echo "could not pull $REMOTE_JSON via run-as; trying the app's external path" >&2
+# `adb exec-out` folds the device's stderr into stdout, so a failed `cat` does
+# not fail the pull -- it writes "cat: ...: No such file" into the result file
+# and everything downstream then chokes on a 57-byte "JSON". Every candidate
+# path is therefore checked for actually being JSON, not merely non-empty.
+looks_like_json() { [ -s "$1" ] && head -c 1 "$1" | grep -q '{'; }
+
+adb "${DEV[@]}" exec-out run-as "$PKG" cat "$REMOTE_JSON" > "$LOCAL_JSON" 2>/dev/null || true
+if ! looks_like_json "$LOCAL_JSON"; then
+  echo "run-as did not return JSON (got: $(head -c 120 "$LOCAL_JSON" 2>/dev/null))" >&2
+  echo "trying the app's external path" >&2
   adb "${DEV[@]}" exec-out cat "/sdcard/Android/data/$PKG/files/nxwarp-phase0.json" \
       > "$LOCAL_JSON" 2>/dev/null || true
 fi
-if [ ! -s "$LOCAL_JSON" ]; then
-  echo "no result JSON was produced; see $LOCAL_LOG" >&2
+if ! looks_like_json "$LOCAL_JSON"; then
+  # Last resort: the app prints the same table it serialises, so a run whose
+  # file we cannot reach is still readable. Not a substitute for the JSON --
+  # it is what turns "no result" into "here is what the device measured".
+  echo "no result JSON could be pulled; falling back to the logcat table" >&2
+  rm -f "$LOCAL_JSON"
+  echo "==> log : $LOCAL_LOG"
+  sed -n '/--- logcat: nxwarp-bench ---/,/--- logcat: crash buffer ---/p' "$LOCAL_LOG" \
+    | sed 's/^[^:]*nxwarp-bench[^:]*: //'
   exit 1
 fi
 

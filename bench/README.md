@@ -279,6 +279,51 @@ Both pass on RADV (wave64). Running the same check on lavapipe (subgroup size 8)
 and on Adreno is what makes the cluster-of-8 rule real, and is why the rule
 exists.
 
+## Adreno and spirv-opt
+
+`--selftest` reported `Pass B MISMATCH: tile 0 pixel (0,0): got 103 want 248` on
+the Pico 4 (Adreno 650) while being bit-exact on RADV, on lavapipe and on both
+wave widths. The bisect that `--selftest` now runs on a failure localised it
+exactly: the raw coefficient word, the dequantised coefficient, the row-pass
+result, the LDS store address and the LDS load address all matched the CPU model
+to the bit, and only the word read back out of the transpose buffer was wrong --
+carrying, at index 0, the value that belongs at index 2047.
+
+It is not a shader bug. It is `spirv-opt`'s **`redundancy-elimination`**, which
+common-subexpression-eliminates the duplicate `OpAccessChain` that a load and a
+store to the same shared word each produce:
+
+```
+without:  %551 = OpAccessChain %sLds %535   with:  %551 = OpAccessChain %sLds %535
+          %552 = OpLoad %551                       %552 = OpLoad %551
+          %554 = OpAccessChain %sLds %535
+          OpStore %554 ...                         OpStore %551 ...
+```
+
+Both modules pass `spirv-val`, and RADV and lavapipe are bit-exact on both. The
+Adreno 650 driver is not: given the right-hand form it mixes up which shared
+word an access refers to. Bisected pass by pass on device -- `-O` minus
+`redundancy-elimination` is bit-exact, `-O` is not, and `loop-unroll` alone (the
+pass that creates the duplicate access chains in the first place) is fine.
+
+So `cmake/gen_spv.cmake` no longer hands the driver `glslc -O`. It runs
+`glslc -O0` and then `spirv-opt` with the `-O` pass list minus both
+`redundancy-elimination` steps, written out in full so the omission is visible.
+Nothing is given up: the driver's own compiler does its own redundancy
+elimination, and K3 measured *faster* afterwards (7.93 ms p50 against 8.41 ms).
+`NXB_SPV_PASSES` overrides the list -- empty for none, `-O` to reproduce the
+failure.
+
+The same load-then-store-through-one-index shape is in the real decoder
+(`vk/decoder/passB/reconstruct.comp`, and `passA/rans_decode.comp` line 209), so
+both of those take the same pass list.
+
+The Pass B kernel also no longer builds its packed word with a read-modify-write
+(`sLds[w] = lo; ... sLds[w] |= hi << 16;`). Each `uint` is written once, whole.
+That is not what fixed the miscompilation -- the single-store form failed under
+stock `-O` too -- but it is one store instead of a load plus a store, and it
+removes the load/store pointer pair that the pass was CSE-ing.
+
 ## Known gaps
 
 - No 4:2:0 chroma, as described above.
