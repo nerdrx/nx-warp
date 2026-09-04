@@ -47,12 +47,14 @@ MINOR = 6
 
 # docs/TOOLBITS.md section 2.  Tools absent from the tree are skipped.
 ALLOC = {
-    "XFORM_4X4_SPLIT": 19,   # pre-declared on merge-main, implemented by detail
-    "INTRA_CFL":       24,   # detail
-    "XFORM_LARGE":     25,   # xform
-    "CTX_V3":          26,   # ctx
-    "VEC_ENT":         27,   # ctx-a's second tool
-    "TAB_V2":          27,   # ctx-b's second tool (only one of the two exists)
+    # JUDGE-detail.md landed first and fixes detail-a's two bits, so detail
+    # merges first and every later package renumbers around 19 and 24.
+    "XFORM_4X4_SPLIT": 19,   # detail-a, pre-declared on merge-main
+    "INTRA_CFL":       24,   # detail-a
+    "CTX_V3":          25,   # ctx
+    "VEC_ENT":         26,   # ctx-a's second tool
+    "TAB_V2":          26,   # ctx-b's second tool (only one ctx branch wins)
+    "XFORM_LARGE":     27,   # xform
     "NEAR_SKIP":       28,   # inter
     "QUAD_MV":         29,   # inter
     "SUBTILE_INTRA":   30,   # inter-a only

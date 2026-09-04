@@ -60,26 +60,32 @@ from `NXVC_TOOLS_SUPPORTED`**, so a stream setting it is refused today. Both
 `detail-a` and `detail-b` implement exactly that bit and add it to the
 supported mask. No renumbering is needed for it in either case.
 
-## 2. Bits 24-30: the tournament allocation
+## 2. Bits 24-31: the tournament allocation
 
-| bit | name | tool | branches claiming it | claimed bit(s) | action |
+**`JUDGE-detail.md` landed first and fixes `detail-a`'s two bits**, so detail
+merges first and every later package renumbers around 19 and 24. That is the
+one external constraint on this table; the rest follows the one-slot-per-tool
+rule.
+
+| bit | name | tool | branches claiming it | claimed | action |
 |---|---|---|---|---|---|
-| 24 | `INTRA_CFL` | chroma-from-luma | `detail-a`, `detail-b` | 24, 24 | **keep 24**, no change |
-| 25 | `XFORM_LARGE` | 16x16 and 32x32 transforms | `xform-a`, `xform-b` | 24, 24 | **move 24 -> 25** |
-| 26 | `CTX_V3` | the third context model | `ctx-a` (24), `ctx-b` (25) | 24 / 25 | **move to 26** |
-| 27 | `VEC_ENT` or `TAB_V2` | the ctx package's second tool | `ctx-a` `VEC_ENT` (25), `ctx-b` `TAB_V2` (24) | 25 / 24 | **move to 27**, named for the winner |
-| 28 | `NEAR_SKIP` | near-skip DC/ramp correction | `inter-a` `NEAR_SKIP` (24), `inter-b` `WARP_DC` (24) | 24 | **move to 28**; `inter-b` renamed `WARP_DC` -> `NEAR_SKIP` |
-| 29 | `QUAD_MV` | four quadrant vectors per tile | `inter-a` `QUAD_MV` (25), `inter-b` `MV_QUAD` (25) | 25 | **move to 29**; `inter-b` renamed `MV_QUAD` -> `QUAD_MV` |
+| 19 | `XFORM_4X4_SPLIT` | per-block 4x4 split | `detail-a`, `detail-b` | 19 | **fixed by the judge**, no change |
+| 24 | `INTRA_CFL` | chroma-from-luma | `detail-a`, `detail-b` | 24 | **fixed by the judge**, no change |
+| 25 | `CTX_V3` | the third context model | `ctx-a` (24), `ctx-b` (25) | 24 / 25 | **move to 25** |
+| 26 | `VEC_ENT` or `TAB_V2` | the ctx package's second tool | `ctx-a` `VEC_ENT` (25), `ctx-b` `TAB_V2` (24) | 25 / 24 | **move to 26**, named for the winner |
+| 27 | `XFORM_LARGE` | 16x16 and 32x32 transforms | `xform-a`, `xform-b` | 24 | **move 24 -> 27** |
+| 28 | `NEAR_SKIP` | near-skip DC/ramp correction | `inter-a` `NEAR_SKIP` (24), `inter-b` `WARP_DC` (24) | 24 | **move to 28**; `inter-b` renamed onto `NEAR_SKIP` |
+| 29 | `QUAD_MV` | four quadrant vectors per tile | `inter-a` `QUAD_MV` (25), `inter-b` `MV_QUAD` (25) | 25 | **move to 29**; `inter-b` renamed onto `QUAD_MV` |
 | 30 | `SUBTILE_INTRA` | one quadrant drops the predictor | `inter-a` only (26) | 26 | **move to 30**; unallocated if `inter-b` wins |
+| 31 | `TILE_EXT` | the tile extension byte | none -- new here | -- | section 4, option A only |
 
 `rdo-a` and `rdo-b` allocate **no tool bit at all**: both are pure encoder
 packages (rate-distortion search, lambda, effort presets) and change no
 normative syntax. They are the only two branches whose merge cannot collide on
-this table. They collide violently on the conformance vectors instead —
+this table. They collide violently on the conformance vectors instead --
 section 5.
 
-Bit 31 and 32-63 stay reserved and must be zero, with one exception under
-option A of section 4.
+Bits 32-63 stay reserved and must be zero.
 
 ### 2.1 The collision, stated plainly
 
@@ -95,8 +101,7 @@ put a second tool on bit 25:
 Every branch was correct in isolation -- 24 was the next free bit on `main` for
 all of them -- and so every stack of two or more branches needs the
 renumbering in the table above. Only `detail`'s bit 24 survives untouched,
-chosen to keep the branch whose judge verdict landed first (`JUDGE-detail.md`:
-merge `detail-a`) free of tool-bit edits.
+because `JUDGE-detail.md` reached its verdict first and pinned it.
 
 Bits 24-63 were reserved-must-be-zero on `merge-main`, so a v1.4 decoder
 refuses any of the seven new bits with an "unsupported tool" status regardless
@@ -140,7 +145,9 @@ The contention is entirely over 28-31, and it is real:
 | xform + detail-a + inter-a | 2 + 1 + 4 = 7 | 4 | **3 bits over** |
 
 `JUDGE-detail.md` has already chosen `detail-a`, so the `split4x4` bit is
-spent. The layout therefore turns entirely on the inter verdict.
+spent -- and because detail merges first, it keeps word1 bit 28 exactly as
+authored and `xform` is the package that moves. The layout therefore turns
+entirely on the inter verdict.
 
 ## 4. Proposed word1 layout
 
@@ -150,8 +157,8 @@ spent. The layout therefore turns entirely on the inter verdict.
 |---|---|---|
 | 24-25 | `wgt` | existing |
 | 26-27 | `wm_id` | tool bit 20 `WM_ID` |
-| 28-29 | `xform_size` | tool bit 25 `XFORM_LARGE` |
-| 30 | `split4x4` | tool bit 19 `XFORM_4X4_SPLIT` |
+| 28 | `split4x4` | tool bit 19 `XFORM_4X4_SPLIT` -- **as `detail-a` authored it; detail merges first, so this bit does not move** |
+| 29-30 | `xform_size` | tool bit 27 `XFORM_LARGE` -- moved down from `xform`'s 28-29 |
 | 31 | `tile_ext` | tool bit 31 `TILE_EXT` -- one extension byte follows the tile header |
 
 `inter-a`'s four flags move out of word1 and into the extension byte, which is
@@ -198,8 +205,8 @@ is exactly the "one implementation per idea" the rules ask for the opposite of.
 |---|---|---|
 | 24-25 | `wgt` | existing |
 | 26-27 | `wm_id` | tool bit 20 |
-| 28-29 | `xform_size` | tool bit 25 `XFORM_LARGE` |
-| 30 | `split4x4` | tool bit 19 `XFORM_4X4_SPLIT` |
+| 28 | `split4x4` | tool bit 19 `XFORM_4X4_SPLIT` -- **as `detail-a` authored it** |
+| 29-30 | `xform_size` | tool bit 27 `XFORM_LARGE` -- moved down from `xform`'s 28-29 |
 | 31 | `quad_mv` | tool bit 29 `QUAD_MV` (`inter-b`'s `mv_quad`, renamed) |
 
 Word1 is then **exactly full**, tool bit 31 `TILE_EXT` is not allocated, and
@@ -267,20 +274,47 @@ branch's entries are renumbered to start after the running total, in merge
 order. For the trial stack (xform-b, detail-a, ctx-b, inter-a, rdo-b) that is
 xform-b 53-54, detail-a 55-61, ctx-b 62-65, inter-a none, rdo-b 66-67.
 
+## 6.1 The `detail-a` merge checklist
+
+`JUDGE-detail.md` merges `tourney/detail-a` **with four defects fixed and five
+items taken from `detail-b`**. These are merge-time obligations, not follow-ups,
+and detail merges first, so they are the first work in the whole tournament:
+
+1. **Move `detail-a`'s new `nxvc_config` / `nxvc_tile_info` fields to the END
+   of their structs.** The ABI is additive; `detail-b`'s appended layout is the
+   model. `detail-a` inserted its fields mid-struct, which silently changes the
+   offset of everything after them.
+2. **Take from `detail-b`:** the encode-stats counters and `--stats`, its four
+   extra conformance vectors, its finer rejection vectors, its CLI validation,
+   and `quantize_unit()`.
+3. **Add the sentence pinning that `round(2^15 / d)` has no ties for
+   `d` in [1, 255]**, so the reciprocal table is well defined rather than
+   dependent on a rounding mode.
+4. **Regenerate the rate columns and gate sentences in `RESULTS-detail-a.md`
+   with the fixed harness.** Both branches' absolute bitrates were inflated
+   roughly 6x by `--frames` -- the same measurement bug `ctx-b` fixed in
+   `run_codec()` and that `scripts/resolve-compare-py.py` carries into the
+   merge (section 2 of `docs/MERGE-PLAN.md`). The BD-rate comparisons are
+   ratios and survive; the absolute numbers do not.
+
+Item 4 is why the `compare.py` resolution matters beyond `ctx-b`: **every
+branch's absolute bitrate figure is suspect** until re-measured on the fixed
+harness.
+
 ## 7. Summary: the merged supported mask
 
 Assuming the trial stack, `NXVC_TOOLS_SUPPORTED` gains, over `merge-main`:
 
 ```
-NXVC_TOOL_XFORM_4X4_SPLIT   (1ull << 19)   detail-a
-NXVC_TOOL_INTRA_CFL         (1ull << 24)   detail-a
-NXVC_TOOL_XFORM_LARGE       (1ull << 25)   xform-b
-NXVC_TOOL_CTX_V3            (1ull << 26)   ctx-b
-NXVC_TOOL_TAB_V2            (1ull << 27)   ctx-b
-NXVC_TOOL_NEAR_SKIP         (1ull << 28)   inter-a
-NXVC_TOOL_QUAD_MV           (1ull << 29)   inter-a
-NXVC_TOOL_SUBTILE_INTRA     (1ull << 30)   inter-a
-NXVC_TOOL_TILE_EXT          (1ull << 31)   inter-a, option A only
+NXVC_TOOL_XFORM_4X4_SPLIT   (1ull << 19)   detail-a   (judge-fixed)
+NXVC_TOOL_INTRA_CFL         (1ull << 24)   detail-a   (judge-fixed)
+NXVC_TOOL_CTX_V3            (1ull << 25)   ctx
+NXVC_TOOL_VEC_ENT           (1ull << 26)   ctx-a   -- or TAB_V2 if ctx-b wins
+NXVC_TOOL_XFORM_LARGE       (1ull << 27)   xform
+NXVC_TOOL_NEAR_SKIP         (1ull << 28)   inter
+NXVC_TOOL_QUAD_MV           (1ull << 29)   inter
+NXVC_TOOL_SUBTILE_INTRA     (1ull << 30)   inter-a only
+NXVC_TOOL_TILE_EXT          (1ull << 31)   inter-a only, option A
 ```
 
 and `NXVC_BITSTREAM_MINOR` becomes 6.
