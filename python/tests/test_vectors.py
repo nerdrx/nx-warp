@@ -113,7 +113,17 @@ def _run_info(path: Path) -> str:
         timeout=60,
     )
     if proc.returncode != 0:
-        pytest.skip(f"{NXV_INFO.name} refused {path.name}: {proc.stderr.strip()}")
+        # A skip, not a failure: this says something about the binary in the
+        # build tree, not about the parser.  The bytes of the vector are
+        # verified against vectors.md5 separately, and the parser reads them,
+        # so a refusal here means the built tool and the committed vectors
+        # disagree -- rebuild it, or regenerate the vectors, whichever the C
+        # side intends.
+        pytest.skip(
+            f"{NXV_INFO}\n  refused {path.name}, whose bytes match "
+            f"vectors.md5 and which nxvc.bitstream parses: "
+            f"{proc.stderr.strip() or proc.stdout.strip().splitlines()[:1]}"
+        )
     return proc.stdout
 
 

@@ -195,13 +195,18 @@ def test_qp_map_accepts_a_flat_array():
 def test_res_map_changes_the_per_tile_res_level():
     planes = synth_planes(True)
     with nxvc.Encoder(W, H, pix="yuv444p", base_qp=24) as enc:
-        enc.stream_header()
+        header = enc.stream_header()
         res_map = np.array([[0, 1], [2, 0]], dtype=np.uint8)
         frame = enc.encode(planes, res_map=res_map)
         levels = enc.tile_map("res_level")
     assert levels.tolist() == [[0, 1], [2, 0]]
-    # and the parser sees the same thing in the bytes
-    stream = bs.StreamHeader(width=W, height=H, chroma_format=1)
+    # and the parser sees the same thing in the bytes.  The frame has to be
+    # read against the encoder's OWN stream header: the tools mask decides how
+    # big a transmitted probability table set is (120 bytes, or 160 under
+    # CTX_V2), so a hand-built header with an empty mask would walk into the
+    # tile rows at the wrong offset.
+    stream = bs.parse_stream_header(header)
+    assert stream.width == W and stream.chroma444
     parsed = bs.parse_frame(frame, 0, stream, validate=False)
     assert [t.header.res_level for t in parsed.tiles] == [0, 1, 2, 0]
 
