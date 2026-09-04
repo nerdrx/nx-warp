@@ -149,6 +149,14 @@ fi
 # Package
 # ---------------------------------------------------------------------------
 say "package"
+# Old packages from a previous run would otherwise be picked up below and
+# attached to this release. An artifact from a different commit in a release
+# is worse than a missing one.
+find "$BUILD_DIR" -maxdepth 1 -type f \
+    \( -name 'nxvc-*.tar.gz' -o -name 'nxvc-*.zip' -o -name 'nxvc*.deb' \) \
+    -delete
+rm -f "$BUILD_DIR/SHA256SUMS"
+
 ( cd "$BUILD_DIR" && cpack )
 ( cd "$BUILD_DIR" && cpack --config CPackSourceConfig.cmake ) || \
     printf '   \033[33mwarn\033[0m source package failed\n'
@@ -166,7 +174,9 @@ done
 # Checksums travel with the release; a codec artifact nobody can verify is a
 # codec artifact nobody should run.
 SUMS="$BUILD_DIR/SHA256SUMS"
-( cd "$BUILD_DIR" && sha256sum "$(basename -a "${ARTIFACTS[@]}")" > SHA256SUMS )
+NAMES=()
+for a in "${ARTIFACTS[@]}"; do NAMES+=("$(basename "$a")"); done
+( cd "$BUILD_DIR" && sha256sum "${NAMES[@]}" > SHA256SUMS )
 ok "SHA256SUMS"
 
 # ---------------------------------------------------------------------------
