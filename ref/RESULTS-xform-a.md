@@ -69,13 +69,59 @@ bands scale by scan group. Two bits per tile buy all of it.
 
 ## 2. The Phase 1 gate, before and after
 
-`tools/quality/compare.py` on `vr-mixed-1024-v2` (the band-limited v2
-sequence), 36 frames, against `x264 --keyint 1 --tune zerolatency` over the
-100-400 Mbit band, QP ladder `0,4,8,12,16,20,24` against anchor
-`8,12,16,20,24,28`. "before" is the shipped default (`--xform 8`, which is
-byte-identical to a build without the tool); "after" is `--xform auto`.
+`tools/quality/compare.py` on `vr-mixed-1024-v2-8f` -- the first **8 frames**
+of the band-limited v2 sequence, truncated into its own sidecar because ten of
+these measurements were running on the machine at once -- against
+`x264 --keyint 1 --tune zerolatency` over the 100-400 Mbit band, QP ladder
+`0,4,8,12,16,20,24` against anchor `8,12,16,20,24,28`. "before" is the shipped
+default (`--xform 8`, byte-identical to a build without the tool); "after" is
+`--xform auto`. Both columns are the same 8 frames, the same ladder and the
+same anchor run, so the pair is comparable by construction; the absolute
+numbers are not comparable with `RESULTS-intra.md`, which used 36 frames of the
+v1 sequence.
 
-<!--RESULTS-INTRA-TABLE-->
+### 4:4:4
+
+| | before (`--xform 8`) | after (`--xform auto`) | change |
+|---|---|---|---|
+| **BD-rate vs x264-intra, PSNR-Y** | **+64.84 %** | **+45.95 %** | **-18.9 points** |
+| BD-PSNR | -4.465 dB | -3.439 dB | **+1.03 dB** |
+| BD-rate on SSIM-Y | +106.57 % | +80.99 % | -25.6 points |
+| gate: worst deficit | -4.694 dB | **-3.487 dB** | **+1.21 dB** |
+| gate: mean deficit | -3.835 dB | **-2.844 dB** | +0.99 dB |
+
+Per operating point, and this is the shape a tool that helps should have --
+every point is both **smaller and better**:
+
+| QP | before Mbit/s | before PSNR-Y | after Mbit/s | after PSNR-Y | rate | quality |
+|---|---|---|---|---|---|---|
+| 0 | 251.4 | 57.28 | 237.8 | 57.74 | -5.4 % | +0.46 dB |
+| 4 | 189.9 | 55.35 | 174.2 | 55.68 | -8.3 % | +0.33 dB |
+| 8 | 141.7 | 53.31 | 130.2 | 53.59 | -8.1 % | +0.28 dB |
+| 12 | 106.7 | 50.62 | 98.4 | 51.02 | -7.8 % | +0.40 dB |
+| 16 | 80.6 | 47.62 | 73.3 | 47.95 | -9.1 % | +0.33 dB |
+| 20 | 59.6 | 44.52 | 54.1 | 44.86 | -9.2 % | +0.34 dB |
+| 24 | 44.7 | 41.45 | 39.3 | 41.63 | -12.1 % | +0.18 dB |
+
+The gate verdicts, verbatim:
+
+```
+  Phase 1 gate (PAPER.md 3.11: within 1.0 dB of x264 intra, 100-400 Mbit):
+    FAIL: worst -4.694 dB at 102.4 Mbit/s, mean -3.835 dB over 100.0-212.6 Mbit/s     <- before
+
+  Phase 1 gate (PAPER.md 3.11: within 1.0 dB of x264 intra, 100-400 Mbit):
+    FAIL: worst -3.487 dB at 102.4 Mbit/s, mean -2.844 dB over 100.0-212.6 Mbit/s     <- after
+```
+
+**The gate is still not met.** It needs -1.0 dB and the tool buys 1.2 of the
+3.7 that are missing. What it is, is the second-largest single tool in the
+codec: directional intra was -22.5 BD-rate points on 4:4:4 and this is -18.9,
+against a decoder cost that is arithmetic rather than serialisation (section 5)
+and a syntax cost of two bits per tile.
+
+### 4:2:0
+
+<!--RESULTS-INTRA-420-->
 
 ---
 
