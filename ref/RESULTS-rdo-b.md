@@ -301,8 +301,66 @@ given, and `medium` is 0.6x of it.
 
 ## 8. Before and after
 
-*(the harness table -- Phase 1 gate and kill test, base and new, both chroma
-formats -- is filled in below from `$NXQ_SCRATCH/results/tourney-rdo-b-*.json`)*
+`vr-mixed-1024-v2` (the band-limited v2 sequence), 2048x1024 side by side,
+12 frames, ffmpeg n9.0.1. "before" is `main` at `e4e85af`, "after" is this
+branch at its head, both built Release with the same compiler and both run
+through `tools/quality/compare.py` in the same session. VMAF is off: the
+harness's libvmaf pass triples the wall time and nothing in this package is
+aimed at it.
+
+### 8.1 The Phase 1 gate, 4:4:4
+
+`--anchors x264-intra --qp 12,18,24,30 --anchor-qp 12,18,24,30`
+
+| QP | | Mbit/s | PSNR-Y | SSIM-Y |
+|---|---|---|---|---|
+| 12 | before | 320.11 | 50.627 | 0.99661 |
+| | **after** | **337.18** | **51.173** | **0.99692** |
+| 18 | before | 207.21 | 46.104 | 0.99328 |
+| | **after** | **219.32** | **46.799** | **0.99392** |
+| 24 | before | 133.19 | 41.467 | 0.98639 |
+| | **after** | **138.36** | **42.056** | **0.98768** |
+| 30 | before | 86.75 | 36.867 | 0.97241 |
+| | **after** | **89.07** | **37.551** | **0.97514** |
+
+BD-rate against the anchor: **+77.29 % before, +75.30 % after**. BD-rate of
+after against before, on the same PSNR-Y: **-1.55 %**. Encode time
+**0.573x**.
+
+> ```
+>   Phase 1 gate (PAPER.md 3.11: within 1.0 dB of x264 intra, 100-400 Mbit):
+>     FAIL: worst -7.349 dB at 100.0 Mbit/s, mean -5.748 dB over 100.0-320.1 Mbit/s   [before]
+>     FAIL: worst -7.006 dB at 100.0 Mbit/s, mean -5.542 dB over 100.0-337.2 Mbit/s   [after]
+> ```
+
+### 8.2 The Phase 1 gate, 4:2:0
+
+| QP | | Mbit/s | PSNR-Y | SSIM-Y |
+|---|---|---|---|---|
+| 12 | before | 282.49 | 50.648 | 0.99662 |
+| | **after** | **292.73** | **51.139** | **0.99690** |
+| 18 | before | 195.98 | 46.038 | 0.99322 |
+| | **after** | **204.70** | **46.822** | **0.99393** |
+| 24 | before | 128.77 | 41.465 | 0.98646 |
+| | **after** | **136.21** | **42.108** | **0.98773** |
+| 30 | before | 88.73 | 36.917 | 0.97287 |
+| | **after** | **89.87** | **37.572** | **0.97544** |
+
+BD-rate against the anchor: **+60.77 % before, +56.31 % after**. After against
+before: **-1.44 %**. Encode time **0.611x**.
+
+> ```
+>   Phase 1 gate (PAPER.md 3.11: within 1.0 dB of x264 intra, 100-400 Mbit):
+>     FAIL: worst -7.192 dB at 100.9 Mbit/s, mean -5.226 dB over 100.9-282.5 Mbit/s   [before]
+>     FAIL: worst -6.845 dB at 100.9 Mbit/s, mean -5.014 dB over 100.9-292.7 Mbit/s   [after]
+> ```
+
+The gate still fails, by 5.8 dB rather than 6.2. Section 9 is why that is the
+expected result and not a shortfall in this package.
+
+### 8.3 The Phase 2 kill test, band A
+
+*(filled in below)*
 
 ---
 
