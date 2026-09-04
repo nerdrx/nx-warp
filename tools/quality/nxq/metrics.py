@@ -171,6 +171,11 @@ def ms_ssim(a: np.ndarray, b: np.ndarray, weights=MS_SSIM_WEIGHTS) -> float:
             y = _downsample2(y)
     if ssim_last is None:
         raise ValueError("image too small for MS-SSIM (needs at least 11x11)")
+    # The loop appends a cs term for every level it completes, including the
+    # last one when the *next* level is what turns out to be too small. The
+    # product is cs for every scale but the coarsest, times the full SSIM of
+    # the coarsest, so drop that trailing cs before renormalising.
+    cs_vals = cs_vals[: used - 1]
     w = np.asarray(weights[:used], dtype=np.float64)
     w = w / w.sum()
     # Clamp: the cs terms can go slightly negative on pathological input, and a
