@@ -36,7 +36,14 @@ struct ScenarioResult {
     double deadline_offset_us = 0;
 };
 
+// One loss scenario measured with FEC off, class A parity only, and the full
+// class-aware policy.  docs/RESEARCH-ACADEMIC.md entry 12 (GRACE).
+struct FecSweepRow {
+    ScenarioResult off, a_only, full;
+};
+
 void write_results(const std::string& path, const std::vector<ScenarioResult>& rows,
+                   const std::vector<FecSweepRow>& fec_sweep,
                    const std::string& preamble, const std::string& notes);
 
 }  // namespace nxsim
