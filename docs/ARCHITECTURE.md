@@ -535,6 +535,24 @@ and level at connect, and the server may only set bits the client offered. A dec
 unknown mandatory bit refuses the stream instead of guessing (paper 1.2). This is the Vulkan feature
 bit model and needs no version arithmetic.
 
+### 9.1 Colour space
+
+The stream header also carries a `color_space` field, negotiated at connect like every other
+capability (see [ADR-0021](adr/0021-stream-level-color-space-ycbcr-passthrough.md)):
+
+| Value | Source | References | Lossless |
+|---|---|---|---|
+| `YCOCG_R` | RGB render targets | display format, RGBA8 or RGB10A2 (paper 1.3) | yes, integer-reversible |
+| `YCBCR_PASSTHROUGH` | sources that are already YCbCr 4:2:0 | the source's own 4:2:0 layout | no, near-lossless only |
+
+This exists because the first integration target does not hand the codec RGB. WiVRn's encoder input on
+Linux is already YCbCr 4:2:0 and already foveated by the compositor, and the client already consumes
+4:2:0 from its decoder, so the Android decoder outputs 2-plane 4:2:0 on that path. Converting through
+RGB and back would add two conversions to the normative path and inflate reference traffic to preserve
+chroma resolution the source has already discarded. The coding tools are identical in both cases: the
+same transform, the same entropy coder and the same tile syntax operate on Y, Cb, Cr exactly as they
+do on Y, Co, Cg.
+
 Which device is expected to land in which profile is in [docs/COMPATIBILITY.md](COMPATIBILITY.md).
 The paper's own verdict (6.10) is that the Pico 4 is expected to land in hybrid mode and that Phase 0
 decides it with numbers.
