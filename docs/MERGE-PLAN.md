@@ -525,6 +525,43 @@ name the tiles carrying quadrant vectors, in which case bit 31 stays reserved.
 a **tile-row header** structure rather than a tile-header field, so its
 normative text belongs in `docs/SYNTAX.md` 3.3, not 4.1.
 
+### 4.10 rdo: `rdo-b` is the base, five things port from `rdo-a`
+
+`JUDGE-rdo.md`: **merge `tourney/rdo-b`** -- the rate model with bypass bits,
+the unified lambda at **k = 0.22**, the trellis with its `LAST` bound and SDH
+rebate, the DC plane through the trellis, the double-charge removal, the
+hierarchical MV search with SATD, the cheap QP search, and the presets.
+
+**Port from `rdo-a`:**
+
+1. **Preset as a *library* concept** -- `nxvc_preset` in `nxvc_config`, not a
+   CLI-only flag. A preset that only exists in `nxv-enc` is not available to
+   anything embedding the encoder.
+2. **The chroma distortion weight made explicit**, default-off at 1.0, with
+   `rdo-a`'s per-sample-density scaling.
+3. **`rdo-a`'s cheaper per-tile QP search** -- `requant_params` plus bounded
+   descent.
+4. **`RateCost::zero_cheapest`**, as a check of the trellis-truncation
+   identity.
+5. **`rdo-a`'s luma SSIM result (-25 %) as an OPEN ITEM to chase, not to merge
+   blindly.**
+
+#### Required fixes at merge: the docs contradict the code
+
+`rdo-b`'s `ref/README.md` and its `docs/SYNTAX.md` decision 53 describe an
+encoder it does not ship:
+
+| claim in rdo-b's docs | what the code does |
+|---|---|
+| lambda `0.30` | ships **0.22** |
+| a `kRefPersist` divisor | the divisor was **removed** |
+| preset `slow` credits `--wm auto` | the code does **not** set it |
+
+**Correct all three to the code**, and add the `CHANGELOG` entry `rdo-b` omits.
+This is the same defect class as `JUDGE-detail.md` item 4 and
+`JUDGE-inter.md` 1.1: the branch's own record of what it did is wrong, and the
+number in it is the one someone will quote later.
+
 ## 5. Recommended merge order
 
 Eight orders were measured end to end, counting conflicted files outside
@@ -568,7 +605,7 @@ resolutions in section 4 are the whole cost. Order is therefore chosen for the
    what decided whether a ninth tile-header byte existed -- and the judge
    dissolved the question by moving the near-skip correction into the tile-row
    header and dropping sub-tile intra, so the answer is no.
-5. **rdo sixth.** Encoder-only, and it rewrites every vector, so it must be the
+5. **rdo sixth, as a combination (4.10).** Encoder-only, and it rewrites every vector, so it must be the
    final input to the single vector-regeneration pass. Putting it anywhere
    else means regenerating vectors twice.
 6. **percept seventh, after rdo (4.8).** It is the only package touching
@@ -618,7 +655,12 @@ then inter, then rdo.
 | | `tests/ref/vectors.cpp` | renumber `v`/`r` vectors onto one sequence (4.3.2); rewrite the raw tool-bit pokes against constants (4.3.1) |
 | | Appendix A | inter-a contributes **no** entry; ask for one (rules criterion 4) |
 | | **inter-b's refresh, now merged** | `JUDGE-inter.md` 1.1: its tools-off encoder is **not** byte-identical to v1.4 (+11.5 %). The rolling refresh seeds its phase from `refresh_max_age` (720) instead of `intra_period` (180), so ~3/4 of tiles start past the threshold and are forced INTRA on frame 1. Fix the seed, then **re-measure**: that 11.5 % is the denominator of every delta in `ref/RESULTS-inter-b.md` section 3 |
-| **rdo** | `ref/src/codec.cpp`, `codec_impl.inc`, `ref/tools/nxv-enc.cpp` | encoder-side; take rdo where it only reorders search, keep the other branches' new syntax emission |
+| **rdo** (combination) | -- | **section 4.10.** `rdo-b` is the base; five items port from `rdo-a` |
+| | `include/nxvc/nxvc.h` | `nxvc_preset` in `nxvc_config` -- preset is a **library** concept, not CLI-only (APPEND the field) |
+| | `ref/src/rdo*`, `codec_impl.inc` | rdo-a's `requant_params` + bounded descent QP search; `RateCost::zero_cheapest` as the trellis-truncation identity check; chroma distortion weight explicit, default 1.0, per-sample-density scaling |
+| | `ref/README.md`, `docs/SYNTAX.md` decision 53 | **correct to the code**: lambda is **0.22** not 0.30, the `kRefPersist` divisor is **removed**, `slow` does **not** set `--wm auto` |
+| | `CHANGELOG.md` | add the entry rdo-b omits |
+| | open item | rdo-a's luma SSIM **-25 %** -- chase, do not merge blindly |
 | | all of `tests/vectors/` | regenerate, once, after this step |
 | **percept** | `tools/quality/nxq/fvvdp.py` | **add/add** -- keep MAIN's (metric's) copy, drop the branch's verbatim duplicate; `scripts/resolve-percept.py` |
 | | `tools/quality/README.md` | union both sides, ours first; same script |
