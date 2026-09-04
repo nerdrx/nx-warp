@@ -201,6 +201,15 @@ The shifts are 7 and 13, not the 7 and 12 of [PAPER 1.4]: with this flow graph
 the per-pass gain is `2^10`, so 7 + 12 would leave a residual gain of 2
 [SYNTAX decision 10].
 
+**Warning.** `docs/ERRATA.md` [R-24] corrects the same paper error to **8 and
+12**. Both splits total 20 and both give unity gain, but they place the pass-1
+intermediate one bit apart, so they round differently and produce **different
+decoded samples**. The errata declares `docs/SYNTAX.md` authoritative while
+itself stating the other numbers. This clause follows `docs/SYNTAX.md` (7 and
+13), which is the document the conformance vectors were generated against.
+This is a bit-exactness-level contradiction between two normative documents and
+is Annex C issue **C-20**.
+
 The forward transform is **not normative**. Any encoder may produce any
 coefficients it likes [SYNTAX 6.4].
 
@@ -565,22 +574,79 @@ refresh [PAPER 3.2.3].
 
 ## 6.8 Stereo prediction
 
-`mode == STEREO` predicts a tile of the second eye from the decoded first eye of
-the same frame, with a per-tile disparity vector in the same `mv_x`, `mv_y`
-field, and requires `stereo_enable` in the frame header and the `STEREO` tool
-bit.
+Normative source: `docs/STEREO.md` [R-22].
 
-The consequences a decoder must respect [PAPER 2.5]:
+`mode == STEREO` predicts a tile of the right eye from the **decoded left eye of
+the same frame**. It requires `stereo_enable` in the frame header and the
+`STEREO` tool bit. Left-eye tiles never carry mode `STEREO`; a stream in which
+one does MUST be rejected [STEREO 9].
 
-* a `STEREO` tile MUST be decoded after the co-located region of the first eye
-  of the same frame; the dispatch order is L row `r`, R row `r`, interleaved;
-* a `STEREO` tile whose first-eye reference has not arrived by the deadline is
-  treated as lost — concealed and reported missing — like any other loss;
-* this is the only intra-frame tile dependency in the format.
+### 6.8.1 The predictor
 
-Whether the first-eye reference is warped, offset, or read at identity, and what
-the disparity vector's origin is, is not specified anywhere.
-[pending STEREO.md]
+**The pose homography is NOT applied.** The warp compensates the change of view
+between two instants; the two eyes of frame `N` are the same instant, so there
+is nothing to compensate, and applying the warp here would be a defect rather
+than a refinement [STEREO 4]. The sampling chain is therefore the shorter one:
+
+```
+x_src_q6 = ((x + D_int) << 6) + D_frac_q6      // no homography, no corner interpolation
+x_q4     = (x_src_q6 + 2) >> 2
+pred     = filter16(left_recon, x_q4, y << 4)
+```
+
+with `D` split into integer and quarter-pel parts by the vector decode. The
+rounding is the same add-half-and-shift as the warp path and the filter is the
+same 16-phase table (clause 6.7.5, Annex A.4), so a decoder implements STEREO
+by selecting a different reference image and skipping the corner-division step.
+Clamp-to-edge applies as elsewhere.
+
+**The disparity is horizontal-only: the vertical component is zero in version
+1** [STEREO 6.1]. This is what bounds a right-eye tile's source region to at
+most three left-eye tiles of the *same* row, which is what makes the
+interleaved dispatch sufficient. A downward vertical component would make a
+right tile depend on a left tile row that has not been dispatched and is
+forbidden.
+
+### 6.8.2 Ordering and loss
+
+* A `STEREO` tile MUST be decoded after the left-eye tiles its source region
+  covers. Dispatch order is L row `r`, R row `r`, interleaved; the right eye
+  lags by one row's decode time and total decode time is unchanged
+  [PAPER 2.5].
+* A `STEREO` tile whose left-eye reference has not arrived by the deadline is
+  treated as lost — concealed and reported missing — like any other loss. A
+  right tile may not reference left tiles it cannot prove are present
+  [STEREO 6.3].
+* This is the **only** intra-frame tile dependency in the format.
+
+### 6.8.3 Consequences for state and for downstream consumers
+
+* `last_mv` holds the **disparity** for a `STEREO` tile. Because a tile may
+  alternate between `STEREO` and `WARP_MV` across frames and the two vectors
+  mean different things, the temporal delta predictor MUST be per-mode-class:
+  a disparity is predicted from the last disparity, a motion vector from the
+  last motion vector. This is an extra vector field in the per-tile state
+  [STEREO 9]. It is a further reason the per-tile state needs a normative
+  definition (clause 6.10, Annex C issue C-15).
+* `STEREO` tiles MUST be excluded from the motion field handed to client-side
+  motion smoothing, exactly as `STATIC_MV` tiles are: a 60-sample disparity
+  extrapolated as if it were object motion tears the right eye apart on a
+  synthesised frame [STEREO 4.1].
+
+### 6.8.4 Two unresolved conflicts with the syntax
+
+1. **The vector coding does not match the syntax.** [STEREO 2.3] decides that
+   the STEREO vector is coded as an **unsigned disparity in quarter samples
+   with an Exp-Golomb code and no fixed upper bound** (practically `+-512`
+   samples), because `f * IPD / z` reaches 60 samples at 1 m and about 200 at
+   30 cm, and 37.6% of tiles in the experiment exceeded the coarse search
+   range. Clause 4.7 codes the vector as two signed bytes `mv_x`, `mv_y` in the
+   tile header, which reaches `+-31.75` samples — **not enough for near-field
+   content**, and not an Exp-Golomb code, and not in the payload. Annex C issue
+   **C-21**.
+2. **`ref_sel` is not coded for a STEREO tile** [STEREO 9], because the mode
+   itself names the reference. Clause 4.7 has `ref_sel` as two fixed bits of
+   `word1` that are always present. Annex C issue C-22.
 
 ## 6.9 Layered and hybrid prediction
 

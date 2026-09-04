@@ -200,10 +200,15 @@ Two different Q4 uses appear above (quantiser steps and resampling
 coordinates). They never meet in one expression.
 
 **Note.** `docs/PAPER.md` 2.2 states the homography is quantised to Q8.24 with
-`h22 = 2^24`. The implementation in `warp/` uses Q10.21 for rows 0–1 and Q2.29
-for row 2. The implementation is the more recent decision, but no normative
-document has yet ratified it. Recorded as Annex C issue C-2.
-[pending WARP.md]
+`h22 = 2^24`. `docs/STEREO.md` 5 demonstrates that **this overflows**: with
+centred coordinates the largest coefficient is of order `f` (940 at the Pico 4's
+streamed width) and `940 * 2^24` exceeds `int32` by seven bits. `docs/STEREO.md`
+uses centred coordinates on a common **Q10.21** scale with `h22 = 2^21`, which
+bounds every coefficient by `2^31 / 2^21 = 1024 > f`. The implementation in
+`warp/` also uses Q10.21 for rows 0–1, but Q2.29 with `h22 = 2^29` for row 2 —
+a *split* scale, where `docs/STEREO.md` recommends a common one. So there are
+now three published formats for the same matrix and no normative document.
+Recorded as Annex C issue **C-2**. [pending WARP.md]
 
 ## 3.8 Pseudo-code
 

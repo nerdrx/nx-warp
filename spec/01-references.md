@@ -130,9 +130,18 @@ normative source for the integer pose warp, clause 6.7. Until it lands, that
 clause cites `warp/include/nxvc/warp.h` and `warp/ref/warp_ref.cpp` by commit
 and is marked provisional. [pending WARP.md]
 
-**[R-22]** `docs/STEREO.md` — *does not exist at the time of writing.*
-Intended normative source for inter-view prediction, clause 6.8.
-[pending STEREO.md]
+**[R-22]** `docs/STEREO.md`, *STEREO mode: inter-view prediction of the right
+eye*, this repository. Normative source for clause 6.8. It landed while this
+document set was being drafted; the conflicts it exposes with [R-18] are
+Annex C issues C-21 and C-22.
+
+**[R-24]** `docs/ERRATA.md`, *Paper errata*, this repository. Corrections to
+[I-1] found during implementation. It declares [R-18] authoritative while
+itself giving a different inverse-transform shift split; see Annex C issue
+C-20.
+
+**[R-25]** `docs/INTEGRATION-DECISIONS.md`, this repository. Origin of the
+`color_space` element (clause 5.2).
 
 **[R-23]** `docs/HYBRID.md` — *does not exist at the time of writing.*
 Intended normative source for the HEVC/AVC base-layer path, clause 6.9.

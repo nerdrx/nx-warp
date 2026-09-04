@@ -87,14 +87,23 @@ is applied internally; `chroma_format` MUST then be 1. With
 `color_transform == 0` the planes are coded exactly as given, which is the path
 used for ordinary YCbCr input.
 
-**`color_space`** identifies the meaning of the coded planes independently of
-whether a reversible transform is applied: 0 = YCoCg-R, 1 = YCbCr passthrough,
-the latter with a range flag, because the WiVRn source frames are already 4:2:0
-YCbCr. **The element is provisional**: it is not yet in `docs/SYNTAX.md`, the
-placement of the range flag is undecided, and its relationship to
-`color_transform` — whether the two are orthogonal, or whether `color_space`
-supersedes `color_transform` — must be settled before either can be
-implemented. Reserved at offset 42. See Annex C issue C-1.
+**`color_space`** identifies how the coded planes were produced
+[INTEGRATION-DECISIONS 1, ERRATA 3.6]:
+
+| Value | Meaning | Source of such a stream |
+|---|---|---|
+| 0 | YCoCg-R, computed by the encoder from RGB | Windows helper, RGB compositors |
+| 1 | YCbCr passthrough, planes coded as delivered, with a range flag | WiVRn Linux server |
+
+The transform, quantiser and entropy stages are identical in both; only the
+colour conversion stage of clause 6.3 is present or absent.
+
+**The element is provisional and appears to duplicate `color_transform`.**
+`color_space == 0` is exactly `color_transform == 1` and `color_space == 1` is
+exactly `color_transform == 0`, so as defined the two elements are the same
+axis inverted. It is not yet in `docs/SYNTAX.md`, the placement of the range
+flag is undecided, and one of the two elements should almost certainly be
+removed. Reserved at offset 42. See Annex C issue **C-1**.
 [pending SYNTAX.md]
 
 **`stream_reserved`** is 19 bytes that MUST be zero.
@@ -246,7 +255,10 @@ transported tile at 4095 bytes; see Annex C issue C-9.
 The field is 3 bits, resolving the paper's own disagreement between a 2-bit
 four-mode field [PAPER 1.2] and a five-mode list [PAPER 6.5]
 [SYNTAX decision 1]. Modes 0, 1, 2 and 4 require the corresponding tool bits
-(`INTER`, `WARP`, `STEREO`).
+(`INTER`, `WARP`, `STEREO`). The numbering above is `docs/SYNTAX.md`'s and is
+authoritative; note that [STEREO 9] refers to `STEREO` as "mode 3", counting
+ordinally in the paper's mode table rather than by this field's value. The two
+statements are compatible only under that reading. Annex C issue C-23.
 
 **`res_level`** is the coded resolution: 0 = 64x64, 1 = 32x32, 2 = 16x16, and 3
 is **reserved and MUST be rejected**. The tile is coded at `64 >> res_level` and
@@ -286,6 +298,9 @@ is the same field the transport calls `ref_delta`, keeping the name of
 "3 means intra" is dropped here because `mode` already says intra
 [SYNTAX decisions 1, 2]. The transport header's `ref_delta` retains value 3 as
 intra (clause 5.6), so the two fields do not have identical value sets.
+[STEREO 9] further states that `ref_sel` is *not coded* for a `STEREO` tile,
+which this syntax cannot express — the bits are always present in `word1`.
+Annex C issue C-22.
 
 **`tskip`** set means the whole tile skips the transform: the 64 coded values of
 each block are residual samples in raster order (clause 6.4.4). It requires the
@@ -301,10 +316,14 @@ process is specified anywhere. Recorded as Annex C issue C-10.
 
 **`mv_x`**, **`mv_y`** are the tile's motion vector components, signed 8-bit, in
 quarter samples (Q.2), range `[-32, +31.75]` samples. Present only when
-`mv_present` is set. Whether the coded value is the vector itself or a delta
-from the tile's stored previous vector is stated by [PAPER 2.3] (a delta) but
-not by any normative document. Recorded as Annex C issue C-11.
-[pending WARP.md]
+`mv_present` is set. Two things about this element are unsettled:
+
+* Whether the coded value is the vector itself or a delta from the tile's stored
+  previous vector is stated by [PAPER 2.3] (a delta) but by no normative
+  document. Annex C issue C-11. [pending WARP.md]
+* For a `STEREO` tile the vector is a **disparity**, which [STEREO 2.3] decides
+  to code as an unsigned Exp-Golomb value reaching about 512 samples — neither
+  the encoding nor the range of this element. Annex C issue **C-21**.
 
 **`alpha_value`** is the constant alpha that fills the plane when
 `alpha_mode == 1`.
