@@ -54,10 +54,11 @@ ALLOC = {
     "CTX_V3":          25,   # ctx-a's model, per JUDGE-ctx.md
     "TAB_V2":          26,   # ctx-b's table format, per JUDGE-ctx.md
     "XFORM_LARGE":     27,   # xform
-    "NEAR_SKIP":       28,   # inter
+    "NEAR_SKIP":       28,   # inter, in inter-b's tile-ROW header form
     "QUAD_MV":         29,   # inter
-    "SUBTILE_INTRA":   30,   # inter-a only
-    "TILE_EXT":        31,   # inter-a only, option A
+    # 30 and 31 are deliberately UNALLOCATED: JUDGE-inter.md dropped sub-tile
+    # intra, and moving the near-skip correction into the tile-row header
+    # removed the word1 pressure that TILE_EXT existed to relieve.
 }
 
 # Tools a judge examined and refused.  If one of these turns up in the merged
@@ -67,6 +68,12 @@ ALLOC = {
 # reassigned, so a later package does not inherit a bit with a history.
 DROPPED = {
     "VEC_ENT": "JUDGE-ctx.md: dropped, structural cost for nothing measurable",
+    "SUBTILE_INTRA": "JUDGE-inter.md: dropped, no allocation",
+    "SUB_INTRA": "JUDGE-inter.md: dropped, no allocation",
+    "TILE_EXT": ("not needed: near-skip moved to the tile-row header, so word1 "
+                 "28-31 fits split4x4 + xform_size + quad_mv exactly"),
+    "WARP_DC": "renamed onto NEAR_SKIP; the name must not survive the merge",
+    "MV_QUAD": "renamed onto QUAD_MV; the name must not survive the merge",
 }
 
 # Names that mean the same tool.  Applied across the whole tree before the
