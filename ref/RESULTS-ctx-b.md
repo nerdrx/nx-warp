@@ -158,6 +158,57 @@ Fixed in `tools/quality/compare.py`; the runs above use a pre-truncated
 
 ---
 
+## 1c. The Phase 2 kill test, before and after
+
+`nxv-enc --eyes 2 --inter on --poses <seq>.poses.json`, against `x265-p`
+(libx265, zerolatency, P-only, one reference, one IDR), all 36 frames, PSNR-Y,
+`--no-vmaf --no-ssim`. The two rate bands are `RESULTS-inter.md`'s, re-laddered
+for the v2 sequences: **band A** is 100-300 Mbit/s on this clip
+(`--qp 0,2,4,6`, 162 to 92 Mbit/s) and **band B** is the paper's own 0.2-0.6
+bits per pixel (`--qp 6,10,14,18`, 0.49 to 0.16 bpp). The anchor ladder is
+`6,12,18,24,30` and `12,18,24,30,36`.
+
+INTERTABLE
+
+Verbatim, band A on `vr-mixed-1024-v2` 4:2:0, before:
+
+```
+  codec nxv-v14 against x265-p, PSNR-Y
+  velocity split at the 20th percentile = 43.4 deg/s (8 of 36 frames)
+    overall (all frames)          BD-rate +243.95 %  BD-PSNR    n/a
+    fastest 20 % of frames        BD-rate +228.59 %  BD-PSNR    n/a
+    the remaining frames          BD-rate +248.10 %  BD-PSNR    n/a
+  Phase 2 kill test (PAPER.md 2.11 item 1):
+    "within 10 percent at rest and at least 30 percent better on the motion frames"
+    at rest   : BD-rate +248.10 % (allowed up to +10 %)  FAIL
+    on motion : BD-rate +228.59 % (needs -30 % or better)  FAIL
+    VERDICT   : FAIL
+```
+
+and after:
+
+```
+  codec nxv-final against x265-p, PSNR-Y
+  velocity split at the 20th percentile = 43.4 deg/s (8 of 36 frames)
+    overall (all frames)          BD-rate +242.27 %  BD-PSNR    n/a
+    fastest 20 % of frames        BD-rate +228.19 %  BD-PSNR    n/a
+    the remaining frames          BD-rate +246.08 %  BD-PSNR    n/a
+  Phase 2 kill test (PAPER.md 2.11 item 1):
+    "within 10 percent at rest and at least 30 percent better on the motion frames"
+    at rest   : BD-rate +246.08 % (allowed up to +10 %)  FAIL
+    on motion : BD-rate +228.19 % (needs -30 % or better)  FAIL
+    VERDICT   : FAIL
+```
+
+**The kill test fails before and after**, by the same margin it failed by in
+`RESULTS-inter.md`: the distance to x265-p is two to four hundred percent and
+an entropy-coding package moves it by one or two points. That is the honest
+reading and it is the one this document takes. What the package *does* do at
+the paper's operating density is visible in section 3 instead, where a QP 36
+frame's transmitted tables go from 14.45 % of everything to 3.41 %.
+
+---
+
 ## 2. `CTX_V3`: choosing the context layout
 
 The brief asked for contexts conditioned on the neighbouring block's CBF and
@@ -290,7 +341,28 @@ using. `table_iters` fixes both — reassign every tile against the trained sets
 retrain, repeat — and because the per-tile symbol histograms do not change, it
 costs no re-quantization at all, only arithmetic over stored histograms.
 
-TABLEITERS_PLACEHOLDER
+Encoded bytes of two frames, `--ctx v3 --tab v2`, 4:4:4 / 4:2:0:
+
+| `--table-iters` | QP 8 | QP 16 | QP 24 | QP 32 |
+|---|---|---|---|---|
+| 0 (the v1.4 encoder) | 380 838 / 325 790 | 219 256 / 200 409 | 122 402 / 118 668 | 69 098 / 71 512 |
+| 1 | 380 876 / 324 126 | 219 408 / 199 290 | 121 778 / 118 457 | 68 712 / 70 876 |
+| **3 (default)** | **380 204 / 324 064** | **218 672 / 198 290** | **121 496 / 117 935** | **68 332 / 70 352** |
+| 6 | 380 154 / 322 970 | 218 738 / 197 307 | 121 278 / 117 183 | 68 364 / 69 872 |
+
+Three iterations is worth **0.2 % to 1.6 %**, and it is worth most exactly
+where the rest of this package is worth least: at QP 32 on 4:2:0 it is 1.6 %,
+against `CTX_V3`'s -0.9 % there. Six is worth a further 0.3 % to 0.7 % on
+4:2:0 and nothing on 4:4:4; three is the default because the objective the
+iteration minimizes does **not** include the transmitted table cost, so running
+it to convergence optimizes the wrong thing, and because each iteration is a
+`table_set_cost` over every tile against all eight sets.
+
+One caveat that is the reason `--table-iters 0` also restores the old
+*selection* rule and not just the iteration count: scoring a tile against the
+trained sets without then retraining on that assignment is **worse** than the
+v1.4 encoder, not better — on 4:4:4 at QP 16 it costs 1.8 %. Assignment and
+training have to agree, so the two halves ship together or not at all.
 
 **More than eight sets was not built.** `table_set` is a 3-bit tile-header
 field and `tables_present` is a byte in the 40-byte frame header; sixteen sets
