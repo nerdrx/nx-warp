@@ -1199,26 +1199,33 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                 if (!vec_ok(mx, my)) return;
                 predict_tile(probe, g, rp, fp.warp[eye],
                              st ? 0 : eye, col, row, mode, mx, my, 1);
-                i64 v = sad_pred(probe.pl[0]);
+                i64 v;
+                if (!want_quad) {
+                    v = sad_pred(probe.pl[0]);
+                } else {
+                    // The same sum, split four ways.  A whole-tile SAD is the
+                    // sum of its quadrants', so this is sad_pred() written so
+                    // that the parts survive -- one pass, not two.
+                    i64 qs[4] = {0, 0, 0, 0};
+                    const PlaneState &sp = probe.pl[0];
+                    const int half = sp.size / 2;
+                    for (int y = 0; y < sp.size; ++y)
+                        for (int x = 0; x < sp.size; ++x) {
+                            const size_t i = (size_t)y * sp.size + x;
+                            const i32 dd = sp.samples[i] -
+                                           clamp_i32(sp.wpred[i], 0, sp.maxval);
+                            qs[(y >= half ? 2 : 0) + (x >= half ? 1 : 0)] +=
+                                dd < 0 ? -dd : dd;
+                        }
+                    v = qs[0] + qs[1] + qs[2] + qs[3];
+                    for (int q = 0; q < 4; ++q)
+                        if (quad_sad[q] < 0 || qs[q] < quad_sad[q]) {
+                            quad_sad[q] = qs[q];
+                            quad_x[q] = mx;
+                            quad_y[q] = my;
+                        }
+                }
                 if (qsad < 0 || v < qsad) { qsad = v; qx = mx; qy = my; }
-                if (!want_quad) return;
-                i64 qs[4] = {0, 0, 0, 0};
-                const PlaneState &sp = probe.pl[0];
-                const int half = sp.size / 2;
-                for (int y = 0; y < sp.size; ++y)
-                    for (int x = 0; x < sp.size; ++x) {
-                        const size_t i = (size_t)y * sp.size + x;
-                        i32 dd = sp.samples[i] -
-                                 clamp_i32(sp.wpred[i], 0, sp.maxval);
-                        qs[(y >= half ? 2 : 0) + (x >= half ? 1 : 0)] +=
-                            dd < 0 ? -dd : dd;
-                    }
-                for (int q = 0; q < 4; ++q)
-                    if (quad_sad[q] < 0 || qs[q] < quad_sad[q]) {
-                        quad_sad[q] = qs[q];
-                        quad_x[q] = mx;
-                        quad_y[q] = my;
-                    }
             };
             const int seed_x = qx, seed_y = qy;
             if (st) {
