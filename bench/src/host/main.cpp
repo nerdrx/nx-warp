@@ -32,6 +32,7 @@ void usage()
 "  --out PATH       write the result JSON here (default ./nxwarp-phase0-host.json)\n"
 "  --label TEXT     free-form label recorded in the JSON\n"
 "  --validation     enable VK_LAYER_KHRONOS_validation\n"
+"  --subgroup-size N  force the rANS kernel to subgroup width N (portability test)\n"
 "  --info           print the device capability probe and exit\n"
 "  -h, --help       this\n");
 }
@@ -99,6 +100,7 @@ int main(int argc, char** argv)
         else if (a == "--out")         cfg.outPath = next();
         else if (a == "--label")       cfg.label = next();
         else if (a == "--validation")  cfg.validation = true;
+        else if (a == "--subgroup-size") cfg.forceSubgroupSize = uint32_t(atoi(next().c_str()));
         else if (a == "--info")        infoOnly = true;
         else { fprintf(stderr, "unknown option %s\n", a.c_str()); usage(); return 2; }
     }

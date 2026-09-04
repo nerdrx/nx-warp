@@ -44,6 +44,12 @@ struct Config
     uint32_t kernelMask = 0x3f;        // K1..K5 by default; K6 is opt-in
     uint64_t seed = 0x5741525000000001ull;
 
+    // Force a subgroup width on the rANS kernel via
+    // VK_EXT_subgroup_size_control. 0 means "whatever the driver picks".
+    // This is how the 8-lane cluster rule of PAPER 3.2.6 gets tested across
+    // widths on one GPU, without needing four different GPUs.
+    uint32_t forceSubgroupSize = 0;
+
     std::string outPath;
     std::string label;                 // free-form, echoed into the JSON
 };
@@ -156,6 +162,13 @@ struct RunHooks
     std::function<bool(int frameIdx)>    preFrame;     // false aborts the run
     std::function<void(VkCommandBuffer)> extraRecord;  // e.g. the swapchain blit
     std::function<void()>                postFrame;    // e.g. present
+
+    // Lets the frontend attach swapchain synchronisation to the bench submit.
+    // The Android app uses it to wait on the acquire semaphore before the
+    // command buffer copies into the swapchain image.
+    std::function<void(std::vector<VkSemaphore>& waits,
+                       std::vector<VkPipelineStageFlags>& stages,
+                       std::vector<VkSemaphore>& signals)> submitSync;
 };
 
 class Runner

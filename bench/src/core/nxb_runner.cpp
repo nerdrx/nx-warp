@@ -104,9 +104,18 @@ KernelResult Runner::runPass(int kid, const Config& cfg, const RunHooks& hooks)
         if (hooks.extraRecord) hooks.extraRecord(cmd);
         NXB_VK(vkEndCommandBuffer(cmd));
 
+        std::vector<VkSemaphore> waits, signals;
+        std::vector<VkPipelineStageFlags> stages;
+        if (hooks.submitSync) hooks.submitSync(waits, stages, signals);
+
         VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO};
         si.commandBufferCount = 1;
         si.pCommandBuffers = &cmd;
+        si.waitSemaphoreCount = uint32_t(waits.size());
+        si.pWaitSemaphores = waits.empty() ? nullptr : waits.data();
+        si.pWaitDstStageMask = stages.empty() ? nullptr : stages.data();
+        si.signalSemaphoreCount = uint32_t(signals.size());
+        si.pSignalSemaphores = signals.empty() ? nullptr : signals.data();
         NXB_VK(vkQueueSubmit(ctx_->queue, 1, &si, fence_[slot]));
         NXB_VK(vkWaitForFences(ctx_->dev, 1, &fence_[slot], VK_TRUE, UINT64_MAX));
         NXB_VK(vkResetFences(ctx_->dev, 1, &fence_[slot]));

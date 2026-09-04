@@ -344,9 +344,30 @@ Bench::Kern Bench::makeKern(const uint32_t* spv, size_t bytes,
     // the local size is a multiple of the maximum subgroup size, so a 128-wide
     // part running a 64-thread group silently keeps the default behaviour --
     // which is fine, because the 8-lane clusters do not care.
-    if (requireFullSubgroups && ctx_->info.subgroupSizeControl &&
-        ctx_->info.subgroupMax > 0 && (64u % ctx_->info.subgroupMax) == 0)
-        ci.stage.flags |= VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT_EXT;
+    VkPipelineShaderStageRequiredSubgroupSizeCreateInfoEXT reqSize{
+        VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_REQUIRED_SUBGROUP_SIZE_CREATE_INFO_EXT};
+    if (requireFullSubgroups && ctx_->info.subgroupSizeControl)
+    {
+        uint32_t want = cfg_.forceSubgroupSize;
+        if (want && want >= ctx_->info.subgroupMin && want <= ctx_->info.subgroupMax &&
+            (want & (want - 1)) == 0 && (64u % want) == 0)
+        {
+            reqSize.requiredSubgroupSize = want;
+            ci.stage.pNext = &reqSize;
+            ci.stage.flags |= VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT_EXT;
+            NXB_LOG("rANS kernel: forcing subgroup size %u", want);
+        }
+        else if (!want && ctx_->info.subgroupMax > 0 && (64u % ctx_->info.subgroupMax) == 0)
+        {
+            ci.stage.flags |= VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT_EXT;
+        }
+        else if (want)
+        {
+            NXB_LOG("requested subgroup size %u is not supported (min %u max %u); "
+                    "using the driver default", want,
+                    ctx_->info.subgroupMin, ctx_->info.subgroupMax);
+        }
+    }
 
     NXB_VK(vkCreateComputePipelines(ctx_->dev, VK_NULL_HANDLE, 1, &ci, nullptr, &k.pipe));
     vkDestroyShaderModule(ctx_->dev, mod, nullptr);

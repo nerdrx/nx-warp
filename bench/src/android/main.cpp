@@ -187,6 +187,7 @@ void applyArgs(Config& cfg, const std::string& args, bool& selftest)
         else if (a == "--thermal")     cfg.thermalSeconds = atof(next().c_str());
         else if (a == "--label")       cfg.label = next();
         else if (a == "--validation")  cfg.validation = true;
+        else if (a == "--subgroup-size") cfg.forceSubgroupSize = uint32_t(atoi(next().c_str()));
         else if (a == "--selftest")    selftest = true;
     }
 }
@@ -394,23 +395,31 @@ void android_main(android_app* app)
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
                              VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &b);
     };
+    // The command buffer copies into the acquired swapchain image, so the
+    // submit must wait on the acquire semaphore. Without this the copy can
+    // start while the presentation engine still owns the image.
+    hooks.submitSync = [&](std::vector<VkSemaphore>& waits,
+                           std::vector<VkPipelineStageFlags>& stages,
+                           std::vector<VkSemaphore>& signals) {
+        if (!haveImage) return;
+        waits.push_back(sc.acquired);
+        stages.push_back(VK_PIPELINE_STAGE_TRANSFER_BIT);
+        signals.push_back(sc.rendered);
+    };
     hooks.postFrame = [&]() {
         if (!haveImage) return;
-        // The bench submit is already fence-waited by the runner, so the
-        // image is ready; present without extra semaphores.
+        // The runner already waited the submit fence, so the image is ready;
+        // the semaphore is passed anyway so the presentation engine has a
+        // proper dependency rather than an implicit one.
         VkPresentInfoKHR pi{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
+        pi.waitSemaphoreCount = 1;
+        pi.pWaitSemaphores = &sc.rendered;
         pi.swapchainCount = 1;
         pi.pSwapchains = &sc.handle;
         pi.pImageIndices = &imageIndex;
-        vkQueuePresentKHR(ctx.queue, &pi);
-        // Consume the acquire semaphore so it can be reused: a wait-only
-        // submit is the cheapest legal way to do that.
-        VkPipelineStageFlags stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO};
-        si.waitSemaphoreCount = 1;
-        si.pWaitSemaphores = &sc.acquired;
-        si.pWaitDstStageMask = &stage;
-        vkQueueSubmit(ctx.queue, 1, &si, VK_NULL_HANDLE);
+        VkResult pr = vkQueuePresentKHR(ctx.queue, &pi);
+        if (pr != VK_SUCCESS && pr != VK_SUBOPTIMAL_KHR)
+            NXB_LOG("vkQueuePresentKHR returned %d", int(pr));
         haveImage = false;
     };
 
