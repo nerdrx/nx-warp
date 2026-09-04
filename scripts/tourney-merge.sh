@@ -138,7 +138,19 @@ for b in ${SORTED[@]+"${SORTED[@]}"}; do
               docs/SYNTAX.md)      msgs+=("$f -- three colliding tables + section numbering: docs/MERGE-PLAN.md 4.1") ;;
               include/nxvc/nxvc.h) msgs+=("$f -- union NXVC_TOOLS_SUPPORTED, renumber per docs/TOOLBITS.md 2: MERGE-PLAN 4.2") ;;
               python/src/nxvc/_ffi.py) msgs+=("$f -- Tool.<NAME>, the names table AND Tool.RESERVED_FROM: MERGE-PLAN 4.2") ;;
-              ref/src/transform.*) msgs+=("$f -- SEMANTIC: fold detail's 4x4 into xform's fdct_2d/idct_2d family: MERGE-PLAN 4.4") ;;
+              ref/src/transform.*) msgs+=("$f -- DECIDED, see MERGE-PLAN 4.4: ONE family fdct_2d(n)/idct_2d(n)"
+                                          "     for n in {4,8,16,32} on xform-b's recursion.  Invariant: 2D gain"
+                                          "     exactly 2^20 at every size, one qstep table, one weighting rule"
+                                          "     w_N[u][v] = w_8[u>>s][v>>s].  detail-a's 4x4 constants stay only if"
+                                          "     they already meet it, else rescale.  A 2x scale slip does NOT fail"
+                                          "     loudly -- it shifts effective QP by 6 -- so the ctest checking every"
+                                          "     size's 2D gain against a float DCT to 0.1% is MANDATORY.") ;;
+              ref/src/codec.cpp|ref/src/entropy.*) msgs+=("$f -- DECIDED, see MERGE-PLAN 4.5: merge to"
+                                          "     uc.level(scan_pos, prev_class, band_min), UnitCtx carrying ucls,"
+                                          "     ctx_v3 AND band_min.  CTX_V3 conditions per CODING UNIT (the 8x8"
+                                          "     coefficient group), NEVER per transform block: a 32x32 block is"
+                                          "     sixteen units, each conditioned on the previous unit its own rANS"
+                                          "     lane decoded, exactly as 8x8 blocks are.") ;;
               tests/ref/vectors.cpp) msgs+=("$f -- keep both branches' vectors, renumber so no v57 repeats: MERGE-PLAN 4.3") ;;
               *)                   msgs+=("$f") ;;
             esac
@@ -184,7 +196,10 @@ $NICE $CMAKE --preset $PRESET -DNXWARP_BUILD_VK=OFF >/dev/null 2>&1 \
 if ! $NICE $CMAKE --build --preset $PRESET -j"$JOBS" 2>&1 | tail -40; then
     die "build failed" \
         "The most likely cause is docs/MERGE-PLAN.md 4.4: xform's fdct_2d(n,...)" \
-        "and detail's fdct8x8 cannot both exist.  Unify them before re-running."
+        "and detail's fdct8x8 cannot both exist.  The decision is ONE family over" \
+        "n in {4,8,16,32} with a 2D gain of exactly 2^20 at every size; unify them" \
+        "onto it, and do not skip the 0.1% gain ctest -- a 2x scale slip is silent" \
+        "and shifts the effective QP by 6."
 fi
 
 # --------------------------------------------------------- regenerate vectors
