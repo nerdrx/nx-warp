@@ -2248,15 +2248,20 @@ inconsistent. Each is a decision, not an interpretation.
     real money. The count is derived from the tool bits alone (section 9.3),
     so both ends compute it without any extra field.
 
-57. **A transmitted table set must pay for itself.** Before v1.5 the encoder
-    sent all eight sets whenever any tile used custom tables. At 270 bytes a
-    set under `CTX_V3` that is 2160 bytes of frame header, which on a QP 32
-    frame of this material is 6 %. The encoder now transmits set *k* only when
-    the tiles assigned to it save more than `nctx * 16 * 5` bits, and chooses
-    each tile's set against the tables actually in force rather than always
-    against the built-ins. Both are encoder decisions: `tables_present`
-    already says which sets are transmitted, and a decoder that never saw the
-    old behaviour cannot tell the difference.
+57. **A transmitted table set must pay for itself, and a tile picks its set
+    against the tables it will actually be coded with.** Before v1.5 the
+    encoder transmitted a set whenever *any* tile chose it, however little that
+    set was worth, and it chose each tile's set against the **built-in
+    defaults** in both passes -- including the pass that was about to encode
+    with the trained tables it had just derived. The encoder now transmits set
+    *k* only when the tiles assigned to it save more than the
+    `nctx * 16 * 5` bits the set costs, and re-picks each tile's set against
+    the tables in force. Both are encoder decisions: `tables_present` already
+    says which sets a frame transmits, and a decoder that never saw the old
+    behaviour cannot tell the difference. It is worth a set or so per frame --
+    on a 2048x1024 4:4:4 frame of the harness material, `tables_present` goes
+    from 6 sets to 5 at QP 8 and from 4 to 3 at QP 24 -- plus whatever the
+    consistent set choice is worth, which `ref/RESULTS-ctx-a.md` measures.
 
 58. **The tile vector moves into the payload, reversing decision 47, and it
     is behind its own tool bit.** Decision 47 declined to code the `STEREO`

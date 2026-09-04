@@ -81,7 +81,7 @@ NXVC_TILE_SIZE = 64
 #: library reports its own with :func:`library_minor`, and it may be **ahead**
 #: of this one while a syntax revision is landing -- the parser then still
 #: reads every structure it knows, and refuses what it does not.
-NXVC_BITSTREAM_MINOR = 4
+NXVC_BITSTREAM_MINOR = 5
 
 #: The four-byte magic at the head of every stream: the ASCII bytes ``NXV1``.
 NXVC_MAGIC = 0x3156584E

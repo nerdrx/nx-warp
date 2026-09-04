@@ -47,8 +47,13 @@ extern "C" {
  *       picture per eye and row-major/eye-minor tile rows, the four-slot
  *       reference ring addressed by `ref_sel`, and the 12-bit STEREO
  *       `disparity` field replacing mv_x/mv_y.  See docs/SYNTAX.md 8.
+ *   5 : the entropy/context package -- tool bit 24 CTX_V3, the 27-context
+ *       coefficient model (docs/SYNTAX.md 9.8), and tool bit 25 VEC_ENT, the
+ *       tile vector as the payload's first coding unit instead of two raw
+ *       tile-header bytes (9.9).  Both are additive and both are off in
+ *       nxvc_config_default(), so a v1.4 caller writes a v1.4 stream.
  */
-#define NXVC_BITSTREAM_MINOR 4
+#define NXVC_BITSTREAM_MINOR 5
 
 /* "nxvc_ref <major>.<minor> (syntax v1.<minor>)" -- a static string, safe to
  * call before any object exists.  Used by the Python bindings to check that

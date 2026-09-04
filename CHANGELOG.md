@@ -40,6 +40,21 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
   tool-bit gating, and the `nxv-enc`, `nxv-dec` and `nxv-info` tools.
 - 32 conformance vectors in `tests/vectors/` with an md5 manifest, covering intra, lossless, alpha,
   resolution levels, custom tables, odd frame sizes and multi-frame streams.
+- Bitstream **syntax v1.5**, the entropy and context-modelling package, both tools additive and both
+  off in `nxvc_config_default()`:
+  - `CTX_V3` (tool bit 24, `--ctx v3`): 27 coefficient contexts. `CBF` and `LAST` are conditioned on
+    the class of the previous block unit **the same rANS lane** decoded in the same plane, which is
+    the block above it at the v1 lane count; `LEVEL` gets contexts for scan position `LAST`, which
+    cannot be zero, and for the DC term of a DC plane. Costs a decoder two registers per lane and no
+    memory traffic (`docs/SYNTAX.md` 9.8).
+  - `VEC_ENT` (tool bit 25, `--vec-ent`): the tile's motion vector or `STEREO` disparity is the
+    payload's first coding unit -- a magnitude class in its own context, raw bits, an Exp-Golomb
+    order-3 tail and a sign -- instead of two raw tile-header bytes (`docs/SYNTAX.md` 9.9).
+  - Encoder only, no tool bit: a probability table set is transmitted only when the tiles assigned to
+    it save more than it costs, and each tile's set is chosen against the tables actually in force
+    rather than always against the built-ins.
+  - Measured in `ref/RESULTS-ctx-a.md`, which also records two rejected experiments with their
+    numbers: 12-bit probabilities and 16 rANS lanes per tile.
 
 **Vulkan**
 
