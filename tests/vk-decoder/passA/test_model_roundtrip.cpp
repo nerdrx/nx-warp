@@ -84,12 +84,21 @@ int main() {
         failures += check("mixed420", cfg);
     }
 
+    {   // Mixed res_level: 64x64, 32x32 and 16x16 coded tiles in one dispatch.
+        CorpusConfig cfg;
+        cfg.num_tiles = 512;
+        cfg.seed = 24680;
+        cfg.allow_res_level = true;
+        failures += check("mixed_res", cfg);
+    }
+
     {   // 4:4:4 with a coded alpha plane: the widest geometry.
         CorpusConfig cfg;
         cfg.num_tiles = 256;
         cfg.seed = 777;
         cfg.allow_chroma444 = true;
         cfg.allow_alpha = true;
+        cfg.allow_res_level = true;
         failures += check("chroma444_alpha", cfg);
     }
 
@@ -108,6 +117,7 @@ int main() {
         CorpusConfig cfg;
         cfg.num_tiles = 256;
         cfg.seed = 424242;
+        cfg.allow_res_level = true;
         cfg.cbf_prob = 60;
         cfg.density = 100;
         cfg.mean_last = 200;

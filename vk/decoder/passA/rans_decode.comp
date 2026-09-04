@@ -1,0 +1,540 @@
+#version 460
+// NX Warp decoder, Pass A: interleaved rANS entropy decode.
+//
+// One workgroup decodes TILES_PER_GROUP (8) tiles; each tile is decoded by
+// LANES (8) interleaved rANS lanes, so the workgroup is 64 threads.
+//
+// The eight lanes of a tile share ONE read pointer into the tile's byte
+// stream.  Within a scheduling round the lanes that renormalise consume
+// 16-bit words in ascending lane order; a ballot over the 8-lane cluster
+// plus an exclusive bit count gives each lane its offset, and the cluster
+// advances the pointer by the popcount.  READ_PTR_MODE == 1 selects an
+// LDS-based fallback that computes the identical offsets without any
+// subgroup op, for devices with subgroupSize < 8 or unreliable ballot.
+//
+// All normative arithmetic is int32/uint32.  There is no float and no
+// division anywhere in the per-symbol path.
+//
+// Every bitstream constant comes from syntax_constants.h.  See README.md.
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_KHR_shader_subgroup_ballot : require
+#extension GL_EXT_shader_16bit_storage : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int16 : require
+
+#include "syntax_constants.h"
+
+// ---------------------------------------------------------------------------
+// Specialisation constants
+// ---------------------------------------------------------------------------
+layout(constant_id = 0) const uint READ_PTR_MODE = 0;   // kReadPtrBallot
+layout(constant_id = 1) const uint TILES_PER_GROUP = 8; // kTilesPerGroup
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+// ---------------------------------------------------------------------------
+// Bindings
+// ---------------------------------------------------------------------------
+layout(std430, set = 0, binding = 0) readonly buffer Bitstream {
+    uint data[];
+} u_bits;
+
+layout(std430, set = 0, binding = 1) readonly buffer TileDesc {
+    uint data[];  // kTileDescUints per tile
+} u_tiles;
+
+// Cumulative frequencies: cum[set][ctx][sym], sym 0..15.  cum[16] == 1024.
+layout(std430, set = 0, binding = 2) readonly buffer Tables {
+    uint data[];
+} u_tables;
+
+layout(std430, set = 0, binding = 3) writeonly buffer Coefs {
+    int16_t data[];
+} u_coef;
+
+layout(std430, set = 0, binding = 4) buffer CbfBits {
+    uint data[];
+} u_cbf;
+
+layout(std430, set = 0, binding = 5) writeonly buffer Status {
+    uint data[];  // one per tile
+} u_status;
+
+layout(push_constant) uniform Push {
+    uint num_tiles;
+    uint frame_nplanes;   // 3 or 4
+    uint coef_stride;     // int16 entries reserved per tile
+    uint cbf_words;       // uints reserved per tile
+} pc;
+
+// ---------------------------------------------------------------------------
+// Shared memory
+// ---------------------------------------------------------------------------
+// Cumulative frequency tables for all 8 sets: 8 * 12 * 16 uints = 6 KiB.
+shared uint s_cum[kNumTableSets * kNumCtx * kNumSym];
+// scan_pos -> block index, four tables of 64 slots: 1 KiB.
+shared uint s_scan[kNumScans * kScanStride];
+
+// Per-tile-slot geometry, filled by lane 0 of each tile.
+shared int s_np[8];              // coded plane count
+shared int s_nb[8 * kMaxPlanes]; // blocks per edge, per plane
+shared int s_unit_base[8 * (kMaxPlanes + 1)];
+shared int s_coef_base[8 * kMaxPlanes];
+shared int s_nunits[8];
+shared int s_tskip[8];
+shared uint s_tabbase[8];        // table_set * kNumCtx * kNumSym
+shared uint s_pay[8];            // byte offset of the rANS payload
+shared uint s_end[8];            // one past the last payload byte
+shared uint s_ok[8];             // status accumulator
+
+// Fallback read-pointer exchange and the workgroup-wide "any lane active".
+shared uint s_renorm[8];
+shared uint s_any;
+
+// ---------------------------------------------------------------------------
+// Bitstream access.  The buffer is uint-addressed; these read bytes.
+// ---------------------------------------------------------------------------
+uint load_byte(uint byte_off) {
+    uint w = u_bits.data[byte_off >> 2u];
+    return (w >> ((byte_off & 3u) * 8u)) & 0xffu;
+}
+
+// Little-endian uint32, used for the tile header and the lane init states.
+uint load_u32le(uint byte_off) {
+    return load_byte(byte_off) | (load_byte(byte_off + 1u) << 8u) |
+           (load_byte(byte_off + 2u) << 16u) | (load_byte(byte_off + 3u) << 24u);
+}
+
+// Big-endian uint16, the renormalisation word.
+uint load_u16be(uint byte_off) {
+    return (load_byte(byte_off) << 8u) | load_byte(byte_off + 1u);
+}
+
+// ---------------------------------------------------------------------------
+// Per-lane decoder state (registers)
+// ---------------------------------------------------------------------------
+// rANS
+uint  g_state;
+uint  g_pos;      // shared read pointer, byte offset into the bitstream
+uint  g_end;      // one past the last payload byte
+// LaneMachine
+const int kPhCbf = 0, kPhLast = 1, kPhLastRaw = 2, kPhLevel = 3;
+const int kPhEscPrefix = 4, kPhEscSuffix = 5, kPhSign = 6, kPhDone = 7;
+
+int  g_phase;
+int  g_ui;        // current unit index
+int  g_stride;    // == LANES
+int  g_nunits;
+int  g_last, g_pos_sp, g_prev_class, g_last_cls, g_mag;
+int  g_esc_j, g_esc_bits, g_esc_done;
+uint g_esc_acc;
+// current unit
+int  g_u_ncoef, g_u_scan, g_u_ctx_cbf, g_u_ctx_last, g_u_coef;
+// tile
+int  g_slot;
+uint g_coef_off;  // int16 index of this tile's region
+uint g_cbf_off;   // uint index of this tile's CBF words
+
+int scan_index(int scan_id, int p) {
+    return int(s_scan[uint(scan_id * kScanStride + p)]);
+}
+
+void fail(uint code) {
+    if (s_ok[g_slot] == kStatusOk) s_ok[g_slot] = code;
+    g_phase = kPhDone;
+}
+
+// ---------------------------------------------------------------------------
+// Unit lookup: derive the current unit's properties from its index.
+// Mirrors TileCoder::build_units(): per plane one DC unit of nb*nb
+// coefficients, then nb*nb block units of 64.
+// ---------------------------------------------------------------------------
+void begin_unit() {
+    int base = g_slot * (kMaxPlanes + 1);
+    int p = 0;
+    for (int q = 1; q < s_np[g_slot]; ++q)
+        if (s_unit_base[base + q] <= g_ui) p = q;
+
+    int k = g_ui - s_unit_base[base + p];
+    int nb = s_nb[g_slot * kMaxPlanes + p];
+    int ndc = nb * nb;
+    int chroma = (p == 1 || p == 2) ? 1 : 0;
+    g_u_ctx_cbf = chroma != 0 ? kCtxCbfChroma : kCtxCbfLuma;
+    g_u_ctx_last = chroma != 0 ? kCtxLastChroma : kCtxLastLuma;
+    if (k == 0) {
+        g_u_ncoef = ndc;
+        g_u_scan = nxs_scan_id(ndc, 0);
+        g_u_coef = s_coef_base[g_slot * kMaxPlanes + p];
+    } else {
+        g_u_ncoef = kCoefPerBlock;
+        g_u_scan = nxs_scan_id(kCoefPerBlock, s_tskip[g_slot]);
+        g_u_coef = s_coef_base[g_slot * kMaxPlanes + p] + ndc +
+                   (k - 1) * kCoefPerBlock;
+    }
+    g_phase = kPhCbf;
+}
+
+void begin_levels() {
+    g_pos_sp = g_last;
+    g_prev_class = 0;
+    g_phase = kPhLevel;
+}
+
+void advance_pos() {
+    g_prev_class = nxs_level_class(g_mag < 0 ? -g_mag : g_mag);
+    if (g_pos_sp == 0) {
+        g_ui += g_stride;
+        if (g_ui >= g_nunits) g_phase = kPhDone; else begin_unit();
+    } else {
+        --g_pos_sp;
+        g_phase = kPhLevel;
+    }
+}
+
+void lane_init(int lane) {
+    g_stride = int(kLanes);
+    g_ui = lane;
+    g_last = 0; g_pos_sp = 0; g_prev_class = 0; g_last_cls = 0; g_mag = 0;
+    g_esc_j = 0; g_esc_bits = 0; g_esc_done = 0; g_esc_acc = 0u;
+    if (g_ui >= g_nunits) { g_phase = kPhDone; return; }
+    begin_unit();
+}
+
+// ---------------------------------------------------------------------------
+// LaneMachine::next() - what does this lane code now?
+// out_kind: 0 = symbol (out_arg is the context), 1 = bypass (out_arg is bits)
+// Returns false when the lane has finished.  Does not mutate the machine.
+// ---------------------------------------------------------------------------
+bool lane_next(out int out_kind, out int out_arg) {
+    out_kind = 0; out_arg = 0;
+    if (g_phase == kPhDone) return false;
+    if (g_phase == kPhCbf)  { out_kind = 0; out_arg = g_u_ctx_cbf;  return true; }
+    if (g_phase == kPhLast) { out_kind = 0; out_arg = g_u_ctx_last; return true; }
+    if (g_phase == kPhLastRaw) {
+        out_kind = 1; out_arg = kLastRawBits[g_last_cls]; return true;
+    }
+    if (g_phase == kPhLevel) {
+        out_kind = 0; out_arg = nxs_level_ctx(g_pos_sp, g_prev_class);
+        return true;
+    }
+    if (g_phase == kPhEscPrefix) { out_kind = 1; out_arg = 1; return true; }
+    if (g_phase == kPhEscSuffix) {
+        int nchunks = (g_esc_bits + kEscChunkBits - 1) / kEscChunkBits;
+        int chunk = g_esc_done == 0
+                        ? g_esc_bits - kEscChunkBits * (nchunks - 1)
+                        : kEscChunkBits;
+        out_kind = 1; out_arg = chunk; return true;
+    }
+    // kPhSign
+    out_kind = 1; out_arg = 1; return true;
+}
+
+void store_coef(int value) {
+    u_coef.data[g_coef_off + uint(g_u_coef + scan_index(g_u_scan, g_pos_sp))] =
+        int16_t(value);
+}
+
+// ---------------------------------------------------------------------------
+// LaneMachine::feed() - apply the decoded value.
+// ---------------------------------------------------------------------------
+void lane_feed(uint v) {
+    if (g_phase == kPhCbf) {
+        if (v > 1u) { fail(kStatusBadSymbol); return; }
+        if (v == 0u) {
+            g_ui += g_stride;
+            if (g_ui >= g_nunits) g_phase = kPhDone; else begin_unit();
+            return;
+        }
+        atomicOr(u_cbf.data[g_cbf_off + uint(g_ui) / 32u],
+                 1u << (uint(g_ui) & 31u));
+        if (g_u_ncoef == 1) { g_last = 0; begin_levels(); return; }
+        g_phase = kPhLast;
+        return;
+    }
+    if (g_phase == kPhLast) {
+        if (v > uint(kLastMaxClass)) { fail(kStatusBadSymbol); return; }
+        g_last_cls = int(v);
+        int base = kLastBase[g_last_cls];
+        if (base >= g_u_ncoef) { fail(kStatusBadSymbol); return; }
+        if (kLastRawBits[g_last_cls] > 0) { g_phase = kPhLastRaw; return; }
+        g_last = base;
+        begin_levels();
+        return;
+    }
+    if (g_phase == kPhLastRaw) {
+        g_last = kLastBase[g_last_cls] + int(v);
+        if (g_last >= g_u_ncoef) { fail(kStatusBadSymbol); return; }
+        begin_levels();
+        return;
+    }
+    if (g_phase == kPhLevel) {
+        if (v == uint(kEscSym)) { g_esc_j = 0; g_phase = kPhEscPrefix; return; }
+        g_mag = int(v);
+        if (g_mag == 0) {
+            if (g_pos_sp == g_last) { fail(kStatusBadSymbol); return; }
+            store_coef(0);
+            g_mag = 0;
+            advance_pos();
+            return;
+        }
+        g_phase = kPhSign;
+        return;
+    }
+    if (g_phase == kPhEscPrefix) {
+        if (v > 1u) { fail(kStatusBadSymbol); return; }
+        if (v == 1u) {
+            if (++g_esc_j > kEscMaxPrefix) { fail(kStatusBadSymbol); return; }
+            return;
+        }
+        g_esc_bits = g_esc_j + kEscOrder;
+        g_esc_done = 0;
+        g_esc_acc = 0u;
+        g_phase = kPhEscSuffix;
+        return;
+    }
+    if (g_phase == kPhEscSuffix) {
+        int nchunks = (g_esc_bits + kEscChunkBits - 1) / kEscChunkBits;
+        int chunk = g_esc_done == 0
+                        ? g_esc_bits - kEscChunkBits * (nchunks - 1)
+                        : kEscChunkBits;
+        g_esc_acc = (g_esc_acc << uint(chunk)) | v;
+        g_esc_done += chunk;
+        if (g_esc_done < g_esc_bits) return;
+        uint n = (1u << uint(g_esc_bits)) + g_esc_acc;
+        uint val = n - (1u << uint(kEscOrder));
+        if (val > uint(kEscMaxValue)) { fail(kStatusBadSymbol); return; }
+        g_mag = int(val) + kEscSym;
+        g_phase = kPhSign;
+        return;
+    }
+    // kPhSign
+    if (v > 1u) { fail(kStatusBadSymbol); return; }
+    store_coef(v != 0u ? -g_mag : g_mag);
+    advance_pos();
+}
+
+// ---------------------------------------------------------------------------
+// Symbol lookup.  Branchless binary search for the largest s with
+// cum[s] <= slot; identical to indexing ref's 1024-entry slot2sym table,
+// but 12 contexts x 8 table sets of those would not fit in LDS.
+// ---------------------------------------------------------------------------
+uint cum_at(uint tabbase, int ctx, int s) {
+    return s_cum[tabbase + uint(ctx * kNumSym + s)];
+}
+
+void decode_symbol(uint tabbase, int ctx, uint slot, out uint sym,
+                   out uint f, out uint c) {
+    int s = 0;
+    if (cum_at(tabbase, ctx, 8) <= slot) s = 8;
+    if (cum_at(tabbase, ctx, s + 4) <= slot) s += 4;
+    if (cum_at(tabbase, ctx, s + 2) <= slot) s += 2;
+    if (cum_at(tabbase, ctx, s + 1) <= slot) s += 1;
+    c = cum_at(tabbase, ctx, s);
+    uint hi = (s == kNumSym - 1) ? kProbScale : cum_at(tabbase, ctx, s + 1);
+    f = hi - c;
+    sym = uint(s);
+}
+
+// ---------------------------------------------------------------------------
+void main() {
+    uint lid = gl_LocalInvocationID.x;
+    int slot = int(lid >> 3u);
+    int lane = int(lid & 7u);
+    g_slot = slot;
+
+    // --- shared table load -------------------------------------------------
+    const uint kCumWords = uint(kNumTableSets * kNumCtx * kNumSym);
+    for (uint i = lid; i < kCumWords; i += kWorkgroupSize)
+        s_cum[i] = u_tables.data[i];
+    for (uint i = lid; i < uint(kNumScans * kScanStride); i += kWorkgroupSize) {
+        uint t = i / uint(kScanStride);
+        uint p = i % uint(kScanStride);
+        uint v = p;  // kScanRaster8 / kScanSmall are the identity
+        if (t == uint(kScanZigzag8)) v = uint(kZigzag8[p]);
+        else if (t == uint(kScanZigzag4)) v = (p < 16u) ? uint(kZigzag4[p]) : p;
+        s_scan[i] = v;
+    }
+    if (lane == 0) {
+        s_ok[slot] = kStatusOk;
+        s_renorm[slot] = 0u;
+    }
+    if (lid == 0u) s_any = 0u;
+    barrier();
+
+    uint tile = gl_WorkGroupID.x * TILES_PER_GROUP + uint(slot);
+    bool valid = tile < pc.num_tiles;
+
+    // --- tile header -------------------------------------------------------
+    uint hdr_off = 0u, bs_len = 0u;
+    if (valid) {
+        uint d = tile * kTileDescUints;
+        hdr_off = u_tiles.data[d + kTdBitsOffset];
+        bs_len = u_tiles.data[d + kTdBitsLength];
+        g_coef_off = tile * pc.coef_stride;
+        g_cbf_off = tile * pc.cbf_words;
+    }
+
+    if (valid && lane == 0) {
+        uint w0 = load_u32le(hdr_off);
+        uint w1 = load_u32le(hdr_off + 4u);
+        int res_level = int((w1 >> kThResLevelShift) & kThResLevelMask);
+        int chroma444 = int((w1 >> kThChroma444Shift) & kThChroma444Mask);
+        int alpha_mode = int((w1 >> kThAlphaModeShift) & kThAlphaModeMask);
+        uint table_set = (w1 >> kThTableSetShift) & kThTableSetMask;
+        uint nsub_log2 = (w1 >> kThNsubLog2Shift) & kThNsubLog2Mask;
+        s_tskip[slot] = int((w1 >> kThTskipShift) & kThTskipMask);
+        s_tabbase[slot] = table_set * uint(kNumCtx * kNumSym);
+
+        // Payload start accounts for the optional MV / alpha bytes, and the
+        // payload is bounded by payload_len as well as by the tile length.
+        uint pay = nxs_tile_payload_offset(hdr_off, w1);
+        uint paylen = (w0 >> kThPayloadLenShift) & kThPayloadLenMask;
+        s_pay[slot] = pay;
+        uint tile_end = hdr_off + bs_len;
+        uint pay_end = pay + paylen;
+        s_end[slot] = pay_end < tile_end ? pay_end : tile_end;
+
+        if (nxs_tile_header_reserved_bad(w0, w1) != 0 ||
+            nsub_log2 != kLanesLog2 ||
+            pay + kLanes * kInitBytesPerLane > s_end[slot]) {
+            s_ok[slot] = kStatusBadHeader;
+        }
+
+        int np = nxs_coded_planes(int(pc.frame_nplanes), alpha_mode);
+        s_np[slot] = np;
+        int ub = 0, cb = 0;
+        for (int p = 0; p < kMaxPlanes; ++p) {
+            s_unit_base[slot * (kMaxPlanes + 1) + p] = ub;
+            s_coef_base[slot * kMaxPlanes + p] = cb;
+            if (p < np) {
+                int nb = nxs_plane_size(p, res_level, chroma444) / kBlockSize;
+                s_nb[slot * kMaxPlanes + p] = nb;
+                int ndc = nb * nb;
+                ub += kUnitsPerPlaneExtra + ndc;
+                cb += ndc + ndc * kCoefPerBlock;
+            } else {
+                s_nb[slot * kMaxPlanes + p] = 0;
+            }
+        }
+        s_unit_base[slot * (kMaxPlanes + 1) + kMaxPlanes] = ub;
+        s_nunits[slot] = ub;
+        // v1 invariant: every legal tile geometry yields at least 9 units, so
+        // all 8 lanes are always active and the payload always carries 8
+        // initial states.  Reject anything else rather than guess.
+        if (ub < int(kLanes)) s_ok[slot] = kStatusBadHeader;
+    }
+    barrier();
+
+    // --- zero the tile's coefficient region and CBF words -------------------
+    if (valid) {
+        for (uint i = uint(lane); i < pc.coef_stride; i += kLanes)
+            u_coef.data[g_coef_off + i] = int16_t(0);
+        for (uint i = uint(lane); i < pc.cbf_words; i += kLanes)
+            u_cbf.data[g_cbf_off + i] = 0u;
+    }
+    barrier();
+
+    bool live = valid && s_ok[slot] == kStatusOk;
+
+    // --- rANS init: LANES little-endian uint32 states, lane 0 first --------
+    g_end = valid ? s_end[slot] : 0u;
+    g_pos = (valid ? s_pay[slot] : 0u) + kLanes * kInitBytesPerLane;
+    g_nunits = valid ? s_nunits[slot] : 0;
+    g_phase = kPhDone;
+    if (live) {
+        g_state = load_u32le(s_pay[slot] + uint(lane) * kInitBytesPerLane);
+        if (g_state < kRansL) s_ok[slot] = kStatusBadHeader;
+        lane_init(lane);
+    }
+    barrier();
+    live = live && s_ok[slot] == kStatusOk;
+    if (!live) g_phase = kPhDone;
+
+    // --- cluster mask for the ballot path ----------------------------------
+    uvec4 cluster_mask = uvec4(0u);
+    if (READ_PTR_MODE == kReadPtrBallot) {
+        uint base = gl_SubgroupInvocationID & ~7u;
+        cluster_mask[base >> 5u] = 0xffu << (base & 31u);
+    }
+
+    // --- scheduling rounds --------------------------------------------------
+    // The reference walks lanes 0..7 in order each round; a lane that is
+    // finished simply emits nothing.  Byte consumption therefore follows
+    // ascending lane order inside a round, which is exactly a prefix count
+    // over the renormalisation ballot.
+    uint round = 0u;
+    for (;;) {
+        int kind = 0, arg = 0;
+        bool has_op = live && lane_next(kind, arg);
+
+        uint value = 0u;
+        uint x = g_state;
+        bool needs = false;
+        if (has_op) {
+            uint slot1024 = x & kProbMask;
+            uint f, c;
+            if (kind == 0) {
+                uint sym;
+                decode_symbol(s_tabbase[slot], arg, slot1024, sym, f, c);
+                value = sym;
+            } else {
+                uint sh = kProbBits - uint(arg);
+                value = slot1024 >> sh;
+                f = 1u << sh;
+                c = value << sh;
+            }
+            x = f * (x >> kProbBits) + slot1024 - c;
+            needs = x < kRansL;
+        }
+
+        // --- shared read pointer -------------------------------------------
+        // Both modes must produce the same (prefix, total): the number of
+        // renormalising lanes strictly below this one inside the tile's
+        // 8-lane cluster, and the cluster's total.  Every barrier below is
+        // unconditional so that control flow stays workgroup-uniform
+        // whichever mode the specialisation constant selects.
+        if (READ_PTR_MODE != kReadPtrBallot && needs)
+            atomicOr(s_renorm[slot], 1u << uint(lane));
+        if (has_op) s_any = 1u;
+        barrier();
+
+        uint prefix = 0u, total = 0u;
+        if (READ_PTR_MODE == kReadPtrBallot) {
+            uvec4 b = subgroupBallot(needs) & cluster_mask;
+            prefix = subgroupBallotExclusiveBitCount(b);
+            total = subgroupBallotBitCount(b);
+        } else {
+            uint m = s_renorm[slot];
+            prefix = bitCount(m & ((1u << uint(lane)) - 1u));
+            total = bitCount(m);
+        }
+
+        if (needs) {
+            uint at = g_pos + prefix * kRenormBytes;
+            if (at + kRenormBytes > g_end) {
+                fail(kStatusTruncated);
+                has_op = false;
+            } else {
+                x = (x << 16u) | load_u16be(at);
+            }
+        }
+        g_pos += total * kRenormBytes;
+
+        if (has_op) {
+            g_state = x;
+            lane_feed(value);
+        }
+
+        bool cont = (s_any != 0u);
+        barrier();                       // everyone has consumed s_any/s_renorm
+        if (lane == 0) s_renorm[slot] = 0u;
+        if (lid == 0u) s_any = 0u;
+        barrier();                       // flags clear before the next round
+        if (!cont) break;
+        if (++round >= kMaxRounds) { fail(kStatusRoundOverflow); break; }
+    }
+
+    barrier();
+    if (valid && lane == 0) u_status.data[tile] = s_ok[slot];
+}
