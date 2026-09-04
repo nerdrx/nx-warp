@@ -30,9 +30,8 @@ set_tests_properties(spec.check PROPERTIES LABELS "spec;docs")
 
 # The same check with --strict, for a release gate. It fails today by design:
 # pending markers remain (52 at the time of writing). Disabled by default;
-# enable with
-# -DNXWARP_SPEC_STRICT=ON to see what a finished document set would have to
-# satisfy.
+# enable with -DNXWARP_SPEC_STRICT=ON to see what a finished document set
+# would have to satisfy.
 option(NXWARP_SPEC_STRICT "Register spec.check.strict, which fails while [pending] markers remain" OFF)
 
 if(NXWARP_SPEC_STRICT)
