@@ -40,6 +40,16 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
   tool-bit gating, and the `nxv-enc`, `nxv-dec` and `nxv-info` tools.
 - 32 conformance vectors in `tests/vectors/` with an md5 manifest, covering intra, lossless, alpha,
   resolution levels, custom tables, odd frame sizes and multi-frame streams.
+- Syntax v1.5, the entropy and context package (`ref/RESULTS-ctx-b.md`): tool bit 25 `CTX_V3`, a
+  22-context model whose `CBF` and `LAST` contexts are conditioned on whether the previous
+  coefficient unit *the same rANS lane* decoded in the same unit class was coded — causal inside
+  the lane, so it costs the GPU decoder no barrier and no cross-lane read, only 3 KiB more of
+  shared cumulative-frequency table; and tool bit 24 `TAB_V2`, a per-row "use the built-in default"
+  flag that takes a transmitted table set from the largest single overhead in a low-rate frame
+  (14.45 %) to 3.41 %. Both additive: the 56 committed vectors are byte-identical without them.
+- Encoder-side with them, no tool bit: `nxvc_config::table_iters`, which refines the eight
+  per-frame probability table sets by Lloyd iteration over the per-tile histograms and scores each
+  tile against the tables the stream will carry rather than against the built-in ones.
 
 **Vulkan**
 
