@@ -538,10 +538,11 @@ nxvc_vkd_status pipeline_a(D *d, uint32_t lanes, VkPipeline *out) {
     return NXVC_VKD_OK;
 }
 
-nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, uint32_t store_words,
-                           VkPipeline *out) {
+nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2,
+                           uint32_t store_words, VkPipeline *out) {
     const uint32_t sched = d->dir_sched;
-    uint64_t key = ((uint64_t)fmt << 40) | ((uint64_t)sched << 32) | store_words;
+    uint64_t key = ((uint64_t)(uint32_t)(fmt2 + 1) << 44) |
+                   ((uint64_t)fmt << 40) | ((uint64_t)sched << 32) | store_words;
     auto it = d->pipesB.find(key);
     if (it != d->pipesB.end()) {
         *out = it->second;
@@ -552,9 +553,10 @@ nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, uint32_t store_words,
         return seterr(d, NXVC_VKD_ERR_UNSUPPORTED,
                       "Pass B needs %zu B of shared memory, device offers %u B",
                       lds, d->props.limits.maxComputeSharedMemorySize);
-    const uint32_t data[3] = {fmt, store_words, sched};
-    VkSpecializationMapEntry me[3] = {{0, 0, 4}, {1, 4, 4}, {2, 8, 4}};
-    VkSpecializationInfo spec{3, me, sizeof(data), data};
+    const int32_t data[4] = {(int32_t)fmt, (int32_t)store_words, (int32_t)sched,
+                             fmt2};
+    VkSpecializationMapEntry me[4] = {{0, 0, 4}, {1, 4, 4}, {2, 8, 4}, {3, 12, 4}};
+    VkSpecializationInfo spec{4, me, sizeof(data), data};
     VkComputePipelineCreateInfo ci{
         VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
     ci.stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
@@ -1263,18 +1265,27 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
                             1, &d->dsetB, 0, nullptr);
     vkCmdPushConstants(d->cmd, d->plB, VK_SHADER_STAGE_COMPUTE_BIT, 0,
                        (uint32_t)sizeof(nxvw::NxvwPassBPush), &fp.push);
+    // The two-plane 4:2:0 store has nowhere to put alpha, so a 4:2:0 stream
+    // that carries one also needs the RGBA8 store, whose A channel is the
+    // alpha plane.  Two stores of one reconstruction is the same shape the
+    // reference ring slot will have when the inter path lands, and the kernel
+    // does both from one dispatch rather than transforming the frame twice.
+    const bool fuse = d->need_alpha_pass && !(d->flags & NXVC_VKD_FLAG_SPLIT_STORES);
     {
         VkPipeline p;
-        if ((st = pipeline_b(d, d->out_format, storeWords, &p))) return st;
+        if ((st = pipeline_b(d, d->out_format,
+                             fuse ? (int32_t)nxvw::kOutRgba8
+                                  : (int32_t)nxvw::kOutNone,
+                             storeWords, &p)))
+            return st;
         vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, p);
         vkCmdDispatch(d->cmd, ntiles, 1, 1);
         ++dispatches;
     }
-    if (d->need_alpha_pass) {
-        // Second reconstruction in the RGBA8 format purely for the A channel;
-        // the two-plane 4:2:0 store has nowhere to put alpha.
+    if (d->need_alpha_pass && !fuse) {
         VkPipeline p;
-        if ((st = pipeline_b(d, (uint32_t)nxvw::kOutRgba8, storeWords, &p)))
+        if ((st = pipeline_b(d, (uint32_t)nxvw::kOutRgba8,
+                             (int32_t)nxvw::kOutNone, storeWords, &p)))
             return st;
         vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, p);
         vkCmdDispatch(d->cmd, ntiles, 1, 1);

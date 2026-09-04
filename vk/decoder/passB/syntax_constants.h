@@ -346,6 +346,8 @@ NXVW_CONST kOutRgb10A2 = 1;
 // It requires colour_transform == kCtNone and a 4:2:0 stream.  Default output
 // on the Android target; see NXVW_PASSB_DEFAULT_OUT below.
 NXVW_CONST kOutYcbcr420 = 2;
+// "no second store", specialization constant 3's default.
+NXVW_CONST kOutNone = -1;
 
 #if defined(__ANDROID__)
 NXVW_CONST kOutDefault = 2;  // kOutYcbcr420

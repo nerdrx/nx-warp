@@ -751,10 +751,12 @@ struct BenchRun {
 };
 
 BenchRun time_stream(const std::vector<uint8_t> &stream, int iters,
-                     uint32_t dirSched, uint32_t tileSort) {
+                     uint32_t dirSched, uint32_t tileSort,
+                     uint32_t extraFlags = 0) {
     BenchRun r;
     nxvc_vkd_create_info ci;
     nxvc_vk_decoder_create_info_default(&ci);
+    ci.flags = extraFlags;
     ci.device_name = device_filter();
     nxvc_vk_decoder *dec = nullptr;
     if (nxvc_vk_decoder_create(&ci, &dec) != NXVC_VKD_OK) {
@@ -889,6 +891,36 @@ int run_bench_dir(int iters) {
     return 0;
 }
 
+// ------------------------------- two stores from one Pass B, or two passes
+// A frame that needs two display formats -- today a 4:2:0 stream with a coded
+// alpha plane on the two-plane store, and every frame once the reference ring
+// lands -- can write both from one dispatch or run Pass B twice.  Same pixels
+// either way; this is the price of each.
+int run_bench_stores(int iters) {
+    Case c{"bench_alpha420", 2048, 4096, 0, 1, 24, 0, /*alpha=*/1, 0, 3, 0, 0,
+           0,    1,           0, 0,      1};
+    std::vector<uint8_t> stream;
+    std::string err;
+    if (!encode_case(c, stream, err)) {
+        std::printf("bench: encode failed (%s)\n", err.c_str());
+        return 1;
+    }
+    BenchRun fused = time_stream(stream, iters, 0, 0, 0);
+    if (fused.skipped) { std::printf("SKIP: no usable Vulkan device\n"); return 77; }
+    if (!fused.ok) return 1;
+    BenchRun split =
+        time_stream(stream, iters, 0, 0, (uint32_t)NXVC_VKD_FLAG_SPLIT_STORES);
+    if (!split.ok) return 1;
+    std::printf(
+        "\n-- Pass B with two stores, 2048 tiles 4:2:0 + coded alpha at QP 24,"
+        " best of %d\n"
+        "   two dispatches (ycbcr420, then rgba8) : Pass B %.3f ms\n"
+        "   one dispatch, both stores             : Pass B %.3f ms  (%+.1f %%)\n",
+        iters, split.passB, fused.passB,
+        100.0 * (fused.passB - split.passB) / split.passB);
+    return 0;
+}
+
 // ------------------------------------------- [v3] fixed vs per-byte cost
 // The GDeflate question: how much of a frame's decode time is per-tile
 // overhead that 64x64 tiling buys us, and how much is per-byte work?  A
@@ -986,6 +1018,7 @@ int run_bench(int iters) {
     if (rc) return rc;
     if ((rc = run_bench_overhead(iters))) return rc;
     if ((rc = run_bench_sort(iters))) return rc;
+    if ((rc = run_bench_stores(iters))) return rc;
     return 0;
 }
 

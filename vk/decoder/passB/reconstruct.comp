@@ -36,6 +36,13 @@ layout(constant_id = 1) const int kPlaneStoreWords = 8192;
 //    normative derivation of SYNTAX.md 7.4 and the only one a conformant
 //    encoder emits.
 layout(constant_id = 2) const int kDirSched = 0;
+// 3: a SECOND display format written from the same reconstruction, or
+//    kOutNone.  The reference ring slot and the display image are two stores
+//    of the same samples, and so are the two-plane 4:2:0 store and the RGBA8
+//    store a 4:2:0 stream with a coded alpha plane needs; either way the
+//    alternative is a second dispatch that re-runs the whole transform and
+//    wavefront for the same pixels.  See ../README.md.
+layout(constant_id = 3) const int kOutSecond = kOutNone;
 
 // ------------------------------------------------------------- bindings
 layout(set = 0, binding = 0, std430) readonly buffer Coef { uint w[]; } uCoef;
@@ -760,11 +767,18 @@ void main() {
 
     int ox = tileX * 64, oy = tileY * 64;
 
+    // Both stores run off the same reconstruction; `kOutSecond` is a
+    // specialization constant, so a pipeline that does not want one compiles
+    // to exactly the single-store kernel it did before.
+    for (int store_pass = 0; store_pass < 2; ++store_pass) {
+    int fmt = store_pass == 0 ? kOutFormat : kOutSecond;
+    if (fmt == kOutNone) break;
+
     // ---------------------------------- two-plane 4:2:0 YCbCr passthrough
     // No colour transform, no chroma upsampling: the planes go out exactly as
     // the stream carries them.  Luma is written at full resolution, Cb/Cr
     // interleaved at half.  Requires a 4:2:0 stream and colour_transform none.
-    if (kOutFormat == kOutYcbcr420) {
+    if (fmt == kOutYcbcr420) {
         for (int k = 0; k < 16; ++k) {
             int idx = k * 256 + tid;
             int x = idx & 63, y = idx >> 6;
@@ -784,7 +798,7 @@ void main() {
             int Cr = clamp(planeAtFull(planeStoreBase[2], sizeP[2], 32, x, y), 0, 255);
             imageStore(uOutCbCr, ivec2(gx, gy), uvec4(uint(Cb), uint(Cr), 0u, 0u));
         }
-        return;
+        continue;
     }
 
     for (int k = 0; k < 16; ++k) {
@@ -822,7 +836,7 @@ void main() {
                       0, 255);
         }
 
-        if (kOutFormat == kOutRgb10A2) {
+        if (fmt == kOutRgb10A2) {
             // 8-bit samples replicated into 10 bits; see syntax_constants.h.
             uvec4 v = uvec4(uint((R << 2) | (R >> 6)), uint((G << 2) | (G >> 6)),
                             uint((B << 2) | (B >> 6)), uint(A >> 6));
@@ -832,4 +846,5 @@ void main() {
                        uvec4(uint(R), uint(G), uint(B), uint(A)));
         }
     }
+    }  // store_pass
 }

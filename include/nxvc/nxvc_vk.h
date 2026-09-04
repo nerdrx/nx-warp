@@ -108,7 +108,15 @@ typedef enum nxvc_vkd_create_flags {
      * memory after every Pass A, so it is off by default; without it
      * coef_bytes reports the reserved slot size, which is what the dense
      * layout actually moves. */
-    NXVC_VKD_FLAG_COEF_STATS = 1u << 5
+    NXVC_VKD_FLAG_COEF_STATS = 1u << 5,
+    /* Write each display format from its own Pass B dispatch instead of
+     * writing both from one.  It only makes a difference for a frame that
+     * needs two stores -- today, a 4:2:0 stream with a coded alpha plane on
+     * the two-plane output; when the inter path lands, every frame, because
+     * the reference ring slot is a second store of the same samples.  The
+     * pixels are identical either way; this exists to measure the
+     * difference. */
+    NXVC_VKD_FLAG_SPLIT_STORES = 1u << 6
 } nxvc_vkd_create_flags;
 
 /* --------------------------------------------------------------- create */
