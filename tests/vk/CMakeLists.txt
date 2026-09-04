@@ -35,10 +35,12 @@ endif()
 if(NXVC_LAVAPIPE_ICD)
   set(_lvp "${NXVC_LAVAPIPE_ICD}")
 else()
+  # list(GET) on an empty list is a hard error that aborts the whole project
+  # configure, so never call it without checking first.
+  set(_lvp "")
   file(GLOB _lvp_found ${_lvp_globs})
-  list(GET _lvp_found 0 _lvp)
-  if(_lvp STREQUAL "NOTFOUND")
-    set(_lvp "")
+  if(_lvp_found)
+    list(GET _lvp_found 0 _lvp)
   endif()
 endif()
 if(_lvp AND EXISTS "${_lvp}")
@@ -80,6 +82,14 @@ nxvc_vk_add_test(vk.probe nxvc-vkprobe ARGS --json)
 # hybrid-only device, which has no pure-compute path to verify.
 nxvc_vk_add_test(vk.subgroup_semantics nxvc-vksubgroup ARGS --verbose)
 
+# --------------------------------------------------------- runtime self-test
+# Creates a real device and exercises every helper the encoder and decoder
+# lean on: buffers of each kind, an image and its layout transition, one-shot
+# and pre-recorded command buffers, a timeline semaphore signalled from the
+# host and from the queue, and a timestamp pool around a real dispatch.  Runs
+# on hybrid-only devices too -- none of it is pure-compute specific.
+nxvc_vk_add_test(vk.runtime_selftest nxvc-vkprobe ARGS --selftest)
+
 # ----------------------------------------------------- lavapipe-pinned copies
 if(_lvp)
   nxvc_vk_add_test(vk.probe_lavapipe nxvc-vkprobe ICD "${_lvp}" ARGS --json)
@@ -92,4 +102,6 @@ if(_lvp)
   # 3.9 ("runs on lavapipe ... without a GPU") is not true any more.
   nxvc_vk_add_test(vk.probe_lavapipe_is_pure nxvc-vkprobe
                    ICD "${_lvp}" ARGS --quiet --require lite)
+  nxvc_vk_add_test(vk.runtime_selftest_lavapipe nxvc-vkprobe
+                   ICD "${_lvp}" ARGS --selftest)
 endif()

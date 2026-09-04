@@ -19,6 +19,9 @@
 #include <string_view>
 #include <vector>
 
+// selftest.cpp
+int nxvcVkSelfTest(bool prefer_software, uint32_t device_index);
+
 namespace {
 
 constexpr int kExitSkip = 77;
@@ -32,6 +35,8 @@ void usage() {
         "  --require PROFILE   fail with exit 1 unless some device reaches\n"
         "                      PROFILE (full | lite | hybrid)\n"
         "  --quiet             print nothing, use the exit code only\n"
+        "  --selftest          create a device and exercise the runtime helpers\n"
+        "  --software          prefer a software ICD when selecting a device\n"
         "  -h, --help          this text");
 }
 
@@ -65,7 +70,9 @@ void printText(const nxvc::vk::Probe& p, uint32_t index) {
                 p.timestamp_valid_bits, static_cast<double>(p.timestamp_period_ns));
     std::printf("  memory          %.1f GiB device-local, host-cached heap %s\n",
                 static_cast<double>(p.device_local_bytes) / (1024.0 * 1024.0 * 1024.0),
-                (p.caps & NXVC_VK_CAP_HOST_CACHED_HEAP) ? "yes" : "NO");
+                (p.caps & NXVC_VK_CAP_HOST_CACHED_HEAP)
+                    ? (p.host_cached_is_device_local ? "yes (device-local)" : "yes")
+                    : "NO");
     std::printf("  caps            %s\n", nxvc::vk::capListString(p.caps).c_str());
     if (p.caps_missing_for_pure)
         std::printf("  missing (pure)  %s\n",
@@ -84,6 +91,8 @@ int main(int argc, char** argv) {
     bool quiet = false;
     uint32_t only = UINT32_MAX;
     int require = -1;
+    bool selftest = false;
+    bool prefer_software = false;
 
     for (int i = 1; i < argc; ++i) {
         const std::string_view a = argv[i];
@@ -93,6 +102,10 @@ int main(int argc, char** argv) {
             json = false;
         } else if (a == "--quiet") {
             quiet = true;
+        } else if (a == "--selftest") {
+            selftest = true;
+        } else if (a == "--software") {
+            prefer_software = true;
         } else if (a == "-h" || a == "--help") {
             usage();
             return 0;
@@ -110,6 +123,8 @@ int main(int argc, char** argv) {
             return 2;
         }
     }
+
+    if (selftest) return nxvcVkSelfTest(prefer_software, only);
 
     std::vector<nxvc::vk::Probe> probes;
     try {

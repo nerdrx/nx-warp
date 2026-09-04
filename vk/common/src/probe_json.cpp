@@ -129,6 +129,7 @@ std::string Probe::json() const {
     kn(o, "device_local_bytes", device_local_bytes);
     kn(o, "host_cached_bytes", host_cached_bytes);
     kb(o, "has_host_cached_heap", (caps & NXVC_VK_CAP_HOST_CACHED_HEAP) != 0);
+    kb(o, "host_cached_is_device_local", host_cached_is_device_local != 0);
     kb(o, "has_device_local_host_visible",
        device_local_host_visible_type_index != UINT32_MAX);
 

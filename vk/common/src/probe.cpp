@@ -308,10 +308,20 @@ nxvc_vk_status probeInto(VkPhysicalDevice pd, nxvc_vk_probe& p) {
         const bool cached = (f & VK_MEMORY_PROPERTY_HOST_CACHED_BIT) != 0;
         const bool coherent = (f & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != 0;
         const bool dl = (f & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0;
-        if (hv && cached && coherent && !dl && p.host_cached_type_index == UINT32_MAX) {
-            p.host_cached_type_index = i;
-            p.host_cached_bytes = mp.memoryHeaps[mp.memoryTypes[i].heapIndex].size;
-            p.caps |= NXVC_VK_CAP_HOST_CACHED_HEAP;
+        // 3.6's send ring wants HOST_VISIBLE | HOST_COHERENT | HOST_CACHED.
+        // A type that is *also* DEVICE_LOCAL qualifies -- on UMA and software
+        // devices every type is -- but a non-device-local one is preferred,
+        // because on a discrete GPU the device-local host-visible type is the
+        // small write-combined BAR window 3.6 explicitly rejects for this use.
+        if (hv && cached && coherent) {
+            const bool better = p.host_cached_type_index == UINT32_MAX ||
+                                (!dl && p.host_cached_is_device_local);
+            if (better) {
+                p.host_cached_type_index = i;
+                p.host_cached_is_device_local = dl ? 1u : 0u;
+                p.host_cached_bytes = mp.memoryHeaps[mp.memoryTypes[i].heapIndex].size;
+                p.caps |= NXVC_VK_CAP_HOST_CACHED_HEAP;
+            }
         }
         if (hv && dl && p.device_local_host_visible_type_index == UINT32_MAX)
             p.device_local_host_visible_type_index = i;

@@ -235,10 +235,14 @@ std::unique_ptr<Context> Context::create(const ContextCreateInfo& ci) {
     VkPhysicalDeviceSubgroupSizeControlFeatures sgsc{
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_FEATURES};
 
-    f16.storageBuffer16BitAccess = VK_TRUE;
-    f16.uniformAndStorageBuffer16BitAccess =
+    // Only ever request what the probe saw: asking for a feature the device
+    // lacks is VK_ERROR_FEATURE_NOT_PRESENT, and a hybrid-only device (no
+    // 16-bit storage -- SwiftShader is one) must still get a usable device.
+    f16.storageBuffer16BitAccess =
         (ctx->probe_.caps & NXVC_VK_CAP_STORAGE_16BIT) ? VK_TRUE : VK_FALSE;
-    tls.timelineSemaphore = VK_TRUE;
+    f16.uniformAndStorageBuffer16BitAccess = f16.storageBuffer16BitAccess;
+    tls.timelineSemaphore =
+        (ctx->probe_.caps & NXVC_VK_CAP_TIMELINE_SEMAPHORE) ? VK_TRUE : VK_FALSE;
     ycbcr.samplerYcbcrConversion =
         (ctx->probe_.caps & NXVC_VK_CAP_YCBCR_CONVERSION) ? VK_TRUE : VK_FALSE;
     sgsc.subgroupSizeControl = VK_TRUE;
@@ -247,7 +251,7 @@ std::unique_ptr<Context> Context::create(const ContextCreateInfo& ci) {
         (ctx->probe_.caps & NXVC_VK_CAP_SHADER_INT16) ? VK_TRUE : VK_FALSE;
 
     void** tail = &feat2.pNext;
-    *tail = &f16; tail = &f16.pNext;
+    if (f16.storageBuffer16BitAccess) { *tail = &f16; tail = &f16.pNext; }
     if (ctx->probe_.caps & NXVC_VK_CAP_TIMELINE_SEMAPHORE) { *tail = &tls; tail = &tls.pNext; }
     if (ctx->probe_.caps & NXVC_VK_CAP_YCBCR_CONVERSION) { *tail = &ycbcr; tail = &ycbcr.pNext; }
     if (ctx->probe_.caps & NXVC_VK_CAP_SUBGROUP_SIZE_CONTROL) { *tail = &sgsc; tail = &sgsc.pNext; }

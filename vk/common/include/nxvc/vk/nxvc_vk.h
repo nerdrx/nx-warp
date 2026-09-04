@@ -181,6 +181,7 @@ typedef struct nxvc_vk_probe {
     uint64_t device_local_bytes;
     uint64_t host_cached_bytes;
     uint32_t host_cached_type_index;    /* UINT32_MAX if none              */
+    uint32_t host_cached_is_device_local; /* the BAR window, not system RAM */
     uint32_t device_local_host_visible_type_index; /* the BAR heap, if any */
 
     /* capabilities */

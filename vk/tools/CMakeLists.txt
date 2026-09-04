@@ -1,7 +1,7 @@
 # vk/tools - headless CLIs over nxvc_vk_common.  No windows, no surfaces:
 # everything here runs on a CI box with only a software ICD.
 
-add_executable(nxvc-vkprobe vkprobe/main.cpp)
+add_executable(nxvc-vkprobe vkprobe/main.cpp vkprobe/selftest.cpp)
 target_link_libraries(nxvc-vkprobe PRIVATE nxvc::vk_common)
 
 add_executable(nxvc-vksubgroup vksubgroup/main.cpp)
