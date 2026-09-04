@@ -176,12 +176,14 @@ private:
     TileStats stats_all_, stats_eye_;
     std::vector<uint8_t> cls_, prev_cls_;
     std::vector<float>   cplx_, slip_;
+    // Which entries of cplx_ came from the encoder's own warped-residual
+    // measurement; the rest are refilled from the source frame difference.
+    std::vector<uint8_t> cplx_measured_;
     std::vector<uint8_t> qp_map_, res_map_, wm_map_, skip_map_;
     std::vector<uint32_t> actual_bits_;
 
     std::vector<uint8_t> prev_luma_;   // previous frame, tightly packed
     bool have_prev_luma_ = false;
-    bool have_warp_mad_  = false;
 
     float head_speed_ = 0.0f;
     float ppd_clip_   = 0.0f;   // ppd of the CLIP's own pixels, for slip

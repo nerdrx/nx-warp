@@ -28,14 +28,25 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
 - `nxvc_tile_info::warp_mad_q8`: the mean absolute residual of a tile's WARP_SKIP predictor, measured
   by the mode search that builds it. This is the `complexity` input docs/RATECONTROL.md 4.1 asks the
   rate controller for.
-- `tools/quality/percept_run.py` and `percept_map_png.py`: the equal-perceived-quality harness and
-  the per-tile decision picture. Results: `ref/RESULTS-percept.md`.
+- `tools/quality/percept_run.py`, `percept_report.py` and `percept_map_png.py`: the
+  equal-perceived-quality harness, its tables and the per-tile decision picture. Results:
+  `ref/RESULTS-percept.md` -- the wire works, and at equal foveated quality it currently costs bits
+  rather than saving them, for four named and measured reasons.
+- `tools/quality/nxq/fvvdp.py` and `nxq.yuv.yuv_to_rgb`, borrowed verbatim from branch
+  `tourney/metric` (commit 25bc7a4) and marked as borrowed, so FovVideoVDP scores come from the same
+  code that package will land.
 
 ### Changed
 
 - `nxrc::RefreshScheduler`: the foveal floor is now tested before the static-tile shortcut, so a tile
   that was static last frame and starts moving this one cannot have a residual withheld in the fovea
   (docs/RATECONTROL.md 8, `admissible_divisor`).
+- `nxrc::RateController::update_model()`: a tile that came back with no bits is now evidence rather
+  than a missing measurement. It used to be discarded, which is exactly the set of tiles the
+  encoder's mode search codes as `WARP_SKIP`, so their bit model never fell and the controller
+  undershot its budget permanently (measured: `actual/predicted` between 0.33 and 0.67 for eleven
+  consecutive frames, 4.3 dB below flat QP at equal rate; 1.6 dB after). See
+  `ref/RESULTS-percept.md` 7.1.
 
 ### Added
 

@@ -70,6 +70,7 @@ EncDriver::EncDriver(const EncDriveConfig& cfg) : cfg_(cfg) {
     skip_map_.assign(n, 0);
     cls_.assign(n, uint8_t(TileClass::Texture));
     cplx_.assign(n, 0.0f);
+    cplx_measured_.assign(n, 0);
     slip_.assign(n, 0.0f);
     actual_bits_.assign(n, 0);
     stats_all_.resize(n);
@@ -160,6 +161,9 @@ void EncDriver::analyse(const uint8_t* luma, int stride, int frame_index) {
     // installs; it is one frame old, which is exactly the lag a real encoder's
     // analysis pass has.  Before there is one -- the first frame, and any tile
     // that had no reference -- the source-domain frame difference stands in.
+    // It over-states a tile's complexity under head rotation, because it has
+    // not had the pose warp taken out of it, which makes the temporal ladder
+    // conservative rather than wrong.
     const int tile = cfg_.tile_size;
     if (have_prev_luma_) {
         for (int row = 0; row < tiles_y_; ++row)
@@ -167,7 +171,7 @@ void EncDriver::analyse(const uint8_t* luma, int stride, int frame_index) {
                 for (int col = 0; col < tiles_x_; ++col) {
                     const size_t i = size_t(row) * cfg_.eyes * tiles_x_ +
                                      size_t(e) * tiles_x_ + col;
-                    if (have_warp_mad_ && cplx_[i] >= 0.0f) continue;
+                    if (cplx_measured_[i]) continue;
                     const int x0 = e * cfg_.width + col * tile;
                     const int y0 = row * tile;
                     const int w = std::min(tile, cfg_.width - col * tile);
@@ -185,8 +189,6 @@ void EncDriver::analyse(const uint8_t* luma, int stride, int frame_index) {
                 }
     }
 
-    for (float& c : cplx_) c = std::max(0.0f, c);
-
     // Keep this frame's luma for the next difference.
     {
         const int pw = cfg_.width * cfg_.eyes;
@@ -197,6 +199,10 @@ void EncDriver::analyse(const uint8_t* luma, int stride, int frame_index) {
         have_prev_luma_ = true;
     }
 
+    // On frame 0 there is neither a previous source frame nor a warped
+    // residual, so the complexity and slip spans are left EMPTY rather than
+    // zeroed: the allocator reads an empty span as "no information" and a
+    // zeroed one as "every tile is static", which are not the same thing.
     const bool have_cplx = frame_index > 0;
 
     // ---- the temporal ladder.
@@ -255,10 +261,8 @@ void EncDriver::analyse(const uint8_t* luma, int stride, int frame_index) {
     for (size_t i = 0; i < n; ++i)
         if (cls_[i] < 4) ++stats_.tiles_class[cls_[i]];
 
-    // Mark the complexity array stale: feedback() refills it from the
-    // encoder's measurement, and analyse() refills whatever is left over from
-    // the source difference.
-    have_warp_mad_ = false;
+    // The encoder's measurements are now spent; feedback() refills them.
+    std::fill(cplx_measured_.begin(), cplx_measured_.end(), uint8_t(0));
 }
 
 void EncDriver::feedback(const nxvc_tile_info* tiles, uint32_t count) {
@@ -277,16 +281,14 @@ void EncDriver::feedback(const nxvc_tile_info* tiles, uint32_t count) {
         // reference; that is the next frame's complexity.  A tile it could
         // not measure is marked -1 and analyse() fills it from the source
         // difference instead.
-        cplx_[i] = t.warp_mad_q8 == NXVC_WARP_MAD_UNMEASURED
-                       ? -1.0f
-                       : float(t.warp_mad_q8) / 256.0f;
+        cplx_measured_[i] = t.warp_mad_q8 != NXVC_WARP_MAD_UNMEASURED;
+        if (cplx_measured_[i]) cplx_[i] = float(t.warp_mad_q8) / 256.0f;
 
         // Residual motion after the pose warp, in degrees per second: the
         // tile's transmitted vector, which is quarter samples of the clip.
         const float mv = std::hypot(float(t.mv_x), float(t.mv_y)) * 0.25f;
         slip_[i] = t.mv_present ? mv / std::max(1.0f, ppd_clip_) * cfg_.fps : 0.0f;
     }
-    have_warp_mad_ = true;
     rc_.update_model(std::span<const uint32_t>(actual_bits_.data(), n));
     if (cfg_.temporal)
         refresh_.update_cost(float(total), int(n) - skipped);
