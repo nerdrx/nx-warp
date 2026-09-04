@@ -1,0 +1,87 @@
+# pre-commit hooks for NX Warp.  Optional but recommended:
+#
+#     pip install --user pre-commit     # or: pipx install pre-commit
+#     pre-commit install
+#     pre-commit run --all-files        # first pass over the whole tree
+#
+# Deliberately narrow. These are the checks that are cheap, mechanical and
+# never wrong. Anything that needs judgement (clang-tidy, the conformance
+# suite, the GPU/CPU diff) is a build and CI job, not a commit hook: a hook
+# that takes thirty seconds is a hook people disable.
+#
+# The conformance vectors under tests/vectors/ are binary and normative. Every
+# whitespace and end-of-file hook excludes them; a hook that "fixes" a vector
+# has changed the bitstream contract.
+
+exclude: |
+  (?x)^(
+    tests/vectors/.*|
+    build[^/]*/.*|
+    .*/third_party/.*|
+    .*/external/.*|
+    bench/gradle/.*|
+    bench/gradlew.*
+  )$
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      - id: check-json
+        # CMakePresets.json and devcontainer.json allow comments in practice;
+        # check-json does not. They are checked by cmake --list-presets and by
+        # the devcontainer tooling instead.
+        exclude: '^(CMakePresets\.json|CMakeUserPresets\.json|\.devcontainer/devcontainer\.json)$'
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
+      - id: check-added-large-files
+        # A conformance vector is small by rule; anything megabyte-sized in a
+        # commit is a captured sequence that belongs in $NXQ_SCRATCH.
+        args: [--maxkb=512]
+      - id: check-symlinks
+      - id: destroyed-symlinks
+
+  - repo: https://github.com/pre-commit/mirrors-clang-format
+    rev: v19.1.7
+    hooks:
+      - id: clang-format
+        # .clang-format at the root is the single source of truth; the GLSL
+        # kernels are not C++ and clang-format mangles their layout qualifiers.
+        types_or: [c, c++]
+        files: '\.(c|h|cc|cpp|hpp|inc)$'
+        args: [--style=file]
+
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.7
+    hooks:
+      - id: actionlint
+        # Skipped automatically when actionlint is unavailable for the
+        # platform; the workflows are also linted on push by GitHub itself.
+        files: '^\.github/workflows/.*\.ya?ml$'
+
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.3.0
+    hooks:
+      - id: codespell
+        args: [--ignore-words-list, "nd,inout,ba,te,fo,ist,som,strat,parms,pixelx"]
+        exclude: '^(LICENSE|tests/vectors/.*|.*\.svg)$'
+
+  - repo: local
+    hooks:
+      - id: no-build-artifacts
+        name: no build artifacts in a commit
+        entry: >-
+          bash -c 'echo "refusing: build output does not belong in the tree
+          (use build*/, which .gitignore already covers)"; exit 1'
+        language: system
+        pass_filenames: false
+        files: '^(.*\.(o|a|so|apk|aab|yuv)|compile_commands\.json)$'

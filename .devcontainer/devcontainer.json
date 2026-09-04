@@ -1,0 +1,69 @@
+{
+  "name": "NX Warp (nxvc)",
+
+  // The same image CI reproduces. Anything that builds here builds there.
+  "build": {
+    "dockerfile": "../docker/Dockerfile.ci",
+    "context": ".."
+  },
+
+  "workspaceFolder": "/src",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/src,type=bind,consistency=cached",
+
+  // ccache survives container rebuilds; build trees do not live in the image.
+  "mounts": [
+    "source=nxwarp-ccache,target=/ccache,type=volume"
+  ],
+
+  "remoteEnv": {
+    "CCACHE_DIR": "/ccache",
+    "CMAKE_BUILD_PARALLEL_LEVEL": "4",
+    // tools/quality writes sequences and reports here, never into the repo.
+    "NXQ_SCRATCH": "/tmp/nxq-scratch"
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "llvm-vs-code-extensions.vscode-clangd",
+        "ms-vscode.cmake-tools",
+        "twxs.cmake",
+        "slevesque.shader",
+        "ms-python.python",
+        "timonwong.shellcheck",
+        "redhat.vscode-yaml"
+      ],
+      "settings": {
+        // clangd over the Microsoft C++ extension: it reads the same
+        // compile_commands.json and the same .clang-tidy the CLI does, so the
+        // editor and the terminal never disagree about a diagnostic.
+        "C_Cpp.intelliSenseEngine": "disabled",
+        "clangd.arguments": [
+          "--compile-commands-dir=build-dev",
+          "--clang-tidy",
+          "--header-insertion=never",
+          "--background-index"
+        ],
+        "cmake.configureOnOpen": false,
+        "cmake.useCMakePresets": "always",
+        "editor.formatOnSave": true,
+        "files.trimTrailingWhitespace": true,
+        "files.insertFinalNewline": true,
+        "[cpp]": { "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd" },
+        "[c]":   { "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd" },
+        "files.associations": {
+          "*.comp": "glsl",
+          "*.inc": "cpp"
+        }
+      }
+    }
+  },
+
+  // Report the toolchain and generate compile_commands.json so clangd has
+  // something to read on the first file opened. Not a build: attaching to a
+  // container should not cost four minutes.
+  "postCreateCommand": "nxwarp-selftest && scripts/bootstrap.sh --quiet || true",
+  "postAttachCommand": "cmake --preset dev >/dev/null 2>&1 || true",
+
+  "remoteUser": "root"
+}

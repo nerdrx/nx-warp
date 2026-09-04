@@ -1,0 +1,166 @@
+# clang-tidy for NX Warp.
+#
+# Advisory, like the format check: run it yourself, or through
+# scripts/format.sh --tidy, and read the output. It is not a CI gate while the
+# components are landing.
+#
+# The check list is chosen against one constraint that outranks tidiness: the
+# reference decoder in ref/ is the bitstream specification. It is deliberately
+# integer-only, dependency-free, C-array-shaped and unclever. Any check that
+# would push it toward std::span, std::array, algorithms or auto is off, not
+# because those are wrong in general but because a diff to ref/ is a diff to
+# the spec and must be worth writing down.
+#
+# The naming rules are descriptive, not aspirational: they were read off the
+# existing ref/ and transport/ sources.
+#
+#   namespace              lower_case              nxvc, nxt
+#   class / struct / enum  CamelCase               Aead, Direction, PathInfo
+#   type alias             CamelCase               Key, Nonce
+#   function / method      lower_case              derive_nonce, make_null_aead
+#   enum constant          kCamelCase              kDownstream, kUpstream
+#   global / constexpr     kCamelCase              kKeyBytes, kMaxPaths, kC4
+#   private data member    lower_case_             cfg_, newest_, max_len_
+#   public data member     lower_case              path_id, win_first
+#   macro                  UPPER_CASE              NXVC_TILE_SIZE
+#
+# Local variables and parameters are intentionally NOT constrained: the DCT
+# flow graphs in ref/src/transform.cpp use single uppercase letters (A, B, P,
+# Q, O0..O3) to match the published butterfly diagrams, and renaming them
+# would make the transform harder to verify against the paper, not easier.
+
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  -bugprone-macro-parentheses,
+  performance-*,
+  -performance-avoid-endl,
+  modernize-*,
+  -modernize-use-trailing-return-type,
+  -modernize-avoid-c-arrays,
+  -modernize-use-nodiscard,
+  -modernize-return-braced-init-list,
+  -modernize-use-std-numbers,
+  -modernize-macro-to-enum,
+  -modernize-avoid-bind,
+  concurrency-*,
+  portability-*,
+  misc-*,
+  -misc-non-private-member-variables-in-classes,
+  -misc-no-recursion,
+  -misc-include-cleaner,
+  cert-dcl21-cpp,
+  cert-dcl58-cpp,
+  cert-err34-c,
+  cert-flp30-c,
+  cert-oop58-cpp,
+  readability-identifier-naming,
+  readability-braces-around-statements,
+  readability-misleading-indentation,
+  readability-redundant-control-flow,
+  readability-simplify-boolean-expr,
+  readability-static-definition-in-anonymous-namespace
+
+# Only our own headers; not /usr/include, not a vendored third_party tree.
+HeaderFilterRegex: '.*/(ref|warp|transport|rc|fov|stereo|hybrid|vk|tools|platform|include|tests)/.*\.(h|hpp|inc)$'
+ExcludeHeaderFilterRegex: '.*/(third_party|external|build[^/]*)/.*'
+
+FormatStyle: file
+WarningsAsErrors: ''
+
+CheckOptions:
+  # ---------------------------------------------------------------- naming
+  - key: readability-identifier-naming.NamespaceCase
+    value: lower_case
+  - key: readability-identifier-naming.InlineNamespaceCase
+    value: lower_case
+
+  - key: readability-identifier-naming.ClassCase
+    value: CamelCase
+  - key: readability-identifier-naming.StructCase
+    value: CamelCase
+  - key: readability-identifier-naming.UnionCase
+    value: CamelCase
+  - key: readability-identifier-naming.EnumCase
+    value: CamelCase
+  - key: readability-identifier-naming.TypeAliasCase
+    value: CamelCase
+  - key: readability-identifier-naming.TypedefCase
+    value: CamelCase
+  - key: readability-identifier-naming.TypeTemplateParameterCase
+    value: CamelCase
+
+  # The C ABI in include/nxvc/nxvc.h is lower_case by C convention
+  # (nxvc_status, nxvc_chroma). Those are matched by the Ignored regex below
+  # rather than by loosening the C++ rule.
+  - key: readability-identifier-naming.TypeAliasIgnoredRegexp
+    value: '^nxvc_.*$'
+  - key: readability-identifier-naming.TypedefIgnoredRegexp
+    value: '^nxvc_.*$'
+  - key: readability-identifier-naming.StructIgnoredRegexp
+    value: '^nxvc_.*$'
+  - key: readability-identifier-naming.EnumIgnoredRegexp
+    value: '^nxvc_.*$'
+
+  - key: readability-identifier-naming.FunctionCase
+    value: lower_case
+  - key: readability-identifier-naming.MethodCase
+    value: lower_case
+  - key: readability-identifier-naming.ClassMethodCase
+    value: lower_case
+
+  - key: readability-identifier-naming.EnumConstantCase
+    value: CamelCase
+  - key: readability-identifier-naming.EnumConstantPrefix
+    value: k
+  - key: readability-identifier-naming.EnumConstantIgnoredRegexp
+    value: '^NXVC_.*$'
+
+  - key: readability-identifier-naming.GlobalConstantCase
+    value: CamelCase
+  - key: readability-identifier-naming.GlobalConstantPrefix
+    value: k
+  - key: readability-identifier-naming.ConstexprVariableCase
+    value: CamelCase
+  - key: readability-identifier-naming.ConstexprVariablePrefix
+    value: k
+  - key: readability-identifier-naming.StaticConstantCase
+    value: CamelCase
+  - key: readability-identifier-naming.StaticConstantPrefix
+    value: k
+  - key: readability-identifier-naming.ClassConstantCase
+    value: CamelCase
+  - key: readability-identifier-naming.ClassConstantPrefix
+    value: k
+
+  - key: readability-identifier-naming.PrivateMemberCase
+    value: lower_case
+  - key: readability-identifier-naming.PrivateMemberSuffix
+    value: _
+  - key: readability-identifier-naming.ProtectedMemberCase
+    value: lower_case
+  - key: readability-identifier-naming.ProtectedMemberSuffix
+    value: _
+  - key: readability-identifier-naming.PublicMemberCase
+    value: lower_case
+
+  - key: readability-identifier-naming.MacroDefinitionCase
+    value: UPPER_CASE
+  - key: readability-identifier-naming.MacroDefinitionIgnoredRegexp
+    value: '^_.*$'
+
+  # ---------------------------------------------------------------- other
+  # C-style casts are everywhere in the reference codec's integer paths and
+  # are not going away; flag the ones that actually lose information instead.
+  - key: modernize-use-emplace.IgnoreImplicitConstructors
+    value: 'true'
+  - key: performance-unnecessary-value-param.AllowedTypes
+    value: 'std::span;std::string_view'
+  - key: bugprone-signed-char-misuse.CharTypdefsToIgnore
+    value: 'int8_t;i8'
+  - key: bugprone-suspicious-enum-usage.StrictMode
+    value: 'false'
+  - key: readability-braces-around-statements.ShortStatementLines
+    value: '2'

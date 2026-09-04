@@ -1,0 +1,109 @@
+# NX Warp CI / development image.
+#
+# Ubuntu 24.04 because that is what ubuntu-latest on GitHub Actions is, and an
+# image that disagrees with CI is worse than no image: it moves the bugs from
+# the pull request into the merge.
+#
+# What it is for:
+#   * reproducing a CI failure locally
+#   * the .devcontainer, so a contributor gets the whole toolchain without
+#     touching their own machine
+#   * running the Vulkan tests without a GPU, on lavapipe -- which is not a
+#     fallback here but the reference device: its subgroup size of 8 is why the
+#     cluster size is 8 (CONTRIBUTING.md).
+#
+# Build and use:
+#   docker build -f docker/Dockerfile.ci -t nxwarp-ci .
+#   docker run --rm -it -v "$PWD:/src" -w /src nxwarp-ci \
+#       scripts/build-all.sh dev
+#
+# No GPU device is passed through and none is needed. If you do want RADV or
+# NVIDIA, mount /dev/dri and drop VK_DRIVER_FILES.
+
+FROM ubuntu:24.04
+
+LABEL org.opencontainers.image.title="nxwarp-ci"
+LABEL org.opencontainers.image.description="Build and test toolchain for NX Warp (nxvc), with lavapipe"
+LABEL org.opencontainers.image.source="https://github.com/nerdrx/nx-warp"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV LANG=C.UTF-8
+
+# One layer, one apt cache, no recommends. Pinned by distribution release
+# rather than by version: Ubuntu 24.04's toolchain is the contract.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        ccache \
+        clang \
+        clang-format \
+        clang-tidy \
+        cmake \
+        curl \
+        file \
+        g++-mingw-w64-x86-64 \
+        gcc-mingw-w64-x86-64 \
+        gcovr \
+        gdb \
+        git \
+        glslang-tools \
+        lld \
+        llvm \
+        mesa-vulkan-drivers \
+        ninja-build \
+        pkg-config \
+        python3 \
+        python3-numpy \
+        python3-pytest \
+        python3-pip \
+        spirv-tools \
+        libvulkan-dev \
+        vulkan-tools \
+        ffmpeg \
+        unzip \
+        xz-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+# The POSIX threading flavour of mingw is the one with std::thread; the win32
+# flavour is the default and silently has no <thread>.
+RUN update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix \
+ && update-alternatives --set x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix
+
+# Pin the loader to lavapipe. Resolved at build time so a container start does
+# not depend on where this Ubuntu release happens to drop the ICD manifest.
+RUN set -eux; \
+    icd="$(find /usr/share/vulkan/icd.d -name 'lvp_icd*.json' | sort | head -n1)"; \
+    test -n "$icd"; \
+    printf 'VK_ICD_FILENAMES=%s\nVK_DRIVER_FILES=%s\n' "$icd" "$icd" >> /etc/environment; \
+    echo "$icd" > /etc/nxwarp-lavapipe-icd
+ENV VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+ENV VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+# lavapipe is a CPU rasteriser; give it every core it can use.
+ENV LP_NUM_THREADS=0
+
+ENV CCACHE_DIR=/ccache
+ENV CCACHE_MAXSIZE=2G
+RUN mkdir -p /ccache && chmod 0777 /ccache
+
+# pre-commit is the one tool not in the archive at a useful version.
+RUN pip3 install --no-cache-dir --break-system-packages pre-commit
+
+WORKDIR /src
+
+# A one-line sanity check the image can run on its own:
+#   docker run --rm nxwarp-ci nxwarp-selftest
+RUN printf '%s\n' \
+    '#!/bin/sh' \
+    'set -eu' \
+    'echo "cmake:      $(cmake --version | head -n1)"' \
+    'echo "ninja:      $(ninja --version)"' \
+    'echo "gcc:        $(gcc -dumpfullversion)"' \
+    'echo "clang:      $(clang --version | head -n1)"' \
+    'echo "glslang:    $(glslangValidator --version | head -n1)"' \
+    'echo "mingw:      $(x86_64-w64-mingw32-g++ -dumpfullversion)"' \
+    'echo "vulkan ICD: $(cat /etc/nxwarp-lavapipe-icd)"' \
+    'vulkaninfo --summary 2>/dev/null | grep -i "deviceName" || true' \
+    > /usr/local/bin/nxwarp-selftest && chmod +x /usr/local/bin/nxwarp-selftest
+
+CMD ["/bin/bash"]
