@@ -7,7 +7,8 @@ the four things that were built or priced and **rejected**.
 
 Everything was produced under `chrt -i 0 taskset -c 4-7 nice -n 19`, on the
 **v2 band-limited** sequences in `$NXQ_SCRATCH/seq` (`vr-mixed-1024-v2`,
-`vr-mixed-512-v2`), through `tools/quality/compare.py` and ffmpeg n9.0.1.
+`vr-mixed-512-v2`, `vr-turn-256-v2`), through `tools/quality/compare.py` and
+ffmpeg n9.0.1.
 Result files are under `$NXQ_SCRATCH/results/tourney-ctx-b/`.
 
 | tool | bit | what it is |
@@ -289,20 +290,7 @@ using. `table_iters` fixes both — reassign every tile against the trained sets
 retrain, repeat — and because the per-tile symbol histograms do not change, it
 costs no re-quantization at all, only arithmetic over stored histograms.
 
-4:4:4 / 4:2:0 encoded bytes, `--ctx v3 --tab v2`:
-
-| `--table-iters` | QP 8 | QP 16 | QP 24 | QP 32 |
-|---|---|---|---|---|
-| 0 (v1.4 behaviour) | 380 204 / 324 064 | 218 672 / 198 290 | 121 496 / 117 935 | 68 332 / 70 352 |
-| 1 | 380 876 | 219 408 | 121 778 | 68 712 |
-| **3 (default)** | **380 204 / 324 064** | **218 672 / 198 290** | **121 496 / 117 935** | **68 332 / 70 352** |
-| 6 | 380 154 / 322 970 | 218 738 / 197 307 | 121 278 / 117 183 | 68 364 / 69 872 |
-
-Three iterations is the default: the fourth and later ones are worth under
-0.1 % and the objective they minimize does not include the transmitted table
-cost, so running it to convergence is not obviously right. It is encoder-only —
-`--table-iters 0` restores the v1.4 encoder byte for byte, which is how the
-baseline column of every table in this document was produced.
+TABLEITERS_PLACEHOLDER
 
 **More than eight sets was not built.** `table_set` is a 3-bit tile-header
 field and `tables_present` is a byte in the 40-byte frame header; sixteen sets
