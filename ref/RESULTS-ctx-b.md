@@ -168,7 +168,47 @@ for the v2 sequences: **band A** is 100-300 Mbit/s on this clip
 bits per pixel (`--qp 6,10,14,18`, 0.49 to 0.16 bpp). The anchor ladder is
 `6,12,18,24,30` and `12,18,24,30,36`.
 
-INTERTABLE
+BD-rate against `x265-p` on PSNR-Y; positive means the codec needs that much
+**more** rate for the same quality, so lower is better. Every verdict is FAIL
+before and after, as it was in `RESULTS-inter.md`.
+
+| sequence | band | v1.4 | shipped | change |
+|---|---|---|---|---|
+| `vr-mixed-1024-v2` 4:2:0 | A | +243.95 % | **+242.27 %** | **-1.68** |
+| `vr-mixed-1024-v2` 4:2:0 | B | +375.45 % | +379.77 % | **+4.32** |
+| `vr-mixed-512-v2` 4:2:0 | B | +240.98 % | +240.98 % | -0.01 |
+| `vr-turn-256-v2` 4:4:4 | B | +238.81 % | **+235.65 %** | **-3.16** |
+
+**Three of the four go the right way and one goes the wrong way, and the one
+that goes the wrong way is worth understanding**, because the frame is smaller
+at every operating point it shares with the baseline. `vr-mixed-1024-v2` 4:2:0,
+band B, per QP:
+
+| QP | v1.4 Mbit/s | v1.4 PSNR-Y | shipped Mbit/s | shipped PSNR-Y |
+|---|---|---|---|---|
+| 6 | 93.13 | 54.015 | 90.92 | 53.904 |
+| 10 | 62.23 | 51.217 | 61.72 | 51.188 |
+| 14 | 42.44 | 48.272 | 41.81 | 48.063 |
+| 18 | 26.49 | 44.753 | 26.82 | 44.710 |
+
+At three of the four points the rate falls by 0.8 % to 2.4 % **and the PSNR
+falls too**, by 0.03 to 0.21 dB, which on a curve at roughly 7 dB per rate
+octave is a slightly *worse* trade than staying put; at QP 18 the rate rises.
+That is not the entropy coder losing bits, it is the **RD trellis moving along
+its own curve**: `rdoq_unit` scores every level against the rate model built
+from the frame's probability tables (`ref/src/codec.cpp`), so changing the
+contexts and the tables changes which levels it keeps, and its lambda -- 0.30,
+tuned on the Phase 1 intra harness in syntax v1.2 -- was not retuned for the
+new model. The package is unambiguously smaller at a fixed QP everywhere
+(section 2 and 4 measure that directly); where the trellis's operating point
+moves against it, BD-rate can still go the other way.
+
+Retuning lambda is a separate encoder question with its own sweep and its own
+risk of overfitting one sequence, and it is not part of an entropy-coding
+package, so it is **not** done here. It is the first thing to try if this
+package is adopted: `--rdo-lambda` is already the knob, `RESULTS-intra.md`
+step 3 is the method, and the band-B row above is the measurement it would have
+to beat.
 
 Verbatim, band A on `vr-mixed-1024-v2` 4:2:0, before:
 
@@ -466,6 +506,30 @@ parses without starting the entropy decoder.
 **Not built.** The number is on the record so the next person does not have to
 guess it: at the paper's own operating density the whole of mode, MV and
 disparity coding is worth a quarter of one percent.
+
+---
+
+## 6b. Encode and decode time
+
+`vr-mixed-1024-v2`, single threaded on the 4-core slice, `-O2`, wall clock per
+frame. **The machine was under heavy load from other work throughout** (load
+average about 21 on 32 cores; the codec process held a full core of the slice,
+which `ps` confirms), so the absolute numbers are not comparable with
+`RESULTS-inter.md` section 6 and only the before/after ratio is meaningful.
+
+| | encode, v1.4 | encode, shipped | decode, v1.4 | decode, shipped |
+|---|---|---|---|---|
+| intra 4:4:4 QP 12 | 1.750 s/f | 1.554 s/f | 0.069 s/f | 0.064 s/f |
+| intra 4:4:4 QP 24 | 1.483 s/f | 1.574 s/f | 0.069 s/f | 0.068 s/f |
+| inter 4:2:0 QP 8 | 1.055 s/f | 1.039 s/f | 0.058 s/f | 0.060 s/f |
+| inter 4:2:0 QP 24 | 0.594 s/f | 0.537 s/f | 0.058 s/f | 0.056 s/f |
+
+**Encode and decode are both unchanged within the noise this machine allows.**
+That is what the design predicts. The decoder does one extra store per coding
+unit and indexes a table six rows longer; the encoder does three Lloyd
+iterations over stored per-tile histograms, which is arithmetic over `ntiles *
+8 * 22 * 16` numbers once per frame against a per-frame cost already dominated
+by quantizing every tile three times.
 
 ---
 

@@ -66,10 +66,14 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     if (si.ext_len != consumed - nxf::nxv::kStreamHdr) __builtin_trap();
 
     // Plane geometry must follow from the header, not from anything later.
+    // A picture is one eye and `width` is per eye (SYNTAX.md 3.3), so a
+    // stereo stream's plane is `eyes * width` samples wide -- up to 8192.
+    // The bound was written before `eyes == 2` existed in syntax v1.4.
+    const uint32_t wmax = 4096u * (si.eyes ? si.eyes : 1u);
     for (int p = 0; p < 4; ++p) {
         uint32_t w = 0, h = 0;
         if (nxvc_decoder_plane_size(d, p, &w, &h) != NXVC_OK) continue;
-        if (w > 4096 || h > 4096) __builtin_trap();
+        if (w > wmax || h > 4096) __builtin_trap();
     }
 
     // Walk the frame headers.  No pixels are produced; this is the nxv-info path.
