@@ -1,0 +1,453 @@
+#version 460
+// NX Warp decoder, Pass B: reconstruction.  PAPER 3.2.1, 3.2.3, 3.2.4, 3.2.6.
+//
+// One workgroup per 64x64 tile, 256 threads, 4 threads per 8x8 block, each
+// thread owning 2 rows in the row pass and 2 columns in the column pass.
+// The transpose between the two 1D transforms goes through local memory.
+//
+// Normative math is int32 only: no float appears anywhere between the
+// coefficient buffer and the stored pixel.  Every constant lives in
+// syntax_constants.h.
+//
+// Portability (PAPER 3.2.6): no subgroup operation is used at all in this
+// kernel -- every cross-lane exchange goes through shared memory and a
+// barrier, so the same SPIR-V runs on a subgroup size of 4, 8, 32, 64 or 128.
+// Shared-memory footprint is driven by a specialization constant so a 4:2:0
+// stream fits Adreno's 32 KB (12 KB of sample store + 8 KB of scratch).
+
+#extension GL_GOOGLE_include_directive : require
+#include "syntax_constants.h"
+#include "passB_layout.h"
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+// ------------------------------------------------------ specialization
+// 0: display format, kOutRgba8 or kOutRgb10A2.
+layout(constant_id = 0) const int kOutFormat = 0;
+// 1: uint words of the shared sample store, = sum over coded planes of
+//    (res_level-0 coded edge)^2 / 2.  Host computes it with
+//    nxvw_plane_store_words(); 4:2:0 no alpha = 3072, 4:4:4 + alpha = 8192.
+layout(constant_id = 1) const int kPlaneStoreWords = 8192;
+
+// ------------------------------------------------------------- bindings
+layout(set = 0, binding = 0, std430) readonly buffer Coef { uint w[]; } uCoef;
+layout(set = 0, binding = 1, std430) readonly buffer TileRecs { NxvwTileRec rec[]; } uTiles;
+layout(set = 0, binding = 2, std430) readonly buffer Weights { int m[128]; } uWgt;
+layout(set = 0, binding = 3, rgba8ui) uniform writeonly uimage2D uOutRgba8;
+layout(set = 0, binding = 4, rgb10_a2ui) uniform writeonly uimage2D uOutRgb10a2;
+// Two-plane 4:2:0 YCbCr passthrough output (kOutYcbcr420).
+layout(set = 0, binding = 5, r8ui) uniform writeonly uimage2D uOutLuma;
+layout(set = 0, binding = 6, rg8ui) uniform writeonly uimage2D uOutCbCr;
+
+layout(push_constant) uniform Push { NxvwPassBPush p; } pc;
+
+// --------------------------------------------------------- shared memory
+// 64 blocks x 8x8 int16 = 8 KB.  One uint holds two horizontally adjacent
+// int16, and every uint is written by exactly one thread (a thread owns rows
+// 2s and 2s+1, which are adjacent and 2-aligned in the transposed layout).
+shared uint sT[64 * 64 / 2];
+// Reconstructed samples, int16, packed two per uint, one slot per plane.
+shared uint sPlane[kPlaneStoreWords];
+// DC plane: up to 8x8 block means, plus scratch for its second-level IDCT.
+shared int sMeans[64];
+shared int sDcTmp[64];
+
+// =========================================================== primitives
+int clamp16(int v) { return clamp(v, kI16Min, kI16Max); }
+
+// [REF] codec.cpp dequant_step / dequant.
+int dequantStep(int qp, int w) {
+    return (kQStep[qp] * w + kQStepRound) >> kQStepShift;
+}
+int dequant(int q, int t) {
+    return clamp16((q * t + kDequantRound) >> kDequantShift);
+}
+
+// int16 element access on a packed uint array.
+int unpack16(uint w, int hi) {
+    int v = int((w >> (16 * hi)) & 0xffffu);
+    return v >= 32768 ? v - 65536 : v;
+}
+uint pack16x2(int lo, int hi) {
+    return (uint(lo) & 0xffffu) | ((uint(hi) & 0xffffu) << 16);
+}
+
+// One coefficient, addressed by int16 element index inside the Coef buffer.
+int coefAt(int elem) {
+    return unpack16(uCoef.w[elem >> 1], elem & 1);
+}
+
+// ------------------------------------------------------------- 1D IDCT
+// [REF] transform.cpp idct8_1d.  Gain 2^10 relative to the orthonormal DCT-III.
+void idct8_1d(int x0, int x1, int x2, int x3, int x4, int x5, int x6, int x7,
+              out int y[8]) {
+    // even part
+    int t0 = (x0 + x4) * kC4;
+    int t1 = (x0 - x4) * kC4;
+    int t2 = x2 * kS2 - x6 * kC2;
+    int t3 = x2 * kC2 + x6 * kS2;
+    int e0 = t0 + t3, e3 = t0 - t3;
+    int e1 = t1 + t2, e2 = t1 - t2;
+    // odd part
+    int A = x1 * kA1 + x7 * kA7;
+    int B = x1 * kA7 - x7 * kA1;
+    int C = x3 * kA3 + x5 * kA5;
+    int D = x3 * kA5 - x5 * kA3;
+    int O0 = A + C;
+    int O3 = B - D;
+    int P = A - C, Q = B + D;
+    int O1 = ((P + Q) * kC4 + kOddRound) >> kOddShift;
+    int O2 = ((P - Q) * kC4 + kOddRound) >> kOddShift;
+    y[0] = e0 + O0; y[7] = e0 - O0;
+    y[1] = e1 + O1; y[6] = e1 - O1;
+    y[2] = e2 + O2; y[5] = e2 - O2;
+    y[3] = e3 + O3; y[4] = e3 - O3;
+}
+
+// ------------------------------------------------------------ bilinear
+// [REF] transform.cpp bilinear_impl, on the shared block-mean array.
+int bilinearMeans(int nb, int sx, int sy) {
+    int x0 = sx >> kBilinFracBits, y0 = sy >> kBilinFracBits;
+    int fx = sx & (kBilinOne - 1), fy = sy & (kBilinOne - 1);
+    int x1 = clamp(x0 + 1, 0, nb - 1);
+    int y1 = clamp(y0 + 1, 0, nb - 1);
+    x0 = clamp(x0, 0, nb - 1);
+    y0 = clamp(y0, 0, nb - 1);
+    int p00 = sMeans[y0 * nb + x0], p01 = sMeans[y0 * nb + x1];
+    int p10 = sMeans[y1 * nb + x0], p11 = sMeans[y1 * nb + x1];
+    int wx0 = kBilinOne - fx, wy0 = kBilinOne - fy;
+    return (p00 * wx0 * wy0 + p01 * fx * wy0 + p10 * wx0 * fy + p11 * fx * fy +
+            kBilinRound) >> kBilinShift;
+}
+
+// One reconstructed sample of plane p at its coded resolution.
+int planeSample(int base, int size, int x, int y) {
+    int e = y * size + x;
+    return unpack16(sPlane[base + (e >> 1)], e & 1);
+}
+
+// Coded -> "full" (stream-resolution) resample of one plane, half-phase
+// bilinear.  [REF] codec_impl.inc upsampled().
+int planeAtFull(int base, int size, int full, int px, int py) {
+    if (size == full) return planeSample(base, size, px, py);
+    int mul = (16 * size) / full;   // == 16 / (full / size)
+    int off = mul / 2 - 8;
+    int sx = mul * px + off, sy = mul * py + off;
+    int x0 = sx >> kBilinFracBits, y0 = sy >> kBilinFracBits;
+    int fx = sx & (kBilinOne - 1), fy = sy & (kBilinOne - 1);
+    int x1 = clamp(x0 + 1, 0, size - 1);
+    int y1 = clamp(y0 + 1, 0, size - 1);
+    x0 = clamp(x0, 0, size - 1);
+    y0 = clamp(y0, 0, size - 1);
+    int p00 = planeSample(base, size, x0, y0);
+    int p01 = planeSample(base, size, x1, y0);
+    int p10 = planeSample(base, size, x0, y1);
+    int p11 = planeSample(base, size, x1, y1);
+    int wx0 = kBilinOne - fx, wy0 = kBilinOne - fy;
+    return (p00 * wx0 * wy0 + p01 * fx * wy0 + p10 * wx0 * fy + p11 * fx * fy +
+            kBilinRound) >> kBilinShift;
+}
+
+// Plane value at display resolution (64x64 inside the tile).  For a 4:2:0
+// chroma plane this is the two-step chain the format defines: coded -> 32 by
+// the res_level upsampler (PAPER 1.5), then 32 -> 64 by the fixed half-phase
+// chroma upsampler (PAPER 1.3).  Both steps are the same Q4 bilinear.
+int planeAtDisplay(int base, int size, int full, int x, int y) {
+    if (full == 64) return planeAtFull(base, size, 64, x, y);
+    // full == 32: one more half-phase doubling.
+    int sx = 8 * x - 4, sy = 8 * y - 4;
+    int x0 = sx >> kBilinFracBits, y0 = sy >> kBilinFracBits;
+    int fx = sx & (kBilinOne - 1), fy = sy & (kBilinOne - 1);
+    int x1 = clamp(x0 + 1, 0, full - 1);
+    int y1 = clamp(y0 + 1, 0, full - 1);
+    x0 = clamp(x0, 0, full - 1);
+    y0 = clamp(y0, 0, full - 1);
+    int p00 = planeAtFull(base, size, full, x0, y0);
+    int p01 = planeAtFull(base, size, full, x1, y0);
+    int p10 = planeAtFull(base, size, full, x0, y1);
+    int p11 = planeAtFull(base, size, full, x1, y1);
+    int wx0 = kBilinOne - fx, wy0 = kBilinOne - fy;
+    return (p00 * wx0 * wy0 + p01 * fx * wy0 + p10 * wx0 * fy + p11 * fx * fy +
+            kBilinRound) >> kBilinShift;
+}
+
+// ================================================================= main
+void main() {
+    int tid = int(gl_LocalInvocationID.x);
+    int tileX = int(gl_WorkGroupID.x);
+    int tileY = int(gl_WorkGroupID.y);
+    int tile = tileY * pc.p.tilesX + tileX;
+
+    NxvwTileRec rec = uTiles.rec[tile];
+    int res_level = nxvw_rec_res_level(rec.w1);
+    // A 4:2:0 stream has 4:2:0 tiles only; a 4:4:4 stream may carry 4:2:0
+    // tiles (the encoder's --tile-420).  [REF] the decoder rejects
+    // chroma444 == 1 in a 4:2:0 stream.
+    int chroma444 = pc.p.chroma420 != 0 ? 0 : nxvw_rec_chroma444(rec.w1);
+    int alpha_mode = nxvw_rec_alpha_mode(rec.w1);
+    int tskip = nxvw_rec_tskip(rec.w1);
+    int mode = nxvw_rec_mode(rec.w1);
+    int qp = clamp(pc.p.baseQp + nxvw_rec_qp_delta(rec.w1), 0, 63);
+
+    // ---------------------------------------------------------- INTER HOOK
+    // v1 codes INTRA tiles only (the CPU reference rejects everything else).
+    // The pose-warp predictor of PAPER 3.2.3 step 5 / section 2 plugs in
+    // *here*: for mode == kModeInter / kModeSkipWarp, replace the DC-plane
+    // planar predictor below with
+    //
+    //     pred(x,y) = bit-exact 4-tap bilinear of the reference image at the
+    //                 warp coordinate, which is itself the Q4 bilinear of the
+    //                 4 corner displacements in the WarpRecs entry named by
+    //                 rec.w3 (binding 5, currently unbound),
+    //
+    // and for kModeSkipWarp/kModeSkipStatic skip the whole coefficient path.
+    // Nothing else in this kernel changes: the predictor feeds the same
+    // `pred` variable in the column pass, and the residual add, clamp,
+    // resample and colour conversion are shared.  Search for "INTER HOOK".
+    // Until warp/ lands, a non-INTRA tile reconstructs as pred = 0 + residual
+    // rather than producing undefined pixels.
+    bool intra = (mode == kModeIntra);
+
+    int nplanes = (pc.p.alphaPresent != 0) ? 4 : 3;
+    int ncoded = nplanes;
+    if (alpha_mode != kAlphaCoded) ncoded = min(ncoded, 3);
+
+    int tileCoefBase = tile * pc.p.coefStrideI16;
+    int planeStoreBase[4];
+    planeStoreBase[0] = 0;
+    planeStoreBase[1] = pc.p.planeWords0;
+    planeStoreBase[2] = pc.p.planeWords0 + pc.p.planeWords1;
+    planeStoreBase[3] = pc.p.planeWords0 + pc.p.planeWords1 + pc.p.planeWords2;
+
+    int bIdx = tid >> 2;   // block index inside the plane, 0..63
+    int sub = tid & 3;     // owns rows / columns 2*sub and 2*sub+1
+
+    int coefBase = tileCoefBase;
+
+    for (int p = 0; p < 4; ++p) {
+        if (p >= ncoded) break;   // uniform across the workgroup
+
+        bool chroma = (p == 1 || p == 2);
+        int size = nxvw_plane_size(p, res_level, chroma444);
+        int nb = size >> 3;
+        int ndc = nb * nb;
+        int planeQp = qp;
+        if (chroma) planeQp = clamp(qp + pc.p.chromaQpOff, 0, 63);
+        else if (p == 3) planeQp = clamp(qp + pc.p.alphaQpOff, 0, 63);
+        int wbase = chroma ? 64 : 0;
+        bool ctChroma = (pc.p.colorTransform == kCtYCoCgR) && chroma;
+        int dcOff = ctChroma ? kDcOffsetChromaCT : kDcOffset8;
+        int maxval = ctChroma ? kMaxvalChromaCT : kMaxval8;
+        int store = planeStoreBase[p];
+
+        // ------------------------------------------------ DC plane (3.2.4)
+        int dcqp = max(planeQp - kDcQpOffset, 0);
+        int tdc = dequantStep(dcqp, kFlatWeight);
+        if (tid < ndc) sDcTmp[tid] = dequant(coefAt(coefBase + tid), tdc);
+        barrier();
+
+        if (nb == 8) {
+            // Second-level 8x8 IDCT of the 64 block DCs.  Same two-pass
+            // structure as the block transform; 4 threads, 2 rows each.
+            int rowv[8], y[8];
+            int tmp[8];
+            if (tid < 4) {
+                for (int hf = 0; hf < 2; ++hf) {
+                    int r = (tid << 1) + hf;
+                    for (int c = 0; c < 8; ++c) rowv[c] = sDcTmp[r * 8 + c];
+                    idct8_1d(rowv[0], rowv[1], rowv[2], rowv[3], rowv[4],
+                             rowv[5], rowv[6], rowv[7], y);
+                    for (int c = 0; c < 8; ++c)
+                        tmp[c] = clamp16((y[c] + kIdctRound1) >> kIdctShift1);
+                    for (int c = 0; c < 8; ++c) sMeans[c * 8 + r] = tmp[c];
+                }
+            }
+            barrier();
+            if (tid < 4) {
+                for (int hf = 0; hf < 2; ++hf) {
+                    int r = (tid << 1) + hf;
+                    for (int c = 0; c < 8; ++c) rowv[c] = sMeans[r * 8 + c];
+                    idct8_1d(rowv[0], rowv[1], rowv[2], rowv[3], rowv[4],
+                             rowv[5], rowv[6], rowv[7], y);
+                    for (int c = 0; c < 8; ++c)
+                        tmp[c] = clamp16((y[c] + kIdctRound2) >> kIdctShift2);
+                    for (int c = 0; c < 8; ++c) sDcTmp[c * 8 + r] = tmp[c];
+                }
+            }
+            barrier();
+        }
+        if (tid < ndc) sMeans[tid] = clamp(dcOff + sDcTmp[tid], 0, maxval);
+        barrier();
+
+        // -------------------------------------------- residual block loop
+        bool live = bIdx < ndc;
+        int bx = 0, by = 0;
+        if (live) { bx = bIdx % nb; by = bIdx / nb; }
+        int blockBase = coefBase + ndc + bIdx * 64;
+
+        int res0[8], res1[8];   // this thread's 2 columns, 8 rows each
+
+        if (tskip != 0) {
+            // Transform skip: dequantized coefficients ARE the residual, in
+            // raster order, flat weight.  [REF] reconstruct_plane.
+            int t = dequantStep(planeQp, kFlatWeight);
+            if (live) {
+                for (int c = 0; c < 8; ++c) {
+                    res0[c] = dequant(coefAt(blockBase + c * 8 + 2 * sub), t);
+                    res1[c] = dequant(coefAt(blockBase + c * 8 + 2 * sub + 1), t);
+                }
+            }
+            barrier();  // keep the barrier count uniform with the DCT path
+            barrier();
+        } else {
+            // Row pass: 2 rows, dequantize with the weighting matrix, 1D IDCT,
+            // write transposed into shared memory.
+            if (live) {
+                int y[8];
+                for (int hf = 0; hf < 2; ++hf) {
+                    int r = (sub << 1) + hf;
+                    int q[8];
+                    for (int c = 0; c < 8; ++c) {
+                        int pos = r * 8 + c;
+                        q[c] = dequant(coefAt(blockBase + pos),
+                                       dequantStep(planeQp, uWgt.m[wbase + pos]));
+                    }
+                    idct8_1d(q[0], q[1], q[2], q[3], q[4], q[5], q[6], q[7], y);
+                    for (int c = 0; c < 8; ++c) {
+                        int v = clamp16((y[c] + kIdctRound1) >> kIdctShift1);
+                        if (hf == 0) res0[c] = v; else res1[c] = v;
+                    }
+                }
+                // tmp[c*8 + r] for r = 2*sub, 2*sub+1  ->  uint c*4 + sub
+                int obase = bIdx * 32;
+                for (int c = 0; c < 8; ++c)
+                    sT[obase + c * 4 + sub] = pack16x2(res0[c], res1[c]);
+            }
+            barrier();
+            // Column pass: rows 2*sub, 2*sub+1 of the transposed block.
+            if (live) {
+                int obase = bIdx * 32;
+                int y[8];
+                for (int hf = 0; hf < 2; ++hf) {
+                    int r = (sub << 1) + hf;
+                    int q[8];
+                    for (int c = 0; c < 8; ++c)
+                        q[c] = unpack16(sT[obase + r * 4 + (c >> 1)], c & 1);
+                    idct8_1d(q[0], q[1], q[2], q[3], q[4], q[5], q[6], q[7], y);
+                    for (int c = 0; c < 8; ++c) {
+                        int v = clamp16((y[c] + kIdctRound2) >> kIdctShift2);
+                        // dst[c*8 + r]: row c, column r
+                        if (hf == 0) res0[c] = v; else res1[c] = v;
+                    }
+                }
+            }
+            barrier();
+        }
+
+        // ------------------------------- prediction, add, clamp, write out
+        if (live) {
+            int col0 = bx * 8 + 2 * sub;
+            for (int c = 0; c < 8; ++c) {
+                int yy = by * 8 + c;
+                // INTER HOOK: swap bilinearMeans() for the warp predictor.
+                int pred0 = intra ? bilinearMeans(nb, kPlanarMul * col0 + kPlanarOff,
+                                                  kPlanarMul * yy + kPlanarOff) : 0;
+                int pred1 = intra ? bilinearMeans(nb, kPlanarMul * (col0 + 1) + kPlanarOff,
+                                                  kPlanarMul * yy + kPlanarOff) : 0;
+                int s0 = clamp(pred0 + res0[c], 0, maxval);
+                int s1 = clamp(pred1 + res1[c], 0, maxval);
+                int e = yy * size + col0;
+                sPlane[store + (e >> 1)] = pack16x2(s0, s1);
+            }
+        }
+        barrier();
+
+        coefBase += ndc + ndc * 64;
+    }
+
+    // ------------------------------------------------- display conversion
+    int sizeP[4];
+    int fullP[4];
+    for (int p = 0; p < 4; ++p) {
+        sizeP[p] = nxvw_plane_size(p, res_level, chroma444);
+        // [REF] plane_full_extent(): a chroma plane is half size only when the
+        // *stream* is 4:2:0; inside a 4:4:4 stream a 4:2:0 tile is upsampled
+        // straight to 64 in one step.
+        fullP[p] = ((p == 1 || p == 2) && pc.p.chroma420 != 0) ? 32 : 64;
+    }
+
+    int ox = tileX * 64, oy = tileY * 64;
+
+    // ---------------------------------- two-plane 4:2:0 YCbCr passthrough
+    // No colour transform, no chroma upsampling: the planes go out exactly as
+    // the stream carries them.  Luma is written at full resolution, Cb/Cr
+    // interleaved at half.  Requires a 4:2:0 stream and colour_transform none.
+    if (kOutFormat == kOutYcbcr420) {
+        for (int k = 0; k < 16; ++k) {
+            int idx = k * 256 + tid;
+            int x = idx & 63, y = idx >> 6;
+            int gx = ox + x, gy = oy + y;
+            if (gx >= pc.p.imageW || gy >= pc.p.imageH) continue;
+            int Y = clamp(planeAtFull(planeStoreBase[0], sizeP[0], 64, x, y), 0, 255);
+            imageStore(uOutLuma, ivec2(gx, gy), uvec4(uint(Y), 0u, 0u, 0u));
+        }
+        int cw = (pc.p.imageW + 1) >> 1, ch = (pc.p.imageH + 1) >> 1;
+        int cox = tileX * 32, coy = tileY * 32;
+        for (int k = 0; k < 4; ++k) {
+            int idx = k * 256 + tid;
+            int x = idx & 31, y = idx >> 5;
+            int gx = cox + x, gy = coy + y;
+            if (gx >= cw || gy >= ch) continue;
+            int Cb = clamp(planeAtFull(planeStoreBase[1], sizeP[1], 32, x, y), 0, 255);
+            int Cr = clamp(planeAtFull(planeStoreBase[2], sizeP[2], 32, x, y), 0, 255);
+            imageStore(uOutCbCr, ivec2(gx, gy), uvec4(uint(Cb), uint(Cr), 0u, 0u));
+        }
+        return;
+    }
+
+    for (int k = 0; k < 16; ++k) {
+        int idx = k * 256 + tid;
+        int x = idx & 63, y = idx >> 6;
+        int gx = ox + x, gy = oy + y;
+        if (gx >= pc.p.imageW || gy >= pc.p.imageH) continue;
+
+        int P0 = planeAtDisplay(planeStoreBase[0], sizeP[0], fullP[0], x, y);
+        int P1 = planeAtDisplay(planeStoreBase[1], sizeP[1], fullP[1], x, y);
+        int P2 = planeAtDisplay(planeStoreBase[2], sizeP[2], fullP[2], x, y);
+
+        int R, G, B;
+        if (pc.p.colorTransform == kCtYCoCgR) {
+            // [REF] nxvc_ycocgr_inverse.
+            int Y = P0;
+            int Co = P1 - kDcOffsetChromaCT;
+            int Cg = P2 - kDcOffsetChromaCT;
+            int t = Y - (Cg >> 1);
+            G = Cg + t;
+            B = t - (Co >> 1);
+            R = B + Co;
+        } else {
+            R = P0; G = P1; B = P2;
+        }
+        R = clamp(R, 0, 255);
+        G = clamp(G, 0, 255);
+        B = clamp(B, 0, 255);
+
+        int A = 255;
+        if (alpha_mode == kAlphaConstant) {
+            A = nxvw_rec_alpha_value(rec.w2);
+        } else if (alpha_mode == kAlphaCoded) {
+            A = clamp(planeAtDisplay(planeStoreBase[3], sizeP[3], fullP[3], x, y),
+                      0, 255);
+        }
+
+        if (kOutFormat == kOutRgb10A2) {
+            // 8-bit samples replicated into 10 bits; see syntax_constants.h.
+            uvec4 v = uvec4(uint((R << 2) | (R >> 6)), uint((G << 2) | (G >> 6)),
+                            uint((B << 2) | (B >> 6)), uint(A >> 6));
+            imageStore(uOutRgb10a2, ivec2(gx, gy), v);
+        } else {
+            imageStore(uOutRgba8, ivec2(gx, gy),
+                       uvec4(uint(R), uint(G), uint(B), uint(A)));
+        }
+    }
+}

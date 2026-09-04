@@ -1,0 +1,6 @@
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/passA/CMakeLists.txt)
+  add_subdirectory(passA)
+endif()
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/passB/CMakeLists.txt)
+  add_subdirectory(passB)
+endif()
