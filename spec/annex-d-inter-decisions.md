@@ -23,7 +23,7 @@ owning document. D-21 lists the conformance vectors Phase 2 must add.
 | D-2 | One 26-byte pose layout, the integer one, owned by `docs/TRANSPORT.md` | C-6 |
 | D-3 | One picture per eye; the transport's tile grid is the eye pair; `skip_bitmap` stays 64 bits | C-3 |
 | D-4 | The STEREO disparity is a 16-bit unsigned field in the tile's optional area, 12 bits used | C-21, C-24 |
-| D-5 | Version 1 is **bilinear only**. Catmull-Rom becomes tool bit 20, undefined in v1 | C-7 |
+| D-5 | Version 1 is **bilinear only**. Catmull-Rom becomes tool bit 23, undefined in v1 | C-7 |
 | D-6 | `res_level == 3` is reserved and rejected everywhere, transport included | C-5 |
 | D-7 | Tile corners are **derived** from the frame matrix; no corner record is transmitted | C-15 (part) |
 | D-8 | Motion vectors are **absolute**, not deltas | C-11 |
@@ -47,6 +47,12 @@ vectors must be *generated*, not merely listed), C-27 (level limits), C-28
 (an editorial correction owned by `docs/SYNTAX.md`, listed in the change list).
 
 ---
+
+
+> Editorial correction (2026-09-04, after implementation): `warp_present` is
+> `frame_flags` bit 3, not 2 (bit 2 is layered directional intra, shipped in
+> minor 3), and `FILTER_CATMULL_ROM` is tool bit 23, not 20 (bit 20 is `WM_ID`).
+> The text below has been updated; SYNTAX.md appendix A item 52 is authoritative.
 
 ## D-1 — The homography travels in a frame-header extension
 
@@ -141,7 +147,7 @@ carry one because it is derivable.
 
 ### Presence
 
-`frame_flags` gains bit 2, `warp_present`, and `frame_flags_reserved` shrinks
+`frame_flags` gains bit 3, `warp_present`, and `frame_flags_reserved` shrinks
 from 6 bits to 5:
 
 | bit | element |
@@ -426,7 +432,7 @@ untouched.
 
 ---
 
-## D-5 — Version 1 is bilinear only; Catmull-Rom is tool bit 20
+## D-5 — Version 1 is bilinear only; Catmull-Rom is tool bit 23
 
 *Closes C-7 (blocking).*
 
@@ -434,10 +440,10 @@ untouched.
 
 1. **`profile` remains informative and acquires no normative role.** It never
    selects decoder behaviour.
-2. **Tool bit 20 is `FILTER_CATMULL_ROM`.** When set, the interpolation filter
+2. **Tool bit 23 is `FILTER_CATMULL_ROM`.** When set, the interpolation filter
    of clause 6.7.5 is the 16-phase 4-tap Catmull-Rom table of Annex A.4. When
    clear, it is bilinear.
-3. **Tool bit 20 is not defined for version 1.** A version 1 decoder MUST reject
+3. **Tool bit 23 is not defined for version 1.** A version 1 decoder MUST reject
    a stream that sets it, exactly as it rejects bits 15 to 19. **Every
    conforming version 1 stream is therefore bilinear**, and the filter choice is
    not a decoder decision at all.
@@ -464,7 +470,7 @@ nothing is renumbered. Bits 21 to 63 remain reserved.
 
 ### Standing of the Catmull-Rom table
 
-Annex A.4's table is **normative for tool bit 20** and unused by version 1. It
+Annex A.4's table is **normative for tool bit 23** and unused by version 1. It
 stays in the specification, ratified by `docs/WARP.md` 9, so that the v2 bit has
 a defined meaning the day it is enabled rather than a table to be re-derived.
 The bilinear weights need no table: `16 - f` and `f` per axis, product over 256,
@@ -903,7 +909,7 @@ documents was touched.
 | Document | Section | Edit | Decision |
 |---|---|---|---|
 | `docs/WARP.md` | 3 | Note that the nine coefficients travel in `warp_ext()` and that `(ox, oy)` is derived from `width`/`height`, never transmitted | D-1 |
-| `docs/WARP.md` | 9 | Note that the filter is selected by tool bit 20 and that version 1 is bilinear only; the Catmull-Rom table is normative for v2 | D-5 |
+| `docs/WARP.md` | 9 | Note that the filter is selected by tool bit 23 and that version 1 is bilinear only; the Catmull-Rom table is normative for v2 | D-5 |
 | `docs/WARP.md` | 11 limitation 1 | Point at D-4: the disparity is a separate 12-bit unsigned field, not the shared MV field | D-4 |
 | `docs/WARP.md` | 11 limitation 2 | Resolved: corners are derived; no tile record is transmitted | D-7 |
 | `docs/TRANSPORT.md` | 1 | State `cols == eyes * cols_per_eye`, `cols_per_eye = ceil(width/64)`, and the eye-to-picture mapping | D-3 |
@@ -911,7 +917,7 @@ documents was touched.
 | `docs/TRANSPORT.md` | 3.3 | Rename to `pose_header`, state that it is the same structure as the bitstream's `pose`, and that `docs/TRANSPORT.md` owns the layout | D-2 |
 | `docs/TRANSPORT.md` | 3.4 | `dir_len` bounds a fragment; state the 4×`max_tile_bytes` ceiling and the jumbo requirement for a 12 kB tile | D-15 |
 | `docs/STEREO.md` | 2.3 | Supersede the Exp-Golomb decision: the disparity is `f(16)` in the tile's optional area, 12 bits used | D-4 |
-| `docs/STEREO.md` | 5 | The filter is bilinear in version 1 in every profile, selected by tool bit 20 | D-5 |
+| `docs/STEREO.md` | 5 | The filter is bilinear in version 1 in every profile, selected by tool bit 23 | D-5 |
 | `docs/STEREO.md` | 9 | `STEREO` is mode **4** by field value; `ref_sel` is present, constrained to 0 and ignored | D-12, C-23 |
 
 Edits required in documents outside this annex's scope, listed for their owners
