@@ -18,9 +18,9 @@ enum UnitKind : u8 { UNIT_COEF = 0, UNIT_MODE = 1 };
 // Both are inside the same unit, so the derivation only ever looks at data the
 // lane has already produced, whatever the interleaved lane schedule does.
 int mpm_of(const u8 *modes, int nbx, int b);
-// The 8 modes other than `mpm`, ascending: index -> mode.
-int nonmpm_mode(int mpm, int idx);
-int nonmpm_index(int mpm, int mode);
+// The `nmodes - 1` modes other than `mpm`, ascending: index -> mode.
+int nonmpm_mode(int mpm, int idx, int nmodes);
+int nonmpm_index(int mpm, int mode, int nmodes);
 
 struct Unit {
     i16 *coef;        // UNIT_COEF: ncoef quantized levels, block-local order
@@ -32,8 +32,17 @@ struct Unit {
     u8 kind;          // UnitKind
     u8 *modes;        // UNIT_MODE: nbx*nbx intra modes, raster order
     u8 nbx;           // UNIT_MODE: blocks per edge
+    u8 nmodes;        // UNIT_MODE: mode alphabet, kNumIntraModes or +1 (CFL)
     u8 ctx_mode;      // UNIT_MODE: kCtxNone = bypass coded, else a context
     u8 sdh;           // UNIT_COEF: 1 = sign data hiding applies
+    // Tool bit 19.  `split_present` means the unit codes a 4x4-split flag
+    // after a nonzero CBF; `split_out` is where that flag is read from (the
+    // encoder) and written to (the decoder).  The flag lives in the *block's
+    // own* unit rather than in the mode unit because the two can fall in
+    // different rANS lanes, and a unit's syntax may only depend on values its
+    // own lane has already produced (SYNTAX.md 9.1).
+    u8 split_present;
+    u8 *split_out;
 };
 
 // --------------------------------------------------------------- lane ops
@@ -56,10 +65,12 @@ class LaneMachine {
 
   private:
     enum Phase : u8 {
-        kCbf, kLast, kLastRaw, kLevel, kEscPrefix, kEscSuffix, kSign,
+        kCbf, kSplit, kLast, kLastRaw, kLevel, kEscPrefix, kEscSuffix, kSign,
         kModeSym, kModeFlag, kModeIdx, kHidden, kDone
     };
     void begin_next_unit();
+    void mode_commit(int mode);
+    void after_cbf();
     void store_magnitude();
     void begin_unit();
     void begin_levels();
@@ -71,6 +82,8 @@ class LaneMachine {
     Phase phase_ = kDone;
 
     const Unit *u_ = nullptr;
+    const u8 *scan_ = nullptr;   // u_->scan, or the split scan when split_
+    bool split_ = false;
     int last_ = 0, pos_ = 0, prev_class_ = 0;
     int last_cls_ = 0;
     i32 mag_ = 0;

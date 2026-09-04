@@ -36,6 +36,8 @@ struct VecSpec {
     int dir;          // 0 off, 1 directional intra, 2 its layered form
     int ctx;          // 0 = 12 contexts, 1 = 16 (CTX_V2)
     int sdh;          // sign data hiding (tool 22)
+    int spl;          // 4x4 transform split (tool 19)
+    int cfl;          // chroma from luma (tool 24)
 };
 
 static const VecSpec kVectors[] = {
@@ -94,6 +96,16 @@ static const VecSpec kVectors[] = {
     // column; v44 is the encoder's shipped default configuration.
     {"v43_sdh_only420",        192, 128, 0,  1, 20,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 1},
     {"v44_default444",         192, 128, 1,  1, 20,  0, 0,  0,255,  1,  0, 0,  1,  0,  0, 1, 0, 0, 1, 1, 1},
+    // v1.5 additions: the detail tools (numbered after the Phase 2 set).  `spl` and `cfl` are the last two
+    // columns.  v45/v46 are the 4x4 split alone; v47/v48 are chroma from
+    // luma alone at both co-location factors (444 is f == 1, 420 is f == 2);
+    // v49 is the encoder's v1.5 default configuration with both on, custom
+    // tables and auto lanes.
+    {"v57_split444_qp16",      192, 128, 1,  1, 16,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 1, 1, 1, 1, 0},
+    {"v58_split_res420",       192, 128, 0,  2, 24,  0, 0,  0,  3,  0,  0, 0,  1,  1,  0, 1, 0, 0, 1, 1, 1, 1, 0},
+    {"v59_cfl444_qp20",        192, 128, 1,  1, 20,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 1, 1, 1, 0, 1},
+    {"v60_cfl420_qp28",        192, 128, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 1, 1, 1, 0, 1},
+    {"v61_default_v15_444",    192, 128, 1,  1, 20,  0, 0,  0,255,  1,  0, 0,  1,  0,  0, 1, 0, 0, 1, 1, 1, 1, 1},
 };
 static const int kNumVectors = (int)(sizeof(kVectors) / sizeof(kVectors[0]));
 
@@ -217,6 +229,8 @@ static Result build(const VecSpec &v) {
     cfg.intra_dir_layer = v.dir == 2 ? 1u : 0u;
     cfg.ctx_v2 = (uint32_t)v.ctx;
     cfg.sign_hide = (uint32_t)v.sdh;
+    cfg.split4x4 = (uint32_t)v.spl;
+    cfg.chroma_from_luma = (uint32_t)v.cfl;
 
     nxvc_status st;
     nxvc_encoder *e = nxvc_encoder_create(&cfg, &st);
@@ -429,6 +443,15 @@ static Result build_inter(const InterSpec &v) {
     cfg.intra_period = (uint32_t)v.iperiod;
     cfg.ref_sel = (uint32_t)v.ref_sel;
     cfg.custom_tables = 0;
+    // The Phase 2 set pins the inter path, so it is held at the tool set
+    // Phase 2 defined it with.  The v1.5 intra detail tools are on by default
+    // and would apply to an inter stream's INTRA refresh tiles, but nothing
+    // in this package measured that, and turning them on here would move
+    // twelve conformance vectors that have nothing to do with it.  A package
+    // that measures the intra tools inside inter streams should turn them on
+    // here and regenerate v45-v56 as its own before/after.
+    cfg.split4x4 = 0;
+    cfg.chroma_from_luma = 0;
 
     nxvc_status st;
     nxvc_encoder *e = nxvc_encoder_create(&cfg, &st);
@@ -753,7 +776,7 @@ static const RejectSpec kRejects[] = {
     {"r06_res_level3",        "res_level 3 is reserved",                 NXVC_ERR_BITSTREAM,   1},
     {"r07_truncated_rans",    "the tile payload is cut short",           NXVC_ERR_TRUNCATED,   1},
     {"r08_skip_bitmap",       "a skip bit for a column past the picture",NXVC_ERR_BITSTREAM,   1},
-    {"r09_reserved_tile_bit", "tile word1 bit 28 is reserved",           NXVC_ERR_BITSTREAM,   1},
+    {"r09_reserved_tile_bit", "tile word1 bit 29 is reserved",           NXVC_ERR_BITSTREAM,   1},
     {"r10_mode_inter",        "an INTER tile in a Phase 1 stream",       NXVC_ERR_UNSUPPORTED, 1},
     {"r11_wm_id_no_tool",     "wm_id != 0 without the WM_ID tool bit",   NXVC_ERR_BITSTREAM,   1},
     {"r12_row_index_wrong",   "row_index does not match its position",   NXVC_ERR_BITSTREAM,   1},
@@ -762,6 +785,9 @@ static const RejectSpec kRejects[] = {
     {"r15_ycocgr_420",        "YCoCg-R declared with 4:2:0 chroma",       NXVC_ERR_BITSTREAM,   0},
     {"r16_ctx_v2_short_table", "CTX_V2 table set overruns the tile rows",  NXVC_ERR_BITSTREAM,   1},
     {"r17_lossless_sign_hide", "LOSSLESS and SIGN_HIDE together",          NXVC_ERR_BITSTREAM,   0},
+    {"r30_cfl_no_dir_ctx",    "INTRA_CFL without INTRA_DIR and CTX_V2",   NXVC_ERR_BITSTREAM,   1},
+    {"r31_split_no_tool",     "tile split4x4 without XFORM_4X4_SPLIT",    NXVC_ERR_BITSTREAM,   1},
+    {"r32_split_with_tskip",  "tile split4x4 together with tskip",        NXVC_ERR_BITSTREAM,   1},
 };
 static const int kNumRejects = (int)(sizeof(kRejects) / sizeof(kRejects[0]));
 
@@ -800,7 +826,7 @@ static std::vector<uint8_t> make_reject(int idx, const std::vector<uint8_t> &bas
         case 5: put_u32(b, kOffTile0 + 4, w1 | (3u << 3)); break;
         case 6: b.resize(b.size() - 16); break;
         case 7: b[kOffRow + 4 + 7] = 0x80; break;      // skip bitmap bit 63
-        case 8: put_u32(b, kOffTile0 + 4, w1 | (1u << 28)); break;
+        case 8: put_u32(b, kOffTile0 + 4, w1 | (1u << 29)); break;
         case 9: put_u32(b, kOffTile0 + 4, (w1 & ~7u) | 2u); break;  // WARP_MV
         case 10: put_u32(b, kOffTile0 + 4, w1 | (1u << 26)); break; // wm_id 1
         case 11: b[kOffRow + 2] = 7; break;   // row_index
@@ -822,6 +848,18 @@ static std::vector<uint8_t> make_reject(int idx, const std::vector<uint8_t> &bas
         // Sign data hiding is lossy by construction; the two tool bits are
         // mutually exclusive.
         case 16: b[32 + 0] |= 0x20; b[32 + 2] |= 0x40; break;
+        // Chroma from luma is a mode inside the CTX_V2 mode symbol of the
+        // replace form; v01 has neither INTRA_DIR nor CTX_V2 (SYNTAX.md 7.7).
+        case 17: b[32 + 3] |= 0x01; break;              // tools bit 24
+        // Tile-header bit 28 without tool bit 19.
+        case 18: put_u32(b, kOffTile0 + 4, w1 | (1u << 28)); break;
+        // Both tool bits present, but the two tile-header flags are mutually
+        // exclusive: a transform-skip block has no sub-block structure.
+        case 19:
+            b[32 + 0] |= 0x02;                          // tools bit 1
+            b[32 + 2] |= 0x08;                          // tools bit 19
+            put_u32(b, kOffTile0 + 4, w1 | (1u << 28) | (1u << 23));
+            break;
         default: break;
     }
     return b;

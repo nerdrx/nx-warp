@@ -212,6 +212,19 @@ extern "C" nxvc_encoder *nxvc_encoder_create(const nxvc_config *cfg,
     e->fp.intra_dir = e->cfg.intra_dir ? 1 : 0;
     e->fp.dir_layer = (e->cfg.intra_dir && e->cfg.intra_dir_layer) ? 1 : 0;
     e->fp.sdh = e->cfg.sign_hide ? 1 : 0;
+    // The 4x4 split is decided per block by the directional-intra analysis
+    // pass, which is the only place the encoder measures a per-block
+    // rate-distortion cost, so the encoder ties the two together.  The
+    // *syntax* does not: tile header bit 28 is independent of tool bit 17.
+    e->fp.split4 =
+        (e->cfg.split4x4 && e->cfg.intra_dir && !e->cfg.lossless) ? 1 : 0;
+    // CFL is an extra *chroma mode*, so it needs the mode unit (INTRA_DIR)
+    // and its symbol alphabet (CTX_V2), and it predicts samples, so it needs
+    // the replace form.  SYNTAX.md 7.7.
+    e->fp.cfl = (e->cfg.chroma_from_luma && e->cfg.intra_dir &&
+                 e->cfg.ctx_v2 && !e->fp.dir_layer)
+                    ? 1
+                    : 0;
     e->cfg.eyes = eyes;
     e->fp.inter = e->cfg.inter ? 1 : 0;
     e->fp.stereo = e->cfg.stereo ? 1 : 0;
@@ -268,6 +281,8 @@ static u64 encoder_tools(const nxvc_encoder *e) {
     if (e->cfg.wm_id != 0 && e->cfg.quant_matrix != 255 && !e->cfg.lossless)
         t |= NXVC_TOOL_WM_ID;
     if (e->cfg.intra_dir) t |= NXVC_TOOL_INTRA_DIR;
+    if (e->fp.split4) t |= NXVC_TOOL_XFORM_4X4_SPLIT;
+    if (e->fp.cfl) t |= NXVC_TOOL_INTRA_CFL;
     if (e->cfg.ctx_v2) t |= NXVC_TOOL_CTX_V2;
     if (e->cfg.sign_hide) t |= NXVC_TOOL_SIGN_HIDE;
     if (e->cfg.inter) t |= NXVC_TOOL_INTER | NXVC_TOOL_WARP;
@@ -524,8 +539,10 @@ static double tile_distortion(TileCoder &tc) {
     for (int p = 0; p < np; ++p) {
         PlaneState &s = tc.pl[p];
         src = s.samples;
+        CflCtx cf = tc.cfl_for(p);
         reconstruct_plane(s, &tc.coef[plane_coef_offset(tc, p)], tc.tp.tskip,
-                          tc.intra_dir, tc.dir_layer);
+                          tc.intra_dir, tc.dir_layer,
+                          cf.on() ? &cf : nullptr);
         for (size_t i = 0; i < src.size(); ++i) {
             double d = (double)src[i] - (double)s.samples[i];
             sse += d * d;
@@ -615,9 +632,12 @@ static double sse_pred(const PlaneState &s) {
 // the decoder's samples in the tile so they can go into the reference ring.
 static void finalize_recon(TileCoder &tc) {
     int np = coded_planes(tc);
-    for (int p = 0; p < np; ++p)
+    for (int p = 0; p < np; ++p) {
+        CflCtx cf = tc.cfl_for(p);
         reconstruct_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
-                          tc.tp.tskip, tc.intra_dir, tc.dir_layer);
+                          tc.tp.tskip, tc.intra_dir, tc.dir_layer,
+                          cf.on() ? &cf : nullptr);
+    }
 }
 
 // Rolling intra refresh (PAPER 2.6, Annex D).  1/T of the tiles are forced
@@ -742,11 +762,15 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         build_rate_cost(tabs[tc.tp.table_set], rc);
         int np = coded_planes(tc);
         int mode_ctx = tc.nctx >= kNumCtxV2 ? kCtxMode : 0;
-        for (int p = 0; p < np; ++p)
+        for (int p = 0; p < np; ++p) {
+            CflCtx cf = tc.cfl_for(p);
             analyze_plane_dir(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
                               tc.tp.tskip, tc.dir_layer, p == 1 || p == 2, rc,
                               rdo_lambda_scale, pass && use_rdo,
-                              pass ? dir_cand : 1, mode_ctx, tc.sdh);
+                              pass ? dir_cand : 1, mode_ctx, tc.sdh, tc.split4,
+                              cf.on() ? &cf : nullptr,
+                              cf.on() ? kNumIntraModesCfl : kNumIntraModes);
+        }
     };
 
     // Quantize one already-loaded tile: plain pass, table-set choice, then the
@@ -797,6 +821,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         tp.table_set = clamp_i32((fp.base_qp + tp.qp_delta) >> 3, 0, 7);
         tp.nsub_log2 = e->cfg.nsub_log2 == 255 ? 3 : (int)e->cfg.nsub_log2;
         tp.tskip = e->cfg.transform_skip == 1 ? 1 : 0;
+        tp.split4 = (fp.split4 && !tp.tskip) ? 1 : 0;
         if (fp.quant_matrix != 255 && e->cfg.wm_id != 0 && !e->cfg.lossless)
             tp.wm_id = e->cfg.wm_id == 255 ? 0 : clamp_i32((int)e->cfg.wm_id, 0, 3);
         return tp;
@@ -1230,6 +1255,13 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                         }
                     }
                     quantize_tile(tc, tabs);
+                    if (tc.split4) {
+                        bool any = false;
+                        for (int p = 0; p < coded_planes(tc) && !any; ++p)
+                            for (u8 f : tc.pl[p].splits)
+                                if (f) { any = true; break; }
+                        if (!any) tc.clear_split();
+                    }
                     u32 th[kNumCtx][kNumSym];
                     std::memset(th, 0, sizeof(th));
                     if (count_units(tc.units.data(), (int)tc.units.size(),
@@ -1335,6 +1367,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                     ti.wgt = 0;
                     ti.wm_id = (u8)tc.tp.wm_id;
                     ti.intra_dir = (u8)tc.intra_dir;
+                    ti.split4x4 = (u8)tc.split4;
                     ti.ref_sel = (u8)tc.tp.ref_sel;
                     ti.mv_present = (u8)tc.tp.mv_present;
                     ti.qp_delta = (i8)tc.tp.qp_delta;
@@ -1498,6 +1531,7 @@ extern "C" int nxvc_debug_histogram(const nxvc_config *cfg,
         tp.table_set = clamp_i32((fp.base_qp + tp.qp_delta) >> 3, 0, 7);
         tp.nsub_log2 = 3;
         tp.tskip = e->cfg.transform_skip == 1 ? 1 : 0;
+        tp.split4 = (fp.split4 && !tp.tskip) ? 1 : 0;
         if (e->cfg.alpha) tp.alpha_mode = 2;
         tc.tp = tp;
         tc.setup();
@@ -1539,6 +1573,7 @@ extern "C" int nxvc_debug_tile_histograms(const nxvc_config *cfg,
         tp.qp_delta = 0;
         tp.nsub_log2 = 3;
         tp.tskip = e->cfg.transform_skip == 1 ? 1 : 0;
+        tp.split4 = (fp.split4 && !tp.tskip) ? 1 : 0;
         tc.tp = tp;
         tc.setup();
         load_tile(tc, g, img, 0, t % (int)g.tiles_x, t / (int)g.tiles_x);
@@ -1548,10 +1583,14 @@ extern "C" int nxvc_debug_tile_histograms(const nxvc_config *cfg,
             RateCost rc;
             build_rate_cost(fp.tabs[tc.tp.table_set], rc);
             int mctx = tc.nctx >= kNumCtxV2 ? kCtxMode : 0;
-            for (int p = 0; p < np; ++p)
+            for (int p = 0; p < np; ++p) {
+                CflCtx cf = tc.cfl_for(p);
                 analyze_plane_dir(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
                                   tc.tp.tskip, tc.dir_layer, p == 1 || p == 2,
-                                  rc, 0.30, true, 2, mctx, tc.sdh);
+                                  rc, 0.30, true, 2, mctx, tc.sdh, tc.split4,
+                                  cf.on() ? &cf : nullptr,
+                                  cf.on() ? kNumIntraModesCfl : kNumIntraModes);
+            }
         } else {
             for (int p = 0; p < np; ++p)
                 analyze_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
@@ -1738,6 +1777,8 @@ static nxvc_status parse_frame_header(nxvc_decoder *d, const u8 *buf,
     br.u8v();  // reserved
     fp.nctx = (d->si.tools & NXVC_TOOL_CTX_V2) ? kNumCtxV2 : kNumCtxV1;
     fp.intra_dir = (d->si.tools & NXVC_TOOL_INTRA_DIR) ? 1 : 0;
+    fp.split4 = (d->si.tools & NXVC_TOOL_XFORM_4X4_SPLIT) ? 1 : 0;
+    fp.cfl = (d->si.tools & NXVC_TOOL_INTRA_CFL) ? 1 : 0;
     fp.sdh = (d->si.tools & NXVC_TOOL_SIGN_HIDE) ? 1 : 0;
     fp.dir_layer = (fp.flags >> 2) & 1;
     fp.inter = (d->si.tools & NXVC_TOOL_INTER) ? 1 : 0;
@@ -1746,6 +1787,10 @@ static nxvc_status parse_frame_header(nxvc_decoder *d, const u8 *buf,
     // flags bit 2 selects the layered form of directional intra; it is
     // meaningless, and therefore illegal, without the tool.
     if (fp.dir_layer && !fp.intra_dir) return NXVC_ERR_BITSTREAM;
+    // SYNTAX.md 7.7: CFL is a mode in the CTX_V2 mode symbol of the replace
+    // form, and none of the three is optional for it.
+    if (fp.cfl && (!fp.intra_dir || fp.nctx < kNumCtxV2 || fp.dir_layer))
+        return NXVC_ERR_BITSTREAM;
     if (fp.flags & 0xf0) return NXVC_ERR_BITSTREAM;   // reserved bits 4-7
     // Annex D D-1: warp_present requires the WARP tool bit.
     if (fp.warp_present && !(d->si.tools & NXVC_TOOL_WARP))
@@ -1954,7 +1999,7 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
                 TileParams tp;
                 unpack_tile_header(w0, w1, tp);
                 if ((w0 >> 3) & 1) return NXVC_ERR_BITSTREAM;  // reserved bit
-                if (w1 >> 28) return NXVC_ERR_BITSTREAM;       // reserved field
+                if (w1 >> 29) return NXVC_ERR_BITSTREAM;       // reserved field
                 if (tp.layer != 0) return NXVC_ERR_UNSUPPORTED;
                 // Annex D D-3: the eye field must agree with the eye the
                 // tile's position in the frame derives.
@@ -1987,6 +2032,11 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
                     return NXVC_ERR_BITSTREAM;
                 if (tp.wm_id != 0 && fp.quant_matrix == 255)
                     return NXVC_ERR_BITSTREAM;
+                // Tile header bit 28 needs the tool bit, and is mutually
+                // exclusive with transform skip (SYNTAX.md 6.7).
+                if (tp.split4 && !(d->si.tools & NXVC_TOOL_XFORM_4X4_SPLIT))
+                    return NXVC_ERR_BITSTREAM;
+                if (tp.split4 && tp.tskip) return NXVC_ERR_BITSTREAM;
                 if (!tp.chroma444 && g.chroma == NXVC_CHROMA_444 &&
                     !(d->si.tools & NXVC_TOOL_PER_TILE_CHROMA))
                     return NXVC_ERR_BITSTREAM;
@@ -2063,9 +2113,12 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
                                   1 << tp.nsub_log2, fp.tabs[tp.table_set],
                                   buf + payload_off, tp.payload_len))
                     return NXVC_ERR_BITSTREAM;
-                for (int p = 0; p < np; ++p)
+                for (int p = 0; p < np; ++p) {
+                    CflCtx cf = tc.cfl_for(p);
                     reconstruct_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
-                                      tp.tskip, tc.intra_dir, tc.dir_layer);
+                                      tp.tskip, tc.intra_dir, tc.dir_layer,
+                                      cf.on() ? &cf : nullptr);
+                }
                 store_tile(tc, g, img, (int)eye, (int)col, (int)row);
                 store_ref_tile(tc, g, cur, (int)eye, (int)col, (int)row);
                 nxvc::update_pred_state(d->state[t], tp.mode, tp.mv_x, tp.mv_y,
@@ -2085,6 +2138,7 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
                 ti.wgt = (u8)tp.wgt;
                 ti.wm_id = (u8)tp.wm_id;
                 ti.intra_dir = (u8)tc.intra_dir;
+                ti.split4x4 = (u8)tc.split4;
                 ti.ref_sel = (u8)tp.ref_sel;
                 ti.mv_present = (u8)tp.mv_present;
                 ti.qp_delta = (i8)tp.qp_delta;

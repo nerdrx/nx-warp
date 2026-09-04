@@ -6,6 +6,7 @@
 struct Coded {
     std::vector<uint8_t> header, frame;
     TestImage out;
+    TestImage shadow;   // the encoder's own reconstruction
     nxvc_status enc_status = NXVC_OK, dec_status = NXVC_OK;
 };
 
@@ -31,6 +32,18 @@ static bool code(const nxvc_config &cfg_in, const TestImage &im, Coded &r,
     size_t ol = 0;
     st = nxvc_encoder_encode_frame(e, &img, qp_map, res_map, r.frame.data(),
                                    r.frame.size(), &ol);
+    if (st == NXVC_OK) {
+        // The encoder's own reconstruction, which every in-tile predictor --
+        // the DC plane, the directional modes' neighbours, and the CFL
+        // model's luma -- is derived from.  It has to be the decoder's,
+        // exactly, or the two drift.
+        r.shadow = im;
+        nxvc_image si{};
+        for (int p = 0; p < 4; ++p) si.plane[p] = r.shadow.p[p].data();
+        si.stride[0] = im.w; si.stride[1] = im.cw;
+        si.stride[2] = im.cw; si.stride[3] = im.w;
+        nxvc_encoder_shadow_image(e, &si);
+    }
     nxvc_encoder_destroy(e);
     if (st != NXVC_OK) { r.enc_status = st; return false; }
     r.frame.resize(ol);
@@ -190,6 +203,91 @@ int main() {
                       nxvc_status_string(r.enc_status),
                       nxvc_status_string(r.dec_status));
                 if (c.nsub == 255) break;
+            }
+        }
+    }
+
+    // 5b. The v1.5 detail tools, over every combination they are legal in and
+    //     every QP extreme.  Both are additive by construction, so the point
+    //     of the test is that the encoder and the decoder agree about which
+    //     blocks are split and which chroma blocks are CFL, at res_level
+    //     boundaries (a res_level 2 4:2:0 tile has 8x8 chroma, the smallest
+    //     the CFL co-location is defined for) and at QP 0 and 63.
+    {
+        TestImage im420 = make_image(W, H, false, 1);
+        TestImage im444 = make_image(W, H, true, 1);
+        nxvc_tile_layout tl;
+        nxvc_tile_layout_get(W, H, &tl);
+        std::vector<uint8_t> rm(tl.tile_count);
+        for (uint32_t i = 0; i < tl.tile_count; ++i) rm[i] = (uint8_t)(i % 3);
+        // ct == 1 is YCoCg-R, whose chroma planes are 9-bit: it is the case
+        // that exercises the CFL model's widest chroma range (|top_c -
+        // base_c| <= 511, SYNTAX.md 7.7) and the 4x4 forward transform's.
+        for (int c444 = 0; c444 <= 1; ++c444)
+            for (int ct = 0; ct <= (c444 ? 1 : 0); ++ct)
+            for (int spl = 0; spl <= 1; ++spl)
+                for (int cfl = 0; cfl <= 1; ++cfl)
+                    for (int res = 0; res <= 1; ++res)
+                        for (int qp : {0, 26, 63}) {
+                            nxvc_config cfg;
+                            nxvc_config_default(&cfg);
+                            cfg.width = W; cfg.height = H;
+                            cfg.chroma = c444 ? NXVC_CHROMA_444
+                                              : NXVC_CHROMA_420;
+                            cfg.color_transform = (uint32_t)ct;
+                            cfg.color_space =
+                                ct ? (uint32_t)NXVC_CS_RGB : 0u;
+                            cfg.base_qp = (uint32_t)qp;
+                            cfg.split4x4 = (uint32_t)spl;
+                            cfg.chroma_from_luma = (uint32_t)cfl;
+                            Coded r;
+                            CHECK(code(cfg, c444 ? im444 : im420, r, nullptr,
+                                       res ? rm.data() : nullptr),
+                                  "v1.5 %s ct%d spl%d cfl%d res%d qp%d: %s / %s",
+                                  c444 ? "444" : "420", ct, spl, cfl, res, qp,
+                                  nxvc_status_string(r.enc_status),
+                                  nxvc_status_string(r.dec_status));
+                            // The encoder predicted from its own
+                            // reconstruction; it must be the decoder's, byte
+                            // for byte, or CFL and the directional modes are
+                            // reading different neighbours on the two sides.
+                            for (int pl = 0; pl < 3; ++pl)
+                                CHECK(r.shadow.p[pl] == r.out.p[pl],
+                                      "v1.5 %s ct%d spl%d cfl%d res%d qp%d: "
+                                      "shadow != decoder on plane %d",
+                                      c444 ? "444" : "420", ct, spl, cfl, res,
+                                      qp, pl);
+                        }
+    }
+
+    // 5c. Both tools are strictly additive: turning either on may never make
+    //     a frame both larger and worse than turning it off.  This is the
+    //     property the per-block mode and split decisions are supposed to
+    //     guarantee, and it is cheap to assert directly.
+    {
+        TestImage im = make_image(W, H, true, 1);
+        for (int qp : {12, 26, 40}) {
+            double best_psnr = 0;
+            size_t best_bytes = 0;
+            for (int k = 0; k < 4; ++k) {
+                nxvc_config cfg;
+                nxvc_config_default(&cfg);
+                cfg.width = W; cfg.height = H;
+                cfg.chroma = NXVC_CHROMA_444;
+                cfg.base_qp = (uint32_t)qp;
+                cfg.split4x4 = (uint32_t)(k & 1);
+                cfg.chroma_from_luma = (uint32_t)((k >> 1) & 1);
+                Coded r;
+                CHECK(code(cfg, im, r), "additive qp%d k%d: %s / %s", qp, k,
+                      nxvc_status_string(r.enc_status),
+                      nxvc_status_string(r.dec_status));
+                double p = psnr8(im.p[0].data(), r.out.p[0].data(),
+                                 im.p[0].size());
+                if (k == 0) { best_psnr = p; best_bytes = r.frame.size(); continue; }
+                CHECK(r.frame.size() <= best_bytes || p >= best_psnr - 0.05,
+                      "qp%d k%d: %zu B / %.2f dB is both bigger and worse than "
+                      "%zu B / %.2f dB", qp, k, r.frame.size(), p, best_bytes,
+                      best_psnr);
             }
         }
     }
