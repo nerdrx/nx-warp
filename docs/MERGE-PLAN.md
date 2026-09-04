@@ -3,6 +3,10 @@
 Companion to `docs/TOOLBITS.md`, which owns the bit allocation. This file owns
 the **order**, the **conflict matrix** and the **specific manual resolutions**.
 
+**Two normative decisions are fixed** and the merge carries them rather than
+re-litigating them: the single transform family and its gain invariant
+(section 4.4) and `CTX_V3`'s per-coding-unit conditioning (section 4.5).
+
 Everything here was measured, not guessed: every merge below was actually run
 with `git merge --no-commit --no-ff` on a throwaway branch off `merge-main` and
 then aborted. Baseline for all of it is `merge-main` = `e311de9`.
@@ -215,23 +219,48 @@ i16[64])` / `idct8x8` with `fdct_2d(int n, const i32*, i16*)` /
 `detail-a` **keeps `fdct8x8`/`idct8x8`** and adds a *fourth* size downward: new
 constants `kD0 = 512`, `kD1 = 669`, `kD2 = 277` for a 4x4 transform.
 
-Taking either side loses the other's tool outright. The resolution is to
-finish `xform-b`'s generalisation one step further -- `fdct_2d` / `idct_2d`
-over `n` in {**4**, 8, 16, 32}, with `detail-a`'s 4x4 constants folded in as
-the `n == 4` row of the same matrix family -- and then rewrite `detail-a`'s
-call sites onto it. `xform-b`'s Appendix A decision 53 already says the 16x16
-and 32x32 transforms are "one matrix family with the 8x8", so extending the
-family down to 4x4 is in the spirit of the branch, but it is **reference-codec
-work, not merge work**, and it needs whoever owns `ref/src/transform.cpp`.
+Taking either side loses the other's tool outright.
 
-There is also a normative question the merge cannot settle by itself: what
-`split4x4 == 1` means when `xform == 2` (a 32x32 transform). The cheapest
-correct answer, and the one matching the existing `tskip`/`xform` exclusion, is
-to make them mutually exclusive: **`split4x4 == 1` requires `xform == 0`**, a
-`BITSTREAM` error otherwise, with a new reject vector. That is a one-line
-constraint in section 4.1 and it keeps both tools' measured gains, since
-`detail-a`'s split wins on flat 8x8 blocks and `xform`'s large transforms win
-on smooth regions -- they were never competing for the same tiles.
+**DECISION (fixed by the coordinator, 2026-09-04). One transform family.**
+There is exactly one implementation, `fdct_2d(n)` / `idct_2d(n)` for `n` in
+{4, 8, 16, 32}, built on `xform-b`'s matrix-family recursion. `detail-a`'s
+4x4 becomes the `n == 4` row of that family and its call sites are rewritten
+onto it. The normative invariant the family must satisfy:
+
+> **The quantiser sees orthonormal coefficients at the v1 reference scale.**
+> The 2D gain is exactly `2^20` at every size; there is **one** qstep table;
+> and there is one weighting rule, `w_N[u][v] = w_8[u >> s][v >> s]` where
+> `s = log2(N) - 3`.
+
+Each size gets whatever forward/inverse shift split achieves that, and each
+split ships with a documented int32/int16 range proof in `docs/SYNTAX.md`
+section 6. `detail-a`'s constants `kD0 = 512`, `kD1 = 669`, `kD2 = 277` stay
+**if** they already meet the invariant; otherwise they are rescaled to.
+
+**This is a correctness trap, not a tidiness rule.** The detail judge showed a
+scale that is off by 2x does not fail loudly: it silently shifts the effective
+QP by 6, so every rate and PSNR number stays plausible and every comparison is
+wrong. So the decision carries a mandatory test:
+
+> A new ctest checks the measured 2D gain of **every** size in {4, 8, 16, 32}
+> against a floating-point DCT and requires agreement to within **0.1 %**.
+
+Write it as `ref.transform_gain` (or fold it into `ref.transform`), make it run
+under the `asan-ubsan` preset like the rest, and add an Appendix A entry
+recording the invariant and why the test exists. Do not merge `xform` without
+it: it is the only thing standing between a 2x scale slip and a tournament's
+worth of invalid measurements.
+
+*Still open, and separate from the decision above:* what `split4x4 == 1` means
+when `xform != 0`. My recommendation is mutual exclusion -- **`split4x4 == 1`
+requires `xform == 0`**, a `BITSTREAM` error otherwise, with a reject vector --
+matching the existing `tskip`/`xform` exclusion, since `detail-a`'s split wins
+on flat 8x8 blocks and `xform`'s large transforms win on smooth regions and the
+two were never competing for the same tiles. Note that once the family is one
+ladder over {4, 8, 16, 32}, `split4x4` and `xform_size` are arguably the same
+field seen from two ends, and the `xform` and `detail` judges may prefer to
+collapse them into a single size selector rather than add an exclusion rule.
+That is a design call for them, not for the integration pass.
 
 ### 4.5 The second semantic conflict: `ctx` x `xform` in the context derivation
 
@@ -252,15 +281,24 @@ Both rewrite `level_rate()`'s signature and both rewrite the unit-emission loop
 in `ref/src/codec.cpp` (10 conflicting hunks). Taking either side silently
 drops the other tool's context model. The merge is
 `uc.level(scan_pos, prev_class, band_min)`, with `UnitCtx` carrying `ucls`,
-`ctx_v3` **and** `band_min` -- but that is not a textual resolution, because it
-raises a normative question neither branch answered:
+`ctx_v3` **and** `band_min`.
 
-> does `CTX_V3`'s lane-state conditioning apply per 8x8 coefficient group
-> inside a 32x32 block, or per transform block?
+That much is mechanical. The normative question underneath it -- does
+`CTX_V3`'s lane-state conditioning apply per 8x8 coefficient group inside a
+32x32 block, or per transform block? -- is now settled:
 
-The two readings give different bitstreams. This needs the `ctx` and `xform`
-authors to agree, and the answer belongs in section 9 of `docs/SYNTAX.md` with
-its own Appendix A entry. **The integration pass must not invent it.**
+**DECISION (fixed by the coordinator, 2026-09-04). CTX_V3 conditions per
+CODING UNIT, never per transform block.** The coding unit is the 8x8
+coefficient group. A large block's units are conditioned on the previous unit
+**the same rANS lane decoded**, exactly as 8x8 blocks are. A 32x32 block is
+sixteen coding units for this purpose and nothing about the context derivation
+notices that they came from one transform.
+
+This keeps `CTX_V3` orthogonal to `XFORM_LARGE` -- the context model never
+reads the transform size -- and it keeps the existing rule of section 9.1, that
+a unit's syntax may only depend on values its own lane has already produced.
+Write it into `docs/SYNTAX.md` section 9 as normative text with its own
+Appendix A entry.
 
 ### 4.6 The collision git will not show you
 
@@ -336,24 +374,37 @@ conflicts and everything in whose bits are already frozen.
 
 Regenerate vectors **once, after the last merge**, never between steps.
 
-## 6. Per-step manual resolutions, trial stack
+## 6. Per-step manual resolutions
+
+In the merge order of section 5 (**detail, ctx, xform, inter, rdo**), with the
+`a`/`b` picks shown as placeholders where the judge has not ruled. Appendix A
+renumbering is cumulative in merge order: detail-a 53-59, then ctx, then xform,
+then inter, then rdo.
 
 | step | file | resolution |
 |---|---|---|
-| ctx-b | `tools/quality/compare.py` | `scripts/resolve-compare-py.py` (union) |
-| xform-b | `include/nxvc/nxvc.h` | `XFORM_LARGE` 24 -> 25; union the supported mask |
-| | `python/src/nxvc/_ffi.py` | same; `RESERVED_FROM` -> 28 |
-| | `docs/SYNTAX.md` | 2.3 row -> 25; word1 28-29; Appendix A 53-54 |
-| detail-a | `include/nxvc/nxvc.h` | `INTRA_CFL` stays 24; add `XFORM_4X4_SPLIT` to mask |
-| | `ref/src/transform.{h,cpp}` | **section 4.4 -- fold 4x4 into `fdct_2d`/`idct_2d`** |
+| **detail-a** | `include/nxvc/nxvc.h` | `XFORM_4X4_SPLIT` 19 and `INTRA_CFL` 24 both **stay** (judge-fixed); add both to the supported mask |
+| | struct layout | **judge item 1** -- move detail-a's new `nxvc_config`/`nxvc_tile_info` fields to the END of their structs, `detail-b`-style; mid-struct insertion silently moves every later offset |
+| | from `detail-b` | **judge item 2** -- encode-stats counters and `--stats`, its four extra vectors, its finer rejection vectors, its CLI validation, `quantize_unit()` |
+| | `docs/SYNTAX.md` | **judge item 3** -- pin that `round(2^15 / d)` has no ties for `d` in [1, 255]; Appendix A 53-59 |
+| | `ref/RESULTS-detail-a.md` | **judge item 4** -- regenerate rate columns and gate sentences on the fixed harness (absolute bitrates were ~6x high) |
+| **ctx** | `tools/quality/compare.py` | `scripts/resolve-compare-py.py` (union) -- ctx-b only, but cherry-pick it even if ctx-a wins |
+| | `include/nxvc/nxvc.h`, `python/src/nxvc/_ffi.py` | `CTX_V3` -> 25, second tool (`VEC_ENT`/`TAB_V2`) -> 26; union the mask; `RESERVED_FROM` |
+| | `ref/src/codec.cpp`, `ref/src/entropy.{h,cpp}` | **4.5, decided** -- `uc.level(scan_pos, prev_class, band_min)`; `UnitCtx` carries `ucls`, `ctx_v3` and `band_min`; `CTX_V3` conditions per coding unit, never per transform block |
 | | `ref/src/entropy.h` | keep both: `band_min` (ctx) and `split_present`/`split_out` (detail) |
-| | `docs/SYNTAX.md` | detail's 6.7 -> **6.8**; word1 `split4x4` -> bit 30; add the `split4x4` requires `xform == 0` constraint; Appendix A 55-61 |
-| inter-a | `include/nxvc/nxvc.h` | `NEAR_SKIP`/`QUAD_MV`/`SUBTILE_INTRA` -> 28/29/30; `TILE_EXT` 31 |
-| | `docs/SYNTAX.md` | move the four flags into the extension byte (TOOLBITS 4, option A) |
-| | `tests/ref/vectors.cpp` | renumber `v57`+ so no name collides |
-| rdo-b | `ref/src/codec.cpp`, `codec_impl.inc`, `ref/tools/nxv-enc.cpp` | encoder-side; take `rdo-b` where it only reorders search, keep the other branches' new syntax emission |
-| | all of `tests/vectors/` | regenerate |
-| final | `r09_reserved_tile_bit` | move to word0 bit 3 (TOOLBITS 4.1) and re-hash |
+| **xform** | `include/nxvc/nxvc.h` | `XFORM_LARGE` 24 -> **27** |
+| | `ref/src/transform.{h,cpp}` | **4.4, decided** -- one family `fdct_2d(n)`/`idct_2d(n)` over {4,8,16,32}; 2D gain exactly `2^20` at every size; one qstep table; `w_N[u][v] = w_8[u>>s][v>>s]`; documented int32/int16 range proof per size |
+| | `tests/ref/test_transform.cpp` | **4.4, mandatory** -- `ref.transform_gain`: every size's 2D gain vs a float DCT, within 0.1 %. A 2x slip is silent and shifts effective QP by 6 |
+| | `docs/SYNTAX.md` | xform keeps 6.7, detail's split becomes **6.8**; word1 `xform_size` moves to **29-30** (`split4x4` keeps 28) |
+| | `split4x4` x `xform` | **still open** -- recommend `split4x4 == 1` requires `xform == 0` with a reject vector, or collapse the two into one size selector (4.4) |
+| **inter** | `include/nxvc/nxvc.h` | `NEAR_SKIP`/`QUAD_MV`/`SUBTILE_INTRA` -> 28/29/30; `TILE_EXT` 31 if inter-a; rename inter-b's `WARP_DC`/`MV_QUAD` onto the shared names |
+| | `docs/SYNTAX.md` | inter-a: move its four word1 flags into the extension byte (TOOLBITS 4, option A). inter-b: `quad_mv` takes word1 31, no extension byte |
+| | `tests/ref/vectors.cpp` | renumber `v`/`r` vectors onto one sequence (4.3.2); rewrite the raw tool-bit pokes against constants (4.3.1) |
+| | Appendix A | inter-a contributes **no** entry; ask for one (rules criterion 4) |
+| **rdo** | `ref/src/codec.cpp`, `codec_impl.inc`, `ref/tools/nxv-enc.cpp` | encoder-side; take rdo where it only reorders search, keep the other branches' new syntax emission |
+| | all of `tests/vectors/` | regenerate, once, after this step |
+| **final** | `r09_reserved_tile_bit` | word1 is full; move it to word0 bit 3 (TOOLBITS 4.1) and re-hash |
+| | every `RESULTS-*.md` | absolute bitrates measured before the `--frames` fix are ~6x high; ratios survive, absolutes do not |
 
 ## 7. Running it
 
@@ -365,3 +416,15 @@ failure. It refuses to run on `merge-main` itself.
 
 Baseline to beat, measured on `merge-main` in this worktree:
 **17/17 tests pass in 61 s** under `asan-ubsan`.
+
+**Status: the real merge has NOT started, and must not, until
+`JUDGE-xform.md`, `JUDGE-ctx.md`, `JUDGE-inter.md` and `JUDGE-rdo.md` all
+exist.** Only `JUDGE-detail.md` has landed (merge `detail-a`). What has been
+done is a dry run of the machinery on `ctx-b` + `inter-a`, on the throwaway
+branch `integ-scratch`, to prove the pipeline builds, renumbers, regenerates
+and tests green -- it is not a claim about who should win. `merge-main` is
+untouched at `e311de9` and nothing has been pushed.
+
+The two decisions in 4.4 and 4.5 are fixed inputs to that merge whenever it
+happens, and `scripts/tourney-merge.sh` prints both at the point of conflict so
+they cannot be re-litigated at the keyboard.
