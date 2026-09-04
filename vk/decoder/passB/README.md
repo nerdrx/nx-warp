@@ -30,12 +30,16 @@ Per plane (Y/R, Co/G, Cg/B, and alpha when `alpha_mode == 2`):
    transform's.
    With `INTRA_DIR` (stream tool bit 17) each 8x8 block instead names one of
    nine modes, of which mode 0 *is* this predictor, and the blocks of a plane
-   are reconstructed **in raster order** — see "Directional intra" below.
+   are reconstructed **in raster order** — see "Directional intra" below. A
+   plane whose modes are *all* 0 takes this parallel path instead, bit
+   identically, because mode 0 reads no neighbour.
 3. **Residual.** Either transform-skip (dequantized coefficients *are* the
    residual, flat weight, raster order) or dequantize with the weighting
    matrix and run the 8x8 integer IDCT: 4 threads per block, 2 rows each in
    the row pass, 2 columns each in the column pass, transposed through local
-   memory in between.
+   memory in between. A block whose published length is 0 coded nothing, so
+   its residual is zero and neither pass runs — see "The sparse coefficient
+   layout" below.
 4. **Add and clamp** into the plane's sample store.
 
 Then, once per tile:
@@ -53,6 +57,37 @@ Then, once per tile:
 | `kOutRgba8` | `rgba8ui`, binding 3 | YCoCg-R inverse when `colorTransform == 1` |
 | `kOutRgb10A2` | `rgb10_a2ui`, binding 4 | 8-bit samples replicated to 10 bits; a real 10-bit profile will widen the sample path instead |
 | `kOutYcbcr420` | `r8ui` luma binding 5 + `rg8ui` CbCr binding 6 | two-plane 4:2:0 passthrough, no colour transform, no chroma upsampling. Default on Android: it is what the WiVRn NX client's decoder already consumes and it halves reference-slot memory on the headset |
+
+**Specialization constant 3, `kOutSecond`,** names a *second* format written
+from the same reconstruction, or `kOutNone`. Two stores of one tile is the
+shape the reference ring slot will have when the inter path lands, and the
+shape a 4:2:0 stream with a coded alpha plane already has, because the
+two-plane store has nowhere to put alpha. Doing both from one dispatch is 26 %
+cheaper than reconstructing the frame twice on RADV and 46–63 % cheaper on
+lavapipe (`../README.md`). The store loop is over specialization constants, so
+a one-store pipeline compiles to exactly the kernel it did before.
+
+### The sparse coefficient layout
+
+**Specialization constant 4, `kSparse`** (default 1), and binding 9. Pass A
+stores a unit's coefficients in *scan* order at slots `[0, LAST]` of the same
+reserved region the dense layout used, and publishes `LAST + 1` per unit;
+`passA/syntax_constants.h` section 8 is the normative description. Pass B
+wants a coefficient by its raster position, so it inverts the scan
+(`nxvw_scan_pos()`) and reads zero past the length.
+
+Two things fall out of the length that matter more than the bytes:
+
+* a **unit with length 0** coded nothing, so its dequantize and both passes of
+  its IDCT are skipped. A tile with no coded unit — which is what `WARP_SKIP`
+  and `STATIC_MV` will be when the inter hook lands, and what a static region
+  under rolling refresh already is — therefore runs no transform stage at all;
+* a **DC unit with length 0** makes the block means the plane's DC offset, so
+  the second-level 8x8 IDCT and its two barriers are skipped too.
+
+It is a specialization constant rather than a push constant because the test
+sits inside the innermost coefficient loop: left dynamic it cost 0.10 ms of
+Pass B, which is 40 % of the whole v1 planar path.
 
 With `colorTransform == kCtNone` on the RGB paths the three planes are written
 to R, G and B unchanged: the stream is carrying display-space planes. That is
@@ -79,6 +114,16 @@ binding 7, 4 bits per block.
   blocks and converts it back to samples once the plane is finished, with one
   pass of `sample = pred + recon`. That is exact, not an approximation, because
   `recon` was formed as `clamp(pred + v) - pred`.
+* **The residual is staged in the sample store** before the wavefront runs,
+  at exactly the positions the block will occupy. That costs no memory: a
+  block's own 8x8 region holds its residual until its step and its
+  reconstruction afterwards, and `dirAt()` never reads the region of a block
+  that is not done yet — it reads `base`. What it buys is that the wavefront
+  is no longer tied to the transform's four-threads-per-block mapping.
+  `dirBlockOfStep()` enumerates the blocks of a step — the arithmetic inverse
+  of `dirStepOf()` — and each gets `kDirLanesPerBlock` = 16 threads owning two
+  shared words each. 16 blocks x 16 threads is exactly the workgroup, which is
+  what the 32x32 sub-tile schedule needs at its widest step.
 * **The schedule is specialization constant 2**, `kDirSched`. 0 is the
   normative derivation of 7.4; 1 drops the above-right reference, 2 confines
   the dependency to 32x32 sub-tiles, 3 does both. The bit encoding is
@@ -87,10 +132,10 @@ binding 7, 4 bits per block.
   under `kDirSched == k`. **It is a bitstream property, not a tuning knob.**
   What each one costs in time is in `../README.md`.
 
-The residual is computed for every block in parallel, exactly as before, and
-stays in registers; only the prediction and the add are serialized. What the
-schedule changes is the number of `barrier()`s between them: 22 per 8x8-block
-plane at `kDirSched` 0, 15 at 1, 7 at 3.
+The residual is computed for every block in parallel, exactly as before; only
+the prediction and the add are serialized. What the schedule changes is the
+number of `barrier()`s between them: 22 per 8x8-block plane at `kDirSched` 0,
+15 at 1, 7 at 3, plus one for the residual staging.
 
 ### Shared memory
 
@@ -170,7 +215,9 @@ pose-warp predictor plugs into `reconstruct.comp` at the two places marked
 
 * the `bool intra` derivation near the top of `main()`, which is where
   `kModeWarpSkip` / `kModeStaticMv` should short-circuit the coefficient
-  path entirely;
+  path entirely. The short-circuit itself is already there and already
+  measured: a tile with no coded unit runs no dequantize and no IDCT, because
+  every unit's published length is 0;
 * the `pred0` / `pred1` computation in the prediction-and-add step, which is
   where `bilinearMeans()` is replaced by the bit-exact 4-tap bilinear of the
   reference image at the warp coordinate (PAPER 3.2.3 step 5).
@@ -200,18 +247,20 @@ the full decoder rather than this harness (`../README.md` has the method):
 
 | device | `INTRA_DIR` off | `kDirSched` 0 | 1 | 3 |
 |---|---|---|---|---|
-| RX 7900 XTX (RADV NAVI31) | 0.24 ms | 1.72 ms | 1.29 ms | 1.01 ms |
-| llvmpipe (lavapipe) | 40.5 ms | 139.8 ms | 118.3 ms | 114.6 ms |
+| RX 7900 XTX (RADV NAVI31) | 0.24 ms | **1.18 ms** | **0.89 ms** | **0.73 ms** |
+| llvmpipe (lavapipe, 4 cores) | 112 ms | 261–291 ms | 244–266 ms | 200–289 ms |
 
-The wavefront is the whole of the difference: the arithmetic does not grow, the
-occupancy does not recover, and Pass B's cost is *entirely* fixed per tile —
-its slope against payload size is zero to within the noise at every QP.
+The wavefront is still the whole of the difference, but it is 30 % cheaper at
+every schedule than it was before the 16-thread mapping, and Pass B's cost is
+no longer fixed per tile: 890 ns → 248 ns at zero payload, with a real slope
+against payload above it. `../README.md` has the before/after tables.
 
-Coefficient SSBO traffic is **24.4 MB per 2048-tile frame**. The dense
-res_level-0 4:2:0 tile slot is 6240 int16, and that number includes chroma:
-luma is 64 DC + 64 blocks x 64 = 4160, and each of the two chroma planes is
-16 DC + 16 blocks x 64 = 1040, so 32 chroma blocks per tile on top of the 64
-luma ones. PAPER 3.2.5's 16.8 MB estimate counts the luma plane only; at
-4:4:4 the slot grows to 12480 int16 and the frame to 48.8 MB. The sparse
-coefficient layout named in 3.2.5 as the first optimization would cut all of
-these by roughly 4x at typical QP.
+Coefficient SSBO traffic follows the payload now. The dense res_level-0 4:2:0
+tile slot is 6240 int16 — 24.4 MB per 2048-tile frame from this harness, 25.6
+from the full decoder, and that number includes chroma: luma is 64 DC + 64
+blocks x 64 = 4160, and each of the two chroma planes is 16 DC + 16 blocks x
+64 = 1040, so 32 chroma blocks per tile on top of the 64 luma ones. PAPER
+3.2.5's 16.8 MB estimate counts the luma plane only; at 4:4:4 the slot grows
+to 12480 int16 and the frame to 48.8 MB. **Sparse, the same frame is 0.87 MB
+at QP 63, 0.93 MB at QP 36, 11.6 MB at QP 24 and 13.6 MB at QP 12**, of which
+0.54 MB is the length words themselves.

@@ -90,6 +90,32 @@ from the stream's tool bits (`docs/SYNTAX.md` 2.3). It is a push constant
 rather than a specialisation constant so that turning a tool on costs no
 pipeline rebuild.
 
+### The sparse layout
+
+`sparse` (default 1) selects what a unit's slots hold. Section 8 of
+`syntax_constants.h` is the normative description; in one paragraph:
+
+* **dense** (`sparse == 0`) writes coefficient `k` at `scan_index(scan_id, k)`,
+  the raster index inside the unit, and zeroes the whole `coef_stride` region
+  first, so every tile moves 12.5 KB whatever the payload said;
+* **sparse** (`sparse == 1`) writes coefficient `k` at slot `k` — scan order —
+  and publishes `LAST + 1` in binding 7. Slots past `LAST` are neither written
+  nor read, so nothing is zeroed. Every zero *inside* `[0, LAST]` is stored
+  explicitly, which the level phase already does, so a reader that stops at
+  the published length sees exactly the coefficients the unit coded.
+
+The unit's base and its reserved width are the same in both, so `coef_stride`
+and every plane base are untouched. `LAST` is already in the syntax (9.2) and
+the scan is already normative (5): the layout is a re-indexing of the same
+numbers, not a change to them.
+
+Lanes interleave over units (unit `u` belongs to lane `u % LANES`), so the four
+units sharing a length word belong to four different lanes and the write is an
+`atomicOr`. It goes into a per-tile-slot LDS array — 2112 B, taking the kernel
+from 10.0 to 12.0 KB — and is flushed to binding 7 once per tile in
+`kUnitLenWordsPerTile` coalesced stores, so the frame's ~200 000 atomics stay
+local.
+
 **Coefficient order** is the reference's `TileCoder::coef` order, so Pass B can
 hand a tile straight to `reconstruct_plane()`:
 
@@ -113,8 +139,11 @@ and PAPER is not; see `syntax_constants.h` section 8.
 (`CBF == 1`). Unit indices follow the order above. 16 uints per tile covers the
 260-unit maximum.
 
-The kernel zeroes each tile's coefficient region and cbf words before decoding,
-so a `CBF == 0` unit and the padding both read back as zero.
+Under the dense layout the kernel zeroes each tile's coefficient region and cbf
+words before decoding, so a `CBF == 0` unit and the padding both read back as
+zero. Under the sparse layout it zeroes the cbf and length words only: an
+uncoded unit is the one whose published length is 0, and the padding is never
+read.
 
 ## Shared memory
 
@@ -198,7 +227,16 @@ lavapipe (subgroup size 8), in both read-pointer modes. The test encoder is
 byte-identical to `nxvc::encode_units` over random tiles spanning every
 `res_level`, `chroma444`, `tskip` and `table_set`.
 
-2048 tiles at 0.50 symbols/pixel decode in ~1.06 ms on a 7900 XTX (RADV),
-informational — the kernel currently pays three `barrier()`s per scheduling
-round to keep control flow uniform for the fallback path, which is the obvious
-thing to attack if Pass A ever needs to be faster.
+2048 tiles at 0.50 symbols/pixel decode in ~1.4 ms on a 7900 XTX (RADV),
+informational. The kernel pays three `barrier()`s per scheduling round to keep
+control flow uniform for the fallback path, and that is now **the** thing to
+attack: with Pass B's fixed cost down from 890 to 248 ns per tile
+(`../README.md`), Pass A is the larger of the two passes at every QP above 24,
+and on the scaled Adreno estimate it is the pass that misses the frame budget.
+
+The sparse layout cost Pass A a little: 124 → 170 ns per tile of fixed cost.
+The length words and their atomicOr are part of it, but most of it is the loss
+of the zeroing loop, which used to write the coefficient region in whole cache
+lines and so warmed it for the scattered stores that followed. That is a real
+trade and it is worth it — Pass B gained 642 ns per tile against it — but it is
+worth knowing which direction it went.

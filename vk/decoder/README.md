@@ -180,26 +180,49 @@ both are covered by the conformance sweep.
 ## Timing
 
 Two 2048x2048 eyes at 4:2:0 — 2048 tiles in one frame, the shape the headset
-actually streams — decoded 20 times, best of run. Informational.
+actually streams — decoded 30 times, best of run. Informational.
 
 **RX 7900 XTX (RADV NAVI31)**, streams from `nxvc_encoder`'s **default
 configuration**, which since v1.3 means `INTRA_DIR` + `CTX_V2` + `SIGN_HIDE`
-are all on:
+are all on. "before" is the dense coefficient layout as it shipped in v1.3:
 
-| QP | frame bytes | Pass A | Pass B | GPU total | wall |
-|---|---|---|---|---|---|
-| 12 | 2.64 MB | 1.61 ms | 1.92 ms | **3.53 ms** | 4.72 ms |
-| 24 | 1.32 MB | 1.18 ms | 1.88 ms | **3.06 ms** | 4.00 ms |
-| 36 | 0.17 MB | 0.38 ms | 1.87 ms | **2.26 ms** | 2.73 ms |
+| QP | frame bytes | coef SSBO | Pass A | Pass B | GPU total | wall |
+|---|---|---|---|---|---|---|
+| 12 | 2.64 MB | 25.6 → **13.6 MB** | 1.63 → 1.44 ms | 1.90 → **1.28 ms** | 3.53 → **2.72 ms** | 3.60 ms |
+| 24 | 1.32 MB | 25.6 → **11.6 MB** | 1.12 → 1.26 ms | 1.77 → **1.19 ms** | 2.89 → **2.46 ms** | 3.65 ms |
+| 36 | 0.17 MB | 25.6 → **0.93 MB** | 0.34 → 0.54 ms | 1.63 → **1.20 ms** | 1.99 → **1.75 ms** | 2.88 ms |
 
-**llvmpipe (lavapipe, 32-thread CPU)**, best of 5, for scale: 253 ms at QP 12,
-238 ms at QP 24, 155 ms at QP 36. It is a conformance oracle, not a
-performance target.
+**llvmpipe (lavapipe)**, pinned to 4 cores, for scale — it is a conformance
+oracle, not a performance target, and the 4-core pin makes it about twice the
+figures this document used to quote. Two runs, best of 3 and best of 6; the
+after column is the range across them, because llvmpipe's spread at these
+iteration counts is about ±20 % and only the QP 36 row is outside it:
 
-Pass A still scales with the symbol rate. **Pass B no longer does, and it is no
-longer cheap**: directional intra turned it from a 0.26 ms flat cost into a
-1.9 ms flat cost, and the whole of that increase is the wavefront of
-`docs/SYNTAX.md` 7.4. The next two sections are that number taken apart.
+| QP | Pass A | Pass B |
+|---|---|---|
+| 12 | 209 ms | 237 → 276–409 ms |
+| 24 | 159 ms | 242 → 224–260 ms |
+| 36 | 35 ms | 245 → **170–176 ms** |
+
+The QP 12 row is not noise all the way: on a CPU rasterizer the coefficient
+fetch is an L2 hit whichever layout it is, so the scan permute and the
+per-coefficient length check are added work with no bandwidth saving to pay
+for them, and at QP 12 almost every unit is coded. lavapipe is the closest
+thing here to a part where compute is scarce and bandwidth is not, and it says
+what that costs.
+
+**Pass B now scales with the content.** The coefficient buffer between the
+passes is sparse (`passA/syntax_constants.h` section 8): each unit carries its
+coefficients in scan order and Pass A publishes how many there are, so a unit
+that coded nothing costs no bytes, no dequantize and no IDCT. Together with
+the mode-0 fast path below, that took Pass B's fixed cost from 890 ns per tile
+to 248 ns. The next sections take the remaining number apart.
+
+**Pass A costs slightly more at low rates** — 124 → 170 ns per tile fixed — and
+that is the price of the layout: the length words and their atomicOr replace a
+coalesced zeroing loop that also warmed the coefficient region's cache lines.
+It is a good trade against Pass B's 642 ns, and it makes Pass A the larger of
+the two passes at every QP above 24.
 
 ### Fixed cost versus per-byte cost
 
@@ -210,30 +233,53 @@ ladder, same 2048 tiles, separates the two:
 
 | | fixed, per frame | slope, per MB of payload | fixed, per tile |
 |---|---|---|---|
-| Pass A, RADV | 0.25 ms | 0.54 ms | **121 ns** |
-| Pass B, RADV | 1.86 ms | 0.01 ms | **906 ns** |
-| Pass A, lavapipe | 15.1 ms | 41.7 ms | 7.4 µs |
-| Pass B, lavapipe | 128.5 ms | ~0 | 62.7 µs |
+| Pass A, RADV, dense | 0.25 ms | 0.54 ms | 121 ns |
+| Pass A, RADV, sparse | 0.35 ms | 0.48 ms | **170 ns** |
+| Pass B, RADV, dense | 1.82 ms | ~0 | 890 ns |
+| Pass B, RADV, sparse | 0.51 ms | 0.33 ms | **248 ns** |
+| Pass A, lavapipe, dense | 39.7 ms | 84.6 ms | 19.4 µs |
+| Pass A, lavapipe, sparse | 25.8 ms | 56.6 ms | **12.6 µs** |
+| Pass B, lavapipe, dense | 303 ms | -8 ms | 148 µs |
+| Pass B, lavapipe, sparse | 100 ms | 71 ms | **49 µs** |
 
-**Pass B is entirely fixed cost.** Its slope is zero to within the noise on
-both ICDs, at every QP from 63 (0.10 MB of payload) to 12 (2.87 MB) — a 28x
-range in payload that moves Pass B by less than 3 %. That is not an artefact
-of the measurement: the coefficient buffer between the passes is **dense**, so
-Pass B reads the same 25.6 MB whatever the stream said, and the wavefront runs
-its 22 steps per plane whether the blocks it is stepping over carry
-coefficients or not.
+**Pass B used to be entirely fixed cost.** Its slope was zero to within the
+noise on both ICDs, at every QP from 63 (0.10 MB of payload) to 12 (2.87 MB) —
+a 28x range in payload that moved Pass B by less than 3 %. That was not an
+artefact of the measurement: the coefficient buffer between the passes was
+**dense**, so Pass B read the same 25.6 MB whatever the stream said, and the
+wavefront ran its 22 steps per plane whether the blocks it was stepping over
+carried coefficients or not.
+
+Both halves of that are now false, and the fixed cost is 248 ns per tile
+rather than 890. The ladder itself is the clearest way to see it (RADV, best
+of 30, sparse):
+
+| QP | payload | coef SSBO | Pass A | Pass B |
+|---|---|---|---|---|
+| 63 | 0.102 MB | 0.87 MB | 0.29 ms | **0.20 ms** |
+| 51 | 0.115 MB | 0.88 MB | 0.31 ms | **0.20 ms** |
+| 36 | 0.155 MB | 0.93 MB | 0.50 ms | 1.09 ms |
+| 24 | 1.424 MB | 11.6 MB | 1.31 ms | 1.18 ms |
+| 12 | 2.869 MB | 13.6 MB | 1.94 ms | 1.62 ms |
+
+**Pass B no longer fits a line**, so the least-squares numbers above should be
+read as a summary rather than a model. The step between QP 51 and QP 36 is not
+bandwidth: it is the mode-0 fast path. At QP 51 and above the encoder's
+directional modes are almost all mode 0 — the DC-plane predictor, which reads
+no neighbour — so the plane takes the parallel path and the wavefront does not
+run at all. Below that it does. The mode-0 fast path is a step, the sparse
+coefficients are a slope, and the two together are the 890 → 248 ns.
 
 Two consequences worth stating plainly:
 
-* **The tile is the unit of cost, not the byte.** 906 ns per tile on a 7900 XTX
-  is what a 64x64 tile costs to reconstruct at QP 24 and at QP 63 alike. Larger
-  tiles would amortise the fixed part over more pixels, and the sparse
-  coefficient layout of PAPER 3.2.5 would attack the other end by making the
-  25.6 MB scale with the content. They are independent levers and the second
-  one is much the larger.
-* **Pass A's intercept is small** — 121 ns per tile, 13 % of Pass B's — so the
-  per-tile overhead the entropy decoder pays for tile independence is not what
-  is expensive. Tile independence is cheap; the wavefront inside a tile is not.
+* **The tile is no longer the unit of cost.** 248 ns per tile is what an empty
+  64x64 tile costs; a dense one at QP 12 costs about three times that. Larger
+  tiles would still amortise the fixed part over more pixels, but the fixed
+  part is now a quarter of what the tile-size argument was weighed against.
+* **Pass A is now the expensive pass.** Its intercept, 170 ns, is 69 % of Pass
+  B's rather than 13 %, and above QP 24 it is the larger of the two outright.
+  `passA/README.md` names the thing to attack: three `barrier()`s per
+  scheduling round, paid to keep control flow uniform for the LDS fallback.
 
 ### The `INTRA_DIR` wavefront, priced
 
@@ -244,36 +290,79 @@ DC-plane and transform barriers each plane pays anyway.
 
 | schedule | steps | barriers/tile | occupancy | rate | Pass B, RADV | Pass B, lavapipe |
 |---|---|---|---|---|---|---|
-| `INTRA_DIR` off (v1) | — | 23 | 100 % | — | **0.236 ms** | 40.5 ms |
-| 0 — as written | 22 | 62 | 4.5 % | — | **1.723 ms** (7.3x) | 139.8 ms |
-| 1 — no above-right | 15 | 49 | 6.7 % | +0.24 % | **1.293 ms** (5.5x) | 118.3 ms |
-| 3 — no above-right + 32x32 | 7 | 41 | 14.3 % | +1.8 % | **1.014 ms** (4.3x) | 114.6 ms |
+| `INTRA_DIR` off (v1) | — | 23 | 100 % | — | 0.255 → **0.241 ms** | 90 → 112 ms |
+| 0 — as written | 22 | 62 → 65 | 4.5 → **18.2 %** | — | 1.780 → **1.183 ms** (4.9x) | 252 → 261–291 ms |
+| 1 — no above-right | 15 | 49 → 52 | 6.7 → **26.7 %** | +0.24 % | 1.310 → **0.885 ms** (3.7x) | 229 → 244–266 ms |
+| 3 — no above-right + 32x32 | 7 | 41 → 44 | 14.3 → **57.1 %** | +1.8 % | 1.041 → **0.732 ms** (3.0x) | 246 → 200–289 ms |
 
-The headline is the first row against the second: **directional intra costs
-7.3x on Pass B**, +1.49 ms per frame on a 7900 XTX, for the 22.5 BD-rate
-points `ref/RESULTS-intra.md` measures. Nothing else in the decoder moved.
+RADV figures are the median of three runs at best-of-30; lavapipe's are a
+range across two runs, and it is wide enough that **lavapipe says nothing
+about the wavefront**. That is the expected answer, and it is the reason to
+believe the RADV column: llvmpipe has no occupancy to gain and no barrier cost
+to lose, so a change that is purely about occupancy should move RADV and not
+lavapipe, and that is exactly what the two columns show.
 
-RADV shader statistics (`RADV_DEBUG=shaderstats`, RDNA3, wave64) for the Pass B
-pipeline, 4:4:4 store:
+The headline is still the first row against the second: **directional intra
+costs 4.9x on Pass B**, +0.94 ms per frame on a 7900 XTX, for the 22.5 BD-rate
+points `ref/RESULTS-intra.md` measures. It used to be 7.3x and +1.49 ms.
 
-| | Pass A | Pass B |
-|---|---|---|
-| SGPRs / VGPRs | 108 / 48 | 108 / **144** |
-| spilled | 0 / 0 | **0 / 0** |
-| LDS | 10.2 KB | 25.6 KB |
-| code size | 16 KB | 150 KB |
+Occupancy is what moved. The wavefront no longer inherits the transform's
+four-threads-per-block mapping: the column pass stages the residual in the
+shared sample store — free, because a block's own 8x8 region holds its
+residual until its step and its reconstruction afterwards, and `dirAt()` never
+reads a region whose block is not done — and `dirBlockOfStep()` then enumerates
+the blocks of a step so each gets `kDirLanesPerBlock` = 16 threads. The extra
+barrier per plane that the staging costs is the 62 → 65.
+
+RADV shader statistics (`RADV_DEBUG=shaderstats`, RDNA3, wave64):
+
+| | Pass A | Pass B, 4:4:4 store | Pass B, two-plane 4:2:0 |
+|---|---|---|---|
+| SGPRs / VGPRs | 108 / 60 | 108 / **136** | 108 / 84 |
+| spilled | 0 / 0 | **0 / 0** | 0 / 0 |
+| LDS | 12.0 KB | 25.8 KB | 13.3 KB |
+| code size | 17 KB | 190 KB | 80 KB |
 
 Nothing spills, which is the thing that could have made this much worse: the
-`A[17]`/`L[17]` reference arrays of 7.4 are what take Pass B to 144 VGPRs, and
-144 is the last step before RDNA3 drops from 4 waves per SIMD to 3. The
-register footprint is **identical for all three schedules** — they change the
-loop trip count, not the working set — and it is also identical for a stream
-with `INTRA_DIR` off, because the tool is a push-constant branch inside one
-shader rather than a second pipeline. A v1 stream therefore pays the occupancy
-cost of the wider register file even though it never enters the wavefront;
-that is visible as nothing at all in the table above (0.236 ms against the
-0.26 ms this document reported before directional intra existed), so it has
-not been worth splitting the shader in two.
+`A[17]`/`L[17]` reference arrays of 7.4 are what take Pass B to 136 VGPRs, and
+144 is the last step before RDNA3 drops from 4 waves per SIMD to 3. Replacing
+`predictCols()` (two columns, `P0[8]` and `P1[8]`) with `predictOne()` (one
+sample) is where the 144 → 136 came from. The register footprint is
+**identical for all three schedules** — they change the loop trip count, not
+the working set — and it is also identical for a stream with `INTRA_DIR` off,
+because the tool is a push-constant branch inside one shader rather than a
+second pipeline. A v1 stream therefore pays the occupancy cost of the wider
+register file even though it never enters the wavefront; that is visible as
+nothing at all in the table above, so it has not been worth splitting the
+shader in two.
+
+Pass A's LDS grew from 10.2 to 12.0 KB for the per-tile unit-length words it
+now accumulates before flushing them once (`passA/syntax_constants.h` section
+8); its register footprint did not move.
+
+### Two stores from one Pass B
+
+A frame that needs two display formats used to reconstruct every tile twice.
+That is the shape a 4:2:0 stream with a coded alpha plane already has — the
+two-plane store has nowhere to put alpha, so the A channel comes from a second
+pass in RGBA8 — and it is the shape **the reference ring slot will have** when
+the inter path lands, because the slot and the display image are two stores of
+the same samples. Specialization constant 3, `kOutSecond`, does both from one
+dispatch; it defaults to `kOutNone`, so a one-store pipeline compiles to
+exactly the kernel it did before.
+
+2048 tiles, 4:2:0 with a coded alpha plane, QP 24, Pass B only:
+
+| | RADV | lavapipe |
+|---|---|---|
+| two dispatches (ycbcr420, then rgba8) | 2.271 ms | 473–667 ms |
+| one dispatch, both stores | **1.685 ms** | **246–257 ms** |
+| | **-26 %** | **-46 to -63 %** |
+
+So it is cheaper, on both ICDs, by about what the second reconstruction costs
+minus the second store's bandwidth — and much more than that on lavapipe,
+where the reconstruction is the whole cost and the store is nearly free.
+`NXVC_VKD_FLAG_SPLIT_STORES` keeps the two-dispatch path for measurement.
 
 ### Grouping Pass B's workgroups by tile shape
 
@@ -290,35 +379,63 @@ and the encoder's own per-tile transform-skip decision), Pass B only:
 
 | | RADV | lavapipe |
 |---|---|---|
-| raster order | 1.772 ms | 124.2 ms |
-| sorted by shape | **1.556 ms** | 139.6 ms |
-| | **-12.2 %** | **+12.4 %** |
+| raster order | 1.737 → 1.097 ms | 308 → 201 ms |
+| sorted by shape | 1.553 → 0.942 ms | 315 → 221 ms |
+| | -10.6 % → **-14 %** | +2.2 % → **+9.7 %** |
 
-It is worth 12 % on a real GPU and costs 12 % on llvmpipe, which is the result
-one would predict: on RADV neighbouring workgroups share a shader engine and
-converge, while llvmpipe's "workgroups" are CPU tasks that gain nothing from
-converging and lose the output image's write locality. It is **off by default**
-for that reason — a 12 % win on one ICD does not justify a 12 % loss on
-another until the shipping target is measured — and the switch is there so the
-Android client can turn it on once the Adreno number exists.
+The sign is unchanged — it helps on RADV, hurts on llvmpipe — but the RADV
+figure is no longer stable: across three runs the delta ranges -14 % to +5 %,
+because Pass B is now three times cheaper and the mixed frame's own variance
+dominates. **It stays off by default**, for the same reason as before and with
+less confidence than before; it needs the Adreno number, where workgroup
+convergence should matter most, before it can have a sensible default.
 
 A uniform frame gains nothing from it, and a VR stream at a steady operating
-point is close to uniform, so 12 % is the top of the range rather than the
-middle of it.
+point is close to uniform, so whatever the number is, it is the top of the
+range rather than the middle of it.
 
 ### Memory traffic
 
 The coefficient SSBO is the decoder's traffic budget. At `res_level` 0 a
 4:2:0 tile slot is 6240 int16 (luma 64 DC + 64 blocks x 64 = 4160, plus 1040
-for each of the two chroma planes), so a 2048-tile frame is **25.6 MB**
+for each of the two chroma planes), so a dense 2048-tile frame is **25.6 MB**
 written by Pass A and read back by Pass B — about 51 MB of device traffic per
-frame, which at 90 Hz is 4.6 GB/s. 4:4:4 doubles the slot to 12480 int16 and
-the frame to 51.1 MB. PAPER 3.2.5's 16.8 MB estimate counts the luma plane
-only. The sparse coefficient layout named there as the first optimisation
-would cut all of these by roughly 4x at typical QP; nothing in the C ABI
-changes if it lands, because the layout is entirely between the two passes.
-The fit above says this is now the *only* lever on Pass B that scales with the
-content, because Pass B's cost is otherwise entirely fixed per tile.
+frame, which at 90 Hz is 4.6 GB/s, at every QP. 4:4:4 doubles the slot to
+12480 int16 and the frame to 51.1 MB. PAPER 3.2.5's 16.8 MB estimate counts
+the luma plane only.
+
+**The sparse layout named there as the first optimisation has landed**
+(`passA/syntax_constants.h` section 8, ADR 0026). Inside a coding unit a
+coefficient is stored at its *scan* position rather than its raster one, the
+unit's base and reserved width unchanged; Pass A publishes one byte per unit
+holding `LAST + 1` and writes slots `[0, LAST]` only, so nothing is zeroed and
+nothing past `LAST` is written or read. `LAST` is already in the syntax (9.2)
+and the scan is already normative (5), so this is a re-indexing of the same
+numbers: same bitstream, same coefficients, same pixels. Nothing in the C ABI
+moved either, because the layout is entirely between the two passes.
+
+Measured, 2048 tiles 4:2:0, the same frames as the timing table:
+
+| QP | payload | dense | sparse | |
+|---|---|---|---|---|
+| 63 | 0.10 MB | 25.6 MB | **0.87 MB** | 29x |
+| 36 | 0.16 MB | 25.6 MB | **0.93 MB** | 27x |
+| 24 | 1.42 MB | 25.6 MB | **11.6 MB** | 2.2x |
+| 12 | 2.87 MB | 25.6 MB | **13.6 MB** | 1.9x |
+
+The sparse figure includes the length words themselves — 66 uints per tile,
+0.54 MB per frame, which is the floor the QP 63 row is sitting on. Turn the
+whole thing off with `NXVC_VKD_FLAG_DENSE_COEF`, and read the exact number
+back in `nxvc_vkd_stats::coef_bytes` with `NXVC_VKD_FLAG_COEF_STATS`.
+
+**What it did not buy is time on a discrete GPU.** Sparse against dense with
+everything else equal, Pass B is within noise at QP 36 and about 5 % *slower*
+at QP 12 and QP 24: 960 GB/s is not the scarce resource on a 7900 XTX, and
+checking every coefficient against its unit's length is real work. The time
+Pass B did gain came from the fast paths the lengths make possible — an
+uncoded unit runs no IDCT at all — not from the bytes. On a part where 25 GB/s
+is shared with the display controller the arithmetic is the other way round;
+see "The Adreno 650 estimate" below.
 
 The v3 intra modes add one more inter-pass buffer, and it is small: **32 uints
 per tile**, one 4-bit field per 8x8 block, 8 fields to a word, each plane's
@@ -517,55 +634,131 @@ and `vk.passA.*` and `vk.passB.*` stay green on RADV and lavapipe.
 
 ---
 
-## Which wavefront should v1 adopt
+## The Adreno 650 estimate
 
-`docs/SYNTAX.md` 7.6 says the choice between the three schedules should be made
-"against a *measured* Pass B barrier cost on the target part, and that number
-does not exist yet". Half of it exists now. This section is the recommendation
-that follows from it, with the assumption it rests on stated first, because the
-assumption is doing a lot of work.
+`docs/SYNTAX.md` 7.6 asks for "a *measured* Pass B barrier cost on the target
+part, and that number does not exist yet". It still does not: **no Adreno 650
+has been measured**, and everything in this section is an estimate from the
+two ICDs that have been. The assumptions are stated first because they are
+doing all the work.
 
-**Assumption.** No Adreno 650 was measured. Everything below scales the 7900
-XTX numbers by **20–30x**, the range the brief gives for that part. That is a
-throughput ratio applied to a kernel whose problem is *serialization*, and a
-serialization-bound kernel usually scales worse than throughput, not better —
-so 20–30x is a floor, not a bracket. Treat every Adreno figure here as
-optimistic.
+**A1 — compute and serialization scale by 20–30x from the 7900 XTX.** That is
+the range the brief gives for the part. It is a throughput ratio applied to a
+kernel whose problem is serialization, and a serialization-bound kernel
+usually scales worse than throughput, so 20–30x is a floor rather than a
+bracket. Treat every scaled figure here as optimistic.
 
-Measured, Pass B only, 2048 tiles at QP 24, and the same scaled to a 90 Hz
-frame budget of 11.1 ms:
+**A2 — memory is 25 GB/s, shared.** PAPER 3.1's figure for the class of part.
+A discrete 7900 XTX has 960 GB/s, so bandwidth that is invisible on RADV is
+38x more expensive there.
+
+**A3 — the frame is 2 x 2048x2048 at 4:2:0, 2048 tiles, at 90 Hz**, so the
+budget for the whole decode is 11.1 ms.
+
+**A4 — lavapipe bounds nothing, but it separates two things RADV cannot.**
+llvmpipe's "workgroups" are CPU tasks with no barrier cost worth the name and
+no occupancy to lose, and it runs on a CPU whose bandwidth per lane is far
+closer to a phone's than a discrete GPU's. Where a change helps on RADV and
+not on lavapipe it was an occupancy change; where it helps on both it moved
+work or bytes. That is the only thing lavapipe is used for below.
+
+### The two terms
+
+The estimate is the larger of a scaled-compute term and a bandwidth term,
+because they overlap only partly and neither is a bound on the other.
+
+Bandwidth, per frame, at 25 GB/s, QP 24 with the two-plane 4:2:0 store:
+
+| | dense | sparse |
+|---|---|---|
+| bitstream read | 1.3 MB | 1.3 MB |
+| coefficient write + read | 51.2 MB | **23.2 MB** |
+| unit lengths, modes, records | 0.4 MB | 1.4 MB |
+| output write | 12.6 MB | 12.6 MB |
+| **total** | 65.5 MB = **2.6 ms** | **38.5 MB = 1.5 ms** |
+
+At QP 36 the sparse total is 15.3 MB = 0.6 ms against the same dense 2.6 ms.
+
+Scaled compute, Pass B only, 2048 tiles at QP 24, before and after this work:
 
 | schedule | rate | RADV | at 20x | at 30x |
 |---|---|---|---|---|
-| `INTRA_DIR` off | -22.5 pts worse | 0.24 ms | 4.7 ms | 7.1 ms |
-| 0 — as written | — | 1.72 ms | 34.5 ms | 51.7 ms |
-| 1 — no above-right | +0.24 % | 1.29 ms | 25.9 ms | 38.8 ms |
-| 3 — no above-right + 32x32 | +1.8 % | 1.01 ms | 20.3 ms | 30.4 ms |
+| `INTRA_DIR` off | -22.5 pts worse | 0.255 → **0.241 ms** | 5.1 → **4.8 ms** | 7.7 → **7.2 ms** |
+| 0 — as written | — | 1.780 → **1.183 ms** | 35.6 → **23.7 ms** | 53.4 → **35.5 ms** |
+| 1 — no above-right | +0.24 % | 1.310 → **0.885 ms** | 26.2 → **17.7 ms** | 39.3 → **26.6 ms** |
+| 3 — no above-right + 32x32 | +1.8 % | 1.041 → **0.732 ms** | 20.8 → **14.6 ms** | 31.2 → **22.0 ms** |
+
+and Pass A, which the same scaling makes the larger pass:
+
+| QP | RADV | at 20x | at 30x |
+|---|---|---|---|
+| 36 | 0.34 → 0.54 ms | 6.8 → 10.8 ms | 10.2 → 16.2 ms |
+| 24 | 1.12 → 1.26 ms | 22.4 → 25.2 ms | 33.6 → 37.8 ms |
+
+**The compute term dominates the bandwidth term by an order of magnitude in
+every row.** That is the finding, and it contradicts what this document and
+ADR 0025 assumed: sparse coefficients were called "the larger lever" and they
+are not. Even dense, the whole memory system is 2.6 ms of an 11.1 ms budget;
+the wavefront alone is 24–36 ms. The sparse layout's real contribution was the
+per-unit length, which let an uncoded unit skip its transform — a compute
+saving that happens to arrive with a bandwidth saving attached.
+
+### What that says
+
+* **A v1 stream (`INTRA_DIR` off) fits, and comfortably.** Pass B at 4.8–7.2 ms
+  plus Pass A at 6.8–16.2 ms at QP 36 is 11.6–23.4 ms against 11.1 — over
+  budget at the pessimistic end, and **Pass A is now the reason**, not Pass B.
+  That is a different problem from the one this document described a version
+  ago, and a more tractable one: Pass A's three barriers per scheduling round
+  are an implementation choice, not a syntax property.
+* **`INTRA_DIR` still does not fit on that part.** The cheapest schedule is
+  14.6 ms of Pass B alone at the optimistic end. It was 4–8x over budget; it is
+  now 2–4x over. Directional intra remains a desktop-decoder tool, negotiated
+  by capability exactly as ADR 0025 decided, and the negotiation costs nothing
+  to specify because `docs/SYNTAX.md` 2.3 already intersects capabilities.
+* **The sparse layout is worth having on Adreno even though it is not the
+  lever it was billed as.** 23.2 MB against 51.2 MB is 1.1 ms of a shared
+  memory system that the display controller and the reprojection shader are
+  also using, and unlike the compute terms it is a *measured* ratio rather
+  than a scaled one.
+* **What to measure first on a real Adreno 650**, in order: Pass A with
+  `INTRA_DIR` off at QP 36 (the number the Pico 4 stream actually depends on),
+  the tile-sort delta (the one knob whose sign is still unknown), and the
+  sparse-versus-dense delta, which A2 says should flip sign from the -5 % it
+  costs on RADV.
+
+## Which wavefront should v1 adopt
+
+The recommendation below predates this work and is unchanged by it: every
+schedule got 30 % cheaper, in the same proportion, so nothing about the
+ordering moved.
 
 ### The recommendation: adopt restriction A, and only A
 
 **Narrow `INTRA_DIR` to drop the above-right reference (schedule 1) and make
 that the v1 derivation.** Two reasons, one of them the interesting one.
 
-*The trade is ten times better than the next one.* Restriction A buys 0.43 ms
-of Pass B for 0.24 % of rate — **1.8 ms of decode per percent of rate**. Adding
-the 32x32 sub-tile restriction buys a further 0.28 ms for a further 1.56 % —
-**0.18 ms per percent**, a tenth as good. The first restriction is where the
-whole of the return is, which is exactly what 7.6 predicted from the rate side
-("essentially free — a quarter of a percent for a third of the barriers") and
-is now true from the time side as well. There is no operating point at which
-you would want B without already having taken A.
+*The trade is ten times better than the next one.* Restriction A buys 0.30 ms
+of Pass B for 0.24 % of rate — **1.24 ms of decode per percent of rate**.
+Adding the 32x32 sub-tile restriction buys a further 0.15 ms for a further
+1.56 % — **0.10 ms per percent**, a twelfth as good. The first restriction is
+where the whole of the return is, which is exactly what 7.6 predicted from the
+rate side ("essentially free — a quarter of a percent for a third of the
+barriers") and is now true from the time side as well. Both figures fell by
+about 30 % with the occupancy work and the ratio between them did not move, so
+there is still no operating point at which you would want B without already
+having taken A.
 
-*And the extra 0.28 ms does not rescue anything.* This is the part the
-measurement settles that the estimate could not. At 2048 tiles and 90 Hz,
-**no variant fits an Adreno 650** — the cheapest is 20.3 ms against an 11.1 ms
-budget for Pass B alone, before Pass A, and Pass A at QP 24 is another 24–35 ms
-scaled. Directional intra is not 20 % too expensive on that part; it is 4–8x
-too expensive, and a 1.8 %-rate schedule change moves it from 4.6x over to 3.7x
-over. Paying rate to close a gap you are not going to close is the wrong
+*And the extra 0.15 ms does not rescue anything.* At 2048 tiles and 90 Hz,
+**no variant fits an Adreno 650** — the cheapest is 14.6 ms against an 11.1 ms
+budget for Pass B alone, before Pass A, and Pass A at QP 24 is another 25–38 ms
+scaled. Directional intra was 4–8x too expensive on that part and is now 2–4x
+too expensive; a 1.8 %-rate schedule change moves it from 2.7x over to 2.2x
+over. Paying rate to close a gap you are not going to close is still the wrong
 purchase. The one corner where it changes an answer is a *single* eye at 20x
-(10.1 ms for schedule 3 against 12.9 ms for schedule 1) — and a corner that
-narrow should be decided on a real Adreno measurement, not on a 20–30x guess.
+(7.3 ms for schedule 3 against 8.9 ms for schedule 1, both now inside the
+budget) — and a corner that narrow should be decided on a real Adreno
+measurement, not on a 20–30x guess.
 
 So: take the free restriction because it is free, and do not take the priced
 one until someone has run Pass B on the actual part.
@@ -581,23 +774,26 @@ headset that does not offer bit 17 gets v1.2 streams and the sender keeps the
 specify because it is already specified.
 
 If `INTRA_DIR` on Adreno is a hard requirement, the lever is not the schedule.
-It is one of:
+The free one has now been taken: **more threads per block**. The occupancy
+numbers in 7.6 were 4 threads per 8x8 block against a 256-thread workgroup;
+they are 16 now, the schedules run at 18–57 % rather than 4.5–14 %, and the
+wavefront cost about 30 % less at every schedule for no rate at all. What
+remains is:
 
 * **Restriction C, the 16x16 super-block**, which 7.6 models at 4 steps
   combined with 32x32 sub-tiles and leaves unpriced. It is the only entry in
   the menu that changes the *prediction distance* rather than the dependency
   graph, so its rate cost genuinely cannot be extrapolated from the others —
   but 4 steps against 22 is the only remaining order-of-magnitude in the
-  wavefront, and this document's measurement is the argument for finally
-  pricing it.
-* **Fewer threads per block.** The occupancy numbers in 7.6 and here are
-  4 threads per 8x8 block against a 256-thread workgroup. Nothing forces that
-  ratio during the prediction step; 16 threads per block would quadruple
-  occupancy at every schedule without touching the bitstream at all. That is a
-  Pass B change, not a `SYNTAX.md` change, and it should be tried before any
-  further rate is spent.
+  wavefront.
+* **Splitting the reference construction across a block's threads.** All 16
+  threads currently build the same `A[17]`/`L[17]`, and `dirBase()` inside it
+  recomputes the DC-plane prediction sample by sample. It costs a second
+  barrier per step to fix, which is why it has not been tried; against 65
+  barriers per tile that may still be the right trade.
 
-Both of those are cheaper than 1.8 % of rate, and the second one is free.
+The first costs rate; the second does not, and the second should be measured
+first.
 
 ---
 
@@ -609,33 +805,38 @@ Both of those are cheaper than 1.8 % of rate, and the second one is free.
   submits one frame at a time. A ring of command buffers and staging buffers
   is the obvious next step for the streaming client, and the timeline
   semaphore is already the synchronisation point it needs.
-* **Sparse coefficients.** 25.6 MB of coefficient traffic per 2048-tile 4:2:0
-  frame is the single largest number in the decoder, and most of it is zeros
-  at any usable QP. PAPER 3.2.5's sparse layout is entirely a Pass A ↔ Pass B
-  affair.
+* **Pass A is now the expensive pass** at every QP above 24, and its fixed
+  cost went *up* with the sparse layout (124 → 170 ns per tile). Three
+  `barrier()`s per scheduling round, paid to keep control flow uniform for the
+  LDS read-pointer fallback, is what `passA/README.md` names as the thing to
+  attack.
 * **The bitstream buffer grows but never shrinks,** and growing it recreates
   the buffer mid-stream. Harmless for a stream of similar frames; worth a
   high-water-mark policy if a client ever sees one huge IDR.
-* **Alpha on the two-plane path costs a second Pass B dispatch.** The
-  two-plane 4:2:0 store has nowhere to put alpha, so a 4:2:0 stream carrying
-  one is reconstructed twice — once for Y/Cb/Cr and once in the RGBA8 format
-  whose A channel is the alpha plane. Conformant and rare (VR streams do not
-  carry alpha), but an `r8ui` alpha binding on the two-plane path would be
-  cheaper if it ever stops being rare.
+* **Alpha on the two-plane path costs a second store, not a second dispatch**
+  any more (specialization constant 3, `kOutSecond`), which took it from
+  2.27 ms to 1.69 ms. An `r8ui` alpha binding on the two-plane path would still
+  be cheaper than a whole RGBA8 store if it ever stops being rare.
 * **`profile` and `level` in the stream header are carried and reported but
   not enforced.** The reference does not enforce them either.
 * **Pass B is one shader for both predictors.** `INTRA_DIR` is a push-constant
-  branch, so a v1 stream pays the 144-VGPR footprint of the wavefront's
+  branch, so a v1 stream pays the 136-VGPR footprint of the wavefront's
   reference arrays even though it never enters them. It costs nothing
-  measurable today (0.236 ms against the 0.26 ms of the pre-v1.3 kernel), but
+  measurable today (0.241 ms against the 0.26 ms of the pre-v1.3 kernel), but
   it is the first thing to check if Pass B ever gets tighter.
-* **Four threads per 8x8 block during the wavefront.** That is what caps
-  occupancy at 4.5 %; it is inherited from the transform's thread mapping,
-  where it is the right ratio, and nothing requires the prediction step to keep
-  it. See "Which wavefront should v1 adopt".
-* **Tile sorting is off by default** because it is worth -12 % on RADV and
-  +12 % on lavapipe. It needs the Adreno number before it can have a sensible
-  default.
+* **The wavefront's per-block reference construction is still redundant.** All
+  16 threads of a block build the same `A[17]`/`L[17]`, and `dirBase()` inside
+  it recomputes the DC-plane prediction sample by sample. Splitting the
+  reference build across the block's threads costs a second barrier per step;
+  materialising the base plane costs 8 KB of LDS that 4:4:4 does not have.
+  Neither is obviously worth it, and neither has been measured.
+* **Sparse coefficients cost about 5 % of Pass B on a discrete GPU** at QP 12
+  and QP 24 — the per-coefficient length check — for 2x less traffic. That is
+  the wrong side of the trade on a 7900 XTX and the right side on the target
+  part, and it is the reason `NXVC_VKD_FLAG_DENSE_COEF` exists.
+* **Tile sorting is off by default**, and now for a weaker reason than before:
+  it used to be -11 % on RADV and +8 % on lavapipe, and against the cheaper
+  Pass B neither delta is stable. It needs the Adreno number.
 
 ### Where this decoder sits against the Phase 2 syntax
 
