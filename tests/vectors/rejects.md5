@@ -2,33 +2,33 @@
 # Each stream MUST be refused with exactly the named status, with no
 # decoded output.  See docs/SYNTAX.md 12 and Appendix A item 30.
 # name  md5  expected_status  why
-r01_bad_magic 0febb9b2dc175cfd22463dc1f29edf4b VERSION magic is not 'NXV1'
-r02_unknown_tool 029a8465fdddb5a0b23055dd35b6bd45 VERSION a mandatory tool bit the decoder lacks
-r03_bit_depth_10 f4a1c5bf6626c8dd63c5cea3103e9528 UNSUPPORTED bit_depth 10 is reserved in v1
-r04_tile_size_32 e42de31baa5f903861a5352e7d80420a UNSUPPORTED 32x32 tiles are a reserved profile
-r05_payload_past_row 3a20966982f373036e8e38000dfc397e TRUNCATED payload_len runs past the frame
-r06_res_level3 fb8c6f549beb974f4e030588bce3d812 BITSTREAM res_level 3 is reserved
-r07_truncated_rans f37b4f2a60f043db29391d5d40859f12 TRUNCATED the tile payload is cut short
-r08_skip_bitmap c49987ed7695f3bc5850a758e823e6a7 BITSTREAM a skip bit for a column past the picture
-r09_reserved_tile_bit 9e23e34ff94a6523fd85a2b8ab347b6c BITSTREAM tile word1 bit 28 is reserved
-r10_mode_inter 65f9f11b834aa1da74f4b2cc2eae897f UNSUPPORTED an INTER tile in a Phase 1 stream
-r11_wm_id_no_tool 5bca6e182068a07b74467ea27c9c96b4 BITSTREAM wm_id != 0 without the WM_ID tool bit
-r12_row_index_wrong ae90d19b402821081fb0972f9908e24f BITSTREAM row_index does not match its position
-r13_frame_bytes_short 5ff32850b3fee3b66c21d7199941354d TRUNCATED frame_bytes below the header size
-r14_dir_layer_no_tool 85a9217c99ca1fc8514b5e1856fb79d2 BITSTREAM frame flags bit 2 without INTRA_DIR
-r15_ycocgr_420 432322575b1b0f2bb3432b23bc97f790 BITSTREAM YCoCg-R declared with 4:2:0 chroma
-r16_ctx_v2_short_table 53e88018c062a097aea2542fdd209d74 BITSTREAM CTX_V2 table set overruns the tile rows
-r17_lossless_sign_hide bcf5ebac6266f02562f1252da3cee9ea BITSTREAM LOSSLESS and SIGN_HIDE together
+r01_bad_magic 2b0761ec85434c7f066ce3610f58e75f VERSION magic is not 'NXV1'
+r02_unknown_tool 47c0586bc579df0282cc3c14161d9fc7 VERSION a mandatory tool bit the decoder lacks
+r03_bit_depth_10 ea5a46e2d190c2921ec076d32a83bdfc UNSUPPORTED bit_depth 10 is reserved in v1
+r04_tile_size_32 2891c9ffa4d64aeaa3aed7006de734ad UNSUPPORTED 32x32 tiles are a reserved profile
+r05_payload_past_row c13eacbaefbc1a05e7ea9123a9feecca TRUNCATED payload_len runs past the frame
+r06_res_level3 de95fa77303049bc0d3e59d12b0b56ec BITSTREAM res_level 3 is reserved
+r07_truncated_rans da6227d1c55a47827d876ebb596e6d00 TRUNCATED the tile payload is cut short
+r08_skip_bitmap aad16b1a29f75d62cadf324923a2f4d7 BITSTREAM a skip bit for a column past the picture
+r09_reserved_tile_bit 65af412f7f4a176b8d597439c425b93b BITSTREAM tile word1 bit 28 is reserved
+r10_mode_inter e0094757eabb8b30af39e649cd3da4e4 UNSUPPORTED an INTER tile in a Phase 1 stream
+r11_wm_id_no_tool 9c7b00e50d3582d383cfe649ce126d9f BITSTREAM wm_id != 0 without the WM_ID tool bit
+r12_row_index_wrong b5853d01562f36d902c8164673a34194 BITSTREAM row_index does not match its position
+r13_frame_bytes_short a55f4d7fd29befcfc33d415cbaa11c5c TRUNCATED frame_bytes below the header size
+r14_dir_layer_no_tool 6ef4dea53ae8c40d2b8999c5f86d50a9 BITSTREAM frame flags bit 2 without INTRA_DIR
+r15_ycocgr_420 f230e23d61601b0265d8fb902af667eb BITSTREAM YCoCg-R declared with 4:2:0 chroma
+r16_ctx_v2_short_table 37d3b5732145071db61c6b3ed7eca444 BITSTREAM CTX_V2 table set overruns the tile rows
+r17_lossless_sign_hide 3db1a2700262fafdf1593788573e7fde BITSTREAM LOSSLESS and SIGN_HIDE together
 # --- Phase 2 (Annex D D-21)
-r18_h22_not_one 603b41210fc7359e2f1f8b646ef9d9e8 BITSTREAM warp_ext h22 != 2^29
-r19_entry_range ca52595d7e113bfa3dd42c7d7dfbd9e1 BITSTREAM a warp_ext entry beyond kEntryMax
-r20_den_range 8efe5c3ff7c4d1c9273acb340520e896 BITSTREAM den leaves [2^28, 2^30) at a picture corner
-r21_warp_no_flag 9777834271b7328c37cad057ace40097 BITSTREAM a WARP_MV tile with warp_present == 0
-r22_mode_reserved f174fcfce036a342a973ca4ba36df729 BITSTREAM mode 5 is reserved
-r23_intra_ref_sel 5ec052b5adafb8ea3c523aa20ca54277 BITSTREAM ref_sel != 0 on an INTRA tile
-r24_ref_sel_three 85b96e5f447d81efb50d4c840ad273b0 BITSTREAM ref_sel == 3 is reserved
-r25_ref_slots_wrong c09eb9aef58c449cf00d894b3987bbde BITSTREAM ref_slots != 1 << (frame_number mod 4)
-r26_tool_catmullrom aa06f756a3f12f2e8c2dd840c98f4c1c VERSION tool bit 23 FILTER_CATMULL_ROM in v1
-r27_warp_without_inter d5cbfca69012ee66f8f3a08b380068e4 BITSTREAM the WARP tool bit without INTER
-r28_stereo_left_eye e6d26f35a767e479280c0fa76164b669 BITSTREAM mode STEREO on the left eye
-r29_disparity_reserved 5761574fb60d0ef384241a391184607a BITSTREAM disparity bits 15:12 are not zero
+r18_h22_not_one 45abc931d352433e7f3fcfc5fdacae44 BITSTREAM warp_ext h22 != 2^29
+r19_entry_range b4c4d747ce5ecc69570588ff698203da BITSTREAM a warp_ext entry beyond kEntryMax
+r20_den_range e692af5006b3ffb66339ad7f8af7d7f5 BITSTREAM den leaves [2^28, 2^30) at a picture corner
+r21_warp_no_flag 3dc8846d566854cbd076b5f9e11b9cef BITSTREAM a WARP_MV tile with warp_present == 0
+r22_mode_reserved dcb5ac76985ee340bd2a0b3f4c41cadf BITSTREAM mode 5 is reserved
+r23_intra_ref_sel d4719a5bcb26ffe23ea5cf9b13c0298f BITSTREAM ref_sel != 0 on an INTRA tile
+r24_ref_sel_three a10e25b63fe6bfb8fee32136e82ed46c BITSTREAM ref_sel == 3 is reserved
+r25_ref_slots_wrong a712cd4942c80e17bfc27af02a5e6ad9 BITSTREAM ref_slots != 1 << (frame_number mod 4)
+r26_tool_catmullrom 08767b6937bc81d3d6cb4890f3824e8a VERSION tool bit 23 FILTER_CATMULL_ROM in v1
+r27_warp_without_inter 27a88a5d281c3d6aadbdaefd0f602a00 BITSTREAM the WARP tool bit without INTER
+r28_stereo_left_eye 16ae46ecec845225051f3fd4fdcbe7fa BITSTREAM mode STEREO on the left eye
+r29_disparity_reserved d933c2d46fa3fa3cd5920a676dc9cf76 BITSTREAM disparity bits 15:12 are not zero

@@ -350,7 +350,7 @@ struct Effort {
     int dir_cand = 4;          // directional intra modes RD-checked per block
     bool tskip_rd = false;     // transform skip by RD, not by the gradient rule
     int mv_step = 2;           // coarse motion-search step, in samples
-    int mv_rd_qpel = 0;        // quarter-pel neighbours re-scored by real RD
+    int mv_rd_qpel = 1;        // quarter-pel neighbours re-scored by real RD
     int qp_search = 0;         // per-tile QP offsets tried each side
     // Quantize the tile once to choose its probability table set, then again
     // for real.  The second pass is what the trellis and the directional mode
