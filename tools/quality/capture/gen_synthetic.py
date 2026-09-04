@@ -23,6 +23,8 @@ Generate one sequence per motion profile at once with ``--motion all``.
 from __future__ import annotations
 
 import argparse
+import json
+import math
 import os
 import sys
 import time
@@ -36,6 +38,62 @@ from nxq import yuv  # noqa: E402
 from nxq.sequence import Sequence  # noqa: E402
 
 FULL_GUARD_PIXELS = 1024 * 1024  # per eye; above this, --full is required
+
+#: The projection conventions this generator renders with, written verbatim
+#: into every `.poses.json` it produces.  See docs/WARP.md section 2.1 for the
+#: schema and why it exists: the encoder derives its homography from this file,
+#: and *every* field below is something it would otherwise have to assume.
+#:
+#: The FOV in particular used to be assumed.  `nxv-enc` defaulted to 95,95 and
+#: the sidecar said nothing, so `gen_synthetic.py --hfov 110` produced a
+#: sequence whose warp was silently wrong -- measured at 18.70 dB where the
+#: correct FOV gives 31.01 dB on the same pair (docs/WARP-AUDIT.md section 5).
+#: Nothing crashed and no test failed. Writing the FOV down is the fix.
+POSE_CONVENTION = {
+    # Bumped when any field below changes meaning. A consumer that does not
+    # recognise the id must refuse the file rather than guess.
+    "id": "nxv-openxr-1",
+    "quaternion": "xyzw",           # component order of orientation_xyzw
+    "handedness": "right",          # right-handed, active rotation
+    "rotation": "camera_to_world",  # q rotates a camera-space vector into world
+    "axes": "x_right_y_up_z_back",  # camera space: -Z is forward
+    "image_origin": "top_left",     # row 0 is the TOP of the picture
+    "pixel_centre": 0.5,            # sample (i, j) is sampled at (i+.5, j+.5)
+    "fov_sign": "xrfovf",           # left and down negative, as XrFovf
+    "pose_kind": "render",          # the pose the frame was rendered with,
+                                    # not a predicted display pose
+    "pairing": "n_minus_1_to_n",    # frame N is predicted from frame N-1
+    "position_units": "m",
+}
+
+
+def write_pose_log(path, poses, hfov_deg, vfov_deg, fps, eye_w, eye_h) -> None:
+    """Write the pose log with the conventions and the FOV it was rendered at.
+
+    ``version`` 2 adds ``convention``, ``fov_deg`` and ``eye``; version 1 files
+    have neither and a consumer must fall back to its own defaults, which is
+    the hazard this version exists to close.
+    """
+    half_h = math.radians(hfov_deg) * 0.5
+    half_v = math.radians(vfov_deg) * 0.5
+    doc = {
+        "version": 2,
+        "convention": POSE_CONVENTION,
+        # Symmetric here, but carried per-side because XrFovf is not, and
+        # because a real headset capture will not be.
+        "fov_deg": {"h": hfov_deg, "v": vfov_deg},
+        "fov_rad": {
+            "left": -half_h, "right": half_h,
+            "up": half_v, "down": -half_v,
+        },
+        "eye": {"width": eye_w, "height": eye_h},
+        "fps": fps,
+        "frames": poses,
+    }
+    os.makedirs(os.path.dirname(os.path.abspath(str(path))) or ".", exist_ok=True)
+    with open(path, "w") as fh:
+        json.dump(doc, fh, indent=1)
+        fh.write("\n")
 
 
 def build(
@@ -94,7 +152,7 @@ def build(
     log(f"[synth] rendered {frames} frames ({out_w}x{out_h}) in {dt:.1f}s "
         f"({dt / max(1, frames) * 1000:.0f} ms/frame)")
 
-    yuv.write_pose_log(pose_path, poses)
+    write_pose_log(pose_path, poses, hfov, vfov, fps, eye_w, eye_h)
     for pf, (fmt, w, path) in writers.items():
         w.close()
         seq = Sequence(

@@ -6,7 +6,7 @@ set(NXVC_REF_TEST_INC
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-foreach(t transform rans codec headers fuzz_smoke inter)
+foreach(t transform rans codec headers fuzz_smoke inter warp_convention)
     add_executable(ref_test_${t} test_${t}.cpp)
     target_link_libraries(ref_test_${t} PRIVATE nxvc_ref)
     target_include_directories(ref_test_${t} PRIVATE ${NXVC_REF_TEST_INC})

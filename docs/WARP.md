@@ -93,6 +93,75 @@ motion. This is what makes the fixed-point format of section 3 fit.
 A tile is `kTile = 64` samples square and its origin `(tile_x, tile_y)` is a
 multiple of 64.
 
+## 2.1 Pose conventions, and the `.poses.json` schema
+
+Everything in section 4 is stated on quantities — a quaternion, a field of
+view, a picture — whose meaning is a **convention**. This section names each
+one, because a convention error is the failure mode this module cannot
+otherwise detect: it does not crash, it does not produce an illegal bitstream,
+it passes every `warp.*` test (all of which check the predictor against its own
+arithmetic rather than against a picture the world produced), and it presents
+as a codec that is merely bad. `docs/WARP-AUDIT.md` is the measurement that
+established the list, and section 3 there prices each error in dB.
+
+**Convention `nxv-openxr-1`.** This is what `derive_homography()` implements
+and what `nxv-enc` assumes.
+
+| | |
+|---|---|
+| Quaternion component order | `(x, y, z, w)`, `w` last |
+| Handedness | right-handed, active rotation |
+| What the quaternion rotates | **camera to world**: `R * v_camera = v_world` |
+| Camera axes | x right, y **up**, **-z forward** (OpenXR) |
+| Field of view | `XrFovf` half-angles in radians, **left and down negative** |
+| Image origin | row 0 is the **top** of the picture; the row index runs downward, which is why `K` row 1 carries `-sy` |
+| Pixel centre | sample `(i, j)` is sampled at `(i + 0.5, j + 0.5)`; the `+0.5` is folded into `K` |
+| Coordinate origin | picture **centre**, `(W/2, H/2)`, per section 2 |
+| Which pose | the **render** pose, the one the frame was actually drawn with — not a predicted display pose |
+| Frame pairing | frame `N` is predicted from frame `N-1`; `R_rel = R_{N-1}^T R_N` |
+| Position units | metres (unused by the rotation-only matrix; see section 4) |
+
+**Head translation is not in this list because it is not in the matrix.** The
+quaternion is the whole input. The pose log's `position_xyz` is read by nothing
+on this path, by the design decision in section 4, and the parallax it would
+have produced is the motion vector's job.
+
+**The sidecar.** The encoder's pose log is `<sequence>.poses.json`, written by
+`tools/quality/capture/gen_synthetic.py` and read by `nxv-enc --poses`:
+
+```json
+{
+  "version": 2,
+  "convention": { "id": "nxv-openxr-1", "quaternion": "xyzw", ... },
+  "fov_deg":  { "h": 95.0, "v": 95.0 },
+  "fov_rad":  { "left": -0.829, "right": 0.829, "up": 0.829, "down": -0.829 },
+  "eye":      { "width": 1024, "height": 1024 },
+  "fps": 90.0,
+  "frames": [ { "frame": 0, "orientation_xyzw": [x, y, z, w], ... }, ... ]
+}
+```
+
+`convention.id` and `fov_deg` are the two fields that exist for correctness
+rather than for bookkeeping, and both were added by the audit:
+
+- **`convention.id`** — a decoder of this file that does not recognise the id
+  must **refuse** it rather than assume. `nxv-enc` does.
+- **`fov_deg`** — `nxv-enc` used to assume 95x95 unconditionally, so a sequence
+  generated at any other FOV was warped with the wrong `K` and nothing said so.
+  Measured cost of that one assumption, on a 2-degree pair rendered at 110
+  degrees: **18.70 dB against the 31.01 dB the correct FOV gives**
+  (`docs/WARP-AUDIT.md` section 5). `--fov` on the command line overrides the
+  sidecar; if neither is present the encoder still assumes 95x95 but now prints
+  that it is doing so.
+
+`version` 1 files carry neither field. They are still accepted, with the
+assumption stated on stderr.
+
+The conformance test for all of this is `ref.warp_convention`
+(`tests/ref/test_warp_convention.cpp`), which measures the first warped frame
+of a pure-rotation pair end to end against band-limited ground truth. It is
+band-limited deliberately: see section 11 limitation 6.
+
 ---
 
 ## 3. Fixed-point formats
@@ -613,6 +682,7 @@ Three cases must be exact, and are tested (`warp.identity`):
 | `warp.saturate` | corners stay inside `kCornerClamp` for arbitrary `int32` input, both modes (F2/F7 regression) |
 | `warp.filters` | tap table normalised to 64, symmetric, within 1/64 of the exact kernel |
 | `warp.determinism` | one identical output hash from every compiler and optimisation level |
+| `ref.warp_convention` | the section 2.1 conventions, end to end: first-frame warp prediction PSNR on a pure-rotation pair against band-limited ground truth |
 | `warp.gpu_diff` | zero mismatching pixels, GPU against CPU, on every installed ICD |
 
 `warp.determinism` compiles the same corpus at `-O0`, `-O1`, `-O2`, `-O3`, `-Os`,
@@ -672,6 +742,20 @@ input, which for integer-only code is most of what there is to prove.
 5. **The `mag.hi >= den` and illegal-`den` paths are defined but not
    characterised.** They guarantee identical output across implementations, not a
    useful prediction. An encoder must never emit a matrix that reaches them.
+
+6. **No absolute PSNR figure measured on `tools/quality/capture` material
+   bounds this predictor.** That generator point-samples its equirectangular
+   panorama once per output sample, at about 2.1x oversampling. The ground
+   truth it produces is therefore aliased, and the aliasing is *not* a
+   geometric function of the pose, so no warp — integer, float or exact — can
+   predict it. Measured on the first warped frame of `vr-mixed-1024`, an
+   0.063-degree rotation: the exact float homography reaches **24.43 dB** and
+   this module's integer path reaches **24.40 dB**, a gap of 0.02 dB. The
+   predictor is at the material's ceiling, and the ceiling is the harness.
+   On band-limited ground truth the same path measures **50 to 58 dB** at 22
+   to 450 deg/s (`ref.warp_convention`). `docs/WARP-AUDIT.md` decomposes the
+   difference. Any quality gate stated on this predictor must say which of
+   those two materials it is stated on.
 
 ---
 

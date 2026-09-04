@@ -9,6 +9,53 @@
 
 #include "nxvc/nxvc.h"
 
+// ------------------------------------------------------- tiny JSON scraping
+//
+// The `.poses.json` reader below is a scraper, not a parser, exactly like the
+// `orientation_xyzw` loop it sits next to: this tool has no JSON dependency and
+// the sidecar is machine-written with a known shape (see docs/WARP.md 2.1).
+// Both helpers take the FIRST occurrence of the key, which is the top-level one
+// because `frames` is last in the document and never contains these keys.
+
+// Value of a string-valued key, or "" if absent.
+static std::string json_string(const std::string &txt, const std::string &key) {
+    size_t k = txt.find(key);
+    if (k == std::string::npos) return {};
+    size_t c = txt.find(':', k + key.size());
+    if (c == std::string::npos) return {};
+    size_t q = txt.find('"', c);
+    if (q == std::string::npos) return {};
+    size_t e = txt.find('"', q + 1);
+    if (e == std::string::npos) return {};
+    return txt.substr(q + 1, e - q - 1);
+}
+
+// `"fov_deg": {"h": <num>, "v": <num>}`.  Returns false if it is not there or
+// is not a pair of finite positive angles, in which case the caller keeps its
+// own default and says so.
+static bool json_fov_deg(const std::string &txt, double *h, double *v) {
+    size_t k = txt.find("\"fov_deg\"");
+    if (k == std::string::npos) return false;
+    size_t brace = txt.find('}', k);
+    if (brace == std::string::npos) return false;
+    const std::string obj = txt.substr(k, brace - k);
+    auto num = [&](const char *key, double *out) -> bool {
+        size_t p = obj.find(key);
+        if (p == std::string::npos) return false;
+        size_t c = obj.find(':', p + std::strlen(key));
+        if (c == std::string::npos) return false;
+        char *end = nullptr;
+        const double d = std::strtod(obj.c_str() + c + 1, &end);
+        if (end == obj.c_str() + c + 1) return false;
+        // A degenerate or reflex FOV would make tan() blow up or change sign
+        // inside make_K(); refuse it here rather than emit a wild matrix.
+        if (!(d > 0.0 && d < 180.0)) return false;
+        *out = d;
+        return true;
+    };
+    return num("\"h\"", h) && num("\"v\"", v);
+}
+
 static void usage() {
     std::fprintf(stderr,
         "usage: nxv-enc --in file.yuv --w W --h H --pix yuv444p|yuv420p\n"
@@ -42,7 +89,10 @@ static void usage() {
         "                       --w is its FULL width; each eye is a picture\n"
         "  --poses FILE         .poses.json sidecar; the per-frame head\n"
         "                       orientation the warp matrix is derived from\n"
-        "  --fov H,V            field of view in degrees (default 95,95)\n"
+        "  --fov H,V            field of view in degrees; overrides the\n"
+        "                       sidecar's `fov_deg`. Default 95,95, used only\n"
+        "                       when neither is given -- a wrong FOV is a\n"
+        "                       silently wrong warp (docs/WARP.md 2.1)\n"
         "  --intra-period N     rolling intra refresh period in frames\n"
         "                       (default 180; 1 = every tile every frame)\n"
         "  --ref-sel 0..2       reference distance inter tiles ask for\n"
@@ -75,6 +125,7 @@ int main(int argc, char **argv) {
     int inter = 0, eyes = 1, intra_period = 180, ref_sel = 0, stereo = 0;
     int mv_range = 16, skip_thresh = 0, mode_lambda = 0;
     double fov_h = 95.0, fov_v = 95.0;
+    bool fov_from_cli = false;
     std::string poses_path, skipmap_path;
 
     for (int i = 1; i < argc; ++i) {
@@ -126,6 +177,7 @@ int main(int argc, char **argv) {
             size_t c = v.find(',');
             fov_h = std::atof(v.c_str());
             fov_v = c == std::string::npos ? fov_h : std::atof(v.c_str() + c + 1);
+            fov_from_cli = true;
         }
         else if (a == "--intra-period") intra_period = std::atoi(val());
         else if (a == "--ref-sel") ref_sel = std::atoi(val());
@@ -216,9 +268,59 @@ int main(int argc, char **argv) {
                          poses_path.c_str());
             return 1;
         }
-        if (!quiet)
+
+        // ---- conventions and FOV.
+        //
+        // Everything the homography needs beyond the quaternions themselves is
+        // a convention, and until version 2 of this sidecar not one of them was
+        // written down: the encoder simply assumed the set in
+        // docs/WARP.md 2.1 and assumed 95x95 degrees of FOV.  The assumptions
+        // happened to be right for `gen_synthetic.py` at its defaults and are
+        // silently wrong for anything else -- `--hfov 110` measured 18.70 dB
+        // against the 31.01 dB the correct FOV gives on the same frame pair
+        // (docs/WARP-AUDIT.md section 5).  A wrong convention does not crash
+        // and does not produce an illegal stream; it produces a worse picture,
+        // which is indistinguishable from a codec that is merely bad.
+        //
+        // So: a version 2 sidecar states its conventions and this encoder
+        // refuses one it does not implement, rather than guessing.  A version 1
+        // sidecar (or a hand-written one) still works and still assumes, but
+        // says so out loud.
+        const std::string cid = json_string(txt, "\"id\"");
+        if (!cid.empty() && cid != "nxv-openxr-1") {
+            std::fprintf(stderr,
+                         "%s: pose convention \"%s\" is not implemented by this "
+                         "encoder (it implements \"nxv-openxr-1\", "
+                         "docs/WARP.md 2.1).\nRefusing rather than deriving a "
+                         "homography from a convention it does not know.\n",
+                         poses_path.c_str(), cid.c_str());
+            return 1;
+        }
+        double sh = 0.0, sv = 0.0;
+        const bool have_fov = json_fov_deg(txt, &sh, &sv);
+        if (have_fov && !fov_from_cli) {
+            fov_h = sh;
+            fov_v = sv;
+        }
+        if (!quiet) {
             std::printf("poses: %zu orientations from %s\n", orient.size(),
                         poses_path.c_str());
+            if (fov_from_cli)
+                std::printf("poses: fov %.4g,%.4g deg from --fov%s\n", fov_h,
+                            fov_v,
+                            have_fov ? " (overriding the sidecar)" : "");
+            else if (have_fov)
+                std::printf("poses: fov %.4g,%.4g deg from the sidecar\n",
+                            fov_h, fov_v);
+            else
+                std::printf("poses: no fov in the sidecar, ASSUMING %.4g,%.4g "
+                            "deg; if that is wrong the warp is wrong and "
+                            "nothing else will say so\n",
+                            fov_h, fov_v);
+            if (cid.empty())
+                std::printf("poses: no convention block (version 1 sidecar), "
+                            "assuming \"nxv-openxr-1\" (docs/WARP.md 2.1)\n");
+        }
     }
 
     nxvc_config cfg;

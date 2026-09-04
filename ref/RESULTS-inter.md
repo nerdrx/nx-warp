@@ -27,6 +27,11 @@ result files under `$NXQ_SCRATCH/results/`. The verdicts are computed by
 4. Two encoder bugs were found by this measurement and by nothing else, both
    in the mode decision, together worth about 6 dB. Section 5. Every number
    above is after both fixes.
+5. Section 3's 24.40 dB was **audited** against `warp/RESULTS.md`'s 32.4 dB and
+   is not a convention error: the codec's predictor is 0.02 dB from an exact
+   float homography on those frames. The 8 dB is the two harnesses' ground
+   truth, not their predictors. `docs/WARP-AUDIT.md`, and the before/after in
+   section 3.
 
 ---
 
@@ -173,6 +178,51 @@ it is missed at the first warped frame. Version 1 is bilinear only
 measurable through the codec; `warp/RESULTS.md` has the filter comparison on
 the predictor in isolation and puts Catmull-Rom about 2 dB ahead over 30
 frames, which would not change the verdict.
+
+### Before/after the convention audit (2026-09-04)
+
+The 24.40 dB first warped frame above was audited against `warp/RESULTS.md`'s
+32.4 dB, on the suspicion that the 8 dB was a convention mismatch in this
+codec's pose ingestion. **It is not.** `docs/WARP-AUDIT.md` has the full
+measurement; the three numbers that matter here:
+
+| | before the audit | after |
+|---|---|---|
+| first warped frame, `vr-mixed-1024` 4:4:4 | 24.40 dB | **24.40 dB — unchanged** |
+| the exact float homography on the same pair | not measured | **24.43 dB** |
+| the same codec path on band-limited ground truth, 180 deg/s | not measured | **55.89 dB** |
+
+The reference codec's integer predictor is **0.02 dB** from an exact double
+evaluation of the same geometry on the exact frames it scores 24.40 dB on.
+Every convention was checked one at a time and each is correct; a wrong one
+costs 8 to 18 dB and scores about what applying no warp at all scores
+(`WARP-AUDIT.md` section 3). Nothing in this document's numbers changes and
+**the kill test was not re-run, because nothing feeding it changed.**
+
+What does change is what the 24.40 dB may be used to argue. It is a
+measurement of `gen_synthetic.py`'s ground truth: that generator point-samples
+its panorama once per output sample at 2.1x oversampling, so its frames carry
+aliasing that is not a geometric function of the pose and that no warp of any
+precision can predict. `nxvc-warpsim` band-limits (4.2x panorama, 5x5
+supersample) and says so in its own caveats. Holding the predictor and the pose
+pair fixed and varying only the ground truth accounts for **7.2 dB full-frame
+and 14.4 dB centre-crop** of the disagreement, of which 2.0 dB is the discs and
+the HUD and the rest is band-limiting.
+
+So section 4's reading below — "the predictor is not accurate enough for the
+rate at which the codec wants to lean on it" — is now only half supported. On
+this material the predictor is exact and the material is unpredictable; on
+band-limited material the same code path is at 56 dB and flat from 22 to
+180 deg/s. What survives the audit unchanged is the **chain decay**: rows 2 to
+5 of `WARP-AUDIT.md` section 2 show this codec falling 5.5 dB below a re-warp
+of the true previous frame within four frames, and repeated resampling is the
+predictor's own. Paper 2.11 item 2's conclusion stands; only its starting
+point was mismeasured.
+
+The audit also found and fixed a live-in-one-flag defect: `.poses.json` carried
+no field of view and `nxv-enc` assumed 95x95, so `gen_synthetic.py --hfov 110`
+produced a silently wrong warp — 18.70 dB where 31.01 dB was available.
+`WARP-AUDIT.md` section 5. `ref.warp_convention` now pins it.
 
 **This independently reproduces `warp/RESULTS.md` section (b)**, which measured
 28.9 / 26.7 / 25.0 dB for slow / medium / fast drift with Catmull-Rom and frame
@@ -369,6 +419,19 @@ measurement the paper asked for.** Both halves of that sentence matter.
    picture at its own operating point. Sub-pel warp accuracy, a sharper filter,
    or a higher refresh rate all attack that, and `warp/RESULTS.md` already
    measures what the filter is worth (about 2 dB, not enough).
+
+   *Revised by the audit:* the **level** at which the chain starts is the
+   harness, not the predictor — 24.40 dB against a 24.43 dB float ceiling, and
+   55.89 dB for the same code path on band-limited ground truth. The **slope**
+   is the predictor's and is unchanged. So a sharper filter and a higher
+   refresh rate still attack a real problem; "sub-pel warp accuracy" attacks
+   nothing, because the sub-pel accuracy is already at the ceiling of what
+   this material can reward. `docs/WARP-AUDIT.md` section 6.
+
+   This also moves the generator's ground-truth fidelity onto this list, above
+   the filter: supersampling the render and widening the panorama is worth 7 to
+   14 dB of *measurement* accuracy, which is more than any predictor change on
+   offer is worth in reality.
 3. Real captures. The one place where the paper's central claim could still be
    true is content where the anchor genuinely breaks, and none of the material
    here contains it.
