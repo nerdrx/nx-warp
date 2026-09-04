@@ -3,5 +3,9 @@ build-host/
 .cxx/
 .gradle/
 local.properties
-results/
+results/*
+# ...except the one published host run. ROADMAP.md and README.md cite it by
+# path, and a citation to a gitignored file is a citation to nothing. Local
+# runs stay ignored; a run only becomes a record by being named here.
+!results/results-host.json
 assets/*.hevc
