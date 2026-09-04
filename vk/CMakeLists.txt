@@ -17,7 +17,22 @@ set(NXWARP_VK_SUBDIRS "common;tools;encoder;decoder"
     CACHE STRING "vk/ subdirectories to build")
 
 foreach(_sub IN LISTS NXWARP_VK_SUBDIRS)
-  if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${_sub}/CMakeLists.txt)
-    add_subdirectory(${_sub})
+  if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${_sub}/CMakeLists.txt)
+    continue()
   endif()
+  # common/ drops itself when no Vulkan headers are installed (it warns and
+  # returns rather than aborting the whole project configure).  Everything
+  # else here needs it, so skip them too instead of erroring on a missing
+  # link target.
+  if(NOT _sub STREQUAL "common" AND NOT TARGET nxvc_vk_common)
+    message(STATUS "vk/${_sub}: nxvc_vk_common not available, skipped")
+    continue()
+  endif()
+  # Headers but no loader: the library still compiles (that is the point of
+  # the Android and Windows cross-compile checks) but nothing can be linked.
+  if(_sub STREQUAL "tools" AND NXVC_VK_NO_LOADER)
+    message(STATUS "vk/tools: no Vulkan loader to link against, skipped")
+    continue()
+  endif()
+  add_subdirectory(${_sub})
 endforeach()
