@@ -7,12 +7,14 @@
 > budget in 2.4 is wrong.
 
 A warp-only chain is produced by making the encoder choose `WARP_SKIP` for
-every tile of every frame after the first: `--skip-thresh` raises the SAD gate
-above anything real content produces, and `--intra-period` is set beyond the
-clip so the rolling refresh never fires.  Frame 0 is a normal intra frame; from
-then on nothing but the pose warp reaches the decoder, so the decoded picture
-is exactly the reference resampled once per frame, which is the chain the paper
-is asking about.
+every tile of every frame after the first (a *near*-skip, `docs/SYNTAX.md` 13.9,
+is still a skipped tile and still a warp-only chain -- pass
+`--enc-arg --warp-dc --enc-arg off` to measure the chain without it).
+`--skip-thresh` raises the SAD gate above anything real content produces, and
+`--intra-period` is set beyond the clip so the rolling refresh never fires.
+Frame 0 is a normal intra frame; from then on nothing but the pose warp reaches
+the decoder, so the decoded picture is exactly the reference resampled once per
+frame, which is the chain the paper is asking about.
 
 Version 1 is bilinear only (docs/SYNTAX.md 13.4), so only the bilinear half of
 the paper's comparison is measurable here; the Catmull-Rom half needs tool bit
@@ -59,6 +61,12 @@ def main(argv=None) -> int:
     ap.add_argument("--threshold-db", type=float, default=35.0)
     ap.add_argument("--hold-frames", type=int, default=30)
     ap.add_argument("--json", default=None)
+    ap.add_argument("--enc-arg", action="append", default=[],
+                    help="extra nxv-enc argument, repeatable.  The chain is a "
+                         "property of the predictor and of whatever else the "
+                         "encoder is allowed to put on a skipped tile, so the "
+                         "v1.5 tools are measured through here: "
+                         "--enc-arg --warp-dc --enc-arg off")
     args = ap.parse_args(argv)
 
     with open(args.seq) as fh:
@@ -79,7 +87,7 @@ def main(argv=None) -> int:
     enc = [args.enc, "--in", raw, "--w", str(W), "--h", str(H), "--pix", pix,
            "--qp", str(args.qp), "--eyes", str(args.eyes), "--inter", "on",
            "--poses", poses, "--intra-period", "1000000",
-           "--skip-thresh", "100000", "--out", bs, "--quiet"]
+           "--skip-thresh", "100000", "--out", bs, "--quiet"] + args.enc_arg
     if args.frames:
         enc += ["--frames", str(args.frames)]
     p = cpu.run(enc, check=False)

@@ -717,14 +717,6 @@ static void finalize_recon(TileCoder &tc) {
                           tc.tp.tskip, tc.intra_dir, tc.dir_layer);
 }
 
-// Rolling intra refresh (PAPER 2.6, Annex D), as an AGE with a starting phase.
-//
-// The phase is a fixed pseudo-random permutation of the tile index rather than
-// a column sweep, so there is no visible refresh wave and, with no drift
-// refresh, 1/T of the tiles are forced INTRA every frame exactly as before:
-// seeding the age with `hash(t) mod T` at a tile-map reset and refreshing at
-// `age >= T` is the same cadence and the same permutation, written as state
-// the drift rule can also drive.
 // Per-tile mean squared error between the client shadow and the source, in
 // the OUTPUT sample domain over every plane the stream carries.  This is the
 // error the client is actually showing for this tile, measured rather than
@@ -768,6 +760,17 @@ static void measure_drift(nxvc_encoder *e, const nxvc_image *img) {
             }
 }
 
+// Rolling intra refresh (PAPER 2.6, Annex D), written as an AGE with a
+// starting phase rather than as a global frame counter, so that the drift rule
+// of docs/SYNTAX.md 13.10 can drive the same state.
+//
+// The phase is a fixed pseudo-random permutation of the tile index rather than
+// a column sweep, so there is no visible refresh wave: with the drift rule off,
+// 1/T of the tiles are forced INTRA every frame and each tile is refreshed
+// exactly every T frames, which is the cadence and the permutation this
+// replaces.  The age counts the tile's INTRA frame itself, which is what makes
+// "every T frames" mean T and not T + 1, and `intra_period == 1` mean every
+// frame.
 static inline u32 refresh_phase(u32 tile, u32 period) {
     if (period <= 1) return 0;
     return ((tile * 2654435761u) >> 8) % period;
@@ -1777,7 +1780,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         // over the period, as the 1-in-T cadence it replaces was.
         if (d.mode == NXVC_MODE_INTRA)
             e->age_since_intra[t] =
-                (fp.flags & 1) ? (u16)refresh_phase((u32)t, max_age) : 0;
+                (u16)(1 + ((fp.flags & 1) ? refresh_phase((u32)t, max_age) : 0));
         else if (e->age_since_intra[t] < 0xffffu) ++e->age_since_intra[t];
         e->tiles[t].age_since_coded = e->age_since_coded[t];
     }
