@@ -526,6 +526,23 @@ def main(argv=None) -> int:
     frames = min(seq.frames, args.frames) if args.frames else seq.frames
     if frames <= 0:
         ap.error("sequence has no frames")
+    if frames < seq.frames:
+        # --frames must limit the ENCODE as well as the metric window; otherwise
+        # every bitrate is inflated by seq.frames / frames. Encode a truncated copy.
+        import dataclasses, tempfile
+        trunc_dir = tempfile.mkdtemp(prefix="cmp-trunc-", dir=os.environ.get("NXQ_SCRATCH") or None)
+        trunc_path = os.path.join(trunc_dir, f"{seq.name}.first{frames}.yuv")
+        fb = seq.fmt.frame_bytes
+        with open(seq.path, "rb") as src, open(trunc_path, "wb") as dst:
+            remaining = fb * frames
+            while remaining:
+                chunk = src.read(min(remaining, 1 << 24))
+                if not chunk:
+                    break
+                dst.write(chunk)
+                remaining -= len(chunk)
+        seq = dataclasses.replace(seq, path=trunc_path, frames=frames)
+        print(f"[compare] --frames {frames}: encoding a truncated copy so bitrates are honest", flush=True)
 
     if not caps.available:
         print("[compare] WARNING: ffmpeg not found -- no anchors, no VMAF. "
