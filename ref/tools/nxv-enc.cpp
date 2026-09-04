@@ -98,13 +98,13 @@ static void usage() {
         "                       Under --drift-refresh this is the hard age cap\n"
         "  --drift-refresh on|off  drive the refresh from the measured drift of\n"
         "                       the encoder's client shadow instead of the\n"
-        "                       fixed 1-in-T permutation (default off)\n"
+        "                       fixed 1-in-T permutation (default on)\n"
         "  --drift-gate F       --drift-refresh gate, multiples of the\n"
         "                       quantiser noise floor qstep^2/12 (default 4)\n"
         "  --near-skip on|off   DC-correction tile form, tool bit 24\n"
-        "                       (default off)\n"
+        "                       (default on)\n"
         "  --quad-mv on|off     four vectors per tile, one per 32x32\n"
-        "                       quadrant, tool bit 25 (default off)\n"
+        "                       quadrant, tool bit 25 (default on)\n"
         "  --sub-intra on|off   one 32x32 quadrant of an inter tile may be\n"
         "                       intra, tool bit 26 (default off)\n"
         "  --ref-sel 0..2       reference distance inter tiles ask for\n"
@@ -136,7 +136,9 @@ int main(int argc, char **argv) {
     int sign_hide = 1;
     int inter = 0, eyes = 1, intra_period = 180, ref_sel = 0, stereo = 0;
     int mv_range = 16, skip_thresh = 0, mode_lambda = 0;
-    int drift_refresh = 0, drift_gate = 0, near_skip = 0, quad_mv = 0;
+    // These mirror nxvc_config_default(): the inter-efficiency tools that the
+    // measurement supports are on, sub-tile intra is not.
+    int drift_refresh = 1, drift_gate = 0, near_skip = 1, quad_mv = 1;
     int subtile_intra = 0;
     double fov_h = 95.0, fov_v = 95.0;
     bool fov_from_cli = false;

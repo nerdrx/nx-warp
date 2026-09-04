@@ -1387,6 +1387,25 @@ void nxvc_config_default(nxvc_config *cfg) {
     cfg->ref_sel = 0;
     cfg->mv_range = 16;        // PAPER 2.3 step 2
     cfg->skip_thresh = 0;      // built-in default
+    // The inter-efficiency tools (syntax v1.5) follow the same rule the v2
+    // intra tools follow: on by default when the measurement says so, each
+    // behind its own tool bit so a decoder without it refuses the stream at
+    // the handshake rather than misparsing it.  They only ever engage on an
+    // inter stream, so a Phase 1 caller is unaffected either way.
+    //
+    //   drift_refresh   -7.8 / -46.9 points of BD-rate  (13.8)
+    //   near_skip       -5.4 /  -4.7                    (13.9)
+    //   quad_mv         -9.5 /  -8.5                    (13.10)
+    //   subtile_intra   -0.5 /  +0.6  -- OFF.  It needs disocclusion and this
+    //                                  corpus is rotation-only by
+    //                                  construction, so the measurement does
+    //                                  not justify the byte.  --sub-intra on.
+    // ref/RESULTS-inter-a.md section 2 is the sweep.
+    cfg->drift_refresh = 1;
+    cfg->drift_gate_q8 = 0;    // built-in default, 4x the quantiser floor
+    cfg->near_skip = 1;
+    cfg->quad_mv = 1;
+    cfg->subtile_intra = 0;
 }
 
 void nxvc_tile_layout_get(uint32_t w, uint32_t h, nxvc_tile_layout *out) {
