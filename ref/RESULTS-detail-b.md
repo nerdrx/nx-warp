@@ -96,8 +96,10 @@ and the v1.4 baseline it moved from:
 
 **The gate is not met, and this package was never going to meet it.** It moved
 by **3.76 BD-rate points on 4:4:4** and **1.75 on 4:2:0** -- that is a 1.76 %
-and a 0.84 % reduction in our own rate at the same quality -- against the
-roughly -50 % the gate still needs. `RESULTS-intra.md` section 8 is the
+and a 0.84 % reduction in our own rate at the same quality -- against what the
+gate still needs, which is 6.4 dB of the 7.4 dB deficit, or about **-43 % of
+our own rate** at the 7.4-8.2 dB per rate octave this ladder measures.
+`RESULTS-intra.md` section 8 is the
 document that sets the expectation: after directional intra, the 16-context
 model and sign data hiding, what is left is 3 to 4 dB "with no single dominant
 term", and the two tools here are two more half-percents. They are worth having
