@@ -109,7 +109,7 @@ def test_stream_header_odd_sizes_round_up():
         ({"eyes": 0}, "must be 1 or 2"),
         ({"bit_depth": 12}, "must be 8 or 10"),
         ({"num_layers": 5}, "outside [1, 4]"),
-        ({"tools": 1 << 24}, "reserved tool bits"),
+        ({"tools": 1 << 26}, "reserved tool bits"),
         (
             {"tools": nxvc.Tool.LOSSLESS | nxvc.Tool.SIGN_HIDE},
             "LOSSLESS and SIGN_HIDE are mutually exclusive",

@@ -357,6 +357,8 @@ class EncoderConfig:
     intra_dir: int | None = None
     intra_dir_layer: int | None = None
     ctx_v2: int | None = None
+    ctx_v3: int | None = None
+    vec_ent: int | None = None
     intra_dir_cand: int | None = None
     sign_hide: int | None = None
 

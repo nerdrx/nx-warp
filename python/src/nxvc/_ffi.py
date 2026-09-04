@@ -193,6 +193,8 @@ class Tool:
     #: Annex D D-5 names this "tool bit 20"; bit 20 was already WM_ID in
     #: syntax v1.2, so the reference places it at the first free bit.
     FILTER_CATMULLROM = 1 << 23
+    CTX_V3 = 1 << 24
+    VEC_ENT = 1 << 25
 
     _NAMES = [
         (1 << 0, "INTRA_DC_PLANE"),
@@ -219,10 +221,12 @@ class Tool:
         (1 << 21, "CTX_V2"),
         (1 << 22, "SIGN_HIDE"),
         (1 << 23, "FILTER_CATMULLROM"),
+        (1 << 24, "CTX_V3"),
+        (1 << 25, "VEC_ENT"),
     ]
 
     #: The first tool bit that is reserved and must be zero (SYNTAX.md 2.3).
-    RESERVED_FROM = 24
+    RESERVED_FROM = 26
 
     @classmethod
     def names(cls, mask: int) -> list[str]:
@@ -257,6 +261,8 @@ TOOLS_SUPPORTED = (
     | Tool.INTER
     | Tool.WARP
     | Tool.STEREO
+    | Tool.CTX_V3
+    | Tool.VEC_ENT
 )
 
 #: The Phase 1 (intra-only) subset of :data:`TOOLS_SUPPORTED`.  Kept separate
@@ -342,6 +348,10 @@ class nxvc_config(Structure):
         ("mv_range", c_uint32),
         ("skip_thresh", c_uint32),
         ("mode_lambda_q8", c_uint32),
+        # --- additive since syntax v1.5: the entropy/context package.  Both
+        # change the bitstream and each sets its own tool bit.
+        ("ctx_v3", c_uint32),
+        ("vec_ent", c_uint32),
     ]
 
 

@@ -156,10 +156,19 @@ interleaved UV.
 | 21 | `CTX_V2` | the 16-context entropy model (section 9.3) |
 | 22 | `SIGN_HIDE` | sign data hiding (section 9.7) |
 | 23 | `FILTER_CATMULL_ROM` | Catmull-Rom interpolation in the warp instead of bilinear. **Not defined for version 1** |
+| 24 | `CTX_V3` | the 27-context entropy model (section 9.3, 9.8) |
+| 25 | `VEC_ENT` | the tile vector is entropy-coded in the payload (section 9.9) |
 
 Bits 17, 21 and 22 are independent: any subset may be set. `SIGN_HIDE` is
 mutually exclusive with `LOSSLESS` (bit 5) -- hiding a sign spends one level
 step, so the two cannot both be true; a stream setting both is `BITSTREAM`.
+
+`CTX_V3` (bit 24) **requires** `CTX_V2` (bit 21): it keeps contexts 0-15 with
+their v2 meanings and adds eleven more, so without bit 21 the meaning of
+contexts 12-15 and the size of a transmitted table set would both be
+undefined. `VEC_ENT` (bit 25) **requires** `CTX_V3` -- it selects two rows of
+the v3 family -- and **requires** `INTER` (bit 10), since only an inter tile
+has a vector to code. A stream breaking either rule is `BITSTREAM`.
 
 `INTER` (bit 10) gates every tile mode other than `INTRA`. `WARP` (bit 11)
 gates `warp_present` and the two warped modes and requires `INTER`; a stream
@@ -210,8 +219,10 @@ Then, in this order:
    luma and alpha followed by 64 for chroma, each in raster order inside the
    8x8 block, Q4 (16 == 1.0). Values are clamped to `[1, 32]` on parse.
 3. For *k* = 0..7 in ascending order, if bit *k* of `tables_present` is set:
-   **120 bytes** of probability table deltas for set *k*, or **160 bytes** when
-   the stream sets `CTX_V2` (section 9.4).
+   `nctx * 16 * 5 / 8` bytes of probability table deltas for set *k*, where
+   `nctx` is the stream's coded context count from the table in section 9.3 --
+   **120** bytes under the v1 model, **160** under `CTX_V2`, **270** under
+   `CTX_V3` and **290** under `CTX_V3` + `VEC_ENT` (section 9.4).
 
 Constraints: `base_qp <= 63`; `quant_matrix <= 3 || quant_matrix == 255`;
 `flags` bit 2 requires tool bit 17 `INTRA_DIR` (`BITSTREAM` otherwise);
@@ -442,11 +453,15 @@ Two little-endian u32 words. Bits are listed LSB first.
 
 Then, in this order:
 
-1. if `mv_present`:
+1. if `mv_present` **and the stream does not set `VEC_ENT`** (tool bit 25):
    * `u16 disparity` if `mode == STEREO`
    * `i8 mv_x, i8 mv_y` otherwise
 2. `u8 alpha_value` if `alpha_mode == 1`
 3. `payload_len` bytes of rANS payload
+
+Under `VEC_ENT` these two bytes are absent and the same values are the
+payload's first coding unit instead (section 9.9). `mv_present` still says
+whether the tile has a vector; only where it is written changes.
 
 `mv_x` and `mv_y` are the tile's motion vector **itself**, in quarter samples
 (Q.2), range `[-32, +31.75]` samples. They are **not** a delta from the tile's
@@ -1079,6 +1094,8 @@ At factor 1 the sample is copied.
 A tile's payload is a list of **coding units**, in this order:
 
 ```
+if VEC_ENT and mv_present:
+    unit: the vector unit                (section 9.9)
 for each coded plane p in (Y, Co, Cg [, A if alpha_mode == 2]):
     unit: the DC plane of p          (nb*nb coefficients)
     if INTRA_DIR:
@@ -1130,10 +1147,23 @@ subgroup cluster.
 
 ### 9.3 Contexts and alphabets
 
-There are **12 contexts of 16 symbols** each, or **16** when the stream sets
-tool bit 21 `CTX_V2`. Every context's 16 frequencies are 10-bit, at least 1,
-and sum to exactly 1024, so every symbol is always decodable and a hostile
-stream cannot produce an undefined symbol.
+A stream codes **12, 16, 27 or 29 contexts of 16 symbols** each. Every
+context's 16 frequencies are 10-bit, at least 1, and sum to exactly 1024, so
+every symbol is always decodable and a hostile stream cannot produce an
+undefined symbol.
+
+The **coded context count** `nctx` is fixed for the whole stream by its tool
+bits, and it is what sets the size of a transmitted table set (3.1, 9.4):
+
+| tool bits | `nctx` | table set |
+|---|---|---|
+| neither `CTX_V2` nor `CTX_V3` | 12 | 120 bytes |
+| `CTX_V2` | 16 | 160 bytes |
+| `CTX_V2` + `CTX_V3` | 27 | 270 bytes |
+| `CTX_V2` + `CTX_V3` + `VEC_ENT` | 29 | 290 bytes |
+
+Contexts at or above `nctx` are never selected by any rule below, which is why
+the count can grow only where the rows are used.
 
 | index | use | model |
 |---|---|---|
@@ -1146,6 +1176,15 @@ stream cannot produce an undefined symbol.
 | 13 | `LAST`, DC-plane units | v2 only |
 | 14 | `LEVEL`, DC-plane units (one context, no banding) | v2 only |
 | 15 | `MODE`, the intra mode symbol (9.6) | v2 only |
+| 16-18 | `CBF`, luma/alpha, neighbour class 1..3 (9.8) | v3 only |
+| 19-21 | `CBF`, chroma, neighbour class 1..3 (9.8) | v3 only |
+| 22 | `LAST`, luma/alpha, neighbour coded (9.8) | v3 only |
+| 23 | `LAST`, chroma, neighbour coded (9.8) | v3 only |
+| 24 | `LEVEL` at scan position 0 of a DC-plane unit (9.8) | v3 only |
+| 25 | `LEVEL` at scan position `LAST`, band 0-1 (9.8) | v3 only |
+| 26 | `LEVEL` at scan position `LAST`, band 2-3 (9.8) | v3 only |
+| 27 | vector magnitude class, `mv_x` / `mv_y` (9.9) | `VEC_ENT` only |
+| 28 | vector magnitude class, `disparity` (9.9) | `VEC_ENT` only |
 
 In the **v1 model** a DC-plane unit uses the same contexts as its plane, and
 the intra mode symbol is bypass-coded (9.6).
@@ -1157,6 +1196,12 @@ Contexts 0-11 keep their *meaning* in both models but not their *statistics*,
 because in v2 they no longer see the DC plane at all -- so the two models have
 **separate built-in table families** (`kDefaultFreq` and `kDefaultFreqV2` in
 `ref/src/default_tables.inc`), both pinned by the conformance vectors.
+
+In the **v3 model** contexts 16-26 split the coefficient syntax further on
+state the decoding lane already holds; section 9.8 is normative for the split.
+Contexts 0-15 again keep their meaning and again change their statistics, so
+v3 has a **third built-in family** (`kDefaultFreqV3`), 29 rows wide; a
+27-context stream simply never reads the last two rows.
 
 **CBF** (coded block flag), one per unit: symbol 0 means every coefficient of
 the unit is zero and the unit is finished; symbol 1 means coefficients follow.
@@ -1223,9 +1268,11 @@ Eight table sets exist per frame. Set *k* is either the built-in default *k* (in
 conformance vectors) or, if bit *k* of `tables_present` is set, a transmitted
 table.
 
-A transmitted set is **120 bytes** (12 contexts x 16 symbols x 5 bits) in the
-v1 context model and **160 bytes** (16 x 16 x 5) under `CTX_V2`: MSB-first bit
-packing, contexts in index order, symbols in symbol order. The built-in default
+A transmitted set is `nctx * 16 * 5` bits -- **120 bytes** in the v1 context
+model, **160** under `CTX_V2`, **270** under `CTX_V3` and **290** with
+`VEC_ENT` as well (the ladder in 9.3): MSB-first bit packing, contexts in
+index order, symbols in symbol order. Every count is a whole number of bytes,
+so the sets in a frame header are byte-aligned and can be parsed in order. The built-in default
 it is a delta against is the same set index of the same model's family. Each 5-bit value
 `d` is an index into a log-domain multiplier table applied to the built-in
 default of the *same set index*:
@@ -1314,6 +1361,125 @@ encoder decision and is not normative.
 
 `SIGN_HIDE` applies to DC-plane units as well as residual blocks.
 
+### 9.8 The v3 coefficient contexts (tool bit 24)
+
+`CTX_V3` conditions `CBF`, `LAST` and `LEVEL` on three further things, all of
+them already in the decoding lane's own registers. Nothing here reads another
+lane, another tile, or memory.
+
+**The neighbour class.** Every coefficient unit belongs to a **neighbour
+group**: a block unit's group is its plane, and a DC-plane unit and a mode
+unit have no group. A lane carries one 2-bit `nbr` register. When it begins a
+unit whose group differs from the group its register describes, `nbr` is reset
+to 0 and the register adopts the new group. When it *finishes* a block unit it
+sets
+
+```
+nbr = 0 is impossible here
+nbr = 1   if the unit had CBF == 0
+nbr = 2   if it had CBF == 1 and LAST < 4
+nbr = 3   if it had CBF == 1 and LAST >= 4
+```
+
+so `nbr` always describes **the previous block unit the same lane decoded in
+the same plane**, and `nbr == 0` means there was none. Because lane `l` owns
+units `l, l+N, l+2N, ...` and a plane's block units are consecutive in the
+unit list, the previous block unit of the same lane is the block `N` earlier
+in raster order -- at the v1 lane count of 8 and the full-resolution block
+grid of 8 columns, exactly **the block above**. The rule is stated in terms of
+the lane rather than the geometry because it must stay causal for every
+`nsub_log2`, every `res_level` and every chroma format.
+
+The context of a block unit's `CBF` and `LAST` is then
+
+```
+cbf_ctx  = nbr == 0 ? base_cbf
+                    : (base_cbf == 1 ? 19 : 16) + (nbr - 1)
+last_ctx = nbr <  2 ? base_last
+                    : (base_last == 3 ? 23 : 22)
+```
+
+where `base_cbf` and `base_last` are the v2 contexts of 9.3 (0/1 and 2/3).
+`nbr == 0` deliberately keeps the v2 context, so a lane's first block in a
+plane codes exactly as it did before and the new rows only ever see
+conditioned data. DC-plane units keep contexts 12 and 13 unconditionally.
+
+**The `LEVEL` context** under v3 is
+
+```
+if the unit is a DC plane:   scan_pos == 0 ? 24 : 14
+else if scan_pos == LAST:    band(scan_pos) < 2 ? 25 : 26
+else:                        the banded context of 9.3
+```
+
+The coefficient at `LAST` is nonzero by construction, so it cannot share a
+context with positions that may be zero; and the DC term of a DC plane is a
+block mean, not a residual.
+
+**What this costs a decoder.** Two registers per lane, written once per unit
+and read once per unit. The per-symbol decode step is unchanged: selecting a
+context is one comparison and one add on values already in registers, and the
+symbol search is the same 4-step binary search over the same 16 cumulative
+frequencies. The shared table grows with the context count and nothing else:
+`8 sets x 29 contexts x 16 u32` is 14 848 bytes, against 8 192 at 16 contexts,
+so a workgroup of 8 tiles holds about **16.9 KB** of shared memory including
+the scan tables and per-tile geometry -- inside the 32 KB budget
+(`vk/decoder/passA/README.md`).
+
+### 9.9 The vector unit (tool bit 25)
+
+Under `VEC_ENT` a tile with `mv_present == 1` does not carry the two raw bytes
+of 4.1; its vector is the **first coding unit of the payload**, and therefore
+belongs to lane 0. It codes
+
+* one unsigned component, `disparity`, when `mode == STEREO`;
+* two signed components, `mv_x` then `mv_y`, otherwise.
+
+Each component is a **magnitude class** symbol in context 27 (`mv_x`/`mv_y`)
+or 28 (`disparity`), then raw bypass bits, then -- for a signed component with
+a nonzero magnitude below 128 -- one bypass sign bit, 1 meaning negative.
+
+| class | base | raw bits | covers |
+|---|---|---|---|
+| 0..3 | 0..3 | 0 | 0..3 |
+| 4 | 4 | 1 | 4..5 |
+| 5 | 6 | 1 | 6..7 |
+| 6 | 8 | 2 | 8..11 |
+| 7 | 12 | 2 | 12..15 |
+| 8 | 16 | 3 | 16..23 |
+| 9 | 24 | 3 | 24..31 |
+| 10 | 32 | 4 | 32..47 |
+| 11 | 48 | 4 | 48..63 |
+| 12 | 64 | 5 | 64..95 |
+| 13 | 96 | 5 | 96..127 |
+| 14 | 128 | 7 | 128..255 |
+| 15 | - | - | escape |
+
+`magnitude = base[class] + raw`. Class 15 is followed by an Exp-Golomb
+order-3 code of `magnitude - 256`, in bypass bits, exactly the code 9.3 uses
+for the `LEVEL` escape; a decoded value above 32767 there must be rejected.
+
+Range rules, which a decoder must enforce because the tile header could not
+have expressed anything else:
+
+* a signed component's magnitude must be `<= 128`; magnitude 128 is the one
+  value that carries **no** sign bit and is always `-128`, since the field it
+  replaces was an `i8`;
+* a signed component of magnitude 0 carries no sign bit;
+* `disparity` must be `<= 4095`.
+
+A decoder therefore has to run the entropy decode of a tile before it can
+build that tile's predictor. That is already the pass boundary -- Pass A
+produces coefficients and the tile record, Pass B predicts and reconstructs
+(section 10) -- so the ordering costs nothing; it only removes the shortcut of
+reading the vector out of the header.
+
+**What this costs a decoder.** One extra unit of at most two components on
+lane 0: two symbols, at most fourteen bypass bits and two sign bits per tile,
+in contexts that add two rows to the shared table (960 bytes across the eight
+sets). No new shared memory layout, no new dependent step, no cross-tile
+state.
+
 ### 9.5 rANS
 
 Fixed parameters, chosen so the construction stays inside Duda's published rANS
@@ -1387,7 +1553,8 @@ state below `L`, and any renormalization that would read past the payload.
 2. build the coding-unit list from res_level, chroma444, alpha_mode, mode
 3. run the interleaved rANS schedule -> int16 coefficients, one array per unit
    (this is GPU Pass A: output is a dense int16 coefficient buffer plus the
-   tile record)
+   tile record).  Under VEC_ENT this is also where the tile's vector comes
+   from (section 9.9), so step 4 must follow it rather than precede it
 4. if mode != INTRA: build the inter predictor W from the reference picture
    ref_sel selects, the frame's warp_ext matrix and the tile's vector
    (section 13.3).  If the tile is skipped or concealed, W is the whole
@@ -1430,9 +1597,9 @@ tile  := tile_header [mv | disparity] [alpha] payload
 | structure | fixed size |
 |---|---|
 | stream header | 64 + `ext_len` |
-| frame header | 40 (+`36 * eyes` if `warp_present`, +128 if custom matrices, +120 per transmitted table set, or +160 per set when `CTX_V2` is set) |
+| frame header | 40 (+`36 * eyes` if `warp_present`, +128 if custom matrices, +`nctx * 10` per transmitted table set: 120, 160, 270 or 290 by section 9.3) |
 | tile-row header | 12, `eyes * rows` of them, row-major eye-minor |
-| tile header | 8 (+2 if `mv_present`, +1 if `alpha_mode == 1`); a skipped tile has none |
+| tile header | 8 (+2 if `mv_present` and not `VEC_ENT`, +1 if `alpha_mode == 1`); a skipped tile has none |
 | tile payload | `payload_len`, at least `4 * active_lanes` |
 
 ---
@@ -1475,8 +1642,10 @@ unimplemented mandatory tool bit, `bit_depth` 10, the 32x32 tile profile, a
 bit for a column beyond the picture, a reserved tile-header bit, an `INTER`
 tile, `wm_id` without its tool bit, a wrong `row_index`, a short
 `frame_bytes`, `flags` bit 2 without `INTRA_DIR`, YCoCg-R declared with 4:2:0
-chroma, a `CTX_V2` table set that overruns the tile rows, and `LOSSLESS`
-together with `SIGN_HIDE`.
+chroma, a `CTX_V2` table set that overruns the tile rows, `LOSSLESS`
+together with `SIGN_HIDE`, `CTX_V3` without `CTX_V2`, `VEC_ENT` without
+`CTX_V3`, `VEC_ENT` without `INTER`, and a `CTX_V3` table set that overruns
+the tile rows.
 
 **The v2 intra tools.** `v36`-`v44` pin them: `INTRA_DIR` alone in 4:4:4 and
 4:2:0, `INTRA_DIR` with `CTX_V2`, `CTX_V2` alone, the layered form, every v2
@@ -1484,6 +1653,16 @@ feature at once with transmitted 160-byte table sets, the combination with
 `res_level` cycling and transform skip, `SIGN_HIDE` alone, and the reference
 encoder's shipped default configuration. `v01`-`v35` are **byte-identical** to
 the v1.2 set: all three tools are additive and off unless their bit is set.
+
+**The v3 entropy tools.** `v57`-`v60` pin `CTX_V3` on intra: the shipped
+default configuration in 4:4:4, a 4:2:0 stream at QP 32, `CTX_V3` without
+directional intra and with transmitted 270-byte table sets, and the
+combination with `res_level` cycling and transform skip. `v61`-`v63` pin the
+inter side: `CTX_V3` on a warped sequence, `VEC_ENT` with `mv_x`/`mv_y`, and
+`VEC_ENT` with a `STEREO` disparity. `v01`-`v33` and `v35`-`v40`, `v43` and
+`v45`-`v56` are **byte-identical** to the v1.4 set; `v34`, `v41`, `v42` and
+`v44` move, and all four are custom-table streams -- that is decision 57, the
+encoder no longer transmitting a table set that does not pay for itself.
 
 `v23_custom_tables420` and `v34_wm_id420_tables` pin the probability-table
 normalization of section 9.4 — the one place a decoder divides — so a decoder
@@ -1986,7 +2165,9 @@ inconsistent. Each is a decision, not an interpretation.
     to recover.
 
 47. **The STEREO disparity is a 12-bit field in the tile's optional area, not
-    an Exp-Golomb symbol in the payload.** Putting it in the payload would add
+    an Exp-Golomb symbol in the payload.** *(Superseded in part by decision 58,
+    which puts it in the payload behind tool bit 25; the field below is still
+    what a stream without that bit carries.)* Putting it in the payload would add
     a mode-conditional bypass symbol at the head of a tile's coding-unit list,
     which changes the interleaved lane schedule -- the single most delicate
     part of the format and the only part with a lane-order dependency -- to
@@ -2031,6 +2212,92 @@ inconsistent. Each is a decision, not an interpretation.
     D-5 is unchanged; only the bit numbers move, to the first bits that are
     actually free. This is an erratum against Annex D, recorded here because
     this document is where the bit numbers live.
+
+53. **The v3 neighbour is defined by the lane, not by the geometry.** The
+    obvious statement of decision 42's next step is "condition `CBF` on the
+    block above". That is not decodable: units are handed round-robin to the
+    rANS lanes and the schedule defines the order of *operations*, not the
+    order in which two lanes reach their `k`-th unit, so the block above may
+    belong to a lane that has not reached it. Section 9.8 says instead "the
+    previous block unit **this lane** decoded in this plane", which is the
+    same block whenever the lane count equals the block-row width -- the v1
+    configuration, 8 lanes and 8 columns -- and is always causal, at every
+    `nsub_log2`, `res_level` and chroma format. It costs the decoder two
+    registers per lane and no memory traffic at all, where a geometric
+    neighbour would cost a cross-lane read and a barrier.
+
+54. **The v3 model keeps the v2 contexts for the unconditioned case.**
+    Neighbour class 0 -- a lane's first block unit in a plane -- codes in
+    contexts 0/1 and 2/3, not in a row of its own. Splitting it out as well
+    would have cost two more rows, 20 bytes per transmitted table set, to
+    describe a case that is 1/8 of the blocks and whose statistics are the
+    average of the other three. Keeping it also makes the v3 rows strictly
+    *conditioned* data, which is what makes them worth training.
+
+55. **A `LEVEL` at scan position `LAST` gets its own contexts.** It is the one
+    position in a unit that cannot be zero, so under v1 and v2 it shared eight
+    banded contexts with positions that can be, and paid for the zero
+    probability it could never use. Two rows split it by band. This is the
+    cheapest of the eleven v3 rows to justify and one of the larger ones.
+
+56. **The context count is a ladder, not a constant, so a tool pays only for
+    the rows it uses.** `CTX_V3` codes 27 contexts; adding `VEC_ENT` makes it
+    29. An intra stream that will never carry a vector therefore never
+    transmits the two vector rows -- 20 bytes per transmitted table set, up to
+    160 bytes a frame, which at the low-rate operating point of Appendix B is
+    real money. The count is derived from the tool bits alone (section 9.3),
+    so both ends compute it without any extra field.
+
+57. **A transmitted table set must pay for itself.** Before v1.5 the encoder
+    sent all eight sets whenever any tile used custom tables. At 270 bytes a
+    set under `CTX_V3` that is 2160 bytes of frame header, which on a QP 32
+    frame of this material is 6 %. The encoder now transmits set *k* only when
+    the tiles assigned to it save more than `nctx * 16 * 5` bits, and chooses
+    each tile's set against the tables actually in force rather than always
+    against the built-ins. Both are encoder decisions: `tables_present`
+    already says which sets are transmitted, and a decoder that never saw the
+    old behaviour cannot tell the difference.
+
+58. **The tile vector moves into the payload, reversing decision 47, and it
+    is behind its own tool bit.** Decision 47 declined to code the `STEREO`
+    disparity as a payload symbol on two grounds: it would perturb the lane
+    schedule, and it was worth "under a tenth of a percent of a tile". The
+    first ground is answered by making the vector a whole coding unit at the
+    head of the list (the same answer decision 41 gave for the mode unit): the
+    unit list gains one entry, every lane's *own* order is unchanged, and no
+    lane's units depend on another lane's. The second was measured on the
+    wrong quantity -- a tile, rather than a frame at the rate the codec is
+    designed to run, where two bytes per vector tile is 2.3 % of a QP 24 inter
+    frame (`ref/RESULTS-ctx-a.md`). Both forms remain in the syntax: without
+    tool bit 25 the header bytes are still there, byte for byte, and the
+    property decision 47 protected -- that a tile header parses without
+    starting the entropy decoder -- is what a stream keeps by *not* setting
+    the bit.
+
+59. **10-bit probabilities are kept, and 12-bit is the thing to take at the
+    next incompatible revision.** Measured on the reference encoder's own
+    per-tile histograms (`ref/RESULTS-ctx-a.md` section 5), quantising a
+    context row to 1024 costs 0.30 % of the coefficient payload at QP 8 and
+    1.66 % at QP 32 against exact probabilities; 4096 costs 0.07 % and 0.41 %,
+    so 12 bits recovers 0.23 % to 1.23 %. The decode step would be identical
+    -- the same 16 cumulative frequencies, the same 4-step binary search, the
+    same shared-memory footprint -- and only the mask and one encoder-side
+    shift change. What it is not worth is a *tool bit*: a per-stream
+    probability precision makes the mask and the shift in the hottest loop of
+    Pass A runtime values, and it invalidates all three built-in table
+    families and every conformance vector. It is free at a version break and
+    expensive as an option, so it waits for one.
+
+60. **16 lanes per tile is rejected.** `nsub_log2` already permits it. It
+    costs 4 bytes of initial rANS state per lane per tile, and the encoder
+    already chooses the lane count so that the flush stays under a tenth of
+    the payload -- which at the Phase 1 band averages 1 to 3 lanes, not 8.
+    Forcing 16 costs **+6.3 % at QP 8 and +33 % at QP 32** against a fixed 8,
+    and +10 % to +79 % against the encoder's own choice
+    (`ref/RESULTS-ctx-a.md` section 5). The GPU side gains nothing to trade
+    against that: the shared table is indexed by table set, not by tile, so it
+    does not shrink, and a 16-lane cluster needs `subgroupSize >= 16`, which
+    forces the LDS fallback path on every ICD with a subgroup of 8.
 
 ## Appendix B: where the bits go
 

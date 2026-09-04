@@ -335,7 +335,8 @@ def cmd_encode(args: argparse.Namespace) -> int:
     if args.intra_dir_cand:
         kwargs["intra_dir_cand"] = args.intra_dir_cand
     if args.ctx is not None:
-        kwargs["ctx_v2"] = 1 if args.ctx == "v2" else 0
+        kwargs["ctx_v2"] = 1 if args.ctx in ("v2", "v3") else 0
+        kwargs["ctx_v3"] = 1 if args.ctx == "v3" else 0
     if args.sign_hide is not None:
         kwargs["sign_hide"] = 1 if args.sign_hide else 0
 
@@ -495,8 +496,8 @@ def build_parser() -> argparse.ArgumentParser:
                         "DC-plane residual instead of the samples")
     e.add_argument("--intra-dir-cand", dest="intra_dir_cand", type=int, default=0,
                    help="modes RD-checked per block (0 = the encoder default)")
-    e.add_argument("--ctx", default=None, choices=("v1", "v2"),
-                   help="12 or 16 entropy contexts (tool bit 21 CTX_V2)")
+    e.add_argument("--ctx", default=None, choices=("v1", "v2", "v3"),
+                   help="12, 16 or 27 entropy contexts (tool bits 21, 24)")
     e.add_argument("--sign-hide", dest="sign_hide", action="store_const",
                    const=True, default=None,
                    help="sign data hiding (tool bit 22; the reference default)")

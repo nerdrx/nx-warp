@@ -404,6 +404,23 @@ class StreamHeader(_TableStruct):
             )
         # SYNTAX.md 14: WARP describes how the inter modes predict, so it says
         # nothing on its own (rejection vector r27).
+        # SYNTAX.md 2.3: CTX_V3 extends CTX_V2's context set, and VEC_ENT
+        # selects rows of the v3 family for a vector only an inter tile has.
+        if (self.tools & Tool.CTX_V3) and not (self.tools & Tool.CTX_V2):
+            raise BitstreamError(
+                "tool bit CTX_V3 without CTX_V2: it extends that context set",
+                offset + 32,
+            )
+        if (self.tools & Tool.VEC_ENT) and not (self.tools & Tool.CTX_V3):
+            raise BitstreamError(
+                "tool bit VEC_ENT without CTX_V3: its contexts do not exist",
+                offset + 32,
+            )
+        if (self.tools & Tool.VEC_ENT) and not (self.tools & Tool.INTER):
+            raise BitstreamError(
+                "tool bit VEC_ENT without INTER: no tile has a vector",
+                offset + 32,
+            )
         if (self.tools & Tool.WARP) and not (self.tools & Tool.INTER):
             raise BitstreamError(
                 "tool bit WARP without INTER: there is nothing for it to describe",
@@ -582,18 +599,21 @@ _TILE_WORD0: Sequence[tuple[str, int, int, bool]] = (
 _TILE_EXTRAS: Sequence[tuple[str, tuple[str, ...], str, Callable[[Any], bool]]] = (
     # SYNTAX.md 4.1: `mv_present` introduces two bytes either way -- a u16
     # disparity for a STEREO tile, an i8 pair otherwise -- so no structure
-    # changes size and the choice is only which two bytes they are.
+    # changes size and the choice is only which two bytes they are.  Under
+    # VEC_ENT (tool bit 25) neither is there: the same values are the
+    # payload's first coding unit instead (SYNTAX.md 9.9), which this
+    # header-only parser cannot reach and therefore leaves at zero.
     (
         "tile disparity",
         ("disparity",),
         "H",
-        lambda h: bool(h.mv_present) and h.mode == TileMode.STEREO,
+        lambda h: bool(h.mv_present) and not h.vec_ent and h.mode == TileMode.STEREO,
     ),
     (
         "tile motion vector",
         ("mv_x", "mv_y"),
         "bb",
-        lambda h: bool(h.mv_present) and h.mode != TileMode.STEREO,
+        lambda h: bool(h.mv_present) and not h.vec_ent and h.mode != TileMode.STEREO,
     ),
     ("tile constant alpha", ("alpha_value",), "B", lambda h: h.alpha_mode == 1),
 )
@@ -638,6 +658,9 @@ class TileHeader:
     #: STEREO only: unsigned horizontal disparity in quarter samples, 12 bits.
     disparity: int = 0
     alpha_value: int = 0
+    #: Stream property, not a header field: 1 when the stream sets VEC_ENT, so
+    #: the two vector bytes are in the payload rather than here.
+    vec_ent: int = 0
 
     #: Fixed part only; the optional bytes are counted by :attr:`header_size`.
     SIZE: ClassVar[int] = 8
@@ -675,10 +698,11 @@ class TileHeader:
         return max(0, min(63, base_qp + self.qp_delta))
 
     @classmethod
-    def parse(cls, buf: bytes, offset: int = 0, *, validate: bool = True) -> "TileHeader":
+    def parse(cls, buf: bytes, offset: int = 0, *, validate: bool = True,
+              vec_ent: int = 0) -> "TileHeader":
         _need(buf, offset, 8, "tile header")
         word0, word1 = struct.unpack_from("<II", buf, offset)
-        values: dict[str, int] = {}
+        values: dict[str, int] = {"vec_ent": int(vec_ent)}
         for name, lsb, width, signed in _TILE_WORD0:
             values[name] = _get_bits(word0, lsb, width, signed)
         for name, lsb, width, signed in _TILE_WORD1:
@@ -829,6 +853,9 @@ CUSTOM_MATRIX_BYTES = 128
 TABLE_SET_BYTES = 120
 #: ... and under ``CTX_V2`` (16 x 16 x 5).  SYNTAX.md 3.1 and 9.4.
 TABLE_SET_BYTES_V2 = 160
+#: ... under ``CTX_V3`` (27 x 16 x 5) and with ``VEC_ENT`` as well (29 x 16 x 5).
+TABLE_SET_BYTES_V3 = 270
+TABLE_SET_BYTES_V3_VEC = 290
 
 
 def table_set_bytes(tools: int) -> int:
@@ -838,6 +865,8 @@ def table_set_bytes(tools: int) -> int:
     parsed without it -- this is why :func:`parse_frame` takes the stream
     header rather than only the frame's own bytes.
     """
+    if tools & Tool.CTX_V3:
+        return TABLE_SET_BYTES_V3_VEC if (tools & Tool.VEC_ENT) else TABLE_SET_BYTES_V3
     return TABLE_SET_BYTES_V2 if (tools & Tool.CTX_V2) else TABLE_SET_BYTES
 
 
@@ -1059,6 +1088,7 @@ def parse_frame(
     if validate:
         _validate_frame_against_stream(hdr, stream, offset)
 
+    vec_ent = 1 if (stream.tools & Tool.VEC_ENT) else 0
     sections: dict[str, dict[Any, bytes]] = {}
     for section in FRAME_SECTIONS:
         for key in section.keys(hdr, stream):
@@ -1129,7 +1159,7 @@ def parse_frame(
 
         tiles: list[Tile] = []
         for _ in range(rh.tile_count):
-            th = TileHeader.parse(buf, pos, validate=validate)
+            th = TileHeader.parse(buf, pos, validate=validate, vec_ent=vec_ent)
             if validate:
                 _validate_tile_against_stream(th, hdr, stream, pos)
                 if th.eye != eye:

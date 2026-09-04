@@ -272,7 +272,7 @@ The encoder tuning and v2 intra tool flags mirror `nxv-enc` too:
 | `--wm 0..3\|auto` | per-tile weighting matrix, tool bit 20 `WM_ID` |
 | `--intra-dir off\|on\|layer` | directional intra, tool bit 17; `layer` is the layered form (frame `flags` bit 2, SYNTAX.md 7.5) |
 | `--intra-dir-cand N` | modes RD-checked per block |
-| `--ctx v1\|v2` | 12 or 16 entropy contexts, tool bit 21 `CTX_V2` |
+| `--ctx v1\|v2\|v3` | 12, 16 or 27 entropy contexts, tool bits 21 `CTX_V2` and 24 `CTX_V3` |
 | `--sign-hide` / `--no-sign-hide` | sign data hiding, tool bit 22 |
 
 Each of them defaults to *unset*, meaning "whatever `nxvc_config_default()`

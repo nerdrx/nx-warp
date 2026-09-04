@@ -125,7 +125,10 @@ so a `CBF == 0` unit and the padding both read back as zero.
 | per-tile geometry, flags | ~1000 |
 
 About 10 KiB, up from 7.5 when the context count was 12 (`docs/SYNTAX.md` 9.3,
-tool bit 21 `CTX_V2`). The table is always uploaded at the 16-context stride
+tool bit 21 `CTX_V2`). At the 29-context stride `CTX_V3` + `VEC_ENT` needs
+(below) it would be 14 848 + 1024 + ~1000, about **16.9 KiB**, still inside the
+32 KiB budget with room for the 12-bit-probability variant that would not
+change the figure at all. The table is always uploaded at the 16-context stride
 whichever model the stream selects, so the host has one layout to build and
 contexts past the coded count simply are never selected. The paper assumed a
 1024-entry `slot2sym` table per context, but a workgroup holds 8 tiles that may
@@ -159,6 +162,34 @@ is used as-is.
 it the parity of the sum of the unit's magnitudes. The kernel stores that
 coefficient provisionally positive, keeps its magnitude in a register, and
 negates it at the end of the unit — so binding 3 stays write-only.
+
+## The v1.5 tools, and why the kernel refuses them today
+
+`CTX_V3` (tool bit 24) and `VEC_ENT` (tool bit 25) are **not** in
+`kToolsSupported` in `vk/decoder/nxvc_vkdec_parse.cpp`, so a stream setting
+either is refused at the handshake with a `VERSION` status and never reaches
+this kernel. That is the correct state until the shader implements them, and
+it is why the reference's syntax v1.5 does not break the Vulkan conformance
+run. What implementing them costs, so the decision is priced rather than
+guessed:
+
+* **`CTX_V3`** is two extra registers per lane -- a 2-bit neighbour class and
+  the group it belongs to (`docs/SYNTAX.md` 9.8) -- written once per unit and
+  read once per unit. The per-symbol step does not change: selecting a context
+  is one compare and one add on registers, and the symbol search is the same
+  4-step branchless binary search over the same 16 cumulative frequencies.
+  What grows is the table: `s_cum` goes to `[8][29][16]`, 14 848 bytes, and the
+  host uploads at the 29-context stride whatever the stream codes, exactly as
+  it already uploads at 16. **No new barrier, no new buffer, no cross-lane
+  traffic**; the whole point of defining the neighbour by lane rather than by
+  geometry (decision 53) is that the wavefront shape is untouched.
+* **`VEC_ENT`** is one extra coding unit at the head of the list, owned by
+  lane 0: at most two magnitude-class symbols, fourteen bypass bits and two
+  sign bits per tile. It needs one more output -- the decoded vector, two
+  `int16` per tile -- which is a field of the per-tile record Pass B already
+  reads, not a new binding. The tile record must then be written by Pass A
+  rather than derived by the host from the tile header, which is the only
+  structural change on this side.
 
 ## Errors
 

@@ -113,6 +113,8 @@ handed to both kernels (`docs/SYNTAX.md` 2.3, 3.1):
 | | from | Pass A | Pass B |
 |---|---|---|---|
 | `CTX_V2` | tool bit 21 | 16 coded contexts, the `kDefaultFreqV2` family, 160-byte transmitted table sets | — |
+| `CTX_V3` | tool bit 24 | **not implemented**: refused with `VERSION` at the handshake. 27 coded contexts, the `kDefaultFreqV3` family, 270-byte table sets (`docs/SYNTAX.md` 9.8) | `passA/README.md` prices it: two registers per lane, `s_cum` to 14 848 B, no new barrier |
+| `VEC_ENT` | tool bit 25 | **not implemented**: refused with `VERSION`. The tile vector is the payload's first coding unit and the table sets are 290 bytes (`docs/SYNTAX.md` 9.9) | Pass A must write the tile record's vector instead of the host deriving it from the tile header |
 | `INTRA_DIR` | tool bit 17 | one extra mode unit per coded plane | the wavefront |
 | layered form | frame `flags` bit 2 | — | the modes predict the DC-plane residual |
 | `SIGN_HIDE` | tool bit 22 | the sign at scan position `LAST` is the parity of the unit | — |

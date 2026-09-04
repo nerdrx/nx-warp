@@ -252,11 +252,15 @@ def test_every_conformance_vector_round_trips_its_headers(row):
 
 @pytest.mark.parametrize("row", CONFORMANCE, ids=_id)
 def test_transmitted_table_sets_are_sized_by_the_stream_tools(row):
-    """SYNTAX.md 3.1 / 9.4: 120 bytes, or 160 under ``CTX_V2``."""
+    """SYNTAX.md 3.1 / 9.4: 120, 160, 270 or 290 bytes by the tools mask."""
     name = row[0]
     data = (_vector_dir() / f"{name}.nxv").read_bytes()
     stream = bs.parse_stream(data)
-    want = 160 if (stream.header.tools & nxvc.Tool.CTX_V2) else 120
+    tools = stream.header.tools
+    if tools & nxvc.Tool.CTX_V3:
+        want = 290 if (tools & nxvc.Tool.VEC_ENT) else 270
+    else:
+        want = 160 if (tools & nxvc.Tool.CTX_V2) else 120
     assert bs.table_set_bytes(stream.header.tools) == want
     for frame in stream.frames:
         assert set(frame.table_deltas) == set(frame.header.table_sets)
