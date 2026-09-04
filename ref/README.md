@@ -17,10 +17,11 @@ v1.3 stream are byte-identical to what a v1.3 build produced.
 
 **Syntax revision v1.5** adds the two intra detail tools -- the 4x4 transform
 split (bit 19) and chroma from luma (bit 24) -- plus a named, per-band encoder
-dead zone that changes no syntax at all. Both tools are additive and **off by
-default in `nxvc_config_default()`**: `v01`-`v56` of the conformance set are
-byte-identical to what a v1.4 build produced, which `ctest -R ref.vectors`
-checks on every commit. `nxv-enc --split4x4 on --cfl on` turns them on. See
+dead zone that changes no syntax at all. Together they are worth **-18.8
+BD-rate points on 4:4:4 and -16.0 on 4:2:0**, so the encoder turns both **on
+by default**; `nxv-enc --split4x4 off --cfl off` writes a v1.4 stream. Both
+are additive: `v01`-`v56` of the conformance set are byte-identical to what a
+v1.4 build produced, which `ctest -R ref.vectors` checks on every commit. See
 [`docs/SYNTAX.md`](../docs/SYNTAX.md) 6.7 and 7.7 and
 [`RESULTS-detail-a.md`](RESULTS-detail-a.md).
 
@@ -92,8 +93,8 @@ and the v1.5 detail switches:
 
 | flag | default | effect |
 |---|---|---|
-| `--split4x4 on\|off` | `off` | per-block 4x4 transform split; sets tool bit 19 |
-| `--cfl on\|off` | `off` | the chroma-from-luma intra mode; sets tool bit 24, and needs `--intra-dir on --ctx v2` |
+| `--split4x4 on\|off` | `on` | per-block 4x4 transform split; sets tool bit 19 |
+| `--cfl on\|off` | `on` | the chroma-from-luma intra mode; sets tool bit 24, and needs `--intra-dir on --ctx v2` |
 
 and the v1.4 inter switches:
 
@@ -391,9 +392,12 @@ matters is a real capture.
 
 ```sh
 nxv-enc --in in.yuv --w 2048 --h 1024 --pix yuv444p --qp 16 --out out.nxv
-#   == --intra-dir on --ctx v2 --sign-hide   (tools 17, 21, 22 set)
+#   == --intra-dir on --ctx v2 --sign-hide --split4x4 on --cfl on
+#      (tools 17, 19, 21, 22, 24 set)
 
-nxv-enc ... --intra-dir off --ctx v1 --no-sign-hide     # a v1.2 stream
+nxv-enc ... --split4x4 off --cfl off                    # a v1.4 stream
+nxv-enc ... --split4x4 off --cfl off \
+            --intra-dir off --ctx v1 --no-sign-hide     # a v1.2 stream
 ```
 
 `--lossless` forces `--no-sign-hide`: hiding a sign spends one level step, so

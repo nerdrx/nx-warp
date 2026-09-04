@@ -443,6 +443,15 @@ static Result build_inter(const InterSpec &v) {
     cfg.intra_period = (uint32_t)v.iperiod;
     cfg.ref_sel = (uint32_t)v.ref_sel;
     cfg.custom_tables = 0;
+    // The Phase 2 set pins the inter path, so it is held at the tool set
+    // Phase 2 defined it with.  The v1.5 intra detail tools are on by default
+    // and would apply to an inter stream's INTRA refresh tiles, but nothing
+    // in this package measured that, and turning them on here would move
+    // twelve conformance vectors that have nothing to do with it.  A package
+    // that measures the intra tools inside inter streams should turn them on
+    // here and regenerate v45-v56 as its own before/after.
+    cfg.split4x4 = 0;
+    cfg.chroma_from_luma = 0;
 
     nxvc_status st;
     nxvc_encoder *e = nxvc_encoder_create(&cfg, &st);

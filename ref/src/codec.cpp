@@ -1520,8 +1520,14 @@ void nxvc_config_default(nxvc_config *cfg) {
     cfg->ctx_v2 = 1;
     cfg->intra_dir_cand = 0;   // built-in default (2 RD candidates + DC plane)
     cfg->sign_hide = 1;
-    cfg->split4x4 = 0;         // measured below; see ref/RESULTS-detail-a.md
-    cfg->chroma_from_luma = 0;
+    // The v1.5 detail tools, on for the same reason the v2 ones are: measured
+    // on the quality harness they are worth -18.8 BD-rate points on 4:4:4 and
+    // -16.0 on 4:2:0 together, for 1.35x encode time and nothing the decoder
+    // can measure (ref/RESULTS-detail-a.md).  Each sets a tool bit, so a
+    // decoder without them refuses the stream at the handshake rather than
+    // misparsing it; `--split4x4 off --cfl off` gets a v1.4 stream back.
+    cfg->split4x4 = 1;
+    cfg->chroma_from_luma = 1;
     // Phase 2 is opt-in: the default configuration is the Phase 1 one, so an
     // existing caller and every syntax v1.3 conformance vector keep producing
     // byte-identical streams.  `--inter on` turns the inter path on.

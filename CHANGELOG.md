@@ -51,6 +51,9 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
     reconstructed luma by a per-block linear model fitted to the block's own reconstructed
     neighbours. Integer throughout, with one 256-entry reciprocal table as its only division.
     Tile-independent; costs the GPU decoder one barrier per tile.
+  - Both are **on by default**: together -18.8 BD-rate points on 4:4:4 and -16.0 on 4:2:0 at the
+    Phase 1 operating point, for 1.7x encode time and no measurable decode cost.
+    `nxv-enc --split4x4 off --cfl off` writes a v1.4 stream byte for byte.
   - A named per-band encoder dead zone (`kDeadZoneDc` / `kDeadZoneAc`) replacing the magic `f = 1/3`.
     Encoder-only, no syntax. The decoder-side reconstruction offset was built, measured and
     **rejected**: it is worse in both rate and quality at every operating point.
