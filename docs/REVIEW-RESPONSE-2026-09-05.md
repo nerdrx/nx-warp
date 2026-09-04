@@ -55,14 +55,14 @@ Local verification after the fixes, on the development host under
 `chrt -i 0 taskset -c 16-19 nice -n 19`:
 
 ```
-ctest --test-dir build-ci -j4          71/71 pass, 1 skipped (vk.passB.gpu_roundtrip_lavapipe,
-                                       no lavapipe ICD on this box)
+ctest --test-dir build-ci -j4          75 registered, 74 pass, 1 skipped
+                                       (vk.passB.gpu_roundtrip_lavapipe: no lavapipe ICD here)
 tools/quality: pytest -q              356 passed
 ```
 
-The local run registers 71 tests rather than CI's 79 because CI has a lavapipe
-ICD and this host does not, so the lavapipe-pinned Vulkan tests are registered
-there and not here.
+The local run registers 75 tests rather than CI's 79 because CI has a lavapipe
+ICD and this host does not, so some lavapipe-pinned Vulkan tests are not
+registered here and the one that is, skips. Nothing fails.
 
 ## 2. Fixed CPU affinity refers to CPUs that do not exist on GitHub runners
 
@@ -335,7 +335,7 @@ Verified locally, under `chrt -i 0 taskset -c 16-19 nice -n 19`, `-j4`:
 
 | finding | verification |
 |---|---|
-| 1, 2, 3 | `ctest` 71/71 pass, 1 skipped; `pytest` 356 passed |
+| 1, 2, 3 | `ctest` 74 of 75 pass, 1 skipped for a missing ICD; `pytest` 356 passed |
 | 4 | the `fuzz-smoke` configuration builds; seven of seven replay runners pass |
 | 5 | `cmake --preset mingw-w64` configures and builds 84/84 targets |
 | 6 | `mkdocs build` succeeds; `logo.svg` and `favicon.svg` in `site/assets/` |
