@@ -174,12 +174,15 @@ before and after, as it was in `RESULTS-inter.md`.
 
 | sequence | band | v1.4 | shipped | change |
 |---|---|---|---|---|
+| `vr-mixed-1024-v2` 4:4:4 | A | +318.25 % | **+312.33 %** | **-5.92** |
 | `vr-mixed-1024-v2` 4:2:0 | A | +243.95 % | **+242.27 %** | **-1.68** |
 | `vr-mixed-1024-v2` 4:2:0 | B | +375.45 % | +379.77 % | **+4.32** |
 | `vr-mixed-512-v2` 4:2:0 | B | +240.98 % | +240.98 % | -0.01 |
 | `vr-turn-256-v2` 4:4:4 | B | +238.81 % | **+235.65 %** | **-3.16** |
 
-**Three of the four go the right way and one goes the wrong way, and the one
+All ten runs return `VERDICT   : FAIL` (`$NXQ_SCRATCH/results/tourney-ctx-b/verdicts.txt`).
+
+**Four of the five go the right way and one goes the wrong way, and the one
 that goes the wrong way is worth understanding**, because the frame is smaller
 at every operating point it shares with the baseline. `vr-mixed-1024-v2` 4:2:0,
 band B, per QP:
@@ -210,6 +213,13 @@ package is adopted: `--rdo-lambda` is already the knob, `RESULTS-intra.md`
 step 3 is the method, and the band-B row above is the measurement it would have
 to beat.
 
+Weighing the five rows: the mean change is **-1.3 BD-rate points**, the largest
+single move is the 4:4:4 band A row at -5.92, and the one regression is at the
+band and pixel format where the codec is furthest from the anchor to begin
+with. Alongside a clean -2.01 / -1.53 on the Phase 1 gate and a table area cut
+from 14.45 % to 3.41 % of a QP 36 frame, the package is a modest net positive
+that carries one known, explained, and separately fixable regression.
+
 Verbatim, band A on `vr-mixed-1024-v2` 4:2:0, before:
 
 ```
@@ -225,7 +235,8 @@ Verbatim, band A on `vr-mixed-1024-v2` 4:2:0, before:
     VERDICT   : FAIL
 ```
 
-and after:
+and after (the two lines that decide the verdict are unchanged in kind, only in
+magnitude):
 
 ```
   codec nxv-final against x265-p, PSNR-Y
@@ -576,8 +587,22 @@ the table area instead of a fixed one.
 
 ## 8. Conformance
 
-`ctest -R 'ref\.'` is green, and green again under
-`cmake --preset asan-ubsan`. The 56 committed vectors `v01`-`v56` and the 29
+`ctest -R 'ref\.'` is green (10/10), and `ctest --preset asan-ubsan -R
+'ref\.|fuzz\.'` is green (17/17) with UBSan set not to recover, so a signed
+overflow in the normative path aborts rather than printing a line. The seven
+`fuzz.*.replay` regression targets are green, and a 180-second libFuzzer
+campaign per target on a corpus seeded with `tests/vectors` ran clean:
+1.79 M inputs on `nxvc_decode_fuzz`, 17.5 M on `nxvc_rans_fuzz` and 3.71 M on
+`nxvc_headers_fuzz`.
+
+That campaign found one thing, and it was **not** in this package: the headers
+harness bounds a decoded plane at 4096 samples, but a picture is one eye and
+`width` is per eye, so a legal stereo header at the maximum width produces an
+8192-wide plane and trips the check. The input carries neither new tool bit.
+It is a gap in the fuzzing left over from before `eyes == 2` existed in syntax
+v1.4, it was aborting the headers target early enough to hide whatever lay
+past it, and it is fixed, written up as `fuzz/FINDINGS.md` F10 and pinned by
+`fuzz/regressions/nxvc_headers_fuzz/F6-stereo-plane-width.bin`. The 56 committed vectors `v01`-`v56` and the 29
 rejection vectors are **byte-identical** to what a v1.4 build produced, which
 is the proof that both tool bits are additive and that the encoder-side
 refinement does not disturb a stream that does not use trained tables.
@@ -632,9 +657,9 @@ Phase 2, band A and band B:
 ```sh
   --codec-enc "nxv-enc --quiet --eyes 2 --inter on \
                --poses $NXQ_SCRATCH/seq/vr-mixed-1024-v2.poses.json ..." \
-  --anchors x265-p --no-vmaf \
-  --qp 0,4,8,12    --anchor-qp 2,8,14,20      # band A
-  --qp 18,24,30,36 --anchor-qp 26,32,38,44    # band B
+  --anchors x265-p --no-vmaf --no-ssim \
+  --qp 0,2,4,6     --anchor-qp 6,12,18,24,30    # band A, 100-300 Mbit/s here
+  --qp 6,10,14,18  --anchor-qp 12,18,24,30,36   # band B, 0.2-0.6 bpp
 python3 ref/phase2_verdict.py --results $NXQ_SCRATCH/results/tourney-ctx-b/kill-*.json
 ```
 
