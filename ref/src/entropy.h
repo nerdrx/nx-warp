@@ -18,9 +18,11 @@ enum UnitKind : u8 { UNIT_COEF = 0, UNIT_MODE = 1 };
 // Both are inside the same unit, so the derivation only ever looks at data the
 // lane has already produced, whatever the interleaved lane schedule does.
 int mpm_of(const u8 *modes, int nbx, int b);
-// The 8 modes other than `mpm`, ascending: index -> mode.
-int nonmpm_mode(int mpm, int idx);
-int nonmpm_index(int mpm, int mode);
+// The `nmodes - 1` modes other than `mpm`, ascending: index -> mode and back.
+// `nmodes` is kNumIntraModes, or kNumIntraModesCfl in a chroma mode unit of a
+// stream with tool bit 24.
+int nonmpm_mode(int mpm, int idx, int nmodes);
+int nonmpm_index(int mpm, int mode, int nmodes);
 
 struct Unit {
     i16 *coef;        // UNIT_COEF: ncoef quantized levels, block-local order
@@ -34,6 +36,21 @@ struct Unit {
     u8 nbx;           // UNIT_MODE: blocks per edge
     u8 ctx_mode;      // UNIT_MODE: kCtxNone = bypass coded, else a context
     u8 sdh;           // UNIT_COEF: 1 = sign data hiding applies
+    u8 nmodes;        // UNIT_MODE: mode alphabet width (9, or 10 with CFL)
+    // UNIT_COEF, tool bit 19: a pointer to this block's 4x4-split flag,
+    // written by the decoder and read by the encoder.  Null means the unit
+    // codes no flag.
+    //
+    // The flag lives in the block's own unit, after its LAST, and not in the
+    // mode unit, because it selects the block's inverse transform and the
+    // decoder needs it while parsing that block.  Lanes interleave in an order
+    // the schedule deliberately does not define (SYNTAX.md 9.1), so the lane
+    // that parses a block may reach it before the lane that owns the mode unit
+    // has decoded that block's entry; anything a block's own decoding depends
+    // on has to be in the block's own unit.  The intra mode can live in the
+    // mode unit exactly because it changes only the prediction, which runs
+    // after the whole tile is parsed.
+    u8 *split4;
 };
 
 // --------------------------------------------------------------- lane ops
@@ -57,13 +74,18 @@ class LaneMachine {
   private:
     enum Phase : u8 {
         kCbf, kLast, kLastRaw, kLevel, kEscPrefix, kEscSuffix, kSign,
-        kModeSym, kModeFlag, kModeIdx, kHidden, kDone
+        kModeSym, kModeFlag, kModeIdx, kSplitFlag, kHidden, kDone
     };
     void begin_next_unit();
     void store_magnitude();
     void begin_unit();
     void begin_levels();
     void advance_pos();
+    // Commit the mode just settled for block mb_ and move to the next block.
+    void mode_settled(int mode);
+    // LAST is settled: code the 4x4-split flag if this unit carries one, then
+    // start the levels.
+    void last_settled();
 
     const Unit *units_ = nullptr;
     int nunits_ = 0, ui_ = 0, stride_ = 1;

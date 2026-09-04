@@ -104,6 +104,64 @@ void idct8x8(const i32 src[64], i32 dst[64]) {
     }
 }
 
+// ------------------------------------------------------------- 4-point DCT
+// Inverse 1D transform, gain 2^10 relative to the orthonormal DCT-III -- the
+// same gain the 8-point graph above has, which is what kD0..kD2 were rescaled
+// for.  Every product is small: |x| <= 32768 and 32768*669 = 2.2e7, so unlike
+// the 8-point odd part this graph needs no two-word product.
+static inline void idct4_1d(const i32 *x, i32 *y) {
+    i32 t0 = (x[0] + x[2]) * kD0;
+    i32 t1 = (x[0] - x[2]) * kD0;
+    i32 t2 = x[1] * kD2 - x[3] * kD1;
+    i32 t3 = x[1] * kD1 + x[3] * kD2;
+    y[0] = t0 + t3; y[3] = t0 - t3;
+    y[1] = t1 + t2; y[2] = t1 - t2;
+}
+
+// Forward 1D transform: the exact transpose of the flow graph above.
+static inline void fdct4_1d(const i32 *y, i32 *x) {
+    i32 t0 = y[0] + y[3], t3 = y[0] - y[3];
+    i32 t1 = y[1] + y[2], t2 = y[1] - y[2];
+    x[0] = (t0 + t1) * kD0;
+    x[2] = (t0 - t1) * kD0;
+    x[1] = t3 * kD1 + t2 * kD2;
+    x[3] = t3 * kD2 - t2 * kD1;
+}
+
+void fdct4x4(const i32 src[16], i16 dst[16]) {
+    i32 tmp[16];
+    i32 in[4], out[4];
+    for (int r = 0; r < 4; ++r) {
+        for (int c = 0; c < 4; ++c) in[c] = src[r * 4 + c];
+        fdct4_1d(in, out);
+        for (int c = 0; c < 4; ++c)
+            tmp[c * 4 + r] = clamp16((out[c] + 32) >> 6);  // transposed
+    }
+    for (int r = 0; r < 4; ++r) {
+        for (int c = 0; c < 4; ++c) in[c] = tmp[r * 4 + c];
+        fdct4_1d(in, out);
+        for (int c = 0; c < 4; ++c)
+            dst[c * 4 + r] = (i16)clamp16((out[c] + 4096) >> 13);
+    }
+}
+
+void idct4x4(const i32 src[16], i32 dst[16]) {
+    i32 tmp[16];
+    i32 in[4], out[4];
+    for (int r = 0; r < 4; ++r) {
+        for (int c = 0; c < 4; ++c) in[c] = src[r * 4 + c];
+        idct4_1d(in, out);
+        for (int c = 0; c < 4; ++c)
+            tmp[c * 4 + r] = clamp16((out[c] + 64) >> 7);
+    }
+    for (int r = 0; r < 4; ++r) {
+        for (int c = 0; c < 4; ++c) in[c] = tmp[r * 4 + c];
+        idct4_1d(in, out);
+        for (int c = 0; c < 4; ++c)
+            dst[c * 4 + r] = clamp16((out[c] + 8192) >> 14);
+    }
+}
+
 // -------------------------------------------------------------- resampling
 template <typename T>
 static inline i32 bilinear_impl(const T *src, int w, int h, int stride, i32 sx,

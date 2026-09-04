@@ -23,9 +23,9 @@ int mpm_of(const u8 *modes, int nbx, int b) {
     return left < above ? left : above;
 }
 
-int nonmpm_mode(int mpm, int idx) {
+int nonmpm_mode(int mpm, int idx, int nmodes) {
     int n = 0;
-    for (int m = 0; m < kNumIntraModes; ++m) {
+    for (int m = 0; m < nmodes; ++m) {
         if (m == mpm) continue;
         if (n == idx) return m;
         ++n;
@@ -33,9 +33,9 @@ int nonmpm_mode(int mpm, int idx) {
     return kIntraDcPlane;
 }
 
-int nonmpm_index(int mpm, int mode) {
+int nonmpm_index(int mpm, int mode, int nmodes) {
     int n = 0;
-    for (int m = 0; m < kNumIntraModes; ++m) {
+    for (int m = 0; m < nmodes; ++m) {
         if (m == mpm) continue;
         if (m == mode) return n;
         ++n;
@@ -68,6 +68,30 @@ void LaneMachine::begin_unit() {
         return;
     }
     phase_ = kCbf;
+}
+
+// Block mb_'s mode is settled; move to the next block of the mode unit.
+void LaneMachine::mode_settled(int mode) {
+    u_->modes[mb_] = (u8)mode;
+    ++mb_;
+    if (mb_ >= u_->nbx * u_->nbx) {
+        begin_next_unit();
+        return;
+    }
+    mpm_ = mpm_of(u_->modes, u_->nbx, mb_);
+    phase_ = u_->ctx_mode != kCtxNone ? kModeSym : kModeFlag;
+}
+
+// LAST is settled.  A block that carries a split flag and whose LAST is far
+// enough along the scan codes it here; everything else goes straight to the
+// levels.
+void LaneMachine::last_settled() {
+    if (u_->split4 && last_ >= kSplitMinLast) {
+        phase_ = kSplitFlag;
+        return;
+    }
+    if (u_->split4) *u_->split4 = 0;
+    begin_levels();
 }
 
 void LaneMachine::begin_next_unit() {
@@ -141,8 +165,16 @@ bool LaneMachine::next(Op &op) {
             op.value = 0;
             if (encoding_) {
                 int m = u_->modes[mb_];
-                op.value = (u16)(m == mpm_ ? 0 : 1 + nonmpm_index(mpm_, m));
+                op.value = (u16)(m == mpm_ ? 0
+                                           : 1 + nonmpm_index(mpm_, m,
+                                                              u_->nmodes));
             }
+            return true;
+        }
+        case kSplitFlag: {
+            op.kind = OP_BYPASS;
+            op.arg = 1;
+            op.value = encoding_ ? (u16)*u_->split4 : 0;
             return true;
         }
         case kModeFlag: {
@@ -154,8 +186,9 @@ bool LaneMachine::next(Op &op) {
         case kModeIdx: {
             op.kind = OP_BYPASS;
             op.arg = 3;
-            op.value =
-                encoding_ ? (u16)nonmpm_index(mpm_, u_->modes[mb_]) : 0;
+            op.value = encoding_ ? (u16)nonmpm_index(mpm_, u_->modes[mb_],
+                                                     u_->nmodes)
+                                 : 0;
             return true;
         }
         case kLevel: {
@@ -226,50 +259,41 @@ void LaneMachine::store_magnitude() {
     phase_ = kSign;
 }
 
-// Commit the mode just decoded for block mb_ and move on.
-static inline void mode_step(u8 *modes, int nbx, int &mb, int &mpm, int mode,
-                             bool &done) {
-    modes[mb] = (u8)mode;
-    ++mb;
-    done = (mb >= nbx * nbx);
-    if (!done) mpm = mpm_of(modes, nbx, mb);
-}
-
 bool LaneMachine::feed(u32 v) {
     switch (phase_) {
         case kModeSym: {
-            if (v >= (u32)kNumIntraModes) return false;
-            int m = v == 0 ? mpm_ : nonmpm_mode(mpm_, (int)v - 1);
-            bool done = false;
-            mode_step(u_->modes, u_->nbx, mb_, mpm_, m, done);
-            if (done) begin_next_unit();
+            if (v >= (u32)u_->nmodes) return false;
+            mode_settled(v == 0 ? mpm_
+                                : nonmpm_mode(mpm_, (int)v - 1, u_->nmodes));
             return true;
         }
         case kModeFlag: {
             if (v > 1) return false;
             if (v == 0) { phase_ = kModeIdx; return true; }
-            bool done = false;
-            mode_step(u_->modes, u_->nbx, mb_, mpm_, mpm_, done);
-            if (done) begin_next_unit(); else phase_ = kModeFlag;
+            mode_settled(mpm_);
             return true;
         }
         case kModeIdx: {
             if (v > 7) return false;
-            int m = nonmpm_mode(mpm_, (int)v);
-            bool done = false;
-            mode_step(u_->modes, u_->nbx, mb_, mpm_, m, done);
-            if (done) begin_next_unit(); else phase_ = kModeFlag;
+            mode_settled(nonmpm_mode(mpm_, (int)v, u_->nmodes));
+            return true;
+        }
+        case kSplitFlag: {
+            if (v > 1) return false;
+            *u_->split4 = (u8)v;
+            begin_levels();
             return true;
         }
         case kCbf: {
             if (v > 1) return false;
             if (v == 0) {
+                if (u_->split4) *u_->split4 = 0;
                 begin_next_unit();
                 return true;
             }
             if (u_->ncoef == 1) {
                 last_ = 0;
-                begin_levels();
+                last_settled();
                 return true;
             }
             phase_ = kLast;
@@ -285,13 +309,13 @@ bool LaneMachine::feed(u32 v) {
                 return true;
             }
             last_ = base;
-            begin_levels();
+            last_settled();
             return true;
         }
         case kLastRaw: {
             last_ = kLastBase[last_cls_] + (int)v;
             if (last_ >= u_->ncoef) return false;
-            begin_levels();
+            last_settled();
             return true;
         }
         case kLevel: {

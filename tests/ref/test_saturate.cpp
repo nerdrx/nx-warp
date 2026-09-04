@@ -32,7 +32,52 @@ static void worst_odd(i32 c[64], int sgn) {
     }
 }
 
+// The 4x4 graph's worst case: every coefficient at the int16 clamp with the
+// sign pattern that maximises |t0| + |t3| at the outputs.
+static void worst_4x4(i32 c[16], int sgn) {
+    for (int r = 0; r < 4; ++r) {
+        c[r * 4 + 0] = sgn ? -32768 : 32767;
+        c[r * 4 + 1] = sgn ? -32768 : 32767;
+        c[r * 4 + 2] = sgn ? 32767 : -32768;
+        c[r * 4 + 3] = sgn ? 32767 : -32768;
+    }
+}
+
 int main(int argc, char **argv) {
+    // 0. The 4x4 transform of SYNTAX.md 6.7 at its documented bounds.  Its
+    //    products are small enough not to need the two-word rotation, and this
+    //    is the test that says so: run under -fsanitize=undefined, a signed
+    //    overflow here aborts.
+    {
+        i32 c[16], out[16];
+        for (int sgn = 0; sgn < 2; ++sgn) {
+            worst_4x4(c, sgn);
+            idct4x4(c, out);
+            for (int i = 0; i < 16; ++i)
+                CHECK(out[i] >= -32768 && out[i] <= 32767, "worst_4x4[%d]=%d",
+                      i, out[i]);
+        }
+        // every single-coefficient extreme, both signs
+        for (int k = 0; k < 16; ++k)
+            for (int sgn = 0; sgn < 2; ++sgn) {
+                for (int i = 0; i < 16; ++i) c[i] = 0;
+                c[k] = sgn ? -32768 : 32767;
+                idct4x4(c, out);
+                for (int i = 0; i < 16; ++i)
+                    CHECK(out[i] >= -32768 && out[i] <= 32767,
+                          "single 4x4 %d/%d [%d]=%d", k, sgn, i, out[i]);
+            }
+        // and a sweep of random int16 blocks
+        Rng rng(77);
+        for (int it = 0; it < 20000; ++it) {
+            for (int i = 0; i < 16; ++i) c[i] = rng.range(-32768, 32767);
+            idct4x4(c, out);
+            for (int i = 0; i < 16; ++i)
+                CHECK(out[i] >= -32768 && out[i] <= 32767, "rand 4x4 [%d]=%d",
+                      i, out[i]);
+        }
+    }
+
     // 1. The worst case for the odd-part rotation, both signs.
     {
         i32 c[64], out[64];

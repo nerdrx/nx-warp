@@ -49,7 +49,6 @@ extern const u8 kZigzag4[16];   // 4x4
 extern const u8 kZigzag2[4];    // 2x2
 extern const u8 kRaster8[64];   // transform-skip scan
 extern const u8 kZigzag1[1];
-
 inline const u8 *scan_table(int n, bool tskip) {
     if (n == 64) return tskip ? kRaster8 : kZigzag8;
     if (n == 16) return kZigzag4;
@@ -100,8 +99,23 @@ enum : int {
     kIntraDdr = 6,      // diagonal down-right (45 deg)
     kIntraVr = 7,       // vertical-right (26.6 deg)
     kIntraHd = 8,       // horizontal-down (63.4 deg)
-    kNumIntraModes = 9
+    kNumIntraModes = 9,
+    // Tool bit 24 (INTRA_CFL): chroma predicted from the co-located
+    // reconstructed luma by a per-block linear model.  Legal in chroma mode
+    // units only, so a plane's mode alphabet is 9 or 10 symbols wide.
+    kIntraCfl = 9,
+    kNumIntraModesCfl = 10
 };
+
+// Chroma-from-luma, tool bit 24.  The model is c = ((alpha * y) >> kCflShift)
+// + beta with alpha in Q6 clamped to +-4.0, derived by least squares from the
+// kCflRefs reconstructed samples above and left of the block.  kCflRefs is a
+// power of two so the mean is a shift, which is what keeps the derivation free
+// of a second division.  SYNTAX.md 7.7.
+constexpr int kCflShift = 6;
+constexpr int kCflRefsLog2 = 4;
+constexpr int kCflRefs = 1 << kCflRefsLog2;   // 8 above + 8 left
+constexpr i32 kCflAlphaMax = 4 << kCflShift;  // +-4.0
 
 // LAST symbol -> [base, raw_bits]
 extern const u8 kLastBase[16];
@@ -128,6 +142,24 @@ inline int level_class(int magnitude) {
 // parity of the sum of the unit's absolute levels.  The threshold exists so
 // that the encoder always has several coefficients to spend the parity on.
 constexpr int kSdhMinLast = 4;
+
+// Tool bit 19 (XFORM_4X4_SPLIT): a block codes its split flag only when its
+// LAST is at scan position kSplitMinLast or beyond.  Below that the block has
+// at most a handful of coefficients spread over four quadrants, which is not a
+// residual four separate transforms can do anything for, and the flag would be
+// pure overhead on the blocks there are most of.  SYNTAX.md 6.7.
+constexpr int kSplitMinLast = 24;
+
+// A split block stores quadrant `q`'s 4x4 coefficient (u, v) at this
+// block-local raster index.  The four quadrants are interleaved rather than
+// laid out side by side, so that the four 4x4 DC coefficients land at raster
+// 0, 1, 8, 9 and the ordinary 8x8 zigzag still visits low frequencies first.
+// That is what lets a split block keep the unsplit block's scan, its LAST
+// classes and its LEVEL bands, and therefore lets the split flag be coded
+// after LAST instead of before it.  SYNTAX.md 6.7.
+inline int split4_index(int q, int u, int v) {
+    return (2 * u + (q >> 1)) * 8 + 2 * v + (q & 1);
+}
 
 constexpr int kEscSym = 15;   // LEVEL escape symbol
 constexpr int kEscOrder = 3;  // Exp-Golomb order

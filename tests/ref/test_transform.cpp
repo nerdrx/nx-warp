@@ -152,5 +152,56 @@ int main() {
         for (int i = 0; i < 64; ++i) CHECK(down[i] == 200, "down[%d]=%d", i, down[i]);
     }
 
+    // 9. The 4x4 pair (SYNTAX.md 6.7): round trip, unit gain, and the scale
+    //    that lets one quantiser step table serve both transform sizes.
+    {
+        Rng rng(29);
+        double worst = 0, sum2 = 0;
+        int n = 0;
+        for (int it = 0; it < 5000; ++it) {
+            i32 src[16], out[16];
+            i16 co[16];
+            i32 c2[16];
+            for (int i = 0; i < 16; ++i) src[i] = rng.range(-255, 255);
+            fdct4x4(src, co);
+            for (int i = 0; i < 16; ++i) c2[i] = co[i];
+            idct4x4(c2, out);
+            for (int i = 0; i < 16; ++i) {
+                double e = out[i] - src[i];
+                if (std::fabs(e) > worst) worst = std::fabs(e);
+                sum2 += e * e;
+                ++n;
+            }
+        }
+        CHECK(worst <= 2, "4x4 round trip worst error %.3f", worst);
+        CHECK(std::sqrt(sum2 / n) < 0.2, "4x4 round trip rms %.4f",
+              std::sqrt(sum2 / n));
+    }
+    {
+        // A constant residual v gives DC 8v under BOTH transforms.  This is
+        // the property decision 55 exists for: the 4x4 forward shift chain is
+        // 19, not 20, so its coefficients sit on the 8x8's scale.
+        i32 s8[64], s4[16];
+        i16 c8[64], c4[16];
+        for (int i = 0; i < 64; ++i) s8[i] = 100;
+        for (int i = 0; i < 16; ++i) s4[i] = 100;
+        fdct8x8(s8, c8);
+        fdct4x4(s4, c4);
+        CHECK(c8[0] == 800, "8x8 DC of a flat 100 block = %d", c8[0]);
+        CHECK(c4[0] == c8[0], "4x4 DC %d != 8x8 DC %d", c4[0], c8[0]);
+        for (int i = 1; i < 16; ++i) CHECK(c4[i] == 0, "4x4 AC[%d]=%d", i, c4[i]);
+    }
+    {
+        // Every 4x4 basis function is reachable and nonzero.
+        for (int k = 0; k < 16; ++k) {
+            i32 c[16] = {}, out[16];
+            c[k] = 1024;
+            idct4x4(c, out);
+            i32 sum = 0;
+            for (int i = 0; i < 16; ++i) sum += out[i] < 0 ? -out[i] : out[i];
+            CHECK(sum > 0, "4x4 basis %d produced zero", k);
+        }
+    }
+
     return test_report("test_transform");
 }

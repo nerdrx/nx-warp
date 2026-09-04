@@ -126,6 +126,8 @@ typedef enum nxvc_tile_mode {
  * actually free.  The substance of D-5 is unchanged: it is undefined in
  * version 1 and a v1 decoder MUST reject a stream that sets it. */
 #define NXVC_TOOL_FILTER_CATMULLROM (1ull << 23)
+/* --- syntax v1.5 */
+#define NXVC_TOOL_INTRA_CFL       (1ull << 24)
 
 /* Tools this reference decoder implements. */
 #define NXVC_TOOLS_SUPPORTED                                                  \
@@ -134,7 +136,8 @@ typedef enum nxvc_tile_mode {
      NXVC_TOOL_LOSSLESS | NXVC_TOOL_CUSTOM_TABLES | NXVC_TOOL_NSUB_VAR |      \
      NXVC_TOOL_PER_TILE_CHROMA | NXVC_TOOL_YCOCGR | NXVC_TOOL_WM_ID |        \
      NXVC_TOOL_INTRA_DIR | NXVC_TOOL_CTX_V2 | NXVC_TOOL_SIGN_HIDE |           \
-     NXVC_TOOL_INTER | NXVC_TOOL_WARP | NXVC_TOOL_STEREO)
+     NXVC_TOOL_INTER | NXVC_TOOL_WARP | NXVC_TOOL_STEREO |                    \
+     NXVC_TOOL_XFORM_4X4_SPLIT | NXVC_TOOL_INTRA_CFL)
 
 /* ---------------------------------------------------------------- images */
 /* 8-bit planar image.  plane[0]=Y/R', plane[1]=Co/G', plane[2]=Cg/B',
@@ -189,6 +192,11 @@ typedef struct nxvc_config {
     uint32_t ctx_v2;            /* 0 = 12 contexts, 1 = 16 (tool 21)        */
     uint32_t intra_dir_cand;    /* modes RD-checked per block, 0 = default  */
     uint32_t sign_hide;         /* 1 = sign data hiding (tool 22)           */
+
+    /* --- additive since syntax v1.5.  Both change the bitstream. */
+    uint32_t split4;            /* 1 = per-block 4x4 transform split (19)   */
+    uint32_t cfl;               /* 1 = chroma from luma (tool 24); needs
+                                 * intra_dir and ctx_v2                     */
 
     /* --- additive since syntax v1.4: the Phase 2 inter path.
      * `width`/`height` are PER EYE.  With eyes == 2 the nxvc_image passed to

@@ -194,6 +194,86 @@ int main() {
         }
     }
 
+    // 5b. The v1.5 intra tools (SYNTAX.md 6.7 and 7.7): every on/off
+    //     combination round trips on both chroma formats, each tool sets
+    //     exactly its own bit, each tool actually changes the bytes, and the
+    //     illegal declarations are refused.
+    {
+        // Noise at a fine quantiser: the only content on which a residual
+        // reaches LAST 24 often enough for the split flag to be coded, and on
+        // which the chroma is worth predicting from the luma at all.
+        for (int c444 = 0; c444 <= 1; ++c444) {
+            TestImage im = make_image(W, H, c444 != 0, 3);
+            Coded ref;
+            for (int sp = 0; sp <= 1; ++sp)
+                for (int cf = 0; cf <= 1; ++cf) {
+                    nxvc_config cfg;
+                    nxvc_config_default(&cfg);
+                    cfg.width = W; cfg.height = H;
+                    cfg.chroma = c444 ? NXVC_CHROMA_444 : NXVC_CHROMA_420;
+                    cfg.base_qp = 12;
+                    cfg.split4 = (uint32_t)sp;
+                    cfg.cfl = (uint32_t)cf;
+                    Coded r;
+                    CHECK(code(cfg, im, r), "v1.5 %d/%d/%d: %s / %s", c444, sp,
+                          cf, nxvc_status_string(r.enc_status),
+                          nxvc_status_string(r.dec_status));
+                    // tool bits: byte 32 of the stream header is the low byte
+                    // of `tools`; bit 19 is byte 34 bit 3, bit 24 is byte 35
+                    // bit 0.
+                    int have_sp = (r.header[34] >> 3) & 1;
+                    int have_cf = (r.header[35] >> 0) & 1;
+                    CHECK(have_sp == sp, "split4 bit %d, wanted %d", have_sp, sp);
+                    CHECK(have_cf == cf, "cfl bit %d, wanted %d", have_cf, cf);
+                    if (!sp && !cf) ref = r;
+                    else
+                        CHECK(r.frame != ref.frame,
+                              "v1.5 %d/%d/%d produced the v1.4 bytes", c444, sp,
+                              cf);
+                }
+        }
+        // A lossless stream cannot carry the split flag, and the encoder must
+        // drop the tool rather than emit a stream its own decoder refuses.
+        {
+            TestImage im = make_image(W, H, true, 1);
+            nxvc_config cfg;
+            nxvc_config_default(&cfg);
+            cfg.width = W; cfg.height = H;
+            cfg.chroma = NXVC_CHROMA_444;
+            cfg.lossless = 1; cfg.transform_skip = 1; cfg.base_qp = 0;
+            cfg.sign_hide = 0; cfg.split4 = 1; cfg.cfl = 1;
+            Coded r;
+            CHECK(code(cfg, im, r), "lossless + v1.5 tools: %s / %s",
+                  nxvc_status_string(r.enc_status),
+                  nxvc_status_string(r.dec_status));
+            CHECK(((r.header[34] >> 3) & 1) == 0, "split4 bit set on lossless");
+            for (int p = 0; p < 3; ++p)
+                CHECK(r.out.p[p] == im.p[p], "lossless plane %d changed", p);
+        }
+        // Chroma-from-luma without the context model, or with the layered
+        // form, is a stream the encoder must not declare.
+        {
+            TestImage im = make_image(W, H, true, 1);
+            for (int variant = 0; variant < 3; ++variant) {
+                nxvc_config cfg;
+                nxvc_config_default(&cfg);
+                cfg.width = W; cfg.height = H;
+                cfg.chroma = NXVC_CHROMA_444;
+                cfg.base_qp = 24;
+                cfg.cfl = 1;
+                if (variant == 0) cfg.ctx_v2 = 0;
+                if (variant == 1) cfg.intra_dir = 0;
+                if (variant == 2) cfg.intra_dir_layer = 1;
+                Coded r;
+                CHECK(code(cfg, im, r), "cfl variant %d: %s / %s", variant,
+                      nxvc_status_string(r.enc_status),
+                      nxvc_status_string(r.dec_status));
+                CHECK(((r.header[35] >> 0) & 1) == 0,
+                      "cfl bit set for variant %d", variant);
+            }
+        }
+    }
+
     // 6. Per-tile QP and resolution maps.
     {
         TestImage im = make_image(W, H, false, 1);
