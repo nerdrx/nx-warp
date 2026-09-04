@@ -1,0 +1,88 @@
+name: Format
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: format-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  clang-format:
+    name: clang-format (advisory)
+    runs-on: ubuntu-latest
+    # First iteration: report drift, never block. The components are landing in
+    # parallel; turn this into a hard gate once they have all had one format pass.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install clang-format
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang-format
+          clang-format --version
+
+      - name: Collect the C/C++ sources
+        id: collect
+        run: |
+          set -eu
+          : > "${RUNNER_TEMP}/files.txt"
+          for d in ref warp transport rc vk bench; do
+            [ -d "$d" ] || continue
+            find "$d" -type f \
+              \( -name '*.c'  -o -name '*.h'  -o -name '*.cc' \
+              -o -name '*.cpp' -o -name '*.hpp' -o -name '*.inc' \) \
+              -not -path '*/build/*' -not -path '*/build-*/*' \
+              -not -path '*/third_party/*' -not -path '*/external/*' \
+              >> "${RUNNER_TEMP}/files.txt"
+          done
+          # Public headers too, when they exist.
+          if [ -d include ]; then
+            find include -type f \( -name '*.h' -o -name '*.hpp' \) >> "${RUNNER_TEMP}/files.txt"
+          fi
+          sort -u -o "${RUNNER_TEMP}/files.txt" "${RUNNER_TEMP}/files.txt"
+          count=$(grep -c . "${RUNNER_TEMP}/files.txt" || true)
+          echo "count=${count:-0}" >> "$GITHUB_OUTPUT"
+          echo "$count files"
+
+      - name: clang-format --dry-run --Werror
+        if: steps.collect.outputs.count != '0'
+        run: |
+          set -eu
+          rc=0
+          xargs -a "${RUNNER_TEMP}/files.txt" -r \
+            clang-format --dry-run --Werror --style=file \
+            2> "${RUNNER_TEMP}/format.log" || rc=$?
+          if [ "$rc" -ne 0 ]; then
+            echo "::warning::clang-format reported drift (advisory in this iteration)"
+            {
+              echo "### clang-format drift"
+              echo ""
+              echo 'Run `clang-format -i --style=file <files>` to fix.'
+              echo ""
+              echo '```'
+              head -c 60000 "${RUNNER_TEMP}/format.log"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### clang-format clean" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          cat "${RUNNER_TEMP}/format.log" || true
+          exit "$rc"
+
+      - name: Upload the clang-format log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clang-format-log
+          if-no-files-found: ignore
+          retention-days: 14
+          path: ${{ runner.temp }}/format.log

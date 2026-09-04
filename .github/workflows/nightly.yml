@@ -1,0 +1,235 @@
+name: Nightly
+
+on:
+  schedule:
+    # 03:17 UTC daily; off the hour so we do not queue behind everyone else.
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+    inputs:
+      fuzz_seconds:
+        description: 'libFuzzer wall time in seconds'
+        required: false
+        default: '1200'
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  detect:
+    name: detect targets
+    runs-on: ubuntu-latest
+    outputs:
+      fuzz: ${{ steps.d.outputs.fuzz }}
+      quality: ${{ steps.d.outputs.quality }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: d
+        run: |
+          set -eu
+          # A libFuzzer target is either a fuzz source under ref/ or an explicit
+          # NXVC_FUZZ / NXWARP_FUZZ option in ref/CMakeLists.txt.
+          fuzz=false
+          if [ -d ref ]; then
+            if find ref -name '*fuzz*.c' -o -name '*fuzz*.cc' -o -name '*fuzz*.cpp' \
+               | grep -q .; then fuzz=true; fi
+            if [ -f ref/CMakeLists.txt ] && grep -qE 'NX(VC|WARP)_FUZZ' ref/CMakeLists.txt; then
+              fuzz=true
+            fi
+          fi
+          quality=false
+          if [ -f tools/quality/compare.py ] && [ -f tools/quality/capture/gen_synthetic.py ]; then
+            quality=true
+          fi
+          echo "fuzz=$fuzz" >> "$GITHUB_OUTPUT"
+          echo "quality=$quality" >> "$GITHUB_OUTPUT"
+          echo "fuzz target present: $fuzz, quality harness present: $quality" >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  # 20 minutes of libFuzzer on the reference decoder (paper 3.9: never reads out
+  # of bounds, always emits a frame; timeouts are bugs).
+  # ---------------------------------------------------------------------------
+  fuzz:
+    name: fuzz-ref (20 min)
+    needs: detect
+    if: needs.detect.outputs.fuzz == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CC: clang
+      CXX: clang++
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install clang and build tools
+        run: |
+          set -eux
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build clang llvm
+
+      - name: Configure with libFuzzer + ASan/UBSan
+        run: |
+          cmake -S . -B build-fuzz -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DNXVC_FUZZ=ON -DNXWARP_FUZZ=ON \
+            -DNXWARP_BUILD_REF=ON \
+            -DNXWARP_BUILD_VK=OFF \
+            -DNXWARP_BUILD_TOOLS=ON \
+            -DNXWARP_BUILD_TESTS=OFF \
+            -DCMAKE_C_FLAGS="-fsanitize=fuzzer-no-link,address,undefined -fno-omit-frame-pointer" \
+            -DCMAKE_CXX_FLAGS="-fsanitize=fuzzer-no-link,address,undefined -fno-omit-frame-pointer"
+
+      - name: Build
+        run: cmake --build build-fuzz --parallel 4
+
+      - name: Find the fuzz binaries
+        id: bins
+        run: |
+          set -eu
+          list=$(find build-fuzz -type f -perm -u+x -name '*fuzz*' \
+                 ! -name '*.o' ! -name '*.a' | sort)
+          if [ -z "$list" ]; then
+            echo "::warning::configure succeeded but no fuzz binary was produced - skipping"
+          fi
+          printf '%s\n' "$list" > "${RUNNER_TEMP}/fuzzers.txt"
+          cat "${RUNNER_TEMP}/fuzzers.txt"
+
+      - name: Run libFuzzer
+        env:
+          FUZZ_SECONDS: ${{ github.event.inputs.fuzz_seconds || '1200' }}
+        run: |
+          set -eu
+          mkdir -p "${RUNNER_TEMP}/artifacts" "${RUNNER_TEMP}/corpus"
+          # Seed from checked-in conformance vectors when they exist.
+          if [ -d tests/vectors ]; then
+            find tests/vectors -type f -name '*.nxv' -exec cp {} "${RUNNER_TEMP}/corpus/" \; || true
+          fi
+          n=$(grep -c . "${RUNNER_TEMP}/fuzzers.txt" || true)
+          if [ "${n:-0}" -eq 0 ]; then echo "nothing to fuzz"; exit 0; fi
+          # Split the 20 minute budget across the targets found.
+          per=$(( FUZZ_SECONDS / n ))
+          if [ "$per" -lt 60 ]; then per=60; fi
+          rc=0
+          while read -r f; do
+            [ -n "$f" ] || continue
+            echo "::group::$f for ${per}s"
+            "$f" "${RUNNER_TEMP}/corpus" \
+              -max_total_time="$per" -rss_limit_mb=4096 -timeout=25 \
+              -print_final_stats=1 \
+              -artifact_prefix="${RUNNER_TEMP}/artifacts/" || rc=$?
+            echo "::endgroup::"
+          done < "${RUNNER_TEMP}/fuzzers.txt"
+          exit "$rc"
+
+      - name: Upload crashers and corpus
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-artifacts
+          if-no-files-found: ignore
+          retention-days: 30
+          path: |
+            ${{ runner.temp }}/artifacts/**
+            ${{ runner.temp }}/corpus/**
+
+  # ---------------------------------------------------------------------------
+  # Full quality harness, "small" mode: a short synthetic VR sequence through the
+  # codec and the x264/x265 anchors, then the Markdown report.
+  # ---------------------------------------------------------------------------
+  quality-small:
+    name: quality-harness (small)
+    needs: detect
+    if: needs.detect.outputs.quality == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Point the harness scratch at the runner temp, never at the repo
+        run: echo "NXQ_SCRATCH=${RUNNER_TEMP}/nxq-scratch" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          set -eux
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build build-essential ffmpeg
+          python -m pip install --upgrade pip
+          if [ -f tools/quality/requirements.txt ]; then
+            pip install -r tools/quality/requirements.txt
+          else
+            pip install numpy
+          fi
+          ffmpeg -hide_banner -encoders | grep -E 'libx26[45]' || \
+            echo "::warning::ffmpeg has no libx264/libx265; anchors will be skipped"
+
+      - name: Build the reference codec CLI
+        id: refcli
+        continue-on-error: true
+        run: |
+          set -eu
+          cmake -S . -B build-quality -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DNXWARP_BUILD_REF=ON -DNXWARP_BUILD_VK=OFF \
+            -DNXWARP_BUILD_TOOLS=ON -DNXWARP_BUILD_TESTS=OFF
+          cmake --build build-quality --parallel 4
+          enc=$(find build-quality -type f -perm -u+x -name 'nxv-enc' | head -n1 || true)
+          dec=$(find build-quality -type f -perm -u+x -name 'nxv-dec' | head -n1 || true)
+          if [ -n "$enc" ] && [ -n "$dec" ]; then
+            echo "NXV_ENC=$enc" >> "$GITHUB_ENV"
+            echo "NXV_DEC=$dec" >> "$GITHUB_ENV"
+          fi
+
+      - name: Generate the small synthetic sequence
+        working-directory: tools/quality
+        run: |
+          set -eu
+          mkdir -p "$NXQ_SCRATCH/seq" "$NXQ_SCRATCH/results"
+          python3 capture/gen_synthetic.py \
+            --out "$NXQ_SCRATCH/seq" --name vr-mixed-512 \
+            --frames 10 --eye-width 512 --eye-height 512 --motion mixed
+
+      - name: Run the comparison
+        working-directory: tools/quality
+        run: |
+          set -eu
+          seq="$NXQ_SCRATCH/seq/vr-mixed-512.yuv444p.json"
+          if [ -n "${NXV_ENC:-}" ] && [ -n "${NXV_DEC:-}" ]; then
+            enc="$NXV_ENC"; dec="$NXV_DEC"
+            echo "using the reference codec CLI"
+          else
+            enc="python3 dummy_codec.py enc"; dec="python3 dummy_codec.py dec"
+            echo "::notice::nxv-enc/nxv-dec not built yet - running the harness against the mock codec"
+          fi
+          python3 compare.py --seq "$seq" \
+            --codec-enc "$enc" --codec-dec "$dec" \
+            --qp 16,22,28,34 --anchor-qp 16,22,28,34 \
+            --out "$NXQ_SCRATCH/results/nightly-small.json"
+
+      - name: Render the report
+        working-directory: tools/quality
+        continue-on-error: true
+        run: |
+          python3 report.py --results "$NXQ_SCRATCH/results/nightly-small.json" \
+            --out "$NXQ_SCRATCH/results/nightly-small.md" \
+            --title "NX Warp nightly quality (small)"
+          cat "$NXQ_SCRATCH/results/nightly-small.md" >> "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Upload the results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-small
+          if-no-files-found: ignore
+          retention-days: 30
+          path: |
+            ${{ runner.temp }}/nxq-scratch/results/**

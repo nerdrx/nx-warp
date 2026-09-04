@@ -1,0 +1,36 @@
+---
+# NX Warp C/C++ style. LLVM base, 4-space indent, 100 columns.
+Language:        Cpp
+BasedOnStyle:    LLVM
+IndentWidth:     4
+TabWidth:        4
+UseTab:          Never
+ColumnLimit:     100
+AccessModifierOffset: -4
+ConstructorInitializerIndentWidth: 4
+ContinuationIndentWidth: 4
+PointerAlignment: Left
+DerivePointerAlignment: false
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: false
+AlwaysBreakTemplateDeclarations: Yes
+BinPackArguments: true
+BinPackParameters: true
+BreakBeforeBraces: Attach
+IndentCaseLabels: true
+IndentPPDirectives: None
+KeepEmptyLinesAtTheStartOfBlocks: false
+MaxEmptyLinesToKeep: 1
+NamespaceIndentation: None
+SortIncludes: CaseSensitive
+IncludeBlocks:   Preserve
+SpaceAfterCStyleCast: false
+SpacesBeforeTrailingComments: 2
+Standard:        c++20
+---
+Language:        ObjC
+BasedOnStyle:    LLVM
+IndentWidth:     4
+ColumnLimit:     100

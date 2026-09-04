@@ -1,0 +1,361 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # The components land in parallel, so every job below is gated on the presence
+  # of the directory it needs. This job is the single place that looks.
+  # ---------------------------------------------------------------------------
+  detect:
+    name: detect components
+    runs-on: ubuntu-latest
+    outputs:
+      bench: ${{ steps.d.outputs.bench }}
+      quality: ${{ steps.d.outputs.quality }}
+      cxx: ${{ steps.d.outputs.cxx }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: d
+        name: Look for the component directories
+        run: |
+          set -eu
+          have() { if [ -e "$1" ]; then echo true; else echo false; fi; }
+
+          # The Android bench app is only buildable once a Gradle project exists.
+          bench=false
+          for f in bench/build.gradle bench/build.gradle.kts \
+                   bench/settings.gradle bench/settings.gradle.kts; do
+            if [ -f "$f" ]; then bench=true; fi
+          done
+
+          # The Python quality harness needs at least a tests/ directory.
+          quality=false
+          if [ -d tools/quality ] && [ -d tools/quality/tests ]; then quality=true; fi
+
+          # Any C/C++ component at all worth cross-compiling.
+          cxx=false
+          for d in ref warp transport rc vk; do
+            if [ -f "$d/CMakeLists.txt" ]; then cxx=true; fi
+          done
+
+          echo "bench=$bench"     >> "$GITHUB_OUTPUT"
+          echo "quality=$quality" >> "$GITHUB_OUTPUT"
+          echo "cxx=$cxx"         >> "$GITHUB_OUTPUT"
+          {
+            echo "### Detected components"
+            echo ""
+            echo "| component | present |"
+            echo "|---|---|"
+            for d in ref warp transport rc vk tools/quality tests bench; do
+              echo "| \`$d\` | $(have "$d") |"
+            done
+            echo "| gradle project in bench/ | $bench |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  # Full native build + ctest on a software Vulkan device (lavapipe).
+  # ---------------------------------------------------------------------------
+  linux:
+    name: linux-${{ matrix.toolchain }}
+    needs: detect
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - toolchain: gcc
+            cc: gcc
+            cxx: g++
+          - toolchain: clang
+            cc: clang
+            cxx: clang++
+    env:
+      CC: ${{ matrix.cc }}
+      CXX: ${{ matrix.cxx }}
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 500M
+      CMAKE_BUILD_PARALLEL_LEVEL: 4
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain and runtime dependencies
+        run: |
+          set -eux
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build ccache \
+            glslang-tools spirv-tools \
+            libvulkan-dev vulkan-tools mesa-vulkan-drivers \
+            python3 python3-numpy python3-pytest \
+            ffmpeg
+          if [ "${{ matrix.toolchain }}" = "clang" ]; then
+            sudo apt-get install -y --no-install-recommends clang lld
+          fi
+
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-linux-${{ matrix.toolchain }}-${{ github.sha }}
+          restore-keys: |
+            ccache-linux-${{ matrix.toolchain }}-
+
+      - name: Locate the lavapipe ICD
+        run: |
+          set -eu
+          icd=""
+          for dir in /usr/share/vulkan/icd.d /usr/local/share/vulkan/icd.d \
+                     /etc/vulkan/icd.d "$HOME/.local/share/vulkan/icd.d"; do
+            [ -d "$dir" ] || continue
+            found=$(find "$dir" -maxdepth 1 -name 'lvp_icd*.json' | sort | head -n1 || true)
+            if [ -n "$found" ]; then icd="$found"; break; fi
+          done
+          if [ -z "$icd" ]; then
+            echo "::warning::no lavapipe ICD found; Vulkan tests will run without a forced ICD"
+            find /usr/share/vulkan/icd.d -maxdepth 1 -name '*.json' -print || true
+            exit 0
+          fi
+          echo "lavapipe ICD: $icd"
+          # VK_ICD_FILENAMES for older loaders, VK_DRIVER_FILES for 1.3.x+.
+          echo "VK_ICD_FILENAMES=$icd" >> "$GITHUB_ENV"
+          echo "VK_DRIVER_FILES=$icd"  >> "$GITHUB_ENV"
+          echo "VK_LOADER_DRIVERS_SELECT=lvp_icd*" >> "$GITHUB_ENV"
+
+      - name: Report the Vulkan device
+        continue-on-error: true
+        run: vulkaninfo --summary || true
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DNXWARP_BUILD_REF=ON \
+            -DNXWARP_BUILD_WARP=ON \
+            -DNXWARP_BUILD_TRANSPORT=ON \
+            -DNXWARP_BUILD_RC=ON \
+            -DNXWARP_BUILD_VK=ON \
+            -DNXWARP_BUILD_TOOLS=ON \
+            -DNXWARP_BUILD_TESTS=ON
+
+      - name: Build
+        run: cmake --build build --parallel 4
+
+      - name: ctest
+        run: |
+          set -eu
+          if [ ! -f build/CTestTestfile.cmake ]; then
+            echo "::notice::no CTest configuration yet (tests/ absent) - skipping"
+            exit 0
+          fi
+          n=$(ctest --test-dir build -N 2>/dev/null | awk '/Total Tests:/ {print $3}' | tail -n1)
+          if [ "${n:-0}" -eq 0 ]; then
+            echo "::notice::CTest registered 0 tests - skipping"
+            exit 0
+          fi
+          echo "running $n tests"
+          ctest --test-dir build --output-on-failure --timeout 600 --parallel 4
+
+      - name: ccache statistics
+        if: always()
+        run: ccache --show-stats || true
+
+      - name: Upload test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-linux-${{ matrix.toolchain }}
+          if-no-files-found: ignore
+          retention-days: 14
+          path: |
+            build/Testing/**
+            build/**/*.log
+            build/CMakeFiles/CMakeConfigureLog.yaml
+            build/compile_commands.json
+
+  # ---------------------------------------------------------------------------
+  # Cross-compile the pure-CPU libraries for Windows. Build only, no tests.
+  # ---------------------------------------------------------------------------
+  windows-mingw:
+    name: windows-mingw
+    needs: detect
+    if: needs.detect.outputs.cxx == 'true'
+    runs-on: ubuntu-latest
+    env:
+      CMAKE_BUILD_PARALLEL_LEVEL: 4
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install mingw-w64
+        run: |
+          set -eux
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build g++-mingw-w64-x86-64 gcc-mingw-w64-x86-64
+          # The POSIX threading flavour is the one with std::thread / std::mutex.
+          sudo update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix
+          sudo update-alternatives --set x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix
+
+      - name: Write the cross toolchain file
+        run: |
+          cat > "${RUNNER_TEMP}/mingw-w64-x86_64.cmake" <<'EOF'
+          set(CMAKE_SYSTEM_NAME Windows)
+          set(CMAKE_SYSTEM_PROCESSOR x86_64)
+          set(CMAKE_C_COMPILER   x86_64-w64-mingw32-gcc)
+          set(CMAKE_CXX_COMPILER x86_64-w64-mingw32-g++)
+          set(CMAKE_RC_COMPILER  x86_64-w64-mingw32-windres)
+          set(CMAKE_FIND_ROOT_PATH /usr/x86_64-w64-mingw32)
+          set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+          set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+          set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+          set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
+          EOF
+
+      - name: Configure (VK off, tests off)
+        run: |
+          cmake -S . -B build-mingw -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="${RUNNER_TEMP}/mingw-w64-x86_64.cmake" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DNXWARP_BUILD_REF=ON \
+            -DNXWARP_BUILD_WARP=ON \
+            -DNXWARP_BUILD_TRANSPORT=ON \
+            -DNXWARP_BUILD_RC=ON \
+            -DNXWARP_BUILD_VK=OFF \
+            -DNXWARP_BUILD_TOOLS=ON \
+            -DNXWARP_BUILD_TESTS=OFF
+
+      - name: Build
+        run: cmake --build build-mingw --parallel 4
+
+  # ---------------------------------------------------------------------------
+  # Phase 0 Android benchmark app.
+  # ---------------------------------------------------------------------------
+  android-bench:
+    name: android-bench
+    needs: detect
+    if: needs.detect.outputs.bench == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bench
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up the Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'tools platform-tools'
+
+      - name: Set up Gradle (with build cache)
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+          build-scan-publish: false
+
+      - name: Install the NDK and CMake from the SDK manager
+        run: |
+          set -eu
+          ndk="$(grep -ohE 'ndkVersion[^0-9]+([0-9.]+)' build.gradle* 2>/dev/null \
+                 | grep -oE '[0-9]+(\.[0-9]+)+' | head -n1 || true)"
+          ndk="${ndk:-27.0.12077973}"
+          echo "installing NDK $ndk"
+          yes | sdkmanager --install "ndk;$ndk" "cmake;3.22.1" >/dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/$ndk" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/$ndk" >> "$GITHUB_ENV"
+
+      - name: Assemble the debug APK
+        run: |
+          set -eu
+          if [ -x ./gradlew ]; then
+            ./gradlew --no-daemon --stacktrace assembleDebug
+          else
+            gradle --no-daemon --stacktrace assembleDebug
+          fi
+
+      - name: Upload the APK
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nxwarp-bench-debug-apk
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            bench/**/build/outputs/apk/**/*.apk
+
+      - name: Upload the Gradle reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-gradle-reports
+          if-no-files-found: ignore
+          path: bench/**/build/reports/**
+
+  # ---------------------------------------------------------------------------
+  # Quality harness unit tests.
+  # ---------------------------------------------------------------------------
+  python:
+    name: python
+    needs: detect
+    if: needs.detect.outputs.quality == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tools/quality
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install the harness dependencies
+        run: |
+          set -eu
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          else
+            pip install numpy pytest
+          fi
+
+      - name: Install ffmpeg (x264/x265/vmaf anchors, optional)
+        continue-on-error: true
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          ffmpeg -hide_banner -encoders | grep -E 'libx26[45]' || true
+          ffmpeg -hide_banner -filters  | grep -i vmaf || true
+
+      - name: pytest
+        run: python -m pytest -q --junitxml="${RUNNER_TEMP}/pytest.xml"
+
+      - name: Upload the pytest report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-report
+          if-no-files-found: ignore
+          retention-days: 14
+          path: ${{ runner.temp }}/pytest.xml
