@@ -26,9 +26,17 @@ strict: false
 theme:
   name: material
   language: en
-  custom_dir: null
-  favicon: null
-  logo: null
+  # Copied from brand/ rather than referenced in place: MkDocs resolves these
+  # against docs_dir and refuses to reach outside it, and the site build must
+  # not depend on anything above docs/. brand/README.md is the source of truth
+  # for the marks themselves.
+  #
+  # There is no theme override directory; `custom_dir` is omitted rather than
+  # set to null, because MkDocs runs os.path.isabs() on whatever is there and
+  # a null is a TypeError, not a "no override" -- which is what took the docs
+  # workflow down on every push.
+  favicon: assets/favicon.svg
+  logo: assets/logo.svg
   palette:
     # NX Warp is dark by default. The light scheme exists so that the toggle
     # is not a lie; the accent is the same violet in both.
