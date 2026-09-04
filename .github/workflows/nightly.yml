@@ -30,16 +30,18 @@ jobs:
       - id: d
         run: |
           set -eu
-          # A libFuzzer target is either a fuzz source under ref/ or an explicit
-          # NXVC_FUZZ / NXWARP_FUZZ option in ref/CMakeLists.txt.
+          # A libFuzzer target is a harness under fuzz/, a fuzz source under
+          # ref/, or an explicit NXVC_FUZZ / NXWARP_FUZZ option in either.
           fuzz=false
-          if [ -d ref ]; then
-            if find ref -name '*fuzz*.c' -o -name '*fuzz*.cc' -o -name '*fuzz*.cpp' \
+          if [ -f fuzz/CMakeLists.txt ]; then fuzz=true; fi
+          for d in fuzz ref; do
+            [ -d "$d" ] || continue
+            if find "$d" \( -name '*fuzz*.c' -o -name '*fuzz*.cc' -o -name '*fuzz*.cpp' \) \
                | grep -q .; then fuzz=true; fi
-            if [ -f ref/CMakeLists.txt ] && grep -qE 'NX(VC|WARP)_FUZZ' ref/CMakeLists.txt; then
+            if [ -f "$d/CMakeLists.txt" ] && grep -qE 'NX(VC|WARP)_FUZZ' "$d/CMakeLists.txt"; then
               fuzz=true
             fi
-          fi
+          done
           quality=false
           if [ -f tools/quality/compare.py ] && [ -f tools/quality/capture/gen_synthetic.py ]; then
             quality=true
@@ -53,11 +55,12 @@ jobs:
   # of bounds, always emits a frame; timeouts are bugs).
   # ---------------------------------------------------------------------------
   fuzz:
-    name: fuzz-ref (20 min)
+    name: fuzz (20 min per target)
     needs: detect
     if: needs.detect.outputs.fuzz == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # Every fuzz/ target gets its own 20 minutes, run one after another.
+    timeout-minutes: 240
     env:
       CC: clang
       CXX: clang++
@@ -73,56 +76,78 @@ jobs:
 
       - name: Configure with libFuzzer + ASan/UBSan
         run: |
+          # NXWARP_SANITIZER=address supplies ASan; UBSan is added here rather
+          # than through "address+undefined" because that preset also enables
+          # -fsanitize=integer, whose checks fire on well-defined unsigned
+          # arithmetic and would abort every run.  See fuzz/FINDINGS.md (F4).
+          san="-fsanitize=undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer -g"
           cmake -S . -B build-fuzz -G Ninja \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DNXVC_FUZZ=ON -DNXWARP_FUZZ=ON \
+            -DNXWARP_SANITIZER=address \
             -DNXWARP_BUILD_REF=ON \
             -DNXWARP_BUILD_VK=OFF \
-            -DNXWARP_BUILD_TOOLS=ON \
-            -DNXWARP_BUILD_TESTS=OFF \
-            -DCMAKE_C_FLAGS="-fsanitize=fuzzer-no-link,address,undefined -fno-omit-frame-pointer" \
-            -DCMAKE_CXX_FLAGS="-fsanitize=fuzzer-no-link,address,undefined -fno-omit-frame-pointer"
+            -DNXWARP_BUILD_TOOLS=OFF \
+            -DNXWARP_BUILD_TESTS=ON \
+            -DCMAKE_C_FLAGS="$san" \
+            -DCMAKE_CXX_FLAGS="$san" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=undefined"
 
       - name: Build
         run: cmake --build build-fuzz --parallel 4
 
-      - name: Find the fuzz binaries
-        id: bins
+      - name: Replay the checked-in regression corpus
         run: |
           set -eu
-          list=$(find build-fuzz -type f -perm -u+x -name '*fuzz*' \
-                 ! -name '*.o' ! -name '*.a' | sort)
-          if [ -z "$list" ]; then
-            echo "::warning::configure succeeded but no fuzz binary was produced - skipping"
-          fi
-          printf '%s\n' "$list" > "${RUNNER_TEMP}/fuzzers.txt"
-          cat "${RUNNER_TEMP}/fuzzers.txt"
+          rc=0
+          for b in build-fuzz/bin/*_replay; do
+            [ -x "$b" ] || continue
+            t=$(basename "$b" _replay)
+            echo "::group::replay $t"
+            "$b" --timeout 60 --mutate 5000 \
+                 "fuzz/regressions/$t" "fuzz/corpus/$t" || rc=$?
+            echo "::endgroup::"
+          done
+          exit "$rc"
 
-      - name: Run libFuzzer
+      - name: Run the fuzz/ targets
         env:
           FUZZ_SECONDS: ${{ github.event.inputs.fuzz_seconds || '1200' }}
         run: |
           set -eu
-          mkdir -p "${RUNNER_TEMP}/artifacts" "${RUNNER_TEMP}/corpus"
-          # Seed from checked-in conformance vectors when they exist.
+          mkdir -p "${RUNNER_TEMP}/fuzz"
+          chmod +x fuzz/tools/run_campaign.sh
+          # Each target gets the full budget; the script seeds its working
+          # corpus from fuzz/corpus/ and fuzz/regressions/ without writing back.
+          fuzz/tools/run_campaign.sh "$PWD/build-fuzz" "${RUNNER_TEMP}/fuzz" "$FUZZ_SECONDS"
+
+      - name: Run any fuzz binary that lives outside fuzz/
+        env:
+          FUZZ_SECONDS: ${{ github.event.inputs.fuzz_seconds || '1200' }}
+        run: |
+          set -eu
+          mkdir -p "${RUNNER_TEMP}/legacy/artifacts" "${RUNNER_TEMP}/legacy/corpus"
           if [ -d tests/vectors ]; then
-            find tests/vectors -type f -name '*.nxv' -exec cp {} "${RUNNER_TEMP}/corpus/" \; || true
+            find tests/vectors -type f -name '*.nxv' \
+                 -exec cp {} "${RUNNER_TEMP}/legacy/corpus/" \; || true
           fi
-          n=$(grep -c . "${RUNNER_TEMP}/fuzzers.txt" || true)
-          if [ "${n:-0}" -eq 0 ]; then echo "nothing to fuzz"; exit 0; fi
-          # Split the 20 minute budget across the targets found.
-          per=$(( FUZZ_SECONDS / n ))
-          if [ "$per" -lt 60 ]; then per=60; fi
+          # fuzz/ targets were already run above; this catches, for example,
+          # tests/ref/fuzz_decode.cpp.
+          list=$(find build-fuzz -type f -perm -u+x -name '*fuzz*' \
+                 ! -name '*_replay' ! -name '*.o' ! -name '*.a' \
+                 ! -name 'nxvc_decode_fuzz' ! -name 'nxvc_headers_fuzz' \
+                 ! -name 'nxvc_rans_fuzz' ! -name 'transport_*_fuzz' \
+                 ! -name 'warp_tile_fuzz' | sort)
+          if [ -z "$list" ]; then echo "nothing else to fuzz"; exit 0; fi
           rc=0
-          while read -r f; do
-            [ -n "$f" ] || continue
-            echo "::group::$f for ${per}s"
-            "$f" "${RUNNER_TEMP}/corpus" \
-              -max_total_time="$per" -rss_limit_mb=4096 -timeout=25 \
+          for f in $list; do
+            echo "::group::$f for ${FUZZ_SECONDS}s"
+            "$f" "${RUNNER_TEMP}/legacy/corpus" \
+              -max_total_time="$FUZZ_SECONDS" -rss_limit_mb=4096 -timeout=25 \
               -print_final_stats=1 \
-              -artifact_prefix="${RUNNER_TEMP}/artifacts/" || rc=$?
+              -artifact_prefix="${RUNNER_TEMP}/legacy/artifacts/" || rc=$?
             echo "::endgroup::"
-          done < "${RUNNER_TEMP}/fuzzers.txt"
+          done
           exit "$rc"
 
       - name: Upload crashers and corpus
@@ -133,8 +158,9 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
           path: |
-            ${{ runner.temp }}/artifacts/**
-            ${{ runner.temp }}/corpus/**
+            ${{ runner.temp }}/fuzz/artifacts/**
+            ${{ runner.temp }}/fuzz/*.log
+            ${{ runner.temp }}/legacy/artifacts/**
 
   # ---------------------------------------------------------------------------
   # Full quality harness, "small" mode: a short synthetic VR sequence through the

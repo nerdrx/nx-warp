@@ -1,0 +1,224 @@
+name: Sanitizers
+
+# ASan/UBSan and TSan on every push and pull request, plus a 60-second smoke
+# run of each libFuzzer target so a harness that stops building -- or a bug
+# that reproduces in the first minute -- is caught before the nightly.
+#
+# The long fuzz campaign lives in nightly.yml; this workflow is the fast gate.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: sanitizers-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CMAKE_BUILD_PARALLEL_LEVEL: 4
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # AddressSanitizer + UndefinedBehaviorSanitizer.
+  #
+  # Note on the flags: cmake/nxwarp_sanitizers.cmake's "address+undefined" also
+  # turns on -fsanitize=integer, whose implicit-conversion and
+  # unsigned-shift-base checks fire on code that is perfectly well defined --
+  # including inside libstdc++ (std::uniform_int_distribution) and inside the
+  # codec's own deliberate unsigned wrap-around arithmetic.  Using it here would
+  # make this job permanently red for reasons that are not bugs.  So the
+  # sanitizer module supplies ASan and this workflow adds plain UBSan itself.
+  # The module's flags are appended after CMAKE_CXX_FLAGS, so the narrowing has
+  # to happen this way round.  See fuzz/FINDINGS.md (F4).
+  # ---------------------------------------------------------------------------
+  asan-ubsan:
+    name: asan+ubsan
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CC: clang
+      CXX: clang++
+      UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+      ASAN_OPTIONS: detect_leaks=1:abort_on_error=0
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the toolchain
+        run: |
+          set -eux
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build clang llvm python3
+
+      - name: Configure
+        run: |
+          san="-fsanitize=undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer -g"
+          cmake -S . -B build-asan -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DNXWARP_SANITIZER=address \
+            -DCMAKE_C_FLAGS="$san" \
+            -DCMAKE_CXX_FLAGS="$san" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=undefined" \
+            -DNXWARP_BUILD_VK=OFF \
+            -DNXWARP_BUILD_TOOLS=OFF \
+            -DNXWARP_BUILD_TESTS=ON
+
+      - name: Build
+        run: cmake --build build-asan --parallel 4
+
+      - name: ctest
+        run: |
+          set -eu
+          if [ ! -f build-asan/CTestTestfile.cmake ]; then
+            echo "::notice::no CTest configuration - skipping"; exit 0
+          fi
+          n=$(ctest --test-dir build-asan -N 2>/dev/null | awk '/Total Tests:/ {print $3}' | tail -n1)
+          if [ "${n:-0}" -eq 0 ]; then
+            echo "::notice::CTest registered 0 tests - skipping"; exit 0
+          fi
+          # Serial: a sanitizer build is memory hungry and some tests are timing
+          # sensitive under load.
+          ctest --test-dir build-asan --output-on-failure --timeout 900
+
+      - name: Upload the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: asan-ubsan-logs
+          if-no-files-found: ignore
+          retention-days: 14
+          path: |
+            build-asan/Testing/**
+            build-asan/CMakeFiles/CMakeConfigureLog.yaml
+
+  # ---------------------------------------------------------------------------
+  # ThreadSanitizer.  TSan cannot be combined with ASan, hence a second job.
+  # ---------------------------------------------------------------------------
+  tsan:
+    name: tsan
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CC: clang
+      CXX: clang++
+      TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the toolchain
+        run: |
+          set -eux
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build clang llvm python3
+
+      - name: Configure
+        run: |
+          cmake -S . -B build-tsan -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DNXWARP_SANITIZER=thread \
+            -DNXWARP_BUILD_VK=OFF \
+            -DNXWARP_BUILD_TOOLS=OFF \
+            -DNXWARP_BUILD_TESTS=ON
+
+      - name: Build
+        run: cmake --build build-tsan --parallel 4
+
+      - name: ctest
+        run: |
+          set -eu
+          if [ ! -f build-tsan/CTestTestfile.cmake ]; then
+            echo "::notice::no CTest configuration - skipping"; exit 0
+          fi
+          n=$(ctest --test-dir build-tsan -N 2>/dev/null | awk '/Total Tests:/ {print $3}' | tail -n1)
+          if [ "${n:-0}" -eq 0 ]; then
+            echo "::notice::CTest registered 0 tests - skipping"; exit 0
+          fi
+          ctest --test-dir build-tsan --output-on-failure --timeout 900
+
+      - name: Upload the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tsan-logs
+          if-no-files-found: ignore
+          retention-days: 14
+          path: |
+            build-tsan/Testing/**
+            build-tsan/CMakeFiles/CMakeConfigureLog.yaml
+
+  # ---------------------------------------------------------------------------
+  # 60 seconds of libFuzzer per target, seeded from the checked-in corpus and
+  # the regression reproducers.  A crash here fails the PR.
+  # ---------------------------------------------------------------------------
+  fuzz-smoke:
+    name: fuzz-smoke (60s per target)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CC: clang
+      CXX: clang++
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the toolchain
+        run: |
+          set -eux
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build clang llvm python3
+
+      - name: Configure with libFuzzer + ASan/UBSan
+        run: |
+          san="-fsanitize=undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer -g"
+          cmake -S . -B build-fuzz -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DNXWARP_SANITIZER=address \
+            -DNXWARP_FUZZ=ON -DNXVC_FUZZ=ON \
+            -DCMAKE_C_FLAGS="$san" \
+            -DCMAKE_CXX_FLAGS="$san" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=undefined" \
+            -DNXWARP_BUILD_VK=OFF \
+            -DNXWARP_BUILD_TOOLS=OFF \
+            -DNXWARP_BUILD_TESTS=ON
+
+      - name: Build
+        run: cmake --build build-fuzz --parallel 4
+
+      - name: Replay the checked-in reproducers
+        run: |
+          set -eu
+          rc=0
+          for b in build-fuzz/bin/*_replay; do
+            [ -x "$b" ] || continue
+            t=$(basename "$b" _replay)
+            echo "::group::replay $t"
+            "$b" --timeout 60 --mutate 2000 \
+                 "fuzz/regressions/$t" "fuzz/corpus/$t" || rc=$?
+            echo "::endgroup::"
+          done
+          exit "$rc"
+
+      - name: 60 seconds of libFuzzer per target
+        run: |
+          set -eu
+          mkdir -p "${RUNNER_TEMP}/fuzz"
+          chmod +x fuzz/tools/run_campaign.sh
+          fuzz/tools/run_campaign.sh "$PWD/build-fuzz" "${RUNNER_TEMP}/fuzz" 60
+
+      - name: Upload crashers
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-smoke-artifacts
+          if-no-files-found: ignore
+          retention-days: 30
+          path: |
+            ${{ runner.temp }}/fuzz/artifacts/**
+            ${{ runner.temp }}/fuzz/*.log

@@ -19,7 +19,7 @@ include_directories(${NXWARP_GENERATED_INCLUDE_DIR})
 
 # Each component lives in its own directory with its own CMakeLists.txt and is
 # built only when present, so the tree stays configurable while components land.
-set(NXWARP_COMPONENTS ref warp transport rc fov stereo hybrid vk tools platform)
+set(NXWARP_COMPONENTS ref warp transport rc fov stereo hybrid vk tools platform fuzz)
 foreach(comp IN LISTS NXWARP_COMPONENTS)
   string(TOUPPER ${comp} COMP)
   if(comp STREQUAL "vk")

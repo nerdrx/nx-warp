@@ -1,0 +1,83 @@
+# libFuzzer dictionary for the NX Warp transport wire formats
+# (docs/TRANSPORT.md 2, 3 and 8).  Used by transport_depacketize_fuzz and
+# transport_feedback_fuzz.
+
+# --- datagram header byte 0: version [3:0], flags [7:4] ---
+ver1_noflags="\x01"
+ver1_keyframe="\x11"
+ver1_partial="\x21"
+ver1_lossless="\x41"
+ver1_lastrun="\x81"
+ver1_allflags="\xf1"
+ver_bad="\x02"
+
+# --- tile_first (u16): row boundaries and the end of a 68x34 grid ---
+tile_first_0="\x00\x00"
+tile_first_row1="\x44\x00"
+tile_first_last="\x07\x09"
+tile_first_oob="\x08\x09"
+tile_first_max="\xff\xff"
+
+# --- tile_count ---
+count_parity="\x00"
+count_one="\x01"
+count_max="\xff"
+
+# --- byte 7 (v2, decision D19):
+#     layer_id [1:0], frag_idx [3:2], frag_count [5:4], fec_class [7:6] ---
+layer0_classA="\x00"
+layer1_classA="\x01"
+layer3="\x03"
+frag_idx3="\x0c"
+frag_of_4="\x30"
+classC="\x80"
+class_reserved="\xc0"
+
+# --- byte 8 (v2): band [2:0], pose_hdr [3], fec_m [6:4], reserved [7] ---
+band0="\x00"
+band5="\x05"
+band_notaddressed="\x07"
+pose_present="\x08"
+fec_m3="\x30"
+fec_m_max="\x70"
+byte8_reserved_set="\x80"
+
+# --- capability byte (TRANSPORT.md 2.2) ---
+caps_none="\x00"
+caps_fec="\x01"
+caps_all="\x3f"
+caps_reserved="\xc0"
+
+# --- byte 15: fec_idx [3:0], fec_k [7:4] ---
+fec_off="\x00"
+fec_k10_data0="\xa0"
+fec_k10_parity="\xaa"
+fec_k1="\x10"
+
+# --- tile directory entry (TRANSPORT.md 3.1), u32 little endian ---
+dir_empty="\x00\x00\x00\x00"
+dir_len_max="\xff\x0f\x00\x00"
+dir_intra_qp24="\x00\x0c\x0c\x00"
+dir_lossless="\x00\x00\x88\x00"
+dir_reserved_set="\x00\x00\x00\xc0"
+dir_mode_reserved="\x00\x00\x1c\x00"
+dir_class_reserved="\x00\x00\x00\x0c"
+dir_ref_intra="\x00\x00\x00\x30"
+dir_classC_ref2="\x00\x00\x00\x28"
+
+# --- feedback (TRANSPORT.md 8) ---
+fb_hdr_1band="\x01\x00\x00\x00\x00\x01\x98\x01"
+fb_hdr_3band="\x01\x00\x00\x00\x00\x03\x98\x01"
+fb_tiles_408="\x98\x01"
+fb_tiles_272="\x10\x01"
+fb_bitmap_raw="\x00"
+fb_bitmap_all="\x01"
+fb_bitmap_rle="\x02"
+fb_bitmap_reserved="\x03"
+fb_rle_run="\x01\x00\x00\xff"
+fb_trailer="\x00\x00\x0c\x14"
+
+# --- parity payload prefix: u16 L ---
+parity_L_small="\x1a\x00"
+parity_L_mtu="\x60\x05"
+parity_L_max="\xff\xff"

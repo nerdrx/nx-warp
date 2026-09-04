@@ -1,0 +1,18 @@
+# OSS-Fuzz project descriptor for NX Warp.  Skeleton: not yet submitted.
+# Copy this and build.sh and Dockerfile into projects/nx-warp/ of the
+# oss-fuzz repository when the project is ready to be onboarded.
+homepage: "https://github.com/nx-warp/nx-warp"
+language: c++
+primary_contact: "xlermer@gmail.com"
+main_repo: "https://github.com/nx-warp/nx-warp"
+file_github_issue: true
+sanitizers:
+  - address
+  - undefined
+  - memory
+architectures:
+  - x86_64
+fuzzing_engines:
+  - libfuzzer
+  - afl
+  - honggfuzz

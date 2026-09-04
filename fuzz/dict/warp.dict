@@ -1,0 +1,37 @@
+# libFuzzer dictionary for warp_tile_fuzz (warp/include/nxvc/warp.h,
+# docs/WARP.md).  All values are little-endian int32 in the fixed-point
+# formats the homography uses.
+
+# Q10.21 (rows 0 and 1): 1.0, -1.0, 0.5, 2.0, and the format's extremes
+q21_zero="\x00\x00\x00\x00"
+q21_one="\x00\x00\x20\x00"
+q21_minus_one="\x00\x00\xe0\xff"
+q21_half="\x00\x00\x10\x00"
+q21_two="\x00\x00\x40\x00"
+q21_max="\x00\x00\x00\x80"
+q21_min="\xff\xff\xff\x7f"
+
+# Q2.29 (row 2): h22 == 1.0, and the kDenMin / kDenMax bounds
+q29_one="\x00\x00\x00\x20"
+q29_den_min="\x00\x00\x00\x10"
+q29_den_max="\x00\x00\x00\x40"
+q29_den_below="\xff\xff\xff\x0f"
+q29_zero="\x00\x00\x00\x00"
+
+# Corner saturation bound, +-2^18 in Q.6
+corner_clamp="\x00\x00\x04\x00"
+
+# The identity homography, all nine entries in order
+identity="\x00\x00\x20\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x20\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x20"
+
+# Tile coordinates on the 64-sample grid, int16
+tile_0="\x00\x00"
+tile_64="\x40\x00"
+tile_neg64="\xc0\xff"
+tile_far="\x00\x40"
+
+# Quarter-pel motion vectors
+mv_zero="\x00\x00"
+mv_one_pel="\x04\x00"
+mv_max="\xff\x7f"
+mv_min="\x00\x80"

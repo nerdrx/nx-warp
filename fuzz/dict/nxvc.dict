@@ -1,0 +1,68 @@
+# libFuzzer dictionary for the NX Warp v1 bitstream (docs/SYNTAX.md).
+# Used by nxvc_decode_fuzz and nxvc_headers_fuzz.
+
+# --- stream header (SYNTAX.md 2) ---
+magic="NXV1"
+version_1="\x01"
+# version byte + profile/level/tile_size, the first four bytes after the magic
+hdr_v1_lite="\x01\x00\x00\x00"
+hdr_v1_full="\x01\x01\x00\x00"
+hdr_tile32="\x01\x01\x00\x01"
+
+# widths and heights on and off the tile grid, little endian u16
+dim_16="\x10\x00"
+dim_64="\x40\x00"
+dim_66="\x42\x00"
+dim_128="\x80\x00"
+dim_256="\x00\x01"
+dim_2048="\x00\x08"
+dim_4096="\x00\x10"
+dim_4098="\x02\x10"
+
+# eyes / bit_depth / num_layers / chroma_format, the four bytes at offset 12
+geom_mono8_420="\x01\x08\x01\x00"
+geom_mono8_444="\x01\x08\x01\x01"
+geom_stereo8_420="\x02\x08\x01\x00"
+geom_mono10_444="\x01\x0a\x01\x01"
+
+# --- tool masks (SYNTAX.md 2.2), u64 little endian ---
+tools_intra_only="\x01\x00\x00\x00\x00\x00\x00\x00"
+tools_supported="\xff\x03\x00\x00\x00\x00\x00\x00"
+tools_inter="\x00\x04\x00\x00\x00\x00\x00\x00"
+tools_all="\xff\xff\x0f\x00\x00\x00\x00\x00"
+tools_reserved="\x00\x00\x10\x00\x00\x00\x00\x00"
+
+# --- TLV extension records (SYNTAX.md 2.1): u16 type, u16 length ---
+tlv_empty="\x00\x00\x00\x00"
+tlv_private="\x01\x80\x04\x00"
+tlv_overlong="\x01\x80\xff\xff"
+
+# --- frame header (SYNTAX.md 3.1) ---
+quant_matrix_custom="\xff"
+tables_all="\xff"
+frame_flags_reset="\x01"
+frame_bytes_40="\x28\x00\x00\x00"
+frame_bytes_zero="\x00\x00\x00\x00"
+frame_bytes_max="\xff\xff\xff\xff"
+
+# --- tile-row header (SYNTAX.md 3.3): frame_number, row, count, skip_bitmap ---
+row_hdr_empty="\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+skip_all="\xff\xff\xff\xff\xff\xff\xff\xff"
+
+# --- tile header words (SYNTAX.md 4.1) ---
+tile_w1_intra="\x03\x00\x00\x00"
+tile_w1_warpskip="\x00\x00\x00\x00"
+tile_w1_stereo="\x04\x00\x00\x00"
+tile_w1_mode_reserved="\x07\x00\x00\x00"
+tile_w1_res3="\x18\x00\x00\x00"
+tile_w1_alpha3="\xc3\x00\x00\x00"
+tile_w1_nsub8="\x03\x00\x06\x00"
+tile_w1_nsub32="\x03\x00\x0a\x00"
+tile_w1_nsub_illegal="\x03\x00\x0e\x00"
+tile_w1_tskip="\x03\x00\x80\x00"
+tile_w1_reserved_set="\x03\x00\x00\xfc"
+
+# --- rANS payload (SYNTAX.md 9.5): initial state, L == 2^16 ---
+rans_state_L="\x00\x00\x01\x00"
+rans_state_below_L="\xff\xff\x00\x00"
+rans_state_max="\xff\xff\xff\xff"
