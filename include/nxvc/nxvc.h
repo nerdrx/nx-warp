@@ -260,6 +260,12 @@ typedef struct nxvc_encode_stats {
     uint64_t bits_dc_plane, bits_luma_blocks, bits_chroma_blocks;
     uint64_t bits_alpha_blocks;
     uint64_t tiles, tiles_tskip, tiles_res[3], lanes_total;
+    /* The rate the encoder's own model PREDICTED for the payloads it then
+     * emitted, in Q10 bits.  The mode decision, the trellis and the per-tile
+     * QP search all minimise D + lambda*R against this number; comparing it
+     * with `bytes_payload` is how one tells whether they were shown the truth.
+     * Added with the v1.5 effort knobs; 0 unless collect_stats is set. */
+    uint64_t bits_predicted_q10;
 } nxvc_encode_stats;
 
 void nxvc_config_default(nxvc_config *cfg);

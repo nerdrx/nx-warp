@@ -547,6 +547,18 @@ int main(int argc, char **argv) {
             if (st2.bits_alpha_blocks)
                 row("  alpha blocks", st2.bits_alpha_blocks / 8.0);
             row("payload total", (double)st2.bytes_payload);
+            if (st2.bits_predicted_q10) {
+                // What the encoder's rate model told the mode decision, the
+                // trellis and the QP search this payload would cost, against
+                // what it cost.  A gap here means every RD decision in the
+                // frame was taken against the wrong number.
+                double pred = (double)st2.bits_predicted_q10 / 1024.0 / 8.0;
+                double act = (double)st2.bytes_payload -
+                             (double)st2.bytes_rans_init;
+                std::printf("  rate model: predicted %.0f B, coded %.0f B "
+                            "(%+.2f %%)\n",
+                            pred, act, act > 0 ? (pred - act) / act * 100.0 : 0.0);
+            }
             std::printf("  res levels 0/1/2: %llu / %llu / %llu\n",
                         (unsigned long long)st2.tiles_res[0],
                         (unsigned long long)st2.tiles_res[1],

@@ -1436,15 +1436,21 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                             tc.build_units();
                         }
                     }
-                    quantize_tile(tc, tabs);
+                    const double predicted = quantize_tile(tc, tabs);
+                    if (emit && e->cfg.collect_stats)
+                        e->stats.bits_predicted_q10 +=
+                            (u64)(predicted * 1024.0 + 0.5);
                     u32 th[kNumCtx][kNumSym];
+                    u32 raw_bits = 0;
                     std::memset(th, 0, sizeof(th));
                     if (count_units(tc.units.data(), (int)tc.units.size(),
-                                    1 << tc.tp.nsub_log2, th, nullptr)) {
+                                    1 << tc.tp.nsub_log2, th, nullptr,
+                                    &raw_bits)) {
                         tc.tp.table_set = select_set(th, tc.tp.table_set);
                         if (emit && e->cfg.nsub_log2 == 255) {
                             double bits =
-                                table_set_cost(th, tabs[tc.tp.table_set]);
+                                table_set_cost(th, tabs[tc.tp.table_set]) +
+                                (double)raw_bits;
                             int n = 0;
                             while (n < 3 && (double)(32 << (n + 1)) <= bits * 0.10)
                                 ++n;
