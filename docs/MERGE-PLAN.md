@@ -462,6 +462,60 @@ clean under `asan-ubsan`.
 > encoder is about to skip. Until both are in place the ladder cannot be
 > calibrated, and `--rc` stays off by default.
 
+### 4.9 inter is a combination too, and it is where the byte cost went away
+
+`JUDGE-inter.md`: **merge `inter-a` as the base** -- drift-driven refresh,
+quad vectors, near-skip -- and take four things from `inter-b`.
+
+**Take from `inter-b`:**
+
+1. **The near-skip DC correction placement.** `inter-b`'s `WARP_DC` syntax --
+   nine bytes in the **tile-row header**, gated by a second per-row bitmap --
+   **instead of** `inter-a`'s word1-bit tile-structure form. `inter-b`'s form
+   stays warp-only and buys **+2.10 dB on the chain**; `inter-a`'s does not.
+   **Re-measure the package after the swap**: `inter-a`'s numbers were taken
+   with its own form.
+2. **`inter-b`'s refresh off-by-one fix.** `inter-a` ships the bug on its
+   default drift path.
+3. **`inter-b`'s single predictor loop** for the quad vectors, with the
+   `warp.quad` equivalence test and the shader note.
+
+**Drop from `inter-a`:**
+
+4. **Sub-tile intra, entirely.** Bit 26 is gone and gets **no allocation**
+   (`docs/TOOLBITS.md` 2).
+5. **The ramp form of near-skip.** Nothing exercises it. **DC only.**
+
+**Fix in `inter-a`:**
+
+6. **`nxvc_config` fields must be APPENDED** (ABI). Same defect class as
+   `detail-a`'s (`docs/TOOLBITS.md` 6.1, item 1) and `percept`'s appended ABI
+   items (4.8): three packages append to the same structs, so after the merge
+   check that all three sets of appends are ordered and none was interleaved.
+7. **The drift gate must measure drift against the SHADOW** -- the loss-aware
+   reconstruction -- **not against `inter-a`'s own reconstruction.** A gate
+   that measures against its own output cannot see the drift that loss causes,
+   which is the only drift the gate exists to catch.
+
+#### What this does to the tile header
+
+This is the decision that **removed the byte cost of the entire tournament.**
+`inter-a` wanted four word1 bits (`near_skip`, `near_skip_ac`, `quad_mv`,
+`sub_intra`) against four free, on top of `detail-a`'s one and `xform`'s two --
+a three-bit overflow that `docs/TOOLBITS.md` was going to absorb with a ninth
+tile-header byte gated by a `TILE_EXT` tool bit.
+
+Moving the correction to the tile-row header and dropping sub-tile intra
+reduces that demand to **at most one bit**, and the ramp drop removes
+`near_skip_ac` as well. Word1 is now `split4x4` 28, `xform_size` 29-30,
+`quad_mv` 31 *if it is needed there at all* -- the tile-row bitmap may already
+name the tiles carrying quadrant vectors, in which case bit 31 stays reserved.
+**No extension byte, no `TILE_EXT` bit, tile header stays 8 bytes.**
+
+`NEAR_SKIP` is consequently the one tool in the tournament whose tool bit gates
+a **tile-row header** structure rather than a tile-header field, so its
+normative text belongs in `docs/SYNTAX.md` 3.3, not 4.1.
+
 ## 5. Recommended merge order
 
 Eight orders were measured end to end, counting conflicted files outside
@@ -500,9 +554,11 @@ resolutions in section 4 are the whole cost. Order is therefore chosen for the
 3. **xform third.** It owns the transform generalisation (4.4), and by now it
    is the package that adapts -- folding `detail-a`'s 4x4 into `fdct_2d` and
    moving its own `xform_size` down to word1 29-30.
-4. **inter fourth.** Nearly disjoint from the three above, so it lands late
-   and cheaply; it is also the branch whose word1 demand decides whether the
-   extension byte exists, and by this point the intra bits are fixed.
+4. **inter fourth, as a combination of both branches (4.9).** Nearly disjoint
+   from the three above, so it lands late and cheaply. Its word1 demand was
+   what decided whether a ninth tile-header byte existed -- and the judge
+   dissolved the question by moving the near-skip correction into the tile-row
+   header and dropping sub-tile intra, so the answer is no.
 5. **rdo sixth.** Encoder-only, and it rewrites every vector, so it must be the
    final input to the single vector-regeneration pass. Putting it anywhere
    else means regenerating vectors twice.
@@ -544,11 +600,15 @@ then inter, then rdo.
 | | `tests/ref/test_transform.cpp` | **4.4, mandatory** -- `ref.transform_gain`: every size's 2D gain vs a float DCT, within 0.1 %. A 2x slip is silent and shifts effective QP by 6 |
 | | `docs/SYNTAX.md` | xform keeps 6.7, detail's split becomes **6.8**; word1 `xform_size` moves to **29-30** (`split4x4` keeps 28) |
 | | `split4x4` x `xform_size` | **4.4, decided** -- kept as separate fields (different granularities). `split4x4` is meaningful only when `xform_size == 8`; `xform_size != 8` with the split flag set is `BITSTREAM`. Add the constraint to SYNTAX 4.1/6.8, a rejection vector, and an Appendix A entry |
-| **inter** | `include/nxvc/nxvc.h` | `NEAR_SKIP`/`QUAD_MV`/`SUBTILE_INTRA` -> 28/29/30; `TILE_EXT` 31 if inter-a; rename inter-b's `WARP_DC`/`MV_QUAD` onto the shared names |
-| | `docs/SYNTAX.md` | inter-a: move its four word1 flags into the extension byte (TOOLBITS 4, option A). inter-b: `quad_mv` takes word1 31, no extension byte |
+| **inter** (combination) | -- | **section 4.9.** `inter-a` is the base; take four things from `inter-b`, drop two from `inter-a`, fix two in it |
+| | `include/nxvc/nxvc.h` | `NEAR_SKIP` -> 28, `QUAD_MV` -> 29; **`SUBTILE_INTRA` deleted, not renumbered**; **`nxvc_config` fields APPENDED** |
+| | `docs/SYNTAX.md` | near-skip is a **tile-row header** structure (3.3), `inter-b`'s 9-byte form gated by a second per-row bitmap -- **not** a word1 bit. `quad_mv` in word1 31 only if the row bitmap does not already name the tiles. **DC only, no ramp** |
+| | `ref/src/inter.*` | `inter-b`'s refresh off-by-one fix and its single predictor loop, with the `warp.quad` equivalence test and the shader note |
+| | drift gate | measure against the **shadow** (loss-aware), not `inter-a`'s own reconstruction |
+| | `ref/RESULTS-inter-*.md` | **re-measure after the syntax swap** -- `inter-a`'s numbers were taken with its own near-skip form |
 | | `tests/ref/vectors.cpp` | renumber `v`/`r` vectors onto one sequence (4.3.2); rewrite the raw tool-bit pokes against constants (4.3.1) |
 | | Appendix A | inter-a contributes **no** entry; ask for one (rules criterion 4) |
-| | **if inter-b wins** | `JUDGE-inter.md` 1.1: its tools-off encoder is **not** byte-identical to v1.4 (+11.5 %). The rolling refresh seeds its phase from `refresh_max_age` (720) instead of `intra_period` (180), so ~3/4 of tiles start past the threshold and are forced INTRA on frame 1. Fix the seed, then **re-measure**: that 11.5 % is the denominator of every delta in `ref/RESULTS-inter-b.md` section 3 |
+| | **inter-b's refresh, now merged** | `JUDGE-inter.md` 1.1: its tools-off encoder is **not** byte-identical to v1.4 (+11.5 %). The rolling refresh seeds its phase from `refresh_max_age` (720) instead of `intra_period` (180), so ~3/4 of tiles start past the threshold and are forced INTRA on frame 1. Fix the seed, then **re-measure**: that 11.5 % is the denominator of every delta in `ref/RESULTS-inter-b.md` section 3 |
 | **rdo** | `ref/src/codec.cpp`, `codec_impl.inc`, `ref/tools/nxv-enc.cpp` | encoder-side; take rdo where it only reorders search, keep the other branches' new syntax emission |
 | | all of `tests/vectors/` | regenerate, once, after this step |
 | **percept** | `tools/quality/nxq/fvvdp.py` | **add/add** -- keep MAIN's (metric's) copy, drop the branch's verbatim duplicate; `scripts/resolve-percept.py` |
@@ -573,11 +633,9 @@ Baseline to beat, measured on `merge-main` in this worktree:
 **Status: the real merge has NOT started, and must not, until
 `JUDGE-xform.md`, `JUDGE-ctx.md`, `JUDGE-inter.md` and `JUDGE-rdo.md` all
 exist.** Only `JUDGE-detail.md` has landed (merge `detail-a`).
-`JUDGE-inter.md` exists but its verdict and merge checklist are still
-`PLACEHOLDER`, so the inter winner -- and with it whether the tile extension
-byte of `docs/TOOLBITS.md` 4 option A is needed at all -- is **not** decided.
-Its section 1.1 is already final and is recorded in section 6 above, because it
-is a merge obligation whichever way the verdict goes. What has been
+`JUDGE-detail.md`, `JUDGE-ctx.md` and `JUDGE-inter.md` have all landed and
+their decisions are carried in sections 4.4 to 4.9. **`JUDGE-xform.md` and the
+rdo verdict are still outstanding**, and the merge waits for them. What has been
 done is a dry run of the machinery on `ctx-b` + `inter-a`, on the throwaway
 branch `integ-scratch`, to prove the pipeline builds, renumbers, regenerates
 and tests green -- it is not a claim about who should win. `merge-main` is

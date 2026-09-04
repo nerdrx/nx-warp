@@ -60,11 +60,15 @@ from `NXVC_TOOLS_SUPPORTED`**, so a stream setting it is refused today. Both
 `detail-a` and `detail-b` implement exactly that bit and add it to the
 supported mask. No renumbering is needed for it in either case.
 
-## 2. Bits 24-31: the tournament allocation
+## 2. Bits 24-29: the tournament allocation
 
 **`JUDGE-detail.md` landed first and fixes `detail-a`'s two bits**, so detail
 merges first and every later package renumbers around 19 and 24.
-**`JUDGE-ctx.md` then merged a combination** -- ctx-a's `CTX_V3` plus ctx-b's
+**`JUDGE-inter.md` then merged another combination -- `inter-a` as the base with
+`inter-b`'s tile-row-header syntax for the near-skip correction -- and
+**dropped sub-tile intra**, which together removed the word1 pressure that the
+tile extension byte existed to relieve (section 4).
+`JUDGE-ctx.md` merged a combination** -- ctx-a's `CTX_V3` plus ctx-b's
 `TAB_V2` -- and **dropped `VEC_ENT`**, which frees a slot and settles what the
 ctx package's second tool is. The rest follows the one-slot-per-tool rule.
 
@@ -82,10 +86,10 @@ so a dropped tool leaves no bit with a history for a later package to inherit.
 | 26 | `TAB_V2` | variable-length table sets, **ctx-b's format** | `ctx-b` (24) | 24 | **move to 26** |
 | -- | ~~`VEC_ENT`~~ | vector entropy coding | `ctx-a` (25) | 25 | **DROPPED by `JUDGE-ctx.md`**, no bit allocated |
 | 27 | `XFORM_LARGE` | 16x16 and 32x32 transforms | `xform-a`, `xform-b` | 24 | **move 24 -> 27** |
-| 28 | `NEAR_SKIP` | near-skip DC/ramp correction | `inter-a` `NEAR_SKIP` (24), `inter-b` `WARP_DC` (24) | 24 | **move to 28**; `inter-b` renamed onto `NEAR_SKIP` |
+| 28 | `NEAR_SKIP` | near-skip DC correction, **in `inter-b`'s tile-row header form** | `inter-a` `NEAR_SKIP` (24), `inter-b` `WARP_DC` (24) | 24 | **move to 28**; the name is `inter-a`'s, the **syntax is `inter-b`'s** |
 | 29 | `QUAD_MV` | four quadrant vectors per tile | `inter-a` `QUAD_MV` (25), `inter-b` `MV_QUAD` (25) | 25 | **move to 29**; `inter-b` renamed onto `QUAD_MV` |
-| 30 | `SUBTILE_INTRA` | one quadrant drops the predictor | `inter-a` only (26) | 26 | **move to 30**; unallocated if `inter-b` wins |
-| 31 | `TILE_EXT` | the tile extension byte | none -- new here | -- | section 4, option A only |
+| -- | ~~`SUBTILE_INTRA`~~ | one quadrant drops the predictor | `inter-a` (26) | 26 | **DROPPED by `JUDGE-inter.md`**, no bit allocated |
+| -- | ~~`TILE_EXT`~~ | the tile extension byte | -- | -- | **not needed** -- see section 4 |
 
 `rdo-a` and `rdo-b` allocate **no tool bit at all**: both are pure encoder
 packages (rate-distortion search, lambda, effort presets) and change no
@@ -93,7 +97,10 @@ normative syntax. They are the only two branches whose merge cannot collide on
 this table. They collide violently on the conformance vectors instead --
 section 5.
 
-Bits 32-63 stay reserved and must be zero.
+**Bits 30-63 stay reserved and must be zero.** The tournament allocates seven
+bits, 19 and 24-29, and stops there: `JUDGE-ctx.md` dropped `VEC_ENT` and
+`JUDGE-inter.md` dropped sub-tile intra, and neither leaves a reservation
+behind.
 
 ### 2.1 The collision, stated plainly
 
@@ -118,7 +125,7 @@ only has to be internally consistent.
 
 ---
 
-## 3. Tile header word1: the real contention
+## 3. Tile header word1: the contention, and how it dissolved
 
 `merge-main`'s tile header is two u32 words, 8 bytes, plus up to 3 optional
 bytes (`mv_x`/`mv_y` or `disparity`, then `alpha_value`). word1's high end
@@ -152,14 +159,25 @@ The contention is entirely over 28-31, and it is real:
 | xform + detail-b + inter-a | 2 + 0 + 4 = 6 | 4 | **2 bits over** |
 | xform + detail-a + inter-a | 2 + 1 + 4 = 7 | 4 | **3 bits over** |
 
-`JUDGE-detail.md` has already chosen `detail-a`, so the `split4x4` bit is
-spent -- and because detail merges first, it keeps word1 bit 28 exactly as
-authored and `xform` is the package that moves. The layout therefore turns
-entirely on the inter verdict.
+`JUDGE-detail.md` chose `detail-a`, so the `split4x4` bit is spent -- and
+because detail merges first, it keeps word1 bit 28 exactly as authored and
+`xform` is the package that moves.
 
-## 4. Proposed word1 layout
+**The inter verdict then dissolved the overflow rather than packing around
+it.** `JUDGE-inter.md` took `inter-b`'s tile-row-header form for the near-skip
+correction and dropped sub-tile intra, so `inter-a`'s demand of four word1 bits
+became at most one (`quad_mv`, and even that only if the row bitmap does not
+already name the tiles). Demand is now 1 + 2 + 1 = 4 against 4 free. The
+extension byte of the earlier draft is not needed; section 4 is the settled
+layout.
 
-### Option A -- `inter-a` wins: one optional extension byte
+## 4. The word1 layout (settled)
+
+**There is one layout, and no extension byte.** `JUDGE-inter.md` moved the
+near-skip correction out of the tile header into the **tile-row header**
+(`inter-b`'s form: nine bytes per corrected tile, gated by a second per-row
+bitmap) and dropped sub-tile intra. That removed three of the four word1 bits
+`inter-a` wanted, and what remains fits exactly:
 
 | bits | field | gated by |
 |---|---|---|
@@ -167,64 +185,33 @@ entirely on the inter verdict.
 | 26-27 | `wm_id` | tool bit 20 `WM_ID` |
 | 28 | `split4x4` | tool bit 19 `XFORM_4X4_SPLIT` -- **as `detail-a` authored it; detail merges first, so this bit does not move**. Meaningful only when `xform_size == 8`; see 4.2 |
 | 29-30 | `xform_size` | tool bit 27 `XFORM_LARGE` -- moved down from `xform`'s 28-29 |
-| 31 | `tile_ext` | tool bit 31 `TILE_EXT` -- one extension byte follows the tile header |
+| 31 | `quad_mv` | tool bit 29 `QUAD_MV` -- **only if the flag is needed in the tile header at all**; if the tile-row bitmap already names the tiles carrying quadrant vectors, word1 bit 31 stays reserved |
 
-`inter-a`'s four flags move out of word1 and into the extension byte, which is
-read **after** word1 and **before** the `mv`/`disparity` and `alpha_value`
-bytes, so the existing optional-byte order is preserved and every field keeps a
-fixed offset once `tile_ext` is known:
+Word1 is full or has one bit spare, and **the byte cost of the whole
+tournament is zero**. The tile header stays 8 bytes plus its existing up-to-3
+optional bytes.
 
-| ext bit | field |
-|---|---|
-| 0 | `near_skip` |
-| 1 | `near_skip_ac` |
-| 2 | `quad_mv` |
-| 3 | `sub_intra` |
-| 4-7 | reserved, must be 0 |
+This is worth stating plainly because the earlier draft of this file argued at
+length about a ninth header byte. The judge's decision made the argument moot,
+and by the better route: `inter-b`'s form is warp-only and buys **+2.10 dB on
+the chain**, which is why it was taken over `inter-a`'s word1-bit tile
+structure. The near-skip correction now costs no tile-header bit at all, and
+its nine bytes are spent only on the tiles a row bitmap actually names.
 
-Constraints: `tile_ext == 1` requires tool bit 31 `TILE_EXT`; an ext byte whose
-bits 4-7 are nonzero is `BITSTREAM`; `near_skip_ac` requires `near_skip`;
-`near_skip`, `quad_mv` and `sub_intra` each require their own tool bit (28, 29,
-30) and `mode != INTRA`. A tile that needs none of the four must set
-`tile_ext == 0` and send no byte, so the encoder cannot pad.
+`NEAR_SKIP` (bit 28) therefore gates a **tile-row header** structure, not a
+word1 bit -- the only tool in the tournament that does. Its normative text
+belongs in section 3.3, not 4.1.
 
-**Byte cost.** One byte, on the tiles that set `tile_ext` only. Zero on every
-intra stream, zero on any stream that does not set `TILE_EXT`, and zero on an
-inter tile using none of the four tools. The honest worst case is the one that
-matters: Appendix A decision 1 records that the 8-byte tile header is 13.7% of
-the frame at QP 36, so a ninth byte is **+12.5% of the header, about +1.7% of
-the frame** on a tile that takes it -- and near-skip tiles are exactly the
-small-payload tiles where a header byte is proportionally worst. That is the
-price of `inter-a`'s fourth flag, and it should be weighed against `inter-a`'s
-BD-rate margin over `inter-b` rather than waved through.
+### 4.1 The reserved-tile-bit reject vector
 
-*Option A-2, if `inter-a`'s author confirms exclusivity.* If `near_skip` and
-`quad_mv` cannot both be set on one tile, and `sub_intra` cannot combine with
-`near_skip`, the four flags collapse to a 2-bit enum
-(0 none, 1 `near_skip`, 2 `near_skip` + ac, 3 `quad_mv`) plus one bit for
-`sub_intra` -- 3 bits, which does **not** fit either once `xform_size` and
-`split4x4` are placed. It only fits if `split4x4` also moves. Not recommended:
-it buys one byte at the cost of making three independent tools one field, which
-is exactly the "one implementation per idea" the rules ask for the opposite of.
-
-### Option B -- `inter-b` wins: no extension byte, no cost
-
-| bits | field | gated by |
-|---|---|---|
-| 24-25 | `wgt` | existing |
-| 26-27 | `wm_id` | tool bit 20 |
-| 28 | `split4x4` | tool bit 19 `XFORM_4X4_SPLIT` -- **as `detail-a` authored it**. Meaningful only when `xform_size == 8`; see 4.2 |
-| 29-30 | `xform_size` | tool bit 27 `XFORM_LARGE` -- moved down from `xform`'s 28-29 |
-| 31 | `quad_mv` | tool bit 29 `QUAD_MV` (`inter-b`'s `mv_quad`, renamed) |
-
-Word1 is then **exactly full**, tool bit 31 `TILE_EXT` is not allocated, and
-the byte cost of the whole tournament is zero. `inter-b`'s near-skip
-correction costs nothing here either: it lives in the tile-row header as
-`dc_bitmap` plus a nine-byte record per corrected tile, which no other branch
-touches.
-
-This is the layout the merge should prefer unless `inter-a` wins on BD-rate by
-a margin that clearly beats the extension byte.
+`tests/vectors/r09_reserved_tile_bit.nxv` pins "word1 bits 28-31 must be zero".
+The layout above consumes 28-30 and possibly 31, so the vector must move and be
+re-hashed. If word1 bit 31 stays reserved it can stay in word1; if `quad_mv`
+takes it, **r09 moves to word0 bit 3**, the only remaining must-be-zero header
+bit, and its name should say so. Three branches already rewrite this vector
+independently (`detail-a` moved it to bit 29, `xform-a` rewrote it, `inter-b`
+adds `r32_tile_reserved_29`), which is why it appears in almost every pairwise
+conflict in `docs/MERGE-PLAN.md`.
 
 ### 4.2 `split4x4` and `xform_size` compose, they do not merge
 
@@ -243,19 +230,6 @@ In word1 terms: bit 28 must be zero unless bits 29-30 select the 8x8
 transform, and when bit 28 is zero the payload codes no per-block split flag.
 It needs a rejection vector of its own and an Appendix A entry; see
 `docs/MERGE-PLAN.md` 4.4.
-
-### 4.3 The reserved-tile-bit reject vector
-
-`tests/vectors/r09_reserved_tile_bit.nxv` pins "word1 bits 28-31 must be zero".
-Every layout above consumes those bits, so the vector must move to the highest
-still-reserved bit and be re-hashed. Under option B word1 is full, so **r09
-must move to word0 bit 3**, the only remaining must-be-zero header bit, and its
-name should change to `r09_reserved_tile_bit` on word0. Three branches already
-rewrite this vector independently (`detail-a` moved it to bit 29, `xform-a`
-rewrote it, `inter-b` adds `r32_tile_reserved_29`), which is why it appears in
-almost every pairwise conflict in `docs/MERGE-PLAN.md`.
-
----
 
 ## 5. What does not fit in a bit table
 
@@ -337,10 +311,8 @@ NXVC_TOOL_INTRA_CFL         (1ull << 24)   detail-a   (judge-fixed)
 NXVC_TOOL_CTX_V3            (1ull << 25)   ctx-a's model  (ships OFF by default)
 NXVC_TOOL_TAB_V2            (1ull << 26)   ctx-b's format (ships OFF by default)
 NXVC_TOOL_XFORM_LARGE       (1ull << 27)   xform
-NXVC_TOOL_NEAR_SKIP         (1ull << 28)   inter
+NXVC_TOOL_NEAR_SKIP         (1ull << 28)   inter-a's name, inter-b's syntax
 NXVC_TOOL_QUAD_MV           (1ull << 29)   inter
-NXVC_TOOL_SUBTILE_INTRA     (1ull << 30)   inter-a only
-NXVC_TOOL_TILE_EXT          (1ull << 31)   inter-a only, option A
 ```
 
 and `NXVC_BITSTREAM_MINOR` becomes 6. (`JUDGE-ctx.md` step 13 says v1.5,

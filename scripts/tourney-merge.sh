@@ -69,7 +69,12 @@ order_key() {
         ctx-a)    echo 21 ;;
         ctx-*)    echo 22 ;;
         xform-*)  echo 30 ;;
-        inter-*)  echo 40 ;;
+        # inter is a COMBINATION too (JUDGE-inter.md): inter-a is the base,
+        # inter-b contributes the tile-row-header near-skip syntax and two
+        # fixes, so inter-a lands first.
+        inter-a)  echo 40 ;;
+        inter-b)  echo 41 ;;
+        inter-*)  echo 42 ;;
         rdo-*)    echo 50 ;;
         # percept lands LAST, after rdo: its measured result is negative for
         # the spatial ladder, so it merges for the wiring and the rc/ fixes,
@@ -105,6 +110,21 @@ else
 fi
 
 say "merge order: ${SORTED[*]:-(none, resuming)}"
+case " ${SORTED[*]:-} " in
+    *" inter-a "*inter-b*|*" inter-b "*inter-a*)
+        info ""
+        info "NOTE: inter is a COMBINATION (JUDGE-inter.md).  inter-a is the base."
+        info "  From inter-b: the near-skip DC correction in the TILE-ROW HEADER"
+        info "  (9 bytes, second per-row bitmap) INSTEAD of inter-a's word1-bit"
+        info "  form -- warp-only, +2.10 dB on the chain; RE-MEASURE after the swap."
+        info "  Also inter-b's refresh off-by-one fix and its single predictor loop"
+        info "  with the warp.quad equivalence test and the shader note."
+        info "  DROP inter-a's sub-tile intra (no bit) and its near-skip RAMP form"
+        info "  (DC only).  APPEND inter-a's nxvc_config fields (ABI).  The drift"
+        info "  gate must measure against the SHADOW, not its own reconstruction."
+        info "  See docs/MERGE-PLAN.md 4.9."
+        info "" ;;
+esac
 case " ${SORTED[*]:-} " in
     *" percept "*)
         info ""
