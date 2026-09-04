@@ -28,6 +28,7 @@ constexpr int kMaxTilesPerRow = 64;
 // samples (tile-header field `xform`, SYNTAX.md 4.1).  `xform` is the log2 of
 // the edge over 8, so 0 is the version 1 transform exactly.
 constexpr int kMaxXform = 32;
+constexpr int kMaxXformLog2 = 2;   // the largest legal `xform`
 inline int xform_edge(int xform) { return kBlock << xform; }
 inline int xform_log2(int n) { return n == 8 ? 3 : (n == 16 ? 4 : 5); }
 
@@ -37,7 +38,7 @@ inline int xform_log2(int n) { return n == 8 ? 3 : (n == 16 ? 4 : 5); }
 // chroma plane inside a 32x32-transform tile needs no separate signal.
 inline int plane_xform(int xform, int size) {
     int cap = 0;
-    while ((kBlock << (cap + 1)) <= size) ++cap;
+    while (cap < kMaxXformLog2 && (kBlock << (cap + 1)) <= size) ++cap;
     return xform < cap ? xform : cap;
 }
 
