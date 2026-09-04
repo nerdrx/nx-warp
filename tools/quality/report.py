@@ -64,7 +64,17 @@ METRIC_LABEL = {
     "ssim_y": "SSIM (Y)",
     "ms_ssim_y": "MS-SSIM (Y)",
     "vmaf": "VMAF",
+    "fov_psnr_y": "eccentricity-weighted PSNR-Y (dB)",
+    "psnr_fovea": "PSNR-Y inside the fovea disc (dB)",
+    "psnr_periphery": "PSNR-Y in the periphery (dB)",
 }
+
+#: Extra per-point columns, printed only when --foveated-psnr produced them.
+FOVEATED_COLUMNS = (
+    ("fov_psnr_y", "fov-PSNR-Y", "{:.2f}"),
+    ("psnr_fovea", "PSNR fovea", "{:.2f}"),
+    ("psnr_periphery", "PSNR periph", "{:.2f}"),
+)
 
 
 def plot_matplotlib(series: list[dict], metric: str, title: str, path: str) -> bool:
@@ -217,6 +227,7 @@ def rd_table(entry: dict, name: str) -> list[str]:
     has_ssim = any("ssim_y" in p for p in pts)
     has_ms = any("ms_ssim_y" in p for p in pts)
     has_vmaf = any("vmaf" in p for p in pts)
+    fov_cols = [c for c in FOVEATED_COLUMNS if any(c[0] in p for p in pts)]
     head = [rc.upper(), "Mbit/s", "kB/frame", "PSNR-Y", "PSNR-YCbCr"]
     if has_ssim:
         head.append("SSIM")
@@ -224,6 +235,7 @@ def rd_table(entry: dict, name: str) -> list[str]:
         head.append("MS-SSIM")
     if has_vmaf:
         head.append("VMAF")
+    head += [c[1] for c in fov_cols]
     rows = ["| " + " | ".join(head) + " |",
             "|" + "|".join(["---:"] * len(head)) + "|"]
     frames = max(1, pts[0].get("frames", 1))
@@ -241,8 +253,26 @@ def rd_table(entry: dict, name: str) -> list[str]:
             cells.append(_fmt(p.get("ms_ssim_y"), "{:.4f}"))
         if has_vmaf:
             cells.append(_fmt(p.get("vmaf"), "{:.2f}"))
+        cells += [_fmt(p.get(key), spec) for key, _, spec in fov_cols]
         rows.append("| " + " | ".join(cells) + " |")
     rows.append("")
+    if entry.get("note"):
+        rows += [f"_{entry['note']}._", ""]
+    if entry.get("rate_control_note"):
+        rows += [f"_Rate control: {entry['rate_control_note']}._", ""]
+    if entry.get("foveated") and entry.get("fovea_map"):
+        m = entry["fovea_map"]
+        rows += [
+            f"_Foveated delta-QP map: centre {m['center_frac']:.0%} of each view at "
+            f"QP{m['center_delta']:+g}, mid {m['mid_frac']:.0%} at QP{m['mid_delta']:+g}, "
+            f"periphery at QP{m['periphery_delta']:+g}. {m['mechanism']}._", ""]
+    if entry.get("intra_refresh"):
+        rows += [f"_Periodic intra refresh, sweep length "
+                 f"{entry.get('refresh_period_frames', '?')} frames; no IDR after the first._", ""]
+    if pts and pts[0].get("cmd"):
+        rows += ["<details><summary>exact command line (lowest-rate point)</summary>", "",
+                 "```", sorted(pts, key=lambda q: q["bitrate_mbps"])[0]["cmd"], "```", "",
+                 "</details>", ""]
     return rows
 
 

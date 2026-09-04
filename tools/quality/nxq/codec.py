@@ -80,9 +80,9 @@ class CodecCLI:
 
     # --- operations ------------------------------------------------------
 
-    def encode(self, src_yuv: str, fmt: Format, qp: int, out_nxv: str, timeout: float = 900.0) -> int:
-        """Encode and return the bitstream size in bytes."""
-        cmd = [
+    def encode_argv(self, src_yuv: str, fmt: Format, qp: int, out_nxv: str) -> list[str]:
+        """The exact argv :meth:`encode` will run, for the results JSON."""
+        return [
             *self.enc,
             "--in", str(src_yuv),
             "--w", str(fmt.width),
@@ -91,6 +91,10 @@ class CodecCLI:
             "--qp", str(qp),
             "--out", str(out_nxv),
         ]
+
+    def encode(self, src_yuv: str, fmt: Format, qp: int, out_nxv: str, timeout: float = 900.0) -> int:
+        """Encode and return the bitstream size in bytes."""
+        cmd = self.encode_argv(src_yuv, fmt, qp, out_nxv)
         _check(cmd, "encode", timeout)
         if not os.path.exists(out_nxv):
             raise CodecError(f"encoder produced no output at {out_nxv}")

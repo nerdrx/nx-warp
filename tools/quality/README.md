@@ -23,6 +23,7 @@ Everything is Python 3 with numpy. There is no C++ here.
 | Path | What it is |
 |---|---|
 | `nxq/` | the library: YUV I/O, metrics, BD-rate, ffmpeg driving, codec driving |
+| `nxq/qpmap.py` | foveated delta-QP maps for the anchors (emulates `VK_KHR_video_encode_quantization_map`) |
 | `capture/` | test material: synthetic generation, media import, WiVRn grabs |
 | `compare.py` | run the anchors and the codec, measure, analyse |
 | `report.py` | Markdown + SVG rate-distortion report |
@@ -277,16 +278,89 @@ python3 compare.py --seq $NXQ_SCRATCH/seq/vr-mixed-512.yuv444p.json \
 | `x264-p` | zerolatency, P-only, `ref=1`, one IDR at the start | low-latency reference |
 | `x265-p` | zerolatency, P-only, `ref=1`, one IDR at the start | **the Phase 2 BD-rate anchor** |
 | `x265-intra` | `--keyint 1`, zerolatency | extra |
+| `x264-p-refresh` | P-only + **periodic intra refresh** + a **foveated delta-QP map** | the hardware-class baseline |
+| `x265-p-refresh` | as above on HEVC | **the anchor the foveation and IDR-free claims must beat** |
+| `hevc-vulkan` | real Vulkan video H.265 encode, `-tune ull`, P-only | portable hardware encode |
+| `h264-vulkan` | real Vulkan video H.264 encode, `-tune ull`, P-only | portable hardware encode |
+| `av1-svt-p` | SVT-AV1 low-delay P (`pred-struct=1`, no lookahead) | what Virtual Desktop ships |
 
 All are driven through ffmpeg and encode to an **elementary stream**, so the
 measured rate has no container overhead. Rate is
 `bytes * 8 / frames * fps`, reported in Mbit/s.
 
-If `libx264` or `libx265` is missing, that anchor is skipped with a clear
-message and the run continues.
+Any anchor whose encoder is missing — or is compiled in but will not open on
+the local driver, or cannot take the sequence's pixel format — is skipped with
+a clear message and the run continues. `compare.py --probe` lists the verdict
+for every anchor before you commit to a run.
 
-On this machine (checked with `ffmpeg -encoders` / `-filters`): ffmpeg n9.0.1
-with **libx264, libx265 and the libvmaf filter all present**.
+On this machine (checked with `ffmpeg -encoders`, `ffmpeg -h encoder=...` and
+`vulkaninfo`): ffmpeg n9.0.1 with **libx264, libx265, hevc_vulkan, h264_vulkan,
+libsvtav1 and the libvmaf filter all present**, and Mesa RADV 26.2.1 on a
+Radeon RX 7900 XTX exposing `VK_KHR_video_encode_h264`, `_h265`, `_av1`,
+`VK_KHR_video_encode_intra_refresh` and `VK_KHR_video_encode_quantization_map`.
+
+#### Why the `-p-refresh` anchors exist
+
+`docs/RESEARCH-INDUSTRY.md` 2.2 is blunt about it: Vulkan has standardised
+per-block quantization maps (`VK_KHR_video_encode_quantization_map`, Nov 2024)
+and intra refresh (`VK_KHR_video_encode_intra_refresh`, Jul 2025), and RADV
+implements both. A competitor can build a **foveated, IDR-free hardware HEVC
+streamer** today without a new codec. Comparing NX Warp's foveation against a
+flat-QP HEVC encode would therefore be measuring against a strawman.
+
+`x264-p-refresh` and `x265-p-refresh` are that opponent, assembled from parts
+that exist:
+
+* **intra refresh instead of IDRs** — `--intra-refresh` in both encoders. After
+  the first frame there is never another IDR; a refresh column sweeps the
+  picture instead. The sweep length defaults to the clip
+  (`--intra-refresh-period N` to fix it).
+* **a foveated delta-QP map** — concentric rectangles per view, centre QP−6,
+  middle QP, periphery QP+6, installed through ffmpeg's `addroi` filter, which
+  both the libx264 and libx265 wrappers turn into a per-macroblock/per-CTU
+  quantizer offset array. Configure it with
+  `--fovea-map 'center=0.25:mid=0.55:dc=-6:dm=0:dp=6'`. See `nxq/qpmap.py`.
+
+**This emulates a quantization map, it is not one.** The differences are worth
+stating every time a number from these anchors is quoted:
+
+1. the map is axis-aligned rectangles, not an arbitrary per-block image, so the
+   eccentricity falloff is quantised into three bands;
+2. the offsets are an *adaptive-quantization hint*, which the rate controller
+   may temper, not an absolute per-block QP; and
+3. they only bite in **CRF** mode. Both x264 and x265 switch adaptive
+   quantization off under constant QP, the offsets are silently discarded, and
+   the encode comes out bit-identical to the flat one. The harness therefore
+   forces these two anchors onto CRF, uses the run's numbers as CRF values, and
+   records `rate_control_note` in the results JSON saying so. Do not "fix" this
+   by passing `--anchor-qp` and assuming it worked.
+
+FFmpeg 9.0.1 exposes **no** quantization-map or intra-refresh option on
+`hevc_vulkan`/`h264_vulkan` (`ffmpeg -h encoder=hevc_vulkan` lists only
+`idr_interval`, `b_depth`, `async_depth`, `qp`, `quality`, `rc_mode`, `tune`,
+`usage`, `content`, `profile`, `tier`, `level`, `units`), so the real extensions
+cannot be driven from here even though the driver has them. That is why the
+emulation exists and why the Vulkan anchors are flat-QP.
+
+#### What the Vulkan anchors cannot do
+
+`hevc_vulkan` and `h264_vulkan` take **`nv12`/`p010` only**. Feed either a
+4:4:4 source and the encoder refuses to open. The harness detects this before
+running anything and skips with:
+
+```
+SKIP anchor hevc-vulkan: hevc_vulkan accepts yuv420p only, and this sequence
+is yuv444p -- Vulkan video H.264/H.265 has no 4:4:4 profile
+```
+
+That skip is not a harness limitation to work around; it is one of the results.
+`libsvtav1` is 4:2:0 (and 4:2:0 10-bit) only for the same practical reason and
+skips the same way.
+
+The first full run against all nine anchors is written up in
+[`reports/anchors-2026-09-04.md`](reports/anchors-2026-09-04.md): which anchors
+this machine could actually provide, the RD tables, the BD-rate of `nxv`
+against every one of them on five metrics, and the reading.
 
 ### Driving the codec
 
@@ -401,6 +475,42 @@ distance would not.
 > average, about 24 ppd in the center" is not reproducible from the tan
 > projection alone; it appears to fold in the lens distortion mapping.)
 
+### Foveated RD curves: `compare.py --foveated-psnr`
+
+Scoring a foveated encoder on flat PSNR grades it on a metric it is
+deliberately not optimising, and the `-p-refresh` anchors *are* foveated
+encoders. `--foveated-psnr` therefore re-reads every RD curve in the run —
+codec and anchors alike — through `foveated_metrics.py` with a **centre
+fixation**, which is where the anchors put their low-QP box:
+
+```sh
+python3 compare.py --seq $NXQ_SCRATCH/seq/vr-mixed-1024.yuv444p.json \
+    --codec-cmd build-ref/bin/nxv \
+    --anchors x265-p,x265-p-refresh,hevc-vulkan,av1-svt-p \
+    --qp 10,14,18,22,26,30 --anchor-qp 8,14,20,26,32,38,44 \
+    --foveated-psnr --out $NXQ_SCRATCH/results/anchors.json
+```
+
+Every operating point gains three numbers, and the BD-rate table is computed on
+each of them as well as on plain PSNR-Y and SSIM:
+
+| Key | Meaning |
+|---|---|
+| `fov_psnr_y` | PSNR with each pixel weighted by `1/(1 + e/2.3)`, the acuity falloff |
+| `psnr_fovea` | plain PSNR inside the 8-degree fovea disc |
+| `psnr_periphery` | plain PSNR outside it |
+
+For an `sbs` sequence each eye is weighted about its own centre and the two are
+combined **in the MSE domain**, not by averaging decibels. `--fov-hfov` (default
+95) sets the geometry, or `--fov-ppd` overrides it directly; `--fov-weighting`
+takes `acuity`, `acuity2` or `uniform`, and `uniform` reduces exactly to plain
+PSNR, which is what the test asserts.
+
+Read the fovea/periphery gap as the check that a foveated anchor is really
+foveating. A flat anchor shows a gap of a few tenths of a dB; `x265-p-refresh`
+with the default map opens several dB between the two. If it does not, the ROI
+side data is not reaching the encoder — see the CRF trap above.
+
 ---
 
 ## 5. Proving the harness without the codec
@@ -445,6 +555,15 @@ Test sequences are small on purpose (a few frames at 64–128 px); the one
 end-to-end test generates a sequence, runs x264 and the mock codec over four QP
 points, computes every metric, does the BD-rate and the gate, and renders a
 report — in about a second.
+
+`tests/test_anchors.py` covers the hardware-class anchor plumbing with **no
+encoder present at all**: ffmpeg is mocked at `nxq.ffmpeg.probe` and
+`nxq.cpu.run`, so the foveation-map geometry and ordering, the intra-refresh
+parameter strings, the rate-control fallbacks, the pixel-format and
+driver-support skips, the constructed command lines (Vulkan device init,
+`hwupload`, the `addroi` chain, SVT-AV1's low-delay-P parameters) and the
+eccentricity-weighted scoring are all checked on a machine with no ffmpeg, no
+Vulkan driver and no SVT-AV1.
 
 BD-rate is pinned by analytic invariants that hold *exactly* for the cubic
 method — scaling every rate by `k` must give `BD-rate = (k-1)·100`, shifting

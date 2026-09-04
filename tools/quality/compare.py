@@ -7,12 +7,26 @@ direct evaluation of the paper's Phase 1 exit criterion.
 
 Anchors (PAPER.md 3.11 and 2.11 item 1):
 
-``x264-intra``  ``--keyint 1 --tune zerolatency`` -- the Phase 1 gate anchor
-``x264-p``      P-only, single reference, zerolatency
-``x265-p``      P-only, single reference, zerolatency -- the Phase 2 anchor
+``x264-intra``     ``--keyint 1 --tune zerolatency`` -- the Phase 1 gate anchor
+``x264-p``         P-only, single reference, zerolatency
+``x265-p``         P-only, single reference, zerolatency -- the Phase 2 anchor
+
+The hardware-class baselines (docs/RESEARCH-INDUSTRY.md 2.2 and 1.6): Vulkan
+now standardises per-block quantization maps and intra refresh, so a foveated,
+IDR-free hardware HEVC streamer is buildable today and is the honest opponent.
+
+``x264-p-refresh`` P-only, periodic intra refresh instead of IDRs, plus a
+``x265-p-refresh``   foveated delta-QP map through ``addroi`` -- the software
+                   emulation of ``VK_KHR_video_encode_intra_refresh`` plus
+                   ``VK_KHR_video_encode_quantization_map`` (see nxq/qpmap.py)
+``hevc-vulkan``    real Vulkan video encode through the local driver,
+``h264-vulkan``      ultra-low-latency tuning, 4:2:0 8-bit only
+``av1-svt-p``      SVT-AV1 low-delay P -- what Virtual Desktop ships
 
 Metrics: PSNR (per plane and (6Y+Cb+Cr)/8 weighted), SSIM, MS-SSIM, all in
-numpy, plus VMAF through ffmpeg's libvmaf filter when it is available.
+numpy, plus VMAF through ffmpeg's libvmaf filter when it is available, plus
+eccentricity-weighted PSNR under ``--foveated-psnr`` so the foveated anchors
+are compared on the metric they optimise.
 
 Examples
 --------
@@ -36,10 +50,12 @@ Results are written as JSON; render them with ``report.py``.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import datetime
 import json
 import os
 import platform
+import shlex
 import shutil
 import sys
 import tempfile
@@ -49,12 +65,63 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from nxq import bdrate, cpu, ffmpeg, metrics  # noqa: E402
+import foveated_metrics as fov  # noqa: E402
+from nxq import bdrate, cpu, ffmpeg, metrics, qpmap  # noqa: E402
 from nxq.codec import CodecCLI, CodecError  # noqa: E402
 from nxq.sequence import Sequence  # noqa: E402
 from nxq.yuv import Format, read_sequence, read_pose_log  # noqa: E402
 
 DEFAULT_SCRATCH = "/run/media/nerdrx/Lex/claude/nx-scratch/nx-warp"
+
+
+# --- foveated scoring ----------------------------------------------------
+
+
+@dataclasses.dataclass
+class FoveaScoring:
+    """How to compute eccentricity-weighted quality, per foveated_metrics.py.
+
+    The fixation is the view centre, which is where the foveated anchors put
+    their low-QP box, so a foveated anchor is scored on the metric it optimises.
+    """
+
+    ppd_center: float
+    layout: str = "mono"
+    weighting: str = "acuity"
+    fovea_radius_deg: float = fov.FOVEA_RADIUS_DEG
+    hfov_deg: float = 95.0
+
+    def to_json(self) -> dict:
+        return {
+            "ppd_center": self.ppd_center, "layout": self.layout,
+            "weighting": self.weighting, "fovea_radius_deg": self.fovea_radius_deg,
+            "hfov_deg": self.hfov_deg, "fixation": "view centre",
+            "e2_deg": fov.E2_DEG,
+        }
+
+
+def _fovea_frame(ref_y: np.ndarray, dis_y: np.ndarray, sc: FoveaScoring, cache: dict) -> dict:
+    """Foveated metrics for one frame, averaged over the views.
+
+    Averaging is on the MSE, not on the dB, because averaging decibels across
+    views is not a mean square error of anything.
+    """
+    acc: dict[str, list[float]] = {}
+    for (_, rv), (_, dv) in zip(fov._views(ref_y, sc.layout), fov._views(dis_y, sc.layout)):
+        key = (rv.shape, sc.weighting)
+        if key not in cache:
+            ecc = fov.eccentricity_map(rv.shape[0], rv.shape[1], sc.ppd_center)
+            cache[key] = (ecc, fov.acuity_weights(ecc, sc.weighting))
+        ecc, w = cache[key]
+        d = rv.astype(np.float64) - dv.astype(np.float64)
+        sq = d * d
+        acc.setdefault("fov_psnr_y", []).append(float((w * sq).sum() / w.sum()))
+        inside = ecc <= sc.fovea_radius_deg
+        if inside.any():
+            acc.setdefault("psnr_fovea", []).append(float(sq[inside].mean()))
+        if (~inside).any():
+            acc.setdefault("psnr_periphery", []).append(float(sq[~inside].mean()))
+    return {k: metrics.psnr_from_mse(float(np.mean(v))) for k, v in acc.items()}
 
 
 # --- measurement ---------------------------------------------------------
@@ -76,13 +143,23 @@ def measure(
     do_ssim: bool = True,
     do_vmaf: bool = True,
     limit: int | None = None,
+    fovea: FoveaScoring | None = None,
 ) -> dict:
-    """Full-reference metrics between two raw YUV files."""
+    """Full-reference metrics between two raw YUV files.
+
+    When *fovea* is given, each frame also gets the eccentricity-weighted PSNR
+    of ``foveated_metrics.py`` (``fov_psnr_y``) plus the hard fovea/periphery
+    split, so the RD curves can be re-read on the metric a foveated encoder is
+    actually optimising.
+    """
     per_frame = []
+    ecc_cache: dict = {}
     ref_it = read_sequence(ref_path, fmt, limit)
     dis_it = read_sequence(dis_path, fmt, limit)
     for i, (r, d) in enumerate(zip(ref_it, dis_it)):
         m = metrics.frame_metrics(r, d, do_ssim=do_ssim, do_ms_ssim=do_ssim)
+        if fovea is not None:
+            m.update(_fovea_frame(r.y, d.y, fovea, ecc_cache))
         m["frame"] = i
         per_frame.append(m)
     if not per_frame:
@@ -121,39 +198,71 @@ def run_anchor(
     do_vmaf: bool,
     frames: int,
     verbose: bool = True,
+    fovea_map: qpmap.FoveaMap | None = None,
+    fovea_scoring: FoveaScoring | None = None,
 ) -> dict:
-    ok, why = ffmpeg.anchor_available(anchor)
+    ok, why = ffmpeg.anchor_available(anchor, seq.fmt)
     if not ok:
         print(f"[compare] SKIP anchor {anchor.name}: {why}", flush=True)
         return {"kind": "anchor", "available": False, "reason": why, "points": []}
 
+    # An anchor that cannot honour the run's rate-control mode falls back to
+    # its own, and says so rather than pretending.
+    eff_rc = ffmpeg.anchor_rc(anchor, rc)
     out = {"kind": "anchor", "available": True, "encoder": anchor.encoder,
-           "rate_control": rc, "points": []}
+           "backend": anchor.backend, "note": anchor.note,
+           "rate_control": eff_rc, "requested_rate_control": rc,
+           "intra_refresh": anchor.intra_refresh, "foveated": anchor.foveated,
+           "points": []}
+    if eff_rc != rc:
+        out["rate_control_note"] = (
+            f"the run asked for {rc}, but {anchor.name} supports "
+            f"{'/'.join(anchor.rc_modes)}; the same numbers were used as {eff_rc}"
+        )
+        print(f"[compare]   note: {out['rate_control_note']}", flush=True)
+    if anchor.intra_refresh:
+        out["refresh_period_frames"] = anchor.period(frames)
+    if anchor.foveated:
+        m = fovea_map or qpmap.FoveaMap.default()
+        out["fovea_map"] = m.to_json()
+        out["fovea_map_regions"] = [
+            {"x": x, "y": y, "w": w, "h": h, "qp_delta": d}
+            for x, y, w, h, d in m.regions(seq.width, seq.height, seq.layout)
+        ]
+
     for pt in points:
-        tag = f"{anchor.name}-{rc}{pt}"
+        tag = f"{anchor.name}-{eff_rc}{pt}"
         bs = os.path.join(work, f"{tag}.{anchor.raw_fmt}")
         rec = os.path.join(work, f"{tag}.yuv")
         t0 = time.time()
         try:
-            kwargs = {"qp": pt} if rc == "qp" else {"crf": pt}
-            size = ffmpeg.encode_anchor(
-                anchor, seq.path, seq.fmt, bs, fps=seq.fps, nframes=frames, **kwargs
+            kwargs = {"qp": pt} if eff_rc == "qp" else {"crf": pt}
+            enc = ffmpeg.encode_anchor(
+                anchor, seq.path, seq.fmt, bs, fps=seq.fps, nframes=frames,
+                fovea=fovea_map, layout=seq.layout, **kwargs
             )
-            ffmpeg.decode_bitstream(bs, seq.fmt, rec)
         except ffmpeg.FFmpegError as exc:
             print(f"[compare]   {tag}: FAILED -- {exc}", flush=True)
             continue
+        try:
+            ffmpeg.decode_bitstream(bs, seq.fmt, rec)
+        except ffmpeg.FFmpegError as exc:
+            print(f"[compare]   {tag}: DECODE FAILED -- {exc}", flush=True)
+            continue
         enc_s = time.time() - t0
         m = measure(seq.path, rec, seq.fmt, fps=seq.fps, do_ssim=do_ssim,
-                    do_vmaf=do_vmaf, limit=frames)
-        point = {rc: pt, "bytes": size, "bitrate_mbps": bitrate_mbps(size, frames, seq.fps),
-                 "wall_s": enc_s, **m}
+                    do_vmaf=do_vmaf, limit=frames, fovea=fovea_scoring)
+        point = {eff_rc: pt, "bytes": enc.size,
+                 "bitrate_mbps": bitrate_mbps(enc.size, frames, seq.fps),
+                 "wall_s": enc_s, "cmd": enc.cmdline, **m}
         out["points"].append(point)
         if verbose:
-            print(f"[compare]   {anchor.name} {rc}={pt:<3} {_point_summary(point)}", flush=True)
+            print(f"[compare]   {anchor.name} {eff_rc}={pt:<3} {_point_summary(point)}", flush=True)
         for f in (bs, rec):
             if os.path.exists(f):
                 os.remove(f)
+    if out["points"]:
+        out["cmd"] = out["points"][0]["cmd"]
     return out
 
 
@@ -167,6 +276,7 @@ def run_codec(
     do_vmaf: bool,
     frames: int,
     verbose: bool = True,
+    fovea_scoring: FoveaScoring | None = None,
 ) -> dict:
     ok, why = cli.available()
     if not ok:
@@ -189,13 +299,16 @@ def run_codec(
         enc_s = time.time() - t0
         try:
             m = measure(seq.path, rec, seq.fmt, fps=seq.fps, do_ssim=do_ssim,
-                        do_vmaf=do_vmaf, limit=frames)
+                        do_vmaf=do_vmaf, limit=frames, fovea=fovea_scoring)
         except (EOFError, ValueError) as exc:
             print(f"[compare]   {tag}: decoded output does not match the source geometry: {exc}",
                   flush=True)
             continue
         point = {"qp": qp, "bytes": size, "bitrate_mbps": bitrate_mbps(size, frames, seq.fps),
-                 "wall_s": enc_s, **m}
+                 "wall_s": enc_s,
+                 "cmd": " ".join(shlex.quote(a) for a in
+                                 cpu.wrap(cli.encode_argv(seq.path, seq.fmt, qp, bs))),
+                 **m}
         out["points"].append(point)
         if verbose:
             print(f"[compare]   {cli.name} qp={qp:<3} {_point_summary(point)}", flush=True)
@@ -356,8 +469,27 @@ def main(argv=None) -> int:
     anc.add_argument("--anchor-qp", default=None, help="anchor QP points (constant-QP mode)")
     anc.add_argument("--anchor-crf", default=None, help="anchor CRF points instead of QP")
     anc.add_argument("--preset", default="medium", help="x264/x265 preset")
+    anc.add_argument("--intra-refresh-period", type=int, default=0,
+                     help="refresh sweep length in frames for the *-p-refresh anchors "
+                          "(default 0: one sweep across the clip)")
+    anc.add_argument("--fovea-map", default=None, metavar="SPEC",
+                     help="foveated delta-QP map for the *-p-refresh anchors, as "
+                          "'center=0.25:mid=0.55:dc=-6:dm=0:dp=6' (fractions of a view, "
+                          "then QP deltas). Emulates VK_KHR_video_encode_quantization_map; "
+                          "see nxq/qpmap.py")
 
     an = ap.add_argument_group("analysis")
+    an.add_argument("--foveated-psnr", action="store_true",
+                    help="also report every RD curve as eccentricity-weighted PSNR "
+                         "(foveated_metrics.py) with a centre fixation, so the foveated "
+                         "anchors are compared on the metric they optimise")
+    an.add_argument("--fov-hfov", type=float, default=95.0,
+                    help="horizontal FOV of one view, for --foveated-psnr")
+    an.add_argument("--fov-ppd", type=float, default=None,
+                    help="pixels per degree at the view's optical centre (overrides --fov-hfov)")
+    an.add_argument("--fov-weighting", default="acuity", choices=fov.WEIGHTINGS)
+    an.add_argument("--fov-radius", type=float, default=fov.FOVEA_RADIUS_DEG,
+                    help="fovea disc radius in degrees for the hard region split")
     an.add_argument("--phase1-anchor", default=ffmpeg.PHASE1_ANCHOR)
     an.add_argument("--phase1-band", default="100,400", help="Mbit/s band for the Phase 1 gate")
     an.add_argument("--phase1-tolerance", type=float, default=1.0, help="dB")
@@ -377,6 +509,10 @@ def main(argv=None) -> int:
     caps = ffmpeg.probe()
     if args.probe:
         print(caps.describe())
+        print("anchors:")
+        for name, a in sorted(ffmpeg.ANCHORS.items()):
+            ok, why = ffmpeg.anchor_available(a)
+            print(f"  {name:<15} {'available' if ok else 'UNAVAILABLE -- ' + why}")
         print(f"CPU discipline : {' '.join(cpu.prefix()) or 'DISABLED'} (ffmpeg -threads {cpu.threads()})")
         cli = CodecCLI.from_args(args.codec_cmd, args.codec_enc, args.codec_dec, args.codec_name)
         ok, why = cli.available()
@@ -410,6 +546,20 @@ def main(argv=None) -> int:
         anchor_rc, anchor_points = "qp", parse_points(args.anchor_qp or args.qp)
     qps = parse_points(args.qp)
 
+    try:
+        fovea_map = qpmap.FoveaMap.parse(args.fovea_map)
+    except ValueError as exc:
+        ap.error(f"--fovea-map: {exc}")
+
+    fovea_scoring = None
+    if args.foveated_psnr:
+        view_w = seq.width // 2 if seq.layout == "sbs" else seq.width
+        ppd = args.fov_ppd or fov.ppd_from_fov(view_w, args.fov_hfov)
+        fovea_scoring = FoveaScoring(
+            ppd_center=ppd, layout=seq.layout, weighting=args.fov_weighting,
+            fovea_radius_deg=args.fov_radius, hfov_deg=args.fov_hfov,
+        )
+
     work = args.work or os.path.join(DEFAULT_SCRATCH, "work")
     os.makedirs(work, exist_ok=True)
     workdir = tempfile.mkdtemp(prefix="cmp-", dir=work)
@@ -419,6 +569,12 @@ def main(argv=None) -> int:
     print(f"[compare] source   : {seq.source}", flush=True)
     print(f"[compare] work dir : {workdir}", flush=True)
     print(f"[compare] {caps.describe()}".replace("\n", "\n[compare] "), flush=True)
+    print(f"[compare] fovea map: {fovea_map.describe()}", flush=True)
+    if fovea_scoring:
+        print(f"[compare] foveated PSNR: ppd_center {fovea_scoring.ppd_center:.2f} "
+              f"(hfov {args.fov_hfov:g} deg over a {seq.width // 2 if seq.layout == 'sbs' else seq.width} px view), "
+              f"weighting '{fovea_scoring.weighting}', fovea radius "
+              f"{fovea_scoring.fovea_radius_deg:g} deg, fixation at the view centre", flush=True)
 
     results: dict = {
         "schema": 1,
@@ -431,10 +587,12 @@ def main(argv=None) -> int:
         "machine": {
             "host": platform.node(), "platform": platform.platform(),
             "ffmpeg": caps.version if caps.available else None,
-            "encoders": sorted(n for n in ("libx264", "libx265") if n in caps.encoders),
+            "encoders": [n for n in ffmpeg.ANCHOR_ENCODERS if n in caps.encoders],
             "vmaf": caps.has_vmaf, "cpu_prefix": cpu.prefix(), "ffmpeg_threads": cpu.threads(),
         },
         "codec_key": codec_key,
+        "fovea_map": fovea_map.to_json(),
+        "foveated_scoring": fovea_scoring.to_json() if fovea_scoring else None,
         "codecs": {},
     }
 
@@ -446,19 +604,25 @@ def main(argv=None) -> int:
                       f"(known: {sorted(ffmpeg.ANCHORS)})", flush=True)
                 continue
             anchor = ffmpeg.ANCHORS[name]
-            if args.preset != anchor.preset:
-                anchor = ffmpeg.Anchor(anchor.name, anchor.encoder, anchor.raw_fmt,
-                                       anchor.intra, args.preset)
-            print(f"[compare] anchor {name} ({anchor.encoder}, {anchor_rc} "
-                  f"{anchor_points}) ...", flush=True)
+            over = {}
+            if args.preset != anchor.preset and anchor.backend == "sw":
+                over["preset"] = args.preset
+            if args.intra_refresh_period and anchor.intra_refresh:
+                over["refresh_period"] = args.intra_refresh_period
+            if over:
+                anchor = dataclasses.replace(anchor, **over)
+            print(f"[compare] anchor {name} ({anchor.encoder}, "
+                  f"{ffmpeg.anchor_rc(anchor, anchor_rc)} {anchor_points}) ...", flush=True)
             results["codecs"][name] = run_anchor(
                 anchor, seq, anchor_points, anchor_rc, workdir,
                 do_ssim=not args.no_ssim, do_vmaf=do_vmaf, frames=frames,
+                fovea_map=fovea_map, fovea_scoring=fovea_scoring,
             )
 
         print(f"[compare] codec {codec_key} (qp {qps}) ...", flush=True)
         results["codecs"][codec_key] = run_codec(
             cli, seq, qps, workdir, do_ssim=not args.no_ssim, do_vmaf=do_vmaf, frames=frames,
+            fovea_scoring=fovea_scoring,
         )
     finally:
         if not args.keep_work:
@@ -470,6 +634,9 @@ def main(argv=None) -> int:
     results["bd_rate"] = {"psnr_y": bd_table(results, codec_key, "psnr_y")}
     if not args.no_ssim:
         results["bd_rate"]["ssim_y"] = bd_table(results, codec_key, "ssim_y")
+    if fovea_scoring:
+        for m in ("fov_psnr_y", "psnr_fovea", "psnr_periphery"):
+            results["bd_rate"][m] = bd_table(results, codec_key, m)
 
     band = tuple(float(x) for x in args.phase1_band.split(","))  # type: ignore[assignment]
     results["phase1"] = phase1_gate(
@@ -510,6 +677,21 @@ def _print_summary(results: dict) -> None:
         for key, label in (("bd_rate_error", "BD-rate"), ("bd_psnr_error", "BD-PSNR")):
             if key in bd:
                 print(f"        {label} unavailable: {bd[key]}")
+    for m, label in (("fov_psnr_y", "eccentricity-weighted PSNR-Y"),
+                     ("psnr_fovea", "PSNR-Y inside the fovea disc"),
+                     ("psnr_periphery", "PSNR-Y in the periphery")):
+        table = results.get("bd_rate", {}).get(m)
+        if not table:
+            continue
+        print(f"\n  BD-rate of {ck} on {label} (negative is better):")
+        for anchor, bd in table.items():
+            if "error" in bd:
+                print(f"    vs {anchor:<15} n/a ({bd['error']})")
+                continue
+            rate = f"{bd['bd_rate_pct']:+8.2f} %" if "bd_rate_pct" in bd else "     n/a"
+            psnr = f"{bd['bd_psnr_db']:+6.3f} dB" if "bd_psnr_db" in bd else "   n/a"
+            print(f"    vs {anchor:<15} {rate}   BD-PSNR {psnr}")
+
     p1 = results.get("phase1", {})
     print("\n  Phase 1 gate (PAPER.md 3.11: within 1.0 dB of x264 intra, 100-400 Mbit):")
     if "error" in p1:
