@@ -105,6 +105,8 @@ static void usage() {
         "                       (default off)\n"
         "  --quad-mv on|off     four vectors per tile, one per 32x32\n"
         "                       quadrant, tool bit 25 (default off)\n"
+        "  --sub-intra on|off   one 32x32 quadrant of an inter tile may be\n"
+        "                       intra, tool bit 26 (default off)\n"
         "  --ref-sel 0..2       reference distance inter tiles ask for\n"
         "  --stereo on|off      STEREO inter-view mode on the right eye\n"
         "  --mv-range N         coarse search radius in samples (default 16)\n"
@@ -135,6 +137,7 @@ int main(int argc, char **argv) {
     int inter = 0, eyes = 1, intra_period = 180, ref_sel = 0, stereo = 0;
     int mv_range = 16, skip_thresh = 0, mode_lambda = 0;
     int drift_refresh = 0, drift_gate = 0, near_skip = 0, quad_mv = 0;
+    int subtile_intra = 0;
     double fov_h = 95.0, fov_v = 95.0;
     bool fov_from_cli = false;
     std::string poses_path, skipmap_path;
@@ -210,6 +213,12 @@ int main(int argc, char **argv) {
             if (v == "on") quad_mv = 1;
             else if (v == "off") quad_mv = 0;
             else { std::fprintf(stderr, "--quad-mv: on|off\n"); return 2; }
+        }
+        else if (a == "--sub-intra") {
+            std::string v = val();
+            if (v == "on") subtile_intra = 1;
+            else if (v == "off") subtile_intra = 0;
+            else { std::fprintf(stderr, "--sub-intra: on|off\n"); return 2; }
         }
         else if (a == "--ref-sel") ref_sel = std::atoi(val());
         else if (a == "--mv-range") mv_range = std::atoi(val());
@@ -366,6 +375,7 @@ int main(int argc, char **argv) {
     cfg.drift_gate_q8 = (uint32_t)(drift_gate > 0 ? drift_gate : 0);
     cfg.near_skip = (uint32_t)near_skip;
     cfg.quad_mv = (uint32_t)quad_mv;
+    cfg.subtile_intra = (uint32_t)subtile_intra;
     cfg.ref_sel = (uint32_t)(ref_sel < 0 ? 0 : (ref_sel > 2 ? 2 : ref_sel));
     cfg.mv_range = (uint32_t)(mv_range > 0 ? mv_range : 16);
     cfg.skip_thresh = (uint32_t)(skip_thresh > 0 ? skip_thresh : 0);

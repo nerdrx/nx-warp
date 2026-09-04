@@ -142,6 +142,8 @@ static void fill_tile_info(nxvc_tile_info &ti, const TileParams &tp,
     ti.near_skip = (u8)tp.near_skip;
     ti.near_skip_ac = (u8)tp.near_skip_ac;
     ti.quad_mv = (u8)tp.quad_mv;
+    ti.sub_intra = (u8)tp.sub_intra;
+    ti.sub_intra_quad = (u8)tp.sub_intra_quad;
     for (int p = 0; p < 3; ++p)
         for (int k = 0; k < 3; ++k) ti.corr[p][k] = tp.corr[p][k];
     for (int q = 0; q < 4; ++q) {
@@ -361,6 +363,7 @@ static u64 encoder_tools(const nxvc_encoder *e) {
     if (e->cfg.stereo) t |= NXVC_TOOL_STEREO;
     if (e->cfg.inter && e->cfg.near_skip) t |= NXVC_TOOL_NEAR_SKIP;
     if (e->cfg.inter && e->cfg.quad_mv) t |= NXVC_TOOL_QUAD_MV;
+    if (e->cfg.inter && e->cfg.subtile_intra) t |= NXVC_TOOL_SUBTILE_INTRA;
     t |= NXVC_TOOL_RES_LEVEL;
     return t;
 }
@@ -556,7 +559,8 @@ static void store_ref_tile(TileCoder &tc, const Geometry &g, RefPicture &rp,
 static void predict_tile(TileCoder &tc, const Geometry &g, const RefPicture &rp,
                          const WarpMatrix &wm, int eye, int tx, int ty,
                          int mode, int mv_x, int mv_y, int np_limit = 0,
-                         const i8 (*qmv)[2] = nullptr) {
+                         const i8 (*qmv)[2] = nullptr, int sub_intra = 0,
+                         int sub_intra_quad = 0) {
     const nw::Mode wmode =
         mode_needs_warp(mode) ? nw::kModeWarp : nw::kModeStatic;
     const int np = np_limit > 0 ? np_limit : tc.nplanes;
@@ -595,6 +599,20 @@ static void predict_tile(TileCoder &tc, const Geometry &g, const RefPicture &rp,
                         full_buf[(size_t)y * full + x] =
                             quad_buf[(size_t)y * full + x];
             }
+        }
+        if (sub_intra) {
+            // SYNTAX.md 13.11.  The named quadrant drops the predictor: `W`
+            // becomes the plane's DC offset there, so 13.3's
+            // `pred = clamp(W + planar(M) - dc_offset)` collapses to
+            // `clamp(planar(M))` and the DC plane plus the residual carry the
+            // quadrant exactly as they carry an INTRA tile.  Nothing else in
+            // the tile changes, and no new arithmetic appears.
+            const int qhalf = full / 2;
+            const int x0 = (sub_intra_quad & 1) * qhalf;
+            const int y0 = (sub_intra_quad >> 1) * qhalf;
+            for (int y = y0; y < y0 + qhalf; ++y)
+                for (int x = x0; x < x0 + qhalf; ++x)
+                    full_buf[(size_t)y * full + x] = s.dc_off;
         }
         const int factor = full / s.size;
         if (factor == 1) {
@@ -991,6 +1009,8 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         tp.near_skip = d.near_skip;
         tp.near_skip_ac = d.near_skip_ac;
         tp.quad_mv = d.quad_mv;
+        tp.sub_intra = d.sub_intra;
+        tp.sub_intra_quad = d.sub_intra_quad;
         std::memcpy(tp.corr, d.corr, sizeof(tp.corr));
         std::memcpy(tp.qmv, d.qmv, sizeof(tp.qmv));
         if (d.near_skip) tp.res_level = 0;
@@ -1255,7 +1275,8 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                              cand.mode == NXVC_MODE_STEREO ? cand.disparity
                                                            : cand.mv_x,
                              cand.mode == NXVC_MODE_STEREO ? 0 : cand.mv_y, 0,
-                             cand.quad_mv ? cand.qmv : nullptr);
+                             cand.quad_mv ? cand.qmv : nullptr, cand.sub_intra,
+                             cand.sub_intra_quad);
             }
             if (cand.near_skip) {
                 // The near-skip tile's whole cost: the tile header, the
@@ -1275,8 +1296,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                 }
                 if (dist_out) *dist_out = sse;
                 const double bits =
-                    8.0 * (kTileHeaderBytes + (tc.tp.mv_present ? 2 : 0) +
-                           (cand.quad_mv ? 4 : 0) + near_skip_bytes(tc.tp));
+                    8.0 * (kTileHeaderBytes + tile_field_bytes(tc.tp));
                 return sse + lambda * bits;
             }
             if (cand.mode == NXVC_MODE_WARP_SKIP) {
@@ -1298,7 +1318,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             int active = 1 << tc.tp.nsub_log2;
             if ((size_t)active > tc.units.size()) active = (int)tc.units.size();
             bits += 8 * (kTileHeaderBytes + 4 * active +
-                         (tc.tp.mv_present ? 2 : 0) + (cand.quad_mv ? 4 : 0));
+                         tile_field_bytes(tc.tp));
             const double d = tile_distortion(tc);
             if (dist_out) *dist_out = d;
             return d + lambda * bits;
@@ -1395,8 +1415,41 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                          out.mode,
                          out.mode == NXVC_MODE_STEREO ? out.disparity : out.mv_x,
                          out.mode == NXVC_MODE_STEREO ? 0 : out.mv_y, 0,
-                         out.quad_mv ? out.qmv : nullptr);
+                         out.quad_mv ? out.qmv : nullptr, out.sub_intra,
+                         out.sub_intra_quad);
             fit_near_skip(ns, 1, out.corr);
+        };
+
+        // --- SUBTILE_INTRA (13.11).  One 32x32 quadrant of an inter tile
+        // drops the predictor.  The case is a disocclusion strip: the tile is
+        // mostly well predicted and one quadrant has content that was behind
+        // something a frame ago and that no vector recovers.  The quadrant is
+        // chosen by the predictor's own squared error, which is the quantity
+        // the mode decision would minimise anyway; only that one candidate is
+        // scored, because scoring four would cost four quantisations to
+        // choose between three that the error already ranks.
+        auto worst_quadrant = [&](const TileDecision &cand) -> int {
+            predict_tile(probe, g, refpic, fp.warp[eye], eye, col, row,
+                         cand.mode, cand.mv_x, cand.mv_y, 1,
+                         cand.quad_mv ? cand.qmv : nullptr);
+            const PlaneState &ps = probe.pl[0];
+            const int half = lsz / 2;
+            int best = 0;
+            double worst = -1;
+            for (int q = 0; q < 4; ++q) {
+                const int x0 = (q & 1) * half, y0 = (q >> 1) * half;
+                double sse = 0;
+                for (int y = y0; y < y0 + half; ++y)
+                    for (int x = x0; x < x0 + half; ++x) {
+                        const size_t i = (size_t)y * lsz + x;
+                        const double dd =
+                            (double)ps.samples[i] -
+                            (double)clamp_i32(ps.wpred[i], 0, ps.maxval);
+                        sse += dd * dd;
+                    }
+                if (sse > worst) { worst = sse; best = q; }
+            }
+            return best;
         };
 
         TileDecision intra;
@@ -1413,6 +1466,18 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                 best = best_inter;
             }
             if (d_inter < d_ref) d_ref = d_inter;
+        }
+        if (e->cfg.subtile_intra && !best_inter.skipped) {
+            TileDecision si = best_inter;
+            si.sub_intra = 1;
+            si.sub_intra_quad = worst_quadrant(best_inter);
+            double d_si = 0;
+            const double c_si = score(si, &d_si);
+            if (c_si < best_cost) {
+                best_cost = c_si;
+                best = si;
+            }
+            if (d_si < d_ref) d_ref = d_si;
         }
         // The near-skip candidates: one built on the free WARP_SKIP predictor
         // -- the case the form exists for, a warped tile with a small smooth
@@ -1528,7 +1593,8 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                                      d.mode == NXVC_MODE_STEREO ? d.disparity
                                                                 : d.mv_x,
                                      d.mode == NXVC_MODE_STEREO ? 0 : d.mv_y, 0,
-                                     d.quad_mv ? d.qmv : nullptr);
+                                     d.quad_mv ? d.qmv : nullptr, d.sub_intra,
+                                     d.sub_intra_quad);
                     }
                     if (tc.tp.near_skip) {
                         // 13.9: no coding units, no payload, no lanes.  The
@@ -2363,9 +2429,10 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
                 TileParams tp;
                 unpack_tile_header(w0, w1, tp);
                 if ((w0 >> 3) & 1) return NXVC_ERR_BITSTREAM;  // reserved bit
-                // word1 bits 28-30 are near_skip, near_skip_ac and quad_mv
-                // (syntax v1.5); bit 31 is still reserved and must be zero.
-                if (w1 >> 31) return NXVC_ERR_BITSTREAM;
+                // Word1 has no reserved bits left: 28-31 are near_skip,
+                // near_skip_ac, quad_mv and sub_intra (syntax v1.5).  Each is
+                // gated by its own tool bit below, which is what a stream
+                // that does not use them relies on.
                 if (tp.layer != 0) return NXVC_ERR_UNSUPPORTED;
                 // Annex D D-3: the eye field must agree with the eye the
                 // tile's position in the frame derives.
@@ -2428,6 +2495,11 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
                 if (tp.quad_mv && !(tp.mode == NXVC_MODE_WARP_MV ||
                                     tp.mode == NXVC_MODE_STATIC_MV))
                     return NXVC_ERR_BITSTREAM;
+                if (tp.sub_intra && !(d->si.tools & NXVC_TOOL_SUBTILE_INTRA))
+                    return NXVC_ERR_BITSTREAM;
+                if (tp.sub_intra &&
+                    (tp.mode == NXVC_MODE_INTRA || tp.near_skip))
+                    return NXVC_ERR_BITSTREAM;
                 off = tb.i;
                 if (tp.mv_present) {
                     if (off + 2 > frame_bytes) return NXVC_ERR_TRUNCATED;
@@ -2449,6 +2521,13 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
                         tp.qmv[q][1] = (i8)sign_nibble(buf[off + q] >> 4);
                     }
                     off += 4;
+                }
+                if (tp.sub_intra) {
+                    if (off + 1 > frame_bytes) return NXVC_ERR_TRUNCATED;
+                    if (buf[off] & kSubIntraReservedMask)
+                        return NXVC_ERR_BITSTREAM;
+                    tp.sub_intra_quad = buf[off] & 3;
+                    off += 1;
                 }
                 if (tp.alpha_mode == 1) {
                     if (off + 1 > frame_bytes) return NXVC_ERR_TRUNCATED;
@@ -2507,7 +2586,8 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
                                  tp.mode == NXVC_MODE_STEREO ? tp.disparity
                                                              : tp.mv_x,
                                  tp.mode == NXVC_MODE_STEREO ? 0 : tp.mv_y, 0,
-                                 tp.quad_mv ? tp.qmv : nullptr);
+                                 tp.quad_mv ? tp.qmv : nullptr, tp.sub_intra,
+                                 tp.sub_intra_quad);
                 }
                 if (tp.near_skip) {
                     for (int pl = 0; pl < kNearSkipPlanes; ++pl)

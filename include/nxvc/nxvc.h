@@ -53,7 +53,10 @@ extern "C" {
  *       nine signed bytes instead of an entropy-coded payload) and tool bit
  *       25 QUAD_MV (word1 bit 30: four motion vectors, one per 32x32
  *       quadrant, as signed nibble deltas from the tile vector, over the
- *       tile's own warp corner basis).  See docs/SYNTAX.md 13.9 and 13.10.
+ *       tile's own warp corner basis), and tool bit 26 SUBTILE_INTRA (word1
+ *       bit 31 plus one byte: one 32x32 quadrant of an inter tile drops the
+ *       predictor and is carried by the DC plane and the residual alone).
+ *       See docs/SYNTAX.md 13.9 to 13.11.
  */
 #define NXVC_BITSTREAM_MINOR 5
 
@@ -138,6 +141,7 @@ typedef enum nxvc_tile_mode {
  * tiles are warped ones, which the mode already gates. */
 #define NXVC_TOOL_NEAR_SKIP       (1ull << 24)
 #define NXVC_TOOL_QUAD_MV         (1ull << 25)
+#define NXVC_TOOL_SUBTILE_INTRA   (1ull << 26)
 
 /* Tools this reference decoder implements. */
 #define NXVC_TOOLS_SUPPORTED                                                  \
@@ -147,7 +151,7 @@ typedef enum nxvc_tile_mode {
      NXVC_TOOL_PER_TILE_CHROMA | NXVC_TOOL_YCOCGR | NXVC_TOOL_WM_ID |        \
      NXVC_TOOL_INTRA_DIR | NXVC_TOOL_CTX_V2 | NXVC_TOOL_SIGN_HIDE |           \
      NXVC_TOOL_INTER | NXVC_TOOL_WARP | NXVC_TOOL_STEREO |                    \
-     NXVC_TOOL_NEAR_SKIP | NXVC_TOOL_QUAD_MV)
+     NXVC_TOOL_NEAR_SKIP | NXVC_TOOL_QUAD_MV | NXVC_TOOL_SUBTILE_INTRA)
 
 /* ---------------------------------------------------------------- images */
 /* 8-bit planar image.  plane[0]=Y/R', plane[1]=Co/G', plane[2]=Cg/B',
@@ -237,6 +241,9 @@ typedef struct nxvc_config {
     uint32_t quad_mv;           /* 1 = allow four motion vectors per tile,
                                    one per 32x32 quadrant, as nibble deltas
                                    from the tile vector (tool 25).          */
+    uint32_t subtile_intra;     /* 1 = allow one 32x32 quadrant of an inter
+                                   tile to be predicted intra, for
+                                   disocclusion strips (tool 26).           */
     uint32_t ref_sel;           /* 0..2: reference distance inter tiles ask
                                    for (N-1-ref_sel).  Default 0.           */
     uint32_t mv_range;          /* coarse integer search radius in samples,
@@ -320,6 +327,8 @@ typedef struct nxvc_tile_info {
     int8_t corr[3][3];          /* near_skip: [plane][dc, horiz, vert]      */
     int8_t qmv[4][2];           /* quad_mv: per-quadrant delta, quarter
                                    samples, raster order TL TR BL BR        */
+    uint8_t sub_intra;          /* word1 bit 31: one quadrant is intra      */
+    uint8_t sub_intra_quad;     /* which quadrant, 0..3, raster order       */
 } nxvc_tile_info;
 
 typedef struct nxvc_stream_info {

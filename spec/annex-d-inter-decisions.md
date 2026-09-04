@@ -43,6 +43,7 @@ owning document. D-21 lists the conformance vectors Phase 2 must add.
 | D-23 | The intra refresh may be driven by measured shadow drift; the period becomes a hard age cap. No syntax | — |
 | D-24 | Near-skip: a warped tile whose whole residual is a DC-and-ramps mean field, tool bit 24 | — |
 | D-25 | Four quadrant vectors per tile as signed nibble deltas over the **tile's** corner basis, tool bit 25 | C-15 (part) |
+| D-26 | One 32x32 quadrant of an inter tile may drop the predictor to the plane's DC offset, tool bit 26 | — |
 
 Issues left open on purpose: C-10 and C-30 (hybrid, `[pending HYBRID.md]`),
 C-17 (tool bits 15–19, correctly refused by a v1 decoder), C-19 in full (the
@@ -1055,3 +1056,40 @@ select per sample and in the encoder's search, not in the four bytes. 32x32 is
 the largest subdivision that still lets one delta pattern be searched once for
 the whole tile, which is what keeps the encoder's four-quadrant search the
 price of one.
+
+---
+
+## D-26 — Sub-tile intra is the predictor set to the DC offset
+
+**Decision.** Tool bit 26 `SUBTILE_INTRA`, tile-header word1 bit 31 and one
+following byte. One 32x32 quadrant of an inter tile may be predicted intra.
+`docs/SYNTAX.md` 13.11.
+
+**Why it is not a second prediction path.** "Intra" here is defined as *the
+predictor contributes the plane's `dc_offset` in that quadrant*, which makes
+13.3's `pred = clamp(W + planar(M) - dc_offset)` collapse to
+`clamp(planar(M))` -- the intra reconstruction of 7.3, exactly. So the tool
+adds no reconstruction path, no coding unit, no context and no arithmetic: it
+adds a constant to a select that 13.10 already put in the sample loop. Had it
+been specified as "run the intra predictor over the quadrant", it would have
+needed the directional modes, their mode unit, and a rule for what the
+neighbouring inter quadrants are as intra references -- three things, for the
+same pixels.
+
+**Why one quadrant and not a mask.** A four-bit mask is a tile that is
+partly-intra in an arbitrary shape, and the encoder decision that fills it is
+a segmentation, not a mode decision. The measured case is a disocclusion
+*strip* along one edge of a near-field object, which lands in one quadrant;
+where it lands in two, `INTRA` on the whole tile is close to the right answer
+anyway. One quadrant is also two bits, which is what there was room for.
+
+**Why it excludes `near_skip`.** A near-skip tile has no residual, so its
+intra quadrant would be a flat field at the DC level -- a visible grey patch,
+never the right answer, and a rule that has to be stated somewhere. It is
+stated as a MUST-reject rather than as a convention nobody reads.
+
+**Why a whole byte for two bits.** Word1 bit 31 was its last free bit, so the
+quadrant index has nowhere else to go, and the byte is spent only on tiles
+that actually carry a strip. The other six bits are reserved and MUST be
+zero, which is where a version 2 mask would go if the measurement ever asks
+for one.

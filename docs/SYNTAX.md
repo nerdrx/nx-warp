@@ -158,6 +158,7 @@ interleaved UV.
 | 23 | `FILTER_CATMULL_ROM` | Catmull-Rom interpolation in the warp instead of bilinear. **Not defined for version 1** |
 | 24 | `NEAR_SKIP` | tiles may set `near_skip` (section 13.9) |
 | 25 | `QUAD_MV` | tiles may set `quad_mv` (section 13.10) |
+| 26 | `SUBTILE_INTRA` | tiles may set `sub_intra` (section 13.11) |
 
 Bits 17, 21 and 22 are independent: any subset may be set. `SIGN_HIDE` is
 mutually exclusive with `LOSSLESS` (bit 5) -- hiding a sign spends one level
@@ -175,8 +176,9 @@ MUST refuse a stream that sets either, with a `VERSION` status. Because bit 23
 is refused, **every conforming version 1 stream is bilinear**, in every
 profile, and `profile` selects nothing (section 13.4).
 
-`NEAR_SKIP` and `QUAD_MV` both require `INTER`, because both are per-tile
-bits on modes only `INTER` allows. Bits 26-63 are reserved and must be zero. Capability negotiation is an
+`NEAR_SKIP`, `QUAD_MV` and `SUBTILE_INTRA` all require `INTER`, because all
+three are per-tile bits on modes only `INTER` allows. Bits 27-63 are reserved
+and must be zero. Capability negotiation is an
 intersection: the sender only sets bits the receiver offered.
 
 ---
@@ -444,7 +446,7 @@ Two little-endian u32 words. Bits are listed LSB first.
 | 28 | `near_skip` | the residual is a correction field, not a payload (13.9) |
 | 29 | `near_skip_ac` | that field carries the two ramps as well (13.9) |
 | 30 | `quad_mv` | four quadrant vectors follow the tile vector (13.10) |
-| 31 | reserved | must be 0 |
+| 31 | `sub_intra` | one quadrant drops the predictor (13.11) |
 
 Then, in this order:
 
@@ -452,9 +454,10 @@ Then, in this order:
    * `u16 disparity` if `mode == STEREO`
    * `i8 mv_x, i8 mv_y` otherwise
 2. if `quad_mv`: four bytes of quadrant vector deltas (13.10)
-3. `u8 alpha_value` if `alpha_mode == 1`
-4. if `near_skip`: `3 * (near_skip_ac ? 3 : 1)` correction bytes (13.9)
-5. `payload_len` bytes of rANS payload
+3. if `sub_intra`: one byte, bits 1:0 the quadrant, bits 7:2 zero (13.11)
+4. `u8 alpha_value` if `alpha_mode == 1`
+5. if `near_skip`: `3 * (near_skip_ac ? 3 : 1)` correction bytes (13.9)
+6. `payload_len` bytes of rANS payload
 
 `mv_x` and `mv_y` are the tile's motion vector **itself**, in quarter samples
 (Q.2), range `[-32, +31.75]` samples. They are **not** a delta from the tile's
@@ -502,8 +505,9 @@ must be 0 and **is ignored** by the decoding process.
 `near_skip` requires the `NEAR_SKIP` tool bit, `mode != INTRA`,
 `payload_len == 0`, `res_level == 0` and `alpha_mode != 2`; `near_skip_ac`
 requires `near_skip`. `quad_mv` requires the `QUAD_MV` tool bit and
-`mode == WARP_MV` or `mode == STATIC_MV`. Sections 13.9 and 13.10 say why each
-of those is a constraint rather than a convention.
+`mode == WARP_MV` or `mode == STATIC_MV`. `sub_intra` requires the
+`SUBTILE_INTRA` tool bit, `mode != INTRA` and `near_skip == 0`. Sections 13.9
+to 13.11 say why each of those is a constraint rather than a convention.
 
 `ref_sel` is **authoritative**; the transport's `ref_delta` is an advisory copy
 of it with one extra value, 3, meaning "no temporal reference", which is what
@@ -1838,6 +1842,54 @@ statement about the tile as a whole.
 **What it costs a GPU decoder.** Four bytes of traffic and one extra select
 per sample. No new dependency, no cross-tile state, no extra pass.
 
+### 13.11 Sub-tile intra (tool bit 26)
+
+Where something was occluded a frame ago and is not now, no vector recovers
+it: the samples are not in the reference at any displacement. A rotation-only
+predictor meets this as a strip along a near-field object's edge, and the tile
+containing it is otherwise perfectly predicted. `INTRA` on the whole tile
+throws away three quadrants that did not need it.
+
+Tile-header word1's last free bit becomes:
+
+| bit | field | notes |
+|---|---|---|
+| 31 | `sub_intra` | one 32x32 quadrant of this tile is predicted intra |
+
+It requires tool bit 26 `SUBTILE_INTRA`, `mode != INTRA` -- an intra tile has
+no predictor to drop -- and `near_skip == 0`, because a near-skip tile has no
+residual and the quadrant would then be a flat field.
+
+One byte follows the quadrant deltas: bits 1:0 the quadrant index in raster
+order (top-left, top-right, bottom-left, bottom-right), bits 7:2 reserved and
+MUST be zero. A whole byte carries two bits because word1 has no room left,
+and it is one byte on the tiles that carry a strip and none anywhere else.
+
+**Decoding process.** In the named quadrant, and in every plane, the predictor
+`W` of 13.3 is replaced by that plane's `dc_offset`. Nothing else changes. So
+13.3's
+
+```
+pred = clamp(W + planar(M) - dc_offset, 0, maxval)
+```
+
+collapses in that quadrant to `clamp(planar(M), 0, maxval)`, which is exactly
+the intra reconstruction of 7.3: the DC plane and the residual carry the
+quadrant on their own, with the same coding units, the same contexts and the
+same quantiser the rest of the tile uses. The quadrant boundary is the
+plane's own half extent -- 32 luma samples, 16 chroma samples at 4:2:0 -- and
+is block-aligned at every legal `res_level`.
+
+The tile's mode is unchanged, so `last_mv` and the prediction state follow
+13.5 as if the quadrant were predicted normally. A concealed tile has no
+`sub_intra`, because a concealed tile has no header; concealment is the
+`WARP_SKIP` predictor over the whole tile, as 13.6 says.
+
+**What it costs a GPU decoder.** One byte of traffic and one select per
+sample, in the same place 13.10's select already is. There is no second
+prediction path: "intra" here means "the predictor contributes the DC offset",
+which is a constant.
+
 ---
 
 ## 14. Phase 2 conformance
@@ -1855,11 +1907,12 @@ decoder implements. It must:
   stream without the `INTER` tool bit;
 * reject tool bits 14 and 23 with a `VERSION` status, and the `WARP` bit
   without `INTER` with a `BITSTREAM` one;
-* reject `near_skip` or `quad_mv` without its tool bit, `near_skip_ac`
-  without `near_skip`, `near_skip` on an `INTRA` tile or with a nonzero
-  `payload_len`, `res_level` or `alpha_mode == 2`, `quad_mv` on any mode other
-  than `WARP_MV` and `STATIC_MV`, and a nonzero word1 bit 31;
-* reproduce every `decoded_md5` of the `v45`-`v60` vectors.
+* reject `near_skip`, `quad_mv` or `sub_intra` without its tool bit,
+  `near_skip_ac` without `near_skip`, `near_skip` on an `INTRA` tile or with a
+  nonzero `payload_len`, `res_level` or `alpha_mode == 2`, `quad_mv` on any
+  mode other than `WARP_MV` and `STATIC_MV`, `sub_intra` on an `INTRA` tile or
+  together with `near_skip`, and a sub-intra byte with bits 7:2 set;
+* reproduce every `decoded_md5` of the `v45`-`v61` vectors.
 
 `v45`-`v56` are the twelve entries Annex D D-21 asks for: an identity warp with
 a repeated picture (every tile `WARP_SKIP`, a bit-exact copy), a warped
@@ -1877,15 +1930,16 @@ equals a shifted tile" -- the property is asserted directly, in
 the bitstream and the reconstruction it holds for. A digest cannot express
 "changing this field must not change the output"; an assertion can.
 
-`v57`-`v60` are the syntax v1.5 additions: a near-skip stream at a coarse
+`v57`-`v61` are the syntax v1.5 additions: a near-skip stream at a coarse
 quantiser on slowly drifting content, a quadrant-vector stream on an object
 moving against a pan, near-skip on 4:2:0 (where `nb` is 4 and the ramp shift
-differs), and one stream with all three tools of the inter-efficiency package
-on at once. Each of the three tools is behind its own bit, so the same
-encoder with the bits off reproduces `v45`-`v56` byte for byte -- which is the
-compatibility claim, stated as a test rather than as a promise.
+differs), one stream with the drift refresh and both of those on at once, and
+a sub-tile-intra stream on fast object motion. Each tool is behind its own
+bit, so the same encoder with the bits off reproduces `v45`-`v56` byte for
+byte -- which is the compatibility claim, stated as a test rather than as a
+promise.
 
-`r18`-`r33` are the rejection vectors, and they matter more than the positive
+`r18`-`r34` are the rejection vectors, and they matter more than the positive
 ones: sections 3 and 4 impose roughly forty MUST-reject conditions, and a
 decoder that accepted every malformed stream would otherwise pass the suite
 completely.

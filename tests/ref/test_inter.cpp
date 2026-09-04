@@ -137,6 +137,7 @@ struct Opts {
     uint32_t quad_mv = 0;
     uint32_t drift_refresh = 0;
     uint32_t drift_gate_q8 = 0;
+    uint32_t subtile_intra = 0;
 };
 
 static Run run(const Opts &o) {
@@ -156,6 +157,7 @@ static Run run(const Opts &o) {
     cfg.quad_mv = o.quad_mv;
     cfg.drift_refresh = o.drift_refresh;
     cfg.drift_gate_q8 = o.drift_gate_q8;
+    cfg.subtile_intra = o.subtile_intra;
     cfg.custom_tables = 0;   // keeps the test fast; the path is table-agnostic
 
     nxvc_status st;
@@ -674,7 +676,7 @@ int main(int argc, char **argv) {
         if (r.ok)
             for (const auto &fr : r.dec_tiles)
                 for (const auto &t : fr)
-                    CHECK(!t.near_skip && !t.quad_mv,
+                    CHECK(!t.near_skip && !t.quad_mv && !t.sub_intra,
                           "a v1.5 per-tile bit appeared with its tool off");
     }
 
@@ -748,6 +750,38 @@ int main(int argc, char **argv) {
                   worst);
             std::printf("  drift refresh: longest gap without INTRA %d frames"
                         " (cap 6)\n", worst);
+        }
+    }
+
+    // --------------------------------------------------------------- 17
+    // SUBTILE_INTRA (SYNTAX.md 13.11).  A fast disc against a pan is the
+    // disocclusion case: the samples behind it a frame ago are not in the
+    // reference at any displacement, and one quadrant of the tile containing
+    // its edge wants intra while the other three do not.
+    {
+        Opts o;
+        o.frames = 8;
+        o.qp = 24;
+        o.yaw_per_frame = 1.0;
+        o.pan_per_frame = 2.5;
+        o.obj_speed = 6;
+        o.subtile_intra = 1;
+        Run r = run(o);
+        CHECK(r.ok, "sub_intra: %s", r.err.c_str());
+        if (r.ok) {
+            int n = 0;
+            for (const auto &fr : r.dec_tiles)
+                for (const auto &t : fr)
+                    if (t.sub_intra) {
+                        ++n;
+                        CHECK(t.mode != NXVC_MODE_INTRA,
+                              "sub_intra on an INTRA tile");
+                        CHECK(!t.near_skip, "sub_intra with near_skip");
+                        CHECK(t.sub_intra_quad < 4, "sub_intra_quad %u",
+                              t.sub_intra_quad);
+                    }
+            CHECK(n > 0, "no sub_intra tile was chosen on object motion");
+            std::printf("  sub_intra: %d tiles\n", n);
         }
     }
 

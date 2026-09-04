@@ -333,27 +333,29 @@ struct InterSpec {
     int near_skip;          // tool bit 24
     int quad_mv;            // tool bit 25
     int drift_refresh;      // encoder-side refresh scheme (changes no syntax)
+    int sub_intra;          // tool bit 26
 };
 
 static const InterSpec kInterVectors[] = {
-    // name                     fixes                        w    h  ey 444 qp fr st per rs   yaw   pan obj disp salt  ns qmv dr
-    {"v45_inter_identity",      "inter/identity",           128, 128, 1, 1, 24, 4, 0, 999, 0,  0.0,  0.0, 0,  0, 0, 0, 0, 0},
-    {"v46_inter_warp_mv",       "inter/integer_mv",         128, 128, 1, 1, 26, 5, 0, 999, 0,  0.7,  2.0, 3,  0, 0, 0, 0, 0},
-    {"v47_inter_static_mv",     "inter/static_mv",          128, 128, 1, 1, 26, 4, 0, 999, 0, 12.0,  0.0, 0,  0, 0, 0, 0, 0},
-    {"v48_inter_warp_sweep",    "inter/warp_sweep",         128, 128, 1, 1, 28, 6, 0, 999, 0,  4.5,  6.0, 2,  0, 0, 0, 0, 0},
-    {"v49_inter_warp_border",   "inter/warp_border",        128,  64, 1, 1, 28, 5, 0, 999, 0,  9.0, 14.0, 5,  0, 0, 0, 0, 0},
-    {"v50_inter_skip_state",    "inter/skip",               128, 128, 1, 1, 22, 4, 0, 999, 0,  0.2,  0.5, 1,  0, 0, 0, 0, 0},
-    {"v51_inter_ref_sel1",      "inter/ref_sel",            128, 128, 1, 1, 26, 6, 0, 999, 1,  0.5,  1.0, 2,  0, 0, 0, 0, 0},
-    {"v52_inter_ref_sel2",      "inter/ref_sel",            128, 128, 1, 1, 26, 7, 0, 999, 2,  0.5,  1.0, 2,  0, 0, 0, 0, 0},
-    {"v53_inter_stereo",        "inter/stereo",             128, 128, 2, 1, 24, 4, 1, 999, 0,  0.0,  0.0, 0, 11, 1, 0, 0, 0},
-    {"v54_inter_stereo_static", "inter/stereo_static_equiv",128, 128, 2, 1, 24, 4, 0, 999, 0,  0.0,  0.0, 0, 11, 1, 0, 0, 0},
-    {"v55_inter_420",           "inter/warp_sweep (4:2:0)", 128, 128, 1, 0, 26, 5, 0, 999, 0,  1.5,  3.0, 3,  0, 0, 0, 0, 0},
-    {"v56_inter_refresh",       "inter/skip (refresh)",     128, 128, 1, 1, 26, 8, 0,   4, 0,  0.4,  1.0, 2,  0, 0, 0, 0, 0},
+    // name                     fixes                        w    h  ey 444 qp fr st per rs   yaw   pan obj disp salt  ns qmv dr si
+    {"v45_inter_identity",      "inter/identity",           128, 128, 1, 1, 24, 4, 0, 999, 0,  0.0,  0.0, 0,  0, 0, 0, 0, 0, 0},
+    {"v46_inter_warp_mv",       "inter/integer_mv",         128, 128, 1, 1, 26, 5, 0, 999, 0,  0.7,  2.0, 3,  0, 0, 0, 0, 0, 0},
+    {"v47_inter_static_mv",     "inter/static_mv",          128, 128, 1, 1, 26, 4, 0, 999, 0, 12.0,  0.0, 0,  0, 0, 0, 0, 0, 0},
+    {"v48_inter_warp_sweep",    "inter/warp_sweep",         128, 128, 1, 1, 28, 6, 0, 999, 0,  4.5,  6.0, 2,  0, 0, 0, 0, 0, 0},
+    {"v49_inter_warp_border",   "inter/warp_border",        128,  64, 1, 1, 28, 5, 0, 999, 0,  9.0, 14.0, 5,  0, 0, 0, 0, 0, 0},
+    {"v50_inter_skip_state",    "inter/skip",               128, 128, 1, 1, 22, 4, 0, 999, 0,  0.2,  0.5, 1,  0, 0, 0, 0, 0, 0},
+    {"v51_inter_ref_sel1",      "inter/ref_sel",            128, 128, 1, 1, 26, 6, 0, 999, 1,  0.5,  1.0, 2,  0, 0, 0, 0, 0, 0},
+    {"v52_inter_ref_sel2",      "inter/ref_sel",            128, 128, 1, 1, 26, 7, 0, 999, 2,  0.5,  1.0, 2,  0, 0, 0, 0, 0, 0},
+    {"v53_inter_stereo",        "inter/stereo",             128, 128, 2, 1, 24, 4, 1, 999, 0,  0.0,  0.0, 0, 11, 1, 0, 0, 0, 0},
+    {"v54_inter_stereo_static", "inter/stereo_static_equiv",128, 128, 2, 1, 24, 4, 0, 999, 0,  0.0,  0.0, 0, 11, 1, 0, 0, 0, 0},
+    {"v55_inter_420",           "inter/warp_sweep (4:2:0)", 128, 128, 1, 0, 26, 5, 0, 999, 0,  1.5,  3.0, 3,  0, 0, 0, 0, 0, 0},
+    {"v56_inter_refresh",       "inter/skip (refresh)",     128, 128, 1, 1, 26, 8, 0,   4, 0,  0.4,  1.0, 2,  0, 0, 0, 0, 0, 0},
     // --- syntax v1.5, the inter-efficiency package.  SYNTAX.md 13.8 to 13.10.
-    {"v57_near_skip",           "13.9 near-skip DC form",   128, 128, 1, 1, 30, 6, 0, 999, 0,  0.3,  0.6, 1,  0, 0, 1, 0, 0},
-    {"v58_quad_mv",             "13.10 quadrant vectors",   128, 128, 1, 1, 26, 6, 0, 999, 0,  1.1,  2.5, 4,  0, 0, 0, 1, 0},
-    {"v59_near_skip_420",       "13.9 near-skip, 4:2:0",    128, 128, 1, 0, 30, 6, 0, 999, 0,  0.3,  0.6, 1,  0, 0, 1, 0, 0},
-    {"v60_inter_eff_all",       "13.8 + 13.9 + 13.10",      128, 128, 1, 1, 28, 8, 0,  16, 0,  0.8,  1.5, 3,  0, 0, 1, 1, 1},
+    {"v57_near_skip",           "13.9 near-skip DC form",   128, 128, 1, 1, 30, 6, 0, 999, 0,  0.3,  0.6, 1,  0, 0, 1, 0, 0, 0},
+    {"v58_quad_mv",             "13.10 quadrant vectors",   128, 128, 1, 1, 26, 6, 0, 999, 0,  1.1,  2.5, 4,  0, 0, 0, 1, 0, 0},
+    {"v59_near_skip_420",       "13.9 near-skip, 4:2:0",    128, 128, 1, 0, 30, 6, 0, 999, 0,  0.3,  0.6, 1,  0, 0, 1, 0, 0, 0},
+    {"v60_inter_eff_all",       "13.8 + 13.9 + 13.10",      128, 128, 1, 1, 28, 8, 0,  16, 0,  0.8,  1.5, 3,  0, 0, 1, 1, 1, 0},
+    {"v61_sub_intra",           "13.11 sub-tile intra",     128, 128, 1, 1, 26, 6, 0, 999, 0,  1.1,  2.5, 6,  0, 0, 0, 0, 0, 1},
 };
 static const int kNumInterVectors =
     (int)(sizeof(kInterVectors) / sizeof(kInterVectors[0]));
@@ -439,6 +441,7 @@ static Result build_inter(const InterSpec &v) {
     cfg.near_skip = (uint32_t)v.near_skip;
     cfg.quad_mv = (uint32_t)v.quad_mv;
     cfg.drift_refresh = (uint32_t)v.drift_refresh;
+    cfg.subtile_intra = (uint32_t)v.sub_intra;
     cfg.custom_tables = 0;
 
     nxvc_status st;
@@ -631,6 +634,7 @@ static const InterReject kInterRejects[] = {
     {"r31_quad_mv_no_tool",    "word1 bit 30 without tool bit 25",         NXVC_ERR_BITSTREAM, 0},
     {"r32_near_ac_without_ns", "near_skip_ac without near_skip",           NXVC_ERR_BITSTREAM, 0},
     {"r33_near_skip_on_intra", "near_skip on an INTRA tile",               NXVC_ERR_BITSTREAM, 0},
+    {"r34_sub_intra_no_tool",  "word1 bit 31 without tool bit 26",         NXVC_ERR_BITSTREAM, 0},
 };
 static const int kNumInterRejects =
     (int)(sizeof(kInterRejects) / sizeof(kInterRejects[0]));
@@ -732,7 +736,8 @@ static bool make_inter_reject(int idx, const std::vector<uint8_t> &base,
         case 12:
         case 13:
         case 14:
-        case 15: {
+        case 15:
+        case 16: {
             if (!find_tile(b, f0, NXVC_MODE_INTRA, -1, &hdr, &opt)) {
                 *why = "no INTRA tile in frame 0"; return false;
             }
@@ -744,6 +749,7 @@ static bool make_inter_reject(int idx, const std::vector<uint8_t> &base,
                 b[32 + 3] |= 0x01;            // tool bit 24 NEAR_SKIP
                 patch_w1(hdr, 0, 1u << 28);   // ... on an INTRA tile
             }
+            if (idx == 16) patch_w1(hdr, 0, 1u << 31);
             break;
         }
         default: break;

@@ -151,6 +151,8 @@ struct TileParams {
     int near_skip = 0;      // word1 bit 28: the whole residual is `corr`
     int near_skip_ac = 0;   // word1 bit 29: `corr` carries the two ramps too
     int quad_mv = 0;        // word1 bit 30: `qmv` refines the tile vector
+    int sub_intra = 0;      // word1 bit 31: one quadrant drops the predictor
+    int sub_intra_quad = 0; // which quadrant, 0..3, raster order
     i8 corr[3][3] = {};     // [plane][0]=dc, [1]=horizontal, [2]=vertical
     i8 qmv[4][2] = {};      // [quadrant][x,y], quarter samples, TL TR BL BR
 };
@@ -162,6 +164,12 @@ constexpr int kNearSkipPlanes = 3;
 static inline int near_skip_bytes(const TileParams &t) {
     return t.near_skip ? kNearSkipPlanes * (t.near_skip_ac ? 3 : 1) : 0;
 }
+
+// SYNTAX.md 13.11: the sub-intra byte, bits 1:0 the quadrant and bits 7:2
+// reserved.  A whole byte for two bits is what word1 has room for -- bit 31
+// was its last free bit -- and it is one byte on the tiles that carry a
+// disocclusion strip and none anywhere else.
+constexpr int kSubIntraReservedMask = 0xfc;
 
 // Signed nibble, two's complement, -8..+7.  The quad_mv deltas are packed two
 // to a byte and this is the only place they are unpacked.
@@ -195,18 +203,20 @@ static void pack_tile_header(BW &bw, const TileParams &t) {
     w1 |= ((u32)t.near_skip & 1) << 28;
     w1 |= ((u32)t.near_skip_ac & 1) << 29;
     w1 |= ((u32)t.quad_mv & 1) << 30;
+    w1 |= ((u32)t.sub_intra & 1) << 31;
     bw.u32v(w0);
     bw.u32v(w1);
 }
 
 // The optional fields that follow the two header words, in the order
-// SYNTAX.md 4.1 lists them: the vector, the quadrant deltas, the constant
-// alpha value, the near-skip correction.  One function writes them and one
+// SYNTAX.md 4.1 lists them: the vector, the quadrant deltas, the sub-intra
+// quadrant, the constant alpha value, the near-skip correction.  One function writes them and one
 // counts them, so a field can never be written in an order the size does not
 // account for.
 static int tile_field_bytes(const TileParams &t) {
     return (t.mv_present ? 2 : 0) + (t.quad_mv ? 4 : 0) +
-           (t.alpha_mode == 1 ? 1 : 0) + near_skip_bytes(t);
+           (t.sub_intra ? 1 : 0) + (t.alpha_mode == 1 ? 1 : 0) +
+           near_skip_bytes(t);
 }
 
 static void emit_tile_fields(BW &bw, const TileParams &t) {
@@ -222,6 +232,7 @@ static void emit_tile_fields(BW &bw, const TileParams &t) {
         for (int q = 0; q < 4; ++q)
             bw.u8v((u8)(((u32)t.qmv[q][0] & 0xfu) |
                         (((u32)t.qmv[q][1] & 0xfu) << 4)));
+    if (t.sub_intra) bw.u8v((u8)(t.sub_intra_quad & 3));
     if (t.alpha_mode == 1) bw.u8v((u8)t.alpha_value);
     if (t.near_skip) {
         const int n = t.near_skip_ac ? 3 : 1;
@@ -251,6 +262,7 @@ static void unpack_tile_header(u32 w0, u32 w1, TileParams &t) {
     t.near_skip = (w1 >> 28) & 1;
     t.near_skip_ac = (w1 >> 29) & 1;
     t.quad_mv = (w1 >> 30) & 1;
+    t.sub_intra = (w1 >> 31) & 1;
 }
 
 // ------------------------------------------------------------- tile coding
@@ -1271,6 +1283,7 @@ struct TileDecision {
     int disparity = 0;
     int skipped = 0;
     int near_skip = 0, near_skip_ac = 0, quad_mv = 0;
+    int sub_intra = 0, sub_intra_quad = 0;
     i8 corr[3][3] = {};
     i8 qmv[4][2] = {};
 };
