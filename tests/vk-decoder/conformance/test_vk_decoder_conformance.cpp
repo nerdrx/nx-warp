@@ -275,6 +275,28 @@ bool read_file(const std::string &path, std::vector<uint8_t> &out) {
     return ok;
 }
 
+const char *vkd_status_token(nxvc_vkd_status st);
+
+// The tool bits this Phase 1 decoder implements.  docs/SYNTAX.md 12: a
+// Phase 1 decoder "rejects ... any tool bit outside the supported set" with a
+// VERSION status, and tests/vectors now also holds the Phase 2 inter vectors,
+// which every bit of that set refuses on purpose.  Those are counted as skips
+// rather than failures -- but only when the stream's own tool mask says so and
+// only when the decoder refuses it with exactly VERSION, so a regression that
+// starts refusing a Phase 1 vector still fails.
+constexpr uint64_t kPhase1Tools =
+    (1ull << 0) | (1ull << 1) | (1ull << 2) | (1ull << 3) | (1ull << 4) |
+    (1ull << 5) | (1ull << 6) | (1ull << 7) | (1ull << 8) | (1ull << 9) |
+    (1ull << 17) | (1ull << 20) | (1ull << 21) | (1ull << 22);
+
+// docs/SYNTAX.md 11: `tools` is a u64 at byte 32 of the 64-byte stream header.
+bool stream_needs_phase2(const std::vector<uint8_t> &s, uint64_t &tools) {
+    tools = 0;
+    if (s.size() < 40) return false;
+    for (int i = 0; i < 8; ++i) tools |= (uint64_t)s[32 + i] << (8 * i);
+    return (tools & ~kPhase1Tools) != 0;
+}
+
 void run_vectors() {
     std::vector<ManifestRow> rows;
     if (!read_manifest(rows)) {
@@ -300,6 +322,43 @@ void run_vectors() {
             std::printf("FAIL %s: vector file md5 %s, manifest says %s\n",
                         r.name.c_str(), sm.c_str(), r.stream_md5.c_str());
             ++g_fail;
+            continue;
+        }
+        uint64_t tools = 0;
+        if (stream_needs_phase2(stream, tools)) {
+            // Must be refused, and refused with VERSION: "the tools mask is
+            // not something this decoder speaks".
+            nxvc_vkd_create_info ci;
+            nxvc_vk_decoder_create_info_default(&ci);
+            ci.device_name = device_filter();
+            nxvc_vk_decoder *dec = nullptr;
+            nxvc_vkd_status cst = nxvc_vk_decoder_create(&ci, &dec);
+            if (cst != NXVC_VKD_OK) {
+                nxvc_vk_decoder_destroy(dec);
+                ++g_skipped;
+                continue;
+            }
+            size_t consumed = 0;
+            nxvc_vkd_status st = nxvc_vk_decoder_parse_stream_header(
+                dec, stream.data(), stream.size(), &consumed);
+            nxvc_vk_decoder_destroy(dec);
+            // VERSION for the tool mask, or UNSUPPORTED when a Phase 1
+            // check fires first (a stereo vector carries eyes == 2, which
+            // docs/SYNTAX.md 12 says to refuse as UNSUPPORTED).  Anything
+            // else, including a successful parse, is a bug.
+            if (st != NXVC_VKD_ERR_VERSION && st != NXVC_VKD_ERR_UNSUPPORTED) {
+                std::printf("FAIL %s: Phase 2 tools 0x%llx must be refused, "
+                            "got %s\n",
+                            r.name.c_str(), (unsigned long long)tools,
+                            vkd_status_token(st));
+                ++g_fail;
+                continue;
+            }
+            if (g_verbose)
+                std::printf("skip %s: Phase 2 tools 0x%llx, correctly "
+                            "refused\n",
+                            r.name.c_str(), (unsigned long long)tools);
+            ++g_skipped;
             continue;
         }
         check_stream(r.name.c_str(), stream, r.decoded_md5, NXVC_VKD_OUT_AUTO);
@@ -350,6 +409,15 @@ void run_rejects() {
             ++g_fail;
             continue;
         }
+        // A Phase 2 rejection vector may be malformed for a reason inside
+        // the inter syntax, which a Phase 1 decoder never gets far enough to
+        // see: it refuses the stream at the tool mask, earlier and with a
+        // different but equally correct status.  Such a vector still has to
+        // be REFUSED -- that is checked below either way -- but the exact
+        // named status is not this decoder's to reproduce until the inter
+        // path lands.
+        uint64_t tools = 0;
+        const bool phase2 = stream_needs_phase2(stream, tools);
         nxvc_vkd_create_info ci;
         nxvc_vk_decoder_create_info_default(&ci);
         ci.device_name = device_filter();
@@ -367,9 +435,21 @@ void run_rejects() {
             st = nxvc_vk_decode_frame(dec, stream.data() + consumed,
                                       stream.size() - consumed, &consumed);
         nxvc_vk_decoder_destroy(dec);
+        const bool match = std::strcmp(vkd_status_token(st), want) == 0;
+        if (!match && phase2 &&
+            (st == NXVC_VKD_ERR_VERSION || st == NXVC_VKD_ERR_UNSUPPORTED)) {
+            // Refused, just earlier than the manifest describes.
+            if (g_verbose)
+                std::printf("skip %s: Phase 2 tools 0x%llx, refused with %s "
+                            "at the tool mask before the manifest's %s\n",
+                            name, (unsigned long long)tools,
+                            vkd_status_token(st), want);
+            ++g_skipped;
+            continue;
+        }
         ++n;
         ++g_checked;
-        if (std::strcmp(vkd_status_token(st), want) != 0) {
+        if (!match) {
             std::printf("FAIL %s: refused with %s, manifest says %s\n", name,
                         vkd_status_token(st), want);
             ++g_fail;
@@ -390,6 +470,13 @@ struct Case {
     int qp_pattern;
     int frames;
     int wm_id = 0;    // per-tile weighting-matrix override, 0 = frame's
+    // [v3] the three v2 intra tools.  -1 means "whatever nxvc_config_default
+    // chose", which is all three on; 0 and 1 pin them, so a case can walk the
+    // combinations and prove the tools are additive.
+    int intra_dir = -1;
+    int dir_layer = -1;
+    int ctx_v2 = -1;
+    int sign_hide = -1;
 };
 
 bool encode_case(const Case &c, std::vector<uint8_t> &stream,
@@ -411,6 +498,10 @@ bool encode_case(const Case &c, std::vector<uint8_t> &stream,
         c.ct ? (uint32_t)NXVC_CS_RGB : (uint32_t)NXVC_CS_YCBCR_709_LIMITED;
     cfg.quant_matrix = (uint32_t)c.matrix;
     cfg.wm_id = (uint32_t)c.wm_id;
+    if (c.intra_dir >= 0) cfg.intra_dir = (uint32_t)c.intra_dir;
+    if (c.dir_layer >= 0) cfg.intra_dir_layer = (uint32_t)c.dir_layer;
+    if (c.ctx_v2 >= 0) cfg.ctx_v2 = (uint32_t)c.ctx_v2;
+    if (c.sign_hide >= 0) cfg.sign_hide = (uint32_t)c.sign_hide;
 
     nxvc_status st;
     nxvc_encoder *e = nxvc_encoder_create(&cfg, &st);
@@ -520,6 +611,40 @@ std::vector<Case> synthetic_cases(bool quick) {
                  0, 0, 1});
     v.push_back({"syn_multiframe", 128, 128, 0, 1, 30, 0, 0, 0, 3, 0, 0, 0, 1,
                  0, 0, 3});
+
+    // [v3] The three v2 intra tools are on by default, so every case above
+    // already exercises them.  These walk the combinations the other way --
+    // each tool alone and all three off -- so the "additive, and off unless
+    // the bit is set" claim of docs/SYNTAX.md 12 is checked on synthetic
+    // content as well as on the committed vectors.
+    auto v3 = [&](const char *name, int c444, int qp, int dir, int layer,
+                  int ctx, int sdh, int res_pat = 0, int tsk = 0) {
+        Case c{name, 192, 128, c444, 1, qp, 0, 0, tsk, 3, 0, 0, 0, res_pat,
+               0,    0,   1};
+        c.intra_dir = dir;
+        c.dir_layer = layer;
+        c.ctx_v2 = ctx;
+        c.sign_hide = sdh;
+        v.push_back(c);
+    };
+    v3("syn_v1tools_420", 0, 24, 0, 0, 0, 0);
+    v3("syn_v1tools_444", 1, 24, 0, 0, 0, 0);
+    v3("syn_dir_only_420", 0, 24, 1, 0, 0, 0);
+    v3("syn_dir_only_444", 1, 16, 1, 0, 0, 0);
+    v3("syn_ctxv2_only_420", 0, 24, 0, 0, 1, 0);
+    v3("syn_sdh_only_420", 0, 24, 0, 0, 0, 1);
+    v3("syn_dir_layer_420", 0, 24, 1, 1, 0, 0);
+    v3("syn_dir_layer_ctxv2_444", 1, 24, 1, 1, 1, 1);
+    if (!quick) {
+        // The wavefront meeting the other per-tile shape knobs: cycling
+        // res_level (4x4 and 2x2 block planes as well as 8x8) and transform
+        // skip, whose residual path skips the transform but not the
+        // prediction.
+        v3("syn_dir_res_cycle_420", 0, 20, 1, 0, 1, 1, 1, 0);
+        v3("syn_dir_res_cycle_444", 1, 20, 1, 0, 1, 1, 1, 0);
+        v3("syn_dir_tskip_420", 0, 16, 1, 0, 1, 0, 0, 1);
+        v3("syn_dir_layer_tskip_444", 1, 16, 1, 1, 1, 0, 0, 1);
+    }
     return v;
 }
 
@@ -608,6 +733,232 @@ int run_bench_qp(int iters, int qp) {
     return 0;
 }
 
+// ------------------------------------------------ [v3] bench helpers
+// One decoder over one stream, best-of-N per-pass timings.
+struct BenchRun {
+    double passA = 0, passB = 0, gpu = 0, wall = 0;
+    uint64_t frameBytes = 0, payloadBytes = 0, coefBytes = 0;
+    uint32_t tiles = 0;
+    bool ok = false;
+    bool skipped = false;
+};
+
+BenchRun time_stream(const std::vector<uint8_t> &stream, int iters,
+                     uint32_t dirSched, uint32_t tileSort) {
+    BenchRun r;
+    nxvc_vkd_create_info ci;
+    nxvc_vk_decoder_create_info_default(&ci);
+    ci.device_name = device_filter();
+    nxvc_vk_decoder *dec = nullptr;
+    if (nxvc_vk_decoder_create(&ci, &dec) != NXVC_VKD_OK) {
+        nxvc_vk_decoder_destroy(dec);
+        r.skipped = true;
+        return r;
+    }
+    nxvc_vk_decoder_set_dir_sched(dec, dirSched);
+    nxvc_vk_decoder_set_tile_sort(dec, tileSort);
+    size_t consumed = 0;
+    if (nxvc_vk_decoder_parse_stream_header(dec, stream.data(), stream.size(),
+                                            &consumed) != NXVC_VKD_OK) {
+        std::printf("bench: %s\n", nxvc_vk_decoder_last_error(dec));
+        nxvc_vk_decoder_destroy(dec);
+        return r;
+    }
+    const uint8_t *frame = stream.data() + consumed;
+    const size_t flen = stream.size() - consumed;
+    double bA = 1e9, bB = 1e9, bG = 1e9, bT = 1e9;
+    nxvc_vkd_stats st{};
+    for (int i = 0; i < iters; ++i) {
+        size_t c2 = 0;
+        if (nxvc_vk_decode_frame(dec, frame, flen, &c2) != NXVC_VKD_OK) {
+            std::printf("bench: %s\n", nxvc_vk_decoder_last_error(dec));
+            nxvc_vk_decoder_destroy(dec);
+            return r;
+        }
+        nxvc_vk_decoder_stats(dec, &st);
+        bA = std::min(bA, st.pass_a_ms);
+        bB = std::min(bB, st.pass_b_ms);
+        bG = std::min(bG, st.gpu_ms);
+        bT = std::min(bT, st.total_ms);
+    }
+    r.passA = bA; r.passB = bB; r.gpu = bG; r.wall = bT;
+    r.frameBytes = st.frame_bytes;
+    r.payloadBytes = st.payload_bytes;
+    r.coefBytes = st.coef_bytes;
+    r.tiles = st.tiles;
+    r.ok = true;
+    nxvc_vk_decoder_destroy(dec);
+    return r;
+}
+
+// The 2048-tile shape the headset streams, as one 4:2:0 frame.
+Case bench_case(int qp, int intra_dir, int res_pattern, int tskip) {
+    Case c{"bench", 2048, 4096, 0, 1, qp, 0, 0, tskip, 3, 0, 0, 0,
+           res_pattern, 0, 0, 1};
+    c.intra_dir = intra_dir;
+    return c;
+}
+
+// docs/SYNTAX.md 7.6: with the above-right dependency the independent set is
+// 2*by + bx, so an nb x nb block plane takes 3*nb - 2 steps; without it, the
+// anti-diagonal's 2*nb - 1.  The sub-tile restriction caps nb at 4.  One
+// barrier per step, plus the 3 the DC-plane path already pays per plane.
+int wavefront_steps(int sched, int nb) {
+    int n = (sched & 2) ? std::min(nb, 4) : nb;
+    return (sched & 1) ? 2 * n - 1 : 3 * n - 2;
+}
+// Mean occupancy during the prediction step: nb*nb blocks spread over S
+// steps at 4 threads each, against the workgroup's 256.  SYNTAX.md 7.6's
+// 4.5 % is this at nb == 8, S == 22.
+double wavefront_occupancy_pct(int sched, int nb) {
+    return 100.0 * (double)(nb * nb) /
+           (64.0 * (double)wavefront_steps(sched, nb));
+}
+
+// Barriers reconstruct.comp actually executes for one tile, counted off the
+// kernel rather than off the idealized schedule.  Per plane: one after the DC
+// dequantize, two more for the second-level IDCT when nb == 8, one after the
+// block means, two for the transform's row/column passes, and then either one
+// prediction barrier (v1) or one per wavefront step (plus one for the layered
+// form's recon -> samples pass).
+int barriers_per_plane(int nb, int dirSteps, bool layer) {
+    int b = 4 + (nb == 8 ? 2 : 0) + 2;
+    b += dirSteps > 0 ? dirSteps + (layer ? 1 : 0) : 1;
+    return b;
+}
+int barriers_per_tile(int sched, bool c444, bool dir, bool layer) {
+    const int lumaNb = 8, chromaNb = c444 ? 8 : 4;
+    const int ls = dir ? wavefront_steps(sched, lumaNb) : 0;
+    const int cs = dir ? wavefront_steps(sched, chromaNb) : 0;
+    return barriers_per_plane(lumaNb, ls, layer) +
+           2 * barriers_per_plane(chromaNb, cs, layer);
+}
+
+// -------------------------------------------------- [v3] wavefront variants
+// SYNTAX.md 7.6 prices three schedules in rate; this prices them in decode
+// time on the same 2048-tile all-INTRA_DIR frame.  Only schedule 0 decodes
+// this stream correctly -- the other two are what a stream encoded under the
+// matching restriction would cost -- so the pixels are not compared here,
+// only the time.
+int run_bench_dir(int iters) {
+    struct Variant { uint32_t sched; const char *what; const char *rate; };
+    static const Variant kVars[] = {
+        {0, "as written (left, above, above-right)", "--"},
+        {1, "no above-right reference", "+0.24 %"},
+        {3, "no above-right + 32x32 sub-tiles", "+1.8 %"},
+    };
+    std::vector<uint8_t> stream, base;
+    std::string err;
+    if (!encode_case(bench_case(24, 1, 0, 0), stream, err) ||
+        !encode_case(bench_case(24, 0, 0, 0), base, err)) {
+        std::printf("bench: encode failed (%s)\n", err.c_str());
+        return 1;
+    }
+    BenchRun b0 = time_stream(base, iters, 0, 0);
+    if (b0.skipped) { std::printf("SKIP: no usable Vulkan device\n"); return 77; }
+    if (!b0.ok) return 1;
+    std::printf(
+        "\n-- Pass B wavefront variants, 2048 tiles 4:2:0 QP 24, best of %d\n"
+        "   INTRA_DIR off (v1 planar predictor, no wavefront): Pass B %.3f ms,"
+        " %d barriers/tile\n",
+        iters, b0.passB, barriers_per_tile(0, false, false, false));
+    for (const Variant &v : kVars) {
+        BenchRun r = time_stream(stream, iters, v.sched, 0);
+        if (!r.ok) return 1;
+        std::printf(
+            "   sched %u  %-38s  Pass B %.3f ms  (%.2fx v1)  "
+            "%2d steps  %3d barriers/tile  occupancy %.1f %%  rate %s\n",
+            v.sched, v.what, r.passB, r.passB / b0.passB,
+            wavefront_steps((int)v.sched, 8),
+            barriers_per_tile((int)v.sched, false, true, false),
+            wavefront_occupancy_pct((int)v.sched, 8), v.rate);
+    }
+    return 0;
+}
+
+// ------------------------------------------- [v3] fixed vs per-byte cost
+// The GDeflate question: how much of a frame's decode time is per-tile
+// overhead that 64x64 tiling buys us, and how much is per-byte work?  A
+// straight least-squares fit of pass time against payload size over the QP
+// ladder separates the two.  Note that COEFFICIENT traffic is the same at
+// every QP -- the layout between the passes is dense -- so the slope is per
+// megabyte of entropy-coded payload, and the intercept is what a frame costs
+// with no payload at all.
+int run_bench_overhead(int iters) {
+    static const int kQps[] = {63, 51, 36, 24, 12};
+    double x[5] = {}, ya[5] = {}, yb[5] = {};
+    int n = 0;
+    uint32_t tiles = 0;
+    double coefMB = 0;
+    std::printf("\n-- fixed vs per-byte decode cost, 2048 tiles 4:2:0, "
+                "best of %d\n", iters);
+    for (int qp : kQps) {
+        std::vector<uint8_t> stream;
+        std::string err;
+        if (!encode_case(bench_case(qp, -1, 0, 0), stream, err)) {
+            std::printf("bench: encode failed (%s)\n", err.c_str());
+            return 1;
+        }
+        BenchRun r = time_stream(stream, iters, 0, 0);
+        if (r.skipped) { std::printf("SKIP: no usable Vulkan device\n"); return 77; }
+        if (!r.ok) return 1;
+        x[n] = (double)r.payloadBytes / 1e6;
+        ya[n] = r.passA;
+        yb[n] = r.passB;
+        tiles = r.tiles;
+        coefMB = (double)r.coefBytes / 1e6;
+        std::printf("   QP %2d: payload %6.3f MB   Pass A %7.3f ms   "
+                    "Pass B %6.3f ms\n", qp, x[n], ya[n], yb[n]);
+        ++n;
+    }
+    auto fit = [&](const double *y, double &a, double &b) {
+        double sx = 0, sy = 0, sxx = 0, sxy = 0;
+        for (int i = 0; i < n; ++i) { sx += x[i]; sy += y[i]; sxx += x[i] * x[i]; sxy += x[i] * y[i]; }
+        double den = n * sxx - sx * sx;
+        b = den != 0 ? (n * sxy - sx * sy) / den : 0;   // slope, ms per MB
+        a = (sy - b * sx) / n;                          // intercept, ms
+    };
+    double ia, sa, ib, sb;
+    fit(ya, ia, sa);
+    fit(yb, ib, sb);
+    std::printf(
+        "   Pass A: %.3f ms fixed + %.3f ms per MB of payload\n"
+        "   Pass B: %.3f ms fixed + %.3f ms per MB of payload\n"
+        "   per tile at zero payload: Pass A %.1f ns, Pass B %.1f ns "
+        "(%u tiles)\n"
+        "   coefficient traffic is %.1f MB at every QP: the layout between the "
+        "passes is dense\n",
+        ia, sa, ib, sb, ia * 1e6 / tiles, ib * 1e6 / tiles, tiles, coefMB);
+    return 0;
+}
+
+// ------------------------------------- [v3] host-side tile grouping for Pass B
+// The divergence question: Pass A already groups its dispatches by lane count;
+// does grouping Pass B's workgroups by tile shape pay?  Measured on a frame
+// whose tiles deliberately differ -- cycling res_level and the encoder's own
+// per-tile transform-skip decision -- so neighbouring workgroups take
+// different branches unless they are sorted.
+int run_bench_sort(int iters) {
+    std::vector<uint8_t> stream;
+    std::string err;
+    if (!encode_case(bench_case(24, -1, 1, 2), stream, err)) {
+        std::printf("bench: encode failed (%s)\n", err.c_str());
+        return 1;
+    }
+    BenchRun off = time_stream(stream, iters, 0, 0);
+    if (off.skipped) { std::printf("SKIP: no usable Vulkan device\n"); return 77; }
+    BenchRun on = time_stream(stream, iters, 0, 1);
+    if (!off.ok || !on.ok) return 1;
+    std::printf(
+        "\n-- Pass B workgroup ordering, 2048 tiles 4:2:0 QP 24, mixed "
+        "res_level and transform skip, best of %d\n"
+        "   raster order      : Pass B %.3f ms\n"
+        "   sorted by shape   : Pass B %.3f ms  (%+.1f %%)\n",
+        iters, off.passB, on.passB,
+        100.0 * (on.passB - off.passB) / off.passB);
+    return 0;
+}
+
 // Pass A's cost scales with the symbol rate, so the budget is quoted over a
 // bitrate range rather than at one operating point.
 int run_bench(int iters) {
@@ -615,6 +966,10 @@ int run_bench(int iters) {
         int rc = run_bench_qp(iters, qp);
         if (rc) return rc;
     }
+    int rc = run_bench_dir(iters);
+    if (rc) return rc;
+    if ((rc = run_bench_overhead(iters))) return rc;
+    if ((rc = run_bench_sort(iters))) return rc;
     return 0;
 }
 

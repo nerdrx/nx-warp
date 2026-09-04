@@ -29,6 +29,13 @@ layout(constant_id = 0) const int kOutFormat = 0;
 //    (res_level-0 coded edge)^2 / 2.  Host computes it with
 //    nxvw_plane_store_words(); 4:2:0 no alpha = 3072, 4:4:4 + alpha = 8192.
 layout(constant_id = 1) const int kPlaneStoreWords = 8192;
+// 2: [v3] the directional-intra wavefront schedule, kDirSched* in
+//    syntax_constants.h.  It selects which neighbours count as "already
+//    reconstructed", which is a bitstream property, not a tuning knob: a
+//    stream must be decoded with the schedule it was encoded under.  0 is the
+//    normative derivation of SYNTAX.md 7.4 and the only one a conformant
+//    encoder emits.
+layout(constant_id = 2) const int kDirSched = 0;
 
 // ------------------------------------------------------------- bindings
 layout(set = 0, binding = 0, std430) readonly buffer Coef { uint w[]; } uCoef;
@@ -40,6 +47,14 @@ layout(set = 0, binding = 4, rgb10_a2ui) uniform writeonly uimage2D uOutRgb10a2;
 // Two-plane 4:2:0 YCbCr passthrough output (kOutYcbcr420).
 layout(set = 0, binding = 5, r8ui) uniform writeonly uimage2D uOutLuma;
 layout(set = 0, binding = 6, rg8ui) uniform writeonly uimage2D uOutCbCr;
+// [v3] Pass A's packed per-block intra modes, NXVW_MODE_WORDS_PER_TILE uints
+// per tile, 4 bits per 8x8 block.
+layout(set = 0, binding = 7, std430) readonly buffer Modes { uint w[]; } uModes;
+// Workgroup index -> tile index.  Identity by default; the host may permute it
+// so that workgroups scheduled together decode tiles of like shape.  Every
+// write address below is derived from the tile index, so the output image is
+// bit-identical whatever the permutation is.
+layout(set = 0, binding = 8, std430) readonly buffer TileOrder { uint i[]; } uOrder;
 
 layout(push_constant) uniform Push { NxvwPassBPush p; } pc;
 
@@ -183,12 +198,153 @@ int planeAtDisplay(int base, int size, int full, int x, int y) {
             kBilinRound) >> kBilinShift;
 }
 
+// =================================================== directional intra [v3]
+// [SYN] 7.4, [REF] ref/src/codec.cpp build_refs / predict_block.
+//
+// `base` is the plane the modes predict against and the fallback for any
+// reference that is not yet reconstructed: the DC-plane prediction in the
+// default (replace) form, the all-zero plane in the layered form (SYNTAX.md
+// 7.5).  It is recomputed from the block means rather than stored, which is
+// what lets the shared sample store hold the running reconstruction alone.
+// The DC-plane prediction of 7.2 at one sample, always -- in the layered form
+// it is still the base the final samples are built on, it is just not what the
+// modes predict.
+int dirPred(int nb, int x, int y) {
+    return bilinearMeans(nb, kPlanarMul * x + kPlanarOff,
+                         kPlanarMul * y + kPlanarOff);
+}
+int dirBase(int nb, int x, int y) {
+    return pc.p.dirLayer != 0 ? 0 : dirPred(nb, x, y);
+}
+
+// Has block (nbx, nby) been reconstructed by the time block (bx, by) is
+// predicted?  Raster order, narrowed by the schedule.  [REF] build_refs().
+bool dirDone(int nbx, int nby, int bx, int by) {
+    bool done = (nby < by) || (nby == by && nbx < bx);
+    if ((kDirSched & kDirSchedNoAboveRight) != 0 && nbx > bx) done = false;
+    if ((kDirSched & kDirSchedSubTile) != 0 &&
+        ((nbx >> kDirSubTileLog2) != (bx >> kDirSubTileLog2) ||
+         (nby >> kDirSubTileLog2) != (by >> kDirSubTileLog2)))
+        done = false;
+    return done;
+}
+
+// One reference sample.  Coordinates are clamped INTO THE TILE, so a tile
+// never reads a neighbouring tile: its top and left borders read this tile's
+// own DC-plane prediction.  That is what keeps tiles independent, which the
+// transport's per-tile loss recovery depends on.
+int dirAt(int store, int size, int nb, int bx, int by, int x, int y) {
+    int cx = clamp(x, 0, size - 1), cy = clamp(y, 0, size - 1);
+    if (dirDone(cx >> 3, cy >> 3, bx, by))
+        return planeSample(store, size, cx, cy);
+    return dirBase(nb, cx, cy);
+}
+
+// The step of the wavefront that block (bx, by) belongs to, and the number of
+// steps a plane of nb x nb blocks takes.  With the above-right dependency the
+// independent set is 2*by + bx, not the anti-diagonal (SYNTAX.md 7.6); the
+// sub-tile restriction makes every 4x4 group of blocks run the same schedule
+// concurrently, so only the low bits of the block index count.
+int dirStepOf(int bx, int by) {
+    int sx = (kDirSched & kDirSchedSubTile) != 0 ? (bx & 3) : bx;
+    int sy = (kDirSched & kDirSchedSubTile) != 0 ? (by & 3) : by;
+    return (kDirSched & kDirSchedNoAboveRight) != 0 ? sx + sy : 2 * sy + sx;
+}
+
+int dirStepCount(int nb) {
+    int n = (kDirSched & kDirSchedSubTile) != 0 ? min(nb, 4) : nb;
+    return (kDirSched & kDirSchedNoAboveRight) != 0 ? 2 * n - 1 : 3 * n - 2;
+}
+
+// P[j*8 + i] for the thread's two columns of one 8x8 block.  `i0` is the
+// first of the two columns inside the block.  Every mode but kIntraDcPlane is
+// a weighted average of references that are already in [0, maxval], so no
+// clamp is needed and none is applied.
+void predictCols(int mode, int A[kIntraRefs], int L[kIntraRefs], int nb,
+                 int bx, int by, int i0, out int P0[8], out int P1[8]) {
+    // A[0] / L[0] are the corner; the spec's A[k] is A[1 + k].
+    int tl = A[0];
+    for (int j = 0; j < 8; ++j) {
+        for (int h = 0; h < 2; ++h) {
+            int i = i0 + h;
+            int v = 0;
+            if (mode == kIntraDcPlane) {
+                v = dirBase(nb, bx * 8 + i, by * 8 + j);
+            } else if (mode == kIntraDc) {
+                int sum = 0;
+                for (int k = 0; k < 8; ++k) sum += A[1 + k] + L[1 + k];
+                v = (sum + kIntraDcRound) >> kIntraDcShift;
+            } else if (mode == kIntraPlanar) {
+                v = ((7 - i) * L[1 + j] + (i + 1) * A[1 + 8] +
+                     (7 - j) * A[1 + i] + (j + 1) * L[1 + 8] +
+                     kIntraPlanarRound) >> kIntraPlanarShift;
+            } else if (mode == kIntraH) {
+                v = L[1 + j];
+            } else if (mode == kIntraV) {
+                v = A[1 + i];
+            } else if (mode == kIntraDdl) {
+                int k = i + j;
+                v = (k == 14)
+                        ? (A[1 + 14] + 3 * A[1 + 15] + kIntraTap3Round) >> kIntraTap3Shift
+                        : (A[1 + k] + 2 * A[1 + k + 1] + A[1 + k + 2] +
+                           kIntraTap3Round) >> kIntraTap3Shift;
+            } else if (mode == kIntraDdr) {
+                if (i > j) {
+                    int k = i - j;
+                    v = (A[k - 1] + 2 * A[k] + A[1 + k] + kIntraTap3Round) >>
+                        kIntraTap3Shift;
+                } else if (i < j) {
+                    int k = j - i;
+                    v = (L[k - 1] + 2 * L[k] + L[1 + k] + kIntraTap3Round) >>
+                        kIntraTap3Shift;
+                } else {
+                    v = (A[1] + 2 * tl + L[1] + kIntraTap3Round) >> kIntraTap3Shift;
+                }
+            } else if (mode == kIntraVr) {
+                int z = 2 * i - j;
+                int k = i - (j >> 1);
+                if (z >= 0 && (z & 1) == 0)
+                    v = (A[k] + A[1 + k] + kIntraTap2Round) >> kIntraTap2Shift;
+                else if (z >= 0)
+                    v = (A[k - 1] + 2 * A[k] + A[1 + k] + kIntraTap3Round) >>
+                        kIntraTap3Shift;
+                else if (z == -1)
+                    v = (L[1] + 2 * tl + A[1] + kIntraTap3Round) >> kIntraTap3Shift;
+                else {
+                    int q = j - 2 * i;
+                    v = (L[q] + 2 * L[q - 1] + L[q - 2] + kIntraTap3Round) >>
+                        kIntraTap3Shift;
+                }
+            } else {  // kIntraHd
+                int z = 2 * j - i;
+                int k = j - (i >> 1);
+                if (z >= 0 && (z & 1) == 0)
+                    v = (L[k] + L[1 + k] + kIntraTap2Round) >> kIntraTap2Shift;
+                else if (z >= 0)
+                    v = (L[k - 1] + 2 * L[k] + L[1 + k] + kIntraTap3Round) >>
+                        kIntraTap3Shift;
+                else if (z == -1)
+                    v = (A[1] + 2 * tl + L[1] + kIntraTap3Round) >> kIntraTap3Shift;
+                else {
+                    int q = i - 2 * j;
+                    v = (A[q] + 2 * A[q - 1] + A[q - 2] + kIntraTap3Round) >>
+                        kIntraTap3Shift;
+                }
+            }
+            if (h == 0) P0[j] = v; else P1[j] = v;
+        }
+    }
+}
+
 // ================================================================= main
 void main() {
     int tid = int(gl_LocalInvocationID.x);
-    int tileX = int(gl_WorkGroupID.x);
-    int tileY = int(gl_WorkGroupID.y);
-    int tile = tileY * pc.p.tilesX + tileX;
+    // The tile this workgroup decodes.  Going through uOrder costs one uint
+    // load per workgroup and lets the host group like-shaped tiles together
+    // without changing a single output address.
+    int tile = int(uOrder.i[gl_WorkGroupID.x]);
+    int tileX = tile % pc.p.tilesX;
+    int tileY = tile / pc.p.tilesX;
 
     NxvwTileRec rec = uTiles.rec[tile];
     int res_level = nxvw_rec_res_level(rec.w1);
@@ -221,6 +377,11 @@ void main() {
     // Until warp/ lands, a non-INTRA tile reconstructs as pred = 0 + residual
     // rather than producing undefined pixels.
     bool intra = (mode == kModeIntra);
+    // [v3] Directional intra applies to an INTRA tile of a stream that sets
+    // tool bit 17.  Mode 0 reproduces the v1 predictor exactly, so a tile
+    // whose modes are all 0 decodes identically either way.
+    bool dir = intra && pc.p.intraDir != 0;
+    int modeBase = tile * NXVW_MODE_WORDS_PER_TILE;
 
     int nplanes = (pc.p.alphaPresent != 0) ? 4 : 3;
     int ncoded = nplanes;
@@ -361,22 +522,92 @@ void main() {
         }
 
         // ------------------------------- prediction, add, clamp, write out
-        if (live) {
-            int col0 = bx * 8 + 2 * sub;
-            for (int c = 0; c < 8; ++c) {
-                int yy = by * 8 + c;
-                // INTER HOOK: swap bilinearMeans() for the warp predictor.
-                int pred0 = intra ? bilinearMeans(nb, kPlanarMul * col0 + kPlanarOff,
-                                                  kPlanarMul * yy + kPlanarOff) : 0;
-                int pred1 = intra ? bilinearMeans(nb, kPlanarMul * (col0 + 1) + kPlanarOff,
-                                                  kPlanarMul * yy + kPlanarOff) : 0;
-                int s0 = clamp(pred0 + res0[c], 0, maxval);
-                int s1 = clamp(pred1 + res1[c], 0, maxval);
-                int e = yy * size + col0;
-                sPlane[store + (e >> 1)] = pack16x2(s0, s1);
+        if (!dir) {
+            if (live) {
+                int col0 = bx * 8 + 2 * sub;
+                for (int c = 0; c < 8; ++c) {
+                    int yy = by * 8 + c;
+                    // INTER HOOK: swap bilinearMeans() for the warp predictor.
+                    int pred0 = intra ? bilinearMeans(nb, kPlanarMul * col0 + kPlanarOff,
+                                                      kPlanarMul * yy + kPlanarOff) : 0;
+                    int pred1 = intra ? bilinearMeans(nb, kPlanarMul * (col0 + 1) + kPlanarOff,
+                                                      kPlanarMul * yy + kPlanarOff) : 0;
+                    int s0 = clamp(pred0 + res0[c], 0, maxval);
+                    int s1 = clamp(pred1 + res1[c], 0, maxval);
+                    int e = yy * size + col0;
+                    sPlane[store + (e >> 1)] = pack16x2(s0, s1);
+                }
+            }
+            barrier();
+        } else {
+            // ------------------------------------------ [v3] the wavefront
+            // The residual is already in registers for every block; what has
+            // to be serialized is only the prediction and the add, because a
+            // block reads its neighbours' RECONSTRUCTION.  sPlane holds that
+            // running reconstruction -- in the layered form the reconstructed
+            // DC-plane residual, converted back to samples once the plane is
+            // finished (SYNTAX.md 7.5).
+            //
+            // Step counts and occupancy are SYNTAX.md 7.6's: 22 steps for an
+            // 8x8-block plane under the normative schedule, 15 without the
+            // above-right reference, 7 with 32x32 sub-tiles as well.
+            int myStep = live ? dirStepOf(bx, by) : -1;
+            int nsteps = dirStepCount(nb);
+            int blockMode = live
+                ? int((uModes.w[modeBase + p * NXVW_MODE_WORDS_PER_PLANE +
+                                bIdx / int(NXVW_MODES_PER_UINT)] >>
+                       (uint(bIdx % int(NXVW_MODES_PER_UINT)) * NXVW_MODE_BITS)) &
+                      NXVW_MODE_MASK)
+                : 0;
+            int i0 = 2 * sub;
+            for (int step = 0; step < nsteps; ++step) {
+                if (myStep == step) {
+                    int x0 = bx * 8, y0 = by * 8;
+                    int A[kIntraRefs], L[kIntraRefs];
+                    A[0] = dirAt(store, size, nb, bx, by, x0 - 1, y0 - 1);
+                    L[0] = A[0];
+                    for (int k = 0; k < 16; ++k) {
+                        A[1 + k] = dirAt(store, size, nb, bx, by, x0 + k, y0 - 1);
+                        L[1 + k] = dirAt(store, size, nb, bx, by, x0 - 1, y0 + k);
+                    }
+                    int P0[8], P1[8];
+                    predictCols(blockMode, A, L, nb, bx, by, i0, P0, P1);
+                    for (int c = 0; c < 8; ++c) {
+                        int yy = y0 + c;
+                        int v0 = P0[c] + res0[c], v1 = P1[c] + res1[c];
+                        int r0, r1;
+                        if (pc.p.dirLayer != 0) {
+                            // The mode predicts the DC-plane residual; what is
+                            // stored for later blocks is that residual.
+                            int b0 = dirPred(nb, x0 + i0, yy);
+                            int b1 = dirPred(nb, x0 + i0 + 1, yy);
+                            r0 = clamp(b0 + v0, 0, maxval) - b0;
+                            r1 = clamp(b1 + v1, 0, maxval) - b1;
+                        } else {
+                            r0 = clamp(v0, 0, maxval);
+                            r1 = clamp(v1, 0, maxval);
+                        }
+                        int e = yy * size + x0 + i0;
+                        sPlane[store + (e >> 1)] = pack16x2(r0, r1);
+                    }
+                }
+                barrier();
+            }
+            if (pc.p.dirLayer != 0) {
+                // recon -> samples: sample = pred + recon, exactly, because
+                // recon was formed as clamp(pred + v) - pred.
+                for (int w = tid; w < (size * size) >> 1; w += 256) {
+                    int e = w << 1;
+                    int x = e % size, y = e / size;
+                    uint packed = sPlane[store + w];
+                    int r0 = unpack16(packed, 0), r1 = unpack16(packed, 1);
+                    sPlane[store + w] =
+                        pack16x2(dirPred(nb, x, y) + r0,
+                                 dirPred(nb, x + 1, y) + r1);
+                }
+                barrier();
             }
         }
-        barrier();
 
         coefBase += ndc + ndc * 64;
     }

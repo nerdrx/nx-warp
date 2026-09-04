@@ -83,6 +83,15 @@ struct nxvc_vk_decoder {
     uint32_t out_format = NXVC_VKD_OUT_RGBA8;  // resolved kOut* value
     uint32_t flags = 0;
     uint32_t read_ptr_mode = nxwarp_passA::kReadPtrBallot;
+    // [v3] The directional-intra wavefront schedule Pass B is built with.  It
+    // is a bitstream property (SYNTAX.md 7.6): 0 is the normative derivation
+    // and the only one a conformant encoder emits; 1 and 3 exist so their
+    // decode cost can be measured against the rate they cost.
+    uint32_t dir_sched = 0;
+    // Host-side reordering of Pass B's workgroup -> tile map.  Output is
+    // identical either way; it only changes which tiles land in adjacent
+    // workgroups.
+    uint32_t tile_sort = 0;
 
     // ---- per-frame Vulkan objects
     VkCommandPool pool = VK_NULL_HANDLE;
@@ -97,11 +106,13 @@ struct nxvc_vk_decoder {
     VkShaderModule smA = VK_NULL_HANDLE, smB = VK_NULL_HANDLE;
     VkDescriptorSet dsetA = VK_NULL_HANDLE, dsetB = VK_NULL_HANDLE;
     std::map<uint32_t, VkPipeline> pipesA;  // key: lanes
-    std::map<uint64_t, VkPipeline> pipesB;  // key: (format << 32) | storeWords
+    // key: (format << 40) | (dirSched << 32) | storeWords
+    std::map<uint64_t, VkPipeline> pipesB;
 
     // ---- buffers
     Buf staging, bBits, bDesc, bTables, bCoef, bCbf, bStatus, bRecs, bWgt,
-        bRead;
+        bModes, bOrder, bRead;
+    std::vector<uint32_t> order;   // workgroup index -> tile index
     Img imgRgba, imgRgb10, imgLuma, imgCbCr;
 
     // ---- stream state
@@ -111,7 +122,7 @@ struct nxvc_vk_decoder {
     bool resources_ready = false;
     // Byte layout of the staging buffer.
     VkDeviceSize offBits = 0, offDesc = 0, offTables = 0, offRecs = 0,
-                 offWgt = 0;
+                 offWgt = 0, offOrder = 0;
     // Byte layout of the readback buffer.
     VkDeviceSize rbLuma = 0, rbCbCr = 0, rbRgba = 0, rbBytes = 0;
     bool need_alpha_pass = false;  // second Pass B dispatch for the A channel
@@ -402,10 +413,31 @@ nxvc_vkd_status make_layouts(D *d) {
         ci.pBindings = b.data();
         return vkCreateDescriptorSetLayout(d->dev, &ci, nullptr, out);
     };
-    VKTRY(d, set_layout(6, 0, &d->dslA));
-    VKTRY(d, set_layout(3, 4, &d->dslB));
+    // Pass A: 7 storage buffers (bitstream, descriptors, tables, coefficients,
+    // CBF bits, status, [v3] intra modes).
+    VKTRY(d, set_layout(7, 0, &d->dslA));
+    // Pass B: buffers 0-2, images 3-6, then [v3] buffers 7 (modes) and 8 (the
+    // workgroup -> tile map).  The images keep their bindings so nothing that
+    // already referenced them has to move.
+    {
+        VkDescriptorSetLayoutBinding b[9]{};
+        for (int i = 0; i < 9; ++i) {
+            b[i].binding = (uint32_t)i;
+            b[i].descriptorType = (i >= 3 && i <= 6)
+                                      ? VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
+                                      : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            b[i].descriptorCount = 1;
+            b[i].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        }
+        VkDescriptorSetLayoutCreateInfo ci{
+            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+        ci.bindingCount = 9;
+        ci.pBindings = b;
+        VKTRY(d, vkCreateDescriptorSetLayout(d->dev, &ci, nullptr, &d->dslB));
+    }
 
-    VkPushConstantRange pcA{VK_SHADER_STAGE_COMPUTE_BIT, 0, 16};
+    VkPushConstantRange pcA{VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                            (uint32_t)sizeof(uint32_t) * 5};
     VkPipelineLayoutCreateInfo pl{
         VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
     pl.setLayoutCount = 1;
@@ -428,7 +460,7 @@ nxvc_vkd_status make_layouts(D *d) {
     sm.pCode = reconstruct_spv;
     VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smB));
 
-    VkDescriptorPoolSize sz[2] = {{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 9},
+    VkDescriptorPoolSize sz[2] = {{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 12},
                                   {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 4}};
     VkDescriptorPoolCreateInfo dp{
         VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
@@ -492,7 +524,8 @@ nxvc_vkd_status pipeline_a(D *d, uint32_t lanes, VkPipeline *out) {
 
 nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, uint32_t store_words,
                            VkPipeline *out) {
-    uint64_t key = ((uint64_t)fmt << 32) | store_words;
+    const uint32_t sched = d->dir_sched;
+    uint64_t key = ((uint64_t)fmt << 40) | ((uint64_t)sched << 32) | store_words;
     auto it = d->pipesB.find(key);
     if (it != d->pipesB.end()) {
         *out = it->second;
@@ -503,9 +536,9 @@ nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, uint32_t store_words,
         return seterr(d, NXVC_VKD_ERR_UNSUPPORTED,
                       "Pass B needs %zu B of shared memory, device offers %u B",
                       lds, d->props.limits.maxComputeSharedMemorySize);
-    const uint32_t data[2] = {fmt, store_words};
-    VkSpecializationMapEntry me[2] = {{0, 0, 4}, {1, 4, 4}};
-    VkSpecializationInfo spec{2, me, sizeof(data), data};
+    const uint32_t data[3] = {fmt, store_words, sched};
+    VkSpecializationMapEntry me[3] = {{0, 0, 4}, {1, 4, 4}, {2, 8, 4}};
+    VkSpecializationInfo spec{3, me, sizeof(data), data};
     VkComputePipelineCreateInfo ci{
         VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
     ci.stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
@@ -630,6 +663,17 @@ nxvc_vkd_status make_resources(D *d) {
     if ((st = make_buf(d, d->bRecs, (VkDeviceSize)ntiles * 16, kSsbo, false)))
         return st;
     if ((st = make_buf(d, d->bWgt, 512 * 4, kSsbo, false))) return st;
+    // [v3] Pass A writes the per-block intra modes here and Pass B reads them:
+    // kModeWordsPerTile uints per tile, 128 B, against the coefficient slot's
+    // 12.5 KB.
+    if ((st = make_buf(d, d->bModes,
+                       (VkDeviceSize)(ntiles + 64) *
+                           nxwarp_passA::kModeWordsPerTile * 4,
+                       kSsbo, false)))
+        return st;
+    if ((st = make_buf(d, d->bOrder, (VkDeviceSize)(ntiles + 1) * 4, kSsbo,
+                       false)))
+        return st;
 
     // ---- readback
     if (d->flags & NXVC_VKD_FLAG_READBACK) {
@@ -647,23 +691,26 @@ nxvc_vkd_status make_resources(D *d) {
     }
 
     // ---- descriptor writes
-    VkDescriptorBufferInfo a[6] = {{d->bBits.buf, 0, VK_WHOLE_SIZE},
+    VkDescriptorBufferInfo a[7] = {{d->bBits.buf, 0, VK_WHOLE_SIZE},
                                    {d->bDesc.buf, 0, VK_WHOLE_SIZE},
                                    {d->bTables.buf, 0, VK_WHOLE_SIZE},
                                    {d->bCoef.buf, 0, VK_WHOLE_SIZE},
                                    {d->bCbf.buf, 0, VK_WHOLE_SIZE},
-                                   {d->bStatus.buf, 0, VK_WHOLE_SIZE}};
+                                   {d->bStatus.buf, 0, VK_WHOLE_SIZE},
+                                   {d->bModes.buf, 0, VK_WHOLE_SIZE}};
     VkDescriptorBufferInfo b[3] = {{d->bCoef.buf, 0, VK_WHOLE_SIZE},
                                    {d->bRecs.buf, 0, VK_WHOLE_SIZE},
                                    {d->bWgt.buf, 0, VK_WHOLE_SIZE}};
+    VkDescriptorBufferInfo b2[2] = {{d->bModes.buf, 0, VK_WHOLE_SIZE},
+                                    {d->bOrder.buf, 0, VK_WHOLE_SIZE}};
     VkDescriptorImageInfo im[4] = {
         {VK_NULL_HANDLE, d->imgRgba.view, VK_IMAGE_LAYOUT_GENERAL},
         {VK_NULL_HANDLE, d->imgRgb10.view, VK_IMAGE_LAYOUT_GENERAL},
         {VK_NULL_HANDLE, d->imgLuma.view, VK_IMAGE_LAYOUT_GENERAL},
         {VK_NULL_HANDLE, d->imgCbCr.view, VK_IMAGE_LAYOUT_GENERAL}};
-    VkWriteDescriptorSet w[13]{};
+    VkWriteDescriptorSet w[16]{};
     uint32_t nw = 0;
-    for (int i = 0; i < 6; ++i) {
+    for (int i = 0; i < 7; ++i) {
         w[nw] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
         w[nw].dstSet = d->dsetA;
         w[nw].dstBinding = (uint32_t)i;
@@ -688,6 +735,15 @@ nxvc_vkd_status make_resources(D *d) {
         w[nw].descriptorCount = 1;
         w[nw].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
         w[nw].pImageInfo = &im[i];
+        ++nw;
+    }
+    for (int i = 0; i < 2; ++i) {
+        w[nw] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        w[nw].dstSet = d->dsetB;
+        w[nw].dstBinding = (uint32_t)(7 + i);
+        w[nw].descriptorCount = 1;
+        w[nw].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        w[nw].pBufferInfo = &b2[i];
         ++nw;
     }
     vkUpdateDescriptorSets(d->dev, nw, w, 0, nullptr);
@@ -720,6 +776,30 @@ nxvc_vkd_status ensure_bits(D *d, VkDeviceSize bytes) {
         vkUpdateDescriptorSets(d->dev, 1, &w, 0, nullptr);
     }
     return NXVC_VKD_OK;
+}
+
+// Pass B's workgroup -> tile map.  The identity is the natural order; with
+// `tile_sort` the tiles are grouped by the fields that decide which branches a
+// workgroup takes -- mode, res_level, chroma444, tskip and the intra-mode
+// presence -- so that neighbouring workgroups, which a GPU schedules together,
+// run the same path.  The sort is stable, so within a group the tiles stay in
+// raster order, and no output address depends on the order: every write is
+// addressed from the tile index the map yields.
+void build_tile_order(D *d, const FrameParse &fp, uint32_t ntiles) {
+    d->order.resize(ntiles);
+    for (uint32_t i = 0; i < ntiles; ++i) d->order[i] = i;
+    if (!d->tile_sort) return;
+    auto key = [&](uint32_t t) {
+        const uint32_t w1 = fp.recs[t].w1;
+        const uint32_t mode = w1 & 7u;
+        const uint32_t res = (w1 >> 3) & 3u;
+        const uint32_t c444 = (w1 >> 5) & 1u;
+        const uint32_t amode = (w1 >> 6) & 3u;
+        const uint32_t tskip = (w1 >> 23) & 1u;
+        return (mode << 6) | (res << 4) | (c444 << 3) | (amode << 1) | tskip;
+    };
+    std::stable_sort(d->order.begin(), d->order.end(),
+                     [&](uint32_t a, uint32_t b) { return key(a) < key(b); });
 }
 
 void buffer_barrier(VkCommandBuffer cmd, VkPipelineStageFlags src,
@@ -864,7 +944,7 @@ extern "C" void nxvc_vk_decoder_destroy(nxvc_vk_decoder *d) {
         if (d->pool) vkDestroyCommandPool(d->dev, d->pool, nullptr);
         for (Buf *b : {&d->staging, &d->bBits, &d->bDesc, &d->bTables,
                        &d->bCoef, &d->bCbf, &d->bStatus, &d->bRecs, &d->bWgt,
-                       &d->bRead})
+                       &d->bModes, &d->bOrder, &d->bRead})
             destroy_buf(d, *b);
         for (Img *i : {&d->imgRgba, &d->imgRgb10, &d->imgLuma, &d->imgCbCr})
             destroy_img(d, *i);
@@ -989,6 +1069,25 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_images(const nxvc_vk_decoder *d,
     return NXVC_VKD_OK;
 }
 
+extern "C" nxvc_vkd_status nxvc_vk_decoder_set_dir_sched(nxvc_vk_decoder *d,
+                                                         uint32_t sched) {
+    if (!d) return NXVC_VKD_ERR_ARG;
+    if (sched > 3) return NXVC_VKD_ERR_ARG;
+    d->dir_sched = sched;
+    return NXVC_VKD_OK;
+}
+
+extern "C" uint32_t nxvc_vk_decoder_dir_sched(const nxvc_vk_decoder *d) {
+    return d ? d->dir_sched : 0u;
+}
+
+extern "C" nxvc_vkd_status nxvc_vk_decoder_set_tile_sort(nxvc_vk_decoder *d,
+                                                         uint32_t on) {
+    if (!d) return NXVC_VKD_ERR_ARG;
+    d->tile_sort = on ? 1u : 0u;
+    return NXVC_VKD_OK;
+}
+
 extern "C" nxvc_vkd_status nxvc_vk_decoder_stats(const nxvc_vk_decoder *d,
                                                  nxvc_vkd_stats *o) {
     if (!d || !o) return NXVC_VKD_ERR_ARG;
@@ -1037,6 +1136,8 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     o = align_up(o + recBytes, 256);
     d->offWgt = o;
     o = align_up(o + sizeof fp.weights, 256);
+    d->offOrder = o;
+    o = align_up(o + (VkDeviceSize)ntiles * 4, 256);
     if ((st = make_buf(d, d->staging, o, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                        true)))
         return st;
@@ -1046,6 +1147,8 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     std::memcpy(sp + d->offTables, fp.cum.data(), tabBytes);
     std::memcpy(sp + d->offRecs, fp.recs.data(), recBytes);
     std::memcpy(sp + d->offWgt, fp.weights, sizeof fp.weights);
+    build_tile_order(d, fp, ntiles);
+    std::memcpy(sp + d->offOrder, d->order.data(), (size_t)ntiles * 4);
 
     // ---- 3. record ----------------------------------------------------
     VKTRY(d, vkResetCommandBuffer(d->cmd, 0));
@@ -1068,6 +1171,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     copy(d->bTables, d->offTables, tabBytes);
     copy(d->bRecs, d->offRecs, recBytes);
     copy(d->bWgt, d->offWgt, sizeof fp.weights);
+    copy(d->bOrder, d->offOrder, (VkDeviceSize)ntiles * 4);
     // A skipped tile gets no Pass A descriptor, so nothing would zero its
     // coefficient slot.  Zero it here; Pass B then reconstructs it as
     // "no coefficients" over the WARP_SKIP record.
@@ -1093,10 +1197,10 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
         VkPipeline p;
         if ((st = pipeline_a(d, g.lanes, &p))) return st;
         vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, p);
-        const uint32_t push[4] = {g.limit, fp.frame_nplanes, fp.coef_stride,
-                                  fp.cbf_words};
-        vkCmdPushConstants(d->cmd, d->plA, VK_SHADER_STAGE_COMPUTE_BIT, 0, 16,
-                           push);
+        const uint32_t push[5] = {g.limit, fp.frame_nplanes, fp.coef_stride,
+                                  fp.cbf_words, fp.tools};
+        vkCmdPushConstants(d->cmd, d->plA, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                           sizeof push, push);
         const uint32_t tpg = nxwarp_passA::nxs_tiles_per_group(g.lanes);
         vkCmdDispatchBase(d->cmd, g.first / tpg, 0, 0, g.groups, 1, 1);
         ++dispatches;
@@ -1120,7 +1224,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
         VkPipeline p;
         if ((st = pipeline_b(d, d->out_format, storeWords, &p))) return st;
         vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, p);
-        vkCmdDispatch(d->cmd, d->si.tiles_x, d->si.tiles_y, 1);
+        vkCmdDispatch(d->cmd, ntiles, 1, 1);
         ++dispatches;
     }
     if (d->need_alpha_pass) {
@@ -1130,7 +1234,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
         if ((st = pipeline_b(d, (uint32_t)nxvw::kOutRgba8, storeWords, &p)))
             return st;
         vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, p);
-        vkCmdDispatch(d->cmd, d->si.tiles_x, d->si.tiles_y, 1);
+        vkCmdDispatch(d->cmd, ntiles, 1, 1);
         ++dispatches;
     }
     if (d->have_timestamps)

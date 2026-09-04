@@ -18,8 +18,19 @@
 //                                 pairs a tile's wm_id selects.
 //  binding 3  uOutRgba8      writeonly  rgba8ui  storage image
 //  binding 4  uOutRgb10a2    writeonly  rgb10_a2ui storage image
-//  binding 5  WarpRecs  readonly  reserved for the inter predictor (3.2.3
-//                                 step 5); unused and unbound in v1.
+//  binding 5  uOutLuma       writeonly  r8ui  storage image
+//  binding 6  uOutCbCr       writeonly  rg8ui storage image
+//  binding 7  Modes     readonly  [v3] uint[]: kNxvwModeWordsPerTile packed
+//                                 4-bit per-8x8-block intra modes per tile,
+//                                 written by Pass A (SYNTAX.md 7.4 / 9.6)
+//  binding 8  TileOrder readonly  uint[]: workgroup index -> tile index.  The
+//                                 host may permute it to group tiles of like
+//                                 shape into adjacent workgroups; the output
+//                                 is identical either way because every write
+//                                 address is derived from the tile index.
+//
+// The inter predictor's WarpRecs buffer (3.2.3 step 5) takes the next free
+// binding when it lands; it is unbound in v1.
 //
 // ------------------------------------------------------- coefficient order
 // Inside one tile, for each coded plane p (0=Y/R, 1=Co/G, 2=Cg/B, 3=alpha;
@@ -137,7 +148,24 @@ struct NxvwPassBPush {
     int planeWords1;   // (host-computed so the shader needs no divides)
     int planeWords2;
     int planeWords3;
+    // [v3] stream tool bit 17: every 8x8 block carries an intra mode and the
+    // blocks of a plane are reconstructed in raster order (SYNTAX.md 7.4).
+    int intraDir;
+    // [v3] frame-header flags bit 2: the layered form, in which the modes
+    // predict the DC-plane residual rather than the samples (SYNTAX.md 7.5).
+    int dirLayer;
 };
+
+// ------------------------------------------------------------- intra modes
+// [v3] Pass A writes one 4-bit mode per 8x8 block, 8 per uint, with each
+// plane's region starting on a uint boundary.  These MUST equal the
+// kMode* constants in passA/syntax_constants.h; the two files are the two
+// sides of the same buffer.
+#define NXVW_MODE_BITS 4u
+#define NXVW_MODE_MASK 15u
+#define NXVW_MODES_PER_UINT 8u
+#define NXVW_MODE_WORDS_PER_PLANE 8
+#define NXVW_MODE_WORDS_PER_TILE 32
 
 #ifdef __cplusplus
 // Per-tile slot size for a whole dispatch: worst case over res_level, which is

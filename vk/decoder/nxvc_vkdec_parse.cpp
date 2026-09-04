@@ -28,9 +28,21 @@ namespace {
 // ---------------------------------------------------------------------------
 namespace reftab {
 using u16 = uint16_t;
-constexpr int kNumCtx = 12;
+// The .inc declares both built-in families; these names are the ones it uses.
+constexpr int kNumCtxV1 = 12;
+constexpr int kNumCtxV2 = 16;
 constexpr int kNumSym = 16;
 #include "../../ref/src/default_tables.inc"
+
+// [REF] tables.cpp default_freq(): which family a stream's context count
+// selects.  Contexts 0..11 keep their meaning in both models but not their
+// statistics, because under CTX_V2 they no longer see the DC plane.
+inline u16 default_freq(int nctx, int set_index, int c, int s) {
+    if (set_index < 0) set_index = 0;
+    if (set_index > 7) set_index = 7;
+    if (nctx >= kNumCtxV2) return kDefaultFreqV2[set_index][c][s];
+    return kDefaultFreq[set_index][c][s];
+}
 
 // [REF] tables.cpp kDeltaMul: round(256 * 2^(d/4)) for d in [-16, 15], Q8.
 constexpr u16 kDeltaMul[32] = {
@@ -155,7 +167,14 @@ constexpr uint64_t kToolsSupported =
     (1ull << 7) |  // NSUB_VAR
     (1ull << 8) |  // PER_TILE_CHROMA
     (1ull << 9) |  // YCOCGR
-    (1ull << 20);  // WM_ID: per-tile weighting-matrix override
+    (1ull << 17) | // INTRA_DIR: directional intra          [v3]
+    (1ull << 20) | // WM_ID: per-tile weighting-matrix override
+    (1ull << 21) | // CTX_V2: the 16-context entropy model  [v3]
+    (1ull << 22);  // SIGN_HIDE: sign data hiding           [v3]
+constexpr uint64_t kToolLossless = 1ull << 5;
+constexpr uint64_t kToolIntraDir = 1ull << 17;
+constexpr uint64_t kToolCtxV2 = 1ull << 21;
+constexpr uint64_t kToolSignHide = 1ull << 22;
 constexpr uint64_t kToolNsubVar = 1ull << 7;
 constexpr uint64_t kToolResLevel = 1ull << 2;
 constexpr uint64_t kToolTransformSkip = 1ull << 1;
@@ -165,27 +184,37 @@ constexpr uint64_t kToolWmId = 1ull << 20;
 }  // namespace
 
 // ---------------------------------------------------------------- tables
-void build_default_tables(std::vector<uint32_t> &cum) {
+// [REF] tables.cpp build_default_set(): the table object always carries all
+// kNumCtx contexts.  Contexts beyond the model's coded count are never
+// selected, but they are filled (from context 0) so the object is well formed
+// and Pass A's binding 2 has one layout whichever model the stream uses.
+void build_default_tables(std::vector<uint32_t> &cum, int nctx) {
+    if (nctx < kNumCtxV1) nctx = kNumCtxV1;
     cum.assign((size_t)kNumTableSets * kNumCtx * kNumSym, 0);
     for (int set = 0; set < kNumTableSets; ++set)
         for (int c = 0; c < kNumCtx; ++c) {
+            const int src = c < nctx ? c : 0;
             uint32_t *dst = &cum[((size_t)set * kNumCtx + c) * kNumSym];
             uint32_t acc = 0;
             for (int s = 0; s < kNumSym; ++s) {
                 dst[s] = acc;
-                acc += reftab::kDefaultFreq[set][c][s];
+                acc += reftab::default_freq(nctx, set, src, s);
             }
         }
 }
 
-bool parse_table_set(const uint8_t *bits120, int set_index,
+// docs/SYNTAX.md 9.4: nctx x 16 five-bit log-domain deltas, MSB-first --
+// 120 bytes under the v1 context model, 160 under CTX_V2.  Contexts beyond
+// `nctx` keep the defaults build_default_tables() already wrote.
+bool parse_table_set(const uint8_t *bits, int set_index, int nctx,
                      uint32_t *cum_of_set) {
-    BitR br{bits120, 120, 0};
-    for (int c = 0; c < kNumCtx; ++c) {
+    const size_t nbytes = (size_t)nctx * kNumSym * 5 / 8;
+    BitR br{bits, nbytes, 0};
+    for (int c = 0; c < nctx; ++c) {
         uint16_t f[kNumSym];
         for (int s = 0; s < kNumSym; ++s) {
             uint32_t d = br.get(5);
-            int32_t def = reftab::kDefaultFreq[set_index][c][s];
+            int32_t def = reftab::default_freq(nctx, set_index, c, s);
             int32_t v = (def * (int32_t)reftab::kDeltaMul[d] + 128) >> 8;
             f[s] = (uint16_t)iclamp(v, 1, 32767);
         }
@@ -261,7 +290,16 @@ nxvc_vkd_status parse_stream_header(const uint8_t *buf, size_t len,
         return NXVC_VKD_ERR_BITSTREAM;
     if ((si.color_space == 3) != (si.color_transform == 1))
         return NXVC_VKD_ERR_BITSTREAM;
+    // [REF] docs/SYNTAX.md 2: YCoCg-R chroma is 9-bit and biased by 256 and
+    // the transform runs before subsampling, so a 4:2:0 YCoCg-R stream would
+    // push 9-bit chroma through an 8-bit plane.  r15 pins the refusal.
+    if (si.color_transform == 1 && si.chroma != 1) return NXVC_VKD_ERR_BITSTREAM;
     if (si.tools & ~kToolsSupported) return NXVC_VKD_ERR_VERSION;
+    // [SYN] 2.3: hiding a sign spends one level step, so a lossless stream
+    // cannot carry it and a decoder that accepted both would not know which.
+    // r17 pins the refusal.
+    if ((si.tools & kToolLossless) && (si.tools & kToolSignHide))
+        return NXVC_VKD_ERR_BITSTREAM;
 
     // TLV area: every unrecognised type is skipped (docs/SYNTAX.md 2.1).
     size_t p = kStreamHeaderBytes, end = kStreamHeaderBytes + si.ext_len;
@@ -305,8 +343,19 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
     fp.quant_matrix = br.u8v();
     uint32_t tables_present = br.u8v();
     br.u8v();  // ref_slots (Phase 2)
-    br.u8v();  // flags
+    const uint32_t flags = br.u8v();
     br.u8v();  // reserved
+    // [v3] The three v2 intra tools are stream-level and frame-uniform.
+    // [SYN] 3.1 / 7.5: frame flags bit 2 selects the layered form of
+    // directional intra and is meaningless -- therefore illegal -- without
+    // tool bit 17.  r14 pins the refusal, and this check sits exactly where
+    // ref/src/codec_impl.inc parse_frame_header() makes it, before
+    // `frame_bytes` is even read, so the status a stream gets is the same.
+    fp.nctx = (si.tools & kToolCtxV2) ? kNumCtxV2 : kNumCtxV1;
+    fp.intra_dir = (si.tools & kToolIntraDir) ? 1 : 0;
+    fp.sdh = (si.tools & kToolSignHide) ? 1 : 0;
+    fp.dir_layer = (flags >> 2) & 1;
+    if (fp.dir_layer && !fp.intra_dir) return NXVC_VKD_ERR_BITSTREAM;
     uint32_t frame_bytes = br.u32v();
     if (!br.ok) return NXVC_VKD_ERR_TRUNCATED;
     if (fp.base_qp > 63) return NXVC_VKD_ERR_BITSTREAM;
@@ -325,14 +374,18 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
     }
     resolve_matrices(fp.quant_matrix, custom, fp.weights);
 
-    build_default_tables(fp.cum);
+    build_default_tables(fp.cum, fp.nctx);
+    // [SYN] 9.4: a transmitted set is 120 bytes under the v1 context model and
+    // 160 under CTX_V2.  r16 is a CTX_V2 stream whose 160-byte set runs past
+    // the frame.
+    const size_t tbytes = (size_t)fp.nctx * kNumSym * 5 / 8;
     for (int k = 0; k < 8; ++k) {
         if (!(tables_present & (1u << k))) continue;
-        if (off + 120 > frame_bytes) return NXVC_VKD_ERR_TRUNCATED;
-        if (!parse_table_set(buf + off, k,
+        if (off + tbytes > frame_bytes) return NXVC_VKD_ERR_TRUNCATED;
+        if (!parse_table_set(buf + off, k, fp.nctx,
                              &fp.cum[(size_t)k * kNumCtx * kNumSym]))
             return NXVC_VKD_ERR_BITSTREAM;
-        off += 120;
+        off += tbytes;
     }
 
     // --- geometry ------------------------------------------------------
@@ -342,6 +395,9 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
     fp.coef_stride =
         (uint32_t)nxvw::nxvw_coef_stride_i16(chroma420 ? 1 : 0, si.alpha ? 1 : 0);
     fp.cbf_words = kCbfWordsPerTile;
+    fp.tools = (fp.nctx >= kNumCtxV2 ? kToolFlagCtxV2 : 0u) |
+               (fp.intra_dir ? kToolFlagIntraDir : 0u) |
+               (fp.sdh ? kToolFlagSignHide : 0u);
 
     const uint32_t ntiles = si.tile_count;
     fp.recs.assign(ntiles, NxvwTileRec{0, 0, 0, 0xffffffffu});
@@ -362,18 +418,21 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
         uint64_t skip = rb.u64v();
         if (!rb.ok) return NXVC_VKD_ERR_TRUNCATED;
         if (fn != fp.frame_number || ri != row) return NXVC_VKD_ERR_BITSTREAM;
-        // [REF] "no references in v1": the reference decoder refuses any
-        // skipped tile outright.  With NXVC_VKD_FLAG_ALLOW_SKIPPED_TILES the
-        // decoder instead emits a WARP_SKIP record over a zeroed coefficient
-        // slot, which is deterministic and is the shape the Phase 2 inter
-        // predictor replaces.
-        if (skip != 0 && !allow_skipped) return NXVC_VKD_ERR_UNSUPPORTED;
-        {
-            uint32_t expect = 0;
-            for (uint32_t i = 0; i < si.tiles_x; ++i)
-                if (!((skip >> i) & 1)) ++expect;
-            if (tcount != expect) return NXVC_VKD_ERR_BITSTREAM;
-        }
+        // [REF] the skip bitmap covers one tile row of one eye, so the bits
+        // above the row's tile count must be zero (r08).
+        if (si.tiles_x < 64 && (skip >> si.tiles_x) != 0)
+            return NXVC_VKD_ERR_BITSTREAM;
+        uint32_t nskip = 0;
+        for (uint32_t i = 0; i < si.tiles_x; ++i) nskip += (skip >> i) & 1u;
+        // [REF] a skip references a frame a stream without the INTER tool bit
+        // cannot have, which makes it a malformed stream rather than an
+        // unimplemented one.  This decoder never accepts INTER, so the
+        // condition reduces to "any skip at all".  With
+        // NXVC_VKD_FLAG_ALLOW_SKIPPED_TILES it instead emits a WARP_SKIP
+        // record over a zeroed coefficient slot, which is deterministic and is
+        // the shape the Phase 2 inter predictor replaces.
+        if (nskip && !allow_skipped) return NXVC_VKD_ERR_BITSTREAM;
+        if (tcount != si.tiles_x - nskip) return NXVC_VKD_ERR_BITSTREAM;
         off = rb.i;
 
         for (uint32_t k = 0; k < si.tiles_x; ++k) {
@@ -452,6 +511,7 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
             d.bits_length = (uint32_t)(off - hdr_off);
             d.coef_offset = tindex * fp.coef_stride;
             d.cbf_offset = tindex * fp.cbf_words;
+            d.mode_offset = tindex * kModeWordsPerTile;
             by_lane[nsub_log2].push_back(d);
             lane_tile[nsub_log2].push_back(tindex);
 
@@ -504,6 +564,8 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
     p.colorTransform = (int)si.color_transform;
     p.chroma420 = chroma420 ? 1 : 0;
     p.alphaPresent = si.alpha ? 1 : 0;
+    p.intraDir = fp.intra_dir;
+    p.dirLayer = fp.dir_layer;
     const int c420 = chroma420 ? 1 : 0;
     p.planeWords0 = nxvw::nxvw_plane_store_words(0, c420);
     p.planeWords1 = nxvw::nxvw_plane_store_words(1, c420);

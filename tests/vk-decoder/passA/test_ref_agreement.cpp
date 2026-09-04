@@ -225,10 +225,12 @@ void check_streams() {
         in.cbf_words = kCbfWordsPerTile;
         in.read_ptr_mode = kReadPtrBallot;
 
+        std::vector<uint32_t> modes(kModeWordsPerTile, 0);
         Outputs out;
         out.coef = got.data();
         out.cbf = cbf.data();
         out.status = &status;
+        out.modes = modes.data();
         decode(in, out);
 
         if (status != kStatusOk) {

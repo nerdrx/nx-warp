@@ -77,11 +77,23 @@ layout(std430, set = 0, binding = 5) writeonly buffer Status {
     uint data[];  // one per tile
 } u_status;
 
+// [v3] Per-block intra modes, kModeWordsPerTile uints per tile, 4 bits per
+// block.  Read as well as written: the lane that owns a plane's mode unit
+// reads back the left and above modes to derive the MPM (SYNTAX.md 9.6), and
+// both live in the same unit and therefore in the same lane.
+layout(std430, set = 0, binding = 6) buffer Modes {
+    uint data[];
+} u_modes;
+
 layout(push_constant) uniform Push {
     uint num_tiles;
     uint frame_nplanes;   // 3 or 4
     uint coef_stride;     // int16 entries reserved per tile
     uint cbf_words;       // uints reserved per tile
+    // [v3] frame-uniform tool flags: kToolFlagCtxV2 | kToolFlagIntraDir |
+    // kToolFlagSignHide.  A push constant rather than a specialisation
+    // constant so turning a tool on costs no pipeline rebuild.
+    uint tools;
 } pc;
 
 // ---------------------------------------------------------------------------
@@ -104,6 +116,7 @@ shared uint s_pay[kMaxSlots];            // byte offset of the rANS payload
 shared uint s_end[kMaxSlots];            // one past the last payload byte
 shared uint s_ok[kMaxSlots];             // status accumulator
 shared int s_active[kMaxSlots];          // min(LANES, nunits): initialised rANS lanes
+shared int s_mode_base[kMaxSlots];       // uint index of the tile's mode words
 
 // Fallback read-pointer exchange and the workgroup-wide "any lane active".
 shared uint s_renorm[kMaxSlots];
@@ -138,6 +151,8 @@ uint  g_end;      // one past the last payload byte
 // LaneMachine
 const int kPhCbf = 0, kPhLast = 1, kPhLastRaw = 2, kPhLevel = 3;
 const int kPhEscPrefix = 4, kPhEscSuffix = 5, kPhSign = 6, kPhDone = 7;
+// [v3] mode-unit phases, ref/src/entropy.h LaneMachine::Phase.
+const int kPhModeSym = 8, kPhModeFlag = 9, kPhModeIdx = 10;
 
 int  g_phase;
 int  g_ui;        // current unit index
@@ -148,6 +163,20 @@ int  g_esc_j, g_esc_bits, g_esc_done;
 uint g_esc_acc;
 // current unit
 int  g_u_ncoef, g_u_scan, g_u_ctx_cbf, g_u_ctx_last, g_u_coef;
+// [v3] kCtxNone = the banded LEVEL contexts of 9.3; otherwise a fixed context.
+int  g_u_ctx_level;
+// [v3] mode unit: kCtxNone = bypass coded (1-bit flag + 3-bit index),
+// otherwise the single MODE symbol in context 15.
+int  g_u_ctx_mode;
+int  g_u_nbx;     // mode unit: blocks per plane edge
+int  g_u_modes;   // mode unit: uint index of this plane's mode words
+int  g_mb;        // mode unit: block being decoded
+int  g_mpm;       // mode unit: its most probable mode
+// [v3] sign data hiding, SYNTAX.md 9.7.
+int  g_u_sdh;     // 1 when this unit may hide a sign
+int  g_hide;      // ... and whether it actually does (LAST >= kSdhMinLast)
+int  g_sum_abs;   // running sum of |level| over the unit
+int  g_hide_mag;  // magnitude stored provisionally positive at scan pos LAST
 // tile
 int  g_slot;
 uint g_coef_off;  // int16 index of this tile's region
@@ -167,6 +196,39 @@ void fail(uint code) {
 // Mirrors TileCoder::build_units(): per plane one DC unit of nb*nb
 // coefficients, then nb*nb block units of 64.
 // ---------------------------------------------------------------------------
+// Mutually recursive: a unit that finishes immediately (an empty mode unit)
+// starts the next one.
+void begin_unit();
+void begin_next_unit();
+
+// [v3] Packed mode access.  Only the lane that owns a plane's mode unit ever
+// touches that plane's words, and the words were zeroed before decoding, so a
+// plain read-modify-write is safe: no atomic, no cross-lane ordering.
+int load_mode(int b) {
+    uint w = u_modes.data[uint(g_u_modes) + uint(b) / kModesPerUint];
+    return int((w >> (uint(b % int(kModesPerUint)) * kModeBits)) & kModeMask);
+}
+
+void store_mode(int b, int mode) {
+    uint idx = uint(g_u_modes) + uint(b) / kModesPerUint;
+    uint sh = uint(b % int(kModesPerUint)) * kModeBits;
+    uint w = u_modes.data[idx];
+    u_modes.data[idx] = (w & ~(kModeMask << sh)) | ((uint(mode) & kModeMask) << sh);
+}
+
+// [REF] entropy.cpp mpm_of(): left and above inside the same unit.
+int mpm_now() {
+    int bx = g_mb % g_u_nbx, by = g_mb / g_u_nbx;
+    int left = bx > 0 ? load_mode(g_mb - 1) : kIntraDcPlane;
+    int above = by > 0 ? load_mode(g_mb - g_u_nbx) : kIntraDcPlane;
+    return nxs_mpm(left, above);
+}
+
+void begin_next_unit() {
+    g_ui += g_stride;
+    if (g_ui >= g_nunits) g_phase = kPhDone; else begin_unit();
+}
+
 void begin_unit() {
     int base = g_slot * (kMaxPlanes + 1);
     int p = 0;
@@ -177,32 +239,81 @@ void begin_unit() {
     int nb = s_nb[g_slot * kMaxPlanes + p];
     int ndc = nb * nb;
     int chroma = (p == 1 || p == 2) ? 1 : 0;
-    g_u_ctx_cbf = chroma != 0 ? kCtxCbfChroma : kCtxCbfLuma;
-    g_u_ctx_last = chroma != 0 ? kCtxLastChroma : kCtxLastLuma;
+    bool ctx_v2 = (pc.tools & kToolFlagCtxV2) != 0u;
+    bool dir = (pc.tools & kToolFlagIntraDir) != 0u;
+    g_u_sdh = (pc.tools & kToolFlagSignHide) != 0u ? 1 : 0;
+    g_u_ctx_mode = kCtxNone;
+
+    // [SYN] 9.1 unit order inside a plane: DC plane, [mode unit], then the
+    // nb*nb block units.  [REF] TileCoder::build_units().
     if (k == 0) {
+        // The DC-plane unit.  Under CTX_V2 it has CBF, LAST and LEVEL
+        // contexts of its own (SYNTAX.md 9.3, contexts 12-14).
         g_u_ncoef = ndc;
         g_u_scan = nxs_scan_id(ndc, 0);
         g_u_coef = s_coef_base[g_slot * kMaxPlanes + p];
-    } else {
-        g_u_ncoef = kCoefPerBlock;
-        g_u_scan = nxs_scan_id(kCoefPerBlock, s_tskip[g_slot]);
-        g_u_coef = s_coef_base[g_slot * kMaxPlanes + p] + ndc +
-                   (k - 1) * kCoefPerBlock;
+        g_u_ctx_cbf = ctx_v2 ? kCtxCbfDc
+                             : (chroma != 0 ? kCtxCbfChroma : kCtxCbfLuma);
+        g_u_ctx_last = ctx_v2 ? kCtxLastDc
+                              : (chroma != 0 ? kCtxLastChroma : kCtxLastLuma);
+        g_u_ctx_level = ctx_v2 ? kCtxLevelDc : kCtxNone;
+        g_phase = kPhCbf;
+        return;
     }
+    if (dir && k == 1) {
+        // The mode unit: nb*nb intra modes in raster order, coded in full
+        // before this lane moves on (SYNTAX.md 9.6).
+        g_u_nbx = nb;
+        g_u_modes = s_mode_base[g_slot] + p * int(kModeWordsPerPlane);
+        g_u_ctx_mode = ctx_v2 ? kCtxMode : kCtxNone;
+        g_mb = 0;
+        // ref/src/entropy.cpp begin_unit() skips an empty mode unit here.  A
+        // coded plane's edge is at least kMinChromaSize, so nb >= 1 always and
+        // the case cannot arise; it is left out rather than recursed into,
+        // because GLSL forbids the begin_unit/begin_next_unit cycle.
+        g_mpm = mpm_now();
+        g_phase = g_u_ctx_mode != kCtxNone ? kPhModeSym : kPhModeFlag;
+        return;
+    }
+    // A residual block unit.  Its contexts are the plane's, and its LEVEL
+    // context is the banded derivation of 9.3, in both models.
+    int b = k - (dir ? 2 : 1);
+    g_u_ncoef = kCoefPerBlock;
+    g_u_scan = nxs_scan_id(kCoefPerBlock, s_tskip[g_slot]);
+    g_u_coef = s_coef_base[g_slot * kMaxPlanes + p] + ndc + b * kCoefPerBlock;
+    g_u_ctx_cbf = chroma != 0 ? kCtxCbfChroma : kCtxCbfLuma;
+    g_u_ctx_last = chroma != 0 ? kCtxLastChroma : kCtxLastLuma;
+    g_u_ctx_level = kCtxNone;
     g_phase = kPhCbf;
 }
 
 void begin_levels() {
     g_pos_sp = g_last;
     g_prev_class = 0;
+    g_sum_abs = 0;
+    // [SYN] 9.7: the hidden sign is the one at scan position LAST, which is
+    // known the moment LAST is decoded and is nonzero by construction, so no
+    // lookahead is needed.  Its value is settled at the end of the unit.
+    g_hide = (g_u_sdh != 0 && g_last >= kSdhMinLast) ? 1 : 0;
+    g_hide_mag = 0;
     g_phase = kPhLevel;
 }
 
+void store_coef_at(int scan_pos, int value) {
+    u_coef.data[g_coef_off + uint(g_u_coef + scan_index(g_u_scan, scan_pos))] =
+        int16_t(value);
+}
+
 void advance_pos() {
-    g_prev_class = nxs_level_class(g_mag < 0 ? -g_mag : g_mag);
+    int m = g_mag < 0 ? -g_mag : g_mag;
+    g_prev_class = nxs_level_class(m);
+    g_sum_abs += m;
     if (g_pos_sp == 0) {
-        g_ui += g_stride;
-        if (g_ui >= g_nunits) g_phase = kPhDone; else begin_unit();
+        // [SYN] 9.7: parity of the sum of |level| over the whole unit decides
+        // the sign at LAST.  The magnitude was stored positive; flip it here.
+        if (g_hide != 0 && (g_sum_abs & 1) != 0)
+            store_coef_at(g_last, -g_hide_mag);
+        begin_next_unit();
     } else {
         --g_pos_sp;
         g_phase = kPhLevel;
@@ -214,6 +325,9 @@ void lane_init(int lane) {
     g_ui = lane;
     g_last = 0; g_pos_sp = 0; g_prev_class = 0; g_last_cls = 0; g_mag = 0;
     g_esc_j = 0; g_esc_bits = 0; g_esc_done = 0; g_esc_acc = 0u;
+    g_u_ctx_level = kCtxNone; g_u_ctx_mode = kCtxNone;
+    g_u_nbx = 0; g_u_modes = 0; g_mb = 0; g_mpm = 0;
+    g_u_sdh = 0; g_hide = 0; g_sum_abs = 0; g_hide_mag = 0;
     if (g_ui >= g_nunits) { g_phase = kPhDone; return; }
     begin_unit();
 }
@@ -232,9 +346,17 @@ bool lane_next(out int out_kind, out int out_arg) {
         out_kind = 1; out_arg = kLastRawBits[g_last_cls]; return true;
     }
     if (g_phase == kPhLevel) {
-        out_kind = 0; out_arg = nxs_level_ctx(g_pos_sp, g_prev_class);
+        // [SYN] 9.3 / [REF] entropy.cpp kLevel: a unit that names its own
+        // LEVEL context uses it; kCtxNone means the banded derivation.
+        out_kind = 0;
+        out_arg = g_u_ctx_level != kCtxNone
+                      ? g_u_ctx_level
+                      : nxs_level_ctx(g_pos_sp, g_prev_class);
         return true;
     }
+    if (g_phase == kPhModeSym) { out_kind = 0; out_arg = g_u_ctx_mode; return true; }
+    if (g_phase == kPhModeFlag) { out_kind = 1; out_arg = kModeFlagBits; return true; }
+    if (g_phase == kPhModeIdx) { out_kind = 1; out_arg = kModeIdxBits; return true; }
     if (g_phase == kPhEscPrefix) { out_kind = 1; out_arg = 1; return true; }
     if (g_phase == kPhEscSuffix) {
         int nchunks = (g_esc_bits + kEscChunkBits - 1) / kEscChunkBits;
@@ -248,19 +370,57 @@ bool lane_next(out int out_kind, out int out_arg) {
 }
 
 void store_coef(int value) {
-    u_coef.data[g_coef_off + uint(g_u_coef + scan_index(g_u_scan, g_pos_sp))] =
-        int16_t(value);
+    store_coef_at(g_pos_sp, value);
+}
+
+// [REF] entropy.cpp store_magnitude(): normally the sign follows; for the one
+// hidden position the coefficient is stored provisionally positive and its
+// sign is settled from the unit's parity in advance_pos().
+void store_magnitude() {
+    if (g_hide != 0 && g_pos_sp == g_last) {
+        g_hide_mag = g_mag;
+        store_coef(g_mag);
+        advance_pos();
+        return;
+    }
+    g_phase = kPhSign;
+}
+
+// [REF] entropy.cpp mode_step(): commit the mode just decoded and move on.
+void mode_step(int mode) {
+    store_mode(g_mb, mode);
+    ++g_mb;
+    if (g_mb >= g_u_nbx * g_u_nbx) { begin_next_unit(); return; }
+    g_mpm = mpm_now();
+    g_phase = g_u_ctx_mode != kCtxNone ? kPhModeSym : kPhModeFlag;
 }
 
 // ---------------------------------------------------------------------------
 // LaneMachine::feed() - apply the decoded value.
 // ---------------------------------------------------------------------------
 void lane_feed(uint v) {
+    if (g_phase == kPhModeSym) {
+        // [SYN] 9.6: symbol 0 is the MPM, 1..8 name the other eight modes in
+        // ascending order.  9..15 are illegal.
+        if (v >= uint(kNumIntraModes)) { fail(kStatusBadSymbol); return; }
+        mode_step(v == 0u ? g_mpm : nxs_nonmpm_mode(g_mpm, int(v) - 1));
+        return;
+    }
+    if (g_phase == kPhModeFlag) {
+        if (v > 1u) { fail(kStatusBadSymbol); return; }
+        if (v == 0u) { g_phase = kPhModeIdx; return; }
+        mode_step(g_mpm);
+        return;
+    }
+    if (g_phase == kPhModeIdx) {
+        if (v > 7u) { fail(kStatusBadSymbol); return; }
+        mode_step(nxs_nonmpm_mode(g_mpm, int(v)));
+        return;
+    }
     if (g_phase == kPhCbf) {
         if (v > 1u) { fail(kStatusBadSymbol); return; }
         if (v == 0u) {
-            g_ui += g_stride;
-            if (g_ui >= g_nunits) g_phase = kPhDone; else begin_unit();
+            begin_next_unit();
             return;
         }
         atomicOr(u_cbf.data[g_cbf_off + uint(g_ui) / 32u],
@@ -295,7 +455,7 @@ void lane_feed(uint v) {
             advance_pos();
             return;
         }
-        g_phase = kPhSign;
+        store_magnitude();
         return;
     }
     if (g_phase == kPhEscPrefix) {
@@ -322,7 +482,7 @@ void lane_feed(uint v) {
         uint val = n - (1u << uint(kEscOrder));
         if (val > uint(kEscMaxValue)) { fail(kStatusBadSymbol); return; }
         g_mag = int(val) + kEscSym;
-        g_phase = kPhSign;
+        store_magnitude();
         return;
     }
     // kPhSign
@@ -399,6 +559,7 @@ void main() {
         // dispatch can cover any subset of the frame's tiles in any order.
         g_coef_off = u_tiles.data[d + kTdCoefOffset];
         g_cbf_off = u_tiles.data[d + kTdCbfOffset];
+        if (lane == 0) s_mode_base[slot] = int(u_tiles.data[d + kTdModeOffset]);
     }
 
     if (valid && lane == 0) {
@@ -423,6 +584,10 @@ void main() {
 
         int np = nxs_coded_planes(int(pc.frame_nplanes), alpha_mode);
         s_np[slot] = np;
+        // [v3] INTRA_DIR adds one mode unit per coded plane (SYNTAX.md 9.1).
+        int extra = (pc.tools & kToolFlagIntraDir) != 0u
+                        ? kUnitsPerPlaneExtraDir
+                        : kUnitsPerPlaneExtra;
         int ub = 0, cb = 0;
         for (int p = 0; p < kMaxPlanes; ++p) {
             s_unit_base[slot * (kMaxPlanes + 1) + p] = ub;
@@ -431,7 +596,7 @@ void main() {
                 int nb = nxs_plane_size(p, res_level, chroma444) / kBlockSize;
                 s_nb[slot * kMaxPlanes + p] = nb;
                 int ndc = nb * nb;
-                ub += kUnitsPerPlaneExtra + ndc;
+                ub += extra + ndc;
                 cb += ndc + ndc * kCoefPerBlock;
             } else {
                 s_nb[slot * kMaxPlanes + p] = 0;
@@ -460,6 +625,11 @@ void main() {
             u_coef.data[g_coef_off + i] = int16_t(0);
         for (uint i = uint(lane); i < pc.cbf_words; i += LANES)
             u_cbf.data[g_cbf_off + i] = 0u;
+        // [v3] The mode words are zeroed unconditionally, whether or not the
+        // stream carries modes: mode 0 is the DC-plane predictor, so a zeroed
+        // region is exactly "every block predicts as v1 did".
+        for (uint i = uint(lane); i < kModeWordsPerTile; i += LANES)
+            u_modes.data[uint(s_mode_base[slot]) + i] = 0u;
     }
     barrier();
 

@@ -71,7 +71,7 @@ Control flow inside the round loop is workgroup-uniform in both modes and every
 
 ## Memory layout
 
-Six storage buffers, set 0:
+Seven storage buffers, set 0:
 
 | binding | buffer | contents |
 |---|---|---|
@@ -81,9 +81,14 @@ Six storage buffers, set 0:
 | 3 | coefficients | `int16_t`, `coef_stride` entries per tile |
 | 4 | cbf bits | `cbf_words` uints per tile, one bit per coding unit |
 | 5 | status | one uint per tile, `kStatus*` |
+| 6 | intra modes | `kModeWordsPerTile` uints per tile, one 4-bit mode per 8x8 block, 8 to a word |
 
-Push constants (16 bytes): `num_tiles`, `frame_nplanes`, `coef_stride`,
-`cbf_words`.
+Push constants (20 bytes): `num_tiles`, `frame_nplanes`, `coef_stride`,
+`cbf_words`, `tools`. The last is the frame-uniform tool mask —
+`kToolFlagCtxV2 | kToolFlagIntraDir | kToolFlagSignHide`, derived by the host
+from the stream's tool bits (`docs/SYNTAX.md` 2.3). It is a push constant
+rather than a specialisation constant so that turning a tool on costs no
+pipeline rebuild.
 
 **Coefficient order** is the reference's `TileCoder::coef` order, so Pass B can
 hand a tile straight to `reconstruct_plane()`:
@@ -91,6 +96,7 @@ hand a tile straight to `reconstruct_plane()`:
 ```
 for each coded plane p in (Y, Co, Cg [, A if alpha_mode == 2]):
     nb*nb        DC-plane coefficients
+    [ nb*nb intra modes, iff INTRA_DIR ]   -> binding 6, not this buffer
     nb*nb blocks x 64 coefficients
 ```
 
@@ -114,16 +120,45 @@ so a `CBF == 0` unit and the padding both read back as zero.
 
 | | bytes |
 |---|---|
-| `s_cum[8][12][16]` | 6144 |
+| `s_cum[8][16][16]` | 8192 |
 | `s_scan[4][64]` | 1024 |
-| per-tile geometry, flags | ~400 |
+| per-tile geometry, flags | ~1000 |
 
-About 7.5 KiB, close to PAPER 3.2.2's 8 KiB estimate. The paper assumed a
+About 10 KiB, up from 7.5 when the context count was 12 (`docs/SYNTAX.md` 9.3,
+tool bit 21 `CTX_V2`). The table is always uploaded at the 16-context stride
+whichever model the stream selects, so the host has one layout to build and
+contexts past the coded count simply are never selected. The paper assumed a
 1024-entry `slot2sym` table per context, but a workgroup holds 8 tiles that may
 each name a different `table_set`, and 8 sets x 12 contexts x 1024 bytes does not
 fit. The kernel stores cumulative frequencies instead and finds the symbol with a
 4-step branchless binary search, which is exactly equivalent to indexing
 `slot2sym` (`slot2sym[k] == s` iff `cum[s] <= k < cum[s+1]`).
+
+## The v3 units
+
+With `INTRA_DIR` each coded plane carries one **mode unit** between its
+DC-plane unit and its block units (`docs/SYNTAX.md` 9.1), holding `nb*nb` intra
+modes in raster order, each coded against the most probable mode of its left
+and above neighbours. Both neighbours live in the *same* unit, and a unit
+belongs to exactly one lane, so the MPM derivation only ever reads values that
+lane has already produced — whatever the interleaved schedule does with the
+other units. That is why the modes are a unit of their own rather than a symbol
+attached to each block, and it is what lets the kernel read them straight back
+out of binding 6 with a plain read-modify-write and no atomic: each plane's
+64-slot region starts on a word boundary, so no two lanes ever share a word.
+
+Under `CTX_V2` the mode is one symbol in context 15 over the alphabet 0..8;
+without it, a 1-bit "is MPM" flag and a 3-bit non-MPM index, both bypass.
+
+`CTX_V2` also gives the DC-plane unit CBF, LAST and LEVEL contexts of its own
+(12, 13, 14). The LEVEL context therefore became a *field* on the unit rather
+than a derivation: `kCtxNone` means the banded contexts of 9.3, anything else
+is used as-is.
+
+`SIGN_HIDE` drops the sign at scan position `LAST` when `LAST >= 4` and makes
+it the parity of the sum of the unit's magnitudes. The kernel stores that
+coefficient provisionally positive, keeps its magnitude in a register, and
+negates it at the end of the unit — so binding 3 stays write-only.
 
 ## Errors
 
@@ -131,7 +166,8 @@ A tile that cannot be decoded sets a non-zero status and stops; other tiles in
 the workgroup are unaffected. Rejected: a reserved header field (SYNTAX.md 4.1),
 `nsub_log2 != 3`, an initial state below `L`, a payload shorter than
 `4 * lanes`, a renormalisation past the payload end, and any symbol illegal for
-its phase. The payload starts after the optional MV and alpha bytes, so
+its phase — which now includes a MODE symbol of 9 or more in context 15 and a
+non-MPM index above 7. The payload starts after the optional MV and alpha bytes, so
 `nxs_tile_payload_offset()` is the only place that knows the header is variable
 length.
 

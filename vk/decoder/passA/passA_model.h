@@ -21,7 +21,11 @@ struct TileDesc {
     uint32_t bits_length;  // header + payload length in bytes
     uint32_t coef_offset;  // int16 index of the tile's coefficient region
     uint32_t cbf_offset;   // uint index of the tile's CBF words
+    uint32_t mode_offset;  // [v3] uint index of the tile's intra-mode words
+    uint32_t reserved[3];  // zero; the descriptor is a power of two long
 };
+static_assert(sizeof(TileDesc) == kTileDescUints * 4,
+              "TileDesc must match the shader's descriptor stride");
 
 // Mirrors the shader's bindings and push constants.
 struct Inputs {
@@ -30,7 +34,13 @@ struct Inputs {
     const TileDesc *tiles = nullptr;
     uint32_t num_tiles = 0;
     // Cumulative frequencies, cum[set][ctx][sym]: kNumTableSets*kNumCtx*kNumSym.
+    // Contexts beyond the stream's coded count carry the built-in defaults and
+    // are never selected, exactly as ref/src/tables.cpp build_default_set()
+    // fills them.
     const uint32_t *tables = nullptr;
+    // [v3] Frame-uniform tool flags, Pass A's `tools` push constant:
+    // kToolFlagCtxV2 | kToolFlagIntraDir | kToolFlagSignHide.
+    uint32_t tools = 0;
     uint32_t frame_nplanes = 3;
     uint32_t coef_stride = kCoefStrideMax;
     uint32_t cbf_words = kCbfWordsPerTile;
@@ -48,6 +58,11 @@ struct Outputs {
     int16_t *coef = nullptr;    // num_tiles * coef_stride
     uint32_t *cbf = nullptr;    // num_tiles * cbf_words
     uint32_t *status = nullptr; // num_tiles
+    // [v3] num_tiles * kModeWordsPerTile packed intra modes, 4 bits per block.
+    // Required whenever any descriptor names a mode region, which the host
+    // always does; a caller that never sets kToolFlagIntraDir still needs it,
+    // because the kernel zeroes the region unconditionally.
+    uint32_t *modes = nullptr;
 };
 
 // Runs every workgroup of the dispatch.  Equivalent to

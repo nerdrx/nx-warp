@@ -54,6 +54,106 @@ inline int bilinear(const int *src, int w, int h, int stride, int sx, int sy) {
             kBilinRound) >> kBilinShift;
 }
 
+// ------------------------------------------- directional intra [v3]
+// Mirrors dirDone / dirAt / dirStepOf / predictCols in reconstruct.comp,
+// which mirror ref/src/codec.cpp build_refs / predict_block.  The model runs
+// the blocks in plain raster order rather than by wavefront step: the two
+// produce the same result by construction, because a block's references are
+// exactly the blocks the step function already put before it.
+inline bool dir_done(int sched, int nbx, int nby, int bx, int by) {
+    bool done = (nby < by) || (nby == by && nbx < bx);
+    if ((sched & kDirSchedNoAboveRight) != 0 && nbx > bx) done = false;
+    if ((sched & kDirSchedSubTile) != 0 &&
+        ((nbx >> kDirSubTileLog2) != (bx >> kDirSubTileLog2) ||
+         (nby >> kDirSubTileLog2) != (by >> kDirSubTileLog2)))
+        done = false;
+    return done;
+}
+
+// [SYN] 7.4: every mode but 0 is a weighted average of in-range references,
+// so no clamp is applied.  A[0] / L[0] are the corner; the spec's A[k] is
+// A[1 + k].
+inline void predict_block(int mode, const int *A, const int *L, const int *base,
+                          int size, int bx, int by, int *P) {
+    const int tl = A[0];
+    for (int j = 0; j < 8; ++j)
+        for (int i = 0; i < 8; ++i) {
+            int v = 0;
+            switch (mode) {
+                case kIntraDcPlane:
+                    v = base[(size_t)(by * 8 + j) * size + bx * 8 + i];
+                    break;
+                case kIntraDc: {
+                    int sum = 0;
+                    for (int k = 0; k < 8; ++k) sum += A[1 + k] + L[1 + k];
+                    v = (sum + kIntraDcRound) >> kIntraDcShift;
+                    break;
+                }
+                case kIntraPlanar:
+                    v = ((7 - i) * L[1 + j] + (i + 1) * A[1 + 8] +
+                         (7 - j) * A[1 + i] + (j + 1) * L[1 + 8] +
+                         kIntraPlanarRound) >> kIntraPlanarShift;
+                    break;
+                case kIntraH: v = L[1 + j]; break;
+                case kIntraV: v = A[1 + i]; break;
+                case kIntraDdl: {
+                    int k = i + j;
+                    v = (k == 14) ? (A[1 + 14] + 3 * A[1 + 15] + kIntraTap3Round) >>
+                                        kIntraTap3Shift
+                                  : (A[1 + k] + 2 * A[1 + k + 1] + A[1 + k + 2] +
+                                     kIntraTap3Round) >> kIntraTap3Shift;
+                    break;
+                }
+                case kIntraDdr:
+                    if (i > j) {
+                        int k = i - j;
+                        v = (A[k - 1] + 2 * A[k] + A[1 + k] + kIntraTap3Round) >>
+                            kIntraTap3Shift;
+                    } else if (i < j) {
+                        int k = j - i;
+                        v = (L[k - 1] + 2 * L[k] + L[1 + k] + kIntraTap3Round) >>
+                            kIntraTap3Shift;
+                    } else {
+                        v = (A[1] + 2 * tl + L[1] + kIntraTap3Round) >> kIntraTap3Shift;
+                    }
+                    break;
+                case kIntraVr: {
+                    int z = 2 * i - j, k = i - (j >> 1);
+                    if (z >= 0 && (z & 1) == 0)
+                        v = (A[k] + A[1 + k] + kIntraTap2Round) >> kIntraTap2Shift;
+                    else if (z >= 0)
+                        v = (A[k - 1] + 2 * A[k] + A[1 + k] + kIntraTap3Round) >>
+                            kIntraTap3Shift;
+                    else if (z == -1)
+                        v = (L[1] + 2 * tl + A[1] + kIntraTap3Round) >> kIntraTap3Shift;
+                    else {
+                        int q = j - 2 * i;
+                        v = (L[q] + 2 * L[q - 1] + L[q - 2] + kIntraTap3Round) >>
+                            kIntraTap3Shift;
+                    }
+                    break;
+                }
+                default: {  // kIntraHd
+                    int z = 2 * j - i, k = j - (i >> 1);
+                    if (z >= 0 && (z & 1) == 0)
+                        v = (L[k] + L[1 + k] + kIntraTap2Round) >> kIntraTap2Shift;
+                    else if (z >= 0)
+                        v = (L[k - 1] + 2 * L[k] + L[1 + k] + kIntraTap3Round) >>
+                            kIntraTap3Shift;
+                    else if (z == -1)
+                        v = (A[1] + 2 * tl + L[1] + kIntraTap3Round) >> kIntraTap3Shift;
+                    else {
+                        int q = i - 2 * j;
+                        v = (A[q] + 2 * A[q - 1] + A[q - 2] + kIntraTap3Round) >>
+                            kIntraTap3Shift;
+                    }
+                    break;
+                }
+            }
+            P[j * 8 + i] = v;
+        }
+}
+
 // One tile's reconstructed planes at their coded resolution.
 struct TilePlanes {
     int size[4] = {0, 0, 0, 0};
@@ -104,6 +204,7 @@ void reconstruct_tile(const PassBInput &in, int tile, TilePlanes &tp,
     bool intra = (mode == kModeIntra);  // INTER HOOK, see reconstruct.comp
     // [marked edit] per-tile weighting-matrix override, docs/SYNTAX.md 4.1.
     const int wmSet = nxvw_rec_wm_id(rec.w1) * 128;
+    const int sched = in.dirSched;
 
     int nplanes = pcp.alphaPresent != 0 ? 4 : 3;
     int ncoded = nplanes;
@@ -126,6 +227,17 @@ void reconstruct_tile(const PassBInput &in, int tile, TilePlanes &tp,
         if (chroma) planeQp = iclamp(qp + pcp.chromaQpOff, 0, 63);
         else if (p == 3) planeQp = iclamp(qp + pcp.alphaQpOff, 0, 63);
         const int *wmat = in.weights + wmSet + (chroma ? 64 : 0);
+        // [v3] this plane's per-block intra modes, unpacked from Pass A's
+        // 4-bit-per-block array.
+        int modes[64] = {};
+        if (in.modes)
+            for (int b = 0; b < ndc && b < 64; ++b) {
+                uint32_t w = in.modes[(size_t)tile * NXVW_MODE_WORDS_PER_TILE +
+                                      p * NXVW_MODE_WORDS_PER_PLANE +
+                                      b / int(NXVW_MODES_PER_UINT)];
+                modes[b] = int((w >> (uint32_t(b % int(NXVW_MODES_PER_UINT)) *
+                                      NXVW_MODE_BITS)) & NXVW_MODE_MASK);
+            }
         bool ctChroma = (pcp.colorTransform == kCtYCoCgR) && chroma;
         int dcOff = ctChroma ? kDcOffsetChromaCT : kDcOffset8;
         int maxval = ctChroma ? kMaxvalChromaCT : kMaxval8;
@@ -144,6 +256,30 @@ void reconstruct_tile(const PassBInput &in, int tile, TilePlanes &tp,
         for (int i = 0; i < ndc; ++i)
             means[i] = iclamp(dcOff + dc[i], 0, maxval);
 
+        // --- the DC-plane prediction, which is `pred` in SYNTAX.md 7.2 and
+        // the base of both forms of 7.5.
+        std::vector<int> pred((size_t)size * size, 0);
+        if (intra)
+            for (int y = 0; y < size; ++y)
+                for (int x = 0; x < size; ++x)
+                    pred[(size_t)y * size + x] =
+                        bilinear(means.data(), nb, nb, nb,
+                                 kPlanarMul * x + kPlanarOff,
+                                 kPlanarMul * y + kPlanarOff);
+
+        const bool dir = intra && pcp.intraDir != 0;
+        const bool layer = pcp.dirLayer != 0;
+        // In the layered form the modes predict the DC-plane residual, whose
+        // out-of-block fallback is zero rather than `pred`.
+        std::vector<int> zero;
+        const int *fallback = pred.data();
+        if (dir && layer) {
+            zero.assign((size_t)size * size, 0);
+            fallback = zero.data();
+        }
+        std::vector<int> recon;
+        if (dir) recon.assign((size_t)size * size, 0);
+
         // --- residual blocks
         const int16_t *bc = coefBase + ndc;
         for (int b = 0; b < ndc; ++b) {
@@ -159,15 +295,48 @@ void reconstruct_tile(const PassBInput &in, int tile, TilePlanes &tp,
                     dq[i] = model_dequant(c[i], model_dequant_step(planeQp, wmat[i]));
                 model_idct8x8(dq, res);
             }
+            if (!dir) {
+                for (int j = 0; j < 8; ++j)
+                    for (int i = 0; i < 8; ++i) {
+                        int x = bx * 8 + i, y = by * 8 + j;
+                        int pv = intra ? pred[(size_t)y * size + x] : 0;
+                        tp.s[p][(size_t)y * size + x] =
+                            iclamp(pv + res[j * 8 + i], 0, maxval);
+                    }
+                continue;
+            }
+            // Reference samples, clamped into the tile: a tile never reads a
+            // neighbour, so its borders read this tile's own DC plane.
+            int A[kIntraRefs], L[kIntraRefs];
+            const int x0 = bx * 8, y0 = by * 8;
+            auto at = [&](int x, int y) {
+                int cx = iclamp(x, 0, size - 1), cy = iclamp(y, 0, size - 1);
+                const int *src = dir_done(sched, cx >> 3, cy >> 3, bx, by)
+                                     ? recon.data()
+                                     : fallback;
+                return src[(size_t)cy * size + cx];
+            };
+            A[0] = L[0] = at(x0 - 1, y0 - 1);
+            for (int k = 0; k < 16; ++k) {
+                A[1 + k] = at(x0 + k, y0 - 1);
+                L[1 + k] = at(x0 - 1, y0 + k);
+            }
+            int P[64];
+            predict_block(modes[b], A, L, fallback, size, bx, by, P);
             for (int j = 0; j < 8; ++j)
                 for (int i = 0; i < 8; ++i) {
-                    int x = bx * 8 + i, y = by * 8 + j;
-                    int pred = intra ? bilinear(means.data(), nb, nb, nb,
-                                                kPlanarMul * x + kPlanarOff,
-                                                kPlanarMul * y + kPlanarOff)
-                                     : 0;
-                    tp.s[p][(size_t)y * size + x] =
-                        iclamp(pred + res[j * 8 + i], 0, maxval);
+                    int x = x0 + i, y = y0 + j;
+                    int v = P[j * 8 + i] + res[j * 8 + i];
+                    if (layer) {
+                        int base = pred[(size_t)y * size + x];
+                        int full = iclamp(base + v, 0, maxval);
+                        recon[(size_t)y * size + x] = full - base;
+                        tp.s[p][(size_t)y * size + x] = full;
+                    } else {
+                        int full = iclamp(v, 0, maxval);
+                        recon[(size_t)y * size + x] = full;
+                        tp.s[p][(size_t)y * size + x] = full;
+                    }
                 }
         }
         coefBase += ndc + ndc * 64;

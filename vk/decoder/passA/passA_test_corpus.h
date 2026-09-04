@@ -35,6 +35,10 @@ struct Corpus {
     uint32_t coef_stride = 0;
     uint32_t cbf_words = kCbfWordsPerTile;
     uint32_t frame_nplanes = 3;
+    // [v3] Pass A's `tools` push constant.  The corpus generator emits v1
+    // syntax only, so it stays 0; the v2 intra tools are covered end to end by
+    // the conformance vectors instead.
+    uint32_t tools = 0;
     uint64_t total_symbols = 0;  // entropy operations across the corpus
     uint64_t total_pixels = 0;
 };
@@ -97,6 +101,7 @@ inline bool build_corpus(const CorpusConfig &cfg, Corpus &out) {
         out.tiles[t].bits_length = uint32_t(tilebuf.size());
         out.tiles[t].coef_offset = t * stride;
         out.tiles[t].cbf_offset = t * out.cbf_words;
+        out.tiles[t].mode_offset = t * kModeWordsPerTile;
         out.bits.insert(out.bits.end(), tilebuf.begin(), tilebuf.end());
 
         int16_t *dst = out.expect_coef.data() + size_t(t) * stride;

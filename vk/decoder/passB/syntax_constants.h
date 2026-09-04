@@ -181,6 +181,62 @@ NXVW_CONST kIdctShift2 = 13;
 NXVW_CONST kPlanarMul = 2;
 NXVW_CONST kPlanarOff = -7;
 
+// ------------------------------------------------- directional intra [v3]
+// [SYN] 7.4, tool bit 17.  Each 8x8 block carries one of nine modes; mode 0
+// IS the DC-plane prediction of 7.2, which makes INTRA_DIR a strict superset
+// of v1.  [REF] ref/src/common.h kIntra*, ref/src/codec.cpp predict_block().
+NXVW_CONST kIntraDcPlane = 0;  // the v1 bilinear DC-plane predictor
+NXVW_CONST kIntraDc = 1;       // mean of the 8 top and 8 left neighbours
+NXVW_CONST kIntraPlanar = 2;   // HEVC-style planar
+NXVW_CONST kIntraH = 3;        // horizontal
+NXVW_CONST kIntraV = 4;        // vertical
+NXVW_CONST kIntraDdl = 5;      // diagonal down-left, 45 deg
+NXVW_CONST kIntraDdr = 6;      // diagonal down-right, 45 deg
+NXVW_CONST kIntraVr = 7;       // vertical-right, 26.6 deg
+NXVW_CONST kIntraHd = 8;       // horizontal-down, 63.4 deg
+NXVW_CONST kNumIntraModes = 9;
+
+// [SYN] 7.4: the reference arrays run A[-1..15] and L[-1..15] with A[-1] ==
+// L[-1] == the corner, so 17 entries each with the corner at index 0.
+NXVW_CONST kIntraRefs = 17;
+
+// [SYN] 7.4 / 7.6: the wavefront schedule.  Block (bx, by) reads its left,
+// above and ABOVE-RIGHT neighbours (mode DDL reaches A[15]), so the
+// independent set is 2*by + bx and a res_level-0 luma plane is a 22-step
+// wavefront at 4.5 % occupancy -- 69 barriers for a 4:4:4 tile.
+//
+// SYNTAX.md 7.6 prices two restrictions that shorten it, and ref/ implements
+// both behind -DNXVC_DIR_SCHED_EXPERIMENT with exactly this bit encoding
+// (ref/src/codec.cpp build_refs()), so a stream produced with NXVC_DIR_SCHED
+// = k decodes bit-exactly under kDirSched == k:
+//
+//   bit 0  drop the above-right reference   15 steps,  6.7 %,  +0.24 % rate
+//   bit 1  confine to 32x32 sub-tiles       10 steps, 10.0 %,  +1.6  % rate
+//   both                                     7 steps, 14.3 %,  +1.8  % rate
+//
+// 7.4 as written -- kDirSchedFull -- is the normative derivation and the only
+// one a conformant encoder emits today.  The others are selectable so the
+// decode cost of each can be measured against those rate numbers.
+NXVW_CONST kDirSchedFull = 0;
+NXVW_CONST kDirSchedNoAboveRight = 1;
+NXVW_CONST kDirSchedSubTile = 2;
+NXVW_CONST kDirSchedBoth = 3;
+// The sub-tile is 4x4 blocks = 32x32 samples, so the predicate is a compare
+// of the block indices shifted by this.
+NXVW_CONST kDirSubTileLog2 = 2;
+
+// [SYN] 7.4 predictor rounding.  Every mode but 0 is a weighted average of
+// references already in [0, maxval], so no clamp is needed and none is
+// applied.
+NXVW_CONST kIntraDcRound = 8;
+NXVW_CONST kIntraDcShift = 4;    // (sum of 16 references + 8) >> 4
+NXVW_CONST kIntraPlanarRound = 8;
+NXVW_CONST kIntraPlanarShift = 4;
+NXVW_CONST kIntraTap3Round = 2;  // (a + 2b + c + 2) >> 2
+NXVW_CONST kIntraTap3Shift = 2;
+NXVW_CONST kIntraTap2Round = 1;  // (a + b + 1) >> 1
+NXVW_CONST kIntraTap2Shift = 1;
+
 // [SYN] 8, the one resampling kernel: Q4 coordinates, integer weights,
 // (p00*wx0*wy0 + p01*fx*wy0 + p10*wx0*fy + p11*fx*fy + 128) >> 8, source
 // coordinates clamped to the plane.  ONE rounding step: a decoder must not

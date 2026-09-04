@@ -19,8 +19,30 @@ endif()
 list(SORT vectors)
 
 set(checked 0)
+set(skipped 0)
 foreach(v IN LISTS vectors)
   get_filename_component(name ${v} NAME_WE)
+  # tests/vectors also holds the Phase 2 inter vectors.  docs/SYNTAX.md 12 says
+  # a Phase 1 decoder refuses any stream whose `tools` mask carries a bit it
+  # does not implement, so those are skipped here rather than compared --
+  # detected from the stream header's own u64 `tools` field at byte 32, not
+  # from the file name.
+  file(READ ${v} hdr HEX LIMIT 40)
+  string(SUBSTRING "${hdr}" 64 16 toolhex)   # bytes 32..39, little endian
+  set(_mask 0)
+  foreach(_b 0 1 2 3 4 5 6 7)
+    math(EXPR _off "${_b} * 2")
+    string(SUBSTRING "${toolhex}" ${_off} 2 _byte)
+    math(EXPR _v "0x${_byte}")
+    math(EXPR _mask "${_mask} + (${_v} << (8 * ${_b}))")
+  endforeach()
+  # Phase 1 set: bits 0-9, 17, 20, 21, 22.
+  math(EXPR _p1 "0x3F03FF")
+  math(EXPR _extra "${_mask} & ~${_p1}")
+  if(NOT _extra EQUAL 0)
+    math(EXPR skipped "${skipped} + 1")
+    continue()
+  endif()
   execute_process(COMMAND ${REFDEC} --in ${v} --out ${WORK}/${name}.ref.yuv
                           --quiet
                   RESULT_VARIABLE rc OUTPUT_QUIET ERROR_VARIABLE reftxt)
@@ -45,5 +67,6 @@ foreach(v IN LISTS vectors)
   endif()
   math(EXPR checked "${checked} + 1")
 endforeach()
-message(STATUS "${checked} vector(s): nxvc-vkdec is byte-identical to nxv-dec")
+message(STATUS "${checked} vector(s): nxvc-vkdec is byte-identical to nxv-dec"
+               " (${skipped} Phase 2 vector(s) skipped)")
 file(REMOVE_RECURSE ${WORK})

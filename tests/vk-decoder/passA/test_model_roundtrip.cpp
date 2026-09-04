@@ -27,10 +27,13 @@ int check(const char *name, const CorpusConfig &cfg) {
         std::vector<uint32_t> status(c.tiles.size(), 0xffffffffu);
 
         Inputs in = corpus_inputs(c, mode);
+        std::vector<uint32_t> modes(size_t(c.tiles.size()) *
+                                    kModeWordsPerTile, 0);
         Outputs out;
         out.coef = coef.data();
         out.cbf = cbf.data();
         out.status = status.data();
+        out.modes = modes.data();
         decode(in, out);
 
         size_t bad_status = 0, bad_coef = 0, bad_cbf = 0;

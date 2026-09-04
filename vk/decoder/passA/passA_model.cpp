@@ -28,6 +28,7 @@ struct Shared {
     int nunits[kMaxSlots];
     int tskip[kMaxSlots];
     int active[kMaxSlots];
+    int mode_base[kMaxSlots];
     uint32_t tabbase[kMaxSlots];
     uint32_t pay[kMaxSlots];
     uint32_t end[kMaxSlots];
@@ -52,6 +53,13 @@ struct Thread {
     int esc_j, esc_bits, esc_done;
     uint32_t esc_acc;
     int u_ncoef, u_scan, u_ctx_cbf, u_ctx_last, u_coef;
+    // [v3] kCtxNone = the banded LEVEL contexts; otherwise a fixed context.
+    int u_ctx_level;
+    // [v3] mode unit: kCtxNone = bypass coded, otherwise the MODE symbol.
+    int u_ctx_mode;
+    int u_nbx, u_modes, mb, mpm;
+    // [v3] sign data hiding, SYNTAX.md 9.7.
+    int u_sdh, hide, sum_abs, hide_mag;
     int slot;
     int lane;
     bool in_group;
@@ -66,6 +74,8 @@ struct Thread {
 
 constexpr int kPhCbf = 0, kPhLast = 1, kPhLastRaw = 2, kPhLevel = 3;
 constexpr int kPhEscPrefix = 4, kPhEscSuffix = 5, kPhSign = 6, kPhDone = 7;
+// [v3] mode-unit phases, ref/src/entropy.h LaneMachine::Phase.
+constexpr int kPhModeSym = 8, kPhModeFlag = 9, kPhModeIdx = 10;
 
 // ---------------------------------------------------------------------------
 // Bitstream access
@@ -109,6 +119,36 @@ void fail(Ctx &c, Thread &g, uint32_t code) {
 // ---------------------------------------------------------------------------
 // Unit lookup - TileCoder::build_units() order
 // ---------------------------------------------------------------------------
+// [v3] Packed mode access, 4 bits per block.  Only the lane that owns a
+// plane's mode unit ever touches that plane's words.
+int load_mode(Ctx &c, const Thread &g, int b) {
+    uint32_t w = c.out->modes[uint32_t(g.u_modes) + uint32_t(b) / kModesPerUint];
+    return int((w >> (uint32_t(b % int(kModesPerUint)) * kModeBits)) & kModeMask);
+}
+
+void store_mode(Ctx &c, const Thread &g, int b, int mode) {
+    uint32_t idx = uint32_t(g.u_modes) + uint32_t(b) / kModesPerUint;
+    uint32_t sh = uint32_t(b % int(kModesPerUint)) * kModeBits;
+    uint32_t w = c.out->modes[idx];
+    c.out->modes[idx] =
+        (w & ~(kModeMask << sh)) | ((uint32_t(mode) & kModeMask) << sh);
+}
+
+// [REF] entropy.cpp mpm_of(): left and above inside the same unit.
+int mpm_now(Ctx &c, const Thread &g) {
+    int bx = g.mb % g.u_nbx, by = g.mb / g.u_nbx;
+    int left = bx > 0 ? load_mode(c, g, g.mb - 1) : kIntraDcPlane;
+    int above = by > 0 ? load_mode(c, g, g.mb - g.u_nbx) : kIntraDcPlane;
+    return nxs_mpm(left, above);
+}
+
+void begin_unit(Ctx &c, Thread &g);
+
+void begin_next_unit(Ctx &c, Thread &g) {
+    g.ui += g.stride;
+    if (g.ui >= g.nunits) g.phase = kPhDone; else begin_unit(c, g);
+}
+
 void begin_unit(Ctx &c, Thread &g) {
     int base = g.slot * (kMaxPlanes + 1);
     int p = 0;
@@ -119,32 +159,65 @@ void begin_unit(Ctx &c, Thread &g) {
     int nb = c.sh.nb[g.slot * kMaxPlanes + p];
     int ndc = nb * nb;
     int chroma = (p == 1 || p == 2) ? 1 : 0;
-    g.u_ctx_cbf = chroma != 0 ? kCtxCbfChroma : kCtxCbfLuma;
-    g.u_ctx_last = chroma != 0 ? kCtxLastChroma : kCtxLastLuma;
+    const bool ctx_v2 = (c.in->tools & kToolFlagCtxV2) != 0u;
+    const bool dir = (c.in->tools & kToolFlagIntraDir) != 0u;
+    g.u_sdh = (c.in->tools & kToolFlagSignHide) != 0u ? 1 : 0;
+    g.u_ctx_mode = kCtxNone;
+
     if (k == 0) {
         g.u_ncoef = ndc;
         g.u_scan = nxs_scan_id(ndc, 0);
         g.u_coef = c.sh.coef_base[g.slot * kMaxPlanes + p];
-    } else {
-        g.u_ncoef = kCoefPerBlock;
-        g.u_scan = nxs_scan_id(kCoefPerBlock, c.sh.tskip[g.slot]);
-        g.u_coef = c.sh.coef_base[g.slot * kMaxPlanes + p] + ndc +
-                   (k - 1) * kCoefPerBlock;
+        g.u_ctx_cbf = ctx_v2 ? kCtxCbfDc
+                             : (chroma != 0 ? kCtxCbfChroma : kCtxCbfLuma);
+        g.u_ctx_last = ctx_v2 ? kCtxLastDc
+                              : (chroma != 0 ? kCtxLastChroma : kCtxLastLuma);
+        g.u_ctx_level = ctx_v2 ? kCtxLevelDc : kCtxNone;
+        g.phase = kPhCbf;
+        return;
     }
+    if (dir && k == 1) {
+        g.u_nbx = nb;
+        g.u_modes = c.sh.mode_base[g.slot] + p * int(kModeWordsPerPlane);
+        g.u_ctx_mode = ctx_v2 ? kCtxMode : kCtxNone;
+        g.mb = 0;
+        g.mpm = mpm_now(c, g);
+        g.phase = g.u_ctx_mode != kCtxNone ? kPhModeSym : kPhModeFlag;
+        return;
+    }
+    int b = k - (dir ? 2 : 1);
+    g.u_ncoef = kCoefPerBlock;
+    g.u_scan = nxs_scan_id(kCoefPerBlock, c.sh.tskip[g.slot]);
+    g.u_coef = c.sh.coef_base[g.slot * kMaxPlanes + p] + ndc + b * kCoefPerBlock;
+    g.u_ctx_cbf = chroma != 0 ? kCtxCbfChroma : kCtxCbfLuma;
+    g.u_ctx_last = chroma != 0 ? kCtxLastChroma : kCtxLastLuma;
+    g.u_ctx_level = kCtxNone;
     g.phase = kPhCbf;
 }
 
 void begin_levels(Thread &g) {
     g.pos_sp = g.last;
     g.prev_class = 0;
+    g.sum_abs = 0;
+    g.hide = (g.u_sdh != 0 && g.last >= kSdhMinLast) ? 1 : 0;
+    g.hide_mag = 0;
     g.phase = kPhLevel;
 }
 
+void store_coef_at(Ctx &c, Thread &g, int scan_pos, int value) {
+    c.out->coef[g.coef_off +
+                uint32_t(g.u_coef + scan_index(c, g.u_scan, scan_pos))] =
+        int16_t(value);
+}
+
 void advance_pos(Ctx &c, Thread &g) {
-    g.prev_class = nxs_level_class(g.mag < 0 ? -g.mag : g.mag);
+    int m = g.mag < 0 ? -g.mag : g.mag;
+    g.prev_class = nxs_level_class(m);
+    g.sum_abs += m;
     if (g.pos_sp == 0) {
-        g.ui += g.stride;
-        if (g.ui >= g.nunits) g.phase = kPhDone; else begin_unit(c, g);
+        if (g.hide != 0 && (g.sum_abs & 1) != 0)
+            store_coef_at(c, g, g.last, -g.hide_mag);
+        begin_next_unit(c, g);
     } else {
         --g.pos_sp;
         g.phase = kPhLevel;
@@ -156,6 +229,9 @@ void lane_init(Ctx &c, Thread &g, int lane) {
     g.ui = lane;
     g.last = 0; g.pos_sp = 0; g.prev_class = 0; g.last_cls = 0; g.mag = 0;
     g.esc_j = 0; g.esc_bits = 0; g.esc_done = 0; g.esc_acc = 0u;
+    g.u_ctx_level = kCtxNone; g.u_ctx_mode = kCtxNone;
+    g.u_nbx = 0; g.u_modes = 0; g.mb = 0; g.mpm = 0;
+    g.u_sdh = 0; g.hide = 0; g.sum_abs = 0; g.hide_mag = 0;
     if (g.ui >= g.nunits) { g.phase = kPhDone; return; }
     begin_unit(c, g);
 }
@@ -169,9 +245,15 @@ bool lane_next(const Thread &g, int &out_kind, int &out_arg) {
         out_kind = 1; out_arg = kLastRawBits[g.last_cls]; return true;
     }
     if (g.phase == kPhLevel) {
-        out_kind = 0; out_arg = nxs_level_ctx(g.pos_sp, g.prev_class);
+        out_kind = 0;
+        out_arg = g.u_ctx_level != kCtxNone
+                      ? g.u_ctx_level
+                      : nxs_level_ctx(g.pos_sp, g.prev_class);
         return true;
     }
+    if (g.phase == kPhModeSym) { out_kind = 0; out_arg = g.u_ctx_mode; return true; }
+    if (g.phase == kPhModeFlag) { out_kind = 1; out_arg = kModeFlagBits; return true; }
+    if (g.phase == kPhModeIdx) { out_kind = 1; out_arg = kModeIdxBits; return true; }
     if (g.phase == kPhEscPrefix) { out_kind = 1; out_arg = 1; return true; }
     if (g.phase == kPhEscSuffix) {
         int nchunks = (g.esc_bits + kEscChunkBits - 1) / kEscChunkBits;
@@ -184,16 +266,50 @@ bool lane_next(const Thread &g, int &out_kind, int &out_arg) {
 }
 
 void store_coef(Ctx &c, Thread &g, int value) {
-    c.out->coef[g.coef_off + uint32_t(g.u_coef + scan_index(c, g.u_scan, g.pos_sp))] =
-        int16_t(value);
+    store_coef_at(c, g, g.pos_sp, value);
+}
+
+// [REF] entropy.cpp store_magnitude().
+void store_magnitude(Ctx &c, Thread &g) {
+    if (g.hide != 0 && g.pos_sp == g.last) {
+        g.hide_mag = g.mag;
+        store_coef(c, g, g.mag);
+        advance_pos(c, g);
+        return;
+    }
+    g.phase = kPhSign;
+}
+
+// [REF] entropy.cpp mode_step().
+void mode_step(Ctx &c, Thread &g, int mode) {
+    store_mode(c, g, g.mb, mode);
+    ++g.mb;
+    if (g.mb >= g.u_nbx * g.u_nbx) { begin_next_unit(c, g); return; }
+    g.mpm = mpm_now(c, g);
+    g.phase = g.u_ctx_mode != kCtxNone ? kPhModeSym : kPhModeFlag;
 }
 
 void lane_feed(Ctx &c, Thread &g, uint32_t v) {
+    if (g.phase == kPhModeSym) {
+        if (v >= uint32_t(kNumIntraModes)) { fail(c, g, kStatusBadSymbol); return; }
+        mode_step(c, g, v == 0u ? g.mpm : nxs_nonmpm_mode(g.mpm, int(v) - 1));
+        return;
+    }
+    if (g.phase == kPhModeFlag) {
+        if (v > 1u) { fail(c, g, kStatusBadSymbol); return; }
+        if (v == 0u) { g.phase = kPhModeIdx; return; }
+        mode_step(c, g, g.mpm);
+        return;
+    }
+    if (g.phase == kPhModeIdx) {
+        if (v > 7u) { fail(c, g, kStatusBadSymbol); return; }
+        mode_step(c, g, nxs_nonmpm_mode(g.mpm, int(v)));
+        return;
+    }
     if (g.phase == kPhCbf) {
         if (v > 1u) { fail(c, g, kStatusBadSymbol); return; }
         if (v == 0u) {
-            g.ui += g.stride;
-            if (g.ui >= g.nunits) g.phase = kPhDone; else begin_unit(c, g);
+            begin_next_unit(c, g);
             return;
         }
         c.out->cbf[g.cbf_off + uint32_t(g.ui) / 32u] |= 1u << (uint32_t(g.ui) & 31u);
@@ -227,7 +343,7 @@ void lane_feed(Ctx &c, Thread &g, uint32_t v) {
             advance_pos(c, g);
             return;
         }
-        g.phase = kPhSign;
+        store_magnitude(c, g);
         return;
     }
     if (g.phase == kPhEscPrefix) {
@@ -254,7 +370,7 @@ void lane_feed(Ctx &c, Thread &g, uint32_t v) {
         uint32_t val = n - (1u << uint32_t(kEscOrder));
         if (val > uint32_t(kEscMaxValue)) { fail(c, g, kStatusBadSymbol); return; }
         g.mag = int(val) + kEscSym;
-        g.phase = kPhSign;
+        store_magnitude(c, g);
         return;
     }
     // kPhSign
@@ -326,6 +442,7 @@ void run_group(Ctx &c, uint32_t workgroup_id) {
             g.bs_len = d.bits_length;
             g.coef_off = d.coef_offset;
             g.cbf_off = d.cbf_offset;
+            if (g.lane == 0) c.sh.mode_base[g.slot] = int(d.mode_offset);
         }
     }
 
@@ -353,6 +470,9 @@ void run_group(Ctx &c, uint32_t workgroup_id) {
 
         int np = nxs_coded_planes(int(c.in->frame_nplanes), alpha_mode);
         sh.np[slot] = np;
+        const int extra = (c.in->tools & kToolFlagIntraDir) != 0u
+                              ? kUnitsPerPlaneExtraDir
+                              : kUnitsPerPlaneExtra;
         int ub = 0, cb = 0;
         for (int p = 0; p < kMaxPlanes; ++p) {
             sh.unit_base[slot * (kMaxPlanes + 1) + p] = ub;
@@ -361,7 +481,7 @@ void run_group(Ctx &c, uint32_t workgroup_id) {
                 int nb = nxs_plane_size(p, res_level, chroma444) / kBlockSize;
                 sh.nb[slot * kMaxPlanes + p] = nb;
                 int ndc = nb * nb;
-                ub += kUnitsPerPlaneExtra + ndc;
+                ub += extra + ndc;
                 cb += ndc + ndc * kCoefPerBlock;
             } else {
                 sh.nb[slot * kMaxPlanes + p] = 0;
@@ -386,6 +506,8 @@ void run_group(Ctx &c, uint32_t workgroup_id) {
             c.out->coef[g.coef_off + i] = 0;
         for (uint32_t i = uint32_t(g.lane); i < c.in->cbf_words; i += kLanesN)
             c.out->cbf[g.cbf_off + i] = 0u;
+        for (uint32_t i = uint32_t(g.lane); i < kModeWordsPerTile; i += kLanesN)
+            c.out->modes[uint32_t(c.sh.mode_base[g.slot]) + i] = 0u;
     }
 
     // --- rANS init ---------------------------------------------------------

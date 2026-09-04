@@ -272,6 +272,10 @@ struct Scene {
     std::vector<int16_t> coef;
     std::vector<NxvwTileRec> recs;
     std::vector<int> weights;
+    // [v3] per-block intra modes, NXVW_MODE_WORDS_PER_TILE uints per tile.
+    // Empty means "mode 0 everywhere", which is the v1 predictor.
+    std::vector<uint32_t> modes;
+    int dirSched = 0;
 };
 
 uint32_t packTileW1(int mode, int res_level, int chroma444, int alpha_mode,
@@ -410,6 +414,11 @@ bool runGpu(Ctx &c, const Scene &sc, GpuResult &out, int repeats,
     VkDeviceSize imgBytes = (VkDeviceSize)W * H * 4;
     VkDeviceSize stageBytes = std::max(std::max(coefBytes, recBytes),
                                        std::max(wgtBytes, imgBytes));
+    stageBytes = std::max(
+        stageBytes,
+        (VkDeviceSize)ntiles *
+            std::max<VkDeviceSize>(NXVW_MODE_WORDS_PER_TILE, 1) *
+            sizeof(uint32_t));
 
     Buf stage = createBuffer(c, stageBytes,
                              VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
@@ -422,9 +431,17 @@ bool runGpu(Ctx &c, const Scene &sc, GpuResult &out, int repeats,
                                 VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
     };
+    // [v3] binding 7: the per-block intra modes; binding 8: the workgroup ->
+    // tile map, which this harness always fills with the identity.
+    VkDeviceSize modeBytes =
+        (VkDeviceSize)ntiles * NXVW_MODE_WORDS_PER_TILE * sizeof(uint32_t);
+    VkDeviceSize orderBytes = (VkDeviceSize)ntiles * sizeof(uint32_t);
+    stageBytes = std::max(stageBytes, std::max(modeBytes, orderBytes));
     Buf bCoef = devBuf(coefBytes);
     Buf bRec = devBuf(recBytes);
     Buf bWgt = devBuf(wgtBytes);
+    Buf bModes = devBuf(modeBytes);
+    Buf bOrder = devBuf(orderBytes);
 
     auto upload = [&](Buf &dst, const void *src, VkDeviceSize n) {
         std::memcpy(stage.mapped, src, (size_t)n);
@@ -436,6 +453,14 @@ bool runGpu(Ctx &c, const Scene &sc, GpuResult &out, int repeats,
     upload(bCoef, sc.coef.data(), coefBytes);
     upload(bRec, sc.recs.data(), recBytes);
     upload(bWgt, sc.weights.data(), wgtBytes);
+    {
+        std::vector<uint32_t> modes(sc.modes);
+        modes.resize((size_t)ntiles * NXVW_MODE_WORDS_PER_TILE, 0u);
+        upload(bModes, modes.data(), modeBytes);
+        std::vector<uint32_t> order((size_t)ntiles);
+        for (int i = 0; i < ntiles; ++i) order[(size_t)i] = (uint32_t)i;
+        upload(bOrder, order.data(), orderBytes);
+    }
 
     const uint32_t CW = (W + 1) / 2, CH = (H + 1) / 2;
     Img imgA = createStorageImage(c, VK_FORMAT_R8G8B8A8_UINT, W, H);
@@ -444,7 +469,7 @@ bool runGpu(Ctx &c, const Scene &sc, GpuResult &out, int repeats,
     Img imgC = createStorageImage(c, VK_FORMAT_R8G8_UINT, CW, CH);
 
     // ---- descriptors
-    VkDescriptorSetLayoutBinding binds[7]{};
+    VkDescriptorSetLayoutBinding binds[9]{};
     for (int i = 0; i < 3; ++i) {
         binds[i].binding = (uint32_t)i;
         binds[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
@@ -457,13 +482,19 @@ bool runGpu(Ctx &c, const Scene &sc, GpuResult &out, int repeats,
         binds[i].descriptorCount = 1;
         binds[i].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
     }
+    for (int i = 7; i < 9; ++i) {
+        binds[i].binding = (uint32_t)i;
+        binds[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        binds[i].descriptorCount = 1;
+        binds[i].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    }
     VkDescriptorSetLayoutCreateInfo dli{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
-    dli.bindingCount = 7;
+    dli.bindingCount = 9;
     dli.pBindings = binds;
     VkDescriptorSetLayout dsl;
     VKCHECK(vkCreateDescriptorSetLayout(c.dev, &dli, nullptr, &dsl));
 
-    VkDescriptorPoolSize psz[2] = {{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3},
+    VkDescriptorPoolSize psz[2] = {{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 5},
                                    {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 4}};
     VkDescriptorPoolCreateInfo dpi{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
     dpi.maxSets = 1;
@@ -486,7 +517,9 @@ bool runGpu(Ctx &c, const Scene &sc, GpuResult &out, int repeats,
         {VK_NULL_HANDLE, imgB.view, VK_IMAGE_LAYOUT_GENERAL},
         {VK_NULL_HANDLE, imgY.view, VK_IMAGE_LAYOUT_GENERAL},
         {VK_NULL_HANDLE, imgC.view, VK_IMAGE_LAYOUT_GENERAL}};
-    VkWriteDescriptorSet w[7]{};
+    VkDescriptorBufferInfo dbi2[2] = {{bModes.buf, 0, VK_WHOLE_SIZE},
+                                      {bOrder.buf, 0, VK_WHOLE_SIZE}};
+    VkWriteDescriptorSet w[9]{};
     for (int i = 0; i < 3; ++i) {
         w[i] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
         w[i].dstSet = dset;
@@ -503,7 +536,15 @@ bool runGpu(Ctx &c, const Scene &sc, GpuResult &out, int repeats,
         w[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
         w[i].pImageInfo = &dii[i - 3];
     }
-    vkUpdateDescriptorSets(c.dev, 7, w, 0, nullptr);
+    for (int i = 7; i < 9; ++i) {
+        w[i] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        w[i].dstSet = dset;
+        w[i].dstBinding = (uint32_t)i;
+        w[i].descriptorCount = 1;
+        w[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        w[i].pBufferInfo = &dbi2[i - 7];
+    }
+    vkUpdateDescriptorSets(c.dev, 9, w, 0, nullptr);
 
     // ---- pipeline
     VkShaderModuleCreateInfo smi{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
@@ -522,10 +563,13 @@ bool runGpu(Ctx &c, const Scene &sc, GpuResult &out, int repeats,
     VkPipelineLayout plo;
     VKCHECK(vkCreatePipelineLayout(c.dev, &pli, nullptr, &plo));
 
-    int32_t specData[2] = {(int32_t)sc.cs.outFormat, (int32_t)planeWords};
-    VkSpecializationMapEntry sme[2] = {{0, 0, sizeof(int32_t)},
-                                       {1, sizeof(int32_t), sizeof(int32_t)}};
-    VkSpecializationInfo spec{2, sme, sizeof(specData), specData};
+    int32_t specData[3] = {(int32_t)sc.cs.outFormat, (int32_t)planeWords,
+                           (int32_t)sc.dirSched};
+    VkSpecializationMapEntry sme[3] = {
+        {0, 0, sizeof(int32_t)},
+        {1, sizeof(int32_t), sizeof(int32_t)},
+        {2, 2 * sizeof(int32_t), sizeof(int32_t)}};
+    VkSpecializationInfo spec{3, sme, sizeof(specData), specData};
 
     VkComputePipelineCreateInfo cpi{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
     cpi.stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
@@ -577,7 +621,7 @@ bool runGpu(Ctx &c, const Scene &sc, GpuResult &out, int repeats,
     if (c.queries)
         vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, c.queries, 0);
     for (int i = 0; i < repeats; ++i) {
-        vkCmdDispatch(cb, (uint32_t)sc.cs.tilesX, (uint32_t)sc.cs.tilesY, 1);
+        vkCmdDispatch(cb, (uint32_t)ntiles, 1, 1);
         if (i + 1 < repeats) {
             VkMemoryBarrier mb{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
             mb.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
@@ -645,6 +689,8 @@ bool runGpu(Ctx &c, const Scene &sc, GpuResult &out, int repeats,
     destroyBuffer(c, bCoef);
     destroyBuffer(c, bRec);
     destroyBuffer(c, bWgt);
+    destroyBuffer(c, bModes);
+    destroyBuffer(c, bOrder);
     destroyBuffer(c, stage);
     return true;
 }
@@ -659,6 +705,8 @@ size_t compareCase(Ctx &c, const Case &cs, bool verbose, int &ranOut) {
     in.coef = sc.coef.data();
     in.recs = sc.recs.data();
     in.weights = sc.weights.data();
+    in.modes = sc.modes.empty() ? nullptr : sc.modes.data();
+    in.dirSched = sc.dirSched;
 
     const size_t npix = (size_t)sc.push.imageW * sc.push.imageH;
     GpuResult gpu;

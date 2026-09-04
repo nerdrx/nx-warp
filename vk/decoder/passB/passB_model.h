@@ -24,6 +24,12 @@ struct PassBInput {
     // is the frame's pair; sets 1..3 are the built-in pairs a tile's wm_id
     // selects.  A caller whose tiles all have wm_id 0 may pass 128 entries.
     const int *weights = nullptr;
+    // [v3] Pass A's packed per-block intra modes, NXVW_MODE_WORDS_PER_TILE
+    // uints per tile.  May be null when push.intraDir is 0.
+    const uint32_t *modes = nullptr;
+    // [v3] the wavefront schedule the stream was encoded under, kDirSched* in
+    // syntax_constants.h.  Matches specialization constant 2 of the kernel.
+    int dirSched = 0;
 };
 
 // RGBA8: 4 bytes per pixel, R,G,B,A, tightly packed, imageW*imageH pixels.

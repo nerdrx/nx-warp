@@ -252,6 +252,39 @@ typedef struct nxvc_vkd_stats {
 nxvc_vkd_status nxvc_vk_decoder_stats(const nxvc_vk_decoder *dec,
                                       nxvc_vkd_stats *out);
 
+/* ---------------------------------------------------------------- tuning
+ * Two knobs that exist for measurement, not for normal use.  Both may be set
+ * at any time and take effect on the next decoded frame.
+ */
+
+/* The directional-intra wavefront schedule Pass B is compiled with
+ * (docs/SYNTAX.md 7.4 and 7.6), as a bit mask:
+ *
+ *   0  the normative derivation: left, above and above-right references.
+ *      22 wavefront steps for a res_level-0 luma plane.  THE DEFAULT, and the
+ *      only value a conformant stream may be decoded with today.
+ *   1  drop the above-right reference.        15 steps, +0.24 % rate
+ *   2  confine the dependency to 32x32 sub-tiles.  10 steps, +1.6 % rate
+ *   3  both.                                   7 steps, +1.8 % rate
+ *
+ * This is a BITSTREAM property, not a performance option: values 1..3 decode
+ * a stream encoded under the matching restriction bit-exactly and decode a
+ * normal stream to different pixels.  ref/ produces such streams only when it
+ * is built with -DNXVC_DIR_SCHED_EXPERIMENT.  Returns NXVC_VKD_ERR_ARG for a
+ * value above 3.
+ */
+nxvc_vkd_status nxvc_vk_decoder_set_dir_sched(nxvc_vk_decoder *dec,
+                                              uint32_t sched);
+uint32_t nxvc_vk_decoder_dir_sched(const nxvc_vk_decoder *dec);
+
+/* Group Pass B's workgroups by tile shape (mode, res_level, chroma444,
+ * alpha_mode, tskip) instead of dispatching them in raster order.  Host-side
+ * reordering only: the decoded image is bit-identical either way, because
+ * every write address is derived from the tile index rather than from the
+ * workgroup index.  Off by default. */
+nxvc_vkd_status nxvc_vk_decoder_set_tile_sort(nxvc_vk_decoder *dec,
+                                              uint32_t on);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

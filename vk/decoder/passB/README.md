@@ -28,6 +28,9 @@ Per plane (Y/R, Co/G, Cg/B, and alpha when `alpha_mode == 2`):
    the four nearest block means, sampled at `(2x - 7, 2y - 7)`, which puts the
    sample grid on the block centres. No wavefront, no barrier beyond the
    transform's.
+   With `INTRA_DIR` (stream tool bit 17) each 8x8 block instead names one of
+   nine modes, of which mode 0 *is* this predictor, and the blocks of a plane
+   are reconstructed **in raster order** — see "Directional intra" below.
 3. **Residual.** Either transform-skip (dequantized coefficients *are* the
    residual, flat weight, raster order) or dequantize with the weighting
    matrix and run the 8x8 integer IDCT: 4 threads per block, 2 rows each in
@@ -54,6 +57,40 @@ Then, once per tile:
 With `colorTransform == kCtNone` on the RGB paths the three planes are written
 to R, G and B unchanged: the stream is carrying display-space planes. That is
 also what the CPU reference does with `NXVC_CT_NONE`.
+
+### Directional intra (tool bit 17)
+
+`docs/SYNTAX.md` 7.4. Each 8x8 block carries a mode; modes 1..8 predict it from
+its reconstructed left, above and above-right neighbours, which makes the plane
+a **wavefront** instead of a parallel pass. Pass A hands the modes over in
+binding 7, 4 bits per block.
+
+* **References** clamp *into the tile*. A block whose neighbour has not been
+  reconstructed yet — including everything above row 0 and left of column 0 —
+  reads `base` instead, which is derived from this tile's own DC plane. A tile
+  therefore still never reads a neighbouring tile, which is what the
+  transport's per-tile loss recovery and the rate controller's per-tile ladder
+  both depend on.
+* **`base`** is the DC-plane prediction in the default (replace) form and the
+  all-zero plane in the layered form, frame `flags` bit 2 (7.5). It is
+  recomputed from the block means on demand rather than stored, which is what
+  lets the shared sample store hold the running reconstruction alone.
+* **The layered form** stores the reconstructed DC-plane *residual* for later
+  blocks and converts it back to samples once the plane is finished, with one
+  pass of `sample = pred + recon`. That is exact, not an approximation, because
+  `recon` was formed as `clamp(pred + v) - pred`.
+* **The schedule is specialization constant 2**, `kDirSched`. 0 is the
+  normative derivation of 7.4; 1 drops the above-right reference, 2 confines
+  the dependency to 32x32 sub-tiles, 3 does both. The bit encoding is
+  `ref/src/codec.cpp build_refs()`'s, so a stream produced by a `ref/` built
+  with `-DNXVC_DIR_SCHED_EXPERIMENT` and `NXVC_DIR_SCHED=k` decodes bit-exactly
+  under `kDirSched == k`. **It is a bitstream property, not a tuning knob.**
+  What each one costs in time is in `../README.md`.
+
+The residual is computed for every block in parallel, exactly as before, and
+stays in registers; only the prediction and the add are serialized. What the
+schedule changes is the number of `barrier()`s between them: 22 per 8x8-block
+plane at `kDirSched` 0, 15 at 1, 7 at 3.
 
 ### Shared memory
 
@@ -158,13 +195,17 @@ VK_DRIVER_FILES=/path/to/lvp_icd.x86_64.json build-.../nxvc-passB-test
 Exit 0 means zero mismatching pixels, 1 means a mismatch, 77 means no usable
 ICD (which is how the ctest entries skip on a machine without a GPU).
 
-Measured on this box, 2048 tiles (2048x2048 luma), 4:2:0, `res_level` 0:
+Measured on this box, 2048 tiles (2048x2048 luma), 4:2:0, `res_level` 0, via
+the full decoder rather than this harness (`../README.md` has the method):
 
-| device | dispatch |
-|---|---|
-| RX 7900 XTX (RADV NAVI31) | 0.50 ms |
-| Ryzen 9 9950X3D iGPU (RADV RAPHAEL) | 12.9 ms |
-| llvmpipe (lavapipe) | 7.1 ms for 256 tiles |
+| device | `INTRA_DIR` off | `kDirSched` 0 | 1 | 3 |
+|---|---|---|---|---|
+| RX 7900 XTX (RADV NAVI31) | 0.24 ms | 1.72 ms | 1.29 ms | 1.01 ms |
+| llvmpipe (lavapipe) | 40.5 ms | 139.8 ms | 118.3 ms | 114.6 ms |
+
+The wavefront is the whole of the difference: the arithmetic does not grow, the
+occupancy does not recover, and Pass B's cost is *entirely* fixed per tile —
+its slope against payload size is zero to within the noise at every QP.
 
 Coefficient SSBO traffic is **24.4 MB per 2048-tile frame**. The dense
 res_level-0 4:2:0 tile slot is 6240 int16, and that number includes chroma:

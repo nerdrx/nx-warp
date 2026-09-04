@@ -25,6 +25,12 @@ void usage() {
         "  --device SUBSTR        pick a device by name substring\n"
         "  --format auto|rgba8|rgb10a2|ycbcr420\n"
         "  --lds                  force Pass A's LDS read-pointer fallback\n"
+        "  --dir-sched 0..3       INTRA_DIR wavefront schedule (0 = normative;\n"
+        "                         1 drops the above-right reference, 2 adds\n"
+        "                         32x32 sub-tiles, 3 both).  Measurement only:\n"
+        "                         a value other than 0 decodes a conformant\n"
+        "                         stream to different pixels.\n"
+        "  --tile-sort            group Pass B's workgroups by tile shape\n"
         "  --stats                per-frame timing to stderr\n"
         "  --quiet\n"
         "exit 0 decoded, 1 error, 2 usage, 77 no usable Vulkan ICD\n");
@@ -40,6 +46,10 @@ int fail_no_icd(const char *why) {
 int main(int argc, char **argv) {
     std::string in, out, pix, icd, device, format = "auto";
     int frames = -1, quiet = 0, nv12 = 0, stats = 0, lds = 0;
+    // [v3] measurement knobs, see nxvc_vk_decoder_set_dir_sched /
+    // _set_tile_sort in <nxvc/nxvc_vk.h>.  --dir-sched is a BITSTREAM
+    // property: anything but 0 decodes a normal stream to different pixels.
+    int dir_sched = 0, tile_sort = 0;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         auto val = [&]() -> const char * {
@@ -60,6 +70,8 @@ int main(int argc, char **argv) {
         else if (a == "--nv12") nv12 = 1;
         else if (a == "--stats") stats = 1;
         else if (a == "--lds") lds = 1;
+        else if (a == "--dir-sched") dir_sched = std::atoi(val());
+        else if (a == "--tile-sort") tile_sort = 1;
         else if (a == "-h" || a == "--help") { usage(); return 0; }
         else {
             std::fprintf(stderr, "unknown option %s\n", a.c_str());
@@ -102,6 +114,15 @@ int main(int argc, char **argv) {
 
     nxvc_vk_decoder *dec = nullptr;
     nxvc_vkd_status st = nxvc_vk_decoder_create(&ci, &dec);
+    if (dec) {
+        if (nxvc_vk_decoder_set_dir_sched(dec, (uint32_t)dir_sched) !=
+            NXVC_VKD_OK) {
+            std::fprintf(stderr, "--dir-sched must be 0..3\n");
+            nxvc_vk_decoder_destroy(dec);
+            return 2;
+        }
+        nxvc_vk_decoder_set_tile_sort(dec, (uint32_t)tile_sort);
+    }
     if (st != NXVC_VKD_OK) {
         const char *why = dec ? nxvc_vk_decoder_last_error(dec) : "no decoder";
         int rc = (st == NXVC_VKD_ERR_NO_DEVICE || st == NXVC_VKD_ERR_UNSUPPORTED)

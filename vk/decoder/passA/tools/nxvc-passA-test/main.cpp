@@ -224,11 +224,15 @@ RunResult run_gpu(const Gpu &g, const Options &opt, const Corpus &c,
         tiles_flat[t * kTileDescUints + kTdBitsLength] = c.tiles[t].bits_length;
         tiles_flat[t * kTileDescUints + kTdCoefOffset] = c.tiles[t].coef_offset;
         tiles_flat[t * kTileDescUints + kTdCbfOffset] = c.tiles[t].cbf_offset;
+        tiles_flat[t * kTileDescUints + kTdModeOffset] = t * kModeWordsPerTile;
     }
 
     const VkDeviceSize coef_bytes = VkDeviceSize(num_tiles) * c.coef_stride * 2;
     const VkDeviceSize cbf_bytes = VkDeviceSize(num_tiles) * c.cbf_words * 4;
     const VkDeviceSize status_bytes = VkDeviceSize(num_tiles) * 4;
+    // [v3] binding 6: the per-block intra modes Pass A writes for Pass B.
+    const VkDeviceSize mode_bytes =
+        VkDeviceSize(num_tiles) * kModeWordsPerTile * 4;
 
     Buf b_bits = make_buf(g, c.bits.size(), su, dl);
     Buf b_tiles = make_buf(g, tiles_flat.size() * 4, su, dl);
@@ -236,14 +240,15 @@ RunResult run_gpu(const Gpu &g, const Options &opt, const Corpus &c,
     Buf b_coef = make_buf(g, coef_bytes, su, dl);
     Buf b_cbf = make_buf(g, cbf_bytes, su, dl);
     Buf b_status = make_buf(g, status_bytes, su, dl);
+    Buf b_modes = make_buf(g, mode_bytes, su, dl);
 
     upload(g, b_bits, c.bits.data(), c.bits.size());
     upload(g, b_tiles, tiles_flat.data(), tiles_flat.size() * 4);
     upload(g, b_tables, c.table_flat.data(), c.table_flat.size() * 4);
 
     // --- descriptors -------------------------------------------------------
-    VkDescriptorSetLayoutBinding binds[6]{};
-    for (uint32_t i = 0; i < 6; ++i) {
+    VkDescriptorSetLayoutBinding binds[7]{};
+    for (uint32_t i = 0; i < 7; ++i) {
         binds[i].binding = i;
         binds[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         binds[i].descriptorCount = 1;
@@ -251,12 +256,12 @@ RunResult run_gpu(const Gpu &g, const Options &opt, const Corpus &c,
     }
     VkDescriptorSetLayoutCreateInfo dli{
         VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
-    dli.bindingCount = 6;
+    dli.bindingCount = 7;
     dli.pBindings = binds;
     VkDescriptorSetLayout dsl;
     VKCHECK(vkCreateDescriptorSetLayout(g.device, &dli, nullptr, &dsl));
 
-    VkPushConstantRange pcr{VK_SHADER_STAGE_COMPUTE_BIT, 0, 16};
+    VkPushConstantRange pcr{VK_SHADER_STAGE_COMPUTE_BIT, 0, 20};
     VkPipelineLayoutCreateInfo pli{
         VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
     pli.setLayoutCount = 1;
@@ -266,7 +271,7 @@ RunResult run_gpu(const Gpu &g, const Options &opt, const Corpus &c,
     VkPipelineLayout plo;
     VKCHECK(vkCreatePipelineLayout(g.device, &pli, nullptr, &plo));
 
-    VkDescriptorPoolSize ps{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 6};
+    VkDescriptorPoolSize ps{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 7};
     VkDescriptorPoolCreateInfo dpi{
         VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
     dpi.maxSets = 1;
@@ -283,11 +288,11 @@ RunResult run_gpu(const Gpu &g, const Options &opt, const Corpus &c,
     VkDescriptorSet dset;
     VKCHECK(vkAllocateDescriptorSets(g.device, &dai, &dset));
 
-    VkBuffer bufs[6] = {b_bits.buf, b_tiles.buf, b_tables.buf,
-                        b_coef.buf, b_cbf.buf,   b_status.buf};
-    VkDescriptorBufferInfo dbi[6]{};
-    VkWriteDescriptorSet wr[6]{};
-    for (uint32_t i = 0; i < 6; ++i) {
+    VkBuffer bufs[7] = {b_bits.buf, b_tiles.buf, b_tables.buf, b_coef.buf,
+                        b_cbf.buf,  b_status.buf, b_modes.buf};
+    VkDescriptorBufferInfo dbi[7]{};
+    VkWriteDescriptorSet wr[7]{};
+    for (uint32_t i = 0; i < 7; ++i) {
         dbi[i] = {bufs[i], 0, VK_WHOLE_SIZE};
         wr[i] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
         wr[i].dstSet = dset;
@@ -296,7 +301,7 @@ RunResult run_gpu(const Gpu &g, const Options &opt, const Corpus &c,
         wr[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         wr[i].pBufferInfo = &dbi[i];
     }
-    vkUpdateDescriptorSets(g.device, 6, wr, 0, nullptr);
+    vkUpdateDescriptorSets(g.device, 7, wr, 0, nullptr);
 
     // --- pipeline ----------------------------------------------------------
     VkShaderModuleCreateInfo smi{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
@@ -348,8 +353,8 @@ RunResult run_gpu(const Gpu &g, const Options &opt, const Corpus &c,
 
     const uint32_t groups = group_count(num_tiles);
     struct Push {
-        uint32_t num_tiles, frame_nplanes, coef_stride, cbf_words;
-    } push{num_tiles, c.frame_nplanes, c.coef_stride, c.cbf_words};
+        uint32_t num_tiles, frame_nplanes, coef_stride, cbf_words, tools;
+    } push{num_tiles, c.frame_nplanes, c.coef_stride, c.cbf_words, c.tools};
 
     double best = 1e30;
     for (int it = 0; it < opt.iters; ++it) {
@@ -361,7 +366,8 @@ RunResult run_gpu(const Gpu &g, const Options &opt, const Corpus &c,
         vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, pipe);
         vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, plo, 0, 1,
                                 &dset, 0, nullptr);
-        vkCmdPushConstants(cb, plo, VK_SHADER_STAGE_COMPUTE_BIT, 0, 16, &push);
+        vkCmdPushConstants(cb, plo, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                           sizeof push, &push);
         vkCmdDispatch(cb, groups, 1, 1);
         if (qpool)
             vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, qpool,
@@ -421,6 +427,7 @@ RunResult run_gpu(const Gpu &g, const Options &opt, const Corpus &c,
     destroy_buf(g, b_coef);
     destroy_buf(g, b_cbf);
     destroy_buf(g, b_status);
+    destroy_buf(g, b_modes);
     return res;
 }
 
@@ -593,10 +600,13 @@ int main(int argc, char **argv) {
     std::vector<uint32_t> cpu_status(c.tiles.size(), 0);
     {
         Inputs in = corpus_inputs(c, kReadPtrBallot);
+        std::vector<uint32_t> cpu_modes(size_t(c.tiles.size()) *
+                                        kModeWordsPerTile, 0);
         Outputs o;
         o.coef = cpu_coef.data();
         o.cbf = cpu_cbf.data();
         o.status = cpu_status.data();
+        o.modes = cpu_modes.data();
         decode(in, o);
     }
     // The model must reproduce the generator exactly, or the corpus is bad.
