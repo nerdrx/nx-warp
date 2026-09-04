@@ -52,10 +52,13 @@ if(NOT MSVC)
 endif()
 
 # ------------------------------------------------------------------ harness
+# Header/loader discovery follows vk/common: find_package first, then the
+# project-wide -DNXVC_VK_HEADERS_DIR pointing at a Vulkan-Headers checkout.
 find_package(Vulkan QUIET)
 if(NOT Vulkan_FOUND)
   find_path(NXVW_PASSA_VK_INCLUDE vulkan/vulkan.h
-    HINTS $ENV{VULKAN_SDK}/include PATHS /usr/include /usr/local/include)
+    HINTS ${NXVC_VK_HEADERS_DIR} $ENV{VULKAN_SDK}/include
+    PATHS /usr/include /usr/local/include)
   find_library(NXVW_PASSA_VK_LIB NAMES vulkan vulkan-1
     HINTS $ENV{VULKAN_SDK}/lib PATHS /usr/lib /usr/lib64 /usr/local/lib)
 endif()
