@@ -562,6 +562,38 @@ This is the same defect class as `JUDGE-detail.md` item 4 and
 `JUDGE-inter.md` 1.1: the branch's own record of what it did is wrong, and the
 number in it is the one someone will quote later.
 
+### 4.11 Regenerating the vectors makes the conformance suite blind
+
+A property of this pipeline that has to be said out loud before anyone reads a
+green test run as evidence the merge is right.
+
+`nxv-vectors --generate` rebuilds `tests/vectors/*` **from the merged
+encoder**, and `ref.vectors` then checks the committed blobs against that same
+encoder. After a regeneration the suite proves the encoder agrees with itself.
+It cannot prove the merge preserved either branch's semantics: a resolution
+that silently drops one branch's context split, or takes the wrong shift chain,
+produces different bytes, gets those bytes blessed as the new vectors, and goes
+green.
+
+So **green `ref.*` after a regeneration is a necessary condition, not evidence
+of a correct merge.** The checks that actually bite are:
+
+1. **The tools-off byte-identity check against `e4e85af`.** Every judge ran it
+   and it is the one test that catches a resolution leaking into the default
+   path -- it is how `JUDGE-inter.md` found inter-b's +11.5 % refresh
+   regression and how `JUDGE-ctx.md` pinned ctx-a's table reassignment. Run it
+   after **every** step, not just at the end: with all new tools off, the
+   merged encoder must reproduce `e4e85af` byte for byte at 4:4:4 and 4:2:0,
+   QP 16/24/32.
+2. **The per-package measurement grid**, re-run on the merged encoder. A merge
+   that loses a tool's gain still passes every test in the repository.
+3. For the transform specifically, the **2D-gain ctest of 4.4**, which is the
+   only thing standing between a wrong shift chain and a silent QP shift of 6.
+
+`ref.vectors` catches transcription mistakes and decoder/encoder disagreement.
+It does not catch a semantically wrong merge. Budget the byte-identity check
+into every step.
+
 ## 5. Recommended merge order
 
 Eight orders were measured end to end, counting conflicted files outside
