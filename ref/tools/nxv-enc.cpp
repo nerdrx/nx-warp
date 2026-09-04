@@ -69,7 +69,7 @@ static void usage() {
         "  --matrix 0..3        frame weighting matrix (default 1)\n"
         "  --wm 0..3|auto       per-tile weighting matrix id (default 0)\n"
         "  --no-rdo             plain dead-zone quantizer (default: RD trellis)\n"
-        "  --rdo-lambda F       RD lambda scale (default 0.30)\n"
+        "  --rdo-lambda F       RD lambda scale (default 0.22, fitted)\n"
         "  --qp-search N        try per-tile qp_delta in [-N, +N] (default 0)\n"
         "  --qp-search-step N   spacing of those candidates (default 2)\n"
         "  --rdoq-effort N      1 fast, 2 medium, 3 full trellis candidates\n"
@@ -121,7 +121,7 @@ static void usage() {
         "  --preset medium      rdoq 2, me 2, 2 intra modes, no QP search\n"
         "                       (the default)\n"
         "  --preset slow        rdoq 3, me 3, 4 intra modes, per-tile QP\n"
-        "                       search +-2 and per-tile matrix\n");
+        "                       search +-2 (add --wm auto for the matrix too)\n");
 }
 
 static bool read_exact(std::FILE *f, void *p, size_t n) {
@@ -243,7 +243,7 @@ int main(int argc, char **argv) {
                 qp_search = 0; wm = 0;
             } else if (v == "slow") {
                 rdoq_effort = 3; me_effort = 3; dir_cand = 4;
-                qp_search = 2; qp_step = 2; wm = 255;
+                qp_search = 2; qp_step = 2;
             } else {
                 std::fprintf(stderr, "--preset: fast|medium|slow\n");
                 return 2;

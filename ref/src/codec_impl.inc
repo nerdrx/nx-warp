@@ -730,10 +730,8 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         return bestk;
     };
 
-    // Lambda for the RD trellis, as a multiple of the tile's squared quantizer
-    // step.  0.30 was measured on the quality harness (tools/quality) over the
-    // 100-400 Mbit band; below 0.15 the trellis barely fires, above 0.6 it
-    // starts zeroing structure the eye sees.
+    // The frame's base lambda scale; codec.cpp "the lambda" is the model and
+    // the fit.  Every per-tile lambda in this function is derived from it.
     const double rdo_lambda_scale =
         e->cfg.rdo_lambda_q8 ? (double)e->cfg.rdo_lambda_q8 / 256.0
                              : kLambdaScale;
@@ -793,8 +791,10 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
     // the content class docs/RATECONTROL.md 3.3 puts the tile in.  Classified
     // on the source luma, so an inter tile and an intra tile of the same
     // picture content get the same trade.
+    const bool lambda_class =
+        !e->cfg.lambda_class_off && !class_lambda_is_flat(e->cfg.lambda_class_q8);
     auto tile_lambda_scale = [&](const TileCoder &tc) -> double {
-        if (!e->cfg.lambda_class_off)
+        if (lambda_class)
             return rdo_lambda_scale *
                    class_lambda_gain(classify_tile(tc.pl[0].samples.data(),
                                                    tc.pl[0].size),
@@ -819,17 +819,25 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         int np = coded_planes(tc);
         u32 th[kNumCtx][kNumSym];
         u32 raw = 0;
-        if (tc.intra_dir) {
-            analyze_tile_dir(tc, tabs, 0, lambda_scale, reuse);
-        } else {
-            for (int p = 0; p < np; ++p)
-                analyze_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
-                              tc.tp.tskip, 1, tc.sdh);
+        // The first pass exists only to give the table-set choice something
+        // to look at, so that the second, rate-distortion pass is costed
+        // against the table that will actually code it.  `fast` skips it and
+        // keeps the QP-derived table set: one whole quantisation of the tile,
+        // for the 0.7 points the feedback loop is worth.
+        const bool two_pass = rdoq_effort != kRdoqFast;
+        if (two_pass) {
+            if (tc.intra_dir) {
+                analyze_tile_dir(tc, tabs, 0, lambda_scale, reuse);
+            } else {
+                for (int p = 0; p < np; ++p)
+                    analyze_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
+                                  tc.tp.tskip, 1, tc.sdh);
+            }
+            std::memset(th, 0, sizeof(th));
+            if (count_units(tc.units.data(), (int)tc.units.size(),
+                            1 << tc.tp.nsub_log2, th, nullptr, &raw))
+                tc.tp.table_set = select_set(th, tc.tp.table_set);
         }
-        std::memset(th, 0, sizeof(th));
-        if (count_units(tc.units.data(), (int)tc.units.size(),
-                        1 << tc.tp.nsub_log2, th, nullptr, &raw))
-            tc.tp.table_set = select_set(th, tc.tp.table_set);
         if (tc.intra_dir || use_rdo) {
             if (tc.intra_dir) analyze_tile_dir(tc, tabs, 1, lambda_scale, reuse);
             else rdoq_tile(tc, tabs, lambda_scale);
@@ -839,6 +847,12 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                              1 << tc.tp.nsub_log2, th, nullptr, &raw))
                 return 0;
             tc.tp.table_set = select_set(th, tc.tp.table_set);
+        } else if (!two_pass) {
+            std::memset(th, 0, sizeof(th));
+            raw = 0;
+            if (!count_units(tc.units.data(), (int)tc.units.size(),
+                             1 << tc.tp.nsub_log2, th, nullptr, &raw))
+                return 0;
         }
         return table_set_cost(th, tabs[tc.tp.table_set]) + (double)raw;
     };
@@ -931,11 +945,11 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         // paid once.  `--mode-lambda` overrides the divisor.
         const double tile_scale =
             rdo_lambda_scale *
-            (e->cfg.lambda_class_off
-                 ? 1.0
-                 : class_lambda_gain(classify_tile(probe.pl[0].samples.data(),
-                                                    lsz),
-                                     e->cfg.lambda_class_q8));
+            (lambda_class
+                 ? class_lambda_gain(classify_tile(probe.pl[0].samples.data(),
+                                                   lsz),
+                                     e->cfg.lambda_class_q8)
+                 : 1.0);
         const double mode_scale =
             e->cfg.mode_lambda_q8 ? (double)e->cfg.mode_lambda_q8 / 256.0
                                   : 1.0 / kRefPersist;

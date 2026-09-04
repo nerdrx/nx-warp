@@ -644,7 +644,8 @@ static void reconstruct_plane(PlaneState &s, const i16 *coefs, int tskip,
 // The model.  For a uniform quantiser of step q the high-rate RD slope is
 // dD/dR = -k*q^2, so lambda is proportional to q^2 with one dimensionless
 // constant.  `kLambdaScale` is that constant, fitted on the quality harness
-// (ref/RESULTS-rdo-b.md 2).  Distortion is squared error in SAMPLE units;
+// (ref/RESULTS-rdo-b.md 2): 0.30 was carried over from v1.2, and the fit puts
+// the minimum at 0.20 to 0.25 with 0.36 already 0.5 points the wrong side.  Distortion is squared error in SAMPLE units;
 // the 8x8 integer DCT here is orthonormal to within its Q4 scaling, so
 // squared COEFFICIENT error is the same currency and the trellis may use it
 // directly.  Rate is in bits.
@@ -661,7 +662,7 @@ static void reconstruct_plane(PlaneState &s, const i16 *coefs, int tskip,
 // therefore minimises kRefPersist*D + lambda*R.  The within-tile trellis does
 // not: at a fixed mode it trades one part of the same tile against another,
 // and both parts persist equally.  `--mode-lambda` still overrides.
-constexpr double kLambdaScale = 0.30;
+constexpr double kLambdaScale = 0.22;
 constexpr double kRefPersist = 4.0;
 // Multiplier on the DC plane's lambda; see analyze_dc_plane.  0 disables the
 // DC trellis entirely and restores the v1.4 dead-zone quantizer there.
@@ -731,6 +732,18 @@ static inline double class_lambda_gain(int cls, const u32 over[4]) {
     return kClassLambdaGain[cls];
 }
 
+// True when no class changes lambda, so the caller can skip classify_tile()
+// entirely.  The fit that shipped says exactly that on this material; the
+// hook stays because the fit is per content and a caller can set its own.
+static inline bool class_lambda_is_flat(const u32 over[4]) {
+    for (int i = 0; i < 4; ++i) {
+        const double g = over && over[i] ? (double)over[i] / 256.0
+                                         : kClassLambdaGain[i];
+        if (g != 1.0) return false;
+    }
+    return true;
+}
+
 // ------------------------------------------------------------------- RDOQ
 // Rate-distortion optimized quantization.  Encoder only: it changes which
 // levels are coded, never how they are decoded, so it is invisible to
@@ -788,9 +801,6 @@ static inline i32 level_rate(const RateCost &rc, int scan_pos, int prev_class,
 
 constexpr double kRdInf = 1e30;
 
-// `orig[i]` is the unquantized value at block-local index i, `step[i]` its
-// reconstruction step (the dequantizer's t, Q4).  Writes the chosen levels
-// back into `coefs`.
 // Effort of the trellis.  The state space is fixed by the syntax; what an
 // effort level changes is how many magnitudes per scan position are offered
 // to it, which is where the time goes.
