@@ -187,5 +187,39 @@ int main() {
         CHECK(decode(bad) == NXVC_ERR_BITSTREAM, "frame number mismatch");
     }
 
+    // 5. A maximum-width stereo header is legal, and its plane is twice as
+    //    wide as one eye.  `width` is per eye (SYNTAX.md 3.3), so
+    //    nxvc_decoder_plane_size reports `eyes * width` -- 8192 at the widest
+    //    legal width, not 4096.  FINDINGS F11: the headers fuzz harness
+    //    asserted the mono bound here and aborted the CI campaign on an input
+    //    the decoder was right to accept.  Height stays small so the four
+    //    reference slots this allocates do not dominate the sanitizer run.
+    {
+        nxvc_config wide;
+        nxvc_config_default(&wide);
+        wide.width = 4096;
+        wide.height = 64;
+        std::vector<uint8_t> h = make_header(wide, nullptr);
+        CHECK(h.size() == 64, "stereo-width header is %zu bytes", h.size());
+        h[8] = 0x00; h[9] = 0x10;   // width  = 4096
+        h[10] = 64;  h[11] = 0;     // height = 64
+        h[12] = 2;                  // eyes   = 2
+
+        nxvc_status st;
+        nxvc_decoder *d = nxvc_decoder_create(&st);
+        size_t cons = 0;
+        CHECK(nxvc_decoder_parse_stream_header(d, h.data(), h.size(), &cons) ==
+                  NXVC_OK, "4096-wide stereo header parse");
+        nxvc_stream_info si;
+        nxvc_decoder_stream_info(d, &si);
+        CHECK(si.width == 4096 && si.eyes == 2, "stereo geometry %u x %u eyes",
+              si.width, si.eyes);
+        uint32_t yw = 0, yh = 0;
+        CHECK(nxvc_decoder_plane_size(d, 0, &yw, &yh) == NXVC_OK, "plane 0");
+        CHECK(yw == 8192, "stereo luma plane width %u, expected 8192", yw);
+        CHECK(yh == 64, "stereo luma plane height %u", yh);
+        nxvc_decoder_destroy(d);
+    }
+
     return test_report("test_headers");
 }

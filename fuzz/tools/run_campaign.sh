@@ -6,7 +6,10 @@
 # The working corpus lives under <out-dir>, never in the source tree: seeds from
 # fuzz/corpus/ and reproducers from fuzz/regressions/ are copied in, and nothing
 # is written back, so the checked-in corpus stays small and curated.
-# Crashers land in <out-dir>/artifacts/<target>/.
+# Crashers land in <out-dir>/artifacts/<target>/ and libFuzzer's per-worker
+# logs in <out-dir>/logs/<target>/ -- one directory per target, because
+# libFuzzer names them fuzz-<N>.log relative to its working directory and a
+# shared one lets the last target erase the log of the target that crashed.
 #
 # Scheduling, for a workstation that is doing something else at the same time:
 #   NXFUZZ_CPUS=12-15   pin to those CPUs (taskset) -- unset means no pinning,
@@ -57,7 +60,12 @@ for t in nxvc_decode_fuzz nxvc_headers_fuzz nxvc_rans_fuzz \
 
     work="$OUT/corpus/$t"
     art="$OUT/artifacts/$t"
-    mkdir -p "$work" "$art"
+    # libFuzzer names its per-worker log fuzz-<N>.log relative to the working
+    # directory, so every target must get its own or the last one to run
+    # silently overwrites the logs of the one that crashed -- which is exactly
+    # what happened to the run that found F11.
+    logs="$OUT/logs/$t"
+    mkdir -p "$work" "$art" "$logs"
     cp -n "$SRC/corpus/$t/"* "$work/" 2>/dev/null || true
     cp -n "$SRC/regressions/$t/"* "$work/" 2>/dev/null || true
 
@@ -71,7 +79,7 @@ for t in nxvc_decode_fuzz nxvc_headers_fuzz nxvc_rans_fuzz \
     echo "=== $t for ${SECS}s ==="
     # libFuzzer writes its per-worker fuzz-N.log into the working directory.
     # $PREFIX and $dict are deliberately word-split (shellcheck SC2086).
-    ( cd "$OUT" && \
+    ( cd "$logs" && \
       $PREFIX "$bin" "$work" $dict \
         -max_total_time="$SECS" -jobs="$WORKERS" -workers="$WORKERS" \
         -rss_limit_mb=4096 -timeout=25 -max_len=65536 \
@@ -81,5 +89,13 @@ done
 if [ "$rc" -ne 0 ]; then
     echo "=== a target reported a crash; artifacts under $OUT/artifacts/ ==="
     find "$OUT/artifacts" -type f | sort || true
+    # Print the failing worker logs too: the artifact upload can expire or be
+    # missed, and the stack trace is the part a reader actually needs.
+    for f in $(grep -rl "ERROR: libFuzzer\|deadly signal\|runtime error:" \
+                    "$OUT/logs" 2>/dev/null | sort); do
+        echo "::group::$f"
+        tail -n 60 "$f"
+        echo "::endgroup::"
+    done
 fi
 exit "$rc"
