@@ -659,11 +659,11 @@ static const InterReject kInterRejects[] = {
     // two per-tile combinations 13.9 forbids.  None of these changes a tile's
     // length, so the base stream stays parseable up to the offending tile,
     // which is what makes them a test of the rule rather than of truncation.
-    {"r30_near_skip_no_tool",  "word1 bit 28 without tool bit 24",         NXVC_ERR_BITSTREAM, 0},
-    {"r31_quad_mv_no_tool",    "word1 bit 30 without tool bit 25",         NXVC_ERR_BITSTREAM, 0},
+    {"r30_near_skip_no_tool",  "word1 bit 28 without the NEAR_SKIP tool bit" ,         NXVC_ERR_BITSTREAM, 0},
+    {"r31_quad_mv_no_tool",    "word1 bit 30 without the QUAD_MV tool bit"  ,         NXVC_ERR_BITSTREAM, 0},
     {"r32_near_ac_without_ns", "near_skip_ac without near_skip",           NXVC_ERR_BITSTREAM, 0},
     {"r33_near_skip_on_intra", "near_skip on an INTRA tile",               NXVC_ERR_BITSTREAM, 0},
-    {"r34_sub_intra_no_tool",  "word1 bit 31 without tool bit 26",         NXVC_ERR_BITSTREAM, 0},
+    {"r34_sub_intra_no_tool",  "word1 bit 31 without the SUBTILE_INTRA bit",         NXVC_ERR_BITSTREAM, 0},
     {"r35_near_skip_payload",  "near_skip on a tile with a payload",       NXVC_ERR_BITSTREAM, 0},
     {"r36_quad_mv_on_intra",   "quad_mv on an INTRA tile",                 NXVC_ERR_BITSTREAM, 0},
 };

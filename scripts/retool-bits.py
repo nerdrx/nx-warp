@@ -197,6 +197,11 @@ def check_literal_pokes():
     for i, ln in enumerate(read(VECTORS_CPP).splitlines(), 1):
         if re.search(r"b\[\s*32\s*\+\s*\d+\s*\]\s*\|=", ln):
             bad.append("%s:%d: %s" % (VECTORS_CPP, i, ln.strip()))
+        # A vector's own description that names a tool bit by number goes stale
+        # the same way, and it is what the conformance record says the vector
+        # tests.  Name the tool, not the number.
+        elif re.search(r'"[^"]*tool bit \d+', ln):
+            bad.append("%s:%d: stale prose: %s" % (VECTORS_CPP, i, ln.strip()))
     return bad
 
 
