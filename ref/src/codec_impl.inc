@@ -1158,16 +1158,17 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         const double c_intra = try_intra ? score(intra, &d_intra) : kRdInf;
         double best_cost = c_intra;
         TileDecision best = try_intra ? intra : skip_cand;
-        double d_ref = try_intra ? d_intra : 1e30;
+        double d_ref = try_intra ? d_intra : kRdInf;
         if (!best_inter.skipped) {
             double c_inter = score(best_inter, &d_inter);
             // Quarter-pel refinement by REAL rate-distortion.  The search
             // above ranks vectors by SAD against the predictor, which is a
             // proxy for two things it cannot see: what the transform and the
             // trellis do with the residual, and what the tile actually costs.
-            // At `slow` the winner's four quarter-pel neighbours are re-scored
-            // by encoding them, which is four more full quantisations of the
-            // tile and the last half-decibel available to the search.
+            // From `medium` up the winner's four quarter-pel neighbours are
+            // re-scored by encoding them: up to four more quantisations of
+            // the tile, and worth 1.7 BD-rate points on the inter path
+            // (ref/RESULTS-rdo-a.md 6).
             if (eff.mv_rd_qpel && best_inter.mode != NXVC_MODE_STEREO) {
                 static const int kOff[4][2] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
                 for (int k = 0; k < 4; ++k) {
