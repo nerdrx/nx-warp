@@ -117,9 +117,14 @@ decoder needs no second comparison.
 
 Two smaller decisions inside the tool, each measured:
 
-* **Weights.** Taking the 8x8 weighting matrix at the matching frequency
-  (`w[2u][2v]`) rather than a flat matrix is worth about 0.2 dB at QP 24 and
-  costs nothing: no second matrix family, nothing transmitted, nothing trained.
+* **Weights.** A split block takes the 8x8 weighting matrix at the frequency
+  the coefficient actually represents (`w[2u][2v]`), not a flat matrix: a
+  4-point transform's frequency `u` *is* the 8-point transform's frequency
+  `2u`, so the correspondence is exact and costs nothing -- no second matrix
+  family, nothing transmitted, nothing trained. The first build used a flat
+  matrix and the change landed together with the layout change above, so the
+  two were never measured against each other at a fixed operating point; this
+  one rests on the correspondence, not on a number.
 * **Where the encoder looks.** The split is scored only for the mode the
   unsplit pass chose, not for every mode candidate. The full cross product was
   not measured; the two-stage version already doubles the per-block

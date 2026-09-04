@@ -2359,8 +2359,13 @@ inconsistent. Each is a decision, not an interpretation.
 56. **A split block's weights are the frame's 8x8 matrix sampled at even rows
     and columns, not a flat matrix and not a second matrix family.** A 4-point
     transform's frequency `u` is the 8-point transform's frequency `2u`, so the
-    correspondence is exact and free. Flat weights were measured first and are
-    worth about 0.2 dB less at QP 24.
+    correspondence is exact, costs nothing and transmits nothing. The first
+    build used a flat matrix, on the argument that an 8x8 matrix "has no
+    meaning" for a 4x4 transform; that argument is simply wrong, because the
+    frequencies are the same frequencies. The two were not measured against
+    each other at a fixed operating point -- the change landed together with
+    the layout change of decision 54 -- so this decision rests on the
+    correspondence rather than on a number.
 
 57. **Chroma-from-luma requires `CTX_V2`, and is a chroma-only mode.** The v1
     mode coding spends a 3-bit bypass `idx` on the non-MPM index; nine non-MPM
