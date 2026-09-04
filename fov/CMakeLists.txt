@@ -1,0 +1,6 @@
+add_library(nxvc_fov STATIC src/foveation.cpp)
+target_include_directories(nxvc_fov PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+set_target_properties(nxvc_fov PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+if(NOT MSVC)
+  target_compile_options(nxvc_fov PRIVATE -Wall -Wextra -Wno-unused-parameter)
+endif()
