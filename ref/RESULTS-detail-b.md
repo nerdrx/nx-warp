@@ -133,10 +133,9 @@ detail tools of this size do not close this gate.
 
 (Rounded from `$NXQ_SCRATCH/results/tourney-detail-b-{base,final}-*.json`.)
 
-The whole gain is at the top of the band and it is almost entirely on 4:4:4:
--2.8 % of rate at QP 20 and +0.13 dB, against nothing measurable at QP 36 and
-below. On 4:2:0 it is +0.16 dB at QP 20 at the same rate, and again nothing by
-QP 32. Both tools are prediction and transform tools that need something to
+The whole gain is at the top of the band: -2.8 % of rate and +0.13 dB at QP 20
+on 4:4:4, -0.7 % and +0.16 dB on 4:2:0, against nothing measurable at either
+format's QP 36 and below. Both tools are prediction and transform tools that need something to
 predict and something to transform; at the bottom of the band the residual is
 already three coefficients and neither has anything to work with. That shape --
 a real gain at the operating point a 90 Hz stereo stream would actually run at,
