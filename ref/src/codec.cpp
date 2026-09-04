@@ -656,12 +656,23 @@ static void reconstruct_plane(PlaneState &s, const i16 *coefs, int tskip,
 // the relation every mainstream encoder uses and the one used here.  There
 // is no second constant to fit.
 //
-// The reference-persistence factor.  A tile's reconstruction is the reference
-// for the next `kRefPersist` frames, so distortion left in it is displayed
-// that many times while its bits are paid once.  The per-tile MODE decision
-// therefore minimises kRefPersist*D + lambda*R.  The within-tile trellis does
-// not: at a fixed mode it trades one part of the same tile against another,
-// and both parts persist equally.  `--mode-lambda` still overrides.
+// The reference-persistence factor, and where it belongs.  A tile's
+// reconstruction is the reference for the next `kRefPersist` frames, so
+// distortion left in it is displayed that many times while its bits are paid
+// once.  That is true of a SKIPPED tile, whose error goes into the reference
+// and stays there until the tile is next coded, and it is what the skip
+// decision's excess penalty charges (decide_tile, and ref/RESULTS-inter.md 5,
+// where charging it was worth 4 dB).  It is NOT separately true of a coded
+// tile, whose error is bounded by its quantiser and is corrected the next
+// time the tile is coded.
+//
+// v1.4 charged it twice: the skip penalty, and again as a divisor on the
+// per-tile mode decision's lambda (`mode_lambda` defaulting to 1/4).  The
+// mode decision therefore ran at a quarter of the trellis's rate weight and
+// bought quality the skip penalty had already paid for.  Measured on
+// vr-mixed-1024-v2 4:4:4 band A, removing the second charge is worth -3.4
+// BD-rate points (ref/RESULTS-rdo-b.md 3).  The mode decision now runs at the
+// tile's own lambda and `--mode-lambda` overrides.
 constexpr double kLambdaScale = 0.22;
 constexpr double kRefPersist = 4.0;
 // Multiplier on the DC plane's lambda; see analyze_dc_plane.  0 disables the

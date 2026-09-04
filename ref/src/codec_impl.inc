@@ -951,8 +951,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                                      e->cfg.lambda_class_q8)
                  : 1.0);
         const double mode_scale =
-            e->cfg.mode_lambda_q8 ? (double)e->cfg.mode_lambda_q8 / 256.0
-                                  : 1.0 / kRefPersist;
+            e->cfg.mode_lambda_q8 ? (double)e->cfg.mode_lambda_q8 / 256.0 : 1.0;
         const Lambda Lmode = make_lambda(qp, tile_scale * mode_scale);
 
         // --- WARP_SKIP with the stored vector: no bits at all.
@@ -1150,14 +1149,10 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         // --- the real decision: D + lambda*R of the best inter candidate
         // against INTRA, both fully quantized and reconstructed.
         //
-        // The MODE decision runs at a lower lambda than the within-tile
-        // trellis, for the reason kRefPersist names: every frame this codec
-        // produces is a reference for the next three, so a mode that saves
-        // bits by leaving distortion in the picture is charged for that
-        // distortion once and paid for it four times.  The trellis's lambda
-        // is a within-tile trade at fixed mode and is unaffected.  Both come
-        // from make_lambda(); before this package they were two unrelated
-        // expressions of qstep and could not be reasoned about together.
+        // The MODE decision runs at the tile's own lambda.  codec.cpp
+        // "the lambda" argues why: the reference-persistence factor is
+        // charged once, on the skip candidate's excess distortion below, and
+        // v1.4 charged it a second time here.
         const double lambda = Lmode.sse;
         auto score = [&](const TileDecision &cand, double *dist_out) -> double {
             TileCoder tc;

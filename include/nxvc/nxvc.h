@@ -211,9 +211,12 @@ typedef struct nxvc_config {
                                    (qstep^2 / 12) per sample; 0 = default   */
     uint32_t mode_lambda_q8;    /* lambda scale of the per-tile MODE
                                    decision, Q8, relative to the trellis's.
-                                   Below 256 the decision spends more bits to
-                                   keep the reference clean, which is what an
-                                   all-reference stream wants; 0 = default  */
+                                   0 = the default 256 (the same lambda): the
+                                   reference-persistence factor is charged
+                                   once, on the skip candidate, and v1.4
+                                   charged it here a second time.  Below 256
+                                   the decision spends more bits to keep the
+                                   reference clean.                         */
 
     /* --- additive since syntax v1.5.  All encoder-side effort knobs: they
      * change how hard the encoder looks, never what a decoder does.  0 is
