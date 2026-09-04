@@ -121,9 +121,10 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         }
         uint16_t probe_row = uint16_t(h.tile_first / cfg.cols);
         uint16_t probe_col = uint16_t(h.tile_first % cfg.cols);
-        if (probe_row < cfg.rows && probe_col < cfg.cols)
-            rx.mark_tile_undecodable(h.frame_id, uint8_t(h.layer_id % (cfg.layers ? cfg.layers : 1)),
-                                     probe_row, probe_col);
+        // F1 is fixed in the library: the receiver range-checks (layer, row, col)
+        // itself, so the probe is deliberately unguarded to exercise that path.
+        rx.mark_tile_undecodable(h.frame_id, uint8_t(h.layer_id % (cfg.layers ? cfg.layers : 1)),
+                                 probe_row, probe_col);
         for (uint8_t band = 0; band < 2; ++band) {
             nxt::ByteVec fb = rx.band_deadline(h.frame_id, uint8_t((h.band + band) % cfg.bands()),
                                                3000 + band, 1234, path);

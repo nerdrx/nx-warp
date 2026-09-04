@@ -48,7 +48,7 @@ re-run.
 
 | # | severity | status | component | one line |
 |---|---|---|---|---|
-| F1 | medium | open | transport | `Receiver::mark_tile_undecodable()` indexes the tile ring with an unchecked `(row, col)` |
+| F1 | medium | fixed (fff0fde) | transport | `Receiver::mark_tile_undecodable()` indexes the tile ring with an unchecked `(row, col)` |
 | F2 | medium | open | warp | `warp_tile_corners()` does not saturate corners in `kModeStatic`, contrary to `kCornerClamp`'s contract |
 | F3 | **high** | **fixed upstream** | ref | signed-integer overflow in `idct8_1d()` on legal int16 coefficients, reachable from a bitstream |
 | F4 | medium | open | build | `NXWARP_SANITIZER=address+undefined` enables `-fsanitize=integer`, which fires on well-defined code and makes the preset unusable |
