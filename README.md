@@ -198,25 +198,49 @@ The tree is being built component by component and several land in parallel, so
 this table moves. "Design" means it exists in `docs/` only. "In progress" means
 there is code that does not yet meet its own bar. "Builds" means it configures
 and compiles in CI. "Tested" means it has tests registered in `ctest` or
-`pytest` that CI runs.
+`pytest` that CI runs. "Measured" means a checked-in report carries numbers
+produced by a named command on named material.
+
+**The measured numbers are not good yet, and this README will not round them
+up.** The Phase 1 intra gate and both Phase 2 kill tests have been run, on
+band-limited v2 material, and every one of them fails:
+[`tools/quality/reports/gates-v2-2026-09-04.md`](tools/quality/reports/gates-v2-2026-09-04.md)
+has ten gate verdicts and ten FAILs, with the intra path at +61.4 percent
+BD-rate against `x264 --keyint 1` where the criterion is within 1.0 dB.
+[`ref/RESULTS-intra.md`](ref/RESULTS-intra.md) and
+[`ref/RESULTS-inter.md`](ref/RESULTS-inter.md) are the long form. The one
+anchor this codec has beaten so far is the inter path against x264 intra at
+4:2:0, by 23 percent, which is a comparison in its own favour and is labelled
+as such in the report.
+
+Closing that gap is the live work. Thirteen `tourney/*` branches hold
+independently built coding-tool packages -- transform, intra detail, entropy
+contexts, inter prediction, encoder RDO, sparsity, perceptual rate control --
+judged in pairs against the same anchors on the same material. Two branches
+(`tourney/sparse`, `tourney/metric`) are merged into `main`; the other eleven
+are judged but not merged, and the merge is the next piece of work. The
+branches and their judge reports are local and unpushed, so a clone of this
+repository does not have them yet; [ROADMAP.md](ROADMAP.md) lists what each
+one is and what its judge decided. No tournament claim belongs in this table
+until it lands here.
 
 | Component | Path | What it is | Status |
 |---|---|---|---|
 | Design paper | `docs/PAPER.md` | Draft 1. The rationale for every decision. | design |
 | Normative syntax | `docs/SYNTAX.md` | The v1 bitstream, normatively. The paper is not normative. | design |
-| Reference codec | `ref/` | Bit-exact CPU encoder and decoder, Phase 1 scope: intra only. The thing the Vulkan decoder must equal. | builds, tested |
-| Conformance vectors | `tests/vectors/` | Twelve `.nxv` streams covering 4:2:0, 4:4:4, alpha and lossless. | builds, tested |
-| Pose-warp predictor | `warp/` | Integer homography, CPU reference plus the GLSL kernel, with a determinism check. | builds, tested |
-| Phase 0 benchmark | `bench/` | The Adreno gate from paper 3.4. Kernels K1 to K6, Android NativeActivity plus a headless host CLI. | builds |
-| Quality harness | `tools/quality/` | Synthetic VR material, x264 and x265 anchors, PSNR, VMAF, FovVideoVDP-style foveated metrics, BD-rate, PASS/FAIL reports. | builds, tested |
-| Transport | `transport/` | Wire format, AEAD, FEC, packetizer, multipath scheduler, client shadow. | in progress |
-| Vulkan decoder | `vk/decoder/` | Pass A rANS decode, Pass B reconstruct, plus their CPU models. | in progress |
-| Vulkan encoder | `vk/encoder/` | E0 to E2 statistics and prefix kernels. | in progress |
-| Rate control | `rc/` | Tile classification, bit allocation, decode-time governor, plus a simulator. | in progress |
-| Stereo | `stereo/` | Inter-view prediction simulator and its tests. | in progress |
-| Foveation | `fov/` | The per-tile foveation map from paper 5.1. | in progress |
-| Hybrid path | `hybrid/` | Simulator for the HEVC base plus compute enhancement layer. | in progress |
-| Windows platform | `platform/win/` | D3D interop probe, llvm-mingw cross build, Wine smoke test. | builds |
+| Reference codec | `ref/` | Bit-exact CPU encoder and decoder. Intra plus the Phase 2 inter path behind its tool bit. The thing the Vulkan decoder must equal. | builds, tested, measured (gate FAILs) |
+| Conformance vectors | `tests/vectors/` | 56 decode vectors plus 29 rejection vectors, with md5 manifests, covering 4:2:0, 4:4:4, alpha, lossless, `res_level`, custom tables, odd sizes, multi-frame and inter. | builds, tested |
+| Pose-warp predictor | `warp/` | Integer homography, CPU reference plus the GLSL kernel, with a cross-vendor determinism check and a GPU-versus-CPU diff. | builds, tested, measured (chain gate FAILs) |
+| Phase 0 benchmark | `bench/` | The Adreno gate from paper 3.4. Kernels K1 to K6, Android NativeActivity plus a headless host CLI. | builds; one host run recorded, no headset run |
+| Quality harness | `tools/quality/` | Synthetic VR material, x264 and x265 anchors, PSNR, VMAF, FovVideoVDP-style foveated metrics, BD-rate, PASS/FAIL reports. This is what produced every number above. | builds, tested |
+| Transport | `transport/` | Wire format, AEAD, FEC, packetizer, multipath scheduler, client shadow. | builds, tested |
+| Vulkan decoder | `vk/decoder/` | Pass A rANS decode, Pass B reconstruct, plus their CPU models. Conformance is checked against the reference on both lavapipe and RADV in CI. | builds, tested |
+| Vulkan encoder | `vk/encoder/` | E0 to E2 statistics and prefix kernels. No end-to-end GPU encode yet. | in progress |
+| Rate control | `rc/` | Tile classification, bit allocation, decode-time governor, plus a simulator. Simulator results only; not wired into `ref/` on `main`. | builds, tested |
+| Stereo | `stereo/` | Inter-view prediction simulator and its tests. Not in the codec path. | builds, tested |
+| Foveation | `fov/` | The per-tile foveation map from paper 5.1. No tests of its own; exercised only through `rc.foveation`. Not in the codec path. | builds |
+| Hybrid path | `hybrid/` | Python simulator for the HEVC base plus compute enhancement layer, with recorded results. | builds, tested |
+| Windows platform | `platform/win/` | D3D interop probe, llvm-mingw cross build, Wine smoke test. The probe needs Vulkan headers and is skipped when `NXWARP_BUILD_VK=OFF`. | builds |
 | Android client | `android/` | Frame ring, networking, transport glue for the headset side. | in progress |
 | WiVRn NX integration | `docs/INTEGRATION.md` | The plan for putting this behind WiVRn NX's encoder interface. | design |
 
@@ -242,9 +266,17 @@ nothing else should be written until that benchmark table exists.
 
 ## Building
 
-There are no CMake presets yet. The build is a plain out-of-source CMake
-configure with one option per component, and every component is optional, so a
-missing sibling directory never breaks the configure.
+`CMakePresets.json` carries twelve configure presets -- `dev`, `dev-vk`,
+`release`, `release-lto`, `asan-ubsan`, `tsan`, `gcc`, `clang`, `coverage`,
+`fuzz`, `mingw-w64` and `android-ndk` -- each with a matching build and, where
+it makes sense, test preset. `cmake --list-presets` prints them. Underneath,
+the build is a plain out-of-source CMake configure with one option per
+component, and every component is optional, so a missing sibling directory
+never breaks the configure.
+
+```sh
+cmake --preset dev && cmake --build --preset dev && ctest --preset dev
+```
 
 **You need** CMake 3.25 or newer, a C++20 compiler, and Ninja or Make. For the
 Vulkan components add the Vulkan headers and loader, plus `glslc` or
@@ -336,9 +368,13 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) first. The short version:
 - Formatting is `.clang-format` and `.editorconfig`, enforced by the Format
   workflow. Run it before you push.
 
-Good first contributions right now: conformance vectors for corners the current
-twelve miss, fuzz corpus seeds, quality-harness test material, and independent
-verification of the Phase 0 kernels on hardware that is not an Adreno 650.
+Good first contributions right now: conformance vectors for corners the
+current 56 miss, fuzz corpus seeds, quality-harness test material, and
+independent verification of the Phase 0 kernels on hardware that is not an
+Adreno 650. The most useful contribution of all would be a coding tool that
+closes the intra gap measured in
+[`tools/quality/reports/gates-v2-2026-09-04.md`](tools/quality/reports/gates-v2-2026-09-04.md);
+that is the project's open problem, not a matter of polish.
 
 <br>
 
