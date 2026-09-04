@@ -27,13 +27,10 @@ jobs:
   # ---------------------------------------------------------------------------
   # AddressSanitizer + UndefinedBehaviorSanitizer.
   #
-  # Note on the flags: cmake/nxwarp_sanitizers.cmake's "address+undefined" also
-  # turns on -fsanitize=integer, whose implicit-conversion and
-  # unsigned-shift-base checks fire on code that is perfectly well defined --
-  # including inside libstdc++ (std::uniform_int_distribution) and inside the
-  # codec's own deliberate unsigned wrap-around arithmetic.  Using it here would
-  # make this job permanently red for reasons that are not bugs.  So the
-  # sanitizer module supplies ASan and this workflow adds plain UBSan itself.
+  # cmake/nxwarp_sanitizers.cmake's "address+undefined" now runs the exact
+  # check list in NXWARP_UBSAN_CHECKS (default: undefined,float-divide-by-zero;
+  # the noisy -fsanitize=integer group was removed after fuzz finding F4), so
+  # this job uses the module directly.
   # The module's flags are appended after CMAKE_CXX_FLAGS, so the narrowing has
   # to happen this way round.  See fuzz/FINDINGS.md (F4).
   # ---------------------------------------------------------------------------
@@ -58,13 +55,9 @@ jobs:
 
       - name: Configure
         run: |
-          san="-fsanitize=undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer -g"
           cmake -S . -B build-asan -G Ninja \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-            -DNXWARP_SANITIZER=address \
-            -DCMAKE_C_FLAGS="$san" \
-            -DCMAKE_CXX_FLAGS="$san" \
-            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=undefined" \
+            -DNXWARP_SANITIZER=address+undefined \
             -DNXWARP_BUILD_VK=OFF \
             -DNXWARP_BUILD_TOOLS=OFF \
             -DNXWARP_BUILD_TESTS=ON
@@ -176,14 +169,10 @@ jobs:
 
       - name: Configure with libFuzzer + ASan/UBSan
         run: |
-          san="-fsanitize=undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer -g"
           cmake -S . -B build-fuzz -G Ninja \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-            -DNXWARP_SANITIZER=address \
+            -DNXWARP_SANITIZER=address+undefined \
             -DNXWARP_FUZZ=ON -DNXVC_FUZZ=ON \
-            -DCMAKE_C_FLAGS="$san" \
-            -DCMAKE_CXX_FLAGS="$san" \
-            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=undefined" \
             -DNXWARP_BUILD_VK=OFF \
             -DNXWARP_BUILD_TOOLS=OFF \
             -DNXWARP_BUILD_TESTS=ON
