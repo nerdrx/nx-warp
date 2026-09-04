@@ -1426,8 +1426,8 @@ The threshold exists because a block whose scan ends before position 24 has at
 most a handful of coefficients spread over four quadrants, which is not a
 residual four separate transforms can do anything for -- and those are the
 blocks there are most of. Coding the flag on every block with `CBF == 1`
-instead costs more rate than the split saves: it takes the tool from -0.47 %
-BD-rate to +0.03 %, measured on both chroma formats
+instead costs more rate than the split saves: it takes the tool from -0.45 % to
++0.08 % on 4:4:4 and from -0.24 % to +0.28 % on 4:2:0
 (`ref/RESULTS-detail-b.md` 2). The value is flat between 16 and 32 and 24 is
 chosen because it is exactly `base[12]`, so the condition needs no comparison a
 decoder is not already making.
@@ -2333,8 +2333,8 @@ inconsistent. Each is a decision, not an interpretation.
     transform and, in any layout where the split changes the scan, its parse.
     A flag in the mode unit would make a block's parse depend on the inter-lane
     schedule. Putting it after `LAST` in the block's own unit also buys the
-    `last >= 24` condition, worth about 0.5 % of rate
-    (`ref/RESULTS-detail-b.md` 2).
+    `last >= 24` condition, which is the difference between the tool being
+    worth something and worth nothing (`ref/RESULTS-detail-b.md` 2).
 
 54. **A split block interleaves its four quadrants instead of concatenating
     them, so that there is no 4x4 scan and no 4x4 band mapping.** The obvious
@@ -2344,9 +2344,10 @@ inconsistent. Each is a decision, not an interpretation.
     measured first: at the top of the Phase 1 band it is better (+0.31 dB at
     QP 24 on 4:4:4 against +0.09 dB for the interleaved layout), but it forces
     the flag ahead of `LAST` and the flag then costs more than the transform
-    saves everywhere else, for a BD-rate of +0.03 % against the interleaved
-    layout's -0.47 %. The interleaved layout also removes three concepts from
-    this document instead of adding them.
+    saves everywhere else: with the flag unconditional the tool is worth
+    +0.08 % on 4:4:4 and +0.28 % on 4:2:0, against -0.45 % and -0.24 % with the
+    threshold the interleaved layout allows. The interleaved layout also
+    removes three concepts from this document instead of adding them.
 
 55. **The 4x4 transform's shift chain is 19 forward and 21 inverse, not 20 and
     20.** Both flow graphs have gain `2^10` per dimension, so 20/20 would be

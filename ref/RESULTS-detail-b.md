@@ -6,8 +6,8 @@ one was measured and rejected, and one was not reached.**
 
 | # | tool | tool bit | verdict |
 |---|---|---|---|
-| 1 | chroma from luma | 24 `INTRA_CFL` | **built**, on by default; -1.22 % / -0.24 % of our own rate |
-| 2 | 4x4 transform split | 19 `XFORM_4X4_SPLIT` | **built**, on by default; -0.47 % / -0.47 % of our own rate |
+| 1 | chroma from luma | 24 `INTRA_CFL` | **built**, on by default; -1.18 % / -0.18 % of our own rate |
+| 2 | 4x4 transform split | 19 `XFORM_4X4_SPLIT` | **built**, on by default; -0.45 % / -0.24 % of our own rate |
 | 3 | adaptive dead zone per context class | none | **measured and rejected**; +0.10 % at best, five settings, section 3 |
 | 4 | planar / DC-plane refinement | none | not reached; section 6 says what is left and why it is not free |
 
@@ -40,25 +40,21 @@ against, and is the number quoted as "of our own rate" above.
 
 ## 1. The gate, before and after
 
-Each row adds one tool to the v1.4 default (`--intra-dir on --ctx v2
---sign-hide`). `+ INTRA_CFL` is `--split4 off`, `+ XFORM_4X4_SPLIT` is
-`--cfl off`, and the last row is the shipped v1.5 default.
-
-**4:4:4**
+`nxv-enc --split4 off --cfl off` is the v1.4 default, byte for byte -- verified
+by encoding the same frame with the v1.4 binary and `cmp` -- and plain
+`nxv-enc` is the shipped v1.5 default with both tools on.
 
 | | BD-rate vs x264 intra | mean deficit | worst deficit | verdict |
 |---|---|---|---|---|
-| v1.4 (`--split4 off --cfl off`) | +117.67 % | -7.400 dB | -8.995 dB at 100.0 Mbit/s | FAIL |
-| `+ INTRA_CFL` | PLACEHOLDER_CFL444 | | | FAIL |
-| `+ XFORM_4X4_SPLIT` (**shipped default**) | **+113.91 %** | **-7.362 dB** | -8.987 dB at 100.0 Mbit/s | FAIL |
+| **4:4:4** v1.4 | +117.67 % | -7.400 dB | -8.995 dB at 100.0 Mbit/s | FAIL |
+| **4:4:4** v1.5 (**shipped default**) | **+113.91 %** | **-7.362 dB** | -8.987 dB at 100.0 Mbit/s | FAIL |
+| **4:2:0** v1.4 | +109.22 % | -7.415 dB | -9.405 dB at 100.0 Mbit/s | FAIL |
+| **4:2:0** v1.5 (**shipped default**) | **+107.47 %** | **-7.396 dB** | -9.410 dB at 100.0 Mbit/s | FAIL |
 
-**4:2:0**
-
-| | BD-rate vs x264 intra | mean deficit | worst deficit | verdict |
-|---|---|---|---|---|
-| v1.4 (`--split4 off --cfl off`) | +109.22 % | -7.415 dB | -9.405 dB at 100.0 Mbit/s | FAIL |
-| `+ INTRA_CFL` | PLACEHOLDER_CFL420 | | | FAIL |
-| `+ XFORM_4X4_SPLIT` (**shipped default**) | **+107.47 %** | **-7.396 dB** | -9.410 dB at 100.0 Mbit/s | FAIL |
+The per-tool split of that is section 2, measured against the same build with
+the other tool off rather than against the anchor, because that is the
+comparison the encoder's own decisions were tuned against and the one that is
+not scaled by the distance to x264.
 
 Verbatim, the final gate lines. 4:4:4:
 
@@ -183,27 +179,46 @@ The tool fades with QP, as a prediction tool that costs a mode symbol should:
 The Phase 1 band ends around QP 34, so it is a band tool and not a low-rate
 one.
 
-4:2:0 gets less of it (-0.28 % against -1.13 %) for the obvious reason: its
-chroma is a quarter of the samples and about a third of the bits that 4:4:4's
-is, so a third of a smaller number.
+4:2:0 gets much less of it (-0.18 % against -1.18 %) for the obvious reason:
+its chroma is a quarter of the samples and, at QP 20, 3057 bytes of a frame
+where 4:4:4's chroma is 7204 -- so a fraction of a smaller number, on a plane
+whose detail the subsampling has already removed.
 
 ### `XFORM_4X4_SPLIT` (bit 19)
 
-Worth about half a percent on both formats, and the interesting part is how it
-got there, because the first two versions of it were worth **nothing**.
+Worth about half a percent on 4:4:4 and a quarter on 4:2:0, and the interesting
+part is how it got there, because the first two versions of it were worth
+**nothing**.
 
-| version | 4:4:4 | 4:2:0 |
+| configuration | 4:4:4 | 4:2:0 |
 |---|---|---|
-| quadrant-major layout, own 4x4 scan and band mapping, flag after `CBF` | +0.03 % | +0.04 % |
-| interleaved quadrants, flag after `LAST`, `kSplitMinLast = 4` | +0.03 % | +0.04 % |
-| ... `kSplitMinLast = 10` | -0.30 % | -0.29 % |
-| ... `kSplitMinLast = 16` | -0.45 % | -0.46 % |
-| ... **`kSplitMinLast = 24`** (shipped) | **-0.47 %** | **-0.47 %** |
-| ... `kSplitMinLast = 32` | -0.50 % | -0.44 % |
-| ... `kSplitMinLast = 48` | -0.36 % | -0.38 % |
+| the shipped tool, `kSplitMinLast = 24` | **-0.45 %** | **-0.24 %** |
+| the same build with `kSplitMinLast = 4`, i.e. the flag on every coded block | +0.08 % | +0.28 % |
 
 (BD-rate of the tool against the same build with it off, PSNR-Y, QP 20-32 on
-one frame; the full-sequence numbers in section 1 are close to these.)
+one frame; `tools/quality/bd-probe.py`.)
+
+The threshold was chosen by a sweep, run on an intermediate build that also
+carried the adaptive dead-zone table of section 3 before that was removed --
+so these rows are not on the shipped configuration and their absolute values
+are not the shipped ones. They are here for the **shape**, which is what they
+were run for, and the two endpoints above re-measure it on the shipped build:
+
+| `kSplitMinLast` | 4:4:4 | 4:2:0 |
+|---|---|---|
+| 4 | +0.03 % | +0.04 % |
+| 10 | -0.30 % | -0.29 % |
+| 16 | -0.45 % | -0.46 % |
+| **24** | **-0.47 %** | **-0.47 %** |
+| 32 | -0.50 % | -0.44 % |
+| 40 | -0.49 % | -0.43 % |
+| 48 | -0.36 % | -0.38 % |
+
+An earlier version of the tool, with the quadrant-major coefficient layout, its
+own 4x4 scan table and a LEVEL band taken from the position inside the
+quadrant, was measured on that same intermediate build at **+0.03 %** on both
+formats -- it has to code the flag before `LAST`, so it cannot have the
+threshold at all.
 
 **The transform was never the problem; the flag was.** A 4x4 transform on a
 block whose residual is genuinely local is worth a lot -- at QP 24 on 4:4:4 the
@@ -218,8 +233,10 @@ leave the scan and the `LAST` classes alone, which forces the interleaved
 coefficient layout of SYNTAX.md 6.7 -- and that layout is, on its own, slightly
 *worse* at compaction than a quadrant-major one with a proper 4x4 scan
 (+0.09 dB against +0.31 dB at QP 24). Taking the worse transform layout to buy
-the conditional flag is what turns +0.03 % into -0.47 %, and it also removes a
-scan table and a band mapping from the specification instead of adding them.
+the conditional flag is what turns a loss into a gain -- on the shipped build,
++0.08 % into -0.45 % on 4:4:4 and +0.28 % into -0.24 % on 4:2:0 -- and it also
+removes a scan table and a band mapping from the specification instead of
+adding them.
 
 The threshold is flat between 16 and 32; 24 is chosen because it is exactly
 `kLastBase[12]`, so "`LAST` class 12 or above" is the same condition and a
@@ -445,6 +462,18 @@ ones:
 
 (`nxv-enc --stats` now reports both lines; one 2048x1024 frame.)
 
+Their BD-rates against the same build with each tool off, on the shipped
+configuration, are:
+
+| | 4:4:4 | 4:2:0 |
+|---|---|---|
+| `INTRA_CFL` alone | -1.18 % | -0.18 % |
+| `XFORM_4X4_SPLIT` alone | -0.45 % | -0.24 % |
+| both | **-1.57 %** | **-0.45 %** |
+
+They are very nearly additive, which is what two tools acting on different
+planes and different blocks should be.
+
 At QP 20 on 4:4:4, mode 9 on 3.1 % of chroma blocks takes the chroma residual
 from 7204 to 4572 bytes -- **-37 %** -- and the whole frame from 82 830 to
 79 880. That is the useful lesson: on this content the remaining bits are
@@ -469,14 +498,39 @@ there are not sixty more of them to find.
 
 ```sh
 export NXQ_SCRATCH=/run/media/nerdrx/Lex/claude/nx-scratch/nx-warp
-export PATH=$PWD/build-ref/bin:$PATH
 cd tools/quality
+B=$PWD/../../build-ref/bin
 
-./run-b.sh base  yuv444p $NXQ_SCRATCH/detail-b-basebin      # the v1.4 baseline
-./run-b.sh final yuv444p $PWD/../../build-ref/bin           # v1.5 defaults
-./run-b.sh cfl   yuv444p $PWD/../../build-ref/bin --split4 off
-./run-b.sh split yuv444p $PWD/../../build-ref/bin --cfl off
+./run-b.sh base  yuv444p "$B" --split4 off --cfl off   # the v1.4 encoder
+./run-b.sh final yuv444p "$B"                          # the v1.5 default
+./run-b.sh base  yuv420p "$B" --split4 off --cfl off
+./run-b.sh final yuv420p "$B"
 ```
 
 `run-b.sh` is the whole invocation, including the QP ladder chosen for the v2
-sequence and the Phase 1 gate flags; `yuv420p` for the other format.
+sequence -- `--qp 20,24,28,32,36,40` against the same anchor ladder, which is
+what puts six points of each across the 100-400 Mbit band on this material --
+and the Phase 1 gate flags.
+
+The section 1 rows in this document were produced with a saved v1.4 binary
+rather than with `--split4 off --cfl off`, which is the same thing: the two
+encoders' output is byte-identical with the tools off, checked with `cmp` on
+one frame at QP 20 and QP 32 on both formats.
+
+The section 2 per-tool BD-rates come from a faster probe -- four QP points on
+one frame, BD-rate of a configuration against the same build with the tool off
+-- because the sweeps behind them (seven values of `kSplitMinLast`, five
+dead-zone tables, two coefficient layouts) are twenty-odd configurations and
+the full harness run is twenty minutes each. The probe agrees with the harness
+where the two overlap: it puts the pair at -1.57 % of our own rate on 4:4:4,
+against the -1.76 % the harness's +117.67 % to +113.91 % works out to over six
+frames and six QPs.
+
+```sh
+# the probe, for one configuration pair
+cd $NXQ_SCRATCH/work-b
+python3 bd.py <bindir> yuv444p "" "--cfl on"
+```
+
+Block-level tool usage comes from `nxv-enc --stats`, which reports the two
+counters as a `blocks ...` line.
