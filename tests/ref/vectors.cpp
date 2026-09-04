@@ -36,64 +36,83 @@ struct VecSpec {
     int dir;          // 0 off, 1 directional intra, 2 its layered form
     int ctx;          // 0 = 12 contexts, 1 = 16 (CTX_V2)
     int sdh;          // sign data hiding (tool 22)
+    int xf;           // largest transform the encoder may pick (tool 24)
 };
 
 static const VecSpec kVectors[] = {
     // name                     w    h  444 kind qp  ll  a  ts nsub tab t420 ct mat res qpp fr
-    {"v01_intra420_qp12",      192, 128, 0,  1, 12,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v02_intra420_qp24",      192, 128, 0,  1, 24,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v03_intra420_qp36",      192, 128, 0,  1, 36,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v04_intra420_qp51",      192, 128, 0,  1, 51,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v05_intra444_qp24",      192, 128, 1,  1, 24,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v06_gradient420_qp20",   192, 128, 0,  0, 20,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v07_checker420_qp28",    192, 128, 0,  2, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v08_noise420_qp28",      192, 128, 0,  3, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v09_flat420_qp28",       192, 128, 0,  4, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v10_lossless420",        192, 128, 0,  1,  0,  1, 0,  1,  3,  0,  0, 0,  0,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v11_lossless444",        192, 128, 1,  1,  0,  1, 0,  1,  3,  0,  0, 0,  0,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v12_lossless444_alpha",  192, 128, 1,  2,  0,  1, 1,  1,  3,  0,  0, 0,  0,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v13_tskip420_qp16",      192, 128, 0,  2, 16,  0, 0,  1,  3,  0,  0, 0,  0,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v14_alpha420_qp24",      192, 128, 0,  1, 24,  0, 1,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v15_res_cycle420",       192, 128, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  1,  0, 1, 0, 0, 0, 0, 0},
-    {"v16_res_level2_420",     192, 128, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  2,  0, 1, 0, 0, 0, 0, 0},
-    {"v17_res_cycle444",       192, 128, 1,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  1,  0, 1, 0, 0, 0, 0, 0},
-    {"v18_qpmap420",           192, 128, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  1, 1, 0, 0, 0, 0, 0},
-    {"v19_qp_res_map420",      192, 128, 0,  1, 30,  0, 0,  0,  3,  0,  0, 0,  2,  1,  1, 1, 0, 0, 0, 0, 0},
-    {"v20_tile420_in444",      192, 128, 1,  1, 26,  0, 0,  0,  3,  0,  1, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v21_ycocgr444_qp24",     192, 128, 1,  1, 24,  0, 0,  0,  3,  0,  0, 1,  1,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v22_ycocgr_lossless",    192, 128, 1,  1,  0,  1, 0,  1,  3,  0,  0, 1,  0,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v23_custom_tables420",   192, 128, 0,  1, 28,  0, 0,  0,  3,  1,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v24_nsub0_420",          192, 128, 0,  1, 28,  0, 0,  0,  0,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v25_nsub5_420",          192, 128, 0,  1, 28,  0, 0,  0,  5,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v26_nsub_auto_420",      192, 128, 0,  1, 28,  0, 0,  0,255,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v27_matrix0_420",        192, 128, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  0,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v28_matrix3_420",        192, 128, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  3,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v29_odd_size_200x140",   200, 140, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v30_tiny_64x64",          64,  64, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v31_wide_320x64",        320,  64, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0},
-    {"v32_multiframe420",      128, 128, 0,  1, 30,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 3, 0, 0, 0, 0, 0},
+    {"v01_intra420_qp12",      192, 128, 0,  1, 12,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v02_intra420_qp24",      192, 128, 0,  1, 24,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v03_intra420_qp36",      192, 128, 0,  1, 36,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v04_intra420_qp51",      192, 128, 0,  1, 51,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v05_intra444_qp24",      192, 128, 1,  1, 24,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v06_gradient420_qp20",   192, 128, 0,  0, 20,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v07_checker420_qp28",    192, 128, 0,  2, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v08_noise420_qp28",      192, 128, 0,  3, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v09_flat420_qp28",       192, 128, 0,  4, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v10_lossless420",        192, 128, 0,  1,  0,  1, 0,  1,  3,  0,  0, 0,  0,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v11_lossless444",        192, 128, 1,  1,  0,  1, 0,  1,  3,  0,  0, 0,  0,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v12_lossless444_alpha",  192, 128, 1,  2,  0,  1, 1,  1,  3,  0,  0, 0,  0,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v13_tskip420_qp16",      192, 128, 0,  2, 16,  0, 0,  1,  3,  0,  0, 0,  0,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v14_alpha420_qp24",      192, 128, 0,  1, 24,  0, 1,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v15_res_cycle420",       192, 128, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  1,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v16_res_level2_420",     192, 128, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  2,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v17_res_cycle444",       192, 128, 1,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  1,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v18_qpmap420",           192, 128, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  1, 1, 0, 0, 0, 0, 0, 0},
+    {"v19_qp_res_map420",      192, 128, 0,  1, 30,  0, 0,  0,  3,  0,  0, 0,  2,  1,  1, 1, 0, 0, 0, 0, 0, 0},
+    {"v20_tile420_in444",      192, 128, 1,  1, 26,  0, 0,  0,  3,  0,  1, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v21_ycocgr444_qp24",     192, 128, 1,  1, 24,  0, 0,  0,  3,  0,  0, 1,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v22_ycocgr_lossless",    192, 128, 1,  1,  0,  1, 0,  1,  3,  0,  0, 1,  0,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v23_custom_tables420",   192, 128, 0,  1, 28,  0, 0,  0,  3,  1,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v24_nsub0_420",          192, 128, 0,  1, 28,  0, 0,  0,  0,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v25_nsub5_420",          192, 128, 0,  1, 28,  0, 0,  0,  5,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v26_nsub_auto_420",      192, 128, 0,  1, 28,  0, 0,  0,255,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v27_matrix0_420",        192, 128, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  0,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v28_matrix3_420",        192, 128, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  3,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v29_odd_size_200x140",   200, 140, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v30_tiny_64x64",          64,  64, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v31_wide_320x64",        320,  64, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v32_multiframe420",      128, 128, 0,  1, 30,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 3, 0, 0, 0, 0, 0, 0},
     // v1.2 additions.
-    {"v33_wm_id444",           192, 128, 1,  1, 24,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 2, 0, 0, 0, 0},
-    {"v34_wm_id420_tables",    192, 128, 0,  1, 30,  0, 0,  0,  3,  1,  0, 0,  2,  0,  0, 1, 3, 0, 0, 0, 0},
+    {"v33_wm_id444",           192, 128, 1,  1, 24,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 2, 0, 0, 0, 0, 0},
+    {"v34_wm_id420_tables",    192, 128, 0,  1, 30,  0, 0,  0,  3,  1,  0, 0,  2,  0,  0, 1, 3, 0, 0, 0, 0, 0},
     // Hand-built: every dequantized coefficient saturates the int16 clamp, so
     // the IDCT runs at its documented worst case (SYNTAX.md 6.3).  This is the
     // vector that pins the odd-part rotation's range; the reference decoder
     // must run it clean under -fsanitize=undefined (ctest ref.saturate).
-    {"v35_saturate420",         64,  64, 0,  4, 63,  0, 0,  0,  3,  0,  0, 0,  2,  0,  0, 1, 0, 1, 0, 0, 0},
+    {"v35_saturate420",         64,  64, 0,  4, 63,  0, 0,  0,  3,  0,  0, 0,  2,  0,  0, 1, 0, 1, 0, 0, 0, 0},
     // v1.3 additions: the v2 intra tools.  dir/ctx are the last two columns.
-    {"v36_dir444_qp16",        192, 128, 1,  1, 16,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 1, 0, 0},
-    {"v37_dir420_qp28",        192, 128, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 1, 0, 0},
-    {"v38_dir_ctxv2_444",      192, 128, 1,  1, 20,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 1, 1, 0},
-    {"v39_ctxv2_only_420",     192, 128, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 1, 0},
-    {"v40_dir_layer420",       192, 128, 0,  2, 24,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 2, 0, 0},
+    {"v36_dir444_qp16",        192, 128, 1,  1, 16,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 1, 0, 0, 0},
+    {"v37_dir420_qp28",        192, 128, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 1, 0, 0, 0},
+    {"v38_dir_ctxv2_444",      192, 128, 1,  1, 20,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 1, 1, 0, 0},
+    {"v39_ctxv2_only_420",     192, 128, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 1, 0, 0},
+    {"v40_dir_layer420",       192, 128, 0,  2, 24,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 2, 0, 0, 0},
     // every v2 feature at once: layered modes, 16 contexts, transmitted
     // tables (160 bytes a set now), res_level cycling and 1 lane per tile.
-    {"v41_dir_ctxv2_tables",   192, 128, 1,  2, 22,  0, 0,  0,  0,  1,  0, 0,  1,  1,  0, 2, 0, 0, 1, 1, 0},
-    {"v42_dir_res_tskip420",   192, 128, 0,  2, 18,  0, 0,  1,255,  1,  0, 0,  0,  1,  1, 1, 0, 0, 1, 1, 0},
+    {"v41_dir_ctxv2_tables",   192, 128, 1,  2, 22,  0, 0,  0,  0,  1,  0, 0,  1,  1,  0, 2, 0, 0, 1, 1, 0, 0},
+    {"v42_dir_res_tskip420",   192, 128, 0,  2, 18,  0, 0,  1,255,  1,  0, 0,  0,  1,  1, 1, 0, 0, 1, 1, 0, 0},
     // sign data hiding, alone and stacked on the rest.  `sdh` is the last
     // column; v44 is the encoder's shipped default configuration.
-    {"v43_sdh_only420",        192, 128, 0,  1, 20,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 1},
-    {"v44_default444",         192, 128, 1,  1, 20,  0, 0,  0,255,  1,  0, 0,  1,  0,  0, 1, 0, 0, 1, 1, 1},
+    {"v43_sdh_only420",        192, 128, 0,  1, 20,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 1, 0},
+    {"v44_default444",         192, 128, 1,  1, 20,  0, 0,  0,255,  1,  0, 0,  1,  0,  0, 1, 0, 0, 1, 1, 1, 0},
+    // v1.5 additions: the larger transforms (tool 24).  `xf` is the last
+    // column and is the largest size the encoder may pick per tile, so a
+    // vector exercises the RD choice as well as the transform itself.  v45 to
+    // v56 are the inter set and are unchanged.
+    {"v57_xform16_420",        192, 128, 0,  1, 24,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 1},
+    {"v58_xform32_420",        192, 128, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 2},
+    {"v59_xform32_444",        192, 128, 1,  1, 20,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 2},
+    // res_level cycling makes the per-plane cap of SYNTAX.md 6.7 bite: a
+    // res_level 2 tile's chroma plane is 8 samples wide and stays at 8x8
+    // whatever the tile header says.
+    {"v60_xform32_res420",     192, 128, 0,  1, 26,  0, 0,  0,255,  1,  0, 0,  1,  1,  0, 1, 0, 0, 0, 0, 0, 2},
+    // INTRA_DIR and XFORM_LARGE both declared: every tile chooses one.
+    {"v61_xform_dir444",       192, 128, 1,  2, 18,  0, 0,  0,255,  1,  0, 0,  1,  0,  0, 1, 0, 0, 1, 1, 1, 2},
+    // Hand-built, the 32x32 counterpart of v35: every dequantized coefficient
+    // saturates the int16 clamp with the signs aligned to a column of T_32,
+    // which is the pattern that attains the 3.5e8 pass-1 bound of SYNTAX.md
+    // 6.2.  Run under -fsanitize=undefined (ctest ref.saturate).
+    {"v62_xform32_saturate",    64,  64, 0,  4, 63,  0, 0,  0,  3,  0,  0, 0,  2,  0,  0, 1, 0, 2, 0, 0, 0, 2},
 };
 static const int kNumVectors = (int)(sizeof(kVectors) / sizeof(kVectors[0]));
 
@@ -159,14 +178,66 @@ static bool build_saturating_payload(std::vector<uint8_t> &out) {
     return encode_units(units.data(), nunits, 8, ts, out);
 }
 
-// raw == 1: the saturating vector.  Everything but the tile payload comes from
-// a real encode of the same geometry, so the headers stay exactly conformant.
+// The 32x32 counterpart.  All levels have the SAME sign, which is the pattern
+// aligned with column 0 of T_32 -- every entry of that column is positive --
+// and is therefore the one that attains the 3.5e8 inverse pass-1 bound of
+// SYNTAX.md 6.2.  The DC planes keep the 8x8 grid (7.7) and the v35 pattern.
+static bool build_saturating_payload_x32(std::vector<uint8_t> &out) {
+    using namespace nxvc;
+    // 64x64 4:2:0 tile at res_level 0 with xform == 2: luma is 64 wide so it
+    // is 2x2 blocks of 32x32, chroma is 32 wide so it is one block; both have
+    // 16 coefficient groups per block.  The DC planes are unchanged: nb 8 and
+    // nb 4 (SYNTAX.md 7.7).
+    const int nbl = 8, nbc = 4;
+    const int ngrp = 16;
+    const int nunits = (1 + nbl * nbl) + 2 * (1 + nbc * nbc);
+    std::vector<i16> coef((size_t)(nbl * nbl + nbl * nbl * 64) +
+                          2 * (size_t)(nbc * nbc + nbc * nbc * 64), 0);
+    std::vector<Unit> units;
+    size_t off = 0;
+    for (int p = 0; p < 3; ++p) {
+        const int nb = (p == 0) ? nbl : nbc;
+        const bool chroma = (p != 0);
+        const int ndc = nb * nb;
+        Unit u{};
+        u.coef = &coef[off];
+        u.ncoef = (u16)ndc;
+        u.scan = scan_table(ndc, false);
+        u.ctx_cbf = chroma ? kCtxCbfChroma : kCtxCbfLuma;
+        u.ctx_last = chroma ? kCtxLastChroma : kCtxLastLuma;
+        fill_saturating(u.coef, ndc);
+        units.push_back(u);
+        off += ndc;
+        for (int b = 0; b < ndc; ++b) {
+            Unit w{};
+            w.coef = &coef[off];
+            w.ncoef = 64;
+            w.scan = scan_table(64, false);
+            w.ctx_cbf = u.ctx_cbf;
+            w.ctx_last = u.ctx_last;
+            w.band_min = (u8)group_band_min(b % ngrp);
+            for (int i = 0; i < 64; ++i) w.coef[i] = 40;
+            units.push_back(w);
+            off += 64;
+        }
+    }
+    if ((int)units.size() != nunits) return false;
+    TableSet ts;
+    build_default_set(ts, 0);
+    return encode_units(units.data(), nunits, 8, ts, out);
+}
+
+// raw == 1: the 8x8 saturating vector; raw == 2: its 32x32 counterpart.
+// Everything but the tile payload comes from a real encode of the same
+// geometry, so the headers stay exactly conformant.
 static Result build_raw(const VecSpec &v, Result base) {
     Result r;
     if (!base.ok && base.err.empty()) base.err = "base build failed";
     if (!base.err.empty()) { r.err = base.err; return r; }
     std::vector<uint8_t> payload;
-    if (!build_saturating_payload(payload)) { r.err = "payload build"; return r; }
+    const bool ok = v.raw == 2 ? build_saturating_payload_x32(payload)
+                               : build_saturating_payload(payload);
+    if (!ok) { r.err = "payload build"; return r; }
     if (payload.size() > 65535) { r.err = "payload too long"; return r; }
     // Layout for one 64x64 tile with no custom matrices or tables:
     //   [64 stream header][40 frame header][12 row header][8 tile header][payload]
@@ -182,15 +253,15 @@ static Result build_raw(const VecSpec &v, Result base) {
     // tile header word1: force table_set 0 and 8 lanes, keep the rest.
     uint32_t w1 = 0;
     for (int i = 0; i < 4; ++i) w1 |= (uint32_t)out[kSH + kFH + kRH + 4 + i] << (8 * i);
-    w1 &= ~((7u << 14) | (7u << 17));
+    w1 &= ~((7u << 14) | (7u << 17) | (3u << 28));
     w1 |= (3u << 17);
+    if (v.raw == 2) w1 |= (2u << 28);   // xform = 2 (32x32)
     for (int i = 0; i < 4; ++i) out[kSH + kFH + kRH + 4 + i] = (uint8_t)(w1 >> (8 * i));
     out.insert(out.end(), payload.begin(), payload.end());
     // frame header frame_bytes at offset 36 of the frame header.
     uint32_t fb = (uint32_t)(out.size() - kSH);
     for (int i = 0; i < 4; ++i) out[kSH + 36 + i] = (uint8_t)(fb >> (8 * i));
     r.stream = out;
-    (void)v;
     r.ok = true;
     return r;
 }
@@ -217,6 +288,7 @@ static Result build(const VecSpec &v) {
     cfg.intra_dir_layer = v.dir == 2 ? 1u : 0u;
     cfg.ctx_v2 = (uint32_t)v.ctx;
     cfg.sign_hide = (uint32_t)v.sdh;
+    cfg.xform_large = (uint32_t)v.xf;
 
     nxvc_status st;
     nxvc_encoder *e = nxvc_encoder_create(&cfg, &st);
@@ -762,6 +834,10 @@ static const RejectSpec kRejects[] = {
     {"r15_ycocgr_420",        "YCoCg-R declared with 4:2:0 chroma",       NXVC_ERR_BITSTREAM,   0},
     {"r16_ctx_v2_short_table", "CTX_V2 table set overruns the tile rows",  NXVC_ERR_BITSTREAM,   1},
     {"r17_lossless_sign_hide", "LOSSLESS and SIGN_HIDE together",          NXVC_ERR_BITSTREAM,   0},
+    // syntax v1.5: the three illegal ways to say `xform` (SYNTAX.md 6.7).
+    {"r30_xform_reserved",    "xform 3 is reserved",                      NXVC_ERR_BITSTREAM,   1},
+    {"r31_xform_no_tool",     "xform != 0 without the XFORM_LARGE bit",   NXVC_ERR_BITSTREAM,   1},
+    {"r32_xform_tskip",       "xform != 0 together with tskip",           NXVC_ERR_BITSTREAM,   1},
 };
 static const int kNumRejects = (int)(sizeof(kRejects) / sizeof(kRejects[0]));
 
@@ -822,6 +898,17 @@ static std::vector<uint8_t> make_reject(int idx, const std::vector<uint8_t> &bas
         // Sign data hiding is lossy by construction; the two tool bits are
         // mutually exclusive.
         case 16: b[32 + 0] |= 0x20; b[32 + 2] |= 0x40; break;
+        // Tile word1 bits 28-29 are `xform`.  Value 3 is reserved; any
+        // nonzero value needs tool bit 24; and no value but 0 may accompany
+        // transform skip.  The third needs both tool bits (1 TRANSFORM_SKIP
+        // and 24 XFORM_LARGE) declared, or an earlier check fires instead.
+        case 17: put_u32(b, kOffTile0 + 4, w1 | (3u << 28)); break;
+        case 18: put_u32(b, kOffTile0 + 4, w1 | (2u << 28)); break;
+        case 19:
+            b[32 + 0] |= 0x02;             // tools bit 1  (TRANSFORM_SKIP)
+            b[32 + 3] |= 0x01;             // tools bit 24 (XFORM_LARGE)
+            put_u32(b, kOffTile0 + 4, w1 | (1u << 23) | (1u << 28));
+            break;
         default: break;
     }
     return b;

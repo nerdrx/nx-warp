@@ -144,6 +144,7 @@ struct TileParams {
     int mode = NXVC_MODE_INTRA, res_level = 0, chroma444 = 0, alpha_mode = 0;
     int qp_delta = 0, table_set = 0, nsub_log2 = 3, mv_present = 0;
     int ref_sel = 0, tskip = 0, wgt = 0, wm_id = 0;
+    int xform = 0;       // 0 = 8x8 (v1), 1 = 16x16, 2 = 32x32
     int mv_x = 0, mv_y = 0, alpha_value = 255;
     int disparity = 0;   // STEREO only, quarter samples, 12 bits
     int skipped = 0;     // signalled by skip_bitmap, no tile structure at all
@@ -172,6 +173,7 @@ static void pack_tile_header(BW &bw, const TileParams &t) {
     w1 |= ((u32)t.tskip & 1) << 23;
     w1 |= ((u32)t.wgt & 3) << 24;
     w1 |= ((u32)t.wm_id & 3) << 26;
+    w1 |= ((u32)t.xform & 3) << 28;
     bw.u32v(w0);
     bw.u32v(w1);
 }
@@ -194,6 +196,7 @@ static void unpack_tile_header(u32 w0, u32 w1, TileParams &t) {
     t.tskip = (w1 >> 23) & 1;
     t.wgt = (w1 >> 24) & 3;
     t.wm_id = (w1 >> 26) & 3;
+    t.xform = (w1 >> 28) & 3;
 }
 
 // ------------------------------------------------------------- tile coding
@@ -206,7 +209,8 @@ static inline int dc_qp_of(int qp) { return qp >> 1; }
 
 struct PlaneState {
     int size = 0;      // coded edge
-    int nb = 0;        // blocks per edge
+    int nb = 0;        // 8x8 blocks per edge -- the DC plane's grid, always
+    int xf = 0;        // transform level: edge is 8 << xf (SYNTAX.md 6.7)
     int qp = 0;
     const u8 *wmat = nullptr;
     int maxval = 255, dc_off = 128;
@@ -255,7 +259,12 @@ void TileCoder::setup() {
     // The directional predictor and its mode unit belong to INTRA tiles: an
     // inter tile's prediction is the warp, and a mode unit there would code
     // nine ways of saying nothing.  SYNTAX.md 9.6.
-    intra_dir = fp->intra_dir && !inter;
+    // The mode unit and the raster wavefront belong to the 8x8 transform:
+    // a directional mode is a per-8x8-block predictor, and a larger transform
+    // spans four or sixteen of those blocks.  The two tools are therefore
+    // exclusive *per tile*, and the encoder chooses between them (SYNTAX.md
+    // 7.7).  Both leave the tile independent, so nothing else changes.
+    intra_dir = fp->intra_dir && !inter && tp.xform == 0;
     dir_layer = fp->dir_layer;
     sdh = fp->sdh;
     nctx = fp->nctx;
@@ -265,6 +274,7 @@ void TileCoder::setup() {
         bool chroma = (p == 1 || p == 2);
         s.size = chroma ? tg.chroma_size : tg.coded_size;
         s.nb = s.size / 8;
+        s.xf = plane_xform(tp.xform, s.size);
         s.qp = chroma ? clamp_i32(qp + fp->chroma_qp_off, 0, 63)
                       : (p == 3 ? clamp_i32(qp + fp->alpha_qp_off, 0, 63) : qp);
         // wm_id 0 means "the frame's matrix"; 1..3 override it with a
@@ -327,17 +337,29 @@ void TileCoder::build_units() {
             mu.scan = scan_table(1, false);
             units.push_back(mu);
         }
-        for (int b = 0; b < ndc; ++b) {
-            Unit v{};
-            v.coef = &coef[off];
-            v.ncoef = 64;
-            v.scan = scan_table(64, tp.tskip != 0);
-            v.ctx_cbf = ccbf;
-            v.ctx_last = clast;
-            v.sdh = (u8)sdh;
-            units.push_back(v);
-            off += 64;
-        }
+        // One unit per 8x8 coefficient group.  A transform block of edge
+        // `xn` contributes (xn/8)^2 of them in raster order, so the unit
+        // count and the coefficient count are the same at every transform
+        // size and only the partition changes (SYNTAX.md 6.7, 9.1).  The
+        // group holding the block's DC keeps the version 1 LEVEL bands; the
+        // rest of the block is high frequency by construction and floors the
+        // band at 3 (SYNTAX.md 9.3).
+        const int xn = xform_edge(s.xf);
+        const int nblk = s.size / xn;
+        const int ngrp = (xn / 8) * (xn / 8);
+        for (int b = 0; b < nblk * nblk; ++b)
+            for (int gi = 0; gi < ngrp; ++gi) {
+                Unit v{};
+                v.coef = &coef[off];
+                v.ncoef = 64;
+                v.scan = scan_table(64, tp.tskip != 0);
+                v.ctx_cbf = ccbf;
+                v.ctx_last = clast;
+                v.sdh = (u8)sdh;
+                v.band_min = (u8)group_band_min(gi);
+                units.push_back(v);
+                off += 64;
+            }
     }
 }
 
@@ -504,18 +526,24 @@ static void predict_block(int mode, const IntraRefs &r, const i32 *base,
     }
 }
 
-// Dequantize + inverse transform one residual block.
-static void residual_block(const i16 *c, const PlaneState &s, int tskip,
-                           i32 res[64]) {
+// Dequantize + inverse transform one transform block of edge `n`.  `c` is
+// that block's coefficient-group storage and `res` its n x n residual in
+// raster order.  Transform skip is defined only for n == 8 (SYNTAX.md 6.6).
+static void residual_block(const i16 *c, const PlaneState &s, int tskip, int n,
+                           i32 *res) {
     if (tskip) {
         int t = dequant_step(s.qp, 16);
         for (int i = 0; i < 64; ++i) res[i] = dequant(c[i], t);
-    } else {
-        i32 dq[64];
-        for (int i = 0; i < 64; ++i)
-            dq[i] = dequant(c[i], dequant_step(s.qp, s.wmat[i]));
-        idct8x8(dq, res);
+        return;
     }
+    const int xf = xform_log2(n) - 3;
+    i32 dq[kMaxXform * kMaxXform];
+    for (int u = 0; u < n; ++u)
+        for (int v = 0; v < n; ++v)
+            dq[u * n + v] =
+                dequant(c[group_pos(n, u, v)],
+                        dequant_step(s.qp, weight_at(s.wmat, xf, u, v)));
+    idct_2d(n, dq, res);
 }
 
 // The DC plane and the bilinear prediction it drives: s.means and s.pred.
@@ -540,7 +568,7 @@ static void reconstruct_dc_plane(PlaneState &s, const i16 *coefs) {
     if (nb == 8) {
         i32 in[64], out[64];
         for (int i = 0; i < 64; ++i) in[i] = dc[i];
-        idct8x8(in, out);
+        idct_2d(kBlock, in, out);
         for (int i = 0; i < 64; ++i) dc[i] = out[i];
     }
     // An intra tile's block mean is a sample value and is clamped to the
@@ -574,16 +602,19 @@ static void reconstruct_plane(PlaneState &s, const i16 *coefs, int tskip,
     reconstruct_dc_plane(s, coefs);
     const i16 *bc = coefs + ndc;
     if (!dir) {
-        for (int by = 0; by < nb; ++by)
-            for (int bx = 0; bx < nb; ++bx) {
-                const i16 *c = bc + ((size_t)by * nb + bx) * 64;
-                i32 res[64];
-                residual_block(c, s, tskip, res);
-                for (int j = 0; j < 8; ++j)
-                    for (int i = 0; i < 8; ++i) {
-                        int y = by * 8 + j, x = bx * 8 + i;
+        const int xn = xform_edge(s.xf);
+        const int nblk = size / xn;
+        for (int by = 0; by < nblk; ++by)
+            for (int bx = 0; bx < nblk; ++bx) {
+                const i16 *c =
+                    bc + ((size_t)by * nblk + bx) * (size_t)xn * xn;
+                i32 res[kMaxXform * kMaxXform];
+                residual_block(c, s, tskip, xn, res);
+                for (int j = 0; j < xn; ++j)
+                    for (int i = 0; i < xn; ++i) {
+                        int y = by * xn + j, x = bx * xn + i;
                         s.samples[(size_t)y * size + x] = clamp_i32(
-                            s.pred[(size_t)y * size + x] + res[j * 8 + i], 0,
+                            s.pred[(size_t)y * size + x] + res[j * xn + i], 0,
                             s.maxval);
                     }
             }
@@ -603,7 +634,7 @@ static void reconstruct_plane(PlaneState &s, const i16 *coefs, int tskip,
         for (int bx = 0; bx < nb; ++bx) {
             const i16 *c = bc + ((size_t)by * nb + bx) * 64;
             i32 res[64], P[64];
-            residual_block(c, s, tskip, res);
+            residual_block(c, s, tskip, kBlock, res);
             IntraRefs r;
             build_refs(s.recon.data(), fallback, size, bx, by, r);
             predict_block(s.modes[(size_t)by * nb + bx], r, fallback, size, bx,
@@ -676,8 +707,8 @@ static inline int escape_bits(i32 m) {
 }
 
 static inline i32 level_rate(const RateCost &rc, int scan_pos, int prev_class,
-                             i32 m) {
-    int ctx = level_ctx(scan_pos, prev_class);
+                             i32 m, int band_min) {
+    int ctx = level_ctx(scan_pos, prev_class, band_min);
     i32 sym = m > 14 ? kEscSym : m;
     i32 r = rc.sym[ctx][sym];
     if (m > 14) r += escape_bits(m) << 10;
@@ -692,7 +723,7 @@ constexpr double kRdInf = 1e30;
 // back into `coefs`.
 static void rdoq_unit(i16 *coefs, const i32 *orig, const i32 *step, int ncoef,
                       const u8 *scan, int ctx_cbf, int ctx_last,
-                      const RateCost &rc, double lambda) {
+                      const RateCost &rc, double lambda, int band_min) {
     double f[64][3], fnz[64];
     i32 best_m[64][3], best_m_nz[64];
     double tail = 0;               // energy of scan positions above p
@@ -722,7 +753,7 @@ static void rdoq_unit(i16 *coefs, const i32 *orig, const i32 *step, int ncoef,
             for (int k = 0; k < nc; ++k) {
                 i32 m = cand[k];
                 double d = a - (double)m * st;
-                double cost = d * d + lambda * (level_rate(rc, p, s, m) / 1024.0) +
+                double cost = d * d + lambda * (level_rate(rc, p, s, m, band_min) / 1024.0) +
                               prev[level_class(m)];
                 if (cost < best) { best = cost; bm = m; }
                 if (m != 0 && cost < bestnz) { bestnz = cost; bmnz = m; }
@@ -840,7 +871,7 @@ static void analyze_dc_plane(PlaneState &s, i16 *coefs, int sdh) {
         i32 in[64];
         i16 out[64];
         for (int i = 0; i < 64; ++i) in[i] = m[i] - s.dc_off;
-        fdct8x8(in, out);
+        fdct_2d(kBlock, in, out);
         for (int i = 0; i < 64; ++i) {
             orig[i] = out[i];
             coefs[i] = (i16)quantize(out[i], tdc, tdc / 3);
@@ -867,19 +898,24 @@ static void analyze_plane(PlaneState &s, i16 *coefs, int tskip, int intra_dz,
     const int nb = s.nb, size = s.size;
     const int ndc = nb * nb;
     analyze_dc_plane(s, coefs, sdh);
-    // residual blocks
+    // residual blocks.  `orig` and `stepv` are kept in the coefficient-group
+    // layout so that each 64-value slice is exactly one coding unit.
     i16 *bc = coefs + ndc;
-    for (int by = 0; by < nb; ++by)
-        for (int bx = 0; bx < nb; ++bx) {
-            i16 *c = bc + ((size_t)by * nb + bx) * 64;
-            i32 res[64];
-            for (int j = 0; j < 8; ++j)
-                for (int i = 0; i < 8; ++i) {
-                    int y = by * 8 + j, x = bx * 8 + i;
-                    res[j * 8 + i] = s.samples[(size_t)y * size + x] -
-                                     s.pred[(size_t)y * size + x];
+    const int xn = xform_edge(s.xf);
+    const int nblk = size / xn;
+    const int ngrp = (xn / 8) * (xn / 8);
+    const u8 *scan = scan_table(64, tskip != 0);
+    for (int by = 0; by < nblk; ++by)
+        for (int bx = 0; bx < nblk; ++bx) {
+            i16 *c = bc + ((size_t)by * nblk + bx) * (size_t)xn * xn;
+            i32 res[kMaxXform * kMaxXform];
+            for (int j = 0; j < xn; ++j)
+                for (int i = 0; i < xn; ++i) {
+                    int y = by * xn + j, x = bx * xn + i;
+                    res[j * xn + i] = s.samples[(size_t)y * size + x] -
+                                      s.pred[(size_t)y * size + x];
                 }
-            i32 orig[64], stepv[64];
+            i32 orig[kMaxXform * kMaxXform], stepv[kMaxXform * kMaxXform];
             if (tskip) {
                 int t = dequant_step(s.qp, 16);
                 for (int i = 0; i < 64; ++i) {
@@ -888,17 +924,22 @@ static void analyze_plane(PlaneState &s, i16 *coefs, int tskip, int intra_dz,
                     c[i] = (i16)quantize(res[i], t, intra_dz ? t / 3 : t / 2);
                 }
             } else {
-                i16 co[64];
-                fdct8x8(res, co);
-                for (int i = 0; i < 64; ++i) {
-                    int t = dequant_step(s.qp, s.wmat[i]);
-                    orig[i] = co[i];
-                    stepv[i] = t;
-                    c[i] = (i16)quantize(co[i], t, t / 3);
-                }
+                i16 co[kMaxXform * kMaxXform];
+                fdct_2d(xn, res, co);
+                for (int u = 0; u < xn; ++u)
+                    for (int v = 0; v < xn; ++v) {
+                        int t = dequant_step(s.qp,
+                                             weight_at(s.wmat, s.xf, u, v));
+                        int g = group_pos(xn, u, v);
+                        orig[g] = co[u * xn + v];
+                        stepv[g] = t;
+                        c[g] = (i16)quantize(co[u * xn + v], t, t / 3);
+                    }
             }
             if (sdh)
-                hide_sign_unit(c, orig, stepv, 64, scan_table(64, tskip != 0));
+                for (int gi = 0; gi < ngrp; ++gi)
+                    hide_sign_unit(c + gi * 64, orig + gi * 64,
+                                   stepv + gi * 64, 64, scan);
         }
 }
 
@@ -915,34 +956,43 @@ static void rdoq_plane(PlaneState &s, i16 *coefs, int tskip, bool chroma,
     const u8 *scan = scan_table(64, tskip != 0);
     const int ctx_cbf = chroma ? kCtxCbfChroma : kCtxCbfLuma;
     const int ctx_last = chroma ? kCtxLastChroma : kCtxLastLuma;
-    i32 stepv[64];
-    if (tskip) {
-        int t = dequant_step(s.qp, 16);
-        for (int i = 0; i < 64; ++i) stepv[i] = t;
-    } else {
-        for (int i = 0; i < 64; ++i) stepv[i] = dequant_step(s.qp, s.wmat[i]);
-    }
+    const int xn = xform_edge(s.xf);
+    const int nblk = size / xn;
+    const int ngrp = (xn / 8) * (xn / 8);
     i16 *bc = coefs + ndc;
-    for (int by = 0; by < nb; ++by)
-        for (int bx = 0; bx < nb; ++bx) {
-            i16 *c = bc + ((size_t)by * nb + bx) * 64;
-            i32 res[64];
-            for (int j = 0; j < 8; ++j)
-                for (int i = 0; i < 8; ++i) {
-                    int y = by * 8 + j, x = bx * 8 + i;
-                    res[j * 8 + i] = s.samples[(size_t)y * size + x] -
-                                     s.pred[(size_t)y * size + x];
+    for (int by = 0; by < nblk; ++by)
+        for (int bx = 0; bx < nblk; ++bx) {
+            i16 *c = bc + ((size_t)by * nblk + bx) * (size_t)xn * xn;
+            i32 res[kMaxXform * kMaxXform];
+            for (int j = 0; j < xn; ++j)
+                for (int i = 0; i < xn; ++i) {
+                    int y = by * xn + j, x = bx * xn + i;
+                    res[j * xn + i] = s.samples[(size_t)y * size + x] -
+                                      s.pred[(size_t)y * size + x];
                 }
-            i32 orig[64];
+            i32 orig[kMaxXform * kMaxXform], stepv[kMaxXform * kMaxXform];
             if (tskip) {
-                for (int i = 0; i < 64; ++i) orig[i] = res[i];
+                int t = dequant_step(s.qp, 16);
+                for (int i = 0; i < 64; ++i) { orig[i] = res[i]; stepv[i] = t; }
             } else {
-                i16 co[64];
-                fdct8x8(res, co);
-                for (int i = 0; i < 64; ++i) orig[i] = co[i];
+                i16 co[kMaxXform * kMaxXform];
+                fdct_2d(xn, res, co);
+                for (int u = 0; u < xn; ++u)
+                    for (int v = 0; v < xn; ++v) {
+                        int g = group_pos(xn, u, v);
+                        orig[g] = co[u * xn + v];
+                        stepv[g] = dequant_step(
+                            s.qp, weight_at(s.wmat, s.xf, u, v));
+                    }
             }
-            rdoq_unit(c, orig, stepv, 64, scan, ctx_cbf, ctx_last, rc, lambda);
-            if (sdh) hide_sign_unit(c, orig, stepv, 64, scan);
+            // One trellis per coding unit, which is one coefficient group.
+            for (int gi = 0; gi < ngrp; ++gi) {
+                i16 *cg = c + gi * 64;
+                const i32 *og = orig + gi * 64, *sg = stepv + gi * 64;
+                rdoq_unit(cg, og, sg, 64, scan, ctx_cbf, ctx_last, rc, lambda,
+                          group_band_min(gi));
+                if (sdh) hide_sign_unit(cg, og, sg, 64, scan);
+            }
         }
 }
 
@@ -979,7 +1029,7 @@ static i32 satd8x8(const i32 d[64]) {
 // Q10 bits one coding unit costs under `rc`, mirroring the LaneMachine.
 static i32 unit_bits(const i16 *c, int ncoef, const u8 *scan, int ctx_cbf,
                      int ctx_last, int ctx_level, const RateCost &rc,
-                     int sdh) {
+                     int sdh, int band_min) {
     int last = -1;
     for (int p = ncoef - 1; p >= 0; --p)
         if (c[scan[p]] != 0) { last = p; break; }
@@ -994,7 +1044,7 @@ static i32 unit_bits(const i16 *c, int ncoef, const u8 *scan, int ctx_cbf,
     for (int p = last; p >= 0; --p) {
         i32 q = c[scan[p]];
         i32 m = q < 0 ? -q : q;
-        int ctx = ctx_level ? ctx_level : level_ctx(p, prev);
+        int ctx = ctx_level ? ctx_level : level_ctx(p, prev, band_min);
         r += rc.sym[ctx][m > 14 ? kEscSym : m];
         if (m > 14) r += escape_bits(m) << 10;
         if (m != 0) r += 1 << 10;
@@ -1092,20 +1142,20 @@ static void analyze_plane_dir(PlaneState &s, i16 *coefs, int tskip, int layer,
                     for (int i = 0; i < 64; ++i) orig[i] = res[i];
                 } else {
                     i16 co[64];
-                    fdct8x8(res, co);
+                    fdct_2d(kBlock, res, co);
                     for (int i = 0; i < 64; ++i) orig[i] = co[i];
                 }
                 i16 q[64];
                 if (use_rdo) {
                     rdoq_unit(q, orig, stepv, 64, scan, ctx_cbf, ctx_last, rc,
-                              lambda);
+                              lambda, 0);
                 } else {
                     for (int i = 0; i < 64; ++i)
                         q[i] = (i16)quantize(orig[i], stepv[i], stepv[i] / 3);
                 }
                 if (sdh) hide_sign_unit(q, orig, stepv, 64, scan);
                 i32 rr[64];
-                residual_block(q, s, tskip, rr);
+                residual_block(q, s, tskip, kBlock, rr);
                 // exact sample-domain distortion of this candidate
                 double d2 = 0;
                 i32 rec[64];
@@ -1124,7 +1174,7 @@ static void analyze_plane_dir(PlaneState &s, i16 *coefs, int tskip, int layer,
                         d2 += e * e;
                     }
                 double bits =
-                    unit_bits(q, 64, scan, ctx_cbf, ctx_last, 0, rc, sdh) /
+                    unit_bits(q, 64, scan, ctx_cbf, ctx_last, 0, rc, sdh, 0) /
                     1024.0;
                 // mode signalling, exactly as the LaneMachine will code it
                 if (m == mpm) {

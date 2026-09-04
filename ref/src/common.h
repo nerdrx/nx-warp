@@ -20,8 +20,35 @@ using u32 = uint32_t;
 using u64 = uint64_t;
 
 constexpr int kTile = 64;
-constexpr int kBlock = 8;
+constexpr int kBlock = 8;          // the coefficient group, and the v1 block
 constexpr int kMaxTilesPerRow = 64;
+
+// ------------------------------------------------------------ transform size
+// Tool bit 24 XFORM_LARGE lets a tile pick a transform edge of 8, 16 or 32
+// samples (tile-header field `xform`, SYNTAX.md 4.1).  `xform` is the log2 of
+// the edge over 8, so 0 is the version 1 transform exactly.
+constexpr int kMaxXform = 32;
+inline int xform_edge(int xform) { return kBlock << xform; }
+inline int xform_log2(int n) { return n == 8 ? 3 : (n == 16 ? 4 : 5); }
+
+// A plane whose coded edge is smaller than the tile's transform uses the
+// largest size it can hold: `xform` is capped at log2(size / 8).  There is no
+// syntax for this -- it is derived from the tile header alone, so a 4:2:0
+// chroma plane inside a 32x32-transform tile needs no separate signal.
+inline int plane_xform(int xform, int size) {
+    int cap = 0;
+    while ((kBlock << (cap + 1)) <= size) ++cap;
+    return xform < cap ? xform : cap;
+}
+
+// Position of coefficient (u, v) of an n x n transform block inside that
+// block's coefficient-group storage: (n/8)^2 groups of 64 in raster order,
+// each group holding its 64 coefficients in 8x8 raster order.  For n == 8
+// this is the identity, so the version 1 layout is unchanged.
+// SYNTAX.md 6.7.
+inline int group_pos(int n, int u, int v) {
+    return ((u >> 3) * (n >> 3) + (v >> 3)) * 64 + (u & 7) * 8 + (v & 7);
+}
 
 inline i32 clamp_i32(i32 v, i32 lo, i32 hi) {
     return v < lo ? lo : (v > hi ? hi : v);
@@ -42,6 +69,15 @@ extern const u16 kQStep[64];
 // Built-in weighting matrices, Q4, raster order inside the 8x8 block.
 // index 0 flat, 1 luma roll-off, 2 periphery roll-off, 3 chroma.
 extern const u8 kWeight[4][64];
+
+// The weight of coefficient (u, v) of an n x n block, n = 8 << xform.  The
+// larger sizes have no matrices of their own: the 8x8 matrix is sampled at
+// the same *spatial* frequency, w_n[u][v] = w_8[u >> xform][v >> xform]
+// (SYNTAX.md 6.5).  Values stay in [1, 32], so the dequantizer's range bound
+// is the version 1 one at every size.
+inline int weight_at(const u8 *w8, int xform, int u, int v) {
+    return w8[((u >> xform) << 3) + (v >> xform)];
+}
 
 // -------------------------------------------------------------- scan order
 extern const u8 kZigzag8[64];   // 8x8
@@ -116,8 +152,21 @@ inline int band_of(int scan_pos) {
 }
 // band x previous-level class -> one of 8 LEVEL contexts.
 extern const u8 kLevelCtx[4][3];
-inline int level_ctx(int scan_pos, int prev_class) {
-    return kCtxLevelBase + kLevelCtx[band_of(scan_pos)][prev_class];
+// `band_min` is a coding unit's band floor: the LEVEL band of scan position
+// p is max(band_of(p), band_min).  It is 0 for every version 1 unit, which
+// makes it inert there, and it is how the larger transforms reuse the four
+// existing bands without adding a context (SYNTAX.md 9.3).
+//
+// For a large transform block the floor is per coefficient group: the group
+// holding the block's DC keeps the version 1 bands, every other group is high
+// frequency by construction and floors at band 3.  Measured against floors 0
+// and 2 in ref/RESULTS-xform-b.md.
+inline int group_band_min(int gi) { return gi == 0 ? 0 : 3; }
+
+inline int level_ctx(int scan_pos, int prev_class, int band_min) {
+    int band = band_of(scan_pos);
+    if (band < band_min) band = band_min;
+    return kCtxLevelBase + kLevelCtx[band][prev_class];
 }
 inline int level_class(int magnitude) {
     return magnitude == 0 ? 0 : (magnitude == 1 ? 1 : 2);

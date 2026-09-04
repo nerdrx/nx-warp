@@ -70,37 +70,148 @@ static inline void fdct8_1d(const i32 *y, i32 *x) {
     x[6] = t3 * kS2 - t2 * kC2;
 }
 
-void fdct8x8(const i32 src[64], i16 dst[64]) {
-    i32 tmp[64];
-    i32 in[8], out[8];
-    for (int r = 0; r < 8; ++r) {
-        for (int c = 0; c < 8; ++c) in[c] = src[r * 8 + c];
-        fdct8_1d(in, out);
-        for (int c = 0; c < 8; ++c)
-            tmp[c * 8 + r] = clamp16((out[c] + 32) >> 6);  // transposed
+// ------------------------------------------------- the 16- and 32-point odd
+// kernels.  K_N[j][m] = round(512 * cos((2m+1)(2j+1) pi / (2N))) is the odd
+// half of T_N, i.e. row 2j+1 restricted to its first N/2 columns.  The even
+// half needs no table: it *is* T_{N/2}, so the recursion below calls itself.
+// docs/SYNTAX.md 6.1.
+constexpr i32 kOdd16[8][8] = {
+    { 510,  490,  452,  396,  325,  241,  149,   50},
+    { 490,  325,   50, -241, -452, -510, -396, -149},
+    { 452,   50, -396, -490, -149,  325,  510,  241},
+    { 396, -241, -490,   50,  510,  149, -452, -325},
+    { 325, -452, -149,  510,  -50, -490,  241,  396},
+    { 241, -510,  325,  149, -490,  396,   50, -452},
+    { 149, -396,  510, -452,  241,   50, -325,  490},
+    {  50, -149,  241, -325,  396, -452,  490, -510},
+};
+constexpr i32 kOdd32[16][16] = {
+    { 511,  506,  497,  482,  463,  439,  411,  379,
+      344,  305,  263,  219,  172,  124,   75,   25},
+    { 506,  463,  379,  263,  124,  -25, -172, -305,
+     -411, -482, -511, -497, -439, -344, -219,  -75},
+    { 497,  379,  172,  -75, -305, -463, -511, -439,
+     -263,  -25,  219,  411,  506,  482,  344,  124},
+    { 482,  263,  -75, -379, -511, -411, -124,  219,
+      463,  497,  305,  -25, -344, -506, -439, -172},
+    { 463,  124, -305, -511, -344,   75,  439,  482,
+      172, -263, -506, -379,   25,  411,  497,  219},
+    { 439,  -25, -463, -411,   75,  482,  379, -124,
+     -497, -344,  172,  506,  305, -219, -511, -263},
+    { 411, -172, -511, -124,  439,  379, -219, -506,
+      -75,  463,  344, -263, -497,  -25,  482,  305},
+    { 379, -305, -439,  219,  482, -124, -506,   25,
+      511,   75, -497, -172,  463,  263, -411, -344},
+    { 344, -411, -263,  463,  172, -497,  -75,  511,
+      -25, -506,  124,  482, -219, -439,  305,  379},
+    { 305, -482,  -25,  497, -263, -344,  463,   75,
+     -506,  219,  379, -439, -124,  511, -172, -411},
+    { 263, -511,  219,  305, -506,  172,  344, -497,
+      124,  379, -482,   75,  411, -463,   25,  439},
+    { 219, -497,  411,  -25, -379,  506, -263, -172,
+      482, -439,   75,  344, -511,  305,  124, -463},
+    { 172, -439,  506, -344,   25,  305, -497,  463,
+     -219, -124,  411, -511,  379,  -75, -263,  482},
+    { 124, -344,  482, -506,  411, -219,  -25,  263,
+     -439,  511, -463,  305,  -75, -172,  379, -497},
+    {  75, -219,  344, -439,  497, -511,  482, -411,
+      305, -172,   25,  124, -263,  379, -463,  506},
+    {  25,  -75,  124, -172,  219, -263,  305, -344,
+      379, -411,  439, -463,  482, -497,  506, -511},
+};
+
+// K_N as a flat row-major array of (N/2)^2 entries.
+static inline const i32 *odd_kernel(int n) {
+    return n == 16 ? &kOdd16[0][0] : &kOdd32[0][0];
+}
+
+// Inverse 1D transform of length `n` (8, 16 or 32), gain 512*sqrt(n/2)
+// relative to the orthonormal DCT-III.  The even-indexed coefficients drive
+// the next size down; the odd-indexed ones drive K_N.  SYNTAX.md 6.2.
+//
+// Range: with |x| <= 32768 (the dequantizer's clamp), |y| <= 32768 *
+// max_n sum_k |T_N[k][n]|, which is 8.9e7, 1.8e8 and 3.5e8 for n = 8, 16, 32
+// -- all inside int32, and all reached by the saturation vector.
+static void idct_1d(int n, const i32 *x, i32 *y) {
+    if (n == kBlock) {
+        idct8_1d(x, y);
+        return;
     }
-    for (int r = 0; r < 8; ++r) {
-        for (int c = 0; c < 8; ++c) in[c] = tmp[r * 8 + c];
-        fdct8_1d(in, out);
-        for (int c = 0; c < 8; ++c)
-            dst[c * 8 + r] = (i16)clamp16((out[c] + 8192) >> 14);
+    const int h = n >> 1;
+    const i32 *k = odd_kernel(n);
+    i32 xe[kMaxXform / 2] = {}, e[kMaxXform / 2] = {};
+    for (int j = 0; j < h; ++j) xe[j] = x[2 * j];
+    idct_1d(h, xe, e);
+    for (int m = 0; m < h; ++m) {
+        i32 o = 0;
+        for (int j = 0; j < h; ++j) o += k[j * h + m] * x[2 * j + 1];
+        y[m] = e[m] + o;
+        y[n - 1 - m] = e[m] - o;
     }
 }
 
-void idct8x8(const i32 src[64], i32 dst[64]) {
-    i32 tmp[64];
-    i32 in[8], out[8];
-    for (int r = 0; r < 8; ++r) {
-        for (int c = 0; c < 8; ++c) in[c] = src[r * 8 + c];
-        idct8_1d(in, out);
-        for (int c = 0; c < 8; ++c)
-            tmp[c * 8 + r] = clamp16((out[c] + 64) >> 7);
+// Forward 1D transform: the exact transpose of the flow graph above.
+static void fdct_1d(int n, const i32 *y, i32 *x) {
+    if (n == kBlock) {
+        fdct8_1d(y, x);
+        return;
     }
-    for (int r = 0; r < 8; ++r) {
-        for (int c = 0; c < 8; ++c) in[c] = tmp[r * 8 + c];
-        idct8_1d(in, out);
-        for (int c = 0; c < 8; ++c)
-            dst[c * 8 + r] = clamp16((out[c] + 4096) >> 13);
+    const int h = n >> 1;
+    const i32 *k = odd_kernel(n);
+    i32 E[kMaxXform / 2] = {}, O[kMaxXform / 2] = {}, xe[kMaxXform / 2] = {};
+    for (int m = 0; m < h; ++m) {
+        E[m] = y[m] + y[n - 1 - m];
+        O[m] = y[m] - y[n - 1 - m];
+    }
+    fdct_1d(h, E, xe);
+    for (int j = 0; j < h; ++j) {
+        x[2 * j] = xe[j];
+        i32 o = 0;
+        for (int m = 0; m < h; ++m) o += k[j * h + m] * O[m];
+        x[2 * j + 1] = o;
+    }
+}
+
+// The 2D transforms.  The 2D gain is exactly 2^(17 + log2 n) at every size,
+// so the two shifts of a direction always sum to that; the second-pass shift
+// is the same at every size and the first-pass shift grows by one per size
+// doubling, which keeps the transposed intermediate at a constant scale.
+// SYNTAX.md 6.3.  For n = 8 these are the version 1 shifts 6/14 and 7/13.
+void fdct_2d(int n, const i32 *src, i16 *dst) {
+    const int shift1 = 3 + xform_log2(n);
+    const i32 rnd1 = 1 << (shift1 - 1);
+    i32 tmp[kMaxXform * kMaxXform];
+    i32 in[kMaxXform], out[kMaxXform];
+    for (int r = 0; r < n; ++r) {
+        for (int c = 0; c < n; ++c) in[c] = src[r * n + c];
+        fdct_1d(n, in, out);
+        for (int c = 0; c < n; ++c)
+            tmp[c * n + r] = clamp16((out[c] + rnd1) >> shift1);  // transposed
+    }
+    for (int r = 0; r < n; ++r) {
+        for (int c = 0; c < n; ++c) in[c] = tmp[r * n + c];
+        fdct_1d(n, in, out);
+        for (int c = 0; c < n; ++c)
+            dst[c * n + r] = (i16)clamp16((out[c] + 8192) >> 14);
+    }
+}
+
+void idct_2d(int n, const i32 *src, i32 *dst) {
+    const int shift1 = 4 + xform_log2(n);
+    const i32 rnd1 = 1 << (shift1 - 1);
+    i32 tmp[kMaxXform * kMaxXform];
+    i32 in[kMaxXform], out[kMaxXform];
+    for (int r = 0; r < n; ++r) {
+        for (int c = 0; c < n; ++c) in[c] = src[r * n + c];
+        idct_1d(n, in, out);
+        for (int c = 0; c < n; ++c)
+            tmp[c * n + r] = clamp16((out[c] + rnd1) >> shift1);
+    }
+    for (int r = 0; r < n; ++r) {
+        for (int c = 0; c < n; ++c) in[c] = tmp[r * n + c];
+        idct_1d(n, in, out);
+        for (int c = 0; c < n; ++c)
+            dst[c * n + r] = clamp16((out[c] + 4096) >> 13);
     }
 }
 

@@ -126,10 +126,11 @@ int main(int argc, char **argv) {
                         std::snprintf(vec, sizeof vec, " mv%+d,%+d ref%u",
                                       t.mv_x, t.mv_y, t.ref_sel);
                     std::printf("  tile %4u e%u %-9s res%u %s qp%2u dq%+3d ts%u "
-                                "a%u wm%u tab%u ns%u  %5u B%s%s\n",
+                                "x%u a%u wm%u tab%u ns%u  %5u B%s%s\n",
                                 i, t.eye, mode_name(t.mode), t.res_level,
                                 t.chroma444 ? "444" : "420", t.qp, t.qp_delta,
-                                t.tskip, t.alpha_mode, t.wm_id, t.table_set,
+                                t.tskip, 8u << t.xform, t.alpha_mode,
+                                t.wm_id, t.table_set,
                                 t.nsub_log2, t.payload_len, vec,
                                 t.concealed ? " CONCEALED" : "");
                 }

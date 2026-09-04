@@ -35,6 +35,13 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
 
 **Reference codec**
 
+- Syntax v1.5, tool bit 24 `XFORM_LARGE`: a per-tile 16x16 or 32x32 integer DCT, chosen by the
+  encoder's rate-distortion search. The three sizes are one matrix family sampled at three points,
+  so the existing 8-point Loeffler flow graph is the base case of both larger transforms; the
+  weighting matrices, scan, `LAST` classes, entropy contexts and intra predictor are unchanged, and
+  a large block is entropy coded as 8x8 coefficient groups. `nxv-enc --xform 8|16|32`, default `8`,
+  which emits no tool bit: every v1.4 stream is byte-identical. Six new conformance vectors
+  (`v57`-`v62`) and three new rejection vectors (`r30`-`r32`).
 - `ref/`, the bit-exact CPU reference encoder and decoder that is the normative specification of
   decoded output: headers, integer DCT, rANS entropy coding, DC-plane intra, quantisation tables,
   tool-bit gating, and the `nxv-enc`, `nxv-dec` and `nxv-info` tools.

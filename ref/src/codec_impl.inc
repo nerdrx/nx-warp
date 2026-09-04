@@ -162,6 +162,7 @@ extern "C" nxvc_encoder *nxvc_encoder_create(const nxvc_config *cfg,
     if (cfg->stereo && (!cfg->inter || eyes != 2)) return fail(NXVC_ERR_ARG);
     if (cfg->chroma > 1 || cfg->color_transform > 1) return fail(NXVC_ERR_ARG);
     if (cfg->base_qp > 63) return fail(NXVC_ERR_ARG);
+    if (cfg->xform_large > 2) return fail(NXVC_ERR_ARG);
     if (cfg->color_transform == NXVC_CT_YCOCGR && cfg->chroma != NXVC_CHROMA_444)
         return fail(NXVC_ERR_ARG);
     if (cfg->color_space > 3) return fail(NXVC_ERR_ARG);
@@ -182,6 +183,9 @@ extern "C" nxvc_encoder *nxvc_encoder_create(const nxvc_config *cfg,
         // Sign data hiding spends one level step to carry the sign, so it is
         // lossy by construction and cannot coexist with lossless coding.
         e->cfg.sign_hide = 0;
+        // Lossless is transform skip, and transform skip has no transform to
+        // enlarge (SYNTAX.md 6.6).
+        e->cfg.xform_large = 0;
     }
     e->g.width = cfg->width;
     e->g.height = cfg->height;
@@ -270,6 +274,7 @@ static u64 encoder_tools(const nxvc_encoder *e) {
     if (e->cfg.intra_dir) t |= NXVC_TOOL_INTRA_DIR;
     if (e->cfg.ctx_v2) t |= NXVC_TOOL_CTX_V2;
     if (e->cfg.sign_hide) t |= NXVC_TOOL_SIGN_HIDE;
+    if (e->cfg.xform_large) t |= NXVC_TOOL_XFORM_LARGE;
     if (e->cfg.inter) t |= NXVC_TOOL_INTER | NXVC_TOOL_WARP;
     if (e->cfg.stereo) t |= NXVC_TOOL_STEREO;
     t |= NXVC_TOOL_RES_LEVEL;
@@ -720,6 +725,11 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                                                           ? 8u : e->cfg.qp_search);
     const bool wm_search = e->cfg.wm_id == 255 && fp.quant_matrix != 255 &&
                            !e->cfg.lossless;
+    // Largest transform the encoder may choose per tile (tool bit 24).  0
+    // leaves every tile on the version 1 8x8 transform and emits no tool bit.
+    const int xform_search =
+        e->cfg.lossless ? 0 : (int)(e->cfg.xform_large > 2 ? 2u
+                                                           : e->cfg.xform_large);
     const int dir_cand = e->cfg.intra_dir_cand ? (int)(e->cfg.intra_dir_cand > 8
                                                           ? 8u
                                                           : e->cfg.intra_dir_cand)
@@ -1178,7 +1188,14 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                         continue;
                     }
                     tc.build_units();
-                    if (qp_search > 0 || wm_search) {
+                    // --- the per-tile header search: quantizer delta,
+                    // weighting matrix and transform size.  All three are
+                    // header fields over the same loaded samples, so a
+                    // candidate is one setup + quantize + reconstruct, scored
+                    // with the D + lambda*R the trellis already uses.  A
+                    // transform-skip tile has no transform to enlarge.
+                    const int xf_max = tc.tp.tskip ? 0 : xform_search;
+                    if (qp_search > 0 || wm_search || xf_max > 0) {
                         const double base =
                             (double)kQStep[clamp_i32(fp.base_qp + tc.tp.qp_delta,
                                                      0, 63)] / 16.0;
@@ -1186,15 +1203,17 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                         const int qd0 = tc.tp.qp_delta;
                         double best = 0;
                         bool have = false;
-                        int best_qd = qd0, best_wm = tc.tp.wm_id;
-                        for (int dq = -qp_search; dq <= qp_search; ++dq) {
-                            for (int wm = 0; wm <= (wm_search ? 3 : 0); ++wm) {
+                        TileParams best_tp = tc.tp;
+                        for (int dq = -qp_search; dq <= qp_search; ++dq)
+                          for (int wm = 0; wm <= (wm_search ? 3 : 0); ++wm)
+                            for (int xf = 0; xf <= xf_max; ++xf) {
                                 TileCoder cand;
                                 cand.g = &g;
                                 cand.fp = &fp;
                                 cand.tp = tc.tp;
                                 cand.tp.qp_delta = clamp_i32(qd0 + dq, -32, 31);
                                 cand.tp.wm_id = wm;
+                                cand.tp.xform = xf;
                                 cand.setup();
                                 load_tile(cand, g, img, (int)eye, (int)col,
                                           (int)row);
@@ -1212,17 +1231,17 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                                 if (!have || cost < best) {
                                     best = cost;
                                     have = true;
-                                    best_qd = cand.tp.qp_delta;
-                                    best_wm = wm;
+                                    best_tp = cand.tp;
                                 }
                             }
-                        }
-                        if (have && (best_qd != tc.tp.qp_delta ||
-                                     best_wm != tc.tp.wm_id)) {
+                        if (have && (best_tp.qp_delta != tc.tp.qp_delta ||
+                                     best_tp.wm_id != tc.tp.wm_id ||
+                                     best_tp.xform != tc.tp.xform)) {
                             std::vector<i32> keep[4];
                             for (int p = 0; p < 4; ++p) keep[p] = tc.pl[p].wpred;
-                            tc.tp.qp_delta = best_qd;
-                            tc.tp.wm_id = best_wm;
+                            tc.tp.qp_delta = best_tp.qp_delta;
+                            tc.tp.wm_id = best_tp.wm_id;
+                            tc.tp.xform = best_tp.xform;
                             tc.setup();
                             load_tile(tc, g, img, (int)eye, (int)col, (int)row);
                             for (int p = 0; p < 4; ++p) tc.pl[p].wpred = keep[p];
@@ -1335,6 +1354,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                     ti.wgt = 0;
                     ti.wm_id = (u8)tc.tp.wm_id;
                     ti.intra_dir = (u8)tc.intra_dir;
+                    ti.xform = (u8)tc.tp.xform;
                     ti.ref_sel = (u8)tc.tp.ref_sel;
                     ti.mv_present = (u8)tc.tp.mv_present;
                     ti.qp_delta = (i8)tc.tp.qp_delta;
@@ -1954,7 +1974,7 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
                 TileParams tp;
                 unpack_tile_header(w0, w1, tp);
                 if ((w0 >> 3) & 1) return NXVC_ERR_BITSTREAM;  // reserved bit
-                if (w1 >> 28) return NXVC_ERR_BITSTREAM;       // reserved field
+                if (w1 >> 30) return NXVC_ERR_BITSTREAM;       // reserved field
                 if (tp.layer != 0) return NXVC_ERR_UNSUPPORTED;
                 // Annex D D-3: the eye field must agree with the eye the
                 // tile's position in the frame derives.
@@ -1983,6 +2003,12 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
                     return NXVC_ERR_BITSTREAM;
                 if (tp.tskip && !(d->si.tools & NXVC_TOOL_TRANSFORM_SKIP))
                     return NXVC_ERR_BITSTREAM;
+                // SYNTAX.md 6.7: xform 3 is reserved, xform != 0 needs the
+                // tool bit, and transform skip has no transform to enlarge.
+                if (tp.xform == 3) return NXVC_ERR_BITSTREAM;
+                if (tp.xform != 0 && !(d->si.tools & NXVC_TOOL_XFORM_LARGE))
+                    return NXVC_ERR_BITSTREAM;
+                if (tp.xform != 0 && tp.tskip) return NXVC_ERR_BITSTREAM;
                 if (tp.wm_id != 0 && !(d->si.tools & NXVC_TOOL_WM_ID))
                     return NXVC_ERR_BITSTREAM;
                 if (tp.wm_id != 0 && fp.quant_matrix == 255)
@@ -2085,6 +2111,7 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
                 ti.wgt = (u8)tp.wgt;
                 ti.wm_id = (u8)tp.wm_id;
                 ti.intra_dir = (u8)tc.intra_dir;
+                ti.xform = (u8)tp.xform;
                 ti.ref_sel = (u8)tp.ref_sel;
                 ti.mv_present = (u8)tp.mv_present;
                 ti.qp_delta = (i8)tp.qp_delta;

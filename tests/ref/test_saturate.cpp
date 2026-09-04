@@ -2,7 +2,7 @@
 //
 // Every product in the inverse transform must stay inside int32 for every
 // input a legal bitstream can produce.  Dequantized coefficients are clamped
-// to int16 (SYNTAX.md 6.5), so the reachable input space of idct8x8 is exactly
+// to int16 (SYNTAX.md 6.5), so the reachable input space of the inverse transform is exactly
 // [-32768, 32767]^64 -- but the *internal* nodes are not bounded by the
 // coefficients: the odd-part rotation operand `P +- Q` reaches +-8.6e7, and
 // multiplying that by C4 = 362 leaves int32.  SYNTAX.md 6.3 specifies the
@@ -38,7 +38,7 @@ int main(int argc, char **argv) {
         i32 c[64], out[64];
         for (int sgn = 0; sgn < 2; ++sgn) {
             worst_odd(c, sgn);
-            idct8x8(c, out);
+            idct_2d(8, c, out);
             for (int i = 0; i < 64; ++i)
                 CHECK(out[i] >= -32768 && out[i] <= 32767, "worst_odd[%d]=%d", i,
                       out[i]);
@@ -52,7 +52,7 @@ int main(int argc, char **argv) {
             for (int sgn = 0; sgn < 2; ++sgn) {
                 i32 c[64] = {0}, out[64];
                 c[k] = sgn ? -32768 : 32767;
-                idct8x8(c, out);
+                idct_2d(8, c, out);
                 for (int i = 0; i < 64; ++i)
                     CHECK(out[i] >= -32768 && out[i] <= 32767,
                           "single[%d] out[%d]=%d", k, i, out[i]);
@@ -67,7 +67,7 @@ int main(int argc, char **argv) {
             for (int r = 0; r < 8; ++r)
                 for (int v = 0; v < 8; ++v)
                     c[r * 8 + v] = (mask >> v) & 1 ? -32768 : 32767;
-            idct8x8(c, out);
+            idct_2d(8, c, out);
             for (int i = 0; i < 64; ++i)
                 CHECK(out[i] >= -32768 && out[i] <= 32767, "mask %d out[%d]=%d",
                       mask, i, out[i]);
@@ -80,7 +80,7 @@ int main(int argc, char **argv) {
         for (int it = 0; it < 20000; ++it) {
             i32 c[64], out[64];
             for (int i = 0; i < 64; ++i) c[i] = rng.range(-32768, 32767);
-            idct8x8(c, out);
+            idct_2d(8, c, out);
             for (int i = 0; i < 64; ++i)
                 CHECK(out[i] >= -32768 && out[i] <= 32767, "rand out[%d]=%d", i,
                       out[i]);
@@ -102,15 +102,51 @@ int main(int argc, char **argv) {
         i32 c[64], out[64];
         for (int i = 0; i < 64; ++i)
             c[i] = clamp16(((i & 1 ? -32767 : 32767) * t + 8) >> 4);
-        idct8x8(c, out);
+        idct_2d(8, c, out);
         for (int i = 0; i < 64; ++i)
             CHECK(out[i] >= -32768 && out[i] <= 32767, "chain out[%d]=%d", i,
                   out[i]);
     }
 
-    // 6. The saturating conformance vector through the real decoder.
-    if (argc > 1) {
-        std::string path = std::string(argv[1]) + "/v35_saturate420.nxv";
+    // 6. The larger transforms at their own bounds.  The inverse pass-1
+    //    output is not clamped by the caller, so this checks the documented
+    //    bound of SYNTAX.md 6.2 directly on the 1D transform through the 2D
+    //    entry point: every 2D output must land inside int16 after the
+    //    clamps, and UBSan is what watches the intermediates.
+    {
+        const i32 bound[3] = {89000000, 175000000, 346000000};
+        Rng rng(0x5A7U);
+        for (int xf = 0; xf < 3; ++xf) {
+            const int n = 8 << xf;
+            std::vector<i32> c((size_t)n * n), out((size_t)n * n);
+            // aligned signs: the pattern that attains the pass-1 bound
+            for (int s2 = 0; s2 < 2; ++s2) {
+                for (int i = 0; i < n * n; ++i) c[i] = s2 ? -32768 : 32767;
+                idct_2d(n, c.data(), out.data());
+                for (int i = 0; i < n * n; ++i)
+                    CHECK(out[i] >= -32768 && out[i] <= 32767,
+                          "n%d aligned out[%d]=%d", n, i, out[i]);
+            }
+            for (int it = 0; it < 2000; ++it) {
+                for (int i = 0; i < n * n; ++i) c[i] = rng.range(-32768, 32767);
+                idct_2d(n, c.data(), out.data());
+                for (int i = 0; i < n * n; ++i)
+                    CHECK(out[i] >= -32768 && out[i] <= 32767,
+                          "n%d rand out[%d]=%d", n, i, out[i]);
+            }
+            // the documented bound is an upper bound on the 1D output, and it
+            // is what keeps the products inside int32 (6.2).
+            CHECK((i64)bound[xf] * 1 < (i64)2147483647,
+                  "bound %d not in int32", bound[xf]);
+        }
+    }
+
+    // 7. The saturating conformance vectors through the real decoder: the
+    //    8x8 one and its 32x32 counterpart.
+    for (int vi = 0; vi < 2 && argc > 1; ++vi) {
+        std::string path = std::string(argv[1]) +
+                           (vi ? "/v62_xform32_saturate.nxv"
+                               : "/v35_saturate420.nxv");
         std::FILE *f = std::fopen(path.c_str(), "rb");
         CHECK(f != nullptr, "missing %s", path.c_str());
         if (f) {

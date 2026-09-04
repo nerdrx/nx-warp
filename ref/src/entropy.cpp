@@ -162,7 +162,8 @@ bool LaneMachine::next(Op &op) {
             op.kind = OP_SYM;
             op.arg = (u8)(u_->ctx_level != kCtxNone
                               ? u_->ctx_level
-                              : level_ctx(pos_, prev_class_));
+                              : level_ctx(pos_, prev_class_,
+                                          u_->band_min));
             op.value = 0;
             if (encoding_) {
                 i32 q = u_->coef[u_->scan[pos_]];

@@ -34,6 +34,7 @@ struct Unit {
     u8 nbx;           // UNIT_MODE: blocks per edge
     u8 ctx_mode;      // UNIT_MODE: kCtxNone = bypass coded, else a context
     u8 sdh;           // UNIT_COEF: 1 = sign data hiding applies
+    u8 band_min;      // UNIT_COEF: LEVEL band floor (SYNTAX.md 9.3); 0 in v1
 };
 
 // --------------------------------------------------------------- lane ops

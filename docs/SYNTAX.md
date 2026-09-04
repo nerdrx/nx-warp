@@ -156,8 +156,9 @@ interleaved UV.
 | 21 | `CTX_V2` | the 16-context entropy model (section 9.3) |
 | 22 | `SIGN_HIDE` | sign data hiding (section 9.7) |
 | 23 | `FILTER_CATMULL_ROM` | Catmull-Rom interpolation in the warp instead of bilinear. **Not defined for version 1** |
+| 24 | `XFORM_LARGE` | tiles may set `xform != 0`: the 16x16 and 32x32 transforms (section 6.7) |
 
-Bits 17, 21 and 22 are independent: any subset may be set. `SIGN_HIDE` is
+Bits 17, 21, 22 and 24 are independent: any subset may be set. `SIGN_HIDE` is
 mutually exclusive with `LOSSLESS` (bit 5) -- hiding a sign spends one level
 step, so the two cannot both be true; a stream setting both is `BITSTREAM`.
 
@@ -173,7 +174,7 @@ MUST refuse a stream that sets either, with a `VERSION` status. Because bit 23
 is refused, **every conforming version 1 stream is bilinear**, in every
 profile, and `profile` selects nothing (section 13.4).
 
-Bits 24-63 are reserved and must be zero. Capability negotiation is an
+Bits 25-63 are reserved and must be zero. Capability negotiation is an
 intersection: the sender only sets bits the receiver offered.
 
 ---
@@ -438,7 +439,8 @@ Two little-endian u32 words. Bits are listed LSB first.
 | 23 | `tskip` | the whole tile skips the transform |
 | 24-25 | `wgt` | enhancement-layer blend weight: 0, 1/4, 1/2, 3/4 (of the spatial hypothesis) |
 | 26-27 | `wm_id` | per-tile weighting matrix: 0 = the frame's, 1-3 = built-in matrix `wm_id` |
-| 28-31 | reserved | must be 0 |
+| 28-29 | `xform` | transform size: 0 = 8x8, 1 = 16x16, 2 = 32x32; 3 reserved (section 6.7) |
+| 30-31 | reserved | must be 0 |
 
 Then, in this order:
 
@@ -476,7 +478,8 @@ clip plane of every headset. The field is two bytes, exactly as
 `mv_x` + `mv_y`, so no structure changes size.
 
 Constraints: `res_level != 3`; `alpha_mode != 3`; `nsub_log2 <= 5`;
-`mode <= 4`; word0 bit 3 and word1 bits 28-31 zero; `chroma444` may only be 1 if
+`mode <= 4`; word0 bit 3 and word1 bits 30-31 zero; `xform != 3`;
+`xform != 0` requires the `XFORM_LARGE` tool bit and `tskip == 0`; `chroma444` may only be 1 if
 `chroma_format == 1`; `alpha_mode != 0` requires `alpha_present`; `tile_index`
 must equal the tile's position in the row; `eye` must equal the eye derived from
 the tile's position in the frame (section 3.3); `wm_id != 0` requires the
@@ -582,7 +585,20 @@ weights 3/4 and 1/4.
 
 ### 6.1 Constants
 
-Nine-bit constants, `round(512 * cos/sin)`:
+The transform family is **one matrix sampled at three sizes**:
+
+```
+T_N[k][n] = round(512 * c_k * cos((2n+1) k pi / (2N))),   c_0 = 1/sqrt(2),
+                                                          c_k = 1 otherwise
+```
+
+for `N` = 8, 16 and 32. Nothing in the scale factor 512 depends on `N`, so the
+**even rows of `T_2N` are bit for bit the rows of `T_N`**. That is the whole
+structural claim of section 6.7: a 16- or 32-point transform is one butterfly
+on top of the next size down, and the 8-point flow graph below is its base
+case, unchanged.
+
+`T_8` is the version 1 constant set, nine-bit `round(512 * cos/sin)`:
 
 | name | value | equals |
 |---|---|---|
@@ -598,10 +614,30 @@ These are our own constants, not HEVC's or AV1's matrices. The flow graph is the
 Loeffler-Ligtenberg-Moschytz factorization (1989, expired): 11 multiplies and 29
 adds per 8-point 1D transform.
 
+The larger sizes need only the **odd** half of their matrix, because the even
+half *is* the next size down:
+
+```
+K_N[j][m] = T_N[2j+1][m] = round(512 * cos((2m+1)(2j+1) pi / (2N)))
+                                                    j, m = 0 .. N/2 - 1
+```
+
+`K_16` is 8x8 and `K_32` is 16x16; both are reproduced in
+`ref/src/transform.cpp` and are normative. Every entry is in `[-511, 511]`, so
+every constant in the family fits in ten bits.
+
+**Gain.** `T_N = 512 * sqrt(N/2) * O_N` with `O_N` the orthonormal DCT-II, so
+the 2D gain is `512^2 * N/2 = 2^(17 + log2 N)` -- a power of two at every size,
+which is what lets one shift chain serve all three (6.3). Coefficients are on
+the orthonormal scale at every size, so **one `qstep` table quantizes all three
+transforms** and a step of 1.0 means the same sample-domain noise whatever the
+transform size. A flat block of value 128 has DC coefficient 1024, 2048 or 4096
+at `N` = 8, 16, 32.
+
 ### 6.2 Inverse 1D transform (normative)
 
-Input `x[0..7]` int32, output `y[0..7]` int32. Gain is exactly `2^10` relative to
-the orthonormal DCT-III.
+**8 points.** Input `x[0..7]` int32, output `y[0..7]` int32. Gain is exactly
+`2^10` relative to the orthonormal DCT-III.
 
 ```
 // even part
@@ -630,31 +666,101 @@ y2 = e2 + O2 ;  y5 = e2 - O2
 y3 = e3 + O3 ;  y4 = e3 - O3
 ```
 
-### 6.3 Inverse 2D transform (normative)
-
-`src[64]` are the dequantized coefficients in raster order inside the block,
-index `u * 8 + v` with `u` the vertical and `v` the horizontal frequency.
+**16 and 32 points.** Input `x[0..N-1]`, output `y[0..N-1]`, both int32. The
+even-indexed coefficients are the `N/2`-point transform of 6.2 -- the *same*
+routine one size down, ending at the 8-point flow graph above -- and the
+odd-indexed ones drive `K_N`:
 
 ```
-pass 1 (rows):    for each row r: idct8_1d(src[r*8 .. r*8+7]) -> out[0..7]
-                  tmp[c*8 + r] = clamp16((out[c] + 64) >> 7)
-pass 2 (columns): for each row r of tmp: idct8_1d(tmp[r*8 ..]) -> out[0..7]
-                  dst[c*8 + r] = clamp16((out[c] + 4096) >> 13)
+idctN(x, N):
+    if N == 8: return the 8-point flow graph above
+    h = N / 2
+    e[0..h-1] = idctN( (x[0], x[2], x[4], ..., x[N-2]), h )
+    for m = 0 .. h-1:
+        o = sum over j = 0 .. h-1 of  K_N[j][m] * x[2j+1]
+        y[m]       = e[m] + o
+        y[N-1-m]   = e[m] - o
+```
+
+There is no rounding anywhere in this recursion: it is a sum of products, and
+the only rounding in the inverse 1D transform at any size is the one inside
+`mulC4` in the 8-point base case (6.3). Gain is `512 * sqrt(N/2)`.
+
+**Range.** With `|x| <= 32768` -- the dequantizer's clamp (6.5) -- the output is
+bounded by `32768 * max_n sum_k |T_N[k][n]|`:
+
+| `N` | `max_n sum_k \|T_N[k][n]\|` | bound on `\|y\|` | headroom in int32 |
+|---|---|---|---|
+| 8 | 2705 | 8.9e7 | 24x |
+| 16 | 5318 | 1.8e8 | 12x |
+| 32 | 10533 | **3.5e8** | 6.2x |
+
+Each bound is *attained*, by the coefficient sign pattern that aligns with the
+column of `T_N`; the saturation vector `v57_saturate_x32` carries exactly that
+pattern at `N` = 32. The 8-point graph's own `mulC4` overflow hazard (6.3) is
+unchanged at every size, because the sub-vector it is handed is always a set of
+coded coefficients, never an intermediate.
+
+The forward direction is the exact transpose:
+
+```
+fdctN(y, N):
+    if N == 8: return the 8-point transpose (6.4)
+    h = N / 2
+    for m = 0 .. h-1:  E[m] = y[m] + y[N-1-m] ;  O[m] = y[m] - y[N-1-m]
+    xe[0..h-1] = fdctN(E, h)
+    for j = 0 .. h-1:
+        x[2j]   = xe[j]
+        x[2j+1] = sum over m = 0 .. h-1 of  K_N[j][m] * O[m]
+```
+
+### 6.3 Inverse 2D transform (normative)
+
+`src[N*N]` are the dequantized coefficients in raster order inside the block,
+index `u * N + v` with `u` the vertical and `v` the horizontal frequency, `N`
+the transform edge (8 in version 1; see 6.7 for how a tile picks 16 or 32).
+
+```
+pass 1 (rows):    for each row r: idctN(src[r*N .. r*N+N-1]) -> out[0..N-1]
+                  tmp[c*N + r] = clamp16((out[c] + rnd1) >> shift1)
+pass 2 (columns): for each row r of tmp: idctN(tmp[r*N ..]) -> out[0..N-1]
+                  dst[c*N + r] = clamp16((out[c] + 4096) >> 13)
+
+shift1 = 4 + log2(N)     rnd1 = 1 << (shift1 - 1)
 ```
 
 Both passes write transposed, so `dst` comes out in spatial raster order
-`y * 8 + x`. Total shift is 20 and total gain 1, so a coefficient of 1024 at
-position 0 reconstructs a flat 128.
+`y * N + x`. Total shift is `17 + log2 N` -- 20, 21, 22 -- which is exactly
+`log2` of the 2D gain (6.1), so **the total gain is 1 at every size**. For
+`N = 8` this is the version 1 chain 7 then 13, unchanged, and a coefficient of
+1024 at position 0 still reconstructs a flat 128.
 
 **Shift chain and intermediate ranges** (copy these exactly; the GPU passes
-must match bit for bit):
+must match bit for bit). The second-pass shift is the same at every size and
+the first-pass shift grows by one per size doubling, which is what keeps the
+transposed intermediate at a *constant* scale -- so the `clamp16` after pass 1
+means the same thing, and costs the same precision, whatever the transform:
 
-| stage | shift | rounding | clamp | worst-case magnitude before the shift |
-|---|---|---|---|---|
-| inverse pass 1 | `>> 7` | `+64` | int16 | `1.1e8` at the outputs `y0..y7` |
-| inverse pass 2 | `>> 13` | `+4096` | int16 | `1.1e8` |
-| forward pass 1 | `>> 6` | `+32` | int16 | `511 * 4096 = 2.1e6` |
-| forward pass 2 | `>> 14` | `+8192` | int16 | `32767 * 4096 = 1.3e8` |
+| stage | `N` = 8 | `N` = 16 | `N` = 32 | rounding | clamp |
+|---|---|---|---|---|---|
+| inverse pass 1 | `>> 7` | `>> 8` | `>> 9` | `+ (1 << (shift1-1))` | int16 |
+| inverse pass 2 | `>> 13` | `>> 13` | `>> 13` | `+4096` | int16 |
+| forward pass 1 | `>> 6` | `>> 7` | `>> 8` | `+ (1 << (shift1-1))` | int16 |
+| forward pass 2 | `>> 14` | `>> 14` | `>> 14` | `+8192` | int16 |
+
+| worst case before the shift | `N` = 8 | `N` = 16 | `N` = 32 |
+|---|---|---|---|
+| inverse, either pass (6.2) | `8.9e7` | `1.8e8` | `3.5e8` |
+| forward pass 1, legal residual | `1.5e6` | `3.0e6` | `5.9e6` |
+| forward pass 1, after the shift | `23122` | `23122` | `23122` |
+| forward pass 2 | `1.3e8` | `2.7e8` | `5.3e8` |
+
+The forward pass-1 row is what fixes the first-pass shifts. A legal residual is
+bounded by 511 (the widest sample domain is `[0, 511]`, 4.3), the largest row
+sum of `T_N` is `N * 362`, and `511 * N * 362 >> (3 + log2 N)` is **23122 at
+every size** -- inside int16 with the same 1.4x margin version 1 has. One shift
+lower would clamp legal content at `N` = 16 and 32; one higher would throw away
+a bit of the transpose for nothing.
 
 **`mulC4` is an exact product, and it is the one place the flow graph leaves
 int32 if written naively.** Dequantized coefficients are clamped to int16
@@ -702,6 +808,11 @@ bits so a GPU may keep the transpose buffer in `int16` LDS, and it is reachable
 with legal (if pathological) coefficient values. It is also what makes the
 range analysis above apply unchanged to pass 2.
 
+The 8-point graph's `mulC4` is reached at every size, because the 16- and
+32-point recursions end in it, and its operands are always coded coefficients
+clamped to int16 -- so the bound above is the version 1 bound and the identity
+is unchanged.
+
 The **dequantizer** has its own bound: the largest step is QP 63 with the
 largest legal weight, `t = (23170 * 32 + 8) >> 4 = 46340`, and the largest
 legal level is 32767, so `q * t = 1.52e9` — inside int32 with room to spare.
@@ -714,9 +825,10 @@ bounds, and is meant to be run under `-fsanitize=undefined`
 
 ### 6.4 Forward 2D transform (informative)
 
-The encoder uses the exact transpose of the flow graph, with shifts `>> 6` after
-the first pass (clamped to int16) and `>> 14` after the second, giving
-coefficients on the orthonormal DCT-II scale. The forward transform is not
+The encoder uses the exact transpose of the flow graph, with the forward shifts
+of the table in 6.3 -- `>> (3 + log2 N)` after the first pass (clamped to int16)
+and `>> 14` after the second -- giving coefficients on the orthonormal DCT-II
+scale. The forward transform is not
 normative: any encoder may produce any coefficients it likes. It is specified in
 `ref/src/transform.cpp` so results are reproducible.
 
@@ -746,6 +858,10 @@ qp(A)     = clamp(qp_tile + alpha_qp_off,  0, 63)
 qp(DC plane of a plane p) = qp(p) >> 1
 ```
 
+`qp(DC plane)` and the `qstep` table do not depend on the transform size: the
+transforms are orthonormal at every size (6.1), so a step means the same
+sample-domain noise for all three.
+
 **Dequantization (normative)**, per coefficient at raster position `i`:
 
 ```
@@ -758,7 +874,21 @@ with the weight `w[i]`:
 * DC-plane coding units: `w[i] = 16` (flat) at every position.
 * Transform-skip blocks: `w[i] = 16` (flat).
 * Normal blocks: the tile's weighting matrix, luma matrix for planes 0 and 3,
-  chroma matrix for planes 1 and 2. The tile's matrix is the frame's when
+  chroma matrix for planes 1 and 2. **The larger transforms have no matrices
+  of their own.** The 8x8 matrix is sampled at the same *spatial* frequency:
+  for an `N x N` block with `N = 8 << xform`, the weight of coefficient
+  `(u, v)` is
+
+  ```
+  w_N[u][v] = w_8[u >> xform][v >> xform]
+  ```
+
+  which is the right derivation because coefficient index `u` of an `N`-point
+  transform is the same spatial frequency as index `u >> xform` of the 8-point
+  one. It costs no syntax, it works for a custom matrix and a `wm_id` matrix
+  alike, and because the sampled values are the 8x8 values it keeps every
+  weight in `[1, 32]` -- so the `q * t <= 1.52e9` bound below holds unchanged
+  at every transform size. The tile's matrix is the frame's when
   `wm_id == 0`; when `wm_id` is 1, 2 or 3 it is built-in matrix `wm_id` for
   planes 0 and 3 and the built-in chroma matrix (index 3's formula) for planes
   1 and 2, exactly as the frame-level rule below. `wm_id != 0` is illegal in a
@@ -799,6 +929,107 @@ and reconstruction is `clamp(prediction + residual)`.
 itself to be lossless; a 4:2:0 tile is lossless only with respect to its own
 subsampled chroma.
 
+`tskip` and `xform != 0` are mutually exclusive (4.1): transform skip is the
+absence of a transform, so there is nothing to enlarge.
+
+### 6.7 Transform size (tool bit 24)
+
+Tile-header field `xform` selects the tile's transform edge:
+
+| `xform` | edge `N` | coefficients per block |
+|---|---|---|
+| 0 | 8 | 64 -- the version 1 transform |
+| 1 | 16 | 256 |
+| 2 | 32 | 1024 |
+| 3 | reserved, illegal | |
+
+`xform != 0` requires tool bit 24 `XFORM_LARGE` and `tskip == 0`; either
+violation is a `BITSTREAM` error (`r30`, `r31`, `r32`).
+
+**Per-plane derivation.** A plane whose coded edge cannot hold the tile's
+transform uses the largest size it can:
+
+```
+plane_xform(p) = min(xform, log2(coded_extent(p) / 8))
+N(p)           = 8 << plane_xform(p)
+```
+
+with `coded_extent(p)` from 4.2. There is **no syntax** for this: it is derived
+from the tile header alone, so a 4:2:0 chroma plane inside a 32x32-transform
+tile, or any plane of a `res_level` 2 tile, needs no separate signal and no
+extra check. Every plane's coded extent is a power of two of at least 8, so
+`N(p)` always divides it and a plane is always an exact grid of
+`(coded_extent / N)^2` transform blocks.
+
+**Coefficient groups.** An `N x N` transform block is stored, scanned and
+entropy coded as `(N/8)^2` **coefficient groups** of 64, in raster order of the
+groups inside the block, each group holding its 64 coefficients in 8x8 raster
+order. Coefficient `(u, v)` of the block -- `u` the vertical frequency -- is at
+
+```
+group_pos(N, u, v) = ((u >> 3) * (N/8) + (v >> 3)) * 64
+                     + (u & 7) * 8 + (v & 7)
+```
+
+For `N = 8` this is the identity, so version 1's layout is a special case.
+
+Each group is one **coding unit** (9.1) of 64 coefficients with the existing
+8x8 zigzag scan (9.2), the plane's existing CBF and LAST contexts, and the
+LEVEL band floor of 9.3. Nothing in the entropy layer is new: the `LAST`
+classes still cover 0..63, the escape is unchanged, sign data hiding applies
+per group as it does per block, and the total number of coding units and of
+coded coefficients in a tile is **the same at every transform size** -- only
+the partition of the samples into transform blocks changes.
+
+Groups are a deliberate choice over one 256- or 1024-coefficient unit with an
+extended `LAST` alphabet. `LAST` has sixteen symbols and its top class already
+reaches 63; covering 1024 positions would need new classes, new raw-bit
+lengths, retrained tables and a wider reject surface, and it would buy nothing:
+a large block's empty high-frequency region costs one `CBF` symbol per group,
+which is exactly what the same area costs as 8x8 blocks today. It also keeps
+the rANS lane schedule (9.1) balanced, because a lane's unit is still 64
+coefficients whatever the tile chose.
+
+**Ordering.** In the unit list of 9.1, a plane's transform blocks come in
+raster order and each block's groups in raster order inside it.
+
+**What a GPU decoder pays.** Section 7.6's numbers are for the *directional*
+predictor and do not apply here: a large-transform tile carries no mode unit
+and has no wavefront (7.7). What changes is the inverse transform, and it stays
+one workgroup per tile:
+
+| | 8x8 | 16x16 | 32x32 |
+|---|---|---|---|
+| blocks in a 64x64 luma plane | 64 | 16 | 4 |
+| 1D transforms per plane | 1024 | 512 | 256 |
+| multiplies per sample | 2.8 | 9.4 | 20.7 |
+| dependent steps per plane (2 passes + barrier) | 3 | 3 | 3 |
+| transpose bytes per block (int16) | 128 | 512 | 2048 |
+
+The dependent-step count does not change with the transform size: both passes
+of every block are independent of every other block, so the schedule is still
+*load, row pass, barrier, column pass* per plane. With the module's 256 threads
+per tile, a 32x32 IDCT is **8 threads per block, one per row and then one per
+column**, four blocks resident at once; a lane owns one row in pass 1 and one
+column in pass 2, and the barrier between them is the transpose.
+
+LDS: the four resident 32x32 blocks need `4 * 32 * 32 * 2 = 8192` bytes of
+int16 transpose buffer, against `64 * 8 * 8 * 2 = 8192` bytes for the same
+plane's 8x8 blocks -- **identical**, because the clamp to int16 after pass 1
+(6.3) is size-independent and the plane holds the same number of coefficients
+either way. The coefficient staging buffer is likewise the plane, not the
+block. So the tool costs a GPU decoder **no extra LDS and no extra barriers**;
+it costs arithmetic, 7.5x per sample at 32x32, which is 20.7 multiplies per
+sample against the DC plane's bilinear interpolation and the warp's own filter.
+A 32x32 tile has a quarter as many blocks, so the *per-thread* work at 8
+threads per block is `2 * 32` multiply-accumulate rows of 32 -- 2048 MACs per
+thread per block, four blocks per plane in sequence.
+
+The one hard constraint the design keeps is the one PAPER design principle 2
+sets: **no cross-tile state**. A transform block never crosses a tile edge
+(`N` divides every coded extent), the size is a header field, and the choice
+of one tile has no effect on any other.
+
 ---
 
 ## 7. Intra prediction
@@ -814,10 +1045,17 @@ directional predictors built from the block's reconstructed neighbours. Mode 0
 *is* the DC-plane prediction, so `INTRA_DIR` is a strict superset: a tile that
 codes mode 0 everywhere reconstructs exactly as it would without the tool.
 
+Which predictor applies at which transform size is 7.7. The short version:
+**the DC plane is the predictor at every transform size, and it never changes
+with it**; the directional modes are the 8x8 transform's alone.
+
 ### 7.1 The DC plane
 
-For a plane with `nb x nb` blocks (`nb` = 8, 4, 2 or 1), the first coding unit
-of that plane holds `nb * nb` values.
+For a plane with `nb x nb` **8x8 blocks** (`nb` = 8, 4, 2 or 1), the first
+coding unit of that plane holds `nb * nb` values. `nb` is `coded_extent / 8`
+and does **not** depend on the tile's transform size: the DC plane is always
+the plane's image of 8x8 block means, so 7.1-7.3 are bit for bit the same
+process whatever `xform` says (7.7).
 
 **Decoder (normative):**
 
@@ -1040,6 +1278,51 @@ bit: it narrows what `INTRA_DIR` means rather than adding to it.
 
 ---
 
+### 7.7 Which predictor applies at which transform size
+
+| tile | mode unit | predictor of every sample |
+|---|---|---|
+| `xform == 0`, no `INTRA_DIR` | absent | `pred` from 7.2 |
+| `xform == 0`, `INTRA_DIR` | present, `nb*nb` modes | `P` from 7.4, per 8x8 block |
+| `xform != 0` | **absent** | `pred` from 7.2 |
+
+A large-transform tile carries **no mode unit** and predicts every sample with
+the DC plane (7.1-7.3), exactly as version 1 does. The two tools are therefore
+exclusive **per tile**, not per stream: a frame may set `INTRA_DIR` and
+`XFORM_LARGE` both, and each tile takes whichever it wants. Nothing in the
+tile-row structure or the unit list needs a new flag to say so -- `xform` is in
+the tile header and the mode unit's presence is derived from it (9.1).
+
+Three reasons this is the rule rather than a per-block combination:
+
+1. **The predictor is per 8x8 block and the transform would span four or
+   sixteen of them.** A 32x32 transform of a residual whose predictor changed
+   nine times inside the block is a transform of a discontinuous signal, which
+   is the one thing a large transform is bad at. There is no version of the
+   combination that is worth its complexity at 32x32.
+2. **7.4 is a raster wavefront and 6.7 is not.** A large-transform tile has the
+   version 1 schedule: one barrier per plane, every block predicted at once,
+   4.5 % occupancy replaced by 100 %. Allowing the two together would put the
+   22-step wavefront of 7.6 back into the tile that least needs it, since a
+   tile that wants a 32x32 transform is a tile whose content is smooth.
+3. **It keeps the tile independent and the derivation local.** `base` in 7.4 is
+   this tile's own DC plane; `pred` in 7.2 is this tile's own DC plane; neither
+   reads a neighbouring tile, at any transform size.
+
+The DC plane is deliberately **not** re-gridded onto the transform: a 32x32
+tile still codes 64 block means, not 4. Re-gridding it would make a 32x32 tile
+predict from a 2x2 grid of means -- one bilinear plane over the whole tile --
+and hand the entire low-frequency structure to the transform's low
+coefficients. That is a different codec, not a transform size: it changes the
+intra predictor, the resampling kernel's input grid and the DC plane's own
+second-level transform, and it would have to be measured as such. What is
+measured here is the price of *not* doing it, which is the DC plane's share of
+a large-transform tile's bits (`ref/RESULTS-xform-b.md` section 4); keeping the
+grid fixed is what makes 7.1-7.3, section 8 and every conformance vector's
+predictor bit-identical to version 1 at every transform size.
+
+---
+
 ## 8. Resampling kernel
 
 One kernel serves chroma upsampling, `res_level` upsampling and the DC-plane
@@ -1080,12 +1363,21 @@ A tile's payload is a list of **coding units**, in this order:
 
 ```
 for each coded plane p in (Y, Co, Cg [, A if alpha_mode == 2]):
-    unit: the DC plane of p          (nb*nb coefficients)
-    if INTRA_DIR:
+    N  = 8 << plane_xform(p)                 // section 6.7; 8 in version 1
+    nt = coded_extent(p) / N                 // transform blocks per edge
+
+    unit: the DC plane of p          (nb*nb coefficients, nb = extent/8)
+    if INTRA_DIR and xform == 0:
         unit: the mode unit of p     (nb*nb intra modes, section 9.6)
-    for by in 0..nb-1, bx in 0..nb-1 (raster):
-        unit: block (bx, by) of p    (64 coefficients)
+    for by in 0..nt-1, bx in 0..nt-1 (raster):
+        for g in 0 .. (N/8)^2 - 1 (raster inside the block):
+            unit: coefficient group g of block (bx, by)   (64 coefficients)
 ```
+
+With `xform == 0` the inner loop runs once and this is the version 1 list
+exactly. At every size a plane contributes `nb*nb` coefficient-group units of
+64, so the unit count, the coefficient count and the lane schedule below are
+independent of the transform size.
 
 The mode unit is a whole unit rather than a symbol attached to each block on
 purpose. A block's mode is coded relative to the modes of its left and above
@@ -1110,12 +1402,16 @@ subgroup cluster.
 
 | unit | scan |
 |---|---|
-| 64-coefficient block, `tskip == 0` | 8x8 zigzag |
-| 64-coefficient block, `tskip == 1` | raster (`scan[i] = i`) |
+| coefficient group, `tskip == 0` | 8x8 zigzag |
+| coefficient group, `tskip == 1` | raster (`scan[i] = i`) |
 | DC plane, 64 values | 8x8 zigzag |
 | DC plane, 16 values | 4x4 zigzag |
 | DC plane, 4 values | `0, 1, 2, 3` |
 | DC plane, 1 value | `0` |
+
+A coefficient group is 64 values whatever the transform size, so there is no
+16x16 or 32x32 scan: the group order inside a block is raster (6.7) and the
+order inside a group is the 8x8 zigzag below.
 
 8x8 zigzag:
 
@@ -1185,7 +1481,8 @@ coefficient codes no `LAST` and has `last = 0`.
 symbol `min(|q|, 15)`, where 15 is the escape. The context is
 
 ```
-band = 0 if pos == 0, 1 if pos in 1..3, 2 if pos in 4..9, 3 if pos >= 10
+band = max(band_min, 0 if pos == 0, 1 if pos in 1..3,
+                     2 if pos in 4..9, 3 if pos >= 10)
 prev = 0 if the previously decoded level was 0, 1 if its magnitude was 1, else 2
         (prev = 0 at the first position of a unit)
 
@@ -1197,6 +1494,19 @@ prev = 0 if the previously decoded level was 0, 1 if its magnitude was 1, else 2
 
 context index = 4 + that value
 ```
+
+`band_min` is the unit's **band floor**. It is **0** for every version 1 unit
+-- so this is the version 1 derivation unchanged -- and for the coefficient
+group that holds a large block's DC, group 0. It is **3** for every other group
+of a large block (6.7), whose coefficients are high frequency by construction
+whatever their position inside the group.
+
+That is the whole of the larger transforms' entropy mapping: the four existing
+bands, reused, with **no new context and no new symbol**. The floor is worth
+0.2 % of rate at the mid QPs and nothing at the ends
+(`ref/RESULTS-xform-b.md` section 3); floors 2 and 3 are identical because
+bands 2 and 3 select the same three LEVEL contexts in the table above, and
+floor 3 is written because it says what it means.
 
 The level at position `last` must be nonzero; a decoder must reject a zero
 there.
@@ -1259,6 +1569,7 @@ slot-to-symbol table used by the decode step.
 ### 9.6 The mode unit (tool bit 17)
 
 A mode unit carries the `nb * nb` intra modes of one plane, in raster order.
+It is present only when the tile's `xform` is 0 (7.7, 9.1).
 For block `b` (raster index), the **most probable mode** is
 
 ```
@@ -1312,7 +1623,9 @@ spend the parity on: it makes the parity agree by moving exactly one level by
 one step, choosing the move with the smallest squared error. That is an
 encoder decision and is not normative.
 
-`SIGN_HIDE` applies to DC-plane units as well as residual blocks.
+`SIGN_HIDE` applies to DC-plane units as well as residual blocks, and to every
+coefficient group of a large transform block independently -- a group is a
+coding unit, and this clause is written per coding unit.
 
 ### 9.5 rANS
 
@@ -1397,7 +1710,8 @@ state below `L`, and any renormalization that would read past the payload.
      b. planar-interpolate M                          -> planar
      c. pred = planar                     for mode == INTRA
         pred = clamp(W + planar - dc_offset, 0, maxval)   otherwise
-     d. for each block: dequantize, inverse transform (or take the residual
+     d. for each transform block of edge N = 8 << plane_xform(p): gather its
+        coefficient groups, dequantize, inverse transform (or take the residual
         directly for tskip), add pred, clamp
      e. upsample the plane by its factor into the picture
    (this is GPU Pass B: one workgroup per 64x64 tile)
@@ -1475,8 +1789,18 @@ unimplemented mandatory tool bit, `bit_depth` 10, the 32x32 tile profile, a
 bit for a column beyond the picture, a reserved tile-header bit, an `INTER`
 tile, `wm_id` without its tool bit, a wrong `row_index`, a short
 `frame_bytes`, `flags` bit 2 without `INTRA_DIR`, YCoCg-R declared with 4:2:0
-chroma, a `CTX_V2` table set that overruns the tile rows, and `LOSSLESS`
-together with `SIGN_HIDE`.
+chroma, a `CTX_V2` table set that overruns the tile rows, `LOSSLESS`
+together with `SIGN_HIDE`, and the three illegal ways to say `xform`:
+`xform == 3` (`r30`), `xform != 0` without tool bit 24 (`r31`) and `xform`
+with `tskip` (`r32`).
+
+**The larger transforms.** `v57`-`v62` pin tool bit 24: 16x16 and 32x32 alone
+in 4:2:0 and 4:4:4, the per-tile mix chosen by the encoder's RD search, a
+`res_level` tile where the per-plane cap of 6.7 bites, the combination with
+`INTRA_DIR` (which the tiles then choose between), and a saturation vector at
+`N = 32` whose every dequantized coefficient sits on the int16 clamp in the
+sign pattern that maximises the pass-1 intermediate. `v01`-`v56` are
+**byte-identical** to the v1.4 set.
 
 **The v2 intra tools.** `v36`-`v44` pin them: `INTRA_DIR` alone in 4:4:4 and
 4:2:0, `INTRA_DIR` with `CTX_V2`, `CTX_V2` alone, the layered form, every v2
@@ -1672,6 +1996,8 @@ decoder implements. It must:
   stream without the `INTER` tool bit;
 * reject tool bits 14 and 23 with a `VERSION` status, and the `WARP` bit
   without `INTER` with a `BITSTREAM` one;
+* reject `xform == 3`, `xform != 0` without tool bit 24, and `xform != 0`
+  together with `tskip`, all with a `BITSTREAM` status;
 * reproduce every `decoded_md5` of the `v45`-`v56` vectors.
 
 `v45`-`v56` are the twelve entries Annex D D-21 asks for: an identity warp with
@@ -2031,6 +2357,46 @@ inconsistent. Each is a decision, not an interpretation.
     D-5 is unchanged; only the bit numbers move, to the first bits that are
     actually free. This is an erratum against Annex D, recorded here because
     this document is where the bit numbers live.
+
+53. **The 16x16 and 32x32 transforms are one matrix family with the 8x8 one,
+    and they are per tile, not per block.** `T_N[k][n] = round(512 c_k
+    cos((2n+1) k pi / 2N))` at a scale that does not depend on `N`, so the even
+    rows of `T_2N` are the rows of `T_N` and the existing Loeffler flow graph
+    is the base case of both larger transforms rather than a third unrelated
+    kernel. That is what makes the whole tool one new constant table per size,
+    one shift rule (`shift1` grows by one per doubling, `shift2` is fixed) and
+    no change to the dequantizer, the scan, the `LAST` classes, the contexts or
+    the intra predictor.
+
+    A **per-block** split flag was the alternative and is refused. It would
+    need a quadtree or a per-block flag in the payload, a decode-order
+    dependency between the flag and the units it governs, and a second `LAST`
+    family; and its win is the win a *per-tile* choice already gets on this
+    content, where a tile that wants a 32x32 transform is a tile whose whole
+    64x64 area is smooth. The tile header has the two spare bits; the payload
+    does not have the spare complexity.
+
+    A **per-32x32-quadrant** choice is the natural next narrowing and is
+    deliberately *not* built: word1 bits 30-31 are still reserved and are
+    where its second field goes, and adopting it would be a `SYNTAX.md` change
+    inside `XFORM_LARGE` rather than a new tool bit, exactly as 7.6 says of
+    restrictions A and B. It is not built because it has not been measured to
+    pay: `ref/RESULTS-xform-b.md` section 5 reports how often tiles choose
+    each size, which is the evidence that exists, and it is not evidence for
+    finer granularity. That measurement is the prerequisite, and this
+    document's record is that rate proxies have been wrong about magnitude in
+    both directions.
+
+54. **A large block is entropy coded as 8x8 coefficient groups.** The
+    alternative -- one unit of 256 or 1024 coefficients -- needs a `LAST`
+    alphabet that reaches 1023, which the 16-symbol alphabet does not, so it
+    means new classes, new raw-bit lengths, retrained tables and new rejects.
+    Groups need none of that, cost exactly what the same area costs as 8x8
+    blocks today (one `CBF` per group), keep every rANS lane's unit at 64
+    coefficients, and make the trellis of the reference encoder apply to a
+    large block with no change at all. The LEVEL band floor of 9.3 is the only
+    new arithmetic in the entropy layer, it is one `max`, and it is inert on a
+    version 1 stream.
 
 ## Appendix B: where the bits go
 

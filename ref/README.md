@@ -27,6 +27,9 @@ The predictor itself is **not implemented here**: `ref/src/inter.h` links
 derivation and the saturation rules. `ref/` builds the reference ring, the
 prediction state and the mode decision around it.
 
+**Syntax revision v1.5** adds the larger transforms (bit 24): a per-tile 16x16
+or 32x32 integer DCT, off unless `--xform` asks for it.
+
 **Syntax revision v1.3** adds the three v2 intra tools — directional intra
 (bit 17), the 16-context entropy model (bit 21) and sign data hiding (bit 22).
 All three are additive: every stream a v1.2 build wrote is still byte-identical
@@ -78,6 +81,12 @@ v1.3 tool switches:
 | `--intra-dir-cand N` | 2 | modes RD-checked per block after the SATD sort; 8 is exhaustive and worth 0.1 % for 2.2x the encode time |
 | `--ctx v1\|v2` | `v2` | 12 or 16 entropy contexts |
 | `--no-sign-hide` | off | code every sign |
+
+and the v1.5 transform switch:
+
+| flag | default | effect |
+|---|---|---|
+| `--xform 8\|16\|32` | `8` | largest transform the encoder may pick per tile (tool bit 24). `8` emits no tool bit and is version 1 exactly; `16` and `32` add those sizes to the per-tile RD search |
 
 and the v1.4 inter switches:
 
@@ -375,7 +384,24 @@ nxv-enc ... --intra-dir off --ctx v1 --no-sign-hide     # a v1.2 stream
 
 `--lossless` forces `--no-sign-hide`: hiding a sign spends one level step, so
 it cannot coexist with bit-exact coding, and a stream declaring both
-`LOSSLESS` and `SIGN_HIDE` is refused (`r17`).
+`LOSSLESS` and `SIGN_HIDE` is refused (`r17`). It forces `--xform 8` for the
+same kind of reason: lossless is transform skip, and there is no transform to
+enlarge (`r32` refuses the combination).
+
+### Syntax revision v1.5: the larger transforms
+
+`--xform 16` or `--xform 32` sets tool bit 24 `XFORM_LARGE` and lets each tile
+choose an 8x8, 16x16 or 32x32 integer DCT by RD (`docs/SYNTAX.md` 6.7). The
+three sizes are one matrix family sampled at three points, so the 8-point
+Loeffler flow graph is literally the base case of the other two and there is
+one new constant table per size and no new scan, `LAST` class, context or
+predictor. A large-transform tile predicts with the DC plane and carries no
+intra-mode unit, so `INTRA_DIR` and a large transform are exclusive per tile
+and the encoder chooses between them; a large-transform tile has the version 1
+one-barrier-per-plane schedule, not 7.4's wavefront.
+
+Every stream a v1.4 build wrote is byte-identical and `v01`-`v56` of the
+conformance set are unchanged. `ref/RESULTS-xform-b.md` has the measurements.
 
 ### Gap analysis (as first written, and how it held up)
 

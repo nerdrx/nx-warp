@@ -126,6 +126,9 @@ typedef enum nxvc_tile_mode {
  * actually free.  The substance of D-5 is unchanged: it is undefined in
  * version 1 and a v1 decoder MUST reject a stream that sets it. */
 #define NXVC_TOOL_FILTER_CATMULLROM (1ull << 23)
+/* Per-tile 16x16 / 32x32 integer DCT (tile-header field `xform`).  Syntax
+ * v1.5; SYNTAX.md 6.7. */
+#define NXVC_TOOL_XFORM_LARGE     (1ull << 24)
 
 /* Tools this reference decoder implements. */
 #define NXVC_TOOLS_SUPPORTED                                                  \
@@ -134,7 +137,8 @@ typedef enum nxvc_tile_mode {
      NXVC_TOOL_LOSSLESS | NXVC_TOOL_CUSTOM_TABLES | NXVC_TOOL_NSUB_VAR |      \
      NXVC_TOOL_PER_TILE_CHROMA | NXVC_TOOL_YCOCGR | NXVC_TOOL_WM_ID |        \
      NXVC_TOOL_INTRA_DIR | NXVC_TOOL_CTX_V2 | NXVC_TOOL_SIGN_HIDE |           \
-     NXVC_TOOL_INTER | NXVC_TOOL_WARP | NXVC_TOOL_STEREO)
+     NXVC_TOOL_INTER | NXVC_TOOL_WARP | NXVC_TOOL_STEREO |                    \
+     NXVC_TOOL_XFORM_LARGE)
 
 /* ---------------------------------------------------------------- images */
 /* 8-bit planar image.  plane[0]=Y/R', plane[1]=Co/G', plane[2]=Cg/B',
@@ -189,6 +193,11 @@ typedef struct nxvc_config {
     uint32_t ctx_v2;            /* 0 = 12 contexts, 1 = 16 (tool 21)        */
     uint32_t intra_dir_cand;    /* modes RD-checked per block, 0 = default  */
     uint32_t sign_hide;         /* 1 = sign data hiding (tool 22)           */
+
+    /* --- additive since syntax v1.5. */
+    uint32_t xform_large;       /* largest transform the encoder may pick per
+                                   tile: 0 = 8x8 only (v1), 1 = up to 16x16,
+                                   2 = up to 32x32 (tool 24)                */
 
     /* --- additive since syntax v1.4: the Phase 2 inter path.
      * `width`/`height` are PER EYE.  With eyes == 2 the nxvc_image passed to
@@ -267,6 +276,7 @@ typedef struct nxvc_tile_info {
     uint8_t qp;                 /* resolved luma QP                        */
     uint8_t wm_id;              /* per-tile weighting matrix, 0 = frame's  */
     uint8_t intra_dir;          /* 1: this tile carries per-block modes    */
+    uint8_t xform;              /* transform size: 0 = 8x8, 1 = 16, 2 = 32 */
     /* --- additive since syntax v1.4 */
     uint8_t skipped;            /* 1: WARP_SKIP via skip_bitmap, not coded  */
     uint8_t concealed;          /* decoder: the tile was reported lost and
