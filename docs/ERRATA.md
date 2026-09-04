@@ -18,6 +18,10 @@ the corrected values.
 | 2026-09-04 | 2.2 | Homography in Q8.24 | Overflows int32 at Pico 4 width (coefficient ~ f = 940 px); WARP.md fixes the Q format and guaranteed range | stereo |
 | 2026-09-04 | 3.9 | SwiftShader as a CI stand-in for lavapipe | The available SwiftShader has subgroup size 4 and no 16-bit storage; it is hybrid-only. lavapipe is the only usable software ICD for the pure compute path | vk/common |
 | 2026-09-04 | 3.10 | SPIR-V 1.4 target | The Pico 4 Adreno driver is Vulkan 1.1 without VK_KHR_spirv_1_4; the build targets SPIR-V 1.3 | vk/common |
+| 2026-09-04 | 4.1 | About 150 datagrams per frame, 13.5 kpps, 5.5 percent overhead, max tile 1372 bytes | Simulator with the v1.0 wire format: 291 datagrams per frame, 26.2 kpps, 8.7 percent header overhead (24.5 with FEC, 26.7 with IP/UDP); max tile 1312 bytes once the 16-byte AEAD tag is counted. Cause: class and ref_delta in the header force run homogeneity. v1.1 revision moves them into the directory | transport |
+| 2026-09-04 | 4.4 | 14.5 percent blended FEC | 20.9 percent, because groups cannot cross a band or class and class A runs at k of 3 to 5. v1.1 scales parity with k and puts m on the wire | transport |
+| 2026-09-04 | 4.2 | Frame complete 6.8 ms on WiFi; only the lower bands reference N-2 | The timeline allots no serialisation time. At 300 Mbit the frame completes in 10.3 ms and 97.6 percent of tiles reference N-2; at 600 Mbit 7.5 ms and 99.6 percent on N-1 | transport |
+| 2026-09-04 | 4.3 | Deadline controller shifts the deadline earlier to trade latency for fewer holes | Sign is backwards; later gives fewer holes. Also a late tile must be displayed but never acknowledged, or the encoder shadow diverges (TRANSPORT.md D17), and concealed-tile exactness is recursive (D10) | transport |
 
 ## Paper-internal inconsistencies
 
