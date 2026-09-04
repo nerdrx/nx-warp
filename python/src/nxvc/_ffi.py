@@ -81,7 +81,7 @@ NXVC_TILE_SIZE = 64
 #: library reports its own with :func:`library_minor`, and it may be **ahead**
 #: of this one while a syntax revision is landing -- the parser then still
 #: reads every structure it knows, and refuses what it does not.
-NXVC_BITSTREAM_MINOR = 5
+NXVC_BITSTREAM_MINOR = 6
 
 #: The four-byte magic at the head of every stream: the ASCII bytes ``NXV1``.
 NXVC_MAGIC = 0x3156584E
@@ -193,8 +193,8 @@ class Tool:
     #: Annex D D-5 names this "tool bit 20"; bit 20 was already WM_ID in
     #: syntax v1.2, so the reference places it at the first free bit.
     FILTER_CATMULLROM = 1 << 23
-    TAB_V2 = 1 << 24
-    CTX_V3 = 1 << 25
+    TAB_V2 = 1 << 27
+    CTX_V3 = 1 << 26
 
     _NAMES = [
         (1 << 0, "INTRA_DC_PLANE"),
@@ -221,12 +221,12 @@ class Tool:
         (1 << 21, "CTX_V2"),
         (1 << 22, "SIGN_HIDE"),
         (1 << 23, "FILTER_CATMULLROM"),
-        (1 << 24, "TAB_V2"),
-        (1 << 25, "CTX_V3"),
+        (1 << 27, "TAB_V2"),
+        (1 << 26, "CTX_V3"),
     ]
 
     #: The first tool bit that is reserved and must be zero (SYNTAX.md 2.3).
-    RESERVED_FROM = 26
+    RESERVED_FROM = 31
 
     @classmethod
     def names(cls, mask: int) -> list[str]:

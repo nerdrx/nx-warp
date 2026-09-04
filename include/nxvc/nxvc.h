@@ -63,7 +63,7 @@ extern "C" {
  *       Bit numbers are allocated globally in docs/TOOLBITS.md, not per
  *       package: every tournament branch independently claimed bit 24.
  */
-#define NXVC_BITSTREAM_MINOR 5
+#define NXVC_BITSTREAM_MINOR 6
 
 /* "nxvc_ref <major>.<minor> (syntax v1.<minor>)" -- a static string, safe to
  * call before any object exists.  Used by the Python bindings to check that
@@ -135,8 +135,8 @@ typedef enum nxvc_tile_mode {
 #define NXVC_TOOL_WM_ID           (1ull << 20)
 #define NXVC_TOOL_CTX_V2          (1ull << 21)
 #define NXVC_TOOL_SIGN_HIDE       (1ull << 22)
-#define NXVC_TOOL_TAB_V2    (1ull << 24)
-#define NXVC_TOOL_CTX_V3          (1ull << 25)
+#define NXVC_TOOL_TAB_V2    (1ull << 27)
+#define NXVC_TOOL_CTX_V3          (1ull << 26)
 /* Annex D D-5 names the Catmull-Rom selector "tool bit 20".  Bit 20 was
  * already taken by WM_ID in syntax v1.2 (shipped, with conformance vectors),
  * so this reference and docs/SYNTAX.md place it at the first bit that is
@@ -146,9 +146,9 @@ typedef enum nxvc_tile_mode {
 /* Phase 2 inter efficiency (docs/SYNTAX.md 13.9 and 13.10).  Both require
  * INTER; NEAR_SKIP additionally requires WARP only in the sense that its
  * tiles are warped ones, which the mode already gates. */
-#define NXVC_TOOL_NEAR_SKIP       (1ull << 24)
-#define NXVC_TOOL_QUAD_MV         (1ull << 25)
-#define NXVC_TOOL_SUBTILE_INTRA   (1ull << 26)
+#define NXVC_TOOL_NEAR_SKIP       (1ull << 28)
+#define NXVC_TOOL_QUAD_MV         (1ull << 29)
+#define NXVC_TOOL_SUBTILE_INTRA   (1ull << 30)
 
 /* Tools this reference decoder implements. */
 #define NXVC_TOOLS_SUPPORTED                                                  \
