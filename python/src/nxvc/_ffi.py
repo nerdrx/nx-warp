@@ -555,6 +555,25 @@ def search_paths() -> list[str]:
     return out
 
 
+#: Symbols a sanitizer runtime exports.  Their presence in the file means
+#: loading it with ctypes will abort the interpreter before main -- the runtime
+#: has to be the first library in the initial list, which it cannot be when it
+#: arrives through dlopen.  There is no way to recover from that, so such a
+#: library is never picked up by the automatic search; NXVC_LIBRARY still
+#: reaches it for anyone who means it.
+_SANITIZER_MARKERS = (b"__asan_init", b"__tsan_init", b"__msan_init", b"__hwasan_init")
+
+
+def _looks_instrumented(path: Path) -> bool:
+    """True when *path* is linked against, or contains, a sanitizer runtime."""
+    try:
+        with open(path, "rb") as fh:
+            blob = fh.read()
+    except OSError:
+        return False
+    return any(marker in blob for marker in _SANITIZER_MARKERS)
+
+
 def _candidate_files() -> Iterator[str]:
     explicit = os.environ.get("NXVC_LIBRARY")
     if explicit:
@@ -568,7 +587,7 @@ def _candidate_files() -> Iterator[str]:
         for base in _LIB_BASENAMES:
             for name in _platform_names(base):
                 candidate = d / name
-                if candidate.is_file():
+                if candidate.is_file() and not _looks_instrumented(candidate):
                     yield str(candidate)
 
     # System search last: plain soname, then whatever the loader knows about.

@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 import nxvc
-from nxvc.cli import main
+from nxvc.cli import build_parser, main
 
 from conftest import make_bitstream, requires_library
 
@@ -168,3 +168,46 @@ def test_encode_rejects_rgb_with_420(tmp_path):
     assert main(
         ["encode", "--in", "x", "--out", "y", "--w", "64", "--h", "64", "--rgb"]
     ) == 2
+
+
+# ------------------------------------------------- the nxv-enc flag mirror
+
+
+def test_encode_flags_mirror_nxv_enc():
+    """Every tuning flag exists, and every one of them defaults to *unset*.
+
+    A default of 0 rather than None would be a real bug: it would turn the RD
+    trellis and the v2 intra tools off for anyone who never mentioned them,
+    because `nxvc_config_default()` turns them on.
+    """
+    parser = build_parser()
+    args = parser.parse_args(
+        ["encode", "--in", "a.yuv", "--out", "b.nxv", "--w", "64", "--h", "64"]
+    )
+    for name in ("rdo", "rdo_lambda", "wm", "intra_dir", "ctx", "sign_hide"):
+        assert getattr(args, name) is None, name
+    assert args.qp_search == 0
+    assert args.intra_dir_cand == 0
+
+    args = parser.parse_args(
+        [
+            "encode", "--in", "a.yuv", "--out", "b.nxv", "--w", "64", "--h", "64",
+            "--no-rdo", "--rdo-lambda", "0.5", "--qp-search", "2", "--wm", "auto",
+            "--intra-dir", "layer", "--intra-dir-cand", "4", "--ctx", "v2",
+            "--no-sign-hide",
+        ]
+    )
+    assert args.rdo is False
+    assert args.rdo_lambda == 0.5
+    assert args.qp_search == 2
+    assert args.wm == "auto"
+    assert args.intra_dir == "layer"
+    assert args.intra_dir_cand == 4
+    assert args.ctx == "v2"
+    assert args.sign_hide is False
+
+
+def test_probe_reports_the_syntax_revision(capsys):
+    main(["probe"])
+    out = capsys.readouterr().out
+    assert f"v1.{nxvc.NXVC_BITSTREAM_MINOR}" in out

@@ -70,11 +70,14 @@ Two loader behaviours are worth knowing:
   structure layouts would disagree with these ones silently -- `nxvc_tile_info`
   grew four fields between syntax v1.2 and v1.4, so a stale library would hand
   back per-tile records read at the wrong stride. Rebuild it.
-* Build trees whose name looks instrumented (`asan`, `ubsan`, `tsan`, `fuzz`,
-  `coverage`) are searched **last**. Loading a sanitizer build through `ctypes`
-  aborts the interpreter before `main` -- "ASan runtime does not come first in
-  initial library list" -- and there is no way to detect that without loading
-  it. Point `NXVC_LIBRARY` at one deliberately if you want it.
+* A library carrying a **sanitizer runtime** is never picked up by the
+  automatic search. Loading one through `ctypes` aborts the interpreter before
+  `main` -- "ASan runtime does not come first in initial library list" -- with
+  no output and no traceback, which is a miserable thing to debug in a
+  checkout that has a `build-asan-ubsan/` in it. Candidates are checked for
+  `__asan_init` and friends before being loaded, and instrumented-looking
+  build trees are searched last anyway. `NXVC_LIBRARY` still reaches one for
+  anyone who means it.
 
 ---
 

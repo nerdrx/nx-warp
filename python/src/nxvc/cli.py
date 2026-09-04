@@ -228,9 +228,22 @@ def cmd_probe(args: argparse.Namespace) -> int:
     """Report what this installation can do -- the first thing to run when stuck."""
     from . import metrics
 
+    from ._ffi import NXVC_BITSTREAM_MINOR, library_minor, version_string
+
     print(f"nxvc python bindings {__version__}")
+    print(f"  syntax parsed       v1.{NXVC_BITSTREAM_MINOR}")
     print(f"  library available   {NXVC_AVAILABLE}")
     print(f"  library path        {NXVC_LIBRARY_PATH or '-'}")
+    if NXVC_AVAILABLE:
+        minor = library_minor()
+        note = ""
+        if minor is not None and minor != NXVC_BITSTREAM_MINOR:
+            note = (
+                "  (ahead of the parser)"
+                if minor > NXVC_BITSTREAM_MINOR
+                else "  (behind the parser)"
+            )
+        print(f"  library version     {version_string() or 'unknown'}{note}")
     print(f"  metrics backend     {metrics.BACKEND}")
     print(f"  quality harness     {metrics.nxq_path() or 'not found'}")
     if not NXVC_AVAILABLE:

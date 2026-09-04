@@ -306,3 +306,29 @@ def test_status_strings_exist_without_the_library():
     for value in (0, -1, -2, -3, -4, -5, -6):
         assert nxvc.status_string(value)
         assert nxvc.Status.name(value).startswith(("OK", "ERR_"))
+
+
+# ------------------------------------------------------------ library search
+
+
+def test_a_sanitizer_library_is_never_picked_up_automatically(tmp_path, monkeypatch):
+    """Loading an ASan-instrumented .so with ctypes kills the interpreter
+    before main, with no output at all.  The search has to refuse it by
+    inspection, because there is nothing to catch afterwards."""
+    from nxvc import _ffi
+
+    plain = tmp_path / "libnxvc_ref.so"
+    plain.write_bytes(b"\x7fELF" + b"\x00" * 64)
+    assert not _ffi._looks_instrumented(plain)
+
+    poisoned = tmp_path / "asan" / "libnxvc_ref.so"
+    poisoned.parent.mkdir()
+    poisoned.write_bytes(b"\x7fELF" + b"\x00" * 32 + b"__asan_init\x00")
+    assert _ffi._looks_instrumented(poisoned)
+
+    monkeypatch.delenv("NXVC_LIBRARY", raising=False)
+    monkeypatch.setattr(
+        _ffi, "search_paths", lambda: [str(poisoned.parent), str(tmp_path)]
+    )
+    found = [c for c in _ffi._candidate_files() if c.startswith(str(tmp_path))]
+    assert found == [str(plain)]
