@@ -541,8 +541,11 @@ static CflModel cfl_fit(const CflCtx &cf, const IntraRefs &r, int bx, int by) {
     m.base_c = (cn[lo0] + cn[lo1] + 1) >> 1;
     const i32 top_l = (ln[hi0] + ln[hi1] + 1) >> 1;
     const i32 top_c = (cn[hi0] + cn[hi1] + 1) >> 1;
-    const i32 dl = top_l - m.base_l;          // >= 0, at most 255
-    if (dl == 0) {
+    // Each of the two largest neighbours is at least each of the two
+    // smallest, so `dl` cannot be negative; the `<= 0` rather than `== 0`
+    // keeps the table index in range without relying on that argument.
+    const i32 dl = top_l - m.base_l;          // 0 .. 255
+    if (dl <= 0) {
         m.alpha = 0;
         return m;
     }

@@ -1218,6 +1218,9 @@ dl >  0:  alpha = clamp((((top_c - base_c) * kCflRecip[dl]) + 64) >> 7,
                         -2048, 2047)
 ```
 
+`dl` is never negative -- each of the two largest neighbours is at least each
+of the two smallest -- so `kCflRecip` is only ever indexed in `[1, 255]`.
+
 `kCflRecip[d] = round(2^15 / d)` for `d` in 1..255 is a **256-entry u16
 reciprocal table** -- the third and last place this format divides, and like
 the other two it is a table lookup in the decoding process rather than a
