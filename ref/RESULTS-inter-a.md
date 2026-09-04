@@ -285,7 +285,77 @@ table has the rows it has.
 
 ---
 
-## 4. PLACEHOLDER-CHAIN
+## 4. The warp-only chain (PAPER.md 2.11 item 2)
+
+> Test: PSNR of a 2 s warp-only chain under recorded head motion with bilinear
+> and Catmull-Rom; **if the Full profile filter does not hold above 35 dB for
+> 30 frames on textured content** the per-tile refresh rate must rise and the
+> bit budget in 2.4 is wrong.
+
+`ref/warp_chain.py` raises the `WARP_SKIP` gate past anything real content
+produces and pushes the refresh period past the clip, so frame 0 is an
+ordinary intra frame and every frame after it is nothing but the pose warp of
+its predecessor. `vr-mixed-512-v2` 4:2:0, 12 frames, QP 8:
+
+| | first warped frame | last | change | held above 35 dB | verdict |
+|---|---|---|---|---|---|
+| baseline | 30.65 dB | 23.52 dB | **-7.14 dB** | **0 frames** | **FAIL** |
+| the package | 30.65 dB | 23.52 dB | -7.14 dB | 0 | **FAIL** |
+
+**Two of the three syntax tools cannot touch this measurement, and that is a
+property rather than a disappointment.** Near-skip and quadrant vectors change
+only how a *coded* tile is written, and a warp-only chain has none after frame
+0. The mode histogram proves it exactly:
+
+| | `WARP_SKIP` | `INTRA` | `near_skip` | `quad_mv` |
+|---|---|---|---|---|
+| all four off | 91.7 % | 8.3 % | 0 | 0 |
+| near-skip + quad_mv on | **91.7 %** | **8.3 %** | **0** | **0** |
+
+8.3 % is frame 0 of twelve. Byte for byte, the same chain.
+
+### 4.1 What the drift gate does to the same clip
+
+**The drift-driven refresh is different, and this is the one place in the
+package where a tool changes an answer rather than a rate.** Its gate is a
+second reason to refuse `WARP_SKIP`, and `warp_chain.py`'s raised
+`--skip-thresh` knows nothing about it. Turning it on stops the clip being a
+warp-only chain at all -- which is why `warp_chain.py --tools` defaults to
+`off`, so the paper's test keeps measuring the paper's thing.
+
+Asked deliberately, on the same clip and the same QP:
+
+| | `WARP_SKIP` | `INTRA` | last frame | change over 11 frames | bitstream |
+|---|---|---|---|---|---|
+| warp-only (the paper's test) | 91.7 % | 8.3 % | 23.52 dB | **-7.14 dB** | 59 918 B |
+| drift gate active | 69.3 % | 21.8 % | **32.70 dB** | **+2.04 dB** | 242 478 B |
+
+**The chain stops decaying.** It does not merely decay more slowly: the last
+frame is *better* than the first warped one, because the encoder measures the
+drift, refuses the free skip, and codes what has moved.
+
+This is exactly the remedy PAPER.md 2.11 item 2 names -- "the per-tile refresh
+rate must rise" -- arrived at without a fixed rate, and it is what
+`ref/RESULTS-inter.md` section 4's revised conclusion asks for: *"the codec
+leans on a chain that decays, at the rate where it leans hardest. That is a
+refresh-rate and residual-budget problem."* This is the refresh-rate half of
+it, measured.
+
+**It is bought with bits, and the price is stated: 4.05x the bitstream** at
+QP 8 on this clip. That is not a free 9 dB; it is a mechanism that spends rate
+where the measurement says the picture is wrong, instead of spending it on a
+schedule. Section 2.2 is the same mechanism measured on the rate axis, where
+it is worth 47 points of BD-rate at the paper's own density -- which is the
+same statement with the quality held fixed instead of the rate.
+
+**What is not claimed.** The verdict on PAPER.md 2.11 item 2 is unchanged and
+still **FAIL**: the warp-only chain is what the paper asks about, the package
+leaves it untouched, and it was below the 35 dB bar at its first warped frame
+before any of this. `ref/RESULTS-inter.md` section 3's audit applies here word
+for word -- on this material the predictor is at the ceiling of what the
+ground truth can reward, and the chain's *starting level* is the harness.
+What section 4.1 above changes is the **slope**, which that audit identifies
+as the predictor's own and as the real problem.
 
 ---
 
