@@ -18,3 +18,28 @@ the corrected values.
 | 2026-09-04 | 2.2 | Homography in Q8.24 | Overflows int32 at Pico 4 width (coefficient ~ f = 940 px); WARP.md fixes the Q format and guaranteed range | stereo |
 | 2026-09-04 | 3.9 | SwiftShader as a CI stand-in for lavapipe | The available SwiftShader has subgroup size 4 and no 16-bit storage; it is hybrid-only. lavapipe is the only usable software ICD for the pure compute path | vk/common |
 | 2026-09-04 | 3.10 | SPIR-V 1.4 target | The Pico 4 Adreno driver is Vulkan 1.1 without VK_KHR_spirv_1_4; the build targets SPIR-V 1.3 | vk/common |
+
+## Paper-internal inconsistencies
+
+Sections of the paper were drafted in parallel and disagree with each other in the
+places below. In every case the normative documents (SYNTAX.md, WARP.md,
+TRANSPORT.md) and the ADRs under adr/ are authoritative; the paper text is left as
+drafted.
+
+| Sections | Disagreement | Resolution |
+|---|---|---|
+| 2 vs 1.1, 3.1, 4.1, 6.2 | Section 2 assumes 32x32 tiles in its bit costs and state sizes | 64x64 (ADR 0002); section 2 numbers scale accordingly |
+| 1.2 vs 2.3 vs 6.5 | Tile mode field is 2 bits with four names, or 3 bits with five | Five modes, field width per SYNTAX.md |
+| 1.6 vs 3.2.2, 6.3 | 1 to 32 rANS substreams per tile, or eight | Up to eight, chosen per tile (SYNTAX.md) |
+| 1.6 vs 3.2.2 | 12 contexts x 16 symbols vs 8 contexts with a different alphabet | 12 x 16 (SYNTAX.md) |
+| 1.6 vs 3.2.2 | Probability tables per frame in v1, or static per QP class | Eight trained built-in sets plus optional per-frame transmitted tables (SYNTAX.md) |
+| 3.2.3 vs 1.4, 1.9 | Step 2 offers AV1-style or 5-3 wavelet transforms | 8x8 integer Loeffler DCT only (ADR 0004 context) |
+| 2.6 vs 1.2, 1.3, 4.5, 6.6 | One previous frame and no DPB, vs a four-slot reference ring | Four-slot ring (ADR 0006) |
+| 2.6 vs 4.4 | Per-frame 1 kB bitmap on the pose packet, vs per-band 100-byte feedback | Per-band feedback (TRANSPORT.md) |
+| 2, 3 vs 4, 5 | 2048x2048 (2048 tiles) vs 2160x2160 (2312 tiles) per eye | Both appear as examples; the Pico 4 panel is 2160, level limits in spec/08 |
+| 1.12 vs 4.2, 6.7 | Frame header replicated per tile row (34) vs per band (6) | Per band (ADR 0007) |
+| 4.1 | Listed datagram header fields total 178 bits against a stated 192 | 14 bits unassigned; TRANSPORT.md carries the final layout |
+| 1.7, 3.5 vs 2.9 vs 4.2 | Hybrid base decoder latency 8 to 12, 10 to 20, 8 to 15 ms | Unmeasured until Phase 0 K6; treat as 8 to 20 ms |
+| 1.10 vs 5.1.3 | Foveation level shares 20/30/50 vs 40/35/25 for the Pico 4 | 5.1.3's derivation; fov/ implements it |
+| 5.1.2 | Cites a foveation assumption in section 3's budget that does not exist | No such assumption; the 3.1 budget is unfoveated |
+| 1.2, 1.8, 2.3, 2.7 | WARP_SKIP / SKIP_WARP and STATIC_MV / SKIP_STATIC used interchangeably | WARP_SKIP, STATIC_MV (SYNTAX.md) |
