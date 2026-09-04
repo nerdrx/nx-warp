@@ -813,6 +813,10 @@ _TILE_RULES: Sequence[tuple[Callable[[Any, Any, Any], bool], str]] = (
         lambda t, h, s: t.chroma444 and not s.chroma444,
         "chroma444 tile in a 4:2:0 stream",
     ),
+    (
+        lambda t, h, s: t.alpha_mode != 0 and not s.alpha_present,
+        "alpha_mode != 0 in a stream with no alpha plane",
+    ),
 )
 
 
