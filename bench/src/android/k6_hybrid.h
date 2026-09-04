@@ -10,6 +10,7 @@
 #include <vector>
 
 struct AImageReader;
+struct AAssetManager;
 struct AMediaCodec;
 struct AMediaFormat;
 
@@ -19,7 +20,10 @@ class HybridBase
 {
 public:
     // width/height of the base layer, and the target frame rate.
-    bool start(VkCtx& ctx, int width, int height, int fps, const std::string& assetPath);
+    // Reads base.hevc from the APK assets when `mgr` is given, otherwise from
+    // `assetPath` on disk.
+    bool start(VkCtx& ctx, int width, int height, int fps,
+               AAssetManager* mgr, const std::string& assetPath);
     void stop();
 
     // Pumps the decoder. Returns true when a new frame has been imported and

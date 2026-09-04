@@ -307,7 +307,8 @@ void android_main(android_app* app)
     if (wantK6)
     {
         std::string assetPath = outDir + "/base.hevc";
-        if (hybrid.start(ctx, cfg.width, cfg.height, 90, assetPath) && hybrid.ready())
+        if (hybrid.start(ctx, cfg.width, cfg.height, 90,
+                         app->activity->assetManager, assetPath) && hybrid.ready())
         {
             bench.setHybridBase(hybrid.view(), hybrid.sampler());
             NXB_LOG("K6: hybrid base ready (%s)", hybrid.status().c_str());

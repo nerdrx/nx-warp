@@ -56,6 +56,12 @@ if [ ! -f local.properties ]; then
   echo "sdk.dir=$ANDROID_HOME" > local.properties
 fi
 
+# K6 needs an HEVC base layer in the APK assets. The binary is not in git.
+if [ ! -s assets/base.hevc ]; then
+  echo "==> generating the K6 base layer asset"
+  ./gen-asset.sh || echo "    (continuing without it: K6 Pass C uses a synthetic base)"
+fi
+
 if [ "$SKIP_BUILD" != "1" ]; then
   echo "==> building APK"
   "${NICE[@]}" ./gradlew --no-daemon assembleDebug

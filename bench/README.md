@@ -236,7 +236,7 @@ residual is), gathers the warped previous residual bit-exactly, adds the decoded
 delta, and writes both the output and the new residual image. It is timed
 against the 2.0 ms threshold like any other kernel.
 
-**Real but unverified on hardware**: the `AHardwareBuffer` to Vulkan import in
+**Present but unverified on hardware**: the `AHardwareBuffer` to Vulkan import in
 `src/android/k6_hybrid.cpp` — `vkGetAndroidHardwareBufferPropertiesANDROID`, an
 image on `VkExternalFormatANDROID`, dedicated import allocation, a
 `VkSamplerYcbcrConversion` on the external format, and an immutable sampler in
@@ -246,10 +246,11 @@ so, and Pass C still times correctly.
 
 **Not done** (marked TODO in the source):
 
-- The HEVC asset is not generated or shipped. `start()` looks for `base.hevc` in
-  the app's files directory and reports "no HEVC asset" if it is absent, which
-  is the current state on any device. Generating it with x265 and packaging it
-  as an asset is the next step.
+- The decode-latency number has never run on hardware. `gen-asset.sh` builds
+  the HEVC elementary stream with x265 at the real 2048x4096 geometry and
+  `run.sh` calls it automatically, so the APK ships `assets/base.hevc`
+  (about 4 MB for one second at 90 fps) and `HybridBase` loads it through the
+  asset manager. What has not happened is a device actually decoding it.
 - The Qualcomm vendor key `vendor.qti-ext-dec-low-latency.enable` is set but not
   verified as taken. PAPER 3.4 says K6 failing on latency means exactly this
   needs checking, so the check has to exist before the number means anything.

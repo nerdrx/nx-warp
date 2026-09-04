@@ -18,6 +18,7 @@
 //     re-imports whenever the buffer pointer changes.
 #include "k6_hybrid.h"
 
+#include <android/asset_manager.h>
 #include <android/hardware_buffer.h>
 #include <android/imagedecoder.h>
 #include <media/NdkImage.h>
@@ -40,28 +41,41 @@ double nowMs()
 } // namespace
 
 bool HybridBase::start(VkCtx& ctx, int width, int height, int fps,
-                       const std::string& assetPath)
+                       AAssetManager* mgr, const std::string& assetPath)
 {
     ctx_ = &ctx;
     w_ = width; h_ = height; fps_ = fps;
 
-    FILE* f = fopen(assetPath.c_str(), "rb");
-    if (!f)
+    // The elementary stream ships inside the APK; the on-disk path is a
+    // fallback so a stream can be pushed to the device without rebuilding.
+    bool loaded = false;
+    if (mgr)
     {
-        status_ = "no HEVC asset at " + assetPath;
-        return false;
+        if (AAsset* a = AAssetManager_open(mgr, "base.hevc", AASSET_MODE_BUFFER))
+        {
+            off_t n = AAsset_getLength(a);
+            bitstream_.resize(size_t(n));
+            loaded = (AAsset_read(a, bitstream_.data(), size_t(n)) == int(n));
+            AAsset_close(a);
+        }
     }
-    fseek(f, 0, SEEK_END);
-    long n = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    bitstream_.resize(size_t(n));
-    if (fread(bitstream_.data(), 1, size_t(n), f) != size_t(n))
+    if (!loaded)
     {
+        FILE* f = fopen(assetPath.c_str(), "rb");
+        if (!f)
+        {
+            status_ = "no base.hevc in the APK assets and none at " + assetPath;
+            return false;
+        }
+        fseek(f, 0, SEEK_END);
+        long n = ftell(f);
+        fseek(f, 0, SEEK_SET);
+        bitstream_.resize(size_t(n));
+        loaded = (fread(bitstream_.data(), 1, size_t(n), f) == size_t(n));
         fclose(f);
-        status_ = "short read on HEVC asset";
-        return false;
+        if (!loaded) { status_ = "short read on the HEVC asset"; return false; }
     }
-    fclose(f);
+    NXB_LOG("K6: HEVC elementary stream, %zu bytes", bitstream_.size());
 
     media_status_t ms = AImageReader_newWithUsage(
         width, height, AIMAGE_FORMAT_PRIVATE,
