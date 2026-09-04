@@ -23,7 +23,16 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   endif()
 endif()
 
-if(WIN32)
+# win/ is the Vulkan <-> D3D11 external-memory interop probe: it needs the
+# Vulkan headers and a shader compiler, and it has nothing to say when the
+# Vulkan path is switched off. NXWARP_BUILD_VK=OFF is exactly the mingw-w64
+# preset's configuration, where WIN32 is true (it cross-compiles for Windows)
+# but no Vulkan SDK is on the machine, so building win/ there was a guaranteed
+# configure failure rather than a portability check.
+if(WIN32 AND DEFINED NXWARP_BUILD_VK AND NOT NXWARP_BUILD_VK)
+  message(STATUS "nx-warp/platform: NXWARP_BUILD_VK=OFF, skipping win/ "
+                 "(it is a Vulkan/D3D11 interop probe)")
+elseif(WIN32)
   add_subdirectory(win)
 else()
   message(STATUS "nx-warp/platform: target system is ${CMAKE_SYSTEM_NAME}, "
