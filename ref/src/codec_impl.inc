@@ -542,11 +542,13 @@ static void reconstruct_skip(TileCoder &tc, const DcCorrection *dc = nullptr) {
                 s.samples[i] = clamp_i32(s.wpred[i], 0, s.maxval);
             continue;
         }
+        const int shift = dc_corr_shift(s.size);
         for (int y = 0; y < s.size; ++y)
             for (int x = 0; x < s.size; ++x) {
                 const size_t i = (size_t)y * s.size + x;
-                s.samples[i] = clamp_i32(
-                    s.wpred[i] + dc_corr_at(*dc, p, s.size, x, y), 0, s.maxval);
+                s.samples[i] =
+                    clamp_i32(s.wpred[i] + dc_corr_at(*dc, p, s.size, shift, x, y),
+                              0, s.maxval);
             }
     }
 }
@@ -696,12 +698,13 @@ static double sse_near_skip(const TileCoder &tc, const DcCorrection &dc) {
     double sse = 0;
     for (int p = 0; p < tc.nplanes; ++p) {
         const PlaneState &s = tc.pl[p];
+        const int shift = dc_corr_shift(s.size);
         for (int y = 0; y < s.size; ++y)
             for (int x = 0; x < s.size; ++x) {
                 const size_t i = (size_t)y * s.size + x;
                 const i32 rec = clamp_i32(
                     s.wpred[i] + (p < kWarpDcPlanes
-                                      ? dc_corr_at(dc, p, s.size, x, y)
+                                      ? dc_corr_at(dc, p, s.size, shift, x, y)
                                       : 0),
                     0, s.maxval);
                 const double d = (double)s.samples[i] - (double)rec;

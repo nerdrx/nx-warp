@@ -169,19 +169,21 @@ struct DcCorrection {
     i8 gy[4] = {0, 0, 0, 0};
 };
 
-// log2(2 * extent) for the extents version 1 can produce (8..64).
+// log2(2 * extent), for the extents version 1 can produce (8..64).  It is a
+// property of the plane, so callers hoist it out of the sample loop and pass
+// it in; a decoder evaluating it per sample would be computing a constant
+// 4096 times per tile.
 inline int dc_corr_shift(int extent) {
     int s = 1;
     while ((1 << s) < 2 * extent) ++s;
     return s;
 }
 
-inline i32 dc_corr_at(const DcCorrection &c, int plane, int extent, int x,
-                      int y) {
-    const int s = dc_corr_shift(extent);
+inline i32 dc_corr_at(const DcCorrection &c, int plane, int extent, int shift,
+                      int x, int y) {
     const i32 ramp = (i32)c.gx[plane] * (2 * x + 1 - extent) +
                      (i32)c.gy[plane] * (2 * y + 1 - extent) + extent;
-    return (i32)c.dc[plane] + (ramp >> s);
+    return (i32)c.dc[plane] + (ramp >> shift);
 }
 
 }  // namespace nxvc
