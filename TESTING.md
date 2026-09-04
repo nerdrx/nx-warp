@@ -489,9 +489,17 @@ chrt -i 0 taskset -c <cpus> nice -n 19 <cmd>
 
 `tools/quality/nxq/cpu.py` applies it automatically (override the slice with
 `NXQ_CPUS`, ffmpeg's thread count with `NXQ_THREADS`, disable it entirely with
-`NXQ_NO_CPU_LIMIT=1` for CI containers that lack `chrt`/`taskset`).
-`corpus/fetch.py` reuses that same helper. Apply it by hand to builds and to
-long ctest runs.
+`NXQ_NO_CPU_LIMIT=1`). `corpus/fetch.py` reuses that same helper. Apply it by
+hand to builds and to long ctest runs.
+
+The slice is a request, not a demand. Every implementation of the prefix --
+`nxq/cpu.py`, `hybrid/sim/nxvchybrid/cpu.py`, and `scripts/cpu-discipline.sh`
+for the shell scripts -- narrows it to CPUs that actually exist before using
+it, and drops `taskset` when none of them do, keeping `chrt` and `nice`. This
+is why a default of `28-31` is right on a 32-core host and harmless on a
+two-core CI runner, where an unchecked `taskset` exits with "Invalid argument"
+and takes the test with it. `chrt`, `taskset` and `nice` are probed
+separately, so a machine with some of them gets what it has.
 
 ---
 
