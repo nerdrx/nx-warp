@@ -1,0 +1,172 @@
+/* NX Warp documentation theme.
+ *
+ * Dark first, NX violet accent (#7700FF). The palette in mkdocs.yml selects
+ * Material's "slate" scheme and a black primary; everything below replaces
+ * Material's accent and surface colours with the NX ones and tightens the
+ * typography for long technical documents with wide tables.
+ */
+
+:root {
+  --nx-violet: #7700ff;
+  --nx-violet-bright: #9a4dff;
+  --nx-violet-dim: #5a00c2;
+  --nx-violet-wash: rgba(119, 0, 255, 0.12);
+}
+
+/* ---------- Dark scheme (default) ---------- */
+
+[data-md-color-scheme="slate"] {
+  --md-hue: 262;
+
+  --md-primary-fg-color: #0c0c12;
+  --md-primary-fg-color--light: #17161f;
+  --md-primary-fg-color--dark: #07070b;
+  --md-primary-bg-color: #f2f0f7;
+
+  --md-accent-fg-color: var(--nx-violet-bright);
+  --md-accent-fg-color--transparent: var(--nx-violet-wash);
+  --md-accent-bg-color: #ffffff;
+
+  --md-default-bg-color: #0a0a10;
+  --md-default-fg-color: #e6e3ee;
+  --md-default-fg-color--light: #b9b4c7;
+  --md-default-fg-color--lighter: #6f6a80;
+  --md-default-fg-color--lightest: #2a2735;
+
+  --md-typeset-color: #ddd9e8;
+  --md-typeset-a-color: var(--nx-violet-bright);
+
+  --md-code-bg-color: #131320;
+  --md-code-fg-color: #e2dff0;
+  --md-code-hl-keyword-color: var(--nx-violet-bright);
+  --md-code-hl-string-color: #7fd6a2;
+  --md-code-hl-number-color: #e0a3ff;
+  --md-code-hl-comment-color: #6f6a80;
+
+  --md-typeset-table-color: rgba(160, 150, 190, 0.28);
+  --md-footer-bg-color: #07070b;
+  --md-footer-bg-color--dark: #050508;
+}
+
+/* ---------- Light scheme ---------- */
+
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: #14121c;
+  --md-primary-bg-color: #ffffff;
+  --md-accent-fg-color: var(--nx-violet);
+  --md-accent-fg-color--transparent: var(--nx-violet-wash);
+  --md-typeset-a-color: var(--nx-violet-dim);
+}
+
+/* ---------- Typography ---------- */
+
+.md-typeset h1,
+.md-typeset h2 {
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+
+.md-typeset h1 {
+  color: var(--md-default-fg-color);
+}
+
+.md-typeset h2 {
+  margin-top: 2.2em;
+  padding-bottom: 0.25em;
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
+}
+
+.md-typeset h3 {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* Long technical prose reads better slightly wider than Material's default. */
+.md-grid {
+  max-width: 68rem;
+}
+
+/* ---------- Tables ---------- */
+
+/* Budget and capability tables are wide and must scroll inside themselves
+ * rather than pushing the page sideways. */
+.md-typeset__table {
+  display: block;
+  overflow-x: auto;
+}
+
+.md-typeset table:not([class]) {
+  font-size: 0.74rem;
+  line-height: 1.45;
+}
+
+.md-typeset table:not([class]) th {
+  background-color: var(--md-code-bg-color);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.md-typeset table:not([class]) tr:hover {
+  background-color: var(--nx-violet-wash);
+}
+
+/* An empty cell in a "measured" column is a deliberate statement: nothing has
+ * been measured yet. Give it a visible placeholder rather than blank space. */
+.md-typeset table:not([class]) td:empty::after {
+  content: "not measured";
+  color: var(--md-default-fg-color--lighter);
+  font-style: italic;
+}
+
+/* ---------- Links, code, quotes ---------- */
+
+.md-typeset a:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.md-typeset code {
+  border-radius: 3px;
+  padding: 0.08em 0.34em;
+}
+
+.md-typeset blockquote {
+  border-left: 3px solid var(--nx-violet);
+  color: var(--md-default-fg-color--light);
+}
+
+/* ---------- Mermaid ---------- */
+
+/* Material renders mermaid inline; centre it and let wide diagrams scroll
+ * inside their own container instead of overflowing the page. */
+.md-typeset .mermaid {
+  margin: 1.4em auto;
+  overflow-x: auto;
+  text-align: center;
+}
+
+/* ---------- Navigation and header ---------- */
+
+.md-header {
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
+}
+
+.md-tabs {
+  background-color: var(--md-primary-fg-color--dark);
+}
+
+.md-nav__link--active,
+.md-nav__link:focus,
+.md-nav__link:hover {
+  color: var(--nx-violet-bright);
+}
+
+.md-nav__item .md-nav__link--active {
+  font-weight: 600;
+}
+
+/* ---------- Footer ---------- */
+
+.md-footer-meta {
+  font-size: 0.68rem;
+}

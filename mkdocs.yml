@@ -1,0 +1,152 @@
+# Material for MkDocs configuration for the NX Warp documentation site.
+#
+# Build:   pip install mkdocs-material && mkdocs build
+# Serve:   mkdocs serve
+# Deploy:  handled by .github/workflows/docs.yml on push to main.
+#
+# Mermaid diagrams use Material's native support (pymdownx.superfences custom
+# fence below); no mermaid2 plugin and no CDN script tag is needed.
+
+site_name: NX Warp
+site_description: A Vulkan compute video codec built only for low-latency VR streaming.
+site_url: https://nerdrx.github.io/nx-warp/
+repo_url: https://github.com/nerdrx/nx-warp
+repo_name: nerdrx/nx-warp
+edit_uri: edit/main/docs/
+copyright: Apache-2.0. Every performance number on this site is a design estimate, not a measurement.
+
+docs_dir: docs
+site_dir: site
+use_directory_urls: true
+
+# Warn rather than fail on links to component documents that are still in
+# progress. Turn this on once every normative document has landed.
+strict: false
+
+theme:
+  name: material
+  language: en
+  custom_dir: null
+  favicon: null
+  logo: null
+  palette:
+    # NX Warp is dark by default. The light scheme exists so that the toggle
+    # is not a lie; the accent is the same violet in both.
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: deep purple
+      toggle:
+        icon: material/weather-night
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: black
+      accent: deep purple
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
+  font:
+    text: Inter
+    code: JetBrains Mono
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - toc.follow
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+    - content.action.edit
+
+extra_css:
+  - stylesheets/nx.css
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 3
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.snippets
+  - pymdownx.smartsymbols
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+plugins:
+  - search
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/nerdrx/nx-warp
+      name: nx-warp on GitHub
+  generator: false
+
+# Root-level documents (ROADMAP, CHANGELOG, SECURITY, GOVERNANCE,
+# CODE_OF_CONDUCT, CONTRIBUTING) live outside docs_dir and are linked to GitHub
+# from the index page rather than copied, so there is exactly one copy of each.
+nav:
+  - Home: README.md
+  - Architecture:
+      - Overview: ARCHITECTURE.md
+      - Glossary: GLOSSARY.md
+      - FAQ: FAQ.md
+  - Design paper:
+      - The paper: PAPER.md
+  - Specifications:
+      - Bitstream syntax: SYNTAX.md
+      - Transport: TRANSPORT.md
+      - Integration: INTEGRATION.md
+  - Decisions:
+      - Index: adr/README.md
+      - Template: adr/template.md
+      - 0001 Tile runs: adr/0001-datagram-is-a-tile-run.md
+      - 0002 64x64 tiles: adr/0002-64x64-tiles.md
+      - 0003 rANS, eight lanes: adr/0003-rans-eight-lanes.md
+      - 0004 DC-plane intra: adr/0004-dc-plane-intra-no-directional-modes.md
+      - 0005 One MV, five modes: adr/0005-one-mv-per-tile-five-modes.md
+      - 0006 References, no IDR: adr/0006-acknowledged-neighbourhood-references-no-idr.md
+      - 0007 Pose travels twice: adr/0007-pose-travels-twice.md
+      - 0008 Foveation and the warp: adr/0008-foveation-per-tile-not-in-the-warp.md
+      - 0009 No multicast: adr/0009-no-multicast.md
+      - 0010 Integer-only path: adr/0010-integer-only-normative-path-cpu-reference-is-the-spec.md
+      - 0011 Compute over fixed function: adr/0011-vulkan-compute-over-fixed-function.md
+      - 0012 YCoCg-R: adr/0012-ycocg-r-display-format-references.md
+      - 0013 Degradation ladder: adr/0013-degradation-ladder-blur-never-block.md
+      - 0014 Layered bitstream: adr/0014-layered-bitstream-hybrid-mode.md
+      - 0015 Compute budget verdict: adr/0015-compute-budget-verdict-pending-phase-0.md
+      - 0016 Motion smoothing: adr/0016-motion-smoothing-handover.md
+      - 0017 FTO scope: adr/0017-fto-review-scope.md
+      - 0018 GLSL via glslang: adr/0018-glsl-via-glslang.md
+      - 0019 C++20 with a C ABI: adr/0019-cpp20-with-a-c-abi.md
+      - 0020 Apache-2.0 and tools: adr/0020-apache-2-0-and-patent-hygiene.md
+      - 0021 Colour space: adr/0021-stream-level-color-space-ycbcr-passthrough.md
+  - Engineering:
+      - Performance targets: PERFORMANCE.md
+      - Compatibility: COMPATIBILITY.md
+      - Threat model: THREAT_MODEL.md
