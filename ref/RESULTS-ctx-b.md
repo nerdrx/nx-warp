@@ -218,8 +218,12 @@ Because the conditioning follows the lane schedule, the contexts depend on
 so nothing about tile independence changes — but the *encoder* had a latent
 bug that only a lane-dependent context model could expose: it chose the lane
 count in the emitting pass only, so the frame's tables were trained on 8-lane
-statistics and then used to code tiles with 1, 2 or 4 lanes. Choosing it in
-both passes is worth **0.6 % to 1.0 %** on its own and is now unconditional.
+statistics and then used to code tiles with 1, 2 or 4 lanes. Under v1 and v2
+that only made the *table-set choice* slightly stale; under v3 it trains the
+wrong contexts. Choosing it in both passes is now unconditional. It was worth
+about half a percent to a percent when it landed, but it was not isolated
+behind a switch and is not separately re-measurable — it is a correctness fix
+for the encoder's two passes agreeing, not a tool.
 
 ---
 

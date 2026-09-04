@@ -402,6 +402,20 @@ class StreamHeader(_TableStruct):
             raise BitstreamError(
                 "tool bits LOSSLESS and SIGN_HIDE are mutually exclusive", offset + 32
             )
+        # SYNTAX.md 2.3: the row-skip flag only exists inside a transmitted
+        # table set, and v3 only says how the v2 model is conditioned
+        # (rejection vectors r30 and r31).
+        if (self.tools & Tool.TAB_V2) and not (self.tools & Tool.CUSTOM_TABLES):
+            raise BitstreamError(
+                "tool bit TAB_V2 without CUSTOM_TABLES: there is no table to "
+                "compact",
+                offset + 32,
+            )
+        if (self.tools & Tool.CTX_V3) and not (self.tools & Tool.CTX_V2):
+            raise BitstreamError(
+                "tool bit CTX_V3 without CTX_V2: it names no context model",
+                offset + 32,
+            )
         # SYNTAX.md 14: WARP describes how the inter modes predict, so it says
         # nothing on its own (rejection vector r27).
         if (self.tools & Tool.WARP) and not (self.tools & Tool.INTER):
@@ -829,6 +843,8 @@ CUSTOM_MATRIX_BYTES = 128
 TABLE_SET_BYTES = 120
 #: ... and under ``CTX_V2`` (16 x 16 x 5).  SYNTAX.md 3.1 and 9.4.
 TABLE_SET_BYTES_V2 = 160
+#: ... and under ``CTX_V3`` (22 x 16 x 5).
+TABLE_SET_BYTES_V3 = 220
 
 
 def table_set_bytes(tools: int) -> int:
@@ -837,8 +853,49 @@ def table_set_bytes(tools: int) -> int:
     The stream header's tool mask is what selects it, so a frame cannot be
     parsed without it -- this is why :func:`parse_frame` takes the stream
     header rather than only the frame's own bytes.
+
+    Under ``TAB_V2`` (tool bit 24) a set is variable length -- a `row_coded`
+    flag per context, and the whole table area padded to a byte boundary once
+    (SYNTAX.md 9.4.1) -- so there is no per-set size to return and this is the
+    upper bound rather than the answer.  :func:`table_area_bytes` is what the
+    section walker uses.
     """
+    if tools & Tool.CTX_V3:
+        return TABLE_SET_BYTES_V3
     return TABLE_SET_BYTES_V2 if (tools & Tool.CTX_V2) else TABLE_SET_BYTES
+
+
+def _ctx_count(tools: int) -> int:
+    """Coded contexts of the stream's entropy model (SYNTAX.md 9.3, 9.8)."""
+    if tools & Tool.CTX_V3:
+        return 22
+    return 16 if (tools & Tool.CTX_V2) else 12
+
+
+def table_area_bytes(
+    header: "FrameHeader", stream: "StreamHeader", buf: bytes, offset: int
+) -> int:
+    """Bytes of transmitted probability tables in one frame.
+
+    Without ``TAB_V2`` every set is ``table_set_bytes()`` and this is just the
+    product.  With it a set is a `row_coded` flag per context plus 80 bits per
+    coded row, the sets are one contiguous bit sequence, and the whole area is
+    padded to a byte boundary **once**, after the last set (SYNTAX.md 9.4.1) --
+    so the length can only be had by reading the flags.
+    """
+    nsets = len(header.table_sets)
+    if not (stream.tools & Tool.TAB_V2):
+        return nsets * table_set_bytes(stream.tools)
+    nctx = _ctx_count(stream.tools)
+    bit = 0
+    for _ in range(nsets):
+        for _ in range(nctx):
+            byte = offset + (bit >> 3)
+            if byte >= len(buf):
+                raise BitstreamError("the probability table area is truncated", offset)
+            coded = (buf[byte] >> (7 - (bit & 7))) & 1
+            bit += 1 + (80 if coded else 0)
+    return (bit + 7) // 8
 
 
 @dataclass(frozen=True)
@@ -854,7 +911,10 @@ class FrameSection:
 
     name: str
     keys: Callable[["FrameHeader", "StreamHeader"], Sequence[Any]]
-    size: Callable[["FrameHeader", "StreamHeader", Any], int]
+    #: Byte length of one instance.  It is given the frame bytes and the offset
+    #: the instance starts at, because ``TAB_V2`` makes the table area variable
+    #: length: its size is a function of the row flags inside it.
+    size: Callable[["FrameHeader", "StreamHeader", Any, bytes, int], int]
     what: Callable[[Any], str]
     #: True when the section holds at most one instance, keyed ``None``.
     singleton: bool = True
@@ -933,21 +993,31 @@ FRAME_SECTIONS: Sequence[FrameSection] = (
     FrameSection(
         name="warp_ext",
         keys=lambda h, s: [None] if h.warp_present else [],
-        size=lambda h, s, k: WARP_EXT_BYTES * s.eyes,
+        size=lambda h, s, k, b, p: WARP_EXT_BYTES * s.eyes,
         what=lambda k: "warp_ext()",
         check=_check_warp_ext,
     ),
     FrameSection(
         name="custom_matrix",
         keys=lambda h, s: [None] if h.custom_matrix else [],
-        size=lambda h, s, k: CUSTOM_MATRIX_BYTES,
+        size=lambda h, s, k, b, p: CUSTOM_MATRIX_BYTES,
         what=lambda k: "custom quantization matrices",
     ),
     FrameSection(
         name="table_deltas",
-        keys=lambda h, s: h.table_sets,
-        size=lambda h, s, k: table_set_bytes(s.tools),
-        what=lambda k: f"probability table set {k}",
+        # With TAB_V2 the transmitted sets are one bit sequence padded to a
+        # byte boundary once, at the end, so they are one section rather than
+        # one per set (SYNTAX.md 9.4.1); without it every set is the same whole
+        # number of bytes and the two views agree.
+        keys=lambda h, s: ([None] if h.table_sets else [])
+        if (s.tools & Tool.TAB_V2)
+        else h.table_sets,
+        size=lambda h, s, k, b, p: table_area_bytes(h, s, b, p)
+        if k is None
+        else table_set_bytes(s.tools),
+        what=lambda k: "the probability table area"
+        if k is None
+        else f"probability table set {k}",
         singleton=False,
     ),
 )
@@ -1062,7 +1132,7 @@ def parse_frame(
     sections: dict[str, dict[Any, bytes]] = {}
     for section in FRAME_SECTIONS:
         for key in section.keys(hdr, stream):
-            n = section.size(hdr, stream, key)
+            n = section.size(hdr, stream, key, buf, pos)
             what = section.what(key)
             _need(buf, pos, n, what)
             if pos + n > end:
