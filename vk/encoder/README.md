@@ -239,11 +239,31 @@ Directional intra costs E3 8.2 ms at QP 24: the reference derivation of
 SYNTAX.md 7.4 has the full 8×8 raster dependency, so the 96 blocks of a tile
 are strictly serial and only the 64 lanes inside one block go wide.
 
+### The RX 580 extrapolation
+
+The RX 580 is the platform §3.6 budgets and it is not this box, so the number
+has to be derived. Two independent ways of deriving it agree, which is the only
+reason it is quoted at all.
+
+The second RADV device here is the 9950X3D's integrated Raphael, two RDNA2 CUs
+against the 7900 XTX's ninety-six. At 1024² (256 tiles, QP 24) it takes 15.8 ms
+against the 7900 XTX's 1.59 ms — **ten times slower on forty-eight times fewer
+CUs**, which is the measurement that says E4 is latency-bound rather than
+throughput-bound, because a throughput-bound kernel would have been forty-eight
+times slower. Scaled to 2048 tiles that is about 126 ms; an RX 580 has eighteen
+times Raphael's CUs and a slightly lower clock, giving **11–12 ms**.
+
+From the other direction: all 512 waves are resident on an RX 580 (GCN4 holds
+forty wave64 per CU, so thirty-six CUs hold 1440), so what is left is clock —
+1.34 against 2.4 GHz — and issue rate, wave64 on GCN4's SIMD16 taking four
+cycles where RDNA3's SIMD32 takes two. That is 3.6× on E4, and E3 scales closer
+to its 10× ALU ratio but is not saturating either. **10–17 ms** for the three
+passes together.
+
 §3.6 budgets the whole encoder at 2.5–4 ms on an RX 580 and under 1 ms on a
-7900 XTX. The coding passes are over that: at the 1.1 bpp operating point they
-are 3.2 ms on a 7900 XTX, three times the budget for this part, and an RX 580
-is several times slower again. The reason is structural rather than a missing
-optimisation, and it is worth stating plainly.
+7900 XTX. So the coding passes are three times over on the 7900 XTX and three
+to five times over on the platform that decides. The reason is structural
+rather than a missing optimisation, and it is worth stating plainly.
 
 E4 has exactly `tiles × 8` lanes of parallelism — 16384 for this frame, 512
 waves, under three per SIMD on a 96-CU part — because eight rANS lanes per tile
