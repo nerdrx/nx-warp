@@ -286,3 +286,202 @@ Three readings, and the third is the uncomfortable one.
   is left on because the intra path is the one the Phase 1 gate is stated on
   and because the two effects are the same size; a future revision that gates
   it on tile mode has a measurement to beat.
+
+---
+
+## 8. The Phase 1 gate
+
+`vr-mixed-1024-v2`, 6 frames, against `x264 --keyint 1 --tune zerolatency` over
+the 100-400 Mbit band. "before" is the shipped encoder built from
+`e4e85af`; "after" is this branch at its default (`--preset medium`). Both
+columns are the same harness, the same sequence and the same anchor run.
+
+| | 4:4:4 before | 4:4:4 after | 4:2:0 before | 4:2:0 after |
+|---|---|---|---|---|
+| BD-rate vs x264-intra, PSNR-Y | +63.94 % | **+42.39 %** | +40.03 % | **+38.92 %** |
+| BD-rate vs x264-intra, SSIM-Y | +105.17 % | **+71.22 %** | +72.96 % | **+65.41 %** |
+| worst delta in band | -6.545 dB | **-5.994 dB** | -6.133 dB | -6.233 dB |
+| mean delta in band | -5.552 dB | **-4.564 dB** | -4.981 dB | **-4.881 dB** |
+| gate | FAIL | FAIL | FAIL | FAIL |
+
+**BD-rate of this branch against the shipped encoder**, same material, same
+rate axis:
+
+| | PSNR-Y | PSNR-YCbCr (6:1:1) | SSIM-Y |
+|---|---|---|---|
+| `vr-mixed-1024-v2` 4:4:4 | **-12.89 %** | **-5.27 %** | **-12.51 %** |
+| `vr-mixed-1024-v2` 4:2:0 | **-0.96 %** | **-0.83 %** | **-1.50 %** |
+
+The verdict lines, verbatim:
+
+```
+  Phase 1 gate (PAPER.md 3.11: within 1.0 dB of x264 intra, 100-400 Mbit):
+    FAIL: worst -6.545 dB at 266.4 Mbit/s, mean -5.552 dB over 266.4-400.0 Mbit/s   (4:4:4, before)
+    FAIL: worst -5.994 dB at 233.8 Mbit/s, mean -4.564 dB over 233.8-400.0 Mbit/s   (4:4:4, after)
+    FAIL: worst -6.133 dB at 257.5 Mbit/s, mean -4.981 dB over 257.5-400.0 Mbit/s   (4:2:0, before)
+    FAIL: worst -6.233 dB at 254.9 Mbit/s, mean -4.881 dB over 254.9-400.0 Mbit/s   (4:2:0, after)
+```
+
+**The gate is still not met, and this package does not come close to meeting
+it.** It takes 21.5 BD-rate points off a 64-point deficit at 4:4:4 and one
+point off a 40-point deficit at 4:2:0. `RESULTS-intra.md`'s conclusion stands
+unchanged: the remaining gap has no single dominant term and no encoder-side
+tool closes it.
+
+**The -10 % target is met at 4:4:4 and missed at 4:2:0.** The 4:2:0 number is
+small for a reason that is now understood rather than mysterious: the largest
+item in the package is the chroma distortion weight, and at 4:2:0 the fitted
+weight is 1.0 — which is what the encoder was already doing (section 3.1). At
+4:2:0 this package is the *other* six items, and they are worth about a point.
+
+---
+
+## 9. The Phase 2 kill test
+
+`vr-mixed-1024-v2`, 12 frames, `--eyes 2 --inter on --poses ...`, against
+`x265-p` (zerolatency, P-only, one reference, one IDR). Band A is the literal
+100-300 Mbit band; band B is the paper's own bits per pixel
+(`RESULTS-inter.md` section 1).
+
+| | before | after |
+|---|---|---|
+| band A, 4:4:4, BD-rate vs x265-p | +383.41 % | **+311.60 %** |
+| band A, 4:2:0, BD-rate vs x265-p | +306.78 % | **+295.42 %** |
+| band B, 4:2:0, BD-rate vs x265-p | +518.73 % | **+417.27 %** |
+
+**BD-rate of this branch against the shipped encoder**, same material:
+
+| | PSNR-Y | PSNR-YCbCr | SSIM-Y |
+|---|---|---|---|
+| band A, 4:4:4 | **-15.67 %** | **-10.32 %** | **-28.61 %** |
+| band A, 4:2:0 | **-4.32 %** | **-6.84 %** | **-18.74 %** |
+| band B, 4:2:0 | **-15.92 %** | **-16.38 %** | **-16.57 %** |
+
+The verdict, verbatim, band A 4:4:4 before and after:
+
+```
+  Phase 2 kill test (PAPER.md 2.11 item 1):
+    "within 10 percent at rest and at least 30 percent better on the motion frames"
+    at rest   : BD-rate +393.35 % (allowed up to +10 %)  FAIL     <- before
+    on motion : BD-rate +354.41 % (needs -30 % or better)  FAIL
+    VERDICT   : FAIL
+
+    at rest   : BD-rate +314.14 % (allowed up to +10 %)  FAIL     <- after
+    on motion : BD-rate +303.89 % (needs -30 % or better)  FAIL
+    VERDICT   : FAIL
+```
+
+and band B 4:2:0:
+
+```
+    at rest   : BD-rate +528.66 % (allowed up to +10 %)  FAIL     <- before
+    on motion : BD-rate +488.96 % (needs -30 % or better)  FAIL
+    VERDICT   : FAIL
+
+    at rest   : BD-rate +423.03 % (allowed up to +10 %)  FAIL     <- after
+    on motion : BD-rate +399.58 % (needs -30 % or better)  FAIL
+    VERDICT   : FAIL
+```
+
+**FAIL before and FAIL after, in every band and both formats.** The -10 %
+target is met on band A 4:4:4 and band B 4:2:0 and missed on band A 4:2:0,
+where the chroma weight has nothing to give and the frame is majority INTRA
+(`RESULTS-inter.md` section 4).
+
+One thing worth recording because it is larger than the headline: **SSIM-Y
+improves by 17 to 29 % of BD-rate on the inter path**, two to six times the
+PSNR-Y figure. The trellis and the mode decision are spending their bits on
+structure rather than on the last fraction of a decibel, which is what a
+Lagrangian on squared error is *not* supposed to reward. It is reported
+because it was measured, not because it was aimed at.
+
+---
+
+## 10. Encode and decode time
+
+**Every number in this document was produced on a machine running eight to
+twelve other encodes.** Rate and quality do not care; wall-clock time does, so
+the times below are stated as ratios measured back-to-back against the shipped
+encoder on the same loaded machine, and the absolute milliseconds are an upper
+bound rather than a measurement of this code.
+
+`vr-mixed-1024-v2` 4:4:4, 12 frames, `--eyes 2 --inter on`, one core:
+
+| QP | encode, before | encode, after | decode, before | decode, after |
+|---|---|---|---|---|
+| 0 | 2268 ms/frame | 2584 ms/frame | 78.8 ms/frame | 84.0 ms/frame |
+| 4 | 1978 ms/frame | 2158 ms/frame | 76.3 ms/frame | 87.1 ms/frame |
+| 8 | 1489 ms/frame | 1586 ms/frame | 74.1 ms/frame | 71.9 ms/frame |
+| 12 | 1214 ms/frame | 1388 ms/frame | 63.3 ms/frame | 72.2 ms/frame |
+
+**Encode is 1.11x at the default preset on the inter path and 0.88x on the
+intra path** — the intra path is *faster* than the encoder it replaces,
+because the trellis's exact scan truncation (section 4) and the INTRA
+early-out (`kIntraGate`) save more than the DC-plane trellis and the extra
+directional candidate cost. **Decode is unchanged**: nothing in this package
+is visible to the decoder, and the small movements above are the machine.
+
+The ladder, on `vr-turn-256-v2` 4:4:4 intra, BD-rate against the shipped
+encoder and encode time relative to it:
+
+| preset | BD-rate (PSNR-Y) | BD-rate (PSNR-YCbCr) | encode time |
+|---|---|---|---|
+| `fast` | -11.96 % | -1.42 % | 0.52x |
+| `medium` | -15.78 % | -4.98 % | 0.88x |
+| `slow` | -17.37 % | -6.71 % | 7.30x |
+
+Those three rows were measured before `kDcPropagation` was raised from 16 to
+32 (section 3.2), which costs the medium row 0.7 points; the ladder's shape
+and its times are unaffected. **The budget was "under 3x today's": `fast` and
+`medium` are under 1x. `slow` is 7.3x and is not offered as a default.**
+
+---
+
+## 11. What was NOT measured
+
+Stated because leaving it out would misrepresent the coverage:
+
+* `vr-turn-256-v2` and `vr-mixed-512-v2` were used for the fits in sections 2,
+  3, 5 and 6 but **not** run through `compare.py` against an anchor. The gate
+  and kill-test tables are `vr-mixed-1024-v2` only.
+* Band B at **4:4:4** was not run.
+* VMAF was disabled (`--no-vmaf`) on every run in sections 8 and 9.
+* The `--preset` ladder was measured on the intra path only; the inter path
+  has `medium` and its components (section 7) but not `fast` and `slow`.
+* No timing was taken on a quiet machine.
+
+---
+
+## 12. Reproducing this
+
+```sh
+export NXQ_SCRATCH=/run/media/nerdrx/Lex/claude/nx-scratch/nx-warp
+cmake -S . -B build-ref -G Ninja -DNXWARP_BUILD_VK=OFF -DNXWARP_BUILD_WARP=ON
+cmake --build build-ref -j4
+
+# the whole before/after set; TAG names the run, EXTRA is appended to nxv-enc
+NXQ_BIN=$PWD/build-base/bin ./tools/quality/tourney-rdo.sh base   # the shipped encoder
+./tools/quality/tourney-rdo.sh rdoa                               # this branch
+$NXQ_SCRATCH/venv/bin/python tools/quality/tourney-table.py
+
+# the tuning loop: one sequence, one QP ladder, BD-rate against a previous run
+$NXQ_SCRATCH/venv/bin/python tools/quality/rdsweep.py \
+    --seq $NXQ_SCRATCH/seq/vr-turn-256-v2.yuv444p.json --frames 6 --qp 0,8,16,24 \
+    --enc "build-ref/bin/nxv-enc --quiet" --dec "build-ref/bin/nxv-dec --quiet" \
+    --out $NXQ_SCRATCH/results/tourney/x.json \
+    --vs $NXQ_SCRATCH/results/tourney/sw-base-turn.json
+
+$NXQ_SCRATCH/venv/bin/python ref/phase2_verdict.py \
+    --results $NXQ_SCRATCH/results/tourney/kA-*.json
+```
+
+Everything under `chrt -i 0 taskset -c 8-11 nice -n 19`. Result files are in
+`$NXQ_SCRATCH/results/tourney/`. **Build the encoder once and freeze it before
+measuring**: an encoder rebuilt while `compare.py` is running produces a curve
+whose points came from two different binaries, which is how the first pass of
+section 9 produced a 24-point regression that did not exist.
+
+Conformance: `ctest --test-dir build-ref -R 'ref\.'`, and the same suite under
+`--preset asan-ubsan`, both green; `ctest -R 'fuzz\.'` green;
+`tests/vectors/vectors.md5` and `rejects.md5` regenerated, because an
+encoder-side change moves every vector's bitstream while changing no syntax.

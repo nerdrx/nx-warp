@@ -2,23 +2,23 @@
 # Each stream MUST be refused with exactly the named status, with no
 # decoded output.  See docs/SYNTAX.md 12 and Appendix A item 30.
 # name  md5  expected_status  why
-r01_bad_magic 2b0761ec85434c7f066ce3610f58e75f VERSION magic is not 'NXV1'
-r02_unknown_tool 47c0586bc579df0282cc3c14161d9fc7 VERSION a mandatory tool bit the decoder lacks
-r03_bit_depth_10 ea5a46e2d190c2921ec076d32a83bdfc UNSUPPORTED bit_depth 10 is reserved in v1
-r04_tile_size_32 2891c9ffa4d64aeaa3aed7006de734ad UNSUPPORTED 32x32 tiles are a reserved profile
-r05_payload_past_row c13eacbaefbc1a05e7ea9123a9feecca TRUNCATED payload_len runs past the frame
-r06_res_level3 de95fa77303049bc0d3e59d12b0b56ec BITSTREAM res_level 3 is reserved
-r07_truncated_rans da6227d1c55a47827d876ebb596e6d00 TRUNCATED the tile payload is cut short
-r08_skip_bitmap aad16b1a29f75d62cadf324923a2f4d7 BITSTREAM a skip bit for a column past the picture
-r09_reserved_tile_bit 65af412f7f4a176b8d597439c425b93b BITSTREAM tile word1 bit 28 is reserved
-r10_mode_inter e0094757eabb8b30af39e649cd3da4e4 UNSUPPORTED an INTER tile in a Phase 1 stream
-r11_wm_id_no_tool 9c7b00e50d3582d383cfe649ce126d9f BITSTREAM wm_id != 0 without the WM_ID tool bit
-r12_row_index_wrong b5853d01562f36d902c8164673a34194 BITSTREAM row_index does not match its position
-r13_frame_bytes_short a55f4d7fd29befcfc33d415cbaa11c5c TRUNCATED frame_bytes below the header size
-r14_dir_layer_no_tool 6ef4dea53ae8c40d2b8999c5f86d50a9 BITSTREAM frame flags bit 2 without INTRA_DIR
-r15_ycocgr_420 f230e23d61601b0265d8fb902af667eb BITSTREAM YCoCg-R declared with 4:2:0 chroma
-r16_ctx_v2_short_table 37d3b5732145071db61c6b3ed7eca444 BITSTREAM CTX_V2 table set overruns the tile rows
-r17_lossless_sign_hide 3db1a2700262fafdf1593788573e7fde BITSTREAM LOSSLESS and SIGN_HIDE together
+r01_bad_magic c3d3b1c009d54711997ede685f43963c VERSION magic is not 'NXV1'
+r02_unknown_tool 6baa878ac49e8636f00c78a1b6a8be07 VERSION a mandatory tool bit the decoder lacks
+r03_bit_depth_10 6ff59f5db8acfd9c72e5727b4cba9252 UNSUPPORTED bit_depth 10 is reserved in v1
+r04_tile_size_32 0b658a3edbb40a05c2233bd8f8d1072a UNSUPPORTED 32x32 tiles are a reserved profile
+r05_payload_past_row de628b45ae5fb08085c3ef7e5ed36298 TRUNCATED payload_len runs past the frame
+r06_res_level3 d39f04f8d142abdc5a820e0eb27d8904 BITSTREAM res_level 3 is reserved
+r07_truncated_rans 6b267522bf3bd103583e145a58895949 TRUNCATED the tile payload is cut short
+r08_skip_bitmap 3bbae345f2d2909857f39874f615d90e BITSTREAM a skip bit for a column past the picture
+r09_reserved_tile_bit b191be811e8f30dd2b3c21f704c619eb BITSTREAM tile word1 bit 28 is reserved
+r10_mode_inter 861bd76ea9bcb20863506f76f258af31 UNSUPPORTED an INTER tile in a Phase 1 stream
+r11_wm_id_no_tool bf144bafb7929efd98ddb81d11b859a5 BITSTREAM wm_id != 0 without the WM_ID tool bit
+r12_row_index_wrong 684e11d424d37f139f5e94c387a19e81 BITSTREAM row_index does not match its position
+r13_frame_bytes_short a62ed57c4a3fdeb40d55a9a203676d2b TRUNCATED frame_bytes below the header size
+r14_dir_layer_no_tool 44d71db11595769afea54d9bc5cd69ef BITSTREAM frame flags bit 2 without INTRA_DIR
+r15_ycocgr_420 e33ceec9a35a36c89e31e4d2d96e0bc5 BITSTREAM YCoCg-R declared with 4:2:0 chroma
+r16_ctx_v2_short_table c7414927e169b6fead32ae327df86e9e BITSTREAM CTX_V2 table set overruns the tile rows
+r17_lossless_sign_hide 78a41980bec206fe30494e9a146e1d45 BITSTREAM LOSSLESS and SIGN_HIDE together
 # --- Phase 2 (Annex D D-21)
 r18_h22_not_one 45abc931d352433e7f3fcfc5fdacae44 BITSTREAM warp_ext h22 != 2^29
 r19_entry_range b4c4d747ce5ecc69570588ff698203da BITSTREAM a warp_ext entry beyond kEntryMax
