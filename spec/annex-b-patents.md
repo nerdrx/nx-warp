@@ -78,6 +78,24 @@ surfaced.
    design's most distinctive claimable idea and it is not on the paper's list.
    [pending review]
 
+### B.3.1 Specific filings surfaced by the industry scan (2026-09-04)
+
+Added from docs/RESEARCH-INDUSTRY.md. These lead the review agenda because they
+read on the combination NX Warp is built around, not on a single tool.
+
+| Filing | Holder | What it claims (as read, not legal analysis) | Relevance |
+|---|---|---|---|
+| US 12348767 B2 (granted 2025-07-01, priority 2017-11-23) | Intel | Foveated per-macroblock quality together with a global motion predictor derived from HMD pose | Direct read on per-tile QP from the foveation map plus pose-warped prediction. First item of the review |
+| US 10432988 B2 | AMD/ATI | Pose or motion based prediction for rendered content streaming (to be characterised by the reviewer) | Adjacent to WARP_MV and STATIC_MV |
+| US 11568574 B1 | Varjo | Foveated streaming to a headset (to be characterised by the reviewer) | Adjacent to per-tile res_level and the fovea class |
+| US 6252989 B1 (expired) | | Foveated image coding | Public-domain prior art usable against the above |
+
+Also noted for the reviewer: Apple's visionOS Foveated Streaming Protocol (2026)
+and NVIDIA CloudXR 6.0 postdate the paper and should be checked for published
+applications; `VK_KHR_video_encode_quantization_map` and
+`VK_KHR_video_encode_intra_refresh` are Khronos specifications and carry the
+Khronos IP framework, not a license for the coding tools themselves.
+
 ## B.4 Notes for whoever runs the review
 
 * The specific caveat [PAPER 1.9] raises about item 4 is that the fixed state
