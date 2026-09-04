@@ -252,6 +252,37 @@ def _quat_from_ypr(yaw: float, pitch: float, roll: float) -> tuple[float, float,
     return mul(mul(qy, qx), qz)
 
 
+def _mat3(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """3x3 times 3x3, written out.
+
+    ``a @ b`` would go to the BLAS, and BLAS results are not portable in the
+    last bit: OpenBLAS picks a different kernel per micro-architecture, so the
+    same source produces different bytes on a Zen runner and a Skylake one.
+    Every hash in this file's tests -- and the corpus manifest -- is a byte pin
+    on this arithmetic, so the multiplication has to be written in plain
+    elementwise operations, which IEEE-754 defines exactly and numpy performs
+    element by element with no reassociation.
+    """
+    return np.array(
+        [[a[i, 0] * b[0, j] + a[i, 1] * b[1, j] + a[i, 2] * b[2, j]
+          for j in range(3)] for i in range(3)],
+        a.dtype,
+    )
+
+
+def _rotate_rows(v: np.ndarray, m: np.ndarray) -> np.ndarray:
+    """``v @ m`` for an (N, 3) array and a 3x3 matrix, without the BLAS.
+
+    Same reason as :func:`_mat3`: this one runs over every ray of every eye of
+    every frame, and it is the one that actually moved the corpus bytes between
+    CI runners.
+    """
+    out = np.empty_like(v)
+    for j in range(3):
+        out[:, j] = v[:, 0] * m[0, j] + v[:, 1] * m[1, j] + v[:, 2] * m[2, j]
+    return out
+
+
 def rot_matrix(yaw: float, pitch: float, roll: float) -> np.ndarray:
     """World-from-head rotation, Y up, -Z forward, intrinsic Y-X-Z, radians."""
     cy, sy = math.cos(yaw), math.sin(yaw)
@@ -260,7 +291,7 @@ def rot_matrix(yaw: float, pitch: float, roll: float) -> np.ndarray:
     ry = np.array([[cy, 0, sy], [0, 1, 0], [-sy, 0, cy]], np.float64)
     rx = np.array([[1, 0, 0], [0, cp, -sp], [0, sp, cp]], np.float64)
     rz = np.array([[cr, -sr, 0], [sr, cr, 0], [0, 0, 1]], np.float64)
-    return ry @ rx @ rz
+    return _mat3(_mat3(ry, rx), rz)
 
 
 MOTIONS = ("static", "pan", "turn", "mixed")
@@ -466,7 +497,7 @@ def _draw_objects(img: np.ndarray, cam: Camera, objs: Objects, R: np.ndarray, ey
     tx = math.tan(math.radians(cam.hfov_deg) * 0.5)
     ty = math.tan(math.radians(cam.vfov_deg) * 0.5)
     world = objs.positions(t)
-    rel = (world - eye_pos[None, :]) @ R  # head-space = R^T (p - eye)
+    rel = _rotate_rows(world - eye_pos[None, :], R)  # head-space = R^T (p - eye)
     order = np.argsort(rel[:, 2])  # far (most negative z) first
     for i in order:
         x, y, z = rel[i]
@@ -537,11 +568,12 @@ def render_view(
     R = rot_matrix(
         math.radians(pose["yaw_deg"]), math.radians(pose["pitch_deg"]), math.radians(pose["roll_deg"])
     )
-    world_dirs = dirs.reshape(-1, 3) @ R.T.astype(np.float32)
+    world_dirs = _rotate_rows(dirs.reshape(-1, 3), np.ascontiguousarray(R.T, np.float32))
     img = sample_equirect(pano, world_dirs.reshape(dirs.shape))
     if objs is not None:
         head = np.asarray(pose["position_xyz"], np.float64)
-        offset = R @ np.array([(-0.5 if eye == 0 else 0.5) * cam.ipd_m, 0.0, 0.0])
+        ipd = (-0.5 if eye == 0 else 0.5) * cam.ipd_m
+        offset = R[:, 0] * ipd  # R @ [ipd, 0, 0]
         _draw_objects(img, cam, objs, R, head + offset, pose["time_s"])
     out = np.clip(img, 0, 255).astype(np.uint8)
     if hud:
@@ -679,15 +711,15 @@ def render_view_ss(
     R = rot_matrix(
         math.radians(pose["yaw_deg"]), math.radians(pose["pitch_deg"]), math.radians(pose["roll_deg"])
     )
-    Rf = R.T.astype(np.float32)
+    Rf = np.ascontiguousarray(R.T, np.float32)
     img = np.empty((hi.height, hi.width, 3), np.float32)
     for y0 in range(0, hi.height, block):
         y1 = min(hi.height, y0 + block)
-        wd = dirs_hi[y0:y1].reshape(-1, 3) @ Rf
+        wd = _rotate_rows(dirs_hi[y0:y1].reshape(-1, 3), Rf)
         img[y0:y1] = sample_equirect_u8(pano, wd.reshape(y1 - y0, hi.width, 3))
     if objs is not None:
         head = np.asarray(pose["position_xyz"], np.float64)
-        offset = R @ np.array([(-0.5 if eye == 0 else 0.5) * cam.ipd_m, 0.0, 0.0])
+        offset = R[:, 0] * ((-0.5 if eye == 0 else 0.5) * cam.ipd_m)  # R @ [ipd, 0, 0]
         _draw_objects(img, hi, objs, R, head + offset, pose["time_s"])
     if hud:
         _draw_hud(img, pose["frame"], "L" if eye == 0 else "R",
@@ -745,8 +777,8 @@ def ideal_warp(prev: np.ndarray, pose_prev: dict, pose_cur: dict, cam: Camera) -
                     math.radians(pose_prev["roll_deg"]))
     rc = rot_matrix(math.radians(pose_cur["yaw_deg"]), math.radians(pose_cur["pitch_deg"]),
                     math.radians(pose_cur["roll_deg"]))
-    rel = rp.T @ rc  # previous-camera-from-current-camera
-    p = d.reshape(-1, 3) @ rel.T
+    rel = _mat3(np.ascontiguousarray(rp.T), rc)  # previous-camera-from-current-camera
+    p = _rotate_rows(d.reshape(-1, 3), np.ascontiguousarray(rel.T, d.dtype))
     z = np.minimum(p[:, 2], -1e-9)  # forward is -Z
     u = ((p[:, 0] / -z) / tx * 0.5 + 0.5) * w - 0.5
     v = (0.5 - (p[:, 1] / -z) / ty * 0.5) * h - 0.5
