@@ -26,13 +26,15 @@ produced without them is byte-identical to a syntax v1.4 one — which
 Phase 1 digest are unchanged by this work, and only the four new entries were
 added.
 
-**The headline, first.** The package is worth a few percent of rate at the
-band the codec is designed to run in and approximately nothing in the literal
-100-300 Mbit band. **It does not change the kill-test verdict, and it was never
-going to**: `RESULTS-inter.md` section 4 measured the intra core alone at
-+190 % to +886 % against the same anchor before the inter path touches it, and
-a tool that makes coded inter tiles cheaper cannot recover that. The verdicts
-below are quoted verbatim and they all still say FAIL.
+**The headline, first.** On the sequence the kill test is stated on, the
+package is worth **-28.17 points** of BD-rate against `x265-p` in the literal
+100-300 Mbit band and **-73.10 points** at the paper's own bits per pixel, and
+13.2 % of the stream at a fixed QP. **It does not change the kill-test verdict,
+and it was never going to**: the gate is "+10 % at rest" and the codec is at
++316 %, because `RESULTS-inter.md` section 4 measured the intra core alone at
++190 % to +886 % against the same anchor *before the inter path touches it*,
+and none of these four tools touches the intra core. The verdicts below are
+quoted verbatim and they all still say FAIL.
 
 ---
 
@@ -169,7 +171,117 @@ fixed scheme guaranteed and this one has to keep: over 16 frames with a cap of
 
 ---
 
-## 3. PLACEHOLDER-FULL
+## 3. The package on the kill test, at full size
+
+`vr-mixed-1024-v2` 4:4:4, 2048x1024 (1024 per eye), 36 frames, at the codec's
+**own default refresh period** (180), which is the configuration
+`ref/RESULTS-inter.md` measured, so the two documents are comparable. Both
+columns name every switch explicitly (`tools/quality/kill-test-inter-a.sh`);
+a measurement that depends on a default is a measurement of the default.
+
+| band | | overall | fastest 20 % | the rest | verdict |
+|---|---|---|---|---|---|
+| **A** | baseline | +342.67 % | +334.59 % | +344.77 % | **FAIL** |
+| **A** | the package | **+314.50 %** | **+307.03 %** | **+316.46 %** | **FAIL** |
+| **A** | Δ | **-28.17** | **-27.56** | **-28.31** | |
+| **B** | baseline | +548.23 % | +513.93 % | +558.25 % | **FAIL** |
+| **B** | the package | **+475.13 %** | **+447.75 %** | **+483.05 %** | **FAIL** |
+| **B** | Δ | **-73.10** | **-66.18** | **-75.20** | |
+
+**Twenty-eight points of BD-rate at the literal band and seventy-three at the
+paper's own density**, on the sequence the kill test is stated on. That is
+substantially more than the small sequence of section 2 predicted, and the
+reason is that `vr-mixed-1024-v2` is three times the frames and four times the
+pixels: there is more for every tool to find, and the refresh has 36 frames to
+be wrong over instead of 12.
+
+### 3.1 The verdicts, verbatim
+
+Baseline, band A:
+
+```
+  Phase 2 kill test (PAPER.md 2.11 item 1):
+    "within 10 percent at rest and at least 30 percent better on the motion frames"
+    at rest   : BD-rate +344.77 % (allowed up to +10 %)  FAIL
+    on motion : BD-rate +334.59 % (needs -30 % or better)  FAIL
+    VERDICT   : FAIL
+```
+
+The package, band A:
+
+```
+  Phase 2 kill test (PAPER.md 2.11 item 1):
+    "within 10 percent at rest and at least 30 percent better on the motion frames"
+    at rest   : BD-rate +316.46 % (allowed up to +10 %)  FAIL
+    on motion : BD-rate +307.03 % (needs -30 % or better)  FAIL
+    VERDICT   : FAIL
+```
+
+Baseline, band B:
+
+```
+    at rest   : BD-rate +558.25 % (allowed up to +10 %)  FAIL
+    on motion : BD-rate +513.93 % (needs -30 % or better)  FAIL
+    VERDICT   : FAIL
+```
+
+The package, band B:
+
+```
+    at rest   : BD-rate +483.05 % (allowed up to +10 %)  FAIL
+    on motion : BD-rate +447.75 % (needs -30 % or better)  FAIL
+    VERDICT   : FAIL
+```
+
+**The verdict does not move and could not have.** The gate is "+10 % at rest";
+the codec is at +316 %. `ref/RESULTS-inter.md` section 4 measured the intra
+core at +190 % to +886 % against the same anchor *before the inter path
+touches it*, and none of these four tools touches the intra core. Section 7 of
+that document lists what would change the answer and puts the intra core
+first, by a wide margin; nothing here contradicts it.
+
+**What the numbers here are for** is the other half of that document's
+question: the inter path is worth **-12 % to -48 %** against this codec's own
+intra, and this package makes that number better by another 28 to 73 points
+against the anchor. It is a real improvement to a part of the codec that
+works, inside a system whose problem is elsewhere.
+
+### 3.2 Where the improvement comes from
+
+`vr-mixed-1024-v2` 4:4:4 at QP 24, the mode histogram over all 36 frames and
+both eyes (18 432 tiles):
+
+| | `WARP_SKIP` | `STATIC_MV` | `WARP_MV` | `INTRA` | `near_skip` | `quad_mv` | `sub_intra` | stream |
+|---|---|---|---|---|---|---|---|---|
+| baseline | 80.8 % | 6.6 % | 3.9 % | **8.7 %** | — | — | — | 654 710 B |
+| the package | 80.9 % | 6.9 % | **4.7 %** | **7.4 %** | **2.7 %** | **4.1 %** | 0.2 % | **568 471 B** |
+
+**13.2 % of the stream, at the same QP**, and the histogram says where each
+piece of it went:
+
+* `INTRA` falls from 8.7 % to 7.4 %. That is the drift-driven refresh: fewer
+  tiles are refreshed because fewer tiles needed it.
+* `WARP_MV` rises from 3.9 % to 4.7 % while `WARP_SKIP` barely moves. That is
+  quadrant vectors making the coded warped tile good enough to win decisions
+  it used to lose to `INTRA`, at 4.1 % of tiles carrying four extra bytes.
+* `near_skip` takes 2.7 % of all tiles, which is about a third of the tiles
+  that are neither skipped nor intra. It chose the DC form every time here
+  too; **the ramp form has still never been selected on any corpus material**.
+* `sub_intra` takes 0.2 %, consistent with section 2: it is doing something,
+  and that something is small because this material has almost no
+  disocclusion. It is **off by default** for exactly that reason.
+
+### 3.3 Which sequences this covers
+
+The full-size table above is `vr-mixed-1024-v2` 4:4:4, both bands, which is
+the sequence and the configuration `ref/RESULTS-inter.md` section 2 leads
+with. `vr-mixed-1024-v2` 4:2:0, `vr-turn-256-v2` and `vr-mixed-512-v2` were
+queued behind it on a machine shared with eleven other agents and their
+before/after pairs were still measuring when this document was written;
+`tools/quality/kill-test-inter-a.sh` runs all four unchanged, and section 2's
+sweep already covers `vr-mixed-512-v2` in both bands for every tool
+separately. **Saying which rows exist is part of the measurement**, so the
+table has the rows it has.
 
 ---
 
