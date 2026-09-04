@@ -1,0 +1,47 @@
+@PACKAGE_INIT@
+
+# nxvcConfig.cmake -- package config for the NX Warp codec (nxvc).
+#
+#   find_package(nxvc CONFIG REQUIRED)
+#   target_link_libraries(app PRIVATE nxvc::ref nxvc::transport)
+#
+# Which nxvc::<component> targets exist depends on what was built; a partial
+# tree installs a partial package, deliberately.  Check with
+#   if(TARGET nxvc::vk) ... endif()
+# or ask for components:
+#   find_package(nxvc CONFIG REQUIRED COMPONENTS ref transport)
+
+include(CMakeFindDependencyMacro)
+
+set(NXVC_VERSION_STRING   "@NXVC_VERSION@")
+set(NXVC_VERSION_FULL     "@NXVC_VERSION_FULL@")
+set(NXVC_BITSTREAM_VERSION "@NXWARP_BITSTREAM_VERSION@")
+set(NXVC_BUILT_COMPONENTS "@NXWARP_INSTALL_LIBS@")
+set(NXVC_TOOLS            "@NXWARP_INSTALL_TOOLS@")
+
+# Public dependencies of the exported targets.  Each is only searched for when
+# the build that produced this package actually used it.
+if("@OpenSSL_FOUND@")
+    find_dependency(OpenSSL COMPONENTS Crypto)
+endif()
+if("@Vulkan_FOUND@")
+    find_dependency(Vulkan)
+endif()
+
+include("${CMAKE_CURRENT_LIST_DIR}/@NXWARP_EXPORT_NAME@.cmake")
+
+# Component checking: nxvc::ref for COMPONENTS ref, and so on.
+foreach(_comp IN LISTS nxvc_FIND_COMPONENTS)
+    if(TARGET nxvc::${_comp})
+        set(nxvc_${_comp}_FOUND TRUE)
+    else()
+        set(nxvc_${_comp}_FOUND FALSE)
+        if(nxvc_FIND_REQUIRED_${_comp})
+            set(nxvc_NOT_FOUND_MESSAGE
+                "nxvc was installed without the '${_comp}' component "
+                "(built: ${NXVC_BUILT_COMPONENTS})")
+        endif()
+    endif()
+endforeach()
+
+check_required_components(nxvc)

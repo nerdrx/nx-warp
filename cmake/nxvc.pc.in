@@ -1,0 +1,11 @@
+prefix=@CMAKE_INSTALL_PREFIX@
+exec_prefix=${prefix}
+libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
+includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
+
+Name: nxvc
+Description: NX Warp - a Vulkan compute video codec for VR streaming (bitstream version @NXWARP_BITSTREAM_VERSION@)
+URL: https://github.com/nerdrx/nx-warp
+Version: @NXVC_VERSION@
+Cflags: -I${includedir}
+Libs: -L${libdir} @NXVC_PC_LIBS@

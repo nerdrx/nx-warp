@@ -3,6 +3,20 @@ project(nxwarp VERSION 0.0.1 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+list(PREPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
+
+# Build hygiene, version discovery and instrumentation. These modules define
+# no targets of their own beyond three INTERFACE ones (nxwarp::warnings,
+# nxwarp::deterministic, nxwarp::version) and never reach into a component.
+# See BUILDING.md; the presets in CMakePresets.json drive them.
+include(nxwarp_options)
+include(nxwarp_sanitizers)
+include(nxwarp_version)
+
+# Generated headers (nxvc/version.h) are on the include path for every
+# component without any of them having to ask.
+include_directories(${NXWARP_GENERATED_INCLUDE_DIR})
+
 # Each component lives in its own directory with its own CMakeLists.txt and is
 # built only when present, so the tree stays configurable while components land.
 set(NXWARP_COMPONENTS ref warp transport rc fov stereo hybrid vk tools platform)
@@ -40,3 +54,15 @@ if(NXWARP_BUILD_TESTS)
     endif()
   endforeach()
 endif()
+
+# Install rules, the find_package(nxvc) package, pkg-config and CPack. These
+# run last because they discover which component targets actually exist rather
+# than being told; a component that has adopted the export convention (see
+# RELEASE.md) is picked up automatically.
+include(nxwarp_install)
+include(nxwarp_cpack)
+
+message(STATUS "--- nxwarp ---")
+nxwarp_version_summary()
+nxwarp_options_summary()
+nxwarp_sanitizers_summary()

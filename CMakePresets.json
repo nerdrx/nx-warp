@@ -1,0 +1,299 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-${presetName}",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "NXWARP_BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "host",
+      "hidden": true,
+      "inherits": "base",
+      "description": "Host build defaults: every component that has landed, Vulkan on.",
+      "cacheVariables": {
+        "NXWARP_BUILD_VK": "ON",
+        "NXWARP_BUILD_TOOLS": "ON"
+      }
+    },
+    {
+      "name": "no-vk",
+      "hidden": true,
+      "description": "Vulkan off: cross builds and the pure-CPU checks.",
+      "cacheVariables": { "NXWARP_BUILD_VK": "OFF" }
+    },
+
+    {
+      "name": "dev",
+      "inherits": "host",
+      "displayName": "dev - Debug, no sanitizers",
+      "description": "The everyday build. Debug, Ninja, assertions on, instrumentation off so it is fast to rebuild and pleasant to step through.",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "NXWARP_SANITIZER": "off",
+        "NXWARP_WERROR": "OFF"
+      }
+    },
+    {
+      "name": "release",
+      "inherits": "host",
+      "displayName": "release - RelWithDebInfo, packaged",
+      "description": "What ships. RelWithDebInfo keeps the frame pointers and line tables that a decode-time profile needs; cpack runs out of this directory.",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "NXWARP_SANITIZER": "off",
+        "NXWARP_IPO": "OFF",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/build-release/stage"
+      }
+    },
+    {
+      "name": "release-lto",
+      "inherits": "release",
+      "displayName": "release-lto - Release + LTO",
+      "description": "Release with interprocedural optimisation. Slower to link, and the only configuration in which the encoder's inlining across component boundaries is representative. Measure against 'release' before believing a number from either.",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "NXWARP_IPO": "ON",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/build-release-lto/stage"
+      }
+    },
+
+    {
+      "name": "asan-ubsan",
+      "inherits": "host",
+      "displayName": "asan-ubsan - AddressSanitizer + UBSan",
+      "description": "The bitstream-safety build. UBSan does not recover, so a signed overflow in the reference decoder aborts the test rather than printing a line nobody reads. Run the conformance suite here before touching ref/.",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "NXWARP_SANITIZER": "address+undefined",
+        "NXWARP_WERROR": "OFF"
+      }
+    },
+    {
+      "name": "tsan",
+      "inherits": "host",
+      "displayName": "tsan - ThreadSanitizer",
+      "description": "For transport/ and the encoder's pipelining only; the reference codec is single-threaded by rule. TSan cannot be combined with ASan, hence its own directory.",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "NXWARP_SANITIZER": "thread"
+      }
+    },
+
+    {
+      "name": "gcc",
+      "inherits": "host",
+      "displayName": "gcc - RelWithDebInfo, GCC",
+      "description": "Explicit GCC build, mirroring the linux-gcc CI job.",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++"
+      }
+    },
+    {
+      "name": "clang",
+      "inherits": "host",
+      "displayName": "clang - RelWithDebInfo, Clang",
+      "description": "Explicit Clang build, mirroring the linux-clang CI job. Two compilers disagreeing about a warning is cheap; two compilers disagreeing about the bitstream is the bug this catches.",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++"
+      }
+    },
+
+    {
+      "name": "coverage",
+      "inherits": "host",
+      "displayName": "coverage - gcov / llvm-cov",
+      "description": "Instrumented for line coverage. Debug because optimised coverage maps lie about which branch ran. scripts/build-all.sh coverage produces the report.",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "NXWARP_COVERAGE": "ON",
+        "NXWARP_CCACHE": "OFF"
+      }
+    },
+    {
+      "name": "fuzz",
+      "inherits": ["base", "no-vk"],
+      "displayName": "fuzz - libFuzzer + ASan/UBSan (clang)",
+      "description": "libFuzzer entry points, NXVC_FUZZ=ON. Clang only. Tests are off: the fuzz targets are the tests here, and the nightly workflow seeds them from tests/vectors/.",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "NXWARP_FUZZ": "ON",
+        "NXVC_FUZZ": "ON",
+        "NXWARP_SANITIZER": "address+undefined",
+        "NXWARP_BUILD_TESTS": "OFF",
+        "NXWARP_BUILD_TOOLS": "ON"
+      }
+    },
+
+    {
+      "name": "mingw-w64",
+      "inherits": ["base", "no-vk"],
+      "displayName": "mingw-w64 - cross-compile for Windows x86_64",
+      "description": "Portability check with llvm-mingw. Builds the CPU components only and runs no tests; see cmake/toolchains/mingw-w64.cmake for where the toolchain is found and how to point it elsewhere.",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/mingw-w64.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "NXWARP_BUILD_TESTS": "OFF",
+        "NXWARP_BUILD_TOOLS": "ON",
+        "NXWARP_INSTALL": "ON"
+      }
+    },
+    {
+      "name": "android-ndk",
+      "inherits": "base",
+      "displayName": "android-ndk - arm64-v8a, API 29, Vulkan on",
+      "description": "The headset target. Vulkan is on because the compute decoder is the reason this build exists; tests are off because ctest cannot run an arm64 binary on the host. Pair it with bench/ for on-device numbers.",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/android.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "ANDROID_ABI": "arm64-v8a",
+        "ANDROID_PLATFORM": "android-29",
+        "ANDROID_STL": "c++_static",
+        "NXWARP_BUILD_VK": "ON",
+        "NXWARP_BUILD_TESTS": "OFF",
+        "NXWARP_BUILD_TOOLS": "OFF",
+        "NXWARP_CCACHE": "OFF"
+      }
+    }
+  ],
+
+  "buildPresets": [
+    { "name": "dev",         "configurePreset": "dev" },
+    { "name": "release",     "configurePreset": "release" },
+    { "name": "release-lto", "configurePreset": "release-lto" },
+    { "name": "asan-ubsan",  "configurePreset": "asan-ubsan" },
+    { "name": "tsan",        "configurePreset": "tsan" },
+    { "name": "gcc",         "configurePreset": "gcc" },
+    { "name": "clang",       "configurePreset": "clang" },
+    { "name": "coverage",    "configurePreset": "coverage" },
+    { "name": "fuzz",        "configurePreset": "fuzz" },
+    { "name": "mingw-w64",   "configurePreset": "mingw-w64" },
+    { "name": "android-ndk", "configurePreset": "android-ndk" },
+    {
+      "name": "release-package",
+      "configurePreset": "release",
+      "displayName": "release + package",
+      "targets": ["all", "package"]
+    }
+  ],
+
+  "testPresets": [
+    {
+      "name": "test-base",
+      "hidden": true,
+      "output": { "outputOnFailure": true, "verbosity": "default" },
+      "execution": { "noTestsAction": "ignore", "stopOnFailure": false, "timeout": 600 }
+    },
+    { "name": "dev",        "inherits": "test-base", "configurePreset": "dev" },
+    { "name": "release",    "inherits": "test-base", "configurePreset": "release" },
+    { "name": "gcc",        "inherits": "test-base", "configurePreset": "gcc" },
+    { "name": "clang",      "inherits": "test-base", "configurePreset": "clang" },
+    { "name": "coverage",   "inherits": "test-base", "configurePreset": "coverage" },
+    {
+      "name": "asan-ubsan",
+      "inherits": "test-base",
+      "configurePreset": "asan-ubsan",
+      "environment": {
+        "ASAN_OPTIONS": "detect_leaks=1:abort_on_error=1:strict_string_checks=1:detect_stack_use_after_return=1",
+        "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1"
+      }
+    },
+    {
+      "name": "tsan",
+      "inherits": "test-base",
+      "configurePreset": "tsan",
+      "environment": { "TSAN_OPTIONS": "halt_on_error=1:second_deadlock_stack=1" }
+    },
+    {
+      "name": "ref-only",
+      "inherits": "test-base",
+      "configurePreset": "dev",
+      "displayName": "the reference codec's own tests",
+      "filter": { "include": { "name": "^ref" } }
+    },
+    {
+      "name": "vk-only",
+      "inherits": "test-base",
+      "configurePreset": "dev",
+      "displayName": "Vulkan tests (needs an ICD; lavapipe is enough)",
+      "filter": { "include": { "name": "^vk" } }
+    }
+  ],
+
+  "packagePresets": [
+    {
+      "name": "release",
+      "configurePreset": "release",
+      "displayName": "TGZ + ZIP (+ DEB where dpkg exists)",
+      "packageDirectory": "${sourceDir}/build-release"
+    },
+    {
+      "name": "release-tgz",
+      "configurePreset": "release",
+      "displayName": "TGZ only",
+      "generators": ["TGZ"],
+      "packageDirectory": "${sourceDir}/build-release"
+    }
+  ],
+
+  "workflowPresets": [
+    {
+      "name": "ci",
+      "displayName": "CI: configure, build and test the default host configuration",
+      "steps": [
+        { "type": "configure", "name": "gcc" },
+        { "type": "build",     "name": "gcc" },
+        { "type": "test",      "name": "gcc" }
+      ]
+    },
+    {
+      "name": "ci-clang",
+      "displayName": "CI: the same, with Clang",
+      "steps": [
+        { "type": "configure", "name": "clang" },
+        { "type": "build",     "name": "clang" },
+        { "type": "test",      "name": "clang" }
+      ]
+    },
+    {
+      "name": "ci-asan",
+      "displayName": "CI: ASan + UBSan",
+      "steps": [
+        { "type": "configure", "name": "asan-ubsan" },
+        { "type": "build",     "name": "asan-ubsan" },
+        { "type": "test",      "name": "asan-ubsan" }
+      ]
+    },
+    {
+      "name": "ci-mingw",
+      "displayName": "CI: Windows cross-compile check, build only",
+      "steps": [
+        { "type": "configure", "name": "mingw-w64" },
+        { "type": "build",     "name": "mingw-w64" }
+      ]
+    },
+    {
+      "name": "release",
+      "displayName": "Release: build, test and package",
+      "steps": [
+        { "type": "configure", "name": "release" },
+        { "type": "build",     "name": "release" },
+        { "type": "test",      "name": "release" },
+        { "type": "package",   "name": "release" }
+      ]
+    }
+  ]
+}
