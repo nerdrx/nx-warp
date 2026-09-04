@@ -690,8 +690,7 @@ int run_bench_qp(int iters, int qp, bool dense = false) {
     ci.device_name = device_filter();
     // [sparse] Ask for the exact coefficient traffic; it costs a copy of the
     // 264-B-per-tile length buffer after the last timestamp.
-    ci.flags = (getenv("NXVC_NO_COEF_STATS") ? 0u
-                                             : (uint32_t)NXVC_VKD_FLAG_COEF_STATS) |
+    ci.flags = (uint32_t)NXVC_VKD_FLAG_COEF_STATS |
                (dense ? (uint32_t)NXVC_VKD_FLAG_DENSE_COEF : 0u);
     nxvc_vk_decoder *dec = nullptr;
     if (nxvc_vk_decoder_create(&ci, &dec) != NXVC_VKD_OK) {
