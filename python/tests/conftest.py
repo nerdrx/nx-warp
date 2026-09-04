@@ -46,6 +46,8 @@ def make_frame(
     base_qp=28,
     tiles_per_row=None,
     payload=b"",
+    ref_slots=0,
+    flags=0,
     **kwargs,
 ) -> bytes:
     """Serialize one frame unit: header, then one row structure per tile row.
@@ -53,10 +55,13 @@ def make_frame(
     Every tile carries the same *payload*, which is opaque here -- the parser
     never looks inside it.
     """
-    tiles_x = stream.tiles_x if tiles_per_row is None else tiles_per_row
+    tiles_x = stream.cols_per_eye if tiles_per_row is None else tiles_per_row
     kwargs.setdefault("mode", nxvc.TileMode.INTRA)
     body = bytearray()
-    for row in range(stream.tiles_y):
+    # SYNTAX.md 3.3: eyes * rows structures, row-major and eye-minor.
+    for row, eye in (
+        (r, e) for r in range(stream.rows) for e in range(stream.eyes)
+    ):
         rh = bs.TileRowHeader(
             frame_number=frame_number, row_index=row, tile_count=tiles_x, skip_bitmap=0
         )
@@ -64,6 +69,7 @@ def make_frame(
         for i in range(tiles_x):
             th = bs.TileHeader(
                 tile_index=i,
+                eye=eye,
                 payload_len=len(payload),
                 **kwargs,
             )
@@ -71,6 +77,8 @@ def make_frame(
     hdr = bs.FrameHeader(
         frame_number=frame_number,
         base_qp=base_qp,
+        ref_slots=ref_slots,
+        flags=flags,
         frame_bytes=bs.FrameHeader.SIZE + len(body),
     )
     return hdr.pack() + bytes(body)

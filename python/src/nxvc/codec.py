@@ -115,6 +115,8 @@ class TileInfo:
     skipped: int
     concealed: int
     disparity: int
+    ref_delta: int
+    age_since_coded: int
 
     _FIELDS = (
         "tile_index",
@@ -141,6 +143,8 @@ class TileInfo:
         "skipped",
         "concealed",
         "disparity",
+        "ref_delta",
+        "age_since_coded",
     )
 
     @classmethod
@@ -366,6 +370,7 @@ class EncoderConfig:
     ref_sel: int | None = None
     mv_range: int | None = None
     skip_thresh: int | None = None
+    mode_lambda_q8: int | None = None
 
     #: Fields set explicitly by the caller; everything else keeps the C default.
     _explicit: set[str] = field(default_factory=set, repr=False, compare=False)

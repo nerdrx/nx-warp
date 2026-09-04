@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 from . import NXVC_AVAILABLE, NXVC_LIBRARY_PATH, NXVC_LOAD_ERROR, __version__, bitstream
-from ._ffi import Tool
+from ._ffi import TileMode, Tool
 
 _PIX = ("yuv420p", "yuv444p")
 
@@ -97,9 +97,10 @@ def cmd_info(args: argparse.Namespace) -> int:
     )
     for tlv in stream.tlvs:
         print(f"    tlv 0x{tlv.type:04x}  {tlv.length} bytes")
-    print(
-        f"  tile grid     {stream.tiles_x}x{stream.tiles_y} = {stream.tile_count} tiles"
-    )
+    grid = f"  tile grid     {stream.cols_per_eye}x{stream.rows}"
+    if stream.eyes > 1:
+        grid += f" per eye, cols {stream.cols}"
+    print(f"{grid} = {stream.tile_count} tiles")
 
     offset = stream.total_size
     for n, frame in enumerate(frames):
@@ -108,9 +109,15 @@ def cmd_info(args: argparse.Namespace) -> int:
             f"frame {n} @{offset}: num {h.frame_number}  bytes {h.frame_bytes}  "
             f"qp {h.base_qp}  cqpo {h.chroma_qp_off:+d}  aqpo {h.alpha_qp_off:+d}  "
             f"matrix {h.quant_matrix}  tables 0x{h.tables_present:02x}  "
-            f"flags 0x{h.flags:02x}{'  dir-layer' if h.intra_dir_layer else ''}  "
-            f"tiles {len(frame.tiles)}"
+            f"refs 0x{h.ref_slots:02x}  flags 0x{h.flags:02x}"
+            f"{'  dir-layer' if h.intra_dir_layer else ''}"
+            f"{'  warp' if h.warp_present else ''}  tiles {len(frame.tiles)}"
         )
+        for eye, m in enumerate(frame.warp):
+            print(
+                f"  warp_ext eye {eye}  Q10.21 [{m[0]} {m[1]} {m[2]} / "
+                f"{m[3]} {m[4]} {m[5]}]  Q2.29 [{m[6]} {m[7]} {m[8]}]"
+            )
         if h.table_sets:
             print(
                 f"  tables: sets {h.table_sets}, "
@@ -118,14 +125,31 @@ def cmd_info(args: argparse.Namespace) -> int:
             )
         print("  pose:" + "".join(f" {b:02x}" for b in h.pose))
         if args.tiles:
-            for tile in frame.tiles:
-                t = tile.header
-                print(
-                    f"  tile {t.tile_index:4d}  {t.mode_name:<9s} res{t.res_level} "
-                    f"{'c444' if t.chroma444 else 'c420'} qp{t.resolved_qp(h.base_qp):2d} "
-                    f"dq{t.qp_delta:+3d} ts{t.tskip} set{t.table_set} "
-                    f"nsub{t.nsub_log2} wm{t.wm_id} {t.payload_len} bytes"
-                )
+            for row in frame.rows:
+                for tile in row.tiles:
+                    t = tile.header
+                    if not t.mv_present:
+                        vector = ""
+                    elif t.mode == TileMode.STEREO:
+                        vector = f" disp{t.disparity}"
+                    else:
+                        vector = f" mv({t.mv_x},{t.mv_y})"
+                    print(
+                        f"  tile {t.tile_index:4d} eye{row.eye} row{row.header.row_index}"
+                        f"  {t.mode_name:<9s} res{t.res_level} "
+                        f"{'c444' if t.chroma444 else 'c420'} "
+                        f"qp{t.resolved_qp(h.base_qp):2d} "
+                        f"dq{t.qp_delta:+3d} ts{t.tskip} set{t.table_set} "
+                        f"nsub{t.nsub_log2} wm{t.wm_id} ref{t.ref_sel}{vector} "
+                        f"{t.payload_len} bytes"
+                    )
+            for i, row in enumerate(frame.rows):
+                skipped = row.header.skipped_tiles(stream.cols_per_eye)
+                if skipped:
+                    print(
+                        f"  row {row.header.row_index} eye {row.eye}: "
+                        f"tiles {skipped} are WARP_SKIP and not transmitted"
+                    )
         offset += h.frame_bytes
 
     reason = bitstream.phase1_reject_reason(stream, frames[0] if frames else None)
@@ -168,8 +192,10 @@ def _info_json(path, data, stream, frames, error) -> dict:
             "non_phase1_tools": Tool.names(stream.non_phase1_tools()),
             "ext_len": stream.ext_len,
             "tlvs": [{"type": t.type, "length": t.length} for t in stream.tlvs],
-            "tiles_x": stream.tiles_x,
-            "tiles_y": stream.tiles_y,
+            "eyes": stream.eyes,
+            "cols_per_eye": stream.cols_per_eye,
+            "rows": stream.rows,
+            "cols": stream.cols,
             "tile_count": stream.tile_count,
         },
         "frames": [
@@ -183,8 +209,11 @@ def _info_json(path, data, stream, frames, error) -> dict:
                 "tables_present": f.header.tables_present,
                 "table_sets": f.header.table_sets,
                 "table_set_bytes": bitstream.table_set_bytes(stream.tools),
+                "ref_slots": f.header.ref_slots,
                 "flags": f.header.flags,
                 "intra_dir_layer": f.header.intra_dir_layer,
+                "warp_present": f.header.warp_present,
+                "warp": [list(m) for m in f.warp],
                 "tile_count": len(f.tiles),
                 "payload_bytes": f.payload_bytes,
                 "tiles": [
@@ -198,6 +227,10 @@ def _info_json(path, data, stream, frames, error) -> dict:
                         "table_set": t.header.table_set,
                         "nsub_log2": t.header.nsub_log2,
                         "wm_id": t.header.wm_id,
+                        "ref_sel": t.header.ref_sel,
+                        "eye": t.header.eye,
+                        "mv_present": t.header.mv_present,
+                        "disparity": t.header.disparity,
                         "payload_len": t.header.payload_len,
                     }
                     for t in f.tiles

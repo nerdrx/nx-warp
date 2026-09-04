@@ -77,11 +77,11 @@ NXVC_TILE_SIZE = 64
 #: The revision of ``docs/SYNTAX.md`` that :mod:`nxvc.bitstream` parses.  It is
 #: not carried in the bitstream (forward compatibility is the ``tools`` mask
 #: plus the TLV area); it exists so a build, a conformance-vector set and a
-#: spec revision can be pinned to each other.  3 = the v2 intra tools.  The C
+#: spec revision can be pinned to each other.  4 = the Phase 2 inter path.  The C
 #: library reports its own with :func:`library_minor`, and it may be **ahead**
 #: of this one while a syntax revision is landing -- the parser then still
 #: reads every structure it knows, and refuses what it does not.
-NXVC_BITSTREAM_MINOR = 3
+NXVC_BITSTREAM_MINOR = 4
 
 #: The four-byte magic at the head of every stream: the ASCII bytes ``NXV1``.
 NXVC_MAGIC = 0x3156584E
@@ -341,6 +341,7 @@ class nxvc_config(Structure):
         ("ref_sel", c_uint32),
         ("mv_range", c_uint32),
         ("skip_thresh", c_uint32),
+        ("mode_lambda_q8", c_uint32),
     ]
 
 
@@ -401,6 +402,8 @@ class nxvc_tile_info(Structure):
         ("skipped", c_uint8),
         ("concealed", c_uint8),
         ("disparity", c_uint16),
+        ("ref_delta", c_uint8),
+        ("age_since_coded", c_uint16),
     ]
 
 
@@ -752,6 +755,9 @@ def _bind(lib: ctypes.CDLL) -> None:
 
     lib.nxvc_encoder_tile_count.argtypes = [encoder_p]
     lib.nxvc_encoder_tile_count.restype = c_uint32
+
+    lib.nxvc_encoder_set_skip_map.argtypes = [encoder_p, u8p, c_uint32]
+    lib.nxvc_encoder_set_skip_map.restype = c_int
 
     lib.nxvc_encoder_set_received_tiles.argtypes = [encoder_p, u8p, c_uint32]
     lib.nxvc_encoder_set_received_tiles.restype = c_int

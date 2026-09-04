@@ -142,14 +142,17 @@ def test_tile_header_round_trip_exhaustive_fields():
         table_set=7,
         nsub_log2=5,
         mv_present=1,
-        ref_sel=3,
+        # ref_sel 3 is reserved, and an INTRA or STEREO tile must carry 0.
+        ref_sel=0,
         tskip=1,
         wgt=3,
-        mv_x=-128,
-        mv_y=127,
+        wm_id=2,
+        # A STEREO tile's two optional bytes are a u16 disparity, not an MV
+        # pair (SYNTAX.md 4.1).
+        disparity=4095,
     )
     raw = hdr.pack()
-    assert len(raw) == 10  # 8 + MV, no constant-alpha byte at alpha_mode 2
+    assert len(raw) == 10  # 8 + disparity, no constant-alpha byte at alpha_mode 2
     back = bs.TileHeader.parse(raw)
     assert back == hdr
     assert back.pack() == raw
@@ -266,8 +269,9 @@ def test_ctypes_struct_sizes_match_the_c_layout():
     # header and this binding have drifted apart.
     assert ctypes.sizeof(_ffi.nxvc_tile_layout) == 16
     # 18 u8/u16 through `qp` (22), + wm_id, intra_dir, skipped, concealed (26),
-    # + a 2-aligned u16 `disparity` = 28.
-    assert ctypes.sizeof(_ffi.nxvc_tile_info) == 28
+    # + a 2-aligned u16 `disparity` (28), + ref_delta (29), + a 2-aligned u16
+    # `age_since_coded` (32).
+    assert ctypes.sizeof(_ffi.nxvc_tile_info) == 32
     assert ctypes.sizeof(_ffi.nxvc_image) == ctypes.sizeof(ctypes.c_void_p) * 4 + 16
     # 14 u32 (56) + u64 (64) + layer_desc 4 u32 (80) + 3 u32 (92), rounded up
     # to the struct's 8-byte alignment = 96.

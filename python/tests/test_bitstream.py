@@ -212,11 +212,12 @@ def test_tile_header_bitfields_are_at_the_documented_positions():
     # word0: layer=2 (bits 0-1), eye=1 (bit 2), tile_index=5 (bits 4-15),
     #        payload_len=300 (bits 16-31)
     word0 = 2 | (1 << 2) | (5 << 4) | (300 << 16)
-    # word1: mode=3 INTRA, res_level=1, chroma444=1, alpha_mode=1,
+    # word1: mode=2 WARP_MV, res_level=1, chroma444=1, alpha_mode=1,
     #        qp_delta=-4, table_set=6, nsub_log2=2, mv_present=1, ref_sel=2,
-    #        tskip=1, wgt=3
+    #        tskip=1, wgt=3.  The mode has to be an inter one: SYNTAX.md 4.1
+    #        requires ref_sel == 0 on INTRA and STEREO tiles.
     word1 = (
-        3
+        2
         | (1 << 3)
         | (1 << 5)
         | (1 << 6)
@@ -231,7 +232,7 @@ def test_tile_header_bitfields_are_at_the_documented_positions():
     raw = struct.pack("<II", word0, word1) + struct.pack("<bb", -7, 9) + bytes([200])
     t = bs.TileHeader.parse(raw)
     assert (t.layer, t.eye, t.tile_index, t.payload_len) == (2, 1, 5, 300)
-    assert t.mode == nxvc.TileMode.INTRA and t.mode_name == "INTRA"
+    assert t.mode == nxvc.TileMode.WARP_MV and t.mode_name == "WARP_MV"
     assert (t.res_level, t.chroma444, t.alpha_mode) == (1, 1, 1)
     assert t.qp_delta == -4  # signed 6-bit two's complement
     assert (t.table_set, t.nsub_log2) == (6, 2)
@@ -408,14 +409,28 @@ def test_phase1_reject_reasons():
     parsed = bs.parse_stream(data)
     assert bs.phase1_reject_reason(parsed.header, parsed.frames[0]) is None
 
-    inter = make_stream_header(tools=nxvc.Tool.INTRA_DC_PLANE | nxvc.Tool.INTER)
-    assert "tool bits outside" in bs.phase1_reject_reason(inter)
+    inter = make_stream_header(
+        tools=nxvc.Tool.INTRA_DC_PLANE | nxvc.Tool.INTER | nxvc.Tool.WARP
+    )
+    assert "outside the Phase 1 set" in bs.phase1_reject_reason(inter)
 
     stereo = make_stream_header(eyes=2)
     assert "eyes == 2" in bs.phase1_reject_reason(stereo)
 
-    frame_bytes = make_frame(stream, mode=nxvc.TileMode.STATIC_MV)
-    f = bs.parse_frame(stream.pack() + frame_bytes, stream.total_size, stream)
+    # A legal Phase 2 stream is refused on its tool mask, before any tile is
+    # looked at -- an inter tile mode cannot occur without the INTER bit.
+    inter_stream = make_stream_header(
+        tools=nxvc.Tool.INTRA_DC_PLANE | nxvc.Tool.INTER
+    )
+    frame_bytes = make_frame(inter_stream, mode=nxvc.TileMode.STATIC_MV, ref_slots=1)
+    f = bs.parse_frame(
+        inter_stream.pack() + frame_bytes, inter_stream.total_size, inter_stream
+    )
+    assert "INTER" in bs.phase1_reject_reason(inter_stream, f)
+
+    # The per-tile arm of the check still has to work, for a caller that walked
+    # the bytes with validation off: the tools mask alone is then not enough to
+    # know what the tiles say.
     assert "STATIC_MV" in bs.phase1_reject_reason(stream, f)
 
 

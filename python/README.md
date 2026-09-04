@@ -119,6 +119,41 @@ structure concerned (`("color_space", 42, "B")` is exactly how `color_space`
 was added), plus its rule in `validate()`. Byte ranges no field claims are
 carried through a parse/pack cycle verbatim in `reserved`.
 
+Four more tables carry the rest of the shape, and between them they are where a
+syntax revision lands:
+
+| table | what it drives |
+|---|---|
+| `FRAME_SECTIONS` | every block between the frame header and the first tile row, in wire order. `warp_ext()` is one row of it |
+| `_TILE_EXTRAS` | the optional bytes after a tile header -- a `u16` disparity for a `STEREO` tile, an `i8` MV pair otherwise, a constant-alpha byte |
+| `_FRAME_RULES` / `_TILE_RULES` | the constraints that need two structures to check: a frame flag against the stream's tool mask, a tile mode against the frame's `warp_present` |
+
+The order of the rules is part of the specification, not an implementation
+detail. A `STEREO` tile on the left eye must be reported as exactly that and
+not as a malformed disparity, because until the eye is right those two bytes
+are not a disparity at all -- `test_vectors.py` pins the reason each rejection
+vector is refused for, not merely that it is refused.
+
+### Stereo geometry
+
+A picture is one eye. `width` and `height` in the stream header are **per eye**,
+and a stereo frame carries two pictures rather than one double-wide one, so:
+
+```python
+hdr.cols_per_eye     # tile columns of one eye -- what tile_index and
+                     # skip_bitmap are indexed by, and what the 64-bit
+                     # bitmap bounds
+hdr.cols             # eyes * cols_per_eye, the transport's grid width
+hdr.rows             # tile rows
+hdr.tile_row_count   # eyes * rows structures per frame, row-major eye-minor
+hdr.tile_count       # cols * rows, across the eye pair
+hdr.tile_first(row, eye, tile_index)   # the transport's linear index
+```
+
+The eye of a tile row is **positional** -- it is not a field of the row header
+-- and `TileRow.eye` carries what the position said, which `parse_frame` checks
+each tile's own `eye` field against.
+
 ---
 
 ## Encoding and decoding
@@ -282,9 +317,13 @@ bytes.
 (a frame that does not consume exactly its `frame_bytes` is an error, so a
 wrong table-set size or tile-header layout cannot hide), re-pack to the bytes
 it came from, and match the geometry `vectors.md5` records; each rejection
-vector must be refused, either by the parser or by `phase1_reject_reason`. When
-an `nxv-info` binary exists in any build tree its output is parsed and compared
-field for field -- two independent readings of the same 44 files.
+vector must be refused, and most of them for the *stated* reason. Whether a
+vector is one a Phase 1 decoder must accept is read from its own tool mask
+rather than from its name, so a vector added on either side of that line is
+covered the day it lands. When an `nxv-info` binary exists in any build tree
+its output is parsed and compared field for field -- header, every frame
+header, and every `warp_ext()` matrix as raw `int32`, two independent readings
+of the same 56 files.
 
 `test_version.py` additionally parses `include/nxvc/nxvc.h` and compares every
 struct's **field order, names and integer widths** against `nxvc/_ffi.py`, and
@@ -307,8 +346,8 @@ Two version numbers are in play and they are not the same thing:
 
 * `nxvc.NXVC_VERSION` is the **bitstream version** (1) carried in every stream.
 * `nxvc.NXVC_BITSTREAM_MINOR` is the revision of `docs/SYNTAX.md` that
-  `nxvc.bitstream` parses. `nxvc.library_minor()` reports the loaded C
-  library's, read out of `nxvc_version_string()`. The library may be **ahead**
-  while a syntax revision is landing; `test_version.py` asserts only that the
-  parser is never ahead of the header, since claiming a revision it does not
-  implement is the failure that matters.
+  `nxvc.bitstream` parses (4: the Phase 2 inter path). `nxvc.library_minor()`
+  reports the loaded C library's, read out of `nxvc_version_string()`. The
+  library may be **ahead** while a syntax revision is landing;
+  `test_version.py` asserts only that the parser is never ahead of the header,
+  since claiming a revision it does not implement is the failure that matters.

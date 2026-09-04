@@ -242,18 +242,45 @@ class StreamHeader(_TableStruct):
         return 32 if (self.tile_size_code & 1) else 64
 
     @property
-    def tiles_x(self) -> int:
+    def cols_per_eye(self) -> int:
+        """Tile columns of one eye's picture.  SYNTAX.md 3.3: ``width`` is per
+        eye, and a stereo frame carries two pictures, not one double-wide one."""
         t = self.tile_size
         return (self.width + t - 1) // t
 
     @property
-    def tiles_y(self) -> int:
+    def rows(self) -> int:
         t = self.tile_size
         return (self.height + t - 1) // t
 
     @property
+    def cols(self) -> int:
+        """Tile columns across the eye pair -- the transport's grid width."""
+        return self.eyes * self.cols_per_eye
+
+    #: In-row tile count, which is per eye: it is what ``tile_index``,
+    #: ``tile_count`` and ``skip_bitmap`` are all indexed by.
+    @property
+    def tiles_x(self) -> int:
+        return self.cols_per_eye
+
+    @property
+    def tiles_y(self) -> int:
+        return self.rows
+
+    @property
+    def tile_row_count(self) -> int:
+        """Tile-row structures per frame: ``eyes * rows``, row-major eye-minor."""
+        return self.eyes * self.rows
+
+    @property
     def tile_count(self) -> int:
-        return self.tiles_x * self.tiles_y
+        """Tiles per frame across both eyes -- the transport's linear index space."""
+        return self.cols * self.rows
+
+    def tile_first(self, row: int, eye: int, tile_index: int) -> int:
+        """The transport's linear tile index (SYNTAX.md 3.3)."""
+        return row * self.cols + eye * self.cols_per_eye + tile_index
 
     @property
     def chroma444(self) -> bool:
@@ -331,7 +358,8 @@ class StreamHeader(_TableStruct):
                 raise BitstreamError(f"{name} {value} is not even", offset)
         if self.tiles_x > 64:
             raise BitstreamError(
-                f"{self.tiles_x} tiles per row exceeds the 64-bit skip bitmap", offset
+                f"{self.cols_per_eye} tiles per row and eye exceeds the 64-bit "
+                f"skip bitmap", offset
             )
         if self.chroma_format not in (0, 1):
             raise BitstreamError(f"chroma_format {self.chroma_format} out of range", offset + 15)
@@ -373,6 +401,13 @@ class StreamHeader(_TableStruct):
         if (self.tools & Tool.LOSSLESS) and (self.tools & Tool.SIGN_HIDE):
             raise BitstreamError(
                 "tool bits LOSSLESS and SIGN_HIDE are mutually exclusive", offset + 32
+            )
+        # SYNTAX.md 14: WARP describes how the inter modes predict, so it says
+        # nothing on its own (rejection vector r27).
+        if (self.tools & Tool.WARP) and not (self.tools & Tool.INTER):
+            raise BitstreamError(
+                "tool bit WARP without INTER: there is nothing for it to describe",
+                offset + 32,
             )
         if any(self.reserved):
             raise BitstreamError("reserved bytes 43-61 must be zero", offset + 43)
@@ -421,6 +456,12 @@ class FrameHeader(_TableStruct):
     def stereo_inter_view(self) -> bool:
         return bool(self.flags & 2)
 
+    #: bit 3 of ``flags``: a ``warp_ext()`` record follows the frame header
+    #: (SYNTAX.md 3.1.1).  Requires tool bit 11 ``WARP``.
+    @property
+    def warp_present(self) -> bool:
+        return bool(self.flags & 8)
+
     #: bit 2 of ``flags``: the layered form of directional intra (SYNTAX.md 7.5).
     #: Requires tool bit 17 ``INTRA_DIR``; the pairing is checked in
     #: :func:`parse_frame`, which is the first place the stream header is in hand.
@@ -465,6 +506,10 @@ class FrameHeader(_TableStruct):
         if self.frame_bytes < self.SIZE:
             raise BitstreamError(
                 f"frame_bytes {self.frame_bytes} is smaller than the 40-byte header", offset + 36
+            )
+        if self.flags & 0xF0:
+            raise BitstreamError(
+                f"frame flags bits 4-7 are reserved, got 0x{self.flags:02x}", offset + 34
             )
         if any(self.reserved):
             raise BitstreamError("frame header byte 35 must be zero", offset + 35)
@@ -535,7 +580,21 @@ _TILE_WORD0: Sequence[tuple[str, int, int, bool]] = (
 #: nothing else -- :attr:`TileHeader.header_size`, ``parse`` and ``pack`` are
 #: all generated from this table.
 _TILE_EXTRAS: Sequence[tuple[str, tuple[str, ...], str, Callable[[Any], bool]]] = (
-    ("tile motion vector", ("mv_x", "mv_y"), "bb", lambda h: bool(h.mv_present)),
+    # SYNTAX.md 4.1: `mv_present` introduces two bytes either way -- a u16
+    # disparity for a STEREO tile, an i8 pair otherwise -- so no structure
+    # changes size and the choice is only which two bytes they are.
+    (
+        "tile disparity",
+        ("disparity",),
+        "H",
+        lambda h: bool(h.mv_present) and h.mode == TileMode.STEREO,
+    ),
+    (
+        "tile motion vector",
+        ("mv_x", "mv_y"),
+        "bb",
+        lambda h: bool(h.mv_present) and h.mode != TileMode.STEREO,
+    ),
     ("tile constant alpha", ("alpha_value",), "B", lambda h: h.alpha_mode == 1),
 )
 
@@ -576,6 +635,8 @@ class TileHeader:
     word1_reserved: int = 0
     mv_x: int = 0
     mv_y: int = 0
+    #: STEREO only: unsigned horizontal disparity in quarter samples, 12 bits.
+    disparity: int = 0
     alpha_value: int = 0
 
     #: Fixed part only; the optional bytes are counted by :attr:`header_size`.
@@ -583,7 +644,8 @@ class TileHeader:
 
     @property
     def header_size(self) -> int:
-        """Header bytes before the payload: 8, plus 2 for an MV, plus 1 for constant alpha."""
+        """Header bytes before the payload: 8, plus 2 for an MV or a disparity,
+        plus 1 for constant alpha."""
         return 8 + sum(
             struct.calcsize("<" + fmt)
             for _, _, fmt, present in _TILE_EXTRAS
@@ -661,6 +723,22 @@ class TileHeader:
             raise BitstreamError("tile word0 bit 3 must be zero", offset)
         if self.word1_reserved:
             raise BitstreamError("tile word1 bits 28-31 must be zero", offset + 4)
+        # --- SYNTAX.md 4.1 inter constraints that need nothing but this header
+        if self.ref_sel == 3:
+            raise BitstreamError("ref_sel 3 is reserved", offset + 4)
+        if self.ref_sel and self.mode in (TileMode.INTRA, TileMode.STEREO):
+            raise BitstreamError(
+                f"ref_sel {self.ref_sel} on a {self.mode_name} tile must be 0",
+                offset + 4,
+            )
+        if self.mode == TileMode.STEREO and not self.mv_present:
+            raise BitstreamError("a STEREO tile must carry a disparity", offset + 4)
+        # The `disparity` range check is deliberately NOT here.  Its two bytes
+        # only mean a disparity once the tile is established as a legitimate
+        # STEREO tile -- right eye, STEREO tool -- and those need the stream
+        # header, so the check lives with them in _TILE_RULES.  Otherwise a
+        # STEREO tile on the left eye is reported as a bad disparity, which is
+        # a true statement about bytes that are not a disparity at all.
 
 
 # ------------------------------------------------------------- parsed entities
@@ -684,6 +762,9 @@ class TileRow:
     header: TileRowHeader
     tiles: list[Tile]
     offset: int
+    #: The eye this row belongs to.  SYNTAX.md 3.3: it is **positional**, not a
+    #: field of the row header -- rows go row-major, eye-minor.
+    eye: int = 0
 
     @property
     def size(self) -> int:
@@ -699,18 +780,27 @@ class Frame:
     offset: int
     custom_matrix: bytes | None = None
     table_deltas: dict[int, bytes] = field(default_factory=dict)
+    #: The parsed ``warp_ext()`` matrices, one tuple of nine int32 per eye, or
+    #: () when the frame carries none.
     #: Every :data:`FRAME_SECTIONS` block that was present, by section name:
     #: ``{name: {key: bytes}}``.  ``custom_matrix`` and ``table_deltas`` above
     #: are the two named views onto it that v1 callers already use.
     sections: dict[str, dict[Any, bytes]] = field(default_factory=dict)
+
 
     @property
     def size(self) -> int:
         return self.header.frame_bytes
 
     @property
+    def warp(self) -> tuple[tuple[int, ...], ...]:
+        """``warp_ext()`` as one tuple of nine int32 per eye, or ()."""
+        blob = self.sections.get("warp_ext", {}).get(None)
+        return decode_warp_ext(blob) if blob else ()
+
+    @property
     def tiles(self) -> list[Tile]:
-        """Every transmitted tile of the frame, in raster order."""
+        """Every transmitted tile of the frame, in row-major eye-minor order."""
         return [t for row in self.rows for t in row.tiles]
 
     @property
@@ -768,12 +858,85 @@ class FrameSection:
     what: Callable[[Any], str]
     #: True when the section holds at most one instance, keyed ``None``.
     singleton: bool = True
+    #: Optional content check, called with ``(blob, hdr, stream, offset)``.
+    check: Callable[[bytes, "FrameHeader", "StreamHeader", int], None] | None = None
+
+
+#: Bytes of one eye's ``warp_ext()`` record: nine little-endian int32.
+WARP_EXT_BYTES = 36
+#: ``h22`` is normalised, not free: exactly 1.0 in Q2.29 (SYNTAX.md 3.1.1).
+WARP_H22 = 0x20000000
+#: ``kEntryMax``: every entry of the matrix lies in ``[-2^30, 2^30]``.
+WARP_ENTRY_MAX = 1 << 30
+
+
+def decode_warp_ext(blob: bytes) -> tuple[tuple[int, ...], ...]:
+    """``warp_ext()`` bytes as one tuple of nine int32 per eye, h00..h22.
+
+    Rows 0 and 1 are Q10.21 and row 2 is Q2.29 -- the two fixed-point formats
+    the record mixes (SYNTAX.md 3.1.1).  Nothing here converts them to floats:
+    the decode path does no floating-point arithmetic, and neither does this.
+    """
+    eyes = len(blob) // WARP_EXT_BYTES
+    return tuple(
+        struct.unpack_from("<9i", blob, e * WARP_EXT_BYTES) for e in range(eyes)
+    )
+
+
+def _check_warp_ext(
+    blob: bytes, hdr: "FrameHeader", stream: "StreamHeader", offset: int
+) -> None:
+    """The four conditions of SYNTAX.md 3.1.1 (vectors r18, r19, r20).
+
+    Condition 3 is the interesting one: the perspective denominator is affine
+    in the sample coordinates, so bounding it at the four picture corners
+    bounds it everywhere, and that is what lets the reference divide with a
+    ``uint32`` remainder.
+    """
+    ox, oy = stream.width >> 1, stream.height >> 1
+    corners = ((-ox, -oy), (stream.width - ox, -oy), (-ox, stream.height - oy),
+               (stream.width - ox, stream.height - oy))
+    for eye, m in enumerate(decode_warp_ext(blob)):
+        where = f"warp_ext() eye {eye}"
+        if m[8] != WARP_H22:
+            raise BitstreamError(
+                f"{where}: h22 is 0x{m[8] & 0xFFFFFFFF:08x}, must be "
+                f"0x{WARP_H22:08x}",
+                offset,
+            )
+        for i, h in enumerate(m):
+            if not (-WARP_ENTRY_MAX <= h <= WARP_ENTRY_MAX):
+                raise BitstreamError(
+                    f"{where}: h{i // 3}{i % 3} = {h} is outside "
+                    f"[-2^30, 2^30]",
+                    offset + 4 * i,
+                )
+        for cx, cy in corners:
+            den = m[6] * cx + m[7] * cy + m[8]
+            if not (-(1 << 31) <= den < (1 << 31)):
+                raise BitstreamError(
+                    f"{where}: the denominator at corner ({cx}, {cy}) "
+                    f"overflows int32", offset
+                )
+            if not ((1 << 28) <= den < (1 << 30)):
+                raise BitstreamError(
+                    f"{where}: the denominator at corner ({cx}, {cy}) is "
+                    f"{den}, outside [2^28, 2^30)",
+                    offset,
+                )
 
 
 #: The sections, **in wire order** (SYNTAX.md 3.1).  Phase 2's `warp_ext`, which
-#: follows the frame header when a `flags` bit is set, is one more row here:
+#: follows the frame header when `flags` bit 3 is set, is the first row:
 #: :func:`parse_frame` walks this table and nothing in it is hard-coded.
 FRAME_SECTIONS: Sequence[FrameSection] = (
+    FrameSection(
+        name="warp_ext",
+        keys=lambda h, s: [None] if h.warp_present else [],
+        size=lambda h, s, k: WARP_EXT_BYTES * s.eyes,
+        what=lambda k: "warp_ext()",
+        check=_check_warp_ext,
+    ),
     FrameSection(
         name="custom_matrix",
         keys=lambda h, s: [None] if h.custom_matrix else [],
@@ -798,6 +961,17 @@ _FRAME_RULES: Sequence[tuple[Callable[[Any, Any], bool], str]] = (
         lambda h, s: h.intra_dir_layer and not (s.tools & Tool.INTRA_DIR),
         "frame flags bit 2 (layered directional intra) without tool bit 17 INTRA_DIR",
     ),
+    (
+        lambda h, s: h.warp_present and not (s.tools & Tool.WARP),
+        "frame flags bit 3 (warp_present) without tool bit 11 WARP",
+    ),
+    (
+        # SYNTAX.md 3.1: inert and unchecked on a stream with no reference ring,
+        # which is what every v1.1-v1.3 encoder writes (rejection vector r25).
+        lambda h, s: bool(s.tools & Tool.INTER)
+        and h.ref_slots != (1 << (h.frame_number % 4)),
+        "ref_slots must be 1 << (frame_number mod 4) on an inter stream",
+    ),
 )
 
 _TILE_RULES: Sequence[tuple[Callable[[Any, Any, Any], bool], str]] = (
@@ -816,6 +990,34 @@ _TILE_RULES: Sequence[tuple[Callable[[Any, Any, Any], bool], str]] = (
     (
         lambda t, h, s: t.alpha_mode != 0 and not s.alpha_present,
         "alpha_mode != 0 in a stream with no alpha plane",
+    ),
+    # --- SYNTAX.md 4.1 inter constraints (rejection vectors r21, r28)
+    (
+        # Guarded on a legal mode: mode 5-7 is a reserved-mode error, which
+        # TileHeader.validate has already raised, not a missing-tool one.
+        lambda t, h, s: t.mode <= TileMode.STEREO
+        and t.mode != TileMode.INTRA
+        and not (s.tools & Tool.INTER),
+        "an inter tile mode without tool bit 10 INTER",
+    ),
+    (
+        lambda t, h, s: t.mode in (TileMode.WARP_SKIP, TileMode.WARP_MV)
+        and not h.warp_present,
+        "a warped tile mode in a frame with warp_present == 0",
+    ),
+    (
+        lambda t, h, s: t.mode == TileMode.STEREO and not (s.tools & Tool.STEREO),
+        "a STEREO tile without tool bit 12 STEREO",
+    ),
+    (
+        lambda t, h, s: t.mode == TileMode.STEREO and t.eye != 1,
+        "a STEREO tile on the left eye: it predicts from the first eye",
+    ),
+    (
+        # Last, so the two bytes are known to be a disparity before they are
+        # read as one.
+        lambda t, h, s: t.mode == TileMode.STEREO and bool(t.disparity >> 12),
+        "disparity bits 15:12 must be zero",
     ),
 )
 
@@ -867,18 +1069,28 @@ def parse_frame(
                 raise BitstreamError(
                     f"{what} runs past frame_bytes {hdr.frame_bytes}", pos
                 )
-            sections.setdefault(section.name, {})[key] = bytes(buf[pos : pos + n])
+            blob = bytes(buf[pos : pos + n])
+            if validate and section.check is not None:
+                section.check(blob, hdr, stream, pos)
+            sections.setdefault(section.name, {})[key] = blob
             pos += n
 
     custom_matrix = sections.get("custom_matrix", {}).get(None)
     table_deltas = dict(sections.get("table_deltas", {}))
 
     rows: list[TileRow] = []
-    for row_index in range(stream.tiles_y):
+    # SYNTAX.md 3.3: `eyes * rows` structures, row-major and eye-minor, and the
+    # eye is positional -- the row header does not carry it.  That order is
+    # what puts a whole left-eye row ahead of the right-eye row of the same
+    # index, which is what a STEREO tile's dependency needs.
+    for row_index, eye in (
+        (r, e) for r in range(stream.rows) for e in range(stream.eyes)
+    ):
         row_off = pos
         if pos + TileRowHeader.SIZE > end:
             raise BitstreamError(
-                f"tile row {row_index} runs past frame_bytes {hdr.frame_bytes}", pos
+                f"tile row {row_index} eye {eye} runs past frame_bytes "
+                f"{hdr.frame_bytes}", pos
             )
         rh = TileRowHeader.parse(buf, pos)
         pos += TileRowHeader.SIZE
@@ -893,16 +1105,26 @@ def parse_frame(
                 raise BitstreamError(
                     f"tile-row row_index {rh.row_index} != {row_index}", row_off + 2
                 )
-            skipped = bin(rh.skip_bitmap & ((1 << stream.tiles_x) - 1)).count("1")
-            if rh.tile_count != stream.tiles_x - skipped:
+            skipped = bin(rh.skip_bitmap & ((1 << stream.cols_per_eye) - 1)).count("1")
+            if rh.tile_count != stream.cols_per_eye - skipped:
                 raise BitstreamError(
-                    f"tile_count {rh.tile_count} != {stream.tiles_x} tiles minus "
+                    f"tile_count {rh.tile_count} != {stream.cols_per_eye} tiles minus "
                     f"{skipped} skipped",
                     row_off + 3,
                 )
-            if rh.skip_bitmap >> stream.tiles_x:
+            if rh.skip_bitmap >> stream.cols_per_eye:
                 raise BitstreamError(
-                    f"skip_bitmap has bits set above tile {stream.tiles_x - 1}", row_off + 4
+                    f"skip_bitmap has bits set above tile "
+                    f"{stream.cols_per_eye - 1}", row_off + 4
+                )
+            # Checked last, so that a bitmap which is also structurally wrong
+            # is reported as the more specific thing it is.
+            if rh.skip_bitmap and not (
+                (stream.tools & Tool.INTER) and hdr.warp_present
+            ):
+                raise BitstreamError(
+                    "a skip bit needs the INTER tool and warp_present in the frame",
+                    row_off + 4,
                 )
 
         tiles: list[Tile] = []
@@ -910,16 +1132,23 @@ def parse_frame(
             th = TileHeader.parse(buf, pos, validate=validate)
             if validate:
                 _validate_tile_against_stream(th, hdr, stream, pos)
+                if th.eye != eye:
+                    raise BitstreamError(
+                        f"tile {th.tile_index}: eye {th.eye} does not match the "
+                        f"eye {eye} its position in the frame gives it",
+                        pos,
+                    )
             if pos + th.total_size > end:
                 raise BitstreamError(
-                    f"tile {th.tile_index} of row {row_index} runs past frame_bytes", pos
+                    f"tile {th.tile_index} of row {row_index} eye {eye} runs "
+                    f"past frame_bytes", pos
                 )
             payload_off = pos + th.header_size
             tiles.append(
                 Tile(th, bytes(buf[payload_off : payload_off + th.payload_len]), pos)
             )
             pos += th.total_size
-        rows.append(TileRow(rh, tiles, row_off))
+        rows.append(TileRow(rh, tiles, row_off, eye))
 
     if validate and pos != end:
         raise BitstreamError(

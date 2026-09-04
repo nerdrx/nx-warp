@@ -66,7 +66,11 @@ def test_info_reports_a_phase2_stream_as_refusable(tmp_path, capsys):
     from nxvc import bitstream as bs
 
     hdr = bs.StreamHeader(
-        width=64, height=64, tools=nxvc.Tool.INTRA_DC_PLANE | nxvc.Tool.WARP
+        width=64,
+        height=64,
+        # WARP without INTER is malformed (SYNTAX.md 2.3), so a Phase 2 stream
+        # sets both.
+        tools=nxvc.Tool.INTRA_DC_PLANE | nxvc.Tool.INTER | nxvc.Tool.WARP,
     )
     path = tmp_path / "phase2.nxv"
     path.write_bytes(hdr.pack())

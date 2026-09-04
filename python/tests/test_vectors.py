@@ -142,10 +142,24 @@ def _info_fields(text: str) -> dict:
     out["tools"] = int(m.group(1), 16) if m else None
     m = re.search(r"^\s*ext_len\s+(\d+)", text, re.M)
     out["ext_len"] = int(m.group(1)) if m else None
-    m = re.search(r"^\s*tile grid\s+(\d+)x(\d+) = (\d+)", text, re.M)
+    # "tile grid 3x2 = 6 tiles" before the eye pair existed, and
+    # "tile grid 2x2 per eye, cols 2 = 4 tiles" since (SYNTAX.md 3.3).
+    m = re.search(
+        r"^\s*tile grid\s+(\d+)x(\d+)(?: per eye, cols (\d+))? = (\d+) tiles",
+        text,
+        re.M,
+    )
     if m:
-        out["tiles_x"], out["tiles_y"] = int(m.group(1)), int(m.group(2))
-        out["tile_count"] = int(m.group(3))
+        out["cols_per_eye"], out["rows"] = int(m.group(1)), int(m.group(2))
+        out["cols"] = int(m.group(3)) if m.group(3) else int(m.group(1))
+        out["tile_count"] = int(m.group(4))
+    out["warp"] = [
+        tuple(int(v) for v in (w[1] + " " + w[2]).replace("/", " ").split())
+        for w in re.findall(
+            r"warp_ext eye (\d+)\s+Q10\.21 \[([-\d /]+)\]\s+Q2\.29 \[([-\d ]+)\]",
+            text,
+        )
+    ]
     out["frames"] = [
         {
             "frame_number": int(f[0]),
@@ -191,7 +205,9 @@ def test_every_conformance_vector_parses(row):
 
     stream = bs.parse_stream(data)
     hdr = stream.header
-    assert hdr.width == int(width)
+    # The manifest records the decoded image, which spans the eye pair; the
+    # header's `width` is per eye (SYNTAX.md 3.3).
+    assert hdr.width * hdr.eyes == int(width)
     assert hdr.height == int(height)
     assert hdr.chroma444 == (pix == "yuv444p")
     assert hdr.alpha_present == int(alpha)
@@ -200,10 +216,14 @@ def test_every_conformance_vector_parses(row):
 
     for frame in stream.frames:
         assert frame.header.frame_number == stream.frames.index(frame)
-        assert len(frame.rows) == hdr.tiles_y
-        for row_index, tile_row in enumerate(frame.rows):
-            assert tile_row.header.row_index == row_index
+        assert len(frame.rows) == hdr.tile_row_count
+        # Rows go row-major, eye-minor, and the eye is positional (3.3).
+        for n, tile_row in enumerate(frame.rows):
+            assert tile_row.header.row_index == n // hdr.eyes
+            assert tile_row.eye == n % hdr.eyes
             assert len(tile_row.tiles) == tile_row.header.tile_count
+            for tile in tile_row.tiles:
+                assert tile.header.eye == tile_row.eye
         for tile in frame.tiles:
             assert len(tile.payload) == tile.header.payload_len
 
@@ -267,6 +287,54 @@ def test_the_ctx_v2_table_size_is_load_bearing(monkeypatch):
             bs.parse_stream((vectors / f"{name}.nxv").read_bytes())
 
 
+def test_the_inter_vectors_carry_warp_ext_where_they_should():
+    """A `warp_present` frame carries one 36-byte matrix per eye, and the
+    parser reads them as the nine int32 of SYNTAX.md 3.1.1 -- ``h22``
+    normalised, and a denominator inside the accepted envelope at every
+    picture corner, which is what `_check_warp_ext` already asserted."""
+    vectors = _vector_dir()
+    seen_warp = seen_stereo = False
+    for row in CONFORMANCE:
+        data = (vectors / f"{row[0]}.nxv").read_bytes()
+        stream = bs.parse_stream(data)
+        if not (stream.header.tools & nxvc.Tool.WARP):
+            continue
+        for frame in stream.frames:
+            if not frame.header.warp_present:
+                assert frame.warp == ()
+                continue
+            seen_warp = True
+            assert len(frame.warp) == stream.header.eyes
+            for matrix in frame.warp:
+                assert len(matrix) == 9
+                assert matrix[8] == bs.WARP_H22
+        if stream.header.eyes == 2:
+            seen_stereo = True
+    assert seen_warp, "no vector carries a warp_ext() record"
+    assert seen_stereo, "no vector has two eyes"
+
+
+def test_a_stereo_frames_rows_are_row_major_eye_minor():
+    """SYNTAX.md 3.3.  The order is load-bearing: it puts a whole left-eye row
+    ahead of the right-eye row of the same index, which is what lets a STEREO
+    tile depend on left-eye tiles of its own row."""
+    vectors = _vector_dir()
+    stereo = [
+        row[0]
+        for row in CONFORMANCE
+        if bs.parse_stream_header((vectors / f"{row[0]}.nxv").read_bytes()).eyes == 2
+    ]
+    assert stereo, "no stereo vector to check the row order against"
+    for name in stereo:
+        stream = bs.parse_stream((vectors / f"{name}.nxv").read_bytes())
+        hdr = stream.header
+        for frame in stream.frames:
+            order = [(r.header.row_index, r.eye) for r in frame.rows]
+            assert order == [
+                (r, e) for r in range(hdr.rows) for e in range(hdr.eyes)
+            ], name
+
+
 def test_the_v2_intra_vectors_set_the_tools_they_are_named_for():
     """v36-v44 are the reason syntax v1.3 exists (SYNTAX.md 12)."""
     vectors = _vector_dir()
@@ -296,12 +364,21 @@ def test_the_v2_intra_vectors_set_the_tools_they_are_named_for():
 
 
 @pytest.mark.parametrize("row", CONFORMANCE, ids=_id)
-def test_conformance_vectors_are_not_refused_by_a_phase1_decoder(row):
-    """v01-v44 are intra-only, so the Phase 1 advisory must accept them all."""
+def test_the_phase1_advisory_splits_the_vector_set_on_the_tools_mask(row):
+    """Every intra-only vector is accepted; every inter one is refused.
+
+    The split is read from the stream's own tool mask rather than from the
+    vector's name, so a vector added on either side of the line is covered the
+    day it lands.  SYNTAX.md 12 and 14.
+    """
     name = row[0]
     data = (_vector_dir() / f"{name}.nxv").read_bytes()
     stream = bs.parse_stream(data)
-    assert bs.phase1_reject_reason(stream.header, stream.frames[0]) is None
+    reason = bs.phase1_reject_reason(stream.header, stream.frames[0])
+    if stream.header.non_phase1_tools():
+        assert reason is not None, f"{name} uses inter tools and must be refused"
+    else:
+        assert reason is None, f"{name} is intra-only and must be accepted: {reason}"
 
 
 # ---------------------------------------------------------- rejection vectors
@@ -340,9 +417,25 @@ def test_every_rejection_vector_is_refused(row):
         ("r11_wm_id_no_tool", "wm_id"),
         ("r14_dir_layer_no_tool", "INTRA_DIR"),
         ("r17_lossless_sign_hide", "SIGN_HIDE"),
+        # --- the Phase 2 set.  Several of these are refusable for more than
+        # one reason, and the ordering of the checks is what decides which one
+        # a reader is told about: a STEREO tile on the left eye must not be
+        # reported as a malformed disparity, because until the eye is right
+        # those two bytes are not a disparity at all.
+        ("r18_h22_not_one", "h22"),
+        ("r19_entry_range", r"outside \[-2\^30, 2\^30\]"),
+        ("r20_den_range", "denominator"),
+        ("r21_warp_no_flag", "warp_present == 0"),
+        ("r22_mode_reserved", "mode 5 is reserved"),
+        ("r23_intra_ref_sel", "on a INTRA tile must be 0"),
+        ("r24_ref_sel_three", "ref_sel 3 is reserved"),
+        ("r25_ref_slots_wrong", "ref_slots"),
+        ("r27_warp_without_inter", "WARP without INTER"),
+        ("r28_stereo_left_eye", "STEREO tile on the left eye"),
+        ("r29_disparity_reserved", "disparity bits 15:12"),
     ],
 )
-def test_the_v2_rejection_vectors_fail_for_the_stated_reason(name, fragment):
+def test_the_rejection_vectors_fail_for_the_stated_reason(name, fragment):
     """Refusing for the wrong reason is a bug the status alone would hide."""
     path = _vector_dir() / f"{name}.nxv"
     if not path.is_file():
@@ -377,7 +470,8 @@ def test_the_parser_and_nxv_info_agree(row):
     assert info["chroma444"] == hdr.chroma444
     assert info["tools"] == hdr.tools
     assert info["ext_len"] == hdr.ext_len
-    assert (info["tiles_x"], info["tiles_y"]) == (hdr.tiles_x, hdr.tiles_y)
+    assert (info["cols_per_eye"], info["rows"]) == (hdr.cols_per_eye, hdr.rows)
+    assert info["cols"] == hdr.cols
     assert info["tile_count"] == hdr.tile_count
 
     assert len(info["frames"]) == len(stream.frames)
@@ -389,6 +483,13 @@ def test_the_parser_and_nxv_info_agree(row):
         assert got["quant_matrix"] == h.quant_matrix
         assert got["tables_present"] == h.tables_present
         assert got["flags"] == h.flags
+
+    # warp_ext(), matrix for matrix.  nxv-info prints the raw int32 in the two
+    # fixed-point formats of SYNTAX.md 3.1.1; nothing is converted to a float
+    # on either side, so this is an exact comparison.
+    printed = [tuple(m) for m in info["warp"]]
+    parsed = [tuple(m) for frame in stream.frames for m in frame.warp]
+    assert printed == parsed
 
 
 @pytest.mark.skipif(NXV_INFO is None, reason="no nxv-info binary in any build tree")
