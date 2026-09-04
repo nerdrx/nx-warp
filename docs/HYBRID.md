@@ -80,21 +80,36 @@ under 0.4% of a 100 Mbit stream. It is not worth compressing.
 
 **The weight alphabet.** PAPER.md 1.7 specifies five weights
 {0, 1/4, 1/2, 3/4, 1}. The sweep ran the 2-bit subset {0, 1/4, 1/2, 1} as the
-default. RESULTS.md reports what the fifth weight is worth; the field is
-signalled per frame so the encoder can switch, and v1 clients must implement
-both.
+default and measured the fifth weight at **at most 0.02 dB** across every
+operating point tested -- not because it goes unused (the 3-bit encoder
+spreads tiles across all five) but because its neighbours substitute for it
+almost perfectly. **v1 encoders should use the 2-bit alphabet.** Keep the
+per-frame `wgt_alphabet` flag so the decision is reversible and keep both
+paths in the decoder, but do not spend the third bit.
 
 ### 1.3 Why the weight is per tile and not per stream
 
 The measurement that matters most in RESULTS.md is the *tile class breakdown*
-of which hypothesis wins. The answer is not uniform across a frame: flat
-regions are indifferent, high-frequency texture and text prefer the temporal
-hypothesis (it carries full-resolution detail the base has thrown away), and
-screen-space movers prefer the base (the warp cannot predict them and a
-per-tile MV only partly can). A per-stream or per-frame weight would have to
-pick one of those and lose on the rest. This per-tile split is the single
-largest structural difference from LCEVC (section 5) and it is where hybrid
-mode earns its keep.
+of which hypothesis wins, and it is not uniform across a frame -- nor even
+consistent in sign across operating points.
+
+At a full-resolution base carrying most of the bitrate, text goes to the base
+completely (0.0% temporal win, mean weight 0.94): HEVC reproduces
+high-contrast glyphs well, and 90 Hz of repeated Catmull-Rom resampling does
+not, which is the resampling blur 2.2 warns about showing up in a
+measurement. At a half-resolution base the same class inverts just as hard
+(82.1% temporal, mean weight 0.18), because an upsampled half-resolution glyph
+has lost detail the warped previous output still carries. Edge behaves the
+same way, more moderately; flat prefers the temporal hypothesis nearly
+everywhere.
+
+So within a single frame the right weight for text and the right weight for
+flat differ by 0.4 to 0.8, and the right weight for text *inverts* between
+base resolutions. A per-stream or per-frame weight cannot serve that; it would
+have to pick one class and lose on the rest. This per-tile split is the single
+largest structural difference from LCEVC (section 5), and RESULTS.md's
+hypothesis-dropping A/B prices it: forcing one hypothesis or the other costs
+between 0.32 dB and 12.05 dB depending on the operating point.
 
 ---
 
@@ -221,11 +236,22 @@ Consequences:
 
 The 8 to 12 ms is not amortised and not overlapped: it is a serial addition to
 the client's critical path, because Pass C cannot start without it. At 90 Hz
-one frame is 11.1 ms, so hybrid mode spends roughly one whole frame of
-latency to avoid the compute decoder. Whether that is worth paying is the
-question RESULTS.md answers with rate-distortion numbers; the answer must be
-read together with this table, because a bitrate win of a few tenths of a dB
-does not buy back a frame of latency in VR.
+one frame is 11.1 ms, so hybrid mode spends roughly one whole frame of latency
+to avoid the compute decoder.
+
+The comparison this sets up is easy to get backwards, so state it explicitly:
+**that 8 to 12 ms is not a cost relative to HEVC.** Plain HEVC pays exactly
+the same, because it is the same hardware decoder. It is a cost relative to
+the pure compute path (4 to 6 ms, 6.10). RESULTS.md measures the three-way
+comparison and finds hybrid mode 3.78 dB better than pure compute but 0.27 dB
+*worse* than plain HEVC at a matched bitrate -- i.e. dominated by the option
+that pays the same latency and needs no new decoder at all. Hybrid mode's
+justification therefore has to come from loss behaviour, foveation, frame-rate
+decoupling, or the maintenance argument of 2.9, and not from rate-distortion.
+That conclusion is model-limited in one specific way, set out in RESULTS.md's
+"what would change this answer": the pure-codec anchor is 4 dB behind x265,
+and the sweep's preference for a large full-resolution base is partly the
+optimiser minimising exposure to that deficit.
 
 ---
 
@@ -315,9 +341,12 @@ split-rendering filings, which 2.2 already flags.
 **3. Two hypotheses with an explicit per-tile blend.** LCEVC has one
 prediction of the residual and a flag. We have two hypotheses of the picture
 and a weight from an explicit alphabet. The blend weights {0, 1/4, 1/2, 3/4,
-1} are the MPEG-2-era bi-prediction weighting, expired. RESULTS.md quantifies
-what the blend is worth over picking the better single hypothesis; if that
-figure is small the fallback in item 6 gets cheaper.
+1} are the MPEG-2-era bi-prediction weighting, expired. Measured: the blend
+reduces residual energy by 1.3 to 3.4% over the better *single* hypothesis,
+but that understates the structure's value, because which hypothesis is better
+flips with base strength -- 33% of tiles prefer the temporal hypothesis at a
+1x base, 88% at a 0.5x base. Removing either hypothesis costs 0.32 to 12.05 dB
+depending on the operating point (RESULTS.md, "A/B: dropping a hypothesis").
 
 **4. Our transform and entropy coder are the base codec's, not a separate
 small-transform layer.** LCEVC uses 2x2 and 4x4 Hadamard-like directional
@@ -332,13 +361,25 @@ sub-layers (LoQ-1 at half and LoQ-0 at full) with different tooling. We have
 1 to 4 layers of identical geometry and identical syntax; only
 `layer_desc.type` distinguishes the base.
 
-**6. The documented fallback.** If a claims reading goes against the
+**6. The documented fallback, priced.** If a claims reading goes against the
 two-hypothesis structure, the safe retreat named in 1.7 is to disable the
 temporal hypothesis in enhancement layers and ship spatial-only scalability,
-which is H.263 Annex O (1998, expired). The cost of that retreat is exactly
-the quality delta between the full blend and the `wgt = 1` column of the
-sweep, which RESULTS.md reports for that purpose. **This number should be in
-front of counsel before the review, because it prices the fallback.**
+which is H.263 Annex O (1998, expired). Measured cost of that retreat, at
+150 Mbit:
+
+| Base | Base share | Both hypotheses | Spatial only | Cost of the fallback |
+|---|---|---|---|---|
+| 1x | 85% | 41.56 | 41.24 | **0.32 dB** |
+| 1x | 55% | 40.33 | 39.65 | 0.68 dB |
+| 1x | 25% | 38.62 | 36.45 | 2.17 dB |
+| 0.5x | 25% | 37.24 | 33.62 | **3.62 dB** |
+| 0.5x | 55% | 36.45 | 33.73 | 2.72 dB |
+
+**At the recommended operating point the fallback costs 0.32 dB, which is
+cheap enough that it should not drive the legal strategy.** It becomes
+expensive only with a reduced-resolution base and a thin base share -- so if
+the fallback is ever forced, it forces the full-resolution base with it.
+These numbers should be in front of counsel before the review.
 
 **7. Practical note on the base.** In both hybrid paths the HEVC or H.264
 bitstream is produced by a licensed encoder and consumed by the device's own
