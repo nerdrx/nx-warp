@@ -148,7 +148,35 @@ struct TileParams {
     int mv_x = 0, mv_y = 0, alpha_value = 255;
     int disparity = 0;   // STEREO only, quarter samples, 12 bits
     int skipped = 0;     // signalled by skip_bitmap, no tile structure at all
+    // --- syntax v1.5, tool bits 24 to 26 (docs/SYNTAX.md 13.9 to 13.11)
+    int near_skip = 0;      // word1 bit 28: the whole residual is `corr`
+    int near_skip_ac = 0;   // word1 bit 29: `corr` carries the two ramps too
+    int quad_mv = 0;        // word1 bit 30: `qmv` refines the tile vector
+    int sub_intra = 0;      // word1 bit 31: one quadrant drops the predictor
+    int sub_intra_quad = 0; // which quadrant, 0..3, raster order
+    i8 corr[3][3] = {};     // [plane][0]=dc, [1]=horizontal, [2]=vertical
+    i8 qmv[4][2] = {};      // [quadrant][x,y], quarter samples, TL TR BL BR
 };
+
+// Number of correction bytes a near-skip tile carries: one per coded colour
+// plane for the DC, three per plane with the ramps.  Alpha is never
+// corrected -- a near-skip tile may not carry a coded alpha plane.
+constexpr int kNearSkipPlanes = 3;
+static inline int near_skip_bytes(const TileParams &t) {
+    return t.near_skip ? kNearSkipPlanes * (t.near_skip_ac ? 3 : 1) : 0;
+}
+
+// SYNTAX.md 13.11: the sub-intra byte, bits 1:0 the quadrant and bits 7:2
+// reserved.  A whole byte for two bits is what word1 has room for -- bit 31
+// was its last free bit -- and it is one byte on the tiles that carry a
+// disocclusion strip and none anywhere else.
+constexpr int kSubIntraReservedMask = 0xfc;
+
+// Signed nibble, two's complement, -8..+7.  The quad_mv deltas are packed two
+// to a byte and this is the only place they are unpacked.
+static inline int sign_nibble(u32 v) {
+    return (int)(v & 0xfu) - (int)((v & 8u) << 1);
+}
 
 // Does this mode read the frame's warp matrix?  STATIC_MV and STEREO use the
 // identity predictor and do not (Annex D D-1).
@@ -173,8 +201,45 @@ static void pack_tile_header(BW &bw, const TileParams &t) {
     w1 |= ((u32)t.tskip & 1) << 23;
     w1 |= ((u32)t.wgt & 3) << 24;
     w1 |= ((u32)t.wm_id & 3) << 26;
+    w1 |= ((u32)t.near_skip & 1) << 28;
+    w1 |= ((u32)t.near_skip_ac & 1) << 29;
+    w1 |= ((u32)t.quad_mv & 1) << 30;
+    w1 |= ((u32)t.sub_intra & 1) << 31;
     bw.u32v(w0);
     bw.u32v(w1);
+}
+
+// The optional fields that follow the two header words, in the order
+// SYNTAX.md 4.1 lists them: the vector, the quadrant deltas, the sub-intra
+// quadrant, the constant alpha value, the near-skip correction.  One function
+// writes them and one counts them, so a field can never be written in an order
+// the size does not account for.
+static int tile_field_bytes(const TileParams &t) {
+    return (t.mv_present ? 2 : 0) + (t.quad_mv ? 4 : 0) +
+           (t.sub_intra ? 1 : 0) + (t.alpha_mode == 1 ? 1 : 0) +
+           near_skip_bytes(t);
+}
+
+static void emit_tile_fields(BW &bw, const TileParams &t) {
+    if (t.mv_present) {
+        if (t.mode == NXVC_MODE_STEREO) {
+            bw.u16v((u32)(t.disparity & 0xfff));
+        } else {
+            bw.u8v((u8)(i8)t.mv_x);
+            bw.u8v((u8)(i8)t.mv_y);
+        }
+    }
+    if (t.quad_mv)
+        for (int q = 0; q < 4; ++q)
+            bw.u8v((u8)(((u32)t.qmv[q][0] & 0xfu) |
+                        (((u32)t.qmv[q][1] & 0xfu) << 4)));
+    if (t.sub_intra) bw.u8v((u8)(t.sub_intra_quad & 3));
+    if (t.alpha_mode == 1) bw.u8v((u8)t.alpha_value);
+    if (t.near_skip) {
+        const int n = t.near_skip_ac ? 3 : 1;
+        for (int p = 0; p < kNearSkipPlanes; ++p)
+            for (int k = 0; k < n; ++k) bw.u8v((u8)t.corr[p][k]);
+    }
 }
 
 static void unpack_tile_header(u32 w0, u32 w1, TileParams &t) {
@@ -195,6 +260,10 @@ static void unpack_tile_header(u32 w0, u32 w1, TileParams &t) {
     t.tskip = (w1 >> 23) & 1;
     t.wgt = (w1 >> 24) & 3;
     t.wm_id = (w1 >> 26) & 3;
+    t.near_skip = (w1 >> 28) & 1;
+    t.near_skip_ac = (w1 >> 29) & 1;
+    t.quad_mv = (w1 >> 30) & 1;
+    t.sub_intra = (w1 >> 31) & 1;
 }
 
 // ------------------------------------------------------------- tile coding
@@ -527,6 +596,31 @@ static void residual_block(const i16 *c, const PlaneState &s, int tskip,
     }
 }
 
+// SYNTAX.md 7.2 and 13.3: bilinear planar prediction over the block centres,
+// then, for an inter tile, added to the warp predictor about the plane's DC
+// offset.  Every tile form that produces a `means` field ends here -- the
+// coded DC plane, and the near-skip correction of 13.9 -- so there is one
+// implementation of the interpolation and of the inter combination.
+static void planar_from_means(PlaneState &s) {
+    const int nb = s.nb, size = s.size;
+    for (int y = 0; y < size; ++y)
+        for (int x = 0; x < size; ++x)
+            s.pred[(size_t)y * size + x] = bilinear_q4_i32(
+                s.means.data(), nb, nb, nb, 2 * x - 7, 2 * y - 7);
+    if (!s.wpred.empty()) {
+        for (size_t i = 0; i < s.pred.size(); ++i)
+            s.pred[i] = clamp_i32(s.wpred[i] + s.pred[i] - s.dc_off, 0, s.maxval);
+    }
+}
+
+// The DC-plane quantiser step of SYNTAX.md 6.5: the DC plane is quantised at
+// half the tile's QP index and at unit weight, whatever the tile's weighting
+// matrix.  The coded DC plane and the near-skip correction share it, because
+// they are the same quantity coded two ways.
+static inline int dc_plane_step(const PlaneState &s) {
+    return dequant_step(dc_qp_of(s.qp), 16);
+}
+
 // The DC plane and the bilinear prediction it drives: s.means and s.pred.
 // Shared by the encoder's analysis pass and the decoder.
 //
@@ -540,10 +634,9 @@ static void residual_block(const i16 *c, const PlaneState &s, int tskip,
 // warp needs.  On a well-predicted tile every DC-plane coefficient is zero and
 // the whole structure costs one CBF symbol.
 static void reconstruct_dc_plane(PlaneState &s, const i16 *coefs) {
-    const int nb = s.nb, size = s.size;
+    const int nb = s.nb;
     const int ndc = nb * nb;
-    int dcqp = dc_qp_of(s.qp);
-    int tdc = dequant_step(dcqp, 16);
+    const int tdc = dc_plane_step(s);
     std::vector<i32> dc(ndc);
     for (int i = 0; i < ndc; ++i) dc[i] = dequant(coefs[i], tdc);
     if (nb == 8) {
@@ -560,15 +653,38 @@ static void reconstruct_dc_plane(PlaneState &s, const i16 *coefs) {
     for (int i = 0; i < ndc; ++i)
         s.means[i] = s.wpred.empty() ? clamp_i32(s.dc_off + dc[i], 0, s.maxval)
                                      : s.dc_off + dc[i];
-    // planar prediction: bilinear over block centres (8x8 blocks)
-    for (int y = 0; y < size; ++y)
-        for (int x = 0; x < size; ++x)
-            s.pred[(size_t)y * size + x] = bilinear_q4_i32(
-                s.means.data(), nb, nb, nb, 2 * x - 7, 2 * y - 7);
-    if (!s.wpred.empty()) {
-        for (size_t i = 0; i < s.pred.size(); ++i)
-            s.pred[i] = clamp_i32(s.wpred[i] + s.pred[i] - s.dc_off, 0, s.maxval);
-    }
+    planar_from_means(s);
+}
+
+// ---------------------------------------------------------------- near skip
+// SYNTAX.md 13.9.  A near-skip tile has no coefficients at all: its whole
+// residual is a per-plane block-mean field, flat under `near_skip == 1` and a
+// pair of ramps under `near_skip_ac == 1`.  The field is built here and
+// everything after it is the ordinary inter path -- planar interpolation,
+// then the warp predictor -- so a near-skip tile's samples are `pred` and
+// nothing is added to them.
+//
+// `corr` is the plane's three signed bytes, dequantised through the DC-plane
+// step, i.e. exactly the levels a coded DC plane would have carried.  The
+// ramps span +-corr[1] and +-corr[2] dequantised across the tile: `2*bx-nb+1`
+// runs over +-(nb-1) and the shift by log2(nb) divides it by nb, so the
+// corner blocks sit one quantiser step short of the full amplitude, which is
+// the same convention the DC plane's own bilinear interpolation uses.
+static void reconstruct_near_skip(PlaneState &s, const i8 corr[3], int ac) {
+    const int nb = s.nb;
+    const int t = dc_plane_step(s);
+    const i32 d0 = dequant(corr[0], t);
+    const i32 dh = ac ? dequant(corr[1], t) : 0;
+    const i32 dv = ac ? dequant(corr[2], t) : 0;
+    int nb_log2 = 0;
+    while ((1 << nb_log2) < nb) ++nb_log2;
+    for (int by = 0; by < nb; ++by)
+        for (int bx = 0; bx < nb; ++bx)
+            s.means[(size_t)by * nb + bx] =
+                s.dc_off + d0 + ((dh * (2 * bx - nb + 1)) >> nb_log2) +
+                ((dv * (2 * by - nb + 1)) >> nb_log2);
+    planar_from_means(s);
+    s.samples = s.pred;
 }
 
 // Reconstruct one plane from its coefficients (normative decode path).
@@ -1227,6 +1343,10 @@ struct TileDecision {
     int ref_sel = 0;
     int disparity = 0;
     int skipped = 0;
+    int near_skip = 0, near_skip_ac = 0, quad_mv = 0;
+    int sub_intra = 0, sub_intra_quad = 0;
+    i8 corr[3][3] = {};
+    i8 qmv[4][2] = {};
 };
 
 struct nxvc_encoder {
@@ -1247,6 +1367,12 @@ struct nxvc_encoder {
     std::vector<TileDecision> dec;
     std::vector<u8> skip_map;                // rc/'s force_warp_skip request
     std::vector<u16> age_since_coded;        // per tile position per eye
+    // Drift-driven refresh (docs/SYNTAX.md 13.8).  `age_since_intra` is the
+    // hard-cap clock; `drift` is the mean squared error, per luma sample, of
+    // the client shadow this encoder holds against the source it was meant to
+    // reproduce, measured on the frame just encoded.
+    std::vector<u16> age_since_intra;
+    std::vector<double> drift;
     std::vector<nxvc_view> views_cur;
     // The view each ring slot was rendered with, so the matrix a frame emits
     // is the one between its actual reference (N-1-ref_sel) and itself.
@@ -1326,6 +1452,25 @@ void nxvc_config_default(nxvc_config *cfg) {
     cfg->ref_sel = 0;
     cfg->mv_range = 16;        // PAPER 2.3 step 2
     cfg->skip_thresh = 0;      // built-in default
+    // The inter-efficiency tools (syntax v1.5) follow the same rule the v2
+    // intra tools follow: on by default when the measurement says so, each
+    // behind its own tool bit so a decoder without it refuses the stream at
+    // the handshake rather than misparsing it.  They only ever engage on an
+    // inter stream, so a Phase 1 caller is unaffected either way.
+    //
+    //   drift_refresh   -7.8 / -46.9 points of BD-rate  (13.8)
+    //   near_skip       -5.4 /  -4.7                    (13.9)
+    //   quad_mv         -9.5 /  -8.5                    (13.10)
+    //   subtile_intra   -0.5 /  +0.6  -- OFF.  It needs disocclusion and this
+    //                                  corpus is rotation-only by
+    //                                  construction, so the measurement does
+    //                                  not justify the byte.  --sub-intra on.
+    // ref/RESULTS-inter-a.md section 2 is the sweep.
+    cfg->drift_refresh = 1;
+    cfg->drift_gate_q8 = 0;    // built-in default, 4x the quantiser floor
+    cfg->near_skip = 1;
+    cfg->quad_mv = 1;
+    cfg->subtile_intra = 0;
 }
 
 void nxvc_tile_layout_get(uint32_t w, uint32_t h, nxvc_tile_layout *out) {

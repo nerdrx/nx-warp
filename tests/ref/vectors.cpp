@@ -342,27 +342,37 @@ struct InterSpec {
     int obj;                // moving-disc speed
     int disparity;          // per-eye horizontal offset
     int salt;               // per-frame content reseed (new content everywhere)
-    int ctx;                // 1 = CTX_V2 (v1.4), 2 = CTX_V3 (v1.5)
+    int ctx;                // 1 = CTX_V2 (v1.4), 2 = CTX_V3 (v1.6)
     int tab;                // compact transmitted table sets (TAB_V2)
+    int near_skip;          // NEAR_SKIP
+    int quad_mv;            // QUAD_MV
+    int drift_refresh;      // encoder-side refresh scheme (changes no syntax)
+    int sub_intra;          // SUBTILE_INTRA
 };
 
 static const InterSpec kInterVectors[] = {
-    // name                     fixes                        w    h  ey 444 qp fr st per rs   yaw   pan obj disp salt
-    {"v45_inter_identity",      "inter/identity",           128, 128, 1, 1, 24, 4, 0, 999, 0,  0.0,  0.0, 0,  0, 0, 1, 0},
-    {"v46_inter_warp_mv",       "inter/integer_mv",         128, 128, 1, 1, 26, 5, 0, 999, 0,  0.7,  2.0, 3,  0, 0, 1, 0},
-    {"v47_inter_static_mv",     "inter/static_mv",          128, 128, 1, 1, 26, 4, 0, 999, 0, 12.0,  0.0, 0,  0, 0, 1, 0},
-    {"v48_inter_warp_sweep",    "inter/warp_sweep",         128, 128, 1, 1, 28, 6, 0, 999, 0,  4.5,  6.0, 2,  0, 0, 1, 0},
-    {"v49_inter_warp_border",   "inter/warp_border",        128,  64, 1, 1, 28, 5, 0, 999, 0,  9.0, 14.0, 5,  0, 0, 1, 0},
-    {"v50_inter_skip_state",    "inter/skip",               128, 128, 1, 1, 22, 4, 0, 999, 0,  0.2,  0.5, 1,  0, 0, 1, 0},
-    {"v51_inter_ref_sel1",      "inter/ref_sel",            128, 128, 1, 1, 26, 6, 0, 999, 1,  0.5,  1.0, 2,  0, 0, 1, 0},
-    {"v52_inter_ref_sel2",      "inter/ref_sel",            128, 128, 1, 1, 26, 7, 0, 999, 2,  0.5,  1.0, 2,  0, 0, 1, 0},
-    {"v53_inter_stereo",        "inter/stereo",             128, 128, 2, 1, 24, 4, 1, 999, 0,  0.0,  0.0, 0, 11, 1, 1, 0},
-    {"v54_inter_stereo_static", "inter/stereo_static_equiv",128, 128, 2, 1, 24, 4, 0, 999, 0,  0.0,  0.0, 0, 11, 1, 1, 0},
-    {"v55_inter_420",           "inter/warp_sweep (4:2:0)", 128, 128, 1, 0, 26, 5, 0, 999, 0,  1.5,  3.0, 3,  0, 0, 1, 0},
-    {"v56_inter_refresh",       "inter/skip (refresh)",     128, 128, 1, 1, 26, 8, 0,   4, 0,  0.4,  1.0, 2,  0, 0, 1, 0},
-    // --- syntax v1.5: the inter path with the new entropy tools on.
-    {"v61_inter_ctxv3",        "inter/warp_sweep (v1.5)",  128, 128, 1, 1, 26, 6, 0, 999, 0,  4.5,  6.0, 2,  0, 0, 2, 1},
-    {"v62_inter_stereo_v3",    "inter/stereo (v1.5)",      128, 128, 2, 1, 24, 4, 1, 999, 0,  0.0,  0.0, 0, 11, 1, 2, 1},
+    // name                     fixes                        w    h  ey 444 qp fr st per rs   yaw   pan obj disp salt ctx tab ns qmv dr si
+    {"v45_inter_identity",        "inter/identity",           128, 128, 1, 1, 24, 4, 0, 999, 0,  0.0,  0.0, 0,  0, 0, 1, 0, 0, 0, 0, 0},
+    {"v46_inter_warp_mv",         "inter/integer_mv",         128, 128, 1, 1, 26, 5, 0, 999, 0,  0.7,  2.0, 3,  0, 0, 1, 0, 0, 0, 0, 0},
+    {"v47_inter_static_mv",       "inter/static_mv",          128, 128, 1, 1, 26, 4, 0, 999, 0, 12.0,  0.0, 0,  0, 0, 1, 0, 0, 0, 0, 0},
+    {"v48_inter_warp_sweep",      "inter/warp_sweep",         128, 128, 1, 1, 28, 6, 0, 999, 0,  4.5,  6.0, 2,  0, 0, 1, 0, 0, 0, 0, 0},
+    {"v49_inter_warp_border",     "inter/warp_border",        128,  64, 1, 1, 28, 5, 0, 999, 0,  9.0, 14.0, 5,  0, 0, 1, 0, 0, 0, 0, 0},
+    {"v50_inter_skip_state",      "inter/skip",               128, 128, 1, 1, 22, 4, 0, 999, 0,  0.2,  0.5, 1,  0, 0, 1, 0, 0, 0, 0, 0},
+    {"v51_inter_ref_sel1",        "inter/ref_sel",            128, 128, 1, 1, 26, 6, 0, 999, 1,  0.5,  1.0, 2,  0, 0, 1, 0, 0, 0, 0, 0},
+    {"v52_inter_ref_sel2",        "inter/ref_sel",            128, 128, 1, 1, 26, 7, 0, 999, 2,  0.5,  1.0, 2,  0, 0, 1, 0, 0, 0, 0, 0},
+    {"v53_inter_stereo",          "inter/stereo",             128, 128, 2, 1, 24, 4, 1, 999, 0,  0.0,  0.0, 0, 11, 1, 1, 0, 0, 0, 0, 0},
+    {"v54_inter_stereo_static",   "inter/stereo_static_equiv",128, 128, 2, 1, 24, 4, 0, 999, 0,  0.0,  0.0, 0, 11, 1, 1, 0, 0, 0, 0, 0},
+    {"v55_inter_420",             "inter/warp_sweep (4:2:0)", 128, 128, 1, 0, 26, 5, 0, 999, 0,  1.5,  3.0, 3,  0, 0, 1, 0, 0, 0, 0, 0},
+    {"v56_inter_refresh",         "inter/skip (refresh)",     128, 128, 1, 1, 26, 8, 0,   4, 0,  0.4,  1.0, 2,  0, 0, 1, 0, 0, 0, 0, 0},
+    // --- syntax v1.6, the inter-efficiency package.  SYNTAX.md 13.8 to 13.11.
+    {"v61_near_skip",             "13.9 near-skip DC form",   128, 128, 1, 1, 30, 6, 0, 999, 0,  0.3,  0.6, 1,  0, 0, 1, 0, 1, 0, 0, 0},
+    {"v62_quad_mv",               "13.10 quadrant vectors",   128, 128, 1, 1, 26, 6, 0, 999, 0,  1.1,  2.5, 4,  0, 0, 1, 0, 0, 1, 0, 0},
+    {"v63_near_skip_420",         "13.9 near-skip, 4:2:0",   128, 128, 1, 0, 30, 6, 0, 999, 0,  0.3,  0.6, 1,  0, 0, 1, 0, 1, 0, 0, 0},
+    {"v64_inter_eff_all",         "13.8 + 13.9 + 13.10",     128, 128, 1, 1, 28, 8, 0,  16, 0,  0.8,  1.5, 3,  0, 0, 1, 0, 1, 1, 1, 0},
+    {"v65_sub_intra",             "13.11 sub-tile intra",     128, 128, 1, 1, 26, 6, 0, 999, 0,  1.1,  2.5, 6,  0, 0, 1, 0, 0, 0, 0, 1},
+    // --- syntax v1.6, the inter path with the new entropy tools on.
+    {"v66_inter_ctxv3",           "inter/warp_sweep (v1.5)",  128, 128, 1, 1, 26, 6, 0, 999, 0,  4.5,  6.0, 2,  0, 0, 2, 1, 0, 0, 0, 0},
+    {"v67_inter_stereo_v3",       "inter/stereo (v1.5)",      128, 128, 2, 1, 24, 4, 1, 999, 0,  0.0,  0.0, 0, 11, 1, 2, 1, 0, 0, 0, 0},
 };
 static const int kNumInterVectors =
     (int)(sizeof(kInterVectors) / sizeof(kInterVectors[0]));
@@ -448,6 +458,10 @@ static Result build_inter(const InterSpec &v) {
     cfg.custom_tables = (uint32_t)v.tab;   // TAB_V2 needs something to compact
     cfg.ctx_v3 = v.ctx >= 2 ? 1u : 0u;
     cfg.tab_v2 = (uint32_t)v.tab;
+    cfg.near_skip = (uint32_t)v.near_skip;
+    cfg.quad_mv = (uint32_t)v.quad_mv;
+    cfg.drift_refresh = (uint32_t)v.drift_refresh;
+    cfg.subtile_intra = (uint32_t)v.sub_intra;
 
     nxvc_status st;
     nxvc_encoder *e = nxvc_encoder_create(&cfg, &st);
@@ -631,6 +645,17 @@ static const InterReject kInterRejects[] = {
     {"r27_warp_without_inter", "the WARP tool bit without INTER",          NXVC_ERR_BITSTREAM, 0},
     {"r28_stereo_left_eye",    "mode STEREO on the left eye",              NXVC_ERR_BITSTREAM, 1},
     {"r29_disparity_reserved", "disparity bits 15:12 are not zero",        NXVC_ERR_BITSTREAM, 1},
+    // --- syntax v1.5.  A per-tile bit without its stream tool bit, and the
+    // two per-tile combinations 13.9 forbids.  None of these changes a tile's
+    // length, so the base stream stays parseable up to the offending tile,
+    // which is what makes them a test of the rule rather than of truncation.
+    {"r30_near_skip_no_tool",  "word1 bit 28 without tool bit 24",         NXVC_ERR_BITSTREAM, 0},
+    {"r31_quad_mv_no_tool",    "word1 bit 30 without tool bit 25",         NXVC_ERR_BITSTREAM, 0},
+    {"r32_near_ac_without_ns", "near_skip_ac without near_skip",           NXVC_ERR_BITSTREAM, 0},
+    {"r33_near_skip_on_intra", "near_skip on an INTRA tile",               NXVC_ERR_BITSTREAM, 0},
+    {"r34_sub_intra_no_tool",  "word1 bit 31 without tool bit 26",         NXVC_ERR_BITSTREAM, 0},
+    {"r35_near_skip_payload",  "near_skip on a tile with a payload",       NXVC_ERR_BITSTREAM, 0},
+    {"r36_quad_mv_on_intra",   "quad_mv on an INTRA tile",                 NXVC_ERR_BITSTREAM, 0},
 };
 static const int kNumInterRejects =
     (int)(sizeof(kInterRejects) / sizeof(kInterRejects[0]));
@@ -727,6 +752,47 @@ static bool make_inter_reject(int idx, const std::vector<uint8_t> &base,
             }
             if (!found) { *why = "no STEREO tile to corrupt"; return false; }
             b[o2 + 1] |= 0x10;   // disparity bit 12
+            break;
+        }
+        case 12:
+        case 13:
+        case 14:
+        case 15:
+        case 16:
+        case 17:
+        case 18: {
+            if (idx == 17) {
+                // A coded inter tile with a nonzero payload_len, which
+                // near_skip forbids: 13.9's residual is the correction field
+                // and nothing else.
+                if (!find_tile(b, f1, NXVC_MODE_WARP_MV, -1, &hdr, &opt) &&
+                    !find_tile(b, f1, NXVC_MODE_STATIC_MV, -1, &hdr, &opt)) {
+                    *why = "no coded inter tile in frame 1"; return false;
+                }
+                if ((rd_u32(b, hdr) >> 16) == 0) {
+                    *why = "the coded inter tile has an empty payload";
+                    return false;
+                }
+                b[32 + 3] |= 0x01;            // tool bit 24 NEAR_SKIP
+                patch_w1(hdr, 0, 1u << 28);
+                break;
+            }
+            if (!find_tile(b, f0, NXVC_MODE_INTRA, -1, &hdr, &opt)) {
+                *why = "no INTRA tile in frame 0"; return false;
+            }
+            // tools bits 24 and 25 live in byte 3 of the u64 at offset 32.
+            if (idx == 12) patch_w1(hdr, 0, 1u << 28);
+            if (idx == 13) patch_w1(hdr, 0, 1u << 30);
+            if (idx == 14) patch_w1(hdr, 0, 1u << 29);
+            if (idx == 15) {
+                b[32 + 3] |= 0x01;            // tool bit 24 NEAR_SKIP
+                patch_w1(hdr, 0, 1u << 28);   // ... on an INTRA tile
+            }
+            if (idx == 16) patch_w1(hdr, 0, 1u << 31);
+            if (idx == 18) {
+                b[32 + 3] |= 0x02;            // tool bit 25 QUAD_MV
+                patch_w1(hdr, 0, 1u << 30);   // ... on an INTRA tile
+            }
             break;
         }
         default: break;

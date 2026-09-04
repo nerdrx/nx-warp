@@ -14,6 +14,28 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
 
 ### Added
 
+**Phase 2 inter efficiency (bitstream minor 5)**
+
+- `docs/SYNTAX.md` 13.8, **drift-driven intra refresh**. The encoder holds a bit-exact client shadow,
+  so the refresh is scheduled from the drift it measures against the source rather than from a fixed
+  1-in-`T` permutation. `intra_period` becomes a hard age cap; a tile whose drift exceeds a multiple
+  of the quantiser's noise floor `qstep^2/12` loses `WARP_SKIP` from its candidate set but is not
+  forced to `INTRA`. Encoder-side only: **no syntax change**, and `docs/RATECONTROL.md` 8.7 asked for
+  exactly that. Annex D **D-23**.
+- `docs/SYNTAX.md` 13.9, **near-skip**, tool bit 24, tile-header word1 bits 28-29. A warped tile may
+  carry its entire residual as three signed bytes (a per-plane DC) or nine (a DC plus a horizontal and
+  a vertical ramp) instead of an entropy-coded payload. It reuses the DC plane's quantiser step,
+  interpolation and inter combination unchanged, so it adds no arithmetic to the decoder.
+  Annex D **D-24**.
+- `docs/SYNTAX.md` 13.10, **quadrant vectors**, tool bit 25, tile-header word1 bit 30. Four motion
+  vectors per tile, one per 32x32 quadrant, as signed nibble deltas from the tile vector in four
+  bytes. The warp corner basis stays the tile's, which is what makes the tool free on a GPU: the
+  vector is added per sample after the corner interpolation, so a quadrant changes the vector and
+  nothing else. Annex D **D-25**.
+- Conformance vectors `v57`-`v60` and rejection vectors `r30`-`r33`. Every previously committed digest
+  is unchanged, which is the compatibility claim stated as a test.
+- `ref/RESULTS-inter-a.md`, the before/after measurement of all three on the Phase 2 kill test.
+
 **Design**
 
 - The design paper, `docs/PAPER.md`: bitstream and coding tools, prediction and loss concealment, the

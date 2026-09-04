@@ -59,6 +59,12 @@ def main(argv=None) -> int:
     ap.add_argument("--threshold-db", type=float, default=35.0)
     ap.add_argument("--hold-frames", type=int, default=30)
     ap.add_argument("--json", default=None)
+    ap.add_argument("--tools", choices=("on", "off"), default="off",
+                    help="the syntax v1.5 inter-efficiency tools (13.8-13.11). "
+                         "`off`, the default, is the paper's warp-only chain. "
+                         "`on` lets the drift gate act, which stops it being "
+                         "a warp-only chain and measures what the refresh "
+                         "PAPER 2.11 item 2 asks for actually does.")
     args = ap.parse_args(argv)
 
     with open(args.seq) as fh:
@@ -80,6 +86,19 @@ def main(argv=None) -> int:
            "--qp", str(args.qp), "--eyes", str(args.eyes), "--inter", "on",
            "--poses", poses, "--intra-period", "1000000",
            "--skip-thresh", "100000", "--out", bs, "--quiet"]
+    # Every syntax v1.5 tool is named explicitly rather than left to the
+    # encoder's default, so that this measurement says what it measures.
+    #
+    # `--tools off` is the paper's test and the default: near-skip and
+    # quadrant vectors are provably inert here (they only change how a CODED
+    # tile is written, and there are none), but the DRIFT-DRIVEN REFRESH is
+    # not -- its gate is a second reason to refuse WARP_SKIP that the raised
+    # `--skip-thresh` above knows nothing about.  Leaving it on would silently
+    # turn the warp-only chain into a corrected one and answer a different
+    # question.  `--tools on` asks that different question deliberately; see
+    # ref/RESULTS-inter-a.md section 4.
+    enc += ["--near-skip", args.tools, "--quad-mv", args.tools,
+            "--sub-intra", args.tools, "--drift-refresh", args.tools]
     if args.frames:
         enc += ["--frames", str(args.frames)]
     p = cpu.run(enc, check=False)

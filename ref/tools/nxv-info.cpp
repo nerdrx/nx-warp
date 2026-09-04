@@ -19,15 +19,25 @@ static const char *mode_name(int m) {
 }
 
 int main(int argc, char **argv) {
+    static const char *kUsage =
+        "usage: nxv-info --in file.nxv [--tiles] [--modes]\n"
+        "  --tiles  one line per tile of every frame\n"
+        "  --modes  a whole-stream histogram of the tile modes and of the\n"
+        "           syntax v1.5 per-tile forms (SYNTAX.md 13.9 to 13.11)\n";
     std::string in;
-    int tiles = 0;
+    int tiles = 0, modes = 0;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         if (a == "--in" && i + 1 < argc) in = argv[++i];
         else if (a == "--tiles") tiles = 1;
-        else { std::fprintf(stderr, "usage: nxv-info --in file.nxv [--tiles]\n"); return 2; }
+        else if (a == "--modes") modes = 1;
+        else { std::fputs(kUsage, stderr); return 2; }
     }
-    if (in.empty()) { std::fprintf(stderr, "usage: nxv-info --in file.nxv [--tiles]\n"); return 2; }
+    if (in.empty()) { std::fputs(kUsage, stderr); return 2; }
+    // The histogram needs the tile records, which only a full decode produces.
+    const int walk_tiles = tiles || modes;
+    unsigned long hist[5] = {}, n_skipped = 0, n_near = 0, n_near_ac = 0,
+                  n_quad = 0, n_sub = 0, n_tiles = 0, bytes_payload = 0;
 
     std::FILE *f = std::fopen(in.c_str(), "rb");
     if (!f) { std::perror("open"); return 1; }
@@ -100,7 +110,7 @@ int main(int argc, char **argv) {
                             fi.warp[eye][6], fi.warp[eye][7], fi.warp[eye][8]);
             }
         }
-        if (tiles) {
+        if (walk_tiles) {
             // A full decode is needed to walk the tile headers.
             uint32_t yw, yh, cw, ch;
             nxvc_decoder_plane_size(dec, 0, &yw, &yh);
@@ -119,6 +129,15 @@ int main(int argc, char **argv) {
                 const nxvc_tile_info *ti = nxvc_decoder_tiles(dec, &count);
                 for (uint32_t i = 0; i < count; ++i) {
                     const nxvc_tile_info &t = ti[i];
+                    ++n_tiles;
+                    if (t.mode < 5) ++hist[t.mode];
+                    n_skipped += t.skipped;
+                    n_near += t.near_skip;
+                    n_near_ac += t.near_skip_ac;
+                    n_quad += t.quad_mv;
+                    n_sub += t.sub_intra;
+                    bytes_payload += t.payload_len;
+                    if (!tiles) continue;
                     char vec[32] = "";
                     if (t.mode == NXVC_MODE_STEREO)
                         std::snprintf(vec, sizeof vec, " d%u", t.disparity);
@@ -137,6 +156,21 @@ int main(int argc, char **argv) {
         }
         off += consumed;
         ++n;
+    }
+    if (modes && n_tiles) {
+        const double pc = 100.0 / (double)n_tiles;
+        std::printf("tile modes over %lu tiles\n", n_tiles);
+        for (int m = 0; m < 5; ++m)
+            std::printf("  %-10s %8lu  %5.1f %%\n", mode_name(m), hist[m],
+                        hist[m] * pc);
+        std::printf("  of which skip_bitmap %lu (%.1f %%)\n", n_skipped,
+                    n_skipped * pc);
+        std::printf("syntax v1.5 forms\n");
+        std::printf("  near_skip  %8lu  %5.1f %%  (%lu with the ramps)\n",
+                    n_near, n_near * pc, n_near_ac);
+        std::printf("  quad_mv    %8lu  %5.1f %%\n", n_quad, n_quad * pc);
+        std::printf("  sub_intra  %8lu  %5.1f %%\n", n_sub, n_sub * pc);
+        std::printf("  payload    %lu bytes over all tiles\n", bytes_payload);
     }
     std::printf("%d frame(s)\n", n);
     nxvc_decoder_destroy(dec);

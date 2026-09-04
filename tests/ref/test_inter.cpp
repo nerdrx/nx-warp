@@ -132,6 +132,12 @@ struct Opts {
     // The rate controller's force_warp_skip request, per frame per tile.
     std::vector<std::vector<uint8_t>> skip_map;
     bool compare_shadow = true;
+    // --- syntax v1.5, the inter-efficiency package
+    uint32_t near_skip = 0;
+    uint32_t quad_mv = 0;
+    uint32_t drift_refresh = 0;
+    uint32_t drift_gate_q8 = 0;
+    uint32_t subtile_intra = 0;
 };
 
 static Run run(const Opts &o) {
@@ -147,6 +153,11 @@ static Run run(const Opts &o) {
     cfg.stereo = (uint32_t)o.stereo;
     cfg.intra_period = o.intra_period;
     cfg.ref_sel = o.ref_sel;
+    cfg.near_skip = o.near_skip;
+    cfg.quad_mv = o.quad_mv;
+    cfg.drift_refresh = o.drift_refresh;
+    cfg.drift_gate_q8 = o.drift_gate_q8;
+    cfg.subtile_intra = o.subtile_intra;
     cfg.custom_tables = 0;   // keeps the test fast; the path is table-agnostic
 
     nxvc_status st;
@@ -610,6 +621,167 @@ int main(int argc, char **argv) {
                         CHECK(t.ref_delta == 3,
                               "INTRA tile reports ref_delta %u", t.ref_delta);
                 }
+        }
+    }
+
+    // --------------------------------------------------------------- 13
+    // NEAR_SKIP (SYNTAX.md 13.9).  On slowly drifting content at a coarse
+    // quantiser the DC-correction form must be chosen, must carry no payload
+    // at all, and must reconstruct in the encoder and the decoder to the same
+    // bytes -- which `compare_shadow` above already asserts for every run.
+    {
+        Opts o;
+        o.frames = 8;
+        o.qp = 32;
+        o.yaw_per_frame = 0.25;
+        o.pan_per_frame = 0.6;
+        o.obj_speed = 1;
+        o.near_skip = 1;
+        Run r = run(o);
+        CHECK(r.ok, "near_skip: %s", r.err.c_str());
+        if (r.ok) {
+            int ns = 0, ns_ac = 0;
+            for (const auto &fr : r.dec_tiles)
+                for (const auto &t : fr)
+                    if (t.near_skip) {
+                        ++ns;
+                        ns_ac += t.near_skip_ac;
+                        CHECK(t.payload_len == 0,
+                              "a near-skip tile carries %u payload bytes",
+                              t.payload_len);
+                        CHECK(t.mode != NXVC_MODE_INTRA,
+                              "near_skip on an INTRA tile");
+                        CHECK(t.res_level == 0,
+                              "near_skip with res_level %u", t.res_level);
+                    }
+            CHECK(ns > 0, "no near-skip tile was chosen on drifting content");
+            std::printf("  near_skip: %d tiles, %d of them with the ramps\n",
+                        ns, ns_ac);
+        }
+    }
+
+    // --------------------------------------------------------------- 14
+    // The tool bit is the whole of the compatibility story: with near_skip
+    // off the encoder must produce a stream that sets neither the tool bit
+    // nor the per-tile bit, on the same material.
+    {
+        Opts o;
+        o.frames = 8;
+        o.qp = 32;
+        o.yaw_per_frame = 0.25;
+        o.pan_per_frame = 0.6;
+        o.obj_speed = 1;
+        Run r = run(o);
+        CHECK(r.ok, "near_skip off: %s", r.err.c_str());
+        if (r.ok)
+            for (const auto &fr : r.dec_tiles)
+                for (const auto &t : fr)
+                    CHECK(!t.near_skip && !t.quad_mv && !t.sub_intra,
+                          "a v1.5 per-tile bit appeared with its tool off");
+    }
+
+    // --------------------------------------------------------------- 15
+    // QUAD_MV (SYNTAX.md 13.10).  Content with a disc moving against a
+    // panning background is the case four vectors exist for: the quadrant a
+    // disc crosses wants a different vector from the three that do not.
+    {
+        Opts o;
+        o.frames = 8;
+        o.qp = 24;
+        o.yaw_per_frame = 1.0;
+        o.pan_per_frame = 2.5;
+        o.obj_speed = 4;
+        o.quad_mv = 1;
+        Run r = run(o);
+        CHECK(r.ok, "quad_mv: %s", r.err.c_str());
+        if (r.ok) {
+            int q = 0, differing = 0;
+            for (const auto &fr : r.dec_tiles)
+                for (const auto &t : fr)
+                    if (t.quad_mv) {
+                        ++q;
+                        CHECK(t.mv_present,
+                              "quad_mv on a tile with no tile vector");
+                        CHECK(t.mode == NXVC_MODE_WARP_MV ||
+                                  t.mode == NXVC_MODE_STATIC_MV,
+                              "quad_mv on mode %u", t.mode);
+                        for (int k = 0; k < 4; ++k) {
+                            CHECK(t.qmv[k][0] >= -8 && t.qmv[k][0] <= 7 &&
+                                      t.qmv[k][1] >= -8 && t.qmv[k][1] <= 7,
+                                  "a quadrant delta left the nibble range");
+                            if (t.qmv[k][0] != t.qmv[0][0] ||
+                                t.qmv[k][1] != t.qmv[0][1])
+                                ++differing;
+                        }
+                    }
+            CHECK(q > 0, "no quad_mv tile was chosen on object motion");
+            CHECK(differing > 0,
+                  "every quad_mv tile gave all four quadrants one vector");
+            std::printf("  quad_mv: %d tiles, %d quadrants off the first\n",
+                        q, differing);
+        }
+    }
+
+    // --------------------------------------------------------------- 16
+    // Drift-driven refresh (SYNTAX.md 13.8).  It changes no syntax, so what
+    // is asserted is the property the fixed scheme guaranteed and this one
+    // must keep: no tile position goes longer than the cap without an INTRA.
+    {
+        Opts o;
+        o.frames = 16;
+        o.qp = 28;
+        o.intra_period = 6;   // the hard age cap
+        o.drift_refresh = 1;
+        o.yaw_per_frame = 0.4;
+        o.pan_per_frame = 1.0;
+        Run r = run(o);
+        CHECK(r.ok, "drift refresh: %s", r.err.c_str());
+        if (r.ok) {
+            const size_t n = r.dec_tiles[0].size();
+            std::vector<int> age(n, 0);
+            int worst = 0;
+            for (size_t f = 0; f < r.dec_tiles.size(); ++f)
+                for (size_t t = 0; t < n; ++t) {
+                    if (r.dec_tiles[f][t].mode == NXVC_MODE_INTRA) age[t] = 0;
+                    else if (++age[t] > worst) worst = age[t];
+                }
+            CHECK(worst <= 6,
+                  "a tile went %d frames without an INTRA under a cap of 6",
+                  worst);
+            std::printf("  drift refresh: longest gap without INTRA %d frames"
+                        " (cap 6)\n", worst);
+        }
+    }
+
+    // --------------------------------------------------------------- 17
+    // SUBTILE_INTRA (SYNTAX.md 13.11).  A fast disc against a pan is the
+    // disocclusion case: the samples behind it a frame ago are not in the
+    // reference at any displacement, and one quadrant of the tile containing
+    // its edge wants intra while the other three do not.
+    {
+        Opts o;
+        o.frames = 8;
+        o.qp = 24;
+        o.yaw_per_frame = 1.0;
+        o.pan_per_frame = 2.5;
+        o.obj_speed = 6;
+        o.subtile_intra = 1;
+        Run r = run(o);
+        CHECK(r.ok, "sub_intra: %s", r.err.c_str());
+        if (r.ok) {
+            int n = 0;
+            for (const auto &fr : r.dec_tiles)
+                for (const auto &t : fr)
+                    if (t.sub_intra) {
+                        ++n;
+                        CHECK(t.mode != NXVC_MODE_INTRA,
+                              "sub_intra on an INTRA tile");
+                        CHECK(!t.near_skip, "sub_intra with near_skip");
+                        CHECK(t.sub_intra_quad < 4, "sub_intra_quad %u",
+                              t.sub_intra_quad);
+                    }
+            CHECK(n > 0, "no sub_intra tile was chosen on object motion");
+            std::printf("  sub_intra: %d tiles\n", n);
         }
     }
 
