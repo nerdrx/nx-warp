@@ -74,7 +74,8 @@ static void usage() {
         "  --intra-dir on|off|layer  directional intra (tool 17); `layer`\n"
         "                       predicts the DC-plane residual instead\n"
         "  --intra-dir-cand N   modes RD-checked per block (default 2)\n"
-        "  --ctx v1|v2          12 or 16 entropy contexts (tool 21)\n"
+        "  --ctx v1|v2|v3       12, 16 or 27 entropy contexts (tools 21, 24)\n"
+        "  --vec-ent            entropy-code the tile vector (tool 25; needs v3+inter)\n"
         "  --no-sign-hide       code every sign (default: hide one per unit)\n"
         "  --chroma-qp-off N    chroma QP offset\n"
         "  --custom-tables      derive and transmit probability tables\n"
@@ -120,7 +121,8 @@ int main(int argc, char **argv) {
     int color_space = 0;
     int rdo = 1, rdo_lambda_q8 = 0, qp_search = 0, wm = 0;
     // These mirror nxvc_config_default(): the v2 intra tools are on.
-    int intra_dir = 1, intra_dir_layer = 0, ctx_v2 = 1, dir_cand = 0;
+    int intra_dir = 1, intra_dir_layer = 0, ctx_v2 = 1, ctx_v3 = 0, dir_cand = 0;
+    int vec_ent = 0;
     int sign_hide = 1;
     int inter = 0, eyes = 1, intra_period = 180, ref_sel = 0, stereo = 0;
     int mv_range = 16, skip_thresh = 0, mode_lambda = 0;
@@ -199,13 +201,16 @@ int main(int argc, char **argv) {
             else { std::fprintf(stderr, "--intra-dir: on|off|layer\n"); return 2; }
         }
         else if (a == "--intra-dir-cand") dir_cand = std::atoi(val());
+        else if (a == "--vec-ent") vec_ent = 1;
+        else if (a == "--no-vec-ent") vec_ent = 0;
         else if (a == "--sign-hide") sign_hide = 1;
         else if (a == "--no-sign-hide") sign_hide = 0;
         else if (a == "--ctx") {
             std::string v = val();
-            if (v == "v2") ctx_v2 = 1;
-            else if (v == "v1") ctx_v2 = 0;
-            else { std::fprintf(stderr, "--ctx: v1|v2\n"); return 2; }
+            if (v == "v3") { ctx_v2 = 1; ctx_v3 = 1; }
+            else if (v == "v2") { ctx_v2 = 1; ctx_v3 = 0; }
+            else if (v == "v1") { ctx_v2 = 0; ctx_v3 = 0; }
+            else { std::fprintf(stderr, "--ctx: v1|v2|v3\n"); return 2; }
         }
         else if (a == "--wm") { std::string v = val(); wm = v == "auto" ? 255 : std::atoi(v.c_str()); }
         else if (a == "--chroma-qp-off") chroma_qp_off = std::atoi(val());
@@ -346,6 +351,8 @@ int main(int argc, char **argv) {
     cfg.intra_dir_layer = (uint32_t)intra_dir_layer;
     cfg.intra_dir_cand = (uint32_t)dir_cand;
     cfg.ctx_v2 = (uint32_t)ctx_v2;
+    cfg.ctx_v3 = (uint32_t)ctx_v3;
+    cfg.vec_ent = (uint32_t)vec_ent;
     cfg.sign_hide = (uint32_t)sign_hide;
     cfg.chroma_qp_off = chroma_qp_off;
     cfg.lossless = (uint32_t)lossless;

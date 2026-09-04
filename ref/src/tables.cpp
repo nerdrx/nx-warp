@@ -86,6 +86,18 @@ int last_class_of(int pos) {
     return 0;
 }
 
+// Vector magnitude classes: base and raw bits, covering 0..255 exactly.
+const u16 kVecBase[16] = {0, 1, 2, 3, 4, 6, 8, 12,
+                          16, 24, 32, 48, 64, 96, 128, 0};
+const u8 kVecRawBits[16] = {0, 0, 0, 0, 1, 1, 2, 2,
+                            3, 3, 4, 4, 5, 5, 7, 0};
+
+int vec_class_of(int magnitude) {
+    for (int c = 14; c >= 0; --c)
+        if (magnitude >= (int)kVecBase[c]) return c;
+    return 0;
+}
+
 const u8 kLevelCtx[4][3] = {
     {0, 1, 2},
     {3, 4, 2},
@@ -153,6 +165,7 @@ bool finalize_ctx(CtxTable &t) {
 
 u16 default_freq(int nctx, int set_index, int c, int s) {
     set_index = clamp_i32(set_index, 0, 7);
+    if (nctx >= kNumCtxV3) return kDefaultFreqV3[set_index][c][s];  // 27 or 30
     if (nctx >= kNumCtxV2) return kDefaultFreqV2[set_index][c][s];
     return kDefaultFreq[set_index][c][s];
 }

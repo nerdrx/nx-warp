@@ -126,6 +126,8 @@ typedef enum nxvc_tile_mode {
  * actually free.  The substance of D-5 is unchanged: it is undefined in
  * version 1 and a v1 decoder MUST reject a stream that sets it. */
 #define NXVC_TOOL_FILTER_CATMULLROM (1ull << 23)
+#define NXVC_TOOL_CTX_V3          (1ull << 24)
+#define NXVC_TOOL_VEC_ENT          (1ull << 25)
 
 /* Tools this reference decoder implements. */
 #define NXVC_TOOLS_SUPPORTED                                                  \
@@ -134,7 +136,8 @@ typedef enum nxvc_tile_mode {
      NXVC_TOOL_LOSSLESS | NXVC_TOOL_CUSTOM_TABLES | NXVC_TOOL_NSUB_VAR |      \
      NXVC_TOOL_PER_TILE_CHROMA | NXVC_TOOL_YCOCGR | NXVC_TOOL_WM_ID |        \
      NXVC_TOOL_INTRA_DIR | NXVC_TOOL_CTX_V2 | NXVC_TOOL_SIGN_HIDE |           \
-     NXVC_TOOL_INTER | NXVC_TOOL_WARP | NXVC_TOOL_STEREO)
+     NXVC_TOOL_INTER | NXVC_TOOL_WARP | NXVC_TOOL_STEREO |                    \
+     NXVC_TOOL_CTX_V3 | NXVC_TOOL_VEC_ENT)
 
 /* ---------------------------------------------------------------- images */
 /* 8-bit planar image.  plane[0]=Y/R', plane[1]=Co/G', plane[2]=Cg/B',
@@ -214,6 +217,14 @@ typedef struct nxvc_config {
                                    Below 256 the decision spends more bits to
                                    keep the reference clean, which is what an
                                    all-reference stream wants; 0 = default  */
+
+    /* --- additive since syntax v1.5: the entropy/context package.  Both
+     * change the bitstream and each sets its own tool bit. */
+    uint32_t ctx_v3;            /* 1 = the 27-context model (tool 24).
+                                   Implies ctx_v2 (a strict superset).      */
+    uint32_t vec_ent;            /* 1 = signalling v2 (tool 25): the intra
+                                   mode gets a second context and the tile
+                                   vector moves into the payload            */
 } nxvc_config;
 
 /* One eye's view for one frame: the orientation the frame was rendered with

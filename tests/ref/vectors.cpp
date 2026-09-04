@@ -36,6 +36,7 @@ struct VecSpec {
     int dir;          // 0 off, 1 directional intra, 2 its layered form
     int ctx;          // 0 = 12 contexts, 1 = 16 (CTX_V2)
     int sdh;          // sign data hiding (tool 22)
+    int ctx3;         // 1 = the 27-context model (CTX_V3, tool 24)
 };
 
 static const VecSpec kVectors[] = {
@@ -94,6 +95,12 @@ static const VecSpec kVectors[] = {
     // column; v44 is the encoder's shipped default configuration.
     {"v43_sdh_only420",        192, 128, 0,  1, 20,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 1},
     {"v44_default444",         192, 128, 1,  1, 20,  0, 0,  0,255,  1,  0, 0,  1,  0,  0, 1, 0, 0, 1, 1, 1},
+    // the v3 context model (tool 24).  `ctx3` is the last column and implies
+    // `ctx`; v57 is the syntax v1.5 shipped default.
+    {"v57_ctxv3_444",          192, 128, 1,  1, 20,  0, 0,  0,255,  1,  0, 0,  1,  0,  0, 1, 0, 0, 1, 1, 1, 1},
+    {"v58_ctxv3_420_qp32",     192, 128, 0,  1, 32,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 1, 1, 1, 1},
+    {"v59_ctxv3_nodir_tables", 192, 128, 0,  2, 24,  0, 0,  0,  0,  1,  0, 0,  1,  1,  0, 2, 0, 0, 0, 1, 0, 1},
+    {"v60_ctxv3_res_tskip444", 192, 128, 1,  2, 18,  0, 0,  1,255,  1,  0, 0,  0,  1,  1, 1, 0, 0, 1, 1, 1, 1},
 };
 static const int kNumVectors = (int)(sizeof(kVectors) / sizeof(kVectors[0]));
 
@@ -216,6 +223,7 @@ static Result build(const VecSpec &v) {
     cfg.intra_dir = v.dir ? 1u : 0u;
     cfg.intra_dir_layer = v.dir == 2 ? 1u : 0u;
     cfg.ctx_v2 = (uint32_t)v.ctx;
+    cfg.ctx_v3 = (uint32_t)v.ctx3;
     cfg.sign_hide = (uint32_t)v.sdh;
 
     nxvc_status st;
@@ -330,6 +338,8 @@ struct InterSpec {
     int obj;                // moving-disc speed
     int disparity;          // per-eye horizontal offset
     int salt;               // per-frame content reseed (new content everywhere)
+    int ctx3;               // CTX_V3 (tool 24)
+    int vec_ent;            // VEC_ENT (tool 25); implies ctx3
 };
 
 static const InterSpec kInterVectors[] = {
@@ -346,6 +356,11 @@ static const InterSpec kInterVectors[] = {
     {"v54_inter_stereo_static", "inter/stereo_static_equiv",128, 128, 2, 1, 24, 4, 0, 999, 0,  0.0,  0.0, 0, 11, 1},
     {"v55_inter_420",           "inter/warp_sweep (4:2:0)", 128, 128, 1, 0, 26, 5, 0, 999, 0,  1.5,  3.0, 3,  0, 0},
     {"v56_inter_refresh",       "inter/skip (refresh)",     128, 128, 1, 1, 26, 8, 0,   4, 0,  0.4,  1.0, 2,  0, 0},
+    // syntax v1.5: the v3 context model and the entropy-coded tile vector.
+    // `ctx3` and `vec_ent` are the last two columns.
+    {"v61_inter_ctxv3",         "inter/warp_sweep (CTX_V3)",128, 128, 1, 1, 26, 6, 0, 999, 0,  4.5,  6.0, 2,  0, 0, 1, 0},
+    {"v62_inter_vec_ent",       "inter/integer_mv (VEC_ENT)",128,128, 1, 1, 26, 5, 0, 999, 0,  0.7,  2.0, 3,  0, 0, 1, 1},
+    {"v63_inter_vec_ent_stereo","inter/stereo (VEC_ENT)",   128, 128, 2, 1, 24, 4, 1, 999, 0,  0.0,  0.0, 0, 11, 1, 1, 1},
 };
 static const int kNumInterVectors =
     (int)(sizeof(kInterVectors) / sizeof(kInterVectors[0]));
@@ -428,6 +443,8 @@ static Result build_inter(const InterSpec &v) {
     cfg.stereo = (uint32_t)v.stereo;
     cfg.intra_period = (uint32_t)v.iperiod;
     cfg.ref_sel = (uint32_t)v.ref_sel;
+    cfg.ctx_v3 = (uint32_t)(v.ctx3 || v.vec_ent);
+    cfg.vec_ent = (uint32_t)v.vec_ent;
     cfg.custom_tables = 0;
 
     nxvc_status st;
@@ -762,6 +779,10 @@ static const RejectSpec kRejects[] = {
     {"r15_ycocgr_420",        "YCoCg-R declared with 4:2:0 chroma",       NXVC_ERR_BITSTREAM,   0},
     {"r16_ctx_v2_short_table", "CTX_V2 table set overruns the tile rows",  NXVC_ERR_BITSTREAM,   1},
     {"r17_lossless_sign_hide", "LOSSLESS and SIGN_HIDE together",          NXVC_ERR_BITSTREAM,   0},
+    {"r30_ctx_v3_no_v2",       "CTX_V3 without CTX_V2",                    NXVC_ERR_BITSTREAM,   0},
+    {"r31_vec_ent_no_ctx_v3",  "VEC_ENT without CTX_V3",                   NXVC_ERR_BITSTREAM,   0},
+    {"r32_vec_ent_no_inter",   "VEC_ENT without INTER",                    NXVC_ERR_BITSTREAM,   0},
+    {"r33_ctx_v3_short_table", "CTX_V3 table set overruns the tile rows",  NXVC_ERR_BITSTREAM,   1},
 };
 static const int kNumRejects = (int)(sizeof(kRejects) / sizeof(kRejects[0]));
 
@@ -822,6 +843,18 @@ static std::vector<uint8_t> make_reject(int idx, const std::vector<uint8_t> &bas
         // Sign data hiding is lossy by construction; the two tool bits are
         // mutually exclusive.
         case 16: b[32 + 0] |= 0x20; b[32 + 2] |= 0x40; break;
+        // SYNTAX.md 2.3: CTX_V3 (bit 24) extends CTX_V2 (bit 21), VEC_ENT
+        // (bit 25) selects rows of the v3 family and needs a vector to code,
+        // so it requires both CTX_V3 and INTER (bit 10).
+        case 17: b[32 + 3] |= 0x01; break;                     // v3, no v2
+        case 18: b[32 + 3] |= 0x02; b[32 + 2] |= 0x20; break;  // vec, no v3
+        case 19: b[32 + 3] |= 0x03; b[32 + 2] |= 0x20; break;  // vec+v3, no inter
+        // A CTX_V3 stream's transmitted table sets are 270 bytes, not 120.
+        case 20:
+            b[32 + 2] |= 0x20;              // tools bit 21 (CTX_V2)
+            b[32 + 3] |= 0x01;              // tools bit 24 (CTX_V3)
+            b[kOffFrame + 32] |= 0x01;      // tables_present bit 0
+            break;
         default: break;
     }
     return b;

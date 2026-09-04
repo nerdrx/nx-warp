@@ -115,10 +115,11 @@ struct FrameParams {
     WarpMatrix warp[2];         // warp_ext(), one record per eye
     int inter = 0;              // stream tool bit 10
     int stereo = 0;             // stream tool bit 12
-    int nctx = kNumCtxV1;   // 12 or 16, from the stream's CTX_V2 tool bit
+    int nctx = kNumCtxV1;   // 12, 16 or 27, from the CTX_V2/CTX_V3 tool bits
     int intra_dir = 0;      // stream tool bit 17
     int dir_layer = 0;      // frame flags bit 2
     int sdh = 0;            // stream tool bit 22
+    int vec_ent = 0;         // stream tool bit 25
     u8 wm_luma[64] = {}, wm_chroma[64] = {};
     TableSet tabs[8];
 };
@@ -227,9 +228,11 @@ struct TileCoder {
     int dir_layer = 0;   // frame flag bit 2: predict the DC-plane residual
     int sdh = 0;         // stream tool bit 22
     int nctx = kNumCtxV1;
+    int vec_unit = 0;    // this tile carries a UNIT_VEC (VEC_ENT + mv_present)
     int inter = 0;       // tp.mode != INTRA
     PlaneState pl[4];
     std::vector<i16> coef;
+    std::vector<i16> vec;   // VEC_ENT: the coded vector components
     std::vector<Unit> units;
 
     void setup();
@@ -259,6 +262,7 @@ void TileCoder::setup() {
     dir_layer = fp->dir_layer;
     sdh = fp->sdh;
     nctx = fp->nctx;
+    vec_unit = fp->vec_ent && tp.mv_present;
     int qp = clamp_i32(fp->base_qp + tp.qp_delta, 0, 63);
     for (int p = 0; p < nplanes; ++p) {
         PlaneState &s = pl[p];
@@ -289,6 +293,7 @@ void TileCoder::setup() {
 }
 
 void TileCoder::build_units() {
+    const int v3 = nctx >= kNumCtxV3 ? 1 : 0;
     size_t total = 0;
     int np = nplanes;
     if (tp.alpha_mode != 2) np = std::min(np, 3);
@@ -299,6 +304,28 @@ void TileCoder::build_units() {
     coef.assign(total, 0);
     units.clear();
     size_t off = 0;
+    // VEC_ENT (tool bit 25): the tile's vector is the payload's first coding
+    // unit, so it belongs to lane 0 and costs no fixed header bytes.  SYNTAX
+    // 9.1 and 9.9.  A STEREO tile codes one unsigned disparity; every other
+    // vector tile codes mv_x then mv_y.
+    if (vec_unit) {
+        const bool stereo = tp.mode == NXVC_MODE_STEREO;
+        vec.assign(stereo ? 1u : 2u, 0);
+        if (stereo) {
+            vec[0] = (i16)tp.disparity;
+        } else {
+            vec[0] = (i16)tp.mv_x;
+            vec[1] = (i16)tp.mv_y;
+        }
+        Unit vu{};
+        vu.kind = UNIT_VEC;
+        vu.coef = vec.data();
+        vu.ncoef = (u16)vec.size();
+        vu.scan = scan_table(1, false);
+        vu.ctx_vec = stereo ? (u8)kCtxVecDisp : (u8)kCtxVecMv;
+        vu.vec_signed = stereo ? 0 : 1;
+        units.push_back(vu);
+    }
     for (int p = 0; p < np; ++p) {
         PlaneState &s = pl[p];
         bool chroma = (p == 1 || p == 2);
@@ -315,6 +342,8 @@ void TileCoder::build_units() {
         u.ctx_cbf = nctx >= kNumCtxV2 ? (u8)kCtxCbfDc : ccbf;
         u.ctx_last = nctx >= kNumCtxV2 ? (u8)kCtxLastDc : clast;
         u.ctx_level = nctx >= kNumCtxV2 ? (u8)kCtxLevelDc : 0;
+        u.ctx_v3 = (u8)v3;
+        u.ngrp = 0;   // a DC plane has no block neighbour and is not one
         u.sdh = (u8)sdh;
         units.push_back(u);
         off += ndc;
@@ -334,6 +363,10 @@ void TileCoder::build_units() {
             v.scan = scan_table(64, tp.tskip != 0);
             v.ctx_cbf = ccbf;
             v.ctx_last = clast;
+            v.ctx_v3 = (u8)v3;
+            // The v3 neighbour group is the plane: a lane carries its class
+            // across this plane's block units and nothing else.
+            v.ngrp = v3 ? (u8)(p + 1) : (u8)0;
             v.sdh = (u8)sdh;
             units.push_back(v);
             off += 64;
@@ -1249,6 +1282,8 @@ void nxvc_config_default(nxvc_config *cfg) {
     cfg->intra_dir = 1;
     cfg->intra_dir_layer = 0;  // the replace form, measured better than layer
     cfg->ctx_v2 = 1;
+    cfg->ctx_v3 = 0;
+    cfg->vec_ent = 0;
     cfg->intra_dir_cand = 0;   // built-in default (2 RD candidates + DC plane)
     cfg->sign_hide = 1;
     // Phase 2 is opt-in: the default configuration is the Phase 1 one, so an

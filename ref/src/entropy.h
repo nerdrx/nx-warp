@@ -11,7 +11,7 @@ constexpr u32 kProbBits = 10;         // M = 2^10
 constexpr u32 kRansMaxLanes = 32;
 
 // ------------------------------------------------------------- coding units
-enum UnitKind : u8 { UNIT_COEF = 0, UNIT_MODE = 1 };
+enum UnitKind : u8 { UNIT_COEF = 0, UNIT_MODE = 1, UNIT_VEC = 2 };
 
 // The intra mode of block `b` is coded relative to a most-probable mode
 // derived from the already-coded left and above modes of the same plane.
@@ -24,6 +24,7 @@ int nonmpm_index(int mpm, int mode);
 
 struct Unit {
     i16 *coef;        // UNIT_COEF: ncoef quantized levels, block-local order
+                      // UNIT_VEC:  ncoef vector components, in coding order
     const u8 *scan;   // scan_pos -> block-local index
     u16 ncoef;
     u8 ctx_cbf;       // kCtxCbfLuma / kCtxCbfChroma / kCtxCbfDc
@@ -34,6 +35,10 @@ struct Unit {
     u8 nbx;           // UNIT_MODE: blocks per edge
     u8 ctx_mode;      // UNIT_MODE: kCtxNone = bypass coded, else a context
     u8 sdh;           // UNIT_COEF: 1 = sign data hiding applies
+    u8 ctx_v3;        // 1 = the v3 context model applies to this unit
+    u8 ngrp;          // v3: neighbour group (plane + 1) for block units, else 0
+    u8 ctx_vec;       // UNIT_VEC: the magnitude-class context
+    u8 vec_signed;    // UNIT_VEC: 1 = a sign bit follows a nonzero magnitude
 };
 
 // --------------------------------------------------------------- lane ops
@@ -57,9 +62,13 @@ class LaneMachine {
   private:
     enum Phase : u8 {
         kCbf, kLast, kLastRaw, kLevel, kEscPrefix, kEscSuffix, kSign,
-        kModeSym, kModeFlag, kModeIdx, kHidden, kDone
+        kModeSym, kModeFlag, kModeIdx, kHidden,
+        kVecCls, kVecRaw, kVecEscPrefix, kVecEscSuffix, kVecSign, kDone
     };
     void begin_next_unit();
+    void end_coef_unit(int cbf);
+    void store_vec(i32 value);
+    bool finish_vec_mag();
     void store_magnitude();
     void begin_unit();
     void begin_levels();
@@ -80,8 +89,15 @@ class LaneMachine {
     u32 esc_acc_ = 0;
     int mb_ = 0;             // UNIT_MODE: block being coded
     int mpm_ = 0;
+    int vi_ = 0;             // UNIT_VEC: component being coded
+    int vec_cls_ = 0;
+    i32 vec_mag_ = 0;
     i32 sum_abs_ = 0;        // sign data hiding: sum of |level| in the unit
     bool hide_ = false;      // ... and whether this unit hides a sign
+    // v3 neighbour state (SYNTAX.md 9.8).  Two registers per lane, written
+    // once per unit and read once per unit; no cross-lane traffic.
+    u8 nbr_ = 0;             // class of the previous block unit of this group
+    u8 ngrp_ = 0;            // the group that class belongs to
 };
 
 // ------------------------------------------------------------ rANS decoder

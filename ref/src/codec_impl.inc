@@ -208,7 +208,17 @@ extern "C" nxvc_encoder *nxvc_encoder_create(const nxvc_config *cfg,
     }
     resolve_matrices(e->fp, e->custom_matrix.empty() ? nullptr
                                                      : e->custom_matrix.data());
-    e->fp.nctx = e->cfg.ctx_v2 ? kNumCtxV2 : kNumCtxV1;
+    // CTX_V3 is a strict superset of CTX_V2: it keeps contexts 0..15 with
+    // their meanings and adds eleven conditioned rows (SYNTAX.md 9.8), so a
+    // stream that sets bit 24 also sets bit 21.
+    if (e->cfg.ctx_v3) e->cfg.ctx_v2 = 1;
+    // VEC_ENT selects two rows of the v3 family, so it needs that family, and
+    // only an inter stream has a vector to code.  The coded context count
+    // grows only where the rows are used: 27 for CTX_V3, 29 with VEC_ENT.
+    if (!e->cfg.ctx_v3 || !e->cfg.inter) e->cfg.vec_ent = 0;
+    e->fp.vec_ent = e->cfg.vec_ent ? 1 : 0;
+    e->fp.nctx = coded_context_count(e->cfg.ctx_v2, e->cfg.ctx_v3,
+                                     e->cfg.vec_ent);
     e->fp.intra_dir = e->cfg.intra_dir ? 1 : 0;
     e->fp.dir_layer = (e->cfg.intra_dir && e->cfg.intra_dir_layer) ? 1 : 0;
     e->fp.sdh = e->cfg.sign_hide ? 1 : 0;
@@ -269,6 +279,8 @@ static u64 encoder_tools(const nxvc_encoder *e) {
         t |= NXVC_TOOL_WM_ID;
     if (e->cfg.intra_dir) t |= NXVC_TOOL_INTRA_DIR;
     if (e->cfg.ctx_v2) t |= NXVC_TOOL_CTX_V2;
+    if (e->cfg.ctx_v3) t |= NXVC_TOOL_CTX_V3;
+    if (e->cfg.vec_ent) t |= NXVC_TOOL_VEC_ENT;
     if (e->cfg.sign_hide) t |= NXVC_TOOL_SIGN_HIDE;
     if (e->cfg.inter) t |= NXVC_TOOL_INTER | NXVC_TOOL_WARP;
     if (e->cfg.stereo) t |= NXVC_TOOL_STEREO;
@@ -699,11 +711,19 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
     std::vector<u8> table_bytes;
     static thread_local TableSet deftabs[8];
     for (int k = 0; k < 8; ++k) build_default_set(deftabs[k], k, fp.nctx);
-    auto select_set = [&](const u32 th[kNumCtx][kNumSym], int fallback) {
+    // Cheapest of the eight sets *as they will actually be coded*.  Pass 0
+    // sees the built-in defaults, because that is all a tile can be coded
+    // with while the frame's tables are still being trained; the emit pass
+    // sees the transmitted tables, which is the assignment the bits are
+    // really spent under.  Selecting against the defaults in both passes --
+    // which is what this did before -- left every tile assigned to a set
+    // chosen under a rate model the encoder had already replaced.
+    auto select_set = [&](const u32 th[kNumCtx][kNumSym], int fallback,
+                          const TableSet *ts) {
         double best = 0;
         int bestk = fallback;
         for (int k = 0; k < 8; ++k) {
-            double c = table_set_cost(th, deftabs[k]);
+            double c = table_set_cost(th, ts[k]);
             if (k == 0 || c < best) { best = c; bestk = k; }
         }
         return bestk;
@@ -765,21 +785,21 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         std::memset(th, 0, sizeof(th));
         if (count_units(tc.units.data(), (int)tc.units.size(),
                         1 << tc.tp.nsub_log2, th, nullptr))
-            tc.tp.table_set = select_set(th, tc.tp.table_set);
+            tc.tp.table_set = select_set(th, tc.tp.table_set, tabs);
         if (tc.intra_dir) {
             analyze_tile_dir(tc, tabs, 1);
             std::memset(th, 0, sizeof(th));
             if (!count_units(tc.units.data(), (int)tc.units.size(),
                              1 << tc.tp.nsub_log2, th, nullptr))
                 return 0;
-            tc.tp.table_set = select_set(th, tc.tp.table_set);
+            tc.tp.table_set = select_set(th, tc.tp.table_set, tabs);
         } else if (use_rdo) {
             rdoq_tile(tc, tabs);
             std::memset(th, 0, sizeof(th));
             if (!count_units(tc.units.data(), (int)tc.units.size(),
                              1 << tc.tp.nsub_log2, th, nullptr))
                 return 0;
-            tc.tp.table_set = select_set(th, tc.tp.table_set);
+            tc.tp.table_set = select_set(th, tc.tp.table_set, tabs);
         }
         return table_set_cost(th, tabs[tc.tp.table_set]);
     };
@@ -1050,7 +1070,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             int active = 1 << tc.tp.nsub_log2;
             if ((size_t)active > tc.units.size()) active = (int)tc.units.size();
             bits += 8 * (kTileHeaderBytes + 4 * active +
-                         (tc.tp.mv_present ? 2 : 0));
+                         (tc.tp.mv_present && !fp.vec_ent ? 2 : 0));
             const double d = tile_distortion(tc);
             if (dist_out) *dist_out = d;
             return d + lambda * bits;
@@ -1234,7 +1254,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                     std::memset(th, 0, sizeof(th));
                     if (count_units(tc.units.data(), (int)tc.units.size(),
                                     1 << tc.tp.nsub_log2, th, nullptr)) {
-                        tc.tp.table_set = select_set(th, tc.tp.table_set);
+                        tc.tp.table_set = select_set(th, tc.tp.table_set, tabs);
                         if (emit && e->cfg.nsub_log2 == 255) {
                             double bits =
                                 table_set_cost(th, tabs[tc.tp.table_set]);
@@ -1252,7 +1272,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                     if (emit && e->cfg.collect_stats) {
                         const TableSet &ts = tabs[tc.tp.table_set];
                         int nplanes_c = coded_planes(tc);
-                        size_t ui = 0;
+                        size_t ui = tc.vec_unit ? 1u : 0u;   // skip UNIT_VEC
                         const size_t nhead = tc.intra_dir ? 2 : 1;
                         for (int p = 0; p < nplanes_c; ++p) {
                             int ndc = tc.pl[p].nb * tc.pl[p].nb;
@@ -1296,7 +1316,10 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                         }
                         tc.tp.payload_len = (int)payload.size();
                         pack_tile_header(rowbuf, tc.tp);
-                        if (tc.tp.mv_present) {
+                        // Under VEC_ENT the vector has already been coded as
+                        // the payload's first unit, so these two bytes are
+                        // simply not there (SYNTAX.md 4.1).
+                        if (tc.tp.mv_present && !fp.vec_ent) {
                             if (tc.tp.mode == NXVC_MODE_STEREO) {
                                 rowbuf.u16v((u32)(tc.tp.disparity & 0xfff));
                             } else {
@@ -1309,7 +1332,8 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                         rowbuf.raw(payload.data(), payload.size());
                         if (e->cfg.collect_stats) {
                             e->stats.bytes_tile_headers +=
-                                kTileHeaderBytes + (tc.tp.mv_present ? 2 : 0) +
+                                kTileHeaderBytes +
+                                (tc.tp.mv_present && !fp.vec_ent ? 2 : 0) +
                                 (tc.tp.alpha_mode == 1 ? 1 : 0);
                             e->stats.bytes_payload += payload.size();
                         }
@@ -1389,8 +1413,22 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                     }
                 }
             }
+            // A transmitted set costs `nctx * 16 * 5` bits of frame header
+            // and is only worth having if the tiles assigned to it save more
+            // than that.  Before this test the encoder sent all eight
+            // whenever any tile used them, which at QP 32 was 6 % of the
+            // frame under the 27-context model (SYNTAX.md 9.4).
+            const double set_bits = (double)fp.nctx * kNumSym * 5;
+            BitW one;
+            TableSet cand;
+            serialize_table_set(one, target, k, fp.nctx, cand);
+            one.flush();
+            double gain =
+                table_set_cost(hist[k], deftabs[k]) - table_set_cost(hist[k], cand);
+            if (gain <= set_bits) continue;   // keep the built-in default
             fp.tables_present |= (1u << k);
-            serialize_table_set(bw, target, k, fp.nctx, fp.tabs[k]);
+            fp.tabs[k] = cand;
+            bw.b.insert(bw.b.end(), one.b.begin(), one.b.end());
         }
         bw.flush();
         table_bytes = bw.b;
@@ -1655,6 +1693,15 @@ extern "C" nxvc_status nxvc_decoder_parse_stream_header(nxvc_decoder *d,
     // carry it, and a decoder that accepted both would not know which.
     if ((si.tools & NXVC_TOOL_LOSSLESS) && (si.tools & NXVC_TOOL_SIGN_HIDE))
         return NXVC_ERR_BITSTREAM;
+    // CTX_V3 extends CTX_V2's context set; without bit 21 the table-set size
+    // and the meaning of contexts 12..15 would be undefined.
+    if ((si.tools & NXVC_TOOL_CTX_V3) && !(si.tools & NXVC_TOOL_CTX_V2))
+        return NXVC_ERR_BITSTREAM;
+    // VEC_ENT selects rows of the v3 context family, and only an inter tile
+    // has a vector for it to code.
+    if ((si.tools & NXVC_TOOL_VEC_ENT) &&
+        (!(si.tools & NXVC_TOOL_CTX_V3) || !(si.tools & NXVC_TOOL_INTER)))
+        return NXVC_ERR_BITSTREAM;
     // Walk the TLV area; unknown types are skipped (forward compatibility).
     size_t p = kStreamHeaderBytes, end = kStreamHeaderBytes + si.ext_len;
     while (p + 4 <= end) {
@@ -1736,7 +1783,10 @@ static nxvc_status parse_frame_header(nxvc_decoder *d, const u8 *buf,
     fp.ref_slots = br.u8v();
     fp.flags = br.u8v();
     br.u8v();  // reserved
-    fp.nctx = (d->si.tools & NXVC_TOOL_CTX_V2) ? kNumCtxV2 : kNumCtxV1;
+    fp.vec_ent = (d->si.tools & NXVC_TOOL_VEC_ENT) ? 1 : 0;
+    fp.nctx = coded_context_count((d->si.tools & NXVC_TOOL_CTX_V2) != 0,
+                                  (d->si.tools & NXVC_TOOL_CTX_V3) != 0,
+                                  fp.vec_ent != 0);
     fp.intra_dir = (d->si.tools & NXVC_TOOL_INTRA_DIR) ? 1 : 0;
     fp.sdh = (d->si.tools & NXVC_TOOL_SIGN_HIDE) ? 1 : 0;
     fp.dir_layer = (fp.flags >> 2) & 1;
@@ -1995,7 +2045,7 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
                 if (tp.alpha_mode != 0 && !g.alpha) return NXVC_ERR_BITSTREAM;
                 if ((u32)tp.tile_index != col) return NXVC_ERR_BITSTREAM;
                 off = tb.i;
-                if (tp.mv_present) {
+                if (tp.mv_present && !fp.vec_ent) {
                     if (off + 2 > frame_bytes) return NXVC_ERR_TRUNCATED;
                     if (tp.mode == NXVC_MODE_STEREO) {
                         u32 disp = (u32)buf[off] | ((u32)buf[off + 1] << 8);
@@ -2043,6 +2093,25 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
                 tc.fp = &fp;
                 tc.tp = tp;
                 tc.setup();
+                // Under VEC_ENT the vector is the payload's first coding
+                // unit, so the entropy decode has to run before the
+                // predictor can be built; without it the two orders are
+                // equivalent and this is the same work either way.
+                tc.build_units();
+                int np = coded_planes(tc);
+                if (!decode_units(tc.units.data(), (int)tc.units.size(),
+                                  1 << tp.nsub_log2, fp.tabs[tp.table_set],
+                                  buf + payload_off, tp.payload_len))
+                    return NXVC_ERR_BITSTREAM;
+                if (tc.vec_unit) {
+                    if (tp.mode == NXVC_MODE_STEREO) {
+                        tp.disparity = tc.vec[0];
+                    } else {
+                        tp.mv_x = tc.vec[0];
+                        tp.mv_y = tc.vec[1];
+                    }
+                    tc.tp = tp;
+                }
                 if (tp.mode != NXVC_MODE_INTRA) {
                     const RefPicture *rp = nullptr;
                     if (tp.mode == NXVC_MODE_STEREO) {
@@ -2057,12 +2126,6 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
                                                              : tp.mv_x,
                                  tp.mode == NXVC_MODE_STEREO ? 0 : tp.mv_y);
                 }
-                tc.build_units();
-                int np = coded_planes(tc);
-                if (!decode_units(tc.units.data(), (int)tc.units.size(),
-                                  1 << tp.nsub_log2, fp.tabs[tp.table_set],
-                                  buf + payload_off, tp.payload_len))
-                    return NXVC_ERR_BITSTREAM;
                 for (int p = 0; p < np; ++p)
                     reconstruct_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
                                       tp.tskip, tc.intra_dir, tc.dir_layer);

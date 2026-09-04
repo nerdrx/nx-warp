@@ -60,6 +60,19 @@ void LaneMachine::init(const Unit *units, int nunits, int lane, int nlanes,
 
 void LaneMachine::begin_unit() {
     u_ = &units_[ui_];
+    // v3: the neighbour class is carried across units of the same group only.
+    // A group is one plane's run of block units, so the first block unit a
+    // lane meets in a plane has no neighbour and codes with the v2 contexts.
+    if (u_->ngrp != ngrp_) {
+        ngrp_ = u_->ngrp;
+        nbr_ = 0;
+    }
+    if (u_->kind == UNIT_VEC) {
+        vi_ = 0;
+        if (u_->ncoef == 0) { begin_next_unit(); return; }
+        phase_ = kVecCls;
+        return;
+    }
     if (u_->kind == UNIT_MODE) {
         mb_ = 0;
         if (u_->nbx == 0) { begin_next_unit(); return; }
@@ -87,6 +100,14 @@ void LaneMachine::begin_levels() {
     phase_ = kLevel;
 }
 
+// A coefficient unit has just ended.  Under v3 a block unit publishes its
+// class to the lane register the next block unit of the same group reads.
+void LaneMachine::end_coef_unit(int cbf) {
+    if (u_->ngrp != 0)
+        nbr_ = (u8)(cbf == 0 ? 1 : (last_ < kNbrDenseLast ? 2 : 3));
+    begin_next_unit();
+}
+
 void LaneMachine::advance_pos() {
     i32 m = mag_ < 0 ? -mag_ : mag_;
     prev_class_ = level_class((int)m);
@@ -94,7 +115,7 @@ void LaneMachine::advance_pos() {
     if (pos_ == 0) {
         if (hide_ && (sum_abs_ & 1))
             u_->coef[u_->scan[last_]] = (i16)(-u_->coef[u_->scan[last_]]);
-        begin_next_unit();
+        end_coef_unit(1);
     } else {
         --pos_;
         phase_ = kLevel;
@@ -106,7 +127,8 @@ bool LaneMachine::next(Op &op) {
     switch (phase_) {
         case kCbf: {
             op.kind = OP_SYM;
-            op.arg = u_->ctx_cbf;
+            op.arg = u_->ctx_v3 ? (u8)cbf_ctx_v3(u_->ctx_cbf, nbr_)
+                                : u_->ctx_cbf;
             op.value = 0;
             if (encoding_) {
                 u32 cbf = 0;
@@ -118,7 +140,8 @@ bool LaneMachine::next(Op &op) {
         }
         case kLast: {
             op.kind = OP_SYM;
-            op.arg = u_->ctx_last;
+            op.arg = u_->ctx_v3 ? (u8)last_ctx_v3(u_->ctx_last, nbr_)
+                                : u_->ctx_last;
             op.value = 0;
             if (encoding_) {
                 int lastpos = 0;
@@ -160,9 +183,12 @@ bool LaneMachine::next(Op &op) {
         }
         case kLevel: {
             op.kind = OP_SYM;
-            op.arg = (u8)(u_->ctx_level != kCtxNone
-                              ? u_->ctx_level
-                              : level_ctx(pos_, prev_class_));
+            op.arg = (u8)(u_->ctx_v3
+                              ? level_ctx_v3(pos_, last_, prev_class_,
+                                             u_->ctx_level)
+                              : (u_->ctx_level != kCtxNone
+                                     ? u_->ctx_level
+                                     : level_ctx(pos_, prev_class_)));
             op.value = 0;
             if (encoding_) {
                 i32 q = u_->coef[u_->scan[pos_]];
@@ -207,11 +233,78 @@ bool LaneMachine::next(Op &op) {
             if (encoding_) op.value = (u16)(u_->coef[u_->scan[pos_]] < 0);
             return true;
         }
+        // ------------------------------------------- UNIT_VEC (tool bit 25)
+        case kVecCls: {
+            op.kind = OP_SYM;
+            op.arg = u_->ctx_vec;
+            op.value = 0;
+            if (encoding_) {
+                i32 v = u_->coef[vi_];
+                i32 m = v < 0 ? -v : v;
+                op.value = (u16)(m >= kVecEscBase ? kVecEscSym
+                                                  : vec_class_of((int)m));
+            }
+            return true;
+        }
+        case kVecRaw: {
+            op.kind = OP_BYPASS;
+            op.arg = kVecRawBits[vec_cls_];
+            op.value = 0;
+            if (encoding_) {
+                i32 v = u_->coef[vi_];
+                i32 m = v < 0 ? -v : v;
+                op.value = (u16)(m - kVecBase[vec_cls_]);
+            }
+            return true;
+        }
+        case kVecEscPrefix: {
+            op.kind = OP_BYPASS;
+            op.arg = 1;
+            op.value = 0;
+            if (encoding_) {
+                i32 v = u_->coef[vi_];
+                i32 m = v < 0 ? -v : v;
+                int j; u32 suf; int bits;
+                eg3_encode((u32)(m - kVecEscBase), j, suf, bits);
+                op.value = (u16)(esc_j_ < j ? 1 : 0);
+            }
+            return true;
+        }
+        case kVecEscSuffix: {
+            int nchunks = (esc_bits_ + 7) / 8;
+            int chunk = esc_done_ == 0 ? esc_bits_ - 8 * (nchunks - 1) : 8;
+            op.kind = OP_BYPASS;
+            op.arg = (u8)chunk;
+            op.value = 0;
+            if (encoding_) {
+                i32 v = u_->coef[vi_];
+                i32 m = v < 0 ? -v : v;
+                int j; u32 suf; int bits;
+                eg3_encode((u32)(m - kVecEscBase), j, suf, bits);
+                int shift = esc_bits_ - esc_done_ - chunk;
+                op.value = (u16)((suf >> shift) & ((1u << chunk) - 1));
+            }
+            return true;
+        }
+        case kVecSign: {
+            op.kind = OP_BYPASS;
+            op.arg = 1;
+            op.value = encoding_ ? (u16)(u_->coef[vi_] < 0) : 0;
+            return true;
+        }
         case kHidden:
             return false;  // unreachable: kHidden never asks for an operation
         default:
             return false;
     }
+}
+
+// One vector component is complete.  Store it and move to the next, or to
+// the next unit.
+void LaneMachine::store_vec(i32 value) {
+    u_->coef[vi_] = (i16)value;
+    if (++vi_ >= u_->ncoef) begin_next_unit();
+    else phase_ = kVecCls;
 }
 
 // A magnitude has been decoded at pos_.  Normally its sign follows; for the
@@ -264,7 +357,7 @@ bool LaneMachine::feed(u32 v) {
         case kCbf: {
             if (v > 1) return false;
             if (v == 0) {
-                begin_next_unit();
+                end_coef_unit(0);
                 return true;
             }
             if (u_->ncoef == 1) {
@@ -342,9 +435,71 @@ bool LaneMachine::feed(u32 v) {
             advance_pos();
             return true;
         }
+        case kVecCls: {
+            if (v > (u32)kVecEscSym) return false;
+            if (v == (u32)kVecEscSym) {
+                esc_j_ = 0;
+                phase_ = kVecEscPrefix;
+                return true;
+            }
+            vec_cls_ = (int)v;
+            if (kVecRawBits[vec_cls_] > 0) { phase_ = kVecRaw; return true; }
+            vec_mag_ = kVecBase[vec_cls_];
+            return finish_vec_mag();
+        }
+        case kVecRaw: {
+            vec_mag_ = (i32)kVecBase[vec_cls_] + (i32)v;
+            return finish_vec_mag();
+        }
+        case kVecEscPrefix: {
+            if (v > 1) return false;
+            if (v == 1) {
+                if (++esc_j_ > kEscMaxPrefix) return false;
+                return true;
+            }
+            esc_bits_ = esc_j_ + kEscOrder;
+            esc_done_ = 0;
+            esc_acc_ = 0;
+            phase_ = kVecEscSuffix;
+            return true;
+        }
+        case kVecEscSuffix: {
+            int nchunks = (esc_bits_ + 7) / 8;
+            int chunk = esc_done_ == 0 ? esc_bits_ - 8 * (nchunks - 1) : 8;
+            esc_acc_ = (esc_acc_ << chunk) | v;
+            esc_done_ += chunk;
+            if (esc_done_ < esc_bits_) return true;
+            u32 n = (1u << esc_bits_) + esc_acc_;
+            u32 val = n - (1u << kEscOrder);
+            if (val > 32767u) return false;
+            vec_mag_ = (i32)val + kVecEscBase;
+            return finish_vec_mag();
+        }
+        case kVecSign: {
+            if (v > 1) return false;
+            store_vec(v ? -vec_mag_ : vec_mag_);
+            return true;
+        }
         default:
             return false;
     }
+}
+
+// A vector magnitude is complete.  A signed component takes a sign bit when
+// it is nonzero; an unsigned one (the STEREO disparity) is done.  The range
+// checks are here so that a hostile stream cannot name a vector the tile
+// header could not have carried.
+bool LaneMachine::finish_vec_mag() {
+    if (u_->vec_signed) {
+        if (vec_mag_ > kMvMagMax) return false;
+        if (vec_mag_ == 0) { store_vec(0); return true; }
+        if (vec_mag_ == kMvMagMax) { store_vec(-vec_mag_); return true; }
+        phase_ = kVecSign;
+        return true;
+    }
+    if (vec_mag_ > kDisparityMax) return false;
+    store_vec(vec_mag_);
+    return true;
 }
 
 // ----------------------------------------------------------------- rANS
