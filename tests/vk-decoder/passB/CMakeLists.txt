@@ -28,11 +28,17 @@ if(TARGET nxvc-passB-test)
   set_tests_properties(vk.passB.gpu_roundtrip_radv PROPERTIES
     SKIP_RETURN_CODE 77 TIMEOUT 1800)
 
-  # lavapipe: only when the caller points VK_DRIVER_FILES at an lvp ICD.
+  # lavapipe.  NXVC_LAVAPIPE_ICD is the same cache variable tests/vk uses; when
+  # it is not set the test still runs but exits 77, because --device-name only
+  # ever selects a matching device and never falls back to another one.
   add_test(NAME vk.passB.gpu_roundtrip_lavapipe
            COMMAND nxvc-passB-test --verbose --device-name llvmpipe)
   set_tests_properties(vk.passB.gpu_roundtrip_lavapipe PROPERTIES
     SKIP_RETURN_CODE 77 TIMEOUT 3600)
+  if(NXVC_LAVAPIPE_ICD AND EXISTS "${NXVC_LAVAPIPE_ICD}")
+    set_tests_properties(vk.passB.gpu_roundtrip_lavapipe PROPERTIES
+      ENVIRONMENT "VK_DRIVER_FILES=${NXVC_LAVAPIPE_ICD}")
+  endif()
 
   # Informational: 2048-tile dispatch time and coefficient SSBO traffic.
   add_test(NAME vk.passB.bench COMMAND nxvc-passB-test --bench)

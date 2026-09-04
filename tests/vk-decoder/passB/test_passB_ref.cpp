@@ -14,6 +14,7 @@
 //                      codec_impl.inc store_tile(), compared against the model
 //                      over randomly generated coefficient sets.
 
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -201,6 +202,63 @@ void test_primitives() {
     }
 }
 
+// ------------------------------------------------------- level 1b: gain
+// The integer IDCT must be the orthonormal DCT-III to within its rounding.
+// A wrong shift in the two-stage chain shows up as a power-of-two gain error,
+// which is exactly what PAPER 1.4's "7 then 12" would produce -- the shift
+// chain comes from docs/SYNTAX.md 6.3 (7 then 13, total shift 20, total gain
+// 1), never from the paper.
+void test_idct_gain_against_float() {
+    // SYNTAX 6.3 states the property outright: a DC coefficient of 1024
+    // reconstructs a flat 128.
+    {
+        int in[64] = {0}, out[64];
+        in[0] = 1024;
+        nxvw::model_idct8x8(in, out);
+        for (int i = 0; i < 64; ++i)
+            CHECK(out[i] == 128, "DC gain: coef 1024 -> sample %d at %d (want 128)",
+                  out[i], i);
+    }
+
+    double cs[8][8];
+    for (int x = 0; x < 8; ++x)
+        for (int u = 0; u < 8; ++u)
+            cs[x][u] = (u == 0 ? std::sqrt(0.125) : 0.5) *
+                       std::cos((2.0 * x + 1.0) * u * M_PI / 16.0);
+
+    // Magnitude kept low enough that the NORMATIVE clamp16 between the two
+    // passes never fires: a full block of +-512 saturates the intermediate and
+    // would make this comparison meaningless.  Saturation behaviour itself is
+    // covered by the bit-exact comparison against ref/ above.
+    std::mt19937 rng(4242);
+    std::uniform_int_distribution<int> dc(-128, 128);
+    double num = 0.0, den = 0.0;
+    double worst = 0.0;
+    for (int trial = 0; trial < 3000; ++trial) {
+        int in[64], out[64];
+        for (int i = 0; i < 64; ++i) in[i] = dc(rng);
+        nxvw::model_idct8x8(in, out);
+        for (int y = 0; y < 8; ++y)
+            for (int x = 0; x < 8; ++x) {
+                double f = 0.0;
+                for (int u = 0; u < 8; ++u)
+                    for (int v = 0; v < 8; ++v)
+                        f += in[u * 8 + v] * cs[y][u] * cs[x][v];
+                double g = out[y * 8 + x];
+                num += g * f;
+                den += f * f;
+                double e = std::fabs(g - f);
+                if (e > worst) worst = e;
+            }
+    }
+    double scale = num / den;
+    CHECK(std::fabs(scale - 1.0) < 0.001,
+          "IDCT gain vs float orthonormal DCT-III is %.6f, want 1.0 "
+          "(a wrong shift shows up here as 0.5 or 2.0)", scale);
+    // Rounding of the 9-bit constants plus two shifts; a handful of LSBs.
+    CHECK(worst < 4.0, "IDCT worst absolute error vs float is %.3f", worst);
+}
+
 // ------------------------------------------------------------- level 2
 // A whole 4:4:4 YCoCg-R tile, reconstructed by the oracle and by the model,
 // compared as RGB.  This is the reference decoder's exact output path
@@ -301,6 +359,7 @@ void test_tile_against_ref() {
 
 int main() {
     test_primitives();
+    test_idct_gain_against_float();
     test_tile_against_ref();
     if (g_fail == 0)
         std::printf("vk.passB.ref_conformance: PASS\n");

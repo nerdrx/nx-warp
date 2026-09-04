@@ -199,6 +199,10 @@ bool initVulkan(Ctx &c, int deviceIndex, const std::string &deviceName,
             pick = (int)i;
     }
     if (listOnly) return false;
+    if (!deviceName.empty() && pick < 0) {
+        std::fprintf(stderr, "no device matching \"%s\"\n", deviceName.c_str());
+        return false;   // -> exit 77, i.e. skip, never a silent fallback
+    }
     if (pick < 0) pick = deviceIndex;
     if (pick >= (int)n) {
         std::fprintf(stderr, "device index %d out of range (%u devices)\n", pick, n);
@@ -372,7 +376,7 @@ bool runGpu(Ctx &c, const Scene &sc, GpuResult &out, int repeats,
 
     int planeWords = sc.push.planeWords0 + sc.push.planeWords1 +
                      sc.push.planeWords2 + sc.push.planeWords3;
-    size_t lds = (size_t)planeWords * 4 + (64 * 64 / 2) * 4 + 64 * 4 * 2;
+    size_t lds = (size_t)planeWords * 4 + 64 * 4 * 2;
     if (lds > c.props.limits.maxComputeSharedMemorySize) {
         char b[256];
         std::snprintf(b, sizeof b,
