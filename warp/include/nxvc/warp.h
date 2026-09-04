@@ -47,9 +47,19 @@ inline constexpr int kDivShift = kQCorner + kQDen - kQNum;  // == 14
 // Tile side in samples. v1 Pass B is one workgroup per 64x64 tile.
 inline constexpr int kTile = 64;
 
-// Corner coordinates are saturated to +-2^18 in Q.6 (== +-4096 pel) so that
-// the in-tile bilinear interpolation cannot overflow int32.
-inline constexpr int32_t kCornerClamp = 1 << 18;
+// Corner coordinates are saturated to +-2^19 in Q.6 (== +-8192 pel). The
+// in-tile interpolation is done in two rounded steps (see bilerp_corner in
+// warp_ref.cpp) precisely so this bound can be this generous: a single-step
+// bilerp would overflow int32 above +-4096 pel, which a 4096-wide eye plus a
+// few hundred pixels of displacement already exceeds.
+inline constexpr int32_t kCornerClamp = 1 << 19;
+
+// Safety margin on the quantised entries. derive_homography() rejects any
+// matrix with an entry beyond this, so the format is never operated at the
+// ragged edge of int32. For the Q10.21 rows this is a translation term of
+// +-512 px, which at a 2160 px / 95 deg eye is about 2200 deg/s of head
+// rotation -- roughly seven times the 300 deg/s that paper 2.2 calls fast.
+inline constexpr int32_t kEntryMax = 1 << 30;
 
 // Legal range of the homogeneous denominator. The encoder MUST guarantee this
 // for every corner of every tile it emits; the decoder saturates if violated.

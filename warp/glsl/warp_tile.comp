@@ -30,7 +30,7 @@ const int  Q_MV         = 2;
 const int  Q_SAMPLE     = 4;
 const int  DIV_SHIFT    = Q_CORNER + Q_DEN - Q_NUM;   // 14
 const int  TILE         = 64;
-const int  CORNER_CLAMP = 1 << 18;
+const int  CORNER_CLAMP = 1 << 19;
 const int  DEN_MIN      = 1 << 28;
 const int  DEN_MAX      = 1 << 30;
 
@@ -191,11 +191,12 @@ void compute_corner(int i, TileParam p) {
 
 // --- step 2: in-tile bilinear interpolation of the corner coordinates -----
 
+// Two rounded steps, not one: keeps the intermediate at 2^25 so the corner
+// clamp can be +-8192 pel instead of +-4096. See warp_ref.cpp for the note.
 int bilerp_corner(int v00, int v10, int v01, int v11, int u, int v) {
-    int top = v00 * (TILE - u) + v10 * u;
-    int bot = v01 * (TILE - u) + v11 * u;
-    int acc = top * (TILE - v) + bot * v;
-    return (acc + (TILE * TILE / 2)) >> 12;   // OpShiftRightArithmetic
+    int top = (v00 * (TILE - u) + v10 * u + (TILE / 2)) >> 6;   // OpShiftRightArithmetic
+    int bot = (v01 * (TILE - u) + v11 * u + (TILE / 2)) >> 6;
+    return (top * (TILE - v) + bot * v + (TILE / 2)) >> 6;
 }
 
 // --- step 4: filters ------------------------------------------------------

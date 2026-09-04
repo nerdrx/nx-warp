@@ -133,7 +133,13 @@ bool derive_homography(const Quat& r_prev,
     q[8] = den_scale;
 
     for (int i = 0; i < 9; ++i) {
-        if (!(q[i] >= -2147483648.0 && q[i] <= 2147483647.0)) return false;
+        // kEntryMax, not INT32_MAX: see the note on kEntryMax in warp.h. The
+        // draft paper's uniform Q8.24 fails here by a factor of eight on the
+        // translation terms alone.
+        if (!(q[i] >= -static_cast<double>(kEntryMax) &&
+              q[i] <= static_cast<double>(kEntryMax))) {
+            return false;
+        }
         out->h[i] = round_to_int(q[i]);
     }
     out->h[8] = 1 << kQDen;

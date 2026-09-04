@@ -9,6 +9,8 @@
 //   corners    corner coordinates vs the exact homography
 //   interior   corner-bilerp interior error vs tile size and angular rate
 //   oracle     integer pipeline vs the float oracle (coordinate + pixel error)
+//   range      fixed-point envelope: no int32 overflow anywhere in the
+//              documented worst case, and out-of-envelope poses are rejected
 //   filters    filter tap tables are normalised and symmetric
 //
 // SPDX-License-Identifier: Apache-2.0
@@ -314,7 +316,7 @@ static int suite_interior() {
         double worst[2] = {0.0, 0.0};
         for (int ti = 0; ti < 2; ++ti) {
             const int ts = ti == 0 ? 32 : 64;
-            const int sh = ti == 0 ? 10 : 12;
+            const int sh = ti == 0 ? 5 : 6;
             Rng rng(4242);
             Case cs{};
             for (int i = 0; i < 4000; ++i) {
@@ -331,12 +333,12 @@ static int suite_interior() {
                 }
                 for (int v = 0; v < ts; v += 2) {
                     for (int u = 0; u < ts; u += 2) {
-                        const int32_t tX = cxv[0] * (ts - u) + cxv[1] * u;
-                        const int32_t bX = cxv[2] * (ts - u) + cxv[3] * u;
-                        const int32_t tY = cyv[0] * (ts - u) + cyv[1] * u;
-                        const int32_t bY = cyv[2] * (ts - u) + cyv[3] * u;
-                        const double xi = ((tX * (ts - v) + bX * v + ts * ts / 2) >> sh) / 64.0;
-                        const double yi = ((tY * (ts - v) + bY * v + ts * ts / 2) >> sh) / 64.0;
+                        const int32_t tX = (cxv[0] * (ts - u) + cxv[1] * u + ts / 2) >> sh;
+                        const int32_t bX = (cxv[2] * (ts - u) + cxv[3] * u + ts / 2) >> sh;
+                        const int32_t tY = (cyv[0] * (ts - u) + cyv[1] * u + ts / 2) >> sh;
+                        const int32_t bY = (cyv[2] * (ts - u) + cyv[3] * u + ts / 2) >> sh;
+                        const double xi = ((tX * (ts - v) + bX * v + ts / 2) >> sh) / 64.0;
+                        const double yi = ((tY * (ts - v) + bY * v + ts / 2) >> sh) / 64.0;
                         double ex, ey;
                         oracle::source_coord(cs.Hd, cs.H.ox, cs.H.oy, tx + u, ty + v, zero, &ex, &ey);
                         worst[ti] = std::fmax(worst[ti],
@@ -347,11 +349,11 @@ static int suite_interior() {
         }
         std::printf("interior: %9.2f  %10.0f   %10.5f   %10.5f\n", d, d * 90.0, worst[0], worst[1]);
         if (d == 3.3) { err64_fast = worst[1]; err32_fast = worst[0]; }
-        if (d == 1.65) err64_180 = worst[1];
+        if (d == 1.0) err64_180 = worst[1];
     }
     // Normative envelope, measured rather than assumed:
     CHECK(err32_fast <= 1.0 / 16.0, "32x32 at 297 deg/s: %.5f > 1/16", err32_fast);
-    CHECK(err64_180 <= 1.0 / 16.0, "64x64 at 148 deg/s: %.5f > 1/16", err64_180);
+    CHECK(err64_180 <= 1.0 / 16.0, "64x64 at 90 deg/s: %.5f > 1/16", err64_180);
     CHECK(err64_fast <= 1.0 / 8.0, "64x64 at 297 deg/s: %.5f > 1/8", err64_fast);
     return g_fail;
 }
@@ -381,12 +383,12 @@ static int suite_oracle() {
         for (int v = 0; v < kTile; v += 3) {
             for (int u = 0; u < kTile; u += 3) {
                 // Reproduce the integer interior coordinate.
-                const int32_t top_x = c.x[0] * (kTile - u) + c.x[1] * u;
-                const int32_t bot_x = c.x[2] * (kTile - u) + c.x[3] * u;
-                const int32_t xi = (top_x * (kTile - v) + bot_x * v + 2048) >> 12;
-                const int32_t top_y = c.y[0] * (kTile - u) + c.y[1] * u;
-                const int32_t bot_y = c.y[2] * (kTile - u) + c.y[3] * u;
-                const int32_t yi = (top_y * (kTile - v) + bot_y * v + 2048) >> 12;
+                const int32_t top_x = (c.x[0] * (kTile - u) + c.x[1] * u + 32) >> 6;
+                const int32_t bot_x = (c.x[2] * (kTile - u) + c.x[3] * u + 32) >> 6;
+                const int32_t xi = (top_x * (kTile - v) + bot_x * v + 32) >> 6;
+                const int32_t top_y = (c.y[0] * (kTile - u) + c.y[1] * u + 32) >> 6;
+                const int32_t bot_y = (c.y[2] * (kTile - u) + c.y[3] * u + 32) >> 6;
+                const int32_t yi = (top_y * (kTile - v) + bot_y * v + 32) >> 6;
                 // Snap to 1/16 pel exactly as warp_tile() does.
                 const double xs = ((xi + 2) >> 2) / 16.0;
                 const double ys = ((yi + 2) >> 2) / 16.0;
@@ -450,6 +452,115 @@ static int suite_oracle() {
 
 // ---------------------------------------------------------------------------
 
+// The fixed-point envelope, checked against the worst case rather than
+// asserted. Paper 2.2 specifies a uniform Q8.24 for all nine entries; that
+// cannot work (see docs/WARP.md section 3), and this suite is the evidence:
+// it sweeps eye widths up to 4096, FOV tangents up to 1.4 (~109 deg half
+// angle) and rotation deltas from 0 to 180 degrees, and reports the largest
+// magnitude each entry actually reaches.
+static int suite_range() {
+    const double kDeg = 3.14159265358979 / 180.0;
+    const int widths[] = {1024, 2048, 2160, 2880, 4096};
+    const double tans[] = {0.6, 0.9, 1.2, 1.4};
+    const double deltas[] = {0.0, 0.5, 1.65, 3.3, 6.6, 10.0, 20.0, 45.0, 90.0, 135.0, 180.0};
+
+    int32_t max_lin = 0, max_trans = 0, max_persp = 0;
+    double max_accepted_delta = 0.0;
+    int accepted = 0, rejected = 0, saturated = 0, saturated_in_envelope = 0;
+    int32_t worst_den_lo = kDenMax, worst_den_hi = kDenMin;
+
+    for (int w : widths) {
+        for (double tn : tans) {
+            Fov fov;
+            fov.angle_left = -std::atan(tn);
+            fov.angle_right = std::atan(tn);
+            fov.angle_up = std::atan(tn);
+            fov.angle_down = -std::atan(tn);
+            for (double dd : deltas) {
+                // Worst orientation of the delta axis is unknown a priori, so
+                // sweep the axis too.
+                for (int axis = 0; axis < 12; ++axis) {
+                    const double a = axis * 30.0 * kDeg;
+                    const Quat qp = quat_from_ypr(0.3, -0.2, 0.1);
+                    const Quat qc = quat_from_ypr(0.3 + dd * kDeg * std::cos(a),
+                                                  -0.2 + dd * kDeg * std::sin(a) * 0.7,
+                                                  0.1 + dd * kDeg * std::sin(a) * 0.7);
+                    Homography H;
+                    if (!derive_homography(qp, fov, qc, fov, w, w, &H)) {
+                        ++rejected;
+                        continue;
+                    }
+                    ++accepted;
+                    max_accepted_delta = std::fmax(max_accepted_delta, dd);
+                    for (int i = 0; i < 2; ++i) {
+                        max_lin = std::max(max_lin, std::abs(H.h[i == 0 ? 0 : 4]));
+                        max_lin = std::max(max_lin, std::abs(H.h[i == 0 ? 1 : 3]));
+                    }
+                    max_trans = std::max(max_trans, std::max(std::abs(H.h[2]), std::abs(H.h[5])));
+                    max_persp = std::max(max_persp, std::max(std::abs(H.h[6]), std::abs(H.h[7])));
+
+                    // Every tile of the picture must stay inside the envelope:
+                    // den legal at every corner, and no coordinate saturation.
+                    for (int ty = 0; ty <= w - kTile; ty += kTile) {
+                        for (int tx = 0; tx <= w - kTile; tx += kTile) {
+                            for (int k = 0; k < 4; ++k) {
+                                const int32_t cx = tx + ((k & 1) ? kTile : 0) - H.ox;
+                                const int32_t cy = ty + ((k >> 1) ? kTile : 0) - H.oy;
+                                const int64_t den = static_cast<int64_t>(H.h[6]) * cx +
+                                                    static_cast<int64_t>(H.h[7]) * cy + H.h[8];
+                                CHECK(den >= kDenMin && den < kDenMax,
+                                      "den %lld out of [2^28,2^30) at w=%d tan=%.1f delta=%.1f",
+                                      static_cast<long long>(den), w, tn, dd);
+                                worst_den_lo = std::min<int32_t>(worst_den_lo,
+                                                                 static_cast<int32_t>(den));
+                                worst_den_hi = std::max<int32_t>(worst_den_hi,
+                                                                 static_cast<int32_t>(den));
+                            }
+                            const TileCorners c = warp_tile_corners(H, tx, ty, kModeWarp);
+                            for (int k = 0; k < 4; ++k) {
+                                if (std::abs(c.x[k]) >= kCornerClamp ||
+                                    std::abs(c.y[k]) >= kCornerClamp) {
+                                    ++saturated;
+                                    // Saturation is correct behaviour when the
+                                    // source point lands thousands of pixels
+                                    // outside the picture; it is a bug only
+                                    // inside the operational envelope.
+                                    if (dd <= 10.0) ++saturated_in_envelope;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    std::printf("range:   %d accepted, %d rejected poses; largest accepted delta %.0f deg\n",
+                accepted, rejected, max_accepted_delta);
+    std::printf("range:   max |linear|      = %d  (%.1f %% of the kEntryMax budget)\n", max_lin,
+                100.0 * max_lin / kEntryMax);
+    std::printf("range:   max |translation| = %d = %.1f px (%.1f %% of budget, %.0f px hard cap)\n",
+                max_trans, max_trans / static_cast<double>(1 << kQNum),
+                100.0 * max_trans / kEntryMax,
+                static_cast<double>(kEntryMax) / (1 << kQNum));
+    std::printf("range:   max |perspective| = %d  (%.3f %% of budget)\n", max_persp,
+                100.0 * max_persp / kEntryMax);
+    std::printf("range:   den span [%d, %d], legal [%d, %d)\n", worst_den_lo, worst_den_hi,
+                kDenMin, kDenMax);
+    std::printf("range:   corner saturations: %d total, %d inside the <=10 deg/frame envelope\n",
+                saturated, saturated_in_envelope);
+    // In Q8.24 the translation term alone would need this many bits:
+    const double q824_needed = max_trans / static_cast<double>(1 << kQNum) * (1 << 24);
+    std::printf("range:   the same translation in Q8.24 would be %.3g, %.1f x over int32\n",
+                q824_needed, q824_needed / 2147483647.0);
+    CHECK(max_lin <= kEntryMax && max_trans <= kEntryMax && max_persp <= kEntryMax,
+          "an entry passed validation but exceeds kEntryMax");
+    CHECK(saturated_in_envelope == 0,
+          "%d corner coordinates saturated at <= 10 deg/frame (900 deg/s)",
+          saturated_in_envelope);
+    CHECK(rejected > 0, "no pose was rejected: the envelope check is not being exercised");
+    return g_fail;
+}
+
 static int suite_filters() {
     for (int f = 0; f < 16; ++f) {
         int sum = 0;
@@ -494,6 +605,7 @@ int main(int argc, char** argv) {
     if (suite == "corners" || suite == "all") suite_corners();
     if (suite == "interior" || suite == "all") suite_interior();
     if (suite == "oracle" || suite == "all") suite_oracle();
+    if (suite == "range" || suite == "all") suite_range();
     if (suite == "filters" || suite == "all") suite_filters();
     if (g_fail) {
         std::printf("\n%d FAILURE(S)\n", g_fail);

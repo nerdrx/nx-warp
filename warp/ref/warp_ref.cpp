@@ -218,22 +218,28 @@ TileCorners warp_tile_corners(const Homography& H, int32_t tile_x, int32_t tile_
 // ---------------------------------------------------------------------------
 // Step 2: bilinear interpolation of the corner coordinates inside the tile.
 //
-//   top = X00*(64-u) + X10*u        <= 2^18 * 2^6  = 2^24
-//   bot = X01*(64-u) + X11*u
-//   val = top*(64-v) + bot*v        <= 2^24 * 2^6  = 2^30
-//   X   = (val + 2048) >> 12        round half up, arithmetic shift
+// Two rounded steps rather than one, so that the intermediate stays small:
 //
-// Integer adds and multiplies by small constants only; no 64-bit needed
-// because the corners are clamped to +-2^18.
+//   top = (X00*(64-u) + X10*u + 32) >> 6     <= 2^19,  intermediate <= 2^25
+//   bot = (X01*(64-u) + X11*u + 32) >> 6     <= 2^19
+//   X   = (top*(64-v) + bot*v   + 32) >> 6   <= 2^19,  intermediate <= 2^25
+//
+// A single-step form (multiply out, one >>12) would need the corners clamped
+// to +-2^18 == +-4096 pel to stay inside int32, and a 4096-wide eye plus a few
+// hundred pixels of warp displacement already passes that. The extra shift per
+// axis buys 8x the coordinate range for two adds.
+//
+// Rounding is add-half then arithmetic shift, twice, so the interpolation
+// error against the exact bilinear value is at most one Q.6 step (1/64 pel).
+// Integer adds and multiplies by small constants only; no 64-bit anywhere.
 // ---------------------------------------------------------------------------
 
 static inline int32_t bilerp_corner(const int32_t v00, const int32_t v10,
                                     const int32_t v01, const int32_t v11,
                                     int32_t u, int32_t v) {
-    const int32_t top = v00 * (kTile - u) + v10 * u;
-    const int32_t bot = v01 * (kTile - u) + v11 * u;
-    const int32_t acc = top * (kTile - v) + bot * v;
-    return sar(acc + (kTile * kTile / 2), 12);  // 12 == 2*log2(kTile)
+    const int32_t top = sar(v00 * (kTile - u) + v10 * u + (kTile / 2), 6);
+    const int32_t bot = sar(v01 * (kTile - u) + v11 * u + (kTile / 2), 6);
+    return sar(top * (kTile - v) + bot * v + (kTile / 2), 6);
 }
 
 // ---------------------------------------------------------------------------
