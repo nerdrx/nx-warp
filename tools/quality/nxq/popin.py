@@ -470,6 +470,10 @@ def score_sequence(
                 coded = skip[min(t, skip.shape[0] - 1), eye] == 0
                 sel = coded & (k > 1)
             else:
+                # No schedule: every frame is scored, at k = 2.  A change that
+                # happens on every frame has a fundamental of fps/2 -- one full
+                # cycle takes two frames -- so k = 2 is the *fastest* temporal
+                # frequency a frame sequence can carry, not a free parameter.
                 k = np.full(pop.shape, 2, dtype=np.int64)
                 sel = np.ones(pop.shape, dtype=bool)
             if not sel.any():
