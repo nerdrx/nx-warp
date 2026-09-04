@@ -475,12 +475,13 @@ bool encode_units(const Unit *units, int nunits, int nlanes,
 }
 
 bool count_units(const Unit *units, int nunits, int nlanes,
-                 u32 hist[kNumCtx][kNumSym], u32 *op_count) {
+                 u32 hist[kNumCtx][kNumSym], u32 *op_count,
+                 u32 *bypass_bits) {
     int active = nlanes < nunits ? nlanes : nunits;
     std::vector<LaneMachine> lanes(active);
     for (int l = 0; l < active; ++l)
         lanes[l].init(units, nunits, l, nlanes, true);
-    u32 n = 0;
+    u32 n = 0, raw = 0;
     bool any = true;
     while (any) {
         any = false;
@@ -491,10 +492,12 @@ bool count_units(const Unit *units, int nunits, int nlanes,
             ++n;
             if (op.kind == OP_SYM && op.arg >= kNumCtx) return false;
             if (op.kind == OP_SYM && hist) hist[op.arg][op.value]++;
+            if (op.kind == OP_BYPASS) raw += op.arg;
             if (!lanes[l].feed(op.value)) return false;
         }
     }
     if (op_count) *op_count = n;
+    if (bypass_bits) *bypass_bits = raw;
     return true;
 }
 

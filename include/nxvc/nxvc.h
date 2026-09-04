@@ -214,6 +214,24 @@ typedef struct nxvc_config {
                                    Below 256 the decision spends more bits to
                                    keep the reference clean, which is what an
                                    all-reference stream wants; 0 = default  */
+
+    /* --- additive since syntax v1.5.  All encoder-side effort knobs: they
+     * change how hard the encoder looks, never what a decoder does.  0 is
+     * "the built-in default" for every one of them, so a caller that
+     * memsets its config gets the medium preset. */
+    uint32_t rdoq_effort;       /* 1 = fast (nearest level only), 2 = medium
+                                   (the v1.2 candidate set), 3 = full (adds
+                                   the level below); 0 = default (medium)  */
+    uint32_t me_effort;         /* 1 = fast (no hierarchy, integer only),
+                                   2 = medium (hierarchical + quarter-pel
+                                   SATD), 3 = full (adds true-RD quarter-pel
+                                   refinement); 0 = default (medium)       */
+    uint32_t lambda_class_off;  /* 1 = one lambda for every tile; 0 = scale
+                                   lambda by the tile's content class
+                                   (docs/RATECONTROL.md 3.3)               */
+    uint32_t qp_search_step;    /* spacing of the per-tile QP candidates,
+                                   0 = the default 2.  With qp_search = n
+                                   the candidates are 0, +-step ... +-n     */
 } nxvc_config;
 
 /* One eye's view for one frame: the orientation the frame was rendered with

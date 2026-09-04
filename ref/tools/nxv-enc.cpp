@@ -71,6 +71,10 @@ static void usage() {
         "  --no-rdo             plain dead-zone quantizer (default: RD trellis)\n"
         "  --rdo-lambda F       RD lambda scale (default 0.30)\n"
         "  --qp-search N        try per-tile qp_delta in [-N, +N] (default 0)\n"
+        "  --qp-search-step N   spacing of those candidates (default 2)\n"
+        "  --rdoq-effort N      1 fast, 2 medium, 3 full trellis candidates\n"
+        "  --me-effort N        1 fast, 2 hierarchical+SATD, 3 +true-RD qpel\n"
+        "  --no-lambda-class    one lambda for every tile, whatever its class\n"
         "  --intra-dir on|off|layer  directional intra (tool 17); `layer`\n"
         "                       predicts the DC-plane residual instead\n"
         "  --intra-dir-cand N   modes RD-checked per block (default 2)\n"
@@ -105,7 +109,15 @@ static void usage() {
         "                       Applied after the mode search; the encoder\n"
         "                       overrides it where a coded tile is required\n"
         "  --mode-lambda F      lambda scale of the per-tile mode decision,\n"
-        "                       relative to the trellis (default 0.25)\n");
+        "                       relative to the trellis (default 1/4, the\n"
+        "                       reference-persistence factor)\n"
+        "Presets (set the effort knobs above; anything given after --preset\n"
+        "on the command line still wins):\n"
+        "  --preset fast        rdoq 1, me 1, 1 intra mode, no QP search\n"
+        "  --preset medium      rdoq 2, me 2, 2 intra modes, no QP search\n"
+        "                       (the default)\n"
+        "  --preset slow        rdoq 3, me 3, 4 intra modes, per-tile QP\n"
+        "                       search +-2 and per-tile matrix\n");
 }
 
 static bool read_exact(std::FILE *f, void *p, size_t n) {
@@ -124,6 +136,7 @@ int main(int argc, char **argv) {
     int sign_hide = 1;
     int inter = 0, eyes = 1, intra_period = 180, ref_sel = 0, stereo = 0;
     int mv_range = 16, skip_thresh = 0, mode_lambda = 0;
+    int rdoq_effort = 0, me_effort = 0, lambda_class_off = 0, qp_step = 0;
     double fov_h = 95.0, fov_v = 95.0;
     bool fov_from_cli = false;
     std::string poses_path, skipmap_path;
@@ -191,6 +204,29 @@ int main(int argc, char **argv) {
         else if (a == "--no-rdo") rdo = 0;
         else if (a == "--rdo-lambda") rdo_lambda_q8 = (int)(std::atof(val()) * 256.0 + 0.5);
         else if (a == "--qp-search") qp_search = std::atoi(val());
+        else if (a == "--qp-search-step") qp_step = std::atoi(val());
+        else if (a == "--rdoq-effort") rdoq_effort = std::atoi(val());
+        else if (a == "--me-effort") me_effort = std::atoi(val());
+        else if (a == "--no-lambda-class") lambda_class_off = 1;
+        else if (a == "--preset") {
+            // One name for a point on the encode-time / rate curve.  Every
+            // knob a preset sets can still be given explicitly afterwards,
+            // because the parse is left to right and the last write wins.
+            std::string v = val();
+            if (v == "fast") {
+                rdoq_effort = 1; me_effort = 1; dir_cand = 1;
+                qp_search = 0; wm = 0;
+            } else if (v == "medium") {
+                rdoq_effort = 2; me_effort = 2; dir_cand = 2;
+                qp_search = 0; wm = 0;
+            } else if (v == "slow") {
+                rdoq_effort = 3; me_effort = 3; dir_cand = 4;
+                qp_search = 2; qp_step = 2; wm = 255;
+            } else {
+                std::fprintf(stderr, "--preset: fast|medium|slow\n");
+                return 2;
+            }
+        }
         else if (a == "--intra-dir") {
             std::string v = val();
             if (v == "on") { intra_dir = 1; intra_dir_layer = 0; }
@@ -340,6 +376,10 @@ int main(int argc, char **argv) {
     cfg.quant_matrix = (uint32_t)matrix;
     cfg.rdo = (uint32_t)rdo;
     cfg.rdo_lambda_q8 = (uint32_t)rdo_lambda_q8;
+    cfg.rdoq_effort = (uint32_t)(rdoq_effort > 0 ? rdoq_effort : 0);
+    cfg.me_effort = (uint32_t)(me_effort > 0 ? me_effort : 0);
+    cfg.lambda_class_off = (uint32_t)lambda_class_off;
+    cfg.qp_search_step = (uint32_t)(qp_step > 0 ? qp_step : 0);
     cfg.qp_search = (uint32_t)qp_search;
     cfg.wm_id = (uint32_t)wm;
     cfg.intra_dir = (uint32_t)intra_dir;
