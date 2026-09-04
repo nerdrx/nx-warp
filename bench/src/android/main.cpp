@@ -33,6 +33,7 @@ struct Swapchain
 {
     VkSwapchainKHR handle = VK_NULL_HANDLE;
     VkFormat format = VK_FORMAT_UNDEFINED;
+    VkImageUsageFlags usage = 0;
     VkExtent2D extent{};
     std::vector<VkImage> images;
     std::vector<VkImageLayout> layouts;
@@ -70,7 +71,15 @@ bool createSwapchain(VkCtx& ctx, VkSurfaceKHR surface, Swapchain& sc)
     ci.imageArrayLayers = 1;
     // TRANSFER_DST because the bench copies its output image into the
     // swapchain; it never renders with a graphics pipeline.
-    ci.imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    // The copy needs TRANSFER_DST. It is near-universal on Android but not
+    // guaranteed, so check rather than assume: an unsupported usage bit is a
+    // swapchain creation failure with no explanation.
+    ci.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    if (caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT)
+        ci.imageUsage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    else
+        NXB_LOG("swapchain does not support TRANSFER_DST; the display will stay "
+                "blank but the kernels still run and are still timed");
     ci.preTransform = caps.currentTransform;
     ci.compositeAlpha = VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
     if (!(caps.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR))
@@ -89,6 +98,7 @@ bool createSwapchain(VkCtx& ctx, VkSurfaceKHR surface, Swapchain& sc)
     NXB_VK(vkCreateSemaphore(ctx.dev, &si, nullptr, &sc.acquired));
     NXB_VK(vkCreateSemaphore(ctx.dev, &si, nullptr, &sc.rendered));
 
+    sc.usage = ci.imageUsage;
     NXB_LOG("swapchain: %ux%u, %u images, format %d, FIFO",
             sc.extent.width, sc.extent.height, n, int(sc.format));
     return true;
@@ -291,6 +301,7 @@ void android_main(android_app* app)
 
     Swapchain sc;
     createSwapchain(ctx, surface, sc);
+    VkImageUsageFlags scUsage = sc.usage;
 
     Bench bench;
     if (!bench.init(ctx, cfg))
@@ -346,8 +357,9 @@ void android_main(android_app* app)
         if (wantK6) hybrid.poll();
         return true;
     };
+    bool canCopyToSwapchain = (scUsage & VK_IMAGE_USAGE_TRANSFER_DST_BIT) != 0;
     hooks.extraRecord = [&](VkCommandBuffer cmd) {
-        if (!haveImage) return;
+        if (!haveImage || !canCopyToSwapchain) return;
         VkImage dst = sc.images[imageIndex];
 
         VkImageMemoryBarrier b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
