@@ -212,7 +212,28 @@ that measurement had 36 frames to amortise its first intra frame over and this
 one has 8; the before/after pair here is internally consistent and that is
 what it is for.
 
-<!--RESULTS-INTER-B-->
+### Band B, the paper's own bits per pixel
+
+`--qp 18,24,30,36` against `x265-p` at `26,32,38,44`, the band
+`RESULTS-inter.md` argues is where the codec is actually designed to run:
+
+| | before (`--xform 8`) | after (`--xform auto`) | change |
+|---|---|---|---|
+| **BD-rate vs x265-p** | **+454.96 %** | **+398.86 %** | **-56.1 points** |
+| BD-PSNR | -11.770 dB | -10.528 dB | +1.24 dB |
+
+| QP | before Mbit/s | before PSNR-Y | after Mbit/s | after PSNR-Y | rate | quality |
+|---|---|---|---|---|---|---|
+| 18 | 35.17 | 45.12 | 31.73 | 45.30 | -9.8 % | +0.18 dB |
+| 24 | 16.56 | 40.48 | 15.40 | 40.57 | -7.0 % | +0.09 dB |
+| 30 | 8.69 | 36.17 | 7.56 | 36.25 | -13.0 % | +0.08 dB |
+| 36 | 4.95 | 31.74 | 4.16 | 31.99 | -16.0 % | +0.25 dB |
+
+The tool is worth slightly more at the paper's own operating point than at the
+literal band, which is the opposite of what section 3.1's per-tile histogram
+predicts for *intra* and is worth saying plainly: on an inter frame the coded
+residual is small and smooth at every QP, so the transform size matters for
+the same reason at both ends of the ladder.
 
 ### 3.1 What the encoder actually chooses
 
