@@ -1242,6 +1242,12 @@ of the two smallest -- so `kCflRecip` is only ever indexed in `[1, 255]`.
 reciprocal table** -- the third and last place this format divides, and like
 the other two it is a table lookup in the decoding process rather than a
 division opcode (spec/03-conventions.md 3.4). `kCflRecip[0]` is never read.
+**`round` is unambiguous here: `2^15 / d` is never exactly half-integral for
+any `d` in `[1, 255]`**, so the table is fully determined and no rounding mode
+has to be named. (`2^15 / d = k + 1/2` would need `2^16 = d(2k + 1)` with
+`2k + 1` odd and greater than 1, which cannot divide a power of two.) A
+decoder that rounds halves up, down, or to even therefore builds the same 256
+entries.
 The product is `(top_c - base_c) / dl` in Q15 and the `>> 7` brings it to Q8,
 so `alpha` is the fitted slope in chroma units per luma unit, Q8, clamped to
 `+-8.0`.

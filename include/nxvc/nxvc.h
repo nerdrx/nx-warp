@@ -194,11 +194,6 @@ typedef struct nxvc_config {
     uint32_t intra_dir_cand;    /* modes RD-checked per block, 0 = default  */
     uint32_t sign_hide;         /* 1 = sign data hiding (tool 22)           */
 
-    /* --- additive since syntax v1.5.  Bitstream tools, each behind its own
-     * tool bit: a stream without the bit decodes byte-identically to v1.4. */
-    uint32_t split4x4;          /* 1 = per-block 4x4 transform split (19)    */
-    uint32_t chroma_from_luma;  /* 1 = the CFL chroma intra mode (24)        */
-
     /* --- additive since syntax v1.4: the Phase 2 inter path.
      * `width`/`height` are PER EYE.  With eyes == 2 the nxvc_image passed to
      * the encoder and filled by the decoder is `eyes * width` samples wide:
@@ -223,6 +218,14 @@ typedef struct nxvc_config {
                                    Below 256 the decision spends more bits to
                                    keep the reference clean, which is what an
                                    all-reference stream wants; 0 = default  */
+
+    /* --- additive since syntax v1.6.  Bitstream tools, each behind its own
+     * tool bit: a stream without the bit decodes byte-identically to v1.4.
+     * APPENDED, per JUDGE-detail.md merge item 1: the ABI is additive, so a
+     * new field goes at the END of the struct.  detail-a inserted these two
+     * mid-struct, which silently moves the offset of every field after them. */
+    uint32_t split4x4;          /* 1 = per-block 4x4 transform split (19)    */
+    uint32_t chroma_from_luma;  /* 1 = the CFL chroma intra mode (24)        */
 } nxvc_config;
 
 /* One eye's view for one frame: the orientation the frame was rendered with
@@ -276,7 +279,6 @@ typedef struct nxvc_tile_info {
     uint8_t qp;                 /* resolved luma QP                        */
     uint8_t wm_id;              /* per-tile weighting matrix, 0 = frame's  */
     uint8_t intra_dir;          /* 1: this tile carries per-block modes    */
-    uint8_t split4x4;           /* 1: this tile carries 4x4 split flags    */
     /* --- additive since syntax v1.4 */
     uint8_t skipped;            /* 1: WARP_SKIP via skip_bitmap, not coded  */
     uint8_t concealed;          /* decoder: the tile was reported lost and
@@ -288,6 +290,8 @@ typedef struct nxvc_tile_info {
     uint16_t age_since_coded;   /* frames since this tile position last
                                    carried a coded residual; 0 on the frame
                                    that coded one, saturating at 65535      */
+    /* APPENDED per JUDGE-detail.md merge item 1. */
+    uint8_t split4x4;           /* 1: this tile carries 4x4 split flags    */
 } nxvc_tile_info;
 
 typedef struct nxvc_stream_info {
