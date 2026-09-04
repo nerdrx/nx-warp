@@ -87,6 +87,9 @@ static size_t plane_coef_offset(const TileCoder &tc, int p) {
 constexpr int kWarpDcPlanes = 3;
 constexpr size_t kWarpDcBytes = 3u * kWarpDcPlanes;
 
+// mv_quad(): four i8 pairs after the tile vector (docs/SYNTAX.md 4.1, 13.8).
+constexpr size_t kMvQuadBytes = 8;
+
 // Number of coded planes in this tile (alpha only when alpha_mode == 2).
 static int coded_planes(const TileCoder &tc) {
     int np = tc.nplanes;
@@ -1244,7 +1247,8 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                     if (dx < -128 || dx > 127 || dy < -128 || dy > 127)
                         inrange = false;
                 }
-                if (inrange && sum + (i64)(8.0 * qstep * 8.0) < qsad) {
+                if (inrange &&
+                    sum + (i64)((double)kMvQuadBytes * 8.0 * qstep) < qsad) {
                     use_quad = 1;
                     qsad = sum;
                 }
@@ -1314,7 +1318,8 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             int active = 1 << tc.tp.nsub_log2;
             if ((size_t)active > tc.units.size()) active = (int)tc.units.size();
             bits += 8 * (kTileHeaderBytes + 4 * active +
-                         (tc.tp.mv_present ? 2 : 0) + (tc.tp.mv_quad ? 8 : 0));
+                         (tc.tp.mv_present ? 2 : 0) +
+                         (tc.tp.mv_quad ? (int)kMvQuadBytes : 0));
             const double d = tile_distortion(tc);
             if (dist_out) *dist_out = d;
             return d + lambda * bits;
@@ -1620,7 +1625,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                         if (e->cfg.collect_stats) {
                             e->stats.bytes_tile_headers +=
                                 kTileHeaderBytes + (tc.tp.mv_present ? 2 : 0) +
-                                (tc.tp.mv_quad ? 8 : 0) +
+                                (tc.tp.mv_quad ? kMvQuadBytes : 0) +
                                 (tc.tp.alpha_mode == 1 ? 1 : 0);
                             e->stats.bytes_payload += payload.size();
                         }
@@ -2378,7 +2383,8 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
                     off += 2;
                 }
                 if (tp.mv_quad) {
-                    if (off + 8 > frame_bytes) return NXVC_ERR_TRUNCATED;
+                    if (off + kMvQuadBytes > frame_bytes)
+                        return NXVC_ERR_TRUNCATED;
                     for (int q = 0; q < 4; ++q) {
                         tp.dmv[q][0] = (i8)buf[off + 2 * q];
                         tp.dmv[q][1] = (i8)buf[off + 2 * q + 1];
@@ -2391,7 +2397,7 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
                         if (ax < -128 || ax > 127 || ay < -128 || ay > 127)
                             return NXVC_ERR_BITSTREAM;
                     }
-                    off += 8;
+                    off += kMvQuadBytes;
                 }
                 if (tp.alpha_mode == 1) {
                     if (off + 1 > frame_bytes) return NXVC_ERR_TRUNCATED;
