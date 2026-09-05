@@ -183,10 +183,17 @@ constexpr uint64_t kToolsSupported =
     (1ull << 11) | // WARP: pose-warped prediction          [inter]
     (1ull << 12) | // STEREO: inter-view prediction         [inter]
     (1ull << 28) | // NEAR_SKIP: row-header corrections     [inter]
-    (1ull << 29);  // QUAD_MV: four quadrant vectors        [inter]
-// Deliberately absent: bit 30 ENTROPY_LITE, which Pass A has a kernel for and
-// this decoder does not yet offer.  Bit 23 FILTER_CATMULL_ROM and bit 14
-// BITDEPTH10 are reject-in-v1 ([SYN] 2.3) and must stay out.
+    (1ull << 29) | // QUAD_MV: four quadrant vectors        [inter]
+    (1ull << 30);  // ENTROPY_LITE / FIXED                  [entropy-lite]
+// Bit 23 FILTER_CATMULL_ROM and bit 14 BITDEPTH10 are reject-in-v1
+// ([SYN] 2.3) and must stay out.
+//
+// [entropy-lite] Bit 30 is offered, and offering it is the whole point: the
+// tool COSTS rate and BUYS decode time, so docs/TOOLBITS.md 8 makes it
+// negotiated -- the encoder sets it only when a decoder has said it wants it.
+// A decoder that never advertises it never sees it.  Only the FIXED variant
+// exists in Pass A; the RICE variant is a different tile payload and the
+// frame header's entropy-variant field is refused below.
 // docs/TOOLBITS.md 7.
 constexpr uint64_t kToolLossless = 1ull << 5;
 constexpr uint64_t kToolIntraDir = 1ull << 17;
@@ -209,6 +216,7 @@ constexpr uint64_t kToolWarp = 1ull << 11;
 constexpr uint64_t kToolStereo = 1ull << 12;
 constexpr uint64_t kToolNearSkip = 1ull << 28;
 constexpr uint64_t kToolQuadMv = 1ull << 29;
+constexpr uint64_t kToolEntropyLite = 1ull << 30;
 
 }  // namespace
 
@@ -440,6 +448,16 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
     fp.ctx_stride = table_stride(fp.nctx);
     fp.intra_dir = (si.tools & kToolIntraDir) ? 1 : 0;
     fp.sdh = (si.tools & kToolSignHide) ? 1 : 0;
+    // [entropy-lite] The tool replaces the arithmetic coder outright, so the
+    // two things that only an arithmetic coder can express are refused with
+    // it rather than ignored: sign data hiding spends a level step the Lite
+    // body does not have, and a transmitted table set names probabilities
+    // nothing reads.  ref/src/codec_impl.inc forces both off when
+    // cfg.entropy_lite is set, so no conformant stream carries the pair.
+    fp.entropy_lite = (si.tools & kToolEntropyLite) != 0;
+    if (fp.entropy_lite &&
+        (si.tools & (kToolSignHide | kToolCustomTables | kToolTabV2)))
+        return NXVC_VKD_ERR_BITSTREAM;
     fp.split4 = (si.tools & kToolSplit4) ? 1 : 0;
     fp.cfl = (si.tools & kToolCfl) ? 1 : 0;
     fp.dir_layer = (flags >> 2) & 1;
@@ -773,6 +791,14 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
             if (nsub_log2 > 5) return NXVC_VKD_ERR_BITSTREAM;
             if (nsub_log2 != 3 && !(si.tools & kToolNsubVar))
                 return NXVC_VKD_ERR_BITSTREAM;
+            // [entropy-lite] Under tool bit 30 the tile header's table_set
+            // field names the Lite VARIANT rather than a probability table
+            // (ref/src/codec_impl.inc: `table_set = entropy_lite - 1`).  Only
+            // FIXED is implemented -- it is the variant whose coefficient bit
+            // positions are computable, which is the whole reason the tool
+            // exists -- so RICE is refused here rather than decoded wrong.
+            if (fp.entropy_lite && ((w1 >> 14) & 7u) != 0u)
+                return NXVC_VKD_ERR_UNSUPPORTED;
             if (res_level != 0 && !(si.tools & kToolResLevel))
                 return NXVC_VKD_ERR_BITSTREAM;
             if (tskip && !(si.tools & kToolTransformSkip))
@@ -911,6 +937,27 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
     // descriptor with no extra push constant.  The padding slots between
     // groups are never visited: the previous group's `num_tiles` limit stops
     // short of them and the next group's base starts past them.
+    // [entropy-lite] The Lite path has no rANS lanes to group by: one
+    // workgroup decodes one tile (rans_decode.comp lite_main() reads
+    // gl_WorkGroupID.x as the tile index), so the descriptor array is the
+    // frame's tiles in order with no padding and the frame is one dispatch.
+    if (fp.entropy_lite) {
+        for (int ns = 0; ns < 6; ++ns) {
+            fp.desc.insert(fp.desc.end(), by_lane[ns].begin(),
+                           by_lane[ns].end());
+            fp.desc_tile.insert(fp.desc_tile.end(), lane_tile[ns].begin(),
+                                lane_tile[ns].end());
+        }
+        if (!fp.desc.empty()) {
+            LaneGroup g{};
+            g.lanes = 8;   // unused by the kernel in this mode
+            g.first = 0;
+            g.count = (uint32_t)fp.desc.size();
+            g.limit = g.count;
+            g.groups = g.count;
+            fp.groups.push_back(g);
+        }
+    } else
     for (int ns = 0; ns < 6; ++ns) {
         if (by_lane[ns].empty()) continue;
         const uint32_t lanes = 1u << ns;

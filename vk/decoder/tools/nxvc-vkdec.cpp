@@ -206,6 +206,10 @@ int main(int argc, char **argv) {
     // bench in the conformance harness measures without paying for an encode.
     if (repeat > 0) {
         double bestA = 1e9, bestB = 1e9, bestG = 1e9, bestT = 1e9;
+        // The host's own share of the frame, which on a phone is not small:
+        // parse builds every descriptor and record, submit records the
+        // command buffer and stages the bitstream.
+        double bestP = 1e9, bestS = 1e9;
         nxvc_vkd_stats s{};
         for (int i = 0; i < repeat; ++i) {
             st = nxvc_vk_decode_frame(dec, data.data() + off,
@@ -222,12 +226,15 @@ int main(int argc, char **argv) {
             if (s.pass_b_ms < bestB) bestB = s.pass_b_ms;
             if (s.gpu_ms < bestG) bestG = s.gpu_ms;
             if (s.total_ms < bestT) bestT = s.total_ms;
+            if (s.parse_ms < bestP) bestP = s.parse_ms;
+            if (s.submit_ms < bestS) bestS = s.submit_ms;
         }
         std::printf("repeat %d on %s: %u tiles, %llu B frame, %u dispatch(es)\n"
-                    "  best  passA %.3f  passB %.3f  gpu %.3f  wall %.3f ms\n",
+                    "  best  passA %.3f  passB %.3f  gpu %.3f  wall %.3f ms"
+                    "  (host parse %.3f submit %.3f)\n",
                     repeat, nxvc_vk_decoder_device_name(dec), s.tiles,
                     (unsigned long long)s.frame_bytes, s.dispatches, bestA,
-                    bestB, bestG, bestT);
+                    bestB, bestG, bestT, bestP, bestS);
         if (fo) std::fclose(fo);
         nxvc_vk_decoder_destroy(dec);
         return 0;

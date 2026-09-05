@@ -223,6 +223,23 @@ nxvc_vkd_status nxvc_vk_decode_frame(nxvc_vk_decoder *dec,
                                      size_t *consumed);
 
 #define NXVC_VKD_SUBMIT_ASYNC 1u
+/* Also signal the binary semaphore nxvc_vk_decoder_binary_semaphore() returns.
+ *
+ * It exists for the driver that advertises VK_KHR_timeline_semaphore and then
+ * refuses to create one -- the Pico 4's Adreno 650, where binary semaphores
+ * work and timeline semaphores do not.  Without it a client that has to
+ * consume the decoded images on the GPU has no synchronisation object at all
+ * and must round-trip through the host (nxvc_vk_decoder_wait) between the
+ * decode and its own submission; with it the two pipeline.
+ *
+ * A binary semaphore is single-use, so the contract is strict: pass this flag
+ * only when the very next submission on the same queue WILL wait on the
+ * semaphore, exactly once.  Signalling one nobody waits on leaves it signalled
+ * and the next frame's submit deadlocks.  It is ignored when the decoder has a
+ * real timeline (wait on that instead) and requires NXVC_VKD_SUBMIT_ASYNC,
+ * since the synchronous path has already waited on the host by the time it
+ * returns and would leave the semaphore signalled. */
+#define NXVC_VKD_SUBMIT_SIGNAL_BINARY 2u
 nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *dec,
                                         const uint8_t *bytes, size_t len,
                                         uint32_t submit_flags,
@@ -236,6 +253,11 @@ nxvc_vkd_status nxvc_vk_decoder_wait(nxvc_vk_decoder *dec, uint64_t timeout_ns);
  * blocking the CPU. */
 VkSemaphore nxvc_vk_decoder_timeline(const nxvc_vk_decoder *dec);
 uint64_t nxvc_vk_decoder_timeline_value(const nxvc_vk_decoder *dec);
+
+/* The binary semaphore NXVC_VKD_SUBMIT_SIGNAL_BINARY signals.  VK_NULL_HANDLE
+ * when the decoder has a working timeline semaphore, which is the object to
+ * use there, or when the device would not create a binary one either. */
+VkSemaphore nxvc_vk_decoder_binary_semaphore(const nxvc_vk_decoder *dec);
 
 /* ---------------------------------------------------------------- output */
 /* The images Pass B wrote.  They live in VK_IMAGE_LAYOUT_GENERAL and stay
