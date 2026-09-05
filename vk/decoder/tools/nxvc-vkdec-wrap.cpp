@@ -185,6 +185,7 @@ void usage() {
                  "usage: nxvc-vkdec-wrap --in FILE [options]\n"
                  "  --mode wrapper|binsem|nocopy|decode  (default wrapper)\n"
                  "  --streams N     decoder instances on one queue (default 1)\n"
+                 "  --priority low|medium|high|realtime  VK_EXT_global_priority\n"
                  "  --defer         submit every stream before waiting\n"
                  "  --repeat N      frames per stream (default 30)\n");
 }
@@ -194,6 +195,7 @@ void usage() {
 int main(int argc, char **argv) {
     std::string in, mode = "wrapper";
     int streams = 1, repeat = 30, defer = 0, queues = 1;
+    std::string priority;   // "", low, medium, high, realtime
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         auto val = [&]() -> const char * {
@@ -206,6 +208,7 @@ int main(int argc, char **argv) {
         else if (a == "--repeat") repeat = std::atoi(val());
         else if (a == "--defer") defer = 1;
         else if (a == "--queues") queues = std::atoi(val());
+        else if (a == "--priority") priority = val();
         else { usage(); return 2; }
     }
     if (in.empty() || streams < 1) { usage(); return 2; }
@@ -256,6 +259,7 @@ int main(int argc, char **argv) {
         vkEnumerateDeviceExtensionProperties(d.phys, nullptr, &ne, nullptr);
         std::vector<VkExtensionProperties> ext(ne);
         vkEnumerateDeviceExtensionProperties(d.phys, nullptr, &ne, ext.data());
+        bool have_query = false;
         const char *want[] = {"VK_EXT_global_priority",
                               "VK_KHR_global_priority",
                               "VK_EXT_global_priority_query",
@@ -263,7 +267,38 @@ int main(int argc, char **argv) {
         for (const char *w : want) {
             bool have = false;
             for (auto &e : ext) if (!std::strcmp(e.extensionName, w)) have = true;
+            if (!std::strcmp(w, "VK_EXT_global_priority_query")) have_query = have;
             std::printf("  %-32s %s\n", w, have ? "present" : "ABSENT");
+        }
+        // What the family will actually GRANT, which is not the same question
+        // as whether the extension is advertised: a driver is free to offer
+        // the extension and refuse everything above MEDIUM to an unprivileged
+        // process.
+        if (have_query) {
+            std::vector<VkQueueFamilyGlobalPriorityPropertiesEXT> gp(
+                nq, {VK_STRUCTURE_TYPE_QUEUE_FAMILY_GLOBAL_PRIORITY_PROPERTIES_EXT});
+            std::vector<VkQueueFamilyProperties2> qp2(nq);
+            for (uint32_t i = 0; i < nq; ++i) {
+                qp2[i] = {VK_STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2};
+                qp2[i].pNext = &gp[i];
+            }
+            uint32_t n2 = nq;
+            vkGetPhysicalDeviceQueueFamilyProperties2(d.phys, &n2, qp2.data());
+            for (uint32_t i = 0; i < nq; ++i) {
+                std::printf("  family %u grants:", i);
+                for (uint32_t k = 0; k < gp[i].priorityCount; ++k) {
+                    const char *nm = "?";
+                    switch (gp[i].priorities[k]) {
+                    case VK_QUEUE_GLOBAL_PRIORITY_LOW_EXT: nm = "LOW"; break;
+                    case VK_QUEUE_GLOBAL_PRIORITY_MEDIUM_EXT: nm = "MEDIUM"; break;
+                    case VK_QUEUE_GLOBAL_PRIORITY_HIGH_EXT: nm = "HIGH"; break;
+                    case VK_QUEUE_GLOBAL_PRIORITY_REALTIME_EXT: nm = "REALTIME"; break;
+                    default: break;
+                    }
+                    std::printf(" %s", nm);
+                }
+                std::printf("\n");
+            }
         }
     }
     d.qfam = UINT32_MAX;
@@ -286,11 +321,38 @@ int main(int argc, char **argv) {
     VkPhysicalDeviceSamplerYcbcrConversionFeatures ycc{
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_YCBCR_CONVERSION_FEATURES};
     ycc.samplerYcbcrConversion = VK_TRUE;
+    VkDeviceQueueGlobalPriorityCreateInfoEXT gpi{
+        VK_STRUCTURE_TYPE_DEVICE_QUEUE_GLOBAL_PRIORITY_CREATE_INFO_EXT};
+    const char *gp_ext = VK_EXT_GLOBAL_PRIORITY_EXTENSION_NAME;
+    if (!priority.empty()) {
+        gpi.globalPriority =
+            priority == "low"      ? VK_QUEUE_GLOBAL_PRIORITY_LOW_EXT
+            : priority == "medium" ? VK_QUEUE_GLOBAL_PRIORITY_MEDIUM_EXT
+            : priority == "high"   ? VK_QUEUE_GLOBAL_PRIORITY_HIGH_EXT
+                                   : VK_QUEUE_GLOBAL_PRIORITY_REALTIME_EXT;
+        qci.pNext = &gpi;
+    }
     VkDeviceCreateInfo dci{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
     dci.pNext = &ycc;
     dci.queueCreateInfoCount = 1;
     dci.pQueueCreateInfos = &qci;
-    VKOK(vkCreateDevice(d.phys, &dci, nullptr, &d.dev));
+    if (!priority.empty()) {
+        dci.enabledExtensionCount = 1;
+        dci.ppEnabledExtensionNames = &gp_ext;
+    }
+    {
+        // NOT_PERMITTED is the interesting answer and must not look like a
+        // crash: it is the driver saying this process may not ask for that.
+        VkResult r = vkCreateDevice(d.phys, &dci, nullptr, &d.dev);
+        if (r != VK_SUCCESS) {
+            std::printf("  global priority %s REFUSED (vkCreateDevice = %d%s)\n",
+                        priority.c_str(), (int)r,
+                        r == VK_ERROR_NOT_PERMITTED_EXT ? ", NOT_PERMITTED" : "");
+            return 1;
+        }
+        if (!priority.empty())
+            std::printf("  global priority %s granted\n", priority.c_str());
+    }
     vkGetDeviceQueue(d.dev, d.qfam, got_queues - 1, &d.queue);
     if (want_queues > 1)
         std::printf("  asked for %u queues in family %u, got %u; decoding on "
