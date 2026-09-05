@@ -6,6 +6,7 @@
 //
 // See docs/SYNTAX.md 9.8 for the normative description.
 #pragma once
+#include <atomic>
 #include "common.h"
 #include "entropy.h"
 
@@ -39,8 +40,11 @@ inline int lite_last_bits(int ncoef) {
 
 // Encoder-side instrumentation only: where a Lite payload's bits went.
 // Not normative, not thread-safe, and never read by the decoder.
+// Diagnostic bit accounting.  The encoder codes tiles on a thread pool, so
+// every field is atomic: `+=` is a relaxed fetch-add and the dump at exit
+// reads a consistent total.
 struct LiteStats {
-    u64 cbf, param, sig, mode, mag, sign, pad;
+    std::atomic<u64> cbf{0}, param{0}, sig{0}, mode{0}, mag{0}, sign{0}, pad{0};
 };
 extern LiteStats g_lite_stats;
 
