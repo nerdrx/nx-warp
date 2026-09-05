@@ -95,6 +95,7 @@ if(TARGET nxvc-vkenc AND TARGET nxv-enc AND TARGET nxv-dec)
            -DNXVENC=$<TARGET_FILE:nxv-enc>
            -DNXVDEC=$<TARGET_FILE:nxv-dec>
            -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/inter-acid-0
+           -DVKENCAPI=$<IF:$<TARGET_EXISTS:nxvc-vkenc-api>,$<TARGET_FILE:nxvc-vkenc-api>,>
            -DDEVICE=0
            -P ${CMAKE_CURRENT_SOURCE_DIR}/inter_acid.cmake)
   set_tests_properties(vk.encoder.inter.acid.0 PROPERTIES

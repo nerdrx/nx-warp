@@ -141,5 +141,49 @@ if(NOT rc EQUAL 0)
                       "picture:\n${rerr}")
 endif()
 
+# ---- the same stream through the library ABI.
+#
+# The harness and the library are two front ends on one pipeline, so a stream
+# that differs between them is a bug in whichever one the WiVRn backend is not
+# using -- which is the one nobody would notice.  The ABI leg also exercises
+# the two calls a compositor makes per frame that the harness fakes from a
+# file: set_view(), and the receipt map.
+if(VKENCAPI)
+  execute_process(COMMAND ${VKENCAPI} --in ${YUV} --w ${W} --h ${H} --qp 26
+                          --frames ${FRAMES} --matrix 1
+                          --inter --intra-period 6 --poses ${POSES}
+                          --out ${WORKDIR}/api.nxv
+                  RESULT_VARIABLE rc ERROR_VARIABLE eout)
+  if(NOT rc EQUAL 0)
+    message(FATAL_ERROR "nxvc-vkenc-api failed (${rc}): ${eout}")
+  endif()
+  execute_process(COMMAND ${CMAKE_COMMAND} -E compare_files
+                          ${WORKDIR}/gpu.nxv ${WORKDIR}/api.nxv
+                  RESULT_VARIABLE rc)
+  if(NOT rc EQUAL 0)
+    message(FATAL_ERROR
+      "the library ABI and the harness produce different inter streams")
+  endif()
+
+  # An all-zero receipt map is a full reset: the frame after it must be
+  # entirely INTRA, because the client holds nothing to predict from.  The
+  # harness checks it against the ABI's own tile records and fails itself.
+  execute_process(COMMAND ${VKENCAPI} --in ${YUV} --w ${W} --h ${H} --qp 26
+                          --frames ${FRAMES} --matrix 1
+                          --inter --intra-period 6 --poses ${POSES}
+                          --drop-at 2
+                          --out ${WORKDIR}/reset.nxv
+                  RESULT_VARIABLE rc ERROR_VARIABLE eout)
+  if(NOT rc EQUAL 0)
+    message(FATAL_ERROR "the receipt-map reset was not honoured: ${eout}")
+  endif()
+  execute_process(COMMAND ${NXVDEC} --in ${WORKDIR}/reset.nxv
+                          --out ${WORKDIR}/reset.yuv --pix yuv420p --quiet
+                  RESULT_VARIABLE rc)
+  if(NOT rc EQUAL 0)
+    message(FATAL_ERROR "nxv-dec refused the stream a reset produced (${rc})")
+  endif()
+endif()
+
 message(STATUS "vk.encoder.inter.acid: ${FRAMES} frames byte-identical, "
-               "decoded identical, ring == decoder")
+               "decoded identical, ring == decoder, ABI agrees")

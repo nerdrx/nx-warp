@@ -99,6 +99,10 @@ struct VkEncoder::Impl {
     int32_t decide_push[4] = {};
     nxvw::NxvwPassBPush bpush{};
     ViewState views{};
+    /* Tiles the client is known NOT to hold.  Set by set_received_tiles(),
+     * consumed by the next frame's eligibility pass and then cleared: a tile
+     * coded INTRA is a tile the client can hold again. */
+    std::vector<uint8_t> force_intra;
 };
 
 int vk_list_devices() {
@@ -645,8 +649,10 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
         const uint32_t period =
             d.cfg.intra_period > 0 ? (uint32_t)d.cfg.intra_period : 180u;
         for (uint32_t t = 0; t < d.ntiles; ++t) {
-            const bool eligible =
-                ref_slot >= 0 && !refresh_due(t, frame_number, period);
+            const bool missing =
+                t < d.force_intra.size() && d.force_intra[t] != 0;
+            const bool eligible = ref_slot >= 0 && !missing &&
+                                  !refresh_due(t, frame_number, period);
             if (eligible)
                 set_tile_mode(d.warp, t, nxvw::kModeWarpSkip, 0, 0);
             /* The job's mode is what E3/E4/E5 read.  It starts INTRA and E1c
@@ -700,6 +706,16 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
         d.bpush.intraDir = 0;
         d.bpush.dirLayer = 0;
         d.bpush.sparse = 0;
+
+        /* Write the three frame-layout fields back into the caller's record.
+         * `fp` here is a LOCAL copy -- the upload wants one and the QP may have
+         * moved -- but nxe_e5_tile_offset() and the API's per-tile spans read
+         * `f.fp`, so a warp_bytes left only in the copy makes every tile offset
+         * 36 bytes short on an inter frame and the last tile appear to end
+         * before the frame does. */
+        f.fp.warp_bytes = fp.warp_bytes;
+        f.fp.ref_slots = fp.ref_slots;
+        f.fp.frame_flags = fp.frame_flags;
     }
 
     /* ---- upload, then E3 alone.
@@ -881,6 +897,10 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
     if (d.inter) {
         d.ringst.publish(frame_number);
         d.views.publish(frame_number);
+        /* One frame's worth: the tiles just coded INTRA are tiles the client
+         * can hold again.  A caller whose client is still missing them says
+         * so again. */
+        d.force_intra.clear();
         const nxe_tile_job *back =
             (const nxe_tile_job *)((uint8_t *)d.b_stage_small.map + 0xC0000u);
         for (uint32_t t = 0; t < d.ntiles; ++t) f.jobs[t].mode = back[t].mode;
@@ -1025,6 +1045,13 @@ bool VkEncoder::read_ring_luma(uint32_t slot, uint16_t *out, size_t count) {
 
 void VkEncoder::set_views(const View *v, int eyes, uint32_t frame_number) {
     p_->views.set(v, eyes, frame_number);
+}
+
+void VkEncoder::set_received_tiles(const uint8_t *received, uint32_t count) {
+    Impl &d = *p_;
+    d.force_intra.assign(count, 0);
+    for (uint32_t t = 0; t < count; ++t)
+        d.force_intra[t] = received[t] ? 0u : 1u;
 }
 
 void VkEncoder::bench(Frame &f, int iters) {
