@@ -500,8 +500,8 @@ environment selects:
 
 | ICD | streams | mismatching samples |
 |---|---|---|
-| RX 7900 XTX (RADV NAVI31) | 168 checked, 46 skipped | **0** |
-| llvmpipe (lavapipe) | 168 checked, 46 skipped | **0** |
+| RX 7900 XTX (RADV NAVI31) | 195 checked, 37 skipped | **0** |
+| llvmpipe (lavapipe) | 195 checked, 37 skipped | **0** |
 | Adreno 650 (Pico 4, Qualcomm 1.1.128) | 168 checked, 46 skipped | **0** |
 
 The Adreno column is the one that matters: it is the target part, it is a
@@ -514,17 +514,27 @@ streams this decoder cannot yet speak", decided from each stream's own `tools`
 field and never from its file name, so a regression that starts refusing a
 supported vector still fails. Driving it to zero is what finishing the tool
 set means. It was 60 when `merge-main`'s encoder default first set tool bits
-this decoder did not have; the minor-6 realignment has taken it to 46, and
-what is left is one tool and the whole of Phase 2:
+this decoder did not have; the minor-6 realignment took it to 46, `XFORM_LARGE`
+takes it to **37**, and what is left is one tool and the whole of Phase 2:
 
 | skipped | why |
 |---|---|
-| `v68`–`v73` | `XFORM_LARGE` (bit 27) — Pass A carries it, Pass B does not |
 | `v45`–`v56`, `v66`, `v67`, `v74`, `v75` | the Phase 2 inter vectors |
 | `v76`–`v81` | `ENTROPY_LITE` (bit 30) — Pass A has the kernel, the decoder does not offer the bit |
-| `r18`–`r29`, `r36`–`r43` | rejection vectors malformed *inside* a syntax this decoder refuses earlier, at the tool mask, with a different but equally correct status |
+| `r18`–`r29`, `r40`–`r43` | rejection vectors malformed *inside* a syntax this decoder refuses earlier, at the tool mask, with a different but equally correct status |
 
-All three ICDs also pass the same 168 streams through the UNORM store.
+`XFORM_LARGE` accounts for nine of the nine that went: `v68`–`v73`, and the
+three rejection vectors `r36` (`xform_size` 3, reserved), `r38` (`xform_size`
+with transform skip) and `r39` (`split4x4` with `xform_size`), which are now
+refused for the reason the syntax gives rather than at the tool mask. The
+synthetic sweep gained sixteen more: each size on its own in both chroma
+formats, both with the directional wavefront, the plane cap of 6.7 over
+cycling `res_level` — where one frame carries 32x32, 16x16 and 8x8 luma blocks
+and a chroma plane capped one step further again — and the encoder's own
+per-tile RD choice, which mixes all three sizes inside one frame.
+
+The Adreno column has not been re-swept since; it was clean on the 168 it ran,
+and the two desktop ICDs agree stream for stream on all 195.
 
 The 44 vectors include `v36`–`v44`, which pin the v1.3 intra tools:
 `INTRA_DIR` alone in 4:4:4 and 4:2:0, `INTRA_DIR` with `CTX_V2`, `CTX_V2`
@@ -1279,17 +1289,12 @@ own conformance sweep at the handshake, 60 skipped and 85 failing.
 | `passB/*` | chroma from luma: the model is fitted once per block from the same reconstructed neighbours the other predictors read, then evaluated per sample | `docs/SYNTAX.md` 7.7. The tile's reconstructed luma is still in its plane slot when the chroma planes decode, because the slots coexist |
 | host | `kToolsSupported` gains bits 19, 24, 25 and 26 | which is the whole point: the skip count is what it buys |
 
-`XFORM_LARGE` (bit 27) is **half done and not offered**. Pass A carries the
-per-plane transform edge, the scan-*group* scaling of the LAST classes and the
-LEVEL bands, the two computed zigzags and the wider unit-length field; Pass B
-still reconstructs only the 8x8 transform, so the bit stays out of
-`kToolsSupported` and no stream reaches any of it. What Pass B needs is in
-`ref/RESULTS-xform-a.md` 5: one thread per 1D transform rather than four
-threads per 8x8 block, an n-point inverse built on the existing 8-point core
-through the even/odd recursion, the DC plane re-gridded to `nb = size / bsize`
-with its second-level transform firing only at `nb == 8`, the planar
-interpolation's general Q4 mapping, n x n intra predictors, and a wavefront
-over an `nb x nb` grid.
+`XFORM_LARGE` (bit 27) was **half done and not offered** at that point: Pass A
+carried the per-plane transform edge, the scan-*group* scaling of the LAST
+classes and the LEVEL bands, the two computed zigzags and the wider
+unit-length field, and Pass B still reconstructed only the 8x8 transform. It
+is now done; "The transform size, priced" below is the other half and what it
+costs.
 
 Pass B's CPU model carries both new tools, and the split transform is pinned
 against the normative one: `vk.passB.ref_conformance` runs
@@ -1308,6 +1313,158 @@ part where the live set is the constraint.
 
 The Pass A and Pass B CPU models track their kernels line for line, as before,
 and `vk.passA.*` and `vk.passB.*` stay green on RADV and lavapipe.
+
+### The transform size, priced
+
+`XFORM_LARGE`, tool bit 27, `docs/SYNTAX.md` 6.7. The tile header names one
+transform edge -- 8, 16 or 32 -- capped by each plane's own coded extent, and
+every block grid in the plane follows it: the DC plane is `nb x nb` with its
+second-level transform firing only at `nb == 8`, the planar interpolation
+reads block centres at `bsize` spacing, the weighting matrix is the same
+transmitted 8x8 one replicated, the scan is the zigzag of the block, and the
+directional predictors are 7.4's formulas with the block edge left as `n`.
+
+**What Pass B does with it.** `ref/RESULTS-xform-a.md` 5 called the shape and
+it survived: **one thread per 1D transform**, not four threads per block. The
+odd half of a 32-point transform is a dense 16 x 16 product over all sixteen
+odd coefficients, so splitting one transform across threads means either
+duplicating the 16-point even half or an unbalanced 3.4-to-1 split. The counts
+fit the workgroup exactly once -- at `bsize >= 16` a plane has at most
+`nb*nb*bsize <= 256` rows and half that many column pairs -- so neither pass
+loops and no thread owns two blocks.
+
+Three things about it are not in that plan and are the whole of the work:
+
+* **The intermediate is stored un-transposed and read back transposed**, which
+  is the opposite of what the 8x8 path does. A pass-1 thread owns source row
+  `r` and writes the block's row `r`: `bsize/2` whole uints, contiguous. Store
+  the transpose instead, as the 8x8 path does, and pass 1 writes a *column* --
+  half of every uint across the block's width, and a race with the
+  neighbouring row's thread. Pass 2 then reads a column of that array, which
+  is a read and races with nothing.
+* **The column pass lands its output in the plane slot, not in registers.**
+  Pass 2's index `r` produces column `r` of the block, so the two indices a
+  thread runs are the two columns it already owns for the prediction *and* the
+  two halves of the same `bsize` uints -- private to that thread. It runs
+  column `2s` reading only the low halves and writes them back leaving the
+  high halves alone, then runs column `2s+1` on those. So `res0[8]` stays
+  eight at every transform size and an n x n block costs **no** residual
+  registers; the prediction and the wavefront read their residual out of the
+  slot where the wavefront wanted to stage it anyway. `RESULTS-xform-a.md`'s
+  register estimate is low precisely because it forgets this term.
+* **The reference arrays are gone.** `predictOne()` used to take
+  `int A[kIntraRefs], L[kIntraRefs]` by value, 17 ints each, and 7.4's arrays
+  are `2n` long -- sixty-five at 32x32, which is not a live set any part has.
+  Each reference is now read through `dirAt()` where it is used; a predictor
+  touches at most four per sample, and the two whole-block quantities that are
+  not (mode 1's sum over `2n` references, mode 2's `A[n]` and `L[n]`) are
+  hoisted per block exactly as the CFL fit already was. On RADV that took the
+  wavefront module from 22346 instructions and 84 VGPRs to 21410 and 72.
+
+**LDS is unchanged.** The transpose buffer is a whole plane and always was:
+8192 B for luma, 2048 B per 4:2:0 chroma plane, 12288 B for the tile. The
+normative `clamp16` after pass 1 (6.3) is what keeps it int16 at every size.
+
+#### It is a build variant, and that was measured twice
+
+`NXVW_XFORM_LARGE` joins `NXVW_INTRA_DIR` as a preprocessor variant, so Pass B
+is now four modules of one source indexed `[intra_dir][xform_large]`. It was
+written as specialization constant 7 first -- which is what `kSplitTool` is,
+and what worked there -- and on an Adreno 650 that cost an **8x8-only stream
+34 % of Pass B**, 16.4 ms to 21.9. Two separate causes, and only the second is
+about the constant at all:
+
+| | instructions | 16-bit ALU | flow control | footprint | scratch | Pass B, QP 36 v1 |
+|---|---|---|---|---|---|---|
+| `merge-main` | 1531 | 722 | 0 | 0 | 352 B | **16.2 ms** |
+| specialization constant 7 | 1727 | 1513 | 14 | 6 | 390 B | 21.9 ms |
+| build variant, first cut | 1724 | 1511 | 14 | 6 | 406 B | — |
+| **build variant, scans gated** | **1527** | **719** | **0** | **0** | **352 B** | **16.4 ms** |
+
+* **`nxvw_scan_pos()` is called once per COEFFICIENT**, and the two new arms
+  for the 16x16 and 32x32 zigzags sat in it unconditionally. Two more compares
+  in the innermost loop of the pass were most of the damage, and they are why
+  the build variant on its own changed nothing: the cost was never behind the
+  constant. `NXVW_SCAN_LARGE` gates them, and the CPU model always has them.
+* **Everything in a plane hangs off `lb`**, and `lb` was
+  `kXformLarge != 0 ? nxvw_block_log2(...) : 3`. Left a specialization
+  constant, the block edge, the block grid, the coefficient count, the thread
+  mapping and every loop bound in the plane stay runtime values and nothing
+  looks dead to the driver's dead-code pass. As a preprocessor variant `lb` is
+  the literal 3 and glslang folds the lot.
+
+The second is the same lesson as "the minor-6 realignment" above, one level
+further in: **on this part, code you never execute is not free -- and a
+constant the compiler cannot see through is not a constant.** The 8x8-only
+module is now instruction-for-instruction what `merge-main` compiled, four
+instructions fewer, and the Pico measures it at 16.35 ms against 16.23.
+
+#### What it costs
+
+RADV, 2048 tiles (two 2048x2048 eyes at 4:2:0), QP 36, `INTRA_DIR` off, best
+of 30, the same stream encoded four ways:
+
+| `--xform` | payload | Pass A | Pass B | GPU total |
+|---|---|---|---|---|
+| 8 (no tool bit) | 182 020 B | 0.534 ms | **0.178 ms** | 0.720 ms |
+| 16 | 157 580 B | 0.372 ms | **0.433 ms** | 0.812 ms |
+| 32 | 185 224 B | 0.465 ms | **0.532 ms** | 1.003 ms |
+| auto (per-tile RD) | 175 462 B | 0.378 ms | **0.326 ms** | **0.707 ms** |
+
+**The encoder's own per-tile choice is the fastest of the four**, and faster
+than 8x8 end to end: it picks a large transform on the tiles where it also
+saves rate, so Pass A shrinks with the payload while Pass B pays the extra
+arithmetic on only some of the tiles. At a *fixed* size Pass B is 2.4x and
+3.0x, against 3.4x and 7.5x the multiply count -- the tool removes rounds and
+barriers with one hand while adding multiplies with the other, and 6.7.1 says
+so. The `--bench` sweep's own arm (`--bench-xform`, QP 24, both `INTRA_DIR`
+settings) shows the same shape and the wavefront half of it: with the tool on,
+32x32 is 1.61x 8x8 rather than 5.85x, because the wavefront falls from 22
+steps to 4.
+
+RADV compiles the large module at 120 VGPRs against 72, with **no scratch**.
+
+#### On the Adreno 650 it is a desktop tool, and the reason is one number
+
+Same protocol as "Timing on the Pico 4" -- 12 repeats, 20 s idle before, 15 s
+after, Pass A as the thermal control:
+
+| `--xform` | Pass A | Pass B | GPU total |
+|---|---|---|---|
+| 8 (no tool bit) | 13.73 ms | **16.35 ms** | 30.14 ms |
+| 16 | 18.43 ms | **390.3 ms** | 419.7 ms |
+| 32 | 50.05 ms | **491.7 ms** | 582.7 ms |
+| auto | 38.25 ms | **405.2 ms** | 469.2 ms |
+
+30x, and it is not the arithmetic. `VK_KHR_pipeline_executable_properties`
+reports the large module at an **overall register footprint of 996 and 1764 B
+of scratch**, against 0 and 352 B for the 8x8 one. Scratch on this part is
+off-chip, and this document already prices a 328-word footprint at one wave in
+flight; 996 is three times that. The 32-entry transform vector and the
+even/odd recursion's `od[16]` cannot be scalars -- a dense 16-wide rotation
+against `kOdd32` is an indexed dot product and has no scalar spelling -- so
+they go to private memory and stay there.
+
+Two things are worth recording about the route here, because both are
+`docs/ADRENO-RULES.md` in action:
+
+* the first spelling, `void idct32_1d(int x[32], out int y[32])` with
+  `int xe[16], e[16]` inside, is four 128-byte function-scope arrays plus
+  glslang's copy-in/copy-out of both parameters, and the Adreno driver
+  **refused to compile it at all**: `vkCreateComputePipelines` returned
+  `VK_ERROR_INVALID_SHADER_NV`, with and without `spirv-opt`. Rewriting both
+  transforms to work in place on one vector is what made it compile;
+* the fallback `docs/SYNTAX.md` 6.7.1 offers -- "stage the coefficient vector
+  through a second LDS buffer" -- is the obvious next lever and is **not**
+  taken here. At 32x32 only 128 threads are live in the row pass, so 128 x 32
+  int32 is 16 KB on top of the tile's 12.5 KB: it fits a 32 KB SP for 4:2:0
+  and does not for 4:4:4, which makes it a real design question rather than a
+  patch, and it wants measuring against this table rather than guessing.
+
+So bit 27 is offered and correct on all three ICDs, and on the headset it is
+what `INTRA_DIR` already is: a tool the client negotiates by capability and
+the encoder does not send. Nothing about that is in the bitstream -- the same
+stream decodes bit-exactly on both.
 
 ---
 

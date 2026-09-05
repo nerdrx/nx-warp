@@ -176,11 +176,11 @@ constexpr uint64_t kToolsSupported =
     (1ull << 22) | // SIGN_HIDE: sign data hiding           [v3]
     (1ull << 24) | // INTRA_CFL: chroma from luma           [minor 6]
     (1ull << 25) | // CTX_V3: the 27-context entropy model  [minor 6]
-    (1ull << 26);  // TAB_V2: variable-length table sets    [minor 6]
-// Deliberately absent: bit 27 XFORM_LARGE and the Phase 2 inter bits.  Pass
-// B's block loop is written for 64-coefficient blocks; until it carries the
-// 16x16 and 32x32 forms this decoder refuses such a stream at the handshake
-// rather than mis-decoding it.  docs/TOOLBITS.md 7.
+    (1ull << 26) | // TAB_V2: variable-length table sets    [minor 6]
+    (1ull << 27);  // XFORM_LARGE: 16x16 and 32x32 transforms [minor 6]
+// Deliberately absent: the Phase 2 inter bits.  Every tool this decoder does
+// not carry is refused at the handshake rather than mis-decoded.
+// docs/TOOLBITS.md 7.
 constexpr uint64_t kToolLossless = 1ull << 5;
 constexpr uint64_t kToolIntraDir = 1ull << 17;
 constexpr uint64_t kToolCtxV2 = 1ull << 21;

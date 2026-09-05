@@ -39,6 +39,66 @@ inline void idct8_1d(const int *x, int *y) {
     y[3] = e3 + O3; y[4] = e3 - O3;
 }
 
+// ------------------------------- [minor 6] 16- and 32-point 1D IDCT
+// Mirrors idct16_1d / idct32_1d in the shader, which mirror
+// ref/src/transform.cpp even_odd_inverse().  A length-2M inverse is the
+// length-M inverse of the even-indexed coefficients plus a dense M x M
+// rotation of the odd-indexed ones, so the whole family is the one 8-point
+// Loeffler core with two rotations stacked on it -- and the quantiser sees
+// orthonormal coefficients at every size, which is what lets one qstep table
+// serve all four.
+inline void idct16_1d(const int *x, int *y) {
+    int xe[8], e[8];
+    for (int k = 0; k < 8; ++k) xe[k] = x[2 * k];
+    idct8_1d(xe, e);
+    for (int n = 0; n < 8; ++n) {
+        int o = 0;
+        for (int j = 0; j < 8; ++j) o += x[2 * j + 1] * kOdd16[n * 8 + j];
+        y[n] = e[n] + o;
+        y[15 - n] = e[n] - o;
+    }
+}
+inline void idct32_1d(const int *x, int *y) {
+    int xe[16], e[16];
+    for (int k = 0; k < 16; ++k) xe[k] = x[2 * k];
+    idct16_1d(xe, e);
+    for (int n = 0; n < 16; ++n) {
+        int o = 0;
+        for (int j = 0; j < 16; ++j) o += x[2 * j + 1] * kOdd32[n * 16 + j];
+        y[n] = e[n] + o;
+        y[31 - n] = e[n] - o;
+    }
+}
+inline void idctN_1d(const int *x, int *y, int lb) {
+    if (lb == 3) idct8_1d(x, y);
+    else if (lb == 4) idct16_1d(x, y);
+    else idct32_1d(x, y);
+}
+
+// The n x n inverse transform: rows then columns, both passes writing
+// transposed, with the normative clamp16 after each.  [REF]
+// ref/src/transform.cpp idct_block().  The kernel spells this as one thread
+// per 1D transform with the intermediate stored un-transposed in the plane
+// slot; this is the same arithmetic written to be read.
+inline void idct_nxn(const int *src, int *dst, int lb) {
+    const int n = 1 << lb;
+    const int s1 = nxvw_idct_shift1(lb), r1 = nxvw_idct_round1(lb);
+    const int s2 = nxvw_idct_shift2(lb), r2 = nxvw_idct_round2(lb);
+    int tmp[32 * 32], in[32], out[32];
+    for (int r = 0; r < n; ++r) {
+        for (int c = 0; c < n; ++c) in[c] = src[r * n + c];
+        idctN_1d(in, out, lb);
+        for (int c = 0; c < n; ++c)
+            tmp[c * n + r] = clamp16((out[c] + r1) >> s1);
+    }
+    for (int r = 0; r < n; ++r) {
+        for (int c = 0; c < n; ++c) in[c] = tmp[r * n + c];
+        idctN_1d(in, out, lb);
+        for (int c = 0; c < n; ++c)
+            dst[c * n + r] = clamp16((out[c] + r2) >> s2);
+    }
+}
+
 // ------------------------------------------------------------- bilinear
 inline int bilinear(const int *src, int w, int h, int stride, int sx, int sy) {
     int x0 = sx >> kBilinFracBits, y0 = sy >> kBilinFracBits;
@@ -102,12 +162,14 @@ inline void split_subblock(const int *dq, int ox, int oy, int *res) {
 // the blocks in plain raster order rather than by wavefront step: the two
 // produce the same result by construction, because a block's references are
 // exactly the blocks the step function already put before it.
-inline bool dir_done(int sched, int nbx, int nby, int bx, int by) {
+// [minor 6] `qsh` is the sub-tile shift in BLOCKS, max(5 - lb, 0): a 32x32
+// sub-tile is four 8x8 blocks, two 16x16 ones and one 32x32 one.  At lb == 3
+// it is kDirSubTileLog2 and this is the predicate it always was.
+inline bool dir_done(int sched, int nbx, int nby, int bx, int by, int qsh) {
     bool done = (nby < by) || (nby == by && nbx < bx);
     if ((sched & kDirSchedNoAboveRight) != 0 && nbx > bx) done = false;
     if ((sched & kDirSchedSubTile) != 0 &&
-        ((nbx >> kDirSubTileLog2) != (bx >> kDirSubTileLog2) ||
-         (nby >> kDirSubTileLog2) != (by >> kDirSubTileLog2)))
+        ((nbx >> qsh) != (bx >> qsh) || (nby >> qsh) != (by >> qsh)))
         done = false;
     return done;
 }
@@ -138,22 +200,26 @@ struct CflModel {
 // The two smallest co-located luma neighbours set `base`, the two largest the
 // far end, both ends averaged; ties take the lowest index.  The pairs are
 // walked twice rather than tabulated, exactly as the kernel does.
+// [minor 6] The fit reads the block's own 2n reconstructed neighbours, so it
+// follows the transform size the way every other predictor does; at n == 8 it
+// is character for character the detail package's.
 inline CflModel cfl_fit(const int *A, const int *L, const int *luma, int lsize,
-                        int f, int x0, int y0) {
+                        int f, int x0, int y0, int n) {
+    const int npairs = 2 * n;
     int lo0 = 0, hi0 = 0, lo0l = 0, lo0c = 0, hi0l = 0, hi0c = 0;
-    for (int k = 0; k < kCflPairs; ++k) {
-        int cn = k < 8 ? A[1 + k] : L[1 + (k - 8)];
-        int ln = k < 8 ? cfl_luma(luma, lsize, f, x0 + k, y0 - 1)
-                       : cfl_luma(luma, lsize, f, x0 - 1, y0 + (k - 8));
+    for (int k = 0; k < npairs; ++k) {
+        int cn = k < n ? A[1 + k] : L[1 + (k - n)];
+        int ln = k < n ? cfl_luma(luma, lsize, f, x0 + k, y0 - 1)
+                       : cfl_luma(luma, lsize, f, x0 - 1, y0 + (k - n));
         if (k == 0) { lo0l = ln; lo0c = cn; hi0l = ln; hi0c = cn; continue; }
         if (ln < lo0l) { lo0 = k; lo0l = ln; lo0c = cn; }
         if (ln > hi0l) { hi0 = k; hi0l = ln; hi0c = cn; }
     }
     int lo1 = -1, hi1 = -1, lo1l = 0, lo1c = 0, hi1l = 0, hi1c = 0;
-    for (int k = 0; k < kCflPairs; ++k) {
-        int cn = k < 8 ? A[1 + k] : L[1 + (k - 8)];
-        int ln = k < 8 ? cfl_luma(luma, lsize, f, x0 + k, y0 - 1)
-                       : cfl_luma(luma, lsize, f, x0 - 1, y0 + (k - 8));
+    for (int k = 0; k < npairs; ++k) {
+        int cn = k < n ? A[1 + k] : L[1 + (k - n)];
+        int ln = k < n ? cfl_luma(luma, lsize, f, x0 + k, y0 - 1)
+                       : cfl_luma(luma, lsize, f, x0 - 1, y0 + (k - n));
         if (k != lo0 && (lo1 < 0 || ln < lo1l)) { lo1 = k; lo1l = ln; lo1c = cn; }
         if (k != hi0 && (hi1 < 0 || ln > hi1l)) { hi1 = k; hi1l = ln; hi1c = cn; }
     }
@@ -179,15 +245,18 @@ inline CflModel cfl_fit(const int *A, const int *L, const int *luma, int lsize,
 // is the only way mode kIntraCfl can appear at all: Pass A refuses the symbol
 // otherwise, because the alphabet is nine everywhere else.
 inline void predict_block(int mode, const int *A, const int *L, const int *base,
-                          int size, int bx, int by, int *P,
+                          int size, int bx, int by, int lb, int *P,
                           const int *luma = nullptr, int lsize = 0, int f = 0,
                           int maxval = 255) {
+    const int n = 1 << lb;
+    const int sh = lb + 1;   // the DC / planar averaging shift
+    const int rnd = n;       // ... and its rounding term
     if (mode == kIntraCfl) {
-        const int x0 = bx * 8, y0 = by * 8;
-        const CflModel m = cfl_fit(A, L, luma, lsize, f, x0, y0);
-        for (int j = 0; j < 8; ++j)
-            for (int i = 0; i < 8; ++i)
-                P[j * 8 + i] = iclamp(
+        const int x0 = bx * n, y0 = by * n;
+        const CflModel m = cfl_fit(A, L, luma, lsize, f, x0, y0, n);
+        for (int j = 0; j < n; ++j)
+            for (int i = 0; i < n; ++i)
+                P[j * n + i] = iclamp(
                     m.base_c + ((m.alpha * (cfl_luma(luma, lsize, f, x0 + i,
                                                      y0 + j) -
                                             m.base_l) +
@@ -197,32 +266,33 @@ inline void predict_block(int mode, const int *A, const int *L, const int *base,
         return;
     }
     const int tl = A[0];
-    for (int j = 0; j < 8; ++j)
-        for (int i = 0; i < 8; ++i) {
+    for (int j = 0; j < n; ++j)
+        for (int i = 0; i < n; ++i) {
             int v = 0;
             switch (mode) {
                 case kIntraDcPlane:
-                    v = base[(size_t)(by * 8 + j) * size + bx * 8 + i];
+                    v = base[(size_t)(by * n + j) * size + bx * n + i];
                     break;
                 case kIntraDc: {
                     int sum = 0;
-                    for (int k = 0; k < 8; ++k) sum += A[1 + k] + L[1 + k];
-                    v = (sum + kIntraDcRound) >> kIntraDcShift;
+                    for (int k = 0; k < n; ++k) sum += A[1 + k] + L[1 + k];
+                    v = (sum + rnd) >> sh;
                     break;
                 }
                 case kIntraPlanar:
-                    v = ((7 - i) * L[1 + j] + (i + 1) * A[1 + 8] +
-                         (7 - j) * A[1 + i] + (j + 1) * L[1 + 8] +
-                         kIntraPlanarRound) >> kIntraPlanarShift;
+                    v = ((n - 1 - i) * L[1 + j] + (i + 1) * A[1 + n] +
+                         (n - 1 - j) * A[1 + i] + (j + 1) * L[1 + n] +
+                         rnd) >> sh;
                     break;
                 case kIntraH: v = L[1 + j]; break;
                 case kIntraV: v = A[1 + i]; break;
                 case kIntraDdl: {
                     int k = i + j;
-                    v = (k == 14) ? (A[1 + 14] + 3 * A[1 + 15] + kIntraTap3Round) >>
-                                        kIntraTap3Shift
-                                  : (A[1 + k] + 2 * A[1 + k + 1] + A[1 + k + 2] +
-                                     kIntraTap3Round) >> kIntraTap3Shift;
+                    v = (k == 2 * n - 2)
+                            ? (A[1 + 2 * n - 2] + 3 * A[1 + 2 * n - 1] +
+                               kIntraTap3Round) >> kIntraTap3Shift
+                            : (A[1 + k] + 2 * A[1 + k + 1] + A[1 + k + 2] +
+                               kIntraTap3Round) >> kIntraTap3Shift;
                     break;
                 }
                 case kIntraDdr:
@@ -271,7 +341,7 @@ inline void predict_block(int mode, const int *A, const int *L, const int *base,
                     break;
                 }
             }
-            P[j * 8 + i] = v;
+            P[j * n + i] = v;
         }
 }
 
@@ -373,15 +443,24 @@ void reconstruct_tile(const PassBInput &in, int tile, TilePlanes &tp,
     for (int p = 0; p < ncoded; ++p) {
         bool chroma = (p == 1 || p == 2);
         int size = tp.size[p];
-        int nb = size >> 3;
+        // [minor 6] XFORM_LARGE: the transform edge is the tile's `8 <<
+        // xform_size` capped by this plane's own coded extent, and the block
+        // grid, DC plane, planar mapping, weighting matrix, scan and
+        // predictors all follow it ([SYN] 6.7).  At xform_size 0 this is
+        // lb = 3, bs = 8, nb = size >> 3, unchanged.
+        const int lb = nxvw_block_log2(xformSize, size);
+        const int bs = 1 << lb;
+        int nb = size >> lb;
         int ndc = nb * nb;
+        const int ncoef = bs * bs;
+        const int qsh = lb < 5 ? 5 - lb : 0;
         int planeQp = qp;
         if (chroma) planeQp = iclamp(qp + pcp.chromaQpOff, 0, 63);
         else if (p == 3) planeQp = iclamp(qp + pcp.alphaQpOff, 0, 63);
         const int *wmat = in.weights + wmSet + (chroma ? 64 : 0);
         // [v3] this plane's per-block intra modes, unpacked from Pass A's
         // 4-bit-per-block array.
-        int modes[64] = {};
+        int modes[64] = {};  // nb*nb <= 64 at every transform size
         if (in.modes)
             for (int b = 0; b < ndc && b < 64; ++b) {
                 uint32_t w = in.modes[(size_t)tile * NXVW_MODE_REGION_UINTS +
@@ -420,8 +499,8 @@ void reconstruct_tile(const PassBInput &in, int tile, TilePlanes &tp,
                 for (int x = 0; x < size; ++x)
                     pred[(size_t)y * size + x] =
                         bilinear(means.data(), nb, nb, nb,
-                                 kPlanarMul * x + kPlanarOff,
-                                 kPlanarMul * y + kPlanarOff);
+                                 nxvw_planar_q4(x, bs, lb),
+                                 nxvw_planar_q4(y, bs, lb));
 
         const bool dir = intra && pcp.intraDir != 0;
         const bool layer = pcp.dirLayer != 0;
@@ -453,16 +532,18 @@ void reconstruct_tile(const PassBInput &in, int tile, TilePlanes &tp,
         for (int b = 0; b < ndc; ++b) {
             int bx = b % nb, by = b / nb;
             const int blockScan =
-                splitFlag[b] ? kScan4Split : nxvw_scan_id(64, tskip);
-            const int16_t *c = bc + (size_t)b * 64;
+                splitFlag[b] ? kScan4Split : nxvw_scan_id(ncoef, tskip);
+            const int16_t *c = bc + (size_t)b * ncoef;
             const int blockLen = unit_len(unitBase + unitsPerPlaneExtra + b);
-            int res[64] = {};
+            int res[32 * 32] = {};
             if (blockLen == 0) {
                 // [sparse] An uncoded block transforms to all zeros; the
                 // kernel skips both passes of the IDCT for it.
             } else if (tskip) {
+                // Mutually exclusive with a transform size other than 8x8
+                // ([SYN] 6.6 / 6.7), so ncoef is 64 on this arm.
                 int t = model_dequant_step(planeQp, kFlatWeight);
-                for (int i = 0; i < 64; ++i)
+                for (int i = 0; i < ncoef; ++i)
                     res[i] = model_dequant(coef_in(c, blockScan, blockLen, i), t);
             } else if (splitFlag[b]) {
                 // [minor 6] Four 4x4 sub-blocks, each in its own quadrant of
@@ -482,39 +563,53 @@ void reconstruct_tile(const PassBInput &in, int tile, TilePlanes &tp,
                     split_subblock(dq, ox, oy, res);
                 }
             } else {
-                int dq[64];
-                for (int i = 0; i < 64; ++i)
-                    dq[i] = model_dequant(coef_in(c, blockScan, blockLen, i),
-                                          model_dequant_step(planeQp, wmat[i]));
-                model_idct8x8(dq, res);
+                // [minor 6] ONE transmitted 8x8 matrix serves every size: an
+                // n x n block replicates it, entry (u, v) being entry
+                // (u >> k, v >> k) with k = lb - 3 ([SYN] 6.5).  At lb == 3
+                // the index is `i` and this is the 8x8 form unchanged.
+                int dq[32 * 32];
+                for (int i = 0; i < ncoef; ++i)
+                    dq[i] = model_dequant(
+                        coef_in(c, blockScan, blockLen, i),
+                        model_dequant_step(
+                            planeQp, wmat[nxvw_block_weight_index(i, lb)]));
+                idct_nxn(dq, res, lb);
             }
             if (!dir) {
-                for (int j = 0; j < 8; ++j)
-                    for (int i = 0; i < 8; ++i) {
-                        int x = bx * 8 + i, y = by * 8 + j;
+                for (int j = 0; j < bs; ++j)
+                    for (int i = 0; i < bs; ++i) {
+                        int x = bx * bs + i, y = by * bs + j;
                         int pv = intra ? pred[(size_t)y * size + x] : 0;
                         tp.s[p][(size_t)y * size + x] =
-                            iclamp(pv + res[j * 8 + i], 0, maxval);
+                            iclamp(pv + res[j * bs + i], 0, maxval);
                     }
                 continue;
             }
             // Reference samples, clamped into the tile: a tile never reads a
             // neighbour, so its borders read this tile's own DC plane.
-            int A[kIntraRefs], L[kIntraRefs];
-            const int x0 = bx * 8, y0 = by * 8;
+            // The reference arrays are 2n long at every size, so DDL
+            // reaches A[2n-1] and the above-right dependency is one block
+            // wide however large the block is ([SYN] 7.4).  The model
+            // materialises them; the kernel reads each one through dirAt()
+            // instead, because 2n+1 is sixty-five ints at 32x32 and that is
+            // not a live set any GPU has -- one of the two places the two
+            // spellings deliberately differ.
+            int A[2 * 32 + 1], L[2 * 32 + 1];
+            const int x0 = bx * bs, y0 = by * bs;
             auto at = [&](int x, int y) {
                 int cx = iclamp(x, 0, size - 1), cy = iclamp(y, 0, size - 1);
-                const int *src = dir_done(sched, cx >> 3, cy >> 3, bx, by)
-                                     ? recon.data()
-                                     : fallback;
+                const int *src =
+                    dir_done(sched, cx >> lb, cy >> lb, bx, by, qsh)
+                        ? recon.data()
+                        : fallback;
                 return src[(size_t)cy * size + cx];
             };
             A[0] = L[0] = at(x0 - 1, y0 - 1);
-            for (int k = 0; k < 16; ++k) {
+            for (int k = 0; k < 2 * bs; ++k) {
                 A[1 + k] = at(x0 + k, y0 - 1);
                 L[1 + k] = at(x0 - 1, y0 + k);
             }
-            int P[64];
+            int P[32 * 32];
             // [minor 6] INTRA_CFL reads this tile's reconstructed luma plane,
             // which is complete because plane 0 runs first and the planes are
             // reconstructed in order.  `f` is the luma:chroma ratio, 1 or 2;
@@ -524,13 +619,13 @@ void reconstruct_tile(const PassBInput &in, int tile, TilePlanes &tp,
                                              ? 1
                                              : (tp.size[0] == 2 * size ? 2 : 0))
                                       : 0;
-            predict_block(modes[b], A, L, fallback, size, bx, by, P,
+            predict_block(modes[b], A, L, fallback, size, bx, by, lb, P,
                           cflPlane ? tp.s[0].data() : nullptr, tp.size[0],
                           cflF, maxval);
-            for (int j = 0; j < 8; ++j)
-                for (int i = 0; i < 8; ++i) {
+            for (int j = 0; j < bs; ++j)
+                for (int i = 0; i < bs; ++i) {
                     int x = x0 + i, y = y0 + j;
-                    int v = P[j * 8 + i] + res[j * 8 + i];
+                    int v = P[j * bs + i] + res[j * bs + i];
                     if (layer) {
                         int base = pred[(size_t)y * size + x];
                         int full = iclamp(base + v, 0, maxval);
@@ -543,7 +638,7 @@ void reconstruct_tile(const PassBInput &in, int tile, TilePlanes &tp,
                     }
                 }
         }
-        coefBase += ndc + ndc * 64;
+        coefBase += ndc + ndc * ncoef;
         unitBase += unitsPerPlaneExtra + ndc;
     }
 }
@@ -613,6 +708,10 @@ int model_bilinear_q4(const int *src, int w, int h, int stride, int sx, int sy) 
 
 void model_split_subblock(const int *dq, int ox, int oy, int *res) {
     split_subblock(dq, ox, oy, res);
+}
+
+void model_idct_nxn(const int *src, int *dst, int lb) {
+    idct_nxn(src, dst, lb);
 }
 
 void model_idct8x8(const int src[64], int dst[64]) {

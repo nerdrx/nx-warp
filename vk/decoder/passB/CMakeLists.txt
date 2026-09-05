@@ -23,46 +23,50 @@ set(NXVW_PASSB_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(NXVW_PASSB_GEN ${CMAKE_CURRENT_BINARY_DIR}/generated)
 file(MAKE_DIRECTORY ${NXVW_PASSB_GEN})
 
-# Two modules from one source: the full kernel, and one built with
-# NXVW_INTRA_DIR=0 in which the directional-intra wavefront does not exist.
-# See reconstruct.comp, "the frame's INTRA_DIR tool bit is a build variant".
+# Four modules from one source, over the two BUILD variants: NXVW_INTRA_DIR
+# selects whether the directional-intra wavefront exists, and NXVW_XFORM_LARGE
+# whether the 16x16 and 32x32 transform forms do.  Both are preprocessor
+# variants rather than specialization constants, and reconstruct.comp says why
+# for each -- in both cases the driver's own dead-code pass was measured and
+# was not enough, on an Adreno 650 in one case and on all three ICDs in the
+# other.  See reconstruct.comp and ../README.md.
+set(NXVW_PASSB_SPV_LIST)
+foreach(_dir 1 0)
+foreach(_xl 1 0)
+  # reconstruct, reconstruct_v1, reconstruct_x8, reconstruct_v1_x8 -- the
+  # suffix names what the module does NOT have, so the full kernel keeps the
+  # bare name it has always had.
+  set(_name reconstruct)
+  if(NOT _dir)
+    string(APPEND _name "_v1")
+  endif()
+  if(NOT _xl)
+    string(APPEND _name "_x8")
+  endif()
+  set(_out ${NXVW_PASSB_GEN}/${_name}.spv.h)
+  list(APPEND NXVW_PASSB_SPV_LIST ${_out})
+  add_custom_command(
+    OUTPUT ${_out}
+    COMMAND ${CMAKE_COMMAND}
+            -DGLSLC=${NXVW_GLSLC}
+            -DSRC=${NXVW_PASSB_DIR}/reconstruct.comp
+            -DOUT=${_out}
+            -DNAME=${_name}
+            "-DDEFS=-DNXVW_INTRA_DIR=${_dir} -DNXVW_XFORM_LARGE=${_xl}"
+            -DINCDIR=${NXVW_PASSB_DIR}
+            -DSTYLE=plain
+            -P ${NXVW_PASSB_GEN_SPV}
+    DEPENDS ${NXVW_PASSB_DIR}/reconstruct.comp
+            ${NXVW_PASSB_DIR}/syntax_constants.h
+            ${NXVW_PASSB_DIR}/passB_layout.h
+            ${NXVW_PASSB_GEN_SPV} ${NXVW_PASSB_SPV_PASSES_CMAKE}
+    COMMENT "glslc reconstruct.comp (dir=${_dir} xl=${_xl}) -> ${_name}.spv.h"
+    VERBATIM)
+endforeach()
+endforeach()
 set(NXVW_PASSB_SPV ${NXVW_PASSB_GEN}/reconstruct.spv.h)
 set(NXVW_PASSB_SPV_V1 ${NXVW_PASSB_GEN}/reconstruct_v1.spv.h)
-add_custom_command(
-  OUTPUT ${NXVW_PASSB_SPV}
-  COMMAND ${CMAKE_COMMAND}
-          -DGLSLC=${NXVW_GLSLC}
-          -DSRC=${NXVW_PASSB_DIR}/reconstruct.comp
-          -DOUT=${NXVW_PASSB_SPV}
-          -DNAME=reconstruct
-          -DDEFS=-DNXVW_INTRA_DIR=1
-          -DINCDIR=${NXVW_PASSB_DIR}
-          -DSTYLE=plain
-          -P ${NXVW_PASSB_GEN_SPV}
-  DEPENDS ${NXVW_PASSB_DIR}/reconstruct.comp
-          ${NXVW_PASSB_DIR}/syntax_constants.h
-          ${NXVW_PASSB_DIR}/passB_layout.h
-          ${NXVW_PASSB_GEN_SPV} ${NXVW_PASSB_SPV_PASSES_CMAKE}
-  COMMENT "glslc reconstruct.comp -> reconstruct.spv.h"
-  VERBATIM)
-add_custom_command(
-  OUTPUT ${NXVW_PASSB_SPV_V1}
-  COMMAND ${CMAKE_COMMAND}
-          -DGLSLC=${NXVW_GLSLC}
-          -DSRC=${NXVW_PASSB_DIR}/reconstruct.comp
-          -DOUT=${NXVW_PASSB_SPV_V1}
-          -DNAME=reconstruct_v1
-          -DDEFS=-DNXVW_INTRA_DIR=0
-          -DINCDIR=${NXVW_PASSB_DIR}
-          -DSTYLE=plain
-          -P ${NXVW_PASSB_GEN_SPV}
-  DEPENDS ${NXVW_PASSB_DIR}/reconstruct.comp
-          ${NXVW_PASSB_DIR}/syntax_constants.h
-          ${NXVW_PASSB_DIR}/passB_layout.h
-          ${NXVW_PASSB_GEN_SPV} ${NXVW_PASSB_SPV_PASSES_CMAKE}
-  COMMENT "glslc reconstruct.comp (v1) -> reconstruct_v1.spv.h"
-  VERBATIM)
-add_custom_target(nxvw_passB_spv DEPENDS ${NXVW_PASSB_SPV} ${NXVW_PASSB_SPV_V1})
+add_custom_target(nxvw_passB_spv DEPENDS ${NXVW_PASSB_SPV_LIST})
 
 # ---------------------------------------------------------------- CPU model
 add_library(nxvw_passB_model STATIC passB_model.cpp)

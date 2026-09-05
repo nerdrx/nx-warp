@@ -372,6 +372,18 @@ results) against 8 + 8 for the 8x8 form. On hardware with a 64-VGPR
 full-occupancy budget that is the binding constraint rather than LDS; the
 fallback is a second LDS buffer for the coefficient vector.
 
+> **Measured, and the estimate was low.** RADV reports the implemented kernel
+> at 192 VGPRs against 72 for the 8x8 pipeline, with no scratch. The gap is
+> the *residual*, not the transform: this estimate counts the transform's own
+> live set and forgets that a thread also carries the two columns it owns
+> across the barrier into the prediction, which is 8 values at 8x8 and would
+> be 64 at 32x32. `reconstruct.comp` does not pay that — the column pass
+> lands its output in the two words of the plane slot the thread already owns
+> and reads them back for the prediction, so `res0[8]` stays eight at every
+> transform size — and the second LDS buffer this section offers as a
+> fallback is not needed either, because the transpose buffer already IS the
+> plane slot.
+
 **Arithmetic, which is where it is expensive.**
 
 | edge | multiplies per 1D transform | per sample | per `res_level` 0 4:2:0 tile |
@@ -397,9 +409,15 @@ except that the restrictions cost 1.6 to 1.8 % of rate to buy and `xform_size`
 saves rate on the tiles where the encoder chooses it. Barriers per 4:4:4 tile
 fall from 3 + 66 to 3 + 30 at 16x16 and 3 + 12 at 32x32.
 
-**The reference Vulkan decoder does not implement tool bit 24** and refuses a
-stream that sets it at the handshake, which is the same forward-compatibility
-gate every other unimplemented tool goes through.
+**The reference Vulkan decoder implements this** — the tool bit is 27, not 24;
+this document was written before the merge renumbered it. Pass B follows the
+plan above: one thread per 1D transform, the plane-sized LDS transpose, the
+re-gridded DC plane and the `n x n` predictors over an `nb x nb` wavefront,
+all behind a specialization constant so an 8x8-only stream compiles a kernel
+without them. What it measures on an RX 7900 XTX and on an Adreno 650 is in
+`vk/decoder/README.md`, "The transform size, priced"; the one prediction here
+that did not survive contact is the register estimate, and the schedule note
+below says why.
 
 ### Encode and decode time
 

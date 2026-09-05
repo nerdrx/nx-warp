@@ -1169,10 +1169,12 @@ follow-up, not a taste one: it is worth taking if it costs less than about
 3 BD-rate points of this package's measured win, and this note exists so that
 the cost is on the record either way.
 
-The reference Vulkan decoder does **not** implement tool bit 27 today
-(`vk/decoder/nxvc_vkdec_parse.cpp`), so it refuses such a stream at the
-handshake rather than mis-decoding it — the same forward-compatibility gate
-every other unimplemented tool goes through.
+The reference Vulkan decoder implements tool bit 27 as of the Pass B
+transform round: `vk/decoder/passB/reconstruct.comp` carries the N-point
+inverse on the 8-point core, the re-gridded DC plane and the `n x n` intra
+predictors behind specialization constant 7, and
+`vk/decoder/nxvc_vkdec_parse.cpp` lists the bit. What it costs that decoder is
+in `vk/decoder/README.md`, "The transform size, priced".
 
 The split flag of 6.8 is present and meaningful **only when this field selects
 the 8x8 transform**. A tile that sets `xform_size != 0` and `split4x4` is

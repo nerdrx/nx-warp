@@ -6,7 +6,8 @@ predicts, and writes the display image. `docs/PAPER.md` 3.2.1, 3.2.3, 3.2.4,
 3.2.5, 3.2.6.
 
 ```
-reconstruct.comp        the kernel (GLSL 4.60 -> SPIR-V, vulkan1.1)
+reconstruct.comp        the kernel (GLSL 4.60 -> SPIR-V, vulkan1.1), built as
+                        four modules over NXVW_INTRA_DIR x NXVW_XFORM_LARGE
 syntax_constants.h      every normative constant, shared by GLSL and C++
 passB_layout.h          the Pass A -> Pass B SSBO layout, shared by both
 passB_model.{h,cpp}     line-for-line CPU model of the kernel
@@ -20,13 +21,19 @@ Tests live in `tests/vk-decoder/passB/` and are registered as `vk.passB.*`.
 
 Per plane (Y/R, Co/G, Cg/B, and alpha when `alpha_mode == 2`):
 
+0. **Geometry.** [minor 6] The tile's `xform_size` names a transform edge, 8,
+   16 or 32, capped by the plane's own coded extent, and `bsize` and
+   `nb = size / bsize` drive everything below (SYNTAX.md 6.7). Without
+   `XFORM_LARGE` this is `bsize == 8` and `nb == size / 8` exactly as it was --
+   see "Large transforms" below.
 1. **DC plane.** `nb*nb` DC coefficients are dequantized at `QP - 6` with a
    flat weight. When the plane is 8 blocks wide they pass through a
    second-level 8x8 IDCT (PAPER 3.2.4/6.4). The result plus the plane's DC
    offset, clamped, is the array of block means.
 2. **Planar intra prediction.** Every pixel is a Q4 bilinear interpolation of
    the four nearest block means, sampled at `(2x - 7, 2y - 7)`, which puts the
-   sample grid on the block centres. No wavefront, no barrier beyond the
+   sample grid on the block centres -- or, at `bsize` 16 and 32, at SYNTAX.md
+   7.2's general form of the same mapping. No wavefront, no barrier beyond the
    transform's.
    With `INTRA_DIR` (stream tool bit 17) each 8x8 block instead names one of
    nine modes, of which mode 0 *is* this predictor, and the blocks of a plane
@@ -42,7 +49,9 @@ Per plane (Y/R, Co/G, Cg/B, and alpha when `alpha_mode == 2`):
    layout" below.
 
    [minor 6] With `XFORM_4X4_SPLIT` (tool bit 19) a block may instead be four
-   4x4 sub-blocks — see "The 4x4 split" below.
+   4x4 sub-blocks — see "The 4x4 split" below. With `XFORM_LARGE` (tool bit
+   27) the block is `bsize x bsize` and the transform is the N-point member of
+   the same family — see "Large transforms" below.
 4. **Add and clamp** into the plane's sample store.
 
 Then, once per tile:
@@ -123,6 +132,36 @@ first and both cost an Adreno 650 a factor of five of Pass B; `../README.md`,
 
 The whole path is behind specialization constant 6, so a stream without the
 tool compiles a kernel that does not contain it.
+
+### Large transforms (tool bit 27) [minor 6]
+
+`docs/SYNTAX.md` 6.7. The tile header names one transform edge for the whole
+tile, capped per plane by its coded extent, so `bsize` is 8, 16 or 32 and `nb`
+is a power of two in `[1, 8]`. The N-point inverse is the even/odd recursion
+of 6.2.1 stacked on the same 8-point Loeffler core the 8x8 form uses, with
+`kOdd16` / `kOdd32` and the shift chain 7/13, 7/14, 8/14 by size -- one
+transform family over `{4, 8, 16, 32}`, because two would be two dequantiser
+scales and the second one would be wrong silently.
+
+**The schedule is one thread per 1D transform**, not four threads per block,
+and it fits the workgroup exactly once at every size that reaches it. The
+intermediate is stored *un-transposed* and read back transposed, which is the
+opposite of the 8x8 path and is what keeps every shared word owned by one
+thread; the column pass then lands its output in the two words of the plane
+slot the thread already owns, so `res0[8]` stays eight at every transform size
+and the prediction reads its residual back out of the slot. `../README.md`,
+"The transform size, priced", is the derivation and the measurement.
+
+The `n x n` intra predictors read each reference through `dirAt()` where it is
+used rather than gathering an `A[]` / `L[]` pair: 7.4's arrays are `2n` long,
+which is sixty-five ints at 32x32. Mode 1's average and mode 2's `A[n]` /
+`L[n]` are hoisted per block, as the CFL fit already was.
+
+**It is a build variant, `NXVW_XFORM_LARGE`, not a specialization constant**,
+and so is the pair of scan arms in `nxvw_scan_pos()`. Both were measured as
+specialization constants first and both cost an 8x8-only stream real time on
+an Adreno 650; `../README.md` has the instruction counts and says why each
+one was invisible to the driver's dead-code pass.
 
 ### Chroma from luma (tool bit 24) [minor 6]
 
