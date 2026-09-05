@@ -179,7 +179,6 @@ void store_levels(int level_off, int first, int count, int unit) {
 // ------------------------------------------------------------- the DC plane
 void dc_plane(uint lid) {
     const int tdc = nxe_dequant_step(g_qp >> 1, 16);
-    int in8[8], out8[8], c;
 
     // 1. block means, one lane per block.
     if (lid < uint(g_ndc)) {
@@ -196,17 +195,19 @@ void dc_plane(uint lid) {
     //    plane is quantised directly, as reconstruct_dc_plane expects).
     if (g_nb == 8) {
         if (lid < 8u) {
-            for (c = 0; c < 8; ++c) in8[c] = s_means[int(lid) * 8 + c] - g_dcoff;
-            nxe_fdct8_1d(in8, out8);
-            for (c = 0; c < 8; ++c)
-                s_dca[c * 8 + int(lid)] = nxe_clamp16((out8[c] + 32) >> 6);
+            ivec4 ilo, ihi, olo, ohi;
+            NXE_GATHER8(s_means, int(lid) * 8, ilo, ihi);
+            ilo -= ivec4(g_dcoff);
+            ihi -= ivec4(g_dcoff);
+            nxe_fdct8_1d(ilo, ihi, olo, ohi);
+            NXE_SCATTER8_RS(s_dca, int(lid), 8, olo, ohi, 32, 6);
         }
         barrier();
         if (lid < 8u) {
-            for (c = 0; c < 8; ++c) in8[c] = s_dca[int(lid) * 8 + c];
-            nxe_fdct8_1d(in8, out8);
-            for (c = 0; c < 8; ++c)
-                s_dco[c * 8 + int(lid)] = nxe_clamp16((out8[c] + 8192) >> 14);
+            ivec4 ilo, ihi, olo, ohi;
+            NXE_GATHER8(s_dca, int(lid) * 8, ilo, ihi);
+            nxe_fdct8_1d(ilo, ihi, olo, ohi);
+            NXE_SCATTER8_RS(s_dco, int(lid), 8, olo, ohi, 8192, 14);
         }
         barrier();
     } else {
@@ -227,17 +228,17 @@ void dc_plane(uint lid) {
     barrier();
     if (g_nb == 8) {
         if (lid < 8u) {
-            for (c = 0; c < 8; ++c) in8[c] = s_dca[int(lid) * 8 + c];
-            nxe_idct8_1d(in8, out8);
-            for (c = 0; c < 8; ++c)
-                s_dcb[c * 8 + int(lid)] = nxe_clamp16((out8[c] + 64) >> 7);
+            ivec4 ilo, ihi, olo, ohi;
+            NXE_GATHER8(s_dca, int(lid) * 8, ilo, ihi);
+            nxe_idct8_1d(ilo, ihi, olo, ohi);
+            NXE_SCATTER8_RS(s_dcb, int(lid), 8, olo, ohi, 64, 7);
         }
         barrier();
         if (lid < 8u) {
-            for (c = 0; c < 8; ++c) in8[c] = s_dcb[int(lid) * 8 + c];
-            nxe_idct8_1d(in8, out8);
-            for (c = 0; c < 8; ++c)
-                s_dca[c * 8 + int(lid)] = nxe_clamp16((out8[c] + 4096) >> 13);
+            ivec4 ilo, ihi, olo, ohi;
+            NXE_GATHER8(s_dcb, int(lid) * 8, ilo, ihi);
+            nxe_idct8_1d(ilo, ihi, olo, ohi);
+            NXE_SCATTER8_RS(s_dca, int(lid), 8, olo, ohi, 4096, 13);
         }
         barrier();
     }
@@ -249,21 +250,19 @@ void dc_plane(uint lid) {
 // ---------------------------------------------- one 8x8 forward transform
 // Lane `r` owns row r of group entry `g` on the way in and column r of the
 // coefficient block on the way out, which is exactly how fdct8x8's two passes
-// transpose.  `src8` is the residual row; the caller has already formed it.
-void fdct_group_pass1(int g, int r, int src8[8]) {
-    int out8[8];
-    nxe_fdct8_1d(src8, out8);
-    for (int c = 0; c < 8; ++c)
-        s_blk[g][c * 8 + r] = nxe_clamp16((out8[c] + 32) >> 6);
+// transpose.  `slo`/`shi` are the residual row, elements 0..3 and 4..7; the
+// caller has already formed it.  See nxe_enc_common.glsl for why the row is not
+// an int[8].
+void fdct_group_pass1(int g, int r, ivec4 slo, ivec4 shi) {
+    ivec4 olo, ohi;
+    nxe_fdct8_1d(slo, shi, olo, ohi);
+    NXE_SCATTER8_RS(s_blk[g], r, 8, olo, ohi, 32, 6);
 }
 void fdct_group_pass2(int g, int r) {
-    int in8[8], out8[8], c;
-    for (c = 0; c < 8; ++c) in8[c] = s_blk[g][r * 8 + c];
-    nxe_fdct8_1d(in8, out8);
-    for (c = 0; c < 8; ++c) {
-        int idx = c * 8 + r;
-        s_orig[g][idx] = nxe_clamp16((out8[c] + 8192) >> 14);
-    }
+    ivec4 ilo, ihi, olo, ohi;
+    NXE_GATHER8(s_blk[g], r * 8, ilo, ihi);
+    nxe_fdct8_1d(ilo, ihi, olo, ohi);
+    NXE_SCATTER8_RS(s_orig[g], r, 8, olo, ohi, 8192, 14);
 }
 
 // --------------------------------------------------------- residual blocks
@@ -272,24 +271,34 @@ void residual_blocks(uint lid) {
     for (int gb = 0; gb < g_ndc; gb += 8) {
         int b = gb + g;
         int by = b / g_nb, bx = b % g_nb;
-        int src8[8], c;
+        int c;
 
-        for (c = 0; c < 8; ++c) {
-            int x = bx * 8 + c, y = by * 8 + r;
-            src8[c] = sample_at(y * g_size + x) - pred_at(x, y);
-        }
+        // The row of residuals, in an ivec4 pair rather than an int[8].
+        const int ry = by * 8 + r, rxb = bx * 8;
+#define NXE_RES_AT(k) (sample_at(ry * g_size + (rxb + (k))) - pred_at(rxb + (k), ry))
+        ivec4 slo = ivec4(NXE_RES_AT(0), NXE_RES_AT(1), NXE_RES_AT(2), NXE_RES_AT(3));
+        ivec4 shi = ivec4(NXE_RES_AT(4), NXE_RES_AT(5), NXE_RES_AT(6), NXE_RES_AT(7));
+#undef NXE_RES_AT
+
         if (g_tskip != 0) {
             // Transform skip: the residual is quantised where it stands, with
             // the flat step, and the raster scan replaces the zigzag.
             int t = nxe_dequant_step(g_qp, 16);
-            for (c = 0; c < 8; ++c) {
-                int idx = r * 8 + c;
-                s_orig[g][idx] = src8[c];
-                s_q[g][idx] = nxe_quantize(src8[c], t, t / 3);
-            }
+#define NXE_TSKIP_ONE(k, v) { int idx = r * 8 + (k);                           \
+                              s_orig[g][idx] = (v);                            \
+                              s_q[g][idx] = nxe_quantize((v), t, t / 3); }
+            NXE_TSKIP_ONE(0, slo.x)
+            NXE_TSKIP_ONE(1, slo.y)
+            NXE_TSKIP_ONE(2, slo.z)
+            NXE_TSKIP_ONE(3, slo.w)
+            NXE_TSKIP_ONE(4, shi.x)
+            NXE_TSKIP_ONE(5, shi.y)
+            NXE_TSKIP_ONE(6, shi.z)
+            NXE_TSKIP_ONE(7, shi.w)
+#undef NXE_TSKIP_ONE
             barrier();
         } else {
-            fdct_group_pass1(g, r, src8);
+            fdct_group_pass1(g, r, slo, shi);
             barrier();
             fdct_group_pass2(g, r);
             for (c = 0; c < 8; ++c) {
@@ -422,9 +431,9 @@ void residual_blocks_dir(uint lid, int plane) {
             barrier();
         } else {
             if (lid < 8u) {
-                int src8[8];
-                for (int c = 0; c < 8; ++c) src8[c] = s_res[int(lid) * 8 + c];
-                fdct_group_pass1(0, int(lid), src8);
+                ivec4 slo, shi;
+                NXE_GATHER8(s_res, int(lid) * 8, slo, shi);
+                fdct_group_pass1(0, int(lid), slo, shi);
             }
             barrier();
             if (lid < 8u) {
@@ -453,19 +462,17 @@ void residual_blocks_dir(uint lid, int plane) {
             if (lid < 64u) s_blk[0][lid] = nxe_dequant(s_q[0][lid], step_at(int(lid)));
             barrier();
             if (lid < 8u) {
-                int in8[8], out8[8], c;
-                for (c = 0; c < 8; ++c) in8[c] = s_blk[0][int(lid) * 8 + c];
-                nxe_idct8_1d(in8, out8);
-                for (c = 0; c < 8; ++c)
-                    s_dca[c * 8 + int(lid)] = nxe_clamp16((out8[c] + 64) >> 7);
+                ivec4 ilo, ihi, olo, ohi;
+                NXE_GATHER8(s_blk[0], int(lid) * 8, ilo, ihi);
+                nxe_idct8_1d(ilo, ihi, olo, ohi);
+                NXE_SCATTER8_RS(s_dca, int(lid), 8, olo, ohi, 64, 7);
             }
             barrier();
             if (lid < 8u) {
-                int in8[8], out8[8], c;
-                for (c = 0; c < 8; ++c) in8[c] = s_dca[int(lid) * 8 + c];
-                nxe_idct8_1d(in8, out8);
-                for (c = 0; c < 8; ++c)
-                    s_res[c * 8 + int(lid)] = nxe_clamp16((out8[c] + 4096) >> 13);
+                ivec4 ilo, ihi, olo, ohi;
+                NXE_GATHER8(s_dca, int(lid) * 8, ilo, ihi);
+                nxe_idct8_1d(ilo, ihi, olo, ohi);
+                NXE_SCATTER8_RS(s_res, int(lid), 8, olo, ohi, 4096, 13);
             }
             barrier();
         }
@@ -502,14 +509,12 @@ void main() {
     g_tskip = int(job.tskip);
     g_sdh = int(fp.sdh);
 
-    // Plane word bases, derived exactly as the host lays the buffer out.
-    uint acc = 0u;
-    uint pbase[NXE_MAX_PLANES];
-    for (int p = 0; p < NXE_MAX_PLANES; ++p) {
-        int sz = nxe_plane_size(job.chroma444, job.res_level, p);
-        pbase[p] = acc;
-        acc += fp.ntiles * uint(sz * sz / 2);
-    }
+    // Plane word bases, derived exactly as the host lays the buffer out.  The
+    // running base is carried through the plane loop below rather than
+    // precomputed into a uint[NXE_MAX_PLANES]: the planes are visited in the
+    // same order either way, and a local array indexed by the loop counter is
+    // the construct docs/ADRENO-RULES.md exists to keep out.
+    uint pbase = 0u;
 
     for (int p = 0; p < NXE_MAX_PLANES; ++p) {
         g_chroma = (p == 1 || p == 2);
@@ -520,12 +525,17 @@ void main() {
         g_maxval = (fp.ycocgr != 0u && g_chroma) ? 511 : 255;
         g_dcoff = (fp.ycocgr != 0u && g_chroma) ? 256 : 128;
         g_wmsel = job.wm_id == 0u ? -1 : int(g_chroma ? 3u : job.wm_id);
-        g_srcbase = pbase[p] + g_tile * uint(g_size * g_size / 2);
+        // Captured before the pass calls below, which are free to move the
+        // globals; the next plane's base must not depend on that.
+        const uint plane_words = fp.ntiles * uint(g_size * g_size / 2);
+        g_srcbase = pbase + g_tile * uint(g_size * g_size / 2);
         g_coefoff = nxe_plane_coef_offset(job.chroma444, job.res_level, p);
 
         dc_plane(lid);
         if (NXE_SC_INTRA_DIR != 0) residual_blocks_dir(lid, p);
         else residual_blocks(lid);
         barrier();
+
+        pbase += plane_words;
     }
 }

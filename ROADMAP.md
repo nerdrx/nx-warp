@@ -6,10 +6,20 @@ The phases and their exit criteria come from [docs/PAPER.md](docs/PAPER.md) sect
 are reproduced here unchanged. The status column is an honest statement of what is in the repository,
 not a claim that any of it is finished or correct.
 
-> **No exit criterion has been met.** The Phase 0 gate has not been run on a headset. A headless host
-> run exists in `bench/results/` (a desktop RADV device), and `bench/README.md` states plainly that
-> host numbers are a regression signal, never the verdict: the gate is the on-device table. Every
-> performance figure elsewhere in this project remains a design estimate; see
+> **No exit criterion has been met, and the ones that have been measured were measured as failures.**
+>
+> Phase 0 has not been run on a headset. One headless host run is checked in at
+> [`bench/results/results-host.json`](bench/results/results-host.json) (RADV 7900 XTX, K1 to K5 PASS,
+> K6 skipped), and `bench/README.md` states plainly that host numbers are a regression signal, never
+> the verdict: the gate is the on-device table.
+>
+> The Phase 1 and Phase 2 *compression* criteria are a different matter. They have been measured, on
+> band-limited v2 material, and they fail. `tools/quality/reports/gates-v2-2026-09-04.md` records ten
+> gate verdicts and ten FAILs; `ref/RESULTS-intra.md` and `ref/RESULTS-inter.md` are the long form,
+> and `ref/RESULTS-sparse.md` covers the sparsity work. Saying "no measurements exist" was the older
+> and more comfortable claim; it is no longer true, and the true version is worse.
+>
+> Timing criteria remain unmeasured on real hardware. See
 > [docs/PERFORMANCE.md](docs/PERFORMANCE.md), whose measured column is empty until device numbers
 > exist.
 
@@ -19,8 +29,8 @@ not a claim that any of it is finished or correct.
 |---|---|---|---|---|
 | **0** | 3 | Adreno benchmark app, capability probe | K1 to K6 measured on a Pico 4; the pure-versus-hybrid decision recorded; the numbers in the tree | **In progress.** The gate app exists (`bench/`, kernels K1 to K6, Android and headless host front ends, thermal mode, self-test against the CPU reference) and a Vulkan capability probe exists (`vk/common`). A headless host run has been recorded in
 `bench/results/`; nothing has been run on a headset, which is what the gate requires. |
-| **1** | 8 | Intra-only codec: reference decoder, GPU decoder, GPU encoder, conformance, diff harness, quality harness | Bit-exact on lavapipe, RADV and Adreno; within 1.0 dB PSNR of x264 intra at 100 to 400 Mbit on VR captures; Pass B under 5 ms p50 on Pico 4; encoder under 4 ms on RX 580; fuzz corpus 24 h clean | **In progress.** Reference codec, conformance vectors, Pass A, Pass B, encoder stats passes, quality harness and fuzz targets all exist in the tree. None of the four numeric criteria has been measured. |
-| **2** | 10 | Pose-warped inter, DC-plane intra refresh, skip, per-tile reference tracking | Cross-vendor determinism test green; BD-rate within 15 percent of x265 zerolatency single-reference on head-rotation sequences at 100 to 200 Mbit; 5 percent segment loss shows no drift beyond one refresh period; Pico 4 p99 under 7 ms at 90 Hz | **Started early.** `warp/` (integer homography, warp kernel, CPU oracle) and `transport/shadow` exist ahead of schedule. No measurements. |
+| **1** | 8 | Intra-only codec: reference decoder, GPU decoder, GPU encoder, conformance, diff harness, quality harness | Bit-exact on lavapipe, RADV and Adreno; within 1.0 dB PSNR of x264 intra at 100 to 400 Mbit on VR captures; Pass B under 5 ms p50 on Pico 4; encoder under 4 ms on RX 580; fuzz corpus 24 h clean | **In progress; the compression criterion is measured and FAILS.** Reference codec, conformance vectors, Pass A, Pass B, encoder stats passes, quality harness and fuzz targets all exist, and Pass A and Pass B are checked against the reference on lavapipe and RADV in CI. The PSNR criterion has been run: **+61.4 % BD-rate against `x264 --keyint 1 --tune zerolatency` at 4:4:4 on `vr-mixed-1024-v2`, a mean deficit of 3.72 dB**, where the criterion is within 1.0 dB (`tools/quality/reports/gates-v2-2026-09-04.md`, `ref/RESULTS-intra.md`). Bit-exactness is green on lavapipe and RADV, untested on Adreno. The two timing criteria and the 24 h fuzz run are unmeasured. |
+| **2** | 10 | Pose-warped inter, DC-plane intra refresh, skip, per-tile reference tracking | Cross-vendor determinism test green; BD-rate within 15 percent of x265 zerolatency single-reference on head-rotation sequences at 100 to 200 Mbit; 5 percent segment loss shows no drift beyond one refresh period; Pico 4 p99 under 7 ms at 90 Hz | **Started early; measured and FAILS.** `warp/` (integer homography, warp kernel, CPU oracle), the `ref/` inter path behind its tool bit, and `transport/shadow` all exist. Cross-vendor determinism is green (`warp.determinism`, `warp.gpu_diff`). The BD-rate criterion has been run as the two-band kill test and fails in both bands on both sequences (+206 % to +548 %), and the warp chain gate produces zero frames above 35 dB (`tools/quality/reports/gates-v2-2026-09-04.md`, `ref/RESULTS-inter.md`). Loss-drift and the Pico 4 p99 are unmeasured. |
 | **3** | 6 | WiVRn NX integration, hybrid mode, telemetry, decode-time governor, FTO review | Glass-to-glass under 40 ms at 150 Mbit on WiFi 6 measured by the existing HUD path; encode plus decode under 12 ms combined; one hour on a Pico 4 without a crash; hybrid mode selectable and functional; FTO review done | **Design only.** `docs/INTEGRATION.md`, `android/` client shell, `hybrid/` simulator and `rc/governor` exist. The FTO review ([ADR-0017](docs/adr/0017-fto-review-scope.md)) has not been performed. |
 | **4** | open | Stereo inter-view, foveated tiles, 4:4:4 fovea, depth stream | At least 25 percent bitrate saving at equal FovVideoVDP on the fovea; decoder time no worse than Phase 2 | **Study only.** `stereo/` holds a CPU experiment with recorded simulation results, and `fov/` holds the foveation map generator. Neither is in the codec path. |
 
@@ -35,14 +45,14 @@ does not mean it is complete, correct or wired into anything else.
 | Component | Directory | Normative doc | What exists |
 |---|---|---|---|
 | Reference codec | `ref/` | [spec/](spec/), [docs/SYNTAX.md](docs/SYNTAX.md) | Headers, DCT, rANS, DC-plane intra, encoder and decoder, `nxv-enc` / `nxv-dec` / `nxv-info` tools, tool-bit gating, trained default tables |
-| Conformance vectors | `tests/vectors/` | [spec/09-conformance.md](spec/09-conformance.md) | 32 `.nxv` vectors with an md5 manifest, covering intra, lossless, alpha, `res_level`, custom tables, odd sizes, multi-frame |
+| Conformance vectors | `tests/vectors/` | [spec/09-conformance.md](spec/09-conformance.md) | 56 decode vectors (`vectors.md5`) and 29 rejection vectors (`rejects.md5`), covering intra, inter, lossless, alpha, `res_level`, custom tables, odd sizes and multi-frame. `ref.vectors` checks every one against the manifest |
 | Pose warp | `warp/` | WARP.md (in progress) | Integer homography quantisation, CPU reference warp, warp oracle, `warp_tile.comp` |
 | Transport | `transport/` | [docs/TRANSPORT.md](docs/TRANSPORT.md) | Wire format, packetizer, sender, receiver, AEAD, FEC, multipath, encoder shadow model |
 | Rate control and foveation | `rc/`, `fov/` | [docs/RATECONTROL.md](docs/RATECONTROL.md) | Tile classification, allocation, degradation ladder, decode-time governor, synthesis harness, foveation map generation |
 | Vulkan decoder | `vk/decoder/` | derived from the spec | Pass A (rANS decode) and Pass B (reconstruct) with models, layouts and GLSL, runtime self-test |
 | Vulkan encoder | `vk/encoder/` | derived from the spec | E0 convert, E1 stats, E2 prefix, CPU stats reference, YCbCr 2-plane passthrough |
 | Vulkan common | `vk/common/` | | Context, resources, capability probe, probe JSON |
-| Phase 0 benchmark | `bench/` | `bench/README.md` | Kernels K1 to K6, Android NativeActivity and headless host front ends, thermal mode, self-test, report tooling. Host results recorded; **no device results yet** |
+| Phase 0 benchmark | `bench/` | `bench/README.md` | Kernels K1 to K6, Android NativeActivity and headless host front ends, thermal mode, self-test, report tooling. One host run checked in at `bench/results/results-host.json`; **no device results yet** |
 | Android client | `android/` | [docs/INTEGRATION.md](docs/INTEGRATION.md) | Client shell: UDP receive path, frame ring, HUD, feedback |
 | Stereo inter-view | `stereo/` | [docs/STEREO.md](docs/STEREO.md) | CPU experiment, scene and prediction models, recorded simulation results, FTO scoping notes |
 | Hybrid layering | `hybrid/` | HYBRID.md (in progress) | Python simulator: base, enhancement, warp, panorama, metrics, sweep |
@@ -55,6 +65,37 @@ does not mean it is complete, correct or wired into anything else.
 | Fuzzing | `fuzz/` | [TESTING.md](TESTING.md) | Fuzz drivers |
 | Brand | `brand/` | `brand/README.md` | Logo, mark and social assets |
 | Documentation | `docs/`, root | [GOVERNANCE.md](GOVERNANCE.md) | The paper, the normative spec, ADRs, architecture, glossary, FAQ, threat model, performance and compatibility targets, errata |
+
+## The coding-tool tournament
+
+The measured intra and inter gaps above are the project's open problem, and the work on them is
+happening on branches rather than on `main`. Thirteen `tourney/*` branches each hold an
+independently built coding-tool package, forked from `main`. **They are local branches and have not
+been pushed, and the judge reports live in a sibling worktree directory outside this repository, so
+a clone has neither.** This table is the public record of them until they land. Where two branches
+attack the same ground they were built by two agents in isolation and then judged head to head on
+identical material by a third, against the criteria in `nx-warp-wt/TOURNEY-RULES.md`: BD-rate first,
+then implied decoder GPU cost, then code clarity, spec clarity, and tests and vectors.
+
+| Package | Branches | Judge report | State |
+|---|---|---|---|
+| Transform | `tourney/xform-a`, `tourney/xform-b` | `nx-warp-wt/JUDGE-xform.md` | Judged: merge `xform-a`. Not merged |
+| Intra detail | `tourney/detail-a`, `tourney/detail-b` | `nx-warp-wt/JUDGE-detail.md` | Judged: merge `detail-a` plus nine items from `detail-b`. Not merged |
+| Entropy contexts | `tourney/ctx-a`, `tourney/ctx-b` | `nx-warp-wt/JUDGE-ctx.md` | Judged: merge `ctx-a`'s `CTX_V3` and `ctx-b`'s `TAB_V2`. Not merged |
+| Inter prediction | `tourney/inter-a`, `tourney/inter-b` | `nx-warp-wt/JUDGE-inter.md` | Judged: merge `inter-a` as the base, take three things from `inter-b`. Not merged |
+| Encoder RDO | `tourney/rdo-a`, `tourney/rdo-b` | `nx-warp-wt/JUDGE-rdo.md` | Judged: merge `rdo-b`, then port five things from `rdo-a`. Not merged |
+| Perceptual rate control | `tourney/percept` | none (unpaired) | Results recorded in the branch. Not merged |
+| Sparse coefficients | `tourney/sparse` | none (unpaired) | **Merged into `main`** |
+| Metric set | `tourney/metric` | none (unpaired) | **Merged into `main`** |
+
+Two of the thirteen are in `main`. The other eleven are judged or recorded but unmerged, and the
+merge is the next piece of work; the tool bits several of them claim overlap and have to be
+reconciled during it. Two cautions that the judge reports raise and that carry over to the merge:
+several branches measured themselves with a harness bug that inflated codec bitrates threefold on
+truncated sequences (fixed on `main` in `7576021`), so a branch's own published BD-rate is not
+comparable with anything until the judge re-measured it; and the branch numbers were taken on the
+v1 and v2 corpus generations at different times. Nothing from a tournament branch is claimed in
+this file or in the README until it lands on `main` and is re-measured here.
 
 ## What is blocking what
 

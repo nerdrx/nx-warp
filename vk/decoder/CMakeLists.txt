@@ -14,6 +14,18 @@ endif()
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/passB/CMakeLists.txt)
   add_subdirectory(passB)
 endif()
+# inter/ comes after passB/: it reuses passB's glslc and shader-rule variables
+# rather than finding them a second time.
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/inter/CMakeLists.txt AND NXVW_GLSLC)
+  add_subdirectory(inter)
+endif()
+
+# Pass A's workgroup shape reaches this library too: nxs_tiles_per_group() in
+# passA/syntax_constants.h is what the host uses to size a dispatch, and it has
+# to be the number the shader was built with.
+if(DEFINED NXVW_PASSA_TPG)
+  add_compile_definitions(NXVW_PASSA_TILES_PER_GROUP=${NXVW_PASSA_TPG})
+endif()
 
 if(NOT TARGET nxvw_passA_model OR NOT TARGET nxvw_passB_model)
   message(STATUS "vk/decoder: passA/passB not present, skipping the library")
@@ -44,7 +56,8 @@ set(NXVCVK_DEC_SRC
 # on the targets that produce them.
 set(NXVCVK_DEC_GEN
   ${CMAKE_CURRENT_BINARY_DIR}/passA/generated
-  ${CMAKE_CURRENT_BINARY_DIR}/passB/generated)
+  ${CMAKE_CURRENT_BINARY_DIR}/passB/generated
+  ${CMAKE_CURRENT_BINARY_DIR}/inter/generated)
 
 function(nxvcvk_dec_configure tgt)
   target_include_directories(${tgt} PUBLIC
@@ -67,7 +80,8 @@ endfunction()
 
 if(Vulkan_FOUND OR (NXVCVK_DEC_INCLUDE AND NXVCVK_DEC_LIB))
   add_library(nxvc_vk_decoder STATIC ${NXVCVK_DEC_SRC})
-  add_dependencies(nxvc_vk_decoder nxvw_passA_spv nxvw_passB_spv)
+  add_dependencies(nxvc_vk_decoder nxvw_passA_spv nxvw_passB_spv
+                   nxvw_inter_spv)
   nxvcvk_dec_configure(nxvc_vk_decoder)
   # Only headers are taken from passA/ and passB/ -- the layout structs, the
   # syntax constants and the inline geometry helpers are all `inline` or

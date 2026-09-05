@@ -27,6 +27,16 @@ struct Shared {
     int coef_base[kMaxSlots * kMaxPlanes];
     int nunits[kMaxSlots];
     int tskip[kMaxSlots];
+    // [minor 6] tile-header word1 bit 28, XFORM_4X4_SPLIT.
+    int split4[kMaxSlots];
+    // [inter] INTRA_DIR's mode unit is a property of the TILE, not the frame:
+    // an inter tile's prediction is the warp and it codes no modes
+    // ([SYN] 13.3, ref/src/codec.cpp TileCoder::setup()).
+    int dir[kMaxSlots];
+    // [minor 6] XFORM_LARGE: the tile's transform size and the per-plane block
+    // edge it implies.
+    int xform[kMaxSlots];
+    int bsize[kMaxSlots * kMaxPlanes];
     int active[kMaxSlots];
     int mode_base[kMaxSlots];
     // [sparse] Unit lengths, accumulated per tile slot and flushed once.
@@ -37,6 +47,16 @@ struct Shared {
     uint32_t ok[kMaxSlots];
     uint32_t renorm[kMaxSlots];
     uint32_t any;
+    // [entropy-lite] The Lite path's per-unit working set; see the matching
+    // block in rans_decode.comp.  A Lite workgroup holds ONE tile, so the
+    // eight rANS slots collapse to slot 0.
+    uint32_t lflag[kLiteUnitsPad];
+    uint32_t lpp[kLiteUnitsPad];
+    uint32_t lsum[kLiteUnitsPad];
+    uint32_t lsoff[kLiteUnitsPad];
+    uint32_t lblk[kWorkgroupSize];
+    uint32_t lgoff[kLiteMaxGroups];
+    uint32_t lgmask, ltotal, lbase, lbits, lh1, lp, ls, lb;
 };
 
 // ---------------------------------------------------------------------------
@@ -52,6 +72,10 @@ struct Thread {
     int stride;
     int nunits;
     int last, pos_sp, prev_class, last_cls, mag;
+    // [minor 6] last_shift_of(ncoef): 0 up to 64 coefficients, 2 at 16x16 and
+    // 4 at 32x32.  It scales the LAST classes and the LEVEL bands to the
+    // unit's size.  [SYN] 9.2.1 / 9.3.1.
+    int lshift;
     int esc_j, esc_bits, esc_done;
     uint32_t esc_acc;
     int u_ncoef, u_scan, u_ctx_cbf, u_ctx_last, u_coef;
@@ -59,7 +83,18 @@ struct Thread {
     int u_ctx_level;
     // [v3] mode unit: kCtxNone = bypass coded, otherwise the MODE symbol.
     int u_ctx_mode;
+    // [entropy-lite] UNIT_COEF (0) or UNIT_MODE (1); the Lite path resolves a
+    // unit without a state machine and needs the kind as a field.
+    int u_kind;
     int u_nbx, u_modes, mb, mpm;
+    // [minor 6] XFORM_4X4_SPLIT: the unit's right to code a split flag, the
+    // flag it decoded, and the plane/block the flag belongs to.
+    int u_split_present, split, u_pidx, u_blk;
+    // [minor 6] INTRA_CFL: the mode unit's alphabet, 9 or 10 (chroma only).
+    int u_nmodes;
+    // [minor 6] CTX_V3: the unit's class and neighbour group, and the lane's
+    // two registers of neighbour state.  [SYN] 9.9.
+    int ctx_v3, u_ucls, u_ngrp, nbr, ngrp;
     // [v3] sign data hiding, SYNTAX.md 9.7.
     int u_sdh, hide, sum_abs, hide_mag;
     int slot;
@@ -79,6 +114,8 @@ constexpr int kPhCbf = 0, kPhLast = 1, kPhLastRaw = 2, kPhLevel = 3;
 constexpr int kPhEscPrefix = 4, kPhEscSuffix = 5, kPhSign = 6, kPhDone = 7;
 // [v3] mode-unit phases, ref/src/entropy.h LaneMachine::Phase.
 constexpr int kPhModeSym = 8, kPhModeFlag = 9, kPhModeIdx = 10;
+// [minor 6] XFORM_4X4_SPLIT's 1-bit flag between the CBF and the LAST.
+constexpr int kPhSplit = 11;
 
 // ---------------------------------------------------------------------------
 // Bitstream access
@@ -111,6 +148,10 @@ uint32_t load_u16be(const Ctx &c, uint32_t o) {
 }
 
 int scan_index(const Ctx &c, int scan_id, int p) {
+    // [minor 6] The two large zigzags are a rule, not a table, and are reached
+    // only by the dense coefficient layout.
+    if (scan_id == kScanZigzag32) return nxs_zigzag_pos_to_raster(32, p);
+    if (scan_id == kScanZigzag16) return nxs_zigzag_pos_to_raster(16, p);
     return int(c.sh.scan[uint32_t(scan_id * kScanStride + p)]);
 }
 
@@ -137,6 +178,15 @@ void store_mode(Ctx &c, const Thread &g, int b, int mode) {
         (w & ~(kModeMask << sh)) | ((uint32_t(mode) & kModeMask) << sh);
 }
 
+// [minor 6] Publish a block's 4x4 split flag to Pass B.  Blocks of one plane
+// are spread over every lane, so unlike a mode word this one is shared and
+// the shader's write is an atomicOr; the model is single-threaded per round
+// and reproduces the same value.
+void store_split(Ctx &c, const Thread &g, int p, int b) {
+    c.out->modes[uint32_t(c.sh.mode_base[g.slot] + nxs_split_word(p, b))] |=
+        1u << uint32_t(nxs_split_shift(b));
+}
+
 // [REF] entropy.cpp mpm_of(): left and above inside the same unit.
 int mpm_now(Ctx &c, const Thread &g) {
     int bx = g.mb % g.u_nbx, by = g.mb / g.u_nbx;
@@ -161,14 +211,22 @@ void begin_unit(Ctx &c, Thread &g) {
     int k = g.ui - c.sh.unit_base[base + p];
     int nb = c.sh.nb[g.slot * kMaxPlanes + p];
     int ndc = nb * nb;
+    // [minor 6] the plane's transform edge and coefficient count.
+    int bs = c.sh.bsize[g.slot * kMaxPlanes + p];
+    int nc = bs * bs;
     int chroma = (p == 1 || p == 2) ? 1 : 0;
     const bool ctx_v2 = (c.in->tools & kToolFlagCtxV2) != 0u;
-    const bool dir = (c.in->tools & kToolFlagIntraDir) != 0u;
+    const bool dir = c.sh.dir[g.slot] != 0;   // [inter] per tile
+    g.ctx_v3 = (c.in->tools & kToolFlagCtxV3) != 0u ? 1 : 0;
     g.u_sdh = (c.in->tools & kToolFlagSignHide) != 0u ? 1 : 0;
     g.u_ctx_mode = kCtxNone;
+    g.u_split_present = 0;
+    g.split = 0;
+    g.u_pidx = p;
 
     if (k == 0) {
         g.u_ncoef = ndc;
+        g.lshift = nxs_last_shift_of(ndc);
         g.u_scan = nxs_scan_id(ndc, 0);
         g.u_coef = c.sh.coef_base[g.slot * kMaxPlanes + p];
         g.u_ctx_cbf = ctx_v2 ? kCtxCbfDc
@@ -176,6 +234,11 @@ void begin_unit(Ctx &c, Thread &g) {
         g.u_ctx_last = ctx_v2 ? kCtxLastDc
                               : (chroma != 0 ? kCtxLastChroma : kCtxLastLuma);
         g.u_ctx_level = ctx_v2 ? kCtxLevelDc : kCtxNone;
+        // [minor 6] The DC plane is its own class and belongs to no neighbour
+        // group, so it neither publishes a class nor consumes one.
+        g.u_ucls = kUclsDc;
+        g.u_ngrp = 0;
+        if (g.u_ngrp != g.ngrp) { g.ngrp = g.u_ngrp; g.nbr = 0; }
         g.phase = kPhCbf;
         return;
     }
@@ -183,18 +246,29 @@ void begin_unit(Ctx &c, Thread &g) {
         g.u_nbx = nb;
         g.u_modes = c.sh.mode_base[g.slot] + p * int(kModeWordsPerPlane);
         g.u_ctx_mode = ctx_v2 ? kCtxMode : kCtxNone;
+        g.u_nmodes = ((c.in->tools & kToolFlagCfl) != 0u && chroma != 0)
+                         ? kNumIntraModesCfl : kNumIntraModes;
+        g.u_ngrp = 0;
+        if (g.u_ngrp != g.ngrp) { g.ngrp = g.u_ngrp; g.nbr = 0; }
         g.mb = 0;
         g.mpm = mpm_now(c, g);
         g.phase = g.u_ctx_mode != kCtxNone ? kPhModeSym : kPhModeFlag;
         return;
     }
     int b = k - (dir ? 2 : 1);
-    g.u_ncoef = kCoefPerBlock;
-    g.u_scan = nxs_scan_id(kCoefPerBlock, c.sh.tskip[g.slot]);
-    g.u_coef = c.sh.coef_base[g.slot * kMaxPlanes + p] + ndc + b * kCoefPerBlock;
+    g.u_ncoef = nc;
+    g.lshift = nxs_last_shift_of(nc);
+    g.u_scan = nxs_scan_id(nc, c.sh.tskip[g.slot]);
+    g.u_coef = c.sh.coef_base[g.slot * kMaxPlanes + p] + ndc + b * nc;
     g.u_ctx_cbf = chroma != 0 ? kCtxCbfChroma : kCtxCbfLuma;
     g.u_ctx_last = chroma != 0 ? kCtxLastChroma : kCtxLastLuma;
     g.u_ctx_level = kCtxNone;
+    g.u_split_present = c.sh.split4[g.slot];
+    g.u_blk = b;
+    // [minor 6] The neighbour group is the plane.
+    g.u_ucls = chroma != 0 ? kUclsChroma : kUclsLuma;
+    g.u_ngrp = g.ctx_v3 != 0 ? p + 1 : 0;
+    if (g.u_ngrp != g.ngrp) { g.ngrp = g.u_ngrp; g.nbr = 0; }
     g.phase = kPhCbf;
 }
 
@@ -209,10 +283,13 @@ void store_coef_at(Ctx &c, Thread &g, int scan_pos, int value) {
 // [sparse] Publish the unit's coefficient count, LAST + 1.
 void store_unit_len(Ctx &c, Thread &g, int ui, int len) {
     if (!c.in->sparse) return;
+    const uint32_t perWord =
+        uint32_t(nxs_unit_lens_per_word(c.sh.xform[g.slot]));
+    const uint32_t bits = uint32_t(nxs_unit_len_bits(c.sh.xform[g.slot]));
     c.sh.ulen[uint32_t(g.slot) * kUnitLenWordsPerTile +
-              uint32_t(ui) / kUnitLensPerWord] |=
-        (uint32_t(len) & kUnitLenMask)
-        << ((uint32_t(ui) % kUnitLensPerWord) * kUnitLenBits);
+              uint32_t(ui) / perWord] |=
+        (uint32_t(len) & nxs_unit_len_mask(c.sh.xform[g.slot]))
+        << ((uint32_t(ui) % perWord) * bits);
 }
 
 void begin_levels(Ctx &c, Thread &g) {
@@ -225,6 +302,14 @@ void begin_levels(Ctx &c, Thread &g) {
     g.phase = kPhLevel;
 }
 
+// [minor 6] [REF] entropy.cpp finish_coef_unit(): publish the unit's neighbour
+// class to the lane and move on.  Both inputs are values this lane has just
+// decoded; a unit outside a neighbour group publishes nothing.
+void finish_coef_unit(Ctx &c, Thread &g, int cbf) {
+    if (g.u_ngrp != 0) g.nbr = nxs_nbr_class_of(cbf, g.last);
+    begin_next_unit(c, g);
+}
+
 void advance_pos(Ctx &c, Thread &g) {
     int m = g.mag < 0 ? -g.mag : g.mag;
     g.prev_class = nxs_level_class(m);
@@ -232,7 +317,7 @@ void advance_pos(Ctx &c, Thread &g) {
     if (g.pos_sp == 0) {
         if (g.hide != 0 && (g.sum_abs & 1) != 0)
             store_coef_at(c, g, g.last, -g.hide_mag);
-        begin_next_unit(c, g);
+        finish_coef_unit(c, g, 1);
     } else {
         --g.pos_sp;
         g.phase = kPhLevel;
@@ -247,6 +332,10 @@ void lane_init(Ctx &c, Thread &g, int lane) {
     g.u_ctx_level = kCtxNone; g.u_ctx_mode = kCtxNone;
     g.u_nbx = 0; g.u_modes = 0; g.mb = 0; g.mpm = 0;
     g.u_sdh = 0; g.hide = 0; g.sum_abs = 0; g.hide_mag = 0;
+    g.u_split_present = 0; g.split = 0; g.u_pidx = 0; g.u_blk = 0;
+    g.u_nmodes = kNumIntraModes;
+    g.ctx_v3 = 0; g.u_ucls = kUclsLuma; g.u_ngrp = 0; g.nbr = 0; g.ngrp = 0;
+    g.lshift = 0;
     if (g.ui >= g.nunits) { g.phase = kPhDone; return; }
     begin_unit(c, g);
 }
@@ -254,16 +343,31 @@ void lane_init(Ctx &c, Thread &g, int lane) {
 bool lane_next(const Thread &g, int &out_kind, int &out_arg) {
     out_kind = 0; out_arg = 0;
     if (g.phase == kPhDone) return false;
-    if (g.phase == kPhCbf)  { out_kind = 0; out_arg = g.u_ctx_cbf;  return true; }
-    if (g.phase == kPhLast) { out_kind = 0; out_arg = g.u_ctx_last; return true; }
-    if (g.phase == kPhLastRaw) {
-        out_kind = 1; out_arg = kLastRawBits[g.last_cls]; return true;
+    if (g.phase == kPhCbf) {
+        out_kind = 0;
+        out_arg = g.ctx_v3 != 0 ? nxs_v3_ctx_cbf(g.u_ucls, g.nbr) : g.u_ctx_cbf;
+        return true;
     }
+    if (g.phase == kPhLast) {
+        out_kind = 0;
+        out_arg = g.ctx_v3 != 0 ? nxs_v3_ctx_last(g.u_ucls, g.nbr)
+                                : g.u_ctx_last;
+        return true;
+    }
+    if (g.phase == kPhLastRaw) {
+        out_kind = 1; out_arg = kLastRawBits[g.last_cls] + g.lshift; return true;
+    }
+    // [minor 6] the 4x4-split flag: one bypass bit, after a nonzero CBF.
+    if (g.phase == kPhSplit) { out_kind = 1; out_arg = 1; return true; }
     if (g.phase == kPhLevel) {
         out_kind = 0;
-        out_arg = g.u_ctx_level != kCtxNone
-                      ? g.u_ctx_level
-                      : nxs_level_ctx(g.pos_sp, g.prev_class);
+        const int bsp = nxs_band_pos(g.pos_sp, g.split) >> g.lshift;
+        out_arg = g.ctx_v3 != 0
+                      ? nxs_v3_ctx_level(g.u_ucls, g.pos_sp, bsp, g.last,
+                                         g.prev_class)
+                      : (g.u_ctx_level != kCtxNone
+                             ? g.u_ctx_level
+                             : nxs_level_ctx(bsp, g.prev_class));
         return true;
     }
     if (g.phase == kPhModeSym) { out_kind = 0; out_arg = g.u_ctx_mode; return true; }
@@ -306,8 +410,10 @@ void mode_step(Ctx &c, Thread &g, int mode) {
 
 void lane_feed(Ctx &c, Thread &g, uint32_t v) {
     if (g.phase == kPhModeSym) {
-        if (v >= uint32_t(kNumIntraModes)) { fail(c, g, kStatusBadSymbol); return; }
-        mode_step(c, g, v == 0u ? g.mpm : nxs_nonmpm_mode(g.mpm, int(v) - 1));
+        if (v >= uint32_t(g.u_nmodes)) { fail(c, g, kStatusBadSymbol); return; }
+        mode_step(c, g, v == 0u ? g.mpm
+                                : nxs_nonmpm_mode_n(g.mpm, int(v) - 1,
+                                                    g.u_nmodes));
         return;
     }
     if (g.phase == kPhModeFlag) {
@@ -317,17 +423,31 @@ void lane_feed(Ctx &c, Thread &g, uint32_t v) {
         return;
     }
     if (g.phase == kPhModeIdx) {
-        if (v > 7u) { fail(c, g, kStatusBadSymbol); return; }
-        mode_step(c, g, nxs_nonmpm_mode(g.mpm, int(v)));
+        if (v >= uint32_t(g.u_nmodes - 1)) { fail(c, g, kStatusBadSymbol); return; }
+        mode_step(c, g, nxs_nonmpm_mode_n(g.mpm, int(v), g.u_nmodes));
         return;
     }
     if (g.phase == kPhCbf) {
         if (v > 1u) { fail(c, g, kStatusBadSymbol); return; }
         if (v == 0u) {
-            begin_next_unit(c, g);
+            finish_coef_unit(c, g, 0);
             return;
         }
         c.out->cbf[g.cbf_off + uint32_t(g.ui) / 32u] |= 1u << (uint32_t(g.ui) & 31u);
+        // [minor 6] [REF] entropy.cpp feed(kCbf): the split flag comes between
+        // the CBF and the LAST, and only on a coded unit.
+        if (g.u_split_present != 0) { g.phase = kPhSplit; return; }
+        if (g.u_ncoef == 1) { g.last = 0; begin_levels(c, g); return; }
+        g.phase = kPhLast;
+        return;
+    }
+    if (g.phase == kPhSplit) {
+        if (v > 1u) { fail(c, g, kStatusBadSymbol); return; }
+        g.split = int(v);
+        if (g.split != 0) {
+            g.u_scan = kScan4Split;
+            store_split(c, g, g.u_pidx, g.u_blk);
+        }
         if (g.u_ncoef == 1) { g.last = 0; begin_levels(c, g); return; }
         g.phase = kPhLast;
         return;
@@ -335,15 +455,20 @@ void lane_feed(Ctx &c, Thread &g, uint32_t v) {
     if (g.phase == kPhLast) {
         if (v > uint32_t(kLastMaxClass)) { fail(c, g, kStatusBadSymbol); return; }
         g.last_cls = int(v);
-        int base = kLastBase[g.last_cls];
+        // [minor 6] the class names a scan GROUP; `lshift` raw bits name the
+        // position inside it.
+        int base = kLastBase[g.last_cls] << g.lshift;
         if (base >= g.u_ncoef) { fail(c, g, kStatusBadSymbol); return; }
-        if (kLastRawBits[g.last_cls] > 0) { g.phase = kPhLastRaw; return; }
+        if (kLastRawBits[g.last_cls] + g.lshift > 0) {
+            g.phase = kPhLastRaw;
+            return;
+        }
         g.last = base;
         begin_levels(c, g);
         return;
     }
     if (g.phase == kPhLastRaw) {
-        g.last = kLastBase[g.last_cls] + int(v);
+        g.last = (kLastBase[g.last_cls] << g.lshift) + int(v);
         if (g.last >= g.u_ncoef) { fail(c, g, kStatusBadSymbol); return; }
         begin_levels(c, g);
         return;
@@ -475,6 +600,13 @@ void run_group(Ctx &c, uint32_t workgroup_id) {
         uint32_t table_set = (w1 >> kThTableSetShift) & kThTableSetMask;
         uint32_t nsub_log2 = (w1 >> kThNsubLog2Shift) & kThNsubLog2Mask;
         sh.tskip[slot] = int((w1 >> kThTskipShift) & kThTskipMask);
+        // [minor 6] word1 bit 28; gated by tool bit 19 and exclusive with
+        // transform skip (docs/SYNTAX.md 4.1, 6.8).
+        const int sp4 = int((w1 >> kThSplit4Shift) & kThSplit4Mask);
+        sh.split4[slot] = sp4;
+        // [minor 6] word1 bits 29-30, the tile's transform size.
+        const int xf = int((w1 >> kThXformSizeShift) & kThXformSizeMask);
+        sh.xform[slot] = xf;
         sh.tabbase[slot] = table_set * uint32_t(kNumCtx * kNumSym);
 
         uint32_t pay = nxs_tile_payload_offset(g.hdr_off, w1);
@@ -486,21 +618,29 @@ void run_group(Ctx &c, uint32_t workgroup_id) {
 
         int np = nxs_coded_planes(int(c.in->frame_nplanes), alpha_mode);
         sh.np[slot] = np;
-        const int extra = (c.in->tools & kToolFlagIntraDir) != 0u
-                              ? kUnitsPerPlaneExtraDir
-                              : kUnitsPerPlaneExtra;
+        const int tdir = ((c.in->tools & kToolFlagIntraDir) != 0u &&
+                          int((w1 >> kThModeShift) & kThModeMask) ==
+                              kTileModeIntra)
+                             ? 1 : 0;
+        sh.dir[slot] = tdir;
+        const int extra = tdir != 0 ? kUnitsPerPlaneExtraDir
+                                    : kUnitsPerPlaneExtra;
         int ub = 0, cb = 0;
         for (int p = 0; p < kMaxPlanes; ++p) {
             sh.unit_base[slot * (kMaxPlanes + 1) + p] = ub;
             sh.coef_base[slot * kMaxPlanes + p] = cb;
             if (p < np) {
-                int nb = nxs_plane_size(p, res_level, chroma444) / kBlockSize;
+                const int psz = nxs_plane_size(p, res_level, chroma444);
+                const int bs = nxs_block_edge_for(xf, psz);
+                const int nb = psz / bs;
+                sh.bsize[slot * kMaxPlanes + p] = bs;
                 sh.nb[slot * kMaxPlanes + p] = nb;
                 int ndc = nb * nb;
                 ub += extra + ndc;
-                cb += ndc + ndc * kCoefPerBlock;
+                cb += ndc + ndc * bs * bs;
             } else {
                 sh.nb[slot * kMaxPlanes + p] = 0;
+                sh.bsize[slot * kMaxPlanes + p] = kBlockSize;
             }
         }
         sh.unit_base[slot * (kMaxPlanes + 1) + kMaxPlanes] = ub;
@@ -509,6 +649,11 @@ void run_group(Ctx &c, uint32_t workgroup_id) {
         sh.active[slot] = nactive;
         if (nxs_tile_header_reserved_bad(w0, w1) != 0 ||
             (1u << nsub_log2) != kLanesN ||
+            (sp4 != 0 && ((c.in->tools & kToolFlagSplit4) == 0u ||
+                          sh.tskip[slot] != 0 || xf != 0)) ||
+            (xf != 0 && ((c.in->tools & kToolFlagXformLarge) == 0u ||
+                         sh.tskip[slot] != 0)) ||
+            (xf != 0 && ub > kMaxUnitsPerTileLarge) ||
             pay + uint32_t(nactive) * kInitBytesPerLane > sh.end[slot]) {
             sh.ok[slot] = kStatusBadHeader;
         }
@@ -530,7 +675,7 @@ void run_group(Ctx &c, uint32_t workgroup_id) {
         }
         for (uint32_t i = uint32_t(g.lane); i < c.in->cbf_words; i += kLanesN)
             c.out->cbf[g.cbf_off + i] = 0u;
-        for (uint32_t i = uint32_t(g.lane); i < kModeWordsPerTile; i += kLanesN)
+        for (uint32_t i = uint32_t(g.lane); i < kModeRegionUints; i += kLanesN)
             c.out->modes[uint32_t(c.sh.mode_base[g.slot]) + i] = 0u;
     }
 
@@ -660,14 +805,394 @@ void run_group(Ctx &c, uint32_t workgroup_id) {
     }
 }
 
+// ===========================================================================
+// [entropy-lite] lite_main() of rans_decode.comp, line for line
+// ===========================================================================
+// NORMATIVE SOURCE: ref/src/entropy_lite.{h,cpp}.  The kernel's comments
+// describe the five sections and why every offset is computable; this is the
+// same code with the 64 hardware threads written out as loops over `tid`.
+
+uint32_t lite_get(const Ctx &c, uint32_t bitpos, uint32_t k) {
+    if (k == 0u) return 0u;
+    uint32_t o = c.sh.lbase + (bitpos >> 3u);
+    uint32_t sh = bitpos & 7u;
+    uint32_t w = (load_byte(c, o) << 24u) | (load_byte(c, o + 1u) << 16u) |
+                 (load_byte(c, o + 2u) << 8u) | load_byte(c, o + 3u);
+    return (w << sh) >> (32u - k);
+}
+
+void lite_unit(Ctx &c, Thread &g, int u) {
+    int base = g.slot * (kMaxPlanes + 1);
+    int p = 0;
+    for (int q = 1; q < c.sh.np[g.slot]; ++q)
+        if (c.sh.unit_base[base + q] <= u) p = q;
+
+    int k = u - c.sh.unit_base[base + p];
+    int nb = c.sh.nb[g.slot * kMaxPlanes + p];
+    int ndc = nb * nb;
+    const bool dir = c.sh.dir[g.slot] != 0;   // [inter] per tile
+
+    if (k == 0) {
+        g.u_kind = 0;
+        g.u_ncoef = ndc;
+        g.lshift = nxs_last_shift_of(ndc);
+        g.u_scan = nxs_scan_id(ndc, 0);
+        g.u_coef = c.sh.coef_base[g.slot * kMaxPlanes + p];
+        return;
+    }
+    if (dir && k == 1) {
+        g.u_kind = 1;
+        g.u_nbx = nb;
+        g.u_modes = c.sh.mode_base[g.slot] + p * int(kModeWordsPerPlane);
+        return;
+    }
+    int b = k - (dir ? 2 : 1);
+    const int bs = c.sh.bsize[g.slot * kMaxPlanes + p];
+    g.u_kind = 0;
+    g.u_ncoef = bs * bs;
+    g.lshift = nxs_last_shift_of(g.u_ncoef);
+    g.u_scan = nxs_scan_id(g.u_ncoef, c.sh.tskip[g.slot]);
+    g.u_coef = c.sh.coef_base[g.slot * kMaxPlanes + p] + ndc + b * g.u_ncoef;
+}
+
+// Widths -> exclusive bit offsets, total into sh.ltotal.  Same two-level
+// scan the kernel runs; the barriers become phase boundaries here.
+void lite_scan(Ctx &c) {
+    Shared &sh = c.sh;
+    uint32_t sum[kWorkgroupSize];
+    for (uint32_t tid = 0; tid < kWorkgroupSize; ++tid) {
+        uint32_t s = 0;
+        for (int k = 0; k < kLiteUnitsPerThread; ++k) {
+            uint32_t i = tid * uint32_t(kLiteUnitsPerThread) + uint32_t(k);
+            uint32_t w = sh.lsum[i];
+            sh.lsum[i] = s;
+            s += w;
+        }
+        sum[tid] = s;
+        sh.lblk[tid] = s;
+    }
+    for (uint32_t d = 1; d < kWorkgroupSize; d <<= 1) {
+        uint32_t v[kWorkgroupSize];
+        for (uint32_t tid = 0; tid < kWorkgroupSize; ++tid)
+            v[tid] = tid >= d ? sh.lblk[tid - d] : 0u;
+        for (uint32_t tid = 0; tid < kWorkgroupSize; ++tid)
+            sh.lblk[tid] += v[tid];
+    }
+    for (uint32_t tid = 0; tid < kWorkgroupSize; ++tid) {
+        uint32_t blk = sh.lblk[tid] - sum[tid];
+        if (tid == kWorkgroupSize - 1) sh.ltotal = sh.lblk[tid];
+        for (int k = 0; k < kLiteUnitsPerThread; ++k)
+            sh.lsum[tid * uint32_t(kLiteUnitsPerThread) + uint32_t(k)] += blk;
+    }
+}
+
+void run_group_lite(Ctx &c, uint32_t workgroup_id) {
+    Shared &sh = c.sh;
+    const uint32_t tile = workgroup_id;
+    if (tile >= c.in->num_tiles) return;
+
+    for (uint32_t lid = 0; lid < kWorkgroupSize; ++lid) {
+        Thread &g = c.th[lid];
+        g = Thread{};
+        g.slot = 0;
+        g.lane = int(lid);
+        g.in_group = true;
+        g.valid = true;
+        g.tile = tile;
+    }
+    const TileDesc &d = c.in->tiles[tile];
+    for (uint32_t lid = 0; lid < kWorkgroupSize; ++lid) {
+        Thread &g = c.th[lid];
+        g.hdr_off = d.bits_offset;
+        g.bs_len = d.bits_length;
+        g.coef_off = d.coef_offset;
+        g.cbf_off = d.cbf_offset;
+        g.ulen_off = d.unit_len_offset;
+    }
+
+    // The scan tables; ENTROPY_LITE reads no probability tables at all.
+    for (uint32_t i = 0; i < uint32_t(kNumScans * kScanStride); ++i) {
+        uint32_t t = i / uint32_t(kScanStride);
+        uint32_t p = i % uint32_t(kScanStride);
+        uint32_t v = p;
+        if (t == uint32_t(kScanZigzag8)) v = uint32_t(kZigzag8[p]);
+        else if (t == uint32_t(kScanZigzag4)) v = (p < 16u) ? uint32_t(kZigzag4[p]) : p;
+        sh.scan[i] = v;
+    }
+
+    // --- tile header -------------------------------------------------------
+    {
+        Thread &g = c.th[0];
+        sh.ok[0] = kStatusOk;
+        sh.mode_base[0] = int(d.mode_offset);
+        uint32_t w0 = load_u32le(c, g.hdr_off);
+        uint32_t w1 = load_u32le(c, g.hdr_off + 4u);
+        int res_level = int((w1 >> kThResLevelShift) & kThResLevelMask);
+        int chroma444 = int((w1 >> kThChroma444Shift) & kThChroma444Mask);
+        int alpha_mode = int((w1 >> kThAlphaModeShift) & kThAlphaModeMask);
+        uint32_t variant = (w1 >> kThTableSetShift) & kThTableSetMask;
+        uint32_t nsub_log2 = (w1 >> kThNsubLog2Shift) & kThNsubLog2Mask;
+        sh.tskip[0] = int((w1 >> kThTskipShift) & kThTskipMask);
+        // [minor 6] The Lite syntax codes no split flag; the transform size is
+        // an ordinary tile-header field and applies to it unchanged.
+        sh.split4[0] = 0;
+        const int xf = int((w1 >> kThXformSizeShift) & kThXformSizeMask);
+        sh.xform[0] = xf;
+
+        uint32_t pay = nxs_tile_payload_offset(g.hdr_off, w1);
+        uint32_t paylen = (w0 >> kThPayloadLenShift) & kThPayloadLenMask;
+        uint32_t tile_end = g.hdr_off + g.bs_len;
+        uint32_t pay_end = pay + paylen;
+        uint32_t pend = pay_end < tile_end ? pay_end : tile_end;
+        sh.lbase = pay;
+        sh.lbits = pend > pay ? (pend - pay) * 8u : 0u;
+
+        int np = nxs_coded_planes(int(c.in->frame_nplanes), alpha_mode);
+        sh.np[0] = np;
+        const int tdir = ((c.in->tools & kToolFlagIntraDir) != 0u &&
+                          int((w1 >> kThModeShift) & kThModeMask) ==
+                              kTileModeIntra)
+                             ? 1 : 0;
+        sh.dir[0] = tdir;
+        const int extra = tdir != 0 ? kUnitsPerPlaneExtraDir
+                                    : kUnitsPerPlaneExtra;
+        int ub = 0, cb = 0;
+        for (int p = 0; p < kMaxPlanes; ++p) {
+            sh.unit_base[p] = ub;
+            sh.coef_base[p] = cb;
+            if (p < np) {
+                const int psz = nxs_plane_size(p, res_level, chroma444);
+                const int bs = nxs_block_edge_for(xf, psz);
+                const int nb = psz / bs;
+                sh.bsize[p] = bs;
+                sh.nb[p] = nb;
+                int ndc = nb * nb;
+                ub += extra + ndc;
+                cb += ndc + ndc * bs * bs;
+            } else {
+                sh.nb[p] = 0;
+                sh.bsize[p] = kBlockSize;
+            }
+        }
+        sh.unit_base[kMaxPlanes] = ub;
+        sh.nunits[0] = ub;
+
+        if (nxs_tile_header_reserved_bad(w0, w1) != 0 ||
+            variant != uint32_t(kLiteFixed) || nsub_log2 != kLanesLog2 ||
+            (xf != 0 && ((c.in->tools & kToolFlagXformLarge) == 0u ||
+                         sh.tskip[0] != 0 || ub > kMaxUnitsPerTileLarge)) ||
+            ub <= 0 || ub > kMaxUnitsPerTile || pend < pay)
+            sh.ok[0] = kStatusBadHeader;
+    }
+
+    // --- zero the CBF, length and mode words -------------------------------
+    for (uint32_t lid = 0; lid < kWorkgroupSize; ++lid) {
+        Thread &g = c.th[lid];
+        if (!c.in->sparse) {
+            for (uint32_t i = lid; i < c.in->coef_stride; i += kWorkgroupSize)
+                c.out->coef[g.coef_off + i] = 0;
+        } else {
+            for (uint32_t i = lid; i < kUnitLenWordsPerTile; i += kWorkgroupSize)
+                sh.ulen[i] = 0u;
+        }
+        for (uint32_t i = lid; i < c.in->cbf_words; i += kWorkgroupSize)
+            c.out->cbf[g.cbf_off + i] = 0u;
+        for (uint32_t i = lid; i < kModeRegionUints; i += kWorkgroupSize)
+            c.out->modes[uint32_t(sh.mode_base[0]) + i] = 0u;
+    }
+
+    bool ok = sh.ok[0] == kStatusOk;
+    const int nunits = sh.nunits[0];
+
+    // --- H0 ----------------------------------------------------------------
+    if (ok) {
+        int ngroups = (nunits + kLiteCbfGroup - 1) / kLiteCbfGroup;
+        uint32_t h1 = nxs_align8(uint32_t(ngroups));
+        uint32_t acc = 0u;
+        uint32_t gmask = 0u;
+        for (int gi = 0; gi < ngroups; ++gi) {
+            sh.lgoff[gi] = acc;
+            if (lite_get(c, uint32_t(gi), 1u) != 0u) {
+                gmask |= 1u << uint32_t(gi);
+                int lo = gi * kLiteCbfGroup;
+                int hi = lo + kLiteCbfGroup < nunits ? lo + kLiteCbfGroup : nunits;
+                acc += uint32_t(hi - lo);
+            }
+        }
+        sh.lgmask = gmask;
+        sh.lh1 = h1;
+        sh.lp = h1 + nxs_align8(acc);
+        if (h1 > sh.lbits || h1 + acc > sh.lbits) sh.ok[0] = kStatusTruncated;
+    }
+    ok = sh.ok[0] == kStatusOk;
+
+    // --- H1, and section P's widths ----------------------------------------
+    for (uint32_t lid = 0; lid < kWorkgroupSize; ++lid) {
+        Thread &g = c.th[lid];
+        for (uint32_t u = lid; u < uint32_t(kLiteUnitsPad); u += kWorkgroupSize) {
+            uint32_t cf = 0u;
+            if (ok && u < uint32_t(nunits)) {
+                uint32_t gi = u / uint32_t(kLiteCbfGroup);
+                if ((sh.lgmask & (1u << gi)) != 0u)
+                    cf = lite_get(c, sh.lh1 + sh.lgoff[gi] +
+                                         (u % uint32_t(kLiteCbfGroup)), 1u);
+            }
+            sh.lflag[u] = cf;
+            uint32_t w = 0u;
+            if (cf != 0u) {
+                lite_unit(c, g, int(u));
+                if (g.u_kind == 0)
+                    w = uint32_t(nxs_lite_last_bits(g.u_ncoef) + kLiteParamBits);
+            }
+            sh.lsum[u] = w;
+        }
+    }
+    lite_scan(c);
+    if (ok) {
+        sh.ls = sh.lp + nxs_align8(sh.ltotal);
+        if (sh.ls > sh.lbits) sh.ok[0] = kStatusTruncated;
+    }
+    ok = sh.ok[0] == kStatusOk;
+
+    // --- P, and section S's widths -----------------------------------------
+    for (uint32_t lid = 0; lid < kWorkgroupSize; ++lid) {
+        Thread &g = c.th[lid];
+        for (uint32_t u = lid; u < uint32_t(kLiteUnitsPad); u += kWorkgroupSize) {
+            uint32_t sw = 0u, pp = 0u;
+            if (ok && sh.lflag[u] != 0u) {
+                lite_unit(c, g, int(u));
+                if (g.u_kind == 1) {
+                    sw = uint32_t(g.u_nbx * g.u_nbx);
+                } else {
+                    int lb = nxs_lite_last_bits(g.u_ncoef);
+                    uint32_t off = sh.lp + sh.lsum[u];
+                    uint32_t L = lite_get(c, off, uint32_t(lb));
+                    uint32_t cls =
+                        lite_get(c, off + uint32_t(lb), uint32_t(kLiteParamBits));
+                    if (int(L) >= g.u_ncoef) {
+                        fail(c, g, kStatusBadSymbol);
+                    } else {
+                        pp = L | (cls << 16u);
+                        sw = L;
+                    }
+                }
+            }
+            sh.lpp[u] = pp;
+            sh.lsum[u] = sw;
+        }
+    }
+    lite_scan(c);
+    if (ok) {
+        sh.lb = sh.ls + nxs_align8(sh.ltotal);
+        if (sh.lb > sh.lbits) sh.ok[0] = kStatusTruncated;
+    }
+    ok = sh.ok[0] == kStatusOk;
+
+    // --- S, and section B's widths -----------------------------------------
+    for (uint32_t lid = 0; lid < kWorkgroupSize; ++lid) {
+        Thread &g = c.th[lid];
+        for (uint32_t u = lid; u < uint32_t(kLiteUnitsPad); u += kWorkgroupSize) {
+            uint32_t bw = 0u, soff = 0u;
+            if (ok && sh.lflag[u] != 0u) {
+                lite_unit(c, g, int(u));
+                soff = sh.ls + sh.lsum[u];
+                if (g.u_kind == 1) {
+                    int n = g.u_nbx * g.u_nbx;
+                    int nonmpm = 0;
+                    for (int b = 0; b < n; ++b)
+                        if (lite_get(c, soff + uint32_t(b), 1u) == 0u) ++nonmpm;
+                    bw = uint32_t(nonmpm * kModeIdxBits);
+                } else {
+                    int L = int(sh.lpp[u] & 0xffffu);
+                    int cls = int(sh.lpp[u] >> 16u);
+                    int nnz = 1;
+                    for (int p = 0; p < L; ++p)
+                        if (lite_get(c, soff + uint32_t(p), 1u) != 0u) ++nnz;
+                    bw = uint32_t(nnz * (kLiteMagBits[cls] + 1));
+                }
+            }
+            sh.lsoff[u] = soff;
+            sh.lsum[u] = bw;
+        }
+    }
+    lite_scan(c);
+    if (ok && sh.lb + sh.ltotal > sh.lbits) sh.ok[0] = kStatusTruncated;
+    ok = sh.ok[0] == kStatusOk;
+
+    // --- B: the bodies -----------------------------------------------------
+    for (uint32_t lid = 0; lid < kWorkgroupSize; ++lid) {
+        Thread &g = c.th[lid];
+        for (uint32_t u = lid; u < uint32_t(kLiteUnitsPad); u += kWorkgroupSize) {
+            if (!ok || sh.lflag[u] == 0u) continue;
+            lite_unit(c, g, int(u));
+            uint32_t boff = sh.lb + sh.lsum[u];
+            uint32_t soff = sh.lsoff[u];
+
+            if (g.u_kind == 1) {
+                int n = g.u_nbx * g.u_nbx;
+                for (int b = 0; b < n; ++b) {
+                    g.mb = b;
+                    int mpm = mpm_now(c, g);
+                    int m;
+                    if (lite_get(c, soff + uint32_t(b), 1u) != 0u) {
+                        m = mpm;
+                    } else {
+                        uint32_t idx = lite_get(c, boff, uint32_t(kModeIdxBits));
+                        boff += uint32_t(kModeIdxBits);
+                        m = nxs_nonmpm_mode(mpm, int(idx));
+                    }
+                    store_mode(c, g, b, m);
+                }
+                continue;
+            }
+
+            int L = int(sh.lpp[u] & 0xffffu);
+            int cls = int(sh.lpp[u] >> 16u);
+            int mbits = kLiteMagBits[cls];
+            c.out->cbf[g.cbf_off + u / 32u] |= 1u << (u & 31u);
+            g.ui = int(u);
+            store_unit_len(c, g, int(u), L + 1);
+            for (int p = 0; p <= L; ++p) {
+                uint32_t sig = 1u;
+                if (p < L) sig = lite_get(c, soff + uint32_t(p), 1u);
+                if (sig == 0u) {
+                    store_coef_at(c, g, p, 0);
+                    continue;
+                }
+                uint32_t mag = 0u;
+                if (mbits != 0) {
+                    mag = lite_get(c, boff, uint32_t(mbits));
+                    boff += uint32_t(mbits);
+                }
+                if (mag > kLiteMaxMag) { fail(c, g, kStatusBadSymbol); break; }
+                uint32_t sgn = lite_get(c, boff, 1u);
+                boff += 1u;
+                int a = int(mag) + 1;
+                store_coef_at(c, g, p, sgn != 0u ? -a : a);
+            }
+        }
+    }
+
+    c.out->status[tile] = sh.ok[0];
+    if (c.in->sparse)
+        for (uint32_t lid = 0; lid < kWorkgroupSize; ++lid) {
+            Thread &g = c.th[lid];
+            for (uint32_t i = lid; i < kUnitLenWordsPerTile; i += kWorkgroupSize)
+                c.out->unit_lens[g.ulen_off + i] = sh.ulen[i];
+        }
+}
+
 }  // namespace
 
 void decode(const Inputs &in, const Outputs &out) {
     Ctx c;
     c.in = &in;
     c.out = &out;
-    uint32_t groups = group_count(in.num_tiles, in.lanes);
-    for (uint32_t wg = 0; wg < groups; ++wg) run_group(c, wg);
+    uint32_t groups = group_count(in.num_tiles, in.lanes, in.entropy_mode);
+    for (uint32_t wg = 0; wg < groups; ++wg) {
+        if (in.entropy_mode == kEntropyLiteFixed) run_group_lite(c, wg);
+        else run_group(c, wg);
+    }
 }
 
 }  // namespace nxwarp_passA

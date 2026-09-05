@@ -68,12 +68,16 @@ int  g_nunits, g_nlanes, g_active;
 int  g_ndc[NXE_MAX_PLANES], g_nb[NXE_MAX_PLANES];
 int  g_coefoff[NXE_MAX_PLANES], g_ustart[NXE_MAX_PLANES];
 int  g_hasmode;
-int  g_tskip, g_sdh, g_v2;
+int  g_tskip, g_sdh, g_v2, g_v3;
 
 // The unit list of TileCoder::build_units, addressed rather than materialised.
 struct UnitDesc {
     int coef_off, ncoef, kind, nbx, mode_off;
     int ctx_cbf, ctx_last, ctx_level, ctx_mode;
+    // v3: the unit's statistical family, and the neighbour group it belongs
+    // to (plane + 1 for a block unit, 0 for a DC or mode unit and for every
+    // unit under v1/v2).  rans_cpu.h has the reasoning.
+    int ucls, grp;
     bool tskip;
 };
 
@@ -82,6 +86,7 @@ UnitDesc unit_desc(int ui) {
     u.coef_off = 0; u.ncoef = 0; u.kind = 0; u.nbx = 0; u.mode_off = 0;
     u.ctx_cbf = 0; u.ctx_last = 0; u.ctx_level = NXE_CTX_NONE;
     u.ctx_mode = NXE_CTX_NONE; u.tskip = false;
+    u.ucls = NXE_UCLS_LUMA; u.grp = 0;
     int p = 0;
     for (int k = NXE_MAX_PLANES - 1; k >= 0; --k)
         if (ui >= g_ustart[k]) { p = k; break; }
@@ -94,7 +99,11 @@ UnitDesc unit_desc(int ui) {
         u.ncoef = g_ndc[p];
         u.ctx_cbf = g_v2 != 0 ? NXE_CTX_CBF_DC : ccbf;
         u.ctx_last = g_v2 != 0 ? NXE_CTX_LAST_DC : clast;
-        u.ctx_level = g_v2 != 0 ? NXE_CTX_LEVEL_DC : NXE_CTX_NONE;
+        // v3 splits the DC plane's LEVEL at scan position 0, so it stops
+        // being one fixed row and is derived per coefficient instead.
+        u.ctx_level = (g_v2 != 0 && g_v3 == 0) ? NXE_CTX_LEVEL_DC
+                                               : NXE_CTX_NONE;
+        u.ucls = NXE_UCLS_DC;
         return u;
     }
     if (g_hasmode != 0 && rel == 1) {     // the mode unit
@@ -110,6 +119,8 @@ UnitDesc unit_desc(int ui) {
     u.tskip = g_tskip != 0;
     u.ctx_cbf = ccbf;
     u.ctx_last = clast;
+    u.ucls = chroma ? NXE_UCLS_CHROMA : NXE_UCLS_LUMA;
+    u.grp = g_v3 != 0 ? p + 1 : 0;
     return u;
 }
 
@@ -155,9 +166,18 @@ int nonmpm_index(int mpm, int mode) {
 uint g_oplimit;
 void op_put(uint at, uint w) { if (at < g_oplimit) ops.v[at] = w; }
 
-int unit_ops(int ui, uint opbase) {
+// `nbr` is the calling lane's neighbour-class state: `nbr.x` the class,
+// `nbr.y` the group it belongs to.  Read for the contexts this unit codes in
+// and updated with what it publishes, exactly as rans_cpu.c's nxe_nbr.  Under
+// v1/v2 every unit is group 0 and nothing ever reads it.
+int unit_ops(int ui, uint opbase, inout ivec2 nbr) {
     UnitDesc u = unit_desc(ui);
     int n = 0;
+
+    // The chain break: a group change -- to another plane, or to the group 0
+    // of a DC or mode unit -- drops the class.
+    if (nbr.y != u.grp) { nbr.y = u.grp; nbr.x = 0; }
+    int in_nbr = u.grp != 0 ? nbr.x : 0;
 
     if (u.kind == 1) {
         int nbx = u.nbx;
@@ -187,13 +207,21 @@ int unit_ops(int ui, uint opbase) {
             last = p;
             break;
         }
+    int ctx_cbf = g_v3 != 0 ? nxe_v3_ctx_cbf(u.ucls, in_nbr) : u.ctx_cbf;
+    int ctx_last = g_v3 != 0 ? nxe_v3_ctx_last(u.ucls, in_nbr) : u.ctx_last;
+
     op_put(opbase + uint(n++),
-           NXE_OP_PACK(NXE_OP_SYM, u.ctx_cbf, last >= 0 ? 1 : 0));
-    if (last < 0) return n;
+           NXE_OP_PACK(NXE_OP_SYM, ctx_cbf, last >= 0 ? 1 : 0));
+    if (last < 0) {
+        // An uncoded unit still publishes: class 1 is "the previous unit was
+        // not coded", which is much of what CBF conditions on.
+        if (u.grp != 0) nbr.x = nxe_nbr_class_of(0, 0);
+        return n;
+    }
 
     if (ncoef > 1) {
         int cls = nxe_last_class_of(last);
-        op_put(opbase + uint(n++), NXE_OP_PACK(NXE_OP_SYM, u.ctx_last, cls));
+        op_put(opbase + uint(n++), NXE_OP_PACK(NXE_OP_SYM, ctx_last, cls));
         if (nxe_last_raw_bits[cls] > 0)
             op_put(opbase + uint(n++),
                    NXE_OP_PACK(NXE_OP_BYPASS, nxe_last_raw_bits[cls],
@@ -207,8 +235,12 @@ int unit_ops(int ui, uint opbase) {
     for (int p = last; p >= 0; --p) {
         int q = coef_at(u.coef_off + nxe_scan(ncoef, u.tskip, p));
         int m = q < 0 ? -q : q;
-        int ctx = u.ctx_level != NXE_CTX_NONE ? u.ctx_level
-                                              : nxe_level_ctx(p, prev);
+        // `band_scan_pos` is `p` while neither XFORM_4X4_SPLIT nor
+        // XFORM_LARGE is implemented here; see rans_cpu.c.
+        int ctx = g_v3 != 0
+                      ? nxe_v3_ctx_level(u.ucls, p, p, last, prev)
+                      : (u.ctx_level != NXE_CTX_NONE ? u.ctx_level
+                                                     : nxe_level_ctx(p, prev));
         op_put(opbase + uint(n++),
                NXE_OP_PACK(NXE_OP_SYM, ctx, m > 14 ? NXE_ESC_SYM : m));
         if (m > 14) {
@@ -238,6 +270,10 @@ int unit_ops(int ui, uint opbase) {
                    NXE_OP_PACK(NXE_OP_BYPASS, 1, q < 0 ? 1 : 0));
         prev = nxe_level_class(m);
     }
+    // Published after the level loop, so the class depends only on CBF and
+    // LAST and never on the sign SDH did not code -- the decoder's own
+    // publish point (finish_coef_unit).
+    if (u.grp != 0) nbr.x = nxe_nbr_class_of(1, last);
     return n;
 }
 
@@ -268,6 +304,7 @@ void main() {
         g_tskip = int(job.tskip);
         g_sdh = int(fp.sdh);
         g_v2 = fp.nctx >= uint(NXE_NCTX_V2) ? 1 : 0;
+        g_v3 = fp.nctx >= uint(NXE_NCTX_V3) ? 1 : 0;
         g_hasmode = int(fp.intra_dir);
         g_nunits = 0;
         for (int p = 0; p < NXE_MAX_PLANES; ++p) {
@@ -285,11 +322,22 @@ void main() {
         // ---- phase A: the lane's operations, appended into one list, and
         // the per-unit counts the fallback path needs.
         g_oplimit = opbase + uint(NXE_LANE_OPS_CAP);
+        //
+        // The per-unit slot word carries the operation count in its low 24
+        // bits and the lane's neighbour-class state *entering* that unit in
+        // the top 8 (class | group << 4).  Phase A is the only pass that
+        // walks a lane's units forwards; the sweep then regenerates units
+        // backwards, and a regenerated unit has to see the state it saw the
+        // first time.  A count cannot reach 2^24 -- NXE_UNIT_MAX_OPS is 1411
+        // -- so the two share a word and the fallback path costs no extra
+        // buffer.
         int nops = 0, nslots = 0;
         if (live && lane < g_active) {
+            ivec2 nbr = ivec2(0, 0);
             for (int ui = lane; ui < g_nunits; ui += g_nlanes) {
-                int k = unit_ops(ui, opbase + uint(nops));
-                slotops.v[sobase + uint(nslots)] = uint(k);
+                uint nin = uint(nbr.x & 15) | (uint(nbr.y & 15) << 4);
+                int k = unit_ops(ui, opbase + uint(nops), nbr);
+                slotops.v[sobase + uint(nslots)] = uint(k) | (nin << 24);
                 ++nslots;
                 nops += k;
             }
@@ -317,8 +365,10 @@ void main() {
             int ops_base = cached ? 0 : nops;
             state = NXE_RANS_L;
             if (!cached && live && lane < g_active && cur_slot >= 0) {
-                ops_base -= int(slotops.v[sobase + uint(cur_slot)]);
-                unit_ops(lane + cur_slot * g_nlanes, opbase);
+                uint sw = slotops.v[sobase + uint(cur_slot)];
+                ivec2 nb = ivec2(int(sw >> 24) & 15, int(sw >> 28) & 15);
+                ops_base -= int(sw & 0xffffffu);
+                unit_ops(lane + cur_slot * g_nlanes, opbase, nb);
             }
             int ecount = 0;
             for (int r = R - 1; r >= 0; --r) {
@@ -327,8 +377,11 @@ void main() {
                 if (live && lane < g_active && r < nops) {
                     while (r < ops_base) {
                         --cur_slot;
-                        ops_base -= int(slotops.v[sobase + uint(cur_slot)]);
-                        unit_ops(lane + cur_slot * g_nlanes, opbase);
+                        uint sw = slotops.v[sobase + uint(cur_slot)];
+                        ivec2 nb = ivec2(int(sw >> 24) & 15,
+                                         int(sw >> 28) & 15);
+                        ops_base -= int(sw & 0xffffffu);
+                        unit_ops(lane + cur_slot * g_nlanes, opbase, nb);
                     }
                     uint op = ops.v[opbase + uint(r - ops_base)];
                     uint f, c;

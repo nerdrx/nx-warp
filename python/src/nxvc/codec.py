@@ -117,6 +117,10 @@ class TileInfo:
     disparity: int
     ref_delta: int
     age_since_coded: int
+    xform_size: int
+    near_skip: int
+    quad_mv: int
+    warp_mad_q8: int
 
     _FIELDS = (
         "tile_index",
@@ -145,6 +149,10 @@ class TileInfo:
         "disparity",
         "ref_delta",
         "age_since_coded",
+        "xform_size",
+        "near_skip",
+        "quad_mv",
+        "warp_mad_q8",
     )
 
     @classmethod
@@ -296,6 +304,9 @@ class EncodeStats:
     tiles_tskip: int
     tiles_res: tuple[int, int, int]
     lanes_total: int
+    #: The rate model's own prediction of the frame's payload bits, Q10, so it
+    #: can be checked against the payload it produced.
+    bits_predicted_q10: int = 0
 
     @classmethod
     def _from_c(cls, c: nxvc_encode_stats) -> "EncodeStats":
@@ -371,6 +382,8 @@ class EncoderConfig:
     mv_range: int | None = None
     skip_thresh: int | None = None
     mode_lambda_q8: int | None = None
+    #: 0 = 8x8, 1 = 16x16, 2 = 32x32, 255 = the encoder's per-tile RD choice.
+    xform_size: int | None = None
 
     #: Fields set explicitly by the caller; everything else keeps the C default.
     _explicit: set[str] = field(default_factory=set, repr=False, compare=False)

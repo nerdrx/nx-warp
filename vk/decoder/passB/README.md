@@ -6,12 +6,13 @@ predicts, and writes the display image. `docs/PAPER.md` 3.2.1, 3.2.3, 3.2.4,
 3.2.5, 3.2.6.
 
 ```
-reconstruct.comp        the kernel (GLSL 4.60 -> SPIR-V, vulkan1.1)
+reconstruct.comp        the kernel (GLSL 4.60 -> SPIR-V, vulkan1.1), built as
+                        four modules over NXVW_INTRA_DIR x NXVW_XFORM_LARGE
 syntax_constants.h      every normative constant, shared by GLSL and C++
 passB_layout.h          the Pass A -> Pass B SSBO layout, shared by both
 passB_model.{h,cpp}     line-for-line CPU model of the kernel
 tools/nxvc-passB-test   headless harness: CPU-vs-GPU compare, timing, traffic
-cmake/gen_spv.cmake     glslc -> C array
+(the SPIR-V build rule is the tree-wide vk/common/cmake/nxvc_gen_spv.cmake)
 ```
 
 Tests live in `tests/vk-decoder/passB/` and are registered as `vk.passB.*`.
@@ -20,13 +21,19 @@ Tests live in `tests/vk-decoder/passB/` and are registered as `vk.passB.*`.
 
 Per plane (Y/R, Co/G, Cg/B, and alpha when `alpha_mode == 2`):
 
+0. **Geometry.** [minor 6] The tile's `xform_size` names a transform edge, 8,
+   16 or 32, capped by the plane's own coded extent, and `bsize` and
+   `nb = size / bsize` drive everything below (SYNTAX.md 6.7). Without
+   `XFORM_LARGE` this is `bsize == 8` and `nb == size / 8` exactly as it was --
+   see "Large transforms" below.
 1. **DC plane.** `nb*nb` DC coefficients are dequantized at `QP - 6` with a
    flat weight. When the plane is 8 blocks wide they pass through a
    second-level 8x8 IDCT (PAPER 3.2.4/6.4). The result plus the plane's DC
    offset, clamped, is the array of block means.
 2. **Planar intra prediction.** Every pixel is a Q4 bilinear interpolation of
    the four nearest block means, sampled at `(2x - 7, 2y - 7)`, which puts the
-   sample grid on the block centres. No wavefront, no barrier beyond the
+   sample grid on the block centres -- or, at `bsize` 16 and 32, at SYNTAX.md
+   7.2's general form of the same mapping. No wavefront, no barrier beyond the
    transform's.
    With `INTRA_DIR` (stream tool bit 17) each 8x8 block instead names one of
    nine modes, of which mode 0 *is* this predictor, and the blocks of a plane
@@ -40,6 +47,11 @@ Per plane (Y/R, Co/G, Cg/B, and alpha when `alpha_mode == 2`):
    memory in between. A block whose published length is 0 coded nothing, so
    its residual is zero and neither pass runs — see "The sparse coefficient
    layout" below.
+
+   [minor 6] With `XFORM_4X4_SPLIT` (tool bit 19) a block may instead be four
+   4x4 sub-blocks — see "The 4x4 split" below. With `XFORM_LARGE` (tool bit
+   27) the block is `bsize x bsize` and the transform is the N-point member of
+   the same family — see "Large transforms" below.
 4. **Add and clamp** into the plane's sample store.
 
 Then, once per tile:
@@ -92,6 +104,95 @@ Pass B, which is 40 % of the whole v1 planar path.
 With `colorTransform == kCtNone` on the RGB paths the three planes are written
 to R, G and B unchanged: the stream is carrying display-space planes. That is
 also what the CPU reference does with `NXVC_CT_NONE`.
+
+### The 4x4 split (tool bit 19) [minor 6]
+
+`docs/SYNTAX.md` 6.8. A coded block of a tile whose word1 bit 28 is set carries
+a 1-bit flag, and when it is 1 the block is four 4x4 sub-blocks in raster
+order, each in its own quadrant of the 64-value coefficient array, scanned by
+the concatenated scan and quantised with the tile's 8x8 weighting matrix
+subsampled by two in each frequency axis. The 4-point inverse transform's
+shift chain is the 8x8's unchanged: the 4-point graph has one butterfly level
+fewer AND one fewer sqrt(2) of gain, and the two cancel.
+
+Pass A publishes the flags as one bit per block after the mode words of the
+same per-tile region — one bit and not a fifth mode field, because nothing in
+the syntax ties tool bit 19 to tool bit 17 and a stream may split without
+coding modes at all.
+
+**The scheduling is where the interest is.** `idct_block()` writes transposed
+in both passes, so pass 2's row `r` reads `out[r]` of every pass-1 row and
+produces COLUMN `r` of the sub-block — which means a thread that wants the two
+columns it already owns runs four pass-1 rows keeping two of each four outputs,
+then two pass-2 rows. Twelve 4-point transforms, **eight** live intermediates,
+no staging through the sample store and no extra barrier, and the two paths
+hand the prediction the same `res0`/`res1`. Two more natural shapes were built
+first and both cost an Adreno 650 a factor of five of Pass B; `../README.md`,
+"The minor-6 realignment", is the measurement.
+
+The whole path is behind specialization constant 6, so a stream without the
+tool compiles a kernel that does not contain it.
+
+### Large transforms (tool bit 27) [minor 6]
+
+`docs/SYNTAX.md` 6.7. The tile header names one transform edge for the whole
+tile, capped per plane by its coded extent, so `bsize` is 8, 16 or 32 and `nb`
+is a power of two in `[1, 8]`. The N-point inverse is the even/odd recursion
+of 6.2.1 stacked on the same 8-point Loeffler core the 8x8 form uses, with
+`kOdd16` / `kOdd32` and the shift chain 7/13, 7/14, 8/14 by size -- one
+transform family over `{4, 8, 16, 32}`, because two would be two dequantiser
+scales and the second one would be wrong silently.
+
+**The schedule is one thread per 1D transform**, not four threads per block,
+and it fits the workgroup exactly once at every size that reaches it. The
+intermediate is stored *un-transposed* and read back transposed, which is the
+opposite of the 8x8 path and is what keeps every shared word owned by one
+thread; the column pass then lands its output in the two words of the plane
+slot the thread already owns, so `res0[8]` stays eight at every transform size
+and the prediction reads its residual back out of the slot. `../README.md`,
+"The transform size, priced", is the derivation and the measurement.
+
+The `n x n` intra predictors still gather 7.4's reference arrays per block,
+and `NXVW_INTRA_REFS` sizes them per build variant: 17 in the 8x8 module,
+which is what it always had, and 65 only where a 32x32 block can occur.
+Reading each reference through `dirAt()` where it is used was built first --
+it is the obvious way to avoid a sixty-five-int live set -- and it is a
+*correctness* failure on an Adreno 650, because a predictor has about
+twenty-five reference sites and `dirAt()` inlines the whole DC-plane bilinear
+behind its fallback. `predictOne()` records the numbers.
+
+**It is a build variant, `NXVW_XFORM_LARGE`, not a specialization constant**,
+and so is the pair of scan arms in `nxvw_scan_pos()`. Both were measured as
+specialization constants first and both cost an 8x8-only stream real time on
+an Adreno 650; `../README.md` has the instruction counts and says why each
+one was invisible to the driver's dead-code pass.
+
+The model carries the whole path, not just the transform: `nxvc-passB-test`
+emits `xform_size` tiles at both sizes, in both chroma formats, at
+`res_level` 0 and over the random `res_level` mix where 6.7's plane cap gives
+one tile three block sizes, with a saturating arm and on the two-plane store.
+`vk.passB.ref_conformance` pins the primitive underneath it against
+`ref/src/transform.cpp` `idct_block(n)`.
+
+**On the Adreno 650 the module is miscompiled** and the streams that reach it
+decode wrong, which is the one place this decoder is not correct on all three
+ICDs. It is not a bitstream question -- RADV and lavapipe agree with `ref/`
+bit for bit -- and `../README.md`'s open-issues list carries it.
+
+### Chroma from luma (tool bit 24) [minor 6]
+
+`docs/SYNTAX.md` 7.7. Mode 9 of a CHROMA block: chroma is a linear model of the
+co-located reconstructed luma, `base_c + alpha * (luma - base_l)`, fitted once
+per block over its sixteen reconstructed neighbours — the two with the smallest
+co-located luma set `base`, the two with the largest the far end — and then
+evaluated per sample. It is the only predictor that clamps, because a fitted
+slope can leave the sample domain.
+
+The tile's reconstructed luma is still in its plane slot when the chroma planes
+decode, because the slots coexist; that is the whole of what the tool needs
+from the schedule. It lives inside the directional wavefront, and can only:
+mode 9 exists solely in the `CTX_V2` mode symbol of the replace form, which
+the stream header enforces.
 
 ### Directional intra (tool bit 17)
 
@@ -158,6 +259,15 @@ Only the last configuration does not fit a 32 KB device; the harness reports it
 as a skip rather than failing. Everything the Pico 4 target actually streams
 fits.
 
+**Do not spend effort shrinking this.** 12.5 KB is two workgroups per 32 KB
+Adreno 650 SP and the obvious move is to get under 10.6 KB for three, but the
+pass is not occupancy-limited: padding the allocation to 17.6 KB and then to
+30.8 KB — one workgroup per SP either way — cost 0.08 ms of a 22.3 ms pass at
+QP 24 and nothing at QP 36. If halving residency is free, tripling it is worth
+nothing. `../README.md`, "What was not the problem", has the numbers. What the
+pass *is* limited by is LDS and image traffic: load count in the predictor,
+store count in the output.
+
 ### Portability
 
 No subgroup operation is used at all, so the same SPIR-V runs on any subgroup
@@ -207,27 +317,43 @@ from the same parsed tile header, so whichever component parses tile headers for
 Pass A can fill in both; nothing needs to be re-parsed. Pass A's cbf-bit and
 status buffers are not inputs to Pass B.
 
-## Inter prediction hook
+## Inter prediction hook [inter]
 
-v1 codes INTRA tiles only — the CPU reference rejects every other mode. The
-pose-warp predictor plugs into `reconstruct.comp` at the two places marked
-`INTER HOOK`:
+`docs/SYNTAX.md` 13 has landed. The predictor is **not** in this kernel: it is
+`vk/decoder/inter/warp_pred.comp`, a third dispatch, and this file reads its
+output. See `../README.md`, "The inter path", for why.
 
-* the `bool intra` derivation near the top of `main()`, which is where
-  `kModeWarpSkip` / `kModeStaticMv` should short-circuit the coefficient
-  path entirely. The short-circuit itself is already there and already
-  measured: a tile with no coded unit runs no dequantize and no IDCT, because
-  every unit's published length is 0;
-* the `pred0` / `pred1` computation in the prediction-and-add step, which is
-  where `bilinearMeans()` is replaced by the bit-exact 4-tap bilinear of the
-  reference image at the warp coordinate (PAPER 3.2.3 step 5).
+What the inter path added here, and nothing else:
 
-The warp record itself does not belong in the 16-byte tile record. `w3` of
-`NxvwTileRec` is reserved as an index into a `WarpRecs` SSBO at binding 5 of
-the future layout, so adding inter prediction does not disturb the coefficient
-side of the interface. Nothing else in the kernel changes: the residual add,
-clamp, resample and colour conversion are already shared between the two
-prediction modes.
+* one `#include "../inter/inter_hook.glsl"`, after the shared-memory
+  declarations because the ring store reads `sPlane`;
+* the **prediction hook** at the `INTER HOOK` marker in the prediction-and-add
+  step. `pred` is the DC plane's planar interpolation for an intra tile and
+  `clamp(W + planar(M) - dc_offset, 0, maxval)` for an inter one, `W` being
+  the sample Pass W wrote. The residual add, the clamp, the resample and the
+  colour conversion are unchanged and shared;
+* `nxvwIsInterTile`, set at the `bool intra` marker and read by `dcMean()`.
+  13.3: an intra tile's block mean is a sample value and is clamped to the
+  sample domain; an inter tile's is `dc_offset + a residual mean`, whose range
+  is wider on both sides, and clamping it would cap the DC correction the warp
+  needs;
+* `unitsPerPlaneExtra` now asks whether the tile is intra, because 13.3 puts
+  the mode unit of 9.6 on `INTRA` tiles only. Pass A makes the same change,
+  and it is a bitstream property, not an optimisation: a decoder that kept
+  counting a mode unit on an inter tile reads every later unit of the tile
+  from the wrong place and Pass A refuses the payload;
+* one call to `nxvwRefRingStore()` at the end of `main()`. The reference-ring
+  slot is a second store of the same samples — the same shape `kOutSecond`
+  already established — in the coded domain rather than the display one.
+
+The short-circuit the old note asked for was already there and is still there:
+a tile with no coded unit runs no dequantize and no IDCT, because every unit's
+published length is 0, which is what a `WARP_SKIP` tile is.
+
+`w3` of `NxvwTileRec` stays reserved and unused. The warp record turned out
+not to want a per-tile index into a side buffer at all: Pass W is indexed by
+the tile index directly, and Pass B addresses `WPred` the same way, so the
+coefficient side of this interface did not have to change.
 
 ## Running it
 

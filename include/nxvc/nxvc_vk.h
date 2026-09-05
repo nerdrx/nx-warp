@@ -91,11 +91,13 @@ typedef enum nxvc_vkd_create_flags {
      * ballot path.  Both produce identical output; the default picks the
      * ballot whenever the device's subgroups are wide enough. */
     NXVC_VKD_FLAG_LDS_FALLBACK = 1u << 2,
-    /* Accept a tile-row skip bitmap.  v1 has no reference frames, so the CPU
-     * reference refuses a non-zero bitmap (NXVC_ERR_UNSUPPORTED) and so does
-     * this decoder by default.  With the flag set, skipped tiles reconstruct
-     * deterministically as WARP_SKIP records over a zeroed coefficient slot,
-     * which is the shape the Phase 2 inter predictor plugs into. */
+    /* Accept a tile-row skip bitmap on a stream with NO `INTER` tool bit.
+     * Such a stream has no reference ring for a skip to refer to, so the CPU
+     * reference refuses a non-zero bitmap and so does this decoder by
+     * default; with the flag set the skipped tiles reconstruct
+     * deterministically as WARP_SKIP records over a zeroed coefficient slot.
+     * [inter] It has nothing to do with an INTER stream, where a skip is
+     * ordinary syntax and is always accepted. */
     NXVC_VKD_FLAG_ALLOW_SKIPPED_TILES = 1u << 3,
     /* Use the dense raster-order coefficient layout between Pass A and Pass B
      * instead of the sparse one (PAPER 3.2.5): every tile writes and reads its
@@ -111,11 +113,11 @@ typedef enum nxvc_vkd_create_flags {
     NXVC_VKD_FLAG_COEF_STATS = 1u << 5,
     /* Write each display format from its own Pass B dispatch instead of
      * writing both from one.  It only makes a difference for a frame that
-     * needs two stores -- today, a 4:2:0 stream with a coded alpha plane on
-     * the two-plane output; when the inter path lands, every frame, because
-     * the reference ring slot is a second store of the same samples.  The
-     * pixels are identical either way; this exists to measure the
-     * difference. */
+     * needs two DISPLAY stores: a 4:2:0 stream with a coded alpha plane on
+     * the two-plane output.  [inter] The reference-ring slot is also a second
+     * store of the same samples, but it is not a display format and is not
+     * affected by this flag -- it is written from whichever Pass B dispatch
+     * runs first. */
     NXVC_VKD_FLAG_SPLIT_STORES = 1u << 6
 } nxvc_vkd_create_flags;
 
@@ -156,6 +158,24 @@ const char *nxvc_vk_decoder_last_error(const nxvc_vk_decoder *dec);
 /* Device the decoder is running on, for logging.  Never NULL. */
 const char *nxvc_vk_decoder_device_name(const nxvc_vk_decoder *dec);
 
+/* [minor 6, additive] The tool bits this decoder implements: exactly the mask
+ * a stream's `tools` field must be a subset of, and exactly what a stream
+ * setting anything outside is refused against with NXVC_VKD_ERR_VERSION.
+ *
+ * This is the DECODER's half of the handshake docs/SYNTAX.md 2.3 describes.
+ * The tools mask a session ends up using is an intersection of what the
+ * encoder can emit and what the receiver offered, and several tools -- 
+ * ENTROPY_LITE above all, which buys Pass A time with bits and whose worth
+ * only the decoder can judge -- are specified as negotiated for exactly that
+ * reason.  Until now this side of it had no name in the ABI and a caller had
+ * to try a stream and read the refusal.
+ *
+ * It is a property of the library build, not of a decoder instance, so it
+ * takes no handle and may be called before nxvc_vk_decoder_create().
+ * `nxvc_vkd_stream_info::tools` is the other end: what a given stream asks
+ * for. */
+uint64_t nxvc_vk_decoder_tools_supported(void);
+
 /* --------------------------------------------------------------- stream */
 typedef struct nxvc_vkd_stream_info {
     uint32_t width, height; /* luma samples                                */
@@ -165,6 +185,13 @@ typedef struct nxvc_vkd_stream_info {
     uint32_t alpha;           /* the stream carries a 4th plane            */
     uint32_t bit_depth, eyes, num_layers, profile, level;
     uint64_t tools;
+    /* [inter] `width`, `height`, `chroma_width`, `chroma_height` and
+     * `tiles_x` are PER EYE -- docs/SYNTAX.md 3.3: a picture is one eye.  The
+     * transport's column count over the eye pair is `eyes * tiles_x`, and a
+     * linear tile index is `row * (eyes * tiles_x) + eye * tiles_x + index`,
+     * which is what nxvc_vk_decoder_mark_missing() takes.  `tile_count` is
+     * already over the pair.  nxvc_vk_decoder_plane_size() reports the
+     * readback layout, which spans the pair. */
     uint32_t tiles_x, tiles_y, tile_count;
     uint32_t chroma_width, chroma_height;
     uint32_t ext_len;
@@ -270,6 +297,15 @@ typedef struct nxvc_vkd_stats {
     uint32_t lane_groups;   /* Pass A dispatches: distinct nsub_log2 values*/
     uint32_t dispatches;    /* Pass A + Pass B dispatches this frame       */
     uint32_t frames;        /* frames decoded so far                       */
+    /* --- [inter] APPENDED, not inserted, so a caller built against the
+     * older layout keeps reading the same offsets for every field above. */
+    uint32_t tiles_concealed; /* tiles nxvc_vk_decoder_mark_missing named  */
+    /* Pass W, the predictor dispatch.  Measured around the FIRST Pass W of
+     * the frame, which is the whole of it for every frame that does not carry
+     * a STEREO tile; a stereo frame runs the pair once per eye and this then
+     * covers eye 0 only.  0 on a frame with no inter tile, and on a device
+     * with no timestamp support.                                          */
+    double pass_w_ms;
 } nxvc_vkd_stats;
 
 nxvc_vkd_status nxvc_vk_decoder_stats(const nxvc_vk_decoder *dec,
@@ -299,6 +335,35 @@ nxvc_vkd_status nxvc_vk_decoder_stats(const nxvc_vk_decoder *dec,
 nxvc_vkd_status nxvc_vk_decoder_set_dir_sched(nxvc_vk_decoder *dec,
                                               uint32_t sched);
 uint32_t nxvc_vk_decoder_dir_sched(const nxvc_vk_decoder *dec);
+
+/* ------------------------------------------------------- loss concealment
+ * [inter] Mark the tiles the client did NOT receive, by linear tile index
+ * (docs/SYNTAX.md 3.3: `tile = row * cols + eye * cols_per_eye + index`).
+ *
+ * The marks apply to the NEXT frame decoded and are consumed by it, whether
+ * or not that frame is accepted; a second frame starts clean.  This is
+ * docs/TRANSPORT.md 8's "the decoder needs an API to mark tiles not received
+ * so concealment replays exactly": each marked tile is reconstructed by
+ * running the WARP_SKIP predictor with the tile's stored `last_mv` and no
+ * residual -- exactly a legitimately skipped tile, which is why there is no
+ * separate concealment path to test and why the encoder can replay it
+ * (docs/SYNTAX.md 13.6).  A marked tile's bytes are still parsed, so the
+ * frame stays self-delimiting, and then discarded; its prediction state does
+ * not advance, and a near-skip correction naming it is NOT applied, because
+ * the correction travelled in a row header the transport does not replicate.
+ *
+ * It is the mirror of the reference decoder's
+ * `nxvc_decoder_set_lost_tiles()`, and the two produce byte-identical
+ * pictures for the same marks -- which is what
+ * `tests/vk-decoder/conformance`'s loss test asserts over 100 frames.
+ *
+ * Passing count == 0 clears any pending marks.  An index at or above the
+ * stream's tile count is NXVC_VKD_ERR_ARG and nothing is marked.  Requires a
+ * parsed stream header.
+ */
+nxvc_vkd_status nxvc_vk_decoder_mark_missing(nxvc_vk_decoder *dec,
+                                             const uint32_t *tile_ids,
+                                             uint32_t count);
 
 /* Group Pass B's workgroups by tile shape (mode, res_level, chroma444,
  * alpha_mode, tskip) instead of dispatching them in raster order.  Host-side

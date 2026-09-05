@@ -168,12 +168,17 @@ bool gpu_decode(const std::vector<uint8_t> &stream, uint32_t out_format,
             return false;
         }
         Planes pl;
-        pl.size_for(si.width, si.height, si.chroma_width, si.chroma_height,
-                    si.alpha != 0);
+        // [inter] The plane layout spans the eye pair, exactly as the
+        // reference decoder's does; ask the decoder rather than deriving it
+        // from `si.width`, which is per eye ([SYN] 3.3).
+        uint32_t yw = 0, yh = 0, cw2 = 0, ch2 = 0;
+        nxvc_vk_decoder_plane_size(dec, 0, &yw, &yh);
+        nxvc_vk_decoder_plane_size(dec, 1, &cw2, &ch2);
+        pl.size_for(yw, yh, cw2, ch2, si.alpha != 0);
         uint8_t *planes[4] = {pl.p[0].data(), pl.p[1].data(), pl.p[2].data(),
                               pl.p[3].data()};
-        int32_t strides[4] = {(int32_t)si.width, (int32_t)si.chroma_width,
-                              (int32_t)si.chroma_width, (int32_t)si.width};
+        int32_t strides[4] = {(int32_t)yw, (int32_t)cw2, (int32_t)cw2,
+                              (int32_t)yw};
         st = nxvc_vk_decoder_read_planes(dec, planes, strides);
         if (st != NXVC_VKD_OK) {
             err = nxvc_vk_decoder_last_error(dec);
@@ -277,24 +282,28 @@ bool read_file(const std::string &path, std::vector<uint8_t> &out) {
 
 const char *vkd_status_token(nxvc_vkd_status st);
 
-// The tool bits this Phase 1 decoder implements.  docs/SYNTAX.md 12: a
-// Phase 1 decoder "rejects ... any tool bit outside the supported set" with a
-// VERSION status, and tests/vectors now also holds the Phase 2 inter vectors,
+// The tool bits this decoder implements.  docs/SYNTAX.md 12: a decoder
+// "rejects ... any tool bit outside the supported set" with a VERSION status,
+// and tests/vectors holds vectors for tools this decoder does not carry yet,
 // which every bit of that set refuses on purpose.  Those are counted as skips
 // rather than failures -- but only when the stream's own tool mask says so and
 // only when the decoder refuses it with exactly VERSION, so a regression that
-// starts refusing a Phase 1 vector still fails.
-constexpr uint64_t kPhase1Tools =
-    (1ull << 0) | (1ull << 1) | (1ull << 2) | (1ull << 3) | (1ull << 4) |
-    (1ull << 5) | (1ull << 6) | (1ull << 7) | (1ull << 8) | (1ull << 9) |
-    (1ull << 17) | (1ull << 20) | (1ull << 21) | (1ull << 22);
+// starts refusing a supported vector still fails.
+//
+// It is NOT restated here.  It used to be, and a copy of a tool mask is a copy
+// that goes stale: the harness would then either fail a vector the decoder now
+// speaks or skip one it no longer does, and both read as a decoder bug.  The
+// C ABI names the decoder's half of the handshake, so the harness asks.  The
+// skip count of the sweep is exactly "how many vectors this decoder cannot yet
+// speak", so driving it to zero is what finishing the tool set means.
+uint64_t supported_tools() { return nxvc_vk_decoder_tools_supported(); }
 
 // docs/SYNTAX.md 11: `tools` is a u64 at byte 32 of the 64-byte stream header.
 bool stream_needs_phase2(const std::vector<uint8_t> &s, uint64_t &tools) {
     tools = 0;
     if (s.size() < 40) return false;
     for (int i = 0; i < 8; ++i) tools |= (uint64_t)s[32 + i] << (8 * i);
-    return (tools & ~kPhase1Tools) != 0;
+    return (tools & ~supported_tools()) != 0;
 }
 
 void run_vectors() {
@@ -431,9 +440,20 @@ void run_rejects() {
         size_t consumed = 0;
         nxvc_vkd_status st = nxvc_vk_decoder_parse_stream_header(
             dec, stream.data(), stream.size(), &consumed);
-        if (st == NXVC_VKD_OK)
-            st = nxvc_vk_decode_frame(dec, stream.data() + consumed,
-                                      stream.size() - consumed, &consumed);
+        // [inter] Decode until the stream is refused or exhausted, not just
+        // the first frame.  A Phase 2 rejection vector is malformed in the
+        // frame that first USES the reference ring -- an out-of-envelope
+        // matrix, a `ref_slots` that names the wrong slot, a STEREO tile on
+        // the left eye -- and frame 0 of such a stream is a legal intra
+        // frame.  Stopping after one frame reported nine of them as accepted.
+        size_t off = consumed;
+        while (st == NXVC_VKD_OK && off < stream.size()) {
+            size_t used = 0;
+            st = nxvc_vk_decode_frame(dec, stream.data() + off,
+                                      stream.size() - off, &used);
+            if (st != NXVC_VKD_OK || used == 0) break;
+            off += used;
+        }
         nxvc_vk_decoder_destroy(dec);
         const bool match = std::strcmp(vkd_status_token(st), want) == 0;
         if (!match && phase2 &&
@@ -477,6 +497,10 @@ struct Case {
     int dir_layer = -1;
     int ctx_v2 = -1;
     int sign_hide = -1;
+    // [minor 6] XFORM_LARGE, tool bit 27: 0 = 8x8 only and no tool bit,
+    // 1 = 16x16, 2 = 32x32, 255 = the encoder's per-tile RD choice.  -1
+    // leaves nxvc_config_default's value, which is 0.
+    int xform = -1;
 };
 
 bool encode_case(const Case &c, std::vector<uint8_t> &stream,
@@ -502,6 +526,7 @@ bool encode_case(const Case &c, std::vector<uint8_t> &stream,
     if (c.dir_layer >= 0) cfg.intra_dir_layer = (uint32_t)c.dir_layer;
     if (c.ctx_v2 >= 0) cfg.ctx_v2 = (uint32_t)c.ctx_v2;
     if (c.sign_hide >= 0) cfg.sign_hide = (uint32_t)c.sign_hide;
+    if (c.xform >= 0) cfg.xform_size = (uint32_t)c.xform;
 
     nxvc_status st;
     nxvc_encoder *e = nxvc_encoder_create(&cfg, &st);
@@ -547,6 +572,234 @@ bool encode_case(const Case &c, std::vector<uint8_t> &stream,
     }
     nxvc_encoder_destroy(e);
     return true;
+}
+
+// ------------------------------------------------------------ loss test
+// docs/TRANSPORT.md 8: "the decoder needs an API to mark tiles not received so
+// concealment replays exactly", and docs/SYNTAX.md 13.6, which says what
+// "exactly" means -- a missing tile is reconstructed by running the WARP_SKIP
+// predictor with the tile's stored `last_mv` and no residual, which is
+// bit-identically a legitimately skipped tile.
+//
+// The claim under test is stronger than "the decoder does not crash on loss".
+// It is that the GPU decoder and the CPU reference, fed the same drops, agree
+// BYTE FOR BYTE for as long as the drops keep accumulating -- because that is
+// what lets an encoder holding the same reference and the same prediction
+// state predict the next frame from what the client actually shows rather than
+// from what it wished it had sent.  A one-frame check would not catch a
+// divergence in the prediction state, which is the part that persists: a
+// concealed tile's state does not advance, and getting that wrong shows up
+// two or three frames later as a vector applied from the wrong place.
+//
+// So the drops are random, they are different every frame, and the comparison
+// runs over 100 frames of a stream that uses every inter tool at once.
+struct LossResult {
+    int frames = 0;
+    int tiles_dropped = 0;
+    int frames_with_drops = 0;
+    int first_bad_frame = -1;
+    std::string err;
+};
+
+bool encode_inter_stream(int w, int h, int frames, int qp,
+                         std::vector<uint8_t> &stream, std::string &err,
+                         int intra_dir = -1, int eyes = 1) {
+    nxvc_config cfg;
+    nxvc_config_default(&cfg);
+    cfg.width = (uint32_t)w;
+    cfg.height = (uint32_t)h;
+    cfg.chroma = NXVC_CHROMA_420;
+    cfg.base_qp = (uint32_t)qp;
+    cfg.eyes = (uint32_t)eyes;
+    cfg.inter = 1;
+    // [SYN] 13.7 says the ENCODER cannot replay concealment through a STEREO
+    // tile -- nxvc_encoder_set_received_tiles() returns UNSUPPORTED for it.
+    // The DECODER side has no such gap: both decoders conceal the left-eye
+    // tile and the STEREO tile of the same row then predicts from what the
+    // decoder actually holds, so they agree byte for byte, which is exactly
+    // what the stereo arm of this test asserts.
+    cfg.stereo = (uint32_t)(eyes == 2 ? 1 : 0);
+    cfg.near_skip = 1;
+    cfg.quad_mv = 1;
+    if (intra_dir >= 0) cfg.intra_dir = (uint32_t)intra_dir;
+    nxvc_status st;
+    nxvc_encoder *e = nxvc_encoder_create(&cfg, &st);
+    if (!e) { err = nxvc_status_string(st); return false; }
+    std::vector<uint8_t> hdr(4096);
+    size_t hl = 0;
+    st = nxvc_encoder_stream_header(e, hdr.data(), hdr.size(), &hl);
+    if (st != NXVC_OK) {
+        err = nxvc_status_string(st);
+        nxvc_encoder_destroy(e);
+        return false;
+    }
+    stream.assign(hdr.begin(), hdr.begin() + hl);
+    std::vector<uint8_t> fbuf((size_t)w * h * 8 + (1u << 20));
+    for (int f = 0; f < frames; ++f) {
+        // A slow yaw, so warp_ext() carries a real matrix rather than the
+        // identity and the predictor is exercised rather than bypassed.
+        const double a = 0.004 * f;
+        nxvc_view v[2]{};
+        for (int k = 0; k < eyes; ++k) {
+            v[k].qx = 0.0;
+            v[k].qy = std::sin(a * 0.5);
+            v[k].qz = 0.0;
+            v[k].qw = std::cos(a * 0.5);
+            v[k].fov_left = -0.9; v[k].fov_right = 0.9;
+            v[k].fov_up = 0.9; v[k].fov_down = -0.9;
+        }
+        nxvc_encoder_set_views(e, v, (uint32_t)eyes);
+        // The content pans, so the tiles have something to track.  A stereo
+        // frame is `eyes` pictures side by side ([SYN] 3.3), which is the
+        // layout nxvc_encoder_encode_frame takes.
+        TestImage im = make_image(w * eyes, h, false, 1, (uint32_t)(7000 + f));
+        nxvc_image img{};
+        for (int p = 0; p < 4; ++p) img.plane[p] = (uint8_t *)im.p[p].data();
+        img.stride[0] = im.w;
+        img.stride[1] = im.cw;
+        img.stride[2] = im.cw;
+        img.stride[3] = im.w;
+        size_t ol = 0;
+        st = nxvc_encoder_encode_frame(e, &img, nullptr, nullptr, fbuf.data(),
+                                       fbuf.size(), &ol);
+        if (st != NXVC_OK) {
+            err = nxvc_status_string(st);
+            nxvc_encoder_destroy(e);
+            return false;
+        }
+        stream.insert(stream.end(), fbuf.begin(), fbuf.begin() + ol);
+    }
+    nxvc_encoder_destroy(e);
+    return true;
+}
+
+bool run_loss_test(int frames, LossResult &r, int eyes = 1) {
+    std::vector<uint8_t> stream;
+    if (!encode_inter_stream(320, 256, frames, 26, stream, r.err, -1, eyes))
+        return false;
+
+    // --- the two decoders, side by side, frame by frame.
+    nxvc_status cst;
+    nxvc_decoder *rd = nxvc_decoder_create(&cst);
+    if (!rd) { r.err = "nxvc_decoder_create"; return false; }
+    nxvc_vkd_create_info ci;
+    nxvc_vk_decoder_create_info_default(&ci);
+    ci.flags = (uint32_t)NXVC_VKD_FLAG_READBACK;
+    ci.output_format = NXVC_VKD_OUT_AUTO;
+    ci.device_name = device_filter();
+    nxvc_vk_decoder *gd = nullptr;
+    if (nxvc_vk_decoder_create(&ci, &gd) != NXVC_VKD_OK) {
+        r.err = gd ? nxvc_vk_decoder_last_error(gd) : "no decoder";
+        nxvc_vk_decoder_destroy(gd);
+        nxvc_decoder_destroy(rd);
+        return false;
+    }
+    size_t rc = 0, gc = 0;
+    cst = nxvc_decoder_parse_stream_header(rd, stream.data(), stream.size(), &rc);
+    nxvc_vkd_status gst =
+        nxvc_vk_decoder_parse_stream_header(gd, stream.data(), stream.size(), &gc);
+    if (cst != NXVC_OK || gst != NXVC_VKD_OK || rc != gc) {
+        r.err = "stream header";
+        nxvc_vk_decoder_destroy(gd);
+        nxvc_decoder_destroy(rd);
+        return false;
+    }
+    uint32_t yw = 0, yh = 0, cw = 0, ch = 0;
+    nxvc_decoder_plane_size(rd, 0, &yw, &yh);
+    nxvc_decoder_plane_size(rd, 1, &cw, &ch);
+    const uint32_t ntiles = nxvc_decoder_tile_count(rd);
+    nxvc_stream_info si;
+    nxvc_decoder_stream_info(rd, &si);
+
+    Rng rng(0xC0FFEEu);
+    size_t off = rc;
+    std::vector<uint8_t> lost(ntiles);
+    std::vector<uint32_t> ids;
+    while (off < stream.size()) {
+        // A different, random subset every frame -- including, sometimes, none
+        // at all, because a frame with no loss after a frame with loss is the
+        // case where a stale prediction state shows up.
+        ids.clear();
+        std::fill(lost.begin(), lost.end(), (uint8_t)0);
+        if (r.frames > 0 && (rng.next() & 3u) != 0u) {
+            for (uint32_t t = 0; t < ntiles; ++t)
+                if ((rng.next() % 100u) < 12u) {
+                    lost[t] = 1;
+                    ids.push_back(t);
+                }
+        }
+        if (!ids.empty()) ++r.frames_with_drops;
+        r.tiles_dropped += (int)ids.size();
+        if (nxvc_decoder_set_lost_tiles(rd, lost.data(), ntiles) != NXVC_OK ||
+            nxvc_vk_decoder_mark_missing(gd, ids.empty() ? nullptr : ids.data(),
+                                         (uint32_t)ids.size()) != NXVC_VKD_OK) {
+            r.err = "set_lost_tiles / mark_missing";
+            break;
+        }
+        Planes rp, gp;
+        rp.size_for(yw, yh, cw, ch, si.alpha != 0);
+        gp.size_for(yw, yh, cw, ch, si.alpha != 0);
+        nxvc_image img{};
+        img.plane[0] = rp.p[0].data(); img.stride[0] = (int)yw;
+        img.plane[1] = rp.p[1].data(); img.stride[1] = (int)cw;
+        img.plane[2] = rp.p[2].data(); img.stride[2] = (int)cw;
+        img.plane[3] = rp.p[3].data(); img.stride[3] = (int)yw;
+        size_t used_r = 0, used_g = 0;
+        cst = nxvc_decoder_decode_frame(rd, stream.data() + off,
+                                        stream.size() - off, &img, &used_r);
+        gst = nxvc_vk_decode_frame(gd, stream.data() + off, stream.size() - off,
+                                   &used_g);
+        if (cst != NXVC_OK || gst != NXVC_VKD_OK || used_r != used_g) {
+            r.err = std::string("frame ") + std::to_string(r.frames) + ": ref " +
+                    nxvc_status_string(cst) + ", gpu " +
+                    nxvc_vk_decoder_status_string(gst);
+            break;
+        }
+        uint8_t *gpl[4] = {gp.p[0].data(), gp.p[1].data(), gp.p[2].data(),
+                           gp.p[3].data()};
+        int32_t gstr[4] = {(int32_t)yw, (int32_t)cw, (int32_t)cw, (int32_t)yw};
+        if (nxvc_vk_decoder_read_planes(gd, gpl, gstr) != NXVC_VKD_OK) {
+            r.err = "read_planes";
+            break;
+        }
+        if (r.first_bad_frame < 0) {
+            for (int p = 0; p < (si.alpha ? 4 : 3); ++p)
+                if (rp.p[p] != gp.p[p]) {
+                    r.first_bad_frame = r.frames;
+                    break;
+                }
+        }
+        ++r.frames;
+        off += used_r;
+    }
+    nxvc_vk_decoder_destroy(gd);
+    nxvc_decoder_destroy(rd);
+    return r.err.empty();
+}
+
+void run_loss(int frames) {
+    // Mono and stereo: the stereo arm is what covers a concealed LEFT-eye tile
+    // that a STEREO tile of the same row then predicts from.
+    for (int eyes = 1; eyes <= 2; ++eyes) {
+        const char *what = eyes == 1 ? "loss" : "loss-stereo";
+        LossResult r;
+        ++g_checked;
+        if (!run_loss_test(frames, r, eyes)) {
+            std::printf("FAIL %s: %s\n", what, r.err.c_str());
+            ++g_fail;
+            continue;
+        }
+        if (r.first_bad_frame >= 0) {
+            std::printf("FAIL %s: GPU and reference diverge at frame %d "
+                        "(%d frames, %d tiles dropped)\n",
+                        what, r.first_bad_frame, r.frames, r.tiles_dropped);
+            ++g_fail;
+            continue;
+        }
+        std::printf("-- %s: %d frames, %d with drops, %d tiles dropped, "
+                    "byte-identical to the reference\n",
+                    what, r.frames, r.frames_with_drops, r.tiles_dropped);
+    }
 }
 
 std::vector<Case> synthetic_cases(bool quick) {
@@ -635,6 +888,43 @@ std::vector<Case> synthetic_cases(bool quick) {
     v3("syn_sdh_only_420", 0, 24, 0, 0, 0, 1);
     v3("syn_dir_layer_420", 0, 24, 1, 1, 0, 0);
     v3("syn_dir_layer_ctxv2_444", 1, 24, 1, 1, 1, 1);
+    // [minor 6] XFORM_LARGE, tool bit 27.  The committed vectors v68-v73 pin
+    // the tool itself; these walk it against the per-tile shape knobs it has
+    // to compose with, because the interesting failures are not in the
+    // butterfly.  They are the plane CAP of SYNTAX.md 6.7 (a res_level 1 or 2
+    // tile, or a 4:2:0 chroma plane, coding a block smaller than the tile's
+    // xform_size, so one frame carries three block sizes), the DC plane's
+    // re-grid to nb x nb with its second-level transform firing only at
+    // nb == 8, the planar interpolation's general Q4 mapping, and the n x n
+    // intra predictors over an nb x nb wavefront.
+    auto xf = [&](const char *name, int c444, int qp, int xform, int dir,
+                  int res_pat = 0) {
+        Case c{name, 192, 128, c444, 1, qp, 0, 0, 0, 3, 0, 0, 0, res_pat,
+               0,    0,   1};
+        c.intra_dir = dir;
+        c.xform = xform;
+        v.push_back(c);
+    };
+    xf("syn_xform16_420", 0, 24, 1, 0);
+    xf("syn_xform32_420", 0, 24, 2, 0);
+    xf("syn_xform16_444", 1, 20, 1, 0);
+    xf("syn_xform32_444", 1, 20, 2, 0);
+    xf("syn_xform32_dir_420", 0, 20, 2, 1);
+    xf("syn_xform16_dir_444", 1, 16, 1, 1);
+    if (!quick) {
+        // The plane cap, both ways: a 32x32 tile-level size over cycling
+        // res_level codes 32x32, 16x16 and 8x8 luma in one frame, and its
+        // 4:2:0 chroma plane is capped one step further again.
+        xf("syn_xform32_res_cycle_420", 0, 24, 2, 0, 1);
+        xf("syn_xform16_res_cycle_444", 1, 24, 1, 0, 1);
+        xf("syn_xform32_res2_420", 0, 28, 2, 0, 2);
+        xf("syn_xform32_dir_res_444", 1, 20, 2, 1, 1);
+        // The encoder's own per-tile choice, which mixes all three sizes
+        // inside one frame and is the shape a real stream has.
+        xf("syn_xform_auto_420", 0, 24, 255, 0);
+        xf("syn_xform_auto_dir_444", 1, 20, 255, 1);
+    }
+
     if (!quick) {
         // The wavefront meeting the other per-tile shape knobs: cycling
         // res_level (4x4 and 2x2 block planes as well as 8x8) and transform
@@ -674,13 +964,133 @@ void run_synthetic(bool quick) {
 // PAPER 3.4's decode budget, measured on the shape the headset actually
 // streams: two 2048x2048 eyes at 4:2:0, which is 2048 tiles in one frame.
 // Informational -- it never fails the test.
-int run_bench_qp(int iters, int qp, bool dense = false) {
-    Case c{"bench_2x2048sq_420", 2048, 4096, 0, 1, qp, 0, 0, 0, 3, 0, 0, 0,
-           1,   0,    0, 1};
+// [inter] Timing for an inter SEQUENCE.  The intra bench decodes one frame
+// `iters` times, which is the right shape for a pass whose cost depends only
+// on the frame in front of it; the inter path's does not.  Its cost depends on
+// the mode mix, and the mode mix is a property of where the sequence is: frame
+// 0 is all INTRA, frame 1 is mostly WARP_MV, and by frame 10 a static region
+// is WARP_SKIP and costs one Pass W dispatch and no entropy decode at all.  So
+// this decodes the whole sequence, in order, and reports the mean over the
+// inter frames as well as the intra frame they start from.
+int run_bench_inter(int iters, int frames, int w, int h, int qp,
+                    int intra_dir = -1) {
     std::vector<uint8_t> stream;
     std::string err;
-    std::printf("-- encoding %dx%d 4:2:0 at QP %d (%d tiles)\n", c.w, c.h, qp,
-                (c.w / 64) * (c.h / 64));
+    std::printf("-- encoding %d inter frames, %dx%d 4:2:0 at QP %d (%d tiles), "
+                "INTRA_DIR %s\n",
+                frames, w, h, qp, (w / 64) * (h / 64),
+                intra_dir == 0 ? "off" : intra_dir == 1 ? "on" : "default");
+    if (!encode_inter_stream(w, h, frames, qp, stream, err, intra_dir)) {
+        std::printf("bench: encode failed (%s)\n", err.c_str());
+        return 1;
+    }
+    nxvc_vkd_create_info ci;
+    nxvc_vk_decoder_create_info_default(&ci);
+    ci.device_name = device_filter();
+    nxvc_vk_decoder *dec = nullptr;
+    if (nxvc_vk_decoder_create(&ci, &dec) != NXVC_VKD_OK) {
+        std::printf("SKIP: %s\n",
+                    dec ? nxvc_vk_decoder_last_error(dec) : "no decoder");
+        nxvc_vk_decoder_destroy(dec);
+        return 77;
+    }
+    double bestSeqGpu = 1e18, bestSeqWall = 1e18;
+    double sumA = 0, sumB = 0, sumW = 0, sumG = 0, sumWall = 0;
+    double intraA = 0, intraB = 0, intraG = 0;
+    uint64_t bytes = 0;
+    uint32_t tiles = 0, nskip = 0;
+    int inter_frames = 0;
+    for (int it = 0; it < iters; ++it) {
+        // Re-parsing the stream header empties the reference ring and the
+        // prediction history, so every iteration decodes the same sequence
+        // from the same state.
+        size_t consumed = 0;
+        if (nxvc_vk_decoder_parse_stream_header(dec, stream.data(),
+                                                stream.size(),
+                                                &consumed) != NXVC_VKD_OK) {
+            std::printf("bench: %s\n", nxvc_vk_decoder_last_error(dec));
+            nxvc_vk_decoder_destroy(dec);
+            return 1;
+        }
+        size_t off = consumed;
+        double seqGpu = 0, seqWall = 0;
+        double a = 0, b = 0, wms = 0, g = 0, wall = 0;
+        int f = 0;
+        uint64_t by = 0;
+        uint32_t sk = 0;
+        while (off < stream.size()) {
+            size_t used = 0;
+            if (nxvc_vk_decode_frame(dec, stream.data() + off,
+                                     stream.size() - off,
+                                     &used) != NXVC_VKD_OK) {
+                std::printf("bench: %s\n", nxvc_vk_decoder_last_error(dec));
+                nxvc_vk_decoder_destroy(dec);
+                return 1;
+            }
+            nxvc_vkd_stats st{};
+            nxvc_vk_decoder_stats(dec, &st);
+            seqGpu += st.gpu_ms;
+            seqWall += st.total_ms;
+            if (f == 0) {
+                if (it == 0) { intraA = st.pass_a_ms; intraB = st.pass_b_ms;
+                               intraG = st.gpu_ms; tiles = st.tiles; }
+            } else {
+                a += st.pass_a_ms; b += st.pass_b_ms; wms += st.pass_w_ms;
+                g += st.gpu_ms; wall += st.total_ms;
+                by += st.frame_bytes;
+                sk += st.tiles_skipped;
+            }
+            ++f;
+            off += used;
+        }
+        if (seqGpu < bestSeqGpu) {
+            bestSeqGpu = seqGpu;
+            bestSeqWall = seqWall;
+            inter_frames = f - 1;
+            sumA = a; sumB = b; sumW = wms; sumG = g; sumWall = wall;
+            bytes = by;
+            nskip = sk;
+        }
+    }
+    const double n = inter_frames > 0 ? (double)inter_frames : 1.0;
+    std::printf(
+        "%s, %d frames at QP %d, %u tiles/frame\n"
+        "  best sequence: GPU %.2f ms total, wall %.2f ms total\n"
+        "  frame 0 (all INTRA):  Pass A %.3f ms, Pass B %.3f ms, GPU %.3f ms\n"
+        "  frames 1..%d (inter), mean per frame:\n"
+        "    Pass A %.3f ms, Pass W %.3f ms, Pass B+W %.3f ms, GPU %.3f ms, "
+        "wall %.3f ms\n"
+        "    %.1f kB/frame, %.1f%% of tiles skipped\n",
+        nxvc_vk_decoder_device_name(dec), frames, qp, tiles, bestSeqGpu,
+        bestSeqWall, intraA, intraB, intraG, inter_frames, sumA / n, sumW / n,
+        sumB / n, sumG / n, sumWall / n, (double)bytes / n / 1e3,
+        100.0 * (double)nskip / (n * (tiles ? tiles : 1)));
+    nxvc_vk_decoder_destroy(dec);
+    return 0;
+}
+
+int run_bench_qp(int iters, int qp, bool dense = false, int intra_dir = -1,
+                 int xform = -1) {
+    Case c{"bench_2x2048sq_420", 2048, 4096, 0, 1, qp, 0, 0, 0, 3, 0, 0, 0,
+           1,   0,    0, 1};
+    // A v1 stream (INTRA_DIR off) is what the Pico 4 actually streams
+    // (ADR 0025 point 3), and it is the only shape in which Pass B's store
+    // is a visible fraction of Pass B.  With the wavefront on, the store is
+    // under a percent of the pass and no store format can be measured
+    // through it.
+    c.intra_dir = intra_dir;
+    c.xform = xform;
+    std::vector<uint8_t> stream;
+    std::string err;
+    std::printf("-- encoding %dx%d 4:2:0 at QP %d (%d tiles), INTRA_DIR %s, "
+                "xform %s\n",
+                c.w, c.h, qp, (c.w / 64) * (c.h / 64),
+                intra_dir == 0 ? "off" : intra_dir == 1 ? "on" : "default",
+                xform == 0     ? "8"
+                : xform == 1   ? "16"
+                : xform == 2   ? "32"
+                : xform == 255 ? "auto"
+                               : "default");
     if (!encode_case(c, stream, err)) {
         std::printf("bench: encode failed (%s)\n", err.c_str());
         return 1;
@@ -800,10 +1210,12 @@ BenchRun time_stream(const std::vector<uint8_t> &stream, int iters,
 }
 
 // The 2048-tile shape the headset streams, as one 4:2:0 frame.
-Case bench_case(int qp, int intra_dir, int res_pattern, int tskip) {
+Case bench_case(int qp, int intra_dir, int res_pattern, int tskip,
+                int xform = -1) {
     Case c{"bench", 2048, 4096, 0, 1, qp, 0, 0, tskip, 3, 0, 0, 0,
            res_pattern, 0, 0, 1};
     c.intra_dir = intra_dir;
+    c.xform = xform;
     return c;
 }
 
@@ -886,6 +1298,50 @@ int run_bench_dir(int iters) {
             wavefront_steps((int)v.sched, 8),
             barriers_per_tile((int)v.sched, false, true, false),
             wavefront_occupancy_pct((int)v.sched, 8), v.rate);
+    }
+    return 0;
+}
+
+// -------------------------------------------- [minor 6] the transform size
+// XFORM_LARGE (tool bit 27) changes Pass B in two directions at once, and the
+// point of this arm is that they are separable and both large.  It ADDS
+// arithmetic -- 2.75 multiplies per sample at 8x8 against 9.4 at 16x16 and
+// 20.7 at 32x32 (SYNTAX.md 6.2.1) -- and it REMOVES schedule: a plane is
+// nb x nb blocks instead of 8 x 8, so the transform runs in fewer rounds and,
+// with INTRA_DIR, the wavefront falls from 22 steps to 10 and then 4.  A
+// stream that sets no tool bit must also cost exactly what it did, which the
+// `xform 8` row against a pre-XFORM_LARGE build is the check on.
+int run_bench_xform(int iters) {
+    static const struct { int xf; const char *what; } kArms[] = {
+        {0, "8x8   (no tool bit)"},
+        {1, "16x16 (xform_size 1)"},
+        {2, "32x32 (xform_size 2)"},
+        {255, "auto  (per-tile RD choice)"},
+    };
+    std::printf("\n-- Pass B by transform size, 2048 tiles 4:2:0 QP 24, "
+                "best of %d\n", iters);
+    for (int dir : {0, 1}) {
+        double base = 0.0;
+        for (const auto &a : kArms) {
+            std::vector<uint8_t> stream;
+            std::string err;
+            if (!encode_case(bench_case(24, dir, 0, 0, a.xf), stream, err)) {
+                std::printf("bench: encode failed (%s)\n", err.c_str());
+                return 1;
+            }
+            BenchRun r = time_stream(stream, iters, 0, 0);
+            if (r.skipped) {
+                std::printf("SKIP: no usable Vulkan device\n");
+                return 77;
+            }
+            if (!r.ok) return 1;
+            if (a.xf == 0) base = r.passB;
+            std::printf("   INTRA_DIR %s  %-24s  payload %6.3f MB   "
+                        "Pass A %7.3f ms   Pass B %6.3f ms  (%.2fx 8x8)\n",
+                        dir ? "on " : "off", a.what,
+                        (double)r.payloadBytes / 1e6, r.passA, r.passB,
+                        base > 0.0 ? r.passB / base : 1.0);
+        }
     }
     return 0;
 }
@@ -1023,32 +1479,103 @@ int run_bench(int iters) {
     if ((rc = run_bench_overhead(iters))) return rc;
     if ((rc = run_bench_sort(iters))) return rc;
     if ((rc = run_bench_stores(iters))) return rc;
+    if ((rc = run_bench_xform(iters))) return rc;
     return 0;
 }
 
 }  // namespace
 
 int main(int argc, char **argv) {
-    bool quick = false, do_vectors = true, do_synth = true;
+    bool quick = false, do_vectors = true, do_synth = true, do_loss = true;
     int bench = 0;
+    // --bench-qp is the one-QP slice of --bench: encode the 2 x 2048^2 4:2:0
+    // frame once and time the two passes over it, nothing else.  The full
+    // --bench sweep encodes eleven such frames with the CPU reference encoder
+    // and that is an hour of a phone's CPU before a single dispatch runs, so
+    // on a device the slice is the usable form.
+    int bench_qp = -1;
+    int bench_dir = -1;   // --bench-v1 pins INTRA_DIR off
+    int bench_inter = 0;  // --bench-inter N: an N-frame inter sequence
+    int bench_w = 1024, bench_h = 1024;
+    const char *bench_save = nullptr;  // write the bench stream and exit
+    // [minor 6] --bench-xform pins the tile transform size of the saved or
+    // timed bench stream: 8, 16, 32 or `auto`.  -1 leaves the encoder's
+    // default, which is 8 and sets no tool bit.
+    int bench_xform = -1;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         if (a == "--vectors" && i + 1 < argc) g_vectors_dir = argv[++i];
         else if (a == "--quick") quick = true;
         else if (a == "--verbose") g_verbose = true;
-        else if (a == "--only-vectors") do_synth = false;
-        else if (a == "--only-synthetic") do_vectors = false;
+        else if (a == "--only-vectors") { do_synth = false; do_loss = false; }
+        else if (a == "--only-synthetic") { do_vectors = false; do_loss = false; }
+        else if (a == "--only-loss") { do_vectors = false; do_synth = false; }
+        else if (a == "--no-loss") do_loss = false;
         else if (a == "--bench") bench = i + 1 < argc && argv[i + 1][0] != '-'
                                              ? std::atoi(argv[++i])
                                              : 20;
+        else if (a == "--bench-v1") bench_dir = 0;
+        else if (a == "--bench-xform" && i + 1 < argc) {
+            std::string v = argv[++i];
+            bench_xform = v == "8"    ? 0
+                          : v == "16" ? 1
+                          : v == "32" ? 2
+                          : v == "auto" ? 255
+                                        : -2;
+            if (bench_xform == -2) {
+                std::fprintf(stderr, "--bench-xform: 8|16|32|auto\n");
+                return 2;
+            }
+        }
+        else if (a == "--bench-inter" && i + 1 < argc) {
+            bench_inter = std::atoi(argv[++i]);
+            if (!bench) bench = 5;
+        }
+        else if (a == "--bench-size" && i + 2 < argc) {
+            bench_w = std::atoi(argv[++i]);
+            bench_h = std::atoi(argv[++i]);
+        }
+        else if (a == "--bench-save" && i + 1 < argc) bench_save = argv[++i];
+        else if (a == "--bench-qp" && i + 1 < argc) {
+            bench_qp = std::atoi(argv[++i]);
+            if (!bench) bench = 10;
+        }
         else {
             std::fprintf(stderr,
-                         "usage: %s [--vectors DIR] [--quick] [--verbose]\n",
+                         "usage: %s [--vectors DIR] [--quick] [--verbose]\n"
+                         "       [--bench N] [--bench-qp QP] [--bench-v1]\n"
+                         "       [--bench-xform 8|16|32|auto]\n"
+                         "       [--bench-save FILE]\n"
+                         "       [--only-loss] [--no-loss]\n"
+                         "       [--bench-inter FRAMES] [--bench-size W H]\n",
                          argv[0]);
             return 2;
         }
     }
     if (!g_vectors_dir) g_vectors_dir = NXVC_VECTORS_DIR;
+    if (bench_save) {
+        Case c{"bench_2x2048sq_420", 2048, 4096, 0, 1, bench_qp < 0 ? 24 : bench_qp,
+               0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 1};
+        c.intra_dir = bench_dir;
+        c.xform = bench_xform;
+        std::vector<uint8_t> stream;
+        std::string err;
+        if (!encode_case(c, stream, err)) {
+            std::printf("encode failed: %s\n", err.c_str());
+            return 1;
+        }
+        std::FILE *f = std::fopen(bench_save, "wb");
+        if (!f) { std::perror("open"); return 1; }
+        std::fwrite(stream.data(), 1, stream.size(), f);
+        std::fclose(f);
+        std::printf("wrote %zu B to %s\n", stream.size(), bench_save);
+        return 0;
+    }
+    if (bench_inter)
+        return run_bench_inter(bench, bench_inter, bench_w, bench_h,
+                               bench_qp < 0 ? 24 : bench_qp, bench_dir);
+    if (bench_qp >= 0)
+        return run_bench_qp(bench, bench_qp, false, bench_dir, bench_xform);
     if (bench) return run_bench(bench);
 
     // Probe once, so "no ICD" is one skip rather than 32 identical failures.
@@ -1073,6 +1600,7 @@ int main(int argc, char **argv) {
         run_rejects();
     }
     if (do_synth) run_synthetic(quick);
+    if (do_loss) run_loss(quick ? 20 : 100);
 
     std::printf("-- %d stream(s) checked, %d skipped, %d failure(s)\n",
                 g_checked, g_skipped, g_fail);

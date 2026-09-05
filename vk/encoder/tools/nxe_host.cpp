@@ -17,16 +17,29 @@ extern "C" {
 /* The built-in probability tables come from the reference library: they are a
  * trained data set, not an algorithm, and a second copy of them in this tree
  * would be a second thing to keep in step.  `ref/src/tables.cpp` is compiled
- * into this tool for exactly this declaration. */
-namespace nxvc {
-struct CtxTable {
-    uint16_t freq[16];
-    uint16_t cum[17];
-    uint8_t slot2sym[1024];
-};
-struct TableSet { CtxTable ctx[16]; };
-void build_default_set(TableSet &ts, int set_index, int nctx);
-}  // namespace nxvc
+ * into this tool for exactly this reason, and `ref/src` is on this target's
+ * include path (see the CMakeLists, which only defines the target when
+ * `ref/src/tables.cpp` exists).
+ *
+ * This used to be a hand-written mirror of `nxvc::CtxTable` and
+ * `nxvc::TableSet` so that the declaration was local.  It must not be: at
+ * bitstream minor 6 `kNumCtx` went from 16 to 27, `build_default_set` writes
+ * all `kNumCtx` rows, and the mirror was still 16 rows -- so every call wrote
+ * 11990 bytes past the end of a stack object.  A layout this tool does not own
+ * is not a thing to transcribe; include the header the definition lives in.
+ *
+ * The pragma is for `v3_ctx_level`, which returns one of two differently-named
+ * anonymous enums from a conditional; that is ref's to fix and is harmless
+ * here, but this tool is the only place that compiles the header outside ref
+ * and should not be the place a ref warning starts appearing. */
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wenum-compare"
+#endif
+#include "common.h"
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 namespace nxe {
 
@@ -43,7 +56,8 @@ void setup(const Config &cfg, Frame &f) {
     fp.chroma420 = cfg.chroma444 ? 0u : 1u;
     fp.base_qp = (uint32_t)cfg.qp;
     fp.chroma_qp_off = cfg.chroma_qp_off;
-    fp.nctx = cfg.ctx_v2 ? NXE_NCTX_V2 : NXE_NCTX_V1;
+    fp.nctx = cfg.ctx_v3 ? NXE_NCTX_V3
+                         : (cfg.ctx_v2 ? NXE_NCTX_V2 : NXE_NCTX_V1);
     fp.sdh = cfg.sign_hide ? 1u : 0u;
     fp.intra_dir = cfg.intra_dir ? 1u : 0u;
     fp.dir_layer = cfg.dir_layer ? 1u : 0u;
@@ -97,12 +111,21 @@ void setup(const Config &cfg, Frame &f) {
     f.tile_prefix.assign(fp.ntiles, 0);
 }
 
+/* The storage bound here has to cover every row `build_default_set` writes,
+ * and the reference's context count is the thing that moves (12 -> 16 -> 27).
+ * Assert it rather than tracking it by hand: growing `kNumCtx` past
+ * NXE_MAX_CTX must be a compile error in this file, not a truncated table. */
+static_assert(nxvc::kNumCtx <= NXE_MAX_CTX,
+              "NXE_MAX_CTX is smaller than the reference's context count");
+static_assert(nxvc::kNumSym == NXE_NUM_SYM, "symbol count disagrees with ref");
+
 void build_tables(const Config &cfg, Frame &f) {
     std::memset(&f.tabs, 0, sizeof f.tabs);
+    const int nctx = nxvc::coded_context_count(cfg.ctx_v2, cfg.ctx_v3);
     for (int k = 0; k < 8; ++k) {
         nxvc::TableSet ts;
-        nxvc::build_default_set(ts, k, cfg.ctx_v2 ? 16 : 12);
-        for (int c = 0; c < 16; ++c)
+        nxvc::build_default_set(ts, k, nctx);
+        for (int c = 0; c < nxvc::kNumCtx; ++c)
             for (int s = 0; s < NXE_NUM_SYM; ++s) {
                 f.tabs.freq[k][c][s] = ts.ctx[c].freq[s];
                 f.tabs.cum[k][c][s] = ts.ctx[c].cum[s];
@@ -241,6 +264,7 @@ std::vector<uint8_t> stream_header(const Config &cfg, const Frame &f) {
     if (cfg.wm_id != 0) tools |= 1ull << 20;          /* WM_ID */
     if (cfg.intra_dir) tools |= 1ull << 17;           /* INTRA_DIR */
     if (cfg.ctx_v2) tools |= 1ull << 21;              /* CTX_V2 */
+    if (cfg.ctx_v3) tools |= 1ull << 25;              /* CTX_V3 */
     if (cfg.sign_hide) tools |= 1ull << 22;           /* SIGN_HIDE */
 
     u32(0x3156584Eu);            /* 'NXV1' */
@@ -277,17 +301,29 @@ void choose_table_sets(Frame &f) {
         const uint8_t *modes = &f.modes[(size_t)t * 3 * 64];
         uint32_t hist[NXE_MAX_CTX][NXE_NUM_SYM];
         std::memset(hist, 0, sizeof hist);
-        for (int ui = 0; ui < tu.nunits; ++ui) {
-            int n = nxe_unit_ops(&tu, ui, coef, modes, ops.data());
-            for (int i = 0; i < n; ++i)
-                if (NXE_OP_KIND(ops[i]) == NXE_OP_SYM)
-                    hist[NXE_OP_ARG(ops[i])][NXE_OP_VALUE(ops[i])]++;
+        /* Every unit exactly once, but walked lane by lane rather than in
+         * unit order: under v3 the context a unit codes in depends on the
+         * neighbour class its own lane carries, so the histogram is only
+         * right if the walk is the one E4 will actually perform.  The counts
+         * themselves are order-independent; which row they land in is not. */
+        for (int l = 0; l < tu.active; ++l) {
+            nxe_nbr nbr = NXE_NBR_INIT;
+            for (int ui = l; ui < tu.nunits; ui += tu.nlanes) {
+                int n = nxe_unit_ops(&tu, ui, coef, modes, &nbr, ops.data());
+                for (int i = 0; i < n; ++i)
+                    if (NXE_OP_KIND(ops[i]) == NXE_OP_SYM)
+                        hist[NXE_OP_ARG(ops[i])][NXE_OP_VALUE(ops[i])]++;
+            }
         }
         double best = 0;
         int bestk = (int)f.jobs[t].table_set;
         for (int k = 0; k < 8; ++k) {
             double bits = 0;
-            for (int c = 0; c < 16; ++c)
+            /* `table_set_cost` sums over all kNumCtx rows, not over the coded
+             * count: rows the model does not code have an empty histogram and
+             * contribute nothing, so the two agree -- but only if this loop
+             * has the same bound.  It is a hot loop over a 27-row table now. */
+            for (int c = 0; c < nxvc::kNumCtx; ++c)
                 for (int s = 0; s < NXE_NUM_SYM; ++s)
                     if (hist[c][s])
                         bits -= (double)hist[c][s] *

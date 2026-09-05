@@ -44,7 +44,7 @@ From paper 3.7. Everything here is expected, from vendor capability documentatio
 | AMD RDNA (7900 XTX) | 32 or 64, driver chooses | yes | yes | yes | Encoder only; Full as a PC-class client | Never assume which subgroup width |
 | NVIDIA | 32 | yes | yes | yes | Encoder only; Full as a PC-class client | |
 | Intel ANV | 8, 16 or 32 per shader | yes | yes | yes | Full (PC-class client) | Force 32 with subgroup size control; clusters of 8 work at any width |
-| Adreno 6xx (Pico 4, XR2 Gen 1) | 64 | yes | unreliable | yes | **Hybrid only expected**, pending Phase 0 | Proprietary compiler; avoid clustered ops. See below |
+| Adreno 6xx (Pico 4, XR2 Gen 1) | 64 | yes | unreliable | yes | **Hybrid only expected**, pending Phase 0 | Proprietary compiler; avoid clustered ops. See below, and [ADRENO-RULES.md](ADRENO-RULES.md) for the four shader rules its driver forces on every kernel |
 | Adreno 7xx (XR2 Gen 2 class) | 128 | yes | unreliable | yes | Full expected | About 2.5x the GPU of Gen 1; the paper expects pure compute to become the default here |
 | Mali Valhall | 16 | yes | no | yes | Hybrid only, unless a Phase 0 style bench passes on the device | |
 | Mali Bifrost | 4 to 8 | partial | no | yes | Unsupported for pure compute; hybrid | Subgroup below 8 breaks the 8-lane cluster rule |

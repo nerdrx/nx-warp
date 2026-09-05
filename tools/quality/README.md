@@ -31,6 +31,9 @@ Everything is Python 3 with numpy. There is no C++ here.
 | `nxq/fvvdp.py` | FovVideoVDP in a headset display model (PAPER.md 5.3) |
 | `nxq/popin.py` | the temporal pop-in metric and the Tursun-Didyk model |
 | `nxq/latency.py` | the motion-to-photon budget reported with every number |
+| `percept_run.py` | equal-**perceived**-quality runs: drives `nxv-enc --rc` at a target bit rate and scores it against the flat-QP curve |
+| `percept_report.py` | the markdown tables of `ref/RESULTS-percept.md` |
+| `percept_map_png.py` | one frame of `nxv-enc --rc-map` as a per-tile QP / res / skip / class picture |
 | `dummy_codec.py` | a mock `nxv-enc`/`nxv-dec` for proving the harness |
 | `tests/` | pytest suite, registered with ctest by `tools/CMakeLists.txt` |
 | `reports/` | generated reports land here (git-ignored) |
@@ -71,7 +74,12 @@ chrt -i 0 taskset -c 28-31 nice -n 19 <cmd>
 
 with ffmpeg additionally capped at `-threads 4`. Override the core slice with
 `NXQ_CPUS`, the thread count with `NXQ_THREADS`, or disable the prefix entirely
-with `NXQ_NO_CPU_LIMIT=1` (for CI containers without `chrt`/`taskset`).
+with `NXQ_NO_CPU_LIMIT=1`.
+
+The slice is intersected with the CPUs the process may actually run on, and
+`taskset` is dropped when the intersection is empty, so the `28-31` default
+pins on the development host and simply does not pin on a smaller machine
+instead of failing there.
 
 Run the harness itself under the same prefix.
 
@@ -701,6 +709,42 @@ lost."
 
 The first full run of all three metrics on the v2 sequences is in
 [`reports/perceptual-2026-09-04.md`](reports/perceptual-2026-09-04.md).
+### Equal *perceived* quality: `percept_run.py`
+
+`compare.py` sweeps QP. `nxv-enc --rc` has no QP input -- the rate controller
+takes a target bit rate -- and it is designed to lose PSNR-Y, so a BD-rate
+table on PSNR grades it on the metric it is deliberately not optimising.
+`percept_run.py` is the instrument for it:
+
+* it drives the encoder at a **target bit rate** and scores it at the rate it
+  actually delivered;
+* the 20 / 40 / 80 / 150 Mbit targets are stated for the reference geometry
+  2048x1024 at 90 Hz and scaled to the clip's pixel rate, so every sequence
+  runs at the same bits per pixel;
+* it scores every point on eccentricity-weighted PSNR/SSIM at **both** acuity
+  powers, the hard fovea/periphery split, and **FovVideoVDP** through
+  `nxq/fvvdp.py`; and
+* it reports **bits at equal foveated quality**: the flat-QP curve is
+  interpolated in log-rate at the quality the rate-controlled point reached,
+  and points outside that curve are reported as `--` rather than extrapolated.
+
+```sh
+python3 percept_run.py --seq $NXQ_SCRATCH/seq/vr-mixed-1024-v2.yuv444p.json \
+    --work $NXQ_SCRATCH/percept/w --out $NXQ_SCRATCH/results/percept.json \
+    --frames 8 --qp 20,26,32,38,44 --arms rc-full,rc-matched
+python3 percept_report.py $NXQ_SCRATCH/results/percept.json
+python3 percept_map_png.py --csv $NXQ_SCRATCH/percept/w/rc-full-40.csv \
+    --frame 4 --out $NXQ_SCRATCH/percept/map.png
+```
+
+**The arms.** `flat` is a QP sweep, the codec as it ships. `rc-nofov`,
+`rc-spatial` and `rc-full` add the rate controller, the foveation map and the
+temporal refresh scheduler in that order, with the foveation ladder deciding
+for the **Pico 4's** 2160 px per eye. `rc-matched` runs the same ladder told
+the truth about the clip's own pixel density, which is the arm whose foveated
+metrics mean what they say -- see `ref/RESULTS-percept.md` section 2 for why
+the two are different experiments. `rc-matched-noact` is that arm with the
+activity term off.
 
 ---
 

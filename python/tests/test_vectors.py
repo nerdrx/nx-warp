@@ -221,7 +221,7 @@ def test_every_conformance_vector_parses(row):
         for n, tile_row in enumerate(frame.rows):
             assert tile_row.header.row_index == n // hdr.eyes
             assert tile_row.eye == n % hdr.eyes
-            assert len(tile_row.tiles) == tile_row.header.tile_count
+            assert len(tile_row.tiles) == tile_row.header.count
             for tile in tile_row.tiles:
                 assert tile.header.eye == tile_row.eye
         for tile in frame.tiles:
@@ -252,13 +252,30 @@ def test_every_conformance_vector_round_trips_its_headers(row):
 
 @pytest.mark.parametrize("row", CONFORMANCE, ids=_id)
 def test_transmitted_table_sets_are_sized_by_the_stream_tools(row):
-    """SYNTAX.md 3.1 / 9.4: 120 bytes, or 160 under ``CTX_V2``."""
+    """SYNTAX.md 3.1 / 9.4: 120 bytes, 160 under ``CTX_V2``, 270 under ``CTX_V3``.
+
+    ``TAB_V2`` (9.4.1) makes a set variable length and the transmitted sets one
+    byte-aligned bit sequence, so there the fixed size is only an upper bound
+    and the whole area arrives as a single blob.
+    """
     name = row[0]
     data = (_vector_dir() / f"{name}.nxv").read_bytes()
     stream = bs.parse_stream(data)
-    want = 160 if (stream.header.tools & nxvc.Tool.CTX_V2) else 120
-    assert bs.table_set_bytes(stream.header.tools) == want
+    tools = stream.header.tools
+    if tools & nxvc.Tool.CTX_V3:
+        want = 270
+    elif tools & nxvc.Tool.CTX_V2:
+        want = 160
+    else:
+        want = 120
+    assert bs.table_set_bytes(tools) == want
     for frame in stream.frames:
+        if tools & nxvc.Tool.TAB_V2:
+            keys = set(frame.table_deltas)
+            assert keys == ({None} if frame.header.table_sets else set())
+            for blob in frame.table_deltas.values():
+                assert 0 < len(blob) <= want * len(frame.header.table_sets)
+            continue
         assert set(frame.table_deltas) == set(frame.header.table_sets)
         for blob in frame.table_deltas.values():
             assert len(blob) == want
@@ -275,7 +292,7 @@ def test_the_ctx_v2_table_size_is_load_bearing(monkeypatch):
     for row in CONFORMANCE:
         data = (vectors / f"{row[0]}.nxv").read_bytes()
         stream = bs.parse_stream_header(data)
-        if stream.tools & nxvc.Tool.CTX_V2:
+        if (stream.tools & nxvc.Tool.CTX_V2) and not (stream.tools & nxvc.Tool.TAB_V2):
             frame = next(bs.iter_frames(data, stream))
             if frame.header.table_sets:
                 candidates.append(row[0])

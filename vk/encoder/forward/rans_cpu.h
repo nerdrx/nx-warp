@@ -69,14 +69,36 @@ typedef struct nxe_unit {
     uint8_t nbx;          /* UNIT_MODE: blocks per edge */
     uint8_t sdh;
     uint8_t mode_off;     /* UNIT_MODE: plane index into the mode array */
-    uint8_t pad;
+    /* v3 only: the unit's statistical family, and the neighbour *group* it
+     * belongs to.  `ucls` picks the v2 row a unit falls back to when there is
+     * nothing to condition on.  `grp` is `plane + 1` for a block unit and 0
+     * for a DC-plane or mode unit -- and 0 for every unit under v1/v2, which
+     * is what makes the whole mechanism inert there.  A lane resets its class
+     * whenever `grp` changes, which is the decoder's own formulation
+     * (`vk/decoder/passA/rans_decode.comp`, `begin_unit`): group 0 is "not in
+     * a chain", so a DC or mode unit both breaks the chain and joins none,
+     * and a plane boundary breaks it because the group is the plane. */
+    uint8_t ucls;         /* NXE_UCLS_* */
+    uint8_t grp;
 } nxe_unit;
+
+/* The neighbour class a rANS lane carries across the units it owns: `cls` is
+ * 0 none / 1 uncoded / 2 coded sparse / 3 coded dense, `grp` the group that
+ * class belongs to.  Both start at 0, so the first unit of a lane conditions
+ * on nothing and codes exactly as it would have under v2. */
+typedef struct nxe_nbr {
+    int cls;
+    int grp;
+} nxe_nbr;
+
+#define NXE_NBR_INIT { 0, 0 }
 
 typedef struct nxe_tile_units {
     nxe_unit u[NXE_TILE_UNITS_MAX];
     int nunits;
     int nlanes;   /* 1 << nsub_log2 */
     int active;   /* min(nlanes, nunits) */
+    int ctx_v3;   /* fp->nctx >= NXE_NCTX_V3 */
 } nxe_tile_units;
 
 /* The frame's probability tables, flattened: freq[set][ctx][sym] and the
@@ -96,9 +118,16 @@ void nxe_build_units(const nxe_frame_params *fp, const nxe_tile_job *job,
 
 /* Materialise unit `ui`'s operations into `ops` (at most NXE_UNIT_MAX_OPS).
  * Returns the count.  `modes` is the tile's per-plane mode array, 64 entries
- * per plane, or NULL when directional intra is off. */
+ * per plane, or NULL when directional intra is off.
+ *
+ * `nbr` is the calling lane's neighbour-class state, read for the contexts
+ * this unit codes in and updated with what the unit publishes.  It matters
+ * only under the v3 model and only for block units; pass a fresh
+ * NXE_NBR_INIT under v1/v2, where nothing reads it.  The caller must walk one
+ * lane's units in lane order (ui = lane, lane + N, lane + 2N, ...) with one
+ * state, which is exactly the order the lane machine finishes them in. */
 int nxe_unit_ops(const nxe_tile_units *tu, int ui, const int16_t *coef,
-                 const uint8_t *modes, uint32_t *ops);
+                 const uint8_t *modes, nxe_nbr *nbr, uint32_t *ops);
 
 /* E4 over one tile.  Writes the 8-byte tile header followed by the payload
  * into `out` (at least NXE_TILE_SLOT_BYTES) when `out` is non-null; when it is

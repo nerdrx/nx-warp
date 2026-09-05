@@ -15,6 +15,7 @@ void nxe_build_units(const nxe_frame_params *fp, const nxe_tile_job *job,
                      nxe_tile_units *tu) {
     int p, b, off = 0, n = 0;
     const int v2 = fp->nctx >= NXE_NCTX_V2;
+    const int v3 = fp->nctx >= NXE_NCTX_V3;
     memset(tu, 0, sizeof *tu);
     for (p = 0; p < NXE_MAX_PLANES; ++p) {
         const int chroma = (p == 1 || p == 2);
@@ -33,7 +34,13 @@ void nxe_build_units(const nxe_frame_params *fp, const nxe_tile_job *job,
         u->tskip = 0;                       /* the DC plane never uses raster */
         u->ctx_cbf = v2 ? (uint8_t)NXE_CTX_CBF_DC : ccbf;
         u->ctx_last = v2 ? (uint8_t)NXE_CTX_LAST_DC : clast;
-        u->ctx_level = v2 ? (uint8_t)NXE_CTX_LEVEL_DC : (uint8_t)NXE_CTX_NONE;
+        /* Under v3 the DC plane's LEVEL splits at scan position 0, so it is no
+         * longer one fixed row and has to be derived per coefficient. */
+        u->ctx_level = v3 ? (uint8_t)NXE_CTX_NONE
+                          : (v2 ? (uint8_t)NXE_CTX_LEVEL_DC
+                                : (uint8_t)NXE_CTX_NONE);
+        u->ucls = (uint8_t)NXE_UCLS_DC;
+        u->grp = 0;                         /* neither publishes nor consumes */
         u->sdh = (uint8_t)fp->sdh;
         off += ndc;
         if (fp->intra_dir) {
@@ -42,6 +49,9 @@ void nxe_build_units(const nxe_frame_params *fp, const nxe_tile_job *job,
             m->kind = 1;
             m->nbx = (uint8_t)nb;
             m->mode_off = (uint8_t)p;
+            m->grp = 0;
+            /* v3 keeps v2's row 15: the mode-symbol context split was built,
+             * retrained and measured worse.  ref/src/common.h mode_context. */
             m->ctx_mode = v2 ? (uint8_t)NXE_CTX_MODE : (uint8_t)NXE_CTX_NONE;
         }
         for (b = 0; b < ndc; ++b) {
@@ -53,6 +63,8 @@ void nxe_build_units(const nxe_frame_params *fp, const nxe_tile_job *job,
             v->ctx_cbf = ccbf;
             v->ctx_last = clast;
             v->ctx_level = (uint8_t)NXE_CTX_NONE;
+            v->ucls = (uint8_t)(chroma ? NXE_UCLS_CHROMA : NXE_UCLS_LUMA);
+            v->grp = (uint8_t)(v3 ? p + 1 : 0);
             v->sdh = (uint8_t)fp->sdh;
             off += 64;
         }
@@ -60,6 +72,7 @@ void nxe_build_units(const nxe_frame_params *fp, const nxe_tile_job *job,
     tu->nunits = n;
     tu->nlanes = 1 << job->nsub_log2;
     tu->active = tu->nlanes < n ? tu->nlanes : n;
+    tu->ctx_v3 = v3;
 }
 
 /* ------------------------------------------------------------ intra modes
@@ -102,6 +115,64 @@ static int level_ctx(int p, int prev) {
     return NXE_CTX_LEVEL_BASE + nxe_level_ctx_tab[band_of(p)][prev];
 }
 
+/* ------------------------------------------------- v3 context derivation
+ *
+ * These three are the only places a v3 context is chosen, exactly as they are
+ * the only three on the decode side (`vk/decoder/passA/syntax_constants.h`,
+ * `nxs_v3_ctx_*`) and in the reference (`ref/src/common.h`).  Each is
+ * arithmetic over the unit's class and the lane's neighbour class.
+ *
+ * `nbr` is 0 none, 1 uncoded, 2 coded sparse, 3 coded dense; class 0 keeps the
+ * v2 context, which is what makes v3 a refinement of v2 rather than a
+ * replacement -- and is why the stream header refuses tool bit 25 without
+ * bit 21.
+ */
+static int v3_ctx_cbf(int ucls, int nbr) {
+    if (nbr == 0)
+        return ucls == NXE_UCLS_DC
+                   ? NXE_CTX_CBF_DC
+                   : (ucls == NXE_UCLS_CHROMA ? NXE_CTX_CBF_CHROMA
+                                              : NXE_CTX_CBF_LUMA);
+    return (ucls == NXE_UCLS_CHROMA ? NXE_CTX_CBF_CHROMA_N
+                                    : NXE_CTX_CBF_LUMA_N) + (nbr - 1);
+}
+/* LAST splits coded from not-coded only: the sparse/dense distinction pays on
+ * CBF, where it says how likely a coefficient is at all, and not on LAST,
+ * where the unit's own magnitudes already say it.  So LAST spends two extra
+ * rows against CBF's six. */
+static int v3_ctx_last(int ucls, int nbr) {
+    if (nbr < 2)
+        return ucls == NXE_UCLS_DC
+                   ? NXE_CTX_LAST_DC
+                   : (ucls == NXE_UCLS_CHROMA ? NXE_CTX_LAST_CHROMA
+                                              : NXE_CTX_LAST_LUMA);
+    return ucls == NXE_UCLS_CHROMA ? NXE_CTX_LAST_CHROMA_N
+                                   : NXE_CTX_LAST_LUMA_N;
+}
+/* LEVEL is NOT conditioned on the neighbour: the previously coded level inside
+ * the same unit already carries that, and about this unit rather than the one
+ * before it.  It does split the coefficient at scan position LAST, which is
+ * nonzero by construction, and gives the DC term of a DC plane its own row.
+ *
+ * `band_scan_pos` is the scan position after the band mappings of the two
+ * transform tools; with neither XFORM_4X4_SPLIT nor XFORM_LARGE implemented
+ * here it is always `scan_pos`, and the argument is kept separate so that
+ * adding either is a change to the caller and not to this function. */
+static int v3_ctx_level(int ucls, int scan_pos, int band_scan_pos, int last,
+                        int prev_class) {
+    if (ucls == NXE_UCLS_DC)
+        return scan_pos == 0 ? NXE_CTX_LEVEL_DC0 : NXE_CTX_LEVEL_DC;
+    if (scan_pos == last)
+        return band_of(band_scan_pos) < 2 ? NXE_CTX_LEVEL_LAST_LO
+                                          : NXE_CTX_LEVEL_LAST_HI;
+    return level_ctx(band_scan_pos, prev_class);
+}
+/* The class a finished coefficient unit publishes to its lane. */
+static int nbr_class_of(int cbf, int last) {
+    if (cbf == 0) return 1;
+    return last < NXE_NBR_DENSE_LAST ? 2 : 3;
+}
+
 /* ----------------------------------------------------------- unit -> ops
  *
  * The LaneMachine of ref/src/entropy.cpp, unrolled.  Unrolling is legitimate
@@ -113,9 +184,22 @@ static int level_ctx(int p, int prev) {
  * one forward pass and then consume them backwards.
  */
 int nxe_unit_ops(const nxe_tile_units *tu, int ui, const int16_t *coef,
-                 const uint8_t *modes, uint32_t *ops) {
+                 const uint8_t *modes, nxe_nbr *nbr, uint32_t *ops) {
     const nxe_unit *u = &tu->u[ui];
     int n = 0;
+
+    /* The chain break, in the decoder's own terms: a group change -- to
+     * another plane, or to the group-0 of a DC or mode unit -- drops the
+     * class.  Under v1/v2 every unit is group 0, so this fires once and then
+     * never again, and `cls` stays 0 for the whole tile. */
+    if (nbr->grp != u->grp) {
+        nbr->grp = u->grp;
+        nbr->cls = 0;
+    }
+    /* A unit outside a chain conditions on nothing.  DC and mode units are
+     * group 0 and therefore always land here. */
+    const int in = u->grp != 0 ? nbr->cls : 0;
+    const int v3 = tu->ctx_v3;
 
     if (u->kind == 1) {
         const uint8_t *md = modes + (size_t)u->mode_off * 64;
@@ -146,12 +230,21 @@ int nxe_unit_ops(const nxe_tile_units *tu, int ui, const int16_t *coef,
         for (p = ncoef - 1; p >= 0; --p)
             if (c[scan[p]] != 0) { last = p; break; }
 
-        ops[n++] = NXE_OP_PACK(NXE_OP_SYM, u->ctx_cbf, last >= 0 ? 1 : 0);
-        if (last < 0) return n;
+        const int ctx_cbf = v3 ? v3_ctx_cbf(u->ucls, in) : u->ctx_cbf;
+        const int ctx_last = v3 ? v3_ctx_last(u->ucls, in) : u->ctx_last;
+
+        ops[n++] = NXE_OP_PACK(NXE_OP_SYM, ctx_cbf, last >= 0 ? 1 : 0);
+        if (last < 0) {
+            /* An uncoded unit still publishes: class 1 is "the previous unit
+             * was not coded", which is a large part of what CBF conditions
+             * on.  ref's nbr_class_of(0, *). */
+            if (u->grp != 0) nbr->cls = nbr_class_of(0, 0);
+            return n;
+        }
 
         if (ncoef > 1) {
             int cls = nxe_last_class_of(last);
-            ops[n++] = NXE_OP_PACK(NXE_OP_SYM, u->ctx_last, cls);
+            ops[n++] = NXE_OP_PACK(NXE_OP_SYM, ctx_last, cls);
             if (nxe_last_raw_bits[cls] > 0)
                 ops[n++] = NXE_OP_PACK(NXE_OP_BYPASS, nxe_last_raw_bits[cls],
                                        last - nxe_last_base[cls]);
@@ -163,8 +256,14 @@ int nxe_unit_ops(const nxe_tile_units *tu, int ui, const int16_t *coef,
         for (p = last; p >= 0; --p) {
             int32_t q = c[scan[p]];
             int32_t m = q < 0 ? -q : q;
-            int ctx = u->ctx_level != NXE_CTX_NONE ? u->ctx_level
-                                                   : level_ctx(p, prev);
+            /* `band_scan_pos` is `p` while neither XFORM_4X4_SPLIT nor
+             * XFORM_LARGE is implemented here: the split remap is
+             * `p & 15` and the large-transform shift is `last_shift_of(64)`,
+             * which is 0.  Passing it separately is what makes adding either
+             * a change to this line alone. */
+            int ctx = v3 ? v3_ctx_level(u->ucls, p, p, last, prev)
+                         : (u->ctx_level != NXE_CTX_NONE ? u->ctx_level
+                                                         : level_ctx(p, prev));
             ops[n++] = NXE_OP_PACK(NXE_OP_SYM, ctx, m > 14 ? NXE_ESC_SYM : m);
             if (m > 14) {
                 int j, bits, i, nchunks, done = 0;
@@ -186,11 +285,24 @@ int nxe_unit_ops(const nxe_tile_units *tu, int ui, const int16_t *coef,
                 ops[n++] = NXE_OP_PACK(NXE_OP_BYPASS, 1, q < 0 ? 1 : 0);
             prev = level_class((int)m);
         }
+        /* The decoder publishes at the end of the level loop, after the
+         * hidden sign is settled, so the class depends only on CBF and LAST
+         * and never on the sign SDH did not code. */
+        if (u->grp != 0) nbr->cls = nbr_class_of(1, last);
         return n;
     }
 }
 
 /* ------------------------------------------------------------------- E4 */
+
+/* Unpack the byte phase A stored for a unit slot. */
+static nxe_nbr nbr_at(uint8_t packed) {
+    nxe_nbr n;
+    n.cls = packed & 15;
+    n.grp = (packed >> 4) & 15;
+    return n;
+}
+
 int nxe_e4_tile(const nxe_frame_params *fp, const nxe_tile_job *job,
                 const nxe_tile_units *tu, const int16_t *coef,
                 const uint8_t *modes, const nxe_tables *tabs, uint8_t *out) {
@@ -198,6 +310,12 @@ int nxe_e4_tile(const nxe_frame_params *fp, const nxe_tile_job *job,
     const int set = (int)job->table_set;
     static uint32_t opbuf[NXE_MAX_LANES][NXE_UNIT_MAX_OPS];
     static uint16_t slot_ops[NXE_MAX_LANES][NXE_TILE_UNIT_SLOTS];
+    /* The lane's neighbour-class state *entering* each of its unit slots, one
+     * packed byte (cls | grp << 4).  Phase A is the only pass that walks a
+     * lane's units forwards; both sweeps then regenerate units backwards, and
+     * a regenerated unit has to see the state it saw the first time.  Four
+     * bits each and one byte per slot is cheaper than re-walking. */
+    static uint8_t slot_nbr[NXE_MAX_LANES][NXE_TILE_UNIT_SLOTS];
     int nops[NXE_MAX_LANES], nslots[NXE_MAX_LANES];
     int cur_slot[NXE_MAX_LANES], ops_base[NXE_MAX_LANES];
     uint32_t state[NXE_MAX_LANES];
@@ -209,8 +327,11 @@ int nxe_e4_tile(const nxe_frame_params *fp, const nxe_tile_job *job,
      * the round structure, which is all the byte ordering depends on. */
     for (l = 0; l < active; ++l) {
         int ui, s = 0, total = 0;
+        nxe_nbr nbr = NXE_NBR_INIT;
         for (ui = l; ui < tu->nunits; ui += tu->nlanes) {
-            int k = nxe_unit_ops(tu, ui, coef, modes, opbuf[0]);
+            int k;
+            slot_nbr[l][s] = (uint8_t)((nbr.cls & 15) | ((nbr.grp & 15) << 4));
+            k = nxe_unit_ops(tu, ui, coef, modes, &nbr, opbuf[0]);
             slot_ops[l][s++] = (uint16_t)k;
             total += k;
         }
@@ -229,9 +350,10 @@ int nxe_e4_tile(const nxe_frame_params *fp, const nxe_tile_job *job,
             cur_slot[l] = nslots[l] - 1;
             ops_base[l] = nops[l];
             if (cur_slot[l] >= 0) {
+                nxe_nbr nb = nbr_at(slot_nbr[l][cur_slot[l]]);
                 ops_base[l] -= slot_ops[l][cur_slot[l]];
                 nxe_unit_ops(tu, l + cur_slot[l] * tu->nlanes, coef, modes,
-                             opbuf[l]);
+                             &nb, opbuf[l]);
             }
         }
         for (r = R - 1; r >= 0; --r) {
@@ -240,10 +362,12 @@ int nxe_e4_tile(const nxe_frame_params *fp, const nxe_tile_job *job,
                 emit[l] = 0;
                 if (r >= nops[l]) continue;
                 while (r < ops_base[l]) {
+                    nxe_nbr nb;
                     cur_slot[l]--;
+                    nb = nbr_at(slot_nbr[l][cur_slot[l]]);
                     ops_base[l] -= slot_ops[l][cur_slot[l]];
                     nxe_unit_ops(tu, l + cur_slot[l] * tu->nlanes, coef, modes,
-                                 opbuf[l]);
+                                 &nb, opbuf[l]);
                 }
                 op = opbuf[l][r - ops_base[l]];
                 if (NXE_OP_KIND(op) == NXE_OP_SYM) {

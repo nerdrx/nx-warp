@@ -51,6 +51,8 @@ Register budget: 8 rANS lanes x (state, pointer, cum, freq, symbol) plus the coe
 
 256 threads. A 64x64 tile holds 64 blocks of 8x8; 4 threads per block, each thread owns 2 rows (16 coefficients).
 
+Syntax v1.5 makes the block edge a per-tile field (`xform_size`, tool bit 24, SYNTAX.md 6.7): 16x16 or 32x32 instead of 8x8. That changes this mapping to one thread per 1D transform rather than four threads per block, leaves the LDS transpose buffer the size it already is (it holds a plane, not a block), and *reduces* the barrier count per tile because fewer rounds are needed. SYNTAX.md 6.8 is the schedule and ref/RESULTS-xform-a.md 5 the cost. **This decoder does not implement tool bit 24 and refuses a stream that sets it**, so everything below is unchanged for every stream it accepts.
+
 1. Load 16 int16 coefficients (coalesced, 32 bytes per thread), dequantize: `c = (q * scale[QP][pos] + 8) >> 4`, all int32.
 2. Row transform: 8-point integer DCT (the HEVC core transform is patent-encumbered by implementation detail in places; use the AV1/VP9-style or a Loeffler-derived integer lifting transform with published coefficients, or the JPEG XS style 5-3 wavelet for the lossless profile). Two 1D transforms of 8 points, about 44 adds and shifts each.
 3. Write to LDS transposed: 64 x 64 x 2 B = 8 KB. Barrier.

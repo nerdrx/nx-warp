@@ -193,6 +193,64 @@ void put16(std::vector<uint8_t> &b, uint32_t v) {
     b.push_back(uint8_t(v >> 8));
 }
 
+// ------------------------------------------------------------ entropy-lite
+// [REF] ref/src/entropy_lite.cpp BitW: MSB-first inside a byte, and every
+// section padded to a byte boundary by align().
+struct LiteBitW {
+    std::vector<uint8_t> &b;
+    uint32_t acc = 0;
+    int n = 0;
+    explicit LiteBitW(std::vector<uint8_t> &out) : b(out) {}
+    void put(uint32_t v, int k) {
+        while (k > 0) {
+            int take = k > 8 ? 8 : k;
+            uint32_t chunk = (v >> (k - take)) & ((1u << take) - 1u);
+            acc = (acc << take) | chunk;
+            n += take;
+            k -= take;
+            while (n >= 8) {
+                b.push_back(uint8_t((acc >> (n - 8)) & 0xff));
+                n -= 8;
+            }
+        }
+        acc &= (1u << n) - 1u;
+    }
+    void align() {
+        if (n) {
+            b.push_back(uint8_t((acc << (8 - n)) & 0xff));
+            n = 0;
+            acc = 0;
+        }
+    }
+};
+
+// [REF] entropy_lite.cpp UnitFacts.
+struct LiteFacts {
+    int coded = 0;
+    int last = 0;
+    int nnz = 0;
+    int param = 0;      // FIXED: the magnitude class
+    int body_bits = 0;
+};
+
+// [REF] entropy.cpp mpm_of() / nonmpm_index(), over a plane's mode array.
+int lite_mpm_of(const uint8_t *m, int nbx, int b) {
+    int bx = b % nbx, by = b / nbx;
+    int left = bx > 0 ? int(m[b - 1]) : kIntraDcPlane;
+    int above = by > 0 ? int(m[b - nbx]) : kIntraDcPlane;
+    return nxs_mpm(left, above);
+}
+
+int lite_nonmpm_index(int mpm, int mode) {
+    int n = 0;
+    for (int m = 0; m < kNumIntraModes; ++m) {
+        if (m == mpm) continue;
+        if (m == mode) return n;
+        ++n;
+    }
+    return 0;
+}
+
 }  // namespace
 
 int scan_index(int scan_id, int pos) {
@@ -204,6 +262,9 @@ int scan_index(int scan_id, int pos) {
 int build_units(const TileShape &shape, std::vector<UnitInfo> &units) {
     units.clear();
     int np = nxs_coded_planes(shape.frame_nplanes, shape.alpha_mode);
+    // [entropy-lite] INTRA_DIR puts one mode unit between a plane's DC unit
+    // and its block units ([SYN] 9.1); without it the list is v1's.
+    const bool dir = (uint32_t(shape.tools) & kToolFlagIntraDir) != 0u;
     int off = 0;
     for (int p = 0; p < np; ++p) {
         int nb = nxs_plane_size(p, shape.res_level, shape.chroma444) / kBlockSize;
@@ -213,6 +274,13 @@ int build_units(const TileShape &shape, std::vector<UnitInfo> &units) {
         int clast = chroma ? kCtxLastChroma : kCtxLastLuma;
         units.push_back({ndc, nxs_scan_id(ndc, 0), off, ccbf, clast});
         off += ndc;
+        if (dir) {
+            UnitInfo mu{0, kScanSmall, off, ccbf, clast};
+            mu.kind = 1;
+            mu.nbx = nb;
+            mu.mode_base = p * int(kModesPerPlane);
+            units.push_back(mu);
+        }
         for (int b = 0; b < ndc; ++b) {
             units.push_back({kCoefPerBlock,
                              nxs_scan_id(kCoefPerBlock, shape.tskip), off,
@@ -307,10 +375,189 @@ bool encode_tile(const TileShape &shape, const std::vector<UnitInfo> &units,
     uint32_t w0 = (uint32_t(shape.tile_index) & kThTileIndexMask) << kThTileIndexShift;
     w0 |= (uint32_t(payload.size()) & kThPayloadLenMask) << kThPayloadLenShift;
     uint32_t w1 = 0;
+    // [inter] Every tile this corpus builds is an INTRA tile, and the mode
+    // field now has to say so: SYNTAX.md 13.3 puts the mode unit of 9.6 on
+    // INTRA tiles only, so a header left at mode 0 (WARP_SKIP) tells Pass A
+    // there is no mode unit and every later unit of the tile lands at the
+    // wrong offset.  It read as zero before because nothing looked.
+    w1 |= (uint32_t(kTileModeIntra) & kThModeMask) << kThModeShift;
     w1 |= (uint32_t(shape.res_level) & kThResLevelMask) << kThResLevelShift;
     w1 |= (uint32_t(shape.chroma444) & kThChroma444Mask) << kThChroma444Shift;
     w1 |= (uint32_t(shape.alpha_mode) & kThAlphaModeMask) << kThAlphaModeShift;
     w1 |= (uint32_t(shape.table_set) & kThTableSetMask) << kThTableSetShift;
+    w1 |= (kLanesLog2 & kThNsubLog2Mask) << kThNsubLog2Shift;
+    w1 |= (uint32_t(shape.tskip) & kThTskipMask) << kThTskipShift;
+
+    out.clear();
+    for (int i = 0; i < 4; ++i) out.push_back(uint8_t((w0 >> (8 * i)) & 0xff));
+    for (int i = 0; i < 4; ++i) out.push_back(uint8_t((w1 >> (8 * i)) & 0xff));
+    out.insert(out.end(), payload.begin(), payload.end());
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// [entropy-lite] ENTROPY_LITE / FIXED, byte-identical to
+// ref/src/entropy_lite.cpp lite_encode_units() for the same unit list.
+// ---------------------------------------------------------------------------
+bool encode_tile_lite(const TileShape &shape, const std::vector<UnitInfo> &units,
+                      const int16_t *coef, const uint8_t *modes,
+                      std::vector<uint8_t> &out, uint64_t *op_count) {
+    const int nunits = int(units.size());
+    if (nunits <= 0) return false;
+    std::vector<LiteFacts> f(static_cast<size_t>(nunits));
+    uint64_t ops = 0;
+
+    // --- per-unit facts ----------------------------------------------------
+    for (int i = 0; i < nunits; ++i) {
+        const UnitInfo &u = units[i];
+        LiteFacts &uf = f[size_t(i)];
+        if (u.kind == 1) {
+            uf.coded = (u.nbx * u.nbx) != 0 ? 1 : 0;
+            continue;
+        }
+        int last = -1;
+        for (int p = u.ncoef - 1; p >= 0; --p)
+            if (coef[u.coef_base + scan_index(u.scan_id, p)] != 0) {
+                last = p;
+                break;
+            }
+        if (last < 0) { uf.coded = 0; continue; }
+        uf.coded = 1;
+        uf.last = last;
+        int32_t maxa = 0;
+        int nnz = 0;
+        for (int p = 0; p <= last; ++p) {
+            int32_t q = coef[u.coef_base + scan_index(u.scan_id, p)];
+            int32_t a = q < 0 ? -q : q;
+            if (a) { ++nnz; if (a > maxa) maxa = a; }
+        }
+        uf.nnz = nnz;
+        int cls = 7;
+        for (int c = 0; c < 8; ++c)
+            if (int64_t(maxa) <= (int64_t(1) << kLiteMagBits[c])) { cls = c; break; }
+        uf.param = cls;
+        uf.body_bits = nnz * (kLiteMagBits[cls] + 1);
+    }
+
+    // --- H0: one bit per group of kLiteCbfGroup units ----------------------
+    const int ngroups = (nunits + kLiteCbfGroup - 1) / kLiteCbfGroup;
+    std::vector<uint8_t> gflag(size_t(ngroups), 0);
+    for (int g = 0; g < ngroups; ++g) {
+        int lo = g * kLiteCbfGroup;
+        int hi = lo + kLiteCbfGroup < nunits ? lo + kLiteCbfGroup : nunits;
+        for (int i = lo; i < hi; ++i)
+            if (f[size_t(i)].coded) { gflag[size_t(g)] = 1; break; }
+    }
+
+    std::vector<uint8_t> payload;
+    LiteBitW w(payload);
+    for (int g = 0; g < ngroups; ++g) w.put(gflag[size_t(g)], 1);
+    ops += uint64_t(ngroups);
+    w.align();
+
+    // --- H1: one bit per unit of every flagged group -----------------------
+    for (int g = 0; g < ngroups; ++g) {
+        if (!gflag[size_t(g)]) continue;
+        int lo = g * kLiteCbfGroup;
+        int hi = lo + kLiteCbfGroup < nunits ? lo + kLiteCbfGroup : nunits;
+        for (int i = lo; i < hi; ++i) {
+            w.put(uint32_t(f[size_t(i)].coded), 1);
+            ++ops;
+        }
+    }
+    w.align();
+
+    // --- P: LAST and the magnitude class of every coded coefficient unit ---
+    for (int i = 0; i < nunits; ++i) {
+        const UnitInfo &u = units[i];
+        const LiteFacts &uf = f[size_t(i)];
+        if (!uf.coded || u.kind == 1) continue;
+        w.put(uint32_t(uf.last), nxs_lite_last_bits(u.ncoef));
+        w.put(uint32_t(uf.param), kLiteParamBits);
+        ops += 2;
+    }
+    w.align();
+
+    // --- S, and the mode indices section B will carry for it ---------------
+    std::vector<uint8_t> mode_idx;
+    for (int i = 0; i < nunits; ++i) {
+        const UnitInfo &u = units[i];
+        const LiteFacts &uf = f[size_t(i)];
+        if (!uf.coded) continue;
+        if (u.kind == 1) {
+            if (!modes) return false;
+            const uint8_t *m = modes + u.mode_base;
+            int n = u.nbx * u.nbx;
+            for (int b = 0; b < n; ++b) {
+                if (int(m[b]) >= kNumIntraModes) return false;
+                int mpm = lite_mpm_of(m, u.nbx, b);
+                int hit = int(m[b]) == mpm ? 1 : 0;
+                w.put(uint32_t(hit), 1);
+                ++ops;
+                if (!hit)
+                    mode_idx.push_back(uint8_t(lite_nonmpm_index(mpm, int(m[b]))));
+            }
+        } else {
+            // Position `last` is nonzero by construction and is not coded.
+            for (int p = 0; p < uf.last; ++p) {
+                w.put(coef[u.coef_base + scan_index(u.scan_id, p)] != 0 ? 1u : 0u,
+                      1);
+                ++ops;
+            }
+        }
+    }
+    w.align();
+
+    // --- B: the bodies -----------------------------------------------------
+    size_t midx = 0;
+    for (int i = 0; i < nunits; ++i) {
+        const UnitInfo &u = units[i];
+        const LiteFacts &uf = f[size_t(i)];
+        if (!uf.coded) continue;
+        if (u.kind == 1) {
+            const uint8_t *m = modes + u.mode_base;
+            int n = u.nbx * u.nbx;
+            for (int b = 0; b < n; ++b) {
+                int mpm = lite_mpm_of(m, u.nbx, b);
+                if (int(m[b]) == mpm) continue;
+                w.put(uint32_t(mode_idx[midx++]), kModeIdxBits);
+                ++ops;
+            }
+            continue;
+        }
+        for (int p = 0; p <= uf.last; ++p) {
+            int32_t q = coef[u.coef_base + scan_index(u.scan_id, p)];
+            if (!q) continue;
+            int32_t a = q < 0 ? -q : q;
+            if (kLiteMagBits[uf.param])
+                w.put(uint32_t(a - 1), kLiteMagBits[uf.param]);
+            w.put(q < 0 ? 1u : 0u, 1);
+            ops += 2;
+        }
+    }
+    w.align();
+    if (payload.empty()) payload.push_back(0);
+
+    if (payload.size() + kTileHeaderBytes > kThPayloadLenMask) return false;
+    if (op_count) *op_count = ops;
+
+    // --- 8-byte tile header ------------------------------------------------
+    // `table_set` names the VARIANT under ENTROPY_LITE, and Pass A implements
+    // only kLiteFixed; shape.table_set is a probability-table selector and
+    // has no meaning here.
+    uint32_t w0 = (uint32_t(shape.tile_index) & kThTileIndexMask) << kThTileIndexShift;
+    w0 |= (uint32_t(payload.size()) & kThPayloadLenMask) << kThPayloadLenShift;
+    uint32_t w1 = 0;
+    // [inter] Every tile this corpus builds is an INTRA tile, and the mode
+    // field now has to say so: SYNTAX.md 13.3 puts the mode unit of 9.6 on
+    // INTRA tiles only, so a header left at mode 0 (WARP_SKIP) tells Pass A
+    // there is no mode unit and every later unit of the tile lands at the
+    // wrong offset.  It read as zero before because nothing looked.
+    w1 |= (uint32_t(kTileModeIntra) & kThModeMask) << kThModeShift;
+    w1 |= (uint32_t(shape.res_level) & kThResLevelMask) << kThResLevelShift;
+    w1 |= (uint32_t(shape.chroma444) & kThChroma444Mask) << kThChroma444Shift;
+    w1 |= (uint32_t(shape.alpha_mode) & kThAlphaModeMask) << kThAlphaModeShift;
+    w1 |= (uint32_t(kLiteFixed) & kThTableSetMask) << kThTableSetShift;
     w1 |= (kLanesLog2 & kThNsubLog2Mask) << kThNsubLog2Shift;
     w1 |= (uint32_t(shape.tskip) & kThTskipMask) << kThTskipShift;
 

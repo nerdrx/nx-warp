@@ -68,6 +68,12 @@ if(NXENC_NO_VULKAN)
 endif()
 
 # -------------------------------------------------------------------- shaders
+# One shader-build rule for the whole tree (vk/common/cmake); it compiles with
+# -O0 and runs spirv-opt with the Adreno-safe pass list.  See
+# docs/ADRENO-RULES.md.
+set(NXENC_GEN_SPV ${CMAKE_CURRENT_SOURCE_DIR}/../common/cmake/nxvc_gen_spv.cmake)
+set(NXENC_SPV_PASSES_CMAKE ${CMAKE_CURRENT_SOURCE_DIR}/../common/cmake/NxvcShaderPasses.cmake)
+
 set(NXENC_SHADER_DIR ${CMAKE_CURRENT_SOURCE_DIR}/stats)
 set(NXENC_GEN_DIR    ${CMAKE_CURRENT_BINARY_DIR}/generated)
 file(MAKE_DIRECTORY ${NXENC_GEN_DIR})
@@ -84,10 +90,11 @@ function(nxenc_shader name src defs)
             -DNAME=${name}
             -DINCDIR=${NXENC_SHADER_DIR}
             -DDEFS=${defs}
-            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/gen_spv.cmake
+            -DSTYLE=guarded
+            -P ${NXENC_GEN_SPV}
     DEPENDS ${NXENC_SHADER_DIR}/${src}
             ${NXENC_SHADER_DIR}/nxe_common.glsl
-            ${CMAKE_CURRENT_SOURCE_DIR}/cmake/gen_spv.cmake
+            ${NXENC_GEN_SPV} ${NXENC_SPV_PASSES_CMAKE}
     COMMENT "glslc ${src} [${defs}] -> ${name}.spv.h"
     VERBATIM)
   set(NXENC_SPV_HEADERS ${NXENC_SPV_HEADERS} ${out} PARENT_SCOPE)
@@ -127,10 +134,11 @@ function(nxenc_fwd_shader name src)
             -DNAME=${name}
             -DINCDIR=${NXENC_FWD_DIR}
             -DDEFS=${_fdefs}
-            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/gen_spv.cmake
+            -DSTYLE=guarded
+            -P ${NXENC_GEN_SPV}
     DEPENDS ${NXENC_FWD_DIR}/${src}
             ${NXENC_FWD_DIR}/nxe_enc_common.glsl
-            ${CMAKE_CURRENT_SOURCE_DIR}/cmake/gen_spv.cmake
+            ${NXENC_GEN_SPV} ${NXENC_SPV_PASSES_CMAKE}
     COMMENT "glslc ${src} -> ${name}.spv.h"
     VERBATIM)
   set(NXENC_SPV_HEADERS ${NXENC_SPV_HEADERS} ${out} PARENT_SCOPE)

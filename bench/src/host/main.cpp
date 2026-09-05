@@ -29,6 +29,7 @@ void usage()
 "  --no-cotenant    do not run the dummy reprojection pass\n"
 "  --thermal SEC    thermal mode: run K5 for SEC seconds and report per-minute p50\n"
 "  --selftest       verify Pass A and Pass B against the CPU reference, then exit\n"
+"  --k1-sweep [n]   time the K1 copy variants one dispatch at a time, then exit\n"
 "  --out PATH       write the result JSON here (default ./nxwarp-phase0-host.json)\n"
 "  --label TEXT     free-form label recorded in the JSON\n"
 "  --validation     enable VK_LAYER_KHRONOS_validation\n"
@@ -58,6 +59,7 @@ int main(int argc, char** argv)
                      (1u << K3_IDCT) | (1u << K4_RANS) | (1u << K5_FULL);
     cfg.outPath = "nxwarp-phase0-host.json";
     bool selftest = false, infoOnly = false;
+    int  k1sweep = 0;
 
     for (int i = 1; i < argc; ++i)
     {
@@ -97,6 +99,11 @@ int main(int argc, char** argv)
         else if (a == "--no-cotenant") cfg.cotenant = false;
         else if (a == "--thermal")     cfg.thermalSeconds = atof(next().c_str());
         else if (a == "--selftest")    selftest = true;
+        else if (a == "--k1-sweep")
+        {
+            k1sweep = 9;
+            if (i + 1 < argc && argv[i + 1][0] != '-') k1sweep = atoi(argv[++i]);
+        }
         else if (a == "--out")         cfg.outPath = next();
         else if (a == "--label")       cfg.label = next();
         else if (a == "--validation")  cfg.validation = true;
@@ -124,6 +131,14 @@ int main(int argc, char** argv)
 
     Bench bench;
     if (!bench.init(ctx, cfg)) { ctx.destroy(); return 1; }
+
+    if (k1sweep > 0)
+    {
+        bench.runK1Sweep(k1sweep);
+        bench.destroy();
+        ctx.destroy();
+        return 0;
+    }
 
     if (selftest)
     {

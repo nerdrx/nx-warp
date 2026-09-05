@@ -81,7 +81,7 @@ NXVC_TILE_SIZE = 64
 #: library reports its own with :func:`library_minor`, and it may be **ahead**
 #: of this one while a syntax revision is landing -- the parser then still
 #: reads every structure it knows, and refuses what it does not.
-NXVC_BITSTREAM_MINOR = 4
+NXVC_BITSTREAM_MINOR = 6
 
 #: The four-byte magic at the head of every stream: the ASCII bytes ``NXV1``.
 NXVC_MAGIC = 0x3156584E
@@ -193,6 +193,20 @@ class Tool:
     #: Annex D D-5 names this "tool bit 20"; bit 20 was already WM_ID in
     #: syntax v1.2, so the reference places it at the first free bit.
     FILTER_CATMULLROM = 1 << 23
+    #: Chroma predicted from the co-located reconstructed luma (7.7).
+    INTRA_CFL = 1 << 24
+    #: The 27-context neighbour-conditioned entropy model (9.9).
+    CTX_V3 = 1 << 25
+    #: The variable-length transmitted table set (9.4.1).
+    TAB_V2 = 1 << 26
+    #: Per-tile 16x16 and 32x32 transforms (6.7).
+    XFORM_LARGE = 1 << 27
+    #: The near-skip correction, in the TILE-ROW header (3.3, 13.9).
+    NEAR_SKIP = 1 << 28
+    #: Four motion vectors per tile, one per 32x32 quadrant (13.10).
+    QUAD_MV = 1 << 29
+    #: The table-free, fully parallel entropy tool (SYNTAX.md 9.10).
+    ENTROPY_LITE = 1 << 30
 
     _NAMES = [
         (1 << 0, "INTRA_DC_PLANE"),
@@ -219,10 +233,17 @@ class Tool:
         (1 << 21, "CTX_V2"),
         (1 << 22, "SIGN_HIDE"),
         (1 << 23, "FILTER_CATMULLROM"),
+        (1 << 24, "INTRA_CFL"),
+        (1 << 25, "CTX_V3"),
+        (1 << 26, "TAB_V2"),
+        (1 << 27, "XFORM_LARGE"),
+        (1 << 28, "NEAR_SKIP"),
+        (1 << 29, "QUAD_MV"),
+        (1 << 30, "ENTROPY_LITE"),
     ]
 
     #: The first tool bit that is reserved and must be zero (SYNTAX.md 2.3).
-    RESERVED_FROM = 24
+    RESERVED_FROM = 31
 
     @classmethod
     def names(cls, mask: int) -> list[str]:
@@ -257,13 +278,26 @@ TOOLS_SUPPORTED = (
     | Tool.INTER
     | Tool.WARP
     | Tool.STEREO
+    | Tool.XFORM_4X4_SPLIT
+    | Tool.INTRA_CFL
+    | Tool.CTX_V3
+    | Tool.TAB_V2
+    | Tool.XFORM_LARGE
+    | Tool.NEAR_SKIP
+    | Tool.QUAD_MV
+    | Tool.ENTROPY_LITE
 )
 
 #: The Phase 1 (intra-only) subset of :data:`TOOLS_SUPPORTED`.  Kept separate
 #: because ``TOOLS_SUPPORTED`` tracks the reference decoder, which grew the
 #: inter tools in syntax v1.4, while :func:`nxvc.bitstream.phase1_reject_reason`
 #: still has to answer "would an intra-only decoder take this stream?".
-TOOLS_PHASE1 = TOOLS_SUPPORTED & ~(Tool.INTER | Tool.WARP | Tool.STEREO)
+TOOLS_PHASE1 = TOOLS_SUPPORTED & ~(
+    Tool.INTER | Tool.WARP | Tool.STEREO
+    # The inter-efficiency tools describe INTER tiles and their modes, so an
+    # intra-only decoder cannot take a stream that sets them either.
+    | Tool.NEAR_SKIP | Tool.QUAD_MV
+)
 
 # ----------------------------------------------------------------- structures
 
@@ -342,6 +376,35 @@ class nxvc_config(Structure):
         ("mv_range", c_uint32),
         ("skip_thresh", c_uint32),
         ("mode_lambda_q8", c_uint32),
+        # --- additive since syntax v1.6, in merge order.  These MIRROR the
+        # append order of nxvc_config in include/nxvc/nxvc.h; a field out of
+        # order here silently reads a different one.
+        ("split4x4", c_uint32),
+        ("chroma_from_luma", c_uint32),
+        ("ctx_v3", c_uint32),
+        ("tab_v2", c_uint32),
+        ("table_iters", c_uint32),
+        ("table_iters_set", c_uint32),
+        # the inter efficiency package
+        ("near_skip", c_uint32),
+        ("quad_mv", c_uint32),
+        ("drift_refresh", c_uint32),
+        ("drift_gate_q8", c_uint32),
+        # the transform package
+        ("xform_size", c_uint32),
+        # the rate-distortion package (encoder-only effort knobs)
+        ("preset", c_uint32),
+        ("rdoq_effort", c_uint32),
+        ("me_effort", c_uint32),
+        ("lambda_class_off", c_uint32),
+        ("lambda_class_q8", c_uint32 * 4),
+        ("dc_lambda_q8", c_uint32),
+        ("dc_rdoq_off", c_uint32),
+        ("qp_search_step", c_uint32),
+        ("chroma_weight_q8", c_uint32),
+        # the entropy-lite tool (bit 30): 0 = rANS, 1 = FIXED, 2 = RICE.
+        ("entropy_lite", c_uint32),
+
     ]
 
 
@@ -364,6 +427,9 @@ class nxvc_encode_stats(Structure):
         ("tiles_tskip", c_uint64),
         ("tiles_res", c_uint64 * 3),
         ("lanes_total", c_uint64),
+        # the rate-distortion package: the rate model's own prediction, so it
+        # can be checked against the payload it produced.
+        ("bits_predicted_q10", c_uint64),
     ]
 
 
@@ -404,6 +470,14 @@ class nxvc_tile_info(Structure):
         ("disparity", c_uint16),
         ("ref_delta", c_uint8),
         ("age_since_coded", c_uint16),
+        # --- appended for syntax v1.6, in merge order (see nxvc_tile_info).
+        ("split4x4", c_uint8),
+        ("xform_size", c_uint8),
+        ("near_skip", c_uint8),
+        ("quad_mv", c_uint8),
+        ("corr", c_int8 * 9),
+        ("qmv", c_int8 * 8),
+        ("warp_mad_q8", c_uint16),
     ]
 
 
@@ -758,6 +832,8 @@ def _bind(lib: ctypes.CDLL) -> None:
 
     lib.nxvc_encoder_set_skip_map.argtypes = [encoder_p, u8p, c_uint32]
     lib.nxvc_encoder_set_skip_map.restype = c_int
+    lib.nxvc_encoder_set_wm_map.argtypes = [encoder_p, u8p, c_uint32]
+    lib.nxvc_encoder_set_wm_map.restype = c_int
 
     lib.nxvc_encoder_set_received_tiles.argtypes = [encoder_p, u8p, c_uint32]
     lib.nxvc_encoder_set_received_tiles.restype = c_int

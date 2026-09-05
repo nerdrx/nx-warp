@@ -47,7 +47,8 @@ cd hybrid/sim
 
 Every ffmpeg/x265 child runs under `chrt -i 0 taskset -c 12-15 nice -n 19`
 with `-threads 4` / `pools=4` (`nxvchybrid/cpu.py`; override with `NXVCH_CPUS`,
-`NXVCH_THREADS`, `NXVCH_NO_CPU_LIMIT`). All material and intermediates go to
+`NXVCH_THREADS`, `NXVCH_NO_CPU_LIMIT`). The slice is narrowed to CPUs that
+exist, and `taskset` is dropped rather than failing where none of them do. All material and intermediates go to
 `$NXVCH_SCRATCH` (default
 `/run/media/nerdrx/Lex/claude/nx-scratch/nx-warp/hybrid`), never the repo and
 never `/tmp`.

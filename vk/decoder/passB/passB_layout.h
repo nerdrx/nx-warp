@@ -104,6 +104,11 @@ NXVW_FN nxvw_rec_qp_delta(uint w1) {
     return q >= 32 ? q - 64 : q;
 }
 NXVW_FN nxvw_rec_tskip(uint w1) { return int((w1 >> 23) & 1u); }
+// [minor 6] word1 bit 28 `split4x4` and bits 29-30 `xform_size`.  Pass B reads
+// the split flags themselves out of the mode region, but it needs the
+// transform size directly: it sets the block grid, and it also selects how
+// wide a unit-length field is (see NXVW_UNIT_LEN_BITS_LARGE).
+NXVW_FN nxvw_rec_xform_size(uint w1) { return int((w1 >> 29) & 3u); }
 // [nxvc_vk_decoder glue, marked edit] per-tile weighting-matrix override,
 // docs/SYNTAX.md 4.1 bits 26-27: 0 means "the frame's matrices", 1..3 name a
 // built-in pair for this tile alone (the degradation ladder's step 1).
@@ -177,6 +182,15 @@ struct NxvwPassBPush {
 #define NXVW_MODE_WORDS_PER_PLANE 8
 #define NXVW_MODE_WORDS_PER_TILE 32
 
+// [minor 6] XFORM_4X4_SPLIT (tool bit 19): the per-block split flags share the
+// same per-tile region, one BIT per block, 32 blocks to a uint, two uints per
+// plane, immediately after the mode words.  A split flag exists whether or not
+// INTRA_DIR does, so it cannot live inside the mode field.  These MUST equal
+// the kSplit* constants in passA/syntax_constants.h.
+#define NXVW_SPLIT_WORDS_PER_PLANE 2
+#define NXVW_SPLIT_WORDS_PER_TILE 8
+#define NXVW_MODE_REGION_UINTS 40
+
 // ------------------------------------------------------------- unit lengths
 // [sparse] Pass A stores a unit's coefficients in SCAN order at slots
 // [0, LAST] of the same reserved region the dense layout used, and publishes
@@ -187,9 +201,17 @@ struct NxvwPassBPush {
 // Unit index, [SYN] 9.1: planes in order, and inside a plane one DC-plane
 // unit, then (with INTRA_DIR) one mode unit, then nb*nb block units.  A mode
 // unit carries no coefficients and its length stays 0.
+// [minor 6] The field width follows the TILE's transform size: eight bits and
+// four to a uint at 8x8, sixteen bits and two to a uint at 16x16 and 32x32,
+// where LAST + 1 reaches 1024.  The region does not grow, because the same
+// thing that makes those units big makes them few.  These MUST equal the
+// kUnitLen* constants in passA/syntax_constants.h.
 #define NXVW_UNIT_LENS_PER_WORD 4u
 #define NXVW_UNIT_LEN_BITS 8u
 #define NXVW_UNIT_LEN_MASK 255u
+#define NXVW_UNIT_LENS_PER_WORD_LARGE 2u
+#define NXVW_UNIT_LEN_BITS_LARGE 16u
+#define NXVW_UNIT_LEN_MASK_LARGE 65535u
 #define NXVW_UNIT_LEN_WORDS_PER_TILE 66
 
 #ifdef __cplusplus

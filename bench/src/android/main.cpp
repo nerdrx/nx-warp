@@ -157,7 +157,7 @@ int kidFromName(const std::string& s)
     return -1;
 }
 
-void applyArgs(Config& cfg, const std::string& args, bool& selftest)
+void applyArgs(Config& cfg, const std::string& args, bool& selftest, int& k1sweep)
 {
     std::vector<std::string> tok;
     size_t p = 0;
@@ -199,6 +199,11 @@ void applyArgs(Config& cfg, const std::string& args, bool& selftest)
         else if (a == "--validation")  cfg.validation = true;
         else if (a == "--subgroup-size") cfg.forceSubgroupSize = uint32_t(atoi(next().c_str()));
         else if (a == "--selftest")    selftest = true;
+        else if (a == "--k1-sweep")
+        {
+            std::string n = (i + 1 < tok.size() && tok[i + 1][0] != '-') ? next() : std::string();
+            k1sweep = n.empty() ? 9 : atoi(n.c_str());
+        }
     }
 }
 
@@ -258,11 +263,12 @@ void android_main(android_app* app)
     cfg.kernelMask = (1u << K1_COPY) | (1u << K2_GATHER4) | (1u << K2B_SAMPLER) |
                      (1u << K3_IDCT) | (1u << K4_RANS) | (1u << K5_FULL);
     bool selftest = false;
+    int  k1sweep = 0;
     std::string args = intentArgs(app);
     if (!args.empty())
     {
         NXB_LOG("intent args: %s", args.c_str());
-        applyArgs(cfg, args, selftest);
+        applyArgs(cfg, args, selftest, k1sweep);
     }
 
     std::string outDir = app->activity->internalDataPath ? app->activity->internalDataPath : ".";
@@ -328,6 +334,9 @@ void android_main(android_app* app)
             NXB_LOG("K6: %s -- Pass C runs against a synthetic base",
                     hybrid.status().c_str());
     }
+
+    if (k1sweep > 0)
+        bench.runK1Sweep(k1sweep);
 
     std::string selftestMsg;
     if (selftest)

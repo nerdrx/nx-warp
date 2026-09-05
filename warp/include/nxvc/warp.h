@@ -169,6 +169,28 @@ void warp_tile(const RefImage& ref,
                uint16_t* out_tile,
                int32_t out_stride);
 
+// The same predictor with four vectors, one per quadrant of the output block:
+// quadrant `(v >= quad_split) * 2 + (u >= quad_split)` of `mv_qpel`, in the
+// order top-left, top-right, bottom-left, bottom-right.
+//
+// The GEOMETRY is unchanged: every sample still reads the whole tile's four
+// corners through the same bilerp_corner(), so four equal vectors reproduce
+// warp_tile() bit for bit -- warp_tile() is literally this function with the
+// vector replicated. Only the Q.6 vector added after the corner interpolation
+// is chosen per quadrant. `quad_split` is the extent at which the block is
+// halved; it is kTile/2 for a full-extent plane and half the plane's extent
+// for a plane the caller crops out of the 64x64 block (docs/SYNTAX.md 13.8).
+void warp_tile_quad(const RefImage& ref,
+                    int32_t tile_x,
+                    int32_t tile_y,
+                    const Homography& H,
+                    const int32_t mv_qpel[4][2],
+                    int32_t quad_split,
+                    Filter filter,
+                    Mode mode,
+                    uint16_t* out_tile,
+                    int32_t out_stride);
+
 // ---------------------------------------------------------------------------
 // Homography derivation (encoder side, double precision, NOT normative)
 // ---------------------------------------------------------------------------

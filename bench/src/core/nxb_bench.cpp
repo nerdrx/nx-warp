@@ -42,7 +42,7 @@ double percentile(std::vector<double> v, double p)
 namespace {
 struct PushSize      { int32_t w, h; };
 struct PushWarp      { int32_t w, h, tilesX; };
-struct PushPassB     { int32_t w, h, tilesX, coefWords; };
+struct PushPassB     { int32_t w, h, tilesX, coefWords, dbg; };
 struct PushRans      { int32_t tileCount, symsPerLane, bitWords, tabWords; };
 struct PushRepro     { int32_t w, h; float jx, jy; };
 struct PushPassC     { int32_t w, h, tilesX, deltaWords; };
@@ -609,7 +609,7 @@ void Bench::recordKernel(VkCommandBuffer cmd, int kid, uint32_t slot)
     PushSize  pSize{cfg_.width, cfg_.height};
     PushWarp  pWarp{cfg_.width, cfg_.height, tilesX_};
     PushPassB pB{cfg_.width, cfg_.height, tilesX_,
-                 int32_t(coef_.size / 4)};
+                 int32_t(coef_.size / 4), passBDebug_};
     PushRans  pR{tileCount_, symsPerLane_,
                  int32_t(bits_.size / 4), int32_t(tab_.size / 4)};
     PushPassC pC{cfg_.width, cfg_.height, tilesX_, int32_t(delta_.size / 4)};

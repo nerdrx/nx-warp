@@ -26,6 +26,8 @@
 #include <vector>
 
 #include "nxvc/nxvc_vk.h"
+#include "inter/inter_layout.h"
+#include "inter/inter_state.h"
 #include "passA/passA_model.h"
 #include "passB/passB_layout.h"
 
@@ -42,9 +44,14 @@ struct StreamInfo {
     uint32_t chroma = 0, color_transform = 0, color_space = 0, alpha = 0;
     uint64_t tools = 0;
     uint32_t ext_len = 0;
-    // Derived, [REF] derive_geometry().
+    // Derived, [REF] derive_geometry().  `tiles_x` is cols_per_eye and `cw`
+    // and `ch` are per-eye chroma dimensions, exactly as [SYN] 3.3 defines
+    // them: **a picture is one eye**.  `cols` is the transport's column count
+    // over the eye pair, `eyes * tiles_x`, and it is what indexes a tile:
+    // `tile = row * cols + eye * tiles_x + tile_index`.
     uint32_t tiles_x = 0, tiles_y = 0, tile_count = 0;
-    uint32_t cw = 0, ch = 0;   // chroma plane dimensions
+    uint32_t cols = 0;
+    uint32_t cw = 0, ch = 0;   // chroma plane dimensions, PER EYE
     int nplanes() const { return alpha ? 4 : 3; }
 };
 
@@ -78,6 +85,16 @@ struct FrameParse {
     // DC-plane residual (frame flags bit 2), and whether signs are hidden.
     int nctx = 12;
     int intra_dir = 0, dir_layer = 0, sdh = 0;
+    // [minor 6] XFORM_4X4_SPLIT (tool bit 19) and INTRA_CFL (tool bit 24).
+    int split4 = 0, cfl = 0;
+    // [minor 6] TAB_V2 (tool bit 26): a transmitted table set is variable
+    // length, each context preceded by a `row_coded` flag.
+    int tab_v2 = 0;
+    // [minor 6] XFORM_LARGE (tool bit 27): tiles may set xform_size != 0.
+    int xform_large = 0;
+    // [minor 6] The width of one table set in the `cum` upload, and Pass A's
+    // specialisation constant 4: 16 under the v1/v2 models, 27 under CTX_V3.
+    int ctx_stride = 16;
     uint32_t tools = 0;   // Pass A's `tools` push constant, kToolFlag*
 
     // Pass A inputs.
@@ -101,30 +118,62 @@ struct FrameParse {
     // host (skipped tiles get no Pass A descriptor).  Tile indices.
     std::vector<uint32_t> zero_tiles;
 
+    // ------------------------------------------------- Phase 2 ([SYN] 13)
+    // Frame-uniform inter state, from the stream's tool bits and the frame
+    // header's flags and `ref_slots`.
+    int inter = 0;          // stream tool bit 10
+    int warp_tool = 0;      // stream tool bit 11
+    int stereo_tool = 0;    // stream tool bit 12
+    int near_skip_tool = 0; // stream tool bit 28
+    int quad_tool = 0;      // stream tool bit 29
+    int warp_present = 0;   // frame flags bit 3
+    uint32_t ref_slots = 0, flags = 0;
+    WarpMatrix warp[2];     // warp_ext(), one 36-byte record per eye
+    // One Pass W record per tile, raster order over the eye pair.  `refBase`
+    // still holds the ring SLOT INDEX (0..3, or 0xffffffff for "this decoder
+    // holds no usable reference"); the runtime multiplies it by the slot
+    // stride once, when it uploads the buffer, because the stride is a
+    // property of the allocation rather than of the bitstream.
+    std::vector<nxvw::NxvwWarpTile> warp_tiles;
+    uint32_t cur_slot = 0;  // the slot this frame writes, frame_number mod 4
+    bool any_inter = false;        // some tile needs Pass W at all
+    bool any_stereo_tile = false;  // ... and Pass W / Pass B must run per eye
+
     // Reporting.
     uint32_t tiles_skipped = 0, tiles_tskip = 0;
+    uint32_t tiles_concealed = 0;   // tiles nxvc_vk_decoder_mark_missing named
     uint64_t payload_bytes = 0;
     bool any_alpha_coded = false;    // a tile has alpha_mode == 2
 };
 
 // Parse one frame unit.  `allow_skipped` mirrors
-// NXVC_VKD_FLAG_ALLOW_SKIPPED_TILES: without it a non-zero row skip bitmap is
-// refused exactly as ref/ refuses it (NXVC_ERR_UNSUPPORTED, "no references in
-// v1").
+// NXVC_VKD_FLAG_ALLOW_SKIPPED_TILES: on a stream with no INTER tool bit a
+// non-zero row skip bitmap is refused without it, exactly as ref/ refuses it.
+//
+// `ic` is the decoder's inter state ([SYN] 13.5 and 13.2).  It is read AND
+// written: the parse resolves `ref_sel` against the ring, substitutes the
+// concealment predictor for every tile
+// `nxvc_vk_decoder_mark_missing()` named, and advances the per-tile
+// prediction state exactly where ref/'s decoder advances it.  Pass NULL for a
+// decoder with no inter state, and an inter mode is then refused with
+// UNSUPPORTED, which is what the intra-only decoder did.
 nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
-                            size_t len, bool allow_skipped, FrameParse &out);
+                            size_t len, bool allow_skipped, FrameParse &out,
+                            InterCtx *ic = nullptr);
 
 // Probability tables, exposed so the conformance test can diff them against
 // ref/src/tables.cpp.  `cum` is filled with 8 * 16 * 16 entries; cum[16] is
 // implicitly 1024 and is not stored, which is the layout Pass A's binding 2
-// expects.  `nctx` is 12 or 16 and selects the built-in family; contexts past
-// it are filled from context 0 and never selected, as ref's
+// The tool bits this decoder implements; the C ABI's
+// nxvc_vk_decoder_tools_supported() returns it.
+uint64_t tools_supported();
+
+// expects.  `nctx` is 12, 16 or 27 and selects the built-in family; contexts
+// past it are filled from context 0 and never selected, as ref's
 // build_default_set() does.
 void build_default_tables(std::vector<uint32_t> &cum, int nctx = 12);
-// docs/SYNTAX.md 9.4: nctx x 16 five-bit log-domain deltas, so 120 bytes for
-// the 12-context model and 160 for the 16-context one.
-bool parse_table_set(const uint8_t *bits, int set_index, int nctx,
-                     uint32_t *cum_of_set);
+// parse_table_set() is not declared here: it takes the file-local bit reader,
+// and nothing outside nxvc_vkdec_parse.cpp calls it.
 
 // [REF] resolve_matrices(): 64 luma weights then 64 chroma weights, Q4.
 // out512[0..127] is the frame's luma/chroma pair; out512[k*128 ..] for

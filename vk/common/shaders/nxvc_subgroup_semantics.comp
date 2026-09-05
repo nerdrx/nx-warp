@@ -124,7 +124,14 @@ void main() {
     const uint lane0 = ((lane & 1u) != 0u) ? s1 : v2;
 
 #ifdef NXVC_HAVE_CLUSTERED
+    // The only two subgroupClustered* calls in the tree, and the reason 3.2.6's
+    // ban is checkable at all: they are the independent oracle the emulation
+    // above is compared against, they are behind NXVC_HAVE_CLUSTERED so no
+    // device ever runs them unless it advertises the feature, and this kernel
+    // is a conformance test rather than part of the decode path.
+    // nxvc-lint: allow subgroup-clustered -- oracle for the ballot+mask emulation this kernel validates; gated on NXVC_HAVE_CLUSTERED, never on the decode path
     const uint oracle_sum = subgroupClusteredAdd(v, 8);
+    // nxvc-lint: allow subgroup-clustered -- same oracle, max instead of add
     const uint oracle_max = subgroupClusteredMax(v, 8);
     if (in_range && (oracle_sum != sum || oracle_max != mx)) {
         const uint prev = atomicAdd(nxBad.count, 1u);

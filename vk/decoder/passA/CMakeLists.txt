@@ -11,9 +11,27 @@ if(NOT NXVW_PASSA_GLSLC)
   message(FATAL_ERROR "glslc not found (needed for vk/decoder/passA)")
 endif()
 
+# The tree's one shader-build rule and the one Adreno-safe pass list; see
+# vk/common/cmake/NxvcShaderPasses.cmake for why `glslc -O` is never used.
+set(NXVW_PASSA_GEN_SPV
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../common/cmake/nxvc_gen_spv.cmake)
+set(NXVW_PASSA_SPV_PASSES_CMAKE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../common/cmake/NxvcShaderPasses.cmake)
+
 set(NXVW_PASSA_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(NXVW_PASSA_GEN ${CMAKE_CURRENT_BINARY_DIR}/generated)
 file(MAKE_DIRECTORY ${NXVW_PASSA_GEN})
+
+# The workgroup shape, as one number: tiles per group, eight lanes each, so the
+# workgroup is eight times this many threads.  It reaches both the GLSL and the
+# C++ that has to agree with it (nxs_tiles_per_group), so it is a cache
+# variable rather than two independent -D flags.  See syntax_constants.h.
+set(NXVW_PASSA_TPG "32" CACHE STRING
+    "Pass A tiles per workgroup (workgroup = 8 * this threads)")
+# PARENT_SCOPE so vk/decoder's own library, which includes syntax_constants.h
+# for nxs_tiles_per_group(), compiles against the same number.
+set(NXVW_PASSA_TPG ${NXVW_PASSA_TPG} PARENT_SCOPE)
+add_compile_definitions(NXVW_PASSA_TILES_PER_GROUP=${NXVW_PASSA_TPG})
 
 # ------------------------------------------------------------------- shader
 set(NXVW_PASSA_SPV ${NXVW_PASSA_GEN}/rans_decode.spv.h)
@@ -25,10 +43,12 @@ add_custom_command(
           -DOUT=${NXVW_PASSA_SPV}
           -DNAME=rans_decode
           -DINCDIR=${NXVW_PASSA_DIR}
-          -P ${NXVW_PASSA_DIR}/cmake/gen_spv.cmake
+          -DDEFS=-DNXVW_PASSA_TILES_PER_GROUP=${NXVW_PASSA_TPG}
+          -DSTYLE=plain
+          -P ${NXVW_PASSA_GEN_SPV}
   DEPENDS ${NXVW_PASSA_DIR}/rans_decode.comp
           ${NXVW_PASSA_DIR}/syntax_constants.h
-          ${NXVW_PASSA_DIR}/cmake/gen_spv.cmake
+          ${NXVW_PASSA_GEN_SPV} ${NXVW_PASSA_SPV_PASSES_CMAKE}
   COMMENT "glslc rans_decode.comp -> rans_decode.spv.h"
   VERBATIM)
 add_custom_target(nxvw_passA_spv DEPENDS ${NXVW_PASSA_SPV})

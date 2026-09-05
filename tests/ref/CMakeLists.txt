@@ -6,7 +6,8 @@ set(NXVC_REF_TEST_INC
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-foreach(t transform rans codec headers fuzz_smoke inter warp_convention)
+foreach(t transform transform_gain rans entropy_lite codec headers fuzz_smoke
+          inter warp_convention)
     add_executable(ref_test_${t} test_${t}.cpp)
     target_link_libraries(ref_test_${t} PRIVATE nxvc_ref)
     target_include_directories(ref_test_${t} PRIVATE ${NXVC_REF_TEST_INC})
@@ -66,12 +67,10 @@ if(NXVC_FUZZ)
     # <nxvc/warp.h>, which lives in warp/include and reaches this target only
     # through nxvc_warp_ref's PUBLIC include directory. Linking the library is
     # what supplies both the header and the predictor's definitions.
-    add_executable(nxvc_fuzz_decode fuzz_decode.cpp
-        ${CMAKE_SOURCE_DIR}/ref/src/tables.cpp
-        ${CMAKE_SOURCE_DIR}/ref/src/transform.cpp
-        ${CMAKE_SOURCE_DIR}/ref/src/entropy.cpp
-        ${CMAKE_SOURCE_DIR}/ref/src/inter.cpp
-        ${CMAKE_SOURCE_DIR}/ref/src/codec.cpp)
+    # Every reference source, globbed so a new ref/src file cannot leave this
+    # target unlinkable again (entropy_lite.cpp did, on the minor-6 merge).
+    file(GLOB NXVC_FUZZ_REF_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/ref/src/*.cpp)
+    add_executable(nxvc_fuzz_decode fuzz_decode.cpp ${NXVC_FUZZ_REF_SOURCES})
     target_link_libraries(nxvc_fuzz_decode PRIVATE nxvc_warp_ref)
     target_include_directories(nxvc_fuzz_decode PRIVATE ${NXVC_REF_TEST_INC})
     target_compile_options(nxvc_fuzz_decode PRIVATE

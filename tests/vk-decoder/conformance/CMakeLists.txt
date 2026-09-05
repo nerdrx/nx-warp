@@ -47,6 +47,26 @@ if(NXVC_LAVAPIPE_ICD AND EXISTS "${NXVC_LAVAPIPE_ICD}")
     ENVIRONMENT "VK_DRIVER_FILES=${NXVC_LAVAPIPE_ICD};VK_ICD_FILENAMES=${NXVC_LAVAPIPE_ICD};NXVC_VKD_DEVICE=llvmpipe")
 endif()
 
+# [inter] The loss test on its own, as a named entry: a 100-frame inter
+# sequence with random tiles marked missing through
+# nxvc_vk_decoder_mark_missing(), decoded beside the reference fed the same
+# drops through nxvc_decoder_set_lost_tiles(), compared byte for byte.
+# docs/TRANSPORT.md 8 and docs/SYNTAX.md 13.6.  It is inside
+# vk.decoder.conformance as well; this entry is what a bisect points at.
+add_test(NAME vk.decoder.loss
+         COMMAND test_vk_decoder_conformance --only-loss)
+set_tests_properties(vk.decoder.loss PROPERTIES
+  SKIP_RETURN_CODE 77 TIMEOUT 1800)
+
+# [inter] Informational: a 36-frame inter sequence, which is the shape whose
+# cost the intra bench cannot express -- the mode mix is a property of where
+# the sequence is, not of one frame.
+add_test(NAME vk.decoder.bench_inter
+         COMMAND test_vk_decoder_conformance --bench 4 --bench-inter 36
+                 --bench-size 1024 1024 --bench-qp 24)
+set_tests_properties(vk.decoder.bench_inter PROPERTIES
+  SKIP_RETURN_CODE 77 TIMEOUT 1800)
+
 # Informational: full-frame decode time for two 2048x2048 eyes at 4:2:0.
 add_test(NAME vk.decoder.bench COMMAND test_vk_decoder_conformance --bench 20)
 set_tests_properties(vk.decoder.bench PROPERTIES

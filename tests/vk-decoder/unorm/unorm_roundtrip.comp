@@ -1,0 +1,89 @@
+#version 450
+// Does an 8-bit UNORM storage image round-trip exactly on this driver?
+//
+// Pass B may write its 8-bit output through R8G8B8A8_UNORM / R8_UNORM /
+// R8G8_UNORM instead of the integer formats, because an integer storage image
+// measures about 3x the cost of a normalised one on Adreno (bench/README.md,
+// "K1 is slow because the image is an integer format").  That is only allowed
+// if the conversion is the identity: Vulkan defines an 8-bit UNORM store as
+// round(clamp(f, 0, 1) * 255) and a load as v / 255, so storing v / 255.0 must
+// give back exactly v for every v in [0, 255].  ADR 0023 says bit-exactness is
+// not a thing to assume, so this kernel checks it rather than trusting it.
+//
+// Pass 0 writes; pass 1 reads back and counts the values that did not survive.
+// Both run over all 256 values in every channel of all three formats.
+
+layout(local_size_x = 256) in;
+
+layout(constant_id = 0) const int kPass = 0;
+
+layout(set = 0, binding = 0, rgba8) uniform image2D uRgba;
+layout(set = 0, binding = 1, r8)    uniform image2D uR;
+layout(set = 0, binding = 2, rg8)   uniform image2D uRg;
+layout(set = 0, binding = 3, std430) buffer Out {
+    // [0] mismatches, [1] first bad format (0 rgba8, 1 r8, 2 rg8),
+    // [2] first bad channel, [3] value written, [4] value read back.
+    uint w[];
+} uOut;
+
+// The value Pass B stores for an 8-bit sample.  Must stay identical to
+// nxvw_unorm8() in vk/decoder/passB/reconstruct.comp.
+float nxvw_unorm8(int v) { return float(v) * (1.0 / 255.0); }
+
+// The value the host reads back out of the image's memory: Vulkan's own
+// unorm8 encoding of the loaded float.
+uint decode(float f) { return uint(round(clamp(f, 0.0, 1.0) * 255.0)); }
+
+void report(uint fmt, uint ch, uint want, uint got) {
+    uint n = atomicAdd(uOut.w[0], 1u);
+    if (n == 0u) {
+        uOut.w[1] = fmt;
+        uOut.w[2] = ch;
+        uOut.w[3] = want;
+        uOut.w[4] = got;
+    }
+}
+
+void main() {
+    int v = int(gl_GlobalInvocationID.x);   // 0..255, one thread per value
+    if (v > 255) return;
+
+    // Each channel gets its own column so a channel-swizzle bug cannot hide
+    // behind a value that happens to match: column c holds value v in channel
+    // c and a distinct filler (255 - v) everywhere else.
+    if (kPass == 0) {
+        for (int c = 0; c < 4; ++c) {
+            vec4 p = vec4(nxvw_unorm8(255 - v));
+            p[c] = nxvw_unorm8(v);
+            imageStore(uRgba, ivec2(v, c), p);
+        }
+        imageStore(uR, ivec2(v, 0), vec4(nxvw_unorm8(v), 0.0, 0.0, 0.0));
+        for (int c = 0; c < 2; ++c) {
+            vec2 p = vec2(nxvw_unorm8(255 - v));
+            p[c] = nxvw_unorm8(v);
+            imageStore(uRg, ivec2(v, c), vec4(p, 0.0, 0.0));
+        }
+        return;
+    }
+
+    for (int c = 0; c < 4; ++c) {
+        vec4 p = imageLoad(uRgba, ivec2(v, c));
+        uint got = decode(p[c]);
+        if (got != uint(v)) report(0u, uint(c), uint(v), got);
+        for (int o = 0; o < 4; ++o)
+            if (o != c && decode(p[o]) != uint(255 - v))
+                report(0u, uint(o), uint(255 - v), decode(p[o]));
+    }
+    {
+        uint got = decode(imageLoad(uR, ivec2(v, 0)).r);
+        if (got != uint(v)) report(1u, 0u, uint(v), got);
+    }
+    for (int c = 0; c < 2; ++c) {
+        vec4 p = imageLoad(uRg, ivec2(v, c));
+        uint got = decode(p[c]);
+        if (got != uint(v)) report(2u, uint(c), uint(v), got);
+        int o = 1 - c;
+        if (decode(p[o]) != uint(255 - v))
+            report(2u, uint(o), uint(255 - v), decode(p[o]));
+    }
+}

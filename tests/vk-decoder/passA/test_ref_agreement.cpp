@@ -77,7 +77,7 @@ void check_constants() {
         expect(nxs_band_of(p) == nxvc::band_of(p), "band_of");
         expect(nxs_last_class_of(p) == nxvc::last_class_of(p), "last_class_of");
         for (int pc = 0; pc < 3; ++pc)
-            expect(nxs_level_ctx(p, pc) == nxvc::level_ctx(p, pc), "level_ctx");
+            expect(nxs_level_ctx(p, pc) == nxvc::level_ctx(p, pc, 0), "level_ctx");
     }
     for (int m = 0; m < 40; ++m)
         expect(nxs_level_class(m) == nxvc::level_class(m), "level_class");
@@ -85,7 +85,7 @@ void check_constants() {
     // Scan-table selection: nxs_scan_id + scan_index must equal ref's tables.
     for (int tskip = 0; tskip < 2; ++tskip)
         for (int n : {64, 16, 4, 1}) {
-            const uint8_t *ref_scan = nxvc::scan_table(n, tskip != 0);
+            const uint16_t *ref_scan = nxvc::scan_table(n, tskip != 0);
             int id = nxs_scan_id(n, tskip);
             for (int p = 0; p < n; ++p)
                 expect(scan_index(id, p) == ref_scan[p], "scan_table");
@@ -229,7 +229,7 @@ void check_streams() {
         // nxvc-passA-test and end-to-end by vk.decoder.conformance.
         in.sparse = 0;
 
-        std::vector<uint32_t> modes(kModeWordsPerTile, 0);
+        std::vector<uint32_t> modes(kModeRegionUints, 0);
         Outputs out;
         out.coef = got.data();
         out.cbf = cbf.data();

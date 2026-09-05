@@ -109,11 +109,21 @@ def test_stream_header_odd_sizes_round_up():
         ({"eyes": 0}, "must be 1 or 2"),
         ({"bit_depth": 12}, "must be 8 or 10"),
         ({"num_layers": 5}, "outside [1, 4]"),
-        ({"tools": 1 << 24}, "reserved tool bits"),
+        ({"tools": 1 << 31}, "reserved tool bits"),
+        (
+            {"tools": nxvc.Tool.ENTROPY_LITE | nxvc.Tool.SIGN_HIDE},
+            "ENTROPY_LITE with SIGN_HIDE or CUSTOM_TABLES",
+        ),
+        (
+            {"tools": nxvc.Tool.ENTROPY_LITE | nxvc.Tool.CUSTOM_TABLES},
+            "ENTROPY_LITE with SIGN_HIDE or CUSTOM_TABLES",
+        ),
         (
             {"tools": nxvc.Tool.LOSSLESS | nxvc.Tool.SIGN_HIDE},
             "LOSSLESS and SIGN_HIDE are mutually exclusive",
         ),
+        ({"tools": nxvc.Tool.TAB_V2}, "TAB_V2 without CUSTOM_TABLES"),
+        ({"tools": nxvc.Tool.CTX_V3}, "CTX_V3 without CTX_V2"),
     ],
 )
 def test_stream_header_rejects(over, fragment):
@@ -266,7 +276,14 @@ def test_tile_resolved_qp_clamps():
         ({"alpha_mode": 3}, "alpha_mode 3 is reserved"),
         ({"nsub_log2": 6}, "nsub_log2 6 exceeds 5"),
         ({"word0_reserved": 1}, "word0 bit 3 must be zero"),
-        ({"word1_reserved": 1}, "word1 bits 28-31 must be zero"),
+        # Word1 has no reserved bits left (docs/TOOLBITS.md 4): 28 is
+        # split4x4, 29-30 xform_size and 31 quad_mv.  The reserved-bit
+        # check is word0 bit 3, above.
+        ({"xform_size": 3}, "xform_size 3 is reserved"),
+        ({"split4x4": 1, "xform_size": 1}, "split4x4 with xform_size != 0"),
+        ({"split4x4": 1, "tskip": 1}, "split4x4 on a transform-skip tile"),
+        ({"xform_size": 3}, "xform_size 3 is reserved"),
+        ({"xform_size": 1, "tskip": 1}, "xform_size != 0 on a transform-skip"),
     ],
 )
 def test_tile_header_rejects(kwargs, fragment):

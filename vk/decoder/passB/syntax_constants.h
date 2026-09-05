@@ -20,6 +20,20 @@
 #ifndef NXVW_PASSB_SYNTAX_CONSTANTS_H
 #define NXVW_PASSB_SYNTAX_CONSTANTS_H
 
+// [minor 6] Whether the two XFORM_LARGE scans exist in this translation unit.
+// The CPU model always carries them; the GLSL kernel carries them only in its
+// XFORM_LARGE build variant, because nxvw_scan_pos() is called once per
+// COEFFICIENT and two more compares in there are not free -- on an Adreno 650
+// they were most of a 13 % instruction-count rise on a stream that sets no
+// tool bit.  See vk/decoder/passB/reconstruct.comp.
+#ifdef __cplusplus
+#define NXVW_SCAN_LARGE 1
+#elif defined(NXVW_XFORM_LARGE)
+#define NXVW_SCAN_LARGE NXVW_XFORM_LARGE
+#else
+#define NXVW_SCAN_LARGE 1
+#endif
+
 #ifdef __cplusplus
 #include <cstdint>
 #define NXVW_ARR(T, name, n) constexpr T name[n] = {
@@ -40,6 +54,7 @@ namespace nxvw {
 // [SYN] 4.2 tile geometry.  [REF] common.h kTile / kBlock, tile_geom().
 NXVW_CONST kTile = 64;
 NXVW_CONST kBlock = 8;
+NXVW_CONST kBlockLog2 = 3;
 // [SYN] 4.2 / [REF] tile_geom(): chroma_size is clamped up to one block.
 NXVW_CONST kMinCodedSize = 8;
 // [SYN] 4.1: res_level 3 is reserved.
@@ -57,6 +72,18 @@ NXVW_CONST kScanZigzag8 = 0;
 NXVW_CONST kScanRaster8 = 1;
 NXVW_CONST kScanZigzag4 = 2;
 NXVW_CONST kScanSmall = 3;
+// [minor 6] XFORM_4X4_SPLIT: four concatenated 4x4 sub-blocks, each in its own
+// zigzag.  [REF] ref/src/tables.cpp kScan4Split, passA's kScan4Split id.
+NXVW_CONST kScan4Split = 4;
+// [minor 6] XFORM_LARGE (tool bit 27): the zigzags of a 16x16 and a 32x32
+// block.  They are NOT tabulated.  A 1024-entry const array indexed by a
+// runtime value is a private-memory allocation on Adreno
+// (docs/ADRENO-RULES.md), and the zigzag is a rule rather than a list
+// (ref/src/common.h build_zigzag), so the one direction Pass B needs --
+// raster position -> scan position -- is written as that rule's closed form
+// below.  Mirrors passA's kScanZigzag16 / kScanZigzag32.
+NXVW_CONST kScanZigzag16 = 5;
+NXVW_CONST kScanZigzag32 = 6;
 
 NXVW_ARR(int, kInvZigzag8, 64)
      0,  1,  5,  6, 14, 15, 27, 28,  2,  4,  7, 13, 16, 26, 29, 42,
@@ -69,9 +96,54 @@ NXVW_ARR(int, kInvZigzag4, 16)
      0,  1,  5,  6,  2,  4,  7, 12,  3,  8, 11, 13,  9, 10, 14, 15
 NXVW_ARR_END
 
+// [minor 6] The inverse of the 4x4-split scan, COMPUTED rather than tabulated.
+// The split scan is four of kZigzag4 laid over the quadrants of an 8x8 array,
+// so a raster position's scan position is its sub-block index times sixteen
+// plus the 4x4 inverse zigzag of its position inside that sub-block -- which
+// reuses kInvZigzag4 and adds no third table.
+//
+// It is not a micro-optimisation.  A module-scope const array indexed by a
+// runtime value is a private-memory allocation on Adreno, and adding a third
+// one took Pass B's scratch from 342 to 616 B and its overall register
+// footprint from 6 to 104 -- a factor of four of the pass.
+// docs/ADRENO-RULES.md.
+NXVW_FN nxvw_inv_scan4split(int raster) {
+    int row = raster >> 3, col = raster & 7;
+    int sb = (row >= 4 ? 2 : 0) + (col >= 4 ? 1 : 0);
+    return sb * 16 + kInvZigzag4[(row & 3) * 4 + (col & 3)];
+}
+
+// [minor 6] The number of scan positions before diagonal `s` of an
+// `edge` x `edge` zigzag: the triangle from either end.  [REF]
+// ref/src/common.h build_zigzag(), and passA's nxs_zigzag_before() -- the two
+// sides of the same permutation, so they are written the same way.
+NXVW_FN nxvw_zigzag_before(int edge, int s) {
+    if (s <= edge - 1) return s * (s + 1) / 2;
+    int t = 2 * edge - 1 - s;
+    return edge * edge - t * (t + 1) / 2;
+}
+// Raster index -> scan position of an `edge` x `edge` zigzag, `lg` =
+// log2(edge).  The two call sites below pass literal edges, so the divide and
+// the modulo fold to a shift and a mask and no runtime-indexed table exists.
+NXVW_FN nxvw_zigzag_raster_to_pos(int edge, int lg, int raster) {
+    int u = raster >> lg, v = raster & (edge - 1);
+    int s = u + v;
+    int lo = s - edge + 1 > 0 ? s - edge + 1 : 0;
+    int hi = s < edge - 1 ? s : edge - 1;
+    int idx = (s & 1) == 0 ? hi - u : u - lo;
+    return nxvw_zigzag_before(edge, s) + idx;
+}
+
 // [REF] common.h scan_table(): which scan a unit of `ncoef` coefficients uses.
-// Mirrors passA's nxs_scan_id().
+// Mirrors passA's nxs_scan_id().  [minor 6] The 256- and 1024-coefficient
+// units are XFORM_LARGE's; transform skip is mutually exclusive with a
+// transform size other than 8x8 (SYNTAX.md 6.7), so the tskip arm only ever
+// sees 64.
 NXVW_FN nxvw_scan_id(int ncoef, int tskip) {
+#if NXVW_SCAN_LARGE
+    if (ncoef == 1024) return kScanZigzag32;
+    if (ncoef == 256) return kScanZigzag16;
+#endif
     if (ncoef == 64) return tskip != 0 ? kScanRaster8 : kScanZigzag8;
     if (ncoef == 16) return kScanZigzag4;
     return kScanSmall;
@@ -82,6 +154,11 @@ NXVW_FN nxvw_scan_id(int ncoef, int tskip) {
 NXVW_FN nxvw_scan_pos(int scan_id, int pos) {
     if (scan_id == kScanZigzag8) return kInvZigzag8[pos];
     if (scan_id == kScanZigzag4) return kInvZigzag4[pos];
+    if (scan_id == kScan4Split) return nxvw_inv_scan4split(pos);
+#if NXVW_SCAN_LARGE
+    if (scan_id == kScanZigzag16) return nxvw_zigzag_raster_to_pos(16, 4, pos);
+    if (scan_id == kScanZigzag32) return nxvw_zigzag_raster_to_pos(32, 5, pos);
+#endif
     return pos;
 }
 
@@ -213,6 +290,106 @@ NXVW_CONST kIdctShift1 = 7;
 NXVW_CONST kIdctRound2 = 4096;
 NXVW_CONST kIdctShift2 = 13;
 
+// ------------------------------------------- [minor 6] 16- and 32-point IDCT
+// XFORM_LARGE, tool bit 27.  [SYN] 6.2.1, [REF] ref/src/transform.cpp
+// even_odd_inverse / kOdd16 / kOdd32.
+//
+// A length-2M DCT-III is the length-M DCT-III of the even-indexed
+// coefficients plus a dense M x M rotation of the odd-indexed ones.  Written
+// with these 512-scaled constants the even half needs no rescaling at all, so
+// the 1D gain grows by sqrt(2) per doubling: 2^10 at 4 and 8, 2^10*sqrt(2) at
+// 16, 2^11 at 32, and the 2D gains are the exact powers 2^20, 2^21 and 2^22
+// that the shift chain below undoes.  **The quantiser therefore sees
+// orthonormal coefficients at every size and one qstep table serves all
+// four** -- the invariant is NOT that every size hits the same 2D gain.
+//
+// entry [n][j] == round(512 * cos(pi * (2n+1) * (2j+1) / (2N))), flattened
+// row-major.  Max row absolute sum 2613 and 5215, so with the int16 clamp of
+// 6.3 on both passes' inputs the odd half reaches 8.6e7 at 16 and 1.7e8 at
+// 32, and |y| stays inside int32 without the two-word identity the 8-point
+// core's `P +- Q` needs.
+NXVW_ARR(int, kOdd16, 64)
+      510,   490,   452,   396,   325,   241,   149,    50,
+      490,   325,    50,  -241,  -452,  -510,  -396,  -149,
+      452,    50,  -396,  -490,  -149,   325,   510,   241,
+      396,  -241,  -490,    50,   510,   149,  -452,  -325,
+      325,  -452,  -149,   510,   -50,  -490,   241,   396,
+      241,  -510,   325,   149,  -490,   396,    50,  -452,
+      149,  -396,   510,  -452,   241,    50,  -325,   490,
+       50,  -149,   241,  -325,   396,  -452,   490,  -510
+NXVW_ARR_END
+
+NXVW_ARR(int, kOdd32, 256)
+      511,   506,   497,   482,   463,   439,   411,   379,
+      344,   305,   263,   219,   172,   124,    75,    25,
+      506,   463,   379,   263,   124,   -25,  -172,  -305,
+     -411,  -482,  -511,  -497,  -439,  -344,  -219,   -75,
+      497,   379,   172,   -75,  -305,  -463,  -511,  -439,
+     -263,   -25,   219,   411,   506,   482,   344,   124,
+      482,   263,   -75,  -379,  -511,  -411,  -124,   219,
+      463,   497,   305,   -25,  -344,  -506,  -439,  -172,
+      463,   124,  -305,  -511,  -344,    75,   439,   482,
+      172,  -263,  -506,  -379,    25,   411,   497,   219,
+      439,   -25,  -463,  -411,    75,   482,   379,  -124,
+     -497,  -344,   172,   506,   305,  -219,  -511,  -263,
+      411,  -172,  -511,  -124,   439,   379,  -219,  -506,
+      -75,   463,   344,  -263,  -497,   -25,   482,   305,
+      379,  -305,  -439,   219,   482,  -124,  -506,    25,
+      511,    75,  -497,  -172,   463,   263,  -411,  -344,
+      344,  -411,  -263,   463,   172,  -497,   -75,   511,
+      -25,  -506,   124,   482,  -219,  -439,   305,   379,
+      305,  -482,   -25,   497,  -263,  -344,   463,    75,
+     -506,   219,   379,  -439,  -124,   511,  -172,  -411,
+      263,  -511,   219,   305,  -506,   172,   344,  -497,
+      124,   379,  -482,    75,   411,  -463,    25,   439,
+      219,  -497,   411,   -25,  -379,   506,  -263,  -172,
+      482,  -439,    75,   344,  -511,   305,   124,  -463,
+      172,  -439,   506,  -344,    25,   305,  -497,   463,
+     -219,  -124,   411,  -511,   379,   -75,  -263,   482,
+      124,  -344,   482,  -506,   411,  -219,   -25,   263,
+     -439,   511,  -463,   305,   -75,  -172,   379,  -497,
+       75,  -219,   344,  -439,   497,  -511,   482,  -411,
+      305,  -172,    25,   124,  -263,   379,  -463,   506,
+       25,   -75,   124,  -172,   219,  -263,   305,  -344,
+      379,  -411,   439,  -463,   482,  -497,   506,  -511
+NXVW_ARR_END
+
+// [REF] transform.cpp kInvShift1 / kInvShift2, indexed by log2(n) - 2:
+//   4 and 8 -> 7, 13     16 -> 7, 14     32 -> 8, 14
+// The first-pass shift grows with the value entering it -- one more butterfly
+// level per doubling -- so every size leaves the same margin under the int16
+// clamp of the transpose buffer, which is what lets that buffer stay int16 in
+// LDS at every size.  4 and 8 share a chain because the 4-point graph has one
+// butterfly level fewer AND one fewer sqrt(2) of gain, and the two cancel.
+// `lb` is log2 of the block edge: 3, 4 or 5.
+NXVW_FN nxvw_idct_shift1(int lb) { return lb >= 5 ? 8 : kIdctShift1; }
+NXVW_FN nxvw_idct_shift2(int lb) { return lb >= 4 ? 14 : kIdctShift2; }
+NXVW_FN nxvw_idct_round1(int lb) { return 1 << (nxvw_idct_shift1(lb) - 1); }
+NXVW_FN nxvw_idct_round2(int lb) { return 1 << (nxvw_idct_shift2(lb) - 1); }
+
+// [SYN] 6.7 the transform edge a plane uses: the tile's `8 << xform_size`,
+// capped by the plane's own coded extent, so no combination of res_level,
+// chroma format and xform_size asks for a block larger than the plane.  Both
+// are powers of two, so this is stated in logs and `nb = size >> lb` is the
+// block grid.  [REF] ref/src/common.h block_edge_for().
+NXVW_FN nxvw_block_log2(int xform_size, int size) {
+    int ls = 3;
+    while ((1 << ls) < size) ++ls;
+    int lb = 3 + xform_size;
+    return lb < ls ? lb : ls;
+}
+
+// [SYN] 6.5 / [REF] codec.cpp block_weight(): ONE transmitted 8x8 matrix
+// serves every size.  An n x n block replicates it -- entry (u, v) is entry
+// (u >> k, v >> k) of the 8x8 with k = log2(n) - 3 -- and a split 4x4
+// sub-block subsamples it, so the roll-off covers the same fraction of the
+// frequency plane at every size and no second matrix is transmitted.  At
+// lb == 3 this is the identity and the expression reduces to `i`.
+NXVW_FN nxvw_block_weight_index(int i, int lb) {
+    int k = lb - 3;
+    return ((i >> lb) >> k) * 8 + ((i & ((1 << lb) - 1)) >> k);
+}
+
 // ----------------------------------------------------- planar DC intra
 // [SYN] 7.2: a block mean sits at the block centre (bx*8 + 3.5, by*8 + 3.5),
 // so the Q4 source coordinate is ux = 2x - 7, uy = 2y - 7.  Positions outside
@@ -220,6 +397,18 @@ NXVW_CONST kIdctShift2 = 13;
 // [PAPER] 3.2.4 / 6.4.
 NXVW_CONST kPlanarMul = 2;
 NXVW_CONST kPlanarOff = -7;
+// [SYN] 7.2 in general form: a block mean of an n x n grid sits at the block
+// centre (bx*n + (n-1)/2, ...), so the Q4 source coordinate of sample x is
+//   (16*x - 8*(n - 1) + (n >> 1)) >> log2(n)
+// with an arithmetic shift and `+ (n >> 1)` as the rounding term of 3.3.  At
+// n == 8 it is exactly 2*x - 7 for every x, which is the v1 formula and why
+// kPlanarMul / kPlanarOff are still what the 8x8 kernel computes; at 16 and
+// 32 the exact coordinate has a half-Q4 fraction (the block centre falls
+// between two Q4 positions) and the rounding term settles it the same way in
+// both directions.  [REF] ref/src/codec.cpp planar_from_means().
+NXVW_FN nxvw_planar_q4(int v, int bs, int lb) {
+    return (16 * v - 8 * (bs - 1) + (bs >> 1)) >> lb;
+}
 
 // ------------------------------------------------- directional intra [v3]
 // [SYN] 7.4, tool bit 17.  Each 8x8 block carries one of nine modes; mode 0
@@ -234,6 +423,11 @@ NXVW_CONST kIntraDdl = 5;      // diagonal down-left, 45 deg
 NXVW_CONST kIntraDdr = 6;      // diagonal down-right, 45 deg
 NXVW_CONST kIntraVr = 7;       // vertical-right, 26.6 deg
 NXVW_CONST kIntraHd = 8;       // horizontal-down, 63.4 deg
+// [minor 6] INTRA_CFL (tool bit 24), CHROMA ONLY: a linear model of the
+// co-located reconstructed luma, fitted to the block's own reconstructed
+// neighbours.  [REF] ref/src/common.h kIntraCfl, codec.cpp cfl_fit /
+// cfl_luma, docs/SYNTAX.md 7.7.
+NXVW_CONST kIntraCfl = 9;
 NXVW_CONST kNumIntraModes = 9;
 
 // [SYN] 7.4: the reference arrays run A[-1..15] and L[-1..15] with A[-1] ==
@@ -285,6 +479,27 @@ NXVW_CONST kIntraTap3Round = 2;  // (a + 2b + c + 2) >> 2
 NXVW_CONST kIntraTap3Shift = 2;
 NXVW_CONST kIntraTap2Round = 1;  // (a + b + 1) >> 1
 NXVW_CONST kIntraTap2Shift = 1;
+
+// [minor 6] INTRA_CFL.  The fit reads the block's 2n reconstructed neighbours
+// -- 16 at the 8x8 block -- takes the mean of the two smallest and the two
+// largest co-located luma values, and divides by their difference through
+// kCflRecip[d] = round(2^15 / d).  The slope is Q8 and clamped to +-8.0.
+// [REF] ref/src/common.h kCflRecip / kCflAlpha*, docs/SYNTAX.md 7.7.
+NXVW_CONST kCflPairs = 16;
+NXVW_CONST kCflAlphaBits = 8;
+NXVW_CONST kCflAlphaMax = 2048;   // 8 << kCflAlphaBits
+NXVW_CONST kCflRecipShift = 7;    // Q15 product -> Q8 slope
+NXVW_CONST kCflRecipRound = 64;
+NXVW_CONST kCflPredRound = 128;   // (alpha * dl + 128) >> 8
+
+// [minor 6] XFORM_4X4_SPLIT.  The inverse 4-point DCT of 6.8; the 1D inverse
+// matrix rows are +-{kD0, kD1, kD0, kD2} and +-{kD0, kD2, -kD0, -kD1}, so the
+// 1D gain is 2^10 exactly as the 8-point core's and the two-pass shift chain
+// is the SAME one the 8x8 uses (kIdctShift1/2).  [REF] ref/src/transform.h
+// kD0/kD1/kD2 and transform.cpp kInvShift1[0] == 7, kInvShift2[0] == 13.
+NXVW_CONST kD0 = 512;
+NXVW_CONST kD1 = 669;
+NXVW_CONST kD2 = 277;
 
 // [SYN] 8, the one resampling kernel: Q4 coordinates, integer weights,
 // (p00*wx0*wy0 + p01*fx*wy0 + p10*wx0*fy + p11*fx*fy + 128) >> 8, source
@@ -362,5 +577,6 @@ NXVW_CONST kOutDefault = 0;  // kOutRgba8
 #undef NXVW_ARR
 #undef NXVW_ARR_END
 #undef NXVW_CONST
+#undef NXVW_SCAN_LARGE
 
 #endif  // NXVW_PASSB_SYNTAX_CONSTANTS_H

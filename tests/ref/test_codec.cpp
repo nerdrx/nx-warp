@@ -1,11 +1,13 @@
 // End-to-end encode/decode: PSNR at several QPs, lossless bit-exactness,
 // every tool combination the Phase 1 encoder can emit.
+#include <cmath>
 #include "test_util.h"
 #include "nxvc/nxvc.h"
 
 struct Coded {
     std::vector<uint8_t> header, frame;
     TestImage out;
+    TestImage shadow;   // the encoder's own reconstruction
     nxvc_status enc_status = NXVC_OK, dec_status = NXVC_OK;
 };
 
@@ -31,6 +33,18 @@ static bool code(const nxvc_config &cfg_in, const TestImage &im, Coded &r,
     size_t ol = 0;
     st = nxvc_encoder_encode_frame(e, &img, qp_map, res_map, r.frame.data(),
                                    r.frame.size(), &ol);
+    if (st == NXVC_OK) {
+        // The encoder's own reconstruction, which every in-tile predictor --
+        // the DC plane, the directional modes' neighbours, and the CFL
+        // model's luma -- is derived from.  It has to be the decoder's,
+        // exactly, or the two drift.
+        r.shadow = im;
+        nxvc_image si{};
+        for (int p = 0; p < 4; ++p) si.plane[p] = r.shadow.p[p].data();
+        si.stride[0] = im.w; si.stride[1] = im.cw;
+        si.stride[2] = im.cw; si.stride[3] = im.w;
+        nxvc_encoder_shadow_image(e, &si);
+    }
     nxvc_encoder_destroy(e);
     if (st != NXVC_OK) { r.enc_status = st; return false; }
     r.frame.resize(ol);
@@ -194,6 +208,136 @@ int main() {
         }
     }
 
+    // 5b. The v1.5 detail tools, over every combination they are legal in and
+    //     every QP extreme.  Both are additive by construction, so the point
+    //     of the test is that the encoder and the decoder agree about which
+    //     blocks are split and which chroma blocks are CFL, at res_level
+    //     boundaries (a res_level 2 4:2:0 tile has 8x8 chroma, the smallest
+    //     the CFL co-location is defined for) and at QP 0 and 63.
+    {
+        TestImage im420 = make_image(W, H, false, 1);
+        TestImage im444 = make_image(W, H, true, 1);
+        nxvc_tile_layout tl;
+        nxvc_tile_layout_get(W, H, &tl);
+        std::vector<uint8_t> rm(tl.tile_count);
+        for (uint32_t i = 0; i < tl.tile_count; ++i) rm[i] = (uint8_t)(i % 3);
+        // ct == 1 is YCoCg-R, whose chroma planes are 9-bit: it is the case
+        // that exercises the CFL model's widest chroma range (|top_c -
+        // base_c| <= 511, SYNTAX.md 7.7) and the 4x4 forward transform's.
+        for (int c444 = 0; c444 <= 1; ++c444)
+            for (int ct = 0; ct <= (c444 ? 1 : 0); ++ct)
+            for (int spl = 0; spl <= 1; ++spl)
+                for (int cfl = 0; cfl <= 1; ++cfl)
+                    for (int res = 0; res <= 1; ++res)
+                        for (int qp : {0, 26, 63}) {
+                            nxvc_config cfg;
+                            nxvc_config_default(&cfg);
+                            cfg.width = W; cfg.height = H;
+                            cfg.chroma = c444 ? NXVC_CHROMA_444
+                                              : NXVC_CHROMA_420;
+                            cfg.color_transform = (uint32_t)ct;
+                            cfg.color_space =
+                                ct ? (uint32_t)NXVC_CS_RGB : 0u;
+                            cfg.base_qp = (uint32_t)qp;
+                            cfg.split4x4 = (uint32_t)spl;
+                            cfg.chroma_from_luma = (uint32_t)cfl;
+                            Coded r;
+                            CHECK(code(cfg, c444 ? im444 : im420, r, nullptr,
+                                       res ? rm.data() : nullptr),
+                                  "v1.5 %s ct%d spl%d cfl%d res%d qp%d: %s / %s",
+                                  c444 ? "444" : "420", ct, spl, cfl, res, qp,
+                                  nxvc_status_string(r.enc_status),
+                                  nxvc_status_string(r.dec_status));
+                            // The encoder predicted from its own
+                            // reconstruction; it must be the decoder's, byte
+                            // for byte, or CFL and the directional modes are
+                            // reading different neighbours on the two sides.
+                            for (int pl = 0; pl < 3; ++pl)
+                                CHECK(r.shadow.p[pl] == r.out.p[pl],
+                                      "v1.5 %s ct%d spl%d cfl%d res%d qp%d: "
+                                      "shadow != decoder on plane %d",
+                                      c444 ? "444" : "420", ct, spl, cfl, res,
+                                      qp, pl);
+                        }
+    }
+
+    // 5c. Both tools are strictly additive: turning either on may never make
+    //     a frame both larger and worse than turning it off.  This is the
+    //     property the per-block mode and split decisions are supposed to
+    //     guarantee, and it is cheap to assert directly.
+    {
+        TestImage im = make_image(W, H, true, 1);
+        for (int qp : {12, 26, 40}) {
+            double best_psnr = 0;
+            size_t best_bytes = 0;
+            for (int k = 0; k < 4; ++k) {
+                nxvc_config cfg;
+                nxvc_config_default(&cfg);
+                cfg.width = W; cfg.height = H;
+                cfg.chroma = NXVC_CHROMA_444;
+                cfg.base_qp = (uint32_t)qp;
+                cfg.split4x4 = (uint32_t)(k & 1);
+                cfg.chroma_from_luma = (uint32_t)((k >> 1) & 1);
+                Coded r;
+                CHECK(code(cfg, im, r), "additive qp%d k%d: %s / %s", qp, k,
+                      nxvc_status_string(r.enc_status),
+                      nxvc_status_string(r.dec_status));
+                double p = psnr8(im.p[0].data(), r.out.p[0].data(),
+                                 im.p[0].size());
+                if (k == 0) { best_psnr = p; best_bytes = r.frame.size(); continue; }
+                CHECK(r.frame.size() <= best_bytes || p >= best_psnr - 0.05,
+                      "qp%d k%d: %zu B / %.2f dB is both bigger and worse than "
+                      "%zu B / %.2f dB", qp, k, r.frame.size(), p, best_bytes,
+                      best_psnr);
+            }
+        }
+    }
+
+    // 5b. The v3 context model (tool bit 25) over the same axes, plus the
+    // TAB_V2 table format it is meant to be affordable under.  Its neighbour
+    // class is carried by the rANS lane and reset at plane boundaries, so the
+    // lane count, the chroma format and the res-level -- everything that
+    // changes how many block units a lane owns and how wide a block row is --
+    // are exactly what has to round trip (docs/SYNTAX.md 9.9).  The 4x4 split
+    // is swept with it because the two meet in the LEVEL banding and nowhere
+    // else, which is the one place a merge of the two packages could go wrong
+    // silently.
+    {
+        TestImage im420 = make_image(W, H, false, 1);
+        TestImage im444 = make_image(W, H, true, 1);
+        nxvc_tile_layout tl;
+        nxvc_tile_layout_get(W, H, &tl);
+        std::vector<uint8_t> rm(tl.tile_count);
+        for (uint32_t i = 0; i < tl.tile_count; ++i) rm[i] = (uint8_t)(i % 3);
+        for (int c444 = 0; c444 <= 1; ++c444)
+            for (int dir = 0; dir <= 1; ++dir)
+                for (int tab = 0; tab <= 1; ++tab)
+                    for (int spl = 0; spl <= 1; ++spl)
+                        for (int res = 0; res <= 1; ++res)
+                            for (int n = 0; n <= 5; ++n) {
+                                nxvc_config cfg;
+                                nxvc_config_default(&cfg);
+                                cfg.width = W; cfg.height = H;
+                                cfg.chroma = c444 ? NXVC_CHROMA_444
+                                                  : NXVC_CHROMA_420;
+                                cfg.base_qp = 26;
+                                cfg.ctx_v3 = 1;
+                                cfg.tab_v2 = (uint32_t)tab;
+                                cfg.split4x4 = (uint32_t)spl;
+                                cfg.intra_dir = (uint32_t)dir;
+                                cfg.custom_tables = (uint32_t)tab;
+                                cfg.nsub_log2 = (uint32_t)n;
+                                Coded r;
+                                CHECK(code(cfg, c444 ? im444 : im420, r,
+                                           nullptr, res ? rm.data() : nullptr),
+                                      "ctx_v3 c444 %d dir %d tab %d spl %d "
+                                      "res %d nsub %d: %s / %s",
+                                      c444, dir, tab, spl, res, n,
+                                      nxvc_status_string(r.enc_status),
+                                      nxvc_status_string(r.dec_status));
+                            }
+    }
+
     // 6. Per-tile QP and resolution maps.
     {
         TestImage im = make_image(W, H, false, 1);
@@ -308,5 +452,154 @@ int main() {
         nxvc_decoder_destroy(d);
     }
 
+    // ---------------------------------------------------- large transforms
+    // 9. Every transform size round trips, on every chroma format, at every
+    // res_level, with and without directional intra -- and `xform_size == 0`
+    // is bit-identical to a build without the tool.
+    {
+        for (int c444 = 0; c444 <= 1; ++c444)
+            for (int dir = 0; dir <= 1; ++dir)
+                for (int xf = 0; xf <= 2; ++xf) {
+                    TestImage im = make_image(W, H, c444 != 0, 1, 700 + xf);
+                    nxvc_config cfg;
+                    nxvc_config_default(&cfg);
+                    cfg.width = W; cfg.height = H; cfg.base_qp = 22;
+                    cfg.chroma = c444 ? NXVC_CHROMA_444 : NXVC_CHROMA_420;
+                    cfg.intra_dir = (uint32_t)dir;
+                    cfg.xform_size = (uint32_t)xf;
+                    Coded r;
+                    CHECK(code(cfg, im, r), "xform %d c444 %d dir %d: %s/%s", xf,
+                          c444, dir, nxvc_status_string(r.enc_status),
+                          nxvc_status_string(r.dec_status));
+                    double q = psnr8(im.p[0].data(), r.out.p[0].data(),
+                                     im.p[0].size());
+                    CHECK(q > 28.0, "xform %d c444 %d dir %d psnr %.2f", xf,
+                          c444, dir, q);
+                }
+        // res_level 2 caps every plane's block at its own extent, so a 32x32
+        // request still decodes (SYNTAX.md 6.7).
+        for (int lvl = 0; lvl <= 2; ++lvl) {
+            TestImage im = make_image(W, H, false, 1, 810 + lvl);
+            std::vector<uint8_t> res((size_t)((W + 63) / 64) * ((H + 63) / 64),
+                                     (uint8_t)lvl);
+            nxvc_config cfg;
+            nxvc_config_default(&cfg);
+            cfg.width = W; cfg.height = H; cfg.base_qp = 26;
+            cfg.xform_size = 2;
+            Coded r;
+            CHECK(code(cfg, im, r, nullptr, res.data()),
+                  "xform 32 res_level %d: %s/%s", lvl,
+                  nxvc_status_string(r.enc_status),
+                  nxvc_status_string(r.dec_status));
+        }
+    }
+
+    // 10. The effort knobs are encoder-side only: every combination must
+    //    still round trip, and all three must land within a few per cent of
+    //    each other on the encoder's OWN cost function, D + lambda*R.  They
+    //    are deliberately not asserted to be monotone in effort: the
+    //    directional-intra raster loop is greedy, so a block that quantises
+    //    better can leave worse references for the blocks after it, and the
+    //    per-frame table training reacts to the result.  What the bound
+    //    catches is a knob that has stopped doing rate-distortion at all.
+    {
+        TestImage im = make_image(W, H, false, 3);
+        for (int qp : {8, 24, 40}) {
+            double best_cost = 1e30, worst_cost = 0;
+            for (int effort = 1; effort <= 3; ++effort) {
+                nxvc_config cfg;
+                nxvc_config_default(&cfg);
+                cfg.width = W; cfg.height = H; cfg.base_qp = qp;
+                cfg.rdoq_effort = (uint32_t)effort;
+                Coded r;
+                CHECK(code(cfg, im, r), "rdoq_effort %d qp %d: %s / %s", effort,
+                      qp, nxvc_status_string(r.enc_status),
+                      nxvc_status_string(r.dec_status));
+                if (r.out.p[0].empty()) continue;
+                double mse = 0;
+                for (size_t i = 0; i < im.p[0].size(); ++i) {
+                    double d = (double)im.p[0][i] - (double)r.out.p[0][i];
+                    mse += d * d;
+                }
+                // The encoder's own cost function, at the encoder's own
+                // lambda: D + 0.30 * qstep^2 * R.  A higher effort level
+                // searches a superset of the lower one's candidates, so it
+                // cannot lose on this measure by more than the table-set
+                // feedback loop's own slack.
+                const double q = std::pow(2.0, qp / 6.0);  // ref/README "step"
+                double cost = mse + 0.30 * q * q * (double)r.frame.size() * 8.0;
+                if (cost < best_cost) best_cost = cost;
+                if (cost > worst_cost) worst_cost = cost;
+            }
+            CHECK(worst_cost <= best_cost * 1.10,
+                  "qp %d: rdoq effort spread %.0f..%.0f is over 10 %%", qp,
+                  best_cost, worst_cost);
+        }
+        // The per-tile QP search and the motion-effort knob must not change
+        // decodability either.
+        for (uint32_t me = 1; me <= 3; ++me) {
+            nxvc_config cfg;
+            nxvc_config_default(&cfg);
+            cfg.width = W; cfg.height = H; cfg.base_qp = 20;
+            cfg.me_effort = me;
+            cfg.qp_search = 2;
+            cfg.qp_search_step = 2;
+            cfg.wm_id = 255;
+            Coded r;
+            CHECK(code(cfg, im, r), "me_effort %u + qp search: %s / %s", me,
+                  nxvc_status_string(r.enc_status),
+                  nxvc_status_string(r.dec_status));
+        }
+        // Turning the content-class lambda off is a supported configuration.
+        {
+            nxvc_config cfg;
+            nxvc_config_default(&cfg);
+            cfg.width = W; cfg.height = H; cfg.base_qp = 24;
+            cfg.lambda_class_off = 1;
+            Coded r;
+            CHECK(code(cfg, im, r), "lambda_class_off: %s / %s",                  nxvc_status_string(r.enc_status),
+                  nxvc_status_string(r.dec_status));
+        }
+    }
+
+    // 10. The tool bit appears only when the tool is used, and the per-tile
+    // search reports a size for every tile.
+    {
+        TestImage im = make_image(W, H, false, 1, 921);
+        nxvc_config cfg;
+        nxvc_config_default(&cfg);
+        cfg.width = W; cfg.height = H; cfg.base_qp = 24;
+        Coded r0;
+        CHECK(code(cfg, im, r0), "xform off encode");
+        cfg.xform_size = 255;
+        Coded r1;
+        CHECK(code(cfg, im, r1), "xform auto encode");
+        // tools is the u64 at byte 32 of the stream header (SYNTAX.md 2).
+        auto tools = [](const std::vector<uint8_t> &h) {
+            uint64_t t = 0;
+            for (int i = 0; i < 8; ++i) t |= (uint64_t)h[32 + i] << (8 * i);
+            return t;
+        };
+        CHECK((tools(r0.header) & NXVC_TOOL_XFORM_LARGE) == 0,
+              "XFORM_LARGE set on an 8x8-only stream");
+        CHECK((tools(r1.header) & NXVC_TOOL_XFORM_LARGE) != 0,
+              "XFORM_LARGE missing on an xform-auto stream");
+    }
+
+    // 11. Lossless is unaffected: it forces 8x8 whatever is asked for, and
+    // stays bit exact.
+    {
+        TestImage im = make_image(W, H, true, 2, 77);
+        nxvc_config cfg;
+        nxvc_config_default(&cfg);
+        cfg.width = W; cfg.height = H; cfg.chroma = NXVC_CHROMA_444;
+        cfg.lossless = 1; cfg.base_qp = 0; cfg.sign_hide = 0;
+        cfg.xform_size = 2;
+        Coded r;
+        CHECK(code(cfg, im, r), "lossless + xform 32: %s/%s",
+              nxvc_status_string(r.enc_status), nxvc_status_string(r.dec_status));
+        for (int p = 0; p < 3; ++p)
+            CHECK(r.out.p[p] == im.p[p], "lossless plane %d differs", p);
+    }
     return test_report("test_codec");
 }

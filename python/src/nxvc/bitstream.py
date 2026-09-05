@@ -402,6 +402,49 @@ class StreamHeader(_TableStruct):
             raise BitstreamError(
                 "tool bits LOSSLESS and SIGN_HIDE are mutually exclusive", offset + 32
             )
+        # SYNTAX.md 2.3: the row-skip flag only exists inside a transmitted
+        # table set, and v3 only says how the v2 model is conditioned
+        # (rejection vectors r30 and r31).
+        if (self.tools & Tool.TAB_V2) and not (self.tools & Tool.CUSTOM_TABLES):
+            raise BitstreamError(
+                "tool bit TAB_V2 without CUSTOM_TABLES: there is no table to "
+                "compact",
+                offset + 32,
+            )
+        if (self.tools & Tool.CTX_V3) and not (self.tools & Tool.CTX_V2):
+            raise BitstreamError(
+                "tool bit CTX_V3 without CTX_V2: it names no context model",
+                offset + 32,
+            )
+        # SYNTAX.md 2.3 / 9.10: the table-free coder transmits no tables for
+        # CUSTOM_TABLES to compact, and has no arithmetic state for a hidden
+        # sign to ride on (rejection vectors r42 and r43).
+        if (self.tools & Tool.ENTROPY_LITE) and (
+            self.tools & (Tool.SIGN_HIDE | Tool.CUSTOM_TABLES)
+        ):
+            raise BitstreamError(
+                "tool bit ENTROPY_LITE with SIGN_HIDE or CUSTOM_TABLES: the "
+                "table-free coder has neither a table nor an arithmetic state",
+                offset + 32,
+            )
+        # SYNTAX.md 7.7: chroma from luma is a tenth value of the CTX_V2 mode
+        # symbol in the replace form of directional intra, so it is meaningless
+        # without both (rejection vector r30).
+        if (self.tools & Tool.INTRA_CFL) and not (
+            (self.tools & Tool.INTRA_DIR) and (self.tools & Tool.CTX_V2)
+        ):
+            raise BitstreamError(
+                "tool bit INTRA_CFL without INTRA_DIR and CTX_V2: it names no "
+                "intra mode",
+                offset + 32,
+            )
+        # SYNTAX.md 3.3 and 13.10: both inter-efficiency tools describe INTER
+        # tiles and their modes.
+        for bit, name in ((Tool.NEAR_SKIP, "NEAR_SKIP"), (Tool.QUAD_MV, "QUAD_MV")):
+            if (self.tools & bit) and not (self.tools & Tool.INTER):
+                raise BitstreamError(
+                    f"tool bit {name} without INTER", offset + 32
+                )
         # SYNTAX.md 14: WARP describes how the inter modes predict, so it says
         # nothing on its own (rejection vector r27).
         if (self.tools & Tool.WARP) and not (self.tools & Tool.INTER):
@@ -518,14 +561,32 @@ class FrameHeader(_TableStruct):
 # ------------------------------------------------------------- tile-row header
 
 
+#: Bytes of one near-skip correction record: three signed bytes -- DC and two
+#: ramps -- for each of the three colour planes (SYNTAX.md 13.9).
+NEAR_SKIP_BYTES = 9
+
+
 @dataclass
 class TileRowHeader(_TableStruct):
-    """The 12-byte tile-row header (SYNTAX.md 3.3)."""
+    """The tile-row header (SYNTAX.md 3.3).
+
+    12 bytes, plus -- when ``dc_present`` (bit 7 of the ``tile_count`` byte)
+    is set -- an 8-byte ``dc_bitmap`` and one 9-byte near-skip correction per
+    bit it names.  ``NEAR_SKIP`` is the only tool bit that gates a structure
+    in this header rather than a tile-header field.
+    """
 
     frame_number: int = 0
     row_index: int = 0
+    #: The raw byte: bit 7 is ``dc_present``, bits 6:0 the count.  Kept under
+    #: its original name so that ``TileRowHeader(tile_count=n)`` still means
+    #: what it did before ``dc_present`` existed -- for n < 128 the byte and
+    #: the count are the same number.
     tile_count: int = 0
     skip_bitmap: int = 0
+    dc_bitmap: int = 0
+    #: One 9-byte record per ``dc_bitmap`` bit, in ascending column order.
+    dc_records: tuple[bytes, ...] = ()
 
     SIZE: ClassVar[int] = 12
     FIELDS: ClassVar[Sequence[tuple[str, int, str]]] = (
@@ -537,12 +598,51 @@ class TileRowHeader(_TableStruct):
 
     reserved: bytes = b""
 
+    @property
+    def count(self) -> int:
+        """Coded tiles in this row: bits 6:0 of the ``tile_count`` byte."""
+        return self.tile_count & 0x7F
+
+    @property
+    def dc_present(self) -> int:
+        """Bit 7 of the ``tile_count`` byte: near-skip corrections follow."""
+        return self.tile_count >> 7
+
+    @property
+    def size(self) -> int:
+        """Bytes this row header occupies, records included."""
+        if not self.dc_present:
+            return self.SIZE
+        return self.SIZE + 8 + NEAR_SKIP_BYTES * bin(self.dc_bitmap).count("1")
+
     def skipped_tiles(self, tiles_in_row: int) -> list[int]:
         return [i for i in range(tiles_in_row) if self.skip_bitmap & (1 << i)]
 
+    def corrected_tiles(self, tiles_in_row: int) -> list[int]:
+        return [i for i in range(tiles_in_row) if self.dc_bitmap & (1 << i)]
+
     @classmethod
     def parse(cls, buf: bytes, offset: int = 0) -> "TileRowHeader":
-        return cls(**cls._parse_at(buf, offset, "tile-row header"))
+        hdr = cls(**cls._parse_at(buf, offset, "tile-row header"))
+        if not hdr.dc_present:
+            return hdr
+        pos = offset + cls.SIZE
+        if pos + 8 > len(buf):
+            raise BitstreamError("truncated dc_bitmap", pos)
+        hdr.dc_bitmap = int.from_bytes(buf[pos : pos + 8], "little")
+        pos += 8
+        # SYNTAX.md 3.3: dc_present with an empty bitmap is two encodings of
+        # one stream, and a parser must refuse the redundant one.
+        if hdr.dc_bitmap == 0:
+            raise BitstreamError("dc_present with an empty dc_bitmap", offset + 3)
+        recs = []
+        for _ in range(bin(hdr.dc_bitmap).count("1")):
+            if pos + NEAR_SKIP_BYTES > len(buf):
+                raise BitstreamError("truncated near-skip correction", pos)
+            recs.append(buf[pos : pos + NEAR_SKIP_BYTES])
+            pos += NEAR_SKIP_BYTES
+        hdr.dc_records = tuple(recs)
+        return hdr
 
 
 # ----------------------------------------------------------------- tile header
@@ -561,7 +661,9 @@ _TILE_WORD1: Sequence[tuple[str, int, int, bool]] = (
     ("tskip", 23, 1, False),
     ("wgt", 24, 2, False),
     ("wm_id", 26, 2, False),
-    ("word1_reserved", 28, 4, False),
+    ("split4x4", 28, 1, False),
+    ("xform_size", 29, 2, False),
+    ("quad_mv", 31, 1, False),
 )
 
 #: word0 bitfields: (name, lsb, width, signed)
@@ -594,6 +696,15 @@ _TILE_EXTRAS: Sequence[tuple[str, tuple[str, ...], str, Callable[[Any], bool]]] 
         ("mv_x", "mv_y"),
         "bb",
         lambda h: bool(h.mv_present) and h.mode != TileMode.STEREO,
+    ),
+    # SYNTAX.md 13.10: four bytes of quadrant vector deltas, one per
+    # quadrant, each byte bits 3:0 the x delta and 7:4 the y delta as signed
+    # nibbles.  They sit between the vector and the constant-alpha byte.
+    (
+        "tile quadrant vectors",
+        ("qmv0", "qmv1", "qmv2", "qmv3"),
+        "BBBB",
+        lambda h: bool(h.quad_mv),
     ),
     ("tile constant alpha", ("alpha_value",), "B", lambda h: h.alpha_mode == 1),
 )
@@ -631,8 +742,19 @@ class TileHeader:
     tskip: int = 0
     wgt: int = 0
     wm_id: int = 0
+    #: Per-block 4x4 transform split (SYNTAX.md 6.8).  Meaningful only where
+    #: `xform_size` selects the 8x8 transform.
+    split4x4: int = 0
+    #: 0 = 8x8, 1 = 16x16, 2 = 32x32 (SYNTAX.md 6.7); 3 is reserved.
+    xform_size: int = 0
+    #: Four quadrant vectors follow the tile vector (SYNTAX.md 13.10).
+    quad_mv: int = 0
+    #: The four packed quadrant-delta bytes, when `quad_mv` is set.
+    qmv0: int = 0
+    qmv1: int = 0
+    qmv2: int = 0
+    qmv3: int = 0
     word0_reserved: int = 0
-    word1_reserved: int = 0
     mv_x: int = 0
     mv_y: int = 0
     #: STEREO only: unsigned horizontal disparity in quarter samples, 12 bits.
@@ -721,8 +843,31 @@ class TileHeader:
             raise BitstreamError(f"nsub_log2 {self.nsub_log2} exceeds 5", offset + 4)
         if self.word0_reserved:
             raise BitstreamError("tile word0 bit 3 must be zero", offset)
-        if self.word1_reserved:
-            raise BitstreamError("tile word1 bits 28-31 must be zero", offset + 4)
+        # Word1 has no reserved bits left: 28 split4x4, 29-30 xform_size,
+        # 31 quad_mv (docs/TOOLBITS.md 4).  The reserved-bit check moved to
+        # word0 bit 3, above.
+        if self.xform_size == 3:
+            raise BitstreamError("xform_size 3 is reserved", offset + 4)
+        if self.xform_size and self.tskip:
+            raise BitstreamError(
+                "xform_size != 0 on a transform-skip tile", offset + 4
+            )
+        if self.split4x4 and self.tskip:
+            raise BitstreamError(
+                "split4x4 on a transform-skip tile", offset + 4
+            )
+        # SYNTAX.md 4.1: the split is meaningful only at the 8x8 transform.
+        if self.split4x4 and self.xform_size:
+            raise BitstreamError(
+                "split4x4 with xform_size != 0", offset + 4
+            )
+        if self.quad_mv and self.mode not in (
+            TileMode.WARP_MV,
+            TileMode.STATIC_MV,
+        ):
+            raise BitstreamError(
+                f"quad_mv on a {self.mode_name} tile", offset + 4
+            )
         # --- SYNTAX.md 4.1 inter constraints that need nothing but this header
         if self.ref_sel == 3:
             raise BitstreamError("ref_sel 3 is reserved", offset + 4)
@@ -768,7 +913,7 @@ class TileRow:
 
     @property
     def size(self) -> int:
-        return TileRowHeader.SIZE + sum(t.size for t in self.tiles)
+        return self.header.size + sum(t.size for t in self.tiles)
 
 
 @dataclass
@@ -829,6 +974,8 @@ CUSTOM_MATRIX_BYTES = 128
 TABLE_SET_BYTES = 120
 #: ... and under ``CTX_V2`` (16 x 16 x 5).  SYNTAX.md 3.1 and 9.4.
 TABLE_SET_BYTES_V2 = 160
+#: ... and under ``CTX_V3`` (27 x 16 x 5).
+TABLE_SET_BYTES_V3 = 270
 
 
 def table_set_bytes(tools: int) -> int:
@@ -837,8 +984,49 @@ def table_set_bytes(tools: int) -> int:
     The stream header's tool mask is what selects it, so a frame cannot be
     parsed without it -- this is why :func:`parse_frame` takes the stream
     header rather than only the frame's own bytes.
+
+    Under ``TAB_V2`` (tool bit 26) a set is variable length -- a `row_coded`
+    flag per context, and the whole table area padded to a byte boundary once
+    (SYNTAX.md 9.4.1) -- so there is no per-set size to return and this is the
+    upper bound rather than the answer.  :func:`table_area_bytes` is what the
+    section walker uses.
     """
+    if tools & Tool.CTX_V3:
+        return TABLE_SET_BYTES_V3
     return TABLE_SET_BYTES_V2 if (tools & Tool.CTX_V2) else TABLE_SET_BYTES
+
+
+def _ctx_count(tools: int) -> int:
+    """Coded contexts of the stream's entropy model (SYNTAX.md 9.3, 9.8)."""
+    if tools & Tool.CTX_V3:
+        return 27
+    return 16 if (tools & Tool.CTX_V2) else 12
+
+
+def table_area_bytes(
+    header: "FrameHeader", stream: "StreamHeader", buf: bytes, offset: int
+) -> int:
+    """Bytes of transmitted probability tables in one frame.
+
+    Without ``TAB_V2`` every set is ``table_set_bytes()`` and this is just the
+    product.  With it a set is a `row_coded` flag per context plus 80 bits per
+    coded row, the sets are one contiguous bit sequence, and the whole area is
+    padded to a byte boundary **once**, after the last set (SYNTAX.md 9.4.1) --
+    so the length can only be had by reading the flags.
+    """
+    nsets = len(header.table_sets)
+    if not (stream.tools & Tool.TAB_V2):
+        return nsets * table_set_bytes(stream.tools)
+    nctx = _ctx_count(stream.tools)
+    bit = 0
+    for _ in range(nsets):
+        for _ in range(nctx):
+            byte = offset + (bit >> 3)
+            if byte >= len(buf):
+                raise BitstreamError("the probability table area is truncated", offset)
+            coded = (buf[byte] >> (7 - (bit & 7))) & 1
+            bit += 1 + (80 if coded else 0)
+    return (bit + 7) // 8
 
 
 @dataclass(frozen=True)
@@ -854,7 +1042,10 @@ class FrameSection:
 
     name: str
     keys: Callable[["FrameHeader", "StreamHeader"], Sequence[Any]]
-    size: Callable[["FrameHeader", "StreamHeader", Any], int]
+    #: Byte length of one instance.  It is given the frame bytes and the offset
+    #: the instance starts at, because ``TAB_V2`` makes the table area variable
+    #: length: its size is a function of the row flags inside it.
+    size: Callable[["FrameHeader", "StreamHeader", Any, bytes, int], int]
     what: Callable[[Any], str]
     #: True when the section holds at most one instance, keyed ``None``.
     singleton: bool = True
@@ -933,21 +1124,31 @@ FRAME_SECTIONS: Sequence[FrameSection] = (
     FrameSection(
         name="warp_ext",
         keys=lambda h, s: [None] if h.warp_present else [],
-        size=lambda h, s, k: WARP_EXT_BYTES * s.eyes,
+        size=lambda h, s, k, b, p: WARP_EXT_BYTES * s.eyes,
         what=lambda k: "warp_ext()",
         check=_check_warp_ext,
     ),
     FrameSection(
         name="custom_matrix",
         keys=lambda h, s: [None] if h.custom_matrix else [],
-        size=lambda h, s, k: CUSTOM_MATRIX_BYTES,
+        size=lambda h, s, k, b, p: CUSTOM_MATRIX_BYTES,
         what=lambda k: "custom quantization matrices",
     ),
     FrameSection(
         name="table_deltas",
-        keys=lambda h, s: h.table_sets,
-        size=lambda h, s, k: table_set_bytes(s.tools),
-        what=lambda k: f"probability table set {k}",
+        # With TAB_V2 the transmitted sets are one bit sequence padded to a
+        # byte boundary once, at the end, so they are one section rather than
+        # one per set (SYNTAX.md 9.4.1); without it every set is the same whole
+        # number of bytes and the two views agree.
+        keys=lambda h, s: ([None] if h.table_sets else [])
+        if (s.tools & Tool.TAB_V2)
+        else h.table_sets,
+        size=lambda h, s, k, b, p: table_area_bytes(h, s, b, p)
+        if k is None
+        else table_set_bytes(s.tools),
+        what=lambda k: "the probability table area"
+        if k is None
+        else f"probability table set {k}",
         singleton=False,
     ),
 )
@@ -982,6 +1183,18 @@ _TILE_RULES: Sequence[tuple[Callable[[Any, Any, Any], bool], str]] = (
     (
         lambda t, h, s: t.wm_id != 0 and h.quant_matrix == 255,
         "wm_id != 0 in a frame carrying custom quantization matrices",
+    ),
+    (
+        lambda t, h, s: t.xform_size != 0 and not (s.tools & Tool.XFORM_LARGE),
+        "xform_size != 0 without tool bit 27 XFORM_LARGE",
+    ),
+    (
+        lambda t, h, s: t.split4x4 and not (s.tools & Tool.XFORM_4X4_SPLIT),
+        "split4x4 without tool bit 19 XFORM_4X4_SPLIT",
+    ),
+    (
+        lambda t, h, s: t.quad_mv and not (s.tools & Tool.QUAD_MV),
+        "quad_mv without tool bit 29 QUAD_MV",
     ),
     (
         lambda t, h, s: t.chroma444 and not s.chroma444,
@@ -1062,7 +1275,7 @@ def parse_frame(
     sections: dict[str, dict[Any, bytes]] = {}
     for section in FRAME_SECTIONS:
         for key in section.keys(hdr, stream):
-            n = section.size(hdr, stream, key)
+            n = section.size(hdr, stream, key, buf, pos)
             what = section.what(key)
             _need(buf, pos, n, what)
             if pos + n > end:
@@ -1093,7 +1306,7 @@ def parse_frame(
                 f"{hdr.frame_bytes}", pos
             )
         rh = TileRowHeader.parse(buf, pos)
-        pos += TileRowHeader.SIZE
+        pos += rh.size
         if validate:
             if rh.frame_number != hdr.frame_number:
                 raise BitstreamError(
@@ -1106,9 +1319,9 @@ def parse_frame(
                     f"tile-row row_index {rh.row_index} != {row_index}", row_off + 2
                 )
             skipped = bin(rh.skip_bitmap & ((1 << stream.cols_per_eye) - 1)).count("1")
-            if rh.tile_count != stream.cols_per_eye - skipped:
+            if rh.count != stream.cols_per_eye - skipped:
                 raise BitstreamError(
-                    f"tile_count {rh.tile_count} != {stream.cols_per_eye} tiles minus "
+                    f"tile_count {rh.count} != {stream.cols_per_eye} tiles minus "
                     f"{skipped} skipped",
                     row_off + 3,
                 )
@@ -1126,9 +1339,24 @@ def parse_frame(
                     "a skip bit needs the INTER tool and warp_present in the frame",
                     row_off + 4,
                 )
+            # SYNTAX.md 3.3: the near-skip corrections.
+            if rh.dc_present and not (stream.tools & Tool.NEAR_SKIP):
+                raise BitstreamError(
+                    "dc_present without tool bit 28 NEAR_SKIP", row_off + 3
+                )
+            if rh.dc_bitmap >> stream.cols_per_eye:
+                raise BitstreamError(
+                    f"dc_bitmap has bits set above tile "
+                    f"{stream.cols_per_eye - 1}", row_off + 12
+                )
+            if rh.dc_bitmap & ~rh.skip_bitmap:
+                raise BitstreamError(
+                    "a dc_bitmap bit names a tile that skip_bitmap does not",
+                    row_off + 12,
+                )
 
         tiles: list[Tile] = []
-        for _ in range(rh.tile_count):
+        for _ in range(rh.count):
             th = TileHeader.parse(buf, pos, validate=validate)
             if validate:
                 _validate_tile_against_stream(th, hdr, stream, pos)

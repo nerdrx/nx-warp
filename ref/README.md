@@ -15,6 +15,38 @@ deterministic concealment. Layers are still out of scope. Inter is **opt-in**:
 `nxvc_config_default()` leaves it off, so an existing caller and every syntax
 v1.3 stream are byte-identical to what a v1.3 build produced.
 
+**Syntax revision v1.6** adds the two intra detail tools -- the 4x4 transform
+split (bit 19) and chroma from luma (bit 24) -- plus a named, per-band encoder
+dead zone that changes no syntax at all. Together they are worth **-18.8
+BD-rate points on 4:4:4 and -16.0 on 4:2:0**, so the encoder turns both **on
+by default**; `nxv-enc --split4x4 off --cfl off` writes a v1.4 stream. Both
+are additive: `v01`-`v56` of the conformance set are byte-identical to what a
+v1.4 build produced, which `ctest -R ref.vectors` checks on every commit. See
+[`docs/SYNTAX.md`](../docs/SYNTAX.md) 6.7 and 7.7 and
+[`RESULTS-detail-a.md`](RESULTS-detail-a.md).
+
+v1.6 also adds the entropy and context package: tool bit 26 `TAB_V2` (a
+transmitted probability-table set gains a per-row "use the built-in default"
+flag and becomes variable length) and tool bit 25 `CTX_V3` (27 contexts, with
+`CBF` and `LAST` conditioned on the class of the previous **coding unit** the
+same rANS lane finished in the same plane, and `LEVEL` split at scan position
+`LAST` and at the DC term). Both are additive and both ship **off**: `nxv-enc` bare reproduces a
+v1.4 stream byte for byte, and the 56 committed conformance vectors are
+unchanged. See [`docs/SYNTAX.md`](../docs/SYNTAX.md) 9.4.1 and 9.8 and
+[`RESULTS-ctx-b.md`](RESULTS-ctx-b.md).
+
+v1.6 also adds the large transforms: tool bit 27 `XFORM_LARGE` and the tile
+header's two-bit `xform_size`, which selects a 16x16 or 32x32 integer DCT for
+every plane of the tile instead of the 8x8 one, and re-grids the DC plane onto
+it. Additive and off by default -- `nxv-enc --xform auto` turns the per-tile
+rate-distortion choice on. It is the largest single win in the tournament:
+**-29.2 BD-rate points on 4:4:4 and -38.1 on 4:2:0** against x264 intra, as
+the judge measured it. The 4x4 split of tool bit 19 is the fourth size of the
+same transform family, and by SYNTAX.md 4.1 it is meaningful only where
+`xform_size` selects the 8x8 transform. See
+[`docs/SYNTAX.md`](../docs/SYNTAX.md) 6.7 and 6.8 and
+[`RESULTS-xform-a.md`](RESULTS-xform-a.md).
+
 **Syntax revision v1.4** adds the inter path: the frame-header flag
 `warp_present` (bit 3) and the 36-byte-per-eye `warp_ext()` that follows the
 frame header, the four inter tile modes, `eyes == 2` with row-major/eye-minor
@@ -69,8 +101,8 @@ nxv-info --in out.nxv [--tiles]
 `nxv-enc` extras: `--frames N`, `--tskip off|on|auto`, `--nsub 0..5|auto`,
 `--matrix 0..3`, `--wm 0..3`, `--chroma-qp-off N`, `--no-custom-tables`,
 `--tile-420`, `--rgb`, `--color-space unspecified|yuv709l|yuv709f`, `--stats`,
-`--quiet`, the rate-distortion controls `--no-rdo` / `--rdo-lambda F`, and the
-v1.3 tool switches:
+`--quiet`, the rate-distortion controls `--no-rdo` / `--rdo-lambda F`, the
+effort preset below, and the v1.3 tool switches:
 
 | flag | default | effect |
 |---|---|---|
@@ -78,6 +110,13 @@ v1.3 tool switches:
 | `--intra-dir-cand N` | 2 | modes RD-checked per block after the SATD sort; 8 is exhaustive and worth 0.1 % for 2.2x the encode time |
 | `--ctx v1\|v2` | `v2` | 12 or 16 entropy contexts |
 | `--no-sign-hide` | off | code every sign |
+
+and the v1.5 detail switches:
+
+| flag | default | effect |
+|---|---|---|
+| `--split4x4 on\|off` | `on` | per-block 4x4 transform split; sets tool bit 19 |
+| `--cfl on\|off` | `on` | the chroma-from-luma intra mode; sets tool bit 24, and needs `--intra-dir on --ctx v2` |
 
 and the v1.4 inter switches:
 
@@ -95,6 +134,15 @@ and the v1.4 inter switches:
 | `--skip-map FILE` | none | per-tile `force_warp_skip` flags from the rate controller |
 | `--mode-lambda F` | 0.25 | lambda of the per-tile mode decision relative to the trellis |
 
+and the v1.6 entropy and transform switches:
+
+| flag | default | effect |
+|---|---|---|
+| `--ctx v1\|v2\|v3` | `v2` | 12, 16 or 27 entropy contexts (tool bits 21, 25). `v3` ships **off**: `vk/decoder/passA` does not implement it |
+| `--tab v1\|v2` | `v1` | transmitted-table coding: flat 5-bit deltas, or the compact per-row form (tool bit 26). Ships **off**, same reason |
+| `--table-iters N` | 3 | Lloyd iterations refining the eight per-frame table sets; 0 is off. **Encoder only** |
+| `--xform 8\|16\|32\|auto` | `8` | transform size (tool bit 27); `auto` picks it per tile by rate-distortion, at about 4x the encode time. `--split4x4` applies only where this resolves to 8 |
+
 ```sh
 # a stereo inter stream from a corpus sequence and its pose log
 nxv-enc --in vr-mixed-1024.yuv420p.yuv --w 2048 --h 1024 --pix yuv420p \
@@ -103,12 +151,62 @@ nxv-enc --in vr-mixed-1024.yuv420p.yuv --w 2048 --h 1024 --pix yuv420p \
 nxv-info --in out.nxv --tiles      # per-tile mode, vector, ref_sel, warp_ext
 ```
 
+### Encoder effort: `--preset`
+
+One name for a point on the encode-time / rate curve, and a **library**
+concept: `nxvc_config::preset` takes an `nxvc_preset`, the library resolves it
+(`resolve_effort()`), and `nxv-enc --preset` sets that field rather than
+expanding the preset itself. A preset that lives only in the CLI is not
+available to anything embedding the encoder, which is most of what the encoder
+is for. Every knob a preset sets can still be given explicitly; 0 in a knob
+means "take the preset's value".
+
+| | `fast` | `medium` (default) | `slow` |
+|---|---|---|---|
+| `--rdoq-effort` | 1: nearest level only | 2: `{0, m, m+1}` | 3: adds `m-1` |
+| `--me-effort` | 1: single sweep, SAD | 2: hierarchical, SATD | 3: adds true-RD quarter-pel |
+| `--intra-dir-cand` | 1 | 2 | 4 |
+| `--qp-search` | off | off | `+-2`, step 2 |
+
+`slow` does **not** set `--wm auto`. An earlier version of this table said it
+did; the per-tile weighting-matrix search was measured and deliberately
+removed from the preset, and it remains available as an explicit `--wm auto`.
+
+`--no-lambda-class` turns off the per-tile lambda gain and gives every tile the
+same rate-distortion trade whatever its content class.
+
+### One lambda
+
+Every decision the encoder makes -- which levels to code, which intra mode,
+which tile mode, which vector, which per-tile QP offset -- minimises
+`D + lambda*R` with `lambda = 0.22 * qstep^2` from `make_lambda()` in
+`src/codec.cpp`, and `lambda_sad = sqrt(lambda)` wherever the metric is first
+order.
+
+The per-tile mode decision uses **the same lambda**, undivided. It used to
+divide by `kRefPersist = 4` -- on the argument that a mode's distortion is
+displayed for the four frames its reconstruction is a reference for while its
+bits are paid once -- and that divisor was **removed**: the persistence factor
+is charged once already, on the skip candidate's excess, and charging it here
+as well was a double charge with no argument behind it. Removing it is worth
+**-3.4 BD-rate points**, the single largest item in the package.
+`nxvc_config::mode_lambda_q8` still exists for a caller that wants the old
+behaviour; 256 (the default) is the same lambda.
+
+Lambda is then scaled per tile by the content class of
+`docs/RATECONTROL.md` 3.3. `ref/RESULTS-rdo-b.md` is the fit and the
+measurement; `docs/SYNTAX.md` Appendix A 53 records that none of it is
+normative.
+
 Rate-distortion quantization is **on by default**. It is encoder-only work -- a
 trellis over the level syntax, `ref/src/codec.cpp` `rdoq_unit()` -- so a stream
 encoded with it decodes through exactly the same path as one encoded without.
-It costs about 2.7x encode time and is worth -8.8 % BD-rate; `--no-rdo` gets
-the old dead-zone quantizer back. `--wm` sets the per-tile weighting-matrix id
-that the rate controller's degradation ladder uses.
+It was worth -8.8 % BD-rate at 2.7x encode time when it was added; since the
+trellis got an exact bound on `last`, the DC plane and a refitted lambda it is
+worth a further -1.6 % on the Phase 1 gate and -9.8 % on the Phase 2 kill test
+at **0.6-0.8x** the v1.4 encode time (`RESULTS-rdo-b.md`). `--no-rdo` gets the
+old dead-zone quantizer back. `--wm` sets the per-tile weighting-matrix id that
+the rate controller's degradation ladder uses.
 
 `--rgb` means planes 0..2 are R, G, B and the codec applies YCoCg-R. Without it
 the planes are coded exactly as given, which is the path a WiVRn capture takes
@@ -153,7 +251,8 @@ Both sides expose the frame's tile layout: `nxvc_tile_layout_get()` for the grid
 `nxvc_decoder_tiles()` for the per-tile records (mode, resolved QP,
 `res_level`, `tskip`, `table_set`, payload length, and for v1.4 the vector,
 `ref_sel`, `ref_delta`, `disparity`, `skipped`, `concealed` and
-`age_since_coded`).
+`age_since_coded`, and for v1.5 `near_skip`, `near_skip_ac`, `quad_mv`, the
+three correction bytes per plane and the four quadrant deltas).
 
 ### The inter path
 
@@ -169,6 +268,24 @@ nxvc_encoder_encode_frame(e, &img, NULL, NULL, buf, sizeof buf, &len);
 `nxvc_encoder_set_views()` is the only floating-point input the codec takes; its
 result reaches the decoder already quantised to the nine `int32` of
 `warp_ext()`. The image is `eyes * width` samples wide, eye 0 first.
+
+**The inter-efficiency tools (syntax v1.5).** Three switches, each measured on
+its own in `ref/RESULTS-inter-a.md` and each off by default so that a stream
+without it is byte-identical to a v1.4 one:
+
+```c
+cfg.drift_refresh = 1;   /* schedule the refresh from measured shadow drift
+                            instead of a fixed 1-in-T permutation; intra_period
+                            becomes a hard age cap.  No syntax.  (13.8)      */
+cfg.drift_gate_q8 = 0;   /* the gate, Q8 multiple of qstep^2/12; 0 = default */
+cfg.near_skip = 1;       /* tool bit 28: a warped tile may carry a DC-and-ramps
+                            correction instead of a payload          (13.9)  */
+cfg.quad_mv = 1;         /* tool bit 29: four quadrant vectors as nibble deltas
+                            from the tile vector                     (13.10) */
+```
+
+`nxv-enc` exposes the same four as `--drift-refresh`, `--drift-gate`,
+`--near-skip` and `--quad-mv`.
 
 **The loss/concealment contract.** The decoder is told which tiles the client
 did not get; the encoder is told the same thing and replays the identical
@@ -202,14 +319,15 @@ tile  := tile_header [mv | disparity] [alpha] payload
 | stream header | 64 bytes + `ext_len` bytes of TLVs |
 | frame header | 40 bytes (+`36 * eyes` `warp_ext`, +128 custom matrices, +120 per table set, 160 with `CTX_V2`) |
 | tile-row header | 12 bytes (`frame_number`, `row_index`, `tile_count`, 64-bit skip bitmap) |
-| probability table set | 120 bytes, or 160 with `CTX_V2` |
+| probability table set | 120 bytes, 160 with `CTX_V2`, 220 with `CTX_V3`; variable and usually far smaller with `TAB_V2` |
 | tile header | 8 bytes (+2 MV, +1 constant alpha) |
 | tile payload | interleaved rANS, `4 * lanes` bytes of initial state first |
 
-Fixed parameters: 64x64 tiles, 8x8 blocks, 8x8 integer DCT with 9-bit
-Loeffler-derived constants, QP 0..63 with `step = 2^(QP/6)` as a Q4 table,
-interleaved rANS with a 32-bit state, 10-bit probabilities, 12 or 16 contexts
-of 16 symbols, and 1 to 8 lanes per tile (`nsub_log2`; 8 is one subgroup cluster and
+Fixed parameters: 64x64 tiles, a 4x4, 8x8, 16x16 or 32x32 integer DCT from one
+transform family with 9-bit Loeffler-derived constants, QP 0..63 with
+`step = 2^(QP/6)` as a Q4 table,
+interleaved rANS with a 32-bit state, 10-bit probabilities, 12, 16 or 27
+contexts of 16 symbols, and 1 to 8 lanes per tile (`nsub_log2`; 8 is one subgroup cluster and
 the value a GPU decoder should assume as the maximum).
 
 ## Source map
@@ -219,18 +337,27 @@ the value a GPU decoder should assume as the maximum).
 | `src/common.h` | constants, contexts, tile geometry |
 | `src/tables.cpp` | QP steps, weighting matrices, scans, LAST classes, table normalization |
 | `src/default_tables.inc` | the 8 built-in probability table sets, v1 (12 contexts) and v2 (16) |
-| `src/transform.h/.cpp` | 8x8 integer DCT/IDCT and the bilinear resampler |
+| `src/transform.h/.cpp` | the 8x8, 16x16 and 32x32 integer DCT/IDCT and the bilinear resampler |
 | `src/entropy.h/.cpp` | rANS and the per-lane syntax state machine |
 | `src/codec.cpp` + `src/codec_impl.inc` | headers, encoder, decoder |
 | `tools/` | `nxv-enc`, `nxv-dec`, `nxv-info` |
-| `../tests/ref/gentables.cpp` | regenerates `default_tables.inc` (dev tool); `nxv-gentables v1\|v2\|both` |
+| `../tests/ref/gentables.cpp` | regenerates `default_tables.inc` (dev tool); `nxv-gentables v1\|v2\|v3\|both` |
 | `../tests/ref/vectors.cpp` | generates and checks the conformance vectors |
 | `../tests/ref/test_saturate.cpp` | range safety of the normative decode path |
 | `RESULTS-intra.md` | the Phase 1 intra measurements, in full |
+| `RESULTS-detail-a.md` | the v1.6 detail tools, measured before and after |
+| `RESULTS-ctx-a.md`, `RESULTS-ctx-b.md` | the v1.6 entropy and context package, in full |
+| `RESULTS-xform-a.md` | the large-transform package: before/after, GPU cost, the two rejected variants |
 
 The per-lane syntax state machine in `entropy.cpp` is the piece the Vulkan Pass A
 shader mirrors: one `LaneMachine` per rANS lane, driven identically by the
 encoder and the decoder, so the two can never disagree about the symbol order.
+
+The 4x4 split lives in `transform.cpp` (`fdct4x4`/`idct4x4` and the `kD0/D1/D2`
+constants), `kScan4Split` in `tables.cpp`, `residual_block()`/`forward_block()`
+in `codec.cpp`, and the `kSplit` phase of `LaneMachine`. Chroma from luma is
+`cfl_luma()`, `cfl_fit()` and the `kIntraCfl` case of `predict_block()`, with
+`TileCoder::cfl_for()` deciding when the mode exists.
 
 Directional intra lives in three places: `predict_block()` / `build_refs()` in
 `codec.cpp` are the normative predictor and reference derivation,
@@ -247,8 +374,12 @@ encoder half of sign data hiding, whose decoder half is the parity fixup in
 `ref.codec` (rate/quality monotonicity, lossless bit-exactness, every tool
 combination, odd picture sizes, multi-frame), `ref.headers` (TLV forward
 compatibility and header validation), `ref.saturate` (the inverse transform and
-the dequantizer at their documented bounds), `ref.fuzz_smoke` (random and
-mutated streams never crash), `ref.cli` (the three tools end to end) and
+the dequantizer at their documented bounds), `ref.transform_gain` (every
+transform size is orthonormal at unit scale against a float DCT-II),
+`ref.entropy_lite` (the table-free FIXED and RICE variants round trip and stay
+mutually exclusive with the table tools), `ref.inter` and `ref.warp_convention`
+(the warp model and its quad vectors), `ref.fuzz_smoke` (random and mutated
+streams never crash), `ref.cli` (the three tools end to end) and
 `ref.vectors`.
 
 `ref.saturate` exists to be run under the sanitizers, where a signed overflow
@@ -259,8 +390,8 @@ cmake --preset asan-ubsan && cmake --build --preset asan-ubsan
 ctest --preset asan-ubsan -R 'ref\.'
 ```
 
-`tests/vectors/` holds 44 committed `.nxv` vectors and `vectors.md5`, which pins
-both the MD5 of each bitstream and the MD5 of its decoded planes, plus 17
+`tests/vectors/` holds 81 committed `.nxv` vectors and `vectors.md5`, which
+pins both the MD5 of each bitstream and the MD5 of its decoded planes, plus 43
 **rejection vectors** and `rejects.md5`, which pin the exact status each
 malformed stream must be refused with. `VERSION`, `UNSUPPORTED`, `BITSTREAM`
 and `TRUNCATED` are not interchangeable: a transport falls back on one and
@@ -350,7 +481,9 @@ rejected and why, the GPU cost of the wavefront, and encode times — is
   tables byte for byte.
 * **Sign data hiding** (bit 22) is worth -0.6 points.
 * Rate-distortion quantization (v1.2) is on by default and worth -8.8 % /
-  +0.92 dB, encoder only, at 2.7x encode time and no decoder cost.
+  +0.92 dB, encoder only, at 2.7x encode time and no decoder cost. v1.5's
+  rate-distortion package (`RESULTS-rdo-b.md`) adds -1.6 % here and -9.8 % on
+  the inter path while making the encode *faster* than v1.4.
 * An in-tile intra **pyramid** was measured before being built and rejected;
   so was a 4-byte tile header. The largest untried item is now a **4x4
   transform split**, which is exactly the regime directional prediction
@@ -368,9 +501,12 @@ matters is a real capture.
 
 ```sh
 nxv-enc --in in.yuv --w 2048 --h 1024 --pix yuv444p --qp 16 --out out.nxv
-#   == --intra-dir on --ctx v2 --sign-hide   (tools 17, 21, 22 set)
+#   == --intra-dir on --ctx v2 --sign-hide --split4x4 on --cfl on
+#      (tools 17, 19, 21, 22, 24 set)
 
-nxv-enc ... --intra-dir off --ctx v1 --no-sign-hide     # a v1.2 stream
+nxv-enc ... --split4x4 off --cfl off                    # a v1.4 stream
+nxv-enc ... --split4x4 off --cfl off \
+            --intra-dir off --ctx v1 --no-sign-hide     # a v1.2 stream
 ```
 
 `--lossless` forces `--no-sign-hide`: hiding a sign spends one level step, so

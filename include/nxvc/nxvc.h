@@ -47,8 +47,28 @@ extern "C" {
  *       picture per eye and row-major/eye-minor tile rows, the four-slot
  *       reference ring addressed by `ref_sel`, and the 12-bit STEREO
  *       `disparity` field replacing mv_x/mv_y.  See docs/SYNTAX.md 8.
+ *   6 : the tournament packages, landed together under one minor bump.
+ *       5 is skipped: eight of the ten tournament branches each set 5 for
+ *       their own package, and a merged stream is none of those eight.
+ *       tool bit 19 XFORM_4X4_SPLIT and 24 INTRA_CFL (the detail package);
+ *       25 CTX_V3, the 27-context neighbour-conditioned model, conditioned
+ *       per coding unit; 26 TAB_V2, the variable-length transmitted table
+ *       set with a per-row "use the built-in default" flag; 27 XFORM_LARGE
+ *       and the tile header's two-bit `xform_size`, selecting a 16x16 or
+ *       32x32 integer DCT for every plane of the tile instead of the 8x8
+ *       one -- the DC plane, the intra predictors, the weighting matrices,
+ *       the scans and the entropy contexts all follow the block size by
+ *       documented rules, and no new context and no new symbol exists.
+ *       28 NEAR_SKIP, a warped tile whose whole residual is a per-plane
+ *       DC-plus-ramps correction carried in nine signed bytes in the TILE-ROW
+ *       header rather than an entropy-coded payload, gated by a second
+ *       per-row bitmap; and 29 QUAD_MV, four motion vectors, one per 32x32
+ *       quadrant, as signed nibble deltas from the tile vector over the
+ *       tile's own warp corner basis.
+ *       See docs/SYNTAX.md 3.3, 6.7, 6.8, 9.4.1, 9.9, 13.9 and 13.10, and
+ *       docs/TOOLBITS.md.
  */
-#define NXVC_BITSTREAM_MINOR 4
+#define NXVC_BITSTREAM_MINOR 6
 
 /* "nxvc_ref <major>.<minor> (syntax v1.<minor>)" -- a static string, safe to
  * call before any object exists.  Used by the Python bindings to check that
@@ -88,6 +108,20 @@ typedef enum nxvc_color_space {
     NXVC_CS_RGB = 3           /* requires NXVC_CT_YCOCGR                  */
 } nxvc_color_space;
 
+/* Encoder effort presets.  Encoder-side only: none of them changes what a
+ * stream means or how it decodes, only how long the encoder looks for the
+ * cheapest way to say it.
+ *
+ * This is a LIBRARY concept, not a CLI flag.  A preset that exists only in
+ * nxv-enc is not available to anything embedding the encoder, which is most
+ * of what the encoder is for.  Every individual knob in nxvc_config still
+ * overrides the preset; 0 in a knob means "take the preset's value". */
+typedef enum nxvc_preset {
+    NXVC_PRESET_MEDIUM = 0,   /* the default */
+    NXVC_PRESET_FAST   = 1,
+    NXVC_PRESET_SLOW   = 2
+} nxvc_preset;
+
 typedef enum nxvc_tile_mode {
     NXVC_MODE_WARP_SKIP = 0,
     NXVC_MODE_STATIC_MV = 1,
@@ -126,6 +160,44 @@ typedef enum nxvc_tile_mode {
  * actually free.  The substance of D-5 is unchanged: it is undefined in
  * version 1 and a v1 decoder MUST reject a stream that sets it. */
 #define NXVC_TOOL_FILTER_CATMULLROM (1ull << 23)
+/* Syntax v1.5: chroma predicted from the co-located reconstructed luma by a
+ * per-block linear model (SYNTAX.md 7.7).  Requires INTRA_DIR and CTX_V2. */
+#define NXVC_TOOL_INTRA_CFL       (1ull << 24)
+/* The entropy and context package (docs/TOOLBITS.md 2).  CTX_V3 is the
+ * 27-context neighbour-conditioned model, conditioned per CODING UNIT -- the
+ * 8x8 coefficient group -- never per transform block (MERGE-PLAN 4.5).
+ * TAB_V2 is the variable-length transmitted table set with a per-row "use the
+ * built-in default" flag.  CTX_V3 requires CTX_V2; TAB_V2 requires
+ * CUSTOM_TABLES.  Both ship OFF by default: vk/decoder/passA does not
+ * implement them, so a default stream stays decodable by the Vulkan decoder. */
+#define NXVC_TOOL_CTX_V3          (1ull << 25)
+#define NXVC_TOOL_TAB_V2          (1ull << 26)
+
+/* Per-tile 16x16 and 32x32 transforms (SYNTAX.md 6.7).  Gates
+ * tile-header field `xform_size`; a stream that never sets the bit decodes
+ * byte-identically to a v1.4 one. */
+#define NXVC_TOOL_XFORM_LARGE     (1ull << 27)
+
+/* Phase 2 inter efficiency (docs/SYNTAX.md 13.9 and 13.10).  Both require
+ * INTER; NEAR_SKIP additionally requires WARP only in the sense that its
+ * tiles are warped ones, which the mode already gates.  NEAR_SKIP is the one
+ * tool in the tournament whose bit gates a TILE-ROW HEADER structure rather
+ * than a tile-header field: the correction travels in the row header, named
+ * by a second per-row bitmap, so it costs no tile-header bit and its nine
+ * bytes are spent only on the tiles the bitmap names.  docs/TOOLBITS.md 4. */
+#define NXVC_TOOL_NEAR_SKIP       (1ull << 28)
+#define NXVC_TOOL_QUAD_MV         (1ull << 29)
+
+/* ENTROPY_LITE: the table-free, fully parallel entropy tool of SYNTAX.md
+ * 9.10.  Mutually exclusive with SIGN_HIDE and CUSTOM_TABLES: both are
+ * statements about an arithmetic coder this tool does not have.
+ *
+ * It ships OFF and is a NEGOTIATED tool: the decoder asks for it from its own
+ * measured Pass A time, because whether it is worth +40-50 % bits depends on
+ * a number only the decoder knows.  On a Pico 4 it cuts Pass A 7.5x, 138.5 ms
+ * to 18.4 ms, and it is the only bitstream-side lever that reaches the Adreno
+ * frame budget at all. */
+#define NXVC_TOOL_ENTROPY_LITE    (1ull << 30)
 
 /* Tools this reference decoder implements. */
 #define NXVC_TOOLS_SUPPORTED                                                  \
@@ -134,7 +206,11 @@ typedef enum nxvc_tile_mode {
      NXVC_TOOL_LOSSLESS | NXVC_TOOL_CUSTOM_TABLES | NXVC_TOOL_NSUB_VAR |      \
      NXVC_TOOL_PER_TILE_CHROMA | NXVC_TOOL_YCOCGR | NXVC_TOOL_WM_ID |        \
      NXVC_TOOL_INTRA_DIR | NXVC_TOOL_CTX_V2 | NXVC_TOOL_SIGN_HIDE |           \
-     NXVC_TOOL_INTER | NXVC_TOOL_WARP | NXVC_TOOL_STEREO)
+     NXVC_TOOL_XFORM_4X4_SPLIT | NXVC_TOOL_INTRA_CFL |                        \
+     NXVC_TOOL_CTX_V3 | NXVC_TOOL_TAB_V2 | NXVC_TOOL_XFORM_LARGE |            \
+     NXVC_TOOL_NEAR_SKIP | NXVC_TOOL_QUAD_MV |                                \
+     NXVC_TOOL_INTER | NXVC_TOOL_WARP | NXVC_TOOL_STEREO |                    \
+     NXVC_TOOL_ENTROPY_LITE)
 
 /* ---------------------------------------------------------------- images */
 /* 8-bit planar image.  plane[0]=Y/R', plane[1]=Co/G', plane[2]=Cg/B',
@@ -201,7 +277,11 @@ typedef struct nxvc_config {
                                    0 = the default 180 (PAPER 2.6).  Every
                                    frame 1/T of the tiles are forced INTRA by
                                    a fixed pseudo-random permutation.  1 = all
-                                   intra every frame.                       */
+                                   intra every frame.  Under drift_refresh
+                                   this is the HARD AGE CAP instead: a tile
+                                   position may go at most T frames without an
+                                   INTRA, and the loss-recovery bound PAPER 2.6
+                                   states is unchanged.                     */
     uint32_t ref_sel;           /* 0..2: reference distance inter tiles ask
                                    for (N-1-ref_sel).  Default 0.           */
     uint32_t mv_range;          /* coarse integer search radius in samples,
@@ -211,9 +291,128 @@ typedef struct nxvc_config {
                                    (qstep^2 / 12) per sample; 0 = default   */
     uint32_t mode_lambda_q8;    /* lambda scale of the per-tile MODE
                                    decision, Q8, relative to the trellis's.
-                                   Below 256 the decision spends more bits to
-                                   keep the reference clean, which is what an
-                                   all-reference stream wants; 0 = default  */
+                                   0 = the default 256 (the same lambda): the
+                                   reference-persistence factor is charged
+                                   once, on the skip candidate, and v1.4
+                                   charged it here a second time.  Below 256
+                                   the decision spends more bits to keep the
+                                   reference clean.                         */
+
+    /* --- additive since syntax v1.6.  Bitstream tools, each behind its own
+     * tool bit: a stream without the bit decodes byte-identically to v1.4.
+     * APPENDED, per JUDGE-detail.md merge item 1: the ABI is additive, so a
+     * new field goes at the END of the struct.  detail-a inserted these two
+     * mid-struct, which silently moves the offset of every field after them.
+     * Every package that follows appends after this block, in merge order. */
+    uint32_t split4x4;          /* 1 = per-block 4x4 transform split (19)    */
+    uint32_t chroma_from_luma;  /* 1 = the CFL chroma intra mode (24)        */
+
+    /* the entropy and context package (docs/TOOLBITS.md 2) */
+    uint32_t ctx_v3;            /* 1 = the 27-context neighbour-conditioned
+                                   model (25); implies ctx_v2.  Conditions
+                                   per CODING UNIT, never per transform
+                                   block -- see docs/SYNTAX.md 9.8          */
+    uint32_t tab_v2;            /* 1 = the compact transmitted-table coding:
+                                   a per-row "use the built-in default" flag
+                                   and a variable-length table area (26).
+                                   Requires custom_tables                   */
+    uint32_t table_iters;       /* Lloyd iterations refining the eight
+                                   per-frame table sets.  Encoder only: it
+                                   changes which set each tile names, never
+                                   how a stream decodes.  0 = OFF (one
+                                   training pass, no reassignment); leave
+                                   unset for the default of 3.  Reassigning
+                                   without retraining is worse than doing
+                                   nothing (-1.8 %), so the two always move
+                                   together -- there is no "reassign only"  */
+    uint32_t table_iters_set;   /* 1 = table_iters is meaningful even at 0.
+                                   Without this a zeroed nxvc_config, which
+                                   is how every caller starts, would mean
+                                   "off" rather than "default"              */
+
+    /* the inter efficiency package (docs/TOOLBITS.md 2).  APPENDED, not
+     * inserted: inter-a placed these before `ref_sel`, which silently moves
+     * the offset of every field after them for anything compiled against
+     * v1.4 (JUDGE-inter.md merge item 9). */
+    uint32_t near_skip;         /* 1 = allow the near-skip correction (28).
+                                   A warped tile whose drift is small and
+                                   smooth is corrected by nine signed bytes
+                                   in the TILE-ROW header instead of a coded
+                                   residual.  SYNTAX.md 13.9.              */
+    uint32_t quad_mv;           /* 1 = allow four motion vectors per tile,
+                                   one per 32x32 quadrant, as nibble deltas
+                                   from the tile vector (29).              */
+    uint32_t drift_refresh;     /* 1 = drive the refresh from the measured
+                                   drift of the encoder's client shadow
+                                   instead of the fixed 1-in-T permutation.
+                                   Encoder-side only: it changes which tiles
+                                   are coded, never how one decodes.  The
+                                   drift is measured against the SHADOW --
+                                   the loss-aware reconstruction -- not the
+                                   encoder's own, which is the only drift
+                                   the gate exists to catch.               */
+    uint32_t drift_gate_q8;     /* drift_refresh gate, Q8 multiple of the
+                                   quantiser's own noise floor (qstep^2 / 12)
+                                   per sample.  A tile whose shadow has
+                                   drifted further than this from the source
+                                   may not skip; 0 = default                */
+
+    /* the transform package (docs/TOOLBITS.md 2).  A nonzero value sets tool
+     * bit 27, and a decoder without it refuses the stream at the handshake. */
+    uint32_t xform_size;        /* 0 = 8x8 only (and no tool bit), 1 = 16x16
+                                   on every tile, 2 = 32x32 on every tile,
+                                   255 = let the encoder choose per tile by
+                                   rate-distortion.  split4x4 is meaningful
+                                   only where this resolves to 8x8; see
+                                   docs/SYNTAX.md 4.1                       */
+
+    /* the rate-distortion package (encoder only, no tool bit).  All effort
+     * knobs: they change how hard the encoder looks, never what a decoder
+     * does.  0 is "the built-in default" for every one of them, so a caller
+     * that memsets its config gets the medium preset. */
+    uint32_t preset;            /* nxvc_preset.  A LIBRARY concept, not a CLI
+                                   flag: an SDK caller that wants "fast" must
+                                   be able to say so without going through
+                                   nxv-enc.  The fields below override it
+                                   individually; 0 means "take the preset's
+                                   value" for each of them.                 */
+    uint32_t rdoq_effort;       /* 1 = fast (nearest level only), 2 = medium
+                                   (the v1.2 candidate set), 3 = full (adds
+                                   the level below); 0 = default (medium)  */
+    uint32_t me_effort;         /* 1 = fast (no hierarchy, integer only),
+                                   2 = medium (hierarchical + quarter-pel
+                                   SATD), 3 = full (adds true-RD quarter-pel
+                                   refinement); 0 = default (medium)       */
+    uint32_t lambda_class_off;  /* 1 = one lambda for every tile; 0 = scale
+                                   lambda by the tile's content class
+                                   (docs/RATECONTROL.md 3.3)               */
+    uint32_t lambda_class_q8[4];/* per-class lambda gain, Q8, in class order
+                                   flat, texture, edge, text; 0 = built in */
+    uint32_t dc_lambda_q8;      /* lambda gain of the DC plane relative to the
+                                   AC planes, Q8; 0 = built-in default      */
+    uint32_t dc_rdoq_off;       /* 1 = leave the DC plane on the dead-zone
+                                   quantizer, as syntax v1.4 did            */
+    uint32_t qp_search_step;    /* spacing of the per-tile QP candidates,
+                                   0 = the default 2.  With qp_search = n
+                                   the candidates are 0, +-step ... +-n     */
+    uint32_t chroma_weight_q8;  /* weight of chroma squared error in the
+                                   encoder's distortion, Q8, scaled by the
+                                   plane's sample density.  0 = the default
+                                   256 (1.0), which is chroma weighted as
+                                   the samples fall.  Below 256 buys PSNR-Y
+                                   and 6:1:1 at the cost of absolute chroma
+                                   fidelity: it is a PERCEPTUAL TUNING KNOB
+                                   fitted to a reporting convention, not a
+                                   coding gain, and anything quoted with it
+                                   must be quoted on both metrics.         */
+
+    /* the entropy-lite tool (docs/TOOLBITS.md 2, bit 30).
+     * 0 = interleaved rANS (the default), 1 = Lite/FIXED, 2 = Lite/RICE.
+     * A nonzero value sets tool bit 30 and forces sign_hide and
+     * custom_tables off; both are meaningless without an arithmetic coder.
+     * RICE is defined and reachable but is NOT the variant this merge ships:
+     * see docs/SYNTAX.md 9.10. */
+    uint32_t entropy_lite;
 } nxvc_config;
 
 /* One eye's view for one frame: the orientation the frame was rendered with
@@ -236,6 +435,12 @@ typedef struct nxvc_encode_stats {
     uint64_t bits_dc_plane, bits_luma_blocks, bits_chroma_blocks;
     uint64_t bits_alpha_blocks;
     uint64_t tiles, tiles_tskip, tiles_res[3], lanes_total;
+    /* The rate the encoder's own model PREDICTED for the payloads it then
+     * emitted, in Q10 bits.  The mode decision, the trellis and the per-tile
+     * QP search all minimise D + lambda*R against this number; comparing it
+     * with `bytes_payload` is how one tells whether they were shown the truth.
+     * Added with the v1.5 effort knobs; 0 unless collect_stats is set. */
+    uint64_t bits_predicted_q10;
 } nxvc_encode_stats;
 
 void nxvc_config_default(nxvc_config *cfg);
@@ -278,7 +483,34 @@ typedef struct nxvc_tile_info {
     uint16_t age_since_coded;   /* frames since this tile position last
                                    carried a coded residual; 0 on the frame
                                    that coded one, saturating at 65535      */
+    /* APPENDED per JUDGE-detail.md merge item 1, then in merge order.
+     * The perceptual package appends after the inter one; verified
+     * that the three sets of appends are ordered and none was
+     * interleaved (docs/MERGE-PLAN.md 4.8). */
+    uint8_t split4x4;           /* 1: this tile carries 4x4 split flags    */
+    uint8_t xform_size;         /* 0 = 8x8, 1 = 16x16, 2 = 32x32           */
+    uint8_t near_skip;          /* 1: this tile's residual is the row
+                                   header's DC correction (SYNTAX.md 13.9) */
+    uint8_t quad_mv;            /* word1 bit 31: four quadrant vectors      */
+    int8_t corr[3][3];          /* near_skip: [plane][dc, gx, gy]           */
+    int8_t qmv[4][2];           /* quad_mv: per-quadrant delta, quarter
+                                   samples, raster order TL TR BL BR        */
+    uint16_t warp_mad_q8;       /* encoder: mean absolute difference per luma
+                                   sample between the tile and its WARP_SKIP
+                                   predictor (the pose warp plus the tile's
+                                   stored vector), in Q8.  This is the
+                                   `complexity` input docs/RATECONTROL.md 4.1
+                                   asks the rate controller for, measured by
+                                   the mode search that builds the predictor
+                                   anyway.  NXVC_WARP_MAD_UNMEASURED when the
+                                   tile had no eligible reference (the first
+                                   frame, a tile-map reset, or a rolling-intra
+                                   refresh), which is exactly the set of tiles
+                                   whose warped residual does not exist.     */
 } nxvc_tile_info;
+
+/* `warp_mad_q8` when the tile had no warped predictor to measure. */
+#define NXVC_WARP_MAD_UNMEASURED 0xFFFFu
 
 typedef struct nxvc_stream_info {
     uint32_t magic, version, profile, level, tile_size;
@@ -351,6 +583,25 @@ uint32_t nxvc_encoder_tile_count(const nxvc_encoder *enc);
  * `skipped`, `age_since_coded` and `ref_delta`. */
 nxvc_status nxvc_encoder_set_skip_map(nxvc_encoder *enc, const uint8_t *skip,
                                       uint32_t count);
+
+/* Per-tile weighting-matrix id for the NEXT frame: the `wm_id` of
+ * docs/RATECONTROL.md 4.4, which the degradation ladder needs per tile while
+ * `nxvc_config::wm_id` only sets it per stream.
+ *
+ * `wm[t]` is 0..3 and lands verbatim in tile-header word1 bits 26-27 (syntax
+ * v1.2, tool bit NXVC_TOOL_WM_ID), so this changes NO syntax: it is a second
+ * way to choose a field the bitstream already carries.  0 means "the frame's
+ * matrix", as it does in the header.
+ *
+ * The stream must already declare the tool, i.e. the encoder was created with
+ * `cfg.wm_id != 0`, a built-in `quant_matrix` and no `lossless`; otherwise
+ * the call is rejected with NXVC_ERR_ARG rather than silently emitting a
+ * stream whose tile headers a conforming decoder would refuse.  A map
+ * overrides `cfg.wm_id`, including the `wm_id == 255` per-tile search.
+ *
+ * The map is consumed by one nxvc_encoder_encode_frame call. */
+nxvc_status nxvc_encoder_set_wm_map(nxvc_encoder *enc, const uint8_t *wm,
+                                    uint32_t count);
 
 /* --- the loss/concealment hooks (PAPER 2.6, 2.7; docs/TRANSPORT.md 8).
  *

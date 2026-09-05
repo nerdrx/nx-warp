@@ -263,6 +263,10 @@ struct Case {
     int forceTskip = -1;
     int forceAlphaMode = -1;
     int forceChroma444 = -1;
+    // [minor 6] XFORM_LARGE, tile-header bits 29-30: 0 = 8x8 (and no tool
+    // bit), 1 = 16x16, 2 = 32x32.  -1 is 0.  Mutually exclusive with
+    // transform skip ([SYN] 6.7), so a case that sets it forces tskip off.
+    int forceXform = -1;
     int coefMagnitude = 400;   // random coefficient range
     // [sparse] 1 = build the scan-order layout plus per-unit lengths, which
     // is what Pass A ships; 0 = the dense raster-order one.
@@ -285,7 +289,7 @@ struct Scene {
 };
 
 uint32_t packTileW1(int mode, int res_level, int chroma444, int alpha_mode,
-                    int qp_delta, int tskip) {
+                    int qp_delta, int tskip, int xform_size) {
     uint32_t w = (uint32_t)(mode & 7);
     w |= (uint32_t)(res_level & 3) << 3;
     w |= (uint32_t)(chroma444 & 1) << 5;
@@ -293,6 +297,7 @@ uint32_t packTileW1(int mode, int res_level, int chroma444, int alpha_mode,
     w |= (uint32_t)(qp_delta & 0x3f) << 8;
     w |= 3u << 17;                       // nsub_log2 = 3, informational here
     w |= (uint32_t)(tskip & 1) << 23;
+    w |= (uint32_t)(xform_size & 3) << 29;   // [minor 6] XFORM_LARGE
     return w;
 }
 
@@ -340,7 +345,10 @@ Scene buildScene(const Case &cs) {
 
     for (int t = 0; t < ntiles; ++t) {
         int res = cs.forceResLevel >= 0 ? cs.forceResLevel : dRes(rng);
-        int tskip = cs.forceTskip >= 0 ? cs.forceTskip : dBit(rng);
+        const int xf = cs.forceXform >= 0 ? cs.forceXform : 0;
+        // 6.7: `xform_size != 0` with transform skip is malformed.
+        int tskip = xf != 0 ? 0
+                   : (cs.forceTskip >= 0 ? cs.forceTskip : dBit(rng));
         int c444 = cs.chroma420 ? 0
                    : (cs.forceChroma444 >= 0 ? cs.forceChroma444 : dBit(rng));
         int amode = 0;
@@ -350,7 +358,7 @@ Scene buildScene(const Case &cs) {
 
         NxvwTileRec &r = sc.recs[t];
         r.w0 = (uint32_t)(t & 0xfff) << 4;
-        r.w1 = packTileW1(kModeIntra, res, c444, amode, qpd, tskip);
+        r.w1 = packTileW1(kModeIntra, res, c444, amode, qpd, tskip, xf);
         r.w2 = (uint32_t)dByte(rng) | (1u << 8);
         r.w3 = 0xffffffffu;   // no warp record
 
@@ -369,6 +377,16 @@ Scene buildScene(const Case &cs) {
         const int unitsPerPlaneExtra = sc.push.intraDir ? 2 : 1;
         // Writes unit `u`'s coefficients: `ncoef` of them dense, or `len` of
         // them in scan order plus the published length.
+        // [minor 6] The published length's field width follows the TILE's
+        // transform size, because a 32x32 unit's LAST + 1 reaches 1024 and
+        // does not fit a byte.  Pass A packs it this way and Pass B reads it
+        // this way; the harness is the third side of that agreement.
+        const uint32_t lenPerWord = xf != 0 ? NXVW_UNIT_LENS_PER_WORD_LARGE
+                                            : NXVW_UNIT_LENS_PER_WORD;
+        const uint32_t lenBits =
+            xf != 0 ? NXVW_UNIT_LEN_BITS_LARGE : NXVW_UNIT_LEN_BITS;
+        const uint32_t lenMask =
+            xf != 0 ? NXVW_UNIT_LEN_MASK_LARGE : NXVW_UNIT_LEN_MASK;
         auto emit = [&](int u, int ncoef, int len) {
             if (!cs.sparse) {
                 for (int i = 0; i < ncoef; ++i) {
@@ -383,22 +401,28 @@ Scene buildScene(const Case &cs) {
                 if (i == 0 || i == len - 1) v = dCoef(rng);
                 dst[i] = (int16_t)v;
             }
-            lens[u / (int)NXVW_UNIT_LENS_PER_WORD] |=
-                ((uint32_t)len & NXVW_UNIT_LEN_MASK)
-                << ((uint32_t)(u % (int)NXVW_UNIT_LENS_PER_WORD) *
-                    NXVW_UNIT_LEN_BITS);
+            lens[u / (int)lenPerWord] |=
+                ((uint32_t)len & lenMask)
+                << ((uint32_t)(u % (int)lenPerWord) * lenBits);
         };
         for (int p = 0; p < ncoded; ++p) {
             int size = nxvw_plane_size(p, res, c444);
-            int nb = size >> 3;
-            int ndc = nb * nb;
+            // [minor 6] The transform edge is the tile's, capped by this
+            // plane's own coded extent ([SYN] 6.7), so one tile can carry
+            // three block sizes and the coefficient region shrinks with the
+            // block count: ndc + ndc * bs * bs, not ndc + ndc * 64.
+            const int lb = nxvw_block_log2(xf, size);
+            const int bs = 1 << lb;
+            const int nb = size >> lb;
+            const int ndc = nb * nb;
+            const int ncoef = bs * bs;
             std::uniform_int_distribution<int> dDcLen(0, ndc);
-            std::uniform_int_distribution<int> dBlkLen(0, 64);
+            std::uniform_int_distribution<int> dBlkLen(0, ncoef);
             emit(unit, ndc, dDcLen(rng));
             dst += ndc;
             for (int b = 0; b < ndc; ++b) {
-                emit(unit + unitsPerPlaneExtra + b, 64, dBlkLen(rng));
-                dst += 64;
+                emit(unit + unitsPerPlaneExtra + b, ncoef, dBlkLen(rng));
+                dst += ncoef;
             }
             unit += unitsPerPlaneExtra + ndc;
         }
@@ -460,7 +484,7 @@ bool runGpu(Ctx &c, const Scene &sc, GpuResult &out, int repeats,
     stageBytes = std::max(
         stageBytes,
         (VkDeviceSize)ntiles *
-            std::max<VkDeviceSize>(NXVW_MODE_WORDS_PER_TILE, 1) *
+            std::max<VkDeviceSize>(NXVW_MODE_REGION_UINTS, 1) *
             sizeof(uint32_t));
 
     Buf stage = createBuffer(c, stageBytes,
@@ -477,7 +501,7 @@ bool runGpu(Ctx &c, const Scene &sc, GpuResult &out, int repeats,
     // [v3] binding 7: the per-block intra modes; binding 8: the workgroup ->
     // tile map, which this harness always fills with the identity.
     VkDeviceSize modeBytes =
-        (VkDeviceSize)ntiles * NXVW_MODE_WORDS_PER_TILE * sizeof(uint32_t);
+        (VkDeviceSize)ntiles * NXVW_MODE_REGION_UINTS * sizeof(uint32_t);
     VkDeviceSize orderBytes = (VkDeviceSize)ntiles * sizeof(uint32_t);
     // [sparse] binding 9: the per-unit coefficient counts.
     VkDeviceSize lenBytes =
@@ -503,7 +527,7 @@ bool runGpu(Ctx &c, const Scene &sc, GpuResult &out, int repeats,
     upload(bWgt, sc.weights.data(), wgtBytes);
     {
         std::vector<uint32_t> modes(sc.modes);
-        modes.resize((size_t)ntiles * NXVW_MODE_WORDS_PER_TILE, 0u);
+        modes.resize((size_t)ntiles * NXVW_MODE_REGION_UINTS, 0u);
         upload(bModes, modes.data(), modeBytes);
         std::vector<uint32_t> order((size_t)ntiles);
         for (int i = 0; i < ntiles; ++i) order[(size_t)i] = (uint32_t)i;
@@ -825,7 +849,8 @@ size_t compareCase(Ctx &c, const Case &cs, bool verbose, int &ranOut) {
 const char *caseName(const Case &cs) {
     static char b[192];
     std::snprintf(b, sizeof b,
-                  "%s%s ct=%s qp=%d res=%s tskip=%s alpha=%s out=%s seed=%u",
+                  "%s%s ct=%s qp=%d res=%s tskip=%s alpha=%s xform=%s "
+                  "out=%s seed=%u",
                   cs.chroma420 ? "4:2:0" : "4:4:4",
                   cs.alphaPresent ? "+A" : "",
                   cs.colorTransform == kCtYCoCgR ? "ycocgr" : "none", cs.baseQp,
@@ -834,6 +859,7 @@ const char *caseName(const Case &cs) {
                   cs.forceTskip < 0 ? "rnd" : (cs.forceTskip ? "1" : "0"),
                   cs.forceAlphaMode < 0 ? "rnd" : (cs.forceAlphaMode == 0 ? "opaque" :
                                                    cs.forceAlphaMode == 1 ? "const" : "coded"),
+                  cs.forceXform <= 0 ? "8" : (cs.forceXform == 1 ? "16" : "32"),
                   cs.outFormat == kOutRgb10A2 ? "rgb10a2"
                       : cs.outFormat == kOutYcbcr420 ? "ycbcr420" : "rgba8",
                   cs.seed);
@@ -956,6 +982,49 @@ int main(int argc, char **argv) {
                 cs.seed = (uint32_t)(5000 + chroma420);
                 cases.push_back(cs);
             }
+            // [minor 6] XFORM_LARGE, tool bit 27.  The model is the oracle
+            // this kernel is scheduled against, so its n x n path has to be
+            // exercised end to end and not only at the transform primitive
+            // (vk.passB.ref_conformance pins that separately).  Every size in
+            // both chroma formats, at res_level 0 and over the random
+            // res_level mix, where SYNTAX.md 6.7's plane cap gives one tile
+            // three different block sizes; plus a saturating arm, because the
+            // clamp16 between the two transform passes is normative at every
+            // size and the 16- and 32-point graphs reach it with far larger
+            // intermediates than the 8-point one does.
+            for (int xf = 1; xf <= 2; ++xf)
+                for (int chroma420 : {0, 1})
+                    for (int res : {0, -1}) {
+                        Case cs;
+                        cs.chroma420 = chroma420;
+                        cs.forceXform = xf;
+                        cs.forceResLevel = res;
+                        cs.seed = (uint32_t)(7000 + xf * 100 + chroma420 * 10 +
+                                             (res + 1));
+                        cases.push_back(cs);
+                    }
+            for (int xf = 1; xf <= 2; ++xf) {
+                Case cs;
+                cs.chroma420 = 1;
+                cs.forceXform = xf;
+                cs.forceResLevel = 0;
+                cs.baseQp = 63;
+                cs.coefMagnitude = 32767;
+                cs.quantMatrix = 3;
+                cs.seed = (uint32_t)(7500 + xf);
+                cases.push_back(cs);
+            }
+            // ... and on the two-plane 4:2:0 store, which is the Android path.
+            for (int xf = 1; xf <= 2; ++xf) {
+                Case cs;
+                cs.chroma420 = 1;
+                cs.colorTransform = kCtNone;
+                cs.outFormat = kOutYcbcr420;
+                cs.forceXform = xf;
+                cs.seed = (uint32_t)(7800 + xf);
+                cases.push_back(cs);
+            }
+
             // Non-tile-multiple image: the last tile column/row is clipped.
             for (int chroma420 : {0, 1}) {
                 Case cs;

@@ -210,4 +210,5 @@ jobs:
           retention-days: 30
           path: |
             ${{ runner.temp }}/fuzz/artifacts/**
+            ${{ runner.temp }}/fuzz/logs/**
             ${{ runner.temp }}/fuzz/*.log

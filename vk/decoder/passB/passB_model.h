@@ -11,6 +11,8 @@
 #include <vector>
 
 #include "passB_layout.h"
+// [inter] nxvw_wpred_plane_off(): the WPred buffer's fixed plane offsets.
+#include "../inter/inter_layout.h"
 
 namespace nxvw {
 
@@ -34,6 +36,14 @@ struct PassBInput {
     // [v3] the wavefront schedule the stream was encoded under, kDirSched* in
     // syntax_constants.h.  Matches specialization constant 2 of the kernel.
     int dirSched = 0;
+    // [inter] Pass W's output: the predictor an inter tile's residual is
+    // measured against, i16, `wpredStrideI16` per tile with the fixed
+    // res_level-0 plane offsets of inter_layout.h.  Matches specialization
+    // constant 7 (`kInterPred`) and binding 13 of the kernel.  Required when
+    // `interPred` is set and any tile's mode is not INTRA; ignored otherwise.
+    const int16_t *wpred = nullptr;
+    int wpredStrideI16 = 0;
+    int interPred = 0;
 };
 
 // RGBA8: 4 bytes per pixel, R,G,B,A, tightly packed, imageW*imageH pixels.
@@ -42,6 +52,24 @@ void passB_reconstruct_rgba8(const PassBInput &in, uint8_t *out);
 // RGB10A2: one uint32 per pixel in VK_FORMAT_A2B10G10R10_UINT_PACK32 order,
 // R in bits 0..9, G in 10..19, B in 20..29, A in 30..31.
 void passB_reconstruct_rgb10a2(const PassBInput &in, uint32_t *out);
+
+// [inter] One tile's reconstruction in the CODED sample domain at full tile
+// extent -- Y/Co/Cg before the inverse colour transform -- which is exactly
+// what the reference-ring slot holds ([SYN] 13.2) and what
+// inter_hook.glsl's nxvwRefRingStore() writes.  `out[p]` receives
+// `full * full` samples for each coded plane, `full` being 64 for luma and
+// alpha and 32 for the chroma of a 4:2:0 stream; a plane the tile did not
+// code is filled with its constant value, as store_ref_tile() does.
+//
+// **Nothing tests this yet.** It is the model of a kernel behaviour that is
+// tested end to end -- the sixteen inter vectors would not decode if the ring
+// were wrong -- but nxvc-passB-test builds its own corpus and has no ring to
+// compare against. It is here because the model is meant to be readable
+// beside the kernel, and a ring store with no model would be the one part of
+// reconstruct.comp with nothing to read beside it. See ../README.md, open
+// issues.
+void passB_reconstruct_ref_tile(const PassBInput &in, int tile,
+                                std::vector<int> out[4]);
 
 // Two-plane 4:2:0 YCbCr passthrough (kOutYcbcr420): `luma` is imageW*imageH
 // bytes, `cbcr` is ceil(imageW/2)*ceil(imageH/2) interleaved Cb,Cr pairs.
@@ -52,6 +80,16 @@ void passB_reconstruct_ycbcr420(const PassBInput &in, uint8_t *luma,
 // --- primitives, exposed so the conformance test can compare them one by one
 // with the reference implementation in ref/src/transform.cpp.
 void model_idct8x8(const int src[64], int dst[64]);
+// [minor 6] One 4x4 sub-block of a split block: `dq` is its sixteen
+// dequantized coefficients in sub-block raster order, and it writes the
+// (ox, oy) quadrant of the 8x8 `res`.  Exposed for vk.passB.ref_conformance.
+void model_split_subblock(const int *dq, int ox, int oy, int *res);
+// [minor 6] XFORM_LARGE's n x n inverse transform, n = 1 << lb for lb in
+// {3, 4, 5}: `src` and `dst` are n*n in block raster order.  Exposed so
+// vk.passB.ref_conformance can pin it against ref/src/transform.cpp
+// idct_block(n), which is the normative statement of the shift chain, the
+// two transposing passes and the even/odd recursion.
+void model_idct_nxn(const int *src, int *dst, int lb);
 int model_dequant_step(int qp, int w);
 int model_dequant(int q, int t);
 int model_bilinear_q4(const int *src, int w, int h, int stride, int sx, int sy);

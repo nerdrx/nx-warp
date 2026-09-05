@@ -23,9 +23,9 @@ int mpm_of(const u8 *modes, int nbx, int b) {
     return left < above ? left : above;
 }
 
-int nonmpm_mode(int mpm, int idx) {
+int nonmpm_mode(int mpm, int idx, int nmodes) {
     int n = 0;
-    for (int m = 0; m < kNumIntraModes; ++m) {
+    for (int m = 0; m < nmodes; ++m) {
         if (m == mpm) continue;
         if (n == idx) return m;
         ++n;
@@ -33,9 +33,9 @@ int nonmpm_mode(int mpm, int idx) {
     return kIntraDcPlane;
 }
 
-int nonmpm_index(int mpm, int mode) {
+int nonmpm_index(int mpm, int mode, int nmodes) {
     int n = 0;
-    for (int m = 0; m < kNumIntraModes; ++m) {
+    for (int m = 0; m < nmodes; ++m) {
         if (m == mpm) continue;
         if (m == mode) return n;
         ++n;
@@ -60,6 +60,14 @@ void LaneMachine::init(const Unit *units, int nunits, int lane, int nlanes,
 
 void LaneMachine::begin_unit() {
     u_ = &units_[ui_];
+    // The neighbour class is carried inside one group -- one plane's run of
+    // block units -- and reset at every boundary, so it never leaks from one
+    // plane into the next.  A DC-plane unit has group 0 and so acts as a
+    // boundary in both directions.
+    if (u_->ngrp != ngrp_) {
+        ngrp_ = u_->ngrp;
+        nbr_ = 0;
+    }
     if (u_->kind == UNIT_MODE) {
         mb_ = 0;
         if (u_->nbx == 0) { begin_next_unit(); return; }
@@ -67,13 +75,56 @@ void LaneMachine::begin_unit() {
         phase_ = u_->ctx_mode != kCtxNone ? kModeSym : kModeFlag;
         return;
     }
+    scan_ = u_->scan;
+    split_ = false;
+    lshift_ = last_shift_of(u_->ncoef);
     phase_ = kCbf;
+}
+
+// CBF was 1 and any split flag has been settled: LAST, or straight to the
+// levels for a one-coefficient unit.
+void LaneMachine::after_cbf() {
+    if (u_->ncoef == 1) {
+        last_ = 0;
+        begin_levels();
+        return;
+    }
+    phase_ = kLast;
 }
 
 void LaneMachine::begin_next_unit() {
     ui_ += stride_;
     if (ui_ >= nunits_) phase_ = kDone;
     else begin_unit();
+}
+
+// ------------------------------------------------- v3 context derivation
+// The three accessors are the only place a coding context is chosen.  Under
+// the v1/v2 models the unit carries its contexts; under v3 they are derived
+// from the unit's class and this lane's neighbour class, both of which the
+// decoder already holds.  SYNTAX.md 9.9.
+int LaneMachine::ctx_cbf() const {
+    return u_->ctx_v3 ? v3_ctx_cbf(u_->ucls, nbr_) : u_->ctx_cbf;
+}
+int LaneMachine::ctx_last() const {
+    return u_->ctx_v3 ? v3_ctx_last(u_->ucls, nbr_) : u_->ctx_last;
+}
+int LaneMachine::ctx_level(int scan_pos, int band_scan_pos,
+                           int prev_class) const {
+    if (u_->ctx_v3)
+        return v3_ctx_level(u_->ucls, scan_pos, band_scan_pos, last_,
+                            prev_class);
+    return u_->ctx_level != kCtxNone ? u_->ctx_level
+                                     : level_ctx(band_scan_pos, prev_class, 0);
+}
+
+// A coefficient unit is over: publish its neighbour class to the lane and
+// move on.  Both inputs -- the CBF and the LAST -- are values this lane has
+// just decoded, so nothing here reads another lane's state.  A unit outside a
+// neighbour group (a DC plane) publishes nothing.
+void LaneMachine::finish_coef_unit(int cbf) {
+    if (u_->ngrp != 0) nbr_ = (u8)nbr_class_of(cbf, last_);
+    begin_next_unit();
 }
 
 void LaneMachine::begin_levels() {
@@ -93,8 +144,8 @@ void LaneMachine::advance_pos() {
     sum_abs_ += m;
     if (pos_ == 0) {
         if (hide_ && (sum_abs_ & 1))
-            u_->coef[u_->scan[last_]] = (i16)(-u_->coef[u_->scan[last_]]);
-        begin_next_unit();
+            u_->coef[scan_[last_]] = (i16)(-u_->coef[scan_[last_]]);
+        finish_coef_unit(1);
     } else {
         --pos_;
         phase_ = kLevel;
@@ -106,7 +157,7 @@ bool LaneMachine::next(Op &op) {
     switch (phase_) {
         case kCbf: {
             op.kind = OP_SYM;
-            op.arg = u_->ctx_cbf;
+            op.arg = (u8)ctx_cbf();
             op.value = 0;
             if (encoding_) {
                 u32 cbf = 0;
@@ -116,23 +167,30 @@ bool LaneMachine::next(Op &op) {
             }
             return true;
         }
+        case kSplit: {
+            op.kind = OP_BYPASS;
+            op.arg = 1;
+            op.value = encoding_ ? (u16)(*u_->split_out != 0) : 0;
+            return true;
+        }
         case kLast: {
             op.kind = OP_SYM;
-            op.arg = u_->ctx_last;
+            op.arg = (u8)ctx_last();
             op.value = 0;
             if (encoding_) {
                 int lastpos = 0;
                 for (int p = u_->ncoef - 1; p >= 0; --p)
-                    if (u_->coef[u_->scan[p]] != 0) { lastpos = p; break; }
+                    if (u_->coef[scan_[p]] != 0) { lastpos = p; break; }
                 last_ = lastpos;
-                op.value = (u16)last_class_of(lastpos);
+                op.value = (u16)last_class_of(lastpos >> lshift_);
             }
             return true;
         }
         case kLastRaw: {
             op.kind = OP_BYPASS;
-            op.arg = kLastRawBits[last_cls_];
-            op.value = encoding_ ? (u16)(last_ - kLastBase[last_cls_]) : 0;
+            op.arg = (u8)(kLastRawBits[last_cls_] + lshift_);
+            op.value =
+                encoding_ ? (u16)(last_ - (kLastBase[last_cls_] << lshift_)) : 0;
             return true;
         }
         case kModeSym: {
@@ -141,7 +199,9 @@ bool LaneMachine::next(Op &op) {
             op.value = 0;
             if (encoding_) {
                 int m = u_->modes[mb_];
-                op.value = (u16)(m == mpm_ ? 0 : 1 + nonmpm_index(mpm_, m));
+                op.value = (u16)(m == mpm_
+                                     ? 0
+                                     : 1 + nonmpm_index(mpm_, m, u_->nmodes));
             }
             return true;
         }
@@ -154,18 +214,25 @@ bool LaneMachine::next(Op &op) {
         case kModeIdx: {
             op.kind = OP_BYPASS;
             op.arg = 3;
-            op.value =
-                encoding_ ? (u16)nonmpm_index(mpm_, u_->modes[mb_]) : 0;
+            op.value = encoding_ ? (u16)nonmpm_index(mpm_, u_->modes[mb_],
+                                                     u_->nmodes)
+                                 : 0;
             return true;
         }
         case kLevel: {
             op.kind = OP_SYM;
-            op.arg = (u8)(u_->ctx_level != kCtxNone
-                              ? u_->ctx_level
-                              : level_ctx(pos_, prev_class_));
+            // The LEVEL context is banded, and both transform tools change
+            // which band a scan position falls in: the detail package's split
+            // maps a position into its 4x4 sub-block, and the transform
+            // package's scan-group shift maps a large block's position into
+            // its group.  Both happen BEFORE the context is chosen, under
+            // every context model, and neither package needs to know the
+            // other exists.
+            op.arg = (u8)ctx_level(pos_, band_pos(pos_, split_, lshift_),
+                                   prev_class_);
             op.value = 0;
             if (encoding_) {
-                i32 q = u_->coef[u_->scan[pos_]];
+                i32 q = u_->coef[scan_[pos_]];
                 i32 m = q < 0 ? -q : q;
                 op.value = (u16)(m > 14 ? kEscSym : m);
             }
@@ -176,7 +243,7 @@ bool LaneMachine::next(Op &op) {
             op.arg = 1;
             op.value = 0;
             if (encoding_) {
-                i32 q = u_->coef[u_->scan[pos_]];
+                i32 q = u_->coef[scan_[pos_]];
                 i32 m = q < 0 ? -q : q;
                 int j; u32 suf; int bits;
                 eg3_encode((u32)(m - 15), j, suf, bits);
@@ -191,7 +258,7 @@ bool LaneMachine::next(Op &op) {
             op.arg = (u8)chunk;
             op.value = 0;
             if (encoding_) {
-                i32 q = u_->coef[u_->scan[pos_]];
+                i32 q = u_->coef[scan_[pos_]];
                 i32 m = q < 0 ? -q : q;
                 int j; u32 suf; int bits;
                 eg3_encode((u32)(m - 15), j, suf, bits);
@@ -204,7 +271,7 @@ bool LaneMachine::next(Op &op) {
             op.kind = OP_BYPASS;
             op.arg = 1;
             op.value = 0;
-            if (encoding_) op.value = (u16)(u_->coef[u_->scan[pos_]] < 0);
+            if (encoding_) op.value = (u16)(u_->coef[scan_[pos_]] < 0);
             return true;
         }
         case kHidden:
@@ -219,68 +286,68 @@ bool LaneMachine::next(Op &op) {
 // sign is settled from the unit's parity in advance_pos().
 void LaneMachine::store_magnitude() {
     if (hide_ && pos_ == last_) {
-        u_->coef[u_->scan[pos_]] = (i16)mag_;
+        u_->coef[scan_[pos_]] = (i16)mag_;
         advance_pos();
         return;
     }
     phase_ = kSign;
 }
 
-// Commit the mode just decoded for block mb_ and move on.
-static inline void mode_step(u8 *modes, int nbx, int &mb, int &mpm, int mode,
-                             bool &done) {
-    modes[mb] = (u8)mode;
-    ++mb;
-    done = (mb >= nbx * nbx);
-    if (!done) mpm = mpm_of(modes, nbx, mb);
+// Commit the mode just decoded for block mb_ and move to the next block of
+// the unit, or finish it.  The next block's MPM reads modes[mb_-1] and
+// modes[mb_-nbx], both of which this lane has just produced (SYNTAX.md 9.6).
+void LaneMachine::mode_commit(int mode) {
+    u_->modes[mb_] = (u8)mode;
+    ++mb_;
+    if (mb_ >= u_->nbx * u_->nbx) { begin_next_unit(); return; }
+    mpm_ = mpm_of(u_->modes, u_->nbx, mb_);
+    phase_ = u_->ctx_mode != kCtxNone ? kModeSym : kModeFlag;
 }
 
 bool LaneMachine::feed(u32 v) {
     switch (phase_) {
         case kModeSym: {
-            if (v >= (u32)kNumIntraModes) return false;
-            int m = v == 0 ? mpm_ : nonmpm_mode(mpm_, (int)v - 1);
-            bool done = false;
-            mode_step(u_->modes, u_->nbx, mb_, mpm_, m, done);
-            if (done) begin_next_unit();
+            if (v >= (u32)u_->nmodes) return false;
+            mode_commit(v == 0 ? mpm_
+                               : nonmpm_mode(mpm_, (int)v - 1, u_->nmodes));
             return true;
         }
         case kModeFlag: {
             if (v > 1) return false;
             if (v == 0) { phase_ = kModeIdx; return true; }
-            bool done = false;
-            mode_step(u_->modes, u_->nbx, mb_, mpm_, mpm_, done);
-            if (done) begin_next_unit(); else phase_ = kModeFlag;
+            mode_commit(mpm_);
             return true;
         }
         case kModeIdx: {
-            if (v > 7) return false;
-            int m = nonmpm_mode(mpm_, (int)v);
-            bool done = false;
-            mode_step(u_->modes, u_->nbx, mb_, mpm_, m, done);
-            if (done) begin_next_unit(); else phase_ = kModeFlag;
+            if (v >= (u32)(u_->nmodes - 1)) return false;
+            mode_commit(nonmpm_mode(mpm_, (int)v, u_->nmodes));
+            return true;
+        }
+        case kSplit: {
+            if (v > 1) return false;
+            split_ = v != 0;
+            *u_->split_out = (u8)v;
+            if (split_) scan_ = kScan4Split;
+            after_cbf();
             return true;
         }
         case kCbf: {
             if (v > 1) return false;
             if (v == 0) {
-                begin_next_unit();
+                if (u_->split_present) *u_->split_out = 0;
+                finish_coef_unit(0);
                 return true;
             }
-            if (u_->ncoef == 1) {
-                last_ = 0;
-                begin_levels();
-                return true;
-            }
-            phase_ = kLast;
+            if (u_->split_present) { phase_ = kSplit; return true; }
+            after_cbf();
             return true;
         }
         case kLast: {
             if (v > 14) return false;
             last_cls_ = (int)v;
-            int base = kLastBase[last_cls_];
+            int base = kLastBase[last_cls_] << lshift_;
             if (base >= u_->ncoef) return false;
-            if (kLastRawBits[last_cls_] > 0) {
+            if (kLastRawBits[last_cls_] + lshift_ > 0) {
                 phase_ = kLastRaw;
                 return true;
             }
@@ -289,7 +356,7 @@ bool LaneMachine::feed(u32 v) {
             return true;
         }
         case kLastRaw: {
-            last_ = kLastBase[last_cls_] + (int)v;
+            last_ = (kLastBase[last_cls_] << lshift_) + (int)v;
             if (last_ >= u_->ncoef) return false;
             begin_levels();
             return true;
@@ -303,7 +370,7 @@ bool LaneMachine::feed(u32 v) {
             mag_ = (i32)v;
             if (mag_ == 0) {
                 if (pos_ == last_) return false;  // LAST must be nonzero
-                u_->coef[u_->scan[pos_]] = 0;
+                u_->coef[scan_[pos_]] = 0;
                 mag_ = 0;
                 advance_pos();
                 return true;
@@ -338,7 +405,7 @@ bool LaneMachine::feed(u32 v) {
         }
         case kSign: {
             if (v > 1) return false;
-            u_->coef[u_->scan[pos_]] = (i16)(v ? -mag_ : mag_);
+            u_->coef[scan_[pos_]] = (i16)(v ? -mag_ : mag_);
             advance_pos();
             return true;
         }
@@ -381,7 +448,7 @@ static bool encode_ops(const std::vector<u8> &lane_of, const std::vector<Op> &op
         }
         u32 x = state[l];
         // Renormalize so that the encoded state stays below 2^32.
-        if (x >= (f << 22)) {
+        if (x >= (f << kRansShift)) {
             put16(rev, x & 0xffff);
             x >>= 16;
         }
@@ -425,7 +492,7 @@ bool RansDecoder::renorm(u32 &x) {
 
 bool RansDecoder::decode_sym(int lane, const CtxTable &t, u32 &sym) {
     u32 x = state_[lane];
-    u32 slot = x & 1023u;
+    u32 slot = x & (u32)(kProbTotal - 1);
     u32 s = t.slot2sym[slot];
     x = t.freq[s] * (x >> kProbBits) + slot - t.cum[s];
     if (!renorm(x)) return false;
@@ -436,7 +503,7 @@ bool RansDecoder::decode_sym(int lane, const CtxTable &t, u32 &sym) {
 
 bool RansDecoder::decode_bypass(int lane, int nbits, u32 &val) {
     u32 x = state_[lane];
-    u32 slot = x & 1023u;
+    u32 slot = x & (u32)(kProbTotal - 1);
     u32 v = slot >> (kProbBits - nbits);
     u32 f = 1u << (kProbBits - nbits);
     u32 c = v << (kProbBits - nbits);
@@ -475,12 +542,13 @@ bool encode_units(const Unit *units, int nunits, int nlanes,
 }
 
 bool count_units(const Unit *units, int nunits, int nlanes,
-                 u32 hist[kNumCtx][kNumSym], u32 *op_count) {
+                 u32 hist[kNumCtx][kNumSym], u32 *op_count,
+                 u32 *bypass_bits) {
     int active = nlanes < nunits ? nlanes : nunits;
     std::vector<LaneMachine> lanes(active);
     for (int l = 0; l < active; ++l)
         lanes[l].init(units, nunits, l, nlanes, true);
-    u32 n = 0;
+    u32 n = 0, raw = 0;
     bool any = true;
     while (any) {
         any = false;
@@ -491,10 +559,12 @@ bool count_units(const Unit *units, int nunits, int nlanes,
             ++n;
             if (op.kind == OP_SYM && op.arg >= kNumCtx) return false;
             if (op.kind == OP_SYM && hist) hist[op.arg][op.value]++;
+            if (op.kind == OP_BYPASS) raw += op.arg;
             if (!lanes[l].feed(op.value)) return false;
         }
     }
     if (op_count) *op_count = n;
+    if (bypass_bits) *bypass_bits = raw;
     return true;
 }
 

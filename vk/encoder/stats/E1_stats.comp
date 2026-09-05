@@ -82,20 +82,44 @@ shared uint s_red[NXE_MAX_SUBGROUPS][NXE_RED_LANES];
 
 // Reduce NXE_RED_LANES values at once.  Uniform control flow; every thread
 // leaves with the full workgroup total, so no broadcast step is needed.
-void wg_reduce_n(inout uint v[NXE_RED_LANES]) {
-    uint sg[NXE_RED_LANES];
-    for (int k = 0; k < NXE_RED_LANES; ++k) sg[k] = subgroupAdd(v[k]);
+//
+// The seven accumulators travel as a uvec4 plus a uvec3 rather than as a
+// uint[7].  A local array is bad enough on Adreno -- it is lowered to private
+// (scratch) memory instead of registers, and Pass B measured one being read back
+// wrong (docs/ADRENO-RULES.md) -- and an `inout` array parameter is worse: on
+// top of the scratch allocation glslang copies the whole array in at the call
+// and back out at the return.  Vector components are registers everywhere and
+// every access below is a constant component select.  s_red stays an array
+// because it is `shared`: LDS is addressable and is the rewrite the rule asks
+// for.
+void wg_reduce_n(inout uvec4 lo, inout uvec3 hi) {
+    uvec4 sg_lo = uvec4(subgroupAdd(lo.x), subgroupAdd(lo.y),
+                        subgroupAdd(lo.z), subgroupAdd(lo.w));
+    uvec3 sg_hi = uvec3(subgroupAdd(hi.x), subgroupAdd(hi.y), subgroupAdd(hi.z));
     if (subgroupElect()) {
-        for (int k = 0; k < NXE_RED_LANES; ++k) s_red[gl_SubgroupID][k] = sg[k];
+        s_red[gl_SubgroupID][0] = sg_lo.x;
+        s_red[gl_SubgroupID][1] = sg_lo.y;
+        s_red[gl_SubgroupID][2] = sg_lo.z;
+        s_red[gl_SubgroupID][3] = sg_lo.w;
+        s_red[gl_SubgroupID][4] = sg_hi.x;
+        s_red[gl_SubgroupID][5] = sg_hi.y;
+        s_red[gl_SubgroupID][6] = sg_hi.z;
     }
     barrier();
-    uint t[NXE_RED_LANES];
-    for (int k = 0; k < NXE_RED_LANES; ++k) t[k] = 0u;
+    uvec4 t_lo = uvec4(0u);
+    uvec3 t_hi = uvec3(0u);
     for (uint i = 0u; i < gl_NumSubgroups; ++i) {
-        for (int k = 0; k < NXE_RED_LANES; ++k) t[k] += s_red[i][k];
+        t_lo.x += s_red[i][0];
+        t_lo.y += s_red[i][1];
+        t_lo.z += s_red[i][2];
+        t_lo.w += s_red[i][3];
+        t_hi.x += s_red[i][4];
+        t_hi.y += s_red[i][5];
+        t_hi.z += s_red[i][6];
     }
     barrier();   // s_red is reusable after this
-    for (int k = 0; k < NXE_RED_LANES; ++k) v[k] = t[k];
+    lo = t_lo;
+    hi = t_hi;
 }
 
 uint wg_reduce1(uint v) {
@@ -161,16 +185,17 @@ void main() {
 
     // ---- pass 1: moments, structure tensor, SAD.  16 pixels per lane,
     // strided so the LDS access pattern is bank-conflict friendly.
-    uint acc[NXE_RED_LANES];
-    for (int k = 0; k < NXE_RED_LANES; ++k) acc[k] = 0u;
+    // acc[0..3] and acc[4..6] of the old uint[NXE_RED_LANES]; see wg_reduce_n.
+    uvec4 acc_lo = uvec4(0u);   // sum, sumsq, j_xx, j_xy_pos
+    uvec3 acc_hi = uvec3(0u);   // j_xy_neg, j_yy, sad
 
     for (uint p = lid; p < uint(NXE_TILE_PIXELS); p += uint(NXE_WG_SIZE)) {
         int px = int(p & 63u);
         int py = int(p >> 6);
         int v  = s_luma[p];
 
-        acc[0] += uint(v);
-        acc[1] += uint(v * v);
+        acc_lo.x += uint(v);
+        acc_lo.y += uint(v * v);
 
         // Central difference, the operator rc/ calibrated its thresholds
         // against, with the neighbour clamped inside the tile exactly as rc
@@ -180,26 +205,26 @@ void main() {
         int gx = lum(px + 1, py) - lum(px - 1, py);
         int gy = lum(px, py + 1) - lum(px, py - 1);
         int xy = gx * gy;
-        acc[2] += uint(gx * gx);
-        acc[3] += uint(max(xy, 0));    // positive contributions
-        acc[4] += uint(max(-xy, 0));   // negative contributions, unsigned
-        acc[5] += uint(gy * gy);
+        acc_lo.z += uint(gx * gx);
+        acc_lo.w += uint(max(xy, 0));    // positive contributions
+        acc_hi.x += uint(max(-xy, 0));   // negative contributions, unsigned
+        acc_hi.y += uint(gy * gy);
 
         if (pc.has_ref != 0u) {
             int r = fetch_ref(org_x + px + mvi.x, org_y + py + mvi.y);
-            acc[6] += uint(abs(v - r));
+            acc_hi.z += uint(abs(v - r));
         }
     }
 
-    wg_reduce_n(acc);
+    wg_reduce_n(acc_lo, acc_hi);
 
-    uint sum    = acc[0];
-    uint sumsq  = acc[1];
-    uint jxx    = acc[2];
-    uint jxy_p  = acc[3];
-    uint jxy_n  = acc[4];
-    uint jyy    = acc[5];
-    uint sad    = acc[6];
+    uint sum    = acc_lo.x;
+    uint sumsq  = acc_lo.y;
+    uint jxx    = acc_lo.z;
+    uint jxy_p  = acc_lo.w;
+    uint jxy_n  = acc_hi.x;
+    uint jyy    = acc_hi.y;
+    uint sad    = acc_hi.z;
 
     // ---- pass 2: sum of squared deviations about the rounded integer mean.
     // The tile is already in LDS, so this is one more sweep with no memory

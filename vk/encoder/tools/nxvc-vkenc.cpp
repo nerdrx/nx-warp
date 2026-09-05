@@ -47,7 +47,8 @@ static void usage() {
         "  --wm 0..3            per-tile weighting matrix id (default 0)\n"
         "  --nsub 0..5          rANS lane count log2 (default 3 = 8 lanes)\n"
         "  --tskip off|on       transform skip (default off)\n"
-        "  --ctx v1|v2          12 or 16 entropy contexts (default v2)\n"
+        "  --ctx v1|v2|v3       12, 16 or 27 entropy contexts (tools 21,\n"
+        "                       25); default v2, and v3 implies v2\n"
         "  --no-sign-hide       code every sign (default: hide one per unit)\n"
         "  --intra-dir on|off|layer   directional intra, modes from the host\n"
         "  --dir-mode-seed N    fill the per-block modes from a PRNG (test aid)\n"
@@ -92,7 +93,13 @@ int main(int argc, char **argv) {
         else if (a == "--nsub") cfg.nsub_log2 = std::atoi(val());
         else if (a == "--chroma-qp-off") cfg.chroma_qp_off = std::atoi(val());
         else if (a == "--tskip") cfg.tskip = std::strcmp(val(), "on") == 0 ? 1 : 0;
-        else if (a == "--ctx") cfg.ctx_v2 = std::strcmp(val(), "v2") == 0;
+        else if (a == "--ctx") {
+            const char *v = val();
+            /* v3 is a refinement of v2 and the stream header refuses bit 25
+             * without bit 21, so v3 sets both. */
+            cfg.ctx_v3 = std::strcmp(v, "v3") == 0;
+            cfg.ctx_v2 = cfg.ctx_v3 || std::strcmp(v, "v2") == 0;
+        }
         else if (a == "--no-sign-hide") cfg.sign_hide = false;
         else if (a == "--sign-hide") cfg.sign_hide = true;
         else if (a == "--intra-dir") {
