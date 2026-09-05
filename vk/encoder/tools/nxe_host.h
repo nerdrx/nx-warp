@@ -94,6 +94,22 @@ struct Frame {
 /* Set up geometry, jobs and the frame parameter record. */
 void setup(const Config &cfg, Frame &f);
 
+/* Move a Frame that setup() already built to another quantiser, without
+ * rebuilding anything.
+ *
+ * This is the whole of what the QP touches on this path, which is why it can
+ * be a four-line function: the geometry, the job list, the probability tables,
+ * the weighting matrices and the stream header are all independent of it.  The
+ * two things that are not are `fp.base_qp` -- carried in the frame header and
+ * read by E3 -- and the per-tile table-set SEED, which choose_table_sets()
+ * overwrites from the coefficients before E4 ever reads it and which is set
+ * here only so that a Frame at QP q is indistinguishable from one setup() just
+ * built at QP q.  Both buffers are re-uploaded every frame (see nxe_vk.cpp),
+ * so there is nothing to invalidate.
+ *
+ * setup() itself goes through this function, so the two cannot drift. */
+void set_qp(Config &cfg, Frame &f, int qp);
+
 /* Fill the built-in probability tables for the frame's context model. */
 void build_tables(const Config &cfg, Frame &f);
 
