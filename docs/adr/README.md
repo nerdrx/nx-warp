@@ -51,3 +51,4 @@ measurements, and an ADR whose estimate turns out wrong gets superseded, not edi
 | [0024](0024-fec-class-a-only.md) | FEC parity is class A only, with no loss escalation | Accepted | 4.4, 6.6 |
 | [0025](0025-directional-intra-is-negotiated.md) | Directional intra is a negotiated tool; restriction A is its default schedule | Accepted | 3.2.4, 6.4 |
 | [0026](0026-sparse-coefficient-transfer.md) | The Pass A to Pass B coefficient buffer is sparse | Accepted | 3.2.1, 3.2.5 |
+| [0027](0027-no-spatial-hybrid.md) | No spatial hybrid; foveation inside the codec is the lever | Accepted | 3.5, 5.1 |
