@@ -107,6 +107,22 @@ if(TARGET nxvc-vkenc)
       set_tests_properties(vk.encoder.acid.api PROPERTIES
                            SKIP_REGULAR_EXPRESSION "SKIP:")
       list(APPEND NXENC_TESTS vk.encoder.acid.api)
+
+      # The same claim for the image entry point, which is the one a
+      # compositor actually calls: E0 reads a two-plane VkImage on the device
+      # and no plane is laid out on the host.  It shares every pass after E0
+      # with the plane path, so this test is what says the sharing is real.
+      add_test(NAME vk.encoder.acid.api.image COMMAND ${CMAKE_COMMAND}
+               -DAPIENC=$<TARGET_FILE:nxvc-vkenc-api>
+               -DVKENC=$<TARGET_FILE:nxvc-vkenc>
+               -DNXVENC=$<TARGET_FILE:nxv-enc>
+               -DNXVDEC=$<TARGET_FILE:nxv-dec>
+               -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/acid-api-image
+               -DIMAGE=ON
+               -P ${CMAKE_CURRENT_SOURCE_DIR}/api_acid.cmake)
+      set_tests_properties(vk.encoder.acid.api.image PROPERTIES
+                           SKIP_REGULAR_EXPRESSION "SKIP:")
+      list(APPEND NXENC_TESTS vk.encoder.acid.api.image)
     endif()
   else()
     message(STATUS "tests/vk-encoder: nxv-enc/nxv-dec not built, no acid test")

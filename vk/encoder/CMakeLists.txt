@@ -180,6 +180,7 @@ if(EXISTS ${NXENC_REF_TABLES})
     tools/nxvc-vkenc.cpp
     tools/nxe_host.cpp
     tools/nxe_vk.cpp
+    tools/nxe_e0.cpp
     tools/nxe_selftest.cpp
     tools/vk_min.cpp
     ${NXENC_REF_TABLES}
@@ -223,6 +224,7 @@ if(EXISTS ${NXENC_REF_TABLES})
     api/nxvc_vk_enc.cpp
     tools/nxe_host.cpp
     tools/nxe_vk.cpp
+    tools/nxe_e0.cpp
     tools/vk_min.cpp
     forward/nxe_tables.c
     forward/forward_cpu.c
@@ -254,6 +256,11 @@ if(EXISTS ${NXENC_REF_TABLES})
   # it so the byte-identity claim covers the shipped surface.
   add_executable(nxvc-vkenc-api api/nxvc-vkenc-api.cpp)
   target_link_libraries(nxvc-vkenc-api PRIVATE nxvc_vk_encoder)
+  # `--image` builds the compositor image itself, which needs the harness's
+  # throwaway device layer -- the same one the library is built from, so this
+  # is a header path and not a second copy.
+  target_include_directories(nxvc-vkenc-api PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/tools)
   set_target_properties(nxvc-vkenc-api PROPERTIES CXX_STANDARD 20)
 endif()
 

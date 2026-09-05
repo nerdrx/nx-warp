@@ -6,7 +6,12 @@
 #include "nxe_host.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
+#include <condition_variable>
+#include <functional>
+#include <mutex>
+#include <thread>
 #include <cstdio>
 #include <cstring>
 
@@ -119,6 +124,16 @@ void build_tables(const Config &cfg, Frame &f) {
                 f.tabs.cum[k][c][s] = ts.ctx[c].cum[s];
             }
     }
+    /* The cost table choose_table_sets() reads.  A zero frequency gives
+     * -log2(0) = +inf and a candidate that codes an impossible symbol is
+     * therefore infinitely expensive, which is exactly what the expression it
+     * replaces produced. */
+    f.log_freq.assign((size_t)8 * nxvc::kNumCtx * NXE_NUM_SYM, 0.0);
+    for (int k = 0; k < 8; ++k)
+        for (int c = 0; c < nxvc::kNumCtx; ++c)
+            for (int s = 0; s < NXE_NUM_SYM; ++s)
+                f.log_freq[((size_t)k * nxvc::kNumCtx + c) * NXE_NUM_SYM + s] =
+                    std::log2((double)f.tabs.freq[k][c][s] / 1024.0);
 }
 
 /* ------------------------------------------------------------------- input
@@ -293,48 +308,167 @@ std::vector<uint8_t> stream_header(const Config &cfg, const Frame &f) {
 /* ------------------------------------------------------------ table sets
  * ref's count_units histogram plus table_set_cost / select_set, in the
  * reference's own double precision. */
-void choose_table_sets(Frame &f) {
-    static std::vector<uint32_t> ops;
-    ops.resize(NXE_UNIT_MAX_OPS);
-    for (uint32_t t = 0; t < f.fp.ntiles; ++t) {
-        nxe_tile_units tu;
-        nxe_build_units(&f.fp, &f.jobs[t], &tu);
-        const int16_t *coef = &f.coef[(size_t)t * NXE_TILE_COEFS_MAX];
-        const uint8_t *modes = &f.modes[(size_t)t * 3 * 64];
-        uint32_t hist[NXE_MAX_CTX][NXE_NUM_SYM];
-        std::memset(hist, 0, sizeof hist);
-        /* Every unit exactly once, but walked lane by lane rather than in
-         * unit order: under v3 the context a unit codes in depends on the
-         * neighbour class its own lane carries, so the histogram is only
-         * right if the walk is the one E4 will actually perform.  The counts
-         * themselves are order-independent; which row they land in is not. */
-        for (int l = 0; l < tu.active; ++l) {
-            nxe_nbr nbr = NXE_NBR_INIT;
-            for (int ui = l; ui < tu.nunits; ui += tu.nlanes) {
-                int n = nxe_unit_ops(&tu, ui, coef, modes, &nbr, ops.data());
-                for (int i = 0; i < n; ++i)
-                    if (NXE_OP_KIND(ops[i]) == NXE_OP_SYM)
-                        hist[NXE_OP_ARG(ops[i])][NXE_OP_VALUE(ops[i])]++;
-            }
-        }
-        double best = 0;
-        int bestk = (int)f.jobs[t].table_set;
-        for (int k = 0; k < 8; ++k) {
-            double bits = 0;
-            /* `table_set_cost` sums over all kNumCtx rows, not over the coded
-             * count: rows the model does not code have an empty histogram and
-             * contribute nothing, so the two agree -- but only if this loop
-             * has the same bound.  It is a hot loop over a 27-row table now. */
-            for (int c = 0; c < nxvc::kNumCtx; ++c)
-                for (int s = 0; s < NXE_NUM_SYM; ++s)
-                    if (hist[c][s])
-                        bits -= (double)hist[c][s] *
-                                std::log2((double)f.tabs.freq[k][c][s] / 1024.0);
-            if (k == 0 || bits < best) { best = bits; bestk = k; }
-        }
-        f.jobs[t].table_set = (uint32_t)bestk;
+/* The pool.
+ *
+ * It is a file static rather than a member of Frame so that two encoders -- a
+ * WiVRn server runs one per eye -- share one set of threads instead of two,
+ * and so that Frame stays the copyable aggregate the harness treats it as.
+ * The threads are created on first use and live for the process; at frame rate
+ * the alternative, spawning them per frame, is the larger cost.
+ *
+ * The pool is sized modestly on purpose.  This runs inside a compositor's
+ * frame, next to its own submit thread and its own render work; taking every
+ * core for four milliseconds of histogram would win this function and lose the
+ * frame. */
+namespace {
+
+class TilePool {
+public:
+    static TilePool &get() {
+        static TilePool pool;
+        return pool;
     }
+
+    unsigned width() const { return n_; }
+
+    /* Runs `fn(t)` for t in [0, count), on `width()` threads, and returns when
+     * every one has run. */
+    void run(uint32_t count, const std::function<void(uint32_t)> &fn) {
+        if (n_ <= 1 || count < 8) {
+            for (uint32_t t = 0; t < count; ++t) fn(t);
+            return;
+        }
+        std::unique_lock<std::mutex> outer(job_lock_);
+        {
+            std::lock_guard<std::mutex> lk(m_);
+            fn_ = &fn;
+            count_ = count;
+            next_ = 0;
+            done_ = 0;
+            ++epoch_;
+        }
+        cv_.notify_all();
+        /* The calling thread is one of the workers: it is going to wait
+         * anyway, and on a two-core box it is the only worker there is. */
+        work();
+        std::unique_lock<std::mutex> lk(m_);
+        cv_done_.wait(lk, [&] { return done_ == n_ - 1; });
+        fn_ = nullptr;
+    }
+
+private:
+    TilePool() {
+        unsigned hw = std::thread::hardware_concurrency();
+        n_ = hw ? std::min(8u, hw) : 1u;
+        for (unsigned i = 1; i < n_; ++i)
+            workers_.emplace_back([this] { loop(); });
+    }
+    ~TilePool() {
+        {
+            std::lock_guard<std::mutex> lk(m_);
+            stop_ = true;
+            ++epoch_;
+        }
+        cv_.notify_all();
+        for (auto &t : workers_) t.join();
+    }
+
+    void work() {
+        for (;;) {
+            uint32_t t = next_.fetch_add(1, std::memory_order_relaxed);
+            if (t >= count_) return;
+            (*fn_)(t);
+        }
+    }
+
+    void loop() {
+        uint64_t seen = 0;
+        for (;;) {
+            {
+                std::unique_lock<std::mutex> lk(m_);
+                cv_.wait(lk, [&] { return stop_ || epoch_ != seen; });
+                seen = epoch_;
+                if (stop_) return;
+            }
+            work();
+            {
+                std::lock_guard<std::mutex> lk(m_);
+                ++done_;
+            }
+            cv_done_.notify_one();
+        }
+    }
+
+    unsigned n_ = 1;
+    std::vector<std::thread> workers_;
+    std::mutex m_, job_lock_;
+    std::condition_variable cv_, cv_done_;
+    const std::function<void(uint32_t)> *fn_ = nullptr;
+    std::atomic<uint32_t> next_{0};
+    uint32_t count_ = 0, done_ = 0;
+    uint64_t epoch_ = 0;
+    bool stop_ = false;
+};
+
+} // namespace
+
+/* One tile's decision: the histogram E4 will produce, then the cheapest of the
+ * eight candidate table sets under it. */
+static void choose_tile_table_set(Frame &f, const int16_t *coefs, uint32_t t) {
+    /* The op scratch is thread_local because the pool runs this on several
+     * threads at once; it is a megabyte-class buffer that must not be
+     * reallocated per tile. */
+    thread_local std::vector<uint32_t> ops;
+    ops.resize(NXE_UNIT_MAX_OPS);
+    nxe_tile_units tu;
+    nxe_build_units(&f.fp, &f.jobs[t], &tu);
+    const int16_t *coef = &coefs[(size_t)t * NXE_TILE_COEFS_MAX];
+    const uint8_t *modes = &f.modes[(size_t)t * 3 * 64];
+    uint32_t hist[NXE_MAX_CTX][NXE_NUM_SYM];
+    std::memset(hist, 0, sizeof hist);
+    /* Every unit exactly once, but walked lane by lane rather than in
+     * unit order: under v3 the context a unit codes in depends on the
+     * neighbour class its own lane carries, so the histogram is only
+     * right if the walk is the one E4 will actually perform.  The counts
+     * themselves are order-independent; which row they land in is not. */
+    for (int l = 0; l < tu.active; ++l) {
+        nxe_nbr nbr = NXE_NBR_INIT;
+        for (int ui = l; ui < tu.nunits; ui += tu.nlanes) {
+            int n = nxe_unit_ops(&tu, ui, coef, modes, &nbr, ops.data());
+            for (int i = 0; i < n; ++i)
+                if (NXE_OP_KIND(ops[i]) == NXE_OP_SYM)
+                    hist[NXE_OP_ARG(ops[i])][NXE_OP_VALUE(ops[i])]++;
+        }
+    }
+    double best = 0;
+    int bestk = (int)f.jobs[t].table_set;
+    for (int k = 0; k < 8; ++k) {
+        double bits = 0;
+        /* `table_set_cost` sums over all kNumCtx rows, not over the coded
+         * count: rows the model does not code have an empty histogram and
+         * contribute nothing, so the two agree -- but only if this loop
+         * has the same bound.  It is a hot loop over a 27-row table now.
+         *
+         * The log2 is hoisted into f.log_freq at build_tables() time: it
+         * is a property of the table set, not of the tile, and calling it
+         * per tile made this function the single most expensive thing on
+         * the encode path once the picture stopped going through the
+         * host.  Same doubles, same order, same sum. */
+        const double *lf = &f.log_freq[(size_t)k * nxvc::kNumCtx * NXE_NUM_SYM];
+        for (int c = 0; c < nxvc::kNumCtx; ++c)
+            for (int s = 0; s < NXE_NUM_SYM; ++s)
+                if (hist[c][s])
+                    bits -= (double)hist[c][s] * lf[(size_t)c * NXE_NUM_SYM + s];
+        if (k == 0 || bits < best) { best = bits; bestk = k; }
+    }
+    f.jobs[t].table_set = (uint32_t)bestk;
 }
+
+void choose_table_sets(Frame &f, const int16_t *coefs) {
+    TilePool::get().run(f.fp.ntiles,
+                        [&](uint32_t t) { choose_tile_table_set(f, coefs, t); });
+}
+
 
 /* -------------------------------------------------------------------- E5 */
 void pack_frame(Frame &f, uint32_t frame_number) {
@@ -373,7 +507,7 @@ void encode_frame_cpu(Frame &f, uint32_t frame_number) {
         nxe_e3_tile(&fp, &f.jobs[t], src, &f.modes[(size_t)t * 3 * 64],
                     &f.coef[(size_t)t * NXE_TILE_COEFS_MAX]);
     }
-    choose_table_sets(f);
+    choose_table_sets(f, f.coef.data());
     for (uint32_t t = 0; t < fp.ntiles; ++t) {
         nxe_tile_units tu;
         nxe_build_units(&fp, &f.jobs[t], &tu);

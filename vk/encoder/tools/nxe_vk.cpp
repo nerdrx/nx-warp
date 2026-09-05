@@ -6,9 +6,13 @@
 #include "nxe_vk.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <vector>
 
+#include "nxe_e0.h"
 #include "vk_min.h"
 
 #include "E2_prefix_p0.spv.h"
@@ -42,6 +46,18 @@ struct VkEncoder::Impl {
     vkmin::Buffer b_stage_src, b_stage_coef, b_stage_small;
 
     vkmin::Pipeline p_e3, p_e4, p_e5, p_e5z, p_e2[3];
+    E0 e0;
+    /* Plane views of the caller's images, one entry per (image, layer) the
+     * caller has presented.  A compositor rotates over a handful of images
+     * for the life of a stream, so this never grows: creating the two views
+     * per frame instead would be two vkCreateImageView calls on the encode
+     * path for handles that never change. */
+    struct SrcViews {
+        VkImage image = VK_NULL_HANDLE;
+        uint32_t layer = 0;
+        VkImageView y = VK_NULL_HANDLE, c = VK_NULL_HANDLE;
+    };
+    std::vector<SrcViews> src_views;
     VkDescriptorPool pool = VK_NULL_HANDLE;
     VkDescriptorSet s_e3{}, s_e4{}, s_e5{}, s_e5z{}, s_e2[3]{};
     VkQueryPool qpool = VK_NULL_HANDLE;
@@ -89,6 +105,10 @@ VkEncoder::VkEncoder() : p_(new Impl) {}
 VkEncoder::~VkEncoder() {
     if (p_ && p_->ok) {
         vkDeviceWaitIdle(p_->dev.handle());
+        for (auto &s : p_->src_views) {
+            vkDestroyImageView(p_->dev.handle(), s.y, nullptr);
+            vkDestroyImageView(p_->dev.handle(), s.c, nullptr);
+        }
         p_->dev.destroy();
     }
     delete p_;
@@ -197,7 +217,7 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
         if (!d.dev.create_pipeline(e2[i], e2n[i], sb4, 8, d.p_e2[i], err))
             return false;
 
-    d.pool = d.dev.create_descriptor_pool(8, 64, 0);
+    d.pool = d.dev.create_descriptor_pool(9, 64, 2);
     d.s_e3 = d.dev.allocate_set(d.pool, d.p_e3.dsl);
     d.s_e4 = d.dev.allocate_set(d.pool, d.p_e4.dsl);
     d.s_e5 = d.dev.allocate_set(d.pool, d.p_e5.dsl);
@@ -221,7 +241,71 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
     write_set(h, d.s_e5, e5bufs);
     write_set(h, d.s_e5z, e5bufs);
 
+    /* E0 is created whether or not an image is ever presented: it is two
+     * dozen kilobytes of SPIR-V and one descriptor set, and a create-time
+     * failure is worth having at create time rather than on the first frame
+     * a compositor hands over an image. */
+    if (!d.e0.create(d.dev, d.pool, err)) return false;
+
     d.qpool = d.dev.create_timestamp_pool(16);
+    return true;
+}
+
+/* Plane views of a caller's two-plane image, cached per (image, layer).
+ *
+ * The views are UINT (R8_UINT over the R8_UNORM plane, R8G8_UINT over the
+ * R8G8_UNORM one) because E0 reads stored codes and never a filtered sample;
+ * the image must have been created with MUTABLE_FORMAT and a
+ * VkImageFormatListCreateInfo naming both, or the driver rejects them.
+ * VkImageViewUsageCreateInfo narrows the view to STORAGE, which is what lets
+ * a storage view exist over an image whose planar format has no storage
+ * feature of its own (the EXTENDED_USAGE rule of maintenance2). */
+static bool src_views_for(VkEncoder::Impl &d, VkImage image, uint32_t layer,
+                          VkImageView &vy, VkImageView &vc, std::string &err) {
+    for (const auto &s : d.src_views)
+        if (s.image == image && s.layer == layer) {
+            vy = s.y;
+            vc = s.c;
+            return true;
+        }
+
+    VkImageViewUsageCreateInfo usage{};
+    usage.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_CREATE_INFO;
+    usage.usage = VK_IMAGE_USAGE_STORAGE_BIT;
+
+    auto make = [&](VkImageAspectFlagBits aspect, VkFormat fmt,
+                    VkImageView &out) {
+        VkImageViewCreateInfo ci{};
+        ci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        ci.pNext = &usage;
+        ci.image = image;
+        ci.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        ci.format = fmt;
+        ci.subresourceRange.aspectMask = VkImageAspectFlags(aspect);
+        ci.subresourceRange.levelCount = 1;
+        ci.subresourceRange.baseArrayLayer = layer;
+        ci.subresourceRange.layerCount = 1;
+        VkResult r = vkCreateImageView(d.dev.handle(), &ci, nullptr, &out);
+        if (r != VK_SUCCESS) {
+            err = std::string("vkCreateImageView for the source plane: ") +
+                  vkmin::result_str(r);
+            return false;
+        }
+        return true;
+    };
+
+    VkEncoder::Impl::SrcViews s{};
+    s.image = image;
+    s.layer = layer;
+    if (!make(VK_IMAGE_ASPECT_PLANE_0_BIT, VK_FORMAT_R8_UINT, s.y))
+        return false;
+    if (!make(VK_IMAGE_ASPECT_PLANE_1_BIT, VK_FORMAT_R8G8_UINT, s.c)) {
+        vkDestroyImageView(d.dev.handle(), s.y, nullptr);
+        return false;
+    }
+    d.src_views.push_back(s);
+    vy = s.y;
+    vc = s.c;
     return true;
 }
 
@@ -295,8 +379,37 @@ static void record_passes(VkEncoder::Impl &d, VkCommandBuffer cb, bool e3,
 
 bool VkEncoder::encode_frame(Frame &f, uint32_t frame_number, bool check,
                              bool quiet) {
-    Impl &d = *p_;
     std::string err;
+    return encode_frame_common(f, frame_number, check, quiet, nullptr, 0, err);
+}
+
+bool VkEncoder::encode_frame_image(Frame &f, uint32_t frame_number,
+                                   VkImage image, uint32_t array_layer,
+                                   std::string &err) {
+    return encode_frame_common(f, frame_number, false, true, &image,
+                               array_layer, err);
+}
+
+bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
+                                    bool quiet, const VkImage *image,
+                                    uint32_t array_layer, std::string &err) {
+    Impl &d = *p_;
+    /* The plane views before anything is recorded: a failure here is a
+     * bring-up failure and there is nothing to unwind. */
+    VkImageView src_y = VK_NULL_HANDLE, src_c = VK_NULL_HANDLE;
+    if (image && !src_views_for(d, *image, array_layer, src_y, src_c, err))
+        return false;
+    /* NXE_TIME=1 prints where a frame's milliseconds went, in the four pieces
+     * that can move independently: the GPU passes up to E3, the table-set
+     * choice, the E4/E5 submit, and the two host reads.  It is off unless the
+     * environment asks, and it is the measurement the image entry point was
+     * written against. */
+    static const bool nxe_time = std::getenv("NXE_TIME") != nullptr;
+    using clk = std::chrono::steady_clock;
+    auto t0 = clk::now();
+    auto ms = [](clk::time_point a, clk::time_point b) {
+        return std::chrono::duration<double, std::milli>(b - a).count();
+    };
     nxe_frame_params fp = f.fp;
     fp.frame_number = frame_number;
 
@@ -317,9 +430,11 @@ bool VkEncoder::encode_frame(Frame &f, uint32_t frame_number, bool check,
                     f.jobs.size() * sizeof(nxe_tile_job));
         VkBufferCopy cj{1 << 19, 0, f.jobs.size() * sizeof(nxe_tile_job)};
         vkCmdCopyBuffer(cb, d.b_stage_small.buf, d.b_jobs.buf, 1, &cj);
-        std::memcpy(d.b_stage_src.map, f.src_packed.data(), d.src_bytes);
-        VkBufferCopy cs{0, 0, d.src_bytes};
-        vkCmdCopyBuffer(cb, d.b_stage_src.buf, d.b_src.buf, 1, &cs);
+        if (!image) {
+            std::memcpy(d.b_stage_src.map, f.src_packed.data(), d.src_bytes);
+            VkBufferCopy cs{0, 0, d.src_bytes};
+            vkCmdCopyBuffer(cb, d.b_stage_src.buf, d.b_src.buf, 1, &cs);
+        }
         uint8_t pose[28] = {0};   /* the compositor's blob; zero here */
         std::memcpy((uint8_t *)d.b_stage_small.map + (1 << 20) - 64, pose, 28);
         VkBufferCopy cp{(1 << 20) - 64, 0, 28};
@@ -332,6 +447,23 @@ bool VkEncoder::encode_frame(Frame &f, uint32_t frame_number, bool check,
             vkCmdCopyBuffer(cb, d.b_stage_coef.buf, d.b_modes.buf, 1, &cm);
         }
         d.dev.barrier_transfer_to_compute(cb);
+        if (image) {
+            /* E0 fills b_src from the caller's image, in the same command
+             * buffer and one barrier ahead of E3.  No plane ever touches host
+             * memory: this is the whole reason the entry point exists. */
+            d.e0.bind(d.dev, src_y, src_c, d.b_src.buf);
+            E0Geometry g{};
+            g.width = f.fp.width;
+            g.height = f.fp.height;
+            g.tiles_x = f.fp.tiles_x;
+            g.tiles_y = f.fp.tiles_y;
+            g.plane_y_off = (uint32_t)f.plane_base[0];
+            g.plane_co_off = (uint32_t)f.plane_base[1];
+            g.plane_cg_off = (uint32_t)f.plane_base[2];
+            g.plane_words = (uint32_t)(f.src_packed.size() / 2);
+            d.e0.record(cb, g);
+            d.dev.barrier_compute_to_compute(cb);
+        }
         vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, d.p_e3.pipe);
         vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE,
                                 d.p_e3.layout, 0, 1, &d.s_e3, 0, nullptr);
@@ -340,11 +472,12 @@ bool VkEncoder::encode_frame(Frame &f, uint32_t frame_number, bool check,
         VkBufferCopy cc{0, 0, d.coef_bytes};
         vkCmdCopyBuffer(cb, d.b_coef.buf, d.b_stage_coef.buf, 1, &cc);
         if (!d.dev.submit_and_wait(cb, err)) {
-            std::fprintf(stderr, "E3 submit: %s\n", err.c_str());
+            std::fprintf(stderr, "E0/E3 submit: %s\n", err.c_str());
             return false;
         }
     }
 
+    auto t1 = clk::now();
     if (check) {
         std::vector<int16_t> gpu(f.coef.size());
         std::memcpy(gpu.data(), d.b_stage_coef.map, d.coef_bytes);
@@ -379,11 +512,17 @@ bool VkEncoder::encode_frame(Frame &f, uint32_t frame_number, bool check,
         if (!quiet)
             std::printf("  E3: bit-exact (%u tiles x %zu levels)\n", d.ntiles,
                         coded);
-    } else {
-        std::memcpy(f.coef.data(), d.b_stage_coef.map, d.coef_bytes);
     }
 
-    choose_table_sets(f);
+    auto t2 = clk::now();
+    /* The table-set choice reads the coefficients where E3 left them: the
+     * staging buffer is host-cached, and copying seven megabytes into f.coef
+     * first -- which nothing else on this path reads -- cost more than the
+     * choice it fed.  The `check` path above has already copied them, because
+     * it compares them against the CPU model. */
+    choose_table_sets(f, check ? f.coef.data()
+                               : (const int16_t *)d.b_stage_coef.map);
+    auto t3 = clk::now();
 
     /* ---- the jobs go back with their table sets, then E4, E2 and E5. */
     {
@@ -404,12 +543,20 @@ bool VkEncoder::encode_frame(Frame &f, uint32_t frame_number, bool check,
                     (uint8_t *)d.b_stage_small.map + (1 << 19), d.ntiles * 4);
     }
 
+    auto t4 = clk::now();
     uint32_t run = 0;
     for (uint32_t t = 0; t < d.ntiles; ++t) run += f.tile_bytes[t];
     const uint32_t total = nxe_e5_frame_bytes(&fp, run);
     f.out.assign(total, 0);
     std::memcpy(f.out.data(), d.b_out.map, total);
 
+    auto t5 = clk::now();
+    if (nxe_time)
+        std::fprintf(stderr,
+                     "nxe: passes to E3 %.2f  coef read %.2f  table sets %.2f  "
+                     "E4/E5 %.2f  frame out %.2f  total %.2f ms\n",
+                     ms(t0, t1), ms(t1, t2), ms(t2, t3), ms(t3, t4), ms(t4, t5),
+                     ms(t0, t5));
     if (check) {
         std::vector<uint8_t> gpu = f.out;
         encode_frame_cpu(f, frame_number);
