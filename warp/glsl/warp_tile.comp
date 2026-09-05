@@ -190,28 +190,40 @@ int corner_component(int h_a, int h_b, int h_c, int cx, int cy, int den, int ori
     return clamp(v, -CORNER_CLAMP, CORNER_CLAMP);
 }
 
-void compute_corner(int i, TileParam p) {
-    if (p.mode == MODE_STATIC) {
+// The tile's parameters are read straight out of the SSBO, field by field,
+// rather than taken as a `TileParam` by value.  TileParam is 20 ints, `int h[9]`
+// among them, and a by-value struct parameter is copied into a Function-storage
+// temporary -- which on the Adreno 650 means 80 bytes of private (scratch)
+// memory per invocation, the same lowering that made Pass B read a local array
+// back wrong (docs/ADRENO-RULES.md).  Every field access below has a constant
+// member index and a workgroup-uniform buffer index, which is a plain load.
+void compute_corner(int i, uint t) {
+    if (params[t].mode == MODE_STATIC) {
         // Saturated exactly like the MODE_WARP path (FINDINGS.md F2).
-        int px = int(uint(p.tx) + (((i & 1) != 0) ? uint(TILE) : 0u));
-        int py = int(uint(p.ty) + (((i >> 1) != 0) ? uint(TILE) : 0u));
+        int px = int(uint(params[t].tx) + (((i & 1) != 0) ? uint(TILE) : 0u));
+        int py = int(uint(params[t].ty) + (((i >> 1) != 0) ? uint(TILE) : 0u));
         sCorner[i] = ivec2(
             clamp(shl_i32_mod(px, uint(Q_CORNER)), -CORNER_CLAMP, CORNER_CLAMP),
             clamp(shl_i32_mod(py, uint(Q_CORNER)), -CORNER_CLAMP, CORNER_CLAMP));
         return;
     }
-    int cx = int(uint(p.tx) + (((i & 1) != 0) ? uint(TILE) : 0u) - uint(p.ox));
-    int cy = int(uint(p.ty) + (((i >> 1) != 0) ? uint(TILE) : 0u) - uint(p.oy));
+    int ox = params[t].ox, oy = params[t].oy;
+    int cx = int(uint(params[t].tx) + (((i & 1) != 0) ? uint(TILE) : 0u) - uint(ox));
+    int cy = int(uint(params[t].ty) + (((i >> 1) != 0) ? uint(TILE) : 0u) - uint(oy));
 
-    uvec2 d64 = add64(add64(imul_ext(p.h[6], cx), imul_ext(p.h[7], cy)), from_i32(p.h[8]));
+    uvec2 d64 = add64(add64(imul_ext(params[t].h[6], cx),
+                            imul_ext(params[t].h[7], cy)),
+                      from_i32(params[t].h[8]));
     int den = int(d64.x);
     bool den_ok = (d64.y == ((den < 0) ? 0xffffffffu : 0u)) && den >= DEN_MIN && den < DEN_MAX;
     if (!den_ok) {
         sCorner[i] = ivec2(CORNER_CLAMP, CORNER_CLAMP);
         return;
     }
-    sCorner[i] = ivec2(corner_component(p.h[0], p.h[1], p.h[2], cx, cy, den, p.ox),
-                       corner_component(p.h[3], p.h[4], p.h[5], cx, cy, den, p.oy));
+    sCorner[i] = ivec2(corner_component(params[t].h[0], params[t].h[1],
+                                        params[t].h[2], cx, cy, den, ox),
+                       corner_component(params[t].h[3], params[t].h[4],
+                                        params[t].h[5], cx, cy, den, oy));
 }
 
 // --- step 2: in-tile bilinear interpolation of the corner coordinates -----
@@ -258,10 +270,9 @@ ivec4 sample_catmullrom(int ix, int iy, int fx, int fy) {
 
 void main() {
     uint tileIdx = gl_WorkGroupID.x;
-    TileParam p = params[tileIdx];
 
     if (gl_LocalInvocationID.x < 4u) {
-        compute_corner(int(gl_LocalInvocationID.x), p);
+        compute_corner(int(gl_LocalInvocationID.x), tileIdx);
     }
     barrier();
     memoryBarrierShared();
@@ -271,8 +282,10 @@ void main() {
     ivec2 c2 = sCorner[2];
     ivec2 c3 = sCorner[3];
 
-    int mvx_q6 = shl_i32_mod(p.mvx, uint(Q_CORNER - Q_MV));
-    int mvy_q6 = shl_i32_mod(p.mvy, uint(Q_CORNER - Q_MV));
+    // Three scalars, not the whole 20-int record: see compute_corner.
+    const int mvx_q6 = shl_i32_mod(params[tileIdx].mvx, uint(Q_CORNER - Q_MV));
+    const int mvy_q6 = shl_i32_mod(params[tileIdx].mvy, uint(Q_CORNER - Q_MV));
+    const int filt   = params[tileIdx].filt;
 
     for (uint n = 0u; n < 16u; ++n) {
         uint idx = gl_LocalInvocationID.x + n * 256u;   // 4096 pixels per tile
@@ -293,8 +306,8 @@ void main() {
         int fx = xq4 & 15;
         int fy = yq4 & 15;
 
-        ivec4 s = (p.filt == FILTER_CATMULLROM) ? sample_catmullrom(ix, iy, fx, fy)
-                                                : sample_bilinear(ix, iy, fx, fy);
+        ivec4 s = (filt == FILTER_CATMULLROM) ? sample_catmullrom(ix, iy, fx, fy)
+                                              : sample_bilinear(ix, iy, fx, fy);
         s = clamp(s, ivec4(0), ivec4(pc.max_value));
 
         outPix[tileIdx * 4096u + idx] =

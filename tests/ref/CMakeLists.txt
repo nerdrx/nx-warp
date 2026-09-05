@@ -62,11 +62,18 @@ option(NXVC_FUZZ "Build the nxvc_ref libFuzzer targets" OFF)
 if(NXVC_FUZZ)
     # The library sources are compiled into the target so the fuzzer sees
     # instrumented codec code, not a plain static archive.
+    # The source list must stay in step with ref/CMakeLists.txt: codec.cpp
+    # includes inter.h, so inter.cpp has to be here too, and inter.h includes
+    # <nxvc/warp.h>, which lives in warp/include and reaches this target only
+    # through nxvc_warp_ref's PUBLIC include directory. Linking the library is
+    # what supplies both the header and the predictor's definitions.
     add_executable(nxvc_fuzz_decode fuzz_decode.cpp
         ${CMAKE_SOURCE_DIR}/ref/src/tables.cpp
         ${CMAKE_SOURCE_DIR}/ref/src/transform.cpp
         ${CMAKE_SOURCE_DIR}/ref/src/entropy.cpp
+        ${CMAKE_SOURCE_DIR}/ref/src/inter.cpp
         ${CMAKE_SOURCE_DIR}/ref/src/codec.cpp)
+    target_link_libraries(nxvc_fuzz_decode PRIVATE nxvc_warp_ref)
     target_include_directories(nxvc_fuzz_decode PRIVATE ${NXVC_REF_TEST_INC})
     target_compile_options(nxvc_fuzz_decode PRIVATE
                            -fsanitize=fuzzer,address,undefined)

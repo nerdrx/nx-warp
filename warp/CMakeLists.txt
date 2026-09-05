@@ -17,23 +17,43 @@ endif()
 
 # --------------------------------------------------------------------------
 # Shader: compiled to SPIR-V at build time when a compiler is available.
+#
+# Through the tree's one shader-build rule (vk/common/cmake/nxvc_gen_spv.cmake)
+# when glslc is present: -O0 plus spirv-opt with the Adreno-safe pass list.
+# This used to be a bare `glslc -O`, whose built-in pass list contains the
+# redundancy-elimination pass the Adreno 650 driver miscompiles; the predictor
+# runs on the headset, so it is squarely in scope.  See docs/ADRENO-RULES.md.
+#
+# The glslangValidator fallback stays unoptimised: it has no equivalent pass
+# control, and unoptimised SPIR-V is always safe.
 # --------------------------------------------------------------------------
 find_program(NXWARP_GLSLC NAMES glslc)
 find_program(NXWARP_GLSLANG NAMES glslangValidator)
 
+set(NXWARP_GEN_SPV ${CMAKE_CURRENT_SOURCE_DIR}/../vk/common/cmake/nxvc_gen_spv.cmake)
+set(NXWARP_SPV_PASSES_CMAKE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../vk/common/cmake/NxvcShaderPasses.cmake)
+
 set(NXWARP_WARP_SPV "")
 if(NXWARP_GLSLC OR NXWARP_GLSLANG)
     set(NXWARP_WARP_SPV ${CMAKE_CURRENT_BINARY_DIR}/warp_tile.comp.spv)
+    set(_spv_deps ${CMAKE_CURRENT_SOURCE_DIR}/glsl/warp_tile.comp)
     if(NXWARP_GLSLC)
-        set(_cmd ${NXWARP_GLSLC} -fshader-stage=compute -O --target-env=vulkan1.1
-                 ${CMAKE_CURRENT_SOURCE_DIR}/glsl/warp_tile.comp -o ${NXWARP_WARP_SPV})
+        set(_cmd ${CMAKE_COMMAND}
+                 -DGLSLC=${NXWARP_GLSLC}
+                 -DSRC=${CMAKE_CURRENT_SOURCE_DIR}/glsl/warp_tile.comp
+                 -DOUT=${NXWARP_WARP_SPV}
+                 -DNAME=warp_tile
+                 -DSTYLE=raw
+                 -P ${NXWARP_GEN_SPV})
+        list(APPEND _spv_deps ${NXWARP_GEN_SPV} ${NXWARP_SPV_PASSES_CMAKE})
     else()
         set(_cmd ${NXWARP_GLSLANG} -V --target-env vulkan1.1 -S comp
                  ${CMAKE_CURRENT_SOURCE_DIR}/glsl/warp_tile.comp -o ${NXWARP_WARP_SPV})
     endif()
     add_custom_command(OUTPUT ${NXWARP_WARP_SPV}
         COMMAND ${_cmd}
-        DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/glsl/warp_tile.comp
+        DEPENDS ${_spv_deps}
         COMMENT "glsl: warp_tile.comp -> SPIR-V"
         VERBATIM)
     add_custom_target(nxvc_warp_spv ALL DEPENDS ${NXWARP_WARP_SPV})

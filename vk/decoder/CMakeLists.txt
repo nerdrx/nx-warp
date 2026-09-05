@@ -15,6 +15,13 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/passB/CMakeLists.txt)
   add_subdirectory(passB)
 endif()
 
+# Pass A's workgroup shape reaches this library too: nxs_tiles_per_group() in
+# passA/syntax_constants.h is what the host uses to size a dispatch, and it has
+# to be the number the shader was built with.
+if(DEFINED NXVW_PASSA_TPG)
+  add_compile_definitions(NXVW_PASSA_TILES_PER_GROUP=${NXVW_PASSA_TPG})
+endif()
+
 if(NOT TARGET nxvw_passA_model OR NOT TARGET nxvw_passB_model)
   message(STATUS "vk/decoder: passA/passB not present, skipping the library")
   return()

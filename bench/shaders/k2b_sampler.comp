@@ -24,7 +24,7 @@ void main()
         return;
 
     int tile = (p.y >> 6) * pc.tilesX + (p.x >> 6);
-    ivec2 d = nxb_warp_delta(uTiles.rec[tile], p.x & (NXB_TILE - 1), p.y & (NXB_TILE - 1));
+    ivec2 d = nxb_warp_delta(NXB_CORNERS(uTiles.rec[tile]), p.x & (NXB_TILE - 1), p.y & (NXB_TILE - 1));
 
     // Same Q4 coordinate, handed to the sampler as a normalised float.
     vec2 src = (vec2(ivec2(p.x << 4, p.y << 4) + d) * (1.0 / 16.0)) + vec2(0.5);

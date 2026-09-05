@@ -1,0 +1,541 @@
+#version 460
+// forward.comp -- E3: prediction, residual, forward transform, quantisation.
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// Paper 3.6's E2 "transform" pass, renamed to E3 to match the E0..E5 lettering
+// the rest of this directory uses.  One workgroup of 64 lanes per 64x64 tile.
+// Per coded plane:
+//
+//   1. block means            one lane per 8x8 block, an exact integer sum
+//   2. the DC plane           forward transform (nb == 8), dead-zone quantise,
+//                             sign hiding, then dequantise and inverse
+//                             transform -- the decoder's own reconstruction,
+//                             because the encoder must predict from what the
+//                             decoder will see and nothing else
+//   3. the prediction         bilinear over the reconstructed block means.
+//                             It is never materialised: `pred_at` recomputes
+//                             it from the 64 means in LDS, which is cheaper
+//                             than the 16 KB of shared memory a 64x64 plane
+//                             would cost and is bit-identical
+//   4. residual blocks        eight blocks at a time, each an 8x8 forward DCT
+//                             through LDS: lane (b, r) transforms row r of
+//                             block b, the workgroup transposes in shared
+//                             memory, and the same lanes transform again
+//
+// With NXE_SC_INTRA_DIR the blocks instead go in raster order, each one
+// predicted from the tile's own running reconstruction (docs/SYNTAX.md 7.4),
+// with the per-block modes supplied by the host rather than searched here.
+//
+// Bit-exactness: every step is the integer arithmetic of `forward_cpu.c` in
+// the same order.  The only reduction is the block-mean sum, which one lane
+// does serially, so there is not even an ordering question to answer.
+
+#extension GL_GOOGLE_include_directive : require
+#include "nxe_enc_common.glsl"
+
+layout(local_size_x = NXE_E3_WG, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430, binding = 0) readonly buffer ParamBuf { nxe_frame_params fp; };
+layout(std430, binding = 1) readonly buffer JobBuf   { nxe_tile_job jobs[]; };
+// Tile-major packed planes, two int16 samples per word (vk/encoder/README.md).
+layout(std430, binding = 2) readonly buffer SrcBuf   { uint v[]; } srcb;
+// Coefficients, two int16 levels per word, NXE_TILE_COEF_WORDS per tile.
+layout(std430, binding = 3)          buffer CoefBuf  { uint v[]; } coefb;
+// Per-block intra modes, four per word, 3*64 per tile.  Read only when
+// NXE_SC_INTRA_DIR is 1.
+layout(std430, binding = 4) readonly buffer ModeBuf  { uint v[]; } modeb;
+
+// ------------------------------------------------------------ shared state
+shared int s_means[64];        // block means, then the reconstructed means
+shared int s_dca[64], s_dcb[64];
+shared int s_dcq[64];          // DC plane quantised levels
+shared int s_dco[64];          // DC plane unquantised values (SDH input)
+shared int s_blk[8][64];       // transform scratch, one row-transposed block
+shared int s_orig[8][64];      // unquantised coefficients
+shared int s_q[8][64];         // quantised levels
+
+// Directional intra only.  Sized by the specialization constant so a build
+// with NXE_SC_INTRA_DIR = 0 pays nothing for it: 16 KB of LDS is the
+// difference between two and eight workgroups in flight per SIMD.
+shared int s_recon[NXE_SC_INTRA_DIR * 4096 + 1];
+shared int s_refA[NXE_SC_INTRA_DIR * 17 + 1];
+shared int s_refL[NXE_SC_INTRA_DIR * 17 + 1];
+shared int s_P[NXE_SC_INTRA_DIR * 64 + 1];
+shared int s_tgt[NXE_SC_INTRA_DIR * 64 + 1];
+shared int s_res[NXE_SC_INTRA_DIR * 64 + 1];
+
+// -------------------------------------------------------- per-tile globals
+// Set once at the top of main() and once per plane; every helper reads them.
+uint g_tile;
+int  g_size, g_nb, g_ndc, g_qp, g_maxval, g_dcoff, g_tskip, g_sdh;
+int  g_wmsel;          // -1 = the frame matrix, else a built-in index
+bool g_chroma;
+uint g_srcbase;        // first word of this tile's plane
+int  g_coefoff;        // first level of this plane inside the tile slot
+uint g_coefbase;       // first word of this tile's coefficient slot
+
+int wm_at(int i) {
+    if (g_wmsel < 0)
+        return int(g_chroma ? fp.wm_chroma[i] : fp.wm_luma[i]);
+    return nxe_weight[g_wmsel * 64 + i];
+}
+int step_at(int i) {
+    return g_tskip != 0 ? nxe_dequant_step(g_qp, 16)
+                        : nxe_dequant_step(g_qp, wm_at(i));
+}
+
+int sample_at(int i) {
+    uint w = g_srcbase + uint(i >> 1);
+    w = min(w, uint(srcb.v.length()) - 1u);
+    return nxe_unpack16(srcb.v[w], i & 1);
+}
+
+// The bilinear DC-plane prediction, recomputed from the 64 reconstructed means
+// rather than stored.  bilinear_q4_i32(means, nb, nb, nb, 2x-7, 2y-7).
+int pred_at(int x, int y) {
+    int sx = 2 * x - 7, sy = 2 * y - 7;
+    int x0 = sx >> 4, y0 = sy >> 4;
+    int fx = sx & 15, fy = sy & 15;
+    int x1 = nxe_clamp(x0 + 1, 0, g_nb - 1), y1 = nxe_clamp(y0 + 1, 0, g_nb - 1);
+    x0 = nxe_clamp(x0, 0, g_nb - 1);
+    y0 = nxe_clamp(y0, 0, g_nb - 1);
+    int p00 = s_means[y0 * g_nb + x0], p01 = s_means[y0 * g_nb + x1];
+    int p10 = s_means[y1 * g_nb + x0], p11 = s_means[y1 * g_nb + x1];
+    int wx0 = 16 - fx, wy0 = 16 - fy;
+    return (p00 * wx0 * wy0 + p01 * fx * wy0 + p10 * wx0 * fy + p11 * fx * fy +
+            128) >> 8;
+}
+
+// ------------------------------------------------------- sign data hiding
+// forward_cpu.c's nxe_hide_sign_unit.  The candidate comparison is the exact
+// integer form derived there: 256 * cost = -d * step * (32a - (2m+d)*step),
+// formed as a 64-bit product with imulExtended so no int64 type is needed.
+bool cost_less(int a_hi, int a_lo, int b_hi, int b_lo) {
+    if (a_hi != b_hi) return a_hi < b_hi;
+    return uint(a_lo) < uint(b_lo);
+}
+
+// `unit` selects the arrays: 0 = the DC plane (s_dcq / s_dco, constant step),
+// 1..8 = residual block group entry g = unit - 1 (s_q[g] / s_orig[g]).
+void hide_sign_unit(int unit, int ncoef, bool tskip, int const_step) {
+    int last = -1, sum = 0, p;
+    for (p = 0; p < ncoef; ++p) {
+        int idx = nxe_scan(ncoef, tskip, p);
+        int q = unit == 0 ? s_dcq[idx] : s_q[unit - 1][idx];
+        int m = q < 0 ? -q : q;
+        sum += m;
+        if (m != 0) last = p;
+    }
+    if (last < NXE_SDH_MIN_LAST) return;
+    int lastidx = nxe_scan(ncoef, tskip, last);
+    int want = (unit == 0 ? s_dcq[lastidx] : s_q[unit - 1][lastidx]) < 0 ? 1 : 0;
+    if ((sum & 1) == want) return;
+
+    int best_hi = 0, best_lo = 0, best_p = -1, best_d = 0;
+    for (p = 0; p <= last; ++p) {
+        int idx = nxe_scan(ncoef, tskip, p);
+        int o = unit == 0 ? s_dco[idx] : s_orig[unit - 1][idx];
+        int a = o < 0 ? -o : o;
+        int st = const_step > 0 ? const_step : step_at(idx);
+        int q = unit == 0 ? s_dcq[idx] : s_q[unit - 1][idx];
+        int m = q < 0 ? -q : q;
+        for (int d = -1; d <= 1; d += 2) {
+            int m2 = m + d;
+            if (m2 < 0 || m2 > 32767) continue;
+            if (p == last && m2 == 0) continue;
+            int A = -d * st;
+            int B = 32 * a - (2 * m + d) * st;
+            int hi, lo;
+            imulExtended(A, B, hi, lo);
+            if (best_p < 0 || cost_less(hi, lo, best_hi, best_lo)) {
+                best_hi = hi; best_lo = lo; best_p = p; best_d = d;
+            }
+        }
+    }
+    if (best_p < 0) return;
+    int idx = nxe_scan(ncoef, tskip, best_p);
+    int q = unit == 0 ? s_dcq[idx] : s_q[unit - 1][idx];
+    int o = unit == 0 ? s_dco[idx] : s_orig[unit - 1][idx];
+    int m = (q < 0 ? -q : q) + best_d;
+    bool neg = q != 0 ? (q < 0) : (o < 0);
+    int v = neg ? -m : m;
+    if (unit == 0) s_dcq[idx] = v; else s_q[unit - 1][idx] = v;
+}
+
+// --------------------------------------------------------- level writeback
+// Two levels per word, so a lane always owns whole words and the pack is never
+// a read-modify-write race.  Every plane offset and every unit length is even,
+// which is what makes that hold.
+void store_levels(int level_off, int first, int count, int unit) {
+    for (int k = first; k < first + count; k += 2) {
+        int lo = unit == 0 ? s_dcq[k] : s_q[unit - 1][k];
+        int hi = unit == 0 ? s_dcq[k + 1] : s_q[unit - 1][k + 1];
+        uint w = g_coefbase + uint((level_off + k) >> 1);
+        if (w < uint(coefb.v.length())) coefb.v[w] = nxe_pack16(lo, hi);
+    }
+}
+
+// ------------------------------------------------------------- the DC plane
+void dc_plane(uint lid) {
+    const int tdc = nxe_dequant_step(g_qp >> 1, 16);
+
+    // 1. block means, one lane per block.
+    if (lid < uint(g_ndc)) {
+        int b = int(lid), by = b / g_nb, bx = b % g_nb;
+        int sum = 0;
+        for (int j = 0; j < 8; ++j)
+            for (int i = 0; i < 8; ++i)
+                sum += sample_at((by * 8 + j) * g_size + bx * 8 + i);
+        s_means[b] = sum >= 0 ? (sum + 32) >> 6 : -((-sum + 32) >> 6);
+    }
+    barrier();
+
+    // 2. forward transform of the means (only nb == 8 transforms; a 4x4 DC
+    //    plane is quantised directly, as reconstruct_dc_plane expects).
+    if (g_nb == 8) {
+        if (lid < 8u) {
+            ivec4 ilo, ihi, olo, ohi;
+            NXE_GATHER8(s_means, int(lid) * 8, ilo, ihi);
+            ilo -= ivec4(g_dcoff);
+            ihi -= ivec4(g_dcoff);
+            nxe_fdct8_1d(ilo, ihi, olo, ohi);
+            NXE_SCATTER8_RS(s_dca, int(lid), 8, olo, ohi, 32, 6);
+        }
+        barrier();
+        if (lid < 8u) {
+            ivec4 ilo, ihi, olo, ohi;
+            NXE_GATHER8(s_dca, int(lid) * 8, ilo, ihi);
+            nxe_fdct8_1d(ilo, ihi, olo, ohi);
+            NXE_SCATTER8_RS(s_dco, int(lid), 8, olo, ohi, 8192, 14);
+        }
+        barrier();
+    } else {
+        if (lid < uint(g_ndc)) s_dco[lid] = s_means[lid] - g_dcoff;
+        barrier();
+    }
+
+    if (lid < uint(g_ndc)) s_dcq[lid] = nxe_quantize(s_dco[lid], tdc, tdc / 3);
+    barrier();
+
+    // 3. sign hiding over the DC unit, then the levels go out.
+    if (g_sdh != 0 && lid == 0u) hide_sign_unit(0, g_ndc, false, tdc);
+    barrier();
+    if (lid < uint(g_ndc / 2)) store_levels(g_coefoff, int(lid) * 2, 2, 0);
+
+    // 4. the decoder's reconstruction of the DC plane.
+    if (lid < uint(g_ndc)) s_dca[lid] = nxe_dequant(s_dcq[lid], tdc);
+    barrier();
+    if (g_nb == 8) {
+        if (lid < 8u) {
+            ivec4 ilo, ihi, olo, ohi;
+            NXE_GATHER8(s_dca, int(lid) * 8, ilo, ihi);
+            nxe_idct8_1d(ilo, ihi, olo, ohi);
+            NXE_SCATTER8_RS(s_dcb, int(lid), 8, olo, ohi, 64, 7);
+        }
+        barrier();
+        if (lid < 8u) {
+            ivec4 ilo, ihi, olo, ohi;
+            NXE_GATHER8(s_dcb, int(lid) * 8, ilo, ihi);
+            nxe_idct8_1d(ilo, ihi, olo, ohi);
+            NXE_SCATTER8_RS(s_dca, int(lid), 8, olo, ohi, 4096, 13);
+        }
+        barrier();
+    }
+    if (lid < uint(g_ndc))
+        s_means[lid] = nxe_clamp(g_dcoff + s_dca[lid], 0, g_maxval);
+    barrier();
+}
+
+// ---------------------------------------------- one 8x8 forward transform
+// Lane `r` owns row r of group entry `g` on the way in and column r of the
+// coefficient block on the way out, which is exactly how fdct8x8's two passes
+// transpose.  `slo`/`shi` are the residual row, elements 0..3 and 4..7; the
+// caller has already formed it.  See nxe_enc_common.glsl for why the row is not
+// an int[8].
+void fdct_group_pass1(int g, int r, ivec4 slo, ivec4 shi) {
+    ivec4 olo, ohi;
+    nxe_fdct8_1d(slo, shi, olo, ohi);
+    NXE_SCATTER8_RS(s_blk[g], r, 8, olo, ohi, 32, 6);
+}
+void fdct_group_pass2(int g, int r) {
+    ivec4 ilo, ihi, olo, ohi;
+    NXE_GATHER8(s_blk[g], r * 8, ilo, ihi);
+    nxe_fdct8_1d(ilo, ihi, olo, ohi);
+    NXE_SCATTER8_RS(s_orig[g], r, 8, olo, ohi, 8192, 14);
+}
+
+// --------------------------------------------------------- residual blocks
+void residual_blocks(uint lid) {
+    const int g = int(lid >> 3), r = int(lid & 7);
+    for (int gb = 0; gb < g_ndc; gb += 8) {
+        int b = gb + g;
+        int by = b / g_nb, bx = b % g_nb;
+        int c;
+
+        // The row of residuals, in an ivec4 pair rather than an int[8].
+        const int ry = by * 8 + r, rxb = bx * 8;
+#define NXE_RES_AT(k) (sample_at(ry * g_size + (rxb + (k))) - pred_at(rxb + (k), ry))
+        ivec4 slo = ivec4(NXE_RES_AT(0), NXE_RES_AT(1), NXE_RES_AT(2), NXE_RES_AT(3));
+        ivec4 shi = ivec4(NXE_RES_AT(4), NXE_RES_AT(5), NXE_RES_AT(6), NXE_RES_AT(7));
+#undef NXE_RES_AT
+
+        if (g_tskip != 0) {
+            // Transform skip: the residual is quantised where it stands, with
+            // the flat step, and the raster scan replaces the zigzag.
+            int t = nxe_dequant_step(g_qp, 16);
+#define NXE_TSKIP_ONE(k, v) { int idx = r * 8 + (k);                           \
+                              s_orig[g][idx] = (v);                            \
+                              s_q[g][idx] = nxe_quantize((v), t, t / 3); }
+            NXE_TSKIP_ONE(0, slo.x)
+            NXE_TSKIP_ONE(1, slo.y)
+            NXE_TSKIP_ONE(2, slo.z)
+            NXE_TSKIP_ONE(3, slo.w)
+            NXE_TSKIP_ONE(4, shi.x)
+            NXE_TSKIP_ONE(5, shi.y)
+            NXE_TSKIP_ONE(6, shi.z)
+            NXE_TSKIP_ONE(7, shi.w)
+#undef NXE_TSKIP_ONE
+            barrier();
+        } else {
+            fdct_group_pass1(g, r, slo, shi);
+            barrier();
+            fdct_group_pass2(g, r);
+            for (c = 0; c < 8; ++c) {
+                int idx = c * 8 + r;
+                int t = step_at(idx);
+                s_q[g][idx] = nxe_quantize(s_orig[g][idx], t, t / 3);
+            }
+            barrier();
+        }
+
+        if (g_sdh != 0 && r == 0) hide_sign_unit(g + 1, 64, g_tskip != 0, 0);
+        barrier();
+
+        store_levels(g_coefoff + g_ndc + b * 64, r * 8, 8, g + 1);
+        barrier();
+    }
+}
+
+// ------------------------------------------------------- directional intra
+#define FALLBACK(X, Y) (fp.dir_layer != 0u ? 0 : pred_at((X), (Y)))
+
+int refs_at(int bx, int by, int x, int y) {
+    int cx = nxe_clamp(x, 0, g_size - 1), cy = nxe_clamp(y, 0, g_size - 1);
+    int nbx = cx >> 3, nby = cy >> 3;
+    bool done = (nby < by) || (nby == by && nbx < bx);
+    return done ? s_recon[cy * g_size + cx] : FALLBACK(cx, cy);
+}
+
+void predict_block(int mode, int bx, int by, uint lid) {
+    if (lid >= 64u) return;
+    int i = int(lid) & 7, j = int(lid) >> 3;
+    int tl = s_refA[0];
+    // A[k] == s_refA[1 + k], L[k] == s_refL[1 + k]; A[-1] == L[-1] == tl.
+    #define A(k) s_refA[1 + (k)]
+    #define L(k) s_refL[1 + (k)]
+    int v;
+    if (mode == 0) {
+        v = FALLBACK(bx * 8 + i, by * 8 + j);
+    } else if (mode == 1) {
+        int sum = 0;
+        for (int k = 0; k < 8; ++k) sum += A(k) + L(k);
+        v = (sum + 8) >> 4;
+    } else if (mode == 2) {
+        v = ((7 - i) * L(j) + (i + 1) * A(8) + (7 - j) * A(i) + (j + 1) * L(8) +
+             8) >> 4;
+    } else if (mode == 3) {
+        v = L(j);
+    } else if (mode == 4) {
+        v = A(i);
+    } else if (mode == 5) {
+        int k = i + j;
+        v = (k == 14) ? (A(14) + 3 * A(15) + 2) >> 2
+                      : (A(k) + 2 * A(k + 1) + A(k + 2) + 2) >> 2;
+    } else if (mode == 6) {
+        if (i > j) { int k = i - j; v = (A(k - 2) + 2 * A(k - 1) + A(k) + 2) >> 2; }
+        else if (i < j) { int k = j - i; v = (L(k - 2) + 2 * L(k - 1) + L(k) + 2) >> 2; }
+        else v = (A(0) + 2 * tl + L(0) + 2) >> 2;
+    } else if (mode == 7) {
+        int z = 2 * i - j, k = i - (j >> 1);
+        if (z >= 0 && (z & 1) == 0) v = (A(k - 1) + A(k) + 1) >> 1;
+        else if (z >= 0) v = (A(k - 2) + 2 * A(k - 1) + A(k) + 2) >> 2;
+        else if (z == -1) v = (L(0) + 2 * tl + A(0) + 2) >> 2;
+        else { int q = j - 2 * i; v = (L(q - 1) + 2 * L(q - 2) + L(q - 3) + 2) >> 2; }
+    } else {
+        int z = 2 * j - i, k = j - (i >> 1);
+        if (z >= 0 && (z & 1) == 0) v = (L(k - 1) + L(k) + 1) >> 1;
+        else if (z >= 0) v = (L(k - 2) + 2 * L(k - 1) + L(k) + 2) >> 2;
+        else if (z == -1) v = (A(0) + 2 * tl + L(0) + 2) >> 2;
+        else { int q = i - 2 * j; v = (A(q - 1) + 2 * A(q - 2) + A(q - 3) + 2) >> 2; }
+    }
+    #undef A
+    #undef L
+    s_P[j * 8 + i] = v;
+}
+
+int mode_at(int plane, int b) {
+    uint idx = g_tile * 3u * 64u + uint(plane) * 64u + uint(b);
+    uint w = idx >> 2;
+    if (w >= uint(modeb.v.length())) return 0;
+    return int((modeb.v[w] >> ((idx & 3u) * 8u)) & 0xffu);
+}
+
+void residual_blocks_dir(uint lid, int plane) {
+    // The full 8x8 raster dependency of SYNTAX.md 7.4: block (bx, by) reads the
+    // reconstruction of every block before it, including the one up and to the
+    // right.  There is no wavefront to exploit inside a tile at 8x8 -- the
+    // dependency chain is the raster order itself -- so the blocks are serial
+    // and the 64 lanes go wide inside each one.  Restriction A (dropping the
+    // top-right reference, ref/RESULTS-intra.md section 5) would allow an
+    // anti-diagonal wavefront of up to 8 blocks; it is not conformant, so it
+    // is not what this kernel does.
+    for (uint i = lid; i < uint(g_size * g_size); i += uint(NXE_E3_WG))
+        s_recon[i] = 0;
+    barrier();
+
+    for (int b = 0; b < g_ndc; ++b) {
+        int by = b / g_nb, bx = b % g_nb;
+        int mode = mode_at(plane, b);
+
+        if (lid == 0u) {
+            s_refA[0] = refs_at(bx, by, bx * 8 - 1, by * 8 - 1);
+            s_refL[0] = s_refA[0];
+        }
+        if (lid >= 1u && lid < 17u) {
+            int k = int(lid) - 1;
+            s_refA[1 + k] = refs_at(bx, by, bx * 8 + k, by * 8 - 1);
+            s_refL[1 + k] = refs_at(bx, by, bx * 8 - 1, by * 8 + k);
+        }
+        if (lid < 64u) {
+            int i = int(lid) & 7, j = int(lid) >> 3;
+            int x = bx * 8 + i, y = by * 8 + j;
+            int v = sample_at(y * g_size + x);
+            if (fp.dir_layer != 0u) v -= pred_at(x, y);
+            s_tgt[j * 8 + i] = v;
+        }
+        barrier();
+
+        predict_block(mode, bx, by, lid);
+        barrier();
+        if (lid < 64u) s_res[lid] = s_tgt[lid] - s_P[lid];
+        barrier();
+
+        // Quantise, using group 0 of the shared transform scratch.
+        if (g_tskip != 0) {
+            if (lid < 64u) {
+                int t = nxe_dequant_step(g_qp, 16);
+                s_orig[0][lid] = s_res[lid];
+                s_q[0][lid] = nxe_quantize(s_res[lid], t, t / 3);
+            }
+            barrier();
+        } else {
+            if (lid < 8u) {
+                ivec4 slo, shi;
+                NXE_GATHER8(s_res, int(lid) * 8, slo, shi);
+                fdct_group_pass1(0, int(lid), slo, shi);
+            }
+            barrier();
+            if (lid < 8u) {
+                fdct_group_pass2(0, int(lid));
+                for (int c = 0; c < 8; ++c) {
+                    int idx = c * 8 + int(lid);
+                    int t = step_at(idx);
+                    s_q[0][idx] = nxe_quantize(s_orig[0][idx], t, t / 3);
+                }
+            }
+            barrier();
+        }
+        if (g_sdh != 0 && lid == 0u) hide_sign_unit(1, 64, g_tskip != 0, 0);
+        barrier();
+        if (lid < 8u) store_levels(g_coefoff + g_ndc + b * 64, int(lid) * 8, 8, 1);
+
+        // residual_block: dequantise and inverse transform, then the running
+        // reconstruction the next block will read.
+        if (g_tskip != 0) {
+            if (lid < 64u) {
+                int t = nxe_dequant_step(g_qp, 16);
+                s_res[lid] = nxe_dequant(s_q[0][lid], t);
+            }
+            barrier();
+        } else {
+            if (lid < 64u) s_blk[0][lid] = nxe_dequant(s_q[0][lid], step_at(int(lid)));
+            barrier();
+            if (lid < 8u) {
+                ivec4 ilo, ihi, olo, ohi;
+                NXE_GATHER8(s_blk[0], int(lid) * 8, ilo, ihi);
+                nxe_idct8_1d(ilo, ihi, olo, ohi);
+                NXE_SCATTER8_RS(s_dca, int(lid), 8, olo, ohi, 64, 7);
+            }
+            barrier();
+            if (lid < 8u) {
+                ivec4 ilo, ihi, olo, ohi;
+                NXE_GATHER8(s_dca, int(lid) * 8, ilo, ihi);
+                nxe_idct8_1d(ilo, ihi, olo, ohi);
+                NXE_SCATTER8_RS(s_res, int(lid), 8, olo, ohi, 4096, 13);
+            }
+            barrier();
+        }
+        if (lid < 64u) {
+            int i = int(lid) & 7, j = int(lid) >> 3;
+            int x = bx * 8 + i, y = by * 8 + j;
+            int v = s_P[j * 8 + i] + s_res[j * 8 + i];
+            int rec;
+            if (fp.dir_layer != 0u) {
+                int base = pred_at(x, y);
+                rec = nxe_clamp(base + v, 0, g_maxval) - base;
+            } else {
+                rec = nxe_clamp(v, 0, g_maxval);
+            }
+            s_recon[y * g_size + x] = rec;
+        }
+        barrier();
+    }
+    // s_recon is internal to the plane: E3's product is the coefficients.  A
+    // future E3b that writes the encoder's reference picture reads it instead.
+}
+
+// -------------------------------------------------------------------- main
+void main() {
+    uint lid = gl_LocalInvocationID.x;
+    nxe_init_tables(lid, uint(NXE_E3_WG));
+    barrier();
+    g_tile = gl_WorkGroupID.x;
+    if (g_tile >= fp.ntiles) return;
+    nxe_tile_job job = jobs[g_tile];
+
+    const int qp_base = nxe_clamp(int(fp.base_qp) + job.qp_delta, 0, 63);
+    g_coefbase = g_tile * uint(NXE_TILE_COEF_WORDS);
+    g_tskip = int(job.tskip);
+    g_sdh = int(fp.sdh);
+
+    // Plane word bases, derived exactly as the host lays the buffer out.  The
+    // running base is carried through the plane loop below rather than
+    // precomputed into a uint[NXE_MAX_PLANES]: the planes are visited in the
+    // same order either way, and a local array indexed by the loop counter is
+    // the construct docs/ADRENO-RULES.md exists to keep out.
+    uint pbase = 0u;
+
+    for (int p = 0; p < NXE_MAX_PLANES; ++p) {
+        g_chroma = (p == 1 || p == 2);
+        g_size = nxe_plane_size(job.chroma444, job.res_level, p);
+        g_nb = g_size / 8;
+        g_ndc = g_nb * g_nb;
+        g_qp = g_chroma ? nxe_clamp(qp_base + fp.chroma_qp_off, 0, 63) : qp_base;
+        g_maxval = (fp.ycocgr != 0u && g_chroma) ? 511 : 255;
+        g_dcoff = (fp.ycocgr != 0u && g_chroma) ? 256 : 128;
+        g_wmsel = job.wm_id == 0u ? -1 : int(g_chroma ? 3u : job.wm_id);
+        // Captured before the pass calls below, which are free to move the
+        // globals; the next plane's base must not depend on that.
+        const uint plane_words = fp.ntiles * uint(g_size * g_size / 2);
+        g_srcbase = pbase + g_tile * uint(g_size * g_size / 2);
+        g_coefoff = nxe_plane_coef_offset(job.chroma444, job.res_level, p);
+
+        dc_plane(lid);
+        if (NXE_SC_INTRA_DIR != 0) residual_blocks_dir(lid, p);
+        else residual_blocks(lid);
+        barrier();
+
+        pbase += plane_words;
+    }
+}

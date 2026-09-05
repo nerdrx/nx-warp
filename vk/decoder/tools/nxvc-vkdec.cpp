@@ -31,7 +31,21 @@ void usage() {
         "                         a value other than 0 decodes a conformant\n"
         "                         stream to different pixels.\n"
         "  --tile-sort            group Pass B's workgroups by tile shape\n"
+        "  --unorm 0|1            write the 8-bit output through UNORM images\n"
+        "                         instead of integer ones.  Bit-identical\n"
+        "                         either way (tests/vk-decoder/unorm proves\n"
+        "                         it per driver); default on for Android,\n"
+        "                         where an integer storage image costs about\n"
+        "                         3x a normalised one\n"
         "  --stats                per-frame timing to stderr\n"
+        "  --dense                the pre-ADR-0026 dense coefficient layout\n"
+        "  --repeat N             decode the first frame N times and report\n"
+        "                         the best per-pass device time.  A timing\n"
+        "                         loop that needs no re-encode: push one\n"
+        "                         .nxv and measure the kernels over it\n"
+        "  --no-out               skip the readback and the output file.\n"
+        "                         With --repeat this leaves the two\n"
+        "                         dispatches and nothing else in the submit\n"
         "  --quiet\n"
         "exit 0 decoded, 1 error, 2 usage, 77 no usable Vulkan ICD\n");
 }
@@ -50,6 +64,11 @@ int main(int argc, char **argv) {
     // _set_tile_sort in <nxvc/nxvc_vk.h>.  --dir-sched is a BITSTREAM
     // property: anything but 0 decodes a normal stream to different pixels.
     int dir_sched = 0, tile_sort = 0;
+    // A timing loop over one frame.  The device timestamps are per pass and
+    // already exclude the readback, but the readback shares the submission,
+    // so --no-out is what makes the measured submit contain the two
+    // dispatches alone.
+    int repeat = 0, no_out = 0, dense = 0;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         auto val = [&]() -> const char * {
@@ -72,13 +91,20 @@ int main(int argc, char **argv) {
         else if (a == "--lds") lds = 1;
         else if (a == "--dir-sched") dir_sched = std::atoi(val());
         else if (a == "--tile-sort") tile_sort = 1;
+        else if (a == "--repeat") repeat = std::atoi(val());
+        else if (a == "--no-out") no_out = 1;
+        else if (a == "--dense") dense = 1;
+        // The decoder reads this at create time.  It is an environment
+        // variable rather than a create_info field because the store format
+        // is a device-performance decision, not part of the C ABI's contract.
+        else if (a == "--unorm") ::setenv("NXVC_VKD_UNORM", val(), 1);
         else if (a == "-h" || a == "--help") { usage(); return 0; }
         else {
             std::fprintf(stderr, "unknown option %s\n", a.c_str());
             return 2;
         }
     }
-    if (in.empty() || out.empty()) { usage(); return 2; }
+    if (in.empty() || (out.empty() && !no_out)) { usage(); return 2; }
     if (!icd.empty()) {
 #ifdef _WIN32
         _putenv_s("VK_DRIVER_FILES", icd.c_str());
@@ -104,8 +130,9 @@ int main(int argc, char **argv) {
 
     nxvc_vkd_create_info ci;
     nxvc_vk_decoder_create_info_default(&ci);
-    ci.flags = (uint32_t)NXVC_VKD_FLAG_READBACK |
-               (lds ? (uint32_t)NXVC_VKD_FLAG_LDS_FALLBACK : 0u);
+    ci.flags = (no_out ? 0u : (uint32_t)NXVC_VKD_FLAG_READBACK) |
+               (lds ? (uint32_t)NXVC_VKD_FLAG_LDS_FALLBACK : 0u) |
+               (dense ? (uint32_t)NXVC_VKD_FLAG_DENSE_COEF : 0u);
     ci.device_name = device.empty() ? nullptr : device.c_str();
     ci.output_format = format == "rgba8"      ? NXVC_VKD_OUT_RGBA8
                        : format == "rgb10a2"  ? NXVC_VKD_OUT_RGB10A2
@@ -164,12 +191,48 @@ int main(int argc, char **argv) {
     std::vector<uint8_t> Y((size_t)yw * yh), U((size_t)cw * ch),
         V((size_t)cw * ch), A((size_t)yw * yh, 255);
 
-    std::FILE *fo = std::fopen(out.c_str(), "wb");
-    if (!fo) {
-        std::perror("open output");
-        nxvc_vk_decoder_destroy(dec);
-        return 1;
+    std::FILE *fo = nullptr;
+    if (!no_out) {
+        fo = std::fopen(out.c_str(), "wb");
+        if (!fo) {
+            std::perror("open output");
+            nxvc_vk_decoder_destroy(dec);
+            return 1;
+        }
     }
+
+    // --repeat: one frame, decoded N times, best per-pass device time.  The
+    // timestamps are the decoder's own, so this measures exactly what the
+    // bench in the conformance harness measures without paying for an encode.
+    if (repeat > 0) {
+        double bestA = 1e9, bestB = 1e9, bestG = 1e9, bestT = 1e9;
+        nxvc_vkd_stats s{};
+        for (int i = 0; i < repeat; ++i) {
+            st = nxvc_vk_decode_frame(dec, data.data() + off,
+                                      data.size() - off, &consumed);
+            if (st != NXVC_VKD_OK) {
+                std::fprintf(stderr, "repeat %d: %s\n", i,
+                             nxvc_vk_decoder_last_error(dec));
+                if (fo) std::fclose(fo);
+                nxvc_vk_decoder_destroy(dec);
+                return st == NXVC_VKD_ERR_UNSUPPORTED ? 77 : 1;
+            }
+            nxvc_vk_decoder_stats(dec, &s);
+            if (s.pass_a_ms < bestA) bestA = s.pass_a_ms;
+            if (s.pass_b_ms < bestB) bestB = s.pass_b_ms;
+            if (s.gpu_ms < bestG) bestG = s.gpu_ms;
+            if (s.total_ms < bestT) bestT = s.total_ms;
+        }
+        std::printf("repeat %d on %s: %u tiles, %llu B frame, %u dispatch(es)\n"
+                    "  best  passA %.3f  passB %.3f  gpu %.3f  wall %.3f ms\n",
+                    repeat, nxvc_vk_decoder_device_name(dec), s.tiles,
+                    (unsigned long long)s.frame_bytes, s.dispatches, bestA,
+                    bestB, bestG, bestT);
+        if (fo) std::fclose(fo);
+        nxvc_vk_decoder_destroy(dec);
+        return 0;
+    }
+
     int n = 0, rc = 0;
     while (off < data.size() && (frames < 0 || n < frames)) {
         st = nxvc_vk_decode_frame(dec, data.data() + off, data.size() - off,
@@ -180,29 +243,31 @@ int main(int argc, char **argv) {
             rc = st == NXVC_VKD_ERR_UNSUPPORTED ? 77 : 1;
             break;
         }
-        uint8_t *planes[4] = {Y.data(), U.data(), V.data(), A.data()};
-        int32_t strides[4] = {(int32_t)yw, (int32_t)cw, (int32_t)cw,
-                              (int32_t)yw};
-        st = nxvc_vk_decoder_read_planes(dec, planes, strides);
-        if (st != NXVC_VKD_OK) {
-            std::fprintf(stderr, "readback: %s\n",
-                         nxvc_vk_decoder_last_error(dec));
-            rc = 1;
-            break;
-        }
-        std::fwrite(Y.data(), 1, Y.size(), fo);
-        if (nv12) {
-            std::vector<uint8_t> uv(U.size() * 2);
-            for (size_t i = 0; i < U.size(); ++i) {
-                uv[i * 2] = U[i];
-                uv[i * 2 + 1] = V[i];
+        if (fo) {
+            uint8_t *planes[4] = {Y.data(), U.data(), V.data(), A.data()};
+            int32_t strides[4] = {(int32_t)yw, (int32_t)cw, (int32_t)cw,
+                                  (int32_t)yw};
+            st = nxvc_vk_decoder_read_planes(dec, planes, strides);
+            if (st != NXVC_VKD_OK) {
+                std::fprintf(stderr, "readback: %s\n",
+                             nxvc_vk_decoder_last_error(dec));
+                rc = 1;
+                break;
             }
-            std::fwrite(uv.data(), 1, uv.size(), fo);
-        } else {
-            std::fwrite(U.data(), 1, U.size(), fo);
-            std::fwrite(V.data(), 1, V.size(), fo);
+            std::fwrite(Y.data(), 1, Y.size(), fo);
+            if (nv12) {
+                std::vector<uint8_t> uv(U.size() * 2);
+                for (size_t i = 0; i < U.size(); ++i) {
+                    uv[i * 2] = U[i];
+                    uv[i * 2 + 1] = V[i];
+                }
+                std::fwrite(uv.data(), 1, uv.size(), fo);
+            } else {
+                std::fwrite(U.data(), 1, U.size(), fo);
+                std::fwrite(V.data(), 1, V.size(), fo);
+            }
+            if (si.alpha) std::fwrite(A.data(), 1, A.size(), fo);
         }
-        if (si.alpha) std::fwrite(A.data(), 1, A.size(), fo);
         if (stats) {
             nxvc_vkd_stats s;
             nxvc_vk_decoder_stats(dec, &s);
@@ -218,7 +283,7 @@ int main(int argc, char **argv) {
         off += consumed;
         ++n;
     }
-    std::fclose(fo);
+    if (fo) std::fclose(fo);
     if (!quiet && rc == 0)
         std::printf("%d frame(s), %ux%u %s%s on %s\n", n, yw, yh, want,
                     si.alpha ? " +alpha" : "",

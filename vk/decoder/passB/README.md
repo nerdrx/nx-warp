@@ -11,7 +11,7 @@ syntax_constants.h      every normative constant, shared by GLSL and C++
 passB_layout.h          the Pass A -> Pass B SSBO layout, shared by both
 passB_model.{h,cpp}     line-for-line CPU model of the kernel
 tools/nxvc-passB-test   headless harness: CPU-vs-GPU compare, timing, traffic
-cmake/gen_spv.cmake     glslc -> C array
+(the SPIR-V build rule is the tree-wide vk/common/cmake/nxvc_gen_spv.cmake)
 ```
 
 Tests live in `tests/vk-decoder/passB/` and are registered as `vk.passB.*`.
@@ -157,6 +157,15 @@ make that safe.
 Only the last configuration does not fit a 32 KB device; the harness reports it
 as a skip rather than failing. Everything the Pico 4 target actually streams
 fits.
+
+**Do not spend effort shrinking this.** 12.5 KB is two workgroups per 32 KB
+Adreno 650 SP and the obvious move is to get under 10.6 KB for three, but the
+pass is not occupancy-limited: padding the allocation to 17.6 KB and then to
+30.8 KB — one workgroup per SP either way — cost 0.08 ms of a 22.3 ms pass at
+QP 24 and nothing at QP 36. If halving residency is free, tripling it is worth
+nothing. `../README.md`, "What was not the problem", has the numbers. What the
+pass *is* limited by is LDS and image traffic: load count in the predictor,
+store count in the output.
 
 ### Portability
 

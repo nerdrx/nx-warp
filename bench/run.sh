@@ -29,8 +29,9 @@ export ANDROID_HOME="${ANDROID_HOME:-/run/media/nerdrx/Lex/claude/tools/android-
 export ANDROID_SDK_ROOT="$ANDROID_HOME"
 
 # Every compile stays out of the user's way: idle scheduling class, four cores.
-NICE=(chrt -i 0 taskset -c 20-23 nice -n 19)
-if ! command -v chrt >/dev/null 2>&1; then NICE=(nice -n 19); fi
+# shellcheck source=../scripts/cpu-discipline.sh
+. "$(dirname "$(readlink -f "$0")")/../scripts/cpu-discipline.sh"
+nx_cpu_prefix 20-23
 
 ARGS="$*"
 SKIP_BUILD="${NXB_SKIP_BUILD:-0}"
@@ -72,8 +73,21 @@ echo "==> installing"
 adb "${DEV[@]}" install -r -g "$APK" >/dev/null
 
 # The gate wants the display active for the whole run (PAPER 3.4), and a
-# 10-minute thermal pass outlives any sane screen timeout.
-adb "${DEV[@]}" shell svc power stayon usb >/dev/null 2>&1 || true
+# 10-minute thermal pass outlives any sane screen timeout. A Pico that has
+# dozed off parks the GPU at its minimum OPP (305 MHz on the Adreno 650) and
+# every number in the run comes out three times too slow, silently -- so the
+# wake-up is not optional and it happens before every launch, not just once.
+wake_device() {
+  adb "${DEV[@]}" shell "input keyevent KEYCODE_WAKEUP; svc power stayon usb" \
+      >/dev/null 2>&1 || true
+}
+# The clock the run actually got. Printed into the log before and after so a
+# thermally-throttled or asleep run is visible in the artefact, not just live.
+gpuclk() {
+  adb "${DEV[@]}" shell 'cat /sys/class/kgsl/kgsl-3d0/gpuclk 2>/dev/null \
+      || echo "(gpuclk unreadable)"' 2>/dev/null | tr -d '\r'
+}
+wake_device
 
 mkdir -p "$OUT"
 STAMP="$(date +%Y%m%d-%H%M%S)"
@@ -85,6 +99,8 @@ LOCAL_LOG="$OUT/phase0-$DEVNAME-$STAMP.log"
 save_logs() {
   if [ "$(adb "${DEV[@]}" get-state 2>/dev/null)" = "device" ]; then
     {
+      echo "--- gpu clock: before=${GPUCLK_BEFORE:-?} after=$(gpuclk) ---"
+      echo
       echo "--- logcat: nxwarp-bench ---"
       adb "${DEV[@]}" logcat -d -s nxwarp-bench 2>/dev/null || true
       echo
@@ -102,6 +118,9 @@ save_logs() {
 echo "==> running: ${ARGS:-<defaults: K1..K5>}"
 adb "${DEV[@]}" shell am force-stop "$PKG" >/dev/null 2>&1 || true
 adb "${DEV[@]}" shell run-as "$PKG" rm -f "$REMOTE_JSON" >/dev/null 2>&1 || true
+wake_device
+GPUCLK_BEFORE="$(gpuclk)"
+echo "    gpu clock before the run: $GPUCLK_BEFORE"
 adb "${DEV[@]}" logcat -c >/dev/null 2>&1 || true
 adb "${DEV[@]}" logcat -c -b crash >/dev/null 2>&1 || true
 
@@ -118,12 +137,40 @@ if echo "$START_OUT" | grep -qiE "error|exception"; then
   exit 1
 fi
 
+# The pid of the process we just launched. "bench done" is matched against it,
+# because `logcat -c` is advisory -- on this device it routinely leaves the
+# previous run's lines in the buffer, and an unmatched grep then declares
+# victory instantly and pulls a JSON that was never written.
+RUN_PID=""
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  # `|| true` because adb propagates pidof's exit 1 and `set -o pipefail` then
+  # turns "the app has not started yet" into a silent death of this script.
+  RUN_PID="$(adb "${DEV[@]}" shell pidof "$PKG" 2>/dev/null | tr -d '\r' | awk '{print $1}' || true)"
+  # Not `[ -n ... ] && break`: under `set -e` a false test as the last command
+  # of the loop body kills the script instead of polling again.
+  if [ -n "$RUN_PID" ]; then break; fi
+  sleep 1
+done
+if [ -z "$RUN_PID" ]; then
+  echo "the app did not appear in the process table after am start" >&2
+  save_logs
+  exit 1
+fi
+echo "    app pid: $RUN_PID"
+
+# logcat's own pid column, so a stale "bench done" from an earlier pid cannot
+# satisfy the wait.
+run_finished() {
+  adb "${DEV[@]}" logcat -d -v pid -s nxwarp-bench 2>/dev/null \
+    | grep "bench done" | grep -qw "$RUN_PID"
+}
+
 # --- wait for the run to finish, echoing progress
 echo "==> waiting for the run to finish (Ctrl-C to give up; the app keeps going)"
 DEADLINE=$(( $(date +%s) + ${NXB_TIMEOUT:-3600} ))
 DONE=0
 while [ "$(date +%s)" -lt "$DEADLINE" ]; do
-  if adb "${DEV[@]}" logcat -d -s nxwarp-bench 2>/dev/null | grep -q "bench done"; then
+  if run_finished; then
     DONE=1
     break
   fi
@@ -138,7 +185,7 @@ while [ "$(date +%s)" -lt "$DEADLINE" ]; do
 
   if ! adb "${DEV[@]}" shell pidof "$PKG" >/dev/null 2>&1; then
     # Process gone: either it finished between polls or it died.
-    if adb "${DEV[@]}" logcat -d -s nxwarp-bench 2>/dev/null | grep -q "bench done"; then
+    if run_finished; then
       DONE=1
     else
       echo "the app exited without finishing" >&2
@@ -161,15 +208,28 @@ fi
 
 save_logs
 
-# Debug APK, so run-as reaches the app's files dir without root.
-if ! adb "${DEV[@]}" exec-out run-as "$PKG" cat "$REMOTE_JSON" > "$LOCAL_JSON" 2>/dev/null \
-   || [ ! -s "$LOCAL_JSON" ]; then
-  echo "could not pull $REMOTE_JSON via run-as; trying the app's external path" >&2
+# `adb exec-out` folds the device's stderr into stdout, so a failed `cat` does
+# not fail the pull -- it writes "cat: ...: No such file" into the result file
+# and everything downstream then chokes on a 57-byte "JSON". Every candidate
+# path is therefore checked for actually being JSON, not merely non-empty.
+looks_like_json() { [ -s "$1" ] && head -c 1 "$1" | grep -q '{'; }
+
+adb "${DEV[@]}" exec-out run-as "$PKG" cat "$REMOTE_JSON" > "$LOCAL_JSON" 2>/dev/null || true
+if ! looks_like_json "$LOCAL_JSON"; then
+  echo "run-as did not return JSON (got: $(head -c 120 "$LOCAL_JSON" 2>/dev/null))" >&2
+  echo "trying the app's external path" >&2
   adb "${DEV[@]}" exec-out cat "/sdcard/Android/data/$PKG/files/nxwarp-phase0.json" \
       > "$LOCAL_JSON" 2>/dev/null || true
 fi
-if [ ! -s "$LOCAL_JSON" ]; then
-  echo "no result JSON was produced; see $LOCAL_LOG" >&2
+if ! looks_like_json "$LOCAL_JSON"; then
+  # Last resort: the app prints the same table it serialises, so a run whose
+  # file we cannot reach is still readable. Not a substitute for the JSON --
+  # it is what turns "no result" into "here is what the device measured".
+  echo "no result JSON could be pulled; falling back to the logcat table" >&2
+  rm -f "$LOCAL_JSON"
+  echo "==> log : $LOCAL_LOG"
+  sed -n '/--- logcat: nxwarp-bench ---/,/--- logcat: crash buffer ---/p' "$LOCAL_LOG" \
+    | sed 's/^[^:]*nxwarp-bench[^:]*: //'
   exit 1
 fi
 

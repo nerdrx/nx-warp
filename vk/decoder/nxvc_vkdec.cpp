@@ -19,6 +19,7 @@
 #include <chrono>
 #include <cstdarg>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <map>
 #include <string>
@@ -31,6 +32,7 @@
 
 #include "rans_decode.spv.h"
 #include "reconstruct.spv.h"
+#include "reconstruct_v1.spv.h"
 
 namespace {
 
@@ -79,6 +81,16 @@ struct nxvc_vk_decoder {
     VkPhysicalDeviceMemoryProperties memProps{};
     uint32_t subgroup_size = 0;
     bool has_size_control = false;
+    // VK_KHR_pipeline_executable_properties: the driver's own account of what
+    // it compiled -- registers, spill, shared memory, private memory.  PAPER
+    // 3.2.3 asks for it where available.  It is opt-in
+    // (NXVC_VKD_SHADER_STATS=1) because CAPTURE_STATISTICS is a pipeline
+    // creation flag and a driver is allowed to compile differently with it
+    // set, so it must not be on in a timed run.
+    bool has_exec_props = false;
+    bool want_shader_stats = false;
+    PFN_vkGetPipelineExecutablePropertiesKHR fpExecProps = nullptr;
+    PFN_vkGetPipelineExecutableStatisticsKHR fpExecStats = nullptr;
     bool have_timestamps = false;
     float ts_period = 0.f;
 
@@ -102,12 +114,30 @@ struct nxvc_vk_decoder {
     VkCommandBuffer cmd = VK_NULL_HANDLE;
     VkSemaphore timeline = VK_NULL_HANDLE;
     uint64_t timeline_value = 0;
+    // vkWaitSemaphores is core in 1.2 and an extension entry point on 1.1
+    // (VK_KHR_timeline_semaphore).  Android's libvulkan.so stub for API 29
+    // exports neither, so it is always resolved through the device rather
+    // than linked -- which is also what an adopted device needs.
+    PFN_vkWaitSemaphores fpWaitSemaphores = nullptr;
+    // Fallback for a driver that advertises VK_KHR_timeline_semaphore and
+    // its feature bit but refuses to create one -- which the Pico 4's Adreno
+    // 650 driver (1.1.128, build 10/31/22) does, returning 5 from
+    // vkCreateSemaphore for a timeline type while binary semaphores work.
+    // The decode path only ever needs "has this frame finished", so a fence
+    // answers it exactly.  nxvc_vk_decoder_timeline() then returns
+    // VK_NULL_HANDLE and a compositor must wait through
+    // nxvc_vk_decoder_wait() instead.
+    VkFence fence = VK_NULL_HANDLE;
+    bool fence_pending = false;
     VkQueryPool queries = VK_NULL_HANDLE;
 
     VkDescriptorPool dpool = VK_NULL_HANDLE;
     VkDescriptorSetLayout dslA = VK_NULL_HANDLE, dslB = VK_NULL_HANDLE;
     VkPipelineLayout plA = VK_NULL_HANDLE, plB = VK_NULL_HANDLE;
     VkShaderModule smA = VK_NULL_HANDLE, smB = VK_NULL_HANDLE;
+    // Pass B without the directional-intra wavefront, for a v1 frame.  Same
+    // source, built with NXVW_INTRA_DIR=0; see passB/reconstruct.comp.
+    VkShaderModule smBv1 = VK_NULL_HANDLE;
     VkDescriptorSet dsetA = VK_NULL_HANDLE, dsetB = VK_NULL_HANDLE;
     std::map<uint32_t, VkPipeline> pipesA;  // key: lanes
     // key: (format << 40) | (dirSched << 32) | storeWords
@@ -121,6 +151,17 @@ struct nxvc_vk_decoder {
     Buf bULen, bULenHost;
     std::vector<uint32_t> order;   // workgroup index -> tile index
     Img imgRgba, imgRgb10, imgLuma, imgCbCr;
+    // [unorm] The same three 8-bit stores through normalised images.  Only
+    // one group is ever real; the other is a 1x1 placeholder.
+    Img imgRgbaN, imgLumaN, imgCbCrN;
+    // 1 = Pass B writes the 8-bit stores through the UNORM images.  Off by
+    // default on every platform; NXVC_VKD_UNORM=1 or --unorm 1 turns it on.
+    // Exact either way -- the choice is performance only.
+    uint32_t unorm_store = 0;
+    // The image Pass B actually wrote, per store, whichever group is live.
+    const Img &outRgba() const { return unorm_store ? imgRgbaN : imgRgba; }
+    const Img &outLuma() const { return unorm_store ? imgLumaN : imgLuma; }
+    const Img &outCbCr() const { return unorm_store ? imgCbCrN : imgCbCr; }
 
     // ---- stream state
     bool have_stream = false;
@@ -272,10 +313,28 @@ bool name_matches(const char *name, const char *want) {
     return a.find(b) != std::string::npos;
 }
 
+bool has_device_ext(VkPhysicalDevice pd, const char *want) {
+    uint32_t n = 0;
+    vkEnumerateDeviceExtensionProperties(pd, nullptr, &n, nullptr);
+    std::vector<VkExtensionProperties> es(n);
+    if (n) vkEnumerateDeviceExtensionProperties(pd, nullptr, &n, es.data());
+    for (const auto &e : es)
+        if (std::strcmp(e.extensionName, want) == 0) return true;
+    return false;
+}
+
 nxvc_vkd_status create_device(D *d, const nxvc_vkd_create_info *ci) {
     VkApplicationInfo app{VK_STRUCTURE_TYPE_APPLICATION_INFO};
     app.pApplicationName = "nxvc_vk_decoder";
-    app.apiVersion = VK_API_VERSION_1_3;
+    // Ask for no more than the loader supports.  Android's 1.1 loader fails
+    // vkCreateInstance outright on a 1.3 request, and the Pico 4's loader is
+    // 1.1.  vkEnumerateInstanceVersion is itself 1.1; on a 1.0 loader the
+    // symbol is absent and 1.0 is the answer.
+    uint32_t loader = VK_API_VERSION_1_0;
+    if (auto fp = (PFN_vkEnumerateInstanceVersion)vkGetInstanceProcAddr(
+            VK_NULL_HANDLE, "vkEnumerateInstanceVersion"))
+        fp(&loader);
+    app.apiVersion = loader < VK_API_VERSION_1_3 ? loader : VK_API_VERSION_1_3;
     VkInstanceCreateInfo ii{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
     ii.pApplicationInfo = &app;
     const char *layer = "VK_LAYER_KHRONOS_validation";
@@ -296,11 +355,15 @@ nxvc_vkd_status create_device(D *d, const nxvc_vkd_create_info *ci) {
     for (VkPhysicalDevice pd : devs) {
         VkPhysicalDeviceProperties p{};
         vkGetPhysicalDeviceProperties(pd, &p);
-        // Pass A stores int16 and the decoder signals a timeline semaphore,
-        // both core from 1.2; the self-created path does not carry the 1.1
-        // extension fallbacks because every target driver is 1.2 or newer.
-        // An adopted device (create_info.device) bypasses all of this.
-        if (p.apiVersion < VK_API_VERSION_1_2) continue;
+        // Pass A stores int16 (core 1.1: shaderInt16 +
+        // storageBuffer16BitAccess) and the decoder signals a timeline
+        // semaphore, which is core in 1.2 and VK_KHR_timeline_semaphore on
+        // 1.1.  The Pico 4's Adreno 650 driver is 1.1.128 and has the
+        // extension, so 1.1 plus that extension is the floor.
+        if (p.apiVersion < VK_API_VERSION_1_1) continue;
+        if (p.apiVersion < VK_API_VERSION_1_2 &&
+            !has_device_ext(pd, VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME))
+            continue;
         if (!name_matches(p.deviceName, ci->device_name)) continue;
         uint32_t qn = 0;
         vkGetPhysicalDeviceQueueFamilyProperties(pd, &qn, nullptr);
@@ -316,32 +379,43 @@ nxvc_vkd_status create_device(D *d, const nxvc_vkd_create_info *ci) {
     }
     if (!d->phys)
         return seterr(d, NXVC_VKD_ERR_NO_DEVICE,
-                      "no Vulkan 1.2 device with a compute queue%s%s",
+                      "no Vulkan 1.1 device with timeline semaphores and a "
+                      "compute queue%s%s",
                       ci->device_name ? " matching " : "",
                       ci->device_name ? ci->device_name : "");
 
     VkPhysicalDeviceProperties props{};
     vkGetPhysicalDeviceProperties(d->phys, &props);
     const bool has13 = props.apiVersion >= VK_API_VERSION_1_3;
+    const bool has12 = props.apiVersion >= VK_API_VERSION_1_2;
 
     VkPhysicalDeviceVulkan13Features f13{
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
     VkPhysicalDeviceVulkan12Features f12{
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
     f12.pNext = has13 ? (void *)&f13 : nullptr;
+    // The aggregate VkPhysicalDeviceVulkan1xFeatures structs are all 1.2
+    // additions -- including the one named "Vulkan11" -- so a 1.1 device has
+    // to be asked with the core-1.1 structs it actually knows: 16-bit storage
+    // and timeline semaphores come from these two instead.
+    VkPhysicalDeviceTimelineSemaphoreFeatures fts{
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES};
+    VkPhysicalDevice16BitStorageFeatures f16{
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES};
+    f16.pNext = &fts;
     VkPhysicalDeviceVulkan11Features f11{
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES};
     f11.pNext = &f12;
     VkPhysicalDeviceFeatures2 f2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
-    f2.pNext = &f11;
+    f2.pNext = has12 ? (void *)&f11 : (void *)&f16;
     vkGetPhysicalDeviceFeatures2(d->phys, &f2);
     if (!f2.features.shaderInt16)
         return seterr(d, NXVC_VKD_ERR_NO_DEVICE,
                       "%s lacks shaderInt16", props.deviceName);
-    if (!f11.storageBuffer16BitAccess)
+    if (!(has12 ? f11.storageBuffer16BitAccess : f16.storageBuffer16BitAccess))
         return seterr(d, NXVC_VKD_ERR_NO_DEVICE,
                       "%s lacks storageBuffer16BitAccess", props.deviceName);
-    if (!f12.timelineSemaphore)
+    if (!(has12 ? f12.timelineSemaphore : fts.timelineSemaphore))
         return seterr(d, NXVC_VKD_ERR_NO_DEVICE,
                       "%s lacks timelineSemaphore", props.deviceName);
     d->has_size_control = has13 && f13.subgroupSizeControl &&
@@ -361,25 +435,107 @@ nxvc_vkd_status create_device(D *d, const nxvc_vkd_create_info *ci) {
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
     e12.timelineSemaphore = VK_TRUE;
     e12.pNext = has13 ? (void *)&e13 : nullptr;
+    VkPhysicalDeviceTimelineSemaphoreFeatures ets{
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES};
+    ets.timelineSemaphore = VK_TRUE;
+    VkPhysicalDevice16BitStorageFeatures e16{
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES};
+    e16.storageBuffer16BitAccess = VK_TRUE;
+    e16.pNext = &ets;
     VkPhysicalDeviceVulkan11Features e11{
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES};
     e11.storageBuffer16BitAccess = VK_TRUE;
     e11.pNext = &e12;
     VkPhysicalDeviceFeatures2 e2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
     e2.features.shaderInt16 = VK_TRUE;
-    e2.pNext = &e11;
+    e2.pNext = has12 ? (void *)&e11 : (void *)&e16;
 
+    // The extension only has to be asked for on a 1.1 device; on 1.2+ it is
+    // core and naming it is redundant (and refused by some loaders).
+    std::vector<const char *> devExts;
+    if (!has12) devExts.push_back(VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME);
+    // The driver's own shader statistics, opt-in.  The feature struct has to
+    // be chained or the extension is enabled and unusable.
+    VkPhysicalDevicePipelineExecutablePropertiesFeaturesKHR epf{
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PIPELINE_EXECUTABLE_PROPERTIES_FEATURES_KHR};
+    if (d->want_shader_stats &&
+        has_device_ext(d->phys,
+                       VK_KHR_PIPELINE_EXECUTABLE_PROPERTIES_EXTENSION_NAME)) {
+        devExts.push_back(VK_KHR_PIPELINE_EXECUTABLE_PROPERTIES_EXTENSION_NAME);
+        epf.pipelineExecutableInfo = VK_TRUE;
+        epf.pNext = (void *)e2.pNext;
+        e2.pNext = &epf;
+        d->has_exec_props = true;
+    }
     VkDeviceCreateInfo di{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
     di.pNext = &e2;
     di.queueCreateInfoCount = 1;
     di.pQueueCreateInfos = &qi;
+    if (!devExts.empty()) {
+        di.enabledExtensionCount = (uint32_t)devExts.size();
+        di.ppEnabledExtensionNames = devExts.data();
+    }
     r = vkCreateDevice(d->phys, &di, nullptr, &d->dev);
     if (r != VK_SUCCESS)
         return seterr(d, NXVC_VKD_ERR_VULKAN, "vkCreateDevice failed: %d",
                       (int)r);
     d->own_device = true;
     vkGetDeviceQueue(d->dev, d->qfam, 0, &d->queue);
+    if (d->has_exec_props) {
+        d->fpExecProps = (PFN_vkGetPipelineExecutablePropertiesKHR)
+            vkGetDeviceProcAddr(d->dev, "vkGetPipelineExecutablePropertiesKHR");
+        d->fpExecStats = (PFN_vkGetPipelineExecutableStatisticsKHR)
+            vkGetDeviceProcAddr(d->dev, "vkGetPipelineExecutableStatisticsKHR");
+        if (!d->fpExecProps || !d->fpExecStats) d->has_exec_props = false;
+    }
     return NXVC_VKD_OK;
+}
+
+// The driver's own account of a compiled pipeline, to stderr.  Registers,
+// spill and private memory are the three numbers that decide whether a kernel
+// this size fits an Adreno wave; nothing here is on any timed path.
+void dump_shader_stats(D *d, VkPipeline p, const char *what) {
+    if (!d->has_exec_props || !p) return;
+    VkPipelineInfoKHR pi{VK_STRUCTURE_TYPE_PIPELINE_INFO_KHR};
+    pi.pipeline = p;
+    uint32_t n = 0;
+    if (d->fpExecProps(d->dev, &pi, &n, nullptr) != VK_SUCCESS || !n) return;
+    std::vector<VkPipelineExecutablePropertiesKHR> eps(
+        n, {VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_PROPERTIES_KHR});
+    d->fpExecProps(d->dev, &pi, &n, eps.data());
+    for (uint32_t e = 0; e < n; ++e) {
+        VkPipelineExecutableInfoKHR ei{
+            VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_INFO_KHR};
+        ei.pipeline = p;
+        ei.executableIndex = e;
+        uint32_t sn = 0;
+        if (d->fpExecStats(d->dev, &ei, &sn, nullptr) != VK_SUCCESS) continue;
+        std::vector<VkPipelineExecutableStatisticKHR> ss(
+            sn, {VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_STATISTIC_KHR});
+        d->fpExecStats(d->dev, &ei, &sn, ss.data());
+        std::fprintf(stderr, "[shader-stats] %s / %s (%s), subgroup %u\n", what,
+                     eps[e].name, eps[e].description, eps[e].subgroupSize);
+        for (uint32_t i = 0; i < sn; ++i) {
+            const auto &st = ss[i];
+            switch (st.format) {
+            case VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_BOOL32_KHR:
+                std::fprintf(stderr, "    %-40s %s\n", st.name,
+                             st.value.b32 ? "true" : "false");
+                break;
+            case VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_INT64_KHR:
+                std::fprintf(stderr, "    %-40s %lld\n", st.name,
+                             (long long)st.value.i64);
+                break;
+            case VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_UINT64_KHR:
+                std::fprintf(stderr, "    %-40s %llu\n", st.name,
+                             (unsigned long long)st.value.u64);
+                break;
+            default:
+                std::fprintf(stderr, "    %-40s %f\n", st.name, st.value.f64);
+                break;
+            }
+        }
+    }
 }
 
 nxvc_vkd_status probe_device(D *d) {
@@ -403,6 +559,19 @@ nxvc_vkd_status probe_device(D *d) {
         d->read_ptr_mode = nxwarp_passA::kReadPtrLdsFallback;
     if (d->flags & NXVC_VKD_FLAG_LDS_FALLBACK)
         d->read_ptr_mode = nxwarp_passA::kReadPtrLdsFallback;
+    // [unorm] Off by default everywhere, including Android.  The conversion
+    // is exact on all three drivers (tests/vk-decoder/unorm), so this is
+    // purely a performance question, and the performance did not survive
+    // contact with the device: -7 % of Pass B at QP 24, +2 % at QP 36, and
+    // nothing at all with INTRA_DIR on (vk/decoder/README.md, "The UNORM
+    // store").  Against that, the switch changes the VkFormat that
+    // nxvc_vk_decoder_images() hands out, which every consumer of the image
+    // sees -- the WiVRn NX client samples it directly.  A format change
+    // visible across the ABI needs more than a 7 % Pass B win on a pass that
+    // is 30x over its frame budget either way, so it stays opt-in.
+    if (const char *e = std::getenv("NXVC_VKD_UNORM"))
+        d->unorm_store = (e[0] == '1') ? 1u : 0u;
+
     if (d->props.limits.maxComputeWorkGroupInvocations < 256)
         return seterr(d, NXVC_VKD_ERR_UNSUPPORTED,
                       "device allows only %u workgroup invocations, Pass B "
@@ -436,10 +605,11 @@ nxvc_vkd_status make_layouts(D *d) {
     // workgroup -> tile map) and [sparse] 9 (unit lengths).  The images keep
     // their bindings so nothing that already referenced them has to move.
     {
-        VkDescriptorSetLayoutBinding b[10]{};
-        for (int i = 0; i < 10; ++i) {
+        // [unorm] and 10-12, the normalised twins of 3, 5 and 6.
+        VkDescriptorSetLayoutBinding b[13]{};
+        for (int i = 0; i < 13; ++i) {
             b[i].binding = (uint32_t)i;
-            b[i].descriptorType = (i >= 3 && i <= 6)
+            b[i].descriptorType = ((i >= 3 && i <= 6) || i >= 10)
                                       ? VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
                                       : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
             b[i].descriptorCount = 1;
@@ -447,7 +617,7 @@ nxvc_vkd_status make_layouts(D *d) {
         }
         VkDescriptorSetLayoutCreateInfo ci{
             VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
-        ci.bindingCount = 10;
+        ci.bindingCount = 13;
         ci.pBindings = b;
         VKTRY(d, vkCreateDescriptorSetLayout(d->dev, &ci, nullptr, &d->dslB));
     }
@@ -475,9 +645,18 @@ nxvc_vkd_status make_layouts(D *d) {
     sm.codeSize = sizeof(reconstruct_spv);
     sm.pCode = reconstruct_spv;
     VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smB));
+    sm.codeSize = sizeof(reconstruct_v1_spv);
+    sm.pCode = reconstruct_v1_spv;
+    VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smBv1));
 
-    VkDescriptorPoolSize sz[2] = {{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 12},
-                                  {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 4}};
+    // Pass A's 8 storage buffers plus Pass B's 6 (bindings 0-2, 7-9) is 14,
+    // not 12; bindings 8 and 9 arrived with the tile map and the sparse unit
+    // lengths and this count did not follow.  RADV and lavapipe hand out
+    // descriptors past the declared pool size, so the shortfall was invisible
+    // on both; the Adreno 650 driver returns VK_ERROR_OUT_OF_POOL_MEMORY,
+    // which is the conformant answer.
+    VkDescriptorPoolSize sz[2] = {{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 14},
+                                  {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 7}};
     VkDescriptorPoolCreateInfo dp{
         VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
     dp.maxSets = 2;
@@ -520,6 +699,8 @@ nxvc_vkd_status pipeline_a(D *d, uint32_t lanes, VkPipeline *out) {
     // descriptor array, which is how the frame's tiles are grouped by lane
     // count without an extra push constant.
     ci.flags = VK_PIPELINE_CREATE_DISPATCH_BASE_BIT;
+    if (d->has_exec_props)
+        ci.flags |= VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR;
     ci.stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
     ci.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
     ci.stage.module = d->smA;
@@ -535,13 +716,22 @@ nxvc_vkd_status pipeline_a(D *d, uint32_t lanes, VkPipeline *out) {
                                       &p));
     d->pipesA[lanes] = p;
     *out = p;
+    if (d->has_exec_props) {
+        char tag[64];
+        std::snprintf(tag, sizeof tag, "passA lanes=%u mode=%u tpg=%u", lanes,
+                      mode, tpg);
+        dump_shader_stats(d, p, tag);
+    }
     return NXVC_VKD_OK;
 }
 
 nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2, int32_t sparse,
-                           uint32_t store_words, VkPipeline *out) {
+                           uint32_t store_words, int32_t intra_dir,
+                           VkPipeline *out) {
     const uint32_t sched = d->dir_sched;
-    uint64_t key = ((uint64_t)(uint32_t)sparse << 48) |
+    uint64_t key = ((uint64_t)(uint32_t)intra_dir << 56) |
+                   ((uint64_t)d->unorm_store << 52) |
+                   ((uint64_t)(uint32_t)sparse << 48) |
                    ((uint64_t)(uint32_t)(fmt2 + 1) << 44) |
                    ((uint64_t)fmt << 40) | ((uint64_t)sched << 32) | store_words;
     auto it = d->pipesB.find(key);
@@ -554,16 +744,19 @@ nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2, int32_t sparse,
         return seterr(d, NXVC_VKD_ERR_UNSUPPORTED,
                       "Pass B needs %zu B of shared memory, device offers %u B",
                       lds, d->props.limits.maxComputeSharedMemorySize);
-    const int32_t data[5] = {(int32_t)fmt, (int32_t)store_words, (int32_t)sched,
-                             fmt2, sparse};
-    VkSpecializationMapEntry me[5] = {
-        {0, 0, 4}, {1, 4, 4}, {2, 8, 4}, {3, 12, 4}, {4, 16, 4}};
-    VkSpecializationInfo spec{5, me, sizeof(data), data};
+    const int32_t data[6] = {(int32_t)fmt,  (int32_t)store_words,
+                             (int32_t)sched, fmt2,
+                             sparse,         (int32_t)d->unorm_store};
+    VkSpecializationMapEntry me[6] = {{0, 0, 4},  {1, 4, 4},  {2, 8, 4},
+                                      {3, 12, 4}, {4, 16, 4}, {5, 20, 4}};
+    VkSpecializationInfo spec{6, me, sizeof(data), data};
     VkComputePipelineCreateInfo ci{
         VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
+    if (d->has_exec_props)
+        ci.flags |= VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR;
     ci.stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
     ci.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-    ci.stage.module = d->smB;
+    ci.stage.module = intra_dir != 0 ? d->smB : d->smBv1;
     ci.stage.pName = "main";
     ci.stage.pSpecializationInfo = &spec;
     ci.layout = d->plB;
@@ -572,6 +765,14 @@ nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2, int32_t sparse,
                                       &p));
     d->pipesB[key] = p;
     *out = p;
+    if (d->has_exec_props) {
+        char tag[96];
+        std::snprintf(tag, sizeof tag,
+                      "passB fmt=%u fmt2=%d sched=%u storeWords=%u lds=%zuB "
+                      "intraDir=%d",
+                      fmt, fmt2, sched, store_words, lds, intra_dir);
+        dump_shader_stats(d, p, tag);
+    }
     return NXVC_VKD_OK;
 }
 
@@ -631,28 +832,49 @@ nxvc_vkd_status make_resources(D *d) {
                           d->need_alpha_pass;
     const bool needRgb10 = d->out_format == (uint32_t)nxvw::kOutRgb10A2;
     const bool needYuv = d->out_format == (uint32_t)nxvw::kOutYcbcr420;
-    if (needRgba && (st = check_storage_format(d, VK_FORMAT_R8G8B8A8_UINT)))
+    // [unorm] Exactly one of the two 8-bit store groups is real.
+    const bool uI = d->unorm_store == 0;
+    if (uI && needRgba && (st = check_storage_format(d, VK_FORMAT_R8G8B8A8_UINT)))
         return st;
     if (needRgb10 &&
         (st = check_storage_format(d, VK_FORMAT_A2B10G10R10_UINT_PACK32)))
         return st;
-    if (needYuv) {
+    if (uI && needYuv) {
         if ((st = check_storage_format(d, VK_FORMAT_R8_UINT))) return st;
         if ((st = check_storage_format(d, VK_FORMAT_R8G8_UINT))) return st;
     }
     // Unused bindings still have to point at a real storage image, so the
     // formats the frame does not write get a 1x1 placeholder.
     if ((st = make_img(d, d->imgRgba, VK_FORMAT_R8G8B8A8_UINT,
-                       needRgba ? W : 1, needRgba ? H : 1)))
+                       (uI && needRgba) ? W : 1, (uI && needRgba) ? H : 1)))
         return st;
     if ((st = make_img(d, d->imgRgb10, VK_FORMAT_A2B10G10R10_UINT_PACK32,
                        needRgb10 ? W : 1, needRgb10 ? H : 1)))
         return st;
-    if ((st = make_img(d, d->imgLuma, VK_FORMAT_R8_UINT, needYuv ? W : 1,
-                       needYuv ? H : 1)))
+    if ((st = make_img(d, d->imgLuma, VK_FORMAT_R8_UINT,
+                       (uI && needYuv) ? W : 1, (uI && needYuv) ? H : 1)))
         return st;
-    if ((st = make_img(d, d->imgCbCr, VK_FORMAT_R8G8_UINT, needYuv ? CW : 1,
-                       needYuv ? CH : 1)))
+    if ((st = make_img(d, d->imgCbCr, VK_FORMAT_R8G8_UINT,
+                       (uI && needYuv) ? CW : 1, (uI && needYuv) ? CH : 1)))
+        return st;
+    // [unorm] The normalised twins.  Whichever group Pass B is not compiled
+    // for shrinks to a 1x1 placeholder, so exactly one full-size copy of each
+    // plane exists at any time and the memory cost is unchanged.
+    const bool uN = d->unorm_store != 0;
+    if (uN && needRgba && (st = check_storage_format(d, VK_FORMAT_R8G8B8A8_UNORM)))
+        return st;
+    if (uN && needYuv) {
+        if ((st = check_storage_format(d, VK_FORMAT_R8_UNORM))) return st;
+        if ((st = check_storage_format(d, VK_FORMAT_R8G8_UNORM))) return st;
+    }
+    if ((st = make_img(d, d->imgRgbaN, VK_FORMAT_R8G8B8A8_UNORM,
+                       (uN && needRgba) ? W : 1, (uN && needRgba) ? H : 1)))
+        return st;
+    if ((st = make_img(d, d->imgLumaN, VK_FORMAT_R8_UNORM,
+                       (uN && needYuv) ? W : 1, (uN && needYuv) ? H : 1)))
+        return st;
+    if ((st = make_img(d, d->imgCbCrN, VK_FORMAT_R8G8_UNORM,
+                       (uN && needYuv) ? CW : 1, (uN && needYuv) ? CH : 1)))
         return st;
 
     // ---- buffers
@@ -666,13 +888,18 @@ nxvc_vkd_status make_resources(D *d) {
     // Host-visible: one uint per tile, written once by Pass A and read on the
     // CPU right after the wait, so it costs nothing to keep it mappable.
     // One uint per *descriptor slot*, which is the padded, lane-grouped array
-    // Pass A dispatches over -- not the tile count.
-    if ((st = make_buf(d, d->bStatus, (VkDeviceSize)(ntiles + 64) * 4,
+    // Pass A dispatches over -- not the tile count.  The slack is derived from
+    // the workgroup shape (nxs_desc_slots), because it is exactly the sum of
+    // the six groups' alignment padding and therefore doubles when the shape
+    // does; a fixed 64 was already under the 76 that 16 tiles per group can
+    // need and badly under 32's 152.
+    const VkDeviceSize descSlots =
+        (VkDeviceSize)nxwarp_passA::nxs_desc_slots(ntiles);
+    if ((st = make_buf(d, d->bStatus, descSlots * 4,
                        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, true)))
         return st;
     if ((st = make_buf(d, d->bDesc,
-                       (VkDeviceSize)(ntiles + 64) *
-                           nxwarp_passA::kTileDescUints * 4,
+                       descSlots * nxwarp_passA::kTileDescUints * 4,
                        kSsbo, false)))
         return st;
     if ((st = make_buf(d, d->bTables,
@@ -742,7 +969,11 @@ nxvc_vkd_status make_resources(D *d) {
         {VK_NULL_HANDLE, d->imgRgb10.view, VK_IMAGE_LAYOUT_GENERAL},
         {VK_NULL_HANDLE, d->imgLuma.view, VK_IMAGE_LAYOUT_GENERAL},
         {VK_NULL_HANDLE, d->imgCbCr.view, VK_IMAGE_LAYOUT_GENERAL}};
-    VkWriteDescriptorSet w[18]{};
+    VkDescriptorImageInfo imN[3] = {
+        {VK_NULL_HANDLE, d->imgRgbaN.view, VK_IMAGE_LAYOUT_GENERAL},
+        {VK_NULL_HANDLE, d->imgLumaN.view, VK_IMAGE_LAYOUT_GENERAL},
+        {VK_NULL_HANDLE, d->imgCbCrN.view, VK_IMAGE_LAYOUT_GENERAL}};
+    VkWriteDescriptorSet w[21]{};
     uint32_t nw = 0;
     for (int i = 0; i < 8; ++i) {
         w[nw] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
@@ -778,6 +1009,15 @@ nxvc_vkd_status make_resources(D *d) {
         w[nw].descriptorCount = 1;
         w[nw].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         w[nw].pBufferInfo = &b2[i];
+        ++nw;
+    }
+    for (int i = 0; i < 3; ++i) {
+        w[nw] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        w[nw].dstSet = d->dsetB;
+        w[nw].dstBinding = (uint32_t)(10 + i);
+        w[nw].descriptorCount = 1;
+        w[nw].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        w[nw].pImageInfo = &imN[i];
         ++nw;
     }
     vkUpdateDescriptorSets(d->dev, nw, w, 0, nullptr);
@@ -894,6 +1134,12 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_create(
     if (!d) return NXVC_VKD_ERR_NOMEM;
     d->want_output = ci->output_format;
     d->flags = ci->flags;
+    // Opt-in, and only on a device this library creates: the statistics
+    // require a device extension and a pipeline creation flag, and the flag
+    // may change what the driver compiles, so it must never be on in a run
+    // whose numbers are quoted.
+    if (const char *e = std::getenv("NXVC_VKD_SHADER_STATS"))
+        d->want_shader_stats = (e[0] == '1');
 
     nxvc_vkd_status st;
     if (ci->device) {
@@ -932,16 +1178,30 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_create(
         return seterr(d, NXVC_VKD_ERR_VULKAN, "vkAllocateCommandBuffers failed");
     }
 
+    // Core name first, then the KHR alias a 1.1 device exposes.
+    d->fpWaitSemaphores = (PFN_vkWaitSemaphores)vkGetDeviceProcAddr(
+        d->dev, "vkWaitSemaphores");
+    if (!d->fpWaitSemaphores)
+        d->fpWaitSemaphores = (PFN_vkWaitSemaphores)vkGetDeviceProcAddr(
+            d->dev, "vkWaitSemaphoresKHR");
+
     VkSemaphoreTypeCreateInfo sti{
         VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO};
     sti.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
     sti.initialValue = 0;
     VkSemaphoreCreateInfo sci{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
     sci.pNext = &sti;
-    if (vkCreateSemaphore(d->dev, &sci, nullptr, &d->timeline) != VK_SUCCESS) {
-        *out = d;
-        return seterr(d, NXVC_VKD_ERR_UNSUPPORTED,
-                      "timeline semaphores are not available");
+    if (!d->fpWaitSemaphores ||
+        vkCreateSemaphore(d->dev, &sci, nullptr, &d->timeline) != VK_SUCCESS) {
+        d->timeline = VK_NULL_HANDLE;
+        VkFenceCreateInfo fi{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+        if (vkCreateFence(d->dev, &fi, nullptr, &d->fence) != VK_SUCCESS) {
+            *out = d;
+            return seterr(d, NXVC_VKD_ERR_UNSUPPORTED,
+                          "neither a timeline semaphore nor a fence could be "
+                          "created on %s",
+                          d->props.deviceName);
+        }
     }
 
     if (d->have_timestamps) {
@@ -968,6 +1228,7 @@ extern "C" void nxvc_vk_decoder_destroy(nxvc_vk_decoder *d) {
         for (auto &kv : d->pipesB) vkDestroyPipeline(d->dev, kv.second, nullptr);
         if (d->smA) vkDestroyShaderModule(d->dev, d->smA, nullptr);
         if (d->smB) vkDestroyShaderModule(d->dev, d->smB, nullptr);
+        if (d->smBv1) vkDestroyShaderModule(d->dev, d->smBv1, nullptr);
         if (d->plA) vkDestroyPipelineLayout(d->dev, d->plA, nullptr);
         if (d->plB) vkDestroyPipelineLayout(d->dev, d->plB, nullptr);
         if (d->dpool) vkDestroyDescriptorPool(d->dev, d->dpool, nullptr);
@@ -975,13 +1236,15 @@ extern "C" void nxvc_vk_decoder_destroy(nxvc_vk_decoder *d) {
         if (d->dslB) vkDestroyDescriptorSetLayout(d->dev, d->dslB, nullptr);
         if (d->queries) vkDestroyQueryPool(d->dev, d->queries, nullptr);
         if (d->timeline) vkDestroySemaphore(d->dev, d->timeline, nullptr);
+        if (d->fence) vkDestroyFence(d->dev, d->fence, nullptr);
         if (d->pool) vkDestroyCommandPool(d->dev, d->pool, nullptr);
         for (Buf *b : {&d->staging, &d->bBits, &d->bDesc, &d->bTables,
                        &d->bCoef, &d->bCbf, &d->bStatus, &d->bRecs, &d->bWgt,
                        &d->bModes, &d->bOrder, &d->bRead, &d->bULen,
                        &d->bULenHost})
             destroy_buf(d, *b);
-        for (Img *i : {&d->imgRgba, &d->imgRgb10, &d->imgLuma, &d->imgCbCr})
+        for (Img *i : {&d->imgRgba, &d->imgRgb10, &d->imgLuma, &d->imgCbCr,
+                       &d->imgRgbaN, &d->imgLumaN, &d->imgCbCrN})
             destroy_img(d, *i);
         if (d->own_device) vkDestroyDevice(d->dev, nullptr);
     }
@@ -1068,12 +1331,26 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_wait(nxvc_vk_decoder *d,
                                                 uint64_t timeout_ns) {
     if (!d) return NXVC_VKD_ERR_ARG;
     if (d->timeline_value == 0) return NXVC_VKD_OK;
+    if (d->timeline == VK_NULL_HANDLE) {
+        if (!d->fence_pending) return NXVC_VKD_OK;
+        VkResult fr =
+            vkWaitForFences(d->dev, 1, &d->fence, VK_TRUE, timeout_ns);
+        if (fr == VK_TIMEOUT) return NXVC_VKD_ERR_INTERNAL;
+        if (fr != VK_SUCCESS)
+            return seterr(d, NXVC_VKD_ERR_VULKAN, "vkWaitForFences: %d",
+                          (int)fr);
+        d->fence_pending = false;
+        return NXVC_VKD_OK;
+    }
     uint64_t v = d->timeline_value;
     VkSemaphoreWaitInfo wi{VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO};
     wi.semaphoreCount = 1;
     wi.pSemaphores = &d->timeline;
     wi.pValues = &v;
-    VkResult r = vkWaitSemaphores(d->dev, &wi, timeout_ns);
+    if (!d->fpWaitSemaphores)
+        return seterr(d, NXVC_VKD_ERR_UNSUPPORTED,
+                      "vkWaitSemaphores is not available on this device");
+    VkResult r = d->fpWaitSemaphores(d->dev, &wi, timeout_ns);
     if (r == VK_TIMEOUT) return NXVC_VKD_ERR_INTERNAL;
     if (r != VK_SUCCESS)
         return seterr(d, NXVC_VKD_ERR_VULKAN, "vkWaitSemaphores: %d", (int)r);
@@ -1093,13 +1370,13 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_images(const nxvc_vk_decoder *d,
         ++o->count;
     };
     if (d->out_format == (uint32_t)nxvw::kOutYcbcr420) {
-        add(d->imgLuma);
-        add(d->imgCbCr);
-        if (d->need_alpha_pass) add(d->imgRgba);
+        add(d->outLuma());
+        add(d->outCbCr());
+        if (d->need_alpha_pass) add(d->outRgba());
     } else if (d->out_format == (uint32_t)nxvw::kOutRgb10A2) {
         add(d->imgRgb10);
     } else {
-        add(d->imgRgba);
+        add(d->outRgba());
     }
     return NXVC_VKD_OK;
 }
@@ -1234,6 +1511,9 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     image_to_general(d->cmd, d->imgRgb10.img);
     image_to_general(d->cmd, d->imgLuma.img);
     image_to_general(d->cmd, d->imgCbCr.img);
+    image_to_general(d->cmd, d->imgRgbaN.img);
+    image_to_general(d->cmd, d->imgLumaN.img);
+    image_to_general(d->cmd, d->imgCbCrN.img);
 
     // ---- Pass A: one dispatch per distinct lane count -----------------
     vkCmdBindDescriptorSets(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, d->plA, 0,
@@ -1278,7 +1558,8 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
         if ((st = pipeline_b(d, d->out_format,
                              fuse ? (int32_t)nxvw::kOutRgba8
                                   : (int32_t)nxvw::kOutNone,
-                             fp.push.sparse, storeWords, &p)))
+                             fp.push.sparse, storeWords,
+                             (int32_t)fp.push.intraDir, &p)))
             return st;
         vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, p);
         vkCmdDispatch(d->cmd, ntiles, 1, 1);
@@ -1288,7 +1569,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
         VkPipeline p;
         if ((st = pipeline_b(d, (uint32_t)nxvw::kOutRgba8,
                              (int32_t)nxvw::kOutNone, fp.push.sparse,
-                             storeWords, &p)))
+                             storeWords, (int32_t)fp.push.intraDir, &p)))
             return st;
         vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, p);
         vkCmdDispatch(d->cmd, ntiles, 1, 1);
@@ -1315,13 +1596,13 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
                                    d->bRead.buf, 1, &c);
         };
         if (d->out_format == (uint32_t)nxvw::kOutYcbcr420) {
-            grab(d->imgLuma, d->rbLuma);
-            grab(d->imgCbCr, d->rbCbCr);
-            if (d->need_alpha_pass) grab(d->imgRgba, d->rbRgba);
+            grab(d->outLuma(), d->rbLuma);
+            grab(d->outCbCr(), d->rbCbCr);
+            if (d->need_alpha_pass) grab(d->outRgba(), d->rbRgba);
         } else if (d->out_format == (uint32_t)nxvw::kOutRgb10A2) {
             grab(d->imgRgb10, d->rbRgba);
         } else {
-            grab(d->imgRgba, d->rbRgba);
+            grab(d->outRgba(), d->rbRgba);
         }
     }
     // Pass A's status words are read back with the same submission.
@@ -1362,7 +1643,16 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     su.pCommandBuffers = &d->cmd;
     su.signalSemaphoreCount = 1;
     su.pSignalSemaphores = &d->timeline;
-    VKTRY(d, vkQueueSubmit(d->queue, 1, &su, VK_NULL_HANDLE));
+    if (d->timeline == VK_NULL_HANDLE) {
+        su.pNext = nullptr;
+        su.signalSemaphoreCount = 0;
+        su.pSignalSemaphores = nullptr;
+        vkResetFences(d->dev, 1, &d->fence);
+        d->fence_pending = true;
+    }
+    VKTRY(d, vkQueueSubmit(d->queue, 1, &su,
+                           d->timeline == VK_NULL_HANDLE ? d->fence
+                                                         : VK_NULL_HANDLE));
     const double t_submit = now_ms();
 
     d->stats.parse_ms = t_parse - t0;

@@ -74,7 +74,12 @@ chrt -i 0 taskset -c 28-31 nice -n 19 <cmd>
 
 with ffmpeg additionally capped at `-threads 4`. Override the core slice with
 `NXQ_CPUS`, the thread count with `NXQ_THREADS`, or disable the prefix entirely
-with `NXQ_NO_CPU_LIMIT=1` (for CI containers without `chrt`/`taskset`).
+with `NXQ_NO_CPU_LIMIT=1`.
+
+The slice is intersected with the CPUs the process may actually run on, and
+`taskset` is dropped when the intersection is empty, so the `28-31` default
+pins on the development host and simply does not pin on a smaller machine
+instead of failing there.
 
 Run the harness itself under the same prefix.
 

@@ -49,6 +49,37 @@ layout(constant_id = 3) const int kOutSecond = kOutNone;
 //    left dynamic it costs about 10 % of Pass B on the transform-bound paths.
 //    It must match Pass A's `sparse` push constant for the same frame.
 layout(constant_id = 4) const int kSparse = 1;
+// 5: 1 = write the 8-bit stores through UNORM images (bindings 10-12) rather
+//    than the integer ones (3, 5, 6).  Bit-exact: the Vulkan conversion of a
+//    UNORM store is round(clamp(f,0,1) * 255) and of a load is v/255, so
+//    storing v/255.0 returns v for all 256 values -- proved on device, per
+//    driver, by tests/vk-decoder/unorm.  It exists because an integer storage
+//    image costs about 3x a UNORM one on Adreno (bench/README.md, "K1 is slow
+//    because the image is an integer format").  kOutRgb10A2 is unaffected and
+//    stays integer; it is a desktop path and its samples are not 8-bit.
+layout(constant_id = 5) const int kUnormStore = 0;
+// The frame's INTRA_DIR tool bit is a *build* variant, not a specialization
+// constant and no longer a push constant.  It was a push constant, which meant
+// one pipeline carried both the v1 predictor and the directional wavefront and
+// a v1 stream paid for a wavefront it never entered.  On RDNA3 that cost
+// nothing measurable; on the Adreno 650 it was most of Pass B -- the wavefront
+// is what needs predictOne()'s two 17-entry by-value reference arrays, and
+// VK_KHR_pipeline_executable_properties reports the combined kernel at a
+// 328-word register footprint against 16 for the v1 form.
+//
+// It is NOT a specialization constant, and that is measured rather than
+// stylistic: with `kIntraDir` specialized to 0 the Adreno 650 driver's own
+// dead-branch elimination produced the right pixels for every 4:2:0 stream and
+// the wrong ones for every 4:4:4 stream -- luma exact, both chroma planes
+// wrong from the second row of block means on, byte-for-byte reproducibly,
+// under -O0 as well as under the shipped pass list, and correct again the
+// moment the branch was kept reachable by an opaque condition. Compiling the
+// two forms as two modules moves the elimination into glslang and spirv-opt,
+// where all three drivers agree, and costs one more VkShaderModule.
+#ifndef NXVW_INTRA_DIR
+#define NXVW_INTRA_DIR 1
+#endif
+const int kIntraDir = NXVW_INTRA_DIR;
 
 // ------------------------------------------------------------- bindings
 layout(set = 0, binding = 0, std430) readonly buffer Coef { uint w[]; } uCoef;
@@ -71,6 +102,20 @@ layout(set = 0, binding = 8, std430) readonly buffer TileOrder { uint i[]; } uOr
 // [sparse] One byte per coding unit, LAST + 1 (0 = not coded).  See
 // passB_layout.h and passA/syntax_constants.h section 8.
 layout(set = 0, binding = 9, std430) readonly buffer UnitLens { uint w[]; } uLens;
+// [unorm] The same three 8-bit stores as bindings 3, 5 and 6 through
+// normalised images, selected by kUnormStore.  They are separate bindings
+// rather than a re-typed one because a GLSL image's format is a layout
+// qualifier and cannot follow a specialization constant.  Whichever group is
+// not selected is bound to a 1x1 placeholder, which is what the integer
+// bindings already do for the formats a frame does not write.
+layout(set = 0, binding = 10, rgba8) uniform writeonly image2D uOutRgba8N;
+layout(set = 0, binding = 11, r8)    uniform writeonly image2D uOutLumaN;
+layout(set = 0, binding = 12, rg8)   uniform writeonly image2D uOutCbCrN;
+
+// An 8-bit value through a UNORM store.  Vulkan requires the store to compute
+// round(clamp(f, 0, 1) * 255) with round-to-nearest, so v/255.0 lands on v
+// exactly for every v in [0, 255] and the round trip is the identity.
+float nxvw_unorm8(int v) { return float(v) * (1.0 / 255.0); }
 
 layout(push_constant) uniform Push { NxvwPassBPush p; } pc;
 
@@ -92,6 +137,9 @@ shared uint sPlane[kPlaneStoreWords];
 // DC plane: up to 8x8 block means, plus scratch for its second-level IDCT.
 shared int sMeans[64];
 shared int sDcTmp[64];
+// Between the two passes of the second-level DC IDCT, so neither sDcTmp nor
+// sMeans is both read and written; see the transform below.
+shared int sDcRow[64];
 // [sparse] Set when any 8x8 block of the current plane names a directional
 // mode other than 0.  Mode 0 predicts from the DC plane alone, so a plane
 // whose modes are all 0 has no dependency between blocks at all and takes the
@@ -142,10 +190,24 @@ int unitLen(int tileLenBase, int ui) {
                NXVW_UNIT_LEN_MASK);
 }
 
+// One dequantized coefficient of a transform block, by its raster position.
+int dqCoef(int blockBase, int scanId, int len, int planeQp, int wbase,
+           int pos) {
+    return dequant(coefIn(blockBase, scanId, len, pos),
+                   dequantStep(planeQp, uWgt.m[wbase + pos]));
+}
+
 // ------------------------------------------------------------- 1D IDCT
 // [REF] transform.cpp idct8_1d.  Gain 2^10 relative to the orthonormal DCT-III.
+// The eight results leave as eight scalars, not as an `out int[8]`.  A local
+// array is only a register file if every index is a compile-time constant
+// after unrolling, and the Qualcomm compiler does not always get there: it
+// puts the array in private memory instead, which is off-chip.  Scalars cannot
+// be demoted.  (VK_KHR_pipeline_executable_properties reported 532 B of
+// scratch per invocation for this kernel before the change.)
 void idct8_1d(int x0, int x1, int x2, int x3, int x4, int x5, int x6, int x7,
-              out int y[8]) {
+              out int y0, out int y1, out int y2, out int y3,
+              out int y4, out int y5, out int y6, out int y7) {
     // even part
     int t0 = (x0 + x4) * kC4;
     int t1 = (x0 - x4) * kC4;
@@ -165,26 +227,82 @@ void idct8_1d(int x0, int x1, int x2, int x3, int x4, int x5, int x6, int x7,
     // syntax_constants.h: (P +- Q) * C4 does not fit int32.
     int O1 = nxvw_mul_c4_rnd9(P + Q);
     int O2 = nxvw_mul_c4_rnd9(P - Q);
-    y[0] = e0 + O0; y[7] = e0 - O0;
-    y[1] = e1 + O1; y[6] = e1 - O1;
-    y[2] = e2 + O2; y[5] = e2 - O2;
-    y[3] = e3 + O3; y[4] = e3 - O3;
+    y0 = e0 + O0; y7 = e0 - O0;
+    y1 = e1 + O1; y6 = e1 - O1;
+    y2 = e2 + O2; y5 = e2 - O2;
+    y3 = e3 + O3; y4 = e3 - O3;
+}
+
+// The second-level IDCT's per-block-mean tail: round, shift, clamp16, then the
+// plane's DC offset and range.  [REF] reconstruct_plane.
+int dcMean(int y, int dcOff, int maxval) {
+    return clamp(dcOff + clamp16((y + kIdctRound2) >> kIdctShift2), 0, maxval);
 }
 
 // ------------------------------------------------------------ bilinear
 // [REF] transform.cpp bilinear_impl, on the shared block-mean array.
+// The x half: the two column indices and the fraction.  It depends only on
+// sx, and the planar predictor's sx is constant down a column of the tile, so
+// the caller that runs down eight rows hoists this out of its loop.
+void bilinMeansX(int nb, int sx, out int x0, out int x1, out int fx) {
+    int q = sx >> kBilinFracBits;
+    fx = sx & (kBilinOne - 1);
+    x1 = clamp(q + 1, 0, nb - 1);
+    x0 = clamp(q, 0, nb - 1);
+}
+
+// The y half and the combine, given a prepared x half.
+//
+// The product is evaluated separably -- (p00*wx0 + p01*fx)*wy0 +
+// (p10*wx0 + p11*fx)*fy -- which expands to exactly the four-term form below
+// with no intermediate rounding, so it is bit-identical and not an
+// approximation: every value is int32 and the widest intermediate is
+// 32767*16*16, far inside the range.  It is six multiplies instead of eight,
+// and sharing the y half between a thread's two columns halves the rest.
+int bilinMeansY(int nb, int sy, int x0, int x1, int fx) {
+    int q = sy >> kBilinFracBits;
+    int fy = sy & (kBilinOne - 1);
+    int r0 = clamp(q, 0, nb - 1) * nb;
+    int r1 = clamp(q + 1, 0, nb - 1) * nb;
+    int wx0 = kBilinOne - fx;
+    int top = sMeans[r0 + x0] * wx0 + sMeans[r0 + x1] * fx;
+    int bot = sMeans[r1 + x0] * wx0 + sMeans[r1 + x1] * fx;
+    return (top * (kBilinOne - fy) + bot * fy + kBilinRound) >> kBilinShift;
+}
+
+// Two horizontally adjacent samples that share an x half, from ONE set of
+// four block-mean loads.
+//
+// The planar predictor's two columns are 2s and 2s+1 of the tile, so their
+// sample positions are 2*col0 - 7 and 2*col0 - 5.  Those land in different
+// mean cells only if 2*col0 - 6 is a multiple of 16, i.e. col0 == 3 (mod 8);
+// col0 = 8*bx + 2*sub is always even, so that never happens and the two
+// columns always share x0 and x1 -- only the fraction differs.  The four
+// loads were being issued twice, and the loads are what the pass pays for:
+// halving the multiplies alone changed Pass B by nothing measurable, halving
+// these did not.
+void bilinMeansY2(int nb, int sy, int x0, int x1, int fxa, int fxb,
+                  out int va, out int vb) {
+    int q = sy >> kBilinFracBits;
+    int fy = sy & (kBilinOne - 1);
+    int r0 = clamp(q, 0, nb - 1) * nb;
+    int r1 = clamp(q + 1, 0, nb - 1) * nb;
+    int m00 = sMeans[r0 + x0], m01 = sMeans[r0 + x1];
+    int m10 = sMeans[r1 + x0], m11 = sMeans[r1 + x1];
+    int wy0 = kBilinOne - fy;
+    int wa = kBilinOne - fxa, wb = kBilinOne - fxb;
+    va = ((m00 * wa + m01 * fxa) * wy0 + (m10 * wa + m11 * fxa) * fy +
+          kBilinRound) >> kBilinShift;
+    vb = ((m00 * wb + m01 * fxb) * wy0 + (m10 * wb + m11 * fxb) * fy +
+          kBilinRound) >> kBilinShift;
+}
+
+// [REF] transform.cpp bilinear_impl, on the shared block-mean array.  One
+// definition of the arithmetic, for the callers that have no column to hoist.
 int bilinearMeans(int nb, int sx, int sy) {
-    int x0 = sx >> kBilinFracBits, y0 = sy >> kBilinFracBits;
-    int fx = sx & (kBilinOne - 1), fy = sy & (kBilinOne - 1);
-    int x1 = clamp(x0 + 1, 0, nb - 1);
-    int y1 = clamp(y0 + 1, 0, nb - 1);
-    x0 = clamp(x0, 0, nb - 1);
-    y0 = clamp(y0, 0, nb - 1);
-    int p00 = sMeans[y0 * nb + x0], p01 = sMeans[y0 * nb + x1];
-    int p10 = sMeans[y1 * nb + x0], p11 = sMeans[y1 * nb + x1];
-    int wx0 = kBilinOne - fx, wy0 = kBilinOne - fy;
-    return (p00 * wx0 * wy0 + p01 * fx * wy0 + p10 * wx0 * fy + p11 * fx * fy +
-            kBilinRound) >> kBilinShift;
+    int x0, x1, fx;
+    bilinMeansX(nb, sx, x0, x1, fx);
+    return bilinMeansY(nb, sy, x0, x1, fx);
 }
 
 // One reconstructed sample of plane p at its coded resolution.
@@ -463,7 +581,7 @@ void main() {
     // [v3] Directional intra applies to an INTRA tile of a stream that sets
     // tool bit 17.  Mode 0 reproduces the v1 predictor exactly, so a tile
     // whose modes are all 0 decodes identically either way.
-    bool dir = intra && pc.p.intraDir != 0;
+    bool dir = intra && kIntraDir != 0;
     int modeBase = tile * NXVW_MODE_WORDS_PER_TILE;
 
     int nplanes = (pc.p.alphaPresent != 0) ? 4 : 3;
@@ -471,11 +589,17 @@ void main() {
     if (alpha_mode != kAlphaCoded) ncoded = min(ncoded, 3);
 
     int tileCoefBase = tile * pc.p.coefStrideI16;
-    int planeStoreBase[4];
-    planeStoreBase[0] = 0;
-    planeStoreBase[1] = pc.p.planeWords0;
-    planeStoreBase[2] = pc.p.planeWords0 + pc.p.planeWords1;
-    planeStoreBase[3] = pc.p.planeWords0 + pc.p.planeWords1 + pc.p.planeWords2;
+    // Four scalars, not an int[4].  A local array is a register file only if
+    // the compiler can prove every index is a compile-time constant; the
+    // Qualcomm compiler puts these in private memory instead, and read them
+    // back wrong once the kernel's register footprint changed -- planes 1 and
+    // 2 of every 4:4:4 tile came out as prediction with no residual while
+    // plane 0 stayed exact.  Scalars cannot be demoted to memory.
+    int planeStoreBase0 = 0;
+    int planeStoreBase1 = pc.p.planeWords0;
+    int planeStoreBase2 = pc.p.planeWords0 + pc.p.planeWords1;
+    int planeStoreBase3 =
+        pc.p.planeWords0 + pc.p.planeWords1 + pc.p.planeWords2;
 
     int bIdx = tid >> 2;   // block index inside the plane, 0..63
     int sub = tid & 3;     // owns rows / columns 2*sub and 2*sub+1
@@ -503,7 +627,10 @@ void main() {
         bool ctChroma = (pc.p.colorTransform == kCtYCoCgR) && chroma;
         int dcOff = ctChroma ? kDcOffsetChromaCT : kDcOffset8;
         int maxval = ctChroma ? kMaxvalChromaCT : kMaxval8;
-        int store = planeStoreBase[p];
+        int store = p == 0 ? planeStoreBase0
+                  : p == 1 ? planeStoreBase1
+                  : p == 2 ? planeStoreBase2
+                           : planeStoreBase3;
 
         // ------------------------------------------------ DC plane (3.2.4)
         int dcqp = nxvw_dc_qp(planeQp);  // [marked edit] qp >> 1, was qp - 6
@@ -520,37 +647,63 @@ void main() {
                               : 0;
         barrier();
 
+        // Second-level 8x8 IDCT of the 64 block DCs.  Same two-pass structure
+        // as the block transform; 4 threads, 2 rows each.
+        //
+        // The two passes used to ping-pong between sDcTmp and sMeans, so each
+        // of those arrays was read through one transposed index expression and
+        // written through another in the same kernel.  That is the shape the
+        // Adreno 650 driver miscompiles (bench/README.md, "Adreno and
+        // spirv-opt"), and here it survives -O0, so it is the driver's own
+        // compiler rather than spirv-opt: dropping Pass B's directional branch
+        // was enough to make the chroma planes of a 4:4:4 tile come back with
+        // the wrong block means while luma stayed exact.  A third 256 B array
+        // makes the chain one-directional -- sDcTmp -> sDcRow -> sMeans, each
+        // word written once, no array both read and written -- and the offset
+        // and clamp of the old third step fold into the column pass.
         if (nb == 8 && dcLen != 0) {
-            // Second-level 8x8 IDCT of the 64 block DCs.  Same two-pass
-            // structure as the block transform; 4 threads, 2 rows each.
-            int rowv[8], y[8];
-            int tmp[8];
+            int y0, y1, y2, y3, y4, y5, y6, y7;
             if (tid < 4) {
                 for (int hf = 0; hf < 2; ++hf) {
                     int r = (tid << 1) + hf;
-                    for (int c = 0; c < 8; ++c) rowv[c] = sDcTmp[r * 8 + c];
-                    idct8_1d(rowv[0], rowv[1], rowv[2], rowv[3], rowv[4],
-                             rowv[5], rowv[6], rowv[7], y);
-                    for (int c = 0; c < 8; ++c)
-                        tmp[c] = clamp16((y[c] + kIdctRound1) >> kIdctShift1);
-                    for (int c = 0; c < 8; ++c) sMeans[c * 8 + r] = tmp[c];
+                    int b = r * 8;
+                    idct8_1d(sDcTmp[b], sDcTmp[b + 1], sDcTmp[b + 2],
+                             sDcTmp[b + 3], sDcTmp[b + 4], sDcTmp[b + 5],
+                             sDcTmp[b + 6], sDcTmp[b + 7],
+                             y0, y1, y2, y3, y4, y5, y6, y7);
+                    sDcRow[     r] = clamp16((y0 + kIdctRound1) >> kIdctShift1);
+                    sDcRow[ 8 + r] = clamp16((y1 + kIdctRound1) >> kIdctShift1);
+                    sDcRow[16 + r] = clamp16((y2 + kIdctRound1) >> kIdctShift1);
+                    sDcRow[24 + r] = clamp16((y3 + kIdctRound1) >> kIdctShift1);
+                    sDcRow[32 + r] = clamp16((y4 + kIdctRound1) >> kIdctShift1);
+                    sDcRow[40 + r] = clamp16((y5 + kIdctRound1) >> kIdctShift1);
+                    sDcRow[48 + r] = clamp16((y6 + kIdctRound1) >> kIdctShift1);
+                    sDcRow[56 + r] = clamp16((y7 + kIdctRound1) >> kIdctShift1);
                 }
             }
             barrier();
             if (tid < 4) {
                 for (int hf = 0; hf < 2; ++hf) {
                     int r = (tid << 1) + hf;
-                    for (int c = 0; c < 8; ++c) rowv[c] = sMeans[r * 8 + c];
-                    idct8_1d(rowv[0], rowv[1], rowv[2], rowv[3], rowv[4],
-                             rowv[5], rowv[6], rowv[7], y);
-                    for (int c = 0; c < 8; ++c)
-                        tmp[c] = clamp16((y[c] + kIdctRound2) >> kIdctShift2);
-                    for (int c = 0; c < 8; ++c) sDcTmp[c * 8 + r] = tmp[c];
+                    int b = r * 8;
+                    idct8_1d(sDcRow[b], sDcRow[b + 1], sDcRow[b + 2],
+                             sDcRow[b + 3], sDcRow[b + 4], sDcRow[b + 5],
+                             sDcRow[b + 6], sDcRow[b + 7],
+                             y0, y1, y2, y3, y4, y5, y6, y7);
+                    sMeans[     r] = dcMean(y0, dcOff, maxval);
+                    sMeans[ 8 + r] = dcMean(y1, dcOff, maxval);
+                    sMeans[16 + r] = dcMean(y2, dcOff, maxval);
+                    sMeans[24 + r] = dcMean(y3, dcOff, maxval);
+                    sMeans[32 + r] = dcMean(y4, dcOff, maxval);
+                    sMeans[40 + r] = dcMean(y5, dcOff, maxval);
+                    sMeans[48 + r] = dcMean(y6, dcOff, maxval);
+                    sMeans[56 + r] = dcMean(y7, dcOff, maxval);
                 }
             }
-            barrier();
+        } else {
+            barrier();  // one barrier on either arm, and the arm is uniform
+            if (tid < ndc) sMeans[tid] = clamp(dcOff + sDcTmp[tid], 0, maxval);
         }
-        if (tid < ndc) sMeans[tid] = clamp(dcOff + sDcTmp[tid], 0, maxval);
         barrier();
 
         // -------------------------------------------- residual block loop
@@ -592,19 +745,45 @@ void main() {
             // skip-tile fast path, because a tile with no coded unit has no
             // coded block either.
             if (coded) {
-                int y[8];
+                int y0, y1, y2, y3, y4, y5, y6, y7;
                 for (int hf = 0; hf < 2; ++hf) {
                     int r = (sub << 1) + hf;
-                    int q[8];
-                    for (int c = 0; c < 8; ++c) {
-                        int pos = r * 8 + c;
-                        q[c] = dequant(coefIn(blockBase, blockScan, blockLen, pos),
-                                       dequantStep(planeQp, uWgt.m[wbase + pos]));
-                    }
-                    idct8_1d(q[0], q[1], q[2], q[3], q[4], q[5], q[6], q[7], y);
-                    for (int c = 0; c < 8; ++c) {
-                        int v = clamp16((y[c] + kIdctRound1) >> kIdctShift1);
-                        if (hf == 0) res0[c] = v; else res1[c] = v;
+                    int b = r * 8;
+                    idct8_1d(dqCoef(blockBase, blockScan, blockLen, planeQp,
+                                    wbase, b),
+                             dqCoef(blockBase, blockScan, blockLen, planeQp,
+                                    wbase, b + 1),
+                             dqCoef(blockBase, blockScan, blockLen, planeQp,
+                                    wbase, b + 2),
+                             dqCoef(blockBase, blockScan, blockLen, planeQp,
+                                    wbase, b + 3),
+                             dqCoef(blockBase, blockScan, blockLen, planeQp,
+                                    wbase, b + 4),
+                             dqCoef(blockBase, blockScan, blockLen, planeQp,
+                                    wbase, b + 5),
+                             dqCoef(blockBase, blockScan, blockLen, planeQp,
+                                    wbase, b + 6),
+                             dqCoef(blockBase, blockScan, blockLen, planeQp,
+                                    wbase, b + 7),
+                             y0, y1, y2, y3, y4, y5, y6, y7);
+                    if (hf == 0) {
+                        res0[0] = clamp16((y0 + kIdctRound1) >> kIdctShift1);
+                        res0[1] = clamp16((y1 + kIdctRound1) >> kIdctShift1);
+                        res0[2] = clamp16((y2 + kIdctRound1) >> kIdctShift1);
+                        res0[3] = clamp16((y3 + kIdctRound1) >> kIdctShift1);
+                        res0[4] = clamp16((y4 + kIdctRound1) >> kIdctShift1);
+                        res0[5] = clamp16((y5 + kIdctRound1) >> kIdctShift1);
+                        res0[6] = clamp16((y6 + kIdctRound1) >> kIdctShift1);
+                        res0[7] = clamp16((y7 + kIdctRound1) >> kIdctShift1);
+                    } else {
+                        res1[0] = clamp16((y0 + kIdctRound1) >> kIdctShift1);
+                        res1[1] = clamp16((y1 + kIdctRound1) >> kIdctShift1);
+                        res1[2] = clamp16((y2 + kIdctRound1) >> kIdctShift1);
+                        res1[3] = clamp16((y3 + kIdctRound1) >> kIdctShift1);
+                        res1[4] = clamp16((y4 + kIdctRound1) >> kIdctShift1);
+                        res1[5] = clamp16((y5 + kIdctRound1) >> kIdctShift1);
+                        res1[6] = clamp16((y6 + kIdctRound1) >> kIdctShift1);
+                        res1[7] = clamp16((y7 + kIdctRound1) >> kIdctShift1);
                     }
                 }
                 // tmp[c*8 + r], r = 2*sub and 2*sub+1: block row c, columns
@@ -617,18 +796,35 @@ void main() {
             barrier();
             // Column pass: rows 2*sub, 2*sub+1 of the transposed block.
             if (coded) {
-                int y[8];
+                int y0, y1, y2, y3, y4, y5, y6, y7;
                 for (int hf = 0; hf < 2; ++hf) {
                     int r = (sub << 1) + hf;
-                    int q[8];
-                    int rowBase = ((by * 8 + r) * size + bx * 8) >> 1;
-                    for (int c = 0; c < 8; ++c)
-                        q[c] = unpack16(sPlane[store + rowBase + (c >> 1)], c & 1);
-                    idct8_1d(q[0], q[1], q[2], q[3], q[4], q[5], q[6], q[7], y);
-                    for (int c = 0; c < 8; ++c) {
-                        int v = clamp16((y[c] + kIdctRound2) >> kIdctShift2);
-                        // dst[c*8 + r]: row c, column r
-                        if (hf == 0) res0[c] = v; else res1[c] = v;
+                    int rb = store + (((by * 8 + r) * size + bx * 8) >> 1);
+                    uint w0 = sPlane[rb], w1 = sPlane[rb + 1];
+                    uint w2 = sPlane[rb + 2], w3 = sPlane[rb + 3];
+                    idct8_1d(unpack16(w0, 0), unpack16(w0, 1), unpack16(w1, 0),
+                             unpack16(w1, 1), unpack16(w2, 0), unpack16(w2, 1),
+                             unpack16(w3, 0), unpack16(w3, 1),
+                             y0, y1, y2, y3, y4, y5, y6, y7);
+                    // dst[c*8 + r]: row c, column r
+                    if (hf == 0) {
+                        res0[0] = clamp16((y0 + kIdctRound2) >> kIdctShift2);
+                        res0[1] = clamp16((y1 + kIdctRound2) >> kIdctShift2);
+                        res0[2] = clamp16((y2 + kIdctRound2) >> kIdctShift2);
+                        res0[3] = clamp16((y3 + kIdctRound2) >> kIdctShift2);
+                        res0[4] = clamp16((y4 + kIdctRound2) >> kIdctShift2);
+                        res0[5] = clamp16((y5 + kIdctRound2) >> kIdctShift2);
+                        res0[6] = clamp16((y6 + kIdctRound2) >> kIdctShift2);
+                        res0[7] = clamp16((y7 + kIdctRound2) >> kIdctShift2);
+                    } else {
+                        res1[0] = clamp16((y0 + kIdctRound2) >> kIdctShift2);
+                        res1[1] = clamp16((y1 + kIdctRound2) >> kIdctShift2);
+                        res1[2] = clamp16((y2 + kIdctRound2) >> kIdctShift2);
+                        res1[3] = clamp16((y3 + kIdctRound2) >> kIdctShift2);
+                        res1[4] = clamp16((y4 + kIdctRound2) >> kIdctShift2);
+                        res1[5] = clamp16((y5 + kIdctRound2) >> kIdctShift2);
+                        res1[6] = clamp16((y6 + kIdctRound2) >> kIdctShift2);
+                        res1[7] = clamp16((y7 + kIdctRound2) >> kIdctShift2);
                     }
                 }
             }
@@ -646,13 +842,58 @@ void main() {
         if (!useDir) {
             if (live) {
                 int col0 = bx * 8 + 2 * sub;
+                // The planar predictor samples at (2x - 7, 2y - 7), so a
+                // thread's two columns give two x halves that do not change
+                // over its eight rows.  Hoisting them, and sharing the y half
+                // between the two columns, is the whole of the saving; the
+                // arithmetic is unchanged and the output is bit-identical.
+                int px0, px1, pfx;
+                bilinMeansX(nb, kPlanarMul * col0 + kPlanarOff, px0, px1, pfx);
+                // The odd column shares px0/px1 -- see bilinMeansY2 -- so only
+                // its fraction is needed.
+                int qfx = (kPlanarMul * (col0 + 1) + kPlanarOff) &
+                          (kBilinOne - 1);
+                // The four block means a row needs change only when the row
+                // crosses a mean cell, which over a block's eight rows happens
+                // once (the same argument as for the columns: 2*y - 7 spans 14
+                // of a 16-wide cell).  Reloading them only when the row pair
+                // actually moves turns four LDS loads per row into four per
+                // block -- and the loads, not the multiplies, are what this
+                // predictor costs.
+                //
+                // The cache key is the UNCLAMPED quotient, not the clamped row
+                // base: at the top edge qy goes -1 then 0, which clamp maps to
+                // the same r0 but to different r1 (0 and nb), so keying on r0
+                // would serve the first row of the second cell stale means.
+                // 0x7fffffff is not a value qy can take.
+                int rp = 0x7fffffff;
+                int m00 = 0, m01 = 0, m10 = 0, m11 = 0;
                 for (int c = 0; c < 8; ++c) {
                     int yy = by * 8 + c;
-                    // INTER HOOK: swap bilinearMeans() for the warp predictor.
-                    int pred0 = intra ? bilinearMeans(nb, kPlanarMul * col0 + kPlanarOff,
-                                                      kPlanarMul * yy + kPlanarOff) : 0;
-                    int pred1 = intra ? bilinearMeans(nb, kPlanarMul * (col0 + 1) + kPlanarOff,
-                                                      kPlanarMul * yy + kPlanarOff) : 0;
+                    int sy = kPlanarMul * yy + kPlanarOff;
+                    int qy = sy >> kBilinFracBits;
+                    int fy = sy & (kBilinOne - 1);
+                    if (qy != rp) {
+                        int r0 = clamp(qy, 0, nb - 1) * nb;
+                        int r1 = clamp(qy + 1, 0, nb - 1) * nb;
+                        m00 = sMeans[r0 + px0];
+                        m01 = sMeans[r0 + px1];
+                        m10 = sMeans[r1 + px0];
+                        m11 = sMeans[r1 + px1];
+                        rp = qy;
+                    }
+                    // INTER HOOK: swap this predictor for the warp one.
+                    int pred0 = 0, pred1 = 0;
+                    if (intra) {
+                        int wy0 = kBilinOne - fy;
+                        int wa = kBilinOne - pfx, wb = kBilinOne - qfx;
+                        pred0 = ((m00 * wa + m01 * pfx) * wy0 +
+                                 (m10 * wa + m11 * pfx) * fy + kBilinRound) >>
+                                kBilinShift;
+                        pred1 = ((m00 * wb + m01 * qfx) * wy0 +
+                                 (m10 * wb + m11 * qfx) * fy + kBilinRound) >>
+                                kBilinShift;
+                    }
                     int s0 = clamp(pred0 + res0[c], 0, maxval);
                     int s1 = clamp(pred1 + res1[c], 0, maxval);
                     int e = yy * size + col0;
@@ -660,7 +901,9 @@ void main() {
                 }
             }
             barrier();
-        } else {
+        }
+#if NXVW_INTRA_DIR
+        else {
             // ------------------------------------------ [v3] the wavefront
             // What has to be serialized is only the prediction and the add,
             // because a block reads its neighbours' RECONSTRUCTION.  sPlane
@@ -755,21 +998,23 @@ void main() {
                 barrier();
             }
         }
+#endif
 
         coefBase += ndc + ndc * 64;
         unitBase += unitsPerPlaneExtra + ndc;
     }
 
     // ------------------------------------------------- display conversion
-    int sizeP[4];
-    int fullP[4];
-    for (int p = 0; p < 4; ++p) {
-        sizeP[p] = nxvw_plane_size(p, res_level, chroma444);
-        // [REF] plane_full_extent(): a chroma plane is half size only when the
-        // *stream* is 4:2:0; inside a 4:4:4 stream a 4:2:0 tile is upsampled
-        // straight to 64 in one step.
-        fullP[p] = ((p == 1 || p == 2) && pc.p.chroma420 != 0) ? 32 : 64;
-    }
+    // Scalars for the same reason as planeStoreBase above.
+    // [REF] plane_full_extent(): a chroma plane is half size only when the
+    // *stream* is 4:2:0; inside a 4:4:4 stream a 4:2:0 tile is upsampled
+    // straight to 64 in one step.
+    int sizeP0 = nxvw_plane_size(0, res_level, chroma444);
+    int sizeP1 = nxvw_plane_size(1, res_level, chroma444);
+    int sizeP2 = nxvw_plane_size(2, res_level, chroma444);
+    int sizeP3 = nxvw_plane_size(3, res_level, chroma444);
+    int chromaFull = pc.p.chroma420 != 0 ? 32 : 64;
+    int fullP0 = 64, fullP1 = chromaFull, fullP2 = chromaFull, fullP3 = 64;
 
     int ox = tileX * 64, oy = tileY * 64;
 
@@ -790,8 +1035,12 @@ void main() {
             int x = idx & 63, y = idx >> 6;
             int gx = ox + x, gy = oy + y;
             if (gx >= pc.p.imageW || gy >= pc.p.imageH) continue;
-            int Y = clamp(planeAtFull(planeStoreBase[0], sizeP[0], 64, x, y), 0, 255);
-            imageStore(uOutLuma, ivec2(gx, gy), uvec4(uint(Y), 0u, 0u, 0u));
+            int Y = clamp(planeAtFull(planeStoreBase0, sizeP0, 64, x, y), 0, 255);
+            if (kUnormStore != 0)
+                imageStore(uOutLumaN, ivec2(gx, gy),
+                           vec4(nxvw_unorm8(Y), 0.0, 0.0, 0.0));
+            else
+                imageStore(uOutLuma, ivec2(gx, gy), uvec4(uint(Y), 0u, 0u, 0u));
         }
         int cw = (pc.p.imageW + 1) >> 1, ch = (pc.p.imageH + 1) >> 1;
         int cox = tileX * 32, coy = tileY * 32;
@@ -800,9 +1049,13 @@ void main() {
             int x = idx & 31, y = idx >> 5;
             int gx = cox + x, gy = coy + y;
             if (gx >= cw || gy >= ch) continue;
-            int Cb = clamp(planeAtFull(planeStoreBase[1], sizeP[1], 32, x, y), 0, 255);
-            int Cr = clamp(planeAtFull(planeStoreBase[2], sizeP[2], 32, x, y), 0, 255);
-            imageStore(uOutCbCr, ivec2(gx, gy), uvec4(uint(Cb), uint(Cr), 0u, 0u));
+            int Cb = clamp(planeAtFull(planeStoreBase1, sizeP1, 32, x, y), 0, 255);
+            int Cr = clamp(planeAtFull(planeStoreBase2, sizeP2, 32, x, y), 0, 255);
+            if (kUnormStore != 0)
+                imageStore(uOutCbCrN, ivec2(gx, gy),
+                           vec4(nxvw_unorm8(Cb), nxvw_unorm8(Cr), 0.0, 0.0));
+            else
+                imageStore(uOutCbCr, ivec2(gx, gy), uvec4(uint(Cb), uint(Cr), 0u, 0u));
         }
         continue;
     }
@@ -813,9 +1066,9 @@ void main() {
         int gx = ox + x, gy = oy + y;
         if (gx >= pc.p.imageW || gy >= pc.p.imageH) continue;
 
-        int P0 = planeAtDisplay(planeStoreBase[0], sizeP[0], fullP[0], x, y);
-        int P1 = planeAtDisplay(planeStoreBase[1], sizeP[1], fullP[1], x, y);
-        int P2 = planeAtDisplay(planeStoreBase[2], sizeP[2], fullP[2], x, y);
+        int P0 = planeAtDisplay(planeStoreBase0, sizeP0, fullP0, x, y);
+        int P1 = planeAtDisplay(planeStoreBase1, sizeP1, fullP1, x, y);
+        int P2 = planeAtDisplay(planeStoreBase2, sizeP2, fullP2, x, y);
 
         int R, G, B;
         if (pc.p.colorTransform == kCtYCoCgR) {
@@ -838,7 +1091,7 @@ void main() {
         if (alpha_mode == kAlphaConstant) {
             A = nxvw_rec_alpha_value(rec.w2);
         } else if (alpha_mode == kAlphaCoded) {
-            A = clamp(planeAtDisplay(planeStoreBase[3], sizeP[3], fullP[3], x, y),
+            A = clamp(planeAtDisplay(planeStoreBase3, sizeP3, fullP3, x, y),
                       0, 255);
         }
 
@@ -847,6 +1100,10 @@ void main() {
             uvec4 v = uvec4(uint((R << 2) | (R >> 6)), uint((G << 2) | (G >> 6)),
                             uint((B << 2) | (B >> 6)), uint(A >> 6));
             imageStore(uOutRgb10a2, ivec2(gx, gy), v);
+        } else if (kUnormStore != 0) {
+            imageStore(uOutRgba8N, ivec2(gx, gy),
+                       vec4(nxvw_unorm8(R), nxvw_unorm8(G), nxvw_unorm8(B),
+                            nxvw_unorm8(A)));
         } else {
             imageStore(uOutRgba8, ivec2(gx, gy),
                        uvec4(uint(R), uint(G), uint(B), uint(A)));

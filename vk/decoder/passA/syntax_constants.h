@@ -483,20 +483,52 @@ NXS_CONST int kLiteMaxGroups = 17;
 // Dispatch shape: one workgroup is always kWorkgroupSize threads and handles
 // TILES_PER_GROUP tiles of LANES lanes each, with TILES_PER_GROUP * LANES <=
 // kWorkgroupSize and TILES_PER_GROUP <= kMaxSlots.  kTilesPerGroup is the
-// v1-default shape (8 tiles x 8 lanes).
+// build's default shape; LANES follows the tile's nsub_log2.
 //
 // [nxvc_vk_decoder glue, marked edit] LANES is specialisation constant 2 and
 // no longer fixed at 8; see rans_decode.comp.  nxs_tiles_per_group() is the
 // one place that derives the workgroup shape from a lane count.
-NXS_CONST uint kTilesPerGroup = 8;
-NXS_CONST uint kWorkgroupSize = 64;  // kTilesPerGroup * kLanes
-NXS_CONST uint kMaxSlots = 8;        // shared-array slots per workgroup
+// The workgroup shape is a build constant so it can be measured.  It was
+// 8 tiles x 8 lanes = 64 threads, one wave64.  The kernel's LDS is dominated
+// by two per-workgroup tables that do not grow with the tile count -- the 8 KB
+// cumulative-frequency sets and the 1 KB scan tables -- so widening the
+// workgroup amortises them and is the only lever on occupancy this kernel has:
+// at 64 threads and 12 KB, an Adreno 650 SP with 32 KB of LDS holds two
+// workgroups, which is two waves and no latency hiding at all on a kernel
+// whose inner loop is a dependent chain of shared-memory reads.
+//
+// Measured on a Pico 4, 2048 tiles, best of 12 with a cooldown either side:
+// 8 -> 16 -> 32 tiles per group is 153.7 -> 102.5 -> 79.8 ms at QP 24 and
+// 26.7 -> 12.8 -> 10.1 at QP 36.  32 was blocked until the descriptor array
+// was sized from this number (nxs_desc_slots) instead of a fixed allowance.
+// 64 hangs the device and is not a supported value.
+#ifndef NXVW_PASSA_TILES_PER_GROUP
+#define NXVW_PASSA_TILES_PER_GROUP 32
+#endif
+NXS_CONST uint kTilesPerGroup = NXVW_PASSA_TILES_PER_GROUP;
+NXS_CONST uint kWorkgroupSize = NXVW_PASSA_TILES_PER_GROUP * 8u;
+NXS_CONST uint kMaxSlots = NXVW_PASSA_TILES_PER_GROUP;
 NXS_CONST uint kMaxLanes = 32;       // nsub_log2 <= 5
 
 NXS_FN uint nxs_tiles_per_group(uint lanes) {
     uint t = kWorkgroupSize / lanes;
     return t > kMaxSlots ? kMaxSlots : t;
 }
+
+// Descriptor slots a frame of `ntiles` tiles can occupy.  The tiles are sorted
+// into one group per distinct nsub_log2 and each group is aligned up to its
+// own tiles-per-group so vkCmdDispatchBase can address it, so a frame that
+// uses all six lane counts pays up to tpg-1 padding slots per group.  The
+// descriptor and status buffers are indexed by descriptor slot, not by tile,
+// and must be sized from this rather than from the tile count; it grows with
+// the workgroup shape (76 slots of slack at 16 tiles per group, 152 at 32),
+// which is what a hard-coded allowance got wrong.
+NXS_FN uint nxs_desc_slack(void) {
+    uint n = 0u;
+    for (uint ns = 0u; ns <= 5u; ++ns) n += nxs_tiles_per_group(1u << ns) - 1u;
+    return n;
+}
+NXS_FN uint nxs_desc_slots(uint ntiles) { return ntiles + nxs_desc_slack(); }
 
 // ---------------------------------------------------------------------------
 // Derived helpers, valid in both languages.

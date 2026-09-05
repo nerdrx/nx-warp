@@ -87,3 +87,71 @@ The Phase 1 gate on the Pico 4 is stated against DC-plane intra plus RDO, contex
 v2 and sign hiding, not against directional intra. The desktop and future-headset
 gate includes it. spec/08 profiles must list INTRA_DIR as Full-profile optional and
 Lite-profile absent.
+
+## Revision, 2026-09-05: the Adreno 650 is measured, and A1 was wrong by 40x
+
+Point 3 said "the Pico 4 stream uses DC-plane intra until measured otherwise on
+the device". It has now been measured on the device. The decoder's conformance
+suite cross-builds for arm64 and runs as a plain executable on a Pico 4
+(Adreno 650, driver 1.1.128) -- vk/decoder/README.md, "Android" -- and the
+numbers below are best-of-10 on the same 2 x 2048^2 4:2:0 frame, 2048 tiles,
+with the GPU ramped to 587 MHz.
+
+The estimate this ADR and vk/decoder/README.md rested on was assumption A1:
+"compute and serialization scale by 20 to 30x from the 7900 XTX", hedged as
+"a floor rather than a bracket". The hedge was right and nowhere near large
+enough.
+
+| Schedule, QP 24 | RX 7900 XTX | estimate at 20-30x | **measured, Adreno 650** | actual ratio |
+|---|---|---|---|---|
+| INTRA_DIR off (DC-plane) | 0.241 ms | 4.8 - 7.2 ms | **296 - 368 ms** | 1200 - 1500x |
+| 0 -- as written | 1.183 ms | 23.7 - 35.5 ms | **1348 ms** | 1140x |
+
+and Pass A, which the same estimate made the larger pass:
+
+| Pass A | RX 7900 XTX | estimate at 20-30x | **measured, Adreno 650** | actual ratio |
+|---|---|---|---|---|
+| QP 24 | 1.26 ms | 25 - 38 ms | **402 - 415 ms** | ~330x |
+| QP 36 | 0.54 ms | 11 - 16 ms | **62 ms** | ~115x |
+
+Three things follow, and none of them changes a decision in this ADR.
+
+1. **The decisions stand, with far more room to spare than they were made
+   with.** Directional intra was 2 to 4x over an 11.1 ms budget on the
+   estimate; it is **121x** over it on the measurement (1348 ms against 11.1).
+   Points 1, 2 and 3 -- negotiate the tool by capability, restriction A as the
+   default schedule when it is on, DC-plane intra for the Pico 4 stream -- were
+   already the conservative reading and the measurement only widens the margin.
+   Nothing about the *ordering* of the schedules has been measured on device,
+   because at 1348 ms for schedule 0 the ordering is not the question.
+
+2. **A v1 stream does not fit either, and that is the new finding.** The
+   previous revision said "a v1 stream (INTRA_DIR off) fits, and comfortably".
+   It does not: DC-plane Pass B alone is 296 - 368 ms against 11.1 ms, and
+   Pass A adds another 62 - 415 ms. The whole decode is **340 ms at QP 36 and
+   830 ms at QP 24**, 30x to 75x the frame budget. This is not a schedule
+   problem and no entry in the 7.6 menu addresses it.
+
+3. **Pass B scales far worse than Pass A** -- roughly 1200x against 330x for
+   the same part -- which is the shape of a kernel limited by serialization and
+   register pressure rather than by throughput. Pass B is the kernel that takes
+   136 VGPRs and 13.3 KB of LDS on RDNA3; what an Adreno 650 does with that
+   footprint has never been looked at, and
+   `VK_KHR_pipeline_executable_properties` is present on the part and still
+   unused (bench/README.md, "Known gaps"). That is the first thing to look at,
+   and it is a *decoder* question rather than a syntax question.
+
+Point 4's two levers were taken in the previous revision and are not undone by
+this: they were real improvements on RADV and there is no reason to think they
+are not real here. They are simply an order of magnitude short of what the
+target part needs, and the gap was hidden for as long as the only numbers were
+scaled ones.
+
+**What this revision does not do is re-open the format.** The store format was
+the one lever with a measured 3x behind it (bench/README.md: an integer storage
+image costs about 3x a UNORM one on Adreno). Pass B can now write its 8-bit
+output through UNORM images, the substitution is proved exact on RADV, lavapipe
+and the Adreno 650, and it is worth **-7 % of Pass B at QP 24 and +2 % at
+QP 36** -- because Pass B is not store-bound on this part either. See
+vk/decoder/README.md, "The UNORM store". The 3x was real and it was measured on
+a pure copy kernel; Pass B is not a copy kernel.

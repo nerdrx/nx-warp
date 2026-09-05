@@ -674,13 +674,20 @@ void run_synthetic(bool quick) {
 // PAPER 3.4's decode budget, measured on the shape the headset actually
 // streams: two 2048x2048 eyes at 4:2:0, which is 2048 tiles in one frame.
 // Informational -- it never fails the test.
-int run_bench_qp(int iters, int qp, bool dense = false) {
+int run_bench_qp(int iters, int qp, bool dense = false, int intra_dir = -1) {
     Case c{"bench_2x2048sq_420", 2048, 4096, 0, 1, qp, 0, 0, 0, 3, 0, 0, 0,
            1,   0,    0, 1};
+    // A v1 stream (INTRA_DIR off) is what the Pico 4 actually streams
+    // (ADR 0025 point 3), and it is the only shape in which Pass B's store
+    // is a visible fraction of Pass B.  With the wavefront on, the store is
+    // under a percent of the pass and no store format can be measured
+    // through it.
+    c.intra_dir = intra_dir;
     std::vector<uint8_t> stream;
     std::string err;
-    std::printf("-- encoding %dx%d 4:2:0 at QP %d (%d tiles)\n", c.w, c.h, qp,
-                (c.w / 64) * (c.h / 64));
+    std::printf("-- encoding %dx%d 4:2:0 at QP %d (%d tiles), INTRA_DIR %s\n",
+                c.w, c.h, qp, (c.w / 64) * (c.h / 64),
+                intra_dir == 0 ? "off" : intra_dir == 1 ? "on" : "default");
     if (!encode_case(c, stream, err)) {
         std::printf("bench: encode failed (%s)\n", err.c_str());
         return 1;
@@ -1031,6 +1038,14 @@ int run_bench(int iters) {
 int main(int argc, char **argv) {
     bool quick = false, do_vectors = true, do_synth = true;
     int bench = 0;
+    // --bench-qp is the one-QP slice of --bench: encode the 2 x 2048^2 4:2:0
+    // frame once and time the two passes over it, nothing else.  The full
+    // --bench sweep encodes eleven such frames with the CPU reference encoder
+    // and that is an hour of a phone's CPU before a single dispatch runs, so
+    // on a device the slice is the usable form.
+    int bench_qp = -1;
+    int bench_dir = -1;   // --bench-v1 pins INTRA_DIR off
+    const char *bench_save = nullptr;  // write the bench stream and exit
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         if (a == "--vectors" && i + 1 < argc) g_vectors_dir = argv[++i];
@@ -1041,14 +1056,39 @@ int main(int argc, char **argv) {
         else if (a == "--bench") bench = i + 1 < argc && argv[i + 1][0] != '-'
                                              ? std::atoi(argv[++i])
                                              : 20;
+        else if (a == "--bench-v1") bench_dir = 0;
+        else if (a == "--bench-save" && i + 1 < argc) bench_save = argv[++i];
+        else if (a == "--bench-qp" && i + 1 < argc) {
+            bench_qp = std::atoi(argv[++i]);
+            if (!bench) bench = 10;
+        }
         else {
             std::fprintf(stderr,
-                         "usage: %s [--vectors DIR] [--quick] [--verbose]\n",
+                         "usage: %s [--vectors DIR] [--quick] [--verbose]\n"
+                         "       [--bench N] [--bench-qp QP] [--bench-v1]\n",
                          argv[0]);
             return 2;
         }
     }
     if (!g_vectors_dir) g_vectors_dir = NXVC_VECTORS_DIR;
+    if (bench_save) {
+        Case c{"bench_2x2048sq_420", 2048, 4096, 0, 1, bench_qp < 0 ? 24 : bench_qp,
+               0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 1};
+        c.intra_dir = bench_dir;
+        std::vector<uint8_t> stream;
+        std::string err;
+        if (!encode_case(c, stream, err)) {
+            std::printf("encode failed: %s\n", err.c_str());
+            return 1;
+        }
+        std::FILE *f = std::fopen(bench_save, "wb");
+        if (!f) { std::perror("open"); return 1; }
+        std::fwrite(stream.data(), 1, stream.size(), f);
+        std::fclose(f);
+        std::printf("wrote %zu B to %s\n", stream.size(), bench_save);
+        return 0;
+    }
+    if (bench_qp >= 0) return run_bench_qp(bench, bench_qp, false, bench_dir);
     if (bench) return run_bench(bench);
 
     // Probe once, so "no ICD" is one skip rather than 32 identical failures.

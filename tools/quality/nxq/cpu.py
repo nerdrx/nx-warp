@@ -8,8 +8,12 @@ The prefix is ``chrt -i 0 taskset -c <cpus> nice -n 19``.
 
 Override the slice with the ``NXQ_CPUS`` environment variable (default
 ``28-31``) and the ffmpeg thread count with ``NXQ_THREADS`` (default 4).
-Set ``NXQ_NO_CPU_LIMIT=1`` to disable the prefix entirely (useful on machines
-that lack ``chrt``/``taskset`` such as CI containers).
+Set ``NXQ_NO_CPU_LIMIT=1`` to disable the prefix entirely.
+
+The slice is intersected with the CPUs this process may actually run on, so a
+default of ``28-31`` pins on the 32-core development host and silently skips
+``taskset`` on a 2- or 4-core CI runner instead of failing with
+"taskset: failed to set pid N's affinity: Invalid argument".
 """
 
 from __future__ import annotations
@@ -34,17 +38,91 @@ def threads() -> int:
         return DEFAULT_THREADS
 
 
+def _parse_cpu_spec(spec: str) -> set[int]:
+    """Parse a ``taskset -c`` list (``"4"``, ``"4-7"``, ``"0,2,4-6"``) to a set."""
+    out: set[int] = set()
+    for part in spec.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "-" in part:
+            lo, _, hi = part.partition("-")
+            try:
+                out.update(range(int(lo), int(hi) + 1))
+            except ValueError:
+                return set()
+        else:
+            try:
+                out.add(int(part))
+            except ValueError:
+                return set()
+    return out
+
+
+def _online_cpus() -> set[int]:
+    """The CPUs this process is actually allowed to run on."""
+    try:
+        return set(os.sched_getaffinity(0))  # type: ignore[attr-defined]
+    except (AttributeError, OSError):
+        n = os.cpu_count() or 1
+        return set(range(n))
+
+
+def _compress(cpus_set: set[int]) -> str:
+    """Render a set of CPU ids back into ``taskset -c`` range syntax."""
+    ids = sorted(cpus_set)
+    runs: list[str] = []
+    start = prev = ids[0]
+    for c in ids[1:]:
+        if c == prev + 1:
+            prev = c
+            continue
+        runs.append(str(start) if start == prev else f"{start}-{prev}")
+        start = prev = c
+    runs.append(str(start) if start == prev else f"{start}-{prev}")
+    return ",".join(runs)
+
+
+def usable_cpus() -> str | None:
+    """The requested slice narrowed to CPUs that exist, or ``None``.
+
+    A fixed slice like ``28-31`` is correct on the 32-core development host and
+    nonsense on a 4-core CI runner, where ``taskset`` fails outright with
+    "Invalid argument" and takes the whole test down with it.  Intersecting the
+    request with the process's real affinity mask means the discipline still
+    applies wherever it can, and simply does not pin where it cannot.
+    """
+    wanted = _parse_cpu_spec(cpus())
+    if not wanted:
+        return None
+    online = _online_cpus()
+    usable = wanted & online
+    if not usable:
+        return None
+    return _compress(usable)
+
+
 def limiting_enabled() -> bool:
     if os.environ.get("NXQ_NO_CPU_LIMIT"):
         return False
-    return shutil.which("chrt") is not None and shutil.which("taskset") is not None
+    # Any one of the three is worth having; prefix() picks whichever exist.
+    return any(shutil.which(t) for t in ("chrt", "taskset", "nice"))
 
 
 def prefix() -> list[str]:
-    """The ``chrt -i 0 taskset -c ... nice -n 19`` prefix, or ``[]``."""
+    """The ``chrt -i 0 taskset -c ... nice -n 19`` prefix, or ``[]``.
+
+    ``taskset`` is dropped when none of the requested CPUs exist on this
+    machine; the idle scheduling class and the nice level still apply.
+    """
     if not limiting_enabled():
         return []
-    pre = ["chrt", "-i", "0", "taskset", "-c", cpus()]
+    pre: list[str] = []
+    if shutil.which("chrt"):
+        pre += ["chrt", "-i", "0"]
+    slice_ = usable_cpus()
+    if slice_ is not None and shutil.which("taskset"):
+        pre += ["taskset", "-c", slice_]
     if shutil.which("nice"):
         pre += ["nice", "-n", "19"]
     return pre

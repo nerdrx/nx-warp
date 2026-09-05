@@ -22,6 +22,12 @@ if(NOT NXB_GLSLC)
 endif()
 message(STATUS "nxwarp-bench: glslc = ${NXB_GLSLC}")
 
+# One shader-build rule for the whole tree (vk/common/cmake); it compiles with
+# -O0 and runs spirv-opt with the Adreno-safe pass list.  See
+# docs/ADRENO-RULES.md.
+set(NXB_GEN_SPV ${CMAKE_CURRENT_SOURCE_DIR}/../vk/common/cmake/nxvc_gen_spv.cmake)
+set(NXB_SPV_PASSES_CMAKE ${CMAKE_CURRENT_SOURCE_DIR}/../vk/common/cmake/NxvcShaderPasses.cmake)
+
 set(NXB_SHADER_DIR ${CMAKE_CURRENT_SOURCE_DIR}/shaders)
 set(NXB_GEN_DIR    ${CMAKE_CURRENT_BINARY_DIR}/generated)
 file(MAKE_DIRECTORY ${NXB_GEN_DIR})
@@ -38,9 +44,10 @@ function(nxb_shader name src defs)
             -DNAME=${name}
             -DINCDIR=${NXB_SHADER_DIR}
             -DDEFS=${defs}
-            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/gen_spv.cmake
+            -DSTYLE=plain
+            -P ${NXB_GEN_SPV}
     DEPENDS ${NXB_SHADER_DIR}/${src} ${NXB_SHADER_DIR}/nxb_common.glsl
-            ${CMAKE_CURRENT_SOURCE_DIR}/cmake/gen_spv.cmake
+            ${NXB_GEN_SPV} ${NXB_SPV_PASSES_CMAKE}
     COMMENT "glslc ${src} -> ${name}.spv.h"
     VERBATIM)
   set(NXB_SPV_HEADERS ${NXB_SPV_HEADERS} ${out} PARENT_SCOPE)
@@ -52,6 +59,20 @@ nxb_shader(k2b_sampler k2b_sampler.comp "")
 nxb_shader(k4_rans     k4_rans.comp     "")
 nxb_shader(k6_passc    k6_passc.comp    "")
 nxb_shader(reproject   reproject.comp   "")
+# K1 variants for the bandwidth sweep (--k1-sweep). One source, one -D set
+# each; see shaders/k1_sweep.comp and src/core/nxb_k1sweep.cpp.
+nxb_shader(k1v_base   k1_sweep.comp "-DNXB_K1_STORE=0 -DNXB_K1_WGX=8 -DNXB_K1_WGY=8")
+nxb_shader(k1v_64x1   k1_sweep.comp "-DNXB_K1_STORE=0 -DNXB_K1_WGX=64 -DNXB_K1_WGY=1")
+nxb_shader(k1v_16x16  k1_sweep.comp "-DNXB_K1_STORE=0 -DNXB_K1_WGX=16 -DNXB_K1_WGY=16")
+nxb_shader(k1v_tiled  k1_sweep.comp "-DNXB_K1_STORE=0 -DNXB_K1_WGX=64 -DNXB_K1_WGY=1 -DNXB_K1_TILED=1")
+nxb_shader(k1v_r32ui  k1_sweep.comp "-DNXB_K1_STORE=1 -DNXB_K1_WGX=64 -DNXB_K1_WGY=1")
+nxb_shader(k1v_ssbo   k1_sweep.comp "-DNXB_K1_STORE=2 -DNXB_K1_WGX=64 -DNXB_K1_WGY=1")
+nxb_shader(k1v_ssbo88 k1_sweep.comp "-DNXB_K1_STORE=2 -DNXB_K1_WGX=8 -DNXB_K1_WGY=8")
+nxb_shader(k1v_unorm  k1_sweep.comp "-DNXB_K1_STORE=3 -DNXB_K1_WGX=64 -DNXB_K1_WGY=1")
+nxb_shader(k1v_unorm88 k1_sweep.comp "-DNXB_K1_STORE=3 -DNXB_K1_WGX=8 -DNXB_K1_WGY=8")
+nxb_shader(k1v_r32ui88 k1_sweep.comp "-DNXB_K1_STORE=1 -DNXB_K1_WGX=8 -DNXB_K1_WGY=8")
+nxb_shader(k1v_ssbo1616 k1_sweep.comp "-DNXB_K1_STORE=2 -DNXB_K1_WGX=16 -DNXB_K1_WGY=16")
+
 nxb_shader(passb_k3    passb.comp       "-DNXB_PREDICT=0")
 nxb_shader(passb_k5    passb.comp       "-DNXB_PREDICT=1")
 
@@ -73,7 +94,8 @@ add_library(nxbench_core STATIC
   src/core/nxb_runner.cpp
   src/core/nxb_report.cpp
   src/core/nxb_rans.cpp
-  src/core/nxb_verify.cpp)
+  src/core/nxb_verify.cpp
+  src/core/nxb_k1sweep.cpp)
 add_dependencies(nxbench_core nxb_shaders)
 target_include_directories(nxbench_core PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/src/core ${NXB_GEN_DIR})

@@ -1,0 +1,42 @@
+/* nxe_vk.h -- the Vulkan backend of nxvc-vkenc: E3, E4 and E5 on the device.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Built on `vk_min`, the throwaway boilerplate the stats harness already uses.
+ * Buffers, descriptors and pipelines are created once per stream; a frame is
+ * one upload, one command buffer of five dispatches, one readback.  That is
+ * not the shape paper 3.6 wants in the compositor (there the source is already
+ * a device image and the output buffer is host-cached and read in place), but
+ * it is the shape a file-driven harness needs, and the dispatches in the middle
+ * are the same.
+ */
+
+#ifndef NXE_VK_H
+#define NXE_VK_H
+
+#include <string>
+
+#include "nxe_host.h"
+
+namespace nxe {
+
+int vk_list_devices();
+
+class VkEncoder {
+public:
+    struct Impl;
+    VkEncoder();
+    ~VkEncoder();
+    bool create(const Config &cfg, const Frame &f, std::string &err);
+    /* Encodes into f.out.  With `check`, every intermediate is diffed against
+     * the CPU model and a mismatch is a failure. */
+    bool encode_frame(Frame &f, uint32_t frame_number, bool check, bool quiet);
+    void bench(Frame &f, int iters);
+
+private:
+    Impl *p_;
+};
+
+}  // namespace nxe
+
+#endif /* NXE_VK_H */

@@ -1,0 +1,11 @@
+# Dependencies of the nxq quality harness.
+#
+# The floor is what the harness actually uses: numpy 1.22 is the oldest release
+# with the `numpy.typing` and Generator APIs the metrics code relies on. There
+# is deliberately no ceiling -- the harness is written to run on both numpy 1.x
+# and 2.x, because CI runs both (the C++ jobs use the distribution's
+# python3-numpy, the dedicated python job installs from here). Anything that
+# moved between the two majors is bound at import time; see the `_trapz` shim
+# in tests/test_bdrate.py.
+numpy>=1.22
+pytest>=7.0

@@ -97,6 +97,11 @@ public:
     // reference is the specification, the SPIR-V is validated against it).
     bool verifyPassA(std::string* msg);
     bool verifyPassB(std::string* msg);
+    void passBReadback(int32_t dbg, std::vector<uint8_t>& out);
+    void passBBisect(const std::vector<int16_t>& coefCpu, int scale);
+
+    // --k1-sweep: K1 variants timed one dispatch at a time. nxb_k1sweep.cpp.
+    void runK1Sweep(int reps);
 
     bool available(int kid, std::string* why) const;
     double bytesMoved(int kid) const;   // for the K1 GB/s figure
@@ -151,6 +156,20 @@ private:
     int tilesX_ = 0, tilesY_ = 0, tileCount_ = 0;
     int symsPerLane_ = 0;
     bool k6Ready_ = false;
+
+    // K1 sweep scratch: allocated by --k1-sweep only, freed straight after.
+    Image  swpU32Src_{}, swpU32Dst_{}, swpUnormDst_{};
+    Buffer swpBufSrc_{}, swpBufDst_{};
+    bool   swpAllocated_ = false;
+    void   k1SweepAlloc();
+    void   k1SweepFree();
+    double timeIsolated(Kern& k, const void* push, uint32_t pushBytes,
+                        int reps, double* hostMs);
+
+    // Pass B diagnostic dump selector, pushed straight through to the shader.
+    // Zero for every timed run; --selftest raises it only to bisect a
+    // mismatch. See NXB_DBG_* in shaders/passb.comp.
+    int32_t passBDebug_ = 0;
 };
 
 // ------------------------------------------------------------- run driver

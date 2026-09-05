@@ -30,6 +30,12 @@ import pytest
 
 from nxq import bdrate
 
+# numpy renamed ``trapz`` to ``trapezoid`` in 2.0 and kept ``trapz`` as a
+# deprecated alias; 1.x has only ``trapz``.  CI runs both (the C++ jobs use the
+# distribution's python3-numpy 1.26, the python job pip-installs 2.x), so bind
+# whichever exists rather than pinning the harness to one numpy major.
+_trapz = getattr(np, "trapezoid", None) or np.trapz
+
 # A representative four-point RD dataset (rate in kbit/s, PSNR in dB).
 RATE_A = [9487.76, 4593.60, 2486.44, 1358.24]
 PSNR_A = [40.037, 38.615, 36.845, 34.851]
@@ -47,8 +53,8 @@ def _independent_bd_rate(r1, d1, r2, d2, n=200001):
     lo = max(d1.min(), d2.min())
     hi = min(d1.max(), d2.max())
     xs = np.linspace(lo, hi, n)
-    a1 = np.trapezoid(np.polyval(p1, xs), xs) / (hi - lo)
-    a2 = np.trapezoid(np.polyval(p2, xs), xs) / (hi - lo)
+    a1 = _trapz(np.polyval(p1, xs), xs) / (hi - lo)
+    a2 = _trapz(np.polyval(p2, xs), xs) / (hi - lo)
     return (10.0 ** (a2 - a1) - 1.0) * 100.0
 
 

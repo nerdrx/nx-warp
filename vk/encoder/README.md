@@ -19,18 +19,21 @@ and the degradation ladder), §5.2 (perceptual terms), §1.3 (colour), §3.7
 | E0b `warp` | fullscreen, 8×8 | warped reference from the previous reconstruction and the pose delta; writes the warped image and the per-tile corner displacements | not started |
 | **E1** `stats` | one group per tile, 256 lanes | per-tile mean luma, moments, sum of squared deviations, structure tensor, warped SAD at a per-tile offset | **done** |
 | **E2** `prefix` | workgroup scan + single-block second level | exclusive prefix sum over per-tile byte sizes, up to 8192 tiles | **done** |
-| E2b `transform` | one group per listed tile | residual, forward 8×8 integer DCT, dead-zone quantisation, RDO-lite, int16 coefficients and an exact symbol count | not started |
-| E3 `reconstruct` | one group per tile | the decoder's Pass B, *byte-identical SPIR-V*, writes the new reference | not started |
-| E4 `entropy` | 8 lanes per tile, 8 tiles per group | rANS encoding backwards over the symbol list into a bounded per-tile slot | not started |
-| E5 `packetize` | one group of 1024 per view | compaction into tile-row segments, headers, segment descriptor table, rate feedback | not started |
+| **E3** `forward` | one group per tile, 64 lanes | DC-plane intra prediction, residual, forward 8×8 DCT through LDS, dead-zone quantisation with the weighting matrix, sign hiding, coefficients in coding-unit order. Directional intra behind a specialization constant | **done** |
+| **E4** `rans_encode` | 8 lanes per tile, 8 tiles per group, persistent | rANS backwards over the operation list into a bounded per-tile slot; writes the tile header and the byte count E2 scans | **done** |
+| **E5** `packetize` | one group per tile | compaction into tile-row segments, tile-row and frame headers, straight into the host-cached output buffer | **done** |
+| E3b `reconstruct` | one group per tile | the decoder's Pass B, *byte-identical SPIR-V*, writes the new reference | not started |
 
-The pass letters follow the paper's table. E0b and E2b are placeholders for
-work the paper folds into E0 and E2; whoever lands them should rename rather
-than keep the `b`.
+The pass letters follow the paper's table with one renaming: the paper calls
+the transform pass E2 and the reconstruction pass E3, but E2 is taken here by
+the prefix sum, so the transform is E3 and the reconstruction becomes E3b.
+E0b is a placeholder for work the paper folds into E0.
 
-E3 being *byte-identical shader code to the decoder* is the single most
-important rule in the project: the encoder must never hold a reference the
-decoder cannot reproduce.
+The reconstruction pass being *byte-identical shader code to the decoder* is
+the single most important rule in the project: the encoder must never hold a
+reference the decoder cannot reproduce.  E3 already contains the reconstruction
+the directional predictor needs (it is the same arithmetic), so E3b is a matter
+of writing the reference picture out, not of writing the maths again.
 
 ## What is in the tree today
 
@@ -44,15 +47,62 @@ stats/
   E1_stats.comp       per-tile analysis
   E2_prefix.comp      two-level exclusive prefix sum (3 passes, one source)
   stats_cpu.h/.c      bit-exact CPU models of E0, E1 and E2
+forward/
+  nxe_enc.h           the E3/E4/E5 contract: frame parameters, the per-tile
+                      job record, the coefficient and slot geometry
+  nxe_tables.h/.c     the normative constant tables, so the directory builds
+                      without the reference codec
+  nxe_enc_common.glsl GLSL mirror of all of the above
+  forward.comp        E3
+  rans_encode.comp    E4
+  packetize.comp      E5 (two variants: zero the frame's bytes, then write)
+  forward_cpu.h/.c    bit-exact CPU model of E3
+  rans_cpu.h/.c       bit-exact CPU model of E4 and of E5's layout
 tools/
   vk_min.h/.cpp       throwaway Vulkan boilerplate; delete when vk/common lands
-  nxvc-stats-test.cpp GPU-vs-CPU diff harness and timing
+  nxvc-stats-test.cpp GPU-vs-CPU diff harness and timing for E0/E1/E2
+  nxvc-vkenc.cpp      the encoder harness: --in yuv --out nxv
+  nxe_host.cpp        its frame driver (the E0 stand-in, the table-set choice)
+  nxe_vk.cpp          the Vulkan backend for E3/E4/E5
+  nxe_selftest.cpp    the built-in configuration table and its digests
 cmake/gen_spv.cmake   glslc → SPIR-V → C array
 ```
+
+## The two things in E4 that are not obvious
+
+**A GPU cannot materialise the operation list.** `ref/src/entropy.cpp` encodes
+a tile by building the whole global operation list and walking it backwards.
+But `encode_units` drives the lane machines in *rounds* — one operation per
+unfinished lane per round, in lane order — and a lane machine reaches `kDone`
+once and never restarts. So lane *l* occupies rounds 0..nops[l]-1 and the
+global order is (round ascending, lane ascending). The backward sweep is
+therefore eight lanes in lockstep over descending rounds, with a running
+emission counter for the byte order and no list at all.
+
+**The bytes are produced back to front.** Their offsets are only known once the
+emission count is, which would force a counting pass and then a placing pass
+over the same operations. Instead the renormalisation words are anchored at the
+*end* of the tile's slot, one whole word each, emission *e* at
+`slot_end - 1 - e`: the position is known the moment the word is produced, and
+reading that region forwards yields exactly the bitstream's order. It costs a
+word per 16-bit emission and buys the whole second sweep.
+
+The other thing worth knowing is that the sign-data-hiding decision, which the
+reference makes by comparing `double` squared errors, is reproduced exactly in
+integers. Multiplying the comparison by 256 and factoring the difference of
+squares gives `-d * step * (32a - (2m + d)*step)`, formed as a 64-bit product
+with `imulExtended`; the derivation is at `nxe_hide_sign_unit`.
 
 Tests live in `tests/vk-encoder/` and are named `vk.encoder.*`. Anything
 needing a GPU exits 77 and is reported as a ctest skip when no ICD, no device,
 or no device meeting the kernels' requirements is present.
+
+`vk.encoder.acid.*` is the one that decides whether the coding passes are
+right: it drives `nxv-enc` and `nxvc-vkenc` from one description of the same
+synthesized picture, requires the two streams to be byte-identical, and then
+requires `nxv-dec` to decode both to identical pixels. It needs the reference
+tools, so it exists only in a build from the repo root; the standalone encoder
+build gets `vk.encoder.forward.cpu`, which pins the same streams by digest.
 
 ## Data layout
 
@@ -144,6 +194,27 @@ To run the diff against a specific device, or against lavapipe:
 VK_ICD_FILENAMES=/path/to/lvp_icd.x86_64.json ./build-enc/nxvc-stats-test --device 0
 ```
 
+The coding passes have the same shape of harness:
+
+```
+./build-enc/nxvc-vkenc --selftest --cpu          # the models and their digests
+./build-enc/nxvc-vkenc --selftest --device 0     # GPU against the models
+./build-enc/nxvc-vkenc --in f.yuv --w 4096 --h 2048 --eyes 2 --pix yuv420p \
+                       --qp 24 --out f.nxv --check --bench 50
+```
+
+`--check` runs the CPU models alongside every frame and fails on the first
+coefficient or byte that differs; `--cpu` is a complete encoder with no Vulkan
+at all. The flags mirror `nxv-enc`'s, which is what lets the two be pointed at
+the same input and diffed.
+
+What the coding passes do **not** implement, and refuse rather than ignore:
+inter prediction, resolution levels, alpha, custom probability tables, and
+more than eight rANS lanes on the GPU path (`--nsub 4` and `5` are CPU-only;
+paper 6.3 fixes v1 at eight). The RD trellis is deliberately absent: it changes
+which levels are coded, never how they are decoded, and it is a `double`
+trellis. `--no-rdo` is the reference configuration this pipeline reproduces.
+
 ## Measured
 
 `nxvc-stats-test --device 0`, 2048×4096 (both eyes, 2048 tiles), RGBA8 4:2:0,
@@ -153,9 +224,61 @@ median of 50 iterations, timestamp queries around each dispatch:
 |---|---|---|---|
 | RX 7900 XTX (RADV) | 0.056 ms | 0.140 ms | 0.196 ms |
 
+`nxvc-vkenc --bench 50`, the same geometry (2 × 2048², 2048 tiles), 4:2:0,
+8 rANS lanes, frame matrix 1, no directional intra, RX 7900 XTX on RADV:
+
+| QP | E3 forward | E4 rans_encode | E2 prefix | E5 packetize | total | bpp |
+|---|---|---|---|---|---|---|
+| 0  | 1.295 | 4.185 | 0.010 | 0.616 | **6.107** | 7.27 |
+| 16 | 1.239 | 3.578 | 0.009 | 0.261 | **5.087** | 2.77 |
+| 24 | 0.915 | 2.219 | 0.009 | 0.103 | **3.247** | 1.11 |
+| 32 | 0.454 | 0.394 | 0.009 | 0.025 | **0.882** | 0.26 |
+| 45 | 0.438 | 0.343 | 0.009 | 0.023 | **0.813** | 0.12 |
+
+Directional intra costs E3 8.2 ms at QP 24: the reference derivation of
+SYNTAX.md 7.4 has the full 8×8 raster dependency, so the 96 blocks of a tile
+are strictly serial and only the 64 lanes inside one block go wide.
+
+### The RX 580 extrapolation
+
+The RX 580 is the platform §3.6 budgets and it is not this box, so the number
+has to be derived. Two independent ways of deriving it agree, which is the only
+reason it is quoted at all.
+
+The second RADV device here is the 9950X3D's integrated Raphael, two RDNA2 CUs
+against the 7900 XTX's ninety-six. At 1024² (256 tiles, QP 24) it takes 15.8 ms
+against the 7900 XTX's 1.59 ms — **ten times slower on forty-eight times fewer
+CUs**, which is the measurement that says E4 is latency-bound rather than
+throughput-bound, because a throughput-bound kernel would have been forty-eight
+times slower. Scaled to 2048 tiles that is about 126 ms; an RX 580 has eighteen
+times Raphael's CUs and a slightly lower clock, giving **11–12 ms**.
+
+From the other direction: all 512 waves are resident on an RX 580 (GCN4 holds
+forty wave64 per CU, so thirty-six CUs hold 1440), so what is left is clock —
+1.34 against 2.4 GHz — and issue rate, wave64 on GCN4's SIMD16 taking four
+cycles where RDNA3's SIMD32 takes two. That is 3.6× on E4, and E3 scales closer
+to its 10× ALU ratio but is not saturating either. **10–17 ms** for the three
+passes together.
+
 §3.6 budgets the whole encoder at 2.5–4 ms on an RX 580 and under 1 ms on a
-7900 XTX, so the analysis front end is using about a fifth of the 7900 XTX
-budget and leaves the transform, reconstruction and entropy passes the rest.
-The RX 580 is the platform that decides, and it is not this box; the number
-above is a sanity check that the analysis passes are not the problem, not a
-verdict.
+7900 XTX. So the coding passes are three times over on the 7900 XTX and three
+to five times over on the platform that decides. The reason is structural
+rather than a missing optimisation, and it is worth stating plainly.
+
+E4 has exactly `tiles × 8` lanes of parallelism — 16384 for this frame, 512
+waves, under three per SIMD on a 96-CU part — because eight rANS lanes per tile
+is the bitstream, not a choice (§6.3). Every one of those lanes is a
+dependent chain: rANS state feeds forward, and the operation list has to be
+generated before it can be walked backwards. So E4 is latency-bound at low
+occupancy and the machine is mostly idle. Three changes took it from 29.5 ms to
+2.2 ms and none of them touched the inner loop: making every tile resident
+rather than 1024 of them, materialising each lane's whole operation list once
+instead of regenerating a unit at every boundary crossing (with an exact
+fallback when it does not fit), and anchoring the emission words so one sweep
+does the work of two.
+
+What is left is the generation itself. The remaining lever is to parallelise it
+over *coding units* rather than over lanes — 99 units per tile is 203k threads
+instead of 16k — which needs a per-unit scratch, a prefix sum over each lane's
+units, and a gather. That is the next thing to do here, and it is why the RX
+580 verdict is deferred rather than claimed.

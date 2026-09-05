@@ -20,8 +20,9 @@ OUT="${NXB_OUT:-$HERE/results}"
 CMAKE="${CMAKE:-/run/media/nerdrx/Lex/claude/tools/cmake-3.31.10-linux-x86_64/bin/cmake}"
 command -v "$CMAKE" >/dev/null 2>&1 || CMAKE=cmake
 
-NICE=(chrt -i 0 taskset -c 20-23 nice -n 19)
-if ! command -v chrt >/dev/null 2>&1; then NICE=(nice -n 19); fi
+# shellcheck source=../scripts/cpu-discipline.sh
+. "$(dirname "$(readlink -f "$0")")/../scripts/cpu-discipline.sh"
+nx_cpu_prefix 20-23
 
 # --- lavapipe for CI, where there is no GPU. Only forced when asked for or
 # when nothing else is installed.
@@ -74,4 +75,5 @@ echo "==> running"
 "${NICE[@]}" "$BUILD/nxbench-host" --out "$JSON" "$@"
 
 echo "==> json: $JSON"
+[ -f "$LOCAL_JSON" ] || { echo "(no result JSON: a --selftest or --k1-sweep run writes none)"; exit 0; }
 python3 "$HERE/report.py" "$JSON"

@@ -1,0 +1,181 @@
+#version 460
+// packetize.comp -- E5: the frame laid out in the host-cached output buffer.
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// Paper 3.6: "one group of 1024 threads per view; prefix sum of tile sizes,
+// compaction into tile-row segments, headers written by the shader".  The
+// prefix sum is E2's, already run over the per-tile byte counts E4 wrote, so
+// this pass is the compaction and the headers.
+//
+// The destination is the HOST_VISIBLE | HOST_COHERENT | HOST_CACHED buffer the
+// network thread reads with sendmmsg, so the writes want to be coalesced
+// whole words rather than bytes.  A tile's payload lands at an arbitrary byte
+// offset, though, so the copy is: every destination word the tile *fully*
+// covers is assembled from two source words and stored outright, and the at
+// most six bytes at the two ends -- which a tile shares with its neighbour or
+// with a row header -- go in with atomicOr over a pre-zeroed buffer.  That is
+// eight atomics per tile instead of one per byte.
+//
+// Tile order is the normative one (row-major, eye-minor, column), so the row
+// group of tile t is t / tiles_x and every row header up to and including it
+// is accounted for by a multiplication.  There is no second scan.
+
+#extension GL_GOOGLE_include_directive : require
+#include "nxe_enc_common.glsl"
+
+layout(local_size_x = NXE_E5_WG, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430, binding = 0) readonly buffer ParamBuf { nxe_frame_params fp; };
+layout(std430, binding = 1) readonly buffer JobBuf   { nxe_tile_job jobs[]; };
+layout(std430, binding = 2) readonly buffer SlotBuf  { uint v[]; } slot;
+// E2's exclusive prefix sum over the per-tile byte counts, and its total.
+layout(std430, binding = 3) readonly buffer PrefixBuf { uint v[]; } prefix;
+layout(std430, binding = 4) readonly buffer TotalBuf  { uint v[]; } tot;
+layout(std430, binding = 5)          buffer OutBuf    { uint v[]; } outb;
+// The frame's pose blob, 26 bytes; the compositor's, opaque to the codec.
+layout(std430, binding = 6) readonly buffer PoseBuf   { uint v[]; } pose;
+
+void put_byte(uint off, uint val) {
+    uint w = off >> 2;
+    if (w < uint(outb.v.length()))
+        atomicOr(outb.v[w], (val & 0xffu) << ((off & 3u) * 8u));
+}
+
+// Whole-word form of the same.  The output buffer is zeroed by the E5 pass-0
+// clear before anything writes to it, so an OR into a word no other lane touches
+// is a store.
+void put_word(uint w, uint val) {
+    if (w < uint(outb.v.length()))
+        atomicOr(outb.v[w], val);
+}
+
+// Byte `i` of tile `t`'s output.  E4's slot is not the tile's bytes laid end
+// to end: the header and the rANS flush states are at the front, and the
+// renormalisation words are one per word at the *end*, emission e at
+// slot_end - 1 - e (see NXE_TILE_SLOT_WORDS).  Reading those forwards is
+// exactly the bitstream's order, because the sweep produces them in descending
+// global operation order.
+struct TileSlot { uint w0, wend, prefix_bytes; uint ewords; };
+
+TileSlot tile_slot(uint t) {
+    TileSlot s;
+    s.w0 = t * uint(NXE_TILE_SLOT_WORDS);
+    s.wend = s.w0 + uint(NXE_TILE_SLOT_WORDS);
+    uint nlanes_active = (jobs[t].flags >> 8) & 0xffu;
+    s.prefix_bytes = 8u + 4u * nlanes_active;
+    s.ewords = (jobs[t].tile_bytes - s.prefix_bytes) >> 1;
+    return s;
+}
+
+uint tile_byte(TileSlot s, uint i) {
+    if (i < s.prefix_bytes) {
+        uint w = s.w0 + (i >> 2);
+        return (slot.v[min(w, uint(slot.v.length()) - 1u)] >> ((i & 3u) * 8u)) &
+               0xffu;
+    }
+    uint k = i - s.prefix_bytes;
+    uint w = s.wend - s.ewords + (k >> 1);
+    uint v = slot.v[min(w, uint(slot.v.length()) - 1u)];
+    return ((k & 1u) == 0u) ? ((v >> 8) & 0xffu) : (v & 0xffu);
+}
+
+#ifndef NXE_E5_PASS
+#define NXE_E5_PASS 1
+#endif
+
+#if NXE_E5_PASS == 0
+// Zero exactly the bytes this frame will occupy, so the atomicOr writes of
+// pass 1 land on a clean slate.  The output buffer is dimensioned for the
+// worst case -- every tile at its bounded slot size -- and filling all of that
+// would cost forty times what the frame actually is, which is why this is a
+// shader that reads E2's total rather than a vkCmdFillBuffer.
+void main() {
+    const uint rowgroups = fp.tiles_y * fp.eyes;
+    const uint total = NXE_FRAME_HEADER_BYTES +
+                       NXE_ROW_HEADER_BYTES * rowgroups + tot.v[0];
+    const uint nwords = (total + 3u) >> 2;
+    const uint stride = gl_NumWorkGroups.x * uint(NXE_E5_WG);
+    for (uint w = gl_GlobalInvocationID.x; w < nwords; w += stride)
+        if (w < uint(outb.v.length())) outb.v[w] = 0u;
+}
+#else
+
+void main() {
+    const uint t = gl_WorkGroupID.x;
+    const uint lid = gl_LocalInvocationID.x;
+    const uint rowgroups = fp.tiles_y * fp.eyes;
+    const uint total = NXE_FRAME_HEADER_BYTES +
+                       NXE_ROW_HEADER_BYTES * rowgroups + tot.v[0];
+
+    // ---- the frame header.  Offset 0, so every one of its ten words is wholly
+    // owned by this one lane; the buffer arrives zeroed from the E5 clear pass,
+    // so the ORs below land exactly where the old staging uint[10] did.
+    //
+    // That staging array is what this replaces.  `w[o >> 2] |= ...` in the pose
+    // loop is a local array indexed by a value the compiler cannot fold, which
+    // on the Adreno 650 means a private-memory array -- the construct that made
+    // Pass B read a local back wrong (docs/ADRENO-RULES.md).  Writing through
+    // put_byte/put_word instead keeps every access chain in the SSBO, where a
+    // computed index is fine.
+    if (t == 0u && lid == 0u) {
+        put_word(0u, fp.frame_number & 0xffffu);
+        // pose[] is 26 bytes at byte offset 2; it straddles words 0..6.
+        for (uint k = 0u; k < 26u; ++k)
+            put_byte(2u + k, (pose.v[k >> 2] >> ((k & 3u) * 8u)) & 0xffu);
+        put_word(7u, (fp.base_qp & 0xffu)                         // byte 28
+                   | ((uint(fp.chroma_qp_off) & 0xffu) << 8)      // byte 29
+                                                                  // byte 30 alpha_qp_off, 0
+                   | ((fp.quant_matrix & 0xffu) << 24));          // byte 31
+        put_word(8u, (fp.tables_present & 0xffu)                  // byte 32
+                                                                  // byte 33 ref_slots, 0
+                   | ((fp.frame_flags & 0xffu) << 16));           // byte 34
+                                                                  // byte 35 reserved, 0
+        put_word(9u, total);
+    }
+
+    // ---- the tile-row headers, one per row group.
+    if (t < rowgroups && lid == 0u) {
+        uint g = t;
+        uint off = NXE_FRAME_HEADER_BYTES + NXE_ROW_HEADER_BYTES * g +
+                   prefix.v[g * fp.tiles_x];
+        uint row = g / fp.eyes;
+        put_byte(off + 0u, fp.frame_number);
+        put_byte(off + 1u, fp.frame_number >> 8);
+        put_byte(off + 2u, row);
+        put_byte(off + 3u, fp.tiles_x);   // coded tiles; nothing is skipped
+        for (uint k = 0u; k < 8u; ++k) put_byte(off + 4u + k, 0u);
+    }
+
+    if (t >= fp.ntiles) return;
+
+    // ---- the tile: its 8-byte header and payload, contiguous in the slot.
+    const uint nbytes = jobs[t].tile_bytes;
+    const uint rowgroup = t / fp.tiles_x;
+    const uint d0 = NXE_FRAME_HEADER_BYTES +
+                    NXE_ROW_HEADER_BYTES * (rowgroup + 1u) + prefix.v[t];
+    const uint d1 = d0 + nbytes;
+    const TileSlot ts = tile_slot(t);
+
+    const uint wfirst = (d0 + 3u) >> 2;
+    const uint wlast = d1 >> 2;
+    for (uint w = wfirst + lid; w < wlast; w += uint(NXE_E5_WG)) {
+        uint base = w * 4u - d0;
+        uint val = tile_byte(ts, base) | (tile_byte(ts, base + 1u) << 8) |
+                   (tile_byte(ts, base + 2u) << 16) |
+                   (tile_byte(ts, base + 3u) << 24);
+        if (w < uint(outb.v.length())) outb.v[w] = val;
+    }
+
+    // The head and tail bytes, which a tile shares with a row header or with
+    // the next tile.  At most three at each end.
+    if (lid < 8u) {
+        uint head_end = min(d1, wfirst * 4u);
+        uint b = d0 + lid;
+        if (b < head_end) put_byte(b, tile_byte(ts, b - d0));
+        uint tail_start = max(wlast * 4u, d0);
+        uint c = tail_start + lid;
+        if (c < d1) put_byte(c, tile_byte(ts, c - d0));
+    }
+}
+#endif
