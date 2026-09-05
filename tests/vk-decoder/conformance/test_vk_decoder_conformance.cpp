@@ -22,7 +22,12 @@
 // how ctest reports the test as a skip on a machine without one).
 
 #include <cmath>
+#include <atomic>
+#include <chrono>
 #include <cstdio>
+#include <mutex>
+#include <thread>
+#include <unistd.h>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -42,6 +47,77 @@ int g_fail = 0;
 int g_checked = 0;
 int g_skipped = 0;
 bool g_verbose = false;
+
+// ---------------------------------------------------------------- watchdog
+//
+// A sweep on a device can WEDGE, and when it does the default stdio buffering
+// means the log is a zero-byte file that names nothing.  That is not
+// hypothetical: an Adreno 650 run sat for 36 minutes with 55 seconds of user
+// time, state R in hrtimer_nanosleep and stime creeping while utime did not
+// move -- a fence that never signalled -- and because nothing had been
+// flushed, the sweep cost an hour and identified no vector.
+//
+// Two changes make that self-reporting.  stdout is line buffered (see main),
+// and one thread watches how long the current case has been running.  On a
+// timeout it prints the case's NAME and _exit()s: a wedged GPU submission is
+// not something a process can safely continue past, so the value here is
+// attribution, not recovery -- and `--skip` then lets the next run sweep
+// everything else.
+std::atomic<uint64_t> g_case_start_ms{0};
+std::mutex g_case_mu;
+std::string g_case_name;
+int g_case_timeout_s = 0;   // 0 = no watchdog
+std::vector<std::string> g_skip;
+
+uint64_t now_ms_wd() {
+    return (uint64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::steady_clock::now().time_since_epoch())
+        .count();
+}
+
+// Announce the case and arm the watchdog.  The BEGIN line is what turns a
+// hang into "it was this vector" without waiting for the case to finish.
+void case_begin(const std::string &name) {
+    {
+        std::lock_guard<std::mutex> lk(g_case_mu);
+        g_case_name = name;
+    }
+    g_case_start_ms.store(now_ms_wd());
+    if (g_case_timeout_s > 0) std::printf(".. %s\n", name.c_str());
+}
+
+void case_end() { g_case_start_ms.store(0); }
+
+bool case_skipped(const std::string &name) {
+    for (const std::string &s : g_skip)
+        if (s == name) return true;
+    return false;
+}
+
+void start_watchdog() {
+    if (g_case_timeout_s <= 0) return;
+    std::thread([] {
+        for (;;) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            const uint64_t t0 = g_case_start_ms.load();
+            if (t0 == 0) continue;
+            const uint64_t dt = now_ms_wd() - t0;
+            if (dt < (uint64_t)g_case_timeout_s * 1000u) continue;
+            std::string nm;
+            {
+                std::lock_guard<std::mutex> lk(g_case_mu);
+                nm = g_case_name;
+            }
+            std::printf("HANG %s: no progress for %llu s -- watchdog\n",
+                        nm.c_str(), (unsigned long long)(dt / 1000));
+            std::fflush(stdout);
+            std::fflush(stderr);
+            // Not abort(): a wedged submission usually takes the driver's
+            // cleanup down with it and a core dump helps nobody here.
+            _exit(70);
+        }
+    }).detach();
+}
 
 // ------------------------------------------------------------------ planes
 struct Planes {
@@ -316,6 +392,12 @@ void run_vectors() {
     std::printf("-- %zu conformance vectors from %s\n", rows.size(),
                 g_vectors_dir);
     for (const ManifestRow &r : rows) {
+        if (case_skipped(r.name)) {
+            std::printf("skip %s: --skip\n", r.name.c_str());
+            ++g_skipped;
+            continue;
+        }
+        case_begin(r.name);
         std::string path = std::string(g_vectors_dir) + "/" + r.name + ".nxv";
         std::vector<uint8_t> stream;
         if (!read_file(path, stream)) {
@@ -371,6 +453,7 @@ void run_vectors() {
             continue;
         }
         check_stream(r.name.c_str(), stream, r.decoded_md5, NXVC_VKD_OUT_AUTO);
+        case_end();
     }
 }
 
@@ -1502,11 +1585,22 @@ int main(int argc, char **argv) {
     // timed bench stream: 8, 16, 32 or `auto`.  -1 leaves the encoder's
     // default, which is 8 and sets no tool bit.
     int bench_xform = -1;
+    // Line buffered, always.  stdout to a file is fully buffered by default,
+    // which is why a wedged sweep left a zero-byte log naming nothing.
+    setvbuf(stdout, nullptr, _IOLBF, 0);
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         if (a == "--vectors" && i + 1 < argc) g_vectors_dir = argv[++i];
         else if (a == "--quick") quick = true;
         else if (a == "--verbose") g_verbose = true;
+        // Seconds one case may take before the watchdog names it and exits.
+        // Off by default: a desktop run has no use for it and a CI machine
+        // under load must not be shot for being slow.
+        else if (a == "--timeout" && i + 1 < argc)
+            g_case_timeout_s = std::atoi(argv[++i]);
+        // Repeatable.  After a hang has been attributed, this is what sweeps
+        // everything else.
+        else if (a == "--skip" && i + 1 < argc) g_skip.push_back(argv[++i]);
         else if (a == "--only-vectors") { do_synth = false; do_loss = false; }
         else if (a == "--only-synthetic") { do_vectors = false; do_loss = false; }
         else if (a == "--only-loss") { do_vectors = false; do_synth = false; }
@@ -1596,6 +1690,7 @@ int main(int argc, char **argv) {
     }
 
     if (do_vectors) {
+        start_watchdog();
         run_vectors();
         run_rejects();
     }
