@@ -30,7 +30,11 @@
 #                         WARP_SKIP on the other.  The GPU implements the FIXED
 #                         scheme of PAPER 2.6; the drift scheme needs an exact
 #                         client shadow the encoder does not keep.
-#   --int-coded-vectors off  STATIC_MV and WARP_MV are the next increment.
+#   --int-coded-vectors  is `off` in the first leg and `static` in the second.
+#                        WARP_MV is still not searched on the GPU: its
+#                        predictor is the full homography, and reproducing that
+#                        outside Pass W would be a second copy of the one piece
+#                        of arithmetic this project refuses to have two of.
 #
 # The entropy tools the library now ships ON are ON here too -- frame-trained
 # tables, TAB_V2 and CTX_V3 -- so this covers the inter path composed with
@@ -185,5 +189,46 @@ if(VKENCAPI)
   endif()
 endif()
 
+# ---- the same clip with STATIC_MV searched.
+#
+# A separate leg rather than a replacement: skip-only and skip-plus-vector are
+# different decisions and both have to hold, and the skip-only one is what the
+# library ships until the ABI exposes the other.
+execute_process(COMMAND ${NXVENC} ${common} ${interargs}
+                        --no-rdo --custom-tables --split4x4 off --cfl off
+                        --tab v2 --xform 8 --entropy rans
+                        --inter on --int-decision on --int-coded-vectors static
+                        --preset fast --me-effort 1 --quad-mv off
+                        --near-skip off --drift-refresh off
+                        --out ${WORKDIR}/ref-mv.nxv
+                RESULT_VARIABLE rc OUTPUT_QUIET)
+if(NOT rc EQUAL 0)
+  message(FATAL_ERROR "nxv-enc failed with STATIC_MV (${rc})")
+endif()
+execute_process(COMMAND ${VKENC} ${common} ${interargs} --inter --coded-vectors
+                        --custom-tables --tab v2
+                        --device ${DEVICE} --out ${WORKDIR}/gpu-mv.nxv
+                RESULT_VARIABLE rc ERROR_VARIABLE eout)
+if(NOT rc EQUAL 0)
+  message(FATAL_ERROR "nxvc-vkenc failed with STATIC_MV (${rc}): ${eout}")
+endif()
+execute_process(COMMAND ${CMAKE_COMMAND} -E compare_files
+                        ${WORKDIR}/ref-mv.nxv ${WORKDIR}/gpu-mv.nxv
+                RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+  message(FATAL_ERROR
+    "the STATIC_MV stream is not byte-identical to nxv-enc.  The search runs "
+    "three stages against ONE running best -- the reference never resets it "
+    "between them, and the stages sample at different densities -- so a "
+    "per-stage reset makes the integer refine live and moves the vectors.")
+endif()
+execute_process(COMMAND ${NXVDEC} --in ${WORKDIR}/gpu-mv.nxv
+                        --out ${WORKDIR}/gpu-mv.yuv --pix yuv420p --quiet
+                RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+  message(FATAL_ERROR "nxv-dec refused the STATIC_MV stream (${rc})")
+endif()
+
 message(STATUS "vk.encoder.inter.acid: ${FRAMES} frames byte-identical, "
-               "decoded identical, ring == decoder, ABI agrees")
+               "decoded identical, ring == decoder, ABI agrees, "
+               "STATIC_MV byte-identical")

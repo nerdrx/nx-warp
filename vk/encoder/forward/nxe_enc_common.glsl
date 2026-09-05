@@ -137,7 +137,7 @@ struct nxe_frame_params {
     uint sdh, intra_dir, dir_layer, nsub_log2;
     uint frame_number, frame_flags, quant_matrix, tables_present;
     uint width, height, ycocgr, table_bytes;
-    uint warp_bytes, ref_slots, pad1, pad2;
+    uint warp_bytes, ref_slots, wpred_stride, pad1;
     uint wm_luma[64];
     uint wm_chroma[64];
 };

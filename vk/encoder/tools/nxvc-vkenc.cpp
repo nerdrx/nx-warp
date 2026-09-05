@@ -101,28 +101,7 @@ int main(int argc, char **argv) {
         else if (a == "--qp") cfg.qp = std::atoi(val());
         else if (a == "--inter") cfg.inter = true;
         else if (a == "--poses") cfg.poses = val();
-        else if (a == "--coded-vectors") {
-            /* Refused, not ignored.  Everything a STATIC_MV tile needs to be
-             * DECIDED is implemented and correct -- E1c's search, the vector
-             * in the tile header, the slot layout that makes room for it --
-             * but E3 still codes every tile it does not skip against the
-             * DC-plane INTRA predictor, so a STATIC_MV tile comes out with a
-             * full intra-sized residual (526 bytes against the reference's
-             * 40) and a stream that decodes to the wrong picture.
-             *
-             * The missing piece is E3's inter residual path: a sixth binding
-             * carrying Pass W's predictor and a branch that subtracts it
-             * instead of pred_at().  Until that exists this flag would
-             * produce a legal, larger, WRONG stream, which is the failure
-             * mode this encoder refuses on principle. */
-            std::fprintf(stderr,
-                         "--coded-vectors: STATIC_MV is decided but not yet "
-                         "coded -- E3 has no inter residual path, so the tile "
-                         "would be coded against the intra predictor.  See "
-                         "vk/encoder/README.md \"What STATIC_MV still "
-                         "needs\".\n");
-            return 2;
-        }
+        else if (a == "--coded-vectors") cfg.int_coded_vectors = true;
         else if (a == "--intra-period") cfg.intra_period = std::atoi(val());
         else if (a == "--skip-thresh")
             cfg.skip_thresh = (int)(std::atof(val()) * 256.0 + 0.5);
