@@ -310,6 +310,17 @@ extern "C" nxvc_encoder *nxvc_encoder_create(const nxvc_config *cfg,
         // lossy by construction and cannot coexist with lossless coding.
         e->cfg.sign_hide = 0;
     }
+    if (e->cfg.entropy_lite) {
+        // ENTROPY_LITE has no arithmetic coder, so it has neither a parity to
+        // spend a sign on nor a probability table to transmit (SYNTAX.md 9.8).
+        if (e->cfg.entropy_lite > (uint32_t)kLiteNumVariants) {
+            delete e;
+            return fail(NXVC_ERR_ARG);
+        }
+        e->cfg.sign_hide = 0;
+        e->cfg.custom_tables = 0;
+        e->cfg.nsub_log2 = 3;
+    }
     e->g.width = cfg->width;
     e->g.height = cfg->height;
     e->g.eyes = eyes;
@@ -441,6 +452,7 @@ static u64 encoder_tools(const nxvc_encoder *e) {
     if (e->cfg.stereo) t |= NXVC_TOOL_STEREO;
     if (e->cfg.inter && e->cfg.near_skip) t |= NXVC_TOOL_NEAR_SKIP;
     if (e->cfg.inter && e->cfg.quad_mv) t |= NXVC_TOOL_QUAD_MV;
+    if (e->cfg.entropy_lite) t |= NXVC_TOOL_ENTROPY_LITE;
     t |= NXVC_TOOL_RES_LEVEL;
     return t;
 }
@@ -2217,7 +2229,20 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                     }
                     if (emit) {
                         std::vector<u8> payload;
-                        if (!encode_units(tc.units.data(), (int)tc.units.size(),
+                        if (e->cfg.entropy_lite) {
+                            // Under ENTROPY_LITE the tile header's table_set
+                            // field names the variant, not a table set: the
+                            // tool has no tables (SYNTAX.md 9.8).
+                            tc.tp.table_set = (int)e->cfg.entropy_lite - 1;
+                            tc.tp.nsub_log2 = 3;
+                            if (!lite_encode_units(tc.units.data(),
+                                                   (int)tc.units.size(),
+                                                   tc.tp.table_set, payload)) {
+                                err = NXVC_ERR_BITSTREAM;
+                                break;
+                            }
+                        } else if (!encode_units(tc.units.data(),
+                                          (int)tc.units.size(),
                                           1 << tc.tp.nsub_log2,
                                           tabs[tc.tp.table_set], payload)) {
                             err = NXVC_ERR_BITSTREAM;
@@ -2663,6 +2688,9 @@ extern "C" nxvc_status nxvc_decoder_parse_stream_header(nxvc_decoder *d,
     if (si.tools & ~(u64)NXVC_TOOLS_SUPPORTED) return NXVC_ERR_VERSION;
     // Sign data hiding moves a level by one step; a lossless stream cannot
     // carry it, and a decoder that accepted both would not know which.
+    if ((si.tools & NXVC_TOOL_ENTROPY_LITE) &&
+        (si.tools & (NXVC_TOOL_SIGN_HIDE | NXVC_TOOL_CUSTOM_TABLES)))
+        return NXVC_ERR_BITSTREAM;
     if ((si.tools & NXVC_TOOL_LOSSLESS) && (si.tools & NXVC_TOOL_SIGN_HIDE))
         return NXVC_ERR_BITSTREAM;
     // v3 refines the v2 context model rather than replacing it: it reuses the
@@ -3187,7 +3215,14 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
                 }
                 tc.build_units();
                 int np = coded_planes(tc);
-                if (!decode_units(tc.units.data(), (int)tc.units.size(),
+                if (d->si.tools & NXVC_TOOL_ENTROPY_LITE) {
+                    if (tp.table_set >= kLiteNumVariants || tp.nsub_log2 != 3)
+                        return NXVC_ERR_BITSTREAM;
+                    if (!lite_decode_units(tc.units.data(),
+                                           (int)tc.units.size(), tp.table_set,
+                                           buf + payload_off, tp.payload_len))
+                        return NXVC_ERR_BITSTREAM;
+                } else if (!decode_units(tc.units.data(), (int)tc.units.size(),
                                   1 << tp.nsub_log2, fp.tabs[tp.table_set],
                                   buf + payload_off, tp.payload_len))
                     return NXVC_ERR_BITSTREAM;

@@ -6,9 +6,9 @@ Pass B consumes. It is the first of the two decoder dispatches (PAPER 3.2.1).
 | file | role |
 |---|---|
 | `syntax_constants.h` | **every** bitstream-dependent constant, compiled as both C++ and GLSL |
-| `rans_decode.comp` | the compute kernel |
+| `rans_decode.comp` | the compute kernel — both the rANS and the ENTROPY_LITE path, selected by a specialisation constant |
 | `passA_model.{h,cpp}` | CPU model of the kernel, line-for-line; GPU and CPU must agree bit for bit |
-| `passA_test_encoder.{h,cpp}` | test-only rANS encoder (byte-identical to `nxvc::encode_units`) |
+| `passA_test_encoder.{h,cpp}` | test-only encoders: rANS (byte-identical to `nxvc::encode_units`) and ENTROPY_LITE (byte-identical to `nxvc::lite_encode_units`) |
 | `passA_test_gen.h`, `passA_test_corpus.h` | test-only corpus generation |
 | `tools/nxvc-passA-test` | headless Vulkan harness |
 
@@ -223,6 +223,84 @@ it the parity of the sum of the unit's magnitudes. The kernel stores that
 coefficient provisionally positive, keeps its magnitude in a register, and
 negates it at the end of the unit — so binding 3 stays write-only.
 
+## ENTROPY_LITE (stream tool bit 24)
+
+Specialisation constant **3** (`ENTROPY_MODE`, `kSpecIdEntropyMode`) selects
+which entropy tool the dispatch decodes:
+
+| value | path |
+|---|---|
+| `0` = `kEntropyRans` | everything above, unchanged in every respect |
+| `1` = `kEntropyLiteFixed` | `ENTROPY_LITE`, `kLiteFixed` variant |
+
+`main()` branches on it at the very top, so the test is dynamically uniform
+and neither path's barriers leave uniform control flow — the same discipline
+`READ_PTR_MODE` follows. The normative source is `ref/src/entropy_lite.{h,cpp}`;
+only FIXED is implemented, and a tile whose header names RICE (the header's
+`table_set` is the variant selector under this tool, since there are no
+probability tables for it to name) is rejected as `kStatusBadHeader`.
+
+### The layout
+
+A tile's Lite payload is five byte-aligned sections, MSB-first inside a byte:
+
+| | contents |
+|---|---|
+| **H0** | one bit per group of `kLiteCbfGroup` (16) units, "any unit here is coded" |
+| **H1** | for each group whose H0 bit is 1, one bit per unit of that group |
+| **P** | per coded *coefficient* unit: `lite_last_bits(ncoef)` bits of LAST, then 3 bits of magnitude class. Mode units contribute nothing |
+| **S** | per coded unit: a mode unit's `nbx*nbx` is-MPM flags, or a coefficient unit's LAST significance bits for scan positions `0 .. LAST-1` (position LAST is nonzero by construction) |
+| **B** | per coded unit: a mode unit's 3-bit non-MPM index per cleared flag, or, per nonzero scan position ascending, `kLiteMagBits[class]` bits of `|q| - 1` and one sign bit, 1 == negative |
+
+Every offset is computable: H0's length is a constant of the unit list, H1's a
+popcount over H0, P's the coded bits and the unit list, S's follows from P
+(which carries LAST), and each unit's slot in B from a prefix sum over per-unit
+body lengths that S and P determine. There is no coder state anywhere, so the
+decode is **three workgroup prefix sums and then wholly independent per-unit
+work**.
+
+### Dispatch shape
+
+```
+workgroup     64 threads = 64 units in flight
+groups        num_tiles            (one workgroup per tile)
+unit u        thread u % 64
+```
+
+`lite_scan()` turns a per-unit width array into exclusive bit offsets in two
+levels: each thread serially scans its own contiguous block of
+`kLiteUnitsPerThread` (5) units, the 64 block totals go through a
+Hillis-Steele scan, and the block offset is folded back in. `kLiteUnitsPad`
+(320) is the padded unit count; `kMaxUnitsPerTile` is 264.
+
+Section S is read twice — once to count the set (or cleared) flags that give a
+unit its B length, once to decode — which costs a handful of byte loads and
+saves keeping 64 flags per unit alive across a scan. The per-unit working set
+is about 6.7 KiB of LDS on top of the rANS path's ~12 KiB.
+
+The output is byte-for-byte the contract Pass B already consumes: binding 3 in
+whichever layout `sparse` names, binding 4 CBF bits (a mode unit's bit stays
+0, as in rANS), binding 5 status, binding 6 packed intra modes, binding 7 the
+sparse length words. The tables binding (2) is never read. **Pass B cannot
+tell which entropy tool produced the tile.**
+
+### Where the time goes
+
+Same corpus, same tiles, same coefficients — only the tool that codes them
+changes. `--mode ballot`, sparse layout, best of 20 dispatches:
+
+| | rANS | Lite | |
+|---|---|---|---|
+| RADV, 2048 tiles | 0.651 ms / 318 ns per tile | **0.158 ms / 77 ns per tile** | 4.1x |
+| lavapipe, 512 tiles | 33.2 ms / 64.8 us per tile | **23.8 ms / 46.4 us per tile** | 1.4x |
+
+RADV's Pass A was latency-bound on the longest tile's serial round chain, and
+Lite has no chain to be bound by: what is left is the per-unit work plus three
+prefix sums. lavapipe gains far less because it is CPU-bound on total
+instructions rather than on a dependency chain, and the Lite payload is larger
+(916 vs 612 bytes per tile on this corpus — the tool trades bitrate for
+parallelism).
+
 ## Errors
 
 A tile that cannot be decoded sets a non-zero status and stops; other tiles in
@@ -251,15 +329,26 @@ VK_DRIVER_FILES=/path/lvp_icd.x86_64.json build/vk/decoder/passA/nxvc-passA-test
 ```
 
 Options: `--device SUBSTR`, `--tiles N`, `--seed S`, `--mode ballot|lds|both`,
-`--subgroup N`, `--iters N`, `--validate`, `--spv PATH`, `--quick`, `--list`.
+`--subgroup N`, `--iters N`, `--entropy rans|lite`, `--intra`, `--validate`,
+`--spv PATH`, `--quick`, `--list`.
 Exit code 77 means "no usable ICD" and ctest reports it as a skip.
+
+`--entropy lite` builds the corpus with `encode_tile_lite()` and specialises
+the pipeline for `kEntropyLiteFixed`; the tiles, coefficients and RNG stream
+are otherwise identical, so the two corpora are directly comparable.
+`--intra` adds INTRA_DIR's mode units, which only the Lite test encoder codes
+(the rANS one emits v1 syntax), so it is rejected with `--entropy rans`.
+`--mode` still selects `READ_PTR_MODE`, which the Lite path does not use.
 
 ## Status
 
 Zero mismatches against the CPU model on RADV (wave32 and wave64) and on
-lavapipe (subgroup size 8), in both read-pointer modes. The test encoder is
+lavapipe (subgroup size 8), in both read-pointer modes, in both coefficient
+layouts, and under both entropy tools. The test encoder is
 byte-identical to `nxvc::encode_units` over random tiles spanning every
-`res_level`, `chroma444`, `tskip` and `table_set`.
+`res_level`, `chroma444`, `tskip` and `table_set`; `encode_tile_lite()` is
+byte-identical to `nxvc::lite_encode_units` over the same span with INTRA_DIR
+both on and off.
 
 2048 tiles at 0.50 symbols/pixel decode in ~1.4 ms on a 7900 XTX (RADV),
 informational. The kernel pays three `barrier()`s per scheduling round to keep

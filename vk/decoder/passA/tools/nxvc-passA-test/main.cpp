@@ -9,6 +9,7 @@
 //
 //   nxvc-passA-test [--device SUBSTR] [--tiles N] [--seed S]
 //                   [--mode ballot|lds|both] [--subgroup N] [--iters N]
+//                   [--entropy rans|lite] [--intra]
 //                   [--list] [--validate] [--spv PATH] [--quick]
 
 #include <vulkan/vulkan.h>
@@ -55,6 +56,13 @@ struct Options {
     bool validate = false;
     bool quick = false;
     std::string spv;
+    // [entropy-lite] Which entropy tool to build the corpus with and to
+    // specialise the pipeline for: "rans" (default) or "lite".
+    std::string entropy = "rans";
+    // [entropy-lite] INTRA_DIR: mode units in the unit list.  Only the Lite
+    // encoder codes them, so this is rejected with --entropy rans.  Off by
+    // default so the rANS and Lite corpora are the same tiles.
+    bool intra = false;
 };
 
 // ---------------------------------------------------------------------------
@@ -201,6 +209,7 @@ struct RunResult {
     size_t coef_mismatch = 0;
     size_t cbf_mismatch = 0;
     size_t ulen_mismatch = 0;
+    size_t mode_mismatch = 0;
     size_t status_bad = 0;
     double best_ms = 0.0;
     bool timed = false;
@@ -216,7 +225,8 @@ RunResult run_gpu(const Gpu &g, const Options &opt, const Corpus &c,
                   const std::vector<uint32_t> &spv, uint32_t mode,
                   uint32_t sparse, const std::vector<int16_t> &ref_coef,
                   const std::vector<uint32_t> &ref_cbf,
-                  const std::vector<uint32_t> &ref_ulen) {
+                  const std::vector<uint32_t> &ref_ulen,
+                  const std::vector<uint32_t> &ref_modes) {
     RunResult res;
     const uint32_t num_tiles = uint32_t(c.tiles.size());
 
@@ -329,11 +339,15 @@ RunResult run_gpu(const Gpu &g, const Options &opt, const Corpus &c,
     struct SpecData {
         uint32_t read_ptr_mode;
         uint32_t tiles_per_group;
-    } spec{mode, kTilesPerGroup};
-    VkSpecializationMapEntry sme[2] = {
+        // [entropy-lite] kEntropyRans or kEntropyLiteFixed; main() branches
+        // on it at the top, so the two paths never share a barrier.
+        uint32_t entropy_mode;
+    } spec{mode, kTilesPerGroup, c.entropy};
+    VkSpecializationMapEntry sme[3] = {
         {kSpecIdReadPtrMode, offsetof(SpecData, read_ptr_mode), 4},
-        {kSpecIdWorkgroupTiles, offsetof(SpecData, tiles_per_group), 4}};
-    VkSpecializationInfo spi{2, sme, sizeof(spec), &spec};
+        {kSpecIdWorkgroupTiles, offsetof(SpecData, tiles_per_group), 4},
+        {kSpecIdEntropyMode, offsetof(SpecData, entropy_mode), 4}};
+    VkSpecializationInfo spi{3, sme, sizeof(spec), &spec};
 
     VkComputePipelineCreateInfo cpi{
         VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
@@ -367,7 +381,8 @@ RunResult run_gpu(const Gpu &g, const Options &opt, const Corpus &c,
         VKCHECK(vkCreateQueryPool(g.device, &qpi, nullptr, &qpool));
     }
 
-    const uint32_t groups = group_count(num_tiles);
+    // [entropy-lite] The Lite path is one workgroup per tile.
+    const uint32_t groups = group_count(num_tiles, kLanes, c.entropy);
     struct Push {
         uint32_t num_tiles, frame_nplanes, coef_stride, cbf_words, tools,
             sparse;
@@ -415,10 +430,12 @@ RunResult run_gpu(const Gpu &g, const Options &opt, const Corpus &c,
     std::vector<uint32_t> cbf(size_t(cbf_bytes / 4));
     std::vector<uint32_t> status(num_tiles);
     std::vector<uint32_t> ulen(size_t(ulen_bytes / 4));
+    std::vector<uint32_t> gmodes(size_t(mode_bytes / 4));
     download(g, b_coef, coef.data(), coef_bytes);
     download(g, b_cbf, cbf.data(), cbf_bytes);
     download(g, b_status, status.data(), status_bytes);
     download(g, b_ulen, ulen.data(), ulen_bytes);
+    download(g, b_modes, gmodes.data(), mode_bytes);
 
     for (size_t i = 0; i < status.size(); ++i)
         if (status[i] != kStatusOk) ++res.status_bad;
@@ -434,6 +451,17 @@ RunResult run_gpu(const Gpu &g, const Options &opt, const Corpus &c,
         }
     for (size_t i = 0; i < cbf.size(); ++i)
         if (cbf[i] != ref_cbf[i]) ++res.cbf_mismatch;
+    // [v3/entropy-lite] binding 6.  With no INTRA_DIR both sides are all
+    // zero, which still proves the kernel zeroed the region.
+    for (size_t i = 0; i < gmodes.size(); ++i)
+        if (gmodes[i] != ref_modes[i]) {
+            if (res.mode_mismatch == 0)
+                std::fprintf(stderr,
+                             "  first mode mismatch: word %zu (tile %zu) "
+                             "gpu=%08x cpu=%08x\n",
+                             i, i / kModeWordsPerTile, gmodes[i], ref_modes[i]);
+            ++res.mode_mismatch;
+        }
     if (sparse)
         for (size_t i = 0; i < ulen.size(); ++i)
             if (ulen[i] != ref_ulen[i]) {
@@ -487,6 +515,8 @@ int main(int argc, char **argv) {
         else if (a == "--subgroup") opt.subgroup = std::stoi(val());
         else if (a == "--iters") opt.iters = std::stoi(val());
         else if (a == "--spv") opt.spv = val();
+        else if (a == "--entropy") opt.entropy = val();
+        else if (a == "--intra") opt.intra = true;
         else if (a == "--list") opt.list = true;
         else if (a == "--validate") opt.validate = true;
         else if (a == "--quick") { opt.quick = true; opt.tiles = 128; opt.iters = 1; }
@@ -615,16 +645,34 @@ int main(int argc, char **argv) {
     CorpusConfig cfg;
     cfg.num_tiles = opt.tiles;
     cfg.seed = opt.seed;
+    // [entropy-lite] Same tiles, same coefficients, same RNG stream either
+    // way: only the tool that codes them changes.
+    if (opt.entropy == "lite") cfg.entropy = kEntropyLiteFixed;
+    else if (opt.entropy != "rans") {
+        std::fprintf(stderr, "--entropy must be rans or lite\n");
+        return 2;
+    }
+    if (opt.intra) {
+        if (cfg.entropy != kEntropyLiteFixed) {
+            std::fprintf(stderr,
+                         "--intra needs --entropy lite: the rANS test encoder "
+                         "does not code mode units\n");
+            return 2;
+        }
+        cfg.intra_dir = true;
+    }
     Corpus c;
     if (!build_corpus(cfg, c)) {
         std::fprintf(stderr, "corpus build failed\n");
         return 2;
     }
     std::printf(
-        "corpus: %u tiles, %.3f symbols/pixel, %zu payload bytes "
+        "corpus: %s%s, %u tiles, %.3f %s/pixel, %zu payload bytes "
         "(%.0f B/tile), coef stride %u\n",
-        uint32_t(c.tiles.size()),
-        double(c.total_symbols) / double(c.total_pixels), c.bits.size(),
+        c.entropy == kEntropyLiteFixed ? "entropy_lite/fixed" : "rans",
+        cfg.intra_dir ? " +intra_dir" : "", uint32_t(c.tiles.size()),
+        double(c.total_symbols) / double(c.total_pixels),
+        c.entropy == kEntropyLiteFixed ? "fields" : "symbols", c.bits.size(),
         double(c.bits.size()) / double(c.tiles.size()), c.coef_stride);
 
     // The CPU model in each layout.  The dense one is checked against the
@@ -656,6 +704,12 @@ int main(int argc, char **argv) {
     size_t model_bad = 0;
     for (size_t i = 0; i < cpu[0].coef.size(); ++i)
         if (cpu[0].coef[i] != c.expect_coef[i]) ++model_bad;
+    for (size_t i = 0; i < cpu[0].cbf.size(); ++i)
+        if (cpu[0].cbf[i] != c.expect_cbf[i]) ++model_bad;
+    for (size_t i = 0; i < cpu[0].modes.size(); ++i)
+        if (cpu[0].modes[i] != c.expect_modes[i]) ++model_bad;
+    for (size_t i = 0; i < cpu[0].status.size(); ++i)
+        if (cpu[0].status[i] != kStatusOk) ++model_bad;
     if (model_bad) {
         std::fprintf(stderr, "CPU model disagrees with the encoder (%zu)\n",
                      model_bad);
@@ -684,18 +738,21 @@ int main(int argc, char **argv) {
             const char *mname = mode == kReadPtrBallot ? "ballot" : "lds";
             const ModelRun &m = cpu[sparse];
             RunResult r = run_gpu(g, opt, c, spv, mode, sparse, m.coef, m.cbf,
-                                  m.ulen);
+                                  m.ulen, m.modes);
             std::printf(
                 "[%s/%s] coef_mismatch=%zu cbf_mismatch=%zu len_mismatch=%zu "
-                "status_bad=%zu",
+                "mode_mismatch=%zu status_bad=%zu",
                 mname, sparse ? "sparse" : "dense", r.coef_mismatch,
-                r.cbf_mismatch, r.ulen_mismatch, r.status_bad);
+                r.cbf_mismatch, r.ulen_mismatch, r.mode_mismatch,
+                r.status_bad);
             if (r.timed)
-                std::printf("  decode %.3f ms (%.2f Mtile/s)", r.best_ms,
-                            double(c.tiles.size()) / (r.best_ms * 1000.0));
+                std::printf("  decode %.3f ms (%.2f Mtile/s, %.0f ns/tile)",
+                            r.best_ms,
+                            double(c.tiles.size()) / (r.best_ms * 1000.0),
+                            r.best_ms * 1e6 / double(c.tiles.size()));
             std::printf("\n");
             if (r.coef_mismatch || r.cbf_mismatch || r.ulen_mismatch ||
-                r.status_bad)
+                r.mode_mismatch || r.status_bad)
                 ++failures;
         }
 

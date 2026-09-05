@@ -374,8 +374,12 @@ encoder half of sign data hiding, whose decoder half is the parity fixup in
 `ref.codec` (rate/quality monotonicity, lossless bit-exactness, every tool
 combination, odd picture sizes, multi-frame), `ref.headers` (TLV forward
 compatibility and header validation), `ref.saturate` (the inverse transform and
-the dequantizer at their documented bounds), `ref.fuzz_smoke` (random and
-mutated streams never crash), `ref.cli` (the three tools end to end) and
+the dequantizer at their documented bounds), `ref.transform_gain` (every
+transform size is orthonormal at unit scale against a float DCT-II),
+`ref.entropy_lite` (the table-free FIXED and RICE variants round trip and stay
+mutually exclusive with the table tools), `ref.inter` and `ref.warp_convention`
+(the warp model and its quad vectors), `ref.fuzz_smoke` (random and mutated
+streams never crash), `ref.cli` (the three tools end to end) and
 `ref.vectors`.
 
 `ref.saturate` exists to be run under the sanitizers, where a signed overflow
@@ -386,12 +390,8 @@ cmake --preset asan-ubsan && cmake --build --preset asan-ubsan
 ctest --preset asan-ubsan -R 'ref\.'
 ```
 
-`tests/vectors/` holds 61 committed `.nxv` vectors and `vectors.md5`, which pins
-both the MD5 of each bitstream and the MD5 of its decoded planes, plus 32
-=======
-`tests/vectors/` holds 62 committed `.nxv` vectors and `vectors.md5`, which
-pins both the MD5 of each bitstream and the MD5 of its decoded planes, plus 32
->>>>>>> tourney/xform-a
+`tests/vectors/` holds 81 committed `.nxv` vectors and `vectors.md5`, which
+pins both the MD5 of each bitstream and the MD5 of its decoded planes, plus 43
 **rejection vectors** and `rejects.md5`, which pin the exact status each
 malformed stream must be refused with. `VERSION`, `UNSUPPORTED`, `BITSTREAM`
 and `TRUNCATED` are not interchangeable: a transport falls back on one and

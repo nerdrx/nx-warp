@@ -27,6 +27,12 @@ struct UnitInfo {
     int coef_base;  // index into the tile's coefficient array
     int ctx_cbf;
     int ctx_last;
+    // [entropy-lite] UNIT_COEF (0) or UNIT_MODE (1).  Mode units exist only
+    // when the shape asks for INTRA_DIR, and only the Lite encoder codes
+    // them; encode_tile() emits v1 syntax and never sees one.
+    int kind = 0;
+    int nbx = 0;        // UNIT_MODE: blocks per plane edge
+    int mode_base = 0;  // UNIT_MODE: index into the tile's mode array
 };
 
 // Tile geometry as it is carried by the 8-byte tile header.
@@ -38,6 +44,10 @@ struct TileShape {
     int frame_nplanes = 3;
     int table_set = 0;
     int tile_index = 0;
+    // [entropy-lite] Frame-uniform tool bits, Pass A's `tools` push constant.
+    // Only kToolFlagIntraDir is honoured here, and only by the Lite path: it
+    // adds one mode unit per coded plane to build_units().
+    int tools = 0;
 };
 
 // Builds the unit list for `shape`; returns the tile's coefficient count.
@@ -63,6 +73,19 @@ bool finalize(Tables &t);
 bool encode_tile(const TileShape &shape, const std::vector<UnitInfo> &units,
                  const int16_t *coef, const Tables &tabs,
                  std::vector<uint8_t> &out, uint64_t *op_count = nullptr);
+
+// [entropy-lite] The same, for an ENTROPY_LITE / FIXED payload: the 8-byte
+// tile header followed by the five sections of ref/src/entropy_lite.cpp
+// lite_encode_units(), which this is byte-identical to for the same units and
+// coefficients.  `modes` holds the tile's intra modes, kModesPerPlane per
+// plane (so plane p's block b is modes[p * kModesPerPlane + b]); it may be
+// null when the shape carries no INTRA_DIR and therefore no mode units.
+// `op_count` receives the number of coded BIT FIELDS -- the Lite analogue of
+// the rANS entropy-operation count, and not comparable with it.
+bool encode_tile_lite(const TileShape &shape,
+                      const std::vector<UnitInfo> &units, const int16_t *coef,
+                      const uint8_t *modes, std::vector<uint8_t> &out,
+                      uint64_t *op_count = nullptr);
 
 }  // namespace test
 }  // namespace nxwarp_passA

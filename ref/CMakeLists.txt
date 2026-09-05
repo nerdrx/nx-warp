@@ -15,6 +15,7 @@ add_library(nxvc_ref_obj OBJECT
     src/tables.cpp
     src/transform.cpp
     src/entropy.cpp
+    src/entropy_lite.cpp
     src/codec.cpp
 )
 target_include_directories(nxvc_ref_obj PUBLIC ${CMAKE_SOURCE_DIR}/include)

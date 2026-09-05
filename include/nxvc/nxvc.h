@@ -188,6 +188,17 @@ typedef enum nxvc_tile_mode {
 #define NXVC_TOOL_NEAR_SKIP       (1ull << 28)
 #define NXVC_TOOL_QUAD_MV         (1ull << 29)
 
+/* ENTROPY_LITE: the table-free, fully parallel entropy tool of SYNTAX.md
+ * 9.10.  Mutually exclusive with SIGN_HIDE and CUSTOM_TABLES: both are
+ * statements about an arithmetic coder this tool does not have.
+ *
+ * It ships OFF and is a NEGOTIATED tool: the decoder asks for it from its own
+ * measured Pass A time, because whether it is worth +40-50 % bits depends on
+ * a number only the decoder knows.  On a Pico 4 it cuts Pass A 7.5x, 138.5 ms
+ * to 18.4 ms, and it is the only bitstream-side lever that reaches the Adreno
+ * frame budget at all. */
+#define NXVC_TOOL_ENTROPY_LITE    (1ull << 30)
+
 /* Tools this reference decoder implements. */
 #define NXVC_TOOLS_SUPPORTED                                                  \
     (NXVC_TOOL_INTRA_DC_PLANE | NXVC_TOOL_TRANSFORM_SKIP |                    \
@@ -198,7 +209,8 @@ typedef enum nxvc_tile_mode {
      NXVC_TOOL_XFORM_4X4_SPLIT | NXVC_TOOL_INTRA_CFL |                        \
      NXVC_TOOL_CTX_V3 | NXVC_TOOL_TAB_V2 | NXVC_TOOL_XFORM_LARGE |            \
      NXVC_TOOL_NEAR_SKIP | NXVC_TOOL_QUAD_MV |                                \
-     NXVC_TOOL_INTER | NXVC_TOOL_WARP | NXVC_TOOL_STEREO)
+     NXVC_TOOL_INTER | NXVC_TOOL_WARP | NXVC_TOOL_STEREO |                    \
+     NXVC_TOOL_ENTROPY_LITE)
 
 /* ---------------------------------------------------------------- images */
 /* 8-bit planar image.  plane[0]=Y/R', plane[1]=Co/G', plane[2]=Cg/B',
@@ -393,6 +405,14 @@ typedef struct nxvc_config {
                                    fitted to a reporting convention, not a
                                    coding gain, and anything quoted with it
                                    must be quoted on both metrics.         */
+
+    /* the entropy-lite tool (docs/TOOLBITS.md 2, bit 30).
+     * 0 = interleaved rANS (the default), 1 = Lite/FIXED, 2 = Lite/RICE.
+     * A nonzero value sets tool bit 30 and forces sign_hide and
+     * custom_tables off; both are meaningless without an arithmetic coder.
+     * RICE is defined and reachable but is NOT the variant this merge ships:
+     * see docs/SYNTAX.md 9.10. */
+    uint32_t entropy_lite;
 } nxvc_config;
 
 /* One eye's view for one frame: the orientation the frame was rendered with

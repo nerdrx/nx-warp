@@ -95,6 +95,11 @@ static void usage() {
         "  --no-sign-hide       code every sign (default: hide one per unit)\n"
         "  --split4x4 on|off    per-block 4x4 transform split (default on)\n"
         "  --cfl on|off         chroma-from-luma intra mode (default on)\n"
+        "  --entropy rans|lite-fixed|lite-rice\n"
+        "                       entropy tool (default rans; the lite variants\n"
+        "                       set tool bit 30 and are OFF by default -- the\n"
+        "                       decoder negotiates them from its own measured\n"
+        "                       Pass A time)\n"
         "  --chroma-qp-off N    chroma QP offset\n"
         "  --custom-tables      derive and transmit probability tables\n"
         "  --tile-420           code 4:2:0 tiles inside a 4:4:4 stream\n"
@@ -120,10 +125,10 @@ static void usage() {
         "                       fixed 1-in-T permutation (default on)\n"
         "  --drift-gate F       --drift-refresh gate, multiples of the\n"
         "                       quantiser noise floor qstep^2/12 (default 4)\n"
-        "  --near-skip on|off   DC-correction tile form, tool bit 24\n"
+        "  --near-skip on|off   DC-correction tile form, tool bit 28\n"
         "                       (default on)\n"
         "  --quad-mv on|off     four vectors per tile, one per 32x32\n"
-        "                       quadrant, tool bit 25 (default on)\n"
+        "                       quadrant, tool bit 29 (default on)\n"
         "  --ref-sel 0..2       reference distance inter tiles ask for\n"
         "  --stereo on|off      STEREO inter-view mode on the right eye\n"
         "  --mv-range N         coarse search radius in samples (default 16)\n"
@@ -206,6 +211,7 @@ int main(int argc, char **argv) {
     int intra_dir = 1, intra_dir_layer = 0, ctx_v2 = 1, ctx_v3 = 0;
     int tab_v2 = 0, dir_cand = 0, table_iters = -1;
     int xform = 0;   // tool 27: 0 = 8x8, 1 = 16x16, 2 = 32x32, 255 = auto
+    int entropy_lite = 0;   // tool 30: 0 = rANS, 1 = FIXED, 2 = RICE
     int sign_hide = 1;
     int split4x4 = 1, cfl = 1;
     int inter = 0, eyes = 1, intra_period = 180, ref_sel = 0, stereo = 0;
@@ -417,6 +423,13 @@ int main(int argc, char **argv) {
             else if (v == "v1") tab_v2 = 0;
             else { std::fprintf(stderr, "--tab: v1|v2\n"); return 2; }
         }
+        else if (a == "--entropy") {
+            std::string v = val();
+            if (v == "rans") entropy_lite = 0;
+            else if (v == "lite-fixed") entropy_lite = 1;
+            else if (v == "lite-rice") entropy_lite = 2;
+            else { std::fprintf(stderr, "--entropy: rans|lite-fixed|lite-rice\n"); return 2; }
+        }
         else if (a == "--ctx") {
             std::string v = val();
             if (v == "v3") { ctx_v2 = 1; ctx_v3 = 1; }
@@ -598,6 +611,7 @@ int main(int argc, char **argv) {
     cfg.sign_hide = (uint32_t)sign_hide;
     cfg.split4x4 = (uint32_t)split4x4;
     cfg.chroma_from_luma = (uint32_t)cfl;
+    cfg.entropy_lite = (uint32_t)entropy_lite;
     cfg.chroma_qp_off = chroma_qp_off;
     cfg.lossless = (uint32_t)lossless;
     cfg.transform_skip = (uint32_t)tskip;

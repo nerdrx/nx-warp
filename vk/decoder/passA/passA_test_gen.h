@@ -81,6 +81,10 @@ inline void make_tile_coefs(const TileShape &shape,
                             uint32_t mean_last, std::vector<int16_t> &coef) {
     coef.assign(size_t(ncoef_total), 0);
     for (const UnitInfo &u : units) {
+        // [entropy-lite] A mode unit carries no coefficients at all.  It can
+        // only appear when the shape asks for INTRA_DIR, so this never fires
+        // for the v1 corpus and the rANS bitstreams are unchanged.
+        if (u.kind == 1) continue;
         if (!rng.chance(cbf_prob)) continue;
         // Geometric-ish LAST position, clamped to the unit.
         uint32_t last = 0;
@@ -98,6 +102,31 @@ inline void make_tile_coefs(const TileShape &shape,
             if (rng.chance(512)) mag = -mag;
             coef[size_t(u.coef_base + scan_index(u.scan_id, int(p)))] =
                 int16_t(mag);
+        }
+    }
+}
+
+// [entropy-lite] Per-block intra modes for one tile, laid out exactly as Pass
+// A's binding 6 is: kModesPerPlane slots per plane, mode of block b of plane
+// p at index p * kModesPerPlane + b.  Slots outside a plane's nb*nb stay 0,
+// which is what the kernel's zeroed mode region reads back as.
+inline void make_tile_modes(const std::vector<UnitInfo> &units, Rng &rng,
+                            uint32_t mpm_prob, std::vector<uint8_t> &modes) {
+    modes.assign(size_t(kMaxPlanes) * kModesPerPlane, 0);
+    for (const UnitInfo &u : units) {
+        if (u.kind != 1) continue;
+        uint8_t *m = modes.data() + u.mode_base;
+        int n = u.nbx * u.nbx;
+        for (int b = 0; b < n; ++b) {
+            int bx = b % u.nbx, by = b / u.nbx;
+            int left = bx > 0 ? int(m[b - 1]) : kIntraDcPlane;
+            int above = by > 0 ? int(m[b - u.nbx]) : kIntraDcPlane;
+            int mpm = nxs_mpm(left, above);
+            // Biased towards the MPM, so both branches of section S and the
+            // non-MPM bodies of section B are well covered.
+            m[b] = uint8_t(rng.chance(mpm_prob)
+                               ? mpm
+                               : nxs_nonmpm_mode(mpm, int(rng.below(8))));
         }
     }
 }

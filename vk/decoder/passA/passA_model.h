@@ -56,6 +56,12 @@ struct Inputs {
     // [sparse] 1 = scan-order slots plus a per-unit length; 0 = the dense
     // raster-order layout.  Matches the shader's `sparse` push constant.
     uint32_t sparse = 1;
+    // [entropy-lite] Which entropy tool the payloads carry: kEntropyRans or
+    // kEntropyLiteFixed.  Matches specialisation constant 3 (ENTROPY_MODE) of
+    // rans_decode.comp.  `lanes`, `read_ptr_mode` and `tables` are unused
+    // under kEntropyLiteFixed -- the tool has no rANS lanes, no shared read
+    // pointer and no probability tables.
+    uint32_t entropy_mode = kEntropyRans;
 };
 
 struct Outputs {
@@ -77,8 +83,11 @@ struct Outputs {
 void decode(const Inputs &in, const Outputs &out);
 
 // Number of workgroups the host must dispatch for `num_tiles` at `lanes`
-// rANS lanes per tile.
-inline uint32_t group_count(uint32_t num_tiles, uint32_t lanes = kLanes) {
+// rANS lanes per tile.  [entropy-lite] The Lite path puts ONE tile in a
+// workgroup, so its group count is the tile count.
+inline uint32_t group_count(uint32_t num_tiles, uint32_t lanes = kLanes,
+                            uint32_t entropy_mode = kEntropyRans) {
+    if (entropy_mode == kEntropyLiteFixed) return num_tiles;
     uint32_t tpg = nxs_tiles_per_group(lanes);
     return (num_tiles + tpg - 1) / tpg;
 }

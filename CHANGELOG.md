@@ -14,6 +14,26 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
 
 ### Added
 
+**Entropy: `ENTROPY_LITE`, a table-free parallel entropy tool (OFF by default)**
+
+- Stream tool bit **30** (`docs/SYNTAX.md` 9.10): a table-free coding of the coefficient payload with
+  no arithmetic-coder state, so a tile decodes with three prefix sums and then one thread per coding
+  unit -- and in the `FIXED` variant one thread per *coefficient*. Two variants, `FIXED` (fixed-width
+  magnitude fields, **the one this merge ships**) and `RICE` (Exp-Golomb with an explicit body
+  length, defined and reachable but not shipped), selected by the tile header's `table_set` field,
+  which a stream with no probability tables has nothing else to mean. Mutually exclusive with
+  `SIGN_HIDE` and `CUSTOM_TABLES`. `nxv-enc --entropy rans|lite-fixed|lite-rice`; conformance
+  vectors v76-v81.
+- Pass A decodes the `FIXED` variant behind specialisation constant 3, `ENTROPY_MODE`, at one
+  64-thread workgroup per tile.
+- **It ships OFF, and it is a NEGOTIATED tool rather than a default.** Whether +40-50 % bits is worth
+  the decode time is a question only the decoder can answer, from its own measured Pass A: on a
+  Pico 4 it cuts Pass A **7.5x, 138.5 ms to 18.4 ms**, and it is the only bitstream-side lever that
+  reaches the Adreno frame budget at all; on a desktop RADV, where Pass A already fits, it is 4.1x
+  for bits nobody needs to spend. So the decoder asks for it at the handshake and the encoder
+  obliges, which is what a tool bit is for. `ref/RESULTS-entropy-lite.md` has the measurement, the
+  crossover (~140 Mbit/s on a 12 ms budget) and the caveats.
+
 **Bitstream syntax v1.6 -- the large transforms**
 
 - Tool bit 24 `XFORM_LARGE` and the tile header's two-bit `xform_size` (word1 bits 28-29): a 16x16 or

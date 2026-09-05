@@ -90,6 +90,7 @@ so a dropped tool leaves no bit with a history for a later package to inherit.
 | 29 | `QUAD_MV` | four quadrant vectors per tile | `inter-a` `QUAD_MV` (25), `inter-b` `MV_QUAD` (25) | 25 | **move to 29**; `inter-b` renamed onto `QUAD_MV` |
 | -- | ~~`SUBTILE_INTRA`~~ | one quadrant drops the predictor | `inter-a` (26) | 26 | **DROPPED by `JUDGE-inter.md`**, no bit allocated |
 | -- | ~~`TILE_EXT`~~ | the tile extension byte | -- | -- | **not needed** -- see section 4 |
+| 30 | `ENTROPY_LITE` | the table-free, fully parallel entropy coding | `exp/entropy-lite` (24) | 24 | **move to 30**, the first bit the tournament left free |
 
 `rdo-a` and `rdo-b` allocate **no tool bit at all**: both are pure encoder
 packages (rate-distortion search, lambda, effort presets) and change no
@@ -97,10 +98,16 @@ normative syntax. They are the only two branches whose merge cannot collide on
 this table. They collide violently on the conformance vectors instead --
 section 5.
 
-**Bits 30-63 stay reserved and must be zero.** The tournament allocates seven
+**Bits 31-63 stay reserved and must be zero.** The tournament allocates seven
 bits, 19 and 24-29, and stops there: `JUDGE-ctx.md` dropped `VEC_ENT` and
 `JUDGE-inter.md` dropped sub-tile intra, and neither leaves a reservation
 behind.
+
+**Bit 30 is `ENTROPY_LITE`**, allocated after the tournament from
+`exp/entropy-lite`, which had developed it on bit 24 like everything else.
+It is not a tournament package and did not compete: it is a *decoder-side*
+lever, and it is the only one in the format that changes the bitstream in
+order to buy Pass A time. It ships **off** and is negotiated -- see section 8.
 
 ### 2.1 The collision, stated plainly
 
@@ -313,6 +320,7 @@ NXVC_TOOL_TAB_V2            (1ull << 26)   ctx-b's format (ships OFF by default)
 NXVC_TOOL_XFORM_LARGE       (1ull << 27)   xform
 NXVC_TOOL_NEAR_SKIP         (1ull << 28)   inter-a's name, inter-b's syntax
 NXVC_TOOL_QUAD_MV           (1ull << 29)   inter
+NXVC_TOOL_ENTROPY_LITE      (1ull << 30)   exp/entropy-lite (ships OFF)
 ```
 
 and `NXVC_BITSTREAM_MINOR` becomes 6. (`JUDGE-ctx.md` step 13 says v1.5,
@@ -326,3 +334,47 @@ stay out of `kToolsSupported` in `nxvc_vkdec_parse.cpp` and the Vulkan decoder
 refuses them with `VERSION`. That is what keeps the reference encoder's
 **default** output decodable by the Vulkan decoder, which is the property the
 whole tournament's tool-bit discipline exists to protect.
+
+---
+
+## 8. Bit 30: `ENTROPY_LITE`, and why a tool can ship off and still matter
+
+Every other tool in this table is a rate tool: it is on when it pays in
+BD-rate and off when it does not, and the encoder decides. `ENTROPY_LITE` is
+not that, and the difference is worth stating because the table above cannot
+express it.
+
+It **costs** rate -- +40 to +50 % of the payload at QP 24 -- and it **buys**
+decode time, by removing the serial rANS chain that Pass A is latency-bound
+on: a tile's payload becomes five byte-aligned sections whose per-unit offsets
+follow from three prefix sums over quantities already read, so every coding
+unit decodes independently, and in the `FIXED` variant every coefficient's bit
+position is computable, so one thread can decode one coefficient.
+
+Measured on a Pico 4: **Pass A 138.5 ms -> 18.4 ms, 7.5x.** It is the only
+bitstream-side lever that reaches the Adreno frame budget at all. On a desktop
+RADV, where Pass A already fits inside its budget, the same tool is 4.1x
+faster for bits nobody needed to spend.
+
+That is why it is **negotiated rather than defaulted**. Whether the trade is
+worth making depends on the decoder's own measured Pass A time, which the
+encoder cannot know and must not guess. So:
+
+* `nxvc_config::entropy_lite` is 0 by default and the tool bit is unset;
+* a decoder that wants it says so at the handshake, exactly as it says which
+  other tools it implements, and the encoder obliges;
+* everything else in the format composes with it unchanged, because it changes
+  how coefficients are written and not which ones there are.
+
+Two variants are defined. **`FIXED` is the one this merge ships**: fixed-width
+magnitude fields, which is what makes a coefficient's bit position computable
+and therefore what makes the per-coefficient parallelism possible. **`RICE`
+stays in the syntax and stays off**: it is worth 1-4 % of rate above about
+140 Mbit/s and gives up exactly the property the tool exists for. Keeping it
+defined costs a `table_set` value and documents the alternative that was
+measured; shipping it would mean shipping the variant that does not buy the
+thing.
+
+The variant selector is the tile header's existing `table_set` field, which a
+stream with no probability tables has nothing else to mean -- so the tool
+costs no header bit beyond its tool bit.

@@ -62,6 +62,7 @@ struct VecSpec {
     int tab;          // compact transmitted table sets (TAB_V2, tool 26)
     int xform;        // transform size: 0 = 8x8, 1 = 16x16, 2 = 32x32,
                       // 255 = the encoder's per-tile RD choice (tool 27)
+    int lite;         // ENTROPY_LITE (tool 30): 0 rANS, 1 FIXED, 2 RICE
 };
 
 static const VecSpec kVectors[] = {
@@ -155,7 +156,22 @@ static const VecSpec kVectors[] = {
     {"v70_xform32_444",        192, 128, 1,  1, 20,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 2},
     {"v71_xform_auto_default", 192, 128, 1,  1, 20,  0, 0,  0,255,  1,  0, 0,  1,  0,  0, 1, 0, 0, 1, 1, 1, 0, 1, 0, 255},
     {"v72_xform32_res_cycle",  192, 128, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  1,  0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 2},
-    {"v73_xform16_dir444",     192, 128, 1,  2, 16,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1},
+    {"v73_xform16_dir444",     192, 128, 1,  2, 16,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0},
+    // entropy-lite (tool 30), the FIXED variant this merge ships and the RICE
+    // variant it defines but leaves off.  sign_hide and custom_tables are
+    // forced off by the tool and nsub_log2 is pinned to 3; the encoder does
+    // that itself, so the rows carry the values the other vectors use and the
+    // streams still come out legal.  SYNTAX.md 9.10.
+    {"v76_lite_fixed420_qp24", 192, 128, 0,  1, 24,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1},
+    {"v77_lite_rice420_qp24",  192, 128, 0,  1, 24,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 2},
+    {"v78_lite_fixed444_dir",  192, 128, 1,  1, 16,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 1},
+    {"v79_lite_rice444_dir",   192, 128, 1,  1, 16,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 2},
+    // res_level cycling, transform skip and a QP map on the Lite path: the
+    // unit list changes shape per tile, which is what the section offsets are
+    // derived from.
+    {"v80_lite_fixed_res_ts",  192, 128, 0,  1, 28,  0, 0,  1,  3,  0,  0, 0,  1,  1,  1, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 1},
+    // Lossless through the Lite coder: magnitude class 7 and nothing else.
+    {"v81_lite_lossless444",   192, 128, 1,  1,  0,  1, 0,  1,  3,  0,  0, 0,  0,  0,  0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1},
 };
 static const int kNumVectors = (int)(sizeof(kVectors) / sizeof(kVectors[0]));
 
@@ -284,6 +300,8 @@ static Result build(const VecSpec &v) {
     cfg.chroma_from_luma = (uint32_t)v.cfl;
     cfg.tab_v2 = (uint32_t)v.tab;
     cfg.xform_size = (uint32_t)v.xform;
+    cfg.entropy_lite = (uint32_t)v.lite;
+
 
     nxvc_status st;
     nxvc_encoder *e = nxvc_encoder_create(&cfg, &st);

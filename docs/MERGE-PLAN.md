@@ -727,3 +727,44 @@ untouched at `e311de9` and nothing has been pushed.
 The two decisions in 4.4 and 4.5 are fixed inputs to that merge whenever it
 happens, and `scripts/tourney-merge.sh` prints both at the point of conflict so
 they cannot be re-litigated at the keyboard.
+
+---
+
+## 8. Step 9, after the tournament: `exp/entropy-lite`
+
+Added after the seven tournament steps, and not a tournament package: it did
+not compete, it has no judge, and it is the only tool in the format that
+spends rate to buy **decode time**.
+
+`exp/entropy-lite` developed `ENTROPY_LITE` on bit 24, like every tournament
+branch did, so it renumbers the same way -- to **bit 30**, the first bit the
+tournament left free (`docs/TOOLBITS.md` 2 and 8). Only the tool commit is
+taken; the branch also carries a GPU encoder and a Pass A performance series
+that are separate work.
+
+What lands:
+
+* the **`FIXED` variant**, which is the one that makes a coefficient's bit
+  position computable and therefore the one that buys the parallelism;
+* **`RICE` stays in the syntax and stays off** -- it is worth 1-4 % of rate
+  above ~140 Mbit/s and gives up exactly the property the tool exists for.
+  Defined, reachable, documented as measured-and-not-shipped;
+* `docs/SYNTAX.md` **9.10**, not the branch's 9.8: 9.8 is the 4x4 split and
+  9.9 the 27-context model by the time this lands, so the section number
+  moves with the bit;
+* Pass A's specialisation constant 3, `ENTROPY_MODE`, decoding `FIXED` at one
+  64-thread workgroup per tile;
+* Appendix A **78**, renumbered from the branch's 53.
+
+**It ships OFF and is negotiated.** The trade is +40-50 % bits for a 7.5x cut
+in Pass A on a Pico 4 (138.5 -> 18.4 ms), where it is the only bitstream-side
+lever that reaches the frame budget at all -- and on a desktop GPU, where Pass
+A already fits, the same trade is bits spent for nothing. Whether to make it
+depends on the decoder's own measured Pass A, which the encoder cannot know,
+so the decoder asks at the handshake. That is a different discipline from the
+tournament's "on when it pays in BD-rate", and section 8 of `docs/TOOLBITS.md`
+states it.
+
+The mandatory checks apply unchanged, with the gain check restated for a tool
+whose gain is not in BD-rate: **bits +40 to +50 % at QP 24**, and **zero
+mismatches through the Vulkan decoder's Pass A path on lavapipe**.

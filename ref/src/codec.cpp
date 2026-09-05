@@ -7,6 +7,7 @@
 
 #include "common.h"
 #include "entropy.h"
+#include "entropy_lite.h"
 #include "inter.h"
 #include "transform.h"
 
@@ -2324,6 +2325,14 @@ void nxvc_config_default(nxvc_config *cfg) {
     cfg->drift_gate_q8 = 0;    // built-in default, 4x the quantiser floor
     cfg->near_skip = 1;
     cfg->quad_mv = 1;
+    // ENTROPY_LITE ships OFF.  It is a NEGOTIATED tool, not a default: it buys
+    // Pass A time with bits, and whether that trade is worth making depends on
+    // a number only the DECODER has -- its own measured Pass A.  On a Pico 4
+    // it is 7.5x and the only lever that reaches the frame budget at all; on a
+    // desktop GPU, where Pass A already fits, it is +40-50 % bits for nothing
+    // anyone needed.  So the decoder asks for it at the handshake and the
+    // encoder obliges; the encoder does not guess.  docs/SYNTAX.md 9.10.
+    cfg->entropy_lite = 0;
 }
 
 void nxvc_tile_layout_get(uint32_t w, uint32_t h, nxvc_tile_layout *out) {

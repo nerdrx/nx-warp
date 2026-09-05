@@ -205,6 +205,8 @@ class Tool:
     NEAR_SKIP = 1 << 28
     #: Four motion vectors per tile, one per 32x32 quadrant (13.10).
     QUAD_MV = 1 << 29
+    #: The table-free, fully parallel entropy tool (SYNTAX.md 9.10).
+    ENTROPY_LITE = 1 << 30
 
     _NAMES = [
         (1 << 0, "INTRA_DC_PLANE"),
@@ -237,10 +239,11 @@ class Tool:
         (1 << 27, "XFORM_LARGE"),
         (1 << 28, "NEAR_SKIP"),
         (1 << 29, "QUAD_MV"),
+        (1 << 30, "ENTROPY_LITE"),
     ]
 
     #: The first tool bit that is reserved and must be zero (SYNTAX.md 2.3).
-    RESERVED_FROM = 30
+    RESERVED_FROM = 31
 
     @classmethod
     def names(cls, mask: int) -> list[str]:
@@ -282,6 +285,7 @@ TOOLS_SUPPORTED = (
     | Tool.XFORM_LARGE
     | Tool.NEAR_SKIP
     | Tool.QUAD_MV
+    | Tool.ENTROPY_LITE
 )
 
 #: The Phase 1 (intra-only) subset of :data:`TOOLS_SUPPORTED`.  Kept separate
@@ -398,6 +402,9 @@ class nxvc_config(Structure):
         ("dc_rdoq_off", c_uint32),
         ("qp_search_step", c_uint32),
         ("chroma_weight_q8", c_uint32),
+        # the entropy-lite tool (bit 30): 0 = rANS, 1 = FIXED, 2 = RICE.
+        ("entropy_lite", c_uint32),
+
     ]
 
 
