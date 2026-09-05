@@ -167,6 +167,13 @@ specialization constants first and both cost an 8x8-only stream real time on
 an Adreno 650; `../README.md` has the instruction counts and says why each
 one was invisible to the driver's dead-code pass.
 
+The model carries the whole path, not just the transform: `nxvc-passB-test`
+emits `xform_size` tiles at both sizes, in both chroma formats, at
+`res_level` 0 and over the random `res_level` mix where 6.7's plane cap gives
+one tile three block sizes, with a saturating arm and on the two-plane store.
+`vk.passB.ref_conformance` pins the primitive underneath it against
+`ref/src/transform.cpp` `idct_block(n)`.
+
 **On the Adreno 650 the module is miscompiled** and the streams that reach it
 decode wrong, which is the one place this decoder is not correct on all three
 ICDs. It is not a bitstream question -- RADV and lavapipe agree with `ref/`
