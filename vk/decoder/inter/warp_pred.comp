@@ -44,6 +44,14 @@ layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 layout(set = 0, binding = 0, std430) readonly buffer RefRing { uint w[]; } uRing;
 layout(set = 0, binding = 1, std430) readonly buffer WarpParams { uint w[]; } uWarp;
 layout(set = 0, binding = 2, std430) writeonly buffer WPred { uint w[]; } uWPred;
+// The host's workgroup -> tile map, the same buffer Pass B reads.  Pass W used
+// to take gl_WorkGroupID.x as the tile index, which is correct only while it
+// dispatches over every tile in raster order; going through the map lets one
+// dispatch cover any contiguous RANGE of build_tile_order()'s partition, which
+// is what a WARP_SKIP pipeline needs.  One uint load per workgroup, and every
+// write address still comes from the tile index rather than the workgroup id,
+// so the output is unchanged.
+layout(set = 0, binding = 3, std430) readonly buffer TileOrder { uint i[]; } uOrder;
 
 layout(push_constant) uniform Push { NxvwWarpPush p; } pc;
 
@@ -285,7 +293,7 @@ int bilinearMeansW(int nb, int sx, int sy) {
 // ---------------------------------------------------------------- entry
 void main() {
     const int tid = int(gl_LocalInvocationID.x);
-    const int tile = int(gl_WorkGroupID.x);
+    const int tile = int(uOrder.i[gl_WorkGroupID.x]);
     if (tile >= pc.p.tileCount) return;
 
     const uint tb = uint(NXVW_WARP_HDR_UINTS + tile * NXVW_WARP_TILE_UINTS);

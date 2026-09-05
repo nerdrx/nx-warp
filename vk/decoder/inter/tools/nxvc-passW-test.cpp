@@ -383,14 +383,26 @@ bool runGpu(Ctx &c, const Scene &sc, std::vector<int16_t> &out) {
     Buf bRing = createBuffer(c, ringBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
     Buf bPar = createBuffer(c, parBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
     Buf bOut = createBuffer(c, wpBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+    // Binding 3, the tile order.  warp_pred.comp takes its tile from this
+    // rather than from gl_WorkGroupID.x, so that one dispatch can cover a
+    // contiguous range of the decoder's partition.  This harness dispatches
+    // every tile in raster order, which is the identity -- but the binding
+    // has to exist, and it is exactly what was missing when this test read
+    // 0xAAAA everywhere: the kernel indexed a descriptor that was not bound.
+    Buf bOrder = createBuffer(c, (VkDeviceSize)std::max(sc.ntiles, 1) * 4,
+                              VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+    {
+        uint32_t *ord = (uint32_t *)bOrder.mapped;
+        for (int i = 0; i < sc.ntiles; ++i) ord[i] = (uint32_t)i;
+    }
     std::memcpy(bRing.mapped, sc.ring.data(), (size_t)ringBytes);
     std::memcpy(bPar.mapped, sc.params.data(), (size_t)parBytes);
     // 0xAA is not a value the kernel can produce for a plane it writes, so a
     // slot the kernel skipped is visible rather than accidentally right.
     std::memset(bOut.mapped, 0xAA, (size_t)wpBytes);
 
-    VkDescriptorSetLayoutBinding b[3]{};
-    for (int i = 0; i < 3; ++i) {
+    VkDescriptorSetLayoutBinding b[4]{};
+    for (int i = 0; i < 4; ++i) {
         b[i].binding = (uint32_t)i;
         b[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         b[i].descriptorCount = 1;
@@ -398,7 +410,7 @@ bool runGpu(Ctx &c, const Scene &sc, std::vector<int16_t> &out) {
     }
     VkDescriptorSetLayoutCreateInfo dl{
         VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
-    dl.bindingCount = 3;
+    dl.bindingCount = 4;
     dl.pBindings = b;
     VkDescriptorSetLayout dsl;
     VKCHECK(vkCreateDescriptorSetLayout(c.dev, &dl, nullptr, &dsl));
@@ -427,7 +439,7 @@ bool runGpu(Ctx &c, const Scene &sc, std::vector<int16_t> &out) {
     VKCHECK(vkCreateComputePipelines(c.dev, VK_NULL_HANDLE, 1, &ci, nullptr,
                                      &pipe));
 
-    VkDescriptorPoolSize ps{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3};
+    VkDescriptorPoolSize ps{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4};
     VkDescriptorPoolCreateInfo dp{
         VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
     dp.maxSets = 1;
@@ -442,11 +454,12 @@ bool runGpu(Ctx &c, const Scene &sc, std::vector<int16_t> &out) {
     da.pSetLayouts = &dsl;
     VkDescriptorSet set;
     VKCHECK(vkAllocateDescriptorSets(c.dev, &da, &set));
-    VkDescriptorBufferInfo bi[3] = {{bRing.buf, 0, VK_WHOLE_SIZE},
+    VkDescriptorBufferInfo bi[4] = {{bRing.buf, 0, VK_WHOLE_SIZE},
                                     {bPar.buf, 0, VK_WHOLE_SIZE},
-                                    {bOut.buf, 0, VK_WHOLE_SIZE}};
-    VkWriteDescriptorSet w[3]{};
-    for (int i = 0; i < 3; ++i) {
+                                    {bOut.buf, 0, VK_WHOLE_SIZE},
+                                    {bOrder.buf, 0, VK_WHOLE_SIZE}};
+    VkWriteDescriptorSet w[4]{};
+    for (int i = 0; i < 4; ++i) {
         w[i] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
         w[i].dstSet = set;
         w[i].dstBinding = (uint32_t)i;
@@ -454,7 +467,7 @@ bool runGpu(Ctx &c, const Scene &sc, std::vector<int16_t> &out) {
         w[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         w[i].pBufferInfo = &bi[i];
     }
-    vkUpdateDescriptorSets(c.dev, 3, w, 0, nullptr);
+    vkUpdateDescriptorSets(c.dev, 4, w, 0, nullptr);
 
     VkCommandBufferAllocateInfo cai{
         VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
@@ -495,6 +508,7 @@ bool runGpu(Ctx &c, const Scene &sc, std::vector<int16_t> &out) {
     destroyBuffer(c, bRing);
     destroyBuffer(c, bPar);
     destroyBuffer(c, bOut);
+    destroyBuffer(c, bOrder);
     return true;
 }
 
