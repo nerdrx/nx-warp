@@ -126,6 +126,9 @@ typedef enum nxvc_tile_mode {
  * actually free.  The substance of D-5 is unchanged: it is undefined in
  * version 1 and a v1 decoder MUST reject a stream that sets it. */
 #define NXVC_TOOL_FILTER_CATMULLROM (1ull << 23)
+/* ENTROPY_LITE: the table-free, fully parallel entropy tool of SYNTAX.md 9.8.
+ * Mutually exclusive with SIGN_HIDE and CUSTOM_TABLES. */
+#define NXVC_TOOL_ENTROPY_LITE    (1ull << 24)
 
 /* Tools this reference decoder implements. */
 #define NXVC_TOOLS_SUPPORTED                                                  \
@@ -134,7 +137,8 @@ typedef enum nxvc_tile_mode {
      NXVC_TOOL_LOSSLESS | NXVC_TOOL_CUSTOM_TABLES | NXVC_TOOL_NSUB_VAR |      \
      NXVC_TOOL_PER_TILE_CHROMA | NXVC_TOOL_YCOCGR | NXVC_TOOL_WM_ID |        \
      NXVC_TOOL_INTRA_DIR | NXVC_TOOL_CTX_V2 | NXVC_TOOL_SIGN_HIDE |           \
-     NXVC_TOOL_INTER | NXVC_TOOL_WARP | NXVC_TOOL_STEREO)
+     NXVC_TOOL_INTER | NXVC_TOOL_WARP | NXVC_TOOL_STEREO |                   \
+     NXVC_TOOL_ENTROPY_LITE)
 
 /* ---------------------------------------------------------------- images */
 /* 8-bit planar image.  plane[0]=Y/R', plane[1]=Co/G', plane[2]=Cg/B',
@@ -214,6 +218,12 @@ typedef struct nxvc_config {
                                    Below 256 the decision spends more bits to
                                    keep the reference clean, which is what an
                                    all-reference stream wants; 0 = default  */
+
+    /* --- additive since syntax v1.5: the ENTROPY_LITE tool (bit 24).
+     * 0 = interleaved rANS (the default), 1 = Lite/FIXED, 2 = Lite/RICE.
+     * A nonzero value sets tool bit 24 and forces sign_hide and
+     * custom_tables off; both are meaningless without an arithmetic coder. */
+    uint32_t entropy_lite;
 } nxvc_config;
 
 /* One eye's view for one frame: the orientation the frame was rendered with

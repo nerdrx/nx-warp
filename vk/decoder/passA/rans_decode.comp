@@ -46,6 +46,14 @@ layout(constant_id = 0) const uint READ_PTR_MODE = 0;   // kReadPtrBallot
 layout(constant_id = 1) const uint TILES_PER_GROUP = 8; // kTilesPerGroup
 // [marked edit] 2: rANS lanes per tile, 1 << nsub_log2, 1..32.
 layout(constant_id = 2) const uint LANES = 8;           // kLanes
+// [entropy-lite] 3: which entropy tool this dispatch decodes.
+//   kEntropyRans (0)       the interleaved rANS path, unchanged in every
+//                          respect -- same code, same schedule, same output.
+//   kEntropyLiteFixed (1)  ENTROPY_LITE / FIXED (stream tool bit 24): one
+//                          workgroup of 64 threads per tile, no coder state.
+// main() branches on it at the very top so the test is dynamically uniform
+// and each path's barriers stay in uniform control flow.
+layout(constant_id = 3) const uint ENTROPY_MODE = 0;    // kEntropyRans
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
@@ -157,6 +165,29 @@ shared uint s_renorm[3u * kMaxSlots];
 shared uint s_any;
 
 // ---------------------------------------------------------------------------
+// [entropy-lite] Per-unit working set of the Lite path.  Used only when
+// ENTROPY_MODE == kEntropyLiteFixed, where a workgroup holds ONE tile and the
+// eight rANS slots collapse to slot 0.  ~6.7 KiB, on top of the ~12 KiB the
+// rANS path already takes.
+//
+// Everything here is indexed by UNIT index.  Two different ownership rules
+// take turns, separated by barriers, and no index is ever written by two
+// threads in the same phase:
+//   * the decode phases own unit `u` from thread `u % 64`;
+//   * lite_scan() owns a contiguous block of kLiteUnitsPerThread units.
+shared uint s_lflag[kLiteUnitsPad];  // section H1: is this unit coded
+shared uint s_lpp[kLiteUnitsPad];    // section P: LAST | (mag class << 16)
+shared uint s_lsum[kLiteUnitsPad];   // per-unit widths -> exclusive offsets
+shared uint s_lsoff[kLiteUnitsPad];  // section S: this unit's bit offset
+shared uint s_lblk[kWorkgroupSize];  // lite_scan(): per-thread block totals
+shared uint s_lgoff[kLiteMaxGroups]; // section H1: each group's bit offset
+shared uint s_lgmask;                // section H0: one bit per group
+shared uint s_ltotal;                // lite_scan(): sum of every width
+shared uint s_lbase;                 // byte offset of the Lite payload
+shared uint s_lbits;                 // payload length in BITS
+shared uint s_lh1, s_lp, s_ls, s_lb; // bit offsets of sections H1, P, S, B
+
+// ---------------------------------------------------------------------------
 // Bitstream access.  The buffer is uint-addressed; these read bytes.
 // ---------------------------------------------------------------------------
 uint load_byte(uint byte_off) {
@@ -202,6 +233,10 @@ int  g_u_ctx_level;
 // [v3] mode unit: kCtxNone = bypass coded (1-bit flag + 3-bit index),
 // otherwise the single MODE symbol in context 15.
 int  g_u_ctx_mode;
+// [entropy-lite] UNIT_COEF (0) or UNIT_MODE (1).  The rANS path encodes the
+// same distinction in the phase it enters; the Lite path resolves a unit
+// without a state machine and so needs it as a field.
+int  g_u_kind;
 int  g_u_nbx;     // mode unit: blocks per plane edge
 int  g_u_modes;   // mode unit: uint index of this plane's mode words
 int  g_mb;        // mode unit: block being decoded
@@ -638,8 +673,400 @@ void round_finish(uint prefix, uint total) {
     }
 }
 
+// ===========================================================================
+// [entropy-lite] ENTROPY_LITE / FIXED -- stream tool bit 24
+// ===========================================================================
+// NORMATIVE SOURCE: ref/src/entropy_lite.{h,cpp}.  A tile's payload is five
+// byte-aligned sections in this order:
+//
+//   H0  one bit per group of kLiteCbfGroup units, "any unit here is coded"
+//   H1  for each group whose H0 bit is 1, one bit per unit of that group
+//   P   per coded COEFFICIENT unit: lite_last_bits(ncoef) bits of LAST, then
+//       kLiteParamBits of magnitude class.  Mode units contribute nothing.
+//   S   per coded unit: a mode unit's nbx*nbx "is_mpm" flags, or a
+//       coefficient unit's LAST significance bits for scan positions
+//       0 .. LAST-1 (position LAST is nonzero by construction)
+//   B   per coded unit: a mode unit's 3-bit non-MPM index per cleared flag,
+//       or, per nonzero scan position in ascending order, kLiteMagBits[class]
+//       bits of |q| - 1 followed by one sign bit, 1 == negative
+//
+// Every offset is computable: H0's length is a constant of the unit list,
+// H1's a popcount over H0, P's the coded bits and the unit list, S's follows
+// from P (which carries LAST) and each unit's slot in B from a prefix sum
+// over per-unit body lengths that S and P determine.  So the decode is three
+// workgroup prefix sums and then wholly independent per-unit work -- no coder
+// state, no round chain, nothing serial but a unit's own coefficients.
+//
+// Dispatch shape: ONE workgroup of kWorkgroupSize threads per tile (the host
+// dispatches num_tiles groups), unit `u` decoded by thread `u % 64`.
+
+// Bits [bitpos, bitpos + k) of the payload, MSB-first inside a byte.  One
+// four-byte funnel load rather than the reference's bit-at-a-time loop; k is
+// at most kLiteMagBits[7] == 16, so bitpos%8 + k never passes 32.
+uint lite_get(uint bitpos, uint k) {
+    if (k == 0u) return 0u;
+    uint o = s_lbase + (bitpos >> 3u);
+    uint sh = bitpos & 7u;
+    uint w = (load_byte(o) << 24u) | (load_byte(o + 1u) << 16u) |
+             (load_byte(o + 2u) << 8u) | load_byte(o + 3u);
+    return (w << sh) >> (32u - k);
+}
+
+// Unit `u`'s geometry, the same derivation begin_unit() makes -- but as a
+// pure lookup, because the Lite path has no lane state machine to walk into.
+void lite_unit(int u) {
+    int base = g_slot * (kMaxPlanes + 1);
+    int p = 0;
+    for (int q = 1; q < s_np[g_slot]; ++q)
+        if (s_unit_base[base + q] <= u) p = q;
+
+    int k = u - s_unit_base[base + p];
+    int nb = s_nb[g_slot * kMaxPlanes + p];
+    int ndc = nb * nb;
+    bool dir = (pc.tools & kToolFlagIntraDir) != 0u;
+
+    if (k == 0) {  // the DC-plane unit
+        g_u_kind = 0;
+        g_u_ncoef = ndc;
+        g_u_scan = nxs_scan_id(ndc, 0);
+        g_u_coef = s_coef_base[g_slot * kMaxPlanes + p];
+        return;
+    }
+    if (dir && k == 1) {  // the mode unit
+        g_u_kind = 1;
+        g_u_nbx = nb;
+        g_u_modes = s_mode_base[g_slot] + p * int(kModeWordsPerPlane);
+        return;
+    }
+    int b = k - (dir ? 2 : 1);  // a residual block unit
+    g_u_kind = 0;
+    g_u_ncoef = kCoefPerBlock;
+    g_u_scan = nxs_scan_id(kCoefPerBlock, s_tskip[g_slot]);
+    g_u_coef = s_coef_base[g_slot * kMaxPlanes + p] + ndc + b * kCoefPerBlock;
+}
+
+// Turns s_lsum[] from per-unit WIDTHS into per-unit EXCLUSIVE bit offsets and
+// leaves the grand total in s_ltotal.  Two levels: each thread serially scans
+// its own contiguous block of kLiteUnitsPerThread units, then the 64 block
+// totals go through a Hillis-Steele scan, then the block offset is folded
+// back in.  Ends with a barrier, so the caller may read s_lsum immediately.
+void lite_scan() {
+    uint tid = gl_LocalInvocationID.x;
+    uint sum = 0u;
+    for (int k = 0; k < kLiteUnitsPerThread; ++k) {
+        uint i = tid * uint(kLiteUnitsPerThread) + uint(k);
+        uint w = s_lsum[i];
+        s_lsum[i] = sum;
+        sum += w;
+    }
+    s_lblk[tid] = sum;
+    barrier();
+    for (uint d = 1u; d < kWorkgroupSize; d <<= 1u) {
+        uint v = tid >= d ? s_lblk[tid - d] : 0u;
+        barrier();
+        s_lblk[tid] += v;
+        barrier();
+    }
+    uint blk = s_lblk[tid] - sum;  // inclusive minus own == exclusive
+    if (tid == kWorkgroupSize - 1u) s_ltotal = s_lblk[tid];
+    for (int k = 0; k < kLiteUnitsPerThread; ++k)
+        s_lsum[tid * uint(kLiteUnitsPerThread) + uint(k)] += blk;
+    barrier();
+}
+
+void lite_main() {
+    uint tid = gl_LocalInvocationID.x;
+    uint tile = gl_WorkGroupID.x;
+    // One workgroup per tile, so this test is workgroup-uniform and every
+    // barrier below stays in uniform control flow.
+    if (tile >= pc.num_tiles) return;
+    g_slot = 0;
+
+    uint d = tile * kTileDescUints;
+    uint hdr_off = u_tiles.data[d + kTdBitsOffset];
+    uint bs_len = u_tiles.data[d + kTdBitsLength];
+    g_coef_off = u_tiles.data[d + kTdCoefOffset];
+    g_cbf_off = u_tiles.data[d + kTdCbfOffset];
+    g_ulen_off = u_tiles.data[d + kTdUnitLenOffset];
+
+    // The scan tables.  The probability tables are NOT loaded: ENTROPY_LITE
+    // has none, and binding 2 goes unread in this mode.
+    for (uint i = tid; i < uint(kNumScans * kScanStride); i += kWorkgroupSize) {
+        uint t = i / uint(kScanStride);
+        uint p = i % uint(kScanStride);
+        uint v = p;  // kScanRaster8 / kScanSmall are the identity
+        if (t == uint(kScanZigzag8)) v = uint(kZigzag8[p]);
+        else if (t == uint(kScanZigzag4)) v = (p < 16u) ? uint(kZigzag4[p]) : p;
+        s_scan[i] = v;
+    }
+
+    // --- tile header, and the tile geometry it implies ---------------------
+    if (tid == 0u) {
+        s_ok[0] = kStatusOk;
+        s_mode_base[0] = int(u_tiles.data[d + kTdModeOffset]);
+        uint w0 = load_u32le(hdr_off);
+        uint w1 = load_u32le(hdr_off + 4u);
+        int res_level = int((w1 >> kThResLevelShift) & kThResLevelMask);
+        int chroma444 = int((w1 >> kThChroma444Shift) & kThChroma444Mask);
+        int alpha_mode = int((w1 >> kThAlphaModeShift) & kThAlphaModeMask);
+        // Under ENTROPY_LITE the header's table_set names the VARIANT.
+        uint variant = (w1 >> kThTableSetShift) & kThTableSetMask;
+        uint nsub_log2 = (w1 >> kThNsubLog2Shift) & kThNsubLog2Mask;
+        s_tskip[0] = int((w1 >> kThTskipShift) & kThTskipMask);
+
+        uint pay = nxs_tile_payload_offset(hdr_off, w1);
+        uint paylen = (w0 >> kThPayloadLenShift) & kThPayloadLenMask;
+        uint tile_end = hdr_off + bs_len;
+        uint pay_end = pay + paylen;
+        uint pend = pay_end < tile_end ? pay_end : tile_end;
+        s_lbase = pay;
+        s_lbits = pend > pay ? (pend - pay) * 8u : 0u;
+
+        int np = nxs_coded_planes(int(pc.frame_nplanes), alpha_mode);
+        s_np[0] = np;
+        int extra = (pc.tools & kToolFlagIntraDir) != 0u
+                        ? kUnitsPerPlaneExtraDir
+                        : kUnitsPerPlaneExtra;
+        int ub = 0, cb = 0;
+        for (int p = 0; p < kMaxPlanes; ++p) {
+            s_unit_base[p] = ub;
+            s_coef_base[p] = cb;
+            if (p < np) {
+                int nb = nxs_plane_size(p, res_level, chroma444) / kBlockSize;
+                s_nb[p] = nb;
+                int ndc = nb * nb;
+                ub += extra + ndc;
+                cb += ndc + ndc * kCoefPerBlock;
+            } else {
+                s_nb[p] = 0;
+            }
+        }
+        s_unit_base[kMaxPlanes] = ub;
+        s_nunits[0] = ub;
+
+        // The rANS path's rejections, plus the two ENTROPY_LITE adds: only
+        // the FIXED variant is implemented, and v1 still fixes nsub_log2 at 3.
+        if (nxs_tile_header_reserved_bad(w0, w1) != 0 ||
+            variant != uint(kLiteFixed) || nsub_log2 != kLanesLog2 ||
+            ub <= 0 || ub > kMaxUnitsPerTile || pend < pay)
+            s_ok[0] = kStatusBadHeader;
+    }
+    barrier();
+
+    // --- zero the CBF, length and mode words -------------------------------
+    // Identical contract to the rANS path: dense zeroes the whole coefficient
+    // region, sparse zeroes only the length words and leaves the coefficient
+    // slots past LAST untouched.
+    if (pc.sparse == 0u) {
+        for (uint i = tid; i < pc.coef_stride; i += kWorkgroupSize)
+            u_coef.data[g_coef_off + i] = int16_t(0);
+    } else {
+        for (uint i = tid; i < kUnitLenWordsPerTile; i += kWorkgroupSize)
+            s_ulen[i] = 0u;
+    }
+    for (uint i = tid; i < pc.cbf_words; i += kWorkgroupSize)
+        u_cbf.data[g_cbf_off + i] = 0u;
+    for (uint i = tid; i < kModeWordsPerTile; i += kWorkgroupSize)
+        u_modes.data[uint(s_mode_base[0]) + i] = 0u;
+    barrier();
+
+    bool ok = s_ok[0] == kStatusOk;
+    int nunits = s_nunits[0];
+
+    // --- H0: the group map, and each group's slot in H1 --------------------
+    // ngroups is at most kLiteMaxGroups (17), so one thread walking it is
+    // cheaper than any parallel alternative and keeps the popcount exact.
+    if (tid == 0u && ok) {
+        int ngroups = (nunits + kLiteCbfGroup - 1) / kLiteCbfGroup;
+        uint h1 = nxs_align8(uint(ngroups));
+        uint acc = 0u;
+        uint gmask = 0u;
+        for (int gi = 0; gi < ngroups; ++gi) {
+            s_lgoff[gi] = acc;
+            if (lite_get(uint(gi), 1u) != 0u) {
+                gmask |= 1u << uint(gi);
+                int lo = gi * kLiteCbfGroup;
+                int hi = lo + kLiteCbfGroup < nunits ? lo + kLiteCbfGroup
+                                                     : nunits;
+                acc += uint(hi - lo);
+            }
+        }
+        s_lgmask = gmask;
+        s_lh1 = h1;
+        s_lp = h1 + nxs_align8(acc);
+        if (h1 > s_lbits || h1 + acc > s_lbits) s_ok[0] = kStatusTruncated;
+    }
+    barrier();
+    ok = s_ok[0] == kStatusOk;
+
+    // --- H1: the coded flag of every unit, and section P's widths ----------
+    for (uint u = tid; u < uint(kLiteUnitsPad); u += kWorkgroupSize) {
+        uint c = 0u;
+        if (ok && u < uint(nunits)) {
+            uint gi = u / uint(kLiteCbfGroup);
+            if ((s_lgmask & (1u << gi)) != 0u)
+                c = lite_get(s_lh1 + s_lgoff[gi] + (u % uint(kLiteCbfGroup)),
+                             1u);
+        }
+        s_lflag[u] = c;
+        uint w = 0u;
+        if (c != 0u) {
+            lite_unit(int(u));
+            // A mode unit codes nothing in P.
+            if (g_u_kind == 0)
+                w = uint(nxs_lite_last_bits(g_u_ncoef) + kLiteParamBits);
+        }
+        s_lsum[u] = w;
+    }
+    barrier();
+    lite_scan();
+    if (tid == 0u && ok) {
+        s_ls = s_lp + nxs_align8(s_ltotal);
+        if (s_ls > s_lbits) s_ok[0] = kStatusTruncated;
+    }
+    barrier();
+    ok = s_ok[0] == kStatusOk;
+
+    // --- P: LAST and the magnitude class; then section S's widths ----------
+    for (uint u = tid; u < uint(kLiteUnitsPad); u += kWorkgroupSize) {
+        uint sw = 0u, pp = 0u;
+        if (ok && s_lflag[u] != 0u) {
+            lite_unit(int(u));
+            if (g_u_kind == 1) {
+                sw = uint(g_u_nbx * g_u_nbx);
+            } else {
+                int lb = nxs_lite_last_bits(g_u_ncoef);
+                uint off = s_lp + s_lsum[u];
+                uint L = lite_get(off, uint(lb));
+                uint cls = lite_get(off + uint(lb), uint(kLiteParamBits));
+                if (int(L) >= g_u_ncoef) {
+                    fail(kStatusBadSymbol);
+                } else {
+                    pp = L | (cls << 16u);
+                    sw = L;  // position LAST is not coded in S
+                }
+            }
+        }
+        s_lpp[u] = pp;
+        s_lsum[u] = sw;
+    }
+    barrier();
+    lite_scan();
+    if (tid == 0u && ok) {
+        s_lb = s_ls + nxs_align8(s_ltotal);
+        if (s_lb > s_lbits) s_ok[0] = kStatusTruncated;
+    }
+    barrier();
+    ok = s_ok[0] == kStatusOk;
+
+    // --- S: the significance / is-MPM flags; then section B's widths -------
+    // A unit's B length is the one quantity that needs S read first: for a
+    // mode unit it counts the cleared flags, for a coefficient unit the set
+    // ones.  Reading S twice costs a handful of byte loads and saves keeping
+    // 64 flags per unit alive across the scan.
+    for (uint u = tid; u < uint(kLiteUnitsPad); u += kWorkgroupSize) {
+        uint bw = 0u, soff = 0u;
+        if (ok && s_lflag[u] != 0u) {
+            lite_unit(int(u));
+            soff = s_ls + s_lsum[u];
+            if (g_u_kind == 1) {
+                int n = g_u_nbx * g_u_nbx;
+                int nonmpm = 0;
+                for (int b = 0; b < n; ++b)
+                    if (lite_get(soff + uint(b), 1u) == 0u) ++nonmpm;
+                bw = uint(nonmpm * kModeIdxBits);
+            } else {
+                int L = int(s_lpp[u] & 0xffffu);
+                int cls = int(s_lpp[u] >> 16u);
+                int nnz = 1;  // position LAST is nonzero by construction
+                for (int p = 0; p < L; ++p)
+                    if (lite_get(soff + uint(p), 1u) != 0u) ++nnz;
+                bw = uint(nnz * (kLiteMagBits[cls] + 1));
+            }
+        }
+        s_lsoff[u] = soff;
+        s_lsum[u] = bw;
+    }
+    barrier();
+    lite_scan();
+    if (tid == 0u && ok && s_lb + s_ltotal > s_lbits)
+        s_ok[0] = kStatusTruncated;
+    barrier();
+    ok = s_ok[0] == kStatusOk;
+
+    // --- B: the bodies.  Every unit is independent from here on. -----------
+    for (uint u = tid; u < uint(kLiteUnitsPad); u += kWorkgroupSize) {
+        if (!ok || s_lflag[u] == 0u) continue;
+        lite_unit(int(u));
+        uint boff = s_lb + s_lsum[u];
+        uint soff = s_lsoff[u];
+
+        if (g_u_kind == 1) {
+            // The MPM of block b reads the modes of b-1 and b-nbx, both
+            // already committed by this same thread, so the unit resolves in
+            // one raster pass and needs no coder chain at all.
+            int n = g_u_nbx * g_u_nbx;
+            for (int b = 0; b < n; ++b) {
+                g_mb = b;
+                int mpm = mpm_now();
+                int m;
+                if (lite_get(soff + uint(b), 1u) != 0u) {
+                    m = mpm;
+                } else {
+                    uint idx = lite_get(boff, uint(kModeIdxBits));
+                    boff += uint(kModeIdxBits);
+                    m = nxs_nonmpm_mode(mpm, int(idx));
+                }
+                store_mode(b, m);
+            }
+            continue;
+        }
+
+        int L = int(s_lpp[u] & 0xffffu);
+        int cls = int(s_lpp[u] >> 16u);
+        int mbits = kLiteMagBits[cls];
+        // Exactly what the rANS path publishes for a coded unit: the CBF bit
+        // (an atomicOr because four neighbouring units are four threads) and,
+        // under the sparse layout, LAST + 1.
+        atomicOr(u_cbf.data[g_cbf_off + u / 32u], 1u << (u & 31u));
+        store_unit_len(int(u), L + 1);
+        for (int p = 0; p <= L; ++p) {
+            uint sig = 1u;
+            if (p < L) sig = lite_get(soff + uint(p), 1u);
+            if (sig == 0u) {
+                // Stored explicitly, as the rANS level phase does: under the
+                // sparse layout nothing zeroes the region.
+                store_coef_at(p, 0);
+                continue;
+            }
+            uint mag = 0u;
+            if (mbits != 0) {
+                mag = lite_get(boff, uint(mbits));
+                boff += uint(mbits);
+            }
+            if (mag > kLiteMaxMag) { fail(kStatusBadSymbol); break; }
+            uint sgn = lite_get(boff, 1u);
+            boff += 1u;
+            int a = int(mag) + 1;
+            store_coef_at(p, sgn != 0u ? -a : a);
+        }
+    }
+    barrier();
+
+    if (tid == 0u) u_status.data[tile] = s_ok[0];
+    if (pc.sparse != 0u)
+        for (uint i = tid; i < kUnitLenWordsPerTile; i += kWorkgroupSize)
+            u_ulen.data[g_ulen_off + i] = s_ulen[i];
+}
+
 // ---------------------------------------------------------------------------
 void main() {
+    // [entropy-lite] A specialisation constant, so this is dynamically
+    // uniform and neither path's barriers leave uniform control flow.
+    if (ENTROPY_MODE == kEntropyLiteFixed) {
+        lite_main();
+        return;
+    }
     uint lid = gl_LocalInvocationID.x;
     // [marked edit] slot/lane from the LANES specialisation constant.  Threads
     // whose slot falls outside TILES_PER_GROUP idle but still hit every

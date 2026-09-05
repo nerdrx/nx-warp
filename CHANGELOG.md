@@ -14,6 +14,17 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
 
 ### Added
 
+**Entropy**
+
+- `ENTROPY_LITE`, stream tool bit 24 (`docs/SYNTAX.md` 9.8): a table-free entropy coding for the
+  coefficient payload with no arithmetic-coder state, so a tile decodes with three prefix sums and
+  then one thread per coding unit. Two variants, `FIXED` (fixed-width magnitude fields, the shipped
+  one) and `RICE` (Exp-Golomb with an explicit body length), selected by the tile header's
+  `table_set` field. `nxv-enc --entropy rans|lite-fixed|lite-rice`; conformance vectors v57-v62.
+- Pass A decodes the `FIXED` variant behind specialisation constant 3, `ENTROPY_MODE`, at one
+  64-thread workgroup per tile. Measured 4.1x faster than the rANS path on RADV, for 35-47 % more
+  bits; see `ref/RESULTS-entropy-lite.md` for the measurement and the crossover.
+
 **Design**
 
 - The design paper, `docs/PAPER.md`: bitstream and coding tools, prediction and loss concealment, the

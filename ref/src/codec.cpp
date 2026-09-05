@@ -6,6 +6,7 @@
 
 #include "common.h"
 #include "entropy.h"
+#include "entropy_lite.h"
 #include "inter.h"
 #include "transform.h"
 

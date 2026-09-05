@@ -156,8 +156,11 @@ interleaved UV.
 | 21 | `CTX_V2` | the 16-context entropy model (section 9.3) |
 | 22 | `SIGN_HIDE` | sign data hiding (section 9.7) |
 | 23 | `FILTER_CATMULL_ROM` | Catmull-Rom interpolation in the warp instead of bilinear. **Not defined for version 1** |
+| 24 | `ENTROPY_LITE` | the table-free, fully parallel entropy tool (section 9.8) |
 
-Bits 17, 21 and 22 are independent: any subset may be set. `SIGN_HIDE` is
+Bits 17, 21 and 22 are independent: any subset may be set. `ENTROPY_LITE` (bit 24) is mutually
+exclusive with `SIGN_HIDE` (bit 22) and `CUSTOM_TABLES` (bit 6), and constrains
+`nsub_log2` and `table_set`; see section 9.8. `SIGN_HIDE` is
 mutually exclusive with `LOSSLESS` (bit 5) -- hiding a sign spends one level
 step, so the two cannot both be true; a stream setting both is `BITSTREAM`.
 
@@ -173,7 +176,7 @@ MUST refuse a stream that sets either, with a `VERSION` status. Because bit 23
 is refused, **every conforming version 1 stream is bilinear**, in every
 profile, and `profile` selects nothing (section 13.4).
 
-Bits 24-63 are reserved and must be zero. Capability negotiation is an
+Bits 25-63 are reserved and must be zero. Capability negotiation is an
 intersection: the sender only sets bits the receiver offered.
 
 ---
@@ -1378,6 +1381,94 @@ lane 0's state ends up first in the stream. `x < freq << 22` guarantees
 A decoder must reject a payload shorter than `4 * active_lanes`, an initial
 state below `L`, and any renormalization that would read past the payload.
 
+### 9.8 ENTROPY_LITE (tool bit 24)
+
+An alternative coefficient coding with **no arithmetic coder**: no rANS state,
+no probability tables, no `table_set`, and no serial dependency of any kind
+between one coded value and the next. It exists for links whose bitrate is
+cheap and whose decode latency is not -- a headset whose Pass A is
+latency-bound on the longest tile's serial symbol chain (`vk/decoder/passA`).
+It costs bits; section 9.5 remains the default.
+
+A stream setting bit 24 MUST NOT set `SIGN_HIDE` (bit 22) or `CUSTOM_TABLES`
+(bit 6): the first needs a coder to spend a level step on, the second a table
+to transmit. Every tile of such a stream MUST carry `nsub_log2 == 3`, and the
+tile header's `table_set` field is reinterpreted as the **variant selector**:
+
+| `table_set` | variant |
+|---|---|
+| 0 | `FIXED`: a per-unit magnitude class and fixed-width magnitude fields |
+| 1 | `RICE`: a per-unit Exp-Golomb order and an explicit body length |
+| 2-7 | reserved, illegal |
+
+Every other part of the tile -- the header, the geometry, the unit list of
+9.1, the scan orders of 9.2, the mode unit's MPM derivation of 9.6 -- is
+unchanged.
+
+**Sections.** The payload is five sections in this order, each **padded to a
+byte boundary** after it, every field packed **MSB-first inside a byte**:
+
+```
+H0  ceil(nunits / 16) bits: bit g = "any unit of group g is coded"
+H1  for each group g with H0 bit 1, in ascending g:
+        min(16, nunits - 16g) bits, one "coded" bit per unit
+P   for each coded COEFFICIENT unit, in unit order:
+        last_bits(ncoef) bits  LAST
+        3 bits                 magnitude class (FIXED) / EG order (RICE)
+        12 bits                body length in bits          [RICE only]
+S   for each coded unit, in unit order:
+        mode unit  -> nb*nb bits, one is_mpm flag per block, raster order
+        coef unit  -> LAST bits of significance, scan positions 0 .. LAST-1
+B   for each coded unit, in unit order:
+        mode unit  -> 3 bits of non-MPM index per block whose flag is 0
+        coef unit  -> per nonzero scan position 0 .. LAST, ascending:
+                      the magnitude field, then one sign bit (1 = negative)
+```
+
+`last_bits(n)` is the smallest `b` with `2^b >= n`: 0, 2, 4 and 6 for the
+1-, 4-, 16- and 64-coefficient units of 9.1. A coefficient unit's `coded` bit
+is 1 exactly when the unit has a nonzero coefficient, so a coded unit always
+has one; the coefficient at scan position `LAST` is nonzero by construction
+and its significance bit is **not** coded. A mode unit's `coded` bit is 1
+whenever the plane has blocks, which in a conforming stream is always.
+
+**The magnitude field, `FIXED`.** The 3-bit class selects a width:
+
+```
+mag_bits[8] = { 0, 1, 2, 3, 4, 6, 8, 16 }
+```
+
+and the field carries `|q| - 1` in that many bits, so a class covers
+`1 <= |q| <= 2^mag_bits`. Class 0 is **zero bits wide**: a unit whose every
+nonzero level is +-1 spends nothing at all on magnitudes, which above QP 16 is
+most of them. Class 7 covers the whole int16 range, so `FIXED` has no escape
+code and every coefficient of a unit sits at a **computable bit position**:
+one thread can decode one coefficient. A decoder MUST reject a decoded
+`|q| - 1` above 32766.
+
+**The magnitude field, `RICE`.** The 3-bit parameter `k` is the order of the
+Exp-Golomb code of 9.5 (`n = v + 2^k`, `b = floor(log2 n)`, `b - k` one-bits,
+a zero, then the low `b` bits of `n`), applied to `|q| - 1`. The code is
+variable length, so a unit's coefficients are no longer individually
+addressable and the 12-bit body length in section P is what keeps the *unit*
+addressable. A decoder MUST reject a unit whose body does not consume exactly
+the coded length, a prefix longer than 20 one-bits, and a value above 32766.
+
+**Why the sections are in this order.** Each section's start is computable
+from the sections before it and the unit list alone: `H0`'s length is a
+constant of `nunits`, `H1`'s is a popcount over `H0`, `P`'s is a sum of
+per-unit constants over the coded units, `S`'s needs `LAST`, which is in `P`,
+and each unit's slot in `B` is a prefix sum of per-unit body lengths, which
+`P` and `S` determine. A decoder therefore reaches any unit with three prefix
+sums over quantities it has already read, and no unit's decode depends on any
+other unit's. This is the whole content of the tool.
+
+The one dependency that remains is inside a mode unit, and it is the MPM
+derivation of 9.6, not a coder chain: block `b` reads the already-resolved
+modes of `b - 1` and `b - nb`, so a mode unit resolves as a raster wavefront of
+`2*nb - 1` steps.
+
+
 ---
 
 ## 10. Reconstruction summary (decoder, per tile)
@@ -2031,6 +2122,19 @@ inconsistent. Each is a decision, not an interpretation.
     D-5 is unchanged; only the bit numbers move, to the first bits that are
     actually free. This is an erratum against Annex D, recorded here because
     this document is where the bit numbers live.
+
+53. **`ENTROPY_LITE` is bit 24, and it reuses `table_set` as its variant
+    selector rather than claiming a second tool bit.** PAPER 1.6 reserved bit
+    16 `ENT_BITPLANE` for a Lite-profile fallback and described it as bit-plane
+    significance plus Golomb. What is actually defined here (section 9.8) is
+    not a bit-plane coder: it is one significance map per coding unit plus
+    fixed-width magnitude fields, which is the same family but codes each
+    coefficient once instead of once per plane, and is the version that makes
+    a coefficient's bit position computable. It is given a bit of its own
+    rather than bit 16 so that a decoder that once implemented the bit-plane
+    sketch cannot mistake one for the other. `table_set` names the variant
+    because a stream with no probability tables has nothing else for the field
+    to mean, and reusing it costs no header bit and no version bump.
 
 ## Appendix B: where the bits go
 

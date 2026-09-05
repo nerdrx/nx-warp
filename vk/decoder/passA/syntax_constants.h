@@ -182,6 +182,47 @@ NXS_CONST int kLevelMaxDirect = 14;
 // Sign is a single bypass bit, 1 == negative, sent after the magnitude.
 
 // ===========================================================================
+// 4b. ENTROPY_LITE, stream tool bit 24     [ref/src/entropy_lite.{h,cpp}]
+// ===========================================================================
+// A table-free entropy tool whose tile payload is fully parallel: no
+// arithmetic coder, no probability tables, no serial state.  A tile is five
+// byte-aligned sections -- H0, H1, P, S, B -- whose per-unit offsets follow
+// from three prefix sums, so a lane can decode any unit on its own.
+//
+// The tile header's `table_set` is repurposed as the variant selector: the
+// tool has no probability tables for the field to name.  Only kLiteFixed is
+// implemented in Pass A; kLiteRice is rejected as an unsupported header.
+NXS_CONST int kLiteFixed = 0;
+NXS_CONST int kLiteRice = 1;
+
+// FIXED: the 3-bit per-unit magnitude class -> field width, covering |q| in
+// 1 .. 2^bits and coded as |q| - 1.  Class 0 is zero bits wide: a unit whose
+// every nonzero is +-1 spends nothing at all on magnitudes.
+NXS_ARRAY(int, kLiteMagBits, 8)
+    0, 1, 2, 3, 4, 6, 8, 16
+NXS_ARRAY_END
+
+// Width of the class field itself, and of the RICE order that replaces it.
+NXS_CONST int kLiteParamBits = 3;
+
+// Units per group in the two-level coded-unit map (section H0).
+NXS_CONST int kLiteCbfGroup = 16;
+
+// [REF] entropy_lite.cpp: the FIXED body codes |q| - 1, and |q| <= 32767.
+NXS_CONST uint kLiteMaxMag = 32766u;
+
+// Bits the per-unit LAST field takes, given the unit's coefficient count.
+// [REF] entropy_lite.h lite_last_bits().
+NXS_FN int nxs_lite_last_bits(int ncoef) {
+    int b = 0;
+    while ((1 << b) < ncoef) ++b;
+    return b;
+}
+
+// Round a bit count up to the next byte boundary; every section is padded.
+NXS_FN uint nxs_align8(uint bits) { return (bits + 7u) & ~7u; }
+
+// ===========================================================================
 // 5. Scan orders                               [ref/src/tables.cpp]
 // ===========================================================================
 
@@ -366,9 +407,27 @@ NXS_CONST uint kMaxRounds = 1u << 20;
 // Specialisation-constant IDs used by rans_decode.comp.
 NXS_CONST uint kSpecIdReadPtrMode = 0;  // 0 = subgroup ballot, 1 = LDS fallback
 NXS_CONST uint kSpecIdWorkgroupTiles = 1;
+// [entropy-lite] 3: which entropy tool the dispatch decodes.  main() branches
+// on it at the very top, so the branch is dynamically uniform and each path's
+// barriers stay in uniform control flow -- the same discipline READ_PTR_MODE
+// follows.  Specialisation constant 2 is LANES.
+NXS_CONST uint kSpecIdEntropyMode = 3;
 
 NXS_CONST uint kReadPtrBallot = 0;
 NXS_CONST uint kReadPtrLdsFallback = 1;
+
+NXS_CONST uint kEntropyRans = 0;       // interleaved rANS, docs/SYNTAX.md 9
+NXS_CONST uint kEntropyLiteFixed = 1;  // ENTROPY_LITE, kLiteFixed variant
+
+// [entropy-lite] Dispatch shape of the Lite path: ONE workgroup of
+// kWorkgroupSize threads per tile, unit `u` handled by thread `u %
+// kWorkgroupSize`.  The per-unit LDS arrays are padded to a whole number of
+// units per thread so the workgroup scan can give each thread one contiguous
+// block; kLiteUnitsPad must be >= kMaxUnitsPerTile.
+NXS_CONST int kLiteUnitsPerThread = 5;
+NXS_CONST int kLiteUnitsPad = 320;  // kWorkgroupSize * kLiteUnitsPerThread
+// Groups of kLiteCbfGroup units in section H0: ceil(kMaxUnitsPerTile / 16).
+NXS_CONST int kLiteMaxGroups = 17;
 
 // Dispatch shape: one workgroup is always kWorkgroupSize threads and handles
 // TILES_PER_GROUP tiles of LANES lanes each, with TILES_PER_GROUP * LANES <=

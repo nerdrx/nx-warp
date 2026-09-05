@@ -36,6 +36,7 @@ struct VecSpec {
     int dir;          // 0 off, 1 directional intra, 2 its layered form
     int ctx;          // 0 = 12 contexts, 1 = 16 (CTX_V2)
     int sdh;          // sign data hiding (tool 22)
+    int lite;         // ENTROPY_LITE (tool 24): 0 rANS, 1 FIXED, 2 RICE
 };
 
 static const VecSpec kVectors[] = {
@@ -93,7 +94,21 @@ static const VecSpec kVectors[] = {
     // sign data hiding, alone and stacked on the rest.  `sdh` is the last
     // column; v44 is the encoder's shipped default configuration.
     {"v43_sdh_only420",        192, 128, 0,  1, 20,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 1},
-    {"v44_default444",         192, 128, 1,  1, 20,  0, 0,  0,255,  1,  0, 0,  1,  0,  0, 1, 0, 0, 1, 1, 1},
+    {"v44_default444",         192, 128, 1,  1, 20,  0, 0,  0,255,  1,  0, 0,  1,  0,  0, 1, 0, 0, 1, 1, 1, 0},
+    // v1.5 additions: ENTROPY_LITE (tool 24), both variants.  sign_hide and
+    // custom_tables are forced off by the tool, and nsub_log2 is pinned to 3;
+    // the encoder does that itself, so the rows below carry the values the
+    // other vectors use and the streams still come out legal.  SYNTAX.md 9.8.
+    {"v57_lite_fixed420_qp24", 192, 128, 0,  1, 24,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 1, 0, 1},
+    {"v58_lite_rice420_qp24",  192, 128, 0,  1, 24,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 1, 0, 2},
+    {"v59_lite_fixed444_dir",  192, 128, 1,  1, 16,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 1, 1, 0, 1},
+    {"v60_lite_rice444_dir",   192, 128, 1,  1, 16,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 1, 1, 0, 2},
+    // res_level cycling, transform skip and a QP map on the Lite path: the
+    // unit list changes shape per tile, which is what the section offsets are
+    // derived from.
+    {"v61_lite_fixed_res_ts",  192, 128, 0,  1, 28,  0, 0,  1,  3,  0,  0, 0,  1,  1,  1, 1, 0, 0, 1, 1, 0, 1},
+    // Lossless through the Lite coder: magnitude class 7 and nothing else.
+    {"v62_lite_lossless444",   192, 128, 1,  1,  0,  1, 0,  1,  3,  0,  0, 0,  0,  0,  0, 1, 0, 0, 0, 1, 0, 1},
 };
 static const int kNumVectors = (int)(sizeof(kVectors) / sizeof(kVectors[0]));
 
@@ -217,6 +232,7 @@ static Result build(const VecSpec &v) {
     cfg.intra_dir_layer = v.dir == 2 ? 1u : 0u;
     cfg.ctx_v2 = (uint32_t)v.ctx;
     cfg.sign_hide = (uint32_t)v.sdh;
+    cfg.entropy_lite = (uint32_t)v.lite;
 
     nxvc_status st;
     nxvc_encoder *e = nxvc_encoder_create(&cfg, &st);
