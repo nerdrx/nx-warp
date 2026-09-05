@@ -82,6 +82,34 @@
 #define NXE_TILE_SLOT_WORDS (2 + 1 + 8 + NXE_TILE_COEFS_MAX)
 #define NXE_TILE_SLOT_BYTES (NXE_TILE_SLOT_WORDS * 4)
 
+// ------------------------------------------------------- ENTROPY_LITE (30)
+// ref/src/entropy_lite.h, mirrored.  See nxe_enc.h for the reasoning; these
+// are the constants lite_encode.comp and packetize.comp share with the host.
+#define NXE_LITE_FIXED       0
+#define NXE_LITE_RICE        1
+#define NXE_LITE_CBF_GROUP   16
+#define NXE_LITE_PARAM_BITS  3
+#define NXE_LITE_MODE_BITS   3
+#define NXE_LITE_PAYLOAD_MAX                                   \
+    (((NXE_TILE_UNITS_MAX + NXE_LITE_CBF_GROUP - 1) /          \
+      NXE_LITE_CBF_GROUP + 7) / 8 +                            \
+     (NXE_TILE_UNITS_MAX + 7) / 8 +                            \
+     (NXE_TILE_UNITS_MAX * (NXE_LITE_PARAM_BITS + 6) + 7) / 8 +\
+     (NXE_TILE_COEFS_MAX + 7) / 8 +                            \
+     (NXE_TILE_COEFS_MAX * 17 + 7) / 8)
+#define NXE_TILE_BYTES_MAX_LITE (8 + NXE_LITE_PAYLOAD_MAX)
+
+// FIXED: 3-bit magnitude class -> field width.  |q| in 1 .. 2^bits, coded as
+// |q| - 1, so class 7 spans int16 and the variant needs no escape.
+const int nxe_lite_mag_bits[8] = int[8](0, 1, 2, 3, 4, 6, 8, 16);
+
+// Bits the per-unit LAST field takes, given the unit's coefficient count.
+int nxe_lite_last_bits(int ncoef) {
+    int b = 0;
+    while ((1 << b) < ncoef) ++b;
+    return b;
+}
+
 #define NXE_MODE_WARP_SKIP     0
 #define NXE_MODE_STATIC_MV     1
 #define NXE_MODE_WARP_MV       2
@@ -96,6 +124,7 @@
 #define NXE_E3_WG           64
 #define NXE_E4_TILES_PER_WG 8
 #define NXE_E4_WG           (NXE_E4_TILES_PER_WG * 8)
+#define NXE_E4L_WG          64
 #define NXE_E5_WG           256
 
 #define NXE_OP_SYM          0u

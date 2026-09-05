@@ -61,7 +61,8 @@ set_target_properties(nxenc_stats_cpu PROPERTIES POSITION_INDEPENDENT_CODE ON)
 add_library(nxenc_forward_cpu STATIC
   forward/nxe_tables.c
   forward/forward_cpu.c
-  forward/rans_cpu.c)
+  forward/rans_cpu.c
+  forward/lite_cpu.c)
 target_include_directories(nxenc_forward_cpu PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/forward)
 set_target_properties(nxenc_forward_cpu PROPERTIES POSITION_INDEPENDENT_CODE ON)
@@ -365,6 +366,7 @@ if(EXISTS ${NXENC_REF_TABLES})
     forward/nxe_tables.c
     forward/forward_cpu.c
     forward/rans_cpu.c
+    forward/lite_cpu.c
     ${NXENC_INTER_SRC}
     ${NXENC_REF_TABLES}
     ${NXENC_SPV_HEADERS})
