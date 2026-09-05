@@ -413,6 +413,22 @@ typedef struct nxvc_config {
      * RICE is defined and reachable but is NOT the variant this merge ships:
      * see docs/SYNTAX.md 9.10. */
     uint32_t entropy_lite;
+
+    /* --- encoder threading (encoder only, no tool bit, no syntax change).
+     * The reference encoder codes the frame's 64x64 tiles on `threads`
+     * threads.  Tiles are independent by design -- own rANS lanes, no
+     * cross-tile prediction -- so the result is BYTE-IDENTICAL to the
+     * single-threaded encoder at every setting, and the tile order, the
+     * row headers and every per-frame decision are unchanged.
+     *
+     *   0 = auto: std::thread::hardware_concurrency(), capped at 16
+     *   1 = the single-threaded path, byte for byte the code v1.6 shipped
+     *   n = n worker slots (the calling thread is one of them)
+     *
+     * The pool is created once per encoder and joined in
+     * nxvc_encoder_destroy(); no thread is created per frame.  ref/README.md
+     * "Encoder threading" has the schedule and what stays serial. */
+    uint32_t threads;
 } nxvc_config;
 
 /* One eye's view for one frame: the orientation the frame was rendered with

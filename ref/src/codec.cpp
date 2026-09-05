@@ -1,9 +1,15 @@
 // nxvc_ref: bitstream syntax, encoder and decoder.  See docs/SYNTAX.md.
 #include <algorithm>
+#include <atomic>
 #include <cmath>
+#include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
+#include <functional>
+#include <memory>
+#include <mutex>
 #include <new>
+#include <thread>
 
 #include "common.h"
 #include "entropy.h"
@@ -12,6 +18,113 @@
 #include "transform.h"
 
 namespace nxvc {
+
+// ---------------------------------------------------------- the tile pool
+// A fixed set of worker threads created once per encoder and joined when the
+// encoder is destroyed.  It offers exactly one primitive -- a parallel for
+// over `count` indices -- because that is all the tile schedule needs, and
+// because a work-stealing index is what makes the schedule's RESULT
+// independent of how the work happened to be handed out: every index does the
+// same thing wherever it runs, and nothing an index does is ordered against
+// another index.  `fn` is given the index and the SLOT it is running on,
+// 0..size()-1, which is how a worker finds its own accumulators.
+//
+// The calling thread participates, so a pool of size n owns n-1 threads.
+class ThreadPool {
+  public:
+    explicit ThreadPool(unsigned n) {
+        if (n < 1) n = 1;
+        try {
+            for (unsigned i = 1; i < n; ++i)
+                th_.emplace_back([this, i] { worker(i); });
+        } catch (...) {
+            // A pool that could not be filled still runs, just narrower.
+        }
+    }
+    ~ThreadPool() {
+        {
+            std::lock_guard<std::mutex> l(m_);
+            stop_ = true;
+            ++gen_;
+        }
+        cv_.notify_all();
+        for (auto &t : th_) if (t.joinable()) t.join();
+    }
+    ThreadPool(const ThreadPool &) = delete;
+    ThreadPool &operator=(const ThreadPool &) = delete;
+
+    unsigned size() const { return (unsigned)th_.size() + 1u; }
+
+    void parallel_for(unsigned count,
+                      const std::function<void(unsigned, unsigned)> &fn) {
+        if (count == 0) return;
+        if (th_.empty() || count == 1) {
+            for (unsigned i = 0; i < count; ++i) fn(i, 0);
+            return;
+        }
+        {
+            std::lock_guard<std::mutex> l(m_);
+            fn_ = &fn;
+            n_ = count;
+            next_.store(0, std::memory_order_relaxed);
+            active_ = (unsigned)th_.size();
+            ++gen_;
+        }
+        cv_.notify_all();
+        drain(fn, count, 0);
+        std::unique_lock<std::mutex> l(m_);
+        done_.wait(l, [this] { return active_ == 0; });
+        fn_ = nullptr;
+    }
+
+  private:
+    void drain(const std::function<void(unsigned, unsigned)> &fn,
+               unsigned count, unsigned slot) {
+        for (;;) {
+            const unsigned i = next_.fetch_add(1, std::memory_order_relaxed);
+            if (i >= count) break;
+            fn(i, slot);
+        }
+    }
+    void worker(unsigned slot) {
+        unsigned seen = 0;
+        for (;;) {
+            const std::function<void(unsigned, unsigned)> *fn;
+            unsigned count;
+            {
+                std::unique_lock<std::mutex> l(m_);
+                cv_.wait(l, [this, seen] { return gen_ != seen; });
+                seen = gen_;
+                if (stop_) return;
+                fn = fn_;
+                count = n_;
+            }
+            if (fn) drain(*fn, count, slot);
+            {
+                std::lock_guard<std::mutex> l(m_);
+                if (--active_ == 0) done_.notify_one();
+            }
+        }
+    }
+    std::vector<std::thread> th_;
+    std::mutex m_;
+    std::condition_variable cv_, done_;
+    const std::function<void(unsigned, unsigned)> *fn_ = nullptr;
+    std::atomic<unsigned> next_{0};
+    unsigned n_ = 0, active_ = 0, gen_ = 0;
+    bool stop_ = false;
+};
+
+// `threads` as nxvc.h states it: 0 is auto, capped at 16 because past that a
+// 1088x1088 frame has more workers than it has tile rows to feed them.
+static unsigned resolve_threads(unsigned want) {
+    if (want == 0) {
+        unsigned hc = std::thread::hardware_concurrency();
+        if (hc == 0) hc = 1;
+        return hc > 16 ? 16u : hc;
+    }
+    return want > 64 ? 64u : want;
+}
 
 // ------------------------------------------------------------- byte writer
 struct BW {
@@ -2177,6 +2290,14 @@ struct nxvc_encoder {
     nxvc_config cfg{};
     Geometry g;
     FrameParams fp;
+    // The tile pool, created once here and joined in nxvc_encoder_destroy().
+    // Null when `threads` resolves to 1, which is the serial path.
+    std::unique_ptr<nxvc::ThreadPool> pool;
+    // The eight built-in table sets for this frame's context count.  They used
+    // to be a function-local `static thread_local`, which a worker thread
+    // would have seen zeroed; they are read-only for the whole of a frame, so
+    // one shared copy per encoder is both correct and cheaper.
+    TableSet deftabs[8];
     std::vector<u8> custom_matrix;
     std::vector<nxvc_tile_info> tiles;
     std::vector<u8> tlv;
