@@ -270,8 +270,10 @@ def test_ctypes_struct_sizes_match_the_c_layout():
     assert ctypes.sizeof(_ffi.nxvc_tile_layout) == 16
     # 18 u8/u16 through `qp` (22), + wm_id, intra_dir, skipped, concealed (26),
     # + a 2-aligned u16 `disparity` (28), + ref_delta (29), + a 2-aligned u16
-    # `age_since_coded` (32), + `xform_size` (33), padded to the struct's
-    # 2-byte alignment (34).
+    # `age_since_coded` (32), then the v1.6 appends in merge order:
+    # `split4x4` (33), `xform_size` (34), `near_skip` (35), `quad_mv` (36),
+    # `corr[3][3]` (45), `qmv[4][2]` (53), one pad byte to the u16's
+    # alignment (54), and a u16 `warp_mad_q8` (56).
     assert ctypes.sizeof(_ffi.nxvc_tile_info) == 34
     assert ctypes.sizeof(_ffi.nxvc_image) == ctypes.sizeof(ctypes.c_void_p) * 4 + 16
     # 14 u32 (56) + u64 (64) + layer_desc 4 u32 (80) + 3 u32 (92), rounded up

@@ -89,6 +89,56 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
   have spent word1's last reserved bit on a disabled tool. Kept in Annex D as a recorded negative
   result: this corpus cannot produce the disocclusion the tool exists for.
 - `ref/RESULTS-inter-a.md`, the before/after measurement on the Phase 2 kill test.
+**Perceptual rate control reaches the encoder (`--rc` OFF by default)**
+
+The spatial ladder's measured result is **negative**: the periphery is over-degraded and every
+foveated metric loses. This package therefore merges for its *wiring*, its two additive ABI items
+and its two `rc/` fixes -- all of which stand on their own -- and **not** for the ladder. `--rc`
+ships available to measure, not enabled, on the same discipline as the tool bits: a package whose
+measured result is negative does not become the default path. The open issue is at the end of this
+entry.
+
+- `nxrc::EncDriver` (`rc/include/nxrc/encdrive.hpp`, library `nxvc_rcenc`): the wire between the
+  rate-control library and the reference encoder. Per frame it runs tile statistics, classification,
+  the foveation map, the temporal refresh scheduler and the bit allocator, and hands the encoder the
+  per-tile `qp_map`, `res_map`, `wm_map` and `force_warp_skip` map. No bitstream syntax changes: all
+  four address fields the v1 stream has carried since v1.2.
+- `nxv-enc --rc`, with `--rc-bitrate`, `--rc-fov on|off`, `--rc-temporal on|off`, `--gaze x,y`,
+  `--rc-fps`, `--rc-panel`, `--rc-fov-deg` and `--rc-map` (a per-tile decision dump as CSV).
+- `nxvc_encoder_set_wm_map()`: per-tile weighting-matrix id, the encoder-side way to drive the
+  `wm_id` field tool bit 20 already defines (docs/RATECONTROL.md appendix A.5).
+- `nxvc_tile_info::warp_mad_q8`: the mean absolute residual of a tile's WARP_SKIP predictor, measured
+  by the mode search that builds it. This is the `complexity` input docs/RATECONTROL.md 4.1 asks the
+  rate controller for.
+- `tools/quality/percept_run.py`, `percept_report.py` and `percept_map_png.py`: the
+  equal-perceived-quality harness, its tables and the per-tile decision picture. Results:
+  `ref/RESULTS-percept.md` -- the wire works, and at equal foveated quality it currently costs bits
+  rather than saving them, for four named and measured reasons.
+- `tools/quality/nxq/fvvdp.py` and `nxq.yuv.yuv_to_rgb`, borrowed verbatim from branch
+  `tourney/metric` (commit 25bc7a4) and marked as borrowed, so FovVideoVDP scores come from the same
+  code that package will land.
+
+### Changed
+
+- `nxrc::RefreshScheduler`: the foveal floor is now tested before the static-tile shortcut, so a tile
+  that was static last frame and starts moving this one cannot have a residual withheld in the fovea
+  (docs/RATECONTROL.md 8, `admissible_divisor`).
+- `nxrc::RateController::update_model()`: a tile that came back with no bits is now evidence rather
+  than a missing measurement. It used to be discarded, which is exactly the set of tiles the
+  encoder's mode search codes as `WARP_SKIP`, so their bit model never fell and the controller
+  undershot its budget permanently (measured: `actual/predicted` between 0.33 and 0.67 for eleven
+  consecutive frames, 4.3 dB below flat QP at equal rate; 1.6 dB after). See
+  `ref/RESULTS-percept.md` 7.1.
+
+**OPEN ISSUE: rc spatial ladder calibration -- periphery over-degradation.**
+The spatial ladder degrades the periphery further than the acuity model justifies, and every
+foveated metric loses as a result. Calibrating it needs two things that do not exist yet:
+**2160-px material**, because the current corpus tops out too low for the periphery of the ladder to
+be exercised at a realistic eccentricity -- so the measurement is not testing what the ladder is for
+-- and **the encoder's skip decision fed to the allocator before allocation**, so the allocator
+stops spending bits against tiles the encoder is about to skip. Until both are in place the ladder
+cannot be calibrated and `--rc` stays off by default.
+
 
 **Design**
 

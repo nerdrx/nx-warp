@@ -30,3 +30,16 @@ if(NXWARP_BUILD_TOOLS)
     target_compile_options(nxvc-rcsim PRIVATE -Wall -Wextra -Wno-unused-parameter)
   endif()
 endif()
+
+# nxvc_rcenc: the wire between this library and the reference encoder
+# (nxrc/encdrive.hpp).  It is a separate target because nxvc_rc itself is a
+# pure model with no dependency on ref/, and stays that way.
+if(TARGET nxvc_ref)
+  add_library(nxvc_rcenc STATIC src/encdrive.cpp)
+  target_link_libraries(nxvc_rcenc PUBLIC nxvc_rc nxvc_ref)
+  target_include_directories(nxvc_rcenc PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  set_target_properties(nxvc_rcenc PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+  if(NOT MSVC)
+    target_compile_options(nxvc_rcenc PRIVATE -Wall -Wextra -Wno-unused-parameter)
+  endif()
+endif()

@@ -118,6 +118,9 @@ class TileInfo:
     ref_delta: int
     age_since_coded: int
     xform_size: int
+    near_skip: int
+    quad_mv: int
+    warp_mad_q8: int
 
     _FIELDS = (
         "tile_index",
@@ -147,6 +150,9 @@ class TileInfo:
         "ref_delta",
         "age_since_coded",
         "xform_size",
+        "near_skip",
+        "quad_mv",
+        "warp_mad_q8",
     )
 
     @classmethod

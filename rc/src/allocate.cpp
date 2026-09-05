@@ -515,8 +515,24 @@ void RateController::update_model(std::span<const float> actual) {
         tot += actual[i];
         if (out_.skip[i]) continue;
         const float pred = out_.predicted_bits[i];
-        if (pred < 1.0f || actual[i] < 1.0f) continue;
-        const float ratio = std::clamp(actual[i] / pred,
+        if (pred < 1.0f) continue;
+        // A tile the allocator did NOT skip but which came back with no bits
+        // is the encoder's mode search having chosen WARP_SKIP for it, and it
+        // is evidence, not a missing measurement.  Treating it as missing --
+        // which this loop used to do, by also skipping `actual < 1` -- leaves
+        // a_t at its initial value for exactly the tiles that will never
+        // spend it, so `predicted_total` keeps budgeting bits nobody emits,
+        // the pressure search meets the budget at a coarser QP than it needs
+        // to, and the frame undershoots.  It cannot recover, because the same
+        // tiles are skipped again next frame.  Measured on vr-turn-256-v2 the
+        // bias was permanent: actual/predicted sat between 0.33 and 0.67 for
+        // eleven consecutive frames and the coded QP ran four steps above the
+        // flat QP that hits the same rate (ref/RESULTS-percept.md 6).
+        //
+        // The floor of one bit is the smallest evidence the model can carry;
+        // a_t then falls by the ratio clamp per frame and recovers at the
+        // same rate when the tile is coded again.
+        const float ratio = std::clamp(std::max(actual[i], 1.0f) / pred,
                                        1.0f / cfg_.a_ratio_clamp, cfg_.a_ratio_clamp);
         a_[i] = std::clamp(a_[i] * std::pow(ratio, cfg_.a_exponent),
                            cfg_.a_min, cfg_.a_max);

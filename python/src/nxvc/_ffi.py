@@ -434,6 +434,11 @@ class nxvc_tile_info(Structure):
         # --- appended for syntax v1.6, in merge order (see nxvc_tile_info).
         ("split4x4", c_uint8),
         ("xform_size", c_uint8),
+        ("near_skip", c_uint8),
+        ("quad_mv", c_uint8),
+        ("corr", c_int8 * 9),
+        ("qmv", c_int8 * 8),
+        ("warp_mad_q8", c_uint16),
     ]
 
 

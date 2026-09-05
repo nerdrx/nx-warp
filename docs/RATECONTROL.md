@@ -963,11 +963,13 @@ of it reaches the bitstream directly.
 
 ### 8.7 What the encoder mode decision in `ref/` must expose
 
-**Phase 2 hook. Nothing in `ref/` has been changed by this work.** The
-scheduler emits `force_skip` and the allocator honours it, but the allocator
-is a model of a decision `ref/`'s mode selection actually makes. For the
-temporal ladder to reach the bitstream, the encoder's per-tile mode decision
-needs one input and one output:
+**Done.** `nxvc_encoder_set_skip_map()` is the input below and
+`nxvc_encoder_tiles()` reports `skipped` / `age_since_coded` / `ref_delta` as
+the output. `nxrc::EncDriver` (`nxrc/encdrive.hpp`) is the wire: it runs
+sections 3 to 8 of this document per frame and hands the encoder the four
+per-tile arrays, and `nxv-enc --rc` is that driver on the command line.
+Measured results are in `ref/RESULTS-percept.md`. The requirements the
+implementation had to meet, unchanged:
 
 **Input, required:** a per-tile `force_warp_skip` flag, or equivalently a
 per-tile mode override that can pin `mode` to `WARP_SKIP`. Semantics:
@@ -1074,6 +1076,17 @@ class of content", which is a subjective-testing question. The simulator's
 numbers are all conditional on these four.
 
 ### A.5 The per-tile weighting matrix has no syntax
+
+**Resolved: option 2 was taken.** Syntax v1.2 spends tile-header word1 bits
+26-27 on `wm_id` behind tool bit 20 (`NXVC_TOOL_WM_ID`), which is exactly the
+change proposed below. `nxvc_encoder_set_wm_map()` is the encoder-side way to
+drive it per tile, and `nxrc::EncDriver` feeds `AllocResult::wm_id` straight
+into it. One consequence to know: `wm_id == 0` means "the frame's matrix", so
+a stream that wants `nxrc::WM_FLAT` on its text tiles has to declare the flat
+matrix as the frame matrix, which is what `nxv-enc --rc` does.
+
+The original note:
+
 
 PAPER.md 1.5 selects a weighting matrix **per frame**; 4.6.1's ladder needs it
 **per tile**. The v1 tile header (1.2) has no field for it. Three options:
