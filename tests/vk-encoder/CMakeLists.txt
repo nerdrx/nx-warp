@@ -69,6 +69,16 @@ if(EXISTS ${CMAKE_SOURCE_DIR}/vk/decoder/inter/warp_pred.comp)
            -DDEC=${_passw_dec} -DENC=${_passw_enc}
            -P ${CMAKE_CURRENT_SOURCE_DIR}/passw_same.cmake)
   list(APPEND NXENC_TESTS vk.encoder.passw.same)
+
+  # The same check for Pass B, which is the other half of the rule: the
+  # encoder's reference picture is reconstructed by the decoder's own module,
+  # in its v1_x8 variant.
+  add_test(NAME vk.encoder.passb.same
+           COMMAND ${CMAKE_COMMAND}
+           -DDEC=${CMAKE_BINARY_DIR}/vk/decoder/passB/generated/reconstruct_v1_x8.spv.h
+           -DENC=${CMAKE_BINARY_DIR}/vk/encoder/generated/reconstruct_v1_x8.spv.h
+           -P ${CMAKE_CURRENT_SOURCE_DIR}/passw_same.cmake)
+  list(APPEND NXENC_TESTS vk.encoder.passb.same)
 endif()
 
 # The inter host module: the ring layout, the slot rule, the rolling refresh

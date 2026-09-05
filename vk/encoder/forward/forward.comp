@@ -503,11 +503,26 @@ void main() {
     g_tile = gl_WorkGroupID.x;
     if (g_tile >= fp.ntiles) return;
     nxe_tile_job job = jobs[g_tile];
-    // A WARP_SKIP tile codes no residual: its reconstruction is the warped
-    // predictor Pass W already produced, and E4 gives it no units.  One
-    // workgroup owns one tile here, so this return is workgroup-uniform and
-    // the barriers below are unaffected.
-    if (job.mode == uint(NXE_MODE_WARP_SKIP)) return;
+    // A WARP_SKIP tile codes no residual, so E3 does not transform it and E4
+    // gives it no units.  It does not simply return, though: its coefficient
+    // slot has to be ZEROED.
+    //
+    // Pass B reconstructs the encoder's reference picture for every tile,
+    // skipped ones included -- a skipped tile is an inter tile whose residual
+    // is nothing, which is exactly `reconstruct_skip`.  In the dense
+    // coefficient layout Pass B is run with, there are no per-unit lengths and
+    // every unit is read as coded, so a slot left holding the PREVIOUS frame's
+    // coefficients would be added to the prediction as if it were this
+    // tile's residual.  Zeroing is the dense layout's own convention for an
+    // uncoded unit, which is why Pass A does the same.
+    //
+    // One workgroup owns one tile, so both the branch and the return are
+    // workgroup-uniform and the barriers below are unaffected.
+    if (job.mode == uint(NXE_MODE_WARP_SKIP)) {
+        for (uint w = lid; w < uint(NXE_TILE_COEF_WORDS); w += uint(NXE_E3_WG))
+            coefb.v[g_tile * uint(NXE_TILE_COEF_WORDS) + w] = 0u;
+        return;
+    }
 
     const int qp_base = nxe_clamp(int(fp.base_qp) + job.qp_delta, 0, 63);
     g_coefbase = g_tile * uint(NXE_TILE_COEF_WORDS);

@@ -214,29 +214,34 @@ if(EXISTS ${NXENC_DEC_INTER}/warp_pred.comp)
     VERBATIM)
   set(NXENC_SPV_HEADERS ${NXENC_SPV_HEADERS} ${_dout})
 
-  # E3b, the ring store for SKIPPED tiles.  Compiled but NOT yet dispatched:
-  # it is one half of the reference store and the other half -- the intra
-  # tiles' -- is blocked, see README.md "What E3b actually needs".  It is
-  # built anyway so glslc validates it and it cannot bit-rot while it waits.
-  set(_rout ${NXENC_GEN_DIR}/E3b_ring.spv.h)
+
+  # Pass B, the reconstruction, in the v1_x8 variant: NXVW_INTRA_DIR=0 and
+  # NXVW_XFORM_LARGE=0, which is `smB[0][0]` in the decoder and the variant
+  # matching this pipeline's tools-off stream.  Compiled from the DECODER's
+  # source with the decoder's own defines, so the encoder's reference picture
+  # is produced by the decoder's arithmetic and not by a second copy of it --
+  # the same rule, and the same mechanism, as Pass W.
+  set(_bout ${NXENC_GEN_DIR}/reconstruct_v1_x8.spv.h)
   add_custom_command(
-    OUTPUT ${_rout}
+    OUTPUT ${_bout}
     COMMAND ${CMAKE_COMMAND}
             -DGLSLC=${NXENC_GLSLC}
-            -DSRC=${CMAKE_CURRENT_SOURCE_DIR}/inter/E3b_ring.comp
-            -DOUT=${_rout}
-            -DNAME=E3b_ring
-            -DINCDIR=${NXENC_DEC_INTER}
-            -DINCDIR2=${NXENC_FWD_DIR}
+            -DSRC=${NXENC_DEC_PASSB}/reconstruct.comp
+            -DOUT=${_bout}
+            -DNAME=reconstruct_v1_x8
+            "-DDEFS=-DNXVW_INTRA_DIR=0 -DNXVW_XFORM_LARGE=0"
+            -DINCDIR=${NXENC_DEC_PASSB}
             -DSTYLE=guarded
             -P ${NXENC_GEN_SPV}
-    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/inter/E3b_ring.comp
+    DEPENDS ${NXENC_DEC_PASSB}/reconstruct.comp
+            ${NXENC_DEC_PASSB}/syntax_constants.h
+            ${NXENC_DEC_PASSB}/passB_layout.h
+            ${NXENC_DEC_INTER}/inter_hook.glsl
             ${NXENC_DEC_INTER}/inter_layout.h
-            ${NXENC_FWD_DIR}/nxe_enc_common.glsl
             ${NXENC_GEN_SPV} ${NXENC_SPV_PASSES_CMAKE}
-    COMMENT "glslc E3b_ring.comp -> E3b_ring.spv.h"
+    COMMENT "glslc (decoder) reconstruct.comp v1_x8 -> reconstruct_v1_x8.spv.h"
     VERBATIM)
-  set(NXENC_SPV_HEADERS ${NXENC_SPV_HEADERS} ${_rout})
+  set(NXENC_SPV_HEADERS ${NXENC_SPV_HEADERS} ${_bout})
   set(NXENC_HAVE_PASSW 1)
 else()
   set(NXENC_HAVE_PASSW 0)

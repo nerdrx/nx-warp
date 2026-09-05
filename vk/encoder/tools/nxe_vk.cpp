@@ -8,6 +8,7 @@
 #include "nxe_inter.h"
 #include "E1c_decide.spv.h"
 #include "warp_pred.spv.h"
+#include "reconstruct_v1_x8.spv.h"
 
 #include <algorithm>
 #include <chrono>
@@ -55,11 +56,19 @@ struct VkEncoder::Impl {
      * intra-only stream, at four bytes each -- an unbound descriptor is
      * illegal and a branch in create() is worse than 12 bytes. */
     vkmin::Buffer b_ring, b_warp, b_wpred;
+    /* Pass B's consumer buffers.  The COEFFICIENTS are not among them: Pass B
+     * strides tiles by its `coefStrideI16` push constant, and E3's per-tile
+     * layout is already the one it wants -- DC levels then blocks of 64, and
+     * plane p at the sum of nb*nb*65 over earlier planes, which is exactly
+     * nxvw_plane_coef_count.  So b_coef is bound straight through with the
+     * stride set to NXE_TILE_COEFS_MAX, and there is no repack pass. */
+    vkmin::Buffer b_tilerecs, b_weights, b_order, b_dummy;
+    std::vector<vkmin::Image> ph;   /* 1x1 placeholders, Pass B's 7 images */
     vkmin::Buffer b_stage_src, b_stage_coef, b_stage_small;
 
     vkmin::Pipeline p_e3, p_e4, p_e5, p_e5z, p_e2[3];
     /* Pass W is the DECODER's warp_pred.comp; E1c is the mode decision. */
-    vkmin::Pipeline p_w, p_dec;
+    vkmin::Pipeline p_w, p_dec, p_b;
     E0 e0;
     /* Plane views of the caller's images, one entry per (image, layer) the
      * caller has presented.  A compositor rotates over a handful of images
@@ -74,7 +83,7 @@ struct VkEncoder::Impl {
     std::vector<SrcViews> src_views;
     VkDescriptorPool pool = VK_NULL_HANDLE;
     VkDescriptorSet s_e3{}, s_e4{}, s_e5{}, s_e5z{}, s_e2[3]{};
-    VkDescriptorSet s_w{}, s_dec{};
+    VkDescriptorSet s_w{}, s_dec{}, s_b{};
     VkQueryPool qpool = VK_NULL_HANDLE;
 
     size_t src_bytes = 0, coef_bytes = 0, out_bytes = 0;
@@ -88,6 +97,7 @@ struct VkEncoder::Impl {
     int wpred_stride = 0;
     nxvw::NxvwWarpPush wpush{};
     int32_t decide_push[4] = {};
+    nxvw::NxvwPassBPush bpush{};
 };
 
 int vk_list_devices() {
@@ -117,6 +127,45 @@ static void write_set(VkDevice dev, VkDescriptorSet set,
         w[i].descriptorCount = 1;
         w[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         w[i].pBufferInfo = &bi[i];
+    }
+    vkUpdateDescriptorSets(dev, (uint32_t)w.size(), w.data(), 0, nullptr);
+}
+
+/* Pass B's set is not all buffers: seven of its sixteen bindings are storage
+ * images it may write the decoded picture to.  The encoder writes none of them
+ * -- it runs Pass B with kOutFormat == kOutNone, for the reference ring alone
+ * -- but a descriptor still has to be there, so each is a 1x1 placeholder of
+ * the format its binding declares.  A storage image's format is a layout
+ * qualifier in GLSL and cannot follow a specialization constant, which is why
+ * there are seven of them and not one.
+ *
+ * `slots` names each binding as buffer-or-image in binding order; a null
+ * VkBuffer means "take the next image instead". */
+static void write_set_mixed(VkDevice dev, VkDescriptorSet set,
+                            const std::vector<VkBuffer> &bufs,
+                            const std::vector<VkImageView> &imgs) {
+    const size_t n = bufs.size();
+    std::vector<VkDescriptorBufferInfo> bi(n);
+    std::vector<VkDescriptorImageInfo> ii(n);
+    std::vector<VkWriteDescriptorSet> w;
+    size_t next_img = 0;
+    for (size_t i = 0; i < n; ++i) {
+        VkWriteDescriptorSet ws{};
+        ws.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        ws.dstSet = set;
+        ws.dstBinding = (uint32_t)i;
+        ws.descriptorCount = 1;
+        if (bufs[i] != VK_NULL_HANDLE) {
+            bi[i] = {bufs[i], 0, VK_WHOLE_SIZE};
+            ws.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            ws.pBufferInfo = &bi[i];
+        } else {
+            ii[i] = {VK_NULL_HANDLE, imgs[next_img++],
+                     VK_IMAGE_LAYOUT_GENERAL};
+            ws.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+            ws.pImageInfo = &ii[i];
+        }
+        w.push_back(ws);
     }
     vkUpdateDescriptorSets(dev, (uint32_t)w.size(), w.data(), 0, nullptr);
 }
@@ -221,6 +270,10 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
         {&d.b_ring,    ring_bytes, false},
         {&d.b_warp,    warp_b,     false},
         {&d.b_wpred,   wpred_b,    false},
+        {&d.b_tilerecs, (size_t)std::max(d.ntiles, 1u) * 16, false},
+        {&d.b_weights,  512 * 4,    false},
+        {&d.b_order,    (size_t)std::max(d.ntiles, 1u) * 4, false},
+        {&d.b_dummy,    4096,       false},
         {&d.b_out,     d.out_bytes, true},
         {&d.b_stage_src, d.src_bytes, true},
         {&d.b_stage_coef, d.coef_bytes, true},
@@ -271,11 +324,44 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
     if (!d.dev.create_pipeline(warp_pred_spv, sizeof warp_pred_spv, sb3,
                                (uint32_t)sizeof(nxvw::NxvwWarpPush), d.p_w, err))
         return false;
-    if (!d.dev.create_pipeline(E1c_decide_spv, sizeof E1c_decide_spv, sb5, 16,
+    const std::vector<VkDescriptorType> sb6(6, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    if (!d.dev.create_pipeline(E1c_decide_spv, sizeof E1c_decide_spv, sb6, 16,
                                d.p_dec, err))
         return false;
 
-    d.pool = d.dev.create_descriptor_pool(11, 80, 2);
+    /* Pass B: the decoder's module, in the variant matching this stream --
+     * kOutFormat kOutNone (it writes no picture here, only the ring),
+     * kSparse 0 (E3's dense per-tile layout), inter_pred and ring_store on.
+     * The nine spec constants and their order are the decoder's own; see
+     * nxvc_vkdec.cpp's Pass B pipeline cache. */
+    {
+        const int store_words =
+            cfg.chroma444 ? 3 * (64 * 64 / 2) : (64 * 64 / 2) + 2 * (32 * 32 / 2);
+        const int32_t bspec[9] = {
+            -1 /* kOutFormat  = kOutNone */,
+            (int32_t)store_words,
+            0 /* kDirSched */,
+            -1 /* kOutSecond  = kOutNone */,
+            0 /* kSparse: dense, so unitLen() is 64 and UnitLens is unread */,
+            0 /* kUnormStore */,
+            0 /* kSplitTool */,
+            1 /* inter_pred */,
+            1 /* kRefRingStore */};
+        VkSpecializationMapEntry bme[9];
+        for (int i = 0; i < 9; ++i)
+            bme[i] = {(uint32_t)i, (uint32_t)(i * 4), 4};
+        VkSpecializationInfo bsi{9, bme, sizeof bspec, bspec};
+        std::vector<VkDescriptorType> bb(16, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+        for (int i : {3, 4, 5, 6, 10, 11, 12})
+            bb[(size_t)i] = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        if (!d.dev.create_pipeline(reconstruct_v1_x8_spv,
+                                   sizeof reconstruct_v1_x8_spv, bb,
+                                   (uint32_t)sizeof(nxvw::NxvwPassBPush), d.p_b,
+                                   err, &bsi))
+            return false;
+    }
+
+    d.pool = d.dev.create_descriptor_pool(13, 100, 10);
     d.s_e3 = d.dev.allocate_set(d.pool, d.p_e3.dsl);
     d.s_e4 = d.dev.allocate_set(d.pool, d.p_e4.dsl);
     d.s_e5 = d.dev.allocate_set(d.pool, d.p_e5.dsl);
@@ -309,7 +395,36 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
     d.s_dec = d.dev.allocate_set(d.pool, d.p_dec.dsl);
     write_set(h, d.s_w, {d.b_ring.buf, d.b_warp.buf, d.b_wpred.buf});
     write_set(h, d.s_dec, {d.b_params.buf, d.b_jobs.buf, d.b_src.buf,
-                           d.b_wpred.buf, d.b_warp.buf});
+                           d.b_wpred.buf, d.b_warp.buf, d.b_tilerecs.buf});
+
+    /* Pass B's sixteen bindings.  The seven image ones get 1x1 placeholders of
+     * exactly the format each declares; nothing is ever written to them. */
+    {
+        const VkFormat pf[7] = {
+            VK_FORMAT_R8G8B8A8_UINT,           /* 3  uOutRgba8    */
+            VK_FORMAT_A2B10G10R10_UINT_PACK32, /* 4  uOutRgb10a2  */
+            VK_FORMAT_R8_UINT,                 /* 5  uOutLuma     */
+            VK_FORMAT_R8G8_UINT,               /* 6  uOutCbCr     */
+            VK_FORMAT_R8G8B8A8_UNORM,          /* 10 uOutRgba8N   */
+            VK_FORMAT_R8_UNORM,                /* 11 uOutLumaN    */
+            VK_FORMAT_R8G8_UNORM};             /* 12 uOutCbCrN    */
+        d.ph.resize(7);
+        std::vector<VkImageView> views;
+        for (int i = 0; i < 7; ++i) {
+            if (!d.dev.create_storage_image(1, 1, pf[i], d.ph[(size_t)i], err))
+                return false;
+            views.push_back(d.ph[(size_t)i].view);
+        }
+        d.s_b = d.dev.allocate_set(d.pool, d.p_b.dsl);
+        const VkBuffer N = VK_NULL_HANDLE;
+        write_set_mixed(h, d.s_b,
+                        {d.b_coef.buf, d.b_tilerecs.buf, d.b_weights.buf,
+                         N, N, N, N,
+                         d.b_dummy.buf, d.b_order.buf, d.b_dummy.buf,
+                         N, N, N,
+                         d.b_wpred.buf, d.b_ring.buf, d.b_warp.buf},
+                        views);
+    }
 
     /* E0 is created whether or not an image is ever presented: it is two
      * dozen kilobytes of SPIR-V and one descriptor set, and a create-time
@@ -544,6 +659,29 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
             d.cfg.skip_thresh > 0 ? (int32_t)d.cfg.skip_thresh : 256;
         d.decide_push[2] = d.wpred_stride;
         d.decide_push[3] = 0;
+
+        /* Pass B's push block.  `coefStrideI16` is the lever that lets it read
+         * E3's coefficient buffer with no repack: the within-tile layout is
+         * already the one Pass B addresses, only the per-tile stride differs,
+         * and it is a push constant. */
+        d.bpush = nxvw::NxvwPassBPush{};
+        d.bpush.imageW = (int)(f.fp.width * f.fp.eyes);
+        d.bpush.imageH = (int)f.fp.height;
+        d.bpush.tilesX = (int)(f.fp.tiles_x * f.fp.eyes);
+        d.bpush.baseQp = (int)f.fp.base_qp;
+        d.bpush.chromaQpOff = f.fp.chroma_qp_off;
+        d.bpush.alphaQpOff = 0;
+        d.bpush.coefStrideI16 = NXE_TILE_COEFS_MAX;
+        d.bpush.colorTransform = (int)f.fp.ycocgr;
+        d.bpush.chroma420 = d.cfg.chroma444 ? 0 : 1;
+        d.bpush.alphaPresent = 0;
+        d.bpush.planeWords0 = 64 * 64 / 2;
+        d.bpush.planeWords1 = d.cfg.chroma444 ? 64 * 64 / 2 : 32 * 32 / 2;
+        d.bpush.planeWords2 = d.bpush.planeWords1;
+        d.bpush.planeWords3 = 0;
+        d.bpush.intraDir = 0;
+        d.bpush.dirLayer = 0;
+        d.bpush.sparse = 0;
     }
 
     /* ---- upload, then E3 alone.
@@ -598,6 +736,33 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
             std::memcpy((uint8_t *)d.b_stage_small.map + (1 << 16), we, web);
             VkBufferCopy cwe{1 << 16, 0, web};
             vkCmdCopyBuffer(cb, d.b_stage_small.buf, d.b_warpext.buf, 1, &cwe);
+
+            /* Pass B's tile records are NOT built here.  They carry the
+             * tile's mode, and the mode is E1c's decision, which happens on
+             * the device later in this same command buffer -- so the host
+             * cannot know it yet.  E1c writes the records itself, for every
+             * tile including the ones it leaves INTRA.
+             *
+             * What the host does own is constant for the stream: the
+             * weighting matrices and the workgroup-to-tile order. */
+            std::vector<uint32_t> aux(512 + (size_t)d.ntiles, 0u);
+            for (int set = 0; set < 4; ++set)
+                for (int i = 0; i < 64; ++i) {
+                    /* wm_id is 0 on every tile this pipeline codes, so sets
+                     * 1..3 are never read; they are filled with the frame's
+                     * matrices rather than left zero so that a stray read is a
+                     * wrong picture and not a division by a zero step. */
+                    aux[(size_t)set * 128 + (size_t)i] = f.fp.wm_luma[i];
+                    aux[(size_t)set * 128 + 64 + (size_t)i] = f.fp.wm_chroma[i];
+                }
+            for (uint32_t t = 0; t < d.ntiles; ++t) aux[512 + t] = t;
+            const size_t ab = aux.size() * 4;
+            std::memcpy((uint8_t *)d.b_stage_small.map + (1 << 15), aux.data(),
+                        ab);
+            VkBufferCopy cwg{1 << 15, 0, 512 * 4};
+            vkCmdCopyBuffer(cb, d.b_stage_small.buf, d.b_weights.buf, 1, &cwg);
+            VkBufferCopy cor{(1 << 15) + 512 * 4, 0, (size_t)d.ntiles * 4};
+            vkCmdCopyBuffer(cb, d.b_stage_small.buf, d.b_order.buf, 1, &cor);
         }
         d.dev.barrier_transfer_to_compute(cb);
         if (image) {
@@ -642,7 +807,45 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
         vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE,
                                 d.p_e3.layout, 0, 1, &d.s_e3, 0, nullptr);
         vkCmdDispatch(cb, d.ntiles, 1, 1);
+        if (d.inter) {
+            /* E3b: the reference store, and it is the DECODER'S Pass B --
+             * byte-identical SPIR-V, kOutFormat kOutNone so it writes no
+             * picture, kRefRingStore on so it writes the ring.  It runs over
+             * EVERY tile: an intra tile is reconstructed from E3's
+             * coefficients, and a skipped tile is an inter tile whose residual
+             * is the zeros E3 just wrote, which is reconstruct_skip.  One pass
+             * covers both, which is why there is no separate skip-store
+             * kernel.
+             *
+             * It reads b_coef directly.  E3's per-tile layout is already the
+             * one Pass B addresses -- DC levels then blocks of 64, plane p at
+             * the sum of nb*nb*65 over earlier planes -- and the only
+             * difference, the per-tile stride, is a push constant. */
+            d.dev.barrier_compute_to_compute(cb);
+            vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, d.p_b.pipe);
+            vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                    d.p_b.layout, 0, 1, &d.s_b, 0, nullptr);
+            vkCmdPushConstants(cb, d.p_b.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                               (uint32_t)sizeof d.bpush, &d.bpush);
+            vkCmdDispatch(cb, d.ntiles, 1, 1);
+        }
         d.dev.barrier_compute_to_host(cb);
+        if (d.inter) {
+            /* The modes back to the host.  E1c decided them on the device, and
+             * the host is about to choose table sets and re-upload the job
+             * array for E4/E5 -- which would put its own stale INTRA back over
+             * every decision.  That is not a hypothetical: it cost a whole
+             * debugging pass, because the encoder still SHRANK (a skipped
+             * tile's coefficients are zeroed) while E5 wrote a row header
+             * saying nothing was skipped, so the decoder faithfully rebuilt
+             * intra tiles out of zero residual and the picture fell to 14 dB.
+             * The host also needs the modes for its own per-tile reporting. */
+            /* 0xC0000: past the job upload at 1<<19 and clear of the pose
+             * blob at the top of the 1 MB staging window. */
+            VkBufferCopy cjb{0, 0xC0000u,
+                             (size_t)d.ntiles * sizeof(nxe_tile_job)};
+            vkCmdCopyBuffer(cb, d.b_jobs.buf, d.b_stage_small.buf, 1, &cjb);
+        }
         VkBufferCopy cc{0, 0, d.coef_bytes};
         vkCmdCopyBuffer(cb, d.b_coef.buf, d.b_stage_coef.buf, 1, &cc);
         if (!d.dev.submit_and_wait(cb, err)) {
@@ -650,6 +853,20 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
             return false;
         }
     }
+    /* The frame's reconstruction is in its ring slot now, so the slot becomes
+     * a reference for the frames that follow.  Published AFTER the submit that
+     * ran Pass B, never before: `resolve` is what decides whether the next
+     * frame may predict at all, and a slot announced before it was written
+     * would have the encoder predict from a picture that does not exist yet --
+     * which the decoder, doing the same bookkeeping from the bitstream, would
+     * not. */
+    if (d.inter) {
+        d.ringst.publish(frame_number);
+        const nxe_tile_job *back =
+            (const nxe_tile_job *)((uint8_t *)d.b_stage_small.map + 0xC0000u);
+        for (uint32_t t = 0; t < d.ntiles; ++t) f.jobs[t].mode = back[t].mode;
+    }
+
 
     auto t1 = clk::now();
     if (check) {

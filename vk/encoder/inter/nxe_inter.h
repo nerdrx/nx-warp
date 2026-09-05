@@ -28,6 +28,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "../../decoder/passB/passB_layout.h"
 #include "../../decoder/passB/syntax_constants.h"
 #include "inter_layout.h"
 

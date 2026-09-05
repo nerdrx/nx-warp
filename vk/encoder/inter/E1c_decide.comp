@@ -52,6 +52,13 @@ layout(std430, binding = 3) readonly buffer WPredBuf { uint v[]; } wpred;
 // inter bit and writes nothing, so the host's decision about refresh and
 // reference availability arrives here rather than being recomputed.
 layout(std430, binding = 4) readonly buffer WarpBuf  { uint v[]; } warpb;
+// Pass B's per-tile records.  They are written HERE rather than on the host
+// because their `mode` field is this kernel's decision, and the host cannot
+// know it: E1c runs later in the same command buffer than the upload does.
+// The two header words are exactly E4's h0/h1 -- the same fields in the same
+// bits, because both are SYNTAX.md 4.1 -- so this is the tile header the frame
+// will carry, written before the tile is coded.
+layout(std430, binding = 5) writeonly buffer RecBuf  { uint v[]; } recs;
 
 layout(push_constant) uniform Push {
     int qstep;       // kQStep[qp], Q4
@@ -70,6 +77,27 @@ void add64(inout uint lo, inout uint hi, uint v) {
     lo = n;
 }
 
+// The tile record Pass B reads.  `present` is what makes it reconstruct the
+// tile at all; w3 is the warp-record index, unused because the hook addresses
+// the tile records by tile index.
+void write_rec(uint tile, uint mode) {
+    const nxe_tile_job j = jobs[tile];
+    uint w0 = (j.col & 0xfffu) << 4;
+    w0 |= (j.eye & 1u) << 2;
+    uint w1 = mode & 7u;
+    w1 |= (j.res_level & 3u) << 3;
+    w1 |= (j.chroma444 & 1u) << 5;
+    w1 |= (uint(j.qp_delta) & 0x3fu) << 8;
+    w1 |= (j.table_set & 7u) << 14;
+    w1 |= (j.nsub_log2 & 7u) << 17;
+    w1 |= (j.tskip & 1u) << 23;
+    w1 |= (j.wm_id & 3u) << 26;
+    recs.v[tile * 4u + 0u] = w0;
+    recs.v[tile * 4u + 1u] = w1;
+    recs.v[tile * 4u + 2u] = 1u << 8;
+    recs.v[tile * 4u + 3u] = 0xffffffffu;
+}
+
 void main() {
     const uint tile = gl_WorkGroupID.x;
     if (tile >= fp.ntiles) return;
@@ -81,7 +109,10 @@ void main() {
     // decided this tile is INTRA -- no reference, or a refresh due -- and
     // Pass W wrote nothing for it, so there is no predictor to measure.
     if (((w0 >> 3u) & 1u) == 0u) {
-        if (lid == 0u) jobs[tile].mode = uint(NXE_MODE_INTRA);
+        if (lid == 0u) {
+            jobs[tile].mode = uint(NXE_MODE_INTRA);
+            write_rec(tile, uint(NXE_MODE_INTRA));
+        }
         return;
     }
 
@@ -155,5 +186,7 @@ void main() {
     t_hi += r_hi * npix;
 
     const bool skip = (l_hi < t_hi) || (l_hi == t_hi && l_lo <= t_lo);
-    jobs[tile].mode = skip ? uint(NXE_MODE_WARP_SKIP) : uint(NXE_MODE_INTRA);
+    const uint mode = skip ? uint(NXE_MODE_WARP_SKIP) : uint(NXE_MODE_INTRA);
+    jobs[tile].mode = mode;
+    write_rec(tile, mode);
 }

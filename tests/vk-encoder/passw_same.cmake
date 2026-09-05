@@ -1,4 +1,4 @@
-# vk.encoder.passw.same -- the encoder's Pass W is the decoder's Pass W.
+# vk.encoder.passw.same -- the encoder's Pass W and Pass B are the decoder's.
 #
 # The single most important rule in the project is that the encoder must never
 # hold a reference the decoder cannot reproduce (vk/encoder/README.md, the E3b
@@ -50,17 +50,26 @@ if(NOT _dn EQUAL _en)
     "once from vk/decoder/inter/warp_pred.comp.")
 endif()
 
-math(EXPR _last "${_dn} - 1")
-foreach(i RANGE ${_last})
-  list(GET _dw ${i} _a)
-  list(GET _ew ${i} _b)
-  if(NOT _a STREQUAL _b)
-    message(FATAL_ERROR
-      "vk.encoder.passw.same: the modules differ at word ${i} of ${_dn} "
-      "(decoder ${_a}, encoder ${_b}).  The encoder's pose-warp predictor is "
-      "no longer the decoder's, so its reference picture is no longer one the "
-      "decoder can reproduce.")
-  endif()
-endforeach()
+# Compared as one string rather than element by element: a CMake `foreach` over
+# 42490 words takes a minute and a half for Pass B, and a test nobody wants to
+# wait for is a test that gets excluded from the run.
+string(REPLACE ";" "," _da "${_dw}")
+string(REPLACE ";" "," _ea "${_ew}")
+if(NOT _da STREQUAL _ea)
+  # Only on failure is it worth paying for the position.
+  math(EXPR _last "${_dn} - 1")
+  foreach(i RANGE ${_last})
+    list(GET _dw ${i} _a)
+    list(GET _ew ${i} _b)
+    if(NOT _a STREQUAL _b)
+      message(FATAL_ERROR
+        "vk.encoder.passw.same: the modules differ at word ${i} of ${_dn} "
+        "(decoder ${_a}, encoder ${_b}).  The encoder's shader is no longer "
+        "the decoder's, so its reference picture is no longer one the decoder "
+        "can reproduce.")
+    endif()
+  endforeach()
+  message(FATAL_ERROR "vk.encoder.passw.same: modules differ")
+endif()
 
 message(STATUS "vk.encoder.passw.same: ${_dn} words identical")
