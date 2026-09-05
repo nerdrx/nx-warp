@@ -25,6 +25,13 @@ endif()
 message(STATUS "nxwarp-client: glslc = ${NXC_GLSLC}")
 
 set(NXC_SHADER_DIR ${CMAKE_CURRENT_SOURCE_DIR}/shaders)
+# One shader-build rule for the whole tree (vk/common/cmake); it compiles with
+# -O0 and runs spirv-opt with the Adreno-safe pass list.  This client ships to
+# the Pico 4, so it is the component the rule exists for.  See
+# docs/ADRENO-RULES.md.
+set(NXC_GEN_SPV ${CMAKE_CURRENT_SOURCE_DIR}/../vk/common/cmake/nxvc_gen_spv.cmake)
+set(NXC_SPV_PASSES_CMAKE ${CMAKE_CURRENT_SOURCE_DIR}/../vk/common/cmake/NxvcShaderPasses.cmake)
+
 set(NXC_GEN_DIR    ${CMAKE_CURRENT_BINARY_DIR}/generated)
 file(MAKE_DIRECTORY ${NXC_GEN_DIR})
 
@@ -40,9 +47,10 @@ function(nxc_shader name src)
             -DNAME=${name}
             -DINCDIR=${NXC_SHADER_DIR}
             -DDEFS=
-            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/gen_spv.cmake
+            -DSTYLE=plain
+            -P ${NXC_GEN_SPV}
     DEPENDS ${NXC_SHADER_DIR}/${src} ${NXC_SHADER_DIR}/nxc_common.glsl
-            ${CMAKE_CURRENT_SOURCE_DIR}/cmake/gen_spv.cmake
+            ${NXC_GEN_SPV} ${NXC_SPV_PASSES_CMAKE}
     COMMENT "glslc ${src} -> ${name}.spv.h"
     VERBATIM)
   set(NXC_SPV_HEADERS ${NXC_SPV_HEADERS} ${out} PARENT_SCOPE)

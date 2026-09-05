@@ -172,6 +172,13 @@ nxvc_add_shaders(my_target SHADERS shaders/passB.comp)
 The compiler is found on `PATH`, in `$VULKAN_SDK/bin`, or under the NDK's
 `shader-tools/<host>/glslc`. Override with `-DNXVC_GLSLC=`.
 
+Shaders are compiled `-O0` and then optimised by `spirv-opt` with the shared
+pass list in `cmake/NxvcShaderPasses.cmake`, never with `glslc -O`, and they
+avoid indexed local storage entirely. Both are Adreno 650 correctness
+requirements, not style: [docs/ADRENO-RULES.md](../docs/ADRENO-RULES.md) has the
+measurements, and `scripts/shader-lint.py` (`ctest -R lint.shaders`) enforces
+them.
+
 The default target environment is **`vulkan1.1` (SPIR-V 1.3)**, not the SPIR-V
 1.4 that 3.10 asks for: SPIR-V 1.4 needs Vulkan 1.2 or `VK_KHR_spirv_1_4`, and
 the Pico 4's Adreno driver is a plain 1.1 implementation. Raise it with

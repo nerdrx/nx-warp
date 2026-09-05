@@ -108,23 +108,35 @@ void main() {
     uint lid  = gl_LocalInvocationID.x;
     uint base = block * uint(NXE_E2_BLOCK) + lid * uint(NXE_E2_PER_THREAD);
 
-    uint e[NXE_E2_PER_THREAD];
-    uint mine = 0u;
-    for (uint k = 0u; k < uint(NXE_E2_PER_THREAD); ++k) {
-        uint i = base + k;
-        e[k] = (i < pc.num_elems) ? in_.v[i] : 0u;   // clamped, 3.7
-        mine += e[k];
-    }
+    // The thread's NXE_E2_PER_THREAD elements live in a uvec4, not a
+    // uint[NXE_E2_PER_THREAD].  A local array indexed by a loop counter is only
+    // safe while the unroller keeps up; a vector is registers by construction.
+    // See docs/ADRENO-RULES.md.
+#if NXE_E2_PER_THREAD != 4
+#error "E2 carries its per-thread elements in a uvec4; NXE_E2_PER_THREAD must be 4"
+#endif
+#define NXE_E2_LOAD(_k) (((base + (_k)) < pc.num_elems) ? in_.v[base + (_k)] : 0u)
+    // Clamped loads, 3.7.
+    const uvec4 e = uvec4(NXE_E2_LOAD(0u), NXE_E2_LOAD(1u),
+                          NXE_E2_LOAD(2u), NXE_E2_LOAD(3u));
+#undef NXE_E2_LOAD
+    const uint mine = e.x + e.y + e.z + e.w;
 
     uint block_total;
     uint off = wg_exclusive_scan(mine, block_total);
 
+    // The same running prefix as the loop it replaces, element by element.
     uint run = off;
-    for (uint k = 0u; k < uint(NXE_E2_PER_THREAD); ++k) {
-        uint i = base + k;
-        if (i < pc.num_elems) out_.v[i] = run;
-        run += e[k];
-    }
+// Parameter names are underscored: an unqualified `v` here would be captured by
+// the `out_.v` in the body.
+#define NXE_E2_STORE(_k, _val) { uint i = base + (_k);                         \
+                                 if (i < pc.num_elems) out_.v[i] = run;        \
+                                 run += (_val); }
+    NXE_E2_STORE(0u, e.x)
+    NXE_E2_STORE(1u, e.y)
+    NXE_E2_STORE(2u, e.z)
+    NXE_E2_STORE(3u, e.w)
+#undef NXE_E2_STORE
 
     if (lid == 0u && block < pc.num_blocks) blk.v[block] = block_total;
 }

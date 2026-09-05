@@ -42,6 +42,14 @@ void put_byte(uint off, uint val) {
         atomicOr(outb.v[w], (val & 0xffu) << ((off & 3u) * 8u));
 }
 
+// Whole-word form of the same.  The output buffer is zeroed by the E5 pass-0
+// clear before anything writes to it, so an OR into a word no other lane touches
+// is a store.
+void put_word(uint w, uint val) {
+    if (w < uint(outb.v.length()))
+        atomicOr(outb.v[w], val);
+}
+
 // Byte `i` of tile `t`'s output.  E4's slot is not the tile's bytes laid end
 // to end: the header and the rANS flush states are at the front, and the
 // renormalisation words are one per word at the *end*, emission e at
@@ -100,29 +108,30 @@ void main() {
     const uint total = NXE_FRAME_HEADER_BYTES +
                        NXE_ROW_HEADER_BYTES * rowgroups + tot.v[0];
 
-    // ---- the frame header.  Offset 0, so every one of its ten words is
-    // wholly owned and can be stored rather than ORed.
+    // ---- the frame header.  Offset 0, so every one of its ten words is wholly
+    // owned by this one lane; the buffer arrives zeroed from the E5 clear pass,
+    // so the ORs below land exactly where the old staging uint[10] did.
+    //
+    // That staging array is what this replaces.  `w[o >> 2] |= ...` in the pose
+    // loop is a local array indexed by a value the compiler cannot fold, which
+    // on the Adreno 650 means a private-memory array -- the construct that made
+    // Pass B read a local back wrong (docs/ADRENO-RULES.md).  Writing through
+    // put_byte/put_word instead keeps every access chain in the SSBO, where a
+    // computed index is fine.
     if (t == 0u && lid == 0u) {
-        uint w[10];
-        for (int i = 0; i < 10; ++i) w[i] = 0u;
-        w[0] = (fp.frame_number & 0xffffu);
+        put_word(0u, fp.frame_number & 0xffffu);
         // pose[] is 26 bytes at byte offset 2; it straddles words 0..6.
-        for (uint k = 0u; k < 26u; ++k) {
-            uint b = (pose.v[k >> 2] >> ((k & 3u) * 8u)) & 0xffu;
-            uint o = 2u + k;
-            w[o >> 2] |= b << ((o & 3u) * 8u);
-        }
-        w[7] |= (fp.base_qp & 0xffu);                          // byte 28
-        w[7] |= (uint(fp.chroma_qp_off) & 0xffu) << 8;         // byte 29
-        w[7] |= 0u << 16;                                      // alpha_qp_off
-        w[7] |= (fp.quant_matrix & 0xffu) << 24;               // byte 31
-        w[8] |= (fp.tables_present & 0xffu);                   // byte 32
-        w[8] |= 0u << 8;                                       // ref_slots
-        w[8] |= (fp.frame_flags & 0xffu) << 16;                // byte 34
-        w[8] |= 0u << 24;                                      // reserved
-        w[9] = total;
-        for (uint i = 0u; i < 10u; ++i)
-            if (i < uint(outb.v.length())) outb.v[i] = w[i];
+        for (uint k = 0u; k < 26u; ++k)
+            put_byte(2u + k, (pose.v[k >> 2] >> ((k & 3u) * 8u)) & 0xffu);
+        put_word(7u, (fp.base_qp & 0xffu)                         // byte 28
+                   | ((uint(fp.chroma_qp_off) & 0xffu) << 8)      // byte 29
+                                                                  // byte 30 alpha_qp_off, 0
+                   | ((fp.quant_matrix & 0xffu) << 24));          // byte 31
+        put_word(8u, (fp.tables_present & 0xffu)                  // byte 32
+                                                                  // byte 33 ref_slots, 0
+                   | ((fp.frame_flags & 0xffu) << 16));           // byte 34
+                                                                  // byte 35 reserved, 0
+        put_word(9u, total);
     }
 
     // ---- the tile-row headers, one per row group.

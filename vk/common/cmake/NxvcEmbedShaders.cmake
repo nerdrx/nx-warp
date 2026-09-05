@@ -22,6 +22,18 @@
 
 include_guard(GLOBAL)
 
+# The one spirv-opt pass list, shared with bench/, android/, warp/ and
+# vk/encoder/.  Defines NXVC_SPIRV_SAFE_PASSES; see docs/ADRENO-RULES.md.
+include("${CMAKE_CURRENT_LIST_DIR}/NxvcShaderPasses.cmake")
+
+find_program(NXVC_SPIRV_OPT NAMES spirv-opt
+  HINTS
+    $ENV{VULKAN_SDK}/bin
+    ${ANDROID_NDK}/shader-tools/linux-x86_64
+    ${ANDROID_NDK}/shader-tools/darwin-x86_64
+    ${ANDROID_NDK}/shader-tools/windows-x86_64
+  DOC "SPIRV-Tools spirv-opt")
+
 find_program(NXVC_GLSLC NAMES glslc
   HINTS
     $ENV{VULKAN_SDK}/bin
@@ -82,13 +94,14 @@ function(nxvc_add_shaders TARGET)
     set(hdr "${gen_dir}/${name}${ARG_SUFFIX}.h")
 
     if(NXVC_SHADER_COMPILER_KIND STREQUAL "glslc")
+      # -O0 always.  glslc's -O runs spirv-opt's built-in list, which contains
+      # the redundancy-elimination pass the Adreno 650 driver miscompiles
+      # (docs/ADRENO-RULES.md); optimisation happens in the separate spirv-opt
+      # step below, from NXVC_SPIRV_SAFE_PASSES.
       set(compile_cmd
         "${NXVC_SHADER_COMPILER}" -fshader-stage=compute
-        --target-env=${NXVC_VK_SPIRV_TARGET_ENV}
+        --target-env=${NXVC_VK_SPIRV_TARGET_ENV} -O0
         ${define_flags} -MD -MF "${spv}.d" -o "${spv}" "${abs}")
-      if(NXVC_VK_SHADER_OPTIMIZE)
-        list(APPEND compile_cmd -O)
-      endif()
       set(depfile_args DEPFILE "${spv}.d")
     else()
       # glslangValidator: --target-env takes the same spellings.
@@ -98,11 +111,21 @@ function(nxvc_add_shaders TARGET)
       set(depfile_args "")
     endif()
 
+    # The optimiser runs as its own step, with the shared Adreno-safe pass
+    # list, so that the pass set is visible and identical to every other
+    # component's (vk/common/cmake/NxvcShaderPasses.cmake).
+    set(opt_cmd "")
+    if(NXVC_VK_SHADER_OPTIMIZE AND NXVC_SPIRV_OPT)
+      set(opt_cmd COMMAND "${NXVC_SPIRV_OPT}" ${NXVC_SPIRV_SAFE_PASSES}
+                          -o "${spv}" "${spv}")
+    endif()
+
     add_custom_command(
       OUTPUT "${spv}"
       COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/spv"
       COMMAND ${compile_cmd}
-      DEPENDS "${abs}"
+      ${opt_cmd}
+      DEPENDS "${abs}" "${_NXVC_EMBED_CMAKE_DIR}/NxvcShaderPasses.cmake"
       ${depfile_args}
       COMMENT "SPIR-V ${name}${ARG_SUFFIX} (${NXVC_VK_SPIRV_TARGET_ENV})"
       VERBATIM)

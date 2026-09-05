@@ -86,3 +86,52 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
           path: ${{ runner.temp }}/format.log
+
+  shader-lint:
+    name: shader-lint (advisory)
+    runs-on: ubuntu-latest
+    # Non-blocking for now, same reasoning as clang-format above: Pass B's
+    # rewrite is still landing and carries the advisory findings. Drop
+    # continue-on-error once `ctest -R lint.shaders` is green on main --
+    # scripts/shader-lint.py already exits non-zero only on the hard rules, so
+    # that flip costs nothing but the decision.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # No GPU, no glslc, no build: the checker reads the GLSL and the CMake
+      # shader-build rules as text. What it looks for is docs/ADRENO-RULES.md.
+      - name: scripts/shader-lint.py
+        run: |
+          set -eu
+          rc=0
+          python3 scripts/shader-lint.py --format=github > "${RUNNER_TEMP}/lint.log" 2>&1 || rc=$?
+          cat "${RUNNER_TEMP}/lint.log"
+          {
+            echo "### Shader portability lint"
+            echo ""
+            if [ "$rc" -ne 0 ]; then
+              echo 'Findings below violate [docs/ADRENO-RULES.md](docs/ADRENO-RULES.md).'
+              echo 'Reproduce with `python3 scripts/shader-lint.py`, or `ctest -R lint.shaders`.'
+            else
+              echo 'No blocking findings.'
+            fi
+            echo ""
+            echo '```'
+            head -c 60000 "${RUNNER_TEMP}/lint.log"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"
+
+      - name: Upload the shader-lint log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shader-lint-log
+          if-no-files-found: ignore
+          retention-days: 14
+          path: ${{ runner.temp }}/lint.log

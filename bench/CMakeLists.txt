@@ -22,6 +22,12 @@ if(NOT NXB_GLSLC)
 endif()
 message(STATUS "nxwarp-bench: glslc = ${NXB_GLSLC}")
 
+# One shader-build rule for the whole tree (vk/common/cmake); it compiles with
+# -O0 and runs spirv-opt with the Adreno-safe pass list.  See
+# docs/ADRENO-RULES.md.
+set(NXB_GEN_SPV ${CMAKE_CURRENT_SOURCE_DIR}/../vk/common/cmake/nxvc_gen_spv.cmake)
+set(NXB_SPV_PASSES_CMAKE ${CMAKE_CURRENT_SOURCE_DIR}/../vk/common/cmake/NxvcShaderPasses.cmake)
+
 set(NXB_SHADER_DIR ${CMAKE_CURRENT_SOURCE_DIR}/shaders)
 set(NXB_GEN_DIR    ${CMAKE_CURRENT_BINARY_DIR}/generated)
 file(MAKE_DIRECTORY ${NXB_GEN_DIR})
@@ -38,9 +44,10 @@ function(nxb_shader name src defs)
             -DNAME=${name}
             -DINCDIR=${NXB_SHADER_DIR}
             -DDEFS=${defs}
-            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/gen_spv.cmake
+            -DSTYLE=plain
+            -P ${NXB_GEN_SPV}
     DEPENDS ${NXB_SHADER_DIR}/${src} ${NXB_SHADER_DIR}/nxb_common.glsl
-            ${CMAKE_CURRENT_SOURCE_DIR}/cmake/gen_spv.cmake
+            ${NXB_GEN_SPV} ${NXB_SPV_PASSES_CMAKE}
     COMMENT "glslc ${src} -> ${name}.spv.h"
     VERBATIM)
   set(NXB_SPV_HEADERS ${NXB_SPV_HEADERS} ${out} PARENT_SCOPE)

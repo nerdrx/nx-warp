@@ -244,47 +244,84 @@ int nxe_mul_c4_rnd9(int s) {
     return hi * NXE_C4 + ((lo * NXE_C4 + 256) >> 9);
 }
 
-void nxe_fdct8_1d(int y[8], out int x[8]) {
-    int e0 = y[0] + y[7], O0 = y[0] - y[7];
-    int e1 = y[1] + y[6], O1 = y[1] - y[6];
-    int e2 = y[2] + y[5], O2 = y[2] - y[5];
-    int e3 = y[3] + y[4], O3 = y[3] - y[4];
+// ---------------------------------------------------------------------------
+// The 8-point butterflies, and why their operands are ivec4 pairs
+// ---------------------------------------------------------------------------
+// These used to read `int y[8]` and write `out int x[8]`.  Both forms are a
+// private-memory array on the Adreno 650: a local array is not promoted to
+// registers there, and an array *parameter* is worse still, because glslang
+// copies the whole thing in at the call and an `out` array back out at the
+// return.  Pass B measured such an array being read back with the wrong
+// contents, so this is a correctness rule and not a performance one; see
+// docs/ADRENO-RULES.md and commit d47c095.
+//
+// So a row travels as two ivec4s -- `lo` is elements 0..3, `hi` is 4..7 -- and
+// every access below is a constant component select, which is a register on
+// every driver.  The arithmetic is unchanged, element for element; the encoder
+// and decoder GPU-vs-CPU diffs are what hold that claim up.
+//
+// Gather 8 consecutive entries of a shared array into such a pair.  `arr` may
+// be an indexed expression (`s_blk[g]`) as long as it contains no comma.
+#define NXE_GATHER8(arr, base, lo, hi)                                         \
+    (lo) = ivec4(arr[(base) + 0], arr[(base) + 1],                             \
+                 arr[(base) + 2], arr[(base) + 3]);                            \
+    (hi) = ivec4(arr[(base) + 4], arr[(base) + 5],                             \
+                 arr[(base) + 6], arr[(base) + 7])
+
+// Scatter a pair back with the rounding shift (v + add) >> sh and the 16-bit
+// clamp, at `stride` apart -- stride 8 is the transpose the two transform
+// passes rely on.
+#define NXE_SCATTER8_RS(arr, base, stride, lo, hi, add, sh)                    \
+    arr[(base) + 0 * (stride)] = nxe_clamp16(((lo).x + (add)) >> (sh));        \
+    arr[(base) + 1 * (stride)] = nxe_clamp16(((lo).y + (add)) >> (sh));        \
+    arr[(base) + 2 * (stride)] = nxe_clamp16(((lo).z + (add)) >> (sh));        \
+    arr[(base) + 3 * (stride)] = nxe_clamp16(((lo).w + (add)) >> (sh));        \
+    arr[(base) + 4 * (stride)] = nxe_clamp16(((hi).x + (add)) >> (sh));        \
+    arr[(base) + 5 * (stride)] = nxe_clamp16(((hi).y + (add)) >> (sh));        \
+    arr[(base) + 6 * (stride)] = nxe_clamp16(((hi).z + (add)) >> (sh));        \
+    arr[(base) + 7 * (stride)] = nxe_clamp16(((hi).w + (add)) >> (sh))
+
+void nxe_fdct8_1d(ivec4 ylo, ivec4 yhi, out ivec4 xlo, out ivec4 xhi) {
+    int e0 = ylo.x + yhi.w, O0 = ylo.x - yhi.w;
+    int e1 = ylo.y + yhi.z, O1 = ylo.y - yhi.z;
+    int e2 = ylo.z + yhi.y, O2 = ylo.z - yhi.y;
+    int e3 = ylo.w + yhi.x, O3 = ylo.w - yhi.x;
     int P = nxe_mul_c4_rnd9(O1 + O2);
     int Q = nxe_mul_c4_rnd9(O1 - O2);
     int A = O0 + P, C = O0 - P;
     int B = O3 + Q, D = Q - O3;
-    x[1] = A * NXE_A1 + B * NXE_A7;
-    x[7] = A * NXE_A7 - B * NXE_A1;
-    x[3] = C * NXE_A3 + D * NXE_A5;
-    x[5] = C * NXE_A5 - D * NXE_A3;
+    xlo.y = A * NXE_A1 + B * NXE_A7;
+    xhi.w = A * NXE_A7 - B * NXE_A1;
+    xlo.w = C * NXE_A3 + D * NXE_A5;
+    xhi.y = C * NXE_A5 - D * NXE_A3;
     int t0 = e0 + e3, t3 = e0 - e3;
     int t1 = e1 + e2, t2 = e1 - e2;
-    x[0] = (t0 + t1) * NXE_C4;
-    x[4] = (t0 - t1) * NXE_C4;
-    x[2] = t2 * NXE_S2 + t3 * NXE_C2;
-    x[6] = t3 * NXE_S2 - t2 * NXE_C2;
+    xlo.x = (t0 + t1) * NXE_C4;
+    xhi.x = (t0 - t1) * NXE_C4;
+    xlo.z = t2 * NXE_S2 + t3 * NXE_C2;
+    xhi.z = t3 * NXE_S2 - t2 * NXE_C2;
 }
 
-void nxe_idct8_1d(int x[8], out int y[8]) {
-    int t0 = (x[0] + x[4]) * NXE_C4;
-    int t1 = (x[0] - x[4]) * NXE_C4;
-    int t2 = x[2] * NXE_S2 - x[6] * NXE_C2;
-    int t3 = x[2] * NXE_C2 + x[6] * NXE_S2;
+void nxe_idct8_1d(ivec4 xlo, ivec4 xhi, out ivec4 ylo, out ivec4 yhi) {
+    int t0 = (xlo.x + xhi.x) * NXE_C4;
+    int t1 = (xlo.x - xhi.x) * NXE_C4;
+    int t2 = xlo.z * NXE_S2 - xhi.z * NXE_C2;
+    int t3 = xlo.z * NXE_C2 + xhi.z * NXE_S2;
     int e0 = t0 + t3, e3 = t0 - t3;
     int e1 = t1 + t2, e2 = t1 - t2;
-    int A = x[1] * NXE_A1 + x[7] * NXE_A7;
-    int B = x[1] * NXE_A7 - x[7] * NXE_A1;
-    int C = x[3] * NXE_A3 + x[5] * NXE_A5;
-    int D = x[3] * NXE_A5 - x[5] * NXE_A3;
+    int A = xlo.y * NXE_A1 + xhi.w * NXE_A7;
+    int B = xlo.y * NXE_A7 - xhi.w * NXE_A1;
+    int C = xlo.w * NXE_A3 + xhi.y * NXE_A5;
+    int D = xlo.w * NXE_A5 - xhi.y * NXE_A3;
     int O0 = A + C;
     int O3 = B - D;
     int P = A - C, Q = B + D;
     int O1 = nxe_mul_c4_rnd9(P + Q);
     int O2 = nxe_mul_c4_rnd9(P - Q);
-    y[0] = e0 + O0; y[7] = e0 - O0;
-    y[1] = e1 + O1; y[6] = e1 - O1;
-    y[2] = e2 + O2; y[5] = e2 - O2;
-    y[3] = e3 + O3; y[4] = e3 - O3;
+    ylo.x = e0 + O0; yhi.w = e0 - O0;
+    ylo.y = e1 + O1; yhi.z = e1 - O1;
+    ylo.z = e2 + O2; yhi.y = e2 - O2;
+    ylo.w = e3 + O3; yhi.x = e3 - O3;
 }
 
 // -------------------------------------------------------------- quantizer

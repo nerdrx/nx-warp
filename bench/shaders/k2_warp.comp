@@ -34,7 +34,7 @@ void main()
         return;
 
     int tile = (p.y >> 6) * pc.tilesX + (p.x >> 6);
-    ivec2 d = nxb_warp_delta(uTiles.rec[tile], p.x & (NXB_TILE - 1), p.y & (NXB_TILE - 1));
+    ivec2 d = nxb_warp_delta(NXB_CORNERS(uTiles.rec[tile]), p.x & (NXB_TILE - 1), p.y & (NXB_TILE - 1));
 
     // Q4 source coordinate: 4 fractional bits, i.e. 1/16 pel. The 8-bit
     // bilinear weights below are exactly why Q4 and not Q2 (PAPER 3.2.3).
