@@ -59,6 +59,8 @@ foreach(_xl 1 0)
     DEPENDS ${NXVW_PASSB_DIR}/reconstruct.comp
             ${NXVW_PASSB_DIR}/syntax_constants.h
             ${NXVW_PASSB_DIR}/passB_layout.h
+            ${NXVW_PASSB_DIR}/../inter/inter_hook.glsl
+            ${NXVW_PASSB_DIR}/../inter/inter_layout.h
             ${NXVW_PASSB_GEN_SPV} ${NXVW_PASSB_SPV_PASSES_CMAKE}
     COMMENT "glslc reconstruct.comp (dir=${_dir} xl=${_xl}) -> ${_name}.spv.h"
     VERBATIM)

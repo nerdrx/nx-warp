@@ -1,18 +1,20 @@
 # NX Warp Vulkan decoder
 
 `nxvc_vk_decoder` turns an `.nxv` byte stream into decoded images on a Vulkan
-compute queue. A frame costs **two dispatches** (PAPER 3.2.1):
+compute queue. An intra frame costs **two dispatches** (PAPER 3.2.1); an inter
+frame costs three, because the pose-warp predictor is its own kernel:
 
 ```
-   bytes ──► host parse ──► Pass A ──► Pass B ──► output image(s) ──► [readback]
-             (this dir)     passA/     passB/
+   bytes ──► host parse ──► Pass A ──►[Pass W]──► Pass B ──► output image(s)
+             (this dir)     passA/     inter/     passB/  └► reference ring
 ```
 
 | directory | role |
 |---|---|
 | `passA/` | interleaved rANS entropy decode: tile payloads → int16 coefficients + CBF bits. `passA/README.md` |
-| `passB/` | reconstruction: dequantize, inverse transform, DC-plane and directional intra prediction, resample, colour → display image. `passB/README.md` |
-| this directory | the container parse, the Vulkan runtime around the two kernels, the C ABI and the CLI |
+| `inter/` | Pass W, the Phase 2 pose-warp predictor, the reference ring and the per-tile prediction state. "The inter path" below |
+| `passB/` | reconstruction: dequantize, inverse transform, DC-plane and directional intra prediction, the inter prediction hook, resample, colour → display image. `passB/README.md` |
+| this directory | the container parse, the Vulkan runtime around the three kernels, the C ABI and the CLI |
 
 The normative specification is `docs/SYNTAX.md` and the CPU reference in
 `ref/`. This decoder reproduces `nxv-dec` output **bit for bit**; where it
@@ -22,6 +24,8 @@ cannot, it refuses the stream rather than guessing.
 |---|---|
 | `../../include/nxvc/nxvc_vk.h` | the C ABI |
 | `nxvc_vkdec_parse.{h,cpp}` | host-side container parse, Vulkan-free |
+| `inter/inter_layout.h` | the one description of every buffer the inter path uses, shared by the kernels, the CPU model and the host |
+| `inter/inter_state.h` | the prediction history, the ring bookkeeping and the missing-tile map, Vulkan-free |
 | `nxvc_vkdec.cpp` | device, buffers, pipelines, one command buffer per frame |
 | `tools/nxvc-vkdec.cpp` | CLI, option-for-option `nxv-dec` |
 
@@ -41,6 +45,8 @@ ci.output_format = NXVC_VKD_OUT_AUTO;
 nxvc_vk_decoder *dec;
 nxvc_vk_decoder_create(&ci, &dec);
 nxvc_vk_decoder_parse_stream_header(dec, buf, len, &consumed);
+/* optional, before a frame whose tiles the client did not all receive:      */
+nxvc_vk_decoder_mark_missing(dec, tile_ids, count);   /* SYNTAX.md 13.6      */
 nxvc_vk_decode_frame(dec, buf + consumed, len - consumed, &consumed);
 
 nxvc_vkd_images img;   nxvc_vk_decoder_images(dec, &img);
@@ -167,6 +173,310 @@ With `NXVC_VKD_FLAG_ALLOW_SKIPPED_TILES` set, a skipped tile instead becomes a
 coefficients, no prediction". That is the shape the Phase 2 inter predictor
 plugs into (`passB/README.md`, "Inter prediction hook"): the record and the
 zeroed slot stay, only `pred` changes.
+
+---
+
+## The inter path
+
+`docs/SYNTAX.md` 13. Everything in sections 6 to 9 is unchanged by inter
+prediction: the transform, the quantiser, the scan, the contexts and the rANS
+schedule are the same for every mode. What changes is what the residual is
+measured against, and that is the whole of what `inter/` is.
+
+```
+                        ┌──────────────── reference ring, 4 slots ───────────┐
+                        │  coded sample domain (Y/Co/Cg), full tile extent   │
+                        └───▲───────────────────────────────────────┬───────-┘
+                            │ written per tile by Pass B            │ read by Pass W
+   Pass A ──coefficients──► │                                       ▼
+                            └──────────── Pass B ◄──WPred──── Pass W
+```
+
+### Pass W, and why it is a third dispatch and not a stage of Pass B
+
+`inter/warp_pred.comp` is one workgroup per tile, 256 invocations. For every
+coded plane of an inter tile it derives four corner source coordinates, walks
+the tile's samples through the corner interpolation and one bilinear tap of the
+reference, box-averages the result down to the tile's coded extent, folds in a
+near-skip tile's mean field, and writes the samples to the **WPred** buffer as
+i16. Pass B's prediction hook reads one of them per sample.
+
+It could have been a stage of `reconstruct.comp`, and it is not, for a reason
+that is about the file rather than about the GPU: `reconstruct.comp` is the
+intra path's kernel, it is 1450 lines of scheduling that three drivers agree
+on, and the inter path does not get to restructure it. The whole of what the
+inter path adds to it is **seven places, five of them one line**:
+
+* one `#include` of `inter/inter_hook.glsl`, after the shared-memory
+  declarations because it reads `sPlane`;
+* the **prediction hook** at the `INTER HOOK` marker, which is one `if`:
+  `pred` is the DC plane's planar interpolation for an intra tile and
+  `clamp(W + planar(M) - dc_offset, 0, maxval)` for an inter one;
+* three lines — `nxvwIsInterTile` at the `bool intra` marker, and the two
+  places the DC plane clamps a block mean — because 13.3 says an inter tile's
+  block means are **not** clamped to the sample domain: they are
+  `dc_offset + a residual mean`, whose range is wider on both sides, and
+  clamping them would cap the DC correction the warp needs on exactly the
+  tiles where it matters most;
+* one line in the unit numbering, because 13.3 also says the **mode unit** of
+  9.6 is present only for `mode == INTRA` ("an inter tile's prediction is the
+  warp, and nine ways of saying nothing is not a tool"), which makes
+  `INTRA_DIR`'s effect on the unit list a property of the tile rather than of
+  the frame — in Pass A as well;
+* one call to `nxvwRefRingStore()` at the end of `main()`.
+
+Everything else — the predictor, the ring, the near-skip mean field, the
+parse, the host state — is in `inter/`.
+
+### The predictor is `nxvc_warp_ref` and nothing else
+
+`warp_pred.comp`'s corner derivation, its two-step corner interpolation and its
+bilinear tap are a **line-for-line copy** of `warp/glsl/warp_tile.comp`, which
+is itself the line-for-line GLSL twin of `warp/ref/warp_ref.cpp`, the normative
+implementation. The emulated 64-bit accumulator, the fixed 32-iteration
+restoring divide, the saturating add, the modular shift, the `(c + 2) >> 2`
+Q.6 → Q.4 step: all of it is copied rather than re-derived, because a second
+derivation of the same arithmetic tests the derivation and not the kernel.
+
+The CPU model, `inter/inter_model.cpp`, goes the other way and calls
+`nxvc::warp::warp_tile_quad()` **directly**, exactly as `ref/src/inter.cpp`
+does. What it models is what the kernel adds around the library: the plane
+loop, the conjugated matrix, the halved vectors, the ring addressing, the
+`res_level` box average and the near-skip field. A model that copied the
+arithmetic a third time would agree with the kernel for the wrong reason.
+
+That asymmetry is what makes `vk.passW.gpu_vs_cpu` worth running: it compares
+the GPU's emulated 64-bit restoring divide against the normative library's
+over whatever matrices the sweep produces, which is a property the sixteen
+end-to-end vectors can only test at their sixteen points.
+
+| ICD | scenes | differing samples |
+|---|---|---|
+| RX 7900 XTX (RADV NAVI31) | 57 | **0** |
+| llvmpipe (lavapipe) | 57 | **0** |
+| Adreno 650 (Pico 4) | 57 | **0** |
+
+19 configurations x 3 seeds: identity and warped matrices, one kind sitting
+just inside the denominator envelope, 4:2:0 and 4:4:4, YCoCg-R, alpha, a
+`res_level` cycle, quadrant vectors, near-skip records, stereo, pictures whose
+width and height are *not* multiples of 64 so the clamp-to-edge fetch is
+exercised, and tiles naming a reference the decoder does not hold — the
+"leave mid-grey" arm, which no conformance vector reaches.
+
+Four things the kernel does that the library does not:
+
+* **The conjugated matrix** (13.3 step 1) is computed on the host, once per
+  frame, for the two subsampling factors of each eye: four matrices of nine
+  integers. The halving of `h02`/`h12` rounds to nearest, ties away from zero;
+  the doubling of `h20`/`h21` is exact.
+* **The plane's vector** is `mv >> 1` for `sub == 2`, an arithmetic shift.
+  A quadrant vector (13.10) is a *delta*, so the shift is applied to the sum.
+* **The corner basis is fitted over 64 samples whatever the plane's extent
+  is.** That is 13.7's chroma caveat as code: `warp_tile()` emits a fixed
+  64×64 block and a 4:2:0 chroma tile takes its top-left 32×32, so a chroma
+  sample is interpolated in a basis spanning 64 chroma samples and not 32.
+  Both sides of the codec do this, so it is exact; a decoder that re-fitted
+  the basis at 32×32 would produce different samples and pass no vector.
+* **The quadrant split is the plane's own half extent**, 32 luma samples and
+  16 chroma. The vector enters as a per-sample constant *after* the corner
+  interpolation, so four equal quadrant vectors are bit-identical to a
+  single-vector tile — which is why the kernel has one sample loop and not
+  two, and why quadrant vectors cost one extra select per sample and nothing
+  else.
+
+### The reference ring
+
+Four slots addressed by `frame_number mod 4` (13.2), one buffer, u16 samples
+packed two per uint. A slot holds every eye's whole reconstructed picture in
+the **coded sample domain** — Y/Co/Cg before the inverse colour transform,
+never the RGB the output image carries — because that is the domain the
+predictor predicts in. It is written per tile by Pass B as a second store of
+the same samples, which is the shape `kOutSecond` already established, rather
+than by a second reconstruction.
+
+Two details are load-bearing:
+
+* **The row stride is padded to an even number of samples.** A store writes a
+  whole uint — two horizontally adjacent samples — so every tile's x origin
+  and every row start has to be even, or two workgroups would read-modify-write
+  one uint. A tile's origin is `eye * plane_width + col * extent` and `extent`
+  is 64 or 32, so it is even whenever `eye * plane_width` is; padding the
+  stride makes the rows agree.
+* **A `STEREO` tile reads eye 0 of the slot being written**, this frame's own.
+  On a serial decoder 3.3's row order (row-major, eye-minor) is what makes
+  that available. A dispatch has no order inside it, so a frame that carries
+  a `STEREO` tile runs **Pass W and Pass B once per eye**, with a barrier
+  between, and the workgroup → tile map is rebuilt eye-major so each eye is a
+  contiguous `vkCmdDispatchBase` range. Every other frame runs each pass once,
+  so the extra dispatch is paid only by the frames that need it.
+
+### Concealment, and the API that drives it
+
+`nxvc_vk_decoder_mark_missing(dec, tile_ids, count)` marks the tiles the client
+did not receive. The marks apply to the next frame decoded and are consumed by
+it, whether or not that frame is accepted.
+
+A marked tile's bytes are still parsed — the frame stays self-delimiting — and
+then discarded; the tile is reconstructed by running the `WARP_SKIP` predictor
+with its stored `last_mv` and no residual, which is *bit-identically* a
+legitimately skipped tile. That is the whole design of 13.6: there is no
+separate concealment path to test, and the encoder can replay it. Two rules
+are easy to get wrong and are worth naming:
+
+* **A concealed tile's prediction state does not advance.** Getting this wrong
+  is invisible for one frame and shows up two or three frames later as a
+  vector applied from the wrong place, which is why the loss test runs over a
+  hundred frames rather than one.
+* **A near-skip correction naming a missing tile is not applied.** The
+  correction travelled in a row header the transport does not replicate, so
+  applying it would make the decoder's picture depend on bytes it may never
+  have seen — exactly the divergence the shadow contract exists to prevent.
+
+`vk.decoder.loss` is the assertion: 100 frames of an inter stream using every
+inter tool at once, random tiles dropped every frame, decoded beside `ref/`
+fed the same drops through `nxvc_decoder_set_lost_tiles()`, compared byte for
+byte. Twice: mono, and stereo.
+
+| device | stream | frames | with drops | tiles dropped | differing bytes |
+|---|---|---|---|---|---|
+| RX 7900 XTX (RADV NAVI31) | mono | 100 | 66 | 175 | **0** |
+| RX 7900 XTX (RADV NAVI31) | stereo | 100 | 71 | 336 | **0** |
+| llvmpipe (lavapipe) | mono | 100 | 66 | 175 | **0** |
+| llvmpipe (lavapipe) | stereo | 100 | 71 | 336 | **0** |
+| Adreno 650 (Pico 4) | mono | 100 | 66 | 175 | **0** |
+| Adreno 650 (Pico 4) | stereo | 100 | 71 | 336 | **0** |
+
+**The stereo arm covers what 13.7 says the ENCODER cannot do.**
+`nxvc_encoder_set_received_tiles()` returns `UNSUPPORTED` for a concealed
+left-eye tile, because re-deriving what a `STEREO` tile of the same row was
+predicted from needs a full-frame replay the reference encoder does not do.
+A *decoder* has no such gap: it conceals the left-eye tile into the ring slot
+it is filling, and the `STEREO` tile of the same row then predicts from what
+the decoder actually holds. Both decoders do exactly that, so they agree byte
+for byte, and the test says so rather than leaving the case to the reader.
+
+### `eyes = 2`, and the one thing that is refused
+
+A stereo frame is `eyes` **pictures**, not one double-width picture (3.3), and
+this decoder merges them into a single raster of 64-pixel columns:
+`tilesX = eyes * cols_per_eye`, `imageW = eyes * width`, and the readback
+layout is the reference's `width * eyes`. That merge is exact only when each
+eye's last tile column is full — otherwise eye 1 starts at pixel `width`
+rather than at `cols_per_eye * 64` and every tile-to-pixel mapping in Pass B
+would need a per-eye x origin. So `eyes == 2` with a width that is not a
+multiple of 64 is `UNSUPPORTED`, in one line, at the stream header. Refusing
+it is honest; mis-mapping it silently is not. Every stereo configuration the
+headset streams has a width that is a multiple of 64.
+
+### Timing: a 36-frame inter sequence
+
+The intra bench decodes one frame `iters` times, which is the right shape for
+a pass whose cost depends only on the frame in front of it. The inter path's
+does not: its cost depends on the mode mix, and the mode mix is a property of
+*where in the sequence* the frame is. Frame 0 is all `INTRA`, frame 1 is
+mostly `WARP_MV`, and by frame 10 a static region is `WARP_SKIP` and costs one
+Pass W dispatch and no entropy decode at all. `--bench-inter N` decodes the
+whole sequence in order.
+
+**RX 7900 XTX (RADV NAVI31)**, 36 frames, 4:2:0, QP 24, from
+`nxvc_encoder`'s default inter configuration (`INTER` + `WARP` + `NEAR_SKIP`
++ `QUAD_MV` on top of the intra default), best sequence of 4:
+
+| 36 frames, 4:2:0 | 2048 tiles, QP 24 | 2048 tiles, QP 36 | 256 tiles, QP 24 |
+|---|---|---|---|
+| whole sequence, GPU | **53.2 ms** | **50.3 ms** | 9.7 ms |
+| whole sequence, wall | 71.6 ms | 63.4 ms | 13.5 ms |
+| frame 0 (all `INTRA`), Pass A | 2.625 ms | 1.702 ms | 1.823 ms |
+| frame 0, Pass B | 1.861 ms | 1.231 ms | 0.419 ms |
+| frame 0, GPU | 4.493 ms | 2.941 ms | 2.250 ms |
+| frames 1-35, Pass A | **1.021 ms** | 0.833 ms | 0.152 ms |
+| frames 1-35, Pass W | **0.179 ms** | 0.139 ms | 0.029 ms |
+| frames 1-35, Pass B (predictor included) | 0.426 ms | 0.554 ms | 0.086 ms |
+| frames 1-35, GPU | **1.452 ms** | **1.393 ms** | 0.244 ms |
+| frames 1-35, wall | 1.962 ms | 1.757 ms | 0.347 ms |
+| bytes per inter frame | 39.5 kB | 61.4 kB | 4.2 kB |
+| tiles skipped | 0.2 % | 32.8 % | 0.3 % |
+
+An inter frame at the headline shape costs **1.45 ms of GPU against the intra
+frame's 4.49 ms** — a third — and the whole 36-frame sequence is 53 ms, which
+is 1.5 ms a frame against a 4 ms budget at 90 Hz.
+
+### What an inter frame cost the Adreno 650, and why
+
+The Pico 4 is where the inter path's shape mattered, and the first measurement
+of it was **six times too slow**. 36 frames, 1024x1024 4:2:0, QP 24, 256
+tiles, from the encoder's default configuration:
+
+| Adreno 650, per inter frame | one module | split by group | `INTRA_DIR` off |
+|---|---|---|---|
+| Pass A | 1.32 ms | 1.25 ms | 2.78 ms |
+| Pass W | 2.95 ms | 2.93 ms | 2.94 ms |
+| Pass B (predictor included) | **42.87 ms** | **21.76 ms** | 6.44 ms |
+| GPU total | 44.19 ms | **23.01 ms** | 9.22 ms |
+| 36-frame sequence, GPU | 1838.9 ms | **1119.8 ms** | 358 ms |
+
+Nothing in Pass B's *work* changed between the first two columns. What changed
+is which **module** the inter tiles are dispatched with.
+
+`INTRA_DIR` is a build variant, two SPIR-V modules from one source, for a
+reason this document already gave: the wavefront needs `predictOne()`'s two
+17-entry reference arrays, and the driver reports the combined kernel at a
+328-word register footprint against 16 for the v1 form. That footprint is paid
+by **every workgroup of a dispatch that uses the module**, whether or not the
+workgroup ever reaches the wavefront — and an inter tile never reaches it,
+because `dir` in the kernel is `intra && kIntraDir`.
+
+So on an inter frame the whole picture was being decoded at the occupancy of a
+branch none of it took. Proving it took one run: the same sequence encoded
+with `INTRA_DIR` off decodes its inter frames in **6.4 ms** of Pass B against
+42.9, and Pass A — the control for thermal drift — does not move.
+
+Choosing the module **per frame** would have been the obvious fix and would
+have fired almost never: the rolling intra refresh puts at least one `INTRA`
+tile in nearly every frame. So the choice is **per group**. `build_tile_order`
+stable-partitions each eye's segment of the workgroup → tile map into the
+tiles whose mode is not `INTRA` and the tiles whose mode is, and Pass B is
+dispatched twice over the two contiguous ranges, once with each module. The
+map already existed for exactly this kind of regrouping, the partition is
+stable so raster order survives inside each group, and every write address is
+derived from the tile index rather than from the workgroup index, so the
+output is bit-identical — which the whole 200-stream sweep re-checks on all
+three ICDs.
+
+It costs one more cached pipeline and one more `vkCmdDispatchBase` per frame,
+and it is free on RADV, where the two modules measure the same.
+
+**The third column says where the rest of it went.** With the tool off
+entirely the same sequence is 6.44 ms of Pass B, so the split recovers about
+half of the 36 ms and the remaining 15 ms is the intra tiles that are really
+there: the rolling intra refresh puts about fourteen of the frame's 256 tiles
+on the wavefront every frame, and fourteen tiles of the heavy module cost
+roughly a twentieth of the all-intra frame's 270 ms, which is what 15 ms is.
+That is not the inter path's problem to fix -- it is the directional
+wavefront's Adreno cost, which this document already measures -- but the inter
+path is what made it visible, because it is the first configuration in which
+most of a frame does not want the wavefront at all.
+
+`tile_sort` still applies, inside each group: the partition is what a dispatch
+boundary needs and the sort is what a warp scheduler wants, and neither cares
+about the other.
+
+**The QP 36 column is the one that says what the floor is.** It codes a third
+of its tiles as `WARP_SKIP` and 50 % *more* bytes per frame than the QP 24 one
+(the rate controller spends the saved tiles elsewhere), and it still lands
+within 4 % of the same GPU time. Pass A falls with the payload, Pass B rises
+slightly with it, and Pass W does not move: it is one divide per corner and
+one bilinear tap per sample whatever the tile codes. That is the shape of an
+inter frame's cost, and Pass W is the part of it that no rate decision can
+reduce.
+
+The shape of the number, not its magnitude, is the point: **Pass A collapses**
+once the sequence is running, because most of a well-predicted frame codes
+nothing, and what is left is Pass W plus a Pass B that is doing almost no
+transform work. Pass W is the only cost that does not fall with the payload —
+it is one divide per corner and one bilinear tap per sample whatever the tile
+codes — which is what makes it the floor of an inter frame and the thing to
+attack next.
 
 ---
 
@@ -500,9 +810,18 @@ environment selects:
 
 | ICD | streams | mismatching samples |
 |---|---|---|
-| RX 7900 XTX (RADV NAVI31) | 195 checked, 37 skipped | **0** |
-| llvmpipe (lavapipe) | 195 checked, 37 skipped | **0** |
-| Adreno 650 (Pico 4, Qualcomm 1.1.128) | 168 checked, 46 skipped | **0** |
+| RX 7900 XTX (RADV NAVI31) | 228 checked, 6 skipped | **0** |
+| llvmpipe (lavapipe) | 228 checked, 6 skipped | **0** |
+| Adreno 650 (Pico 4, Qualcomm 1.1.128) | see "Conformance on Adreno" | 24 streams, all `XFORM_LARGE` |
+
+The last two streams are the loss test, mono and stereo: each is a sweep of
+its own and they are counted here because a decoder that concealed differently
+from the reference would be as non-conformant as one that decoded differently.
+
+**The Adreno column is not clean and that is `XFORM_LARGE`'s doing alone**:
+the 24 streams that reach the 16x16 / 32x32 module come back wrong on that
+driver, and every other stream on the device is as clean as it was. "The
+transform size, priced" has the footprint and what has been tried.
 
 The Adreno column is the one that matters: it is the target part, it is a
 third driver rather than a second one, and getting to it found three defects
@@ -514,27 +833,24 @@ streams this decoder cannot yet speak", decided from each stream's own `tools`
 field and never from its file name, so a regression that starts refusing a
 supported vector still fails. Driving it to zero is what finishing the tool
 set means. It was 60 when `merge-main`'s encoder default first set tool bits
-this decoder did not have; the minor-6 realignment took it to 46, `XFORM_LARGE`
-takes it to **37**, and what is left is one tool and the whole of Phase 2:
+this decoder did not have; the minor-6 realignment took it to 46, the inter
+path to 15 and `XFORM_LARGE` to **6**, which is one tool and nothing else:
 
 | skipped | why |
 |---|---|
-| `v45`–`v56`, `v66`, `v67`, `v74`, `v75` | the Phase 2 inter vectors |
 | `v76`–`v81` | `ENTROPY_LITE` (bit 30) — Pass A has the kernel, the decoder does not offer the bit |
-| `r18`–`r29`, `r40`–`r43` | rejection vectors malformed *inside* a syntax this decoder refuses earlier, at the tool mask, with a different but equally correct status |
 
-`XFORM_LARGE` accounts for nine of the nine that went: `v68`–`v73`, and the
-three rejection vectors `r36` (`xform_size` 3, reserved), `r38` (`xform_size`
-with transform skip) and `r39` (`split4x4` with `xform_size`), which are now
-refused for the reason the syntax gives rather than at the tool mask. The
-synthetic sweep gained sixteen more: each size on its own in both chroma
-formats, both with the directional wavefront, the plane cap of 6.7 over
-cycling `res_level` — where one frame carries 32x32, 16x16 and 8x8 luma blocks
-and a chroma plane capped one step further again — and the encoder's own
-per-tile RD choice, which mixes all three sizes inside one frame.
+`XFORM_LARGE` accounts for the nine that went between those last two numbers:
+`v68`–`v73`, and the three rejection vectors `r36` (`xform_size` 3, reserved),
+`r38` (`xform_size` with transform skip) and `r39` (`split4x4` with
+`xform_size`), which are now refused for the reason the syntax gives rather
+than at the tool mask. The synthetic sweep gained sixteen more streams: each
+size on its own in both chroma formats, both with and without the directional
+wavefront, the plane cap of 6.7 over cycling `res_level` — where one frame
+carries 32x32, 16x16 and 8x8 luma blocks and a chroma plane capped one step
+further again — and the encoder's own per-tile RD choice, which mixes all
+three sizes inside one frame.
 
-The Adreno column has not been re-swept since; it was clean on the 168 it ran,
-and the two desktop ICDs agree stream for stream on all 195.
 
 The 44 vectors include `v36`–`v44`, which pin the v1.3 intra tools:
 `INTRA_DIR` alone in 4:4:4 and 4:2:0, `INTRA_DIR` with `CTX_V2`, `CTX_V2`
@@ -571,6 +887,9 @@ ctest --test-dir build-vkdec -R '^vk\.decoder\.'
 | `vk.decoder.bench` | the timing table above, the wavefront variants, the fixed/per-byte fit and the tile-sort delta |
 | `vk.decoder.cli` | `nxvc-vkdec` vs `nxv-dec`, byte for byte |
 | `vk.decoder.unorm_roundtrip[_radv,_lavapipe]` | is an 8-bit UNORM storage image exact on this driver ("The UNORM store") |
+| `vk.decoder.loss` | [inter] 100 frames of random tile loss beside `ref/` fed the same drops |
+| `vk.decoder.bench_inter` | [inter] a 36-frame inter sequence, decoded in order |
+| `vk.passW.gpu_vs_cpu[_radv,_lavapipe]` | [inter] the predictor kernel against `inter_model.cpp` |
 
 Everything exits 77 — a ctest skip — when there is no usable ICD.
 
@@ -714,16 +1033,27 @@ pixels were right the first time, which is what the spirv-opt pass list
 
 ### Conformance on Adreno
 
-The same 152 streams as the desktop table, on the Pico 4, from
-`run-android.sh`:
+The same streams as the desktop table, on the Pico 4, from `run-android.sh`:
 
 | ICD | streams | mismatching samples |
 |---|---|---|
-| Adreno 650 (Qualcomm 1.1.128), UINT store | 168 checked, 46 skipped | **0** |
+| Adreno 650 (Qualcomm 1.1.128), UINT store | 201 checked, 15 skipped | **0** |
+| ... `--bench-inter`, 36-frame sequence | see "The inter path" | **0** |
 
 The skip set is decided from each stream's own `tools` field, exactly as on
-the other two ICDs, so it is the same 46 streams and not a device-specific
+the other two ICDs, so it is the same 15 streams and not a device-specific
 exemption.
+
+**[inter] The Phase 2 path needed nothing device-specific.** Pass W passed on
+the Adreno 650 first time, and the 100-frame loss test is byte-identical to
+the reference there as it is on the two desktop ICDs. That is worth saying
+because the last three tools that landed each cost the Adreno column a defect
+nobody else had; this one did not, and the reason is that `warp_pred.comp` is
+a copy of a kernel (`warp/glsl/warp_tile.comp`) that had already been through
+this driver, and that `docs/ADRENO-RULES.md` rule 1 was applied while writing
+it rather than after: the four quadrant vectors are eight scalars and a select
+ladder, not `int mvx_q6[4]`, and the tile's matrix is read field by field out
+of the SSBO rather than copied into a local record.
 
 ### The UNORM store
 
@@ -854,6 +1184,14 @@ been tuned against was a 7900 XTX. The commits between the columns are
 |---|---|---|---|
 | QP 24, `INTRA_DIR` off (v1) | 153.7 → **79.4 ms** | 366.1 → **22.3 ms** | 521.7 → **102.2 ms** |
 | QP 36, `INTRA_DIR` off (v1) | 26.7 → **10.1 ms** | 417.9 → **15.3 ms** | 445.4 → **25.4 ms** |
+
+**[inter] The inter sequence is a different measurement and is not in that
+table.** It is a smaller picture (1024x1024, 256 tiles) because the encode
+runs on the device, and its point is the ratio rather than the magnitude: an
+inter frame is **23.0 ms of GPU against the intra frame's 298 ms**, at the
+encoder's default tool set. "The inter path" above has it broken out, and the
+reason the intra frame is 298 ms rather than a quarter of the 102.2 ms in this
+table is the directional wavefront, which that row has switched off.
 
 Zero mismatching samples on the 152-stream sweep at every point in that table,
 on the Adreno 650, on RADV and on lavapipe.
@@ -1406,21 +1744,29 @@ of 30, the same stream encoded four ways:
 
 | `--xform` | payload | Pass A | Pass B | GPU total |
 |---|---|---|---|---|
-| 8 (no tool bit) | 182 020 B | 0.534 ms | **0.178 ms** | 0.720 ms |
-| 16 | 157 580 B | 0.372 ms | **0.433 ms** | 0.812 ms |
-| 32 | 185 224 B | 0.465 ms | **0.532 ms** | 1.003 ms |
-| auto (per-tile RD) | 175 462 B | 0.378 ms | **0.326 ms** | **0.707 ms** |
+| 8 (no tool bit) | 182 020 B | 0.539 ms | **0.176 ms** | 0.723 ms |
+| 16 | 157 580 B | 0.375 ms | **0.450 ms** | 0.833 ms |
+| 32 | 185 224 B | 0.469 ms | **0.530 ms** | 1.006 ms |
+| auto (per-tile RD) | 175 462 B | 0.395 ms | **0.340 ms** | **0.741 ms** |
 
 **The encoder's own per-tile choice is the fastest of the four**, and faster
 than 8x8 end to end: it picks a large transform on the tiles where it also
 saves rate, so Pass A shrinks with the payload while Pass B pays the extra
-arithmetic on only some of the tiles. At a *fixed* size Pass B is 2.4x and
+arithmetic on only some of the tiles. At a *fixed* size Pass B is 2.6x and
 3.0x, against 3.4x and 7.5x the multiply count -- the tool removes rounds and
 barriers with one hand while adding multiplies with the other, and 6.7.1 says
 so. The `--bench` sweep's own arm (`--bench-xform`, QP 24, both `INTRA_DIR`
-settings) shows the same shape and the wavefront half of it: with the tool on,
-32x32 is 1.61x 8x8 rather than 5.85x, because the wavefront falls from 22
-steps to 4.
+settings) shows the same shape and the wavefront half of it, which is the
+larger of the two effects:
+
+| | 8x8 | 16x16 | 32x32 | auto |
+|---|---|---|---|---|
+| `INTRA_DIR` off | 0.129 ms | 0.299 (2.33x) | 0.551 (4.29x) | 0.533 (4.14x) |
+| `INTRA_DIR` on | 1.018 ms | 1.446 (1.42x) | **1.061 (1.04x)** | 1.093 (1.07x) |
+
+With the wavefront on, 32x32 is 1.04x 8x8 rather than 4.29x: the wavefront
+falls from 22 steps to 4 and gives back almost exactly what the 7.5x multiply
+count costs.
 
 RADV compiles the large module at 120 VGPRs against 72, with **no scratch**.
 
@@ -1431,22 +1777,29 @@ after, Pass A as the thermal control:
 
 | `--xform` | Pass A | Pass B | GPU total |
 |---|---|---|---|
-| 8 (no tool bit) | 13.73 ms | **16.35 ms** | 30.14 ms |
-| 16 | 18.43 ms | **390.3 ms** | 419.7 ms |
-| 32 | 50.05 ms | **491.7 ms** | 582.7 ms |
-| auto | 38.25 ms | **405.2 ms** | 469.2 ms |
+| 8 (no tool bit) | 13.81 ms | **16.73 ms** | 30.54 ms |
+| 16 | 18.57 ms | **168.5 ms** | 194.8 ms |
+| 32 | 52.29 ms | **162.9 ms** | 245.9 ms |
+| auto | 38.70 ms | **151.4 ms** | 225.0 ms |
 
-30x, and it is not the arithmetic. `VK_KHR_pipeline_executable_properties`
-reports the large module at an **overall register footprint of 996 and 1764 B
-of scratch**, against 0 and 352 B for the 8x8 one. Scratch on this part is
-off-chip, and this document already prices a 328-word footprint at one wave in
-flight; 996 is three times that. The 32-entry transform vector and the
-even/odd recursion's `od[16]` cannot be scalars -- a dense 16-wide rotation
-against `kOdd32` is an indexed dot product and has no scalar spelling -- so
-they go to private memory and stay there.
+The 8x8 row is the control and it is `merge-main`'s: 16.73 ms against 16.23
+and 16.39 measured either side of it, which is inside the protocol's noise.
+The other three are 10x, and **on this driver they are also WRONG** -- the 24
+conformance streams that reach the module come back with most of the picture
+zero. It is the documented failure mode, not a new one: a large private-memory
+footprint on this part "is not only slow, it is not reliably correct", and the
+module reports **440 words of overall register footprint and 1208 B of
+scratch** against 0 and 352 for the 8x8 one.
 
-Two things are worth recording about the route here, because both are
-`docs/ADRENO-RULES.md` in action:
+It is not the arithmetic. Scratch on this part is off-chip, and this
+document already prices a 328-word footprint at one wave in flight. The
+32-entry transform vector and the even/odd recursion's `od[16]` cannot be
+scalars -- a dense 16-wide rotation against `kOdd32` is an indexed dot product
+and has no scalar spelling -- so they go to private memory and stay there.
+
+Three things are worth recording about the route here, because all three are
+`docs/ADRENO-RULES.md` in action and two of them were worth a factor of two
+each:
 
 * the first spelling, `void idct32_1d(int x[32], out int y[32])` with
   `int xe[16], e[16]` inside, is four 128-byte function-scope arrays plus
@@ -1454,6 +1807,14 @@ Two things are worth recording about the route here, because both are
   **refused to compile it at all**: `vkCreateComputePipelines` returned
   `VK_ERROR_INVALID_SHADER_NV`, with and without `spirv-opt`. Rewriting both
   transforms to work in place on one vector is what made it compile;
+* taking the 16-point transform's even half out of an array and into eight
+  scalars with its output loop unrolled -- so that only `od`, the operand of
+  the rotation itself, is still an array -- took the footprint from 996 to 440
+  and the scratch from 1764 B to 1208, and Pass B from 390 ms to 168 at 16x16
+  and 492 to 163 at 32x32. It did **not** make the output correct, which is
+  what says the remaining footprint is still over whatever this driver's
+  threshold is rather than that some other thing is wrong: RADV and lavapipe
+  compile the same source to the same bits as `ref/` on all 228 streams;
 * the fallback `docs/SYNTAX.md` 6.7.1 offers -- "stage the coefficient vector
   through a second LDS buffer" -- is the obvious next lever and is **not**
   taken here. At 32x32 only 128 threads are live in the row pass, so 128 x 32
@@ -1461,10 +1822,14 @@ Two things are worth recording about the route here, because both are
   and does not for 4:4:4, which makes it a real design question rather than a
   patch, and it wants measuring against this table rather than guessing.
 
-So bit 27 is offered and correct on all three ICDs, and on the headset it is
-what `INTRA_DIR` already is: a tool the client negotiates by capability and
-the encoder does not send. Nothing about that is in the bitstream -- the same
-stream decodes bit-exactly on both.
+**So bit 27 is offered, and on the Adreno 650 it is not yet safe to send.**
+That is a stronger statement than `INTRA_DIR`'s -- that tool is correct on the
+device and merely slow -- and it is the open issue this round leaves. The
+decoder's tool mask is a property of the build, not of the device, so a
+headset build that must refuse the bit has to say so at the handshake; until
+the footprint comes down, the encoder should not select `xform_size != 0` for
+an Adreno client. Nothing about this is in the bitstream: the same stream
+decodes bit-exactly on RADV and on lavapipe.
 
 ---
 
@@ -1641,12 +2006,31 @@ first.
 
 ## Open issues
 
+* **`XFORM_LARGE` is wrong on the Adreno 650**, and it is the only tool this
+  decoder offers that is not correct on all three ICDs. The 24 conformance
+  streams that reach the 16x16 / 32x32 module come back with most of the
+  picture zero; RADV and lavapipe decode the same streams bit-exactly against
+  `ref/`. The module's private-memory footprint is the suspect and has been
+  halved once already without fixing it -- "The transform size, priced" has
+  the numbers and the two levers left. **Until it is fixed, an encoder must
+  not select `xform_size != 0` for an Adreno client**, and a headset build
+  that cannot rely on that has to drop bit 27 from `kToolsSupported`, which
+  today is a build-wide constant rather than a per-device one.
 * **`vk/common` is not used yet.** See above; the swap is mechanical and does
   not touch the C ABI.
 * **One frame in flight.** The decoder owns a single command buffer and
   submits one frame at a time. A ring of command buffers and staging buffers
   is the obvious next step for the streaming client, and the timeline
   semaphore is already the synchronisation point it needs.
+  **[inter] This is now a correctness constraint and not only a throughput
+  one.** Frame N's Pass B writes the reference-ring slot that frame N+1's
+  Pass W reads, so `NXVC_VKD_SUBMIT_ASYNC` followed by another
+  `nxvc_vk_decode_frame` without a `nxvc_vk_decoder_wait()` in between is a
+  read-after-write across submissions on an inter stream, on top of the
+  staging-buffer reuse it already was. The synchronous path -- the default,
+  and what every test and the CLI use -- waits, so nothing in the tree can
+  reach it; the command-buffer ring is what makes async safe, and it has to
+  land before a client uses it.
 * **Pass A is now the expensive pass** at every QP above 24, and its fixed
   cost went *up* with the sparse layout (124 → 170 ns per tile). Three
   `barrier()`s per scheduling round, paid to keep control flow uniform for the
@@ -1661,6 +2045,35 @@ first.
   be cheaper than a whole RGBA8 store if it ever stops being rare.
 * **`profile` and `level` in the stream header are carried and reported but
   not enforced.** The reference does not enforce them either.
+* **[inter] `eyes == 2` needs a width that is a multiple of 64.** The merged
+  eye-pair raster is exact only there; see "The inter path". Lifting it is a
+  per-eye x origin in Pass B's store and in the ring store, which is real work
+  in `reconstruct.comp` and buys a configuration nothing streams.
+* **[inter] The directional wavefront is still 15 ms of an Adreno inter
+  frame,** and it is the rolling intra refresh's own tiles paying it. The
+  module split took Pass B from 42.9 ms to 21.8 ms; the rest is a real
+  wavefront over about fourteen tiles, and the lever left is the wavefront
+  itself, not the dispatch shape. "The Adreno 650 estimate" is where that
+  belongs.
+* **[inter] `passB_reconstruct_ref_tile()` has no direct test.** It is the CPU
+  model of the reference-ring store, and the store is checked end to end --
+  the inter vectors would not decode if the ring were wrong -- but
+  `nxvc-passB-test` builds its own corpus and has no ring to compare against.
+  Giving it one is a corpus change, not a model change.
+* **[inter] Pass W runs over every tile and exits early on the intra ones.**
+  A compacted dispatch list — the inter tiles only, and per eye — is one host
+  array and would take the empty workgroups out of a frame that is mostly
+  intra, which is every frame right after a refresh.
+* **[inter] The ring is four full pictures per eye pair in u16.** At the v1
+  configuration that is 100 MB, which is fine on a discrete part and is the
+  largest single allocation the decoder makes on the headset. `ref_sel == 3`
+  is reserved, so three slots are reachable and the fourth is the one being
+  written; nothing smaller is possible without changing 13.2, but a u8 ring
+  for a stream with no colour transform (where every plane is 8-bit) would
+  halve it.
+* **[inter] `pass_w_ms` covers the first Pass W dispatch only.** For every
+  frame that does not carry a `STEREO` tile that is the whole of it; a stereo
+  frame runs the pair once per eye and the reported number is eye 0's.
 * ~~**Pass B is one shader for both predictors.**~~ Resolved: `INTRA_DIR` is a
   build variant, two SPIR-V modules from one source, and on the Adreno 650 that
   was most of Pass B. See reconstruct.comp's note on why it is not a
@@ -1727,3 +2140,11 @@ tool bit is `UNSUPPORTED` per `docs/SYNTAX.md` 12 and `BITSTREAM` per
 `ref/src/codec_impl.inc`. No vector pins it, so either passes today;
 `nxvc-vkdec` returns `BITSTREAM`, because the contract this decoder is held to
 is that it returns exactly what `nxv-dec` returns.
+
+**Section 13 has since landed here** — see "The inter path" above. Tool bit 23
+did turn out to be the one to watch, and in the direction the note predicted:
+it is refused at the stream header, which is what makes *every* conforming
+version 1 stream bilinear and lets `warp_pred.comp` carry one sampling filter
+instead of two. The Catmull-Rom tap table is deliberately absent from the
+kernel: carrying it would put a filter selection in the inner loop that no v1
+stream can reach.

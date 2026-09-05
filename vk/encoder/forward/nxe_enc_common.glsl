@@ -34,6 +34,7 @@
 #define NXE_NUM_SYM         16
 #define NXE_MAX_CTX         32
 #define NXE_NCTX_V2         16
+#define NXE_NCTX_V3         27
 
 #define NXE_CTX_CBF_LUMA    0
 #define NXE_CTX_CBF_CHROMA  1
@@ -46,6 +47,21 @@
 #define NXE_CTX_MODE        15
 #define NXE_CTX_NONE        0
 
+// The v3 model, tool bit 25.  nxe_enc.h carries the reasoning; these are the
+// eleven rows v3 adds on top of v2's sixteen.
+#define NXE_CTX_CBF_LUMA_N    16   // 16..18, + (nbr - 1)
+#define NXE_CTX_CBF_CHROMA_N  19   // 19..21, + (nbr - 1)
+#define NXE_CTX_LAST_LUMA_N   22
+#define NXE_CTX_LAST_CHROMA_N 23
+#define NXE_CTX_LEVEL_DC0     24
+#define NXE_CTX_LEVEL_LAST_LO 25
+#define NXE_CTX_LEVEL_LAST_HI 26
+#define NXE_NBR_DENSE_LAST    4
+
+#define NXE_UCLS_LUMA       0
+#define NXE_UCLS_CHROMA     1
+#define NXE_UCLS_DC         2
+
 #define NXE_ESC_SYM         15
 #define NXE_ESC_ORDER       3
 #define NXE_ESC_MAX_PREFIX  16
@@ -55,7 +71,9 @@
 #define NXE_RANS_L          (1u << 16)
 #define NXE_PROB_BITS       10
 
-#define NXE_TILE_COEFS_MAX  (3 * (64 + 64 * 64))
+#define NXE_PLANE_COEFS_444 (64 + 64 * 64)
+#define NXE_PLANE_COEFS_420 (16 + 16 * 64)
+#define NXE_TILE_COEFS_MAX  (3 * NXE_PLANE_COEFS_444)
 #define NXE_TILE_COEF_WORDS (NXE_TILE_COEFS_MAX / 2)
 #define NXE_TILE_UNITS_MAX  (3 * (1 + 1 + 64))
 #define NXE_TILE_UNIT_SLOTS NXE_TILE_UNITS_MAX
@@ -224,6 +242,42 @@ int nxe_band_of(int p) {
 int nxe_level_class(int m) { return m == 0 ? 0 : (m == 1 ? 1 : 2); }
 int nxe_level_ctx(int p, int prev) {
     return NXE_CTX_LEVEL_BASE + nxe_level_ctx_tab[nxe_band_of(p) * 3 + prev];
+}
+
+// ------------------------------------------------- v3 context derivation
+// The GLSL half of rans_cpu.c's three functions, which are in turn the
+// encode-side mirror of vk/decoder/passA/syntax_constants.h's nxs_v3_ctx_*.
+// These are the only places a v3 context is chosen.
+int nxe_v3_ctx_cbf(int ucls, int nbr) {
+    if (nbr == 0)
+        return ucls == NXE_UCLS_DC
+                   ? NXE_CTX_CBF_DC
+                   : (ucls == NXE_UCLS_CHROMA ? NXE_CTX_CBF_CHROMA
+                                              : NXE_CTX_CBF_LUMA);
+    return (ucls == NXE_UCLS_CHROMA ? NXE_CTX_CBF_CHROMA_N
+                                    : NXE_CTX_CBF_LUMA_N) + (nbr - 1);
+}
+int nxe_v3_ctx_last(int ucls, int nbr) {
+    if (nbr < 2)
+        return ucls == NXE_UCLS_DC
+                   ? NXE_CTX_LAST_DC
+                   : (ucls == NXE_UCLS_CHROMA ? NXE_CTX_LAST_CHROMA
+                                              : NXE_CTX_LAST_LUMA);
+    return ucls == NXE_UCLS_CHROMA ? NXE_CTX_LAST_CHROMA_N
+                                   : NXE_CTX_LAST_LUMA_N;
+}
+int nxe_v3_ctx_level(int ucls, int scan_pos, int band_scan_pos, int last,
+                     int prev_class) {
+    if (ucls == NXE_UCLS_DC)
+        return scan_pos == 0 ? NXE_CTX_LEVEL_DC0 : NXE_CTX_LEVEL_DC;
+    if (scan_pos == last)
+        return nxe_band_of(band_scan_pos) < 2 ? NXE_CTX_LEVEL_LAST_LO
+                                              : NXE_CTX_LEVEL_LAST_HI;
+    return nxe_level_ctx(band_scan_pos, prev_class);
+}
+int nxe_nbr_class_of(int cbf, int last) {
+    if (cbf == 0) return 1;
+    return last < NXE_NBR_DENSE_LAST ? 2 : 3;
 }
 
 // --------------------------------------------------------------- helpers

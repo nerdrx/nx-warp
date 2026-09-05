@@ -14,6 +14,68 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
 
 ### Added
 
+**GPU decoder: the Phase 2 inter path (`docs/SYNTAX.md` 13)**
+
+- `nxvc_vk_decoder` now speaks the whole inter syntax: tool bits **10 `INTER`**, **11 `WARP`**,
+  **12 `STEREO`**, **28 `NEAR_SKIP`** and **29 `QUAD_MV`**. `nxvc_vk_decoder_tools_supported()`
+  returns them, so the negotiation of 2.3 can now settle on an inter stream against this decoder.
+- **Pass W**, `vk/decoder/inter/warp_pred.comp`: the pose-warped predictor as a third dispatch, one
+  workgroup per tile. Its corner derivation, corner interpolation and bilinear tap are a
+  line-for-line copy of `warp/glsl/warp_tile.comp`, which is the GLSL twin of the normative
+  `warp/ref/warp_ref.cpp`; what it adds is the plane loop, the conjugated matrix, the halved
+  vectors, the reference-ring addressing, the `res_level` box average and the near-skip mean field
+  of 13.9. Quadrant vectors (13.10) cost one extra select per sample and nothing else.
+- **The reference ring**: four slots keyed by `frame_number mod 4`, holding every eye's picture in
+  the coded sample domain at full tile extent, written per tile by Pass B as a second store of the
+  same samples rather than by a second reconstruction.
+- **`nxvc_vk_decoder_mark_missing(dec, tile_ids, count)`** (`docs/TRANSPORT.md` 9,
+  `docs/SYNTAX.md` 13.6): mark the tiles the client did not receive and the next frame reconstructs
+  them by replaying `WARP_SKIP` with each tile's stored `last_mv`, bit-identically to a
+  legitimately skipped tile. Its state does not advance and a near-skip correction naming it is not
+  applied. `vk.decoder.loss` pins it: 100 frames, random drops, byte-identical to `ref/` fed the
+  same drops through `nxvc_decoder_set_lost_tiles()`, on RADV, lavapipe and the Adreno 650.
+- **`eyes == 2`**, which this decoder refused outright before, for streams whose width is a
+  multiple of 64 -- the condition under which the eye pair is exactly one raster of 64-pixel
+  columns. A `STEREO` tile reads the first eye of its own frame, so a frame carrying one runs Pass W
+  and Pass B once per eye with a barrier between.
+- **`vk.passW.gpu_vs_cpu`**, a GPU-vs-CPU harness for Pass W in the shape `passA/` and `passB/`
+  already carry: 19 configurations x 3 seeds of random-but-legal rings and parameter blocks, zero
+  differing samples on RADV, lavapipe and the Adreno 650. The model calls `nxvc_warp_ref` directly
+  while the kernel copies its GLSL twin, so the two agree for the right reason.
+- `nxvc_vkd_stats` gains `pass_w_ms` and `tiles_concealed`; the conformance harness gains
+  `--only-loss`, `--no-loss` and `--bench-inter N [--bench-size W H]`, and `vk.decoder.loss` and
+  `vk.decoder.bench_inter` are registered as their own ctest entries.
+- **Pass B is dispatched once per module and not once per frame.** `INTRA_DIR` is a build
+  variant, and its module's register footprint is paid by every workgroup of a dispatch that uses
+  it whether or not that workgroup reaches the wavefront -- which an inter tile never does. The
+  workgroup -> tile map now stable-partitions each eye's segment into the tiles whose mode is not
+  `INTRA` and the tiles whose mode is, and the two contiguous ranges are dispatched with the two
+  modules. On the Adreno 650 that is **42.9 ms -> 21.8 ms of Pass B** on an inter frame, and a
+  36-frame sequence from 1839 ms to 1120 ms; the residual is the rolling intra refresh's own
+  tiles, which really do want the wavefront. On RADV the two modules measure the same and it costs
+  one cached pipeline. The output is bit-identical and the whole 201-stream sweep re-checks it on
+  all three ICDs.
+- The conformance sweep's skip count falls from **46 to 15**: the sixteen Phase 2 inter vectors
+  (`v45`-`v56`, `v66`, `v67`, `v74`, `v75`) and the sixteen Phase 2 rejection vectors
+  (`r18`-`r29`, `r40`-`r43`) are checked now, with zero mismatching samples on RADV, lavapipe and
+  the Adreno 650. What is left is `XFORM_LARGE` and `ENTROPY_LITE`.
+
+### Fixed
+
+- **The GPU decoder's rejection sweep only ever decoded frame 0**, so nine Phase 2 rejection
+  vectors -- the ones malformed in the frame that first *uses* the reference ring -- were reported
+  as accepted. It now decodes until the stream is refused or exhausted.
+- **A skipped tile's Pass B record carried `chroma444 == 0` on a 4:4:4 stream**, which made its
+  chroma planes 32x32 instead of 64x64. Unreachable before the inter path, because a skip needs
+  `INTER`.
+- **`INTRA_DIR`'s mode unit is a property of the tile, not of the frame** (`docs/SYNTAX.md` 13.3:
+  "the mode unit of section 9.6 is present only for `mode == INTRA`"). Pass A, Pass B and both CPU
+  models counted it on every tile of a stream that set the bit, which put every later unit of an
+  inter tile at the wrong offset.
+- **Pass A's tile-header validation rejected word1 bit 31** and its payload offset did not account
+  for the four quadrant-vector bytes. Word1 has had no reserved bits since 13.10 took bit 31.
+
+
 **Entropy: `ENTROPY_LITE`, a table-free parallel entropy tool (OFF by default)**
 
 - Stream tool bit **30** (`docs/SYNTAX.md` 9.10): a table-free coding of the coefficient payload with

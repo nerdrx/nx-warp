@@ -29,6 +29,10 @@ struct Shared {
     int tskip[kMaxSlots];
     // [minor 6] tile-header word1 bit 28, XFORM_4X4_SPLIT.
     int split4[kMaxSlots];
+    // [inter] INTRA_DIR's mode unit is a property of the TILE, not the frame:
+    // an inter tile's prediction is the warp and it codes no modes
+    // ([SYN] 13.3, ref/src/codec.cpp TileCoder::setup()).
+    int dir[kMaxSlots];
     // [minor 6] XFORM_LARGE: the tile's transform size and the per-plane block
     // edge it implies.
     int xform[kMaxSlots];
@@ -212,7 +216,7 @@ void begin_unit(Ctx &c, Thread &g) {
     int nc = bs * bs;
     int chroma = (p == 1 || p == 2) ? 1 : 0;
     const bool ctx_v2 = (c.in->tools & kToolFlagCtxV2) != 0u;
-    const bool dir = (c.in->tools & kToolFlagIntraDir) != 0u;
+    const bool dir = c.sh.dir[g.slot] != 0;   // [inter] per tile
     g.ctx_v3 = (c.in->tools & kToolFlagCtxV3) != 0u ? 1 : 0;
     g.u_sdh = (c.in->tools & kToolFlagSignHide) != 0u ? 1 : 0;
     g.u_ctx_mode = kCtxNone;
@@ -614,9 +618,13 @@ void run_group(Ctx &c, uint32_t workgroup_id) {
 
         int np = nxs_coded_planes(int(c.in->frame_nplanes), alpha_mode);
         sh.np[slot] = np;
-        const int extra = (c.in->tools & kToolFlagIntraDir) != 0u
-                              ? kUnitsPerPlaneExtraDir
-                              : kUnitsPerPlaneExtra;
+        const int tdir = ((c.in->tools & kToolFlagIntraDir) != 0u &&
+                          int((w1 >> kThModeShift) & kThModeMask) ==
+                              kTileModeIntra)
+                             ? 1 : 0;
+        sh.dir[slot] = tdir;
+        const int extra = tdir != 0 ? kUnitsPerPlaneExtraDir
+                                    : kUnitsPerPlaneExtra;
         int ub = 0, cb = 0;
         for (int p = 0; p < kMaxPlanes; ++p) {
             sh.unit_base[slot * (kMaxPlanes + 1) + p] = ub;
@@ -822,7 +830,7 @@ void lite_unit(Ctx &c, Thread &g, int u) {
     int k = u - c.sh.unit_base[base + p];
     int nb = c.sh.nb[g.slot * kMaxPlanes + p];
     int ndc = nb * nb;
-    const bool dir = (c.in->tools & kToolFlagIntraDir) != 0u;
+    const bool dir = c.sh.dir[g.slot] != 0;   // [inter] per tile
 
     if (k == 0) {
         g.u_kind = 0;
@@ -941,9 +949,13 @@ void run_group_lite(Ctx &c, uint32_t workgroup_id) {
 
         int np = nxs_coded_planes(int(c.in->frame_nplanes), alpha_mode);
         sh.np[0] = np;
-        const int extra = (c.in->tools & kToolFlagIntraDir) != 0u
-                              ? kUnitsPerPlaneExtraDir
-                              : kUnitsPerPlaneExtra;
+        const int tdir = ((c.in->tools & kToolFlagIntraDir) != 0u &&
+                          int((w1 >> kThModeShift) & kThModeMask) ==
+                              kTileModeIntra)
+                             ? 1 : 0;
+        sh.dir[0] = tdir;
+        const int extra = tdir != 0 ? kUnitsPerPlaneExtraDir
+                                    : kUnitsPerPlaneExtra;
         int ub = 0, cb = 0;
         for (int p = 0; p < kMaxPlanes; ++p) {
             sh.unit_base[p] = ub;

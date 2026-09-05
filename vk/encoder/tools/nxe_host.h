@@ -45,6 +45,10 @@ struct Config {
     int nsub_log2 = 3;
     int tskip = 0;
     bool ctx_v2 = true;
+    /* Tool bit 25.  v3 is a refinement of v2, never a replacement -- the
+     * stream header refuses bit 25 without bit 21 -- so setting this implies
+     * ctx_v2.  Off by default, as `nxv-enc --ctx v3` is. */
+    bool ctx_v3 = false;
     bool sign_hide = true;
     bool intra_dir = false;
     bool dir_layer = false;

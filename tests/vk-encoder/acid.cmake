@@ -6,7 +6,10 @@
 # encoder can also express, on the very same synthesized picture:
 #
 #   1. the GPU pipeline's stream must be byte-identical to `nxv-enc --no-rdo
-#      --intra-dir off --no-custom-tables`, and
+#      --intra-dir off --no-custom-tables --split4x4 off --cfl off --tab v1
+#      --xform 8 --entropy rans`, with `--ctx` v1, v2 or v3 per configuration
+#      -- so every bitstream-minor-6 tool is named, and every one the encoder
+#      does not implement is refused rather than merely absent, and
 #   2. `nxv-dec` must decode the two to identical pixels.
 #
 # (1) implies (2), which is the point: checking both says so out loud, and if
@@ -66,7 +69,7 @@ foreach(line ${lines})
   list(GET f 8 ns)
   list(GET f 9 ts)
   list(GET f 10 cq)
-  list(GET f 11 v2)
+  list(GET f 11 ctxlevel)   # the entropy context model, 1/2/3
   list(GET f 12 sdh)
   list(GET f 13 dir)
   list(GET f 15 seed)
@@ -81,10 +84,8 @@ foreach(line ${lines})
     continue()
   endif()
 
-  set(ctx v2)
-  if(v2 STREQUAL "0")
-    set(ctx v1)
-  endif()
+  # Tools 21 (CTX_V2) and 25 (CTX_V3), as one level rather than two flags.
+  set(ctx v${ctxlevel})
   set(sh --sign-hide)
   if(sdh STREQUAL "0")
     set(sh --no-sign-hide)
@@ -98,8 +99,26 @@ foreach(line ${lines})
              --tskip ${tsk} --chroma-qp-off ${cq} --ctx ${ctx} ${sh}
              --eyes ${eyes} --intra-dir off --quiet)
 
+  # Every bitstream-minor-6 tool, named and turned off explicitly.
+  #
+  # Naming them matters more than it looks.  Four of the six are ON in
+  # `nxvc_config_default()` or would be reached by a default the reference
+  # encoder is free to change, and three of them are only off here as a *side
+  # effect* of `--intra-dir off`: `ref/src/codec_impl.inc` gates `split4` on
+  # `intra_dir` and `cfl` on `intra_dir && ctx_v2 && !dir_layer`, so a
+  # directional configuration is the only one where either can appear.  This
+  # test would therefore have kept passing while silently covering a smaller
+  # stream than it claims to.  `TAB_V2` is likewise gated on
+  # `custom_tables`, which is already off, and `ENTROPY_LITE` and
+  # `XFORM_LARGE` are off by default today and are follow-ups on the encoder
+  # side (see vk/encoder/README.md).
+  #
+  # The GPU pipeline implements none of the six, so this is the flag set that
+  # makes byte-identity a meaningful claim rather than a coincidence.
+  set(minor6_off --split4x4 off --cfl off --tab v1 --xform 8 --entropy rans)
+
   execute_process(COMMAND ${NXVENC} ${common} --out ${WORKDIR}/ref.nxv
-                          --no-rdo --no-custom-tables
+                          --no-rdo --no-custom-tables ${minor6_off}
                   RESULT_VARIABLE rc OUTPUT_QUIET)
   if(NOT rc EQUAL 0)
     message(FATAL_ERROR "${path}: nxv-enc failed (${rc})")

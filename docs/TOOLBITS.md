@@ -343,9 +343,18 @@ The property that discipline exists to protect -- that the reference encoder's
 realignment rather than what the realignment threatened. The merged default
 sets `XFORM_4X4_SPLIT` and `INTRA_CFL`, so on `merge-main` the GPU decoder
 refused 60 of its own conformance streams and failed 85 more at the handshake;
-it accepts them now. **`XFORM_LARGE` (bit 27) is the one still refused**: Pass
-A carries it, Pass B does not, and it is off by default, so the property
-holds.
+it accepts them now.
+
+**The Phase 2 bits are in as well.** The GPU decoder implements bits 10
+`INTER`, 11 `WARP`, 12 `STEREO`, 28 `NEAR_SKIP` and 29 `QUAD_MV`, and decodes
+the sixteen Phase 2 vectors and refuses the sixteen Phase 2 rejection vectors
+with zero mismatching samples on lavapipe, RADV and an Adreno 650
+(`vk/decoder/README.md`, "The inter path"). It also implements the decoder
+half of clause 6.11 concealment, `nxvc_vk_decoder_mark_missing()`.
+**`XFORM_LARGE` (bit 27) and `ENTROPY_LITE` (bit 30) are the two still
+refused**: for bit 27 Pass A carries it and Pass B does not, and for bit 30
+the kernel exists and the decoder does not offer the bit. Both are off by
+default, so the property holds.
 
 ---
 

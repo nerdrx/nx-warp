@@ -41,6 +41,19 @@ else()
   message(STATUS "tests/vk-encoder: nxvc-stats-test not built, no E0/E1/E2 tests")
 endif()
 
+# ------------------------------------------------- the C header / GLSL mirror
+# Needs no target and no GPU: it reads the two source files.  nxe_enc.h and
+# nxe_enc_common.glsl are hand-written copies of one contract, and a
+# disagreement between them is silent -- NXE_LANE_OPS_CAP is a buffer stride
+# shared between the host and the shader, so a drift there makes every rANS
+# lane address another lane's scratch and quietly writes a wrong stream.
+add_test(NAME vk.encoder.mirror
+         COMMAND ${CMAKE_COMMAND}
+         -DCHDR=${CMAKE_CURRENT_SOURCE_DIR}/../../vk/encoder/forward/nxe_enc.h
+         -DGHDR=${CMAKE_CURRENT_SOURCE_DIR}/../../vk/encoder/forward/nxe_enc_common.glsl
+         -P ${CMAKE_CURRENT_SOURCE_DIR}/mirror.cmake)
+list(APPEND NXENC_TESTS vk.encoder.mirror)
+
 if(TARGET nxvc-vkenc)
   # -------------------------------------------------------- E3 / E4 / E5
   # The CPU models against their pinned stream digests.  No Vulkan, so it never
