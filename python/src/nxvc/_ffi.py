@@ -407,6 +407,12 @@ class nxvc_config(Structure):
         # encoder threading: 0 = auto (hardware concurrency, capped at 16),
         # 1 = single-threaded.  The bitstream is byte-identical at every value.
         ("threads", c_uint32),
+        # The GPU encoder's integer mode decision, as a preset on the reference
+        # (docs/adr/0028): reproducible on both sides, so byte identity holds.
+        ("inter_int_decision", c_uint32),
+        ("int_lambda_q8", c_uint32),
+        ("int_coded_vectors", c_uint32),
+        ("int_intra_mad_q8", c_uint32),
 
     ]
 
