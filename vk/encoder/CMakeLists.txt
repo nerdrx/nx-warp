@@ -24,8 +24,11 @@ endif()
 find_package(Vulkan QUIET)
 if(NOT Vulkan_FOUND)
   find_library(NXENC_VULKAN_LIB NAMES vulkan vulkan-1)
+  # NXVC_VK_HEADERS_DIR is the variable the rest of vk/ takes (vk/common sets
+  # it, and docs/NXWARP-E2E.md tells an integrator to pass it), so honour it
+  # here too rather than making this one directory need its own spelling.
   find_path(NXENC_VULKAN_INC vulkan/vulkan.h
-    HINTS ${NXWARP_VULKAN_INCLUDE_DIR} $ENV{VULKAN_SDK}/include
+    HINTS ${NXWARP_VULKAN_INCLUDE_DIR} ${NXVC_VK_HEADERS_DIR} $ENV{VULKAN_SDK}/include
     PATHS /usr/include)
   if(NOT NXENC_VULKAN_LIB OR NOT NXENC_VULKAN_INC)
     message(STATUS "nxwarp-encoder: no Vulkan loader/headers, skipping GPU targets")
@@ -199,6 +202,59 @@ if(EXISTS ${NXENC_REF_TABLES})
   endif()
 else()
   message(STATUS "nxwarp-encoder: ref/src/tables.cpp not found, no nxvc-vkenc")
+endif()
+
+# ----------------------------------------------------- the installable library
+# nxvc_vk_encoder: the same encoder nxvc-vkenc drives, behind the C ABI in
+# <nxvc/nxvc_vk_enc.h>, so a compositor can link it.  It is the encoder half of
+# the pair nxvc_vk_decoder completes, and it is built from exactly the sources
+# the harness uses -- no second copy of the driver, so the byte-identity the
+# acid test pins is the byte-identity the library ships.
+#
+# Same ref/src/tables.cpp dependency and the same guard as nxvc-vkenc: without
+# the reference's trained probability tables there is no encoder to install.
+if(EXISTS ${NXENC_REF_TABLES})
+  # The CPU model sources are compiled IN rather than linked: nxenc_forward_cpu
+  # is an in-tree convenience target that is not installed, and a static
+  # library that names it in its interface is one a consumer cannot link
+  # (`cannot find -lnxenc_forward_cpu`).  An installed archive has to be
+  # self-contained.
+  add_library(nxvc_vk_encoder STATIC
+    api/nxvc_vk_enc.cpp
+    tools/nxe_host.cpp
+    tools/nxe_vk.cpp
+    tools/vk_min.cpp
+    forward/nxe_tables.c
+    forward/forward_cpu.c
+    forward/rans_cpu.c
+    ${NXENC_REF_TABLES}
+    ${NXENC_SPV_HEADERS})
+  add_dependencies(nxvc_vk_encoder nxenc_shaders)
+  target_include_directories(nxvc_vk_encoder
+    PUBLIC
+      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../include>
+    PRIVATE
+      ${NXENC_GEN_DIR}
+      ${CMAKE_CURRENT_SOURCE_DIR}/forward
+      ${CMAKE_CURRENT_SOURCE_DIR}/tools
+      ${CMAKE_CURRENT_SOURCE_DIR}/stats
+      ${CMAKE_CURRENT_SOURCE_DIR}/../../ref/src)
+  set_target_properties(nxvc_vk_encoder PROPERTIES
+    CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON POSITION_INDEPENDENT_CODE ON)
+  if(Vulkan_FOUND)
+    target_link_libraries(nxvc_vk_encoder PUBLIC Vulkan::Vulkan)
+  else()
+    target_include_directories(nxvc_vk_encoder PUBLIC ${NXENC_VULKAN_INC})
+    target_link_libraries(nxvc_vk_encoder PUBLIC ${NXENC_VULKAN_LIB})
+  endif()
+  add_library(nxvc::vk_encoder ALIAS nxvc_vk_encoder)
+
+  # The ABI's own harness: it exercises the library and nothing but the
+  # library, which nxvc-vkenc does not.  tests/vk-encoder points acid.cmake at
+  # it so the byte-identity claim covers the shipped surface.
+  add_executable(nxvc-vkenc-api api/nxvc-vkenc-api.cpp)
+  target_link_libraries(nxvc-vkenc-api PRIVATE nxvc_vk_encoder)
+  set_target_properties(nxvc-vkenc-api PROPERTIES CXX_STANDARD 20)
 endif()
 
 # ------------------------------------------------------------------- ctests

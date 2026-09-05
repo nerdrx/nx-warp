@@ -16,9 +16,22 @@
 
 #include <string>
 
+#include <vulkan/vulkan.h>
+
 #include "nxe_host.h"
 
 namespace nxe {
+
+/* Five handles a host already owns, for VkEncoder::create() to adopt instead
+ * of creating a device of its own.  All five or none: see vkmin::Device::adopt
+ * and nxvc_vk_enc.h. */
+struct Adopt {
+    VkInstance instance = VK_NULL_HANDLE;
+    VkPhysicalDevice physical_device = VK_NULL_HANDLE;
+    VkDevice device = VK_NULL_HANDLE;
+    VkQueue queue = VK_NULL_HANDLE;
+    uint32_t queue_family = 0;
+};
 
 int vk_list_devices();
 
@@ -27,7 +40,8 @@ public:
     struct Impl;
     VkEncoder();
     ~VkEncoder();
-    bool create(const Config &cfg, const Frame &f, std::string &err);
+    bool create(const Config &cfg, const Frame &f, std::string &err,
+                const Adopt *adopt = nullptr);
     /* Encodes into f.out.  With `check`, every intermediate is diffed against
      * the CPU model and a mismatch is a failure. */
     bool encode_frame(Frame &f, uint32_t frame_number, bool check, bool quiet);

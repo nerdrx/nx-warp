@@ -236,10 +236,17 @@ void main() {
             ivec2 p1 = clamp(corg + ivec2(lx * 2 + 1, ly * 2 + j), ivec2(0), clast);
             uvec4 s0 = imageLoad(u_chroma, p0);
             uvec4 s1 = imageLoad(u_chroma, p1);
-            cb0 = (int(s0.r) >> NXE_YCBCR_SHIFT) - NXE_CHROMA_MID;
-            cr0 = (int(s0.g) >> NXE_YCBCR_SHIFT) - NXE_CHROMA_MID;
-            cb1 = (int(s1.r) >> NXE_YCBCR_SHIFT) - NXE_CHROMA_MID;
-            cr1 = (int(s1.g) >> NXE_YCBCR_SHIFT) - NXE_CHROMA_MID;
+            // NXE_TS_F_CHROMA_RAW picks the reference encoder's convention
+            // (unsigned chroma, as nxvc_image delivers it) over the paper's
+            // zero-centred one.  See the flag's comment in tile_stats.h: a
+            // stream that has to be byte-identical to nxv-enc needs the raw
+            // codes.  It is a uniform branch on a push constant, so it costs
+            // nothing measurable.
+            int mid = (pc.flags & NXE_TS_F_CHROMA_RAW) != 0u ? 0 : NXE_CHROMA_MID;
+            cb0 = (int(s0.r) >> NXE_YCBCR_SHIFT) - mid;
+            cr0 = (int(s0.g) >> NXE_YCBCR_SHIFT) - mid;
+            cb1 = (int(s1.r) >> NXE_YCBCR_SHIFT) - mid;
+            cr1 = (int(s1.g) >> NXE_YCBCR_SHIFT) - mid;
         }
         int crow = ly * 2 + j;
         uint wc = uint(crow * (NXE_CSIDE / 2) + lx);

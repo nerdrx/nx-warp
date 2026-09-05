@@ -172,6 +172,52 @@ bool Device::create(uint32_t index, bool validation, std::string &err)
     return true;
 }
 
+bool Device::adopt(VkInstance inst, VkPhysicalDevice phys, VkDevice dev,
+                   VkQueue queue, uint32_t queue_family, std::string &err)
+{
+    if (!phys || !dev || !queue) { err = "adopt: null handle"; return false; }
+    inst_ = inst;
+    phys_ = phys;
+    dev_ = dev;
+    queue_ = queue;
+    qfam_ = queue_family;
+    adopted_ = true;
+
+    fill_info(phys_, info_);
+
+    VkPhysicalDeviceProperties props{};
+    vkGetPhysicalDeviceProperties(phys_, &props);
+    ts_period_ = props.limits.timestampPeriod;
+    max_wg_inv_ = props.limits.maxComputeWorkGroupInvocations;
+    max_shared_ = props.limits.maxComputeSharedMemorySize;
+    vkGetPhysicalDeviceMemoryProperties(phys_, &memprops_);
+
+    // The host picked the family, so this is a check rather than a search: an
+    // encoder handed a transfer-only or graphics-only queue must say so here
+    // and not at the first dispatch.
+    uint32_t qn = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(phys_, &qn, nullptr);
+    if (qfam_ >= qn) { err = "adopt: queue family index out of range"; return false; }
+    std::vector<VkQueueFamilyProperties> qfp(qn);
+    vkGetPhysicalDeviceQueueFamilyProperties(phys_, &qn, qfp.data());
+    if (!(qfp[qfam_].queueFlags & VK_QUEUE_COMPUTE_BIT)) {
+        err = "adopt: the queue family does not support compute";
+        return false;
+    }
+    ts_valid_ = qfp[qfam_].timestampValidBits > 0;
+
+    VkCommandPoolCreateInfo pci{};
+    pci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    pci.queueFamilyIndex = qfam_;
+    pci.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    VkResult r = vkCreateCommandPool(dev_, &pci, nullptr, &pool_);
+    if (r != VK_SUCCESS) {
+        err = std::string("adopt: vkCreateCommandPool: ") + result_str(r);
+        return false;
+    }
+    return true;
+}
+
 void Device::destroy()
 {
     if (dev_) {
@@ -179,10 +225,13 @@ void Device::destroy()
         for (auto q : qpools_) vkDestroyQueryPool(dev_, q, nullptr);
         qpools_.clear();
         if (pool_) vkDestroyCommandPool(dev_, pool_, nullptr);
-        vkDestroyDevice(dev_, nullptr);
+        pool_ = VK_NULL_HANDLE;
+        if (!adopted_) vkDestroyDevice(dev_, nullptr);
         dev_ = VK_NULL_HANDLE;
     }
-    if (inst_) { vkDestroyInstance(inst_, nullptr); inst_ = VK_NULL_HANDLE; }
+    if (inst_ && !adopted_) vkDestroyInstance(inst_, nullptr);
+    inst_ = VK_NULL_HANDLE;
+    adopted_ = false;
 }
 
 bool Device::supports_storage_format(VkFormat fmt) const

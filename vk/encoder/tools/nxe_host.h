@@ -90,6 +90,14 @@ void setup(const Config &cfg, Frame &f);
 /* Fill the built-in probability tables for the frame's context model. */
 void build_tables(const Config &cfg, Frame &f);
 
+/* Lay three caller-owned planar 8-bit planes out tile-major, exactly as
+ * read_frame does -- it is read_frame with the file read hoisted out, so the
+ * two can never drift.  This is the CPU stand-in for E0 on the library path,
+ * where the frame arrives as pointers rather than as a file. */
+void load_planes(const Config &cfg, Frame &f,
+                 const uint8_t *y, size_t y_stride,
+                 const uint8_t *cb, const uint8_t *cr, size_t chroma_stride);
+
 /* Read one frame of planar 8-bit YUV and lay it out tile-major.  Returns false
  * at end of file. */
 bool read_frame(std::FILE *fi, const Config &cfg, Frame &f);

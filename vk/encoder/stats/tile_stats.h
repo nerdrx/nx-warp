@@ -163,6 +163,24 @@ extern "C" {
  * statistics either way -- but the flag travels with the record so a consumer
  * that wants to reason about absolute chroma amplitude can. */
 #define NXE_TS_F_YCBCR           0x00000010u
+/* [E0 only] Pass the compositor's chroma codes through *unshifted* instead of
+ * subtracting the midpoint.
+ *
+ * The two halves of this encoder were written against two different
+ * conventions and only meet here.  E0's passthrough zero-centres chroma so
+ * that the YCbCr and the YCoCg-R paths hand the transform the same shape of
+ * data -- unsigned luma, signed chroma -- which is what E0_convert.comp's
+ * header describes and what paper 1.3 wants.  But the CPU reference encoder is
+ * the thing E3/E4/E5 are byte-identical to, and `nxvc_ref` with
+ * NXVC_CT_NONE codes the chroma planes exactly as `nxvc_image` delivers them:
+ * unsigned 0..255.  Feeding it midpoint-subtracted chroma would shift every
+ * chroma DC by -128 and produce a different, if perfectly decodable, stream.
+ *
+ * So the two are not interchangeable and the difference cannot be split.  This
+ * bit selects the reference's convention, which is the one a stream that has
+ * to match `nxv-enc` needs; without it E0 keeps the paper's.  It has no effect
+ * on the RGB path, which has no midpoint to subtract. */
+#define NXE_TS_F_CHROMA_RAW      0x00000020u
 
 /*
  * One record per tile, tile index = ty * tiles_x + tx, views concatenated.
