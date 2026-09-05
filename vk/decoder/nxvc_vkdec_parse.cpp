@@ -187,6 +187,7 @@ constexpr uint64_t kToolCtxV2 = 1ull << 21;
 constexpr uint64_t kToolCtxV3 = 1ull << 25;
 constexpr uint64_t kToolTabV2 = 1ull << 26;
 constexpr uint64_t kToolCustomTables = 1ull << 6;
+constexpr uint64_t kToolXformLarge = 1ull << 27;
 constexpr uint64_t kToolSplit4 = 1ull << 19;
 constexpr uint64_t kToolCfl = 1ull << 24;
 constexpr uint64_t kToolSignHide = 1ull << 22;
@@ -382,6 +383,7 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
               : (si.tools & kToolCtxV2) ? kNumCtxV2
                                         : kNumCtxV1;
     fp.tab_v2 = (si.tools & kToolTabV2) ? 1 : 0;
+    fp.xform_large = (si.tools & kToolXformLarge) ? 1 : 0;
     fp.intra_dir = (si.tools & kToolIntraDir) ? 1 : 0;
     fp.sdh = (si.tools & kToolSignHide) ? 1 : 0;
     fp.split4 = (si.tools & kToolSplit4) ? 1 : 0;
@@ -448,7 +450,8 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
                (fp.sdh ? kToolFlagSignHide : 0u) |
                (fp.split4 ? kToolFlagSplit4 : 0u) |
                (fp.cfl ? kToolFlagCfl : 0u) |
-               (fp.nctx >= kNumCtxV3 ? kToolFlagCtxV3 : 0u);
+               (fp.nctx >= kNumCtxV3 ? kToolFlagCtxV3 : 0u) |
+               (fp.xform_large ? kToolFlagXformLarge : 0u);
 
     const uint32_t ntiles = si.tile_count;
     fp.recs.assign(ntiles, NxvwTileRec{0, 0, 0, 0xffffffffu});
@@ -514,11 +517,13 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
             const uint32_t tskip = (w1 >> 23) & 1u;
             const uint32_t wm_id = (w1 >> 26) & 3u;
             const uint32_t split4x4 = (w1 >> 28) & 1u;
+            const uint32_t xform_size = (w1 >> 29) & 3u;
 
             // Exactly the reference's checks, in the reference's order.
             if ((w0 >> 3) & 1) return NXVC_VKD_ERR_BITSTREAM;
-            // [minor 6] word1 bit 28 is `split4x4`; 29-31 stay reserved.
-            if (w1 >> 29) return NXVC_VKD_ERR_BITSTREAM;
+            // [minor 6] word1 bit 28 is `split4x4`, 29-30 `xform_size`; 31
+            // stays reserved until QUAD_MV takes it.
+            if (w1 >> 31) return NXVC_VKD_ERR_BITSTREAM;
             if (layer != 0 || eye != 0) return NXVC_VKD_ERR_UNSUPPORTED;
             if (mode > 4) return NXVC_VKD_ERR_BITSTREAM;
             if (mode != 3) return NXVC_VKD_ERR_UNSUPPORTED;  // INTRA only
@@ -540,6 +545,15 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
             if (split4x4 && !(si.tools & kToolSplit4))
                 return NXVC_VKD_ERR_BITSTREAM;
             if (split4x4 && tskip) return NXVC_VKD_ERR_BITSTREAM;
+            // [SYN] 4.1 / 6.7: xform_size 3 is reserved; a nonzero value needs
+            // tool bit 27 and is mutually exclusive with transform skip; and
+            // the 4x4 split is a subdivision OF the 8x8 transform, so it is
+            // meaningful only at xform_size == 0 (docs/TOOLBITS.md 4.2).
+            if (xform_size == 3) return NXVC_VKD_ERR_BITSTREAM;
+            if (xform_size != 0 && !(si.tools & kToolXformLarge))
+                return NXVC_VKD_ERR_BITSTREAM;
+            if (xform_size != 0 && tskip) return NXVC_VKD_ERR_BITSTREAM;
+            if (split4x4 && xform_size != 0) return NXVC_VKD_ERR_BITSTREAM;
             // A frame that carries its own matrices leaves no room for a
             // built-in override: the two would silently disagree.
             if (wm_id != 0 && fp.quant_matrix == 255)

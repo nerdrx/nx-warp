@@ -140,6 +140,11 @@ shared int s_mode_base[kMaxSlots];       // uint index of the tile's mode words
 // [minor 6] tile-header word1 bit 28: this tile codes per-block 4x4 split
 // flags.  Zero unless tool bit 19 is on AND the tile sets the bit.
 shared int s_split4[kMaxSlots];
+// [minor 6] XFORM_LARGE, tile-header word1 bits 29-30, and the per-plane
+// block edge it implies (capped by the plane's own coded extent, so no plane
+// ever carries a block larger than itself).
+shared int s_xform[kMaxSlots];
+shared int s_bsize[kMaxSlots * kMaxPlanes];
 
 // [sparse] Unit lengths are accumulated here and flushed once at the end.
 // Four neighbouring units belong to four different lanes, so the write has to
@@ -214,6 +219,11 @@ int  g_ui;        // current unit index
 int  g_stride;    // == LANES
 int  g_nunits;
 int  g_last, g_pos_sp, g_prev_class, g_last_cls, g_mag;
+// [minor 6] last_shift_of(ncoef): 0 for every unit of at most 64 coefficients,
+// 2 for a 16x16 block and 4 for a 32x32 one.  It scales the LAST class table
+// and the LEVEL bands to the unit's size, so no new symbol exists at any
+// transform size.  [REF] ref/src/common.h, docs/SYNTAX.md 9.2.1 / 9.3.1.
+int  g_lshift;
 int  g_esc_j, g_esc_bits, g_esc_done;
 uint g_esc_acc;
 // current unit
@@ -264,6 +274,12 @@ uint g_cbf_off;   // uint index of this tile's CBF words
 uint g_ulen_off;  // [sparse] uint index of this tile's unit-length words
 
 int scan_index(int scan_id, int p) {
+    // [minor 6] The two large zigzags are a rule, not a table; see
+    // nxs_zigzag_pos_to_raster().  They are reached only by the DENSE
+    // coefficient layout -- the sparse one stores a coefficient AT its scan
+    // position and never asks for the raster index at all.
+    if (scan_id == kScanZigzag32) return nxs_zigzag_pos_to_raster(32, p);
+    if (scan_id == kScanZigzag16) return nxs_zigzag_pos_to_raster(16, p);
     return int(s_scan[uint(scan_id * kScanStride + p)]);
 }
 
@@ -327,6 +343,10 @@ void begin_unit() {
     int k = g_ui - s_unit_base[base + p];
     int nb = s_nb[g_slot * kMaxPlanes + p];
     int ndc = nb * nb;
+    // [minor 6] The plane's transform edge and its coefficient count.  At
+    // xform_size 0 this is the 8 and the 64 it always was.
+    int bs = s_bsize[g_slot * kMaxPlanes + p];
+    int nc = bs * bs;
     int chroma = (p == 1 || p == 2) ? 1 : 0;
     bool ctx_v2 = (pc.tools & kToolFlagCtxV2) != 0u;
     bool dir = (pc.tools & kToolFlagIntraDir) != 0u;
@@ -345,6 +365,7 @@ void begin_unit() {
         // The DC-plane unit.  Under CTX_V2 it has CBF, LAST and LEVEL
         // contexts of its own (SYNTAX.md 9.3, contexts 12-14).
         g_u_ncoef = ndc;
+        g_lshift = nxs_last_shift_of(ndc);
         g_u_scan = nxs_scan_id(ndc, 0);
         g_u_coef = s_coef_base[g_slot * kMaxPlanes + p];
         g_u_ctx_cbf = ctx_v2 ? kCtxCbfDc
@@ -384,9 +405,10 @@ void begin_unit() {
     // A residual block unit.  Its contexts are the plane's, and its LEVEL
     // context is the banded derivation of 9.3, in both models.
     int b = k - (dir ? 2 : 1);
-    g_u_ncoef = kCoefPerBlock;
-    g_u_scan = nxs_scan_id(kCoefPerBlock, s_tskip[g_slot]);
-    g_u_coef = s_coef_base[g_slot * kMaxPlanes + p] + ndc + b * kCoefPerBlock;
+    g_u_ncoef = nc;
+    g_lshift = nxs_last_shift_of(nc);
+    g_u_scan = nxs_scan_id(nc, s_tskip[g_slot]);
+    g_u_coef = s_coef_base[g_slot * kMaxPlanes + p] + ndc + b * nc;
     g_u_ctx_cbf = chroma != 0 ? kCtxCbfChroma : kCtxCbfLuma;
     g_u_ctx_last = chroma != 0 ? kCtxLastChroma : kCtxLastLuma;
     g_u_ctx_level = kCtxNone;
@@ -418,10 +440,12 @@ void store_coef_at(int scan_pos, int value) {
 // a word belong to four different lanes.
 void store_unit_len(int ui, int len) {
     if (pc.sparse == 0u) return;
+    int perWord = nxs_unit_lens_per_word(s_xform[g_slot]);
+    int bits = nxs_unit_len_bits(s_xform[g_slot]);
     atomicOr(s_ulen[uint(g_slot) * kUnitLenWordsPerTile +
-                    uint(ui) / kUnitLensPerWord],
-             (uint(len) & kUnitLenMask)
-                 << ((uint(ui) % kUnitLensPerWord) * kUnitLenBits));
+                    uint(ui) / uint(perWord)],
+             (uint(len) & nxs_unit_len_mask(s_xform[g_slot]))
+                 << ((uint(ui) % uint(perWord)) * uint(bits)));
 }
 
 void begin_levels() {
@@ -475,6 +499,7 @@ void lane_init(int lane) {
     // "no group", so the first unit of the first plane sees nbr == 0 and falls
     // back to the v2 row, which is what makes v3 a refinement of v2.
     g_ctx_v3 = 0; g_u_ucls = kUclsLuma; g_u_ngrp = 0; g_nbr = 0; g_ngrp = 0;
+    g_lshift = 0;
     g_u_split_present = 0; g_split = 0; g_u_pidx = 0; g_u_blk = 0;
     g_u_nmodes = kNumIntraModes;
     if (g_ui >= g_nunits) { g_phase = kPhDone; return; }
@@ -504,7 +529,7 @@ bool lane_next(out int out_kind, out int out_arg) {
         return true;
     }
     if (g_phase == kPhLastRaw) {
-        out_kind = 1; out_arg = kLastRawBits[g_last_cls]; return true;
+        out_kind = 1; out_arg = kLastRawBits[g_last_cls] + g_lshift; return true;
     }
     // [minor 6] the 4x4-split flag: one bypass bit, after a nonzero CBF.
     if (g_phase == kPhSplit) { out_kind = 1; out_arg = 1; return true; }
@@ -515,7 +540,7 @@ bool lane_next(out int out_kind, out int out_arg) {
         // concatenated 4x4 sub-blocks, so the frequency band of a position is
         // its position inside its own sub-block.  [REF] common.h band_pos().
         out_kind = 0;
-        int bsp = nxs_band_pos(g_pos_sp, g_split);
+        int bsp = nxs_band_pos(g_pos_sp, g_split) >> g_lshift;
         out_arg = g_ctx_v3 != 0
                       ? nxs_v3_ctx_level(g_u_ucls, g_pos_sp, bsp, g_last,
                                          g_prev_class)
@@ -619,15 +644,20 @@ void lane_feed(uint v) {
     if (g_phase == kPhLast) {
         if (v > uint(kLastMaxClass)) { fail(kStatusBadSymbol); return; }
         g_last_cls = int(v);
-        int base = kLastBase[g_last_cls];
+        // [minor 6] The class names a scan GROUP; `lshift` raw bits name the
+        // position inside it.
+        int base = kLastBase[g_last_cls] << g_lshift;
         if (base >= g_u_ncoef) { fail(kStatusBadSymbol); return; }
-        if (kLastRawBits[g_last_cls] > 0) { g_phase = kPhLastRaw; return; }
+        if (kLastRawBits[g_last_cls] + g_lshift > 0) {
+            g_phase = kPhLastRaw;
+            return;
+        }
         g_last = base;
         begin_levels();
         return;
     }
     if (g_phase == kPhLastRaw) {
-        g_last = kLastBase[g_last_cls] + int(v);
+        g_last = (kLastBase[g_last_cls] << g_lshift) + int(v);
         if (g_last >= g_u_ncoef) { fail(kStatusBadSymbol); return; }
         begin_levels();
         return;
@@ -755,6 +785,7 @@ void lite_unit(int u) {
     if (k == 0) {  // the DC-plane unit
         g_u_kind = 0;
         g_u_ncoef = ndc;
+        g_lshift = nxs_last_shift_of(ndc);
         g_u_scan = nxs_scan_id(ndc, 0);
         g_u_coef = s_coef_base[g_slot * kMaxPlanes + p];
         return;
@@ -767,9 +798,11 @@ void lite_unit(int u) {
     }
     int b = k - (dir ? 2 : 1);  // a residual block unit
     g_u_kind = 0;
-    g_u_ncoef = kCoefPerBlock;
-    g_u_scan = nxs_scan_id(kCoefPerBlock, s_tskip[g_slot]);
-    g_u_coef = s_coef_base[g_slot * kMaxPlanes + p] + ndc + b * kCoefPerBlock;
+    int bs = s_bsize[g_slot * kMaxPlanes + p];
+    g_u_ncoef = bs * bs;
+    g_lshift = nxs_last_shift_of(g_u_ncoef);
+    g_u_scan = nxs_scan_id(g_u_ncoef, s_tskip[g_slot]);
+    g_u_coef = s_coef_base[g_slot * kMaxPlanes + p] + ndc + b * g_u_ncoef;
 }
 
 // Turns s_lsum[] from per-unit WIDTHS into per-unit EXCLUSIVE bit offsets and
@@ -846,6 +879,8 @@ void lite_main() {
         // entropy_lite.cpp never reads Unit::split_present), so a Lite tile
         // has none and the split words stay zero.
         s_split4[0] = 0;
+        int xf = int((w1 >> kThXformSizeShift) & kThXformSizeMask);
+        s_xform[0] = xf;
 
         uint pay = nxs_tile_payload_offset(hdr_off, w1);
         uint paylen = (w0 >> kThPayloadLenShift) & kThPayloadLenMask;
@@ -865,13 +900,17 @@ void lite_main() {
             s_unit_base[p] = ub;
             s_coef_base[p] = cb;
             if (p < np) {
-                int nb = nxs_plane_size(p, res_level, chroma444) / kBlockSize;
+                int psz = nxs_plane_size(p, res_level, chroma444);
+                int bs = nxs_block_edge_for(xf, psz);
+                int nb = psz / bs;
+                s_bsize[p] = bs;
                 s_nb[p] = nb;
                 int ndc = nb * nb;
                 ub += extra + ndc;
-                cb += ndc + ndc * kCoefPerBlock;
+                cb += ndc + ndc * bs * bs;
             } else {
                 s_nb[p] = 0;
+                s_bsize[p] = kBlockSize;
             }
         }
         s_unit_base[kMaxPlanes] = ub;
@@ -881,6 +920,9 @@ void lite_main() {
         // the FIXED variant is implemented, and v1 still fixes nsub_log2 at 3.
         if (nxs_tile_header_reserved_bad(w0, w1) != 0 ||
             variant != uint(kLiteFixed) || nsub_log2 != kLanesLog2 ||
+            (xf != 0 && ((pc.tools & kToolFlagXformLarge) == 0u ||
+                         s_tskip[0] != 0 ||
+                         ub > kMaxUnitsPerTileLarge)) ||
             ub <= 0 || ub > kMaxUnitsPerTile || pend < pay)
             s_ok[0] = kStatusBadHeader;
     }
@@ -1166,6 +1208,13 @@ void main() {
         // (docs/SYNTAX.md 4.1, 6.8).
         int sp4 = int((w1 >> kThSplit4Shift) & kThSplit4Mask);
         s_split4[slot] = sp4;
+        // [minor 6] word1 bits 29-30, the tile's transform size.  3 is
+        // reserved; a nonzero value needs tool bit 27, is mutually exclusive
+        // with transform skip, and forbids the 4x4 split (which is a per-block
+        // subdivision OF the 8x8 transform).  docs/SYNTAX.md 4.1, 6.7,
+        // docs/TOOLBITS.md 4.2.
+        int xf = int((w1 >> kThXformSizeShift) & kThXformSizeMask);
+        s_xform[slot] = xf;
 
         // Payload start accounts for the optional MV / alpha bytes, and the
         // payload is bounded by payload_len as well as by the tile length.
@@ -1187,13 +1236,19 @@ void main() {
             s_unit_base[slot * (kMaxPlanes + 1) + p] = ub;
             s_coef_base[slot * kMaxPlanes + p] = cb;
             if (p < np) {
-                int nb = nxs_plane_size(p, res_level, chroma444) / kBlockSize;
+                // [minor 6] The block grid follows the tile's transform size,
+                // capped by the plane's own coded extent.
+                int psz = nxs_plane_size(p, res_level, chroma444);
+                int bs = nxs_block_edge_for(xf, psz);
+                int nb = psz / bs;
+                s_bsize[slot * kMaxPlanes + p] = bs;
                 s_nb[slot * kMaxPlanes + p] = nb;
                 int ndc = nb * nb;
                 ub += extra + ndc;
-                cb += ndc + ndc * kCoefPerBlock;
+                cb += ndc + ndc * bs * bs;
             } else {
                 s_nb[slot * kMaxPlanes + p] = 0;
+                s_bsize[slot * kMaxPlanes + p] = kBlockSize;
             }
         }
         s_unit_base[slot * (kMaxPlanes + 1) + kMaxPlanes] = ub;
@@ -1208,7 +1263,10 @@ void main() {
         if (nxs_tile_header_reserved_bad(w0, w1) != 0 ||
             (1u << nsub_log2) != LANES ||
             (sp4 != 0 && ((pc.tools & kToolFlagSplit4) == 0u ||
-                          s_tskip[slot] != 0)) ||
+                          s_tskip[slot] != 0 || xf != 0)) ||
+            (xf != 0 && ((pc.tools & kToolFlagXformLarge) == 0u ||
+                         s_tskip[slot] != 0)) ||
+            (xf != 0 && ub > kMaxUnitsPerTileLarge) ||
             pay + uint(nactive) * kInitBytesPerLane > s_end[slot]) {
             s_ok[slot] = kStatusBadHeader;
         }

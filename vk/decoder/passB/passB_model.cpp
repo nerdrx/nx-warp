@@ -229,12 +229,19 @@ void reconstruct_tile(const PassBInput &in, int tile, TilePlanes &tp,
     const uint32_t *lenWords =
         in.unit_lens ? in.unit_lens + (size_t)tile * NXVW_UNIT_LEN_WORDS_PER_TILE
                      : nullptr;
+    // [minor 6] The unit-length field width follows the tile's transform
+    // size: a 32x32 unit's LAST + 1 reaches 1024 and does not fit a byte.
+    const int xformSize = nxvw_rec_xform_size(rec.w1);
+    const uint32_t lenPerWord = xformSize != 0 ? NXVW_UNIT_LENS_PER_WORD_LARGE
+                                               : NXVW_UNIT_LENS_PER_WORD;
+    const uint32_t lenBits =
+        xformSize != 0 ? NXVW_UNIT_LEN_BITS_LARGE : NXVW_UNIT_LEN_BITS;
+    const uint32_t lenMask =
+        xformSize != 0 ? NXVW_UNIT_LEN_MASK_LARGE : NXVW_UNIT_LEN_MASK;
     auto unit_len = [&](int ui) {
         if (!pcp.sparse) return kBlock * kBlock;
-        uint32_t w = lenWords[ui / int(NXVW_UNIT_LENS_PER_WORD)];
-        return int((w >> ((uint32_t(ui) % NXVW_UNIT_LENS_PER_WORD) *
-                          NXVW_UNIT_LEN_BITS)) &
-                   NXVW_UNIT_LEN_MASK);
+        uint32_t w = lenWords[ui / int(lenPerWord)];
+        return int((w >> ((uint32_t(ui) % lenPerWord) * lenBits)) & lenMask);
     };
     // Unit index of the plane being decoded, [SYN] 9.1.  The mode unit exists
     // whenever the stream sets INTRA_DIR, which is what Pass A numbers units

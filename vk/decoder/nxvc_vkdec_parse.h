@@ -83,6 +83,8 @@ struct FrameParse {
     // [minor 6] TAB_V2 (tool bit 26): a transmitted table set is variable
     // length, each context preceded by a `row_coded` flag.
     int tab_v2 = 0;
+    // [minor 6] XFORM_LARGE (tool bit 27): tiles may set xform_size != 0.
+    int xform_large = 0;
     uint32_t tools = 0;   // Pass A's `tools` push constant, kToolFlag*
 
     // Pass A inputs.

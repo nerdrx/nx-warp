@@ -195,6 +195,8 @@ NXS_CONST uint kToolFlagCtxV3 = 8u;
 NXS_CONST uint kToolFlagSplit4 = 16u;
 // [minor 6] INTRA_CFL, stream tool bit 24: the chroma mode alphabet is 10.
 NXS_CONST uint kToolFlagCfl = 32u;
+// [minor 6] XFORM_LARGE, stream tool bit 27: tiles may set xform_size != 0.
+NXS_CONST uint kToolFlagXformLarge = 64u;
 // TAB_V2 (tool bit 26) is a host-side flag only: it changes how the frame's
 // transmitted table sets are parsed, never how a symbol is decoded, so the
 // kernel receives the same cumulative-frequency upload either way.
@@ -215,6 +217,21 @@ NXS_ARRAY(int, kLastRawBits, 16)
 NXS_ARRAY_END
 
 NXS_CONST int kLastMaxClass = 14;  // class 15 is illegal
+
+// [minor 6] A unit of more than 64 coefficients -- a 16x16 or 32x32 block --
+// reuses the SAME 64-position LAST class table and the SAME four LEVEL bands
+// by coding them over its 64 equal-sized scan GROUPS: the class names the
+// group and `last_shift` raw bypass bits name the position inside it, so
+// `last = (base[class] << last_shift) + raw` and the LEVEL band of a position
+// is the band of `pos >> last_shift`.  No new context and no new symbol exists
+// at any transform size, which is what lets one trained set of frequencies
+// serve all three (ref/RESULTS-xform-a.md 4.2 measured a per-size family and
+// it loses).  [REF] ref/src/common.h last_shift_of(), docs/SYNTAX.md 9.2.1.
+NXS_FN int nxs_last_shift_of(int ncoef) {
+    int s = 0;
+    while ((ncoef >> s) > 64) ++s;
+    return s;
+}
 
 // band x previous-level class -> one of 8 LEVEL contexts.
 // Flattened as kLevelCtx[band * 3 + prev_class].
@@ -302,7 +319,15 @@ NXS_CONST int kScanSmall = 3;    // 4 or 1 coefficients, identity
 // sub-block order, each scanned in its own zigzag.  [REF] ref/src/tables.cpp
 // kScan4Split, docs/SYNTAX.md 6.8.
 NXS_CONST int kScan4Split = 4;
-NXS_CONST int kNumScans = 5;
+// [minor 6] XFORM_LARGE, tool bit 27: the zigzags of the 16x16 and 32x32
+// transforms.  They are NOT tabulated.  A 1024-entry table would be 4 KiB of
+// the shared scan array against the 1.25 KiB the four small scans take, on a
+// kernel whose LDS is already 13.8 KiB of cumulative frequencies -- and the
+// zigzag is a rule (ref/src/common.h build_zigzag), so both directions of it
+// are closed-form arithmetic instead.  See nxs_zigzag_*() below.
+NXS_CONST int kScanZigzag16 = 5;
+NXS_CONST int kScanZigzag32 = 6;
+NXS_CONST int kNumScans = 5;   // only the tabulated ones occupy s_scan
 NXS_CONST int kScanStride = 64;  // slots per scan table in the shared array
 
 NXS_ARRAY(int, kZigzag8, 64)
@@ -358,6 +383,9 @@ NXS_CONST uint kThWmIdShift = 26, kThWmIdMask = 3u;
 // by tool bit 19 and meaningful ONLY at xform_size == 8; a tile with
 // xform_size != 8 or tskip and split4x4 set is BITSTREAM (TOOLBITS.md 4.2).
 NXS_CONST uint kThSplit4Shift = 28, kThSplit4Mask = 1u;
+// [minor 6] word1 bits 29-30: the tile's transform size, 0 = 8x8, 1 = 16x16,
+// 2 = 32x32, 3 reserved.  Gated by tool bit 27 XFORM_LARGE.
+NXS_CONST uint kThXformSizeShift = 29, kThXformSizeMask = 3u;
 
 NXS_CONST int kMaxResLevel = 2;
 NXS_CONST int kMaxMode = 4;
@@ -369,7 +397,7 @@ NXS_CONST int kAlphaModeCoded = 2;     // alpha plane is entropy-coded
 NXS_CONST uint kThReservedW0 = 1u << 3;
 // [minor 6] word1 bit 28 is split4x4; 29-31 stay reserved until XFORM_LARGE
 // and QUAD_MV take them.  docs/TOOLBITS.md 4.
-NXS_CONST uint kThReservedW1 = 0xe0000000u;  // bits 29..31
+NXS_CONST uint kThReservedW1 = 0x80000000u;  // bit 31
 
 // Optional bytes between the 8-byte header and the rANS payload, in order:
 //   1. i8 mv_x, i8 mv_y   if mv_present
@@ -384,6 +412,22 @@ NXS_CONST uint kThAlphaValueBytes = 1;
 
 NXS_CONST int kTileSize = 64;
 NXS_CONST int kBlockSize = 8;
+// [minor 6] XFORM_LARGE (tool bit 27), tile-header word1 bits 29-30: the
+// tile's transform edge is 8 << xform_size, capped by the plane's own coded
+// extent so no plane ever carries a block larger than itself.  Value 3 is
+// reserved.  [REF] ref/src/common.h xform_edge / block_edge_for,
+// docs/SYNTAX.md 4.1 and 6.7.
+NXS_CONST int kMaxXformSize = 2;
+NXS_FN int nxs_xform_edge(int xform_size) { return 8 << xform_size; }
+NXS_FN int nxs_block_edge_for(int xform_size, int plane_size) {
+    int e = nxs_xform_edge(xform_size);
+    return e < plane_size ? e : plane_size;
+}
+NXS_FN int nxs_log2_of(int v) {
+    int k = 0;
+    while ((1 << k) < v) ++k;
+    return k;
+}
 NXS_CONST int kCoefPerBlock = 64;
 NXS_CONST int kMaxPlanes = 4;
 NXS_CONST int kMaxBlocksPerEdge = 8;   // 64 / 8
@@ -443,10 +487,36 @@ NXS_CONST uint kCbfWordsPerTile = 16;  // 512 bits >= kMaxUnitsPerTile
 // interleave over units (unit `u` belongs to lane `u % LANES`), so four
 // neighbouring units belong to four different lanes and the write must be an
 // atomicOr into a pre-zeroed word.
-NXS_CONST uint kUnitLensPerWord = 4;
+// [minor 6] The field width follows the TILE's transform size, and the region
+// does not grow.  A 32x32 unit's LAST + 1 reaches 1024 and would wrap in a
+// byte, so a tile with a transform larger than 8x8 packs TWO 16-bit fields to
+// a uint instead of four 8-bit ones -- and it can afford to, because the same
+// thing that makes its units big makes them few: 18 units per 64-edge plane at
+// 16x16 against 66 at 8x8, so at most 72 units against 264.  Widening the
+// field unconditionally would instead have taken the shared accumulator from
+// 8.4 to 16.9 KiB on top of CTX_V3's 13.8, which does not fit an Adreno 650's
+// 32 KiB at 32 tiles per group.  nxs_unit_len_fits() is the header check that
+// keeps the bound a rule rather than an assumption.
+NXS_CONST uint kUnitLensPerWord = 4;      // 8x8 tiles
 NXS_CONST uint kUnitLenBits = 8;
 NXS_CONST uint kUnitLenMask = 255u;
+NXS_CONST uint kUnitLensPerWordLarge = 2; // 16x16 and 32x32 tiles
+NXS_CONST uint kUnitLenBitsLarge = 16;
+NXS_CONST uint kUnitLenMaskLarge = 65535u;
 NXS_CONST uint kUnitLenWordsPerTile = 66;  // ceil(kMaxUnitsPerTile / 4)
+// Units a large-transform tile may have before its 16-bit fields overflow the
+// region.  A conforming stream cannot exceed it; the check is there so that
+// a malformed one is refused rather than corrupting a neighbour's lengths.
+NXS_CONST int kMaxUnitsPerTileLarge = 132;
+NXS_FN int nxs_unit_lens_per_word(int xform_size) {
+    return xform_size != 0 ? int(kUnitLensPerWordLarge) : int(kUnitLensPerWord);
+}
+NXS_FN int nxs_unit_len_bits(int xform_size) {
+    return xform_size != 0 ? int(kUnitLenBitsLarge) : int(kUnitLenBits);
+}
+NXS_FN uint nxs_unit_len_mask(int xform_size) {
+    return xform_size != 0 ? kUnitLenMaskLarge : kUnitLenMask;
+}
 
 // [v3] Per-block intra modes, the second thing Pass A produces for Pass B.
 // One 4-bit field per block (modes are 0..8), 8 fields per uint.  A plane's
@@ -673,15 +743,58 @@ NXS_FN int nxs_last_class_of(int pos) {
     return 0;
 }
 
+// [minor 6] The zigzag of an `edge` x `edge` block, as a rule rather than a
+// table.  [REF] ref/src/common.h build_zigzag(): diagonal `s` runs from
+// (s, 0) upwards when `s` is even and from (0, s) downwards when it is odd,
+// clipped to the block, writing the raster index u * edge + v with u vertical.
+//
+// Both directions are needed and both are closed form.  Diagonal `s` holds
+// `hi - lo + 1` positions with lo = max(s - edge + 1, 0) and
+// hi = min(s, edge - 1), so the number of positions before it is
+//
+//     s <= edge - 1 :  s * (s + 1) / 2
+//     otherwise     :  edge * edge - (2 * edge - 1 - s) * (2 * edge - s) / 2
+//
+// which is the triangle from either end.  Raster -> scan needs nothing else;
+// scan -> raster inverts the count, which is one short loop over the
+// diagonals and is only ever walked by the DENSE coefficient layout (the
+// sparse one stores a coefficient at its scan position and never asks).
+NXS_FN int nxs_zigzag_before(int edge, int s) {
+    if (s <= edge - 1) return s * (s + 1) / 2;
+    int t = 2 * edge - 1 - s;
+    return edge * edge - t * (t + 1) / 2;
+}
+// Raster index (u, v) of an edge x edge block -> its scan position.
+NXS_FN int nxs_zigzag_raster_to_pos(int edge, int raster) {
+    int u = raster / edge, v = raster - u * edge;
+    int s = u + v;
+    int lo = s - edge + 1 > 0 ? s - edge + 1 : 0;
+    int hi = s < edge - 1 ? s : edge - 1;
+    int idx = (s & 1) == 0 ? hi - u : u - lo;
+    return nxs_zigzag_before(edge, s) + idx;
+}
+// ... and its inverse, scan position -> raster index.
+NXS_FN int nxs_zigzag_pos_to_raster(int edge, int pos) {
+    int s = 0;
+    // At most 2 * edge - 1 diagonals; the loop is bounded and side-effect free.
+    for (int k = 0; k <= 2 * (edge - 1); ++k)
+        if (nxs_zigzag_before(edge, k) <= pos) s = k;
+    int lo = s - edge + 1 > 0 ? s - edge + 1 : 0;
+    int hi = s < edge - 1 ? s : edge - 1;
+    int idx = pos - nxs_zigzag_before(edge, s);
+    int u = (s & 1) == 0 ? hi - idx : lo + idx;
+    return u * edge + (s - u);
+}
+
 // ref/src/common.h scan_table(): which scan a unit of `ncoef` uses.
 //
-// Pass A does not implement tool bit 24 XFORM_LARGE (SYNTAX.md 6.7), so it
-// never sees a unit of 256 or 1024 coefficients: a stream setting the bit is
-// refused at the handshake, exactly as one setting any other tool this
-// decoder lacks.  When Pass A grows the tool, this function gains the two
-// larger zigzags and nxs_last_class / the LEVEL band gain the `last_shift`
-// of SYNTAX.md 9.3.
+// [minor 6] The 256- and 1024-coefficient units of XFORM_LARGE take the two
+// computed zigzags; every other unit takes a tabulated one.  Transform skip is
+// mutually exclusive with a transform size other than 8x8, so the tskip arm
+// only ever sees 64.
 NXS_FN int nxs_scan_id(int ncoef, int tskip) {
+    if (ncoef == 1024) return kScanZigzag32;
+    if (ncoef == 256) return kScanZigzag16;
     if (ncoef == 64) return tskip != 0 ? kScanRaster8 : kScanZigzag8;
     if (ncoef == 16) return kScanZigzag4;
     return kScanSmall;  // 4 or 1: identity

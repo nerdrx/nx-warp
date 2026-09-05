@@ -183,11 +183,16 @@ int coefIn(int unitBase, int scanId, int len, int pos) {
 
 // [sparse] LAST + 1 for coding unit `ui` of tile `t`; 0 when the unit is not
 // coded.  Dense streams carry no lengths, so every unit reads as full.
-int unitLen(int tileLenBase, int ui) {
+int unitLen(int tileLenBase, int ui, int xformSize) {
     if (kSparse == 0) return kBlock * kBlock;
-    uint w = uLens.w[tileLenBase + ui / int(NXVW_UNIT_LENS_PER_WORD)];
-    return int((w >> ((uint(ui) % NXVW_UNIT_LENS_PER_WORD) * NXVW_UNIT_LEN_BITS)) &
-               NXVW_UNIT_LEN_MASK);
+    // [minor 6] The field width follows the tile's transform size, because a
+    // 32x32 unit's LAST + 1 reaches 1024.  Pass A packs it the same way.
+    uint perWord = xformSize != 0 ? NXVW_UNIT_LENS_PER_WORD_LARGE
+                                  : NXVW_UNIT_LENS_PER_WORD;
+    uint bits = xformSize != 0 ? NXVW_UNIT_LEN_BITS_LARGE : NXVW_UNIT_LEN_BITS;
+    uint mask = xformSize != 0 ? NXVW_UNIT_LEN_MASK_LARGE : NXVW_UNIT_LEN_MASK;
+    uint w = uLens.w[tileLenBase + ui / int(perWord)];
+    return int((w >> ((uint(ui) % perWord) * bits)) & mask);
 }
 
 // One dequantized coefficient of a transform block, by its raster position.
@@ -679,6 +684,12 @@ void main() {
     int chroma444 = pc.p.chroma420 != 0 ? 0 : nxvw_rec_chroma444(rec.w1);
     int alpha_mode = nxvw_rec_alpha_mode(rec.w1);
     int tskip = nxvw_rec_tskip(rec.w1);
+    // [minor 6] The tile's transform size.  Pass B does not yet reconstruct a
+    // 16x16 or 32x32 block, and nxvc_vkdec_parse.cpp's kToolsSupported does
+    // not list tool bit 27, so this is 0 on every stream that reaches here; it
+    // is read because the unit-length packing depends on it and the two sides
+    // of that buffer must agree by construction rather than by luck.
+    int xformSize = nxvw_rec_xform_size(rec.w1);
     // [marked edit] per-tile weighting-matrix override, docs/SYNTAX.md 4.1.
     int wmSet = nxvw_rec_wm_id(rec.w1) * 128;
     int mode = nxvw_rec_mode(rec.w1);
@@ -775,7 +786,7 @@ void main() {
         // [sparse] An uncoded DC unit dequantizes and transforms to all zeros,
         // so its block means are the plane's DC offset and the second-level
         // IDCT can be skipped outright.
-        int dcLen = unitLen(tileLenBase, unitBase);
+        int dcLen = unitLen(tileLenBase, unitBase, xformSize);
         int dcScan = nxvw_scan_id(ndc, 0);
         if (tid == 0) sModesNz = 0u;
         if (tid < ndc)
@@ -851,7 +862,7 @@ void main() {
         // [sparse] LAST + 1 for this thread's block, and the plane-wide "any
         // block names a mode other than 0" flag the fast path below turns on.
         int blockUnit = unitBase + unitsPerPlaneExtra + bIdx;
-        int blockLen = live ? unitLen(tileLenBase, blockUnit) : 0;
+        int blockLen = live ? unitLen(tileLenBase, blockUnit, xformSize) : 0;
         int blockScan = nxvw_scan_id(64, tskip);
         // [minor 6] XFORM_4X4_SPLIT: Pass A published one bit per block in
         // the same per-tile region as the modes.  A split block is four 4x4

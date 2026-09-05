@@ -29,6 +29,10 @@ struct Shared {
     int tskip[kMaxSlots];
     // [minor 6] tile-header word1 bit 28, XFORM_4X4_SPLIT.
     int split4[kMaxSlots];
+    // [minor 6] XFORM_LARGE: the tile's transform size and the per-plane block
+    // edge it implies.
+    int xform[kMaxSlots];
+    int bsize[kMaxSlots * kMaxPlanes];
     int active[kMaxSlots];
     int mode_base[kMaxSlots];
     // [sparse] Unit lengths, accumulated per tile slot and flushed once.
@@ -64,6 +68,10 @@ struct Thread {
     int stride;
     int nunits;
     int last, pos_sp, prev_class, last_cls, mag;
+    // [minor 6] last_shift_of(ncoef): 0 up to 64 coefficients, 2 at 16x16 and
+    // 4 at 32x32.  It scales the LAST classes and the LEVEL bands to the
+    // unit's size.  [SYN] 9.2.1 / 9.3.1.
+    int lshift;
     int esc_j, esc_bits, esc_done;
     uint32_t esc_acc;
     int u_ncoef, u_scan, u_ctx_cbf, u_ctx_last, u_coef;
@@ -136,6 +144,10 @@ uint32_t load_u16be(const Ctx &c, uint32_t o) {
 }
 
 int scan_index(const Ctx &c, int scan_id, int p) {
+    // [minor 6] The two large zigzags are a rule, not a table, and are reached
+    // only by the dense coefficient layout.
+    if (scan_id == kScanZigzag32) return nxs_zigzag_pos_to_raster(32, p);
+    if (scan_id == kScanZigzag16) return nxs_zigzag_pos_to_raster(16, p);
     return int(c.sh.scan[uint32_t(scan_id * kScanStride + p)]);
 }
 
@@ -195,6 +207,9 @@ void begin_unit(Ctx &c, Thread &g) {
     int k = g.ui - c.sh.unit_base[base + p];
     int nb = c.sh.nb[g.slot * kMaxPlanes + p];
     int ndc = nb * nb;
+    // [minor 6] the plane's transform edge and coefficient count.
+    int bs = c.sh.bsize[g.slot * kMaxPlanes + p];
+    int nc = bs * bs;
     int chroma = (p == 1 || p == 2) ? 1 : 0;
     const bool ctx_v2 = (c.in->tools & kToolFlagCtxV2) != 0u;
     const bool dir = (c.in->tools & kToolFlagIntraDir) != 0u;
@@ -207,6 +222,7 @@ void begin_unit(Ctx &c, Thread &g) {
 
     if (k == 0) {
         g.u_ncoef = ndc;
+        g.lshift = nxs_last_shift_of(ndc);
         g.u_scan = nxs_scan_id(ndc, 0);
         g.u_coef = c.sh.coef_base[g.slot * kMaxPlanes + p];
         g.u_ctx_cbf = ctx_v2 ? kCtxCbfDc
@@ -236,9 +252,10 @@ void begin_unit(Ctx &c, Thread &g) {
         return;
     }
     int b = k - (dir ? 2 : 1);
-    g.u_ncoef = kCoefPerBlock;
-    g.u_scan = nxs_scan_id(kCoefPerBlock, c.sh.tskip[g.slot]);
-    g.u_coef = c.sh.coef_base[g.slot * kMaxPlanes + p] + ndc + b * kCoefPerBlock;
+    g.u_ncoef = nc;
+    g.lshift = nxs_last_shift_of(nc);
+    g.u_scan = nxs_scan_id(nc, c.sh.tskip[g.slot]);
+    g.u_coef = c.sh.coef_base[g.slot * kMaxPlanes + p] + ndc + b * nc;
     g.u_ctx_cbf = chroma != 0 ? kCtxCbfChroma : kCtxCbfLuma;
     g.u_ctx_last = chroma != 0 ? kCtxLastChroma : kCtxLastLuma;
     g.u_ctx_level = kCtxNone;
@@ -262,10 +279,13 @@ void store_coef_at(Ctx &c, Thread &g, int scan_pos, int value) {
 // [sparse] Publish the unit's coefficient count, LAST + 1.
 void store_unit_len(Ctx &c, Thread &g, int ui, int len) {
     if (!c.in->sparse) return;
+    const uint32_t perWord =
+        uint32_t(nxs_unit_lens_per_word(c.sh.xform[g.slot]));
+    const uint32_t bits = uint32_t(nxs_unit_len_bits(c.sh.xform[g.slot]));
     c.sh.ulen[uint32_t(g.slot) * kUnitLenWordsPerTile +
-              uint32_t(ui) / kUnitLensPerWord] |=
-        (uint32_t(len) & kUnitLenMask)
-        << ((uint32_t(ui) % kUnitLensPerWord) * kUnitLenBits);
+              uint32_t(ui) / perWord] |=
+        (uint32_t(len) & nxs_unit_len_mask(c.sh.xform[g.slot]))
+        << ((uint32_t(ui) % perWord) * bits);
 }
 
 void begin_levels(Ctx &c, Thread &g) {
@@ -311,6 +331,7 @@ void lane_init(Ctx &c, Thread &g, int lane) {
     g.u_split_present = 0; g.split = 0; g.u_pidx = 0; g.u_blk = 0;
     g.u_nmodes = kNumIntraModes;
     g.ctx_v3 = 0; g.u_ucls = kUclsLuma; g.u_ngrp = 0; g.nbr = 0; g.ngrp = 0;
+    g.lshift = 0;
     if (g.ui >= g.nunits) { g.phase = kPhDone; return; }
     begin_unit(c, g);
 }
@@ -330,13 +351,13 @@ bool lane_next(const Thread &g, int &out_kind, int &out_arg) {
         return true;
     }
     if (g.phase == kPhLastRaw) {
-        out_kind = 1; out_arg = kLastRawBits[g.last_cls]; return true;
+        out_kind = 1; out_arg = kLastRawBits[g.last_cls] + g.lshift; return true;
     }
     // [minor 6] the 4x4-split flag: one bypass bit, after a nonzero CBF.
     if (g.phase == kPhSplit) { out_kind = 1; out_arg = 1; return true; }
     if (g.phase == kPhLevel) {
         out_kind = 0;
-        const int bsp = nxs_band_pos(g.pos_sp, g.split);
+        const int bsp = nxs_band_pos(g.pos_sp, g.split) >> g.lshift;
         out_arg = g.ctx_v3 != 0
                       ? nxs_v3_ctx_level(g.u_ucls, g.pos_sp, bsp, g.last,
                                          g.prev_class)
@@ -430,15 +451,20 @@ void lane_feed(Ctx &c, Thread &g, uint32_t v) {
     if (g.phase == kPhLast) {
         if (v > uint32_t(kLastMaxClass)) { fail(c, g, kStatusBadSymbol); return; }
         g.last_cls = int(v);
-        int base = kLastBase[g.last_cls];
+        // [minor 6] the class names a scan GROUP; `lshift` raw bits name the
+        // position inside it.
+        int base = kLastBase[g.last_cls] << g.lshift;
         if (base >= g.u_ncoef) { fail(c, g, kStatusBadSymbol); return; }
-        if (kLastRawBits[g.last_cls] > 0) { g.phase = kPhLastRaw; return; }
+        if (kLastRawBits[g.last_cls] + g.lshift > 0) {
+            g.phase = kPhLastRaw;
+            return;
+        }
         g.last = base;
         begin_levels(c, g);
         return;
     }
     if (g.phase == kPhLastRaw) {
-        g.last = kLastBase[g.last_cls] + int(v);
+        g.last = (kLastBase[g.last_cls] << g.lshift) + int(v);
         if (g.last >= g.u_ncoef) { fail(c, g, kStatusBadSymbol); return; }
         begin_levels(c, g);
         return;
@@ -574,6 +600,9 @@ void run_group(Ctx &c, uint32_t workgroup_id) {
         // transform skip (docs/SYNTAX.md 4.1, 6.8).
         const int sp4 = int((w1 >> kThSplit4Shift) & kThSplit4Mask);
         sh.split4[slot] = sp4;
+        // [minor 6] word1 bits 29-30, the tile's transform size.
+        const int xf = int((w1 >> kThXformSizeShift) & kThXformSizeMask);
+        sh.xform[slot] = xf;
         sh.tabbase[slot] = table_set * uint32_t(kNumCtx * kNumSym);
 
         uint32_t pay = nxs_tile_payload_offset(g.hdr_off, w1);
@@ -593,13 +622,17 @@ void run_group(Ctx &c, uint32_t workgroup_id) {
             sh.unit_base[slot * (kMaxPlanes + 1) + p] = ub;
             sh.coef_base[slot * kMaxPlanes + p] = cb;
             if (p < np) {
-                int nb = nxs_plane_size(p, res_level, chroma444) / kBlockSize;
+                const int psz = nxs_plane_size(p, res_level, chroma444);
+                const int bs = nxs_block_edge_for(xf, psz);
+                const int nb = psz / bs;
+                sh.bsize[slot * kMaxPlanes + p] = bs;
                 sh.nb[slot * kMaxPlanes + p] = nb;
                 int ndc = nb * nb;
                 ub += extra + ndc;
-                cb += ndc + ndc * kCoefPerBlock;
+                cb += ndc + ndc * bs * bs;
             } else {
                 sh.nb[slot * kMaxPlanes + p] = 0;
+                sh.bsize[slot * kMaxPlanes + p] = kBlockSize;
             }
         }
         sh.unit_base[slot * (kMaxPlanes + 1) + kMaxPlanes] = ub;
@@ -609,7 +642,10 @@ void run_group(Ctx &c, uint32_t workgroup_id) {
         if (nxs_tile_header_reserved_bad(w0, w1) != 0 ||
             (1u << nsub_log2) != kLanesN ||
             (sp4 != 0 && ((c.in->tools & kToolFlagSplit4) == 0u ||
-                          sh.tskip[slot] != 0)) ||
+                          sh.tskip[slot] != 0 || xf != 0)) ||
+            (xf != 0 && ((c.in->tools & kToolFlagXformLarge) == 0u ||
+                         sh.tskip[slot] != 0)) ||
+            (xf != 0 && ub > kMaxUnitsPerTileLarge) ||
             pay + uint32_t(nactive) * kInitBytesPerLane > sh.end[slot]) {
             sh.ok[slot] = kStatusBadHeader;
         }
@@ -791,6 +827,7 @@ void lite_unit(Ctx &c, Thread &g, int u) {
     if (k == 0) {
         g.u_kind = 0;
         g.u_ncoef = ndc;
+        g.lshift = nxs_last_shift_of(ndc);
         g.u_scan = nxs_scan_id(ndc, 0);
         g.u_coef = c.sh.coef_base[g.slot * kMaxPlanes + p];
         return;
@@ -802,10 +839,12 @@ void lite_unit(Ctx &c, Thread &g, int u) {
         return;
     }
     int b = k - (dir ? 2 : 1);
+    const int bs = c.sh.bsize[g.slot * kMaxPlanes + p];
     g.u_kind = 0;
-    g.u_ncoef = kCoefPerBlock;
-    g.u_scan = nxs_scan_id(kCoefPerBlock, c.sh.tskip[g.slot]);
-    g.u_coef = c.sh.coef_base[g.slot * kMaxPlanes + p] + ndc + b * kCoefPerBlock;
+    g.u_ncoef = bs * bs;
+    g.lshift = nxs_last_shift_of(g.u_ncoef);
+    g.u_scan = nxs_scan_id(g.u_ncoef, c.sh.tskip[g.slot]);
+    g.u_coef = c.sh.coef_base[g.slot * kMaxPlanes + p] + ndc + b * g.u_ncoef;
 }
 
 // Widths -> exclusive bit offsets, total into sh.ltotal.  Same two-level
@@ -886,6 +925,11 @@ void run_group_lite(Ctx &c, uint32_t workgroup_id) {
         uint32_t variant = (w1 >> kThTableSetShift) & kThTableSetMask;
         uint32_t nsub_log2 = (w1 >> kThNsubLog2Shift) & kThNsubLog2Mask;
         sh.tskip[0] = int((w1 >> kThTskipShift) & kThTskipMask);
+        // [minor 6] The Lite syntax codes no split flag; the transform size is
+        // an ordinary tile-header field and applies to it unchanged.
+        sh.split4[0] = 0;
+        const int xf = int((w1 >> kThXformSizeShift) & kThXformSizeMask);
+        sh.xform[0] = xf;
 
         uint32_t pay = nxs_tile_payload_offset(g.hdr_off, w1);
         uint32_t paylen = (w0 >> kThPayloadLenShift) & kThPayloadLenMask;
@@ -905,13 +949,17 @@ void run_group_lite(Ctx &c, uint32_t workgroup_id) {
             sh.unit_base[p] = ub;
             sh.coef_base[p] = cb;
             if (p < np) {
-                int nb = nxs_plane_size(p, res_level, chroma444) / kBlockSize;
+                const int psz = nxs_plane_size(p, res_level, chroma444);
+                const int bs = nxs_block_edge_for(xf, psz);
+                const int nb = psz / bs;
+                sh.bsize[p] = bs;
                 sh.nb[p] = nb;
                 int ndc = nb * nb;
                 ub += extra + ndc;
-                cb += ndc + ndc * kCoefPerBlock;
+                cb += ndc + ndc * bs * bs;
             } else {
                 sh.nb[p] = 0;
+                sh.bsize[p] = kBlockSize;
             }
         }
         sh.unit_base[kMaxPlanes] = ub;
@@ -919,6 +967,8 @@ void run_group_lite(Ctx &c, uint32_t workgroup_id) {
 
         if (nxs_tile_header_reserved_bad(w0, w1) != 0 ||
             variant != uint32_t(kLiteFixed) || nsub_log2 != kLanesLog2 ||
+            (xf != 0 && ((c.in->tools & kToolFlagXformLarge) == 0u ||
+                         sh.tskip[0] != 0 || ub > kMaxUnitsPerTileLarge)) ||
             ub <= 0 || ub > kMaxUnitsPerTile || pend < pay)
             sh.ok[0] = kStatusBadHeader;
     }
