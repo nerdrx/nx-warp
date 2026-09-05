@@ -66,53 +66,8 @@ when `subgroupSize < 8` or when a driver's ballot is not trusted. Both paths are
 tested on every ICD; the harness selects the fallback automatically when
 `subgroupSize < 8`.
 
-### The round loop, and its barriers
-
-The two modes have **two loops**, selected by the specialisation constant — so
-the test is dynamically uniform and each loop's barriers (or absence of them)
-are in uniform control flow.
-
-| | barriers per round |
-|---|---|
-| ballot | **0** |
-| LDS fallback | **1** (was 3) |
-
-*Ballot.* Nothing crosses the cluster: the mask, the prefix and the total all
-come from `subgroupBallot` restricted to the tile's own lanes, and so does the
-loop's exit test (`subgroupBallot(has_op) & cluster_mask`). A cluster therefore
-runs its own schedule and needs no workgroup synchronisation at all. Every lane
-of a cluster takes the same branch every round, so the cluster is never split
-across a ballot even once a neighbouring cluster in the same subgroup has
-finished — the same "a cluster never straddles a subgroup" invariant the mask
-already rests on.
-
-*LDS fallback.* A mask has to be published, consumed and then cleared, and each
-hand-off used to take a barrier. Three masks per tile slot, used round-robin on
-`round % 3`, remove two of them: at round *r* the cluster clears the buffer it
-will next write at round *r + 2*, and the barrier of round *r + 1* sits between
-the clear and that write — while the same barrier sits after round *r − 1*'s
-readers, so the clear cannot race them either. Two buffers are not enough; the
-clear would land in the same barrier interval as the write it prepares for.
-The "is anyone still running" flag became a round **stamp** (`round + 1`, the
-same value from every writer, exactly as racy as the flag it replaces) rather
-than a flag, so it is never cleared and costs no barrier of its own.
-
-One consequence, in an unreachable state, is worth stating: the `kMaxRounds`
-limit is now a property of the **tile** rather than of the workgroup. The
-ballot loop is per cluster, so a cluster that has already stopped is not marked
-bad on a neighbour's account. `kMaxRounds` is 2^20 and a lane's symbol count is
-bounded by the unit structure, so no stream reaches it; the model was changed
-with the kernel so the two still agree exactly.
-
-### Phase grouping
-
-A lane's phase selects one of eleven handlers, and the eleven were a flat
-if-chain every lane walked from the top. The three **mode** handlers now sit
-behind the frame-uniform `INTRA_DIR` tool bit and the two **escape** handlers
-behind a group of their own, which shortens the chain for the hot phases. An
-exact subgroup vote on "is anyone escaping" was also measured and is *not* kept:
-it cost RADV 4.5 % and bought lavapipe nothing, because both drivers already
-skip a branch no lane takes.
+Control flow inside the round loop is workgroup-uniform in both modes and every
+`barrier()` is unconditional, so the same SPIR-V is valid either way.
 
 ## Memory layout
 
@@ -197,7 +152,6 @@ read.
 | `s_cum[8][16][16]` | 8192 |
 | `s_scan[4][64]` | 1024 |
 | per-tile geometry, flags | ~1000 |
-| `s_renorm[3][8]`, LDS fallback only | 96 |
 
 About 10 KiB, up from 7.5 when the context count was 12 (`docs/SYNTAX.md` 9.3,
 tool bit 21 `CTX_V2`). The table is always uploaded at the 16-context stride
@@ -269,60 +223,16 @@ Exit code 77 means "no usable ICD" and ctest reports it as a skip.
 ## Status
 
 Zero mismatches against the CPU model on RADV (wave32 and wave64) and on
-lavapipe (subgroup size 8), in both read-pointer modes, in both coefficient
-layouts. The test encoder is
+lavapipe (subgroup size 8), in both read-pointer modes. The test encoder is
 byte-identical to `nxvc::encode_units` over random tiles spanning every
 `res_level`, `chroma444`, `tskip` and `table_set`.
 
-2048 tiles at 0.50 symbols/pixel decode in ~0.65 ms on a 7900 XTX (RADV),
-informational.
-
-### Where the round goes
-
-The three `barrier()`s per round are gone (see above) and that is worth **2x on
-lavapipe and nothing at all on RADV**, for a reason worth writing down: the
-workgroup is 64 threads, so on any device whose subgroup is 64 wide the
-workgroup *is* one subgroup and the driver elides `barrier()` outright. RADV
-wave64 and the Adreno 650 are both in that case. Where the workgroup spans
-several subgroups the barriers are real, and removing them shows up
-immediately — lavapipe (8-wide subgroups, eight per workgroup) and RADV forced
-to wave32 (two per workgroup):
-
-| 2048 tiles, ballot, sparse | before | after |
-|---|---|---|
-| RADV wave64 | 0.671 ms | 0.645 ms |
-| RADV wave32 | 0.617 ms | **0.526 ms** |
-| lavapipe, 512 tiles | 64.5 ms | **16.5 ms** |
-
-What is left on RADV is not a synchronisation cost and not a bandwidth cost.
-Pass A there is **latency-bound on the single longest tile**: 128 tiles cost
-0.60 ms and 2048 tiles cost 0.68 ms, so the frame time is very nearly one
-workgroup's serial round chain, and the corpus' worst workgroup runs 630
-rounds against a mean of 432. Four separate things were measured against that
-chain and none of them is the answer:
-
-| removed / added | RADV effect |
-|---|---|
-| every coefficient store | −1 % |
-| a second complete 5-load LDS binary search per symbol | +5 % |
-| the three barriers | 0 % (wave64) |
-| the mode and escape handlers, grouped out of the chain | −2 % |
-
-The cost is spread evenly across the round body — the union of the *hot* phase
-handlers, which a 64-lane wave pays every round because its lanes are in
-several phases at once. Halving it needs fewer symbols on the chain, not a
-cheaper symbol; the levers that remain are the bitstream's own (`nsub_log2`
-above 3 gives a tile more lanes and a shorter chain) and the host's
-(`requiredSubgroupSize` 32 is worth 1.2x on RADV and is a pipeline flag, not a
-kernel change).
-
-Three of the candidates that looked promising were measured and rejected:
-tables in registers instead of the LDS binary search is worth at most the 5 %
-above; decoding two symbols per renormalisation step saves only the round's
-frame, which the same measurement bounds at a few percent; and grouping tiles
-by byte length cannot help, because after the ballot loop went per cluster the
-frame's critical path is the longest *tile*, not the longest workgroup, and
-sorting does not make that tile shorter.
+2048 tiles at 0.50 symbols/pixel decode in ~1.4 ms on a 7900 XTX (RADV),
+informational. The kernel pays three `barrier()`s per scheduling round to keep
+control flow uniform for the fallback path, and that is now **the** thing to
+attack: with Pass B's fixed cost down from 890 to 248 ns per tile
+(`../README.md`), Pass A is the larger of the two passes at every QP above 24,
+and on the scaled Adreno estimate it is the pass that misses the frame budget.
 
 The sparse layout cost Pass A a little: 124 → 170 ns per tile of fixed cost.
 The length words and their atomicOr are part of it, but most of it is the loss

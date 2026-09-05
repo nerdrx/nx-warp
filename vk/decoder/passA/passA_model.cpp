@@ -35,12 +35,7 @@ struct Shared {
     uint32_t pay[kMaxSlots];
     uint32_t end[kMaxSlots];
     uint32_t ok[kMaxSlots];
-    // [passa-fast] Mirrors the kernel: three renormalisation masks per tile
-    // slot used round-robin on `round % 3`, so a mask can be cleared two
-    // rounds after it is written and the fallback needs one barrier per round
-    // rather than three.  `any` is a monotone round stamp, so it is never
-    // cleared at all.
-    uint32_t renorm[3 * kMaxSlots];
+    uint32_t renorm[kMaxSlots];
     uint32_t any;
 };
 
@@ -440,9 +435,9 @@ void run_group(Ctx &c, uint32_t workgroup_id) {
     const uint32_t kTPG = nxs_tiles_per_group(kLanesN);
     for (uint32_t s = 0; s < kMaxSlots; ++s) {
         sh.ok[s] = kStatusOk;
+        sh.renorm[s] = 0u;
         sh.active[s] = 0;
     }
-    for (uint32_t i = 0; i < 3 * kMaxSlots; ++i) sh.renorm[i] = 0u;
     sh.any = 0u;
 
     for (uint32_t lid = 0; lid < kWorkgroupSize; ++lid) {
@@ -596,38 +591,31 @@ void run_group(Ctx &c, uint32_t workgroup_id) {
         }
 
         // --- shared read pointer -------------------------------------------
-        // [passa-fast] The kernel now has two loops rather than one: the
-        // ballot path resolves the cluster with no barrier at all, the
-        // fallback publishes one flag word per thread into the round's parity
-        // buffer and raises a monotone round stamp, then takes ONE barrier.
-        // Both still produce the same (prefix, total), which is why this
-        // lock-step model needs no per-mode structure of its own.
-        const uint32_t cur = (round % 3u) * kMaxSlots;
-        bool act[kWorkgroupSize];
         for (uint32_t lid = 0; lid < kWorkgroupSize; ++lid) {
             Thread &g = c.th[lid];
-            act[lid] = has_op[lid];
             if (c.in->read_ptr_mode != kReadPtrBallot && needs[lid])
-                sh.renorm[cur + uint32_t(g.slot)] |= 1u << uint32_t(g.lane);
-            if (has_op[lid]) sh.any = round + 1u;
+                sh.renorm[g.slot] |= 1u << uint32_t(g.lane);
+            if (has_op[lid]) sh.any = 1u;
         }
 
         for (uint32_t lid = 0; lid < kWorkgroupSize; ++lid) {
             Thread &g = c.th[lid];
-            int lane = g.lane;
-            uint32_t cbase = lid - uint32_t(lane);
+            int slot = g.slot, lane = g.lane;
             uint32_t prefix = 0, total = 0;
-            uint32_t b = 0;
             if (c.in->read_ptr_mode == kReadPtrBallot) {
                 // Emulated LANES-wide cluster ballot: the shader's
                 // subgroupBallot(needs) & cluster_mask.
+                uint32_t b = 0;
+                uint32_t cbase = (lid / kLanesN) * kLanesN;
                 for (uint32_t l = 0; l < kLanesN; ++l)
                     if (needs[cbase + l]) b |= 1u << l;
+                prefix = uint32_t(__builtin_popcount(b & ((1u << lane) - 1u)));
+                total = uint32_t(__builtin_popcount(b));
             } else {
-                b = sh.renorm[cur + uint32_t(g.slot)];
+                uint32_t m = sh.renorm[slot];
+                prefix = uint32_t(__builtin_popcount(m & ((1u << lane) - 1u)));
+                total = uint32_t(__builtin_popcount(m));
             }
-            prefix = uint32_t(__builtin_popcount(b & ((1u << lane) - 1u)));
-            total = uint32_t(__builtin_popcount(b));
 
             if (needs[lid]) {
                 uint32_t at = g.pos + prefix * kRenormBytes;
@@ -649,24 +637,13 @@ void run_group(Ctx &c, uint32_t workgroup_id) {
             }
         }
 
-        // [passa-fast] The stamp is monotone, so "anyone had an op this
-        // round" is `any > round` and nothing is cleared.
-        // [passa-fast] The buffer this round wrote is cleared two rounds
-        // later, exactly as the kernel does it.
-        for (uint32_t sl = 0; sl < kMaxSlots; ++sl)
-            sh.renorm[((round + 2u) % 3u) * kMaxSlots + sl] = 0u;
-        bool cont = (sh.any > round);
+        bool cont = (sh.any != 0u);
+        for (uint32_t s = 0; s < kMaxSlots; ++s) sh.renorm[s] = 0u;
+        sh.any = 0u;
         if (!cont) break;
         if (++round >= kMaxRounds) {
-            // [passa-fast] The round limit is now a property of the TILE, not
-            // of the workgroup: the ballot loop is per cluster, so a cluster
-            // that has already stopped never reaches the limit and is not
-            // marked bad on a neighbour's account.  kMaxRounds is 2^20 and a
-            // lane's symbol count is bounded by the unit structure, so this
-            // is a difference in an unreachable state; it is made here so the
-            // two read-pointer modes and the model still agree exactly.
             for (uint32_t lid = 0; lid < kWorkgroupSize; ++lid)
-                if (act[lid]) fail(c, c.th[lid], kStatusRoundOverflow);
+                fail(c, c.th[lid], kStatusRoundOverflow);
             break;
         }
     }

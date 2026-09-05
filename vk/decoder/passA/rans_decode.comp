@@ -136,24 +136,8 @@ shared int s_mode_base[kMaxSlots];       // uint index of the tile's mode words
 // tile into ~100 local ones plus 66 coalesced stores.  2112 B.
 shared uint s_ulen[kMaxSlots * kUnitLenWordsPerTile];
 
-// [passa-fast] Fallback read-pointer exchange: still one atomicOr'd bitmask
-// per tile, but THREE of them, used round-robin on `round % 3`.  That is what
-// takes the fallback from three barriers per round to one.  The old kernel
-// needed the extra two because a mask has to be published, consumed and then
-// cleared, and each hand-off wants a barrier.  With three buffers the clear
-// can be deferred: at round r the cluster clears the buffer it will next
-// write at round r + 2, and the barrier of round r + 1 sits between the two.
-// The same barrier sits after round r - 1's readers, so the clear cannot race
-// them either.  Two buffers are not enough -- the clear would land in the same
-// barrier interval as the write it is preparing for.
-shared uint s_renorm[3u * kMaxSlots];
-// [passa-fast] Workgroup-wide "any lane still active", as a round STAMP
-// rather than a flag: every thread that still has an op stores round + 1, so
-// the value never has to be cleared and the round needs no second barrier to
-// clear it.  The store is the same plain racy store the flag always was --
-// every writer in a round writes the identical value -- and it is monotone,
-// because a thread that has stopped never writes again (kPhDone is terminal).
-// Unused by the ballot path.
+// Fallback read-pointer exchange and the workgroup-wide "any lane active".
+shared uint s_renorm[kMaxSlots];
 shared uint s_any;
 
 // ---------------------------------------------------------------------------
@@ -213,19 +197,6 @@ int  g_sum_abs;   // running sum of |level| over the unit
 int  g_hide_mag;  // magnitude stored provisionally positive at scan pos LAST
 // tile
 int  g_slot;
-bool g_live;      // [passa-fast] tile decodable and this lane carries a state
-// [passa-fast] Phase-group guards, recomputed once per scheduling round.
-// A lane's phase selects one of eleven handlers, and the eleven were a flat
-// if-chain that every lane walked from the top.  Grouping the three mode
-// handlers behind the frame-uniform `INTRA_DIR` tool bit takes them out of
-// the chain entirely for a stream that carries no modes, and grouping the two
-// escape handlers shortens the chain for the hot phases.  `g_has_esc` is a
-// constant `true` today: an exact subgroup vote on "is anyone escaping" was
-// measured and cost RADV 4.5 % for nothing on lavapipe, because both drivers
-// already skip a branch no lane takes.  The grouping is kept, the vote is
-// not.
-bool g_has_dir;
-bool g_has_esc;
 uint g_coef_off;  // int16 index of this tile's region
 uint g_cbf_off;   // uint index of this tile's CBF words
 uint g_ulen_off;  // [sparse] uint index of this tile's unit-length words
@@ -418,20 +389,16 @@ bool lane_next(out int out_kind, out int out_arg) {
                       : nxs_level_ctx(g_pos_sp, g_prev_class);
         return true;
     }
-    if (g_has_dir) {
-        if (g_phase == kPhModeSym) { out_kind = 0; out_arg = g_u_ctx_mode; return true; }
-        if (g_phase == kPhModeFlag) { out_kind = 1; out_arg = kModeFlagBits; return true; }
-        if (g_phase == kPhModeIdx) { out_kind = 1; out_arg = kModeIdxBits; return true; }
-    }
-    if (g_has_esc) {
-        if (g_phase == kPhEscPrefix) { out_kind = 1; out_arg = 1; return true; }
-        if (g_phase == kPhEscSuffix) {
-            int nchunks = (g_esc_bits + kEscChunkBits - 1) / kEscChunkBits;
-            int chunk = g_esc_done == 0
-                            ? g_esc_bits - kEscChunkBits * (nchunks - 1)
-                            : kEscChunkBits;
-            out_kind = 1; out_arg = chunk; return true;
-        }
+    if (g_phase == kPhModeSym) { out_kind = 0; out_arg = g_u_ctx_mode; return true; }
+    if (g_phase == kPhModeFlag) { out_kind = 1; out_arg = kModeFlagBits; return true; }
+    if (g_phase == kPhModeIdx) { out_kind = 1; out_arg = kModeIdxBits; return true; }
+    if (g_phase == kPhEscPrefix) { out_kind = 1; out_arg = 1; return true; }
+    if (g_phase == kPhEscSuffix) {
+        int nchunks = (g_esc_bits + kEscChunkBits - 1) / kEscChunkBits;
+        int chunk = g_esc_done == 0
+                        ? g_esc_bits - kEscChunkBits * (nchunks - 1)
+                        : kEscChunkBits;
+        out_kind = 1; out_arg = chunk; return true;
     }
     // kPhSign
     out_kind = 1; out_arg = 1; return true;
@@ -467,25 +434,23 @@ void mode_step(int mode) {
 // LaneMachine::feed() - apply the decoded value.
 // ---------------------------------------------------------------------------
 void lane_feed(uint v) {
-    if (g_has_dir) {
-        if (g_phase == kPhModeSym) {
-            // [SYN] 9.6: symbol 0 is the MPM, 1..8 name the other eight modes
-            // in ascending order.  9..15 are illegal.
-            if (v >= uint(kNumIntraModes)) { fail(kStatusBadSymbol); return; }
-            mode_step(v == 0u ? g_mpm : nxs_nonmpm_mode(g_mpm, int(v) - 1));
-            return;
-        }
-        if (g_phase == kPhModeFlag) {
-            if (v > 1u) { fail(kStatusBadSymbol); return; }
-            if (v == 0u) { g_phase = kPhModeIdx; return; }
-            mode_step(g_mpm);
-            return;
-        }
-        if (g_phase == kPhModeIdx) {
-            if (v > 7u) { fail(kStatusBadSymbol); return; }
-            mode_step(nxs_nonmpm_mode(g_mpm, int(v)));
-            return;
-        }
+    if (g_phase == kPhModeSym) {
+        // [SYN] 9.6: symbol 0 is the MPM, 1..8 name the other eight modes in
+        // ascending order.  9..15 are illegal.
+        if (v >= uint(kNumIntraModes)) { fail(kStatusBadSymbol); return; }
+        mode_step(v == 0u ? g_mpm : nxs_nonmpm_mode(g_mpm, int(v) - 1));
+        return;
+    }
+    if (g_phase == kPhModeFlag) {
+        if (v > 1u) { fail(kStatusBadSymbol); return; }
+        if (v == 0u) { g_phase = kPhModeIdx; return; }
+        mode_step(g_mpm);
+        return;
+    }
+    if (g_phase == kPhModeIdx) {
+        if (v > 7u) { fail(kStatusBadSymbol); return; }
+        mode_step(nxs_nonmpm_mode(g_mpm, int(v)));
+        return;
     }
     if (g_phase == kPhCbf) {
         if (v > 1u) { fail(kStatusBadSymbol); return; }
@@ -528,7 +493,6 @@ void lane_feed(uint v) {
         store_magnitude();
         return;
     }
-    if (g_has_esc) {
     if (g_phase == kPhEscPrefix) {
         if (v > 1u) { fail(kStatusBadSymbol); return; }
         if (v == 1u) {
@@ -555,7 +519,6 @@ void lane_feed(uint v) {
         g_mag = int(val) + kEscSym;
         store_magnitude();
         return;
-    }
     }
     // kPhSign
     if (v > 1u) { fail(kStatusBadSymbol); return; }
@@ -586,59 +549,6 @@ void decode_symbol(uint tabbase, int ctx, uint slot, out uint sym,
 }
 
 // ---------------------------------------------------------------------------
-// [passa-fast] One scheduling round, split either side of the shared-read-
-// pointer exchange so the two read-pointer modes can differ in nothing but
-// how they compute (prefix, total).  The state between the halves lives in
-// globals rather than out parameters so both loops read exactly the same
-// code; `r_has_op` is sampled by the caller BEFORE `round_finish` may clear
-// it, which is where the old kernel raised `s_any`.
-uint r_value;
-uint r_x;
-bool r_needs;
-bool r_has_op;
-
-void round_prepare() {
-    int kind = 0, arg = 0;
-    r_has_op = g_live && lane_next(kind, arg);
-    r_value = 0u;
-    r_x = g_state;
-    r_needs = false;
-    if (r_has_op) {
-        uint slot1024 = r_x & kProbMask;
-        uint f, c;
-        if (kind == 0) {
-            uint sym;
-            decode_symbol(s_tabbase[g_slot], arg, slot1024, sym, f, c);
-            r_value = sym;
-        } else {
-            uint sh = kProbBits - uint(arg);
-            r_value = slot1024 >> sh;
-            f = 1u << sh;
-            c = r_value << sh;
-        }
-        r_x = f * (r_x >> kProbBits) + slot1024 - c;
-        r_needs = r_x < kRansL;
-    }
-}
-
-void round_finish(uint prefix, uint total) {
-    if (r_needs) {
-        uint at = g_pos + prefix * kRenormBytes;
-        if (at + kRenormBytes > g_end) {
-            fail(kStatusTruncated);
-            r_has_op = false;
-        } else {
-            r_x = (r_x << 16u) | load_u16be(at);
-        }
-    }
-    g_pos += total * kRenormBytes;
-    if (r_has_op) {
-        g_state = r_x;
-        lane_feed(r_value);
-    }
-}
-
-// ---------------------------------------------------------------------------
 void main() {
     uint lid = gl_LocalInvocationID.x;
     // [marked edit] slot/lane from the LANES specialisation constant.  Threads
@@ -665,18 +575,11 @@ void main() {
     }
     if (in_group && lane == 0) {
         s_ok[slot] = kStatusOk;
-        s_active[slot] = 0;
         s_renorm[slot] = 0u;
-        s_renorm[kMaxSlots + slot] = 0u;
-        s_renorm[2u * kMaxSlots + slot] = 0u;
+        s_active[slot] = 0;
     }
     if (lid == 0u) s_any = 0u;
     barrier();
-
-    // [passa-fast] Frame-uniform: a push-constant tool bit, so the mode-unit
-    // handlers cost the wave nothing at all when the stream has no modes.
-    g_has_dir = (pc.tools & kToolFlagIntraDir) != 0u;
-    g_has_esc = true;
 
     uint tile = gl_WorkGroupID.x * TILES_PER_GROUP + slot_u;
     bool valid = in_group && tile < pc.num_tiles;
@@ -775,7 +678,7 @@ void main() {
     }
     barrier();
 
-    g_live = valid && s_ok[slot] == kStatusOk;
+    bool live = valid && s_ok[slot] == kStatusOk;
 
     // --- rANS init: LANES little-endian uint32 states, lane 0 first --------
     g_end = valid ? s_end[slot] : 0u;
@@ -784,14 +687,14 @@ void main() {
     g_nunits = valid ? s_nunits[slot] : 0;
     g_phase = kPhDone;
     // [marked edit] lanes at or above `active` carry no rANS state at all.
-    if (g_live && lane < nactive) {
+    if (live && lane < nactive) {
         g_state = load_u32le(s_pay[slot] + uint(lane) * kInitBytesPerLane);
         if (g_state < kRansL) s_ok[slot] = kStatusBadHeader;
         lane_init(lane);
     }
     barrier();
-    g_live = g_live && s_ok[slot] == kStatusOk;
-    if (!g_live) g_phase = kPhDone;
+    live = live && s_ok[slot] == kStatusOk;
+    if (!live) g_phase = kPhDone;
 
     // --- cluster mask for the ballot path ----------------------------------
     uvec4 cluster_mask = uvec4(0u);
@@ -808,69 +711,76 @@ void main() {
     // finished simply emits nothing.  Byte consumption therefore follows
     // ascending lane order inside a round, which is exactly a prefix count
     // over the renormalisation ballot.
-    //
-    // [passa-fast] The two read-pointer modes now have two loops rather than
-    // one loop with mode-dependent bodies.  Both compute the same
-    // (prefix, total) and therefore the same output; they differ only in what
-    // they must synchronise:
-    //
-    //   ballot  the answer is a subgroup ballot masked to the tile's own
-    //           LANES-wide cluster, so nothing crosses the cluster and the
-    //           loop needs NO barrier at all.  Every lane of a cluster takes
-    //           the same branch every round (the exit test is itself a
-    //           cluster ballot), so the cluster is never split across the
-    //           ballot even when a neighbouring cluster in the same subgroup
-    //           has already finished.  That is the same "a cluster never
-    //           straddles a subgroup" invariant the mask already relies on.
-    //   lds     the answer crosses lanes through shared memory, so it needs
-    //           one barrier -- and exactly one, because the renormalisation
-    //           mask is one of three buffers used round-robin (a mask can
-    //           therefore be cleared two rounds after it is written, with a
-    //           barrier in between) and the "anyone still running" flag is a
-    //           monotone round stamp that is never cleared at all.
-    //
-    // The `READ_PTR_MODE` test is a specialisation constant and therefore
-    // dynamically uniform, so the barriers in the second loop are still in
-    // uniform control flow.
     uint round = 0u;
-    if (READ_PTR_MODE == kReadPtrBallot) {
-        for (;;) {
-            round_prepare();
-            bool act = r_has_op;
-            uvec4 bn = subgroupBallot(r_needs) & cluster_mask;
-            uvec4 ba = subgroupBallot(act) & cluster_mask;
-            bool cluster_act = subgroupBallotBitCount(ba) != 0u;
-            round_finish(subgroupBallotExclusiveBitCount(bn),
-                         subgroupBallotBitCount(bn));
-            if (!cluster_act) break;
-            if (++round >= kMaxRounds) {
-                if (act) fail(kStatusRoundOverflow);
-                break;
+    for (;;) {
+        int kind = 0, arg = 0;
+        bool has_op = live && lane_next(kind, arg);
+
+        uint value = 0u;
+        uint x = g_state;
+        bool needs = false;
+        if (has_op) {
+            uint slot1024 = x & kProbMask;
+            uint f, c;
+            if (kind == 0) {
+                uint sym;
+                decode_symbol(s_tabbase[slot], arg, slot1024, sym, f, c);
+                value = sym;
+            } else {
+                uint sh = kProbBits - uint(arg);
+                value = slot1024 >> sh;
+                f = 1u << sh;
+                c = value << sh;
+            }
+            x = f * (x >> kProbBits) + slot1024 - c;
+            needs = x < kRansL;
+        }
+
+        // --- shared read pointer -------------------------------------------
+        // Both modes must produce the same (prefix, total): the number of
+        // renormalising lanes strictly below this one inside the tile's
+        // 8-lane cluster, and the cluster's total.  Every barrier below is
+        // unconditional so that control flow stays workgroup-uniform
+        // whichever mode the specialisation constant selects.
+        if (READ_PTR_MODE != kReadPtrBallot && needs)
+            atomicOr(s_renorm[slot], 1u << uint(lane));  // LANES <= 32
+        if (has_op) s_any = 1u;
+        barrier();
+
+        uint prefix = 0u, total = 0u;
+        if (READ_PTR_MODE == kReadPtrBallot) {
+            uvec4 b = subgroupBallot(needs) & cluster_mask;
+            prefix = subgroupBallotExclusiveBitCount(b);
+            total = subgroupBallotBitCount(b);
+        } else {
+            uint m = s_renorm[slot];
+            prefix = bitCount(m & ((1u << uint(lane)) - 1u));
+            total = bitCount(m);
+        }
+
+        if (needs) {
+            uint at = g_pos + prefix * kRenormBytes;
+            if (at + kRenormBytes > g_end) {
+                fail(kStatusTruncated);
+                has_op = false;
+            } else {
+                x = (x << 16u) | load_u16be(at);
             }
         }
-    } else {
-        uint cur = 0u;                       // round % 3
-        for (;;) {
-            round_prepare();
-            bool act = r_has_op;
-            if (r_needs)
-                atomicOr(s_renorm[cur * kMaxSlots + uint(slot)],
-                         1u << uint(lane));   // LANES <= 32
-            if (act) s_any = round + 1u;   // every writer writes the same value
-            barrier();
-            uint m = s_renorm[cur * kMaxSlots + uint(slot)];
-            uint nxt = cur == 2u ? 0u : cur + 1u;
-            uint far = nxt == 2u ? 0u : nxt + 1u;   // (round + 2) % 3
-            if (in_group && lane == 0)
-                s_renorm[far * kMaxSlots + uint(slot)] = 0u;
-            round_finish(bitCount(m & ((1u << uint(lane)) - 1u)), bitCount(m));
-            if (s_any <= round) break;
-            if (++round >= kMaxRounds) {
-                if (act) fail(kStatusRoundOverflow);
-                break;
-            }
-            cur = nxt;
+        g_pos += total * kRenormBytes;
+
+        if (has_op) {
+            g_state = x;
+            lane_feed(value);
         }
+
+        bool cont = (s_any != 0u);
+        barrier();                       // everyone has consumed s_any/s_renorm
+        if (in_group && lane == 0) s_renorm[slot] = 0u;
+        if (lid == 0u) s_any = 0u;
+        barrier();                       // flags clear before the next round
+        if (!cont) break;
+        if (++round >= kMaxRounds) { fail(kStatusRoundOverflow); break; }
     }
 
     barrier();
