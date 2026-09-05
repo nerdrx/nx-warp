@@ -153,9 +153,15 @@ endif()
 # the two calls a compositor makes per frame that the harness fakes from a
 # file: set_view(), and the receipt map.
 if(VKENCAPI)
+  # `coded_vectors = NONE` must reproduce the skip-only stream, and the
+  # DEFAULT must reproduce the STATIC_MV one -- which is what pins that the
+  # default is STATIC rather than merely documented as such.  Both legs also
+  # check the ABI against the harness: two front ends on one pipeline, and a
+  # divergence would be in whichever one WiVRn is using.
   execute_process(COMMAND ${VKENCAPI} --in ${YUV} --w ${W} --h ${H} --qp 26
                           --frames ${FRAMES} --matrix 1
                           --inter --intra-period 6 --poses ${POSES}
+                          --coded-vectors none
                           --out ${WORKDIR}/api.nxv
                   RESULT_VARIABLE rc ERROR_VARIABLE eout)
   if(NOT rc EQUAL 0)
@@ -166,8 +172,10 @@ if(VKENCAPI)
                   RESULT_VARIABLE rc)
   if(NOT rc EQUAL 0)
     message(FATAL_ERROR
-      "the library ABI and the harness produce different inter streams")
+      "the library ABI at coded_vectors=NONE and the harness produce "
+      "different inter streams")
   endif()
+
 
   # An all-zero receipt map is a full reset: the frame after it must be
   # entirely INTRA, because the client holds nothing to predict from.  The
@@ -227,6 +235,28 @@ execute_process(COMMAND ${NXVDEC} --in ${WORKDIR}/gpu-mv.nxv
                 RESULT_VARIABLE rc)
 if(NOT rc EQUAL 0)
   message(FATAL_ERROR "nxv-dec refused the STATIC_MV stream (${rc})")
+endif()
+
+# The ABI's DEFAULT coded_vectors must be STATIC, which is checked here
+# rather than above because it compares against the STATIC_MV stream the
+# leg above produces.
+if(VKENCAPI)
+  execute_process(COMMAND ${VKENCAPI} --in ${YUV} --w ${W} --h ${H} --qp 26
+                          --frames ${FRAMES} --matrix 1
+                          --inter --intra-period 6 --poses ${POSES}
+                          --out ${WORKDIR}/api-mv.nxv
+                  RESULT_VARIABLE rc ERROR_VARIABLE eout)
+  if(NOT rc EQUAL 0)
+    message(FATAL_ERROR "nxvc-vkenc-api failed at the default (${rc}): ${eout}")
+  endif()
+  execute_process(COMMAND ${CMAKE_COMMAND} -E compare_files
+                          ${WORKDIR}/gpu-mv.nxv ${WORKDIR}/api-mv.nxv
+                  RESULT_VARIABLE rc)
+  if(NOT rc EQUAL 0)
+    message(FATAL_ERROR
+      "the library ABI's DEFAULT coded_vectors is not STATIC: its stream "
+      "differs from the harness run with --coded-vectors")
+  endif()
 endif()
 
 message(STATUS "vk.encoder.inter.acid: ${FRAMES} frames byte-identical, "

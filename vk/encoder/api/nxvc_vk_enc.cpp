@@ -112,6 +112,9 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_create(const nxvc_vke_create_info *ci
     if (ci->base_qp > 63) return NXVC_VKE_ERR_ARG;
     if (ci->quant_matrix > 3) return NXVC_VKE_ERR_ARG;
     if (ci->intra_period > 0 && ci->inter == 0) return NXVC_VKE_ERR_ARG;
+    if (ci->coded_vectors > NXVC_VKE_CV_STATIC) return NXVC_VKE_ERR_ARG;
+    if (ci->coded_vectors != NXVC_VKE_CV_DEFAULT && ci->inter == 0)
+        return NXVC_VKE_ERR_ARG;
 
     const bool adopting = ci->device != VK_NULL_HANDLE;
     if (adopting && (!ci->physical_device || !ci->queue))
@@ -131,6 +134,10 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_create(const nxvc_vke_create_info *ci
     e->cfg.inter = ci->inter != 0;
     e->cfg.intra_period =
         ci->intra_period ? int(ci->intra_period) : 180;
+    /* DEFAULT is STATIC: it is smaller and faster on every measurement, so
+     * the caller who says nothing gets it. */
+    e->cfg.int_coded_vectors =
+        ci->inter != 0 && ci->coded_vectors != NXVC_VKE_CV_NONE;
     e->cfg.wm_id = 0;
     e->cfg.chroma_qp_off = 0;
     e->cfg.nsub_log2 = 3; /* eight rANS lanes; paper 6.3 fixes v1 at eight */
