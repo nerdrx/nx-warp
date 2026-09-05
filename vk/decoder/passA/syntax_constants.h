@@ -157,6 +157,12 @@ NXS_CONST int kNumTableSets = 8;
 // is what makes INTRA_DIR a strict superset.  [REF] ref/src/common.h.
 NXS_CONST int kIntraDcPlane = 0;
 NXS_CONST int kNumIntraModes = 9;
+// [minor 6] INTRA_CFL, stream tool bit 24: chroma-from-luma is mode 9, a
+// tenth entry in the CHROMA mode alphabet only.  The luma alphabet stays at
+// nine, so the mode symbol's alphabet is per-plane.  [REF] ref/src/common.h
+// kIntraCfl / kNumIntraModesCfl, docs/SYNTAX.md 7.7.
+NXS_CONST int kIntraCfl = 9;
+NXS_CONST int kNumIntraModesCfl = 10;
 
 // Mode-unit coding.  Without CTX_V2 a mode is a 1-bit "is MPM" flag plus a
 // 3-bit non-MPM index, both bypass; with CTX_V2 it is one symbol in context
@@ -175,13 +181,20 @@ NXS_CONST int kSdhMinLast = 4;
 NXS_CONST uint kToolFlagCtxV2 = 1u;
 NXS_CONST uint kToolFlagIntraDir = 2u;
 NXS_CONST uint kToolFlagSignHide = 4u;
-// Reserved for CTX_V3 when the kernel implements it; the host refuses tool
-// bit 25 today, so no frame ever carries this flag.
+// [minor 6] CTX_V3, stream tool bit 25: the 27-context model.  The derivation
+// is in nxs_v3_ctx_*() below and the per-lane neighbour class is two registers
+// in the kernel.
 NXS_CONST uint kToolFlagCtxV3 = 8u;
-// TAB_V2 (tool bit 24) would be a host-side flag only: it changes how the
-// frame's transmitted table sets are parsed, never how a symbol is decoded, so
-// the kernel would receive the same cumulative-frequency upload either way.
-// The host refuses it today for the same reason as bit 25.
+// [minor 6] XFORM_4X4_SPLIT, stream tool bit 19: a block unit whose CBF is 1
+// codes a 1-bit split flag; when set the block is four 4x4 sub-blocks and its
+// scan is kScan4Split.  Per FRAME the flag says the tool exists; whether a
+// given TILE codes flags is tile-header word1 bit 28.
+NXS_CONST uint kToolFlagSplit4 = 16u;
+// [minor 6] INTRA_CFL, stream tool bit 24: the chroma mode alphabet is 10.
+NXS_CONST uint kToolFlagCfl = 32u;
+// TAB_V2 (tool bit 26) is a host-side flag only: it changes how the frame's
+// transmitted table sets are parsed, never how a symbol is decoded, so the
+// kernel receives the same cumulative-frequency upload either way.
 
 // ===========================================================================
 // 3. LAST classes and LEVEL context derivation    [ref/src/tables.cpp]
@@ -282,7 +295,11 @@ NXS_CONST int kScanZigzag8 = 0;  // 64 coefficients, transform
 NXS_CONST int kScanRaster8 = 1;  // 64 coefficients, transform skip
 NXS_CONST int kScanZigzag4 = 2;  // 16 coefficients (DC plane, nb == 4)
 NXS_CONST int kScanSmall = 3;    // 4 or 1 coefficients, identity
-NXS_CONST int kNumScans = 4;
+// [minor 6] the 4x4-split scan: four concatenated 4x4 sub-blocks in raster
+// sub-block order, each scanned in its own zigzag.  [REF] ref/src/tables.cpp
+// kScan4Split, docs/SYNTAX.md 6.8.
+NXS_CONST int kScan4Split = 4;
+NXS_CONST int kNumScans = 5;
 NXS_CONST int kScanStride = 64;  // slots per scan table in the shared array
 
 NXS_ARRAY(int, kZigzag8, 64)
@@ -294,6 +311,13 @@ NXS_ARRAY_END
 
 NXS_ARRAY(int, kZigzag4, 16)
     0, 1, 4, 8, 5, 2, 3, 6, 9, 12, 13, 10, 7, 11, 14, 15
+NXS_ARRAY_END
+
+NXS_ARRAY(int, kScan4SplitTab, 64)
+     0,  1,  8, 16,  9,  2,  3, 10, 17, 24, 25, 18, 11, 19, 26, 27,
+     4,  5, 12, 20, 13,  6,  7, 14, 21, 28, 29, 22, 15, 23, 30, 31,
+    32, 33, 40, 48, 41, 34, 35, 42, 49, 56, 57, 50, 43, 51, 58, 59,
+    36, 37, 44, 52, 45, 38, 39, 46, 53, 60, 61, 54, 47, 55, 62, 63
 NXS_ARRAY_END
 
 // kRaster8 and kZigzag2/kZigzag1 are the identity permutation and are
@@ -327,6 +351,10 @@ NXS_CONST uint kThWgtShift = 24, kThWgtMask = 3u;
 // frame's weighting matrix, 0 = "use the frame's" (docs/SYNTAX.md 4.1, tool
 // bit WM_ID).  It took bits 26-27, which used to be reserved.
 NXS_CONST uint kThWmIdShift = 26, kThWmIdMask = 3u;
+// [minor 6] word1 bit 28: this tile codes per-block 4x4 split flags.  Gated
+// by tool bit 19 and meaningful ONLY at xform_size == 8; a tile with
+// xform_size != 8 or tskip and split4x4 set is BITSTREAM (TOOLBITS.md 4.2).
+NXS_CONST uint kThSplit4Shift = 28, kThSplit4Mask = 1u;
 
 NXS_CONST int kMaxResLevel = 2;
 NXS_CONST int kMaxMode = 4;
@@ -336,7 +364,9 @@ NXS_CONST int kAlphaModeCoded = 2;     // alpha plane is entropy-coded
 
 // Reserved bits that a conforming stream sets to zero (SYNTAX.md 4.1).
 NXS_CONST uint kThReservedW0 = 1u << 3;
-NXS_CONST uint kThReservedW1 = 0xf0000000u;  // bits 28..31 [marked edit]
+// [minor 6] word1 bit 28 is split4x4; 29-31 stay reserved until XFORM_LARGE
+// and QUAD_MV take them.  docs/TOOLBITS.md 4.
+NXS_CONST uint kThReservedW1 = 0xe0000000u;  // bits 29..31
 
 // Optional bytes between the 8-byte header and the rANS payload, in order:
 //   1. i8 mv_x, i8 mv_y   if mv_present
@@ -428,6 +458,21 @@ NXS_CONST uint kModesPerPlane = 64;   // nb*nb <= 8*8
 NXS_CONST uint kModeWordsPerPlane = 8;   // kModesPerPlane / kModesPerUint
 NXS_CONST uint kModeWordsPerTile = 32;   // kMaxPlanes * kModeWordsPerPlane
 
+// [minor 6] The per-block 4x4 SPLIT flags ride in the same per-tile region,
+// immediately after the mode words: one BIT per block, 32 blocks to a uint,
+// two uints per plane.  They are one bit rather than a fifth mode field
+// because a split flag exists whether or not INTRA_DIR does -- nothing in the
+// syntax ties tool bit 19 to tool bit 17 -- so it cannot live inside a
+// structure the mode unit owns.
+//
+// Unlike a mode word, a split word IS shared between lanes: block `b` of a
+// plane is decoded by lane `b % LANES`, so all 8 (or 32) lanes write bits of
+// the same word.  The write is an atomicOr into a pre-zeroed word, exactly as
+// the unit-length words are, and for the same reason.
+NXS_CONST uint kSplitWordsPerPlane = 2;  // 64 blocks, 32 to a uint
+NXS_CONST uint kSplitWordsPerTile = 8;   // kMaxPlanes * kSplitWordsPerPlane
+NXS_CONST uint kModeRegionUints = 40;    // kModeWordsPerTile + kSplitWordsPerTile
+
 // Per-tile descriptor handed to the shader (uints).
 //   0: byte offset of the 8-byte tile header inside the bitstream buffer
 //   1: byte length of header + payload
@@ -470,13 +515,29 @@ NXS_CONST uint kReadPtrLdsFallback = 1;
 NXS_CONST uint kEntropyRans = 0;       // interleaved rANS, docs/SYNTAX.md 9
 NXS_CONST uint kEntropyLiteFixed = 1;  // ENTROPY_LITE, kLiteFixed variant
 
+#ifndef NXVW_PASSA_TILES_PER_GROUP
+#define NXVW_PASSA_TILES_PER_GROUP 32
+#endif
+
 // [entropy-lite] Dispatch shape of the Lite path: ONE workgroup of
 // kWorkgroupSize threads per tile, unit `u` handled by thread `u %
 // kWorkgroupSize`.  The per-unit LDS arrays are padded to a whole number of
 // units per thread so the workgroup scan can give each thread one contiguous
 // block; kLiteUnitsPad must be >= kMaxUnitsPerTile.
-NXS_CONST int kLiteUnitsPerThread = 5;
-NXS_CONST int kLiteUnitsPad = 320;  // kWorkgroupSize * kLiteUnitsPerThread
+//
+// Both numbers FOLLOW the workgroup shape and must not be written out: they
+// were the literals 5 and 320, correct at kWorkgroupSize == 64, and stayed
+// behind when NXVW_PASSA_TPG went to 32 tiles per group and the workgroup to
+// 256 threads.  lite_scan() then indexed `tid * 5 + k` up to 1280 into an
+// array of 320 and every Lite decode segfaulted in the CPU model and read out
+// of bounds on the GPU.  Same lesson as nxs_desc_slots(): derive the bound
+// from the shape rather than remember it.
+// (kWorkgroupSize itself is declared below, with the rest of the dispatch
+// shape; the macro it comes from is the one thing available this early.)
+NXS_CONST int kLiteWgSize = NXVW_PASSA_TILES_PER_GROUP * 8;
+NXS_CONST int kLiteUnitsPerThread =
+    (kMaxUnitsPerTile + kLiteWgSize - 1) / kLiteWgSize;
+NXS_CONST int kLiteUnitsPad = kLiteWgSize * kLiteUnitsPerThread;
 // Groups of kLiteCbfGroup units in section H0: ceil(kMaxUnitsPerTile / 16).
 NXS_CONST int kLiteMaxGroups = 17;
 
@@ -545,6 +606,12 @@ NXS_FN int nxs_band_of(int scan_pos) {
 // ref/src/common.h level_ctx() / level_class().
 NXS_FN int nxs_level_class(int magnitude) {
     return magnitude == 0 ? 0 : (magnitude == 1 ? 1 : 2);
+}
+// [minor 6] ref/src/common.h band_pos(): in a 4x4-split block the 64 scan
+// positions are four concatenated sub-blocks, so a position's frequency band
+// is its position WITHIN its sub-block.
+NXS_FN int nxs_band_pos(int scan_pos, int split) {
+    return split != 0 ? (scan_pos & 15) : scan_pos;
 }
 NXS_FN int nxs_level_ctx(int scan_pos, int prev_class) {
     return kCtxLevelBase + kLevelCtx[nxs_band_of(scan_pos) * 3 + prev_class];
@@ -619,6 +686,15 @@ NXS_FN int nxs_mpm(int left, int above) {
 }
 
 // The `idx`-th of the eight modes OTHER than `mpm`, in ascending mode order.
+NXS_FN int nxs_nonmpm_mode_n(int mpm, int idx, int nmodes) {
+    int n = 0;
+    for (int m = 0; m < nmodes; ++m) {
+        if (m == mpm) continue;
+        if (n == idx) return m;
+        ++n;
+    }
+    return kIntraDcPlane;
+}
 NXS_FN int nxs_nonmpm_mode(int mpm, int idx) {
     int n = 0;
     for (int m = 0; m < kNumIntraModes; ++m) {
@@ -637,6 +713,12 @@ NXS_FN int nxs_mode_word(int p, int b) {
 NXS_FN int nxs_mode_shift(int b) {
     return (b % int(kModesPerUint)) * int(kModeBits);
 }
+
+// [minor 6] Split-flag addressing inside the same per-tile region.
+NXS_FN int nxs_split_word(int p, int b) {
+    return int(kModeWordsPerTile) + p * int(kSplitWordsPerPlane) + (b / 32);
+}
+NXS_FN int nxs_split_shift(int b) { return b % 32; }
 
 // Number of entropy-coded planes in a tile.
 NXS_FN int nxs_coded_planes(int frame_nplanes, int alpha_mode) {

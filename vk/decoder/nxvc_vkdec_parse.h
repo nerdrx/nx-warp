@@ -78,6 +78,8 @@ struct FrameParse {
     // DC-plane residual (frame flags bit 2), and whether signs are hidden.
     int nctx = 12;
     int intra_dir = 0, dir_layer = 0, sdh = 0;
+    // [minor 6] XFORM_4X4_SPLIT (tool bit 19) and INTRA_CFL (tool bit 24).
+    int split4 = 0, cfl = 0;
     uint32_t tools = 0;   // Pass A's `tools` push constant, kToolFlag*
 
     // Pass A inputs.

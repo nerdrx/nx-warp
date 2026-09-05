@@ -460,7 +460,7 @@ bool runGpu(Ctx &c, const Scene &sc, GpuResult &out, int repeats,
     stageBytes = std::max(
         stageBytes,
         (VkDeviceSize)ntiles *
-            std::max<VkDeviceSize>(NXVW_MODE_WORDS_PER_TILE, 1) *
+            std::max<VkDeviceSize>(NXVW_MODE_REGION_UINTS, 1) *
             sizeof(uint32_t));
 
     Buf stage = createBuffer(c, stageBytes,
@@ -477,7 +477,7 @@ bool runGpu(Ctx &c, const Scene &sc, GpuResult &out, int repeats,
     // [v3] binding 7: the per-block intra modes; binding 8: the workgroup ->
     // tile map, which this harness always fills with the identity.
     VkDeviceSize modeBytes =
-        (VkDeviceSize)ntiles * NXVW_MODE_WORDS_PER_TILE * sizeof(uint32_t);
+        (VkDeviceSize)ntiles * NXVW_MODE_REGION_UINTS * sizeof(uint32_t);
     VkDeviceSize orderBytes = (VkDeviceSize)ntiles * sizeof(uint32_t);
     // [sparse] binding 9: the per-unit coefficient counts.
     VkDeviceSize lenBytes =
@@ -503,7 +503,7 @@ bool runGpu(Ctx &c, const Scene &sc, GpuResult &out, int repeats,
     upload(bWgt, sc.weights.data(), wgtBytes);
     {
         std::vector<uint32_t> modes(sc.modes);
-        modes.resize((size_t)ntiles * NXVW_MODE_WORDS_PER_TILE, 0u);
+        modes.resize((size_t)ntiles * NXVW_MODE_REGION_UINTS, 0u);
         upload(bModes, modes.data(), modeBytes);
         std::vector<uint32_t> order((size_t)ntiles);
         for (int i = 0; i < ntiles; ++i) order[(size_t)i] = (uint32_t)i;

@@ -68,7 +68,8 @@ struct Outputs {
     int16_t *coef = nullptr;    // num_tiles * coef_stride
     uint32_t *cbf = nullptr;    // num_tiles * cbf_words
     uint32_t *status = nullptr; // num_tiles
-    // [v3] num_tiles * kModeWordsPerTile packed intra modes, 4 bits per block.
+    // [v3] num_tiles * kModeRegionUints uints: the packed intra modes (4 bits
+    // per block) followed by the [minor 6] per-block 4x4 split flags (1 bit).
     // Required whenever any descriptor names a mode region, which the host
     // always does; a caller that never sets kToolFlagIntraDir still needs it,
     // because the kernel zeroes the region unconditionally.

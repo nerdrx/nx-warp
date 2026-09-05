@@ -77,7 +77,7 @@ void check_constants() {
         expect(nxs_band_of(p) == nxvc::band_of(p), "band_of");
         expect(nxs_last_class_of(p) == nxvc::last_class_of(p), "last_class_of");
         for (int pc = 0; pc < 3; ++pc)
-            expect(nxs_level_ctx(p, pc) == nxvc::level_ctx(p, pc), "level_ctx");
+            expect(nxs_level_ctx(p, pc) == nxvc::level_ctx(p, pc, 0), "level_ctx");
     }
     for (int m = 0; m < 40; ++m)
         expect(nxs_level_class(m) == nxvc::level_class(m), "level_class");
@@ -229,7 +229,7 @@ void check_streams() {
         // nxvc-passA-test and end-to-end by vk.decoder.conformance.
         in.sparse = 0;
 
-        std::vector<uint32_t> modes(kModeWordsPerTile, 0);
+        std::vector<uint32_t> modes(kModeRegionUints, 0);
         Outputs out;
         out.coef = got.data();
         out.cbf = cbf.data();

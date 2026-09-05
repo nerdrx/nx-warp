@@ -57,6 +57,9 @@ NXVW_CONST kScanZigzag8 = 0;
 NXVW_CONST kScanRaster8 = 1;
 NXVW_CONST kScanZigzag4 = 2;
 NXVW_CONST kScanSmall = 3;
+// [minor 6] XFORM_4X4_SPLIT: four concatenated 4x4 sub-blocks, each in its own
+// zigzag.  [REF] ref/src/tables.cpp kScan4Split, passA's kScan4Split id.
+NXVW_CONST kScan4Split = 4;
 
 NXVW_ARR(int, kInvZigzag8, 64)
      0,  1,  5,  6, 14, 15, 27, 28,  2,  4,  7, 13, 16, 26, 29, 42,
@@ -67,6 +70,13 @@ NXVW_ARR_END
 
 NXVW_ARR(int, kInvZigzag4, 16)
      0,  1,  5,  6,  2,  4,  7, 12,  3,  8, 11, 13,  9, 10, 14, 15
+NXVW_ARR_END
+
+NXVW_ARR(int, kInvScan4Split, 64)
+      0,   1,   5,   6,  16,  17,  21,  22,   2,   4,   7,  12,  18,  20,  23,  28,
+      3,   8,  11,  13,  19,  24,  27,  29,   9,  10,  14,  15,  25,  26,  30,  31,
+     32,  33,  37,  38,  48,  49,  53,  54,  34,  36,  39,  44,  50,  52,  55,  60,
+     35,  40,  43,  45,  51,  56,  59,  61,  41,  42,  46,  47,  57,  58,  62,  63
 NXVW_ARR_END
 
 // [REF] common.h scan_table(): which scan a unit of `ncoef` coefficients uses.
@@ -82,6 +92,7 @@ NXVW_FN nxvw_scan_id(int ncoef, int tskip) {
 NXVW_FN nxvw_scan_pos(int scan_id, int pos) {
     if (scan_id == kScanZigzag8) return kInvZigzag8[pos];
     if (scan_id == kScanZigzag4) return kInvZigzag4[pos];
+    if (scan_id == kScan4Split) return kInvScan4Split[pos];
     return pos;
 }
 
@@ -234,6 +245,11 @@ NXVW_CONST kIntraDdl = 5;      // diagonal down-left, 45 deg
 NXVW_CONST kIntraDdr = 6;      // diagonal down-right, 45 deg
 NXVW_CONST kIntraVr = 7;       // vertical-right, 26.6 deg
 NXVW_CONST kIntraHd = 8;       // horizontal-down, 63.4 deg
+// [minor 6] INTRA_CFL (tool bit 24), CHROMA ONLY: a linear model of the
+// co-located reconstructed luma, fitted to the block's own reconstructed
+// neighbours.  [REF] ref/src/common.h kIntraCfl, codec.cpp cfl_fit /
+// cfl_luma, docs/SYNTAX.md 7.7.
+NXVW_CONST kIntraCfl = 9;
 NXVW_CONST kNumIntraModes = 9;
 
 // [SYN] 7.4: the reference arrays run A[-1..15] and L[-1..15] with A[-1] ==
@@ -285,6 +301,27 @@ NXVW_CONST kIntraTap3Round = 2;  // (a + 2b + c + 2) >> 2
 NXVW_CONST kIntraTap3Shift = 2;
 NXVW_CONST kIntraTap2Round = 1;  // (a + b + 1) >> 1
 NXVW_CONST kIntraTap2Shift = 1;
+
+// [minor 6] INTRA_CFL.  The fit reads the block's 2n reconstructed neighbours
+// -- 16 at the 8x8 block -- takes the mean of the two smallest and the two
+// largest co-located luma values, and divides by their difference through
+// kCflRecip[d] = round(2^15 / d).  The slope is Q8 and clamped to +-8.0.
+// [REF] ref/src/common.h kCflRecip / kCflAlpha*, docs/SYNTAX.md 7.7.
+NXVW_CONST kCflPairs = 16;
+NXVW_CONST kCflAlphaBits = 8;
+NXVW_CONST kCflAlphaMax = 2048;   // 8 << kCflAlphaBits
+NXVW_CONST kCflRecipShift = 7;    // Q15 product -> Q8 slope
+NXVW_CONST kCflRecipRound = 64;
+NXVW_CONST kCflPredRound = 128;   // (alpha * dl + 128) >> 8
+
+// [minor 6] XFORM_4X4_SPLIT.  The inverse 4-point DCT of 6.8; the 1D inverse
+// matrix rows are +-{kD0, kD1, kD0, kD2} and +-{kD0, kD2, -kD0, -kD1}, so the
+// 1D gain is 2^10 exactly as the 8-point core's and the two-pass shift chain
+// is the SAME one the 8x8 uses (kIdctShift1/2).  [REF] ref/src/transform.h
+// kD0/kD1/kD2 and transform.cpp kInvShift1[0] == 7, kInvShift2[0] == 13.
+NXVW_CONST kD0 = 512;
+NXVW_CONST kD1 = 669;
+NXVW_CONST kD2 = 277;
 
 // [SYN] 8, the one resampling kernel: Q4 coordinates, integer weights,
 // (p00*wx0*wy0 + p01*fx*wy0 + p10*wx0*fy + p11*fx*fy + 128) >> 8, source

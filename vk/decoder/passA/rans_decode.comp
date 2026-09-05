@@ -137,6 +137,9 @@ shared uint s_end[kMaxSlots];            // one past the last payload byte
 shared uint s_ok[kMaxSlots];             // status accumulator
 shared int s_active[kMaxSlots];          // min(LANES, nunits): initialised rANS lanes
 shared int s_mode_base[kMaxSlots];       // uint index of the tile's mode words
+// [minor 6] tile-header word1 bit 28: this tile codes per-block 4x4 split
+// flags.  Zero unless tool bit 19 is on AND the tile sets the bit.
+shared int s_split4[kMaxSlots];
 
 // [sparse] Unit lengths are accumulated here and flushed once at the end.
 // Four neighbouring units belong to four different lanes, so the write has to
@@ -202,6 +205,9 @@ const int kPhCbf = 0, kPhLast = 1, kPhLastRaw = 2, kPhLevel = 3;
 const int kPhEscPrefix = 4, kPhEscSuffix = 5, kPhSign = 6, kPhDone = 7;
 // [v3] mode-unit phases, ref/src/entropy.h LaneMachine::Phase.
 const int kPhModeSym = 8, kPhModeFlag = 9, kPhModeIdx = 10;
+// [minor 6] XFORM_4X4_SPLIT: the 1-bit flag a coded block unit sends between
+// its CBF and its LAST.  [REF] ref/src/entropy.cpp LaneMachine::kSplit.
+const int kPhSplit = 11;
 
 int  g_phase;
 int  g_ui;        // current unit index
@@ -226,6 +232,16 @@ int  g_u_modes;   // mode unit: uint index of this plane's mode words
 int  g_mb;        // mode unit: block being decoded
 int  g_mpm;       // mode unit: its most probable mode
 // [v3] sign data hiding, SYNTAX.md 9.7.
+// [minor 6] XFORM_4X4_SPLIT.  `g_u_split_present` is the unit's right to code
+// a split flag (a block unit of a tile whose word1 bit 28 is set); `g_split`
+// is the flag it decoded, which redirects the scan and the LEVEL banding.
+int  g_u_split_present;
+int  g_split;
+int  g_u_pidx;    // the plane this unit belongs to, for the split word
+int  g_u_blk;     // ... and the block index inside that plane
+// [minor 6] INTRA_CFL: the mode unit's alphabet, 9 or 10.  It is per PLANE,
+// not per stream: only chroma gains mode 9.
+int  g_u_nmodes;
 int  g_u_sdh;     // 1 when this unit may hide a sign
 int  g_hide;      // ... and whether it actually does (LAST >= kSdhMinLast)
 int  g_sum_abs;   // running sum of |level| over the unit
@@ -270,6 +286,14 @@ void store_mode(int b, int mode) {
     u_modes.data[idx] = (w & ~(kModeMask << sh)) | ((uint(mode) & kModeMask) << sh);
 }
 
+// [minor 6] Publish this block's 4x4 split flag to Pass B.  Blocks of one
+// plane are spread over every lane, so unlike a mode word this one IS shared
+// and the write must be an atomicOr into the pre-zeroed region.
+void store_split(int p, int b) {
+    atomicOr(u_modes.data[uint(s_mode_base[g_slot] + nxs_split_word(p, b))],
+             1u << uint(nxs_split_shift(b)));
+}
+
 // [REF] entropy.cpp mpm_of(): left and above inside the same unit.
 int mpm_now() {
     int bx = g_mb % g_u_nbx, by = g_mb / g_u_nbx;
@@ -297,6 +321,11 @@ void begin_unit() {
     bool dir = (pc.tools & kToolFlagIntraDir) != 0u;
     g_u_sdh = (pc.tools & kToolFlagSignHide) != 0u ? 1 : 0;
     g_u_ctx_mode = kCtxNone;
+    // [minor 6] Only a residual block unit carries a split flag; the DC-plane
+    // and mode units clear it here so no path can inherit a stale one.
+    g_u_split_present = 0;
+    g_split = 0;
+    g_u_pidx = p;
 
     // [SYN] 9.1 unit order inside a plane: DC plane, [mode unit], then the
     // nb*nb block units.  [REF] TileCoder::build_units().
@@ -320,6 +349,9 @@ void begin_unit() {
         g_u_nbx = nb;
         g_u_modes = s_mode_base[g_slot] + p * int(kModeWordsPerPlane);
         g_u_ctx_mode = ctx_v2 ? kCtxMode : kCtxNone;
+        // [minor 6] INTRA_CFL adds mode 9 to the CHROMA alphabet only.
+        g_u_nmodes = ((pc.tools & kToolFlagCfl) != 0u && chroma != 0)
+                         ? kNumIntraModesCfl : kNumIntraModes;
         g_mb = 0;
         // ref/src/entropy.cpp begin_unit() skips an empty mode unit here.  A
         // coded plane's edge is at least kMinChromaSize, so nb >= 1 always and
@@ -338,6 +370,11 @@ void begin_unit() {
     g_u_ctx_cbf = chroma != 0 ? kCtxCbfChroma : kCtxCbfLuma;
     g_u_ctx_last = chroma != 0 ? kCtxLastChroma : kCtxLastLuma;
     g_u_ctx_level = kCtxNone;
+    // [minor 6] [REF] build_units(): split_present is the tile's flag, and it
+    // is only ever set at the 8x8 transform, so no unit larger than 64
+    // coefficients can carry one.
+    g_u_split_present = s_split4[g_slot];
+    g_u_blk = b;
     g_phase = kPhCbf;
 }
 
@@ -415,13 +452,19 @@ bool lane_next(out int out_kind, out int out_arg) {
     if (g_phase == kPhLastRaw) {
         out_kind = 1; out_arg = kLastRawBits[g_last_cls]; return true;
     }
+    // [minor 6] the 4x4-split flag: one bypass bit, after a nonzero CBF.
+    if (g_phase == kPhSplit) { out_kind = 1; out_arg = 1; return true; }
     if (g_phase == kPhLevel) {
         // [SYN] 9.3 / [REF] entropy.cpp kLevel: a unit that names its own
         // LEVEL context uses it; kCtxNone means the banded derivation.
+        // [minor 6] In a SPLIT block the 64 scan positions are four
+        // concatenated 4x4 sub-blocks, so the frequency band of a position is
+        // its position inside its own sub-block.  [REF] common.h band_pos().
         out_kind = 0;
         out_arg = g_u_ctx_level != kCtxNone
                       ? g_u_ctx_level
-                      : nxs_level_ctx(g_pos_sp, g_prev_class);
+                      : nxs_level_ctx(nxs_band_pos(g_pos_sp, g_split),
+                                      g_prev_class);
         return true;
     }
     if (g_phase == kPhModeSym) { out_kind = 0; out_arg = g_u_ctx_mode; return true; }
@@ -472,8 +515,9 @@ void lane_feed(uint v) {
     if (g_phase == kPhModeSym) {
         // [SYN] 9.6: symbol 0 is the MPM, 1..8 name the other eight modes in
         // ascending order.  9..15 are illegal.
-        if (v >= uint(kNumIntraModes)) { fail(kStatusBadSymbol); return; }
-        mode_step(v == 0u ? g_mpm : nxs_nonmpm_mode(g_mpm, int(v) - 1));
+        if (v >= uint(g_u_nmodes)) { fail(kStatusBadSymbol); return; }
+        mode_step(v == 0u ? g_mpm
+                          : nxs_nonmpm_mode_n(g_mpm, int(v) - 1, g_u_nmodes));
         return;
     }
     if (g_phase == kPhModeFlag) {
@@ -483,8 +527,8 @@ void lane_feed(uint v) {
         return;
     }
     if (g_phase == kPhModeIdx) {
-        if (v > 7u) { fail(kStatusBadSymbol); return; }
-        mode_step(nxs_nonmpm_mode(g_mpm, int(v)));
+        if (v >= uint(g_u_nmodes - 1)) { fail(kStatusBadSymbol); return; }
+        mode_step(nxs_nonmpm_mode_n(g_mpm, int(v), g_u_nmodes));
         return;
     }
     if (g_phase == kPhCbf) {
@@ -495,6 +539,22 @@ void lane_feed(uint v) {
         }
         atomicOr(u_cbf.data[g_cbf_off + uint(g_ui) / 32u],
                  1u << (uint(g_ui) & 31u));
+        // [minor 6] [REF] entropy.cpp feed(kCbf): the split flag comes
+        // between the CBF and the LAST, and only on a coded unit.
+        if (g_u_split_present != 0) { g_phase = kPhSplit; return; }
+        if (g_u_ncoef == 1) { g_last = 0; begin_levels(); return; }
+        g_phase = kPhLast;
+        return;
+    }
+    if (g_phase == kPhSplit) {
+        if (v > 1u) { fail(kStatusBadSymbol); return; }
+        g_split = int(v);
+        if (g_split != 0) {
+            // The split block's coefficients are scanned as four 4x4
+            // sub-blocks; everything downstream follows from the scan id.
+            g_u_scan = kScan4Split;
+            store_split(g_u_pidx, g_u_blk);
+        }
         if (g_u_ncoef == 1) { g_last = 0; begin_levels(); return; }
         g_phase = kPhLast;
         return;
@@ -707,6 +767,8 @@ void lite_main() {
         uint v = p;  // kScanRaster8 / kScanSmall are the identity
         if (t == uint(kScanZigzag8)) v = uint(kZigzag8[p]);
         else if (t == uint(kScanZigzag4)) v = (p < 16u) ? uint(kZigzag4[p]) : p;
+        // [minor 6] the 4x4-split scan of 6.8, four concatenated sub-blocks.
+        else if (t == uint(kScan4Split)) v = uint(kScan4SplitTab[p]);
         s_scan[i] = v;
     }
 
@@ -723,6 +785,10 @@ void lite_main() {
         uint variant = (w1 >> kThTableSetShift) & kThTableSetMask;
         uint nsub_log2 = (w1 >> kThNsubLog2Shift) & kThNsubLog2Mask;
         s_tskip[0] = int((w1 >> kThTskipShift) & kThTskipMask);
+        // [minor 6] The Lite syntax codes no split flag ([REF]
+        // entropy_lite.cpp never reads Unit::split_present), so a Lite tile
+        // has none and the split words stay zero.
+        s_split4[0] = 0;
 
         uint pay = nxs_tile_payload_offset(hdr_off, w1);
         uint paylen = (w0 >> kThPayloadLenShift) & kThPayloadLenMask;
@@ -776,7 +842,7 @@ void lite_main() {
     }
     for (uint i = tid; i < pc.cbf_words; i += kWorkgroupSize)
         u_cbf.data[g_cbf_off + i] = 0u;
-    for (uint i = tid; i < kModeWordsPerTile; i += kWorkgroupSize)
+    for (uint i = tid; i < kModeRegionUints; i += kWorkgroupSize)
         u_modes.data[uint(s_mode_base[0]) + i] = 0u;
     barrier();
 
@@ -998,6 +1064,8 @@ void main() {
         uint v = p;  // kScanRaster8 / kScanSmall are the identity
         if (t == uint(kScanZigzag8)) v = uint(kZigzag8[p]);
         else if (t == uint(kScanZigzag4)) v = (p < 16u) ? uint(kZigzag4[p]) : p;
+        // [minor 6] the 4x4-split scan of 6.8, four concatenated sub-blocks.
+        else if (t == uint(kScan4Split)) v = uint(kScan4SplitTab[p]);
         s_scan[i] = v;
     }
     if (in_group && lane == 0) {
@@ -1035,6 +1103,12 @@ void main() {
         uint nsub_log2 = (w1 >> kThNsubLog2Shift) & kThNsubLog2Mask;
         s_tskip[slot] = int((w1 >> kThTskipShift) & kThTskipMask);
         s_tabbase[slot] = table_set * uint(kNumCtx * kNumSym);
+        // [minor 6] word1 bit 28.  Meaningful only with tool bit 19, and
+        // mutually exclusive with transform skip, whose 64 coded values are
+        // samples in raster order and have no sub-block structure
+        // (docs/SYNTAX.md 4.1, 6.8).
+        int sp4 = int((w1 >> kThSplit4Shift) & kThSplit4Mask);
+        s_split4[slot] = sp4;
 
         // Payload start accounts for the optional MV / alpha bytes, and the
         // payload is bounded by payload_len as well as by the tile length.
@@ -1076,6 +1150,8 @@ void main() {
 
         if (nxs_tile_header_reserved_bad(w0, w1) != 0 ||
             (1u << nsub_log2) != LANES ||
+            (sp4 != 0 && ((pc.tools & kToolFlagSplit4) == 0u ||
+                          s_tskip[slot] != 0)) ||
             pay + uint(nactive) * kInitBytesPerLane > s_end[slot]) {
             s_ok[slot] = kStatusBadHeader;
         }
@@ -1100,7 +1176,7 @@ void main() {
         // [v3] The mode words are zeroed unconditionally, whether or not the
         // stream carries modes: mode 0 is the DC-plane predictor, so a zeroed
         // region is exactly "every block predicts as v1 did".
-        for (uint i = uint(lane); i < kModeWordsPerTile; i += LANES)
+        for (uint i = uint(lane); i < kModeRegionUints; i += LANES)
             u_modes.data[uint(s_mode_base[slot]) + i] = 0u;
     }
     barrier();

@@ -911,11 +911,11 @@ nxvc_vkd_status make_resources(D *d) {
         return st;
     if ((st = make_buf(d, d->bWgt, 512 * 4, kSsbo, false))) return st;
     // [v3] Pass A writes the per-block intra modes here and Pass B reads them:
-    // kModeWordsPerTile uints per tile, 128 B, against the coefficient slot's
+    // kModeRegionUints uints per tile, 160 B, against the coefficient slot's
     // 12.5 KB.
     if ((st = make_buf(d, d->bModes,
                        (VkDeviceSize)(ntiles + 64) *
-                           nxwarp_passA::kModeWordsPerTile * 4,
+                           nxwarp_passA::kModeRegionUints * 4,
                        kSsbo, false)))
         return st;
     if ((st = make_buf(d, d->bOrder, (VkDeviceSize)(ntiles + 1) * 4, kSsbo,

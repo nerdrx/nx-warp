@@ -256,7 +256,7 @@ void reconstruct_tile(const PassBInput &in, int tile, TilePlanes &tp,
         int modes[64] = {};
         if (in.modes)
             for (int b = 0; b < ndc && b < 64; ++b) {
-                uint32_t w = in.modes[(size_t)tile * NXVW_MODE_WORDS_PER_TILE +
+                uint32_t w = in.modes[(size_t)tile * NXVW_MODE_REGION_UINTS +
                                       p * NXVW_MODE_WORDS_PER_PLANE +
                                       b / int(NXVW_MODES_PER_UINT)];
                 modes[b] = int((w >> (uint32_t(b % int(NXVW_MODES_PER_UINT)) *

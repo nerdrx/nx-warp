@@ -242,7 +242,7 @@ RunResult run_gpu(const Gpu &g, const Options &opt, const Corpus &c,
         tiles_flat[t * kTileDescUints + kTdBitsLength] = c.tiles[t].bits_length;
         tiles_flat[t * kTileDescUints + kTdCoefOffset] = c.tiles[t].coef_offset;
         tiles_flat[t * kTileDescUints + kTdCbfOffset] = c.tiles[t].cbf_offset;
-        tiles_flat[t * kTileDescUints + kTdModeOffset] = t * kModeWordsPerTile;
+        tiles_flat[t * kTileDescUints + kTdModeOffset] = t * kModeRegionUints;
         tiles_flat[t * kTileDescUints + kTdUnitLenOffset] =
             t * kUnitLenWordsPerTile;
     }
@@ -252,7 +252,7 @@ RunResult run_gpu(const Gpu &g, const Options &opt, const Corpus &c,
     const VkDeviceSize status_bytes = VkDeviceSize(num_tiles) * 4;
     // [v3] binding 6: the per-block intra modes Pass A writes for Pass B.
     const VkDeviceSize mode_bytes =
-        VkDeviceSize(num_tiles) * kModeWordsPerTile * 4;
+        VkDeviceSize(num_tiles) * kModeRegionUints * 4;
     // [sparse] binding 7: one byte per coding unit, LAST + 1.
     const VkDeviceSize ulen_bytes =
         VkDeviceSize(num_tiles) * kUnitLenWordsPerTile * 4;
@@ -459,7 +459,7 @@ RunResult run_gpu(const Gpu &g, const Options &opt, const Corpus &c,
                 std::fprintf(stderr,
                              "  first mode mismatch: word %zu (tile %zu) "
                              "gpu=%08x cpu=%08x\n",
-                             i, i / kModeWordsPerTile, gmodes[i], ref_modes[i]);
+                             i, i / kModeRegionUints, gmodes[i], ref_modes[i]);
             ++res.mode_mismatch;
         }
     if (sparse)
@@ -689,7 +689,7 @@ int main(int argc, char **argv) {
         m.coef.assign(c.expect_coef.size(), sparse ? kCoefFill : int16_t(0));
         m.cbf.assign(c.expect_cbf.size(), 0);
         m.status.assign(c.tiles.size(), 0);
-        m.modes.assign(size_t(c.tiles.size()) * kModeWordsPerTile, 0);
+        m.modes.assign(size_t(c.tiles.size()) * kModeRegionUints, 0);
         m.ulen.assign(size_t(c.tiles.size()) * kUnitLenWordsPerTile, 0);
         Inputs in = corpus_inputs(c, kReadPtrBallot, sparse);
         Outputs o;

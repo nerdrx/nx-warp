@@ -277,17 +277,22 @@ bool read_file(const std::string &path, std::vector<uint8_t> &out) {
 
 const char *vkd_status_token(nxvc_vkd_status st);
 
-// The tool bits this Phase 1 decoder implements.  docs/SYNTAX.md 12: a
-// Phase 1 decoder "rejects ... any tool bit outside the supported set" with a
-// VERSION status, and tests/vectors now also holds the Phase 2 inter vectors,
+// The tool bits this decoder implements.  docs/SYNTAX.md 12: a decoder
+// "rejects ... any tool bit outside the supported set" with a VERSION status,
+// and tests/vectors holds vectors for tools this decoder does not carry yet,
 // which every bit of that set refuses on purpose.  Those are counted as skips
 // rather than failures -- but only when the stream's own tool mask says so and
 // only when the decoder refuses it with exactly VERSION, so a regression that
-// starts refusing a Phase 1 vector still fails.
+// starts refusing a supported vector still fails.
+//
+// This MUST stay equal to kToolsSupported in nxvc_vkdec_parse.cpp.  The skip
+// count of the sweep is exactly "how many vectors this decoder cannot yet
+// speak", so driving it to zero is what finishing the tool set means.
 constexpr uint64_t kPhase1Tools =
     (1ull << 0) | (1ull << 1) | (1ull << 2) | (1ull << 3) | (1ull << 4) |
     (1ull << 5) | (1ull << 6) | (1ull << 7) | (1ull << 8) | (1ull << 9) |
-    (1ull << 17) | (1ull << 20) | (1ull << 21) | (1ull << 22);
+    (1ull << 17) | (1ull << 19) | (1ull << 20) | (1ull << 21) |
+    (1ull << 22) | (1ull << 24);
 
 // docs/SYNTAX.md 11: `tools` is a u64 at byte 32 of the 64-byte stream header.
 bool stream_needs_phase2(const std::vector<uint8_t> &s, uint64_t &tools) {

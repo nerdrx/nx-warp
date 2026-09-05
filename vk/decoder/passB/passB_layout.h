@@ -177,6 +177,15 @@ struct NxvwPassBPush {
 #define NXVW_MODE_WORDS_PER_PLANE 8
 #define NXVW_MODE_WORDS_PER_TILE 32
 
+// [minor 6] XFORM_4X4_SPLIT (tool bit 19): the per-block split flags share the
+// same per-tile region, one BIT per block, 32 blocks to a uint, two uints per
+// plane, immediately after the mode words.  A split flag exists whether or not
+// INTRA_DIR does, so it cannot live inside the mode field.  These MUST equal
+// the kSplit* constants in passA/syntax_constants.h.
+#define NXVW_SPLIT_WORDS_PER_PLANE 2
+#define NXVW_SPLIT_WORDS_PER_TILE 8
+#define NXVW_MODE_REGION_UINTS 40
+
 // ------------------------------------------------------------- unit lengths
 // [sparse] Pass A stores a unit's coefficients in SCAN order at slots
 // [0, LAST] of the same reserved region the dense layout used, and publishes

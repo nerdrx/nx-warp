@@ -104,7 +104,7 @@ inline bool build_corpus(const CorpusConfig &cfg, Corpus &out) {
     // Second pass: encode, and lay out the expected outputs.
     out.expect_coef.assign(size_t(cfg.num_tiles) * stride, 0);
     out.expect_cbf.assign(size_t(cfg.num_tiles) * out.cbf_words, 0);
-    out.expect_modes.assign(size_t(cfg.num_tiles) * kModeWordsPerTile, 0);
+    out.expect_modes.assign(size_t(cfg.num_tiles) * kModeRegionUints, 0);
     out.tiles.resize(cfg.num_tiles);
     out.bits.clear();
     out.bits.reserve(size_t(cfg.num_tiles) * 512);
@@ -126,7 +126,7 @@ inline bool build_corpus(const CorpusConfig &cfg, Corpus &out) {
         out.tiles[t].bits_length = uint32_t(tilebuf.size());
         out.tiles[t].coef_offset = t * stride;
         out.tiles[t].cbf_offset = t * out.cbf_words;
-        out.tiles[t].mode_offset = t * kModeWordsPerTile;
+        out.tiles[t].mode_offset = t * kModeRegionUints;
         out.tiles[t].unit_len_offset = t * kUnitLenWordsPerTile;
         out.bits.insert(out.bits.end(), tilebuf.begin(), tilebuf.end());
 
@@ -144,7 +144,7 @@ inline bool build_corpus(const CorpusConfig &cfg, Corpus &out) {
 
         // [entropy-lite] The intra modes, packed as binding 6 carries them.
         if (cfg.intra_dir) {
-            uint32_t *mw = out.expect_modes.data() + size_t(t) * kModeWordsPerTile;
+            uint32_t *mw = out.expect_modes.data() + size_t(t) * kModeRegionUints;
             for (const UnitInfo &ui : units[t]) {
                 if (ui.kind != 1) continue;
                 int p = ui.mode_base / int(kModesPerPlane);

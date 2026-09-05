@@ -168,16 +168,21 @@ constexpr uint64_t kToolsSupported =
     (1ull << 8) |  // PER_TILE_CHROMA
     (1ull << 9) |  // YCOCGR
     (1ull << 17) | // INTRA_DIR: directional intra          [v3]
+    (1ull << 19) | // XFORM_4X4_SPLIT: per-block 4x4 split  [minor 6]
     (1ull << 20) | // WM_ID: per-tile weighting-matrix override
     (1ull << 21) | // CTX_V2: the 16-context entropy model  [v3]
-    (1ull << 22);  // SIGN_HIDE: sign data hiding           [v3]
-// Deliberately absent: bit 24 XFORM_LARGE (SYNTAX.md 6.7).  Pass A's unit
-// walker and Pass B's block loop are written for 64-coefficient blocks; until
-// they carry the 16x16 and 32x32 forms this decoder refuses such a stream at
-// the handshake rather than mis-decoding it.
+    (1ull << 22) | // SIGN_HIDE: sign data hiding           [v3]
+    (1ull << 24);  // INTRA_CFL: chroma from luma           [minor 6]
+// Deliberately absent: bit 25 CTX_V3, bit 26 TAB_V2, bit 27 XFORM_LARGE and
+// the Phase 2 inter bits.  Pass A's context derivation is the 16-context one
+// and Pass B's block loop is written for 64-coefficient blocks; until they
+// carry the wider forms this decoder refuses such a stream at the handshake
+// rather than mis-decoding it.  docs/TOOLBITS.md 7.
 constexpr uint64_t kToolLossless = 1ull << 5;
 constexpr uint64_t kToolIntraDir = 1ull << 17;
 constexpr uint64_t kToolCtxV2 = 1ull << 21;
+constexpr uint64_t kToolSplit4 = 1ull << 19;
+constexpr uint64_t kToolCfl = 1ull << 24;
 constexpr uint64_t kToolSignHide = 1ull << 22;
 constexpr uint64_t kToolNsubVar = 1ull << 7;
 constexpr uint64_t kToolResLevel = 1ull << 2;
@@ -358,8 +363,15 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
     fp.nctx = (si.tools & kToolCtxV2) ? kNumCtxV2 : kNumCtxV1;
     fp.intra_dir = (si.tools & kToolIntraDir) ? 1 : 0;
     fp.sdh = (si.tools & kToolSignHide) ? 1 : 0;
+    fp.split4 = (si.tools & kToolSplit4) ? 1 : 0;
+    fp.cfl = (si.tools & kToolCfl) ? 1 : 0;
     fp.dir_layer = (flags >> 2) & 1;
     if (fp.dir_layer && !fp.intra_dir) return NXVC_VKD_ERR_BITSTREAM;
+    // [SYN] 7.7: CFL is a mode inside the CTX_V2 mode symbol of the REPLACE
+    // form of directional intra, and none of the three is optional for it.
+    // [REF] codec_impl.inc parse_frame_header(), same place, same order.
+    if (fp.cfl && (!fp.intra_dir || fp.nctx < kNumCtxV2 || fp.dir_layer))
+        return NXVC_VKD_ERR_BITSTREAM;
     uint32_t frame_bytes = br.u32v();
     if (!br.ok) return NXVC_VKD_ERR_TRUNCATED;
     if (fp.base_qp > 63) return NXVC_VKD_ERR_BITSTREAM;
@@ -401,7 +413,9 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
     fp.cbf_words = kCbfWordsPerTile;
     fp.tools = (fp.nctx >= kNumCtxV2 ? kToolFlagCtxV2 : 0u) |
                (fp.intra_dir ? kToolFlagIntraDir : 0u) |
-               (fp.sdh ? kToolFlagSignHide : 0u);
+               (fp.sdh ? kToolFlagSignHide : 0u) |
+               (fp.split4 ? kToolFlagSplit4 : 0u) |
+               (fp.cfl ? kToolFlagCfl : 0u);
 
     const uint32_t ntiles = si.tile_count;
     fp.recs.assign(ntiles, NxvwTileRec{0, 0, 0, 0xffffffffu});
@@ -466,10 +480,12 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
             const uint32_t mv_present = (w1 >> 20) & 1u;
             const uint32_t tskip = (w1 >> 23) & 1u;
             const uint32_t wm_id = (w1 >> 26) & 3u;
+            const uint32_t split4x4 = (w1 >> 28) & 1u;
 
             // Exactly the reference's checks, in the reference's order.
             if ((w0 >> 3) & 1) return NXVC_VKD_ERR_BITSTREAM;
-            if (w1 >> 28) return NXVC_VKD_ERR_BITSTREAM;
+            // [minor 6] word1 bit 28 is `split4x4`; 29-31 stay reserved.
+            if (w1 >> 29) return NXVC_VKD_ERR_BITSTREAM;
             if (layer != 0 || eye != 0) return NXVC_VKD_ERR_UNSUPPORTED;
             if (mode > 4) return NXVC_VKD_ERR_BITSTREAM;
             if (mode != 3) return NXVC_VKD_ERR_UNSUPPORTED;  // INTRA only
@@ -484,6 +500,13 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
                 return NXVC_VKD_ERR_BITSTREAM;
             if (wm_id != 0 && !(si.tools & kToolWmId))
                 return NXVC_VKD_ERR_BITSTREAM;
+            // [minor 6] docs/TOOLBITS.md 4.2 / SYNTAX.md 4.1: the split flag
+            // needs its tool, and is mutually exclusive with transform skip,
+            // whose 64 coded values are samples in raster order and have no
+            // sub-block structure.
+            if (split4x4 && !(si.tools & kToolSplit4))
+                return NXVC_VKD_ERR_BITSTREAM;
+            if (split4x4 && tskip) return NXVC_VKD_ERR_BITSTREAM;
             // A frame that carries its own matrices leaves no room for a
             // built-in override: the two would silently disagree.
             if (wm_id != 0 && fp.quant_matrix == 255)
@@ -515,7 +538,7 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
             d.bits_length = (uint32_t)(off - hdr_off);
             d.coef_offset = tindex * fp.coef_stride;
             d.cbf_offset = tindex * fp.cbf_words;
-            d.mode_offset = tindex * kModeWordsPerTile;
+            d.mode_offset = tindex * kModeRegionUints;
             d.unit_len_offset = tindex * kUnitLenWordsPerTile;
             by_lane[nsub_log2].push_back(d);
             lane_tile[nsub_log2].push_back(tindex);

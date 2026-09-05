@@ -31,7 +31,7 @@ int check(const char *name, const CorpusConfig &cfg) {
         // GPU-against-model, and vk.decoder.conformance end to end.
         Inputs in = corpus_inputs(c, mode, /*sparse=*/0);
         std::vector<uint32_t> modes(size_t(c.tiles.size()) *
-                                    kModeWordsPerTile, 0);
+                                    kModeRegionUints, 0);
         Outputs out;
         out.coef = coef.data();
         out.cbf = cbf.data();

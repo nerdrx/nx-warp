@@ -27,6 +27,8 @@ struct Shared {
     int coef_base[kMaxSlots * kMaxPlanes];
     int nunits[kMaxSlots];
     int tskip[kMaxSlots];
+    // [minor 6] tile-header word1 bit 28, XFORM_4X4_SPLIT.
+    int split4[kMaxSlots];
     int active[kMaxSlots];
     int mode_base[kMaxSlots];
     // [sparse] Unit lengths, accumulated per tile slot and flushed once.
@@ -73,6 +75,11 @@ struct Thread {
     // unit without a state machine and needs the kind as a field.
     int u_kind;
     int u_nbx, u_modes, mb, mpm;
+    // [minor 6] XFORM_4X4_SPLIT: the unit's right to code a split flag, the
+    // flag it decoded, and the plane/block the flag belongs to.
+    int u_split_present, split, u_pidx, u_blk;
+    // [minor 6] INTRA_CFL: the mode unit's alphabet, 9 or 10 (chroma only).
+    int u_nmodes;
     // [v3] sign data hiding, SYNTAX.md 9.7.
     int u_sdh, hide, sum_abs, hide_mag;
     int slot;
@@ -92,6 +99,8 @@ constexpr int kPhCbf = 0, kPhLast = 1, kPhLastRaw = 2, kPhLevel = 3;
 constexpr int kPhEscPrefix = 4, kPhEscSuffix = 5, kPhSign = 6, kPhDone = 7;
 // [v3] mode-unit phases, ref/src/entropy.h LaneMachine::Phase.
 constexpr int kPhModeSym = 8, kPhModeFlag = 9, kPhModeIdx = 10;
+// [minor 6] XFORM_4X4_SPLIT's 1-bit flag between the CBF and the LAST.
+constexpr int kPhSplit = 11;
 
 // ---------------------------------------------------------------------------
 // Bitstream access
@@ -150,6 +159,15 @@ void store_mode(Ctx &c, const Thread &g, int b, int mode) {
         (w & ~(kModeMask << sh)) | ((uint32_t(mode) & kModeMask) << sh);
 }
 
+// [minor 6] Publish a block's 4x4 split flag to Pass B.  Blocks of one plane
+// are spread over every lane, so unlike a mode word this one is shared and
+// the shader's write is an atomicOr; the model is single-threaded per round
+// and reproduces the same value.
+void store_split(Ctx &c, const Thread &g, int p, int b) {
+    c.out->modes[uint32_t(c.sh.mode_base[g.slot] + nxs_split_word(p, b))] |=
+        1u << uint32_t(nxs_split_shift(b));
+}
+
 // [REF] entropy.cpp mpm_of(): left and above inside the same unit.
 int mpm_now(Ctx &c, const Thread &g) {
     int bx = g.mb % g.u_nbx, by = g.mb / g.u_nbx;
@@ -179,6 +197,9 @@ void begin_unit(Ctx &c, Thread &g) {
     const bool dir = (c.in->tools & kToolFlagIntraDir) != 0u;
     g.u_sdh = (c.in->tools & kToolFlagSignHide) != 0u ? 1 : 0;
     g.u_ctx_mode = kCtxNone;
+    g.u_split_present = 0;
+    g.split = 0;
+    g.u_pidx = p;
 
     if (k == 0) {
         g.u_ncoef = ndc;
@@ -196,6 +217,8 @@ void begin_unit(Ctx &c, Thread &g) {
         g.u_nbx = nb;
         g.u_modes = c.sh.mode_base[g.slot] + p * int(kModeWordsPerPlane);
         g.u_ctx_mode = ctx_v2 ? kCtxMode : kCtxNone;
+        g.u_nmodes = ((c.in->tools & kToolFlagCfl) != 0u && chroma != 0)
+                         ? kNumIntraModesCfl : kNumIntraModes;
         g.mb = 0;
         g.mpm = mpm_now(c, g);
         g.phase = g.u_ctx_mode != kCtxNone ? kPhModeSym : kPhModeFlag;
@@ -208,6 +231,8 @@ void begin_unit(Ctx &c, Thread &g) {
     g.u_ctx_cbf = chroma != 0 ? kCtxCbfChroma : kCtxCbfLuma;
     g.u_ctx_last = chroma != 0 ? kCtxLastChroma : kCtxLastLuma;
     g.u_ctx_level = kCtxNone;
+    g.u_split_present = c.sh.split4[g.slot];
+    g.u_blk = b;
     g.phase = kPhCbf;
 }
 
@@ -260,6 +285,8 @@ void lane_init(Ctx &c, Thread &g, int lane) {
     g.u_ctx_level = kCtxNone; g.u_ctx_mode = kCtxNone;
     g.u_nbx = 0; g.u_modes = 0; g.mb = 0; g.mpm = 0;
     g.u_sdh = 0; g.hide = 0; g.sum_abs = 0; g.hide_mag = 0;
+    g.u_split_present = 0; g.split = 0; g.u_pidx = 0; g.u_blk = 0;
+    g.u_nmodes = kNumIntraModes;
     if (g.ui >= g.nunits) { g.phase = kPhDone; return; }
     begin_unit(c, g);
 }
@@ -272,11 +299,14 @@ bool lane_next(const Thread &g, int &out_kind, int &out_arg) {
     if (g.phase == kPhLastRaw) {
         out_kind = 1; out_arg = kLastRawBits[g.last_cls]; return true;
     }
+    // [minor 6] the 4x4-split flag: one bypass bit, after a nonzero CBF.
+    if (g.phase == kPhSplit) { out_kind = 1; out_arg = 1; return true; }
     if (g.phase == kPhLevel) {
         out_kind = 0;
         out_arg = g.u_ctx_level != kCtxNone
                       ? g.u_ctx_level
-                      : nxs_level_ctx(g.pos_sp, g.prev_class);
+                      : nxs_level_ctx(nxs_band_pos(g.pos_sp, g.split),
+                                      g.prev_class);
         return true;
     }
     if (g.phase == kPhModeSym) { out_kind = 0; out_arg = g.u_ctx_mode; return true; }
@@ -319,8 +349,10 @@ void mode_step(Ctx &c, Thread &g, int mode) {
 
 void lane_feed(Ctx &c, Thread &g, uint32_t v) {
     if (g.phase == kPhModeSym) {
-        if (v >= uint32_t(kNumIntraModes)) { fail(c, g, kStatusBadSymbol); return; }
-        mode_step(c, g, v == 0u ? g.mpm : nxs_nonmpm_mode(g.mpm, int(v) - 1));
+        if (v >= uint32_t(g.u_nmodes)) { fail(c, g, kStatusBadSymbol); return; }
+        mode_step(c, g, v == 0u ? g.mpm
+                                : nxs_nonmpm_mode_n(g.mpm, int(v) - 1,
+                                                    g.u_nmodes));
         return;
     }
     if (g.phase == kPhModeFlag) {
@@ -330,8 +362,8 @@ void lane_feed(Ctx &c, Thread &g, uint32_t v) {
         return;
     }
     if (g.phase == kPhModeIdx) {
-        if (v > 7u) { fail(c, g, kStatusBadSymbol); return; }
-        mode_step(c, g, nxs_nonmpm_mode(g.mpm, int(v)));
+        if (v >= uint32_t(g.u_nmodes - 1)) { fail(c, g, kStatusBadSymbol); return; }
+        mode_step(c, g, nxs_nonmpm_mode_n(g.mpm, int(v), g.u_nmodes));
         return;
     }
     if (g.phase == kPhCbf) {
@@ -341,6 +373,20 @@ void lane_feed(Ctx &c, Thread &g, uint32_t v) {
             return;
         }
         c.out->cbf[g.cbf_off + uint32_t(g.ui) / 32u] |= 1u << (uint32_t(g.ui) & 31u);
+        // [minor 6] [REF] entropy.cpp feed(kCbf): the split flag comes between
+        // the CBF and the LAST, and only on a coded unit.
+        if (g.u_split_present != 0) { g.phase = kPhSplit; return; }
+        if (g.u_ncoef == 1) { g.last = 0; begin_levels(c, g); return; }
+        g.phase = kPhLast;
+        return;
+    }
+    if (g.phase == kPhSplit) {
+        if (v > 1u) { fail(c, g, kStatusBadSymbol); return; }
+        g.split = int(v);
+        if (g.split != 0) {
+            g.u_scan = kScan4Split;
+            store_split(c, g, g.u_pidx, g.u_blk);
+        }
         if (g.u_ncoef == 1) { g.last = 0; begin_levels(c, g); return; }
         g.phase = kPhLast;
         return;
@@ -488,6 +534,10 @@ void run_group(Ctx &c, uint32_t workgroup_id) {
         uint32_t table_set = (w1 >> kThTableSetShift) & kThTableSetMask;
         uint32_t nsub_log2 = (w1 >> kThNsubLog2Shift) & kThNsubLog2Mask;
         sh.tskip[slot] = int((w1 >> kThTskipShift) & kThTskipMask);
+        // [minor 6] word1 bit 28; gated by tool bit 19 and exclusive with
+        // transform skip (docs/SYNTAX.md 4.1, 6.8).
+        const int sp4 = int((w1 >> kThSplit4Shift) & kThSplit4Mask);
+        sh.split4[slot] = sp4;
         sh.tabbase[slot] = table_set * uint32_t(kNumCtx * kNumSym);
 
         uint32_t pay = nxs_tile_payload_offset(g.hdr_off, w1);
@@ -522,6 +572,8 @@ void run_group(Ctx &c, uint32_t workgroup_id) {
         sh.active[slot] = nactive;
         if (nxs_tile_header_reserved_bad(w0, w1) != 0 ||
             (1u << nsub_log2) != kLanesN ||
+            (sp4 != 0 && ((c.in->tools & kToolFlagSplit4) == 0u ||
+                          sh.tskip[slot] != 0)) ||
             pay + uint32_t(nactive) * kInitBytesPerLane > sh.end[slot]) {
             sh.ok[slot] = kStatusBadHeader;
         }
@@ -543,7 +595,7 @@ void run_group(Ctx &c, uint32_t workgroup_id) {
         }
         for (uint32_t i = uint32_t(g.lane); i < c.in->cbf_words; i += kLanesN)
             c.out->cbf[g.cbf_off + i] = 0u;
-        for (uint32_t i = uint32_t(g.lane); i < kModeWordsPerTile; i += kLanesN)
+        for (uint32_t i = uint32_t(g.lane); i < kModeRegionUints; i += kLanesN)
             c.out->modes[uint32_t(c.sh.mode_base[g.slot]) + i] = 0u;
     }
 
@@ -847,7 +899,7 @@ void run_group_lite(Ctx &c, uint32_t workgroup_id) {
         }
         for (uint32_t i = lid; i < c.in->cbf_words; i += kWorkgroupSize)
             c.out->cbf[g.cbf_off + i] = 0u;
-        for (uint32_t i = lid; i < kModeWordsPerTile; i += kWorkgroupSize)
+        for (uint32_t i = lid; i < kModeRegionUints; i += kWorkgroupSize)
             c.out->modes[uint32_t(sh.mode_base[0]) + i] = 0u;
     }
 
