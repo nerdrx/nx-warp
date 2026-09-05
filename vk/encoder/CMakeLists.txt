@@ -151,7 +151,127 @@ nxenc_fwd_shader(E4_rans_encode  rans_encode.comp)
 nxenc_fwd_shader(E5_zero        packetize.comp "-DNXE_E5_PASS=0")
 nxenc_fwd_shader(E5_packetize    packetize.comp "-DNXE_E5_PASS=1")
 
+# ------------------------------------------------------------------- Pass W
+#
+# E0b is not a shader of this directory: it is the DECODER's `warp_pred.comp`,
+# compiled from the decoder's own source with the decoder's own include tree.
+# That is the whole point.  The encoder must never hold a reference the decoder
+# cannot reproduce, and the cheapest way to guarantee that is for the predictor
+# to be the same SPIR-V on both sides rather than two files that agree today.
+# Copying the source here, or writing a second predictor against
+# `inter_layout.h`, would both be re-derivations; see
+# docs/adr/0028-gpu-inter-needs-an-integer-mode-decision.md and the E3b rule in
+# README.md.
+#
+# glslc resolves quoted includes relative to the including file, so
+# `warp_pred.comp`'s `#include "../passB/syntax_constants.h"` needs no -I; only
+# `inter_layout.h` does.  The decoder's inter/ and passB/ must stay siblings,
+# which is a constraint this rule now shares with vk/decoder/inter.
+set(NXENC_DEC_INTER ${CMAKE_CURRENT_SOURCE_DIR}/../decoder/inter)
+set(NXENC_DEC_PASSB ${CMAKE_CURRENT_SOURCE_DIR}/../decoder/passB)
+if(EXISTS ${NXENC_DEC_INTER}/warp_pred.comp)
+  set(_wout ${NXENC_GEN_DIR}/warp_pred.spv.h)
+  add_custom_command(
+    OUTPUT ${_wout}
+    COMMAND ${CMAKE_COMMAND}
+            -DGLSLC=${NXENC_GLSLC}
+            -DSRC=${NXENC_DEC_INTER}/warp_pred.comp
+            -DOUT=${_wout}
+            -DNAME=warp_pred
+            -DINCDIR=${NXENC_DEC_INTER}
+            -DSTYLE=guarded
+            -P ${NXENC_GEN_SPV}
+    DEPENDS ${NXENC_DEC_INTER}/warp_pred.comp
+            ${NXENC_DEC_INTER}/inter_layout.h
+            ${NXENC_DEC_PASSB}/syntax_constants.h
+            ${NXENC_DEC_PASSB}/passB_layout.h
+            ${NXENC_GEN_SPV} ${NXENC_SPV_PASSES_CMAKE}
+    COMMENT "glslc (decoder) warp_pred.comp -> warp_pred.spv.h"
+    VERBATIM)
+  set(NXENC_SPV_HEADERS ${NXENC_SPV_HEADERS} ${_wout})
+
+  # E1c, the integer mode decision.  It is the encoder's own shader -- a
+  # decoder never decides anything -- but it includes the decoder's
+  # inter_layout.h for the tile record and the encoder's nxe_enc_common.glsl
+  # for the job record, so it needs both include directories.
+  set(_dout ${NXENC_GEN_DIR}/E1c_decide.spv.h)
+  add_custom_command(
+    OUTPUT ${_dout}
+    COMMAND ${CMAKE_COMMAND}
+            -DGLSLC=${NXENC_GLSLC}
+            -DSRC=${CMAKE_CURRENT_SOURCE_DIR}/inter/E1c_decide.comp
+            -DOUT=${_dout}
+            -DNAME=E1c_decide
+            -DINCDIR=${NXENC_DEC_INTER}
+            -DINCDIR2=${NXENC_FWD_DIR}
+            -DSTYLE=guarded
+            -P ${NXENC_GEN_SPV}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/inter/E1c_decide.comp
+            ${NXENC_DEC_INTER}/inter_layout.h
+            ${NXENC_FWD_DIR}/nxe_enc_common.glsl
+            ${NXENC_GEN_SPV} ${NXENC_SPV_PASSES_CMAKE}
+    COMMENT "glslc E1c_decide.comp -> E1c_decide.spv.h"
+    VERBATIM)
+  set(NXENC_SPV_HEADERS ${NXENC_SPV_HEADERS} ${_dout})
+
+
+  # Pass B, the reconstruction, in the v1_x8 variant: NXVW_INTRA_DIR=0 and
+  # NXVW_XFORM_LARGE=0, which is `smB[0][0]` in the decoder and the variant
+  # matching this pipeline's tools-off stream.  Compiled from the DECODER's
+  # source with the decoder's own defines, so the encoder's reference picture
+  # is produced by the decoder's arithmetic and not by a second copy of it --
+  # the same rule, and the same mechanism, as Pass W.
+  set(_bout ${NXENC_GEN_DIR}/reconstruct_v1_x8.spv.h)
+  add_custom_command(
+    OUTPUT ${_bout}
+    COMMAND ${CMAKE_COMMAND}
+            -DGLSLC=${NXENC_GLSLC}
+            -DSRC=${NXENC_DEC_PASSB}/reconstruct.comp
+            -DOUT=${_bout}
+            -DNAME=reconstruct_v1_x8
+            "-DDEFS=-DNXVW_INTRA_DIR=0 -DNXVW_XFORM_LARGE=0"
+            -DINCDIR=${NXENC_DEC_PASSB}
+            -DSTYLE=guarded
+            -P ${NXENC_GEN_SPV}
+    DEPENDS ${NXENC_DEC_PASSB}/reconstruct.comp
+            ${NXENC_DEC_PASSB}/syntax_constants.h
+            ${NXENC_DEC_PASSB}/passB_layout.h
+            ${NXENC_DEC_INTER}/inter_hook.glsl
+            ${NXENC_DEC_INTER}/inter_layout.h
+            ${NXENC_GEN_SPV} ${NXENC_SPV_PASSES_CMAKE}
+    COMMENT "glslc (decoder) reconstruct.comp v1_x8 -> reconstruct_v1_x8.spv.h"
+    VERBATIM)
+  set(NXENC_SPV_HEADERS ${NXENC_SPV_HEADERS} ${_bout})
+  set(NXENC_HAVE_PASSW 1)
+else()
+  set(NXENC_HAVE_PASSW 0)
+  message(STATUS "vk/encoder: no vk/decoder/inter, Pass W not built")
+endif()
+
 add_custom_target(nxenc_shaders DEPENDS ${NXENC_SPV_HEADERS})
+
+# ---------------------------------------------------- the inter host module
+# The ring, the warp parameter buffer and the per-tile records Pass W reads.
+# It includes the DECODER's inter_layout.h and syntax_constants.h rather than
+# transcribing either, for the same reason the shader is the decoder's: two
+# copies of a layout agree until they do not.
+if(NXENC_HAVE_PASSW)
+  add_library(nxenc_inter STATIC inter/nxe_inter.cpp)
+  target_include_directories(nxenc_inter PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/inter
+    ${NXENC_DEC_INTER}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../warp/include)
+  if(TARGET nxvc_warp_ref)
+    target_link_libraries(nxenc_inter PUBLIC nxvc_warp_ref)
+  endif()
+  set_target_properties(nxenc_inter PROPERTIES CXX_STANDARD 20
+                        CXX_STANDARD_REQUIRED ON POSITION_INDEPENDENT_CODE ON)
+
+  add_executable(nxenc-inter-test inter/nxe_inter_test.cpp)
+  target_link_libraries(nxenc-inter-test PRIVATE nxenc_inter)
+  set_target_properties(nxenc-inter-test PROPERTIES CXX_STANDARD 20
+                        CXX_STANDARD_REQUIRED ON)
+endif()
 
 # ----------------------------------------------------------------- test tool
 add_executable(nxvc-stats-test
@@ -176,6 +296,15 @@ endif()
 # second thing to keep in step.  Everything else here is this directory's.
 set(NXENC_REF_TABLES ${CMAKE_CURRENT_SOURCE_DIR}/../../ref/src/tables.cpp)
 if(EXISTS ${NXENC_REF_TABLES})
+  # nxe_inter.cpp is compiled into each consumer rather than linked from
+  # nxenc_inter: nxvc_vk_encoder is installed and exported, and an exported
+  # target may not depend on a static library that is not itself exported.
+  # nxenc_inter stays, for the unit test.
+  set(NXENC_INTER_SRC)
+  if(NXENC_HAVE_PASSW)
+    set(NXENC_INTER_SRC ${CMAKE_CURRENT_SOURCE_DIR}/inter/nxe_inter.cpp)
+  endif()
+
   add_executable(nxvc-vkenc
     tools/nxvc-vkenc.cpp
     tools/nxe_host.cpp
@@ -183,6 +312,7 @@ if(EXISTS ${NXENC_REF_TABLES})
     tools/nxe_e0.cpp
     tools/nxe_selftest.cpp
     tools/vk_min.cpp
+    ${NXENC_INTER_SRC}
     ${NXENC_REF_TABLES}
     ${NXENC_SPV_HEADERS})
   add_dependencies(nxvc-vkenc nxenc_shaders)
@@ -192,8 +322,14 @@ if(EXISTS ${NXENC_REF_TABLES})
     ${CMAKE_CURRENT_SOURCE_DIR}/tools
     ${CMAKE_CURRENT_SOURCE_DIR}/stats
     ${CMAKE_CURRENT_SOURCE_DIR}/../../include
+    ${CMAKE_CURRENT_SOURCE_DIR}/inter
+    ${NXENC_DEC_INTER}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../warp/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../ref/src)
   target_link_libraries(nxvc-vkenc PRIVATE nxenc_forward_cpu)
+  if(TARGET nxvc_warp_ref)
+    target_link_libraries(nxvc-vkenc PRIVATE nxvc_warp_ref)
+  endif()
   set_target_properties(nxvc-vkenc PROPERTIES CXX_STANDARD 20)
   if(Vulkan_FOUND)
     target_link_libraries(nxvc-vkenc PRIVATE Vulkan::Vulkan)
@@ -229,6 +365,7 @@ if(EXISTS ${NXENC_REF_TABLES})
     forward/nxe_tables.c
     forward/forward_cpu.c
     forward/rans_cpu.c
+    ${NXENC_INTER_SRC}
     ${NXENC_REF_TABLES}
     ${NXENC_SPV_HEADERS})
   add_dependencies(nxvc_vk_encoder nxenc_shaders)
@@ -240,7 +377,13 @@ if(EXISTS ${NXENC_REF_TABLES})
       ${CMAKE_CURRENT_SOURCE_DIR}/forward
       ${CMAKE_CURRENT_SOURCE_DIR}/tools
       ${CMAKE_CURRENT_SOURCE_DIR}/stats
+      ${CMAKE_CURRENT_SOURCE_DIR}/inter
+      ${NXENC_DEC_INTER}
+      ${CMAKE_CURRENT_SOURCE_DIR}/../../warp/include
       ${CMAKE_CURRENT_SOURCE_DIR}/../../ref/src)
+  if(TARGET nxvc_warp_ref)
+    target_link_libraries(nxvc_vk_encoder PRIVATE nxvc_warp_ref)
+  endif()
   set_target_properties(nxvc_vk_encoder PROPERTIES
     CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON POSITION_INDEPENDENT_CODE ON)
   if(Vulkan_FOUND)

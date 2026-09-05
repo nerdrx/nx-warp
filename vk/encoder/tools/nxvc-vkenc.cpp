@@ -23,6 +23,7 @@
  *   --bench N      time the passes over N iterations
  */
 
+#include <array>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -34,6 +35,8 @@
 namespace nxe {
 int selftest(int device, bool cpu_only, bool print_digests, bool quiet);
 int selftest_dump(const char *prefix);
+int inter_fixture_dump(const char *prefix);
+int ring_check(const char *prefix, const char *decoded, int w, int h, int frames);
 }
 
 static void usage() {
@@ -79,6 +82,9 @@ int main(int argc, char **argv) {
     nxe::Config cfg;
     bool list = false, check = false, self = false, digests = false;
     const char *dump = nullptr;
+    const char *dump_inter = nullptr;
+    const char *ring_prefix = nullptr, *ring_decoded = nullptr;
+    int ring_frames = 0;
     std::string pix = "yuv420p";
 
     for (int i = 1; i < argc; ++i) {
@@ -93,6 +99,33 @@ int main(int argc, char **argv) {
         else if (a == "--h") cfg.h = std::atoi(val());
         else if (a == "--pix") pix = val();
         else if (a == "--qp") cfg.qp = std::atoi(val());
+        else if (a == "--inter") cfg.inter = true;
+        else if (a == "--poses") cfg.poses = val();
+        else if (a == "--coded-vectors") {
+            /* Refused, not ignored.  Everything a STATIC_MV tile needs to be
+             * DECIDED is implemented and correct -- E1c's search, the vector
+             * in the tile header, the slot layout that makes room for it --
+             * but E3 still codes every tile it does not skip against the
+             * DC-plane INTRA predictor, so a STATIC_MV tile comes out with a
+             * full intra-sized residual (526 bytes against the reference's
+             * 40) and a stream that decodes to the wrong picture.
+             *
+             * The missing piece is E3's inter residual path: a sixth binding
+             * carrying Pass W's predictor and a branch that subtracts it
+             * instead of pred_at().  Until that exists this flag would
+             * produce a legal, larger, WRONG stream, which is the failure
+             * mode this encoder refuses on principle. */
+            std::fprintf(stderr,
+                         "--coded-vectors: STATIC_MV is decided but not yet "
+                         "coded -- E3 has no inter residual path, so the tile "
+                         "would be coded against the intra predictor.  See "
+                         "vk/encoder/README.md \"What STATIC_MV still "
+                         "needs\".\n");
+            return 2;
+        }
+        else if (a == "--intra-period") cfg.intra_period = std::atoi(val());
+        else if (a == "--skip-thresh")
+            cfg.skip_thresh = (int)(std::atof(val()) * 256.0 + 0.5);
         else if (a == "--frames") cfg.frames = std::atoi(val());
         else if (a == "--eyes") cfg.eyes = std::atoi(val());
         else if (a == "--matrix") cfg.matrix = std::atoi(val());
@@ -131,6 +164,10 @@ int main(int argc, char **argv) {
         else if (a == "--selftest") self = true;
         else if (a == "--print-digests") digests = true;
         else if (a == "--dump-selftest-yuv") dump = val();
+        else if (a == "--dump-inter") dump_inter = val();
+        else if (a == "--check-ring") ring_prefix = val();
+        else if (a == "--check-ring-decoded") ring_decoded = val();
+        else if (a == "--check-ring-frames") ring_frames = std::atoi(val());
         else if (a == "--quiet") cfg.quiet = true;
         else if (a == "-h" || a == "--help") { usage(); return 0; }
         else { std::fprintf(stderr, "unknown option %s\n", a.c_str()); usage(); return 2; }
@@ -138,6 +175,10 @@ int main(int argc, char **argv) {
 
     if (list) return nxe::vk_list_devices();
     if (dump) return nxe::selftest_dump(dump);
+    if (dump_inter) return nxe::inter_fixture_dump(dump_inter);
+    if (ring_prefix && ring_decoded)
+        return nxe::ring_check(ring_prefix, ring_decoded, cfg.w, cfg.h,
+                               ring_frames);
     if (self)
         return nxe::selftest(cfg.device, cfg.cpu_only, digests, cfg.quiet);
 
@@ -172,6 +213,75 @@ int main(int argc, char **argv) {
     std::vector<uint8_t> hdr = nxe::stream_header(cfg, f);
     std::fwrite(hdr.data(), 1, hdr.size(), fo);
 
+    /* The pose sidecar, scraped rather than parsed -- exactly as nxv-enc does
+     * it, and deliberately so: the two encoders have to read one file the same
+     * way or a byte-identity test compares two different warps.  The only keys
+     * that matter are `orientation_xyzw` and the FOV, and a version 2 sidecar
+     * that names a convention this encoder does not implement is REFUSED
+     * rather than guessed at, because a wrong convention does not crash and
+     * does not make an illegal stream: it makes a worse picture, which looks
+     * exactly like a codec that is merely bad. */
+    std::vector<std::array<double, 4>> poses;
+    double fov_h = 95.0, fov_v = 95.0;
+    if (!cfg.poses.empty()) {
+        std::FILE *pf = std::fopen(cfg.poses.c_str(), "rb");
+        if (!pf) { std::perror("open poses"); return 1; }
+        std::string txt;
+        char chunk[4096];
+        size_t got;
+        while ((got = std::fread(chunk, 1, sizeof chunk, pf)) > 0)
+            txt.append(chunk, got);
+        std::fclose(pf);
+        const std::string key = "\"orientation_xyzw\"";
+        size_t pos = 0;
+        while ((pos = txt.find(key, pos)) != std::string::npos) {
+            size_t lb = txt.find('[', pos);
+            size_t rb = txt.find(']', lb == std::string::npos ? pos : lb);
+            if (lb == std::string::npos || rb == std::string::npos) break;
+            std::array<double, 4> q{0, 0, 0, 1};
+            const char *p2 = txt.c_str() + lb + 1;
+            char *end = nullptr;
+            for (int k = 0; k < 4; ++k) {
+                q[k] = std::strtod(p2, &end);
+                if (end == p2) break;
+                p2 = end;
+                while (*p2 == ',' || *p2 == ' ' || *p2 == '\n') ++p2;
+            }
+            poses.push_back(q);
+            pos = rb;
+        }
+        if (poses.empty()) {
+            std::fprintf(stderr, "%s: no orientation_xyzw entries\n",
+                         cfg.poses.c_str());
+            return 1;
+        }
+        const size_t cid = txt.find("\"id\"");
+        if (cid != std::string::npos) {
+            const size_t q0 = txt.find('"', txt.find(':', cid));
+            const size_t q1 = txt.find('"', q0 + 1);
+            const std::string id = txt.substr(q0 + 1, q1 - q0 - 1);
+            if (id != "nxv-openxr-1") {
+                std::fprintf(stderr,
+                             "%s: pose convention \"%s\" is not implemented "
+                             "(this encoder implements \"nxv-openxr-1\", "
+                             "docs/WARP.md 2.1)\n",
+                             cfg.poses.c_str(), id.c_str());
+                return 1;
+            }
+        }
+        const size_t fd = txt.find("\"fov_deg\"");
+        if (fd != std::string::npos) {
+            const size_t hh = txt.find("\"h\"", fd), vv = txt.find("\"v\"", fd);
+            if (hh != std::string::npos)
+                fov_h = std::strtod(txt.c_str() + txt.find(':', hh) + 1, nullptr);
+            if (vv != std::string::npos)
+                fov_v = std::strtod(txt.c_str() + txt.find(':', vv) + 1, nullptr);
+        }
+        if (!cfg.quiet)
+            std::printf("poses: %zu orientations, fov %.4g,%.4g deg\n",
+                        poses.size(), fov_h, fov_v);
+    }
+
     nxe::VkEncoder gpu;
     if (!cfg.cpu_only) {
         std::string err;
@@ -190,12 +300,46 @@ int main(int argc, char **argv) {
     while (cfg.frames < 0 || n < cfg.frames) {
         if (!nxe::read_frame(fi, cfg, f)) break;
         nxe::fill_modes(cfg, f, (uint32_t)n);
+        if (!poses.empty()) {
+            /* Both eyes get the same orientation: the sidecar is a head pose,
+             * and the per-eye difference is a translation the homography does
+             * not carry (docs/WARP.md 2.1). */
+            const std::array<double, 4> &q =
+                poses[(size_t)n < poses.size() ? (size_t)n : poses.size() - 1];
+            const double hr = fov_h * 3.14159265358979323846 / 360.0;
+            const double vr = fov_v * 3.14159265358979323846 / 360.0;
+            nxe::View v[2];
+            for (int e = 0; e < 2; ++e) {
+                v[e].qx = q[0]; v[e].qy = q[1]; v[e].qz = q[2]; v[e].qw = q[3];
+                v[e].fov_left = -hr; v[e].fov_right = hr;
+                v[e].fov_up = vr; v[e].fov_down = -vr;
+            }
+            gpu.set_views(v, cfg.eyes, (uint32_t)n);
+        }
         if (cfg.cpu_only) {
             nxe::encode_frame_cpu(f, (uint32_t)n);
         } else if (!gpu.encode_frame(f, (uint32_t)n, check, cfg.quiet)) {
             std::fprintf(stderr, "nxvc-vkenc: GPU encode failed on frame %d\n", n);
             rc = 1;
             break;
+        }
+        /* NXE_DUMP_RING=<path> writes the ring slot this frame just wrote,
+         * luma only, as raw uint16.  It is what the ring-vs-decoder test
+         * compares; the encoder is otherwise the only thing that can see it. */
+        if (const char *rp = std::getenv("NXE_DUMP_RING")) {
+            /* `nsamp`, not `n`: `n` is the frame counter of the loop this
+             * sits in, and shadowing it wrote every frame to one file named
+             * after the sample count and read slot (count & 3). */
+            const size_t nsamp = (size_t)((cfg.w + 1) & ~1) * (size_t)cfg.h;
+            std::vector<uint16_t> ring(nsamp, 0);
+            if (gpu.read_ring_luma((uint32_t)(n & 3), ring.data(), nsamp)) {
+                char path[512];
+                std::snprintf(path, sizeof path, "%s.%d", rp, n);
+                if (std::FILE *rf = std::fopen(path, "wb")) {
+                    std::fwrite(ring.data(), 2, nsamp, rf);
+                    std::fclose(rf);
+                }
+            }
         }
         std::fwrite(f.out.data(), 1, f.out.size(), fo);
         total += f.out.size();

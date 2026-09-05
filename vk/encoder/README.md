@@ -435,6 +435,125 @@ about this directory:
   the decoder's own Pass W and Pass B as byte-identical SPIR-V (E3b above), and
   nothing in the decision change touches that.
 
+## What E3b actually needs
+
+The E3b row in the table above says the reconstruction pass is "a matter of
+writing the reference picture out, not of writing the maths again", because
+"E3 already contains the reconstruction the directional predictor needs".
+
+**That is true only in the directional build.** `s_recon` is declared
+
+```glsl
+shared int s_recon[NXE_SC_INTRA_DIR * 4096 + 1];
+```
+
+so with `NXE_SC_INTRA_DIR == 0` it is a one-element array, and the
+non-directional residual path (`residual_blocks`) never writes it -- the only
+writes are in `residual_blocks_dir`.  The non-directional configuration is
+exactly the one the acid test pins and the one the library ships, so in the
+build that matters **E3 does not reconstruct the tile at all**.  It has no
+reason to: the DC-plane predictor needs the reconstructed block *means*, which
+`dc_plane` does compute, and nothing else.
+
+This is the third claim in this directory that was written as an accomplished
+fact and was not one, after `nxe_enc.h`'s `pred_src` buffer and the static
+assertions that could not see a GLSL define.  The pattern is worth naming: all
+three were about a *future* consumer, and nothing compiled against them, so
+nothing failed.
+
+So the encoder's reference store is two halves, and only one of them is easy:
+
+* **skipped tiles.**  A WARP_SKIP tile's reconstruction IS its predictor --
+  the decoder clamps the warped samples and adds no residual -- so the store is
+  Pass W's output moved into the ring's layout.  `inter/E3b_ring.comp` does
+  exactly that and mirrors `nxvwRefRingStore` line for line.  It is compiled
+  but **not dispatched**, because it is useless on its own: frame 0 is
+  all-intra, so a ring with no intra tiles in it has nothing for frame 1 to
+  predict from.
+* **intra tiles.**  Blocked, and deliberately not worked around.  The two ways
+  to get the reconstruction are to compute it in E3 -- dequantise, inverse
+  transform, add the prediction, clamp -- or to run the decoder's Pass B on the
+  encoder's coefficients.  The first is a re-derivation of the decoder's
+  arithmetic, which is the one thing the E3b rule exists to forbid, and it
+  would be a second copy of the maths that agrees until it does not.  So the
+  route is Pass B, and the work is an adapter: Pass B wants Pass A's buffers
+  (`Coef` in its sparse or dense layout, `TileRecs`, `Modes`, `TileOrder`,
+  `UnitLens`) and a destination image it does not need here, and the encoder
+  has the coefficients in its own per-tile layout.  That adapter is the next
+  piece of work, and it is a piece of work rather than a line of glue.
+
+## Measured: the inter path
+
+`nxvc-vkenc`, RX 7900 XTX on RADV, QP 30, 16 frames, one eye, 4:2:0, with the
+entropy tools the library ships on (frame-trained tables, TAB_V2, CTX_V3).
+`NXE_TIME=1`, mean over frames 2..15 so the first two -- which pay pipeline
+warm-up -- are excluded.  The GPU was idle apart from the desktop compositor;
+nothing else was submitting.
+
+| per eye | config | pre-E3 | tables | E4/E5 | total | B/frame |
+|---|---|---|---|---|---|---|
+| 1088x1088 | intra only | 2.14 | 0.99 | 1.03 | **4.06 ms** | 36779 |
+| 1088x1088 | inter, skip+intra | 2.22 | 0.54 | 0.85 | **3.30 ms** | **13446** |
+| 2048x2048 | intra only | 6.97 | 2.63 | 1.06 | **12.01 ms** | 129826 |
+| 2048x2048 | inter, skip+intra | 7.28 | 1.72 | 0.92 | **11.08 ms** | 85142 |
+
+**Inter is cheaper as well as smaller.**  At 1088x1088 it is 2.73x fewer bytes
+and 0.76 ms *faster*, which is not a paradox: Pass W, the decision and the
+Pass B reference store cost 0.08 ms between them, and a frame in which 82 % of
+the tiles carry no payload gives back more than that in table training (0.99 ->
+0.54) and in E4/E5 (1.03 -> 0.85).  The passes that got cheaper are the ones
+whose work is proportional to the number of CODED tiles.
+
+Two things this table is not:
+
+* **The 2048x2048 rate is not a content result.**  That source is the
+  1088x1088 clip mirror-tiled up, and the pose track belongs to the 1088
+  geometry, so the mirrored halves move the wrong way under the warp and the
+  skip fraction collapses.  It is there to time a 4-Mpix frame, and the timing
+  is honest; read the rate at 1088 only.
+* **`tables` is HOST time, and it was measured on four cores at `nice -n 19`.**
+  It is the frame's table training, which is CPU work beside the GPU rather
+  than on it.  A compositor with the machine to itself will see less; this
+  column is a floor on the win, not a measurement of the encoder.
+
+## What STATIC_MV still needs
+
+The decision half of STATIC_MV is done and is correct in isolation: E1c
+searches it in the reference's own three stages and its own visit order,
+breaking ties on (SAD, visit index) so that "first wins" survives being
+evaluated in parallel; the vector reaches the tile header through
+`nxe_tile_job::mv`; E4 emits `mv_present` and the two vector bytes; the slot
+gains a field word so E5's byte layout has one formula.  Run against
+`nxv-enc --int-coded-vectors static`, **the modes and the vectors agree**.
+
+The streams do not, and the reason is worth recording because it was not on
+the plan.  E3 still codes every tile it does not skip against the **DC-plane
+INTRA predictor**.  A STATIC_MV tile therefore comes out with a full
+intra-sized residual -- 526 bytes against the reference's 40 -- and a stream
+that decodes to the wrong picture.
+
+That is the `pred_src` gap from the top of this file, arriving where it was
+always going to: an inter tile that CODES a residual needs the predictor
+materialised, and E3 has no binding for one.  WARP_SKIP did not need it,
+because a skipped tile codes nothing and Pass B adds the predictor back on the
+decode side; the moment a tile carries coefficients, E3 has to subtract the
+same predictor Pass B will add.
+
+So the remaining work is exactly:
+
+* a sixth binding on E3 carrying Pass W's WPred, and a branch in the residual
+  path that subtracts it instead of `pred_at()` for a tile whose mode is not
+  INTRA -- including the DC plane, whose block means are then means of the
+  residual rather than of the samples;
+* the CPU model's matching branch, so `--check` and the pinned digests still
+  cover the path;
+* then WARP_MV, which needs nothing further from E3 -- only Pass W predicting
+  it, which it already can.
+
+`nxvc-vkenc --coded-vectors` REFUSES until then rather than emitting the
+larger wrong stream, and `nxvc_config::int_coded_vectors` on the reference
+takes `static` (STATIC_MV only, the GPU's configuration) as well as `on`.
+
 ## What the coding passes do not implement
 
 What the coding passes do **not** implement, and refuse rather than ignore:

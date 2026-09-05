@@ -28,6 +28,7 @@
 
 #include "vk_min.h"
 
+#include <array>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -197,6 +198,11 @@ int main(int argc, char **argv) {
      * nxvc_vk_encoder_set_qp -- see tests/vk-encoder/qp_switch.cmake. */
     std::vector<uint32_t> qp_cycle;
 
+    bool inter = false;
+    uint32_t intra_period = 180;
+    std::string poses_path;
+    int drop_at = -1;
+
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         auto next = [&]() { return (i + 1 < argc) ? argv[++i] : ""; };
@@ -211,6 +217,10 @@ int main(int argc, char **argv) {
         else if (a == "--image") use_image = true;
         else if (a == "--qp-cycle") qp_cycle_arg = next();
         else if (a == "--lengths") lengths_path = next();
+        else if (a == "--inter") inter = true;
+        else if (a == "--intra-period") intra_period = (uint32_t)std::atoi(next());
+        else if (a == "--poses") poses_path = next();
+        else if (a == "--drop-at") drop_at = std::atoi(next());
         else {
             std::fprintf(stderr, "unknown argument: %s\n", a.c_str());
             return 2;
@@ -239,10 +249,51 @@ int main(int argc, char **argv) {
     }
 
     nxvc_vke_create_info ci;
+    /* The pose track, scraped the same way nxv-enc and nxvc-vkenc scrape it. */
+    std::vector<std::array<double, 4>> poses;
+    double fov_h = 95.0, fov_v = 95.0;
+    if (!poses_path.empty()) {
+        std::FILE *pf = std::fopen(poses_path.c_str(), "rb");
+        if (!pf) { std::perror("open poses"); return 1; }
+        std::string txt;
+        char chunk[4096];
+        size_t got;
+        while ((got = std::fread(chunk, 1, sizeof chunk, pf)) > 0)
+            txt.append(chunk, got);
+        std::fclose(pf);
+        const std::string key = "\"orientation_xyzw\"";
+        size_t pos = 0;
+        while ((pos = txt.find(key, pos)) != std::string::npos) {
+            size_t lb = txt.find('[', pos), rb = txt.find(']', lb);
+            if (lb == std::string::npos || rb == std::string::npos) break;
+            std::array<double, 4> q{0, 0, 0, 1};
+            const char *p2 = txt.c_str() + lb + 1;
+            char *end = nullptr;
+            for (int k = 0; k < 4; ++k) {
+                q[k] = std::strtod(p2, &end);
+                if (end == p2) break;
+                p2 = end;
+                while (*p2 == ',' || *p2 == ' ' || *p2 == '\n') ++p2;
+            }
+            poses.push_back(q);
+            pos = rb;
+        }
+        const size_t fd = txt.find("\"fov_deg\"");
+        if (fd != std::string::npos) {
+            const size_t hh = txt.find("\"h\"", fd), vv = txt.find("\"v\"", fd);
+            if (hh != std::string::npos)
+                fov_h = std::strtod(txt.c_str() + txt.find(':', hh) + 1, nullptr);
+            if (vv != std::string::npos)
+                fov_v = std::strtod(txt.c_str() + txt.find(':', vv) + 1, nullptr);
+        }
+    }
+
     nxvc_vk_encoder_create_info_default(&ci);
     ci.width = w;
     ci.height = h;
     ci.base_qp = qp;
+    ci.inter = inter ? 1u : 0u;
+    ci.intra_period = inter ? intra_period : 0u;
     ci.quant_matrix = matrix;
 
     /* The image path needs a device the caller owns: the image has to live on
@@ -339,6 +390,54 @@ int main(int argc, char **argv) {
             im.height = h;
             st = nxvc_vk_encoder_encode_image(enc, &im, &bytes, &len);
         } else {
+        if (inter && !poses.empty()) {
+            const std::array<double, 4> &q =
+                poses[n < poses.size() ? n : poses.size() - 1];
+            const double hr = fov_h * 3.14159265358979323846 / 360.0;
+            const double vr = fov_v * 3.14159265358979323846 / 360.0;
+            nxvc_vke_view v{};
+            v.qx = q[0]; v.qy = q[1]; v.qz = q[2]; v.qw = q[3];
+            v.fov_left = -hr; v.fov_right = hr;
+            v.fov_up = vr;    v.fov_down = -vr;
+            /* The single-eye form, which is the one a WiVRn stream uses. */
+            if (nxvc_vk_encoder_set_view(enc, &v) != NXVC_VKE_OK) {
+                std::fprintf(stderr, "set_view failed at frame %u\n", n);
+                return 1;
+            }
+        }
+        /* The frame AFTER a reset must be entirely INTRA: the client holds
+         * nothing, so nothing may be predicted.  Checked here rather than by
+         * parsing nxv-info, so the property is pinned by the ABI's own tile
+         * records -- which is where a caller would read it. */
+        if (inter && drop_at >= 0 && n == (uint32_t)drop_at + 1) {
+            uint32_t nt = 0;
+            const nxvc_vke_tile *ti = nxvc_vk_encoder_tiles(enc, &nt);
+            uint32_t nonintra = 0;
+            for (uint32_t k = 0; k < nt; ++k)
+                if (ti[k].mode != 3 /* NXVC_MODE_INTRA */) ++nonintra;
+            if (nonintra) {
+                std::fprintf(stderr,
+                             "after an all-zero receipt map, frame %u still "
+                             "has %u of %u tiles predicting\n",
+                             n, nonintra, nt);
+                return 1;
+            }
+            std::fprintf(stderr, "reset honoured: frame %u is %u/%u INTRA\n",
+                         n, nt, nt);
+        }
+        if (inter && drop_at >= 0 && n == (uint32_t)drop_at) {
+            /* The resumed-client case: an all-zero receipt map, which the ABI
+             * defines as a full reset.  Every tile of the NEXT frame must then
+             * be INTRA, which the test checks in the tile records. */
+            uint32_t nt = 0;
+            nxvc_vk_encoder_tiles(enc, &nt);
+            std::vector<uint8_t> none(nt ? nt : 1, 0);
+            if (nxvc_vk_encoder_set_received_tiles(enc, none.data(), nt) !=
+                NXVC_VKE_OK) {
+                std::fprintf(stderr, "set_received_tiles failed\n");
+                return 1;
+            }
+        }
             st = nxvc_vk_encoder_encode_planes(enc, Y.data(), w, U.data(),
                                                V.data(), cw, &bytes, &len);
         }

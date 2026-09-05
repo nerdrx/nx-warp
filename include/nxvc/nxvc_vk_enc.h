@@ -12,7 +12,10 @@
  * superset of the reference.  It implements the intra half of the v1
  * bitstream and refuses -- explicitly, at create() -- everything else:
  *
- *   * no inter prediction, no pose warp, no reference ring
+ *   * inter prediction, the pose warp and the reference ring are OPTIONAL,
+ *     off unless create_info::inter is set; the mode decision is then the
+ *     integer one of docs/adr/0028 and the coded-vector modes (STATIC_MV,
+ *     WARP_MV) are not implemented yet -- a tile either skips or codes intra
  *   * no directional intra (DC-plane intra only)
  *   * no rate control of its own, and no per-tile quantiser: one QP codes
  *     every tile of a frame.  That QP is settable between frames --
@@ -28,8 +31,15 @@
  * XFORM_LARGE -- is OFF.  This is not a limitation being papered over: a
  * stream this encoder produces is byte-identical to
  *
- *   nxv-enc --no-rdo --intra-dir off --no-custom-tables \
- *           --split4x4 off --cfl off --tab v1 --xform 8 --entropy rans
+ *   nxv-enc --no-rdo --intra-dir off --custom-tables \
+ *           --split4x4 off --cfl off --tab v2 --ctx v3 --sign-hide \
+ *           --xform 8 --entropy rans
+ *
+ * and, with create_info::inter set, that command line plus
+ *
+ *           --inter on --int-decision on --int-coded-vectors off \
+ *           --preset fast --me-effort 1 --quad-mv off --near-skip off \
+ *           --drift-refresh off --intra-period <T> --poses <track>
  *
  * for the same picture and the same QP, and tests/vk-encoder/acid.cmake pins
  * exactly that.  Byte-identity with the reference at the same settings is the
@@ -103,6 +113,28 @@ typedef struct nxvc_vke_create_info {
     /* Quantiser weighting matrix, 0..3.  1 is the reference's frame matrix and
      * what `nxv-enc --matrix 1` selects. */
     uint32_t quant_matrix;
+
+    /* --- inter prediction (Phase 2).
+     *
+     * `inter` turns on the reference ring, the pose warp and the integer mode
+     * decision of docs/adr/0028.  It is refused for eyes > 1 and for 4:4:4,
+     * which the inter path does not implement yet.
+     *
+     * `intra_period` is the rolling intra refresh: 1/T of the tiles are forced
+     * INTRA every frame and each tile position is refreshed exactly once every
+     * T frames, which is the loss-recovery bound PAPER 2.6 states.  0 takes
+     * the default 180.  It is the FIXED scheme; the drift-driven one needs an
+     * exact client shadow this encoder does not keep, which is why
+     * `nxv-enc --drift-refresh off` is part of the configuration this encoder
+     * is byte-identical to.
+     *
+     * A caller that sets `inter` MUST call nxvc_vk_encoder_set_view() before
+     * every encode, including the first.  Without a view the warp is the
+     * identity, which predicts a still picture correctly and a turning head
+     * badly -- it is not an error, it is a worse stream, and nothing else will
+     * say so. */
+    uint32_t inter;
+    uint32_t intra_period;
 
     uint32_t flags; /* reserved, pass 0 */
 } nxvc_vke_create_info;
@@ -271,19 +303,52 @@ double nxvc_vk_encoder_last_encode_ms(const nxvc_vk_encoder *enc);
 double nxvc_vk_encoder_last_upload_ms(const nxvc_vk_encoder *enc);
 
 /* -------------------------------------------------------------- feedback */
-/* Which tiles of the last frame the client actually holds.  Accepted and
- * IGNORED on this path: it exists so a caller's plumbing does not have to
- * branch on the backend.  Every frame this encoder produces is all-intra, so
- * there is no prediction for a lost tile to corrupt and nothing for the
- * encoder to replay on a shadow copy.  It becomes meaningful when inter
- * prediction lands.  Returns NXVC_VKE_OK. */
+/* Which tiles of the last frame the client actually holds: `count` bytes, one
+ * per tile in raster order, nonzero for "the client has it".
+ *
+ * On an intra stream this is accepted and ignored -- there is no prediction
+ * for a lost tile to corrupt.  On an inter stream it is the loss-recovery
+ * contract, and the rule is deliberately the blunt one:
+ *
+ *   a tile the client does NOT hold is coded INTRA on the next frame.
+ *
+ * That is stronger than it has to be and weaker than the reference's.  The
+ * reference keeps an exact client shadow and replays concealment into it, so
+ * it can often repair a lost tile with a cheap coded residual instead; this
+ * encoder does not keep a shadow, so the only thing it can say honestly about
+ * a tile the client is missing is that predicting from it is unsound.  Coding
+ * it fresh is always correct and costs one tile.
+ *
+ * **An all-zero map is therefore a full reset**, and that is the intended way
+ * to express one: the client holds nothing, so every tile is coded INTRA on
+ * the next frame and the client resynchronises from it.  A resumed session
+ * calls exactly that.
+ *
+ * The effect lasts ONE frame.  A tile coded INTRA is a tile the client can
+ * hold again, so the encoder does not keep forcing it; a caller whose client
+ * is still missing tiles says so again.
+ *
+ * Returns NXVC_VKE_ERR_ARG if `count` is not the tile count. */
 nxvc_vke_status nxvc_vk_encoder_set_received_tiles(nxvc_vk_encoder *enc,
                                                    const uint8_t *received,
                                                    uint32_t count);
 
-/* The frame's pose and projection.  Accepted and IGNORED on this path, for the
- * same reason: the warp matrix an intra frame carries is the identity, because
- * there is no reference to warp.  Returns NXVC_VKE_OK. */
+/* The frame's pose and projection, for the frame the NEXT encode() codes.
+ *
+ * The fields are OpenXR's: a unit quaternion in the convention docs/WARP.md
+ * 2.1 fixes, and an XrFovf whose left and down angles are negative.  They are
+ * `nxwarp_codec_view`'s fields exactly, so a WiVRn backend passes its own
+ * struct through unchanged.
+ *
+ * The encoder keeps the view that went with each reference-ring slot and
+ * derives warp_ext() from that slot's view and this frame's, which is what
+ * makes the matrix describe the motion BETWEEN the two pictures rather than
+ * the absolute pose of either.  So the call has to be made for every frame,
+ * including the first: a gap in the track is not detected and produces a
+ * confident prediction of the wrong place.
+ *
+ * On an intra stream it is accepted and ignored -- there is no reference to
+ * warp. */
 typedef struct nxvc_vke_view {
     double qx, qy, qz, qw;
     double fov_left, fov_right, fov_up, fov_down;
@@ -292,6 +357,12 @@ typedef struct nxvc_vke_view {
 nxvc_vke_status nxvc_vk_encoder_set_views(nxvc_vk_encoder *enc,
                                           const nxvc_vke_view *views,
                                           uint32_t count);
+
+/* The single-eye form, which is what a WiVRn stream wants: one encoder codes
+ * one eye, so `count` is always 1 and the array is ceremony.  Identical to
+ * nxvc_vk_encoder_set_views(enc, view, 1). */
+nxvc_vke_status nxvc_vk_encoder_set_view(nxvc_vk_encoder *enc,
+                                         const nxvc_vke_view *view);
 
 #ifdef __cplusplus
 } /* extern "C" */

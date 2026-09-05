@@ -37,7 +37,9 @@ namespace {
  * literal rather than derived from the stream header so that a change to
  * either one has to be made here too, deliberately. */
 constexpr uint64_t kToolsEmitted =
-    (1ull << 0) |  /* INTRA_DC_PLANE: the only prediction this encoder has  */
+    (1ull << 0) |  /* INTRA_DC_PLANE                                        */
+    (1ull << 10) | /* INTER: with create_info::inter; see the note below    */
+    (1ull << 11) | /* WARP: travels with INTER, never alone                 */
     (1ull << 6) |  /* CUSTOM_TABLES: tables trained on the frame            */
     (1ull << 21) | /* CTX_V2: the 16-context entropy model                  */
     (1ull << 22) | /* SIGN_HIDE: sign data hiding, exact in E4              */
@@ -85,6 +87,13 @@ extern "C" void nxvc_vk_encoder_create_info_default(nxvc_vke_create_info *ci) {
 }
 
 extern "C" uint64_t nxvc_vk_encoder_tools_supported(void) {
+    /* The SUPERSET a stream from this library may carry, which is what a
+     * capability handshake wants.  Bits 10 and 11 are in it because the
+     * library can code inter, and are absent from an individual stream whose
+     * create_info left `inter` clear -- nxvc_vk_encoder_stream_header() is the
+     * authority on what one stream actually carries.  The distinction is new:
+     * before inter, every stream this library could produce carried the same
+     * mask and the two questions had one answer. */
     return kToolsEmitted;
 }
 
@@ -102,6 +111,7 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_create(const nxvc_vke_create_info *ci
     if (ci->bit_depth != 8) return NXVC_VKE_ERR_UNSUPPORTED;
     if (ci->base_qp > 63) return NXVC_VKE_ERR_ARG;
     if (ci->quant_matrix > 3) return NXVC_VKE_ERR_ARG;
+    if (ci->intra_period > 0 && ci->inter == 0) return NXVC_VKE_ERR_ARG;
 
     const bool adopting = ci->device != VK_NULL_HANDLE;
     if (adopting && (!ci->physical_device || !ci->queue))
@@ -118,6 +128,9 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_create(const nxvc_vke_create_info *ci
     e->cfg.chroma444 = false;
     e->cfg.qp = int(ci->base_qp);
     e->cfg.matrix = int(ci->quant_matrix);
+    e->cfg.inter = ci->inter != 0;
+    e->cfg.intra_period =
+        ci->intra_period ? int(ci->intra_period) : 180;
     e->cfg.wm_id = 0;
     e->cfg.chroma_qp_off = 0;
     e->cfg.nsub_log2 = 3; /* eight rANS lanes; paper 6.3 fixes v1 at eight */
@@ -238,18 +251,42 @@ extern "C" double nxvc_vk_encoder_last_upload_ms(const nxvc_vk_encoder *e) {
 }
 
 extern "C" nxvc_vke_status nxvc_vk_encoder_set_received_tiles(
-    nxvc_vk_encoder *e, const uint8_t *, uint32_t) {
-    /* Accepted and ignored; see the header.  An all-intra stream has no
-     * prediction for a lost tile to corrupt. */
-    return e ? NXVC_VKE_OK : NXVC_VKE_ERR_ARG;
+    nxvc_vk_encoder *e, const uint8_t *received, uint32_t count) {
+    if (!e || !received) return NXVC_VKE_ERR_ARG;
+    if (count != e->frame.fp.ntiles) {
+        e->err = "the receipt map must have one byte per tile";
+        return NXVC_VKE_ERR_ARG;
+    }
+    /* On an intra stream there is nothing to corrupt, so this is accepted and
+     * ignored -- a caller's plumbing does not have to branch on the backend. */
+    if (!e->cfg.inter) return NXVC_VKE_OK;
+    e->vk.set_received_tiles(received, count);
+    return NXVC_VKE_OK;
 }
 
 extern "C" nxvc_vke_status nxvc_vk_encoder_set_views(nxvc_vk_encoder *e,
-                                                     const nxvc_vke_view *,
-                                                     uint32_t) {
-    /* Accepted and ignored; see the header.  An intra frame's warp matrix is
-     * the identity because there is no reference to warp. */
-    return e ? NXVC_VKE_OK : NXVC_VKE_ERR_ARG;
+                                                     const nxvc_vke_view *v,
+                                                     uint32_t count) {
+    if (!e || !v) return NXVC_VKE_ERR_ARG;
+    if (count != e->cfg.eyes) {
+        e->err = "one view per eye";
+        return NXVC_VKE_ERR_ARG;
+    }
+    if (!e->cfg.inter) return NXVC_VKE_OK;
+    nxe::View nv[2];
+    for (uint32_t i = 0; i < count && i < 2; ++i) {
+        nv[i].qx = v[i].qx; nv[i].qy = v[i].qy;
+        nv[i].qz = v[i].qz; nv[i].qw = v[i].qw;
+        nv[i].fov_left = v[i].fov_left; nv[i].fov_right = v[i].fov_right;
+        nv[i].fov_up = v[i].fov_up;     nv[i].fov_down = v[i].fov_down;
+    }
+    e->vk.set_views(nv, (int)count, e->frame_number);
+    return NXVC_VKE_OK;
+}
+
+extern "C" nxvc_vke_status nxvc_vk_encoder_set_view(nxvc_vk_encoder *e,
+                                                    const nxvc_vke_view *v) {
+    return nxvc_vk_encoder_set_views(e, v, 1);
 }
 
 namespace {

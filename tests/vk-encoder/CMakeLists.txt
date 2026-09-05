@@ -54,6 +54,60 @@ add_test(NAME vk.encoder.mirror
          -P ${CMAKE_CURRENT_SOURCE_DIR}/mirror.cmake)
 list(APPEND NXENC_TESTS vk.encoder.mirror)
 
+# ------------------------------------------- the encoder's Pass W is the
+# decoder's Pass W.  Also needs no target and no GPU: it compares the two
+# generated SPIR-V modules word for word.  The encoder has no warp shader of
+# its own -- it compiles vk/decoder/inter/warp_pred.comp -- and this is what
+# keeps that true, because "by construction" is a claim this tree has been
+# bitten by before.
+set(_passw_dec
+    ${CMAKE_BINARY_DIR}/vk/decoder/inter/generated/warp_pred.spv.h)
+set(_passw_enc ${CMAKE_BINARY_DIR}/vk/encoder/generated/warp_pred.spv.h)
+if(EXISTS ${CMAKE_SOURCE_DIR}/vk/decoder/inter/warp_pred.comp)
+  add_test(NAME vk.encoder.passw.same
+           COMMAND ${CMAKE_COMMAND}
+           -DDEC=${_passw_dec} -DENC=${_passw_enc}
+           -P ${CMAKE_CURRENT_SOURCE_DIR}/passw_same.cmake)
+  list(APPEND NXENC_TESTS vk.encoder.passw.same)
+
+  # The same check for Pass B, which is the other half of the rule: the
+  # encoder's reference picture is reconstructed by the decoder's own module,
+  # in its v1_x8 variant.
+  add_test(NAME vk.encoder.passb.same
+           COMMAND ${CMAKE_COMMAND}
+           -DDEC=${CMAKE_BINARY_DIR}/vk/decoder/passB/generated/reconstruct_v1_x8.spv.h
+           -DENC=${CMAKE_BINARY_DIR}/vk/encoder/generated/reconstruct_v1_x8.spv.h
+           -P ${CMAKE_CURRENT_SOURCE_DIR}/passw_same.cmake)
+  list(APPEND NXENC_TESTS vk.encoder.passb.same)
+endif()
+
+# The inter host module: the ring layout, the slot rule, the rolling refresh
+# and the warp parameter buffer.  No GPU -- it is the bookkeeping that decides
+# what the GPU is asked to do, and every rule in it is one the decoder
+# implements from the same normative text, so a disagreement is a stream the
+# decoder refuses.
+# The inter acid test: byte-identity against nxv-enc at ADR-0028's integer
+# decision, decode equality, and the ring against the decoder's own picture.
+if(TARGET nxvc-vkenc AND TARGET nxv-enc AND TARGET nxv-dec)
+  add_test(NAME vk.encoder.inter.acid.0
+           COMMAND ${CMAKE_COMMAND}
+           -DVKENC=$<TARGET_FILE:nxvc-vkenc>
+           -DNXVENC=$<TARGET_FILE:nxv-enc>
+           -DNXVDEC=$<TARGET_FILE:nxv-dec>
+           -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/inter-acid-0
+           -DVKENCAPI=$<IF:$<TARGET_EXISTS:nxvc-vkenc-api>,$<TARGET_FILE:nxvc-vkenc-api>,>
+           -DDEVICE=0
+           -P ${CMAKE_CURRENT_SOURCE_DIR}/inter_acid.cmake)
+  set_tests_properties(vk.encoder.inter.acid.0 PROPERTIES
+                       SKIP_REGULAR_EXPRESSION "SKIP:")
+  list(APPEND NXENC_TESTS vk.encoder.inter.acid.0)
+endif()
+
+if(TARGET nxenc-inter-test)
+  add_test(NAME vk.encoder.inter.host COMMAND nxenc-inter-test)
+  list(APPEND NXENC_TESTS vk.encoder.inter.host)
+endif()
+
 if(TARGET nxvc-vkenc)
   # -------------------------------------------------------- E3 / E4 / E5
   # The CPU models against their pinned stream digests.  No Vulkan, so it never

@@ -233,11 +233,25 @@ extern "C" {
  * coefficient.  The CPU model writes that contiguously; the GPU slot below is
  * a scratch layout, not the same thing. */
 #define NXE_TILE_BYTES_MAX  (8 + 4 * 8 + 2 * NXE_TILE_COEFS_MAX)  /* 25000 */
-#define NXE_TILE_SLOT_WORDS (2 + 8 + NXE_TILE_COEFS_MAX)          /* 12490 */
+/* Two header words, ONE optional-field word, the eight rANS flush states, and
+ * the emission words.  The field word is reserved on every tile even though
+ * only a coded-vector tile uses it: one formula for the byte layout is worth
+ * four bytes a tile, and E5 would otherwise need the field size to find the
+ * flush states. */
+#define NXE_TILE_SLOT_WORDS (2 + 1 + 8 + NXE_TILE_COEFS_MAX)      /* 12491 */
 #define NXE_TILE_SLOT_BYTES (NXE_TILE_SLOT_WORDS * 4)             /* 49960 */
 
 /* Header sizes, ref/src/common.h. */
 #define NXE_STREAM_HEADER_BYTES 64
+/* Tile modes, nxvc_tile_mode's numbering (SYNTAX.md 6.2).  This pipeline
+ * codes INTRA and WARP_SKIP; the coded-vector modes are named so the skip
+ * test is a comparison against a name rather than against 0. */
+#define NXE_MODE_WARP_SKIP      0
+#define NXE_MODE_STATIC_MV      1
+#define NXE_MODE_WARP_MV        2
+#define NXE_MODE_INTRA          3
+#define NXE_MODE_STEREO         4
+
 #define NXE_FRAME_HEADER_BYTES  40
 /* The transmitted probability tables (SYNTAX.md 9.4) sit between the frame
  * header and the first tile-row header.  The largest area the syntax can
@@ -293,6 +307,20 @@ typedef struct nxe_frame_params {
      * is every stream without CUSTOM_TABLES. */
     uint32_t table_bytes;
 
+    /* Bytes of `warp_ext()`: 36 per eye on an inter frame that carries a pose
+     * matrix, 0 otherwise.  It sits BEFORE the table area -- SYNTAX.md 12 has
+     * `frame := frame_header [warp_ext] [custom_matrices] [table_set]*
+     * tile_row*` -- so the two are added together for the offsets and written
+     * in that order. */
+    uint32_t warp_bytes;
+
+    /* Frame-header byte 33.  `1 << (frame_number & 3)` on an inter stream, 0
+     * otherwise -- a MASK naming the ring slot this frame writes, not an
+     * index; the decoder rejects any other value (SYNTAX.md 3.1). */
+    uint32_t ref_slots;
+    uint32_t pad1;
+    uint32_t pad2;
+
     /* Frame weighting matrices, Q4, raster order in the 8x8 block.  wm_id 0
      * on a tile selects these; 1..3 select a built-in pair (kWeight). */
     uint32_t wm_luma[64];
@@ -301,8 +329,8 @@ typedef struct nxe_frame_params {
 
 /* ------------------------------------------------------------- the tile job
  *
- * One record per tile: everything the mode decision (E1 plus the host rate
- * controller) settled, and the two fields E4 and E5 write back.  16 words.
+ * One record per tile: everything the mode decision (E1c plus the host rate
+ * controller) settled, and the fields E4 and E5 write back.  18 words.
  */
 typedef struct nxe_tile_job {
     uint32_t tile;           /* linear tile index, row-major eye-minor */
@@ -324,6 +352,13 @@ typedef struct nxe_tile_job {
     uint32_t tile_bytes;     /* written by E4: 8 + payload_len */
     uint32_t nunits;         /* written by E3 */
     uint32_t flags;
+
+    /* The tile's motion vector, quarter LUMA samples, two int8 packed low
+     * byte first: mv_x in bits 0-7, mv_y in 8-15.  Zero unless the mode is a
+     * coded-vector one, and written by E1c rather than by the host, because
+     * it is the decision's own output. */
+    uint32_t mv;
+    uint32_t pad_job;
 } nxe_tile_job;
 
 #define NXE_JOB_F_OK        1u

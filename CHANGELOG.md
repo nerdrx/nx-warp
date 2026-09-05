@@ -88,8 +88,51 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
 
 ### Added
 
-**GPU encoder: the inter path is specified and sized, ahead of being built**
+**GPU encoder: the inter path, up to the reference store**
 
+- The encoder gets no warp shader of its own. Its E0b is
+  `vk/decoder/inter/warp_pred.comp`, compiled from the decoder's source into the encoder's build,
+  and `vk.encoder.passw.same` requires all 7952 SPIR-V words of the two modules to be identical.
+- `vk/encoder/inter/` adds the host module (ring layout and slot rule, rolling refresh, the warp
+  parameter buffer and per-tile records) with `vk.encoder.inter.host` checking its rules against the
+  spec's arithmetic, and `E1c_decide.comp`, the integer mode decision, which is the GPU half of
+  `nxvc_config::inter_int_decision`.
+- E3/E4/E5 carry an inter frame: `warp_bytes` and `ref_slots` in the frame params, warp_ext() after
+  the frame header, the tile-row `skip_bitmap` and coded `tile_count` derived from the tiles' own
+  modes, and a WARP_SKIP tile costing zero bytes. **The intra path is byte-identical throughout** --
+  the acid tests that diff against `nxv-enc` are unchanged.
+- Pass W and the decision run on the device and produce inter-shaped streams that `nxv-dec` decodes
+  correctly (38.3-38.5 dB at QP 30). Every tile still chooses INTRA, because the reference ring is
+  never written: see below.
+
+**Blocked: the reference store for intra tiles.** `vk/encoder/README.md` said E3b was "a matter of
+writing the reference picture out, not of writing the maths again", because E3 already holds the
+reconstruction. That is true only in the directional build -- `s_recon` is declared
+`shared int s_recon[NXE_SC_INTRA_DIR * 4096 + 1]`, so in the non-directional configuration the acid
+test pins and the library ships it is a one-element array and `residual_blocks` never writes it.
+E3 does not reconstruct the tile at all there, and has no reason to. The skipped half of the store
+is written (`inter/E3b_ring.comp`, mirroring the decoder's `nxvwRefRingStore`) but is not dispatched,
+because a ring with no intra tiles in it has nothing for frame 1 to predict from. The intra half
+needs the decoder's Pass B run on the encoder's coefficients -- computing it in E3 instead would be
+the re-derivation the E3b rule exists to forbid -- and that adapter is the next piece of work.
+
+This is the third claim in that directory written as an accomplished fact that was not one, after
+`nxe_enc.h`'s `pred_src` buffer and the static assertions that could not see a GLSL define. All
+three described a future consumer, so nothing compiled against them and nothing failed.
+
+**Reference encoder: the GPU's integer mode decision, as a preset**
+
+- `nxvc_config::inter_int_decision` (`nxv-enc --int-decision on`) is the decision the GPU encoder
+  implements, landed in the reference so byte-identity stays the acceptance test. All i64: the skip
+  gate as the reference's own early-out with the divisions cleared, STATIC_MV and WARP_MV searched
+  by SAD over a fixed pattern, the skip charged persistence on its excess over the best coded
+  candidate, and INTRA as a fallback rather than a costed candidate. Two findings from setting its
+  defaults by measurement: the persistence term is not optional (without it, 33.91 dB against
+  36.62, because skip won on tiles whose error then sat in the ring), and quarter pel is worth
+  1.5 dB and costs the byte-identity nothing, because a quarter-pel vector is an integer in quarter
+  samples. The spatial motion-search seeds are dropped -- they cost 0.4% of the rate and 0.02 dB and
+  they force the decisions onto an anti-diagonal wavefront, 33 dispatches where a GPU wants one.
+  Measured: intra 32339 B/frame at 38.42 dB, integer decision 8089 B/frame at 36.18 dB (**4.0x**).
 - `docs/adr/0028-gpu-inter-needs-an-integer-mode-decision.md` records the decision that the GPU
   encoder's inter path implements its own **fully integer** mode decision rather than reproducing
   the reference's, and that the same decision is added to the reference as a first-class preset so

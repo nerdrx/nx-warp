@@ -1,0 +1,511 @@
+#version 460
+// E1c_decide.comp -- the integer mode decision, one workgroup per tile.
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// This is the GPU half of `nxvc_config::inter_int_decision`
+// (ref/src/codec_impl.inc, the block headed "The GPU encoder's decision") and
+// it has to agree with it exactly, because byte-identity against `nxv-enc
+// --int-decision on` is the acceptance test.  Every quantity is an integer:
+// there is no double here and none in the reference's copy of this rule.
+//
+// The rule implemented, for the skip-only increment:
+//
+//   * a tile whose record says it is not inter -- no reference, or a rolling
+//     refresh due, both decided on the host -- stays INTRA;
+//   * otherwise WARP_SKIP when the warped predictor's squared error over the
+//     LUMA plane is already under the quantiser's own noise floor,
+//
+//         sse * 786432 <= qstep^2 * skip_thresh * npix
+//
+//     which is the reference's `skip_sse <= qnoise * (thresh/256) * npix` with
+//     every division cleared: 786432 is 256 (qstep is Q4, so qstep^2 is Q8)
+//     times 12 (the uniform quantiser's noise floor qstep^2/12) times 256
+//     (skip_thresh is Q8);
+//   * and, when that gate FAILS, still WARP_SKIP unless the mean absolute
+//     residual per luma sample is over `intra_mad` (Q8).
+//
+// That second clause is the one worth stating carefully, because leaving it
+// out is a bug that looks like a tuning difference.  The SSE gate is an
+// EARLY-OUT in the reference, not the decision: when it fails the tile goes to
+// the full comparison, and with the coded-vector modes off there is nothing
+// there to beat the skip, so the skip still wins unless the INTRA fallback
+// fires.  Treating a failed gate as INTRA made this kernel code 15 tiles of
+// 289 differently from `nxv-enc --int-decision on` -- every one of them a tile
+// the reference skipped with an SSE far above the gate, up to 1.9M against a
+// threshold of 349525.
+//
+// STATIC_MV is searched here when `coded_vectors` is set.  Its predictor is
+// the IDENTITY plus a vector -- warp_tile_corners() returns the tile's own
+// coordinates for kModeStatic, so the in-tile corner bilerp is the identity
+// map -- which is what lets this kernel search it exactly without duplicating
+// Pass W: at an integer vector the predictor is the reference translated, and
+// at a quarter-pel one it is warp_tile()'s own bilinear tap, which is eight
+// lines of integer arithmetic reproduced below.
+//
+// WARP_MV is NOT searched here.  Its predictor is the full homography and
+// reproducing it outside Pass W would be a second copy of the one piece of
+// arithmetic this project refuses to have two of.  `--int-coded-vectors on`
+// searches both, so the reference configuration this kernel matches names
+// STATIC_MV only; see vk/encoder/README.md.
+//
+// THE SEARCH ORDER IS PART OF THE DECISION.  The reference takes the first
+// candidate at a given SAD, so a parallel search has to break ties the same
+// way: every stage below reduces on the pair (sad, visit index) and the
+// smaller index wins a tie, which is what "first wins" means when the
+// candidates are evaluated at once rather than in sequence.
+//
+// WHY THE SUM IS EXACT.  A 64x64 luma tile of 8-bit samples has a squared
+// error of at most 4096 * 255^2 = 2.66e8, which is inside an i32; but the
+// running sum over 4096 samples is not, so it is accumulated in u32 pairs and
+// reduced as a 64-bit value carried in two uints.  Integer addition is
+// associative, so the reduction tree the hardware happens to build cannot
+// change the answer -- the same argument E1's statistics rest on.
+
+#extension GL_GOOGLE_include_directive : require
+#include "inter_layout.h"
+#include "nxe_enc_common.glsl"
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430, binding = 0) readonly buffer ParamBuf { nxe_frame_params fp; };
+layout(std430, binding = 1)          buffer JobBuf   { nxe_tile_job jobs[]; };
+// The source, tile-major packed int16 two per uint -- E0's output, the same
+// buffer E3 reads.
+layout(std430, binding = 2) readonly buffer SrcBuf   { uint v[]; } srcb;
+// Pass W's predictor, i16 packed two per uint at the decoder's own stride.
+layout(std430, binding = 3) readonly buffer WPredBuf { uint v[]; } wpred;
+// The warp parameter buffer, for each tile's record: the kernel reads the
+// inter bit and writes nothing, so the host's decision about refresh and
+// reference availability arrives here rather than being recomputed.
+layout(std430, binding = 4) readonly buffer WarpBuf  { uint v[]; } warpb;
+// Pass B's per-tile records.  They are written HERE rather than on the host
+// because their `mode` field is this kernel's decision, and the host cannot
+// know it: E1c runs later in the same command buffer than the upload does.
+// The two header words are exactly E4's h0/h1 -- the same fields in the same
+// bits, because both are SYNTAX.md 4.1 -- so this is the tile header the frame
+// will carry, written before the tile is coded.
+layout(std430, binding = 5) writeonly buffer RecBuf  { uint v[]; } recs;
+// The reference ring, read directly by the STATIC_MV search.
+layout(std430, binding = 6) readonly buffer RingBuf  { uint v[]; } ring;
+// The same warp buffer as binding 4, bound writable: E1c publishes each tile's
+// decided mode and vector into its record for the second Pass W dispatch.
+// Two bindings on one buffer rather than one read-write binding, so the
+// read side stays `readonly` and the compiler keeps its loads hoisted.
+layout(std430, binding = 7) buffer WarpWBuf { uint v[]; } warpw;
+
+layout(push_constant) uniform Push {
+    int qstep;       // kQStep[qp], Q4
+    int skip_thresh; // Q8 multiple of the noise floor; 256 is 1.0
+    int wpred_stride_i16;
+    int intra_mad;   // Q8 mean |residual| per luma sample above which INTRA
+    int lambda_q8;   // SAD-domain lambda, Q8: cost = SAD + (lambda*bits >> 8)
+    int mv_range;    // coarse sweep radius in samples
+    int coded_vectors; // 1 = search STATIC_MV, 0 = skip and intra only
+    int ring_stride;   // u16 row stride of the ring's luma plane
+    int ring_w, ring_h; // the luma plane's sample extent
+    int pad0, pad1;
+} pc;
+
+// --------------------------------------------------------- the ring reader
+int g_ringBase;
+
+// One luma sample, clamp-to-edge on integer indices, exactly as
+// warp_ref.cpp's fetch() does it.
+int ref_at(int x, int y) {
+    x = clamp(x, 0, pc.ring_w - 1);
+    y = clamp(y, 0, pc.ring_h - 1);
+    const int idx = g_ringBase + y * pc.ring_stride + x;
+    const uint w = ring.v[uint(idx) >> 1u];
+    return int((idx & 1) == 0 ? (w & 0xffffu) : (w >> 16u));
+}
+
+// warp_ref.cpp's sample_bilinear(): weights sum to 256, result (acc+128)>>8.
+int sample_bilinear(int ix, int iy, int fx, int fy) {
+    const int gx = 16 - fx, gy = 16 - fy;
+    const int acc = gx * gy * ref_at(ix, iy) +
+                    fx * gy * ref_at(ix + 1, iy) +
+                    gx * fy * ref_at(ix, iy + 1) +
+                    fx * fy * ref_at(ix + 1, iy + 1);
+    return (acc + 128) >> 8;
+}
+
+// The STATIC_MV predictor of one sample.  kModeStatic's corners are the
+// tile's own coordinates in Q.6, so the corner bilerp is the identity and the
+// whole predictor is: coordinate in Q.6, plus the vector (quarter samples, so
+// Q.2 shifted left by 4), Q.6 to Q.4 by warp_tile()'s own (c + 2) >> 2, then
+// the bilinear tap and the clamp.
+int static_pred(int gx, int gy, int mvx, int mvy, int maxval) {
+    const int xq4 = ((gx << 6) + (mvx << 4) + 2) >> 2;
+    const int yq4 = ((gy << 6) + (mvy << 4) + 2) >> 2;
+    return clamp(sample_bilinear(xq4 >> 4, yq4 >> 4, xq4 & 15, yq4 & 15), 0,
+                 maxval);
+}
+
+// 64-bit accumulate in two uints: `lo` wraps, `hi` counts the wraps.
+shared uint s_lo[256];
+shared uint s_hi[256];
+// The SAD alongside the SSE.  A 64x64 tile of 8-bit samples has a SAD of at
+// most 4096 * 255 = 1044480, so one uint holds it and it needs no pair.
+shared uint s_sad[256];
+// The gate and the skip SAD, published by lane 0 to the whole workgroup.
+shared uint s_gate, s_sadskip;
+// The winner of a search stage, and the (sad, index) pair each lane reduces.
+shared int s_bx, s_by;
+shared uint s_csad[256];
+shared uint s_cidx[256];
+
+#define SEEDS  0
+#define SWEEP  1
+#define REFINE 2
+
+// SAD of the source tile against the reference TRANSLATED by (dx, dy), sampled
+// every `step` in each axis.  This is ref/src/codec_impl.inc's sad_translate
+// for a STATIC_MV candidate: `d0x`/`d0y` there are the tile's corner-0 offset,
+// which is zero for the identity predictor, so the two agree term for term.
+uint sad_translate(int ox, int oy, int dx, int dy, int step, int size,
+                   uint srcbase) {
+    uint sad = 0u;
+    for (int v = 0; v < size; v += step)
+        for (int u = 0; u < size; u += step) {
+            const int i = v * size + u;
+            const uint sw = srcb.v[srcbase + uint(i >> 1)];
+            const int sv = ((i & 1) == 0) ? (int(sw << 16) >> 16)
+                                          : (int(sw) >> 16);
+            sad += uint(abs(sv - ref_at(ox + dx + u, oy + dy + v)));
+        }
+    return sad;
+}
+
+uint reduce_sum(uint x, int lid) {
+    s_csad[lid] = x;
+    barrier();
+    for (uint st = 128u; st > 0u; st >>= 1u) {
+        if (uint(lid) < st) s_csad[lid] += s_csad[lid + st];
+        barrier();
+    }
+    return s_csad[0];
+}
+
+// One stage of the search: evaluate its candidate set in parallel, reduce on
+// (sad, visit index) so a tie goes to the candidate the reference visits
+// first, and leave the winner in s_bx/s_by.
+//
+// The candidate sets, and their order, are the reference's:
+//   SEEDS   zero, then this tile's stored vector -- which is (0,0) too while
+//           STATIC_MV is the only coded mode, because update_pred_state only
+//           stores a vector for WARP_MV.  Both are evaluated anyway, so the
+//           set does not change when WARP_MV lands.
+//   SWEEP   dy, dx over [-mv_range, mv_range] step 2, row-major, centred on
+//           the seed winner, at a sample step of 2.
+//   REFINE  the eight integer neighbours and the centre, row-major, at full
+//           sample density.
+void search_stage(int stage, int cx0, int cy0, int ox, int oy, uint srcbase,
+                  int size, int lid) {
+    const int r = pc.mv_range;
+    const int span = (2 * r) / 2 + 1;          // sweep points per axis
+    const int ncand = stage == SEEDS ? 2 : (stage == SWEEP ? span * span : 9);
+    const int step = stage == REFINE ? 1 : 2;
+
+    uint bsad = 0xffffffffu;
+    uint bidx = 0xffffffffu;
+    for (int c = lid; c < ncand; c += 256) {
+        int dx, dy;
+        if (stage == SEEDS) {
+            dx = 0; dy = 0;                    // both seeds are (0,0) today
+        } else if (stage == SWEEP) {
+            dx = cx0 - r + (c % span) * 2;
+            dy = cy0 - r + (c / span) * 2;
+        } else {
+            dx = cx0 + (c % 3) - 1;
+            dy = cy0 + (c / 3) - 1;
+        }
+        // A vector is s8 quarter samples, so an integer candidate is
+        // |d| <= 31 samples; the reference rejects the rest before scoring.
+        if (dx < -31 || dx > 31 || dy < -31 || dy > 31) continue;
+        const uint sad = sad_translate(ox, oy, dx, dy, step, size, srcbase);
+        if (sad < bsad || (sad == bsad && uint(c) < bidx)) {
+            bsad = sad;
+            bidx = uint(c);
+        }
+    }
+    s_csad[lid] = bsad;
+    s_cidx[lid] = bidx;
+    barrier();
+    for (uint st = 128u; st > 0u; st >>= 1u) {
+        if (uint(lid) < st) {
+            const uint o = uint(lid) + st;
+            if (s_csad[o] < s_csad[lid] ||
+                (s_csad[o] == s_csad[lid] && s_cidx[o] < s_cidx[lid])) {
+                s_csad[lid] = s_csad[o];
+                s_cidx[lid] = s_cidx[o];
+            }
+        }
+        barrier();
+    }
+    if (lid == 0) {
+        const int c = int(s_cidx[0]);
+        if (stage == SEEDS) { s_bx = 0; s_by = 0; }
+        else if (stage == SWEEP) {
+            s_bx = cx0 - r + (c % span) * 2;
+            s_by = cy0 - r + (c / span) * 2;
+        } else {
+            s_bx = cx0 + (c % 3) - 1;
+            s_by = cy0 + (c / 3) - 1;
+        }
+    }
+    barrier();
+}
+
+void add64(inout uint lo, inout uint hi, uint v) {
+    uint n = lo + v;
+    if (n < lo) ++hi;
+    lo = n;
+}
+
+// The tile record Pass B reads.  `present` is what makes it reconstruct the
+// tile at all; w3 is the warp-record index, unused because the hook addresses
+// the tile records by tile index.
+void write_rec(uint tile, uint mode, int mvx, int mvy) {
+    const nxe_tile_job j = jobs[tile];
+    uint w0 = (j.col & 0xfffu) << 4;
+    w0 |= (j.eye & 1u) << 2;
+    const bool mvp = mode == uint(NXE_MODE_STATIC_MV) ||
+                     mode == uint(NXE_MODE_WARP_MV) ||
+                     mode == uint(NXE_MODE_STEREO);
+    uint w1 = mode & 7u;
+    w1 |= (j.res_level & 3u) << 3;
+    w1 |= (j.chroma444 & 1u) << 5;
+    w1 |= (uint(j.qp_delta) & 0x3fu) << 8;
+    w1 |= (j.table_set & 7u) << 14;
+    w1 |= (j.nsub_log2 & 7u) << 17;
+    w1 |= (mvp ? 1u : 0u) << 20;
+    w1 |= (j.tskip & 1u) << 23;
+    w1 |= (j.wm_id & 3u) << 26;
+    recs.v[tile * 4u + 0u] = w0;
+    recs.v[tile * 4u + 1u] = w1;
+    recs.v[tile * 4u + 2u] = 1u << 8;
+    recs.v[tile * 4u + 3u] = 0xffffffffu;
+    // Pass W reads the vector out of the WARP record, not the tile record, so
+    // the decision publishes it there too.  The second Pass W dispatch then
+    // predicts exactly what this kernel chose, and Pass B reconstructs from
+    // that -- which is what keeps the encoder's reference the decoder's.
+    const uint wb = uint(NXVW_WARP_HDR_UINTS) + tile * uint(NXVW_WARP_TILE_UINTS);
+    warpw.v[wb + 0u] = (mode & 7u) |
+                       (mode == uint(NXE_MODE_INTRA) ? 0u : (1u << 3)) |
+                       (warpb.v[wb] & (1u << 4));
+    warpw.v[wb + 3u] = uint(mvx);
+    warpw.v[wb + 4u] = uint(mvy);
+}
+
+void main() {
+    const uint tile = gl_WorkGroupID.x;
+    if (tile >= fp.ntiles) return;
+    const uint lid = gl_LocalInvocationID.x;
+
+    const uint b = uint(NXVW_WARP_HDR_UINTS) + tile * uint(NXVW_WARP_TILE_UINTS);
+    const uint w0 = warpb.v[b];
+    // Bit 3 is the record's `inter` flag.  Clear means the host already
+    // decided this tile is INTRA -- no reference, or a refresh due -- and
+    // Pass W wrote nothing for it, so there is no predictor to measure.
+    if (((w0 >> 3u) & 1u) == 0u) {
+        if (lid == 0u) {
+            jobs[tile].mode = uint(NXE_MODE_INTRA);
+            write_rec(tile, uint(NXE_MODE_INTRA), 0, 0);
+        }
+        return;
+    }
+
+    // The luma plane's base inside the ring: the slot this tile predicts from
+    // (the record carries it as a u16 ELEMENT offset, not a slot index) plus
+    // the plane's offset from the warp header.  Same two words Pass W adds.
+    g_ringBase = int(warpb.v[b + 6u]) +
+                 int(warpb.v[uint(NXVW_WARP_HDR_RING + 4)]);
+
+    // The luma plane only, at the tile's coded size.  res_level is 0 on this
+    // path, so that is the full 64x64.
+    const int size = 64;
+    const uint npix = uint(size * size);
+    const uint srcbase = tile * uint(size * size / 2);
+    const uint wpbase = tile * uint(pc.wpred_stride_i16);   // plane 0 at 0
+
+    uint lo = 0u, hi = 0u, sad = 0u;
+    // One thread per PAIR of horizontally adjacent samples: both buffers pack
+    // two 16-bit samples per uint and the pairing is the same in each, so the
+    // loop does one load from each instead of two.
+    for (uint i = lid; i < npix / 2u; i += 256u) {
+        const uint sw = srcb.v[srcbase + i];
+        const uint pw = wpred.v[(wpbase >> 1u) + i];
+        // The source is int16 two's complement; the predictor is a clamped
+        // sample in [0, maxval] and needs no sign extension.  Luma is
+        // unsigned either way, so the extension is a formality here and a
+        // correctness matter the day this kernel measures a chroma plane.
+        const int s0 = int(sw << 16) >> 16;
+        const int s1 = int(sw) >> 16;
+        const int p0 = int(pw & 0xffffu);
+        const int p1 = int(pw >> 16u);
+        const int d0 = s0 - p0;
+        const int d1 = s1 - p1;
+        add64(lo, hi, uint(d0 * d0));
+        add64(lo, hi, uint(d1 * d1));
+        sad += uint(abs(d0)) + uint(abs(d1));
+    }
+    s_lo[lid] = lo;
+    s_hi[lid] = hi;
+    s_sad[lid] = sad;
+    barrier();
+
+    // Tree reduction in shared memory.  No subgroup ops: the sum is over 256
+    // lanes and this kernel is small enough that the barrier cost is not the
+    // thing to optimise, while a subgroup width assumption is the thing most
+    // likely to make it wrong on another vendor (paper 3.2.6).
+    for (uint s = 128u; s > 0u; s >>= 1u) {
+        if (lid < s) {
+            uint l = s_lo[lid], h = s_hi[lid];
+            add64(l, h, s_lo[lid + s]);
+            h += s_hi[lid + s];
+            s_lo[lid] = l;
+            s_hi[lid] = h;
+            s_sad[lid] += s_sad[lid + s];
+        }
+        barrier();
+    }
+
+    // The gate and the skip SAD, decided by lane 0 and published to the
+    // workgroup: every lane needs them, because the search below is a
+    // workgroup-wide operation and its barriers must be reached by all of
+    // them.  A `return` here would be a divergent barrier.
+    if (lid == 0u) {
+        // sse * 786432 <= qstep^2 * skip_thresh * npix, both sides as 64-bit
+        // values in two uints.  The left side is at most 2.66e8 * 786432 =
+        // 2.1e14 and the right at most 3200^2 * 65535 * 4096, so neither fits
+        // in 32 bits -- which is why this is done the long way rather than
+        // with a shift and a prayer.
+        uint l_lo, l_hi;
+        umulExtended(s_lo[0], 786432u, l_hi, l_lo);
+        l_hi += s_hi[0] * 786432u;
+
+        const uint q2 = uint(pc.qstep) * uint(pc.qstep);
+        uint r_lo, r_hi;
+        umulExtended(q2, uint(pc.skip_thresh), r_hi, r_lo);
+        uint t_lo, t_hi;
+        umulExtended(r_lo, npix, t_hi, t_lo);
+        t_hi += r_hi * npix;
+
+        s_gate = ((l_hi < t_hi) || (l_hi == t_hi && l_lo <= t_lo)) ? 1u : 0u;
+        s_sadskip = s_sad[0];
+    }
+    barrier();
+
+    // The reference takes the skip WITHOUT SEARCHING when the gate passes --
+    // it is an early-out, and reproducing it matters for speed and for
+    // nothing else, because a searched candidate could not have beaten a
+    // predictor already under the quantiser's noise floor.
+    if (s_gate != 0u || pc.coded_vectors == 0) {
+        if (lid == 0u) {
+            // The fallback, on the SAD: sad * 256 <= intra_mad * npix.  The
+            // product on the left does not fit in a uint, so it is formed as
+            // a 64-bit value the same way the gate is.
+            uint f_lo, f_hi;
+            umulExtended(s_sadskip, 256u, f_hi, f_lo);
+            uint m_lo, m_hi;
+            umulExtended(uint(pc.intra_mad), npix, m_hi, m_lo);
+            const bool close =
+                (f_hi < m_hi) || (f_hi == m_hi && f_lo <= m_lo);
+            const uint mode = (s_gate != 0u || close)
+                                  ? uint(NXE_MODE_WARP_SKIP)
+                                  : uint(NXE_MODE_INTRA);
+            jobs[tile].mode = mode;
+            jobs[tile].mv = 0u;
+            write_rec(tile, mode, 0, 0);
+        }
+        return;
+    }
+
+    // ---------------------------------------------------------- the search
+    const int ox = int(jobs[tile].col) * 64 +
+                   int(jobs[tile].eye) * pc.ring_w;
+    const int oy = int(jobs[tile].row) * 64;
+
+    // Stage 1, the two seeds, then stage 2's sweep and its integer refine.
+    // Each stage reduces on (sad, visit index) so that a tie goes to the
+    // candidate the reference would have visited first.
+    search_stage(SEEDS, 0, 0, ox, oy, srcbase, size, int(lid));
+    const int sx = s_bx, sy = s_by;
+    search_stage(SWEEP, sx, sy, ox, oy, srcbase, size, int(lid));
+    const int cx = s_bx, cy = s_by;
+    search_stage(REFINE, cx, cy, ox, oy, srcbase, size, int(lid));
+
+    // Stage 3, quarter pel, on the TRUE predictor.  Nine candidates, each
+    // reduced over the tile's samples: the coarse stages parallelise over
+    // candidates because there are hundreds of them, and this one over
+    // samples because there are nine.
+    const int bx = s_bx, by = s_by;
+    uint best_sad = 0xffffffffu;
+    int best_mx = bx * 4, best_my = by * 4;
+    for (int k = 0; k < 9; ++k) {
+        const int mx = bx * 4 + (k % 3) - 1;
+        const int my = by * 4 + (k / 3) - 1;
+        if (mx < -128 || mx > 127 || my < -128 || my > 127) {
+            barrier();
+            barrier();
+            continue;
+        }
+        uint sad = 0u;
+        for (int i = int(lid); i < size * size; i += 256) {
+            const int u = i % size, v = i / size;
+            const uint sw = srcb.v[srcbase + uint(i >> 1)];
+            const int sv = ((i & 1) == 0) ? (int(sw << 16) >> 16)
+                                          : (int(sw) >> 16);
+            sad += uint(abs(sv - static_pred(ox + u, oy + v, mx, my, 255)));
+        }
+        const uint tot = reduce_sum(sad, int(lid));
+        // Strictly less: the first candidate in this fixed scan order keeps
+        // a tie, which is what the reference's `v < qcost` does.
+        if (tot < best_sad) { best_sad = tot; best_mx = mx; best_my = my; }
+    }
+
+    if (lid != 0u) return;
+
+    // ------------------------------------------------------- the decision
+    // cost = SAD + (lambda * bits >> 8).  A coded vector pays the tile header
+    // and its two vector bytes; the skip pays its bit in the row's bitmap.
+    const uint bits_vec = 8u * (8u + 2u);
+    const uint cost_vec =
+        best_sad + ((uint(pc.lambda_q8) * bits_vec) >> 8);
+
+    // The skip, charged kIntSkipPersist on its EXCESS over the best coded
+    // candidate: its error goes into the ring and stays there until the tile
+    // is next coded, so the part a coded tile would NOT have left behind is
+    // paid several times over.  ref/src/codec_impl.inc has the same term.
+    const uint excess = s_sadskip > best_sad ? s_sadskip - best_sad : 0u;
+    const uint cost_skip =
+        s_sadskip + 3u * excess + ((uint(pc.lambda_q8) * 1u) >> 8);
+
+    const bool take_skip = cost_skip <= cost_vec;
+    const uint best_pred_sad = min(s_sadskip, best_sad);
+
+    // INTRA is a fallback, never a costed candidate: costing it needs the
+    // rate of a coded tile, which is the quantity that cannot be reproduced.
+    uint f_lo, f_hi;
+    umulExtended(best_pred_sad, 256u, f_hi, f_lo);
+    uint m_lo, m_hi;
+    umulExtended(uint(pc.intra_mad), npix, m_hi, m_lo);
+    const bool close = (f_hi < m_hi) || (f_hi == m_hi && f_lo <= m_lo);
+
+    if (!close) {
+        jobs[tile].mode = uint(NXE_MODE_INTRA);
+        jobs[tile].mv = 0u;
+        write_rec(tile, uint(NXE_MODE_INTRA), 0, 0);
+        return;
+    }
+    if (take_skip) {
+        jobs[tile].mode = uint(NXE_MODE_WARP_SKIP);
+        jobs[tile].mv = 0u;
+        write_rec(tile, uint(NXE_MODE_WARP_SKIP), 0, 0);
+        return;
+    }
+    jobs[tile].mode = uint(NXE_MODE_STATIC_MV);
+    jobs[tile].mv = (uint(best_mx) & 0xffu) | ((uint(best_my) & 0xffu) << 8);
+    write_rec(tile, uint(NXE_MODE_STATIC_MV), best_mx, best_my);
+}

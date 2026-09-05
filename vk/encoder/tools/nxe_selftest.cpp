@@ -22,7 +22,10 @@
  * conformance vector and does not pretend to be one; it is a tripwire.
  */
 
+#include <cmath>
 #include <cstdio>
+#include <string>
+#include <vector>
 #include <cstring>
 
 #include "nxe_host.h"
@@ -230,6 +233,156 @@ int selftest(int device, bool cpu_only, bool print_digests, bool quiet) {
     }
     if (bad) return 1;
     if (no_dev && !cpu_only) return 77;
+    return 0;
+}
+
+
+
+/* ------------------------------------------------------- the inter fixture
+ *
+ * One moving sequence and its pose track, written to disk so that the inter
+ * acid test can drive `nxv-enc` and `nxvc-vkenc` from ONE description and the
+ * two cannot drift.  It is here rather than in the cmake test because a
+ * picture written by CMake would be a third description of the same thing.
+ *
+ * The content is deliberately a MIX and not a best case: a static, structured
+ * background that the warp predicts exactly, plus a disc that moves fast
+ * enough that no warp predicts it.  A fixture where everything skips would
+ * pass with the residual path unexercised, and one where nothing skips would
+ * pass with the ring unexercised; this one puts both kinds of tile, and the
+ * boundary between them, in every frame.
+ *
+ * The pose track is a slow yaw.  It matters that it is not zero: the warp
+ * matrix then has real off-diagonal terms, warp_ext() carries something a
+ * reader can be wrong about, and the conjugated chroma matrix is exercised.
+ */
+int inter_fixture_dump(const char *prefix) {
+    const int W = 256, H = 192, F = 8;
+    const double kFovDeg = 95.0;
+    std::string base(prefix);
+    const std::string yuv = base + "inter.yuv";
+    const std::string js = base + "inter.poses.json";
+
+    std::FILE *fy = std::fopen(yuv.c_str(), "wb");
+    if (!fy) { std::perror("dump inter yuv"); return 1; }
+    std::vector<uint8_t> Y((size_t)W * H), U((size_t)(W / 2) * (H / 2)),
+        V((size_t)(W / 2) * (H / 2));
+    for (int n = 0; n < F; ++n) {
+        /* The disc moves; everything else is a function of position alone. */
+        const double cx = 60.0 + 9.0 * n, cy = 96.0 + 4.0 * n;
+        for (int y = 0; y < H; ++y)
+            for (int x = 0; x < W; ++x) {
+                int v = 128 + ((x * 3 + y * 5) & 63) - 32;
+                if (((x >> 4) + (y >> 4)) % 3 == 0) v += 40;
+                const double dx = x - cx, dy = y - cy;
+                if (dx * dx + dy * dy < 22.0 * 22.0) v = 235;
+                Y[(size_t)y * W + x] = (uint8_t)(v < 0 ? 0 : (v > 255 ? 255 : v));
+            }
+        for (int y = 0; y < H / 2; ++y)
+            for (int x = 0; x < W / 2; ++x) {
+                U[(size_t)y * (W / 2) + x] = (uint8_t)(112 + ((x * 5 + y * 3) % 32));
+                V[(size_t)y * (W / 2) + x] = (uint8_t)(144 - ((x * 3 + y * 7) % 32));
+            }
+        std::fwrite(Y.data(), 1, Y.size(), fy);
+        std::fwrite(U.data(), 1, U.size(), fy);
+        std::fwrite(V.data(), 1, V.size(), fy);
+    }
+    std::fclose(fy);
+
+    std::FILE *fj = std::fopen(js.c_str(), "wb");
+    if (!fj) { std::perror("dump inter poses"); return 1; }
+    std::fprintf(fj,
+                 "{\n \"version\": 2,\n"
+                 " \"convention\": { \"id\": \"nxv-openxr-1\" },\n"
+                 " \"fov_deg\": { \"h\": %.1f, \"v\": %.1f },\n"
+                 " \"frames\": [\n",
+                 kFovDeg, kFovDeg);
+    for (int n = 0; n < F; ++n) {
+        /* A yaw of 0.35 degrees a frame: a quaternion about Y. */
+        const double ang = 0.35 * 3.14159265358979323846 / 180.0 * n;
+        std::fprintf(fj,
+                     "  { \"orientation_xyzw\": [0, %.17g, 0, %.17g] }%s\n",
+                     std::sin(ang / 2), std::cos(ang / 2), n + 1 < F ? "," : "");
+    }
+    std::fprintf(fj, " ]\n}\n");
+    std::fclose(fj);
+
+    std::printf("%s %s %d %d %d\n", yuv.c_str(), js.c_str(), W, H, F);
+    return 0;
+}
+
+
+/* ------------------------------------------------- the ring-vs-decoder check
+ *
+ * The proof that the encoder's reference picture IS the decoder's.
+ *
+ * The encoder's ring is written by the decoder's own Pass B, so the claim is
+ * meant to be structural -- but "meant to be" is what this directory has been
+ * wrong about three times, so it is measured.  `NXE_DUMP_RING=<prefix>` makes
+ * the encoder write the ring slot each frame lands in; this compares those
+ * dumps against the LUMA the reference decoder produces from the very same
+ * stream.  For a 4:2:0 stream with no colour transform the coded luma plane
+ * and the display luma plane are the same samples, so the comparison is
+ * direct and exact -- not a tolerance.
+ *
+ * A single differing sample is a failure.  It would mean the encoder is
+ * predicting from a picture the decoder does not have, which is the one bug
+ * class that does not show up as a broken frame: it shows up as drift, three
+ * seconds later, on content nobody was looking at.
+ */
+int ring_check(const char *prefix, const char *decoded, int w, int h,
+               int frames) {
+    std::FILE *fd = std::fopen(decoded, "rb");
+    if (!fd) { std::perror("ring_check: decoded"); return 1; }
+    const size_t luma = (size_t)w * (size_t)h;
+    const size_t fsz = luma + luma / 2;   /* 4:2:0 */
+    /* The ring's row stride is padded to an even number of samples. */
+    const size_t stride = (size_t)((w + 1) & ~1);
+    std::vector<uint8_t> dec(fsz);
+    std::vector<uint16_t> ring(stride * (size_t)h);
+    int bad_frames = 0;
+    for (int n = 0; n < frames; ++n) {
+        if (std::fread(dec.data(), 1, fsz, fd) != fsz) break;
+        char path[512];
+        std::snprintf(path, sizeof path, "%s.%d", prefix, n);
+        std::FILE *fr = std::fopen(path, "rb");
+        if (!fr) {
+            std::fprintf(stderr, "ring_check: no ring dump for frame %d\n", n);
+            ++bad_frames;
+            continue;
+        }
+        const size_t got = std::fread(ring.data(), 2, ring.size(), fr);
+        std::fclose(fr);
+        if (got < ring.size()) {
+            std::fprintf(stderr, "ring_check: frame %d dump is short\n", n);
+            ++bad_frames;
+            continue;
+        }
+        size_t ndiff = 0;
+        int worst = 0;
+        for (int y = 0; y < h; ++y)
+            for (int x = 0; x < w; ++x) {
+                const int a = (int)ring[(size_t)y * stride + (size_t)x];
+                const int b = (int)dec[(size_t)y * (size_t)w + (size_t)x];
+                if (a != b) {
+                    ++ndiff;
+                    const int e = a > b ? a - b : b - a;
+                    if (e > worst) worst = e;
+                }
+            }
+        if (ndiff) {
+            std::fprintf(stderr,
+                         "ring_check: frame %d: %zu of %zu luma samples differ "
+                         "(worst %d).  The encoder's reference is not the "
+                         "decoder's.\n",
+                         n, ndiff, luma, worst);
+            ++bad_frames;
+        }
+    }
+    std::fclose(fd);
+    if (bad_frames) return 1;
+    std::printf("ring_check: %d frames, encoder ring == decoder output\n",
+                frames);
     return 0;
 }
 

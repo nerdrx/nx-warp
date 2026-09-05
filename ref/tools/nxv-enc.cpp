@@ -132,6 +132,16 @@ static void usage() {
         "  --ref-sel 0..2       reference distance inter tiles ask for\n"
         "  --stereo on|off      STEREO inter-view mode on the right eye\n"
         "  --mv-range N         coarse search radius in samples (default 16)\n"
+        "  --int-decision on|off  the GPU encoder's integer mode decision\n"
+        "                       (ADR-0028).  All-i64: no trial encode, no\n"
+        "                       log2, no double.  Reproducible on a GPU and\n"
+        "                       worse than the default; it exists so the two\n"
+        "                       sides stay byte-comparable.  Default off.\n"
+        "  --int-lambda N       its SAD-domain lambda, Q8 per quantiser step\n"
+        "                       (default 45)\n"
+        "  --int-intra-mad F    its INTRA fallback: mean |residual| per luma\n"
+        "                       sample above which the tile codes intra\n"
+        "                       (default 9)\n"
         "  --skip-thresh F      WARP_SKIP early-out gate, multiples of the\n"
         "                       quantiser noise floor qstep^2/12 (default 1)\n"
         "  --skip-map FILE      per-tile force_warp_skip flags, tile_count\n"
@@ -220,6 +230,8 @@ int main(int argc, char **argv) {
     int split4x4 = 1, cfl = 1;
     int inter = 0, eyes = 1, intra_period = 180, ref_sel = 0, stereo = 0;
     int mv_range = 16, skip_thresh = 0, mode_lambda = 0;
+    int int_decision = 0, int_lambda = 0, int_intra_mad = 0;
+    int int_coded_vectors = 2;
     int threads = 0;   // 0 = auto
     // These mirror nxvc_config_default(): the inter-efficiency tools that the
     // measurement supports are on, sub-tile intra is not.
@@ -323,6 +335,26 @@ int main(int argc, char **argv) {
         else if (a == "--threads") threads = std::atoi(val());
         else if (a == "--skip-thresh")
             skip_thresh = (int)(std::atof(val()) * 256.0 + 0.5);
+        else if (a == "--int-decision") {
+            std::string v = val();
+            if (v == "on") int_decision = 1;
+            else if (v == "off") int_decision = 0;
+            else { std::fprintf(stderr, "--int-decision: on|off\n"); return 2; }
+        }
+        else if (a == "--int-lambda") int_lambda = std::atoi(val());
+        else if (a == "--int-coded-vectors") {
+            std::string v = val();
+            if (v == "on") int_coded_vectors = 2;
+            else if (v == "static") int_coded_vectors = 1;
+            else if (v == "off") int_coded_vectors = 0;
+            else {
+                std::fprintf(stderr,
+                             "--int-coded-vectors: off|static|on\n");
+                return 2;
+            }
+        }
+        else if (a == "--int-intra-mad")
+            int_intra_mad = (int)(std::atof(val()) * 256.0 + 0.5);
         else if (a == "--rc") rc_on = 1;
         else if (a == "--rc-bitrate") rc_bitrate = std::atof(val());
         else if (a == "--rc-panel") rc_panel = std::atoi(val());
@@ -585,6 +617,10 @@ int main(int argc, char **argv) {
     cfg.mv_range = (uint32_t)(mv_range > 0 ? mv_range : 16);
     cfg.threads = (uint32_t)(threads > 0 ? threads : 0);
     cfg.skip_thresh = (uint32_t)(skip_thresh > 0 ? skip_thresh : 0);
+    cfg.inter_int_decision = (uint32_t)int_decision;
+    cfg.int_lambda_q8 = (uint32_t)(int_lambda > 0 ? int_lambda : 0);
+    cfg.int_coded_vectors = (uint32_t)int_coded_vectors;
+    cfg.int_intra_mad_q8 = (uint32_t)(int_intra_mad > 0 ? int_intra_mad : 0);
     cfg.mode_lambda_q8 = (uint32_t)(mode_lambda > 0 ? mode_lambda : 0);
     cfg.chroma = pix == "yuv444p" ? NXVC_CHROMA_444 : NXVC_CHROMA_420;
     cfg.base_qp = (uint32_t)(qp < 0 ? 0 : (qp > 63 ? 63 : qp));

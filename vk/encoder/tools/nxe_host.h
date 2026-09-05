@@ -71,6 +71,30 @@ struct Config {
      * deterministic PRNG so the tests exercise all nine modes; 0 leaves every
      * block on mode 0, which reproduces the v1 predictor exactly. */
     uint32_t dir_mode_seed = 0;
+    /* --- the Phase 2 inter path (ADR-0028).
+     *
+     * `inter` turns on the reference ring, Pass W and the integer mode
+     * decision; it is the `--inter on` of nxv-enc and sets tool bits 10 and
+     * 11 in the stream header.  `intra_period` is the rolling refresh: 1/T of
+     * the tiles are forced INTRA every frame, each tile exactly once every T
+     * frames, which is the loss-recovery bound of PAPER 2.6.
+     *
+     * `skip_thresh` is the WARP_SKIP gate as a Q8 multiple of the quantiser's
+     * own noise floor, matching nxvc_config::skip_thresh; 0 takes the
+     * default 256 (1.0). */
+    bool inter = false;
+    std::string poses;   /* .poses.json sidecar; empty = identity warp */
+    int intra_period = 180;
+    int skip_thresh = 0;
+    int int_intra_mad_q8 = 0;   /* 0 = the library default, 2304 (MAD 9) */
+    int int_lambda_q8 = 0;      /* 0 = the library default, 45            */
+    int mv_range = 0;           /* 0 = the default 16                     */
+    /* 1 = the decision searches STATIC_MV.  WARP_MV is NOT searched on this
+     * path: its predictor is the full homography and reproducing it outside
+     * Pass W would be a second copy of the one piece of arithmetic this
+     * project refuses to have two of. */
+    bool int_coded_vectors = false;
+
     int device = 0;
     bool cpu_only = false;
     bool bench = false;
@@ -112,6 +136,10 @@ struct Frame {
      * a multiply-add -- the same doubles, in the same order, so the sum and
      * therefore the chosen table set are unchanged bit for bit. */
     std::vector<double> log_freq;
+    /* The frame's warp_ext(), one per eye, as it travels in the frame
+     * header.  Identity until a pose pair says otherwise. */
+    int32_t warp[2][9] = {{1 << 21, 0, 0, 0, 1 << 21, 0, 0, 0, 1 << 29},
+                          {1 << 21, 0, 0, 0, 1 << 21, 0, 0, 0, 1 << 29}};
     int plane_size[NXE_MAX_PLANES]{};
     int plane_words[NXE_MAX_PLANES]{};     /* tile stride in the packed buffer */
     int plane_base[NXE_MAX_PLANES]{};      /* word base of the plane */

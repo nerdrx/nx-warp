@@ -10,7 +10,8 @@
 # Invoked at build time:
 #
 #   cmake -DGLSLC=<glslc> -DSRC=<in.comp> -DOUT=<out> -DNAME=<symbol>
-#         [-DINCDIR=<dir>] [-DDEFS="-DA=1 -DB"] [-DSTYLE=plain|guarded|raw]
+#         [-DINCDIR=<dir>] [-DINCDIR2=<dir>] [-DDEFS="-DA=1 -DB"]
+#         [-DSTYLE=plain|guarded|raw]
 #         [-DTARGET_ENV=vulkan1.1] [-DSTAGE=compute]
 #         -P vk/common/cmake/nxvc_gen_spv.cmake
 #
@@ -53,6 +54,13 @@ endif()
 set(_incs)
 if(INCDIR)
   set(_incs -I "${INCDIR}")
+  # A second include directory, for a shader that draws on two contracts --
+  # vk/encoder/inter/E1c_decide.comp includes the decoder's inter_layout.h and
+  # the encoder's nxe_enc_common.glsl.  Optional and additive: a caller that
+  # passes only INCDIR gets exactly the command line it got before.
+  if(INCDIR2)
+    list(APPEND _incs -I "${INCDIR2}")
+  endif()
 endif()
 
 if(STYLE STREQUAL "raw")

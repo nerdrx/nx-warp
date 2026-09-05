@@ -328,6 +328,10 @@ std::vector<uint8_t> stream_header(const Config &cfg, const Frame &f) {
      * BITSTREAM (SYNTAX.md 9.4.1), which is why this is the resolved pair and
      * not cfg.tab_v2 on its own. */
     if (cfg.custom_tables && cfg.tab_v2) tools |= 1ull << 26;  /* TAB_V2 */
+    /* Bit 10 INTER and bit 11 WARP travel together: an inter stream on this
+     * path always carries warp_ext() on the frames that have a reference, and
+     * a decoder that implements one and not the other cannot decode it. */
+    if (cfg.inter) tools |= (1ull << 10) | (1ull << 11);
 
     u32(0x3156584Eu);            /* 'NXV1' */
     u8(1);                       /* NXVC_VERSION */
@@ -484,6 +488,24 @@ static double log2_prob(uint32_t v) {
 /* One tile's decision: the histogram E4 will produce, then the cheapest of the
  * eight candidate table sets under it. */
 static void choose_tile_table_set(Frame &f, const int16_t *coefs, uint32_t t) {
+    /* A WARP_SKIP tile is not transmitted, so it has no table set and
+     * contributes NOTHING to the training pool.  Its histogram has to be
+     * cleared rather than merely ignored: E3 zeroes a skipped tile's
+     * coefficient slot (Pass B needs the zeros as its residual), and an
+     * all-zero tile is not an empty tile -- the unit walk still emits a
+     * CBF-zero symbol per unit, so the histogram comes out full of them and
+     * the `total == 0` guard in the pooling below never fires.  Left in, those
+     * symbols train the frame's tables on tiles the frame does not carry, and
+     * every CODED tile then codes against tables the reference never chose.
+     * It cost a byte-identity failure in frame 1 with CUSTOM_TABLES on and
+     * none at all with it off, which is what pointed at the pooling. */
+    if (f.jobs[t].mode == (uint32_t)NXE_MODE_WARP_SKIP) {
+        if (!f.tilehist.empty()) {
+            const size_t stride = (size_t)nxvc::kNumCtx * NXE_NUM_SYM;
+            std::fill_n(&f.tilehist[(size_t)t * stride], stride, 0u);
+        }
+        return;
+    }
     /* The op scratch is thread_local because the pool runs this on several
      * threads at once; it is a megabyte-class buffer that must not be
      * reallocated per tile. */
@@ -799,11 +821,12 @@ void pack_frame(Frame &f, uint32_t frame_number) {
     /* The transmitted probability tables, between the frame header and the
      * first row header.  SYNTAX.md 9.4. */
     if (!f.table_area.empty())
-        std::memcpy(f.out.data() + NXE_FRAME_HEADER_BYTES, f.table_area.data(),
+        std::memcpy(f.out.data() + NXE_FRAME_HEADER_BYTES + f.fp.warp_bytes,
+                    f.table_area.data(),
                     f.table_area.size());
     const uint32_t rowgroups = fp.tiles_y * fp.eyes;
     for (uint32_t g = 0; g < rowgroups; ++g) {
-        uint32_t off = NXE_FRAME_HEADER_BYTES + fp.table_bytes +
+        uint32_t off = NXE_FRAME_HEADER_BYTES + fp.warp_bytes + fp.table_bytes +
                        NXE_ROW_HEADER_BYTES * g +
                        f.tile_prefix[g * fp.tiles_x];
         nxe_e5_row_header(&fp2, g, f.out.data() + off);

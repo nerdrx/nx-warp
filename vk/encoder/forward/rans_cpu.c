@@ -449,14 +449,18 @@ void nxe_pack_tile_header(const nxe_frame_params *fp, const nxe_tile_job *job,
 uint32_t nxe_e5_tile_offset(const nxe_frame_params *fp, uint32_t t,
                             const uint32_t *tile_prefix) {
     uint32_t rowgroup = t / fp->tiles_x;
-    return NXE_FRAME_HEADER_BYTES + fp->table_bytes +
+    /* warp_ext() and the transmitted table area, in the order SYNTAX.md 12
+     * fixes them.  Both are 0 when their tool is off; E5 adds the same pair to
+     * every offset it computes, and a model that dropped either would disagree
+     * with the shader about where every tile in the frame begins. */
+    return NXE_FRAME_HEADER_BYTES + fp->warp_bytes + fp->table_bytes +
            NXE_ROW_HEADER_BYTES * (rowgroup + 1u) + tile_prefix[t];
 }
 
 uint32_t nxe_e5_frame_bytes(const nxe_frame_params *fp,
                             uint32_t total_tile_bytes) {
     uint32_t rowgroups = fp->tiles_y * fp->eyes;
-    return NXE_FRAME_HEADER_BYTES + fp->table_bytes +
+    return NXE_FRAME_HEADER_BYTES + fp->warp_bytes + fp->table_bytes +
            NXE_ROW_HEADER_BYTES * rowgroups + total_tile_bytes;
 }
 

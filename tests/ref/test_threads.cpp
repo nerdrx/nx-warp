@@ -214,6 +214,23 @@ int main() {
     cfg.me_effort = 3;
     compare("inter/420/near-skip+quad-mv", cfg, c420);
 
+    // 4b. The GPU encoder's integer mode decision (ADR-0028).  It has the same
+    //     cross-tile dependency and a stricter reason to care: its search seeds
+    //     from the left and above vectors and it breaks ties by the order the
+    //     candidates are visited, so an order the pool does not reproduce
+    //     exactly moves a vector, and a moved vector moves the bytes.  This is
+    //     the decision the Vulkan encoder has to match byte for byte, so a
+    //     threading-dependent one would make that test unpassable rather than
+    //     merely flaky.
+    nxvc_config_default(&cfg);
+    cfg.width = 384;
+    cfg.height = 384;
+    cfg.base_qp = 26;
+    cfg.inter = 1;
+    cfg.intra_period = 4;
+    cfg.inter_int_decision = 1;
+    compare("inter/420/int-decision", cfg, c420);
+
     // 5. Custom tables: the frame's eight table sets are trained on a symbol
     //    histogram the workers accumulate separately and sum afterwards.  If
     //    that sum were order-dependent the tables would be, and every tile in
