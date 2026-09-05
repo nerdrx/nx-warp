@@ -32,11 +32,14 @@ add_custom_command(
           -DNAME=warp_pred
           -DINCDIR=${NXVW_INTER_DIR}
           -DSTYLE=plain
+          -DDEPFILE=${NXVW_INTER_SPV}.d
           -P ${NXVW_PASSB_GEN_SPV}
+  # The include tree comes from glslc, not from a list kept by hand: the list
+  # that used to be here named three headers, and warp_pred.glsl -- a fourth --
+  # was invisible to it, so editing the predictor rebuilt nothing and the
+  # build reported success while emitting the previous SPIR-V.
+  DEPFILE ${NXVW_INTER_SPV}.d
   DEPENDS ${NXVW_INTER_DIR}/warp_pred.comp
-          ${NXVW_INTER_DIR}/inter_layout.h
-          ${NXVW_INTER_DIR}/../passB/syntax_constants.h
-          ${NXVW_INTER_DIR}/../passB/passB_layout.h
           ${NXVW_PASSB_GEN_SPV} ${NXVW_PASSB_SPV_PASSES_CMAKE}
   COMMENT "glslc warp_pred.comp -> warp_pred.spv.h"
   VERBATIM)

@@ -62,13 +62,10 @@ foreach(_xl 1 0)
             "-DDEFS=-DNXVW_INTRA_DIR=${_dir} -DNXVW_XFORM_LARGE=${_xl} ${NXVW_PASSB_EXTRA_DEFS}"
             -DINCDIR=${NXVW_PASSB_DIR}
             -DSTYLE=plain
+            -DDEPFILE=${_out}.d
             -P ${NXVW_PASSB_GEN_SPV}
+    DEPFILE ${_out}.d
     DEPENDS ${NXVW_PASSB_DIR}/reconstruct.comp
-            ${NXVW_PASSB_DIR}/syntax_constants.h
-            ${NXVW_PASSB_DIR}/passB_layout.h
-            ${NXVW_PASSB_DIR}/store.glsl
-            ${NXVW_PASSB_DIR}/../inter/inter_hook.glsl
-            ${NXVW_PASSB_DIR}/../inter/inter_layout.h
             ${NXVW_PASSB_GEN_SPV} ${NXVW_PASSB_SPV_PASSES_CMAKE}
     COMMENT "glslc reconstruct.comp (dir=${_dir} xl=${_xl}) -> ${_name}.spv.h"
     VERBATIM)
@@ -101,13 +98,10 @@ add_custom_command(
           "-DDEFS=-DNXVW_INTRA_DIR=0 -DNXVW_XFORM_LARGE=0 -DNXVW_SKIP_ONLY=1 ${NXVW_PASSB_EXTRA_DEFS}"
           -DINCDIR=${NXVW_PASSB_DIR}
           -DSTYLE=plain
+          -DDEPFILE=${_skip_out}.d
           -P ${NXVW_PASSB_GEN_SPV}
+  DEPFILE ${_skip_out}.d
   DEPENDS ${NXVW_PASSB_DIR}/reconstruct.comp
-          ${NXVW_PASSB_DIR}/syntax_constants.h
-          ${NXVW_PASSB_DIR}/passB_layout.h
-            ${NXVW_PASSB_DIR}/store.glsl
-          ${NXVW_PASSB_DIR}/../inter/inter_hook.glsl
-          ${NXVW_PASSB_DIR}/../inter/inter_layout.h
           ${NXVW_PASSB_GEN_SPV} ${NXVW_PASSB_SPV_PASSES_CMAKE}
   COMMENT "glslc reconstruct.comp (WARP_SKIP only) -> reconstruct_skip.spv.h"
   VERBATIM)
