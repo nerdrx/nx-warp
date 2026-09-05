@@ -9,7 +9,9 @@
 #include "nxvc_vkdec_parse.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstring>
+#include <string>
 
 #include "passA/syntax_constants.h"
 #include "passB/syntax_constants.h"
@@ -226,6 +228,18 @@ constexpr uint64_t kToolEntropyLite = 1ull << 30;
 // tests/vk-decoder/conformance/test_vk_decoder_conformance.cpp must equal it.
 uint64_t tools_supported() { return kToolsSupported; }
 
+uint64_t tools_supported_for(uint32_t vendor_id, const char *device_name) {
+    // 0x5143 is Qualcomm.  The name test is a substring, case-insensitively,
+    // so "Adreno (TM) 650" and any future spelling both match.
+    bool adreno = vendor_id == 0x5143u;
+    if (!adreno && device_name) {
+        std::string n(device_name);
+        for (char &c : n) c = (char)std::tolower((unsigned char)c);
+        adreno = n.find("adreno") != std::string::npos;
+    }
+    return adreno ? (kToolsSupported & ~kToolXformLarge) : kToolsSupported;
+}
+
 // ---------------------------------------------------------------- tables
 // [REF] tables.cpp build_default_set(): the table object carries every context
 // of the model the stream selected.  Contexts beyond its coded count are never
@@ -308,7 +322,9 @@ void resolve_matrices(uint32_t quant_matrix, const uint8_t *custom128,
 
 // --------------------------------------------------------- stream header
 nxvc_vkd_status parse_stream_header(const uint8_t *buf, size_t len,
-                                    StreamInfo &si, size_t *consumed) {
+                                    StreamInfo &si, size_t *consumed,
+                                    uint64_t tools_mask) {
+    const uint64_t accept = tools_mask ? tools_mask : kToolsSupported;
     if (!buf) return NXVC_VKD_ERR_ARG;
     if (len < kStreamHeaderBytes) return NXVC_VKD_ERR_TRUNCATED;
     BR br{buf, len, 0, true};
@@ -369,7 +385,7 @@ nxvc_vkd_status parse_stream_header(const uint8_t *buf, size_t len,
     // the transform runs before subsampling, so a 4:2:0 YCoCg-R stream would
     // push 9-bit chroma through an 8-bit plane.  r15 pins the refusal.
     if (si.color_transform == 1 && si.chroma != 1) return NXVC_VKD_ERR_BITSTREAM;
-    if (si.tools & ~kToolsSupported) return NXVC_VKD_ERR_VERSION;
+    if (si.tools & ~accept) return NXVC_VKD_ERR_VERSION;
     // [SYN] 2.3: hiding a sign spends one level step, so a lossless stream
     // cannot carry it and a decoder that accepted both would not know which.
     // r17 pins the refusal.

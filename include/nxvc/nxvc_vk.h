@@ -176,6 +176,15 @@ const char *nxvc_vk_decoder_device_name(const nxvc_vk_decoder *dec);
  * for. */
 uint64_t nxvc_vk_decoder_tools_supported(void);
 
+/* The tool bits THIS decoder, on THIS device, will accept -- which can be less
+ * than the build implements.  A device that decodes a legal stream wrong, or
+ * hangs on one, must not advertise the tool that reaches it: the Adreno 650
+ * wedges on the 4:4:4 32x32 conformance vector, so a decoder there clears
+ * XFORM_LARGE (bit 27).  This is the number a capability handshake must send;
+ * nxvc_vk_decoder_tools_supported() is the build-wide superset and is what to
+ * report when there is no device yet.  NULL returns the build-wide mask. */
+uint64_t nxvc_vk_decoder_tools(const nxvc_vk_decoder *dec);
+
 /* --------------------------------------------------------------- stream */
 typedef struct nxvc_vkd_stream_info {
     uint32_t width, height; /* luma samples                                */

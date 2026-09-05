@@ -55,8 +55,28 @@ struct StreamInfo {
     int nplanes() const { return alpha ? 4 : 3; }
 };
 
+// `tools_mask` is the set of tool bits THIS decoder will accept, which is not
+// always the set it implements -- see tools_supported_for().  Zero means "use
+// the build-wide mask", which is what every caller without a device wants.
 nxvc_vkd_status parse_stream_header(const uint8_t *buf, size_t len,
-                                    StreamInfo &out, size_t *consumed);
+                                    StreamInfo &out, size_t *consumed,
+                                    uint64_t tools_mask = 0);
+
+// The tool bits a decoder running on this device may accept.
+//
+// It is the build-wide mask minus anything the device cannot be trusted with.
+// Today that is exactly one bit, and it is not a performance judgement: on the
+// Adreno 650, XFORM_LARGE (27) decodes 16x16 and 32x32 streams wrong, and on
+// the 4:4:4 32x32 conformance vector it does not decode them at all -- it
+// WEDGES, a fence that never signals, with no kgsl fault and no GPU reset.
+// A decoder that advertises a tool it hangs on is not merely slow at it; it
+// invites a conformant encoder to send a stream that kills the session.
+//
+// `vendor_id` is VkPhysicalDeviceProperties::vendorID and `device_name` its
+// deviceName.  Both are checked: the vendor id is the reliable half, the name
+// is what catches a Qualcomm part behind a translation layer that reports
+// someone else's id.
+uint64_t tools_supported_for(uint32_t vendor_id, const char *device_name);
 
 // ------------------------------------------------------------------- frame
 // One Pass A dispatch: the tiles of `lanes` rANS lanes each.  `first` is the

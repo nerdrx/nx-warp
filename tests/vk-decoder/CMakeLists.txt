@@ -14,6 +14,10 @@ endif()
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/unorm/CMakeLists.txt)
   add_subdirectory(unorm)
 endif()
+# The per-device capability mask.  No Vulkan, no device, no shaders.
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/toolmask/CMakeLists.txt)
+  add_subdirectory(toolmask)
+endif()
 # End-to-end tests for the decoder library that drives both passes.
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/conformance/CMakeLists.txt)
   add_subdirectory(conformance)
