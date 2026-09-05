@@ -2322,6 +2322,19 @@ first.
   is not affected; anything driving the reference encoder for a headset must
   pass `--nsub 3` explicitly. `NSUB_VAR` should probably be renegotiated as a
   decoder-declined tool rather than an encoder-chosen one.
+* **`XFORM_LARGE` HANGS the Adreno 650 on one vector, and the decoder no
+  longer offers the bit there.** `v70_xform32_444` does not decode wrong, it
+  **wedges**: the process sat in `hrtimer_nanosleep` with `utime` frozen and
+  `stime` creeping -- 55 s of user time in 36 minutes -- with no kgsl fault and
+  no GPU reset in the kernel log. A fence that never signals. It was found by
+  giving the conformance harness a per-vector watchdog (`--timeout`), which is
+  also why the sweep had previously "run for an hour" three times: it was never
+  slow, it was wedged, and full stdio buffering meant the log named nothing.
+  `tools_supported_for()` now clears bit 27 on a Qualcomm part -- by vendor id
+  0x5143 or by "adreno" in the device name -- so the decoder refuses such a
+  stream at the header instead of hanging on it, and
+  `nxvc_vk_decoder_tools()` is the per-device mask a handshake must send.
+  `tests/vk-decoder/toolmask` pins that it removes that bit and no other.
 * **`XFORM_LARGE` is wrong on the Adreno 650**, and it is the only tool this
   decoder offers that is not correct on all three ICDs. The 24 conformance
   streams that reach the 16x16 / 32x32 module come back with most of the

@@ -241,6 +241,7 @@ struct nxvc_vk_decoder {
     nxvc_vkd_stats stats{};
     std::string err = "";
     std::string device_name = "";
+    uint64_t tools_mask = 0;   // 0 until probe_device(); see tools_supported_for()
 };
 
 namespace {
@@ -605,6 +606,10 @@ nxvc_vkd_status probe_device(D *d) {
     vkGetPhysicalDeviceProperties(d->phys, &d->props);
     vkGetPhysicalDeviceMemoryProperties(d->phys, &d->memProps);
     d->device_name = d->props.deviceName;
+    // What this decoder will ACCEPT, which on some devices is less than what
+    // it implements.  nxvc_vkdec_parse.cpp tools_supported_for() says why.
+    d->tools_mask =
+        nxvcvk::tools_supported_for(d->props.vendorID, d->props.deviceName);
     d->have_timestamps = d->props.limits.timestampComputeAndGraphics != 0 &&
                          d->props.limits.timestampPeriod > 0.f;
     d->ts_period = d->props.limits.timestampPeriod;
@@ -1635,6 +1640,12 @@ extern "C" uint64_t nxvc_vk_decoder_tools_supported(void) {
     return nxvcvk::tools_supported();
 }
 
+extern "C" uint64_t nxvc_vk_decoder_tools(const nxvc_vk_decoder *d) {
+    // The build-wide mask when there is no decoder to ask; a device may accept
+    // less, and this is the number a handshake must use.
+    return d && d->tools_mask ? d->tools_mask : nxvcvk::tools_supported();
+}
+
 extern "C" const char *nxvc_vk_decoder_last_error(const nxvc_vk_decoder *d) {
     return d ? d->err.c_str() : "null decoder";
 }
@@ -1646,7 +1657,8 @@ extern "C" const char *nxvc_vk_decoder_device_name(const nxvc_vk_decoder *d) {
 extern "C" nxvc_vkd_status nxvc_vk_decoder_parse_stream_header(
     nxvc_vk_decoder *d, const uint8_t *buf, size_t len, size_t *consumed) {
     if (!d || !buf) return NXVC_VKD_ERR_ARG;
-    nxvc_vkd_status st = nxvcvk::parse_stream_header(buf, len, d->si, consumed);
+    nxvc_vkd_status st =
+        nxvcvk::parse_stream_header(buf, len, d->si, consumed, d->tools_mask);
     if (st) return seterr(d, st, "stream header: %s",
                           nxvc_vk_decoder_status_string(st));
     d->have_stream = true;
