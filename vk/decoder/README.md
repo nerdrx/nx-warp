@@ -741,6 +741,20 @@ sweep.
 on the Pico 4, 2048 tiles, best of 10, alternating runs so the GPU's clock and
 thermal state cannot favour one arm:
 
+> **Re-measured after the 2026-09-05 Pass B work, and the 7% is gone.** On the
+> present kernel, under the cold-start protocol of "Timing on the Pico 4":
+> QP 24 v1, 22.25 / 22.33 ms with the integer store against 22.51 / 22.48 with
+> UNORM, and QP 36 v1, 15.31 / 15.24 against 15.50 — **about 1% worse at both
+> QPs**, not 7% better at one. The 7% was measured when the store was a larger
+> share of a slower pass; it was never a large enough result to change a format
+> across the ABI, and it is now the wrong sign. The exactness result below is
+> the part that keeps its value.
+>
+> The store *is* still worth about 2.6 ms of Pass B at QP 36 (measured by
+> shrinking the store loop), so there is a real target there — it is just not
+> the pixel format. It is the store count: 4096 one-byte `r8ui` stores per
+> tile. See "What remains".
+
 | stream | UINT store | UNORM store | |
 |---|---|---|---|
 | QP 24, `INTRA_DIR` off | 368.9 / 368.2 / 367.3 ms | 338.2 / 344.3 / 340.6 ms | **-7.4 %** |
@@ -772,25 +786,50 @@ part where the store *is* the constraint, without re-opening ADR 0023.
 ### Timing on the Pico 4
 
 Two 2048x2048 eyes at 4:2:0, 2048 tiles — the same frame as the desktop table
-— best of 12, GPU ramped to 587 MHz. `--bench-qp QP [--bench-v1]` is the
-one-QP slice of `--bench`; the full sweep encodes eleven such frames with the
-CPU reference encoder, which is over an hour of a phone's CPU before a single
-dispatch runs. `nxvc-vkdec --repeat N --no-out` over a `.nxv` pushed from a
-desktop is the same measurement without the encode, and is what the numbers
-below were taken with.
+— best of 12. `--bench-qp QP [--bench-v1]` is the one-QP slice of `--bench`;
+the full sweep encodes eleven such frames with the CPU reference encoder, which
+is over an hour of a phone's CPU before a single dispatch runs. **`--bench-save
+FILE` writes exactly that stream and exits**, so the encode happens once on a
+desktop and the device side is `nxvc-vkdec --in FILE --repeat N --no-out`,
+which is what every number below was taken with.
+
+**The measurement protocol matters more than it looks.** The Pico 4 throttles
+inside a single `--repeat 30`: the same build measured 103.2 ms of Pass A on a
+cold device and 117.7 ms on a hot one, with the reported `gpuclk` *higher*
+(587 MHz) on the slow run than on the fast one (441 MHz), because the clock is
+sampled after the run and the GPU has already ramped and started to give the
+heat back. Every arm below is 12 repeats with a 20-second idle before it and
+15 seconds after, and any pair whose *Pass A* numbers move is thrown away —
+Pass A is a control for thermal drift in every Pass B experiment, because no
+Pass B change can touch it.
 
 "pre-Adreno" is where this document stood when the only thing that had ever
-been tuned against was a 7900 XTX. The two commits between the columns are
-"Adreno puts local arrays in private memory" and "16 tiles per workgroup".
+been tuned against was a 7900 XTX. The commits between the columns are
+"Adreno puts local arrays in private memory", "16 tiles per workgroup",
+"32 tiles per workgroup" and "the planar predictor pays for LDS loads".
 
 | stream | Pass A | Pass B | GPU total |
 |---|---|---|---|
-| QP 24, `INTRA_DIR` off (v1) | 153.7 → **100.6 ms** | 366.1 → **23.6 ms** | 521.7 → **124.3 ms** |
-| QP 36, `INTRA_DIR` off (v1) | 26.7 → **13.1 ms** | 417.9 → **16.7 ms** | 445.4 → **29.8 ms** |
-| QP 24, `INTRA_DIR` on (encoder default) | 173.9 → **117.1 ms** | 1344.0 → **844.4 ms** | 1522.9 → **1001.1 ms** |
+| QP 24, `INTRA_DIR` off (v1) | 153.7 → **79.4 ms** | 366.1 → **22.3 ms** | 521.7 → **102.2 ms** |
+| QP 36, `INTRA_DIR` off (v1) | 26.7 → **10.1 ms** | 417.9 → **15.3 ms** | 445.4 → **25.4 ms** |
 
 Zero mismatching samples on the 152-stream sweep at every point in that table,
-on the Adreno 650 and on RADV.
+on the Adreno 650, on RADV and on lavapipe.
+
+**What each change bought**, all on the same device under the protocol above,
+2048 tiles, `INTRA_DIR` off:
+
+| | Pass A QP 24 | Pass B QP 24 | Pass A QP 36 | Pass B QP 36 |
+|---|---|---|---|---|
+| 8 tiles/group, before this round | 153.7 | 366.1 | 26.7 | 417.9 |
+| … local arrays out of private memory, 16 tiles/group | 102.5 | 23.55 | 12.8 | 16.70 |
+| **+ 32 tiles/group** (descriptor-array fix) | **79.8** | 23.55 | **10.1** | 16.70 |
+| **+ bilinear: one set of mean loads for both columns** | 79.4 | **22.82** | 10.1 | **15.75** |
+| **+ bilinear: reload the means only when the row moves** | 79.4 | **22.25** | 10.1 | **15.31** |
+| the UNORM store on top of all of it | 79.4 | 22.49 (**worse**) | 10.1 | (see below) |
+
+Three things were measured and are *not* in that table because they made it
+worse or changed nothing; they are in "What was not the problem" below.
 
 The earlier revision of this table quoted Pass A at 402–415 ms at QP 24 and
 62 ms at QP 36. Those were measured with the `passa-fast` kernel in the tree;
@@ -802,16 +841,16 @@ Against an 11.1 ms budget at 90 Hz:
 
 | | RADV | pre-Adreno | now | still over budget by |
 |---|---|---|---|---|
-| Pass B, `INTRA_DIR` off, QP 24 | 0.241 ms | 366 ms | **23.6 ms** | 2.1x |
-| Pass B, schedule 0, QP 24 | 1.183 ms | 1344 ms | **844 ms** | 76x |
-| Pass A, QP 24 | 1.26 ms | 154 ms | **100.6 ms** | 9.1x |
-| Pass A, QP 36 | 0.54 ms | 26.7 ms | **13.1 ms** | 1.2x |
+| Pass B, `INTRA_DIR` off, QP 24 | 0.241 ms | 366 ms | **22.3 ms** | 2.0x |
+| Pass A, QP 24 | 1.26 ms | 154 ms | **79.4 ms** | 7.2x |
+| Pass A, QP 36 | 0.54 ms | 26.7 ms | **10.1 ms** | 0.9x — **inside budget** |
+| Pass B, QP 36 | — | 418 ms | **15.3 ms** | 1.4x |
 
-**A v1 frame at QP 36 now decodes in 29.8 ms**, against 445 ms, and QP 24 in
-124 ms against 522. The Phase 0 bench kernels predicted about 30 ms for the
-same work (K3 11 ms + K4 12 ms plus the co-tenant), so the QP 36 row has
-arrived at the bench's own number and the QP 24 row is a factor of four away
-from it, all of it in Pass A.
+**A v1 frame at QP 36 now decodes in 25.4 ms**, against 445 ms, and QP 24 in
+102 ms against 522. The Phase 0 bench kernels predicted about 30 ms for the
+same work (K3 11 ms + K4 12 ms plus the co-tenant), so the QP 36 frame is now
+*under* the bench's own number and the QP 24 frame is a factor of three away
+from it, three quarters of it in Pass A.
 
 #### What the driver's own statistics said
 
@@ -849,6 +888,33 @@ array is a memory allocation unless every index is a compile-time constant
 after unrolling, and it is not only slow, it is not reliably correct. Prefer
 scalars. `NXVC_VKD_SHADER_STATS=1` is how to check.
 
+##### The rule has a floor, and `res0[8]` is under it
+
+Pass B's remaining 342 B of scratch is **278 B of driver baseline plus 64 B**,
+and the baseline is not addressable: Pass A reports exactly 278 B with no local
+array anywhere in it. The 64 B is `res0[8]` / `res1[8]`, the sixteen residual
+values a thread carries from the column pass across a barrier into the
+prediction, and all three ways of writing them were built and measured on
+device:
+
+| form | instructions | scratch | Pass B QP 24 | Pass B QP 36 |
+|---|---|---|---|---|
+| `int res0[8], res1[8]` (shipped) | 1477 | 342 B | **22.25 ms** | **15.31 ms** |
+| sixteen named scalars | 3062 | 448 B | 24.93 ms | 18.22 ms |
+| four `ivec4` lo/hi, the encoder's shape | 2831 | 464 B | 22.46 ms | 15.84 ms |
+
+Both rewrites are *worse*, and the reason is that these sixteen values are
+genuinely live across a barrier: the compiler spills them whatever they are
+called, and taking the array away only costs it the addressing it was doing
+well. Constant-indexing the array in a throwaway probe (every `res0[c]` forced
+to `res0[0]`) does drop the scratch to the 278 B floor — which is what says the
+64 B is really this array — but that probe computes one value, not sixteen.
+
+So the array stays, and `scripts/shader-lint.py`'s two `loop-local-array-index`
+advisories on it are advisories that were followed up and declined on evidence.
+The rule is about arrays whose *indices* the compiler cannot fold; it is not a
+licence to hand-scalarise sixteen live values.
+
 #### What was not the problem
 
 Measured and ruled out, so the next person does not re-run them:
@@ -866,11 +932,27 @@ Measured and ruled out, so the next person does not re-run them:
 * **`spirv-opt`.** The 4:4:4 miscompilation above survived an empty pass list.
   `NXVC_SPV_PASSES` now overrides Pass B's list, as `NXB_SPV_PASSES` already
   does in `bench/`, so that check costs one build.
-* **The UNORM store.** Still worth 7% at one QP and −2% at another; see "The
-  UNORM store". It is not where the time was.
+* **The UNORM store.** It was worth 7% at one QP when Pass B was slower; on the
+  present kernel it is 1% *worse* at QP 24 and 1% worse at QP 36. See "The
+  UNORM store". It is not where the time was, and it is not where it is.
 * **Shared-memory oversubscription.** Padding Pass B's shared allocation to
   31 KB, so no second workgroup could possibly be resident, changed the
   miscompiled output by not one byte.
+* **LDS occupancy, and this one closes a line of enquiry.** Pass B's 12.8 KB of
+  shared memory is two workgroups per 32 KB SP, and the obvious next move was
+  to get it under 10.6 KB for three — by packing the transpose buffer, padding
+  the stride against bank conflicts, or splitting luma and chroma into separate
+  dispatches. **Pass B is not occupancy-limited and none of that is worth
+  doing.** Padding the allocation to 17.6 KB, which forces one workgroup per
+  SP, cost 0.09 ms at QP 24 and 0.02 at QP 36; padding it to 30.8 KB, which
+  cannot be anything but one workgroup, cost 0.08 and −0.03. If halving
+  residency is free then doubling it is worth nothing, and the LDS budget is
+  free to be spent rather than saved.
+* **The multiplies in the planar predictor.** Halving them (the separable form)
+  changed Pass B from 23.549 ms to 23.548. Halving its LDS loads instead was
+  worth 0.73 ms. On this part the predictor is a load-count problem, not an
+  arithmetic one — which is the same shape as the occupancy result above:
+  Pass B is limited by LDS and image traffic, not by ALU and not by residency.
 
 #### Pass A's workgroup shape
 
@@ -880,20 +962,44 @@ number of tiles in the workgroup — the 8 KB cumulative-frequency sets and the
 against 3 KB of per-tile state, so a 32 KB SP holds two workgroups: two waves,
 on a kernel whose inner loop is a dependent chain of shared reads.
 `NXVW_PASSA_TPG` is that shape as one number, reaching the GLSL and the C++
-that has to agree with it from the same cache variable. 16 is the default:
+that has to agree with it from the same cache variable. **32 is the default:**
 
 | Pass A, 2048 tiles | 8/group | 16/group | 32/group |
 |---|---|---|---|
-| QP 24 v1 | 153.7 ms | **100.6 ms** | 92.4 ms |
-| QP 36 v1 | 26.7 ms | **13.1 ms** | 12.0 ms |
+| QP 24 v1 | 153.7 ms | 102.5 ms | **79.8 ms** |
+| QP 36 v1 | 26.7 ms | 12.8 ms | **10.1 ms** |
 
-32 is faster and is not taken: it fails `v42_dir_res_tskip420` on RADV, so
-something in the kernel does not survive four subgroups per workgroup. That is
-an open bug, and it is worth about 9% of Pass A. 64 hangs the device.
+32 used to be blocked: it failed `v42_dir_res_tskip420`, and the earlier note
+here guessed that "something in the kernel does not survive four subgroups per
+workgroup" and priced it at about 9% of Pass A. Both halves of that were wrong.
+It is worth 22%, and it was never in the kernel at all.
+
+**The bug was in the descriptor array's size.** Pass A does not dispatch over
+the tile array; it dispatches over a *descriptor* array in which the frame's
+tiles are sorted into one group per distinct `nsub_log2`, each group aligned up
+to its own tiles-per-group so `vkCmdDispatchBase` can address it with no extra
+push constant. A frame that uses all six lane counts therefore pays up to
+`tpg - 1` padding slots six times over, and the descriptor and status buffers
+are indexed by that padded index — not by the tile index.
+
+They were allocated at `ntiles + 64`. The padding a frame can need is 76 slots
+at 16 tiles per group and 152 at 32, so **the allowance was already short at
+the shipped shape** — it just needs a frame using all six `nsub` values to
+show, which none of the 56 vectors does. `v42_dir_res_tskip420` is six tiles
+using four lane counts, which at 16 tiles per group needs 50 descriptor slots
+against an allowance of 70 and fits, and at 32 needs 98 against 70 and does
+not: the copy overruns the buffer and Pass A reads tile headers out of range.
+It reproduces bit-identically on lavapipe, which is what says it was never a
+driver quirk, and `--lds` makes no difference, which is what says it was never
+the ballot.
+
+`nxs_desc_slots()` derives the bound from `NXVW_PASSA_TPG` instead, so it
+follows the shape rather than having to be remembered. 64 still hangs the
+device and is still not a supported value.
 
 #### What remains
 
-Pass A at QP 24 is 100.6 ms of a 124 ms frame, and it is a serial rANS chain:
+Pass A at QP 24 is 79.4 ms of a 102 ms frame, and it is a serial rANS chain:
 2048 tiles x 8 lanes, each lane stepping its own symbols with a ballot at every
 renormalisation point. Widening the workgroup bought the occupancy that was
 available; the chain length did not move. Two measured routes out, in order of
@@ -911,12 +1017,39 @@ what they are worth:
   **7.5x on the target part** for +49.6% bits, zero mismatches against the CPU
   model in both read-pointer modes and both coefficient layouts. The desktop
   measurement predicted 4.1x; the part where entropy is the whole cost gives
-  nearly twice that. With Pass B at 23.6 ms this is a **42 ms** v1 frame.
-* **The 32-tiles-per-group bug**, worth about 9% of Pass A once found.
+  nearly twice that. (That 138.5 ms was measured at 8 tiles per group; the
+  ratio has not been re-measured at 32, and the `ENTROPY_LITE` arm has no
+  reason to have moved, so the multiplier is probably now nearer 4x than 7.5x
+  — but with Pass B at 22.3 ms it is still a **~41 ms** v1 frame.)
+* ~~**The 32-tiles-per-group bug**~~ — found and fixed; see "Pass A's
+  workgroup shape". It was worth 22%, not the 9% guessed here.
 
-And Pass B's remaining 23.6 ms against the bench's 11 ms for the same
-transform work is where to look after that: it still carries 342 B of scratch
-and 13.1 KB of LDS, which is two workgroups per SP.
+Pass B's remaining 22.3 ms is the place to look after that, and the two
+experiments above narrow it a great deal. It is **not** occupancy (halving
+residency is free), **not** ALU (halving the predictor's multiplies is free)
+and **not** private memory (342 B of which 278 is the driver's own floor). It
+is traffic. Ablations on the QP 36 stream, where the coefficient path is
+almost entirely skipped and 15.3 ms is nearly pure fixed cost:
+
+| stage | cost | how it was measured |
+|---|---|---|
+| the two-plane 4:2:0 image store | **~2.6 ms** | 16 → 1 luma iterations, 4 → 1 chroma |
+| the planar predictor | ~3.5 ms | `bilinearMeans` → `sMeans[0]`, less what has since been taken back |
+| everything else | ~9 ms | DC-plane IDCT, its barriers, the sample-store write and read-back, the per-plane loop |
+
+The store is 4096 one-byte `r8ui` stores plus 1024 `rg8ui` per tile, and it is
+the *count* that costs, not the 12.6 MB: a wider store format — luma as
+`rgba8ui` at a quarter of the width, four pixels per `imageStore` — is the
+obvious next lever, and like the UNORM switch it is an ABI change, so it needs
+`nxvc_vkd_images::format` and a consumer that reads it.
+
+The 9 ms is the largest single unexplained block left and has not been
+subdivided. The most promising structural move in it is fusing the prediction
+with the store on the `kOutYcbcr420` path: at `res_level` 0 with no colour
+transform the stored luma sample *is* what the prediction wrote, so the sample
+store's write and read-back — 4096 LDS words each way per tile — are pure
+round trip. It is a fast path conditional on format and `res_level`, which is
+why it was scoped out of this round rather than attempted.
 
 ### Pass A's barrier removal is a 3.5x regression on Adreno
 
@@ -1229,11 +1362,23 @@ first.
   be cheaper than a whole RGBA8 store if it ever stops being rare.
 * **`profile` and `level` in the stream header are carried and reported but
   not enforced.** The reference does not enforce them either.
-* **Pass B is one shader for both predictors.** `INTRA_DIR` is a push-constant
-  branch, so a v1 stream pays the 136-VGPR footprint of the wavefront's
-  reference arrays even though it never enters them. It costs nothing
-  measurable today (0.241 ms against the 0.26 ms of the pre-v1.3 kernel), but
-  it is the first thing to check if Pass B ever gets tighter.
+* ~~**Pass B is one shader for both predictors.**~~ Resolved: `INTRA_DIR` is a
+  build variant, two SPIR-V modules from one source, and on the Adreno 650 that
+  was most of Pass B. See reconstruct.comp's note on why it is not a
+  specialization constant.
+* **Pass B's next lever is the store count, and it is an ABI change.** The
+  two-plane 4:2:0 path issues 4096 one-byte `r8ui` stores plus 1024 `rg8ui` per
+  tile, ~2.6 ms of Pass B, and the count is the cost rather than the 12.6 MB.
+  Writing luma through an `rgba8ui` image a quarter as wide — four pixels per
+  `imageStore` — is the obvious move and, like the UNORM switch, changes the
+  `VkFormat` that `nxvc_vk_decoder_images()` hands out. It wants the same
+  treatment: a consumer that reads `nxvc_vkd_images::format`.
+* **Fusing Pass B's prediction with its store** on the `kOutYcbcr420` path, at
+  `res_level` 0 with no colour transform, where the stored sample *is* what the
+  prediction wrote and the sample store's write plus read-back — 4096 LDS words
+  each way per tile — is a pure round trip. It is a fast path conditional on
+  format and `res_level`, and it is the largest untried item in Pass B's
+  remaining ~9 ms of unattributed fixed cost.
 * **The wavefront's per-block reference construction is still redundant.** All
   16 threads of a block build the same `A[17]`/`L[17]`, and `dirBase()` inside
   it recomputes the DC-plane prediction sample by sample. Splitting the
@@ -1247,6 +1392,11 @@ first.
 * **Tile sorting is off by default**, and now for a weaker reason than before:
   it used to be -11 % on RADV and +8 % on lavapipe, and against the cheaper
   Pass B neither delta is stable. It needs the Adreno number.
+* **Pass A's shape has only been swept at 8, 16 and 32.** 32 is the default and
+  64 hangs the device, but nothing between 32 and 64 has been tried, and the
+  gain from 16 to 32 (22 %) was larger than the gain the 8 → 16 step predicted,
+  so the curve has not obviously flattened. The descriptor-array bound now
+  follows the shape, so a sweep costs one cache variable per point.
 
 ### Where this decoder sits against the Phase 2 syntax
 
