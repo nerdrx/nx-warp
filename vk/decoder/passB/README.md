@@ -11,7 +11,7 @@ syntax_constants.h      every normative constant, shared by GLSL and C++
 passB_layout.h          the Pass A -> Pass B SSBO layout, shared by both
 passB_model.{h,cpp}     line-for-line CPU model of the kernel
 tools/nxvc-passB-test   headless harness: CPU-vs-GPU compare, timing, traffic
-cmake/gen_spv.cmake     glslc -> C array
+(the SPIR-V build rule is the tree-wide vk/common/cmake/nxvc_gen_spv.cmake)
 ```
 
 Tests live in `tests/vk-decoder/passB/` and are registered as `vk.passB.*`.
