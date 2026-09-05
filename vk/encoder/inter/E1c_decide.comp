@@ -1,0 +1,159 @@
+#version 460
+// E1c_decide.comp -- the integer mode decision, one workgroup per tile.
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// This is the GPU half of `nxvc_config::inter_int_decision`
+// (ref/src/codec_impl.inc, the block headed "The GPU encoder's decision") and
+// it has to agree with it exactly, because byte-identity against `nxv-enc
+// --int-decision on` is the acceptance test.  Every quantity is an integer:
+// there is no double here and none in the reference's copy of this rule.
+//
+// The rule implemented, for the skip-only increment:
+//
+//   * a tile whose record says it is not inter -- no reference, or a rolling
+//     refresh due, both decided on the host -- stays INTRA;
+//   * otherwise WARP_SKIP when the warped predictor's squared error over the
+//     LUMA plane is already under the quantiser's own noise floor,
+//
+//         sse * 786432 <= qstep^2 * skip_thresh * npix
+//
+//     which is the reference's `skip_sse <= qnoise * (thresh/256) * npix` with
+//     every division cleared: 786432 is 256 (qstep is Q4, so qstep^2 is Q8)
+//     times 12 (the uniform quantiser's noise floor qstep^2/12) times 256
+//     (skip_thresh is Q8);
+//   * otherwise INTRA.
+//
+// The coded-vector modes (STATIC_MV, WARP_MV) are the next increment and are
+// not decided here; `int_coded_vectors off` is the reference configuration
+// this kernel matches.
+//
+// WHY THE SUM IS EXACT.  A 64x64 luma tile of 8-bit samples has a squared
+// error of at most 4096 * 255^2 = 2.66e8, which is inside an i32; but the
+// running sum over 4096 samples is not, so it is accumulated in u32 pairs and
+// reduced as a 64-bit value carried in two uints.  Integer addition is
+// associative, so the reduction tree the hardware happens to build cannot
+// change the answer -- the same argument E1's statistics rest on.
+
+#extension GL_GOOGLE_include_directive : require
+#include "inter_layout.h"
+#include "nxe_enc_common.glsl"
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430, binding = 0) readonly buffer ParamBuf { nxe_frame_params fp; };
+layout(std430, binding = 1)          buffer JobBuf   { nxe_tile_job jobs[]; };
+// The source, tile-major packed int16 two per uint -- E0's output, the same
+// buffer E3 reads.
+layout(std430, binding = 2) readonly buffer SrcBuf   { uint v[]; } srcb;
+// Pass W's predictor, i16 packed two per uint at the decoder's own stride.
+layout(std430, binding = 3) readonly buffer WPredBuf { uint v[]; } wpred;
+// The warp parameter buffer, for each tile's record: the kernel reads the
+// inter bit and writes nothing, so the host's decision about refresh and
+// reference availability arrives here rather than being recomputed.
+layout(std430, binding = 4) readonly buffer WarpBuf  { uint v[]; } warpb;
+
+layout(push_constant) uniform Push {
+    int qstep;       // kQStep[qp], Q4
+    int skip_thresh; // Q8 multiple of the noise floor; 256 is 1.0
+    int wpred_stride_i16;
+    int pad;
+} pc;
+
+// 64-bit accumulate in two uints: `lo` wraps, `hi` counts the wraps.
+shared uint s_lo[256];
+shared uint s_hi[256];
+
+void add64(inout uint lo, inout uint hi, uint v) {
+    uint n = lo + v;
+    if (n < lo) ++hi;
+    lo = n;
+}
+
+void main() {
+    const uint tile = gl_WorkGroupID.x;
+    if (tile >= fp.ntiles) return;
+    const uint lid = gl_LocalInvocationID.x;
+
+    const uint b = uint(NXVW_WARP_HDR_UINTS) + tile * uint(NXVW_WARP_TILE_UINTS);
+    const uint w0 = warpb.v[b];
+    // Bit 3 is the record's `inter` flag.  Clear means the host already
+    // decided this tile is INTRA -- no reference, or a refresh due -- and
+    // Pass W wrote nothing for it, so there is no predictor to measure.
+    if (((w0 >> 3u) & 1u) == 0u) {
+        if (lid == 0u) jobs[tile].mode = uint(NXE_MODE_INTRA);
+        return;
+    }
+
+    // The luma plane only, at the tile's coded size.  res_level is 0 on this
+    // path, so that is the full 64x64.
+    const int size = 64;
+    const uint npix = uint(size * size);
+    const uint srcbase = tile * uint(size * size / 2);
+    const uint wpbase = tile * uint(pc.wpred_stride_i16);   // plane 0 at 0
+
+    uint lo = 0u, hi = 0u;
+    // One thread per PAIR of horizontally adjacent samples: both buffers pack
+    // two 16-bit samples per uint and the pairing is the same in each, so the
+    // loop does one load from each instead of two.
+    for (uint i = lid; i < npix / 2u; i += 256u) {
+        const uint sw = srcb.v[srcbase + i];
+        const uint pw = wpred.v[(wpbase >> 1u) + i];
+        // The source is int16 two's complement; the predictor is a clamped
+        // sample in [0, maxval] and needs no sign extension.  Luma is
+        // unsigned either way, so the extension is a formality here and a
+        // correctness matter the day this kernel measures a chroma plane.
+        const int s0 = int(sw << 16) >> 16;
+        const int s1 = int(sw) >> 16;
+        const int p0 = int(pw & 0xffffu);
+        const int p1 = int(pw >> 16u);
+        const int d0 = s0 - p0;
+        const int d1 = s1 - p1;
+        add64(lo, hi, uint(d0 * d0));
+        add64(lo, hi, uint(d1 * d1));
+    }
+    s_lo[lid] = lo;
+    s_hi[lid] = hi;
+    barrier();
+
+    // Tree reduction in shared memory.  No subgroup ops: the sum is over 256
+    // lanes and this kernel is small enough that the barrier cost is not the
+    // thing to optimise, while a subgroup width assumption is the thing most
+    // likely to make it wrong on another vendor (paper 3.2.6).
+    for (uint s = 128u; s > 0u; s >>= 1u) {
+        if (lid < s) {
+            uint l = s_lo[lid], h = s_hi[lid];
+            add64(l, h, s_lo[lid + s]);
+            h += s_hi[lid + s];
+            s_lo[lid] = l;
+            s_hi[lid] = h;
+        }
+        barrier();
+    }
+
+    if (lid != 0u) return;
+
+    // sse * 786432 <= qstep^2 * skip_thresh * npix, both sides as 64-bit
+    // values in two uints.  The left side is at most 2.66e8 * 786432 = 2.1e14
+    // and the right at most 3200^2 * 65535 * 4096, so neither overflows and
+    // neither fits in 32 bits -- which is why this is done the long way
+    // rather than with a shift and a prayer.
+    const uint sse_lo = s_lo[0], sse_hi = s_hi[0];
+
+    // left = sse * 786432
+    uint l_lo, l_hi;
+    umulExtended(sse_lo, 786432u, l_hi, l_lo);
+    l_hi += sse_hi * 786432u;
+
+    // right = qstep * qstep * skip_thresh * npix
+    const uint q2 = uint(pc.qstep) * uint(pc.qstep);
+    uint r_lo, r_hi;
+    umulExtended(q2, uint(pc.skip_thresh), r_hi, r_lo);
+    // multiply the 64-bit (r_hi, r_lo) by npix
+    uint t_lo, t_hi;
+    umulExtended(r_lo, npix, t_hi, t_lo);
+    t_hi += r_hi * npix;
+
+    const bool skip = (l_hi < t_hi) || (l_hi == t_hi && l_lo <= t_lo);
+    jobs[tile].mode = skip ? uint(NXE_MODE_WARP_SKIP) : uint(NXE_MODE_INTRA);
+}

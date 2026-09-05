@@ -71,6 +71,21 @@ struct Config {
      * deterministic PRNG so the tests exercise all nine modes; 0 leaves every
      * block on mode 0, which reproduces the v1 predictor exactly. */
     uint32_t dir_mode_seed = 0;
+    /* --- the Phase 2 inter path (ADR-0028).
+     *
+     * `inter` turns on the reference ring, Pass W and the integer mode
+     * decision; it is the `--inter on` of nxv-enc and sets tool bits 10 and
+     * 11 in the stream header.  `intra_period` is the rolling refresh: 1/T of
+     * the tiles are forced INTRA every frame, each tile exactly once every T
+     * frames, which is the loss-recovery bound of PAPER 2.6.
+     *
+     * `skip_thresh` is the WARP_SKIP gate as a Q8 multiple of the quantiser's
+     * own noise floor, matching nxvc_config::skip_thresh; 0 takes the
+     * default 256 (1.0). */
+    bool inter = false;
+    int intra_period = 180;
+    int skip_thresh = 0;
+
     int device = 0;
     bool cpu_only = false;
     bool bench = false;
@@ -112,6 +127,10 @@ struct Frame {
      * a multiply-add -- the same doubles, in the same order, so the sum and
      * therefore the chosen table set are unchanged bit for bit. */
     std::vector<double> log_freq;
+    /* The frame's warp_ext(), one per eye, as it travels in the frame
+     * header.  Identity until a pose pair says otherwise. */
+    int32_t warp[2][9] = {{1 << 21, 0, 0, 0, 1 << 21, 0, 0, 0, 1 << 29},
+                          {1 << 21, 0, 0, 0, 1 << 21, 0, 0, 0, 1 << 29}};
     int plane_size[NXE_MAX_PLANES]{};
     int plane_words[NXE_MAX_PLANES]{};     /* tile stride in the packed buffer */
     int plane_base[NXE_MAX_PLANES]{};      /* word base of the plane */

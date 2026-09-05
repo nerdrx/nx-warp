@@ -435,6 +435,53 @@ about this directory:
   the decoder's own Pass W and Pass B as byte-identical SPIR-V (E3b above), and
   nothing in the decision change touches that.
 
+## What E3b actually needs
+
+The E3b row in the table above says the reconstruction pass is "a matter of
+writing the reference picture out, not of writing the maths again", because
+"E3 already contains the reconstruction the directional predictor needs".
+
+**That is true only in the directional build.** `s_recon` is declared
+
+```glsl
+shared int s_recon[NXE_SC_INTRA_DIR * 4096 + 1];
+```
+
+so with `NXE_SC_INTRA_DIR == 0` it is a one-element array, and the
+non-directional residual path (`residual_blocks`) never writes it -- the only
+writes are in `residual_blocks_dir`.  The non-directional configuration is
+exactly the one the acid test pins and the one the library ships, so in the
+build that matters **E3 does not reconstruct the tile at all**.  It has no
+reason to: the DC-plane predictor needs the reconstructed block *means*, which
+`dc_plane` does compute, and nothing else.
+
+This is the third claim in this directory that was written as an accomplished
+fact and was not one, after `nxe_enc.h`'s `pred_src` buffer and the static
+assertions that could not see a GLSL define.  The pattern is worth naming: all
+three were about a *future* consumer, and nothing compiled against them, so
+nothing failed.
+
+So the encoder's reference store is two halves, and only one of them is easy:
+
+* **skipped tiles.**  A WARP_SKIP tile's reconstruction IS its predictor --
+  the decoder clamps the warped samples and adds no residual -- so the store is
+  Pass W's output moved into the ring's layout.  `inter/E3b_ring.comp` does
+  exactly that and mirrors `nxvwRefRingStore` line for line.  It is compiled
+  but **not dispatched**, because it is useless on its own: frame 0 is
+  all-intra, so a ring with no intra tiles in it has nothing for frame 1 to
+  predict from.
+* **intra tiles.**  Blocked, and deliberately not worked around.  The two ways
+  to get the reconstruction are to compute it in E3 -- dequantise, inverse
+  transform, add the prediction, clamp -- or to run the decoder's Pass B on the
+  encoder's coefficients.  The first is a re-derivation of the decoder's
+  arithmetic, which is the one thing the E3b rule exists to forbid, and it
+  would be a second copy of the maths that agrees until it does not.  So the
+  route is Pass B, and the work is an adapter: Pass B wants Pass A's buffers
+  (`Coef` in its sparse or dense layout, `TileRecs`, `Modes`, `TileOrder`,
+  `UnitLens`) and a destination image it does not need here, and the encoder
+  has the coefficients in its own per-tile layout.  That adapter is the next
+  piece of work, and it is a piece of work rather than a line of glue.
+
 ## What the coding passes do not implement
 
 What the coding passes do **not** implement, and refuse rather than ignore:

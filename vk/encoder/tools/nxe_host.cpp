@@ -328,6 +328,10 @@ std::vector<uint8_t> stream_header(const Config &cfg, const Frame &f) {
      * BITSTREAM (SYNTAX.md 9.4.1), which is why this is the resolved pair and
      * not cfg.tab_v2 on its own. */
     if (cfg.custom_tables && cfg.tab_v2) tools |= 1ull << 26;  /* TAB_V2 */
+    /* Bit 10 INTER and bit 11 WARP travel together: an inter stream on this
+     * path always carries warp_ext() on the frames that have a reference, and
+     * a decoder that implements one and not the other cannot decode it. */
+    if (cfg.inter) tools |= (1ull << 10) | (1ull << 11);
 
     u32(0x3156584Eu);            /* 'NXV1' */
     u8(1);                       /* NXVC_VERSION */

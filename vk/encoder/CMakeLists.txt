@@ -189,6 +189,54 @@ if(EXISTS ${NXENC_DEC_INTER}/warp_pred.comp)
     COMMENT "glslc (decoder) warp_pred.comp -> warp_pred.spv.h"
     VERBATIM)
   set(NXENC_SPV_HEADERS ${NXENC_SPV_HEADERS} ${_wout})
+
+  # E1c, the integer mode decision.  It is the encoder's own shader -- a
+  # decoder never decides anything -- but it includes the decoder's
+  # inter_layout.h for the tile record and the encoder's nxe_enc_common.glsl
+  # for the job record, so it needs both include directories.
+  set(_dout ${NXENC_GEN_DIR}/E1c_decide.spv.h)
+  add_custom_command(
+    OUTPUT ${_dout}
+    COMMAND ${CMAKE_COMMAND}
+            -DGLSLC=${NXENC_GLSLC}
+            -DSRC=${CMAKE_CURRENT_SOURCE_DIR}/inter/E1c_decide.comp
+            -DOUT=${_dout}
+            -DNAME=E1c_decide
+            -DINCDIR=${NXENC_DEC_INTER}
+            -DINCDIR2=${NXENC_FWD_DIR}
+            -DSTYLE=guarded
+            -P ${NXENC_GEN_SPV}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/inter/E1c_decide.comp
+            ${NXENC_DEC_INTER}/inter_layout.h
+            ${NXENC_FWD_DIR}/nxe_enc_common.glsl
+            ${NXENC_GEN_SPV} ${NXENC_SPV_PASSES_CMAKE}
+    COMMENT "glslc E1c_decide.comp -> E1c_decide.spv.h"
+    VERBATIM)
+  set(NXENC_SPV_HEADERS ${NXENC_SPV_HEADERS} ${_dout})
+
+  # E3b, the ring store for SKIPPED tiles.  Compiled but NOT yet dispatched:
+  # it is one half of the reference store and the other half -- the intra
+  # tiles' -- is blocked, see README.md "What E3b actually needs".  It is
+  # built anyway so glslc validates it and it cannot bit-rot while it waits.
+  set(_rout ${NXENC_GEN_DIR}/E3b_ring.spv.h)
+  add_custom_command(
+    OUTPUT ${_rout}
+    COMMAND ${CMAKE_COMMAND}
+            -DGLSLC=${NXENC_GLSLC}
+            -DSRC=${CMAKE_CURRENT_SOURCE_DIR}/inter/E3b_ring.comp
+            -DOUT=${_rout}
+            -DNAME=E3b_ring
+            -DINCDIR=${NXENC_DEC_INTER}
+            -DINCDIR2=${NXENC_FWD_DIR}
+            -DSTYLE=guarded
+            -P ${NXENC_GEN_SPV}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/inter/E3b_ring.comp
+            ${NXENC_DEC_INTER}/inter_layout.h
+            ${NXENC_FWD_DIR}/nxe_enc_common.glsl
+            ${NXENC_GEN_SPV} ${NXENC_SPV_PASSES_CMAKE}
+    COMMENT "glslc E3b_ring.comp -> E3b_ring.spv.h"
+    VERBATIM)
+  set(NXENC_SPV_HEADERS ${NXENC_SPV_HEADERS} ${_rout})
   set(NXENC_HAVE_PASSW 1)
 else()
   set(NXENC_HAVE_PASSW 0)
@@ -239,6 +287,15 @@ endif()
 # second thing to keep in step.  Everything else here is this directory's.
 set(NXENC_REF_TABLES ${CMAKE_CURRENT_SOURCE_DIR}/../../ref/src/tables.cpp)
 if(EXISTS ${NXENC_REF_TABLES})
+  # nxe_inter.cpp is compiled into each consumer rather than linked from
+  # nxenc_inter: nxvc_vk_encoder is installed and exported, and an exported
+  # target may not depend on a static library that is not itself exported.
+  # nxenc_inter stays, for the unit test.
+  set(NXENC_INTER_SRC)
+  if(NXENC_HAVE_PASSW)
+    set(NXENC_INTER_SRC ${CMAKE_CURRENT_SOURCE_DIR}/inter/nxe_inter.cpp)
+  endif()
+
   add_executable(nxvc-vkenc
     tools/nxvc-vkenc.cpp
     tools/nxe_host.cpp
@@ -246,6 +303,7 @@ if(EXISTS ${NXENC_REF_TABLES})
     tools/nxe_e0.cpp
     tools/nxe_selftest.cpp
     tools/vk_min.cpp
+    ${NXENC_INTER_SRC}
     ${NXENC_REF_TABLES}
     ${NXENC_SPV_HEADERS})
   add_dependencies(nxvc-vkenc nxenc_shaders)
@@ -255,6 +313,8 @@ if(EXISTS ${NXENC_REF_TABLES})
     ${CMAKE_CURRENT_SOURCE_DIR}/tools
     ${CMAKE_CURRENT_SOURCE_DIR}/stats
     ${CMAKE_CURRENT_SOURCE_DIR}/../../include
+    ${CMAKE_CURRENT_SOURCE_DIR}/inter
+    ${NXENC_DEC_INTER}
     ${CMAKE_CURRENT_SOURCE_DIR}/../../ref/src)
   target_link_libraries(nxvc-vkenc PRIVATE nxenc_forward_cpu)
   set_target_properties(nxvc-vkenc PROPERTIES CXX_STANDARD 20)
@@ -292,6 +352,7 @@ if(EXISTS ${NXENC_REF_TABLES})
     forward/nxe_tables.c
     forward/forward_cpu.c
     forward/rans_cpu.c
+    ${NXENC_INTER_SRC}
     ${NXENC_REF_TABLES}
     ${NXENC_SPV_HEADERS})
   add_dependencies(nxvc_vk_encoder nxenc_shaders)
@@ -303,6 +364,8 @@ if(EXISTS ${NXENC_REF_TABLES})
       ${CMAKE_CURRENT_SOURCE_DIR}/forward
       ${CMAKE_CURRENT_SOURCE_DIR}/tools
       ${CMAKE_CURRENT_SOURCE_DIR}/stats
+      ${CMAKE_CURRENT_SOURCE_DIR}/inter
+      ${NXENC_DEC_INTER}
       ${CMAKE_CURRENT_SOURCE_DIR}/../../ref/src)
   set_target_properties(nxvc_vk_encoder PROPERTIES
     CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON POSITION_INDEPENDENT_CODE ON)

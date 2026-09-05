@@ -93,6 +93,10 @@ int main(int argc, char **argv) {
         else if (a == "--h") cfg.h = std::atoi(val());
         else if (a == "--pix") pix = val();
         else if (a == "--qp") cfg.qp = std::atoi(val());
+        else if (a == "--inter") cfg.inter = true;
+        else if (a == "--intra-period") cfg.intra_period = std::atoi(val());
+        else if (a == "--skip-thresh")
+            cfg.skip_thresh = (int)(std::atof(val()) * 256.0 + 0.5);
         else if (a == "--frames") cfg.frames = std::atoi(val());
         else if (a == "--eyes") cfg.eyes = std::atoi(val());
         else if (a == "--matrix") cfg.matrix = std::atoi(val());

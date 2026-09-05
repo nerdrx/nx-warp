@@ -1,0 +1,105 @@
+#version 460
+// E3b_ring.comp -- the reference ring store for SKIPPED tiles.
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// A WARP_SKIP tile's reconstruction IS its predictor: the decoder's
+// `reconstruct_skip` takes the warped samples and clamps them, and there is no
+// residual to add.  So the encoder's copy of that tile in the reference ring
+// is Pass W's output, moved into the ring's layout -- which is what this
+// kernel does, and all it does.
+//
+// The intra tiles of the same frame are stored by E3, which has their
+// reconstruction in shared memory already.  Two kernels rather than one
+// because the two sources live in different places and neither can read the
+// other's; the ring layout arithmetic is identical in both and is taken from
+// the decoder's `inter_layout.h` in both.
+//
+// The layout mirrors `nxvwRefRingStore` in vk/decoder/inter/inter_hook.glsl
+// exactly, and for the same reasons:
+//
+//   * each thread owns a horizontally ADJACENT PAIR, so every uint is written
+//     by exactly one thread and no two workgroups ever contend for one.  That
+//     is the whole reason the ring's row stride is padded to an even number of
+//     samples.
+//   * `full` is the tile's full extent in the plane -- 64, or 32 for the
+//     chroma of a 4:2:0 stream -- and NOT the coded size.  res_level is 0 on
+//     this path so the two coincide, but the addressing is written the way the
+//     decoder writes it so that they can stop coinciding without this kernel
+//     becoming wrong in a way nothing would notice.
+//   * a partial edge tile is clipped in the PLANE's height and in the EYE's
+//     own width, because an eye's sub-picture is a column range of a shared
+//     plane and running off its right edge would write into the other eye.
+
+#extension GL_GOOGLE_include_directive : require
+#include "inter_layout.h"
+#include "nxe_enc_common.glsl"
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430, binding = 0) readonly buffer ParamBuf { nxe_frame_params fp; };
+layout(std430, binding = 1) readonly buffer JobBuf   { nxe_tile_job jobs[]; };
+layout(std430, binding = 2) readonly buffer WPredBuf { uint v[]; } wpred;
+layout(std430, binding = 3) readonly buffer WarpBuf  { uint v[]; } warpb;
+layout(std430, binding = 4)          buffer RingBuf  { uint v[]; } ring;
+
+layout(push_constant) uniform Push {
+    int wpred_stride_i16;
+    int chroma420;
+    int ycocgr;
+    int pad;
+} pc;
+
+void main() {
+    const uint tile = gl_WorkGroupID.x;
+    if (tile >= fp.ntiles) return;
+    if (jobs[tile].mode != uint(NXE_MODE_WARP_SKIP)) return;
+    const int tid = int(gl_LocalInvocationID.x);
+
+    // The ring geometry, from the warp header -- the same words Pass B reads,
+    // so the two stores cannot disagree about where a sample lives.
+    const int slotU16 = int(warpb.v[uint(NXVW_WARP_HDR_RING + 0)]);
+    const int colsPerEye = int(warpb.v[uint(NXVW_WARP_HDR_RING + 2)]);
+    const int curBase = int(warpb.v[uint(NXVW_WARP_HDR_RING + 3)]) * slotU16;
+
+    const int tilesPerRow = colsPerEye * int(fp.eyes);
+    const int tileY = int(tile) / tilesPerRow;
+    const int rem = int(tile) - tileY * tilesPerRow;
+    const int eye = rem / colsPerEye;
+    const int cx = rem - eye * colsPerEye;
+
+    for (int p = 0; p < 3; ++p) {
+        const bool chroma = (p == 1 || p == 2);
+        const int full = nxvw_inter_plane_full(p, pc.chroma420);
+        const int maxval = (pc.ycocgr != 0 && chroma) ? 511 : 255;
+
+        const int pw = int(warpb.v[uint(NXVW_WARP_HDR_RING + 12 + p)]);
+        const int ph = chroma ? (pc.chroma420 != 0 ? (int(fp.height) + 1) >> 1
+                                                   : int(fp.height))
+                              : int(fp.height);
+        const int planeOff = int(warpb.v[uint(NXVW_WARP_HDR_RING + 4 + p)]);
+        const int stride = int(warpb.v[uint(NXVW_WARP_HDR_RING + 8 + p)]);
+
+        const int wpBase = int(tile) * pc.wpred_stride_i16 +
+                           nxvw_wpred_plane_off(p, pc.chroma420);
+
+        const int ox = eye * pw + cx * full;
+        const int oy = tileY * full;
+        const int npair = (full * full) >> 1;
+        for (int i = tid; i < npair; i += 256) {
+            const int e = 2 * i;
+            const int y = e / full;
+            const int x = e - y * full;
+            const int gy = oy + y;
+            const int gx = ox + x;
+            if (gy >= ph) continue;
+            if (gx >= eye * pw + pw) continue;
+
+            const uint w = wpred.v[uint(wpBase + e) >> 1u];
+            const int v0 = clamp(int(w & 0xffffu), 0, maxval);
+            const int v1 = clamp(int(w >> 16u), 0, maxval);
+            const uint idx = uint(curBase + planeOff + gy * stride + gx);
+            ring.v[idx >> 1u] = (uint(v0) & 0xffffu) | (uint(v1) << 16);
+        }
+    }
+}

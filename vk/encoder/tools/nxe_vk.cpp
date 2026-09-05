@@ -5,6 +5,10 @@
 
 #include "nxe_vk.h"
 
+#include "nxe_inter.h"
+#include "E1c_decide.spv.h"
+#include "warp_pred.spv.h"
+
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
@@ -12,6 +16,9 @@
 #include <cstring>
 #include <vector>
 
+extern "C" {
+#include "nxe_tables.h"
+}
 #include "nxe_e0.h"
 #include "vk_min.h"
 
@@ -43,9 +50,16 @@ struct VkEncoder::Impl {
     vkmin::Buffer b_params, b_jobs, b_src, b_coef, b_modes, b_tabs, b_tabbytes;
     vkmin::Buffer b_slots, b_sizes, b_prefix, b_blocks, b_total;
     vkmin::Buffer b_ops, b_slotops, b_out, b_pose, b_warpext;
+    /* The inter path: the four-slot reference ring, the parameter buffer
+     * Pass W reads, and the predictor it writes.  Allocated even on an
+     * intra-only stream, at four bytes each -- an unbound descriptor is
+     * illegal and a branch in create() is worse than 12 bytes. */
+    vkmin::Buffer b_ring, b_warp, b_wpred;
     vkmin::Buffer b_stage_src, b_stage_coef, b_stage_small;
 
     vkmin::Pipeline p_e3, p_e4, p_e5, p_e5z, p_e2[3];
+    /* Pass W is the DECODER's warp_pred.comp; E1c is the mode decision. */
+    vkmin::Pipeline p_w, p_dec;
     E0 e0;
     /* Plane views of the caller's images, one entry per (image, layer) the
      * caller has presented.  A compositor rotates over a handful of images
@@ -60,10 +74,20 @@ struct VkEncoder::Impl {
     std::vector<SrcViews> src_views;
     VkDescriptorPool pool = VK_NULL_HANDLE;
     VkDescriptorSet s_e3{}, s_e4{}, s_e5{}, s_e5z{}, s_e2[3]{};
+    VkDescriptorSet s_w{}, s_dec{};
     VkQueryPool qpool = VK_NULL_HANDLE;
 
     size_t src_bytes = 0, coef_bytes = 0, out_bytes = 0;
     uint32_t e4_groups = 1;
+
+    /* Inter state.  `inter` is the stream's; the rest is per frame. */
+    bool inter = false;
+    RingLayout ring{};
+    RingState ringst{};
+    WarpParams warp{};
+    int wpred_stride = 0;
+    nxvw::NxvwWarpPush wpush{};
+    int32_t decide_push[4] = {};
 };
 
 int vk_list_devices() {
@@ -153,6 +177,23 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
                   (size_t)NXE_ROW_HEADER_BYTES * f.fp.tiles_y * f.fp.eyes +
                   (size_t)d.ntiles * NXE_TILE_SLOT_BYTES;
 
+    /* Inter geometry.  On an intra-only stream every one of these is the
+     * minimum legal size and nothing ever reads them. */
+    d.inter = cfg.inter;
+    if (d.inter) {
+        const int cw = cfg.chroma444 ? cfg.w / cfg.eyes : (cfg.w / cfg.eyes + 1) / 2;
+        const int ch = cfg.chroma444 ? cfg.h : (cfg.h + 1) / 2;
+        ring_layout(cfg.w / cfg.eyes, cfg.h, cw, ch, cfg.eyes, 3, d.ring);
+        d.wpred_stride = wpred_stride_i16(cfg.chroma444 ? 0 : 1, 0);
+    }
+    const size_t ring_bytes = d.inter ? d.ring.bytes() : 4u;
+    const size_t wpred_b =
+        d.inter ? wpred_bytes(d.ntiles, cfg.chroma444 ? 0 : 1, 0) : 4u;
+    const size_t warp_b =
+        d.inter ? ((size_t)NXVW_WARP_HDR_UINTS +
+                   (size_t)d.ntiles * NXVW_WARP_TILE_UINTS) * 4u
+                : 4u;
+
     d.e4_groups = std::min(kE4GroupsMax,
                            (d.ntiles + NXE_E4_TILES_PER_WG - 1) /
                                NXE_E4_TILES_PER_WG);
@@ -177,6 +218,9 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
         /* warp_ext(): nine int32 per eye.  Sized for two eyes whatever the
          * stream is, because it is 72 bytes. */
         {&d.b_warpext, 9 * 4 * 2, false},
+        {&d.b_ring,    ring_bytes, false},
+        {&d.b_warp,    warp_b,     false},
+        {&d.b_wpred,   wpred_b,    false},
         {&d.b_out,     d.out_bytes, true},
         {&d.b_stage_src, d.src_bytes, true},
         {&d.b_stage_coef, d.coef_bytes, true},
@@ -222,7 +266,16 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
         if (!d.dev.create_pipeline(e2[i], e2n[i], sb4, 8, d.p_e2[i], err))
             return false;
 
-    d.pool = d.dev.create_descriptor_pool(9, 64, 2);
+    /* Pass W's three buffers and E1c's five, plus two more sets. */
+    const std::vector<VkDescriptorType> sb3(3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    if (!d.dev.create_pipeline(warp_pred_spv, sizeof warp_pred_spv, sb3,
+                               (uint32_t)sizeof(nxvw::NxvwWarpPush), d.p_w, err))
+        return false;
+    if (!d.dev.create_pipeline(E1c_decide_spv, sizeof E1c_decide_spv, sb5, 16,
+                               d.p_dec, err))
+        return false;
+
+    d.pool = d.dev.create_descriptor_pool(11, 80, 2);
     d.s_e3 = d.dev.allocate_set(d.pool, d.p_e3.dsl);
     d.s_e4 = d.dev.allocate_set(d.pool, d.p_e4.dsl);
     d.s_e5 = d.dev.allocate_set(d.pool, d.p_e5.dsl);
@@ -246,6 +299,17 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
                                          d.b_warpext.buf};
     write_set(h, d.s_e5, e5bufs);
     write_set(h, d.s_e5z, e5bufs);
+
+    /* Pass W takes {ring, warp, wpred} in that order; E1c takes
+     * {params, jobs, src, wpred, warp}.  The two orders differ, and so do
+     * Pass B's -- the decoder's host keeps three separate arrays for exactly
+     * this reason and getting it wrong binds a readonly buffer where a
+     * writeonly one belongs. */
+    d.s_w = d.dev.allocate_set(d.pool, d.p_w.dsl);
+    d.s_dec = d.dev.allocate_set(d.pool, d.p_dec.dsl);
+    write_set(h, d.s_w, {d.b_ring.buf, d.b_warp.buf, d.b_wpred.buf});
+    write_set(h, d.s_dec, {d.b_params.buf, d.b_jobs.buf, d.b_src.buf,
+                           d.b_wpred.buf, d.b_warp.buf});
 
     /* E0 is created whether or not an image is ever presented: it is two
      * dozen kilobytes of SPIR-V and one descriptor set, and a create-time
@@ -419,6 +483,69 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
     nxe_frame_params fp = f.fp;
     fp.frame_number = frame_number;
 
+    /* ---- the inter frame's own parameters, decided on the host before a
+     * single dispatch: which ring slot this frame predicts from, whether
+     * there is one at all, and which tiles the rolling refresh forces INTRA.
+     *
+     * The mode decision proper is E1c's, on the device.  What cannot go there
+     * is the part that depends on state the GPU does not hold -- the ring's
+     * validity record -- and the part that must be known BEFORE Pass W runs,
+     * because Pass W only predicts a tile whose record has the inter bit set.
+     * So the host marks every eligible tile WARP_SKIP, Pass W predicts them
+     * all, and E1c then keeps or overturns that per tile.  A tile the
+     * decision turns back to INTRA has simply had a predictor computed that
+     * nothing reads, which costs a little of Pass W and no correctness.
+     */
+    int ref_slot = -1;
+    if (d.inter) {
+        ref_slot = d.ringst.resolve(frame_number, 0);
+        WarpBuildInfo bi;
+        bi.width = (int)f.fp.width;
+        bi.height = (int)f.fp.height;
+        bi.cw = d.cfg.chroma444 ? bi.width : (bi.width + 1) / 2;
+        bi.ch = d.cfg.chroma444 ? bi.height : (bi.height + 1) / 2;
+        bi.eyes = (int)f.fp.eyes;
+        bi.cols_per_eye = (int)f.fp.tiles_x;
+        bi.rows = (int)f.fp.tiles_y;
+        bi.chroma420 = d.cfg.chroma444 ? 0 : 1;
+        bi.nplanes = 3;
+        bi.frame_number = frame_number;
+        bi.ref_slot = ref_slot;
+        WarpMatrix wm[2];
+        for (int e = 0; e < 2; ++e)
+            for (int i = 0; i < 9; ++i) wm[e].h[i] = f.warp[e][i];
+        bi.warp = wm;
+        build_warp_params(bi, d.ring, d.warp);
+        d.wpush = warp_push(bi, d.ring);
+
+        const uint32_t period =
+            d.cfg.intra_period > 0 ? (uint32_t)d.cfg.intra_period : 180u;
+        for (uint32_t t = 0; t < d.ntiles; ++t) {
+            const bool eligible =
+                ref_slot >= 0 && !refresh_due(t, frame_number, period);
+            if (eligible)
+                set_tile_mode(d.warp, t, nxvw::kModeWarpSkip, 0, 0);
+            /* The job's mode is what E3/E4/E5 read.  It starts INTRA and E1c
+             * writes it; setting it here as well would make the CPU model and
+             * the GPU disagree about who owns the field. */
+            f.jobs[t].mode = (uint32_t)nxvw::kModeIntra;
+        }
+
+        /* warp_ext() travels only when there is a reference to warp. */
+        fp.warp_bytes = ref_slot >= 0 ? (uint32_t)(36 * f.fp.eyes) : 0u;
+        fp.ref_slots = 1u << (frame_number & 3u);
+        /* Frame flag bit 0 is the tile-map reset -- set exactly when there is
+         * no usable reference -- and bit 3 says warp_ext() is present. */
+        fp.frame_flags = (fp.frame_flags & ~9u) | (ref_slot >= 0 ? 8u : 1u);
+
+        const int qpc = d.cfg.qp < 0 ? 0 : (d.cfg.qp > 63 ? 63 : d.cfg.qp);
+        d.decide_push[0] = (int32_t)nxe_qstep[qpc];
+        d.decide_push[1] =
+            d.cfg.skip_thresh > 0 ? (int32_t)d.cfg.skip_thresh : 256;
+        d.decide_push[2] = d.wpred_stride;
+        d.decide_push[3] = 0;
+    }
+
     /* ---- upload, then E3 alone.
      *
      * The table-set choice sits between E3 and E4 and is host work: it
@@ -452,6 +579,26 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
                         f.modes.size());
             vkCmdCopyBuffer(cb, d.b_stage_coef.buf, d.b_modes.buf, 1, &cm);
         }
+        if (d.inter) {
+            /* The parameter buffer and warp_ext(), through the small staging
+             * area.  The parameter buffer is 64 + 12 * ntiles uints -- 14 KB
+             * for a 1088x1088 eye -- so it fits the staging window with room
+             * to spare. */
+            const size_t wb = d.warp.bytes();
+            std::memcpy((uint8_t *)d.b_stage_small.map + (1 << 17),
+                        d.warp.w.data(), wb);
+            VkBufferCopy cw{1 << 17, 0, wb};
+            vkCmdCopyBuffer(cb, d.b_stage_small.buf, d.b_warp.buf, 1, &cw);
+
+            uint32_t we[18];
+            for (uint32_t e = 0; e < f.fp.eyes && e < 2; ++e)
+                for (int i = 0; i < 9; ++i)
+                    we[e * 9 + (uint32_t)i] = (uint32_t)f.warp[e][i];
+            const size_t web = (size_t)9 * 4 * (f.fp.eyes < 2 ? 1 : 2);
+            std::memcpy((uint8_t *)d.b_stage_small.map + (1 << 16), we, web);
+            VkBufferCopy cwe{1 << 16, 0, web};
+            vkCmdCopyBuffer(cb, d.b_stage_small.buf, d.b_warpext.buf, 1, &cwe);
+        }
         d.dev.barrier_transfer_to_compute(cb);
         if (image) {
             /* E0 fills b_src from the caller's image, in the same command
@@ -468,6 +615,27 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
             g.plane_cg_off = (uint32_t)f.plane_base[2];
             g.plane_words = (uint32_t)(f.src_packed.size() / 2);
             d.e0.record(cb, g);
+            d.dev.barrier_compute_to_compute(cb);
+        }
+        if (d.inter) {
+            /* Pass W, then the decision, then E3.  Two barriers: the
+             * predictor has to be complete before it is measured, and the
+             * modes have to be written before E3 reads them to decide whether
+             * to code the tile at all. */
+            vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, d.p_w.pipe);
+            vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                    d.p_w.layout, 0, 1, &d.s_w, 0, nullptr);
+            vkCmdPushConstants(cb, d.p_w.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                               (uint32_t)sizeof d.wpush, &d.wpush);
+            vkCmdDispatch(cb, d.ntiles, 1, 1);
+            d.dev.barrier_compute_to_compute(cb);
+
+            vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, d.p_dec.pipe);
+            vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                    d.p_dec.layout, 0, 1, &d.s_dec, 0, nullptr);
+            vkCmdPushConstants(cb, d.p_dec.layout, VK_SHADER_STAGE_COMPUTE_BIT,
+                               0, 16, d.decide_push);
+            vkCmdDispatch(cb, d.ntiles, 1, 1);
             d.dev.barrier_compute_to_compute(cb);
         }
         vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, d.p_e3.pipe);
