@@ -373,7 +373,7 @@ NXS_CONST uint kReadPtrLdsFallback = 1;
 // Dispatch shape: one workgroup is always kWorkgroupSize threads and handles
 // TILES_PER_GROUP tiles of LANES lanes each, with TILES_PER_GROUP * LANES <=
 // kWorkgroupSize and TILES_PER_GROUP <= kMaxSlots.  kTilesPerGroup is the
-// v1-default shape (8 tiles x 8 lanes).
+// build's default shape; LANES follows the tile's nsub_log2.
 //
 // [nxvc_vk_decoder glue, marked edit] LANES is specialisation constant 2 and
 // no longer fixed at 8; see rans_decode.comp.  nxs_tiles_per_group() is the
@@ -386,8 +386,14 @@ NXS_CONST uint kReadPtrLdsFallback = 1;
 // at 64 threads and 12 KB, an Adreno 650 SP with 32 KB of LDS holds two
 // workgroups, which is two waves and no latency hiding at all on a kernel
 // whose inner loop is a dependent chain of shared-memory reads.
+//
+// Measured on a Pico 4, 2048 tiles, best of 12 with a cooldown either side:
+// 8 -> 16 -> 32 tiles per group is 153.7 -> 102.5 -> 79.8 ms at QP 24 and
+// 26.7 -> 12.8 -> 10.1 at QP 36.  32 was blocked until the descriptor array
+// was sized from this number (nxs_desc_slots) instead of a fixed allowance.
+// 64 hangs the device and is not a supported value.
 #ifndef NXVW_PASSA_TILES_PER_GROUP
-#define NXVW_PASSA_TILES_PER_GROUP 16
+#define NXVW_PASSA_TILES_PER_GROUP 32
 #endif
 NXS_CONST uint kTilesPerGroup = NXVW_PASSA_TILES_PER_GROUP;
 NXS_CONST uint kWorkgroupSize = NXVW_PASSA_TILES_PER_GROUP * 8u;

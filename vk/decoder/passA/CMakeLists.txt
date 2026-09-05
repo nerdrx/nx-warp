@@ -19,7 +19,7 @@ file(MAKE_DIRECTORY ${NXVW_PASSA_GEN})
 # workgroup is eight times this many threads.  It reaches both the GLSL and the
 # C++ that has to agree with it (nxs_tiles_per_group), so it is a cache
 # variable rather than two independent -D flags.  See syntax_constants.h.
-set(NXVW_PASSA_TPG "16" CACHE STRING
+set(NXVW_PASSA_TPG "32" CACHE STRING
     "Pass A tiles per workgroup (workgroup = 8 * this threads)")
 # PARENT_SCOPE so vk/decoder's own library, which includes syntax_constants.h
 # for nxs_tiles_per_group(), compiles against the same number.
