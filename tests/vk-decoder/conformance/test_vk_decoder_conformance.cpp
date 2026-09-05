@@ -94,6 +94,15 @@ bool case_skipped(const std::string &name) {
     return false;
 }
 
+// Arm for the life of a scope.  check_stream() has several early returns and
+// every one of them must disarm, which is what an object is for.
+struct CaseGuard {
+    explicit CaseGuard(const std::string &name) { case_begin(name); }
+    ~CaseGuard() { case_end(); }
+    CaseGuard(const CaseGuard &) = delete;
+    CaseGuard &operator=(const CaseGuard &) = delete;
+};
+
 void start_watchdog() {
     if (g_case_timeout_s <= 0) return;
     std::thread([] {
@@ -272,6 +281,12 @@ bool gpu_decode(const std::vector<uint8_t> &stream, uint32_t out_format,
 // streams, which have no manifest entry.
 void check_stream(const char *what, const std::vector<uint8_t> &stream,
                   const std::string &pinned_md5, uint32_t out_format) {
+    // The watchdog's real arming point.  The manifest sweep, the synthetic
+    // streams and their RGB10A2 variants all reach the GPU through here, and
+    // arming only the manifest loop is how a wedge in the synthetic stage
+    // (syn_xform32_420, the same XFORM_LARGE hang as v70_xform32_444) ran
+    // unattended a second time.
+    CaseGuard cg_(what);
     std::string err;
     std::vector<Planes> ref, gpu;
     if (!ref_decode(stream, ref, err)) {
@@ -397,7 +412,6 @@ void run_vectors() {
             ++g_skipped;
             continue;
         }
-        case_begin(r.name);
         std::string path = std::string(g_vectors_dir) + "/" + r.name + ".nxv";
         std::vector<uint8_t> stream;
         if (!read_file(path, stream)) {
@@ -453,7 +467,6 @@ void run_vectors() {
             continue;
         }
         check_stream(r.name.c_str(), stream, r.decoded_md5, NXVC_VKD_OUT_AUTO);
-        case_end();
     }
 }
 
@@ -1025,6 +1038,11 @@ void run_synthetic(bool quick) {
     std::vector<Case> cases = synthetic_cases(quick);
     std::printf("-- %zu synthetic streams from nxvc_encoder\n", cases.size());
     for (const Case &c : cases) {
+        if (case_skipped(c.name)) {
+            std::printf("skip %s: --skip\n", c.name.c_str());
+            ++g_skipped;
+            continue;
+        }
         std::vector<uint8_t> s;
         std::string err;
         if (!encode_case(c, s, err)) {
@@ -1689,8 +1707,12 @@ int main(int argc, char **argv) {
         nxvc_vk_decoder_destroy(dec);
     }
 
+    // Before any stage, not just the first: the wedge that made this
+    // necessary was in the synthetic streams, which --only-vectors' absence
+    // used to leave unguarded.
+    start_watchdog();
+
     if (do_vectors) {
-        start_watchdog();
         run_vectors();
         run_rejects();
     }
