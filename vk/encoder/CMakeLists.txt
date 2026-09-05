@@ -149,6 +149,9 @@ function(nxenc_fwd_shader name src)
 endfunction()
 nxenc_fwd_shader(E3_forward      forward.comp)
 nxenc_fwd_shader(E4_rans_encode  rans_encode.comp)
+# E4-lite, ENTROPY_LITE (30).  A second module rather than a branch: see the
+# head of lite_encode.comp for why the two kernels have opposite shapes.
+nxenc_fwd_shader(E4_lite_encode  lite_encode.comp)
 nxenc_fwd_shader(E5_zero        packetize.comp "-DNXE_E5_PASS=0")
 nxenc_fwd_shader(E5_packetize    packetize.comp "-DNXE_E5_PASS=1")
 

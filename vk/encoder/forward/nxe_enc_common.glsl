@@ -67,6 +67,7 @@
 #define NXE_ESC_MAX_PREFIX  16
 #define NXE_SDH_MIN_LAST    4
 #define NXE_NUM_INTRA_MODES 9
+#define NXE_INTRA_DC_PLANE  0
 
 #define NXE_RANS_L          (1u << 16)
 #define NXE_PROB_BITS       10
@@ -152,6 +153,11 @@ int nxe_lite_last_bits(int ncoef) {
 // not change any loop bound, only how much of the table buffer is live.
 layout(constant_id = 0) const int NXE_SC_INTRA_DIR  = 0;
 layout(constant_id = 1) const int NXE_SC_XFORM_LOG2 = 3;
+// ENTROPY_LITE (30).  E5 is the only pass that needs it: a Lite tile's
+// payload is a contiguous byte run after the field word, where a rANS tile's
+// is the flush states plus one emission per WORD anchored at the end of the
+// slot.  The entropy kernel itself is a different module, not a branch.
+layout(constant_id = 2) const int NXE_SC_ENTROPY_LITE = 0;
 
 #define NXE_XB   (1 << NXE_SC_XFORM_LOG2)      // transform edge
 #define NXE_XN   (NXE_XB * NXE_XB)             // coefficients per block

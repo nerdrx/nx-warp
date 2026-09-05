@@ -106,6 +106,16 @@ uint tile_byte(TileSlot s, uint i) {
                0xffu;
     }
     uint k = i - s.prefix_bytes;
+    if (NXE_SC_ENTROPY_LITE != 0) {
+        // ENTROPY_LITE has no rANS flush states and no emission words: the
+        // payload is a plain byte run starting at the word after the field
+        // word, packed four bytes to a word, low byte first.  Lite's byte
+        // offsets follow from prefix sums the kernel already had, so the
+        // back-to-front trick E4 needs buys nothing here.
+        uint wl = s.w0 + 3u + (k >> 2);
+        return (slot.v[min(wl, uint(slot.v.length()) - 1u)] >>
+                ((k & 3u) * 8u)) & 0xffu;
+    }
     uint w = s.wend - s.ewords + (k >> 1);
     uint v = slot.v[min(w, uint(slot.v.length()) - 1u)];
     return ((k & 1u) == 0u) ? ((v >> 8) & 0xffu) : (v & 0xffu);
