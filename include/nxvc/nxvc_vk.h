@@ -155,6 +155,29 @@ void nxvc_vk_decoder_destroy(nxvc_vk_decoder *dec);
 /* Human-readable detail for the last failure.  Never NULL. */
 const char *nxvc_vk_decoder_last_error(const nxvc_vk_decoder *dec);
 
+/* [additive] Human-readable detail for the last nxvc_vk_decoder_create() on
+ * THIS THREAD, readable with no handle.  Never NULL; "no error" when the last
+ * create on this thread succeeded or none has run.
+ *
+ * nxvc_vk_decoder_last_error() needs a decoder, and the two failure classes
+ * that matter most on a headset do not reliably give the caller one: a failure
+ * before the object is allocated has none to hand back, and a caller that does
+ * not know the library returns the half-built decoder for exactly this purpose
+ * will destroy it and report the bare status name.  That is what happened: an
+ * off-by-one descriptor pool made every stream fail at create on the Adreno
+ * 650, and the entire report available was "nxvc_vk_decoder_create: vulkan
+ * error" -- neither the call nor the VkResult.
+ *
+ * The string names the failing call and, for a Vulkan failure, the VkResult by
+ * its spec name, e.g.
+ *
+ *   vkAllocateDescriptorSets(d->dev, &da, sets) failed:
+ *     VK_ERROR_OUT_OF_POOL_MEMORY (-1000069000)
+ *
+ * The storage is thread-local and owned by the library.  It is valid until the
+ * next nxvc_vk_decoder_create() on the same thread; copy it to keep it. */
+const char *nxvc_vk_decoder_last_create_error(void);
+
 /* Device the decoder is running on, for logging.  Never NULL. */
 const char *nxvc_vk_decoder_device_name(const nxvc_vk_decoder *dec);
 

@@ -248,6 +248,61 @@ namespace {
 
 using D = nxvc_vk_decoder;
 
+// The VkResult spelled the way the spec spells it.  A caller reading a log
+// should not have to look up -1000069000, which is the number that cost this
+// project a device round: the pool was one descriptor short and the only
+// report anyone had was "vulkan error".
+const char *vkresult_name(VkResult r) {
+    switch (r) {
+    case VK_SUCCESS: return "VK_SUCCESS";
+    case VK_NOT_READY: return "VK_NOT_READY";
+    case VK_TIMEOUT: return "VK_TIMEOUT";
+    case VK_INCOMPLETE: return "VK_INCOMPLETE";
+    case VK_ERROR_OUT_OF_HOST_MEMORY: return "VK_ERROR_OUT_OF_HOST_MEMORY";
+    case VK_ERROR_OUT_OF_DEVICE_MEMORY: return "VK_ERROR_OUT_OF_DEVICE_MEMORY";
+    case VK_ERROR_INITIALIZATION_FAILED:
+        return "VK_ERROR_INITIALIZATION_FAILED";
+    case VK_ERROR_DEVICE_LOST: return "VK_ERROR_DEVICE_LOST";
+    case VK_ERROR_MEMORY_MAP_FAILED: return "VK_ERROR_MEMORY_MAP_FAILED";
+    case VK_ERROR_LAYER_NOT_PRESENT: return "VK_ERROR_LAYER_NOT_PRESENT";
+    case VK_ERROR_EXTENSION_NOT_PRESENT:
+        return "VK_ERROR_EXTENSION_NOT_PRESENT";
+    case VK_ERROR_FEATURE_NOT_PRESENT: return "VK_ERROR_FEATURE_NOT_PRESENT";
+    case VK_ERROR_INCOMPATIBLE_DRIVER: return "VK_ERROR_INCOMPATIBLE_DRIVER";
+    case VK_ERROR_TOO_MANY_OBJECTS: return "VK_ERROR_TOO_MANY_OBJECTS";
+    case VK_ERROR_FORMAT_NOT_SUPPORTED: return "VK_ERROR_FORMAT_NOT_SUPPORTED";
+    case VK_ERROR_FRAGMENTED_POOL: return "VK_ERROR_FRAGMENTED_POOL";
+    case VK_ERROR_UNKNOWN: return "VK_ERROR_UNKNOWN";
+    case VK_ERROR_OUT_OF_POOL_MEMORY: return "VK_ERROR_OUT_OF_POOL_MEMORY";
+    case VK_ERROR_INVALID_EXTERNAL_HANDLE:
+        return "VK_ERROR_INVALID_EXTERNAL_HANDLE";
+    case VK_ERROR_FRAGMENTATION: return "VK_ERROR_FRAGMENTATION";
+    case VK_ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS:
+        return "VK_ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS";
+    default: return "VkResult";
+    }
+}
+
+// ------------------------------------------------- the create diagnostic
+// nxvc_vk_decoder_last_error() needs a decoder, so a failure that happens
+// BEFORE there is one -- or one whose caller does not know the library hands
+// the half-built decoder back for exactly this purpose -- has nowhere to be
+// read.  The WiVRn client's report of the out-of-pool bug was the whole of
+// "nxvc_vk_decoder_create: vulkan error", which named neither the call nor
+// the VkResult, and that is the entire diagnostic budget of a headset.
+//
+// So every failure path also writes here, and this is readable with no handle
+// at all.  Thread-local because two threads may create decoders at once and
+// a diagnostic that races is worse than none.  Never NULL, never empty.
+char *create_err_buf() {
+    static thread_local char b[512] = "no error";
+    return b;
+}
+void set_create_err(const char *s) {
+    char *b = create_err_buf();
+    std::snprintf(b, 512, "%s", s && s[0] ? s : "unspecified failure");
+}
+
 nxvc_vkd_status seterr(D *d, nxvc_vkd_status st, const char *fmt, ...) {
     char b[512];
     va_list ap;
@@ -255,6 +310,18 @@ nxvc_vkd_status seterr(D *d, nxvc_vkd_status st, const char *fmt, ...) {
     std::vsnprintf(b, sizeof b, fmt, ap);
     va_end(ap);
     d->err = b;
+    set_create_err(b);
+    return st;
+}
+
+// Used where the failure is before or without a decoder object.
+nxvc_vkd_status createerr(nxvc_vkd_status st, const char *fmt, ...) {
+    char b[512];
+    va_list ap;
+    va_start(ap, fmt);
+    std::vsnprintf(b, sizeof b, fmt, ap);
+    va_end(ap);
+    set_create_err(b);
     return st;
 }
 
@@ -262,8 +329,8 @@ nxvc_vkd_status seterr(D *d, nxvc_vkd_status st, const char *fmt, ...) {
     do {                                                                  \
         VkResult _r = (expr);                                             \
         if (_r != VK_SUCCESS)                                             \
-            return seterr((d), NXVC_VKD_ERR_VULKAN, "%s failed: VkResult %d", \
-                          #expr, (int)_r);                                \
+            return seterr((d), NXVC_VKD_ERR_VULKAN, "%s failed: %s (%d)", \
+                          #expr, vkresult_name(_r), (int)_r);             \
     } while (0)
 
 // ------------------------------------------------------------------ memory
@@ -409,7 +476,8 @@ nxvc_vkd_status create_device(D *d, const nxvc_vkd_create_info *ci) {
     VkResult r = vkCreateInstance(&ii, nullptr, &d->inst);
     if (r != VK_SUCCESS)
         return seterr(d, NXVC_VKD_ERR_NO_DEVICE,
-                      "vkCreateInstance failed: VkResult %d", (int)r);
+                      "vkCreateInstance failed: %s (%d)", vkresult_name(r),
+                      (int)r);
     d->own_instance = true;
 
     uint32_t n = 0;
@@ -541,8 +609,8 @@ nxvc_vkd_status create_device(D *d, const nxvc_vkd_create_info *ci) {
     }
     r = vkCreateDevice(d->phys, &di, nullptr, &d->dev);
     if (r != VK_SUCCESS)
-        return seterr(d, NXVC_VKD_ERR_VULKAN, "vkCreateDevice failed: %d",
-                      (int)r);
+        return seterr(d, NXVC_VKD_ERR_VULKAN, "vkCreateDevice failed: %s (%d)",
+                      vkresult_name(r), (int)r);
     d->own_device = true;
     vkGetDeviceQueue(d->dev, d->qfam, 0, &d->queue);
     if (d->has_exec_props) {
@@ -1547,10 +1615,19 @@ extern "C" void nxvc_vk_decoder_create_info_default(nxvc_vkd_create_info *ci) {
 
 extern "C" nxvc_vkd_status nxvc_vk_decoder_create(
     const nxvc_vkd_create_info *ci, nxvc_vk_decoder **out) {
-    if (!ci || !out) return NXVC_VKD_ERR_ARG;
+    // Cleared here so a caller that reads the create diagnostic after a
+    // SUCCESSFUL create does not see the last failure of a previous one.
+    set_create_err("no error");
+    if (!ci || !out)
+        return createerr(NXVC_VKD_ERR_ARG,
+                         "nxvc_vk_decoder_create: %s must not be NULL",
+                         !ci ? "create_info" : "out");
     *out = nullptr;
     D *d = new (std::nothrow) D();
-    if (!d) return NXVC_VKD_ERR_NOMEM;
+    if (!d)
+        return createerr(NXVC_VKD_ERR_NOMEM,
+                         "nxvc_vk_decoder_create: out of memory allocating the "
+                         "decoder");
     d->want_output = ci->output_format;
     d->flags = ci->flags;
     // Opt-in, and only on a device this library creates: the statistics
@@ -1569,7 +1646,10 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_create(
         d->qfam = ci->queue_family;
         if (!d->phys || !d->queue) {
             nxvc_vk_decoder_destroy(d);
-            return NXVC_VKD_ERR_ARG;
+            return createerr(NXVC_VKD_ERR_ARG,
+                             "nxvc_vk_decoder_create: adopting a device needs "
+                             "all five handles; %s is NULL",
+                             !d->phys ? "physical_device" : "queue");
         }
     } else if ((st = create_device(d, ci))) {
         *out = d;  // hand back the decoder so the caller can read last_error
@@ -1583,18 +1663,22 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_create(
     VkCommandPoolCreateInfo cp{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
     cp.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
     cp.queueFamilyIndex = d->qfam;
-    if (vkCreateCommandPool(d->dev, &cp, nullptr, &d->pool) != VK_SUCCESS) {
+    if (VkResult r = vkCreateCommandPool(d->dev, &cp, nullptr, &d->pool)) {
         *out = d;
-        return seterr(d, NXVC_VKD_ERR_VULKAN, "vkCreateCommandPool failed");
+        return seterr(d, NXVC_VKD_ERR_VULKAN,
+                      "vkCreateCommandPool failed: %s (%d)", vkresult_name(r),
+                      (int)r);
     }
     VkCommandBufferAllocateInfo cb{
         VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
     cb.commandPool = d->pool;
     cb.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     cb.commandBufferCount = 1;
-    if (vkAllocateCommandBuffers(d->dev, &cb, &d->cmd) != VK_SUCCESS) {
+    if (VkResult r = vkAllocateCommandBuffers(d->dev, &cb, &d->cmd)) {
         *out = d;
-        return seterr(d, NXVC_VKD_ERR_VULKAN, "vkAllocateCommandBuffers failed");
+        return seterr(d, NXVC_VKD_ERR_VULKAN,
+                      "vkAllocateCommandBuffers failed: %s (%d)",
+                      vkresult_name(r), (int)r);
     }
 
     // Core name first, then the KHR alias a 1.1 device exposes.
@@ -1701,6 +1785,10 @@ extern "C" uint64_t nxvc_vk_decoder_tools(const nxvc_vk_decoder *d) {
 
 extern "C" const char *nxvc_vk_decoder_last_error(const nxvc_vk_decoder *d) {
     return d ? d->err.c_str() : "null decoder";
+}
+
+extern "C" const char *nxvc_vk_decoder_last_create_error(void) {
+    return create_err_buf();
 }
 
 extern "C" const char *nxvc_vk_decoder_device_name(const nxvc_vk_decoder *d) {
@@ -1838,8 +1926,8 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_wait(nxvc_vk_decoder *d,
             vkWaitForFences(d->dev, 1, &d->fence, VK_TRUE, timeout_ns);
         if (fr == VK_TIMEOUT) return NXVC_VKD_ERR_INTERNAL;
         if (fr != VK_SUCCESS)
-            return seterr(d, NXVC_VKD_ERR_VULKAN, "vkWaitForFences: %d",
-                          (int)fr);
+            return seterr(d, NXVC_VKD_ERR_VULKAN, "vkWaitForFences: %s (%d)",
+                          vkresult_name(fr), (int)fr);
         d->fence_pending = false;
         collect_timestamps(d);
         return NXVC_VKD_OK;
@@ -1855,7 +1943,8 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_wait(nxvc_vk_decoder *d,
     VkResult r = d->fpWaitSemaphores(d->dev, &wi, timeout_ns);
     if (r == VK_TIMEOUT) return NXVC_VKD_ERR_INTERNAL;
     if (r != VK_SUCCESS)
-        return seterr(d, NXVC_VKD_ERR_VULKAN, "vkWaitSemaphores: %d", (int)r);
+        return seterr(d, NXVC_VKD_ERR_VULKAN, "vkWaitSemaphores: %s (%d)", vkresult_name(r),
+                      (int)r);
     collect_timestamps(d);
     return NXVC_VKD_OK;
 }

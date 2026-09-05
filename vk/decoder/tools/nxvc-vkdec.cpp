@@ -151,7 +151,7 @@ int main(int argc, char **argv) {
         nxvc_vk_decoder_set_tile_sort(dec, (uint32_t)tile_sort);
     }
     if (st != NXVC_VKD_OK) {
-        const char *why = dec ? nxvc_vk_decoder_last_error(dec) : "no decoder";
+        const char *why = nxvc_vk_decoder_last_create_error();
         int rc = (st == NXVC_VKD_ERR_NO_DEVICE || st == NXVC_VKD_ERR_UNSUPPORTED)
                      ? fail_no_icd(why)
                      : (std::fprintf(stderr, "decoder: %s\n", why), 1);

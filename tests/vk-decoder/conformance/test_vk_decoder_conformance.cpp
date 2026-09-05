@@ -224,7 +224,9 @@ bool gpu_decode(const std::vector<uint8_t> &stream, uint32_t out_format,
     nxvc_vk_decoder *dec = nullptr;
     nxvc_vkd_status st = nxvc_vk_decoder_create(&ci, &dec);
     if (st != NXVC_VKD_OK) {
-        err = dec ? nxvc_vk_decoder_last_error(dec) : "create failed";
+        /* Handle-free: this reports the failure even when create() never
+         * produced a decoder to ask. */
+        err = nxvc_vk_decoder_last_create_error();
         *unsupported = (st == NXVC_VKD_ERR_NO_DEVICE);
         nxvc_vk_decoder_destroy(dec);
         return false;

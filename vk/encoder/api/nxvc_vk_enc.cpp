@@ -23,6 +23,8 @@
 #include <nxvc/nxvc_vk_enc.h>
 
 #include <chrono>
+#include <cstdarg>
+#include <cstdio>
 #include <cstring>
 #include <new>
 #include <string>
@@ -32,6 +34,33 @@
 #include "nxe_vk.h"
 
 namespace {
+
+/* ------------------------------------------------- the create diagnostic
+ * nxvc_vk_encoder_last_error() needs an encoder, and create() is precisely
+ * the call that may not produce one: every argument refusal below returns a
+ * bare status code, and the VkEncoder failure at the end deletes the object
+ * and throws its message away with the comment that there is nowhere to hang
+ * it.  There is now.
+ *
+ * Thread-local, never NULL, never empty; the decoder half of this ABI has the
+ * same call for the same reason (nxvc_vk_decoder_last_create_error). */
+char *create_err_buf() {
+    static thread_local char b[512] = "no error";
+    return b;
+}
+void set_create_err(const char *s) {
+    char *b = create_err_buf();
+    std::snprintf(b, 512, "%s", s && s[0] ? s : "unspecified failure");
+}
+nxvc_vke_status createerr(nxvc_vke_status st, const char *fmt, ...) {
+    char b[512];
+    va_list ap;
+    va_start(ap, fmt);
+    std::vsnprintf(b, sizeof b, fmt, ap);
+    va_end(ap);
+    set_create_err(b);
+    return st;
+}
 
 /* The tool bits a stream from this encoder carries.  Kept as an explicit
  * literal rather than derived from the stream header so that a change to
@@ -99,29 +128,62 @@ extern "C" uint64_t nxvc_vk_encoder_tools_supported(void) {
 
 extern "C" nxvc_vke_status nxvc_vk_encoder_create(const nxvc_vke_create_info *ci,
                                                   nxvc_vk_encoder **out) {
-    if (!ci || !out) return NXVC_VKE_ERR_ARG;
+    /* Cleared so a caller reading this after a SUCCESSFUL create does not see
+     * the last failure of a previous one. */
+    set_create_err("no error");
+    if (!ci || !out)
+        return createerr(NXVC_VKE_ERR_ARG,
+                         "nxvc_vk_encoder_create: %s must not be NULL",
+                         !ci ? "create_info" : "out");
     *out = nullptr;
 
     /* Refuse, loudly and at create() time, everything this path cannot code.
      * The alternative -- accepting the field and quietly coding something
      * else -- is the failure mode that costs a day of bisecting a bitstream. */
-    if (ci->width == 0 || ci->height == 0) return NXVC_VKE_ERR_ARG;
-    if (ci->eyes != 1) return NXVC_VKE_ERR_UNSUPPORTED;
-    if (ci->chroma != 0) return NXVC_VKE_ERR_UNSUPPORTED;
-    if (ci->bit_depth != 8) return NXVC_VKE_ERR_UNSUPPORTED;
-    if (ci->base_qp > 63) return NXVC_VKE_ERR_ARG;
-    if (ci->quant_matrix > 3) return NXVC_VKE_ERR_ARG;
-    if (ci->intra_period > 0 && ci->inter == 0) return NXVC_VKE_ERR_ARG;
-    if (ci->coded_vectors > NXVC_VKE_CV_STATIC) return NXVC_VKE_ERR_ARG;
+    if (ci->width == 0 || ci->height == 0)
+        return createerr(NXVC_VKE_ERR_ARG,
+                         "width=%u height=%u: both must be non-zero",
+                         ci->width, ci->height);
+    if (ci->eyes != 1)
+        return createerr(NXVC_VKE_ERR_UNSUPPORTED,
+                         "eyes=%u: this encoder codes 1", ci->eyes);
+    if (ci->chroma != 0)
+        return createerr(NXVC_VKE_ERR_UNSUPPORTED,
+                         "chroma=%u: this encoder codes 4:2:0 (0)",
+                         ci->chroma);
+    if (ci->bit_depth != 8)
+        return createerr(NXVC_VKE_ERR_UNSUPPORTED,
+                         "bit_depth=%u: this encoder codes 8", ci->bit_depth);
+    if (ci->base_qp > 63)
+        return createerr(NXVC_VKE_ERR_ARG, "base_qp=%u: the range is 0..63",
+                         ci->base_qp);
+    if (ci->quant_matrix > 3)
+        return createerr(NXVC_VKE_ERR_ARG,
+                         "quant_matrix=%u: the range is 0..3",
+                         ci->quant_matrix);
+    if (ci->intra_period > 0 && ci->inter == 0)
+        return createerr(NXVC_VKE_ERR_ARG,
+                         "intra_period=%u needs inter=1",
+                         ci->intra_period);
+    if (ci->coded_vectors > NXVC_VKE_CV_STATIC)
+        return createerr(NXVC_VKE_ERR_ARG,
+                         "coded_vectors=%u: the range is 0..%d",
+                         ci->coded_vectors, (int)NXVC_VKE_CV_STATIC);
     if (ci->coded_vectors != NXVC_VKE_CV_DEFAULT && ci->inter == 0)
-        return NXVC_VKE_ERR_ARG;
+        return createerr(NXVC_VKE_ERR_ARG,
+                         "coded_vectors=%u needs inter=1", ci->coded_vectors);
 
     const bool adopting = ci->device != VK_NULL_HANDLE;
     if (adopting && (!ci->physical_device || !ci->queue))
-        return NXVC_VKE_ERR_ARG; /* all five handles or none */
+        /* all five handles or none */
+        return createerr(NXVC_VKE_ERR_ARG,
+                         "adopting a device needs all five handles; %s is NULL",
+                         !ci->physical_device ? "physical_device" : "queue");
 
     auto *e = new (std::nothrow) nxvc_vk_encoder();
-    if (!e) return NXVC_VKE_ERR_NOMEM;
+    if (!e)
+        return createerr(NXVC_VKE_ERR_NOMEM,
+                         "out of memory allocating the encoder");
 
     /* Everything below is the acid test's configuration, spelled out.  The
      * fields that are not settable through the ABI are the tools that are off. */
@@ -179,10 +241,11 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_create(const nxvc_vke_create_info *ci
         e->err = err;
         const std::string keep = err;
         delete e;
-        /* The message is worth more than the object; there is nowhere to hang
-         * it once the handle is gone, so the caller gets the code and the
-         * status string.  A create failure is a bring-up failure, not a
-         * runtime one. */
+        /* The message is worth more than the object, and until
+         * nxvc_vk_encoder_last_create_error() existed there was nowhere to
+         * hang it once the handle was gone.  Now there is, so the message
+         * survives the delete. */
+        set_create_err(keep.c_str());
         return keep.find("device") != std::string::npos ? NXVC_VKE_ERR_NO_DEVICE
                                                         : NXVC_VKE_ERR_VULKAN;
     }
@@ -196,6 +259,10 @@ extern "C" void nxvc_vk_encoder_destroy(nxvc_vk_encoder *e) { delete e; }
 
 extern "C" const char *nxvc_vk_encoder_last_error(const nxvc_vk_encoder *e) {
     return e ? e->err.c_str() : "null encoder";
+}
+
+extern "C" const char *nxvc_vk_encoder_last_create_error(void) {
+    return create_err_buf();
 }
 
 extern "C" const char *nxvc_vk_encoder_device_name(const nxvc_vk_encoder *e) {

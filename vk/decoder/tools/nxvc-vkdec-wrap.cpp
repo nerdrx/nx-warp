@@ -439,7 +439,7 @@ int main(int argc, char **argv) {
         ci.output_format = NXVC_VKD_OUT_YCBCR420;
         if (nxvc_vk_decoder_create(&ci, &s.dec) != NXVC_VKD_OK) {
             std::fprintf(stderr, "decoder: %s\n",
-                         s.dec ? nxvc_vk_decoder_last_error(s.dec) : "?");
+                         nxvc_vk_decoder_last_create_error());
             return 1;
         }
         size_t consumed = 0;
@@ -506,7 +506,7 @@ int main(int argc, char **argv) {
             nxvc_vk_decoder *cd = nullptr;
             if (nxvc_vk_decoder_create(&ci, &cd) != NXVC_VKD_OK) {
                 std::fprintf(stderr, "co-tenant: %s\n",
-                             cd ? nxvc_vk_decoder_last_error(cd) : "?");
+                             nxvc_vk_decoder_last_create_error());
                 if (cd) nxvc_vk_decoder_destroy(cd);
                 return;
             }
