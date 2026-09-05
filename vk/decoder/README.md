@@ -551,7 +551,14 @@ nxvc-vkdec --in file.nxv --out out.yuv [--icd PATH] [--device SUBSTR]
            [--pix yuv420p|yuv444p] [--frames N] [--nv12] [--stats]
            [--format auto|rgba8|rgb10a2|ycbcr420] [--lds] [--quiet]
            [--dir-sched 0..3] [--tile-sort]
+           [--repeat N] [--no-out] [--dense]
 ```
+
+`--repeat N --no-out` decodes the first frame N times and prints the best
+per-pass device time, with no readback and no output file. That is the whole
+timing loop on a device: push one `.nxv` and measure the two kernels over it,
+with no encoder and no vectors on the phone. It is what "Timing on the Pico 4"
+below was measured with.
 
 Every option `nxv-dec` takes means the same thing here, and the output bytes
 are identical, so `tools/quality` can drive either. `--dir-sched` and
@@ -588,6 +595,19 @@ executable.
 ./vk/decoder/tools/run-android.sh --bench 10   # the timing table
 ./vk/decoder/tools/run-android.sh --unorm 1    # opt into the UNORM store
 ```
+
+Two environment variables exist for taking a kernel apart on the device, both
+off by default and neither on any timed path:
+
+* `NXVC_VKD_SHADER_STATS=1` enables `VK_KHR_pipeline_executable_properties` on
+  a device this library creates and prints the driver's own statistics —
+  registers, spill, scratch, shared memory, instruction counts — for every
+  pipeline it compiles. Opt-in because `CAPTURE_STATISTICS` is a pipeline
+  creation flag and a driver may compile differently with it set.
+* `NXVC_SPV_PASSES` overrides Pass B's `spirv-opt` pass list at build time
+  (empty for none, `-O` for the stock list), exactly as `NXB_SPV_PASSES` does
+  in `bench/`, so a suspected miscompile can be bisected against the optimiser
+  without editing `passB/cmake/gen_spv.cmake`.
 
 or by hand:
 
@@ -752,47 +772,151 @@ part where the store *is* the constraint, without re-opening ADR 0023.
 ### Timing on the Pico 4
 
 Two 2048x2048 eyes at 4:2:0, 2048 tiles — the same frame as the desktop table
-— best of 10, GPU ramped to 587 MHz. `--bench-qp QP [--bench-v1]` is the
+— best of 12, GPU ramped to 587 MHz. `--bench-qp QP [--bench-v1]` is the
 one-QP slice of `--bench`; the full sweep encodes eleven such frames with the
 CPU reference encoder, which is over an hour of a phone's CPU before a single
-dispatch runs.
+dispatch runs. `nxvc-vkdec --repeat N --no-out` over a `.nxv` pushed from a
+desktop is the same measurement without the encode, and is what the numbers
+below were taken with.
+
+"pre-Adreno" is where this document stood when the only thing that had ever
+been tuned against was a 7900 XTX. The two commits between the columns are
+"Adreno puts local arrays in private memory" and "16 tiles per workgroup".
 
 | stream | Pass A | Pass B | GPU total |
 |---|---|---|---|
-| QP 24, `INTRA_DIR` on (encoder default) | 415 ms | **1348 ms** | 1769 ms |
-| QP 24, `INTRA_DIR` off (v1) | 402 - 415 ms | **367 ms** | 830 ms |
-| QP 36, `INTRA_DIR` off (v1) | 62 ms | **296 ms** | 396 ms |
+| QP 24, `INTRA_DIR` off (v1) | 153.7 → **100.6 ms** | 366.1 → **23.6 ms** | 521.7 → **124.3 ms** |
+| QP 36, `INTRA_DIR` off (v1) | 26.7 → **13.1 ms** | 417.9 → **16.7 ms** | 445.4 → **29.8 ms** |
+| QP 24, `INTRA_DIR` on (encoder default) | 173.9 → **117.1 ms** | 1344.0 → **844.4 ms** | 1522.9 → **1001.1 ms** |
 
-Against an 11.1 ms budget at 90 Hz, and against the 20-30x scaling this
-document assumed:
+Zero mismatching samples on the 152-stream sweep at every point in that table,
+on the Adreno 650 and on RADV.
 
-| | RADV | this document's estimate | measured | ratio |
+The earlier revision of this table quoted Pass A at 402–415 ms at QP 24 and
+62 ms at QP 36. Those were measured with the `passa-fast` kernel in the tree;
+the revert put the pre-merge kernel back and Pass A started at 153.7 / 26.7,
+which is the "before" column above. The 3.5x that section describes is real
+and is still unbisected — it is just already paid back.
+
+Against an 11.1 ms budget at 90 Hz:
+
+| | RADV | pre-Adreno | now | still over budget by |
 |---|---|---|---|---|
-| Pass B, `INTRA_DIR` off | 0.241 ms | 4.8 - 7.2 ms | **296 - 368 ms** | 1200 - 1500x |
-| Pass B, schedule 0 | 1.183 ms | 23.7 - 35.5 ms | **1348 ms** | 1140x |
-| Pass A, QP 24 | 1.26 ms | 25 - 38 ms | **402 - 415 ms** | ~330x |
-| Pass A, QP 36 | 0.54 ms | 11 - 16 ms | **62 ms** | ~115x |
+| Pass B, `INTRA_DIR` off, QP 24 | 0.241 ms | 366 ms | **23.6 ms** | 2.1x |
+| Pass B, schedule 0, QP 24 | 1.183 ms | 1344 ms | **844 ms** | 76x |
+| Pass A, QP 24 | 1.26 ms | 154 ms | **100.6 ms** | 9.1x |
+| Pass A, QP 36 | 0.54 ms | 26.7 ms | **13.1 ms** | 1.2x |
 
-**Assumption A1 was wrong by about 40x**, and it was wrong in the direction it
-warned about ("a floor rather than a bracket"). Everything in "The Adreno 650
-estimate" below is superseded by these four rows; it is kept because the
-*method* — the larger of a scaled-compute term and a bandwidth term — is still
-how the remaining unmeasured configurations should be read, and because the
-bandwidth term was the half that held up.
+**A v1 frame at QP 36 now decodes in 29.8 ms**, against 445 ms, and QP 24 in
+124 ms against 522. The Phase 0 bench kernels predicted about 30 ms for the
+same work (K3 11 ms + K4 12 ms plus the co-tenant), so the QP 36 row has
+arrived at the bench's own number and the QP 24 row is a factor of four away
+from it, all of it in Pass A.
 
-Two things the measurement says that no amount of scaling did:
+#### What the driver's own statistics said
 
-* **A v1 stream does not fit either.** This document said "a v1 stream fits,
-  and comfortably". DC-plane Pass B alone is 296-368 ms, and the whole decode
-  is 340 ms at QP 36 and 830 ms at QP 24 — 30x to 75x the budget. The problem
-  is not the wavefront and not the schedule menu of `docs/SYNTAX.md` 7.6.
-* **Pass B scales about 4x worse than Pass A** (1200x against 330x). That is
-  the shape of a kernel limited by serialization and register pressure rather
-  than throughput, and Pass B is the kernel that takes 136 VGPRs and 13.3 KB
-  of LDS on RDNA3. What an Adreno 650 does with that footprint has never been
-  looked at, and `VK_KHR_pipeline_executable_properties` is present on the
-  part and still unused. **That is the first thing to measure next**, and it
-  is a decoder question rather than a syntax one.
+`VK_KHR_pipeline_executable_properties` is present on the part and was unused;
+`NXVC_VKD_SHADER_STATS=1` now enables it and prints what the Qualcomm compiler
+did with each pipeline. For the QP 24 4:2:0 v1 frame:
+
+| | Pass A, before | Pass A, now | Pass B, before | Pass B, now |
+|---|---|---|---|---|
+| instructions | 1320 | 1320 | 2197 | **1477** |
+| ALU 32-bit / 16-bit | 95 / 946 | 95 / 946 | 66 / 1500 | 47 / 1044 |
+| full-precision registers | 33 | 33 | 48 | 41 |
+| **overall register footprint** | 6 | 6 | **328** | **6** |
+| **scratch (private) memory** | 278 B | 278 B | **840 B** | **342 B** |
+| shared memory | 12.0 KB | 15.1 KB | 12.8 KB | 13.1 KB |
+
+The 328 and the 840 B are the whole story of the 40x. Scratch on this part is
+off-chip, and a 328-word footprint is one wave in flight. Both came from local
+arrays the Qualcomm compiler could not prove constant-indexed and therefore put
+in private memory rather than registers — `predictOne()`'s two 17-entry
+by-value reference arrays, `idct8_1d`'s `out int y[8]`, and
+`planeStoreBase[4]` / `sizeP[4]` / `fullP[4]`.
+
+The last three were also a **correctness** defect on this driver, latent behind
+the register pressure the first two created: with the wavefront compiled out,
+the driver read planes 1 and 2 of those arrays back wrong, and every 4:4:4
+stream decoded with luma exact and both chroma planes carrying prediction and
+no residual. Ten of the 152 streams, byte-for-byte reproducibly, under `-O0` as
+well as under the shipped pass list, and whether the wavefront was removed by
+the driver (a specialization constant), by spirv-opt, or by the preprocessor.
+As scalars the arrays cannot be demoted to memory and the sweep is clean.
+
+**The rule this leaves for every kernel in this codec**: on Adreno, a local
+array is a memory allocation unless every index is a compile-time constant
+after unrolling, and it is not only slow, it is not reliably correct. Prefer
+scalars. `NXVC_VKD_SHADER_STATS=1` is how to check.
+
+#### What was not the problem
+
+Measured and ruled out, so the next person does not re-run them:
+
+* **Dispatch count.** A frame is two `vkCmdDispatch` calls, one per pass, and
+  `nxvcd_stats::dispatches` says so. Pass A issues one per distinct lane count
+  and a normal frame has exactly one. There is no per-dispatch overhead to find.
+* **Buffer placement.** Every buffer the kernels touch is `DEVICE_LOCAL`; the
+  bitstream, descriptors, tables, records, weights and the tile map arrive
+  through one host-visible staging buffer and a `vkCmdCopyBuffer` per region.
+  Nothing is read by a shader out of host-visible memory.
+* **Pipeline switching.** One Pass A pipeline and one Pass B pipeline are bound
+  per frame, from a cache keyed on the frame's shape. Nothing is compiled or
+  rebound mid-frame.
+* **`spirv-opt`.** The 4:4:4 miscompilation above survived an empty pass list.
+  `NXVC_SPV_PASSES` now overrides Pass B's list, as `NXB_SPV_PASSES` already
+  does in `bench/`, so that check costs one build.
+* **The UNORM store.** Still worth 7% at one QP and −2% at another; see "The
+  UNORM store". It is not where the time was.
+* **Shared-memory oversubscription.** Padding Pass B's shared allocation to
+  31 KB, so no second workgroup could possibly be resident, changed the
+  miscompiled output by not one byte.
+
+#### Pass A's workgroup shape
+
+Pass A's shared memory is dominated by two tables that do not grow with the
+number of tiles in the workgroup — the 8 KB cumulative-frequency sets and the
+1 KB scan tables. At 8 tiles x 8 lanes = 64 threads that is 9 KB of fixed cost
+against 3 KB of per-tile state, so a 32 KB SP holds two workgroups: two waves,
+on a kernel whose inner loop is a dependent chain of shared reads.
+`NXVW_PASSA_TPG` is that shape as one number, reaching the GLSL and the C++
+that has to agree with it from the same cache variable. 16 is the default:
+
+| Pass A, 2048 tiles | 8/group | 16/group | 32/group |
+|---|---|---|---|
+| QP 24 v1 | 153.7 ms | **100.6 ms** | 92.4 ms |
+| QP 36 v1 | 26.7 ms | **13.1 ms** | 12.0 ms |
+
+32 is faster and is not taken: it fails `v42_dir_res_tskip420` on RADV, so
+something in the kernel does not survive four subgroups per workgroup. That is
+an open bug, and it is worth about 9% of Pass A. 64 hangs the device.
+
+#### What remains
+
+Pass A at QP 24 is 100.6 ms of a 124 ms frame, and it is a serial rANS chain:
+2048 tiles x 8 lanes, each lane stepping its own symbols with a ballot at every
+renormalisation point. Widening the workgroup bought the occupancy that was
+available; the chain length did not move. Two measured routes out, in order of
+what they are worth:
+
+* **`ENTROPY_LITE`** (`exp/entropy-lite`, tool bit 24) removes the chain
+  instead of shortening it. Timed on this device with `nxvc-passA-test`, 2048
+  tiles, the same coefficients coded both ways:
+
+  | | payload | Pass A (ballot/sparse) |
+  |---|---|---|
+  | rANS | 1.25 MB | 138.5 ms |
+  | `ENTROPY_LITE` / FIXED | 1.87 MB | **18.4 ms** |
+
+  **7.5x on the target part** for +49.6% bits, zero mismatches against the CPU
+  model in both read-pointer modes and both coefficient layouts. The desktop
+  measurement predicted 4.1x; the part where entropy is the whole cost gives
+  nearly twice that. With Pass B at 23.6 ms this is a **42 ms** v1 frame.
+* **The 32-tiles-per-group bug**, worth about 9% of Pass A once found.
+
+And Pass B's remaining 23.6 ms against the bench's 11 ms for the same
+transform work is where to look after that: it still carries 342 B of scratch
+and 13.1 KB of LDS, which is two workgroups per SP.
 
 ### Pass A's barrier removal is a 3.5x regression on Adreno
 
