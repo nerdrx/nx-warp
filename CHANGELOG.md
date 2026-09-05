@@ -88,6 +88,24 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
 
 ### Fixed
 
+- **`fast` rdoq with the trellis off never quantized the tile.** `quantize_tile_ex` reaches a tile
+  in three ways -- the two-pass path (`rdoq_effort != fast`), the trellis path
+  (`intra_dir || use_rdo`), and a plain single dead-zone pass -- and the third did not exist. With
+  `fast` rdoq the first pass is skipped, and with the trellis off on a non-directional tile the
+  second is skipped too, so `count_units` walked coefficients that had never been written: every
+  tile coded as all-zero. The encoder emitted a **legal, tiny, ruined stream** and reported no
+  error. On a 1088x1088 frame at QP 30 that is 3872 bytes and 12.9 dB where the same picture is
+  33182 bytes and 38.3 dB.
+  `--preset fast --no-rdo` and `--rdoq-effort 1 --no-rdo` are the two ways to reach it from the CLI,
+  in either argument order, with `--inter` on or off. Both are natural asks -- `--no-rdo` is the
+  configuration the GPU encoder's acid test pins and `--preset fast` is what a real-time caller
+  sets -- and the combination was simply one nobody had run; every existing test leaves rdoq at its
+  `medium` default, where the two-pass path quantizes and the bug is invisible.
+  `tests/ref/test_effort.cpp` pins the general property rather than the byte pattern: an effort knob
+  changes how long the encoder looks for a good answer, never whether it codes the picture, so each
+  no-trellis configuration is required to stay within 2x of the working effort's rate and 3 dB of
+  its PSNR after a real decode.
+
 - **The GPU decoder's rejection sweep only ever decoded frame 0**, so nine Phase 2 rejection
   vectors -- the ones malformed in the frame that first *uses* the reference ring -- were reported
   as accepted. It now decodes until the stream is refused or exhausted.
