@@ -38,8 +38,11 @@ namespace {
  * either one has to be made here too, deliberately. */
 constexpr uint64_t kToolsEmitted =
     (1ull << 0) |  /* INTRA_DC_PLANE: the only prediction this encoder has  */
+    (1ull << 6) |  /* CUSTOM_TABLES: tables trained on the frame            */
     (1ull << 21) | /* CTX_V2: the 16-context entropy model                  */
-    (1ull << 22);  /* SIGN_HIDE: sign data hiding, exact in E4              */
+    (1ull << 22) | /* SIGN_HIDE: sign data hiding, exact in E4              */
+    (1ull << 25) | /* CTX_V3: the neighbour-conditioned model               */
+    (1ull << 26);  /* TAB_V2: the compact transmitted table set             */
 
 } // namespace
 
@@ -120,7 +123,16 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_create(const nxvc_vke_create_info *ci
     e->cfg.nsub_log2 = 3; /* eight rANS lanes; paper 6.3 fixes v1 at eight */
     e->cfg.tskip = 0;
     e->cfg.ctx_v2 = true;
-    e->cfg.ctx_v3 = false;
+    /* The entropy-side tools of bitstream minor 6, all on.  Every one of them
+     * is lossless -- the coefficients E3 produces are the same either way --
+     * and every one is covered by `vk.encoder.acid.*` against `nxv-enc` at the
+     * matching flags.  On the measurement in vk/encoder/README.md they are
+     * 9.4 % of the frame at 1088x1088 QP 30, which at ~1 ms of headset decode
+     * per kilobyte is frame rate. */
+    e->cfg.ctx_v3 = true;
+    e->cfg.custom_tables = true;
+    e->cfg.tab_v2 = true;
+    e->cfg.table_iters = 3;
     e->cfg.sign_hide = true;
     e->cfg.intra_dir = false;
     e->cfg.dir_layer = false;
