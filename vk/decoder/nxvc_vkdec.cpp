@@ -649,6 +649,59 @@ nxvc_vkd_status probe_device(D *d) {
 }
 
 // --------------------------------------------------------------- pipelines
+// ---------------------------------------------- descriptor set shapes
+//
+// One table, three passes.  The set layouts are built from it AND the
+// descriptor pool is its sum, so a pass that gains a binding cannot leave the
+// pool behind.
+//
+// It has left the pool behind three times: bindings 8 and 9 when the tile map
+// and the sparse unit lengths arrived, bindings 13-15 with the inter path, and
+// Pass W's binding 3 with the tile order buffer.  Every time the comment
+// saying "keep these in step" was already there, every time RADV and lavapipe
+// handed out descriptors past the declared pool size and said nothing, and
+// every time the Adreno 650 -- which returns the conformant
+// VK_ERROR_OUT_OF_POOL_MEMORY -- was the only thing that noticed.  The third
+// time it cost the headset the whole decoder: every stream failed at
+// nxvc_vk_decoder_create.  A comment that has failed three times is not a
+// mechanism.
+struct SetShape {
+    int bufs;
+    int imgs;
+    constexpr int total() const { return bufs + imgs; }
+};
+
+// Pass A: bitstream, descriptors, tables, coefficients, CBF bits, status,
+// [v3] intra modes, [sparse] unit lengths.
+constexpr SetShape kSetA{8, 0};
+// Pass B: buffers 0-2, 7-9 and [inter] 13-15; images 3-6 and [unorm] 10-12.
+constexpr SetShape kSetB{9, 7};
+// Pass W: ring in, params in, predictor out, tile order in.
+constexpr SetShape kSetW{4, 0};
+
+constexpr int kPoolBufs = kSetA.bufs + kSetB.bufs + kSetW.bufs;
+constexpr int kPoolImgs = kSetA.imgs + kSetB.imgs + kSetW.imgs;
+
+// Pass B's bindings are not contiguous by type -- the images keep the numbers
+// they have always had -- so its layout is built from a predicate rather than
+// from a count.  This is what ties that predicate back to the table: change
+// one without the other and it is a compile error on every host, rather than
+// an out-of-pool failure on one device.
+constexpr bool passB_is_image(int i) {
+    return (i >= 3 && i <= 6) || (i >= 10 && i <= 12);
+}
+constexpr int passB_image_count() {
+    int n = 0;
+    for (int i = 0; i < kSetB.total(); ++i)
+        if (passB_is_image(i)) ++n;
+    return n;
+}
+static_assert(passB_image_count() == kSetB.imgs,
+              "Pass B's image bindings and kSetB disagree: the descriptor pool "
+              "is sized from kSetB, so this would be an out-of-pool failure on "
+              "a driver that enforces the pool (the Adreno 650 does; RADV and "
+              "lavapipe do not)");
+
 nxvc_vkd_status make_layouts(D *d) {
     auto set_layout = [&](int nbuf, int nimg, VkDescriptorSetLayout *out) {
         std::vector<VkDescriptorSetLayoutBinding> b((size_t)(nbuf + nimg));
@@ -668,7 +721,7 @@ nxvc_vkd_status make_layouts(D *d) {
     };
     // Pass A: 8 storage buffers (bitstream, descriptors, tables, coefficients,
     // CBF bits, status, [v3] intra modes, [sparse] unit lengths).
-    VKTRY(d, set_layout(8, 0, &d->dslA));
+    VKTRY(d, set_layout(kSetA.bufs, kSetA.imgs, &d->dslA));
     // Pass B: buffers 0-2, images 3-6, then [v3] buffers 7 (modes) and 8 (the
     // workgroup -> tile map) and [sparse] 9 (unit lengths).  The images keep
     // their bindings so nothing that already referenced them has to move.
@@ -676,10 +729,10 @@ nxvc_vkd_status make_layouts(D *d) {
         // [unorm] and 10-12, the normalised twins of 3, 5 and 6.
         // [inter] and 13-15: the predictor Pass W wrote, the reference-ring
         // slot this frame writes, and the parameter block's ring geometry.
-        VkDescriptorSetLayoutBinding b[16]{};
-        for (int i = 0; i < 16; ++i) {
+        VkDescriptorSetLayoutBinding b[kSetB.total()]{};
+        for (int i = 0; i < kSetB.total(); ++i) {
             b[i].binding = (uint32_t)i;
-            b[i].descriptorType = ((i >= 3 && i <= 6) || (i >= 10 && i <= 12))
+            b[i].descriptorType = passB_is_image(i)
                                       ? VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
                                       : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
             b[i].descriptorCount = 1;
@@ -687,7 +740,7 @@ nxvc_vkd_status make_layouts(D *d) {
         }
         VkDescriptorSetLayoutCreateInfo ci{
             VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
-        ci.bindingCount = 16;
+        ci.bindingCount = (uint32_t)kSetB.total();
         ci.pBindings = b;
         VKTRY(d, vkCreateDescriptorSetLayout(d->dev, &ci, nullptr, &d->dslB));
     }
@@ -709,7 +762,7 @@ nxvc_vkd_status make_layouts(D *d) {
     VKTRY(d, vkCreatePipelineLayout(d->dev, &pl, nullptr, &d->plB));
 
     // [inter] Pass W: ring in, params in, predictor out, tile order in.
-    VKTRY(d, set_layout(4, 0, &d->dslW));
+    VKTRY(d, set_layout(kSetW.bufs, kSetW.imgs, &d->dslW));
     VkPushConstantRange pcW{VK_SHADER_STAGE_COMPUTE_BIT, 0,
                             (uint32_t)sizeof(nxvw::NxvwWarpPush)};
     pl.pSetLayouts = &d->dslW;
@@ -739,19 +792,12 @@ nxvc_vkd_status make_layouts(D *d) {
     sm.pCode = warp_pred_spv;
     VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smW));
 
-    // Pass A's 8 storage buffers plus Pass B's 6 (bindings 0-2, 7-9) is 14,
-    // not 12; bindings 8 and 9 arrived with the tile map and the sparse unit
-    // lengths and this count did not follow.  RADV and lavapipe hand out
-    // descriptors past the declared pool size, so the shortfall was invisible
-    // on both; the Adreno 650 driver returns VK_ERROR_OUT_OF_POOL_MEMORY,
-    // which is the conformant answer.
-    // Pass A's 8 storage buffers, Pass B's 9 (bindings 0-2, 7-9, 13-15) and
-    // Pass W's 3 is 20.  RADV and lavapipe hand out descriptors past the
-    // declared pool size, so a shortfall is invisible on both; the Adreno 650
-    // driver returns VK_ERROR_OUT_OF_POOL_MEMORY, which is the conformant
-    // answer, and is why this number is derived rather than guessed.
-    VkDescriptorPoolSize sz[2] = {{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 20},
-                                  {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 7}};
+    // Summed from the same table the three set layouts are built from, so it
+    // cannot fall behind them.  See kSetA / kSetB / kSetW above for why that
+    // matters more than it looks.
+    VkDescriptorPoolSize sz[2] = {
+        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, (uint32_t)kPoolBufs},
+        {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, (uint32_t)kPoolImgs}};
     VkDescriptorPoolCreateInfo dp{
         VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
     dp.maxSets = 3;
