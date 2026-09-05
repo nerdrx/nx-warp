@@ -177,17 +177,17 @@ constexpr uint64_t kToolsSupported =
     (1ull << 24) | // INTRA_CFL: chroma from luma           [minor 6]
     (1ull << 25) | // CTX_V3: the 27-context entropy model  [minor 6]
     (1ull << 26) | // TAB_V2: variable-length table sets    [minor 6]
+    (1ull << 27) | // XFORM_LARGE: 16x16 and 32x32 transforms [minor 6]
     // ------------------------------------------------ Phase 2 ([SYN] 13)
     (1ull << 10) | // INTER: inter modes                    [inter]
     (1ull << 11) | // WARP: pose-warped prediction          [inter]
     (1ull << 12) | // STEREO: inter-view prediction         [inter]
     (1ull << 28) | // NEAR_SKIP: row-header corrections     [inter]
     (1ull << 29);  // QUAD_MV: four quadrant vectors        [inter]
-// Deliberately absent: bit 27 XFORM_LARGE and bit 30 ENTROPY_LITE.  Pass B's
-// block loop is written for 64-coefficient blocks; until it carries the 16x16
-// and 32x32 forms this decoder refuses such a stream at the handshake rather
-// than mis-decoding it.  docs/TOOLBITS.md 7.  Bit 23 FILTER_CATMULL_ROM and
-// bit 14 BITDEPTH10 are reject-in-v1 ([SYN] 2.3) and must stay out.
+// Deliberately absent: bit 30 ENTROPY_LITE, which Pass A has a kernel for and
+// this decoder does not yet offer.  Bit 23 FILTER_CATMULL_ROM and bit 14
+// BITDEPTH10 are reject-in-v1 ([SYN] 2.3) and must stay out.
+// docs/TOOLBITS.md 7.
 constexpr uint64_t kToolLossless = 1ull << 5;
 constexpr uint64_t kToolIntraDir = 1ull << 17;
 constexpr uint64_t kToolCtxV2 = 1ull << 21;

@@ -84,6 +84,12 @@ void model_idct8x8(const int src[64], int dst[64]);
 // dequantized coefficients in sub-block raster order, and it writes the
 // (ox, oy) quadrant of the 8x8 `res`.  Exposed for vk.passB.ref_conformance.
 void model_split_subblock(const int *dq, int ox, int oy, int *res);
+// [minor 6] XFORM_LARGE's n x n inverse transform, n = 1 << lb for lb in
+// {3, 4, 5}: `src` and `dst` are n*n in block raster order.  Exposed so
+// vk.passB.ref_conformance can pin it against ref/src/transform.cpp
+// idct_block(n), which is the normative statement of the shift chain, the
+// two transposing passes and the even/odd recursion.
+void model_idct_nxn(const int *src, int *dst, int lb);
 int model_dequant_step(int qp, int w);
 int model_dequant(int q, int t);
 int model_bilinear_q4(const int *src, int w, int h, int stride, int sx, int sy);

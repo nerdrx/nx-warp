@@ -33,6 +33,8 @@
 #include "rans_decode.spv.h"
 #include "reconstruct.spv.h"
 #include "reconstruct_v1.spv.h"
+#include "reconstruct_v1_x8.spv.h"
+#include "reconstruct_x8.spv.h"
 #include "warp_pred.spv.h"
 
 namespace {
@@ -136,7 +138,19 @@ struct nxvc_vk_decoder {
     VkDescriptorPool dpool = VK_NULL_HANDLE;
     VkDescriptorSetLayout dslA = VK_NULL_HANDLE, dslB = VK_NULL_HANDLE;
     VkPipelineLayout plA = VK_NULL_HANDLE, plB = VK_NULL_HANDLE;
-    VkShaderModule smA = VK_NULL_HANDLE, smB = VK_NULL_HANDLE;
+    VkShaderModule smA = VK_NULL_HANDLE;
+    // Pass B's four build variants of one source, indexed
+    // [intra_dir][xform_large]: the directional-intra wavefront and the 16x16
+    // / 32x32 transform forms each exist or do not exist in the module rather
+    // than behind a specialization constant, because on at least one of the
+    // three ICDs the driver's own dead-code pass was measured and was not
+    // enough.  passB/reconstruct.comp gives the numbers for both.  The first
+    // index is chosen per DISPATCH -- the tiles that cannot enter the
+    // wavefront are partitioned onto the module without it -- and the second
+    // per frame, because xform_size is a tile-header field of a stream that
+    // set the tool bit.
+    VkShaderModule smB[2][2] = {{VK_NULL_HANDLE, VK_NULL_HANDLE},
+                                {VK_NULL_HANDLE, VK_NULL_HANDLE}};
     // [inter] Pass W: the predictor.  Its own set layout, because it binds
     // three buffers and no image and has nothing to say about Pass B's
     // thirteen.  vk/decoder/inter/.
@@ -145,9 +159,6 @@ struct nxvc_vk_decoder {
     VkShaderModule smW = VK_NULL_HANDLE;
     VkDescriptorSet dsetW = VK_NULL_HANDLE;
     VkPipeline pipeW = VK_NULL_HANDLE;
-    // Pass B without the directional-intra wavefront, for a v1 frame.  Same
-    // source, built with NXVW_INTRA_DIR=0; see passB/reconstruct.comp.
-    VkShaderModule smBv1 = VK_NULL_HANDLE;
     VkDescriptorSet dsetA = VK_NULL_HANDLE, dsetB = VK_NULL_HANDLE;
     std::map<uint32_t, VkPipeline> pipesA;  // lanes | ctx_stride<<8 | xfl<<16
     // key: (format << 40) | (dirSched << 32) | storeWords
@@ -682,10 +693,16 @@ nxvc_vkd_status make_layouts(D *d) {
     VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smA));
     sm.codeSize = sizeof(reconstruct_spv);
     sm.pCode = reconstruct_spv;
-    VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smB));
+    VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smB[1][1]));
     sm.codeSize = sizeof(reconstruct_v1_spv);
     sm.pCode = reconstruct_v1_spv;
-    VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smBv1));
+    VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smB[0][1]));
+    sm.codeSize = sizeof(reconstruct_x8_spv);
+    sm.pCode = reconstruct_x8_spv;
+    VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smB[1][0]));
+    sm.codeSize = sizeof(reconstruct_v1_x8_spv);
+    sm.pCode = reconstruct_v1_x8_spv;
+    VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smB[0][0]));
     sm.codeSize = sizeof(warp_pred_spv);
     sm.pCode = warp_pred_spv;
     VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smW));
@@ -781,11 +798,13 @@ nxvc_vkd_status pipeline_a(D *d, uint32_t lanes, uint32_t ctx_stride,
 
 nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2, int32_t sparse,
                            uint32_t store_words, int32_t intra_dir,
-                           int32_t split_tool, int32_t inter_pred,
-                           int32_t ring_store, VkPipeline *out) {
+                           int32_t split_tool, int32_t xform_large,
+                           int32_t inter_pred, int32_t ring_store,
+                           VkPipeline *out) {
     const uint32_t sched = d->dir_sched;
     uint64_t key = ((uint64_t)(uint32_t)ring_store << 63) |
                    ((uint64_t)(uint32_t)inter_pred << 62) |
+                   ((uint64_t)(uint32_t)xform_large << 61) |
                    ((uint64_t)(uint32_t)split_tool << 60) |
                    ((uint64_t)(uint32_t)intra_dir << 56) |
                    ((uint64_t)d->unorm_store << 52) |
@@ -823,7 +842,7 @@ nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2, int32_t sparse,
         ci.flags |= VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR;
     ci.stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
     ci.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-    ci.stage.module = intra_dir != 0 ? d->smB : d->smBv1;
+    ci.stage.module = d->smB[intra_dir != 0 ? 1 : 0][xform_large != 0 ? 1 : 0];
     ci.stage.pName = "main";
     ci.stage.pSpecializationInfo = &spec;
     ci.layout = d->plB;
@@ -836,8 +855,9 @@ nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2, int32_t sparse,
         char tag[96];
         std::snprintf(tag, sizeof tag,
                       "passB fmt=%u fmt2=%d sched=%u storeWords=%u lds=%zuB "
-                      "intraDir=%d",
-                      fmt, fmt2, sched, store_words, lds, intra_dir);
+                      "intraDir=%d xformLarge=%d",
+                      fmt, fmt2, sched, store_words, lds, intra_dir,
+                      xform_large);
         dump_shader_stats(d, p, tag);
     }
     return NXVC_VKD_OK;
@@ -1480,8 +1500,10 @@ extern "C" void nxvc_vk_decoder_destroy(nxvc_vk_decoder *d) {
         for (auto &kv : d->pipesA) vkDestroyPipeline(d->dev, kv.second, nullptr);
         for (auto &kv : d->pipesB) vkDestroyPipeline(d->dev, kv.second, nullptr);
         if (d->smA) vkDestroyShaderModule(d->dev, d->smA, nullptr);
-        if (d->smB) vkDestroyShaderModule(d->dev, d->smB, nullptr);
-        if (d->smBv1) vkDestroyShaderModule(d->dev, d->smBv1, nullptr);
+        for (int i = 0; i < 2; ++i)
+            for (int j = 0; j < 2; ++j)
+                if (d->smB[i][j])
+                    vkDestroyShaderModule(d->dev, d->smB[i][j], nullptr);
         if (d->pipeW) vkDestroyPipeline(d->dev, d->pipeW, nullptr);
         if (d->smW) vkDestroyShaderModule(d->dev, d->smW, nullptr);
         if (d->plA) vkDestroyPipelineLayout(d->dev, d->plA, nullptr);
@@ -1893,13 +1915,15 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
                              fuse ? (int32_t)nxvw::kOutRgba8
                                   : (int32_t)nxvw::kOutNone,
                              fp.push.sparse, storeWords, dir,
-                             (int32_t)fp.split4, interStream ? 1 : 0,
-                             interStream ? 1 : 0, &pipeB[dir])))
+                             (int32_t)fp.split4, (int32_t)fp.xform_large,
+                             interStream ? 1 : 0, interStream ? 1 : 0,
+                             &pipeB[dir])))
             return st;
         if (d->need_alpha_pass && !fuse) {
             if ((st = pipeline_b(d, (uint32_t)nxvw::kOutRgba8,
                                  (int32_t)nxvw::kOutNone, fp.push.sparse,
                                  storeWords, dir, (int32_t)fp.split4,
+                                 (int32_t)fp.xform_large,
                                  interStream ? 1 : 0, 0, &pipeBa[dir])))
                 return st;
         }

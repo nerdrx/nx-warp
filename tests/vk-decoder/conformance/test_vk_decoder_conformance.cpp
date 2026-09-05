@@ -497,6 +497,10 @@ struct Case {
     int dir_layer = -1;
     int ctx_v2 = -1;
     int sign_hide = -1;
+    // [minor 6] XFORM_LARGE, tool bit 27: 0 = 8x8 only and no tool bit,
+    // 1 = 16x16, 2 = 32x32, 255 = the encoder's per-tile RD choice.  -1
+    // leaves nxvc_config_default's value, which is 0.
+    int xform = -1;
 };
 
 bool encode_case(const Case &c, std::vector<uint8_t> &stream,
@@ -522,6 +526,7 @@ bool encode_case(const Case &c, std::vector<uint8_t> &stream,
     if (c.dir_layer >= 0) cfg.intra_dir_layer = (uint32_t)c.dir_layer;
     if (c.ctx_v2 >= 0) cfg.ctx_v2 = (uint32_t)c.ctx_v2;
     if (c.sign_hide >= 0) cfg.sign_hide = (uint32_t)c.sign_hide;
+    if (c.xform >= 0) cfg.xform_size = (uint32_t)c.xform;
 
     nxvc_status st;
     nxvc_encoder *e = nxvc_encoder_create(&cfg, &st);
@@ -883,6 +888,43 @@ std::vector<Case> synthetic_cases(bool quick) {
     v3("syn_sdh_only_420", 0, 24, 0, 0, 0, 1);
     v3("syn_dir_layer_420", 0, 24, 1, 1, 0, 0);
     v3("syn_dir_layer_ctxv2_444", 1, 24, 1, 1, 1, 1);
+    // [minor 6] XFORM_LARGE, tool bit 27.  The committed vectors v68-v73 pin
+    // the tool itself; these walk it against the per-tile shape knobs it has
+    // to compose with, because the interesting failures are not in the
+    // butterfly.  They are the plane CAP of SYNTAX.md 6.7 (a res_level 1 or 2
+    // tile, or a 4:2:0 chroma plane, coding a block smaller than the tile's
+    // xform_size, so one frame carries three block sizes), the DC plane's
+    // re-grid to nb x nb with its second-level transform firing only at
+    // nb == 8, the planar interpolation's general Q4 mapping, and the n x n
+    // intra predictors over an nb x nb wavefront.
+    auto xf = [&](const char *name, int c444, int qp, int xform, int dir,
+                  int res_pat = 0) {
+        Case c{name, 192, 128, c444, 1, qp, 0, 0, 0, 3, 0, 0, 0, res_pat,
+               0,    0,   1};
+        c.intra_dir = dir;
+        c.xform = xform;
+        v.push_back(c);
+    };
+    xf("syn_xform16_420", 0, 24, 1, 0);
+    xf("syn_xform32_420", 0, 24, 2, 0);
+    xf("syn_xform16_444", 1, 20, 1, 0);
+    xf("syn_xform32_444", 1, 20, 2, 0);
+    xf("syn_xform32_dir_420", 0, 20, 2, 1);
+    xf("syn_xform16_dir_444", 1, 16, 1, 1);
+    if (!quick) {
+        // The plane cap, both ways: a 32x32 tile-level size over cycling
+        // res_level codes 32x32, 16x16 and 8x8 luma in one frame, and its
+        // 4:2:0 chroma plane is capped one step further again.
+        xf("syn_xform32_res_cycle_420", 0, 24, 2, 0, 1);
+        xf("syn_xform16_res_cycle_444", 1, 24, 1, 0, 1);
+        xf("syn_xform32_res2_420", 0, 28, 2, 0, 2);
+        xf("syn_xform32_dir_res_444", 1, 20, 2, 1, 1);
+        // The encoder's own per-tile choice, which mixes all three sizes
+        // inside one frame and is the shape a real stream has.
+        xf("syn_xform_auto_420", 0, 24, 255, 0);
+        xf("syn_xform_auto_dir_444", 1, 20, 255, 1);
+    }
+
     if (!quick) {
         // The wavefront meeting the other per-tile shape knobs: cycling
         // res_level (4x4 and 2x2 block planes as well as 8x8) and transform
@@ -1027,7 +1069,8 @@ int run_bench_inter(int iters, int frames, int w, int h, int qp,
     return 0;
 }
 
-int run_bench_qp(int iters, int qp, bool dense = false, int intra_dir = -1) {
+int run_bench_qp(int iters, int qp, bool dense = false, int intra_dir = -1,
+                 int xform = -1) {
     Case c{"bench_2x2048sq_420", 2048, 4096, 0, 1, qp, 0, 0, 0, 3, 0, 0, 0,
            1,   0,    0, 1};
     // A v1 stream (INTRA_DIR off) is what the Pico 4 actually streams
@@ -1036,11 +1079,18 @@ int run_bench_qp(int iters, int qp, bool dense = false, int intra_dir = -1) {
     // under a percent of the pass and no store format can be measured
     // through it.
     c.intra_dir = intra_dir;
+    c.xform = xform;
     std::vector<uint8_t> stream;
     std::string err;
-    std::printf("-- encoding %dx%d 4:2:0 at QP %d (%d tiles), INTRA_DIR %s\n",
+    std::printf("-- encoding %dx%d 4:2:0 at QP %d (%d tiles), INTRA_DIR %s, "
+                "xform %s\n",
                 c.w, c.h, qp, (c.w / 64) * (c.h / 64),
-                intra_dir == 0 ? "off" : intra_dir == 1 ? "on" : "default");
+                intra_dir == 0 ? "off" : intra_dir == 1 ? "on" : "default",
+                xform == 0     ? "8"
+                : xform == 1   ? "16"
+                : xform == 2   ? "32"
+                : xform == 255 ? "auto"
+                               : "default");
     if (!encode_case(c, stream, err)) {
         std::printf("bench: encode failed (%s)\n", err.c_str());
         return 1;
@@ -1160,10 +1210,12 @@ BenchRun time_stream(const std::vector<uint8_t> &stream, int iters,
 }
 
 // The 2048-tile shape the headset streams, as one 4:2:0 frame.
-Case bench_case(int qp, int intra_dir, int res_pattern, int tskip) {
+Case bench_case(int qp, int intra_dir, int res_pattern, int tskip,
+                int xform = -1) {
     Case c{"bench", 2048, 4096, 0, 1, qp, 0, 0, tskip, 3, 0, 0, 0,
            res_pattern, 0, 0, 1};
     c.intra_dir = intra_dir;
+    c.xform = xform;
     return c;
 }
 
@@ -1246,6 +1298,50 @@ int run_bench_dir(int iters) {
             wavefront_steps((int)v.sched, 8),
             barriers_per_tile((int)v.sched, false, true, false),
             wavefront_occupancy_pct((int)v.sched, 8), v.rate);
+    }
+    return 0;
+}
+
+// -------------------------------------------- [minor 6] the transform size
+// XFORM_LARGE (tool bit 27) changes Pass B in two directions at once, and the
+// point of this arm is that they are separable and both large.  It ADDS
+// arithmetic -- 2.75 multiplies per sample at 8x8 against 9.4 at 16x16 and
+// 20.7 at 32x32 (SYNTAX.md 6.2.1) -- and it REMOVES schedule: a plane is
+// nb x nb blocks instead of 8 x 8, so the transform runs in fewer rounds and,
+// with INTRA_DIR, the wavefront falls from 22 steps to 10 and then 4.  A
+// stream that sets no tool bit must also cost exactly what it did, which the
+// `xform 8` row against a pre-XFORM_LARGE build is the check on.
+int run_bench_xform(int iters) {
+    static const struct { int xf; const char *what; } kArms[] = {
+        {0, "8x8   (no tool bit)"},
+        {1, "16x16 (xform_size 1)"},
+        {2, "32x32 (xform_size 2)"},
+        {255, "auto  (per-tile RD choice)"},
+    };
+    std::printf("\n-- Pass B by transform size, 2048 tiles 4:2:0 QP 24, "
+                "best of %d\n", iters);
+    for (int dir : {0, 1}) {
+        double base = 0.0;
+        for (const auto &a : kArms) {
+            std::vector<uint8_t> stream;
+            std::string err;
+            if (!encode_case(bench_case(24, dir, 0, 0, a.xf), stream, err)) {
+                std::printf("bench: encode failed (%s)\n", err.c_str());
+                return 1;
+            }
+            BenchRun r = time_stream(stream, iters, 0, 0);
+            if (r.skipped) {
+                std::printf("SKIP: no usable Vulkan device\n");
+                return 77;
+            }
+            if (!r.ok) return 1;
+            if (a.xf == 0) base = r.passB;
+            std::printf("   INTRA_DIR %s  %-24s  payload %6.3f MB   "
+                        "Pass A %7.3f ms   Pass B %6.3f ms  (%.2fx 8x8)\n",
+                        dir ? "on " : "off", a.what,
+                        (double)r.payloadBytes / 1e6, r.passA, r.passB,
+                        base > 0.0 ? r.passB / base : 1.0);
+        }
     }
     return 0;
 }
@@ -1383,6 +1479,7 @@ int run_bench(int iters) {
     if ((rc = run_bench_overhead(iters))) return rc;
     if ((rc = run_bench_sort(iters))) return rc;
     if ((rc = run_bench_stores(iters))) return rc;
+    if ((rc = run_bench_xform(iters))) return rc;
     return 0;
 }
 
@@ -1401,6 +1498,10 @@ int main(int argc, char **argv) {
     int bench_inter = 0;  // --bench-inter N: an N-frame inter sequence
     int bench_w = 1024, bench_h = 1024;
     const char *bench_save = nullptr;  // write the bench stream and exit
+    // [minor 6] --bench-xform pins the tile transform size of the saved or
+    // timed bench stream: 8, 16, 32 or `auto`.  -1 leaves the encoder's
+    // default, which is 8 and sets no tool bit.
+    int bench_xform = -1;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         if (a == "--vectors" && i + 1 < argc) g_vectors_dir = argv[++i];
@@ -1414,6 +1515,18 @@ int main(int argc, char **argv) {
                                              ? std::atoi(argv[++i])
                                              : 20;
         else if (a == "--bench-v1") bench_dir = 0;
+        else if (a == "--bench-xform" && i + 1 < argc) {
+            std::string v = argv[++i];
+            bench_xform = v == "8"    ? 0
+                          : v == "16" ? 1
+                          : v == "32" ? 2
+                          : v == "auto" ? 255
+                                        : -2;
+            if (bench_xform == -2) {
+                std::fprintf(stderr, "--bench-xform: 8|16|32|auto\n");
+                return 2;
+            }
+        }
         else if (a == "--bench-inter" && i + 1 < argc) {
             bench_inter = std::atoi(argv[++i]);
             if (!bench) bench = 5;
@@ -1431,6 +1544,8 @@ int main(int argc, char **argv) {
             std::fprintf(stderr,
                          "usage: %s [--vectors DIR] [--quick] [--verbose]\n"
                          "       [--bench N] [--bench-qp QP] [--bench-v1]\n"
+                         "       [--bench-xform 8|16|32|auto]\n"
+                         "       [--bench-save FILE]\n"
                          "       [--only-loss] [--no-loss]\n"
                          "       [--bench-inter FRAMES] [--bench-size W H]\n",
                          argv[0]);
@@ -1442,6 +1557,7 @@ int main(int argc, char **argv) {
         Case c{"bench_2x2048sq_420", 2048, 4096, 0, 1, bench_qp < 0 ? 24 : bench_qp,
                0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 1};
         c.intra_dir = bench_dir;
+        c.xform = bench_xform;
         std::vector<uint8_t> stream;
         std::string err;
         if (!encode_case(c, stream, err)) {
@@ -1458,7 +1574,8 @@ int main(int argc, char **argv) {
     if (bench_inter)
         return run_bench_inter(bench, bench_inter, bench_w, bench_h,
                                bench_qp < 0 ? 24 : bench_qp, bench_dir);
-    if (bench_qp >= 0) return run_bench_qp(bench, bench_qp, false, bench_dir);
+    if (bench_qp >= 0)
+        return run_bench_qp(bench, bench_qp, false, bench_dir, bench_xform);
     if (bench) return run_bench(bench);
 
     // Probe once, so "no ICD" is one skip rather than 32 identical failures.

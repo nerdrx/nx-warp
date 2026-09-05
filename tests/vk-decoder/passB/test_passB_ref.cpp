@@ -197,6 +197,47 @@ void test_primitives() {
         }
     }
 
+    // [minor 6] The 16- and 32-point inverse transforms of XFORM_LARGE,
+    // against the normative ones.  Both directions of what can go wrong are
+    // covered: the even/odd recursion itself (a wrong kOdd row, or the even
+    // half taken from the wrong coefficients) and the SHIFT CHAIN, which is
+    // the thing that fails silently -- 16 and 32 do not share the 8x8's
+    // 7-then-13, and a factor of two there shifts the effective QP by 6 and
+    // leaves every rate and PSNR number plausible.  Saturating inputs are
+    // included because the first pass's clamp16 is normative.
+    for (int lb = 4; lb <= 5; ++lb) {
+        const int n = 1 << lb;
+        std::vector<nxvc::i32> in((size_t)n * n), outr((size_t)n * n);
+        std::vector<int> inm((size_t)n * n), outm((size_t)n * n);
+        for (int trial = 0; trial < 600; ++trial) {
+            int mag = (trial % 4 == 0) ? 32767 : 900;
+            std::uniform_int_distribution<int> dc(-mag, mag);
+            for (int i = 0; i < n * n; ++i) { in[i] = dc(rng); inm[i] = in[i]; }
+            nxvc::idct_block(in.data(), outr.data(), n);
+            nxvw::model_idct_nxn(inm.data(), outm.data(), lb);
+            for (int i = 0; i < n * n; ++i)
+                CHECK(outr[i] == outm[i],
+                      "idct%dx%d trial %d pos %d: ref %d, model %d", n, n,
+                      trial, i, outr[i], outm[i]);
+        }
+    }
+
+    // [minor 6] ONE transmitted 8x8 matrix serves every size, an n x n block
+    // replicating it; the model open-codes that indexing, so pin it against
+    // ref's block_weight() rule -- entry (u, v) is entry (u >> k, v >> k)
+    // with k = log2(n) - 3.
+    for (int lb = 3; lb <= 5; ++lb) {
+        const int n = 1 << lb, k = lb - 3;
+        int w[128];
+        nxvw::model_resolve_matrices(2, nullptr, w);
+        for (int i = 0; i < n * n; ++i) {
+            const int u = (i >> lb) >> k, v = (i & (n - 1)) >> k;
+            CHECK(w[nxvw::nxvw_block_weight_index(i, lb)] == w[u * 8 + v],
+                  "block_weight(%d, lb %d): model %d, rule %d", i, lb,
+                  w[nxvw::nxvw_block_weight_index(i, lb)], w[u * 8 + v]);
+        }
+    }
+
     // [minor 6] The split sub-block's weighting matrix is the tile's 8x8 one
     // subsampled by two in each frequency axis; the model open-codes that
     // indexing, so pin it against ref's weight4().
