@@ -40,6 +40,9 @@ Per plane (Y/R, Co/G, Cg/B, and alpha when `alpha_mode == 2`):
    memory in between. A block whose published length is 0 coded nothing, so
    its residual is zero and neither pass runs — see "The sparse coefficient
    layout" below.
+
+   [minor 6] With `XFORM_4X4_SPLIT` (tool bit 19) a block may instead be four
+   4x4 sub-blocks — see "The 4x4 split" below.
 4. **Add and clamp** into the plane's sample store.
 
 Then, once per tile:
@@ -92,6 +95,49 @@ Pass B, which is 40 % of the whole v1 planar path.
 With `colorTransform == kCtNone` on the RGB paths the three planes are written
 to R, G and B unchanged: the stream is carrying display-space planes. That is
 also what the CPU reference does with `NXVC_CT_NONE`.
+
+### The 4x4 split (tool bit 19) [minor 6]
+
+`docs/SYNTAX.md` 6.8. A coded block of a tile whose word1 bit 28 is set carries
+a 1-bit flag, and when it is 1 the block is four 4x4 sub-blocks in raster
+order, each in its own quadrant of the 64-value coefficient array, scanned by
+the concatenated scan and quantised with the tile's 8x8 weighting matrix
+subsampled by two in each frequency axis. The 4-point inverse transform's
+shift chain is the 8x8's unchanged: the 4-point graph has one butterfly level
+fewer AND one fewer sqrt(2) of gain, and the two cancel.
+
+Pass A publishes the flags as one bit per block after the mode words of the
+same per-tile region — one bit and not a fifth mode field, because nothing in
+the syntax ties tool bit 19 to tool bit 17 and a stream may split without
+coding modes at all.
+
+**The scheduling is where the interest is.** `idct_block()` writes transposed
+in both passes, so pass 2's row `r` reads `out[r]` of every pass-1 row and
+produces COLUMN `r` of the sub-block — which means a thread that wants the two
+columns it already owns runs four pass-1 rows keeping two of each four outputs,
+then two pass-2 rows. Twelve 4-point transforms, **eight** live intermediates,
+no staging through the sample store and no extra barrier, and the two paths
+hand the prediction the same `res0`/`res1`. Two more natural shapes were built
+first and both cost an Adreno 650 a factor of five of Pass B; `../README.md`,
+"The minor-6 realignment", is the measurement.
+
+The whole path is behind specialization constant 6, so a stream without the
+tool compiles a kernel that does not contain it.
+
+### Chroma from luma (tool bit 24) [minor 6]
+
+`docs/SYNTAX.md` 7.7. Mode 9 of a CHROMA block: chroma is a linear model of the
+co-located reconstructed luma, `base_c + alpha * (luma - base_l)`, fitted once
+per block over its sixteen reconstructed neighbours — the two with the smallest
+co-located luma set `base`, the two with the largest the far end — and then
+evaluated per sample. It is the only predictor that clamps, because a fitted
+slope can leave the sample domain.
+
+The tile's reconstructed luma is still in its plane slot when the chroma planes
+decode, because the slots coexist; that is the whole of what the tool needs
+from the schedule. It lives inside the directional wavefront, and can only:
+mode 9 exists solely in the `CTX_V2` mode symbol of the replace form, which
+the stream header enforces.
 
 ### Directional intra (tool bit 17)
 
