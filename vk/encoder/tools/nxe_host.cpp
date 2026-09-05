@@ -799,11 +799,12 @@ void pack_frame(Frame &f, uint32_t frame_number) {
     /* The transmitted probability tables, between the frame header and the
      * first row header.  SYNTAX.md 9.4. */
     if (!f.table_area.empty())
-        std::memcpy(f.out.data() + NXE_FRAME_HEADER_BYTES, f.table_area.data(),
+        std::memcpy(f.out.data() + NXE_FRAME_HEADER_BYTES + f.fp.warp_bytes,
+                    f.table_area.data(),
                     f.table_area.size());
     const uint32_t rowgroups = fp.tiles_y * fp.eyes;
     for (uint32_t g = 0; g < rowgroups; ++g) {
-        uint32_t off = NXE_FRAME_HEADER_BYTES + fp.table_bytes +
+        uint32_t off = NXE_FRAME_HEADER_BYTES + fp.warp_bytes + fp.table_bytes +
                        NXE_ROW_HEADER_BYTES * g +
                        f.tile_prefix[g * fp.tiles_x];
         nxe_e5_row_header(&fp2, g, f.out.data() + off);

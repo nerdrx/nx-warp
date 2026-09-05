@@ -238,6 +238,15 @@ extern "C" {
 
 /* Header sizes, ref/src/common.h. */
 #define NXE_STREAM_HEADER_BYTES 64
+/* Tile modes, nxvc_tile_mode's numbering (SYNTAX.md 6.2).  This pipeline
+ * codes INTRA and WARP_SKIP; the coded-vector modes are named so the skip
+ * test is a comparison against a name rather than against 0. */
+#define NXE_MODE_WARP_SKIP      0
+#define NXE_MODE_STATIC_MV      1
+#define NXE_MODE_WARP_MV        2
+#define NXE_MODE_INTRA          3
+#define NXE_MODE_STEREO         4
+
 #define NXE_FRAME_HEADER_BYTES  40
 /* The transmitted probability tables (SYNTAX.md 9.4) sit between the frame
  * header and the first tile-row header.  The largest area the syntax can
@@ -292,6 +301,20 @@ typedef struct nxe_frame_params {
      * first row header (SYNTAX.md 9.4).  0 when `tables_present` is 0, which
      * is every stream without CUSTOM_TABLES. */
     uint32_t table_bytes;
+
+    /* Bytes of `warp_ext()`: 36 per eye on an inter frame that carries a pose
+     * matrix, 0 otherwise.  It sits BEFORE the table area -- SYNTAX.md 12 has
+     * `frame := frame_header [warp_ext] [custom_matrices] [table_set]*
+     * tile_row*` -- so the two are added together for the offsets and written
+     * in that order. */
+    uint32_t warp_bytes;
+
+    /* Frame-header byte 33.  `1 << (frame_number & 3)` on an inter stream, 0
+     * otherwise -- a MASK naming the ring slot this frame writes, not an
+     * index; the decoder rejects any other value (SYNTAX.md 3.1). */
+    uint32_t ref_slots;
+    uint32_t pad1;
+    uint32_t pad2;
 
     /* Frame weighting matrices, Q4, raster order in the 8x8 block.  wm_id 0
      * on a tile selects these; 1..3 select a built-in pair (kWeight). */

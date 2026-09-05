@@ -82,6 +82,12 @@
 #define NXE_TILE_SLOT_WORDS (2 + 8 + NXE_TILE_COEFS_MAX)
 #define NXE_TILE_SLOT_BYTES (NXE_TILE_SLOT_WORDS * 4)
 
+#define NXE_MODE_WARP_SKIP     0
+#define NXE_MODE_STATIC_MV     1
+#define NXE_MODE_WARP_MV       2
+#define NXE_MODE_INTRA         3
+#define NXE_MODE_STEREO        4
+
 #define NXE_FRAME_HEADER_BYTES 40
 #define NXE_TABLE_AREA_MAX     2188
 #define NXE_ROW_HEADER_BYTES   12
@@ -131,6 +137,7 @@ struct nxe_frame_params {
     uint sdh, intra_dir, dir_layer, nsub_log2;
     uint frame_number, frame_flags, quant_matrix, tables_present;
     uint width, height, ycocgr, table_bytes;
+    uint warp_bytes, ref_slots, pad1, pad2;
     uint wm_luma[64];
     uint wm_chroma[64];
 };

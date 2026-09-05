@@ -503,6 +503,11 @@ void main() {
     g_tile = gl_WorkGroupID.x;
     if (g_tile >= fp.ntiles) return;
     nxe_tile_job job = jobs[g_tile];
+    // A WARP_SKIP tile codes no residual: its reconstruction is the warped
+    // predictor Pass W already produced, and E4 gives it no units.  One
+    // workgroup owns one tile here, so this return is workgroup-uniform and
+    // the barriers below are unaffected.
+    if (job.mode == uint(NXE_MODE_WARP_SKIP)) return;
 
     const int qp_base = nxe_clamp(int(fp.base_qp) + job.qp_delta, 0, 63);
     g_coefbase = g_tile * uint(NXE_TILE_COEF_WORDS);

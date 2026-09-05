@@ -42,7 +42,7 @@ struct VkEncoder::Impl {
 
     vkmin::Buffer b_params, b_jobs, b_src, b_coef, b_modes, b_tabs, b_tabbytes;
     vkmin::Buffer b_slots, b_sizes, b_prefix, b_blocks, b_total;
-    vkmin::Buffer b_ops, b_slotops, b_out, b_pose;
+    vkmin::Buffer b_ops, b_slotops, b_out, b_pose, b_warpext;
     vkmin::Buffer b_stage_src, b_stage_coef, b_stage_small;
 
     vkmin::Pipeline p_e3, p_e4, p_e5, p_e5z, p_e2[3];
@@ -174,6 +174,9 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
         {&d.b_slotops, slots * 8 * NXE_TILE_UNIT_SLOTS * 4, false},
         {&d.b_pose,    32, false},
         {&d.b_tabbytes, NXE_TABLE_AREA_MAX, false},
+        /* warp_ext(): nine int32 per eye.  Sized for two eyes whatever the
+         * stream is, because it is 72 bytes. */
+        {&d.b_warpext, 9 * 4 * 2, false},
         {&d.b_out,     d.out_bytes, true},
         {&d.b_stage_src, d.src_bytes, true},
         {&d.b_stage_coef, d.coef_bytes, true},
@@ -194,6 +197,7 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
     const std::vector<VkDescriptorType> sb5(5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
     const std::vector<VkDescriptorType> sb9(9, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
     const std::vector<VkDescriptorType> sb4(4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+
     const std::vector<VkDescriptorType> sb8(8, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 
     /* One module for both intra paths: the running reconstruction's shared
@@ -205,10 +209,10 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
     if (!d.dev.create_pipeline(E4_rans_encode_spv, sizeof E4_rans_encode_spv,
                                sb9, 0, d.p_e4, err, &si))
         return false;
-    if (!d.dev.create_pipeline(E5_packetize_spv, sizeof E5_packetize_spv, sb8, 0,
+    if (!d.dev.create_pipeline(E5_packetize_spv, sizeof E5_packetize_spv, sb9, 0,
                                d.p_e5, err, &si))
         return false;
-    if (!d.dev.create_pipeline(E5_zero_spv, sizeof E5_zero_spv, sb8, 0, d.p_e5z,
+    if (!d.dev.create_pipeline(E5_zero_spv, sizeof E5_zero_spv, sb9, 0, d.p_e5z,
                                err, &si))
         return false;
     const uint32_t *e2[3] = {E2_prefix_p0_spv, E2_prefix_p1_spv, E2_prefix_p2_spv};
@@ -238,7 +242,8 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
     const std::vector<VkBuffer> e5bufs = {d.b_params.buf, d.b_jobs.buf,
                                          d.b_slots.buf,  d.b_prefix.buf,
                                          d.b_total.buf,  d.b_out.buf,
-                                         d.b_pose.buf,   d.b_tabbytes.buf};
+                                         d.b_pose.buf,   d.b_tabbytes.buf,
+                                         d.b_warpext.buf};
     write_set(h, d.s_e5, e5bufs);
     write_set(h, d.s_e5z, e5bufs);
 

@@ -40,6 +40,16 @@ layout(std430, binding = 6) readonly buffer PoseBuf   { uint v[]; } pose;
 // serialises it next to the table training, which is the same host work the
 // per-tile table-set choice already is.
 layout(std430, binding = 7) readonly buffer TabBytes  { uint v[]; } tabb;
+// warp_ext(): nine int32 per eye, row-major, Q10.21 for rows 0 and 1 and
+// Q2.29 for row 2.  The host derives it from the pose pair; the codec never
+// sees the floating point that produced it.
+//
+// It goes BEFORE the table area, not after: SYNTAX.md 12 fixes the frame as
+//   frame := frame_header [warp_ext] [custom_matrices] [table_set]* tile_row*
+// so an inter frame with transmitted tables carries warp_ext at offset 40 and
+// the tables after it.  Getting that order backwards produces a frame both
+// encoders agree on and no decoder can read.
+layout(std430, binding = 8) readonly buffer WarpExtBuf { uint v[]; } warpext;
 
 void put_byte(uint off, uint val) {
     uint w = off >> 2;
@@ -97,8 +107,11 @@ uint tile_byte(TileSlot s, uint i) {
 // shader that reads E2's total rather than a vkCmdFillBuffer.
 void main() {
     const uint rowgroups = fp.tiles_y * fp.eyes;
-    const uint total = NXE_FRAME_HEADER_BYTES + fp.table_bytes +
-                       NXE_ROW_HEADER_BYTES * rowgroups + tot.v[0];
+    // Everything the frame carries before the first tile-row header, in the
+    // order SYNTAX.md 12 fixes: the 40-byte header, then warp_ext(), then the
+    // transmitted table area.  Both are 0 when their tool is off.
+    const uint hdr = NXE_FRAME_HEADER_BYTES + fp.warp_bytes + fp.table_bytes;
+    const uint total = hdr + NXE_ROW_HEADER_BYTES * rowgroups + tot.v[0];
     const uint nwords = (total + 3u) >> 2;
     const uint stride = gl_NumWorkGroups.x * uint(NXE_E5_WG);
     for (uint w = gl_GlobalInvocationID.x; w < nwords; w += stride)
@@ -110,8 +123,11 @@ void main() {
     const uint t = gl_WorkGroupID.x;
     const uint lid = gl_LocalInvocationID.x;
     const uint rowgroups = fp.tiles_y * fp.eyes;
-    const uint total = NXE_FRAME_HEADER_BYTES + fp.table_bytes +
-                       NXE_ROW_HEADER_BYTES * rowgroups + tot.v[0];
+    // Everything the frame carries before the first tile-row header, in the
+    // order SYNTAX.md 12 fixes: the 40-byte header, then warp_ext(), then the
+    // transmitted table area.  Both are 0 when their tool is off.
+    const uint hdr = NXE_FRAME_HEADER_BYTES + fp.warp_bytes + fp.table_bytes;
+    const uint total = hdr + NXE_ROW_HEADER_BYTES * rowgroups + tot.v[0];
 
     // ---- the frame header.  Offset 0, so every one of its ten words is wholly
     // owned by this one lane; the buffer arrives zeroed from the E5 clear pass,
@@ -133,33 +149,64 @@ void main() {
                                                                   // byte 30 alpha_qp_off, 0
                    | ((fp.quant_matrix & 0xffu) << 24));          // byte 31
         put_word(8u, (fp.tables_present & 0xffu)                  // byte 32
-                                                                  // byte 33 ref_slots, 0
+                   | ((fp.ref_slots & 0xffu) << 8)                // byte 33
                    | ((fp.frame_flags & 0xffu) << 16));           // byte 34
                                                                   // byte 35 reserved, 0
         put_word(9u, total);
+        // warp_ext(), immediately after the 40-byte header and before the
+        // custom matrices this pipeline never emits.  Word-aligned at 40, so
+        // these are whole-word stores like the header's own.
+        for (uint k = 0u; k < (fp.warp_bytes >> 2); ++k)
+            put_word(10u + k, warpext.v[k]);
     }
 
-    // ---- the transmitted table area, immediately after the frame header.
-    // Word-aligned at neither end in general, so it goes in through put_byte
-    // like the pose blob does; it is at most NXE_TABLE_AREA_MAX bytes and no
-    // other lane touches the region.
+    // ---- the transmitted table area, AFTER warp_ext().  SYNTAX.md 12:
+    //   frame := frame_header [warp_ext] [custom_matrices] [table_set]* ...
+    // so on an inter frame with transmitted tables the base is 40 +
+    // warp_bytes, not 40.  Word-aligned at neither end in general, so it goes
+    // in through put_byte like the pose blob does; it is at most
+    // NXE_TABLE_AREA_MAX bytes and no other lane touches the region.
     if (t == 0u) {
         for (uint k = lid; k < fp.table_bytes; k += uint(NXE_E5_WG))
-            put_byte(NXE_FRAME_HEADER_BYTES + k,
+            put_byte(NXE_FRAME_HEADER_BYTES + fp.warp_bytes + k,
                      (tabb.v[k >> 2] >> ((k & 3u) * 8u)) & 0xffu);
     }
 
     // ---- the tile-row headers, one per row group.
     if (t < rowgroups && lid == 0u) {
         uint g = t;
-        uint off = NXE_FRAME_HEADER_BYTES + fp.table_bytes +
-                   NXE_ROW_HEADER_BYTES * g + prefix.v[g * fp.tiles_x];
+        uint off = hdr + NXE_ROW_HEADER_BYTES * g + prefix.v[g * fp.tiles_x];
         uint row = g / fp.eyes;
+        // The row's skip bitmap, bit i for column i, and the count of tiles
+        // that are NOT skipped -- which is what `tile_count` means and what
+        // the decoder's walk uses to know how many tile structures follow.
+        // Both are derived here from the modes rather than uploaded, so they
+        // cannot disagree with the tiles E4 actually sized.
+        //
+        // fp.tiles_x is at most 64 (kMaxTilesPerRow) and the bitmap is a u64,
+        // which is why the two halves are accumulated separately: this shader
+        // has no 64-bit integers and does not want them.
+        uint lo = 0u, hi = 0u, coded = 0u;
+        for (uint c = 0u; c < fp.tiles_x; ++c) {
+            if (jobs[g * fp.tiles_x + c].mode == NXE_MODE_WARP_SKIP) {
+                if (c < 32u) lo |= 1u << c;
+                else hi |= 1u << (c - 32u);
+            } else {
+                ++coded;
+            }
+        }
         put_byte(off + 0u, fp.frame_number);
         put_byte(off + 1u, fp.frame_number >> 8);
         put_byte(off + 2u, row);
-        put_byte(off + 3u, fp.tiles_x);   // coded tiles; nothing is skipped
-        for (uint k = 0u; k < 8u; ++k) put_byte(off + 4u + k, 0u);
+        // Bit 7 is dc_present, which NEAR_SKIP would set; this pipeline does
+        // not implement it, so the field is the count alone.
+        put_byte(off + 3u, coded);
+        // Byte at a time: `off` is a row header's offset and carries
+        // `prefix.v[...]`, the accumulated bytes of every earlier tile, which
+        // is any value at all.  A row header is not word-aligned and the
+        // whole-word store the frame header can use is wrong here.
+        for (uint k = 0u; k < 4u; ++k) put_byte(off + 4u + k, lo >> (k * 8u));
+        for (uint k = 0u; k < 4u; ++k) put_byte(off + 8u + k, hi >> (k * 8u));
     }
 
     if (t >= fp.ntiles) return;
@@ -167,8 +214,7 @@ void main() {
     // ---- the tile: its 8-byte header and payload, contiguous in the slot.
     const uint nbytes = jobs[t].tile_bytes;
     const uint rowgroup = t / fp.tiles_x;
-    const uint d0 = NXE_FRAME_HEADER_BYTES + fp.table_bytes +
-                    NXE_ROW_HEADER_BYTES * (rowgroup + 1u) + prefix.v[t];
+    const uint d0 = hdr + NXE_ROW_HEADER_BYTES * (rowgroup + 1u) + prefix.v[t];
     const uint d1 = d0 + nbytes;
     const TileSlot ts = tile_slot(t);
 
