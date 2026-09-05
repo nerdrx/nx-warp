@@ -71,6 +71,16 @@ if(EXISTS ${CMAKE_SOURCE_DIR}/vk/decoder/inter/warp_pred.comp)
   list(APPEND NXENC_TESTS vk.encoder.passw.same)
 endif()
 
+# The inter host module: the ring layout, the slot rule, the rolling refresh
+# and the warp parameter buffer.  No GPU -- it is the bookkeeping that decides
+# what the GPU is asked to do, and every rule in it is one the decoder
+# implements from the same normative text, so a disagreement is a stream the
+# decoder refuses.
+if(TARGET nxenc-inter-test)
+  add_test(NAME vk.encoder.inter.host COMMAND nxenc-inter-test)
+  list(APPEND NXENC_TESTS vk.encoder.inter.host)
+endif()
+
 if(TARGET nxvc-vkenc)
   # -------------------------------------------------------- E3 / E4 / E5
   # The CPU models against their pinned stream digests.  No Vulkan, so it never
