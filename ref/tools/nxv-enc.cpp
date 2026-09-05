@@ -231,6 +231,7 @@ int main(int argc, char **argv) {
     int inter = 0, eyes = 1, intra_period = 180, ref_sel = 0, stereo = 0;
     int mv_range = 16, skip_thresh = 0, mode_lambda = 0;
     int int_decision = 0, int_lambda = 0, int_intra_mad = 0;
+    int int_coded_vectors = 1;
     int threads = 0;   // 0 = auto
     // These mirror nxvc_config_default(): the inter-efficiency tools that the
     // measurement supports are on, sub-tile intra is not.
@@ -341,6 +342,12 @@ int main(int argc, char **argv) {
             else { std::fprintf(stderr, "--int-decision: on|off\n"); return 2; }
         }
         else if (a == "--int-lambda") int_lambda = std::atoi(val());
+        else if (a == "--int-coded-vectors") {
+            std::string v = val();
+            if (v == "on") int_coded_vectors = 1;
+            else if (v == "off") int_coded_vectors = 0;
+            else { std::fprintf(stderr, "--int-coded-vectors: on|off\n"); return 2; }
+        }
         else if (a == "--int-intra-mad")
             int_intra_mad = (int)(std::atof(val()) * 256.0 + 0.5);
         else if (a == "--rc") rc_on = 1;
@@ -607,6 +614,7 @@ int main(int argc, char **argv) {
     cfg.skip_thresh = (uint32_t)(skip_thresh > 0 ? skip_thresh : 0);
     cfg.inter_int_decision = (uint32_t)int_decision;
     cfg.int_lambda_q8 = (uint32_t)(int_lambda > 0 ? int_lambda : 0);
+    cfg.int_coded_vectors = (uint32_t)int_coded_vectors;
     cfg.int_intra_mad_q8 = (uint32_t)(int_intra_mad > 0 ? int_intra_mad : 0);
     cfg.mode_lambda_q8 = (uint32_t)(mode_lambda > 0 ? mode_lambda : 0);
     cfg.chroma = pix == "yuv444p" ? NXVC_CHROMA_444 : NXVC_CHROMA_420;

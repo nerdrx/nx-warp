@@ -466,6 +466,18 @@ typedef struct nxvc_config {
                                    same modes on the ADR-0028 clip -- because
                                    the SAD differences between candidates
                                    dominate a two-byte vector.              */
+    /* 0 = the integer decision considers only WARP_SKIP and INTRA; 1 = it
+     * also searches STATIC_MV and WARP_MV.  Default 1.
+     *
+     * 0 is the GPU encoder's first increment, and it is much more than "the
+     * same thing with two candidates removed": with no coded vector in the
+     * stream, `update_pred_state` never stores one -- only WARP_MV does, and
+     * INTRA clears -- so every tile's stored vector is permanently (0, 0) and
+     * WARP_SKIP is the pure pose warp.  There is then no motion search at all,
+     * and no vector to get wrong.  It is 2x rather than 4x, and it is the
+     * subset whose byte-identity can be established first. */
+    uint32_t int_coded_vectors;
+
     uint32_t int_intra_mad_q8;  /* fall back to INTRA when the best coded
                                    candidate's mean |residual| per luma
                                    sample exceeds this, Q8.  0 = default

@@ -54,6 +54,23 @@ add_test(NAME vk.encoder.mirror
          -P ${CMAKE_CURRENT_SOURCE_DIR}/mirror.cmake)
 list(APPEND NXENC_TESTS vk.encoder.mirror)
 
+# ------------------------------------------- the encoder's Pass W is the
+# decoder's Pass W.  Also needs no target and no GPU: it compares the two
+# generated SPIR-V modules word for word.  The encoder has no warp shader of
+# its own -- it compiles vk/decoder/inter/warp_pred.comp -- and this is what
+# keeps that true, because "by construction" is a claim this tree has been
+# bitten by before.
+set(_passw_dec
+    ${CMAKE_BINARY_DIR}/vk/decoder/inter/generated/warp_pred.spv.h)
+set(_passw_enc ${CMAKE_BINARY_DIR}/vk/encoder/generated/warp_pred.spv.h)
+if(EXISTS ${CMAKE_SOURCE_DIR}/vk/decoder/inter/warp_pred.comp)
+  add_test(NAME vk.encoder.passw.same
+           COMMAND ${CMAKE_COMMAND}
+           -DDEC=${_passw_dec} -DENC=${_passw_enc}
+           -P ${CMAKE_CURRENT_SOURCE_DIR}/passw_same.cmake)
+  list(APPEND NXENC_TESTS vk.encoder.passw.same)
+endif()
+
 if(TARGET nxvc-vkenc)
   # -------------------------------------------------------- E3 / E4 / E5
   # The CPU models against their pinned stream digests.  No Vulkan, so it never

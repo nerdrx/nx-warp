@@ -1535,7 +1535,8 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             // is part of the decision: an exact tie goes to the mode searched
             // first, on both sides.
             const int int_modes[2] = {NXVC_MODE_STATIC_MV, NXVC_MODE_WARP_MV};
-            for (int mi = 0; mi < 2; ++mi) {
+            const int nint_modes = e->cfg.int_coded_vectors ? 2 : 0;
+            for (int mi = 0; mi < nint_modes; ++mi) {
                 const int mode = int_modes[mi];
                 const bool warped = mode_needs_warp(mode);
                 nw::Homography H =
@@ -1561,24 +1562,30 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                     const i64 v = sad_translate(sc, dx, dy, step);
                     if (bsad < 0 || v < bsad) { bsad = v; bx = dx; by = dy; }
                 };
-                // Stage 1, the seeds: zero, this tile's own vector from the
-                // previous frame, and the vectors the left and above tiles of
-                // this frame already chose.  Same seeds as the reference's own
-                // search, and the same order, because the order decides ties.
+                // Stage 1, the seeds: zero and this tile's own vector from
+                // the previous frame.  TWO seeds, not the reference's four.
+                //
+                // The reference also seeds from the vectors the LEFT and ABOVE
+                // tiles of this frame chose, and that is a cross-tile
+                // dependency: it forces the decisions onto an anti-diagonal
+                // wavefront, which is why the reference's own thread pool runs
+                // one.  A GPU would have to pay for it in dispatches -- 33 of
+                // them on a 17x17 grid, each a global barrier -- instead of
+                // deciding every tile of the frame in one.
+                //
+                // They are dropped here because they are measurably not worth
+                // that.  On the ADR-0028 clip, removing both spatial seeds
+                // costs 0.4 % of the rate (8089 -> 8120 B/frame) and 0.02 dB.
+                // The reference's own comment says why: "The temporal seed is
+                // the one that matters on a head turn, where every tile moves
+                // the same way and the previous frame already found it" -- and
+                // on a head turn is exactly when this encoder is under load.
+                //
+                // So every tile's decision is independent, and the GPU makes
+                // them all at once.  The order of the two remaining seeds
+                // still decides ties, on both sides.
                 try_int(0, 0, 2);
                 try_int(ps.last_mv_x >> 2, ps.last_mv_y >> 2, 2);
-                if (col > 0) {
-                    const TileDecision &n =
-                        e->dec[linear_tile(g, row, eye, col - 1)];
-                    if (n.mode != NXVC_MODE_STEREO)
-                        try_int(n.mv_x >> 2, n.mv_y >> 2, 2);
-                }
-                if (row > 0) {
-                    const TileDecision &n =
-                        e->dec[linear_tile(g, row - 1, eye, col)];
-                    if (n.mode != NXVC_MODE_STEREO)
-                        try_int(n.mv_x >> 2, n.mv_y >> 2, 2);
-                }
                 // Stage 2, one sweep at a vector step of 2 and a sample step
                 // of 2, then the eight integer neighbours of the winner at
                 // full density.  No hierarchy, no SATD, no quarter pel: those

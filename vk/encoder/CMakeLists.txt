@@ -151,6 +151,50 @@ nxenc_fwd_shader(E4_rans_encode  rans_encode.comp)
 nxenc_fwd_shader(E5_zero        packetize.comp "-DNXE_E5_PASS=0")
 nxenc_fwd_shader(E5_packetize    packetize.comp "-DNXE_E5_PASS=1")
 
+# ------------------------------------------------------------------- Pass W
+#
+# E0b is not a shader of this directory: it is the DECODER's `warp_pred.comp`,
+# compiled from the decoder's own source with the decoder's own include tree.
+# That is the whole point.  The encoder must never hold a reference the decoder
+# cannot reproduce, and the cheapest way to guarantee that is for the predictor
+# to be the same SPIR-V on both sides rather than two files that agree today.
+# Copying the source here, or writing a second predictor against
+# `inter_layout.h`, would both be re-derivations; see
+# docs/adr/0028-gpu-inter-needs-an-integer-mode-decision.md and the E3b rule in
+# README.md.
+#
+# glslc resolves quoted includes relative to the including file, so
+# `warp_pred.comp`'s `#include "../passB/syntax_constants.h"` needs no -I; only
+# `inter_layout.h` does.  The decoder's inter/ and passB/ must stay siblings,
+# which is a constraint this rule now shares with vk/decoder/inter.
+set(NXENC_DEC_INTER ${CMAKE_CURRENT_SOURCE_DIR}/../decoder/inter)
+set(NXENC_DEC_PASSB ${CMAKE_CURRENT_SOURCE_DIR}/../decoder/passB)
+if(EXISTS ${NXENC_DEC_INTER}/warp_pred.comp)
+  set(_wout ${NXENC_GEN_DIR}/warp_pred.spv.h)
+  add_custom_command(
+    OUTPUT ${_wout}
+    COMMAND ${CMAKE_COMMAND}
+            -DGLSLC=${NXENC_GLSLC}
+            -DSRC=${NXENC_DEC_INTER}/warp_pred.comp
+            -DOUT=${_wout}
+            -DNAME=warp_pred
+            -DINCDIR=${NXENC_DEC_INTER}
+            -DSTYLE=guarded
+            -P ${NXENC_GEN_SPV}
+    DEPENDS ${NXENC_DEC_INTER}/warp_pred.comp
+            ${NXENC_DEC_INTER}/inter_layout.h
+            ${NXENC_DEC_PASSB}/syntax_constants.h
+            ${NXENC_DEC_PASSB}/passB_layout.h
+            ${NXENC_GEN_SPV} ${NXENC_SPV_PASSES_CMAKE}
+    COMMENT "glslc (decoder) warp_pred.comp -> warp_pred.spv.h"
+    VERBATIM)
+  set(NXENC_SPV_HEADERS ${NXENC_SPV_HEADERS} ${_wout})
+  set(NXENC_HAVE_PASSW 1)
+else()
+  set(NXENC_HAVE_PASSW 0)
+  message(STATUS "vk/encoder: no vk/decoder/inter, Pass W not built")
+endif()
+
 add_custom_target(nxenc_shaders DEPENDS ${NXENC_SPV_HEADERS})
 
 # ----------------------------------------------------------------- test tool
