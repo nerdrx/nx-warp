@@ -49,6 +49,11 @@ struct Case {
     bool sign_hide, intra_dir, dir_layer;
     uint32_t dir_mode_seed;
     int frames;
+    /* Tool bit 30: 0 = interleaved rANS, 1 = ENTROPY_LITE / FIXED.  A Lite row
+     * resolves sign_hide, custom_tables and nsub_log2 itself (setup() does it,
+     * as the reference does at create()), so those columns are what was ASKED
+     * for and not what the stream carries. */
+    int entropy_lite;
     uint64_t digest;
 };
 
@@ -65,32 +70,46 @@ struct Case {
  * every unit in the tile.  A chain that were merely walking the unit list
  * would pass the other three and fail this. */
 static const Case kCases[] = {
-    /* name              w    h  ey 444  qp  mx wm ns ts cq ctx ct tab sdh dir lay seed  fr digest */
-    {"420-qp24",       256, 192, 1, 0, 24, 1, 0, 3, 0, 0, 2, 0, 1, 1, 0, 0, 0, 2, 0xfbb920bd4efe23a5ull},
-    {"420-qp0",        256, 192, 1, 0, 0, 1, 0, 3, 0, 0, 2, 0, 1, 1, 0, 0, 0, 1, 0x7922a0f47daf5431ull},
-    {"420-qp48-tskip", 256, 192, 1, 0, 48, 1, 0, 3, 1, 0, 2, 0, 1, 1, 0, 0, 0, 1, 0xf5c37a85ff044415ull},
-    {"444-qp20",       256, 192, 1, 1, 20, 2, 0, 3, 0, 0, 2, 0, 1, 1, 0, 0, 0, 1, 0xe5cda0fcc1347da4ull},
-    {"pad-200x150",    200, 150, 1, 0, 30, 1, 0, 3, 0, 0, 2, 0, 1, 1, 0, 0, 0, 2, 0xf1eab9bd6df424a7ull},
-    {"stereo-512x128", 512, 128, 2, 0, 26, 1, 0, 3, 0, 0, 2, 0, 1, 1, 0, 0, 0, 2, 0x43870940e7c66cebull},
-    {"v1-nosdh-wm2",   256, 192, 1, 0, 30, 1, 2, 1, 0, -4, 1, 0, 1, 0, 0, 0, 0, 1, 0xca44792ca56fc0bbull},
-    {"v3-420-qp24",    256, 192, 1, 0, 24, 1, 0, 3, 0, 0, 3, 0, 1, 1, 0, 0, 0, 2, 0x2ec73852e46d482aull},
-    {"v3-420-qp0",     256, 192, 1, 0, 0, 1, 0, 3, 0, 0, 3, 0, 1, 1, 0, 0, 0, 1, 0x4f3e6ac793b5b7ddull},
-    {"v3-444-qp20",    256, 192, 1, 1, 20, 2, 0, 3, 0, 0, 3, 0, 1, 1, 0, 0, 0, 1, 0xa0bb4193c6769674ull},
-    {"v3-nsub1",       256, 192, 1, 0, 30, 1, 2, 1, 0, -4, 3, 0, 1, 0, 0, 0, 0, 1, 0x1204ac612ee6ac60ull},
+    /* name              w    h  ey 444  qp  mx wm ns ts cq ctx ct tab sdh dir lay seed  fr lite digest */
+    {"420-qp24",       256, 192, 1, 0, 24, 1, 0, 3, 0, 0, 2, 0, 1, 1, 0, 0, 0, 2, 0, 0xfbb920bd4efe23a5ull},
+    {"420-qp0",        256, 192, 1, 0, 0, 1, 0, 3, 0, 0, 2, 0, 1, 1, 0, 0, 0, 1, 0, 0x7922a0f47daf5431ull},
+    {"420-qp48-tskip", 256, 192, 1, 0, 48, 1, 0, 3, 1, 0, 2, 0, 1, 1, 0, 0, 0, 1, 0, 0xf5c37a85ff044415ull},
+    {"444-qp20",       256, 192, 1, 1, 20, 2, 0, 3, 0, 0, 2, 0, 1, 1, 0, 0, 0, 1, 0, 0xe5cda0fcc1347da4ull},
+    {"pad-200x150",    200, 150, 1, 0, 30, 1, 0, 3, 0, 0, 2, 0, 1, 1, 0, 0, 0, 2, 0, 0xf1eab9bd6df424a7ull},
+    {"stereo-512x128", 512, 128, 2, 0, 26, 1, 0, 3, 0, 0, 2, 0, 1, 1, 0, 0, 0, 2, 0, 0x43870940e7c66cebull},
+    {"v1-nosdh-wm2",   256, 192, 1, 0, 30, 1, 2, 1, 0, -4, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0xca44792ca56fc0bbull},
+    {"v3-420-qp24",    256, 192, 1, 0, 24, 1, 0, 3, 0, 0, 3, 0, 1, 1, 0, 0, 0, 2, 0, 0x2ec73852e46d482aull},
+    {"v3-420-qp0",     256, 192, 1, 0, 0, 1, 0, 3, 0, 0, 3, 0, 1, 1, 0, 0, 0, 1, 0, 0x4f3e6ac793b5b7ddull},
+    {"v3-444-qp20",    256, 192, 1, 1, 20, 2, 0, 3, 0, 0, 3, 0, 1, 1, 0, 0, 0, 1, 0, 0xa0bb4193c6769674ull},
+    {"v3-nsub1",       256, 192, 1, 0, 30, 1, 2, 1, 0, -4, 3, 0, 1, 0, 0, 0, 0, 1, 0, 0x1204ac612ee6ac60ull},
     /* Custom tables (6) and the compact table set (26).  `ct-multi` is the
      * one that matters most: three Lloyd iterations only differ from zero once
      * a frame has enough tiles to reassign, and a second frame is what catches
      * a trained table leaking from one frame into the next frame's training
      * pass -- which is not a hypothetical, it is the bug this pipeline had. */
-    {"ct-420-qp24",    256, 192, 1, 0,  24, 1, 0, 3, 0,  0, 2, 1, 1, 1, 0, 0, 0, 2,  0x7970fa4e06fd6f63ull},
-    {"ct2-420-qp24",   256, 192, 1, 0,  24, 1, 0, 3, 0,  0, 2, 1, 2, 1, 0, 0, 0, 2,  0xd52de71889c67b7eull},
-    {"ct2-v3-qp24",    256, 192, 1, 0,  24, 1, 0, 3, 0,  0, 3, 1, 2, 1, 0, 0, 0, 2,  0x47368ad6d086ef8cull},
-    {"ct2-v3-qp0",     256, 192, 1, 0,   0, 1, 0, 3, 0,  0, 3, 1, 2, 1, 0, 0, 0, 1,  0x9c1cc30b3668793bull},
-    {"ct2-v3-444",     256, 192, 1, 1,  20, 2, 0, 3, 0,  0, 3, 1, 2, 1, 0, 0, 0, 1,  0x9cb12ade654cbd3full},
-    {"ct2-v3-nsub1",   256, 192, 1, 0,  30, 1, 2, 1, 0, -4, 3, 1, 2, 0, 0, 0, 0, 1,  0x0198f79597fe01c1ull},
-    {"ct-multi",       512, 320, 2, 0,  36, 1, 0, 3, 0,  0, 3, 1, 2, 1, 0, 0, 0, 3,  0x55f600b26572c9f2ull},
-    {"dir-replace",    256, 192, 1, 0, 24, 1, 0, 3, 0, 0, 2, 0, 1, 1, 1, 0, 12345, 2, 0x33bc9e051b089775ull},
-    {"dir-layer",      256, 192, 1, 0, 24, 1, 0, 3, 0, 0, 2, 0, 1, 1, 1, 1, 12345, 2, 0x67c9b1dc640b104bull},
+    {"ct-420-qp24",    256, 192, 1, 0,  24, 1, 0, 3, 0,  0, 2, 1, 1, 1, 0, 0, 0, 2, 0, 0x7970fa4e06fd6f63ull},
+    {"ct2-420-qp24",   256, 192, 1, 0,  24, 1, 0, 3, 0,  0, 2, 1, 2, 1, 0, 0, 0, 2, 0, 0xd52de71889c67b7eull},
+    {"ct2-v3-qp24",    256, 192, 1, 0,  24, 1, 0, 3, 0,  0, 3, 1, 2, 1, 0, 0, 0, 2, 0, 0x47368ad6d086ef8cull},
+    {"ct2-v3-qp0",     256, 192, 1, 0,   0, 1, 0, 3, 0,  0, 3, 1, 2, 1, 0, 0, 0, 1, 0, 0x9c1cc30b3668793bull},
+    {"ct2-v3-444",     256, 192, 1, 1,  20, 2, 0, 3, 0,  0, 3, 1, 2, 1, 0, 0, 0, 1, 0, 0x9cb12ade654cbd3full},
+    {"ct2-v3-nsub1",   256, 192, 1, 0,  30, 1, 2, 1, 0, -4, 3, 1, 2, 0, 0, 0, 0, 1, 0, 0x0198f79597fe01c1ull},
+    {"ct-multi",       512, 320, 2, 0,  36, 1, 0, 3, 0,  0, 3, 1, 2, 1, 0, 0, 0, 3, 0, 0x55f600b26572c9f2ull},
+    {"dir-replace",    256, 192, 1, 0, 24, 1, 0, 3, 0, 0, 2, 0, 1, 1, 1, 0, 12345, 2, 0, 0x33bc9e051b089775ull},
+    {"dir-layer",      256, 192, 1, 0, 24, 1, 0, 3, 0, 0, 2, 0, 1, 1, 1, 1, 12345, 2, 0, 0x67c9b1dc640b104bull},
+    /* ENTROPY_LITE (30).  `tests/vk-encoder/acid.cmake -DENTROPY=lite` already
+     * compares eighteen non-directional Lite streams against `nxv-enc
+     * --entropy lite-fixed` byte for byte; these rows are here for the two
+     * things it cannot do.  `lite-dir` is DIRECTIONAL, which the reference
+     * cannot be compared against because it searches its own per-block modes
+     * -- and it is the only coverage of Lite's mode unit, which is the one
+     * part of the tool with a section-S and a section-B half that have to
+     * agree on an implicit index.  The other three are the digest tripwire in
+     * the standalone encoder build, where nxv-enc does not exist. */
+    {"lite-420-qp24",  256, 192, 1, 0, 24, 1, 0, 3, 0,  0, 2, 0, 1, 1, 0, 0, 0, 2, 1, 0x6b61398e41d4d3c7ull},
+    {"lite-420-qp0",   256, 192, 1, 0,  0, 1, 0, 3, 0,  0, 2, 0, 1, 1, 0, 0, 0, 1, 1, 0xbd4de5f2bc62477dull},
+    {"lite-444-qp20",  256, 192, 1, 1, 20, 2, 0, 3, 0,  0, 3, 0, 1, 1, 0, 0, 0, 1, 1, 0x2fcd65f9e0415c61ull},
+    {"lite-nsub1-wm2", 256, 192, 1, 0, 30, 1, 2, 1, 0, -4, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0x44028979a840546full},
+    {"lite-dir",       256, 192, 1, 0, 24, 1, 0, 3, 0,  0, 2, 0, 1, 1, 1, 0, 12345, 2, 1, 0x43ba3b4db1159bc6ull},
 };
 
 static uint64_t fnv1a(const uint8_t *p, size_t n, uint64_t h) {
@@ -122,6 +141,7 @@ static Config config_of(const Case &c, int device, bool cpu_only) {
     cfg.dir_layer = c.dir_layer;
     cfg.dir_mode_seed = c.dir_mode_seed;
     cfg.frames = c.frames;
+    cfg.entropy_lite = c.entropy_lite;
     cfg.device = device;
     cfg.cpu_only = cpu_only;
     cfg.quiet = true;
@@ -165,12 +185,12 @@ int selftest_dump(const char *prefix) {
             dump_yuv(cfg, f, fo);
         }
         std::fclose(fo);
-        std::printf("%s %d %d %d %s %d %d %d %d %d %d %d %d %d %d %u %d %d %d\n",
+        std::printf("%s %d %d %d %s %d %d %d %d %d %d %d %d %d %d %u %d %d %d %d\n",
                     path, c.w, c.h, c.eyes,
                     c.chroma444 ? "yuv444p" : "yuv420p", c.qp, c.matrix,
                     c.wm_id, c.nsub_log2, c.tskip, c.chroma_qp_off, c.ctx,
                     c.sign_hide, c.intra_dir, c.dir_layer, c.dir_mode_seed,
-                    c.frames, c.custom_tables, c.tab);
+                    c.frames, c.custom_tables, c.tab, c.entropy_lite);
     }
     return 0;
 }

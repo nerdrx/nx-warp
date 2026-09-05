@@ -73,7 +73,8 @@ constexpr uint64_t kToolsEmitted =
     (1ull << 21) | /* CTX_V2: the 16-context entropy model                  */
     (1ull << 22) | /* SIGN_HIDE: sign data hiding, exact in E4              */
     (1ull << 25) | /* CTX_V3: the neighbour-conditioned model               */
-    (1ull << 26);  /* TAB_V2: the compact transmitted table set             */
+    (1ull << 26) | /* TAB_V2: the compact transmitted table set             */
+    (1ull << 30);  /* ENTROPY_LITE: with create_info::entropy; see below     */
 
 } // namespace
 
@@ -122,7 +123,12 @@ extern "C" uint64_t nxvc_vk_encoder_tools_supported(void) {
      * create_info left `inter` clear -- nxvc_vk_encoder_stream_header() is the
      * authority on what one stream actually carries.  The distinction is new:
      * before inter, every stream this library could produce carried the same
-     * mask and the two questions had one answer. */
+     * mask and the two questions had one answer.  ENTROPY_LITE (30) is the
+     * same shape of claim and one step stronger: a stream that carries it
+     * carries NEITHER 6, 22 nor 26, because the syntax forbids the
+     * combination.  So this mask is a superset that no single stream equals,
+     * and it is the right answer to "what could you send me", which is the
+     * question a handshake asks. */
     return kToolsEmitted;
 }
 
@@ -172,6 +178,10 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_create(const nxvc_vke_create_info *ci
     if (ci->coded_vectors != NXVC_VKE_CV_DEFAULT && ci->inter == 0)
         return createerr(NXVC_VKE_ERR_ARG,
                          "coded_vectors=%u needs inter=1", ci->coded_vectors);
+    if (ci->entropy > NXVC_VKE_ENTROPY_LITE)
+        return createerr(NXVC_VKE_ERR_ARG,
+                         "entropy=%u: the range is 0..%d (rans, lite)",
+                         ci->entropy, (int)NXVC_VKE_ENTROPY_LITE);
 
     const bool adopting = ci->device != VK_NULL_HANDLE;
     if (adopting && (!ci->physical_device || !ci->queue))
@@ -216,6 +226,11 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_create(const nxvc_vke_create_info *ci
     e->cfg.tab_v2 = true;
     e->cfg.table_iters = 3;
     e->cfg.sign_hide = true;
+    /* ENTROPY_LITE, if the caller asked for it.  The three tools it is
+     * incompatible with are left set here and turned off by nxe::setup(),
+     * which is the one place that resolves them -- the same substitution
+     * `nxvc_encoder_create` makes, in one place rather than two. */
+    e->cfg.entropy_lite = ci->entropy == NXVC_VKE_ENTROPY_LITE ? 1 : 0;
     e->cfg.intra_dir = false;
     e->cfg.dir_layer = false;
     e->cfg.dir_mode_seed = 0;

@@ -48,6 +48,14 @@ function(read_defines path out_names out_values)
       string(STRIP "${vl}" vl)
       # Whitespace inside an expression is formatting, not value.
       string(REGEX REPLACE "[ \t]+" "" vl "${vl}")
+      # A line-continuation backslash at the end of a value would ESCAPE the
+      # list separator that follows it, silently merging two entries and
+      # shifting `values` out of step with `names` -- which reports every later
+      # constant as a mismatch under the wrong name.  Only the first line of a
+      # continued macro is compared, which is still a comparison; both files
+      # are expected to spell such a macro the same way, and the guard on the
+      # shared count below is what keeps that from hiding a real drift.
+      string(REGEX REPLACE "\\\\$" "" vl "${vl}")
       if(NOT vl STREQUAL "")
         list(APPEND names ${nm})
         list(APPEND values "${vl}")

@@ -148,6 +148,26 @@ if(TARGET nxvc-vkenc)
                            SKIP_REGULAR_EXPRESSION "SKIP:")
       list(APPEND NXENC_TESTS ${_name})
     endforeach()
+    # The same table again at ENTROPY_LITE (tool bit 30).  It is a separate
+    # test rather than a wider loop because it is a different STREAM, not a
+    # different setting: Lite turns sign hiding, custom tables and TAB_V2 off
+    # in both encoders, so a run that mixed the two would be comparing two
+    # things and reporting one number.
+    foreach(dev cpu 0)
+      set(_name vk.encoder.acid.lite.${dev})
+      add_test(NAME ${_name} COMMAND ${CMAKE_COMMAND}
+               -DVKENC=$<TARGET_FILE:nxvc-vkenc>
+               -DNXVENC=$<TARGET_FILE:nxv-enc>
+               -DNXVDEC=$<TARGET_FILE:nxv-dec>
+               -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/acid-lite-${dev}
+               -DDEVICE=${dev}
+               -DENTROPY=lite
+               -P ${CMAKE_CURRENT_SOURCE_DIR}/acid.cmake)
+      set_tests_properties(${_name} PROPERTIES
+                           SKIP_REGULAR_EXPRESSION "SKIP:")
+      list(APPEND NXENC_TESTS ${_name})
+    endforeach()
+
     # The same claim for the C ABI, which acid.cmake does not reach: the
     # library's own configuration mapping is what an integrator links.
     if(TARGET nxvc-vkenc-api)
@@ -161,6 +181,21 @@ if(TARGET nxvc-vkenc)
       set_tests_properties(vk.encoder.acid.api PROPERTIES
                            SKIP_REGULAR_EXPRESSION "SKIP:")
       list(APPEND NXENC_TESTS vk.encoder.acid.api)
+
+      # And the ABI's own entropy switch: `entropy = NXVC_VKE_ENTROPY_LITE`
+      # has to take three tools out of the stream header as well as out of the
+      # coding, which is a mapping only a byte comparison checks.
+      add_test(NAME vk.encoder.acid.api.lite COMMAND ${CMAKE_COMMAND}
+               -DAPIENC=$<TARGET_FILE:nxvc-vkenc-api>
+               -DVKENC=$<TARGET_FILE:nxvc-vkenc>
+               -DNXVENC=$<TARGET_FILE:nxv-enc>
+               -DNXVDEC=$<TARGET_FILE:nxv-dec>
+               -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/acid-api-lite
+               -DENTROPY=lite
+               -P ${CMAKE_CURRENT_SOURCE_DIR}/api_acid.cmake)
+      set_tests_properties(vk.encoder.acid.api.lite PROPERTIES
+                           SKIP_REGULAR_EXPRESSION "SKIP:")
+      list(APPEND NXENC_TESTS vk.encoder.acid.api.lite)
 
       # The same claim for the image entry point, which is the one a
       # compositor actually calls: E0 reads a two-plane VkImage on the device

@@ -278,13 +278,16 @@ extern "C" {
  * bytes for decode time and the bound has to say so.  Both stay well inside
  * the 65535 the tile header's payload_len field can carry, and inside
  * NXE_TILE_SLOT_WORDS, which E4-lite writes into unchanged. */
-#define NXE_LITE_PAYLOAD_MAX                                   \
-    (((NXE_TILE_UNITS_MAX + NXE_LITE_CBF_GROUP - 1) /          \
-      NXE_LITE_CBF_GROUP + 7) / 8 +                            \
-     (NXE_TILE_UNITS_MAX + 7) / 8 +                            \
-     (NXE_TILE_UNITS_MAX * (NXE_LITE_PARAM_BITS + 6) + 7) / 8 +\
-     (NXE_TILE_COEFS_MAX + 7) / 8 +                            \
-     (NXE_TILE_COEFS_MAX * 17 + 7) / 8)
+/* Per-section worst case, in bytes, each section padded to a byte.  Kept as
+ * five names on five single lines rather than one continued expression: the
+ * mirror check is textual and line-based, and a trailing backslash in a value
+ * corrupts the CMake list it builds. */
+#define NXE_LITE_H0_BYTES_MAX (((NXE_TILE_UNITS_MAX + NXE_LITE_CBF_GROUP - 1) / NXE_LITE_CBF_GROUP + 7) / 8)
+#define NXE_LITE_H1_BYTES_MAX ((NXE_TILE_UNITS_MAX + 7) / 8)
+#define NXE_LITE_P_BYTES_MAX ((NXE_TILE_UNITS_MAX * (NXE_LITE_PARAM_BITS + 6) + 7) / 8)
+#define NXE_LITE_S_BYTES_MAX ((NXE_TILE_COEFS_MAX + 7) / 8)
+#define NXE_LITE_B_BYTES_MAX ((NXE_TILE_COEFS_MAX * 17 + 7) / 8)
+#define NXE_LITE_PAYLOAD_MAX (NXE_LITE_H0_BYTES_MAX + NXE_LITE_H1_BYTES_MAX + NXE_LITE_P_BYTES_MAX + NXE_LITE_S_BYTES_MAX + NXE_LITE_B_BYTES_MAX)
 #define NXE_TILE_BYTES_MAX_LITE (8 + NXE_LITE_PAYLOAD_MAX)
 
 /* Header sizes, ref/src/common.h. */

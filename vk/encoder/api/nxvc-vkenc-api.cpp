@@ -203,6 +203,7 @@ int main(int argc, char **argv) {
     std::string poses_path;
     int drop_at = -1;
     uint32_t coded_vectors = NXVC_VKE_CV_DEFAULT;
+    uint32_t entropy = NXVC_VKE_ENTROPY_DEFAULT;
 
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
@@ -222,6 +223,14 @@ int main(int argc, char **argv) {
         else if (a == "--intra-period") intra_period = (uint32_t)std::atoi(next());
         else if (a == "--poses") poses_path = next();
         else if (a == "--drop-at") drop_at = std::atoi(next());
+        else if (a == "--entropy")
+        {
+            const std::string v = next();
+            if (v == "rans") entropy = NXVC_VKE_ENTROPY_RANS;
+            else if (v == "lite" || v == "lite-fixed")
+                entropy = NXVC_VKE_ENTROPY_LITE;
+            else { std::fprintf(stderr, "--entropy: rans|lite\n"); return 2; }
+        }
         else if (a == "--coded-vectors")
         {
             const std::string v = next();
@@ -305,6 +314,7 @@ int main(int argc, char **argv) {
     ci.intra_period = inter ? intra_period : 0u;
     ci.coded_vectors = inter ? coded_vectors : NXVC_VKE_CV_DEFAULT;
     ci.quant_matrix = matrix;
+    ci.entropy = entropy;
 
     /* The image path needs a device the caller owns: the image has to live on
      * the encoder's device, and a device the library created is one this tool

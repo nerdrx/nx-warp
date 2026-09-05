@@ -23,6 +23,12 @@
 # or it does not, and "byte-identical to nxv-enc" is the only useful way to
 # say which -- a picture read one pixel off still decodes to something.
 #
+# ENTROPY=lite runs the same comparison with the ABI's `entropy` field set to
+# NXVC_VKE_ENTROPY_LITE, which is what a server picks when the client's tool
+# mask advertises bit 30.  It is the same claim about the same mapping: the
+# three tools Lite is incompatible with have to come OUT of the stream header
+# as well as out of the coding, and only a byte comparison says so.
+#
 # Required: APIENC, NXVENC, NXVDEC, WORKDIR.  Skips (via "SKIP:" in the output,
 # which the ctest carries a SKIP_REGULAR_EXPRESSION for) when there is no
 # usable Vulkan device.
@@ -80,6 +86,17 @@ if(IMAGE)
   set(APIARGS --image)
   set(WHAT "nxvc_vk_encoder's image entry point")
 endif()
+# The entropy tool, and the three tools it turns off.  A Lite stream carries
+# NEITHER sign hiding NOR custom tables NOR TAB_V2, and the reference makes the
+# same substitution at create(), so the flags below are named on both sides and
+# the two encoders resolve them identically or the comparison fails.
+set(REF_ENTROPY --entropy rans --sign-hide --custom-tables --tab v2)
+if(ENTROPY STREQUAL "lite")
+  set(APIARGS ${APIARGS} --entropy lite)
+  set(REF_ENTROPY --entropy lite-fixed --no-sign-hide --no-custom-tables
+                  --tab v1)
+  set(WHAT "${WHAT} at ENTROPY_LITE")
+endif()
 
 set(nchecked 0)
 foreach(qp 20 26 30 40)
@@ -102,11 +119,10 @@ foreach(qp 20 26 30 40)
   execute_process(COMMAND ${NXVENC} --in ${picked} --w ${pw} --h ${ph}
                           --pix yuv420p --qp ${qp} --frames 3
                           --nsub 3 --matrix 1 --wm 0 --tskip off
-                          --chroma-qp-off 0 --ctx v3 --sign-hide
+                          --chroma-qp-off 0 --ctx v3
                           --eyes 1 --intra-dir off --quiet
-                          --no-rdo --custom-tables
-                          --split4x4 off --cfl off --tab v2 --xform 8
-                          --entropy rans
+                          --no-rdo ${REF_ENTROPY}
+                          --split4x4 off --cfl off --xform 8
                           --out ${WORKDIR}/ref.nxv
                   RESULT_VARIABLE rc OUTPUT_QUIET)
   if(NOT rc EQUAL 0)
