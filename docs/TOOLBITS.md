@@ -344,7 +344,9 @@ BD-rate and off when it does not, and the encoder decides. `ENTROPY_LITE` is
 not that, and the difference is worth stating because the table above cannot
 express it.
 
-It **costs** rate -- +40 to +50 % of the payload at QP 24 -- and it **buys**
+It **costs** rate -- **+43.0 %** of the payload at 4:4:4 and **+31.9 %** at
+4:2:0, QP 24, measured on the merged encoder over the full clip -- and it
+**buys**
 decode time, by removing the serial rANS chain that Pass A is latency-bound
 on: a tile's payload becomes five byte-aligned sections whose per-unit offsets
 follow from three prefix sums over quantities already read, so every coding

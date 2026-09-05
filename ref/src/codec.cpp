@@ -2329,8 +2329,8 @@ void nxvc_config_default(nxvc_config *cfg) {
     // Pass A time with bits, and whether that trade is worth making depends on
     // a number only the DECODER has -- its own measured Pass A.  On a Pico 4
     // it is 7.5x and the only lever that reaches the frame budget at all; on a
-    // desktop GPU, where Pass A already fits, it is +40-50 % bits for nothing
-    // anyone needed.  So the decoder asks for it at the handshake and the
+    // desktop GPU, where Pass A already fits, it is +43 % bits at 4:4:4 and
+    // +32 % at 4:2:0 for nothing anyone needed.  So the decoder asks for it at the handshake and the
     // encoder obliges; the encoder does not guess.  docs/SYNTAX.md 9.10.
     cfg->entropy_lite = 0;
 }

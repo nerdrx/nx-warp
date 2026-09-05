@@ -26,13 +26,17 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
   vectors v76-v81.
 - Pass A decodes the `FIXED` variant behind specialisation constant 3, `ENTROPY_MODE`, at one
   64-thread workgroup per tile.
-- **It ships OFF, and it is a NEGOTIATED tool rather than a default.** Whether +40-50 % bits is worth
+- **It ships OFF, and it is a NEGOTIATED tool rather than a default.** Whether the bits are worth
   the decode time is a question only the decoder can answer, from its own measured Pass A: on a
   Pico 4 it cuts Pass A **7.5x, 138.5 ms to 18.4 ms**, and it is the only bitstream-side lever that
   reaches the Adreno frame budget at all; on a desktop RADV, where Pass A already fits, it is 4.1x
   for bits nobody needs to spend. So the decoder asks for it at the handshake and the encoder
   obliges, which is what a tool bit is for. `ref/RESULTS-entropy-lite.md` has the measurement, the
   crossover (~140 Mbit/s on a 12 ms budget) and the caveats.
+- The bit cost, measured on the merged encoder over the full clip at QP 24, is **+43.0 % at 4:4:4**
+  and **+31.9 % at 4:2:0** -- not one number. The branch's "about +50 %" holds for 4:4:4 only;
+  4:2:0 is cheaper than advertised because its two subsampled planes are a smaller and much sparser
+  share of the coefficients, which is where `FIXED` is closest to what rANS spends.
 
 **Bitstream syntax v1.6 -- the large transforms**
 

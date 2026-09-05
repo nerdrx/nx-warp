@@ -768,3 +768,12 @@ states it.
 The mandatory checks apply unchanged, with the gain check restated for a tool
 whose gain is not in BD-rate: **bits +40 to +50 % at QP 24**, and **zero
 mismatches through the Vulkan decoder's Pass A path on lavapipe**.
+
+**Measured.** Bits at QP 24 on the full clip: 4:4:4 **+43.0 %**, inside the
+band; 4:2:0 **+31.9 %**, below it, meaning Lite is cheaper on 4:2:0 than the
+branch claimed rather than more expensive. That is the chroma planes' own
+statistics and not the merged RD work -- dropping to `--rdoq-effort 1` moves
+the 4:2:0 ratio to +28.2 %, the wrong way -- so the +40-50 % figure should be
+quoted per format from here on. Pass A on lavapipe: zero mismatches on the
+dense, sparse and mode-unit corpora, and the rANS ballot and lds paths
+unchanged. `ref/RESULTS-entropy-lite.md` carries the table.
