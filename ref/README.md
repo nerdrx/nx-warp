@@ -414,6 +414,70 @@ cmake -S . -B build-fuzz -DNXVC_FUZZ=ON -DCMAKE_CXX_COMPILER=clang++
 build-fuzz/tests/ref/nxvc_fuzz_decode -max_len=4096 corpus/
 ```
 
+## Encoder threading
+
+`nxvc_config::threads` codes a frame's 64x64 tiles on a pool of worker threads.
+`0` is auto -- `std::thread::hardware_concurrency()` capped at 16 -- `1` is the
+single-threaded path, and `nxv-enc --threads N` sets it. The pool is created
+once in `nxvc_encoder_create()` and joined in `nxvc_encoder_destroy()`; no
+thread is created per frame.
+
+**The bitstream is byte-identical at every setting**, and so are the per-tile
+records `nxvc_encoder_tiles()` returns. `tests/ref/test_threads.cpp` is the
+check, over intra, inter, near-skip/quad-mv, custom tables + CTX_V3,
+entropy-lite, stereo, and the per-tile QP and weighting-matrix searches. That
+is the whole point of the knob: threading is a rate at which the encoder works,
+never a property of what it says.
+
+Tiles are independent by design -- each has its own rANS lanes and no
+cross-tile prediction -- so what the schedule has to preserve is the small
+number of places where they are *not*:
+
+- **The motion search's spatial seeds.** `decide_tile()` seeds from the vectors
+  the LEFT and the ABOVE tile of this frame already chose, so tile `(r, c)`
+  may not start before `(r, c-1)` and `(r-1, c)`. The decisions therefore run
+  on an **anti-diagonal wavefront**: every tile on `r + c == k` has both of its
+  predecessors on earlier diagonals, so a diagonal runs in parallel and each
+  tile still sees exactly the seeds raster order would have given it.
+- **The row headers and the tile order.** Row headers are emitted serially from
+  the finished decisions, and each tile writes into its own byte buffer; the
+  buffers are concatenated in normative order afterwards. Nothing about the
+  layout of the stream depends on which worker finished first.
+- **The frame's symbol histogram and the encode statistics.** Each worker
+  accumulates its own and they are summed at the end of the pass. Both are
+  integer counters, so the sum is exact and order-independent -- which matters,
+  because the histogram trains the transmitted tables and would otherwise move
+  every tile in the frame.
+
+The wavefront is narrow at both ends, so the *coding* of diagonal `k-1` is
+folded into the same step as the *decisions* of diagonal `k`: a tile's coding
+depends on its own decision and nothing else, so it is what an otherwise idle
+worker does. On the emitting pass, where the decisions are already made, all
+the frame's tiles run at once.
+
+**What stays serial.** A `STEREO` tile predicts from *this* frame's eye-0
+reconstruction (Annex D D-3) -- the one intra-frame data dependency in the
+format -- so a stream with `stereo` set takes the serial path whatever
+`threads` says. Two eyes *without* `stereo` are independent and do run on the
+pool. Everything outside the tile loop (the table training and its Lloyd
+iterations, the frame header, the drift measurement) is serial and too cheap to
+matter.
+
+Measured on a 1088x1088 4:2:0 `testsrc2` clip, 20 frames, QP 26, `--preset
+fast`, ms per frame:
+
+| setting | 1 | 4 | 8 | 16 |
+|---|---|---|---|---|
+| `--inter on --intra-period 32` | 306 | 108 | 93 | 88 |
+| the same, `--intra-dir off` | 204 | 79 | 71 | 73 |
+| `--inter off` (all intra) | 422 | 121 | 80 | 67 |
+
+Intra scales furthest because every tile is independent from the start. The
+inter settings plateau near 3.5x: their cost is dominated by the mode decision,
+and the wavefront's critical path is one chain of diagonals however many cores
+are available. Lifting that would mean giving up the spatial seeds, which would
+change the bytes.
+
 ## Performance
 
 The encoder is written for clarity. On one desktop core, a 2048x2048 4:2:0
