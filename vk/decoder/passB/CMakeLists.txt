@@ -66,6 +66,7 @@ foreach(_xl 1 0)
     DEPENDS ${NXVW_PASSB_DIR}/reconstruct.comp
             ${NXVW_PASSB_DIR}/syntax_constants.h
             ${NXVW_PASSB_DIR}/passB_layout.h
+            ${NXVW_PASSB_DIR}/store.glsl
             ${NXVW_PASSB_DIR}/../inter/inter_hook.glsl
             ${NXVW_PASSB_DIR}/../inter/inter_layout.h
             ${NXVW_PASSB_GEN_SPV} ${NXVW_PASSB_SPV_PASSES_CMAKE}
@@ -104,6 +105,7 @@ add_custom_command(
   DEPENDS ${NXVW_PASSB_DIR}/reconstruct.comp
           ${NXVW_PASSB_DIR}/syntax_constants.h
           ${NXVW_PASSB_DIR}/passB_layout.h
+            ${NXVW_PASSB_DIR}/store.glsl
           ${NXVW_PASSB_DIR}/../inter/inter_hook.glsl
           ${NXVW_PASSB_DIR}/../inter/inter_layout.h
           ${NXVW_PASSB_GEN_SPV} ${NXVW_PASSB_SPV_PASSES_CMAKE}
