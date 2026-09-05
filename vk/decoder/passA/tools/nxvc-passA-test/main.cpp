@@ -342,12 +342,17 @@ RunResult run_gpu(const Gpu &g, const Options &opt, const Corpus &c,
         // [entropy-lite] kEntropyRans or kEntropyLiteFixed; main() branches
         // on it at the top, so the two paths never share a barrier.
         uint32_t entropy_mode;
-    } spec{mode, kTilesPerGroup, c.entropy};
-    VkSpecializationMapEntry sme[3] = {
+        // [minor 6] The context-table stride, which sizes the shared
+        // cumulative-frequency table.  This harness builds its corpora with
+        // the widest model, so it always compiles the wide kernel.
+        uint32_t ctx_stride;
+    } spec{mode, kTilesPerGroup, c.entropy, uint32_t(kNumCtx)};
+    VkSpecializationMapEntry sme[4] = {
         {kSpecIdReadPtrMode, offsetof(SpecData, read_ptr_mode), 4},
         {kSpecIdWorkgroupTiles, offsetof(SpecData, tiles_per_group), 4},
-        {kSpecIdEntropyMode, offsetof(SpecData, entropy_mode), 4}};
-    VkSpecializationInfo spi{3, sme, sizeof(spec), &spec};
+        {kSpecIdEntropyMode, offsetof(SpecData, entropy_mode), 4},
+        {kSpecIdCtxStride, offsetof(SpecData, ctx_stride), 4}};
+    VkSpecializationInfo spi{4, sme, sizeof(spec), &spec};
 
     VkComputePipelineCreateInfo cpi{
         VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};

@@ -581,6 +581,18 @@ NXS_CONST uint kSpecIdWorkgroupTiles = 1;
 // barriers stay in uniform control flow -- the same discipline READ_PTR_MODE
 // follows.  Specialisation constant 2 is LANES.
 NXS_CONST uint kSpecIdEntropyMode = 3;
+// [minor 6] 4: the stride of the shared cumulative-frequency table, kNumCtxV2
+// or kNumCtxV3.  It SIZES the array, so a v1 or v2 frame keeps the 8192-byte
+// table it always had instead of paying CTX_V3's 13824 for a model it does
+// not use -- which on an Adreno 650 is the difference between two resident
+// workgroups and one.
+NXS_CONST uint kSpecIdCtxStride = 4;
+// [minor 6] 5: does the frame set XFORM_LARGE?  It gates the two computed
+// zigzags, which the DENSE coefficient layout needs and nothing else does --
+// and which, left in the binary, cost 844 instructions of Pass A and about
+// 10 ms of it on an Adreno 650, on every stream, for a path no conforming
+// sparse-layout stream can reach.  Dead code is not free on this part.
+NXS_CONST uint kSpecIdXformLarge = 5;
 
 NXS_CONST uint kReadPtrBallot = 0;
 NXS_CONST uint kReadPtrLdsFallback = 1;
@@ -773,7 +785,15 @@ NXS_FN int nxs_zigzag_raster_to_pos(int edge, int raster) {
     int idx = (s & 1) == 0 ? hi - u : u - lo;
     return nxs_zigzag_before(edge, s) + idx;
 }
-// ... and its inverse, scan position -> raster index.
+// ... and its inverse, scan position -> raster index, by walking the
+// diagonals.  A closed form was written and measured -- the counts are
+// triangles from either end, so one float square root and four integer
+// corrections invert them exactly -- and on an Adreno 650 it was *worse*:
+// 1587 instructions of Pass A against the walk's 844, and 26.3 ms against
+// 22.0.  The walk stays.
+//
+// What actually mattered is that neither spelling is compiled at all unless
+// the frame sets XFORM_LARGE; see XFORM_LARGE_TOOL in rans_decode.comp.
 NXS_FN int nxs_zigzag_pos_to_raster(int edge, int pos) {
     int s = 0;
     // At most 2 * edge - 1 diagonals; the loop is bounded and side-effect free.

@@ -85,6 +85,9 @@ struct FrameParse {
     int tab_v2 = 0;
     // [minor 6] XFORM_LARGE (tool bit 27): tiles may set xform_size != 0.
     int xform_large = 0;
+    // [minor 6] The width of one table set in the `cum` upload, and Pass A's
+    // specialisation constant 4: 16 under the v1/v2 models, 27 under CTX_V3.
+    int ctx_stride = 16;
     uint32_t tools = 0;   // Pass A's `tools` push constant, kToolFlag*
 
     // Pass A inputs.

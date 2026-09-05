@@ -54,6 +54,24 @@ layout(constant_id = 2) const uint LANES = 8;           // kLanes
 // main() branches on it at the very top so the test is dynamically uniform
 // and each path's barriers stay in uniform control flow.
 layout(constant_id = 3) const uint ENTROPY_MODE = 0;    // kEntropyRans
+// [minor 6] 4: the STRIDE of the shared cumulative-frequency table, kNumCtxV2
+// (16) or kNumCtxV3 (27).  CTX_V3 raised the widest model's context count and
+// a single fixed stride would have made every stream pay for it: 13824 bytes
+// of LDS against 8192, which on an Adreno 650 is the difference between two
+// resident workgroups and one and cost 2.2x of Pass A on a v1 stream.  The
+// host uploads the table at the stride the frame's model actually needs and
+// compiles the matching pipeline; the buffer is allocated at the wider one
+// either way, so only the used prefix moves.
+layout(constant_id = 4) const uint CTX_STRIDE = 16;
+// [minor 6] 5: does this frame set XFORM_LARGE (tool bit 27)?  It gates the
+// two computed zigzags of the 16x16 and 32x32 transforms.  Only the DENSE
+// coefficient layout ever evaluates them -- the sparse one stores a
+// coefficient AT its scan position -- so on every stream this decoder
+// actually ships they are unreachable, and left in the binary they still cost
+// 844 instructions of Pass A and about 10 ms of it on an Adreno 650.  Dead
+// code is not free on this part, and a specialisation constant is how it gets
+// deleted.
+layout(constant_id = 5) const uint XFORM_LARGE_TOOL = 0;
 
 layout(local_size_x = kWorkgroupSize, local_size_y = 1, local_size_z = 1) in;
 
@@ -120,7 +138,10 @@ layout(push_constant) uniform Push {
 // Shared memory
 // ---------------------------------------------------------------------------
 // Cumulative frequency tables for all 8 sets: 8 * 12 * 16 uints = 6 KiB.
-shared uint s_cum[kNumTableSets * kNumCtx * kNumSym];
+// Sized BY the specialisation constant, not merely indexed with it: shrinking
+// the allocation is the whole point (8192 bytes under v1/v2 against 13824
+// under v3), and a spec constant may size a shared array.
+shared uint s_cum[kNumTableSets * CTX_STRIDE * kNumSym];
 // scan_pos -> block index, four tables of 64 slots: 1 KiB.
 shared uint s_scan[kNumScans * kScanStride];
 
@@ -131,7 +152,7 @@ shared int s_unit_base[kMaxSlots * (kMaxPlanes + 1)];
 shared int s_coef_base[kMaxSlots * kMaxPlanes];
 shared int s_nunits[kMaxSlots];
 shared int s_tskip[kMaxSlots];
-shared uint s_tabbase[kMaxSlots];        // table_set * kNumCtx * kNumSym
+shared uint s_tabbase[kMaxSlots];        // table_set * CTX_STRIDE * kNumSym
 shared uint s_pay[kMaxSlots];            // byte offset of the rANS payload
 shared uint s_end[kMaxSlots];            // one past the last payload byte
 shared uint s_ok[kMaxSlots];             // status accumulator
@@ -278,8 +299,10 @@ int scan_index(int scan_id, int p) {
     // nxs_zigzag_pos_to_raster().  They are reached only by the DENSE
     // coefficient layout -- the sparse one stores a coefficient AT its scan
     // position and never asks for the raster index at all.
-    if (scan_id == kScanZigzag32) return nxs_zigzag_pos_to_raster(32, p);
-    if (scan_id == kScanZigzag16) return nxs_zigzag_pos_to_raster(16, p);
+    if (XFORM_LARGE_TOOL != 0u) {
+        if (scan_id == kScanZigzag32) return nxs_zigzag_pos_to_raster(32, p);
+        if (scan_id == kScanZigzag16) return nxs_zigzag_pos_to_raster(16, p);
+    }
     return int(s_scan[uint(scan_id * kScanStride + p)]);
 }
 
@@ -519,13 +542,16 @@ bool lane_next(out int out_kind, out int out_arg) {
     // this lane's neighbour class.
     if (g_phase == kPhCbf) {
         out_kind = 0;
-        out_arg = g_ctx_v3 != 0 ? nxs_v3_ctx_cbf(g_u_ucls, g_nbr) : g_u_ctx_cbf;
+        out_arg = (CTX_STRIDE >= uint(kNumCtxV3) && g_ctx_v3 != 0)
+                      ? nxs_v3_ctx_cbf(g_u_ucls, g_nbr)
+                      : g_u_ctx_cbf;
         return true;
     }
     if (g_phase == kPhLast) {
         out_kind = 0;
-        out_arg = g_ctx_v3 != 0 ? nxs_v3_ctx_last(g_u_ucls, g_nbr)
-                                : g_u_ctx_last;
+        out_arg = (CTX_STRIDE >= uint(kNumCtxV3) && g_ctx_v3 != 0)
+                      ? nxs_v3_ctx_last(g_u_ucls, g_nbr)
+                      : g_u_ctx_last;
         return true;
     }
     if (g_phase == kPhLastRaw) {
@@ -541,7 +567,7 @@ bool lane_next(out int out_kind, out int out_arg) {
         // its position inside its own sub-block.  [REF] common.h band_pos().
         out_kind = 0;
         int bsp = nxs_band_pos(g_pos_sp, g_split) >> g_lshift;
-        out_arg = g_ctx_v3 != 0
+        out_arg = (CTX_STRIDE >= uint(kNumCtxV3) && g_ctx_v3 != 0)
                       ? nxs_v3_ctx_level(g_u_ucls, g_pos_sp, bsp, g_last,
                                          g_prev_class)
                       : (g_u_ctx_level != kCtxNone
@@ -1154,7 +1180,7 @@ void main() {
     g_slot = slot;
 
     // --- shared table load -------------------------------------------------
-    const uint kCumWords = uint(kNumTableSets * kNumCtx * kNumSym);
+    const uint kCumWords = uint(kNumTableSets) * CTX_STRIDE * uint(kNumSym);
     for (uint i = lid; i < kCumWords; i += kWorkgroupSize)
         s_cum[i] = u_tables.data[i];
     for (uint i = lid; i < uint(kNumScans * kScanStride); i += kWorkgroupSize) {
@@ -1201,7 +1227,7 @@ void main() {
         uint table_set = (w1 >> kThTableSetShift) & kThTableSetMask;
         uint nsub_log2 = (w1 >> kThNsubLog2Shift) & kThNsubLog2Mask;
         s_tskip[slot] = int((w1 >> kThTskipShift) & kThTskipMask);
-        s_tabbase[slot] = table_set * uint(kNumCtx * kNumSym);
+        s_tabbase[slot] = table_set * CTX_STRIDE * uint(kNumSym);
         // [minor 6] word1 bit 28.  Meaningful only with tool bit 19, and
         // mutually exclusive with transform skip, whose 64 coded values are
         // samples in raster order and have no sub-block structure

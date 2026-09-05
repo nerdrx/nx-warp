@@ -139,7 +139,7 @@ struct nxvc_vk_decoder {
     // source, built with NXVW_INTRA_DIR=0; see passB/reconstruct.comp.
     VkShaderModule smBv1 = VK_NULL_HANDLE;
     VkDescriptorSet dsetA = VK_NULL_HANDLE, dsetB = VK_NULL_HANDLE;
-    std::map<uint32_t, VkPipeline> pipesA;  // key: lanes
+    std::map<uint32_t, VkPipeline> pipesA;  // lanes | ctx_stride<<8 | xfl<<16
     // key: (format << 40) | (dirSched << 32) | storeWords
     std::map<uint64_t, VkPipeline> pipesB;
 
@@ -676,8 +676,13 @@ nxvc_vkd_status make_layouts(D *d) {
     return NXVC_VKD_OK;
 }
 
-nxvc_vkd_status pipeline_a(D *d, uint32_t lanes, VkPipeline *out) {
-    auto it = d->pipesA.find(lanes);
+// [minor 6] The pipeline cache key carries the context-table stride as well as
+// the lane count: the stride sizes Pass A's shared table, so a v1/v2 frame and
+// a v3 frame want different kernels and a frame must not inherit the other's.
+nxvc_vkd_status pipeline_a(D *d, uint32_t lanes, uint32_t ctx_stride,
+                           uint32_t xform_large, VkPipeline *out) {
+    const uint32_t key = lanes | (ctx_stride << 8) | (xform_large << 16);
+    auto it = d->pipesA.find(key);
     if (it != d->pipesA.end()) {
         *out = it->second;
         return NXVC_VKD_OK;
@@ -689,9 +694,10 @@ nxvc_vkd_status pipeline_a(D *d, uint32_t lanes, VkPipeline *out) {
     uint32_t mode = d->read_ptr_mode;
     if (d->subgroup_size < lanes) mode = nxwarp_passA::kReadPtrLdsFallback;
     const uint32_t tpg = nxwarp_passA::nxs_tiles_per_group(lanes);
-    const uint32_t data[3] = {mode, tpg, lanes};
-    VkSpecializationMapEntry me[3] = {{0, 0, 4}, {1, 4, 4}, {2, 8, 4}};
-    VkSpecializationInfo spec{3, me, sizeof(data), data};
+    const uint32_t data[6] = {mode, tpg, lanes, 0u, ctx_stride, xform_large};
+    VkSpecializationMapEntry me[6] = {{0, 0, 4},  {1, 4, 4},  {2, 8, 4},
+                                      {3, 12, 4}, {4, 16, 4}, {5, 20, 4}};
+    VkSpecializationInfo spec{6, me, sizeof(data), data};
 
     VkComputePipelineCreateInfo ci{
         VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
@@ -714,12 +720,13 @@ nxvc_vkd_status pipeline_a(D *d, uint32_t lanes, VkPipeline *out) {
     VkPipeline p = VK_NULL_HANDLE;
     VKTRY(d, vkCreateComputePipelines(d->dev, VK_NULL_HANDLE, 1, &ci, nullptr,
                                       &p));
-    d->pipesA[lanes] = p;
+    d->pipesA[key] = p;
     *out = p;
     if (d->has_exec_props) {
         char tag[64];
-        std::snprintf(tag, sizeof tag, "passA lanes=%u mode=%u tpg=%u", lanes,
-                      mode, tpg);
+        std::snprintf(tag, sizeof tag,
+                      "passA lanes=%u mode=%u tpg=%u ctx=%u xfl=%u", lanes,
+                      mode, tpg, ctx_stride, xform_large);
         dump_shader_stats(d, p, tag);
     }
     return NXVC_VKD_OK;
@@ -727,9 +734,10 @@ nxvc_vkd_status pipeline_a(D *d, uint32_t lanes, VkPipeline *out) {
 
 nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2, int32_t sparse,
                            uint32_t store_words, int32_t intra_dir,
-                           VkPipeline *out) {
+                           int32_t split_tool, VkPipeline *out) {
     const uint32_t sched = d->dir_sched;
-    uint64_t key = ((uint64_t)(uint32_t)intra_dir << 56) |
+    uint64_t key = ((uint64_t)(uint32_t)split_tool << 60) |
+                   ((uint64_t)(uint32_t)intra_dir << 56) |
                    ((uint64_t)d->unorm_store << 52) |
                    ((uint64_t)(uint32_t)sparse << 48) |
                    ((uint64_t)(uint32_t)(fmt2 + 1) << 44) |
@@ -744,12 +752,14 @@ nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2, int32_t sparse,
         return seterr(d, NXVC_VKD_ERR_UNSUPPORTED,
                       "Pass B needs %zu B of shared memory, device offers %u B",
                       lds, d->props.limits.maxComputeSharedMemorySize);
-    const int32_t data[6] = {(int32_t)fmt,  (int32_t)store_words,
+    const int32_t data[7] = {(int32_t)fmt,  (int32_t)store_words,
                              (int32_t)sched, fmt2,
-                             sparse,         (int32_t)d->unorm_store};
-    VkSpecializationMapEntry me[6] = {{0, 0, 4},  {1, 4, 4},  {2, 8, 4},
-                                      {3, 12, 4}, {4, 16, 4}, {5, 20, 4}};
-    VkSpecializationInfo spec{6, me, sizeof(data), data};
+                             sparse,         (int32_t)d->unorm_store,
+                             split_tool};
+    VkSpecializationMapEntry me[7] = {{0, 0, 4},  {1, 4, 4},  {2, 8, 4},
+                                      {3, 12, 4}, {4, 16, 4}, {5, 20, 4},
+                                      {6, 24, 4}};
+    VkSpecializationInfo spec{7, me, sizeof(data), data};
     VkComputePipelineCreateInfo ci{
         VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
     if (d->has_exec_props)
@@ -1521,7 +1531,9 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     uint32_t dispatches = 0;
     for (const LaneGroup &g : fp.groups) {
         VkPipeline p;
-        if ((st = pipeline_a(d, g.lanes, &p))) return st;
+        if ((st = pipeline_a(d, g.lanes, (uint32_t)fp.ctx_stride,
+                             (uint32_t)fp.xform_large, &p)))
+            return st;
         vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, p);
         const uint32_t push[kPassAPushUints] = {
             g.limit,       fp.frame_nplanes,       fp.coef_stride,
@@ -1559,7 +1571,8 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
                              fuse ? (int32_t)nxvw::kOutRgba8
                                   : (int32_t)nxvw::kOutNone,
                              fp.push.sparse, storeWords,
-                             (int32_t)fp.push.intraDir, &p)))
+                             (int32_t)fp.push.intraDir, (int32_t)fp.split4,
+                             &p)))
             return st;
         vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, p);
         vkCmdDispatch(d->cmd, ntiles, 1, 1);
@@ -1569,7 +1582,8 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
         VkPipeline p;
         if ((st = pipeline_b(d, (uint32_t)nxvw::kOutRgba8,
                              (int32_t)nxvw::kOutNone, fp.push.sparse,
-                             storeWords, (int32_t)fp.push.intraDir, &p)))
+                             storeWords, (int32_t)fp.push.intraDir,
+                             (int32_t)fp.split4, &p)))
             return st;
         vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, p);
         vkCmdDispatch(d->cmd, ntiles, 1, 1);

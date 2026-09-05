@@ -72,12 +72,22 @@ NXVW_ARR(int, kInvZigzag4, 16)
      0,  1,  5,  6,  2,  4,  7, 12,  3,  8, 11, 13,  9, 10, 14, 15
 NXVW_ARR_END
 
-NXVW_ARR(int, kInvScan4Split, 64)
-      0,   1,   5,   6,  16,  17,  21,  22,   2,   4,   7,  12,  18,  20,  23,  28,
-      3,   8,  11,  13,  19,  24,  27,  29,   9,  10,  14,  15,  25,  26,  30,  31,
-     32,  33,  37,  38,  48,  49,  53,  54,  34,  36,  39,  44,  50,  52,  55,  60,
-     35,  40,  43,  45,  51,  56,  59,  61,  41,  42,  46,  47,  57,  58,  62,  63
-NXVW_ARR_END
+// [minor 6] The inverse of the 4x4-split scan, COMPUTED rather than tabulated.
+// The split scan is four of kZigzag4 laid over the quadrants of an 8x8 array,
+// so a raster position's scan position is its sub-block index times sixteen
+// plus the 4x4 inverse zigzag of its position inside that sub-block -- which
+// reuses kInvZigzag4 and adds no third table.
+//
+// It is not a micro-optimisation.  A module-scope const array indexed by a
+// runtime value is a private-memory allocation on Adreno, and adding a third
+// one took Pass B's scratch from 342 to 616 B and its overall register
+// footprint from 6 to 104 -- a factor of four of the pass.
+// docs/ADRENO-RULES.md.
+NXVW_FN nxvw_inv_scan4split(int raster) {
+    int row = raster >> 3, col = raster & 7;
+    int sb = (row >= 4 ? 2 : 0) + (col >= 4 ? 1 : 0);
+    return sb * 16 + kInvZigzag4[(row & 3) * 4 + (col & 3)];
+}
 
 // [REF] common.h scan_table(): which scan a unit of `ncoef` coefficients uses.
 // Mirrors passA's nxs_scan_id().
@@ -92,7 +102,7 @@ NXVW_FN nxvw_scan_id(int ncoef, int tskip) {
 NXVW_FN nxvw_scan_pos(int scan_id, int pos) {
     if (scan_id == kScanZigzag8) return kInvZigzag8[pos];
     if (scan_id == kScanZigzag4) return kInvZigzag4[pos];
-    if (scan_id == kScan4Split) return kInvScan4Split[pos];
+    if (scan_id == kScan4Split) return nxvw_inv_scan4split(pos);
     return pos;
 }
 

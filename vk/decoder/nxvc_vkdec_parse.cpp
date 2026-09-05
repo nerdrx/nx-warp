@@ -200,17 +200,27 @@ constexpr uint64_t kToolWmId = 1ull << 20;
 }  // namespace
 
 // ---------------------------------------------------------------- tables
-// [REF] tables.cpp build_default_set(): the table object always carries all
-// kNumCtx contexts.  Contexts beyond the model's coded count are never
-// selected, but they are filled (from context 0) so the object is well formed
-// and Pass A's binding 2 has one layout whichever model the stream uses.
+// [REF] tables.cpp build_default_set(): the table object carries every context
+// of the model the stream selected.  Contexts beyond its coded count are never
+// selected, but they are filled (from context 0) so the object is well formed.
+//
+// [minor 6] The STRIDE is the model's own width, not the widest model's.  It
+// used to be the widest, so that the host had one layout to build whichever
+// model a stream picked -- and when CTX_V3 took the widest from 16 contexts to
+// 27 that made every v1 and v2 stream carry a 13824-byte shared table instead
+// of an 8192-byte one, which on an Adreno 650 is the difference between two
+// resident workgroups and one.  Pass A takes the stride as specialisation
+// constant 4 instead.
+int table_stride(int nctx) { return nctx >= kNumCtxV3 ? kNumCtxV3 : kNumCtxV2; }
+
 void build_default_tables(std::vector<uint32_t> &cum, int nctx) {
     if (nctx < kNumCtxV1) nctx = kNumCtxV1;
+    const int stride = table_stride(nctx);
     cum.assign((size_t)kNumTableSets * kNumCtx * kNumSym, 0);
     for (int set = 0; set < kNumTableSets; ++set)
-        for (int c = 0; c < kNumCtx; ++c) {
+        for (int c = 0; c < stride; ++c) {
             const int src = c < nctx ? c : 0;
-            uint32_t *dst = &cum[((size_t)set * kNumCtx + c) * kNumSym];
+            uint32_t *dst = &cum[((size_t)set * stride + c) * kNumSym];
             uint32_t acc = 0;
             for (int s = 0; s < kNumSym; ++s) {
                 dst[s] = acc;
@@ -384,6 +394,7 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
                                         : kNumCtxV1;
     fp.tab_v2 = (si.tools & kToolTabV2) ? 1 : 0;
     fp.xform_large = (si.tools & kToolXformLarge) ? 1 : 0;
+    fp.ctx_stride = table_stride(fp.nctx);
     fp.intra_dir = (si.tools & kToolIntraDir) ? 1 : 0;
     fp.sdh = (si.tools & kToolSignHide) ? 1 : 0;
     fp.split4 = (si.tools & kToolSplit4) ? 1 : 0;
@@ -431,7 +442,8 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
         for (int k = 0; k < 8; ++k) {
             if (!(tables_present & (1u << k))) continue;
             if (!parse_table_set(bitr, k, fp.nctx, fp.tab_v2,
-                                 &fp.cum[(size_t)k * kNumCtx * kNumSym]))
+                                 &fp.cum[(size_t)k * table_stride(fp.nctx) *
+                                         kNumSym]))
                 return NXVC_VKD_ERR_BITSTREAM;
         }
         if (bitr.bit > (frame_bytes - off) * 8) return NXVC_VKD_ERR_TRUNCATED;

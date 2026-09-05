@@ -58,6 +58,16 @@ layout(constant_id = 4) const int kSparse = 1;
 //    because the image is an integer format").  kOutRgb10A2 is unaffected and
 //    stays integer; it is a desktop path and its samples are not 8-bit.
 layout(constant_id = 5) const int kUnormStore = 0;
+// 6: [minor 6] 1 = the stream sets XFORM_4X4_SPLIT (tool bit 19), so a block
+//    may be four 4x4 sub-blocks and the residual loop carries the second
+//    transform.  Frame-uniform, and a specialization constant rather than a
+//    plain branch because a stream WITHOUT the tool must not pay for it: the
+//    split path's live set is eight intermediates on top of res0/res1, which
+//    is enough to cost an Adreno 650 10.8 ms of Pass B even on a frame where
+//    every split flag is zero and the branch is never taken.  Compiled out,
+//    such a frame decodes through exactly the kernel it did before the tool
+//    existed.
+layout(constant_id = 6) const int kSplitTool = 0;
 // The frame's INTRA_DIR tool bit is a *build* variant, not a specialization
 // constant and no longer a push constant.  It was a push constant, which meant
 // one pipeline carried both the v1 predictor and the directional wavefront and
@@ -273,19 +283,6 @@ int dqCoefSplit(int blockBase, int scanId, int len, int planeQp, int wbase,
     int pos = (oy + (k >> 2)) * 8 + ox + (k & 3);
     int w = uWgt.m[wbase + (k >> 2) * 16 + (k & 3) * 2];
     return dequant(coefIn(blockBase, scanId, len, pos), dequantStep(planeQp, w));
-}
-
-// [minor 6] Write ONE int16 of a plane slot.  The split path is the only
-// caller: it produces a 4x4 sub-block whose columns are not a 2-aligned pair,
-// so it cannot use the whole-uint write the 8x8 path relies on.  Safe without
-// an atomic because one thread owns a whole sub-block -- both halves of every
-// uint it touches.
-void planeSet16(int base, int e, int v) {
-    int w = base + (e >> 1);
-    uint cur = sPlane[w];
-    sPlane[w] = ((e & 1) == 0)
-                    ? ((cur & 0xffff0000u) | (uint(v) & 0xffffu))
-                    : ((cur & 0x0000ffffu) | ((uint(v) & 0xffffu) << 16));
 }
 
 // ------------------------------------------------------------ bilinear
@@ -545,8 +542,16 @@ int cflRecip(int d) { return (65536 + d) / (2 * d); }
 // The reference selects over two 16-entry arrays; this walks the pairs twice
 // instead and keeps four indices and their values in scalars, which is the
 // same selection with the same tie rule and no local array.
-void cflFit(int A[kIntraRefs], int L[kIntraRefs], int lstore, int lsize, int f,
-            int x0, int y0, out int alpha, out int base_l, out int base_c) {
+// It takes the BLOCK, not the reference arrays.  Passing `A` and `L` in was
+// the obvious spelling and it cost a factor of four of Pass B on the Adreno
+// 650: two 17-entry by-value array parameters indexed by a loop variable the
+// driver would not fold, so both went to private memory and took the kernel's
+// overall register footprint from 6 to 104 and its scratch from 342 to 616 B.
+// dirAt() is where those values came from in the first place, so reading them
+// back through it costs nothing and allocates nothing.  docs/ADRENO-RULES.md.
+void cflFit(int store, int size, int nb, int bx, int by, int lstore, int lsize,
+            int f, int x0, int y0, out int alpha, out int base_l,
+            out int base_c) {
     // k in [0, 8) walks the block's top edge, k in [8, 16) its left edge.
     // The chroma value of a pair is already in the reference arrays; only the
     // co-located luma has to be fetched.  The pairs are walked twice rather
@@ -554,7 +559,8 @@ void cflFit(int A[kIntraRefs], int L[kIntraRefs], int lstore, int lsize, int f,
     int lo0 = 0, hi0 = 0;
     int lo0l = 0, lo0c = 0, hi0l = 0, hi0c = 0;
     for (int k = 0; k < kCflPairs; ++k) {
-        int cn = k < 8 ? A[1 + k] : L[1 + (k - 8)];
+        int cn = k < 8 ? dirAt(store, size, nb, bx, by, x0 + k, y0 - 1)
+                       : dirAt(store, size, nb, bx, by, x0 - 1, y0 + (k - 8));
         int ln = k < 8 ? cflLuma(lstore, lsize, f, x0 + k, y0 - 1)
                        : cflLuma(lstore, lsize, f, x0 - 1, y0 + (k - 8));
         if (k == 0) { lo0l = ln; lo0c = cn; hi0l = ln; hi0c = cn; continue; }
@@ -564,7 +570,8 @@ void cflFit(int A[kIntraRefs], int L[kIntraRefs], int lstore, int lsize, int f,
     int lo1 = -1, hi1 = -1;
     int lo1l = 0, lo1c = 0, hi1l = 0, hi1c = 0;
     for (int k = 0; k < kCflPairs; ++k) {
-        int cn = k < 8 ? A[1 + k] : L[1 + (k - 8)];
+        int cn = k < 8 ? dirAt(store, size, nb, bx, by, x0 + k, y0 - 1)
+                       : dirAt(store, size, nb, bx, by, x0 - 1, y0 + (k - 8));
         int ln = k < 8 ? cflLuma(lstore, lsize, f, x0 + k, y0 - 1)
                        : cflLuma(lstore, lsize, f, x0 - 1, y0 + (k - 8));
         if (k != lo0 && (lo1 < 0 || ln < lo1l)) { lo1 = k; lo1l = ln; lo1c = cn; }
@@ -871,7 +878,7 @@ void main() {
         // The flag is only ever set at the 8x8 transform and never with
         // transform skip, so nothing else in this loop has to know about it.
         int splitFlag = 0;
-        if (live) {
+        if (kSplitTool != 0 && live) {
             uint sw = uModes.w[modeBase + NXVW_MODE_WORDS_PER_TILE +
                                p * NXVW_SPLIT_WORDS_PER_PLANE + (bIdx >> 5)];
             splitFlag = int((sw >> uint(bIdx & 31)) & 1u);
@@ -905,118 +912,146 @@ void main() {
             // transforms to all zeros; skipping it is the whole of the
             // skip-tile fast path, because a tile with no coded unit has no
             // coded block either.
-            if (coded && splitFlag != 0) {
-                // [minor 6] The split transform: thread `sub` owns sub-block
-                // `sub` OUTRIGHT -- all sixteen of its coefficients, both
-                // passes, no shared memory between them, because a 4x4 block
-                // is sixteen values and fits in one thread's registers.  The
-                // 8x8 path cannot do that (its two passes are 64 values and
-                // four threads) which is why the two look so different.
+            if (kSplitTool != 0 && coded && splitFlag != 0) {
+                // [minor 6] The split block is four 4x4 sub-blocks, and this
+                // thread computes exactly the two columns it already owns --
+                // no staging, no shared memory, no extra barrier, and the two
+                // paths hand the prediction the same res0/res1 they always
+                // did.
                 //
-                // The result goes straight into the plane slot at the
-                // positions the sub-block occupies; the barrier below then
-                // lets every thread pick its own two columns back out, which
-                // is what puts the two paths back on the same footing for the
-                // prediction.  [REF] codec.cpp residual_block(split) and
-                // transform.cpp idct_block(n = 4): both passes write
-                // transposed, and the shifts are the 8x8's.
-                int ox = (sub & 1) * 4, oy = (sub >> 1) * 4;
+                // The trick is which half of each 1D transform is needed.
+                // idct_block() writes transposed in both passes, so pass 2's
+                // row `r` reads out[r] of every pass-1 row and produces
+                // COLUMN r of the sub-block.  A thread that wants two columns
+                // therefore runs all four pass-1 rows but keeps only two of
+                // each four outputs, then runs two pass-2 rows: twelve
+                // 4-point transforms and EIGHT live intermediates.
+                //
+                // Two shapes that look more natural were built and measured on
+                // an Adreno 650 first, and both cost a factor of five of Pass
+                // B (17.3 ms -> 96.6 and 111.1) because their live set is
+                // sixteen intermediates on top of res0/res1, which the driver
+                // answers by putting all of it in private memory -- footprint
+                // 6 -> 136 and 168, scratch 342 -> 648 and 680 B.  One staged
+                // the whole sub-block through the plane slot and read the
+                // columns back after the barrier; the other held the sixteen
+                // as named scalars, which is the letter of
+                // docs/ADRENO-RULES.md and made it worse, because the rule is
+                // about what the compiler can keep in registers and sixteen
+                // more values is past what it has.  Halving the live set is
+                // what fixed it.
+                // The sub-block ROW loop is unrolled so that every res0 /
+                // res1 index is a literal: `res0[oy + c]` with a loop-carried
+                // `oy` is the dynamic-local-array-index that
+                // scripts/shader-lint.py refuses, and rightly -- it is exactly
+                // the shape that puts the array in private memory.
+                int ox = (sub >= 2) ? 4 : 0;
+                bool hi = (sub & 1) != 0;   // columns 2 and 3 of the sub-block
                 int t0, t1, t2, t3;
-                // Pass 1, row r: tmp[c * 4 + r].  res0[0..7] holds rows 0
-                // and 1, res1[0..7] rows 2 and 3, so every index below is a
-                // constant after the manual unroll.
+                int a0, a1, a2, a3, b0, b1, b2, b3;
+                // sub-block row 0, block rows 0..3
                 idct4_1d(dqCoefSplit(blockBase, blockScan, blockLen, planeQp,
-                                     wbase, ox, oy, 0),
+                                     wbase, ox, 0, 0),
                          dqCoefSplit(blockBase, blockScan, blockLen, planeQp,
-                                     wbase, ox, oy, 1),
+                                     wbase, ox, 0, 1),
                          dqCoefSplit(blockBase, blockScan, blockLen, planeQp,
-                                     wbase, ox, oy, 2),
+                                     wbase, ox, 0, 2),
                          dqCoefSplit(blockBase, blockScan, blockLen, planeQp,
-                                     wbase, ox, oy, 3), t0, t1, t2, t3);
-                // tmp[c * 4 + r] with r == 0: slots 0, 4, 8, 12.
-                res0[0] = clamp16((t0 + kIdctRound1) >> kIdctShift1);
-                res0[4] = clamp16((t1 + kIdctRound1) >> kIdctShift1);
-                res1[0] = clamp16((t2 + kIdctRound1) >> kIdctShift1);
-                res1[4] = clamp16((t3 + kIdctRound1) >> kIdctShift1);
+                                     wbase, ox, 0, 3), t0, t1, t2, t3);
+                a0 = clamp16(((hi ? t2 : t0) + kIdctRound1) >> kIdctShift1);
+                b0 = clamp16(((hi ? t3 : t1) + kIdctRound1) >> kIdctShift1);
                 idct4_1d(dqCoefSplit(blockBase, blockScan, blockLen, planeQp,
-                                     wbase, ox, oy, 4),
+                                     wbase, ox, 0, 4),
                          dqCoefSplit(blockBase, blockScan, blockLen, planeQp,
-                                     wbase, ox, oy, 5),
+                                     wbase, ox, 0, 5),
                          dqCoefSplit(blockBase, blockScan, blockLen, planeQp,
-                                     wbase, ox, oy, 6),
+                                     wbase, ox, 0, 6),
                          dqCoefSplit(blockBase, blockScan, blockLen, planeQp,
-                                     wbase, ox, oy, 7), t0, t1, t2, t3);
-                // r == 1: slots 1, 5, 9, 13.
-                res0[1] = clamp16((t0 + kIdctRound1) >> kIdctShift1);
-                res0[5] = clamp16((t1 + kIdctRound1) >> kIdctShift1);
-                res1[1] = clamp16((t2 + kIdctRound1) >> kIdctShift1);
-                res1[5] = clamp16((t3 + kIdctRound1) >> kIdctShift1);
+                                     wbase, ox, 0, 7), t0, t1, t2, t3);
+                a1 = clamp16(((hi ? t2 : t0) + kIdctRound1) >> kIdctShift1);
+                b1 = clamp16(((hi ? t3 : t1) + kIdctRound1) >> kIdctShift1);
                 idct4_1d(dqCoefSplit(blockBase, blockScan, blockLen, planeQp,
-                                     wbase, ox, oy, 8),
+                                     wbase, ox, 0, 8),
                          dqCoefSplit(blockBase, blockScan, blockLen, planeQp,
-                                     wbase, ox, oy, 9),
+                                     wbase, ox, 0, 9),
                          dqCoefSplit(blockBase, blockScan, blockLen, planeQp,
-                                     wbase, ox, oy, 10),
+                                     wbase, ox, 0, 10),
                          dqCoefSplit(blockBase, blockScan, blockLen, planeQp,
-                                     wbase, ox, oy, 11), t0, t1, t2, t3);
-                // r == 2: slots 2, 6, 10, 14.
-                res0[2] = clamp16((t0 + kIdctRound1) >> kIdctShift1);
-                res0[6] = clamp16((t1 + kIdctRound1) >> kIdctShift1);
-                res1[2] = clamp16((t2 + kIdctRound1) >> kIdctShift1);
-                res1[6] = clamp16((t3 + kIdctRound1) >> kIdctShift1);
+                                     wbase, ox, 0, 11), t0, t1, t2, t3);
+                a2 = clamp16(((hi ? t2 : t0) + kIdctRound1) >> kIdctShift1);
+                b2 = clamp16(((hi ? t3 : t1) + kIdctRound1) >> kIdctShift1);
                 idct4_1d(dqCoefSplit(blockBase, blockScan, blockLen, planeQp,
-                                     wbase, ox, oy, 12),
+                                     wbase, ox, 0, 12),
                          dqCoefSplit(blockBase, blockScan, blockLen, planeQp,
-                                     wbase, ox, oy, 13),
+                                     wbase, ox, 0, 13),
                          dqCoefSplit(blockBase, blockScan, blockLen, planeQp,
-                                     wbase, ox, oy, 14),
+                                     wbase, ox, 0, 14),
                          dqCoefSplit(blockBase, blockScan, blockLen, planeQp,
-                                     wbase, ox, oy, 15), t0, t1, t2, t3);
-                // r == 3: slots 3, 7, 11, 15.
-                res0[3] = clamp16((t0 + kIdctRound1) >> kIdctShift1);
-                res0[7] = clamp16((t1 + kIdctRound1) >> kIdctShift1);
-                res1[3] = clamp16((t2 + kIdctRound1) >> kIdctShift1);
-                res1[7] = clamp16((t3 + kIdctRound1) >> kIdctShift1);
-                // Pass 2, row r of tmp -> dst[c * 4 + r], i.e. sub-block
-                // position (row c, column r) and plane element
-                // (by*8 + oy + c, bx*8 + ox + r).
-                int ex = bx * 8 + ox, ey = by * 8 + oy;
-                idct4_1d(res0[0], res0[1], res0[2], res0[3], t0, t1, t2, t3);
-                planeSet16(store, (ey + 0) * size + ex + 0,
-                           clamp16((t0 + kIdctRound2) >> kIdctShift2));
-                planeSet16(store, (ey + 1) * size + ex + 0,
-                           clamp16((t1 + kIdctRound2) >> kIdctShift2));
-                planeSet16(store, (ey + 2) * size + ex + 0,
-                           clamp16((t2 + kIdctRound2) >> kIdctShift2));
-                planeSet16(store, (ey + 3) * size + ex + 0,
-                           clamp16((t3 + kIdctRound2) >> kIdctShift2));
-                idct4_1d(res0[4], res0[5], res0[6], res0[7], t0, t1, t2, t3);
-                planeSet16(store, (ey + 0) * size + ex + 1,
-                           clamp16((t0 + kIdctRound2) >> kIdctShift2));
-                planeSet16(store, (ey + 1) * size + ex + 1,
-                           clamp16((t1 + kIdctRound2) >> kIdctShift2));
-                planeSet16(store, (ey + 2) * size + ex + 1,
-                           clamp16((t2 + kIdctRound2) >> kIdctShift2));
-                planeSet16(store, (ey + 3) * size + ex + 1,
-                           clamp16((t3 + kIdctRound2) >> kIdctShift2));
-                idct4_1d(res1[0], res1[1], res1[2], res1[3], t0, t1, t2, t3);
-                planeSet16(store, (ey + 0) * size + ex + 2,
-                           clamp16((t0 + kIdctRound2) >> kIdctShift2));
-                planeSet16(store, (ey + 1) * size + ex + 2,
-                           clamp16((t1 + kIdctRound2) >> kIdctShift2));
-                planeSet16(store, (ey + 2) * size + ex + 2,
-                           clamp16((t2 + kIdctRound2) >> kIdctShift2));
-                planeSet16(store, (ey + 3) * size + ex + 2,
-                           clamp16((t3 + kIdctRound2) >> kIdctShift2));
-                idct4_1d(res1[4], res1[5], res1[6], res1[7], t0, t1, t2, t3);
-                planeSet16(store, (ey + 0) * size + ex + 3,
-                           clamp16((t0 + kIdctRound2) >> kIdctShift2));
-                planeSet16(store, (ey + 1) * size + ex + 3,
-                           clamp16((t1 + kIdctRound2) >> kIdctShift2));
-                planeSet16(store, (ey + 2) * size + ex + 3,
-                           clamp16((t2 + kIdctRound2) >> kIdctShift2));
-                planeSet16(store, (ey + 3) * size + ex + 3,
-                           clamp16((t3 + kIdctRound2) >> kIdctShift2));
+                                     wbase, ox, 0, 15), t0, t1, t2, t3);
+                a3 = clamp16(((hi ? t2 : t0) + kIdctRound1) >> kIdctShift1);
+                b3 = clamp16(((hi ? t3 : t1) + kIdctRound1) >> kIdctShift1);
+                idct4_1d(a0, a1, a2, a3, t0, t1, t2, t3);
+                res0[0] = clamp16((t0 + kIdctRound2) >> kIdctShift2);
+                res0[1] = clamp16((t1 + kIdctRound2) >> kIdctShift2);
+                res0[2] = clamp16((t2 + kIdctRound2) >> kIdctShift2);
+                res0[3] = clamp16((t3 + kIdctRound2) >> kIdctShift2);
+                idct4_1d(b0, b1, b2, b3, t0, t1, t2, t3);
+                res1[0] = clamp16((t0 + kIdctRound2) >> kIdctShift2);
+                res1[1] = clamp16((t1 + kIdctRound2) >> kIdctShift2);
+                res1[2] = clamp16((t2 + kIdctRound2) >> kIdctShift2);
+                res1[3] = clamp16((t3 + kIdctRound2) >> kIdctShift2);
+                // sub-block row 1, block rows 4..7
+                idct4_1d(dqCoefSplit(blockBase, blockScan, blockLen, planeQp,
+                                     wbase, ox, 4, 0),
+                         dqCoefSplit(blockBase, blockScan, blockLen, planeQp,
+                                     wbase, ox, 4, 1),
+                         dqCoefSplit(blockBase, blockScan, blockLen, planeQp,
+                                     wbase, ox, 4, 2),
+                         dqCoefSplit(blockBase, blockScan, blockLen, planeQp,
+                                     wbase, ox, 4, 3), t0, t1, t2, t3);
+                a0 = clamp16(((hi ? t2 : t0) + kIdctRound1) >> kIdctShift1);
+                b0 = clamp16(((hi ? t3 : t1) + kIdctRound1) >> kIdctShift1);
+                idct4_1d(dqCoefSplit(blockBase, blockScan, blockLen, planeQp,
+                                     wbase, ox, 4, 4),
+                         dqCoefSplit(blockBase, blockScan, blockLen, planeQp,
+                                     wbase, ox, 4, 5),
+                         dqCoefSplit(blockBase, blockScan, blockLen, planeQp,
+                                     wbase, ox, 4, 6),
+                         dqCoefSplit(blockBase, blockScan, blockLen, planeQp,
+                                     wbase, ox, 4, 7), t0, t1, t2, t3);
+                a1 = clamp16(((hi ? t2 : t0) + kIdctRound1) >> kIdctShift1);
+                b1 = clamp16(((hi ? t3 : t1) + kIdctRound1) >> kIdctShift1);
+                idct4_1d(dqCoefSplit(blockBase, blockScan, blockLen, planeQp,
+                                     wbase, ox, 4, 8),
+                         dqCoefSplit(blockBase, blockScan, blockLen, planeQp,
+                                     wbase, ox, 4, 9),
+                         dqCoefSplit(blockBase, blockScan, blockLen, planeQp,
+                                     wbase, ox, 4, 10),
+                         dqCoefSplit(blockBase, blockScan, blockLen, planeQp,
+                                     wbase, ox, 4, 11), t0, t1, t2, t3);
+                a2 = clamp16(((hi ? t2 : t0) + kIdctRound1) >> kIdctShift1);
+                b2 = clamp16(((hi ? t3 : t1) + kIdctRound1) >> kIdctShift1);
+                idct4_1d(dqCoefSplit(blockBase, blockScan, blockLen, planeQp,
+                                     wbase, ox, 4, 12),
+                         dqCoefSplit(blockBase, blockScan, blockLen, planeQp,
+                                     wbase, ox, 4, 13),
+                         dqCoefSplit(blockBase, blockScan, blockLen, planeQp,
+                                     wbase, ox, 4, 14),
+                         dqCoefSplit(blockBase, blockScan, blockLen, planeQp,
+                                     wbase, ox, 4, 15), t0, t1, t2, t3);
+                a3 = clamp16(((hi ? t2 : t0) + kIdctRound1) >> kIdctShift1);
+                b3 = clamp16(((hi ? t3 : t1) + kIdctRound1) >> kIdctShift1);
+                idct4_1d(a0, a1, a2, a3, t0, t1, t2, t3);
+                res0[4] = clamp16((t0 + kIdctRound2) >> kIdctShift2);
+                res0[5] = clamp16((t1 + kIdctRound2) >> kIdctShift2);
+                res0[6] = clamp16((t2 + kIdctRound2) >> kIdctShift2);
+                res0[7] = clamp16((t3 + kIdctRound2) >> kIdctShift2);
+                idct4_1d(b0, b1, b2, b3, t0, t1, t2, t3);
+                res1[4] = clamp16((t0 + kIdctRound2) >> kIdctShift2);
+                res1[5] = clamp16((t1 + kIdctRound2) >> kIdctShift2);
+                res1[6] = clamp16((t2 + kIdctRound2) >> kIdctShift2);
+                res1[7] = clamp16((t3 + kIdctRound2) >> kIdctShift2);
+            
             } else if (coded) {
                 int y0, y1, y2, y3, y4, y5, y6, y7;
                 for (int hf = 0; hf < 2; ++hf) {
@@ -1067,20 +1102,8 @@ void main() {
                 }
             }
             barrier();
-            // [minor 6] A split block's residual is already complete and in
-            // the plane slot; this thread only has to pick out the two
-            // columns the prediction phase expects it to carry.
-            if (coded && splitFlag != 0) {
-                int col0 = bx * 8 + 2 * sub;
-                for (int c = 0; c < 8; ++c) {
-                    int e = (by * 8 + c) * size + col0;
-                    uint w = sPlane[store + (e >> 1)];
-                    res0[c] = unpack16(w, 0);
-                    res1[c] = unpack16(w, 1);
-                }
-            }
             // Column pass: rows 2*sub, 2*sub+1 of the transposed block.
-            if (coded && splitFlag == 0) {
+            if (coded && (kSplitTool == 0 || splitFlag == 0)) {
                 int y0, y1, y2, y3, y4, y5, y6, y7;
                 for (int hf = 0; hf < 2; ++hf) {
                     int r = (sub << 1) + hf;
@@ -1247,8 +1270,8 @@ void main() {
                     // predictors read, and then evaluated per sample.
                     int cflAlpha = 0, cflBaseL = 0, cflBaseC = 0;
                     if (blockMode == kIntraCfl)
-                        cflFit(A, L, lumaStore, lumaSize, cflF, x0, y0,
-                               cflAlpha, cflBaseL, cflBaseC);
+                        cflFit(store, size, nb, wbx, wby, lumaStore, lumaSize,
+                               cflF, x0, y0, cflAlpha, cflBaseL, cflBaseC);
                     for (int h = 0; h < 2; ++h) {
                         int c = 2 * jg + h;
                         int yy = y0 + c;
