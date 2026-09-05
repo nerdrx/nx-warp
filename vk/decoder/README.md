@@ -1196,6 +1196,74 @@ table is the directional wavefront, which that row has switched off.
 Zero mismatching samples on the 152-stream sweep at every point in that table,
 on the Adreno 650, on RADV and on lavapipe.
 
+#### The live VR shape: 1088x1088, 289 tiles, 22-49 KB a frame
+
+Every number above is a 2048x2048 frame of 2048 tiles carrying 600-900 bytes
+each. **The shape a headset actually streams is nothing like it**, and the
+conclusions do not carry across. A WiVRn eye is 1088x1088 -- 17x17 = 289
+tiles -- and a frame of live VR content at QP 28-36 is 22-49 KB, i.e. 75 to
+170 bytes per tile, a fifth of the density this document was tuned on.
+
+Measured with `nxvc-vkdec --repeat`, best of 12, on the Pico 4 while another
+process held the GPU, so these are contended and pessimistic. Streams from
+`nxv-enc --nsub 3 --intra-dir off`, which is the shape the Vulkan encoder
+emits (`nxvc_vk_encoder`'s config fixes `nsub_log2 = 3` and `intra_dir =
+false`):
+
+| payload | Pass A | Pass B | GPU | wall | host parse+submit |
+|---|---|---|---|---|---|
+| 22.3 KB (QP 51) | 3.33 | 2.56 | 5.90 | 6.54 | 0.12 |
+| 32.3 KB (QP 44) | 5.33 | 3.55 | 8.99 | 9.44 | 0.17 |
+| 48.6 KB (QP 40) | 7.96 | 3.92 | 12.02 | 12.92 | 0.14 |
+
+**Pass A is 0.20 ms per KB of payload plus about 0.4 ms; Pass B is 2.5-4 ms
+and barely moves.** The host's own share -- parsing every tile header,
+building 289 descriptors and records, recording the command buffer -- is
+0.15 ms and is not worth looking at. A frame at the live bitrate is a 6-13 ms
+GPU frame, which is two eyes inside 26 ms and not inside 11.1.
+
+Three things this says that the 2048-tile table does not:
+
+* **A live decode wall much above 13 ms is not the codec.** A wrapper that
+  reports 47 ms for a 47 KB frame is spending about 34 ms somewhere else --
+  the queue it shares with the renderer, its own fence round trips, or the
+  other decoder instances on that queue.
+* **`INTRA_DIR` is catastrophic at this shape and nearly free to turn off.**
+  The same content, same QP, same tile count, `--intra-dir on` against
+  `--intra-dir off`:
+
+  | | Pass B, dir off | Pass B, dir on | bits |
+  |---|---|---|---|
+  | QP 51 | **2.56 ms** | 68.9 ms | 22.29 -> 22.31 KB |
+  | QP 44 | **3.66 ms** | 315 ms | 32.34 -> 30.06 KB |
+
+  87x of Pass B for 0 % of the rate at QP 51 and 7 % at QP 44. The Vulkan
+  encoder hard-codes it off; the reference encoder does not, and WiVRn's
+  `intra-dir` option defaults to **true**, so a session on the `ref` backend
+  is one config key away from a 300 ms frame.
+* **`ENTROPY_LITE` is a regression here.** See below.
+
+##### `ENTROPY_LITE` at 289 tiles, and why the 7.5x does not survive
+
+Tool bit 30 is now offered (`kToolsSupported`), decodes byte-identically to
+`ref/` on the Adreno 650, RADV and lavapipe, and **should stay off for VR**:
+
+| 1088x1088, 289 tiles | rANS payload | rANS Pass A | Lite payload | Lite Pass A |
+|---|---|---|---|---|
+| QP 51 | 22.3 KB | **3.33 ms** | 18.9 KB | 6.75 ms |
+| QP 44 | 32.3 KB | **6.06 ms** | 36.5 KB | 7.84 ms |
+
+`docs/TOOLBITS.md` 8 prices the tool at 7.5x of Pass A, and that measurement
+is not wrong -- it is 2048 tiles at 911 bytes each, where the rANS chain is
+long and Lite's fixed cost is amortised. **Lite's cost follows the tile AREA,
+not the bit count**: one workgroup per tile computes bit positions across the
+tile's whole coefficient region whether or not the coefficients are there. At
+75-170 bytes a tile the rANS chain is already short and there is nothing left
+for the tool to remove, so all that is left is its own floor -- about
+6.7 ms for 289 tiles either way -- plus the bits it costs.
+
+The lever it was meant to be is real; it is a lever for dense frames.
+
 #### The minor-6 realignment, and what it cost before it was paid back
 
 The tools of bitstream minor 6 landed correct on all three ICDs and **slow on
@@ -2014,6 +2082,25 @@ first.
 
 ## Open issues
 
+* **The live decode wall is about 3.5x the codec's own GPU time**, and the
+  gap is not in `nxvc`. A 48.6 KB 1088x1088 frame is 12.0 ms of GPU and
+  12.9 ms of wall standalone on the Pico 4; the WiVRn client reports ~47 ms
+  for the same shape. The suspects are all on its side of the ABI: one
+  graphics queue shared with the renderer and with the other eye's decoder,
+  and two host fence round trips per frame because this driver refuses a
+  timeline semaphore. `NXVC_VKD_SUBMIT_SIGNAL_BINARY` removes one of the two
+  -- the client can now wait on a binary semaphore between the decode and its
+  own copy instead of on the host. A command-buffer ring in `nxvc`, which
+  "One frame in flight" already asks for, is what would let the two eyes
+  overlap at all.
+* **`nxv-enc`'s default `--nsub auto` picks ONE rANS lane per tile at high
+  QP**, which is a 4x Pass A regression on the Adreno for a 30 % rate saving:
+  a 20 KB QP 51 frame reads Pass A 13.4 ms at `ns0` against 3.6 ms at
+  `--nsub 3`. One lane per tile means 289 lanes for the whole frame and a
+  serial walk of the tile in each. The GPU encoder fixes `nsub_log2 = 3` and
+  is not affected; anything driving the reference encoder for a headset must
+  pass `--nsub 3` explicitly. `NSUB_VAR` should probably be renegotiated as a
+  decoder-declined tool rather than an encoder-chosen one.
 * **`XFORM_LARGE` is wrong on the Adreno 650**, and it is the only tool this
   decoder offers that is not correct on all three ICDs. The 24 conformance
   streams that reach the 16x16 / 32x32 module come back with most of the
