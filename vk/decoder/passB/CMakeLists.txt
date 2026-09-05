@@ -10,6 +10,15 @@ if(NOT NXVW_GLSLC)
   message(FATAL_ERROR "glslc not found (needed for vk/decoder/passB)")
 endif()
 
+# The tree's one shader-build rule and the one Adreno-safe pass list, rather
+# than a local copy of either.  vk/decoder was the last component still
+# carrying its own gen_spv.cmake; the pass list in it was identical, and this
+# is what keeps it that way.
+set(NXVW_PASSB_GEN_SPV
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../common/cmake/nxvc_gen_spv.cmake)
+set(NXVW_PASSB_SPV_PASSES_CMAKE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../common/cmake/NxvcShaderPasses.cmake)
+
 set(NXVW_PASSB_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(NXVW_PASSB_GEN ${CMAKE_CURRENT_BINARY_DIR}/generated)
 file(MAKE_DIRECTORY ${NXVW_PASSB_GEN})
@@ -26,13 +35,14 @@ add_custom_command(
           -DSRC=${NXVW_PASSB_DIR}/reconstruct.comp
           -DOUT=${NXVW_PASSB_SPV}
           -DNAME=reconstruct
-          -DDEFINES=-DNXVW_INTRA_DIR=1
+          -DDEFS=-DNXVW_INTRA_DIR=1
           -DINCDIR=${NXVW_PASSB_DIR}
-          -P ${NXVW_PASSB_DIR}/cmake/gen_spv.cmake
+          -DSTYLE=plain
+          -P ${NXVW_PASSB_GEN_SPV}
   DEPENDS ${NXVW_PASSB_DIR}/reconstruct.comp
           ${NXVW_PASSB_DIR}/syntax_constants.h
           ${NXVW_PASSB_DIR}/passB_layout.h
-          ${NXVW_PASSB_DIR}/cmake/gen_spv.cmake
+          ${NXVW_PASSB_GEN_SPV} ${NXVW_PASSB_SPV_PASSES_CMAKE}
   COMMENT "glslc reconstruct.comp -> reconstruct.spv.h"
   VERBATIM)
 add_custom_command(
@@ -42,13 +52,14 @@ add_custom_command(
           -DSRC=${NXVW_PASSB_DIR}/reconstruct.comp
           -DOUT=${NXVW_PASSB_SPV_V1}
           -DNAME=reconstruct_v1
-          -DDEFINES=-DNXVW_INTRA_DIR=0
+          -DDEFS=-DNXVW_INTRA_DIR=0
           -DINCDIR=${NXVW_PASSB_DIR}
-          -P ${NXVW_PASSB_DIR}/cmake/gen_spv.cmake
+          -DSTYLE=plain
+          -P ${NXVW_PASSB_GEN_SPV}
   DEPENDS ${NXVW_PASSB_DIR}/reconstruct.comp
           ${NXVW_PASSB_DIR}/syntax_constants.h
           ${NXVW_PASSB_DIR}/passB_layout.h
-          ${NXVW_PASSB_DIR}/cmake/gen_spv.cmake
+          ${NXVW_PASSB_GEN_SPV} ${NXVW_PASSB_SPV_PASSES_CMAKE}
   COMMENT "glslc reconstruct.comp (v1) -> reconstruct_v1.spv.h"
   VERBATIM)
 add_custom_target(nxvw_passB_spv DEPENDS ${NXVW_PASSB_SPV} ${NXVW_PASSB_SPV_V1})

@@ -11,6 +11,13 @@ if(NOT NXVW_PASSA_GLSLC)
   message(FATAL_ERROR "glslc not found (needed for vk/decoder/passA)")
 endif()
 
+# The tree's one shader-build rule and the one Adreno-safe pass list; see
+# vk/common/cmake/NxvcShaderPasses.cmake for why `glslc -O` is never used.
+set(NXVW_PASSA_GEN_SPV
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../common/cmake/nxvc_gen_spv.cmake)
+set(NXVW_PASSA_SPV_PASSES_CMAKE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../common/cmake/NxvcShaderPasses.cmake)
+
 set(NXVW_PASSA_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(NXVW_PASSA_GEN ${CMAKE_CURRENT_BINARY_DIR}/generated)
 file(MAKE_DIRECTORY ${NXVW_PASSA_GEN})
@@ -36,11 +43,12 @@ add_custom_command(
           -DOUT=${NXVW_PASSA_SPV}
           -DNAME=rans_decode
           -DINCDIR=${NXVW_PASSA_DIR}
-          -DTPG=${NXVW_PASSA_TPG}
-          -P ${NXVW_PASSA_DIR}/cmake/gen_spv.cmake
+          -DDEFS=-DNXVW_PASSA_TILES_PER_GROUP=${NXVW_PASSA_TPG}
+          -DSTYLE=plain
+          -P ${NXVW_PASSA_GEN_SPV}
   DEPENDS ${NXVW_PASSA_DIR}/rans_decode.comp
           ${NXVW_PASSA_DIR}/syntax_constants.h
-          ${NXVW_PASSA_DIR}/cmake/gen_spv.cmake
+          ${NXVW_PASSA_GEN_SPV} ${NXVW_PASSA_SPV_PASSES_CMAKE}
   COMMENT "glslc rans_decode.comp -> rans_decode.spv.h"
   VERBATIM)
 add_custom_target(nxvw_passA_spv DEPENDS ${NXVW_PASSA_SPV})
