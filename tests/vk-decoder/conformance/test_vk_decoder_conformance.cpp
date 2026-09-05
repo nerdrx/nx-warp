@@ -287,7 +287,11 @@ const char *vkd_status_token(nxvc_vkd_status st);
 constexpr uint64_t kPhase1Tools =
     (1ull << 0) | (1ull << 1) | (1ull << 2) | (1ull << 3) | (1ull << 4) |
     (1ull << 5) | (1ull << 6) | (1ull << 7) | (1ull << 8) | (1ull << 9) |
-    (1ull << 17) | (1ull << 20) | (1ull << 21) | (1ull << 22);
+    (1ull << 17) | (1ull << 20) | (1ull << 21) | (1ull << 22) |
+    // [xfast] the multiply-free 8x8 transform (SYNTAX.md 6.7).  The Vulkan
+    // decoder implements it, so its vectors are decoded and compared like any
+    // other Phase 1 vector rather than being counted as a refusal.
+    (1ull << 28);
 
 // docs/SYNTAX.md 11: `tools` is a u64 at byte 32 of the 64-byte stream header.
 bool stream_needs_phase2(const std::vector<uint8_t> &s, uint64_t &tools) {
@@ -477,6 +481,8 @@ struct Case {
     int dir_layer = -1;
     int ctx_v2 = -1;
     int sign_hide = -1;
+    // [xfast] the multiply-free 8x8 transform, stream tool bit 28.
+    int xform_fast = 0;
 };
 
 bool encode_case(const Case &c, std::vector<uint8_t> &stream,
@@ -493,6 +499,7 @@ bool encode_case(const Case &c, std::vector<uint8_t> &stream,
     cfg.nsub_log2 = (uint32_t)c.nsub;
     cfg.custom_tables = (uint32_t)c.tables;
     cfg.tile_chroma420 = (uint32_t)c.t420;
+    cfg.xform_fast = (uint32_t)c.xform_fast;
     cfg.color_transform = (uint32_t)c.ct;
     cfg.color_space =
         c.ct ? (uint32_t)NXVC_CS_RGB : (uint32_t)NXVC_CS_YCBCR_709_LIMITED;
@@ -635,6 +642,32 @@ std::vector<Case> synthetic_cases(bool quick) {
     v3("syn_sdh_only_420", 0, 24, 0, 0, 0, 1);
     v3("syn_dir_layer_420", 0, 24, 1, 1, 0, 0);
     v3("syn_dir_layer_ctxv2_444", 1, 24, 1, 1, 1, 1);
+    // [xfast] The multiply-free transform (tool bit 28) against the same
+    // shapes: both chroma formats, the ends of the quantizer table, the v2
+    // intra tools on and off, cycling res_level, transform skip (which runs
+    // no transform and must therefore be unaffected by the bit), a coded
+    // alpha plane and custom tables.
+    auto xf = [&](const char *name, int c444, int qp, int kind, int tsk,
+                  int res_pat, int alpha, int tables, int matrix, int dir) {
+        Case c{name, 192, 128, c444, kind, qp, 0, alpha, tsk, 3, tables, 0,
+               0,    matrix, res_pat, 0, 1};
+        c.intra_dir = dir;
+        c.dir_layer = 0;
+        c.ctx_v2 = dir;
+        c.sign_hide = dir;
+        c.xform_fast = 1;
+        v.push_back(c);
+    };
+    xf("syn_xfast_qp00_420", 0,  0, 1, 0, 0, 0, 0, 1, 0);
+    xf("syn_xfast_qp16_444", 1, 16, 1, 0, 0, 0, 0, 1, 0);
+    xf("syn_xfast_qp24_420", 0, 24, 1, 0, 0, 0, 0, 1, 0);
+    xf("syn_xfast_qp63_wm3", 0, 63, 4, 0, 0, 0, 0, 3, 0);
+    xf("syn_xfast_tskip_420", 0, 16, 2, 1, 0, 0, 0, 0, 0);
+    xf("syn_xfast_res_cycle", 0, 20, 1, 0, 1, 0, 0, 1, 0);
+    xf("syn_xfast_alpha444", 1, 24, 2, 0, 0, 1, 0, 1, 0);
+    xf("syn_xfast_v2tools_444", 1, 20, 1, 0, 0, 0, 1, 1, 1);
+    xf("syn_xfast_v2tools_420", 0, 28, 1, 0, 0, 0, 0, 2, 1);
+
     if (!quick) {
         // The wavefront meeting the other per-tile shape knobs: cycling
         // res_level (4x4 and 2x2 block planes as well as 8x8) and transform

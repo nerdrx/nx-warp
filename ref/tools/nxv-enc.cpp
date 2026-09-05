@@ -76,6 +76,7 @@ static void usage() {
         "  --intra-dir-cand N   modes RD-checked per block (default 2)\n"
         "  --ctx v1|v2          12 or 16 entropy contexts (tool 21)\n"
         "  --no-sign-hide       code every sign (default: hide one per unit)\n"
+        "  --xform-fast         multiply-free 8x8 transform (tool 28)\n"
         "  --chroma-qp-off N    chroma QP offset\n"
         "  --custom-tables      derive and transmit probability tables\n"
         "  --tile-420           code 4:2:0 tiles inside a 4:4:4 stream\n"
@@ -122,6 +123,7 @@ int main(int argc, char **argv) {
     // These mirror nxvc_config_default(): the v2 intra tools are on.
     int intra_dir = 1, intra_dir_layer = 0, ctx_v2 = 1, dir_cand = 0;
     int sign_hide = 1;
+    int xform_fast = 0;
     int inter = 0, eyes = 1, intra_period = 180, ref_sel = 0, stereo = 0;
     int mv_range = 16, skip_thresh = 0, mode_lambda = 0;
     double fov_h = 95.0, fov_v = 95.0;
@@ -201,6 +203,8 @@ int main(int argc, char **argv) {
         else if (a == "--intra-dir-cand") dir_cand = std::atoi(val());
         else if (a == "--sign-hide") sign_hide = 1;
         else if (a == "--no-sign-hide") sign_hide = 0;
+        else if (a == "--xform-fast") xform_fast = 1;
+        else if (a == "--no-xform-fast") xform_fast = 0;
         else if (a == "--ctx") {
             std::string v = val();
             if (v == "v2") ctx_v2 = 1;
@@ -347,6 +351,7 @@ int main(int argc, char **argv) {
     cfg.intra_dir_cand = (uint32_t)dir_cand;
     cfg.ctx_v2 = (uint32_t)ctx_v2;
     cfg.sign_hide = (uint32_t)sign_hide;
+    cfg.xform_fast = (uint32_t)xform_fast;
     cfg.chroma_qp_off = chroma_qp_off;
     cfg.lossless = (uint32_t)lossless;
     cfg.transform_skip = (uint32_t)tskip;

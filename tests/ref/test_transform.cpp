@@ -152,5 +152,127 @@ int main() {
         for (int i = 0; i < 64; ++i) CHECK(down[i] == 200, "down[%d]=%d", i, down[i]);
     }
 
+    // ---------------------------------------------------- XFORM_FAST (6.7)
+    // 9. The multiply-free basis is exactly the H.264 8x8 one, exactly
+    //    orthogonal, with the three column norms the scale table was built
+    //    from: 8, 289/32 and 5 (in eighths: the columns below).
+    {
+        // 8 * M[x][k], the inverse graph's basis columns.
+        static const int B[8][8] = {
+            { 8, 12,  8, 10,  8,  6,  4,  3},
+            { 8, 10,  4, -3, -8,-12, -8, -6},
+            { 8,  6, -4,-12, -8,  3,  8, 10},
+            { 8,  3, -8, -6,  8, 10, -4,-12},
+            { 8, -3, -8,  6,  8,-10, -4, 12},
+            { 8, -6, -4, 12, -8, -3,  8,-10},
+            { 8,-10,  4,  3, -8, 12, -8,  6},
+            { 8,-12,  8,-10,  8, -6,  4, -3},
+        };
+        // A coefficient of 2048 at (0, k) makes row 0 of the output
+        // 2048/8 * M[x][k] = 32 * B[x][k], exactly: every internal shift of
+        // the graph divides a multiple of its divisor, and 2048 << 3 times
+        // the largest basis entry (1.5) stays inside the pass-1 int16 clamp.
+        for (int k = 0; k < 8; ++k) {
+            i32 c[64] = {0}, out[64];
+            c[k] = 2048;
+            idct8x8_fast(c, out);
+            for (int x = 0; x < 8; ++x)
+                CHECK(out[x] == 32 * B[x][k], "basis %d[%d] = %d, want %d", k,
+                      x, out[x], 32 * B[x][k]);
+        }
+        // Orthogonality and the norms, straight off the table.
+        const int want[8] = {8 * 64, 289 * 2, 5 * 64, 289 * 2,
+                             8 * 64, 289 * 2, 5 * 64, 289 * 2};  // 64 * norm^2
+        for (int k = 0; k < 8; ++k) {
+            int nk = 0;
+            for (int n = 0; n < 8; ++n) nk += B[n][k] * B[n][k];
+            CHECK(nk == want[k], "basis %d squared norm %d, want %d", k, nk,
+                  want[k]);
+            for (int j = 0; j < 8; ++j) {
+                if (j == k) continue;
+                int g = 0;
+                for (int n = 0; n < 8; ++n) g += B[n][k] * B[n][j];
+                CHECK(g == 0, "basis %d and %d not orthogonal (%d)", k, j, g);
+            }
+        }
+        // The scale table is round(1024 * 8 / (g_u * g_v)) with g^2 = want/64.
+        for (int u = 0; u < 8; ++u)
+            for (int v = 0; v < 8; ++v) {
+                double gu = std::sqrt(want[u] / 64.0), gv = std::sqrt(want[v] / 64.0);
+                int e = (int)std::lround(1024.0 * 8.0 / (gu * gv));
+                CHECK(kXfsScale[u * 8 + v] == e, "scale[%d][%d] = %d, want %d",
+                      u, v, (int)kXfsScale[u * 8 + v], e);
+            }
+    }
+
+    // 10. Unit gain: a dequantized DC of 1024 reconstructs a flat 128, the
+    //     same convention the Loeffler path uses.
+    {
+        i32 c[64] = {0}, out[64];
+        c[0] = 1024;
+        idct8x8_fast(c, out);
+        for (int i = 0; i < 64; ++i) CHECK(out[i] == 128, "flat[%d]=%d", i, out[i]);
+    }
+
+    // 11. Forward-inverse round trip on random residuals: the multiply-free
+    //     pair is at least as accurate as the Loeffler pair, which SYNTAX 6.3
+    //     documents at an RMS of 0.347 and a maximum of 2 LSB.
+    {
+        u32 st = 12345;
+        auto rnd = [&]() { st = st * 1103515245u + 12345u; return (i32)((st >> 16) & 0x7fff); };
+        double sse = 0;
+        i32 worst = 0;
+        const int trials = 2000;
+        for (int t = 0; t < trials; ++t) {
+            i32 in[64], out[64];
+            i16 co[64];
+            for (int i = 0; i < 64; ++i) in[i] = rnd() % 511 - 255;
+            fdct8x8_fast(in, co);
+            i32 dq[64];
+            for (int i = 0; i < 64; ++i) dq[i] = co[i];
+            idct8x8_fast(dq, out);
+            for (int i = 0; i < 64; ++i) {
+                i32 e = out[i] - in[i];
+                if (std::abs(e) > worst) worst = std::abs(e);
+                sse += (double)e * e;
+            }
+        }
+        double rms = std::sqrt(sse / (trials * 64.0));
+        CHECK(worst <= 2, "round-trip max error %d", worst);
+        CHECK(rms < 0.35, "round-trip RMS %.4f", rms);
+    }
+
+    // 12. The dequantizer's step clamp (SYNTAX 6.7): it binds only at QP 62
+    //     and 63 with a weight of 28 or more at the four (u,v) in {2,6}^2
+    //     positions, and q * t stays inside int32 everywhere.
+    {
+        int clamped = 0;
+        for (int qp = 0; qp < 64; ++qp)
+            for (int w = 1; w <= 32; ++w)
+                for (int i = 0; i < 64; ++i) {
+                    i64 raw = ((i64)kQStep[qp] * w * kXfsScale[i] + 8192) >> 14;
+                    i32 t = raw > kXfsTMax ? kXfsTMax : (i32)raw;
+                    if (raw > kXfsTMax) {
+                        ++clamped;
+                        CHECK(qp >= 62, "clamp at qp %d", qp);
+                    }
+                    CHECK((i64)32767 * t + 8 < 2147483647LL,
+                          "q*t overflows at qp %d w %d i %d", qp, w, i);
+                }
+        CHECK(clamped == 7 * 4, "clamp binds %d times, expected 28", clamped);
+    }
+
+    // 13. A scale of 1024 reduces to the Loeffler step exactly, which is what
+    //     makes positions (0,0), (0,4), (4,0) and (4,4) shared between the
+    //     two paths.
+    {
+        for (int qp = 0; qp < 64; ++qp)
+            for (int w = 1; w <= 32; ++w) {
+                i32 a = (kQStep[qp] * w + 8) >> 4;
+                i32 b = (kQStep[qp] * w * 1024 + 8192) >> 14;
+                CHECK(a == b, "scale-1024 step differs at qp %d w %d", qp, w);
+            }
+    }
+
     return test_report("test_transform");
 }

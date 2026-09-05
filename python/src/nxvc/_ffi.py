@@ -193,6 +193,9 @@ class Tool:
     #: Annex D D-5 names this "tool bit 20"; bit 20 was already WM_ID in
     #: syntax v1.2, so the reference places it at the first free bit.
     FILTER_CATMULLROM = 1 << 23
+    #: The multiply-free 8x8 transform (SYNTAX.md 6.7).  Bits 24 to 27 are
+    #: left free for packages landing on other branches.
+    XFORM_FAST = 1 << 28
 
     _NAMES = [
         (1 << 0, "INTRA_DC_PLANE"),
@@ -219,10 +222,18 @@ class Tool:
         (1 << 21, "CTX_V2"),
         (1 << 22, "SIGN_HIDE"),
         (1 << 23, "FILTER_CATMULLROM"),
+        (1 << 28, "XFORM_FAST"),
     ]
 
     #: The first tool bit that is reserved and must be zero (SYNTAX.md 2.3).
+    #: Kept for callers that only need the boundary; the set of reserved bits
+    #: is no longer a suffix, so :data:`RESERVED_MASK` is the exact test.
     RESERVED_FROM = 24
+
+    #: Every tool bit that is reserved and must be zero (SYNTAX.md 2.3): 24 to
+    #: 27 and 29 to 63.  Bit 28 is XFORM_FAST, placed above the bits other
+    #: packages have claimed.
+    RESERVED_MASK = (((1 << 64) - 1) >> 24 << 24) & ~(1 << 28)
 
     @classmethod
     def names(cls, mask: int) -> list[str]:
@@ -254,6 +265,7 @@ TOOLS_SUPPORTED = (
     | Tool.INTRA_DIR
     | Tool.CTX_V2
     | Tool.SIGN_HIDE
+    | Tool.XFORM_FAST
     | Tool.INTER
     | Tool.WARP
     | Tool.STEREO
@@ -342,6 +354,7 @@ class nxvc_config(Structure):
         ("mv_range", c_uint32),
         ("skip_thresh", c_uint32),
         ("mode_lambda_q8", c_uint32),
+        ("xform_fast", c_uint32),
     ]
 
 

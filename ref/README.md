@@ -227,6 +227,7 @@ the value a GPU decoder should assume as the maximum).
 | `../tests/ref/vectors.cpp` | generates and checks the conformance vectors |
 | `../tests/ref/test_saturate.cpp` | range safety of the normative decode path |
 | `RESULTS-intra.md` | the Phase 1 intra measurements, in full |
+| `RESULTS-xform-fast.md` | `XFORM_FAST` (tool bit 28): a multiply-free 8x8 transform, its rate cost and its decoder cost |
 
 The per-lane syntax state machine in `entropy.cpp` is the piece the Vulkan Pass A
 shader mirrors: one `LaneMachine` per rANS lane, driven identically by the

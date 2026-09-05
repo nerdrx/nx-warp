@@ -34,6 +34,10 @@ struct PassBInput {
     // [v3] the wavefront schedule the stream was encoded under, kDirSched* in
     // syntax_constants.h.  Matches specialization constant 2 of the kernel.
     int dirSched = 0;
+    // [xfast] the stream's XFORM_FAST tool bit (SYNTAX 6.7).  Matches
+    // specialization constant 5 of the kernel: it is a bitstream property, so
+    // the model and the pipeline must be told the same thing.
+    int xformFast = 0;
 };
 
 // RGBA8: 4 bytes per pixel, R,G,B,A, tightly packed, imageW*imageH pixels.
@@ -52,7 +56,9 @@ void passB_reconstruct_ycbcr420(const PassBInput &in, uint8_t *luma,
 // --- primitives, exposed so the conformance test can compare them one by one
 // with the reference implementation in ref/src/transform.cpp.
 void model_idct8x8(const int src[64], int dst[64]);
+void model_idct8x8_fast(const int src[64], int dst[64]);
 int model_dequant_step(int qp, int w);
+int model_dequant_step_x(int qp, int w, int pos, int xformFast);
 int model_dequant(int q, int t);
 int model_bilinear_q4(const int *src, int w, int h, int stride, int sx, int sy);
 

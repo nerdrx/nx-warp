@@ -156,6 +156,7 @@ interleaved UV.
 | 21 | `CTX_V2` | the 16-context entropy model (section 9.3) |
 | 22 | `SIGN_HIDE` | sign data hiding (section 9.7) |
 | 23 | `FILTER_CATMULL_ROM` | Catmull-Rom interpolation in the warp instead of bilinear. **Not defined for version 1** |
+| 28 | `XFORM_FAST` | the multiply-free 8x8 transform (section 6.7) |
 
 Bits 17, 21 and 22 are independent: any subset may be set. `SIGN_HIDE` is
 mutually exclusive with `LOSSLESS` (bit 5) -- hiding a sign spends one level
@@ -173,7 +174,15 @@ MUST refuse a stream that sets either, with a `VERSION` status. Because bit 23
 is refused, **every conforming version 1 stream is bilinear**, in every
 profile, and `profile` selects nothing (section 13.4).
 
-Bits 24-63 are reserved and must be zero. Capability negotiation is an
+Bits 24-27 and 29-63 are reserved and must be zero. (24, 25 and 26 are
+claimed by packages landing on other branches, and 27 by the 16x16/32x32
+transform package; `XFORM_FAST` takes 28 so that it collides with none of
+them.)
+
+`XFORM_FAST` (bit 28) is **mutually exclusive with `LOSSLESS`** (bit 5): a
+lossless stream is transform skip on every block, so no 8x8 transform ever
+runs and the bit would select between two things that never happen. A stream
+setting both is `BITSTREAM`. It is independent of every other bit. Capability negotiation is an
 intersection: the sender only sets bits the receiver offered.
 
 ---
@@ -798,6 +807,174 @@ and reconstruction is `clamp(prediction + residual)`.
 `res_level = 0`. `chroma444 = 1` (or a 4:2:0 source) is required for the picture
 itself to be lossless; a 4:2:0 tile is lossless only with respect to its own
 subsampled chroma.
+
+---
+
+### 6.7 The multiply-free transform (tool bit 28)
+
+`XFORM_FAST` replaces the Loeffler 8x8 of 6.1-6.3 with a transform whose flow
+graph contains **no multiply at all**: every operation is an add, a subtract,
+or a shift by 1 or 2. It replaces it *everywhere the stream uses an 8x8
+transform* -- residual blocks (6.3) and the second-level DC-plane transform of
+7.1 -- so a decoder that implements this tool never needs the other one. The
+quantiser interface of 6.5 is unchanged; the transform's norm correction lives
+in the step, as a per-position integer table.
+
+It is a **decoder-cost tool, not a compression tool.** What it buys and what
+it costs are in `ref/RESULTS-xform-fast.md`.
+
+#### 6.7.1 Inverse 1D transform (normative)
+
+The flow graph is the H.264/AVC High-profile 8x8 butterfly. Input `d[0..7]`
+int32, output `y[0..7]` int32.
+
+```
+e0 = d0 + d4
+e1 = -d3 + d5 - d7 - (d7 >> 1)
+e2 = d0 - d4
+e3 =  d1 + d7 - d3 - (d3 >> 1)
+e4 = (d2 >> 1) - d6
+e5 = -d1 + d7 + d5 + (d5 >> 1)
+e6 =  d2 + (d6 >> 1)
+e7 =  d3 + d5 + d1 + (d1 >> 1)
+
+f0 = e0 + e6 ;  f1 = e1 + (e7 >> 2)
+f2 = e2 + e4 ;  f3 = e3 + (e5 >> 2)
+f4 = e2 - e4 ;  f5 = (e3 >> 2) - e5
+f6 = e0 - e6 ;  f7 = e7 - (e1 >> 2)
+
+y0 = f0 + f7 ;  y7 = f0 - f7
+y1 = f2 + f5 ;  y6 = f2 - f5
+y2 = f4 + f3 ;  y5 = f4 - f3
+y3 = f6 + f1 ;  y4 = f6 - f1
+```
+
+32 adds and 10 shifts. Every `>>` is arithmetic (clause 3.3 of the spec), and
+the truncation it performs on a negative operand is **part of the transform**,
+not an approximation of one: two implementations agree bit for bit because
+they perform the same shifts on the same values.
+
+#### 6.7.2 The basis, and why the dequantiser carries a table
+
+Writing `M` for the matrix of the graph above (column `k` is the graph applied
+to the unit vector `e_k`), `M` is **exactly orthogonal** -- the off-diagonal of
+`M^T M` is zero, not small -- but not orthonormal. Its squared column norms
+are
+
+```
+||M[:,k]||^2 = 8        k = 0, 4
+               289/32   k = 1, 3, 5, 7
+               5        k = 2, 6
+```
+
+so `M = N diag(g)` with `N` orthonormal and `g_k` the square roots above. The
+2D gain at coefficient position `(u, v)` is therefore `g_u * g_v`, which
+**factorises**, and the correction can be folded into the dequantiser's step,
+where it costs nothing: the step table is built once per plane and the
+per-coefficient work is the one multiply and one shift 6.5 already specifies.
+
+`xfs[u * 8 + v] = round(1024 * 8 / (g_u * g_v))`, six distinct values:
+
+| | v=0,4 | v=1,3,5,7 | v=2,6 |
+|---|---|---|---|
+| **u=0,4** | 1024 | 964 | 1295 |
+| **u=1,3,5,7** | 964 | 907 | 1219 |
+| **u=2,6** | 1295 | 1219 | 1638 |
+
+The `8` in the numerator is the largest power of two the int32 bound below
+admits. It puts every scale between 0.886 and 1.600, so a dequantized
+coefficient on this path carries at least as many fractional bits as one on
+the Loeffler path: folding the norm into the step costs no precision at 60 of
+the 64 positions and gains a little at the other four.
+
+#### 6.7.3 Dequantization (normative)
+
+Per coefficient at raster position `i`, replacing the first line of 6.5:
+
+```
+t = (qstep[qp] * w[i] * xfs[i] + 8192) >> 14
+t = min(t, 63744)
+c = clamp16((q * t + 8) >> 4)
+```
+
+The second line is unchanged from 6.5. Transform-skip blocks and a DC plane
+with `nb != 8` run no transform, so they keep 6.5's step exactly:
+`t = (qstep[qp] * 16 + 8) >> 4`.
+
+**Range proof.** With `xfs[i] == 1024` the first line is *identical* to 6.5's,
+because `(x * 1024 + 8192) >> 14 == (x + 8) >> 4`. The largest unclamped step
+is `qstep[63] = 23170` with `w = 32` at an `xfs` of 1638:
+`(23170 * 32 * 1638 + 8192) >> 14 = 74126`, which with the legal level bound
+`|q| <= 32767` would give `q * t = 2.43e9` -- outside int32. The clamp to
+63744 bounds `q * t + 8 <= 32767 * 63744 + 8 = 2088699656 < 2^31 - 1`. The
+clamp binds for exactly **7 of the 12288** `(qp, w, position)` combinations --
+QP 62 and 63 with a weight of 28 or more, at the four positions
+`(u,v)` in `{2,6} x {2,6}` -- and is the identity everywhere else. Both sides
+apply it, so it is bit-exact; the effect at those seven points is a step up to
+14% coarser than the weighting matrix nominally asks for.
+
+#### 6.7.4 Inverse 2D transform (normative)
+
+```
+pass 1 (rows):    for each row r: idct8_fast_1d(dq[r*8 .. r*8+7] << 3) -> out
+                  tmp[c*8 + r] = clamp16(out[c])
+pass 2 (columns): for each row r of tmp: idct8_fast_1d(tmp[r*8 ..]) -> out
+                  dst[c*8 + r] = clamp16((out[c] + 32) >> 6)
+```
+
+Both passes write transposed, as in 6.3. The row pass shifts **in** by 3 and
+does not shift back, so the transpose buffer carries three fractional bits --
+the same trick 6.3's 7/13 split uses, and the reason `clamp16` there is still
+reachable here. The total is `dq * 2^3 * g_u * g_v / 2^6 = dq * g_u g_v / 8`,
+which with 6.7.3's scale is exactly the orthonormal inverse: **a dequantized
+DC of 1024 reconstructs a flat 128**, the same convention as 6.3.
+
+**Shift chain and intermediate ranges:**
+
+| stage | shift | rounding | clamp | worst-case magnitude before the shift |
+|---|---|---|---|---|
+| inverse pass 1 | `<< 3`, none out | none | int16 | `8 * 32768 * 7.375 = 1.93e6` |
+| inverse pass 2 | `>> 6` | `+32` | int16 | `32768 * 7.375 = 2.42e5` |
+
+7.375 is the largest absolute row sum of `M`. Nothing on this path comes
+within three decimal orders of int32, and nothing *can*: there are no
+products. That is the whole point of the tool, and it is why 6.3's `mulC4`
+identity -- the one place the Loeffler graph leaves int32 -- has no counterpart
+here.
+
+The `clamp16` after pass 1 is **normative**, as in 6.3, and for the same
+reason: it bounds the transpose buffer to 16 bits so a GPU may keep it in
+`int16` LDS. It is reachable with legal coefficients; conformance vector
+`v60_xfast_qp63_wm2` reaches it.
+
+#### 6.7.5 Forward 2D transform (informative)
+
+The forward graph is the exact transpose of 6.7.1 and is equally
+multiply-free:
+
+```
+a0 = s0+s7 ; a1 = s1+s6 ; a2 = s2+s5 ; a3 = s3+s4
+a4 = s0-s7 ; a5 = s1-s6 ; a6 = s2-s5 ; a7 = s3-s4
+b0 = a0+a3 ; b1 = a1+a2 ; b2 = a0-a3 ; b3 = a1-a2
+d0 = b0+b1 ;  d4 = b0-b1 ;  d2 = b2 + (b3>>1) ;  d6 = (b2>>1) - b3
+b4 = a5 + a6 + ((a4>>1) + a4)
+b5 = a4 - a7 - ((a6>>1) + a6)
+b6 = a4 + a7 - ((a5>>1) + a5)
+b7 = a5 - a6 + ((a7>>1) + a7)
+d1 = b4 + (b7>>2) ;  d3 = b5 + (b6>>2)
+d5 = b6 - (b5>>2) ;  d7 = (b4>>2) - b7
+```
+
+The reference encoder runs it on `src << 6` with `(x + 8) >> 4` after the
+first pass, and finishes with a per-position `(x * fs[i] + 65536) >> 17` where
+`fs[u*8+v] = round(32768 * 8 / (g_u^2 * g_v^2))`, which brings the graph's
+`g_u g_v` gain onto 6.7.3's scale. That last step is a multiply, and it is the
+only one in either direction; it is encoder-side and non-normative. The
+forward-inverse round trip on random +-255 residuals has an RMS error of
+**0.276** and a maximum of 1, against 0.347 and 2 for the Loeffler pair
+(6.3) -- the multiply-free transform is the more accurate of the two at zero
+quantisation, and loses only 0.043 dB of transform coding gain against the
+true DCT on an AR(1) source at rho = 0.95.
 
 ---
 
@@ -2031,6 +2208,29 @@ inconsistent. Each is a decision, not an interpretation.
     D-5 is unchanged; only the bit numbers move, to the first bits that are
     actually free. This is an erratum against Annex D, recorded here because
     this document is where the bit numbers live.
+
+53. **`XFORM_FAST` is tool bit 28, and it replaces the 8x8 transform rather
+    than sitting beside it.** Bit 24 is the first free bit in this document,
+    but 24, 25 and 26 are claimed by packages in flight on other branches and
+    27 by the 16x16/32x32 transform package; 28 is the first bit that
+    collides with none of them, and a tool bit costs nothing to place high.
+    The tool replaces the Loeffler 8x8 *everywhere the stream uses an 8x8
+    transform*, including the DC plane's second level, rather than applying
+    only to residual blocks. A decoder that implements it therefore needs one
+    transform, not two -- which is the entire point of a tool whose purpose is
+    to make the decoder smaller and cheaper. Per-block or per-tile selection
+    was rejected for the same reason: it would put both transforms in the
+    shader and buy nothing a stream-level bit does not.
+
+54. **The norm correction goes in the dequantiser, not in the transform.**
+    The multiply-free basis is orthogonal but not orthonormal, and the
+    correction is a per-position scale that factorises as `1/(g_u g_v)`.
+    Folding it into the step table costs nothing -- the table is built once
+    per plane and the per-coefficient work is unchanged -- whereas putting it
+    in the transform would mean either a multiply per coefficient, which
+    defeats the tool, or a rounding stage that would cost precision. The
+    overall constant is fixed at 8 rather than a larger power of two purely by
+    the int32 bound on `q * t`; see 6.7.3.
 
 ## Appendix B: where the bits go
 

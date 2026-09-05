@@ -93,6 +93,33 @@ With `colorTransform == kCtNone` on the RGB paths the three planes are written
 to R, G and B unchanged: the stream is carrying display-space planes. That is
 also what the CPU reference does with `NXVC_CT_NONE`.
 
+### The multiply-free transform (tool bit 28)
+
+**Specialization constant 5, `kXformFast`** (default 0). `docs/SYNTAX.md` 6.7.
+0 compiles the Loeffler 8x8 of 6.1-6.3, 1 the multiply-free butterfly. Like
+`kDirSched` it is a **bitstream property, not a tuning knob**: a stream whose
+header sets tool bit 28 decodes correctly only under `kXformFast == 1`, and
+one without it only under 0. `nxvc_vkdec.cpp` reads the bit out of the stream
+header and makes it part of the Pass B pipeline key, so a session that sees
+both kinds of stream compiles both pipelines.
+
+It replaces the transform in all three places the kernel runs one: the
+second-level DC-plane 8x8, and both passes of the residual block transform.
+The dequantizer changes with it — `dequantStepX()` folds SYNTAX 6.7.3's
+per-position Q10 scale into the step and clamps it — and the two-pass shift
+chain changes from `>>7` / `>>13` to `<<3` / `>>6`. Nothing else in the kernel
+moves: the same four threads per block, the same transpose through the plane
+slot, the same barriers.
+
+Per 8x8 block the inverse transform costs **0 multiplies, 512 adds and 160
+shifts** against the Loeffler graph's 288, 480 and 64. Counting the
+dequantizer and the rounding stages with it, the whole coefficient-to-residual
+path is 192 multiplies against 416. What that is worth is a property of the
+device: on RADV it is about 4 % of Pass B, and on lavapipe — where an int32
+multiply costs about what an add costs, because both are one AVX2 instruction
+— it is 14 % *slower*. `ref/RESULTS-xform-fast.md` has the numbers and the
+recommendation.
+
 ### Directional intra (tool bit 17)
 
 `docs/SYNTAX.md` 7.4. Each 8x8 block carries a mode; modes 1..8 predict it from

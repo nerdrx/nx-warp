@@ -170,11 +170,13 @@ constexpr uint64_t kToolsSupported =
     (1ull << 17) | // INTRA_DIR: directional intra          [v3]
     (1ull << 20) | // WM_ID: per-tile weighting-matrix override
     (1ull << 21) | // CTX_V2: the 16-context entropy model  [v3]
-    (1ull << 22);  // SIGN_HIDE: sign data hiding           [v3]
+    (1ull << 22) | // SIGN_HIDE: sign data hiding           [v3]
+    (1ull << 28);  // XFORM_FAST: the multiply-free 8x8 transform [xfast]
 constexpr uint64_t kToolLossless = 1ull << 5;
 constexpr uint64_t kToolIntraDir = 1ull << 17;
 constexpr uint64_t kToolCtxV2 = 1ull << 21;
 constexpr uint64_t kToolSignHide = 1ull << 22;
+constexpr uint64_t kToolXformFast = 1ull << 28;
 constexpr uint64_t kToolNsubVar = 1ull << 7;
 constexpr uint64_t kToolResLevel = 1ull << 2;
 constexpr uint64_t kToolTransformSkip = 1ull << 1;
@@ -298,6 +300,10 @@ nxvc_vkd_status parse_stream_header(const uint8_t *buf, size_t len,
     // [SYN] 2.3: hiding a sign spends one level step, so a lossless stream
     // cannot carry it and a decoder that accepted both would not know which.
     // r17 pins the refusal.
+    // A lossless stream is transform skip everywhere, so XFORM_FAST would
+    // select between two transforms neither of which ever runs.
+    if ((si.tools & kToolLossless) && (si.tools & kToolXformFast))
+        return NXVC_VKD_ERR_BITSTREAM;
     if ((si.tools & kToolLossless) && (si.tools & kToolSignHide))
         return NXVC_VKD_ERR_BITSTREAM;
 

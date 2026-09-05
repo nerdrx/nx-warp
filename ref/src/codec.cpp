@@ -119,6 +119,7 @@ struct FrameParams {
     int intra_dir = 0;      // stream tool bit 17
     int dir_layer = 0;      // frame flags bit 2
     int sdh = 0;            // stream tool bit 22
+    int xfast = 0;          // stream tool bit 28: the multiply-free transform
     u8 wm_luma[64] = {}, wm_chroma[64] = {};
     TableSet tabs[8];
 };
@@ -208,6 +209,7 @@ struct PlaneState {
     int size = 0;      // coded edge
     int nb = 0;        // blocks per edge
     int qp = 0;
+    int xfast = 0;     // stream tool bit 28 (SYNTAX 6.7)
     const u8 *wmat = nullptr;
     int maxval = 255, dc_off = 128;
     std::vector<i32> samples;  // size*size, source (encoder) / recon (decoder)
@@ -239,6 +241,16 @@ struct TileCoder {
 static inline int dequant_step(int qp, int w) {
     // t is the quantizer step in Q4, bounded by 23170 * 32 / 16 = 46340.
     return (kQStep[qp] * w + 8) >> 4;
+}
+// XFORM_FAST (SYNTAX 6.7): the same step with the transform's per-position
+// norm correction folded in, Q10, and clamped so that q * t stays in int32.
+// `i` is the raster position inside the block.  With kXfsScale[i] == 1024
+// this is bit-identical to dequant_step() above, because
+// (x*1024 + 8192) >> 14 == (x + 8) >> 4.
+static inline int dequant_step_x(int qp, int w, int i, int xfast) {
+    if (!xfast) return dequant_step(qp, w);
+    int t = (kQStep[qp] * w * (int)kXfsScale[i] + 8192) >> 14;
+    return t > kXfsTMax ? kXfsTMax : t;
 }
 static inline i32 dequant(i32 q, i32 t) { return clamp16((q * t + 8) >> 4); }
 static inline i32 quantize(i32 c, i32 t, i32 dz) {
@@ -275,6 +287,7 @@ void TileCoder::setup() {
         } else {
             s.wmat = kWeight[chroma ? 3 : tp.wm_id];
         }
+        s.xfast = fp->xfast;
         s.maxval = g->maxval(p);
         s.dc_off = g->dc_offset(p);
         s.samples.assign((size_t)s.size * s.size, 0);
@@ -508,13 +521,18 @@ static void predict_block(int mode, const IntraRefs &r, const i32 *base,
 static void residual_block(const i16 *c, const PlaneState &s, int tskip,
                            i32 res[64]) {
     if (tskip) {
+        // Transform skip codes samples, not coefficients: no transform runs,
+        // so the norm correction does not apply and the step is the flat one
+        // on both paths.
         int t = dequant_step(s.qp, 16);
         for (int i = 0; i < 64; ++i) res[i] = dequant(c[i], t);
     } else {
         i32 dq[64];
         for (int i = 0; i < 64; ++i)
-            dq[i] = dequant(c[i], dequant_step(s.qp, s.wmat[i]));
-        idct8x8(dq, res);
+            dq[i] = dequant(c[i],
+                            dequant_step_x(s.qp, s.wmat[i], i, s.xfast));
+        if (s.xfast) idct8x8_fast(dq, res);
+        else idct8x8(dq, res);
     }
 }
 
@@ -534,14 +552,20 @@ static void reconstruct_dc_plane(PlaneState &s, const i16 *coefs) {
     const int nb = s.nb, size = s.size;
     const int ndc = nb * nb;
     int dcqp = dc_qp_of(s.qp);
-    int tdc = dequant_step(dcqp, 16);
     std::vector<i32> dc(ndc);
-    for (int i = 0; i < ndc; ++i) dc[i] = dequant(coefs[i], tdc);
+    // The DC plane's second-level transform is the stream's 8x8 transform, so
+    // when nb == 8 its dequantizer carries the norm correction too.  With
+    // nb != 8 no transform runs and the step is the flat one on both paths.
     if (nb == 8) {
         i32 in[64], out[64];
-        for (int i = 0; i < 64; ++i) in[i] = dc[i];
-        idct8x8(in, out);
+        for (int i = 0; i < 64; ++i)
+            in[i] = dequant(coefs[i], dequant_step_x(dcqp, 16, i, s.xfast));
+        if (s.xfast) idct8x8_fast(in, out);
+        else idct8x8(in, out);
         for (int i = 0; i < 64; ++i) dc[i] = out[i];
+    } else {
+        int tdc = dequant_step(dcqp, 16);
+        for (int i = 0; i < ndc; ++i) dc[i] = dequant(coefs[i], tdc);
     }
     // An intra tile's block mean is a sample value and is clamped to the
     // sample domain.  An inter tile's is `dc_offset + a residual mean`, whose
@@ -687,19 +711,47 @@ static inline i32 level_rate(const RateCost &rc, int scan_pos, int prev_class,
 
 constexpr double kRdInf = 1e30;
 
+// The XFORM_FAST distortion weights of the note on rdoq_unit below: the
+// squared error at position i, measured in that position's own coefficient
+// units, times (1024/kXfsScale[i])^2 is the squared error in sample units.
+// Returns nullptr when the stream is on the Loeffler path, where every
+// position already shares one scale.  Encoder only.
+static const double *xfast_dweights(int xfast) {
+    if (!xfast) return nullptr;
+    static const double *cached = [] {
+        static double w[64];
+        for (int i = 0; i < 64; ++i) {
+            double f = 1024.0 / (double)kXfsScale[i];
+            w[i] = f * f;
+        }
+        return w;
+    }();
+    return cached;
+}
+
 // `orig[i]` is the unquantized value at block-local index i, `step[i]` its
 // reconstruction step (the dequantizer's t, Q4).  Writes the chosen levels
 // back into `coefs`.
+//
+// `dw[i]`, when non-null, weights the SQUARED error at position i.  It exists
+// for XFORM_FAST, whose coefficients live on a per-position scale
+// (kXfsScale[i]/1024) rather than the orthonormal one: without the weight the
+// trellis would compare a squared error measured in one plane's units against
+// a rate measured in bits, and would be systematically wrong by up to 2.6x
+// between the cheapest and the dearest position.  dw[i] = (1024/scale)^2
+// converts each squared error back to the sample domain, which is where
+// lambda lives.  Encoder only.
 static void rdoq_unit(i16 *coefs, const i32 *orig, const i32 *step, int ncoef,
                       const u8 *scan, int ctx_cbf, int ctx_last,
-                      const RateCost &rc, double lambda) {
+                      const RateCost &rc, double lambda,
+                      const double *dw = nullptr) {
     double f[64][3], fnz[64];
     i32 best_m[64][3], best_m_nz[64];
     double tail = 0;               // energy of scan positions above p
     double energy = 0;
     for (int i = 0; i < ncoef; ++i) {
         double c = orig[i];
-        energy += c * c;
+        energy += c * c * (dw ? dw[i] : 1.0);
     }
     double prev[3] = {0, 0, 0};
     for (int p = 0; p < ncoef; ++p) {
@@ -722,7 +774,8 @@ static void rdoq_unit(i16 *coefs, const i32 *orig, const i32 *step, int ncoef,
             for (int k = 0; k < nc; ++k) {
                 i32 m = cand[k];
                 double d = a - (double)m * st;
-                double cost = d * d + lambda * (level_rate(rc, p, s, m) / 1024.0) +
+                double cost = d * d * (dw ? dw[idx] : 1.0) +
+                              lambda * (level_rate(rc, p, s, m) / 1024.0) +
                               prev[level_class(m)];
                 if (cost < best) { best = cost; bm = m; }
                 if (m != 0 && cost < bestnz) { bestnz = cost; bmnz = m; }
@@ -749,7 +802,7 @@ static void rdoq_unit(i16 *coefs, const i32 *orig, const i32 *step, int ncoef,
             if (total < best_total) { best_total = total; best_last = p; }
         }
         double c = orig[scan[p]];
-        tail += c * c;
+        tail += c * c * (dw ? dw[scan[p]] : 1.0);
     }
 
     for (int i = 0; i < ncoef; ++i) coefs[i] = 0;
@@ -773,7 +826,8 @@ static void rdoq_unit(i16 *coefs, const i32 *orig, const i32 *step, int ncoef,
 // `orig[i]` is the unquantized value and `step[i]` its reconstruction step
 // (Q4), the same convention rdoq_unit uses.  Encoder only.
 static void hide_sign_unit(i16 *coefs, const i32 *orig, const i32 *step,
-                           int ncoef, const u8 *scan) {
+                           int ncoef, const u8 *scan,
+                           const double *dw = nullptr) {
     int last = -1;
     i32 sum = 0;
     for (int p = 0; p < ncoef; ++p) {
@@ -800,7 +854,7 @@ static void hide_sign_unit(i16 *coefs, const i32 *orig, const i32 *step,
             // changing its magnitude is allowed only away from zero.
             if (p == last && m2 == 0) continue;
             double e1 = a - (double)m * st, e2 = a - (double)m2 * st;
-            double cost = e2 * e2 - e1 * e1;
+            double cost = (e2 * e2 - e1 * e1) * (dw ? dw[idx] : 1.0);
             if (best_p < 0 || cost < best) { best = cost; best_p = p; best_d = d; }
         }
     }
@@ -835,27 +889,29 @@ static void analyze_dc_plane(PlaneState &s, i16 *coefs, int sdh) {
         }
     int dcqp = dc_qp_of(s.qp);
     int tdc = dequant_step(dcqp, 16);
-    i32 orig[64];
+    i32 orig[64], stepv[64];
     if (nb == 8) {
         i32 in[64];
         i16 out[64];
         for (int i = 0; i < 64; ++i) in[i] = m[i] - s.dc_off;
-        fdct8x8(in, out);
+        if (s.xfast) fdct8x8_fast(in, out);
+        else fdct8x8(in, out);
         for (int i = 0; i < 64; ++i) {
+            int t = dequant_step_x(dcqp, 16, i, s.xfast);
             orig[i] = out[i];
-            coefs[i] = (i16)quantize(out[i], tdc, tdc / 3);
+            stepv[i] = t;
+            coefs[i] = (i16)quantize(out[i], t, t / 3);
         }
     } else {
         for (int i = 0; i < ndc; ++i) {
             orig[i] = m[i] - s.dc_off;
+            stepv[i] = tdc;
             coefs[i] = (i16)quantize(orig[i], tdc, tdc / 3);
         }
     }
-    if (sdh) {
-        i32 stepv[64];
-        for (int i = 0; i < ndc; ++i) stepv[i] = tdc;
-        hide_sign_unit(coefs, orig, stepv, ndc, scan_table(ndc, false));
-    }
+    if (sdh)
+        hide_sign_unit(coefs, orig, stepv, ndc, scan_table(ndc, false),
+                       nb == 8 ? xfast_dweights(s.xfast) : nullptr);
     reconstruct_dc_plane(s, coefs);
     (void)size;
 }
@@ -889,16 +945,18 @@ static void analyze_plane(PlaneState &s, i16 *coefs, int tskip, int intra_dz,
                 }
             } else {
                 i16 co[64];
-                fdct8x8(res, co);
+                if (s.xfast) fdct8x8_fast(res, co);
+                else fdct8x8(res, co);
                 for (int i = 0; i < 64; ++i) {
-                    int t = dequant_step(s.qp, s.wmat[i]);
+                    int t = dequant_step_x(s.qp, s.wmat[i], i, s.xfast);
                     orig[i] = co[i];
                     stepv[i] = t;
                     c[i] = (i16)quantize(co[i], t, t / 3);
                 }
             }
             if (sdh)
-                hide_sign_unit(c, orig, stepv, 64, scan_table(64, tskip != 0));
+                hide_sign_unit(c, orig, stepv, 64, scan_table(64, tskip != 0),
+                               tskip ? nullptr : xfast_dweights(s.xfast));
         }
 }
 
@@ -916,11 +974,14 @@ static void rdoq_plane(PlaneState &s, i16 *coefs, int tskip, bool chroma,
     const int ctx_cbf = chroma ? kCtxCbfChroma : kCtxCbfLuma;
     const int ctx_last = chroma ? kCtxLastChroma : kCtxLastLuma;
     i32 stepv[64];
+    const double *dw = nullptr;
     if (tskip) {
         int t = dequant_step(s.qp, 16);
         for (int i = 0; i < 64; ++i) stepv[i] = t;
     } else {
-        for (int i = 0; i < 64; ++i) stepv[i] = dequant_step(s.qp, s.wmat[i]);
+        for (int i = 0; i < 64; ++i)
+            stepv[i] = dequant_step_x(s.qp, s.wmat[i], i, s.xfast);
+        dw = xfast_dweights(s.xfast);
     }
     i16 *bc = coefs + ndc;
     for (int by = 0; by < nb; ++by)
@@ -938,11 +999,13 @@ static void rdoq_plane(PlaneState &s, i16 *coefs, int tskip, bool chroma,
                 for (int i = 0; i < 64; ++i) orig[i] = res[i];
             } else {
                 i16 co[64];
-                fdct8x8(res, co);
+                if (s.xfast) fdct8x8_fast(res, co);
+                else fdct8x8(res, co);
                 for (int i = 0; i < 64; ++i) orig[i] = co[i];
             }
-            rdoq_unit(c, orig, stepv, 64, scan, ctx_cbf, ctx_last, rc, lambda);
-            if (sdh) hide_sign_unit(c, orig, stepv, 64, scan);
+            rdoq_unit(c, orig, stepv, 64, scan, ctx_cbf, ctx_last, rc, lambda,
+                      dw);
+            if (sdh) hide_sign_unit(c, orig, stepv, 64, scan, dw);
         }
 }
 
@@ -1031,11 +1094,14 @@ static void analyze_plane_dir(PlaneState &s, i16 *coefs, int tskip, int layer,
     const int ctx_cbf = chroma ? kCtxCbfChroma : kCtxCbfLuma;
     const int ctx_last = chroma ? kCtxLastChroma : kCtxLastLuma;
     i32 stepv[64];
+    const double *dw = nullptr;
     if (tskip) {
         int t = dequant_step(s.qp, 16);
         for (int i = 0; i < 64; ++i) stepv[i] = t;
     } else {
-        for (int i = 0; i < 64; ++i) stepv[i] = dequant_step(s.qp, s.wmat[i]);
+        for (int i = 0; i < 64; ++i)
+            stepv[i] = dequant_step_x(s.qp, s.wmat[i], i, s.xfast);
+        dw = xfast_dweights(s.xfast);
     }
     i16 *bc = coefs + ndc;
 
@@ -1092,18 +1158,19 @@ static void analyze_plane_dir(PlaneState &s, i16 *coefs, int tskip, int layer,
                     for (int i = 0; i < 64; ++i) orig[i] = res[i];
                 } else {
                     i16 co[64];
-                    fdct8x8(res, co);
+                    if (s.xfast) fdct8x8_fast(res, co);
+                    else fdct8x8(res, co);
                     for (int i = 0; i < 64; ++i) orig[i] = co[i];
                 }
                 i16 q[64];
                 if (use_rdo) {
                     rdoq_unit(q, orig, stepv, 64, scan, ctx_cbf, ctx_last, rc,
-                              lambda);
+                              lambda, dw);
                 } else {
                     for (int i = 0; i < 64; ++i)
                         q[i] = (i16)quantize(orig[i], stepv[i], stepv[i] / 3);
                 }
-                if (sdh) hide_sign_unit(q, orig, stepv, 64, scan);
+                if (sdh) hide_sign_unit(q, orig, stepv, 64, scan, dw);
                 i32 rr[64];
                 residual_block(q, s, tskip, rr);
                 // exact sample-domain distortion of this candidate

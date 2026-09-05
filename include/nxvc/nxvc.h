@@ -126,6 +126,17 @@ typedef enum nxvc_tile_mode {
  * actually free.  The substance of D-5 is unchanged: it is undefined in
  * version 1 and a v1 decoder MUST reject a stream that sets it. */
 #define NXVC_TOOL_FILTER_CATMULLROM (1ull << 23)
+/* The multiply-free 8x8 transform (SYNTAX.md 6.7): the H.264/AVC High-profile
+ * 8x8 butterfly, adds and shifts only, with the norm correction folded into
+ * the dequantizer as a per-position Q10 scale.  It replaces the Loeffler 8x8
+ * everywhere the stream uses one -- residual blocks and the second-level DC
+ * plane -- and is a decoder-cost tool, not a compression tool.
+ *
+ * Bits 24 to 27 are left free on purpose: 24, 25 and 26 are spoken for on
+ * `merge-main` (INTRA_CFL, CTX_V3, TAB_V2) and 27 is where the concurrent
+ * 16x16/32x32 XFORM_LARGE package lands.  Picking 28 keeps this experiment
+ * disjoint from all of them. */
+#define NXVC_TOOL_XFORM_FAST      (1ull << 28)
 
 /* Tools this reference decoder implements. */
 #define NXVC_TOOLS_SUPPORTED                                                  \
@@ -134,6 +145,7 @@ typedef enum nxvc_tile_mode {
      NXVC_TOOL_LOSSLESS | NXVC_TOOL_CUSTOM_TABLES | NXVC_TOOL_NSUB_VAR |      \
      NXVC_TOOL_PER_TILE_CHROMA | NXVC_TOOL_YCOCGR | NXVC_TOOL_WM_ID |        \
      NXVC_TOOL_INTRA_DIR | NXVC_TOOL_CTX_V2 | NXVC_TOOL_SIGN_HIDE |           \
+     NXVC_TOOL_XFORM_FAST |                                                   \
      NXVC_TOOL_INTER | NXVC_TOOL_WARP | NXVC_TOOL_STEREO)
 
 /* ---------------------------------------------------------------- images */
@@ -214,6 +226,11 @@ typedef struct nxvc_config {
                                    Below 256 the decision spends more bits to
                                    keep the reference clean, which is what an
                                    all-reference stream wants; 0 = default  */
+
+    /* --- additive, experimental (exp/xform-fast).  Appended at the end so
+     * the ABI of every field above is unchanged. */
+    uint32_t xform_fast;        /* 1 = the multiply-free 8x8 transform,
+                                   stream tool bit 28 (SYNTAX.md 6.7)       */
 } nxvc_config;
 
 /* One eye's view for one frame: the orientation the frame was rendered with

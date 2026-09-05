@@ -204,6 +204,39 @@ NXVW_FN nxvw_mul_c4_rnd9(int s) {
     int lo = s & (kOddRound * 2 - 1);
     return hi * kC4 + ((lo * kC4 + kOddRound) >> kOddShift);
 }
+// ------------------------------------------------- XFORM_FAST (tool bit 28)
+// [SYN] 6.7.  The multiply-free 8x8 transform: the H.264/AVC High-profile
+// butterfly, adds and shifts only, with the norm correction folded into the
+// dequantizer as a per-position Q10 scale.  [REF] transform.cpp
+// idct8_1d_fast / kXfsScale.
+//
+// Shift chain: the row pass runs on `dq << kXfsShiftIn` and does not shift
+// back (the transpose buffer carries three fractional bits, and is still
+// clamped to int16); the column pass ends with (x + 32) >> 6.  Range: the
+// largest absolute row sum of the basis is 7.375, so the row pass is bounded
+// by 8 * 32768 * 7.375 = 1.93e6 and the column pass, on int16 input, by
+// 2.42e5.  There is no product anywhere, so nothing can leave int32.
+NXVW_CONST kXfsShiftIn = 3;
+NXVW_CONST kXfsRound2 = 32;
+NXVW_CONST kXfsShift2 = 6;
+// Q10 scale and the shift that consumes it.  With a scale of 1024 this is
+// bit-identical to dequantStep(), because (x*1024 + 8192) >> 14 == (x+8) >> 4.
+NXVW_CONST kXfsScaleShift = 14;
+NXVW_CONST kXfsScaleRound = 8192;
+// The step clamp of SYNTAX 6.7: 32767 * 63744 + 8 < 2^31 - 1.  It binds for
+// 7 of the 12288 (qp, weight, position) combinations and is a no-op elsewhere.
+NXVW_CONST kXfsTMax = 63744;
+NXVW_ARR(int, kXfsScale, 64)
+    1024,  964, 1295,  964, 1024,  964, 1295,  964,
+     964,  907, 1219,  907,  964,  907, 1219,  907,
+    1295, 1219, 1638, 1219, 1295, 1219, 1638, 1219,
+     964,  907, 1219,  907,  964,  907, 1219,  907,
+    1024,  964, 1295,  964, 1024,  964, 1295,  964,
+     964,  907, 1219,  907,  964,  907, 1219,  907,
+    1295, 1219, 1638, 1219, 1295, 1219, 1638, 1219,
+     964,  907, 1219,  907,  964,  907, 1219,  907
+NXVW_ARR_END
+
 // [SYN] 6.3: rows then columns, both passes writing transposed.  The clamp16
 // after pass 1 is NORMATIVE, so the transpose buffer may be int16.
 // NOTE PAPER 1.4 says "7 bits after the first dimension, 12 after the

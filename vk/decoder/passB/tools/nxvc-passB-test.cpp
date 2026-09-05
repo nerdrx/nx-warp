@@ -267,6 +267,9 @@ struct Case {
     // [sparse] 1 = build the scan-order layout plus per-unit lengths, which
     // is what Pass A ships; 0 = the dense raster-order one.
     int sparse = 1;
+    // [xfast] 1 = the multiply-free 8x8 transform, stream tool bit 28.  It is
+    // a bitstream property, so the model and the pipeline are both told.
+    int xformFast = 0;
 };
 
 struct Scene {
@@ -282,6 +285,8 @@ struct Scene {
     // per tile.  Empty when the case is dense.
     std::vector<uint32_t> unitLens;
     int dirSched = 0;
+    // [xfast] the stream's XFORM_FAST tool bit: specialization constant 5.
+    int xformFast = 0;
 };
 
 uint32_t packTileW1(int mode, int res_level, int chroma444, int alpha_mode,
@@ -299,6 +304,7 @@ uint32_t packTileW1(int mode, int res_level, int chroma444, int alpha_mode,
 Scene buildScene(const Case &cs) {
     Scene sc;
     sc.cs = cs;
+    sc.xformFast = cs.xformFast;
     std::mt19937 rng(cs.seed);
     const int ntiles = cs.tilesX * cs.tilesY;
 
@@ -617,14 +623,16 @@ bool runGpu(Ctx &c, const Scene &sc, GpuResult &out, int repeats,
 
     // 3 (the second store) is left at its kOutNone default: this harness
     // drives one format at a time.
-    int32_t specData[4] = {(int32_t)sc.cs.outFormat, (int32_t)planeWords,
-                           (int32_t)sc.dirSched, (int32_t)sc.push.sparse};
-    VkSpecializationMapEntry sme[4] = {
+    int32_t specData[5] = {(int32_t)sc.cs.outFormat, (int32_t)planeWords,
+                           (int32_t)sc.dirSched, (int32_t)sc.push.sparse,
+                           (int32_t)sc.xformFast};
+    VkSpecializationMapEntry sme[5] = {
         {0, 0, sizeof(int32_t)},
         {1, sizeof(int32_t), sizeof(int32_t)},
         {2, 2 * sizeof(int32_t), sizeof(int32_t)},
-        {4, 3 * sizeof(int32_t), sizeof(int32_t)}};
-    VkSpecializationInfo spec{4, sme, sizeof(specData), specData};
+        {4, 3 * sizeof(int32_t), sizeof(int32_t)},
+        {5, 4 * sizeof(int32_t), sizeof(int32_t)}};
+    VkSpecializationInfo spec{5, sme, sizeof(specData), specData};
 
     VkComputePipelineCreateInfo cpi{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
     cpi.stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
@@ -764,6 +772,7 @@ size_t compareCase(Ctx &c, const Case &cs, bool verbose, int &ranOut) {
     in.modes = sc.modes.empty() ? nullptr : sc.modes.data();
     in.unit_lens = sc.unitLens.empty() ? nullptr : sc.unitLens.data();
     in.dirSched = sc.dirSched;
+    in.xformFast = sc.xformFast;
 
     const size_t npix = (size_t)sc.push.imageW * sc.push.imageH;
     GpuResult gpu;
@@ -825,7 +834,7 @@ size_t compareCase(Ctx &c, const Case &cs, bool verbose, int &ranOut) {
 const char *caseName(const Case &cs) {
     static char b[192];
     std::snprintf(b, sizeof b,
-                  "%s%s ct=%s qp=%d res=%s tskip=%s alpha=%s out=%s seed=%u",
+                  "%s%s ct=%s qp=%d res=%s tskip=%s alpha=%s out=%s xf=%d seed=%u",
                   cs.chroma420 ? "4:2:0" : "4:4:4",
                   cs.alphaPresent ? "+A" : "",
                   cs.colorTransform == kCtYCoCgR ? "ycocgr" : "none", cs.baseQp,
@@ -836,7 +845,7 @@ const char *caseName(const Case &cs) {
                                                    cs.forceAlphaMode == 1 ? "const" : "coded"),
                   cs.outFormat == kOutRgb10A2 ? "rgb10a2"
                       : cs.outFormat == kOutYcbcr420 ? "ycbcr420" : "rgba8",
-                  cs.seed);
+                  cs.xformFast, cs.seed);
     return b;
 }
 
@@ -956,6 +965,53 @@ int main(int argc, char **argv) {
                 cs.seed = (uint32_t)(5000 + chroma420);
                 cases.push_back(cs);
             }
+            // [xfast] The multiply-free transform (tool bit 28), over the
+            // same ground the Loeffler sweep covers: both chroma formats,
+            // both colour paths, the ends of the quantizer table, every
+            // res_level, transform skip (which bypasses the transform and
+            // must therefore be unaffected), a coded alpha plane, and
+            // saturating coefficients, which is where the step clamp and the
+            // transpose clamp of SYNTAX 6.7 both bind.
+            for (int chroma420 : {0, 1})
+                for (int ct : {kCtYCoCgR, kCtNone})
+                    for (int qp : {0, 13, 24, 47, 63}) {
+                        Case cs;
+                        cs.chroma420 = chroma420;
+                        cs.colorTransform = ct;
+                        cs.baseQp = qp;
+                        cs.xformFast = 1;
+                        cs.seed = (uint32_t)(7000 + qp * 7 + chroma420 * 3 + ct);
+                        cases.push_back(cs);
+                    }
+            for (int res = 0; res <= kMaxResLevel; ++res)
+                for (int tskip : {0, 1}) {
+                    Case cs;
+                    cs.chroma420 = 1;
+                    cs.forceResLevel = res;
+                    cs.forceTskip = tskip;
+                    cs.xformFast = 1;
+                    cs.seed = (uint32_t)(7500 + res * 11 + tskip * 5);
+                    cases.push_back(cs);
+                }
+            for (int chroma420 : {0, 1}) {
+                Case cs;             // saturating, matrix 3, QP 63
+                cs.chroma420 = chroma420;
+                cs.baseQp = 63;
+                cs.coefMagnitude = 32767;
+                cs.quantMatrix = 3;
+                cs.xformFast = 1;
+                cs.seed = (uint32_t)(7800 + chroma420);
+                cases.push_back(cs);
+            }
+            {
+                Case cs;             // a coded alpha plane
+                cs.chroma420 = 1;
+                cs.alphaPresent = 1;
+                cs.forceAlphaMode = 2;
+                cs.xformFast = 1;
+                cs.seed = 7900;
+                cases.push_back(cs);
+            }
             // Non-tile-multiple image: the last tile column/row is clipped.
             for (int chroma420 : {0, 1}) {
                 Case cs;
@@ -976,7 +1032,7 @@ int main(int argc, char **argv) {
     }
 
     // ---------------------------------------------------------- benchmark
-    {
+    for (int xf = 0; xf <= 1; ++xf) {
         int tilesX = 64, tilesY = (benchTiles + 63) / 64;
         Case cs;
         cs.tilesX = tilesX;
@@ -985,6 +1041,7 @@ int main(int argc, char **argv) {
         cs.colorTransform = kCtNone;
         cs.forceResLevel = 0;
         cs.forceTskip = 0;
+        cs.xformFast = xf;
         cs.seed = 424242;
         Scene sc = buildScene(cs);
         GpuResult gpu;
@@ -996,8 +1053,9 @@ int main(int argc, char **argv) {
             double outMB = (double)sc.push.imageW * sc.push.imageH * 4.0 /
                            (1024.0 * 1024.0);
             std::printf(
-                "\nbench: %d tiles (%dx%d), 4:2:0 res_level 0, %d dispatches\n",
-                tilesX * tilesY, tilesX, tilesY, reps);
+                "\nbench [%s]: %d tiles (%dx%d), 4:2:0 res_level 0, %d dispatches\n",
+                xf ? "XFORM_FAST" : "Loeffler", tilesX * tilesY, tilesX,
+                tilesY, reps);
             std::printf("  dispatch time: %.3f ms (gpu timestamps), %.3f ms wall\n",
                         gpu.dispatchMs, gpu.wallMs);
             std::printf("  coefficient SSBO read: %.2f MB/frame (%d int16 per tile slot)\n",
@@ -1010,7 +1068,8 @@ int main(int argc, char **argv) {
                 std::printf("  effective bandwidth: %.1f GB/s\n",
                             (coefMB + recMB + outMB) / 1024.0 / (gpu.dispatchMs / 1000.0));
         } else {
-            std::printf("\nbench: SKIP (%s)\n", err.c_str());
+            std::printf("\nbench [%s]: SKIP (%s)\n",
+                        xf ? "XFORM_FAST" : "Loeffler", err.c_str());
         }
     }
 

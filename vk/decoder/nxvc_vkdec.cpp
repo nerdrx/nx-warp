@@ -92,6 +92,9 @@ struct nxvc_vk_decoder {
     // and the only one a conformant encoder emits; 1 and 3 exist so their
     // decode cost can be measured against the rate they cost.
     uint32_t dir_sched = 0;
+    // [xfast] the parsed stream's XFORM_FAST tool bit (SYNTAX 6.7).  Set from
+    // the stream header, never by the caller: it is a bitstream property.
+    int32_t xform_fast = 0;
     // Host-side reordering of Pass B's workgroup -> tile map.  Output is
     // identical either way; it only changes which tiles land in adjacent
     // workgroups.
@@ -110,7 +113,8 @@ struct nxvc_vk_decoder {
     VkShaderModule smA = VK_NULL_HANDLE, smB = VK_NULL_HANDLE;
     VkDescriptorSet dsetA = VK_NULL_HANDLE, dsetB = VK_NULL_HANDLE;
     std::map<uint32_t, VkPipeline> pipesA;  // key: lanes
-    // key: (format << 40) | (dirSched << 32) | storeWords
+    // key: (xformFast << 49) | (sparse << 48) | ((fmt2+1) << 44) |
+    //      (format << 40) | (dirSched << 32) | storeWords
     std::map<uint64_t, VkPipeline> pipesB;
 
     // ---- buffers
@@ -541,7 +545,12 @@ nxvc_vkd_status pipeline_a(D *d, uint32_t lanes, VkPipeline *out) {
 nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2, int32_t sparse,
                            uint32_t store_words, VkPipeline *out) {
     const uint32_t sched = d->dir_sched;
-    uint64_t key = ((uint64_t)(uint32_t)sparse << 48) |
+    // [xfast] the stream's XFORM_FAST tool bit picks the transform, so it is
+    // part of the pipeline key: two streams that differ only in that bit need
+    // two pipelines.
+    const int32_t xfast = d->xform_fast;
+    uint64_t key = ((uint64_t)(uint32_t)xfast << 49) |
+                   ((uint64_t)(uint32_t)sparse << 48) |
                    ((uint64_t)(uint32_t)(fmt2 + 1) << 44) |
                    ((uint64_t)fmt << 40) | ((uint64_t)sched << 32) | store_words;
     auto it = d->pipesB.find(key);
@@ -554,11 +563,11 @@ nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2, int32_t sparse,
         return seterr(d, NXVC_VKD_ERR_UNSUPPORTED,
                       "Pass B needs %zu B of shared memory, device offers %u B",
                       lds, d->props.limits.maxComputeSharedMemorySize);
-    const int32_t data[5] = {(int32_t)fmt, (int32_t)store_words, (int32_t)sched,
-                             fmt2, sparse};
-    VkSpecializationMapEntry me[5] = {
-        {0, 0, 4}, {1, 4, 4}, {2, 8, 4}, {3, 12, 4}, {4, 16, 4}};
-    VkSpecializationInfo spec{5, me, sizeof(data), data};
+    const int32_t data[6] = {(int32_t)fmt, (int32_t)store_words, (int32_t)sched,
+                             fmt2, sparse, xfast};
+    VkSpecializationMapEntry me[6] = {
+        {0, 0, 4}, {1, 4, 4}, {2, 8, 4}, {3, 12, 4}, {4, 16, 4}, {5, 20, 4}};
+    VkSpecializationInfo spec{6, me, sizeof(data), data};
     VkComputePipelineCreateInfo ci{
         VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
     ci.stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
@@ -1004,6 +1013,10 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_parse_stream_header(
     if (st) return seterr(d, st, "stream header: %s",
                           nxvc_vk_decoder_status_string(st));
     d->have_stream = true;
+    // [xfast] SYNTAX 6.7 tool bit 28 selects the 8x8 transform for the whole
+    // stream, so it is read once here and becomes part of the Pass B
+    // pipeline key.
+    d->xform_fast = (d->si.tools & (1ull << 28)) ? 1 : 0;
     d->resources_ready = false;
     st = make_resources(d);
     if (st) return st;

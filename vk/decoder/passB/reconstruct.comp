@@ -50,6 +50,13 @@ layout(constant_id = 3) const int kOutSecond = kOutNone;
 //    It must match Pass A's `sparse` push constant for the same frame.
 layout(constant_id = 4) const int kSparse = 1;
 
+// Specialization constant 5: XFORM_FAST (stream tool bit 28, SYNTAX 6.7).
+// 0 = the Loeffler 8x8 with its 9-bit constants, 1 = the multiply-free
+// butterfly.  It is a BITSTREAM PROPERTY, not a tuning knob: a stream with
+// the tool bit set decodes correctly only under kXformFast == 1, and one
+// without it only under 0.  Two pipelines, chosen by the parsed tool bits.
+layout(constant_id = 5) const int kXformFast = 0;
+
 // ------------------------------------------------------------- bindings
 layout(set = 0, binding = 0, std430) readonly buffer Coef { uint w[]; } uCoef;
 layout(set = 0, binding = 1, std430) readonly buffer TileRecs { NxvwTileRec rec[]; } uTiles;
@@ -104,6 +111,14 @@ int clamp16(int v) { return clamp(v, kI16Min, kI16Max); }
 // [REF] codec.cpp dequant_step / dequant.
 int dequantStep(int qp, int w) {
     return (kQStep[qp] * w + kQStepRound) >> kQStepShift;
+}
+// [REF] codec.cpp dequant_step_x.  The same step with XFORM_FAST's
+// per-position norm correction folded in and clamped, SYNTAX 6.7.  `pos` is
+// the raster position inside the block.
+int dequantStepX(int qp, int w, int pos) {
+    if (kXformFast == 0) return dequantStep(qp, w);
+    int t = (kQStep[qp] * w * kXfsScale[pos] + kXfsScaleRound) >> kXfsScaleShift;
+    return min(t, kXfsTMax);
 }
 int dequant(int q, int t) {
     return clamp16((q * t + kDequantRound) >> kDequantShift);
@@ -169,6 +184,58 @@ void idct8_1d(int x0, int x1, int x2, int x3, int x4, int x5, int x6, int x7,
     y[1] = e1 + O1; y[6] = e1 - O1;
     y[2] = e2 + O2; y[5] = e2 - O2;
     y[3] = e3 + O3; y[4] = e3 - O3;
+}
+
+// [REF] transform.cpp idct8_1d_fast.  32 adds and 10 shifts, no multiply.
+void idct8_1d_fast(int d0, int d1, int d2, int d3, int d4, int d5, int d6,
+                   int d7, out int y[8]) {
+    int e0 = d0 + d4;
+    int e1 = -d3 + d5 - d7 - (d7 >> 1);
+    int e2 = d0 - d4;
+    int e3 = d1 + d7 - d3 - (d3 >> 1);
+    int e4 = (d2 >> 1) - d6;
+    int e5 = -d1 + d7 + d5 + (d5 >> 1);
+    int e6 = d2 + (d6 >> 1);
+    int e7 = d3 + d5 + d1 + (d1 >> 1);
+    int f0 = e0 + e6, f1 = e1 + (e7 >> 2);
+    int f2 = e2 + e4, f3 = e3 + (e5 >> 2);
+    int f4 = e2 - e4, f5 = (e3 >> 2) - e5;
+    int f6 = e0 - e6, f7 = e7 - (e1 >> 2);
+    y[0] = f0 + f7; y[7] = f0 - f7;
+    y[1] = f2 + f5; y[6] = f2 - f5;
+    y[2] = f4 + f3; y[5] = f4 - f3;
+    y[3] = f6 + f1; y[4] = f6 - f1;
+}
+
+// The two passes of the 2D inverse, with the transform selected by the
+// specialization constant so each pipeline compiles to exactly one of them.
+// `q` is the dequantized row (pass 1) or the transposed intermediate
+// (pass 2); the output is already clamped and ready to store.
+void idctPass1(int q[8], out int v[8]) {
+    int y[8];
+    if (kXformFast != 0) {
+        idct8_1d_fast(q[0] << kXfsShiftIn, q[1] << kXfsShiftIn,
+                      q[2] << kXfsShiftIn, q[3] << kXfsShiftIn,
+                      q[4] << kXfsShiftIn, q[5] << kXfsShiftIn,
+                      q[6] << kXfsShiftIn, q[7] << kXfsShiftIn, y);
+        for (int c = 0; c < 8; ++c) v[c] = clamp16(y[c]);
+    } else {
+        idct8_1d(q[0], q[1], q[2], q[3], q[4], q[5], q[6], q[7], y);
+        for (int c = 0; c < 8; ++c)
+            v[c] = clamp16((y[c] + kIdctRound1) >> kIdctShift1);
+    }
+}
+void idctPass2(int q[8], out int v[8]) {
+    int y[8];
+    if (kXformFast != 0) {
+        idct8_1d_fast(q[0], q[1], q[2], q[3], q[4], q[5], q[6], q[7], y);
+        for (int c = 0; c < 8; ++c)
+            v[c] = clamp16((y[c] + kXfsRound2) >> kXfsShift2);
+    } else {
+        idct8_1d(q[0], q[1], q[2], q[3], q[4], q[5], q[6], q[7], y);
+        for (int c = 0; c < 8; ++c)
+            v[c] = clamp16((y[c] + kIdctRound2) >> kIdctShift2);
+    }
 }
 
 // ------------------------------------------------------------ bilinear
@@ -514,25 +581,29 @@ void main() {
         int dcLen = unitLen(tileLenBase, unitBase);
         int dcScan = nxvw_scan_id(ndc, 0);
         if (tid == 0) sModesNz = 0u;
-        if (tid < ndc)
+        if (tid < ndc) {
+            // The second-level transform is the stream's 8x8 transform, so
+            // when nb == 8 its dequantizer carries XFORM_FAST's norm
+            // correction too.  With nb != 8 no transform runs and the step is
+            // the flat one on both paths.  [REF] codec.cpp
+            // reconstruct_dc_plane.
+            int t = (nb == 8) ? dequantStepX(dcqp, kFlatWeight, tid) : tdc;
             sDcTmp[tid] = dcLen != 0
-                              ? dequant(coefIn(coefBase, dcScan, dcLen, tid), tdc)
+                              ? dequant(coefIn(coefBase, dcScan, dcLen, tid), t)
                               : 0;
+        }
         barrier();
 
         if (nb == 8 && dcLen != 0) {
             // Second-level 8x8 IDCT of the 64 block DCs.  Same two-pass
             // structure as the block transform; 4 threads, 2 rows each.
-            int rowv[8], y[8];
+            int rowv[8];
             int tmp[8];
             if (tid < 4) {
                 for (int hf = 0; hf < 2; ++hf) {
                     int r = (tid << 1) + hf;
                     for (int c = 0; c < 8; ++c) rowv[c] = sDcTmp[r * 8 + c];
-                    idct8_1d(rowv[0], rowv[1], rowv[2], rowv[3], rowv[4],
-                             rowv[5], rowv[6], rowv[7], y);
-                    for (int c = 0; c < 8; ++c)
-                        tmp[c] = clamp16((y[c] + kIdctRound1) >> kIdctShift1);
+                    idctPass1(rowv, tmp);
                     for (int c = 0; c < 8; ++c) sMeans[c * 8 + r] = tmp[c];
                 }
             }
@@ -541,10 +612,7 @@ void main() {
                 for (int hf = 0; hf < 2; ++hf) {
                     int r = (tid << 1) + hf;
                     for (int c = 0; c < 8; ++c) rowv[c] = sMeans[r * 8 + c];
-                    idct8_1d(rowv[0], rowv[1], rowv[2], rowv[3], rowv[4],
-                             rowv[5], rowv[6], rowv[7], y);
-                    for (int c = 0; c < 8; ++c)
-                        tmp[c] = clamp16((y[c] + kIdctRound2) >> kIdctShift2);
+                    idctPass2(rowv, tmp);
                     for (int c = 0; c < 8; ++c) sDcTmp[c * 8 + r] = tmp[c];
                 }
             }
@@ -592,19 +660,19 @@ void main() {
             // skip-tile fast path, because a tile with no coded unit has no
             // coded block either.
             if (coded) {
-                int y[8];
+                int v[8];
                 for (int hf = 0; hf < 2; ++hf) {
                     int r = (sub << 1) + hf;
                     int q[8];
                     for (int c = 0; c < 8; ++c) {
                         int pos = r * 8 + c;
-                        q[c] = dequant(coefIn(blockBase, blockScan, blockLen, pos),
-                                       dequantStep(planeQp, uWgt.m[wbase + pos]));
+                        q[c] = dequant(
+                            coefIn(blockBase, blockScan, blockLen, pos),
+                            dequantStepX(planeQp, uWgt.m[wbase + pos], pos));
                     }
-                    idct8_1d(q[0], q[1], q[2], q[3], q[4], q[5], q[6], q[7], y);
+                    idctPass1(q, v);
                     for (int c = 0; c < 8; ++c) {
-                        int v = clamp16((y[c] + kIdctRound1) >> kIdctShift1);
-                        if (hf == 0) res0[c] = v; else res1[c] = v;
+                        if (hf == 0) res0[c] = v[c]; else res1[c] = v[c];
                     }
                 }
                 // tmp[c*8 + r], r = 2*sub and 2*sub+1: block row c, columns
@@ -617,18 +685,17 @@ void main() {
             barrier();
             // Column pass: rows 2*sub, 2*sub+1 of the transposed block.
             if (coded) {
-                int y[8];
+                int v[8];
                 for (int hf = 0; hf < 2; ++hf) {
                     int r = (sub << 1) + hf;
                     int q[8];
                     int rowBase = ((by * 8 + r) * size + bx * 8) >> 1;
                     for (int c = 0; c < 8; ++c)
                         q[c] = unpack16(sPlane[store + rowBase + (c >> 1)], c & 1);
-                    idct8_1d(q[0], q[1], q[2], q[3], q[4], q[5], q[6], q[7], y);
+                    idctPass2(q, v);
+                    // dst[c*8 + r]: row c, column r
                     for (int c = 0; c < 8; ++c) {
-                        int v = clamp16((y[c] + kIdctRound2) >> kIdctShift2);
-                        // dst[c*8 + r]: row c, column r
-                        if (hf == 0) res0[c] = v; else res1[c] = v;
+                        if (hf == 0) res0[c] = v[c]; else res1[c] = v[c];
                     }
                 }
             }

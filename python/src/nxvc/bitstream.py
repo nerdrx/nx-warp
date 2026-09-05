@@ -392,9 +392,16 @@ class StreamHeader(_TableStruct):
                 raise BitstreamError(
                     f"layer_desc[{i}] must be zero above num_layers", offset + 16 + 4 * i
                 )
-        if self.tools >> Tool.RESERVED_FROM:
+        if self.tools & Tool.RESERVED_MASK:
             raise BitstreamError(
                 f"reserved tool bits set: 0x{self.tools:016x}", offset + 32
+            )
+        # SYNTAX.md 2.3: a lossless stream is transform skip everywhere, so it
+        # never runs an 8x8 transform (rejection vector r30).
+        if (self.tools & Tool.LOSSLESS) and (self.tools & Tool.XFORM_FAST):
+            raise BitstreamError(
+                "tool bits LOSSLESS and XFORM_FAST are mutually exclusive",
+                offset + 32,
             )
         # SYNTAX.md 2.3: hiding a sign spends one level step, so the two cannot
         # both be true (rejection vector r17).

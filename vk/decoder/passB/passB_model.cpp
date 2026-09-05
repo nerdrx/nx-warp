@@ -39,6 +39,26 @@ inline void idct8_1d(const int *x, int *y) {
     y[3] = e3 + O3; y[4] = e3 - O3;
 }
 
+// [xfast] Mirrors idct8_1d_fast() in the shader and ref/src/transform.cpp.
+inline void idct8_1d_fast(const int *d, int *y) {
+    int e0 = d[0] + d[4];
+    int e1 = -d[3] + d[5] - d[7] - (d[7] >> 1);
+    int e2 = d[0] - d[4];
+    int e3 = d[1] + d[7] - d[3] - (d[3] >> 1);
+    int e4 = (d[2] >> 1) - d[6];
+    int e5 = -d[1] + d[7] + d[5] + (d[5] >> 1);
+    int e6 = d[2] + (d[6] >> 1);
+    int e7 = d[3] + d[5] + d[1] + (d[1] >> 1);
+    int f0 = e0 + e6, f1 = e1 + (e7 >> 2);
+    int f2 = e2 + e4, f3 = e3 + (e5 >> 2);
+    int f4 = e2 - e4, f5 = (e3 >> 2) - e5;
+    int f6 = e0 - e6, f7 = e7 - (e1 >> 2);
+    y[0] = f0 + f7; y[7] = f0 - f7;
+    y[1] = f2 + f5; y[6] = f2 - f5;
+    y[2] = f4 + f3; y[5] = f4 - f3;
+    y[3] = f6 + f1; y[4] = f6 - f1;
+}
+
 // ------------------------------------------------------------- bilinear
 inline int bilinear(const int *src, int w, int h, int stride, int sx, int sy) {
     int x0 = sx >> kBilinFracBits, y0 = sy >> kBilinFracBits;
@@ -273,11 +293,19 @@ void reconstruct_tile(const PassBInput &in, int tile, TilePlanes &tp,
         const int dcScan = nxvw_scan_id(ndc, 0);
         std::vector<int> dc(ndc, 0);
         if (dcLen != 0)
-            for (int i = 0; i < ndc; ++i)
-                dc[i] = model_dequant(coef_in(coefBase, dcScan, dcLen, i), tdc);
+            for (int i = 0; i < ndc; ++i) {
+                // [xfast] the second-level transform is the stream's 8x8
+                // transform, so when nb == 8 its step carries the norm
+                // correction too.
+                int t = nb == 8 ? model_dequant_step_x(dcqp, kFlatWeight, i,
+                                                       in.xformFast)
+                                : tdc;
+                dc[i] = model_dequant(coef_in(coefBase, dcScan, dcLen, i), t);
+            }
         if (nb == 8 && dcLen != 0) {
             int out[64];
-            model_idct8x8(dc.data(), out);
+            if (in.xformFast) model_idct8x8_fast(dc.data(), out);
+            else model_idct8x8(dc.data(), out);
             for (int i = 0; i < 64; ++i) dc[i] = out[i];
         }
         std::vector<int> means(ndc);
@@ -326,9 +354,11 @@ void reconstruct_tile(const PassBInput &in, int tile, TilePlanes &tp,
             } else {
                 int dq[64];
                 for (int i = 0; i < 64; ++i)
-                    dq[i] = model_dequant(coef_in(c, blockScan, blockLen, i),
-                                          model_dequant_step(planeQp, wmat[i]));
-                model_idct8x8(dq, res);
+                    dq[i] = model_dequant(
+                        coef_in(c, blockScan, blockLen, i),
+                        model_dequant_step_x(planeQp, wmat[i], i, in.xformFast));
+                if (in.xformFast) model_idct8x8_fast(dq, res);
+                else model_idct8x8(dq, res);
             }
             if (!dir) {
                 for (int j = 0; j < 8; ++j)
@@ -440,6 +470,28 @@ int model_dequant(int q, int t) {
 }
 int model_bilinear_q4(const int *src, int w, int h, int stride, int sx, int sy) {
     return bilinear(src, w, h, stride, sx, sy);
+}
+
+int model_dequant_step_x(int qp, int w, int pos, int xformFast) {
+    if (!xformFast) return model_dequant_step(qp, w);
+    int t = (kQStep[qp] * w * kXfsScale[pos] + kXfsScaleRound) >> kXfsScaleShift;
+    return t > kXfsTMax ? kXfsTMax : t;
+}
+
+void model_idct8x8_fast(const int src[64], int dst[64]) {
+    int tmp[64];
+    int in[8], out[8];
+    for (int r = 0; r < 8; ++r) {
+        for (int c = 0; c < 8; ++c) in[c] = src[r * 8 + c] << kXfsShiftIn;
+        idct8_1d_fast(in, out);
+        for (int c = 0; c < 8; ++c) tmp[c * 8 + r] = clamp16(out[c]);
+    }
+    for (int r = 0; r < 8; ++r) {
+        for (int c = 0; c < 8; ++c) in[c] = tmp[r * 8 + c];
+        idct8_1d_fast(in, out);
+        for (int c = 0; c < 8; ++c)
+            dst[c * 8 + r] = clamp16((out[c] + kXfsRound2) >> kXfsShift2);
+    }
 }
 
 void model_idct8x8(const int src[64], int dst[64]) {

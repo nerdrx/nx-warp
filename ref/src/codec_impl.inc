@@ -182,6 +182,11 @@ extern "C" nxvc_encoder *nxvc_encoder_create(const nxvc_config *cfg,
         // Sign data hiding spends one level step to carry the sign, so it is
         // lossy by construction and cannot coexist with lossless coding.
         e->cfg.sign_hide = 0;
+        // Lossless is transform skip on every block, so no 8x8 transform ever
+        // runs; setting XFORM_FAST would advertise a tool the stream does not
+        // use and would make a decoder without it refuse a stream it could
+        // have decoded.
+        e->cfg.xform_fast = 0;
     }
     e->g.width = cfg->width;
     e->g.height = cfg->height;
@@ -212,6 +217,7 @@ extern "C" nxvc_encoder *nxvc_encoder_create(const nxvc_config *cfg,
     e->fp.intra_dir = e->cfg.intra_dir ? 1 : 0;
     e->fp.dir_layer = (e->cfg.intra_dir && e->cfg.intra_dir_layer) ? 1 : 0;
     e->fp.sdh = e->cfg.sign_hide ? 1 : 0;
+    e->fp.xfast = e->cfg.xform_fast ? 1 : 0;
     e->cfg.eyes = eyes;
     e->fp.inter = e->cfg.inter ? 1 : 0;
     e->fp.stereo = e->cfg.stereo ? 1 : 0;
@@ -270,6 +276,7 @@ static u64 encoder_tools(const nxvc_encoder *e) {
     if (e->cfg.intra_dir) t |= NXVC_TOOL_INTRA_DIR;
     if (e->cfg.ctx_v2) t |= NXVC_TOOL_CTX_V2;
     if (e->cfg.sign_hide) t |= NXVC_TOOL_SIGN_HIDE;
+    if (e->cfg.xform_fast) t |= NXVC_TOOL_XFORM_FAST;
     if (e->cfg.inter) t |= NXVC_TOOL_INTER | NXVC_TOOL_WARP;
     if (e->cfg.stereo) t |= NXVC_TOOL_STEREO;
     t |= NXVC_TOOL_RES_LEVEL;
@@ -1655,6 +1662,10 @@ extern "C" nxvc_status nxvc_decoder_parse_stream_header(nxvc_decoder *d,
     // carry it, and a decoder that accepted both would not know which.
     if ((si.tools & NXVC_TOOL_LOSSLESS) && (si.tools & NXVC_TOOL_SIGN_HIDE))
         return NXVC_ERR_BITSTREAM;
+    // A lossless stream is transform skip on every block, so no 8x8 transform
+    // runs and XFORM_FAST would select between two things that never happen.
+    if ((si.tools & NXVC_TOOL_LOSSLESS) && (si.tools & NXVC_TOOL_XFORM_FAST))
+        return NXVC_ERR_BITSTREAM;
     // Walk the TLV area; unknown types are skipped (forward compatibility).
     size_t p = kStreamHeaderBytes, end = kStreamHeaderBytes + si.ext_len;
     while (p + 4 <= end) {
@@ -1739,6 +1750,7 @@ static nxvc_status parse_frame_header(nxvc_decoder *d, const u8 *buf,
     fp.nctx = (d->si.tools & NXVC_TOOL_CTX_V2) ? kNumCtxV2 : kNumCtxV1;
     fp.intra_dir = (d->si.tools & NXVC_TOOL_INTRA_DIR) ? 1 : 0;
     fp.sdh = (d->si.tools & NXVC_TOOL_SIGN_HIDE) ? 1 : 0;
+    fp.xfast = (d->si.tools & NXVC_TOOL_XFORM_FAST) ? 1 : 0;
     fp.dir_layer = (fp.flags >> 2) & 1;
     fp.inter = (d->si.tools & NXVC_TOOL_INTER) ? 1 : 0;
     fp.stereo = (d->si.tools & NXVC_TOOL_STEREO) ? 1 : 0;
