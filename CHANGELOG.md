@@ -14,6 +14,31 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
 
 ### Added
 
+**GPU encoder: E3's inter residual path, and STATIC_MV**
+
+- A coded inter tile subtracts Pass W's predictor and its DC plane codes the block means of that
+  residual, offset back so the quantised quantity is the same `m - dc_off` on both paths. An intra
+  tile's reconstructed mean is clamped to the sample domain and an inter tile's is not -- the latter
+  is `dc_offset + a residual mean`, and clamping it would cap the DC correction the warp needs.
+- 1088x1088, QP 30, real pose track, byte-identical to `nxv-enc` at each setting: intra 36779
+  B/frame at 38.42 dB; skip-only 13446 at 36.92 dB (2.73x); **+STATIC_MV 9303 at 36.30 dB (3.95x)**.
+  STATIC_MV is free in time -- 4.69 ms against intra's 4.94 -- because a frame with fewer coded
+  tiles is cheaper in table training and E4/E5.
+- Three bugs found getting there, the last worth naming: **the motion search has ONE running best,
+  not one per stage.** The reference never resets `bsad` between the seeds, the sweep and the
+  integer refine, and those stages sample at different densities -- every second sample for the
+  first two, every sample for the third -- so a refine candidate's SAD is about four times a sweep
+  candidate's and essentially never wins. The reference's integer refine is inert by construction.
+  Resetting per stage made it live and moved 542 tiles of 4624 at 1088x1088, while leaving the
+  256x192 fixture passing because there the two winners coincide. Also: a missing trailing barrier
+  in the search's reduction, and `mv` not being read back from the device, so E1c chose (-1,0) and
+  the bitstream carried (0,0).
+- **WARP_MV is measured and deferred.** Against STATIC_MV alone it is 6.2 % fewer bytes (9303 ->
+  8729) and 0.12 dB *worse*, and it mostly takes tiles from STATIC_MV rather than from INTRA. The
+  naive GPU route is nine more Pass W dispatches per frame -- a third of the encode for 6 % of the
+  rate. `vk/encoder/README.md` records the route that would be worth it if the rate is ever wanted.
+
+
 **Reference encoder: tile-parallel encoding (`nxvc_config::threads`, `nxv-enc --threads N`)**
 
 - The CPU reference encoder codes a frame's 64x64 tiles on a pool of worker threads. `0` is auto
