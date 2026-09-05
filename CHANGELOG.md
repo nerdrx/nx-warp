@@ -86,6 +86,30 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
   (`r18`-`r29`, `r40`-`r43`) are checked now, with zero mismatching samples on RADV, lavapipe and
   the Adreno 650. What is left is `XFORM_LARGE` and `ENTROPY_LITE`.
 
+### Added
+
+**GPU encoder: the inter path is specified and sized, ahead of being built**
+
+- `docs/adr/0028-gpu-inter-needs-an-integer-mode-decision.md` records the decision that the GPU
+  encoder's inter path implements its own **fully integer** mode decision rather than reproducing
+  the reference's, and that the same decision is added to the reference as a first-class preset so
+  byte-identity stays the acceptance test. The reference's default decision prices every candidate
+  with a real rate from `table_set_cost`, a sum of `std::log2` terms; `log2` is not correctly
+  rounded and is not the same function on a host libm and on a GPU, and every comparison downstream
+  is a `double` derived from it.
+- Measured on 16 frames of a 1088x1088 4:2:0 band-limited synthetic head turn (peak 123 deg/s) at
+  QP 30, decoded back through `nxv-dec`: intra only 32339 B/frame at 38.42 dB; WARP_SKIP + INTRA
+  16035 B/frame at 36.86 dB (2.02x); full inter 7926 B/frame at 36.62 dB (**4.08x**, 5.7 Mbit/s per
+  eye at 90 Hz). Tile modes: WARP_SKIP 81.0 %, INTRA 8.9 %, STATIC_MV 7.0 %, WARP_MV 3.1 %.
+  **WARP_SKIP alone does not reach the 3x the budget needs**, and STATIC_MV outweighs WARP_MV more
+  than 2:1, so the staging in `vk/encoder/README.md` has been corrected accordingly.
+- `vk/encoder/forward/nxe_enc.h` claimed E3 "already reads its prediction from a buffer
+  (`pred_src`) rather than deriving it, so an inter tile is a different producer for the same
+  buffer". No such buffer exists or ever existed: `forward.comp` binds params, jobs, source,
+  coefficients and modes, and its prediction is `pred_at()`, recomputed and never materialised. The
+  comment is corrected to say what an inter tile actually needs -- a sixth binding and a mode
+  branch -- so the next reader does not cost that work at zero.
+
 ### Fixed
 
 - **`fast` rdoq with the trellis off never quantized the tile.** `quantize_tile_ex` reaches a tile

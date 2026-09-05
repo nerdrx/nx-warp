@@ -42,10 +42,22 @@
  *     with `nctx` rows actually present, so 27 contexts is a bigger upload and
  *     nothing else.  NXE_MAX_CTX below is only the storage bound.
  *
- * Inter tools slot in ahead of E3: the per-tile record carries `mode` and the
- * predictor plane pointer, and E3 already reads its prediction from a buffer
- * (`pred_src`) rather than deriving it, so an inter tile is a different
- * producer for the same buffer.
+ * Inter tools slot in ahead of E3, but NOT as cheaply as this comment used to
+ * claim.  It said E3 "already reads its prediction from a buffer (`pred_src`)
+ * rather than deriving it, so an inter tile is a different producer for the
+ * same buffer".  There is no such buffer and there never was: `pred_src`
+ * appears nowhere else in vk/encoder, `forward.comp` binds params, jobs,
+ * source, coefficients and modes and nothing else, and its prediction is
+ * `pred_at()`, recomputed from the tile's own reconstructed block means --
+ * which that file states plainly ("It is never materialised").
+ * `nxe_tile_job::mode` is real, and is INTRA on every tile this pipeline
+ * codes.
+ *
+ * So the work an inter tile actually needs here is a sixth binding carrying
+ * the warped predictor Pass W produces, and a branch in the residual path that
+ * takes it instead of `pred_at()`.  That is a modest change, but it is a
+ * change, and planning against the sentence that was here would have costed it
+ * at zero.  See docs/adr/0028-gpu-inter-needs-an-integer-mode-decision.md.
  */
 
 #ifndef NXE_ENC_H

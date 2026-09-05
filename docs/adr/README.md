@@ -52,3 +52,4 @@ measurements, and an ADR whose estimate turns out wrong gets superseded, not edi
 | [0025](0025-directional-intra-is-negotiated.md) | Directional intra is a negotiated tool; restriction A is its default schedule | Accepted | 3.2.4, 6.4 |
 | [0026](0026-sparse-coefficient-transfer.md) | The Pass A to Pass B coefficient buffer is sparse | Accepted | 3.2.1, 3.2.5 |
 | [0027](0027-no-spatial-hybrid.md) | No spatial hybrid; foveation inside the codec is the lever | Accepted | 3.5, 5.1 |
+| [0028](0028-gpu-inter-needs-an-integer-mode-decision.md) | The GPU inter path needs its own integer mode decision, and a reference preset to match | Proposed | 2.3, 2.6, 3.6 |
