@@ -408,15 +408,34 @@ For each tile row `row = 0 .. rows - 1` and each eye, in that order:
 |---|---|---|
 | 0 | u16 | `frame_number` (must equal the frame header's) |
 | 2 | u8 | `row_index` (must equal `row`) |
-| 3 | u8 | `tile_count` |
+| 3 | u8 | bit 7 `dc_present`, bits 6:0 `tile_count` |
 | 4 | u64 | `skip_bitmap` |
+| 12 | u64 | `dc_bitmap`, **only when `dc_present`** |
+| 20 | 9 x n | one near-skip correction per `dc_bitmap` bit, in column order |
 
 followed by `tile_count` tile structures.
 
 Bit *i* of `skip_bitmap` set means tile *i* of this row **of this eye** is
 `WARP_SKIP` and is **not** transmitted. `tile_count` must equal the number of
 tiles in the row that are not marked skipped, and bits at or above
-`cols_per_eye` must be zero. The bitmap therefore covers one row of one eye, so
+`cols_per_eye` must be zero.
+
+**`dc_present` and `dc_bitmap` (tool bit 28 `NEAR_SKIP`).** `dc_present` set
+without tool bit 28 is `BITSTREAM`. When it is set, a `dc_bitmap` follows the
+skip bitmap and then one nine-byte correction record per set bit, in ascending
+column order, before the first tile structure. Constraints, each `BITSTREAM`:
+
+* `dc_present` with an all-zero `dc_bitmap` -- that would be two encodings of
+  one stream, and a parser must not accept the redundant one;
+* a `dc_bitmap` bit at or above `cols_per_eye`;
+* a `dc_bitmap` bit whose `skip_bitmap` bit is **clear**. Every corrected tile
+  is a skipped tile: the correction replaces a skipped tile's flat block-mean
+  field, and there is nothing for it to correct on a coded tile.
+
+The record's contents and their reconstruction are section 13.9. `NEAR_SKIP`
+is the only tool bit in this version that gates a tile-ROW header structure
+rather than a tile-header field, which is why it costs no word1 bit and why
+its nine bytes are spent only on the tiles the bitmap names. The bitmap therefore covers one row of one eye, so
 the structural bound `ceil(width / 64) <= 64` binds `cols_per_eye`, not `cols`,
 and is satisfied for every legal `width` up to the syntax maximum of 4096.
 
@@ -487,10 +506,12 @@ Then, in this order:
    * `u16 disparity` if `mode == STEREO`
    * `i8 mv_x, i8 mv_y` otherwise
 2. if `quad_mv`: four bytes of quadrant vector deltas (13.10)
-3. if `sub_intra`: one byte, bits 1:0 the quadrant, bits 7:2 zero (13.11)
-4. `u8 alpha_value` if `alpha_mode == 1`
-5. if `near_skip`: `3 * (near_skip_ac ? 3 : 1)` correction bytes (13.9)
-6. `payload_len` bytes of rANS payload
+3. `u8 alpha_value` if `alpha_mode == 1`
+4. `payload_len` bytes of rANS payload
+
+The near-skip correction is **not** here: it is in the tile-row header (3.3
+and 13.9), because a near-skip tile is a skipped tile and has no tile
+structure at all.
 
 `mv_x` and `mv_y` are the tile's motion vector **itself**, in quarter samples
 (Q.2), range `[-32, +31.75]` samples. They are **not** a delta from the tile's
@@ -541,12 +562,10 @@ frame; `mode == STEREO` requires the `STEREO` tool bit, `eye == 1` and
 `ref_sel == 3` is reserved. For `mode == INTRA` and `mode == STEREO`, `ref_sel`
 must be 0 and **is ignored** by the decoding process.
 
-`near_skip` requires the `NEAR_SKIP` tool bit, `mode != INTRA`,
-`payload_len == 0`, `res_level == 0` and `alpha_mode != 2`; `near_skip_ac`
-requires `near_skip`. `quad_mv` requires the `QUAD_MV` tool bit and
-`mode == WARP_MV` or `mode == STATIC_MV`. `sub_intra` requires the
-`SUBTILE_INTRA` tool bit, `mode != INTRA` and `near_skip == 0`. Sections 13.9
-to 13.11 say why each of those is a constraint rather than a convention.
+`quad_mv` requires the `QUAD_MV` tool bit and `mode == WARP_MV` or
+`mode == STATIC_MV`. The near-skip constraints are in 3.3, because they are
+about the row header. Sections 13.9 and 13.10 say why each is a constraint
+rather than a convention.
 
 `ref_sel` is **authoritative**; the transport's `ref_delta` is an advisory copy
 of it with one extra value, 3, meaning "no temporal reference", which is what
@@ -2639,37 +2658,39 @@ rate-distortion content of the threshold. The rate of the correction is folded
 into the multiplier `g`, because the encoder cannot know it without coding the
 tile; `g` is the swept constant and `ref/RESULTS-inter-a.md` is the sweep.
 
-### 13.9 Near-skip: the DC-correction tile form (tool bit 24)
+### 13.9 Near-skip: the correction record (tool bit 28)
 
 A warped tile often drifts by a small, smooth amount -- a shading change, a
 slow exposure ramp, the accumulated rounding of a resampling chain. The
 encoder's only two answers were a `WARP_SKIP` that leaves the drift in the
 reference and a fully coded tile that pays a rANS payload and a lane flush to
 remove it. **Near-skip** is the answer in between: the tile's entire residual
-is a per-plane block-mean field, flat or a pair of ramps, in three or nine
+is a per-plane block-mean field -- a DC level and a pair of ramps -- in nine
 signed bytes.
 
-Tile-header word1 gains two bits:
+**The record is in the TILE-ROW header, not in the tile** (3.3). A near-skip
+tile is a *skipped* tile with a bias: its `skip_bitmap` bit is set, it has no
+tile structure at all, it uses its stored `last_mv` like any skipped tile, and
+it is named by the row's `dc_bitmap`. That placement is the whole design:
 
-| bit | field | notes |
-|---|---|---|
-| 28 | `near_skip` | the tile carries a correction field and no payload |
-| 29 | `near_skip_ac` | the correction field carries the two ramps as well |
+* it costs **no word1 bit**, which is what left room for `split4x4` and
+  `xform_size` in the same header;
+* it is nine bytes flat rather than a tile header plus a vector plus the
+  correction;
+* and it is the only form of the tool that can appear in a **warp-only
+  chain**, which by definition contains no coded tiles. A form that made the
+  tile coded cannot reach the case the tool most exists for.
 
-Both require tool bit 24 `NEAR_SKIP`. Constraints, each a MUST-reject:
+The constraints are 3.3's, and they are about the row rather than the tile.
 
-* `near_skip_ac` requires `near_skip`;
-* `near_skip` requires `mode != INTRA` -- a picture built from nine bytes is
-  not a prediction, and the form exists to correct one;
-* `near_skip` requires `payload_len == 0`, `res_level == 0` and
-  `alpha_mode != 2`. A payload would contradict the bit; a `res_level` would
-  put the correction in a domain the reconstruction then stretches; a coded
-  alpha plane has no correction defined for it.
+Each record is nine bytes: for each of the three colour planes in order
+Y, Co, Cg, three signed bytes `c0`, `c1`, `c2`. Alpha is never corrected.
 
-The correction field follows the constant-alpha byte and is
-`3 * (near_skip_ac ? 3 : 1)` bytes: for each of the three colour planes in
-order Y, Co, Cg, one signed byte `c0`, then under `near_skip_ac` two more,
-`c1` and `c2`. Alpha is never corrected.
+**All three terms are always present.** An earlier design made the two ramp
+terms optional behind a second tile-header bit; its encoder then never chose
+them, so three of the nine bytes and the `>> log2(nb)` arithmetic below were
+exercised by no vector and no test. The ramps are also about three quarters of
+what the correction recovers. One record size, always fitted.
 
 **Decoding process.** Per plane, with `nb` the plane's blocks per edge and
 `t_dc` the DC-plane quantiser step of 6.5 -- `dequant_step(qp >> 1, 16)`, the
@@ -2678,8 +2699,8 @@ way:
 
 ```
 d0 = dequant(c0, t_dc)
-dh = near_skip_ac ? dequant(c1, t_dc) : 0
-dv = near_skip_ac ? dequant(c2, t_dc) : 0
+dh = dequant(c1, t_dc)
+dv = dequant(c2, t_dc)
 
 for by in 0 .. nb-1, bx in 0 .. nb-1:
     means[by][bx] = dc_offset + d0
@@ -2716,11 +2737,13 @@ Tile-header word1 gains one bit:
 
 | bit | field | notes |
 |---|---|---|
-| 30 | `quad_mv` | four quadrant vectors follow the tile vector |
+| 31 | `quad_mv` | four quadrant vectors follow the tile vector |
 
-It requires tool bit 25 `QUAD_MV`, and it requires `mode == WARP_MV` or
+It requires tool bit 29 `QUAD_MV`, and it requires `mode == WARP_MV` or
 `mode == STATIC_MV`, which are the modes that carry a tile vector to refine.
-Word1 bit 31 remains reserved and must be zero.
+Word1 has no reserved bits left: 28 is `split4x4`, 29-30 `xform_size` and 31
+`quad_mv`.  The reserved-bit rejection vector `r09` therefore moved to word0
+bit 3, which is the last must-be-zero header bit (docs/TOOLBITS.md 4.1).
 
 Four bytes follow the tile's `mv_x`/`mv_y`, before the constant-alpha byte:
 one byte per quadrant in raster order (top-left, top-right, bottom-left,
@@ -2766,55 +2789,28 @@ statement about the tile as a whole.
 **What it costs a GPU decoder.** Four bytes of traffic and one extra select
 per sample. No new dependency, no cross-tile state, no extra pass.
 
-### 13.11 Sub-tile intra (tool bit 26)
+### 13.11 Sub-tile intra: measured, and NOT in this version
 
-Where something was occluded a frame ago and is not now, no vector recovers
-it: the samples are not in the reference at any displacement. A rotation-only
-predictor meets this as a strip along a near-field object's edge, and the tile
-containing it is otherwise perfectly predicted. `INTRA` on the whole tile
-throws away three quadrants that did not need it.
+One 32x32 quadrant of an inter tile dropping the predictor was built and
+measured, and the syntax is **withdrawn**. It gets no tool bit
+(docs/TOOLBITS.md 2) and word1 bit 31 went to `quad_mv` instead.
 
-Tile-header word1's last free bit becomes:
+The idea is sound: where something was occluded a frame ago and is not now, no
+vector recovers it -- the samples are not in the reference at any displacement
+-- and a rotation-only predictor meets this as a strip along a near-field
+object's edge, in a tile that is otherwise perfectly predicted. `INTRA` on the
+whole tile throws away three quadrants that did not need it.
 
-| bit | field | notes |
-|---|---|---|
-| 31 | `sub_intra` | one 32x32 quadrant of this tile is predicted intra |
+It measured at **-0.50 and +0.59 BD-rate points** -- a loss on one of the two
+bands -- and shipped off by default on the branch that built it. The reason is
+that this corpus cannot produce the case: synthetic rotation-and-pan over a
+band-limited picture has no disocclusion in it. That is a statement about the
+material, not about the tool, and it is why the syntax is withheld rather than
+rejected: it should be re-measured on a capture that contains near-field
+parallax, and it costs nothing to leave the bit unallocated until then.
 
-It requires tool bit 26 `SUBTILE_INTRA`, `mode != INTRA` -- an intra tile has
-no predictor to drop -- and `near_skip == 0`, because a near-skip tile has no
-residual and the quadrant would then be a flat field.
-
-One byte follows the quadrant deltas: bits 1:0 the quadrant index in raster
-order (top-left, top-right, bottom-left, bottom-right), bits 7:2 reserved and
-MUST be zero. A whole byte carries two bits because word1 has no room left,
-and it is one byte on the tiles that carry a strip and none anywhere else.
-
-**Decoding process.** In the named quadrant, and in every plane, the predictor
-`W` of 13.3 is replaced by that plane's `dc_offset`. Nothing else changes. So
-13.3's
-
-```
-pred = clamp(W + planar(M) - dc_offset, 0, maxval)
-```
-
-collapses in that quadrant to `clamp(planar(M), 0, maxval)`, which is exactly
-the intra reconstruction of 7.3: the DC plane and the residual carry the
-quadrant on their own, with the same coding units, the same contexts and the
-same quantiser the rest of the tile uses. The quadrant boundary is the
-plane's own half extent -- 32 luma samples, 16 chroma samples at 4:2:0 -- and
-is block-aligned at every legal `res_level`.
-
-The tile's mode is unchanged, so `last_mv` and the prediction state follow
-13.5 as if the quadrant were predicted normally. A concealed tile has no
-`sub_intra`, because a concealed tile has no header; concealment is the
-`WARP_SKIP` predictor over the whole tile, as 13.6 says.
-
-**What it costs a GPU decoder.** One byte of traffic and one select per
-sample, in the same place 13.10's select already is. There is no second
-prediction path: "intra" here means "the predictor contributes the DC offset",
-which is a constant.
-
----
+What a format should not do is spend its last reserved tile-header bit on a
+tool that is disabled and unproven.
 
 ## 14. Phase 2 conformance
 
@@ -2831,12 +2827,12 @@ decoder implements. It must:
   stream without the `INTER` tool bit;
 * reject tool bits 14 and 23 with a `VERSION` status, and the `WARP` bit
   without `INTER` with a `BITSTREAM` one;
-* reject `near_skip`, `quad_mv` or `sub_intra` without its tool bit,
-  `near_skip_ac` without `near_skip`, `near_skip` on an `INTRA` tile or with a
-  nonzero `payload_len`, `res_level` or `alpha_mode == 2`, `quad_mv` on any
-  mode other than `WARP_MV` and `STATIC_MV`, `sub_intra` on an `INTRA` tile or
-  together with `near_skip`, and a sub-intra byte with bits 7:2 set;
-* reproduce every `decoded_md5` of the `v45`-`v61` vectors.
+* reject `quad_mv` without its tool bit and `quad_mv` on any mode other than
+  `WARP_MV` and `STATIC_MV`; reject a row header whose `dc_present` is set
+  without tool bit 28, whose `dc_bitmap` is empty, whose `dc_bitmap` names a
+  column beyond `cols_per_eye`, or whose `dc_bitmap` names a tile that
+  `skip_bitmap` does not (3.3);
+* reproduce every `decoded_md5` of the `v45`-`v75` vectors.
 
 `v45`-`v56` are the twelve entries Annex D D-21 asks for: an identity warp with
 a repeated picture (every tile `WARP_SKIP`, a bit-exact copy), a warped
@@ -3334,8 +3330,8 @@ inconsistent. Each is a decision, not an interpretation.
     position `LAST` is nonzero by construction, so sharing a context with
     positions that may be zero costs it the whole probability mass at symbol 0;
     two rows by band recover that. The DC term of a DC plane is a block mean
-    rather than a residual and gets its own row. Beyond those two, The DC plane keeps one un-banded `LEVEL` context,
-    the DC plane keeps one un-banded `LEVEL` context, exactly as v2 gave it;
+    rather than a residual and gets its own row. Beyond those two, the DC
+    plane keeps one un-banded `LEVEL` context, exactly as v2 gave it;
     banding a dense low-frequency image by scan position was measured not to
     pay when v2 was built and the neighbour conditioning does not change that
     argument. Transform size is not an axis this syntax

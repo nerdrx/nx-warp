@@ -16,14 +16,20 @@
 
 // Set one tool bit in the stream header's u64 `tools` field, BY NAME.
 //
-// The obvious spelling -- `b[32 + 3] |= 0x01`, byte 3 of the field at offset
-// 32, which is bit 24 -- survives a tool-bit renumbering unchanged and
-// silently starts testing a different tool, or none: the decoder then answers
+// The obvious spelling pokes byte 3 of the u64 field at offset 32 with a
+// literal, which IS bit 24 -- and it survives a tool-bit renumbering
+// unchanged, silently starting to test a different tool or none: the decoder
+// then answers
 // VERSION ("unsupported tool") where the vector expects BITSTREAM, and the
 // vector that was pinning a real constraint quietly stops pinning anything.
 // docs/MERGE-PLAN.md 4.3.1.  Every tool poke below goes through here.
 static void set_tool(std::vector<uint8_t> &b, uint64_t tool) {
     for (int i = 0; i < 8; ++i) b[32 + i] |= (uint8_t)(tool >> (8 * i));
+}
+// A bit with no name: only for the reserved-bit vectors, which have no
+// constant to refer to because the whole point is that nothing owns the bit.
+static void set_reserved_tool_bit(std::vector<uint8_t> &b, int bit) {
+    b[32 + bit / 8] |= (uint8_t)(1u << (bit % 8));
 }
 static void clear_tool(std::vector<uint8_t> &b, uint64_t tool) {
     for (int i = 0; i < 8; ++i) b[32 + i] &= (uint8_t)~(uint8_t)(tool >> (8 * i));
@@ -973,9 +979,12 @@ static std::vector<uint8_t> make_reject(int idx, const std::vector<uint8_t> &bas
     uint32_t w0 = get_u32(b, kOffTile0), w1 = get_u32(b, kOffTile0 + 4);
     switch (idx) {
         case 0: b[0] ^= 0x01; break;
-        // Bit 63 is reserved and has no name: this vector pins "a decoder
-        // must refuse a reserved tool bit", so the literal IS the subject.
-        case 1: b[32 + 7] |= 0x80; break;
+        // Bit 63 is reserved and has no name, so there is no constant to
+        // write it as: this vector pins "a decoder must refuse a reserved
+        // tool bit", and the literal IS its subject rather than a spelling
+        // of a named tool.  scripts/retool-bits.py reports it every run; that
+        // is the scanner being right and the answer being "intended".
+        case 1: set_reserved_tool_bit(b, 63); break;
         case 2: b[13] = 10; break;                     // bit_depth
         case 3: b[7] = 1; break;                       // tile_size 32x32
         case 4: put_u32(b, kOffTile0, (w0 & 0xffffu) | (0xf000u << 16)); break;

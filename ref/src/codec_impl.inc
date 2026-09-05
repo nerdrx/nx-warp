@@ -1604,7 +1604,16 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             apply_decision(tc.tp, cand);
             tc.setup();
             load_tile(tc, g, img, eye, col, row);
-            if (e->cfg.transform_skip == 2) tc.tp.tskip = tskip_decision(tc);
+            if (e->cfg.transform_skip == 2) {
+                tc.tp.tskip = tskip_decision(tc);
+                // `tskip` is decided AFTER the tile's parameters were built,
+                // so the split flag has to be re-derived: a transform-skip
+                // tile's 64 coded values are samples in raster order and have
+                // no sub-block structure, and a stream that sets both is
+                // BITSTREAM.  Only the flag is re-derived -- a full setup()
+                // here would discard the tile that was just loaded.
+                tc.apply_tskip_to_split();
+            }
             if (cand.mode != NXVC_MODE_INTRA) {
                 const RefPicture &rp = cand.mode == NXVC_MODE_STEREO
                                            ? e->ring.slot[slot]
@@ -1947,6 +1956,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                     // just write the same number twice.
                     if (e->cfg.transform_skip == 2)
                         tc.tp.tskip = tskip_decision(tc);
+                        tc.apply_tskip_to_split();
                     if (e->cfg.alpha) {
                         bool constant = true;
                         i32 first = tc.pl[3].samples[0];

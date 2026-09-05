@@ -304,6 +304,9 @@ class EncodeStats:
     tiles_tskip: int
     tiles_res: tuple[int, int, int]
     lanes_total: int
+    #: The rate model's own prediction of the frame's payload bits, Q10, so it
+    #: can be checked against the payload it produced.
+    bits_predicted_q10: int = 0
 
     @classmethod
     def _from_c(cls, c: nxvc_encode_stats) -> "EncodeStats":

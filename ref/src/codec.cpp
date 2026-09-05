@@ -334,6 +334,16 @@ struct TileCoder {
     std::vector<Unit> units;
 
     void setup();
+    // Re-derive the 4x4 split flag after `tskip` has been decided.  The
+    // decision happens after setup() has run and after the tile is loaded, so
+    // this is the narrow half of setup()'s rule and NOT a second copy of it:
+    // both call sites are exactly "tskip just changed".
+    void apply_tskip_to_split() {
+        if (tp.tskip) tp.split4 = 0;
+        split4 = tp.split4;
+        for (int p = 0; p < nplanes; ++p)
+            if (!split4) pl[p].splits.clear();
+    }
     void build_units();
     CflCtx cfl_for(int p) const;
     // Encoder only: drop the tile's split flags once the analysis has chosen
@@ -402,8 +412,8 @@ void TileCoder::setup() {
     // candidate.  setup() runs on every candidate and on the final tile, so
     // the two fields cannot get out of step.  `tp.split4` is normalised too,
     // not just the local copy, because it is what the tile header writes.
-    if (tp.xform_size != 0) tp.split4 = 0;
-    split4 = tp.split4 && !tp.tskip;
+    if (tp.xform_size != 0 || tp.tskip) tp.split4 = 0;
+    split4 = tp.split4;
     // Chroma from luma predicts the *samples* from the reconstructed luma
     // plane, so it belongs to the replace form of directional intra, and to
     // an intra tile (an inter tile's chroma prediction is the warp).

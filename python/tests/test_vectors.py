@@ -221,7 +221,7 @@ def test_every_conformance_vector_parses(row):
         for n, tile_row in enumerate(frame.rows):
             assert tile_row.header.row_index == n // hdr.eyes
             assert tile_row.eye == n % hdr.eyes
-            assert len(tile_row.tiles) == tile_row.header.tile_count
+            assert len(tile_row.tiles) == tile_row.header.count
             for tile in tile_row.tiles:
                 assert tile.header.eye == tile_row.eye
         for tile in frame.tiles:
@@ -252,7 +252,7 @@ def test_every_conformance_vector_round_trips_its_headers(row):
 
 @pytest.mark.parametrize("row", CONFORMANCE, ids=_id)
 def test_transmitted_table_sets_are_sized_by_the_stream_tools(row):
-    """SYNTAX.md 3.1 / 9.4: 120 bytes, 160 under ``CTX_V2``, 220 under ``CTX_V3``.
+    """SYNTAX.md 3.1 / 9.4: 120 bytes, 160 under ``CTX_V2``, 270 under ``CTX_V3``.
 
     ``TAB_V2`` (9.4.1) makes a set variable length and the transmitted sets one
     byte-aligned bit sequence, so there the fixed size is only an upper bound
@@ -263,7 +263,7 @@ def test_transmitted_table_sets_are_sized_by_the_stream_tools(row):
     stream = bs.parse_stream(data)
     tools = stream.header.tools
     if tools & nxvc.Tool.CTX_V3:
-        want = 220
+        want = 270
     elif tools & nxvc.Tool.CTX_V2:
         want = 160
     else:

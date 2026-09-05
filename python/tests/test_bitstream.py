@@ -268,7 +268,12 @@ def test_tile_resolved_qp_clamps():
         ({"alpha_mode": 3}, "alpha_mode 3 is reserved"),
         ({"nsub_log2": 6}, "nsub_log2 6 exceeds 5"),
         ({"word0_reserved": 1}, "word0 bit 3 must be zero"),
-        ({"word1_reserved": 1}, "word1 bits 30-31 must be zero"),
+        # Word1 has no reserved bits left (docs/TOOLBITS.md 4): 28 is
+        # split4x4, 29-30 xform_size and 31 quad_mv.  The reserved-bit
+        # check is word0 bit 3, above.
+        ({"xform_size": 3}, "xform_size 3 is reserved"),
+        ({"split4x4": 1, "xform_size": 1}, "split4x4 with xform_size != 0"),
+        ({"split4x4": 1, "tskip": 1}, "split4x4 on a transform-skip tile"),
         ({"xform_size": 3}, "xform_size 3 is reserved"),
         ({"xform_size": 1, "tskip": 1}, "xform_size != 0 on a transform-skip"),
     ],
