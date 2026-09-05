@@ -1063,6 +1063,35 @@ void main() {
                              : (lumaSize == 2 * size ? 2 : 0))
                           : 0;
 
+#if NXVW_SKIP_ONLY
+        // ------------------------------ WARP_SKIP: the reconstruction IS W
+        // A skipped tile codes no unit, so this whole plane -- the DC plane's
+        // dequantize and second-level inverse transform, the block-mean field,
+        // the per-block residual dequantize and inverse transform, and the
+        // planar interpolation over the means -- computes, in order: zeros,
+        // dc_offset, zeros, and a prediction that cancels dc_offset against
+        // itself.  [SYN] 13.3 reduces to `clamp(W)` and [REF] codec_impl.inc
+        // reconstruct_skip() is the same statement in the reference.
+        //
+        // So write that, and nothing else.  The residual loop could not be
+        // removed by guarding its result -- it writes sPlane, and a shared
+        // store is a side effect no compiler may drop -- which is why this is
+        // a replacement rather than a `#if` around a read.
+        //
+        // Everything downstream is untouched and shared with the intra path:
+        // sPlane is left holding the same samples it would have held, so the
+        // display conversion, the two-plane store and the reference-ring store
+        // are the code they always were.
+        for (int w = tid; w < (size * size) >> 1; w += 256) {
+            const int e = w << 1;
+            const int x = e % size, y = e / size;
+            int w0v, w1v;
+            nxvwWpredPair(tile, p, size, x, y, w0v, w1v);
+            sPlane[store + w] =
+                pack16x2(clamp(w0v, 0, maxval), clamp(w1v, 0, maxval));
+        }
+        barrier();
+#else
         // ------------------------------------------------ DC plane (3.2.4)
         int dcqp = nxvw_dc_qp(planeQp);  // [marked edit] qp >> 1, was qp - 6
         int tdc = dequantStep(dcqp, kFlatWeight);
@@ -1834,6 +1863,7 @@ void main() {
                 barrier();
             }
         }
+#endif
 #endif
 
         coefBase += ndc + ndc * ncoef;
