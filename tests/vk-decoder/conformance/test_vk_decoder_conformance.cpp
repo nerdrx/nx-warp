@@ -1045,6 +1045,7 @@ int main(int argc, char **argv) {
     // on a device the slice is the usable form.
     int bench_qp = -1;
     int bench_dir = -1;   // --bench-v1 pins INTRA_DIR off
+    const char *bench_save = nullptr;  // write the bench stream and exit
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         if (a == "--vectors" && i + 1 < argc) g_vectors_dir = argv[++i];
@@ -1056,6 +1057,7 @@ int main(int argc, char **argv) {
                                              ? std::atoi(argv[++i])
                                              : 20;
         else if (a == "--bench-v1") bench_dir = 0;
+        else if (a == "--bench-save" && i + 1 < argc) bench_save = argv[++i];
         else if (a == "--bench-qp" && i + 1 < argc) {
             bench_qp = std::atoi(argv[++i]);
             if (!bench) bench = 10;
@@ -1069,6 +1071,23 @@ int main(int argc, char **argv) {
         }
     }
     if (!g_vectors_dir) g_vectors_dir = NXVC_VECTORS_DIR;
+    if (bench_save) {
+        Case c{"bench_2x2048sq_420", 2048, 4096, 0, 1, bench_qp < 0 ? 24 : bench_qp,
+               0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 1};
+        c.intra_dir = bench_dir;
+        std::vector<uint8_t> stream;
+        std::string err;
+        if (!encode_case(c, stream, err)) {
+            std::printf("encode failed: %s\n", err.c_str());
+            return 1;
+        }
+        std::FILE *f = std::fopen(bench_save, "wb");
+        if (!f) { std::perror("open"); return 1; }
+        std::fwrite(stream.data(), 1, stream.size(), f);
+        std::fclose(f);
+        std::printf("wrote %zu B to %s\n", stream.size(), bench_save);
+        return 0;
+    }
     if (bench_qp >= 0) return run_bench_qp(bench, bench_qp, false, bench_dir);
     if (bench) return run_bench(bench);
 
