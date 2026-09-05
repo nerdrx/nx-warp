@@ -241,18 +241,68 @@ int dcMean(int y, int dcOff, int maxval) {
 
 // ------------------------------------------------------------ bilinear
 // [REF] transform.cpp bilinear_impl, on the shared block-mean array.
+// The x half: the two column indices and the fraction.  It depends only on
+// sx, and the planar predictor's sx is constant down a column of the tile, so
+// the caller that runs down eight rows hoists this out of its loop.
+void bilinMeansX(int nb, int sx, out int x0, out int x1, out int fx) {
+    int q = sx >> kBilinFracBits;
+    fx = sx & (kBilinOne - 1);
+    x1 = clamp(q + 1, 0, nb - 1);
+    x0 = clamp(q, 0, nb - 1);
+}
+
+// The y half and the combine, given a prepared x half.
+//
+// The product is evaluated separably -- (p00*wx0 + p01*fx)*wy0 +
+// (p10*wx0 + p11*fx)*fy -- which expands to exactly the four-term form below
+// with no intermediate rounding, so it is bit-identical and not an
+// approximation: every value is int32 and the widest intermediate is
+// 32767*16*16, far inside the range.  It is six multiplies instead of eight,
+// and sharing the y half between a thread's two columns halves the rest.
+int bilinMeansY(int nb, int sy, int x0, int x1, int fx) {
+    int q = sy >> kBilinFracBits;
+    int fy = sy & (kBilinOne - 1);
+    int r0 = clamp(q, 0, nb - 1) * nb;
+    int r1 = clamp(q + 1, 0, nb - 1) * nb;
+    int wx0 = kBilinOne - fx;
+    int top = sMeans[r0 + x0] * wx0 + sMeans[r0 + x1] * fx;
+    int bot = sMeans[r1 + x0] * wx0 + sMeans[r1 + x1] * fx;
+    return (top * (kBilinOne - fy) + bot * fy + kBilinRound) >> kBilinShift;
+}
+
+// Two horizontally adjacent samples that share an x half, from ONE set of
+// four block-mean loads.
+//
+// The planar predictor's two columns are 2s and 2s+1 of the tile, so their
+// sample positions are 2*col0 - 7 and 2*col0 - 5.  Those land in different
+// mean cells only if 2*col0 - 6 is a multiple of 16, i.e. col0 == 3 (mod 8);
+// col0 = 8*bx + 2*sub is always even, so that never happens and the two
+// columns always share x0 and x1 -- only the fraction differs.  The four
+// loads were being issued twice, and the loads are what the pass pays for:
+// halving the multiplies alone changed Pass B by nothing measurable, halving
+// these did not.
+void bilinMeansY2(int nb, int sy, int x0, int x1, int fxa, int fxb,
+                  out int va, out int vb) {
+    int q = sy >> kBilinFracBits;
+    int fy = sy & (kBilinOne - 1);
+    int r0 = clamp(q, 0, nb - 1) * nb;
+    int r1 = clamp(q + 1, 0, nb - 1) * nb;
+    int m00 = sMeans[r0 + x0], m01 = sMeans[r0 + x1];
+    int m10 = sMeans[r1 + x0], m11 = sMeans[r1 + x1];
+    int wy0 = kBilinOne - fy;
+    int wa = kBilinOne - fxa, wb = kBilinOne - fxb;
+    va = ((m00 * wa + m01 * fxa) * wy0 + (m10 * wa + m11 * fxa) * fy +
+          kBilinRound) >> kBilinShift;
+    vb = ((m00 * wb + m01 * fxb) * wy0 + (m10 * wb + m11 * fxb) * fy +
+          kBilinRound) >> kBilinShift;
+}
+
+// [REF] transform.cpp bilinear_impl, on the shared block-mean array.  One
+// definition of the arithmetic, for the callers that have no column to hoist.
 int bilinearMeans(int nb, int sx, int sy) {
-    int x0 = sx >> kBilinFracBits, y0 = sy >> kBilinFracBits;
-    int fx = sx & (kBilinOne - 1), fy = sy & (kBilinOne - 1);
-    int x1 = clamp(x0 + 1, 0, nb - 1);
-    int y1 = clamp(y0 + 1, 0, nb - 1);
-    x0 = clamp(x0, 0, nb - 1);
-    y0 = clamp(y0, 0, nb - 1);
-    int p00 = sMeans[y0 * nb + x0], p01 = sMeans[y0 * nb + x1];
-    int p10 = sMeans[y1 * nb + x0], p11 = sMeans[y1 * nb + x1];
-    int wx0 = kBilinOne - fx, wy0 = kBilinOne - fy;
-    return (p00 * wx0 * wy0 + p01 * fx * wy0 + p10 * wx0 * fy + p11 * fx * fy +
-            kBilinRound) >> kBilinShift;
+    int x0, x1, fx;
+    bilinMeansX(nb, sx, x0, x1, fx);
+    return bilinMeansY(nb, sy, x0, x1, fx);
 }
 
 // One reconstructed sample of plane p at its coded resolution.
@@ -792,13 +842,58 @@ void main() {
         if (!useDir) {
             if (live) {
                 int col0 = bx * 8 + 2 * sub;
+                // The planar predictor samples at (2x - 7, 2y - 7), so a
+                // thread's two columns give two x halves that do not change
+                // over its eight rows.  Hoisting them, and sharing the y half
+                // between the two columns, is the whole of the saving; the
+                // arithmetic is unchanged and the output is bit-identical.
+                int px0, px1, pfx;
+                bilinMeansX(nb, kPlanarMul * col0 + kPlanarOff, px0, px1, pfx);
+                // The odd column shares px0/px1 -- see bilinMeansY2 -- so only
+                // its fraction is needed.
+                int qfx = (kPlanarMul * (col0 + 1) + kPlanarOff) &
+                          (kBilinOne - 1);
+                // The four block means a row needs change only when the row
+                // crosses a mean cell, which over a block's eight rows happens
+                // once (the same argument as for the columns: 2*y - 7 spans 14
+                // of a 16-wide cell).  Reloading them only when the row pair
+                // actually moves turns four LDS loads per row into four per
+                // block -- and the loads, not the multiplies, are what this
+                // predictor costs.
+                //
+                // The cache key is the UNCLAMPED quotient, not the clamped row
+                // base: at the top edge qy goes -1 then 0, which clamp maps to
+                // the same r0 but to different r1 (0 and nb), so keying on r0
+                // would serve the first row of the second cell stale means.
+                // 0x7fffffff is not a value qy can take.
+                int rp = 0x7fffffff;
+                int m00 = 0, m01 = 0, m10 = 0, m11 = 0;
                 for (int c = 0; c < 8; ++c) {
                     int yy = by * 8 + c;
-                    // INTER HOOK: swap bilinearMeans() for the warp predictor.
-                    int pred0 = intra ? bilinearMeans(nb, kPlanarMul * col0 + kPlanarOff,
-                                                      kPlanarMul * yy + kPlanarOff) : 0;
-                    int pred1 = intra ? bilinearMeans(nb, kPlanarMul * (col0 + 1) + kPlanarOff,
-                                                      kPlanarMul * yy + kPlanarOff) : 0;
+                    int sy = kPlanarMul * yy + kPlanarOff;
+                    int qy = sy >> kBilinFracBits;
+                    int fy = sy & (kBilinOne - 1);
+                    if (qy != rp) {
+                        int r0 = clamp(qy, 0, nb - 1) * nb;
+                        int r1 = clamp(qy + 1, 0, nb - 1) * nb;
+                        m00 = sMeans[r0 + px0];
+                        m01 = sMeans[r0 + px1];
+                        m10 = sMeans[r1 + px0];
+                        m11 = sMeans[r1 + px1];
+                        rp = qy;
+                    }
+                    // INTER HOOK: swap this predictor for the warp one.
+                    int pred0 = 0, pred1 = 0;
+                    if (intra) {
+                        int wy0 = kBilinOne - fy;
+                        int wa = kBilinOne - pfx, wb = kBilinOne - qfx;
+                        pred0 = ((m00 * wa + m01 * pfx) * wy0 +
+                                 (m10 * wa + m11 * pfx) * fy + kBilinRound) >>
+                                kBilinShift;
+                        pred1 = ((m00 * wb + m01 * qfx) * wy0 +
+                                 (m10 * wb + m11 * qfx) * fy + kBilinRound) >>
+                                kBilinShift;
+                    }
                     int s0 = clamp(pred0 + res0[c], 0, maxval);
                     int s1 = clamp(pred1 + res1[c], 0, maxval);
                     int e = yy * size + col0;
