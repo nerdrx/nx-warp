@@ -1690,14 +1690,22 @@ Three things about it are not in that plan and are the whole of the work:
   registers; the prediction and the wavefront read their residual out of the
   slot where the wavefront wanted to stage it anyway. `RESULTS-xform-a.md`'s
   register estimate is low precisely because it forgets this term.
-* **The reference arrays are gone.** `predictOne()` used to take
-  `int A[kIntraRefs], L[kIntraRefs]` by value, 17 ints each, and 7.4's arrays
-  are `2n` long -- sixty-five at 32x32, which is not a live set any part has.
-  Each reference is now read through `dirAt()` where it is used; a predictor
-  touches at most four per sample, and the two whole-block quantities that are
-  not (mode 1's sum over `2n` references, mode 2's `A[n]` and `L[n]`) are
-  hoisted per block exactly as the CFL fit already was. On RADV that took the
-  wavefront module from 22346 instructions and 84 VGPRs to 21410 and 72.
+* **The reference arrays are sized per build variant, and the obvious
+  alternative to them is a trap.** `predictOne()` takes
+  `int A[NXVW_INTRA_REFS], L[NXVW_INTRA_REFS]` by value; 7.4's arrays are `2n`
+  long, so that is the 17 ints each the 8x8 module always had and 65 only in
+  the module where a 32x32 block can occur. Reading each reference through
+  `dirAt()` where it is used instead -- which removes the arrays entirely, and
+  which RADV compiled *smaller* (22346 instructions and 84 VGPRs down to 21410
+  and 72) -- is a **correctness** failure on an Adreno 650. A predictor has
+  about twenty-five reference sites and `dirAt()` inlines the whole DC-plane
+  bilinear behind its fallback, so the wavefront module went to 9630
+  instructions, an 892-word footprint and 1660 B of scratch, and all 123
+  streams that reach the wavefront came back wrong -- including every stream
+  that has nothing to do with this tool. That is the second time in this
+  section that a change which is free or better on RADV is a defect on the
+  target part, and it is why the Adreno sweep is part of finishing a tool and
+  not part of tuning one.
 
 **LDS is unchanged.** The transpose buffer is a whole plane and always was:
 8192 B for luma, 2048 B per 4:2:0 chroma plane, 12288 B for the tile. The

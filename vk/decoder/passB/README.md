@@ -152,16 +152,25 @@ slot the thread already owns, so `res0[8]` stays eight at every transform size
 and the prediction reads its residual back out of the slot. `../README.md`,
 "The transform size, priced", is the derivation and the measurement.
 
-The `n x n` intra predictors read each reference through `dirAt()` where it is
-used rather than gathering an `A[]` / `L[]` pair: 7.4's arrays are `2n` long,
-which is sixty-five ints at 32x32. Mode 1's average and mode 2's `A[n]` /
-`L[n]` are hoisted per block, as the CFL fit already was.
+The `n x n` intra predictors still gather 7.4's reference arrays per block,
+and `NXVW_INTRA_REFS` sizes them per build variant: 17 in the 8x8 module,
+which is what it always had, and 65 only where a 32x32 block can occur.
+Reading each reference through `dirAt()` where it is used was built first --
+it is the obvious way to avoid a sixty-five-int live set -- and it is a
+*correctness* failure on an Adreno 650, because a predictor has about
+twenty-five reference sites and `dirAt()` inlines the whole DC-plane bilinear
+behind its fallback. `predictOne()` records the numbers.
 
 **It is a build variant, `NXVW_XFORM_LARGE`, not a specialization constant**,
 and so is the pair of scan arms in `nxvw_scan_pos()`. Both were measured as
 specialization constants first and both cost an 8x8-only stream real time on
 an Adreno 650; `../README.md` has the instruction counts and says why each
 one was invisible to the driver's dead-code pass.
+
+**On the Adreno 650 the module is miscompiled** and the streams that reach it
+decode wrong, which is the one place this decoder is not correct on all three
+ICDs. It is not a bitstream question -- RADV and lavapipe agree with `ref/`
+bit for bit -- and `../README.md`'s open-issues list carries it.
 
 ### Chroma from luma (tool bit 24) [minor 6]
 
