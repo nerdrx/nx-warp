@@ -49,6 +49,15 @@ layout(constant_id = 3) const int kOutSecond = kOutNone;
 //    left dynamic it costs about 10 % of Pass B on the transform-bound paths.
 //    It must match Pass A's `sparse` push constant for the same frame.
 layout(constant_id = 4) const int kSparse = 1;
+// 5: 1 = write the 8-bit stores through UNORM images (bindings 10-12) rather
+//    than the integer ones (3, 5, 6).  Bit-exact: the Vulkan conversion of a
+//    UNORM store is round(clamp(f,0,1) * 255) and of a load is v/255, so
+//    storing v/255.0 returns v for all 256 values -- proved on device, per
+//    driver, by tests/vk-decoder/unorm.  It exists because an integer storage
+//    image costs about 3x a UNORM one on Adreno (bench/README.md, "K1 is slow
+//    because the image is an integer format").  kOutRgb10A2 is unaffected and
+//    stays integer; it is a desktop path and its samples are not 8-bit.
+layout(constant_id = 5) const int kUnormStore = 0;
 
 // ------------------------------------------------------------- bindings
 layout(set = 0, binding = 0, std430) readonly buffer Coef { uint w[]; } uCoef;
@@ -71,6 +80,20 @@ layout(set = 0, binding = 8, std430) readonly buffer TileOrder { uint i[]; } uOr
 // [sparse] One byte per coding unit, LAST + 1 (0 = not coded).  See
 // passB_layout.h and passA/syntax_constants.h section 8.
 layout(set = 0, binding = 9, std430) readonly buffer UnitLens { uint w[]; } uLens;
+// [unorm] The same three 8-bit stores as bindings 3, 5 and 6 through
+// normalised images, selected by kUnormStore.  They are separate bindings
+// rather than a re-typed one because a GLSL image's format is a layout
+// qualifier and cannot follow a specialization constant.  Whichever group is
+// not selected is bound to a 1x1 placeholder, which is what the integer
+// bindings already do for the formats a frame does not write.
+layout(set = 0, binding = 10, rgba8) uniform writeonly image2D uOutRgba8N;
+layout(set = 0, binding = 11, r8)    uniform writeonly image2D uOutLumaN;
+layout(set = 0, binding = 12, rg8)   uniform writeonly image2D uOutCbCrN;
+
+// An 8-bit value through a UNORM store.  Vulkan requires the store to compute
+// round(clamp(f, 0, 1) * 255) with round-to-nearest, so v/255.0 lands on v
+// exactly for every v in [0, 255] and the round trip is the identity.
+float nxvw_unorm8(int v) { return float(v) * (1.0 / 255.0); }
 
 layout(push_constant) uniform Push { NxvwPassBPush p; } pc;
 
@@ -791,7 +814,11 @@ void main() {
             int gx = ox + x, gy = oy + y;
             if (gx >= pc.p.imageW || gy >= pc.p.imageH) continue;
             int Y = clamp(planeAtFull(planeStoreBase[0], sizeP[0], 64, x, y), 0, 255);
-            imageStore(uOutLuma, ivec2(gx, gy), uvec4(uint(Y), 0u, 0u, 0u));
+            if (kUnormStore != 0)
+                imageStore(uOutLumaN, ivec2(gx, gy),
+                           vec4(nxvw_unorm8(Y), 0.0, 0.0, 0.0));
+            else
+                imageStore(uOutLuma, ivec2(gx, gy), uvec4(uint(Y), 0u, 0u, 0u));
         }
         int cw = (pc.p.imageW + 1) >> 1, ch = (pc.p.imageH + 1) >> 1;
         int cox = tileX * 32, coy = tileY * 32;
@@ -802,7 +829,11 @@ void main() {
             if (gx >= cw || gy >= ch) continue;
             int Cb = clamp(planeAtFull(planeStoreBase[1], sizeP[1], 32, x, y), 0, 255);
             int Cr = clamp(planeAtFull(planeStoreBase[2], sizeP[2], 32, x, y), 0, 255);
-            imageStore(uOutCbCr, ivec2(gx, gy), uvec4(uint(Cb), uint(Cr), 0u, 0u));
+            if (kUnormStore != 0)
+                imageStore(uOutCbCrN, ivec2(gx, gy),
+                           vec4(nxvw_unorm8(Cb), nxvw_unorm8(Cr), 0.0, 0.0));
+            else
+                imageStore(uOutCbCr, ivec2(gx, gy), uvec4(uint(Cb), uint(Cr), 0u, 0u));
         }
         continue;
     }
@@ -847,6 +878,10 @@ void main() {
             uvec4 v = uvec4(uint((R << 2) | (R >> 6)), uint((G << 2) | (G >> 6)),
                             uint((B << 2) | (B >> 6)), uint(A >> 6));
             imageStore(uOutRgb10a2, ivec2(gx, gy), v);
+        } else if (kUnormStore != 0) {
+            imageStore(uOutRgba8N, ivec2(gx, gy),
+                       vec4(nxvw_unorm8(R), nxvw_unorm8(G), nxvw_unorm8(B),
+                            nxvw_unorm8(A)));
         } else {
             imageStore(uOutRgba8, ivec2(gx, gy),
                        uvec4(uint(R), uint(G), uint(B), uint(A)));

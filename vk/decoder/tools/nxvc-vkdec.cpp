@@ -31,6 +31,12 @@ void usage() {
         "                         a value other than 0 decodes a conformant\n"
         "                         stream to different pixels.\n"
         "  --tile-sort            group Pass B's workgroups by tile shape\n"
+        "  --unorm 0|1            write the 8-bit output through UNORM images\n"
+        "                         instead of integer ones.  Bit-identical\n"
+        "                         either way (tests/vk-decoder/unorm proves\n"
+        "                         it per driver); default on for Android,\n"
+        "                         where an integer storage image costs about\n"
+        "                         3x a normalised one\n"
         "  --stats                per-frame timing to stderr\n"
         "  --quiet\n"
         "exit 0 decoded, 1 error, 2 usage, 77 no usable Vulkan ICD\n");
@@ -72,6 +78,10 @@ int main(int argc, char **argv) {
         else if (a == "--lds") lds = 1;
         else if (a == "--dir-sched") dir_sched = std::atoi(val());
         else if (a == "--tile-sort") tile_sort = 1;
+        // The decoder reads this at create time.  It is an environment
+        // variable rather than a create_info field because the store format
+        // is a device-performance decision, not part of the C ABI's contract.
+        else if (a == "--unorm") ::setenv("NXVC_VKD_UNORM", val(), 1);
         else if (a == "-h" || a == "--help") { usage(); return 0; }
         else {
             std::fprintf(stderr, "unknown option %s\n", a.c_str());
