@@ -149,8 +149,14 @@ bool encode_units(const Unit *units, int nunits, int nlanes,
                   const TableSet &tabs, std::vector<u8> &out);
 bool decode_units(const Unit *units, int nunits, int nlanes,
                   const TableSet &tabs, const u8 *buf, size_t len);
-// Histograms the symbols a tile would emit, for custom table derivation.
+// Histograms the symbols a tile would emit, for custom table derivation and
+// for the encoder's rate model.  `bypass_bits`, when given, receives the
+// number of raw bits the same walk would emit (LAST suffix, escape suffix,
+// signs, non-contexted mode indices).  Those bits cost exactly one bit each
+// and are invisible to `hist`, so a rate model that sums only the symbol
+// entropy under-counts every nonzero level by its sign.
 bool count_units(const Unit *units, int nunits, int nlanes,
-                 u32 hist[kNumCtx][kNumSym], u32 *op_count);
+                 u32 hist[kNumCtx][kNumSym], u32 *op_count,
+                 u32 *bypass_bits = nullptr);
 
 }  // namespace nxvc

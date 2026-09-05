@@ -3467,6 +3467,49 @@ inconsistent. Each is a decision, not an interpretation.
     `xform_size` selects the 8x8 transform, and a stream that sets both is
     `BITSTREAM` (`r39`). One constraint, pinned by one vector, against two
     fields that each keep their measured gain.
+
+75. **The encoder's rate-distortion lambda is normative to nothing and is
+    documented anyway.** Every encoder-side decision in `ref/` minimises
+    `D + lambda*R` with `lambda = k * qstep^2`, **`k = 0.22`** fitted on the
+    quality harness, and `lambda_sad = sqrt(lambda)` wherever the metric is
+    first order (the motion search). A decoder must not care, and none of it
+    sets a tool bit. It is recorded here because three separate expressions of
+    that trade existed in the reference encoder at v1.4 and a reader
+    reasonably assumed one of them was required by the syntax; none is.
+
+    The per-tile mode decision uses the **same** lambda. It used to divide by
+    `kRefPersist = 4` -- the number of frames a reconstruction is a reference
+    for -- and that divisor is **removed**: the persistence factor is charged
+    once already, on the skip candidate's excess, and charging it again here
+    was a double charge. Removing it is worth **-3.4 BD-rate points**, the
+    largest single item in the rate-distortion package.
+    `ref/RESULTS-rdo-b.md` is the fit.
+
+    Phase 1 prefers 0.22 and the Phase 2 kill test prefers 0.30; 0.22 ships
+    because Phase 1 is the graded criterion, and the difference is under a
+    point either way.
+
+76. **Encoder effort is a named preset, and the preset is a LIBRARY concept.**
+    `nxvc_config::preset` takes an `nxvc_preset` and the library resolves it;
+    `nxv-enc --preset fast|medium|slow` sets that field rather than expanding
+    the preset itself. A preset that exists only in the CLI is not available
+    to anything embedding the encoder, which is most of what the encoder is
+    for. It sets the trellis candidate set, the motion search stages, the
+    number of directional intra modes RD-checked, and whether the per-tile QP
+    search runs; it does **not** set `--wm auto`. Every stream any preset
+    produces decodes through the identical path. `medium` is the default and
+    is what `nxvc_config_default()` gives a caller that sets no fields.
+
+77. **The chroma distortion weight defaults to 1.0, and is a perceptual knob
+    rather than a coding gain.** `nxvc_config::chroma_weight_q8` weights
+    chroma squared error in the encoder's distortion, scaled by the plane's
+    sample density. Weighting chroma below 1.0 was measured at roughly half of
+    one branch's PSNR-Y headline at 4:4:4 -- and it is fitted to the 6:1:1
+    *reporting convention*, it lowers absolute chroma PSNR, it does nothing at
+    4:2:0 where chroma already has a quarter of the samples, and it regresses
+    SSIM there. Shipping it on by default would be tuning the encoder to the
+    scoreboard. It ships at 1.0, documented, and anything quoted with it must
+    be quoted on both metrics.
 ## Appendix B: where the bits go
 
 Measured on a 2048x2048 4:2:0 synthetic textured frame, 1024 tiles, default

@@ -69,8 +69,16 @@ static void usage() {
         "  --matrix 0..3        frame weighting matrix (default 1)\n"
         "  --wm 0..3|auto       per-tile weighting matrix id (default 0)\n"
         "  --no-rdo             plain dead-zone quantizer (default: RD trellis)\n"
-        "  --rdo-lambda F       RD lambda scale (default 0.30)\n"
+        "  --rdo-lambda F       RD lambda scale (default 0.22, fitted)\n"
         "  --qp-search N        try per-tile qp_delta in [-N, +N] (default 0)\n"
+        "  --qp-search-step N   spacing of those candidates (default 2)\n"
+        "  --rdoq-effort N      1 fast, 2 medium, 3 full trellis candidates\n"
+        "  --dc-lambda F        DC-plane lambda relative to the AC planes\n"
+        "  --no-dc-rdoq         leave the DC plane on the dead-zone quantizer\n"
+        "  --me-effort N        1 fast, 2 hierarchical+SATD, 3 +true-RD qpel\n"
+        "  --no-lambda-class    one lambda for every tile, whatever its class\n"
+        "  --lambda-class A,B,C,D  per-class lambda gain: flat, texture,\n"
+        "                       edge, text (default 1,1,1,1)\n"
         "  --intra-dir on|off|layer  directional intra (tool 17); `layer`\n"
         "                       predicts the DC-plane residual instead\n"
         "  --intra-dir-cand N   modes RD-checked per block (default 2)\n"
@@ -124,7 +132,20 @@ static void usage() {
         "                       Applied after the mode search; the encoder\n"
         "                       overrides it where a coded tile is required\n"
         "  --mode-lambda F      lambda scale of the per-tile mode decision,\n"
-        "                       relative to the trellis (default 0.25)\n");
+        "                       relative to the trellis (default 1.0)\n"
+        "Presets (set the effort knobs above; anything given after --preset\n"
+        "on the command line still wins):\n"
+        "  --chroma-weight Q8   weight of chroma squared error in the\n"
+        "                       encoder's distortion, Q8; 256 = 1.0 = as the\n"
+        "                       samples fall (the default).  Below 256 buys\n"
+        "                       PSNR-Y and 6:1:1 at the cost of absolute\n"
+        "                       chroma fidelity: a perceptual tuning knob,\n"
+        "                       not a coding gain.  Quote both metrics.\n"
+        "  --preset fast        rdoq 1, me 1, 1 intra mode, no QP search\n"
+        "  --preset medium      rdoq 2, me 2, 2 intra modes, no QP search\n"
+        "                       (the default)\n"
+        "  --preset slow        rdoq 3, me 3, 4 intra modes, per-tile QP\n"
+        "                       search +-2 (add --wm auto for the matrix too)\n");
 }
 
 static bool read_exact(std::FILE *f, void *p, size_t n) {
@@ -150,6 +171,12 @@ int main(int argc, char **argv) {
     // These mirror nxvc_config_default(): the inter-efficiency tools that the
     // measurement supports are on, sub-tile intra is not.
     int drift_refresh = 1, drift_gate = 0, near_skip = 1, quad_mv = 1;
+    // The rate-distortion package's effort knobs.  0 is "take the preset's
+    // value" for every one of them.
+    int preset = 0;
+    int rdoq_effort = 0, me_effort = 0, lambda_class_off = 0, qp_step = 0;
+    int lambda_class[4] = {0, 0, 0, 0};
+    int dc_lambda = 0, dc_off = 0, chroma_weight = 0;
     double fov_h = 95.0, fov_v = 95.0;
     bool fov_from_cli = false;
     std::string poses_path, skipmap_path;
@@ -237,6 +264,48 @@ int main(int argc, char **argv) {
         else if (a == "--no-rdo") rdo = 0;
         else if (a == "--rdo-lambda") rdo_lambda_q8 = (int)(std::atof(val()) * 256.0 + 0.5);
         else if (a == "--qp-search") qp_search = std::atoi(val());
+        else if (a == "--qp-search-step") qp_step = std::atoi(val());
+        else if (a == "--dc-lambda") dc_lambda = (int)(std::atof(val()) * 256.0 + 0.5);
+        else if (a == "--no-dc-rdoq") dc_off = 1;
+        else if (a == "--rdoq-effort") rdoq_effort = std::atoi(val());
+        else if (a == "--me-effort") me_effort = std::atoi(val());
+        else if (a == "--no-lambda-class") lambda_class_off = 1;
+        else if (a == "--lambda-class") {
+            // flat,texture,edge,text gains; the fit lives in RESULTS-rdo-b.md
+            std::string v = val();
+            size_t pos = 0;
+            for (int i = 0; i < 4 && pos <= v.size(); ++i) {
+                size_t c = v.find(',', pos);
+                std::string one = v.substr(pos, c == std::string::npos
+                                                    ? std::string::npos
+                                                    : c - pos);
+                lambda_class[i] = (int)(std::atof(one.c_str()) * 256.0 + 0.5);
+                if (c == std::string::npos) break;
+                pos = c + 1;
+            }
+        }
+        else if (a == "--chroma-weight") chroma_weight = std::atoi(val());
+        else if (a == "--preset") {
+            // One name for a point on the encode-time / rate curve.  Every
+            // knob a preset sets can still be given explicitly afterwards,
+            // because the parse is left to right and the last write wins.
+            // The preset is set on the CONFIG, not expanded here: the
+            // library resolves it (resolve_effort), so an SDK caller and this
+            // CLI cannot disagree about what `slow` means.  Individual knobs
+            // given after it still win, because they are separate fields and
+            // 0 means "take the preset's value".
+            std::string v = val();
+            if (v == "fast") {
+                preset = NXVC_PRESET_FAST;
+            } else if (v == "medium") {
+                preset = NXVC_PRESET_MEDIUM;
+            } else if (v == "slow") {
+                preset = NXVC_PRESET_SLOW;
+            } else {
+                std::fprintf(stderr, "--preset: fast|medium|slow\n");
+                return 2;
+            }
+        }
         else if (a == "--intra-dir") {
             std::string v = val();
             if (v == "on") { intra_dir = 1; intra_dir_layer = 0; }
@@ -399,6 +468,8 @@ int main(int argc, char **argv) {
     cfg.intra_period = (uint32_t)(intra_period > 0 ? intra_period : 1);
     cfg.drift_refresh = (uint32_t)drift_refresh;
     cfg.drift_gate_q8 = (uint32_t)(drift_gate > 0 ? drift_gate : 0);
+    cfg.preset = (uint32_t)preset;
+    cfg.chroma_weight_q8 = (uint32_t)chroma_weight;
     cfg.near_skip = (uint32_t)near_skip;
     cfg.quad_mv = (uint32_t)quad_mv;
     cfg.ref_sel = (uint32_t)(ref_sel < 0 ? 0 : (ref_sel > 2 ? 2 : ref_sel));
@@ -410,6 +481,14 @@ int main(int argc, char **argv) {
     cfg.quant_matrix = (uint32_t)matrix;
     cfg.rdo = (uint32_t)rdo;
     cfg.rdo_lambda_q8 = (uint32_t)rdo_lambda_q8;
+    cfg.rdoq_effort = (uint32_t)(rdoq_effort > 0 ? rdoq_effort : 0);
+    cfg.me_effort = (uint32_t)(me_effort > 0 ? me_effort : 0);
+    cfg.lambda_class_off = (uint32_t)lambda_class_off;
+    for (int i = 0; i < 4; ++i)
+        cfg.lambda_class_q8[i] = (uint32_t)(lambda_class[i] > 0 ? lambda_class[i] : 0);
+    cfg.qp_search_step = (uint32_t)(qp_step > 0 ? qp_step : 0);
+    cfg.dc_lambda_q8 = (uint32_t)(dc_lambda > 0 ? dc_lambda : 0);
+    cfg.dc_rdoq_off = (uint32_t)dc_off;
     cfg.qp_search = (uint32_t)qp_search;
     cfg.wm_id = (uint32_t)wm;
     cfg.intra_dir = (uint32_t)intra_dir;
@@ -563,6 +642,18 @@ int main(int argc, char **argv) {
             if (st2.bits_alpha_blocks)
                 row("  alpha blocks", st2.bits_alpha_blocks / 8.0);
             row("payload total", (double)st2.bytes_payload);
+            if (st2.bits_predicted_q10) {
+                // What the encoder's rate model told the mode decision, the
+                // trellis and the QP search this payload would cost, against
+                // what it cost.  A gap here means every RD decision in the
+                // frame was taken against the wrong number.
+                double pred = (double)st2.bits_predicted_q10 / 1024.0 / 8.0;
+                double act = (double)st2.bytes_payload -
+                             (double)st2.bytes_rans_init;
+                std::printf("  rate model: predicted %.0f B, coded %.0f B "
+                            "(%+.2f %%)\n",
+                            pred, act, act > 0 ? (pred - act) / act * 100.0 : 0.0);
+            }
             std::printf("  res levels 0/1/2: %llu / %llu / %llu\n",
                         (unsigned long long)st2.tiles_res[0],
                         (unsigned long long)st2.tiles_res[1],

@@ -30,6 +30,36 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
 - Measured in `ref/RESULTS-xform-a.md`, including the two variants that were measured and rejected
   (a per-32x32-quadrant size and a per-size probability-table family).
 
+**Encoder rate-distortion (no syntax change, no tool bit)**
+
+- The rate model now charges **bypass bits**: signs, escape suffixes and `LAST` suffixes were dropped
+  from the predicted rate, which under-charged every nonzero level by its sign bit and biased the
+  tile mode decision towards coding. `nxvc_encode_stats::bits_predicted_q10` reports the model's own
+  prediction so it can be checked against the payload it produced.
+- An **exact bound on `last`**: above the highest position whose magnitude reaches half a step,
+  level 0 beats level 1 in distortion and in rate, so those positions are provably zero and are
+  never searched. The rate half of that argument is a property of the transmitted table, so it is
+  **checked** (`RateCost::zero_cheapest`) rather than assumed, and the bound is dropped rather than
+  trusted if a table ever violates it.
+- The **DC plane goes through the trellis**, at its own coarser quantiser's lambda.
+- The **double-charged reference-persistence factor is removed** from the per-tile mode decision:
+  it was charged once already on the skip candidate's excess. Worth **-3.4 BD-rate points**, the
+  largest single item here. The unified lambda is **0.22**.
+- Hierarchical motion search with an extended coarse level and SATD in the fine stage; a cheap
+  per-tile QP search (`requant_params()` plus bounded descent, candidates spaced `qp_search_step`
+  apart, and the intra mode decision made once and reused rather than re-searched per candidate).
+- **Effort presets are a library concept**: `nxvc_config::preset` takes an `nxvc_preset` and the
+  library resolves it, so an SDK caller and `nxv-enc --preset` cannot disagree about what `slow`
+  means. `slow` does **not** set `--wm auto`.
+- `--chroma-weight` / `nxvc_config::chroma_weight_q8`, explicit and **defaulting to 1.0**. Weighting
+  chroma below 1.0 is fitted to the 6:1:1 reporting convention, lowers absolute chroma PSNR, does
+  nothing at 4:2:0 and regresses SSIM there; it ships off, documented, and anything quoted with it
+  must be quoted on both metrics.
+- **Open item:** one branch measured **-25.4 %** SSIM-Y on the Phase 2 kill test that this encoder
+  does not reproduce, and it is not a chroma-metric artifact. The two candidate causes are an intra
+  early-out gate and a real-RD quarter-pel refinement layered on the SATD stage. Both are cheap to
+  try and both have a number to beat.
+
 **Bitstream syntax v1.6 -- Phase 2 inter efficiency**
 
 - `docs/SYNTAX.md` 13.8, **drift-driven intra refresh**. The encoder holds a bit-exact client shadow,

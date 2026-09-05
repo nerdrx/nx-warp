@@ -101,8 +101,8 @@ nxv-info --in out.nxv [--tiles]
 `nxv-enc` extras: `--frames N`, `--tskip off|on|auto`, `--nsub 0..5|auto`,
 `--matrix 0..3`, `--wm 0..3`, `--chroma-qp-off N`, `--no-custom-tables`,
 `--tile-420`, `--rgb`, `--color-space unspecified|yuv709l|yuv709f`, `--stats`,
-`--quiet`, the rate-distortion controls `--no-rdo` / `--rdo-lambda F`, and the
-v1.3 tool switches:
+`--quiet`, the rate-distortion controls `--no-rdo` / `--rdo-lambda F`, the
+effort preset below, and the v1.3 tool switches:
 
 | flag | default | effect |
 |---|---|---|
@@ -151,12 +151,62 @@ nxv-enc --in vr-mixed-1024.yuv420p.yuv --w 2048 --h 1024 --pix yuv420p \
 nxv-info --in out.nxv --tiles      # per-tile mode, vector, ref_sel, warp_ext
 ```
 
+### Encoder effort: `--preset`
+
+One name for a point on the encode-time / rate curve, and a **library**
+concept: `nxvc_config::preset` takes an `nxvc_preset`, the library resolves it
+(`resolve_effort()`), and `nxv-enc --preset` sets that field rather than
+expanding the preset itself. A preset that lives only in the CLI is not
+available to anything embedding the encoder, which is most of what the encoder
+is for. Every knob a preset sets can still be given explicitly; 0 in a knob
+means "take the preset's value".
+
+| | `fast` | `medium` (default) | `slow` |
+|---|---|---|---|
+| `--rdoq-effort` | 1: nearest level only | 2: `{0, m, m+1}` | 3: adds `m-1` |
+| `--me-effort` | 1: single sweep, SAD | 2: hierarchical, SATD | 3: adds true-RD quarter-pel |
+| `--intra-dir-cand` | 1 | 2 | 4 |
+| `--qp-search` | off | off | `+-2`, step 2 |
+
+`slow` does **not** set `--wm auto`. An earlier version of this table said it
+did; the per-tile weighting-matrix search was measured and deliberately
+removed from the preset, and it remains available as an explicit `--wm auto`.
+
+`--no-lambda-class` turns off the per-tile lambda gain and gives every tile the
+same rate-distortion trade whatever its content class.
+
+### One lambda
+
+Every decision the encoder makes -- which levels to code, which intra mode,
+which tile mode, which vector, which per-tile QP offset -- minimises
+`D + lambda*R` with `lambda = 0.22 * qstep^2` from `make_lambda()` in
+`src/codec.cpp`, and `lambda_sad = sqrt(lambda)` wherever the metric is first
+order.
+
+The per-tile mode decision uses **the same lambda**, undivided. It used to
+divide by `kRefPersist = 4` -- on the argument that a mode's distortion is
+displayed for the four frames its reconstruction is a reference for while its
+bits are paid once -- and that divisor was **removed**: the persistence factor
+is charged once already, on the skip candidate's excess, and charging it here
+as well was a double charge with no argument behind it. Removing it is worth
+**-3.4 BD-rate points**, the single largest item in the package.
+`nxvc_config::mode_lambda_q8` still exists for a caller that wants the old
+behaviour; 256 (the default) is the same lambda.
+
+Lambda is then scaled per tile by the content class of
+`docs/RATECONTROL.md` 3.3. `ref/RESULTS-rdo-b.md` is the fit and the
+measurement; `docs/SYNTAX.md` Appendix A 53 records that none of it is
+normative.
+
 Rate-distortion quantization is **on by default**. It is encoder-only work -- a
 trellis over the level syntax, `ref/src/codec.cpp` `rdoq_unit()` -- so a stream
 encoded with it decodes through exactly the same path as one encoded without.
-It costs about 2.7x encode time and is worth -8.8 % BD-rate; `--no-rdo` gets
-the old dead-zone quantizer back. `--wm` sets the per-tile weighting-matrix id
-that the rate controller's degradation ladder uses.
+It was worth -8.8 % BD-rate at 2.7x encode time when it was added; since the
+trellis got an exact bound on `last`, the DC plane and a refitted lambda it is
+worth a further -1.6 % on the Phase 1 gate and -9.8 % on the Phase 2 kill test
+at **0.6-0.8x** the v1.4 encode time (`RESULTS-rdo-b.md`). `--no-rdo` gets the
+old dead-zone quantizer back. `--wm` sets the per-tile weighting-matrix id that
+the rate controller's degradation ladder uses.
 
 `--rgb` means planes 0..2 are R, G, B and the codec applies YCoCg-R. Without it
 the planes are coded exactly as given, which is the path a WiVRn capture takes
@@ -431,7 +481,9 @@ rejected and why, the GPU cost of the wavefront, and encode times — is
   tables byte for byte.
 * **Sign data hiding** (bit 22) is worth -0.6 points.
 * Rate-distortion quantization (v1.2) is on by default and worth -8.8 % /
-  +0.92 dB, encoder only, at 2.7x encode time and no decoder cost.
+  +0.92 dB, encoder only, at 2.7x encode time and no decoder cost. v1.5's
+  rate-distortion package (`RESULTS-rdo-b.md`) adds -1.6 % here and -9.8 % on
+  the inter path while making the encode *faster* than v1.4.
 * An in-tile intra **pyramid** was measured before being built and rejected;
   so was a 4-byte tile header. The largest untried item is now a **4x4
   transform split**, which is exactly the regime directional prediction

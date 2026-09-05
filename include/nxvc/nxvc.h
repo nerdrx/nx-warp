@@ -108,6 +108,20 @@ typedef enum nxvc_color_space {
     NXVC_CS_RGB = 3           /* requires NXVC_CT_YCOCGR                  */
 } nxvc_color_space;
 
+/* Encoder effort presets.  Encoder-side only: none of them changes what a
+ * stream means or how it decodes, only how long the encoder looks for the
+ * cheapest way to say it.
+ *
+ * This is a LIBRARY concept, not a CLI flag.  A preset that exists only in
+ * nxv-enc is not available to anything embedding the encoder, which is most
+ * of what the encoder is for.  Every individual knob in nxvc_config still
+ * overrides the preset; 0 in a knob means "take the preset's value". */
+typedef enum nxvc_preset {
+    NXVC_PRESET_MEDIUM = 0,   /* the default */
+    NXVC_PRESET_FAST   = 1,
+    NXVC_PRESET_SLOW   = 2
+} nxvc_preset;
+
 typedef enum nxvc_tile_mode {
     NXVC_MODE_WARP_SKIP = 0,
     NXVC_MODE_STATIC_MV = 1,
@@ -265,9 +279,12 @@ typedef struct nxvc_config {
                                    (qstep^2 / 12) per sample; 0 = default   */
     uint32_t mode_lambda_q8;    /* lambda scale of the per-tile MODE
                                    decision, Q8, relative to the trellis's.
-                                   Below 256 the decision spends more bits to
-                                   keep the reference clean, which is what an
-                                   all-reference stream wants; 0 = default  */
+                                   0 = the default 256 (the same lambda): the
+                                   reference-persistence factor is charged
+                                   once, on the skip candidate, and v1.4
+                                   charged it here a second time.  Below 256
+                                   the decision spends more bits to keep the
+                                   reference clean.                         */
 
     /* --- additive since syntax v1.6.  Bitstream tools, each behind its own
      * tool bit: a stream without the bit decodes byte-identically to v1.4.
@@ -336,6 +353,46 @@ typedef struct nxvc_config {
                                    rate-distortion.  split4x4 is meaningful
                                    only where this resolves to 8x8; see
                                    docs/SYNTAX.md 4.1                       */
+
+    /* the rate-distortion package (encoder only, no tool bit).  All effort
+     * knobs: they change how hard the encoder looks, never what a decoder
+     * does.  0 is "the built-in default" for every one of them, so a caller
+     * that memsets its config gets the medium preset. */
+    uint32_t preset;            /* nxvc_preset.  A LIBRARY concept, not a CLI
+                                   flag: an SDK caller that wants "fast" must
+                                   be able to say so without going through
+                                   nxv-enc.  The fields below override it
+                                   individually; 0 means "take the preset's
+                                   value" for each of them.                 */
+    uint32_t rdoq_effort;       /* 1 = fast (nearest level only), 2 = medium
+                                   (the v1.2 candidate set), 3 = full (adds
+                                   the level below); 0 = default (medium)  */
+    uint32_t me_effort;         /* 1 = fast (no hierarchy, integer only),
+                                   2 = medium (hierarchical + quarter-pel
+                                   SATD), 3 = full (adds true-RD quarter-pel
+                                   refinement); 0 = default (medium)       */
+    uint32_t lambda_class_off;  /* 1 = one lambda for every tile; 0 = scale
+                                   lambda by the tile's content class
+                                   (docs/RATECONTROL.md 3.3)               */
+    uint32_t lambda_class_q8[4];/* per-class lambda gain, Q8, in class order
+                                   flat, texture, edge, text; 0 = built in */
+    uint32_t dc_lambda_q8;      /* lambda gain of the DC plane relative to the
+                                   AC planes, Q8; 0 = built-in default      */
+    uint32_t dc_rdoq_off;       /* 1 = leave the DC plane on the dead-zone
+                                   quantizer, as syntax v1.4 did            */
+    uint32_t qp_search_step;    /* spacing of the per-tile QP candidates,
+                                   0 = the default 2.  With qp_search = n
+                                   the candidates are 0, +-step ... +-n     */
+    uint32_t chroma_weight_q8;  /* weight of chroma squared error in the
+                                   encoder's distortion, Q8, scaled by the
+                                   plane's sample density.  0 = the default
+                                   256 (1.0), which is chroma weighted as
+                                   the samples fall.  Below 256 buys PSNR-Y
+                                   and 6:1:1 at the cost of absolute chroma
+                                   fidelity: it is a PERCEPTUAL TUNING KNOB
+                                   fitted to a reporting convention, not a
+                                   coding gain, and anything quoted with it
+                                   must be quoted on both metrics.         */
 } nxvc_config;
 
 /* One eye's view for one frame: the orientation the frame was rendered with
@@ -358,6 +415,12 @@ typedef struct nxvc_encode_stats {
     uint64_t bits_dc_plane, bits_luma_blocks, bits_chroma_blocks;
     uint64_t bits_alpha_blocks;
     uint64_t tiles, tiles_tskip, tiles_res[3], lanes_total;
+    /* The rate the encoder's own model PREDICTED for the payloads it then
+     * emitted, in Q10 bits.  The mode decision, the trellis and the per-tile
+     * QP search all minimise D + lambda*R against this number; comparing it
+     * with `bytes_payload` is how one tells whether they were shown the truth.
+     * Added with the v1.5 effort knobs; 0 unless collect_stats is set. */
+    uint64_t bits_predicted_q10;
 } nxvc_encode_stats;
 
 void nxvc_config_default(nxvc_config *cfg);
