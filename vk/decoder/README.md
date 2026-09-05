@@ -1291,11 +1291,20 @@ with its second-level transform firing only at `nb == 8`, the planar
 interpolation's general Q4 mapping, n x n intra predictors, and a wavefront
 over an `nb x nb` grid.
 
-**Pass B's CPU model does not yet carry the split transform or the CfL
-predictor.** `vk.passB.*` is green because its corpora do not reach them; the
-model tracks the kernel line for line everywhere else, and closing that gap is
-the first thing the next step should do, because it is the model that makes a
-kernel change checkable without a GPU.
+Pass B's CPU model carries both new tools, and the split transform is pinned
+against the normative one: `vk.passB.ref_conformance` runs
+`ref/src/transform.cpp`'s `idct_block(n = 4)` against the model at all four
+sub-block positions with saturating inputs, and checks the model's open-coded
+subsampled weight index against ref's `weight4()`. Every sub-block position is
+checked because the thing that goes wrong at 4x4 is never the butterfly -- it
+is which quadrant a sub-block occupies, which entry of the 8x8 weighting
+matrix its coefficient takes, and the two transposing passes.
+
+The model spells the split transform very differently from the kernel -- four
+whole sub-blocks with a 16-entry scratch, against the kernel's two columns per
+thread and eight live values -- and deliberately so: the model is the readable
+statement of the arithmetic, and the kernel is that arithmetic scheduled for a
+part where the live set is the constraint.
 
 The Pass A and Pass B CPU models track their kernels line for line, as before,
 and `vk.passA.*` and `vk.passB.*` stay green on RADV and lavapipe.

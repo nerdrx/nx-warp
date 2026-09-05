@@ -169,6 +169,48 @@ void test_primitives() {
                   trial, i, outr[i], outm[i]);
     }
 
+    // [minor 6] The 4x4 inverse transform of XFORM_4X4_SPLIT, against the
+    // normative one.  It is checked as a whole SPLIT BLOCK rather than as a
+    // bare 4x4, because the thing that can go wrong is not the butterfly --
+    // it is which quadrant a sub-block occupies, which entry of the 8x8
+    // weighting matrix its coefficient uses, and the two transposing passes.
+    // ref/src/codec.cpp residual_block(split) is the statement of all three.
+    for (int trial = 0; trial < 4000; ++trial) {
+        const int mag = (trial % 4 == 0) ? 32767 : 900;
+        std::uniform_int_distribution<int> dc(-mag, mag);
+        nxvc::i32 in[16];
+        int inm[16];
+        nxvc::i32 outr[16];
+        int outm[64] = {};
+        // Every sub-block position, so a quadrant swap cannot hide.
+        for (int sb = 0; sb < 4; ++sb) {
+            const int ox = (sb & 1) * 4, oy = (sb >> 1) * 4;
+            for (int i = 0; i < 16; ++i) { in[i] = dc(rng); inm[i] = in[i]; }
+            nxvc::idct_block(in, outr, 4);
+            nxvw::model_split_subblock(inm, ox, oy, outm);
+            for (int i = 0; i < 16; ++i) {
+                const int got = outm[(oy + (i >> 2)) * 8 + ox + (i & 3)];
+                CHECK(outr[i] == got,
+                      "split idct4x4 trial %d sb %d pos %d: ref %d, model %d",
+                      trial, sb, i, outr[i], got);
+            }
+        }
+    }
+
+    // [minor 6] The split sub-block's weighting matrix is the tile's 8x8 one
+    // subsampled by two in each frequency axis; the model open-codes that
+    // indexing, so pin it against ref's weight4().
+    {
+        int w[128];
+        nxvw::model_resolve_matrices(1, nullptr, w);
+        uint8_t w8[64];
+        for (int i = 0; i < 64; ++i) w8[i] = (uint8_t)w[i];
+        for (int k = 0; k < 16; ++k)
+            CHECK(w[(k >> 2) * 16 + (k & 3) * 2] == nxvc::weight4(w8, k),
+                  "weight4(%d): model %d, ref %d", k,
+                  w[(k >> 2) * 16 + (k & 3) * 2], nxvc::weight4(w8, k));
+    }
+
     // Q4 bilinear, on a random plane, including out-of-range coordinates.
     {
         int plane[64];

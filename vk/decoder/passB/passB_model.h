@@ -52,6 +52,10 @@ void passB_reconstruct_ycbcr420(const PassBInput &in, uint8_t *luma,
 // --- primitives, exposed so the conformance test can compare them one by one
 // with the reference implementation in ref/src/transform.cpp.
 void model_idct8x8(const int src[64], int dst[64]);
+// [minor 6] One 4x4 sub-block of a split block: `dq` is its sixteen
+// dequantized coefficients in sub-block raster order, and it writes the
+// (ox, oy) quadrant of the 8x8 `res`.  Exposed for vk.passB.ref_conformance.
+void model_split_subblock(const int *dq, int ox, int oy, int *res);
 int model_dequant_step(int qp, int w);
 int model_dequant(int q, int t);
 int model_bilinear_q4(const int *src, int w, int h, int stride, int sx, int sy);
