@@ -158,6 +158,15 @@ Only the last configuration does not fit a 32 KB device; the harness reports it
 as a skip rather than failing. Everything the Pico 4 target actually streams
 fits.
 
+**Do not spend effort shrinking this.** 12.5 KB is two workgroups per 32 KB
+Adreno 650 SP and the obvious move is to get under 10.6 KB for three, but the
+pass is not occupancy-limited: padding the allocation to 17.6 KB and then to
+30.8 KB — one workgroup per SP either way — cost 0.08 ms of a 22.3 ms pass at
+QP 24 and nothing at QP 36. If halving residency is free, tripling it is worth
+nothing. `../README.md`, "What was not the problem", has the numbers. What the
+pass *is* limited by is LDS and image traffic: load count in the predictor,
+store count in the output.
+
 ### Portability
 
 No subgroup operation is used at all, so the same SPIR-V runs on any subgroup
