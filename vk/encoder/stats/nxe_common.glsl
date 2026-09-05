@@ -38,6 +38,7 @@
 #define NXE_TS_F_PADDED     0x00000004u
 #define NXE_TS_F_SAD_VALID  0x00000008u
 #define NXE_TS_F_YCBCR      0x00000010u
+#define NXE_TS_F_CHROMA_RAW 0x00000020u
 
 #define NXE_SRC_RGBA8         0
 #define NXE_SRC_RGB10A2       1

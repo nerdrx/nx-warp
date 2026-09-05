@@ -62,6 +62,20 @@ struct DeviceInfo {
 class Device {
 public:
     bool create(uint32_t index, bool validation, std::string &err);
+
+    // Adopt a device the host already owns, the way nxvc_vk_decoder_create()
+    // does: WiVRn's server runs the encoder on Monado's VkDevice, so creating
+    // a second device would put the compositor's image on the wrong one and
+    // force an external-memory export for no reason.  Everything this object
+    // then allocates it still owns and still frees; the five adopted handles
+    // it neither creates nor destroys.
+    //
+    // The caller's queue must support compute.  The queue is NOT owned: the
+    // host may submit on it from another thread, and serialising that is the
+    // host's problem, not this layer's (see nxvc_vk_enc.h on threading).
+    bool adopt(VkInstance inst, VkPhysicalDevice phys, VkDevice dev,
+               VkQueue queue, uint32_t queue_family, std::string &err);
+
     void destroy();
 
     // Enumerate without keeping a device alive.  Returns false (with err set)
@@ -124,6 +138,9 @@ private:
     VkQueue          queue_ = VK_NULL_HANDLE;
     VkCommandPool    pool_  = VK_NULL_HANDLE;
     uint32_t         qfam_  = 0;
+    // Set by adopt(): destroy() then frees the command pool and the query
+    // pools but leaves the device and instance alone.
+    bool             adopted_ = false;
     VkPhysicalDeviceMemoryProperties memprops_{};
     DeviceInfo       info_{};
     float            ts_period_ = 0.0f;
