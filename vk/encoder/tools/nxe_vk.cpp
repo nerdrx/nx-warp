@@ -98,6 +98,7 @@ struct VkEncoder::Impl {
     nxvw::NxvwWarpPush wpush{};
     int32_t decide_push[4] = {};
     nxvw::NxvwPassBPush bpush{};
+    ViewState views{};
 };
 
 int vk_list_devices() {
@@ -626,9 +627,17 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
         bi.nplanes = 3;
         bi.frame_number = frame_number;
         bi.ref_slot = ref_slot;
+        /* warp_ext(), from the view that went with the reference slot and the
+         * view of this frame.  With no pose input the view history is all
+         * identity and so is the matrix, which predicts a still picture
+         * correctly and a turning head badly -- and the mode decision then
+         * declines to skip, which is the right failure. */
         WarpMatrix wm[2];
-        for (int e = 0; e < 2; ++e)
-            for (int i = 0; i < 9; ++i) wm[e].h[i] = f.warp[e][i];
+        for (int e = 0; e < 2; ++e) {
+            wm[e] = derive_warp(d.views, ref_slot, e, (int)f.fp.width,
+                                (int)f.fp.height);
+            for (int i = 0; i < 9; ++i) f.warp[e][i] = wm[e].h[i];
+        }
         bi.warp = wm;
         build_warp_params(bi, d.ring, d.warp);
         d.wpush = warp_push(bi, d.ring);
@@ -653,12 +662,21 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
          * no usable reference -- and bit 3 says warp_ext() is present. */
         fp.frame_flags = (fp.frame_flags & ~9u) | (ref_slot >= 0 ? 8u : 1u);
 
-        const int qpc = d.cfg.qp < 0 ? 0 : (d.cfg.qp > 63 ? 63 : d.cfg.qp);
+        /* The QP of THIS frame, from the frame parameter record -- not from
+         * the create-time config.  nxvc_vk_encoder_set_qp() rewrites fp and
+         * the job list between frames, so a decision reading d.cfg.qp would
+         * gate every skip at the quantiser the stream STARTED at. */
+        const int qpc = (int)fp.base_qp > 63 ? 63 : (int)fp.base_qp;
         d.decide_push[0] = (int32_t)nxe_qstep[qpc];
         d.decide_push[1] =
             d.cfg.skip_thresh > 0 ? (int32_t)d.cfg.skip_thresh : 256;
         d.decide_push[2] = d.wpred_stride;
-        d.decide_push[3] = 0;
+        /* The INTRA fallback threshold, Q8.  nxvc_config::int_intra_mad_q8's
+         * default is 2304 (a MAD of 9) and the harness has no knob for it
+         * yet, so it is the default here too. */
+        d.decide_push[3] = d.cfg.int_intra_mad_q8 > 0
+                               ? (int32_t)d.cfg.int_intra_mad_q8
+                               : 2304;
 
         /* Pass B's push block.  `coefStrideI16` is the lever that lets it read
          * E3's coefficient buffer with no repack: the within-tile layout is
@@ -862,6 +880,7 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
      * not. */
     if (d.inter) {
         d.ringst.publish(frame_number);
+        d.views.publish(frame_number);
         const nxe_tile_job *back =
             (const nxe_tile_job *)((uint8_t *)d.b_stage_small.map + 0xC0000u);
         for (uint32_t t = 0; t < d.ntiles; ++t) f.jobs[t].mode = back[t].mode;
@@ -986,6 +1005,26 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
         if (!quiet) std::printf("  E4/E5: byte-identical (%zu bytes)\n", gpu.size());
     }
     return true;
+}
+
+bool VkEncoder::read_ring_luma(uint32_t slot, uint16_t *out, size_t count) {
+    Impl &d = *p_;
+    if (!d.inter || !d.ok) return false;
+    const size_t need = (size_t)d.ring.stride[0] * (size_t)d.bpush.imageH;
+    if (count > need) return false;
+    const VkDeviceSize off =
+        (VkDeviceSize)(slot & 3u) * (VkDeviceSize)d.ring.slot_u16 * 2u;
+    std::string err;
+    VkCommandBuffer cb = d.dev.begin();
+    VkBufferCopy c{off, 0, (VkDeviceSize)count * 2u};
+    vkCmdCopyBuffer(cb, d.b_ring.buf, d.b_stage_coef.buf, 1, &c);
+    if (!d.dev.submit_and_wait(cb, err)) return false;
+    std::memcpy(out, d.b_stage_coef.map, count * 2);
+    return true;
+}
+
+void VkEncoder::set_views(const View *v, int eyes, uint32_t frame_number) {
+    p_->views.set(v, eyes, frame_number);
 }
 
 void VkEncoder::bench(Frame &f, int iters) {

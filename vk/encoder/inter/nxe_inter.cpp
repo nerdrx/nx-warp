@@ -7,6 +7,8 @@
 
 #include <cstring>
 
+#include "nxvc/warp.h"
+
 namespace nxe {
 
 namespace nw = ::nxvw;
@@ -168,6 +170,26 @@ void set_tile_mode(WarpParams &wp, uint32_t tile, int mode, int mv_x,
     wp.w[b + 0] = (uint32_t)(mode & 7) | inter | eye_bit;
     wp.w[b + 3] = (uint32_t)mv_x;
     wp.w[b + 4] = (uint32_t)mv_y;
+}
+
+
+
+WarpMatrix derive_warp(const ViewState &vs, int ref_slot, int eye, int width,
+                       int height) {
+    WarpMatrix m;   /* identity */
+    if (!vs.have || ref_slot < 0) return m;
+    const View &a = vs.slot[ref_slot & 3][eye];
+    const View &b = vs.cur[eye];
+    ::nxvc::warp::Homography H{};
+    const ::nxvc::warp::Quat qa{a.qx, a.qy, a.qz, a.qw};
+    const ::nxvc::warp::Quat qb{b.qx, b.qy, b.qz, b.qw};
+    const ::nxvc::warp::Fov fa{a.fov_left, a.fov_right, a.fov_up, a.fov_down};
+    const ::nxvc::warp::Fov fb{b.fov_left, b.fov_right, b.fov_up, b.fov_down};
+    if (!::nxvc::warp::derive_homography(qa, fa, qb, fb, width, height, &H))
+        return m;
+    for (int i = 0; i < 9; ++i) m.h[i] = H.h[i];
+    m.h[8] = ::nxvw::kWarpH22;
+    return m;
 }
 
 }  // namespace nxe

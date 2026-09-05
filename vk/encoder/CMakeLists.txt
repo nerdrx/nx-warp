@@ -259,7 +259,11 @@ if(NXENC_HAVE_PASSW)
   add_library(nxenc_inter STATIC inter/nxe_inter.cpp)
   target_include_directories(nxenc_inter PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/inter
-    ${NXENC_DEC_INTER})
+    ${NXENC_DEC_INTER}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../warp/include)
+  if(TARGET nxvc_warp_ref)
+    target_link_libraries(nxenc_inter PUBLIC nxvc_warp_ref)
+  endif()
   set_target_properties(nxenc_inter PROPERTIES CXX_STANDARD 20
                         CXX_STANDARD_REQUIRED ON POSITION_INDEPENDENT_CODE ON)
 
@@ -320,8 +324,12 @@ if(EXISTS ${NXENC_REF_TABLES})
     ${CMAKE_CURRENT_SOURCE_DIR}/../../include
     ${CMAKE_CURRENT_SOURCE_DIR}/inter
     ${NXENC_DEC_INTER}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../warp/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../ref/src)
   target_link_libraries(nxvc-vkenc PRIVATE nxenc_forward_cpu)
+  if(TARGET nxvc_warp_ref)
+    target_link_libraries(nxvc-vkenc PRIVATE nxvc_warp_ref)
+  endif()
   set_target_properties(nxvc-vkenc PROPERTIES CXX_STANDARD 20)
   if(Vulkan_FOUND)
     target_link_libraries(nxvc-vkenc PRIVATE Vulkan::Vulkan)
@@ -371,7 +379,11 @@ if(EXISTS ${NXENC_REF_TABLES})
       ${CMAKE_CURRENT_SOURCE_DIR}/stats
       ${CMAKE_CURRENT_SOURCE_DIR}/inter
       ${NXENC_DEC_INTER}
+      ${CMAKE_CURRENT_SOURCE_DIR}/../../warp/include
       ${CMAKE_CURRENT_SOURCE_DIR}/../../ref/src)
+  if(TARGET nxvc_warp_ref)
+    target_link_libraries(nxvc_vk_encoder PRIVATE nxvc_warp_ref)
+  endif()
   set_target_properties(nxvc_vk_encoder PROPERTIES
     CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON POSITION_INDEPENDENT_CODE ON)
   if(Vulkan_FOUND)

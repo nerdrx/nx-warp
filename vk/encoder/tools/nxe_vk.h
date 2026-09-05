@@ -19,6 +19,7 @@
 #include <vulkan/vulkan.h>
 
 #include "nxe_host.h"
+#include "nxe_inter.h"
 
 namespace nxe {
 
@@ -62,6 +63,17 @@ public:
      * the bitstream is the same bitstream. */
     bool encode_frame_image(Frame &f, uint32_t frame_number, VkImage image,
                             uint32_t array_layer, std::string &err);
+    /* The frame's pose and projection, one per eye, for the frame the NEXT
+     * encode() call will code.  Must be called before that encode, and the
+     * encoder keeps the history the warp derivation needs. */
+    void set_views(const View *v, int eyes, uint32_t frame_number);
+
+    /* Read one ring slot's luma plane back, for the test that pins the
+     * encoder's reference against the decoder's.  `out` is filled with
+     * `w * h` uint16 samples in the CODED domain.  Returns false if the
+     * encoder has no ring (an intra-only stream). */
+    bool read_ring_luma(uint32_t slot, uint16_t *out, size_t count);
+
     void bench(Frame &f, int iters);
 
 private:

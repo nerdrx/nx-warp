@@ -83,8 +83,10 @@ struct Config {
      * own noise floor, matching nxvc_config::skip_thresh; 0 takes the
      * default 256 (1.0). */
     bool inter = false;
+    std::string poses;   /* .poses.json sidecar; empty = identity warp */
     int intra_period = 180;
     int skip_thresh = 0;
+    int int_intra_mad_q8 = 0;   /* 0 = the library default, 2304 (MAD 9) */
 
     int device = 0;
     bool cpu_only = false;

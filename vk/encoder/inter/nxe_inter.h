@@ -135,6 +135,57 @@ nxvw::NxvwWarpPush warp_push(const WarpBuildInfo &bi, const RingLayout &rl);
  * reads its WPred slot. */
 void set_tile_mode(WarpParams &wp, uint32_t tile, int mode, int mv_x, int mv_y);
 
+/* ------------------------------------------------------------- the views
+ *
+ * One eye's pose and projection for one frame.  This is the ONLY
+ * floating-point input the codec takes, and it is encoder-side: the result
+ * reaches the decoder already quantised to the nine int32 of warp_ext().  The
+ * struct is nxvc_view's fields, repeated rather than included so that
+ * vk/encoder/inter does not depend on the reference codec's header.
+ */
+struct View {
+    double qx = 0, qy = 0, qz = 0, qw = 1;
+    double fov_left = -0.8, fov_right = 0.8;
+    double fov_up = 0.8, fov_down = -0.8;
+};
+
+/* The view history, which is what turns a pose track into a warp.  A frame's
+ * matrix is derived from the view of the frame it PREDICTS FROM and the view
+ * of itself, so the encoder has to remember the view that went with each ring
+ * slot -- exactly as ref/src/codec_impl.inc keeps `views_slot`.  Getting this
+ * wrong does not crash and does not produce an illegal stream; it produces a
+ * confident prediction of the wrong place, which is indistinguishable from a
+ * codec that is merely bad. */
+struct ViewState {
+    View cur[2];
+    View slot[4][2];
+    bool have = false;
+
+    void set(const View *v, int eyes, uint32_t frame_number) {
+        for (int i = 0; i < eyes && i < 2; ++i) cur[i] = v[i];
+        have = true;
+        /* Before the first frame there is no history, so every slot is seeded
+         * with this view and the first inter frame sees a true previous
+         * view rather than the identity. */
+        if (frame_number == 0)
+            for (int s = 0; s < 4; ++s)
+                for (int i = 0; i < 2; ++i) slot[s][i] = cur[i];
+    }
+    void publish(uint32_t frame_number) {
+        const int s = (int)(frame_number & 3u);
+        for (int i = 0; i < 2; ++i) slot[s][i] = cur[i];
+    }
+};
+
+/* warp_ext() for one eye, from the reference slot's view and this frame's.
+ * Falls back to the identity when derive_homography refuses -- an entry
+ * outside its format, or a denominator that leaves its legal range somewhere
+ * in the picture -- because an identity warp predicts badly and the mode
+ * decision then notices, where a malformed matrix would be a bitstream error.
+ */
+WarpMatrix derive_warp(const ViewState &vs, int ref_slot, int eye, int width,
+                       int height);
+
 /* i16 elements one tile occupies in the WPred buffer, and the buffer's size. */
 inline int wpred_stride_i16(int chroma420, int alpha) {
     return nxvw::nxvw_wpred_stride_i16(chroma420, alpha);

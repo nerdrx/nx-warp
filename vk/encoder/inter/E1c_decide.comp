@@ -22,7 +22,18 @@
 //     every division cleared: 786432 is 256 (qstep is Q4, so qstep^2 is Q8)
 //     times 12 (the uniform quantiser's noise floor qstep^2/12) times 256
 //     (skip_thresh is Q8);
-//   * otherwise INTRA.
+//   * and, when that gate FAILS, still WARP_SKIP unless the mean absolute
+//     residual per luma sample is over `intra_mad` (Q8).
+//
+// That second clause is the one worth stating carefully, because leaving it
+// out is a bug that looks like a tuning difference.  The SSE gate is an
+// EARLY-OUT in the reference, not the decision: when it fails the tile goes to
+// the full comparison, and with the coded-vector modes off there is nothing
+// there to beat the skip, so the skip still wins unless the INTRA fallback
+// fires.  Treating a failed gate as INTRA made this kernel code 15 tiles of
+// 289 differently from `nxv-enc --int-decision on` -- every one of them a tile
+// the reference skipped with an SSE far above the gate, up to 1.9M against a
+// threshold of 349525.
 //
 // The coded-vector modes (STATIC_MV, WARP_MV) are the next increment and are
 // not decided here; `int_coded_vectors off` is the reference configuration
@@ -64,12 +75,15 @@ layout(push_constant) uniform Push {
     int qstep;       // kQStep[qp], Q4
     int skip_thresh; // Q8 multiple of the noise floor; 256 is 1.0
     int wpred_stride_i16;
-    int pad;
+    int intra_mad;   // Q8 mean |residual| per luma sample above which INTRA
 } pc;
 
 // 64-bit accumulate in two uints: `lo` wraps, `hi` counts the wraps.
 shared uint s_lo[256];
 shared uint s_hi[256];
+// The SAD alongside the SSE.  A 64x64 tile of 8-bit samples has a SAD of at
+// most 4096 * 255 = 1044480, so one uint holds it and it needs no pair.
+shared uint s_sad[256];
 
 void add64(inout uint lo, inout uint hi, uint v) {
     uint n = lo + v;
@@ -123,7 +137,7 @@ void main() {
     const uint srcbase = tile * uint(size * size / 2);
     const uint wpbase = tile * uint(pc.wpred_stride_i16);   // plane 0 at 0
 
-    uint lo = 0u, hi = 0u;
+    uint lo = 0u, hi = 0u, sad = 0u;
     // One thread per PAIR of horizontally adjacent samples: both buffers pack
     // two 16-bit samples per uint and the pairing is the same in each, so the
     // loop does one load from each instead of two.
@@ -142,9 +156,11 @@ void main() {
         const int d1 = s1 - p1;
         add64(lo, hi, uint(d0 * d0));
         add64(lo, hi, uint(d1 * d1));
+        sad += uint(abs(d0)) + uint(abs(d1));
     }
     s_lo[lid] = lo;
     s_hi[lid] = hi;
+    s_sad[lid] = sad;
     barrier();
 
     // Tree reduction in shared memory.  No subgroup ops: the sum is over 256
@@ -158,6 +174,7 @@ void main() {
             h += s_hi[lid + s];
             s_lo[lid] = l;
             s_hi[lid] = h;
+            s_sad[lid] += s_sad[lid + s];
         }
         barrier();
     }
@@ -185,7 +202,17 @@ void main() {
     umulExtended(r_lo, npix, t_hi, t_lo);
     t_hi += r_hi * npix;
 
-    const bool skip = (l_hi < t_hi) || (l_hi == t_hi && l_lo <= t_lo);
+    const bool gate = (l_hi < t_hi) || (l_hi == t_hi && l_lo <= t_lo);
+    // The fallback, on the SAD: sad * 256 <= intra_mad * npix.  Both sides fit
+    // in a uint here -- 1044480 * 256 is 2.7e8 and 65535 * 4096 is 2.7e8 -- but
+    // the product on the left does not, so it is formed as a 64-bit value the
+    // same way the gate is.
+    uint f_lo, f_hi;
+    umulExtended(s_sad[0], 256u, f_hi, f_lo);
+    uint m_lo, m_hi;
+    umulExtended(uint(pc.intra_mad), npix, m_hi, m_lo);
+    const bool close = (f_hi < m_hi) || (f_hi == m_hi && f_lo <= m_lo);
+    const bool skip = gate || close;
     const uint mode = skip ? uint(NXE_MODE_WARP_SKIP) : uint(NXE_MODE_INTRA);
     jobs[tile].mode = mode;
     write_rec(tile, mode);

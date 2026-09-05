@@ -86,6 +86,22 @@ endif()
 # what the GPU is asked to do, and every rule in it is one the decoder
 # implements from the same normative text, so a disagreement is a stream the
 # decoder refuses.
+# The inter acid test: byte-identity against nxv-enc at ADR-0028's integer
+# decision, decode equality, and the ring against the decoder's own picture.
+if(TARGET nxvc-vkenc AND TARGET nxv-enc AND TARGET nxv-dec)
+  add_test(NAME vk.encoder.inter.acid.0
+           COMMAND ${CMAKE_COMMAND}
+           -DVKENC=$<TARGET_FILE:nxvc-vkenc>
+           -DNXVENC=$<TARGET_FILE:nxv-enc>
+           -DNXVDEC=$<TARGET_FILE:nxv-dec>
+           -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/inter-acid-0
+           -DDEVICE=0
+           -P ${CMAKE_CURRENT_SOURCE_DIR}/inter_acid.cmake)
+  set_tests_properties(vk.encoder.inter.acid.0 PROPERTIES
+                       SKIP_REGULAR_EXPRESSION "SKIP:")
+  list(APPEND NXENC_TESTS vk.encoder.inter.acid.0)
+endif()
+
 if(TARGET nxenc-inter-test)
   add_test(NAME vk.encoder.inter.host COMMAND nxenc-inter-test)
   list(APPEND NXENC_TESTS vk.encoder.inter.host)
