@@ -103,6 +103,15 @@ if(Vulkan_FOUND OR (NXVCVK_DEC_INCLUDE AND NXVCVK_DEC_LIB))
   target_link_libraries(nxvc-vkdec PRIVATE nxvc_vk_decoder)
   nxvcvk_dec_configure(nxvc-vkdec)
 
+  # The COMPOSITOR's sequence around the decoder, timed: the wait, the async
+  # submit, the copy into a pool image and the fence, with N decoders sharing
+  # one queue.  It exists because on the Pico 4 that turned out to be a larger
+  # number than the decode.
+  add_executable(nxvc-vkdec-wrap
+                 ${CMAKE_CURRENT_SOURCE_DIR}/tools/nxvc-vkdec-wrap.cpp)
+  target_link_libraries(nxvc-vkdec-wrap PRIVATE nxvc_vk_decoder)
+  nxvcvk_dec_configure(nxvc-vkdec-wrap)
+
   # tools/quality's `--codec-cmd <prefix>` appends -enc / -dec, so give it a
   # prefix whose -dec is the GPU decoder and whose -enc is the reference
   # encoder: `--codec-cmd <build>/bin/nxvgpu` then measures the GPU decode
