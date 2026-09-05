@@ -153,6 +153,10 @@ static void usage() {
         "                       (the default)\n"
         "  --preset slow        rdoq 3, me 3, 4 intra modes, per-tile QP\n"
         "                       search +-2\n"
+        "  --threads N          code the frame's tiles on N threads.  0 =\n"
+        "                       auto (hardware concurrency, capped at 16),\n"
+        "                       1 = single-threaded.  The bitstream is\n"
+        "                       byte-identical at every N\n"
         "Perceptual rate control (docs/RATECONTROL.md; no syntax change):\n"
         "  --rc                 run the rate-control library per frame and\n"
         "                       feed its per-tile qp / res_level / wm_id /\n"
@@ -216,6 +220,7 @@ int main(int argc, char **argv) {
     int split4x4 = 1, cfl = 1;
     int inter = 0, eyes = 1, intra_period = 180, ref_sel = 0, stereo = 0;
     int mv_range = 16, skip_thresh = 0, mode_lambda = 0;
+    int threads = 0;   // 0 = auto
     // These mirror nxvc_config_default(): the inter-efficiency tools that the
     // measurement supports are on, sub-tile intra is not.
     int drift_refresh = 1, drift_gate = 0, near_skip = 1, quad_mv = 1;
@@ -315,6 +320,7 @@ int main(int argc, char **argv) {
         }
         else if (a == "--ref-sel") ref_sel = std::atoi(val());
         else if (a == "--mv-range") mv_range = std::atoi(val());
+        else if (a == "--threads") threads = std::atoi(val());
         else if (a == "--skip-thresh")
             skip_thresh = (int)(std::atof(val()) * 256.0 + 0.5);
         else if (a == "--rc") rc_on = 1;
@@ -577,6 +583,7 @@ int main(int argc, char **argv) {
     cfg.quad_mv = (uint32_t)quad_mv;
     cfg.ref_sel = (uint32_t)(ref_sel < 0 ? 0 : (ref_sel > 2 ? 2 : ref_sel));
     cfg.mv_range = (uint32_t)(mv_range > 0 ? mv_range : 16);
+    cfg.threads = (uint32_t)(threads > 0 ? threads : 0);
     cfg.skip_thresh = (uint32_t)(skip_thresh > 0 ? skip_thresh : 0);
     cfg.mode_lambda_q8 = (uint32_t)(mode_lambda > 0 ? mode_lambda : 0);
     cfg.chroma = pix == "yuv444p" ? NXVC_CHROMA_444 : NXVC_CHROMA_420;

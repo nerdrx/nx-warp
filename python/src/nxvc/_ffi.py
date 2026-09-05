@@ -404,6 +404,9 @@ class nxvc_config(Structure):
         ("chroma_weight_q8", c_uint32),
         # the entropy-lite tool (bit 30): 0 = rANS, 1 = FIXED, 2 = RICE.
         ("entropy_lite", c_uint32),
+        # encoder threading: 0 = auto (hardware concurrency, capped at 16),
+        # 1 = single-threaded.  The bitstream is byte-identical at every value.
+        ("threads", c_uint32),
 
     ]
 

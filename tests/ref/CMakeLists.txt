@@ -7,7 +7,7 @@ set(NXVC_REF_TEST_INC
 )
 
 foreach(t transform transform_gain rans entropy_lite codec headers fuzz_smoke
-          inter warp_convention)
+          inter warp_convention threads)
     add_executable(ref_test_${t} test_${t}.cpp)
     target_link_libraries(ref_test_${t} PRIVATE nxvc_ref)
     target_include_directories(ref_test_${t} PRIVATE ${NXVC_REF_TEST_INC})

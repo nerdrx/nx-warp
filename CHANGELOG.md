@@ -14,6 +14,32 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
 
 ### Added
 
+**Reference encoder: tile-parallel encoding (`nxvc_config::threads`, `nxv-enc --threads N`)**
+
+- The CPU reference encoder codes a frame's 64x64 tiles on a pool of worker threads. `0` is auto
+  (`std::thread::hardware_concurrency()`, capped at 16), `1` is the single-threaded path the
+  encoder has always run. The pool is created once in `nxvc_encoder_create()` and joined in
+  `nxvc_encoder_destroy()`; no thread is created per frame, and no new dependency is taken --
+  `std::thread` only.
+- **The bitstream is byte-identical at every setting**, and so are the per-tile records
+  `nxvc_encoder_tiles()` returns. Threading is a rate at which the encoder works, never a property
+  of what it says: `tests/ref/test_threads.cpp` pins that over intra, inter, near-skip/quad-mv,
+  custom tables + `CTX_V3`, entropy-lite, stereo and the per-tile QP/weighting-matrix searches, and
+  the `ref.vectors` conformance set is now produced through the pool by default.
+- The two places tiles are not independent are preserved rather than dropped. The motion search
+  seeds from the vectors the LEFT and ABOVE tiles of this frame chose, so the decisions run on an
+  **anti-diagonal wavefront** -- every tile on `r + c == k` has both predecessors on earlier
+  diagonals -- and each tile sees exactly the seeds raster order would have given it. A `STEREO`
+  tile predicts from this frame's own eye-0 reconstruction (Annex D D-3), so a `stereo` stream stays
+  on the serial path whatever `threads` says. Row headers, tile order and the concatenation of tile
+  payloads are unchanged; the per-worker symbol histograms and encode statistics are integer
+  counters summed at the end of a pass, so the sum is exact and order-independent.
+- 1088x1088 4:2:0, 20 frames, QP 26, `--preset fast`, ms/frame at 1 / 4 / 8 / 16 threads:
+  `--inter on --intra-period 32` 306 / 108 / 93 / 88; the same with `--intra-dir off`
+  204 / 79 / 71 / 73; `--inter off` 422 / 121 / 80 / 67. Intra scales furthest because every tile is
+  independent from the start; the inter settings plateau near 3.5x on the wavefront's critical path.
+  `ref/README.md` "Encoder threading" has the schedule.
+
 **GPU decoder: the Phase 2 inter path (`docs/SYNTAX.md` 13)**
 
 - `nxvc_vk_decoder` now speaks the whole inter syntax: tool bits **10 `INTER`**, **11 `WARP`**,

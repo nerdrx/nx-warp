@@ -371,6 +371,20 @@ extern "C" nxvc_encoder *nxvc_encoder_create(const nxvc_config *cfg,
     e->fp.inter = e->cfg.inter ? 1 : 0;
     e->fp.stereo = e->cfg.stereo ? 1 : 0;
     for (int i = 0; i < 8; ++i) build_default_set(e->fp.tabs[i], i, e->fp.nctx);
+    for (int i = 0; i < 8; ++i) build_default_set(e->deftabs[i], i, e->fp.nctx);
+    // The tile pool: created ONCE, here, and joined in nxvc_encoder_destroy().
+    // A per-frame pool would spend more on thread creation at 90 Hz than the
+    // tiles cost.  `threads == 1` allocates nothing and takes the serial path.
+    {
+        const unsigned nth = resolve_threads(e->cfg.threads);
+        if (nth > 1) {
+            try {
+                e->pool.reset(new nxvc::ThreadPool(nth));
+            } catch (...) {
+                e->pool.reset();   // narrower, never wrong
+            }
+        }
+    }
     e->state.assign(e->g.ntiles(), nxvc::PredState{});
     e->state_pre = e->state;
     e->dec.assign(e->g.ntiles(), TileDecision{});
@@ -1073,7 +1087,10 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
     }
 
     std::vector<u8> table_bytes;
-    static thread_local TableSet deftabs[8];
+    // The eight built-in sets, on the ENCODER rather than in a function-local
+    // `static thread_local`: they are read by every tile, including tiles a
+    // worker thread codes, and a thread_local copy would be zero there.
+    TableSet *const deftabs = e->deftabs;
     for (int k = 0; k < 8; ++k) build_default_set(deftabs[k], k, fp.nctx);
     // `table_iters` refines the eight per-frame table sets after training:
     // it re-assigns every tile against the *trained* sets and retrains, which
@@ -1905,401 +1922,461 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
     BW body;
     nxvc_status err = NXVC_OK;
 
-    auto run_pass = [&](bool decide, bool emit, const TableSet *tabs) {
+    // ------------------------------------------------------------------
+    // One tile, start to finish.  The mode decision is already made and sits
+    // in e->dec[t]; everything below is either tile-local or writes a region
+    // no other tile touches -- e->tiles[t], the tile's own rectangle of the
+    // reference slot and of the shadow, its own slice of `tilehist` -- so a
+    // worker thread may run it.  The three things that are NOT per tile are
+    // passed in: `rowbuf`, the byte sink whose contents are concatenated in
+    // tile order afterwards, and `whist` / `S`, the caller's own histogram and
+    // statistics accumulators, summed into the frame's at the end of the pass.
+    // Both accumulate by integer addition only, so the sum does not depend on
+    // the order the workers finished in.
+    //
+    // An error comes back as a status rather than assigning `err`, so that no
+    // two workers race for it; the pass takes the first failing tile in
+    // normative order, which is the tile the serial loop would stop on.
+    // ------------------------------------------------------------------
+    auto code_tile = [&](u32 row, u32 eye, u32 col, const TableSet *tabs,
+                         bool emit, RefPicture &cur, BW &rowbuf,
+                         u32 (*whist)[kNumCtx][kNumSym],
+                         nxvc_encode_stats &S) -> nxvc_status {
+        const int t = linear_tile(g, (int)row, (int)eye, (int)col);
+        const TileDecision &d = e->dec[t];
+        TileCoder tc;
+        tc.g = &g;
+        tc.fp = &fp;
+        tc.tp = make_tile_params(t, (int)eye, (int)col);
+        apply_decision(tc.tp, d);
+        tc.setup();
+        load_tile(tc, g, img, (int)eye, (int)col, (int)row);
+        // The source luma, kept so the drift of the client shadow
+        // can be measured against it once the tile is
+        // reconstructed.  Only the emitting pass measures it: the
+        // training pass reconstructs the same samples and would
+        // just write the same number twice.
+        if (e->cfg.transform_skip == 2)
+            tc.tp.tskip = tskip_decision(tc);
+            tc.apply_tskip_to_split();
+        if (e->cfg.alpha) {
+            bool constant = true;
+            i32 first = tc.pl[3].samples[0];
+            for (size_t i = 1; i < tc.pl[3].samples.size(); ++i)
+                if (tc.pl[3].samples[i] != first) {
+                    constant = false;
+                    break;
+                }
+            tc.tp.alpha_mode = constant ? ((first == 255) ? 0 : 1) : 2;
+            tc.tp.alpha_value = first;
+        }
+        if (d.mode != NXVC_MODE_INTRA) {
+            const RefPicture &rp =
+                d.mode == NXVC_MODE_STEREO ? cur : refpic;
+            predict_tile(tc, g, rp, fp.warp[eye],
+                         d.mode == NXVC_MODE_STEREO ? 0 : (int)eye,
+                         (int)col, (int)row, d.mode,
+                         d.mode == NXVC_MODE_STEREO ? d.disparity
+                                                    : d.mv_x,
+                         d.mode == NXVC_MODE_STEREO ? 0 : d.mv_y, 0,
+                         d.quad_mv ? d.qmv : nullptr);
+        }
+        if (d.skipped) {
+            // A near-skip tile is a skipped tile whose block-mean
+            // field comes from the row header's nine bytes
+            // instead of being flat.  Everything after that --
+            // the planar interpolation, the warp predictor -- is
+            // the ordinary skip path, which is why the correction
+            // needs no tile structure at all.  SYNTAX.md 13.9.
+            if (d.near_skip)
+                for (int p = 0; p < kNearSkipPlanes && p < tc.nplanes;
+                     ++p)
+                    reconstruct_near_skip(tc.pl[p], d.corr[p]);
+            else
+                reconstruct_skip(tc);
+            store_ref_tile(tc, g, cur, (int)eye, (int)col, (int)row);
+            if (emit) {
+                store_tile(tc, g, &e->shadow_img, (int)eye, (int)col,
+                           (int)row);
+            }
+            nxvc_tile_info &ti = e->tiles[t];
+            ti.tile_index = (u16)col;
+            ti.eye = (u8)eye;
+            ti.mode = NXVC_MODE_WARP_SKIP;
+            ti.skipped = 1;
+            ti.mv_x = (i8)d.mv_x;
+            ti.mv_y = (i8)d.mv_y;
+            ti.ref_delta = 0;
+            ti.res_level = 0;
+            ti.chroma444 = (u8)tc.tp.chroma444;
+            ti.nsub_log2 = (u8)tc.tp.nsub_log2;
+            ti.table_set = (u8)tc.tp.table_set;
+            ti.qp_delta = (i8)tc.tp.qp_delta;
+            ti.qp = (u8)clamp_i32(fp.base_qp + tc.tp.qp_delta, 0, 63);
+            ti.near_skip = (u8)d.near_skip;
+            ti.warp_mad_q8 = (u16)d.warp_mad_q8;
+            return NXVC_OK;
+        }
+        tc.build_units();
+        if (qp_search > 0 || wm_search || xform_search) {
+            // Per-tile QP offset and weighting matrix, by real
+            // rate-distortion.  Two things made this too
+            // expensive to leave on (3 to 10x encode time for
+            // under 0.5 %, ref/RESULTS-intra.md 6): it tried
+            // 2*qp_search+1 offsets one code point apart, and
+            // each candidate re-ran the full directional-intra
+            // mode search from scratch.
+            //
+            // Both are fixed here.  The candidates are spaced
+            // `qp_search_step` apart, because one QP step is
+            // 12 % of a quantiser and no tile's RD cost has
+            // structure that fine -- a 3-point ladder at +-2
+            // spans the same useful range as a 5-point one at
+            // +-1 and costs 40 % less.  And the mode decision is
+            // made once, at the tile's own QP, and REUSED: the
+            // best directional mode for a block is a property of
+            // its neighbourhood, not of the step it is quantised
+            // with, so re-searching it per candidate buys
+            // nothing and is most of the cost.
+            const int qd0 = tc.tp.qp_delta;
+            const double lambda_scale = tile_lambda_scale(tc);
+            const int step = qp_search_step;
+            // The comparison is made at ONE lambda -- the tile's
+            // own, at its allocated QP.  Scoring each candidate at
+            // its own lambda would compare two different cost
+            // functions and always prefer the coarsest step.
+            const double lam =
+                make_lambda(clamp_i32(fp.base_qp + qd0, 0, 63),
+                            lambda_scale).sse;
+            // The analysis every candidate reuses: the mode
+            // decision at the tile's own QP, made once.
+            std::vector<u8> base_modes[4];
+            {
+                TileCoder ref0;
+                ref0.g = &g;
+                ref0.fp = &fp;
+                ref0.tp = tc.tp;
+                ref0.setup();
+                load_tile(ref0, g, img, (int)eye, (int)col,
+                          (int)row);
+                if (d.mode != NXVC_MODE_INTRA)
+                    for (int p = 0; p < 4; ++p)
+                        ref0.pl[p].wpred = tc.pl[p].wpred;
+                ref0.build_units();
+                quantize_tile_ex(ref0, fp.tabs, lambda_scale, false);
+                for (int p = 0; p < 4; ++p)
+                    base_modes[p] = ref0.pl[p].modes;
+            }
+            double best = 0;
+            bool have = false;
+            int best_qd = qd0, best_wm = tc.tp.wm_id;
+            int best_xf = tc.tp.xform_size;
+            for (int dq = -qp_search; dq <= qp_search; dq += step) {
+              for (int wm = 0; wm <= (wm_search ? 3 : 0); ++wm) {
+                for (int xf = 0; xf <= (xform_search ? 2 : 0); ++xf) {
+                    TileCoder cand;
+                    cand.g = &g;
+                    cand.fp = &fp;
+                    cand.tp = tc.tp;
+                    cand.tp.qp_delta = clamp_i32(qd0 + dq, -32, 31);
+                    cand.tp.wm_id = wm;
+                    if (xform_search) cand.tp.xform_size = xf;
+                    cand.setup();
+                    load_tile(cand, g, img, (int)eye, (int)col,
+                              (int)row);
+                    if (d.mode != NXVC_MODE_INTRA)
+                        for (int p = 0; p < 4; ++p)
+                            cand.pl[p].wpred = tc.pl[p].wpred;
+                    for (int p = 0; p < 4; ++p)
+                        if (!base_modes[p].empty())
+                            cand.pl[p].modes = base_modes[p];
+                    cand.build_units();
+                    double bits = quantize_tile_ex(cand, fp.tabs,
+                                                   lambda_scale,
+                                                   true);
+                    int active = 1 << cand.tp.nsub_log2;
+                    if ((size_t)active > cand.units.size())
+                        active = (int)cand.units.size();
+                    bits += 8 * (kTileHeaderBytes + 4 * active);
+                    double cost =
+                        tile_distortion(cand) + lam * bits;
+                    if (!have || cost < best) {
+                        best = cost;
+                        have = true;
+                        best_qd = cand.tp.qp_delta;
+                        best_wm = wm;
+                        best_xf = cand.tp.xform_size;
+                    }
+                }
+              }
+            }
+            if (have && (best_qd != tc.tp.qp_delta ||
+                         best_wm != tc.tp.wm_id ||
+                         best_xf != tc.tp.xform_size)) {
+                std::vector<i32> keep[4];
+                for (int p = 0; p < 4; ++p) keep[p] = tc.pl[p].wpred;
+                tc.tp.qp_delta = best_qd;
+                tc.tp.wm_id = best_wm;
+                tc.tp.xform_size = best_xf;
+                tc.setup();
+                load_tile(tc, g, img, (int)eye, (int)col, (int)row);
+                for (int p = 0; p < 4; ++p) tc.pl[p].wpred = keep[p];
+                tc.build_units();
+            }
+        }
+        const double predicted = quantize_tile(tc, tabs);
+        if (emit && e->cfg.collect_stats)
+            S.bits_predicted_q10 +=
+                (u64)(predicted * 1024.0 + 0.5);
+        if (tc.split4) {
+            bool any = false;
+            for (int p = 0; p < coded_planes(tc) && !any; ++p)
+                for (u8 f : tc.pl[p].splits)
+                    if (f) { any = true; break; }
+            if (!any) tc.clear_split();
+        }
+        u32 th[kNumCtx][kNumSym];
+        u32 raw_bits = 0;
+        std::memset(th, 0, sizeof(th));
+        if (count_units(tc.units.data(), (int)tc.units.size(),
+                        1 << tc.tp.nsub_log2, th, nullptr,
+                        &raw_bits)) {
+            tc.tp.table_set = select_set(th, tc.tp.table_set, table_iters ? tabs : deftabs);
+            // The lane count is chosen so the 4-byte-per-lane
+            // flush stays under a tenth of the payload.  It is
+            // picked in BOTH passes, because under CTX_V3 the
+            // contexts follow the lane schedule (SYNTAX.md 9.8):
+            // training on 8 lanes and coding on 2 would train the
+            // wrong statistics.
+            if (e->cfg.nsub_log2 == 255) {
+                double bits =
+                    table_set_cost(th, tabs[tc.tp.table_set]) +
+                    (double)raw_bits;
+                int n = 0;
+                while (n < 3 && (double)(32 << (n + 1)) <= bits * 0.10)
+                    ++n;
+                if (n != tc.tp.nsub_log2) {
+                    tc.tp.nsub_log2 = n;
+                    std::memset(th, 0, sizeof(th));
+                    count_units(tc.units.data(),
+                                (int)tc.units.size(), 1 << n, th,
+                                nullptr);
+                    tc.tp.table_set = select_set(th, tc.tp.table_set, table_iters ? tabs : deftabs);
+                }
+            }
+            if (!emit && !tilehist.empty()) {
+                u32 *dst = &tilehist[(size_t)t * kNumCtx * kNumSym];
+                for (int c = 0; c < fp.nctx; ++c)
+                    for (int sy = 0; sy < kNumSym; ++sy) {
+                        whist[tc.tp.table_set][c][sy] += th[c][sy];
+                        dst[c * kNumSym + sy] = th[c][sy];
+                    }
+            }
+#ifdef NXVC_XFORM_CTX_EXPERIMENT
+            // SYNTAX.md 9.3: does a 16x16 or 32x32 block need
+            // contexts of its own?  Split the frame's symbol
+            // histogram by transform size and report, at the end
+            // of the frame, what coding each size with its own
+            // trained table would save over coding all of them
+            // with the one merged table the format transmits.
+            for (int c = 0; c < fp.nctx; ++c)
+                for (int sy = 0; sy < kNumSym; ++sy)
+                    xhist[tc.tp.xform_size][c][sy] += th[c][sy];
+#endif
+        }
+        if (emit && e->cfg.collect_stats) {
+            const TableSet &ts = tabs[tc.tp.table_set];
+            int nplanes_c = coded_planes(tc);
+            size_t ui = 0;
+            const size_t nhead = tc.intra_dir ? 2 : 1;
+            for (int p = 0; p < nplanes_c; ++p) {
+                int ndc = tc.pl[p].nb * tc.pl[p].nb;
+                std::vector<Unit> dcu(tc.units.begin() + ui,
+                                      tc.units.begin() + ui + nhead);
+                std::vector<Unit> blk(
+                    tc.units.begin() + ui + nhead,
+                    tc.units.begin() + ui + nhead + ndc);
+                ui += nhead + ndc;
+                u32 hd[kNumCtx][kNumSym], hb[kNumCtx][kNumSym];
+                std::memset(hd, 0, sizeof(hd));
+                std::memset(hb, 0, sizeof(hb));
+                count_units(dcu.data(), (int)nhead, 1, hd, nullptr);
+                count_units(blk.data(), ndc, 1, hb, nullptr);
+                S.bits_dc_plane += (u64)table_set_cost(hd, ts);
+                u64 bb = (u64)table_set_cost(hb, ts);
+                if (p == 0) S.bits_luma_blocks += bb;
+                else if (p == 3) S.bits_alpha_blocks += bb;
+                else S.bits_chroma_blocks += bb;
+            }
+            int active = 1 << tc.tp.nsub_log2;
+            if ((size_t)active > tc.units.size())
+                active = (int)tc.units.size();
+            S.bytes_rans_init += 4u * (u32)active;
+            S.lanes_total += (u32)active;
+            S.tiles++;
+            if (tc.tp.tskip) S.tiles_tskip++;
+            S.tiles_res[tc.tp.res_level]++;
+        }
+        if (emit) {
+            std::vector<u8> payload;
+            if (e->cfg.entropy_lite) {
+                // Under ENTROPY_LITE the tile header's table_set
+                // field names the variant, not a table set: the
+                // tool has no tables (SYNTAX.md 9.8).
+                tc.tp.table_set = (int)e->cfg.entropy_lite - 1;
+                tc.tp.nsub_log2 = 3;
+                if (!lite_encode_units(tc.units.data(),
+                                       (int)tc.units.size(),
+                                       tc.tp.table_set, payload)) {
+                    return NXVC_ERR_BITSTREAM;
+                }
+            } else if (!encode_units(tc.units.data(),
+                              (int)tc.units.size(),
+                              1 << tc.tp.nsub_log2,
+                              tabs[tc.tp.table_set], payload)) {
+                return NXVC_ERR_BITSTREAM;
+            }
+            if (payload.size() > 65535) {
+                return NXVC_ERR_NOMEM;
+            }
+            tc.tp.payload_len = (int)payload.size();
+            pack_tile_header(rowbuf, tc.tp);
+            emit_tile_fields(rowbuf, tc.tp);
+            rowbuf.raw(payload.data(), payload.size());
+            if (e->cfg.collect_stats) {
+                S.bytes_tile_headers +=
+                    kTileHeaderBytes + tile_field_bytes(tc.tp);
+                S.bytes_payload += payload.size();
+            }
+        }
+        finalize_recon(tc);
+        store_ref_tile(tc, g, cur, (int)eye, (int)col, (int)row);
+        if (emit) {
+            store_tile(tc, g, &e->shadow_img, (int)eye, (int)col,
+                       (int)row);
+        }
+
+        nxvc_tile_info &ti = e->tiles[t];
+        ti.tile_index = (u16)tc.tp.tile_index;
+        ti.payload_len = (u16)tc.tp.payload_len;
+        ti.layer = 0;
+        ti.eye = (u8)eye;
+        ti.mode = (u8)tc.tp.mode;
+        ti.res_level = (u8)tc.tp.res_level;
+        ti.chroma444 = (u8)tc.tp.chroma444;
+        ti.alpha_mode = (u8)tc.tp.alpha_mode;
+        ti.table_set = (u8)tc.tp.table_set;
+        ti.nsub_log2 = (u8)tc.tp.nsub_log2;
+        ti.tskip = (u8)tc.tp.tskip;
+        ti.wgt = 0;
+        ti.wm_id = (u8)tc.tp.wm_id;
+        ti.intra_dir = (u8)tc.intra_dir;
+        ti.split4x4 = (u8)tc.split4;
+        ti.xform_size = (u8)tc.tp.xform_size;
+        ti.ref_sel = (u8)tc.tp.ref_sel;
+        ti.mv_present = (u8)tc.tp.mv_present;
+        ti.qp_delta = (i8)tc.tp.qp_delta;
+        ti.mv_x = (i8)tc.tp.mv_x;
+        ti.mv_y = (i8)tc.tp.mv_y;
+        ti.disparity = (u16)tc.tp.disparity;
+        ti.ref_delta = (tc.tp.mode == NXVC_MODE_INTRA ||
+                        tc.tp.mode == NXVC_MODE_STEREO)
+                           ? 3u
+                           : (u8)tc.tp.ref_sel;
+        ti.alpha_value = (u8)tc.tp.alpha_value;
+        ti.skipped = 0;
+        ti.qp = (u8)clamp_i32(fp.base_qp + tc.tp.qp_delta, 0, 63);
+        ti.warp_mad_q8 = (u16)d.warp_mad_q8;
+        return NXVC_OK;
+    };
+
+    // The frame's tile schedule.  `threads == 1` is the serial loop the
+    // encoder has always run.  Above that the same tiles are coded on the
+    // pool, in three phases per pass:
+    //
+    //   1. the mode decisions, on an ANTI-DIAGONAL WAVEFRONT.  decide_tile
+    //      seeds its motion search from the vectors the LEFT and the ABOVE
+    //      tile of this frame already chose, so tile (r, c) may not start
+    //      before (r, c-1) and (r-1, c) are done -- but every tile on one
+    //      anti-diagonal r + c = k has both of its predecessors on earlier
+    //      diagonals, so a diagonal runs in parallel and each tile sees
+    //      exactly the seeds the serial order would have given it.  Nothing
+    //      else decide_tile reads is written during a pass: the prediction
+    //      state, the drift and the ages are frame constants, and the
+    //      reference it searches is the PREVIOUS frame's.
+    //   2. the row headers, serially: they are a scan of e->dec, which phase 1
+    //      has finished, and they cost nothing.
+    //   3. the tile coding, all tiles at once into per-tile byte buffers,
+    //      concatenated afterwards in normative order.
+    //
+    // What stays serial, and why: a STEREO tile predicts from THIS frame's
+    // eye-0 reconstruction (Annex D D-3), which is the one intra-frame data
+    // dependency in the format, so a `stereo` stream takes the serial path
+    // whatever `threads` says.  The bytes are the same either way; only the
+    // schedule differs.
+#ifdef NXVC_XFORM_CTX_EXPERIMENT
+    // The experiment hook accumulates into a plain function static.
+    const bool use_pool = false;
+#else
+    const bool use_pool = e->pool && ntiles > 1 && !e->cfg.stereo;
+#endif
+
+    auto row_header = [&](u32 row, u32 eye, bool emit, BW &rowbuf) {
+        u64 skipmap = 0, dcmap = 0;
+        u32 coded = 0;
+        for (u32 col = 0; col < g.tiles_x; ++col) {
+            const int t = linear_tile(g, (int)row, (int)eye, (int)col);
+            if (e->dec[t].skipped) {
+                skipmap |= 1ull << col;
+                // SYNTAX.md 3.3: every dc_bitmap bit names a tile whose
+                // skip_bitmap bit is set.  The two are written in one place
+                // so they cannot disagree.
+                if (e->dec[t].near_skip) dcmap |= 1ull << col;
+            } else {
+                ++coded;
+            }
+        }
+        if (!emit) return;
+        rowbuf.u16v(fp.frame_number);
+        rowbuf.u8v(row);
+        // Bit 7 of `tile_count` is `dc_present`.  `coded` is at most
+        // kMaxTilesPerRow, so the field has the bit to spare and the row
+        // header stays 12 bytes when no tile in the row is corrected.
+        rowbuf.u8v(coded | (dcmap ? 0x80u : 0u));
+        rowbuf.u64v(skipmap);
+        if (dcmap) {
+            rowbuf.u64v(dcmap);
+            for (u32 col = 0; col < g.tiles_x; ++col) {
+                if (!((dcmap >> col) & 1u)) continue;
+                const int t = linear_tile(g, (int)row, (int)eye, (int)col);
+                const i8 (*c)[3] = e->dec[t].corr;
+                for (int pl = 0; pl < kNearSkipPlanes; ++pl)
+                    for (int k = 0; k < 3; ++k) rowbuf.u8v((u8)c[pl][k]);
+            }
+            if (e->cfg.collect_stats)
+                e->stats.bytes_row_headers +=
+                    8 + (u64)popcount64(dcmap) * kNearSkipBytes;
+        }
+    };
+
+    auto run_pass_serial = [&](bool decide, bool emit, const TableSet *tabs) {
         RefPicture &cur = e->ring.slot[slot];
         for (u32 row = 0; row < g.tiles_y && err == NXVC_OK; ++row) {
             for (u32 eye = 0; eye < g.eyes && err == NXVC_OK; ++eye) {
+                if (decide)
+                    for (u32 col = 0; col < g.tiles_x; ++col) {
+                        const int t =
+                            linear_tile(g, (int)row, (int)eye, (int)col);
+                        e->dec[t] = decide_tile(t, (int)eye, (int)col,
+                                                (int)row, tabs);
+                    }
                 BW rowbuf;
-                u64 skipmap = 0, dcmap = 0;
-                u32 coded = 0;
-                for (u32 col = 0; col < g.tiles_x; ++col) {
-                    const int t = linear_tile(g, (int)row, (int)eye, (int)col);
-                    if (decide) e->dec[t] = decide_tile(t, (int)eye, (int)col,
-                                                        (int)row, tabs);
-                    if (e->dec[t].skipped) {
-                        skipmap |= 1ull << col;
-                        // SYNTAX.md 3.3: every dc_bitmap bit names a tile
-                        // whose skip_bitmap bit is set.  The two are written
-                        // in one place so they cannot disagree.
-                        if (e->dec[t].near_skip) dcmap |= 1ull << col;
-                    } else {
-                        ++coded;
-                    }
-                }
-                if (emit) {
-                    rowbuf.u16v(fp.frame_number);
-                    rowbuf.u8v(row);
-                    // Bit 7 of `tile_count` is `dc_present`.  `coded` is at
-                    // most kMaxTilesPerRow, so the field has the bit to
-                    // spare and the row header stays 12 bytes when no tile
-                    // in the row is corrected.
-                    rowbuf.u8v(coded | (dcmap ? 0x80u : 0u));
-                    rowbuf.u64v(skipmap);
-                    if (dcmap) {
-                        rowbuf.u64v(dcmap);
-                        for (u32 col = 0; col < g.tiles_x; ++col) {
-                            if (!((dcmap >> col) & 1u)) continue;
-                            const int t =
-                                linear_tile(g, (int)row, (int)eye, (int)col);
-                            const i8 (*c)[3] = e->dec[t].corr;
-                            for (int pl = 0; pl < kNearSkipPlanes; ++pl)
-                                for (int k = 0; k < 3; ++k)
-                                    rowbuf.u8v((u8)c[pl][k]);
-                        }
-                        if (e->cfg.collect_stats)
-                            e->stats.bytes_row_headers +=
-                                8 + (u64)popcount64(dcmap) * kNearSkipBytes;
-                    }
-                }
+                row_header(row, eye, emit, rowbuf);
                 for (u32 col = 0; col < g.tiles_x && err == NXVC_OK; ++col) {
-                    const int t = linear_tile(g, (int)row, (int)eye, (int)col);
-                    const TileDecision &d = e->dec[t];
-                    TileCoder tc;
-                    tc.g = &g;
-                    tc.fp = &fp;
-                    tc.tp = make_tile_params(t, (int)eye, (int)col);
-                    apply_decision(tc.tp, d);
-                    tc.setup();
-                    load_tile(tc, g, img, (int)eye, (int)col, (int)row);
-                    // The source luma, kept so the drift of the client shadow
-                    // can be measured against it once the tile is
-                    // reconstructed.  Only the emitting pass measures it: the
-                    // training pass reconstructs the same samples and would
-                    // just write the same number twice.
-                    if (e->cfg.transform_skip == 2)
-                        tc.tp.tskip = tskip_decision(tc);
-                        tc.apply_tskip_to_split();
-                    if (e->cfg.alpha) {
-                        bool constant = true;
-                        i32 first = tc.pl[3].samples[0];
-                        for (size_t i = 1; i < tc.pl[3].samples.size(); ++i)
-                            if (tc.pl[3].samples[i] != first) {
-                                constant = false;
-                                break;
-                            }
-                        tc.tp.alpha_mode = constant ? ((first == 255) ? 0 : 1) : 2;
-                        tc.tp.alpha_value = first;
-                    }
-                    if (d.mode != NXVC_MODE_INTRA) {
-                        const RefPicture &rp =
-                            d.mode == NXVC_MODE_STEREO ? cur : refpic;
-                        predict_tile(tc, g, rp, fp.warp[eye],
-                                     d.mode == NXVC_MODE_STEREO ? 0 : (int)eye,
-                                     (int)col, (int)row, d.mode,
-                                     d.mode == NXVC_MODE_STEREO ? d.disparity
-                                                                : d.mv_x,
-                                     d.mode == NXVC_MODE_STEREO ? 0 : d.mv_y, 0,
-                                     d.quad_mv ? d.qmv : nullptr);
-                    }
-                    if (d.skipped) {
-                        // A near-skip tile is a skipped tile whose block-mean
-                        // field comes from the row header's nine bytes
-                        // instead of being flat.  Everything after that --
-                        // the planar interpolation, the warp predictor -- is
-                        // the ordinary skip path, which is why the correction
-                        // needs no tile structure at all.  SYNTAX.md 13.9.
-                        if (d.near_skip)
-                            for (int p = 0; p < kNearSkipPlanes && p < tc.nplanes;
-                                 ++p)
-                                reconstruct_near_skip(tc.pl[p], d.corr[p]);
-                        else
-                            reconstruct_skip(tc);
-                        store_ref_tile(tc, g, cur, (int)eye, (int)col, (int)row);
-                        if (emit) {
-                            store_tile(tc, g, &e->shadow_img, (int)eye, (int)col,
-                                       (int)row);
-                        }
-                        nxvc_tile_info &ti = e->tiles[t];
-                        ti.tile_index = (u16)col;
-                        ti.eye = (u8)eye;
-                        ti.mode = NXVC_MODE_WARP_SKIP;
-                        ti.skipped = 1;
-                        ti.mv_x = (i8)d.mv_x;
-                        ti.mv_y = (i8)d.mv_y;
-                        ti.ref_delta = 0;
-                        ti.res_level = 0;
-                        ti.chroma444 = (u8)tc.tp.chroma444;
-                        ti.nsub_log2 = (u8)tc.tp.nsub_log2;
-                        ti.table_set = (u8)tc.tp.table_set;
-                        ti.qp_delta = (i8)tc.tp.qp_delta;
-                        ti.qp = (u8)clamp_i32(fp.base_qp + tc.tp.qp_delta, 0, 63);
-                        ti.near_skip = (u8)d.near_skip;
-                        ti.warp_mad_q8 = (u16)d.warp_mad_q8;
-                        continue;
-                    }
-                    tc.build_units();
-                    if (qp_search > 0 || wm_search || xform_search) {
-                        // Per-tile QP offset and weighting matrix, by real
-                        // rate-distortion.  Two things made this too
-                        // expensive to leave on (3 to 10x encode time for
-                        // under 0.5 %, ref/RESULTS-intra.md 6): it tried
-                        // 2*qp_search+1 offsets one code point apart, and
-                        // each candidate re-ran the full directional-intra
-                        // mode search from scratch.
-                        //
-                        // Both are fixed here.  The candidates are spaced
-                        // `qp_search_step` apart, because one QP step is
-                        // 12 % of a quantiser and no tile's RD cost has
-                        // structure that fine -- a 3-point ladder at +-2
-                        // spans the same useful range as a 5-point one at
-                        // +-1 and costs 40 % less.  And the mode decision is
-                        // made once, at the tile's own QP, and REUSED: the
-                        // best directional mode for a block is a property of
-                        // its neighbourhood, not of the step it is quantised
-                        // with, so re-searching it per candidate buys
-                        // nothing and is most of the cost.
-                        const int qd0 = tc.tp.qp_delta;
-                        const double lambda_scale = tile_lambda_scale(tc);
-                        const int step = qp_search_step;
-                        // The comparison is made at ONE lambda -- the tile's
-                        // own, at its allocated QP.  Scoring each candidate at
-                        // its own lambda would compare two different cost
-                        // functions and always prefer the coarsest step.
-                        const double lam =
-                            make_lambda(clamp_i32(fp.base_qp + qd0, 0, 63),
-                                        lambda_scale).sse;
-                        // The analysis every candidate reuses: the mode
-                        // decision at the tile's own QP, made once.
-                        std::vector<u8> base_modes[4];
-                        {
-                            TileCoder ref0;
-                            ref0.g = &g;
-                            ref0.fp = &fp;
-                            ref0.tp = tc.tp;
-                            ref0.setup();
-                            load_tile(ref0, g, img, (int)eye, (int)col,
-                                      (int)row);
-                            if (d.mode != NXVC_MODE_INTRA)
-                                for (int p = 0; p < 4; ++p)
-                                    ref0.pl[p].wpred = tc.pl[p].wpred;
-                            ref0.build_units();
-                            quantize_tile_ex(ref0, fp.tabs, lambda_scale, false);
-                            for (int p = 0; p < 4; ++p)
-                                base_modes[p] = ref0.pl[p].modes;
-                        }
-                        double best = 0;
-                        bool have = false;
-                        int best_qd = qd0, best_wm = tc.tp.wm_id;
-                        int best_xf = tc.tp.xform_size;
-                        for (int dq = -qp_search; dq <= qp_search; dq += step) {
-                          for (int wm = 0; wm <= (wm_search ? 3 : 0); ++wm) {
-                            for (int xf = 0; xf <= (xform_search ? 2 : 0); ++xf) {
-                                TileCoder cand;
-                                cand.g = &g;
-                                cand.fp = &fp;
-                                cand.tp = tc.tp;
-                                cand.tp.qp_delta = clamp_i32(qd0 + dq, -32, 31);
-                                cand.tp.wm_id = wm;
-                                if (xform_search) cand.tp.xform_size = xf;
-                                cand.setup();
-                                load_tile(cand, g, img, (int)eye, (int)col,
-                                          (int)row);
-                                if (d.mode != NXVC_MODE_INTRA)
-                                    for (int p = 0; p < 4; ++p)
-                                        cand.pl[p].wpred = tc.pl[p].wpred;
-                                for (int p = 0; p < 4; ++p)
-                                    if (!base_modes[p].empty())
-                                        cand.pl[p].modes = base_modes[p];
-                                cand.build_units();
-                                double bits = quantize_tile_ex(cand, fp.tabs,
-                                                               lambda_scale,
-                                                               true);
-                                int active = 1 << cand.tp.nsub_log2;
-                                if ((size_t)active > cand.units.size())
-                                    active = (int)cand.units.size();
-                                bits += 8 * (kTileHeaderBytes + 4 * active);
-                                double cost =
-                                    tile_distortion(cand) + lam * bits;
-                                if (!have || cost < best) {
-                                    best = cost;
-                                    have = true;
-                                    best_qd = cand.tp.qp_delta;
-                                    best_wm = wm;
-                                    best_xf = cand.tp.xform_size;
-                                }
-                            }
-                          }
-                        }
-                        if (have && (best_qd != tc.tp.qp_delta ||
-                                     best_wm != tc.tp.wm_id ||
-                                     best_xf != tc.tp.xform_size)) {
-                            std::vector<i32> keep[4];
-                            for (int p = 0; p < 4; ++p) keep[p] = tc.pl[p].wpred;
-                            tc.tp.qp_delta = best_qd;
-                            tc.tp.wm_id = best_wm;
-                            tc.tp.xform_size = best_xf;
-                            tc.setup();
-                            load_tile(tc, g, img, (int)eye, (int)col, (int)row);
-                            for (int p = 0; p < 4; ++p) tc.pl[p].wpred = keep[p];
-                            tc.build_units();
-                        }
-                    }
-                    const double predicted = quantize_tile(tc, tabs);
-                    if (emit && e->cfg.collect_stats)
-                        e->stats.bits_predicted_q10 +=
-                            (u64)(predicted * 1024.0 + 0.5);
-                    if (tc.split4) {
-                        bool any = false;
-                        for (int p = 0; p < coded_planes(tc) && !any; ++p)
-                            for (u8 f : tc.pl[p].splits)
-                                if (f) { any = true; break; }
-                        if (!any) tc.clear_split();
-                    }
-                    u32 th[kNumCtx][kNumSym];
-                    u32 raw_bits = 0;
-                    std::memset(th, 0, sizeof(th));
-                    if (count_units(tc.units.data(), (int)tc.units.size(),
-                                    1 << tc.tp.nsub_log2, th, nullptr,
-                                    &raw_bits)) {
-                        tc.tp.table_set = select_set(th, tc.tp.table_set, table_iters ? tabs : deftabs);
-                        // The lane count is chosen so the 4-byte-per-lane
-                        // flush stays under a tenth of the payload.  It is
-                        // picked in BOTH passes, because under CTX_V3 the
-                        // contexts follow the lane schedule (SYNTAX.md 9.8):
-                        // training on 8 lanes and coding on 2 would train the
-                        // wrong statistics.
-                        if (e->cfg.nsub_log2 == 255) {
-                            double bits =
-                                table_set_cost(th, tabs[tc.tp.table_set]) +
-                                (double)raw_bits;
-                            int n = 0;
-                            while (n < 3 && (double)(32 << (n + 1)) <= bits * 0.10)
-                                ++n;
-                            if (n != tc.tp.nsub_log2) {
-                                tc.tp.nsub_log2 = n;
-                                std::memset(th, 0, sizeof(th));
-                                count_units(tc.units.data(),
-                                            (int)tc.units.size(), 1 << n, th,
-                                            nullptr);
-                                tc.tp.table_set = select_set(th, tc.tp.table_set, table_iters ? tabs : deftabs);
-                            }
-                        }
-                        if (!emit && !tilehist.empty()) {
-                            u32 *dst = &tilehist[(size_t)t * kNumCtx * kNumSym];
-                            for (int c = 0; c < fp.nctx; ++c)
-                                for (int sy = 0; sy < kNumSym; ++sy) {
-                                    hist[tc.tp.table_set][c][sy] += th[c][sy];
-                                    dst[c * kNumSym + sy] = th[c][sy];
-                                }
-                        }
-#ifdef NXVC_XFORM_CTX_EXPERIMENT
-                        // SYNTAX.md 9.3: does a 16x16 or 32x32 block need
-                        // contexts of its own?  Split the frame's symbol
-                        // histogram by transform size and report, at the end
-                        // of the frame, what coding each size with its own
-                        // trained table would save over coding all of them
-                        // with the one merged table the format transmits.
-                        for (int c = 0; c < fp.nctx; ++c)
-                            for (int sy = 0; sy < kNumSym; ++sy)
-                                xhist[tc.tp.xform_size][c][sy] += th[c][sy];
-#endif
-                    }
-                    if (emit && e->cfg.collect_stats) {
-                        const TableSet &ts = tabs[tc.tp.table_set];
-                        int nplanes_c = coded_planes(tc);
-                        size_t ui = 0;
-                        const size_t nhead = tc.intra_dir ? 2 : 1;
-                        for (int p = 0; p < nplanes_c; ++p) {
-                            int ndc = tc.pl[p].nb * tc.pl[p].nb;
-                            std::vector<Unit> dcu(tc.units.begin() + ui,
-                                                  tc.units.begin() + ui + nhead);
-                            std::vector<Unit> blk(
-                                tc.units.begin() + ui + nhead,
-                                tc.units.begin() + ui + nhead + ndc);
-                            ui += nhead + ndc;
-                            u32 hd[kNumCtx][kNumSym], hb[kNumCtx][kNumSym];
-                            std::memset(hd, 0, sizeof(hd));
-                            std::memset(hb, 0, sizeof(hb));
-                            count_units(dcu.data(), (int)nhead, 1, hd, nullptr);
-                            count_units(blk.data(), ndc, 1, hb, nullptr);
-                            e->stats.bits_dc_plane += (u64)table_set_cost(hd, ts);
-                            u64 bb = (u64)table_set_cost(hb, ts);
-                            if (p == 0) e->stats.bits_luma_blocks += bb;
-                            else if (p == 3) e->stats.bits_alpha_blocks += bb;
-                            else e->stats.bits_chroma_blocks += bb;
-                        }
-                        int active = 1 << tc.tp.nsub_log2;
-                        if ((size_t)active > tc.units.size())
-                            active = (int)tc.units.size();
-                        e->stats.bytes_rans_init += 4u * (u32)active;
-                        e->stats.lanes_total += (u32)active;
-                        e->stats.tiles++;
-                        if (tc.tp.tskip) e->stats.tiles_tskip++;
-                        e->stats.tiles_res[tc.tp.res_level]++;
-                    }
-                    if (emit) {
-                        std::vector<u8> payload;
-                        if (e->cfg.entropy_lite) {
-                            // Under ENTROPY_LITE the tile header's table_set
-                            // field names the variant, not a table set: the
-                            // tool has no tables (SYNTAX.md 9.8).
-                            tc.tp.table_set = (int)e->cfg.entropy_lite - 1;
-                            tc.tp.nsub_log2 = 3;
-                            if (!lite_encode_units(tc.units.data(),
-                                                   (int)tc.units.size(),
-                                                   tc.tp.table_set, payload)) {
-                                err = NXVC_ERR_BITSTREAM;
-                                break;
-                            }
-                        } else if (!encode_units(tc.units.data(),
-                                          (int)tc.units.size(),
-                                          1 << tc.tp.nsub_log2,
-                                          tabs[tc.tp.table_set], payload)) {
-                            err = NXVC_ERR_BITSTREAM;
-                            break;
-                        }
-                        if (payload.size() > 65535) {
-                            err = NXVC_ERR_NOMEM;
-                            break;
-                        }
-                        tc.tp.payload_len = (int)payload.size();
-                        pack_tile_header(rowbuf, tc.tp);
-                        emit_tile_fields(rowbuf, tc.tp);
-                        rowbuf.raw(payload.data(), payload.size());
-                        if (e->cfg.collect_stats) {
-                            e->stats.bytes_tile_headers +=
-                                kTileHeaderBytes + tile_field_bytes(tc.tp);
-                            e->stats.bytes_payload += payload.size();
-                        }
-                    }
-                    finalize_recon(tc);
-                    store_ref_tile(tc, g, cur, (int)eye, (int)col, (int)row);
-                    if (emit) {
-                        store_tile(tc, g, &e->shadow_img, (int)eye, (int)col,
-                                   (int)row);
-                    }
-
-                    nxvc_tile_info &ti = e->tiles[t];
-                    ti.tile_index = (u16)tc.tp.tile_index;
-                    ti.payload_len = (u16)tc.tp.payload_len;
-                    ti.layer = 0;
-                    ti.eye = (u8)eye;
-                    ti.mode = (u8)tc.tp.mode;
-                    ti.res_level = (u8)tc.tp.res_level;
-                    ti.chroma444 = (u8)tc.tp.chroma444;
-                    ti.alpha_mode = (u8)tc.tp.alpha_mode;
-                    ti.table_set = (u8)tc.tp.table_set;
-                    ti.nsub_log2 = (u8)tc.tp.nsub_log2;
-                    ti.tskip = (u8)tc.tp.tskip;
-                    ti.wgt = 0;
-                    ti.wm_id = (u8)tc.tp.wm_id;
-                    ti.intra_dir = (u8)tc.intra_dir;
-                    ti.split4x4 = (u8)tc.split4;
-                    ti.xform_size = (u8)tc.tp.xform_size;
-                    ti.ref_sel = (u8)tc.tp.ref_sel;
-                    ti.mv_present = (u8)tc.tp.mv_present;
-                    ti.qp_delta = (i8)tc.tp.qp_delta;
-                    ti.mv_x = (i8)tc.tp.mv_x;
-                    ti.mv_y = (i8)tc.tp.mv_y;
-                    ti.disparity = (u16)tc.tp.disparity;
-                    ti.ref_delta = (tc.tp.mode == NXVC_MODE_INTRA ||
-                                    tc.tp.mode == NXVC_MODE_STEREO)
-                                       ? 3u
-                                       : (u8)tc.tp.ref_sel;
-                    ti.alpha_value = (u8)tc.tp.alpha_value;
-                    ti.skipped = 0;
-                    ti.qp = (u8)clamp_i32(fp.base_qp + tc.tp.qp_delta, 0, 63);
-                    ti.warp_mad_q8 = (u16)d.warp_mad_q8;
+                    const nxvc_status s =
+                        code_tile(row, eye, col, tabs, emit, cur, rowbuf, hist,
+                                  e->stats);
+                    if (s != NXVC_OK) err = s;
                 }
                 if (emit) {
                     body.raw(rowbuf.b.data(), rowbuf.b.size());
@@ -2309,6 +2386,121 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             }
         }
     };
+
+    // Per-worker accumulators: one symbol histogram and one statistics block
+    // per pool slot, allocated once for the whole frame.
+    const unsigned nslots = use_pool ? e->pool->size() : 1u;
+    std::vector<std::vector<u32>> whist;
+    std::vector<nxvc_encode_stats> wstats;
+    std::vector<BW> tilebuf;
+    std::vector<nxvc_status> tilerr;
+    if (use_pool) {
+        whist.resize(nslots);
+        for (auto &h : whist) h.assign((size_t)8 * kNumCtx * kNumSym, 0u);
+        wstats.assign(nslots, nxvc_encode_stats{});
+        tilebuf.resize((size_t)ntiles);
+        tilerr.assign((size_t)ntiles, NXVC_OK);
+    }
+
+    auto run_pass_pool = [&](bool decide, bool emit, const TableSet *tabs) {
+        RefPicture &cur = e->ring.slot[slot];
+        const u32 cols = g.eyes * g.tiles_x;
+        for (auto &b : tilebuf) b.b.clear();
+        std::fill(tilerr.begin(), tilerr.end(), NXVC_OK);
+        for (auto &h : whist) std::fill(h.begin(), h.end(), 0u);
+        std::fill(wstats.begin(), wstats.end(), nxvc_encode_stats{});
+        auto run_code = [&](u32 row, u32 eye, u32 col, unsigned w) {
+            const int t = linear_tile(g, (int)row, (int)eye, (int)col);
+            tilerr[t] = code_tile(row, eye, col, tabs, emit, cur, tilebuf[t],
+                                  (u32 (*)[kNumCtx][kNumSym])whist[w].data(),
+                                  wstats[w]);
+        };
+        // The rows an anti-diagonal r + c == k spans.
+        auto diag = [&](u32 k, u32 &r0, u32 &r1) {
+            r0 = k + 1 > g.tiles_x ? k + 1 - g.tiles_x : 0u;
+            r1 = k < g.tiles_y ? k : g.tiles_y - 1;
+        };
+        // ---- the decision wavefront, with the coding folded into it.
+        //
+        // A tile's own coding depends on its own decision and on nothing
+        // else, so step k runs the DECISIONS of diagonal k together with the
+        // CODING of diagonal k-1.  That matters because the wavefront is
+        // narrow at both ends and its cost is dominated by whichever tile of
+        // a diagonal is dearest: a diagonal of two tiles leaves fourteen
+        // workers idle, and this is what they do instead.  The decisions come
+        // first in the index space because they are the critical path -- the
+        // pool hands indices out in order, so an idle worker takes a decision
+        // while one exists and coding only when none does.
+        if (decide) {
+            const u32 ndiag = g.tiles_y + g.tiles_x - 1;
+            for (u32 eye = 0; eye < g.eyes; ++eye) {
+                for (u32 k = 0; k <= ndiag; ++k) {
+                    u32 a0 = 0, a1 = 0, b0 = 0, b1 = 0, na = 0, nb = 0;
+                    if (k < ndiag) { diag(k, a0, a1); na = a1 - a0 + 1; }
+                    if (k > 0) { diag(k - 1, b0, b1); nb = b1 - b0 + 1; }
+                    e->pool->parallel_for(na + nb, [&](unsigned i, unsigned w) {
+                        if (i < na) {
+                            const u32 row = a0 + i, col = k - (a0 + i);
+                            const int t =
+                                linear_tile(g, (int)row, (int)eye, (int)col);
+                            e->dec[t] = decide_tile(t, (int)eye, (int)col,
+                                                    (int)row, tabs);
+                        } else {
+                            const u32 j = i - na, row = b0 + j;
+                            run_code(row, eye, (k - 1) - row, w);
+                        }
+                    });
+                }
+            }
+        } else {
+            // No decisions to make: every tile of the frame at once.
+            e->pool->parallel_for((unsigned)ntiles, [&](unsigned t, unsigned w) {
+                run_code((u32)t / cols, ((u32)t % cols) / g.tiles_x,
+                         (u32)t % g.tiles_x, w);
+            });
+        }
+        // ---- the row headers, in order, off the finished decisions.
+        std::vector<BW> heads((size_t)g.tiles_y * g.eyes);
+        for (u32 row = 0; row < g.tiles_y; ++row)
+            for (u32 eye = 0; eye < g.eyes; ++eye)
+                row_header(row, eye, emit, heads[(size_t)row * g.eyes + eye]);
+        // ---- merge.  Integer addition only, so the frame's histogram and
+        // its statistics are exactly what the serial pass accumulates.
+        u32 *hflat = &hist[0][0][0];
+        for (const auto &h : whist)
+            for (size_t i = 0; i < h.size(); ++i) hflat[i] += h[i];
+        static_assert(sizeof(nxvc_encode_stats) % sizeof(u64) == 0,
+                      "nxvc_encode_stats must be a block of u64 counters");
+        u64 *sflat = (u64 *)&e->stats;
+        for (const auto &ws : wstats) {
+            const u64 *src = (const u64 *)&ws;
+            for (size_t i = 0; i < sizeof(nxvc_encode_stats) / sizeof(u64); ++i)
+                sflat[i] += src[i];
+        }
+        // ---- assemble the body in normative order, stopping at the first
+        // failing tile -- the one the serial loop would have stopped on.
+        for (u32 row = 0; row < g.tiles_y && err == NXVC_OK; ++row) {
+            for (u32 eye = 0; eye < g.eyes && err == NXVC_OK; ++eye) {
+                BW &rowbuf = heads[(size_t)row * g.eyes + eye];
+                for (u32 col = 0; col < g.tiles_x; ++col) {
+                    const int t = linear_tile(g, (int)row, (int)eye, (int)col);
+                    if (tilerr[t] != NXVC_OK) { err = tilerr[t]; break; }
+                    rowbuf.raw(tilebuf[t].b.data(), tilebuf[t].b.size());
+                }
+                if (emit) {
+                    body.raw(rowbuf.b.data(), rowbuf.b.size());
+                    if (e->cfg.collect_stats)
+                        e->stats.bytes_row_headers += kTileRowHeaderBytes;
+                }
+            }
+        }
+    };
+
+    auto run_pass = [&](bool decide, bool emit, const TableSet *tabs) {
+        if (use_pool) run_pass_pool(decide, emit, tabs);
+        else run_pass_serial(decide, emit, tabs);
+    };
+
 
     // Pass 0 decides the modes and, when custom tables are on, trains them.
     // It is skipped for an all-intra frame with no custom tables, where there
