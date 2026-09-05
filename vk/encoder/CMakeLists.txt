@@ -24,8 +24,11 @@ endif()
 find_package(Vulkan QUIET)
 if(NOT Vulkan_FOUND)
   find_library(NXENC_VULKAN_LIB NAMES vulkan vulkan-1)
+  # NXVC_VK_HEADERS_DIR is the variable the rest of vk/ takes (vk/common sets
+  # it, and docs/NXWARP-E2E.md tells an integrator to pass it), so honour it
+  # here too rather than making this one directory need its own spelling.
   find_path(NXENC_VULKAN_INC vulkan/vulkan.h
-    HINTS ${NXWARP_VULKAN_INCLUDE_DIR} $ENV{VULKAN_SDK}/include
+    HINTS ${NXWARP_VULKAN_INCLUDE_DIR} ${NXVC_VK_HEADERS_DIR} $ENV{VULKAN_SDK}/include
     PATHS /usr/include)
   if(NOT NXENC_VULKAN_LIB OR NOT NXENC_VULKAN_INC)
     message(STATUS "nxwarp-encoder: no Vulkan loader/headers, skipping GPU targets")
