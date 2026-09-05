@@ -242,6 +242,17 @@ int  g_u_blk;     // ... and the block index inside that plane
 // [minor 6] INTRA_CFL: the mode unit's alphabet, 9 or 10.  It is per PLANE,
 // not per stream: only chroma gains mode 9.
 int  g_u_nmodes;
+// [minor 6] CTX_V3.  `g_u_ucls` is the unit's statistical class and
+// `g_u_ngrp` its neighbour group (plane + 1 for a block unit, 0 for a DC-plane
+// or mode unit); `g_ctx_v3` says to derive CBF/LAST/LEVEL from them.  `g_nbr`
+// and `g_ngrp` are the lane's two registers of neighbour state: the class of
+// the previous coefficient unit this lane finished in the current group, and
+// which group that was.  No cross-lane read, no extra barrier.  [SYN] 9.9.
+int  g_ctx_v3;
+int  g_u_ucls;
+int  g_u_ngrp;
+int  g_nbr;
+int  g_ngrp;
 int  g_u_sdh;     // 1 when this unit may hide a sign
 int  g_hide;      // ... and whether it actually does (LAST >= kSdhMinLast)
 int  g_sum_abs;   // running sum of |level| over the unit
@@ -319,6 +330,7 @@ void begin_unit() {
     int chroma = (p == 1 || p == 2) ? 1 : 0;
     bool ctx_v2 = (pc.tools & kToolFlagCtxV2) != 0u;
     bool dir = (pc.tools & kToolFlagIntraDir) != 0u;
+    g_ctx_v3 = (pc.tools & kToolFlagCtxV3) != 0u ? 1 : 0;
     g_u_sdh = (pc.tools & kToolFlagSignHide) != 0u ? 1 : 0;
     g_u_ctx_mode = kCtxNone;
     // [minor 6] Only a residual block unit carries a split flag; the DC-plane
@@ -340,6 +352,12 @@ void begin_unit() {
         g_u_ctx_last = ctx_v2 ? kCtxLastDc
                               : (chroma != 0 ? kCtxLastChroma : kCtxLastLuma);
         g_u_ctx_level = ctx_v2 ? kCtxLevelDc : kCtxNone;
+        // [minor 6] The DC plane is its own class and belongs to NO neighbour
+        // group, so it neither publishes a class nor consumes one -- and by
+        // having group 0 it acts as a boundary in both directions.
+        g_u_ucls = kUclsDc;
+        g_u_ngrp = 0;
+        if (g_u_ngrp != g_ngrp) { g_ngrp = g_u_ngrp; g_nbr = 0; }
         g_phase = kPhCbf;
         return;
     }
@@ -352,6 +370,8 @@ void begin_unit() {
         // [minor 6] INTRA_CFL adds mode 9 to the CHROMA alphabet only.
         g_u_nmodes = ((pc.tools & kToolFlagCfl) != 0u && chroma != 0)
                          ? kNumIntraModesCfl : kNumIntraModes;
+        g_u_ngrp = 0;
+        if (g_u_ngrp != g_ngrp) { g_ngrp = g_u_ngrp; g_nbr = 0; }
         g_mb = 0;
         // ref/src/entropy.cpp begin_unit() skips an empty mode unit here.  A
         // coded plane's edge is at least kMinChromaSize, so nb >= 1 always and
@@ -375,6 +395,12 @@ void begin_unit() {
     // coefficients can carry one.
     g_u_split_present = s_split4[g_slot];
     g_u_blk = b;
+    // [minor 6] The neighbour group is the PLANE: a lane carries its class
+    // across this plane's run of block units and nothing else, so a class
+    // never leaks across a plane boundary.
+    g_u_ucls = chroma != 0 ? kUclsChroma : kUclsLuma;
+    g_u_ngrp = g_ctx_v3 != 0 ? p + 1 : 0;
+    if (g_u_ngrp != g_ngrp) { g_ngrp = g_u_ngrp; g_nbr = 0; }
     g_phase = kPhCbf;
 }
 
@@ -411,6 +437,16 @@ void begin_levels() {
     g_phase = kPhLevel;
 }
 
+// [minor 6] [REF] entropy.cpp finish_coef_unit(): a coefficient unit is over,
+// so publish its neighbour class to the lane and move on.  Both inputs -- the
+// CBF and the LAST -- are values this lane has just decoded, so nothing here
+// reads another lane's state.  A unit outside a neighbour group (a DC plane,
+// a mode unit) publishes nothing.
+void finish_coef_unit(int cbf) {
+    if (g_u_ngrp != 0) g_nbr = nxs_nbr_class_of(cbf, g_last);
+    begin_next_unit();
+}
+
 void advance_pos() {
     int m = g_mag < 0 ? -g_mag : g_mag;
     g_prev_class = nxs_level_class(m);
@@ -420,7 +456,7 @@ void advance_pos() {
         // the sign at LAST.  The magnitude was stored positive; flip it here.
         if (g_hide != 0 && (g_sum_abs & 1) != 0)
             store_coef_at(g_last, -g_hide_mag);
-        begin_next_unit();
+        finish_coef_unit(1);
     } else {
         --g_pos_sp;
         g_phase = kPhLevel;
@@ -435,6 +471,12 @@ void lane_init(int lane) {
     g_u_ctx_level = kCtxNone; g_u_ctx_mode = kCtxNone;
     g_u_nbx = 0; g_u_modes = 0; g_mb = 0; g_mpm = 0;
     g_u_sdh = 0; g_hide = 0; g_sum_abs = 0; g_hide_mag = 0;
+    // [minor 6] The lane's two registers of v3 neighbour state.  Group 0 is
+    // "no group", so the first unit of the first plane sees nbr == 0 and falls
+    // back to the v2 row, which is what makes v3 a refinement of v2.
+    g_ctx_v3 = 0; g_u_ucls = kUclsLuma; g_u_ngrp = 0; g_nbr = 0; g_ngrp = 0;
+    g_u_split_present = 0; g_split = 0; g_u_pidx = 0; g_u_blk = 0;
+    g_u_nmodes = kNumIntraModes;
     if (g_ui >= g_nunits) { g_phase = kPhDone; return; }
     begin_unit();
 }
@@ -447,8 +489,20 @@ void lane_init(int lane) {
 bool lane_next(out int out_kind, out int out_arg) {
     out_kind = 0; out_arg = 0;
     if (g_phase == kPhDone) return false;
-    if (g_phase == kPhCbf)  { out_kind = 0; out_arg = g_u_ctx_cbf;  return true; }
-    if (g_phase == kPhLast) { out_kind = 0; out_arg = g_u_ctx_last; return true; }
+    // [minor 6] [REF] entropy.cpp ctx_cbf/ctx_last/ctx_level: under v1/v2 the
+    // unit carries its contexts, under v3 they are derived from its class and
+    // this lane's neighbour class.
+    if (g_phase == kPhCbf) {
+        out_kind = 0;
+        out_arg = g_ctx_v3 != 0 ? nxs_v3_ctx_cbf(g_u_ucls, g_nbr) : g_u_ctx_cbf;
+        return true;
+    }
+    if (g_phase == kPhLast) {
+        out_kind = 0;
+        out_arg = g_ctx_v3 != 0 ? nxs_v3_ctx_last(g_u_ucls, g_nbr)
+                                : g_u_ctx_last;
+        return true;
+    }
     if (g_phase == kPhLastRaw) {
         out_kind = 1; out_arg = kLastRawBits[g_last_cls]; return true;
     }
@@ -461,10 +515,13 @@ bool lane_next(out int out_kind, out int out_arg) {
         // concatenated 4x4 sub-blocks, so the frequency band of a position is
         // its position inside its own sub-block.  [REF] common.h band_pos().
         out_kind = 0;
-        out_arg = g_u_ctx_level != kCtxNone
-                      ? g_u_ctx_level
-                      : nxs_level_ctx(nxs_band_pos(g_pos_sp, g_split),
-                                      g_prev_class);
+        int bsp = nxs_band_pos(g_pos_sp, g_split);
+        out_arg = g_ctx_v3 != 0
+                      ? nxs_v3_ctx_level(g_u_ucls, g_pos_sp, bsp, g_last,
+                                         g_prev_class)
+                      : (g_u_ctx_level != kCtxNone
+                             ? g_u_ctx_level
+                             : nxs_level_ctx(bsp, g_prev_class));
         return true;
     }
     if (g_phase == kPhModeSym) { out_kind = 0; out_arg = g_u_ctx_mode; return true; }
@@ -534,7 +591,7 @@ void lane_feed(uint v) {
     if (g_phase == kPhCbf) {
         if (v > 1u) { fail(kStatusBadSymbol); return; }
         if (v == 0u) {
-            begin_next_unit();
+            finish_coef_unit(0);
             return;
         }
         atomicOr(u_cbf.data[g_cbf_off + uint(g_ui) / 32u],

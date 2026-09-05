@@ -80,6 +80,9 @@ struct Thread {
     int u_split_present, split, u_pidx, u_blk;
     // [minor 6] INTRA_CFL: the mode unit's alphabet, 9 or 10 (chroma only).
     int u_nmodes;
+    // [minor 6] CTX_V3: the unit's class and neighbour group, and the lane's
+    // two registers of neighbour state.  [SYN] 9.9.
+    int ctx_v3, u_ucls, u_ngrp, nbr, ngrp;
     // [v3] sign data hiding, SYNTAX.md 9.7.
     int u_sdh, hide, sum_abs, hide_mag;
     int slot;
@@ -195,6 +198,7 @@ void begin_unit(Ctx &c, Thread &g) {
     int chroma = (p == 1 || p == 2) ? 1 : 0;
     const bool ctx_v2 = (c.in->tools & kToolFlagCtxV2) != 0u;
     const bool dir = (c.in->tools & kToolFlagIntraDir) != 0u;
+    g.ctx_v3 = (c.in->tools & kToolFlagCtxV3) != 0u ? 1 : 0;
     g.u_sdh = (c.in->tools & kToolFlagSignHide) != 0u ? 1 : 0;
     g.u_ctx_mode = kCtxNone;
     g.u_split_present = 0;
@@ -210,6 +214,11 @@ void begin_unit(Ctx &c, Thread &g) {
         g.u_ctx_last = ctx_v2 ? kCtxLastDc
                               : (chroma != 0 ? kCtxLastChroma : kCtxLastLuma);
         g.u_ctx_level = ctx_v2 ? kCtxLevelDc : kCtxNone;
+        // [minor 6] The DC plane is its own class and belongs to no neighbour
+        // group, so it neither publishes a class nor consumes one.
+        g.u_ucls = kUclsDc;
+        g.u_ngrp = 0;
+        if (g.u_ngrp != g.ngrp) { g.ngrp = g.u_ngrp; g.nbr = 0; }
         g.phase = kPhCbf;
         return;
     }
@@ -219,6 +228,8 @@ void begin_unit(Ctx &c, Thread &g) {
         g.u_ctx_mode = ctx_v2 ? kCtxMode : kCtxNone;
         g.u_nmodes = ((c.in->tools & kToolFlagCfl) != 0u && chroma != 0)
                          ? kNumIntraModesCfl : kNumIntraModes;
+        g.u_ngrp = 0;
+        if (g.u_ngrp != g.ngrp) { g.ngrp = g.u_ngrp; g.nbr = 0; }
         g.mb = 0;
         g.mpm = mpm_now(c, g);
         g.phase = g.u_ctx_mode != kCtxNone ? kPhModeSym : kPhModeFlag;
@@ -233,6 +244,10 @@ void begin_unit(Ctx &c, Thread &g) {
     g.u_ctx_level = kCtxNone;
     g.u_split_present = c.sh.split4[g.slot];
     g.u_blk = b;
+    // [minor 6] The neighbour group is the plane.
+    g.u_ucls = chroma != 0 ? kUclsChroma : kUclsLuma;
+    g.u_ngrp = g.ctx_v3 != 0 ? p + 1 : 0;
+    if (g.u_ngrp != g.ngrp) { g.ngrp = g.u_ngrp; g.nbr = 0; }
     g.phase = kPhCbf;
 }
 
@@ -263,6 +278,14 @@ void begin_levels(Ctx &c, Thread &g) {
     g.phase = kPhLevel;
 }
 
+// [minor 6] [REF] entropy.cpp finish_coef_unit(): publish the unit's neighbour
+// class to the lane and move on.  Both inputs are values this lane has just
+// decoded; a unit outside a neighbour group publishes nothing.
+void finish_coef_unit(Ctx &c, Thread &g, int cbf) {
+    if (g.u_ngrp != 0) g.nbr = nxs_nbr_class_of(cbf, g.last);
+    begin_next_unit(c, g);
+}
+
 void advance_pos(Ctx &c, Thread &g) {
     int m = g.mag < 0 ? -g.mag : g.mag;
     g.prev_class = nxs_level_class(m);
@@ -270,7 +293,7 @@ void advance_pos(Ctx &c, Thread &g) {
     if (g.pos_sp == 0) {
         if (g.hide != 0 && (g.sum_abs & 1) != 0)
             store_coef_at(c, g, g.last, -g.hide_mag);
-        begin_next_unit(c, g);
+        finish_coef_unit(c, g, 1);
     } else {
         --g.pos_sp;
         g.phase = kPhLevel;
@@ -287,6 +310,7 @@ void lane_init(Ctx &c, Thread &g, int lane) {
     g.u_sdh = 0; g.hide = 0; g.sum_abs = 0; g.hide_mag = 0;
     g.u_split_present = 0; g.split = 0; g.u_pidx = 0; g.u_blk = 0;
     g.u_nmodes = kNumIntraModes;
+    g.ctx_v3 = 0; g.u_ucls = kUclsLuma; g.u_ngrp = 0; g.nbr = 0; g.ngrp = 0;
     if (g.ui >= g.nunits) { g.phase = kPhDone; return; }
     begin_unit(c, g);
 }
@@ -294,8 +318,17 @@ void lane_init(Ctx &c, Thread &g, int lane) {
 bool lane_next(const Thread &g, int &out_kind, int &out_arg) {
     out_kind = 0; out_arg = 0;
     if (g.phase == kPhDone) return false;
-    if (g.phase == kPhCbf)  { out_kind = 0; out_arg = g.u_ctx_cbf;  return true; }
-    if (g.phase == kPhLast) { out_kind = 0; out_arg = g.u_ctx_last; return true; }
+    if (g.phase == kPhCbf) {
+        out_kind = 0;
+        out_arg = g.ctx_v3 != 0 ? nxs_v3_ctx_cbf(g.u_ucls, g.nbr) : g.u_ctx_cbf;
+        return true;
+    }
+    if (g.phase == kPhLast) {
+        out_kind = 0;
+        out_arg = g.ctx_v3 != 0 ? nxs_v3_ctx_last(g.u_ucls, g.nbr)
+                                : g.u_ctx_last;
+        return true;
+    }
     if (g.phase == kPhLastRaw) {
         out_kind = 1; out_arg = kLastRawBits[g.last_cls]; return true;
     }
@@ -303,10 +336,13 @@ bool lane_next(const Thread &g, int &out_kind, int &out_arg) {
     if (g.phase == kPhSplit) { out_kind = 1; out_arg = 1; return true; }
     if (g.phase == kPhLevel) {
         out_kind = 0;
-        out_arg = g.u_ctx_level != kCtxNone
-                      ? g.u_ctx_level
-                      : nxs_level_ctx(nxs_band_pos(g.pos_sp, g.split),
-                                      g.prev_class);
+        const int bsp = nxs_band_pos(g.pos_sp, g.split);
+        out_arg = g.ctx_v3 != 0
+                      ? nxs_v3_ctx_level(g.u_ucls, g.pos_sp, bsp, g.last,
+                                         g.prev_class)
+                      : (g.u_ctx_level != kCtxNone
+                             ? g.u_ctx_level
+                             : nxs_level_ctx(bsp, g.prev_class));
         return true;
     }
     if (g.phase == kPhModeSym) { out_kind = 0; out_arg = g.u_ctx_mode; return true; }
@@ -369,7 +405,7 @@ void lane_feed(Ctx &c, Thread &g, uint32_t v) {
     if (g.phase == kPhCbf) {
         if (v > 1u) { fail(c, g, kStatusBadSymbol); return; }
         if (v == 0u) {
-            begin_next_unit(c, g);
+            finish_coef_unit(c, g, 0);
             return;
         }
         c.out->cbf[g.cbf_off + uint32_t(g.ui) / 32u] |= 1u << (uint32_t(g.ui) & 31u);

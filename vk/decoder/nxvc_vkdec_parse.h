@@ -80,6 +80,9 @@ struct FrameParse {
     int intra_dir = 0, dir_layer = 0, sdh = 0;
     // [minor 6] XFORM_4X4_SPLIT (tool bit 19) and INTRA_CFL (tool bit 24).
     int split4 = 0, cfl = 0;
+    // [minor 6] TAB_V2 (tool bit 26): a transmitted table set is variable
+    // length, each context preceded by a `row_coded` flag.
+    int tab_v2 = 0;
     uint32_t tools = 0;   // Pass A's `tools` push constant, kToolFlag*
 
     // Pass A inputs.
@@ -119,14 +122,12 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
 // Probability tables, exposed so the conformance test can diff them against
 // ref/src/tables.cpp.  `cum` is filled with 8 * 16 * 16 entries; cum[16] is
 // implicitly 1024 and is not stored, which is the layout Pass A's binding 2
-// expects.  `nctx` is 12 or 16 and selects the built-in family; contexts past
-// it are filled from context 0 and never selected, as ref's
+// expects.  `nctx` is 12, 16 or 27 and selects the built-in family; contexts
+// past it are filled from context 0 and never selected, as ref's
 // build_default_set() does.
 void build_default_tables(std::vector<uint32_t> &cum, int nctx = 12);
-// docs/SYNTAX.md 9.4: nctx x 16 five-bit log-domain deltas, so 120 bytes for
-// the 12-context model and 160 for the 16-context one.
-bool parse_table_set(const uint8_t *bits, int set_index, int nctx,
-                     uint32_t *cum_of_set);
+// parse_table_set() is not declared here: it takes the file-local bit reader,
+// and nothing outside nxvc_vkdec_parse.cpp calls it.
 
 // [REF] resolve_matrices(): 64 luma weights then 64 chroma weights, Q4.
 // out512[0..127] is the frame's luma/chroma pair; out512[k*128 ..] for

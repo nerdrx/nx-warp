@@ -127,17 +127,20 @@ NXS_CONST int kCtxLevelLastLo = 25;
 NXS_CONST int kCtxLevelLastHi = 26;
 NXS_CONST int kNbrDenseLast = 4;
 NXS_CONST int kNumCtxV3 = 27;
+// A unit's statistical class, derived by both sides from its position in the
+// unit list and never transmitted.  [REF] ref/src/common.h kUcls*.
+NXS_CONST int kUclsLuma = 0;
+NXS_CONST int kUclsChroma = 1;
+NXS_CONST int kUclsDc = 2;
 // Storage stride of the cumulative-frequency table.  The host uploads one
 // layout whichever model the stream selects and contexts past the coded count
 // are simply never named, so the stride is the widest model this kernel
-// implements -- **kNumCtxV2 today**.  The kernel does not implement CTX_V3;
-// nxvc_vkdec_parse.cpp's kToolsSupported does not list tool bit 25, so such a
-// stream is refused with VERSION rather than mis-parsed.  Implementing it is
-// this constant raised to kNumCtxV3, which takes s_cum for a workgroup's 8
-// tiles from 8192 to 13824 bytes (about 15.5 KiB of LDS in total, against a
-// 32 KiB budget), plus two registers of per-lane state and the derivation
-// above.
-NXS_CONST int kNumCtx = 16;
+// implements -- **kNumCtxV3**, since [minor 6].  That takes the shared
+// cumulative-frequency table from 8192 to 13824 bytes, which is the whole
+// LDS cost of CTX_V3: the rest of it is two registers of per-lane state and
+// the arithmetic below.  It MUST equal ref/src/common.h's kNumCtx, which is
+// also the widest model's count; `vk.passA.ref_agreement` checks that.
+NXS_CONST int kNumCtx = 27;
 NXS_CONST int kNumSym = 16;
 
 // [REF] ref/src/common.h kCtxNone: "no context selected" for a unit's LEVEL or
@@ -603,6 +606,36 @@ NXS_FN int nxs_band_of(int scan_pos) {
     return 3;
 }
 
+// ---------------------------------------------------- v3 context derivation
+// [REF] ref/src/common.h v3_ctx_cbf / v3_ctx_last / v3_ctx_level.  These three
+// are the ONLY places a v3 context is chosen, and each is arithmetic over the
+// unit's class and the lane's neighbour class rather than a ladder on what the
+// v2 context happened to be.
+//
+// `nbr` is the class this lane's PREVIOUS coefficient unit in the same group
+// published: 0 nothing to condition on, 1 uncoded, 2 coded and sparse, 3 coded
+// and dense.  It is per-lane state, written once per unit and read once per
+// unit, so there is no cross-lane read and no extra barrier.
+NXS_FN int nxs_v3_ctx_cbf(int ucls, int nbr) {
+    if (nbr == 0) return ucls == kUclsDc ? kCtxCbfDc
+                         : (ucls == kUclsChroma ? kCtxCbfChroma : kCtxCbfLuma);
+    return (ucls == kUclsChroma ? kCtxCbfChromaN : kCtxCbfLumaN) + (nbr - 1);
+}
+// LAST splits coded from not-coded only: the sparse/dense distinction pays on
+// CBF, where it says how likely a coefficient is at all, and not on LAST,
+// where the unit's own magnitudes already say it.
+NXS_FN int nxs_v3_ctx_last(int ucls, int nbr) {
+    if (nbr < 2) return ucls == kUclsDc ? kCtxLastDc
+                        : (ucls == kUclsChroma ? kCtxLastChroma : kCtxLastLuma);
+    return ucls == kUclsChroma ? kCtxLastChromaN : kCtxLastLumaN;
+}
+
+// The neighbour class a finished coefficient unit publishes to its lane.
+NXS_FN int nxs_nbr_class_of(int cbf, int last) {
+    if (cbf == 0) return 1;
+    return last < kNbrDenseLast ? 2 : 3;
+}
+
 // ref/src/common.h level_ctx() / level_class().
 NXS_FN int nxs_level_class(int magnitude) {
     return magnitude == 0 ? 0 : (magnitude == 1 ? 1 : 2);
@@ -615,6 +648,22 @@ NXS_FN int nxs_band_pos(int scan_pos, int split) {
 }
 NXS_FN int nxs_level_ctx(int scan_pos, int prev_class) {
     return kCtxLevelBase + kLevelCtx[nxs_band_of(scan_pos) * 3 + prev_class];
+}
+
+// [REF] ref/src/common.h v3_ctx_level().  LEVEL is NOT conditioned on the
+// neighbour -- the previously decoded level inside the same unit already
+// carries that, and about this unit rather than the one before it.  It does
+// split the coefficient at scan position LAST, which is nonzero by
+// construction, and it gives the DC term of a DC plane its own row.
+// `band_scan_pos` is the position after the band mappings of 6.8 and 9.3.1;
+// `scan_pos` and `last` are raw positions in the unit.
+NXS_FN int nxs_v3_ctx_level(int ucls, int scan_pos, int band_scan_pos, int last,
+                            int prev_class) {
+    if (ucls == kUclsDc) return scan_pos == 0 ? kCtxLevelDc0 : kCtxLevelDc;
+    if (scan_pos == last)
+        return nxs_band_of(band_scan_pos) < 2 ? kCtxLevelLastLo
+                                              : kCtxLevelLastHi;
+    return nxs_level_ctx(band_scan_pos, prev_class);
 }
 
 // ref/src/tables.cpp last_class_of().

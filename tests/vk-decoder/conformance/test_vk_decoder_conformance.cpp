@@ -292,7 +292,7 @@ constexpr uint64_t kPhase1Tools =
     (1ull << 0) | (1ull << 1) | (1ull << 2) | (1ull << 3) | (1ull << 4) |
     (1ull << 5) | (1ull << 6) | (1ull << 7) | (1ull << 8) | (1ull << 9) |
     (1ull << 17) | (1ull << 19) | (1ull << 20) | (1ull << 21) |
-    (1ull << 22) | (1ull << 24);
+    (1ull << 22) | (1ull << 24) | (1ull << 25) | (1ull << 26);
 
 // docs/SYNTAX.md 11: `tools` is a u64 at byte 32 of the 64-byte stream header.
 bool stream_needs_phase2(const std::vector<uint8_t> &s, uint64_t &tools) {

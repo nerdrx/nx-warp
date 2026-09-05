@@ -31,6 +31,7 @@ using u16 = uint16_t;
 // The .inc declares both built-in families; these names are the ones it uses.
 constexpr int kNumCtxV1 = 12;
 constexpr int kNumCtxV2 = 16;
+constexpr int kNumCtxV3 = 27;
 constexpr int kNumSym = 16;
 #include "../../ref/src/default_tables.inc"
 
@@ -40,6 +41,7 @@ constexpr int kNumSym = 16;
 inline u16 default_freq(int nctx, int set_index, int c, int s) {
     if (set_index < 0) set_index = 0;
     if (set_index > 7) set_index = 7;
+    if (nctx >= kNumCtxV3) return kDefaultFreqV3[set_index][c][s];
     if (nctx >= kNumCtxV2) return kDefaultFreqV2[set_index][c][s];
     return kDefaultFreq[set_index][c][s];
 }
@@ -172,15 +174,19 @@ constexpr uint64_t kToolsSupported =
     (1ull << 20) | // WM_ID: per-tile weighting-matrix override
     (1ull << 21) | // CTX_V2: the 16-context entropy model  [v3]
     (1ull << 22) | // SIGN_HIDE: sign data hiding           [v3]
-    (1ull << 24);  // INTRA_CFL: chroma from luma           [minor 6]
-// Deliberately absent: bit 25 CTX_V3, bit 26 TAB_V2, bit 27 XFORM_LARGE and
-// the Phase 2 inter bits.  Pass A's context derivation is the 16-context one
-// and Pass B's block loop is written for 64-coefficient blocks; until they
-// carry the wider forms this decoder refuses such a stream at the handshake
+    (1ull << 24) | // INTRA_CFL: chroma from luma           [minor 6]
+    (1ull << 25) | // CTX_V3: the 27-context entropy model  [minor 6]
+    (1ull << 26);  // TAB_V2: variable-length table sets    [minor 6]
+// Deliberately absent: bit 27 XFORM_LARGE and the Phase 2 inter bits.  Pass
+// B's block loop is written for 64-coefficient blocks; until it carries the
+// 16x16 and 32x32 forms this decoder refuses such a stream at the handshake
 // rather than mis-decoding it.  docs/TOOLBITS.md 7.
 constexpr uint64_t kToolLossless = 1ull << 5;
 constexpr uint64_t kToolIntraDir = 1ull << 17;
 constexpr uint64_t kToolCtxV2 = 1ull << 21;
+constexpr uint64_t kToolCtxV3 = 1ull << 25;
+constexpr uint64_t kToolTabV2 = 1ull << 26;
+constexpr uint64_t kToolCustomTables = 1ull << 6;
 constexpr uint64_t kToolSplit4 = 1ull << 19;
 constexpr uint64_t kToolCfl = 1ull << 24;
 constexpr uint64_t kToolSignHide = 1ull << 22;
@@ -212,22 +218,26 @@ void build_default_tables(std::vector<uint32_t> &cum, int nctx) {
         }
 }
 
-// docs/SYNTAX.md 9.4: nctx x 16 five-bit log-domain deltas, MSB-first --
-// 120 bytes under the v1 context model, 160 under CTX_V2.  Contexts beyond
-// `nctx` keep the defaults build_default_tables() already wrote.
-bool parse_table_set(const uint8_t *bits, int set_index, int nctx,
+// docs/SYNTAX.md 9.4: nctx x 16 five-bit log-domain deltas, MSB-first, each
+// against the built-in default row of the same (set, context).  Under TAB_V2
+// (tool bit 26) every context is preceded by a one-bit `row_coded` flag and an
+// uncoded row IS the default -- the point of the tool being that a row whose
+// trained version does not save more than the 80 bits it costs should not be
+// sent.  Contexts beyond `nctx` keep the defaults build_default_tables()
+// already wrote.  [REF] codec_impl.inc parse_table_set(), line for line.
+static bool parse_table_set(BitR &br, int set_index, int nctx, int tab_v2,
                      uint32_t *cum_of_set) {
-    const size_t nbytes = (size_t)nctx * kNumSym * 5 / 8;
-    BitR br{bits, nbytes, 0};
     for (int c = 0; c < nctx; ++c) {
         uint16_t f[kNumSym];
+        const bool coded = tab_v2 ? br.get(1) != 0 : true;
         for (int s = 0; s < kNumSym; ++s) {
-            uint32_t d = br.get(5);
             int32_t def = reftab::default_freq(nctx, set_index, c, s);
-            int32_t v = (def * (int32_t)reftab::kDeltaMul[d] + 128) >> 8;
+            if (!coded) { f[s] = (uint16_t)def; continue; }
+            int32_t v =
+                (def * (int32_t)reftab::kDeltaMul[br.get(5)] + 128) >> 8;
             f[s] = (uint16_t)iclamp(v, 1, 32767);
         }
-        normalize_freqs(f);
+        if (coded) normalize_freqs(f);
         if (!finalize_cum(f, cum_of_set + (size_t)c * kNumSym)) return false;
     }
     return true;
@@ -309,6 +319,14 @@ nxvc_vkd_status parse_stream_header(const uint8_t *buf, size_t len,
     // r17 pins the refusal.
     if ((si.tools & kToolLossless) && (si.tools & kToolSignHide))
         return NXVC_VKD_ERR_BITSTREAM;
+    // [SYN] 9.9: v3 REFINES the v2 model rather than replacing it -- it reuses
+    // v2's DC-plane and mode splits and only says how the rest is conditioned
+    // -- so CTX_V3 without CTX_V2 names no model at all.
+    if ((si.tools & kToolCtxV3) && !(si.tools & kToolCtxV2))
+        return NXVC_VKD_ERR_BITSTREAM;
+    // [SYN] 9.4: the row-skip flag only exists inside a transmitted table set.
+    if ((si.tools & kToolTabV2) && !(si.tools & kToolCustomTables))
+        return NXVC_VKD_ERR_BITSTREAM;
 
     // TLV area: every unrecognised type is skipped (docs/SYNTAX.md 2.1).
     size_t p = kStreamHeaderBytes, end = kStreamHeaderBytes + si.ext_len;
@@ -360,7 +378,10 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
     // tool bit 17.  r14 pins the refusal, and this check sits exactly where
     // ref/src/codec_impl.inc parse_frame_header() makes it, before
     // `frame_bytes` is even read, so the status a stream gets is the same.
-    fp.nctx = (si.tools & kToolCtxV2) ? kNumCtxV2 : kNumCtxV1;
+    fp.nctx = (si.tools & kToolCtxV3)   ? kNumCtxV3
+              : (si.tools & kToolCtxV2) ? kNumCtxV2
+                                        : kNumCtxV1;
+    fp.tab_v2 = (si.tools & kToolTabV2) ? 1 : 0;
     fp.intra_dir = (si.tools & kToolIntraDir) ? 1 : 0;
     fp.sdh = (si.tools & kToolSignHide) ? 1 : 0;
     fp.split4 = (si.tools & kToolSplit4) ? 1 : 0;
@@ -391,17 +412,28 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
     resolve_matrices(fp.quant_matrix, custom, fp.weights);
 
     build_default_tables(fp.cum, fp.nctx);
-    // [SYN] 9.4: a transmitted set is 120 bytes under the v1 context model and
-    // 160 under CTX_V2.  r16 is a CTX_V2 stream whose 160-byte set runs past
-    // the frame.
-    const size_t tbytes = (size_t)fp.nctx * kNumSym * 5 / 8;
-    for (int k = 0; k < 8; ++k) {
-        if (!(tables_present & (1u << k))) continue;
-        if (off + tbytes > frame_bytes) return NXVC_VKD_ERR_TRUNCATED;
-        if (!parse_table_set(buf + off, k, fp.nctx,
-                             &fp.cum[(size_t)k * kNumCtx * kNumSym]))
-            return NXVC_VKD_ERR_BITSTREAM;
-        off += tbytes;
+    // [SYN] 9.4.  Without TAB_V2 every transmitted set is exactly
+    // `nctx * 16 * 5` bits -- a whole number of bytes, 120 under the v1
+    // context model, 160 under CTX_V2 and 270 under CTX_V3.  With TAB_V2 a
+    // set is VARIABLE length, because each context is preceded by a
+    // `row_coded` flag and a row nobody gained by training is left at the
+    // built-in default; so all the transmitted sets are read as one bit
+    // sequence, zero-padded to a byte boundary once at the end.
+    //
+    // Reading them through one BitR either way is what keeps the two forms
+    // one piece of code: without TAB_V2 the reader simply lands on a byte
+    // boundary after every set on its own.  r16 is a CTX_V2 stream whose set
+    // runs past the frame.
+    if (tables_present) {
+        BitR bitr{buf + off, frame_bytes - off, 0};
+        for (int k = 0; k < 8; ++k) {
+            if (!(tables_present & (1u << k))) continue;
+            if (!parse_table_set(bitr, k, fp.nctx, fp.tab_v2,
+                                 &fp.cum[(size_t)k * kNumCtx * kNumSym]))
+                return NXVC_VKD_ERR_BITSTREAM;
+        }
+        if (bitr.bit > (frame_bytes - off) * 8) return NXVC_VKD_ERR_TRUNCATED;
+        off += (bitr.bit + 7) / 8;
     }
 
     // --- geometry ------------------------------------------------------
@@ -415,7 +447,8 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
                (fp.intra_dir ? kToolFlagIntraDir : 0u) |
                (fp.sdh ? kToolFlagSignHide : 0u) |
                (fp.split4 ? kToolFlagSplit4 : 0u) |
-               (fp.cfl ? kToolFlagCfl : 0u);
+               (fp.cfl ? kToolFlagCfl : 0u) |
+               (fp.nctx >= kNumCtxV3 ? kToolFlagCtxV3 : 0u);
 
     const uint32_t ntiles = si.tile_count;
     fp.recs.assign(ntiles, NxvwTileRec{0, 0, 0, 0xffffffffu});
