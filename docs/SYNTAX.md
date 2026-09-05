@@ -211,10 +211,12 @@ in the row header (3.3), which is why it costs no word1 bit at all.
 
 `ENTROPY_LITE` (bit 30) replaces the entropy layer rather than extending it,
 so it is mutually exclusive with `SIGN_HIDE` (22) and `CUSTOM_TABLES` (6):
-both are statements about an arithmetic coder it does not have. It is
-otherwise independent of every other bit -- it changes how coefficients are
-written, not which ones there are, so every transform, prediction and inter
-tool composes with it unchanged.
+both are statements about an arithmetic coder it does not have. Its payload
+also has no field for the 4x4 split flag and no room for a tenth chroma mode,
+so it excludes `XFORM_4X4_SPLIT` (19) and `INTRA_CFL` (24) as well (section
+9.10). It is otherwise independent of every other bit -- it changes how
+coefficients are written, not which ones there are, so every other transform,
+prediction and inter tool composes with it unchanged.
 
 Bits 31-63 are reserved and must be zero. Capability negotiation is an
 intersection: the sender only sets bits the receiver offered.
@@ -2331,8 +2333,16 @@ It costs bits; section 9.5 remains the default.
 
 A stream setting bit 30 MUST NOT set `SIGN_HIDE` (bit 22) or `CUSTOM_TABLES`
 (bit 6): the first needs a coder to spend a level step on, the second a table
-to transmit. Every tile of such a stream MUST carry `nsub_log2 == 3`, and the
-tile header's `table_set` field is reinterpreted as the **variant selector**:
+to transmit. Two more tools do not fit the payload below and are likewise
+excluded: it has no field for the per-block 4x4 split flag of 6.8, so a
+stream setting bit 30 MUST NOT set `XFORM_4X4_SPLIT` (bit 19) -- a decoder
+takes every Lite tile as unsplit -- and its non-MPM mode index is a 3-bit
+field with room for the eight non-MPM values of the nine-mode alphabet only,
+so it MUST NOT set `INTRA_CFL` (bit 24), for the reason 9.6 gives for
+`INTRA_CFL` requiring `CTX_V2`. The reference encoder clears both tools when
+it selects this one. Every tile of such a stream MUST carry
+`nsub_log2 == 3`, and the tile header's `table_set` field is reinterpreted as
+the **variant selector**:
 
 | `table_set` | variant |
 |---|---|

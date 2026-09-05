@@ -37,6 +37,15 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
   and **+31.9 % at 4:2:0** -- not one number. The branch's "about +50 %" holds for 4:4:4 only;
   4:2:0 is cheaper than advertised because its two subsampled planes are a smaller and much sparser
   share of the coefficients, which is where `FIXED` is closest to what rANS spends.
+- **Superseded by the rate-model step.** Those streams did not decode correctly: the Lite payload
+  has no field for the 4x4 split flag and no room for the tenth chroma mode of `INTRA_CFL`, and the
+  encoder had left both defaults on (25.6 dB luma, 39 dB chroma out of the decoder). A bit-30 stream
+  now MUST NOT set `XFORM_4X4_SPLIT` or `INTRA_CFL` (SYNTAX.md 2, 9.10) and the encoder clears them.
+  The encoder's rate model is now the Lite syntax itself when the tool is selected (trellis, mode
+  decision, tile decisions) rather than the rANS tables, which is worth **-8 % BD-rate** on `FIXED`
+  in both formats. Lite `FIXED` costs **+50 % BD-rate at 4:4:4 and +39 % at 4:2:0** against the
+  shipped rANS default, and +31 % / +26 % against rANS with the same two tools off. Streams with the
+  tool off are byte-identical to before; vectors v76-v80 regenerated. `ref/RESULTS-entropy-lite.md`.
 
 **Bitstream syntax v1.6 -- the large transforms**
 

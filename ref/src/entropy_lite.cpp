@@ -87,12 +87,7 @@ inline size_t align8(size_t bits) { return (bits + 7) & ~(size_t)7; }
 
 // Exp-Golomb of order k, as in 9.5's escape but with the order a parameter.
 // n = v + 2^k, b = floor(log2 n), j = b - k; j ones, a zero, the low b bits.
-inline int eg_len(u32 v, int k) {
-    u64 n = (u64)v + (1u << k);
-    int b = 0;
-    while ((n >> (b + 1)) != 0) ++b;
-    return 2 * (b - k) + k + 1;
-}
+inline int eg_len(u32 v, int k) { return lite_eg_len(v, k); }
 inline void eg_put(BitW &w, u32 v, int k) {
     u64 n = (u64)v + (1u << k);
     int b = 0;
@@ -135,15 +130,13 @@ struct UnitFacts {
     int body_bits = 0;
 };
 
-}  // namespace
-
-// ---------------------------------------------------------------- encoder
-bool lite_encode_units(const Unit *units, int nunits, int variant,
-                       std::vector<u8> &out) {
-    if (variant != kLiteFixed && variant != kLiteRice) return false;
-    if (nunits <= 0) return false;
-    std::vector<UnitFacts> f((size_t)nunits);
-
+// Everything the sections need to know about every unit: coded or not, LAST,
+// the nonzero count, the per-unit parameter and the body width.  The encoder
+// and the rate model (lite_payload_bits) share it, so the length the encoder
+// is charged is the length it writes.
+bool lite_facts(const Unit *units, int nunits, int variant,
+                std::vector<UnitFacts> &f) {
+    f.assign((size_t)nunits, UnitFacts{});
     for (int i = 0; i < nunits; ++i) {
         const Unit &u = units[i];
         UnitFacts &uf = f[(size_t)i];
@@ -187,6 +180,52 @@ bool lite_encode_units(const Unit *units, int nunits, int variant,
             if (uf.body_bits >= (1 << kLiteLenBits)) return false;
         }
     }
+    return true;
+}
+
+}  // namespace
+
+// ------------------------------------------------------------- rate model
+size_t lite_payload_bits(const Unit *units, int nunits, int variant) {
+    if (variant != kLiteFixed && variant != kLiteRice) return 0;
+    if (nunits <= 0) return 0;
+    std::vector<UnitFacts> f;
+    if (!lite_facts(units, nunits, variant, f)) return 0;
+    const int ngroups = (nunits + kLiteCbfGroup - 1) / kLiteCbfGroup;
+    size_t h1bits = 0, pbits = 0, sbits = 0, bbits = 0;
+    for (int g = 0; g < ngroups; ++g) {
+        int lo = g * kLiteCbfGroup;
+        int hi = lo + kLiteCbfGroup < nunits ? lo + kLiteCbfGroup : nunits;
+        for (int i = lo; i < hi; ++i)
+            if (f[(size_t)i].coded) { h1bits += (size_t)(hi - lo); break; }
+    }
+    for (int i = 0; i < nunits; ++i) {
+        const Unit &u = units[i];
+        const UnitFacts &uf = f[(size_t)i];
+        if (!uf.coded) continue;
+        if (u.kind == UNIT_MODE) {
+            int n = mode_count(u);
+            sbits += (size_t)n;
+            for (int b = 0; b < n; ++b)
+                if (u.modes[b] != mpm_of(u.modes, u.nbx, b)) bbits += 3;
+            continue;
+        }
+        pbits += (size_t)unit_param_bits(u, variant);
+        sbits += (size_t)uf.last;
+        bbits += (size_t)uf.body_bits;
+    }
+    size_t total = align8((size_t)ngroups) + align8(h1bits) + align8(pbits) +
+                   align8(sbits) + align8(bbits);
+    return total ? total : 8;   // an empty payload is still one byte
+}
+
+// ---------------------------------------------------------------- encoder
+bool lite_encode_units(const Unit *units, int nunits, int variant,
+                       std::vector<u8> &out) {
+    if (variant != kLiteFixed && variant != kLiteRice) return false;
+    if (nunits <= 0) return false;
+    std::vector<UnitFacts> f;
+    if (!lite_facts(units, nunits, variant, f)) return false;
 
     const int ngroups = (nunits + kLiteCbfGroup - 1) / kLiteCbfGroup;
     std::vector<u8> gflag((size_t)ngroups, 0);
@@ -237,12 +276,14 @@ bool lite_encode_units(const Unit *units, int nunits, int variant,
         if (!uf.coded) continue;
         if (u.kind == UNIT_MODE) {
             int n = mode_count(u);
-            // The mode alphabet is the unit's own: nine, or ten on a chroma
-            // plane whose tile enables chroma-from-luma (SYNTAX.md 7.7).  The
-            // non-MPM index is still three bypass bits either way -- CfL is
-            // the tenth VALUE, and one of the ten is always the MPM -- so the
-            // Lite path's field widths are unchanged by it.
+            // The non-MPM index is a 3-bit field (SYNTAX.md 9.10), which
+            // holds the eight non-MPM values of the nine-mode alphabet and
+            // NOT the nine of the ten-mode alphabet INTRA_CFL creates: index
+            // 8 would be written as 0.  A stream setting ENTROPY_LITE must
+            // not set INTRA_CFL, and the encoder clears it; this refuses a
+            // unit that got here anyway rather than truncating it.
             const int nmodes = u.nmodes ? u.nmodes : kNumIntraModes;
+            if (nmodes - 1 > (1 << 3)) return false;
             for (int b = 0; b < n; ++b) {
                 if (u.modes[b] >= nmodes) return false;
                 int mpm = mpm_of(u.modes, u.nbx, b);

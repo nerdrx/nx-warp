@@ -320,6 +320,15 @@ extern "C" nxvc_encoder *nxvc_encoder_create(const nxvc_config *cfg,
         e->cfg.sign_hide = 0;
         e->cfg.custom_tables = 0;
         e->cfg.nsub_log2 = 3;
+        // The Lite payload carries no per-block split flag (9.10 has no
+        // field for it, and both decoders take every Lite tile as unsplit),
+        // so a split the encoder chose here would be reconstructed as an
+        // 8x8 block by the decoder.  Off, like the other two.
+        e->cfg.split4x4 = 0;
+        // And no room for a tenth chroma mode: the Lite non-MPM index is a
+        // 3-bit field (9.10), which is the same reason INTRA_CFL requires
+        // CTX_V2 under rANS.  A CfL stream would carry index 8 as 0.
+        e->cfg.chroma_from_luma = 0;
     }
     e->g.width = cfg->width;
     e->g.height = cfg->height;
@@ -1135,11 +1144,31 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         e->cfg.qp_search_step ? clamp_i32((int)e->cfg.qp_search_step, 1, 8) : 2;
     const u32 intra_period = e->cfg.intra_period ? e->cfg.intra_period : 180u;
 
+    // Under ENTROPY_LITE the tile is coded by lite_encode_units, and every
+    // rate the decisions below read has to be the Lite syntax's: the trellis,
+    // the per-block mode decision and the tile rate all go through this one
+    // switch.  -1 is the rANS coder.
+    const int lite_variant =
+        e->cfg.entropy_lite ? (int)e->cfg.entropy_lite - 1 : -1;
+    auto tile_rate_cost = [&](const TileCoder &tc, const TableSet *tabs,
+                              RateCost &rc) {
+        if (lite_variant >= 0) build_lite_rate_cost(lite_variant, rc);
+        else build_rate_cost(tabs[tc.tp.table_set], rc);
+    };
+    // Bytes a tile pays outside its header and its coded symbols: the rANS
+    // coder's 4-byte flush per active lane.  Lite has no lanes.
+    auto lane_bytes = [&](const TileCoder &tc) -> int {
+        if (lite_variant >= 0) return 0;
+        int active = 1 << tc.tp.nsub_log2;
+        if ((size_t)active > tc.units.size()) active = (int)tc.units.size();
+        return 4 * active;
+    };
+
     auto rdoq_tile = [&](TileCoder &tc, const TableSet *tabs,
                          double lambda_scale) {
         if (!use_rdo) return;
         RateCost rc;
-        build_rate_cost(tabs[tc.tp.table_set], rc);
+        tile_rate_cost(tc, tabs, rc);
         int np = coded_planes(tc);
         for (int p = 0; p < np; ++p)
             rdoq_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)], tc.tp.tskip,
@@ -1150,7 +1179,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
     auto analyze_tile_dir = [&](TileCoder &tc, const TableSet *tabs, int pass,
                                 double lambda_scale, bool reuse = false) {
         RateCost rc;
-        build_rate_cost(tabs[tc.tp.table_set], rc);
+        tile_rate_cost(tc, tabs, rc);
         int np = coded_planes(tc);
         int mode_ctx = mode_context(tc.nctx);
         for (int p = 0; p < np; ++p) {
@@ -1234,6 +1263,13 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                              1 << tc.tp.nsub_log2, th, nullptr, &raw))
                 return 0;
         }
+        // Under Lite the table-set choices above are moot (the header field
+        // names the variant, set at emit) and the rate is not an entropy but
+        // a length: the payload's, exactly, padding included.
+        if (lite_variant >= 0)
+            return (double)lite_payload_bits(tc.units.data(),
+                                             (int)tc.units.size(),
+                                             lite_variant);
         return table_set_cost(th, tabs[tc.tp.table_set]) + (double)raw;
     };
     auto quantize_tile = [&](TileCoder &tc, const TableSet *tabs) -> double {
@@ -1688,9 +1724,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             }
             tc.build_units();
             double bits = quantize_tile(tc, tabs);
-            int active = 1 << tc.tp.nsub_log2;
-            if ((size_t)active > tc.units.size()) active = (int)tc.units.size();
-            bits += 8 * (kTileHeaderBytes + 4 * active +
+            bits += 8 * (kTileHeaderBytes + lane_bytes(tc) +
                          tile_field_bytes(tc.tp));
             const double d = tile_distortion(tc);
             if (dist_out) *dist_out = d;
@@ -2104,10 +2138,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                                 double bits = quantize_tile_ex(cand, fp.tabs,
                                                                lambda_scale,
                                                                true);
-                                int active = 1 << cand.tp.nsub_log2;
-                                if ((size_t)active > cand.units.size())
-                                    active = (int)cand.units.size();
-                                bits += 8 * (kTileHeaderBytes + 4 * active);
+                                bits += 8 * (kTileHeaderBytes + lane_bytes(cand));
                                 double cost =
                                     tile_distortion(cand) + lam * bits;
                                 if (!have || cost < best) {

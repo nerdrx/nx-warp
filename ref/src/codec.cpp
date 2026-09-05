@@ -1276,9 +1276,15 @@ struct RateCost {
     // assumed, and the bound is dropped if it does not hold -- a slower
     // trellis, not a wrong one.
     bool zero_cheapest;
+    // ENTROPY_LITE (tool bit 30): the variant the tile will be coded with, or
+    // -1 for the rANS coder `sym` describes.  Under Lite `sym` is unused --
+    // the tool has no contexts -- and every rate below is computed from the
+    // syntax's fixed field widths instead (rdoq_unit_lite, lite_unit_bits).
+    int lite = -1;
 };
 
 static void build_rate_cost(const TableSet &ts, RateCost &rc) {
+    rc.lite = -1;
     for (int c = 0; c < kNumCtx; ++c)
         for (int s = 0; s < kNumSym; ++s) {
             double f = (double)ts.ctx[c].freq[s] / kProbTotal;
@@ -1288,6 +1294,15 @@ static void build_rate_cost(const TableSet &ts, RateCost &rc) {
     rc.zero_cheapest = true;
     for (int c = 0; c < kNumCtx; ++c)
         if (rc.sym[c][1] < rc.sym[c][0]) rc.zero_cheapest = false;
+}
+
+// The rate model of a tile coded under ENTROPY_LITE.  There is no table to
+// read: a zero costs exactly one significance bit and a nonzero at least one
+// more, so `zero_cheapest` holds by construction.
+static void build_lite_rate_cost(int variant, RateCost &rc) {
+    std::memset(rc.sym, 0, sizeof(rc.sym));
+    rc.zero_cheapest = true;
+    rc.lite = variant;
 }
 
 // The contexts one coding unit is coded in, as the encoder's rate model sees
@@ -1427,6 +1442,211 @@ constexpr double kRdInf = 1e30;
 // effort level changes is how many magnitudes per scan position are offered
 // to it, which is where the time goes.
 
+// ------------------------------------------------- ENTROPY_LITE rate model
+// What one coefficient unit costs under SYNTAX.md 9.10, in bits:
+//
+//   1                          its `coded` flag in section H1
+//   last_bits(ncoef) + 3       LAST and the per-unit parameter, section P
+//   [+ 12]                     the body length, RICE only
+//   LAST                       one significance bit per scan position below
+//                              LAST -- a zero there costs a whole bit, where
+//                              rANS spends a fraction of one on a sparse tail
+//   per nonzero:               the magnitude field and one sign bit:
+//     FIXED  mag_bits[class] + 1, the class being the unit's largest level
+//     RICE   eg_len(|q| - 1, k) + 1
+//
+// An uncoded unit costs its H1 bit when its group of sixteen has any coded
+// unit, and a sixteenth of an H0 bit otherwise.  The model charges the first
+// case always: below QP 30 nearly every group is coded, and pricing the
+// group effect exactly would couple sixteen units' decisions for a fraction
+// of a bit.
+//
+// Two things follow that the rANS trellis has no reason to know.  Nothing
+// here depends on the previous level, so there is no Markov chain: given the
+// unit's parameter, every scan position is priced on its own.  And the
+// parameter is a property of the WHOLE unit -- under FIXED the width of every
+// magnitude field is set by the largest level in the unit -- so the choice at
+// one position changes the price of every other.  The search therefore runs
+// once per candidate parameter, each run being an independent choice at every
+// position followed by the choice of LAST, and keeps the cheapest.  A run
+// under class c may not use a level above 2^mag_bits[c]; a run whose levels
+// all fit a smaller class is priced conservatively and coded at the smaller
+// class, which can only be cheaper than what it was charged.
+static inline i32 lite_mag_cap(int variant, int param) {
+    if (variant != kLiteFixed) return 32767;
+    return kLiteMagBits[param] >= 15 ? 32767 : (1 << kLiteMagBits[param]);
+}
+// Bits of the magnitude field plus the sign of level m >= 1.
+static inline i32 lite_level_bits(int variant, int param, i32 m) {
+    if (variant == kLiteFixed) return kLiteMagBits[param] + 1;
+    return lite_eg_len((u32)(m - 1), param) + 1;
+}
+static inline i32 lite_unit_header_bits(int variant, int ncoef) {
+    return 1 + lite_last_bits(ncoef) + 3 + (variant == kLiteRice ? kLiteLenBits : 0);
+}
+
+static void rdoq_unit_lite(i16 *coefs, const i32 *orig, const i32 *step,
+                           int ncoef, const u16 *scan, int variant,
+                           double lambda, int effort) {
+    for (int i = 0; i < ncoef; ++i) coefs[i] = 0;
+    // The same `last` bound as the rANS trellis.  Under Lite the rate half of
+    // the argument is unconditional: at every position a zero costs one
+    // significance bit and a one costs that bit plus at least a sign.
+    int hi = -1;
+    double energy = 0;
+    for (int p = 0; p < ncoef; ++p) {
+        int idx = scan[p];
+        double c = orig[idx];
+        energy += c * c;
+        double a = c < 0 ? -c : c;
+        if (32.0 * a >= (double)step[idx]) hi = p;
+    }
+    if (hi < 0) return;
+
+    constexpr int kMaxCoef = kMaxBlock * kMaxBlock;
+    constexpr int kNumParam = 8;
+    // Per parameter and position: the cheapest interior choice (f, bm), its
+    // running sum over the positions below (pre), and the cheapest nonzero
+    // choice for the LAST position (fnz, bmnz).
+    static thread_local double f_pre[kNumParam][kMaxCoef];
+    static thread_local double f_nz[kNumParam][kMaxCoef];
+    static thread_local i32 b_m[kNumParam][kMaxCoef], b_nz[kNumParam][kMaxCoef];
+    static thread_local i32 cand[kMaxCoef][4];
+    static thread_local u8 ncand[kMaxCoef];
+
+    i32 maxcand = 0;
+    for (int p = 0; p <= hi; ++p) {
+        int idx = scan[p];
+        double c = orig[idx];
+        double a = c < 0 ? -c : c;
+        double st = (double)step[idx] / 16.0;
+        i32 m0 = (i32)(a / st);
+        if (m0 > 32767) m0 = 32767;
+        int nc = 0;
+        cand[p][nc++] = 0;
+        if (effort == kRdoqFast) {
+            i32 mn = (i32)(a / st + 0.5);
+            if (mn > 32767) mn = 32767;
+            if (mn > 0) cand[p][nc++] = mn;
+        } else {
+            if (effort >= kRdoqFull && m0 >= 2) cand[p][nc++] = m0 - 1;
+            if (m0 > 0) cand[p][nc++] = m0;
+            if (m0 + 1 <= 32767) cand[p][nc++] = m0 + 1;
+        }
+        ncand[p] = (u8)nc;
+        for (int k = 0; k < nc; ++k)
+            if (cand[p][k] > maxcand) maxcand = cand[p][k];
+    }
+    // Parameters worth a run.  FIXED: every class up to the one that admits
+    // the largest candidate -- a wider class prices the same levels dearer.
+    // RICE: every order, since the code length is not monotone in k.
+    int p_hi = kNumParam - 1;
+    if (variant == kLiteFixed) {
+        p_hi = 0;
+        while (p_hi < kNumParam - 1 && maxcand > lite_mag_cap(variant, p_hi))
+            ++p_hi;
+    }
+
+    for (int prm = 0; prm <= p_hi; ++prm) {
+        const i32 cap = lite_mag_cap(variant, prm);
+        double run = 0;
+        for (int p = 0; p <= hi; ++p) {
+            int idx = scan[p];
+            double c = orig[idx];
+            double a = c < 0 ? -c : c;
+            double st = (double)step[idx] / 16.0;
+            double best = kRdInf, bestnz = kRdInf;
+            i32 bm = 0, bmnz = -1;
+            for (int k = 0; k < ncand[p]; ++k) {
+                i32 m = cand[p][k];
+                if (m > cap) continue;
+                double d = a - (double)m * st;
+                double dd = d * d;
+                i32 lb = m ? lite_level_bits(variant, prm, m) : 0;
+                // interior: one significance bit, then the level if nonzero
+                double cost = dd + lambda * (double)(1 + lb);
+                if (cost < best) { best = cost; bm = m; }
+                // LAST: no significance bit, the level is implied nonzero
+                if (m) {
+                    double cnz = dd + lambda * (double)lb;
+                    if (cnz < bestnz) { bestnz = cnz; bmnz = m; }
+                }
+            }
+            f_pre[prm][p] = run;
+            run += best;
+            b_m[prm][p] = bm;
+            f_nz[prm][p] = bestnz;
+            b_nz[prm][p] = bmnz;
+        }
+    }
+
+    // Choose the parameter and LAST together.  The all-zero alternative is
+    // the unit's whole energy and its one `coded` bit.
+    double best_total = energy + lambda * 1.0;
+    int best_last = -1, best_prm = 0;
+    const double hdr = lambda * (double)lite_unit_header_bits(variant, ncoef);
+    double tail = 0;
+    for (int p = ncoef - 1; p > hi; --p) {
+        double c = orig[scan[p]];
+        tail += c * c;
+    }
+    for (int p = hi; p >= 0; --p) {
+        for (int prm = 0; prm <= p_hi; ++prm) {
+            if (b_nz[prm][p] < 0) continue;
+            double total = f_pre[prm][p] + f_nz[prm][p] + tail + hdr;
+            if (total < best_total) {
+                best_total = total;
+                best_last = p;
+                best_prm = prm;
+            }
+        }
+        double c = orig[scan[p]];
+        tail += c * c;
+    }
+    if (best_last < 0) return;
+    for (int p = best_last; p >= 0; --p) {
+        i32 m = p == best_last ? b_nz[best_prm][p] : b_m[best_prm][p];
+        int idx = scan[p];
+        coefs[idx] = (i16)(orig[idx] < 0 ? -m : m);
+    }
+}
+
+// Q10 bits one coding unit costs under ENTROPY_LITE, exactly as
+// lite_encode_units will write it (section padding aside, which is per tile).
+static i32 lite_unit_bits(const i16 *c, int ncoef, const u16 *scan,
+                          int variant) {
+    int last = -1;
+    for (int p = ncoef - 1; p >= 0; --p)
+        if (c[scan[p]] != 0) { last = p; break; }
+    if (last < 0) return 1 << 10;
+    i32 bits = lite_unit_header_bits(variant, ncoef) + last;
+    if (variant == kLiteFixed) {
+        i32 maxa = 0;
+        int nnz = 0;
+        for (int p = 0; p <= last; ++p) {
+            i32 q = c[scan[p]];
+            i32 a = q < 0 ? -q : q;
+            if (a) { ++nnz; if (a > maxa) maxa = a; }
+        }
+        int cls = 0;
+        while (cls < 7 && maxa > lite_mag_cap(variant, cls)) ++cls;
+        bits += nnz * (kLiteMagBits[cls] + 1);
+    } else {
+        i32 best = 0;
+        for (int k = 0; k < 8; ++k) {
+            i32 b = 0;
+            for (int p = 0; p <= last; ++p) {
+                i32 q = c[scan[p]];
+                i32 a = q < 0 ? -q : q;
+                if (a) b += lite_eg_len((u32)(a - 1), k) + 1;
+            }
+            if (k == 0 || b < best) best = b;
+        }
+        bits += best;
+    }
+    return bits << 10;
+}
+
 // `orig[i]` is the unquantized value at block-local index i, `step[i]` its
 // reconstruction step (the dequantizer's t, Q4).  Writes the chosen levels
 // back into `coefs`.  `sdh` says the unit will hide its `last` sign, which is
@@ -1434,6 +1654,10 @@ constexpr double kRdInf = 1e30;
 static void rdoq_unit(i16 *coefs, const i32 *orig, const i32 *step, int ncoef,
                       const u16 *scan, const UnitCtx &uc,
                       const RateCost &rc, double lambda, int effort, int sdh) {
+    if (rc.lite >= 0) {
+        rdoq_unit_lite(coefs, orig, step, ncoef, scan, rc.lite, lambda, effort);
+        return;
+    }
     for (int i = 0; i < ncoef; ++i) coefs[i] = 0;
 
     // The exact upper bound on `last`.  Above the highest position whose
@@ -1896,6 +2120,7 @@ static i32 satd_block(const i32 *d, int n) {
 // Q10 bits one coding unit costs under `rc`, mirroring the LaneMachine.
 static i32 unit_bits(const i16 *c, int ncoef, const u16 *scan,
                      const UnitCtx &uc, const RateCost &rc, int sdh) {
+    if (rc.lite >= 0) return lite_unit_bits(c, ncoef, scan, rc.lite);
     int last = -1;
     for (int p = ncoef - 1; p >= 0; --p)
         if (c[scan[p]] != 0) { last = p; break; }
@@ -2108,7 +2333,11 @@ static void analyze_plane_dir(PlaneState &s, i16 *coefs, int tskip, int layer,
                     double bits =
                         unit_bits(q, ncoef, scan[sp], uc, rc, sdh) / 1024.0;
                     // mode signalling, exactly as the LaneMachine will code it
-                    if (m == mpm) {
+                    // -- or, under ENTROPY_LITE, as section S and B will: one
+                    // MPM flag, and three raw bits of index when it is 0.
+                    if (rc.lite >= 0) {
+                        bits += m == mpm ? 1.0 : 4.0;
+                    } else if (m == mpm) {
                         bits += mode_ctx ? rc.sym[mode_ctx][0] / 1024.0 : 1.0;
                     } else {
                         bits += mode_ctx ? rc.sym[mode_ctx][1 + nonmpm_index(

@@ -37,6 +37,16 @@ inline int lite_last_bits(int ncoef) {
     return b;
 }
 
+// Length in bits of the order-k Exp-Golomb code of v (the RICE magnitude
+// field): n = v + 2^k, b = floor(log2 n), j = b - k ones, a zero, b bits.
+// Shared by the coder and the encoder's rate model so they cannot disagree.
+inline int lite_eg_len(u32 v, int k) {
+    u64 n = (u64)v + (1u << k);
+    int b = 0;
+    while ((n >> (b + 1)) != 0) ++b;
+    return 2 * (b - k) + k + 1;
+}
+
 // Encoder-side instrumentation only: where a Lite payload's bits went.
 // Not normative, not thread-safe, and never read by the decoder.
 struct LiteStats {
@@ -51,5 +61,13 @@ bool lite_encode_units(const Unit *units, int nunits, int variant,
                        std::vector<u8> &out);
 bool lite_decode_units(const Unit *units, int nunits, int variant,
                        const u8 *buf, size_t len);
+
+// The exact size in bits of the payload lite_encode_units would produce for
+// this unit list -- every section, every byte of padding -- without producing
+// it.  This is the encoder's tile rate under the tool: the rANS path's
+// `table_set_cost + raw` has no Lite counterpart because Lite has no entropy
+// to estimate, only a length to add up.  Returns 0 on a unit list the coder
+// would refuse.
+size_t lite_payload_bits(const Unit *units, int nunits, int variant);
 
 }  // namespace nxvc

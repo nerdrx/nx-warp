@@ -339,8 +339,8 @@ default, and turn it on from the decoder's measured Pass A time.**
   means the Lite numbers here are a **ceiling** on Lite's cost. A rate model
   matched to the Lite syntax (the trellis would stop paying for `LAST`
   positions that Lite prices differently, and would prefer magnitudes inside
-  the unit's class) should recover some of the 40 %. Nobody has measured how
-  much.
+  the unit's class) should recover some of the 40 %. **Done in step 10,
+  below: it recovers 8 % of the rate.**
 * Sign data hiding is forbidden under the tool, which costs the Lite column
   about 0.3 %.
 * `nsub_log2 > 5` was not evaluated; it is not in the syntax.
@@ -370,3 +370,168 @@ planes are a smaller and much sparser share of the coefficients, and sparse
 units are where FIXED's per-class word is closest to what rANS spends -- not
 anything the merge did. Quote the two numbers separately; there is no single
 "+50 %" that is true of both formats.
+
+## A rate model matched to the Lite syntax (merge-main, step 10)
+
+Everything above priced coefficients with the rANS rate model even when Lite
+was selected, so the Lite numbers were a **ceiling**. This step gives the
+encoder a rate model that is the Lite syntax itself (`rdoq_unit_lite`,
+`lite_unit_bits` in `ref/src/codec.cpp`, `lite_payload_bits` in
+`ref/src/entropy_lite.cpp`) and measures what it recovers. Streams produced
+with the tool OFF are unchanged: the tools-off check against the frozen base
+passes, and the QP 24 default stream is byte-identical to the one the previous
+binary wrote (same 2 198 918 B, same MD5).
+
+### Two defects found on the way, both in the merged encoder
+
+The measurement above was taken on streams that **do not decode correctly**.
+Two default tools have no representation in the Lite payload and the encoder
+went on using them:
+
+| tool | what happened | one frame, 4:4:4, QP 24 |
+|---|---|---|
+| `XFORM_4X4_SPLIT` (bit 19) | 9.10 has no split-flag field; `lite_encode_units` never read `Unit::split_present`, both decoders take a Lite tile as unsplit | PSNR-Y **25.6 dB** decoded, 42.6 dB in the encoder |
+| `INTRA_CFL` (bit 24) | the Lite non-MPM index is 3 bits; the ten-mode chroma alphabet has nine non-MPM values, so index 8 was written as 0 | PSNR-Cb **39.1 dB** decoded against 47.2 dB for rANS |
+
+The fix is the one the tool already applies to `SIGN_HIDE` and
+`CUSTOM_TABLES`: the encoder clears both when `ENTROPY_LITE` is selected,
+`lite_encode_units` refuses a ten-mode unit rather than truncating it, and
+SYNTAX.md 2 and 9.10 now say a bit-30 stream MUST NOT set bits 19 or 24. The
+proper fix -- a split bit in section P and a 4-bit index in section B -- is a
+syntax change that the Pass A shader would have to follow, and was not made
+here. Conformance vectors v76-v80 were regenerated (v81, lossless, is
+unchanged); they never set either tool, so the regeneration reflects the rate
+model only.
+
+This also means the "+43.0 % / +31.9 %" above were measured on Lite streams
+that still carried the split tool's savings without paying for them. On the
+decodable configuration the ceiling was higher; see the `rANS model` column.
+
+### What the model is
+
+Per coefficient unit, in bits: one `coded` flag; `last_bits(ncoef) + 3` of
+section P (+12 for `RICE`); one significance bit per scan position below
+`LAST`; and per nonzero the magnitude field plus a sign, where under `FIXED`
+the field width is set by the **largest level in the unit**. Nothing depends
+on the previous level, so there is no Markov chain -- but the class couples
+every position, so the search runs once per candidate class (up to the one
+that admits the largest candidate; every order for `RICE`), each run an
+independent choice at every position followed by the choice of `LAST`, and
+keeps the cheapest. The two effects the section above named fall out of it:
+a zero below `LAST` costs a whole bit, so the trellis pulls `LAST` down
+harder than the rANS model ever asked it to; and a level that would push the
+unit up a class is charged for every other nonzero's extra bit. The per-block
+mode decision prices the mode as 1 or 4 raw bits, and the tile decisions
+(inter mode, QP/matrix/transform search) read the exact payload length,
+padding included, instead of a table entropy plus lane flush bytes.
+
+What it does not model: the sixteen-unit group flag. An uncoded unit is
+charged its H1 bit unconditionally, which is exact whenever its group has any
+coded unit and a sixteenth of a bit too much otherwise.
+
+### Measured
+
+`tools/quality/compare.py`, `vr-mixed-1024-v2`, **whole clip (36 frames)**,
+QP 8/12/16/20/24, PSNR-Y, cubic BD-rate. Six encoders per format:
+
+* `rANS`: the shipped default (split4x4 on, CfL on).
+* `rANS-min`: rANS with split4x4 and CfL off -- the same coefficient syntax
+  Lite can carry, so the entropy-only opponent.
+* `FIXED`/`RICE`, `rANS model`: the previous binary, split4x4 and CfL forced
+  off so the streams decode.
+* `FIXED`/`RICE`, `Lite model`: this change.
+
+**BD-rate against `rANS` (the shipped default):**
+
+| format | rANS-min | FIXED, rANS model | FIXED, Lite model | RICE, rANS model | RICE, Lite model |
+|---|---|---|---|---|---|
+| 4:4:4 | +15.7 % | +63.8 % | **+50.4 %** | +70.3 % | +49.6 % |
+| 4:2:0 | +11.1 % | +52.4 % | **+39.5 %** | +59.7 % | +40.9 % |
+
+**BD-rate against `rANS-min` (the entropy-only gap), and what the model
+recovers of it:**
+
+| format | FIXED, rANS model | FIXED, Lite model | recovered | RICE, rANS model | RICE, Lite model |
+|---|---|---|---|---|---|
+| 4:4:4 | +41.9 % | **+30.8 %** | 26 % of the gap | +48.0 % | +29.9 % |
+| 4:2:0 | +37.2 % | **+25.8 %** | 31 % of the gap | +43.8 % | +26.5 % |
+
+**The model against the ceiling, same coder** (BD-rate, Lite model vs rANS
+model; BD-PSNR in brackets):
+
+| format | FIXED | RICE |
+|---|---|---|
+| 4:4:4 | **-7.9 %** (+0.86 dB) | -12.1 % (+1.48 dB) |
+| 4:2:0 | **-8.3 %** (+0.99 dB) | -12.0 % (+1.66 dB) |
+
+The weighted (6Y+Cb+Cr)/8 PSNR gives the same figures to within half a point.
+
+**QP 24, whole clip, bytes** -- quoted because the section above quoted
+bytes, and to show why bytes at one QP are the wrong figure here:
+
+| format | rANS | FIXED, rANS model | FIXED, Lite model |
+|---|---|---|---|
+| 4:4:4 | 2 198 918 B, 42.55 dB | 3 364 559 B (+53.0 %), 42.09 dB | 2 913 565 B (+32.5 %), **41.30 dB** |
+| 4:2:0 | 2 150 976 B, 42.54 dB | 3 067 536 B (+42.6 %), 42.14 dB | 2 628 127 B (+22.2 %), **41.30 dB** |
+
+The Lite model lands the same QP at 20 points fewer bytes and 0.8 dB lower
+PSNR: a rate model that charges a whole bit per zero and a class step per
+outlier moves the trellis down the curve at a fixed lambda, and most of the
+byte saving at equal QP is that move. The BD-rate figures net it out; the
+honest recovery is the -8 %, not the -20 points.
+
+### What this says
+
+* The ceiling was real and about a fifth of it was slack: 8 % of the rate for
+  the same picture, both formats, `FIXED`. The remaining +50 % (4:4:4) and
+  +39 % (4:2:0) against the shipped default is the syntax -- one bit per
+  significance flag, one width per unit -- plus the two tools Lite cannot
+  carry, which are worth 16 and 11 points of it respectively.
+* `RICE` gains more from the model (12 %) because its parameter is a code
+  order the trellis can now actually search, and the two variants end within
+  a point of each other. That does not change section 6: `RICE` still costs
+  per-coefficient addressability for nothing at these rates.
+* Against the entropy-only opponent, Lite `FIXED` is now +31 % at 4:4:4 and
+  +26 % at 4:2:0. Section 5's crossover was computed at +40 %; it moves down,
+  but the "switch on the budget, not the bitrate" recommendation stands.
+
+### Where the bits went, then and now
+
+`NXVC_LITE_STATS=1`, `FIXED`, 4:4:4, QP 24, 2 frames, both on the decodable
+configuration:
+
+| section | rANS model | Lite model |
+|---|---|---|
+| coded-unit map | 104.0 k (7.3 %) | 95.5 k (7.8 %) |
+| `LAST` + class | 195.0 k (13.7 %) | 154.7 k (12.6 %) |
+| significance | 190.9 k (13.4 %) | 172.1 k (14.0 %) |
+| intra modes | 245.4 k (17.2 %) | 267.3 k (21.8 %) |
+| magnitudes | 540.9 k (37.9 %) | 409.7 k (33.4 %) |
+| signs | 137.0 k (9.6 %) | 114.3 k (9.3 %) |
+| **total** | **1 427.7 k** | **1 227.7 k** |
+
+The magnitude section, where the class effect lives, gives up a quarter of
+its bits; `LAST` + class and the map fall with the number of coded units;
+significance falls less than the coded-unit count does because the units that
+stay coded are the dense ones. Intra modes go **up**: with coefficients dearer
+the block-level decision buys prediction instead, and a non-MPM mode is 4 raw
+bits under Lite where the rANS context sold it for less. That is the trade the
+model is supposed to make, and the BD-rate says it is the right one.
+
+### Is the lambda still right?
+
+The trellis lambda (`kLambdaScale = 0.22`) was fitted on the rANS rate model.
+Under a model that charges more per coefficient, the same lambda lands lower
+on the curve (the QP 24 table above), which raises the question of whether a
+different scale would land better. Three scales, first 12 frames, `FIXED`,
+BD-rate against the rANS-model encoder on the same 12 frames:
+
+| scale | 4:4:4 | 4:2:0 |
+|---|---|---|
+| 0.15 | -7.9 % | -8.6 % |
+| **0.22** (default) | **-8.0 %** | -8.2 % |
+| 0.30 | -7.3 % | -7.4 % |
+
+Flat to within a point, with the default at or next to the best: the gain is
+the model, not a lambda that happened to suit it, and no Lite-specific lambda
+is introduced.
