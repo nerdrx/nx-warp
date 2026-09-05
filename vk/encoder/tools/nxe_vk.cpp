@@ -94,7 +94,8 @@ VkEncoder::~VkEncoder() {
     delete p_;
 }
 
-bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err) {
+bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
+                       const Adopt *adopt) {
     Impl &d = *p_;
     d.cfg = cfg;
     d.ntiles = f.fp.ntiles;
@@ -105,13 +106,19 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err) {
         return false;
     }
 
-    std::vector<vkmin::DeviceInfo> devs;
-    if (!vkmin::Device::enumerate(devs, err)) return false;
-    if ((size_t)cfg.device >= devs.size()) {
-        err = "no such device index";
-        return false;
+    if (adopt) {
+        if (!d.dev.adopt(adopt->instance, adopt->physical_device, adopt->device,
+                         adopt->queue, adopt->queue_family, err))
+            return false;
+    } else {
+        std::vector<vkmin::DeviceInfo> devs;
+        if (!vkmin::Device::enumerate(devs, err)) return false;
+        if ((size_t)cfg.device >= devs.size()) {
+            err = "no such device index";
+            return false;
+        }
+        if (!d.dev.create((uint32_t)cfg.device, false, err)) return false;
     }
-    if (!d.dev.create((uint32_t)cfg.device, false, err)) return false;
     if (d.dev.max_workgroup_invocations() < 256) {
         err = "device cannot run 256-lane workgroups";
         d.dev.destroy();

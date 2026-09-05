@@ -147,21 +147,11 @@ static int fetch_clamped(const uint8_t *p, int stride, int w, int h, int x, int 
     return p[(size_t)y * stride + x];
 }
 
-bool read_frame(std::FILE *fi, const Config &cfg, Frame &f) {
+/* The repack itself, shared by read_frame() and load_planes() so the file
+ * path and the library path can never lay a picture out differently. */
+static void repack_planes(const Config &cfg, Frame &f,
+                          const uint8_t *const pl[3], const int stride[3]) {
     const nxe_frame_params &fp = f.fp;
-    const int W = cfg.w, H = cfg.h;
-    const int cw = cfg.chroma444 ? W : (W + 1) / 2;
-    const int ch = cfg.chroma444 ? H : (H + 1) / 2;
-    static std::vector<uint8_t> Y, U, V;
-    Y.resize((size_t)W * H);
-    U.resize((size_t)cw * ch);
-    V.resize((size_t)cw * ch);
-    if (std::fread(Y.data(), 1, Y.size(), fi) != Y.size()) return false;
-    if (std::fread(U.data(), 1, U.size(), fi) != U.size()) return false;
-    if (std::fread(V.data(), 1, V.size(), fi) != V.size()) return false;
-
-    const uint8_t *pl[3] = {Y.data(), U.data(), V.data()};
-    const int stride[3] = {W, cw, cw};
     /* Per-eye plane extent, ref's Geometry::pw / ::ph. */
     const int pw[3] = {(int)fp.width, cfg.chroma444 ? (int)fp.width
                                                     : ((int)fp.width + 1) / 2,
@@ -189,6 +179,30 @@ bool read_frame(std::FILE *fi, const Config &cfg, Frame &f) {
                 pk[i] = (uint16_t)(int16_t)dst[i];
         }
     }
+}
+
+void load_planes(const Config &cfg, Frame &f,
+                 const uint8_t *y, size_t y_stride,
+                 const uint8_t *cb, const uint8_t *cr, size_t chroma_stride) {
+    const uint8_t *pl[3] = {y, cb, cr};
+    const int stride[3] = {(int)y_stride, (int)chroma_stride, (int)chroma_stride};
+    repack_planes(cfg, f, pl, stride);
+}
+
+bool read_frame(std::FILE *fi, const Config &cfg, Frame &f) {
+    const int W = cfg.w, H = cfg.h;
+    const int cw = cfg.chroma444 ? W : (W + 1) / 2;
+    const int ch = cfg.chroma444 ? H : (H + 1) / 2;
+    static std::vector<uint8_t> Y, U, V;
+    Y.resize((size_t)W * H);
+    U.resize((size_t)cw * ch);
+    V.resize((size_t)cw * ch);
+    if (std::fread(Y.data(), 1, Y.size(), fi) != Y.size()) return false;
+    if (std::fread(U.data(), 1, U.size(), fi) != U.size()) return false;
+    if (std::fread(V.data(), 1, V.size(), fi) != V.size()) return false;
+    const uint8_t *pl[3] = {Y.data(), U.data(), V.data()};
+    const int stride[3] = {W, cw, cw};
+    repack_planes(cfg, f, pl, stride);
     return true;
 }
 
