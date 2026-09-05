@@ -2082,6 +2082,33 @@ first.
 
 ## Open issues
 
+* **Do not reach for `VK_EXT_global_priority`, in any combination.** It
+  measured as the largest lever available -- HIGH on the decode queue took
+  submit-to-fence from 11.87 ms to 6.63 ms with the live session running, twice,
+  agreeing to 0.03 ms -- and on a headset it produced a **10x regression**:
+  Pass B, which had never exceeded 4.4 ms, read 34-165 ms, and the session fell
+  to 3-19 frames per two seconds.
+  The bench was measuring the wrong thing. Global priority on this driver is
+  effectively per PROCESS, not per queue: raising the co-tenant's queue helps
+  the decode exactly as much as raising the decode's own. So all the win ever
+  was is *beating another application's context* -- in the bench, the live WiVRn
+  app; in the client, the **XR compositor**, which is a separate process
+  (`PxrMetric` in logcat is its metric line). Beating the compositor means it
+  misses vsync, frames back up, and the decode's own timestamps balloon because
+  its dispatches sit preempted mid-flight, which is exactly the shape that came
+  back. With no competing application at all the extension changes nothing:
+  queue wait 3.10 ms without it against 3.20 ms with it.
+  The measurement that settles it is the compositor's, not the decoder's, and
+  `nxvc-vkdec-wrap --render-hz` plus `PxrMetric` is how to take it.
+* **The workload does not fit, and that is the real finding.** On an idle
+  Adreno 650 one 22 KB 1088x1088 eye is 6.2 ms of GPU, so two eyes at 90 Hz ask
+  for 12.4 ms of GPU per 11.1 ms of wall -- 112 % of the part, before the
+  compositor's own 4.3-5.9 ms of ATW per frame (`PxrMetric` `ATWGPU`, 51-62 %
+  GPU at 90/90). The decoder bench alone, at default priority, drives compositor
+  FPS from 90 to 41 and the GPU to 99 %. No scheduling policy fixes a workload
+  that does not fit; it only chooses which side loses. The levers that remain are
+  the ones that make the decode SMALLER -- fewer bytes per frame, at 0.20 ms per
+  KB of Pass A -- and not the ones that reorder it.
 * **The live decode wall is about 3.5x the codec's own GPU time**, and the
   gap is not in `nxvc`. A 48.6 KB 1088x1088 frame is 12.0 ms of GPU and
   12.9 ms of wall standalone on the Pico 4; the WiVRn client reports ~47 ms

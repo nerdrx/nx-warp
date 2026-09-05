@@ -36,11 +36,13 @@
 //                    with --mode binsem: the deferred submit does not carry
 //                    the signal flag, so the copy would wait on a semaphore
 //                    nothing signals.  Use it with --mode wrapper.
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <chrono>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <vulkan/vulkan.h>
@@ -69,6 +71,9 @@ struct Dev {
     VkPhysicalDevice phys = VK_NULL_HANDLE;
     VkDevice dev = VK_NULL_HANDLE;
     VkQueue queue = VK_NULL_HANDLE;
+    // Queue 0.  The decoders under test are on `queue`; this one carries the
+    // co-tenant, which is what stands in for the client's renderer.
+    VkQueue render_queue = VK_NULL_HANDLE;
     uint32_t qfam = 0;
     VkPhysicalDeviceMemoryProperties mem{};
 };
@@ -185,7 +190,14 @@ void usage() {
                  "usage: nxvc-vkdec-wrap --in FILE [options]\n"
                  "  --mode wrapper|binsem|nocopy|decode  (default wrapper)\n"
                  "  --streams N     decoder instances on one queue (default 1)\n"
-                 "  --priority low|medium|high|realtime  VK_EXT_global_priority\n"
+                 "  --priority / --prio-decode P   VK_EXT_global_priority on the\n"
+                 "                  decode queue: low|medium|high|realtime\n"
+                 "  --prio-render P the same on queue 0, the co-tenant's\n"
+                 "  --render-hz N   run a CO-TENANT on queue 0 at N Hz: real compute\n"
+                 "                  work in THIS process that has a deadline to miss,\n"
+                 "                  which is the thing the bench was missing and the\n"
+                 "                  client had\n"
+                 "  --render-load N decodes per co-tenant frame (default 1)\n"
                  "  --defer         submit every stream before waiting\n"
                  "  --repeat N      frames per stream (default 30)\n");
 }
@@ -195,7 +207,10 @@ void usage() {
 int main(int argc, char **argv) {
     std::string in, mode = "wrapper";
     int streams = 1, repeat = 30, defer = 0, queues = 1;
-    std::string priority;   // "", low, medium, high, realtime
+    std::string priority;        // "", low, medium, high, realtime (decode)
+    std::string prio_render;     // the same, for the co-tenant's queue 0
+    int render_hz = 0;           // 0 = no co-tenant
+    int render_load = 1;         // decodes per co-tenant frame
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         auto val = [&]() -> const char * {
@@ -209,6 +224,10 @@ int main(int argc, char **argv) {
         else if (a == "--defer") defer = 1;
         else if (a == "--queues") queues = std::atoi(val());
         else if (a == "--priority") priority = val();
+        else if (a == "--prio-decode") priority = val();
+        else if (a == "--prio-render") prio_render = val();
+        else if (a == "--render-hz") render_hz = std::atoi(val());
+        else if (a == "--render-load") render_load = std::atoi(val());
         else { usage(); return 2; }
     }
     if (in.empty() || streams < 1) { usage(); return 2; }
@@ -313,30 +332,67 @@ int main(int argc, char **argv) {
         want_queues < qf[d.qfam].queueCount ? want_queues
                                             : qf[d.qfam].queueCount;
     const float prio[2] = {1.f, 1.f};
-    VkDeviceQueueCreateInfo qci{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
-    qci.queueFamilyIndex = d.qfam;
-    qci.queueCount = got_queues;
-    qci.pQueuePriorities = prio;
     // The client's device carries the Ycbcr conversion its pool image needs.
     VkPhysicalDeviceSamplerYcbcrConversionFeatures ycc{
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_YCBCR_CONVERSION_FEATURES};
     ycc.samplerYcbcrConversion = VK_TRUE;
-    VkDeviceQueueGlobalPriorityCreateInfoEXT gpi{
-        VK_STRUCTURE_TYPE_DEVICE_QUEUE_GLOBAL_PRIORITY_CREATE_INFO_EXT};
     const char *gp_ext = VK_EXT_GLOBAL_PRIORITY_EXTENSION_NAME;
-    if (!priority.empty()) {
-        gpi.globalPriority =
-            priority == "low"      ? VK_QUEUE_GLOBAL_PRIORITY_LOW_EXT
-            : priority == "medium" ? VK_QUEUE_GLOBAL_PRIORITY_MEDIUM_EXT
-            : priority == "high"   ? VK_QUEUE_GLOBAL_PRIORITY_HIGH_EXT
-                                   : VK_QUEUE_GLOBAL_PRIORITY_REALTIME_EXT;
-        qci.pNext = &gpi;
+    auto to_gp = [](const std::string &v) {
+        return v == "low"      ? VK_QUEUE_GLOBAL_PRIORITY_LOW_EXT
+             : v == "medium"   ? VK_QUEUE_GLOBAL_PRIORITY_MEDIUM_EXT
+             : v == "high"     ? VK_QUEUE_GLOBAL_PRIORITY_HIGH_EXT
+                               : VK_QUEUE_GLOBAL_PRIORITY_REALTIME_EXT;
+    };
+    // One family can appear TWICE in pQueueCreateInfos when the entries differ
+    // in globalPriority -- the exception VK_EXT_global_priority adds, and the
+    // only way to raise the decode queue without raising the renderer's.  Two
+    // entries of one queue each are used whenever either priority is named, so
+    // that the two queues can be set independently; one entry otherwise.
+    VkDeviceQueueGlobalPriorityCreateInfoEXT gp_r{
+        VK_STRUCTURE_TYPE_DEVICE_QUEUE_GLOBAL_PRIORITY_CREATE_INFO_EXT};
+    VkDeviceQueueGlobalPriorityCreateInfoEXT gp_d{
+        VK_STRUCTURE_TYPE_DEVICE_QUEUE_GLOBAL_PRIORITY_CREATE_INFO_EXT};
+    const bool any_prio = !priority.empty() || !prio_render.empty();
+    std::vector<VkDeviceQueueCreateInfo> qcis;
+    if (any_prio && got_queues > 1) {
+        gp_r.globalPriority = prio_render.empty()
+                                  ? VK_QUEUE_GLOBAL_PRIORITY_MEDIUM_EXT
+                                  : to_gp(prio_render);
+        gp_d.globalPriority = priority.empty()
+                                  ? VK_QUEUE_GLOBAL_PRIORITY_MEDIUM_EXT
+                                  : to_gp(priority);
+        VkDeviceQueueCreateInfo a{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
+        a.queueFamilyIndex = d.qfam;
+        a.queueCount = 1;
+        a.pQueuePriorities = prio;
+        a.pNext = &gp_r;
+        VkDeviceQueueCreateInfo b = a;
+        b.pNext = &gp_d;
+        // Identical priorities would make the two entries illegal duplicates.
+        if (gp_r.globalPriority == gp_d.globalPriority) {
+            a.pNext = &gp_d;
+            a.queueCount = got_queues;
+            qcis.push_back(a);
+        } else {
+            qcis.push_back(a);
+            qcis.push_back(b);
+        }
+    } else {
+        VkDeviceQueueCreateInfo a{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
+        a.queueFamilyIndex = d.qfam;
+        a.queueCount = got_queues;
+        a.pQueuePriorities = prio;
+        if (any_prio) {
+            gp_d.globalPriority = to_gp(priority.empty() ? prio_render : priority);
+            a.pNext = &gp_d;
+        }
+        qcis.push_back(a);
     }
     VkDeviceCreateInfo dci{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
     dci.pNext = &ycc;
-    dci.queueCreateInfoCount = 1;
-    dci.pQueueCreateInfos = &qci;
-    if (!priority.empty()) {
+    dci.queueCreateInfoCount = (uint32_t)qcis.size();
+    dci.pQueueCreateInfos = qcis.data();
+    if (any_prio) {
         dci.enabledExtensionCount = 1;
         dci.ppEnabledExtensionNames = &gp_ext;
     }
@@ -345,15 +401,22 @@ int main(int argc, char **argv) {
         // crash: it is the driver saying this process may not ask for that.
         VkResult r = vkCreateDevice(d.phys, &dci, nullptr, &d.dev);
         if (r != VK_SUCCESS) {
-            std::printf("  global priority %s REFUSED (vkCreateDevice = %d%s)\n",
-                        priority.c_str(), (int)r,
+            std::printf("  global priority decode=%s render=%s REFUSED "
+                        "(vkCreateDevice = %d%s)\n",
+                        priority.empty() ? "-" : priority.c_str(),
+                        prio_render.empty() ? "-" : prio_render.c_str(), (int)r,
                         r == VK_ERROR_NOT_PERMITTED_EXT ? ", NOT_PERMITTED" : "");
             return 1;
         }
-        if (!priority.empty())
-            std::printf("  global priority %s granted\n", priority.c_str());
+        if (any_prio)
+            std::printf("  global priority granted: decode=%s render=%s "
+                        "(%zu queue create info(s))\n",
+                        priority.empty() ? "default" : priority.c_str(),
+                        prio_render.empty() ? "default" : prio_render.c_str(),
+                        qcis.size());
     }
     vkGetDeviceQueue(d.dev, d.qfam, got_queues - 1, &d.queue);
+    vkGetDeviceQueue(d.dev, d.qfam, 0, &d.render_queue);
     if (want_queues > 1)
         std::printf("  asked for %u queues in family %u, got %u; decoding on "
                     "queue %u\n",
@@ -414,6 +477,74 @@ int main(int argc, char **argv) {
 
     const uint8_t *frame = data.data() + hdr;
     const size_t frame_len = data.size() - hdr;
+
+    // ---- the co-tenant ---------------------------------------------------
+    // The difference between this bench and the real client was never the
+    // decoder: it was that the client ALSO renders, on queue 0 of the same
+    // device, while an out-of-process compositor runs.  Without something on
+    // queue 0 a "second queue at HIGH" measurement is measuring nothing, which
+    // is how a 43 % bench win became a 10x live regression.
+    //
+    // So: a thread that submits real compute work on queue 0 at a fixed rate
+    // and has a deadline to miss.  It is a decode rather than a render -- the
+    // shape is right, shader work in fixed-size submissions at 90 Hz -- and
+    // what matters is that it competes and that its overruns are counted.
+    std::atomic_bool co_stop{false};
+    std::atomic<int> co_frames{0}, co_late{0};
+    std::atomic<double> co_sum{0.0}, co_max{0.0};
+    std::thread co;
+    if (render_hz > 0) {
+        co = std::thread([&] {
+            nxvc_vkd_create_info ci;
+            nxvc_vk_decoder_create_info_default(&ci);
+            ci.instance = d.inst;
+            ci.physical_device = d.phys;
+            ci.device = d.dev;
+            ci.queue = d.render_queue;
+            ci.queue_family = d.qfam;
+            ci.output_format = NXVC_VKD_OUT_YCBCR420;
+            nxvc_vk_decoder *cd = nullptr;
+            if (nxvc_vk_decoder_create(&ci, &cd) != NXVC_VKD_OK) {
+                std::fprintf(stderr, "co-tenant: %s\n",
+                             cd ? nxvc_vk_decoder_last_error(cd) : "?");
+                if (cd) nxvc_vk_decoder_destroy(cd);
+                return;
+            }
+            size_t c = 0;
+            nxvc_vk_decoder_parse_stream_header(cd, data.data(), data.size(), &c);
+            const double period = 1000.0 / render_hz;
+            double next = now_ms();
+            while (!co_stop.load(std::memory_order_relaxed)) {
+                const double t0 = now_ms();
+                if (t0 < next) {
+                    std::this_thread::sleep_for(
+                        std::chrono::duration<double, std::milli>(next - t0));
+                }
+                const double s0 = now_ms();
+                for (int i = 0; i < render_load; ++i) {
+                    size_t cc = 0;
+                    nxvc_vk_decode_frame_ex(cd, frame, frame_len,
+                                            NXVC_VKD_SUBMIT_ASYNC, &cc);
+                    nxvc_vk_decoder_wait(cd, UINT64_MAX);
+                }
+                const double dt = now_ms() - s0;
+                co_frames.fetch_add(1, std::memory_order_relaxed);
+                // A frame that did not fit in its period is a dropped frame in
+                // anything that has to hit vsync.
+                if (dt > period) co_late.fetch_add(1, std::memory_order_relaxed);
+                for (double cur = co_sum.load(); !co_sum.compare_exchange_weak(cur, cur + dt);) {}
+                for (double cur = co_max.load(); dt > cur && !co_max.compare_exchange_weak(cur, dt);) {}
+                next += period;
+                // Do not spiral if we are already behind: resync rather than
+                // report an ever-growing backlog of missed deadlines.
+                if (now_ms() > next) next = now_ms();
+            }
+            nxvc_vk_decoder_destroy(cd);
+        });
+        // Let it reach steady state (pipeline compile, first touch) before the
+        // measured loop starts.
+        std::this_thread::sleep_for(std::chrono::milliseconds(600));
+    }
 
     // ---- the loop --------------------------------------------------------
     double best_wall = 1e9, sum_wall = 0, sum_wait = 0, sum_dec = 0,
@@ -533,6 +664,20 @@ int main(int argc, char **argv) {
         st.pass_a_ms, st.pass_b_ms, st.gpu_ms,
         (sum_mid + sum_copy) * k - st.gpu_ms, (sum_mid + sum_copy) * k,
         st.gpu_ms, nmeas - zero_stat_frames, nmeas);
+
+    if (co.joinable()) {
+        co_stop.store(true);
+        co.join();
+        const int cf = co_frames.load();
+        const double cs = co_sum.load();
+        std::printf("  co-tenant on queue 0 (%s, %d Hz x%d): %d frames, "
+                    "mean %.2f ms, worst %.2f ms, %d late (%.0f %%)\n",
+                    prio_render.empty() ? "default priority"
+                                        : prio_render.c_str(),
+                    render_hz, render_load, cf, cf ? cs / cf : 0.0,
+                    co_max.load(), co_late.load(),
+                    cf ? 100.0 * co_late.load() / cf : 0.0);
+    }
 
     for (auto &s : S) {
         nxvc_vk_decoder_destroy(s.dec);
