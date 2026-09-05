@@ -47,9 +47,11 @@ add_custom_command(
           -DOUT=${_spv}
           -DNAME=unorm_roundtrip
           -DINCDIR=${CMAKE_CURRENT_SOURCE_DIR}
-          -P ${CMAKE_SOURCE_DIR}/vk/decoder/passB/cmake/gen_spv.cmake
+          -DSTYLE=plain
+          -P ${CMAKE_SOURCE_DIR}/vk/common/cmake/nxvc_gen_spv.cmake
   DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/unorm_roundtrip.comp
-          ${CMAKE_SOURCE_DIR}/vk/decoder/passB/cmake/gen_spv.cmake
+          ${CMAKE_SOURCE_DIR}/vk/common/cmake/nxvc_gen_spv.cmake
+          ${CMAKE_SOURCE_DIR}/vk/common/cmake/NxvcShaderPasses.cmake
   COMMENT "glslc unorm_roundtrip.comp -> unorm_roundtrip.spv.h"
   VERBATIM)
 
