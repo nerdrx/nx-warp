@@ -482,6 +482,40 @@ So the encoder's reference store is two halves, and only one of them is easy:
   has the coefficients in its own per-tile layout.  That adapter is the next
   piece of work, and it is a piece of work rather than a line of glue.
 
+## Measured: the inter path
+
+`nxvc-vkenc`, RX 7900 XTX on RADV, QP 30, 16 frames, one eye, 4:2:0, with the
+entropy tools the library ships on (frame-trained tables, TAB_V2, CTX_V3).
+`NXE_TIME=1`, mean over frames 2..15 so the first two -- which pay pipeline
+warm-up -- are excluded.  The GPU was idle apart from the desktop compositor;
+nothing else was submitting.
+
+| per eye | config | pre-E3 | tables | E4/E5 | total | B/frame |
+|---|---|---|---|---|---|---|
+| 1088x1088 | intra only | 2.14 | 0.99 | 1.03 | **4.06 ms** | 36779 |
+| 1088x1088 | inter, skip+intra | 2.22 | 0.54 | 0.85 | **3.30 ms** | **13446** |
+| 2048x2048 | intra only | 6.97 | 2.63 | 1.06 | **12.01 ms** | 129826 |
+| 2048x2048 | inter, skip+intra | 7.28 | 1.72 | 0.92 | **11.08 ms** | 85142 |
+
+**Inter is cheaper as well as smaller.**  At 1088x1088 it is 2.73x fewer bytes
+and 0.76 ms *faster*, which is not a paradox: Pass W, the decision and the
+Pass B reference store cost 0.08 ms between them, and a frame in which 82 % of
+the tiles carry no payload gives back more than that in table training (0.99 ->
+0.54) and in E4/E5 (1.03 -> 0.85).  The passes that got cheaper are the ones
+whose work is proportional to the number of CODED tiles.
+
+Two things this table is not:
+
+* **The 2048x2048 rate is not a content result.**  That source is the
+  1088x1088 clip mirror-tiled up, and the pose track belongs to the 1088
+  geometry, so the mirrored halves move the wrong way under the warp and the
+  skip fraction collapses.  It is there to time a 4-Mpix frame, and the timing
+  is honest; read the rate at 1088 only.
+* **`tables` is HOST time, and it was measured on four cores at `nice -n 19`.**
+  It is the frame's table training, which is CPU work beside the GPU rather
+  than on it.  A compositor with the machine to itself will see less; this
+  column is a floor on the win, not a measurement of the encoder.
+
 ## What the coding passes do not implement
 
 What the coding passes do **not** implement, and refuse rather than ignore:
