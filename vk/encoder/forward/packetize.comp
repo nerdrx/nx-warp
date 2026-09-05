@@ -71,22 +71,38 @@ void put_word(uint w, uint val) {
 // slot_end - 1 - e (see NXE_TILE_SLOT_WORDS).  Reading those forwards is
 // exactly the bitstream's order, because the sweep produces them in descending
 // global operation order.
-struct TileSlot { uint w0, wend, prefix_bytes; uint ewords; };
+struct TileSlot { uint w0, wend, prefix_bytes; uint ewords; uint fields; };
 
 TileSlot tile_slot(uint t) {
     TileSlot s;
     s.w0 = t * uint(NXE_TILE_SLOT_WORDS);
     s.wend = s.w0 + uint(NXE_TILE_SLOT_WORDS);
     uint nlanes_active = (jobs[t].flags >> 8) & 0xffu;
-    s.prefix_bytes = 8u + 4u * nlanes_active;
+    /* SYNTAX.md 4.1's optional fields sit between the two header words and
+     * the payload; this pipeline emits only the two-byte vector, on a
+     * coded-vector tile. */
+    const uint m = jobs[t].mode;
+    s.fields = (m == uint(NXE_MODE_STATIC_MV) || m == uint(NXE_MODE_WARP_MV) ||
+                m == uint(NXE_MODE_STEREO)) ? 2u : 0u;
+    s.prefix_bytes = 8u + s.fields + 4u * nlanes_active;
     s.ewords = (jobs[t].tile_bytes - s.prefix_bytes) >> 1;
     return s;
 }
 
 uint tile_byte(TileSlot s, uint i) {
-    if (i < s.prefix_bytes) {
+    if (i < 8u) {                       /* the two header words */
         uint w = s.w0 + (i >> 2);
         return (slot.v[min(w, uint(slot.v.length()) - 1u)] >> ((i & 3u) * 8u)) &
+               0xffu;
+    }
+    if (i < 8u + s.fields) {            /* the field word, at w0 + 2 */
+        const uint k = i - 8u;
+        return (slot.v[s.w0 + 2u] >> (k * 8u)) & 0xffu;
+    }
+    if (i < s.prefix_bytes) {           /* the rANS flush states, at w0 + 3 */
+        const uint k = i - 8u - s.fields;
+        uint w = s.w0 + 3u + (k >> 2);
+        return (slot.v[min(w, uint(slot.v.length()) - 1u)] >> ((k & 3u) * 8u)) &
                0xffu;
     }
     uint k = i - s.prefix_bytes;

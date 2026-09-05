@@ -233,7 +233,12 @@ extern "C" {
  * coefficient.  The CPU model writes that contiguously; the GPU slot below is
  * a scratch layout, not the same thing. */
 #define NXE_TILE_BYTES_MAX  (8 + 4 * 8 + 2 * NXE_TILE_COEFS_MAX)  /* 25000 */
-#define NXE_TILE_SLOT_WORDS (2 + 8 + NXE_TILE_COEFS_MAX)          /* 12490 */
+/* Two header words, ONE optional-field word, the eight rANS flush states, and
+ * the emission words.  The field word is reserved on every tile even though
+ * only a coded-vector tile uses it: one formula for the byte layout is worth
+ * four bytes a tile, and E5 would otherwise need the field size to find the
+ * flush states. */
+#define NXE_TILE_SLOT_WORDS (2 + 1 + 8 + NXE_TILE_COEFS_MAX)      /* 12491 */
 #define NXE_TILE_SLOT_BYTES (NXE_TILE_SLOT_WORDS * 4)             /* 49960 */
 
 /* Header sizes, ref/src/common.h. */
@@ -324,8 +329,8 @@ typedef struct nxe_frame_params {
 
 /* ------------------------------------------------------------- the tile job
  *
- * One record per tile: everything the mode decision (E1 plus the host rate
- * controller) settled, and the two fields E4 and E5 write back.  16 words.
+ * One record per tile: everything the mode decision (E1c plus the host rate
+ * controller) settled, and the fields E4 and E5 write back.  18 words.
  */
 typedef struct nxe_tile_job {
     uint32_t tile;           /* linear tile index, row-major eye-minor */
@@ -347,6 +352,13 @@ typedef struct nxe_tile_job {
     uint32_t tile_bytes;     /* written by E4: 8 + payload_len */
     uint32_t nunits;         /* written by E3 */
     uint32_t flags;
+
+    /* The tile's motion vector, quarter LUMA samples, two int8 packed low
+     * byte first: mv_x in bits 0-7, mv_y in 8-15.  Zero unless the mode is a
+     * coded-vector one, and written by E1c rather than by the host, because
+     * it is the decision's own output. */
+    uint32_t mv;
+    uint32_t pad_job;
 } nxe_tile_job;
 
 #define NXE_JOB_F_OK        1u

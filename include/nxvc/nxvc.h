@@ -466,8 +466,18 @@ typedef struct nxvc_config {
                                    same modes on the ADR-0028 clip -- because
                                    the SAD differences between candidates
                                    dominate a two-byte vector.              */
-    /* 0 = the integer decision considers only WARP_SKIP and INTRA; 1 = it
-     * also searches STATIC_MV and WARP_MV.  Default 1.
+    /* Which coded-vector modes the integer decision searches:
+     *   0 = none, WARP_SKIP and INTRA only
+     *   1 = STATIC_MV
+     *   2 = STATIC_MV and WARP_MV
+     * Default 2.
+     *
+     * 1 is the GPU encoder's configuration.  STATIC_MV's predictor is the
+     * IDENTITY plus a vector, so a candidate is a translation of the
+     * reference and the GPU can search it exactly with a fetch per sample;
+     * WARP_MV's is the full homography, and reproducing that outside the
+     * decoder's Pass W would be a second copy of the one piece of arithmetic
+     * this project refuses to have two of.
      *
      * 0 is the GPU encoder's first increment, and it is much more than "the
      * same thing with two candidates removed": with no coded vector in the

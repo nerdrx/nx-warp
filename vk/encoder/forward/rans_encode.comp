@@ -437,7 +437,8 @@ void main() {
         // ---- the 8-byte tile header and the rANS flush.
         if (live) {
             uint w0 = g_tile * uint(NXE_TILE_SLOT_WORDS);
-            if (lane < g_active) slot.v[w0 + 2u + uint(lane)] = state;
+            /* The flush states start after the field word, at w0 + 3. */
+            if (lane < g_active) slot.v[w0 + 3u + uint(lane)] = state;
             if (lane == 0 && skipped) {
                 // Nothing in the slot, nothing in the frame.  `sizes` still
                 // has to be written, because E2 prefix-sums every tile and a
@@ -449,6 +450,14 @@ void main() {
                 sizes.v[g_tile] = 0u;
             }
             if (lane == 0 && !skipped) {
+                /* SYNTAX.md 4.1: a coded-vector tile carries mv_present and
+                 * two vector bytes after the two header words.  They are the
+                 * only optional field this pipeline emits -- no quadrant
+                 * deltas, no constant alpha -- so `fields` is 0 or 2. */
+                const bool mvp = job.mode == uint(NXE_MODE_STATIC_MV) ||
+                                 job.mode == uint(NXE_MODE_WARP_MV) ||
+                                 job.mode == uint(NXE_MODE_STEREO);
+                const uint fields = mvp ? 2u : 0u;
                 uint h0 = (job.col & 0xfffu) << 4;
                 h0 |= (job.eye & 1u) << 2;
                 h0 |= (uint(payload) & 0xffffu) << 16;
@@ -458,17 +467,23 @@ void main() {
                 h1 |= uint(job.qp_delta & 0x3f) << 8;
                 h1 |= (job.table_set & 7u) << 14;
                 h1 |= (job.nsub_log2 & 7u) << 17;
+                h1 |= (mvp ? 1u : 0u) << 20;
                 h1 |= (job.tskip & 1u) << 23;
                 h1 |= (job.wm_id & 3u) << 26;
                 slot.v[w0] = h0;
                 slot.v[w0 + 1u] = h1;
+                /* The field word: mv_x then mv_y, low byte first, exactly as
+                 * emit_tile_fields() writes them. */
+                slot.v[w0 + 2u] = job.mv & 0xffffu;
                 jobs[g_tile].payload_len = uint(payload);
-                jobs[g_tile].tile_bytes = uint(NXE_TILE_HEADER_BYTES + payload);
+                jobs[g_tile].tile_bytes =
+                    uint(NXE_TILE_HEADER_BYTES) + fields + uint(payload);
                 jobs[g_tile].nunits = uint(g_nunits);
                 /* E5 needs the active lane count to find where the
                  * emission words begin. */
                 jobs[g_tile].flags = 1u | (uint(g_active) << 8);
-                sizes.v[g_tile] = uint(NXE_TILE_HEADER_BYTES + payload);
+                sizes.v[g_tile] =
+                    uint(NXE_TILE_HEADER_BYTES) + fields + uint(payload);
             }
         }
         barrier();

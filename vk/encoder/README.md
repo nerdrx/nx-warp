@@ -516,6 +516,44 @@ Two things this table is not:
   than on it.  A compositor with the machine to itself will see less; this
   column is a floor on the win, not a measurement of the encoder.
 
+## What STATIC_MV still needs
+
+The decision half of STATIC_MV is done and is correct in isolation: E1c
+searches it in the reference's own three stages and its own visit order,
+breaking ties on (SAD, visit index) so that "first wins" survives being
+evaluated in parallel; the vector reaches the tile header through
+`nxe_tile_job::mv`; E4 emits `mv_present` and the two vector bytes; the slot
+gains a field word so E5's byte layout has one formula.  Run against
+`nxv-enc --int-coded-vectors static`, **the modes and the vectors agree**.
+
+The streams do not, and the reason is worth recording because it was not on
+the plan.  E3 still codes every tile it does not skip against the **DC-plane
+INTRA predictor**.  A STATIC_MV tile therefore comes out with a full
+intra-sized residual -- 526 bytes against the reference's 40 -- and a stream
+that decodes to the wrong picture.
+
+That is the `pred_src` gap from the top of this file, arriving where it was
+always going to: an inter tile that CODES a residual needs the predictor
+materialised, and E3 has no binding for one.  WARP_SKIP did not need it,
+because a skipped tile codes nothing and Pass B adds the predictor back on the
+decode side; the moment a tile carries coefficients, E3 has to subtract the
+same predictor Pass B will add.
+
+So the remaining work is exactly:
+
+* a sixth binding on E3 carrying Pass W's WPred, and a branch in the residual
+  path that subtracts it instead of `pred_at()` for a tile whose mode is not
+  INTRA -- including the DC plane, whose block means are then means of the
+  residual rather than of the samples;
+* the CPU model's matching branch, so `--check` and the pinned digests still
+  cover the path;
+* then WARP_MV, which needs nothing further from E3 -- only Pass W predicting
+  it, which it already can.
+
+`nxvc-vkenc --coded-vectors` REFUSES until then rather than emitting the
+larger wrong stream, and `nxvc_config::int_coded_vectors` on the reference
+takes `static` (STATIC_MV only, the GPU's configuration) as well as `on`.
+
 ## What the coding passes do not implement
 
 What the coding passes do **not** implement, and refuse rather than ignore:

@@ -79,7 +79,7 @@
 #define NXE_TILE_UNIT_SLOTS NXE_TILE_UNITS_MAX
 #define NXE_UNIT_MAX_OPS    (3 + 64 * (1 + (NXE_ESC_MAX_PREFIX + 1) + 3 + 1))
 #define NXE_LANE_OPS_CAP    2048
-#define NXE_TILE_SLOT_WORDS (2 + 8 + NXE_TILE_COEFS_MAX)
+#define NXE_TILE_SLOT_WORDS (2 + 1 + 8 + NXE_TILE_COEFS_MAX)
 #define NXE_TILE_SLOT_BYTES (NXE_TILE_SLOT_WORDS * 4)
 
 #define NXE_MODE_WARP_SKIP     0
@@ -149,6 +149,7 @@ struct nxe_tile_job {
     uint table_set, tskip, wm_id;
     uint chroma444, res_level, mode, nsub_log2;
     uint payload_len, tile_bytes, nunits, flags;
+    uint mv, pad_job;
 };
 
 // ------------------------------------------------------------------ tables

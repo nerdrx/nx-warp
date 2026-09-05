@@ -96,7 +96,7 @@ struct VkEncoder::Impl {
     WarpParams warp{};
     int wpred_stride = 0;
     nxvw::NxvwWarpPush wpush{};
-    int32_t decide_push[4] = {};
+    int32_t decide_push[12] = {};
     nxvw::NxvwPassBPush bpush{};
     ViewState views{};
     /* Tiles the client is known NOT to hold.  Set by set_received_tiles(),
@@ -329,9 +329,9 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
     if (!d.dev.create_pipeline(warp_pred_spv, sizeof warp_pred_spv, sb3,
                                (uint32_t)sizeof(nxvw::NxvwWarpPush), d.p_w, err))
         return false;
-    const std::vector<VkDescriptorType> sb6(6, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
-    if (!d.dev.create_pipeline(E1c_decide_spv, sizeof E1c_decide_spv, sb6, 16,
-                               d.p_dec, err))
+    const std::vector<VkDescriptorType> sb8d(8, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    if (!d.dev.create_pipeline(E1c_decide_spv, sizeof E1c_decide_spv, sb8d,
+                               (uint32_t)sizeof d.decide_push, d.p_dec, err))
         return false;
 
     /* Pass B: the decoder's module, in the variant matching this stream --
@@ -400,7 +400,8 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
     d.s_dec = d.dev.allocate_set(d.pool, d.p_dec.dsl);
     write_set(h, d.s_w, {d.b_ring.buf, d.b_warp.buf, d.b_wpred.buf});
     write_set(h, d.s_dec, {d.b_params.buf, d.b_jobs.buf, d.b_src.buf,
-                           d.b_wpred.buf, d.b_warp.buf, d.b_tilerecs.buf});
+                           d.b_wpred.buf, d.b_warp.buf, d.b_tilerecs.buf,
+                           d.b_ring.buf, d.b_warp.buf});
 
     /* Pass B's sixteen bindings.  The seven image ones get 1x1 placeholders of
      * exactly the format each declares; nothing is ever written to them. */
@@ -683,6 +684,18 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
         d.decide_push[3] = d.cfg.int_intra_mad_q8 > 0
                                ? (int32_t)d.cfg.int_intra_mad_q8
                                : 2304;
+        /* The SAD-domain lambda, Q8: int_lambda_q8 per unit of quantiser step,
+         * and qstep is Q4, so lam = int_lambda_q8 * qstep / 16. */
+        const int32_t lam0 =
+            d.cfg.int_lambda_q8 > 0 ? (int32_t)d.cfg.int_lambda_q8 : 45;
+        d.decide_push[4] = (int32_t)(((int64_t)lam0 * nxe_qstep[qpc]) / 16);
+        d.decide_push[5] = d.cfg.mv_range > 0 ? d.cfg.mv_range : 16;
+        d.decide_push[6] = d.cfg.int_coded_vectors ? 1 : 0;
+        d.decide_push[7] = d.ring.stride[0];
+        d.decide_push[8] = d.ring.planeW[0] * (int)f.fp.eyes;
+        d.decide_push[9] = (int)f.fp.height;
+        d.decide_push[10] = 0;
+        d.decide_push[11] = 0;
 
         /* Pass B's push block.  `coefStrideI16` is the lever that lets it read
          * E3's coefficient buffer with no repack: the within-tile layout is
@@ -833,9 +846,30 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
             vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE,
                                     d.p_dec.layout, 0, 1, &d.s_dec, 0, nullptr);
             vkCmdPushConstants(cb, d.p_dec.layout, VK_SHADER_STAGE_COMPUTE_BIT,
-                               0, 16, d.decide_push);
+                               0, (uint32_t)sizeof d.decide_push,
+                               d.decide_push);
             vkCmdDispatch(cb, d.ntiles, 1, 1);
             d.dev.barrier_compute_to_compute(cb);
+
+            /* Pass W again, now that the decision has published each tile's
+             * mode and vector into its warp record.  The first dispatch
+             * predicted every eligible tile at the skip vector so the decision
+             * had something to measure; this one produces the predictor the
+             * tile will actually be CODED against, which is what E3 subtracts
+             * and what Pass B adds back.  A coded-vector tile predicted at the
+             * skip vector would reconstruct to something the decoder does not
+             * agree with. */
+            if (d.cfg.int_coded_vectors) {
+                vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                  d.p_w.pipe);
+                vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                        d.p_w.layout, 0, 1, &d.s_w, 0, nullptr);
+                vkCmdPushConstants(cb, d.p_w.layout,
+                                   VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                                   (uint32_t)sizeof d.wpush, &d.wpush);
+                vkCmdDispatch(cb, d.ntiles, 1, 1);
+                d.dev.barrier_compute_to_compute(cb);
+            }
         }
         vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, d.p_e3.pipe);
         vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE,

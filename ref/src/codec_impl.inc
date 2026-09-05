@@ -1535,7 +1535,11 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             // is part of the decision: an exact tie goes to the mode searched
             // first, on both sides.
             const int int_modes[2] = {NXVC_MODE_STATIC_MV, NXVC_MODE_WARP_MV};
-            const int nint_modes = e->cfg.int_coded_vectors ? 2 : 0;
+            /* 0 none, 1 STATIC_MV, 2 STATIC_MV + WARP_MV.  The order is the
+             * decision: an exact tie goes to the mode searched first, on both
+             * sides, so STATIC_MV must stay index 0. */
+            const int nint_modes =
+                e->cfg.int_coded_vectors > 2u ? 2 : (int)e->cfg.int_coded_vectors;
             for (int mi = 0; mi < nint_modes; ++mi) {
                 const int mode = int_modes[mi];
                 const bool warped = mode_needs_warp(mode);

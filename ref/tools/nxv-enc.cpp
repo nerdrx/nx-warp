@@ -231,7 +231,7 @@ int main(int argc, char **argv) {
     int inter = 0, eyes = 1, intra_period = 180, ref_sel = 0, stereo = 0;
     int mv_range = 16, skip_thresh = 0, mode_lambda = 0;
     int int_decision = 0, int_lambda = 0, int_intra_mad = 0;
-    int int_coded_vectors = 1;
+    int int_coded_vectors = 2;
     int threads = 0;   // 0 = auto
     // These mirror nxvc_config_default(): the inter-efficiency tools that the
     // measurement supports are on, sub-tile intra is not.
@@ -344,9 +344,14 @@ int main(int argc, char **argv) {
         else if (a == "--int-lambda") int_lambda = std::atoi(val());
         else if (a == "--int-coded-vectors") {
             std::string v = val();
-            if (v == "on") int_coded_vectors = 1;
+            if (v == "on") int_coded_vectors = 2;
+            else if (v == "static") int_coded_vectors = 1;
             else if (v == "off") int_coded_vectors = 0;
-            else { std::fprintf(stderr, "--int-coded-vectors: on|off\n"); return 2; }
+            else {
+                std::fprintf(stderr,
+                             "--int-coded-vectors: off|static|on\n");
+                return 2;
+            }
         }
         else if (a == "--int-intra-mad")
             int_intra_mad = (int)(std::atof(val()) * 256.0 + 0.5);

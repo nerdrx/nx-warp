@@ -87,6 +87,13 @@ struct Config {
     int intra_period = 180;
     int skip_thresh = 0;
     int int_intra_mad_q8 = 0;   /* 0 = the library default, 2304 (MAD 9) */
+    int int_lambda_q8 = 0;      /* 0 = the library default, 45            */
+    int mv_range = 0;           /* 0 = the default 16                     */
+    /* 1 = the decision searches STATIC_MV.  WARP_MV is NOT searched on this
+     * path: its predictor is the full homography and reproducing it outside
+     * Pass W would be a second copy of the one piece of arithmetic this
+     * project refuses to have two of. */
+    bool int_coded_vectors = false;
 
     int device = 0;
     bool cpu_only = false;
