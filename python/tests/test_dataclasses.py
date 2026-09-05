@@ -36,7 +36,7 @@ def test_stream_header_round_trip():
         num_layers=2,
         layer_desc=(0x11, 0x22, 0, 0),
         # SYNTAX.md 2.3: LOSSLESS and SIGN_HIDE cannot both be set.
-        tools=nxvc.TOOLS_SUPPORTED & ~nxvc.Tool.SIGN_HIDE,
+        tools=nxvc.TOOLS_SUPPORTED & ~(nxvc.Tool.SIGN_HIDE | nxvc.Tool.ENTROPY_LITE),
     )
     raw = hdr.pack()
     assert len(raw) == 64
@@ -221,7 +221,7 @@ def test_stream_info_from_c_struct():
         color_space=nxvc.ColorSpace.RGB,
         alpha=0,
         # SYNTAX.md 2.3: LOSSLESS and SIGN_HIDE cannot both be set.
-        tools=nxvc.TOOLS_SUPPORTED & ~nxvc.Tool.SIGN_HIDE,
+        tools=nxvc.TOOLS_SUPPORTED & ~(nxvc.Tool.SIGN_HIDE | nxvc.Tool.ENTROPY_LITE),
         ext_len=8,
         ext_tlv_count=1,
         ext_unknown_count=0,

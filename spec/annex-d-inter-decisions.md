@@ -41,8 +41,8 @@ owning document. D-21 lists the conformance vectors Phase 2 must add.
 | D-20 | Field ownership map | C-1..C-30 boundary set |
 | D-21 | Phase 2 conformance vectors | C-19 (part) |
 | D-23 | The intra refresh may be driven by measured shadow drift; the period becomes a hard age cap. No syntax | — |
-| D-24 | Near-skip: a warped tile whose whole residual is a DC-and-ramps mean field, tool bit 24 | — |
-| D-25 | Four quadrant vectors per tile as signed nibble deltas over the **tile's** corner basis, tool bit 25 | C-15 (part) |
+| D-24 | Near-skip: a warped tile whose whole residual is a DC-and-ramps mean field, tool bit 28 | — |
+| D-25 | Four quadrant vectors per tile as signed nibble deltas over the **tile's** corner basis, tool bit 29 | C-15 (part) |
 | D-26 | One 32x32 quadrant of an inter tile may drop the predictor to the plane's DC offset, tool bit 26 | — |
 
 Issues left open on purpose: C-10 and C-30 (hybrid, `[pending HYBRID.md]`),
@@ -976,10 +976,18 @@ can fire from content rather than from schedule.
 
 ## D-24 — Near-skip: a tile whose whole residual is a mean field
 
-**Decision.** Tool bit 24 `NEAR_SKIP` and tile-header word1 bits 28-29. A
-warped tile may carry, instead of an entropy-coded payload, three signed bytes
--- one per colour plane -- that are the DC of a block-mean correction, or nine
-that add a horizontal and a vertical ramp. `docs/SYNTAX.md` 13.9.
+**Decision.** Tool bit 28 `NEAR_SKIP`, carried in the TILE-ROW header rather
+than in any tile-header word1 bit. A warped tile may carry, instead of an
+entropy-coded payload, nine signed bytes -- three per colour plane, a DC level
+and a horizontal and a vertical ramp. `docs/SYNTAX.md` 13.9.
+
+**Amended by the merge.** This annex was written against the branch's tile
+structure form with an optional-ramp flag. Both parts changed: the record moved
+into the row header (`dc_present`, `dc_bitmap`, nine bytes per named tile), so a
+near-skip tile is a *skipped* tile with a bias and costs no word1 bit at all;
+and the ramps stopped being optional, because the branch's encoder never chose
+them and the DC-only form was exercised by nothing. One record size, always
+nine bytes.
 
 **Why it exists.** `ref/RESULTS-inter.md` 4 measures the codec at its own
 operating point spending two thirds of its tiles on `WARP_SKIP`, and section 3
@@ -1018,7 +1026,7 @@ would have made `WARP_MV` and `STATIC_MV` need one each.
 
 ## D-25 — Quadrant vectors over the tile's corner basis
 
-**Decision.** Tool bit 25 `QUAD_MV` and tile-header word1 bit 30. A
+**Decision.** Tool bit 29 `QUAD_MV` and tile-header word1 bit 31. A
 `WARP_MV` or `STATIC_MV` tile may carry four vectors, one per 32x32 quadrant,
 as signed nibble deltas from the tile vector in four bytes.
 `docs/SYNTAX.md` 13.10.

@@ -36,7 +36,7 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
 
 **Bitstream syntax v1.6 -- the large transforms**
 
-- Tool bit 24 `XFORM_LARGE` and the tile header's two-bit `xform_size` (word1 bits 28-29): a 16x16 or
+- Tool bit 27 `XFORM_LARGE` and the tile header's two-bit `xform_size` (word1 bits 29-30): a 16x16 or
   32x32 integer DCT for every plane of a tile instead of the 8x8 one. The transforms are the even/odd
   recursion on the existing Loeffler 8-point core with two constant rotation matrices on the same 512
   scale, 2D gains of exactly `2^21` and `2^22`, and shift chains 7/14 and 8/14; every intermediate

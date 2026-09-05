@@ -416,6 +416,17 @@ class StreamHeader(_TableStruct):
                 "tool bit CTX_V3 without CTX_V2: it names no context model",
                 offset + 32,
             )
+        # SYNTAX.md 2.3 / 9.10: the table-free coder transmits no tables for
+        # CUSTOM_TABLES to compact, and has no arithmetic state for a hidden
+        # sign to ride on (rejection vectors r42 and r43).
+        if (self.tools & Tool.ENTROPY_LITE) and (
+            self.tools & (Tool.SIGN_HIDE | Tool.CUSTOM_TABLES)
+        ):
+            raise BitstreamError(
+                "tool bit ENTROPY_LITE with SIGN_HIDE or CUSTOM_TABLES: the "
+                "table-free coder has neither a table nor an arithmetic state",
+                offset + 32,
+            )
         # SYNTAX.md 7.7: chroma from luma is a tenth value of the CTX_V2 mode
         # symbol in the replace form of directional intra, so it is meaningless
         # without both (rejection vector r30).

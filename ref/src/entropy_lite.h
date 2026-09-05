@@ -1,4 +1,4 @@
-// ENTROPY_LITE (tool bit 24): a fully parallel entropy tool for high-bitrate
+// ENTROPY_LITE (tool bit 30): a fully parallel entropy tool for high-bitrate
 // links.  No arithmetic coder, no probability tables, no serial state: a tile
 // is four byte-aligned sections whose per-unit offsets are computable with two
 // parallel prefix sums, so one lane can decode any unit -- and, in the FIXED

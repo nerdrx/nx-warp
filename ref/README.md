@@ -278,9 +278,9 @@ cfg.drift_refresh = 1;   /* schedule the refresh from measured shadow drift
                             instead of a fixed 1-in-T permutation; intra_period
                             becomes a hard age cap.  No syntax.  (13.8)      */
 cfg.drift_gate_q8 = 0;   /* the gate, Q8 multiple of qstep^2/12; 0 = default */
-cfg.near_skip = 1;       /* tool bit 24: a warped tile may carry a DC-and-ramps
+cfg.near_skip = 1;       /* tool bit 28: a warped tile may carry a DC-and-ramps
                             correction instead of a payload          (13.9)  */
-cfg.quad_mv = 1;         /* tool bit 25: four quadrant vectors as nibble deltas
+cfg.quad_mv = 1;         /* tool bit 29: four quadrant vectors as nibble deltas
                             from the tile vector                     (13.10) */
 ```
 

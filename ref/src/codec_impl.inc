@@ -52,7 +52,7 @@ static double row_cost(const u32 *h, const u16 *f) {
     return bits;
 }
 
-// What a transmitted table set will contain.  Under TAB_V2 (tool bit 24) each
+// What a transmitted table set will contain.  Under TAB_V2 (tool bit 26) each
 // context is preceded by a one-bit `row_coded` flag, and a row whose trained
 // version does not save more than the 80 bits it costs is left at the built-in
 // default.  `any` is false when no row pays, in which case the set is not

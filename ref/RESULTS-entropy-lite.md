@@ -1,6 +1,6 @@
 # ENTROPY_LITE: a fully parallel entropy tool, measured
 
-What this is: `docs/SYNTAX.md` 9.8, tool bit 24. An entropy coding for the
+What this is: `docs/SYNTAX.md` 9.10, tool bit 30 (the branch wrote 9.8 and bit 24; both were renumbered by the merge). An entropy coding for the
 coefficient payload with **no arithmetic coder** -- no rANS state, no
 probability tables, and no serial dependency between one coded value and the
 next. It exists for one reason: Pass A (`vk/decoder/passA`) is latency-bound on
@@ -107,7 +107,7 @@ Mbit/s at 90 fps, and PSNR-Y. The quantized coefficients are **identical**
 between the rANS and Lite columns of a row -- the RD trellis, the table-set
 choice and the mode decision all still run on the rANS rate model, so this is
 two entropy coders on the same data, not two encoders. (The small PSNR
-difference is sign data hiding, which tool bit 24 forbids and which the rANS
+difference is sign data hiding, which tool bit 30 forbids and which the rANS
 column therefore keeps.)
 
 ### 4:4:4
