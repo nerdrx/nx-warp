@@ -101,6 +101,41 @@ if(TARGET nxvc-vkenc AND TARGET nxv-enc AND TARGET nxv-dec)
   set_tests_properties(vk.encoder.inter.acid.0 PROPERTIES
                        SKIP_REGULAR_EXPRESSION "SKIP:")
   list(APPEND NXENC_TESTS vk.encoder.inter.acid.0)
+
+  # The same sequence at ENTROPY_LITE.  Inter is where the entropy tool and
+  # the TILE HEADER meet: a coded-vector tile carries the optional vector
+  # field between the header and a payload whose layout Lite changed, so a
+  # mistake in the field size moves every byte of that tile.
+  add_test(NAME vk.encoder.inter.acid.lite
+           COMMAND ${CMAKE_COMMAND}
+           -DVKENC=$<TARGET_FILE:nxvc-vkenc>
+           -DNXVENC=$<TARGET_FILE:nxv-enc>
+           -DNXVDEC=$<TARGET_FILE:nxv-dec>
+           -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/inter-acid-lite
+           -DVKENCAPI=$<IF:$<TARGET_EXISTS:nxvc-vkenc-api>,$<TARGET_FILE:nxvc-vkenc-api>,>
+           -DDEVICE=0
+           -DENTROPY=lite
+           -P ${CMAKE_CURRENT_SOURCE_DIR}/inter_acid.cmake)
+  set_tests_properties(vk.encoder.inter.acid.lite PROPERTIES
+                       SKIP_REGULAR_EXPRESSION "SKIP:")
+  list(APPEND NXENC_TESTS vk.encoder.inter.acid.lite)
+endif()
+
+# The loop closed: what nxvc_vk_decoder -- the decoder that runs on the
+# headset, and the whole reason ENTROPY_LITE exists -- makes of the streams
+# the GPU encoder produced at tool bit 30.  Every other Lite test compares
+# against nxv-enc or nxv-dec; this one compares the two GPU halves.
+if(TARGET nxvc-vkenc AND TARGET nxvc-vkdec AND TARGET nxv-dec)
+  add_test(NAME vk.encoder.lite.decode
+           COMMAND ${CMAKE_COMMAND}
+           -DVKENC=$<TARGET_FILE:nxvc-vkenc>
+           -DVKDEC=$<TARGET_FILE:nxvc-vkdec>
+           -DNXVDEC=$<TARGET_FILE:nxv-dec>
+           -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/lite-decode
+           -P ${CMAKE_CURRENT_SOURCE_DIR}/lite_decode.cmake)
+  set_tests_properties(vk.encoder.lite.decode PROPERTIES
+                       SKIP_REGULAR_EXPRESSION "SKIP:")
+  list(APPEND NXENC_TESTS vk.encoder.lite.decode)
 endif()
 
 if(TARGET nxenc-inter-test)

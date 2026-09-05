@@ -383,6 +383,18 @@ void main() {
                 jobs[g_tile].flags = 1u;
                 sizes.v[g_tile] = 0u;
             } else {
+                /* SYNTAX.md 4.1's optional fields sit between the two header
+                 * words and the payload, and are the same on this path as on
+                 * E4's: a coded-vector tile carries mv_present and two vector
+                 * bytes, and nothing else this pipeline emits is optional.
+                 * The entropy tool does not reach them -- they are tile
+                 * header, not payload -- but E5 sizes the payload from
+                 * `tile_bytes` minus them, so getting this wrong here moves
+                 * every byte of an inter tile. */
+                const bool mvp = job.mode == uint(NXE_MODE_STATIC_MV) ||
+                                 job.mode == uint(NXE_MODE_WARP_MV) ||
+                                 job.mode == uint(NXE_MODE_STEREO);
+                const uint fields = mvp ? 2u : 0u;
                 uint h0 = (job.col & 0xfffu) << 4;
                 h0 |= (job.eye & 1u) << 2;
                 h0 |= (uint(payload) & 0xffffu) << 16;
@@ -396,21 +408,23 @@ void main() {
                 // job, so this is a read of that and not a second decision.
                 h1 |= (job.table_set & 7u) << 14;
                 h1 |= (job.nsub_log2 & 7u) << 17;
+                h1 |= (mvp ? 1u : 0u) << 20;
                 h1 |= (job.tskip & 1u) << 23;
                 h1 |= (job.wm_id & 3u) << 26;
                 slot.v[w0] = h0;
                 slot.v[w0 + 1u] = h1;
-                slot.v[w0 + 2u] = 0u;
+                /* mv_x then mv_y, low byte first, as emit_tile_fields(). */
+                slot.v[w0 + 2u] = job.mv & 0xffffu;
                 jobs[g_tile].payload_len = uint(payload);
                 jobs[g_tile].tile_bytes =
-                    uint(NXE_TILE_HEADER_BYTES) + uint(payload);
+                    uint(NXE_TILE_HEADER_BYTES) + fields + uint(payload);
                 jobs[g_tile].nunits = uint(g_nunits);
                 // The active-lane count E5 uses to find the rANS flush states
                 // is ZERO here, because there are none: E5's Lite variant
                 // reads the payload straight after the field word.
                 jobs[g_tile].flags = 1u;
                 sizes.v[g_tile] =
-                    uint(NXE_TILE_HEADER_BYTES) + uint(payload);
+                    uint(NXE_TILE_HEADER_BYTES) + fields + uint(payload);
             }
         }
         barrier();

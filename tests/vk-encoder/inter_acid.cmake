@@ -52,6 +52,23 @@
 file(REMOVE_RECURSE ${WORKDIR})
 file(MAKE_DIRECTORY ${WORKDIR})
 
+# ENTROPY ("rans", the default, or "lite") drives BOTH encoders' entropy tool.
+# Lite also turns sign hiding and the transmitted tables off in both -- the
+# syntax forbids the combination and each encoder resolves it at create() --
+# so those flags travel with it rather than being spelled inline.
+if(NOT DEFINED ENTROPY)
+  set(ENTROPY rans)
+endif()
+if(ENTROPY STREQUAL "lite")
+  set(REF_ENT --entropy lite-fixed --no-sign-hide --no-custom-tables --tab v1)
+  set(GPU_ENT --entropy lite)
+  set(API_ENT --entropy lite)
+else()
+  set(REF_ENT --entropy rans --sign-hide --custom-tables --tab v2)
+  set(GPU_ENT --custom-tables --tab v2)
+  set(API_ENT)
+endif()
+
 if(DEVICE STREQUAL "cpu")
   message(STATUS "SKIP: the inter path has no CPU model yet")
   return()
@@ -80,13 +97,13 @@ list(GET fx 4 FRAMES)
 
 set(common --in ${YUV} --w ${W} --h ${H} --pix yuv420p --qp 26
            --frames ${FRAMES} --nsub 3 --matrix 1 --wm 0 --tskip off
-           --chroma-qp-off 0 --ctx v3 --sign-hide --eyes 1 --intra-dir off
+           --chroma-qp-off 0 --ctx v3 --eyes 1 --intra-dir off
            --quiet)
 set(interargs --poses ${POSES} --intra-period 6)
 
 execute_process(COMMAND ${NXVENC} ${common} ${interargs}
-                        --no-rdo --custom-tables --split4x4 off --cfl off
-                        --tab v2 --xform 8 --entropy rans
+                        --no-rdo --split4x4 off --cfl off
+                        --xform 8 ${REF_ENT}
                         --inter on --int-decision on --int-coded-vectors off
                         --preset fast --me-effort 1 --quad-mv off
                         --near-skip off --drift-refresh off
@@ -99,7 +116,7 @@ endif()
 execute_process(COMMAND ${CMAKE_COMMAND} -E env
                         NXE_DUMP_RING=${WORKDIR}/ring
                         ${VKENC} ${common} ${interargs} --inter
-                        --custom-tables --tab v2
+                        ${GPU_ENT}
                         --device ${DEVICE} --out ${WORKDIR}/gpu.nxv
                 RESULT_VARIABLE rc ERROR_VARIABLE eout)
 if(NOT rc EQUAL 0)
@@ -161,6 +178,7 @@ if(VKENCAPI)
   execute_process(COMMAND ${VKENCAPI} --in ${YUV} --w ${W} --h ${H} --qp 26
                           --frames ${FRAMES} --matrix 1
                           --inter --intra-period 6 --poses ${POSES}
+                          ${API_ENT}
                           --coded-vectors none
                           --out ${WORKDIR}/api.nxv
                   RESULT_VARIABLE rc ERROR_VARIABLE eout)
@@ -183,6 +201,7 @@ if(VKENCAPI)
   execute_process(COMMAND ${VKENCAPI} --in ${YUV} --w ${W} --h ${H} --qp 26
                           --frames ${FRAMES} --matrix 1
                           --inter --intra-period 6 --poses ${POSES}
+                          ${API_ENT}
                           --drop-at 2
                           --out ${WORKDIR}/reset.nxv
                   RESULT_VARIABLE rc ERROR_VARIABLE eout)
@@ -203,8 +222,8 @@ endif()
 # different decisions and both have to hold, and the skip-only one is what the
 # library ships until the ABI exposes the other.
 execute_process(COMMAND ${NXVENC} ${common} ${interargs}
-                        --no-rdo --custom-tables --split4x4 off --cfl off
-                        --tab v2 --xform 8 --entropy rans
+                        --no-rdo --split4x4 off --cfl off
+                        --xform 8 ${REF_ENT}
                         --inter on --int-decision on --int-coded-vectors static
                         --preset fast --me-effort 1 --quad-mv off
                         --near-skip off --drift-refresh off
@@ -214,7 +233,7 @@ if(NOT rc EQUAL 0)
   message(FATAL_ERROR "nxv-enc failed with STATIC_MV (${rc})")
 endif()
 execute_process(COMMAND ${VKENC} ${common} ${interargs} --inter --coded-vectors
-                        --custom-tables --tab v2
+                        ${GPU_ENT}
                         --device ${DEVICE} --out ${WORKDIR}/gpu-mv.nxv
                 RESULT_VARIABLE rc ERROR_VARIABLE eout)
 if(NOT rc EQUAL 0)
@@ -244,6 +263,7 @@ if(VKENCAPI)
   execute_process(COMMAND ${VKENCAPI} --in ${YUV} --w ${W} --h ${H} --qp 26
                           --frames ${FRAMES} --matrix 1
                           --inter --intra-period 6 --poses ${POSES}
+                          ${API_ENT}
                           --out ${WORKDIR}/api-mv.nxv
                   RESULT_VARIABLE rc ERROR_VARIABLE eout)
   if(NOT rc EQUAL 0)
