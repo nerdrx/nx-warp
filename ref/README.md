@@ -35,6 +35,18 @@ v1.4 stream byte for byte, and the 56 committed conformance vectors are
 unchanged. See [`docs/SYNTAX.md`](../docs/SYNTAX.md) 9.4.1 and 9.8 and
 [`RESULTS-ctx-b.md`](RESULTS-ctx-b.md).
 
+v1.6 also adds the large transforms: tool bit 27 `XFORM_LARGE` and the tile
+header's two-bit `xform_size`, which selects a 16x16 or 32x32 integer DCT for
+every plane of the tile instead of the 8x8 one, and re-grids the DC plane onto
+it. Additive and off by default -- `nxv-enc --xform auto` turns the per-tile
+rate-distortion choice on. It is the largest single win in the tournament:
+**-29.2 BD-rate points on 4:4:4 and -38.1 on 4:2:0** against x264 intra, as
+the judge measured it. The 4x4 split of tool bit 19 is the fourth size of the
+same transform family, and by SYNTAX.md 4.1 it is meaningful only where
+`xform_size` selects the 8x8 transform. See
+[`docs/SYNTAX.md`](../docs/SYNTAX.md) 6.7 and 6.8 and
+[`RESULTS-xform-a.md`](RESULTS-xform-a.md).
+
 **Syntax revision v1.4** adds the inter path: the frame-header flag
 `warp_present` (bit 3) and the 36-byte-per-eye `warp_ext()` that follows the
 frame header, the four inter tile modes, `eyes == 2` with row-major/eye-minor
@@ -122,13 +134,14 @@ and the v1.4 inter switches:
 | `--skip-map FILE` | none | per-tile `force_warp_skip` flags from the rate controller |
 | `--mode-lambda F` | 0.25 | lambda of the per-tile mode decision relative to the trellis |
 
-and the v1.5 entropy switches:
+and the v1.6 entropy and transform switches:
 
 | flag | default | effect |
 |---|---|---|
-| `--ctx v1\|v2\|v3` | `v3` | 12, 16 or 22 entropy contexts (tool bits 21, 25) |
-| `--tab v1\|v2` | `v2` | transmitted-table coding: flat 5-bit deltas, or the compact per-row form (tool bit 24) |
-| `--table-iters N` | 3 | Lloyd iterations refining the eight per-frame table sets; 0 is the v1.4 encoder. **Encoder only** |
+| `--ctx v1\|v2\|v3` | `v2` | 12, 16 or 27 entropy contexts (tool bits 21, 25). `v3` ships **off**: `vk/decoder/passA` does not implement it |
+| `--tab v1\|v2` | `v1` | transmitted-table coding: flat 5-bit deltas, or the compact per-row form (tool bit 26). Ships **off**, same reason |
+| `--table-iters N` | 3 | Lloyd iterations refining the eight per-frame table sets; 0 is off. **Encoder only** |
+| `--xform 8\|16\|32\|auto` | `8` | transform size (tool bit 27); `auto` picks it per tile by rate-distortion, at about 4x the encode time. `--split4x4` applies only where this resolves to 8 |
 
 ```sh
 # a stereo inter stream from a corpus sequence and its pose log
@@ -241,9 +254,10 @@ tile  := tile_header [mv | disparity] [alpha] payload
 | tile header | 8 bytes (+2 MV, +1 constant alpha) |
 | tile payload | interleaved rANS, `4 * lanes` bytes of initial state first |
 
-Fixed parameters: 64x64 tiles, 8x8 blocks, 8x8 integer DCT with 9-bit
-Loeffler-derived constants, QP 0..63 with `step = 2^(QP/6)` as a Q4 table,
-interleaved rANS with a 32-bit state, 10-bit probabilities, 12, 16 or 22
+Fixed parameters: 64x64 tiles, a 4x4, 8x8, 16x16 or 32x32 integer DCT from one
+transform family with 9-bit Loeffler-derived constants, QP 0..63 with
+`step = 2^(QP/6)` as a Q4 table,
+interleaved rANS with a 32-bit state, 10-bit probabilities, 12, 16 or 27
 contexts of 16 symbols, and 1 to 8 lanes per tile (`nsub_log2`; 8 is one subgroup cluster and
 the value a GPU decoder should assume as the maximum).
 
@@ -254,7 +268,7 @@ the value a GPU decoder should assume as the maximum).
 | `src/common.h` | constants, contexts, tile geometry |
 | `src/tables.cpp` | QP steps, weighting matrices, scans, LAST classes, table normalization |
 | `src/default_tables.inc` | the 8 built-in probability table sets, v1 (12 contexts) and v2 (16) |
-| `src/transform.h/.cpp` | 8x8 integer DCT/IDCT and the bilinear resampler |
+| `src/transform.h/.cpp` | the 8x8, 16x16 and 32x32 integer DCT/IDCT and the bilinear resampler |
 | `src/entropy.h/.cpp` | rANS and the per-lane syntax state machine |
 | `src/codec.cpp` + `src/codec_impl.inc` | headers, encoder, decoder |
 | `tools/` | `nxv-enc`, `nxv-dec`, `nxv-info` |
@@ -263,7 +277,8 @@ the value a GPU decoder should assume as the maximum).
 | `../tests/ref/test_saturate.cpp` | range safety of the normative decode path |
 | `RESULTS-intra.md` | the Phase 1 intra measurements, in full |
 | `RESULTS-detail-a.md` | the v1.6 detail tools, measured before and after |
-| `RESULTS-ctx-b.md` | the v1.6 entropy and context package, in full |
+| `RESULTS-ctx-a.md`, `RESULTS-ctx-b.md` | the v1.6 entropy and context package, in full |
+| `RESULTS-xform-a.md` | the large-transform package: before/after, GPU cost, the two rejected variants |
 
 The per-lane syntax state machine in `entropy.cpp` is the piece the Vulkan Pass A
 shader mirrors: one `LaneMachine` per rANS lane, driven identically by the
@@ -304,6 +319,10 @@ ctest --preset asan-ubsan -R 'ref\.'
 
 `tests/vectors/` holds 61 committed `.nxv` vectors and `vectors.md5`, which pins
 both the MD5 of each bitstream and the MD5 of its decoded planes, plus 32
+=======
+`tests/vectors/` holds 62 committed `.nxv` vectors and `vectors.md5`, which
+pins both the MD5 of each bitstream and the MD5 of its decoded planes, plus 32
+>>>>>>> tourney/xform-a
 **rejection vectors** and `rejects.md5`, which pin the exact status each
 malformed stream must be refused with. `VERSION`, `UNSUPPORTED`, `BITSTREAM`
 and `TRUNCATED` are not interchangeable: a transport falls back on one and

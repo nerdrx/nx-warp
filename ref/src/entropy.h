@@ -26,8 +26,8 @@ int nonmpm_index(int mpm, int mode, int nmodes);
 
 struct Unit {
     i16 *coef;        // UNIT_COEF: ncoef quantized levels, block-local order
-    const u8 *scan;   // scan_pos -> block-local index
-    u16 ncoef;
+    const u16 *scan;  // scan_pos -> block-local index
+    u16 ncoef;        // up to 1024 (a 32x32 block)
     u8 ctx_cbf;       // kCtxCbfLuma / kCtxCbfChroma / kCtxCbfDc
     u8 ctx_last;      // kCtxLastLuma / kCtxLastChroma / kCtxLastDc
     u8 ctx_level;     // kCtxNone = the banded LEVEL contexts; else a context
@@ -100,9 +100,13 @@ class LaneMachine {
     Phase phase_ = kDone;
 
     const Unit *u_ = nullptr;
-    const u8 *scan_ = nullptr;   // u_->scan, or the split scan when split_
+    const u16 *scan_ = nullptr;  // u_->scan, or the split scan when split_
     bool split_ = false;
     int last_ = 0, pos_ = 0, prev_class_ = 0;
+    // last_shift_of(ncoef): 0 for every unit of at most 64 coefficients, 2
+    // for a 16x16 block and 4 for a 32x32 one.  It scales the LAST class
+    // table and the LEVEL bands to the unit's size (common.h).
+    int lshift_ = 0;
     int last_cls_ = 0;
     i32 mag_ = 0;
     int esc_j_ = 0;          // escape prefix length so far

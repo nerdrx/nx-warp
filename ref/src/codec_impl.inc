@@ -127,7 +127,7 @@ static size_t plane_coef_offset(const TileCoder &tc, int p) {
     size_t off = 0;
     for (int i = 0; i < p; ++i) {
         size_t ndc = (size_t)tc.pl[i].nb * tc.pl[i].nb;
-        off += ndc + ndc * 64;
+        off += ndc + ndc * (size_t)tc.pl[i].bsize * tc.pl[i].bsize;
     }
     return off;
 }
@@ -338,6 +338,7 @@ static u64 encoder_tools(const nxvc_encoder *e) {
     if (e->cfg.intra_dir) t |= NXVC_TOOL_INTRA_DIR;
     if (e->fp.split4) t |= NXVC_TOOL_XFORM_4X4_SPLIT;
     if (e->fp.cfl) t |= NXVC_TOOL_INTRA_CFL;
+    if (e->cfg.xform_size != 0 && !e->cfg.lossless) t |= NXVC_TOOL_XFORM_LARGE;
     if (e->cfg.ctx_v2) t |= NXVC_TOOL_CTX_V2;
     if (e->cfg.ctx_v3) t |= NXVC_TOOL_CTX_V3;
     if (e->fp.tab_v2) t |= NXVC_TOOL_TAB_V2;
@@ -697,6 +698,63 @@ static void finalize_recon(TileCoder &tc) {
     }
 }
 
+#ifdef NXVC_XFORM_CTX_EXPERIMENT
+// Cross-entropy, in bits, of coding `h` with the distribution `model`.
+static double xent(const u64 *h, const u64 *model) {
+    u64 mt = 0, ht = 0;
+    for (int s = 0; s < kNumSym; ++s) { mt += model[s]; ht += h[s]; }
+    if (mt == 0 || ht == 0) return 0;
+    double bits = 0;
+    for (int s = 0; s < kNumSym; ++s) {
+        if (!h[s]) continue;
+        // one count of Laplace smoothing, which is what normalize_freqs's
+        // "every entry >= 1" does to a transmitted table.
+        double p = (double)(model[s] + 1) / (double)(mt + kNumSym);
+        bits += (double)h[s] * -std::log2(p);
+    }
+    return bits;
+}
+
+// What a per-transform-size context family would be worth: the frame's
+// symbols coded with one merged table against each size coded with its own.
+static void xform_ctx_report(const u64 xh[kXformSizes][kNumCtx][kNumSym],
+                             int nctx) {
+    double split = 0, merged = 0;
+    u64 total[kNumCtx][kNumSym];
+    std::memset(total, 0, sizeof(total));
+    for (int x = 0; x < kXformSizes; ++x)
+        for (int c = 0; c < nctx; ++c)
+            for (int s = 0; s < kNumSym; ++s) total[c][s] += xh[x][c][s];
+    for (int x = 0; x < kXformSizes; ++x)
+        for (int c = 0; c < nctx; ++c) {
+            split += xent(xh[x][c], xh[x][c]);
+            merged += xent(xh[x][c], total[c]);
+        }
+    if (merged <= 0) return;
+    std::fprintf(stderr,
+                 "[xform-ctx] merged %.0f bits, per-size %.0f bits, "
+                 "a per-size family would save %.3f %%\n",
+                 merged, split, 100.0 * (merged - split) / merged);
+    for (int x = 0; x < kXformSizes; ++x) {
+        u64 n = 0;
+        for (int c = 0; c < nctx; ++c)
+            for (int s = 0; s < kNumSym; ++s) n += xh[x][c][s];
+        std::fprintf(stderr, "[xform-ctx]   %2dx%-2d %llu symbols\n", 8 << x,
+                     8 << x, (unsigned long long)n);
+    }
+    for (int x = 0; x < kXformSizes; ++x) {
+        u64 n = 0;
+        for (int m = 0; m < kNumIntraModes; ++m) n += g_mode_hist[x][m];
+        if (!n) continue;
+        std::fprintf(stderr, "[xform-mode] %2dx%-2d", 8 << x, 8 << x);
+        for (int m = 0; m < kNumIntraModes; ++m)
+            std::fprintf(stderr, " %5.1f%%",
+                         100.0 * (double)g_mode_hist[x][m] / (double)n);
+        std::fprintf(stderr, "   (%llu blocks)\n", (unsigned long long)n);
+    }
+}
+#endif
+
 // Rolling intra refresh (PAPER 2.6, Annex D).  1/T of the tiles are forced
 // INTRA every frame, chosen by a fixed pseudo-random permutation of the tile
 // index rather than a column sweep, so there is no visible refresh wave; each
@@ -806,6 +864,13 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                                                           ? 8u : e->cfg.qp_search);
     const bool wm_search = e->cfg.wm_id == 255 && fp.quant_matrix != 255 &&
                            !e->cfg.lossless;
+    // `xform_size == 255` asks the encoder to pick the tile's transform size
+    // by rate-distortion.  It joins the qp/wm search below rather than the
+    // mode decision: the mode decision compares predictors, and a predictor
+    // that wins at 8x8 wins at 32x32 as well, whereas the transform size is a
+    // property of the residual the chosen predictor leaves behind.
+    const bool xform_search = e->cfg.xform_size == 255 && !e->cfg.lossless &&
+                              e->cfg.transform_skip != 1;
     const int dir_cand = e->cfg.intra_dir_cand ? (int)(e->cfg.intra_dir_cand > 8
                                                           ? 8u
                                                           : e->cfg.intra_dir_cand)
@@ -889,7 +954,17 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         tp.table_set = clamp_i32((fp.base_qp + tp.qp_delta) >> 3, 0, 7);
         tp.nsub_log2 = e->cfg.nsub_log2 == 255 ? 3 : (int)e->cfg.nsub_log2;
         tp.tskip = e->cfg.transform_skip == 1 ? 1 : 0;
-        tp.split4 = (fp.split4 && !tp.tskip) ? 1 : 0;
+        // 255 means "search per tile"; the search below seeds from 8x8.  A
+        // transform-skip tile is 8x8 by construction (SYNTAX.md 6.6).
+        if (!e->cfg.lossless && e->cfg.xform_size != 255)
+            tp.xform_size = clamp_i32((int)e->cfg.xform_size, 0, 2);
+        if (tp.tskip) tp.xform_size = 0;
+        // The 4x4 split is meaningful ONLY at the 8x8 transform (SYNTAX.md
+        // 4.1): a stream that sets it at any other size is BITSTREAM, so the
+        // encoder must never ask for one.  This is the whole composition rule
+        // between the two transform tools, in one line, on the encoder side;
+        // its decoder half is the rejection in parse_tile_header.
+        tp.split4 = (fp.split4 && !tp.tskip && tp.xform_size == 0) ? 1 : 0;
         if (fp.quant_matrix != 255 && e->cfg.wm_id != 0 && !e->cfg.lossless)
             tp.wm_id = e->cfg.wm_id == 255 ? 0 : clamp_i32((int)e->cfg.wm_id, 0, 3);
         return tp;
@@ -1197,6 +1272,10 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
     std::vector<u32> tilehist;
     if (e->cfg.custom_tables)
         tilehist.assign((size_t)ntiles * kNumCtx * kNumSym, 0);
+#ifdef NXVC_XFORM_CTX_EXPERIMENT
+    static u64 xhist[kXformSizes][kNumCtx][kNumSym];
+    std::memset(xhist, 0, sizeof(xhist));
+#endif
     BW body;
     nxvc_status err = NXVC_OK;
 
@@ -1276,7 +1355,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                         continue;
                     }
                     tc.build_units();
-                    if (qp_search > 0 || wm_search) {
+                    if (qp_search > 0 || wm_search || xform_search) {
                         const double base =
                             (double)kQStep[clamp_i32(fp.base_qp + tc.tp.qp_delta,
                                                      0, 63)] / 16.0;
@@ -1285,14 +1364,17 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                         double best = 0;
                         bool have = false;
                         int best_qd = qd0, best_wm = tc.tp.wm_id;
+                        int best_xf = tc.tp.xform_size;
                         for (int dq = -qp_search; dq <= qp_search; ++dq) {
-                            for (int wm = 0; wm <= (wm_search ? 3 : 0); ++wm) {
+                          for (int wm = 0; wm <= (wm_search ? 3 : 0); ++wm) {
+                            for (int xf = 0; xf <= (xform_search ? 2 : 0); ++xf) {
                                 TileCoder cand;
                                 cand.g = &g;
                                 cand.fp = &fp;
                                 cand.tp = tc.tp;
                                 cand.tp.qp_delta = clamp_i32(qd0 + dq, -32, 31);
                                 cand.tp.wm_id = wm;
+                                if (xform_search) cand.tp.xform_size = xf;
                                 cand.setup();
                                 load_tile(cand, g, img, (int)eye, (int)col,
                                           (int)row);
@@ -1312,15 +1394,19 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                                     have = true;
                                     best_qd = cand.tp.qp_delta;
                                     best_wm = wm;
+                                    best_xf = cand.tp.xform_size;
                                 }
                             }
+                          }
                         }
                         if (have && (best_qd != tc.tp.qp_delta ||
-                                     best_wm != tc.tp.wm_id)) {
+                                     best_wm != tc.tp.wm_id ||
+                                     best_xf != tc.tp.xform_size)) {
                             std::vector<i32> keep[4];
                             for (int p = 0; p < 4; ++p) keep[p] = tc.pl[p].wpred;
                             tc.tp.qp_delta = best_qd;
                             tc.tp.wm_id = best_wm;
+                            tc.tp.xform_size = best_xf;
                             tc.setup();
                             load_tile(tc, g, img, (int)eye, (int)col, (int)row);
                             for (int p = 0; p < 4; ++p) tc.pl[p].wpred = keep[p];
@@ -1369,6 +1455,17 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                                     dst[c * kNumSym + sy] = th[c][sy];
                                 }
                         }
+#ifdef NXVC_XFORM_CTX_EXPERIMENT
+                        // SYNTAX.md 9.3: does a 16x16 or 32x32 block need
+                        // contexts of its own?  Split the frame's symbol
+                        // histogram by transform size and report, at the end
+                        // of the frame, what coding each size with its own
+                        // trained table would save over coding all of them
+                        // with the one merged table the format transmits.
+                        for (int c = 0; c < fp.nctx; ++c)
+                            for (int sy = 0; sy < kNumSym; ++sy)
+                                xhist[tc.tp.xform_size][c][sy] += th[c][sy];
+#endif
                     }
                     if (emit && e->cfg.collect_stats) {
                         const TableSet &ts = tabs[tc.tp.table_set];
@@ -1457,6 +1554,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                     ti.wm_id = (u8)tc.tp.wm_id;
                     ti.intra_dir = (u8)tc.intra_dir;
                     ti.split4x4 = (u8)tc.split4;
+                    ti.xform_size = (u8)tc.tp.xform_size;
                     ti.ref_sel = (u8)tc.tp.ref_sel;
                     ti.mv_present = (u8)tc.tp.mv_present;
                     ti.qp_delta = (i8)tc.tp.qp_delta;
@@ -1553,6 +1651,10 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             train_tables();
         }
     }
+
+#ifdef NXVC_XFORM_CTX_EXPERIMENT
+    xform_ctx_report(xhist, fp.nctx);
+#endif
 
     run_pass(false, true, fp.tabs);
     if (err != NXVC_OK) return err;
@@ -2142,7 +2244,9 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
                 TileParams tp;
                 unpack_tile_header(w0, w1, tp);
                 if ((w0 >> 3) & 1) return NXVC_ERR_BITSTREAM;  // reserved bit
-                if (w1 >> 29) return NXVC_ERR_BITSTREAM;       // reserved field
+                // word1 28 split4x4, 29-30 xform_size; 31 is reserved and
+                // must be zero (docs/TOOLBITS.md 4).
+                if (w1 >> 31) return NXVC_ERR_BITSTREAM;       // reserved field
                 if (tp.layer != 0) return NXVC_ERR_UNSUPPORTED;
                 // Annex D D-3: the eye field must agree with the eye the
                 // tile's position in the frame derives.
@@ -2171,15 +2275,30 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
                     return NXVC_ERR_BITSTREAM;
                 if (tp.tskip && !(d->si.tools & NXVC_TOOL_TRANSFORM_SKIP))
                     return NXVC_ERR_BITSTREAM;
+                // SYNTAX.md 4.1 and 6.7: xform_size 3 is reserved, a nonzero
+                // value needs the tool bit, and it cannot coexist with
+                // transform skip, whose coded values are samples in raster
+                // order rather than transform coefficients.
+                if (tp.xform_size == 3) return NXVC_ERR_BITSTREAM;
+                if (tp.xform_size != 0 &&
+                    !(d->si.tools & NXVC_TOOL_XFORM_LARGE))
+                    return NXVC_ERR_BITSTREAM;
+                if (tp.xform_size != 0 && tp.tskip) return NXVC_ERR_BITSTREAM;
                 if (tp.wm_id != 0 && !(d->si.tools & NXVC_TOOL_WM_ID))
                     return NXVC_ERR_BITSTREAM;
                 if (tp.wm_id != 0 && fp.quant_matrix == 255)
                     return NXVC_ERR_BITSTREAM;
                 // Tile header bit 28 needs the tool bit, and is mutually
-                // exclusive with transform skip (SYNTAX.md 6.7).
+                // exclusive with transform skip (SYNTAX.md 6.8).
                 if (tp.split4 && !(d->si.tools & NXVC_TOOL_XFORM_4X4_SPLIT))
                     return NXVC_ERR_BITSTREAM;
                 if (tp.split4 && tp.tskip) return NXVC_ERR_BITSTREAM;
+                // SYNTAX.md 4.1, Appendix A 74: the split is present and
+                // meaningful ONLY at the 8x8 transform.  The two fields stay
+                // separate because they act at different granularities, and
+                // this is the one constraint that costs.
+                if (tp.split4 && tp.xform_size != 0)
+                    return NXVC_ERR_BITSTREAM;
                 if (!tp.chroma444 && g.chroma == NXVC_CHROMA_444 &&
                     !(d->si.tools & NXVC_TOOL_PER_TILE_CHROMA))
                     return NXVC_ERR_BITSTREAM;
@@ -2282,6 +2401,7 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
                 ti.wm_id = (u8)tp.wm_id;
                 ti.intra_dir = (u8)tc.intra_dir;
                 ti.split4x4 = (u8)tc.split4;
+                ti.xform_size = (u8)tp.xform_size;
                 ti.ref_sel = (u8)tp.ref_sel;
                 ti.mv_present = (u8)tp.mv_present;
                 ti.qp_delta = (i8)tp.qp_delta;

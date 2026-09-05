@@ -55,7 +55,7 @@ const u8 kWeight[4][64] = {
     26, 28, 29, 31, 32, 32, 32, 32,
   },
 };
-const u8 kRaster8[64] = {
+const u16 kRaster8[64] = {
      0,  1,  2,  3,  4,  5,  6,  7,
      8,  9, 10, 11, 12, 13, 14, 15,
     16, 17, 18, 19, 20, 21, 22, 23,
@@ -66,13 +66,13 @@ const u8 kRaster8[64] = {
     56, 57, 58, 59, 60, 61, 62, 63,
 };
 
-const u8 kZigzag8[64] = {
+const u16 kZigzag8[64] = {
     0,  1,  8,  16, 9,  2,  3,  10, 17, 24, 32, 25, 18, 11, 4,  5,
     12, 19, 26, 33, 40, 48, 41, 34, 27, 20, 13, 6,  7,  14, 21, 28,
     35, 42, 49, 56, 57, 50, 43, 36, 29, 22, 15, 23, 30, 37, 44, 51,
     58, 59, 52, 45, 38, 31, 39, 46, 53, 60, 61, 54, 47, 55, 62, 63,
 };
-const u8 kZigzag4[16] = {0, 1, 4, 8, 5, 2, 3, 6, 9, 12, 13, 10, 7, 11, 14, 15};
+const u16 kZigzag4[16] = {0, 1, 4, 8, 5, 2, 3, 6, 9, 12, 13, 10, 7, 11, 14, 15};
 // The split-block scan (tool bit 19): the four 4x4 sub-blocks of an 8x8 block
 // in raster order, each in 4x4 zigzag, concatenated into the same 64-value
 // coding unit an unsplit block uses.  Sub-block (sx, sy) keeps its 16
@@ -80,14 +80,14 @@ const u8 kZigzag4[16] = {0, 1, 4, 8, 5, 2, 3, 6, 9, 12, 13, 10, 7, 11, 14, 15};
 // unit's coefficient layout is a bijection of the unsplit one and nothing
 // else about the unit -- CBF, LAST, the level chain, the lane schedule --
 // changes.  docs/SYNTAX.md 9.2.
-const u8 kScan4Split[64] = {
+const u16 kScan4Split[64] = {
      0,  1,  8, 16,  9,  2,  3, 10, 17, 24, 25, 18, 11, 19, 26, 27,
      4,  5, 12, 20, 13,  6,  7, 14, 21, 28, 29, 22, 15, 23, 30, 31,
     32, 33, 40, 48, 41, 34, 35, 42, 49, 56, 57, 50, 43, 51, 58, 59,
     36, 37, 44, 52, 45, 38, 39, 46, 53, 60, 61, 54, 47, 55, 62, 63,
 };
-const u8 kZigzag2[4] = {0, 1, 2, 3};
-const u8 kZigzag1[1] = {0};
+const u16 kZigzag2[4] = {0, 1, 2, 3};
+const u16 kZigzag1[1] = {0};
 // kCflRecip[d] = round(2^15 / d); entry 0 is never read (SYNTAX.md 7.7).
 const u16 kCflRecip[256] = {
         0, 32768, 16384, 10923,  8192,  6554,  5461,  4681,

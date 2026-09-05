@@ -467,6 +467,13 @@ NXS_FN int nxs_last_class_of(int pos) {
 }
 
 // ref/src/common.h scan_table(): which scan a unit of `ncoef` uses.
+//
+// Pass A does not implement tool bit 24 XFORM_LARGE (SYNTAX.md 6.7), so it
+// never sees a unit of 256 or 1024 coefficients: a stream setting the bit is
+// refused at the handshake, exactly as one setting any other tool this
+// decoder lacks.  When Pass A grows the tool, this function gains the two
+// larger zigzags and nxs_last_class / the LEVEL band gain the `last_shift`
+// of SYNTAX.md 9.3.
 NXS_FN int nxs_scan_id(int ncoef, int tskip) {
     if (ncoef == 64) return tskip != 0 ? kScanRaster8 : kScanZigzag8;
     if (ncoef == 16) return kScanZigzag4;

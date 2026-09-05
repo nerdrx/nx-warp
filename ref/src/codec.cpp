@@ -147,7 +147,7 @@ struct TileParams {
     int layer = 0, eye = 0, tile_index = 0, payload_len = 0;
     int mode = NXVC_MODE_INTRA, res_level = 0, chroma444 = 0, alpha_mode = 0;
     int qp_delta = 0, table_set = 0, nsub_log2 = 3, mv_present = 0;
-    int ref_sel = 0, tskip = 0, wgt = 0, wm_id = 0;
+    int ref_sel = 0, tskip = 0, wgt = 0, wm_id = 0, xform_size = 0;
     int mv_x = 0, mv_y = 0, alpha_value = 255;
     int split4 = 0;      // word1 bit 28: blocks may carry a 4x4 split flag
     int disparity = 0;   // STEREO only, quarter samples, 12 bits
@@ -177,7 +177,10 @@ static void pack_tile_header(BW &bw, const TileParams &t) {
     w1 |= ((u32)t.tskip & 1) << 23;
     w1 |= ((u32)t.wgt & 3) << 24;
     w1 |= ((u32)t.wm_id & 3) << 26;
+    // word1 28 is split4x4 (detail merged first and keeps the bit it was
+    // authored on), 29-30 the transform size.  docs/TOOLBITS.md 4.
     w1 |= ((u32)t.split4 & 1) << 28;
+    w1 |= ((u32)t.xform_size & 3) << 29;
     bw.u32v(w0);
     bw.u32v(w1);
 }
@@ -201,6 +204,7 @@ static void unpack_tile_header(u32 w0, u32 w1, TileParams &t) {
     t.wgt = (w1 >> 24) & 3;
     t.wm_id = (w1 >> 26) & 3;
     t.split4 = (w1 >> 28) & 1;
+    t.xform_size = (w1 >> 29) & 3;
 }
 
 // ------------------------------------------------------------- tile coding
@@ -211,9 +215,15 @@ static void unpack_tile_header(u32 w0, u32 w1, TileParams &t) {
 // then has to pay for twice over; measured at +3 dB and -10% bits at QP 38.
 static inline int dc_qp_of(int qp) { return qp >> 1; }
 
+// The most blocks a plane of one tile can have: a 64x64 tile's luma at the
+// smallest transform edge, 8, is 8x8 blocks.  A larger transform has fewer.
+constexpr int kMaxBlocksPerPlane = 64;
+
 struct PlaneState {
     int size = 0;      // coded edge
-    int nb = 0;        // blocks per edge
+    int bsize = 8;     // transform edge, 8/16/32 (SYNTAX.md 6.7)
+    int log2b = 3;     // log2(bsize)
+    int nb = 0;        // blocks per edge, size / bsize
     int qp = 0;
     const u8 *wmat = nullptr;
     int maxval = 255, dc_off = 128;
@@ -312,8 +322,19 @@ void TileCoder::setup() {
     dir_layer = fp->dir_layer;
     sdh = fp->sdh;
     // The 4x4 split is mutually exclusive with transform skip, whose 64 coded
-    // values are samples in raster order and have no sub-block structure.
-    // Everything else about the tile is unaffected.  SYNTAX.md 6.7.
+    // values are samples in raster order and have no sub-block structure, and
+    // it is meaningful ONLY at the 8x8 transform (SYNTAX.md 4.1, 6.8): a tile
+    // that sets both is malformed and the decoder refuses it.
+    //
+    // The derivation lives here, in setup(), rather than only where a tile's
+    // parameters are first chosen, because it is not the only place
+    // `xform_size` is written: the per-tile rate-distortion search builds
+    // candidates by copying `tp` and overwriting `xform_size`, so a rule
+    // applied once at initialisation would be silently undone for every
+    // candidate.  setup() runs on every candidate and on the final tile, so
+    // the two fields cannot get out of step.  `tp.split4` is normalised too,
+    // not just the local copy, because it is what the tile header writes.
+    if (tp.xform_size != 0) tp.split4 = 0;
     split4 = tp.split4 && !tp.tskip;
     // Chroma from luma predicts the *samples* from the reconstructed luma
     // plane, so it belongs to the replace form of directional intra, and to
@@ -326,7 +347,12 @@ void TileCoder::setup() {
         PlaneState &s = pl[p];
         bool chroma = (p == 1 || p == 2);
         s.size = chroma ? tg.chroma_size : tg.coded_size;
-        s.nb = s.size / 8;
+        // The tile's transform size, capped by the plane's own coded extent:
+        // a plane never carries a block larger than itself, so no combination
+        // of res_level, chroma format and xform_size is illegal (SYNTAX 6.7).
+        s.bsize = block_edge_for(tp.xform_size, s.size);
+        s.log2b = log2_of(s.bsize);
+        s.nb = s.size / s.bsize;
         s.qp = chroma ? clamp_i32(qp + fp->chroma_qp_off, 0, 63)
                       : (p == 3 ? clamp_i32(qp + fp->alpha_qp_off, 0, 63) : qp);
         // wm_id 0 means "the frame's matrix"; 1..3 override it with a
@@ -356,8 +382,10 @@ void TileCoder::build_units() {
     int np = nplanes;
     if (tp.alpha_mode != 2) np = std::min(np, 3);
     for (int p = 0; p < np; ++p) {
-        total += (size_t)pl[p].nb * pl[p].nb;              // DC plane
-        total += (size_t)pl[p].nb * pl[p].nb * 64;         // blocks
+        const size_t nblk = (size_t)pl[p].nb * pl[p].nb;
+        const size_t ncoef = (size_t)pl[p].bsize * pl[p].bsize;
+        total += nblk;                                     // DC plane
+        total += nblk * ncoef;                             // blocks
     }
     coef.assign(total, 0);
     units.clear();
@@ -395,11 +423,15 @@ void TileCoder::build_units() {
             mu.scan = scan_table(1, false);
             units.push_back(mu);
         }
+        const int ncoef = s.bsize * s.bsize;
         for (int b = 0; b < ndc; ++b) {
             Unit v{};
             v.coef = &coef[off];
-            v.ncoef = 64;
-            v.scan = scan_table(64, tp.tskip != 0);
+            v.ncoef = (u16)ncoef;
+            v.scan = scan_table(ncoef, tp.tskip != 0);
+            // The split flag exists only at xform_size == 8 (SYNTAX.md 4.1),
+            // so `split4` is already false at every other size and no unit
+            // larger than 64 coefficients ever carries one.
             v.split_present = (u8)split4;
             v.split_out = split4 ? &s.splits[b] : nullptr;
             v.ctx_cbf = ccbf;
@@ -411,7 +443,7 @@ void TileCoder::build_units() {
             v.ngrp = ctx_v3 ? (u8)(p + 1) : (u8)0;
             v.sdh = (u8)sdh;
             units.push_back(v);
-            off += 64;
+            off += ncoef;
         }
     }
 }
@@ -456,8 +488,9 @@ void TileCoder::clear_split() {
 // plane in the layered form (frame flag bit 2), so the references are
 // reconstructed *DC-plane residuals*.
 struct IntraRefs {
-    i32 a[17];  // a[0] = corner, a[1 + k] = top[k],  k = 0..15
-    i32 l[17];  // l[0] = corner, l[1 + k] = left[k], k = 0..15
+    // a[0] = corner, a[1 + k] = top[k],  k = 0 .. 2*bsize-1
+    i32 a[2 * kMaxBlock + 1];
+    i32 l[2 * kMaxBlock + 1];
 };
 
 // Development hook for the Pass B wavefront cost study (ref/RESULTS-intra.md
@@ -466,9 +499,9 @@ struct IntraRefs {
 // sub-tiles) or 3 (both) to measure what each restriction costs in rate.
 //
 // A stream produced with a nonzero value is NOT conformant -- the reference
-// derivation in SYNTAX.md 7.4 is the one with the full 8x8 raster dependency
-// -- which is why the hook is compiled out of a normal build rather than
-// merely defaulted off.
+// derivation in SYNTAX.md 7.4 is the one with the full raster dependency --
+// which is why the hook is compiled out of a normal build rather than merely
+// defaulted off.
 #ifdef NXVC_DIR_SCHED_EXPERIMENT
 static int dir_sched() {
     static const int v = [] {
@@ -482,22 +515,26 @@ static inline int dir_sched() { return 0; }
 #endif
 
 static void build_refs(const i32 *recon, const i32 *fallback, int size, int bx,
-                       int by, IntraRefs &r) {
-    const int x0 = bx * 8, y0 = by * 8;
+                       int by, int log2b, IntraRefs &r) {
+    const int n = 1 << log2b;
+    const int x0 = bx << log2b, y0 = by << log2b;
     const int sched = dir_sched();
     auto at = [&](int x, int y) -> i32 {
         int cx = clamp_i32(x, 0, size - 1), cy = clamp_i32(y, 0, size - 1);
-        int nbx = cx >> 3, nby = cy >> 3;
+        int nbx = cx >> log2b, nby = cy >> log2b;
         bool done = (nby < by) || (nby == by && nbx < bx);
         if ((sched & 1) && nbx > bx) done = false;          // no top-right
-        if ((sched & 2) && ((nbx >> 2) != (bx >> 2) ||
-                            (nby >> 2) != (by >> 2)))
-            done = false;                                   // 32x32 sub-tiles
+        // 32x32 sub-tiles: the sub-tile index is the block index divided by
+        // the number of blocks a 32x32 quadrant holds.
+        const int qsh = 5 - log2b > 0 ? 5 - log2b : 0;
+        if ((sched & 2) && ((nbx >> qsh) != (bx >> qsh) ||
+                            (nby >> qsh) != (by >> qsh)))
+            done = false;
         const i32 *src = done ? recon : fallback;
         return src[(size_t)cy * size + cx];
     };
     r.a[0] = r.l[0] = at(x0 - 1, y0 - 1);
-    for (int k = 0; k < 16; ++k) {
+    for (int k = 0; k < 2 * n; ++k) {
         r.a[1 + k] = at(x0 + k, y0 - 1);
         r.l[1 + k] = at(x0 - 1, y0 + k);
     }
@@ -529,21 +566,27 @@ struct CflModel {
     i32 base_l, base_c;
 };
 
-static CflModel cfl_fit(const CflCtx &cf, const IntraRefs &r, int bx, int by) {
-    i32 ln[kCflPairs], cn[kCflPairs];
-    const int x0 = bx * 8, y0 = by * 8;
-    for (int k = 0; k < 8; ++k) {
+// `log2b` is the block edge.  The fit reads the block's own 2n reconstructed
+// neighbours, so it follows the transform size the way every other predictor
+// does; at n == 8 it is character for character the detail package's.
+static CflModel cfl_fit(const CflCtx &cf, const IntraRefs &r, int bx, int by,
+                        int log2b) {
+    const int n = 1 << log2b;
+    const int npairs = 2 * n;
+    i32 ln[2 * kMaxBlock], cn[2 * kMaxBlock];
+    const int x0 = bx * n, y0 = by * n;
+    for (int k = 0; k < n; ++k) {
         cn[k] = r.a[1 + k];
         ln[k] = cfl_luma(cf, x0 + k, y0 - 1);
-        cn[8 + k] = r.l[1 + k];
-        ln[8 + k] = cfl_luma(cf, x0 - 1, y0 + k);
+        cn[n + k] = r.l[1 + k];
+        ln[n + k] = cfl_luma(cf, x0 - 1, y0 + k);
     }
     int lo0 = 0, lo1 = -1, hi0 = 0, hi1 = -1;
-    for (int k = 1; k < kCflPairs; ++k) {
+    for (int k = 1; k < npairs; ++k) {
         if (ln[k] < ln[lo0]) lo0 = k;
         if (ln[k] > ln[hi0]) hi0 = k;
     }
-    for (int k = 0; k < kCflPairs; ++k) {
+    for (int k = 0; k < npairs; ++k) {
         if (k != lo0 && (lo1 < 0 || ln[k] < ln[lo1])) lo1 = k;
         if (k != hi0 && (hi1 < 0 || ln[k] > ln[hi1])) hi1 = k;
     }
@@ -568,114 +611,120 @@ static CflModel cfl_fit(const CflCtx &cf, const IntraRefs &r, int bx, int by) {
     return m;
 }
 
-// P[j * 8 + i] for one 8x8 block.  Every mode but kIntraDcPlane and
-// kIntraCfl is a weighted average of in-range references, so no clamp is
-// needed and none is applied; kIntraCfl clamps because a fitted slope can
-// leave the sample domain.
+// P[j * n + i] for one n x n block, n = 1 << log2b.  Every mode but
+// kIntraDcPlane and kIntraCfl is a weighted average of in-range references,
+// so no clamp is needed and none is applied; kIntraCfl clamps because a
+// fitted slope can leave the sample domain.  The formulas are those of
+// SYNTAX.md 7.4 with the block edge left as `n`: at n == 8 they are the v1.3
+// predictors character for character.
 static void predict_block(int mode, const IntraRefs &r, const i32 *base,
-                          int size, int bx, int by, i32 P[64],
+                          int size, int bx, int by, int log2b, i32 *P,
                           const CflCtx *cf = nullptr) {
     const i32 *A = r.a + 1;  // A[-1] == corner
     const i32 *L = r.l + 1;  // L[-1] == corner
     const i32 tl = r.a[0];
+    const int n = 1 << log2b;
+    const int sh = log2b + 1;         // the planar / DC averaging shift
+    const int rnd = 1 << log2b;       // ... and its rounding term, n
     switch (mode) {
         case kIntraDcPlane:
-            for (int j = 0; j < 8; ++j)
-                for (int i = 0; i < 8; ++i)
-                    P[j * 8 + i] =
-                        base[(size_t)(by * 8 + j) * size + bx * 8 + i];
+            for (int j = 0; j < n; ++j)
+                for (int i = 0; i < n; ++i)
+                    P[j * n + i] =
+                        base[(size_t)((by << log2b) + j) * size +
+                             (bx << log2b) + i];
             return;
         case kIntraDc: {
             i32 sum = 0;
-            for (int k = 0; k < 8; ++k) sum += A[k] + L[k];
-            i32 dc = (sum + 8) >> 4;
-            for (int i = 0; i < 64; ++i) P[i] = dc;
+            for (int k = 0; k < n; ++k) sum += A[k] + L[k];
+            i32 dc = (sum + rnd) >> sh;
+            for (int i = 0; i < n * n; ++i) P[i] = dc;
             return;
         }
         case kIntraCfl: {
-            const CflModel m = cfl_fit(*cf, r, bx, by);
-            for (int j = 0; j < 8; ++j)
-                for (int i = 0; i < 8; ++i) {
-                    i32 l = cfl_luma(*cf, bx * 8 + i, by * 8 + j);
-                    P[j * 8 + i] = clamp_i32(
+            const CflModel m = cfl_fit(*cf, r, bx, by, log2b);
+            for (int j = 0; j < n; ++j)
+                for (int i = 0; i < n; ++i) {
+                    i32 l = cfl_luma(*cf, (bx << log2b) + i, (by << log2b) + j);
+                    P[j * n + i] = clamp_i32(
                         m.base_c + ((m.alpha * (l - m.base_l) + 128) >> 8), 0,
                         cf->maxval);
                 }
             return;
         }
         case kIntraPlanar:
-            for (int j = 0; j < 8; ++j)
-                for (int i = 0; i < 8; ++i)
-                    P[j * 8 + i] = ((7 - i) * L[j] + (i + 1) * A[8] +
-                                    (7 - j) * A[i] + (j + 1) * L[8] + 8) >> 4;
+            for (int j = 0; j < n; ++j)
+                for (int i = 0; i < n; ++i)
+                    P[j * n + i] = ((n - 1 - i) * L[j] + (i + 1) * A[n] +
+                                    (n - 1 - j) * A[i] + (j + 1) * L[n] + rnd) >> sh;
             return;
         case kIntraH:
-            for (int j = 0; j < 8; ++j)
-                for (int i = 0; i < 8; ++i) P[j * 8 + i] = L[j];
+            for (int j = 0; j < n; ++j)
+                for (int i = 0; i < n; ++i) P[j * n + i] = L[j];
             return;
         case kIntraV:
-            for (int j = 0; j < 8; ++j)
-                for (int i = 0; i < 8; ++i) P[j * 8 + i] = A[i];
+            for (int j = 0; j < n; ++j)
+                for (int i = 0; i < n; ++i) P[j * n + i] = A[i];
             return;
         case kIntraDdl:
-            for (int j = 0; j < 8; ++j)
-                for (int i = 0; i < 8; ++i) {
+            for (int j = 0; j < n; ++j)
+                for (int i = 0; i < n; ++i) {
                     int k = i + j;
-                    P[j * 8 + i] = (k == 14)
-                        ? (A[14] + 3 * A[15] + 2) >> 2
+                    P[j * n + i] = (k == 2 * n - 2)
+                        ? (A[2 * n - 2] + 3 * A[2 * n - 1] + 2) >> 2
                         : (A[k] + 2 * A[k + 1] + A[k + 2] + 2) >> 2;
                 }
             return;
         case kIntraDdr:
-            for (int j = 0; j < 8; ++j)
-                for (int i = 0; i < 8; ++i) {
+            for (int j = 0; j < n; ++j)
+                for (int i = 0; i < n; ++i) {
                     if (i > j) {
                         int k = i - j;
-                        P[j * 8 + i] =
+                        P[j * n + i] =
                             (A[k - 2] + 2 * A[k - 1] + A[k] + 2) >> 2;
                     } else if (i < j) {
                         int k = j - i;
-                        P[j * 8 + i] =
+                        P[j * n + i] =
                             (L[k - 2] + 2 * L[k - 1] + L[k] + 2) >> 2;
                     } else {
-                        P[j * 8 + i] = (A[0] + 2 * tl + L[0] + 2) >> 2;
+                        P[j * n + i] = (A[0] + 2 * tl + L[0] + 2) >> 2;
                     }
                 }
             return;
         case kIntraVr:
-            for (int j = 0; j < 8; ++j)
-                for (int i = 0; i < 8; ++i) {
+            for (int j = 0; j < n; ++j)
+                for (int i = 0; i < n; ++i) {
                     int z = 2 * i - j;
                     int k = i - (j >> 1);
                     if (z >= 0 && (z & 1) == 0)
-                        P[j * 8 + i] = (A[k - 1] + A[k] + 1) >> 1;
+                        P[j * n + i] = (A[k - 1] + A[k] + 1) >> 1;
                     else if (z >= 0)
-                        P[j * 8 + i] =
+                        P[j * n + i] =
                             (A[k - 2] + 2 * A[k - 1] + A[k] + 2) >> 2;
                     else if (z == -1)
-                        P[j * 8 + i] = (L[0] + 2 * tl + A[0] + 2) >> 2;
+                        P[j * n + i] = (L[0] + 2 * tl + A[0] + 2) >> 2;
                     else {
                         int q = j - 2 * i;
-                        P[j * 8 + i] =
+                        P[j * n + i] =
                             (L[q - 1] + 2 * L[q - 2] + L[q - 3] + 2) >> 2;
                     }
                 }
             return;
         default:  // kIntraHd
-            for (int j = 0; j < 8; ++j)
-                for (int i = 0; i < 8; ++i) {
+            for (int j = 0; j < n; ++j)
+                for (int i = 0; i < n; ++i) {
                     int z = 2 * j - i;
                     int k = j - (i >> 1);
                     if (z >= 0 && (z & 1) == 0)
-                        P[j * 8 + i] = (L[k - 1] + L[k] + 1) >> 1;
+                        P[j * n + i] = (L[k - 1] + L[k] + 1) >> 1;
                     else if (z >= 0)
-                        P[j * 8 + i] =
+                        P[j * n + i] =
                             (L[k - 2] + 2 * L[k - 1] + L[k] + 2) >> 2;
                     else if (z == -1)
-                        P[j * 8 + i] = (A[0] + 2 * tl + L[0] + 2) >> 2;
+                        P[j * n + i] = (A[0] + 2 * tl + L[0] + 2) >> 2;
                     else {
                         int q = i - 2 * j;
-                        P[j * 8 + i] =
+                        P[j * n + i] =
                             (A[q - 1] + 2 * A[q - 2] + A[q - 3] + 2) >> 2;
                     }
                 }
@@ -683,17 +732,31 @@ static void predict_block(int mode, const IntraRefs &r, const i32 *base,
     }
 }
 
+// The weighting matrix entry of an n x n block at raster index i.  The
+// transmitted matrix is always the 8x8 one; a larger block replicates it and
+// a split 4x4 sub-block subsamples it, so entry (u, v) of an n x n block is
+// entry (u >> k, v >> k) of the 8x8 matrix with k = log2(n) - 3.  The roll-off
+// therefore covers the same fraction of the frequency plane at every size, and
+// no extra matrix is transmitted.  SYNTAX.md 6.5.
+static inline int block_weight(const PlaneState &s, int i) {
+    const int k = s.log2b - 3;
+    const int u = (i >> s.log2b) >> k, v = (i & (s.bsize - 1)) >> k;
+    return s.wmat[u * 8 + v];
+}
+
 // Dequantize + inverse transform one residual block.  With `split` the block
 // is four 4x4 sub-blocks in raster order, each occupying its own quadrant of
 // the 64-value coefficient array and quantized with the tile's matrix
-// subsampled by two (SYNTAX.md 6.7).
+// subsampled by two (SYNTAX.md 6.8).  `split` is only ever set at
+// `bsize == 8`: the two tools compose by 4.1's rule and never overlap.
 static void residual_block(const i16 *c, const PlaneState &s, int tskip,
-                           i32 res[64], int split = 0) {
+                           i32 *res, int split = 0) {
+    const int ncoef = s.bsize * s.bsize;
+    const int ro = recon_offset_q6();
     if (tskip) {
         int t = dequant_step(s.qp, 16);
-        for (int i = 0; i < 64; ++i) res[i] = dequant(c[i], t);
+        for (int i = 0; i < ncoef; ++i) res[i] = dequant(c[i], t);
     } else if (split) {
-        const int ro = recon_offset_q6();
         for (int sb = 0; sb < 4; ++sb) {
             const int ox = (sb & 1) * 4, oy = (sb >> 1) * 4;
             i32 dq[16], out[16];
@@ -702,16 +765,16 @@ static void residual_block(const i16 *c, const PlaneState &s, int tskip,
                 dq[k] = dequant_off(c[idx],
                                     dequant_step(s.qp, weight4(s.wmat, k)), ro);
             }
-            idct4x4(dq, out);
+            idct_block(dq, out, 4);
             for (int k = 0; k < 16; ++k)
                 res[(oy + (k >> 2)) * 8 + ox + (k & 3)] = out[k];
         }
     } else {
-        const int ro = recon_offset_q6();
-        i32 dq[64];
-        for (int i = 0; i < 64; ++i)
-            dq[i] = dequant_off(c[i], dequant_step(s.qp, s.wmat[i]), ro);
-        idct8x8(dq, res);
+        i32 dq[kMaxBlock * kMaxBlock];
+        for (int i = 0; i < ncoef; ++i)
+            dq[i] = dequant_off(c[i], dequant_step(s.qp, block_weight(s, i)),
+                                ro);
+        idct_block(dq, res, s.bsize);
     }
 }
 
@@ -777,11 +840,19 @@ static void reconstruct_dc_plane(PlaneState &s, const i16 *coefs) {
     for (int i = 0; i < ndc; ++i)
         s.means[i] = s.wpred.empty() ? clamp_i32(s.dc_off + dc[i], 0, s.maxval)
                                      : s.dc_off + dc[i];
-    // planar prediction: bilinear over block centres (8x8 blocks)
-    for (int y = 0; y < size; ++y)
-        for (int x = 0; x < size; ++x)
-            s.pred[(size_t)y * size + x] = bilinear_q4_i32(
-                s.means.data(), nb, nb, nb, 2 * x - 7, 2 * y - 7);
+    // Planar prediction: bilinear over block centres.  Block (bx, by)'s mean
+    // sits at sample (bx*bs + (bs-1)/2, ...), so the Q4 coordinate of sample x
+    // in the means grid is (16*x - 8*(bs-1)) / bs, evaluated as a rounding
+    // shift.  At bs == 8 that is exactly 2*x - 7, the v1 formula.
+    const int bs = s.bsize, lb = s.log2b;
+    for (int y = 0; y < size; ++y) {
+        const i32 uy = (16 * y - 8 * (bs - 1) + (bs >> 1)) >> lb;
+        for (int x = 0; x < size; ++x) {
+            const i32 ux = (16 * x - 8 * (bs - 1) + (bs >> 1)) >> lb;
+            s.pred[(size_t)y * size + x] =
+                bilinear_q4_i32(s.means.data(), nb, nb, nb, ux, uy);
+        }
+    }
     if (!s.wpred.empty()) {
         for (size_t i = 0; i < s.pred.size(); ++i)
             s.pred[i] = clamp_i32(s.wpred[i] + s.pred[i] - s.dc_off, 0, s.maxval);
@@ -796,8 +867,8 @@ static void reconstruct_dc_plane(PlaneState &s, const i16 *coefs) {
 static void reconstruct_plane(PlaneState &s, const i16 *coefs, int tskip,
                               int dir = 0, int layer = 0,
                               const CflCtx *cf = nullptr) {
-    const int nb = s.nb, size = s.size;
-    const int ndc = nb * nb;
+    const int nb = s.nb, size = s.size, bs = s.bsize, lb = s.log2b;
+    const int ndc = nb * nb, ncoef = bs * bs;
     reconstruct_dc_plane(s, coefs);
     const i16 *bc = coefs + ndc;
     // Empty when the tile does not carry split flags, in which case every
@@ -808,14 +879,14 @@ static void reconstruct_plane(PlaneState &s, const i16 *coefs, int tskip,
     if (!dir) {
         for (int by = 0; by < nb; ++by)
             for (int bx = 0; bx < nb; ++bx) {
-                const i16 *c = bc + ((size_t)by * nb + bx) * 64;
-                i32 res[64];
+                const i16 *c = bc + ((size_t)by * nb + bx) * ncoef;
+                i32 res[kMaxBlock * kMaxBlock];
                 residual_block(c, s, tskip, res, split_of(by * nb + bx));
-                for (int j = 0; j < 8; ++j)
-                    for (int i = 0; i < 8; ++i) {
-                        int y = by * 8 + j, x = bx * 8 + i;
+                for (int j = 0; j < bs; ++j)
+                    for (int i = 0; i < bs; ++i) {
+                        int y = (by << lb) + j, x = (bx << lb) + i;
                         s.samples[(size_t)y * size + x] = clamp_i32(
-                            s.pred[(size_t)y * size + x] + res[j * 8 + i], 0,
+                            s.pred[(size_t)y * size + x] + res[j * bs + i], 0,
                             s.maxval);
                     }
             }
@@ -833,17 +904,17 @@ static void reconstruct_plane(PlaneState &s, const i16 *coefs, int tskip,
     }
     for (int by = 0; by < nb; ++by)
         for (int bx = 0; bx < nb; ++bx) {
-            const i16 *c = bc + ((size_t)by * nb + bx) * 64;
-            i32 res[64], P[64];
+            const i16 *c = bc + ((size_t)by * nb + bx) * ncoef;
+            i32 res[kMaxBlock * kMaxBlock], P[kMaxBlock * kMaxBlock];
             residual_block(c, s, tskip, res, split_of(by * nb + bx));
             IntraRefs r;
-            build_refs(s.recon.data(), fallback, size, bx, by, r);
+            build_refs(s.recon.data(), fallback, size, bx, by, lb, r);
             predict_block(s.modes[(size_t)by * nb + bx], r, fallback, size, bx,
-                          by, P, cf);
-            for (int j = 0; j < 8; ++j)
-                for (int i = 0; i < 8; ++i) {
-                    int y = by * 8 + j, x = bx * 8 + i;
-                    i32 v = P[j * 8 + i] + res[j * 8 + i];
+                          by, lb, P, cf);
+            for (int j = 0; j < bs; ++j)
+                for (int i = 0; i < bs; ++i) {
+                    int y = (by << lb) + j, x = (bx << lb) + i;
+                    i32 v = P[j * bs + i] + res[j * bs + i];
                     if (layer) {
                         // the mode predicts the residual; the DC plane is the
                         // base, and the running reference plane is that
@@ -926,15 +997,16 @@ struct UnitCtx {
     int level_fixed = kCtxNone;   // kCtxNone: the banded LEVEL contexts
     int ucls = kUclsLuma;
     int v3 = 0;
-    int split = 0;                // 1 = four 4x4 sub-blocks
+    int split = 0;                // 1 = four 4x4 sub-blocks (tool 19)
     int split_present = 0;        // 1 = a split flag is coded for this unit
+    int band_shift = 0;           // last_shift_of(ncoef), tool 27
     // `last` is the unit's LAST scan position: v3 gives that one coefficient
     // its own contexts, so the rate model has to know where it is.
     int level(int scan_pos, int last, int prev_class) const {
-        const int bp = band_pos(scan_pos, split != 0);
+        const int bp = band_pos(scan_pos, split != 0, band_shift);
         if (v3) return v3_ctx_level(ucls, scan_pos, bp, last, prev_class);
         return level_fixed != kCtxNone ? level_fixed
-                                       : level_ctx(bp, prev_class);
+                                       : level_ctx(bp, prev_class, 0);
     }
 };
 
@@ -965,10 +1037,18 @@ static UnitCtx with_split(UnitCtx u, int split, int split_present) {
     return u;
 }
 
+// The same unit at one transform size.  `band_shift` is what lets a 16x16 or
+// 32x32 unit reuse the 64-position LAST classes and the four LEVEL bands by
+// naming a scan GROUP rather than a position; SYNTAX.md 9.2.1 and 9.3.1.
+static UnitCtx with_ncoef(UnitCtx u, int ncoef) {
+    u.band_shift = last_shift_of(ncoef);
+    return u;
+}
+
 // The neighbour class a quantized unit leaves behind, mirroring
 // LaneMachine::finish_coef_unit exactly.  Encoder side.  `scan` is needed
 // because the class depends on LAST, which is a scan position.
-static int unit_nbr_class(const i16 *c, int ncoef, const u8 *scan) {
+static int unit_nbr_class(const i16 *c, int ncoef, const u16 *scan) {
     int last = -1;
     for (int p = ncoef - 1; p >= 0; --p)
         if (c[scan[p]] != 0) { last = p; break; }
@@ -986,7 +1066,8 @@ static inline int escape_bits(i32 m) {
 
 // `last` is the unit's LAST scan position, or -1 for "this position is not
 // the unit's last".  Under v3 the coefficient at LAST has contexts of its
-// own, so the rate model has to be told which case it is pricing.
+// own, so the rate model has to be told which case it is pricing.  The band
+// mappings of both transform tools are inside `uc.level()`.
 static inline i32 level_rate(const RateCost &rc, const UnitCtx &uc,
                              int scan_pos, int last, int prev_class, i32 m) {
     int ctx = uc.level(scan_pos, last, prev_class);
@@ -1003,10 +1084,15 @@ constexpr double kRdInf = 1e30;
 // reconstruction step (the dequantizer's t, Q4).  Writes the chosen levels
 // back into `coefs`.
 static void rdoq_unit(i16 *coefs, const i32 *orig, const i32 *step, int ncoef,
-                      const u8 *scan, const UnitCtx &uc,
+                      const u16 *scan, const UnitCtx &uc,
                       const RateCost &rc, double lambda) {
-    double f[64][3], fnz[64];
-    i32 best_m[64][3], best_m_nz[64];
+    // Buffers for the largest unit the format has, a 32x32 block.  They are
+    // thread_local rather than automatic because a 1024-position trellis is
+    // 40 kB and this runs once per candidate per block.
+    constexpr int kMaxCoef = kMaxBlock * kMaxBlock;
+    static thread_local double f[kMaxCoef][3], fnz[kMaxCoef];
+    static thread_local i32 best_m[kMaxCoef][3], best_m_nz[kMaxCoef];
+    const int band_shift = last_shift_of(ncoef);
     double tail = 0;               // energy of scan positions above p
     double energy = 0;
     for (int i = 0; i < ncoef; ++i) {
@@ -1065,8 +1151,12 @@ static void rdoq_unit(i16 *coefs, const i32 *orig, const i32 *step, int ncoef,
         if (fnz[p] < kRdInf) {
             double r = rc.sym[uc.cbf][1];
             if (ncoef > 1) {
-                int cls = last_class_of(p);
-                r += rc.sym[uc.last][cls] + (kLastRawBits[cls] << 10);
+                // A large unit names the scan GROUP with the existing 16
+                // LAST classes and the position inside it with `band_shift`
+                // raw bypass bits.  SYNTAX.md 9.2.1.
+                int cls = last_class_of(p >> uc.band_shift);
+                r += rc.sym[uc.last][cls] +
+                     ((kLastRawBits[cls] + uc.band_shift) << 10);
             }
             double total = fnz[p] + tail + lambda * (r / 1024.0);
             if (total < best_total) { best_total = total; best_last = p; }
@@ -1096,7 +1186,7 @@ static void rdoq_unit(i16 *coefs, const i32 *orig, const i32 *step, int ncoef,
 // `orig[i]` is the unquantized value and `step[i]` its reconstruction step
 // (Q4), the same convention rdoq_unit uses.  Encoder only.
 static void hide_sign_unit(i16 *coefs, const i32 *orig, const i32 *step,
-                           int ncoef, const u8 *scan) {
+                           int ncoef, const u16 *scan) {
     int last = -1;
     i32 sum = 0;
     for (int p = 0; p < ncoef; ++p) {
@@ -1165,18 +1255,23 @@ static void analyze_dc_plane(PlaneState &s, i16 *coefs, int sdh) {
     const int ndc = nb * nb;
     std::vector<i32> m(ndc);
     const bool inter = !s.wpred.empty();
+    // The block mean is (sum of the bsize^2 samples + half) >> 2*log2(bsize),
+    // rounded away from zero; at bsize 8 that is the v1 `(sum + 32) >> 6`.
+    const int bs = s.bsize, lb = s.log2b;
+    const int msh = 2 * lb, mrnd = 1 << (msh - 1);
     for (int by = 0; by < nb; ++by)
         for (int bx = 0; bx < nb; ++bx) {
             i32 sum = 0;
-            for (int j = 0; j < 8; ++j)
-                for (int i = 0; i < 8; ++i) {
-                    size_t k = (size_t)(by * 8 + j) * size + bx * 8 + i;
+            for (int j = 0; j < bs; ++j)
+                for (int i = 0; i < bs; ++i) {
+                    size_t k = (size_t)((by << lb) + j) * size + (bx << lb) + i;
                     // For an inter tile the DC plane codes the mean of the
                     // residual, offset back so the quantized quantity is the
                     // same `m - dc_off` in both paths.
                     sum += s.samples[k] - (inter ? s.wpred[k] - s.dc_off : 0);
                 }
-            i32 mean = sum >= 0 ? (sum + 32) >> 6 : -((-sum + 32) >> 6);
+            i32 mean = sum >= 0 ? (sum + mrnd) >> msh
+                                : -((-sum + mrnd) >> msh);
             m[by * nb + bx] = mean;
         }
     int dcqp = dc_qp_of(s.qp);
@@ -1196,7 +1291,7 @@ static void analyze_dc_plane(PlaneState &s, i16 *coefs, int sdh) {
     // it has.  Banded by scan position, as the LEVEL contexts are.
     {
         const u8 *dz = dead_zone_table(true);
-        const u8 *sc = scan_table(ndc, false);
+        const u16 *sc = scan_table(ndc, false);
         for (int pp = 0; pp < ndc; ++pp) {
             int i = sc[pp];
             coefs[i] = (i16)quantize(orig[i], tdc,
@@ -1216,96 +1311,112 @@ static void analyze_dc_plane(PlaneState &s, i16 *coefs, int sdh) {
 // reconstruction in s.samples that the decoder will produce.
 static void analyze_plane(PlaneState &s, i16 *coefs, int tskip, int intra_dz,
                           int sdh) {
-    const int nb = s.nb, size = s.size;
-    const int ndc = nb * nb;
+    const int nb = s.nb, size = s.size, bs = s.bsize, lb = s.log2b;
+    const int ndc = nb * nb, ncoef = bs * bs;
     const u8 *dzac = dead_zone_table(false);
     analyze_dc_plane(s, coefs, sdh);
     // residual blocks
     i16 *bc = coefs + ndc;
     for (int by = 0; by < nb; ++by)
         for (int bx = 0; bx < nb; ++bx) {
-            i16 *c = bc + ((size_t)by * nb + bx) * 64;
-            i32 res[64];
-            for (int j = 0; j < 8; ++j)
-                for (int i = 0; i < 8; ++i) {
-                    int y = by * 8 + j, x = bx * 8 + i;
-                    res[j * 8 + i] = s.samples[(size_t)y * size + x] -
-                                     s.pred[(size_t)y * size + x];
+            i16 *c = bc + ((size_t)by * nb + bx) * ncoef;
+            i32 res[kMaxBlock * kMaxBlock];
+            for (int j = 0; j < bs; ++j)
+                for (int i = 0; i < bs; ++i) {
+                    int y = (by << lb) + j, x = (bx << lb) + i;
+                    res[j * bs + i] = s.samples[(size_t)y * size + x] -
+                                      s.pred[(size_t)y * size + x];
                 }
-            i32 orig[64], stepv[64];
-            const u8 *scan = scan_table(64, tskip != 0);
+            i32 orig[kMaxBlock * kMaxBlock], stepv[kMaxBlock * kMaxBlock];
+            const u16 *scan = scan_table(ncoef, tskip != 0);
+            const int band_shift = last_shift_of(ncoef);
             if (tskip) {
                 int t = dequant_step(s.qp, 16);
-                for (int i = 0; i < 64; ++i) { orig[i] = res[i]; stepv[i] = t; }
+                for (int i = 0; i < ncoef; ++i) {
+                    orig[i] = res[i];
+                    stepv[i] = t;
+                }
             } else {
-                i16 co[64];
-                fdct8x8(res, co);
-                for (int i = 0; i < 64; ++i) {
+                i16 co[kMaxBlock * kMaxBlock];
+                fdct_block(res, co, bs);
+                for (int i = 0; i < ncoef; ++i) {
                     orig[i] = co[i];
-                    stepv[i] = dequant_step(s.qp, s.wmat[i]);
+                    stepv[i] = dequant_step(s.qp, block_weight(s, i));
                 }
             }
-            for (int pp = 0; pp < 64; ++pp) {
+            for (int pp = 0; pp < ncoef; ++pp) {
                 int i = scan[pp];
+                // The dead-zone band follows the scan-group shift, so the
+                // four bands cover the same fraction of the scan at every
+                // transform size.
                 int f = tskip && !intra_dz ? kDeadZoneTskipInter
-                                           : dzac[band_of(pp)];
+                                           : dzac[band_of(pp >> band_shift)];
                 c[i] = (i16)quantize(orig[i], stepv[i], dead_zone(stepv[i], f));
             }
-            if (sdh) hide_sign_unit(c, orig, stepv, 64, scan);
+            if (sdh) hide_sign_unit(c, orig, stepv, ncoef, scan);
         }
 }
 
 // Re-quantize the residual blocks of a plane with the RD trellis above.  The
 // DC plane is deliberately left on the plain dead-zone quantizer: it is the
-// intra predictor, so a level chosen there changes `pred` for all 64 blocks
-// and the trellis's single-unit distortion model would be wrong about it.
+// intra predictor, so a level chosen there changes `pred` for all the blocks
+// of the plane and the trellis's single-unit distortion model would be wrong
+// about it.
 static void rdoq_plane(PlaneState &s, i16 *coefs, int tskip, bool chroma,
                        const RateCost &rc, double lambda_scale, int sdh,
                        int nctx, int nlanes) {
-    const int nb = s.nb, size = s.size;
-    const int ndc = nb * nb;
+    const int nb = s.nb, size = s.size, bs = s.bsize, lb = s.log2b;
+    const int ndc = nb * nb, ncoef = bs * bs;
     const double base = (double)kQStep[s.qp] / 16.0;
     const double lambda = lambda_scale * base * base;
-    const u8 *scan = scan_table(64, tskip != 0);
-    const UnitCtx base_uc = block_ctx(nctx, chroma);
-    u8 nbr[64] = {};
-    i32 stepv[64];
+    const u16 *scan = scan_table(ncoef, tskip != 0);
+    const UnitCtx base_uc = with_ncoef(block_ctx(nctx, chroma), ncoef);
+    u8 nbr[kMaxBlocksPerPlane] = {};
+    i32 stepv[kMaxBlock * kMaxBlock];
     if (tskip) {
         int t = dequant_step(s.qp, 16);
-        for (int i = 0; i < 64; ++i) stepv[i] = t;
+        for (int i = 0; i < ncoef; ++i) stepv[i] = t;
     } else {
-        for (int i = 0; i < 64; ++i) stepv[i] = dequant_step(s.qp, s.wmat[i]);
+        for (int i = 0; i < ncoef; ++i)
+            stepv[i] = dequant_step(s.qp, block_weight(s, i));
     }
     i16 *bc = coefs + ndc;
     for (int by = 0; by < nb; ++by)
         for (int bx = 0; bx < nb; ++bx) {
-            i16 *c = bc + ((size_t)by * nb + bx) * 64;
-            i32 res[64];
-            for (int j = 0; j < 8; ++j)
-                for (int i = 0; i < 8; ++i) {
-                    int y = by * 8 + j, x = bx * 8 + i;
-                    res[j * 8 + i] = s.samples[(size_t)y * size + x] -
-                                     s.pred[(size_t)y * size + x];
+            i16 *c = bc + ((size_t)by * nb + bx) * ncoef;
+            i32 res[kMaxBlock * kMaxBlock];
+            for (int j = 0; j < bs; ++j)
+                for (int i = 0; i < bs; ++i) {
+                    int y = (by << lb) + j, x = (bx << lb) + i;
+                    res[j * bs + i] = s.samples[(size_t)y * size + x] -
+                                      s.pred[(size_t)y * size + x];
                 }
-            i32 orig[64];
+            i32 orig[kMaxBlock * kMaxBlock];
             if (tskip) {
-                for (int i = 0; i < 64; ++i) orig[i] = res[i];
+                for (int i = 0; i < ncoef; ++i) orig[i] = res[i];
             } else {
-                i16 co[64];
-                fdct8x8(res, co);
-                for (int i = 0; i < 64; ++i) orig[i] = co[i];
+                i16 co[kMaxBlock * kMaxBlock];
+                fdct_block(res, co, bs);
+                for (int i = 0; i < ncoef; ++i) orig[i] = co[i];
             }
             const int bi = by * nb + bx;
             // This lane's previous unit of this class.  bi - nlanes is the
             // unit this lane finished before reaching bi; below nlanes the
-            // lane has no predecessor yet and the flag is 0.
+            // lane has no predecessor yet and the class is 0.
             const UnitCtx uc = with_nbr(
                 base_uc, bi >= nlanes ? nbr[bi - nlanes] : 0);
-            rdoq_unit(c, orig, stepv, 64, scan, uc, rc, lambda);
-            if (sdh) hide_sign_unit(c, orig, stepv, 64, scan);
-            nbr[bi] = (u8)unit_nbr_class(c, 64, scan);
+            rdoq_unit(c, orig, stepv, ncoef, scan, uc, rc, lambda);
+            if (sdh) hide_sign_unit(c, orig, stepv, ncoef, scan);
+            nbr[bi] = (u8)unit_nbr_class(c, ncoef, scan);
         }
 }
+
+#ifdef NXVC_XFORM_CTX_EXPERIMENT
+// How often each intra mode is chosen at each transform size (SYNTAX.md 7.4:
+// whether the larger sizes need all nine modes).  Encoder side, experiment
+// build only.
+u64 g_mode_hist[kXformSizes][kNumIntraModes];
+#endif
 
 // --------------------------------------------------- directional intra (enc)
 // Sum of absolute Hadamard-transformed differences of an 8x8 residual: the
@@ -1337,8 +1448,25 @@ static i32 satd8x8(const i32 d[64]) {
     return sum;
 }
 
+
+// The mode-decision metric of an n x n residual: the sum of the SATDs of its
+// 8x8 sub-blocks.  Encoder only.
+static i32 satd_block(const i32 *d, int n) {
+    if (n == 8) return satd8x8(d);
+    i32 sum = 0;
+    for (int by = 0; by < n; by += 8)
+        for (int bx = 0; bx < n; bx += 8) {
+            i32 sub[64];
+            for (int j = 0; j < 8; ++j)
+                for (int i = 0; i < 8; ++i)
+                    sub[j * 8 + i] = d[(by + j) * n + bx + i];
+            sum += satd8x8(sub);
+        }
+    return sum;
+}
+
 // Q10 bits one coding unit costs under `rc`, mirroring the LaneMachine.
-static i32 unit_bits(const i16 *c, int ncoef, const u8 *scan,
+static i32 unit_bits(const i16 *c, int ncoef, const u16 *scan,
                      const UnitCtx &uc, const RateCost &rc, int sdh) {
     int last = -1;
     for (int p = ncoef - 1; p >= 0; --p)
@@ -1348,8 +1476,9 @@ static i32 unit_bits(const i16 *c, int ncoef, const u8 *scan,
     // The 4x4 split flag, one bypass bit, coded only after a nonzero CBF.
     if (uc.split_present) r += 1 << 10;
     if (ncoef > 1) {
-        int cls = last_class_of(last);
-        r += rc.sym[uc.last][cls] + (kLastRawBits[cls] << 10);
+        int cls = last_class_of(last >> uc.band_shift);
+        r += rc.sym[uc.last][cls] +
+             ((kLastRawBits[cls] + uc.band_shift) << 10);
     }
     if (last >= kSdhMinLast && sdh) r -= 1 << 10;
     int prev = 0;
@@ -1376,8 +1505,9 @@ static void analyze_plane_dir(PlaneState &s, i16 *coefs, int tskip, int layer,
                               double lambda_scale, bool use_rdo, int ncand,
                               int mode_ctx, int sdh, int split_present,
                               const CflCtx *cf, int nmodes) {
-    const int nb = s.nb, size = s.size;
-    const int ndc = nb * nb;
+    constexpr int kMaxCoef = kMaxBlock * kMaxBlock;
+    const int nb = s.nb, size = s.size, bs = s.bsize, lb = s.log2b;
+    const int ndc = nb * nb, ncoef = bs * bs;
     analyze_dc_plane(s, coefs, sdh);
     if ((int)s.recon.size() != size * size) s.recon.assign((size_t)size * size, 0);
     if ((int)s.modes.size() != ndc) s.modes.assign((size_t)ndc, 0);
@@ -1390,22 +1520,28 @@ static void analyze_plane_dir(PlaneState &s, i16 *coefs, int tskip, int layer,
     }
     const double base = (double)kQStep[s.qp] / 16.0;
     const double lambda = lambda_scale * base * base;
-    const UnitCtx base_uc = block_ctx(nctx, chroma);
+    const UnitCtx base_uc = with_ncoef(block_ctx(nctx, chroma), ncoef);
     // v3 conditions a unit on the previous unit THIS rANS LANE coded.  A lane
     // owns blocks bi, bi+nlanes, bi+2*nlanes, ..., so the encoder's rate model
     // has to walk the same relation the decoder will -- hence nlanes here and
     // the per-block class array, not "the block above".  The class is per
     // plane, so the array starts at zero for every plane, which is the
     // decoder's reset at a group boundary.
-    u8 nbr[64] = {};
-    // One scan and one step vector per split choice.  Index 0 is the 8x8
-    // transform (or transform skip), index 1 the four 4x4 sub-blocks.
-    const u8 *scan[2] = {scan_table(64, tskip != 0), kScan4Split};
-    i32 stepv[2][64];
-    for (int i = 0; i < 64; ++i) {
-        stepv[0][i] = block_step(s, i, tskip, 0);
-        stepv[1][i] = block_step(s, i, 0, 1);
-    }
+    u8 nbr[kMaxBlocksPerPlane] = {};
+    // One scan and one step vector per split choice.  Index 0 is the tile's
+    // transform (or transform skip) at whatever size it chose; index 1 is the
+    // four 4x4 sub-blocks, which by 4.1's rule exist only at bs == 8.  The
+    // second row is built anyway and left unused at other sizes rather than
+    // conditioned on the size, because the loop below is already bounded by
+    // `split_present` and one dead 64-entry array is cheaper than a branch
+    // that has to be right.
+    const u16 *scan[2] = {scan_table(ncoef, tskip != 0), kScan4Split};
+    i32 stepv[2][kMaxCoef];
+    for (int i = 0; i < ncoef; ++i)
+        stepv[0][i] = tskip ? dequant_step(s.qp, 16)
+                            : dequant_step(s.qp, block_weight(s, i));
+    if (bs == 8)
+        for (int i = 0; i < 64; ++i) stepv[1][i] = block_step(s, i, 0, 1);
     i16 *bc = coefs + ndc;
 
     for (int by = 0; by < nb; ++by)
@@ -1415,26 +1551,28 @@ static void analyze_plane_dir(PlaneState &s, i16 *coefs, int tskip, int layer,
             // The split choice is layered on per candidate, below.
             const UnitCtx uc0 =
                 with_nbr(base_uc, bi >= nlanes ? nbr[bi - nlanes] : 0);
-            i16 *c = bc + (size_t)bi * 64;
+            i16 *c = bc + (size_t)bi * ncoef;
             IntraRefs r;
-            build_refs(s.recon.data(), fallback, size, bx, by, r);
+            build_refs(s.recon.data(), fallback, size, bx, by, lb, r);
             // target: the samples this block must reproduce, in the domain
             // the modes predict (samples, or the DC-plane residual).
-            i32 tgt[64];
-            for (int j = 0; j < 8; ++j)
-                for (int i = 0; i < 8; ++i) {
-                    int y = by * 8 + j, x = bx * 8 + i;
+            i32 tgt[kMaxCoef];
+            for (int j = 0; j < bs; ++j)
+                for (int i = 0; i < bs; ++i) {
+                    int y = (by << lb) + j, x = (bx << lb) + i;
                     i32 v = s.samples[(size_t)y * size + x];
                     if (layer) v -= s.pred[(size_t)y * size + x];
-                    tgt[j * 8 + i] = v;
+                    tgt[j * bs + i] = v;
                 }
-            i32 P[kNumIntraModesCfl][64];
+            // SATD over every mode.  The predictions are NOT kept -- at
+            // 32x32 ten of them are 40 kB -- so the candidates are predicted
+            // again below; predict_block is a few adds per sample.
+            i32 P[kMaxCoef], d[kMaxCoef];
             i32 cost[kNumIntraModesCfl];
             for (int m = 0; m < nmodes; ++m) {
-                predict_block(m, r, fallback, size, bx, by, P[m], cf);
-                i32 d[64];
-                for (int i = 0; i < 64; ++i) d[i] = tgt[i] - P[m][i];
-                cost[m] = satd8x8(d);
+                predict_block(m, r, fallback, size, bx, by, lb, P, cf);
+                for (int i = 0; i < ncoef; ++i) d[i] = tgt[i] - P[i];
+                cost[m] = satd_block(d, bs);
             }
             // candidate list: the DC-plane mode plus the best `ncand` by SATD
             int cand[kNumIntraModesCfl];
@@ -1453,53 +1591,70 @@ static void analyze_plane_dir(PlaneState &s, i16 *coefs, int tskip, int layer,
             const int mpm = mpm_of(s.modes.data(), nb, bi);
             double best = 0;
             int best_mode = kIntraDcPlane, best_split = 0;
-            i16 best_c[64];
-            i32 best_rec[64];
+            static thread_local i16 best_c[kMaxCoef];
+            static thread_local i32 best_rec[kMaxCoef];
             bool have = false;
             for (int k = 0; k < nc; ++k) {
                 const int m = cand[k];
-                i32 res[64];
-                for (int i = 0; i < 64; ++i) res[i] = tgt[i] - P[m][i];
+                predict_block(m, r, fallback, size, bx, by, lb, P, cf);
+                i32 res[kMaxCoef];
+                for (int i = 0; i < ncoef; ++i) res[i] = tgt[i] - P[i];
+                // The 4x4 split is a per-block choice INSIDE the tile's
+                // transform size, so it is the inner loop; `split_present` is
+                // false unless the tile chose the 8x8 transform (SYNTAX.md
+                // 4.1), which is what keeps the two tools from ever being
+                // asked to describe the same block twice.
                 for (int sp = 0; sp <= (split_present ? 1 : 0); ++sp) {
-                    i16 co[64];
-                    forward_block(res, co, tskip, sp);
-                    i32 orig[64];
-                    for (int i = 0; i < 64; ++i) orig[i] = co[i];
+                    i32 orig[kMaxCoef];
+                    if (sp) {
+                        i16 co[64];
+                        forward_block(res, co, tskip, 1);
+                        for (int i = 0; i < 64; ++i) orig[i] = co[i];
+                    } else if (tskip) {
+                        for (int i = 0; i < ncoef; ++i) orig[i] = res[i];
+                    } else {
+                        i16 co[kMaxCoef];
+                        fdct_block(res, co, bs);
+                        for (int i = 0; i < ncoef; ++i) orig[i] = co[i];
+                    }
                     const i32 *st = stepv[sp];
                     const UnitCtx uc = with_split(uc0, sp, split_present != 0);
-                    i16 q[64];
+                    i16 q[kMaxCoef];
                     if (use_rdo) {
-                        rdoq_unit(q, orig, st, 64, scan[sp], uc, rc, lambda);
+                        rdoq_unit(q, orig, st, ncoef, scan[sp], uc, rc, lambda);
                     } else {
                         const u8 *dz = dead_zone_table(false);
-                        for (int pp = 0; pp < 64; ++pp) {
+                        for (int pp = 0; pp < ncoef; ++pp) {
                             int i = scan[sp][pp];
                             q[i] = (i16)quantize(
                                 orig[i], st[i],
-                                dead_zone(st[i], dz[band_of(band_pos(pp, sp != 0))]));
+                                dead_zone(st[i],
+                                          dz[band_of(band_pos(
+                                              pp, sp != 0, uc.band_shift))]));
                         }
                     }
-                    if (sdh) hide_sign_unit(q, orig, st, 64, scan[sp]);
-                    i32 rr[64];
+                    if (sdh) hide_sign_unit(q, orig, st, ncoef, scan[sp]);
+                    i32 rr[kMaxCoef];
                     residual_block(q, s, tskip, rr, sp);
                     // exact sample-domain distortion of this candidate
                     double d2 = 0;
-                    i32 rec[64];
-                    for (int j = 0; j < 8; ++j)
-                        for (int i = 0; i < 8; ++i) {
-                            int y = by * 8 + j, x = bx * 8 + i;
-                            i32 v = P[m][j * 8 + i] + rr[j * 8 + i];
+                    i32 rec[kMaxCoef];
+                    for (int j = 0; j < bs; ++j)
+                        for (int i = 0; i < bs; ++i) {
+                            int y = (by << lb) + j, x = (bx << lb) + i;
+                            i32 v = P[j * bs + i] + rr[j * bs + i];
                             i32 full =
                                 layer ? clamp_i32(s.pred[(size_t)y * size + x] + v,
                                                   0, s.maxval)
                                       : clamp_i32(v, 0, s.maxval);
-                            rec[j * 8 + i] =
+                            rec[j * bs + i] =
                                 layer ? full - s.pred[(size_t)y * size + x] : full;
                             double e = (double)s.samples[(size_t)y * size + x] -
                                        (double)full;
                             d2 += e * e;
                         }
-                    double bits = unit_bits(q, 64, scan[sp], uc, rc, sdh) / 1024.0;
+                    double bits =
+                        unit_bits(q, ncoef, scan[sp], uc, rc, sdh) / 1024.0;
                     // mode signalling, exactly as the LaneMachine will code it
                     if (m == mpm) {
                         bits += mode_ctx ? rc.sym[mode_ctx][0] / 1024.0 : 1.0;
@@ -1515,28 +1670,31 @@ static void analyze_plane_dir(PlaneState &s, i16 *coefs, int tskip, int layer,
                         best = tc;
                         best_mode = m;
                         best_split = sp;
-                        std::memcpy(best_c, q, sizeof best_c);
-                        std::memcpy(best_rec, rec, sizeof best_rec);
+                        std::memcpy(best_c, q, sizeof(i16) * ncoef);
+                        std::memcpy(best_rec, rec, sizeof(i32) * ncoef);
                     }
                 }
             }
+#ifdef NXVC_XFORM_CTX_EXPERIMENT
+            g_mode_hist[s.log2b - 3][best_mode]++;
+#endif
             // A block with no coefficients codes no split flag, so its stored
             // flag must be 0 -- exactly what the decoder will reconstruct.
             if (split_present) {
                 bool any = false;
-                for (int i = 0; i < 64; ++i)
+                for (int i = 0; i < ncoef; ++i)
                     if (best_c[i]) { any = true; break; }
                 s.splits[bi] = (u8)(any ? best_split : 0);
             }
             s.modes[bi] = (u8)best_mode;
             // The neighbour class this unit leaves for the lane, mirroring
             // LaneMachine::finish_coef_unit exactly.
-            nbr[bi] = (u8)unit_nbr_class(best_c, 64, scan[best_split]);
-            std::memcpy(c, best_c, sizeof best_c);
-            for (int j = 0; j < 8; ++j)
-                for (int i = 0; i < 8; ++i)
-                    s.recon[(size_t)(by * 8 + j) * size + bx * 8 + i] =
-                        best_rec[j * 8 + i];
+            nbr[bi] = (u8)unit_nbr_class(best_c, ncoef, scan[best_split]);
+            std::memcpy(c, best_c, sizeof(i16) * ncoef);
+            for (int j = 0; j < bs; ++j)
+                for (int i = 0; i < bs; ++i)
+                    s.recon[(size_t)((by << lb) + j) * size + (bx << lb) + i] =
+                        best_rec[j * bs + i];
         }
 }
 

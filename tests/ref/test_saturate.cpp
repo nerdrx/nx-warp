@@ -144,5 +144,49 @@ int main(int argc, char **argv) {
         }
     }
 
+    // The same sweeps at the two large sizes.  Their reachable input space is
+    // also int16 (the dequantizer's clamp does not depend on the block size),
+    // and their internal nodes are larger: SYNTAX.md 6.3 bounds them at 1.7e8
+    // and 3.5e8, both far inside int32, and this is where that is checked.
+    {
+        Rng rng(31337);
+        for (int n : {16, 32}) {
+            i32 c[kMaxBlock * kMaxBlock], out[kMaxBlock * kMaxBlock];
+            // every single-coefficient extreme
+            for (int k = 0; k < n * n; ++k)
+                for (int sgn = 0; sgn < 2; ++sgn) {
+                    for (int i = 0; i < n * n; ++i) c[i] = 0;
+                    c[k] = sgn ? -32768 : 32767;
+                    idct_block(c, out, n);
+                    for (int i = 0; i < n * n; ++i)
+                        CHECK(out[i] >= -32768 && out[i] <= 32767,
+                              "n=%d single[%d] -> %d", n, k, out[i]);
+                }
+            // the maximising sign pattern of every output row, found from the
+            // single-basis responses, and then random int16 blocks
+            for (int row = 0; row < n; ++row) {
+                for (int i = 0; i < n * n; ++i) c[i] = 0;
+                for (int k = 0; k < n; ++k) {
+                    i32 probe[kMaxBlock * kMaxBlock] = {}, pr[kMaxBlock * kMaxBlock];
+                    probe[k] = 1;
+                    idct_block(probe, pr, n);
+                    const i32 sg = pr[row] >= 0 ? 32767 : -32768;
+                    for (int r = 0; r < n; ++r) c[r * n + k] = sg;
+                }
+                idct_block(c, out, n);
+                for (int i = 0; i < n * n; ++i)
+                    CHECK(out[i] >= -32768 && out[i] <= 32767,
+                          "n=%d worst row %d -> %d", n, row, out[i]);
+            }
+            for (int it = 0; it < 2000; ++it) {
+                for (int i = 0; i < n * n; ++i) c[i] = rng.range(-32768, 32767);
+                idct_block(c, out, n);
+                i16 fw[kMaxBlock * kMaxBlock];
+                fdct_block(c, fw, n);
+                (void)fw;
+            }
+        }
+    }
+
     return test_report("test_saturate");
 }

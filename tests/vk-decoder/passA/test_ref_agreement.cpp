@@ -85,7 +85,7 @@ void check_constants() {
     // Scan-table selection: nxs_scan_id + scan_index must equal ref's tables.
     for (int tskip = 0; tskip < 2; ++tskip)
         for (int n : {64, 16, 4, 1}) {
-            const uint8_t *ref_scan = nxvc::scan_table(n, tskip != 0);
+            const uint16_t *ref_scan = nxvc::scan_table(n, tskip != 0);
             int id = nxs_scan_id(n, tskip);
             for (int p = 0; p < n; ++p)
                 expect(scan_index(id, p) == ref_scan[p], "scan_table");

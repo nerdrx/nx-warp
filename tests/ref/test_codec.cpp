@@ -451,5 +451,87 @@ int main() {
         nxvc_decoder_destroy(d);
     }
 
+    // ---------------------------------------------------- large transforms
+    // 9. Every transform size round trips, on every chroma format, at every
+    // res_level, with and without directional intra -- and `xform_size == 0`
+    // is bit-identical to a build without the tool.
+    {
+        for (int c444 = 0; c444 <= 1; ++c444)
+            for (int dir = 0; dir <= 1; ++dir)
+                for (int xf = 0; xf <= 2; ++xf) {
+                    TestImage im = make_image(W, H, c444 != 0, 1, 700 + xf);
+                    nxvc_config cfg;
+                    nxvc_config_default(&cfg);
+                    cfg.width = W; cfg.height = H; cfg.base_qp = 22;
+                    cfg.chroma = c444 ? NXVC_CHROMA_444 : NXVC_CHROMA_420;
+                    cfg.intra_dir = (uint32_t)dir;
+                    cfg.xform_size = (uint32_t)xf;
+                    Coded r;
+                    CHECK(code(cfg, im, r), "xform %d c444 %d dir %d: %s/%s", xf,
+                          c444, dir, nxvc_status_string(r.enc_status),
+                          nxvc_status_string(r.dec_status));
+                    double q = psnr8(im.p[0].data(), r.out.p[0].data(),
+                                     im.p[0].size());
+                    CHECK(q > 28.0, "xform %d c444 %d dir %d psnr %.2f", xf,
+                          c444, dir, q);
+                }
+        // res_level 2 caps every plane's block at its own extent, so a 32x32
+        // request still decodes (SYNTAX.md 6.7).
+        for (int lvl = 0; lvl <= 2; ++lvl) {
+            TestImage im = make_image(W, H, false, 1, 810 + lvl);
+            std::vector<uint8_t> res((size_t)((W + 63) / 64) * ((H + 63) / 64),
+                                     (uint8_t)lvl);
+            nxvc_config cfg;
+            nxvc_config_default(&cfg);
+            cfg.width = W; cfg.height = H; cfg.base_qp = 26;
+            cfg.xform_size = 2;
+            Coded r;
+            CHECK(code(cfg, im, r, nullptr, res.data()),
+                  "xform 32 res_level %d: %s/%s", lvl,
+                  nxvc_status_string(r.enc_status),
+                  nxvc_status_string(r.dec_status));
+        }
+    }
+
+    // 10. The tool bit appears only when the tool is used, and the per-tile
+    // search reports a size for every tile.
+    {
+        TestImage im = make_image(W, H, false, 1, 921);
+        nxvc_config cfg;
+        nxvc_config_default(&cfg);
+        cfg.width = W; cfg.height = H; cfg.base_qp = 24;
+        Coded r0;
+        CHECK(code(cfg, im, r0), "xform off encode");
+        cfg.xform_size = 255;
+        Coded r1;
+        CHECK(code(cfg, im, r1), "xform auto encode");
+        // tools is the u64 at byte 32 of the stream header (SYNTAX.md 2).
+        auto tools = [](const std::vector<uint8_t> &h) {
+            uint64_t t = 0;
+            for (int i = 0; i < 8; ++i) t |= (uint64_t)h[32 + i] << (8 * i);
+            return t;
+        };
+        CHECK((tools(r0.header) & NXVC_TOOL_XFORM_LARGE) == 0,
+              "XFORM_LARGE set on an 8x8-only stream");
+        CHECK((tools(r1.header) & NXVC_TOOL_XFORM_LARGE) != 0,
+              "XFORM_LARGE missing on an xform-auto stream");
+    }
+
+    // 11. Lossless is unaffected: it forces 8x8 whatever is asked for, and
+    // stays bit exact.
+    {
+        TestImage im = make_image(W, H, true, 2, 77);
+        nxvc_config cfg;
+        nxvc_config_default(&cfg);
+        cfg.width = W; cfg.height = H; cfg.chroma = NXVC_CHROMA_444;
+        cfg.lossless = 1; cfg.base_qp = 0; cfg.sign_hide = 0;
+        cfg.xform_size = 2;
+        Coded r;
+        CHECK(code(cfg, im, r), "lossless + xform 32: %s/%s",
+              nxvc_status_string(r.enc_status), nxvc_status_string(r.dec_status));
+        for (int p = 0; p < 3; ++p)
+            CHECK(r.out.p[p] == im.p[p], "lossless plane %d differs", p);
+    }
+
     return test_report("test_codec");
 }

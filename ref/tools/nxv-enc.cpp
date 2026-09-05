@@ -80,6 +80,8 @@ static void usage() {
         "                       (tool 26); v2 is off by default\n"
         "  --table-iters N      Lloyd iterations refining the per-frame table sets\n"
         "                       (0 = off, default 3)\n"
+        "  --xform 8|16|32|auto transform size per tile (tool 27, default 8);\n"
+        "                       --split4x4 applies only where this is 8\n"
         "  --no-sign-hide       code every sign (default: hide one per unit)\n"
         "  --split4x4 on|off    per-block 4x4 transform split (default on)\n"
         "  --cfl on|off         chroma-from-luma intra mode (default on)\n"
@@ -130,6 +132,7 @@ int main(int argc, char **argv) {
     // entropy and context package is OFF (docs/TOOLBITS.md 7).
     int intra_dir = 1, intra_dir_layer = 0, ctx_v2 = 1, ctx_v3 = 0;
     int tab_v2 = 0, dir_cand = 0, table_iters = -1;
+    int xform = 0;   // tool 27: 0 = 8x8, 1 = 16x16, 2 = 32x32, 255 = auto
     int sign_hide = 1;
     int split4x4 = 1, cfl = 1;
     int inter = 0, eyes = 1, intra_period = 180, ref_sel = 0, stereo = 0;
@@ -228,6 +231,14 @@ int main(int argc, char **argv) {
             else if (v == "v2") { ctx_v2 = 1; ctx_v3 = 0; }
             else if (v == "v1") { ctx_v2 = 0; ctx_v3 = 0; }
             else { std::fprintf(stderr, "--ctx: v1|v2|v3\n"); return 2; }
+        }
+        else if (a == "--xform") {
+            std::string v = val();
+            if (v == "8") xform = 0;
+            else if (v == "16") xform = 1;
+            else if (v == "32") xform = 2;
+            else if (v == "auto") xform = 255;
+            else { std::fprintf(stderr, "--xform: 8|16|32|auto\n"); return 2; }
         }
         else if (a == "--wm") { std::string v = val(); wm = v == "auto" ? 255 : std::atoi(v.c_str()); }
         else if (a == "--chroma-qp-off") chroma_qp_off = std::atoi(val());
@@ -367,6 +378,7 @@ int main(int argc, char **argv) {
     cfg.intra_dir = (uint32_t)intra_dir;
     cfg.intra_dir_layer = (uint32_t)intra_dir_layer;
     cfg.intra_dir_cand = (uint32_t)dir_cand;
+    cfg.xform_size = (uint32_t)xform;
     cfg.ctx_v2 = (uint32_t)ctx_v2;
     cfg.ctx_v3 = (uint32_t)ctx_v3;
     cfg.tab_v2 = (uint32_t)tab_v2;

@@ -334,6 +334,9 @@ def cmd_encode(args: argparse.Namespace) -> int:
         kwargs["intra_dir"], kwargs["intra_dir_layer"] = intra_dir
     if args.intra_dir_cand:
         kwargs["intra_dir_cand"] = args.intra_dir_cand
+    if args.xform is not None:
+        kwargs["xform_size"] = (255 if args.xform == "auto"
+                                else {"8": 0, "16": 1, "32": 2}[args.xform])
     if args.ctx is not None:
         kwargs["ctx_v2"] = 1 if args.ctx in ("v2", "v3") else 0
         kwargs["ctx_v3"] = 1 if args.ctx == "v3" else 0
@@ -501,14 +504,18 @@ def build_parser() -> argparse.ArgumentParser:
     e.add_argument("--intra-dir-cand", dest="intra_dir_cand", type=int, default=0,
                    help="modes RD-checked per block (0 = the encoder default)")
     e.add_argument("--ctx", default=None, choices=("v1", "v2", "v3"),
-                   help="12, 16 or 22 entropy contexts (tool bits 21 CTX_V2, "
+                   help="12, 16 or 27 entropy contexts (tool bits 21 CTX_V2, "
                         "25 CTX_V3)")
     e.add_argument("--tab", default=None, choices=("v1", "v2"),
                    help="transmitted-table coding: flat 5-bit deltas, or the "
-                        "compact per-row form (tool bit 24 TAB_V2)")
+                        "compact per-row form (tool bit 26 TAB_V2)")
     e.add_argument("--table-iters", dest="table_iters", type=int, default=None,
                    help="Lloyd iterations refining the per-frame table sets "
-                        "(0 = the syntax v1.4 encoder, encoder-side only)")
+                        "(0 = off, default 3; encoder-side only)")
+    e.add_argument("--xform", default=None,
+                   choices=("8", "16", "32", "auto"),
+                   help="transform size per tile (tool bit 27 XFORM_LARGE); "
+                        "`auto` lets the encoder choose by rate-distortion")
     e.add_argument("--sign-hide", dest="sign_hide", action="store_const",
                    const=True, default=None,
                    help="sign data hiding (tool bit 22; the reference default)")

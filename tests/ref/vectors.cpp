@@ -54,6 +54,8 @@ struct VecSpec {
     int spl;          // 4x4 transform split (tool 19)
     int cfl;          // chroma from luma (tool 24)
     int tab;          // compact transmitted table sets (TAB_V2, tool 26)
+    int xform;        // transform size: 0 = 8x8, 1 = 16x16, 2 = 32x32,
+                      // 255 = the encoder's per-tile RD choice (tool 27)
 };
 
 static const VecSpec kVectors[] = {
@@ -114,8 +116,9 @@ static const VecSpec kVectors[] = {
     {"v44_default444",         192, 128, 1,  1, 20,  0, 0,  0,255,  1,  0, 0,  1,  0,  0, 1, 0, 0, 1, 1, 1},
     // --- syntax v1.6, the tournament packages.  One contiguous `v` sequence
     // in merge order (docs/MERGE-PLAN.md 4.3.2): the detail package first,
-    // then the entropy and context package.  The last three columns are
-    // `spl`, `cfl` and `tab`; `ctx` is 2 for CTX_V3.
+    // then the entropy and context package, then the transform package.  The
+    // last four columns are `spl`, `cfl`, `tab` and `xform`; `ctx` is 2 for
+    // CTX_V3.
     //
     // detail: v57/v58 are the 4x4 split alone; v59/v60 are chroma from luma
     // alone at both co-location factors (444 is f == 1, 420 is f == 2); v61
@@ -133,6 +136,20 @@ static const VecSpec kVectors[] = {
     {"v63_ctxv3_444",          192, 128, 1,  1, 24,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 2, 0, 0, 0, 0},
     {"v64_ctxv3_tab_res420",   192, 128, 0,  2, 18,  0, 0,  0,255,  1,  0, 0,  1,  1,  0, 2, 0, 0, 1, 2, 1, 0, 0, 1},
     {"v65_ctxv3_tab_444",      192, 128, 1,  1, 20,  0, 0,  0,255,  1,  0, 0,  1,  0,  0, 1, 0, 0, 1, 2, 1, 0, 0, 1},
+    // transform: v68-v70 pin each fixed size on its own; v71 pins the
+    // per-tile RD choice with every v2 intra tool on, which is the encoder's
+    // shipped configuration for the tool; v72 pins a 32x32 transform inside a
+    // res_level-cycling tile grid, where the plane cap of SYNTAX.md 6.7 gives
+    // three different block sizes in one frame; v73 pins a 16x16 transform
+    // with directional intra on 4:4:4 chroma.  `xform` is the last column and
+    // `spl` is 0 in all of them: the split flag exists only at xform_size 8
+    // (SYNTAX.md 4.1), and v57/v58 already pin it there.
+    {"v68_xform16_420",        192, 128, 0,  1, 24,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1},
+    {"v69_xform32_420",        192, 128, 0,  1, 24,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 2},
+    {"v70_xform32_444",        192, 128, 1,  1, 20,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 2},
+    {"v71_xform_auto_default", 192, 128, 1,  1, 20,  0, 0,  0,255,  1,  0, 0,  1,  0,  0, 1, 0, 0, 1, 1, 1, 0, 1, 0, 255},
+    {"v72_xform32_res_cycle",  192, 128, 0,  1, 28,  0, 0,  0,  3,  0,  0, 0,  1,  1,  0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 2},
+    {"v73_xform16_dir444",     192, 128, 1,  2, 16,  0, 0,  0,  3,  0,  0, 0,  1,  0,  0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1},
 };
 static const int kNumVectors = (int)(sizeof(kVectors) / sizeof(kVectors[0]));
 
@@ -260,6 +277,7 @@ static Result build(const VecSpec &v) {
     cfg.split4x4 = (uint32_t)v.spl;
     cfg.chroma_from_luma = (uint32_t)v.cfl;
     cfg.tab_v2 = (uint32_t)v.tab;
+    cfg.xform_size = (uint32_t)v.xform;
 
     nxvc_status st;
     nxvc_encoder *e = nxvc_encoder_create(&cfg, &st);
@@ -819,7 +837,7 @@ static const RejectSpec kRejects[] = {
     {"r06_res_level3",        "res_level 3 is reserved",                 NXVC_ERR_BITSTREAM,   1},
     {"r07_truncated_rans",    "the tile payload is cut short",           NXVC_ERR_TRUNCATED,   1},
     {"r08_skip_bitmap",       "a skip bit for a column past the picture",NXVC_ERR_BITSTREAM,   1},
-    {"r09_reserved_tile_bit", "tile word1 bit 29 is reserved",           NXVC_ERR_BITSTREAM,   1},
+    {"r09_reserved_tile_bit", "tile word1 bit 31 is reserved",           NXVC_ERR_BITSTREAM,   1},
     {"r10_mode_inter",        "an INTER tile in a Phase 1 stream",       NXVC_ERR_UNSUPPORTED, 1},
     {"r11_wm_id_no_tool",     "wm_id != 0 without the WM_ID tool bit",   NXVC_ERR_BITSTREAM,   1},
     {"r12_row_index_wrong",   "row_index does not match its position",   NXVC_ERR_BITSTREAM,   1},
@@ -834,6 +852,14 @@ static const RejectSpec kRejects[] = {
     {"r33_tab_v2_no_tables",  "TAB_V2 without CUSTOM_TABLES",             NXVC_ERR_BITSTREAM,   1},
     {"r34_ctx_v3_no_v2",      "CTX_V3 without CTX_V2",                    NXVC_ERR_BITSTREAM,   1},
     {"r35_ctx_v3_short_table","CTX_V3 table set overruns the tile rows",  NXVC_ERR_BITSTREAM,   1},
+    // --- the large transforms (SYNTAX.md 4.1, 6.6, 6.7)
+    {"r36_xform_size_three",  "xform_size 3 is reserved",                 NXVC_ERR_BITSTREAM,   1},
+    {"r37_xform_no_tool",     "xform_size != 0 without XFORM_LARGE",      NXVC_ERR_BITSTREAM,   1},
+    {"r38_xform_with_tskip",  "xform_size != 0 on a transform-skip tile", NXVC_ERR_BITSTREAM,   1},
+    // The composition rule of SYNTAX.md 4.1: the two transform tools act at
+    // different granularities and stay separate fields, and the price of that
+    // is one constraint that has to be pinned.
+    {"r39_split_with_xform",  "split4x4 with xform_size != 8",            NXVC_ERR_BITSTREAM,   1},
 };
 static const int kNumRejects = (int)(sizeof(kRejects) / sizeof(kRejects[0]));
 
@@ -874,7 +900,8 @@ static std::vector<uint8_t> make_reject(int idx, const std::vector<uint8_t> &bas
         case 5: put_u32(b, kOffTile0 + 4, w1 | (3u << 3)); break;
         case 6: b.resize(b.size() - 16); break;
         case 7: b[kOffRow + 4 + 7] = 0x80; break;      // skip bitmap bit 63
-        case 8: put_u32(b, kOffTile0 + 4, w1 | (1u << 29)); break;
+        // word1 28 is split4x4, 29-30 xform_size; 31 is the reserved one.
+        case 8: put_u32(b, kOffTile0 + 4, w1 | (1u << 31)); break;
         case 9: put_u32(b, kOffTile0 + 4, (w1 & ~7u) | 2u); break;  // WARP_MV
         case 10: put_u32(b, kOffTile0 + 4, w1 | (1u << 26)); break; // wm_id 1
         case 11: b[kOffRow + 2] = 7; break;   // row_index
@@ -928,6 +955,31 @@ static std::vector<uint8_t> make_reject(int idx, const std::vector<uint8_t> &bas
             set_tool(b, NXVC_TOOL_CTX_V2);
             set_tool(b, NXVC_TOOL_CTX_V3);
             b[kOffFrame + 32] |= 0x01;      // tables_present bit 0
+            break;
+        // xform_size (word1 bits 29-30) is 3, which is reserved whatever the
+        // tool bits say.
+        case 23:
+            set_tool(b, NXVC_TOOL_XFORM_LARGE);
+            put_u32(b, kOffTile0 + 4, w1 | (3u << 29));
+            break;
+        // xform_size 1 without the tool bit.
+        case 24: put_u32(b, kOffTile0 + 4, w1 | (1u << 29)); break;
+        // Both tool bits declared, and one tile that sets tskip and
+        // xform_size together: a transform-skip tile is 8x8 by construction.
+        case 25:
+            set_tool(b, NXVC_TOOL_TRANSFORM_SKIP);
+            set_tool(b, NXVC_TOOL_XFORM_LARGE);
+            put_u32(b, kOffTile0 + 4, w1 | (1u << 23) | (1u << 29));
+            break;
+        // Both transform tool bits declared, and one tile that sets the 4x4
+        // split flag together with a 16x16 transform.  SYNTAX.md 4.1: the
+        // split is present and meaningful ONLY at xform_size == 8, so this is
+        // BITSTREAM -- the one constraint that keeps two fields at two
+        // granularities from describing the same block twice.
+        case 26:
+            set_tool(b, NXVC_TOOL_XFORM_4X4_SPLIT);
+            set_tool(b, NXVC_TOOL_XFORM_LARGE);
+            put_u32(b, kOffTile0 + 4, w1 | (1u << 28) | (1u << 29));
             break;
         default: break;
     }

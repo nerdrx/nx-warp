@@ -270,8 +270,9 @@ def test_ctypes_struct_sizes_match_the_c_layout():
     assert ctypes.sizeof(_ffi.nxvc_tile_layout) == 16
     # 18 u8/u16 through `qp` (22), + wm_id, intra_dir, skipped, concealed (26),
     # + a 2-aligned u16 `disparity` (28), + ref_delta (29), + a 2-aligned u16
-    # `age_since_coded` (32).
-    assert ctypes.sizeof(_ffi.nxvc_tile_info) == 32
+    # `age_since_coded` (32), + `xform_size` (33), padded to the struct's
+    # 2-byte alignment (34).
+    assert ctypes.sizeof(_ffi.nxvc_tile_info) == 34
     assert ctypes.sizeof(_ffi.nxvc_image) == ctypes.sizeof(ctypes.c_void_p) * 4 + 16
     # 14 u32 (56) + u64 (64) + layer_desc 4 u32 (80) + 3 u32 (92), rounded up
     # to the struct's 8-byte alignment = 96.

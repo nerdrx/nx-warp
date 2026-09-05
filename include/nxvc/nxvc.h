@@ -53,8 +53,13 @@ extern "C" {
  *       tool bit 19 XFORM_4X4_SPLIT and 24 INTRA_CFL (the detail package);
  *       25 CTX_V3, the 27-context neighbour-conditioned model, conditioned
  *       per coding unit; 26 TAB_V2, the variable-length transmitted table
- *       set with a per-row "use the built-in default" flag.
- *       See docs/SYNTAX.md 9.4.1 and 9.8, and docs/TOOLBITS.md.
+ *       set with a per-row "use the built-in default" flag; 27 XFORM_LARGE
+ *       and the tile header's two-bit `xform_size`, selecting a 16x16 or
+ *       32x32 integer DCT for every plane of the tile instead of the 8x8
+ *       one -- the DC plane, the intra predictors, the weighting matrices,
+ *       the scans and the entropy contexts all follow the block size by
+ *       documented rules, and no new context and no new symbol exists.
+ *       See docs/SYNTAX.md 6.7, 6.8, 9.4.1 and 9.9, and docs/TOOLBITS.md.
  */
 #define NXVC_BITSTREAM_MINOR 6
 
@@ -147,6 +152,11 @@ typedef enum nxvc_tile_mode {
 #define NXVC_TOOL_CTX_V3          (1ull << 25)
 #define NXVC_TOOL_TAB_V2          (1ull << 26)
 
+/* Per-tile 16x16 and 32x32 transforms (SYNTAX.md 6.7).  Gates
+ * tile-header field `xform_size`; a stream that never sets the bit decodes
+ * byte-identically to a v1.4 one. */
+#define NXVC_TOOL_XFORM_LARGE     (1ull << 27)
+
 /* Tools this reference decoder implements. */
 #define NXVC_TOOLS_SUPPORTED                                                  \
     (NXVC_TOOL_INTRA_DC_PLANE | NXVC_TOOL_TRANSFORM_SKIP |                    \
@@ -155,7 +165,7 @@ typedef enum nxvc_tile_mode {
      NXVC_TOOL_PER_TILE_CHROMA | NXVC_TOOL_YCOCGR | NXVC_TOOL_WM_ID |        \
      NXVC_TOOL_INTRA_DIR | NXVC_TOOL_CTX_V2 | NXVC_TOOL_SIGN_HIDE |           \
      NXVC_TOOL_XFORM_4X4_SPLIT | NXVC_TOOL_INTRA_CFL |                        \
-     NXVC_TOOL_CTX_V3 | NXVC_TOOL_TAB_V2 |                                    \
+     NXVC_TOOL_CTX_V3 | NXVC_TOOL_TAB_V2 | NXVC_TOOL_XFORM_LARGE |            \
      NXVC_TOOL_INTER | NXVC_TOOL_WARP | NXVC_TOOL_STEREO)
 
 /* ---------------------------------------------------------------- images */
@@ -268,6 +278,15 @@ typedef struct nxvc_config {
                                    Without this a zeroed nxvc_config, which
                                    is how every caller starts, would mean
                                    "off" rather than "default"              */
+
+    /* the transform package (docs/TOOLBITS.md 2).  A nonzero value sets tool
+     * bit 27, and a decoder without it refuses the stream at the handshake. */
+    uint32_t xform_size;        /* 0 = 8x8 only (and no tool bit), 1 = 16x16
+                                   on every tile, 2 = 32x32 on every tile,
+                                   255 = let the encoder choose per tile by
+                                   rate-distortion.  split4x4 is meaningful
+                                   only where this resolves to 8x8; see
+                                   docs/SYNTAX.md 4.1                       */
 } nxvc_config;
 
 /* One eye's view for one frame: the orientation the frame was rendered with
@@ -332,8 +351,9 @@ typedef struct nxvc_tile_info {
     uint16_t age_since_coded;   /* frames since this tile position last
                                    carried a coded residual; 0 on the frame
                                    that coded one, saturating at 65535      */
-    /* APPENDED per JUDGE-detail.md merge item 1. */
+    /* APPENDED per JUDGE-detail.md merge item 1, then in merge order. */
     uint8_t split4x4;           /* 1: this tile carries 4x4 split flags    */
+    uint8_t xform_size;         /* 0 = 8x8, 1 = 16x16, 2 = 32x32           */
 } nxvc_tile_info;
 
 typedef struct nxvc_stream_info {

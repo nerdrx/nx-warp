@@ -77,6 +77,7 @@ void LaneMachine::begin_unit() {
     }
     scan_ = u_->scan;
     split_ = false;
+    lshift_ = last_shift_of(u_->ncoef);
     phase_ = kCbf;
 }
 
@@ -114,7 +115,7 @@ int LaneMachine::ctx_level(int scan_pos, int band_scan_pos,
         return v3_ctx_level(u_->ucls, scan_pos, band_scan_pos, last_,
                             prev_class);
     return u_->ctx_level != kCtxNone ? u_->ctx_level
-                                     : level_ctx(band_scan_pos, prev_class);
+                                     : level_ctx(band_scan_pos, prev_class, 0);
 }
 
 // A coefficient unit is over: publish its neighbour class to the lane and
@@ -181,14 +182,15 @@ bool LaneMachine::next(Op &op) {
                 for (int p = u_->ncoef - 1; p >= 0; --p)
                     if (u_->coef[scan_[p]] != 0) { lastpos = p; break; }
                 last_ = lastpos;
-                op.value = (u16)last_class_of(lastpos);
+                op.value = (u16)last_class_of(lastpos >> lshift_);
             }
             return true;
         }
         case kLastRaw: {
             op.kind = OP_BYPASS;
-            op.arg = kLastRawBits[last_cls_];
-            op.value = encoding_ ? (u16)(last_ - kLastBase[last_cls_]) : 0;
+            op.arg = (u8)(kLastRawBits[last_cls_] + lshift_);
+            op.value =
+                encoding_ ? (u16)(last_ - (kLastBase[last_cls_] << lshift_)) : 0;
             return true;
         }
         case kModeSym: {
@@ -219,13 +221,15 @@ bool LaneMachine::next(Op &op) {
         }
         case kLevel: {
             op.kind = OP_SYM;
-            // The LEVEL context is banded, and a 4x4-split unit's scan
-            // position bands differently from an 8x8 one, so the split
-            // mapping happens BEFORE the context is chosen -- under every
-            // model.  band_pos() is the detail package's; ctx_level() is the
-            // entropy package's; they compose in that order and neither
-            // needs to know about the other.
-            op.arg = (u8)ctx_level(pos_, band_pos(pos_, split_), prev_class_);
+            // The LEVEL context is banded, and both transform tools change
+            // which band a scan position falls in: the detail package's split
+            // maps a position into its 4x4 sub-block, and the transform
+            // package's scan-group shift maps a large block's position into
+            // its group.  Both happen BEFORE the context is chosen, under
+            // every context model, and neither package needs to know the
+            // other exists.
+            op.arg = (u8)ctx_level(pos_, band_pos(pos_, split_, lshift_),
+                                   prev_class_);
             op.value = 0;
             if (encoding_) {
                 i32 q = u_->coef[scan_[pos_]];
@@ -341,9 +345,9 @@ bool LaneMachine::feed(u32 v) {
         case kLast: {
             if (v > 14) return false;
             last_cls_ = (int)v;
-            int base = kLastBase[last_cls_];
+            int base = kLastBase[last_cls_] << lshift_;
             if (base >= u_->ncoef) return false;
-            if (kLastRawBits[last_cls_] > 0) {
+            if (kLastRawBits[last_cls_] + lshift_ > 0) {
                 phase_ = kLastRaw;
                 return true;
             }
@@ -352,7 +356,7 @@ bool LaneMachine::feed(u32 v) {
             return true;
         }
         case kLastRaw: {
-            last_ = kLastBase[last_cls_] + (int)v;
+            last_ = (kLastBase[last_cls_] << lshift_) + (int)v;
             if (last_ >= u_->ncoef) return false;
             begin_levels();
             return true;

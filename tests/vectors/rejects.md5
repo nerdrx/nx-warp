@@ -10,7 +10,7 @@ r05_payload_past_row 3a20966982f373036e8e38000dfc397e TRUNCATED payload_len runs
 r06_res_level3 fb8c6f549beb974f4e030588bce3d812 BITSTREAM res_level 3 is reserved
 r07_truncated_rans f37b4f2a60f043db29391d5d40859f12 TRUNCATED the tile payload is cut short
 r08_skip_bitmap c49987ed7695f3bc5850a758e823e6a7 BITSTREAM a skip bit for a column past the picture
-r09_reserved_tile_bit b7387d7bd7eea4c6e73cfa2294018558 BITSTREAM tile word1 bit 29 is reserved
+r09_reserved_tile_bit db9109f67891476c016bd09023c8f938 BITSTREAM tile word1 bit 31 is reserved
 r10_mode_inter 65f9f11b834aa1da74f4b2cc2eae897f UNSUPPORTED an INTER tile in a Phase 1 stream
 r11_wm_id_no_tool 5bca6e182068a07b74467ea27c9c96b4 BITSTREAM wm_id != 0 without the WM_ID tool bit
 r12_row_index_wrong ae90d19b402821081fb0972f9908e24f BITSTREAM row_index does not match its position
@@ -25,6 +25,10 @@ r32_split_with_tskip b563f9bcf2ad24ddada7327a4acb5414 BITSTREAM tile split4x4 to
 r33_tab_v2_no_tables 8393c5da1fe16275edfaf13e35920d95 BITSTREAM TAB_V2 without CUSTOM_TABLES
 r34_ctx_v3_no_v2 aa3dc7303646b5e17dbeec43f6153a41 BITSTREAM CTX_V3 without CTX_V2
 r35_ctx_v3_short_table b6ee2bef56884815241e5058176e3c8a BITSTREAM CTX_V3 table set overruns the tile rows
+r36_xform_size_three 55eab3d38ca3357fe8f9a1a11e4fbe33 BITSTREAM xform_size 3 is reserved
+r37_xform_no_tool b7387d7bd7eea4c6e73cfa2294018558 BITSTREAM xform_size != 0 without XFORM_LARGE
+r38_xform_with_tskip d92a67d73d2c6b454cba15c72661cb72 BITSTREAM xform_size != 0 on a transform-skip tile
+r39_split_with_xform b0f9d5b001b67bdc3db4edf98a0a2c85 BITSTREAM split4x4 with xform_size != 8
 # --- Phase 2 (Annex D D-21)
 r18_h22_not_one 7f74cfb23676864d7322d1742ca5c25f BITSTREAM warp_ext h22 != 2^29
 r19_entry_range a4e233fdd08565efe19368e7a85f8a6c BITSTREAM a warp_ext entry beyond kEntryMax
