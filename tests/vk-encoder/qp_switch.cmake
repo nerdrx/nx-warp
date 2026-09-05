@@ -155,10 +155,10 @@ foreach(q ${DISTINCT})
   execute_process(COMMAND ${NXVENC} --in ${SRC} --w ${pw} --h ${ph}
                           --pix yuv420p --qp ${q} --frames ${NWANT}
                           --nsub 3 --matrix 1 --wm 0 --tskip off
-                          --chroma-qp-off 0 --ctx v2 --sign-hide
+                          --chroma-qp-off 0 --ctx v3 --sign-hide
                           --eyes 1 --intra-dir off --quiet
-                          --no-rdo --no-custom-tables
-                          --split4x4 off --cfl off --tab v1 --xform 8
+                          --no-rdo --custom-tables
+                          --split4x4 off --cfl off --tab v2 --xform 8
                           --entropy rans
                           --out ${WORKDIR}/ref-${q}.nxv
                   RESULT_VARIABLE rc OUTPUT_QUIET)
