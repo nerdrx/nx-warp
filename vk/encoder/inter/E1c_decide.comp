@@ -152,6 +152,22 @@ shared uint s_sad[256];
 shared uint s_gate, s_sadskip;
 // The winner of a search stage, and the (sad, index) pair each lane reduces.
 shared int s_bx, s_by;
+// The running best SAD across ALL THREE stages, not per stage.
+//
+// The reference never resets it: `bsad` carries from the seeds into the sweep
+// into the integer refine, and the stages sample the tile at DIFFERENT
+// densities -- the seeds and the sweep at every second sample, the refine at
+// every one.  A refine candidate's SAD is therefore about four times a sweep
+// candidate's for the same picture, so it essentially never wins, and the
+// reference's integer refine is inert by construction.
+//
+// That is not a bug to fix on one side.  Byte-identity is the contract, so
+// this kernel reproduces it exactly: each stage picks its own winner by
+// (SAD, visit index), and only displaces the running best if strictly
+// smaller.  Resetting per stage instead made the refine live, moved 542 tiles
+// of 4624 at 1088x1088, and left 256x192 -- where the sweep winner and the
+// refine winner happen to agree -- passing.
+shared uint s_bsad;
 shared uint s_csad[256];
 shared uint s_cidx[256];
 
@@ -184,7 +200,17 @@ uint reduce_sum(uint x, int lid) {
         if (uint(lid) < st) s_csad[lid] += s_csad[lid + st];
         barrier();
     }
-    return s_csad[0];
+    const uint total = s_csad[0];
+    // The trailing barrier is not decoration.  This is called once per
+    // quarter-pel candidate, and without it a lane that has read s_csad[0] can
+    // run ahead, finish the NEXT candidate's SAD and write s_csad[lid] while a
+    // slower lane is still reading s_csad[0] from this one.  The winner then
+    // depends on which lanes were quick, which showed up as four tiles of 96
+    // choosing the centre vector where the reference chose a quarter-pel
+    // neighbour -- with identical byte counts, because the two vectors coded
+    // to the same size.  A wrong answer that looks like a tuning difference.
+    barrier();
+    return total;
 }
 
 // One stage of the search: evaluate its candidate set in parallel, reduce on
@@ -243,7 +269,8 @@ void search_stage(int stage, int cx0, int cy0, int ox, int oy, uint srcbase,
         }
         barrier();
     }
-    if (lid == 0) {
+    if (lid == 0 && s_csad[0] < s_bsad) {
+        s_bsad = s_csad[0];
         const int c = int(s_cidx[0]);
         if (stage == SEEDS) { s_bx = 0; s_by = 0; }
         else if (stage == SWEEP) {
@@ -426,6 +453,13 @@ void main() {
     const int ox = int(jobs[tile].col) * 64 +
                    int(jobs[tile].eye) * pc.ring_w;
     const int oy = int(jobs[tile].row) * 64;
+
+    if (lid == 0u) {
+        s_bsad = 0xffffffffu;
+        s_bx = 0;
+        s_by = 0;
+    }
+    barrier();
 
     // Stage 1, the two seeds, then stage 2's sweep and its integer refine.
     // Each stage reduces on (sad, visit index) so that a tie goes to the

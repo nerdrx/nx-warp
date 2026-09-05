@@ -305,7 +305,8 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
     /* One module for both intra paths: the running reconstruction's shared
      * array is sized by the specialization constant, so a pipeline built with
      * NXE_SC_INTRA_DIR = 0 allocates none of it. */
-    if (!d.dev.create_pipeline(E3_forward_spv, sizeof E3_forward_spv, sb5, 0,
+    const std::vector<VkDescriptorType> sb6e(6, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    if (!d.dev.create_pipeline(E3_forward_spv, sizeof E3_forward_spv, sb6e, 0,
                                d.p_e3, err, &si))
         return false;
     if (!d.dev.create_pipeline(E4_rans_encode_spv, sizeof E4_rans_encode_spv,
@@ -376,7 +377,7 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
 
     VkDevice h = d.dev.handle();
     write_set(h, d.s_e3, {d.b_params.buf, d.b_jobs.buf, d.b_src.buf,
-                          d.b_coef.buf, d.b_modes.buf});
+                          d.b_coef.buf, d.b_modes.buf, d.b_wpred.buf});
     write_set(h, d.s_e4, {d.b_params.buf, d.b_jobs.buf, d.b_coef.buf,
                           d.b_modes.buf, d.b_tabs.buf, d.b_slots.buf,
                           d.b_sizes.buf, d.b_ops.buf, d.b_slotops.buf});
@@ -726,6 +727,8 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
          * `f.fp`, so a warp_bytes left only in the copy makes every tile offset
          * 36 bytes short on an inter frame and the last tile appear to end
          * before the frame does. */
+        fp.wpred_stride = (uint32_t)d.wpred_stride;
+        f.fp.wpred_stride = fp.wpred_stride;
         f.fp.warp_bytes = fp.warp_bytes;
         f.fp.ref_slots = fp.ref_slots;
         f.fp.frame_flags = fp.frame_flags;
@@ -937,7 +940,16 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
         d.force_intra.clear();
         const nxe_tile_job *back =
             (const nxe_tile_job *)((uint8_t *)d.b_stage_small.map + 0xC0000u);
-        for (uint32_t t = 0; t < d.ntiles; ++t) f.jobs[t].mode = back[t].mode;
+        // The mode AND the vector.  Both are E1c's output, and the host is
+        // about to re-upload the job array to carry the table-set choice --
+        // which puts its own copy back over anything the device decided.  The
+        // mode was read back from the start; leaving the vector behind cost a
+        // debugging pass in which E1c demonstrably chose mv (-1,0) and the
+        // bitstream carried (0,0), because the readback was one field short.
+        for (uint32_t t = 0; t < d.ntiles; ++t) {
+            f.jobs[t].mode = back[t].mode;
+            f.jobs[t].mv = back[t].mv;
+        }
     }
 
 

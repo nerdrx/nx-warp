@@ -318,8 +318,12 @@ typedef struct nxe_frame_params {
      * otherwise -- a MASK naming the ring slot this frame writes, not an
      * index; the decoder rejects any other value (SYNTAX.md 3.1). */
     uint32_t ref_slots;
+
+    /* int16 elements one tile occupies in the WPred buffer Pass W writes, and
+     * which E3 subtracts for a coded inter tile.  0 on an intra stream, where
+     * the buffer is a 4-byte placeholder and nothing reads it. */
+    uint32_t wpred_stride;
     uint32_t pad1;
-    uint32_t pad2;
 
     /* Frame weighting matrices, Q4, raster order in the 8x8 block.  wm_id 0
      * on a tile selects these; 1..3 select a built-in pair (kWeight). */

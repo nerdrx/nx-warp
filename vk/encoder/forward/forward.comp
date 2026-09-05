@@ -45,6 +45,12 @@ layout(std430, binding = 3)          buffer CoefBuf  { uint v[]; } coefb;
 // Per-block intra modes, four per word, 3*64 per tile.  Read only when
 // NXE_SC_INTRA_DIR is 1.
 layout(std430, binding = 4) readonly buffer ModeBuf  { uint v[]; } modeb;
+// Pass W's predictor, i16 packed two per uint at the decoder's own stride.
+// THIS is the binding nxe_enc.h once claimed already existed.  A coded inter
+// tile subtracts it here, and Pass B adds exactly the same samples back on the
+// decode side -- which is the whole contract: E3 must subtract what Pass B
+// will add, or the two disagree about what the residual means.
+layout(std430, binding = 5) readonly buffer WPredBuf { uint v[]; } wpredb;
 
 // ------------------------------------------------------------ shared state
 shared int s_means[64];        // block means, then the reconstructed means
@@ -69,6 +75,10 @@ shared int s_res[NXE_SC_INTRA_DIR * 64 + 1];
 // Set once at the top of main() and once per plane; every helper reads them.
 uint g_tile;
 int  g_size, g_nb, g_ndc, g_qp, g_maxval, g_dcoff, g_tskip, g_sdh;
+// 1 when this tile predicts from the warp: its residual is against wpred and
+// its DC plane codes the means of that residual.
+int  g_inter;
+uint g_wpredbase;
 int  g_wmsel;          // -1 = the frame matrix, else a built-in index
 bool g_chroma;
 uint g_srcbase;        // first word of this tile's plane
@@ -83,6 +93,15 @@ int wm_at(int i) {
 int step_at(int i) {
     return g_tskip != 0 ? nxe_dequant_step(g_qp, 16)
                         : nxe_dequant_step(g_qp, wm_at(i));
+}
+
+// One predictor sample of the current plane.  Zero on an intra tile, where
+// nothing reads it -- an intra stream binds a 4-byte placeholder.
+int wpred_at(int i) {
+    if (g_inter == 0) return 0;
+    uint w = g_wpredbase + uint(i >> 1);
+    w = min(w, uint(wpredb.v.length()) - 1u);
+    return int((wpredb.v[w] >> ((uint(i) & 1u) * 16u)) & 0xffffu);
 }
 
 int sample_at(int i) {
@@ -103,8 +122,13 @@ int pred_at(int x, int y) {
     int p00 = s_means[y0 * g_nb + x0], p01 = s_means[y0 * g_nb + x1];
     int p10 = s_means[y1 * g_nb + x0], p11 = s_means[y1 * g_nb + x1];
     int wx0 = 16 - fx, wy0 = 16 - fy;
-    return (p00 * wx0 * wy0 + p01 * fx * wy0 + p10 * wx0 * fy + p11 * fx * fy +
-            128) >> 8;
+    const int planar = (p00 * wx0 * wy0 + p01 * fx * wy0 + p10 * wx0 * fy +
+                        p11 * fx * fy + 128) >> 8;
+    if (g_inter == 0) return planar;
+    // codec.cpp planar_from_means(): an inter tile's prediction is the warp
+    // plus the DC plane's planar correction, offset back and clamped once.
+    //     pred = clamp(wpred + planar(means) - dc_offset, 0, maxval)
+    return nxe_clamp(wpred_at(y * g_size + x) + planar - g_dcoff, 0, g_maxval);
 }
 
 // ------------------------------------------------------- sign data hiding
@@ -185,8 +209,13 @@ void dc_plane(uint lid) {
         int b = int(lid), by = b / g_nb, bx = b % g_nb;
         int sum = 0;
         for (int j = 0; j < 8; ++j)
-            for (int i = 0; i < 8; ++i)
-                sum += sample_at((by * 8 + j) * g_size + bx * 8 + i);
+            for (int i = 0; i < 8; ++i) {
+                const int k = (by * 8 + j) * g_size + bx * 8 + i;
+                // For an inter tile the DC plane codes the mean of the
+                // RESIDUAL, offset back so the quantised quantity is the same
+                // `m - dc_off` on both paths (codec.cpp analyze_dc_plane).
+                sum += sample_at(k) - (g_inter != 0 ? wpred_at(k) - g_dcoff : 0);
+            }
         s_means[b] = sum >= 0 ? (sum + 32) >> 6 : -((-sum + 32) >> 6);
     }
     barrier();
@@ -242,8 +271,16 @@ void dc_plane(uint lid) {
         }
         barrier();
     }
-    if (lid < uint(g_ndc))
-        s_means[lid] = nxe_clamp(g_dcoff + s_dca[lid], 0, g_maxval);
+    if (lid < uint(g_ndc)) {
+        // An INTRA tile's block mean is a sample value and is clamped to the
+        // sample domain.  An INTER tile's is `dc_offset + a residual mean`,
+        // whose legal range is wider on both sides; clamping it there would
+        // silently cap the DC correction the warp needs.  dequant() has
+        // already bounded |dc| by 32767.  reconstruct_dc_plane() makes exactly
+        // this distinction and Pass B inherits it.
+        const int m = g_dcoff + s_dca[lid];
+        s_means[lid] = g_inter != 0 ? m : nxe_clamp(m, 0, g_maxval);
+    }
     barrier();
 }
 
@@ -518,6 +555,11 @@ void main() {
     //
     // One workgroup owns one tile, so both the branch and the return are
     // workgroup-uniform and the barriers below are unaffected.
+    // A tile that predicts from the warp and still codes a residual.  Its
+    // WPred slot is Pass W's output for the mode and vector E1c chose, and
+    // every plane of it is subtracted below.
+    g_inter = job.mode != uint(NXE_MODE_INTRA) ? 1 : 0;
+
     if (job.mode == uint(NXE_MODE_WARP_SKIP)) {
         for (uint w = lid; w < uint(NXE_TILE_COEF_WORDS); w += uint(NXE_E3_WG))
             coefb.v[g_tile * uint(NXE_TILE_COEF_WORDS) + w] = 0u;
@@ -549,6 +591,14 @@ void main() {
         // globals; the next plane's base must not depend on that.
         const uint plane_words = fp.ntiles * uint(g_size * g_size / 2);
         g_srcbase = pbase + g_tile * uint(g_size * g_size / 2);
+        // WPred is laid out per TILE at the decoder's own stride, with each
+        // plane at a fixed res_level-0 offset -- not packed plane-major the
+        // way the source is.  inter_layout.h's nxvw_wpred_plane_off().
+        {
+            const int ce = fp.chroma420 != 0u ? 32 : 64;
+            const int poff = p == 0 ? 0 : (p == 1 ? 4096 : 4096 + ce * ce);
+            g_wpredbase = (g_tile * fp.wpred_stride + uint(poff)) >> 1u;
+        }
         g_coefoff = nxe_plane_coef_offset(job.chroma444, job.res_level, p);
 
         dc_plane(lid);

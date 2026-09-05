@@ -516,43 +516,60 @@ Two things this table is not:
   than on it.  A compositor with the machine to itself will see less; this
   column is a floor on the win, not a measurement of the encoder.
 
-## What STATIC_MV still needs
+## STATIC_MV, and what WARP_MV would cost
 
-The decision half of STATIC_MV is done and is correct in isolation: E1c
-searches it in the reference's own three stages and its own visit order,
-breaking ties on (SAD, visit index) so that "first wins" survives being
-evaluated in parallel; the vector reaches the tile header through
-`nxe_tile_job::mv`; E4 emits `mv_present` and the two vector bytes; the slot
-gains a field word so E5's byte layout has one formula.  Run against
-`nxv-enc --int-coded-vectors static`, **the modes and the vectors agree**.
+E3 has its inter residual path: a coded inter tile subtracts Pass W's
+predictor, and its DC plane codes the block means of THAT residual, offset back
+so the quantised quantity is the same `m - dc_off` on both paths.  An intra
+tile's reconstructed mean is clamped to the sample domain and an inter tile's
+is not, because the latter is `dc_offset + a residual mean` and clamping it
+would cap the DC correction the warp needs -- `reconstruct_dc_plane()` makes
+exactly that distinction and Pass B inherits it.
 
-The streams do not, and the reason is worth recording because it was not on
-the plan.  E3 still codes every tile it does not skip against the **DC-plane
-INTRA predictor**.  A STATIC_MV tile therefore comes out with a full
-intra-sized residual -- 526 bytes against the reference's 40 -- and a stream
-that decodes to the wrong picture.
+1088x1088, QP 30, 16 frames, the real pose track, byte-identical to `nxv-enc`
+at each setting:
 
-That is the `pred_src` gap from the top of this file, arriving where it was
-always going to: an inter tile that CODES a residual needs the predictor
-materialised, and E3 has no binding for one.  WARP_SKIP did not need it,
-because a skipped tile codes nothing and Pass B adds the predictor back on the
-decode side; the moment a tile carries coefficients, E3 has to subtract the
-same predictor Pass B will add.
+| configuration | B/frame | vs intra | PSNR-Y | total |
+|---|---|---|---|---|
+| intra only | 36779 | 1.00x | 38.42 dB | 4.94 ms |
+| inter, skip only | 13446 | 2.73x | 36.92 dB | 4.79 ms |
+| inter, + STATIC_MV | **9303** | **3.95x** | 36.30 dB | **4.69 ms** |
 
-So the remaining work is exactly:
+**STATIC_MV is free.** It costs 0.03 ms in the passes before E3 and gives it
+back in table training and E4/E5, because a frame with fewer coded tiles is
+cheaper everywhere those passes scale with coded tiles.  The whole inter
+encoder is still faster than the intra one.
 
-* a sixth binding on E3 carrying Pass W's WPred, and a branch in the residual
-  path that subtracts it instead of `pred_at()` for a tile whose mode is not
-  INTRA -- including the DC plane, whose block means are then means of the
-  residual rather than of the samples;
-* the CPU model's matching branch, so `--check` and the pinned digests still
-  cover the path;
-* then WARP_MV, which needs nothing further from E3 -- only Pass W predicting
-  it, which it already can.
+### WARP_MV is measured and is NOT obviously worth it
 
-`nxvc-vkenc --coded-vectors` REFUSES until then rather than emitting the
-larger wrong stream, and `nxvc_config::int_coded_vectors` on the reference
-takes `static` (STATIC_MV only, the GPU's configuration) as well as `on`.
+The reference at `--int-coded-vectors on` against `static`, same clip:
+
+| | B/frame | PSNR-Y | STATIC_MV | WARP_MV |
+|---|---|---|---|---|
+| `static` | 9303 | 36.30 dB | 11.0 % | -- |
+| `on` | 8729 | 36.18 dB | 7.7 % | 1.9 % |
+
+**6.2 % fewer bytes, and 0.12 dB worse.**  WARP_MV mostly takes tiles away
+from STATIC_MV rather than from INTRA or WARP_SKIP.
+
+The GPU cost is the question.  STATIC_MV is searchable here because its
+predictor is the IDENTITY plus a vector, so a candidate is a translation of the
+ring and the quarter-pel tap is eight lines of integer arithmetic.  WARP_MV's
+predictor is the full homography, and the quarter-pel stage needs the TRUE
+predictor at nine vectors.  The naive route is nine more Pass W dispatches per
+frame -- about 1.6 ms at 1088x1088, which is a third of the whole encode for
+6 % of the rate, and not worth it.
+
+The route that would be worth it, if the rate is wanted: SYNTAX.md 13.10 adds
+the vector per sample AFTER the tile's corner interpolation, so the warped
+coordinate field is computed once per tile and the nine candidates are nine
+shifts of it.  The expensive and delicate part -- the perspective divide in
+`warp_tile_corners()` -- can then stay on the HOST in the normative library,
+which the encoder already links for `derive_homography()`, and the GPU does
+only the in-tile bilerp and the bilinear tap: the same code STATIC_MV already
+uses, of which STATIC_MV is the identity case.  That is not a second copy of
+the homography.  It is not implemented, and this table is why it was not
+implemented first.
 
 ## What the coding passes do not implement
 

@@ -202,6 +202,7 @@ int main(int argc, char **argv) {
     uint32_t intra_period = 180;
     std::string poses_path;
     int drop_at = -1;
+    uint32_t coded_vectors = NXVC_VKE_CV_DEFAULT;
 
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
@@ -221,6 +222,14 @@ int main(int argc, char **argv) {
         else if (a == "--intra-period") intra_period = (uint32_t)std::atoi(next());
         else if (a == "--poses") poses_path = next();
         else if (a == "--drop-at") drop_at = std::atoi(next());
+        else if (a == "--coded-vectors")
+        {
+            const std::string v = next();
+            if (v == "none") coded_vectors = NXVC_VKE_CV_NONE;
+            else if (v == "static") coded_vectors = NXVC_VKE_CV_STATIC;
+            else if (v == "default") coded_vectors = NXVC_VKE_CV_DEFAULT;
+            else { std::fprintf(stderr, "--coded-vectors: none|static|default\n"); return 2; }
+        }
         else {
             std::fprintf(stderr, "unknown argument: %s\n", a.c_str());
             return 2;
@@ -294,6 +303,7 @@ int main(int argc, char **argv) {
     ci.base_qp = qp;
     ci.inter = inter ? 1u : 0u;
     ci.intra_period = inter ? intra_period : 0u;
+    ci.coded_vectors = inter ? coded_vectors : NXVC_VKE_CV_DEFAULT;
     ci.quant_matrix = matrix;
 
     /* The image path needs a device the caller owns: the image has to live on

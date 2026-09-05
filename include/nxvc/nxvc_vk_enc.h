@@ -14,8 +14,10 @@
  *
  *   * inter prediction, the pose warp and the reference ring are OPTIONAL,
  *     off unless create_info::inter is set; the mode decision is then the
- *     integer one of docs/adr/0028 and the coded-vector modes (STATIC_MV,
- *     WARP_MV) are not implemented yet -- a tile either skips or codes intra
+ *     integer one of docs/adr/0028, and a tile skips, carries a STATIC_MV
+ *     vector, or codes intra.  WARP_MV and QUAD_MV are not implemented --
+ *     measured, and not worth what they would cost; see create_info's
+ *     `coded_vectors`
  *   * no directional intra (DC-plane intra only)
  *   * no rate control of its own, and no per-tile quantiser: one QP codes
  *     every tile of a frame.  That QP is settable between frames --
@@ -136,10 +138,39 @@ typedef struct nxvc_vke_create_info {
     uint32_t inter;
     uint32_t intra_period;
 
+    /* Which coded-vector mode the inter decision may choose, on top of
+     * WARP_SKIP and INTRA.  One of NXVC_VKE_CV_* below; 0 takes the default,
+     * which is STATIC because it is free.
+     *
+     * "Free" is measured, not asserted: on the 1088x1088 head-turn clip at
+     * QP 30, STATIC_MV takes the stream from 13446 to 9303 bytes a frame --
+     * 2.73x to 3.95x against intra -- and the encode from 4.79 ms to 4.69,
+     * because a frame with fewer CODED tiles is cheaper in table training and
+     * in E4/E5 than the search costs before E3.  There is no configuration in
+     * which turning it off is the better trade, which is why the default is on
+     * and `NONE` exists only so a caller can pin the older stream shape.
+     *
+     * WARP_MV is deliberately absent rather than merely unimplemented: it is
+     * 6.2 % fewer bytes and 0.12 dB WORSE than STATIC_MV alone on the same
+     * clip, and its predictor is the full homography, which the search cannot
+     * evaluate without either nine more Pass W dispatches a frame or a second
+     * copy of the warp arithmetic.  vk/encoder/README.md has the route that
+     * would make it cheap, and the measurement that says it is not urgent.
+     *
+     * Refused at create() if `inter` is clear and this is not 0, for the same
+     * reason `intra_period` is: a field that cannot take effect should say so
+     * rather than be quietly ignored. */
+    uint32_t coded_vectors;
+
     uint32_t flags; /* reserved, pass 0 */
 } nxvc_vke_create_info;
 
 void nxvc_vk_encoder_create_info_default(nxvc_vke_create_info *ci);
+
+/* nxvc_vke_create_info::coded_vectors */
+#define NXVC_VKE_CV_DEFAULT 0u /* STATIC                                    */
+#define NXVC_VKE_CV_NONE    1u /* WARP_SKIP and INTRA only                  */
+#define NXVC_VKE_CV_STATIC  2u /* also STATIC_MV: the identity predictor    */
 
 typedef struct nxvc_vk_encoder nxvc_vk_encoder;
 

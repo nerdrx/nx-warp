@@ -30,7 +30,11 @@
 #                         WARP_SKIP on the other.  The GPU implements the FIXED
 #                         scheme of PAPER 2.6; the drift scheme needs an exact
 #                         client shadow the encoder does not keep.
-#   --int-coded-vectors off  STATIC_MV and WARP_MV are the next increment.
+#   --int-coded-vectors  is `off` in the first leg and `static` in the second.
+#                        WARP_MV is still not searched on the GPU: its
+#                        predictor is the full homography, and reproducing that
+#                        outside Pass W would be a second copy of the one piece
+#                        of arithmetic this project refuses to have two of.
 #
 # The entropy tools the library now ships ON are ON here too -- frame-trained
 # tables, TAB_V2 and CTX_V3 -- so this covers the inter path composed with
@@ -149,9 +153,15 @@ endif()
 # the two calls a compositor makes per frame that the harness fakes from a
 # file: set_view(), and the receipt map.
 if(VKENCAPI)
+  # `coded_vectors = NONE` must reproduce the skip-only stream, and the
+  # DEFAULT must reproduce the STATIC_MV one -- which is what pins that the
+  # default is STATIC rather than merely documented as such.  Both legs also
+  # check the ABI against the harness: two front ends on one pipeline, and a
+  # divergence would be in whichever one WiVRn is using.
   execute_process(COMMAND ${VKENCAPI} --in ${YUV} --w ${W} --h ${H} --qp 26
                           --frames ${FRAMES} --matrix 1
                           --inter --intra-period 6 --poses ${POSES}
+                          --coded-vectors none
                           --out ${WORKDIR}/api.nxv
                   RESULT_VARIABLE rc ERROR_VARIABLE eout)
   if(NOT rc EQUAL 0)
@@ -162,8 +172,10 @@ if(VKENCAPI)
                   RESULT_VARIABLE rc)
   if(NOT rc EQUAL 0)
     message(FATAL_ERROR
-      "the library ABI and the harness produce different inter streams")
+      "the library ABI at coded_vectors=NONE and the harness produce "
+      "different inter streams")
   endif()
+
 
   # An all-zero receipt map is a full reset: the frame after it must be
   # entirely INTRA, because the client holds nothing to predict from.  The
@@ -185,5 +197,68 @@ if(VKENCAPI)
   endif()
 endif()
 
+# ---- the same clip with STATIC_MV searched.
+#
+# A separate leg rather than a replacement: skip-only and skip-plus-vector are
+# different decisions and both have to hold, and the skip-only one is what the
+# library ships until the ABI exposes the other.
+execute_process(COMMAND ${NXVENC} ${common} ${interargs}
+                        --no-rdo --custom-tables --split4x4 off --cfl off
+                        --tab v2 --xform 8 --entropy rans
+                        --inter on --int-decision on --int-coded-vectors static
+                        --preset fast --me-effort 1 --quad-mv off
+                        --near-skip off --drift-refresh off
+                        --out ${WORKDIR}/ref-mv.nxv
+                RESULT_VARIABLE rc OUTPUT_QUIET)
+if(NOT rc EQUAL 0)
+  message(FATAL_ERROR "nxv-enc failed with STATIC_MV (${rc})")
+endif()
+execute_process(COMMAND ${VKENC} ${common} ${interargs} --inter --coded-vectors
+                        --custom-tables --tab v2
+                        --device ${DEVICE} --out ${WORKDIR}/gpu-mv.nxv
+                RESULT_VARIABLE rc ERROR_VARIABLE eout)
+if(NOT rc EQUAL 0)
+  message(FATAL_ERROR "nxvc-vkenc failed with STATIC_MV (${rc}): ${eout}")
+endif()
+execute_process(COMMAND ${CMAKE_COMMAND} -E compare_files
+                        ${WORKDIR}/ref-mv.nxv ${WORKDIR}/gpu-mv.nxv
+                RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+  message(FATAL_ERROR
+    "the STATIC_MV stream is not byte-identical to nxv-enc.  The search runs "
+    "three stages against ONE running best -- the reference never resets it "
+    "between them, and the stages sample at different densities -- so a "
+    "per-stage reset makes the integer refine live and moves the vectors.")
+endif()
+execute_process(COMMAND ${NXVDEC} --in ${WORKDIR}/gpu-mv.nxv
+                        --out ${WORKDIR}/gpu-mv.yuv --pix yuv420p --quiet
+                RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+  message(FATAL_ERROR "nxv-dec refused the STATIC_MV stream (${rc})")
+endif()
+
+# The ABI's DEFAULT coded_vectors must be STATIC, which is checked here
+# rather than above because it compares against the STATIC_MV stream the
+# leg above produces.
+if(VKENCAPI)
+  execute_process(COMMAND ${VKENCAPI} --in ${YUV} --w ${W} --h ${H} --qp 26
+                          --frames ${FRAMES} --matrix 1
+                          --inter --intra-period 6 --poses ${POSES}
+                          --out ${WORKDIR}/api-mv.nxv
+                  RESULT_VARIABLE rc ERROR_VARIABLE eout)
+  if(NOT rc EQUAL 0)
+    message(FATAL_ERROR "nxvc-vkenc-api failed at the default (${rc}): ${eout}")
+  endif()
+  execute_process(COMMAND ${CMAKE_COMMAND} -E compare_files
+                          ${WORKDIR}/gpu-mv.nxv ${WORKDIR}/api-mv.nxv
+                  RESULT_VARIABLE rc)
+  if(NOT rc EQUAL 0)
+    message(FATAL_ERROR
+      "the library ABI's DEFAULT coded_vectors is not STATIC: its stream "
+      "differs from the harness run with --coded-vectors")
+  endif()
+endif()
+
 message(STATUS "vk.encoder.inter.acid: ${FRAMES} frames byte-identical, "
-               "decoded identical, ring == decoder, ABI agrees")
+               "decoded identical, ring == decoder, ABI agrees, "
+               "STATIC_MV byte-identical")
