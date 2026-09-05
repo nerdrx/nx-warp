@@ -821,6 +821,33 @@ nxvc_vkd_status pipeline_a(D *d, uint32_t lanes, uint32_t ctx_stride,
     return NXVC_VKD_OK;
 }
 
+// [inter] Two ablations, and they produce WRONG PICTURES on purpose.
+//
+// The inter path's share of Pass B is not obvious from the outside: the
+// predictor hook and the reference-ring store are both per sample and both
+// compiled in frame-wide, and neither can be timed by turning the tool off,
+// because turning the tool off changes the frame.  These turn off one half of
+// the kernel while decoding the same stream, which is the only way to price
+// them against each other.
+//
+// NXVC_VKD_ABL_NORING drops the ring store, so every frame after the first
+// predicts from a stale slot.  NXVC_VKD_ABL_NOWPRED drops the predictor hook,
+// so every inter tile reconstructs its residual over nothing.  Both are for
+// `--stats` on a stream you already know the timing shape of, and nothing
+// else.  On a 7900 XTX with the 1088x1088 head-turn fixture, 289 tiles,
+// 13.4 KB a frame, 82 % WARP_SKIP:
+//
+//   baseline          passB 0.110 ms
+//   no ring store     passB 0.069 ms   -- the ring store is 37 %
+//   no wpred hook     passB 0.078 ms   -- the predictor hook is 29 %
+//   neither           passB 0.068 ms
+static int32_t inter_pred_on(const D *, bool inter) {
+    return (inter && !std::getenv("NXVC_VKD_ABL_NOWPRED")) ? 1 : 0;
+}
+static int32_t ring_store_on(const D *, bool inter) {
+    return (inter && !std::getenv("NXVC_VKD_ABL_NORING")) ? 1 : 0;
+}
+
 nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2, int32_t sparse,
                            uint32_t store_words, int32_t intra_dir,
                            int32_t split_tool, int32_t xform_large,
@@ -2010,7 +2037,8 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
                                   : (int32_t)nxvw::kOutNone,
                              fp.push.sparse, storeWords, dir,
                              (int32_t)fp.split4, (int32_t)fp.xform_large,
-                             interStream ? 1 : 0, interStream ? 1 : 0,
+                             inter_pred_on(d, interStream),
+                             ring_store_on(d, interStream),
                              &pipeB[dir])))
             return st;
         if (d->need_alpha_pass && !fuse) {

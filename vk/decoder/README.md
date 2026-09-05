@@ -1308,6 +1308,49 @@ leading edge, and the content is photographic and so denser than a rendered
 scene. The tile mix (83 % skip) and the byte count (12.7 KB) are the live shape;
 *which* tiles are coded is not.
 
+##### The inter Pass B cost is real work, not a folding defect
+
+The first suspicion was the one this file has been right about twice already:
+`INTRA_DIR` and `XFORM_LARGE` were both specialisation constants that the
+Adreno driver would not fold, and both became build variants because of it, the
+second one after costing an 8x8-only stream 34 % of Pass B.  `kInterPred` and
+`kRefRingStore` are specialisation constants 7 and 8 and look exactly like the
+next instance.
+
+**They are not, and the desktop said so before any device time was spent.**
+Inter against intra Pass B, per tile:
+
+| | intra | inter | ratio |
+|---|---|---|---|
+| RADV | 0.073 us | 0.45 us | **6.2x** |
+| Adreno 650 | 8.96 us | 31.5 us | **3.5x** |
+
+A driver that folds specialisation constants properly shows a *larger* inter
+penalty than the one that supposedly does not.  Whatever the inter path costs,
+both drivers are paying it for the same reason, and it is work.
+
+Which work, from `NXVC_VKD_ABL_NORING` / `NXVC_VKD_ABL_NOWPRED` on the
+1088x1088 head-turn fixture, 289 tiles, 13.4 KB a frame, 82 % `WARP_SKIP`:
+
+| | Pass B (RADV) |
+|---|---|
+| baseline | 0.110 ms |
+| no reference-ring store | 0.069 ms — **the ring store is 37 %** |
+| no predictor hook | 0.078 ms — **the hook is 29 %** |
+| neither | 0.068 ms |
+
+**The reference-ring store is the single largest piece**, and it is a whole
+second store of the tile: 6144 samples a tile written as u16 into an SSBO, on
+top of the u8 display store, with a `planeAtFull()` resample per sample rather
+than a copy.  Three times the store traffic of the intra path, to hold a
+picture that on this configuration is 8-bit in every plane.
+
+So the lever is the one "Open issues" already names — **a u8 ring for a stream
+with no colour transform** — and not a module split.  The remaining 62 % is the
+predictor add and the mean-clamp widening, which are per sample and unavoidable
+on a tile that really is inter; on a `WARP_SKIP` tile, which is five tiles in
+six, they are reconstructing a residual that is not there.
+
 #### Pass A is occupancy-starved at 289 tiles, and Pass B is not
 
 Where the two passes' time goes at the live shape, measured on an idle Pico 4.
