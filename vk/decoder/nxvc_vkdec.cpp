@@ -123,6 +123,10 @@ struct nxvc_vk_decoder {
     // exports neither, so it is always resolved through the device rather
     // than linked -- which is also what an adopted device needs.
     PFN_vkWaitSemaphores fpWaitSemaphores = nullptr;
+    // Same story, and used only to ask "is the frame done yet" without
+    // blocking, so that nxvc_vk_decoder_stats() can take the timestamps for a
+    // client that synchronises on the GPU and never waits on the host.
+    PFN_vkGetSemaphoreCounterValue fpGetSemaphoreCounterValue = nullptr;
     // Fallback for a driver that advertises VK_KHR_timeline_semaphore and
     // its feature bit but refuses to create one -- which the Pico 4's Adreno
     // 650 driver (1.1.128, build 10/31/22) does, returning 5 from
@@ -1478,6 +1482,13 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_create(
     if (!d->fpWaitSemaphores)
         d->fpWaitSemaphores = (PFN_vkWaitSemaphores)vkGetDeviceProcAddr(
             d->dev, "vkWaitSemaphoresKHR");
+    d->fpGetSemaphoreCounterValue =
+        (PFN_vkGetSemaphoreCounterValue)vkGetDeviceProcAddr(
+            d->dev, "vkGetSemaphoreCounterValue");
+    if (!d->fpGetSemaphoreCounterValue)
+        d->fpGetSemaphoreCounterValue =
+            (PFN_vkGetSemaphoreCounterValue)vkGetDeviceProcAddr(
+                d->dev, "vkGetSemaphoreCounterValueKHR");
 
     VkSemaphoreTypeCreateInfo sti{
         VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO};
@@ -1763,9 +1774,32 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_set_tile_sort(nxvc_vk_decoder *d,
     return NXVC_VKD_OK;
 }
 
+// Has the frame in flight finished, without blocking to find out?
+static bool frame_complete(const D *d) {
+    if (d->timeline_value == 0) return false;
+    if (d->timeline == VK_NULL_HANDLE)
+        return !d->fence_pending ||
+               vkGetFenceStatus(d->dev, d->fence) == VK_SUCCESS;
+    if (!d->fpGetSemaphoreCounterValue) return false;
+    uint64_t v = 0;
+    if (d->fpGetSemaphoreCounterValue(d->dev, d->timeline, &v) != VK_SUCCESS)
+        return false;
+    return v >= d->timeline_value;
+}
+
 extern "C" nxvc_vkd_status nxvc_vk_decoder_stats(const nxvc_vk_decoder *d,
                                                  nxvc_vkd_stats *o) {
     if (!d || !o) return NXVC_VKD_ERR_ARG;
+    // Take the timestamps here too, when the frame has already finished and
+    // nobody has waited on it.  An async client that synchronises entirely on
+    // the GPU -- the binary-semaphore path -- never calls
+    // nxvc_vk_decoder_wait() for the frame it is about to report on, so
+    // without this its numbers would always be one frame stale.  The check is
+    // non-blocking: a frame still running leaves the previous frame's figures
+    // in place rather than stalling a caller who only wanted to read a
+    // counter.
+    D *m = const_cast<D *>(d);
+    if (m->ts_pending && frame_complete(m)) collect_timestamps(m);
     *o = d->stats;
     return NXVC_VKD_OK;
 }
@@ -2149,8 +2183,14 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     d->stats.tiles_tskip = fp.tiles_tskip;
     d->stats.lane_groups = (uint32_t)fp.groups.size();
     d->stats.dispatches = dispatches;
-    d->stats.pass_a_ms = d->stats.pass_b_ms = d->stats.gpu_ms = 0.0;
-    d->stats.pass_w_ms = 0.0;
+    // NOT zeroed here.  The per-pass times describe the most recently
+    // COMPLETED frame, and on the async path this frame has not started: a
+    // client that reads the stats at the end of its own frame loop would get
+    // zeros for every frame if the submit wiped them.  That is exactly what
+    // happened to the WiVRn client once it stopped host-waiting after the
+    // copy -- the collection moved to the NEXT frame's pre-decode wait, and
+    // the decode submit that followed it zeroed the numbers again before
+    // anyone could read them.  collect_timestamps() overwrites all four.
     ++d->stats.frames;
 
     d->ts_count = d->have_timestamps ? (fp.any_inter ? 6u : 4u) : 0u;

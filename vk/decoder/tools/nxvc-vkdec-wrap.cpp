@@ -193,7 +193,7 @@ void usage() {
 
 int main(int argc, char **argv) {
     std::string in, mode = "wrapper";
-    int streams = 1, repeat = 30, defer = 0;
+    int streams = 1, repeat = 30, defer = 0, queues = 1;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         auto val = [&]() -> const char * {
@@ -205,6 +205,7 @@ int main(int argc, char **argv) {
         else if (a == "--streams") streams = std::atoi(val());
         else if (a == "--repeat") repeat = std::atoi(val());
         else if (a == "--defer") defer = 1;
+        else if (a == "--queues") queues = std::atoi(val());
         else { usage(); return 2; }
     }
     if (in.empty() || streams < 1) { usage(); return 2; }
@@ -239,15 +240,48 @@ int main(int argc, char **argv) {
     vkGetPhysicalDeviceQueueFamilyProperties(d.phys, &nq, nullptr);
     std::vector<VkQueueFamilyProperties> qf(nq);
     vkGetPhysicalDeviceQueueFamilyProperties(d.phys, &nq, qf.data());
+    // The queue inventory, printed because the whole question of whether the
+    // decode can get off the renderer's queue is answered by it.
+    std::printf("queue families: %u\n", nq);
+    for (uint32_t i = 0; i < nq; ++i)
+        std::printf("  family %u: count %u  flags%s%s%s%s  timestampValidBits %u\n",
+                    i, qf[i].queueCount,
+                    (qf[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) ? " GRAPHICS" : "",
+                    (qf[i].queueFlags & VK_QUEUE_COMPUTE_BIT) ? " COMPUTE" : "",
+                    (qf[i].queueFlags & VK_QUEUE_TRANSFER_BIT) ? " TRANSFER" : "",
+                    (qf[i].queueFlags & VK_QUEUE_SPARSE_BINDING_BIT) ? " SPARSE" : "",
+                    qf[i].timestampValidBits);
+    {
+        uint32_t ne = 0;
+        vkEnumerateDeviceExtensionProperties(d.phys, nullptr, &ne, nullptr);
+        std::vector<VkExtensionProperties> ext(ne);
+        vkEnumerateDeviceExtensionProperties(d.phys, nullptr, &ne, ext.data());
+        const char *want[] = {"VK_EXT_global_priority",
+                              "VK_KHR_global_priority",
+                              "VK_EXT_global_priority_query",
+                              "VK_EXT_calibrated_timestamps"};
+        for (const char *w : want) {
+            bool have = false;
+            for (auto &e : ext) if (!std::strcmp(e.extensionName, w)) have = true;
+            std::printf("  %-32s %s\n", w, have ? "present" : "ABSENT");
+        }
+    }
     d.qfam = UINT32_MAX;
     for (uint32_t i = 0; i < nq; ++i)
         if (qf[i].queueFlags & VK_QUEUE_COMPUTE_BIT) { d.qfam = i; break; }
     if (d.qfam == UINT32_MAX) { std::fprintf(stderr, "no compute queue\n"); return 77; }
-    const float prio = 1.f;
+    // --queues 2 asks the family for a second queue and puts the decoders on
+    // it, leaving queue 0 to stand in for the renderer's.  If the family only
+    // has one, this clamps and the run is the single-queue case again.
+    const uint32_t want_queues = (uint32_t)queues;
+    const uint32_t got_queues =
+        want_queues < qf[d.qfam].queueCount ? want_queues
+                                            : qf[d.qfam].queueCount;
+    const float prio[2] = {1.f, 1.f};
     VkDeviceQueueCreateInfo qci{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
     qci.queueFamilyIndex = d.qfam;
-    qci.queueCount = 1;
-    qci.pQueuePriorities = &prio;
+    qci.queueCount = got_queues;
+    qci.pQueuePriorities = prio;
     // The client's device carries the Ycbcr conversion its pool image needs.
     VkPhysicalDeviceSamplerYcbcrConversionFeatures ycc{
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_YCBCR_CONVERSION_FEATURES};
@@ -257,7 +291,11 @@ int main(int argc, char **argv) {
     dci.queueCreateInfoCount = 1;
     dci.pQueueCreateInfos = &qci;
     VKOK(vkCreateDevice(d.phys, &dci, nullptr, &d.dev));
-    vkGetDeviceQueue(d.dev, d.qfam, 0, &d.queue);
+    vkGetDeviceQueue(d.dev, d.qfam, got_queues - 1, &d.queue);
+    if (want_queues > 1)
+        std::printf("  asked for %u queues in family %u, got %u; decoding on "
+                    "queue %u\n",
+                    want_queues, d.qfam, got_queues, got_queues - 1);
     vkGetPhysicalDeviceMemoryProperties(d.phys, &d.mem);
     VkPhysicalDeviceProperties props{};
     vkGetPhysicalDeviceProperties(d.phys, &props);
@@ -319,6 +357,9 @@ int main(int argc, char **argv) {
     double best_wall = 1e9, sum_wall = 0, sum_wait = 0, sum_dec = 0,
            sum_mid = 0, sum_copy = 0;
     int nmeas = 0;
+    // Frames whose per-pass times read zero where the client would have read
+    // them.  Anything but 0 here is the async stats path broken again.
+    int zero_stat_frames = 0;
     for (int it = 0; it < repeat; ++it) {
         double t_iter0 = now_ms();
         // --defer: every stream's decode goes on the queue before any wait,
@@ -386,9 +427,22 @@ int main(int argc, char **argv) {
                 // thread, so it blocks here.  Same here, so the number means
                 // the same thing.
                 vkWaitForFences(d.dev, 1, &s.fence, VK_TRUE, UINT64_MAX);
-                if (bs != VK_NULL_HANDLE) nxvc_vk_decoder_wait(s.dec, UINT64_MAX);
+                // NO nxvc_vk_decoder_wait() here, deliberately: the copy
+                // waited on the decoder's semaphore and this fence waited on
+                // the copy, so the decode is provably done and the client has
+                // no reason to ask the host again.  That is exactly the shape
+                // in which the stats used to come back zero, so the tool must
+                // keep it to be able to catch that again.
+                ;
             }
             double t4 = now_ms();
+            // Read the stats exactly where the client reads them: at the end
+            // of its own frame, having synchronised only on the GPU.
+            {
+                nxvc_vkd_stats fs{};
+                nxvc_vk_decoder_stats(s.dec, &fs);
+                if (it >= 2 && fs.gpu_ms == 0.0) ++zero_stat_frames;
+            }
             if (it >= 2) {  // two warm-up frames: pipeline compile, first touch
                 sum_wait += t1 - t0;
                 sum_dec += t2 - t1;
@@ -408,11 +462,15 @@ int main(int argc, char **argv) {
         "%s streams=%d%s on %s: %llu B, %u tiles\n"
         "  per frame: wall %.2f (best %.2f)  = wait-prev %.2f + submit %.2f"
         " + wait-decode %.2f + copy+fence %.2f ms\n"
-        "  nxvc: passA %.2f passB %.2f gpu %.2f ms\n",
+        "  nxvc: passA %.2f passB %.2f gpu %.2f ms"
+        "   -> queue wait %.2f ms (submit-to-fence %.2f less GPU %.2f)\n"
+        "  stats readable at the client's read point: %d of %d frames\n",
         mode.c_str(), streams, defer ? " (deferred)" : "", props.deviceName,
         (unsigned long long)st.frame_bytes, st.tiles, sum_wall * k,
         best_wall, sum_wait * k, sum_dec * k, sum_mid * k, sum_copy * k,
-        st.pass_a_ms, st.pass_b_ms, st.gpu_ms);
+        st.pass_a_ms, st.pass_b_ms, st.gpu_ms,
+        (sum_mid + sum_copy) * k - st.gpu_ms, (sum_mid + sum_copy) * k,
+        st.gpu_ms, nmeas - zero_stat_frames, nmeas);
 
     for (auto &s : S) {
         nxvc_vk_decoder_destroy(s.dec);
