@@ -36,7 +36,9 @@ layout(constant_id = 8) const int kRefRingStore = 0;
 layout(set = 0, binding = 13, std430) readonly buffer WPredIn { uint w[]; } uWPredIn;
 // The reference ring, u16 packed two per uint.  Pass B writes the slot this
 // frame owns; Pass W reads the slots it does not.
-layout(set = 0, binding = 14, std430) buffer RefRingOut { uint w[]; } uRingOut;
+layout(set = 0, binding = 14, std430) writeonly buffer RefRingOut {
+    uint w[];
+} uRingOut;
 // The warp parameter buffer, for its ring-geometry header.  Pass B needs the
 // geometry and nothing else out of it; the per-tile records are Pass W's.
 layout(set = 0, binding = 15, std430) readonly buffer WarpHdr { uint w[]; } uWarpHdr;
@@ -81,6 +83,22 @@ int nxvwWpredAt(int tile, int p, int size, int x, int y) {
                nxvw_wpred_plane_off(p, pc.p.chroma420);
     uint e = uint(base + y * size + x);
     return int((uWPredIn.w[e >> 1u] >> ((e & 1u) * 16u)) & 0xffffu);
+}
+
+// The two samples the prediction hook wants are the two columns a thread owns,
+// `col0` and `col0 + 1`, and `col0` is `bx * 8 + 2 * sub` -- always even.  So
+// they are the two halves of ONE uint, and reading them as two loads is twice
+// the traffic for nothing.  It is one load per sample either way on a desktop
+// part, which is why the split form was written first; on the Adreno 650 the
+// prediction loop is load-bound and this is the half of it that was free.
+void nxvwWpredPair(int tile, int p, int size, int x, int y, out int v0,
+                   out int v1) {
+    if (kInterPred == 0) { v0 = 0; v1 = 0; return; }
+    int base = tile * nxvw_wpred_stride_i16(pc.p.chroma420, pc.p.alphaPresent) +
+               nxvw_wpred_plane_off(p, pc.p.chroma420);
+    uint w = uWPredIn.w[uint(base + y * size + x) >> 1u];
+    v0 = int(w & 0xffffu);
+    v1 = int((w >> 16u) & 0xffffu);
 }
 
 // ------------------------------------------------------ the reference ring

@@ -163,6 +163,10 @@ struct nxvc_vk_decoder {
     // that only exists when the caller asked for coefficient statistics.
     Buf bULen, bULenHost;
     std::vector<uint32_t> order;   // workgroup index -> tile index
+    // [inter] Tiles that do NOT take the directional-intra wavefront come
+    // first inside each eye's segment of `order`, and this is how many there
+    // are.  See build_tile_order().
+    uint32_t order_nodir[2] = {0, 0};
     Img imgRgba, imgRgb10, imgLuma, imgCbCr;
     // [unorm] The same three 8-bit stores through normalised images.  Only
     // one group is ever real; the other is a 1x1 placeholder.
@@ -1256,6 +1260,7 @@ void build_warp_params(D *d, const FrameParse &fp, uint32_t ntiles) {
 
 void build_tile_order(D *d, const FrameParse &fp, uint32_t ntiles) {
     d->order.resize(ntiles);
+    d->order_nodir[0] = d->order_nodir[1] = 0;
     // [inter] A frame with a STEREO tile is dispatched one eye at a time, so
     // the map has to make each eye a contiguous range of workgroups.  A tile
     // index is `row * cols + eye * cols_per_eye + col` ([SYN] 3.3), which
@@ -1263,6 +1268,7 @@ void build_tile_order(D *d, const FrameParse &fp, uint32_t ntiles) {
     // is bit-identical either way -- every write address comes from the tile
     // index the map yields -- and the order is what makes the second
     // dispatch's `vkCmdDispatchBase` cover exactly eye 1.
+    const uint32_t passes = fp.any_stereo_tile ? d->si.eyes : 1u;
     if (fp.any_stereo_tile) {
         const uint32_t cpe = d->si.tiles_x, cols = d->si.cols;
         uint32_t n = 0;
@@ -1270,10 +1276,26 @@ void build_tile_order(D *d, const FrameParse &fp, uint32_t ntiles) {
             for (uint32_t row = 0; row < d->si.tiles_y; ++row)
                 for (uint32_t c = 0; c < cpe; ++c)
                     d->order[n++] = row * cols + eye * cpe + c;
-        return;
+    } else {
+        for (uint32_t i = 0; i < ntiles; ++i) d->order[i] = i;
     }
-    for (uint32_t i = 0; i < ntiles; ++i) d->order[i] = i;
-    if (!d->tile_sort) return;
+    // [inter] Partition each eye's segment into the tiles that cannot enter
+    // the directional-intra wavefront -- everything whose mode is not INTRA --
+    // and the tiles that can.  Pass B is then dispatched twice, once with each
+    // MODULE: the wavefront is a build variant, and its register footprint is
+    // paid by every workgroup of a dispatch that uses it, whether or not that
+    // workgroup ever reaches the wavefront.
+    //
+    // On the Adreno 650 that footprint is 328 words against 16, and it was
+    // most of Pass B on an inter frame: 42.9 ms with one module, 21.8 ms with
+    // the split, and 6.4 ms for the same sequence encoded with the tool off
+    // entirely -- so the split recovers about half and the rest is the
+    // rolling intra refresh's own tiles, which really do want the wavefront.
+    // That refresh is also why the module cannot be chosen per FRAME: it puts
+    // at least one INTRA tile in nearly every frame, so a per-frame test would
+    // nearly never fire.  The output is bit-identical -- the two modules
+    // differ only in whether a branch no inter tile takes is present.
+    const uint32_t per = ntiles / passes;
     auto key = [&](uint32_t t) {
         const uint32_t w1 = fp.recs[t].w1;
         const uint32_t mode = w1 & 7u;
@@ -1283,8 +1305,28 @@ void build_tile_order(D *d, const FrameParse &fp, uint32_t ntiles) {
         const uint32_t tskip = (w1 >> 23) & 1u;
         return (mode << 6) | (res << 4) | (c444 << 3) | (amode << 1) | tskip;
     };
-    std::stable_sort(d->order.begin(), d->order.end(),
-                     [&](uint32_t a, uint32_t b) { return key(a) < key(b); });
+    auto sort_range = [&](std::vector<uint32_t>::iterator b,
+                          std::vector<uint32_t>::iterator e) {
+        if (!d->tile_sort) return;
+        std::stable_sort(b, e,
+                         [&](uint32_t a, uint32_t c) { return key(a) < key(c); });
+    };
+    for (uint32_t pass = 0; pass < passes; ++pass) {
+        auto beg = d->order.begin() + (size_t)pass * per;
+        auto end = beg + per;
+        auto mid = end;
+        if (fp.push.intraDir != 0) {
+            mid = std::stable_partition(beg, end, [&](uint32_t t) {
+                return (fp.recs[t].w1 & 7u) != 3u;   // not INTRA
+            });
+            d->order_nodir[pass] = (uint32_t)(mid - beg);
+        }
+        // `tile_sort` still applies, INSIDE each group: the two orders compose
+        // because the partition is what a dispatch boundary needs and the sort
+        // is what a warp scheduler wants, and neither cares about the other.
+        sort_range(beg, mid);
+        sort_range(mid, end);
+    }
 }
 
 void buffer_barrier(VkCommandBuffer cmd, VkPipelineStageFlags src,
@@ -1838,21 +1880,29 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     // reference ring slot will have when the inter path lands, and the kernel
     // does both from one dispatch rather than transforming the frame twice.
     const bool fuse = d->need_alpha_pass && !(d->flags & NXVC_VKD_FLAG_SPLIT_STORES);
-    VkPipeline pipeB = VK_NULL_HANDLE, pipeBa = VK_NULL_HANDLE;
-    if ((st = pipeline_b(d, d->out_format,
-                         fuse ? (int32_t)nxvw::kOutRgba8
-                              : (int32_t)nxvw::kOutNone,
-                         fp.push.sparse, storeWords, (int32_t)fp.push.intraDir,
-                         (int32_t)fp.split4, interStream ? 1 : 0,
-                         interStream ? 1 : 0, &pipeB)))
-        return st;
-    if (d->need_alpha_pass && !fuse) {
-        if ((st = pipeline_b(d, (uint32_t)nxvw::kOutRgba8,
-                             (int32_t)nxvw::kOutNone, fp.push.sparse,
-                             storeWords, (int32_t)fp.push.intraDir,
-                             (int32_t)fp.split4, interStream ? 1 : 0, 0,
-                             &pipeBa)))
+    // [inter] Two Pass B pipelines, one per module: the tiles that cannot
+    // enter the directional-intra wavefront take the one that does not
+    // contain it, over the range build_tile_order() partitioned for them.
+    // On a frame whose tiles are all one kind the other dispatch is empty and
+    // is not issued.
+    VkPipeline pipeB[2] = {VK_NULL_HANDLE, VK_NULL_HANDLE};
+    VkPipeline pipeBa[2] = {VK_NULL_HANDLE, VK_NULL_HANDLE};
+    for (int dir = 0; dir < 2; ++dir) {
+        if (dir == 1 && fp.push.intraDir == 0) break;
+        if ((st = pipeline_b(d, d->out_format,
+                             fuse ? (int32_t)nxvw::kOutRgba8
+                                  : (int32_t)nxvw::kOutNone,
+                             fp.push.sparse, storeWords, dir,
+                             (int32_t)fp.split4, interStream ? 1 : 0,
+                             interStream ? 1 : 0, &pipeB[dir])))
             return st;
+        if (d->need_alpha_pass && !fuse) {
+            if ((st = pipeline_b(d, (uint32_t)nxvw::kOutRgba8,
+                                 (int32_t)nxvw::kOutNone, fp.push.sparse,
+                                 storeWords, dir, (int32_t)fp.split4,
+                                 interStream ? 1 : 0, 0, &pipeBa[dir])))
+                return st;
+        }
     }
     VkPipeline pipeWp = VK_NULL_HANDLE;
     if (fp.any_inter && (st = pipeline_w(d, &pipeWp))) return st;
@@ -1886,13 +1936,28 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
                                (uint32_t)sizeof(nxvw::NxvwPassBPush), &fp.push);
         }
         const uint32_t base = pass * tilesPerEye;
-        vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeB);
-        vkCmdDispatchBase(d->cmd, base, 0, 0, tilesPerEye, 1, 1);
-        ++dispatches;
-        if (pipeBa != VK_NULL_HANDLE) {
-            vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeBa);
-            vkCmdDispatchBase(d->cmd, base, 0, 0, tilesPerEye, 1, 1);
+        // [0, nodir) is the group that cannot enter the wavefront and
+        // [nodir, tilesPerEye) is the group that can; `order_nodir` is 0 when
+        // the stream has no INTRA_DIR at all, which puts every tile in the
+        // second group and the second group on the only module there is.
+        // With no INTRA_DIR at all there is one module and one group: every
+        // tile goes in the first, which is the module that has no wavefront.
+        const uint32_t nodir =
+            fp.push.intraDir != 0 ? d->order_nodir[pass] : tilesPerEye;
+        const uint32_t seg[2] = {nodir, tilesPerEye - nodir};
+        const uint32_t segBase[2] = {base, base + nodir};
+        for (int dir = 0; dir < 2; ++dir) {
+            if (seg[dir] == 0) continue;
+            vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                              pipeB[dir]);
+            vkCmdDispatchBase(d->cmd, segBase[dir], 0, 0, seg[dir], 1, 1);
             ++dispatches;
+            if (pipeBa[dir] != VK_NULL_HANDLE) {
+                vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                  pipeBa[dir]);
+                vkCmdDispatchBase(d->cmd, segBase[dir], 0, 0, seg[dir], 1, 1);
+                ++dispatches;
+            }
         }
         if (pass + 1 < eyePasses)
             buffer_barrier(d->cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,

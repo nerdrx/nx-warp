@@ -60,6 +60,14 @@ void passB_reconstruct_rgb10a2(const PassBInput &in, uint32_t *out);
 // `full * full` samples for each coded plane, `full` being 64 for luma and
 // alpha and 32 for the chroma of a 4:2:0 stream; a plane the tile did not
 // code is filled with its constant value, as store_ref_tile() does.
+//
+// **Nothing tests this yet.** It is the model of a kernel behaviour that is
+// tested end to end -- the sixteen inter vectors would not decode if the ring
+// were wrong -- but nxvc-passB-test builds its own corpus and has no ring to
+// compare against. It is here because the model is meant to be readable
+// beside the kernel, and a ring store with no model would be the one part of
+// reconstruct.comp with nothing to read beside it. See ../README.md, open
+// issues.
 void passB_reconstruct_ref_tile(const PassBInput &in, int tile,
                                 std::vector<int> out[4]);
 

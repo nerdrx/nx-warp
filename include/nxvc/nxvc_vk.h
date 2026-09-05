@@ -91,11 +91,13 @@ typedef enum nxvc_vkd_create_flags {
      * ballot path.  Both produce identical output; the default picks the
      * ballot whenever the device's subgroups are wide enough. */
     NXVC_VKD_FLAG_LDS_FALLBACK = 1u << 2,
-    /* Accept a tile-row skip bitmap.  v1 has no reference frames, so the CPU
-     * reference refuses a non-zero bitmap (NXVC_ERR_UNSUPPORTED) and so does
-     * this decoder by default.  With the flag set, skipped tiles reconstruct
-     * deterministically as WARP_SKIP records over a zeroed coefficient slot,
-     * which is the shape the Phase 2 inter predictor plugs into. */
+    /* Accept a tile-row skip bitmap on a stream with NO `INTER` tool bit.
+     * Such a stream has no reference ring for a skip to refer to, so the CPU
+     * reference refuses a non-zero bitmap and so does this decoder by
+     * default; with the flag set the skipped tiles reconstruct
+     * deterministically as WARP_SKIP records over a zeroed coefficient slot.
+     * [inter] It has nothing to do with an INTER stream, where a skip is
+     * ordinary syntax and is always accepted. */
     NXVC_VKD_FLAG_ALLOW_SKIPPED_TILES = 1u << 3,
     /* Use the dense raster-order coefficient layout between Pass A and Pass B
      * instead of the sparse one (PAPER 3.2.5): every tile writes and reads its
@@ -111,11 +113,11 @@ typedef enum nxvc_vkd_create_flags {
     NXVC_VKD_FLAG_COEF_STATS = 1u << 5,
     /* Write each display format from its own Pass B dispatch instead of
      * writing both from one.  It only makes a difference for a frame that
-     * needs two stores -- today, a 4:2:0 stream with a coded alpha plane on
-     * the two-plane output; when the inter path lands, every frame, because
-     * the reference ring slot is a second store of the same samples.  The
-     * pixels are identical either way; this exists to measure the
-     * difference. */
+     * needs two DISPLAY stores: a 4:2:0 stream with a coded alpha plane on
+     * the two-plane output.  [inter] The reference-ring slot is also a second
+     * store of the same samples, but it is not a display format and is not
+     * affected by this flag -- it is written from whichever Pass B dispatch
+     * runs first. */
     NXVC_VKD_FLAG_SPLIT_STORES = 1u << 6
 } nxvc_vkd_create_flags;
 
@@ -183,6 +185,13 @@ typedef struct nxvc_vkd_stream_info {
     uint32_t alpha;           /* the stream carries a 4th plane            */
     uint32_t bit_depth, eyes, num_layers, profile, level;
     uint64_t tools;
+    /* [inter] `width`, `height`, `chroma_width`, `chroma_height` and
+     * `tiles_x` are PER EYE -- docs/SYNTAX.md 3.3: a picture is one eye.  The
+     * transport's column count over the eye pair is `eyes * tiles_x`, and a
+     * linear tile index is `row * (eyes * tiles_x) + eye * tiles_x + index`,
+     * which is what nxvc_vk_decoder_mark_missing() takes.  `tile_count` is
+     * already over the pair.  nxvc_vk_decoder_plane_size() reports the
+     * readback layout, which spans the pair. */
     uint32_t tiles_x, tiles_y, tile_count;
     uint32_t chroma_width, chroma_height;
     uint32_t ext_len;

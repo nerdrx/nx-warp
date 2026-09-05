@@ -45,6 +45,16 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
 - `nxvc_vkd_stats` gains `pass_w_ms` and `tiles_concealed`; the conformance harness gains
   `--only-loss`, `--no-loss` and `--bench-inter N [--bench-size W H]`, and `vk.decoder.loss` and
   `vk.decoder.bench_inter` are registered as their own ctest entries.
+- **Pass B is dispatched once per module and not once per frame.** `INTRA_DIR` is a build
+  variant, and its module's register footprint is paid by every workgroup of a dispatch that uses
+  it whether or not that workgroup reaches the wavefront -- which an inter tile never does. The
+  workgroup -> tile map now stable-partitions each eye's segment into the tiles whose mode is not
+  `INTRA` and the tiles whose mode is, and the two contiguous ranges are dispatched with the two
+  modules. On the Adreno 650 that is **42.9 ms -> 21.8 ms of Pass B** on an inter frame, and a
+  36-frame sequence from 1839 ms to 1120 ms; the residual is the rolling intra refresh's own
+  tiles, which really do want the wavefront. On RADV the two modules measure the same and it costs
+  one cached pipeline. The output is bit-identical and the whole 201-stream sweep re-checks it on
+  all three ICDs.
 - The conformance sweep's skip count falls from **46 to 15**: the sixteen Phase 2 inter vectors
   (`v45`-`v56`, `v66`, `v67`, `v74`, `v75`) and the sixteen Phase 2 rejection vectors
   (`r18`-`r29`, `r40`-`r43`) are checked now, with zero mismatching samples on RADV, lavapipe and

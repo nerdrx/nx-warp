@@ -1226,13 +1226,10 @@ void main() {
                                  (m10 * wb + m11 * qfx) * fy + kBilinRound) >>
                                 kBilinShift;
                         if (!intra) {
-                            pred0 = clamp(nxvwWpredAt(tile, p, size, col0, yy) +
-                                              pred0 - dcOff,
-                                          0, maxval);
-                            pred1 = clamp(
-                                nxvwWpredAt(tile, p, size, col0 + 1, yy) +
-                                    pred1 - dcOff,
-                                0, maxval);
+                            int w0v, w1v;
+                            nxvwWpredPair(tile, p, size, col0, yy, w0v, w1v);
+                            pred0 = clamp(w0v + pred0 - dcOff, 0, maxval);
+                            pred1 = clamp(w1v + pred1 - dcOff, 0, maxval);
                         }
                     }
                     int s0 = clamp(pred0 + res0[c], 0, maxval);

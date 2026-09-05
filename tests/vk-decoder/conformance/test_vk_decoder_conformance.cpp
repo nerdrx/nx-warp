@@ -597,17 +597,26 @@ struct LossResult {
 };
 
 bool encode_inter_stream(int w, int h, int frames, int qp,
-                         std::vector<uint8_t> &stream, std::string &err) {
+                         std::vector<uint8_t> &stream, std::string &err,
+                         int intra_dir = -1, int eyes = 1) {
     nxvc_config cfg;
     nxvc_config_default(&cfg);
     cfg.width = (uint32_t)w;
     cfg.height = (uint32_t)h;
     cfg.chroma = NXVC_CHROMA_420;
     cfg.base_qp = (uint32_t)qp;
+    cfg.eyes = (uint32_t)eyes;
     cfg.inter = 1;
-    cfg.stereo = 0;      // 13.7: STEREO under loss is UNSUPPORTED in ref/
+    // [SYN] 13.7 says the ENCODER cannot replay concealment through a STEREO
+    // tile -- nxvc_encoder_set_received_tiles() returns UNSUPPORTED for it.
+    // The DECODER side has no such gap: both decoders conceal the left-eye
+    // tile and the STEREO tile of the same row then predicts from what the
+    // decoder actually holds, so they agree byte for byte, which is exactly
+    // what the stereo arm of this test asserts.
+    cfg.stereo = (uint32_t)(eyes == 2 ? 1 : 0);
     cfg.near_skip = 1;
     cfg.quad_mv = 1;
+    if (intra_dir >= 0) cfg.intra_dir = (uint32_t)intra_dir;
     nxvc_status st;
     nxvc_encoder *e = nxvc_encoder_create(&cfg, &st);
     if (!e) { err = nxvc_status_string(st); return false; }
@@ -625,13 +634,20 @@ bool encode_inter_stream(int w, int h, int frames, int qp,
         // A slow yaw, so warp_ext() carries a real matrix rather than the
         // identity and the predictor is exercised rather than bypassed.
         const double a = 0.004 * f;
-        nxvc_view v{};
-        v.qx = 0.0; v.qy = std::sin(a * 0.5); v.qz = 0.0; v.qw = std::cos(a * 0.5);
-        v.fov_left = -0.9; v.fov_right = 0.9;
-        v.fov_up = 0.9; v.fov_down = -0.9;
-        nxvc_encoder_set_views(e, &v, 1);
-        // The content pans, so the tiles have something to track.
-        TestImage im = make_image(w, h, false, 1, (uint32_t)(7000 + f));
+        nxvc_view v[2]{};
+        for (int k = 0; k < eyes; ++k) {
+            v[k].qx = 0.0;
+            v[k].qy = std::sin(a * 0.5);
+            v[k].qz = 0.0;
+            v[k].qw = std::cos(a * 0.5);
+            v[k].fov_left = -0.9; v[k].fov_right = 0.9;
+            v[k].fov_up = 0.9; v[k].fov_down = -0.9;
+        }
+        nxvc_encoder_set_views(e, v, (uint32_t)eyes);
+        // The content pans, so the tiles have something to track.  A stereo
+        // frame is `eyes` pictures side by side ([SYN] 3.3), which is the
+        // layout nxvc_encoder_encode_frame takes.
+        TestImage im = make_image(w * eyes, h, false, 1, (uint32_t)(7000 + f));
         nxvc_image img{};
         for (int p = 0; p < 4; ++p) img.plane[p] = (uint8_t *)im.p[p].data();
         img.stride[0] = im.w;
@@ -652,9 +668,10 @@ bool encode_inter_stream(int w, int h, int frames, int qp,
     return true;
 }
 
-bool run_loss_test(int frames, LossResult &r) {
+bool run_loss_test(int frames, LossResult &r, int eyes = 1) {
     std::vector<uint8_t> stream;
-    if (!encode_inter_stream(320, 256, frames, 26, stream, r.err)) return false;
+    if (!encode_inter_stream(320, 256, frames, 26, stream, r.err, -1, eyes))
+        return false;
 
     // --- the two decoders, side by side, frame by frame.
     nxvc_status cst;
@@ -756,24 +773,28 @@ bool run_loss_test(int frames, LossResult &r) {
 }
 
 void run_loss(int frames) {
-    LossResult r;
-    if (!run_loss_test(frames, r)) {
-        std::printf("FAIL loss: %s\n", r.err.c_str());
-        ++g_fail;
+    // Mono and stereo: the stereo arm is what covers a concealed LEFT-eye tile
+    // that a STEREO tile of the same row then predicts from.
+    for (int eyes = 1; eyes <= 2; ++eyes) {
+        const char *what = eyes == 1 ? "loss" : "loss-stereo";
+        LossResult r;
         ++g_checked;
-        return;
+        if (!run_loss_test(frames, r, eyes)) {
+            std::printf("FAIL %s: %s\n", what, r.err.c_str());
+            ++g_fail;
+            continue;
+        }
+        if (r.first_bad_frame >= 0) {
+            std::printf("FAIL %s: GPU and reference diverge at frame %d "
+                        "(%d frames, %d tiles dropped)\n",
+                        what, r.first_bad_frame, r.frames, r.tiles_dropped);
+            ++g_fail;
+            continue;
+        }
+        std::printf("-- %s: %d frames, %d with drops, %d tiles dropped, "
+                    "byte-identical to the reference\n",
+                    what, r.frames, r.frames_with_drops, r.tiles_dropped);
     }
-    ++g_checked;
-    if (r.first_bad_frame >= 0) {
-        std::printf("FAIL loss: GPU and reference diverge at frame %d "
-                    "(%d frames, %d tiles dropped)\n",
-                    r.first_bad_frame, r.frames, r.tiles_dropped);
-        ++g_fail;
-        return;
-    }
-    std::printf("-- loss: %d frames, %d with drops, %d tiles dropped, "
-                "byte-identical to the reference\n",
-                r.frames, r.frames_with_drops, r.tiles_dropped);
 }
 
 std::vector<Case> synthetic_cases(bool quick) {
@@ -909,12 +930,15 @@ void run_synthetic(bool quick) {
 // is WARP_SKIP and costs one Pass W dispatch and no entropy decode at all.  So
 // this decodes the whole sequence, in order, and reports the mean over the
 // inter frames as well as the intra frame they start from.
-int run_bench_inter(int iters, int frames, int w, int h, int qp) {
+int run_bench_inter(int iters, int frames, int w, int h, int qp,
+                    int intra_dir = -1) {
     std::vector<uint8_t> stream;
     std::string err;
-    std::printf("-- encoding %d inter frames, %dx%d 4:2:0 at QP %d (%d tiles)\n",
-                frames, w, h, qp, (w / 64) * (h / 64));
-    if (!encode_inter_stream(w, h, frames, qp, stream, err)) {
+    std::printf("-- encoding %d inter frames, %dx%d 4:2:0 at QP %d (%d tiles), "
+                "INTRA_DIR %s\n",
+                frames, w, h, qp, (w / 64) * (h / 64),
+                intra_dir == 0 ? "off" : intra_dir == 1 ? "on" : "default");
+    if (!encode_inter_stream(w, h, frames, qp, stream, err, intra_dir)) {
         std::printf("bench: encode failed (%s)\n", err.c_str());
         return 1;
     }
@@ -1433,7 +1457,7 @@ int main(int argc, char **argv) {
     }
     if (bench_inter)
         return run_bench_inter(bench, bench_inter, bench_w, bench_h,
-                               bench_qp < 0 ? 24 : bench_qp);
+                               bench_qp < 0 ? 24 : bench_qp, bench_dir);
     if (bench_qp >= 0) return run_bench_qp(bench, bench_qp, false, bench_dir);
     if (bench) return run_bench(bench);
 
