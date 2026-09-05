@@ -391,27 +391,45 @@ struct InterSpec {
     int obj;                // moving-disc speed
     int disparity;          // per-eye horizontal offset
     int salt;               // per-frame content reseed (new content everywhere)
-    int ctx;                // 1 = CTX_V2 (v1.4), 2 = CTX_V3 (v1.5)
+    int ctx;                // 1 = CTX_V2 (v1.4), 2 = CTX_V3 (v1.6)
     int tab;                // compact transmitted table sets (TAB_V2)
+    int near_skip;          // tool bit 28
+    int quad_mv;            // tool bit 29
+    int drift_refresh;      // encoder-side refresh scheme (changes no syntax)
 };
 
 static const InterSpec kInterVectors[] = {
     // name                     fixes                        w    h  ey 444 qp fr st per rs   yaw   pan obj disp salt
-    {"v45_inter_identity",      "inter/identity",           128, 128, 1, 1, 24, 4, 0, 999, 0,  0.0,  0.0, 0,  0, 0, 1, 0},
-    {"v46_inter_warp_mv",       "inter/integer_mv",         128, 128, 1, 1, 26, 5, 0, 999, 0,  0.7,  2.0, 3,  0, 0, 1, 0},
-    {"v47_inter_static_mv",     "inter/static_mv",          128, 128, 1, 1, 26, 4, 0, 999, 0, 12.0,  0.0, 0,  0, 0, 1, 0},
-    {"v48_inter_warp_sweep",    "inter/warp_sweep",         128, 128, 1, 1, 28, 6, 0, 999, 0,  4.5,  6.0, 2,  0, 0, 1, 0},
-    {"v49_inter_warp_border",   "inter/warp_border",        128,  64, 1, 1, 28, 5, 0, 999, 0,  9.0, 14.0, 5,  0, 0, 1, 0},
-    {"v50_inter_skip_state",    "inter/skip",               128, 128, 1, 1, 22, 4, 0, 999, 0,  0.2,  0.5, 1,  0, 0, 1, 0},
-    {"v51_inter_ref_sel1",      "inter/ref_sel",            128, 128, 1, 1, 26, 6, 0, 999, 1,  0.5,  1.0, 2,  0, 0, 1, 0},
-    {"v52_inter_ref_sel2",      "inter/ref_sel",            128, 128, 1, 1, 26, 7, 0, 999, 2,  0.5,  1.0, 2,  0, 0, 1, 0},
-    {"v53_inter_stereo",        "inter/stereo",             128, 128, 2, 1, 24, 4, 1, 999, 0,  0.0,  0.0, 0, 11, 1, 1, 0},
-    {"v54_inter_stereo_static", "inter/stereo_static_equiv",128, 128, 2, 1, 24, 4, 0, 999, 0,  0.0,  0.0, 0, 11, 1, 1, 0},
-    {"v55_inter_420",           "inter/warp_sweep (4:2:0)", 128, 128, 1, 0, 26, 5, 0, 999, 0,  1.5,  3.0, 3,  0, 0, 1, 0},
-    {"v56_inter_refresh",       "inter/skip (refresh)",     128, 128, 1, 1, 26, 8, 0,   4, 0,  0.4,  1.0, 2,  0, 0, 1, 0},
+    {"v45_inter_identity",      "inter/identity",           128, 128, 1, 1, 24, 4, 0, 999, 0,  0.0,  0.0, 0,  0, 0, 1, 0, 0, 0, 0},
+    {"v46_inter_warp_mv",       "inter/integer_mv",         128, 128, 1, 1, 26, 5, 0, 999, 0,  0.7,  2.0, 3,  0, 0, 1, 0, 0, 0, 0},
+    {"v47_inter_static_mv",     "inter/static_mv",          128, 128, 1, 1, 26, 4, 0, 999, 0, 12.0,  0.0, 0,  0, 0, 1, 0, 0, 0, 0},
+    {"v48_inter_warp_sweep",    "inter/warp_sweep",         128, 128, 1, 1, 28, 6, 0, 999, 0,  4.5,  6.0, 2,  0, 0, 1, 0, 0, 0, 0},
+    {"v49_inter_warp_border",   "inter/warp_border",        128,  64, 1, 1, 28, 5, 0, 999, 0,  9.0, 14.0, 5,  0, 0, 1, 0, 0, 0, 0},
+    {"v50_inter_skip_state",    "inter/skip",               128, 128, 1, 1, 22, 4, 0, 999, 0,  0.2,  0.5, 1,  0, 0, 1, 0, 0, 0, 0},
+    {"v51_inter_ref_sel1",      "inter/ref_sel",            128, 128, 1, 1, 26, 6, 0, 999, 1,  0.5,  1.0, 2,  0, 0, 1, 0, 0, 0, 0},
+    {"v52_inter_ref_sel2",      "inter/ref_sel",            128, 128, 1, 1, 26, 7, 0, 999, 2,  0.5,  1.0, 2,  0, 0, 1, 0, 0, 0, 0},
+    {"v53_inter_stereo",        "inter/stereo",             128, 128, 2, 1, 24, 4, 1, 999, 0,  0.0,  0.0, 0, 11, 1, 1, 0, 0, 0, 0},
+    {"v54_inter_stereo_static", "inter/stereo_static_equiv",128, 128, 2, 1, 24, 4, 0, 999, 0,  0.0,  0.0, 0, 11, 1, 1, 0, 0, 0, 0},
+    {"v55_inter_420",           "inter/warp_sweep (4:2:0)", 128, 128, 1, 0, 26, 5, 0, 999, 0,  1.5,  3.0, 3,  0, 0, 1, 0, 0, 0, 0},
+    {"v56_inter_refresh",       "inter/skip (refresh)",     128, 128, 1, 1, 26, 8, 0,   4, 0,  0.4,  1.0, 2,  0, 0, 1, 0, 0, 0, 0},
     // --- syntax v1.6: the inter path with the new entropy tools on.
-    {"v66_inter_ctxv3",        "inter/warp_sweep (v1.6)",  128, 128, 1, 1, 26, 6, 0, 999, 0,  4.5,  6.0, 2,  0, 0, 2, 1},
-    {"v67_inter_stereo_v3",    "inter/stereo (v1.6)",      128, 128, 2, 1, 24, 4, 1, 999, 0,  0.0,  0.0, 0, 11, 1, 2, 1},
+    {"v66_inter_ctxv3",        "inter/warp_sweep (v1.6)",  128, 128, 1, 1, 26, 6, 0, 999, 0,  4.5,  6.0, 2,  0, 0, 2, 1, 0, 0, 0},
+    {"v67_inter_stereo_v3",    "inter/stereo (v1.6)",      128, 128, 2, 1, 24, 4, 1, 999, 0,  0.0,  0.0, 0, 11, 1, 2, 1, 0, 0, 0},
+    // --- syntax v1.6, the inter-efficiency package.  SYNTAX.md 13.8 to 13.10.
+    // The last three columns are `near_skip`, `quad_mv` and `drift_refresh`.
+    //
+    // There is deliberately NO positive vector for the near-skip correction
+    // (13.9).  The encoder does not choose it on any clip this generator can
+    // build: it fires on the 2048x1024 tournament sequence at QP 20, where it
+    // is worth 6.0 % of the stream, and on nothing at 128x128 or 256x256 at
+    // any QP, drift or frame count tried.  Shipping a vector whose spec names
+    // the tool and whose stream contains none of it would pin the tool doing
+    // NOTHING, which is the defect `build_inter()`'s guard below exists to
+    // catch -- the same one that caught it once already on tourney/inter-b.
+    // The decoder side is pinned instead by the rejects (r40-r43) and by
+    // ref.inter, and the gap is recorded in docs/SYNTAX.md 14.
+    {"v74_quad_mv",            "13.10 quadrant vectors",   128, 128, 1, 1, 26, 6, 0, 999, 0,  1.1,  2.5, 4,  0, 0, 1, 0, 0, 1, 0},
+    {"v75_inter_eff_all",      "13.8 + 13.10 + refresh",   128, 128, 1, 1, 28, 8, 0,  16, 0,  0.8,  1.5, 3,  0, 0, 1, 0, 1, 1, 1},
 };
 static const int kNumInterVectors =
     (int)(sizeof(kInterVectors) / sizeof(kInterVectors[0]));
@@ -513,6 +531,9 @@ static Result build_inter(const InterSpec &v) {
     cfg.ctx_v2 = v.ctx >= 1 ? 1u : 0u;
     cfg.ctx_v3 = v.ctx >= 2 ? 1u : 0u;
     cfg.tab_v2 = (uint32_t)v.tab;
+    cfg.near_skip = (uint32_t)v.near_skip;
+    cfg.quad_mv = (uint32_t)v.quad_mv;
+    cfg.drift_refresh = (uint32_t)v.drift_refresh;
 
     nxvc_status st;
     nxvc_encoder *e = nxvc_encoder_create(&cfg, &st);
@@ -595,6 +616,9 @@ struct FrameWalk {
     bool warp_present = false;
 };
 
+static void wr_u32(std::vector<uint8_t> &b, size_t o, uint32_t v) {
+    for (int i = 0; i < 4; ++i) b[o + i] = (uint8_t)(v >> (8 * i));
+}
 static uint32_t rd_u32(const std::vector<uint8_t> &b, size_t o) {
     uint32_t v = 0;
     for (int i = 0; i < 4; ++i) v |= (uint32_t)b[o + i] << (8 * i);
@@ -651,7 +675,18 @@ static bool find_tile(const std::vector<uint8_t> &b, const FrameWalk &w,
         for (int eye = 0; eye < w.eyes; ++eye) {
             if (off + 12 > b.size()) return false;
             const uint64_t skip = rd_u64(b, off + 4);
+            const uint32_t dc_present = b[off + 3] >> 7;
             off += 12;
+            // SYNTAX.md 3.3: a dc_bitmap and one nine-byte correction per bit
+            // sit between the row header and the first tile structure.
+            if (dc_present) {
+                if (off + 8 > b.size()) return false;
+                const uint64_t dcmap = rd_u64(b, off);
+                off += 8;
+                int nd = 0;
+                for (int c = 0; c < w.cols; ++c) nd += (int)((dcmap >> c) & 1ull);
+                off += (size_t)nd * 9u;
+            }
             for (int col = 0; col < w.cols; ++col) {
                 if ((skip >> col) & 1ull) continue;
                 if (off + 8 > b.size()) return false;
@@ -696,6 +731,16 @@ static const InterReject kInterRejects[] = {
     {"r27_warp_without_inter", "the WARP tool bit without INTER",          NXVC_ERR_BITSTREAM, 0},
     {"r28_stereo_left_eye",    "mode STEREO on the left eye",              NXVC_ERR_BITSTREAM, 1},
     {"r29_disparity_reserved", "disparity bits 15:12 are not zero",        NXVC_ERR_BITSTREAM, 1},
+    // --- syntax v1.6, the inter-efficiency package.  QUAD_MV is a word1
+    // bit; NEAR_SKIP is a TILE-ROW header structure, so its constraints are
+    // about the row's `dc_present` flag and `dc_bitmap` and not about any
+    // tile-header field.  None of these changes a tile's length, so the base
+    // stream stays parseable up to the offending structure, which is what
+    // makes them a test of the rule rather than of truncation.
+    {"r40_quad_mv_no_tool",    "word1 bit 31 without tool bit 29",         NXVC_ERR_BITSTREAM, 0},
+    {"r41_quad_mv_on_intra",   "quad_mv on an INTRA tile",                 NXVC_ERR_BITSTREAM, 0},
+    {"r42_dc_present_no_tool", "row dc_present without tool bit 28",       NXVC_ERR_BITSTREAM, 0},
+    {"r43_dc_bitmap_empty",    "dc_present with an empty dc_bitmap",       NXVC_ERR_BITSTREAM, 0},
 };
 static const int kNumInterRejects =
     (int)(sizeof(kInterRejects) / sizeof(kInterRejects[0]));
@@ -792,6 +837,43 @@ static bool make_inter_reject(int idx, const std::vector<uint8_t> &base,
             }
             if (!found) { *why = "no STEREO tile to corrupt"; return false; }
             b[o2 + 1] |= 0x10;   // disparity bit 12
+            break;
+        }
+        case 12:
+        case 13: {
+            // Word1 bit 31 is `quad_mv`.  Both pokes go through set_tool()
+            // by NAME (docs/MERGE-PLAN.md 4.3.1): spelled as a byte offset
+            // they would survive a renumber and quietly test nothing.
+            if (!find_tile(b, f0, NXVC_MODE_INTRA, -1, &hdr, &opt)) {
+                *why = "no INTRA tile in frame 0"; return false;
+            }
+            if (idx == 12) patch_w1(hdr, 0, 1u << 31);
+            if (idx == 13) {
+                set_tool(b, NXVC_TOOL_QUAD_MV);
+                patch_w1(hdr, 0, 1u << 31);   // ... on an INTRA tile
+            }
+            break;
+        }
+        case 14:
+        case 15: {
+            // The tile-ROW header's `dc_present` (bit 7 of `tile_count`) and
+            // its `dc_bitmap`.  The first row header of frame 1 begins at
+            // `f1.row0_off`; byte 3 is `tile_count`.
+            const size_t tc = f1.row0_off + 3;
+            if (idx == 14) {
+                // dc_present set with the tool bit absent.
+                b[tc] |= 0x80;
+            } else {
+                // dc_present with an all-zero bitmap: two encodings of one
+                // stream, and the parser must refuse the redundant one.  The
+                // eight zero bytes are inserted, which lengthens the frame,
+                // so `frame_bytes` moves with it.
+                set_tool(b, NXVC_TOOL_NEAR_SKIP);
+                b[tc] |= 0x80;
+                b.insert(b.begin() + (long)(f1.row0_off + 12), 8, (uint8_t)0);
+                const size_t fb = f1.frame_off + 36;
+                wr_u32(b, fb, rd_u32(b, fb) + 8u);
+            }
             break;
         }
         default: break;

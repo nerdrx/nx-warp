@@ -144,4 +144,10 @@ void warp_plane_tile(const nw::RefImage &ref, int tile_x, int tile_y,
                      const nw::Homography &H, const i32 mv[2], nw::Mode mode,
                      int extent, i32 *out);
 
+// The same predictor with one vector per tile quadrant (tool bit 29 QUAD_MV,
+// SYNTAX.md 13.10).  warp_plane_tile() is this with four equal vectors.
+void warp_plane_tile_quad(const nw::RefImage &ref, int tile_x, int tile_y,
+                          const nw::Homography &H, const i32 mv[4][2],
+                          nw::Mode mode, int extent, i32 *out);
+
 }  // namespace nxvc

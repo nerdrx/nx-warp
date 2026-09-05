@@ -103,7 +103,17 @@ static void usage() {
         "                       when neither is given -- a wrong FOV is a\n"
         "                       silently wrong warp (docs/WARP.md 2.1)\n"
         "  --intra-period N     rolling intra refresh period in frames\n"
-        "                       (default 180; 1 = every tile every frame)\n"
+        "                       (default 180; 1 = every tile every frame).\n"
+        "                       Under --drift-refresh this is the hard age cap\n"
+        "  --drift-refresh on|off  drive the refresh from the measured drift of\n"
+        "                       the encoder's client shadow instead of the\n"
+        "                       fixed 1-in-T permutation (default on)\n"
+        "  --drift-gate F       --drift-refresh gate, multiples of the\n"
+        "                       quantiser noise floor qstep^2/12 (default 4)\n"
+        "  --near-skip on|off   DC-correction tile form, tool bit 24\n"
+        "                       (default on)\n"
+        "  --quad-mv on|off     four vectors per tile, one per 32x32\n"
+        "                       quadrant, tool bit 25 (default on)\n"
         "  --ref-sel 0..2       reference distance inter tiles ask for\n"
         "  --stereo on|off      STEREO inter-view mode on the right eye\n"
         "  --mv-range N         coarse search radius in samples (default 16)\n"
@@ -137,6 +147,9 @@ int main(int argc, char **argv) {
     int split4x4 = 1, cfl = 1;
     int inter = 0, eyes = 1, intra_period = 180, ref_sel = 0, stereo = 0;
     int mv_range = 16, skip_thresh = 0, mode_lambda = 0;
+    // These mirror nxvc_config_default(): the inter-efficiency tools that the
+    // measurement supports are on, sub-tile intra is not.
+    int drift_refresh = 1, drift_gate = 0, near_skip = 1, quad_mv = 1;
     double fov_h = 95.0, fov_v = 95.0;
     bool fov_from_cli = false;
     std::string poses_path, skipmap_path;
@@ -193,6 +206,26 @@ int main(int argc, char **argv) {
             fov_from_cli = true;
         }
         else if (a == "--intra-period") intra_period = std::atoi(val());
+        else if (a == "--drift-refresh") {
+            std::string v = val();
+            if (v == "on") drift_refresh = 1;
+            else if (v == "off") drift_refresh = 0;
+            else { std::fprintf(stderr, "--drift-refresh: on|off\n"); return 2; }
+        }
+        else if (a == "--drift-gate")
+            drift_gate = (int)(std::atof(val()) * 256.0 + 0.5);
+        else if (a == "--near-skip") {
+            std::string v = val();
+            if (v == "on") near_skip = 1;
+            else if (v == "off") near_skip = 0;
+            else { std::fprintf(stderr, "--near-skip: on|off\n"); return 2; }
+        }
+        else if (a == "--quad-mv") {
+            std::string v = val();
+            if (v == "on") quad_mv = 1;
+            else if (v == "off") quad_mv = 0;
+            else { std::fprintf(stderr, "--quad-mv: on|off\n"); return 2; }
+        }
         else if (a == "--ref-sel") ref_sel = std::atoi(val());
         else if (a == "--mv-range") mv_range = std::atoi(val());
         else if (a == "--skip-thresh")
@@ -364,6 +397,10 @@ int main(int argc, char **argv) {
     cfg.inter = (uint32_t)inter;
     cfg.stereo = (uint32_t)stereo;
     cfg.intra_period = (uint32_t)(intra_period > 0 ? intra_period : 1);
+    cfg.drift_refresh = (uint32_t)drift_refresh;
+    cfg.drift_gate_q8 = (uint32_t)(drift_gate > 0 ? drift_gate : 0);
+    cfg.near_skip = (uint32_t)near_skip;
+    cfg.quad_mv = (uint32_t)quad_mv;
     cfg.ref_sel = (uint32_t)(ref_sel < 0 ? 0 : (ref_sel > 2 ? 2 : ref_sel));
     cfg.mv_range = (uint32_t)(mv_range > 0 ? mv_range : 16);
     cfg.skip_thresh = (uint32_t)(skip_thresh > 0 ? skip_thresh : 0);

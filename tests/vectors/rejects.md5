@@ -42,3 +42,7 @@ r26_tool_catmullrom 82ab43fa95bee73376064e77b3edf7fd VERSION tool bit 23 FILTER_
 r27_warp_without_inter ca8fd45f6cf1a686f0ee2bedd3f37c6f BITSTREAM the WARP tool bit without INTER
 r28_stereo_left_eye acf145ec0eb2d7ab249e805421e02ca1 BITSTREAM mode STEREO on the left eye
 r29_disparity_reserved 0f994519df8b87dc5d87e9f72ac98efc BITSTREAM disparity bits 15:12 are not zero
+r40_quad_mv_no_tool eebc47083ce9ca6ef3e8f785e9799613 BITSTREAM word1 bit 31 without tool bit 29
+r41_quad_mv_on_intra b8d057eae1429458eeaaf5042d18d1b2 BITSTREAM quad_mv on an INTRA tile
+r42_dc_present_no_tool ec4a93ae96c5edaea6b32e2a3581c80d BITSTREAM row dc_present without tool bit 28
+r43_dc_bitmap_empty ed834c9edb03e107e3d15769e4fb9e3b BITSTREAM dc_present with an empty dc_bitmap

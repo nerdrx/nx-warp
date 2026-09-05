@@ -167,6 +167,67 @@ static int suite_identity() {
 }
 
 // ---------------------------------------------------------------------------
+// Four vectors per quadrant (docs/SYNTAX.md 13.8).  Two properties, and the
+// second is what makes the first structural rather than lucky.
+static int suite_quad() {
+    const int W = 256, H = 256;
+    Picture p = make_picture(W, H, 1, 255, 21);
+    Rng rng(99);
+    Case cs{};
+    std::vector<uint16_t> a(kTile * kTile), b(kTile * kTile);
+
+    // 1. Four equal vectors ARE warp_tile(), for every split, both modes,
+    //    both filters.  warp_tile() is implemented as this call with the
+    //    vector replicated, so a failure here is a broken refactor.
+    for (int i = 0; i < 128; ++i) {
+        make_case_int(rng, W, H, &cs);
+        const int32_t mv[2] = {cs.mv[0], cs.mv[1]};
+        const int32_t mv4[4][2] = {{mv[0], mv[1]}, {mv[0], mv[1]},
+                                   {mv[0], mv[1]}, {mv[0], mv[1]}};
+        for (Mode m : {kModeWarp, kModeStatic})
+            for (int32_t split : {8, 16, 32, 64}) {
+                warp_tile(p.img, cs.tile_x, cs.tile_y, cs.H, mv, cs.filter, m,
+                          a.data(), kTile);
+                warp_tile_quad(p.img, cs.tile_x, cs.tile_y, cs.H, mv4, split,
+                               cs.filter, m, b.data(), kTile);
+                CHECK(a == b, "four equal vectors != warp_tile (case %d, "
+                              "split %d, mode %d)", i, (int)split, (int)m);
+            }
+    }
+
+    // 2. Each quadrant is exactly the single-vector predictor of its own
+    //    vector, restricted to that quadrant.  That is the whole semantic:
+    //    the geometry is the tile's, only the added vector is the quadrant's.
+    for (int i = 0; i < 64; ++i) {
+        make_case_int(rng, W, H, &cs);
+        int32_t mv4[4][2];
+        for (int q = 0; q < 4; ++q) {
+            mv4[q][0] = (int32_t)(rng.next() % 41) - 20;
+            mv4[q][1] = (int32_t)(rng.next() % 41) - 20;
+        }
+        const int32_t split = 32;
+        warp_tile_quad(p.img, cs.tile_x, cs.tile_y, cs.H, mv4, split, cs.filter,
+                       kModeWarp, b.data(), kTile);
+        for (int q = 0; q < 4; ++q) {
+            const int32_t one[2] = {mv4[q][0], mv4[q][1]};
+            warp_tile(p.img, cs.tile_x, cs.tile_y, cs.H, one, cs.filter,
+                      kModeWarp, a.data(), kTile);
+            for (int32_t v = 0; v < kTile; ++v)
+                for (int32_t u = 0; u < kTile; ++u) {
+                    const int qq = (v >= split ? 2 : 0) + (u >= split ? 1 : 0);
+                    if (qq != q) continue;
+                    CHECK(a[v * kTile + u] == b[v * kTile + u],
+                          "quadrant %d differs from its own single-vector "
+                          "predictor at (%d, %d), case %d", q, (int)u, (int)v, i);
+                }
+        }
+    }
+    std::printf("quad: four equal vectors == warp_tile; each quadrant == its "
+                "own single-vector predictor\n");
+    return g_fail;
+}
+
+// ---------------------------------------------------------------------------
 
 static int suite_border() {
     const int W = 64, H = 64;
@@ -683,6 +744,7 @@ int main(int argc, char** argv) {
     if (suite == "divide" || suite == "all") suite_divide();
     if (suite == "identity" || suite == "all") suite_identity();
     if (suite == "border" || suite == "all") suite_border();
+    if (suite == "quad" || suite == "all") suite_quad();
     if (suite == "mv" || suite == "all") suite_mv();
     if (suite == "corners" || suite == "all") suite_corners();
     if (suite == "interior" || suite == "all") suite_interior();

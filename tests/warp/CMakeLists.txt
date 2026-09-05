@@ -10,7 +10,7 @@ target_link_libraries(nxvc_warp_hash PRIVATE nxvc_warp_ref)
 target_include_directories(nxvc_warp_hash PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 set_target_properties(nxvc_warp_hash PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 
-foreach(suite int64 divide identity border mv corners interior oracle range saturate filters)
+foreach(suite int64 divide identity border quad mv corners interior oracle range saturate filters)
     add_test(NAME warp.${suite} COMMAND nxvc_warp_test ${suite})
 endforeach()
 # The interior sweep and the oracle suite are the slow ones (2048^2 corpora).

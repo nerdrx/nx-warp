@@ -14,7 +14,7 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
 
 ### Added
 
-**Bitstream syntax v1.5 -- the large transforms**
+**Bitstream syntax v1.6 -- the large transforms**
 
 - Tool bit 24 `XFORM_LARGE` and the tile header's two-bit `xform_size` (word1 bits 28-29): a 16x16 or
   32x32 integer DCT for every plane of a tile instead of the 8x8 one. The transforms are the even/odd
@@ -29,6 +29,36 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
   choice. Conformance vectors `v57`-`v62` and rejection vectors `r30`-`r32`.
 - Measured in `ref/RESULTS-xform-a.md`, including the two variants that were measured and rejected
   (a per-32x32-quadrant size and a per-size probability-table family).
+
+**Bitstream syntax v1.6 -- Phase 2 inter efficiency**
+
+- `docs/SYNTAX.md` 13.8, **drift-driven intra refresh**. The encoder holds a bit-exact client shadow,
+  so the refresh is scheduled from the drift it measures against the source rather than from a fixed
+  1-in-`T` permutation. `intra_period` becomes a hard age cap; a tile whose drift exceeds a multiple
+  of the quantiser's noise floor `qstep^2/12` loses `WARP_SKIP` from its candidate set but is not
+  forced to `INTRA`. Encoder-side only: **no syntax change**, and `docs/RATECONTROL.md` 8.7 asked for
+  exactly that. Annex D **D-23**.
+- `docs/SYNTAX.md` 3.3 and 13.9, **near-skip**, tool bit 28, in the **tile-row header**. A warped tile
+  that is skipped may carry its entire residual as nine signed bytes -- a per-plane DC and one
+  horizontal and one vertical ramp -- named by a second per-row bitmap. It reuses the DC plane's
+  quantiser step, interpolation and inter combination unchanged, so it adds no arithmetic to the
+  decoder, and because it is a *skipped* tile with a bias rather than a very cheap coded one it can
+  appear in a warp-only chain, which by definition has no coded tiles. It costs no tile-header bit,
+  which is what left word1 with room for both transform tools. Annex D **D-24**.
+- `docs/SYNTAX.md` 13.10, **quadrant vectors**, tool bit 29, tile-header word1 bit 31. Four motion
+  vectors per tile, one per 32x32 quadrant, as signed nibble deltas from the tile vector in four
+  bytes. The warp corner basis stays the tile's, which is what makes the tool free on a GPU: the
+  vector is added per sample after the corner interpolation, so a quadrant changes the vector and
+  nothing else. There is **one** predictor loop -- `warp_tile()` delegates to `warp_tile_quad()` --
+  so "four equal vectors are exactly no quadrant vectors" is a structural fact rather than two code
+  paths agreeing, and `warp.quad` pins both halves over 128 cases x 2 modes x 2 filters x 4 splits.
+  Annex D **D-25**.
+- Conformance vectors `v74`-`v75` and rejection vectors `r40`-`r43`. Every previously committed digest
+  is unchanged, which is the compatibility claim stated as a test.
+- **Not merged:** sub-tile intra. It was measured at -0.50 and **+0.59** points, ships off, and would
+  have spent word1's last reserved bit on a disabled tool. Kept in Annex D as a recorded negative
+  result: this corpus cannot produce the disocclusion the tool exists for.
+- `ref/RESULTS-inter-a.md`, the before/after measurement on the Phase 2 kill test.
 
 **Design**
 

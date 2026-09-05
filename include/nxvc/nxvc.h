@@ -59,7 +59,14 @@ extern "C" {
  *       one -- the DC plane, the intra predictors, the weighting matrices,
  *       the scans and the entropy contexts all follow the block size by
  *       documented rules, and no new context and no new symbol exists.
- *       See docs/SYNTAX.md 6.7, 6.8, 9.4.1 and 9.9, and docs/TOOLBITS.md.
+ *       28 NEAR_SKIP, a warped tile whose whole residual is a per-plane
+ *       DC-plus-ramps correction carried in nine signed bytes in the TILE-ROW
+ *       header rather than an entropy-coded payload, gated by a second
+ *       per-row bitmap; and 29 QUAD_MV, four motion vectors, one per 32x32
+ *       quadrant, as signed nibble deltas from the tile vector over the
+ *       tile's own warp corner basis.
+ *       See docs/SYNTAX.md 3.3, 6.7, 6.8, 9.4.1, 9.9, 13.9 and 13.10, and
+ *       docs/TOOLBITS.md.
  */
 #define NXVC_BITSTREAM_MINOR 6
 
@@ -157,6 +164,16 @@ typedef enum nxvc_tile_mode {
  * byte-identically to a v1.4 one. */
 #define NXVC_TOOL_XFORM_LARGE     (1ull << 27)
 
+/* Phase 2 inter efficiency (docs/SYNTAX.md 13.9 and 13.10).  Both require
+ * INTER; NEAR_SKIP additionally requires WARP only in the sense that its
+ * tiles are warped ones, which the mode already gates.  NEAR_SKIP is the one
+ * tool in the tournament whose bit gates a TILE-ROW HEADER structure rather
+ * than a tile-header field: the correction travels in the row header, named
+ * by a second per-row bitmap, so it costs no tile-header bit and its nine
+ * bytes are spent only on the tiles the bitmap names.  docs/TOOLBITS.md 4. */
+#define NXVC_TOOL_NEAR_SKIP       (1ull << 28)
+#define NXVC_TOOL_QUAD_MV         (1ull << 29)
+
 /* Tools this reference decoder implements. */
 #define NXVC_TOOLS_SUPPORTED                                                  \
     (NXVC_TOOL_INTRA_DC_PLANE | NXVC_TOOL_TRANSFORM_SKIP |                    \
@@ -166,6 +183,7 @@ typedef enum nxvc_tile_mode {
      NXVC_TOOL_INTRA_DIR | NXVC_TOOL_CTX_V2 | NXVC_TOOL_SIGN_HIDE |           \
      NXVC_TOOL_XFORM_4X4_SPLIT | NXVC_TOOL_INTRA_CFL |                        \
      NXVC_TOOL_CTX_V3 | NXVC_TOOL_TAB_V2 | NXVC_TOOL_XFORM_LARGE |            \
+     NXVC_TOOL_NEAR_SKIP | NXVC_TOOL_QUAD_MV |                                \
      NXVC_TOOL_INTER | NXVC_TOOL_WARP | NXVC_TOOL_STEREO)
 
 /* ---------------------------------------------------------------- images */
@@ -233,7 +251,11 @@ typedef struct nxvc_config {
                                    0 = the default 180 (PAPER 2.6).  Every
                                    frame 1/T of the tiles are forced INTRA by
                                    a fixed pseudo-random permutation.  1 = all
-                                   intra every frame.                       */
+                                   intra every frame.  Under drift_refresh
+                                   this is the HARD AGE CAP instead: a tile
+                                   position may go at most T frames without an
+                                   INTRA, and the loss-recovery bound PAPER 2.6
+                                   states is unchanged.                     */
     uint32_t ref_sel;           /* 0..2: reference distance inter tiles ask
                                    for (N-1-ref_sel).  Default 0.           */
     uint32_t mv_range;          /* coarse integer search radius in samples,
@@ -278,6 +300,33 @@ typedef struct nxvc_config {
                                    Without this a zeroed nxvc_config, which
                                    is how every caller starts, would mean
                                    "off" rather than "default"              */
+
+    /* the inter efficiency package (docs/TOOLBITS.md 2).  APPENDED, not
+     * inserted: inter-a placed these before `ref_sel`, which silently moves
+     * the offset of every field after them for anything compiled against
+     * v1.4 (JUDGE-inter.md merge item 9). */
+    uint32_t near_skip;         /* 1 = allow the near-skip correction (28).
+                                   A warped tile whose drift is small and
+                                   smooth is corrected by nine signed bytes
+                                   in the TILE-ROW header instead of a coded
+                                   residual.  SYNTAX.md 13.9.              */
+    uint32_t quad_mv;           /* 1 = allow four motion vectors per tile,
+                                   one per 32x32 quadrant, as nibble deltas
+                                   from the tile vector (29).              */
+    uint32_t drift_refresh;     /* 1 = drive the refresh from the measured
+                                   drift of the encoder's client shadow
+                                   instead of the fixed 1-in-T permutation.
+                                   Encoder-side only: it changes which tiles
+                                   are coded, never how one decodes.  The
+                                   drift is measured against the SHADOW --
+                                   the loss-aware reconstruction -- not the
+                                   encoder's own, which is the only drift
+                                   the gate exists to catch.               */
+    uint32_t drift_gate_q8;     /* drift_refresh gate, Q8 multiple of the
+                                   quantiser's own noise floor (qstep^2 / 12)
+                                   per sample.  A tile whose shadow has
+                                   drifted further than this from the source
+                                   may not skip; 0 = default                */
 
     /* the transform package (docs/TOOLBITS.md 2).  A nonzero value sets tool
      * bit 27, and a decoder without it refuses the stream at the handshake. */
@@ -354,6 +403,12 @@ typedef struct nxvc_tile_info {
     /* APPENDED per JUDGE-detail.md merge item 1, then in merge order. */
     uint8_t split4x4;           /* 1: this tile carries 4x4 split flags    */
     uint8_t xform_size;         /* 0 = 8x8, 1 = 16x16, 2 = 32x32           */
+    uint8_t near_skip;          /* 1: this tile's residual is the row
+                                   header's DC correction (SYNTAX.md 13.9) */
+    uint8_t quad_mv;            /* word1 bit 31: four quadrant vectors      */
+    int8_t corr[3][3];          /* near_skip: [plane][dc, gx, gy]           */
+    int8_t qmv[4][2];           /* quad_mv: per-quadrant delta, quarter
+                                   samples, raster order TL TR BL BR        */
 } nxvc_tile_info;
 
 typedef struct nxvc_stream_info {
