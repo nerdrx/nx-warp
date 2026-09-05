@@ -161,9 +161,10 @@ typedef struct nxvc_vke_tile {
  * half size in both axes.  On success `*out` points at the frame's bytes,
  * valid until the next encode() or destroy(), and `*out_len` is their length.
  *
- * This is the portable entry point and it costs an upload of the picture.  A
- * compositor that already has the frame in a VkImage on this device should
- * prefer nxvc_vk_encoder_encode_image(). */
+ * This is the portable entry point and it costs an upload of the picture --
+ * a repack on the host, a staging write and a copy.  A compositor that
+ * already has the frame in a VkImage on this device should prefer
+ * nxvc_vk_encoder_encode_image() below, which costs none of the three. */
 nxvc_vke_status nxvc_vk_encoder_encode_planes(nxvc_vk_encoder *enc,
                                               const uint8_t *y, size_t y_stride,
                                               const uint8_t *cb,
@@ -171,6 +172,55 @@ nxvc_vke_status nxvc_vk_encoder_encode_planes(nxvc_vk_encoder *enc,
                                               size_t chroma_stride,
                                               const uint8_t **out,
                                               size_t *out_len);
+
+/* ---------------------------------------------------- the image entry point
+ *
+ * Encode one frame straight out of a compositor image, with no host copy of
+ * the picture anywhere: E0 reads the image's two planes through UINT storage
+ * views and writes the tile-major planes E3 consumes, on the device.  This is
+ * the entry point paper 3.6 describes and the one a compositor should use;
+ * encode_planes() is the portable fallback for a host that has pixels rather
+ * than an image.
+ *
+ * What the image must be, all of it checked by the caller and none of it by
+ * this library (there is no way to interrogate a VkImage for how it was
+ * created):
+ *
+ *   * VK_FORMAT_G8_B8R8_2PLANE_420_UNORM, at least `width` x `height`, on the
+ *     VkDevice this encoder adopted;
+ *   * created with VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT and a
+ *     VkImageFormatListCreateInfo that names R8_UINT and R8G8_UINT as well as
+ *     the plane formats -- a list that omits them makes the plane views
+ *     invalid, and a driver is entitled to refuse them;
+ *   * VK_IMAGE_USAGE_STORAGE_BIT, with VK_IMAGE_CREATE_EXTENDED_USAGE_BIT
+ *     where the planar format has no storage feature of its own, which on
+ *     every driver worth naming it does not;
+ *   * in VK_IMAGE_LAYOUT_GENERAL and owned by this encoder's queue family
+ *     when the call is made.  A layout transition or a queue-family
+ *     acquisition is the caller's to record, on the submit that produced the
+ *     picture; this library submits only its own passes.
+ *
+ * The call submits and waits, so the image is free again the moment it
+ * returns -- and must not be written before that.
+ *
+ * `array_layer` selects a layer of an array image, which is how WiVRn's
+ * compositor stores its eyes; pass 0 for a plain 2D image.
+ *
+ * Everything after E0 is the code encode_planes() runs, so the bitstream is
+ * the same bitstream: tests/vk-encoder's api acid test encodes the same
+ * picture both ways and requires the two files to be identical. */
+typedef struct nxvc_vke_image {
+    VkImage image;
+    VkImageLayout layout; /* must be VK_IMAGE_LAYOUT_GENERAL             */
+    uint32_t array_layer;
+    uint32_t width, height; /* the picture in it; must match create()    */
+    uint32_t flags;         /* reserved, pass 0                          */
+} nxvc_vke_image;
+
+nxvc_vke_status nxvc_vk_encoder_encode_image(nxvc_vk_encoder *enc,
+                                             const nxvc_vke_image *img,
+                                             const uint8_t **out,
+                                             size_t *out_len);
 
 /* Per-tile records of the frame encode() just produced.  Valid until the next
  * encode() or destroy().  `*count` is the tile count. */

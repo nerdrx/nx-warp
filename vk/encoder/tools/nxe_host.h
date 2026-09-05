@@ -79,6 +79,13 @@ struct Frame {
     std::vector<uint32_t> tile_bytes, tile_prefix;
     std::vector<uint8_t> out;              /* the assembled frame */
     nxe_tables tabs{};
+    /* log2(freq / 1024) for every (table set, context, symbol) of `tabs`,
+     * which is the only thing choose_table_sets() does with the tables and is
+     * constant for the life of the stream.  Computing it once turns that
+     * function's inner loop from a few thousand std::log2 calls per tile into
+     * a multiply-add -- the same doubles, in the same order, so the sum and
+     * therefore the chosen table set are unchanged bit for bit. */
+    std::vector<double> log_freq;
     int plane_size[NXE_MAX_PLANES]{};
     int plane_words[NXE_MAX_PLANES]{};     /* tile stride in the packed buffer */
     int plane_base[NXE_MAX_PLANES]{};      /* word base of the plane */
@@ -112,8 +119,20 @@ void fill_modes(const Config &cfg, Frame &f, uint32_t frame_number);
 /* The 64-byte stream header, ref's nxvc_encoder_stream_header. */
 std::vector<uint8_t> stream_header(const Config &cfg, const Frame &f);
 
-/* Per-tile table set from the coefficients, reproducing ref's select_set. */
-void choose_table_sets(Frame &f);
+/* Per-tile table set from the coefficients, reproducing ref's select_set.
+ *
+ * `coef` is the coefficient array, ntiles * NXE_TILE_COEFS_MAX entries.  It is
+ * a parameter rather than `f.coef` because on the GPU path the coefficients
+ * are already in a host-cached mapping of the readback buffer, and copying
+ * seven megabytes into `f.coef` first only to read them once is a copy for
+ * nobody.  Pass `f.coef.data()` on the CPU path.
+ *
+ * Every tile's decision is independent -- it reads that tile's coefficients
+ * and modes and writes that tile's job -- so the work is split across a small
+ * pool of threads.  Which thread does which tile changes nothing: each sum is
+ * over one tile's own histogram in a fixed order, so the chosen set, and the
+ * bitstream, are the same as the serial walk's. */
+void choose_table_sets(Frame &f, const int16_t *coef);
 
 /* E5 on the host: lay the tile slots out into `f.out`. */
 void pack_frame(Frame &f, uint32_t frame_number);

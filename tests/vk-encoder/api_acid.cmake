@@ -16,6 +16,13 @@
 # minor-6 tool named and turned off, exactly as acid.cmake names them, because
 # four of the six are ON in nxvc_config_default().
 #
+# IMAGE=ON runs the same comparison through the OTHER entry point:
+# nxvc_vk_encoder_encode_image(), with the picture in a two-plane 4:2:0 VkImage
+# the tool builds the way a Linux compositor does, so E0 reads it on the device
+# and no plane is ever laid out on the host.  That path produces the bitstream
+# or it does not, and "byte-identical to nxv-enc" is the only useful way to
+# say which -- a picture read one pixel off still decodes to something.
+#
 # Required: APIENC, NXVENC, NXVDEC, WORKDIR.  Skips (via "SKIP:" in the output,
 # which the ctest carries a SKIP_REGULAR_EXPRESSION for) when there is no
 # usable Vulkan device.
@@ -67,11 +74,18 @@ if(picked STREQUAL "")
   message(FATAL_ERROR "api_acid.cmake: no single-eye 4:2:0 case to test with")
 endif()
 
+set(APIARGS)
+set(WHAT "nxvc_vk_encoder")
+if(IMAGE)
+  set(APIARGS --image)
+  set(WHAT "nxvc_vk_encoder's image entry point")
+endif()
+
 set(nchecked 0)
 foreach(qp 20 26 30 40)
   # The library.  Exit 77 is "no usable Vulkan device", which is a skip.
   execute_process(COMMAND ${APIENC} --in ${picked} --w ${pw} --h ${ph}
-                          --qp ${qp} --frames 3 --matrix 1
+                          --qp ${qp} --frames 3 --matrix 1 ${APIARGS}
                           --out ${WORKDIR}/api.nxv
                   RESULT_VARIABLE rc ERROR_VARIABLE eout)
   if(rc EQUAL 77)
@@ -104,7 +118,7 @@ foreach(qp 20 26 30 40)
                   RESULT_VARIABLE rc OUTPUT_QUIET ERROR_QUIET)
   if(NOT rc EQUAL 0)
     message(FATAL_ERROR
-            "QP ${qp}: nxvc_vk_encoder's stream is not byte-identical to nxv-enc's")
+            "QP ${qp}: ${WHAT} is not byte-identical to nxv-enc's stream")
   endif()
 
   # And it has to decode.  A stream can be byte-identical to a reference stream
@@ -120,5 +134,5 @@ foreach(qp 20 26 30 40)
 endforeach()
 
 message(STATUS
-        "nxvc_vk_encoder: byte-identical to nxv-enc at ${nchecked} quantisers "
+        "${WHAT}: byte-identical to nxv-enc at ${nchecked} quantisers "
         "(${pw}x${ph}, 3 frames each)")

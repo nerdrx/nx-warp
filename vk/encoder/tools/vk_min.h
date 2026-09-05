@@ -82,6 +82,7 @@ public:
     // if no ICD is present at all, which the harness reports as "skipped".
     static bool enumerate(std::vector<DeviceInfo> &out, std::string &err);
 
+    VkInstance       instance() const { return inst_; }
     VkDevice         handle() const { return dev_; }
     VkPhysicalDevice phys() const { return phys_; }
     VkQueue          queue() const { return queue_; }

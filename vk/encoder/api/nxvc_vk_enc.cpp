@@ -219,6 +219,79 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_set_views(nxvc_vk_encoder *e,
     return e ? NXVC_VKE_OK : NXVC_VKE_ERR_ARG;
 }
 
+namespace {
+
+/* Per-tile spans, straight out of E5's own layout: the prefix sum over the
+ * tile byte counts the GPU reported, run back through the offset function E5
+ * itself uses.  This is a read of the layout, not a guess at it.  Shared by
+ * both entry points, because a tile record must not depend on where the
+ * picture came from. */
+void publish_frame(nxvc_vk_encoder *e, const uint8_t **out, size_t *out_len) {
+    const nxe_frame_params &fp = e->frame.fp;
+    uint32_t run = 0;
+    for (uint32_t t = 0; t < fp.ntiles; ++t) {
+        e->frame.tile_prefix[t] = run;
+        run += e->frame.tile_bytes[t];
+    }
+    e->tiles.resize(fp.ntiles);
+    for (uint32_t t = 0; t < fp.ntiles; ++t) {
+        e->tiles[t].index = t;
+        e->tiles[t].offset =
+            nxe_e5_tile_offset(&fp, t, e->frame.tile_prefix.data());
+        e->tiles[t].length = e->frame.tile_bytes[t];
+        e->tiles[t].qp = uint8_t(e->cfg.qp);
+        e->tiles[t].mode = uint8_t(e->frame.jobs[t].mode);
+        e->tiles[t].res_level = 0;
+        e->tiles[t].ref_delta = 3; /* no temporal reference */
+    }
+    e->frame_number++;
+    *out = e->frame.out.data();
+    *out_len = e->frame.out.size();
+}
+
+} // namespace
+
+extern "C" nxvc_vke_status nxvc_vk_encoder_encode_image(
+    nxvc_vk_encoder *e, const nxvc_vke_image *img, const uint8_t **out,
+    size_t *out_len) {
+    if (!e || !img || !out || !out_len) return NXVC_VKE_ERR_ARG;
+    *out = nullptr;
+    *out_len = 0;
+    if (!e->created) return NXVC_VKE_ERR_INTERNAL;
+    if (!img->image) return NXVC_VKE_ERR_ARG;
+    /* E0 binds the planes as storage images and storage images are read in
+     * GENERAL.  Refusing rather than transitioning is deliberate: the
+     * transition belongs on the submit that produced the picture, and doing
+     * it here would need an ownership claim this library does not have. */
+    if (img->layout != VK_IMAGE_LAYOUT_GENERAL) {
+        e->err = "the source image must be in VK_IMAGE_LAYOUT_GENERAL";
+        return NXVC_VKE_ERR_ARG;
+    }
+    if (img->flags) return NXVC_VKE_ERR_ARG;
+    /* The geometry is fixed at create(): a picture of another size would be
+     * silently cropped or read out of bounds, which is worse than an error. */
+    if (img->width != uint32_t(e->cfg.w) || img->height != uint32_t(e->cfg.h)) {
+        e->err = "the image geometry does not match the one create() was given";
+        return NXVC_VKE_ERR_ARG;
+    }
+
+    const auto t0 = std::chrono::steady_clock::now();
+    std::string err;
+    if (!e->vk.encode_frame_image(e->frame, e->frame_number, img->image,
+                                  img->array_layer, err)) {
+        e->err = err.empty() ? "the encode pipeline failed; see stderr" : err;
+        return NXVC_VKE_ERR_VULKAN;
+    }
+    const auto t1 = std::chrono::steady_clock::now();
+    /* No repack, by construction: the whole point of this entry point is that
+     * the number below is zero. */
+    e->last_upload_ms = 0.0;
+    e->last_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+
+    publish_frame(e, out, out_len);
+    return NXVC_VKE_OK;
+}
+
 extern "C" nxvc_vke_status nxvc_vk_encoder_encode_planes(
     nxvc_vk_encoder *e, const uint8_t *y, size_t y_stride, const uint8_t *cb,
     const uint8_t *cr, size_t chroma_stride, const uint8_t **out,
@@ -242,29 +315,6 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_encode_planes(
     e->last_ms =
         std::chrono::duration<double, std::milli>(t_enc1 - t_up1).count();
 
-    /* Per-tile spans, straight out of E5's own layout: the prefix sum over the
-     * tile byte counts the GPU reported, run back through the offset function
-     * E5 itself uses.  This is a read of the layout, not a guess at it. */
-    const nxe_frame_params &fp = e->frame.fp;
-    uint32_t run = 0;
-    for (uint32_t t = 0; t < fp.ntiles; ++t) {
-        e->frame.tile_prefix[t] = run;
-        run += e->frame.tile_bytes[t];
-    }
-    e->tiles.resize(fp.ntiles);
-    for (uint32_t t = 0; t < fp.ntiles; ++t) {
-        e->tiles[t].index = t;
-        e->tiles[t].offset =
-            nxe_e5_tile_offset(&fp, t, e->frame.tile_prefix.data());
-        e->tiles[t].length = e->frame.tile_bytes[t];
-        e->tiles[t].qp = uint8_t(e->cfg.qp);
-        e->tiles[t].mode = uint8_t(e->frame.jobs[t].mode);
-        e->tiles[t].res_level = 0;
-        e->tiles[t].ref_delta = 3; /* no temporal reference */
-    }
-
-    e->frame_number++;
-    *out = e->frame.out.data();
-    *out_len = e->frame.out.size();
+    publish_frame(e, out, out_len);
     return NXVC_VKE_OK;
 }
