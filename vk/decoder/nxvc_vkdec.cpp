@@ -708,8 +708,8 @@ nxvc_vkd_status make_layouts(D *d) {
     pl.pPushConstantRanges = &pcB;
     VKTRY(d, vkCreatePipelineLayout(d->dev, &pl, nullptr, &d->plB));
 
-    // [inter] Pass W: ring in, params in, predictor out.
-    VKTRY(d, set_layout(3, 0, &d->dslW));
+    // [inter] Pass W: ring in, params in, predictor out, tile order in.
+    VKTRY(d, set_layout(4, 0, &d->dslW));
     VkPushConstantRange pcW{VK_SHADER_STAGE_COMPUTE_BIT, 0,
                             (uint32_t)sizeof(nxvw::NxvwWarpPush)};
     pl.pSetLayouts = &d->dslW;
@@ -1196,10 +1196,17 @@ nxvc_vkd_status make_resources(D *d) {
     VkDescriptorBufferInfo b3[3] = {{d->bWPred.buf, 0, VK_WHOLE_SIZE},
                                     {d->bRing.buf, 0, VK_WHOLE_SIZE},
                                     {d->bWarp.buf, 0, VK_WHOLE_SIZE}};
-    VkDescriptorBufferInfo wI[3] = {{d->bRing.buf, 0, VK_WHOLE_SIZE},
+    // [inter] Binding 3 is the tile order, the same buffer Pass B reads.  Pass
+    // W used to index tiles by gl_WorkGroupID.x directly, which is fine while
+    // it dispatches over every tile in raster order and impossible the moment
+    // it does not -- and the WARP_SKIP bypass needs it to cover exactly the
+    // range build_tile_order() partitioned.  Going through the order buffer
+    // costs one uint load per workgroup and changes no output address.
+    VkDescriptorBufferInfo wI[4] = {{d->bRing.buf, 0, VK_WHOLE_SIZE},
                                     {d->bWarp.buf, 0, VK_WHOLE_SIZE},
-                                    {d->bWPred.buf, 0, VK_WHOLE_SIZE}};
-    VkWriteDescriptorSet w[27]{};
+                                    {d->bWPred.buf, 0, VK_WHOLE_SIZE},
+                                    {d->bOrder.buf, 0, VK_WHOLE_SIZE}};
+    VkWriteDescriptorSet w[28]{};
     uint32_t nw = 0;
     for (int i = 0; i < 8; ++i) {
         w[nw] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
@@ -1255,7 +1262,7 @@ nxvc_vkd_status make_resources(D *d) {
         w[nw].pBufferInfo = &b3[i];
         ++nw;
     }
-    for (int i = 0; i < 3; ++i) {
+    for (int i = 0; i < 4; ++i) {
         w[nw] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
         w[nw].dstSet = d->dsetW;
         w[nw].dstBinding = (uint32_t)i;

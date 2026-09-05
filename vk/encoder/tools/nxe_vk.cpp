@@ -325,8 +325,14 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
         if (!d.dev.create_pipeline(e2[i], e2n[i], sb4, 8, d.p_e2[i], err))
             return false;
 
-    /* Pass W's three buffers and E1c's five, plus two more sets. */
-    const std::vector<VkDescriptorType> sb3(3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    /* Pass W's FOUR buffers and E1c's five, plus two more sets.  The fourth
+     * is the tile order: warp_pred.comp takes its tile from it rather than
+     * from gl_WorkGroupID.x, so that one dispatch can cover a contiguous
+     * range of the decoder's partition.  This encoder dispatches every tile,
+     * and b_order is the identity here (aux[512 + t] = t below), so binding
+     * it changes nothing -- but the binding must exist or the kernel reads a
+     * descriptor that is not there. */
+    const std::vector<VkDescriptorType> sb3(4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
     if (!d.dev.create_pipeline(warp_pred_spv, sizeof warp_pred_spv, sb3,
                                (uint32_t)sizeof(nxvw::NxvwWarpPush), d.p_w, err))
         return false;
@@ -399,7 +405,8 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
      * writeonly one belongs. */
     d.s_w = d.dev.allocate_set(d.pool, d.p_w.dsl);
     d.s_dec = d.dev.allocate_set(d.pool, d.p_dec.dsl);
-    write_set(h, d.s_w, {d.b_ring.buf, d.b_warp.buf, d.b_wpred.buf});
+    write_set(h, d.s_w,
+              {d.b_ring.buf, d.b_warp.buf, d.b_wpred.buf, d.b_order.buf});
     write_set(h, d.s_dec, {d.b_params.buf, d.b_jobs.buf, d.b_src.buf,
                            d.b_wpred.buf, d.b_warp.buf, d.b_tilerecs.buf,
                            d.b_ring.buf, d.b_warp.buf});
