@@ -343,8 +343,8 @@ byte. Twice: mono, and stereo.
 | RX 7900 XTX (RADV NAVI31) | stereo | 100 | 71 | 336 | **0** |
 | llvmpipe (lavapipe) | mono | 100 | 66 | 175 | **0** |
 | llvmpipe (lavapipe) | stereo | 100 | 71 | 336 | **0** |
-| Adreno 650 (Pico 4) | mono | 100 | 66 | 175 | **PENDING** |
-| Adreno 650 (Pico 4) | stereo | 100 | 71 | 336 | **PENDING** |
+| Adreno 650 (Pico 4) | mono | 100 | 66 | 175 | **0** |
+| Adreno 650 (Pico 4) | stereo | 100 | 71 | 336 | **0** |
 
 **The stereo arm covers what 13.7 says the ENCODER cannot do.**
 `nxvc_encoder_set_received_tiles()` returns `UNSUPPORTED` for a concealed
@@ -1060,6 +1060,7 @@ The same streams as the desktop table, on the Pico 4, from `run-android.sh`:
 | ICD | streams | mismatching samples |
 |---|---|---|
 | Adreno 650 (Qualcomm 1.1.128), UINT store | 201 checked, 15 skipped | **0** |
+| ... `--bench-inter`, 36-frame sequence | see "The inter path" | **0** |
 
 The skip set is decided from each stream's own `tools` field, exactly as on
 the other two ICDs, so it is the same 15 streams and not a device-specific
@@ -1205,6 +1206,14 @@ been tuned against was a 7900 XTX. The commits between the columns are
 |---|---|---|---|
 | QP 24, `INTRA_DIR` off (v1) | 153.7 → **79.4 ms** | 366.1 → **22.3 ms** | 521.7 → **102.2 ms** |
 | QP 36, `INTRA_DIR` off (v1) | 26.7 → **10.1 ms** | 417.9 → **15.3 ms** | 445.4 → **25.4 ms** |
+
+**[inter] The inter sequence is a different measurement and is not in that
+table.** It is a smaller picture (1024x1024, 256 tiles) because the encode
+runs on the device, and its point is the ratio rather than the magnitude: an
+inter frame is **23.0 ms of GPU against the intra frame's 298 ms**, at the
+encoder's default tool set. "The inter path" above has it broken out, and the
+reason the intra frame is 298 ms rather than a quarter of the 102.2 ms in this
+table is the directional wavefront, which that row has switched off.
 
 Zero mismatching samples on the 152-stream sweep at every point in that table,
 on the Adreno 650, on RADV and on lavapipe.
