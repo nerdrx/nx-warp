@@ -31,6 +31,15 @@ set_tests_properties(hybrid.units PROPERTIES
   ENVIRONMENT "PYTHONPATH=${_hybrid_sim_dir};NXVCH_SCRATCH=${_hybrid_scratch}"
   TIMEOUT 300)
 
+# 1b. The spatial hybrid's geometry, composite and decoder cost model: numpy
+#     only, no ffmpeg and no nxv-enc.
+add_test(NAME hybrid.spatial_units
+         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_spatial_units.py")
+set_tests_properties(hybrid.spatial_units PROPERTIES
+  SKIP_RETURN_CODE 77
+  ENVIRONMENT "PYTHONPATH=${_hybrid_sim_dir};NXVCH_SCRATCH=${_hybrid_scratch}"
+  TIMEOUT 300)
+
 # 2. The tiny 256^2 end-to-end run: material -> x265 base -> enhancement ->
 #    metrics, for all three codec paths.  Skips without ffmpeg.
 add_test(NAME hybrid.e2e256

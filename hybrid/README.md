@@ -17,6 +17,24 @@ The question, precisely:
 * `../docs/HYBRID.md` -- the design consequences and the LCEVC differentiation
   notes for the FTO review
 
+## The other arrangement: a spatial split
+
+[ADR 0022](../docs/adr/0022-hybrid-mode-is-not-a-quality-tool.md) closed the
+question above with "no quality case", and its own argument is scoped to the
+*layered* structure: every pixel coded twice, a scalar sliding the same pixels
+between the two coders, so the optimiser can always retreat to plain HEVC.
+
+`nxvc-hybridsim spatial` measures the arrangement that is disjoint in **space**
+instead -- a full-resolution HEVC periphery plus an NX Warp fovea inset,
+composited with a feathered boundary, no pixel coded twice. It runs on the
+`tools/quality` v2 sequences with the **real** codec from `build-ref` rather
+than the rate-distortion model, which is what ADR 0022's own "what would change
+this answer" item 1 asks for.
+
+* `../docs/SPATIAL-HYBRID.md` -- architecture, the decoder cost model and the
+  foveation geometry
+* `RESULTS-SPATIAL.md` -- its tables
+
 ## Why Python
 
 The simulator is Python + numpy. It is not the codec and never will be: it is

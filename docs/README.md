@@ -69,6 +69,9 @@ wire format and for behaviour `ref/` does not exercise.
 - **[RATECONTROL.md](RATECONTROL.md)** - rate control, allocation, the degradation ladder and the
   decode-time governor.
 - **HYBRID.md** - the hybrid hardware-base path (in progress).
+- **[SPATIAL-HYBRID.md](SPATIAL-HYBRID.md)** - the *spatial* split: an HEVC periphery with an
+  NX Warp fovea inset. A different arrangement from the layered hybrid ADR 0022 rejected, and
+  the one ADR 0022's argument does not reach.
 
 ### Integration
 

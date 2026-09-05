@@ -67,7 +67,10 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
 - `android/`: the client shell, with the UDP receive path, frame ring, HUD and feedback.
 - `platform/`: Windows D3D11 interop probe, an llvm-mingw toolchain file, SPIR-V embedding, and a Wine
   smoke test.
-- `hybrid/`: a Python simulator for the base-plus-enhancement layering.
+- `hybrid/`: a Python simulator for the base-plus-enhancement layering, and -- since ADR 0022 closed
+  that arrangement -- `nxvc-hybridsim spatial`, which measures the *spatial* one instead: a
+  full-resolution HEVC periphery plus a fovea inset coded by the **real** codec from `build-ref`,
+  composited with a feathered boundary. `docs/SPATIAL-HYBRID.md` and `hybrid/RESULTS-SPATIAL.md`.
 - `stereo/`: a CPU experiment for inter-view prediction, with recorded simulation results and FTO
   scoping notes.
 

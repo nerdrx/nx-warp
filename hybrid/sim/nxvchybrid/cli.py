@@ -8,6 +8,15 @@ Subcommands::
     report     turn a sweep's JSON into the tables of hybrid/RESULTS.md
     selftest   a tiny end-to-end run, used by tests/hybrid
 
+    spatial    the *spatial* hybrid: HEVC periphery + a real-codec fovea inset
+    spatial-report   its tables, for hybrid/RESULTS-SPATIAL.md
+
+The ``sweep``/``one`` family measures the **layered** hybrid of ADR 0014 and
+0022 on a synthetic panorama with a modelled codec.  ``spatial`` measures a
+different arrangement -- disjoint in space, not layered in quality -- on the
+``tools/quality`` v2 sequences with the **real** codec from ``build-ref``; see
+:mod:`nxvchybrid.spatial`.
+
 All heavy children run under ``chrt -i 0 taskset -c 12-15 nice -n 19``; see
 :mod:`nxvchybrid.cpu`.
 """
@@ -128,6 +137,99 @@ def cmd_report(a) -> int:
     return 0
 
 
+def cmd_spatial(a) -> int:
+    from . import spatial as sp
+
+    if not basemod.available_encoders():
+        print("no libx265/libx264 in ffmpeg; cannot run the sweep", file=sys.stderr)
+        return 77
+    totals = tuple(float(x) for x in a.totals.split(","))
+    insets = tuple(int(x) for x in a.insets.split(",")) if a.insets else ()
+    fracs = tuple(float(x) for x in a.fracs.split(","))
+    workroot = a.work or os.path.join(scratch(), "spatial")
+    a.codec_dir = a.codec_dir or sp.DEFAULT_CODEC_DIR
+    jobs = sp.build_jobs(a.seq, workroot, totals, insets, fracs,
+                         feather=a.feather, codec_dir=a.codec_dir, hfov=a.hfov,
+                         fovea_spec=a.fovea_map, anchors=not a.no_anchors)
+    for spec in a.extra_point or []:
+        jobs.append(_spatial_extra(spec, a, workroot))
+    print(f"{len(jobs)} points, {a.workers} producer(s); "
+          f"seq {os.path.basename(a.seq)}", flush=True)
+    t0 = time.time()
+    results: list[dict] = []
+    if a.workers > 1:
+        ctx = mp.get_context("fork")
+        with ctx.Pool(a.workers) as pool:
+            for i, d in enumerate(pool.imap_unordered(sp._produce_one, jobs), 1):
+                results.append(d)
+                print(f"[produce {i}/{len(jobs)}] {d['label']}: "
+                      + (d["error"] if "error" in d else
+                         f"{d.get('measured_mbit', 0):.1f} Mbit "
+                         f"(base {d.get('base_mbit', 0):.1f} + inset "
+                         f"{d.get('inset_mbit', 0):.1f}, qp {d.get('inset_qp', '-')})"),
+                      flush=True)
+    else:
+        for i, j in enumerate(jobs, 1):
+            d = sp._produce_one(j)
+            results.append(d)
+            print(f"[produce {i}/{len(jobs)}] {d['label']}", flush=True)
+
+    def prog(n, total, r):
+        jod = r.get("jod")
+        print(f"[score {n}/{total}] {r['label']}: fov-PSNR {r['fov_psnr_y']:.2f} dB, "
+              f"fovea {r['psnr_fovea']:.2f}, periphery {r['psnr_periphery']:.2f}"
+              + (f", JOD {jod:.3f}" if jod is not None else ""), flush=True)
+
+    meta = sp.score_all(results, a.hfov, fvvdp=not a.no_fvvdp,
+                        device=a.fvvdp_device, keep=a.keep, progress=prog)
+    out = a.out or os.path.join(scratch(), "results", "spatial.json")
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    with open(out, "w") as fh:
+        json.dump({
+            "seq": a.seq, "hfov": a.hfov, "feather": a.feather,
+            "fovea_map": a.fovea_map, "codec_dir": a.codec_dir,
+            "note": a.note, "seconds": time.time() - t0,
+            "encoder": sorted(basemod.available_encoders()),
+            "metrics": meta, "results": results,
+        }, fh)
+    print(f"wrote {out} in {time.time() - t0:.0f} s")
+    return 0
+
+
+def _spatial_extra(spec: str, a, workroot):
+    """``kind=spatial:total=80:inset=768:frac=0.7:feather=0:hole=8:tag=x`` ."""
+    from . import spatial as sp
+
+    kw = dict(kind="spatial", total=80.0, inset=768, frac=0.7,
+              feather=a.feather, hole=0, tag="")
+    for part in spec.split(":"):
+        if not part:
+            continue
+        k, _, v = part.partition("=")
+        if k not in kw:
+            raise SystemExit(f"unknown --extra-point key {k!r}; known: {sorted(kw)}")
+        kw[k] = v
+    return sp.SpatialJob(str(kw["kind"]), float(kw["total"]), int(kw["inset"]),
+                         float(kw["frac"]), int(kw["feather"]), a.seq, workroot,
+                         a.codec_dir, a.hfov, int(kw["hole"]), a.fovea_map,
+                         str(kw["tag"]))
+
+
+def cmd_spatial_report(a) -> int:
+    from . import spatial_report
+
+    with open(a.results) as fh:
+        d = json.load(fh)
+    text = spatial_report.render(d)
+    if a.out:
+        with open(a.out, "w") as fh:
+            fh.write(text)
+        print(f"wrote {a.out}")
+    else:
+        print(text)
+    return 0
+
+
 def cmd_selftest(a) -> int:
     if not basemod.available_encoders():
         print("SKIP: ffmpeg with libx265/libx264 not available")
@@ -204,6 +306,47 @@ def main(argv=None) -> int:
     r.add_argument("--extra", nargs="*", help="additional sweep JSONs (A/B runs)")
     r.add_argument("--out")
     r.set_defaults(fn=cmd_report)
+
+    sp = sub.add_parser("spatial", help="the spatial hybrid: HEVC periphery + "
+                                        "a real-codec fovea inset")
+    sp.add_argument("--seq", required=True,
+                    help="a tools/quality sequence sidecar (.json), sbs stereo")
+    sp.add_argument("--totals", default="40,80,150",
+                    help="total budgets, Mbit at 2 x 2048^2 x 90 Hz")
+    sp.add_argument("--insets", default="512,640,768,896",
+                    help="inset side in pixels per eye; multiples of 64 that "
+                         "leave a multiple-of-64 offset")
+    sp.add_argument("--fracs", default="0.40,0.55,0.70,0.85",
+                    help="periphery share of the total bitrate")
+    sp.add_argument("--feather", type=int, default=32,
+                    help="composite cross-fade width in pixels, inward from the "
+                         "inset border (0 = a hard seam)")
+    sp.add_argument("--hfov", type=float, default=95.0,
+                    help="horizontal FOV of one eye of the sequence")
+    sp.add_argument("--fovea-map", default=None,
+                    help="delta-QP map for the x265-p-refresh anchor, "
+                         "nxq/qpmap.py syntax")
+    sp.add_argument("--codec-dir", default=None,
+                    help="directory holding nxv-enc/nxv-dec (default: build-ref/bin)")
+    sp.add_argument("--extra-point", action="append",
+                    help="one off-grid point, e.g. "
+                         "'total=80:inset=768:frac=0.7:feather=0:tag=nofeather'")
+    sp.add_argument("--no-anchors", action="store_true")
+    sp.add_argument("--no-fvvdp", action="store_true",
+                    help="skip FovVideoVDP (leaves the PSNR-shaped columns)")
+    sp.add_argument("--fvvdp-device", default=None)
+    sp.add_argument("--keep", action="store_true",
+                    help="keep the composited YUV of every point (113 MB each)")
+    sp.add_argument("--workers", type=int, default=2)
+    sp.add_argument("--work", default=None)
+    sp.add_argument("--note", default="")
+    sp.add_argument("--out")
+    sp.set_defaults(fn=cmd_spatial)
+
+    spr = sub.add_parser("spatial-report", help="tables from a spatial run JSON")
+    spr.add_argument("results")
+    spr.add_argument("--out")
+    spr.set_defaults(fn=cmd_spatial_report)
 
     t = sub.add_parser("selftest", help="tiny end-to-end run (ctest)")
     t.add_argument("--size", type=int, default=256)
