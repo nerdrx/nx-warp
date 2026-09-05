@@ -91,6 +91,36 @@ layout(constant_id = 6) const int kSplitTool = 0;
 #endif
 const int kIntraDir = NXVW_INTRA_DIR;
 
+// [inter] NXVW_SKIP_ONLY: the module the host dispatches over the WARP_SKIP
+// tiles, and only over them.
+//
+// A WARP_SKIP tile codes nothing at all -- no tile header, no payload, no
+// coefficients ([SYN] 13.2, and nxvc_vkdec_parse.cpp emits its record without
+// reading any bytes).  Its reconstruction is therefore exactly the predictor
+// Pass W already wrote:
+//
+//     pred = clamp(W + planar(M) - dc_offset, 0, maxval)
+//
+// with the mean field M flat at dc_offset, so `planar(M) - dc_offset` is zero
+// and the whole of it is `clamp(W)`.  [REF] codec_impl.inc reconstruct_skip().
+//
+// Every term that cancels was nevertheless being computed: the DC plane's
+// inverse transform, the block-mean field it fills, and a bilinear
+// interpolation over that field per sample pair.  On a 7900 XTX that made a
+// skip tile cost 0.344 us against an intra tile's 0.128 in the same frame --
+// 2.7x for the case with nothing to do -- and it is why an 87 %-WARP_SKIP
+// frame costs 2.2x the Pass B of the same tiles all-intra.
+//
+// This is a BUILD variant and not a specialization constant for the reason
+// kIntraDir and kXformLarge are, doubled: what it removes includes loop bounds
+// and a shared-memory region, and this driver has twice been measured not to
+// fold that far.  It is also why the host must dispatch it over WARP_SKIP
+// tiles ONLY -- build_tile_order() partitions them into their own contiguous
+// range -- because in this module a tile that codes anything decodes wrong.
+#ifndef NXVW_SKIP_ONLY
+#define NXVW_SKIP_ONLY 0
+#endif
+
 // [minor 6] XFORM_LARGE (tool bit 27): the stream may name a 16x16 or 32x32
 // transform, and every block grid, DC plane, planar mapping, weighting-matrix
 // index and intra predictor then follows the tile's `bsize` instead of 8.
@@ -1033,6 +1063,35 @@ void main() {
                              : (lumaSize == 2 * size ? 2 : 0))
                           : 0;
 
+#if NXVW_SKIP_ONLY
+        // ------------------------------ WARP_SKIP: the reconstruction IS W
+        // A skipped tile codes no unit, so this whole plane -- the DC plane's
+        // dequantize and second-level inverse transform, the block-mean field,
+        // the per-block residual dequantize and inverse transform, and the
+        // planar interpolation over the means -- computes, in order: zeros,
+        // dc_offset, zeros, and a prediction that cancels dc_offset against
+        // itself.  [SYN] 13.3 reduces to `clamp(W)` and [REF] codec_impl.inc
+        // reconstruct_skip() is the same statement in the reference.
+        //
+        // So write that, and nothing else.  The residual loop could not be
+        // removed by guarding its result -- it writes sPlane, and a shared
+        // store is a side effect no compiler may drop -- which is why this is
+        // a replacement rather than a `#if` around a read.
+        //
+        // Everything downstream is untouched and shared with the intra path:
+        // sPlane is left holding the same samples it would have held, so the
+        // display conversion, the two-plane store and the reference-ring store
+        // are the code they always were.
+        for (int w = tid; w < (size * size) >> 1; w += 256) {
+            const int e = w << 1;
+            const int x = e % size, y = e / size;
+            int w0v, w1v;
+            nxvwWpredPair(tile, p, size, x, y, w0v, w1v);
+            sPlane[store + w] =
+                pack16x2(clamp(w0v, 0, maxval), clamp(w1v, 0, maxval));
+        }
+        barrier();
+#else
         // ------------------------------------------------ DC plane (3.2.4)
         int dcqp = nxvw_dc_qp(planeQp);  // [marked edit] qp >> 1, was qp - 6
         int tdc = dequantStep(dcqp, kFlatWeight);
@@ -1595,6 +1654,18 @@ void main() {
                     // shared with intra and are not touched.
                     // vk/decoder/inter/inter_hook.glsl.
                     int pred0 = 0, pred1 = 0;
+#if NXVW_SKIP_ONLY
+                    // planar(M) is dc_offset on every sample of a skipped
+                    // tile, so the interpolation above and the `- dcOff`
+                    // below cancel exactly.  Neither is computed here, and
+                    // nothing in this module fills sMeans for them to read.
+                    {
+                        int w0v, w1v;
+                        nxvwWpredPair(tile, p, size, col0, yy, w0v, w1v);
+                        pred0 = clamp(w0v, 0, maxval);
+                        pred1 = clamp(w1v, 0, maxval);
+                    }
+#else
                     if (intra || kInterPred != 0) {
                         int wy0 = kBilinOne - fy;
                         int wa = kBilinOne - pfx, wb = kBilinOne - qfx;
@@ -1611,6 +1682,7 @@ void main() {
                             pred1 = clamp(w1v + pred1 - dcOff, 0, maxval);
                         }
                     }
+#endif
                     // [minor 6] At 16x16 and 32x32 the column pass left the
                     // residual in this thread's own words of the plane slot
                     // rather than in res0/res1; the words are private to this
@@ -1618,6 +1690,18 @@ void main() {
                     // the same word and need no barrier between them.
                     int e = yy * size + col0;
                     int v0, v1;
+#if NXVW_SKIP_ONLY
+                    // A WARP_SKIP tile codes no unit, so every published unit
+                    // length is zero and the column pass produced zeros.  Say
+                    // so, and res0/res1 -- the sixteen values the Adreno
+                    // spills to scratch, and the whole dequantize and inverse
+                    // transform that fill them -- become dead code that no
+                    // driver has to be trusted to remove, because glslang has
+                    // already done it.
+                    v0 = 0;
+                    v1 = 0;
+                    if (false)
+#endif
                     if (kXformLarge != 0 && bs > kBlock) {
                         uint stg = sPlane[store + (e >> 1)];
                         v0 = unpack16(stg, 0);
@@ -1779,6 +1863,7 @@ void main() {
                 barrier();
             }
         }
+#endif
 #endif
 
         coefBase += ndc + ndc * ncoef;

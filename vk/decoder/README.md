@@ -1264,6 +1264,200 @@ for the tool to remove, so all that is left is its own floor -- about
 
 The lever it was meant to be is real; it is a lever for dense frames.
 
+#### An inter frame at the live shape costs 2.6x an intra frame at half the bytes
+
+The reason to want the inter path was that its frames are small: 12.7 KB an eye
+against 22.2 KB, at 83 % `WARP_SKIP`. **It is 2.6x more expensive to decode.**
+
+Idle Pico 4, 1088x1088, 289 tiles, `--intra-dir off`, streams built with the GPU
+encoder's own flag set (`--inter on --int-decision on --int-coded-vectors off
+--preset fast --me-effort 1 --quad-mv off --near-skip off`, `--intra-period 6`),
+46-50 coded INTRA tiles and 239-243 `WARP_SKIP` per frame:
+
+| | payload | Pass A | Pass W | Pass B | GPU |
+|---|---|---|---|---|---|
+| intra, QP 51 | 22.2 KB | 3.33 | — | 2.56 | **5.93 ms** |
+| inter, QP 38 | 12.7 KB | 6.5 | 4.25 | 9.1 | **15.6 ms** |
+| inter, QP 30 | 25.4 KB | 10.4 | 4.27 | 9.2 | **19.6 ms** |
+
+Three things went wrong, and only one of them is about bits:
+
+* **Pass A is 0.51 ms/KB against intra's 0.150 — 3.4x worse per byte.** This is
+  the occupancy result below in its sharpest form. A skipped tile gets no Pass A
+  descriptor, so 83 % skip dispatches **48 tiles, not 289**: two workgroups, 384
+  lanes, on a part that was already not full at ten. The bits do not leave with
+  the tiles either, they concentrate — 265 B per coded tile against the intra
+  frame's 77.
+* **Pass W is 4.25 ms and does not move with the payload at all** (4.27 ms at
+  twice the bytes). Per-tile over all 289: **14.7 us a tile**, a flat entry fee
+  for the inter path.
+* **Pass B is 9.1 ms and also does not move** — **31.5 us a tile against the
+  intra kernel's 8.96**, on a frame where five tiles in six are `WARP_SKIP` and
+  ought to be close to free. That shape has a history here: it is what
+  `INTRA_DIR` did, and what the minor-6 realignment did, and the lesson both
+  times was that **on this part, code you never execute is not free**. It is the
+  largest single term and the one with a precedent for being mostly recoverable.
+
+Two eyes of that is 31 ms of GPU, about 32 fps, against 11.1 ms for the pair.
+The intra path at 22 KB an eye is nearly three times closer to the budget than
+the inter path at 12.7.
+
+**Caveat on the fixture.** It is a static scene with a matching pose track, so
+its coded tiles are the encoder's periodic refresh rather than a head turn's
+leading edge, and the content is photographic and so denser than a rendered
+scene. The tile mix (83 % skip) and the byte count (12.7 KB) are the live shape;
+*which* tiles are coded is not.
+
+##### The inter Pass B cost is real work, not a folding defect
+
+The first suspicion was the one this file has been right about twice already:
+`INTRA_DIR` and `XFORM_LARGE` were both specialisation constants that the
+Adreno driver would not fold, and both became build variants because of it, the
+second one after costing an 8x8-only stream 34 % of Pass B.  `kInterPred` and
+`kRefRingStore` are specialisation constants 7 and 8 and look exactly like the
+next instance.
+
+**They are not, and the desktop said so before any device time was spent.**
+Inter against intra Pass B, per tile:
+
+| | intra | inter | ratio |
+|---|---|---|---|
+| RADV | 0.073 us | 0.45 us | **6.2x** |
+| Adreno 650 | 8.96 us | 31.5 us | **3.5x** |
+
+A driver that folds specialisation constants properly shows a *larger* inter
+penalty than the one that supposedly does not.  Whatever the inter path costs,
+both drivers are paying it for the same reason, and it is work.
+
+Which work, from `NXVC_VKD_ABL_NORING` / `NXVC_VKD_ABL_NOWPRED` on the
+1088x1088 head-turn fixture, 289 tiles, 13.4 KB a frame, 82 % `WARP_SKIP`:
+
+| | Pass B (RADV) |
+|---|---|
+| baseline | 0.110 ms |
+| no reference-ring store | 0.069 ms — **the ring store is 37 %** |
+| no predictor hook | 0.078 ms — **the hook is 29 %** |
+| neither | 0.068 ms |
+
+**The reference-ring store is the single largest piece**, and it is a whole
+second store of the tile: 6144 samples a tile written as u16 into an SSBO, on
+top of the u8 display store, with a `planeAtFull()` resample per sample rather
+than a copy.  Three times the store traffic of the intra path, to hold a
+picture that on this configuration is 8-bit in every plane.
+
+So the lever is the one "Open issues" already names — **a u8 ring for a stream
+with no colour transform** — and not a module split.  The remaining 62 % is the
+predictor add and the mean-clamp widening, which are per sample and unavoidable
+on a tile that really is inter; on a `WARP_SKIP` tile, which is five tiles in
+six, they are reconstructing a residual that is not there.
+
+##### The u8 ring is not the lever, and a WARP_SKIP tile costs MORE than an intra one
+
+The ring store is the largest single piece of inter Pass B, and "Open issues"
+has long named a **u8 ring for a stream with no colour transform** as the fix.
+It was built as an ablation first -- `NXVW_PASSB_EXTRA_DEFS=-DNXVW_ABL_RING8`,
+four samples a uint instead of two, which writes a ring no reader can use but
+pays exactly the store traffic a u8 ring would -- and on a 7900 XTX it is a
+**regression**:
+
+| Pass B, head-turn fixture, RADV | |
+|---|---|
+| baseline, u16 ring | **0.077-0.080 ms** |
+| u8 store traffic | 0.086-0.098 ms |
+| no ring store at all | 0.070 ms |
+
+The whole ring store is 0.007-0.010 ms of it. **The bytes were never the cost:
+the cost is the per-sample `planeAtFull()` resample and the address
+arithmetic**, and halving the traffic while keeping both buys at most 6 % of
+Pass B and in this form loses more than that to the packing loop.
+
+That is a desktop result and the Adreno is a bandwidth-poor part where "Pass B
+is traffic" has been the finding before, so the u8 ring is not dead -- it is
+*not worth the format change on RADV's evidence alone*, and the ablation build
+is what the device round should measure before anything is rewritten.
+
+**The bigger number is next to it.** Same stream, same 289 tiles, same
+pipeline, RADV, by tile mix:
+
+| frame | INTRA | WARP_SKIP | skip % | Pass B |
+|---|---|---|---|---|
+| 0 | 289 | 0 | 0.0 % | **0.037 ms** |
+| 1-15 | 25-45 | 244-264 | 84-91 % | **0.072-0.102 ms** |
+
+A frame that is five-sixths `WARP_SKIP` costs **2.2x** the Pass B of the same
+tiles all-intra, on a quarter of the bytes, and a skipped tile has no residual
+to transform at all. It should be the cheap case and it is the expensive one.
+Inside the 84-91 % band there is no trend -- 0.094 at 91.3 %, 0.088 at 84.4 % --
+so the cost is not proportional to the number of skips; it is what an inter
+frame costs.
+
+Two things follow. The **`WARP_SKIP` dispatch partition** is the lever, not the
+ring format: it is 45 % of inter Pass B and it is being spent making the free
+case expensive. And a client that reports its drops, so the encoder answers
+with more INTRA tiles, moves the frame *toward* the 0.037 ms floor rather than
+away from it -- the mix that costs more is the one with more skips.
+
+#### Pass A is occupancy-starved at 289 tiles, and Pass B is not
+
+Where the two passes' time goes at the live shape, measured on an idle Pico 4.
+The two streams are the same content and the same bytes per tile; the second is
+simply twice as tall, so it is **exactly twice the work** and any departure from
+2.0x is the machine and not the frame:
+
+| | tiles | payload | Pass A | Pass B |
+|---|---|---|---|---|
+| 1088x1088 | 289 | 22.2 KB | 3.34 ms | 2.56 ms |
+| 1088x2176 | 578 | 44.3 KB | **5.10 ms (1.53x)** | **5.15 ms (2.01x)** |
+
+**Pass B is 2.01x: perfectly linear, no fixed cost at all.** Fitting the pair
+gives 8.96 us per tile and an intercept of −0.03 ms. The "flat 2.5 ms" it looks
+like at 289 tiles is 289 x 9 us, not a floor, and the only way to move it is to
+make a tile cheaper — which is what the wider store and the fused predict+store
+below are for, both of them per-tile.
+
+**Pass A is 1.53x, and that gap is the lever.** Per byte it reads
+
+| tiles | Pass A |
+|---|---|
+| 289 | 0.150 ms/KB |
+| 578 | 0.115 ms/KB |
+| 2048 | 0.064 ms/KB |
+
+The frame does not get cheaper per byte because the bytes change; it gets
+cheaper because there are more tiles to run at once. Parallelism in Pass A is
+`tiles x 8 lanes`, so a 289-tile eye offers 2312 lanes and 10 workgroups, and
+the part is not full. The same kernel on the same bytes per tile is **2.3x more
+efficient at 2048 tiles**, which is the whole of the factor the live shape needs.
+
+That says where to look, and where not to:
+
+* **Not the workgroup shape.** Re-swept at the live shape, and 32 tiles per
+  group is still the answer: at 22.2 KB, Pass A is 3.33 ms at TPG 32, 3.92 at
+  16 and 6.09 at 8. TPG 64 was not run — it hangs this device, and the device is
+  someone's headset.
+* **Not tile sorting.** A workgroup runs until its LONGEST tile is done, so
+  sorting by payload length should pay — but at the live shape the tiles are
+  uniform (58-76 B at QP 51) and grouping the sorted order costs 0.943 of the
+  shuffled one: **6 %**. It is worth 21 % at 48 KB, where the spread is
+  116-238 B, and nothing where it matters.
+* **Not a register spill.** `NXVC_VKD_SHADER_STATS=1` on the live frame:
+  Pass A is 1816 instructions, register footprint 6, scratch 310 B against the
+  driver's own 278 B floor. There are 32 bytes to reclaim and no more.
+* **The dependent chain is real and is what the lanes are waiting on.**
+  `decode_symbol()` is a branchless binary search: four dependent `s_cum[]`
+  reads to find the symbol, then two more for `c` and `hi`. **Six dependent
+  shared-memory reads per symbol**, and with only 10 workgroups there is not
+  enough other work resident to hide any of them. Both halves of that sentence
+  matter, and the occupancy half is the cheaper one to fix.
+
+**The cheapest real win is to stop dispatching one eye at a time.** Two decoder
+instances each decoding 289 tiles cost 12.5 ms of GPU between them; one dispatch
+over the same 578 tiles costs 10.2 ms. **18 %, for no bitstream change and no
+kernel change** — the eyes are independent, nothing orders them, and the only
+reason they are two dispatches is that they are two decoder instances. What it
+needs is a decode entry point that takes several frames, or the `eyes = 2` path
+that 13.2 already describes and this decoder still refuses.
+
 #### The minor-6 realignment, and what it cost before it was paid back
 
 The tools of bitstream minor 6 landed correct on all three ICDs and **slow on

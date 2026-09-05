@@ -209,7 +209,7 @@ int main(int argc, char **argv) {
         // The host's own share of the frame, which on a phone is not small:
         // parse builds every descriptor and record, submit records the
         // command buffer and stages the bitstream.
-        double bestP = 1e9, bestS = 1e9;
+        double bestP = 1e9, bestS = 1e9, bestW = 1e9;
         nxvc_vkd_stats s{};
         for (int i = 0; i < repeat; ++i) {
             st = nxvc_vk_decode_frame(dec, data.data() + off,
@@ -228,13 +228,14 @@ int main(int argc, char **argv) {
             if (s.total_ms < bestT) bestT = s.total_ms;
             if (s.parse_ms < bestP) bestP = s.parse_ms;
             if (s.submit_ms < bestS) bestS = s.submit_ms;
+            if (s.pass_w_ms < bestW) bestW = s.pass_w_ms;
         }
         std::printf("repeat %d on %s: %u tiles, %llu B frame, %u dispatch(es)\n"
-                    "  best  passA %.3f  passB %.3f  gpu %.3f  wall %.3f ms"
+                    "  best  passA %.3f  passW %.3f  passB %.3f  gpu %.3f  wall %.3f ms"
                     "  (host parse %.3f submit %.3f)\n",
                     repeat, nxvc_vk_decoder_device_name(dec), s.tiles,
                     (unsigned long long)s.frame_bytes, s.dispatches, bestA,
-                    bestB, bestG, bestT, bestP, bestS);
+                    bestW, bestB, bestG, bestT, bestP, bestS);
         if (fo) std::fclose(fo);
         nxvc_vk_decoder_destroy(dec);
         return 0;
@@ -281,11 +282,12 @@ int main(int argc, char **argv) {
             std::fprintf(stderr,
                          "frame %d: %llu B, %u tiles (%u tskip, %u lane "
                          "group(s), %u dispatches)  parse %.3f  submit %.3f  "
-                         "passA %.3f  passB %.3f  gpu %.3f  total %.3f ms\n",
+                         "passA %.3f  passW %.3f  passB %.3f  gpu %.3f  "
+                         "total %.3f ms\n",
                          n, (unsigned long long)s.frame_bytes, s.tiles,
                          s.tiles_tskip, s.lane_groups, s.dispatches, s.parse_ms,
-                         s.submit_ms, s.pass_a_ms, s.pass_b_ms, s.gpu_ms,
-                         s.total_ms);
+                         s.submit_ms, s.pass_a_ms, s.pass_w_ms, s.pass_b_ms,
+                         s.gpu_ms, s.total_ms);
         }
         off += consumed;
         ++n;

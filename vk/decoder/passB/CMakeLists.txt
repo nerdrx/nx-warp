@@ -30,6 +30,13 @@ file(MAKE_DIRECTORY ${NXVW_PASSB_GEN})
 # for each -- in both cases the driver's own dead-code pass was measured and
 # was not enough, on an Adreno 650 in one case and on all three ICDs in the
 # other.  See reconstruct.comp and ../README.md.
+# Extra preprocessor definitions for every Pass B module, for ablations that
+# have to be build variants because what they change is a loop bound -- which
+# reconstruct.comp explains at length is the thing a specialization constant
+# must not be on this driver.  Empty in every normal build.
+set(NXVW_PASSB_EXTRA_DEFS "" CACHE STRING
+    "extra -D flags for the Pass B shader modules (ablations)")
+
 set(NXVW_PASSB_SPV_LIST)
 foreach(_dir 1 0)
 foreach(_xl 1 0)
@@ -52,7 +59,7 @@ foreach(_xl 1 0)
             -DSRC=${NXVW_PASSB_DIR}/reconstruct.comp
             -DOUT=${_out}
             -DNAME=${_name}
-            "-DDEFS=-DNXVW_INTRA_DIR=${_dir} -DNXVW_XFORM_LARGE=${_xl}"
+            "-DDEFS=-DNXVW_INTRA_DIR=${_dir} -DNXVW_XFORM_LARGE=${_xl} ${NXVW_PASSB_EXTRA_DEFS}"
             -DINCDIR=${NXVW_PASSB_DIR}
             -DSTYLE=plain
             -P ${NXVW_PASSB_GEN_SPV}
@@ -66,6 +73,43 @@ foreach(_xl 1 0)
     VERBATIM)
 endforeach()
 endforeach()
+# [inter] A fifth module: the WARP_SKIP kernel.
+#
+# A WARP_SKIP tile codes nothing -- no header, no payload, no coefficients --
+# so its reconstruction is exactly clamp(W), the predictor Pass W already
+# wrote.  It was nevertheless running the whole intra machinery to get there:
+# the DC-plane inverse transform, the block-mean field, and the bilinear
+# planar interpolation over that field, all of which for a skipped tile
+# evaluate to the constant dc_offset and then cancel against the `- dcOff` in
+# the prediction hook.  Measured on a 7900 XTX over the head-turn fixture, a
+# skip tile cost 0.344 us against an intra tile's 0.128 in the same frame:
+# **2.7x for the case that has nothing to do.**
+#
+# It needs no dir/xform_large variants.  A skip tile is never INTRA, so it can
+# never enter the directional wavefront, and it runs no transform, so the
+# transform size cannot reach it.  One module, not four.
+set(_skip_out ${NXVW_PASSB_GEN}/reconstruct_skip.spv.h)
+list(APPEND NXVW_PASSB_SPV_LIST ${_skip_out})
+add_custom_command(
+  OUTPUT ${_skip_out}
+  COMMAND ${CMAKE_COMMAND}
+          -DGLSLC=${NXVW_GLSLC}
+          -DSRC=${NXVW_PASSB_DIR}/reconstruct.comp
+          -DOUT=${_skip_out}
+          -DNAME=reconstruct_skip
+          "-DDEFS=-DNXVW_INTRA_DIR=0 -DNXVW_XFORM_LARGE=0 -DNXVW_SKIP_ONLY=1 ${NXVW_PASSB_EXTRA_DEFS}"
+          -DINCDIR=${NXVW_PASSB_DIR}
+          -DSTYLE=plain
+          -P ${NXVW_PASSB_GEN_SPV}
+  DEPENDS ${NXVW_PASSB_DIR}/reconstruct.comp
+          ${NXVW_PASSB_DIR}/syntax_constants.h
+          ${NXVW_PASSB_DIR}/passB_layout.h
+          ${NXVW_PASSB_DIR}/../inter/inter_hook.glsl
+          ${NXVW_PASSB_DIR}/../inter/inter_layout.h
+          ${NXVW_PASSB_GEN_SPV} ${NXVW_PASSB_SPV_PASSES_CMAKE}
+  COMMENT "glslc reconstruct.comp (WARP_SKIP only) -> reconstruct_skip.spv.h"
+  VERBATIM)
+
 set(NXVW_PASSB_SPV ${NXVW_PASSB_GEN}/reconstruct.spv.h)
 set(NXVW_PASSB_SPV_V1 ${NXVW_PASSB_GEN}/reconstruct_v1.spv.h)
 add_custom_target(nxvw_passB_spv DEPENDS ${NXVW_PASSB_SPV_LIST})

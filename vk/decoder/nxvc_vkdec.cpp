@@ -33,6 +33,7 @@
 #include "rans_decode.spv.h"
 #include "reconstruct.spv.h"
 #include "reconstruct_v1.spv.h"
+#include "reconstruct_skip.spv.h"
 #include "reconstruct_v1_x8.spv.h"
 #include "reconstruct_x8.spv.h"
 #include "warp_pred.spv.h"
@@ -166,6 +167,9 @@ struct nxvc_vk_decoder {
     // wavefront are partitioned onto the module without it -- and the second
     // per frame, because xform_size is a tile-header field of a stream that
     // set the tool bit.
+    // [inter] The WARP_SKIP module: one, not four.  A skip tile is never
+    // INTRA and runs no transform, so neither build variant can reach it.
+    VkShaderModule smBSkip = VK_NULL_HANDLE;
     VkShaderModule smB[2][2] = {{VK_NULL_HANDLE, VK_NULL_HANDLE},
                                 {VK_NULL_HANDLE, VK_NULL_HANDLE}};
     // [inter] Pass W: the predictor.  Its own set layout, because it binds
@@ -195,6 +199,9 @@ struct nxvc_vk_decoder {
     // first inside each eye's segment of `order`, and this is how many there
     // are.  See build_tile_order().
     uint32_t order_nodir[2] = {0, 0};
+    // [inter] How many of each eye's tiles are WARP_SKIP, and therefore the
+    // length of the leading range build_tile_order() puts them in.
+    uint32_t order_nskip[2] = {0, 0};
     Img imgRgba, imgRgb10, imgLuma, imgCbCr;
     // [unorm] The same three 8-bit stores through normalised images.  Only
     // one group is ever real; the other is a 1x1 placeholder.
@@ -720,6 +727,9 @@ nxvc_vkd_status make_layouts(D *d) {
     sm.codeSize = sizeof(reconstruct_v1_x8_spv);
     sm.pCode = reconstruct_v1_x8_spv;
     VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smB[0][0]));
+    sm.codeSize = sizeof(reconstruct_skip_spv);
+    sm.pCode = reconstruct_skip_spv;
+    VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smBSkip));
     sm.codeSize = sizeof(warp_pred_spv);
     sm.pCode = warp_pred_spv;
     VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smW));
@@ -821,13 +831,41 @@ nxvc_vkd_status pipeline_a(D *d, uint32_t lanes, uint32_t ctx_stride,
     return NXVC_VKD_OK;
 }
 
+// [inter] Two ablations, and they produce WRONG PICTURES on purpose.
+//
+// The inter path's share of Pass B is not obvious from the outside: the
+// predictor hook and the reference-ring store are both per sample and both
+// compiled in frame-wide, and neither can be timed by turning the tool off,
+// because turning the tool off changes the frame.  These turn off one half of
+// the kernel while decoding the same stream, which is the only way to price
+// them against each other.
+//
+// NXVC_VKD_ABL_NORING drops the ring store, so every frame after the first
+// predicts from a stale slot.  NXVC_VKD_ABL_NOWPRED drops the predictor hook,
+// so every inter tile reconstructs its residual over nothing.  Both are for
+// `--stats` on a stream you already know the timing shape of, and nothing
+// else.  On a 7900 XTX with the 1088x1088 head-turn fixture, 289 tiles,
+// 13.4 KB a frame, 82 % WARP_SKIP:
+//
+//   baseline          passB 0.110 ms
+//   no ring store     passB 0.069 ms   -- the ring store is 37 %
+//   no wpred hook     passB 0.078 ms   -- the predictor hook is 29 %
+//   neither           passB 0.068 ms
+static int32_t inter_pred_on(const D *, bool inter) {
+    return (inter && !std::getenv("NXVC_VKD_ABL_NOWPRED")) ? 1 : 0;
+}
+static int32_t ring_store_on(const D *, bool inter) {
+    return (inter && !std::getenv("NXVC_VKD_ABL_NORING")) ? 1 : 0;
+}
+
 nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2, int32_t sparse,
                            uint32_t store_words, int32_t intra_dir,
                            int32_t split_tool, int32_t xform_large,
                            int32_t inter_pred, int32_t ring_store,
-                           VkPipeline *out) {
+                           VkPipeline *out, bool skip_only = false) {
     const uint32_t sched = d->dir_sched;
-    uint64_t key = ((uint64_t)(uint32_t)ring_store << 63) |
+    uint64_t key = ((uint64_t)(uint32_t)skip_only << 59) |
+                   ((uint64_t)(uint32_t)ring_store << 63) |
                    ((uint64_t)(uint32_t)inter_pred << 62) |
                    ((uint64_t)(uint32_t)xform_large << 61) |
                    ((uint64_t)(uint32_t)split_tool << 60) |
@@ -867,7 +905,9 @@ nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2, int32_t sparse,
         ci.flags |= VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR;
     ci.stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
     ci.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-    ci.stage.module = d->smB[intra_dir != 0 ? 1 : 0][xform_large != 0 ? 1 : 0];
+    ci.stage.module =
+        skip_only ? d->smBSkip
+                  : d->smB[intra_dir != 0 ? 1 : 0][xform_large != 0 ? 1 : 0];
     ci.stage.pName = "main";
     ci.stage.pSpecializationInfo = &spec;
     ci.layout = d->plB;
@@ -1306,6 +1346,7 @@ void build_warp_params(D *d, const FrameParse &fp, uint32_t ntiles) {
 void build_tile_order(D *d, const FrameParse &fp, uint32_t ntiles) {
     d->order.resize(ntiles);
     d->order_nodir[0] = d->order_nodir[1] = 0;
+    d->order_nskip[0] = d->order_nskip[1] = 0;
     // [inter] A frame with a STEREO tile is dispatched one eye at a time, so
     // the map has to make each eye a contiguous range of workgroups.  A tile
     // index is `row * cols + eye * cols_per_eye + col` ([SYN] 3.3), which
@@ -1359,9 +1400,30 @@ void build_tile_order(D *d, const FrameParse &fp, uint32_t ntiles) {
     for (uint32_t pass = 0; pass < passes; ++pass) {
         auto beg = d->order.begin() + (size_t)pass * per;
         auto end = beg + per;
+        // [inter] Three groups, not two, and the WARP_SKIP one comes first.
+        //
+        //   [beg, skipMid)  WARP_SKIP -- the module that computes clamp(W) and
+        //                   nothing else
+        //   [skipMid, mid)  every other non-INTRA mode -- the module with no
+        //                   directional wavefront
+        //   [mid, end)      INTRA -- the wavefront module, when the stream has
+        //                   the tool
+        //
+        // The skip partition is taken FIRST so that the second one, which is
+        // the pre-existing INTRA_DIR split, sees exactly the range it always
+        // saw minus the skips -- which are not INTRA and so were always on its
+        // first side anyway.  Both are stable, so tile_sort still composes
+        // inside each group.
+        auto skipMid = beg;
+        if (fp.any_inter) {
+            skipMid = std::stable_partition(beg, end, [&](uint32_t t) {
+                return (fp.recs[t].w1 & 7u) == 0u;   // WARP_SKIP
+            });
+            d->order_nskip[pass] = (uint32_t)(skipMid - beg);
+        }
         auto mid = end;
         if (fp.push.intraDir != 0) {
-            mid = std::stable_partition(beg, end, [&](uint32_t t) {
+            mid = std::stable_partition(skipMid, end, [&](uint32_t t) {
                 return (fp.recs[t].w1 & 7u) != 3u;   // not INTRA
             });
             d->order_nodir[pass] = (uint32_t)(mid - beg);
@@ -1369,7 +1431,8 @@ void build_tile_order(D *d, const FrameParse &fp, uint32_t ntiles) {
         // `tile_sort` still applies, INSIDE each group: the two orders compose
         // because the partition is what a dispatch boundary needs and the sort
         // is what a warp scheduler wants, and neither cares about the other.
-        sort_range(beg, mid);
+        sort_range(beg, skipMid);
+        sort_range(skipMid, mid);
         sort_range(mid, end);
     }
 }
@@ -1532,6 +1595,7 @@ extern "C" void nxvc_vk_decoder_destroy(nxvc_vk_decoder *d) {
     if (!d) return;
     if (d->dev) {
         vkDeviceWaitIdle(d->dev);
+        if (d->smBSkip) vkDestroyShaderModule(d->dev, d->smBSkip, nullptr);
         for (auto &kv : d->pipesA) vkDestroyPipeline(d->dev, kv.second, nullptr);
         for (auto &kv : d->pipesB) vkDestroyPipeline(d->dev, kv.second, nullptr);
         if (d->smA) vkDestroyShaderModule(d->dev, d->smA, nullptr);
@@ -2010,7 +2074,8 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
                                   : (int32_t)nxvw::kOutNone,
                              fp.push.sparse, storeWords, dir,
                              (int32_t)fp.split4, (int32_t)fp.xform_large,
-                             interStream ? 1 : 0, interStream ? 1 : 0,
+                             inter_pred_on(d, interStream),
+                             ring_store_on(d, interStream),
                              &pipeB[dir])))
             return st;
         if (d->need_alpha_pass && !fuse) {
@@ -2022,6 +2087,21 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
                 return st;
         }
     }
+    // [inter] The WARP_SKIP module, built only when the frame has skip tiles
+    // to give it.  It carries no alpha companion: the alpha second store is
+    // for a 4:2:0 stream that also codes an alpha plane, and a WARP_SKIP tile
+    // codes no plane at all.
+    VkPipeline pipeBSkip = VK_NULL_HANDLE;
+    const bool anySkip = d->order_nskip[0] != 0 || d->order_nskip[1] != 0;
+    if (anySkip && !d->need_alpha_pass &&
+        (st = pipeline_b(d, d->out_format,
+                         fuse ? (int32_t)nxvw::kOutRgba8
+                              : (int32_t)nxvw::kOutNone,
+                         fp.push.sparse, storeWords, 0, (int32_t)fp.split4, 0,
+                         inter_pred_on(d, interStream),
+                         ring_store_on(d, interStream), &pipeBSkip, true)))
+        return st;
+
     VkPipeline pipeWp = VK_NULL_HANDLE;
     if (fp.any_inter && (st = pipeline_w(d, &pipeWp))) return st;
 
@@ -2054,26 +2134,37 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
                                (uint32_t)sizeof(nxvw::NxvwPassBPush), &fp.push);
         }
         const uint32_t base = pass * tilesPerEye;
-        // [0, nodir) is the group that cannot enter the wavefront and
-        // [nodir, tilesPerEye) is the group that can; `order_nodir` is 0 when
-        // the stream has no INTRA_DIR at all, which puts every tile in the
-        // second group and the second group on the only module there is.
-        // With no INTRA_DIR at all there is one module and one group: every
-        // tile goes in the first, which is the module that has no wavefront.
+        // Three contiguous ranges, in build_tile_order()'s order:
+        //   [0, nskip)        WARP_SKIP        -> the skip module
+        //   [nskip, nodir)    other non-INTRA  -> the module with no wavefront
+        //   [nodir, perEye)   INTRA            -> the wavefront module
+        // `order_nskip` is 0 on a frame with no inter tiles and `order_nodir`
+        // is 0 without INTRA_DIR, which collapses this to what it was: one
+        // range on the one module that exists.
+        // A frame that has skip tiles but no skip PIPELINE -- the alpha
+        // second-store configuration, which the skip module deliberately does
+        // not carry -- must not lose them: they are non-INTRA, so they are
+        // already inside [0, nodir), and folding the range back to zero puts
+        // them on the module that would have had them before this split.
+        const uint32_t nskip = pipeBSkip != VK_NULL_HANDLE
+                                   ? d->order_nskip[pass]
+                                   : 0u;
         const uint32_t nodir =
             fp.push.intraDir != 0 ? d->order_nodir[pass] : tilesPerEye;
-        const uint32_t seg[2] = {nodir, tilesPerEye - nodir};
-        const uint32_t segBase[2] = {base, base + nodir};
-        for (int dir = 0; dir < 2; ++dir) {
-            if (seg[dir] == 0) continue;
+        const uint32_t seg[3] = {nskip, nodir - nskip, tilesPerEye - nodir};
+        const uint32_t segBase[3] = {base, base + nskip, base + nodir};
+        VkPipeline segPipe[3] = {pipeBSkip, pipeB[0], pipeB[1]};
+        VkPipeline segPipeA[3] = {VK_NULL_HANDLE, pipeBa[0], pipeBa[1]};
+        for (int g = 0; g < 3; ++g) {
+            if (seg[g] == 0) continue;
             vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                              pipeB[dir]);
-            vkCmdDispatchBase(d->cmd, segBase[dir], 0, 0, seg[dir], 1, 1);
+                              segPipe[g]);
+            vkCmdDispatchBase(d->cmd, segBase[g], 0, 0, seg[g], 1, 1);
             ++dispatches;
-            if (pipeBa[dir] != VK_NULL_HANDLE) {
+            if (segPipeA[g] != VK_NULL_HANDLE) {
                 vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                  pipeBa[dir]);
-                vkCmdDispatchBase(d->cmd, segBase[dir], 0, 0, seg[dir], 1, 1);
+                                  segPipeA[g]);
+                vkCmdDispatchBase(d->cmd, segBase[g], 0, 0, seg[g], 1, 1);
                 ++dispatches;
             }
         }
