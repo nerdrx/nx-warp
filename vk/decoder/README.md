@@ -1264,6 +1264,50 @@ for the tool to remove, so all that is left is its own floor -- about
 
 The lever it was meant to be is real; it is a lever for dense frames.
 
+#### An inter frame at the live shape costs 2.6x an intra frame at half the bytes
+
+The reason to want the inter path was that its frames are small: 12.7 KB an eye
+against 22.2 KB, at 83 % `WARP_SKIP`. **It is 2.6x more expensive to decode.**
+
+Idle Pico 4, 1088x1088, 289 tiles, `--intra-dir off`, streams built with the GPU
+encoder's own flag set (`--inter on --int-decision on --int-coded-vectors off
+--preset fast --me-effort 1 --quad-mv off --near-skip off`, `--intra-period 6`),
+46-50 coded INTRA tiles and 239-243 `WARP_SKIP` per frame:
+
+| | payload | Pass A | Pass W | Pass B | GPU |
+|---|---|---|---|---|---|
+| intra, QP 51 | 22.2 KB | 3.33 | — | 2.56 | **5.93 ms** |
+| inter, QP 38 | 12.7 KB | 6.5 | 4.25 | 9.1 | **15.6 ms** |
+| inter, QP 30 | 25.4 KB | 10.4 | 4.27 | 9.2 | **19.6 ms** |
+
+Three things went wrong, and only one of them is about bits:
+
+* **Pass A is 0.51 ms/KB against intra's 0.150 — 3.4x worse per byte.** This is
+  the occupancy result below in its sharpest form. A skipped tile gets no Pass A
+  descriptor, so 83 % skip dispatches **48 tiles, not 289**: two workgroups, 384
+  lanes, on a part that was already not full at ten. The bits do not leave with
+  the tiles either, they concentrate — 265 B per coded tile against the intra
+  frame's 77.
+* **Pass W is 4.25 ms and does not move with the payload at all** (4.27 ms at
+  twice the bytes). Per-tile over all 289: **14.7 us a tile**, a flat entry fee
+  for the inter path.
+* **Pass B is 9.1 ms and also does not move** — **31.5 us a tile against the
+  intra kernel's 8.96**, on a frame where five tiles in six are `WARP_SKIP` and
+  ought to be close to free. That shape has a history here: it is what
+  `INTRA_DIR` did, and what the minor-6 realignment did, and the lesson both
+  times was that **on this part, code you never execute is not free**. It is the
+  largest single term and the one with a precedent for being mostly recoverable.
+
+Two eyes of that is 31 ms of GPU, about 32 fps, against 11.1 ms for the pair.
+The intra path at 22 KB an eye is nearly three times closer to the budget than
+the inter path at 12.7.
+
+**Caveat on the fixture.** It is a static scene with a matching pose track, so
+its coded tiles are the encoder's periodic refresh rather than a head turn's
+leading edge, and the content is photographic and so denser than a rendered
+scene. The tile mix (83 % skip) and the byte count (12.7 KB) are the live shape;
+*which* tiles are coded is not.
+
 #### Pass A is occupancy-starved at 289 tiles, and Pass B is not
 
 Where the two passes' time goes at the live shape, measured on an idle Pico 4.
