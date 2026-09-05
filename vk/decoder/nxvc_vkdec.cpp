@@ -1262,6 +1262,10 @@ extern "C" void nxvc_vk_decoder_destroy(nxvc_vk_decoder *d) {
     delete d;
 }
 
+extern "C" uint64_t nxvc_vk_decoder_tools_supported(void) {
+    return nxvcvk::tools_supported();
+}
+
 extern "C" const char *nxvc_vk_decoder_last_error(const nxvc_vk_decoder *d) {
     return d ? d->err.c_str() : "null decoder";
 }

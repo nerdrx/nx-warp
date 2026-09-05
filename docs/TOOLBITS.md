@@ -329,11 +329,23 @@ under **one** minor bump, and 5 is skipped because eight of the ten branches
 each set 5 for their own package.)
 
 **`CTX_V3` and `TAB_V2` ship OFF by default**, per `JUDGE-ctx.md` step 6 and
-ctx-a's convention: `vk/decoder/passA` does not implement bit 25 yet, so both
-stay out of `kToolsSupported` in `nxvc_vkdec_parse.cpp` and the Vulkan decoder
-refuses them with `VERSION`. That is what keeps the reference encoder's
-**default** output decodable by the Vulkan decoder, which is the property the
-whole tournament's tool-bit discipline exists to protect.
+ctx-a's convention. That was originally also a decoder constraint --
+`vk/decoder/passA` did not implement bit 25, so both stayed out of
+`kToolsSupported` in `nxvc_vkdec_parse.cpp` and the Vulkan decoder refused
+them with `VERSION`. **It no longer is**: the GPU decoder implements bits 19,
+24, 25 and 26 and decodes all four with zero mismatching samples on lavapipe,
+RADV and an Adreno 650 (`vk/decoder/README.md`, "Realigning to bitstream minor
+version 6"). They stay off because they are negotiated tools whose value the
+encoder cannot judge, not because anything refuses them.
+
+The property that discipline exists to protect -- that the reference encoder's
+**default** output is decodable by the Vulkan decoder -- is what forced the
+realignment rather than what the realignment threatened. The merged default
+sets `XFORM_4X4_SPLIT` and `INTRA_CFL`, so on `merge-main` the GPU decoder
+refused 60 of its own conformance streams and failed 85 more at the handshake;
+it accepts them now. **`XFORM_LARGE` (bit 27) is the one still refused**: Pass
+A carries it, Pass B does not, and it is off by default, so the property
+holds.
 
 ---
 

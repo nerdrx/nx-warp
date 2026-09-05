@@ -285,21 +285,20 @@ const char *vkd_status_token(nxvc_vkd_status st);
 // only when the decoder refuses it with exactly VERSION, so a regression that
 // starts refusing a supported vector still fails.
 //
-// This MUST stay equal to kToolsSupported in nxvc_vkdec_parse.cpp.  The skip
-// count of the sweep is exactly "how many vectors this decoder cannot yet
+// It is NOT restated here.  It used to be, and a copy of a tool mask is a copy
+// that goes stale: the harness would then either fail a vector the decoder now
+// speaks or skip one it no longer does, and both read as a decoder bug.  The
+// C ABI names the decoder's half of the handshake, so the harness asks.  The
+// skip count of the sweep is exactly "how many vectors this decoder cannot yet
 // speak", so driving it to zero is what finishing the tool set means.
-constexpr uint64_t kPhase1Tools =
-    (1ull << 0) | (1ull << 1) | (1ull << 2) | (1ull << 3) | (1ull << 4) |
-    (1ull << 5) | (1ull << 6) | (1ull << 7) | (1ull << 8) | (1ull << 9) |
-    (1ull << 17) | (1ull << 19) | (1ull << 20) | (1ull << 21) |
-    (1ull << 22) | (1ull << 24) | (1ull << 25) | (1ull << 26);
+uint64_t supported_tools() { return nxvc_vk_decoder_tools_supported(); }
 
 // docs/SYNTAX.md 11: `tools` is a u64 at byte 32 of the 64-byte stream header.
 bool stream_needs_phase2(const std::vector<uint8_t> &s, uint64_t &tools) {
     tools = 0;
     if (s.size() < 40) return false;
     for (int i = 0; i < 8; ++i) tools |= (uint64_t)s[32 + i] << (8 * i);
-    return (tools & ~kPhase1Tools) != 0;
+    return (tools & ~supported_tools()) != 0;
 }
 
 void run_vectors() {

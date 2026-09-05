@@ -84,6 +84,17 @@ nxvc_vkd_stats  st;    nxvc_vk_decoder_stats(dec, &st);
   B's workgroups by tile shape; that one is pure host-side reordering and the
   output is bit-identical either way. Both are also reachable from the CLI as
   `--dir-sched N` and `--tile-sort`.
+* **The tool mask.** `nxvc_vk_decoder_tools_supported()` returns the bits this
+  decoder implements — the decoder's half of the `docs/SYNTAX.md` 2.3
+  handshake, and exactly the mask a stream's `tools` field must be a subset of.
+  It is a property of the build, so it takes no handle and may be called before
+  `nxvc_vk_decoder_create()`. `nxvc_vkd_stream_info::tools` is the other end:
+  what a given stream asks for. Several tools are specified as *negotiated*
+  rather than defaulted — `ENTROPY_LITE` above all, which buys Pass A time with
+  bits and whose worth only the decoder can judge — and until this call existed
+  a caller had to try a stream and read the refusal. The conformance harness
+  asks it rather than restating the mask, because a copy of a tool mask is a
+  copy that goes stale.
 * **Errors.** `nxvc_vkd_status` numbers 0 and −1..−6 exactly as
   `nxvc_vk_status` in `vk/common`'s `<nxvc/vk/nxvc_vk.h>` does, and adds
   −7..−9 for the bitstream errors of `<nxvc/nxvc.h>`. Both headers can be
@@ -113,6 +124,10 @@ handed to both kernels (`docs/SYNTAX.md` 2.3, 3.1):
 | | from | Pass A | Pass B |
 |---|---|---|---|
 | `CTX_V2` | tool bit 21 | 16 coded contexts, the `kDefaultFreqV2` family, 160-byte transmitted table sets | — |
+| `CTX_V3` | tool bit 25 | 27 coded contexts, the `kDefaultFreqV3` family, 270-byte table sets, and the per-lane neighbour class | — |
+| `TAB_V2` | tool bit 26 | — (the upload is the same either way) | — |
+| `XFORM_4X4_SPLIT` | tool bit 19 | a split flag per coded block unit, and the split scan | the 4x4 inverse transform |
+| `INTRA_CFL` | tool bit 24 | a ten-mode alphabet on chroma mode units | the chroma-from-luma predictor |
 | `INTRA_DIR` | tool bit 17 | one extra mode unit per coded plane | the wavefront |
 | layered form | frame `flags` bit 2 | — | the modes predict the DC-plane residual |
 | `SIGN_HIDE` | tool bit 22 | the sign at scan position `LAST` is the parity of the unit | — |
@@ -183,14 +198,21 @@ Two 2048x2048 eyes at 4:2:0 — 2048 tiles in one frame, the shape the headset
 actually streams — decoded 30 times, best of run. Informational.
 
 **RX 7900 XTX (RADV NAVI31)**, streams from `nxvc_encoder`'s **default
-configuration**, which since v1.3 means `INTRA_DIR` + `CTX_V2` + `SIGN_HIDE`
-are all on. "before" is the dense coefficient layout as it shipped in v1.3:
+configuration** — which at bitstream minor 6 means `INTRA_DIR` + `CTX_V2` +
+`SIGN_HIDE` + `XFORM_4X4_SPLIT` + `INTRA_CFL`, so these frames exercise the
+two detail tools as well:
 
 | QP | frame bytes | coef SSBO | Pass A | Pass B | GPU total | wall |
 |---|---|---|---|---|---|---|
-| 12 | 2.64 MB | 25.6 → **13.6 MB** | 1.63 → 1.44 ms | 1.90 → **1.28 ms** | 3.53 → **2.72 ms** | 3.60 ms |
-| 24 | 1.32 MB | 25.6 → **11.6 MB** | 1.12 → 1.26 ms | 1.77 → **1.19 ms** | 2.89 → **2.46 ms** | 3.65 ms |
-| 36 | 0.17 MB | 25.6 → **0.93 MB** | 0.34 → 0.54 ms | 1.63 → **1.20 ms** | 1.99 → **1.75 ms** | 2.88 ms |
+| 12 | 2.70 MB | 13.9 MB | 1.91 ms | 1.34 ms | 3.26 ms | 3.75 ms |
+| 24 | 1.36 MB | 11.8 MB | 1.35 ms | 1.02 ms | 2.38 ms | 2.84 ms |
+| 36 | 0.19 MB | 0.94 MB | 0.33 ms | 0.74 ms | 1.08 ms | 1.53 ms |
+
+The rows are **not** comparable with the v1.3 ones this table used to carry:
+the default encoder emits a different stream now (a 2.70 MB frame at QP 12
+against 2.64), so both the payload and the coefficients differ. The
+like-for-like control is on the Pico, below, where the same `.nxv` file was
+decoded before and after.
 
 **llvmpipe (lavapipe)**, pinned to 4 cores, for scale — it is a conformance
 oracle, not a performance target, and the 4-core pin makes it about twice the
@@ -234,9 +256,9 @@ ladder, same 2048 tiles, separates the two:
 | | fixed, per frame | slope, per MB of payload | fixed, per tile |
 |---|---|---|---|
 | Pass A, RADV, dense | 0.25 ms | 0.54 ms | 121 ns |
-| Pass A, RADV, sparse | 0.35 ms | 0.48 ms | **170 ns** |
+| Pass A, RADV, sparse (minor 6) | 0.24 ms | 0.65 ms | **115 ns** |
 | Pass B, RADV, dense | 1.82 ms | ~0 | 890 ns |
-| Pass B, RADV, sparse | 0.51 ms | 0.33 ms | **248 ns** |
+| Pass B, RADV, sparse (minor 6) | 0.31 ms | 0.38 ms | **153 ns** |
 | Pass A, lavapipe, dense | 39.7 ms | 84.6 ms | 19.4 µs |
 | Pass A, lavapipe, sparse | 25.8 ms | 56.6 ms | **12.6 µs** |
 | Pass B, lavapipe, dense | 303 ms | -8 ms | 148 µs |
@@ -478,24 +500,31 @@ environment selects:
 
 | ICD | streams | mismatching samples |
 |---|---|---|
-| RX 7900 XTX (RADV NAVI31) | 152 checked, 23 skipped | **0** |
-| llvmpipe (lavapipe) | 152 checked, 23 skipped | **0** |
-| Adreno 650 (Pico 4, Qualcomm 1.1.128) | 152 checked, 23 skipped | **0** |
+| RX 7900 XTX (RADV NAVI31) | 168 checked, 46 skipped | **0** |
+| llvmpipe (lavapipe) | 168 checked, 46 skipped | **0** |
+| Adreno 650 (Pico 4, Qualcomm 1.1.128) | 168 checked, 46 skipped | **0** |
 
-The Adreno column is new and it is the one that matters: it is the target
-part, it is a third driver rather than a second one, and getting to it found
-three defects nothing else had (see "Android"). All three ICDs also pass the
-same 152 streams through the UNORM store ("The UNORM store").
+The Adreno column is the one that matters: it is the target part, it is a
+third driver rather than a second one, and getting to it found three defects
+nothing else had (see "Android") and, at bitstream minor 6, four more (see
+"Timing on the Pico 4").
 
-The 152 are the 44 Phase 1 vectors, the 18 rejection vectors whose refusal this
-decoder is responsible for, and 64 synthetic streams of which 26 are re-run
-through the RGB10A2 store. The 23 skips are the Phase 2 inter vectors
-(`v45`–`v56`) and the rejection vectors that are malformed *inside* the inter
-syntax (`r18`–`r29`): a Phase 1 decoder refuses those at the tool mask, earlier
-and with a different but equally correct status, so the harness requires the
-refusal and does not require the manifest's exact status. The skip is decided
-from each stream's own `tools` field, never from its file name, so a
-regression that starts refusing a Phase 1 vector still fails.
+**The skip count is the number to watch.** It is exactly "how many conformance
+streams this decoder cannot yet speak", decided from each stream's own `tools`
+field and never from its file name, so a regression that starts refusing a
+supported vector still fails. Driving it to zero is what finishing the tool
+set means. It was 60 when `merge-main`'s encoder default first set tool bits
+this decoder did not have; the minor-6 realignment has taken it to 46, and
+what is left is one tool and the whole of Phase 2:
+
+| skipped | why |
+|---|---|
+| `v68`–`v73` | `XFORM_LARGE` (bit 27) — Pass A carries it, Pass B does not |
+| `v45`–`v56`, `v66`, `v67`, `v74`, `v75` | the Phase 2 inter vectors |
+| `v76`–`v81` | `ENTROPY_LITE` (bit 30) — Pass A has the kernel, the decoder does not offer the bit |
+| `r18`–`r29`, `r36`–`r43` | rejection vectors malformed *inside* a syntax this decoder refuses earlier, at the tool mask, with a different but equally correct status |
+
+All three ICDs also pass the same 168 streams through the UNORM store.
 
 The 44 vectors include `v36`–`v44`, which pin the v1.3 intra tools:
 `INTRA_DIR` alone in 4:4:4 and 4:2:0, `INTRA_DIR` with `CTX_V2`, `CTX_V2`
@@ -590,7 +619,7 @@ APK, no Java, no `NativeActivity`: the conformance harness is an ordinary
 executable.
 
 ```sh
-./vk/decoder/tools/run-android.sh              # the full 152-stream sweep
+./vk/decoder/tools/run-android.sh              # the full 168-stream sweep
 ./vk/decoder/tools/run-android.sh --quick      # a subset, for a smoke test
 ./vk/decoder/tools/run-android.sh --bench 10   # the timing table
 ./vk/decoder/tools/run-android.sh --unorm 1    # opt into the UNORM store
@@ -680,11 +709,11 @@ The same 152 streams as the desktop table, on the Pico 4, from
 
 | ICD | streams | mismatching samples |
 |---|---|---|
-| Adreno 650 (Qualcomm 1.1.128), UINT store | 152 checked, 23 skipped | **0** |
+| Adreno 650 (Qualcomm 1.1.128), UINT store | 168 checked, 46 skipped | **0** |
 
 The skip set is decided from each stream's own `tools` field, exactly as on
-the other two ICDs, so it is the same 23 Phase 2 vectors and not a
-device-specific exemption.
+the other two ICDs, so it is the same 46 streams and not a device-specific
+exemption.
 
 ### The UNORM store
 
@@ -732,6 +761,9 @@ and the whole conformance sweep re-run through the UNORM path:
 | RX 7900 XTX (RADV NAVI31), UNORM | 152 checked, 23 skipped | **0** |
 | llvmpipe (lavapipe), UNORM | 152 checked, 23 skipped | **0** |
 | Adreno 650 (Pico 4), UNORM | 152 checked, 23 skipped | **0** |
+
+(measured before the minor-6 realignment; the UNORM path is orthogonal to the
+tool set and has not been re-run on the 168.)
 
 `ctest -R '^vk\.decoder\.unorm'` runs the exactness proof on the default
 device, on RADV and on lavapipe; `run-android.sh` pushes it alongside the
@@ -815,6 +847,70 @@ been tuned against was a 7900 XTX. The commits between the columns are
 
 Zero mismatching samples on the 152-stream sweep at every point in that table,
 on the Adreno 650, on RADV and on lavapipe.
+
+#### The minor-6 realignment, and what it cost before it was paid back
+
+The tools of bitstream minor 6 landed correct on all three ICDs and **slow on
+the one that matters**. Measured on the same `qp36_v1.nxv` this table was
+taken with — a stream that sets *none* of the new tools — the first correct
+version of the realignment read Pass A 26.3 ms and Pass B 96.6 ms against
+10.1 and 15.3. The whole of that was dead code and register pressure, and
+three of the four causes are the same mistake in three places: **on this part,
+code you never execute is not free.**
+
+| | after the realignment | after this round | this table's figure |
+|---|---|---|---|
+| Pass A | 26.3 ms | **12.9 ms** | 10.1 |
+| Pass B | 96.6 ms | **15.4 ms** | 15.3 |
+| Pass A instruction count | 3530 | **1817** | 1320 |
+| Pass B register footprint / scratch | 168 / 680 B | **0 / 352 B** | 6 / 342 B |
+
+* **The 4x4-split transform's live set.** It first staged a whole sub-block
+  through the plane slot and read the columns back after the barrier, then
+  held its sixteen intermediates as named scalars — the letter of
+  `docs/ADRENO-RULES.md`, and *worse* at 111.1 ms and a footprint of 168,
+  because the rule is about what the compiler can keep in registers and
+  sixteen more live values is past what it has: it answered by putting
+  `res0`/`res1` in private memory as well. The fix was to halve the live set.
+  `idct_block()` writes transposed in both passes, so pass 2's row `r` reads
+  `out[r]` of every pass-1 row and produces COLUMN `r` — so a thread that
+  wants the two columns it already owns runs four pass-1 rows keeping two of
+  each four outputs, then two pass-2 rows. Twelve 4-point transforms, **eight**
+  live intermediates, no staging and no extra barrier.
+* **`kSplitTool`, Pass B specialization constant 6.** Even halved, the branch
+  cost 10.8 ms on a frame where every split flag is zero. It is frame-uniform,
+  so a stream without tool bit 19 now compiles a kernel with no split path in
+  it at all.
+* **`CTX_STRIDE`, Pass A specialization constant 4.** `CTX_V3` took the widest
+  context model from 16 rows to 27, and the shared cumulative-frequency table
+  was sized at the widest so the host would have one layout to build. That made
+  every v1 and v2 stream carry 13824 bytes of LDS instead of 8192 — on a 32 KiB
+  SP, the difference between two resident workgroups and one. The constant now
+  SIZES the array rather than merely indexing it, the host uploads at the
+  stride the frame's model needs, and the v3 derivations are gated on it too.
+* **`XFORM_LARGE_TOOL`, Pass A specialization constant 5.** The two computed
+  zigzags were 844 instructions of Pass A and about 10 ms of it, on every
+  stream, for a path only the dense measurement layout can reach — and which no
+  stream reaches at all, because bit 27 is still refused. A closed form was
+  written for them first (the diagonal counts are triangles from either end,
+  so one float square root and four integer corrections invert them exactly)
+  and measured 1587 instructions against the walk's 844. The walk stays; what
+  mattered was not compiling either.
+* **One more runtime-indexed const array.** `kInvScan4Split` is computed from
+  the 4x4 inverse zigzag that was already there — the split scan is four of it
+  laid over the quadrants — so no third table exists.
+
+Pass B is back where it was. **Pass A's remaining 28 % is the honest price of
+the tools themselves** — the `CTX_V3` derivation, the split phase and the
+per-plane transform size — on a stream that uses none of them, and the lever
+left for it is the same one: gate the split phase on its tool bit as Pass B
+now does.
+
+A minor-6 stream at the encoder's own default (QP 36, `INTRA_DIR` on) reads
+Pass A **16.7 ms**, Pass B **1275 ms**. The second number is not a minor-6
+result: it is the directional-intra wavefront, which this document already
+prices at 1348 ms with the tool on, and `INTRA_DIR` remains a desktop-decoder
+tool negotiated by capability. With it off, the same content is 12.9 / 15.4.
 
 **What each change bought**, all on the same device under the protocol above,
 2048 tiles, `INTRA_DIR` off:
@@ -1072,7 +1168,7 @@ orders so clock ramp cannot explain it:
 | lavapipe, 512 tiles (from the commit) | 64.5 ms | 16.5 ms |
 
 **3.2 to 3.6x slower on the target part**, and correct throughout — the
-152-stream sweep passes on Adreno with the current kernel. So this is a
+sweep passes on Adreno with the current kernel. So this is a
 performance regression, not a conformance one, and it is the single largest
 one measured here: 52 ms of a frame, against a Pass A that was 20 ms.
 
@@ -1163,6 +1259,43 @@ needed five changes, each marked in place with
 | `passB/reconstruct.comp` | the wavefront, as specialization constant 2 | see "The `INTRA_DIR` wavefront, priced". The shared sample store holds the running reconstruction during the wavefront; in the layered form it holds the reconstructed DC-plane residual and is converted back with one pass of `sample = pred + recon`, which is exact because `recon` was formed as `clamp(pred + v) - pred` |
 | `passB/reconstruct.comp` | binding 8, a workgroup-to-tile map, and a 1D dispatch | so the host can group like-shaped tiles without any output address depending on the workgroup index |
 | host | `LOSSLESS` + `SIGN_HIDE`, and YCoCg-R with 4:2:0 chroma, are refused | `r17` and `r15`. The second was a check the reference made and this decoder did not; it is the one place the v3 realignment found an existing conformance gap rather than adding a feature |
+
+### Realigning to bitstream minor version 6
+
+The tournament merge (`docs/MERGE-REPORT.md`) added seven tool bits and made
+two of them -- `XFORM_4X4_SPLIT` and `INTRA_CFL` -- part of the reference
+encoder's **default** configuration. That is why the realignment was not
+optional: on `merge-main` this decoder refused every synthetic stream in its
+own conformance sweep at the handshake, 60 skipped and 85 failing.
+
+| where | change | why |
+|---|---|---|
+| `passA/*` | `kPhSplit`: a coded block unit of a tile whose word1 bit 28 is set codes a 1-bit flag between its CBF and its LAST, and a set flag redirects the unit's scan to `kScan4Split` and bands the LEVEL context by position *within* the 4x4 sub-block | `docs/SYNTAX.md` 6.8 / 9.3, tool bit 19. Both are one line, because the scan id and `band_pos()` were already the only two things the storage and the banding went through |
+| `passA/*` | binding 6 grows from 32 to 40 uints per tile: the split flags are one BIT per block after the mode words, written with an `atomicOr` | a split flag exists whether or not `INTRA_DIR` does, so it cannot be a fifth mode field; and unlike a mode word the split word IS shared between lanes, because block `b` belongs to lane `b % LANES` |
+| `passA/*` | the mode unit's alphabet is a field, 9 or 10 | `INTRA_CFL` is a CHROMA mode, so the alphabet is per plane |
+| `passA/*` | 27 contexts, and two registers of per-lane neighbour class carried inside one plane's run of block units | `docs/SYNTAX.md` 9.9, tool bit 25. Every input is a value the lane has just decoded, so there is no cross-lane read and not one extra `barrier()` |
+| host | a transmitted table set is variable length under `TAB_V2`, so all the sets are read through one `BitR` padded to a byte boundary once at the end | `docs/SYNTAX.md` 9.4, tool bit 26. Reading both forms through the same reader is what keeps them one piece of code |
+| `passB/*` | the 4-point inverse transform, and the split block's four sub-blocks | `ref/src/transform.cpp` `idct_block(n = 4)`. Its shift chain is the 8x8's unchanged: the 4-point graph has one butterfly level fewer AND one fewer sqrt(2) of gain, and the two cancel |
+| `passB/*` | chroma from luma: the model is fitted once per block from the same reconstructed neighbours the other predictors read, then evaluated per sample | `docs/SYNTAX.md` 7.7. The tile's reconstructed luma is still in its plane slot when the chroma planes decode, because the slots coexist |
+| host | `kToolsSupported` gains bits 19, 24, 25 and 26 | which is the whole point: the skip count is what it buys |
+
+`XFORM_LARGE` (bit 27) is **half done and not offered**. Pass A carries the
+per-plane transform edge, the scan-*group* scaling of the LAST classes and the
+LEVEL bands, the two computed zigzags and the wider unit-length field; Pass B
+still reconstructs only the 8x8 transform, so the bit stays out of
+`kToolsSupported` and no stream reaches any of it. What Pass B needs is in
+`ref/RESULTS-xform-a.md` 5: one thread per 1D transform rather than four
+threads per 8x8 block, an n-point inverse built on the existing 8-point core
+through the even/odd recursion, the DC plane re-gridded to `nb = size / bsize`
+with its second-level transform firing only at `nb == 8`, the planar
+interpolation's general Q4 mapping, n x n intra predictors, and a wavefront
+over an `nb x nb` grid.
+
+**Pass B's CPU model does not yet carry the split transform or the CfL
+predictor.** `vk.passB.*` is green because its corpora do not reach them; the
+model tracks the kernel line for line everywhere else, and closing that gap is
+the first thing the next step should do, because it is the model that makes a
+kernel change checkable without a GPU.
 
 The Pass A and Pass B CPU models track their kernels line for line, as before,
 and `vk.passA.*` and `vk.passB.*` stay green on RADV and lavapipe.

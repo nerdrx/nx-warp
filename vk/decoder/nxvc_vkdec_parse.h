@@ -127,6 +127,10 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
 // Probability tables, exposed so the conformance test can diff them against
 // ref/src/tables.cpp.  `cum` is filled with 8 * 16 * 16 entries; cum[16] is
 // implicitly 1024 and is not stored, which is the layout Pass A's binding 2
+// The tool bits this decoder implements; the C ABI's
+// nxvc_vk_decoder_tools_supported() returns it.
+uint64_t tools_supported();
+
 // expects.  `nctx` is 12, 16 or 27 and selects the built-in family; contexts
 // past it are filled from context 0 and never selected, as ref's
 // build_default_set() does.

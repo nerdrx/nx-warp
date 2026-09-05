@@ -156,6 +156,24 @@ const char *nxvc_vk_decoder_last_error(const nxvc_vk_decoder *dec);
 /* Device the decoder is running on, for logging.  Never NULL. */
 const char *nxvc_vk_decoder_device_name(const nxvc_vk_decoder *dec);
 
+/* [minor 6, additive] The tool bits this decoder implements: exactly the mask
+ * a stream's `tools` field must be a subset of, and exactly what a stream
+ * setting anything outside is refused against with NXVC_VKD_ERR_VERSION.
+ *
+ * This is the DECODER's half of the handshake docs/SYNTAX.md 2.3 describes.
+ * The tools mask a session ends up using is an intersection of what the
+ * encoder can emit and what the receiver offered, and several tools -- 
+ * ENTROPY_LITE above all, which buys Pass A time with bits and whose worth
+ * only the decoder can judge -- are specified as negotiated for exactly that
+ * reason.  Until now this side of it had no name in the ABI and a caller had
+ * to try a stream and read the refusal.
+ *
+ * It is a property of the library build, not of a decoder instance, so it
+ * takes no handle and may be called before nxvc_vk_decoder_create().
+ * `nxvc_vkd_stream_info::tools` is the other end: what a given stream asks
+ * for. */
+uint64_t nxvc_vk_decoder_tools_supported(void);
+
 /* --------------------------------------------------------------- stream */
 typedef struct nxvc_vkd_stream_info {
     uint32_t width, height; /* luma samples                                */

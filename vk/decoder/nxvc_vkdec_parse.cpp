@@ -199,6 +199,12 @@ constexpr uint64_t kToolWmId = 1ull << 20;
 
 }  // namespace
 
+// The decoder's half of the docs/SYNTAX.md 2.3 handshake.  One definition,
+// exported so the C ABI and the conformance harness read the same number the
+// stream-header check does; kPhase1Tools in
+// tests/vk-decoder/conformance/test_vk_decoder_conformance.cpp must equal it.
+uint64_t tools_supported() { return kToolsSupported; }
+
 // ---------------------------------------------------------------- tables
 // [REF] tables.cpp build_default_set(): the table object carries every context
 // of the model the stream selected.  Contexts beyond its coded count are never
