@@ -429,6 +429,52 @@ typedef struct nxvc_config {
      * nxvc_encoder_destroy(); no thread is created per frame.  ref/README.md
      * "Encoder threading" has the schedule and what stays serial. */
     uint32_t threads;
+
+    /* --- the GPU encoder's mode decision (encoder only, no tool bit, no
+     * syntax change).  1 selects it; 0 is the reference's own.
+     *
+     * `vk/encoder` cannot reproduce the decision above.  That one prices every
+     * candidate with a REAL rate -- it quantizes the tile, drives the same
+     * LaneMachine the encoder will drive, and costs the histogram with
+     * `table_set_cost`, which is a sum of `std::log2` terms.  `log2` is not
+     * correctly rounded and is not the same function on a host libm and on a
+     * GPU, and every comparison downstream is a `double` derived from it, so a
+     * one-ULP difference flips a tile's mode and moves the whole stream.
+     *
+     * So the GPU path has its own decision, and this is it, in the reference,
+     * so that byte-identity stays the acceptance test rather than being traded
+     * for a tolerance. Every quantity in it is an i64 formed from sample
+     * differences, shifts and per-frame integer constants: no double, no
+     * logarithm, no trial encode, no table-set feedback. The two sides compute
+     * the same expression in the same order, which is what makes them equal by
+     * arithmetic rather than by two floating-point libraries agreeing.
+     *
+     * It is a WORSE encoder than the default on rate-distortion, on purpose:
+     * it exists to be reproducible at 90 Hz, not to be optimal.
+     * docs/adr/0028-gpu-inter-needs-an-integer-mode-decision.md has the
+     * reasoning and the measured cost. */
+    uint32_t inter_int_decision;
+
+    /* Knobs of that decision.  All Q8 where marked; 0 = the built-in default.
+     * They are separate fields rather than reuses of the ones above because
+     * the two decisions weigh different quantities and a value tuned for one
+     * means nothing in the other. */
+    uint32_t int_lambda_q8;     /* SAD-domain lambda, Q8 per unit of qstep;
+                                   cost = SAD + (lambda * bits >> 8).
+                                   0 = default 45.  The decision is nearly
+                                   insensitive to it -- 22 and 45 pick the
+                                   same modes on the ADR-0028 clip -- because
+                                   the SAD differences between candidates
+                                   dominate a two-byte vector.              */
+    uint32_t int_intra_mad_q8;  /* fall back to INTRA when the best coded
+                                   candidate's mean |residual| per luma
+                                   sample exceeds this, Q8.  0 = default
+                                   2304 (a MAD of 9).  This is the knob that
+                                   matters: it trades rate against drift, and
+                                   it was set by measurement.  At a MAD of 6
+                                   the clip reaches the reference decision's
+                                   36.62 dB for 30 % more bytes; at 24 it is
+                                   0.7 dB worse for 12 % fewer.             */
 } nxvc_config;
 
 /* One eye's view for one frame: the orientation the frame was rendered with

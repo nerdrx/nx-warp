@@ -832,6 +832,27 @@ static i64 satd_pred(const PlaneState &s) {
 // carry most of it -- so two tiles with the same SAD can differ by 9 dB, and
 // gating on SAD skipped tiles at 41 dB while their SAD said 0.2 LSB.  The
 // measurement is in ref/RESULTS-inter.md.
+// The skip's persistence factor in the integer decision, matching the
+// `kSkipPersist` of the reference's own decision.  A skipped tile's excess
+// error over the best coded candidate is charged this many times, because it
+// stays in the reference ring until the tile is next coded.
+static constexpr i64 kIntSkipPersist = 4;
+
+// The same quantity as sse_pred() below, in i64.  It is a separate function
+// rather than a cast of that one because it is the one the GPU's integer mode
+// decision compares against a threshold: a squared error of a 64x64 8-bit tile
+// is at most 4096 * 255^2 = 2.66e8, so the sum is exact in i64 and the two
+// sides agree by arithmetic.  Accumulating in `double` and rounding would be
+// exact too at 8 bits, but not at 10, and not for a chroma plane at 9.
+static i64 sse_pred_i64(const PlaneState &s) {
+    i64 sse = 0;
+    for (size_t i = 0; i < s.samples.size(); ++i) {
+        const i64 d = (i64)s.samples[i] - (i64)clamp_i32(s.wpred[i], 0, s.maxval);
+        sse += d * d;
+    }
+    return sse;
+}
+
 static double sse_pred(const PlaneState &s) {
     double sse = 0;
     for (size_t i = 0; i < s.samples.size(); ++i) {
@@ -1440,6 +1461,230 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         // mode decision then does with the tile.
         const unsigned warp_mad_q8 = (unsigned)std::min<i64>(
             0xFFFEll, (sad_pred(probe.pl[0]) * 256 + npix / 2) / npix);
+
+        // ------------------------------------------------------------------
+        // The GPU encoder's decision (nxvc_config::inter_int_decision).
+        //
+        // Everything below this block is `double`, and most of it is a rate
+        // that only exists after the candidate has been quantized and its
+        // symbol histogram priced with `std::log2`.  A GPU cannot reproduce
+        // that -- see ADR-0028 -- so when this flag is set the tile is decided
+        // here instead, entirely in i64, and the function returns before the
+        // floating-point path is reached.
+        //
+        // The rule, in full:
+        //
+        //   1. take WARP_SKIP when its squared error is already under the
+        //      quantiser's own noise floor, which is the reference's own
+        //      early-out written as an integer inequality;
+        //   2. otherwise search STATIC_MV and WARP_MV at integer pel, SAD
+        //      only, over a fixed candidate pattern;
+        //   3. score skip and the coded vectors by SAD + lambda * bits, with
+        //      lambda an integer multiple of the quantiser step;
+        //   4. fall back to INTRA only when NO predictor got close -- when the
+        //      best mean absolute residual per luma sample is over a
+        //      threshold.  Intra is not costed against the others, because
+        //      costing it needs the rate of a coded tile, which is the thing
+        //      that cannot be reproduced.  The rolling refresh above is what
+        //      guarantees a tile is coded from scratch often enough.
+        // ------------------------------------------------------------------
+        if (e->cfg.inter_int_decision) {
+            const i64 q = (i64)kQStep[qp];   // Q4 quantiser step
+            const i64 sse_skip_i = sse_pred_i64(probe.pl[0]);
+            const i64 sad_skip_i = sad_pred(probe.pl[0]);
+            // The skip candidate, built here rather than reused from below:
+            // this path returns before the floating-point one declares its own.
+            TileDecision skip_cand;
+            skip_cand.mode = NXVC_MODE_WARP_SKIP;
+            skip_cand.mv_x = ps.last_mv_x;
+            skip_cand.mv_y = ps.last_mv_y;
+            skip_cand.skipped = 1;
+            skip_cand.warp_mad_q8 = warp_mad_q8;
+
+            // skip_sse <= (q/16)^2/12 * (thr/256) * npix, cleared of divisions:
+            //   sse * 16*16 * 12 * 256 <= q*q * thr * npix
+            // 786432 = 256 * 12 * 256.  The left side is at most 2.66e8 *
+            // 786432 = 2.1e14 and the right at most 3200^2 * 65535 * 4096,
+            // both inside i64.
+            const i64 thr = e->cfg.skip_thresh ? (i64)e->cfg.skip_thresh : 256;
+            if (force_skip ||
+                (!skip_forbidden && !e->cfg.alpha &&
+                 sse_skip_i * 786432 <= q * q * thr * npix))
+                return skip_cand;
+
+            // The SAD-domain lambda, Q8.  `int_lambda_q8` is per unit of
+            // quantiser step and q is Q4, so lam_q8 = int_lambda_q8 * q / 16
+            // is Q8 in sample units.  A coded vector pays the tile header and
+            // its two vector bytes; a skip pays its bit in the row's bitmap.
+            const i64 lam_q8 =
+                ((i64)(e->cfg.int_lambda_q8 ? e->cfg.int_lambda_q8 : 45u) * q) /
+                16;
+            const i64 bits_vec = 8 * (i64)(kTileHeaderBytes + 2);
+
+            // The coded candidates are scored first, because the skip's own
+            // score depends on the best of them.
+            TileDecision bestd;
+            bestd.mode = NXVC_MODE_INTRA;
+            i64 best_cost = (i64)1 << 62;      // best CODED-vector cost
+            i64 best_coded_sad = (i64)1 << 62; // and its SAD
+            i64 best_pred_sad = e->cfg.alpha ? (i64)1 << 62 : sad_skip_i;
+
+            // The two coded-vector modes, in this order.  STATIC_MV first
+            // because it is the commoner win -- 7.0 % of tiles against
+            // WARP_MV's 3.1 % on the clip ADR-0028 measures -- and the order
+            // is part of the decision: an exact tie goes to the mode searched
+            // first, on both sides.
+            const int int_modes[2] = {NXVC_MODE_STATIC_MV, NXVC_MODE_WARP_MV};
+            for (int mi = 0; mi < 2; ++mi) {
+                const int mode = int_modes[mi];
+                const bool warped = mode_needs_warp(mode);
+                nw::Homography H =
+                    plane_homography(fp.warp[eye], (int)g.width, (int)g.height, 1);
+                nw::TileCorners c = nw::warp_tile_corners(
+                    H, col * 64, row * 64,
+                    warped ? nw::kModeWarp : nw::kModeStatic);
+                SearchCtx sc;
+                sc.src = probe.pl[0].samples.data();
+                sc.size = lsz;
+                sc.im = ref_image(refpic, g, 0, eye);
+                sc.ox = col * 64;
+                sc.oy = row * 64;
+                sc.d0x = (c.x[0] >> 6) - sc.ox;
+                sc.d0y = (c.y[0] >> 6) - sc.oy;
+
+                // A vector is s8 quarter samples, so an integer-pel candidate
+                // is |d| <= 31 samples.
+                int bx = 0, by = 0;
+                i64 bsad = -1;
+                auto try_int = [&](int dx, int dy, int step) {
+                    if (dx < -31 || dx > 31 || dy < -31 || dy > 31) return;
+                    const i64 v = sad_translate(sc, dx, dy, step);
+                    if (bsad < 0 || v < bsad) { bsad = v; bx = dx; by = dy; }
+                };
+                // Stage 1, the seeds: zero, this tile's own vector from the
+                // previous frame, and the vectors the left and above tiles of
+                // this frame already chose.  Same seeds as the reference's own
+                // search, and the same order, because the order decides ties.
+                try_int(0, 0, 2);
+                try_int(ps.last_mv_x >> 2, ps.last_mv_y >> 2, 2);
+                if (col > 0) {
+                    const TileDecision &n =
+                        e->dec[linear_tile(g, row, eye, col - 1)];
+                    if (n.mode != NXVC_MODE_STEREO)
+                        try_int(n.mv_x >> 2, n.mv_y >> 2, 2);
+                }
+                if (row > 0) {
+                    const TileDecision &n =
+                        e->dec[linear_tile(g, row - 1, eye, col)];
+                    if (n.mode != NXVC_MODE_STEREO)
+                        try_int(n.mv_x >> 2, n.mv_y >> 2, 2);
+                }
+                // Stage 2, one sweep at a vector step of 2 and a sample step
+                // of 2, then the eight integer neighbours of the winner at
+                // full density.  No hierarchy, no SATD, no quarter pel: those
+                // are the stages that cost the most and the ones a GPU would
+                // have to re-derive rather than translate.
+                const int cx0 = bx, cy0 = by;
+                for (int dy = -mv_range; dy <= mv_range; dy += 2)
+                    for (int dx = -mv_range; dx <= mv_range; dx += 2)
+                        try_int(cx0 + dx, cy0 + dy, 2);
+                const int cx = bx, cy = by;
+                for (int dy = cy - 1; dy <= cy + 1; ++dy)
+                    for (int dx = cx - 1; dx <= cx + 1; ++dx)
+                        try_int(dx, dy, 1);
+
+                // Stage 3, the quarter-pel refinement, scored on the TRUE
+                // predictor rather than on the translation the search used to
+                // rank candidates.  A quarter-pel vector is not a fractional
+                // computation -- the vector IS an integer in quarter samples
+                // and `predict_tile` is exact at every one of them -- so this
+                // stage costs the GPU eight more Pass W evaluations per mode
+                // and costs the byte-identity nothing.  It is worth those
+                // evaluations: without it the integer decision gives up
+                // 2.3 dB against the reference's, and the mode histogram is
+                // almost unchanged, which is what says the loss is in the
+                // vectors and not in the mode choice.
+                int qx = bx * 4, qy = by * 4;
+                i64 sad = (i64)1 << 62;
+                for (int dy = -1; dy <= 1; ++dy)
+                    for (int dx = -1; dx <= 1; ++dx) {
+                        const int mx = bx * 4 + dx, my = by * 4 + dy;
+                        if (mx < -128 || mx > 127 || my < -128 || my > 127)
+                            continue;
+                        predict_tile(probe, g, refpic, fp.warp[eye], eye, col,
+                                     row, mode, mx, my, 1);
+                        const i64 v = sad_pred(probe.pl[0]);
+                        // Strictly-less keeps the first winner in the fixed
+                        // scan order, so a tie is broken the same way on both
+                        // sides.
+                        if (v < sad) { sad = v; qx = mx; qy = my; }
+                    }
+                const i64 cost = sad + ((lam_q8 * bits_vec) >> 8);
+                if (sad < best_pred_sad) best_pred_sad = sad;
+                if (cost < best_cost) {
+                    best_cost = cost;
+                    best_coded_sad = sad;
+                    bestd = TileDecision{};
+                    bestd.mode = mode;
+                    bestd.mv_x = qx;
+                    bestd.mv_y = qy;
+                    bestd.ref_sel = want_d;
+                    bestd.skipped = 0;
+                }
+            }
+
+            // --- the skip, charged for the error it LEAVES IN THE REFERENCE.
+            //
+            // A coded tile's error is bounded by its quantiser and is
+            // corrected again next frame.  A skipped tile's error goes
+            // straight into the ring and stays there until the tile is next
+            // coded, so the part of it a coded tile would NOT have left behind
+            // is paid several times over.  The reference charges exactly this,
+            // in the SSE domain, as `kSkipPersist` on the EXCESS over the best
+            // coded candidate (codec_impl.inc, "A coded tile's error is
+            // bounded"); this is the same term in the SAD domain and in
+            // integers.
+            //
+            // Without it the decision is locally right and globally wrong:
+            // measured on the ADR-0028 clip it gave up 2.7 dB (36.62 -> 33.91)
+            // to save 15 % of the rate, because skip won on tiles whose error
+            // then sat in the reference for the rest of the sequence.  The
+            // excess form is what keeps the repeated-frame case free -- a
+            // skipped tile whose error merely repeats the error a coded tile
+            // would have made costs nothing extra.
+            if (!e->cfg.alpha && !skip_forbidden) {
+                const i64 excess = (best_coded_sad < ((i64)1 << 62) &&
+                                    sad_skip_i > best_coded_sad)
+                                       ? sad_skip_i - best_coded_sad
+                                       : 0;
+                const i64 cost_skip =
+                    sad_skip_i + (kIntSkipPersist - 1) * excess +
+                    ((lam_q8 * 1) >> 8);
+                if (cost_skip <= best_cost) {
+                    best_cost = cost_skip;
+                    bestd = skip_cand;
+                }
+            }
+
+            // The intra fallback.  `best_pred_sad * 256 / npix` is the mean
+            // absolute residual per luma sample in Q8; over the threshold, no
+            // predictor is close enough for a residual to be the cheap way to
+            // fix it.  Intra is never COSTED against the others -- costing it
+            // needs the rate of a coded tile, which is the quantity that
+            // cannot be reproduced on a GPU -- so it is a fallback and the
+            // rolling refresh is what bounds how stale a tile may get.
+            const i64 intra_mad =
+                e->cfg.int_intra_mad_q8 ? (i64)e->cfg.int_intra_mad_q8 : 2304;
+            if (bestd.mode == NXVC_MODE_INTRA ||
+                best_pred_sad * 256 > intra_mad * npix) {
+                TileDecision intra_d;
+                intra_d.warp_mad_q8 = warp_mad_q8;
+                return intra_d;
+            }
+            bestd.warp_mad_q8 = warp_mad_q8;
+            return bestd;
+        }
+
         // The gate is a SPEED early-out, not a decision: it takes the skip
         // without searching when the predictor's error is already below the
         // quantiser's own noise floor, which no coded residual could improve
