@@ -4,8 +4,16 @@
 # glslc's own -O is not used; the SPIR-V optimiser runs explicitly below so the
 # pass list is visible and one pass can be left out of it.
 
+# The workgroup shape, from the NXVW_PASSA_TPG cache variable; the same number
+# reaches the C++ as a compile definition, because nxs_tiles_per_group() has to
+# agree with the shader.  See syntax_constants.h.
+set(_defs "")
+if(DEFINED TPG)
+  set(_defs -DNXVW_PASSA_TILES_PER_GROUP=${TPG})
+endif()
+
 execute_process(
-  COMMAND ${GLSLC} --target-env=vulkan1.1 -O0 -I ${INCDIR}
+  COMMAND ${GLSLC} --target-env=vulkan1.1 -O0 -I ${INCDIR} ${_defs}
           -o ${OUT}.spv ${SRC}
   RESULT_VARIABLE _rc
   ERROR_VARIABLE  _err)

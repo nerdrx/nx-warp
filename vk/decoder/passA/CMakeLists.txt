@@ -15,6 +15,17 @@ set(NXVW_PASSA_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(NXVW_PASSA_GEN ${CMAKE_CURRENT_BINARY_DIR}/generated)
 file(MAKE_DIRECTORY ${NXVW_PASSA_GEN})
 
+# The workgroup shape, as one number: tiles per group, eight lanes each, so the
+# workgroup is eight times this many threads.  It reaches both the GLSL and the
+# C++ that has to agree with it (nxs_tiles_per_group), so it is a cache
+# variable rather than two independent -D flags.  See syntax_constants.h.
+set(NXVW_PASSA_TPG "16" CACHE STRING
+    "Pass A tiles per workgroup (workgroup = 8 * this threads)")
+# PARENT_SCOPE so vk/decoder's own library, which includes syntax_constants.h
+# for nxs_tiles_per_group(), compiles against the same number.
+set(NXVW_PASSA_TPG ${NXVW_PASSA_TPG} PARENT_SCOPE)
+add_compile_definitions(NXVW_PASSA_TILES_PER_GROUP=${NXVW_PASSA_TPG})
+
 # ------------------------------------------------------------------- shader
 set(NXVW_PASSA_SPV ${NXVW_PASSA_GEN}/rans_decode.spv.h)
 add_custom_command(
@@ -25,6 +36,7 @@ add_custom_command(
           -DOUT=${NXVW_PASSA_SPV}
           -DNAME=rans_decode
           -DINCDIR=${NXVW_PASSA_DIR}
+          -DTPG=${NXVW_PASSA_TPG}
           -P ${NXVW_PASSA_DIR}/cmake/gen_spv.cmake
   DEPENDS ${NXVW_PASSA_DIR}/rans_decode.comp
           ${NXVW_PASSA_DIR}/syntax_constants.h

@@ -47,7 +47,7 @@ layout(constant_id = 1) const uint TILES_PER_GROUP = 8; // kTilesPerGroup
 // [marked edit] 2: rANS lanes per tile, 1 << nsub_log2, 1..32.
 layout(constant_id = 2) const uint LANES = 8;           // kLanes
 
-layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+layout(local_size_x = kWorkgroupSize, local_size_y = 1, local_size_z = 1) in;
 
 // ---------------------------------------------------------------------------
 // Bindings
