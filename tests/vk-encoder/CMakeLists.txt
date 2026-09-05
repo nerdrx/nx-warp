@@ -94,6 +94,20 @@ if(TARGET nxvc-vkenc)
                            SKIP_REGULAR_EXPRESSION "SKIP:")
       list(APPEND NXENC_TESTS ${_name})
     endforeach()
+    # The same claim for the C ABI, which acid.cmake does not reach: the
+    # library's own configuration mapping is what an integrator links.
+    if(TARGET nxvc-vkenc-api)
+      add_test(NAME vk.encoder.acid.api COMMAND ${CMAKE_COMMAND}
+               -DAPIENC=$<TARGET_FILE:nxvc-vkenc-api>
+               -DVKENC=$<TARGET_FILE:nxvc-vkenc>
+               -DNXVENC=$<TARGET_FILE:nxv-enc>
+               -DNXVDEC=$<TARGET_FILE:nxv-dec>
+               -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/acid-api
+               -P ${CMAKE_CURRENT_SOURCE_DIR}/api_acid.cmake)
+      set_tests_properties(vk.encoder.acid.api PROPERTIES
+                           SKIP_REGULAR_EXPRESSION "SKIP:")
+      list(APPEND NXENC_TESTS vk.encoder.acid.api)
+    endif()
   else()
     message(STATUS "tests/vk-encoder: nxv-enc/nxv-dec not built, no acid test")
   endif()

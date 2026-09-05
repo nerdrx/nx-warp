@@ -214,11 +214,19 @@ endif()
 # Same ref/src/tables.cpp dependency and the same guard as nxvc-vkenc: without
 # the reference's trained probability tables there is no encoder to install.
 if(EXISTS ${NXENC_REF_TABLES})
+  # The CPU model sources are compiled IN rather than linked: nxenc_forward_cpu
+  # is an in-tree convenience target that is not installed, and a static
+  # library that names it in its interface is one a consumer cannot link
+  # (`cannot find -lnxenc_forward_cpu`).  An installed archive has to be
+  # self-contained.
   add_library(nxvc_vk_encoder STATIC
     api/nxvc_vk_enc.cpp
     tools/nxe_host.cpp
     tools/nxe_vk.cpp
     tools/vk_min.cpp
+    forward/nxe_tables.c
+    forward/forward_cpu.c
+    forward/rans_cpu.c
     ${NXENC_REF_TABLES}
     ${NXENC_SPV_HEADERS})
   add_dependencies(nxvc_vk_encoder nxenc_shaders)
@@ -231,7 +239,6 @@ if(EXISTS ${NXENC_REF_TABLES})
       ${CMAKE_CURRENT_SOURCE_DIR}/tools
       ${CMAKE_CURRENT_SOURCE_DIR}/stats
       ${CMAKE_CURRENT_SOURCE_DIR}/../../ref/src)
-  target_link_libraries(nxvc_vk_encoder PRIVATE nxenc_forward_cpu)
   set_target_properties(nxvc_vk_encoder PROPERTIES
     CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON POSITION_INDEPENDENT_CODE ON)
   if(Vulkan_FOUND)

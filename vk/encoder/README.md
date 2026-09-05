@@ -93,6 +93,40 @@ integers. Multiplying the comparison by 256 and factoring the difference of
 squares gives `-d * step * (32a - (2m + d)*step)`, formed as a 64-bit product
 with `imulExtended`; the derivation is at `nxe_hide_sign_unit`.
 
+## The library
+
+`nxvc_vk_encoder` is the installable form: the C ABI in
+`include/nxvc/nxvc_vk_enc.h`, built from the same sources `nxvc-vkenc` drives,
+so the byte-identity the acid test pins is the byte-identity the library ships.
+It is the encoder half of the pair `nxvc_vk_decoder` completes and takes the
+same five adopted handles, which is what lets it run on a compositor's own
+`VkDevice` — WiVRn's server selects it with the encoder option
+`"backend": "vk"`.
+
+Everything the ABI does not expose is a tool that is off. The configuration is
+*fixed* at the acid test's flag set rather than defaulted to it: there is no
+way through the ABI to ask for directional intra, custom tables, or any
+bitstream minor-6 tool, and inter, alpha, 4:4:4 and 10-bit are refused at
+`create()` rather than accepted and quietly coded as something else.
+
+`nxvc_vke_tile` carries each tile's byte **offset** as well as its length,
+which the reference codec's C ABI cannot report. E5 computes the layout, so
+this is a read of it; a transport that has it can lose one tile per lost
+datagram instead of a whole frame.
+
+Two seams were found by joining E0 to E3 for the first time and are worth
+knowing about:
+
+* **`NXE_TS_F_CHROMA_RAW`.** E0's YCbCr passthrough zero-centres chroma, as
+  the paper asks, and `nxvc_ref` with `NXVC_CT_NONE` codes it unsigned, as
+  `nxvc_image` delivers it. The two are not interchangeable and the difference
+  cannot be split, so the flag selects the reference's convention for a stream
+  that has to match `nxv-enc`.
+* **Two `nxe_frame_params`.** `stats/tile_stats.h` and `forward/nxe_enc.h`
+  each define a struct with that tag and different members. They are never
+  included together, and the library keeps E0 in its own translation unit for
+  exactly that reason.
+
 Tests live in `tests/vk-encoder/` and are named `vk.encoder.*`. Anything
 needing a GPU exits 77 and is reported as a ctest skip when no ICD, no device,
 or no device meeting the kernels' requirements is present.
