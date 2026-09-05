@@ -49,6 +49,13 @@ static void usage() {
         "  --tskip off|on       transform skip (default off)\n"
         "  --ctx v1|v2|v3       12, 16 or 27 entropy contexts (tools 21,\n"
         "                       25); default v2, and v3 implies v2\n"
+        "  --custom-tables      train the eight probability table sets on\n"
+        "                       the frame and transmit those that pay (6)\n"
+        "  --tab v1|v2          transmitted-table coding: flat 5-bit rows\n"
+        "                       or the compact per-row-flag form (26);\n"
+        "                       v2 needs --custom-tables\n"
+        "  --table-iters N      Lloyd iterations refining the trained\n"
+        "                       sets (default 3, 0 = the v1.4 encoder)\n"
         "  --no-sign-hide       code every sign (default: hide one per unit)\n"
         "  --intra-dir on|off|layer   directional intra, modes from the host\n"
         "  --dir-mode-seed N    fill the per-block modes from a PRNG (test aid)\n"
@@ -100,6 +107,13 @@ int main(int argc, char **argv) {
             cfg.ctx_v3 = std::strcmp(v, "v3") == 0;
             cfg.ctx_v2 = cfg.ctx_v3 || std::strcmp(v, "v2") == 0;
         }
+        else if (a == "--custom-tables") cfg.custom_tables = true;
+        else if (a == "--no-custom-tables") cfg.custom_tables = false;
+        else if (a == "--tab" && i + 1 < argc) {
+            const char *v = argv[++i];
+            cfg.tab_v2 = std::strcmp(v, "v2") == 0;
+        } else if (a == "--table-iters" && i + 1 < argc)
+            cfg.table_iters = std::atoi(argv[++i]);
         else if (a == "--no-sign-hide") cfg.sign_hide = false;
         else if (a == "--sign-hide") cfg.sign_hide = true;
         else if (a == "--intra-dir") {

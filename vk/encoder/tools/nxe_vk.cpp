@@ -40,7 +40,7 @@ struct VkEncoder::Impl {
     uint32_t ntiles = 0;
     bool ok = false;
 
-    vkmin::Buffer b_params, b_jobs, b_src, b_coef, b_modes, b_tabs;
+    vkmin::Buffer b_params, b_jobs, b_src, b_coef, b_modes, b_tabs, b_tabbytes;
     vkmin::Buffer b_slots, b_sizes, b_prefix, b_blocks, b_total;
     vkmin::Buffer b_ops, b_slotops, b_out, b_pose;
     vkmin::Buffer b_stage_src, b_stage_coef, b_stage_small;
@@ -149,7 +149,7 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
     d.src_bytes = f.src_packed.size() * sizeof(uint16_t);
     d.coef_bytes = (size_t)d.ntiles * NXE_TILE_COEF_WORDS * 4;
     /* The frame can never exceed its tile slots plus its headers. */
-    d.out_bytes = (size_t)NXE_FRAME_HEADER_BYTES +
+    d.out_bytes = (size_t)NXE_FRAME_HEADER_BYTES + NXE_TABLE_AREA_MAX +
                   (size_t)NXE_ROW_HEADER_BYTES * f.fp.tiles_y * f.fp.eyes +
                   (size_t)d.ntiles * NXE_TILE_SLOT_BYTES;
 
@@ -173,6 +173,7 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
         {&d.b_ops,     slots * 8 * NXE_LANE_OPS_CAP * 4, false},
         {&d.b_slotops, slots * 8 * NXE_TILE_UNIT_SLOTS * 4, false},
         {&d.b_pose,    32, false},
+        {&d.b_tabbytes, NXE_TABLE_AREA_MAX, false},
         {&d.b_out,     d.out_bytes, true},
         {&d.b_stage_src, d.src_bytes, true},
         {&d.b_stage_coef, d.coef_bytes, true},
@@ -193,7 +194,7 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
     const std::vector<VkDescriptorType> sb5(5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
     const std::vector<VkDescriptorType> sb9(9, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
     const std::vector<VkDescriptorType> sb4(4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
-    const std::vector<VkDescriptorType> sb7(7, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    const std::vector<VkDescriptorType> sb8(8, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 
     /* One module for both intra paths: the running reconstruction's shared
      * array is sized by the specialization constant, so a pipeline built with
@@ -204,10 +205,10 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
     if (!d.dev.create_pipeline(E4_rans_encode_spv, sizeof E4_rans_encode_spv,
                                sb9, 0, d.p_e4, err, &si))
         return false;
-    if (!d.dev.create_pipeline(E5_packetize_spv, sizeof E5_packetize_spv, sb7, 0,
+    if (!d.dev.create_pipeline(E5_packetize_spv, sizeof E5_packetize_spv, sb8, 0,
                                d.p_e5, err, &si))
         return false;
-    if (!d.dev.create_pipeline(E5_zero_spv, sizeof E5_zero_spv, sb7, 0, d.p_e5z,
+    if (!d.dev.create_pipeline(E5_zero_spv, sizeof E5_zero_spv, sb8, 0, d.p_e5z,
                                err, &si))
         return false;
     const uint32_t *e2[3] = {E2_prefix_p0_spv, E2_prefix_p1_spv, E2_prefix_p2_spv};
@@ -237,7 +238,7 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
     const std::vector<VkBuffer> e5bufs = {d.b_params.buf, d.b_jobs.buf,
                                          d.b_slots.buf,  d.b_prefix.buf,
                                          d.b_total.buf,  d.b_out.buf,
-                                         d.b_pose.buf};
+                                         d.b_pose.buf,   d.b_tabbytes.buf};
     write_set(h, d.s_e5, e5bufs);
     write_set(h, d.s_e5z, e5bufs);
 
@@ -522,6 +523,14 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
      * it compares them against the CPU model. */
     choose_table_sets(f, check ? f.coef.data()
                                : (const int16_t *)d.b_stage_coef.map);
+    /* Custom tables (tool bit 6) are trained on the histogram the choice above
+     * has just built, so they cost no second walk of the coefficients.  They
+     * rewrite f.tabs, f.fp.tables_present and f.fp.table_bytes, which is why
+     * the parameter record and the tables are uploaded again below rather than
+     * only before E3. */
+    train_table_sets(f);
+    fp.tables_present = f.fp.tables_present;
+    fp.table_bytes = f.fp.table_bytes;
     auto t3 = clk::now();
 
     /* ---- the jobs go back with their table sets, then E4, E2 and E5. */
@@ -531,6 +540,19 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
                     f.jobs.size() * sizeof(nxe_tile_job));
         VkBufferCopy cj{0, 0, f.jobs.size() * sizeof(nxe_tile_job)};
         vkCmdCopyBuffer(cb, d.b_stage_small.buf, d.b_jobs.buf, 1, &cj);
+        if (f.custom_tables) {
+            copy_up(cb, d.b_stage_small, d.b_params, &fp, sizeof fp, 1 << 18);
+            copy_up(cb, d.b_stage_small, d.b_tabs, &f.tabs, sizeof f.tabs,
+                    (1 << 18) + 4096);
+            /* The serialized table area E5 lays down between the frame header
+             * and the first row header.  Whole buffer every frame: it is at
+             * most NXE_TABLE_AREA_MAX bytes and a partial copy would leave the
+             * previous frame's tail behind a shorter one. */
+            std::vector<uint8_t> area(NXE_TABLE_AREA_MAX, 0);
+            std::memcpy(area.data(), f.table_area.data(), f.table_area.size());
+            copy_up(cb, d.b_stage_small, d.b_tabbytes, area.data(), area.size(),
+                    (1 << 20) - 8192);
+        }
         d.dev.barrier_transfer_to_compute(cb);
         record_passes(d, cb, false, false);
         VkBufferCopy cz{0, 1 << 19, (size_t)d.ntiles * 4};

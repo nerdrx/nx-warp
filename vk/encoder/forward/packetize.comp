@@ -35,6 +35,11 @@ layout(std430, binding = 4) readonly buffer TotalBuf  { uint v[]; } tot;
 layout(std430, binding = 5)          buffer OutBuf    { uint v[]; } outb;
 // The frame's pose blob, 26 bytes; the compositor's, opaque to the codec.
 layout(std430, binding = 6) readonly buffer PoseBuf   { uint v[]; } pose;
+// The transmitted probability tables (SYNTAX.md 9.4), one byte per byte of
+// the frame's table area.  Empty unless CUSTOM_TABLES is on; the host
+// serialises it next to the table training, which is the same host work the
+// per-tile table-set choice already is.
+layout(std430, binding = 7) readonly buffer TabBytes  { uint v[]; } tabb;
 
 void put_byte(uint off, uint val) {
     uint w = off >> 2;
@@ -92,7 +97,7 @@ uint tile_byte(TileSlot s, uint i) {
 // shader that reads E2's total rather than a vkCmdFillBuffer.
 void main() {
     const uint rowgroups = fp.tiles_y * fp.eyes;
-    const uint total = NXE_FRAME_HEADER_BYTES +
+    const uint total = NXE_FRAME_HEADER_BYTES + fp.table_bytes +
                        NXE_ROW_HEADER_BYTES * rowgroups + tot.v[0];
     const uint nwords = (total + 3u) >> 2;
     const uint stride = gl_NumWorkGroups.x * uint(NXE_E5_WG);
@@ -105,7 +110,7 @@ void main() {
     const uint t = gl_WorkGroupID.x;
     const uint lid = gl_LocalInvocationID.x;
     const uint rowgroups = fp.tiles_y * fp.eyes;
-    const uint total = NXE_FRAME_HEADER_BYTES +
+    const uint total = NXE_FRAME_HEADER_BYTES + fp.table_bytes +
                        NXE_ROW_HEADER_BYTES * rowgroups + tot.v[0];
 
     // ---- the frame header.  Offset 0, so every one of its ten words is wholly
@@ -134,11 +139,21 @@ void main() {
         put_word(9u, total);
     }
 
+    // ---- the transmitted table area, immediately after the frame header.
+    // Word-aligned at neither end in general, so it goes in through put_byte
+    // like the pose blob does; it is at most NXE_TABLE_AREA_MAX bytes and no
+    // other lane touches the region.
+    if (t == 0u) {
+        for (uint k = lid; k < fp.table_bytes; k += uint(NXE_E5_WG))
+            put_byte(NXE_FRAME_HEADER_BYTES + k,
+                     (tabb.v[k >> 2] >> ((k & 3u) * 8u)) & 0xffu);
+    }
+
     // ---- the tile-row headers, one per row group.
     if (t < rowgroups && lid == 0u) {
         uint g = t;
-        uint off = NXE_FRAME_HEADER_BYTES + NXE_ROW_HEADER_BYTES * g +
-                   prefix.v[g * fp.tiles_x];
+        uint off = NXE_FRAME_HEADER_BYTES + fp.table_bytes +
+                   NXE_ROW_HEADER_BYTES * g + prefix.v[g * fp.tiles_x];
         uint row = g / fp.eyes;
         put_byte(off + 0u, fp.frame_number);
         put_byte(off + 1u, fp.frame_number >> 8);
@@ -152,7 +167,7 @@ void main() {
     // ---- the tile: its 8-byte header and payload, contiguous in the slot.
     const uint nbytes = jobs[t].tile_bytes;
     const uint rowgroup = t / fp.tiles_x;
-    const uint d0 = NXE_FRAME_HEADER_BYTES +
+    const uint d0 = NXE_FRAME_HEADER_BYTES + fp.table_bytes +
                     NXE_ROW_HEADER_BYTES * (rowgroup + 1u) + prefix.v[t];
     const uint d1 = d0 + nbytes;
     const TileSlot ts = tile_slot(t);

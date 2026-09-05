@@ -74,6 +74,8 @@ foreach(line ${lines})
   list(GET f 13 dir)
   list(GET f 15 seed)
   list(GET f 16 frames)
+  list(GET f 17 ct)         # tool bit 6, CUSTOM_TABLES
+  list(GET f 18 tab)        # tool bit 26, TAB_V2 (needs bit 6)
 
   # The reference encoder searches its own per-block intra modes; this pipeline
   # takes them as an input.  A directional configuration therefore has no
@@ -94,9 +96,22 @@ foreach(line ${lines})
   if(ts STREQUAL "1")
     set(tsk on)
   endif()
+  # Custom tables and the compact table set.  Both encoders take the same two
+  # flags and the same default table_iters, so a configuration that trains
+  # tables is compared byte for byte like any other -- the training is host
+  # work in both, over the same histogram, in the same double precision.
+  set(cts --no-custom-tables)
+  if(ct STREQUAL "1")
+    set(cts --custom-tables)
+  endif()
+  set(tabf --tab v1)
+  if(tab STREQUAL "2")
+    set(tabf --tab v2)
+  endif()
   set(common --in ${path} --w ${w} --h ${h} --pix ${pix} --qp ${qp}
              --frames ${frames} --nsub ${ns} --matrix ${mx} --wm ${wm}
              --tskip ${tsk} --chroma-qp-off ${cq} --ctx ${ctx} ${sh}
+             ${cts} ${tabf}
              --eyes ${eyes} --intra-dir off --quiet)
 
   # Every bitstream-minor-6 tool, named and turned off explicitly.
@@ -115,10 +130,10 @@ foreach(line ${lines})
   #
   # The GPU pipeline implements none of the six, so this is the flag set that
   # makes byte-identity a meaningful claim rather than a coincidence.
-  set(minor6_off --split4x4 off --cfl off --tab v1 --xform 8 --entropy rans)
+  set(minor6_off --split4x4 off --cfl off --xform 8 --entropy rans)
 
   execute_process(COMMAND ${NXVENC} ${common} --out ${WORKDIR}/ref.nxv
-                          --no-rdo --no-custom-tables ${minor6_off}
+                          --no-rdo ${minor6_off}
                   RESULT_VARIABLE rc OUTPUT_QUIET)
   if(NOT rc EQUAL 0)
     message(FATAL_ERROR "${path}: nxv-enc failed (${rc})")

@@ -381,6 +381,7 @@ int main(int argc, char **argv) {
          * transport would rely on, so check it here rather than trust it. */
         uint32_t tc = 0;
         const nxvc_vke_tile *tiles = nxvc_vk_encoder_tiles(enc, &tc);
+        uint32_t prev_end = 0;
         for (uint32_t t = 0; t < tc; ++t) {
             if (size_t(tiles[t].offset) + tiles[t].length > len) {
                 std::fprintf(stderr,
@@ -388,6 +389,24 @@ int main(int argc, char **argv) {
                              t, tiles[t].offset, tiles[t].length, len);
                 rc = 1;
             }
+            /* Ascending and non-overlapping, and the last one ends exactly at
+             * the frame end.  A bounds check alone would pass an offset that
+             * ignored a whole region of the frame -- which is precisely what a
+             * transmitted table area (SYNTAX.md 9.4) inserts between the frame
+             * header and the first tile row. */
+            if (tiles[t].offset < prev_end) {
+                std::fprintf(stderr,
+                             "tile %u starts at %u, before the previous tile "
+                             "ended at %u\n", t, tiles[t].offset, prev_end);
+                rc = 1;
+            }
+            prev_end = tiles[t].offset + tiles[t].length;
+        }
+        if (tc && prev_end != len) {
+            std::fprintf(stderr,
+                         "the last tile ends at %u, not at the frame end %zu\n",
+                         prev_end, len);
+            rc = 1;
         }
         ++n;
     }

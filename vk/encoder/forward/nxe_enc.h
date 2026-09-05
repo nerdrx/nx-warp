@@ -20,10 +20,11 @@
  * weighting matrix and a per-tile wm_id, the DC-plane intra predictor,
  * directional intra (tool bit 17) behind a specialization constant, and rANS
  * with 8 lanes, 10-bit probabilities and static per-frame tables over 12, 16
- * or 27 contexts (tool bit 25, CTX_V3), with sign data hiding.
+ * or 27 contexts (tool bit 25, CTX_V3), with sign data hiding, over the
+ * built-in tables or a set trained on the frame (tool bits 6 and 26).
  *
- * Of the minor-6 tools, CTX_V3 is implemented here.  XFORM_4X4_SPLIT (19),
- * INTRA_CFL (24), TAB_V2 (26), XFORM_LARGE (27) and ENTROPY_LITE (30) are
+ * Of the minor-6 tools, CTX_V3 and TAB_V2 are implemented here.
+ * XFORM_4X4_SPLIT (19), INTRA_CFL (24), XFORM_LARGE (27) and ENTROPY_LITE (30) are
  * not; vk/encoder/README.md says what each would take and why they are in the
  * order they are.
  *
@@ -238,6 +239,12 @@ extern "C" {
 /* Header sizes, ref/src/common.h. */
 #define NXE_STREAM_HEADER_BYTES 64
 #define NXE_FRAME_HEADER_BYTES  40
+/* The transmitted probability tables (SYNTAX.md 9.4) sit between the frame
+ * header and the first tile-row header.  The largest area the syntax can
+ * produce is eight sets of the 27-context model, each row a 1-bit `row_coded`
+ * flag (TAB_V2) plus sixteen 5-bit deltas: 8 * 27 * 81 bits = 2187 bytes.
+ * Rounded up to a word so E5 can copy it as words. */
+#define NXE_TABLE_AREA_MAX      2188
 #define NXE_ROW_HEADER_BYTES    12
 #define NXE_TILE_HEADER_BYTES   8
 
@@ -281,7 +288,10 @@ typedef struct nxe_frame_params {
      * ::dc_offset).  Carried as a flag rather than as the two derived values
      * so the shader derives them the same way the reference does. */
     uint32_t ycocgr;
-    uint32_t pad1;
+    /* Bytes of transmitted probability table between the frame header and the
+     * first row header (SYNTAX.md 9.4).  0 when `tables_present` is 0, which
+     * is every stream without CUSTOM_TABLES. */
+    uint32_t table_bytes;
 
     /* Frame weighting matrices, Q4, raster order in the 8x8 block.  wm_id 0
      * on a tile selects these; 1..3 select a built-in pair (kWeight). */

@@ -20,8 +20,8 @@ and the degradation ladder), §5.2 (perceptual terms), §1.3 (colour), §3.7
 | **E1** `stats` | one group per tile, 256 lanes | per-tile mean luma, moments, sum of squared deviations, structure tensor, warped SAD at a per-tile offset | **done** |
 | **E2** `prefix` | workgroup scan + single-block second level | exclusive prefix sum over per-tile byte sizes, up to 8192 tiles | **done** |
 | **E3** `forward` | one group per tile, 64 lanes | DC-plane intra prediction, residual, forward 8×8 DCT through LDS, dead-zone quantisation with the weighting matrix, sign hiding, coefficients in coding-unit order. Directional intra behind a specialization constant | **done** |
-| **E4** `rans_encode` | 8 lanes per tile, 8 tiles per group, persistent | rANS backwards over the operation list into a bounded per-tile slot, over 12, 16 or 27 contexts; writes the tile header and the byte count E2 scans | **done** |
-| **E5** `packetize` | one group per tile | compaction into tile-row segments, tile-row and frame headers, straight into the host-cached output buffer | **done** |
+| **E4** `rans_encode` | 8 lanes per tile, 8 tiles per group, persistent | rANS backwards over the operation list into a bounded per-tile slot, over 12, 16 or 27 contexts, built-in or transmitted tables; writes the tile header and the byte count E2 scans | **done** |
+| **E5** `packetize` | one group per tile | compaction into tile-row segments, tile-row and frame headers, the transmitted table area, straight into the host-cached output buffer | **done** |
 | E3b `reconstruct` | one group per tile | the decoder's Pass B, *byte-identical SPIR-V*, writes the new reference | not started |
 
 The pass letters follow the paper's table with one renaming: the paper calls
@@ -105,9 +105,18 @@ same five adopted handles, which is what lets it run on a compositor's own
 
 Everything the ABI does not expose is a tool that is off. The configuration is
 *fixed* at the acid test's flag set rather than defaulted to it: there is no
-way through the ABI to ask for directional intra, custom tables, or any
-bitstream minor-6 tool, and inter, alpha, 4:4:4 and 10-bit are refused at
-`create()` rather than accepted and quietly coded as something else.
+way through the ABI to ask for directional intra or a transform tool, and
+inter, alpha, 4:4:4 and 10-bit are refused at `create()` rather than accepted
+and quietly coded as something else.
+
+What the fixed set now contains is every **entropy-side** tool: `CTX_V3` (25),
+`CUSTOM_TABLES` (6) and `TAB_V2` (26) alongside `CTX_V2` (21) and `SIGN_HIDE`
+(22). All five are lossless -- they change how the coefficients are coded and
+never which coefficients there are -- so turning them on moves bytes and not
+pixels, and `vk.encoder.acid.api` pins the whole set against `nxv-enc` at the
+matching flags. They are worth **9.5 % BD-rate** on the measurement below,
+which at the headset's roughly one millisecond of decode per kilobyte is
+frame rate.
 
 `nxvc_vke_tile` carries each tile's byte **offset** as well as its length,
 which the reference codec's C ABI cannot report. E5 computes the layout, so
@@ -273,8 +282,9 @@ why the list is here rather than in a commit message.
 
 | bit | tool | encoder | why |
 |---|---|---|---|
+| 6 | `CUSTOM_TABLES` | **done** | `--custom-tables`; not a minor-6 bit, listed here because 26 needs it |
 | 25 | `CTX_V3` | **done** | `--ctx v3`; byte-identical to the reference on every non-directional configuration |
-| 26 | `TAB_V2` | **nothing to do** | gated on `custom_tables`, which this pipeline refuses |
+| 26 | `TAB_V2` | **done** | `--custom-tables --tab v2`; byte-identical to the reference |
 | 19 | `XFORM_4X4_SPLIT` | not started | needs directional intra first; see below |
 | 24 | `INTRA_CFL` | not started | needs directional intra first; see below |
 | 27 | `XFORM_LARGE` | not started | follow-up |
@@ -334,10 +344,43 @@ cannot be covered by byte-identity until the mode search itself is either
 reproduced on the GPU or exported from the reference. That is a decision about
 the harness, not about E3.
 
-**`TAB_V2` has nothing to implement.** `fp.tab_v2 = cfg.custom_tables &&
-cfg.tab_v2`, and transmitted probability tables are on this pipeline's refuse
-list. The bit cannot be set on a stream this encoder can produce, so the work
-is a line in the acid test naming `--tab v1`, which is now there.
+**`TAB_V2` and `CUSTOM_TABLES` are done, and they are where the bytes were.**
+Both are entropy-side only -- the coefficients E3 produces are the same either
+way, and the measured PSNR is identical to four decimal places at every QP --
+so they compose with everything here and, like `CTX_V3`, a stream carrying
+them is not directional and the acid test can compare it against `nxv-enc`
+byte for byte.
+
+The training is host work, and it costs no second look at the frame. The
+per-tile table-set choice already builds each tile's full (context, symbol)
+histogram -- that is what `select_set` minimises over -- so `train_table_sets`
+keeps those histograms, pools them by the set each tile chose, quantises each
+row to the 5-bit log-domain delta alphabet, and drops the rows that do not beat
+their built-in default by more than the eighty bits they would cost. The
+reference's Lloyd loop then reassigns every tile against the trained tables and
+retrains, three times.
+
+Two things about that are worth knowing.
+
+* **The tables must be reset to the built-ins at the top of every frame.**
+  `f.tabs` holds the previous frame's trained sets, and the reference's
+  training pass scores against `deftabs`. Without the reset, frame 1 of a
+  sequence is byte-identical and frame 2 is not -- the first assignment of
+  every later frame is made against tables the frame does not carry, and the
+  training then pools the wrong tiles. It is a one-frame test that cannot see
+  it, which is why `ct-multi` in the selftest table is three frames.
+* **The decision is doubles, and it stays doubles.** A row is kept or dropped
+  by comparing two `std::log2` sums against 80 bits, so a different summation
+  order transmits a different set of rows. `log2_prob` memoises
+  `log2(v / 1024)` over the 1024 values a probability can take -- the same
+  double for the same input, so it is memoisation and not an approximation,
+  and it took libm back out of the largest cost of the stage.
+
+The stream side is three fields and one binding: `table_bytes` in
+`nxe_frame_params` (it took `pad1`'s word, so the record did not change size),
+every E5 offset shifted by it, and an eighth binding on E5 carrying the
+serialized area, which the shader lays down between the frame header and the
+first tile-row header.
 
 `XFORM_LARGE` (bit 27) is the largest single win in the tournament and is the
 next real piece of work here. It is a second E3 pipeline from the same source
@@ -395,7 +438,7 @@ about this directory:
 ## What the coding passes do not implement
 
 What the coding passes do **not** implement, and refuse rather than ignore:
-inter prediction, resolution levels, alpha, custom probability tables, and
+inter prediction, resolution levels, alpha, and
 more than eight rANS lanes on the GPU path (`--nsub 4` and `5` are CPU-only;
 paper 6.3 fixes v1 at eight). The RD trellis is deliberately absent: it changes
 which levels are coded, never how they are decoded, and it is a `double`
@@ -426,6 +469,58 @@ Milliseconds, median of 50, timestamp queries around each dispatch:
 | 32 | v3 | 0.476 | 0.532 | 0.009 | 0.043 | **1.060** | 0.35 |
 | 45 | v2 | 0.511 | 0.318 | 0.011 | 0.024 | **0.865** | 0.13 |
 | 45 | v3 | 0.605 | 0.327 | 0.012 | 0.024 | **0.968** | 0.13 |
+
+### The entropy tools, measured
+
+Eight frames of a 1088x1088 4:2:0 band-limited synthetic sequence
+(`gen_synthetic.py --motion mixed --eye-width 1088 --eye-height 1088 --seed 7`),
+mono, `--no-rdo --intra-dir off --wm 0 --matrix 1`, RX 7900 XTX on RADV, every
+stream byte-identical to `nxv-enc` at the matching flags and decoded back
+through both `nxv-dec` and `nxvc-vkdec`:
+
+| QP 30 configuration | B/frame | vs baseline | PSNR-Y |
+|---|---|---|---|
+| `--ctx v2` (the tools-off baseline) | 41016 | -- | 38.4292 dB |
+| `--ctx v3` | 40919 | -0.24 % | 38.4292 dB |
+| `--ctx v3 --custom-tables --tab v1` | 37593 | -8.35 % | 38.4292 dB |
+| `--ctx v3 --custom-tables --tab v2` | **37163** | **-9.39 %** | 38.4292 dB |
+
+**The PSNR column is the point of the table, not a footnote.** It is identical
+to four decimal places across all four rows, at QP 24, 30 and 36 alike, because
+entropy coding is lossless: E3's coefficients do not know which tables E4 will
+use. A row here that moved would mean a bug, not a trade.
+
+Over five quantisers (18, 24, 30, 36, 42) the full set against the baseline is
+**-9.53 % BD-rate**, and the per-point saving is between 8.4 % and 9.9 %, so
+the gain is flat in rate rather than concentrated at one end.
+
+`CTX_V3` on its own is worth almost nothing here and is *negative* at QP 24
+(+0.80 %). That is the same finding the bpp column below records and for the
+same reason: the built-in v3 tables are trained on real content and synthetic
+material is close to their worst case. It stops mattering the moment custom
+tables are on, because then the frame trains its own -- and v3 with trained
+tables beats v2 with trained tables by 1.6 %, which is the tool doing what it
+was measured to do.
+
+Nothing on the GPU changed, which is what the shape of the work predicts:
+
+| QP 30, 289 tiles | E3 | E4 | E2 | E5 | total |
+|---|---|---|---|---|---|
+| baseline `--ctx v2` | 0.186 | 0.479 | 0.016 | 0.012 | **0.693 ms** |
+| `--ctx v3 --custom-tables --tab v2` | 0.188 | 0.477 | 0.009 | 0.010 | **0.684 ms** |
+
+The cost is host-side, in the table stage that was already there for the
+per-tile choice: **0.42 ms to 1.27 ms** per frame at 289 tiles, of which the
+three Lloyd iterations are 0.74 ms.
+
+Those three iterations are the part worth arguing about. They are worth 240
+bytes a frame (37403 at zero iterations, 37163 at three) -- about a quarter of
+a millisecond of headset decode for three quarters of a millisecond of
+encoder host time, which does not pay on its own. They are here because
+`nxv-enc`'s default is three and byte-identity is the acceptance test; the
+lever is `--table-iters`, and an integrator who wants the host time back
+should take it there rather than by turning the tables off, which costs
+thirty times as much.
 
 **`CTX_V3` is free.** It costs E4 between nothing and 2.5 %, which is what the
 shape of the tool predicts: it adds eleven rows to a table that was already
