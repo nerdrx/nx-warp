@@ -36,6 +36,8 @@ extern "C" {
 
 namespace nxe {
 
+static double log2_prob(uint32_t v);
+
 /* ------------------------------------------------------------------ setup */
 void setup(const Config &cfg, Frame &f) {
     nxe_frame_params &fp = f.fp;
@@ -56,7 +58,13 @@ void setup(const Config &cfg, Frame &f) {
     fp.dir_layer = cfg.dir_layer ? 1u : 0u;
     fp.nsub_log2 = (uint32_t)cfg.nsub_log2;
     fp.quant_matrix = (uint32_t)cfg.matrix;
-    fp.tables_present = 0;                 /* static per-frame tables */
+    fp.tables_present = 0;                 /* set per frame by the training */
+    fp.table_bytes = 0;
+    f.custom_tables = cfg.custom_tables;
+    /* TAB_V2 requires CUSTOM_TABLES (SYNTAX.md 9.4.1), exactly as ref's
+     * `fp.tab_v2 = cfg.custom_tables && cfg.tab_v2`. */
+    f.tab_v2 = cfg.custom_tables && cfg.tab_v2;
+    f.table_iters = cfg.custom_tables ? cfg.table_iters : 0;
     fp.frame_flags = 1;                    /* bit 0: tile-map reset */
     if (cfg.intra_dir && cfg.dir_layer) fp.frame_flags |= 4;
     fp.ycocgr = 0;
@@ -102,6 +110,9 @@ void setup(const Config &cfg, Frame &f) {
     f.slots.assign((size_t)fp.ntiles * NXE_TILE_BYTES_MAX, 0);
     f.tile_bytes.assign(fp.ntiles, 0);
     f.tile_prefix.assign(fp.ntiles, 0);
+    if (f.custom_tables)
+        f.tilehist.assign((size_t)fp.ntiles * nxvc::kNumCtx * NXE_NUM_SYM, 0);
+    f.table_area.clear();
 }
 
 /* The storage bound here has to cover every row `build_default_set` writes,
@@ -124,16 +135,24 @@ void build_tables(const Config &cfg, Frame &f) {
                 f.tabs.cum[k][c][s] = ts.ctx[c].cum[s];
             }
     }
-    /* The cost table choose_table_sets() reads.  A zero frequency gives
-     * -log2(0) = +inf and a candidate that codes an impossible symbol is
-     * therefore infinitely expensive, which is exactly what the expression it
-     * replaces produced. */
+    refresh_log_freq(f);
+}
+
+/* The cost table choose_table_sets() reads, rebuilt from whatever f.tabs holds.
+ * A zero frequency gives -log2(0) = +inf and a candidate that codes an
+ * impossible symbol is therefore infinitely expensive, which is exactly what
+ * the expression it replaces produced.
+ *
+ * It is a function rather than a tail of build_tables() because the custom
+ * table training rewrites f.tabs mid-frame and every Lloyd iteration has to
+ * score tiles against the tables it just trained. */
+void refresh_log_freq(Frame &f) {
     f.log_freq.assign((size_t)8 * nxvc::kNumCtx * NXE_NUM_SYM, 0.0);
     for (int k = 0; k < 8; ++k)
         for (int c = 0; c < nxvc::kNumCtx; ++c)
             for (int s = 0; s < NXE_NUM_SYM; ++s)
                 f.log_freq[((size_t)k * nxvc::kNumCtx + c) * NXE_NUM_SYM + s] =
-                    std::log2((double)f.tabs.freq[k][c][s] / 1024.0);
+                    log2_prob(f.tabs.freq[k][c][s]);
 }
 
 /* ------------------------------------------------------------------- input
@@ -283,6 +302,11 @@ std::vector<uint8_t> stream_header(const Config &cfg, const Frame &f) {
     if (cfg.ctx_v2) tools |= 1ull << 21;              /* CTX_V2 */
     if (cfg.ctx_v3) tools |= 1ull << 25;              /* CTX_V3 */
     if (cfg.sign_hide) tools |= 1ull << 22;           /* SIGN_HIDE */
+    if (cfg.custom_tables) tools |= 1ull << 6;        /* CUSTOM_TABLES */
+    /* TAB_V2 requires CUSTOM_TABLES; a stream setting 26 without 6 is
+     * BITSTREAM (SYNTAX.md 9.4.1), which is why this is the resolved pair and
+     * not cfg.tab_v2 on its own. */
+    if (cfg.custom_tables && cfg.tab_v2) tools |= 1ull << 26;  /* TAB_V2 */
 
     u32(0x3156584Eu);            /* 'NXV1' */
     u8(1);                       /* NXVC_VERSION */
@@ -412,6 +436,30 @@ private:
 
 } // namespace
 
+static void score_tile_table_set(Frame &f, const uint32_t *hist, uint32_t t);
+static void set_from_default(Frame &f, int k, int nctx);
+
+/* log2(v / 1024.0) for every probability a table row can hold, memoised.
+ *
+ * The reference computes this with std::log2 in three places -- the cost
+ * table, the per-row keep/drop decision and its default-row counterpart -- and
+ * the custom-table path calls all three several times per frame, which made
+ * libm the largest single cost of the table stage.  A lookup is the SAME
+ * double for the same input, so nothing about the decisions it feeds moves:
+ * this is memoisation, not an approximation, and the byte-identity the acid
+ * test pins is what says so.
+ *
+ * A frequency is at least 1 and at most kProbTotal - 15, so the domain is
+ * small; the table is filled once, on first use, and is 8 KB. */
+static double log2_prob(uint32_t v) {
+    static const std::vector<double> tbl = [] {
+        std::vector<double> t(1025, 0.0);
+        for (int i = 1; i <= 1024; ++i) t[(size_t)i] = std::log2((double)i / 1024.0);
+        return t;
+    }();
+    return v < tbl.size() ? tbl[v] : std::log2((double)v / 1024.0);
+}
+
 /* One tile's decision: the histogram E4 will produce, then the cheapest of the
  * eight candidate table sets under it. */
 static void choose_tile_table_set(Frame &f, const int16_t *coefs, uint32_t t) {
@@ -440,6 +488,20 @@ static void choose_tile_table_set(Frame &f, const int16_t *coefs, uint32_t t) {
                     hist[NXE_OP_ARG(ops[i])][NXE_OP_VALUE(ops[i])]++;
         }
     }
+    if (!f.tilehist.empty()) {
+        uint32_t *dst = &f.tilehist[(size_t)t * nxvc::kNumCtx * NXE_NUM_SYM];
+        for (int c = 0; c < nxvc::kNumCtx; ++c)
+            for (int sy = 0; sy < NXE_NUM_SYM; ++sy)
+                dst[(size_t)c * NXE_NUM_SYM + sy] = hist[c][sy];
+    }
+    score_tile_table_set(f, hist[0], t);
+}
+
+/* The half of the above that only reads a histogram: ref's `select_set`, with
+ * the log2 hoisted into f.log_freq.  Split out because the Lloyd iterations
+ * re-score every tile against retrained tables and must not requantise the
+ * frame to do it. */
+static void score_tile_table_set(Frame &f, const uint32_t *hist, uint32_t t) {
     double best = 0;
     int bestk = (int)f.jobs[t].table_set;
     for (int k = 0; k < 8; ++k) {
@@ -456,17 +518,245 @@ static void choose_tile_table_set(Frame &f, const int16_t *coefs, uint32_t t) {
          * host.  Same doubles, same order, same sum. */
         const double *lf = &f.log_freq[(size_t)k * nxvc::kNumCtx * NXE_NUM_SYM];
         for (int c = 0; c < nxvc::kNumCtx; ++c)
-            for (int s = 0; s < NXE_NUM_SYM; ++s)
-                if (hist[c][s])
-                    bits -= (double)hist[c][s] * lf[(size_t)c * NXE_NUM_SYM + s];
+            for (int s = 0; s < NXE_NUM_SYM; ++s) {
+                const size_t i = (size_t)c * NXE_NUM_SYM + s;
+                if (hist[i]) bits -= (double)hist[i] * lf[i];
+            }
         if (k == 0 || bits < best) { best = bits; bestk = k; }
     }
     f.jobs[t].table_set = (uint32_t)bestk;
 }
 
 void choose_table_sets(Frame &f, const int16_t *coefs) {
+    /* Custom tables leave f.tabs holding the PREVIOUS frame's trained sets,
+     * and the reference's training pass scores every tile against the
+     * built-in ones -- `run_pass(true, false, deftabs)`.  Restoring them here
+     * is what makes frame 2 of a sequence identical to frame 1 of the same
+     * picture: without it the first assignment of every frame but the first
+     * is made against tables the frame does not carry, and the training pools
+     * the wrong tiles. */
+    if (f.custom_tables) {
+        for (int k = 0; k < 8; ++k) set_from_default(f, k, (int)f.fp.nctx);
+        refresh_log_freq(f);
+    }
     TilePool::get().run(f.fp.ntiles,
                         [&](uint32_t t) { choose_tile_table_set(f, coefs, t); });
+}
+
+
+/* ------------------------------------------------------- custom tables (6)
+ *
+ * ref/src/codec_impl.inc's `quantize_row`, `row_cost`, `plan_table_set`,
+ * `serialize_table_set` and the `train_tables` lambda, transcribed.  They are
+ * `static` inside the reference's translation unit, so they cannot be called;
+ * everything they in turn call -- `normalize_freqs`, `default_row`,
+ * `default_row_freq`, `build_default_set`, `kDeltaMul` -- is the reference's
+ * own and is linked, not copied, which is where the values that decide the
+ * bitstream actually live.
+ *
+ * The arithmetic is the reference's to the bit, doubles included: a row is
+ * kept or dropped by comparing two `std::log2` sums against 80 bits, and a
+ * different summation order there would transmit a different set of rows.
+ */
+
+/* ref's BitW: MSB-first, flushed with zero bits to a byte boundary once. */
+struct TableBitW {
+    std::vector<uint8_t> b;
+    uint32_t acc = 0;
+    int nbits = 0;
+    void put(uint32_t v, int k) {
+        for (int i = k - 1; i >= 0; --i) {
+            acc = (acc << 1) | ((v >> i) & 1u);
+            if (++nbits == 8) { b.push_back((uint8_t)acc); acc = 0; nbits = 0; }
+        }
+    }
+    void flush() { while (nbits) put(0, 1); }
+};
+
+static constexpr int kRowBits = NXE_NUM_SYM * 5;   /* 80 */
+
+/* Quantize one target row to the 5-bit log-domain delta alphabet and
+ * normalize it exactly as the decoder will, so the encoder's cost decision
+ * and its serializer can never disagree about what a row would decode to. */
+static void quantize_row(const uint16_t *target, int set_index, int nctx, int c,
+                         uint8_t d[NXE_NUM_SYM], uint16_t fr[NXE_NUM_SYM]) {
+    for (int s = 0; s < NXE_NUM_SYM; ++s) {
+        int32_t def = nxvc::default_row_freq(nctx, set_index, c, s);
+        int32_t want = target[s] < 1 ? 1 : target[s];
+        int best = 16, bestErr = -1;
+        for (int k = 0; k < 32; ++k) {
+            int32_t v = (def * nxvc::kDeltaMul[k] + 128) >> 8;
+            if (v < 1) v = 1;
+            int err = v > want ? v - want : want - v;
+            if (bestErr < 0 || err < bestErr) { bestErr = err; best = k; }
+        }
+        d[s] = (uint8_t)best;
+        int32_t v = (def * nxvc::kDeltaMul[best] + 128) >> 8;
+        fr[s] = (uint16_t)(v < 1 ? 1 : (v > 32767 ? 32767 : v));
+    }
+    nxvc::normalize_freqs(fr);
+}
+
+/* Bits the symbols counted in `h` cost under the probability row `fr`. */
+static double row_cost(const uint32_t *h, const uint16_t *fr) {
+    double bits = 0;
+    for (int s = 0; s < NXE_NUM_SYM; ++s)
+        if (h[s]) bits -= (double)h[s] * log2_prob(fr[s]);
+    return bits;
+}
+
+/* Rebuild every derived field of one table set of f.tabs from its
+ * frequencies.  `nxvc::finalize_ctx` wants a CtxTable, which carries a
+ * 1024-byte slot map this encoder has no use for -- E4 reads freq and cum --
+ * so the prefix sum is done here rather than through a temporary that is
+ * thirty times the size of what is kept. */
+static void finalize_set(Frame &f, int k) {
+    for (int c = 0; c < nxvc::kNumCtx; ++c) {
+        uint32_t cum = 0;
+        for (int s = 0; s < NXE_NUM_SYM; ++s) {
+            f.tabs.cum[k][c][s] = (uint16_t)cum;
+            cum += f.tabs.freq[k][c][s];
+        }
+    }
+}
+
+static void set_from_default(Frame &f, int k, int nctx) {
+    for (int c = 0; c < nxvc::kNumCtx; ++c) {
+        uint16_t fr[NXE_NUM_SYM];
+        /* Contexts beyond the model's count are never coded; ref's
+         * build_default_set fills them from row 0 so the object is always well
+         * formed, and the histogram is empty there in any case. */
+        nxvc::default_row(nctx, k, c < nctx ? c : 0, fr);
+        for (int s = 0; s < NXE_NUM_SYM; ++s) f.tabs.freq[k][c][s] = fr[s];
+    }
+    finalize_set(f, k);
+}
+
+void train_table_sets(Frame &f) {
+    if (!f.custom_tables) return;
+    const int nctx = (int)f.fp.nctx;
+    const int tab_v2 = f.tab_v2 ? 1 : 0;
+    const size_t stride = (size_t)nxvc::kNumCtx * NXE_NUM_SYM;
+    std::vector<uint32_t> hist((size_t)8 * stride, 0);
+
+    /* Pool every tile's histogram into the set that tile is currently
+     * assigned to.  The first pooling uses the assignment made against the
+     * built-in tables, which is the reference's training pass. */
+    auto pool = [&]() {
+        std::fill(hist.begin(), hist.end(), 0u);
+        for (uint32_t t = 0; t < f.fp.ntiles; ++t) {
+            const uint32_t *th = &f.tilehist[(size_t)t * stride];
+            uint32_t total = 0;
+            for (size_t i = 0; i < stride; ++i) total += th[i];
+            if (total == 0) continue;
+            uint32_t *dst = &hist[(size_t)f.jobs[t].table_set * stride];
+            for (size_t i = 0; i < stride; ++i) dst[i] += th[i];
+        }
+    };
+
+    /* Train the eight sets on `hist` and serialize the ones that pay, leaving
+     * f.tabs holding exactly what a decoder will reconstruct. */
+    auto train = [&]() {
+        TableBitW bw;
+        f.fp.tables_present = 0;
+        for (int k = 0; k < 8; ++k) {
+            set_from_default(f, k, nctx);
+            const uint32_t *h = &hist[(size_t)k * stride];
+            uint32_t total = 0;
+            for (size_t i = 0; i < stride; ++i) total += h[i];
+            if (total == 0) continue;
+
+            uint16_t target[NXE_MAX_CTX][NXE_NUM_SYM];
+            for (int c = 0; c < nctx; ++c) {
+                uint32_t sum = 0;
+                for (int s = 0; s < NXE_NUM_SYM; ++s)
+                    sum += h[(size_t)c * NXE_NUM_SYM + s];
+                for (int s = 0; s < NXE_NUM_SYM; ++s) {
+                    if (sum == 0) {
+                        target[c][s] =
+                            nxvc::default_row_freq(nctx, k, c, s);
+                    } else {
+                        uint32_t v = (uint32_t)(
+                            ((uint64_t)h[(size_t)c * NXE_NUM_SYM + s] * 1024u) /
+                            sum);
+                        target[c][s] = (uint16_t)(v < 1 ? 1 : v);
+                    }
+                }
+            }
+
+            /* plan_table_set: quantize every row, then under TAB_V2 drop the
+             * ones whose trained version does not beat their built-in default
+             * by more than the 80 bits it would cost to send. */
+            uint8_t d[NXE_MAX_CTX][NXE_NUM_SYM];
+            uint16_t fr[NXE_MAX_CTX][NXE_NUM_SYM];
+            bool coded[NXE_MAX_CTX];
+            bool any = false;
+            for (int c = 0; c < nctx; ++c) {
+                quantize_row(target[c], k, nctx, c, d[c], fr[c]);
+                coded[c] = true;
+                if (tab_v2) {
+                    uint16_t def[NXE_NUM_SYM];
+                    nxvc::default_row(nctx, k, c, def);
+                    const uint32_t *hc = &h[(size_t)c * NXE_NUM_SYM];
+                    coded[c] = row_cost(hc, def) - row_cost(hc, fr[c]) > kRowBits;
+                    if (!coded[c])
+                        for (int s = 0; s < NXE_NUM_SYM; ++s) fr[c][s] = def[s];
+                }
+                any = any || coded[c];
+            }
+            /* An encoder that finds no row worth coding must leave the set's
+             * `tables_present` bit clear rather than transmit a set of
+             * all-zero flags.  SYNTAX.md 9.4.1. */
+            if (!any) continue;
+
+            f.fp.tables_present |= (1u << k);
+            for (int c = 0; c < nctx; ++c) {
+                if (tab_v2) bw.put(coded[c] ? 1u : 0u, 1);
+                if (coded[c])
+                    for (int s = 0; s < NXE_NUM_SYM; ++s) bw.put(d[c][s], 5);
+                for (int s = 0; s < NXE_NUM_SYM; ++s)
+                    f.tabs.freq[k][c][s] = fr[c][s];
+            }
+            finalize_set(f, k);
+        }
+        bw.flush();
+        f.table_area = bw.b;
+    };
+
+    auto reassign = [&]() {
+        refresh_log_freq(f);
+        TilePool::get().run(f.fp.ntiles, [&](uint32_t t) {
+            score_tile_table_set(f, &f.tilehist[(size_t)t * stride], t);
+        });
+    };
+
+    pool();
+    train();
+    /* A Lloyd iteration on the frame's own statistics: the training pass
+     * assigned each tile to its cheapest *built-in* set, but the coding pass
+     * will re-choose against the trained ones.  Reassign, repool, retrain.  It
+     * costs no quantisation -- the histograms do not change, only which set
+     * they are pooled into. */
+    for (int it = 0; it < f.table_iters; ++it) {
+        reassign();
+        pool();
+        train();
+    }
+    /* And the coding pass's own choice, against the tables the frame will
+     * actually carry.  ref scores the emit pass against `table_iters ? tabs :
+     * deftabs`, so at zero iterations the assignment made against the built-in
+     * sets is the one that stands. */
+    if (f.table_iters > 0) reassign();
+    else refresh_log_freq(f);
+
+    if (f.table_area.size() > NXE_TABLE_AREA_MAX) {
+        /* Unreachable: the area is bounded by 8 * nctx * 81 bits.  Coding it
+         * anyway would overrun E5's staging buffer, so drop the tables rather
+         * than write a stream nothing can parse. */
+        f.table_area.clear();
+        f.fp.tables_present = 0;
+    }
+    f.fp.table_bytes = (uint32_t)f.table_area.size();
 }
 
 
@@ -485,9 +775,15 @@ void pack_frame(Frame &f, uint32_t frame_number) {
     nxe_frame_params fp2 = fp;
     fp2.frame_number = frame_number;
     nxe_e5_frame_header(&fp2, pose, total, f.out.data());
+    /* The transmitted probability tables, between the frame header and the
+     * first row header.  SYNTAX.md 9.4. */
+    if (!f.table_area.empty())
+        std::memcpy(f.out.data() + NXE_FRAME_HEADER_BYTES, f.table_area.data(),
+                    f.table_area.size());
     const uint32_t rowgroups = fp.tiles_y * fp.eyes;
     for (uint32_t g = 0; g < rowgroups; ++g) {
-        uint32_t off = NXE_FRAME_HEADER_BYTES + NXE_ROW_HEADER_BYTES * g +
+        uint32_t off = NXE_FRAME_HEADER_BYTES + fp.table_bytes +
+                       NXE_ROW_HEADER_BYTES * g +
                        f.tile_prefix[g * fp.tiles_x];
         nxe_e5_row_header(&fp2, g, f.out.data() + off);
     }
@@ -508,6 +804,7 @@ void encode_frame_cpu(Frame &f, uint32_t frame_number) {
                     &f.coef[(size_t)t * NXE_TILE_COEFS_MAX]);
     }
     choose_table_sets(f, f.coef.data());
+    train_table_sets(f);
     for (uint32_t t = 0; t < fp.ntiles; ++t) {
         nxe_tile_units tu;
         nxe_build_units(&fp, &f.jobs[t], &tu);

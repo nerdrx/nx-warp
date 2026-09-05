@@ -50,6 +50,20 @@ struct Config {
      * ctx_v2.  Off by default, as `nxv-enc --ctx v3` is. */
     bool ctx_v3 = false;
     bool sign_hide = true;
+    /* Tool bit 6.  Derive the eight probability table sets from the frame's
+     * own symbol histogram and transmit the ones that pay, exactly as
+     * `nxv-enc --custom-tables` does.  The histogram is the one
+     * choose_table_sets() already builds, so this is a second use of work the
+     * pipeline was doing anyway. */
+    bool custom_tables = false;
+    /* Tool bit 26.  Requires custom_tables; a per-row `row_coded` flag lets a
+     * row that does not beat its built-in default cost one bit instead of
+     * eighty.  SYNTAX.md 9.4.1. */
+    bool tab_v2 = false;
+    /* Lloyd iterations refining the eight trained sets: reassign every tile
+     * against the trained tables and retrain.  ref's nxvc_config::table_iters,
+     * whose default is 3. */
+    int table_iters = 3;
     bool intra_dir = false;
     bool dir_layer = false;
     /* Directional intra takes its per-block modes as an input (the search is a
@@ -77,6 +91,18 @@ struct Frame {
     std::vector<uint8_t> modes;            /* ntiles * 3 * 64 */
     std::vector<uint8_t> slots;            /* ntiles * NXE_TILE_SLOT_BYTES */
     std::vector<uint32_t> tile_bytes, tile_prefix;
+    /* Custom tables.  `tilehist` is every tile's (context, symbol) histogram,
+     * kept from the table-set choice so the Lloyd iterations can repool
+     * without quantising the frame again; `table_area` is the serialized
+     * table sets, which sit between the frame header and the first row
+     * header.  Both are empty unless cfg.custom_tables. */
+    std::vector<uint32_t> tilehist;
+    std::vector<uint8_t> table_area;
+    /* The custom-table settings, resolved from the Config at setup() so that
+     * the encode entry points -- which take a Frame and not a Config -- cannot
+     * be driven with one configuration and coded with another. */
+    bool custom_tables = false, tab_v2 = false;
+    int table_iters = 0;
     std::vector<uint8_t> out;              /* the assembled frame */
     nxe_tables tabs{};
     /* log2(freq / 1024) for every (table set, context, symbol) of `tabs`,
@@ -96,6 +122,10 @@ void setup(const Config &cfg, Frame &f);
 
 /* Fill the built-in probability tables for the frame's context model. */
 void build_tables(const Config &cfg, Frame &f);
+
+/* Rebuild f.log_freq -- the hoisted log2 of every (set, context, symbol) that
+ * the table-set choice sums -- from whatever f.tabs currently holds. */
+void refresh_log_freq(Frame &f);
 
 /* Lay three caller-owned planar 8-bit planes out tile-major, exactly as
  * read_frame does -- it is read_frame with the file read hoisted out, so the
@@ -133,6 +163,19 @@ std::vector<uint8_t> stream_header(const Config &cfg, const Frame &f);
  * over one tile's own histogram in a fixed order, so the chosen set, and the
  * bitstream, are the same as the serial walk's. */
 void choose_table_sets(Frame &f, const int16_t *coef);
+
+/* Custom tables (tool bit 6), the reference's `train_tables` plus its Lloyd
+ * loop, driven from the histograms choose_table_sets() left in f.tilehist.
+ *
+ * Rewrites f.tabs with what a decoder will reconstruct, fills f.table_area
+ * with the bytes that carry it, sets f.fp.tables_present and f.fp.table_bytes,
+ * and re-chooses every tile's set against the trained tables -- which is what
+ * the reference's emit pass does whenever table_iters is nonzero.  A no-op
+ * when cfg.custom_tables is false.
+ *
+ * It must run after choose_table_sets() and before E4, on both the CPU and
+ * the GPU path; the GPU path re-uploads f.tabs afterwards. */
+void train_table_sets(Frame &f);
 
 /* E5 on the host: lay the tile slots out into `f.out`. */
 void pack_frame(Frame &f, uint32_t frame_number);
