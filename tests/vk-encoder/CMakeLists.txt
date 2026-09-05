@@ -123,6 +123,22 @@ if(TARGET nxvc-vkenc)
       set_tests_properties(vk.encoder.acid.api.image PROPERTIES
                            SKIP_REGULAR_EXPRESSION "SKIP:")
       list(APPEND NXENC_TESTS vk.encoder.acid.api.image)
+
+      # The same claim for a quantiser that MOVES, which is the entry point a
+      # rate controller uses and the one the two tests above never touch: after
+      # nxvc_vk_encoder_set_qp(q), every frame must be the frame nxv-enc codes
+      # at q AND at that frame number.  Frame by frame, over a cycle of four
+      # quantisers, from an encoder created at a fifth.
+      add_test(NAME vk.encoder.acid.api.qp_switch COMMAND ${CMAKE_COMMAND}
+               -DAPIENC=$<TARGET_FILE:nxvc-vkenc-api>
+               -DVKENC=$<TARGET_FILE:nxvc-vkenc>
+               -DNXVENC=$<TARGET_FILE:nxv-enc>
+               -DNXVDEC=$<TARGET_FILE:nxv-dec>
+               -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/qp-switch
+               -P ${CMAKE_CURRENT_SOURCE_DIR}/qp_switch.cmake)
+      set_tests_properties(vk.encoder.acid.api.qp_switch PROPERTIES
+                           SKIP_REGULAR_EXPRESSION "SKIP:")
+      list(APPEND NXENC_TESTS vk.encoder.acid.api.qp_switch)
     endif()
   else()
     message(STATUS "tests/vk-encoder: nxv-enc/nxv-dec not built, no acid test")

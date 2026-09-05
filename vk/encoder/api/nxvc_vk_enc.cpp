@@ -179,6 +179,27 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_stream_header(
     return NXVC_VKE_OK;
 }
 
+extern "C" nxvc_vke_status nxvc_vk_encoder_set_qp(nxvc_vk_encoder *e,
+                                                  uint32_t qp) {
+    if (!e) return NXVC_VKE_ERR_ARG;
+    if (qp > 63) {
+        e->err = "the quantiser must be 0..63";
+        return NXVC_VKE_ERR_ARG;
+    }
+    if (int(qp) == e->cfg.qp) return NXVC_VKE_OK;
+    /* Nothing here is a rebuild.  nxe::set_qp writes the frame parameter
+     * record and the job list, both of which nxe_vk.cpp re-uploads on every
+     * encode, so the next frame simply carries the new quantiser -- and the
+     * stream header, the pipelines, the descriptors and every device
+     * allocation are untouched because none of them depends on the QP. */
+    nxe::set_qp(e->cfg, e->frame, int(qp));
+    return NXVC_VKE_OK;
+}
+
+extern "C" uint32_t nxvc_vk_encoder_qp(const nxvc_vk_encoder *e) {
+    return e ? uint32_t(e->cfg.qp) : 0u;
+}
+
 extern "C" void nxvc_vk_encoder_tile_grid(const nxvc_vk_encoder *e,
                                           uint32_t *cols, uint32_t *rows) {
     if (!e) return;

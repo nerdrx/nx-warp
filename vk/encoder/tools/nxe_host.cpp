@@ -37,6 +37,26 @@ extern "C" {
 namespace nxe {
 
 /* ------------------------------------------------------------------ setup */
+/* ref's make_tile_params seed for a tile's table set; choose_table_sets()
+ * replaces it from the coefficients before E4 reads it. */
+static uint32_t table_set_seed(int qp) {
+    const int k = qp >> 3;
+    return (uint32_t)(k < 0 ? 0 : (k > 7 ? 7 : k));
+}
+
+/* Everything a QP change touches on a Frame whose job list already exists. */
+static void apply_qp(Frame &f, int qp) {
+    f.fp.base_qp = (uint32_t)qp;
+    const uint32_t seed = table_set_seed(qp);
+    for (auto &j : f.jobs)
+        j.table_set = seed;
+}
+
+void set_qp(Config &cfg, Frame &f, int qp) {
+    cfg.qp = qp;
+    apply_qp(f, qp);
+}
+
 void setup(const Config &cfg, Frame &f) {
     nxe_frame_params &fp = f.fp;
     std::memset(&fp, 0, sizeof fp);
@@ -47,7 +67,6 @@ void setup(const Config &cfg, Frame &f) {
     fp.tiles_y = (fp.height + 63) / 64;
     fp.ntiles = fp.eyes * fp.tiles_x * fp.tiles_y;
     fp.chroma420 = cfg.chroma444 ? 0u : 1u;
-    fp.base_qp = (uint32_t)cfg.qp;
     fp.chroma_qp_off = cfg.chroma_qp_off;
     fp.nctx = cfg.ctx_v3 ? NXE_NCTX_V3
                          : (cfg.ctx_v2 ? NXE_NCTX_V2 : NXE_NCTX_V1);
@@ -77,9 +96,6 @@ void setup(const Config &cfg, Frame &f) {
                 j.row = row;
                 j.eye = eye;
                 j.qp_delta = 0;
-                /* ref's make_tile_params seed; choose_table_sets replaces it. */
-                j.table_set = (uint32_t)((cfg.qp >> 3) < 0 ? 0
-                                         : ((cfg.qp >> 3) > 7 ? 7 : (cfg.qp >> 3)));
                 j.tskip = (uint32_t)cfg.tskip;
                 j.wm_id = (uint32_t)cfg.wm_id;
                 j.chroma444 = cfg.chroma444 ? 1u : 0u;
@@ -87,6 +103,11 @@ void setup(const Config &cfg, Frame &f) {
                 j.mode = 3;                /* NXVC_MODE_INTRA */
                 j.nsub_log2 = (uint32_t)cfg.nsub_log2;
             }
+
+    /* fp.base_qp and the per-tile table-set seed, in the one place that owns
+     * them, so that a Frame set_qp() moved to q and a Frame setup() built at q
+     * are the same object. */
+    apply_qp(f, cfg.qp);
 
     int base = 0;
     for (int p = 0; p < NXE_MAX_PLANES; ++p) {

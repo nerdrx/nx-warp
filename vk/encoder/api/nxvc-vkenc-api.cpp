@@ -188,9 +188,14 @@ struct PlanarSource {
 } // namespace
 
 int main(int argc, char **argv) {
-    std::string in, out;
+    std::string in, out, lengths_path, qp_cycle_arg;
     uint32_t w = 0, h = 0, qp = 26, frames = 8, matrix = 1;
     bool timing = false, use_image = false;
+    /* The quantisers frames are coded at, one per frame and wrapping: empty
+     * means "leave the encoder at the QP create() was given", which is the
+     * behaviour every other test drives.  A non-empty cycle is what exercises
+     * nxvc_vk_encoder_set_qp -- see tests/vk-encoder/qp_switch.cmake. */
+    std::vector<uint32_t> qp_cycle;
 
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
@@ -204,6 +209,8 @@ int main(int argc, char **argv) {
         else if (a == "--matrix") matrix = (uint32_t)std::atoi(next());
         else if (a == "--timing") timing = true;
         else if (a == "--image") use_image = true;
+        else if (a == "--qp-cycle") qp_cycle_arg = next();
+        else if (a == "--lengths") lengths_path = next();
         else {
             std::fprintf(stderr, "unknown argument: %s\n", a.c_str());
             return 2;
@@ -213,8 +220,22 @@ int main(int argc, char **argv) {
         std::fprintf(stderr,
                      "usage: nxvc-vkenc-api --in f.yuv --w W --h H --out f.nxv\n"
                      "                      [--qp N] [--frames N] [--matrix N] [--timing]\n"
-                     "                      [--image]\n");
+                     "                      [--image] [--qp-cycle a,b,c] [--lengths f]\n");
         return 2;
+    }
+
+    for (size_t p = 0; p < qp_cycle_arg.size();) {
+        size_t c = qp_cycle_arg.find(',', p);
+        if (c == std::string::npos) c = qp_cycle_arg.size();
+        const std::string tok = qp_cycle_arg.substr(p, c - p);
+        if (tok.empty()) { std::fprintf(stderr, "--qp-cycle: empty entry\n"); return 2; }
+        const int v = std::atoi(tok.c_str());
+        if (v < 0 || v > 63) {
+            std::fprintf(stderr, "--qp-cycle: %s is not a quantiser 0..63\n", tok.c_str());
+            return 2;
+        }
+        qp_cycle.push_back((uint32_t)v);
+        p = c + 1;
     }
 
     nxvc_vke_create_info ci;
@@ -274,10 +295,32 @@ int main(int argc, char **argv) {
     double sum_ms = 0, max_ms = 0, sum_up = 0;
     size_t total_bytes = 0;
     int rc = 0;
+    std::vector<size_t> frame_lengths;
     while (n < frames) {
         if (std::fread(Y.data(), 1, Y.size(), fi) != Y.size()) break;
         if (std::fread(U.data(), 1, U.size(), fi) != U.size()) break;
         if (std::fread(V.data(), 1, V.size(), fi) != V.size()) break;
+
+        /* The quantiser for THIS frame, before it is encoded.  Deliberately
+         * unconditional: setting the QP the encoder already has must be a
+         * no-op, so a cycle of one value has to produce the constant-QP
+         * stream byte for byte. */
+        if (!qp_cycle.empty()) {
+            const uint32_t q = qp_cycle[n % qp_cycle.size()];
+            st = nxvc_vk_encoder_set_qp(enc, q);
+            if (st != NXVC_VKE_OK) {
+                std::fprintf(stderr, "set_qp(%u) at frame %u: %s (%s)\n", q, n,
+                             nxvc_vk_encoder_status_string(st),
+                             nxvc_vk_encoder_last_error(enc));
+                rc = 1;
+                break;
+            }
+            if (nxvc_vk_encoder_qp(enc) != q) {
+                std::fprintf(stderr, "set_qp(%u) did not take at frame %u\n", q, n);
+                rc = 1;
+                break;
+            }
+        }
 
         const uint8_t *bytes = nullptr;
         size_t len = 0;
@@ -308,6 +351,25 @@ int main(int argc, char **argv) {
         }
         std::fwrite(bytes, 1, len, fo);
         total_bytes += len;
+        frame_lengths.push_back(len);
+
+        /* Every tile of a frame carries the frame's quantiser on this path;
+         * a tile that says otherwise means set_qp reached the bitstream but
+         * not the tile records the transport reads. */
+        {
+            uint32_t tc0 = 0;
+            const nxvc_vke_tile *tl = nxvc_vk_encoder_tiles(enc, &tc0);
+            const uint32_t want = nxvc_vk_encoder_qp(enc);
+            for (uint32_t t = 0; t < tc0; ++t) {
+                if (tl[t].qp != want) {
+                    std::fprintf(stderr,
+                                 "frame %u tile %u reports QP %u, encoder is at %u\n",
+                                 n, t, (unsigned)tl[t].qp, want);
+                    rc = 1;
+                    break;
+                }
+            }
+        }
 
         const double ms = nxvc_vk_encoder_last_encode_ms(enc);
         sum_ms += ms;
@@ -331,6 +393,20 @@ int main(int argc, char **argv) {
     }
     std::fclose(fo);
     std::fclose(fi);
+
+    /* The frame layout of the file just written: the header length, then one
+     * frame length per line.  A caller that wants to compare one frame of this
+     * stream against one frame of another needs the offsets, and this encoder
+     * is the only thing that knows them without reparsing the bitstream. */
+    if (!lengths_path.empty()) {
+        std::FILE *fl = std::fopen(lengths_path.c_str(), "wb");
+        if (!fl) { std::perror("open --lengths"); rc = 1; }
+        else {
+            std::fprintf(fl, "%zu\n", hdr.size());
+            for (size_t l : frame_lengths) std::fprintf(fl, "%zu\n", l);
+            std::fclose(fl);
+        }
+    }
 
     if (timing && n) {
         std::printf("%u frames, %ux%u QP %u: encode mean %.3f ms, max %.3f ms, "

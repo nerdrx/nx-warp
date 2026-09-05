@@ -14,7 +14,10 @@
  *
  *   * no inter prediction, no pose warp, no reference ring
  *   * no directional intra (DC-plane intra only)
- *   * no rate control: the QP is fixed for the life of the stream
+ *   * no rate control of its own, and no per-tile quantiser: one QP codes
+ *     every tile of a frame.  That QP is settable between frames --
+ *     nxvc_vk_encoder_set_qp() below -- so a host CAN run a rate controller
+ *     over this encoder; what the encoder does not have is a controller.
  *   * no resolution levels, no alpha plane, no custom probability tables
  *   * eight rANS lanes exactly (paper 6.3 fixes v1 at eight)
  *   * 8-bit 4:2:0 only, one eye per encoder
@@ -92,8 +95,9 @@ typedef struct nxvc_vke_create_info {
     uint32_t chroma;    /* 0 = 4:2:0.  4:4:4 is refused.                    */
     uint32_t bit_depth; /* 8                                                */
 
-    /* The fixed quantiser, 0..63, for every tile of every frame.  There is no
-     * rate control on this path; see the header comment. */
+    /* The quantiser, 0..63, for every tile of the frames that follow.  The
+     * encoder runs no rate control of its own, so this is the QP until the
+     * caller says otherwise with nxvc_vk_encoder_set_qp(). */
     uint32_t base_qp;
 
     /* Quantiser weighting matrix, 0..3.  1 is the reference's frame matrix and
@@ -130,6 +134,33 @@ uint64_t nxvc_vk_encoder_tools_supported(void);
 nxvc_vke_status nxvc_vk_encoder_stream_header(const nxvc_vk_encoder *enc,
                                               uint8_t *buf, size_t cap,
                                               size_t *len);
+
+/* ------------------------------------------------------------ quantiser */
+/* Change the quantiser, 0..63, for the frames that follow.  This is the whole
+ * of the rate-control surface: the encoder never moves the QP on its own, and
+ * a host that wants a bitrate runs its own controller and calls this between
+ * frames.  Cheap and synchronous -- nothing is recreated, no pipeline is
+ * rebuilt, no allocation is made -- so calling it every frame is the intended
+ * use, and calling it with the QP it already has is a no-op.
+ *
+ * Byte identity holds ACROSS the change, which is the property that makes it
+ * usable: after set_qp(q), every frame this encoder codes is byte for byte the
+ * frame an encoder CREATED at q would have coded at that frame number, and so
+ * (by the acid tests' claim at a fixed QP) the frame `nxv-enc --qp q` codes at
+ * that frame number.  Nothing of the previous quantiser survives the call.
+ * tests/vk-encoder/qp_switch.cmake pins exactly that, frame by frame, against
+ * a mixture of quantisers.
+ *
+ * Must not be called while an encode() is in flight; like the rest of this
+ * ABI it is not internally synchronised.  Returns NXVC_VKE_ERR_ARG for a QP
+ * above 63.
+ *
+ * The stream header does NOT depend on the QP, so a decoder that parsed it
+ * before the first frame stays correct: a frame carries its own base_qp. */
+nxvc_vke_status nxvc_vk_encoder_set_qp(nxvc_vk_encoder *enc, uint32_t qp);
+
+/* The quantiser the next frame will be coded at. */
+uint32_t nxvc_vk_encoder_qp(const nxvc_vk_encoder *enc);
 
 /* Tile grid, per frame.  `cols` is over the eye pair when eyes > 1, matching
  * the transport's column count. */
