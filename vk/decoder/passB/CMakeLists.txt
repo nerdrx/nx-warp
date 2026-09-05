@@ -30,6 +30,13 @@ file(MAKE_DIRECTORY ${NXVW_PASSB_GEN})
 # for each -- in both cases the driver's own dead-code pass was measured and
 # was not enough, on an Adreno 650 in one case and on all three ICDs in the
 # other.  See reconstruct.comp and ../README.md.
+# Extra preprocessor definitions for every Pass B module, for ablations that
+# have to be build variants because what they change is a loop bound -- which
+# reconstruct.comp explains at length is the thing a specialization constant
+# must not be on this driver.  Empty in every normal build.
+set(NXVW_PASSB_EXTRA_DEFS "" CACHE STRING
+    "extra -D flags for the Pass B shader modules (ablations)")
+
 set(NXVW_PASSB_SPV_LIST)
 foreach(_dir 1 0)
 foreach(_xl 1 0)
@@ -52,7 +59,7 @@ foreach(_xl 1 0)
             -DSRC=${NXVW_PASSB_DIR}/reconstruct.comp
             -DOUT=${_out}
             -DNAME=${_name}
-            "-DDEFS=-DNXVW_INTRA_DIR=${_dir} -DNXVW_XFORM_LARGE=${_xl}"
+            "-DDEFS=-DNXVW_INTRA_DIR=${_dir} -DNXVW_XFORM_LARGE=${_xl} ${NXVW_PASSB_EXTRA_DEFS}"
             -DINCDIR=${NXVW_PASSB_DIR}
             -DSTYLE=plain
             -P ${NXVW_PASSB_GEN_SPV}

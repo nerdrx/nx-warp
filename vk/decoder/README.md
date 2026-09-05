@@ -1351,6 +1351,52 @@ predictor add and the mean-clamp widening, which are per sample and unavoidable
 on a tile that really is inter; on a `WARP_SKIP` tile, which is five tiles in
 six, they are reconstructing a residual that is not there.
 
+##### The u8 ring is not the lever, and a WARP_SKIP tile costs MORE than an intra one
+
+The ring store is the largest single piece of inter Pass B, and "Open issues"
+has long named a **u8 ring for a stream with no colour transform** as the fix.
+It was built as an ablation first -- `NXVW_PASSB_EXTRA_DEFS=-DNXVW_ABL_RING8`,
+four samples a uint instead of two, which writes a ring no reader can use but
+pays exactly the store traffic a u8 ring would -- and on a 7900 XTX it is a
+**regression**:
+
+| Pass B, head-turn fixture, RADV | |
+|---|---|
+| baseline, u16 ring | **0.077-0.080 ms** |
+| u8 store traffic | 0.086-0.098 ms |
+| no ring store at all | 0.070 ms |
+
+The whole ring store is 0.007-0.010 ms of it. **The bytes were never the cost:
+the cost is the per-sample `planeAtFull()` resample and the address
+arithmetic**, and halving the traffic while keeping both buys at most 6 % of
+Pass B and in this form loses more than that to the packing loop.
+
+That is a desktop result and the Adreno is a bandwidth-poor part where "Pass B
+is traffic" has been the finding before, so the u8 ring is not dead -- it is
+*not worth the format change on RADV's evidence alone*, and the ablation build
+is what the device round should measure before anything is rewritten.
+
+**The bigger number is next to it.** Same stream, same 289 tiles, same
+pipeline, RADV, by tile mix:
+
+| frame | INTRA | WARP_SKIP | skip % | Pass B |
+|---|---|---|---|---|
+| 0 | 289 | 0 | 0.0 % | **0.037 ms** |
+| 1-15 | 25-45 | 244-264 | 84-91 % | **0.072-0.102 ms** |
+
+A frame that is five-sixths `WARP_SKIP` costs **2.2x** the Pass B of the same
+tiles all-intra, on a quarter of the bytes, and a skipped tile has no residual
+to transform at all. It should be the cheap case and it is the expensive one.
+Inside the 84-91 % band there is no trend -- 0.094 at 91.3 %, 0.088 at 84.4 % --
+so the cost is not proportional to the number of skips; it is what an inter
+frame costs.
+
+Two things follow. The **`WARP_SKIP` dispatch partition** is the lever, not the
+ring format: it is 45 % of inter Pass B and it is being spent making the free
+case expensive. And a client that reports its drops, so the encoder answers
+with more INTRA tiles, moves the frame *toward* the 0.037 ms floor rather than
+away from it -- the mix that costs more is the one with more skips.
+
 #### Pass A is occupancy-starved at 289 tiles, and Pass B is not
 
 Where the two passes' time goes at the live shape, measured on an idle Pico 4.

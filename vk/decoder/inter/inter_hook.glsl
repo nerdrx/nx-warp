@@ -144,6 +144,34 @@ void nxvwRefRingStore(int tid, int tile, int tileX, int tileY, int res_level,
         const int cval = (alpha_mode == kAlphaConstant) ? alphaValue : 255;
         const int ox = eye * pw + cx * full;
         const int oy = tileY * full;
+#ifdef NXVW_ABL_RING8
+        // ABLATION ONLY, and it writes a ring no reader can use: four samples
+        // a uint instead of two, so the store traffic is what a u8 ring's
+        // would be while everything around it -- the resample, the address
+        // arithmetic, the clamp -- is unchanged.  It exists to price the u8
+        // ring BEFORE paying for the format change, and the picture it
+        // produces from the second frame on is meaningless.
+        const int nquad = (full * full) >> 2;
+        for (int i = tid; i < nquad; i += 256) {
+            const int e = 4 * i;
+            const int y = e / full;
+            const int x = e - y * full;
+            const int gy = oy + y;
+            const int gx = ox + x;
+            if (gy >= ph) continue;
+            if (gx >= eye * pw + pw) continue;
+            uint packed = 0u;
+            for (int k = 0; k < 4; ++k) {
+                const int v = constAlpha
+                                  ? cval
+                                  : clamp(planeAtFull(store, size, full,
+                                                      x + k, y), 0, maxval);
+                packed |= (uint(v) & 0xffu) << (8 * k);
+            }
+            const uint idx = uint(curBase + planeOff + gy * stride + gx);
+            uRingOut.w[idx >> 2u] = packed;
+        }
+#else
         const int npair = (full * full) >> 1;
         for (int i = tid; i < npair; i += 256) {
             const int e = 2 * i;
@@ -165,6 +193,7 @@ void nxvwRefRingStore(int tid, int tile, int tileX, int tileY, int res_level,
             uRingOut.w[idx >> 1u] =
                 (uint(v0) & 0xffffu) | (uint(v1) << 16);
         }
+#endif
     }
 }
 
