@@ -373,7 +373,7 @@ inline int v3_ctx_last(int ucls, int nbr) {
 // and `last` are raw positions in the unit.
 inline int v3_ctx_level(int ucls, int scan_pos, int band_scan_pos, int last,
                         int prev_class) {
-    if (ucls == kUclsDc) return scan_pos == 0 ? kCtxLevelDc0 : kCtxLevelDc;
+    if (ucls == kUclsDc) return scan_pos == 0 ? int(kCtxLevelDc0) : int(kCtxLevelDc);
     if (scan_pos == last)
         return band_of(band_scan_pos) < 2 ? kCtxLevelLastLo : kCtxLevelLastHi;
     // band_scan_pos has already had the group shift applied, so the shift

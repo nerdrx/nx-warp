@@ -26,20 +26,8 @@ extern "C" {
  * bitstream minor 6 `kNumCtx` went from 16 to 27, `build_default_set` writes
  * all `kNumCtx` rows, and the mirror was still 16 rows -- so every call wrote
  * 11990 bytes past the end of a stack object.  A layout this tool does not own
- * is not a thing to transcribe; include the header the definition lives in.
- *
- * The pragma is for `v3_ctx_level`, which returns one of two differently-named
- * anonymous enums from a conditional; that is ref's to fix and is harmless
- * here, but this tool is the only place that compiles the header outside ref
- * and should not be the place a ref warning starts appearing. */
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wenum-compare"
-#endif
+ * is not a thing to transcribe; include the header the definition lives in. */
 #include "common.h"
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
 
 namespace nxe {
 
