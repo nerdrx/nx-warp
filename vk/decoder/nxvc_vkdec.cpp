@@ -32,6 +32,7 @@
 
 #include "rans_decode.spv.h"
 #include "reconstruct.spv.h"
+#include "reconstruct_v1.spv.h"
 
 namespace {
 
@@ -80,6 +81,16 @@ struct nxvc_vk_decoder {
     VkPhysicalDeviceMemoryProperties memProps{};
     uint32_t subgroup_size = 0;
     bool has_size_control = false;
+    // VK_KHR_pipeline_executable_properties: the driver's own account of what
+    // it compiled -- registers, spill, shared memory, private memory.  PAPER
+    // 3.2.3 asks for it where available.  It is opt-in
+    // (NXVC_VKD_SHADER_STATS=1) because CAPTURE_STATISTICS is a pipeline
+    // creation flag and a driver is allowed to compile differently with it
+    // set, so it must not be on in a timed run.
+    bool has_exec_props = false;
+    bool want_shader_stats = false;
+    PFN_vkGetPipelineExecutablePropertiesKHR fpExecProps = nullptr;
+    PFN_vkGetPipelineExecutableStatisticsKHR fpExecStats = nullptr;
     bool have_timestamps = false;
     float ts_period = 0.f;
 
@@ -124,6 +135,9 @@ struct nxvc_vk_decoder {
     VkDescriptorSetLayout dslA = VK_NULL_HANDLE, dslB = VK_NULL_HANDLE;
     VkPipelineLayout plA = VK_NULL_HANDLE, plB = VK_NULL_HANDLE;
     VkShaderModule smA = VK_NULL_HANDLE, smB = VK_NULL_HANDLE;
+    // Pass B without the directional-intra wavefront, for a v1 frame.  Same
+    // source, built with NXVW_INTRA_DIR=0; see passB/reconstruct.comp.
+    VkShaderModule smBv1 = VK_NULL_HANDLE;
     VkDescriptorSet dsetA = VK_NULL_HANDLE, dsetB = VK_NULL_HANDLE;
     std::map<uint32_t, VkPipeline> pipesA;  // key: lanes
     // key: (format << 40) | (dirSched << 32) | storeWords
@@ -438,14 +452,28 @@ nxvc_vkd_status create_device(D *d, const nxvc_vkd_create_info *ci) {
 
     // The extension only has to be asked for on a 1.1 device; on 1.2+ it is
     // core and naming it is redundant (and refused by some loaders).
-    const char *devExts[] = {VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME};
+    std::vector<const char *> devExts;
+    if (!has12) devExts.push_back(VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME);
+    // The driver's own shader statistics, opt-in.  The feature struct has to
+    // be chained or the extension is enabled and unusable.
+    VkPhysicalDevicePipelineExecutablePropertiesFeaturesKHR epf{
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PIPELINE_EXECUTABLE_PROPERTIES_FEATURES_KHR};
+    if (d->want_shader_stats &&
+        has_device_ext(d->phys,
+                       VK_KHR_PIPELINE_EXECUTABLE_PROPERTIES_EXTENSION_NAME)) {
+        devExts.push_back(VK_KHR_PIPELINE_EXECUTABLE_PROPERTIES_EXTENSION_NAME);
+        epf.pipelineExecutableInfo = VK_TRUE;
+        epf.pNext = (void *)e2.pNext;
+        e2.pNext = &epf;
+        d->has_exec_props = true;
+    }
     VkDeviceCreateInfo di{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
     di.pNext = &e2;
     di.queueCreateInfoCount = 1;
     di.pQueueCreateInfos = &qi;
-    if (!has12) {
-        di.enabledExtensionCount = 1;
-        di.ppEnabledExtensionNames = devExts;
+    if (!devExts.empty()) {
+        di.enabledExtensionCount = (uint32_t)devExts.size();
+        di.ppEnabledExtensionNames = devExts.data();
     }
     r = vkCreateDevice(d->phys, &di, nullptr, &d->dev);
     if (r != VK_SUCCESS)
@@ -453,7 +481,61 @@ nxvc_vkd_status create_device(D *d, const nxvc_vkd_create_info *ci) {
                       (int)r);
     d->own_device = true;
     vkGetDeviceQueue(d->dev, d->qfam, 0, &d->queue);
+    if (d->has_exec_props) {
+        d->fpExecProps = (PFN_vkGetPipelineExecutablePropertiesKHR)
+            vkGetDeviceProcAddr(d->dev, "vkGetPipelineExecutablePropertiesKHR");
+        d->fpExecStats = (PFN_vkGetPipelineExecutableStatisticsKHR)
+            vkGetDeviceProcAddr(d->dev, "vkGetPipelineExecutableStatisticsKHR");
+        if (!d->fpExecProps || !d->fpExecStats) d->has_exec_props = false;
+    }
     return NXVC_VKD_OK;
+}
+
+// The driver's own account of a compiled pipeline, to stderr.  Registers,
+// spill and private memory are the three numbers that decide whether a kernel
+// this size fits an Adreno wave; nothing here is on any timed path.
+void dump_shader_stats(D *d, VkPipeline p, const char *what) {
+    if (!d->has_exec_props || !p) return;
+    VkPipelineInfoKHR pi{VK_STRUCTURE_TYPE_PIPELINE_INFO_KHR};
+    pi.pipeline = p;
+    uint32_t n = 0;
+    if (d->fpExecProps(d->dev, &pi, &n, nullptr) != VK_SUCCESS || !n) return;
+    std::vector<VkPipelineExecutablePropertiesKHR> eps(
+        n, {VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_PROPERTIES_KHR});
+    d->fpExecProps(d->dev, &pi, &n, eps.data());
+    for (uint32_t e = 0; e < n; ++e) {
+        VkPipelineExecutableInfoKHR ei{
+            VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_INFO_KHR};
+        ei.pipeline = p;
+        ei.executableIndex = e;
+        uint32_t sn = 0;
+        if (d->fpExecStats(d->dev, &ei, &sn, nullptr) != VK_SUCCESS) continue;
+        std::vector<VkPipelineExecutableStatisticKHR> ss(
+            sn, {VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_STATISTIC_KHR});
+        d->fpExecStats(d->dev, &ei, &sn, ss.data());
+        std::fprintf(stderr, "[shader-stats] %s / %s (%s), subgroup %u\n", what,
+                     eps[e].name, eps[e].description, eps[e].subgroupSize);
+        for (uint32_t i = 0; i < sn; ++i) {
+            const auto &st = ss[i];
+            switch (st.format) {
+            case VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_BOOL32_KHR:
+                std::fprintf(stderr, "    %-40s %s\n", st.name,
+                             st.value.b32 ? "true" : "false");
+                break;
+            case VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_INT64_KHR:
+                std::fprintf(stderr, "    %-40s %lld\n", st.name,
+                             (long long)st.value.i64);
+                break;
+            case VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_UINT64_KHR:
+                std::fprintf(stderr, "    %-40s %llu\n", st.name,
+                             (unsigned long long)st.value.u64);
+                break;
+            default:
+                std::fprintf(stderr, "    %-40s %f\n", st.name, st.value.f64);
+                break;
+            }
+        }
+    }
 }
 
 nxvc_vkd_status probe_device(D *d) {
@@ -563,6 +645,9 @@ nxvc_vkd_status make_layouts(D *d) {
     sm.codeSize = sizeof(reconstruct_spv);
     sm.pCode = reconstruct_spv;
     VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smB));
+    sm.codeSize = sizeof(reconstruct_v1_spv);
+    sm.pCode = reconstruct_v1_spv;
+    VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smBv1));
 
     // Pass A's 8 storage buffers plus Pass B's 6 (bindings 0-2, 7-9) is 14,
     // not 12; bindings 8 and 9 arrived with the tile map and the sparse unit
@@ -614,6 +699,8 @@ nxvc_vkd_status pipeline_a(D *d, uint32_t lanes, VkPipeline *out) {
     // descriptor array, which is how the frame's tiles are grouped by lane
     // count without an extra push constant.
     ci.flags = VK_PIPELINE_CREATE_DISPATCH_BASE_BIT;
+    if (d->has_exec_props)
+        ci.flags |= VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR;
     ci.stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
     ci.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
     ci.stage.module = d->smA;
@@ -629,13 +716,21 @@ nxvc_vkd_status pipeline_a(D *d, uint32_t lanes, VkPipeline *out) {
                                       &p));
     d->pipesA[lanes] = p;
     *out = p;
+    if (d->has_exec_props) {
+        char tag[64];
+        std::snprintf(tag, sizeof tag, "passA lanes=%u mode=%u tpg=%u", lanes,
+                      mode, tpg);
+        dump_shader_stats(d, p, tag);
+    }
     return NXVC_VKD_OK;
 }
 
 nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2, int32_t sparse,
-                           uint32_t store_words, VkPipeline *out) {
+                           uint32_t store_words, int32_t intra_dir,
+                           VkPipeline *out) {
     const uint32_t sched = d->dir_sched;
-    uint64_t key = ((uint64_t)d->unorm_store << 52) |
+    uint64_t key = ((uint64_t)(uint32_t)intra_dir << 56) |
+                   ((uint64_t)d->unorm_store << 52) |
                    ((uint64_t)(uint32_t)sparse << 48) |
                    ((uint64_t)(uint32_t)(fmt2 + 1) << 44) |
                    ((uint64_t)fmt << 40) | ((uint64_t)sched << 32) | store_words;
@@ -657,9 +752,11 @@ nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2, int32_t sparse,
     VkSpecializationInfo spec{6, me, sizeof(data), data};
     VkComputePipelineCreateInfo ci{
         VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
+    if (d->has_exec_props)
+        ci.flags |= VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR;
     ci.stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
     ci.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-    ci.stage.module = d->smB;
+    ci.stage.module = intra_dir != 0 ? d->smB : d->smBv1;
     ci.stage.pName = "main";
     ci.stage.pSpecializationInfo = &spec;
     ci.layout = d->plB;
@@ -668,6 +765,14 @@ nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2, int32_t sparse,
                                       &p));
     d->pipesB[key] = p;
     *out = p;
+    if (d->has_exec_props) {
+        char tag[96];
+        std::snprintf(tag, sizeof tag,
+                      "passB fmt=%u fmt2=%d sched=%u storeWords=%u lds=%zuB "
+                      "intraDir=%d",
+                      fmt, fmt2, sched, store_words, lds, intra_dir);
+        dump_shader_stats(d, p, tag);
+    }
     return NXVC_VKD_OK;
 }
 
@@ -1024,6 +1129,12 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_create(
     if (!d) return NXVC_VKD_ERR_NOMEM;
     d->want_output = ci->output_format;
     d->flags = ci->flags;
+    // Opt-in, and only on a device this library creates: the statistics
+    // require a device extension and a pipeline creation flag, and the flag
+    // may change what the driver compiles, so it must never be on in a run
+    // whose numbers are quoted.
+    if (const char *e = std::getenv("NXVC_VKD_SHADER_STATS"))
+        d->want_shader_stats = (e[0] == '1');
 
     nxvc_vkd_status st;
     if (ci->device) {
@@ -1112,6 +1223,7 @@ extern "C" void nxvc_vk_decoder_destroy(nxvc_vk_decoder *d) {
         for (auto &kv : d->pipesB) vkDestroyPipeline(d->dev, kv.second, nullptr);
         if (d->smA) vkDestroyShaderModule(d->dev, d->smA, nullptr);
         if (d->smB) vkDestroyShaderModule(d->dev, d->smB, nullptr);
+        if (d->smBv1) vkDestroyShaderModule(d->dev, d->smBv1, nullptr);
         if (d->plA) vkDestroyPipelineLayout(d->dev, d->plA, nullptr);
         if (d->plB) vkDestroyPipelineLayout(d->dev, d->plB, nullptr);
         if (d->dpool) vkDestroyDescriptorPool(d->dev, d->dpool, nullptr);
@@ -1441,7 +1553,8 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
         if ((st = pipeline_b(d, d->out_format,
                              fuse ? (int32_t)nxvw::kOutRgba8
                                   : (int32_t)nxvw::kOutNone,
-                             fp.push.sparse, storeWords, &p)))
+                             fp.push.sparse, storeWords,
+                             (int32_t)fp.push.intraDir, &p)))
             return st;
         vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, p);
         vkCmdDispatch(d->cmd, ntiles, 1, 1);
@@ -1451,7 +1564,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
         VkPipeline p;
         if ((st = pipeline_b(d, (uint32_t)nxvw::kOutRgba8,
                              (int32_t)nxvw::kOutNone, fp.push.sparse,
-                             storeWords, &p)))
+                             storeWords, (int32_t)fp.push.intraDir, &p)))
             return st;
         vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, p);
         vkCmdDispatch(d->cmd, ntiles, 1, 1);

@@ -58,6 +58,28 @@ layout(constant_id = 4) const int kSparse = 1;
 //    because the image is an integer format").  kOutRgb10A2 is unaffected and
 //    stays integer; it is a desktop path and its samples are not 8-bit.
 layout(constant_id = 5) const int kUnormStore = 0;
+// The frame's INTRA_DIR tool bit is a *build* variant, not a specialization
+// constant and no longer a push constant.  It was a push constant, which meant
+// one pipeline carried both the v1 predictor and the directional wavefront and
+// a v1 stream paid for a wavefront it never entered.  On RDNA3 that cost
+// nothing measurable; on the Adreno 650 it was most of Pass B -- the wavefront
+// is what needs predictOne()'s two 17-entry by-value reference arrays, and
+// VK_KHR_pipeline_executable_properties reports the combined kernel at a
+// 328-word register footprint against 16 for the v1 form.
+//
+// It is NOT a specialization constant, and that is measured rather than
+// stylistic: with `kIntraDir` specialized to 0 the Adreno 650 driver's own
+// dead-branch elimination produced the right pixels for every 4:2:0 stream and
+// the wrong ones for every 4:4:4 stream -- luma exact, both chroma planes
+// wrong from the second row of block means on, byte-for-byte reproducibly,
+// under -O0 as well as under the shipped pass list, and correct again the
+// moment the branch was kept reachable by an opaque condition. Compiling the
+// two forms as two modules moves the elimination into glslang and spirv-opt,
+// where all three drivers agree, and costs one more VkShaderModule.
+#ifndef NXVW_INTRA_DIR
+#define NXVW_INTRA_DIR 1
+#endif
+const int kIntraDir = NXVW_INTRA_DIR;
 
 // ------------------------------------------------------------- bindings
 layout(set = 0, binding = 0, std430) readonly buffer Coef { uint w[]; } uCoef;
@@ -115,6 +137,9 @@ shared uint sPlane[kPlaneStoreWords];
 // DC plane: up to 8x8 block means, plus scratch for its second-level IDCT.
 shared int sMeans[64];
 shared int sDcTmp[64];
+// Between the two passes of the second-level DC IDCT, so neither sDcTmp nor
+// sMeans is both read and written; see the transform below.
+shared int sDcRow[64];
 // [sparse] Set when any 8x8 block of the current plane names a directional
 // mode other than 0.  Mode 0 predicts from the DC plane alone, so a plane
 // whose modes are all 0 has no dependency between blocks at all and takes the
@@ -165,10 +190,24 @@ int unitLen(int tileLenBase, int ui) {
                NXVW_UNIT_LEN_MASK);
 }
 
+// One dequantized coefficient of a transform block, by its raster position.
+int dqCoef(int blockBase, int scanId, int len, int planeQp, int wbase,
+           int pos) {
+    return dequant(coefIn(blockBase, scanId, len, pos),
+                   dequantStep(planeQp, uWgt.m[wbase + pos]));
+}
+
 // ------------------------------------------------------------- 1D IDCT
 // [REF] transform.cpp idct8_1d.  Gain 2^10 relative to the orthonormal DCT-III.
+// The eight results leave as eight scalars, not as an `out int[8]`.  A local
+// array is only a register file if every index is a compile-time constant
+// after unrolling, and the Qualcomm compiler does not always get there: it
+// puts the array in private memory instead, which is off-chip.  Scalars cannot
+// be demoted.  (VK_KHR_pipeline_executable_properties reported 532 B of
+// scratch per invocation for this kernel before the change.)
 void idct8_1d(int x0, int x1, int x2, int x3, int x4, int x5, int x6, int x7,
-              out int y[8]) {
+              out int y0, out int y1, out int y2, out int y3,
+              out int y4, out int y5, out int y6, out int y7) {
     // even part
     int t0 = (x0 + x4) * kC4;
     int t1 = (x0 - x4) * kC4;
@@ -188,10 +227,16 @@ void idct8_1d(int x0, int x1, int x2, int x3, int x4, int x5, int x6, int x7,
     // syntax_constants.h: (P +- Q) * C4 does not fit int32.
     int O1 = nxvw_mul_c4_rnd9(P + Q);
     int O2 = nxvw_mul_c4_rnd9(P - Q);
-    y[0] = e0 + O0; y[7] = e0 - O0;
-    y[1] = e1 + O1; y[6] = e1 - O1;
-    y[2] = e2 + O2; y[5] = e2 - O2;
-    y[3] = e3 + O3; y[4] = e3 - O3;
+    y0 = e0 + O0; y7 = e0 - O0;
+    y1 = e1 + O1; y6 = e1 - O1;
+    y2 = e2 + O2; y5 = e2 - O2;
+    y3 = e3 + O3; y4 = e3 - O3;
+}
+
+// The second-level IDCT's per-block-mean tail: round, shift, clamp16, then the
+// plane's DC offset and range.  [REF] reconstruct_plane.
+int dcMean(int y, int dcOff, int maxval) {
+    return clamp(dcOff + clamp16((y + kIdctRound2) >> kIdctShift2), 0, maxval);
 }
 
 // ------------------------------------------------------------ bilinear
@@ -486,7 +531,7 @@ void main() {
     // [v3] Directional intra applies to an INTRA tile of a stream that sets
     // tool bit 17.  Mode 0 reproduces the v1 predictor exactly, so a tile
     // whose modes are all 0 decodes identically either way.
-    bool dir = intra && pc.p.intraDir != 0;
+    bool dir = intra && kIntraDir != 0;
     int modeBase = tile * NXVW_MODE_WORDS_PER_TILE;
 
     int nplanes = (pc.p.alphaPresent != 0) ? 4 : 3;
@@ -494,11 +539,17 @@ void main() {
     if (alpha_mode != kAlphaCoded) ncoded = min(ncoded, 3);
 
     int tileCoefBase = tile * pc.p.coefStrideI16;
-    int planeStoreBase[4];
-    planeStoreBase[0] = 0;
-    planeStoreBase[1] = pc.p.planeWords0;
-    planeStoreBase[2] = pc.p.planeWords0 + pc.p.planeWords1;
-    planeStoreBase[3] = pc.p.planeWords0 + pc.p.planeWords1 + pc.p.planeWords2;
+    // Four scalars, not an int[4].  A local array is a register file only if
+    // the compiler can prove every index is a compile-time constant; the
+    // Qualcomm compiler puts these in private memory instead, and read them
+    // back wrong once the kernel's register footprint changed -- planes 1 and
+    // 2 of every 4:4:4 tile came out as prediction with no residual while
+    // plane 0 stayed exact.  Scalars cannot be demoted to memory.
+    int planeStoreBase0 = 0;
+    int planeStoreBase1 = pc.p.planeWords0;
+    int planeStoreBase2 = pc.p.planeWords0 + pc.p.planeWords1;
+    int planeStoreBase3 =
+        pc.p.planeWords0 + pc.p.planeWords1 + pc.p.planeWords2;
 
     int bIdx = tid >> 2;   // block index inside the plane, 0..63
     int sub = tid & 3;     // owns rows / columns 2*sub and 2*sub+1
@@ -526,7 +577,10 @@ void main() {
         bool ctChroma = (pc.p.colorTransform == kCtYCoCgR) && chroma;
         int dcOff = ctChroma ? kDcOffsetChromaCT : kDcOffset8;
         int maxval = ctChroma ? kMaxvalChromaCT : kMaxval8;
-        int store = planeStoreBase[p];
+        int store = p == 0 ? planeStoreBase0
+                  : p == 1 ? planeStoreBase1
+                  : p == 2 ? planeStoreBase2
+                           : planeStoreBase3;
 
         // ------------------------------------------------ DC plane (3.2.4)
         int dcqp = nxvw_dc_qp(planeQp);  // [marked edit] qp >> 1, was qp - 6
@@ -543,37 +597,63 @@ void main() {
                               : 0;
         barrier();
 
+        // Second-level 8x8 IDCT of the 64 block DCs.  Same two-pass structure
+        // as the block transform; 4 threads, 2 rows each.
+        //
+        // The two passes used to ping-pong between sDcTmp and sMeans, so each
+        // of those arrays was read through one transposed index expression and
+        // written through another in the same kernel.  That is the shape the
+        // Adreno 650 driver miscompiles (bench/README.md, "Adreno and
+        // spirv-opt"), and here it survives -O0, so it is the driver's own
+        // compiler rather than spirv-opt: dropping Pass B's directional branch
+        // was enough to make the chroma planes of a 4:4:4 tile come back with
+        // the wrong block means while luma stayed exact.  A third 256 B array
+        // makes the chain one-directional -- sDcTmp -> sDcRow -> sMeans, each
+        // word written once, no array both read and written -- and the offset
+        // and clamp of the old third step fold into the column pass.
         if (nb == 8 && dcLen != 0) {
-            // Second-level 8x8 IDCT of the 64 block DCs.  Same two-pass
-            // structure as the block transform; 4 threads, 2 rows each.
-            int rowv[8], y[8];
-            int tmp[8];
+            int y0, y1, y2, y3, y4, y5, y6, y7;
             if (tid < 4) {
                 for (int hf = 0; hf < 2; ++hf) {
                     int r = (tid << 1) + hf;
-                    for (int c = 0; c < 8; ++c) rowv[c] = sDcTmp[r * 8 + c];
-                    idct8_1d(rowv[0], rowv[1], rowv[2], rowv[3], rowv[4],
-                             rowv[5], rowv[6], rowv[7], y);
-                    for (int c = 0; c < 8; ++c)
-                        tmp[c] = clamp16((y[c] + kIdctRound1) >> kIdctShift1);
-                    for (int c = 0; c < 8; ++c) sMeans[c * 8 + r] = tmp[c];
+                    int b = r * 8;
+                    idct8_1d(sDcTmp[b], sDcTmp[b + 1], sDcTmp[b + 2],
+                             sDcTmp[b + 3], sDcTmp[b + 4], sDcTmp[b + 5],
+                             sDcTmp[b + 6], sDcTmp[b + 7],
+                             y0, y1, y2, y3, y4, y5, y6, y7);
+                    sDcRow[     r] = clamp16((y0 + kIdctRound1) >> kIdctShift1);
+                    sDcRow[ 8 + r] = clamp16((y1 + kIdctRound1) >> kIdctShift1);
+                    sDcRow[16 + r] = clamp16((y2 + kIdctRound1) >> kIdctShift1);
+                    sDcRow[24 + r] = clamp16((y3 + kIdctRound1) >> kIdctShift1);
+                    sDcRow[32 + r] = clamp16((y4 + kIdctRound1) >> kIdctShift1);
+                    sDcRow[40 + r] = clamp16((y5 + kIdctRound1) >> kIdctShift1);
+                    sDcRow[48 + r] = clamp16((y6 + kIdctRound1) >> kIdctShift1);
+                    sDcRow[56 + r] = clamp16((y7 + kIdctRound1) >> kIdctShift1);
                 }
             }
             barrier();
             if (tid < 4) {
                 for (int hf = 0; hf < 2; ++hf) {
                     int r = (tid << 1) + hf;
-                    for (int c = 0; c < 8; ++c) rowv[c] = sMeans[r * 8 + c];
-                    idct8_1d(rowv[0], rowv[1], rowv[2], rowv[3], rowv[4],
-                             rowv[5], rowv[6], rowv[7], y);
-                    for (int c = 0; c < 8; ++c)
-                        tmp[c] = clamp16((y[c] + kIdctRound2) >> kIdctShift2);
-                    for (int c = 0; c < 8; ++c) sDcTmp[c * 8 + r] = tmp[c];
+                    int b = r * 8;
+                    idct8_1d(sDcRow[b], sDcRow[b + 1], sDcRow[b + 2],
+                             sDcRow[b + 3], sDcRow[b + 4], sDcRow[b + 5],
+                             sDcRow[b + 6], sDcRow[b + 7],
+                             y0, y1, y2, y3, y4, y5, y6, y7);
+                    sMeans[     r] = dcMean(y0, dcOff, maxval);
+                    sMeans[ 8 + r] = dcMean(y1, dcOff, maxval);
+                    sMeans[16 + r] = dcMean(y2, dcOff, maxval);
+                    sMeans[24 + r] = dcMean(y3, dcOff, maxval);
+                    sMeans[32 + r] = dcMean(y4, dcOff, maxval);
+                    sMeans[40 + r] = dcMean(y5, dcOff, maxval);
+                    sMeans[48 + r] = dcMean(y6, dcOff, maxval);
+                    sMeans[56 + r] = dcMean(y7, dcOff, maxval);
                 }
             }
-            barrier();
+        } else {
+            barrier();  // one barrier on either arm, and the arm is uniform
+            if (tid < ndc) sMeans[tid] = clamp(dcOff + sDcTmp[tid], 0, maxval);
         }
-        if (tid < ndc) sMeans[tid] = clamp(dcOff + sDcTmp[tid], 0, maxval);
         barrier();
 
         // -------------------------------------------- residual block loop
@@ -615,19 +695,45 @@ void main() {
             // skip-tile fast path, because a tile with no coded unit has no
             // coded block either.
             if (coded) {
-                int y[8];
+                int y0, y1, y2, y3, y4, y5, y6, y7;
                 for (int hf = 0; hf < 2; ++hf) {
                     int r = (sub << 1) + hf;
-                    int q[8];
-                    for (int c = 0; c < 8; ++c) {
-                        int pos = r * 8 + c;
-                        q[c] = dequant(coefIn(blockBase, blockScan, blockLen, pos),
-                                       dequantStep(planeQp, uWgt.m[wbase + pos]));
-                    }
-                    idct8_1d(q[0], q[1], q[2], q[3], q[4], q[5], q[6], q[7], y);
-                    for (int c = 0; c < 8; ++c) {
-                        int v = clamp16((y[c] + kIdctRound1) >> kIdctShift1);
-                        if (hf == 0) res0[c] = v; else res1[c] = v;
+                    int b = r * 8;
+                    idct8_1d(dqCoef(blockBase, blockScan, blockLen, planeQp,
+                                    wbase, b),
+                             dqCoef(blockBase, blockScan, blockLen, planeQp,
+                                    wbase, b + 1),
+                             dqCoef(blockBase, blockScan, blockLen, planeQp,
+                                    wbase, b + 2),
+                             dqCoef(blockBase, blockScan, blockLen, planeQp,
+                                    wbase, b + 3),
+                             dqCoef(blockBase, blockScan, blockLen, planeQp,
+                                    wbase, b + 4),
+                             dqCoef(blockBase, blockScan, blockLen, planeQp,
+                                    wbase, b + 5),
+                             dqCoef(blockBase, blockScan, blockLen, planeQp,
+                                    wbase, b + 6),
+                             dqCoef(blockBase, blockScan, blockLen, planeQp,
+                                    wbase, b + 7),
+                             y0, y1, y2, y3, y4, y5, y6, y7);
+                    if (hf == 0) {
+                        res0[0] = clamp16((y0 + kIdctRound1) >> kIdctShift1);
+                        res0[1] = clamp16((y1 + kIdctRound1) >> kIdctShift1);
+                        res0[2] = clamp16((y2 + kIdctRound1) >> kIdctShift1);
+                        res0[3] = clamp16((y3 + kIdctRound1) >> kIdctShift1);
+                        res0[4] = clamp16((y4 + kIdctRound1) >> kIdctShift1);
+                        res0[5] = clamp16((y5 + kIdctRound1) >> kIdctShift1);
+                        res0[6] = clamp16((y6 + kIdctRound1) >> kIdctShift1);
+                        res0[7] = clamp16((y7 + kIdctRound1) >> kIdctShift1);
+                    } else {
+                        res1[0] = clamp16((y0 + kIdctRound1) >> kIdctShift1);
+                        res1[1] = clamp16((y1 + kIdctRound1) >> kIdctShift1);
+                        res1[2] = clamp16((y2 + kIdctRound1) >> kIdctShift1);
+                        res1[3] = clamp16((y3 + kIdctRound1) >> kIdctShift1);
+                        res1[4] = clamp16((y4 + kIdctRound1) >> kIdctShift1);
+                        res1[5] = clamp16((y5 + kIdctRound1) >> kIdctShift1);
+                        res1[6] = clamp16((y6 + kIdctRound1) >> kIdctShift1);
+                        res1[7] = clamp16((y7 + kIdctRound1) >> kIdctShift1);
                     }
                 }
                 // tmp[c*8 + r], r = 2*sub and 2*sub+1: block row c, columns
@@ -640,18 +746,35 @@ void main() {
             barrier();
             // Column pass: rows 2*sub, 2*sub+1 of the transposed block.
             if (coded) {
-                int y[8];
+                int y0, y1, y2, y3, y4, y5, y6, y7;
                 for (int hf = 0; hf < 2; ++hf) {
                     int r = (sub << 1) + hf;
-                    int q[8];
-                    int rowBase = ((by * 8 + r) * size + bx * 8) >> 1;
-                    for (int c = 0; c < 8; ++c)
-                        q[c] = unpack16(sPlane[store + rowBase + (c >> 1)], c & 1);
-                    idct8_1d(q[0], q[1], q[2], q[3], q[4], q[5], q[6], q[7], y);
-                    for (int c = 0; c < 8; ++c) {
-                        int v = clamp16((y[c] + kIdctRound2) >> kIdctShift2);
-                        // dst[c*8 + r]: row c, column r
-                        if (hf == 0) res0[c] = v; else res1[c] = v;
+                    int rb = store + (((by * 8 + r) * size + bx * 8) >> 1);
+                    uint w0 = sPlane[rb], w1 = sPlane[rb + 1];
+                    uint w2 = sPlane[rb + 2], w3 = sPlane[rb + 3];
+                    idct8_1d(unpack16(w0, 0), unpack16(w0, 1), unpack16(w1, 0),
+                             unpack16(w1, 1), unpack16(w2, 0), unpack16(w2, 1),
+                             unpack16(w3, 0), unpack16(w3, 1),
+                             y0, y1, y2, y3, y4, y5, y6, y7);
+                    // dst[c*8 + r]: row c, column r
+                    if (hf == 0) {
+                        res0[0] = clamp16((y0 + kIdctRound2) >> kIdctShift2);
+                        res0[1] = clamp16((y1 + kIdctRound2) >> kIdctShift2);
+                        res0[2] = clamp16((y2 + kIdctRound2) >> kIdctShift2);
+                        res0[3] = clamp16((y3 + kIdctRound2) >> kIdctShift2);
+                        res0[4] = clamp16((y4 + kIdctRound2) >> kIdctShift2);
+                        res0[5] = clamp16((y5 + kIdctRound2) >> kIdctShift2);
+                        res0[6] = clamp16((y6 + kIdctRound2) >> kIdctShift2);
+                        res0[7] = clamp16((y7 + kIdctRound2) >> kIdctShift2);
+                    } else {
+                        res1[0] = clamp16((y0 + kIdctRound2) >> kIdctShift2);
+                        res1[1] = clamp16((y1 + kIdctRound2) >> kIdctShift2);
+                        res1[2] = clamp16((y2 + kIdctRound2) >> kIdctShift2);
+                        res1[3] = clamp16((y3 + kIdctRound2) >> kIdctShift2);
+                        res1[4] = clamp16((y4 + kIdctRound2) >> kIdctShift2);
+                        res1[5] = clamp16((y5 + kIdctRound2) >> kIdctShift2);
+                        res1[6] = clamp16((y6 + kIdctRound2) >> kIdctShift2);
+                        res1[7] = clamp16((y7 + kIdctRound2) >> kIdctShift2);
                     }
                 }
             }
@@ -683,7 +806,9 @@ void main() {
                 }
             }
             barrier();
-        } else {
+        }
+#if NXVW_INTRA_DIR
+        else {
             // ------------------------------------------ [v3] the wavefront
             // What has to be serialized is only the prediction and the add,
             // because a block reads its neighbours' RECONSTRUCTION.  sPlane
@@ -778,21 +903,23 @@ void main() {
                 barrier();
             }
         }
+#endif
 
         coefBase += ndc + ndc * 64;
         unitBase += unitsPerPlaneExtra + ndc;
     }
 
     // ------------------------------------------------- display conversion
-    int sizeP[4];
-    int fullP[4];
-    for (int p = 0; p < 4; ++p) {
-        sizeP[p] = nxvw_plane_size(p, res_level, chroma444);
-        // [REF] plane_full_extent(): a chroma plane is half size only when the
-        // *stream* is 4:2:0; inside a 4:4:4 stream a 4:2:0 tile is upsampled
-        // straight to 64 in one step.
-        fullP[p] = ((p == 1 || p == 2) && pc.p.chroma420 != 0) ? 32 : 64;
-    }
+    // Scalars for the same reason as planeStoreBase above.
+    // [REF] plane_full_extent(): a chroma plane is half size only when the
+    // *stream* is 4:2:0; inside a 4:4:4 stream a 4:2:0 tile is upsampled
+    // straight to 64 in one step.
+    int sizeP0 = nxvw_plane_size(0, res_level, chroma444);
+    int sizeP1 = nxvw_plane_size(1, res_level, chroma444);
+    int sizeP2 = nxvw_plane_size(2, res_level, chroma444);
+    int sizeP3 = nxvw_plane_size(3, res_level, chroma444);
+    int chromaFull = pc.p.chroma420 != 0 ? 32 : 64;
+    int fullP0 = 64, fullP1 = chromaFull, fullP2 = chromaFull, fullP3 = 64;
 
     int ox = tileX * 64, oy = tileY * 64;
 
@@ -813,7 +940,7 @@ void main() {
             int x = idx & 63, y = idx >> 6;
             int gx = ox + x, gy = oy + y;
             if (gx >= pc.p.imageW || gy >= pc.p.imageH) continue;
-            int Y = clamp(planeAtFull(planeStoreBase[0], sizeP[0], 64, x, y), 0, 255);
+            int Y = clamp(planeAtFull(planeStoreBase0, sizeP0, 64, x, y), 0, 255);
             if (kUnormStore != 0)
                 imageStore(uOutLumaN, ivec2(gx, gy),
                            vec4(nxvw_unorm8(Y), 0.0, 0.0, 0.0));
@@ -827,8 +954,8 @@ void main() {
             int x = idx & 31, y = idx >> 5;
             int gx = cox + x, gy = coy + y;
             if (gx >= cw || gy >= ch) continue;
-            int Cb = clamp(planeAtFull(planeStoreBase[1], sizeP[1], 32, x, y), 0, 255);
-            int Cr = clamp(planeAtFull(planeStoreBase[2], sizeP[2], 32, x, y), 0, 255);
+            int Cb = clamp(planeAtFull(planeStoreBase1, sizeP1, 32, x, y), 0, 255);
+            int Cr = clamp(planeAtFull(planeStoreBase2, sizeP2, 32, x, y), 0, 255);
             if (kUnormStore != 0)
                 imageStore(uOutCbCrN, ivec2(gx, gy),
                            vec4(nxvw_unorm8(Cb), nxvw_unorm8(Cr), 0.0, 0.0));
@@ -844,9 +971,9 @@ void main() {
         int gx = ox + x, gy = oy + y;
         if (gx >= pc.p.imageW || gy >= pc.p.imageH) continue;
 
-        int P0 = planeAtDisplay(planeStoreBase[0], sizeP[0], fullP[0], x, y);
-        int P1 = planeAtDisplay(planeStoreBase[1], sizeP[1], fullP[1], x, y);
-        int P2 = planeAtDisplay(planeStoreBase[2], sizeP[2], fullP[2], x, y);
+        int P0 = planeAtDisplay(planeStoreBase0, sizeP0, fullP0, x, y);
+        int P1 = planeAtDisplay(planeStoreBase1, sizeP1, fullP1, x, y);
+        int P2 = planeAtDisplay(planeStoreBase2, sizeP2, fullP2, x, y);
 
         int R, G, B;
         if (pc.p.colorTransform == kCtYCoCgR) {
@@ -869,7 +996,7 @@ void main() {
         if (alpha_mode == kAlphaConstant) {
             A = nxvw_rec_alpha_value(rec.w2);
         } else if (alpha_mode == kAlphaCoded) {
-            A = clamp(planeAtDisplay(planeStoreBase[3], sizeP[3], fullP[3], x, y),
+            A = clamp(planeAtDisplay(planeStoreBase3, sizeP3, fullP3, x, y),
                       0, 255);
         }
 

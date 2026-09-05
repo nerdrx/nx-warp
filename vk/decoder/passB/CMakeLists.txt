@@ -14,7 +14,11 @@ set(NXVW_PASSB_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(NXVW_PASSB_GEN ${CMAKE_CURRENT_BINARY_DIR}/generated)
 file(MAKE_DIRECTORY ${NXVW_PASSB_GEN})
 
+# Two modules from one source: the full kernel, and one built with
+# NXVW_INTRA_DIR=0 in which the directional-intra wavefront does not exist.
+# See reconstruct.comp, "the frame's INTRA_DIR tool bit is a build variant".
 set(NXVW_PASSB_SPV ${NXVW_PASSB_GEN}/reconstruct.spv.h)
+set(NXVW_PASSB_SPV_V1 ${NXVW_PASSB_GEN}/reconstruct_v1.spv.h)
 add_custom_command(
   OUTPUT ${NXVW_PASSB_SPV}
   COMMAND ${CMAKE_COMMAND}
@@ -22,6 +26,7 @@ add_custom_command(
           -DSRC=${NXVW_PASSB_DIR}/reconstruct.comp
           -DOUT=${NXVW_PASSB_SPV}
           -DNAME=reconstruct
+          -DDEFINES=-DNXVW_INTRA_DIR=1
           -DINCDIR=${NXVW_PASSB_DIR}
           -P ${NXVW_PASSB_DIR}/cmake/gen_spv.cmake
   DEPENDS ${NXVW_PASSB_DIR}/reconstruct.comp
@@ -30,7 +35,23 @@ add_custom_command(
           ${NXVW_PASSB_DIR}/cmake/gen_spv.cmake
   COMMENT "glslc reconstruct.comp -> reconstruct.spv.h"
   VERBATIM)
-add_custom_target(nxvw_passB_spv DEPENDS ${NXVW_PASSB_SPV})
+add_custom_command(
+  OUTPUT ${NXVW_PASSB_SPV_V1}
+  COMMAND ${CMAKE_COMMAND}
+          -DGLSLC=${NXVW_GLSLC}
+          -DSRC=${NXVW_PASSB_DIR}/reconstruct.comp
+          -DOUT=${NXVW_PASSB_SPV_V1}
+          -DNAME=reconstruct_v1
+          -DDEFINES=-DNXVW_INTRA_DIR=0
+          -DINCDIR=${NXVW_PASSB_DIR}
+          -P ${NXVW_PASSB_DIR}/cmake/gen_spv.cmake
+  DEPENDS ${NXVW_PASSB_DIR}/reconstruct.comp
+          ${NXVW_PASSB_DIR}/syntax_constants.h
+          ${NXVW_PASSB_DIR}/passB_layout.h
+          ${NXVW_PASSB_DIR}/cmake/gen_spv.cmake
+  COMMENT "glslc reconstruct.comp (v1) -> reconstruct_v1.spv.h"
+  VERBATIM)
+add_custom_target(nxvw_passB_spv DEPENDS ${NXVW_PASSB_SPV} ${NXVW_PASSB_SPV_V1})
 
 # ---------------------------------------------------------------- CPU model
 add_library(nxvw_passB_model STATIC passB_model.cpp)

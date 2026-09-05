@@ -4,8 +4,13 @@
 # glslc's own -O is not used; the SPIR-V optimiser runs explicitly below so the
 # pass list is visible and one pass can be left out of it.
 
+if(NOT DEFINED DEFINES)
+  set(DEFINES "")
+endif()
+separate_arguments(_defs NATIVE_COMMAND "${DEFINES}")
+
 execute_process(
-  COMMAND ${GLSLC} --target-env=vulkan1.1 -O0 -I ${INCDIR}
+  COMMAND ${GLSLC} --target-env=vulkan1.1 -O0 -I ${INCDIR} ${_defs}
           -o ${OUT}.spv ${SRC}
   RESULT_VARIABLE _rc
   ERROR_VARIABLE  _err)
@@ -47,18 +52,28 @@ endif()
     --eliminate-dead-code-aggressive --merge-blocks
     --eliminate-dead-branches --merge-blocks --simplify-instructions)
 
+# NXVC_SPV_PASSES overrides the list, exactly as NXB_SPV_PASSES does in
+# bench/: empty for no optimisation at all, "-O" to reproduce the
+# redundancy-elimination miscompilation.  It exists so a suspected driver
+# miscompile can be bisected against the pass list without editing this file.
+if(DEFINED ENV{NXVC_SPV_PASSES})
+  separate_arguments(_passlist NATIVE_COMMAND "$ENV{NXVC_SPV_PASSES}")
+endif()
+
 get_filename_component(_bindir ${GLSLC} DIRECTORY)
 find_program(_SPIRV_OPT spirv-opt HINTS ${_bindir} PATHS /usr/bin /usr/local/bin)
 if(NOT _SPIRV_OPT)
   message(FATAL_ERROR "spirv-opt not found (looked next to ${GLSLC} and on PATH)")
 endif()
-execute_process(
-  COMMAND ${_SPIRV_OPT} ${_passlist} -o ${OUT}.opt ${OUT}.spv
-  RESULT_VARIABLE _rc2 ERROR_VARIABLE _err2)
-if(NOT _rc2 EQUAL 0)
-  message(FATAL_ERROR "spirv-opt failed for ${SRC}:\n${_err2}")
+if(_passlist)
+  execute_process(
+    COMMAND ${_SPIRV_OPT} ${_passlist} -o ${OUT}.opt ${OUT}.spv
+    RESULT_VARIABLE _rc2 ERROR_VARIABLE _err2)
+  if(NOT _rc2 EQUAL 0)
+    message(FATAL_ERROR "spirv-opt failed for ${SRC}:\n${_err2}")
+  endif()
+  file(RENAME ${OUT}.opt ${OUT}.spv)
 endif()
-file(RENAME ${OUT}.opt ${OUT}.spv)
 
 # Re-emit as a C array (glslc's -mfmt=c is not available on a raw module).
 file(READ ${OUT}.spv _hex HEX)
