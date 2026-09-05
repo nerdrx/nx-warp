@@ -161,6 +161,13 @@ shared int s_mode_base[kMaxSlots];       // uint index of the tile's mode words
 // [minor 6] tile-header word1 bit 28: this tile codes per-block 4x4 split
 // flags.  Zero unless tool bit 19 is on AND the tile sets the bit.
 shared int s_split4[kMaxSlots];
+// [inter] The mode unit of SYNTAX.md 9.6 belongs to an INTRA tile: an inter
+// tile's prediction is the warp, and nine ways of saying nothing is not a tool
+// ([SYN] 13.3).  So INTRA_DIR's effect on the unit list is per TILE, not per
+// frame, and this is where the tile's answer is kept for unit() to read.
+// [REF] ref/src/codec.cpp TileCoder::setup(), `intra_dir = fp->intra_dir &&
+// !inter`.
+shared int s_dir[kMaxSlots];
 // [minor 6] XFORM_LARGE, tile-header word1 bits 29-30, and the per-plane
 // block edge it implies (capped by the plane's own coded extent, so no plane
 // ever carries a block larger than itself).
@@ -372,7 +379,7 @@ void begin_unit() {
     int nc = bs * bs;
     int chroma = (p == 1 || p == 2) ? 1 : 0;
     bool ctx_v2 = (pc.tools & kToolFlagCtxV2) != 0u;
-    bool dir = (pc.tools & kToolFlagIntraDir) != 0u;
+    bool dir = s_dir[g_slot] != 0;   // [inter] per tile, not per frame
     g_ctx_v3 = (pc.tools & kToolFlagCtxV3) != 0u ? 1 : 0;
     g_u_sdh = (pc.tools & kToolFlagSignHide) != 0u ? 1 : 0;
     g_u_ctx_mode = kCtxNone;
@@ -806,7 +813,7 @@ void lite_unit(int u) {
     int k = u - s_unit_base[base + p];
     int nb = s_nb[g_slot * kMaxPlanes + p];
     int ndc = nb * nb;
-    bool dir = (pc.tools & kToolFlagIntraDir) != 0u;
+    bool dir = s_dir[g_slot] != 0;   // [inter] per tile, not per frame
 
     if (k == 0) {  // the DC-plane unit
         g_u_kind = 0;
@@ -918,9 +925,12 @@ void lite_main() {
 
         int np = nxs_coded_planes(int(pc.frame_nplanes), alpha_mode);
         s_np[0] = np;
-        int extra = (pc.tools & kToolFlagIntraDir) != 0u
-                        ? kUnitsPerPlaneExtraDir
-                        : kUnitsPerPlaneExtra;
+        // [inter] INTRA_DIR's mode unit exists only on an INTRA tile.
+        int tdir = ((pc.tools & kToolFlagIntraDir) != 0u &&
+                    int((w1 >> kThModeShift) & kThModeMask) == kTileModeIntra)
+                       ? 1 : 0;
+        s_dir[0] = tdir;
+        int extra = tdir != 0 ? kUnitsPerPlaneExtraDir : kUnitsPerPlaneExtra;
         int ub = 0, cb = 0;
         for (int p = 0; p < kMaxPlanes; ++p) {
             s_unit_base[p] = ub;
@@ -1254,9 +1264,12 @@ void main() {
         int np = nxs_coded_planes(int(pc.frame_nplanes), alpha_mode);
         s_np[slot] = np;
         // [v3] INTRA_DIR adds one mode unit per coded plane (SYNTAX.md 9.1).
-        int extra = (pc.tools & kToolFlagIntraDir) != 0u
-                        ? kUnitsPerPlaneExtraDir
-                        : kUnitsPerPlaneExtra;
+        // [inter] ... on an INTRA tile only ([SYN] 13.3).
+        int tdir = ((pc.tools & kToolFlagIntraDir) != 0u &&
+                    int((w1 >> kThModeShift) & kThModeMask) == kTileModeIntra)
+                       ? 1 : 0;
+        s_dir[slot] = tdir;
+        int extra = tdir != 0 ? kUnitsPerPlaneExtraDir : kUnitsPerPlaneExtra;
         int ub = 0, cb = 0;
         for (int p = 0; p < kMaxPlanes; ++p) {
             s_unit_base[slot * (kMaxPlanes + 1) + p] = ub;

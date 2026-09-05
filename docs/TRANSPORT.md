@@ -784,6 +784,17 @@ The rolling intra refresh of 1/180 of tiles per frame (PAPER 6.6) is a safety ne
 top and is the encoder's business, not the transport's; the transport reports which
 positions have been non-exact longest via `ClientShadow::staleness()`.
 
+**The receiver's half of this is one decoder call.** The rule above is only true if
+the client's concealment is the same deterministic `WARP_SKIP` replay the sender's
+shadow assumes, so a receiver has to be able to tell its decoder which tiles it did
+not get before it hands over the frame. Both decoders offer that:
+`nxvc_decoder_set_lost_tiles()` on the CPU reference and
+`nxvc_vk_decoder_mark_missing()` on the Vulkan one, in either case for the next frame
+only. `tests/vk-decoder/conformance`'s loss arm drives the two side by side over 100
+frames of random loss, mono and stereo, and requires them byte-identical; that is
+what makes "the encoder replays the identical warp" a checked property of this
+codebase rather than a claim about it.
+
 ---
 
 ## 10. Multipath (PAPER 4.8)

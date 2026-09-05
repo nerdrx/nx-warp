@@ -7,6 +7,8 @@
 #include <cstring>
 
 #include "syntax_constants.h"
+// [inter] nxvw_wpred_plane_off(): the WPred buffer's fixed plane offsets.
+#include "../inter/inter_layout.h"
 
 namespace nxvw {
 namespace {
@@ -322,7 +324,12 @@ void reconstruct_tile(const PassBInput &in, int tile, TilePlanes &tp,
     int tskip = nxvw_rec_tskip(rec.w1);
     int mode = nxvw_rec_mode(rec.w1);
     int qp = iclamp(pcp.baseQp + nxvw_rec_qp_delta(rec.w1), 0, 63);
-    bool intra = (mode == kModeIntra);  // INTER HOOK, see reconstruct.comp
+    // INTER HOOK, see reconstruct.comp.  `interTile` is what decides whether
+    // the DC plane's block means are clamped to the sample domain, and
+    // whether the planar interpolation is the prediction or the correction on
+    // top of the warp predictor ([SYN] 13.3).
+    bool intra = (mode == kModeIntra);
+    const bool interTile = (in.interPred != 0) && !intra;
     // [marked edit] per-tile weighting-matrix override, docs/SYNTAX.md 4.1.
     const int wmSet = nxvw_rec_wm_id(rec.w1) * 128;
     const int sched = in.dirSched;
@@ -368,7 +375,9 @@ void reconstruct_tile(const PassBInput &in, int tile, TilePlanes &tp,
     // whenever the stream sets INTRA_DIR, which is what Pass A numbers units
     // by -- not the narrower per-tile `dir` below.
     int unitBase = 0;
-    const int unitsPerPlaneExtra = pcp.intraDir != 0 ? 2 : 1;
+    // [inter] ... and only on an INTRA tile ([SYN] 13.3); mirrors
+    // reconstruct.comp.
+    const int unitsPerPlaneExtra = (pcp.intraDir != 0 && intra) ? 2 : 1;
 
     for (int p = 0; p < ncoded; ++p) {
         bool chroma = (p == 1 || p == 2);
@@ -409,19 +418,38 @@ void reconstruct_tile(const PassBInput &in, int tile, TilePlanes &tp,
             for (int i = 0; i < 64; ++i) dc[i] = out[i];
         }
         std::vector<int> means(ndc);
+        // [inter] An INTRA tile's block mean is a sample value and is clamped
+        // to the sample domain.  An INTER tile's is `dc_offset + a residual
+        // mean`, whose legal range is wider on both sides; clamping it there
+        // would cap the DC correction the warp needs.  Mirrors
+        // inter_hook.glsl's nxvwMeanClamp().
         for (int i = 0; i < ndc; ++i)
-            means[i] = iclamp(dcOff + dc[i], 0, maxval);
+            means[i] = interTile ? dcOff + dc[i]
+                                 : iclamp(dcOff + dc[i], 0, maxval);
 
         // --- the DC-plane prediction, which is `pred` in SYNTAX.md 7.2 and
-        // the base of both forms of 7.5.
+        // the base of both forms of 7.5.  For an inter tile it is the
+        // per-block DC correction instead, and the prediction is
+        //     clamp(W + planar(M) - dc_offset, 0, maxval)
+        // with W the predictor Pass W wrote ([SYN] 13.3).
         std::vector<int> pred((size_t)size * size, 0);
-        if (intra)
+        if (intra || interTile)
             for (int y = 0; y < size; ++y)
                 for (int x = 0; x < size; ++x)
                     pred[(size_t)y * size + x] =
                         bilinear(means.data(), nb, nb, nb,
                                  kPlanarMul * x + kPlanarOff,
                                  kPlanarMul * y + kPlanarOff);
+        if (interTile) {
+            const int16_t *wp =
+                in.wpred + (size_t)tile * in.wpredStrideI16 +
+                nxvw_wpred_plane_off(p, pcp.chroma420);
+            for (int y = 0; y < size; ++y)
+                for (int x = 0; x < size; ++x) {
+                    const size_t i = (size_t)y * size + x;
+                    pred[i] = iclamp((int)wp[i] + pred[i] - dcOff, 0, maxval);
+                }
+        }
 
         const bool dir = intra && pcp.intraDir != 0;
         const bool layer = pcp.dirLayer != 0;
@@ -492,7 +520,9 @@ void reconstruct_tile(const PassBInput &in, int tile, TilePlanes &tp,
                 for (int j = 0; j < 8; ++j)
                     for (int i = 0; i < 8; ++i) {
                         int x = bx * 8 + i, y = by * 8 + j;
-                        int pv = intra ? pred[(size_t)y * size + x] : 0;
+                        int pv = (intra || interTile)
+                                     ? pred[(size_t)y * size + x]
+                                     : 0;
                         tp.s[p][(size_t)y * size + x] =
                             iclamp(pv + res[j * 8 + i], 0, maxval);
                     }
@@ -646,6 +676,37 @@ void model_resolve_matrices(int quant_matrix, const uint8_t *custom128,
             out128[i] = kWeightFlat[m * 64 + i];
             out128[64 + i] = kWeightFlat[cm * 64 + i];
         }
+    }
+}
+
+// [inter] The reference-ring store: the tile's reconstruction in the coded
+// sample domain at full tile extent.  It is the same `planeAtFull` resample
+// the display store runs, clamped to the PLANE's own maxval rather than to 255
+// -- a YCoCg-R chroma plane is 9-bit and the ring holds it as it is coded.
+// [REF] codec_impl.inc store_ref_tile().
+void passB_reconstruct_ref_tile(const PassBInput &in, int tile,
+                                std::vector<int> out[4]) {
+    TilePlanes tp;
+    int alpha_mode = 0, alpha_value = 255;
+    reconstruct_tile(in, tile, tp, alpha_mode, alpha_value);
+    const int nplanes = in.push.alphaPresent != 0 ? 4 : 3;
+    for (int p = 0; p < 4; ++p) {
+        if (p >= nplanes) {
+            out[p].clear();
+            continue;
+        }
+        const bool chroma = (p == 1 || p == 2);
+        const int full = tp.full[p];
+        const bool ctChroma = (in.push.colorTransform == kCtYCoCgR) && chroma;
+        const int maxval = ctChroma ? kMaxvalChromaCT : kMaxval8;
+        const bool constAlpha = (p == 3) && (alpha_mode != kAlphaCoded);
+        const int cval = (alpha_mode == kAlphaConstant) ? alpha_value : 255;
+        out[p].assign((size_t)full * full, 0);
+        for (int y = 0; y < full; ++y)
+            for (int x = 0; x < full; ++x)
+                out[p][(size_t)y * full + x] =
+                    constAlpha ? cval
+                               : iclamp(planeAtFull(tp, p, x, y), 0, maxval);
     }
 }
 
