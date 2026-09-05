@@ -133,7 +133,20 @@ struct nxvc_vk_decoder {
     // nxvc_vk_decoder_wait() instead.
     VkFence fence = VK_NULL_HANDLE;
     bool fence_pending = false;
+    // Signalled on request (NXVC_VKD_SUBMIT_SIGNAL_BINARY) when there is no
+    // timeline, so a client on this driver can chain its own submission after
+    // the decode on the queue instead of through the host.
+    VkSemaphore binsem = VK_NULL_HANDLE;
     VkQueryPool queries = VK_NULL_HANDLE;
+    // How many timestamps the frame in flight wrote, and whether they have
+    // been read back into `stats` yet.  The readback used to sit only on the
+    // synchronous path, so a client that submits with NXVC_VKD_SUBMIT_ASYNC
+    // -- which is every real compositor, and the WiVRn client in particular
+    // -- got pass_a_ms / pass_b_ms / gpu_ms of exactly zero and no way to see
+    // where its frame time went.  It is now taken on the first wait or stats
+    // read after the frame completes.
+    uint32_t ts_count = 0;
+    bool ts_pending = false;
 
     VkDescriptorPool dpool = VK_NULL_HANDLE;
     VkDescriptorSetLayout dslA = VK_NULL_HANDLE, dslB = VK_NULL_HANDLE;
@@ -744,8 +757,10 @@ nxvc_vkd_status make_layouts(D *d) {
 // the lane count: the stride sizes Pass A's shared table, so a v1/v2 frame and
 // a v3 frame want different kernels and a frame must not inherit the other's.
 nxvc_vkd_status pipeline_a(D *d, uint32_t lanes, uint32_t ctx_stride,
-                           uint32_t xform_large, VkPipeline *out) {
-    const uint32_t key = lanes | (ctx_stride << 8) | (xform_large << 16);
+                           uint32_t xform_large, uint32_t entropy_mode,
+                           VkPipeline *out) {
+    const uint32_t key =
+        lanes | (ctx_stride << 8) | (xform_large << 16) | (entropy_mode << 17);
     auto it = d->pipesA.find(key);
     if (it != d->pipesA.end()) {
         *out = it->second;
@@ -757,8 +772,14 @@ nxvc_vkd_status pipeline_a(D *d, uint32_t lanes, uint32_t ctx_stride,
     // op at all (vk/decoder/passA/README.md).
     uint32_t mode = d->read_ptr_mode;
     if (d->subgroup_size < lanes) mode = nxwarp_passA::kReadPtrLdsFallback;
-    const uint32_t tpg = nxwarp_passA::nxs_tiles_per_group(lanes);
-    const uint32_t data[6] = {mode, tpg, lanes, 0u, ctx_stride, xform_large};
+    // [entropy-lite] One tile per workgroup, and the read-pointer mode and
+    // lane count are unread: the Lite path has no rANS lanes and no shared
+    // read pointer.  The workgroup is the same 256 threads either way.
+    const bool lite = entropy_mode == nxwarp_passA::kEntropyLiteFixed;
+    const uint32_t tpg =
+        lite ? 1u : nxwarp_passA::nxs_tiles_per_group(lanes);
+    const uint32_t data[6] = {mode,        tpg,        lanes,
+                              entropy_mode, ctx_stride, xform_large};
     VkSpecializationMapEntry me[6] = {{0, 0, 4},  {1, 4, 4},  {2, 8, 4},
                                       {3, 12, 4}, {4, 16, 4}, {5, 20, 4}};
     VkSpecializationInfo spec{6, me, sizeof(data), data};
@@ -1467,6 +1488,9 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_create(
     if (!d->fpWaitSemaphores ||
         vkCreateSemaphore(d->dev, &sci, nullptr, &d->timeline) != VK_SUCCESS) {
         d->timeline = VK_NULL_HANDLE;
+        VkSemaphoreCreateInfo bsi{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+        if (vkCreateSemaphore(d->dev, &bsi, nullptr, &d->binsem) != VK_SUCCESS)
+            d->binsem = VK_NULL_HANDLE;
         VkFenceCreateInfo fi{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
         if (vkCreateFence(d->dev, &fi, nullptr, &d->fence) != VK_SUCCESS) {
             *out = d;
@@ -1513,6 +1537,7 @@ extern "C" void nxvc_vk_decoder_destroy(nxvc_vk_decoder *d) {
         if (d->dslA) vkDestroyDescriptorSetLayout(d->dev, d->dslA, nullptr);
         if (d->dslB) vkDestroyDescriptorSetLayout(d->dev, d->dslB, nullptr);
         if (d->dslW) vkDestroyDescriptorSetLayout(d->dev, d->dslW, nullptr);
+        if (d->binsem) vkDestroySemaphore(d->dev, d->binsem, nullptr);
         if (d->queries) vkDestroyQueryPool(d->dev, d->queries, nullptr);
         if (d->timeline) vkDestroySemaphore(d->dev, d->timeline, nullptr);
         if (d->fence) vkDestroyFence(d->dev, d->fence, nullptr);
@@ -1630,8 +1655,37 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_plane_size(const nxvc_vk_decoder *d,
 extern "C" VkSemaphore nxvc_vk_decoder_timeline(const nxvc_vk_decoder *d) {
     return d ? d->timeline : VK_NULL_HANDLE;
 }
+extern "C" VkSemaphore nxvc_vk_decoder_binary_semaphore(
+    const nxvc_vk_decoder *d) {
+    return d && d->timeline == VK_NULL_HANDLE ? d->binsem : VK_NULL_HANDLE;
+}
+
 extern "C" uint64_t nxvc_vk_decoder_timeline_value(const nxvc_vk_decoder *d) {
     return d ? d->timeline_value : 0;
+}
+
+// Drain the frame's timestamp queries into `stats`.  Only ever called once
+// the frame is known complete, so VK_QUERY_RESULT_WAIT_BIT never blocks.
+static void collect_timestamps(D *d) {
+    if (!d->ts_pending) return;
+    d->ts_pending = false;
+    if (!d->have_timestamps || !d->queries) return;
+    uint64_t ts[6] = {};
+    const uint32_t nq = d->ts_count;
+    if (nq < 4) return;
+    if (vkGetQueryPoolResults(d->dev, d->queries, 0, nq, sizeof ts, ts,
+                              sizeof(uint64_t),
+                              VK_QUERY_RESULT_64_BIT |
+                                  VK_QUERY_RESULT_WAIT_BIT) != VK_SUCCESS)
+        return;
+    const double k = (double)d->ts_period / 1e6;
+    d->stats.pass_a_ms = (double)(ts[1] - ts[0]) * k;
+    // [inter] Pass W sits inside the Pass A -> Pass B window, so the
+    // reported Pass B is the predictor plus the reconstruction; the
+    // predictor's own share is broken out rather than hidden.
+    d->stats.pass_b_ms = (double)(ts[2] - ts[1]) * k;
+    d->stats.gpu_ms = (double)(ts[3] - ts[0]) * k;
+    if (nq >= 6) d->stats.pass_w_ms = (double)(ts[5] - ts[4]) * k;
 }
 
 extern "C" nxvc_vkd_status nxvc_vk_decoder_wait(nxvc_vk_decoder *d,
@@ -1639,7 +1693,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_wait(nxvc_vk_decoder *d,
     if (!d) return NXVC_VKD_ERR_ARG;
     if (d->timeline_value == 0) return NXVC_VKD_OK;
     if (d->timeline == VK_NULL_HANDLE) {
-        if (!d->fence_pending) return NXVC_VKD_OK;
+        if (!d->fence_pending) { collect_timestamps(d); return NXVC_VKD_OK; }
         VkResult fr =
             vkWaitForFences(d->dev, 1, &d->fence, VK_TRUE, timeout_ns);
         if (fr == VK_TIMEOUT) return NXVC_VKD_ERR_INTERNAL;
@@ -1647,6 +1701,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_wait(nxvc_vk_decoder *d,
             return seterr(d, NXVC_VKD_ERR_VULKAN, "vkWaitForFences: %d",
                           (int)fr);
         d->fence_pending = false;
+        collect_timestamps(d);
         return NXVC_VKD_OK;
     }
     uint64_t v = d->timeline_value;
@@ -1661,6 +1716,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_wait(nxvc_vk_decoder *d,
     if (r == VK_TIMEOUT) return NXVC_VKD_ERR_INTERNAL;
     if (r != VK_SUCCESS)
         return seterr(d, NXVC_VKD_ERR_VULKAN, "vkWaitSemaphores: %d", (int)r);
+    collect_timestamps(d);
     return NXVC_VKD_OK;
 }
 
@@ -1842,8 +1898,11 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     uint32_t dispatches = 0;
     for (const LaneGroup &g : fp.groups) {
         VkPipeline p;
+        const uint32_t emode = fp.entropy_lite
+                                   ? nxwarp_passA::kEntropyLiteFixed
+                                   : nxwarp_passA::kEntropyRans;
         if ((st = pipeline_a(d, g.lanes, (uint32_t)fp.ctx_stride,
-                             (uint32_t)fp.xform_large, &p)))
+                             (uint32_t)fp.xform_large, emode, &p)))
             return st;
         vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, p);
         const uint32_t push[kPassAPushUints] = {
@@ -1851,7 +1910,8 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
             fp.cbf_words,  fp.tools,               (uint32_t)fp.push.sparse};
         vkCmdPushConstants(d->cmd, d->plA, VK_SHADER_STAGE_COMPUTE_BIT, 0,
                            sizeof push, push);
-        const uint32_t tpg = nxwarp_passA::nxs_tiles_per_group(g.lanes);
+        const uint32_t tpg =
+            fp.entropy_lite ? 1u : nxwarp_passA::nxs_tiles_per_group(g.lanes);
         vkCmdDispatchBase(d->cmd, g.first / tpg, 0, 0, g.groups, 1, 1);
         ++dispatches;
     }
@@ -2061,6 +2121,14 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
         su.pNext = nullptr;
         su.signalSemaphoreCount = 0;
         su.pSignalSemaphores = nullptr;
+        // Only on the async path: the synchronous one waits before it returns
+        // and would leave a single-use semaphore signalled with no waiter.
+        if ((submit_flags & NXVC_VKD_SUBMIT_SIGNAL_BINARY) &&
+            (submit_flags & NXVC_VKD_SUBMIT_ASYNC) &&
+            d->binsem != VK_NULL_HANDLE) {
+            su.signalSemaphoreCount = 1;
+            su.pSignalSemaphores = &d->binsem;
+        }
         vkResetFences(d->dev, 1, &d->fence);
         d->fence_pending = true;
     }
@@ -2085,30 +2153,13 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     d->stats.pass_w_ms = 0.0;
     ++d->stats.frames;
 
+    d->ts_count = d->have_timestamps ? (fp.any_inter ? 6u : 4u) : 0u;
+    d->ts_pending = d->have_timestamps;
     if (submit_flags & NXVC_VKD_SUBMIT_ASYNC) {
         d->stats.total_ms = now_ms() - t0;
         return NXVC_VKD_OK;
     }
     if ((st = nxvc_vk_decoder_wait(d, UINT64_MAX))) return st;
-
-    if (d->have_timestamps) {
-        uint64_t ts[6] = {};
-        const uint32_t nq = fp.any_inter ? 6u : 4u;
-        if (vkGetQueryPoolResults(d->dev, d->queries, 0, nq, sizeof ts, ts,
-                                  sizeof(uint64_t),
-                                  VK_QUERY_RESULT_64_BIT |
-                                      VK_QUERY_RESULT_WAIT_BIT) == VK_SUCCESS) {
-            const double k = (double)d->ts_period / 1e6;
-            d->stats.pass_a_ms = (double)(ts[1] - ts[0]) * k;
-            // [inter] Pass W sits inside the Pass A -> Pass B window, so the
-            // reported Pass B is the predictor plus the reconstruction; the
-            // predictor's own share is broken out rather than hidden.
-            d->stats.pass_b_ms = (double)(ts[2] - ts[1]) * k;
-            d->stats.gpu_ms = (double)(ts[3] - ts[0]) * k;
-            if (fp.any_inter)
-                d->stats.pass_w_ms = (double)(ts[5] - ts[4]) * k;
-        }
-    }
     // [sparse] The exact number of int16 slots that crossed between the two
     // passes: the sum of every unit's LAST + 1, plus the length words
     // themselves, which Pass A writes and Pass B reads like any other input.

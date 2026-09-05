@@ -96,6 +96,11 @@ struct FrameParse {
     // specialisation constant 4: 16 under the v1/v2 models, 27 under CTX_V3.
     int ctx_stride = 16;
     uint32_t tools = 0;   // Pass A's `tools` push constant, kToolFlag*
+    // [entropy-lite] Stream tool bit 30, docs/TOOLBITS.md 8.  Frame-uniform:
+    // it selects the ENTROPY_MODE Pass A is specialised on, and with it the
+    // dispatch shape -- ONE workgroup per tile, no lane grouping, no
+    // probability tables.
+    bool entropy_lite = false;
 
     // Pass A inputs.
     std::vector<TileDesc> desc;      // padded and grouped, see LaneGroup
