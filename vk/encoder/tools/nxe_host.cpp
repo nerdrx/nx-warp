@@ -488,6 +488,24 @@ static double log2_prob(uint32_t v) {
 /* One tile's decision: the histogram E4 will produce, then the cheapest of the
  * eight candidate table sets under it. */
 static void choose_tile_table_set(Frame &f, const int16_t *coefs, uint32_t t) {
+    /* A WARP_SKIP tile is not transmitted, so it has no table set and
+     * contributes NOTHING to the training pool.  Its histogram has to be
+     * cleared rather than merely ignored: E3 zeroes a skipped tile's
+     * coefficient slot (Pass B needs the zeros as its residual), and an
+     * all-zero tile is not an empty tile -- the unit walk still emits a
+     * CBF-zero symbol per unit, so the histogram comes out full of them and
+     * the `total == 0` guard in the pooling below never fires.  Left in, those
+     * symbols train the frame's tables on tiles the frame does not carry, and
+     * every CODED tile then codes against tables the reference never chose.
+     * It cost a byte-identity failure in frame 1 with CUSTOM_TABLES on and
+     * none at all with it off, which is what pointed at the pooling. */
+    if (f.jobs[t].mode == (uint32_t)NXE_MODE_WARP_SKIP) {
+        if (!f.tilehist.empty()) {
+            const size_t stride = (size_t)nxvc::kNumCtx * NXE_NUM_SYM;
+            std::fill_n(&f.tilehist[(size_t)t * stride], stride, 0u);
+        }
+        return;
+    }
     /* The op scratch is thread_local because the pool runs this on several
      * threads at once; it is a megabyte-class buffer that must not be
      * reallocated per tile. */

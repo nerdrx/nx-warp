@@ -32,6 +32,17 @@
 #                         client shadow the encoder does not keep.
 #   --int-coded-vectors off  STATIC_MV and WARP_MV are the next increment.
 #
+# The entropy tools the library now ships ON are ON here too -- frame-trained
+# tables, TAB_V2 and CTX_V3 -- so this covers the inter path composed with
+# them rather than a smaller stream than the library actually emits.  The
+# composition is not free of consequence: a transmitted table area and
+# warp_ext() both sit between the frame header and the first row header, and
+# SYNTAX.md 12 orders them
+#   frame := frame_header [warp_ext] [custom_matrices] [table_set]* tile_row*
+# so warp_ext goes FIRST and the table area starts at 40 + warp_bytes.  Both
+# encoders agreeing on the wrong order would produce a frame no decoder reads,
+# which is why the decode step below is not redundant with the compare.
+#
 # Expects VKENC, NXVENC, NXVDEC, WORKDIR, DEVICE.
 
 file(REMOVE_RECURSE ${WORKDIR})
@@ -65,12 +76,13 @@ list(GET fx 4 FRAMES)
 
 set(common --in ${YUV} --w ${W} --h ${H} --pix yuv420p --qp 26
            --frames ${FRAMES} --nsub 3 --matrix 1 --wm 0 --tskip off
-           --chroma-qp-off 0 --ctx v2 --eyes 1 --intra-dir off --quiet)
+           --chroma-qp-off 0 --ctx v3 --sign-hide --eyes 1 --intra-dir off
+           --quiet)
 set(interargs --poses ${POSES} --intra-period 6)
 
 execute_process(COMMAND ${NXVENC} ${common} ${interargs}
-                        --no-rdo --no-custom-tables --split4x4 off --cfl off
-                        --tab v1 --xform 8 --entropy rans
+                        --no-rdo --custom-tables --split4x4 off --cfl off
+                        --tab v2 --xform 8 --entropy rans
                         --inter on --int-decision on --int-coded-vectors off
                         --preset fast --me-effort 1 --quad-mv off
                         --near-skip off --drift-refresh off
@@ -83,6 +95,7 @@ endif()
 execute_process(COMMAND ${CMAKE_COMMAND} -E env
                         NXE_DUMP_RING=${WORKDIR}/ring
                         ${VKENC} ${common} ${interargs} --inter
+                        --custom-tables --tab v2
                         --device ${DEVICE} --out ${WORKDIR}/gpu.nxv
                 RESULT_VARIABLE rc ERROR_VARIABLE eout)
 if(NOT rc EQUAL 0)
