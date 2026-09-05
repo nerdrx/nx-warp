@@ -328,7 +328,7 @@ median of 50 iterations, timestamp queries around each dispatch:
 
 | Device | E0_convert | E1_stats | sum |
 |---|---|---|---|
-| RX 7900 XTX (RADV) | 0.056 ms | 0.140 ms | 0.196 ms |
+| RX 7900 XTX (RADV) | 0.045 ms | 0.114 ms | 0.159 ms |
 
 `nxvc-vkenc --bench 50`, the same geometry (2 × 2048², 2048 tiles), 4:2:0,
 8 rANS lanes, frame matrix 1, no directional intra, RX 7900 XTX on RADV.
