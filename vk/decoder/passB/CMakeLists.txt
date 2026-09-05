@@ -42,6 +42,8 @@ add_custom_command(
   DEPENDS ${NXVW_PASSB_DIR}/reconstruct.comp
           ${NXVW_PASSB_DIR}/syntax_constants.h
           ${NXVW_PASSB_DIR}/passB_layout.h
+          ${NXVW_PASSB_DIR}/../inter/inter_hook.glsl
+          ${NXVW_PASSB_DIR}/../inter/inter_layout.h
           ${NXVW_PASSB_GEN_SPV} ${NXVW_PASSB_SPV_PASSES_CMAKE}
   COMMENT "glslc reconstruct.comp -> reconstruct.spv.h"
   VERBATIM)
@@ -59,6 +61,8 @@ add_custom_command(
   DEPENDS ${NXVW_PASSB_DIR}/reconstruct.comp
           ${NXVW_PASSB_DIR}/syntax_constants.h
           ${NXVW_PASSB_DIR}/passB_layout.h
+          ${NXVW_PASSB_DIR}/../inter/inter_hook.glsl
+          ${NXVW_PASSB_DIR}/../inter/inter_layout.h
           ${NXVW_PASSB_GEN_SPV} ${NXVW_PASSB_SPV_PASSES_CMAKE}
   COMMENT "glslc reconstruct.comp (v1) -> reconstruct_v1.spv.h"
   VERBATIM)

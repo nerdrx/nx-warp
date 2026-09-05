@@ -288,6 +288,15 @@ typedef struct nxvc_vkd_stats {
     uint32_t lane_groups;   /* Pass A dispatches: distinct nsub_log2 values*/
     uint32_t dispatches;    /* Pass A + Pass B dispatches this frame       */
     uint32_t frames;        /* frames decoded so far                       */
+    /* --- [inter] APPENDED, not inserted, so a caller built against the
+     * older layout keeps reading the same offsets for every field above. */
+    uint32_t tiles_concealed; /* tiles nxvc_vk_decoder_mark_missing named  */
+    /* Pass W, the predictor dispatch.  Measured around the FIRST Pass W of
+     * the frame, which is the whole of it for every frame that does not carry
+     * a STEREO tile; a stereo frame runs the pair once per eye and this then
+     * covers eye 0 only.  0 on a frame with no inter tile, and on a device
+     * with no timestamp support.                                          */
+    double pass_w_ms;
 } nxvc_vkd_stats;
 
 nxvc_vkd_status nxvc_vk_decoder_stats(const nxvc_vk_decoder *dec,
@@ -317,6 +326,35 @@ nxvc_vkd_status nxvc_vk_decoder_stats(const nxvc_vk_decoder *dec,
 nxvc_vkd_status nxvc_vk_decoder_set_dir_sched(nxvc_vk_decoder *dec,
                                               uint32_t sched);
 uint32_t nxvc_vk_decoder_dir_sched(const nxvc_vk_decoder *dec);
+
+/* ------------------------------------------------------- loss concealment
+ * [inter] Mark the tiles the client did NOT receive, by linear tile index
+ * (docs/SYNTAX.md 3.3: `tile = row * cols + eye * cols_per_eye + index`).
+ *
+ * The marks apply to the NEXT frame decoded and are consumed by it, whether
+ * or not that frame is accepted; a second frame starts clean.  This is
+ * docs/TRANSPORT.md 8's "the decoder needs an API to mark tiles not received
+ * so concealment replays exactly": each marked tile is reconstructed by
+ * running the WARP_SKIP predictor with the tile's stored `last_mv` and no
+ * residual -- exactly a legitimately skipped tile, which is why there is no
+ * separate concealment path to test and why the encoder can replay it
+ * (docs/SYNTAX.md 13.6).  A marked tile's bytes are still parsed, so the
+ * frame stays self-delimiting, and then discarded; its prediction state does
+ * not advance, and a near-skip correction naming it is NOT applied, because
+ * the correction travelled in a row header the transport does not replicate.
+ *
+ * It is the mirror of the reference decoder's
+ * `nxvc_decoder_set_lost_tiles()`, and the two produce byte-identical
+ * pictures for the same marks -- which is what
+ * `tests/vk-decoder/conformance`'s loss test asserts over 100 frames.
+ *
+ * Passing count == 0 clears any pending marks.  An index at or above the
+ * stream's tile count is NXVC_VKD_ERR_ARG and nothing is marked.  Requires a
+ * parsed stream header.
+ */
+nxvc_vkd_status nxvc_vk_decoder_mark_missing(nxvc_vk_decoder *dec,
+                                             const uint32_t *tile_ids,
+                                             uint32_t count);
 
 /* Group Pass B's workgroups by tile shape (mode, res_level, chroma444,
  * alpha_mode, tskip) instead of dispatching them in raster order.  Host-side

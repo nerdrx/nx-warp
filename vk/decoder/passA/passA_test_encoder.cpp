@@ -375,6 +375,12 @@ bool encode_tile(const TileShape &shape, const std::vector<UnitInfo> &units,
     uint32_t w0 = (uint32_t(shape.tile_index) & kThTileIndexMask) << kThTileIndexShift;
     w0 |= (uint32_t(payload.size()) & kThPayloadLenMask) << kThPayloadLenShift;
     uint32_t w1 = 0;
+    // [inter] Every tile this corpus builds is an INTRA tile, and the mode
+    // field now has to say so: SYNTAX.md 13.3 puts the mode unit of 9.6 on
+    // INTRA tiles only, so a header left at mode 0 (WARP_SKIP) tells Pass A
+    // there is no mode unit and every later unit of the tile lands at the
+    // wrong offset.  It read as zero before because nothing looked.
+    w1 |= (uint32_t(kTileModeIntra) & kThModeMask) << kThModeShift;
     w1 |= (uint32_t(shape.res_level) & kThResLevelMask) << kThResLevelShift;
     w1 |= (uint32_t(shape.chroma444) & kThChroma444Mask) << kThChroma444Shift;
     w1 |= (uint32_t(shape.alpha_mode) & kThAlphaModeMask) << kThAlphaModeShift;
@@ -542,6 +548,12 @@ bool encode_tile_lite(const TileShape &shape, const std::vector<UnitInfo> &units
     uint32_t w0 = (uint32_t(shape.tile_index) & kThTileIndexMask) << kThTileIndexShift;
     w0 |= (uint32_t(payload.size()) & kThPayloadLenMask) << kThPayloadLenShift;
     uint32_t w1 = 0;
+    // [inter] Every tile this corpus builds is an INTRA tile, and the mode
+    // field now has to say so: SYNTAX.md 13.3 puts the mode unit of 9.6 on
+    // INTRA tiles only, so a header left at mode 0 (WARP_SKIP) tells Pass A
+    // there is no mode unit and every later unit of the tile lands at the
+    // wrong offset.  It read as zero before because nothing looked.
+    w1 |= (uint32_t(kTileModeIntra) & kThModeMask) << kThModeShift;
     w1 |= (uint32_t(shape.res_level) & kThResLevelMask) << kThResLevelShift;
     w1 |= (uint32_t(shape.chroma444) & kThChroma444Mask) << kThChroma444Shift;
     w1 |= (uint32_t(shape.alpha_mode) & kThAlphaModeMask) << kThAlphaModeShift;

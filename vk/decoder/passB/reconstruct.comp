@@ -156,6 +156,12 @@ shared int sDcRow[64];
 // parallel path -- bit-identically, in both the replace and the layered form.
 shared uint sModesNz;
 
+// [inter] The Phase 2 prediction source and the reference-ring store.  It
+// sits here and not with the other includes because it reads `sPlane`, which
+// a prototype cannot forward declare; everything else it needs it declares
+// itself.  vk/decoder/inter/inter_hook.glsl.
+#include "../inter/inter_hook.glsl"
+
 // =========================================================== primitives
 int clamp16(int v) { return clamp(v, kI16Min, kI16Max); }
 
@@ -251,7 +257,10 @@ void idct8_1d(int x0, int x1, int x2, int x3, int x4, int x5, int x6, int x7,
 // The second-level IDCT's per-block-mean tail: round, shift, clamp16, then the
 // plane's DC offset and range.  [REF] reconstruct_plane.
 int dcMean(int y, int dcOff, int maxval) {
-    return clamp(dcOff + clamp16((y + kIdctRound2) >> kIdctShift2), 0, maxval);
+    // [inter] nxvwMeanClamp is `clamp(v, 0, maxval)` for an intra tile and the
+    // identity for an inter one; see vk/decoder/inter/inter_hook.glsl.
+    return nxvwMeanClamp(dcOff + clamp16((y + kIdctRound2) >> kIdctShift2), 0,
+                         maxval);
 }
 
 // -------------------------------------------------------- 1D IDCT, 4pt
@@ -703,23 +712,24 @@ void main() {
     int qp = clamp(pc.p.baseQp + nxvw_rec_qp_delta(rec.w1), 0, 63);
 
     // ---------------------------------------------------------- INTER HOOK
-    // v1 codes INTRA tiles only (the CPU reference rejects everything else).
-    // The pose-warp predictor of PAPER 3.2.3 step 5 / section 2 plugs in
-    // *here*: for mode == kModeWarpMv / kModeStaticMv, replace the DC-plane
-    // planar predictor below with
+    // [inter] The pose-warp predictor of [SYN] 13.3 is NOT in this kernel: it
+    // is vk/decoder/inter/warp_pred.comp, a third dispatch, and this kernel
+    // reads its output.  This file belongs to the intra path and the inter
+    // path touches it in three places -- the include above, the prediction
+    // hook in the prediction-and-add step (search for "INTER HOOK" again) and
+    // the reference-ring store at the end of main().  See ../README.md, "The
+    // inter path", and inter/inter_hook.glsl.
     //
-    //     pred(x,y) = bit-exact 4-tap bilinear of the reference image at the
-    //                 warp coordinate, which is itself the Q4 bilinear of the
-    //                 4 corner displacements in the WarpRecs entry named by
-    //                 rec.w3 (binding 5, currently unbound),
-    //
-    // and for kModeWarpSkip/kModeStaticMv skip the whole coefficient path.
-    // Nothing else in this kernel changes: the predictor feeds the same
-    // `pred` variable in the column pass, and the residual add, clamp,
-    // resample and colour conversion are shared.  Search for "INTER HOOK".
-    // Until warp/ lands, a non-INTRA tile reconstructs as pred = 0 + residual
-    // rather than producing undefined pixels.
+    // The short-circuit this note used to ask for is already here and always
+    // was: a tile with no coded unit runs no dequantize and no IDCT, because
+    // every unit's published length is 0, which is exactly what a WARP_SKIP
+    // tile is.  With `kInterPred` off -- a stream with no INTER tool bit --
+    // the hook below compiles to `pred = planar` and nothing else, which is
+    // the kernel this file was before any of it existed.
     bool intra = (mode == kModeIntra);
+    // [inter] The other half of the INTER HOOK: it changes only whether the DC
+    // plane's block means are clamped to the sample domain (13.3).
+    nxvwIsInterTile = (kInterPred != 0) && !intra;
     // [v3] Directional intra applies to an INTRA tile of a stream that sets
     // tool bit 17.  Mode 0 reproduces the v1 predictor exactly, so a tile
     // whose modes are all 0 decodes identically either way.
@@ -753,7 +763,10 @@ void main() {
     // The mode unit exists whenever the STREAM sets INTRA_DIR, which is what
     // Pass A keys its unit numbering off; `dir` above is narrower because it
     // also asks whether this tile is an INTRA tile.
-    int unitsPerPlaneExtra = pc.p.intraDir != 0 ? 2 : 1;
+    // [inter] ... and only on an INTRA tile: the mode unit of [SYN] 9.6 is
+    // present only for mode == INTRA, because an inter tile's prediction is
+    // the warp and nine ways of saying nothing is not a tool ([SYN] 13.3).
+    int unitsPerPlaneExtra = (pc.p.intraDir != 0 && intra) ? 2 : 1;
 
     // [minor 6] INTRA_CFL reads this tile's RECONSTRUCTED luma plane, which is
     // still in the plane slot when the chroma planes are decoded because the
@@ -857,7 +870,8 @@ void main() {
             }
         } else {
             barrier();  // one barrier on either arm, and the arm is uniform
-            if (tid < ndc) sMeans[tid] = clamp(dcOff + sDcTmp[tid], 0, maxval);
+            if (tid < ndc)
+                sMeans[tid] = nxvwMeanClamp(dcOff + sDcTmp[tid], 0, maxval);
         }
         barrier();
 
@@ -1190,9 +1204,19 @@ void main() {
                         m11 = sMeans[r1 + px1];
                         rp = qy;
                     }
-                    // INTER HOOK: swap this predictor for the warp one.
+                    // INTER HOOK: the prediction source.  An intra tile takes
+                    // the DC plane's planar interpolation; an inter tile takes
+                    // the SAME interpolation as the per-block DC correction on
+                    // top of the warp predictor Pass W wrote, which is the
+                    // whole of [SYN] 13.3:
+                    //     pred = clamp(W + planar(M) - dc_offset, 0, maxval)
+                    // and, for a skipped tile whose mean field is flat at
+                    // dc_offset, exactly clamp(W).  The residual add below,
+                    // the clamp, the resample and the colour conversion are
+                    // shared with intra and are not touched.
+                    // vk/decoder/inter/inter_hook.glsl.
                     int pred0 = 0, pred1 = 0;
-                    if (intra) {
+                    if (intra || kInterPred != 0) {
                         int wy0 = kBilinOne - fy;
                         int wa = kBilinOne - pfx, wb = kBilinOne - qfx;
                         pred0 = ((m00 * wa + m01 * pfx) * wy0 +
@@ -1201,6 +1225,15 @@ void main() {
                         pred1 = ((m00 * wb + m01 * qfx) * wy0 +
                                  (m10 * wb + m11 * qfx) * fy + kBilinRound) >>
                                 kBilinShift;
+                        if (!intra) {
+                            pred0 = clamp(nxvwWpredAt(tile, p, size, col0, yy) +
+                                              pred0 - dcOff,
+                                          0, maxval);
+                            pred1 = clamp(
+                                nxvwWpredAt(tile, p, size, col0 + 1, yy) +
+                                    pred1 - dcOff,
+                                0, maxval);
+                        }
                     }
                     int s0 = clamp(pred0 + res0[c], 0, maxval);
                     int s1 = clamp(pred1 + res1[c], 0, maxval);
@@ -1436,4 +1469,11 @@ void main() {
         }
     }
     }  // store_pass
+
+    // [inter] The reference-ring slot is a second store of the same samples,
+    // in the coded domain rather than the display one.
+    // vk/decoder/inter/inter_hook.glsl.
+    nxvwRefRingStore(tid, tile, tileX, tileY, res_level, chroma444, alpha_mode,
+                     nxvw_rec_alpha_value(rec.w2), planeStoreBase0,
+                     planeStoreBase1, planeStoreBase2, planeStoreBase3);
 }

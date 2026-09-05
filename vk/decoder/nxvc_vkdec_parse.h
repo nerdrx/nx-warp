@@ -26,6 +26,8 @@
 #include <vector>
 
 #include "nxvc/nxvc_vk.h"
+#include "inter/inter_layout.h"
+#include "inter/inter_state.h"
 #include "passA/passA_model.h"
 #include "passB/passB_layout.h"
 
@@ -42,9 +44,14 @@ struct StreamInfo {
     uint32_t chroma = 0, color_transform = 0, color_space = 0, alpha = 0;
     uint64_t tools = 0;
     uint32_t ext_len = 0;
-    // Derived, [REF] derive_geometry().
+    // Derived, [REF] derive_geometry().  `tiles_x` is cols_per_eye and `cw`
+    // and `ch` are per-eye chroma dimensions, exactly as [SYN] 3.3 defines
+    // them: **a picture is one eye**.  `cols` is the transport's column count
+    // over the eye pair, `eyes * tiles_x`, and it is what indexes a tile:
+    // `tile = row * cols + eye * tiles_x + tile_index`.
     uint32_t tiles_x = 0, tiles_y = 0, tile_count = 0;
-    uint32_t cw = 0, ch = 0;   // chroma plane dimensions
+    uint32_t cols = 0;
+    uint32_t cw = 0, ch = 0;   // chroma plane dimensions, PER EYE
     int nplanes() const { return alpha ? 4 : 3; }
 };
 
@@ -111,18 +118,48 @@ struct FrameParse {
     // host (skipped tiles get no Pass A descriptor).  Tile indices.
     std::vector<uint32_t> zero_tiles;
 
+    // ------------------------------------------------- Phase 2 ([SYN] 13)
+    // Frame-uniform inter state, from the stream's tool bits and the frame
+    // header's flags and `ref_slots`.
+    int inter = 0;          // stream tool bit 10
+    int warp_tool = 0;      // stream tool bit 11
+    int stereo_tool = 0;    // stream tool bit 12
+    int near_skip_tool = 0; // stream tool bit 28
+    int quad_tool = 0;      // stream tool bit 29
+    int warp_present = 0;   // frame flags bit 3
+    uint32_t ref_slots = 0, flags = 0;
+    WarpMatrix warp[2];     // warp_ext(), one 36-byte record per eye
+    // One Pass W record per tile, raster order over the eye pair.  `refBase`
+    // still holds the ring SLOT INDEX (0..3, or 0xffffffff for "this decoder
+    // holds no usable reference"); the runtime multiplies it by the slot
+    // stride once, when it uploads the buffer, because the stride is a
+    // property of the allocation rather than of the bitstream.
+    std::vector<nxvw::NxvwWarpTile> warp_tiles;
+    uint32_t cur_slot = 0;  // the slot this frame writes, frame_number mod 4
+    bool any_inter = false;        // some tile needs Pass W at all
+    bool any_stereo_tile = false;  // ... and Pass W / Pass B must run per eye
+
     // Reporting.
     uint32_t tiles_skipped = 0, tiles_tskip = 0;
+    uint32_t tiles_concealed = 0;   // tiles nxvc_vk_decoder_mark_missing named
     uint64_t payload_bytes = 0;
     bool any_alpha_coded = false;    // a tile has alpha_mode == 2
 };
 
 // Parse one frame unit.  `allow_skipped` mirrors
-// NXVC_VKD_FLAG_ALLOW_SKIPPED_TILES: without it a non-zero row skip bitmap is
-// refused exactly as ref/ refuses it (NXVC_ERR_UNSUPPORTED, "no references in
-// v1").
+// NXVC_VKD_FLAG_ALLOW_SKIPPED_TILES: on a stream with no INTER tool bit a
+// non-zero row skip bitmap is refused without it, exactly as ref/ refuses it.
+//
+// `ic` is the decoder's inter state ([SYN] 13.5 and 13.2).  It is read AND
+// written: the parse resolves `ref_sel` against the ring, substitutes the
+// concealment predictor for every tile
+// `nxvc_vk_decoder_mark_missing()` named, and advances the per-tile
+// prediction state exactly where ref/'s decoder advances it.  Pass NULL for a
+// decoder with no inter state, and an inter mode is then refused with
+// UNSUPPORTED, which is what the intra-only decoder did.
 nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
-                            size_t len, bool allow_skipped, FrameParse &out);
+                            size_t len, bool allow_skipped, FrameParse &out,
+                            InterCtx *ic = nullptr);
 
 // Probability tables, exposed so the conformance test can diff them against
 // ref/src/tables.cpp.  `cum` is filled with 8 * 16 * 16 entries; cum[16] is

@@ -389,21 +389,31 @@ NXS_CONST uint kThXformSizeShift = 29, kThXformSizeMask = 3u;
 
 NXS_CONST int kMaxResLevel = 2;
 NXS_CONST int kMaxMode = 4;
+// [SYN] 4.1 tile modes.  Only INTRA is named here, because it is the only one
+// the entropy layer has to distinguish: the mode unit of 9.6 exists on an
+// INTRA tile and nowhere else ([SYN] 13.3).
+NXS_CONST int kTileModeIntra = 3;
 NXS_CONST int kMaxNsubLog2 = 5;
 NXS_CONST int kAlphaModeConstant = 1;  // a single alpha byte follows
 NXS_CONST int kAlphaModeCoded = 2;     // alpha plane is entropy-coded
 
 // Reserved bits that a conforming stream sets to zero (SYNTAX.md 4.1).
 NXS_CONST uint kThReservedW0 = 1u << 3;
-// [minor 6] word1 bit 28 is split4x4; 29-31 stay reserved until XFORM_LARGE
-// and QUAD_MV take them.  docs/TOOLBITS.md 4.
-NXS_CONST uint kThReservedW1 = 0x80000000u;  // bit 31
+// [minor 6] word1 bit 28 is split4x4 and 29-30 xform_size.
+// [inter] ... and 31 is quad_mv ([SYN] 13.10).  Word1 now has NO reserved bits
+// left, which is why the reserved-bit rejection vector r09 moved to word0
+// bit 3.  docs/TOOLBITS.md 4.1.
+NXS_CONST uint kThReservedW1 = 0u;
 
 // Optional bytes between the 8-byte header and the rANS payload, in order:
-//   1. i8 mv_x, i8 mv_y   if mv_present
-//   2. u8 alpha_value     if alpha_mode == 1
+//   1. i8 mv_x, i8 mv_y   if mv_present   (or u16 disparity when mode is
+//                                          STEREO -- the same two bytes)
+//   2. 4 quadrant-vector bytes            if quad_mv ([SYN] 13.10)
+//   3. u8 alpha_value                     if alpha_mode == 1
 NXS_CONST uint kThMvBytes = 2;
+NXS_CONST uint kThQuadBytes = 4;
 NXS_CONST uint kThAlphaValueBytes = 1;
+NXS_CONST uint kThQuadShift = 31, kThQuadMask = 1u;
 
 // ===========================================================================
 // 7. Tile geometry and unit order   [ref/src/common.h tile_geom,
@@ -836,6 +846,7 @@ NXS_FN int nxs_plane_size(int p, int res_level, int chroma444) {
 NXS_FN uint nxs_tile_payload_offset(uint hdr_off, uint w1) {
     uint o = hdr_off + kTileHeaderBytes;
     if (((w1 >> kThMvPresentShift) & kThMvPresentMask) != 0u) o += kThMvBytes;
+    if (((w1 >> kThQuadShift) & kThQuadMask) != 0u) o += kThQuadBytes;
     if (((w1 >> kThAlphaModeShift) & kThAlphaModeMask) ==
         uint(kAlphaModeConstant))
         o += kThAlphaValueBytes;

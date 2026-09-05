@@ -262,27 +262,43 @@ from the same parsed tile header, so whichever component parses tile headers for
 Pass A can fill in both; nothing needs to be re-parsed. Pass A's cbf-bit and
 status buffers are not inputs to Pass B.
 
-## Inter prediction hook
+## Inter prediction hook [inter]
 
-v1 codes INTRA tiles only — the CPU reference rejects every other mode. The
-pose-warp predictor plugs into `reconstruct.comp` at the two places marked
-`INTER HOOK`:
+`docs/SYNTAX.md` 13 has landed. The predictor is **not** in this kernel: it is
+`vk/decoder/inter/warp_pred.comp`, a third dispatch, and this file reads its
+output. See `../README.md`, "The inter path", for why.
 
-* the `bool intra` derivation near the top of `main()`, which is where
-  `kModeWarpSkip` / `kModeStaticMv` should short-circuit the coefficient
-  path entirely. The short-circuit itself is already there and already
-  measured: a tile with no coded unit runs no dequantize and no IDCT, because
-  every unit's published length is 0;
-* the `pred0` / `pred1` computation in the prediction-and-add step, which is
-  where `bilinearMeans()` is replaced by the bit-exact 4-tap bilinear of the
-  reference image at the warp coordinate (PAPER 3.2.3 step 5).
+What the inter path added here, and nothing else:
 
-The warp record itself does not belong in the 16-byte tile record. `w3` of
-`NxvwTileRec` is reserved as an index into a `WarpRecs` SSBO at binding 5 of
-the future layout, so adding inter prediction does not disturb the coefficient
-side of the interface. Nothing else in the kernel changes: the residual add,
-clamp, resample and colour conversion are already shared between the two
-prediction modes.
+* one `#include "../inter/inter_hook.glsl"`, after the shared-memory
+  declarations because the ring store reads `sPlane`;
+* the **prediction hook** at the `INTER HOOK` marker in the prediction-and-add
+  step. `pred` is the DC plane's planar interpolation for an intra tile and
+  `clamp(W + planar(M) - dc_offset, 0, maxval)` for an inter one, `W` being
+  the sample Pass W wrote. The residual add, the clamp, the resample and the
+  colour conversion are unchanged and shared;
+* `nxvwIsInterTile`, set at the `bool intra` marker and read by `dcMean()`.
+  13.3: an intra tile's block mean is a sample value and is clamped to the
+  sample domain; an inter tile's is `dc_offset + a residual mean`, whose range
+  is wider on both sides, and clamping it would cap the DC correction the warp
+  needs;
+* `unitsPerPlaneExtra` now asks whether the tile is intra, because 13.3 puts
+  the mode unit of 9.6 on `INTRA` tiles only. Pass A makes the same change,
+  and it is a bitstream property, not an optimisation: a decoder that kept
+  counting a mode unit on an inter tile reads every later unit of the tile
+  from the wrong place and Pass A refuses the payload;
+* one call to `nxvwRefRingStore()` at the end of `main()`. The reference-ring
+  slot is a second store of the same samples — the same shape `kOutSecond`
+  already established — in the coded domain rather than the display one.
+
+The short-circuit the old note asked for was already there and is still there:
+a tile with no coded unit runs no dequantize and no IDCT, because every unit's
+published length is 0, which is what a `WARP_SKIP` tile is.
+
+`w3` of `NxvwTileRec` stays reserved and unused. The warp record turned out
+not to want a per-tile index into a side buffer at all: Pass W is indexed by
+the tile index directly, and Pass B addresses `WPred` the same way, so the
+coefficient side of this interface did not have to change.
 
 ## Running it
 
