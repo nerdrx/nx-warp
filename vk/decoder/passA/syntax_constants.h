@@ -399,6 +399,21 @@ NXS_FN uint nxs_tiles_per_group(uint lanes) {
     return t > kMaxSlots ? kMaxSlots : t;
 }
 
+// Descriptor slots a frame of `ntiles` tiles can occupy.  The tiles are sorted
+// into one group per distinct nsub_log2 and each group is aligned up to its
+// own tiles-per-group so vkCmdDispatchBase can address it, so a frame that
+// uses all six lane counts pays up to tpg-1 padding slots per group.  The
+// descriptor and status buffers are indexed by descriptor slot, not by tile,
+// and must be sized from this rather than from the tile count; it grows with
+// the workgroup shape (76 slots of slack at 16 tiles per group, 152 at 32),
+// which is what a hard-coded allowance got wrong.
+NXS_FN uint nxs_desc_slack(void) {
+    uint n = 0u;
+    for (uint ns = 0u; ns <= 5u; ++ns) n += nxs_tiles_per_group(1u << ns) - 1u;
+    return n;
+}
+NXS_FN uint nxs_desc_slots(uint ntiles) { return ntiles + nxs_desc_slack(); }
+
 // ---------------------------------------------------------------------------
 // Derived helpers, valid in both languages.
 // ---------------------------------------------------------------------------

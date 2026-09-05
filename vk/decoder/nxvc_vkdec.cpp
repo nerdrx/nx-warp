@@ -888,13 +888,18 @@ nxvc_vkd_status make_resources(D *d) {
     // Host-visible: one uint per tile, written once by Pass A and read on the
     // CPU right after the wait, so it costs nothing to keep it mappable.
     // One uint per *descriptor slot*, which is the padded, lane-grouped array
-    // Pass A dispatches over -- not the tile count.
-    if ((st = make_buf(d, d->bStatus, (VkDeviceSize)(ntiles + 64) * 4,
+    // Pass A dispatches over -- not the tile count.  The slack is derived from
+    // the workgroup shape (nxs_desc_slots), because it is exactly the sum of
+    // the six groups' alignment padding and therefore doubles when the shape
+    // does; a fixed 64 was already under the 76 that 16 tiles per group can
+    // need and badly under 32's 152.
+    const VkDeviceSize descSlots =
+        (VkDeviceSize)nxwarp_passA::nxs_desc_slots(ntiles);
+    if ((st = make_buf(d, d->bStatus, descSlots * 4,
                        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, true)))
         return st;
     if ((st = make_buf(d, d->bDesc,
-                       (VkDeviceSize)(ntiles + 64) *
-                           nxwarp_passA::kTileDescUints * 4,
+                       descSlots * nxwarp_passA::kTileDescUints * 4,
                        kSsbo, false)))
         return st;
     if ((st = make_buf(d, d->bTables,
