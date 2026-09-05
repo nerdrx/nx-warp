@@ -35,28 +35,42 @@ struct Case {
     int w, h, eyes;
     bool chroma444;
     int qp, matrix, wm_id, nsub_log2, tskip, chroma_qp_off;
-    bool ctx_v2, sign_hide, intra_dir, dir_layer;
+    /* 1, 2 or 3: the entropy context model, tools 21 and 25.  A level rather
+     * than two bools, because v3 implies v2 and the two can never disagree. */
+    int ctx;
+    bool sign_hide, intra_dir, dir_layer;
     uint32_t dir_mode_seed;
     int frames;
     uint64_t digest;
 };
 
 /* The digests were produced by this tool and cross-checked, configuration by
- * configuration, against `nxv-enc --no-rdo --intra-dir off --no-custom-tables`
- * on the same input for every case that the reference encoder can express --
- * which is every case here but the two directional ones, where the reference
- * chooses its own per-block modes and this pipeline takes them as input. */
+ * configuration, against `nxv-enc --no-rdo --intra-dir off --no-custom-tables
+ * --split4x4 off --cfl off --tab v1 --xform 8 --entropy rans` on the same
+ * input for every case that the reference encoder can express -- which is
+ * every case here but the two directional ones, where the reference chooses
+ * its own per-block modes and this pipeline takes them as input.
+ *
+ * The `v3-` cases add `--ctx v3`.  `v3-nsub1` is the one that matters most of
+ * the four: the neighbour class is carried along a *lane*, so halving the
+ * lane count from eight to two changes which unit is "the previous one" for
+ * every unit in the tile.  A chain that were merely walking the unit list
+ * would pass the other three and fail this. */
 static const Case kCases[] = {
-    /* name              w    h  ey 444  qp  mx wm ns ts cq  v2 sdh dir lay seed  fr digest */
-    {"420-qp24",       256, 192, 1, 0,  24, 1, 0, 3, 0,  0, 1, 1, 0, 0, 0, 2, 0xfbb920bd4efe23a5ull},
-    {"420-qp0",        256, 192, 1, 0,   0, 1, 0, 3, 0,  0, 1, 1, 0, 0, 0, 1, 0x7922a0f47daf5431ull},
-    {"420-qp48-tskip", 256, 192, 1, 0,  48, 1, 0, 3, 1,  0, 1, 1, 0, 0, 0, 1, 0xf5c37a85ff044415ull},
-    {"444-qp20",       256, 192, 1, 1,  20, 2, 0, 3, 0,  0, 1, 1, 0, 0, 0, 1, 0xe5cda0fcc1347da4ull},
-    {"pad-200x150",    200, 150, 1, 0,  30, 1, 0, 3, 0,  0, 1, 1, 0, 0, 0, 2, 0xf1eab9bd6df424a7ull},
-    {"stereo-512x128", 512, 128, 2, 0,  26, 1, 0, 3, 0,  0, 1, 1, 0, 0, 0, 2, 0x43870940e7c66cebull},
-    {"v1-nosdh-wm2",   256, 192, 1, 0,  30, 1, 2, 1, 0, -4, 0, 0, 0, 0, 0, 1, 0xca44792ca56fc0bbull},
-    {"dir-replace",    256, 192, 1, 0,  24, 1, 0, 3, 0,  0, 1, 1, 1, 0, 12345, 2, 0x33bc9e051b089775ull},
-    {"dir-layer",      256, 192, 1, 0,  24, 1, 0, 3, 0,  0, 1, 1, 1, 1, 12345, 2, 0x67c9b1dc640b104bull},
+    /* name              w    h  ey 444  qp  mx wm ns ts cq ctx sdh dir lay seed  fr digest */
+    {"420-qp24",       256, 192, 1, 0,  24, 1, 0, 3, 0,  0, 2, 1, 0, 0, 0, 2, 0xfbb920bd4efe23a5ull},
+    {"420-qp0",        256, 192, 1, 0,   0, 1, 0, 3, 0,  0, 2, 1, 0, 0, 0, 1, 0x7922a0f47daf5431ull},
+    {"420-qp48-tskip", 256, 192, 1, 0,  48, 1, 0, 3, 1,  0, 2, 1, 0, 0, 0, 1, 0xf5c37a85ff044415ull},
+    {"444-qp20",       256, 192, 1, 1,  20, 2, 0, 3, 0,  0, 2, 1, 0, 0, 0, 1, 0xe5cda0fcc1347da4ull},
+    {"pad-200x150",    200, 150, 1, 0,  30, 1, 0, 3, 0,  0, 2, 1, 0, 0, 0, 2, 0xf1eab9bd6df424a7ull},
+    {"stereo-512x128", 512, 128, 2, 0,  26, 1, 0, 3, 0,  0, 2, 1, 0, 0, 0, 2, 0x43870940e7c66cebull},
+    {"v1-nosdh-wm2",   256, 192, 1, 0,  30, 1, 2, 1, 0, -4, 1, 0, 0, 0, 0, 1, 0xca44792ca56fc0bbull},
+    {"v3-420-qp24",    256, 192, 1, 0,  24, 1, 0, 3, 0,  0, 3, 1, 0, 0, 0, 2, 0x2ec73852e46d482aull},
+    {"v3-420-qp0",     256, 192, 1, 0,   0, 1, 0, 3, 0,  0, 3, 1, 0, 0, 0, 1, 0x4f3e6ac793b5b7ddull},
+    {"v3-444-qp20",    256, 192, 1, 1,  20, 2, 0, 3, 0,  0, 3, 1, 0, 0, 0, 1, 0xa0bb4193c6769674ull},
+    {"v3-nsub1",       256, 192, 1, 0,  30, 1, 2, 1, 0, -4, 3, 0, 0, 0, 0, 1, 0x1204ac612ee6ac60ull},
+    {"dir-replace",    256, 192, 1, 0,  24, 1, 0, 3, 0,  0, 2, 1, 1, 0, 12345, 2, 0x33bc9e051b089775ull},
+    {"dir-layer",      256, 192, 1, 0,  24, 1, 0, 3, 0,  0, 2, 1, 1, 1, 12345, 2, 0x67c9b1dc640b104bull},
 };
 
 static uint64_t fnv1a(const uint8_t *p, size_t n, uint64_t h) {
@@ -79,7 +93,8 @@ static Config config_of(const Case &c, int device, bool cpu_only) {
     cfg.nsub_log2 = c.nsub_log2;
     cfg.tskip = c.tskip;
     cfg.chroma_qp_off = c.chroma_qp_off;
-    cfg.ctx_v2 = c.ctx_v2;
+    cfg.ctx_v2 = c.ctx >= 2;
+    cfg.ctx_v3 = c.ctx >= 3;
     cfg.sign_hide = c.sign_hide;
     cfg.intra_dir = c.intra_dir;
     cfg.dir_layer = c.dir_layer;
@@ -131,7 +146,7 @@ int selftest_dump(const char *prefix) {
         std::printf("%s %d %d %d %s %d %d %d %d %d %d %d %d %d %d %u %d\n", path,
                     c.w, c.h, c.eyes, c.chroma444 ? "yuv444p" : "yuv420p", c.qp,
                     c.matrix, c.wm_id, c.nsub_log2, c.tskip, c.chroma_qp_off,
-                    c.ctx_v2, c.sign_hide, c.intra_dir, c.dir_layer,
+                    c.ctx, c.sign_hide, c.intra_dir, c.dir_layer,
                     c.dir_mode_seed, c.frames);
     }
     return 0;

@@ -7,8 +7,9 @@
 #
 #   1. the GPU pipeline's stream must be byte-identical to `nxv-enc --no-rdo
 #      --intra-dir off --no-custom-tables --split4x4 off --cfl off --tab v1
-#      --xform 8 --entropy rans` (with `--ctx` v1 or v2 per configuration --
-#      that is every bitstream-minor-6 tool named and refused), and
+#      --xform 8 --entropy rans`, with `--ctx` v1, v2 or v3 per configuration
+#      -- so every bitstream-minor-6 tool is named, and every one the encoder
+#      does not implement is refused rather than merely absent, and
 #   2. `nxv-dec` must decode the two to identical pixels.
 #
 # (1) implies (2), which is the point: checking both says so out loud, and if
@@ -68,7 +69,7 @@ foreach(line ${lines})
   list(GET f 8 ns)
   list(GET f 9 ts)
   list(GET f 10 cq)
-  list(GET f 11 v2)
+  list(GET f 11 ctxlevel)   # the entropy context model, 1/2/3
   list(GET f 12 sdh)
   list(GET f 13 dir)
   list(GET f 15 seed)
@@ -83,10 +84,8 @@ foreach(line ${lines})
     continue()
   endif()
 
-  set(ctx v2)
-  if(v2 STREQUAL "0")
-    set(ctx v1)
-  endif()
+  # Tools 21 (CTX_V2) and 25 (CTX_V3), as one level rather than two flags.
+  set(ctx v${ctxlevel})
   set(sh --sign-hide)
   if(sdh STREQUAL "0")
     set(sh --no-sign-hide)

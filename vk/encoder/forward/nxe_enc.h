@@ -5,15 +5,27 @@
  * This header is the ABI between the host, the transform kernel (E3
  * `forward.comp`), the entropy kernel (E4 `rans_encode.comp`) and the
  * packetizer (E5 `packetize.comp`).  Its GLSL mirror is
- * `nxe_enc_common.glsl`; the two are kept in step by the static assertions in
- * `vk/encoder/tools/nxvc-vkenc.cpp`.
+ * `nxe_enc_common.glsl`.  The two are hand-written copies of one contract and
+ * are kept in step by the `vk.encoder.mirror` ctest, which compares every
+ * constant they both define -- 53 of them today.  It is a textual check
+ * because it has to be: nothing in a C++ translation unit can see a GLSL
+ * `#define`, so the static assertion this comment used to promise could not
+ * exist and did not.  The stakes are not cosmetic: NXE_LANE_OPS_CAP is a
+ * buffer stride that the host takes from this file and the shader takes from
+ * the mirror, so a drift there points every rANS lane at another lane's
+ * scratch, silently.
  *
- * The syntax it implements is docs/SYNTAX.md at bitstream minor 5, intra only:
+ * The syntax it implements is docs/SYNTAX.md at bitstream minor 6, intra only:
  * the 8x8 Loeffler DCT with 7/13 shifts, transform skip, QP 0..63 with a
  * weighting matrix and a per-tile wm_id, the DC-plane intra predictor,
  * directional intra (tool bit 17) behind a specialization constant, and rANS
- * with 8 lanes, 10-bit probabilities and static per-frame tables over 12 or 16
- * contexts, with sign data hiding.
+ * with 8 lanes, 10-bit probabilities and static per-frame tables over 12, 16
+ * or 27 contexts (tool bit 25, CTX_V3), with sign data hiding.
+ *
+ * Of the minor-6 tools, CTX_V3 is implemented here.  XFORM_4X4_SPLIT (19),
+ * INTRA_CFL (24), TAB_V2 (26), XFORM_LARGE (27) and ENTROPY_LITE (30) are
+ * not; vk/encoder/README.md says what each would take and why they are in the
+ * order they are.
  *
  * ---------------------------------------------------------------------------
  * Room for the merge
@@ -55,6 +67,7 @@ extern "C" {
 #define NXE_MAX_CTX         32     /* storage; the merge's 27 fits           */
 #define NXE_NCTX_V1         12
 #define NXE_NCTX_V2         16
+#define NXE_NCTX_V3         27     /* tool bit 25, CTX_V3                    */
 
 #define NXE_CTX_CBF_LUMA    0
 #define NXE_CTX_CBF_CHROMA  1
@@ -66,6 +79,49 @@ extern "C" {
 #define NXE_CTX_LEVEL_DC    14
 #define NXE_CTX_MODE        15
 #define NXE_CTX_NONE        0      /* sentinel; see ref/src/common.h         */
+
+/* ------------------------------------------------- the v3 model, bit 25
+ *
+ * `ref/src/common.h` "v3 context derivation", mirrored.  v3 keeps v2's
+ * sixteen rows -- so a unit with nothing to condition on codes exactly as it
+ * did under v2 -- and adds eleven that only ever see conditioned data.
+ *
+ * Three things are conditioned:
+ *
+ *   * CBF and LAST on the **neighbour class** the rANS lane carries: 0 =
+ *     nothing to condition on, 1 = the previous unit was not coded, 2 = coded
+ *     and sparse (LAST < NXE_NBR_DENSE_LAST), 3 = coded and dense.
+ *   * LEVEL at scan position LAST, split at two bands.  That coefficient is
+ *     nonzero by construction, so it cannot share a context with positions
+ *     that may be zero.
+ *   * the DC term of a DC plane, which is a block mean rather than a residual.
+ *
+ * The conditioning is per CODING UNIT and never per transform block: a lane
+ * owns units l, l+N, l+2N, ... and finishes them in that order, so the unit
+ * the class describes is always one this lane has already finished.  The
+ * derivation is causal inside the lane, needs no cross-lane read and no
+ * barrier.  The class is carried across one plane's run of block units and
+ * reset at every plane boundary; DC-plane units neither publish nor consume
+ * it.  See docs/SYNTAX.md 9.8 and 9.9.
+ */
+#define NXE_CTX_CBF_LUMA_N    16   /* 16..18, + (nbr - 1), luma/alpha  */
+#define NXE_CTX_CBF_CHROMA_N  19   /* 19..21, + (nbr - 1)              */
+#define NXE_CTX_LAST_LUMA_N   22
+#define NXE_CTX_LAST_CHROMA_N 23
+#define NXE_CTX_LEVEL_DC0     24   /* LEVEL at scan position 0 of a DC plane */
+#define NXE_CTX_LEVEL_LAST_LO 25   /* LEVEL at scan position LAST, band 0..1 */
+#define NXE_CTX_LEVEL_LAST_HI 26   /* LEVEL at scan position LAST, band 2..3 */
+
+/* A coded unit is "dense" when its LAST is at this scan position or beyond.
+ * The same split point as NXE_SDH_MIN_LAST, by measurement rather than by
+ * construction, which is why they are separate names. */
+#define NXE_NBR_DENSE_LAST  4
+
+/* The statistical family a coding unit belongs to (ref's kUcls*).  It is a
+ * property of the unit's position in the tile, so it is never transmitted. */
+#define NXE_UCLS_LUMA       0      /* residual blocks of the luma plane */
+#define NXE_UCLS_CHROMA     1      /* residual blocks of a chroma plane */
+#define NXE_UCLS_DC         2      /* a DC-plane unit of any plane      */
 
 #define NXE_ESC_SYM         15
 #define NXE_ESC_ORDER       3

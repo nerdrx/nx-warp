@@ -56,7 +56,8 @@ void setup(const Config &cfg, Frame &f) {
     fp.chroma420 = cfg.chroma444 ? 0u : 1u;
     fp.base_qp = (uint32_t)cfg.qp;
     fp.chroma_qp_off = cfg.chroma_qp_off;
-    fp.nctx = cfg.ctx_v2 ? NXE_NCTX_V2 : NXE_NCTX_V1;
+    fp.nctx = cfg.ctx_v3 ? NXE_NCTX_V3
+                         : (cfg.ctx_v2 ? NXE_NCTX_V2 : NXE_NCTX_V1);
     fp.sdh = cfg.sign_hide ? 1u : 0u;
     fp.intra_dir = cfg.intra_dir ? 1u : 0u;
     fp.dir_layer = cfg.dir_layer ? 1u : 0u;
@@ -120,7 +121,7 @@ static_assert(nxvc::kNumSym == NXE_NUM_SYM, "symbol count disagrees with ref");
 
 void build_tables(const Config &cfg, Frame &f) {
     std::memset(&f.tabs, 0, sizeof f.tabs);
-    const int nctx = nxvc::coded_context_count(cfg.ctx_v2, false);
+    const int nctx = nxvc::coded_context_count(cfg.ctx_v2, cfg.ctx_v3);
     for (int k = 0; k < 8; ++k) {
         nxvc::TableSet ts;
         nxvc::build_default_set(ts, k, nctx);
@@ -263,6 +264,7 @@ std::vector<uint8_t> stream_header(const Config &cfg, const Frame &f) {
     if (cfg.wm_id != 0) tools |= 1ull << 20;          /* WM_ID */
     if (cfg.intra_dir) tools |= 1ull << 17;           /* INTRA_DIR */
     if (cfg.ctx_v2) tools |= 1ull << 21;              /* CTX_V2 */
+    if (cfg.ctx_v3) tools |= 1ull << 25;              /* CTX_V3 */
     if (cfg.sign_hide) tools |= 1ull << 22;           /* SIGN_HIDE */
 
     u32(0x3156584Eu);            /* 'NXV1' */
@@ -299,11 +301,19 @@ void choose_table_sets(Frame &f) {
         const uint8_t *modes = &f.modes[(size_t)t * 3 * 64];
         uint32_t hist[NXE_MAX_CTX][NXE_NUM_SYM];
         std::memset(hist, 0, sizeof hist);
-        for (int ui = 0; ui < tu.nunits; ++ui) {
-            int n = nxe_unit_ops(&tu, ui, coef, modes, ops.data());
-            for (int i = 0; i < n; ++i)
-                if (NXE_OP_KIND(ops[i]) == NXE_OP_SYM)
-                    hist[NXE_OP_ARG(ops[i])][NXE_OP_VALUE(ops[i])]++;
+        /* Every unit exactly once, but walked lane by lane rather than in
+         * unit order: under v3 the context a unit codes in depends on the
+         * neighbour class its own lane carries, so the histogram is only
+         * right if the walk is the one E4 will actually perform.  The counts
+         * themselves are order-independent; which row they land in is not. */
+        for (int l = 0; l < tu.active; ++l) {
+            nxe_nbr nbr = NXE_NBR_INIT;
+            for (int ui = l; ui < tu.nunits; ui += tu.nlanes) {
+                int n = nxe_unit_ops(&tu, ui, coef, modes, &nbr, ops.data());
+                for (int i = 0; i < n; ++i)
+                    if (NXE_OP_KIND(ops[i]) == NXE_OP_SYM)
+                        hist[NXE_OP_ARG(ops[i])][NXE_OP_VALUE(ops[i])]++;
+            }
         }
         double best = 0;
         int bestk = (int)f.jobs[t].table_set;

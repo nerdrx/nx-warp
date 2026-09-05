@@ -20,7 +20,7 @@ and the degradation ladder), §5.2 (perceptual terms), §1.3 (colour), §3.7
 | **E1** `stats` | one group per tile, 256 lanes | per-tile mean luma, moments, sum of squared deviations, structure tensor, warped SAD at a per-tile offset | **done** |
 | **E2** `prefix` | workgroup scan + single-block second level | exclusive prefix sum over per-tile byte sizes, up to 8192 tiles | **done** |
 | **E3** `forward` | one group per tile, 64 lanes | DC-plane intra prediction, residual, forward 8×8 DCT through LDS, dead-zone quantisation with the weighting matrix, sign hiding, coefficients in coding-unit order. Directional intra behind a specialization constant | **done** |
-| **E4** `rans_encode` | 8 lanes per tile, 8 tiles per group, persistent | rANS backwards over the operation list into a bounded per-tile slot; writes the tile header and the byte count E2 scans | **done** |
+| **E4** `rans_encode` | 8 lanes per tile, 8 tiles per group, persistent | rANS backwards over the operation list into a bounded per-tile slot, over 12, 16 or 27 contexts; writes the tile header and the byte count E2 scans | **done** |
 | **E5** `packetize` | one group per tile | compaction into tile-row segments, tile-row and frame headers, straight into the host-cached output buffer | **done** |
 | E3b `reconstruct` | one group per tile | the decoder's Pass B, *byte-identical SPIR-V*, writes the new reference | not started |
 
@@ -103,6 +103,29 @@ synthesized picture, requires the two streams to be byte-identical, and then
 requires `nxv-dec` to decode both to identical pixels. It needs the reference
 tools, so it exists only in a build from the repo root; the standalone encoder
 build gets `vk.encoder.forward.cpu`, which pins the same streams by digest.
+
+The reference side of that comparison is
+
+```
+nxv-enc --no-rdo --no-custom-tables --intra-dir off \
+        --split4x4 off --cfl off --tab v1 --xform 8 --entropy rans \
+        --ctx v1|v2|v3
+```
+
+with every tool this pipeline does not implement **named**, not merely absent.
+Three of them -- `split4x4`, `cfl` and `tab_v2` -- are on in the reference
+encoder's defaults and were previously off here only as a side effect of other
+flags, so the test was passing while covering a smaller stream than its own
+header comment claimed. See "The minor-6 tools" below.
+
+`vk.encoder.mirror` needs no target and no GPU: it compares every constant
+`nxe_enc.h` and `nxe_enc_common.glsl` both define, 53 of them. They are two
+hand-written copies of one contract, and the header used to claim static
+assertions kept them in step -- which could not be true, because nothing in a
+C++ translation unit can see a GLSL `#define`. `NXE_LANE_OPS_CAP` is the worst
+case: the host sizes E4's operation scratch from the C header and the shader
+strides it from the mirror, so a drift there points every rANS lane at another
+lane's slot and writes a wrong stream with nothing logged.
 
 ## Data layout
 
@@ -208,6 +231,89 @@ coefficient or byte that differs; `--cpu` is a complete encoder with no Vulkan
 at all. The flags mirror `nxv-enc`'s, which is what lets the two be pointed at
 the same input and diffed.
 
+## The minor-6 tools
+
+Bitstream minor 6 added seven tool bits. This is where each one stands on the
+**encoder** side, and the reason is different in almost every case -- which is
+why the list is here rather than in a commit message.
+
+| bit | tool | encoder | why |
+|---|---|---|---|
+| 25 | `CTX_V3` | **done** | `--ctx v3`; byte-identical to the reference on every non-directional configuration |
+| 26 | `TAB_V2` | **nothing to do** | gated on `custom_tables`, which this pipeline refuses |
+| 19 | `XFORM_4X4_SPLIT` | not started | needs directional intra first; see below |
+| 24 | `INTRA_CFL` | not started | needs directional intra first; see below |
+| 27 | `XFORM_LARGE` | not started | follow-up |
+| 28 | `NEAR_SKIP` | not started | inter, Phase 2 |
+| 29 | `QUAD_MV` | not started | inter, Phase 2 |
+| 30 | `ENTROPY_LITE` | not started | decoder-side lever, negotiated, ships off |
+
+**`CTX_V3` is the one that was worth doing now**, because it is the only
+minor-6 tool this harness can actually *prove*. It changes entropy coding
+only, so it composes with everything already here, and a `--ctx v3` stream is
+not directional -- which means the acid test can compare it against `nxv-enc`
+byte for byte. It does: four `v3-` configurations, byte-identical on the CPU
+model, on lavapipe and on RADV.
+
+The whole tool is three functions -- `v3_ctx_cbf`, `v3_ctx_last`,
+`v3_ctx_level` in `rans_cpu.c`, mirrored in `nxe_enc_common.glsl` -- plus one
+piece of per-lane state. The state is the interesting part. The neighbour
+class is carried along a **rANS lane**, not along the unit list: a lane owns
+units *l*, *l+N*, *l+2N*, … and the class describes the last unit *this lane*
+finished, so the derivation is causal inside the lane and needs no cross-lane
+read and no barrier. For the ordinary tile that is the block directly above.
+E4 has to carry it through a sweep that regenerates units **backwards**, so
+phase A -- the only pass that walks a lane's units forwards -- records each
+unit's incoming class in the top eight bits of the per-unit slot word, next to
+the operation count. A count cannot reach 2²⁴ (`NXE_UNIT_MAX_OPS` is 1411), so
+the fallback path costs no extra buffer.
+
+`vk.encoder.forward.diff` covers that fallback only by accident: it engages
+when a lane exceeds `NXE_LANE_OPS_CAP` operations, which at QP 0 it does. It
+was verified deliberately by rebuilding with the cap at its 1411 floor -- both
+copies of the constant, which is a mistake worth making once and is now what
+`vk.encoder.mirror` exists to catch -- and confirming all thirteen digests on
+both ICDs.
+
+**`XFORM_4X4_SPLIT` and `INTRA_CFL` cannot be done the way the acid test
+works today**, and this is the finding that matters most for planning. Both
+are on in the reference encoder's defaults, but `ref/src/codec_impl.inc` gates
+them on directional intra:
+
+```
+e->fp.split4 = (cfg.split4x4 && cfg.intra_dir && !cfg.lossless);
+e->fp.cfl    = (cfg.chroma_from_luma && cfg.intra_dir && cfg.ctx_v2
+                && !fp.dir_layer);
+```
+
+so neither bit can appear in a stream with `--intra-dir off`. And a
+directional configuration is exactly the one the acid test *skips*, because
+the reference searches its own per-block intra modes and this pipeline takes
+them as an input. Worse, both are **encoder decisions** made by the same
+per-block rate-distortion analysis that chooses the intra mode -- a `double`
+trellis -- so reproducing the coding is not the hard part; reproducing the
+*decision* is, and it is the same wall the directional mode search is behind.
+
+So the honest order is: the split and CfL coding can be implemented and
+covered by pinned digests the way `dir-replace` and `dir-layer` are, but they
+cannot be covered by byte-identity until the mode search itself is either
+reproduced on the GPU or exported from the reference. That is a decision about
+the harness, not about E3.
+
+**`TAB_V2` has nothing to implement.** `fp.tab_v2 = cfg.custom_tables &&
+cfg.tab_v2`, and transmitted probability tables are on this pipeline's refuse
+list. The bit cannot be set on a stream this encoder can produce, so the work
+is a line in the acid test naming `--tab v1`, which is now there.
+
+`XFORM_LARGE` (bit 27) is the largest single win in the tournament and is the
+next real piece of work here. It is a second E3 pipeline from the same source
+-- `NXE_XFORM_LOG2` is already a specialization constant and every loop bound,
+LDS extent and scan lookup derives from it -- plus the `xform_size` field in
+word1, the re-gridded DC plane, and `last_shift_of` in the LAST and LEVEL
+banding. `v3_ctx_level` already takes `band_scan_pos` as a separate argument
+for exactly that reason. The inter tools (28, 29) are Phase 2 and wait on E0b
+and E3b.
+
 What the coding passes do **not** implement, and refuse rather than ignore:
 inter prediction, resolution levels, alpha, custom probability tables, and
 more than eight rANS lanes on the GPU path (`--nsub 4` and `5` are CPU-only;
@@ -225,15 +331,38 @@ median of 50 iterations, timestamp queries around each dispatch:
 | RX 7900 XTX (RADV) | 0.056 ms | 0.140 ms | 0.196 ms |
 
 `nxvc-vkenc --bench 50`, the same geometry (2 × 2048², 2048 tiles), 4:2:0,
-8 rANS lanes, frame matrix 1, no directional intra, RX 7900 XTX on RADV:
+8 rANS lanes, frame matrix 1, no directional intra, RX 7900 XTX on RADV.
+Milliseconds, median of 50, timestamp queries around each dispatch:
 
-| QP | E3 forward | E4 rans_encode | E2 prefix | E5 packetize | total | bpp |
-|---|---|---|---|---|---|---|
-| 0  | 1.295 | 4.185 | 0.010 | 0.616 | **6.107** | 7.27 |
-| 16 | 1.239 | 3.578 | 0.009 | 0.261 | **5.087** | 2.77 |
-| 24 | 0.915 | 2.219 | 0.009 | 0.103 | **3.247** | 1.11 |
-| 32 | 0.454 | 0.394 | 0.009 | 0.025 | **0.882** | 0.26 |
-| 45 | 0.438 | 0.343 | 0.009 | 0.023 | **0.813** | 0.12 |
+| QP | ctx | E3 forward | E4 rans_encode | E2 prefix | E5 packetize | total | bpp |
+|---|---|---|---|---|---|---|---|
+| 0  | v2 | 1.203 | 2.207 | 0.013 | 0.458 | **3.881** | 5.80 |
+| 0  | v3 | 1.200 | 2.274 | 0.011 | 0.464 | **3.950** | 5.86 |
+| 16 | v2 | 0.998 | 1.594 | 0.009 | 0.190 | **2.791** | 2.25 |
+| 16 | v3 | 1.001 | 1.588 | 0.009 | 0.195 | **2.793** | 2.32 |
+| 24 | v2 | 0.686 | 0.942 | 0.009 | 0.082 | **1.719** | 0.84 |
+| 24 | v3 | 0.689 | 0.965 | 0.009 | 0.082 | **1.746** | 0.86 |
+| 32 | v2 | 0.473 | 0.520 | 0.009 | 0.043 | **1.045** | 0.35 |
+| 32 | v3 | 0.476 | 0.532 | 0.009 | 0.043 | **1.060** | 0.35 |
+| 45 | v2 | 0.511 | 0.318 | 0.011 | 0.024 | **0.865** | 0.13 |
+| 45 | v3 | 0.605 | 0.327 | 0.012 | 0.024 | **0.968** | 0.13 |
+
+**`CTX_V3` is free.** It costs E4 between nothing and 2.5 %, which is what the
+shape of the tool predicts: it adds eleven rows to a table that was already
+uploaded at its 27-row storage stride, and two registers of per-lane state.
+Nothing about the sweep, the round structure or the byte placement changes.
+E3 does not touch the entropy model at all, so its column moving at QP 45 is
+run-to-run noise on a 0.5 ms kernel, not a cost.
+
+**The bpp column is not a rate measurement of `CTX_V3` and must not be read as
+one.** These rows are one synthetic 4096×2048 frame -- gradients, a block
+grid and band-limited noise -- because the corpus is fetched rather than
+committed and no clip was on this box. The built-in v3 tables are *trained*,
+on real content, so a synthetic source is close to the worst case for them and
+the tiny rate loss at low QP here says nothing about the tool. The reference's
+measured BD-rate figures are in `ref/RESULTS-ctx-b.md`; these numbers replace
+an earlier table taken on a different (also unrecorded) source, so the rows
+are comparable to each other and not to the ones they replace.
 
 Directional intra costs E3 8.2 ms at QP 24: the reference derivation of
 SYNTAX.md 7.4 has the full 8×8 raster dependency, so the 96 blocks of a tile
