@@ -351,10 +351,14 @@ the sixteen Phase 2 vectors and refuses the sixteen Phase 2 rejection vectors
 with zero mismatching samples on lavapipe, RADV and an Adreno 650
 (`vk/decoder/README.md`, "The inter path"). It also implements the decoder
 half of clause 6.11 concealment, `nxvc_vk_decoder_mark_missing()`.
-**`XFORM_LARGE` (bit 27) and `ENTROPY_LITE` (bit 30) are the two still
-refused**: for bit 27 Pass A carries it and Pass B does not, and for bit 30
-the kernel exists and the decoder does not offer the bit. Both are off by
-default, so the property holds.
+**Bit 27 `XFORM_LARGE` is in too**, as Pass B build variants: exact against
+`ref/` on lavapipe and RADV over all 228 conformance streams, but the Adreno
+650 mis-decodes the streams that reach the large module (the private-memory
+failure mode of `docs/ADRENO-RULES.md`; open issue in `vk/decoder/README.md`).
+An encoder must not select `xform_size != 0` for an Adreno client until that
+is fixed. **`ENTROPY_LITE` (bit 30) is the one still refused**: the kernel
+exists and the decoder does not offer the bit. Both are off by default, so
+the property holds.
 
 ---
 

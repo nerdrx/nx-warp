@@ -21,10 +21,23 @@ if(NOT Vulkan_FOUND AND NOT NXVC_VK_HEADERS_DIR)
     DOC "Directory containing vulkan/vulkan_core.h")
 endif()
 
+option(NXWARP_VK_REQUIRED
+  "Fail the configure, instead of skipping the Vulkan runtime, when no Vulkan headers are found"
+  OFF)
+
 if(NOT Vulkan_FOUND AND NOT NXVC_VK_HEADERS_DIR)
   # Warn and drop the component rather than aborting.  This file is one part of
   # a tree many people configure at once, and a missing optional dependency
-  # must never break everyone else's configure.
+  # must never break everyone else's configure.  A build that exists *for* the
+  # Vulkan runtime (an install prefix a client links against) passes
+  # NXWARP_VK_REQUIRED=ON: silently skipping there leaves whatever decoder was
+  # already in the prefix, which is worse than a failed configure.
+  if(NXWARP_VK_REQUIRED)
+    message(FATAL_ERROR
+      "nxvc_vk_common: no Vulkan headers found and NXWARP_VK_REQUIRED is ON.  "
+      "Install the Vulkan SDK or pass "
+      "-DNXVC_VK_HEADERS_DIR=/path/to/Vulkan-Headers/include")
+  endif()
   message(WARNING
     "nxvc_vk_common: no Vulkan headers found, skipping the Vulkan runtime.  "
     "Install the Vulkan SDK or pass "
