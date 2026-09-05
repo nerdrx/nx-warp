@@ -1264,6 +1264,67 @@ for the tool to remove, so all that is left is its own floor -- about
 
 The lever it was meant to be is real; it is a lever for dense frames.
 
+#### Pass A is occupancy-starved at 289 tiles, and Pass B is not
+
+Where the two passes' time goes at the live shape, measured on an idle Pico 4.
+The two streams are the same content and the same bytes per tile; the second is
+simply twice as tall, so it is **exactly twice the work** and any departure from
+2.0x is the machine and not the frame:
+
+| | tiles | payload | Pass A | Pass B |
+|---|---|---|---|---|
+| 1088x1088 | 289 | 22.2 KB | 3.34 ms | 2.56 ms |
+| 1088x2176 | 578 | 44.3 KB | **5.10 ms (1.53x)** | **5.15 ms (2.01x)** |
+
+**Pass B is 2.01x: perfectly linear, no fixed cost at all.** Fitting the pair
+gives 8.96 us per tile and an intercept of −0.03 ms. The "flat 2.5 ms" it looks
+like at 289 tiles is 289 x 9 us, not a floor, and the only way to move it is to
+make a tile cheaper — which is what the wider store and the fused predict+store
+below are for, both of them per-tile.
+
+**Pass A is 1.53x, and that gap is the lever.** Per byte it reads
+
+| tiles | Pass A |
+|---|---|
+| 289 | 0.150 ms/KB |
+| 578 | 0.115 ms/KB |
+| 2048 | 0.064 ms/KB |
+
+The frame does not get cheaper per byte because the bytes change; it gets
+cheaper because there are more tiles to run at once. Parallelism in Pass A is
+`tiles x 8 lanes`, so a 289-tile eye offers 2312 lanes and 10 workgroups, and
+the part is not full. The same kernel on the same bytes per tile is **2.3x more
+efficient at 2048 tiles**, which is the whole of the factor the live shape needs.
+
+That says where to look, and where not to:
+
+* **Not the workgroup shape.** Re-swept at the live shape, and 32 tiles per
+  group is still the answer: at 22.2 KB, Pass A is 3.33 ms at TPG 32, 3.92 at
+  16 and 6.09 at 8. TPG 64 was not run — it hangs this device, and the device is
+  someone's headset.
+* **Not tile sorting.** A workgroup runs until its LONGEST tile is done, so
+  sorting by payload length should pay — but at the live shape the tiles are
+  uniform (58-76 B at QP 51) and grouping the sorted order costs 0.943 of the
+  shuffled one: **6 %**. It is worth 21 % at 48 KB, where the spread is
+  116-238 B, and nothing where it matters.
+* **Not a register spill.** `NXVC_VKD_SHADER_STATS=1` on the live frame:
+  Pass A is 1816 instructions, register footprint 6, scratch 310 B against the
+  driver's own 278 B floor. There are 32 bytes to reclaim and no more.
+* **The dependent chain is real and is what the lanes are waiting on.**
+  `decode_symbol()` is a branchless binary search: four dependent `s_cum[]`
+  reads to find the symbol, then two more for `c` and `hi`. **Six dependent
+  shared-memory reads per symbol**, and with only 10 workgroups there is not
+  enough other work resident to hide any of them. Both halves of that sentence
+  matter, and the occupancy half is the cheaper one to fix.
+
+**The cheapest real win is to stop dispatching one eye at a time.** Two decoder
+instances each decoding 289 tiles cost 12.5 ms of GPU between them; one dispatch
+over the same 578 tiles costs 10.2 ms. **18 %, for no bitstream change and no
+kernel change** — the eyes are independent, nothing orders them, and the only
+reason they are two dispatches is that they are two decoder instances. What it
+needs is a decode entry point that takes several frames, or the `eyes = 2` path
+that 13.2 already describes and this decoder still refuses.
+
 #### The minor-6 realignment, and what it cost before it was paid back
 
 The tools of bitstream minor 6 landed correct on all three ICDs and **slow on
