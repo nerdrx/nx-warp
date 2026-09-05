@@ -348,6 +348,52 @@ banding. `v3_ctx_level` already takes `band_scan_pos` as a separate argument
 for exactly that reason. The inter tools (28, 29) are Phase 2 and wait on E0b
 and E3b.
 
+## What the inter path will cost, measured before it is built
+
+`docs/adr/0028-gpu-inter-needs-an-integer-mode-decision.md` is the decision; this
+is the measurement it rests on, repeated here because it changes the order the
+work should be done in.
+
+16 frames of a 1088x1088 4:2:0 band-limited synthetic head turn (`gen_synthetic.py
+--motion turn`, seed 7, peak 123 deg/s, ideal-warp ceiling 24.6 dB full-frame),
+QP 30, `--no-rdo --intra-dir off --preset fast --me-effort 1 --quad-mv off
+--near-skip off`, decoded back through `nxv-dec`:
+
+| configuration | B/frame | Mbit/s per eye at 90 Hz | PSNR-Y | vs intra |
+|---|---|---|---|---|
+| intra only | 32339 | 23.3 | 38.42 dB | 1.00x |
+| WARP_SKIP + INTRA only | 16035 | 11.5 | 36.86 dB | 2.02x |
+| full inter (SKIP / STATIC_MV / WARP_MV) | 7926 | 5.7 | 36.62 dB | **4.08x** |
+
+Tile modes over 4624 tiles of the full-inter stream: WARP_SKIP 81.0 %, INTRA
+8.9 %, STATIC_MV 7.0 %, WARP_MV 3.1 %.
+
+**WARP_SKIP alone is 2.02x and does not reach the 3x the budget needs.** The
+10.1 % of tiles carrying a coded vector are worth as much again as the 81 % that
+skip, so skip and the coded-vector modes belong in one increment rather than two
+milestones -- and **STATIC_MV outweighs WARP_MV more than 2:1** here, so landing
+WARP_MV first lands the smaller half.
+
+Three further findings sit in the ADR and are summarised here because they are
+about this directory:
+
+* **The reference's default mode decision cannot be reproduced on a GPU.** It
+  prices every candidate with a real rate from `table_set_cost`, which is a sum
+  of `std::log2` terms; `log2` is not correctly rounded and is not the same
+  function on a host libm and on a GPU, and every comparison downstream is a
+  `double` derived from it. The GPU encoder therefore gets its own integer
+  decision, added to the reference as a preset so the two stay byte-comparable.
+* **E3's documented inter hook does not exist.** `nxe_enc.h` claimed E3 "already
+  reads its prediction from a buffer (`pred_src`)"; there is no such buffer,
+  `forward.comp` has five bindings and none of them is a predictor, and its
+  prediction is recomputed by `pred_at()` and never materialised. E3 needs a
+  sixth binding and a mode branch. The header has been corrected.
+* **The reconstruction rule is unchanged.** The reference the encoder keeps is
+  the decoder's own Pass W and Pass B as byte-identical SPIR-V (E3b above), and
+  nothing in the decision change touches that.
+
+## What the coding passes do not implement
+
 What the coding passes do **not** implement, and refuse rather than ignore:
 inter prediction, resolution levels, alpha, custom probability tables, and
 more than eight rANS lanes on the GPU path (`--nsub 4` and `5` are CPU-only;

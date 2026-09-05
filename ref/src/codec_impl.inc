@@ -1245,6 +1245,19 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             tc.tp.table_set =
                 select_set(th, tc.tp.table_set, table_iters ? tabs : deftabs);
         } else if (!two_pass) {
+            // The one configuration in which NOTHING above has quantized the
+            // tile: `fast` rdoq skips the first pass, and with the trellis off
+            // and the tile not directional the second pass is skipped too.  A
+            // plain dead-zone pass has to run here or `count_units` walks
+            // coefficients that were never written, every tile codes as
+            // all-zero, and the encoder emits a legal, tiny, ruined stream --
+            // 3872 bytes and 12.9 dB where the same picture is 33182 bytes and
+            // 38.3 dB.  Nothing failed and nothing was logged; the only symptom
+            // was the rate.  `--preset fast --no-rdo` and `--rdoq-effort 1
+            // --no-rdo` are the two ways to reach it from the CLI.
+            for (int p = 0; p < np; ++p)
+                analyze_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
+                              tc.tp.tskip, 1, tc.sdh);
             std::memset(th, 0, sizeof(th));
             raw = 0;
             if (!count_units(tc.units.data(), (int)tc.units.size(),

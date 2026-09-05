@@ -86,7 +86,49 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
   (`r18`-`r29`, `r40`-`r43`) are checked now, with zero mismatching samples on RADV, lavapipe and
   the Adreno 650. What is left is `XFORM_LARGE` and `ENTROPY_LITE`.
 
+### Added
+
+**GPU encoder: the inter path is specified and sized, ahead of being built**
+
+- `docs/adr/0028-gpu-inter-needs-an-integer-mode-decision.md` records the decision that the GPU
+  encoder's inter path implements its own **fully integer** mode decision rather than reproducing
+  the reference's, and that the same decision is added to the reference as a first-class preset so
+  byte-identity stays the acceptance test. The reference's default decision prices every candidate
+  with a real rate from `table_set_cost`, a sum of `std::log2` terms; `log2` is not correctly
+  rounded and is not the same function on a host libm and on a GPU, and every comparison downstream
+  is a `double` derived from it.
+- Measured on 16 frames of a 1088x1088 4:2:0 band-limited synthetic head turn (peak 123 deg/s) at
+  QP 30, decoded back through `nxv-dec`: intra only 32339 B/frame at 38.42 dB; WARP_SKIP + INTRA
+  16035 B/frame at 36.86 dB (2.02x); full inter 7926 B/frame at 36.62 dB (**4.08x**, 5.7 Mbit/s per
+  eye at 90 Hz). Tile modes: WARP_SKIP 81.0 %, INTRA 8.9 %, STATIC_MV 7.0 %, WARP_MV 3.1 %.
+  **WARP_SKIP alone does not reach the 3x the budget needs**, and STATIC_MV outweighs WARP_MV more
+  than 2:1, so the staging in `vk/encoder/README.md` has been corrected accordingly.
+- `vk/encoder/forward/nxe_enc.h` claimed E3 "already reads its prediction from a buffer
+  (`pred_src`) rather than deriving it, so an inter tile is a different producer for the same
+  buffer". No such buffer exists or ever existed: `forward.comp` binds params, jobs, source,
+  coefficients and modes, and its prediction is `pred_at()`, recomputed and never materialised. The
+  comment is corrected to say what an inter tile actually needs -- a sixth binding and a mode
+  branch -- so the next reader does not cost that work at zero.
+
 ### Fixed
+
+- **`fast` rdoq with the trellis off never quantized the tile.** `quantize_tile_ex` reaches a tile
+  in three ways -- the two-pass path (`rdoq_effort != fast`), the trellis path
+  (`intra_dir || use_rdo`), and a plain single dead-zone pass -- and the third did not exist. With
+  `fast` rdoq the first pass is skipped, and with the trellis off on a non-directional tile the
+  second is skipped too, so `count_units` walked coefficients that had never been written: every
+  tile coded as all-zero. The encoder emitted a **legal, tiny, ruined stream** and reported no
+  error. On a 1088x1088 frame at QP 30 that is 3872 bytes and 12.9 dB where the same picture is
+  33182 bytes and 38.3 dB.
+  `--preset fast --no-rdo` and `--rdoq-effort 1 --no-rdo` are the two ways to reach it from the CLI,
+  in either argument order, with `--inter` on or off. Both are natural asks -- `--no-rdo` is the
+  configuration the GPU encoder's acid test pins and `--preset fast` is what a real-time caller
+  sets -- and the combination was simply one nobody had run; every existing test leaves rdoq at its
+  `medium` default, where the two-pass path quantizes and the bug is invisible.
+  `tests/ref/test_effort.cpp` pins the general property rather than the byte pattern: an effort knob
+  changes how long the encoder looks for a good answer, never whether it codes the picture, so each
+  no-trellis configuration is required to stay within 2x of the working effort's rate and 3 dB of
+  its PSNR after a real decode.
 
 - **The GPU decoder's rejection sweep only ever decoded frame 0**, so nine Phase 2 rejection
   vectors -- the ones malformed in the frame that first *uses* the reference ring -- were reported
