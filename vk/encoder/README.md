@@ -870,15 +870,28 @@ never promise.
 | | pan8 rANS | pan8s rANS | pan8 Lite | pan8s Lite |
 |---|---|---|---|---|
 | trellis, double, `--rdoq-effort 3` | -4.07 % | -2.26 % | -4.51 % | -5.34 % |
-| **trellis, integer, same effort** | **-4.07 %** | **-2.25 %** | **-4.51 %** | **-5.35 %** |
+| **trellis, integer, same effort** | **-4.04 %** | **-2.20 %** | **-3.97 %** | **-5.09 %** |
 | trellis, double, `--rdoq-effort 1` | -3.11 % | +2.15 % | -4.72 % | -5.30 % |
 | trellis, integer, `--rdoq-effort 1` | -3.11 % | +1.98 % | -4.70 % | -5.29 % |
 
-**Integerising the trellis costs 0.02 % BD-rate at worst.** The gain survives
-intact: about **-3.2 % on rANS and -4.9 % on Lite**, averaged over the two
-clips, at the full effort. (The fast trellis at effort 1 is not the one to
-take: it is *positive* on pan8s rANS, so it can lose rate on a clip the full
-one wins.)
+**Integerising the trellis keeps its gain**: about **-3.1 % on rANS and -4.5 %
+on Lite**, averaged over the two clips, at the full effort. (The fast trellis at
+effort 1 is not the one to take: it is *positive* on pan8s rANS, so it can lose
+rate on a clip the full one wins.)
+
+The AC blocks alone integerise for nothing -- measured against the double
+trellis they were identical to 0.02 %. The half-percent that does move is the
+**DC plane**, which is the intra predictor: a level chosen there changes `pred`
+for all sixty-four blocks, so the sub-half-step difference between
+`m * (step / 16.0)` and `dequant(m, step)` is amplified. Leaving the DC plane on
+the dead-zone quantiser instead was tried and is worse on average -- pan8 rANS
+-4.09 %, pan8s rANS **-1.59 %**, for -2.84 % against the integer DC's -3.12 % --
+so the DC plane goes through the integer trellis and the half-percent is what it
+costs to have a trellis a shader can run at all.
+
+Sign data hiding goes with it: `hide_sign_unit_int` is the same move search on
+the same footing, so the trellis and the sign move it has to live with are
+decided by one arithmetic rather than two.
 
 Streams from it decode through `nxv-dec` and `nxvc-vkdec` to the same bytes.
 `vk.encoder.trellis` pins the two trellises within 2 % per quantiser — they are
@@ -888,7 +901,21 @@ requires the integer one to beat effort 1.
 ### What is not built: the shader
 
 The trellis runs in the reference only. It is now *portable* rather than
-crossable-in-principle, and the port has a clear shape and two named obstacles:
+crossable-in-principle, and the ruling on the two obstacles below is: **quantise
+twice**, and byte-identity is against `nxv-enc --int-trellis 1 --rdoq-effort 3`
+with the pipeline's existing "pick the table set from the coefficients" order
+kept. E3 is 0.61 ms of 11 at 578 tiles, so doubling it is affordable against a
+3-5 % wire saving.
+
+What is in the tree towards that: the reference path is now integer end to end
+(blocks, DC plane and sign hiding), which is the specification the shader is
+written against, and `forward/nxe_ctx.h` lifts the entropy-context derivation
+out of `rans_cpu.c` so the trellis can reach it. The trellis prices a candidate
+level *before* the level exists, so it cannot go through `nxe_unit_ops` the way
+the rate model does and has to derive the same contexts itself.
+
+What is not: `nxe_e3_*` has no trellis, so `nxvc-vkenc --cpu` is still the
+dead-zone quantiser, and there is no GLSL. The shape and the obstacles:
 
 * **Shape.** One block per lane. A 64x64 luma plane at the 8x8 transform is 64
   blocks, which is exactly E3's group width, and each lane walks its own
