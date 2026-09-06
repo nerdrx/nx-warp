@@ -201,6 +201,38 @@ void AtlasTable::code_tile(uint32_t t, uint32_t frame_number, int mode,
      * position retires the patch, because that write replaces the pixels. */
 }
 
+void AtlasTable::picture_frame(const uint8_t *coded, uint32_t frame_number) {
+    for (uint32_t t = 0; t < e.size(); ++t) {
+        AtlasEntry &a = e[t];
+        if (!(a.flags & kAtlasValid)) continue;
+        /* The pixels are materialised for every valid entry, so the pending
+         * transform is gone from all of them.  This half is the same on an
+         * ATLAS-frame rebase. */
+        atlas_identity(a.C);
+        a.gen = 0;
+        /* And this half is what makes it a PICTURE frame.  A position this
+         * frame coded already took `frame_number` through code_tile(); the
+         * rest take it here, because a materialised tile really does hold
+         * pixels of this frame. */
+        if (coded && coded[t]) continue;
+        a.src_frame = frame_number;
+    }
+}
+
+void AtlasTable::rebase_settle() {
+    for (uint32_t t = 0; t < e.size(); ++t) {
+        AtlasEntry &a = e[t];
+        if (!(a.flags & kAtlasValid)) continue;
+        /* 13.12.10: a static entry is excluded.  Its C is the identity
+         * already and its content is head-locked, so re-posing it would move
+         * what is by definition not supposed to move. */
+        if (a.flags & kAtlasStatic) continue;
+        atlas_identity(a.C);
+        a.gen = 0;
+        /* `src_frame` is deliberately NOT touched -- see the header. */
+    }
+}
+
 void AtlasTable::write_base_tile(uint32_t t, uint32_t frame_number) {
     /* [SYN] 13.12.9's metadata block, which is 13.12.3 step 3's with
      * `base_sourced` set: the pixels came from the base layer, not from a
@@ -239,6 +271,14 @@ void AtlasUndo::note_frame(uint32_t frame_number, const int32_t H[2][9],
     if (H) std::memcpy(st.H, H, sizeof st.H);
 }
 
+void AtlasUndo::note_materialised(uint32_t frame_number) {
+    Step &st = step[frame_number % (uint32_t)kDepth];
+    /* Only if the slot still names this frame: marking a slot that has been
+     * recycled would make some OTHER frame a boundary and refuse rollbacks
+     * that are perfectly good. */
+    if (st.used && st.frame == frame_number) st.materialised = 1u;
+}
+
 void AtlasUndo::note_coded(uint32_t t, uint32_t frame_number,
                            const AtlasEntry &before) {
     if (t >= s.size()) return;
@@ -266,6 +306,14 @@ bool AtlasUndo::rollback(uint32_t t, uint32_t lost_frame, uint32_t now,
          * Refusing is the safe direction: the caller invalidates instead and
          * the tile is coded INTRA. */
         if (!st.used || st.frame != f) return false;
+        /* A frame that MATERIALISED the atlas is a generation boundary.  The
+         * snapshot names pixels that frame overwrote, and no amount of
+         * metadata replay puts them back -- restoring the entry would claim
+         * the client holds pixels that no longer exist on either side.
+         * Refusing sends the caller down the invalidate path and the tile is
+         * coded INTRA, which is the same safe direction the log already takes
+         * for a frame whose matrix has fallen out of the ring. */
+        if (st.materialised) return false;
         if (!st.advanced) continue;
         if (a.gen != 0xffffu) ++a.gen;
         if (!(a.flags & kAtlasStatic)) {

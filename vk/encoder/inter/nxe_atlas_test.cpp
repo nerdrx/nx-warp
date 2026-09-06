@@ -438,6 +438,147 @@ void check_base_sourced() {
     CHECK(at.is_base_sourced(7), "a patch over a coded tile was not recorded");
 }
 
+/* The per-frame mode.  A PICTURE frame and an ATLAS-frame rebase agree on
+ * everything except `src_frame`, and that one field is what decides whether
+ * the frame's own coded tiles survive. */
+void check_picture_frame() {
+    const nxe::AtlasGeom g = geom_1088(1);
+    nxe::AtlasTable at;
+    at.reset(g);
+
+    /* Three positions coded at frame 10, then advanced so their C is no
+     * longer the identity and their gen is no longer 0. */
+    at.code_tile(0, 10, nxvw::kModeWarpMv, 0);
+    at.code_tile(1, 10, nxvw::kModeStaticMv, 0);   /* static */
+    at.code_tile(2, 10, nxvw::kModeWarpMv, 0);
+    int32_t H[2][9];
+    nxe::atlas_identity(H[0]);
+    nxe::atlas_identity(H[1]);
+    H[0][2] += 4096;                 /* a real translation, so C moves */
+    H[1][2] += 4096;
+    at.advance(H);
+    CHECK(at.e[0].gen == 1, "advance did not tick gen");
+    int32_t I[9];
+    nxe::atlas_identity(I);
+    CHECK(at.e[0].C[2] != I[2], "advance did not move C");
+    CHECK(at.e[1].C[2] == I[2], "a static entry's C moved");
+
+    /* A PICTURE frame at 11 that coded position 0 only.  Position 0 took its
+     * src_frame through code_tile(); 1 and 2 take it here. */
+    nxe::AtlasTable pic = at;
+    pic.code_tile(0, 11, nxvw::kModeWarpMv, 0);
+    std::vector<uint8_t> coded(pic.e.size(), 0u);
+    coded[0] = 1u;
+    pic.picture_frame(coded.data(), 11);
+    for (uint32_t t = 0; t < 3; ++t) {
+        CHECK(pic.e[t].gen == 0, "tile %u: a PICTURE frame left gen at %u", t,
+              pic.e[t].gen);
+        for (int k = 0; k < 9; ++k)
+            CHECK(pic.e[t].C[k] == I[k],
+                  "tile %u: a PICTURE frame left C off the identity", t);
+        /* The whole point: after a PICTURE frame every entry has age 0. */
+        CHECK(pic.e[t].src_frame == 11,
+              "tile %u: src_frame is %u, want 11", t, pic.e[t].src_frame);
+    }
+    /* And the coded position must NOT have been superseded by the frame's own
+     * materialisation -- the ordering is what prevents it.  Had
+     * picture_frame() run first, code_tile()'s write would have met
+     * `src_frame >= frame_number` and been dropped. */
+    CHECK(!pic.is_base_sourced(0), "a coded tile came back base-sourced");
+
+    /* An ATLAS-frame rebase at 11 settles the transform and leaves provenance
+     * alone, so age stays visible and the supersede rule keeps working. */
+    nxe::AtlasTable reb = at;
+    const uint16_t static_gen_before = reb.e[1].gen;
+    reb.rebase_settle();
+    for (uint32_t t = 0; t < 3; ++t)
+        CHECK(reb.e[t].src_frame == 10,
+              "tile %u: a rebase moved src_frame to %u -- 13.12.10 forbids "
+              "it, and it would drop every coded tile of the frame", t,
+              reb.e[t].src_frame);
+    /* The world-locked entries are settled. */
+    for (uint32_t t : {0u, 2u}) {
+        CHECK(reb.e[t].gen == 0, "tile %u: rebase left gen at %u", t,
+              reb.e[t].gen);
+        for (int k = 0; k < 9; ++k)
+            CHECK(reb.e[t].C[k] == I[k],
+                  "tile %u: rebase left C off the identity", t);
+    }
+    /* The STATIC one is excluded and comes through untouched -- 13.12.10, and
+     * it is also what keeps a rebase proportional to the world-locked part of
+     * the picture: on a scene of STATIC_MV panels a rebase is free. */
+    CHECK(reb.e[1].gen == static_gen_before,
+          "a rebase touched a static entry's gen (%u -> %u)",
+          static_gen_before, reb.e[1].gen);
+
+    /* A PICTURE frame, by contrast, materialises the static entry too: its
+     * pixels are as new as everything else's, so its age really is 0. */
+    CHECK(pic.e[1].src_frame == 11,
+          "a PICTURE frame skipped the static entry (src_frame %u)",
+          pic.e[1].src_frame);
+
+    /* An invalid entry is touched by neither. */
+    CHECK(!at.valid(5), "fixture assumption");
+    nxe::AtlasTable inv = at;
+    inv.picture_frame(nullptr, 11);
+    CHECK(!inv.valid(5), "a PICTURE frame validated an invalid entry");
+    CHECK(inv.e[5].src_frame == 0, "a PICTURE frame stamped an invalid entry");
+}
+
+/* A materialising frame is a generation boundary for the undo log: the pixels
+ * a snapshot names are gone, so the rollback must be refused rather than
+ * produce an entry claiming the client holds them. */
+void check_materialised_boundary() {
+    const nxe::AtlasGeom g = geom_1088(1);
+    int32_t H[2][9];
+    nxe::atlas_identity(H[0]);
+    nxe::atlas_identity(H[1]);
+
+    nxe::AtlasEntry before{};
+    before.flags = nxe::kAtlasValid;
+    nxe::atlas_identity(before.C);
+    before.src_frame = 4;
+
+    /* Without a boundary the replay succeeds, which is the control. */
+    {
+        nxe::AtlasUndo u;
+        u.reset(g);
+        u.note_frame(5, H, true);
+        u.note_coded(7, 5, before);
+        u.note_frame(6, H, true);
+        u.note_frame(7, H, true);
+        nxe::AtlasEntry out{};
+        CHECK(u.rollback(7, 5, 7, out), "the control rollback was refused");
+    }
+    /* With frame 6 materialising, the same rollback must be refused. */
+    {
+        nxe::AtlasUndo u;
+        u.reset(g);
+        u.note_frame(5, H, true);
+        u.note_coded(7, 5, before);
+        u.note_frame(6, H, true);
+        u.note_materialised(6);
+        u.note_frame(7, H, true);
+        nxe::AtlasEntry out{};
+        CHECK(!u.rollback(7, 5, 7, out),
+              "a rollback crossed a materialising frame");
+    }
+    /* A boundary AFTER the window does not matter, and one on the snapshot's
+     * own frame does not either -- the replay starts at lost_frame + 1. */
+    {
+        nxe::AtlasUndo u;
+        u.reset(g);
+        u.note_frame(5, H, true);
+        u.note_materialised(5);
+        u.note_coded(7, 5, before);
+        u.note_frame(6, H, true);
+        u.note_frame(7, H, true);
+        nxe::AtlasEntry out{};
+        CHECK(u.rollback(7, 5, 7, out),
+              "a boundary on the snapshot's own frame refused a rollback");
+    }
+}
+
 void check_table_rules() {
     const nxe::AtlasGeom g = geom_1088(2);
     nxe::AtlasTable at;
@@ -649,6 +790,8 @@ int main() {
     check_corner_disp();
     check_refresh_priority();
     check_base_sourced();
+    check_picture_frame();
+    check_materialised_boundary();
     check_table_rules();
     check_static_skip();
     check_envelope_is_the_staleness_bound();

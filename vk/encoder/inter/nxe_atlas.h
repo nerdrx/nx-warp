@@ -199,6 +199,48 @@ struct AtlasTable {
         return t < e.size() && (e[t].flags & kAtlasBaseSourced) != 0;
     }
 
+    /* ------------------------------------------------ the per-frame mode
+     *
+     * A frame is either an ATLAS frame or a PICTURE frame.  Both settle the
+     * pending transform into the pixels -- `C := I`, `gen := 0` -- and they
+     * differ in exactly one field, which is the field that decides whether the
+     * frame's own coded tiles survive.
+     *
+     * ORDER IS THE WHOLE OF IT.  Both of these run AFTER this frame's coded
+     * tiles have been written back, never before.  The supersede test of
+     * 13.12.6 is `>=` against the src_frame a position ALREADY holds, so
+     * stamping the frame's own number first would make every coded tile of the
+     * frame satisfy `src_frame >= frame_number` and be dropped -- measured in
+     * the reference as 35 of 46 coded tiles silently discarded, with encoder
+     * and decoder still agreeing on the frame header and disagreeing on the
+     * picture.  The test itself is NOT relaxed; the ordering is what keeps it
+     * from firing.  This mirrors nxvw::AtlasHostState on the decoder side,
+     * where `apply()` runs before `rebase_picture()` for the same reason. */
+
+    /* PICTURE frame `frame_number`.  Every valid entry is re-posed to this
+     * frame's pose and its pixels MATERIALISED, so every entry ends at age 0
+     * -- which is the truth, because every one of those pixels really is new.
+     * `src_frame := frame_number` is therefore legitimate here, and this is
+     * the one place it moves without the position being coded.
+     *
+     * `coded` is one byte per tile, non-zero where this frame coded the
+     * position; those entries took `src_frame` through `code_tile()` already
+     * and are skipped, exactly as the decoder's `rebase_picture()` skips
+     * them.  A null `coded` means the frame coded nothing. */
+    void picture_frame(const uint8_t *coded, uint32_t frame_number);
+
+    /* ATLAS-frame rebase ([SYN] 13.12.10, tool bit 34).  The pending
+     * transform is settled into the pixels and `C := I`, `gen := 0` -- but the
+     * content is no newer than it was, so `src_frame` is UNTOUCHED and age
+     * stays `frame_number - src_frame`.  That is what keeps the two rules
+     * which key on provenance working: the supersede rule of 13.12.6 and the
+     * base-patch monotonicity of 13.12.9.
+     *
+     * A `static` entry is excluded: its `C` is already the identity because
+     * its content is head-locked to the viewer, so re-posing it would move
+     * content that is by definition not supposed to move. */
+    void rebase_settle();
+
     /* 13.12.7.  A NEAR_SKIP tile applies its correction to the atlas pixels in
      * place and changes NO metadata.  It is here as a named no-op so that the
      * one case in which a skipped tile touches the atlas is visible in the
@@ -247,6 +289,15 @@ struct AtlasUndo {
         uint32_t frame = 0;
         uint8_t used = 0;
         uint8_t advanced = 0;
+        /* This frame MATERIALISED the atlas pixels -- a PICTURE frame, or an
+         * ATLAS-frame rebase.  It is a GENERATION BOUNDARY for the undo log:
+         * a snapshot taken before it can never be restored, because the
+         * pixels it names were overwritten by the materialisation and the
+         * metadata replay cannot put them back.  `rollback()` refuses across
+         * one, which sends the caller down the invalidate path and codes the
+         * tile INTRA -- the safe direction, and the same one the log already
+         * takes when a frame's matrix has fallen out of the ring. */
+        uint8_t materialised = 0;
     };
     Step step[kDepth];
     AtlasGeom g{};
@@ -258,6 +309,12 @@ struct AtlasUndo {
      * `warp_present`. */
     void note_frame(uint32_t frame_number, const int32_t H[2][9],
                     bool advanced);
+
+    /* Mark frame `frame_number` as having materialised the atlas pixels -- a
+     * PICTURE frame, or an ATLAS-frame rebase.  Call it after note_frame() for
+     * that frame.  It makes the frame a generation boundary the log will not
+     * roll back across; see `Step::materialised`. */
+    void note_materialised(uint32_t frame_number);
 
     /* Record the state of tile `t` immediately before frame `M` codes it. */
     void note_coded(uint32_t t, uint32_t frame_number, const AtlasEntry &before);
