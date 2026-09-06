@@ -1823,6 +1823,36 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
     }
     const bool atlas = atlas_stream && !picture_frame;
     fp.atlas = atlas ? 1 : 0;
+    // ---- SINGLE-LEVEL COARSE REFRESH.  A tile whose pixels have drifted more
+    // than `atlas_coarse_disp` luma samples since they were last coded is
+    // landed at res_level 1.  The metric is the corner displacement of the
+    // entry AFTER this frame's advance -- the same probe 13.12.11.1's trigger
+    // uses, and for the same reason: measuring the atlas as it stands reads
+    // zero for every tile that has just landed, which is most of them, and the
+    // policy then never fires.  It applies in BOTH modes, because a PICTURE
+    // frame's coded tiles are refreshes too.
+    std::vector<u8> coarse_res;
+    if (atlas_stream && e->cfg.atlas_coarse_disp && have_ref) {
+        const i64 lim = (i64)e->cfg.atlas_coarse_disp << nw::kQCorner;
+        const int cols = (int)(g.eyes * g.tiles_x);
+        coarse_res.assign((size_t)ntiles, 0);
+        for (int t = 0; t < ntiles; ++t) {
+            AtlasEntry probe = e->at.ent[(size_t)t];
+            if (!(probe.flags & kAtlasValid)) continue;
+            if (probe.flags & kAtlasStatic) continue;
+            const int eye = (int)((u32)t % (u32)cols) / (int)g.tiles_x;
+            if (fp.warp_present)
+                atlas_advance(probe, fp.warp[eye], (int)g.width, (int)g.height,
+                              0u);
+            if (!(probe.flags & kAtlasValid)) continue;
+            WarpMatrix cw{};
+            for (int k = 0; k < 9; ++k) cw.h[k] = probe.C[k];
+            const int col = (int)((u32)t % (u32)cols) - eye * (int)g.tiles_x;
+            const int row = t / cols;
+            if (atlas_corner_disp(cw, g, col, row, false) > lim)
+                coarse_res[(size_t)t] = 1;
+        }
+    }
     if (picture_frame) {
         fp.flags |= 32;   // bit 5: 13.12.11, a PICTURE frame
         // The reference is the picture the atlas holds, assembled at the pose
@@ -2121,6 +2151,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         tp.eye = eye;
         tp.mode = NXVC_MODE_INTRA;
         tp.res_level = res_map ? clamp_i32(res_map[t], 0, 2) : 0;
+        if (!coarse_res.empty() && coarse_res[(size_t)t]) tp.res_level = 1;
         if (e->cfg.lossless) tp.res_level = 0;
         tp.chroma444 = (g.chroma == NXVC_CHROMA_444 && !e->cfg.tile_chroma420);
         int qp = qp_map ? clamp_i32(qp_map[t], 0, 63) : fp.base_qp;
