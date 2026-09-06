@@ -1,0 +1,40 @@
+
+=== 47 fps -- Mbit/s of payload (no headers, FEC or retransmit)
+scheme        B/tile          40      100      289      578
+ASTC 4x4        5120        77.0    192.5    556.4   1112.7
+ASTC 6x6        2512        37.8     94.5    273.0    545.9
+ASTC 8x8        1280        19.3     48.1    139.1    278.2
+nxvc QP22        720        10.8     27.1     78.2    156.4
+nxvc QP26        542         8.2     20.4     58.9    117.8
+nxvc QP30        399         6.0     15.0     43.4     86.8
+  budgets: Wi-Fi 6, 100 Mbit/s = 100, Wi-Fi 6, 150 Mbit/s = 150, USB, 400 Mbit/s = 400
+
+=== 90 fps -- Mbit/s of payload (no headers, FEC or retransmit)
+scheme        B/tile          40      100      289      578
+ASTC 4x4        5120       147.5    368.6   1065.4   2130.7
+ASTC 6x6        2512        72.3    180.9    522.7   1045.4
+ASTC 8x8        1280        36.9     92.2    266.3    532.7
+nxvc QP22        720        20.7     51.8    149.8    299.6
+nxvc QP26        542        15.6     39.0    112.8    225.5
+nxvc QP30        399        11.5     28.7     83.1    166.1
+  budgets: Wi-Fi 6, 100 Mbit/s = 100, Wi-Fi 6, 150 Mbit/s = 150, USB, 400 Mbit/s = 400
+
+=== max refreshed tiles per frame that fits each budget (both eyes, payload only)
+
+-- 47 fps
+scheme            100 Mbit/s      150 Mbit/s      400 Mbit/s
+ASTC 4x4                  52              78             208
+ASTC 6x6                 106             159             423
+ASTC 8x8                 208             312             831
+nxvc QP22                369             554            1478
+nxvc QP26                491             736            1963
+nxvc QP30                666             999            2665
+
+-- 90 fps
+scheme            100 Mbit/s      150 Mbit/s      400 Mbit/s
+ASTC 4x4                  27              41             109
+ASTC 6x6                  55              83             221
+ASTC 8x8                 109             163             434
+nxvc QP22                193             289             772
+nxvc QP26                256             384            1025
+nxvc QP30                348             522            1392

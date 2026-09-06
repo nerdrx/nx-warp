@@ -1,0 +1,48 @@
+device        Adreno (TM) 650
+api           1.1.128
+driver        0x802aa000
+tsPeriod      52.083 ns
+feat.textureCompressionASTC_LDR  1
+feat.textureCompressionETC2      1
+feat.textureCompressionBC        1
+queueFamily   0  timestampValidBits 48
+
+format                 opt.SMP  opt.LIN  opt.DST  lin.SMP  lin.LIN 
+ASTC_4x4_UNORM         1        1        1        1        1          (opt=0x0001f401)
+ASTC_4x4_SRGB          1        1        1        1        1          (opt=0x0001f401)
+ASTC_6x6_UNORM         1        1        1        1        1          (opt=0x0001f401)
+ASTC_6x6_SRGB          1        1        1        1        1          (opt=0x0001f401)
+ASTC_8x8_UNORM         1        1        1        1        1          (opt=0x0001f401)
+ASTC_8x8_SRGB          1        1        1        1        1          (opt=0x0001f401)
+ETC2_R8G8B8_UNORM      1        1        1        1        1          (opt=0x0001f401)
+ETC2_R8G8B8_SRGB       1        1        1        1        1          (opt=0x0001f401)
+ETC2_R8G8B8A1_UNORM    1        1        1        1        1          (opt=0x0001f401)
+ETC2_R8G8B8A8_UNORM    1        1        1        1        1          (opt=0x0001f401)
+EAC_R11_UNORM          1        1        1        1        1          (opt=0x0001f401)
+EAC_R11G11_UNORM       1        1        1        1        1          (opt=0x0001f401)
+R8_UNORM               1        1        1        1        1          (opt=0x0001fd83)
+R16_UNORM              1        1        1        1        1          (opt=0x0001fd83)
+R8G8_UNORM             1        1        1        1        1          (opt=0x0101fd83)
+R8G8B8A8_UNORM         1        1        1        1        1          (opt=0x000ffd83)
+
+legend: opt.SMP SAMPLED_IMAGE, opt.LIN SAMPLED_IMAGE_FILTER_LINEAR,
+        opt.DST TRANSFER_DST, all under VK_IMAGE_TILING_OPTIMAL;
+        lin.* the same two under VK_IMAGE_TILING_LINEAR.
+
+format                 vkGetPhysicalDeviceImageFormatProperties(SAMPLED, OPTIMAL, 2176x1088)
+ASTC_4x4_UNORM         ok   maxExtent 16384x16384  maxMip 15
+ASTC_4x4_SRGB          ok   maxExtent 16384x16384  maxMip 15
+ASTC_6x6_UNORM         ok   maxExtent 16384x16384  maxMip 15
+ASTC_6x6_SRGB          ok   maxExtent 16384x16384  maxMip 15
+ASTC_8x8_UNORM         ok   maxExtent 16384x16384  maxMip 15
+ASTC_8x8_SRGB          ok   maxExtent 16384x16384  maxMip 15
+ETC2_R8G8B8_UNORM      ok   maxExtent 16384x16384  maxMip 15
+ETC2_R8G8B8_SRGB       ok   maxExtent 16384x16384  maxMip 15
+ETC2_R8G8B8A1_UNORM    ok   maxExtent 16384x16384  maxMip 15
+ETC2_R8G8B8A8_UNORM    ok   maxExtent 16384x16384  maxMip 15
+EAC_R11_UNORM          ok   maxExtent 16384x16384  maxMip 15
+EAC_R11G11_UNORM       ok   maxExtent 16384x16384  maxMip 15
+R8_UNORM               ok   maxExtent 16384x16384  maxMip 15
+R16_UNORM              ok   maxExtent 16384x16384  maxMip 15
+R8G8_UNORM             ok   maxExtent 16384x16384  maxMip 15
+R8G8B8A8_UNORM         ok   maxExtent 16384x16384  maxMip 15
