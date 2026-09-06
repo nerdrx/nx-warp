@@ -680,14 +680,25 @@ over frames 1..15:
 |---|---|---|---|---|---|---|---|
 | near-still, 4.2 deg/s | 22 | 41.78 / 8956 | **42.85 / 8152** | 42.90 / 8087 | 42.85 / 8152 | 42.85 / 8152 | 42.85 / 8152 |
 | near-still | 26 | 38.77 / 5471 | **39.93 / 5416** | 39.93 / 5296 | 39.93 / 5416 | 39.93 / 5416 | 39.93 / 5416 |
+| near-still | 30 | 35.91 / 3404 | **36.83 / 3384** | 36.79 / 3352 | 36.83 / 3384 | 36.83 / 3384 | 36.83 / 3384 |
 | mid, 25.2 deg/s | 22 | 41.52 / 10196 | 37.12 / 12824 | 36.55 / 11548 | 41.76 / 20696 | 38.75 / 16191 | 37.26 / 13961 |
 | mid | 26 | 38.62 / 6092 | 34.68 / 8562 | 35.51 / 7841 | 39.27 / 15566 | 36.99 / 11795 | 35.66 / 9707 |
+| mid | 30 | 35.91 / 3690 | 33.54 / 5320 | 33.13 / 4993 | 36.63 / 12077 | 35.00 / 8614 | 33.86 / 6599 |
 | fast turn, 75.6 deg/s | 22 | 41.38 / 10483 | 30.46 / 15061 | 31.32 / 13799 | 42.32 / 24084 | 39.70 / 22178 | 36.59 / 18340 |
 | fast turn | 26 | 38.50 / 6582 | 29.94 / 10518 | 31.36 / 9345 | 39.61 / 18301 | 37.63 / 16607 | 35.50 / 13362 |
+| fast turn | 30 | 35.82 / 4302 | 28.61 / 6727 | 29.52 / 6372 | 36.75 / 14187 | 35.40 / 12806 | 33.80 / 9859 |
 
 At the margin the atlas *beats* the picture model on quality -- +0.94 dB at
-fast turn, QP 22 -- and pays 2.3x the bytes for it. **The margin never binds at
-4.2 deg/s at any of 2/4/8/16**, so the low-velocity win is untouched by it.
+fast turn, QP 22 -- and pays 2.3x the bytes for it. The shape of the table is
+the same at all three quantisers: the atlas wins at 4.2 deg/s by ~1 dB at
+slightly fewer bytes, and the deficit at speed is 7.2 dB (QP 30) to 10.9 dB
+(QP 22) with neither fix closing it inside its own byte budget.
+
+**At 4.2 deg/s the margin does not bind at 4, 8 or 16** -- every cell is the
+plain atlas to the byte -- so the low-velocity win is untouched by it. Margin 2
+is the first that binds there, and it binds the wrong way: 42.91 dB at
+9192 B/frame against the plain atlas's 42.85 at 8152 (QP 22), 0.06 dB for
+12.8 % more bytes. Margin 2 is not carried in the table for that reason.
 
 **Equal rate** is the test that decides, and it is unambiguous. Each
 configuration is re-quantised to the bytes the picture model spends at QP 26:
