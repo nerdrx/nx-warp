@@ -1152,6 +1152,90 @@ to reproduce. The open rate-control question is answered in the direction
 nobody wanted: for this codec, at a byte budget, **move the quantiser, not the
 tile set.**
 
+### Re-run on rendered content: what changes, and what does not
+
+Everything above was measured on `gen_synthetic.py`, and
+docs/LOWPOLY-MODE.md had already named the problem: that content is "unusually
+kind". It is a band-limited procedural panorama reprojected per eye, with no
+specular, no thin geometry, no text, and "objects" that move *with* the
+panorama -- so nothing in the frame ever disobeys the head's homography, which
+is the one assumption the whole codec rests on.
+
+`tools/quality/capture/gen_vrroom.py` renders the opposite in Blender: text
+panels at reading distance, a mirror-like specular floor, thin high-contrast
+bars, checkerboard walls, two textured humanoid meshes that move on their own,
+a gradient skybox; stereo at 63 mm, 1088x1088 an eye, 100 degrees, 90 Hz, four
+trajectories of 32 frames. Measured angular velocity 2.7 / 26.2 / 99.1 deg/s,
+the fast clip peaking at 796 deg/s across its one-frame 8-degree step.
+
+**Every comparison below is a DOMINANCE result at QP 26** -- one configuration
+is better on PSNR *and* cheaper in bytes -- so no equal-rate interpolation is
+needed to read it:
+
+| fixture | all-ATLAS | all-PICTURE | D=8 | winner |
+|---|---|---|---|---|
+| rest 2.7 deg/s | **38.94 / 1643 B** | 38.02 / 4208 B | 38.92 / 1777 B (6.5 % PIC) | ATLAS, by 0.92 dB at 2.6x fewer bytes |
+| mid 26.2 deg/s | 36.62 / 9780 B | **38.03 / 7031 B** | 37.71 / 7366 B (48.4 % PIC) | PICTURE, by 1.41 dB at 28 % fewer bytes |
+| fast 99.1 deg/s | 32.65 / 13843 B | **38.21 / 6566 B** | 38.21 / 6566 B (100 % PIC) | PICTURE, by 5.56 dB at half the bytes |
+| **objmotion** | **38.79 / 3510 B** | 37.97 / 5668 B | 38.74 / 3693 B (6.5 % PIC) | ATLAS, by 0.82 dB at 38 % fewer bytes |
+
+**The mode switch survives, and it is the thing that survives best.** At every
+velocity `D = 8` lands on whichever of the two modes wins there, without being
+told which: 6.5 % PICTURE frames at rest, 48.4 % at mid, and **100 % at fast**,
+where it collapses to exactly the picture model and reproduces it to the byte.
+The 13.12.11 decision is unchanged by real content.
+
+**The objmotion clip is a new case and the atlas passes it.** Nothing before
+this had ever tested content that moves independently of the head -- the old
+generator could not express it. The worry was that a per-tile atlas would smear
+a walking figure across the frames it is not re-coded in. It does not: the
+atlas *wins* there, by 0.82 dB at 38 % fewer bytes, because a moving mesh
+occupies a small minority of tiles and those tiles simply get coded while the
+static majority stay skipped. That is the atlas's argument working exactly as
+designed, on the case that was supposed to break it.
+
+**What does change is the seam ratio, and it changes a lot.** On synthetic
+content everything sat between 1.03 and 1.7. Here:
+
+| fixture | all-ATLAS | all-PICTURE | D=8 |
+|---|---|---|---|
+| rest | 2.03 | 2.44 | **1.89** |
+| mid | **3.20** | 1.93 | 1.99 |
+| fast | **4.57** | 2.07 | 2.07 |
+| objmotion | 1.99 | 2.43 | **1.97** |
+
+**The atlas's mosaic is visibly blocky at speed on real content, and the
+synthetic corpus hid that completely.** A seam ratio of 4.57 means a tile edge
+shows four and a half times the sample-to-sample step of the tile interior --
+the 64-grid is plainly visible. The rate-distortion tables had already said the
+atlas loses at speed; what they could not say is that it loses in the *ugly*
+way, which on this project's stated preference (soft, not blocky) is the worse
+of the two ways to lose. Conversely at rest and under object motion the atlas
+is the *better*-looking option as well as the cheaper one, and `all-PICTURE`
+degrades to 3.90 at QP 40 where the atlas holds 2.47.
+
+So the seam ratio is now the second axis of every atlas verdict rather than a
+tiebreaker, and it points the same way the mode switch does: be an atlas when
+the head is slow, be a picture when it is fast.
+
+**Two smaller results, both negative, both worth recording:**
+
+* **The effort levels do nothing here.** `int_rdoq` 0, `int_rdoq` 1 and the
+  full trellis land within **0.03 dB** of each other on all four fixtures at
+  QP 34 (e.g. fast: 32.46 / 32.44 / 32.46). The effort ladder was tuned on
+  content whose residuals look nothing like these; on rendered content with
+  text and specular, the quantiser refinement is not where the bits are.
+* **`--intra-dir layer` ("planar prefer") is consistently worse than
+  RD-selected.** It costs 0.12 to 0.27 dB *and* more bytes on every fixture --
+  another dominance result, in the wrong direction. RD selection stays the
+  default.
+
+**The bottom line for this ADR: no verdict is reversed by real content, and one
+is strengthened.** The atlas wins at rest and under independent object motion,
+loses at speed, the per-frame mode switch picks correctly at every velocity
+without tuning, and the visual evidence for the mode switch is much stronger on
+rendered content than the synthetic corpus was able to show.
+
 * **The seam, as originally written.** Two adjacent tiles with different source frames are each
   individually correctly reprojected, so static distant content is seamless. They diverge on moving
   content and on near parallax, growing with the age difference — a tile coded 30 frames ago beside
