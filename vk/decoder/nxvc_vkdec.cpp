@@ -29,6 +29,12 @@
 #include "nxvc_vkdec_parse.h"
 #include "passA/syntax_constants.h"
 #include "passB/syntax_constants.h"
+// [ATLAS] The one description of the table, the H ring and the push blocks,
+// and the host bookkeeping that goes with them.  atlas_layout.h is shared
+// verbatim with atlas_compose.comp and atlas_tiles.comp, so the host cannot
+// drift from the kernels it drives.
+#include "atlas/atlas_layout.h"
+#include "atlas/atlas_state.h"
 
 #include "rans_decode.spv.h"
 #include "rans_decode_lite.spv.h"
@@ -39,6 +45,9 @@
 #include "reconstruct_v1_x8.spv.h"
 #include "reconstruct_x8.spv.h"
 #include "warp_pred.spv.h"
+// [ATLAS] 13.12.3 step 1, and the coded-tile kernel that brackets Pass W.
+#include "atlas_compose.spv.h"
+#include "atlas_tiles.spv.h"
 
 namespace {
 
@@ -190,6 +199,14 @@ struct nxvc_vk_decoder {
     VkShaderModule smW = VK_NULL_HANDLE;
     VkDescriptorSet dsetW = VK_NULL_HANDLE;
     VkPipeline pipeW = VK_NULL_HANDLE;
+    // [ATLAS] Two more sets, two more layouts, two more modules.  Neither
+    // kernel has a specialisation constant, so both pipelines are created once
+    // in make_layouts() rather than through a cache keyed on a frame's shape.
+    VkDescriptorSetLayout dslAC = VK_NULL_HANDLE, dslAT = VK_NULL_HANDLE;
+    VkPipelineLayout plAC = VK_NULL_HANDLE, plAT = VK_NULL_HANDLE;
+    VkShaderModule smAC = VK_NULL_HANDLE, smAT = VK_NULL_HANDLE;
+    VkDescriptorSet dsetAC = VK_NULL_HANDLE, dsetAT = VK_NULL_HANDLE;
+    VkPipeline pipeAC = VK_NULL_HANDLE, pipeAT = VK_NULL_HANDLE;
     VkDescriptorSet dsetA = VK_NULL_HANDLE, dsetB = VK_NULL_HANDLE;
     std::map<uint32_t, VkPipeline> pipesA;  // lanes | ctx_stride<<8 | xfl<<16
     // key: (format << 40) | (dirSched << 32) | storeWords
@@ -201,6 +218,32 @@ struct nxvc_vk_decoder {
     // [inter] The four-slot reference ring, the predictor Pass W hands to
     // Pass B, and the parameter block that drives both.
     Buf bRing, bWPred, bWarp;
+    // [ATLAS] The three objects that replace the ring ([SYN] 13.12.1), plus
+    // the two lists the kernels are driven by.
+    //
+    //   bTable    64 B per tile position of every eye, the normative table
+    //   bAdv      one u32 per entry, `advanced_to`.  DECODER-PRIVATE and
+    //             deliberately NOT in the table: 13.12.1's 64 bytes are fully
+    //             specified, its 20 reserved bytes are zero and compared, and
+    //             when the composition ran is not part of the atlas
+    //   bHRing     NXVW_ATLAS_HRING slots x eyes x 10 uints -- nine matrix
+    //             words and a flags word whose bit 0 is `warp_present`.  The
+    //             flags word is not padding: a frame with warp_present == 0
+    //             contributes NO step at all, and the bit cannot be inferred
+    //             from a matrix whose h22 is 2^29 for every legal value
+    //   bASel     the index list the compose dispatch walks under SEL_LIST
+    //   bACoded   this frame's coded tiles, by TABLE index, for MATGEN and
+    //             WRITEBACK
+    //   bAStatus  MATGEN's deferred 13.12.4 refusal: bit 0 and the FIRST
+    //             offending tile index, read back once the frame completes
+    Buf bTable, bAdv, bHRing, bASel, bACoded, bAStatus;
+    // The atlas PIXELS are the ring buffer with ONE slot instead of four --
+    // byte-for-byte the layout nxvw_ring_layout() already computes, at a fixed
+    // address instead of curSlot's.  So `bRing` IS the atlas under ATLAS and
+    // there is no second pixel buffer: warp_pred.glsl reads the reference
+    // through that layout, it is pinned byte-for-byte against the encoder, and
+    // ADR-0029 turns on it being unmodified.  Memory falls 4:1, which is the
+    // ADR's argument for ref_sel == 0.
     // [sparse] Pass A's per-unit coefficient counts, and a host-visible mirror
     // that only exists when the caller asked for coefficient statistics.
     Buf bULen, bULenHost;
@@ -239,6 +282,21 @@ struct nxvc_vk_decoder {
     // Byte layout of the readback buffer.
     VkDeviceSize rbLuma = 0, rbCbCr = 0, rbRgba = 0, rbBytes = 0;
     bool need_alpha_pass = false;  // second Pass B dispatch for the A channel
+
+    // ---- [ATLAS] state
+    // Set from the stream's tool bit 31 at parse_stream_header().  It is the
+    // one switch: under it the reference is the atlas, the skip module and the
+    // display store do not run, and the normative output is the atlas rather
+    // than a picture.
+    bool atlas_mode = false;
+    // The host half of 13.12.3 -- monotonicity, the lazy selection and the
+    // ring window.  Host and not device because every answer is host-known,
+    // and reading either back per frame would put a stall in every frame,
+    // which is the one thing tile streaming exists to remove.
+    nxvw::AtlasHostState astate;
+    // Scratch for the two index lists, rebuilt per call rather than per frame
+    // so a tile RUN and a whole frame take the same path.
+    std::vector<uint32_t> asel, acoded;
 
     // ---- [inter] state
     InterCtx inter{};
@@ -759,9 +817,39 @@ constexpr SetShape kSetA{8, 0};
 constexpr SetShape kSetB{9, 7};
 // Pass W: ring in, params in, predictor out, tile order in.
 constexpr SetShape kSetW{4, 0};
+// [ATLAS] atlas_compose.comp: table, advanced_to, H ring, selection list.
+constexpr SetShape kSetAC{4, 0};
+// [ATLAS] atlas_tiles.comp: table, advanced_to, warp params, coded list,
+// status.  It is a SEPARATE layout from the compose one rather than a union of
+// the two, because binding 2 is the H ring in one kernel and the warp
+// parameter buffer in the other -- and a set layout that lied about which
+// would be a validation error on a good driver and a silent wrong read on a
+// bad one.
+constexpr SetShape kSetAT{5, 0};
 
-constexpr int kPoolBufs = kSetA.bufs + kSetB.bufs + kSetW.bufs;
-constexpr int kPoolImgs = kSetA.imgs + kSetB.imgs + kSetW.imgs;
+// Every set the pool must serve, in one list, so the two sums below cannot
+// fall behind the layouts.  The atlas sets are the fourth and fifth time this
+// table has grown; the comment above says what happened the previous three.
+constexpr SetShape kSets[] = {kSetA, kSetB, kSetW, kSetAC, kSetAT};
+constexpr int kNumSets = (int)(sizeof(kSets) / sizeof(kSets[0]));
+constexpr int sum_bufs() {
+    int n = 0;
+    for (int i = 0; i < kNumSets; ++i) n += kSets[i].bufs;
+    return n;
+}
+constexpr int sum_imgs() {
+    int n = 0;
+    for (int i = 0; i < kNumSets; ++i) n += kSets[i].imgs;
+    return n;
+}
+constexpr int kPoolBufs = sum_bufs();
+constexpr int kPoolImgs = sum_imgs();
+static_assert(kPoolBufs == kSetA.bufs + kSetB.bufs + kSetW.bufs + kSetAC.bufs +
+                               kSetAT.bufs,
+              "the descriptor pool is sized from kSets and every set must be "
+              "in it: a set the pool does not count is VK_ERROR_OUT_OF_POOL_"
+              "MEMORY on the Adreno 650 and nothing at all on RADV or "
+              "lavapipe, which is how this went unnoticed three times");
 
 // Pass B's bindings are not contiguous by type -- the images keep the numbers
 // they have always had -- so its layout is built from a predicate rather than
@@ -850,6 +938,21 @@ nxvc_vkd_status make_layouts(D *d) {
     pl.pPushConstantRanges = &pcW;
     VKTRY(d, vkCreatePipelineLayout(d->dev, &pl, nullptr, &d->plW));
 
+    // [ATLAS] The compose set and the coded-tile set.
+    VKTRY(d, set_layout(kSetAC.bufs, kSetAC.imgs, &d->dslAC));
+    VkPushConstantRange pcAC{VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                             (uint32_t)sizeof(nxvw::NxvwAtlasPush)};
+    pl.pSetLayouts = &d->dslAC;
+    pl.pPushConstantRanges = &pcAC;
+    VKTRY(d, vkCreatePipelineLayout(d->dev, &pl, nullptr, &d->plAC));
+
+    VKTRY(d, set_layout(kSetAT.bufs, kSetAT.imgs, &d->dslAT));
+    VkPushConstantRange pcAT{VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                             (uint32_t)sizeof(nxvw::NxvwAtlasTilePush)};
+    pl.pSetLayouts = &d->dslAT;
+    pl.pPushConstantRanges = &pcAT;
+    VKTRY(d, vkCreatePipelineLayout(d->dev, &pl, nullptr, &d->plAT));
+
     VkShaderModuleCreateInfo sm{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
     sm.codeSize = sizeof(rans_decode_spv);
     sm.pCode = rans_decode_spv;
@@ -878,6 +981,35 @@ nxvc_vkd_status make_layouts(D *d) {
     sm.codeSize = sizeof(warp_pred_spv);
     sm.pCode = warp_pred_spv;
     VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smW));
+    sm.codeSize = sizeof(atlas_compose_spv);
+    sm.pCode = atlas_compose_spv;
+    VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smAC));
+    sm.codeSize = sizeof(atlas_tiles_spv);
+    sm.pCode = atlas_tiles_spv;
+    VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smAT));
+
+    // [ATLAS] Neither kernel takes a specialisation constant, so both
+    // pipelines are made once here.  Every other pipeline in this decoder is
+    // built through a cache keyed on a frame's shape because it IS specialised
+    // -- lane count, context stride, transform size, output format -- and
+    // these two are not: one thread per table entry, no shared memory, no
+    // variant.
+    auto make_pipe = [&](VkShaderModule mod, VkPipelineLayout lay,
+                         VkPipeline *out) {
+        VkPipelineShaderStageCreateInfo st_{
+            VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+        st_.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+        st_.module = mod;
+        st_.pName = "main";
+        VkComputePipelineCreateInfo ci{
+            VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
+        ci.stage = st_;
+        ci.layout = lay;
+        return vkCreateComputePipelines(d->dev, VK_NULL_HANDLE, 1, &ci,
+                                        nullptr, out);
+    };
+    VKTRY(d, make_pipe(d->smAC, d->plAC, &d->pipeAC));
+    VKTRY(d, make_pipe(d->smAT, d->plAT, &d->pipeAT));
 
     // Summed from the same table the three set layouts are built from, so it
     // cannot fall behind them.  See kSetA / kSetB / kSetW above for why that
@@ -887,21 +1019,24 @@ nxvc_vkd_status make_layouts(D *d) {
         {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, (uint32_t)kPoolImgs}};
     VkDescriptorPoolCreateInfo dp{
         VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
-    dp.maxSets = 3;
+    dp.maxSets = kNumSets;
     dp.poolSizeCount = 2;
     dp.pPoolSizes = sz;
     VKTRY(d, vkCreateDescriptorPool(d->dev, &dp, nullptr, &d->dpool));
-    VkDescriptorSetLayout ls[3] = {d->dslA, d->dslB, d->dslW};
-    VkDescriptorSet sets[3];
+    VkDescriptorSetLayout ls[kNumSets] = {d->dslA, d->dslB, d->dslW, d->dslAC,
+                                          d->dslAT};
+    VkDescriptorSet sets[kNumSets];
     VkDescriptorSetAllocateInfo da{
         VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
     da.descriptorPool = d->dpool;
-    da.descriptorSetCount = 3;
+    da.descriptorSetCount = kNumSets;
     da.pSetLayouts = ls;
     VKTRY(d, vkAllocateDescriptorSets(d->dev, &da, sets));
     d->dsetA = sets[0];
     d->dsetB = sets[1];
     d->dsetW = sets[2];
+    d->dsetAC = sets[3];
+    d->dsetAT = sets[4];
     return NXVC_VKD_OK;
 }
 
@@ -1284,8 +1419,13 @@ nxvc_vkd_status make_resources(D *d) {
         d->ringSlotU16 = slot;
         d->wpredStrideI16 =
             nxvw::nxvw_wpred_stride_i16(chroma420 ? 1 : 0, si.alpha ? 1 : 0);
+        // [ATLAS] The atlas pixels ARE one ring slot, so an ATLAS stream
+        // allocates a quarter of what the four-slot ring costs -- which is
+        // ADR-0029's argument for `ref_sel == 0` turned into an allocation.
         const VkDeviceSize ringBytes =
-            want_inter ? (VkDeviceSize)slot * 4 * 2 : 4;
+            d->atlas_mode ? (VkDeviceSize)slot * 2
+            : want_inter  ? (VkDeviceSize)slot * 4 * 2
+                          : 4;
         const VkDeviceSize wpredBytes =
             want_inter ? (VkDeviceSize)ntiles * d->wpredStrideI16 * 2 : 4;
         const VkDeviceSize warpBytes =
@@ -1295,6 +1435,43 @@ nxvc_vkd_status make_resources(D *d) {
         if ((st = make_buf(d, d->bWPred, wpredBytes, kSsbo, false))) return st;
         if ((st = make_buf(d, d->bWarp, warpBytes, kSsbo, false))) return st;
         d->inter.resize(ntiles);
+    }
+    // [ATLAS] The table and everything that indexes it.  All six exist
+    // whatever the stream's tools say -- an unbound descriptor is not legal --
+    // but only an ATLAS stream pays for more than a placeholder.
+    {
+        const uint32_t entries = ntiles;   // one per tile POSITION of every eye
+        const VkDeviceSize tabBytes =
+            d->atlas_mode
+                ? (VkDeviceSize)entries * NXVW_ATLAS_ENTRY_UINTS * 4
+                : 4;
+        const VkDeviceSize advBytes =
+            d->atlas_mode ? (VkDeviceSize)entries * 4 : 4;
+        // Ten uints per (slot, eye): nine matrix words and a flags word.  At
+        // the v1 stereo configuration that is 64 * 2 * 10 * 4 = 5120 B, and
+        // the flags word is the eleventh percent of it rather than padding.
+        const VkDeviceSize hringBytes =
+            d->atlas_mode ? (VkDeviceSize)NXVW_ATLAS_HRING * si.eyes *
+                                NXVW_ATLAS_HSLOT_UINTS * 4
+                          : 4;
+        const VkDeviceSize listBytes =
+            d->atlas_mode ? (VkDeviceSize)entries * 4 : 4;
+        if ((st = make_buf(d, d->bTable, tabBytes, kSsbo, false))) return st;
+        if ((st = make_buf(d, d->bAdv, advBytes, kSsbo, false))) return st;
+        if ((st = make_buf(d, d->bHRing, hringBytes, kSsbo, false))) return st;
+        if ((st = make_buf(d, d->bASel, listBytes, kSsbo, false))) return st;
+        if ((st = make_buf(d, d->bACoded, listBytes, kSsbo, false)))
+            return st;
+        // Two uints, host-visible: MATGEN's deferred 13.12.4 refusal and the
+        // FIRST tile it refused, so the report names a tile and not a frame.
+        if ((st = make_buf(d, d->bAStatus, 8,
+                           kSsbo | VK_BUFFER_USAGE_TRANSFER_DST_BIT, true)))
+            return st;
+        // [SYN] 13.12.1: on tile_map_reset the whole table is zeroed, which
+        // makes every entry invalid and leaves the atlas pixels undefined.
+        // The host mirror of that starts here; the device buffer is cleared
+        // on the first frame that sets the flag.
+        d->astate.reset(d->atlas_mode ? entries : 0u);
     }
     // Only when the caller asked for the exact coefficient traffic: a
     // host-visible copy of the same buffer, filled after Pass A.
@@ -1357,7 +1534,20 @@ nxvc_vkd_status make_resources(D *d) {
                                     {d->bWarp.buf, 0, VK_WHOLE_SIZE},
                                     {d->bWPred.buf, 0, VK_WHOLE_SIZE},
                                     {d->bOrder.buf, 0, VK_WHOLE_SIZE}};
-    VkWriteDescriptorSet w[28]{};
+    // [ATLAS] The compose set (table, advanced_to, H ring, selection list) and
+    // the coded-tile set (table, advanced_to, warp params, coded list,
+    // status).  Binding 2 differs between them, which is why they are two
+    // layouts rather than one union.
+    VkDescriptorBufferInfo ac[4] = {{d->bTable.buf, 0, VK_WHOLE_SIZE},
+                                    {d->bAdv.buf, 0, VK_WHOLE_SIZE},
+                                    {d->bHRing.buf, 0, VK_WHOLE_SIZE},
+                                    {d->bASel.buf, 0, VK_WHOLE_SIZE}};
+    VkDescriptorBufferInfo at[5] = {{d->bTable.buf, 0, VK_WHOLE_SIZE},
+                                    {d->bAdv.buf, 0, VK_WHOLE_SIZE},
+                                    {d->bWarp.buf, 0, VK_WHOLE_SIZE},
+                                    {d->bACoded.buf, 0, VK_WHOLE_SIZE},
+                                    {d->bAStatus.buf, 0, VK_WHOLE_SIZE}};
+    VkWriteDescriptorSet w[28 + kSetAC.total() + kSetAT.total()]{};
     uint32_t nw = 0;
     for (int i = 0; i < 8; ++i) {
         w[nw] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
@@ -1420,6 +1610,24 @@ nxvc_vkd_status make_resources(D *d) {
         w[nw].descriptorCount = 1;
         w[nw].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         w[nw].pBufferInfo = &wI[i];
+        ++nw;
+    }
+    for (int i = 0; i < kSetAC.bufs; ++i) {
+        w[nw] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        w[nw].dstSet = d->dsetAC;
+        w[nw].dstBinding = (uint32_t)i;
+        w[nw].descriptorCount = 1;
+        w[nw].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        w[nw].pBufferInfo = &ac[i];
+        ++nw;
+    }
+    for (int i = 0; i < kSetAT.bufs; ++i) {
+        w[nw] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        w[nw].dstSet = d->dsetAT;
+        w[nw].dstBinding = (uint32_t)i;
+        w[nw].descriptorCount = 1;
+        w[nw].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        w[nw].pBufferInfo = &at[i];
         ++nw;
     }
     vkUpdateDescriptorSets(d->dev, nw, w, 0, nullptr);
@@ -1793,13 +2001,22 @@ extern "C" void nxvc_vk_decoder_destroy(nxvc_vk_decoder *d) {
                     vkDestroyShaderModule(d->dev, d->smB[i][j], nullptr);
         if (d->pipeW) vkDestroyPipeline(d->dev, d->pipeW, nullptr);
         if (d->smW) vkDestroyShaderModule(d->dev, d->smW, nullptr);
+        // [ATLAS]
+        if (d->pipeAC) vkDestroyPipeline(d->dev, d->pipeAC, nullptr);
+        if (d->pipeAT) vkDestroyPipeline(d->dev, d->pipeAT, nullptr);
+        if (d->smAC) vkDestroyShaderModule(d->dev, d->smAC, nullptr);
+        if (d->smAT) vkDestroyShaderModule(d->dev, d->smAT, nullptr);
         if (d->plA) vkDestroyPipelineLayout(d->dev, d->plA, nullptr);
         if (d->plB) vkDestroyPipelineLayout(d->dev, d->plB, nullptr);
         if (d->plW) vkDestroyPipelineLayout(d->dev, d->plW, nullptr);
+        if (d->plAC) vkDestroyPipelineLayout(d->dev, d->plAC, nullptr);
+        if (d->plAT) vkDestroyPipelineLayout(d->dev, d->plAT, nullptr);
         if (d->dpool) vkDestroyDescriptorPool(d->dev, d->dpool, nullptr);
         if (d->dslA) vkDestroyDescriptorSetLayout(d->dev, d->dslA, nullptr);
         if (d->dslB) vkDestroyDescriptorSetLayout(d->dev, d->dslB, nullptr);
         if (d->dslW) vkDestroyDescriptorSetLayout(d->dev, d->dslW, nullptr);
+        if (d->dslAC) vkDestroyDescriptorSetLayout(d->dev, d->dslAC, nullptr);
+        if (d->dslAT) vkDestroyDescriptorSetLayout(d->dev, d->dslAT, nullptr);
         if (d->binsem) vkDestroySemaphore(d->dev, d->binsem, nullptr);
         if (d->queries) vkDestroyQueryPool(d->dev, d->queries, nullptr);
         if (d->timeline) vkDestroySemaphore(d->dev, d->timeline, nullptr);
@@ -1808,7 +2025,9 @@ extern "C" void nxvc_vk_decoder_destroy(nxvc_vk_decoder *d) {
         for (Buf *b : {&d->staging, &d->bBits, &d->bDesc, &d->bTables,
                        &d->bCoef, &d->bCbf, &d->bStatus, &d->bRecs, &d->bWgt,
                        &d->bModes, &d->bOrder, &d->bRead, &d->bULen,
-                       &d->bULenHost, &d->bRing, &d->bWPred, &d->bWarp})
+                       &d->bULenHost, &d->bRing, &d->bWPred, &d->bWarp,
+                       &d->bTable, &d->bAdv, &d->bHRing, &d->bASel,
+                       &d->bACoded, &d->bAStatus})
             destroy_buf(d, *b);
         for (Img *i : {&d->imgRgba, &d->imgRgb10, &d->imgLuma, &d->imgCbCr,
                        &d->imgRgbaN, &d->imgLumaN, &d->imgCbCrN})
@@ -1857,6 +2076,16 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_parse_stream_header(
                           nxvc_vk_decoder_status_string(st));
     d->have_stream = true;
     d->resources_ready = false;
+    // [ATLAS] The one switch, and it is set BEFORE make_resources() because
+    // the allocation differs: the atlas is ONE ring slot, not four, and the
+    // table and the H ring only exist for a stream that asked for them.
+    //
+    // Tool bit 31 is not in `kToolsSupported` yet, so `parse_stream_header`
+    // has already refused any stream that sets it and this is false for every
+    // stream that reaches here.  The bit joins the mask in the commit that
+    // makes the decode path honour it; wiring the resources first keeps that
+    // commit to the path itself.
+    d->atlas_mode = (d->si.tools & (1ull << 31)) != 0;
     st = make_resources(d);
     if (st) return st;
     // [inter] A new stream is a new reference ring and a new prediction

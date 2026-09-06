@@ -62,7 +62,10 @@ set(NXVCVK_DEC_SRC
 set(NXVCVK_DEC_GEN
   ${CMAKE_CURRENT_BINARY_DIR}/passA/generated
   ${CMAKE_CURRENT_BINARY_DIR}/passB/generated
-  ${CMAKE_CURRENT_BINARY_DIR}/inter/generated)
+  ${CMAKE_CURRENT_BINARY_DIR}/inter/generated
+  # [ATLAS] atlas_compose.spv.h and atlas_tiles.spv.h.  The library embeds
+  # them like every other kernel; atlas/CMakeLists.txt is what generates them.
+  ${CMAKE_CURRENT_BINARY_DIR}/atlas/generated)
 
 function(nxvcvk_dec_configure tgt)
   target_include_directories(${tgt} PUBLIC
@@ -74,6 +77,11 @@ function(nxvcvk_dec_configure tgt)
   target_include_directories(${tgt} PUBLIC
     ${CMAKE_CURRENT_LIST_DIR}/passA
     ${CMAKE_CURRENT_LIST_DIR}/passB)
+  # [ATLAS] atlas_layout.h is the ONE description of the 64-byte table, the H
+  # ring and the two push blocks, shared verbatim by the model, the kernels
+  # and this host.  atlas_state.h is the Vulkan-free bookkeeping beside it.
+  target_include_directories(${tgt} PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/atlas)
   set_target_properties(${tgt} PROPERTIES CXX_STANDARD 20
                                           CXX_STANDARD_REQUIRED ON
                                           POSITION_INDEPENDENT_CODE ON)
@@ -86,7 +94,7 @@ endfunction()
 if(Vulkan_FOUND OR (NXVCVK_DEC_INCLUDE AND NXVCVK_DEC_LIB))
   add_library(nxvc_vk_decoder STATIC ${NXVCVK_DEC_SRC})
   add_dependencies(nxvc_vk_decoder nxvw_passA_spv nxvw_passB_spv
-                   nxvw_inter_spv)
+                   nxvw_inter_spv nxvw_atlas_spv)
   nxvcvk_dec_configure(nxvc_vk_decoder)
   # Only headers are taken from passA/ and passB/ -- the layout structs, the
   # syntax constants and the inline geometry helpers are all `inline` or
