@@ -358,6 +358,16 @@ if(TARGET nxvc-vkenc)
                            SKIP_REGULAR_EXPRESSION "SKIP:")
       list(APPEND NXENC_TESTS vk.encoder.trellis)
 
+      # Effort 2's CPU model against the reference, byte for byte.
+      add_test(NAME vk.encoder.trellis.cpu COMMAND ${CMAKE_COMMAND}
+               -DVKENC=$<TARGET_FILE:nxvc-vkenc>
+               -DNXVENC=$<TARGET_FILE:nxv-enc>
+               -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/trellis-cpu
+               -P ${CMAKE_CURRENT_SOURCE_DIR}/trellis_cpu.cmake)
+      set_tests_properties(vk.encoder.trellis.cpu PROPERTIES
+                           SKIP_REGULAR_EXPRESSION "SKIP:")
+      list(APPEND NXENC_TESTS vk.encoder.trellis.cpu)
+
       # And the same legs on a SECOND ICD.  Byte-identity is a claim about
       # the arithmetic, not about RADV: the requantiser's one 64-bit product
       # goes through umulExtended and its comparison through a signed 32-bit

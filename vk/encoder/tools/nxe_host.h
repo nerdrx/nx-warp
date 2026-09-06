@@ -28,6 +28,7 @@ extern "C" {
 #include "forward_cpu.h"
 #include "lite_cpu.h"
 #include "nxe_enc.h"
+#include "../forward/nxe_trellis.h"
 #include "rans_cpu.h"
 }
 
@@ -135,6 +136,12 @@ struct Config {
      * at the end of the run.  Measurement only: it changes no decision and no
      * byte of the stream, and it is what the tolerance in
      * vk/encoder/README.md is quoted from. */
+    /* Effort 2: the rate-distortion trellis (forward/nxe_trellis.h).  0 off,
+     * which is the dead-zone quantiser and every effort below 2; 1 on.  The
+     * reference configuration it must match byte for byte is
+     * `nxv-enc --int-trellis 1 --rdoq-effort 3`. */
+    int trellis = 0;
+
     bool rate_check = false;
 
     /* Per-tile QP offsets (nxe_rate.h).  The ladder of `qp_delta` candidates
@@ -216,6 +223,10 @@ struct Frame {
     /* --rate-check.  See Config::rate_check; accumulated over every tile of
      * every frame, in Q10 bits against real bytes, and reported once. */
     bool rate_check = false;
+    int trellis = 0;
+    /* The rate cost table the trellis prices against, rebuilt per table set
+     * once the table sets are known.  Indexed by table set. */
+    nxe_rate_cost trellis_rc[8];
     /* The resolved qp_ladder: the candidate offsets, and how many.  1 (just 0)
      * is the decision off. */
     int qp_lambda_q12 = 0;
