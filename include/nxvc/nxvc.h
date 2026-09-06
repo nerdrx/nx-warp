@@ -211,6 +211,13 @@ typedef enum nxvc_tile_mode {
  * rather than to the tile grid. */
 #define NXVC_TOOL_ROW_PRESENT     (1ull << 32)
 
+/* NEIGHBOUR-AWARE GATHER: the alternative reference rule of SYNTAX.md 13.12.4.
+ * A prediction sample that lands outside the tile's own atlas position is
+ * fetched through the matrix of the ENTRY IT LANDS IN, resolved with the
+ * co-located matrix so the choice is not circular.  Requires ATLAS.  Changes
+ * no coded-tile syntax; it changes which samples the predictor reads. */
+#define NXVC_TOOL_ATLAS_NBR       (1ull << 33)
+
 /* Tools this reference decoder implements. */
 #define NXVC_TOOLS_SUPPORTED                                                  \
     (NXVC_TOOL_INTRA_DC_PLANE | NXVC_TOOL_TRANSFORM_SKIP |                    \
@@ -222,7 +229,8 @@ typedef enum nxvc_tile_mode {
      NXVC_TOOL_CTX_V3 | NXVC_TOOL_TAB_V2 | NXVC_TOOL_XFORM_LARGE |            \
      NXVC_TOOL_NEAR_SKIP | NXVC_TOOL_QUAD_MV |                                \
      NXVC_TOOL_INTER | NXVC_TOOL_WARP | NXVC_TOOL_STEREO |                    \
-     NXVC_TOOL_ENTROPY_LITE | NXVC_TOOL_ATLAS | NXVC_TOOL_ROW_PRESENT)
+     NXVC_TOOL_ENTROPY_LITE | NXVC_TOOL_ATLAS | NXVC_TOOL_ROW_PRESENT |       \
+     NXVC_TOOL_ATLAS_NBR)
 
 /* ---------------------------------------------------------------- images */
 /* 8-bit planar image.  plane[0]=Y/R', plane[1]=Co/G', plane[2]=Cg/B',
@@ -522,6 +530,14 @@ typedef struct nxvc_config {
                                    held unwarped (default on with atlas)    */
     uint32_t skip_thresh_motion_q8; /* scales skip_thresh by head angular
                                    velocity; 0 = off (cheat 5)              */
+    uint32_t atlas_nbr;         /* 1 = neighbour-aware gather (tool 33).
+                                   Requires `atlas`.  NORMATIVE: it changes
+                                   the reference a coded tile reads.        */
+    uint32_t atlas_skip_margin; /* ENCODER ONLY, no syntax: a tile may be
+                                   skipped only if the composed displacement
+                                   at all four of its corners is under this
+                                   many luma samples.  0 = no bound, which
+                                   is the rule as measured.                 */
 } nxvc_config;
 
 /* One eye's view for one frame: the orientation the frame was rendered with
@@ -550,6 +566,11 @@ typedef struct nxvc_encode_stats {
      * with `bytes_payload` is how one tells whether they were shown the truth.
      * Added with the v1.5 effort knobs; 0 unless collect_stats is set. */
     uint64_t bits_predicted_q10;
+    /* Tiles this frame that `atlas_skip_margin` alone took the free
+     * WARP_SKIP away from: the FORCED REFRESH the displacement bound costs,
+     * as a count rather than as a difference between two runs. 0 when the
+     * bound is off. */
+    uint64_t tiles_margin_forced;
 } nxvc_encode_stats;
 
 void nxvc_config_default(nxvc_config *cfg);

@@ -2322,6 +2322,9 @@ struct nxvc_encoder {
     // reproduce, measured on the frame just encoded.
     std::vector<u16> age_since_intra;
     std::vector<double> drift;
+    // Tiles the displacement bound alone forced to be coded this frame; it is
+    // an atomic because the tile decisions run on the thread pool.
+    std::atomic<u64> margin_forced{0};
     std::vector<nxvc_view> views_cur;
     // The view each ring slot was rendered with, so the matrix a frame emits
     // is the one between its actual reference (N-1-ref_sel) and itself.
@@ -2344,6 +2347,10 @@ struct nxvc_encoder {
 
     // --- syntax v1.7: the atlas (SYNTAX.md 13.12, ADR-0029)
     bool atlas = false;
+    // 13.12.4 tool bit 33.  NORMATIVE: it changes the reference a coded tile
+    // reads, so it is a property of the stream and both ends read it from the
+    // tool word.
+    bool atlas_nbr = false;
     nxvc::Atlas at;             // the encoder's shadow atlas
     // 13.12.6: a one-deep per-tile undo, so that a negative receipt rolls a
     // tile's shadow entry back to the generation the client actually holds.
@@ -2379,6 +2386,7 @@ struct nxvc_decoder {
     // --- syntax v1.7: the atlas (SYNTAX.md 13.12).  When `atlas` is set this
     // is the NORMATIVE output of the decoding process and the picture is not.
     bool atlas = false;
+    bool atlas_nbr = false;
     nxvc::Atlas at;
     FrameParams last_fp;         // the frame the display helper renders at
     bool have_last_fp = false;

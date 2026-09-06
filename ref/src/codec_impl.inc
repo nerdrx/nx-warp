@@ -315,6 +315,7 @@ extern "C" nxvc_encoder *nxvc_encoder_create(const nxvc_config *cfg,
     // and STEREO's reference is a picture the atlas model never assembles.
     if (cfg->atlas && !cfg->inter) return fail(NXVC_ERR_ARG);
     if (cfg->atlas && cfg->stereo) return fail(NXVC_ERR_ARG);
+    if (cfg->atlas_nbr && !cfg->atlas) return fail(NXVC_ERR_ARG);
     if (cfg->ref_sel > 2) return fail(NXVC_ERR_ARG);
     if (cfg->stereo && (!cfg->inter || eyes != 2)) return fail(NXVC_ERR_ARG);
     if (cfg->chroma > 1 || cfg->color_transform > 1) return fail(NXVC_ERR_ARG);
@@ -440,6 +441,7 @@ extern "C" nxvc_encoder *nxvc_encoder_create(const nxvc_config *cfg,
     e->views_cur.assign(eyes, nxvc_view{0, 0, 0, 1, -0.8, 0.8, 0.8, -0.8});
     for (int i = 0; i < 4; ++i) e->views_slot[i] = e->views_cur;
     e->atlas = e->cfg.atlas != 0;
+    e->atlas_nbr = e->atlas && e->cfg.atlas_nbr != 0;
     if (e->atlas) {
         atlas_alloc(e->at, e->g);
     } else {
@@ -503,6 +505,7 @@ static u64 encoder_tools(const nxvc_encoder *e) {
     if (e->cfg.inter && e->cfg.quad_mv) t |= NXVC_TOOL_QUAD_MV;
     if (e->cfg.entropy_lite) t |= NXVC_TOOL_ENTROPY_LITE;
     if (e->cfg.atlas) t |= NXVC_TOOL_ATLAS;
+    if (e->cfg.atlas && e->cfg.atlas_nbr) t |= NXVC_TOOL_ATLAS_NBR;
     if (e->cfg.row_present) t |= NXVC_TOOL_ROW_PRESENT;
     t |= NXVC_TOOL_RES_LEVEL;
     return t;
@@ -696,10 +699,33 @@ static void store_ref_tile(TileCoder &tc, const Geometry &g, RefPicture &rp,
 // predicts at full extent and box-downsamples to the coded extent with the
 // same kernel load_tile uses on the source, so the residual is measured in one
 // domain throughout.
+// 13.12.4 tool bit 33: the gather rule in force for one tile, or nothing at
+// all under the co-located rule (bit 31 alone) and under the picture model.
+// It travels with the prediction call rather than being a field of the
+// encoder or the decoder, because the two must make exactly the same choice
+// for exactly the same tile and the stream is what decides it.
+struct AtlasGather {
+    const std::vector<AtlasEntry> *ents = nullptr;  // the PRE-FRAME table
+    int t0 = -1;             // the co-located tile position
+    u32 *used = nullptr;     // out: distinct entries the footprint touched
+};
+static void predict_tile_atlas_nbr(TileCoder &tc, const Geometry &g,
+                                   const RefPicture &src,
+                                   const std::vector<AtlasEntry> &ents,
+                                   int t0, int eye, int tx, int ty, int mode,
+                                   int mv_x, int mv_y, int np_limit,
+                                   const i8 (*qmv)[2], u32 *entries_used);
+
 static void predict_tile(TileCoder &tc, const Geometry &g, const RefPicture &rp,
                          const WarpMatrix &wm, int eye, int tx, int ty,
                          int mode, int mv_x, int mv_y, int np_limit = 0,
-                         const i8 (*qmv)[2] = nullptr) {
+                         const i8 (*qmv)[2] = nullptr,
+                         const AtlasGather *ag = nullptr) {
+    if (ag && ag->ents) {
+        predict_tile_atlas_nbr(tc, g, rp, *ag->ents, ag->t0, eye, tx, ty, mode,
+                               mv_x, mv_y, np_limit, qmv, ag->used);
+        return;
+    }
     const nw::Mode wmode =
         mode_needs_warp(mode) ? nw::kModeWarp : nw::kModeStatic;
     const int np = np_limit > 0 ? np_limit : tc.nplanes;
@@ -774,6 +800,242 @@ static void predict_tile_atlas(TileCoder &tc, const Geometry &g,
     predict_tile(tc, g, src, wm, eye, tx, ty, mode, mv_x, mv_y, 0, qmv);
 }
 
+// How many resolution steps the neighbour-aware gather takes before it stops
+// where it stands.  1 is the rule as first proposed -- resolve once with the
+// co-located matrix, fetch through what it names.  Larger values walk toward
+// the fixed point the resolution is really after (see below).  It is a
+// normative constant of tool bit 33: both ends must take the same number of
+// steps or they resolve a sample to different entries.
+// MEASURED, fast-turn 1088x1088 at 75.6 deg/s mean, luma PSNR of the
+// displayed picture: 1 step gives 31.32 / 31.36 / 29.52 dB at QP 22 / 26 / 30
+// and 4 steps gives 30.28 / 29.74 / 28.32 -- walking toward the fixed point
+// makes it WORSE, at every rate. The one-step form stays because it measured
+// better, not because it is the simpler one.
+inline constexpr int kAtlasNbrIters = 1;
+
+// 13.12.4 ALTERNATIVE RULE, tool bit 33 `ATLAS_NBR`: NEIGHBOUR-AWARE GATHER.
+//
+// The co-located rule above reads every sample of the footprint through the
+// tile's OWN matrix, including the samples that land in a neighbouring atlas
+// entry captured at a different pose.  That is the defect ADR-0029 measured:
+// the contamination is proportional to the composed displacement, so it is
+// nothing at 0 deg/s and it consumes the whole tile once the displacement
+// exceeds 64 samples.
+//
+// This rule resolves it in two steps, and the order is what makes it
+// decodable rather than circular:
+//
+//   1. RESOLVE with the co-located matrix.  `warp_tile_landing()` gives the
+//      sample index each output sample would have been fetched from under
+//      `C` of this tile's own entry.  That index names an atlas entry.  The
+//      resolution never depends on the answer, so there is no fixed point to
+//      find -- which is the objection 13.12.4 records against per-pixel
+//      selection, and this is how it is answered.
+//   2. FETCH through THAT entry's matrix.  For each entry the footprint
+//      touches, the four corners of THIS tile are derived under that entry's
+//      `C` and interpolated across the tile exactly as the predictor already
+//      does -- four corners per (tile, entry) pair, no per-sample divide.
+//
+// Cost, per tile per plane: one corner derivation per distinct entry the
+// footprint touches instead of one, and a gather that reads from as many
+// warped candidates.  `*entries_used` reports how many, which is the number
+// the price of this rule is stated in.
+//
+// An entry with `valid == 0` cannot be fetched through, so a sample landing
+// in one falls back to the co-located matrix -- the old rule, for that
+// sample only.  When the co-located predictor is not a warp at all
+// (`STATIC_MV`, or a static entry held at the identity) there is no pose
+// difference to resolve and the rule degenerates to the co-located one.
+static void predict_tile_atlas_nbr(TileCoder &tc, const Geometry &g,
+                                   const RefPicture &src,
+                                   const std::vector<AtlasEntry> &ents,
+                                   int t0, int eye, int tx, int ty, int mode,
+                                   int mv_x, int mv_y, int np_limit,
+                                   const i8 (*qmv)[2], u32 *entries_used) {
+    const AtlasEntry &ent0 = ents[(size_t)t0];
+    const nw::Mode wmode =
+        mode_needs_warp(mode) ? nw::kModeWarp : nw::kModeStatic;
+    WarpMatrix wm0;
+    for (int k = 0; k < 9; ++k) wm0.h[k] = ent0.C[k];
+    if (wmode != nw::kModeWarp) {
+        predict_tile(tc, g, src, wm0, eye, tx, ty, mode, mv_x, mv_y, np_limit,
+                     qmv);
+        if (entries_used) *entries_used = 1;
+        return;
+    }
+
+    static thread_local std::vector<i32> cand_buf;   // full*full per candidate
+    static thread_local std::vector<int> cand_tile;
+    static thread_local std::vector<int> cand_of;    // per sample
+    static thread_local std::vector<std::vector<i32>> cand_land;
+    static thread_local std::vector<u8> land_ok;
+
+    u32 used_max = 0;
+    const int np = np_limit > 0 ? np_limit : tc.nplanes;
+    for (int p = 0; p < np; ++p) {
+        PlaneState &s = tc.pl[p];
+        if (s.wpred.empty()) s.wpred.assign((size_t)s.size * s.size, 0);
+        const int sub = g.psub(p);
+        const int full = plane_full_extent(g, p, tc.tp.chroma444);
+        int ox, oy;
+        plane_tile_origin(g, p, tx, ty, ox, oy);
+        const nw::RefImage im = ref_image(src, g, p, eye);
+        const i32 mvb[2] = {plane_mv(mv_x, sub), plane_mv(mv_y, sub)};
+        i32 qv[4][2];
+        for (int q = 0; q < 4; ++q) {
+            qv[q][0] = qmv ? plane_mv(mv_x + qmv[q][0], sub) : mvb[0];
+            qv[q][1] = qmv ? plane_mv(mv_y + qmv[q][1], sub) : mvb[1];
+        }
+
+        // --- the resolution, as a BOUNDED FIXED POINT.
+        //
+        // One step is the rule as first written: the co-located `C` says where
+        // a sample lands, and that names the entry to fetch it through.  It is
+        // not enough, and the reason is geometric rather than numerical.  The
+        // atlas pixels at position `p` belong to the entry whose rect contains
+        // `p` and were captured at THAT entry's source frame, so the position
+        // holding output sample `x`'s content under entry `N` is `C_N(x)` --
+        // which is a different position from `C_T(x)`, and need not be inside
+        // `N` at all.  The rule that has no error is the fixed point
+        //
+        //     find N such that C_N(x) lies inside the rect of N,
+        //
+        // and 13.12.4 rejects solving it per sample as circular.  It is not
+        // circular if it is ITERATED from a definite start: begin at the
+        // co-located entry, take the entry the current candidate's own matrix
+        // lands in, and stop when it repeats or after `kAtlasNbrIters` steps.
+        // That is deterministic, integer, decodable, and its cost is still
+        // four corners per (tile, entry) pair -- there is simply no bound
+        // below `kAtlasNbrIters` on how many pairs a tile touches.
+        const int pw = (int)g.pw(p), ph = (int)g.ph(p);
+        cand_tile.clear();
+        cand_tile.push_back(t0);          // candidate 0 is always co-located
+        cand_land.clear();
+        land_ok.clear();
+        cand_of.assign((size_t)full * full, 0);
+
+        // The landing array of candidate `k`, computed once and kept.
+        auto landing_of = [&](size_t k) -> const i32 * {
+            if (land_ok.size() <= k) {
+                cand_land.resize(k + 1);
+                land_ok.resize(k + 1, 0);
+            }
+            if (!land_ok[k]) {
+                const AtlasEntry &en = ents[(size_t)cand_tile[k]];
+                WarpMatrix wmk;
+                for (int j = 0; j < 9; ++j) wmk.h[j] = en.C[j];
+                const nw::Mode mk =
+                    (en.flags & kAtlasStatic) ? nw::kModeStatic : nw::kModeWarp;
+                const nw::Homography Hk =
+                    plane_homography(wmk, pw, ph, sub);
+                cand_land[k].assign((size_t)nw::kTile * nw::kTile * 2, 0);
+                nw::warp_tile_landing(Hk, ox, oy, qv, full / 2, mk,
+                                      cand_land[k].data(),
+                                      cand_land[k].data() +
+                                          (size_t)nw::kTile * nw::kTile,
+                                      nw::kTile);
+                land_ok[k] = 1;
+            }
+            return cand_land[k].data();
+        };
+
+        for (int y = 0; y < full; ++y)
+            for (int x = 0; x < full; ++x) {
+                const size_t o = (size_t)y * nw::kTile + x;
+                int c = 0;
+                for (int it = 0; it < kAtlasNbrIters; ++it) {
+                    const i32 *ld = landing_of((size_t)c);
+                    // Clamped exactly as the predictor's own `fetch()` clamps,
+                    // so a sample that lands off the picture resolves to the
+                    // edge tile it will actually read from.
+                    const i32 lx = clamp_i32(ld[o], 0, pw - 1);
+                    const i32 ly = clamp_i32(
+                        ld[(size_t)nw::kTile * nw::kTile + o], 0, ph - 1);
+                    int col = clamp_i32(lx / full, 0, (int)g.tiles_x - 1);
+                    int row = clamp_i32(ly / full, 0, (int)g.tiles_y - 1);
+                    const int tn = linear_tile(g, row, eye, col);
+                    if (tn == cand_tile[(size_t)c]) break;   // fixed point
+                    // An invalid entry has no pixels of its own to be read at
+                    // its own pose, so the walk stops where it stands.
+                    if (!(ents[(size_t)tn].flags & kAtlasValid)) break;
+                    int k = -1;
+                    for (size_t j = 0; j < cand_tile.size(); ++j)
+                        if (cand_tile[j] == tn) { k = (int)j; break; }
+                    if (k < 0) {
+                        k = (int)cand_tile.size();
+                        cand_tile.push_back(tn);
+                    }
+                    c = k;
+                }
+                cand_of[(size_t)y * full + x] = c;
+            }
+        if ((u32)cand_tile.size() > used_max) used_max = (u32)cand_tile.size();
+
+        // --- step 2: one warp of THIS tile per distinct entry, through that
+        // entry's matrix.  The geometry is the tile's own; only the matrix the
+        // corners come from changes.
+        const size_t stride = (size_t)full * full;
+        cand_buf.assign(stride * cand_tile.size(), 0);
+        for (size_t k = 0; k < cand_tile.size(); ++k) {
+            const AtlasEntry &en = ents[(size_t)cand_tile[k]];
+            WarpMatrix wmk;
+            for (int j = 0; j < 9; ++j) wmk.h[j] = en.C[j];
+            const nw::Mode mk =
+                (en.flags & kAtlasStatic) ? nw::kModeStatic : nw::kModeWarp;
+            const nw::Homography Hk =
+                plane_homography(wmk, (int)g.pw(p), (int)g.ph(p), sub);
+            if (qmv)
+                warp_plane_tile_quad(im, ox, oy, Hk, qv, mk, full,
+                                     cand_buf.data() + k * stride);
+            else
+                warp_plane_tile(im, ox, oy, Hk, mvb, mk, full,
+                                cand_buf.data() + k * stride);
+        }
+
+        // --- the gather, then the res_level downsample predict_tile does.
+        static thread_local std::vector<i32> full_buf;
+        full_buf.assign(stride, 0);
+        for (size_t i = 0; i < stride; ++i)
+            full_buf[i] = cand_buf[(size_t)cand_of[i] * stride + i];
+        const int factor = full / s.size;
+        if (factor == 1) {
+            for (size_t i = 0; i < s.wpred.size(); ++i) s.wpred[i] = full_buf[i];
+        } else {
+            const i32 n = factor * factor;
+            for (int y = 0; y < s.size; ++y)
+                for (int x = 0; x < s.size; ++x) {
+                    i32 sum = 0;
+                    for (int j = 0; j < factor; ++j)
+                        for (int i = 0; i < factor; ++i)
+                            sum += full_buf[(size_t)(y * factor + j) * full +
+                                            x * factor + i];
+                    s.wpred[(size_t)y * s.size + x] = (sum + n / 2) / n;
+                }
+        }
+    }
+    if (entries_used) *entries_used = used_max;
+}
+
+// 13.12.4, dispatched on the tool bit: co-located `C` (bit 31 alone) or the
+// neighbour-aware gather (bit 33).  Both sides call THIS, so the rule in
+// force is a property of the stream and never of an implementation.
+static void predict_tile_atlas_rule(TileCoder &tc, const Geometry &g,
+                                    const RefPicture &src,
+                                    const std::vector<AtlasEntry> &ents,
+                                    int t0, int eye, int tx, int ty, int mode,
+                                    int mv_x, int mv_y, bool nbr,
+                                    const i8 (*qmv)[2] = nullptr,
+                                    u32 *entries_used = nullptr) {
+    if (nbr) {
+        predict_tile_atlas_nbr(tc, g, src, ents, t0, eye, tx, ty, mode, mv_x,
+                               mv_y, 0, qmv, entries_used);
+        return;
+    }
+    predict_tile_atlas(tc, g, src, ents[(size_t)t0], eye, tx, ty, mode, mv_x,
+                       mv_y, qmv);
+    if (entries_used) *entries_used = 1;
+}
+
 // 13.12.3 step 3: a CODED tile writes its reconstruction and resets its entry.
 static void atlas_store(Atlas &at, TileCoder &tc, const Geometry &g, int t,
                         int eye, int tx, int ty, int mode, u32 frame_number,
@@ -828,7 +1090,7 @@ static void load_ref_tile(TileCoder &tc, const Geometry &g,
 // picture model is a comparison of the MODEL and not of two filters.
 static void atlas_display(const Atlas &at, const Geometry &g,
                           const FrameParams &fp,
-                          const std::vector<PredState> &state,
+                          const std::vector<PredState> &state, bool nbr,
                           nxvc_image *img) {
     for (u32 row = 0; row < g.tiles_y; ++row)
         for (u32 eye = 0; eye < g.eyes; ++eye)
@@ -868,11 +1130,14 @@ static void atlas_display(const Atlas &at, const Geometry &g,
                     // DISPLAY choice (PAPER 2.8's motion smoothing, which
                     // would want gen * last_mv), not part of the reference.
                     (void)state;
-                    predict_tile_atlas(
-                        tc, g, at.pix, e, (int)eye, (int)col, (int)row,
+                    // The FINISHED table, matching the finished pixels: this
+                    // is display, not decode, so there is no pre-frame
+                    // snapshot to respect.
+                    predict_tile_atlas_rule(
+                        tc, g, at.pix, at.ent, t, (int)eye, (int)col, (int)row,
                         (e.flags & kAtlasStatic) ? NXVC_MODE_STATIC_MV
                                                  : NXVC_MODE_WARP_SKIP,
-                        0, 0);
+                        0, 0, nbr);
                     reconstruct_skip(tc);
                 }
                 store_tile(tc, g, img, (int)eye, (int)col, (int)row);
@@ -1214,6 +1479,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
 
     e->tiles.assign(ntiles, nxvc_tile_info{});
     std::memset(&e->stats, 0, sizeof(e->stats));
+    e->margin_forced.store(0);
 
     FrameParams fp = e->fp;
     fp.frame_number = (u16)e->frame_number;
@@ -1308,6 +1574,23 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
     // the picture is the atlas and the matrix is the tile's own entry.
     auto wm_for = [&](int t, int eye) -> const WarpMatrix & {
         return atlas ? atlas_wm[(size_t)t] : fp.warp[eye];
+    };
+    // 13.12.4 tool bit 33.  The encoder predicts through exactly the rule the
+    // decoder will, so this is the same object on both sides and it is null
+    // for every stream that does not set the bit.  It is deliberately NOT
+    // applied to the SAD motion search below, which only chooses a candidate
+    // vector: the candidate is then predicted for real through this, so the
+    // search costs a little accuracy and can cost nothing else.
+    AtlasGather agather;
+    u32 gather_entries = 0;
+    if (atlas && e->atlas_nbr) {
+        agather.ents = &e->at.ent_prev;
+        agather.used = &gather_entries;
+    }
+    auto ag_for = [&](int t) -> const AtlasGather * {
+        if (!agather.ents) return nullptr;
+        agather.t0 = t;
+        return &agather;
     };
     // 13.12.4: a tile whose own entry is invalid has no reference at all.
     auto tile_has_ref = [&](int t) -> bool {
@@ -1661,6 +1944,55 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         } else if (refresh_due((u32)t, (u32)e->frame_number, intra_period)) {
             return d;
         }
+
+        // DISPLACEMENT-BOUNDED SKIP (encoder only, no syntax).  The
+        // cross-tile gather of 13.12.4 contaminates a skipped tile in
+        // proportion to the composed displacement `|d|`, and the encoder's
+        // own skip threshold cannot see it, because the encoder measures the
+        // same contaminated predictor.  So bound the CAUSE instead of the
+        // symptom: a tile may be skipped only while the displacement its
+        // composed matrix produces at all four of its corners is under
+        // `atlas_skip_margin` luma samples.  Past that it is coded, whatever
+        // the error looks like.
+        //
+        // This is a pure encoder decision -- the stream it produces decodes
+        // under the unchanged 13.12.4 -- so it costs no normative surface at
+        // all.  What it costs is bits: it is a forced refresh whose rate is
+        // the head's angular velocity times the tile grid.
+        // `margin_bound` is separate from `skip_forbidden` because it must
+        // also take NEAR_SKIP away, and `skip_forbidden` deliberately does
+        // not: the drift gate leaves the nine-byte correction available
+        // precisely because it is the cheap way to answer drift.  It is not
+        // the cheap way to answer THIS.  A NEAR_SKIP tile is still a skipped
+        // tile -- it keeps its bit in `skip_bitmap`, it is still displayed by
+        // warping from its own source pose, and a DC and two ramps cannot
+        // undo samples fetched out of a neighbour captured at another pose.
+        // Measured: without this the bound moves 2073 of 4624 tiles from
+        // WARP_SKIP to NEAR_SKIP on the fast-turn clip and buys 0.1 dB.
+        bool margin_bound = false;
+        if (atlas && e->cfg.atlas_skip_margin && !skip_forbidden) {
+            const WarpMatrix &cw = wm_for(t, eye);
+            const nw::Homography Hd =
+                plane_homography(cw, (int)g.width, (int)g.height, 1);
+            const nw::TileCorners cc = nw::warp_tile_corners(
+                Hd, col * 64, row * 64,
+                tile_static(t) ? nw::kModeStatic : nw::kModeWarp);
+            const i32 bx[4] = {col * 64, col * 64 + 64, col * 64,
+                               col * 64 + 64};
+            const i32 by[4] = {row * 64, row * 64, row * 64 + 64,
+                               row * 64 + 64};
+            const i64 lim = (i64)e->cfg.atlas_skip_margin << nw::kQCorner;
+            for (int k = 0; k < 4; ++k) {
+                const i64 dx = (i64)cc.x[k] - ((i64)bx[k] << nw::kQCorner);
+                const i64 dy = (i64)cc.y[k] - ((i64)by[k] << nw::kQCorner);
+                if (dx > lim || dx < -lim || dy > lim || dy < -lim) {
+                    skip_forbidden = true;
+                    margin_bound = true;
+                    e->margin_forced.fetch_add(1);
+                    break;
+                }
+            }
+        }
         const bool force_skip =
             !skip_forbidden && !e->cfg.alpha &&
             t < (int)e->skip_map.size() && e->skip_map[t] != 0;
@@ -1708,7 +2040,8 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         const int skip_mv_x = atlas ? 0 : ps.last_mv_x;
         const int skip_mv_y = atlas ? 0 : ps.last_mv_y;
         predict_tile(probe, g, refpic, wm_for(t, eye), eye, col, row,
-                     skip_pred_mode, skip_mv_x, skip_mv_y);
+                     skip_pred_mode, skip_mv_x, skip_mv_y, 0, nullptr,
+                     ag_for(t));
         const double skip_sse = sse_pred(probe.pl[0]);
         // The complexity input of docs/RATECONTROL.md 4.1, measured on the
         // predictor the search has just built: mean |residual| per luma
@@ -1880,7 +2213,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                         if (mx < -128 || mx > 127 || my < -128 || my > 127)
                             continue;
                         predict_tile(probe, g, refpic, wm_for(t, eye), eye, col,
-                                     row, mode, mx, my, 1);
+                                     row, mode, mx, my, 1, nullptr, ag_for(t));
                         const i64 v = sad_pred(probe.pl[0]);
                         // Strictly-less keeps the first winner in the fixed
                         // scan order, so a tie is broken the same way on both
@@ -2099,7 +2432,8 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             auto try_exact = [&](int mx, int my) {
                 if (!vec_ok(mx, my)) return;
                 predict_tile(probe, g, rp, wm_for(t, eye),
-                             st ? 0 : eye, col, row, mode, mx, my, 1);
+                             st ? 0 : eye, col, row, mode, mx, my, 1, nullptr,
+                             st ? nullptr : ag_for(t));
                 i64 v = me_effort >= 2 ? satd_pred(probe.pl[0])
                                        : sad_pred(probe.pl[0]);
                 if (qcost < 0 || v < qcost) { qcost = v; qx = mx; qy = my; }
@@ -2122,7 +2456,8 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             // domain and at the mode decision's own lambda.  A coded vector
             // is kTileHeaderBytes + 2 bytes the skip does not pay for.
             predict_tile(probe, g, rp, wm_for(t, eye), st ? 0 : eye, col, row,
-                         mode, qx, st ? 0 : qy, 1);
+                         mode, qx, st ? 0 : qy, 1, nullptr,
+                         st ? nullptr : ag_for(t));
             const i64 qsad = sad_pred(probe.pl[0]);
             const i64 bias =
                 (i64)(Lmode.sad * 8.0 * (double)(kTileHeaderBytes + 2));
@@ -2179,7 +2514,9 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                              cand.mode == NXVC_MODE_STEREO ? cand.disparity
                                                            : cand.mv_x,
                              cand.mode == NXVC_MODE_STEREO ? 0 : cand.mv_y, 0,
-                             cand.quad_mv ? cand.qmv : nullptr);
+                             cand.quad_mv ? cand.qmv : nullptr,
+                             cand.mode == NXVC_MODE_STEREO ? nullptr
+                                                           : ag_for(t));
             }
             if (cand.near_skip) {
                 // A near-skip tile is a SKIPPED tile with a bias.  Its whole
@@ -2273,7 +2610,8 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             for (int k = 0; k < kQuadPatternSize; ++k) {
                 const int dx = kQuadPattern[k][0], dy = kQuadPattern[k][1];
                 predict_tile(probe, g, refpic, wm_for(t, eye), eye, col, row,
-                             cand.mode, cand.mv_x + dx, cand.mv_y + dy, 1);
+                             cand.mode, cand.mv_x + dx, cand.mv_y + dy, 1,
+                             nullptr, ag_for(t));
                 const PlaneState &ps = probe.pl[0];
                 for (int q = 0; q < 4; ++q) {
                     const int x0 = (q & 1) * half, y0 = (q >> 1) * half;
@@ -2330,7 +2668,8 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                          out.mode,
                          out.mode == NXVC_MODE_STEREO ? out.disparity : out.mv_x,
                          out.mode == NXVC_MODE_STEREO ? 0 : out.mv_y, 0,
-                         out.quad_mv ? out.qmv : nullptr);
+                         out.quad_mv ? out.qmv : nullptr,
+                         out.mode == NXVC_MODE_STEREO ? nullptr : ag_for(t));
             fit_near_skip(ns, out.corr);
         };
         TileDecision intra;
@@ -2382,7 +2721,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         // The near-skip candidate: the free WARP_SKIP predictor plus a
         // nine-byte correction, which is the case the form exists for -- a
         // warped tile with a small, smooth drift.
-        if (e->cfg.near_skip && !e->cfg.alpha) {
+        if (e->cfg.near_skip && !e->cfg.alpha && !margin_bound) {
             // One candidate, and it is the SKIP predictor with a correction.
             // The tile stays skipped: it keeps its bit in `skip_bitmap`, uses
             // the stored `last_mv` like any skipped tile, and gains a bit in
@@ -2505,7 +2844,8 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                          d.mode == NXVC_MODE_STEREO ? d.disparity
                                                     : d.mv_x,
                          d.mode == NXVC_MODE_STEREO ? 0 : d.mv_y, 0,
-                         d.quad_mv ? d.qmv : nullptr);
+                         d.quad_mv ? d.qmv : nullptr,
+                         d.mode == NXVC_MODE_STEREO ? nullptr : ag_for(t));
         }
         if (d.skipped) {
             // A near-skip tile is a skipped tile whose block-mean
@@ -3197,6 +3537,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
     o += body.size();
     *out_len = (size_t)(o - buf);
     if (e->cfg.collect_stats) {
+        e->stats.tiles_margin_forced = e->margin_forced.load();
         e->stats.bytes_total = *out_len;
         e->stats.bytes_frame_header =
             kFrameHeaderBytes + warp_bytes + (fp.quant_matrix == 255 ? 128 : 0);
@@ -3211,7 +3552,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         // reconstructed picture.  Rendering it here keeps the gate measuring
         // the right thing -- and the encoder is a PC, so a full display pass
         // per frame is affordable where it would not be on the headset.
-        atlas_display(e->at, g, fp, e->state, &e->shadow_img);
+        atlas_display(e->at, g, fp, e->state, e->atlas_nbr, &e->shadow_img);
     } else {
         e->ring.slot[slot].valid = true;
         e->ring.slot[slot].frame_number = (u16)fp.frame_number;
@@ -3479,6 +3820,10 @@ extern "C" nxvc_status nxvc_decoder_parse_stream_header(nxvc_decoder *d,
         return NXVC_ERR_BITSTREAM;
     if ((si.tools & NXVC_TOOL_ATLAS) && (si.tools & NXVC_TOOL_STEREO))
         return NXVC_ERR_BITSTREAM;
+    // 13.12.4: the neighbour-aware gather is a rule about the atlas, so it
+    // says nothing at all without one.
+    if ((si.tools & NXVC_TOOL_ATLAS_NBR) && !(si.tools & NXVC_TOOL_ATLAS))
+        return NXVC_ERR_BITSTREAM;
     if ((si.tools & NXVC_TOOL_TAB_V2) &&
         !(si.tools & NXVC_TOOL_CUSTOM_TABLES))
         return NXVC_ERR_BITSTREAM;
@@ -3507,6 +3852,7 @@ extern "C" nxvc_status nxvc_decoder_parse_stream_header(nxvc_decoder *d,
     derive_geometry(d->g);
     if (d->g.tiles_x > kMaxTilesPerRow) return NXVC_ERR_BITSTREAM;
     d->atlas = (d->si.tools & NXVC_TOOL_ATLAS) != 0;
+    d->atlas_nbr = (d->si.tools & NXVC_TOOL_ATLAS_NBR) != 0;
     if (d->atlas) {
         // One atlas replaces four ring slots, which is a REDUCTION in decoder
         // memory, not an addition (ADR-0029).
@@ -4135,10 +4481,15 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
                     // the atlas entry at this tile's own position.
                     const AtlasEntry &ae = d->at.ent[(size_t)t];
                     if (!(ae.flags & kAtlasValid)) return NXVC_ERR_BITSTREAM;
-                    predict_tile_atlas(tc, g, d->at.prev, ae, (int)eye,
-                                       (int)col, (int)row, tp.mode, tp.mv_x,
-                                       tp.mv_y,
-                                       tp.quad_mv ? tp.qmv : nullptr);
+                    // The PRE-FRAME table, matching the pre-frame pixels:
+                    // 13.12.3 makes the atlas a tile reads independent of the
+                    // order tiles were applied in, and under the neighbour
+                    // rule that has to hold for the metadata as well.
+                    predict_tile_atlas_rule(tc, g, d->at.prev, d->at.ent_prev,
+                                            t, (int)eye, (int)col, (int)row,
+                                            tp.mode, tp.mv_x, tp.mv_y,
+                                            d->atlas_nbr,
+                                            tp.quad_mv ? tp.qmv : nullptr);
                 } else if (tp.mode != NXVC_MODE_INTRA) {
                     const RefPicture *rp = nullptr;
                     if (tp.mode == NXVC_MODE_STEREO) {
@@ -4198,7 +4549,7 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
         // client does on the GPU at panel rate with a late-latched pose.
         d->last_fp = fp;
         d->have_last_fp = true;
-        atlas_display(d->at, g, fp, d->state, img);
+        atlas_display(d->at, g, fp, d->state, d->atlas_nbr, img);
     } else {
         cur.valid = true;
     }
@@ -4481,7 +4832,7 @@ extern "C" nxvc_status nxvc_decoder_atlas_display(const nxvc_decoder *d,
     if (!d->have_last_fp) return NXVC_ERR_BITSTREAM;
     for (int p = 0; p < d->g.nplanes(); ++p)
         if (!img->plane[p]) return NXVC_ERR_ARG;
-    atlas_display(d->at, d->g, d->last_fp, d->state, img);
+    atlas_display(d->at, d->g, d->last_fp, d->state, d->atlas_nbr, img);
     return NXVC_OK;
 }
 extern "C" nxvc_status nxvc_encoder_atlas_display(const nxvc_encoder *e,
@@ -4490,7 +4841,7 @@ extern "C" nxvc_status nxvc_encoder_atlas_display(const nxvc_encoder *e,
     if (!e->atlas) return NXVC_ERR_UNSUPPORTED;
     for (int p = 0; p < e->g.nplanes(); ++p)
         if (!img->plane[p]) return NXVC_ERR_ARG;
-    atlas_display(e->at, e->g, e->fp, e->state, img);
+    atlas_display(e->at, e->g, e->fp, e->state, e->atlas_nbr, img);
     return NXVC_OK;
 }
 

@@ -92,9 +92,17 @@ struct Atlas {
     // only the pre-frame pixels of the tiles CODED this frame can ever be read
     // stale, so a scratch of ~39 tiles an eye suffices, not a second atlas.
     RefPicture prev;
-    void snapshot() { prev = pix; }
+    // The per-tile TABLE as it stood at the start of the frame, for exactly
+    // the same reason `prev` exists.  The co-located rule of 13.12.4 never
+    // reads a neighbour's entry, so the table needed no snapshot; the
+    // neighbour-aware gather of tool bit 33 does, and a neighbour coded
+    // earlier in the same frame has already been reset to identity.  Without
+    // this the prediction would depend on decode order.
+    std::vector<AtlasEntry> ent_prev;
+    void snapshot() { prev = pix; ent_prev = ent; }
     void reset() {
         for (auto &e : ent) e = AtlasEntry{};
+        ent_prev = ent;
         for (auto &p : pix.plane) std::fill(p.begin(), p.end(), (u16)0);
         prev = pix;
     }

@@ -80,6 +80,7 @@ struct Opts {
     bool c444 = false;
     uint32_t atlas = 1, row_present = 0, near_skip = 0, quad_mv = 0;
     uint32_t intra_period = 1000, gen_max = 0;
+    uint32_t nbr = 0, skip_margin = 0;
     double yaw_per_frame = 0.4;
     int panel = 0;
     // lost[frame][tile]; the decoder is told, and the encoder is told the
@@ -137,6 +138,8 @@ static Run run(const Opts &o) {
     cfg.row_present = o.row_present;
     cfg.atlas_static_skip = o.atlas;
     cfg.atlas_gen_max = o.gen_max;
+    cfg.atlas_nbr = o.nbr;
+    cfg.atlas_skip_margin = o.skip_margin;
     cfg.near_skip = o.near_skip;
     cfg.quad_mv = o.quad_mv;
     cfg.intra_period = o.intra_period;
@@ -283,6 +286,23 @@ static void test_identity() {
     { Opts o; o.yaw_per_frame = 2.5;                  cases.push_back({"fast-turn", o}); }
     { Opts o; o.panel = 1;                            cases.push_back({"static-panel", o}); }
     { Opts o; o.gen_max = 3;                          cases.push_back({"gen-max", o}); }
+    // Tool bit 33, the neighbour-aware gather (13.12.4).  It is NORMATIVE --
+    // it changes which samples the predictor reads -- so the whole of the
+    // matrix above has to hold under it as well, and in particular under fast
+    // motion, which is the only condition in which it does anything at all.
+    { Opts o; o.nbr = 1;                              cases.push_back({"nbr", o}); }
+    { Opts o; o.nbr = 1; o.yaw_per_frame = 2.5;       cases.push_back({"nbr-fast-turn", o}); }
+    { Opts o; o.nbr = 1; o.c444 = true;               cases.push_back({"nbr-444", o}); }
+    { Opts o; o.nbr = 1; o.eyes = 2;                  cases.push_back({"nbr-stereo-geometry", o}); }
+    { Opts o; o.nbr = 1; o.near_skip = 1; o.quad_mv = 1;
+                                                      cases.push_back({"nbr-near-skip+quad-mv", o}); }
+    { Opts o; o.nbr = 1; o.panel = 1;                 cases.push_back({"nbr-static-panel", o}); }
+    { Opts o; o.nbr = 1; o.intra_period = 4;          cases.push_back({"nbr-refresh", o}); }
+    // The displacement bound is ENCODER-side and changes no rule, so the
+    // stream it produces must decode under the unchanged 13.12.4.
+    { Opts o; o.skip_margin = 8; o.yaw_per_frame = 2.5;
+                                                      cases.push_back({"skip-margin-8", o}); }
+    { Opts o; o.skip_margin = 4; o.nbr = 1;           cases.push_back({"skip-margin-4+nbr", o}); }
     for (auto &c : cases) {
         Run r = run(c.o);
         CHECK(r.ok, "%s: %s", c.name, r.err.c_str());

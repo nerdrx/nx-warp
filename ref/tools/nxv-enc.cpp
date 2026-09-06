@@ -133,6 +133,15 @@ static void usage() {
         "               --stereo on.\n"
         "  --row-present on|off elide the 12-byte header of a tile row with\n"
         "               no coded tile, tool bit 32\n"
+        "  --atlas-nbr on|off   NEIGHBOUR-AWARE GATHER, tool bit 33: a\n"
+        "               prediction sample landing outside the tile's own\n"
+        "               atlas position is fetched through the matrix of the\n"
+        "               entry it lands in, resolved with the co-located\n"
+        "               matrix.  NORMATIVE; requires --atlas on\n"
+        "  --atlas-skip-margin N  ENCODER ONLY, no syntax: a tile may be\n"
+        "               skipped only while the composed displacement at all\n"
+        "               four of its corners is under N luma samples.  0 =\n"
+        "               unbounded (the default, and the rule as measured)\n"
         "  --atlas-gen-max N    invalidate an atlas entry after N composition\n"
         "               steps; 0 = the warp envelope alone bounds staleness\n"
         "  --atlas-dump P       write the encoder's shadow atlas table after\n"
@@ -271,6 +280,7 @@ int main(int argc, char **argv) {
     int inter = 0, eyes = 1, intra_period = 180, ref_sel = 0, stereo = 0;
     // --- the atlas reference (SYNTAX.md 13.12, ADR-0029)
     int atlas = 0, row_present = 0, atlas_gen_max = 0;
+    int atlas_nbr = 0, atlas_skip_margin = 0;
     std::string atlas_dump;
     int mv_range = 16, skip_thresh = 0, mode_lambda = 0;
     int int_decision = 0, int_lambda = 0, int_intra_mad = 0;
@@ -352,6 +362,13 @@ int main(int argc, char **argv) {
             else if (v == "off") row_present = 0;
             else { std::fprintf(stderr, "--row-present: on|off\n"); return 2; }
         }
+        else if (a == "--atlas-nbr") {
+            std::string v = val();
+            if (v == "on") atlas_nbr = 1;
+            else if (v == "off") atlas_nbr = 0;
+            else { std::fprintf(stderr, "--atlas-nbr: on|off\n"); return 2; }
+        }
+        else if (a == "--atlas-skip-margin") atlas_skip_margin = std::atoi(val());
         else if (a == "--atlas-gen-max") atlas_gen_max = std::atoi(val());
         else if (a == "--atlas-dump") atlas_dump = val();
         else if (a == "--eyes") eyes = std::atoi(val());
@@ -677,6 +694,9 @@ int main(int argc, char **argv) {
     cfg.near_skip = (uint32_t)near_skip;
     cfg.quad_mv = (uint32_t)quad_mv;
     cfg.atlas = (uint32_t)atlas;
+    cfg.atlas_nbr = (uint32_t)atlas_nbr;
+    cfg.atlas_skip_margin =
+        (uint32_t)(atlas_skip_margin > 0 ? atlas_skip_margin : 0);
     cfg.row_present = (uint32_t)row_present;
     cfg.atlas_gen_max = (uint32_t)(atlas_gen_max > 0 ? atlas_gen_max : 0);
     // 13.12.3: a STATIC_MV entry is held unwarped, so a head-locked tile may

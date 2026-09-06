@@ -164,6 +164,8 @@ interleaved UV.
 | 29 | `QUAD_MV` | tiles may set `quad_mv` (section 13.10) |
 | 30 | `ENTROPY_LITE` | the table-free, fully parallel entropy tool (section 9.10) |
 | 31 | `ATLAS` | the reference is a per-tile atlas and the display warp is not normative (section 13.12) |
+| 32 | `ROW_PRESENT` | the frame header may carry `row_present()`, eliding the header of a tile row with no coded tile (section 3.1.2) |
+| 33 | `ATLAS_NBR` | the neighbour-aware gather: an atlas sample landing outside the tile's own position is fetched through the entry it lands in (section 13.12.8) |
 
 Bits 17, 21 and 22 are independent: any subset may be set. `ENTROPY_LITE`
 (bit 30) is mutually exclusive with `SIGN_HIDE` (bit 22) and `CUSTOM_TABLES`
@@ -225,7 +227,12 @@ parsed, plus one constraint on `ref_sel` (4.1). Section 13.12 is the whole of
 it. A stream that sets it is decoded to an **atlas**, not to a picture, and the
 picture a client shows is outside this specification.
 
-Bits 32-63 are reserved and must be zero. Capability negotiation is an
+`ROW_PRESENT` (bit 32) is orthogonal to everything: it elides bytes that
+restate what the skip bitmap already says, and a stream that never sets frame
+`flags` bit 4 decodes byte-identically whether or not the bit is offered.
+`ATLAS_NBR` (bit 33) requires `ATLAS`; setting it alone is `BITSTREAM`.
+
+Bits 34-63 are reserved and must be zero. Capability negotiation is an
 intersection: the sender only sets bits the receiver offered.
 
 ---
@@ -3200,6 +3207,53 @@ re-coding it and without re-warping it.
 
 A tile that was not received is, as in 13.9, not corrected: the correction
 travels in a row header the transport does not replicate.
+
+#### 13.12.8 Neighbour-aware gather (tool bit 33)
+
+When `ATLAS_NBR` is set, 13.12.4's rule is replaced for every sample the
+predictor fetches from **outside the tile's own atlas position**. Setting
+`ATLAS_NBR` without `ATLAS` is `BITSTREAM`.
+
+The rule is two steps, and the order is what keeps it decodable rather than
+circular:
+
+1. **Resolve, with the co-located matrix.** For output sample `(u, v)` of the
+   tile, evaluate the source position the predictor of 13.3 would fetch from
+   under the co-located entry's `C` -- the same corners, the same in-tile
+   interpolation, the same vector, the same Q.6 -> Q.4 rounding, evaluated
+   without fetching. Clamp the resulting integer sample index to the picture
+   exactly as the predictor's own border policy clamps it. The tile position
+   containing that index names an **entry**. The resolution never depends on
+   its own answer, so there is no fixed point to find, which is the objection
+   13.12.4 records against per-sample selection.
+2. **Fetch, through that entry's matrix.** The sample is produced by the
+   predictor of 13.3 applied to **this tile's own position** with the resolved
+   entry's `C` in place of the co-located one, and `kModeStatic` in place of
+   `kModeWarp` when that entry has `static == 1`. Four corners are derived per
+   (tile, entry) pair, and the in-tile interpolation is the one of 13.3: there
+   is no per-sample division.
+
+If the resolved entry has `valid == 0` the sample keeps the co-located matrix,
+which is 13.12.4 unchanged for that sample. The rule applies only where the
+co-located predictor is a warp; under `STATIC_MV`, and for an entry held at the
+identity by `static == 1`, there is no pose difference to resolve and the two
+rules are the same rule.
+
+The resolution is a **single step**. Walking it further -- taking the entry the
+resolved entry's own matrix lands in, and so on toward the fixed point
+`C_N(x) inside N` -- is well defined and was measured: it is **worse**, at
+every rate tested. One step is normative.
+
+**What this is for, and what it is worth.** 13.12.4's samples are read at the
+wrong pose whenever they land in a neighbour, and the error grows with the
+composed displacement. This clause reads them at a pose that is at least *a*
+pose the neighbour was captured at. It does not make them right: the atlas
+position holding output sample `x`'s content under entry `N` is `C_N(x)`, which
+is a different position from the one the resolution found and need not lie
+inside `N` at all. Measured on a 1088x1088 16-frame clip at 75.6 deg/s mean
+angular velocity, it recovers **0.9 to 1.4 dB** of a **8.6 to 8.9 dB** deficit
+against the picture model, for 6 to 11 % fewer bytes. It is specified here
+because it is implemented and measured, not because it closes the gap.
 
 ## 14. Phase 2 conformance
 
