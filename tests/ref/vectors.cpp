@@ -767,6 +767,132 @@ static BasePicture make_base_picture(const AtlasSpec &v, int seed) {
     return b;
 }
 
+// THE WHOLE base patch of 13.12.9 -- pixels, tile map, and every field of
+// `nxvc_base_patch` -- as one object, because the digest a vector pins depends
+// on all of it and none of it travels in the .nxv.
+//
+// It used to be rebuilt from the spec table on both sides, and the comment
+// above make_base_picture() claimed that let "a checker reproduce it byte for
+// byte without shipping it".  That is only true of a checker with this source
+// file compiled into it.  A third-party decoder holding the vector DIRECTORY
+// cannot reproduce the pin at all: the reference's own fold of v87 and v88
+// without the patch gives one digest for BOTH of them, because the patch is
+// the only thing that differs.  So the patch is now SHIPPED, as a sidecar
+// beside the bitstream, and the generator refuses to write a vector whose
+// digest it cannot reproduce from the shipped files alone.
+static bool read_file(const std::string &path, std::vector<uint8_t> &out) {
+    std::FILE *f = std::fopen(path.c_str(), "rb");
+    if (!f) return false;
+    std::fseek(f, 0, SEEK_END);
+    long n = std::ftell(f);
+    std::fseek(f, 0, SEEK_SET);
+    out.assign((size_t)(n > 0 ? n : 0), 0);
+    const size_t rd = out.empty() ? 0 : std::fread(out.data(), 1, out.size(), f);
+    std::fclose(f);
+    return rd == out.size();
+}
+
+struct BasePatch {
+    uint32_t width = 0, height = 0, eye = 0, src_frame = 0, chroma_order = 0;
+    uint32_t ystride = 0, cstride = 0;
+    int apply_after = -1;      // patch lands after this frame index
+    std::vector<uint8_t> tiles, Y, C;
+};
+
+static void put_u32(std::vector<uint8_t> &b, uint32_t v) {
+    b.push_back((uint8_t)(v & 0xff));
+    b.push_back((uint8_t)((v >> 8) & 0xff));
+    b.push_back((uint8_t)((v >> 16) & 0xff));
+    b.push_back((uint8_t)((v >> 24) & 0xff));
+}
+static uint32_t get_u32(const uint8_t *p) {
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) |
+           ((uint32_t)p[3] << 24);
+}
+
+static const char kBasePatchMagic[8] = {'N','X','V','B','P','1','\0','\0'};
+
+static std::vector<uint8_t> base_patch_serialise(const BasePatch &b) {
+    std::vector<uint8_t> o(kBasePatchMagic, kBasePatchMagic + 8);
+    put_u32(o, b.width);
+    put_u32(o, b.height);
+    put_u32(o, b.eye);
+    put_u32(o, b.src_frame);
+    put_u32(o, b.chroma_order);
+    put_u32(o, b.ystride);
+    put_u32(o, b.cstride);
+    put_u32(o, (uint32_t)b.apply_after);
+    put_u32(o, (uint32_t)b.tiles.size());
+    put_u32(o, (uint32_t)b.Y.size());
+    put_u32(o, (uint32_t)b.C.size());
+    o.insert(o.end(), b.tiles.begin(), b.tiles.end());
+    o.insert(o.end(), b.Y.begin(), b.Y.end());
+    o.insert(o.end(), b.C.begin(), b.C.end());
+    return o;
+}
+
+static bool base_patch_parse(const std::vector<uint8_t> &d, BasePatch &b) {
+    if (d.size() < 8 + 11 * 4) return false;
+    if (std::memcmp(d.data(), kBasePatchMagic, 8) != 0) return false;
+    const uint8_t *p = d.data() + 8;
+    b.width = get_u32(p + 0);
+    b.height = get_u32(p + 4);
+    b.eye = get_u32(p + 8);
+    b.src_frame = get_u32(p + 12);
+    b.chroma_order = get_u32(p + 16);
+    b.ystride = get_u32(p + 20);
+    b.cstride = get_u32(p + 24);
+    b.apply_after = (int)get_u32(p + 28);
+    const uint32_t nt = get_u32(p + 32), ny = get_u32(p + 36),
+                   nc = get_u32(p + 40);
+    size_t off = 8 + 11 * 4;
+    if (d.size() != off + nt + ny + nc) return false;
+    b.tiles.assign(d.begin() + off, d.begin() + off + nt);
+    off += nt;
+    b.Y.assign(d.begin() + off, d.begin() + off + ny);
+    off += ny;
+    b.C.assign(d.begin() + off, d.begin() + off + nc);
+    return true;
+}
+
+// Build the patch from the spec.  This runs on the GENERATE path only; every
+// other path reads the sidecar, which is the point.
+static BasePatch make_base_patch(const AtlasSpec &v) {
+    BasePatch b;
+    const int f = v.frames - 2;          // it lands after the second-to-last
+    BasePicture pic = make_base_picture(v, f);
+    b.width = (uint32_t)v.eye_w;
+    b.height = (uint32_t)v.h;
+    b.eye = 0;
+    b.src_frame = (uint32_t)(f + 1 + v.base_ahead);
+    b.chroma_order = (uint32_t)NXVC_BASE_CHROMA_CB_CR;
+    b.ystride = (uint32_t)(v.eye_w * v.eyes);
+    b.cstride = (uint32_t)(v.eye_w * v.eyes);
+    b.apply_after = f;
+    b.tiles.assign((size_t)((v.eye_w + 63) / 64) * ((v.h + 63) / 64), 0);
+    for (size_t i = 0; i < b.tiles.size(); i += 2) b.tiles[i] = 1;
+    b.Y = std::move(pic.Y);
+    b.C = std::move(pic.C);
+    return b;
+}
+
+// Fill an nxvc_base_patch that points into `b`.  `b` must outlive the call.
+static nxvc_base_patch base_patch_api(const BasePatch &b) {
+    nxvc_base_patch bp{};
+    bp.plane[0] = b.Y.data();
+    bp.stride[0] = (int)b.ystride;
+    bp.plane[1] = b.C.data();
+    bp.stride[1] = (int)b.cstride;
+    bp.width = b.width;
+    bp.height = b.height;
+    bp.eye = b.eye;
+    bp.src_frame = b.src_frame;
+    bp.chroma_order = b.chroma_order;
+    bp.tiles = b.tiles.data();
+    bp.tile_bytes = (uint32_t)b.tiles.size();
+    return bp;
+}
+
 // Every 64-byte record and every atlas plane, folded into a running MD5.  This
 // is the whole normative output of 13.12, and it is what the manifest's
 // `decoded_md5` column holds for an atlas vector.
@@ -807,7 +933,8 @@ struct AtlasResult : Result {
 // FILE order -- which is arrival order -- and folds the atlas into the digest
 // after every step that can change it, the base patch included.
 static AtlasResult decode_atlas(const AtlasSpec &v,
-                                const std::vector<uint8_t> &stream) {
+                                const std::vector<uint8_t> &stream,
+                                const BasePatch *patch) {
     AtlasResult r;
     nxvc_status st;
     nxvc_decoder *d = nxvc_decoder_create(&st);
@@ -876,22 +1003,11 @@ static AtlasResult decode_atlas(const AtlasSpec &v,
         };
         snap();
         ++nf;
-        if (v.base && nf == v.frames - 1) {
-            BasePicture b = make_base_picture(v, v.frames - 2);
-            std::vector<uint8_t> tiles((size_t)((v.eye_w + 63) / 64) *
-                                           ((v.h + 63) / 64),
-                                       0);
-            for (size_t i = 0; i < tiles.size(); i += 2) tiles[i] = 1;
-            nxvc_base_patch bp{};
-            bp.plane[0] = b.Y.data(); bp.stride[0] = v.eye_w * v.eyes;
-            bp.plane[1] = b.C.data(); bp.stride[1] = v.eye_w * v.eyes;
-            bp.width = (uint32_t)v.eye_w;
-            bp.height = (uint32_t)v.h;
-            bp.eye = 0;
-            bp.src_frame = (uint32_t)(v.frames - 1 + v.base_ahead);
-            bp.chroma_order = NXVC_BASE_CHROMA_CB_CR;
-            bp.tiles = tiles.data();
-            bp.tile_bytes = (uint32_t)tiles.size();
+        if (v.base && patch && nf == patch->apply_after + 1) {
+            // 13.12.9 from the SHIPPED patch, not from the spec table: this is
+            // the path a third-party checker takes, so it is the path the
+            // reference takes too.
+            nxvc_base_patch bp = base_patch_api(*patch);
             uint32_t ap = 0;
             st = nxvc_decoder_atlas_patch_base(d, &bp, &ap, nullptr);
             if (st != NXVC_OK) {
@@ -913,7 +1029,7 @@ static AtlasResult decode_atlas(const AtlasSpec &v,
 // Build one atlas vector.  Frame units are produced in FRAME order and then
 // emitted in ARRIVAL order; the decode side walks the file, which is arrival
 // order, and applies the base patch at the same point the encoder did.
-static AtlasResult build_atlas(const AtlasSpec &v) {
+static AtlasResult build_atlas(const AtlasSpec &v, const BasePatch *patch) {
     AtlasResult r;
     const InterSpec mat = atlas_material(v);
     nxvc_config cfg;
@@ -969,22 +1085,8 @@ static AtlasResult build_atlas(const AtlasSpec &v) {
         // 13.12.9: the base patch lands between two frame units, and the
         // encoder applies it to its shadow at the same point so that the two
         // atlases stay identical -- ADR-0029 cheat 7, option B.
-        if (v.base && f == v.frames - 2) {
-            BasePicture b = make_base_picture(v, f);
-            std::vector<uint8_t> tiles((size_t)((v.eye_w + 63) / 64) *
-                                           ((v.h + 63) / 64),
-                                       0);
-            for (size_t i = 0; i < tiles.size(); i += 2) tiles[i] = 1;
-            nxvc_base_patch bp{};
-            bp.plane[0] = b.Y.data(); bp.stride[0] = v.eye_w * v.eyes;
-            bp.plane[1] = b.C.data(); bp.stride[1] = v.eye_w * v.eyes;
-            bp.width = (uint32_t)v.eye_w;
-            bp.height = (uint32_t)v.h;
-            bp.eye = 0;
-            bp.src_frame = (uint32_t)(f + 1 + v.base_ahead);
-            bp.chroma_order = NXVC_BASE_CHROMA_CB_CR;
-            bp.tiles = tiles.data();
-            bp.tile_bytes = (uint32_t)tiles.size();
+        if (v.base && patch && f == patch->apply_after) {
+            nxvc_base_patch bp = base_patch_api(*patch);
             uint32_t ap = 0;
             st = nxvc_encoder_atlas_patch_base(e, &bp, &ap, nullptr);
             if (st != NXVC_OK) { r.err = "base patch (encoder)"; return r; }
@@ -998,7 +1100,7 @@ static AtlasResult build_atlas(const AtlasSpec &v) {
         r.stream.insert(r.stream.end(), u.begin(), u.end());
     r.stream_md5 = md5_hex(r.stream.data(), r.stream.size());
 
-    AtlasResult dec = decode_atlas(v, r.stream);
+    AtlasResult dec = decode_atlas(v, r.stream, patch);
     if (!dec.ok) { r.err = dec.err; return r; }
     r.decoded_md5 = dec.decoded_md5;
     r.superseded_tiles = dec.superseded_tiles;
@@ -1584,7 +1686,10 @@ int main(int argc, char **argv) {
                         "# compared.\n");
         for (int i = 0; i < kNumAtlasVectors; ++i) {
             const AtlasSpec &v = kAtlasVectors[i];
-            AtlasResult r = build_atlas(v);
+            BasePatch patch;
+            const bool has_patch = v.base != 0;
+            if (has_patch) patch = make_base_patch(v);
+            AtlasResult r = build_atlas(v, has_patch ? &patch : nullptr);
             if (!r.ok) {
                 std::fprintf(stderr, "%s: %s\n", v.name, r.err.c_str());
                 return 1;
@@ -1616,17 +1721,71 @@ int main(int argc, char **argv) {
                              r.saw_picture_to_atlas ? "yes" : "NO");
                 return 1;
             }
+            // Ship the patch BESIDE the bitstream.  Without it the pinned
+            // digest is not reproducible by anyone who does not have this
+            // file's spec table compiled in -- which is the whole point of a
+            // conformance vector, and which v87 and v88 failed for a while.
+            const std::string bp_path = dir + "/" + v.name + ".basepatch";
+            if (has_patch) {
+                const std::vector<uint8_t> ser = base_patch_serialise(patch);
+                std::FILE *bf = std::fopen(bp_path.c_str(), "wb");
+                if (!bf) { std::perror(bp_path.c_str()); return 1; }
+                std::fwrite(ser.data(), 1, ser.size(), bf);
+                std::fclose(bf);
+            }
             std::string path = dir + "/" + v.name + ".nxv";
             std::FILE *f = std::fopen(path.c_str(), "wb");
             if (!f) { std::perror(path.c_str()); return 1; }
             std::fwrite(r.stream.data(), 1, r.stream.size(), f);
             std::fclose(f);
+            // THE GUARD.  Re-read what was just written and reproduce the
+            // digest from the SHIPPED FILES ALONE -- the bitstream and, where
+            // there is one, the sidecar.  Nothing from the spec table above
+            // may be needed to reach the number the manifest is about to
+            // claim.
+            {
+                std::vector<uint8_t> disk_stream;
+                if (!read_file(path, disk_stream)) {
+                    std::fprintf(stderr, "%s: cannot re-read\n", v.name);
+                    return 1;
+                }
+                BasePatch disk_patch;
+                bool have = false;
+                if (has_patch) {
+                    std::vector<uint8_t> pb;
+                    if (!read_file(bp_path, pb) ||
+                        !base_patch_parse(pb, disk_patch)) {
+                        std::fprintf(stderr, "%s: sidecar unreadable\n",
+                                     v.name);
+                        return 1;
+                    }
+                    have = true;
+                }
+                AtlasResult cold =
+                    decode_atlas(v, disk_stream, have ? &disk_patch : nullptr);
+                if (!cold.ok || cold.decoded_md5 != r.decoded_md5) {
+                    std::fprintf(stderr,
+                                 "%s: the pinned digest is NOT reproducible "
+                                 "from the shipped files (%s != %s)\n",
+                                 v.name,
+                                 cold.ok ? cold.decoded_md5.c_str()
+                                         : cold.err.c_str(),
+                                 r.decoded_md5.c_str());
+                    return 1;
+                }
+                if (has_patch && cold.base_applied == 0) {
+                    std::fprintf(stderr, "%s: sidecar applied no tile\n",
+                                 v.name);
+                    return 1;
+                }
+            }
             std::fprintf(m, "%s %s %s %d %d %s %d %d\n", v.name,
                          r.stream_md5.c_str(), r.decoded_md5.c_str(),
                          v.eye_w * v.eyes, v.h,
                          v.c444 ? "yuv444p" : "yuv420p", 0, v.frames);
-            std::printf("%-26s %7zu B  %s   [%s]\n", v.name, r.stream.size(),
-                        r.decoded_md5.c_str(), v.fixes);
+            std::printf("%-26s %7zu B  %s   [%s]%s\n", v.name, r.stream.size(),
+                        r.decoded_md5.c_str(), v.fixes,
+                        has_patch ? "  +sidecar" : "");
         }
         std::fclose(m);
         std::printf("%d vectors written to %s\n",
@@ -1764,7 +1923,23 @@ int main(int argc, char **argv) {
         // through the same procedure that generated it, and the display
         // picture -- 13.12.5, non-normative -- is not looked at.
         if (aspec) {
-            AtlasResult dr = decode_atlas(*aspec, data);
+            // From the shipped files only: the bitstream read above and, for a
+            // vector that carries one, the sidecar beside it.
+            BasePatch cpatch;
+            bool have_patch = false;
+            if (aspec->base) {
+                std::vector<uint8_t> pb;
+                const std::string bpp = dir + "/" + name + ".basepatch";
+                CHECK(read_file(bpp, pb), "%s: missing %s.basepatch", name,
+                      name);
+                if (!pb.empty()) {
+                    CHECK(base_patch_parse(pb, cpatch),
+                          "%s: malformed base patch sidecar", name);
+                    have_patch = true;
+                }
+            }
+            AtlasResult dr = decode_atlas(*aspec, data,
+                                          have_patch ? &cpatch : nullptr);
             CHECK(dr.ok, "%s: decode (%s)", name, dr.err.c_str());
             if (dr.ok)
                 CHECK(dr.decoded_md5 == dmd5, "%s: ATLAS digest %s != %s", name,
@@ -1774,7 +1949,8 @@ int main(int argc, char **argv) {
                       "%s: no tile superseded; the vector pins nothing", name);
             if (aspec->base)
                 CHECK(dr.base_applied > 0, "%s: no base patch applied", name);
-            AtlasResult rr = build_atlas(*aspec);
+            AtlasResult rr = build_atlas(*aspec,
+                                         have_patch ? &cpatch : nullptr);
             CHECK(rr.ok, "%s: re-encode failed (%s)", name, rr.err.c_str());
             if (rr.ok) {
                 CHECK(rr.stream_md5 == smd5, "%s: encoder output changed", name);
