@@ -227,6 +227,21 @@ int fetchRef(int x, int y) {
     return int((nxvwRingWord(e >> 1u) >> ((e & 1u) * 16u)) & 0xffffu);
 }
 
+#ifdef NXVW_ABL_STAGE
+// ABLATION ONLY.  A staging block for the tile's source footprint, sized 2048
+// uints (4096 u16 = a bare 64x64 with no warp margin) so the probe's own index
+// arithmetic is a mask rather than a modulo and does not itself become the
+// measurement.  A real staging would need the margin and so ~2592 words, about
+// 27 % more copy than this prices.
+//
+// Two switches, so the two costs are separable:
+//   NXVW_ABL_STAGE_COPY  do the copy, leave the taps on the ring  -> copy cost
+//   NXVW_ABL_STAGE_TAP   take the taps from the block, do not fill it -> tap cost
+// Neither produces a correct picture; both produce the right memory traffic.
+const uint kStageWords = 2048u;
+shared uint sSrc[2048];
+#endif
+
 // The two horizontally adjacent taps of one row, in one or two loads instead
 // of two.  The ring is u16 packed two per uint, so `x` and `x + 1` land in the
 // SAME uint whenever the clamped `x` is even -- which is half the time, the
@@ -243,8 +258,15 @@ void fetchRefPair(int x, int y, out int a, out int b) {
     const uint base = uint(refElemBase + yc * refStride);
     const uint ea = base + uint(xa);
     const uint eb = base + uint(xb);
+#if defined(NXVW_ABL_STAGE) && NXVW_ABL_STAGE_TAP
+    const uint wa = sSrc[(ea >> 1u) & (kStageWords - 1u)];
+    const uint wb = ((eb >> 1u) == (ea >> 1u))
+                        ? wa
+                        : sSrc[(eb >> 1u) & (kStageWords - 1u)];
+#else
     const uint wa = nxvwRingWord(ea >> 1u);
     const uint wb = ((eb >> 1u) == (ea >> 1u)) ? wa : nxvwRingWord(eb >> 1u);
+#endif
     a = int((wa >> ((ea & 1u) * 16u)) & 0xffffu);
     b = int((wb >> ((eb & 1u) * 16u)) & 0xffffu);
 }
@@ -262,6 +284,13 @@ int sample_bilinear(int ix, int iy, int fx, int fy) {
     int t00, t10, t01, t11;
     fetchRefPair(ix, iy, t00, t10);
     fetchRefPair(ix, iy + 1, t01, t11);
+    // Four INDEPENDENT products, deliberately.  `gy * (gx * t00 + fx * t10) +
+    // fy * (gx * t01 + fx * t11)` is the same integer -- nothing rounds before
+    // the shift, so the regrouping is exact -- and it is six multiplies rather
+    // than eight.  It was measured and it is 22 % SLOWER on the Adreno 650,
+    // because the flat form's four products issue in parallel and the
+    // factored form is a dependency chain.  See "what does NOT work" in
+    // ../passB/README.md.
     int acc = gx * gy * t00 + fx * gy * t10 + gx * fy * t01 + fx * fy * t11;
     return (acc + 128) >> 8;   // the weights sum to 256
 }
@@ -364,6 +393,25 @@ void nxvwWarpPlane(int tid, int p, uint tb, int size, int full, int sub,
     refW = pw;
     refH = ph;
 
+#if defined(NXVW_ABL_STAGE) && NXVW_ABL_STAGE_COPY
+    // The staging copy: one contiguous run of the ring per plane, clamped into
+    // the ring so the probe can never read out of bounds.  Contiguous rather
+    // than the real footprint's row-by-row gather, which makes this the
+    // OPTIMISTIC copy cost.
+    {
+        const int ringWords = int(nxvwWarpParam(uint(NXVW_WARP_HDR_RING))) * 2;
+        const int src0 = clamp(refElemBase >> 1, 0, ringWords - 1);
+        barrier();
+        for (int i = tid; i < int(kStageWords); i += 256)
+            sSrc[i] = nxvwRingWord(uint(min(src0 + i, ringWords - 1)));
+        barrier();
+#if !NXVW_ABL_STAGE_TAP
+        // Nothing reads sSrc in this configuration; keep it live.
+        if (sSrc[uint(tid) & (kStageWords - 1u)] == 0xffffffffu) refW = refW;
+#endif
+    }
+#endif
+
     // ---- the tile's origin in this plane's own eye-local samples.
     // [REF] plane_tile_origin(): tx * 32 for chroma of a 4:2:0 stream,
     // tx * 64 otherwise -- which is tx * full either way.
@@ -436,12 +484,47 @@ void nxvwWarpPlane(int tid, int p, uint tb, int size, int full, int sub,
     // i >= 0, and `acc` is a sum of samples already clamped to [0, maxval].
     const int lfull = log2of(full);
     const int lsize = log2of(size);
-    const int npairFull = (full * full) >> 1;
-    for (int i = tid; i < npairFull; i += 256) {
-        const int e = 2 * i;
-        const int v = e >> lfull;
-        const int u0 = e & (full - 1);
-        const int qrow = (v >= qsplit) ? 2 : 0;
+    // A thread owns a CONTIGUOUS run of samples in ONE row rather than every
+    // 256th pair, which is what lets the corner interpolation run as a DDA.
+    // [SYN] 13.3's per-sample coordinate is bilinear over the four corners with
+    // a rounding at the end of EACH of its two stages:
+    //
+    //     top = (c0 * (64 - u) + c1 * u + 32) >> 6
+    //     bot = (c2 * (64 - u) + c3 * u + 32) >> 6
+    //     out = (top * (64 - v) + bot * v + 32) >> 6
+    //
+    // A rounded intermediate is what an incremental evaluation usually founders
+    // on, and here it does not: stage one's NUMERATOR is exactly
+    // integer-linear in u -- c0 * 64 + 32 + (c1 - c0) * u -- so an accumulator
+    // stepped by (c1 - c0) reproduces every numerator exactly and the >> 6 is
+    // still applied per sample, to the same integer.  Stage two is NOT linear
+    // in u, because it consumes the rounded top and bot; but v is constant
+    // along a row, so its two multiplies stay while stage one's four go.  Four
+    // multiplies a sample per axis become one add, and the samples are the
+    // same ones.  Byte-identity on the conformance set is the proof.
+    //
+    // The run length divides the row exactly -- 16 samples at extent 64, 4 at
+    // 32, 256 threads either way -- so every word still has exactly one writer
+    // and no thread needs a bound test.
+    const int tpr = 256 / full;      // threads per row: 4 at extent 64, 8 at 32
+    const int spt = full / tpr;      // samples per thread: 16 at 64, 4 at 32
+    const int ltpr = log2of(tpr);
+    const int myRow = tid >> ltpr;
+    const int myU0 = (tid & (tpr - 1)) * spt;
+    const int qrow = (myRow >= qsplit) ? 2 : 0;
+    // Stage two's weights: the basis is fitted over kWarpTile whatever this
+    // plane's extent is ([SYN] 13.7's chroma caveat), so this is 64 - row and
+    // row, not full - row.
+    const int wv1 = kWarpTile - myRow, wv0 = myRow;
+    // Stage one's numerators at u = myU0, and their per-u steps.
+    const int dTopX = c1.x - c0.x, dBotX = c3.x - c2.x;
+    const int dTopY = c1.y - c0.y, dBotY = c3.y - c2.y;
+    int nTopX = c0.x * kWarpTile + (kWarpTile / 2) + dTopX * myU0;
+    int nBotX = c2.x * kWarpTile + (kWarpTile / 2) + dBotX * myU0;
+    int nTopY = c0.y * kWarpTile + (kWarpTile / 2) + dTopY * myU0;
+    int nBotY = c2.y * kWarpTile + (kWarpTile / 2) + dBotY * myU0;
+    for (int j = 0; j < spt; j += 2) {
+        const int u0 = myU0 + j;
         int s0 = 0, s1 = 0;
         for (int h = 0; h < 2; ++h) {
             const int u = u0 + h;
@@ -449,6 +532,11 @@ void nxvwWarpPlane(int tid, int p, uint tb, int size, int full, int sub,
             // (u, v); only the vector added to it is per quadrant, which is
             // what makes four equal quadrant vectors bit-identical to a
             // single-vector tile ([SYN] 13.10).
+            // Per sample, and NOT hoisted, though it could be: a thread's run
+            // starts at a multiple of its own length and `qsplit` is full / 2,
+            // so `q` is in fact constant over the run.  Hoisting it -- strictly
+            // less work -- costs 22 % on the Adreno 650.  Measured twice, three
+            // interleaved rounds each; see ../passB/README.md.
             const int q = qrow + ((u >= qsplit) ? 1 : 0);
             const int mqx = (q == 0) ? mvxq0
                           : (q == 1) ? mvxq1
@@ -458,12 +546,14 @@ void nxvwWarpPlane(int tid, int p, uint tb, int size, int full, int sub,
                           : (q == 1) ? mvyq1
                           : (q == 2) ? mvyq2
                                      : mvyq3;
-            const int xq6 = clamp(
-                sat_add_i32(bilerp_corner(c0.x, c1.x, c2.x, c3.x, u, v), mqx),
-                -kWarpCoordClamp, kWarpCoordClamp);
-            const int yq6 = clamp(
-                sat_add_i32(bilerp_corner(c0.y, c1.y, c2.y, c3.y, u, v), mqy),
-                -kWarpCoordClamp, kWarpCoordClamp);
+            const int bx = ((nTopX >> 6) * wv1 + (nBotX >> 6) * wv0 +
+                            (kWarpTile / 2)) >> 6;
+            const int by = ((nTopY >> 6) * wv1 + (nBotY >> 6) * wv0 +
+                            (kWarpTile / 2)) >> 6;
+            const int xq6 = clamp(sat_add_i32(bx, mqx), -kWarpCoordClamp,
+                                  kWarpCoordClamp);
+            const int yq6 = clamp(sat_add_i32(by, mqy), -kWarpCoordClamp,
+                                  kWarpCoordClamp);
             // Q.6 -> Q.4, round half up (paper 2.2 step 4: "(c + 2) >> 2").
             const int xq4 = (xq6 + 2) >> (kWarpQCorner - kWarpQSample);
             const int yq4 = (yq6 + 2) >> (kWarpQCorner - kWarpQSample);
@@ -472,8 +562,11 @@ void nxvwWarpPlane(int tid, int p, uint tb, int size, int full, int sub,
                                                  xq4 & 15, yq4 & 15),
                                  0, maxval);
             if (h == 0) s0 = sv; else s1 = sv;
+            nTopX += dTopX; nBotX += dBotX;
+            nTopY += dTopY; nBotY += dBotY;
         }
-        nxvwWarpScratchWrite(i, (uint(s0) & 0xffffu) | (uint(s1) << 16));
+        nxvwWarpScratchWrite((myRow * full + u0) >> 1,
+                             (uint(s0) & 0xffffu) | (uint(s1) << 16));
     }
     barrier();
 
