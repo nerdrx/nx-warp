@@ -286,6 +286,23 @@ is recycled rather than invalidating it -- the host tracks `advanced_to` anyway
 coded rate from 2 % to 21 % over a 300-frame run. At a flat 15 % it never fired
 and the policy was untested.
 
+**A note on what the envelope check actually catches.** 13.12.2 has two ways to
+fail a composition -- the `2^33` guard on `P`, and 3.1.1's envelope on the
+renormalised result -- and for a head-motion homography the ENVELOPE always
+trips first. Measured: over 300 frames of yaw-shaped matrices, **0 of 12537
+invalidations** were the guard. That is the spec being right rather than a bug
+("anything at `2^33` is already eight times outside the envelope"), but it means
+a near-identity sweep cannot test the guard however long it runs, and the guard
+is still normative because it is what a 128-bit implementation must reproduce.
+
+The guard IS reachable from matrices that are legal as written: condition 2
+bounds every entry at `kEntryMax = 2^30` and condition 3 constrains only ROW 2,
+so a matrix whose linear part is a 512x scale is legal, and composing two of
+those gives a `P` around `2^39`. `nxvc-atlas-gpu-test` therefore carries a
+second phase of legal-but-extreme matrices purely to reach it (8670 guard trips)
+and FAILS if the guard fires zero times, because a run that never reaches it
+proves less than it looks like it proves.
+
 **The depth is set by the envelope, and the envelope is measured.**
 `vk.atlas.compose` composes a yaw homography with itself until 3.1.1's
 condition 2 or 3 trips:
