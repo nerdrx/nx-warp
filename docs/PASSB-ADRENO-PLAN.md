@@ -367,6 +367,45 @@ paired.
 The same three tests that detect the forced identity detect this, which is what
 says the fixtures reach the paired path rather than skipping it.
 
+## 3d. Phase 2 running order (device, gated)
+
+Nothing below has been run. The order is deliberate: each step can change
+whether the next one is worth taking.
+
+1. **The clock, before anything else.** `scripts/adreno-clock-probe.sh load`
+   and `... idle`, 20 s each. If the GPU sits below its top frequency bin while
+   a stream decodes, that is part of the wall and no kernel change recovers it
+   — the answer would be a performance-level request
+   (`XR_EXT_performance_settings`, or Pico's own level API), which is the WiVRn
+   integrator's change and not this repo's. The script measures and reports; it
+   changes nothing.
+
+   It also reports **which kgsl attributes a non-root shell can read at all**,
+   per attribute, rather than assuming. `passb-device-rows.sh` carries the note
+   that `gpuclk` is "the only kgsl attr shell may read", but that was an
+   observation on one build and the useful ones here — `devfreq/cur_freq`,
+   `available_frequencies`, `governor`, `max_gpuclk`, `thermal_pwrlevel`,
+   `num_pwrlevels` — may well come back empty. An honest "UNREADABLE" is a
+   result; a fabricated frequency is not.
+
+   The two modes gate opposite ways: `load` refuses if nothing is streaming,
+   `idle` refuses if something is, so the pair cannot be taken in the wrong
+   state by accident.
+
+2. **The segment split**, from `NXVC_VKD_SEG_MS` or the stats fields added in
+   this branch. This is the step that decides whether the rest of the plan is
+   aimed at the right module — §0's attribution rests on `ATLAS-DECODER.md`,
+   which used a different fixture at `ENTROPY_LITE`.
+3. **V2** (`NXVW_ABL_CHROMAPAIR`), interleaved against the control at 289 and
+   578 tiles.
+4. **V3** only if step 2 says the barrier count is the term. Otherwise it is not
+   built: Pass A's barrier removal was a 3.5x regression on this part, and that
+   prior is enough on its own.
+5. **The R8/R16 display pricing** hands over to the atlas-decoder agent.
+
+Headset below 50 C between rows, rows interleaved, the ratio is the measurement
+and the absolute is not.
+
 ## 4. What Phase 1 did not establish
 
 * The split of the 23.1 ms between Pass W, the skip module, the non-directional
