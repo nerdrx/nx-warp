@@ -175,6 +175,18 @@ removed from the preset, and it remains available as an explicit `--wm auto`.
 `--no-lambda-class` turns off the per-tile lambda gain and gives every tile the
 same rate-distortion trade whatever its content class.
 
+`--int-rdoq 1` is not one of these.  It is the **integer requantiser** the GPU
+encoder can run -- drop a level of +-1 whose squared error is worth less than
+the bits it saves -- and it lives here for the same reason `--int-decision`
+does: the GPU encoder's acceptance test is byte-identity against this encoder,
+so every decision it makes has to be reachable from this CLI.  It is exact in
+32-bit integers with no scan order and no dependency between coefficients,
+which is what the trellis above is not, and it is worth about a quarter of the
+trellis's gain on rANS and two thirds of it on ENTROPY_LITE.  It applies to the
+AC blocks only: the DC plane is the intra predictor, and `--no-dc-rdoq` says
+the same thing about the trellis.  See `vk/encoder/README.md`, "The effort
+levels, measured".
+
 ### One lambda
 
 Every decision the encoder makes -- which levels to code, which intra mode,

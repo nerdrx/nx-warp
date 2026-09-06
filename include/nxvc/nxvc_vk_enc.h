@@ -39,6 +39,7 @@
  *           --split4x4 off --cfl off --tab v2 --ctx v3 --sign-hide \
  *           --xform 8 --entropy rans
  *
+ * and, with create_info::effort 1, that command line plus `--int-rdoq 1`;
  * and, with create_info::inter set, that command line plus
  *
  *           --inter on --int-decision on --int-coded-vectors off \
@@ -259,8 +260,42 @@ typedef struct nxvc_vke_create_info {
      * Refused at create() if `inter` is clear and this is not 0. */
     uint32_t ref_confirm;
 
+    /* --- how hard the encoder looks (nxvc_vke_effort below).
+     *
+     * Encoder-side only: it changes which levels are coded, never how they
+     * are decoded, so a stream is an ordinary stream at every value and a
+     * decoder cannot tell which one produced it.
+     *
+     *   0  the plain dead-zone quantiser -- what this encoder has always
+     *      done, and byte-identical to the flag set at the top of this file;
+     *   1  also the INTEGER REQUANTISER: a level of +-1 whose squared error
+     *      is worth less than the bits it saves is dropped.  It adds
+     *      `--int-rdoq 1` to that flag set, and it is what a compositor with
+     *      a frame budget should ask for -- measured on RADV at 1088x1088 and
+     *      at 2 x 1088x1088 it is -1.4 % to -3.5 % BD-rate for no measurable
+     *      GPU time, because the decision is 64 independent integer compares
+     *      a block inside a pass that was already running.
+     *
+     * THERE IS NO LEVEL 2, and that is a measurement rather than an omission.
+     * The two things a level 2 could be are both priced in
+     * vk/encoder/README.md, "The effort levels, measured": a wider motion
+     * search is -0.05 % BD-rate on the stereo clip for +12 % encoder time,
+     * and the reference's own trellis RDOQ (-5.7 %) cannot cross to a GPU at
+     * all -- it prices candidates with `std::log2` and walks a serial trellis
+     * over the scan, which is the finding ADR 0028 made about the mode
+     * decision.  A value above 1 is refused rather than silently clamped, so
+     * that a caller asking for something this encoder cannot do hears about
+     * it. */
+    uint32_t effort;
+
     uint32_t flags; /* reserved, pass 0 */
 } nxvc_vke_create_info;
+
+/* nxvc_vke_create_info::effort */
+typedef enum nxvc_vke_effort {
+    NXVC_VKE_EFFORT_DEFAULT = 0, /* the dead-zone quantiser, as before     */
+    NXVC_VKE_EFFORT_RDOQ = 1     /* also the integer requantiser           */
+} nxvc_vke_effort;
 
 void nxvc_vk_encoder_create_info_default(nxvc_vke_create_info *ci);
 

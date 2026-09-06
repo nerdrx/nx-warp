@@ -114,6 +114,10 @@ public:
     VkDescriptorPool create_descriptor_pool(uint32_t max_sets,
                                             uint32_t storage_buffers,
                                             uint32_t storage_images);
+    // Frees the pool and, with it, every set allocated from it.  Callers that
+    // keep a pool for the object's whole life need not call this: destroy()
+    // sweeps what is still outstanding.
+    void destroy_descriptor_pool(VkDescriptorPool &pool);
     VkDescriptorSet allocate_set(VkDescriptorPool pool, VkDescriptorSetLayout dsl);
 
     // ---------------------------------------------------------- command flow
@@ -149,6 +153,24 @@ private:
     uint32_t         max_wg_inv_ = 0;
     uint32_t         max_shared_ = 0;
     std::vector<VkQueryPool> qpools_;
+    // What this object has handed out and not been told to take back.
+    //
+    // The class contract above says everything it allocates it also frees, and
+    // until these existed that was only true when it OWNED the device: destroy()
+    // called vkDestroyDevice, which sweeps every child object, and nothing was
+    // ever noticed.  On an ADOPTED device there is no sweep -- the host's device
+    // outlives this object -- so the buffers, images, pipelines and descriptor
+    // pools were simply abandoned.  WiVRn is the case that adopts, and its
+    // vkDestroyDevice reported 120 leaked objects for a twelve-frame encode.
+    //
+    // Tracked by value rather than by pointer because the create_* calls fill a
+    // caller-owned struct: the copy here is what destroy() needs, and the
+    // matching destroy_* untracks by handle so an explicit free stays correct
+    // and cannot double-free.
+    std::vector<Buffer>          tracked_buffers_;
+    std::vector<Image>           tracked_images_;
+    std::vector<Pipeline>        tracked_pipelines_;
+    std::vector<VkDescriptorPool> dpools_;
 };
 
 } // namespace vkmin

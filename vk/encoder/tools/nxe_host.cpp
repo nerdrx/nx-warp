@@ -85,6 +85,10 @@ void setup(const Config &cfg, Frame &f) {
     f.entropy_lite = cfg.entropy_lite;
     const bool lite = f.entropy_lite != 0;
     fp.sdh = (cfg.sign_hide && !lite) ? 1u : 0u;
+    /* The integer requantiser (nxe_enc.h, "integer RDOQ").  Encoder-only and
+     * frame-uniform: E3 reads it from the frame parameters so the CPU model
+     * and the shader take it from one place. */
+    fp.int_rdoq = (uint32_t)cfg.int_rdoq;
     fp.intra_dir = cfg.intra_dir ? 1u : 0u;
     fp.dir_layer = cfg.dir_layer ? 1u : 0u;
     fp.nsub_log2 = lite ? 3u : (uint32_t)cfg.nsub_log2;

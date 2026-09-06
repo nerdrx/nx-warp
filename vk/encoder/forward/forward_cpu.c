@@ -276,6 +276,17 @@ static void quantize_block(const nxe_plane *pl, const int32_t res[64],
             c[i] = (int16_t)nxe_quantize(co[i], t, t / 3);
         }
     }
+    /* The integer requantiser, at int_rdoq 1: drop a +-1 level that does not
+     * pay for itself.  Before sign hiding, which reads the levels, exactly as
+     * ref/src/codec.cpp's analyze_plane orders the two.  The lambda takes the
+     * plane's own step (kQStep[qp]) and not the weighted per-coefficient one.
+     * The DC plane is deliberately not requantised -- the reference does not
+     * either, and it is the intra predictor. */
+    if (pl->int_rdoq) {
+        const uint32_t lam = nxe_rdoq_lambda_q8(nxe_qstep[pl->qp]);
+        for (i = 0; i < 64; ++i)
+            if (nxe_rdoq_drop(orig[i], c[i], stepv[i], lam)) c[i] = 0;
+    }
     if (pl->sdh)
         nxe_hide_sign_unit(c, orig, stepv, 64, nxe_scan_table(64, pl->tskip));
 }
@@ -525,6 +536,7 @@ void nxe_plane_setup(const nxe_frame_params *fp, const nxe_tile_job *job, int p,
     pl->dc_off = (fp->ycocgr && chroma) ? 256 : 128;
     pl->tskip = (int)job->tskip;
     pl->sdh = (int)fp->sdh;
+    pl->int_rdoq = (int)fp->int_rdoq;
     pl->ctx_level_dc = fp->nctx >= NXE_NCTX_V2 ? NXE_CTX_LEVEL_DC : 0;
 }
 

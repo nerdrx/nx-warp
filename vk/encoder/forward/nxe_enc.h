@@ -327,8 +327,9 @@ extern "C" {
 /* ------------------------------------------------------------- frame params
  *
  * One record per frame, bound as a uniform buffer.  Everything the kernels
- * need that is not per tile.  std140-compatible: scalars only, 4-byte aligned,
- * arrays of uint.
+ * need that is not per tile.  std430: scalars only, 4-byte aligned, arrays of
+ * uint at their natural stride.  Every buffer that carries it is declared
+ * `layout(std430)`, so a scalar may be appended without repadding the arrays.
  */
 typedef struct nxe_frame_params {
     uint32_t tiles_x;        /* per eye */
@@ -388,11 +389,76 @@ typedef struct nxe_frame_params {
      * carry ref_sel 0). */
     uint32_t ref_sel;
 
+    /* The INTEGER RDOQ level: 0 the plain dead-zone quantiser, 1 the +-1 drop
+     * that nxe_rdoq_drop decides.  Encoder-only and no tool bit -- it changes
+     * which levels are coded and nothing about how they are decoded -- so a
+     * stream produced at either level is an ordinary stream.  E3 reads it here
+     * rather than through a specialization constant so that the CPU model and
+     * the shader take it from ONE place and cannot drift. */
+    uint32_t int_rdoq;
+
     /* Frame weighting matrices, Q4, raster order in the 8x8 block.  wm_id 0
      * on a tile selects these; 1..3 select a built-in pair (kWeight). */
     uint32_t wm_luma[64];
     uint32_t wm_chroma[64];
 } nxe_frame_params;
+
+/* ------------------------------------------------------------ integer RDOQ
+ *
+ * The requantiser E3 runs at `nxe_frame_params::int_rdoq` 1, and the one the
+ * reference reproduces at `--int-rdoq 1`.  It exists because the reference's
+ * own RDOQ cannot cross to a GPU: `rdoq_unit` prices candidates with real
+ * rates from `table_set_cost`, a sum of `std::log2` terms, and walks a trellis
+ * over the scan -- a function that is not the same on a host libm and on a
+ * device, driving a serial dependency where the hardware wants sixty-four
+ * independent lanes.  ADR 0028 made the same finding about the mode decision.
+ *
+ * What survives the crossing is one coefficient at a time against a CONSTANT
+ * rate: drop a level of +-1 when the squared error that costs is worth less
+ * than the bits it saves.  +-1 is the whole of the tool and deliberately so --
+ * it is the commonest level and the only one whose rate is nearly independent
+ * of the block around it, which is what makes a constant a defensible model
+ * for it.  There is no scan order and no dependency between coefficients, so a
+ * lane decides its own and needs no barrier.
+ *
+ * ONE degree of freedom.  The test is `d <= lam * bits`, so only the PRODUCT
+ * of the two constants below is meaningful; they are two numbers because the
+ * lambda is the encoder's own 0.22*qstep^2 scale in Q12 and the rate is a bit
+ * count in Q8, and keeping them apart says which is which.  The product was
+ * swept, not derived: see vk/encoder/README.md, "The effort levels, measured".
+ *
+ * The arithmetic is exact in 32 bits apart from the lambda's one 64-bit
+ * product, which GLSL forms with umulExtended.  For a coefficient at +-1 the
+ * dead zone bounds |orig| below t/8, so the squared-error difference is under
+ * 2^26 and `lam_q8 * 3` is under 2^32.
+ */
+#define NXE_RDOQ_LAM_Q12 1400   /* lambda = 0.342 * qstep^2, Q12 */
+#define NXE_RDOQ_BITS_Q8 768    /* 3.0 bits for a +-1 and its sign */
+
+/* The frame's lambda, Q8, from the TILE quantiser step `t` (kQStep[qp], Q4). */
+static inline uint32_t nxe_rdoq_lambda_q8(int32_t t) {
+    return (uint32_t)(((uint64_t)NXE_RDOQ_LAM_Q12 *
+                       (uint64_t)(uint32_t)(t * t)) >> 12);
+}
+
+/* True when the coefficient quantised to `q` (which must be +-1) should be
+ * dropped: `orig` is the unquantised value, `step` its reconstruction step. */
+static inline int nxe_rdoq_drop(int32_t orig, int32_t q, int32_t step,
+                                uint32_t lam_q8) {
+    int32_t rec, e1, d;
+    if (q != 1 && q != -1) return 0;
+    /* The decoder's reconstruction, written out rather than called: this
+     * header is the CONTRACT and is included where nxe_dequant is not
+     * declared.  It is the same expression, clamp included -- which never
+     * fires at |q| == 1, and is kept so the two spellings cannot diverge if
+     * the tool ever reaches a larger level. */
+    rec = (q * step + 8) >> 4;
+    if (rec > 32767) rec = 32767;
+    if (rec < -32768) rec = -32768;
+    e1 = orig - rec;
+    d = orig * orig - e1 * e1;          /* the cost of going to zero */
+    return d <= (int32_t)((lam_q8 * 3u) >> 8);
+}
 
 /* ------------------------------------------------------------- the tile job
  *
