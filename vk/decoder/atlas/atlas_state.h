@@ -109,6 +109,51 @@ class AtlasHostState {
         }
     }
 
+    // [SYN] 13.12.10 / the PICTURE frame.  A frame is either an ATLAS frame or
+    // a PICTURE frame.  On a PICTURE frame N every valid entry is re-posed to
+    // the current pose and its pixels are MATERIALISED, so:
+    //
+    //   * an entry this frame does NOT code takes `src_frame := N` and
+    //     `gen := 0` here -- it is the one place `src_frame` moves without the
+    //     position being coded, and it is legitimate because every one of
+    //     those pixels really is new;
+    //   * an entry this frame DOES code takes `src_frame := N` through the
+    //     ordinary coded-tile path (`commit()`), not here.
+    //
+    // Net: after a PICTURE frame every entry has age 0, which is the truth.
+    //
+    // The supersede test of 13.12.6 stays `>=` and is NOT relaxed for this.
+    // It is never evaluated between a frame's own coded tiles and its own
+    // rebase, because within one frame the coded tiles are applied as coded
+    // tiles and not as base patches -- and because `apply()` runs BEFORE this
+    // does, so a coded tile is tested against the PREVIOUS frame's
+    // `src_frame`.  Calling this before `apply()` would drop every coded tile
+    // of the rebasing frame, which is the 35-of-46 failure 13.12.10 names.
+    //
+    // 13.12.10's own rule -- "a rebase must not change `src_frame`" -- remains
+    // true for an ATLAS-frame rebase, which settles a pending transform in
+    // place and makes no content newer.  That is `rebase_settle()` below.
+    void rebase_picture(const uint32_t *coded, uint32_t count,
+                        uint32_t frame) {
+        const size_t n = src_frame_.size();
+        if (n == 0) return;
+        std::vector<uint8_t> is_coded(n, 0u);
+        for (uint32_t i = 0; i < count; ++i)
+            if ((size_t)coded[i] < n) is_coded[coded[i]] = 1u;
+        for (uint32_t t = 0; t < (uint32_t)n; ++t) {
+            if (is_coded[t]) continue;   // the coded path owns these
+            src_frame_[t] = (int64_t)frame;
+            advanced_to_[t] = frame;
+        }
+    }
+
+    // [SYN] 13.12.10, the ATLAS-frame rebase: the pending transform is settled
+    // into the pixels and `C := I`, `gen := 0` -- but the content is no newer
+    // than it was, so `src_frame` is UNTOUCHED and age stays
+    // `frame - src_frame`.  Both rules that key on provenance keep working:
+    // the supersede rule of 13.12.6 and the base-patch monotonicity of 13.12.9.
+    void rebase_settle(uint32_t frame) { mark_all_advanced(frame); }
+
     // Which entries the compose dispatch must cover before `frame`'s tiles are
     // decoded: the tiles about to be read, plus every entry whose `advanced_to`
     // is about to fall out of the ring.

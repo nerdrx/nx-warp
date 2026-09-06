@@ -155,6 +155,63 @@ int main() {
                                sel.size(), 0);
     }
 
+    // 6. The PICTURE frame ([SYN] 13.12.10 and the per-frame MODE).  Every
+    //    entry the frame does NOT code is re-posed and materialised, so it
+    //    takes `src_frame := N`; the entries it DOES code take it through the
+    //    ordinary coded path.  After such a frame EVERY entry has age 0.
+    //
+    //    The ordering is the whole point and it is asserted, not assumed: a
+    //    coded tile is tested for supersede against the PREVIOUS frame's
+    //    `src_frame`, so `apply()` must run BEFORE the rebase.  Doing it the
+    //    other way makes every coded tile of the rebasing frame satisfy
+    //    `src_frame >= N` and be dropped -- the 35-of-46 failure 13.12.10
+    //    names -- and this test fails if that regresses.
+    {
+        AtlasHostState s;
+        s.reset(E);
+        const uint32_t coded0[3] = {1, 2, 3};
+        AtlasApply r0 = s.apply(coded0, 3, 10);
+        s.commit(r0.accepted.data(), (uint32_t)r0.accepted.size(), 10);
+
+        // Frame 20 is a PICTURE frame that also codes tiles 1 and 4.
+        const uint32_t coded1[2] = {1, 4};
+        AtlasApply r1 = s.apply(coded1, 2, 20);
+        if (r1.accepted.size() != 2)
+            fail("a PICTURE frame's own coded tiles were superseded -- the "
+                 "rebase ran before apply()", r1.accepted.size(), 2);
+        s.rebase_picture(coded1, 2, 20);
+        s.commit(r1.accepted.data(), (uint32_t)r1.accepted.size(), 20);
+
+        for (uint32_t t = 0; t < E; ++t)
+            if (s.src_frame(t) != 20) {
+                fail("a PICTURE frame left an entry with a stale src_frame",
+                     s.src_frame(t), 20);
+                break;
+            }
+        // And a later frame's tiles are NOT superseded by it: age 0 is the
+        // truth, not a block on everything that follows.
+        const uint32_t coded2[1] = {7};
+        AtlasApply r2 = s.apply(coded2, 1, 21);
+        if (r2.accepted.size() != 1)
+            fail("a PICTURE frame superseded the NEXT frame's coded tile",
+                 r2.accepted.size(), 1);
+
+        // The ATLAS-frame rebase is the other rule and must NOT move
+        // `src_frame`: it settles a pending transform and makes nothing newer.
+        AtlasHostState t2;
+        t2.reset(E);
+        const uint32_t c3[1] = {2};
+        AtlasApply r3 = t2.apply(c3, 1, 5);
+        t2.commit(r3.accepted.data(), (uint32_t)r3.accepted.size(), 5);
+        t2.rebase_settle(9);
+        if (t2.src_frame(2) != 5)
+            fail("an ATLAS-frame rebase moved src_frame; 13.12.10 says it must "
+                 "not", t2.src_frame(2), 5);
+        std::printf("-- PICTURE frame: every entry at age 0, the frame's own "
+                    "coded tiles kept, and an ATLAS-frame rebase leaves "
+                    "src_frame alone\n");
+    }
+
     std::printf(g_fail ? "FAILED (%d)\n" : "PASSED\n", g_fail);
     return g_fail ? 1 : 0;
 }

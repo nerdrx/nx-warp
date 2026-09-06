@@ -419,42 +419,33 @@ work identically in both modes. Rolling rebase and base-layer refresh are not
 adopted -- base patches stay a patch source through
 `nxvc_vk_atlas_write_tiles`, just not a refresh policy.
 
-> **`src_frame` on a PICTURE frame is specified twice, and the two disagree.**
-> This is not a wording preference and it is not something the decoder can pick
-> a side of quietly, so it is written down here rather than resolved in code.
+> **`src_frame` on a PICTURE frame: SETTLED, option 2.** The two modes were
+> briefly specified against each other -- 13.12.10 says a rebase must not move
+> `src_frame`, while the PICTURE-frame decision said `src_frame := N` for every
+> tile *and* that the frame's own coded tiles still apply, which under
+> 13.12.6's `>=` drops all of them (the measured 35-of-46 failure). The ruling
+> splits it by MODE, and both halves are now true:
 >
-> SYNTAX 13.12.10, **normative and merged on this branch**, says of a rebase:
-> *"`src_frame` does not change... Writing `src_frame := frame_number` here
-> instead is not a bookkeeping preference. It makes every coded tile of the
-> rebasing frame satisfy `src_frame >= frame_number` and therefore be dropped
-> as superseded, and it makes every later base patch stale on arrival."* That
-> failure is **measured**: 35 of 46 coded tiles silently dropped.
+> * **PICTURE frame N** -- every entry the frame does **not** code is re-posed
+>   and materialised, and takes `src_frame := N`, `gen := 0`. Entries the frame
+>   **does** code take `src_frame := N` through the ordinary coded-tile path.
+>   After such a frame every entry has age 0, which is the truth: those pixels
+>   really are new. This is the only place `src_frame` moves without the
+>   position being coded;
+> * **ATLAS-frame rebase** -- 13.12.10 unchanged. A pending transform is
+>   settled into the pixels, the content is no newer, and `src_frame` is not
+>   touched.
 >
-> The PICTURE-frame decision says the opposite -- `src_frame := N` for every
-> tile, *"the one legitimate case where src_frame moves without coding, because
-> every tile's pixels are new"* -- **and in the same sentence** says the
-> frame's coded tiles then apply on top as usual. Under 13.12.6's supersede
-> test, which is `>=`, those two cannot both hold: every coded tile of that
-> frame is dropped, which is exactly the 35-of-46 result again.
+> **The supersede test stays `>=` and is not relaxed.** It is never evaluated
+> between a frame's own coded tiles and its own rebase, because within one
+> frame the coded tiles are applied as coded tiles and not as base patches --
+> and because the ORDER makes it so: `apply()` runs before the rebase, so a
+> coded tile is tested against the *previous* frame's `src_frame`. Calling the
+> rebase first is exactly the 35-of-46 failure, so `vk.atlas.state` asserts the
+> ordering rather than assuming it.
 >
-> The distinction the two are reaching for is real -- a rebase settles a
-> pending transform and changes no content, while a PICTURE frame materialises
-> genuinely new pixels for every position -- so the resolution is probably one
-> of:
->
-> 1. **the PICTURE re-pose does not write `src_frame` at all**, matching
->    13.12.10, and "the pixels are new" is carried by `gen := 0` alone (age
->    then stays `N - src_frame`, which is what the rolling rank and the base
->    monotonicity both already key on); or
-> 2. **it writes `src_frame := N` only for entries this frame does NOT code**,
->    so the frame's own coded tiles are still strictly newer and apply; or
-> 3. the supersede test becomes `>` for a same-frame write, which reopens the
->    retransmit case `AtlasHostState::apply()` documents `>=` for and is
->    therefore the worst of the three.
->
-> Until the ADR owner says which, `AtlasHostState::apply()` keeps `>=` and the
-> rebase path does not touch `src_frame` -- option 1, because it is the only
-> one of the three that is currently normative text.
+> `AtlasHostState::rebase_picture()` and `rebase_settle()` are the two rules.
+> a4e0 writes the normative text.
 
 ## The base layer: importing tiles the decoder did not decode
 
