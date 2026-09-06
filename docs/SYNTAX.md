@@ -3445,6 +3445,45 @@ ones: sections 3 and 4 impose roughly forty MUST-reject conditions, and a
 decoder that accepted every malformed stream would otherwise pass the suite
 completely.
 
+### 14.1 The `ATLAS` vectors (`v82`-`v88`)
+
+Under `ATLAS` the normative output is the atlas and not a picture (13.12), so
+these vectors keep the manifest's shape and **change what the `decoded_md5`
+column means**: it is the digest of the **atlas** -- the 64-byte per-tile table,
+all of it, and every atlas plane -- after every step that can change it. The
+displayed picture is 13.12.5, is not normative, and is not compared at all.
+
+| vector | what it pins |
+|---|---|
+| `v82_atlas_warp` | 13.12 end to end: advance, coded-tile prediction from the atlas, write-back, skip |
+| `v83_atlas_420` | the same on 4:2:0, where the chroma matrix is conjugated |
+| `v84_atlas_refresh_eff` | 13.12 with `NEAR_SKIP` in place (13.12.7), `QUAD_MV`, and rolling refresh |
+| `v85_atlas_nbr` | the neighbour-aware gather of 13.12.8 (tool bit 33) |
+| `v86_atlas_row_present` | 13.12 with `row_present` (3.1.2) on an almost idle sequence |
+| `v87_atlas_base_sourced` | a base-sourced patch (13.12.9), including `base_sourced` in the flags byte |
+| `v88_atlas_superseded` | the same stream with the patch's `src_frame` ahead of it, so the next frame's coded tiles at those positions are **dropped** |
+
+`v87` and `v88` are the same bitstream and different atlases, which is the
+point: what separates them is the `src_frame` of a patch that does not travel
+in the stream at all. The base picture of both is generated deterministically
+from the vector's own parameters, so a checker reproduces it; the generator
+refuses to write `v88` unless a tile actually reported `superseded`, so the
+vector cannot pin the rule doing nothing.
+
+**Out-of-order frame units are not among these, and the reason is a gap rather
+than an oversight.** 13.12.3 advances *every* valid entry by the frame's `H`,
+in frame order, so delivering frame `N+1` before frame `N` composes the entries
+in the other order, and matrix composition does not commute: the atlas then
+differs in its **table**, not only in its pixels. Splitting one refresh across
+two units with disjoint row sets does not rescue it, because the advance
+applies to every entry and not only to the rows a unit carries. What 13.12.3
+does give -- and what the pre-frame snapshot is for -- is that **within one
+frame** the order of atlas writes is unobservable; the bitstream cannot express
+that, because `row_index` must equal `row` (3.3), so it is asserted directly in
+`tests/ref/test_atlas.cpp` instead, exactly as D-21's property entries are.
+Whether a decoder applying whole frames out of order is legal at all, and what
+its atlas then is, is left open here rather than answered by a vector.
+
 ---
 
 ## Appendix A: decisions taken
