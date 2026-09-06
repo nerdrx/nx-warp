@@ -52,7 +52,7 @@ static_assert(sizeof(nxe_tile_stats) == NXE_TILE_STATS_SIZE,
               "nxe_tile_stats must stay tightly packed 4-byte scalars so the C layout "
               "and the std430 layout of the GLSL mirror are identical");
 static_assert(sizeof(nxe_frame_params) == 32, "nxe_frame_params layout");
-static_assert(sizeof(nxe_e0_push) == 36, "nxe_e0_push layout");
+static_assert(sizeof(nxe_e0_push) == 40, "nxe_e0_push layout");
 static_assert(sizeof(nxe_e1_push) == 48, "nxe_e1_push layout");
 
 // --------------------------------------------------------------------- rng

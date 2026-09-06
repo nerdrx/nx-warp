@@ -35,8 +35,15 @@ namespace nxe {
  * `Frame::plane_base`, and `plane_words` is its total size in words, which is
  * `Frame::src_packed.size() / 2`. */
 struct E0Geometry {
-    uint32_t width = 0, height = 0; /* luma samples of the picture (one eye) */
+    /* Luma samples of the picture in ONE LAYER of the source image, and the
+     * tile grid over the whole frame.  With the eyes side by side in one layer
+     * `width` is the pair's and `tiles_x` is the pair's; with one layer per eye
+     * `width` is one eye's while `tiles_x` is still the pair's, and `eye_cols`
+     * says where the split is. */
+    uint32_t width = 0, height = 0;
     uint32_t tiles_x = 0, tiles_y = 0;
+    /* Per-eye column count when the eyes are in separate layers; 0 otherwise. */
+    uint32_t eye_cols = 0;
     uint32_t plane_y_off = 0, plane_co_off = 0, plane_cg_off = 0;
     uint32_t plane_words = 0;
 };

@@ -97,6 +97,15 @@ if(IMAGE)
   set(APIARGS ${APIARGS} --image)
   set(WHAT "nxvc_vk_encoder's image entry point")
 endif()
+# The eyes as separate ARRAY LAYERS rather than side by side in one, which is the
+# shape a compositor already has (NXVC_VKE_IMAGE_EYE_LAYERS). It must produce the
+# same bitstream as the side-by-side shape and therefore the same bitstream as the
+# reference: E0's output tile index is pair-wide either way and only the source
+# read differs, so a difference here is a bug in that read and nothing else.
+if(EYE_LAYERS)
+  set(APIARGS ${APIARGS} --eye-layers)
+  set(WHAT "${WHAT} with the eyes in separate array layers")
+endif()
 # The entropy tool, and the three tools it turns off.  A Lite stream carries
 # NEITHER sign hiding NOR custom tables NOR TAB_V2, and the reference makes the
 # same substitution at create(), so the flags below are named on both sides and

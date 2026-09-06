@@ -424,13 +424,36 @@ nxvc_vke_status nxvc_vk_encoder_encode_planes(nxvc_vk_encoder *enc,
  * Everything after E0 is the code encode_planes() runs, so the bitstream is
  * the same bitstream: tests/vk-encoder's api acid test encodes the same
  * picture both ways and requires the two files to be identical. */
+/* nxvc_vke_image::flags.
+ *
+ * EYE_LAYERS: the two eyes are separate ARRAY LAYERS of `image` -- eye 0 at
+ * `array_layer`, eye 1 at `array_layer + 1` -- instead of side by side in one
+ * layer.  Legal only with create_info::eyes == 2, and then `width` is ONE eye's
+ * rather than the pair's, because that is the picture one layer holds.
+ *
+ * It exists because a compositor's eyes are usually already in separate layers:
+ * WiVRn's are, and OpenXR's projection layers generally are.  Without it such a
+ * caller has to copy both layers into one side-by-side image before every
+ * encode -- a full-frame blit per frame, on the device but not free -- purely to
+ * match a layout this pass could just as easily read.  E0's output tile index is
+ * pair-wide in both shapes, so the only thing that differs is where a tile
+ * READS; the coded planes, and therefore the bitstream, are identical.  The
+ * encoder's own tests pin that identity.
+ */
+#define NXVC_VKE_IMAGE_EYE_LAYERS 0x1u
+
 typedef struct nxvc_vke_image {
     VkImage image;
     VkImageLayout layout; /* must be VK_IMAGE_LAYOUT_GENERAL             */
+    /* Eye 0's array layer.  With NXVC_VKE_IMAGE_EYE_LAYERS eye 1 is the layer
+     * after it, so the image needs `array_layer + 2` layers. */
     uint32_t array_layer;
-    uint32_t width, height; /* must be `eyes * create()'s width` by its
-                             * height: the side-by-side PAIR, not one eye  */
-    uint32_t flags;         /* reserved, pass 0                          */
+    /* The picture in ONE LAYER, by its height.  Without
+     * NXVC_VKE_IMAGE_EYE_LAYERS that is `eyes * create()'s width` -- the
+     * side-by-side pair, since one layer holds both eyes -- and with it, one
+     * eye's, since each layer holds one. */
+    uint32_t width, height;
+    uint32_t flags;         /* NXVC_VKE_IMAGE_EYE_LAYERS, or 0           */
 } nxvc_vke_image;
 
 nxvc_vke_status nxvc_vk_encoder_encode_image(nxvc_vk_encoder *enc,
