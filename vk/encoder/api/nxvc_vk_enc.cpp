@@ -406,35 +406,44 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_set_frame_held(nxvc_vk_encoder *e,
 
 extern "C" nxvc_vke_status nxvc_vk_encoder_atlas_write_tiles(
     nxvc_vk_encoder *e, uint32_t eye, uint32_t first_tile, uint32_t count,
-    const nxvc_vke_atlas_src *src, uint32_t src_frame) {
+    const nxvc_vke_atlas_src *src, uint32_t src_frame, uint32_t *applied,
+    uint32_t *superseded) {
+    if (applied) *applied = 0;
+    if (superseded) *superseded = 0;
     if (!e || !src) return NXVC_VKE_ERR_ARG;
     if (!e->cfg.atlas) {
         e->err = "atlas_write_tiles needs the ATLAS tool";
         return NXVC_VKE_ERR_UNSUPPORTED;
     }
     if (src->image != VK_NULL_HANDLE) {
-        /* Deliberately refused rather than approximated.  A base-layer image
-         * arrives in the DECODER's colour space, and getting it into the
-         * atlas's coded sample domain needs the YCbCr->RGB->YCoCg-R conversion
-         * ADR-0029 measured -- including its one normative trap, that the
-         * driver's `samplerYcbcrConversionComponents` is NOT identity (the
-         * sampled r/g/b came back as Cr, Y, Cb) and the conversion must consume
-         * the reported swizzle rather than assume a channel order.  That clause
-         * is listed in ADR-0029 as a COST of the option and is not written yet,
-         * so an image path here would be this encoder inventing a colour
-         * conversion the syntax has not fixed -- and getting it wrong ships
-         * undetected on exactly the hardware the base layer is for.
+        /* Not refused for want of a spec -- [SYN] 13.12.9 now says exactly
+         * what this path would have to do -- but because it is UNIMPLEMENTED
+         * and cannot be validated here.  The clause makes the channel order
+         * normative and warns that a base picture sampled as
+         * G8_B8R8_2PLANE_420_UNORM, or through an external format whose
+         * reported conversion is channel-identity, yields
+         * `(.r, .g, .b) == (Cr, Y, Cb)`; an implementation SHALL consume the
+         * reported swizzle rather than assume an order.  It also says in as
+         * many words that a conformance matrix without a non-identity-swizzle
+         * device will not catch getting it wrong -- and RADV and lavapipe,
+         * which is this branch's whole matrix, are not that device.  Shipping
+         * an unverifiable channel mapping that produces a plausible, wholly
+         * wrong picture on exactly the hardware the base layer exists for is
+         * worse than refusing it.
          *
-         * The buffer form has no such ambiguity: it is already in the atlas's
-         * own sample domain and layout, so the write is a copy. */
-        e->err = "image sources need the colour-conversion clause of "
-                 "ADR-0029 section 7, which is not yet normative; supply a "
-                 "buffer already in the atlas sample domain";
+         * The buffer form carries no such risk: it is already in the atlas's
+         * own sample domain and layout, so the write is a copy and the
+         * swizzle obligation sits with the caller who did the conversion. */
+        e->err = "image sources are not implemented: the channel mapping of "
+                 "[SYN] 13.12.9 cannot be validated without a "
+                 "non-identity-swizzle device; supply a buffer already in the "
+                 "atlas sample domain";
         return NXVC_VKE_ERR_UNSUPPORTED;
     }
     std::string err;
     if (!e->vk.atlas_write_tiles(eye, first_tile, count, src->buffer,
-                                 src->offset, src_frame, err)) {
+                                 src->offset, src_frame, applied, superseded,
+                                 err)) {
         e->err = err;
         return NXVC_VKE_ERR_ARG;
     }

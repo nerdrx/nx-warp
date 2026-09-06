@@ -626,14 +626,18 @@ nxvc_vke_status nxvc_vk_encoder_set_frame_held(nxvc_vk_encoder *enc,
  * destination address plus `offset`, which is what "already in the atlas
  * layout" is worth: no address arithmetic on either side.
  *
- * `image` is reserved and currently REFUSED with NXVC_VKE_ERR_UNSUPPORTED.
- * A base-layer image is in the decoder's colour space, and converting it to the
- * atlas's coded sample domain needs the YCbCr -> RGB -> YCoCg-R clause of
- * ADR-0029 section 7 -- including its normative trap, that the driver's
- * samplerYcbcrConversionComponents is NOT identity and the conversion must
- * consume the reported swizzle rather than assume a channel order.  That clause
- * is not yet written, and an encoder inventing one would ship a wrong colour
- * conversion undetected on exactly the hardware the base layer exists for. */
+ * `image` is reserved and currently REFUSED with NXVC_VKE_ERR_UNSUPPORTED --
+ * not for want of a spec, but for want of a device to validate against.
+ * [SYN] 13.12.9 makes the channel order normative and warns that a base
+ * picture sampled as G8_B8R8_2PLANE_420_UNORM, or through an external format
+ * whose reported conversion is channel-identity, yields
+ * `(.r, .g, .b) == (Cr, Y, Cb)`; an implementation SHALL consume the reported
+ * swizzle rather than assume an order.  The same clause says a conformance
+ * matrix without a non-identity-swizzle device will not catch getting it
+ * wrong, and this branch's matrix is RADV and lavapipe.  Assuming (Y, Cb, Cr)
+ * produces a plausible, wholly wrong picture, so the path stays unimplemented
+ * rather than unverified.  A buffer carries no such risk: the caller has
+ * already done the mapping, into the atlas's own sample domain. */
 typedef struct nxvc_vke_atlas_src {
     VkBuffer buffer;        /* the patch source; required today          */
     VkDeviceSize offset;    /* where the slot-shaped image starts        */
@@ -654,18 +658,30 @@ typedef struct nxvc_vke_atlas_src {
  * several runs rather than passing a tile list, and the runs cost one
  * vkCmdCopyBuffer region per tile row per plane either way.
  *
- * WHAT THE ENCODER DOES WITH IT.  The tile's atlas entry is written exactly as
- * a coded tile's is -- identity `C`, `src_frame` as given, generation 0, valid,
- * never static -- because the entry says WHERE the pixels are and at which
- * pose, and that is the same statement however they were produced.  The
- * encoder also records that the position is base-sourced, in its OWN state:
- * the caller keeps nothing and passes nothing back.  A later coded tile at the
- * same position clears it, which is the scheduled refresh ADR-0029 requires.
+ * WHAT THE ENCODER DOES WITH IT.  The tile's atlas entry gets SYNTAX 13.12.9's
+ * metadata block, which is a coded tile's with one bit added: identity `C`,
+ * `src_frame` as given, generation 0, valid, never static, res_level 0, and
+ * `base_sourced` (flags bit 2) SET.  The entry says WHERE the pixels are and
+ * at which pose, which is the same statement however they were produced; the
+ * bit is what lets a receiver, a rate controller and a conformance vector tell
+ * the two patch sources apart, and it is NORMATIVE in version 1 -- written,
+ * and compared by conformance like every other bit of the 64.  A later coded
+ * tile at the same position clears it, which is the scheduled refresh.
  *
- * `src_frame` obeys the same monotonicity a coded tile's does: a patch naming
- * a frame older than the entry already holds is refused, because the
- * composition chain of SYNTAX 13.12.2 would then run backwards and the encoder
- * would predict through a matrix the client never builds.
+ * SUPERSEDE, AND WHY IT IS NOT AN ERROR.  Per 13.12.9's ordering rule a write
+ * whose `src_frame` does not advance the position -- not merely one that goes
+ * backwards -- has been overtaken and SHALL be dropped rather than applied.
+ * That is the ordinary case, not a caller mistake: the base arrives through a
+ * hardware decoder with its own latency (2.76 ms mean, 5.63 ms p99 in the
+ * measurement the clause cites) while coded tiles come down the usual path, so
+ * the two interleave.  Those positions are skipped, the rest of the run is
+ * applied, and the call SUCCEEDS.  `applied` and `superseded` (either may be
+ * NULL) report how the run split; a caller that needs to know a patch landed
+ * must read them rather than the status.
+ *
+ * COLOUR.  13.12.9 permits a base-sourced write only on a `CT_NONE` stream,
+ * and this encoder emits `color_transform = 0` on every stream it writes, so
+ * the exclusion is satisfied by construction rather than by a check.
  *
  * ORDERING.  The copy is recorded on the encoder's own command buffer at the
  * top of the next encode, after the previous frame's reconstruction and one
@@ -674,20 +690,21 @@ typedef struct nxvc_vke_atlas_src {
  * from outside; the call itself neither submits nor waits.  The TABLE is
  * updated immediately, because the next encode's mode decision has to see it.
  *
- * NOTE ON CONFORMANCE.  ADR-0029 reserved `base_sourced` as bit 2 of the
- * per-tile record's `flags`.  It is NOT written there: SYNTAX 13.12.1 makes
- * flags bits 2-7 reserved and zero and has conformance compare all 64 bytes,
- * so setting it would make the encoder's shadow differ from the decoder's
- * atlas on exactly the tiles the two must agree about.  Until the syntax
- * un-reserves the bit, provenance is encoder-side and the wire record stays
- * spec-clean.
+ * BIT-EXACTNESS.  13.12.9 requires a base-sourced write to be reproducible on
+ * the encoder side -- the shadow atlas of 13.12.6 must hold the same samples
+ * the client's atlas does, and the patch is compared by conformance like any
+ * other write.  Marking base-sourced patches drift-tolerant and excluding them
+ * is explicitly NOT version 1.  Supplying a buffer that is not what the client
+ * decoded therefore breaks the stream, silently and some frames later.
  *
  * Returns NXVC_VKE_ERR_UNSUPPORTED on a non-ATLAS stream or an image source,
- * NXVC_VKE_ERR_ARG on a run that leaves the eye, a null buffer, or a
- * `src_frame` that goes backwards.  A `count` of 0 is a no-op. */
+ * NXVC_VKE_ERR_ARG on a run that leaves the eye or a null buffer.  A `count`
+ * of 0 is a no-op, and a fully superseded run is a success with
+ * `*applied == 0`. */
 nxvc_vke_status nxvc_vk_encoder_atlas_write_tiles(
     nxvc_vk_encoder *enc, uint32_t eye, uint32_t first_tile, uint32_t count,
-    const nxvc_vke_atlas_src *src, uint32_t src_frame);
+    const nxvc_vke_atlas_src *src, uint32_t src_frame, uint32_t *applied,
+    uint32_t *superseded);
 
 /* The frame's pose and projection, for the frame the NEXT encode() codes.
  *

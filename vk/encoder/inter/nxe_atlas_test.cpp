@@ -394,46 +394,48 @@ void check_refresh_priority() {
           "a cap above the candidate count picked %u tiles", got);
 }
 
-/* Base-sourced patches (ADR-0029 section 7).  The property that has to hold is
- * that provenance is encoder-side and the WIRE RECORD is untouched: [SYN]
- * 13.12.1 reserves flags bits 2-7 as zero and has conformance compare all 64
- * bytes, so a patch that set bit 2 would break the shadow-equals-decoder
- * identity on exactly the tiles the two must agree about. */
+/* Base-sourced patches ([SYN] 13.12.9).  The record is the whole point: bit 2
+ * `base_sourced` is NORMATIVE in v1 and conformance compares all 64 bytes, so
+ * an encoder that kept the provenance in a side table would produce a shadow
+ * that differs from the decoder's atlas on exactly the tiles the two exist to
+ * agree about. */
 void check_base_sourced() {
     const nxe::AtlasGeom g = geom_1088(1);
     nxe::AtlasTable at;
     at.reset(g);
-    CHECK(at.base_sourced.size() == at.e.size(),
-          "base_sourced is not sized with the table");
-    for (uint8_t b : at.base_sourced)
-        CHECK(b == 0, "a reset table has a base-sourced tile");
+    for (uint32_t t = 0; t < (uint32_t)at.e.size(); ++t)
+        CHECK(!at.is_base_sourced(t), "a reset table has a base-sourced tile");
 
-    at.write_base_tile(7, 42, 0);
+    at.write_base_tile(7, 42);
     CHECK(at.valid(7), "a patched tile is not valid");
     CHECK(!at.is_static(7), "a patch must never be static");
-    CHECK(at.base_sourced[7] == 1, "the patch was not recorded");
+    CHECK(at.is_base_sourced(7), "the patch did not set base_sourced");
     CHECK(at.e[7].src_frame == 42 && at.e[7].gen == 0, "patch src/gen");
+    CHECK(at.e[7].res_level == 0, "13.12.9 fixes res_level at 0");
     int32_t I[9];
     nxe::atlas_identity(I);
     for (int k = 0; k < 9; ++k)
         CHECK(at.e[7].C[k] == I[k], "a patched tile's C is not the identity");
-    /* The whole point: bits 2-7 of `flags` stay zero, and so do the twenty
-     * reserved bytes, so the 64-byte record is what a conforming decoder
-     * writes. */
-    CHECK((at.e[7].flags & 0xFCu) == 0,
-          "a patch set a reserved flags bit (0x%02x)", at.e[7].flags);
+    /* Exactly bits 0 and 2: valid and base_sourced, nothing else.  Bits 3-7
+     * stay reserved and zero, as do the twenty reserved bytes, so the 64-byte
+     * record is byte for byte what a conforming decoder writes. */
+    CHECK(at.e[7].flags == (nxe::kAtlasValid | nxe::kAtlasBaseSourced),
+          "a patch's flags byte is 0x%02x", at.e[7].flags);
     for (int k = 0; k < 20; ++k)
         CHECK(at.e[7].reserved[k] == 0, "a patch wrote reserved byte %d", k);
 
-    /* A coded tile at the same position RETIRES the patch: that is the
-     * scheduled refresh the ADR requires, and the flag has to stop being set
-     * or a tile would look base-sourced forever. */
+    /* A coded tile at the same position RETIRES the patch: 13.12.9's "cleared
+     * by any subsequent coded-tile write, because that write replaces the
+     * pixels".  The flag has to stop being set or a tile would look
+     * base-sourced forever. */
     at.code_tile(7, 50, nxvw::kModeWarpMv, 0);
-    CHECK(at.base_sourced[7] == 0, "a coded tile did not retire the patch");
+    CHECK(!at.is_base_sourced(7), "a coded tile did not retire the patch");
+    CHECK((at.e[7].flags & nxe::kAtlasBaseSourced) == 0,
+          "code_tile left base_sourced in the record");
 
     /* And a patch over a coded tile sets it again. */
-    at.write_base_tile(7, 51, 0);
-    CHECK(at.base_sourced[7] == 1, "a patch over a coded tile was not recorded");
+    at.write_base_tile(7, 51);
+    CHECK(at.is_base_sourced(7), "a patch over a coded tile was not recorded");
 }
 
 void check_table_rules() {

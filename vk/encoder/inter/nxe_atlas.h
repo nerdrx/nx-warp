@@ -57,15 +57,22 @@ struct AtlasEntry {
     int32_t C[9];
     uint32_t src_frame;   /* the frame number that last coded this position */
     uint16_t gen;         /* composition steps since src_frame              */
-    uint8_t flags;        /* bit 0 valid, bit 1 static, bits 2-7 reserved   */
+    uint8_t flags;        /* bit 0 valid, 1 static, 2 base_sourced; 3-7 zero */
     uint8_t res_level;    /* res_level the position was last coded at       */
     uint8_t reserved[20]; /* Phase 2 depth; zero in v1                      */
 };
 static_assert(sizeof(AtlasEntry) == 64, "[SYN] 13.12.1 fixes the entry at 64 B");
 
+/* [SYN] 13.12.1 flags.  Bit 2 `base_sourced` is NORMATIVE in v1 (13.12.9): it
+ * is written, and conformance compares it like every other bit of the 64.  It
+ * is what lets a receiver, a rate controller and a conformance vector tell the
+ * two patch sources apart, so an encoder that kept the provenance to itself
+ * would produce a shadow that differs from the decoder's atlas on exactly the
+ * tiles the two exist to agree about.  Bits 3-7 stay reserved and zero. */
 enum : uint8_t {
     kAtlasValid = 1u,
     kAtlasStatic = 2u,
+    kAtlasBaseSourced = 4u,
 };
 
 /* The identity, in the wire scales.  [SYN] 13.12.3 step 3 writes exactly
@@ -143,19 +150,6 @@ struct AtlasGeom {
 struct AtlasTable {
     std::vector<AtlasEntry> e;
     AtlasGeom g{};
-    /* Which positions were last filled from the BASE LAYER rather than by a
-     * coded nxvc tile (ADR-0029 section 7, "base-sourced patches").
-     *
-     * It is a parallel array and NOT a bit of `AtlasEntry::flags`, which is
-     * where ADR-0029 reserved it (bit 2).  [SYN] 13.12.1 says flags bits 2-7
-     * are reserved and ZERO, and that "every one of the 64 bytes is compared
-     * by conformance" -- so setting bit 2 in the record would make this
-     * encoder's shadow differ from the decoder's atlas on exactly the tiles it
-     * is meant to agree about, and the byte-identity that the whole shadow
-     * contract rests on would be gone.  Until the bit is un-reserved in the
-     * syntax, the flag is encoder-side state about encoder-side provenance,
-     * and the wire record stays spec-clean. */
-    std::vector<uint8_t> base_sourced;
     /* [SYN] 13.12.3 step 1, "an implementation's declared cap".  0 is no cap,
      * which is the v1 default: `gen_max` and tool bit 32 ATLAS_DRIFT are the
      * Cheats-8 experiment and are NOT built. */
@@ -186,13 +180,24 @@ struct AtlasTable {
      * `mode` is an nxvw::kMode* value. */
     void code_tile(uint32_t t, uint32_t frame_number, int mode, int res_level);
 
-    /* The same write-back for a tile filled from the BASE LAYER: identity `C`,
-     * this frame as the source, generation 0, valid, never static -- the table
-     * says WHERE the pixels are and at which pose, which is the same statement
-     * however they were produced.  It marks `base_sourced[t]`; `code_tile()`
-     * clears it, because a coded tile is the scheduled refresh that retires a
-     * patch. */
-    void write_base_tile(uint32_t t, uint32_t frame_number, int res_level);
+    /* [SYN] 13.12.9's write-back for a tile filled from the BASE LAYER, which
+     * is 13.12.3 step 3's with one bit added: identity `C`, `frame_number` as
+     * the source, generation 0, valid, never static, res_level 0, and
+     * `base_sourced` SET.  The table says WHERE the pixels are and at which
+     * pose, which is the same statement however they were produced; the bit is
+     * what tells the two sources apart.  `code_tile()` clears it by writing
+     * `flags` whole, which is 13.12.9's "cleared by any subsequent coded-tile
+     * write to the same position, because that write replaces the pixels".
+     *
+     * The SUPERSEDE rule of 13.12.9 is the caller's: this is the write itself
+     * and assumes the position has already been found writable. */
+    void write_base_tile(uint32_t t, uint32_t frame_number);
+
+    /* Whether the position was last filled from the base layer -- the flag
+     * itself, not a shadow of it, so there is one place it can be wrong. */
+    bool is_base_sourced(uint32_t t) const {
+        return t < e.size() && (e[t].flags & kAtlasBaseSourced) != 0;
+    }
 
     /* 13.12.7.  A NEAR_SKIP tile applies its correction to the atlas pixels in
      * place and changes NO metadata.  It is here as a named no-op so that the

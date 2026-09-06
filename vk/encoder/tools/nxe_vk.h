@@ -134,7 +134,7 @@ public:
     uint64_t atlas_disp_forced() const;
 
     /* Fill a contiguous run of atlas tile positions from the BASE LAYER
-     * (ADR-0029 section 7).  `src` is DEVICE memory on this encoder's device,
+     * ([SYN] 13.12.9).  `src` is DEVICE memory on this encoder's device,
      * already in the atlas's own plane layout -- the same strided u16 planes a
      * ring slot holds -- so a patch is the same set of row regions a rollback
      * is and needs no per-tile address arithmetic on either side.
@@ -142,6 +142,15 @@ public:
      * `first_tile` and `count` are within `eye`, in that eye's row-major
      * order; the pair-wide index of Annex D D-3 is derived here, because a run
      * that is contiguous in one eye is not contiguous pair-wide.
+     *
+     * Each written position gets 13.12.9's metadata block, `base_sourced`
+     * (flags bit 2) included -- normative in v1 and compared by conformance.
+     *
+     * SUPERSEDE.  A position whose `src_frame` is not advanced by this write
+     * is DROPPED rather than written, per 13.12.9's ordering rule, and the
+     * call still succeeds: the base arrives through a hardware decoder with
+     * its own latency, so being overtaken by a coded tile is ordinary.
+     * `applied` and `superseded` (either may be null) count how the run split.
      *
      * The copy is QUEUED, not submitted: it is recorded at the top of the next
      * encode, in the same command buffer as the rollback restore and one
@@ -152,11 +161,11 @@ public:
      * has to see it.
      *
      * Returns false and fills `err` on a run that leaves the eye, on a null
-     * buffer, on a non-ATLAS stream, or on a `src_frame` older than one the
-     * entry already holds. */
+     * buffer, or on a non-ATLAS stream.  A superseded tile is NOT an error. */
     bool atlas_write_tiles(uint32_t eye, uint32_t first_tile, uint32_t count,
                            VkBuffer src, uint64_t src_offset,
-                           uint32_t src_frame, std::string &err);
+                           uint32_t src_frame, uint32_t *applied,
+                           uint32_t *superseded, std::string &err);
 
     void bench(Frame &f, int iters);
 

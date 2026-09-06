@@ -1911,8 +1911,11 @@ uint64_t VkEncoder::atlas_disp_forced() const { return p_->disp_forced; }
 bool VkEncoder::atlas_write_tiles(uint32_t eye, uint32_t first_tile,
                                   uint32_t count, VkBuffer src,
                                   uint64_t src_offset, uint32_t src_frame,
+                                  uint32_t *applied, uint32_t *superseded,
                                   std::string &err) {
     Impl &d = *p_;
+    if (applied) *applied = 0;
+    if (superseded) *superseded = 0;
     if (!d.ok) { err = "encoder not created"; return false; }
     if (!d.atlas) { err = "atlas_write_tiles needs ATLAS"; return false; }
     if (src == VK_NULL_HANDLE) { err = "src buffer is null"; return false; }
@@ -1925,32 +1928,24 @@ bool VkEncoder::atlas_write_tiles(uint32_t eye, uint32_t first_tile,
         err = "tile run leaves the eye";
         return false;
     }
-    /* [SYN] 13.12.3's src_frame is a frame NUMBER and the entry it lands in
-     * must not go backwards: a patch claiming an older source than the entry
-     * already holds would make the composition chain run the wrong way, and
-     * the encoder would then predict through a matrix the client never
-     * builds.  The same rule a coded tile obeys by construction is checked
-     * here, because this one comes from outside. */
-    const int cols = d.atlas_geom.cols_per_eye * eyes;
-    for (uint32_t k = 0; k < count; ++k) {
-        const uint32_t idx = first_tile + k;
-        const uint32_t row = idx / (uint32_t)d.atlas_geom.cols_per_eye;
-        const uint32_t col = idx % (uint32_t)d.atlas_geom.cols_per_eye;
-        const uint32_t t =
-            row * (uint32_t)cols + eye * (uint32_t)d.atlas_geom.cols_per_eye +
-            col;
-        if (t >= d.atlas_tab.e.size()) { err = "tile index out of range"; return false; }
-        const AtlasEntry &a = d.atlas_tab.e[t];
-        if ((a.flags & kAtlasValid) && src_frame < a.src_frame) {
-            err = "src_frame goes backwards on a tile the atlas already holds";
-            return false;
-        }
-    }
-
     /* The run is contiguous WITHIN THE EYE, which with two eyes is not
      * contiguous pair-wide -- the tile order of Annex D D-3 interleaves the
-     * eyes every `cols_per_eye` -- so it is queued as one span per row and the
-     * table is updated per tile. */
+     * eyes every `cols_per_eye` -- so the pair-wide index is derived per tile
+     * and the table is updated per tile.
+     *
+     * SUPERSEDE IS PER TILE AND IT IS A DROP, NOT AN ERROR ([SYN] 13.12.9,
+     * "Ordering").  A base picture reaches the encoder through a hardware
+     * decoder with its own latency -- 2.76 ms mean and 5.63 ms p99 in the
+     * measurement the clause cites -- while coded tiles come down the path
+     * they always did, so a patch arriving behind a coded write of the same
+     * position is the ORDINARY case and not a caller error.  The rule is
+     * `src_frame` must be strictly greater than the one the position already
+     * holds; a write that does not advance the position has been overtaken and
+     * is dropped, and the counts say how the run split.  Refusing the call
+     * instead would make the encoder's shadow diverge from the decoder's
+     * atlas, which drops silently and carries on. */
+    const int cols = d.atlas_geom.cols_per_eye * eyes;
+    uint32_t nap = 0, nsup = 0;
     for (uint32_t k = 0; k < count; ++k) {
         const uint32_t idx = first_tile + k;
         const uint32_t row = idx / (uint32_t)d.atlas_geom.cols_per_eye;
@@ -1958,6 +1953,16 @@ bool VkEncoder::atlas_write_tiles(uint32_t eye, uint32_t first_tile,
         const uint32_t t =
             row * (uint32_t)cols + eye * (uint32_t)d.atlas_geom.cols_per_eye +
             col;
+        if (t >= d.atlas_tab.e.size()) {
+            err = "tile index out of range";
+            return false;
+        }
+        const AtlasEntry &a = d.atlas_tab.e[t];
+        if ((a.flags & kAtlasValid) && src_frame > 0 &&
+            a.src_frame >= src_frame) {
+            ++nsup;
+            continue;               /* superseded: dropped, not applied */
+        }
         Impl::BaseWrite bw;
         bw.src = src;
         bw.src_offset = (VkDeviceSize)src_offset;
@@ -1969,14 +1974,17 @@ bool VkEncoder::atlas_write_tiles(uint32_t eye, uint32_t first_tile,
          * shadow has to describe the atlas the next encode will predict from,
          * and the next encode is what runs the copy; deferring both would make
          * the decision pass see the old entry. */
-        d.atlas_tab.write_base_tile(t, src_frame, 0);
+        d.atlas_tab.write_base_tile(t, src_frame);
         /* A patched position's undo snapshot is gone: the pixels it would
          * restore are no longer the ones the client holds.  Dropping the
          * snapshot makes a later rollback INVALIDATE the entry instead, which
          * is the safe direction -- an invalid tile is coded INTRA and a
          * wrongly-held one is a prediction from a picture nobody has. */
         if (t < d.atlas_undo.s.size()) d.atlas_undo.s[t].used = 0;
+        ++nap;
     }
+    if (applied) *applied = nap;
+    if (superseded) *superseded = nsup;
     return true;
 }
 

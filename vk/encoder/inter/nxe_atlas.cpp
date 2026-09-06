@@ -158,7 +158,6 @@ void AtlasTable::reset(const AtlasGeom &geom) {
      * Zero is therefore the correct reset value and not merely a convenient
      * one: `flags` zero is `valid == 0`. */
     e.assign(g.ntiles(), AtlasEntry{});
-    base_sourced.assign(g.ntiles(), 0u);
 }
 
 void AtlasTable::advance(const int32_t H[2][9]) {
@@ -197,29 +196,29 @@ void AtlasTable::code_tile(uint32_t t, uint32_t frame_number, int mode,
                         (mode == nw::kModeStaticMv ? kAtlasStatic : 0u));
     a.res_level = (uint8_t)res_level;
     std::memset(a.reserved, 0, sizeof a.reserved);
-    /* A coded tile REPLACES a base-sourced one: the position now holds pixels
-     * this encoder produced and the client decoded, which is the scheduled
-     * refresh ADR-0029 requires a base-sourced patch to get. */
-    if (t < base_sourced.size()) base_sourced[t] = 0u;
+    /* `flags` is written WHOLE above, so `base_sourced` is cleared here by
+     * construction -- which is 13.12.9's rule that a coded-tile write to the
+     * position retires the patch, because that write replaces the pixels. */
 }
 
-void AtlasTable::write_base_tile(uint32_t t, uint32_t frame_number,
-                                 int res_level) {
-    /* [SYN] 13.12.3 step 3's write-back, with the one difference that matters:
-     * the pixels came from the base layer, not from a coded nxvc tile.  The
-     * TABLE is identical either way -- identity `C`, this frame as the source,
-     * generation zero, valid, not static -- because the atlas entry describes
-     * WHERE the pixels are and at which pose, and that is the same statement
-     * however they were produced.  Only the provenance differs, and that is
-     * encoder-side. */
+void AtlasTable::write_base_tile(uint32_t t, uint32_t frame_number) {
+    /* [SYN] 13.12.9's metadata block, which is 13.12.3 step 3's with
+     * `base_sourced` set: the pixels came from the base layer, not from a
+     * coded nxvc tile.  Everything else is identical -- identity `C`, this
+     * frame as the source, generation zero, valid, not static, res_level 0 --
+     * because the entry describes WHERE the pixels are and at which pose, and
+     * that is the same statement however they were produced.  The BIT is the
+     * only thing that differs, and it is normative in v1: it is what lets a
+     * receiver, a rate controller and a conformance vector tell the two patch
+     * sources apart. */
     AtlasEntry &a = e[t];
     atlas_identity(a.C);
     a.src_frame = frame_number;
     a.gen = 0;
-    a.flags = kAtlasValid;   /* never static: a patch is content, not a pose */
-    a.res_level = (uint8_t)res_level;
+    /* Never static: a patch is content, not a pose. */
+    a.flags = (uint8_t)(kAtlasValid | kAtlasBaseSourced);
+    a.res_level = 0;
     std::memset(a.reserved, 0, sizeof a.reserved);
-    if (t < base_sourced.size()) base_sourced[t] = 1u;
 }
 
 /* ----------------------------------------------------------- the undo log */
