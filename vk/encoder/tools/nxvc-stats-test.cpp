@@ -1103,7 +1103,11 @@ int main(int argc, char **argv)
            " mismatching tiles, E2 %" PRIu64 " mismatching entries\n",
            fail.e0, fail.e1, fail.e2);
 
-    if (c.dpool) vkDestroyDescriptorPool(c.dev.handle(), c.dpool, nullptr);
+    /* Through the Device that created it, not vkDestroyDescriptorPool: the pool
+     * is the Device's to free, and destroy() below sweeps whatever is still
+     * outstanding.  Freeing it behind the Device's back left the sweep holding a
+     * stale handle and destroying it a second time. */
+    c.dev.destroy_descriptor_pool(c.dpool);
     for (auto &p : c.e0) c.dev.destroy_pipeline(p);
     for (auto &p : c.e0ycbcr) c.dev.destroy_pipeline(p);
     c.dev.destroy_pipeline(c.e1);
