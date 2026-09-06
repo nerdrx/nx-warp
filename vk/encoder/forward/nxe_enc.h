@@ -397,6 +397,12 @@ typedef struct nxe_frame_params {
      * the shader take it from ONE place and cannot drift. */
     uint32_t int_rdoq;
 
+    /* Effort 2: the rate-distortion trellis (nxe_trellis.h).  0 the level
+     * `int_rdoq` decides, 1 the trellis.  Encoder-only and no tool bit, for the
+     * same reason `int_rdoq` is not one: it changes which levels are coded and
+     * nothing about how they are decoded. */
+    uint32_t trellis;
+
     /* Frame weighting matrices, Q4, raster order in the 8x8 block.  wm_id 0
      * on a tile selects these; 1..3 select a built-in pair (kWeight). */
     uint32_t wm_luma[64];
@@ -433,6 +439,11 @@ typedef struct nxe_frame_params {
  * 2^26 and `lam_q8 * 3` is under 2^32.
  */
 #define NXE_RDOQ_LAM_Q12 1400   /* lambda = 0.342 * qstep^2, Q12 */
+/* Effort 2's lambda, the same family with ref's own rate-distortion constant:
+ * kLambdaScale is 0.22 and 0.22 * 4096 = 901.  A whole unit against its real
+ * rate is a different trade from one coefficient against a constant three
+ * bits, so it is a different constant and not a reuse of the one above. */
+#define NXE_TRELLIS_LAM_Q12 901
 #define NXE_RDOQ_BITS_Q8 768    /* 3.0 bits for a +-1 and its sign */
 
 /* The frame's lambda, Q8, from the TILE quantiser step `t` (kQStep[qp], Q4). */

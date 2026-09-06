@@ -289,6 +289,27 @@ void build_tables(const Config &cfg, Frame &f);
  * the table-set choice sums -- from whatever f.tabs currently holds. */
 void refresh_log_freq(Frame &f);
 
+/* Effort 2, between the plain E3 and the trellis E3 of one pass.
+ *
+ * Restores the built-in table sets when this is the FIRST pass (and their
+ * logs, which writing f.tabs does not rebuild -- that omission cost a
+ * seven-frame divergence), chooses every tile's table set from the plain
+ * coefficients, and fills `rate` with the Q10 model the trellis prices
+ * against: 8 * 32 * 16 int32, the layout forward.comp's RATE_AT reads.
+ *
+ * One function rather than four exported internals, because the ORDER of these
+ * steps is the part that is easy to get wrong and it belongs in one place. */
+void prepare_trellis_pass(Frame &f, const int16_t *coefs, bool from_defaults,
+                          int32_t *rate);
+
+/* And after it: the final per-tile choice, against the trained sets, without
+ * restoring the built-in ones first.  ref's emit pass. */
+void finish_trellis_pass(Frame &f, const int16_t *coefs);
+
+/* Put the ENTROPY_LITE variant back into every job's `table_set` after a
+ * trellis dispatch has borrowed the field for its rate model. */
+void restore_lite_variant(Frame &f);
+
 /* Lay three caller-owned planar 8-bit planes out tile-major, exactly as
  * read_frame does -- it is read_frame with the file read hoisted out, so the
  * two can never drift.  This is the CPU stand-in for E0 on the library path,

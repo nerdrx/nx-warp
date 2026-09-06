@@ -95,8 +95,19 @@ void setup(const Config &cfg, Frame &f) {
      * frame-uniform: E3 reads it from the frame parameters so the CPU model
      * and the shader take it from one place. */
     fp.int_rdoq = (uint32_t)cfg.int_rdoq;
+    /* E3 reads the trellis level here, like int_rdoq, so the CPU model and the
+     * shader take it from one place.  The host turns it on for pass two only. */
+    fp.trellis = 0u;
     f.rate_check = cfg.rate_check;
     f.trellis = cfg.trellis;
+    /* Effort 2 needs the neighbour chain to reach back at least a whole round
+     * of the eight blocks E3 keeps in flight.  Below 8 rANS lanes the chain
+     * would reach inside the current round, which that shape cannot satisfy --
+     * so it is refused on both paths rather than silently differing between
+     * them.  8 is the default and ENTROPY_LITE forces it. */
+    if (f.trellis && cfg.nsub_log2 < 3)
+        throw std::runtime_error(
+            "NX Warp effort 2 (the trellis) needs --nsub 3 or more");
     /* The QP ladder, resolved once.  0 first, so a tie in the decision keeps
      * the frame's own quantiser (see choose_qp_delta). */
     f.qp_lambda_q12 = cfg.qp_lambda_q12;
@@ -1003,6 +1014,47 @@ static int choose_qp_delta(Frame &f, uint32_t t,
     return best_dq;
 }
 
+void prepare_trellis_pass(Frame &f, const int16_t *coefs, bool from_defaults,
+                          int32_t *rate) {
+    const nxe_frame_params &fp = f.fp;
+    if (from_defaults && f.custom_tables) {
+        for (int k = 0; k < 8; ++k) set_from_default(f, k, (int)fp.nctx);
+    }
+    refresh_log_freq(f);
+    /* Under ENTROPY_LITE too.  `table_set` names the VARIANT in a Lite tile
+     * header, but the trellis still needs A rate model and ref gives it the
+     * same one -- `quantize_tile_ex` runs `select_set` whatever the entropy
+     * tool is.  So the field carries the rate set for the trellis dispatch and
+     * `restore_lite_variant` puts the header's value back before E4 reads it;
+     * the two dispatches upload the job array separately, so nothing else has
+     * to know. */
+    for (uint32_t t = 0; t < fp.ntiles; ++t)
+        choose_tile_table_set(f, coefs, t);
+    for (int k = 0; k < 8; ++k) {
+        nxe_rate_cost rc;
+        nxe_build_rate_cost(&f.tabs.freq[k][0][0], (int)fp.nctx, &rc);
+        for (int c = 0; c < NXE_MAX_CTX; ++c)
+            for (int sy = 0; sy < NXE_NUM_SYM; ++sy)
+                rate[k * NXE_MAX_CTX * NXE_NUM_SYM + c * NXE_NUM_SYM + sy] =
+                    rc.sym[c][sy];
+        /* And the bound's rate half, per set: see RATE_ZC in forward.comp. */
+        rate[8 * NXE_MAX_CTX * NXE_NUM_SYM + k] = rc.zero_cheapest;
+    }
+}
+
+void finish_trellis_pass(Frame &f, const int16_t *coefs) {
+    if (f.entropy_lite) return;
+    refresh_log_freq(f);
+    for (uint32_t t = 0; t < f.fp.ntiles; ++t)
+        choose_tile_table_set(f, coefs, t);
+}
+
+void restore_lite_variant(Frame &f) {
+    if (!f.entropy_lite) return;
+    const uint32_t v = (uint32_t)(f.entropy_lite - 1);
+    for (auto &j : f.jobs) j.table_set = v;
+}
+
 /* E3 over one tile, with the trellis if this frame is running it.
  *
  * The trellis prices against the table set that will CODE the tile, and in this
@@ -1057,6 +1109,24 @@ void encode_frame_cpu(Frame &f, uint32_t frame_number) {
     const nxe_frame_params &fp = f.fp;
     std::vector<int16_t> qp_scratch;
     if (f.qp_cand_n > 1) qp_scratch.resize(NXE_TILE_COEFS_MAX);
+    /* Reseed every tile's table set from the frame's quantiser.
+     *
+     * ref builds `tp` fresh for every tile of every frame -- `make_tile_params`
+     * is `clamp((base_qp + qp_delta) >> 3, 0, 7)` -- while `Frame::jobs` here
+     * is allocated once and reused, so without this the value a tile ENDS a
+     * frame with is the value it STARTS the next one with.  `select_set` takes
+     * the current set as its fallback, so a tile whose histogram is empty keeps
+     * whatever it last chose instead of the seed, and the two encoders drift.
+     *
+     * It takes seven frames of a sparse clip to show: at 8 frames, QP 34, rANS
+     * with custom tables, frame 7 was 1870 bytes against the reference's 1938
+     * and frames 0..6 were byte-identical. */
+    {
+        const uint32_t seed = f.entropy_lite
+                                  ? (uint32_t)(f.entropy_lite - 1)
+                                  : table_set_seed((int)fp.base_qp);
+        for (uint32_t t = 0; t < fp.ntiles; ++t) f.jobs[t].table_set = seed;
+    }
     auto tile_src = [&](uint32_t t, const int32_t **src) {
         for (int p = 0; p < NXE_MAX_PLANES; ++p)
             src[p] = &f.src[p][(size_t)t * f.plane_size[p] * f.plane_size[p]];
@@ -1071,8 +1141,20 @@ void encode_frame_cpu(Frame &f, uint32_t frame_number) {
      * Measured: with custom tables on, that alone was 6312 bytes against the
      * reference's 5166 on the acid fixture, and byte-identical without them. */
     if (f.trellis) {
-        if (f.custom_tables)
+        if (f.custom_tables) {
             for (int k = 0; k < 8; ++k) set_from_default(f, k, (int)fp.nctx);
+            /* And the log of them.  `f.log_freq` is the hoisted `std::log2` the
+             * per-tile table-set choice scores with, and it is NOT rebuilt by
+             * writing f.tabs -- `choose_table_sets` restores the built-in sets
+             * and refreshes it in the same breath, and this pass has to do the
+             * same.  Without it the first pass of frame N scores against the
+             * logs of frame N-1's TRAINED tables while reading frame N's
+             * built-in ones, which is a mismatch that takes several frames of
+             * training to grow: frames 0..6 of the acid clip were
+             * byte-identical and frame 7 chose table set 4 where the reference
+             * chose 5, on every tile. */
+            refresh_log_freq(f);
+        }
         for (int k = 0; k < 8; ++k)
             nxe_build_rate_cost(&f.tabs.freq[k][0][0], (int)fp.nctx,
                                 &f.trellis_rc[k]);

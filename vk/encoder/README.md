@@ -1139,7 +1139,8 @@ requires the integer one to beat effort 1.
 
 `nxvc-vkenc --cpu --trellis 1`, and it is **byte-identical to
 `nxv-enc --int-trellis 1 --rdoq-effort 3`** at the acid flags, on both entropy
-coders, at QP 22/26/30/34/40. `vk.encoder.trellis.cpu` is that claim.
+coders, at QP 22/26/30/34/40, over 8 and 16 frames.
+`vk.encoder.trellis.cpu` is that claim.
 
 The trellis itself (`forward/nxe_trellis.c`) is a transcription and was right
 almost immediately. What took the work was the ORDER the two encoders quantise
@@ -1164,6 +1165,15 @@ size:
   assign tiles to built-in sets so the trained ones can be pooled from them --
   and wrong for the emit pass, where the trained sets are what the stream
   carries.
+* **restoring the built-in sets means restoring their logs too.** The per-tile
+  choice scores through `f.log_freq`, a hoisted `std::log2` that writing
+  `f.tabs` does not rebuild -- `choose_table_sets` restores the sets and
+  refreshes it in the same breath, and the trellis's first pass has to as well.
+  Without it the first pass of frame N scored frame N-1's *trained* tables
+  while reading frame N's *built-in* ones. It takes seven frames of training to
+  become visible: frames 0-6 of the acid clip were byte-identical and frame 7
+  chose table set 4 where the reference chose 5, on every tile, for 68 bytes of
+  15449. The test runs eight frames because three would pass over it.
 * and under ENTROPY_LITE the trellis still needs *a* rate model. `table_set`
   names the variant in a Lite tile header, but ref runs `select_set` whatever
   the entropy tool is and prices against `tabs[table_set]`, so the set is chosen
@@ -1173,34 +1183,78 @@ Effort 2 therefore quantises the frame twice with rANS custom tables on, and
 once without -- there is nothing for a second pass to be against when the
 tables never moved.
 
-### What still differs
+### Effort 2 on the device
 
-One case, and it is precise rather than vague: **8 frames, QP 34, rANS with
-custom tables** diverges at frame 7, by 68 bytes of 15449. Three frames is
-byte-identical at every quantiser, both coders; 8 frames is byte-identical at
-QP 22, 26, 30 and 40 and on Lite at every quantiser. Both encoders are
-deterministic (three runs of each, one hash), so it is a real logic difference
-in the training convergence and not a race. It is not chased here and the test
-runs at three frames rather than pinning a length that is known to fail.
+`nxvc-vkenc --trellis 1`, and it is **byte-identical to `nxv-enc --int-trellis 1
+--rdoq-effort 3`** on the CPU models, on an RX 7900 XTX and on lavapipe, at
+QP 22/26/30/34/40, on both entropy coders, over 8 frames -- and on pan8 and
+pan8s at every one of those quantisers, which is what makes the BD-rate table
+above transfer to the device exactly rather than needing its own measurement.
+Streams decode through `nxv-dec` and `nxvc-vkdec` to the same pixels.
+`vk.encoder.trellis.{cpu,0,lavapipe}` is the claim.
 
-### What is not built: the shader
+**Shape: one block per lane, eight blocks in flight.** The trellis is a serial
+walk over a unit's scan, so lane `r == 0` of each of E3's eight group entries
+runs its whole block while the other seven wait at the barrier. That is not a
+waste of the group -- the eight entries run eight blocks at once, and a 64-block
+plane is eight rounds of eight, which is exactly the neighbour chain: block `b`
+conditions on `b - nlanes`, entry `g` owns `g, g+8, g+16 ...`, so at 8 lanes the
+predecessor is the entry's own previous round and no lane ever reads another's.
+Below 8 rANS lanes the chain would reach inside the current round, which this
+shape cannot satisfy, so the library **refuses effort 2 under `--nsub 3`**
+rather than differ from the CPU model there.
 
-The trellis runs in the reference only. It is now *portable* rather than
-crossable-in-principle, and the ruling on the two obstacles below is: **quantise
-twice**, and byte-identity is against `nxv-enc --int-trellis 1 --rdoq-effort 3`
-with the pipeline's existing "pick the table set from the coefficients" order
-kept. E3 is 0.61 ms of 11 at 578 tiles, so doubling it is affordable against a
-3-5 % wire saving.
+**No `shaderInt64`.** The accumulator reaches 2^54, and the rule at the top of
+`nxe_enc_common.glsl` -- int32 only -- is not waived for it: a 64-bit value is
+carried as two uints through `umulExtended` and `uaddCarry`, the same
+`umulExtended` the requantiser's lambda already uses. So byte-identity is
+checkable on both ICDs without either having to offer a 64-bit type.
 
-What is in the tree towards that: the reference path is now integer end to end
-(blocks, DC plane and sign hiding), which is the specification the shader is
-written against, and `forward/nxe_ctx.h` lifts the entropy-context derivation
-out of `rans_cpu.c` so the trellis can reach it. The trellis prices a candidate
-level *before* the level exists, so it cannot go through `nxe_unit_ops` the way
-the rate model does and has to derive the same contexts itself.
+**Two things cost a debugging pass each, and both were invisible as bugs**
+because every wrong version decoded perfectly:
 
-What is not: `nxe_e3_*` has no trellis, so `nxvc-vkenc --cpu` is still the
-dead-zone quantiser, and there is no GLSL. The shape and the obstacles:
+* the shader assumed `RateCost::zero_cheapest`. The `hi` bound -- everything
+  above the highest position reaching half a step is provably zero -- has a
+  distortion half that is an identity and a rate half that is a property of the
+  TABLE. With the built-in tables it holds, so the shader agreed with the CPU
+  model everywhere until `--custom-tables` trained a set where it did not, and
+  then exactly one tile of one frame differed. It is now computed per set on the
+  host and read as `RATE_ZC`.
+* and under ENTROPY_LITE the trellis still needs *a* rate model, so the tile
+  job's `table_set` carries the rate set for the trellis dispatch and the
+  variant is put back before E4 reads it -- the two dispatches upload the job
+  array separately, so nothing else has to know.
+
+**Cost.** GPU dispatch time, RX 7900 XTX, median of 20:
+
+| | 289 tiles | 578 tiles |
+|---|---|---|
+| E3, plain (effort 1) | 0.29 ms | 0.43 ms |
+| E3, trellis | **5.26 ms** | **5.45 ms** |
+
+The trellis dispatch barely scales with tile count because it is latency-bound
+on the serial walk, not throughput-bound: eight lanes of a 64-lane group are
+doing the work. Effort 2 runs it **twice** with rANS custom tables (the two-pass
+structure) and once without, so at 578 tiles:
+
+* **Lite: ~6.2 ms** of the 11 ms budget -- one plain E3, one trellis E3, E4L,
+  E2, E5.
+* **rANS with custom tables: ~13.1 ms** -- two plain E3, two trellis E3, E4, E2,
+  E5. **Over budget**, and the honest reading is that effort 2 as built is a
+  Lite-path level and an rANS-path project. The obvious lever is occupancy: at
+  eight lanes of sixty-four the trellis leaves seven eighths of the group idle,
+  and a shape that walked eight units per entry in parallel would cost the
+  shared state eight ways rather than the time.
+
+So it is **effort 2 and not part of effort 1**, which is what the measurement
+says rather than what was hoped.
+
+### What is not built
+
+The rANS path's cost, above. Everything else is built: the reference, the CPU
+model and the shader all produce the same stream. What remains is occupancy work
+on the trellis dispatch, and the shape and the obstacles it was built against
+are kept here because they are what the design has to keep satisfying:
 
 * **Shape.** One block per lane. A 64x64 luma plane at the 8x8 transform is 64
   blocks, which is exactly E3's group width, and each lane walks its own
