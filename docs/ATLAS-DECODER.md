@@ -384,7 +384,10 @@ picture. Concretely, alongside the existing `nxvc_vkd_images`:
 
 * the atlas image, view and format: ONE image whose planes hold both eyes'
   sub-pictures side by side, matching `nxvw_ring_layout()`, with `planeW[]` and
-  the strides so the client can find eye `e` at column `e * pw`;
+  the strides so the client can find eye `e` at column `e * pw`.
+  For a `CT_NONE` stream this is the 8-bit two-image NV12-shaped view above, one
+  luma tap and one chroma tap, because three R16 planes cost 2.124 ms of display
+  pass against 1.086 -- and the u16 layout remains what conformance compares;
 * the per-tile table as a buffer handle the client can bind as a uniform buffer,
   with its element stride (64), `cols` and `cols_per_eye`, so the client applies
   the eye-minor mapping above rather than guessing it;
@@ -449,6 +452,53 @@ atlas-sourced prediction, `NEAR_SKIP` in place, and the conformance leg.
 Implementation goes on `atlas-decoder` off `atlas`.
 
 ## Open questions
+
+* **The display format is decided, and it was decided by a measurement.**
+  MEASURED on the Pico 4 by the texture-native feasibility agent (branch
+  `texture-native`, `docs/TEXTURE-NATIVE-PATCHES.md`, commit `05791be`), a full
+  2176x1088 display pass, one frame pair:
+
+  | atlas the display pass samples | ms/frame pair |
+  |---|---|
+  | three-plane R16, which is what this document specified | **2.124** |
+  | one-tap 8-bit | **1.086** |
+  | one-tap R16 | 1.327 |
+  | compressed (ASTC/ETC2/EAC), bilinear free | 1.05 - 1.09 |
+
+  **The difference is the number of TAPS, not the format.** Three planes at
+  R16 costs about twice a single-tap read of the same picture, and that is the
+  whole gap; going from 16-bit to 8-bit on the same tap count is worth 0.24 ms
+  against the 1.04 ms the tap count is worth.
+
+  So for `CT_NONE` streams -- 8-bit YCbCr 4:2:0, which is what a live WiVRn
+  stream actually is -- the decoder exposes the atlas for display as an 8-bit
+  layout the pass samples in **one luma tap plus one chroma tap**: two images,
+  `R8_UNORM` luma at full resolution and `R8G8_UNORM` chroma at half, which is
+  NV12-shaped. A packed `R8G8B8A8` holding Y with the co-sited CbCr in a single
+  tap is the alternative and costs 2x the luma memory; both are to be priced on
+  the device. The **u16 storage layout stays the conformance representation**
+  and nothing about 13.12.1 moves: this is a view, produced beside the atlas,
+  and it is not what conformance compares.
+
+  Two facts from the same report that constrain anything built here: **no
+  compressed format carries `STORAGE_IMAGE`**, so a kernel can never write one
+  -- a compressed atlas can only ever be fed by `vkCmdCopyBufferToImage` from a
+  server that encoded the blocks. And **ASTC 6x6 cannot tile 64x64** (64/6 is
+  not an integer), so tile origins are not block-aligned and a boundary block
+  would hold samples from two tile positions with different source poses and
+  different source frames. Only 4x4 and 8x8 divide 64.
+
+* **Atlas writes are bound by the number of REGIONS, not by bytes.** Measured
+  at **3.43 us per scattered 64x64 tile** on this driver for every compressed
+  format, 1.70 us uncompressed -- and coalescing the same bytes into full-width
+  row strips is up to **28x cheaper** (a full-atlas refresh: 0.071 ms instead of
+  1.981 ms). So `nxvc_vk_atlas_write_tiles`, and the decoder's own atlas store,
+  must **coalesce a frame's tiles into full-width row strips** rather than
+  issuing one region per tile. At 40 coded tiles a frame the per-region form is
+  0.14 ms of pure overhead, which is a fifth of Pass W; at a full refresh it is
+  1.98 ms, which is most of the ATLAS budget. The API already takes
+  `(first_tile, count)` as a RUN for exactly this reason, and the run must be
+  turned into strips inside the decoder rather than passed through as regions.
 
 * **The atlas image format, and what was actually built.** The design above
   wants the atlas to be an IMAGE so the client's display pass can sample it.
