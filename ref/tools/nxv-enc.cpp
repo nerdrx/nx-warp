@@ -73,6 +73,7 @@ static void usage() {
         "  --wm 0..3|auto       per-tile weighting matrix id (default 0)\n"
         "  --no-rdo             plain dead-zone quantizer (default: RD trellis)\n"
         "  --rdo-lambda F       RD lambda scale (default 0.22, fitted)\n"
+        "  --int-trellis N      run the RD trellis in exact integers (0/1)\n"
         "  --qp-search N        try per-tile qp_delta in [-N, +N] (default 0)\n"
         "  --qp-search-step N   spacing of those candidates (default 2)\n"
         "  --rdoq-effort N      1 fast, 2 medium, 3 full trellis candidates\n"
@@ -293,7 +294,7 @@ int main(int argc, char **argv) {
     int lossless = 0, tile420 = 0, custom_tables = 1, rgb = 0, quiet = 0;
     int tskip = 0, nsub = 255, stats = 0;  // nsub 255 = auto lane count
     int color_space = 0;
-    int rdo = 1, rdo_lambda_q8 = 0, qp_search = 0, wm = 0;
+    int rdo = 1, rdo_lambda_q8 = 0, qp_search = 0, wm = 0, int_trellis = 0;
     // These mirror nxvc_config_default(): the v2 intra tools are on, and the
     // entropy and context package is OFF (docs/TOOLBITS.md 7).
     int intra_dir = 1, intra_dir_layer = 0, ctx_v2 = 1, ctx_v3 = 0;
@@ -531,6 +532,7 @@ int main(int argc, char **argv) {
         else if (a == "--rdo") rdo = 1;
         else if (a == "--no-rdo") rdo = 0;
         else if (a == "--rdo-lambda") rdo_lambda_q8 = (int)(std::atof(val()) * 256.0 + 0.5);
+        else if (a == "--int-trellis") int_trellis = std::atoi(val());
         else if (a == "--qp-search") qp_search = std::atoi(val());
         else if (a == "--qp-search-step") qp_step = std::atoi(val());
         else if (a == "--dc-lambda") dc_lambda = (int)(std::atof(val()) * 256.0 + 0.5);
@@ -795,6 +797,7 @@ int main(int argc, char **argv) {
     cfg.dc_lambda_q8 = (uint32_t)(dc_lambda > 0 ? dc_lambda : 0);
     cfg.dc_rdoq_off = (uint32_t)dc_off;
     cfg.qp_search = (uint32_t)qp_search;
+    cfg.int_trellis = (uint32_t)int_trellis;
     cfg.wm_id = (uint32_t)wm;
     cfg.intra_dir = (uint32_t)intra_dir;
     cfg.intra_dir_layer = (uint32_t)intra_dir_layer;

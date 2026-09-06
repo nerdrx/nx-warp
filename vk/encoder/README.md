@@ -787,13 +787,17 @@ BD-rate against the same effort-0 curve:
 | the DEAD ZONE retuned (`NXVC_DZ_AC`, twelve profiles) | best -0.26 % | yes, and it is worth nothing |
 
 The trellis is the biggest thing on that list that is *about the quantiser*,
-and it is the one that cannot cross. `rdoq_unit` prices every candidate level
-with a real rate from `table_set_cost` — a sum of `std::log2` terms — and walks
-a trellis over the scan. Neither half survives: `log2` is not the same function
-on a host libm and on a device, and a trellis over the scan is a serial
-dependency where the hardware wants sixty-four independent lanes. ADR 0028
-reached that conclusion about the mode decision and it is the same conclusion
-here.
+and it was ruled the one that cannot cross. `rdoq_unit` prices every candidate
+level with a real rate from `table_set_cost` — a sum of `std::log2` terms — and
+walks a trellis over the scan. Neither half was thought to survive: `log2` is
+not the same function on a host libm and on a device, and a trellis over the
+scan is a serial dependency where the hardware wants sixty-four independent
+lanes.
+
+**Both halves of that turned out to be wrong, and the section below is the
+measurement.** `RateCost` was always Q10 integers — the `log2` is in the table
+that *builds* it, which `nxe_neglog2.inc` now replaces — and the serial chain is
+serial only within one 8x8 unit, of which a 64x64 plane has sixty-four.
 
 What is left of it, once both halves are removed, is one coefficient at a time
 against a constant rate — which is effort 1, and which recovers a quarter of
@@ -828,6 +832,82 @@ same `double` estimate the mode decision could not use. An integer version
 needs a bit estimate the device can trust, which is the piece of work ADR 0028
 deferred. **That estimate now exists** — see below — and the decision that
 would use it does not.
+
+## The trellis, in exact integers
+
+`nxv-enc --int-trellis 1`, and `nxvc_config::int_trellis`.
+
+The same trellis: same three states over the previous level's class, same
+candidate magnitudes per effort, same LAST decision, same provable `hi` bound.
+Three things change and nothing else does:
+
+* **the distortion** becomes `orig - dequant(m, step)` — the decoder's own
+  reconstruction through `(q * t + 8) >> 4` — instead of the float
+  `a - m * (step / 16.0)`. That is not merely an integer spelling of the same
+  number, it is the right number: the double form was pricing an error the
+  decoder never makes. `int_rdoq_unit` has always measured it this way.
+* **the rate** does not change at all. `RateCost::sym` was already `i32` Q10
+  bits; what was floating was the `std::log2` that *built* it, and
+  `scripts/gen-neglog2.py` is that function as a table.
+* **the accumulator** becomes `(d * d) << 18` plus `lam_q8 * rate_q10` in
+  `i64`, with no division anywhere. A position's cost is under 2^48 and a
+  1024-coefficient unit accumulates to 2^58, which fits.
+
+Lambda is `(901 * t * t) >> 12` over the Q4 step — the same integer family the
+requantiser uses, with `ref`'s own rate-distortion constant (`kLambdaScale`
+0.22, and 0.22 x 4096 = 901) rather than the requantiser's 0.342.
+
+There is no epsilon and no tolerance in any of that, which is the point: two
+implementations that perform these adds in this order reach the same levels or
+one of them has a bug. That is what a GPU needs and what the doubles could
+never promise.
+
+### Measured
+
+1088x1088, 8 frames, QP 22/26/30/34/40, BD-rate against effort 1
+(`--no-rdo --int-rdoq 1`):
+
+| | pan8 rANS | pan8s rANS | pan8 Lite | pan8s Lite |
+|---|---|---|---|---|
+| trellis, double, `--rdoq-effort 3` | -4.07 % | -2.26 % | -4.51 % | -5.34 % |
+| **trellis, integer, same effort** | **-4.07 %** | **-2.25 %** | **-4.51 %** | **-5.35 %** |
+| trellis, double, `--rdoq-effort 1` | -3.11 % | +2.15 % | -4.72 % | -5.30 % |
+| trellis, integer, `--rdoq-effort 1` | -3.11 % | +1.98 % | -4.70 % | -5.29 % |
+
+**Integerising the trellis costs 0.02 % BD-rate at worst.** The gain survives
+intact: about **-3.2 % on rANS and -4.9 % on Lite**, averaged over the two
+clips, at the full effort. (The fast trellis at effort 1 is not the one to
+take: it is *positive* on pan8s rANS, so it can lose rate on a clip the full
+one wins.)
+
+Streams from it decode through `nxv-dec` and `nxvc-vkdec` to the same bytes.
+`vk.encoder.trellis` pins the two trellises within 2 % per quantiser — they are
+byte-identical at QP 30 and 40 on its fixture and within 0.2 % at QP 22 — and
+requires the integer one to beat effort 1.
+
+### What is not built: the shader
+
+The trellis runs in the reference only. It is now *portable* rather than
+crossable-in-principle, and the port has a clear shape and two named obstacles:
+
+* **Shape.** One block per lane. A 64x64 luma plane at the 8x8 transform is 64
+  blocks, which is exactly E3's group width, and each lane walks its own
+  64-position trellis with no reference to any other lane's coefficients.
+* **Obstacle 1: the neighbour chain.** `rdoq_plane` conditions block `bi` on
+  the class left by block `bi - nlanes`, so with 8 rANS lanes a 64-block plane
+  is 8 sequential rounds of 8 blocks rather than one parallel sweep. That is a
+  barrier per round inside the group, not a redesign.
+* **Obstacle 2: the table set.** The trellis prices against the table set that
+  will code the tile, and in this pipeline the table set is chosen *after* E3
+  from the coefficients E3 produced. The reference resolves it by quantising
+  twice (`quantize_tile_ex`'s two passes). A GPU E3 would either do the same —
+  which doubles it — or price against the QP-seeded set, which is a different
+  stream from `nxv-enc`'s and so would need the reference to offer the same
+  mode before byte-identity means anything.
+
+The second is the one that decides whether byte-identity is against `nxv-enc`
+as it stands or against a new mode of it, and it should be settled before the
+shader is written rather than discovered inside it.
 
 ## The integer rate model, measured
 

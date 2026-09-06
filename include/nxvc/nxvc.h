@@ -586,6 +586,22 @@ typedef struct nxvc_config {
      * vk/encoder/README.md, "The effort levels, measured" -- and it is here
      * because it is the part of the trellis that can be reproduced at all. */
     uint32_t int_rdoq;
+
+    /* Encoder-only: run the rate-distortion trellis in EXACT INTEGERS.
+     *
+     *   0 = the double trellis (what this encoder has always run)
+     *   1 = the same trellis with integer arithmetic throughout
+     *
+     * Same states, same candidates, same LAST decision; the distortion becomes
+     * the decoder's own `orig - dequant(m, step)` instead of a float
+     * `a - m * step / 16`, the rate was already Q10 integers, and the
+     * accumulator is i64 with no division.  It exists so the trellis can be
+     * run somewhere that has no `double` and no libm -- a GPU -- and produce
+     * the SAME STREAM, which the doubles could never promise.
+     *
+     * Like `int_rdoq`, a stream produced under it is an ordinary stream: this
+     * changes which levels are coded and never how they are decoded. */
+    uint32_t int_trellis;
 } nxvc_config;
 
 /* One eye's view for one frame: the orientation the frame was rendered with
