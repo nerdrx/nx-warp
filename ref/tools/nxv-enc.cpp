@@ -139,6 +139,13 @@ static void usage() {
         "               atlas position is fetched through the matrix of the\n"
         "               entry it lands in, resolved with the co-located\n"
         "               matrix.  NORMATIVE; requires --atlas on\n"
+        "  --atlas-coarse R     TWO-LEVEL REFRESH: a tile being refreshed\n"
+        "               lands at res_level R (1 or 2) and a later frame\n"
+        "               refines it to res_level 0.  Encoder policy only, no\n"
+        "               syntax: the refinement is an ordinary coded tile\n"
+        "               predicting from the upsampled coarse pixels\n"
+        "  --atlas-coarse-budget N  at most N refinements per frame\n"
+        "  --atlas-coarse-stats P  write the two-level accounting to P\n"
         "  --atlas-picture-disp N  13.12.11: code a PICTURE frame -- the\n"
         "               ordinary model, every tile reconstructed, the atlas\n"
         "               rebuilt from it -- once the worst corner displacement\n"
@@ -299,6 +306,16 @@ int main(int argc, char **argv) {
     int atlas_picture_period = 0;
     std::string atlas_base_path;
     int atlas_base_margin = 8;
+    // TWO-LEVEL REFRESH (ADR-0029).  A tile that is being refreshed lands at
+    // res_level R -- cheap, few bytes -- and a later frame refines it to full
+    // resolution.  The refinement needs NO syntax: under the atlas a coded
+    // tile predicts from its own entry, which holds the upsampled coarse
+    // pixels, so coding it again at res_level 0 IS a residual on the coarse
+    // tile rather than a re-code of it.  The whole policy is therefore a
+    // per-frame res_map, which the library already takes.
+    int coarse_level = 0;      // 0 = off, 1 = 32x32, 2 = 16x16
+    int coarse_budget = 0;     // max refinements a frame may spend; 0 = all
+    std::string coarse_stats_path;
     std::string atlas_dump;
     int mv_range = 16, skip_thresh = 0, mode_lambda = 0;
     int int_decision = 0, int_lambda = 0, int_intra_mad = 0, int_rdoq = 0;
@@ -396,6 +413,10 @@ int main(int argc, char **argv) {
         else if (a == "--atlas-base") atlas_base_path = val();
         else if (a == "--atlas-base-margin")
             atlas_base_margin = std::atoi(val());
+        else if (a == "--atlas-coarse") coarse_level = std::atoi(val());
+        else if (a == "--atlas-coarse-budget")
+            coarse_budget = std::atoi(val());
+        else if (a == "--atlas-coarse-stats") coarse_stats_path = val();
         else if (a == "--atlas-gen-max") atlas_gen_max = std::atoi(val());
         else if (a == "--atlas-dump") atlas_dump = val();
         else if (a == "--eyes") eyes = std::atoi(val());
@@ -902,6 +923,10 @@ int main(int argc, char **argv) {
     }
 
     std::vector<uint8_t> Y(ysz), U(csz), V(csz);
+    // Per-tile coarse debt: 1 while a tile's atlas entry holds upsampled
+    // res_level > 0 pixels that no later frame has refined yet.
+    std::vector<uint8_t> coarse_debt(tl.tile_count, 0);
+    uint64_t c_landed = 0, c_refined = 0, c_relanded_dirty = 0, c_coded_full = 0;
     std::vector<uint8_t> rmap(tl.tile_count), qmap(tl.tile_count),
         smap(tl.tile_count);
     std::vector<uint8_t> outbuf(ysz * 4 + csz * 8 + (1u << 20));
@@ -944,6 +969,29 @@ int main(int argc, char **argv) {
         }
         const uint8_t *rm = nullptr, *qm = nullptr;
         if (fr && read_exact(fr, rmap.data(), rmap.size())) rm = rmap.data();
+        // TWO-LEVEL REFRESH: the whole policy, as a res_map.
+        //   a tile with no coarse debt   -> res_level R  (land it cheap)
+        //   a tile carrying coarse debt  -> res_level 0  (refine it)
+        // Whether either actually happens is the encoder's RD decision: a
+        // tile only lands if it is being refreshed at all, and a coarse tile
+        // only refines if its upsampled pixels are a bad enough predictor to
+        // be worth coding.  The budget caps how many may refine in one frame.
+        if (coarse_level > 0) {
+            int spent = 0;
+            for (uint32_t t = 0; t < (uint32_t)tl.tile_count; ++t) {
+                if (coarse_debt[t]) {
+                    if (coarse_budget == 0 || spent < coarse_budget) {
+                        rmap[t] = 0;
+                        ++spent;
+                    } else {
+                        rmap[t] = (uint8_t)coarse_level;   // wait its turn
+                    }
+                } else {
+                    rmap[t] = (uint8_t)coarse_level;
+                }
+            }
+            rm = rmap.data();
+        }
         if (fq && read_exact(fq, qmap.data(), qmap.size())) qm = qmap.data();
         if (fs && read_exact(fs, smap.data(), smap.size()))
             nxvc_encoder_set_skip_map(enc, smap.data(), (uint32_t)smap.size());
@@ -982,6 +1030,26 @@ int main(int argc, char **argv) {
         }
         std::fwrite(outbuf.data(), 1, ol, fo);
         total += ol;
+        // TWO-LEVEL accounting, read back from what the encoder actually did.
+        if (coarse_level > 0) {
+            uint32_t tc2 = 0;
+            const nxvc_tile_info *ti2 = nxvc_encoder_tiles(enc, &tc2);
+            for (uint32_t t = 0; t < tc2 && t < (uint32_t)tl.tile_count; ++t) {
+                if (ti2[t].skipped) continue;          // untouched this frame
+                if (ti2[t].res_level > 0) {
+                    // A coarse landing.  If the tile already carried debt, its
+                    // previous coarse pixels are being REPLACED before anyone
+                    // refined them: those bytes bought nothing that survived.
+                    if (coarse_debt[t]) ++c_relanded_dirty;
+                    coarse_debt[t] = 1;
+                    ++c_landed;
+                } else {
+                    if (coarse_debt[t]) ++c_refined;   // the refinement
+                    else ++c_coded_full;
+                    coarse_debt[t] = 0;
+                }
+            }
+        }
         // Base-layer refresh, applied AFTER the frame and BEFORE the dump so
         // the dump covers the patched atlas -- which is what the decoder will
         // dump too, and therefore what proves the two agree.
@@ -1127,6 +1195,26 @@ int main(int argc, char **argv) {
     if (fatlas) std::fclose(fatlas);
     std::fclose(fo);
     std::fclose(fi);
+    if (coarse_level > 0 && !coarse_stats_path.empty()) {
+        uint64_t outstanding = 0;
+        for (uint32_t t = 0; t < (uint32_t)tl.tile_count; ++t)
+            outstanding += coarse_debt[t] ? 1u : 0u;
+        std::FILE *cs = std::fopen(coarse_stats_path.c_str(), "wb");
+        if (cs) {
+            std::fprintf(cs,
+                         "{\"coarse_level\": %d, \"budget\": %d, "
+                         "\"landed\": %llu, \"refined\": %llu, "
+                         "\"relanded_before_refine\": %llu, "
+                         "\"coded_full\": %llu, \"outstanding\": %llu}\n",
+                         coarse_level, coarse_budget,
+                         (unsigned long long)c_landed,
+                         (unsigned long long)c_refined,
+                         (unsigned long long)c_relanded_dirty,
+                         (unsigned long long)c_coded_full,
+                         (unsigned long long)outstanding);
+            std::fclose(cs);
+        }
+    }
     if (fr) std::fclose(fr);
     if (fq) std::fclose(fq);
     if (fs) std::fclose(fs);
