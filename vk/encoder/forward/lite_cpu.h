@@ -60,6 +60,14 @@ extern const uint8_t nxe_lite_mag_bits[8];
 /* Bits the per-unit LAST field takes, given the unit's coefficient count. */
 int nxe_lite_last_bits(int ncoef);
 
+/* Lite's exact rate in Q10 bits, without coding the tile.  Equal to
+ * `8 * (NXE_TILE_HEADER_BYTES + nxe_lite_tile(..., NULL))` for every tile, and
+ * `--rate-check` pins that. */
+uint32_t nxe_lite_tile_bits_q10(const nxe_frame_params *fp,
+                                const nxe_tile_job *job,
+                                const nxe_tile_units *tu, const int16_t *coef,
+                                const uint8_t *modes, int variant);
+
 /* E4-lite over one tile.  Writes the 8-byte tile header followed by the
  * payload into `out` (at least NXE_TILE_BYTES_MAX_LITE) when `out` is
  * non-null; when it is null only the length is computed.  Returns the payload

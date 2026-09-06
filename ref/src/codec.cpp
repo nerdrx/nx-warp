@@ -228,6 +228,12 @@ struct FrameParams {
     u32 ref_slots = 0, flags = 1;
     int warp_present = 0;       // frame flags bit 3
     WarpMatrix warp[2];         // warp_ext(), one record per eye
+    int row_present = 0;        // frame flags bit 4, tool bit 32
+    std::vector<u8> row_bits;   // row_present(), one bit per row structure
+    int atlas = 0;              // stream tool bit 31
+    int picture_frame = 0;      // frame flags bit 5, tool bit 34 (13.12.11):
+                                //   this frame is coded as the PICTURE model
+                                //   and the atlas is rebuilt from its result
     int inter = 0;              // stream tool bit 10
     int stereo = 0;             // stream tool bit 12
     int nctx = kNumCtxV1;   // 12, 16 or 27, from the CTX_V2/CTX_V3 tool bits
@@ -2393,6 +2399,24 @@ struct nxvc_encoder {
     // reproduce, measured on the frame just encoded.
     std::vector<u16> age_since_intra;
     std::vector<double> drift;
+    // Tiles the displacement bound alone forced to be coded this frame; it is
+    // an atomic because the tile decisions run on the thread pool.
+    std::atomic<u64> margin_forced{0};
+    // ATLAS_REBASE (13.12.10).  `rebase_tool` is the tool bit; the two
+    // counters are what the most recent frame's rebase cost, reported through
+    // nxvc_encode_stats so a cost model has a count rather than an estimate.
+    // 13.12.11: the per-frame mode switch.
+    bool mode_switch = false;
+    u32 last_picture_frame = 0;
+    u32 picture_frames = 0;
+    // Base-layer refresh (13.12.9 used as a REFRESH source).  The picture the
+    // caller's base decoder produced, and the frame it corresponds to; the
+    // margin is the staleness bound that decides which tiles take it.
+    std::vector<u8> base_pic[3];
+    u32 base_stride[3] = {0, 0, 0};
+    u32 base_frame = 0;
+    bool have_base = false;
+    u32 base_refreshed = 0;
     std::vector<nxvc_view> views_cur;
     // The view each ring slot was rendered with, so the matrix a frame emits
     // is the one between its actual reference (N-1-ref_sel) and itself.
@@ -2412,6 +2436,30 @@ struct nxvc_encoder {
     nxvc_image last_src_img{};
     int last_warp_present = 0;
     nxvc::WarpMatrix last_warp[2];
+
+    // --- syntax v1.7: the atlas (SYNTAX.md 13.12, ADR-0029)
+    bool atlas = false;
+    // 13.12.4 tool bit 33.  NORMATIVE: it changes the reference a coded tile
+    // reads, so it is a property of the stream and both ends read it from the
+    // tool word.
+    bool atlas_nbr = false;
+    nxvc::Atlas at;             // the encoder's shadow atlas
+    // 13.12.6: a one-deep per-tile undo, so that a negative receipt rolls a
+    // tile's shadow entry back to the generation the client actually holds.
+    // It replaces the full replay of the picture model, because under the
+    // atlas a lost frame invalidates exactly the tiles it coded and nothing
+    // else -- so there is nothing to replay, only something to un-write.
+    struct AtlasUndo {
+        u8 valid = 0;
+        nxvc::AtlasEntry ent;
+        std::vector<u16> pix[4];
+    };
+    // Indexed BY TILE, not appended: the emit pass runs on a thread pool and
+    // every worker writes its own tile's undo slot, so there is no shared
+    // container to race on.  An append-based log corrupted its own heap here
+    // (double free at qp 36), which is the kind of bug that only shows up
+    // under a thread count the tests did not use.
+    std::vector<AtlasUndo> undo;
 };
 
 struct nxvc_decoder {
@@ -2426,6 +2474,24 @@ struct nxvc_decoder {
     nxvc::RefRing ring;
     std::vector<nxvc::PredState> state;
     std::vector<u8> lost;        // consumed by one decode_frame call
+
+    // --- syntax v1.7: the atlas (SYNTAX.md 13.12).  When `atlas` is set this
+    // is the NORMATIVE output of the decoding process and the picture is not.
+    bool atlas = false;
+    bool atlas_nbr = false;
+    nxvc::Atlas at;
+    // Base-layer refresh: the decoder's side of the same rule the encoder
+    // runs, fed from its own base decoder.  `base_margin` must match the
+    // encoder's or the two atlases diverge, which is the point of it being a
+    // rule rather than a per-frame signal.
+    std::vector<u8> base_pic[3];
+    u32 base_stride[3] = {0, 0, 0};
+    u32 base_frame = 0;
+    bool have_base = false;
+    u32 base_margin = 0;
+    u32 base_refreshed = 0;
+    FrameParams last_fp;         // the frame the display helper renders at
+    bool have_last_fp = false;
 };
 
 #include "codec_impl.inc"

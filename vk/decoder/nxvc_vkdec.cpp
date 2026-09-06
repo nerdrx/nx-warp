@@ -2568,6 +2568,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     d->stats.tiles = ntiles;
     d->stats.tiles_skipped = fp.tiles_skipped;
     d->stats.tiles_concealed = fp.tiles_concealed;
+    d->stats.rows_elided = fp.rows_elided;
     d->stats.tiles_tskip = fp.tiles_tskip;
     d->stats.lane_groups = (uint32_t)fp.groups.size();
     d->stats.dispatches = dispatches;
