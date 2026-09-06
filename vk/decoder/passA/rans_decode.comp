@@ -843,8 +843,21 @@ void lite_unit(int u) {
 // its own contiguous block of kLiteUnitsPerThread units, then the 64 block
 // totals go through a Hillis-Steele scan, then the block offset is folded
 // back in.  Ends with a barrier, so the caller may read s_lsum immediately.
+// [ablation] NXVW_ABL_LITE_SCAN prices this function, which is where the Lite
+// path spends most of its time.  1 skips the block scan, 2 skips lite_scan()
+// entirely; both produce wrong offsets and exist only to be timed.  Never on
+// in a shipped build.  See passA/README.md, "Where the Lite time goes".
+#ifndef NXVW_ABL_LITE_SCAN
+#define NXVW_ABL_LITE_SCAN 0
+#endif
+
 void lite_scan() {
     uint tid = gl_LocalInvocationID.x;
+#if NXVW_ABL_LITE_SCAN == 2
+    if (tid == kWorkgroupSize - 1u) s_ltotal = 0u;
+    barrier();
+    return;
+#endif
     uint sum = 0u;
     for (int k = 0; k < kLiteUnitsPerThread; ++k) {
         uint i = tid * uint(kLiteUnitsPerThread) + uint(k);
@@ -854,12 +867,14 @@ void lite_scan() {
     }
     s_lblk[tid] = sum;
     barrier();
+#if NXVW_ABL_LITE_SCAN == 0
     for (uint d = 1u; d < kWorkgroupSize; d <<= 1u) {
         uint v = tid >= d ? s_lblk[tid - d] : 0u;
         barrier();
         s_lblk[tid] += v;
         barrier();
     }
+#endif
     uint blk = s_lblk[tid] - sum;  // inclusive minus own == exclusive
     if (tid == kWorkgroupSize - 1u) s_ltotal = s_lblk[tid];
     for (int k = 0; k < kLiteUnitsPerThread; ++k)
