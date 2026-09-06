@@ -10,6 +10,15 @@ set_target_properties(nxvc-atlas-compose-test PROPERTIES CXX_STANDARD 20
 add_test(NAME vk.atlas.compose COMMAND nxvc-atlas-compose-test)
 set_tests_properties(vk.atlas.compose PROPERTIES TIMEOUT 300)
 
+# The host bookkeeping: monotonicity, the lazy-advance selection, the H ring
+# window.  No Vulkan and no device.
+add_executable(nxvc-atlas-state-test test_atlas_state.cpp)
+target_link_libraries(nxvc-atlas-state-test PRIVATE nxvw_atlas_model)
+set_target_properties(nxvc-atlas-state-test PROPERTIES CXX_STANDARD 20
+                                                       CXX_STANDARD_REQUIRED ON)
+add_test(NAME vk.atlas.state COMMAND nxvc-atlas-state-test)
+set_tests_properties(vk.atlas.state PROPERTIES TIMEOUT 300)
+
 # The decoder's model against the REFERENCE CODEC's, in one binary.  Everything
 # downstream -- the GPU kernel, and conformance itself -- inherits whatever the
 # model gets wrong, so "pinned to ref/src/inter.h" has to be a test and not a
