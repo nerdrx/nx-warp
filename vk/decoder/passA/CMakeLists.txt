@@ -45,13 +45,58 @@ add_custom_command(
           -DINCDIR=${NXVW_PASSA_DIR}
           -DDEFS=-DNXVW_PASSA_TILES_PER_GROUP=${NXVW_PASSA_TPG}
           -DSTYLE=plain
+          -DDEPFILE=${NXVW_PASSA_SPV}.d
           -P ${NXVW_PASSA_GEN_SPV}
+  DEPFILE ${NXVW_PASSA_SPV}.d
   DEPENDS ${NXVW_PASSA_DIR}/rans_decode.comp
-          ${NXVW_PASSA_DIR}/syntax_constants.h
           ${NXVW_PASSA_GEN_SPV} ${NXVW_PASSA_SPV_PASSES_CMAKE}
   COMMENT "glslc rans_decode.comp -> rans_decode.spv.h"
   VERBATIM)
-add_custom_target(nxvw_passA_spv DEPENDS ${NXVW_PASSA_SPV})
+
+# ------------------------------------------------- [entropy-lite] the Lite module
+#
+# The SAME source, compiled a second time with a different workgroup size, and
+# the decoder binds it wherever ENTROPY_MODE says Lite.
+#
+# The Lite path puts ONE tile in a workgroup, so the workgroup size is how many
+# threads share a tile -- and the number that suits rANS does not suit Lite.
+# Measured on an Adreno 650 at 289 tiles, which is a head-turn frame:
+#
+#   threads a Lite tile   32     64    128    256 (= the rANS shape)
+#   ms                   6.240  5.334  4.769  8.569
+#
+# 128 is 44 % faster than 256, and the optimum is interior, which is why the
+# earlier sweep -- run on rANS, which wants 256 -- did not find it.  The two
+# paths cannot share the constant: at the same 289 tiles rANS costs 17.5 ms at
+# 32 tiles a group and 30.0 ms at 16.  So rANS keeps its shape and Lite gets
+# its own module.  passA/README.md carries the table.
+#
+# Everything that crosses the host boundary is independent of this: the Lite
+# dispatch is one workgroup per tile either way, the coefficient and unit-length
+# buffer layouts are per UNIT, and lite_scan() is a prefix sum over units whose
+# result does not depend on how many threads computed it.  What does change is
+# kLiteUnitsPad, which sizes shared memory only and stays >= kMaxUnitsPerTile.
+set(NXVW_PASSA_LITE_TPG "16" CACHE STRING
+    "Pass A Lite workgroup: this * 8 threads per tile (rANS keeps NXVW_PASSA_TPG)")
+set(NXVW_PASSA_LITE_SPV ${NXVW_PASSA_GEN}/rans_decode_lite.spv.h)
+add_custom_command(
+  OUTPUT ${NXVW_PASSA_LITE_SPV}
+  COMMAND ${CMAKE_COMMAND}
+          -DGLSLC=${NXVW_PASSA_GLSLC}
+          -DSRC=${NXVW_PASSA_DIR}/rans_decode.comp
+          -DOUT=${NXVW_PASSA_LITE_SPV}
+          -DNAME=rans_decode_lite
+          -DINCDIR=${NXVW_PASSA_DIR}
+          -DDEFS=-DNXVW_PASSA_TILES_PER_GROUP=${NXVW_PASSA_LITE_TPG}
+          -DSTYLE=plain
+          -DDEPFILE=${NXVW_PASSA_LITE_SPV}.d
+          -P ${NXVW_PASSA_GEN_SPV}
+  DEPFILE ${NXVW_PASSA_LITE_SPV}.d
+  DEPENDS ${NXVW_PASSA_DIR}/rans_decode.comp
+          ${NXVW_PASSA_GEN_SPV} ${NXVW_PASSA_SPV_PASSES_CMAKE}
+  COMMENT "glslc rans_decode.comp (Lite, ${NXVW_PASSA_LITE_TPG} tiles/group) -> rans_decode_lite.spv.h"
+  VERBATIM)
+add_custom_target(nxvw_passA_spv DEPENDS ${NXVW_PASSA_SPV} ${NXVW_PASSA_LITE_SPV})
 
 # ---------------------------------------------------------------- CPU model
 add_library(nxvw_passA_model STATIC passA_model.cpp)
