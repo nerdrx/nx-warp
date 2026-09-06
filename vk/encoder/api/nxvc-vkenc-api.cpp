@@ -205,6 +205,9 @@ int main(int argc, char **argv) {
     uint32_t coded_vectors = NXVC_VKE_CV_DEFAULT;
     uint32_t entropy = NXVC_VKE_ENTROPY_DEFAULT;
     uint32_t ref_sel = 0;
+    /* 1 or 2.  As in nxvc-vkenc, `--w` is the FULL width either way, so a
+     * stereo run passes the side-by-side pair and create() gets w/eyes. */
+    uint32_t eyes = 1;
     /* The ABI's half of the reference walk: a client that reconstructs only
      * every Nth frame and reports the rest not held. */
     int hold_every = 0;
@@ -228,6 +231,7 @@ int main(int argc, char **argv) {
         else if (a == "--qp") qp = (uint32_t)std::atoi(next());
         else if (a == "--frames") frames = (uint32_t)std::atoi(next());
         else if (a == "--matrix") matrix = (uint32_t)std::atoi(next());
+        else if (a == "--eyes") eyes = (uint32_t)std::atoi(next());
         else if (a == "--timing") timing = true;
         else if (a == "--image") use_image = true;
         else if (a == "--qp-cycle") qp_cycle_arg = next();
@@ -261,11 +265,22 @@ int main(int argc, char **argv) {
             return 2;
         }
     }
+    if (eyes != 1 && eyes != 2) {
+        std::fprintf(stderr, "--eyes must be 1 or 2\n");
+        return 2;
+    }
+    if (eyes == 2 && (w % (64 * eyes)) != 0) {
+        std::fprintf(stderr,
+                     "--eyes 2: --w is the pair, so it must be a multiple of "
+                     "%u (got %u)\n", 64 * eyes, w);
+        return 2;
+    }
     if (in.empty() || out.empty() || !w || !h) {
         std::fprintf(stderr,
                      "usage: nxvc-vkenc-api --in f.yuv --w W --h H --out f.nxv\n"
                      "                      [--qp N] [--frames N] [--matrix N] [--timing]\n"
-                     "                      [--image] [--qp-cycle a,b,c] [--lengths f]\n");
+                     "                      [--image] [--qp-cycle a,b,c] [--lengths f]\n"
+                     "                      [--eyes 1|2, --w is the side-by-side pair]\n");
         return 2;
     }
 
@@ -324,8 +339,10 @@ int main(int argc, char **argv) {
     }
 
     nxvc_vk_encoder_create_info_default(&ci);
-    ci.width = w;
+    /* `width` is PER EYE; `w` here is the side-by-side pair. */
+    ci.width = w / eyes;
     ci.height = h;
+    ci.eyes = eyes;
     ci.base_qp = qp;
     ci.inter = inter ? 1u : 0u;
     ci.intra_period = inter ? intra_period : 0u;
@@ -441,9 +458,16 @@ int main(int argc, char **argv) {
             v.qx = q[0]; v.qy = q[1]; v.qz = q[2]; v.qw = q[3];
             v.fov_left = -hr; v.fov_right = hr;
             v.fov_up = vr;    v.fov_down = -vr;
-            /* The single-eye form, which is the one a WiVRn stream uses. */
-            if (nxvc_vk_encoder_set_view(enc, &v) != NXVC_VKE_OK) {
-                std::fprintf(stderr, "set_view failed at frame %u\n", n);
+            /* One view per eye.  The sidecar is a head pose, so both eyes
+             * take the same orientation here -- exactly what nxvc-vkenc does,
+             * which is what makes the two comparable. */
+            const nxvc_vke_view vv2[2] = {v, v};
+            const nxvc_vke_status vst =
+                eyes == 1 ? nxvc_vk_encoder_set_view(enc, &v)
+                          : nxvc_vk_encoder_set_views(enc, vv2, eyes);
+            if (vst != NXVC_VKE_OK) {
+                std::fprintf(stderr, "set_view%s failed at frame %u\n",
+                             eyes == 1 ? "" : "s", n);
                 return 1;
             }
         }
