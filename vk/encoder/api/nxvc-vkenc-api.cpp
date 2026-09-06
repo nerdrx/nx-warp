@@ -400,7 +400,10 @@ int main(int argc, char **argv) {
     ci.quant_matrix = matrix;
     ci.entropy = entropy;
     ci.effort = effort;
-    ci.snap_identity = inter ? snap_identity : 0;
+    /* Passed through unmasked, unlike the inter-only fields above: the library
+     * refuses snap_identity without inter, and a harness that quietly zeroed it
+     * would hide the refusal it exists to exercise. */
+    ci.snap_identity = snap_identity;
 
     /* The image path needs a device the caller owns: the image has to live on
      * the encoder's device, and a device the library created is one this tool
@@ -679,6 +682,17 @@ int main(int argc, char **argv) {
                     n, w, h, qp, sum_ms / n, max_ms, sum_up / n,
                     total_bytes / n);
     }
+	/* What the decoder's copy fast path will claim, which is the only reason
+	 * --snap-identity exists and the only place the number lives. */
+	{
+		uint64_t idt = 0, idtot = 0;
+		nxvc_vk_encoder_identity_tiles(enc, &idt, &idtot);
+		if (idtot)
+			std::printf("identity tiles: %llu of %llu (%.1f %%), "
+			            "snap-identity %u/16\n",
+			            (unsigned long long)idt, (unsigned long long)idtot,
+			            100.0 * (double)idt / (double)idtot, snap_identity);
+	}
     nxvc_vk_encoder_destroy(enc);
     if (use_image) src.destroy();
     if (rc) return rc;

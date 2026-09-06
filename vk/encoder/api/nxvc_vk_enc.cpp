@@ -209,6 +209,21 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_create(const nxvc_vke_create_info *ci
                          "time and the reference's trellis RDOQ cannot run on "
                          "a GPU; see vk/encoder/README.md",
                          ci->effort, (int)NXVC_VKE_EFFORT_RDOQ);
+    if (ci->snap_identity != 0 && ci->inter == 0)
+        return createerr(NXVC_VKE_ERR_ARG,
+                         "snap_identity=%u needs inter=1: there is no warp to "
+                         "snap on an intra-only stream",
+                         ci->snap_identity);
+    /* Past two samples the tool discards real motion instead of rounding it,
+     * and the unit -- SIXTEENTHS of a luma sample -- is an easy one to misread
+     * as samples.  A caller passing 16 meaning "sixteen samples" hears about
+     * it rather than getting a stream several decibels worse. */
+    if (ci->snap_identity > 32)
+        return createerr(NXVC_VKE_ERR_ARG,
+                         "snap_identity=%u is more than two samples (32/16); "
+                         "the unit is SIXTEENTHS of a luma sample and the "
+                         "measured useful range is 16 to 24",
+                         ci->snap_identity);
     if (ci->ref_confirm != 0 && ci->inter == 0)
         return createerr(NXVC_VKE_ERR_ARG, "ref_confirm=%u needs inter=1",
                          ci->ref_confirm);
@@ -246,6 +261,9 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_create(const nxvc_vke_create_info *ci
      * to one config field.  It applies to intra and inter tiles alike -- it
      * is a quantiser decision, not a prediction one. */
     e->cfg.int_rdoq = ci->effort >= (uint32_t)NXVC_VKE_EFFORT_RDOQ ? 1 : 0;
+    /* Snap-to-identity.  Meaningful only with a warp to snap, and refused
+     * without `inter` above, so this is a straight copy of a checked value. */
+    e->cfg.snap_identity = ci->inter != 0 ? (int)ci->snap_identity : 0;
     e->cfg.wm_id = 0;
     e->cfg.chroma_qp_off = 0;
     e->cfg.nsub_log2 = 3; /* eight rANS lanes; paper 6.3 fixes v1 at eight */
