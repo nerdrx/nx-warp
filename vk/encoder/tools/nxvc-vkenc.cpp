@@ -75,6 +75,13 @@ static void usage() {
         "  --display-psnr       PSNR-Y of the DISPLAYED picture vs the source\n"
         "                       (under --atlas, one warp from the atlas)\n"
         "  --atlas              the per-tile atlas reference, tool bit 31\n"
+        "  --atlas-dump P       write the encoder's shadow atlas after each\n"
+        "                       frame to P: the 64-byte records of [SYN]\n"
+        "                       13.12.1 followed by a 32-byte digest of the\n"
+        "                       atlas planes, in the layout nxv-enc and\n"
+        "                       nxv-dec use.  This is the NORMATIVE output\n"
+        "                       under ATLAS; the stream is only how two\n"
+        "                       implementations arrive at one\n"
         "                       ([SYN] 13.12).  Needs --inter; forces ref_sel 0\n"
         "  --motion-skip Q8     scale the skip threshold by head angular\n"
         "                       velocity (Cheats 5).  0, the default, is off\n"
@@ -114,6 +121,13 @@ int main(int argc, char **argv) {
      * and every other fixture in this tree is under 256 tiles. */
     int fx_w = 256, fx_h = 192, fx_frames = 8;
     const char *ring_prefix = nullptr, *ring_decoded = nullptr;
+    /* Where to write the encoder's shadow atlas after each frame, so a test
+     * can hold it against the atlas nxv-dec builds from this encoder's own
+     * stream.  [SYN] 13.12 makes the atlas the normative output; the stream
+     * agreeing byte for byte does not imply the two sides agree about the
+     * reference the client now holds, and that is the divergence that shows up
+     * as drift rather than as a broken frame. */
+    const char *atlas_dump = nullptr;
     /* A client that keeps up with only one frame in `hold_every`.  It drives
      * nxvc_vk_encoder_set_frame_held()'s half of the reference walk from the
      * command line, which is what the 289-tile drop-pattern test needs and
@@ -152,6 +166,7 @@ int main(int argc, char **argv) {
         else if (a == "--coded-vectors") cfg.int_coded_vectors = true;
         else if (a == "--ref-sel") cfg.ref_sel = std::atoi(val());
         else if (a == "--atlas") cfg.atlas = true;
+        else if (a == "--atlas-dump") atlas_dump = val();
         else if (a == "--modes") cfg.mode_census = true;
         else if (a == "--display-psnr") cfg.display_psnr = true;
         else if (a == "--motion-skip") cfg.motion_skip_gain_q8 = std::atoi(val());
@@ -269,6 +284,19 @@ int main(int argc, char **argv) {
     if (!fi) { std::perror("open input"); return 1; }
     std::FILE *fo = std::fopen(cfg.out.c_str(), "wb");
     if (!fo) { std::perror("open output"); return 1; }
+    std::FILE *fat = nullptr;
+    if (atlas_dump) {
+        if (!cfg.atlas) {
+            std::fprintf(stderr,
+                         "nxvc-vkenc: --atlas-dump needs --atlas; there is no "
+                         "atlas to dump without it\n");
+            std::fclose(fi);
+            std::fclose(fo);
+            return 2;
+        }
+        fat = std::fopen(atlas_dump, "wb");
+        if (!fat) { std::perror("open --atlas-dump"); return 1; }
+    }
 
     std::vector<uint8_t> hdr = nxe::stream_header(cfg, f);
     std::fwrite(hdr.data(), 1, hdr.size(), fo);
@@ -349,6 +377,7 @@ int main(int argc, char **argv) {
             std::fprintf(stderr, "nxvc-vkenc: %s\n", err.c_str());
             std::fclose(fi);
             std::fclose(fo);
+            if (fat) std::fclose(fat);
             std::remove(cfg.out.c_str());
             return 77;
         }
@@ -449,6 +478,20 @@ int main(int argc, char **argv) {
          * which is exactly why it is the thing to measure when pricing the
          * model against the picture-based one.  Comparing reconstructions
          * would compare an object the two models do not both have. */
+        /* The normative output of 13.12, in the layout nxv-enc --atlas-dump
+         * and nxv-dec --atlas-dump write: the whole per-tile table, then a
+         * 32-byte digest of the atlas planes.  Written after the frame is
+         * coded, which is after step 3's write-back, so it is the atlas as it
+         * stands at the END of frame `n` -- the state the next frame's step 1
+         * advances. */
+        if (fat && !cfg.cpu_only) {
+            std::vector<uint8_t> tab;
+            uint8_t dg[32];
+            if (gpu.atlas_table(tab) && gpu.atlas_pixel_digest(dg)) {
+                std::fwrite(tab.data(), 1, tab.size(), fat);
+                std::fwrite(dg, 1, sizeof(dg), fat);
+            }
+        }
         if (cfg.display_psnr && cfg.inter && !cfg.cpu_only) {
             std::vector<uint16_t> shown;
             if (gpu.read_displayed_luma((uint32_t)n, shown)) {
@@ -464,6 +507,7 @@ int main(int argc, char **argv) {
     }
     std::fclose(fo);
     std::fclose(fi);
+    if (fat) std::fclose(fat);
 
     if (psnr_n)
         std::printf("displayed PSNR-Y: %.4f dB mean over %d frame(s)\n",

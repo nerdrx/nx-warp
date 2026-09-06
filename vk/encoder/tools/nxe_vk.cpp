@@ -1599,8 +1599,14 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
 bool VkEncoder::read_ring_luma(uint32_t slot, uint16_t *out, size_t count) {
     Impl &d = *p_;
     if (!d.inter || !d.ok) return false;
-    const size_t need = (size_t)d.ring.stride[0] * (size_t)d.bpush.imageH;
-    if (count > need) return false;
+    /* The luma plane is the common case and sits at the start of the slot, so
+     * a luma-sized read is a prefix of a whole-slot read.  The bound is the
+     * SLOT rather than the luma plane because atlas_pixel_digest() wants every
+     * plane and would otherwise submit once per plane for one buffer; the
+     * staging buffer is `coef_bytes`, which is twice a slot at every
+     * configuration this encoder builds, so a slot always fits. */
+    if (count > (size_t)d.ring.slot_u16) return false;
+    if (count * 2u > d.coef_bytes) return false;
     const VkDeviceSize off =
         (VkDeviceSize)(slot & 3u) * (VkDeviceSize)d.ring.slot_u16 * 2u;
     std::string err;
@@ -1650,6 +1656,82 @@ bool VkEncoder::read_displayed_luma(uint32_t frame_number,
                 dst[(size_t)v * 64 + (size_t)u] =
                     plane[(size_t)y * (size_t)stride + (size_t)x];
             }
+    }
+    return true;
+}
+
+/* ------------------------------------------------------ the normative output
+ *
+ * [SYN] 13.12: the atlas is what conformance compares, and the stream is only
+ * the means by which two implementations arrive at one.  These two calls are
+ * what let a test compare this encoder's SHADOW atlas against the atlas
+ * nxv-dec builds from the very stream this encoder emitted -- which is the
+ * property 13.12.3 actually requires, and which byte-identity of the stream
+ * does not imply.  An encoder whose shadow has drifted still emits legal
+ * frames; it simply predicts, some frames later, from pixels the client does
+ * not have. */
+bool VkEncoder::atlas_table(std::vector<uint8_t> &out) const {
+    const Impl &d = *p_;
+    if (!d.atlas || !d.ok) return false;
+    const size_t n = d.atlas_tab.e.size();
+    out.assign(n * 64u, 0u);
+    for (size_t t = 0; t < n; ++t) {
+        const AtlasEntry &e = d.atlas_tab.e[t];
+        uint8_t *p = out.data() + t * 64u;
+        /* Field by field, little-endian, rather than a memcpy of the struct:
+         * the wire form of 13.12.1 must not depend on this compiler's padding
+         * or on the host's byte order. */
+        for (int k = 0; k < 9; ++k) {
+            const uint32_t v = (uint32_t)e.C[k];
+            p[k * 4 + 0] = (uint8_t)(v & 0xff);
+            p[k * 4 + 1] = (uint8_t)((v >> 8) & 0xff);
+            p[k * 4 + 2] = (uint8_t)((v >> 16) & 0xff);
+            p[k * 4 + 3] = (uint8_t)((v >> 24) & 0xff);
+        }
+        p[36] = (uint8_t)(e.src_frame & 0xff);
+        p[37] = (uint8_t)((e.src_frame >> 8) & 0xff);
+        p[38] = (uint8_t)((e.src_frame >> 16) & 0xff);
+        p[39] = (uint8_t)((e.src_frame >> 24) & 0xff);
+        p[40] = (uint8_t)(e.gen & 0xff);
+        p[41] = (uint8_t)((e.gen >> 8) & 0xff);
+        p[42] = e.flags;
+        p[43] = e.res_level;
+        /* 44..63 stay zero: `out` was assigned zeroed and v1 writes no depth. */
+    }
+    return true;
+}
+
+bool VkEncoder::atlas_pixel_digest(uint8_t out[32]) {
+    Impl &d = *p_;
+    if (!d.atlas || !d.ok) return false;
+    /* The whole of slot 0 -- the atlas lives at one generation, so slot 0 IS
+     * the atlas -- read back once and digested plane by plane.  Reading per
+     * plane would submit three times for one buffer. */
+    std::vector<uint16_t> slot((size_t)d.ring.slot_u16, 0u);
+    if (!read_ring_luma(0u, slot.data(), slot.size())) return false;
+
+    const int eyes = d.atlas_geom.eyes ? d.atlas_geom.eyes : 1;
+    const int lumaH = d.bpush.imageH;
+    const int chromaH = d.cfg.chroma444 ? lumaH : (lumaH + 1) / 2;
+    for (int pl = 0; pl < 4; ++pl) {
+        uint64_t h = 1469598103934665603ull;
+        if (pl < d.ring.nplanes) {
+            /* `planeW` is PER EYE and the atlas spans both, exactly as the
+             * reference's does; the ring is padded and the reference is not,
+             * so the row walk uses the ring stride and the digest covers only
+             * the `w` real samples of each row. */
+            const int w = d.ring.planeW[pl] * eyes;
+            const int ht = pl == 0 ? lumaH : chromaH;
+            const int stride = d.ring.stride[pl];
+            const uint16_t *base = slot.data() + d.ring.off[pl];
+            for (int y = 0; y < ht; ++y)
+                for (int x = 0; x < w; ++x) {
+                    const uint16_t v = base[(size_t)y * (size_t)stride + (size_t)x];
+                    h = (h ^ (uint64_t)(v & 0xff)) * 1099511628211ull;
+                    h = (h ^ (uint64_t)(v >> 8)) * 1099511628211ull;
+                }
+        }
+        for (int k = 0; k < 8; ++k) out[pl * 8 + k] = (uint8_t)(h >> (8 * k));
     }
     return true;
 }

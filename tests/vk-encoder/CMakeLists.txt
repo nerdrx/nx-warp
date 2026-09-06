@@ -140,6 +140,26 @@ if(TARGET nxvc-vkenc AND TARGET nxv-enc AND TARGET nxv-dec)
   set_tests_properties(vk.encoder.inter.acid.lite PROPERTIES
                        SKIP_REGULAR_EXPRESSION "SKIP:")
   list(APPEND NXENC_TESTS vk.encoder.inter.acid.lite)
+
+  # The ATLAS reference (tool bit 31).  Byte-identity against nxv-enc, and --
+  # the claim [SYN] 13.12 actually makes -- the encoder's shadow atlas against
+  # the atlas nxv-dec builds from the GPU's own stream.  Both entropy tools,
+  # because the atlas changes which tiles are coded and Lite changes what a
+  # coded tile costs, so the two compose rather than stack.
+  foreach(ent rans lite)
+    add_test(NAME vk.encoder.atlas.acid.${ent}
+             COMMAND ${CMAKE_COMMAND}
+             -DVKENC=$<TARGET_FILE:nxvc-vkenc>
+             -DNXVENC=$<TARGET_FILE:nxv-enc>
+             -DNXVDEC=$<TARGET_FILE:nxv-dec>
+             -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/atlas-acid-${ent}
+             -DDEVICE=0
+             -DENTROPY=${ent}
+             -P ${CMAKE_CURRENT_SOURCE_DIR}/atlas_acid.cmake)
+    set_tests_properties(vk.encoder.atlas.acid.${ent} PROPERTIES
+                         SKIP_REGULAR_EXPRESSION "SKIP:")
+    list(APPEND NXENC_TESTS vk.encoder.atlas.acid.${ent})
+  endforeach()
 endif()
 
 # The loop closed: what nxvc_vk_decoder -- the decoder that runs on the

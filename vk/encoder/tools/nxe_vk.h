@@ -107,6 +107,26 @@ public:
     bool read_displayed_luma(uint32_t frame_number,
                              std::vector<uint16_t> &out_tilemajor);
 
+    /* ------------------------------------------------- the normative output
+     *
+     * [SYN] 13.12 says the normative output under ATLAS is the atlas -- its
+     * per-tile table and its pixels -- and NOT the picture.  Byte-identity of
+     * the STREAM against nxv-enc is therefore necessary and not sufficient:
+     * two encoders can emit the same bytes while disagreeing about the
+     * reference they think the client now holds, and that disagreement shows
+     * up frames later as drift rather than as a broken frame.
+     *
+     * `atlas_table()` returns the 64-byte records of 13.12.1 in the tile order
+     * of Annex D D-3, written little-endian by field rather than memcpy'd, so
+     * the wire form does not depend on this compiler's struct layout.
+     * `atlas_pixel_digest()` is the FNV-1a of every atlas plane in the same
+     * form nxv-enc and nxv-dec use, because the atlas is megabytes and a
+     * conformance vector should not be.
+     *
+     * Both return false when the stream is not an ATLAS stream. */
+    bool atlas_table(std::vector<uint8_t> &out) const;
+    bool atlas_pixel_digest(uint8_t out[32]);
+
     void bench(Frame &f, int iters);
 
 private:
