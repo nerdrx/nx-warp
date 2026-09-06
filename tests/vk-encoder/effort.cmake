@@ -28,7 +28,8 @@
 # the two encoders have to be searching the same candidate set before "it does
 # not pay" is a statement about the tool rather than about a disagreement.
 #
-# Expects VKENC, NXVENC, NXVDEC, WORKDIR, DEVICE; optionally VKENCAPI.
+# Expects VKENC, NXVENC, NXVDEC, WORKDIR, DEVICE; optionally VKENCAPI and
+# VKDEC (the GPU decoder, which reads the effort-1 streams too).
 
 cmake_minimum_required(VERSION 3.22)
 
@@ -154,6 +155,42 @@ endif()
 # ---- effort 0 is unchanged.  The level is opt-in or it is a silent bitstream
 # change for every caller that never asked for one.
 leg(e0_intra_rans "${RANS_REF}" "${RANS_GPU}" "" "" "" "")
+
+# ---- the GPU decoder, on an effort-1 stream.
+#
+# A level that only `nxv-dec` reads is not shipped.  The requantiser drops
+# levels, and a dropped level is a shorter coding unit, a different `last`
+# position and a different rANS round count -- all things the headset's Pass A
+# walks itself.  So the stream goes through the decoder that runs on the
+# headset as well as through the normative one, and the two pictures must be
+# the same.
+if(VKDEC AND NOT DEVICE STREQUAL "cpu")
+  foreach(leg e1_intra_rans e1_inter_rans e1_intra_lite e1_inter_lite)
+    if(EXISTS ${WORKDIR}/${leg}.gpu)
+      execute_process(COMMAND ${VKDEC} --in ${WORKDIR}/${leg}.gpu
+                              --out ${WORKDIR}/${leg}.vk.yuv --pix yuv420p
+                              --quiet
+                      RESULT_VARIABLE rc ERROR_VARIABLE derr)
+      if(rc EQUAL 77)
+        message(STATUS "SKIP: no Vulkan device for the decoder leg")
+      elseif(NOT rc EQUAL 0)
+        message(FATAL_ERROR
+          "${leg}: the GPU decoder refused a stream nxv-dec accepts (${rc}): "
+          "${derr}")
+      else()
+        execute_process(COMMAND ${CMAKE_COMMAND} -E compare_files
+                                ${WORKDIR}/${leg}.gpu.yuv
+                                ${WORKDIR}/${leg}.vk.yuv
+                        RESULT_VARIABLE rc)
+        if(NOT rc EQUAL 0)
+          message(FATAL_ERROR
+            "${leg}: the GPU decoder and nxv-dec disagree on an effort-1 "
+            "stream")
+        endif()
+      endif()
+    endif()
+  endforeach()
+endif()
 
 # ---- the library ABI: effort 1 is the same stream, effort 2 is refused.
 if(VKENCAPI AND NOT DEVICE STREQUAL "cpu")

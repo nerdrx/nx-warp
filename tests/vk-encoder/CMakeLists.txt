@@ -325,6 +325,7 @@ if(TARGET nxvc-vkenc)
                  -DNXVENC=$<TARGET_FILE:nxv-enc>
                  -DNXVDEC=$<TARGET_FILE:nxv-dec>
                  -DVKENCAPI=$<IF:$<TARGET_EXISTS:nxvc-vkenc-api>,$<TARGET_FILE:nxvc-vkenc-api>,>
+                 -DVKDEC=$<IF:$<TARGET_EXISTS:nxvc-vkdec>,$<TARGET_FILE:nxvc-vkdec>,>
                  -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/effort-${dev}
                  -DDEVICE=${dev}
                  -P ${CMAKE_CURRENT_SOURCE_DIR}/effort.cmake)
@@ -346,6 +347,7 @@ if(TARGET nxvc-vkenc)
                  -DNXVENC=$<TARGET_FILE:nxv-enc>
                  -DNXVDEC=$<TARGET_FILE:nxv-dec>
                  -DVKENCAPI=$<IF:$<TARGET_EXISTS:nxvc-vkenc-api>,$<TARGET_FILE:nxvc-vkenc-api>,>
+                 -DVKDEC=$<IF:$<TARGET_EXISTS:nxvc-vkdec>,$<TARGET_FILE:nxvc-vkdec>,>
                  -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/effort-lavapipe
                  -DDEVICE=0
                  -P ${CMAKE_CURRENT_SOURCE_DIR}/effort.cmake)
