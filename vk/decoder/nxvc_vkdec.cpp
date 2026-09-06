@@ -3169,7 +3169,14 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_atlas_table(nxvc_vk_decoder *d,
 extern "C" nxvc_vkd_status nxvc_vk_decoder_atlas_plane(
     nxvc_vk_decoder *d, int plane, uint16_t *out, size_t cap, uint32_t *w,
     uint32_t *h, uint32_t *stride) {
-    if (!d || !out || plane < 0 || plane > 3) return NXVC_VKD_ERR_ARG;
+    // `out == nullptr` with `cap == 0` is a SIZE QUERY: it fills `w`, `h` and
+    // `stride` and copies nothing.  A caller has to be able to ask how big a
+    // plane is before allocating for it, and returning ERR_ARG before writing
+    // those three left every querying caller with zeroes -- which reads as
+    // "this plane does not exist" and silently folded NOTHING into the
+    // conformance digest.
+    if (!d || plane < 0 || plane > 3) return NXVC_VKD_ERR_ARG;
+    if (!out && cap) return NXVC_VKD_ERR_ARG;
     if (!d->atlas_mode)
         return seterr(d, NXVC_VKD_ERR_ARG,
                       "nxvc_vk_decoder_atlas_plane: not an ATLAS stream "
@@ -3183,6 +3190,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_atlas_plane(
     if (h) *h = ph;
     if (stride) *stride = str;
     const size_t need = (size_t)str * ph;
+    if (!out) return NXVC_VKD_OK;   // the size query is answered
     if (cap < need)
         return seterr(d, NXVC_VKD_ERR_ARG,
                       "nxvc_vk_decoder_atlas_plane: need %zu u16, given %zu",

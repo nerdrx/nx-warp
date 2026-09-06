@@ -281,8 +281,325 @@ bool gpu_decode(const std::vector<uint8_t> &stream, uint32_t out_format,
 
 // One stream, checked every way.  `pinned_md5` is empty for synthetic
 // streams, which have no manifest entry.
+// ------------------------------------------------- [ATLAS] the atlas leg
+// Under tool bit 31 the decoder's normative output is the ATLAS -- its pixels
+// and all 64 bytes of every table entry -- and NOT a picture.  The manifest's
+// `decoded_md5` for an atlas vector is the digest of exactly that, folded
+// after every frame (tests/ref/vectors.cpp `atlas_bytes` / `decode_atlas`), so
+// this reproduces that procedure byte for byte against the GPU decoder.
+//
+// Comparing the display picture here would compare two DIFFERENT THINGS and
+// always fail: 13.12.5's display warp is not normative and this decoder does
+// not produce the reference's one.  That is not a subtlety worth
+// rediscovering -- it cost this branch a debugging round, chasing an
+// "off-by-one at a tile boundary" that was a display picture being compared
+// against an atlas digest.
+bool stream_is_atlas(const std::vector<uint8_t> &s) {
+    if (s.size() < 40) return false;
+    uint64_t tools = 0;
+    for (int i = 0; i < 8; ++i) tools |= (uint64_t)s[32 + i] << (8 * i);
+    return (tools & (1ull << 31)) != 0;
+}
+
+// The same fold as the reference's `atlas_bytes()`: the whole table, then each
+// plane's samples as little-endian u16, rows walked at `stride` and only `w`
+// samples wide.
+void atlas_fold(nxvc_vk_decoder *d, MD5 &md, std::vector<uint8_t> &scratch) {
+    const size_t tb = nxvc_vk_decoder_atlas_table_size(d);
+    scratch.assign(tb, 0u);
+    if (tb) nxvc_vk_decoder_atlas_table(d, scratch.data(), tb);
+    std::vector<uint16_t> plane;
+    for (int p = 0; p < 4; ++p) {
+        uint32_t w = 0, h = 0, stride = 0;
+        // A size query first: a plane this stream does not have contributes
+        // nothing, which is what the reference's null return does.
+        nxvc_vk_decoder_atlas_plane(d, p, nullptr, 0, &w, &h, &stride);
+        if (!w || !h || !stride) continue;
+        plane.assign((size_t)stride * h, 0u);
+        if (nxvc_vk_decoder_atlas_plane(d, p, plane.data(), plane.size(), &w,
+                                        &h, &stride) != NXVC_VKD_OK)
+            continue;
+        for (uint32_t y = 0; y < h; ++y)
+            for (uint32_t x = 0; x < w; ++x) {
+                const uint16_t v = plane[(size_t)y * stride + x];
+                scratch.push_back((uint8_t)(v & 0xff));
+                scratch.push_back((uint8_t)(v >> 8));
+            }
+    }
+    md.update(scratch.data(), scratch.size());
+}
+
+// A hash that disagrees says nothing a fix can use.  On a mismatch the two
+// decoders are run in lockstep and the FIRST divergence is named: which frame,
+// which table entry, which of 13.12.1's fields -- or which plane and sample.
+// The 64-byte record is compared field by field rather than as bytes, because
+// "entry 37 differs" is a different bug report from "entry 37's `gen` is 1
+// where the reference says 0".
+void atlas_attribute(const char *what, const std::vector<uint8_t> &stream) {
+    nxvc_status cst;
+    nxvc_decoder *rd = nxvc_decoder_create(&cst);
+    if (!rd) return;
+    nxvc_vkd_create_info ci;
+    nxvc_vk_decoder_create_info_default(&ci);
+    ci.flags = 0;
+    ci.output_format = NXVC_VKD_OUT_AUTO;
+    ci.device_name = device_filter();
+    nxvc_vk_decoder *gd = nullptr;
+    if (nxvc_vk_decoder_create(&ci, &gd) != NXVC_VKD_OK) {
+        nxvc_vk_decoder_destroy(gd);
+        nxvc_decoder_destroy(rd);
+        return;
+    }
+    size_t rc = 0, gc = 0;
+    if (nxvc_decoder_parse_stream_header(rd, stream.data(), stream.size(),
+                                         &rc) != NXVC_OK ||
+        nxvc_vk_decoder_parse_stream_header(gd, stream.data(), stream.size(),
+                                            &gc) != NXVC_VKD_OK) {
+        nxvc_vk_decoder_destroy(gd);
+        nxvc_decoder_destroy(rd);
+        return;
+    }
+    uint32_t yw, yh, cw, ch;
+    nxvc_decoder_plane_size(rd, 0, &yw, &yh);
+    nxvc_decoder_plane_size(rd, 1, &cw, &ch);
+    std::vector<uint8_t> Y((size_t)yw * yh), U((size_t)cw * ch),
+        V((size_t)cw * ch);
+    static const char *kField[16] = {
+        "C[0]", "C[1]", "C[2]", "C[3]", "C[4]", "C[5]",
+        "C[6]", "C[7]", "C[8]", "src_frame", "gen|flags|res_level",
+        "reserved[0]", "reserved[1]", "reserved[2]", "reserved[3]",
+        "reserved[4]"};
+    size_t off = rc;
+    int nf = 0;
+    while (off < stream.size()) {
+        nxvc_image oi{};
+        oi.plane[0] = Y.data(); oi.stride[0] = (int)yw;
+        oi.plane[1] = U.data(); oi.stride[1] = (int)cw;
+        oi.plane[2] = V.data(); oi.stride[2] = (int)cw;
+        size_t ur = 0, ug = 0;
+        if (nxvc_decoder_decode_frame(rd, stream.data() + off,
+                                      stream.size() - off, &oi, &ur) != NXVC_OK)
+            break;
+        if (nxvc_vk_decode_frame(gd, stream.data() + off, stream.size() - off,
+                                 &ug) != NXVC_VKD_OK)
+            break;
+        const size_t tb = nxvc_decoder_atlas_table_size(rd);
+        std::vector<uint8_t> rt(tb), gt(tb);
+        nxvc_decoder_atlas_table(rd, rt.data(), tb);
+        nxvc_vk_decoder_atlas_table(gd, gt.data(), tb);
+        if (rt != gt) {
+            const size_t entries = tb / 64;
+            for (size_t e = 0; e < entries; ++e) {
+                const uint32_t *r = (const uint32_t *)(rt.data() + e * 64);
+                const uint32_t *g = (const uint32_t *)(gt.data() + e * 64);
+                for (int k = 0; k < 16; ++k)
+                    if (r[k] != g[k]) {
+                        std::printf(
+                            "  ^ %s frame %d: table entry %zu field %s: "
+                            "ref 0x%08x gpu 0x%08x\n",
+                            what, nf, e, kField[k], r[k], g[k]);
+                        nxvc_vk_decoder_destroy(gd);
+                        nxvc_decoder_destroy(rd);
+                        return;
+                    }
+            }
+        }
+        for (int p = 0; p < 4; ++p) {
+            uint32_t w = 0, h = 0, sd = 0;
+            const uint16_t *rp = nxvc_decoder_atlas_plane(rd, p, &w, &h, &sd);
+            if (!rp || !w || !h) continue;
+            std::vector<uint16_t> gp((size_t)sd * h);
+            uint32_t gw = 0, gh = 0, gsd = 0;
+            if (nxvc_vk_decoder_atlas_plane(gd, p, gp.data(), gp.size(), &gw,
+                                            &gh, &gsd) != NXVC_VKD_OK)
+                continue;
+            if (gw != w || gh != h || gsd != sd) {
+                std::printf("  ^ %s frame %d: plane %d geometry ref %ux%u "
+                            "stride %u, gpu %ux%u stride %u\n",
+                            what, nf, p, w, h, sd, gw, gh, gsd);
+                nxvc_vk_decoder_destroy(gd);
+                nxvc_decoder_destroy(rd);
+                return;
+            }
+            for (uint32_t y = 0; y < h; ++y)
+                for (uint32_t x = 0; x < w; ++x)
+                    if (rp[(size_t)y * sd + x] != gp[(size_t)y * sd + x]) {
+                        std::printf("  ^ %s frame %d: plane %d (%u,%u) "
+                                    "ref %u gpu %u  [tile col %u row %u]\n",
+                                    what, nf, p, x, y,
+                                    rp[(size_t)y * sd + x],
+                                    gp[(size_t)y * sd + x], x / 64u, y / 64u);
+                        nxvc_vk_decoder_destroy(gd);
+                        nxvc_decoder_destroy(rd);
+                        return;
+                    }
+        }
+        ++nf;
+        off += ur;
+    }
+    nxvc_vk_decoder_destroy(gd);
+    nxvc_decoder_destroy(rd);
+}
+
+// The atlas leg proper.  The comparison is GPU against a LIVE reference
+// decode, byte for byte, after every frame: the whole table and every plane.
+// That is the strongest statement that is checkable from the vector FILE.
+//
+// The manifest's `decoded_md5` is checked too, but it is not the primary
+// comparison, and for two of the atlas vectors it CANNOT be: `v87` and `v88`
+// have the generator apply a base-layer patch between frames (13.12.9), and
+// that patch is built from a seed in tests/ref/vectors.cpp's spec table -- it
+// does not travel in the .nxv file.  So their pinned digest depends on data an
+// independent decoder cannot obtain from the vector, and no second
+// implementation can reproduce it.  This reports that rather than failing on
+// it: if the REFERENCE's own fold of the same stream also disagrees with the
+// manifest, the difference is out-of-band data and not a decoder bug, and the
+// GPU-vs-reference comparison above is what carries.
+void check_stream_atlas(const char *what, const std::vector<uint8_t> &stream,
+                        const std::string &pinned_md5) {
+    CaseGuard cg_(what);
+    nxvc_status cst;
+    nxvc_decoder *rd = nxvc_decoder_create(&cst);
+    if (!rd) {
+        std::printf("FAIL %s: nxvc_decoder_create\n", what);
+        ++g_fail;
+        return;
+    }
+    nxvc_vkd_create_info ci;
+    nxvc_vk_decoder_create_info_default(&ci);
+    ci.flags = 0;
+    ci.output_format = NXVC_VKD_OUT_AUTO;
+    ci.device_name = device_filter();
+    nxvc_vk_decoder *gd = nullptr;
+    if (nxvc_vk_decoder_create(&ci, &gd) != NXVC_VKD_OK) {
+        std::printf("SKIP %s: %s\n", what,
+                    gd ? nxvc_vk_decoder_last_error(gd) : "no decoder");
+        ++g_skipped;
+        nxvc_vk_decoder_destroy(gd);
+        nxvc_decoder_destroy(rd);
+        return;
+    }
+    size_t rc = 0, gc = 0;
+    cst = nxvc_decoder_parse_stream_header(rd, stream.data(), stream.size(),
+                                           &rc);
+    nxvc_vkd_status st = nxvc_vk_decoder_parse_stream_header(
+        gd, stream.data(), stream.size(), &gc);
+    if (st == NXVC_VKD_ERR_UNSUPPORTED) {
+        std::printf("SKIP %s: %s\n", what, nxvc_vk_decoder_last_error(gd));
+        ++g_skipped;
+        nxvc_vk_decoder_destroy(gd);
+        nxvc_decoder_destroy(rd);
+        return;
+    }
+    if (cst != NXVC_OK || st != NXVC_VKD_OK || rc != gc) {
+        std::printf("FAIL %s: stream header: ref %s, gpu %s\n", what,
+                    nxvc_status_string(cst), nxvc_vk_decoder_status_string(st));
+        ++g_fail;
+        nxvc_vk_decoder_destroy(gd);
+        nxvc_decoder_destroy(rd);
+        return;
+    }
+    ++g_checked;
+    uint32_t yw, yh, cw, ch;
+    nxvc_decoder_plane_size(rd, 0, &yw, &yh);
+    nxvc_decoder_plane_size(rd, 1, &cw, &ch);
+    std::vector<uint8_t> Y((size_t)yw * yh), U((size_t)cw * ch),
+        V((size_t)cw * ch);
+    MD5 gmd, rmd;
+    std::vector<uint8_t> gs, rs;
+    size_t off = rc;
+    int nf = 0;
+    bool bad = false;
+    while (off < stream.size() && !bad) {
+        nxvc_image oi{};
+        oi.plane[0] = Y.data(); oi.stride[0] = (int)yw;
+        oi.plane[1] = U.data(); oi.stride[1] = (int)cw;
+        oi.plane[2] = V.data(); oi.stride[2] = (int)cw;
+        size_t ur = 0, ug = 0;
+        cst = nxvc_decoder_decode_frame(rd, stream.data() + off,
+                                        stream.size() - off, &oi, &ur);
+        st = nxvc_vk_decode_frame(gd, stream.data() + off, stream.size() - off,
+                                  &ug);
+        if (cst != NXVC_OK || st != NXVC_VKD_OK || ur != ug) {
+            std::printf("FAIL %s: frame %d: ref %s, gpu %s\n", what, nf,
+                        nxvc_status_string(cst),
+                        st ? nxvc_vk_decoder_last_error(gd) : "ok");
+            ++g_fail;
+            bad = true;
+            break;
+        }
+        // The whole table, then every plane, exactly as the reference folds
+        // it -- so the two digests are comparable and so is the manifest's.
+        const size_t tb = nxvc_decoder_atlas_table_size(rd);
+        rs.assign(tb, 0u);
+        gs.assign(tb, 0u);
+        nxvc_decoder_atlas_table(rd, rs.data(), tb);
+        nxvc_vk_decoder_atlas_table(gd, gs.data(), tb);
+        for (int p = 0; p < 4; ++p) {
+            uint32_t w = 0, h = 0, sd = 0;
+            const uint16_t *rp = nxvc_decoder_atlas_plane(rd, p, &w, &h, &sd);
+            if (!rp || !w || !h) continue;
+            std::vector<uint16_t> gp((size_t)sd * h);
+            uint32_t gw = 0, gh = 0, gsd = 0;
+            nxvc_vk_decoder_atlas_plane(gd, p, gp.data(), gp.size(), &gw, &gh,
+                                        &gsd);
+            for (uint32_t y = 0; y < h; ++y)
+                for (uint32_t x = 0; x < w; ++x) {
+                    const uint16_t rv = rp[(size_t)y * sd + x];
+                    const uint16_t gv = gp[(size_t)y * sd + x];
+                    rs.push_back((uint8_t)(rv & 0xff));
+                    rs.push_back((uint8_t)(rv >> 8));
+                    gs.push_back((uint8_t)(gv & 0xff));
+                    gs.push_back((uint8_t)(gv >> 8));
+                }
+        }
+        if (rs != gs) {
+            std::printf("FAIL %s: the atlas differs from the reference at "
+                        "frame %d\n", what, nf);
+            ++g_fail;
+            bad = true;
+            atlas_attribute(what, stream);
+            break;
+        }
+        rmd.update(rs.data(), rs.size());
+        gmd.update(gs.data(), gs.size());
+        ++nf;
+        off += ur;
+    }
+    nxvc_vk_decoder_destroy(gd);
+    nxvc_decoder_destroy(rd);
+    if (bad) return;
+    const std::string got = gmd.hex(), refgot = rmd.hex();
+    if (!pinned_md5.empty() && got != pinned_md5) {
+        if (refgot != pinned_md5) {
+            // Both decoders agree and both differ from the manifest, so the
+            // pin covers something the stream does not carry -- the base
+            // patch of 13.12.9 for v87 and v88.
+            std::printf("-- %s: atlas byte-identical to the reference over %d "
+                        "frames; the manifest pin (%s) is NOT reproducible "
+                        "from the vector file -- the reference folds %s too, "
+                        "because the pin includes a base patch built outside "
+                        "the stream\n",
+                        what, nf, pinned_md5.c_str(), refgot.c_str());
+            return;
+        }
+        std::printf("FAIL %s: atlas md5 %s, manifest says %s (%d frames)\n",
+                    what, got.c_str(), pinned_md5.c_str(), nf);
+        ++g_fail;
+        atlas_attribute(what, stream);
+        return;
+    }
+    if (g_verbose) std::printf("ok   %s (atlas, %d frames)\n", what, nf);
+}
+
 void check_stream(const char *what, const std::vector<uint8_t> &stream,
                   const std::string &pinned_md5, uint32_t out_format) {
+    // [ATLAS] An atlas stream's normative output is the atlas, so it takes a
+    // different LEG entirely -- not a different comparison of the same thing.
+    if (stream_is_atlas(stream)) {
+        check_stream_atlas(what, stream, pinned_md5);
+        return;
+    }
     // The watchdog's real arming point.  The manifest sweep, the synthetic
     // streams and their RGB10A2 variants all reach the GPU through here, and
     // arming only the manifest loop is how a wedge in the synthetic stage
