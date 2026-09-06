@@ -10,6 +10,10 @@ endif()
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/inter/CMakeLists.txt)
   add_subdirectory(inter)
 endif()
+# [ATLAS] 13.12.2's composition; no Vulkan, no device.
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/atlas/CMakeLists.txt)
+  add_subdirectory(atlas)
+endif()
 # The exactness proof behind Pass B's UNORM store; links no decoder code.
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/unorm/CMakeLists.txt)
   add_subdirectory(unorm)

@@ -126,6 +126,57 @@ python3 nx-scratch/atlasprice/seams.py 12 source=$T.yuv420p.yuv baseline=T0.yuv 
 
 ---
 
+## Figure 10 — The atlas rarely holds one pose, except at rest
+
+![Figure 10](assets/atlasdec-dominant-pose.png)
+
+**Date** 2026-09-06 · **Fixture** synthetic pose-consistent pan, a fixed
+multi-frequency scene sampled through the yaw (`nxv-posestats`) · **Settings**
+1088x1088, 289 tiles, one eye, 4:2:0, QP 28, inter + atlas, `D=8`
+(`atlas_picture_disp`), 60 frames, five rotation rates.
+
+**The number it illustrates.** The dominant-pose share of
+`docs/COMPOSITOR-POSE-DISPLAY.md`, and with it the whole case for the proposal.
+**At rest the display pass warps 0 tiles against today's 289** — one pose, 100 %
+dominant, the flat purple pair in the lower panel. At `creep` (0.10 deg/frame,
+9 deg/s) the share **oscillates between 49 % and 89 %** on the encoder's refresh
+cycle rather than decaying smoothly, averaging 61.7 %, and the warped count
+falls from 167.5 to 110.8 — 34 %. At `slow` and above the two schemes coincide
+(13.4 against 13.4), and at `mid` and `fast` the `D=8` trigger makes every frame
+a PICTURE frame, which puts every entry at one pose by construction and leaves
+nothing to skip. The upper panel's flat 100 % lines for `mid`/`fast` are the
+mode switch doing the proposal's job already.
+
+```
+cmake --build build --target nxv-posestats
+./build/bin/nxv-posestats --size 1088 1088 --frames 60 --disp 8 --csv > pose_d8.csv
+python3 tools/quality/plot_pose.py --csv pose_d8.csv --out docs/assets --disp 8
+```
+
+---
+
+## Figure 11 — The compositor's warp is not avoided, it is used
+
+![Figure 11](assets/atlasdec-display-path.png)
+
+**Date** 2026-09-06 · **Fixture** none — a diagram of the proposed display path
+· **Settings** n/a.
+
+**The number it illustrates.** The two paths Figure 10 counts, and which entry
+takes which: entries at the dominant pose are sampled with **no warp at all**
+(100 % of them at rest, about 62 % at 9 deg/s), the rest are warped to the
+*dominant* pose rather than the current one, and the Pico compositor's own
+re-warp — which happens whether or not anyone wants it — carries the composite
+the remaining distance. It also carries the exactness claim the document makes:
+the atlas, the 64-byte table and everything conformance compares are untouched,
+because 13.12.5's display warp is not normative.
+
+```
+python3 tools/quality/plot_pose.py --csv pose_d8.csv --out docs/assets --disp 8
+```
+
+---
+
 ## The seam ratio, since every entry above quotes it
 
 Mean `|x[i] - x[i-1]|` over sample pairs that straddle the 64-sample tile grid,

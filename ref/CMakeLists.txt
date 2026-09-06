@@ -48,7 +48,7 @@ set_target_properties(nxvc_ref_shared PROPERTIES
 # The reference CLIs are part of the ref deliverable (the quality harness
 # depends on nxv-enc / nxv-dec / nxv-info) and build with the library.
 if(NOT DEFINED NXWARP_BUILD_TOOLS OR NXWARP_BUILD_TOOLS)
-    foreach(t nxv-enc nxv-dec nxv-info)
+    foreach(t nxv-enc nxv-dec nxv-info nxv-posestats)
         add_executable(${t} tools/${t}.cpp)
         target_link_libraries(${t} PRIVATE nxvc_ref)
         target_include_directories(${t} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
