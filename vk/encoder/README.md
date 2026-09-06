@@ -487,6 +487,29 @@ the harness's own corpus (610 B/tile rANS, 916 B/tile Lite):
 other core group -- so read this as a floor. `docs/MERGE-REPORT.md` measured
 4.1x on an idle machine and that number is not being replaced here.
 
+**The ENCODER is faster too**, which was not the point of the tool and is
+worth knowing anyway. `nxvc-vkenc --bench 50`, 1088x1088 (289 tiles), QP 30,
+`--ctx v3` with no transmitted tables on either side, RX 7900 XTX on RADV,
+median of 50, three runs:
+
+| | E3 forward | E4 / E4L | E2 | E5 | total |
+|---|---|---|---|---|---|
+| rANS | 0.343 / 0.399 / 0.436 | 0.885 / 0.967 / 1.049 | 0.013 | 0.014 | 1.255 / 1.402 / 1.525 |
+| Lite | 0.117 / 0.116 / 0.128 | 0.144 / 0.196 / 0.199 | 0.013 | 0.013 | 0.286 / 0.353 / 0.367 |
+
+The entropy pass is **5x to 6x** faster, which is the shape of the tool: E4's
+eight lanes per tile over a serial round chain against E4-lite's whole
+workgroup over independent units.
+
+**The E3 column also moved, and that is NOT explained.** E3 is the same
+SPIR-V, the same dispatch and the same buffers on both rows, and it is
+repeatably 0.12 ms beside Lite and 0.40 ms beside rANS. The likeliest
+mechanism is the timestamp: it is written at COMPUTE_SHADER after the
+barrier between E3 and the entropy pass, so it carries that barrier's cache
+work, and the rANS path has a 268 MB operation scratch that the Lite path
+never touches. That is a hypothesis and not a measurement. Read the E4 and
+total columns; do not build on the E3 one.
+
 `XFORM_LARGE` (bit 27) is the largest single win in the tournament and is the
 next real piece of work here. It is a second E3 pipeline from the same source
 -- `NXE_XFORM_LOG2` is already a specialization constant and every loop bound,
