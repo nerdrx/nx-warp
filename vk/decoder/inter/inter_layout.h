@@ -159,8 +159,24 @@ struct NxvwWarpTile {
                    // its correction at the DC-plane step of this
     uint ns0, ns1, ns2;  // the near-skip record, three signed bytes per plane
                          // in bytes 0..2, planes Y, Co, Cg
-    uint pad0;
+    // [ATLAS] Where this tile's matrix PAIR lives in the warp parameter
+    // buffer, as a uint offset: sub 1 at `mat_idx`, sub 2 at
+    // `mat_idx + NXVW_WARP_MAT_UINTS`, in the same 12-uint record layout
+    // compute_corner() already consumes -- nine matrix words then ox, oy.
+    //
+    // Under [SYN] 13.12 a tile predicts through its OWN composed C, so the
+    // matrix stops being one of the frame's four and becomes per tile.
+    // `NXVW_WARP_MAT_NONE` means "use the frame's four, indexed
+    // (eye * 2 + (sub - 1))", which is what every stream without tool bit 31
+    // sets and is why this field is byte-for-byte invisible to them.
+    uint mat_idx;
 };
+
+// The sentinel, and the uint offset of `mat_idx` inside a tile record.  Zero
+// could not be the sentinel: a value-initialised record already reads zero and
+// that is a legal matrix offset.
+#define NXVW_WARP_MAT_NONE 0xffffffffu
+#define NXVW_WARP_TILE_MATIDX 11
 
 NXVW_IFN nxvw_wt_mode(uint w0) { return int(w0 & 7u); }
 NXVW_IFN nxvw_wt_inter(uint w0) { return int((w0 >> 3) & 1u); }

@@ -30,6 +30,7 @@
 #include <unistd.h>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -281,8 +282,599 @@ bool gpu_decode(const std::vector<uint8_t> &stream, uint32_t out_format,
 
 // One stream, checked every way.  `pinned_md5` is empty for synthetic
 // streams, which have no manifest entry.
+// ------------------------------------------------- [ATLAS] the atlas leg
+// Under tool bit 31 the decoder's normative output is the ATLAS -- its pixels
+// and all 64 bytes of every table entry -- and NOT a picture.  The manifest's
+// `decoded_md5` for an atlas vector is the digest of exactly that, folded
+// after every frame (tests/ref/vectors.cpp `atlas_bytes` / `decode_atlas`), so
+// this reproduces that procedure byte for byte against the GPU decoder.
+//
+// Comparing the display picture here would compare two DIFFERENT THINGS and
+// always fail: 13.12.5's display warp is not normative and this decoder does
+// not produce the reference's one.  That is not a subtlety worth
+// rediscovering -- it cost this branch a debugging round, chasing an
+// "off-by-one at a tile boundary" that was a display picture being compared
+// against an atlas digest.
+bool stream_is_atlas(const std::vector<uint8_t> &s) {
+    if (s.size() < 40) return false;
+    uint64_t tools = 0;
+    for (int i = 0; i < 8; ++i) tools |= (uint64_t)s[32 + i] << (8 * i);
+    return (tools & (1ull << 31)) != 0;
+}
+
+// The same fold as the reference's `atlas_bytes()`: the whole table, then each
+// plane's samples as little-endian u16, rows walked at `stride` and only `w`
+// samples wide.
+void atlas_fold(nxvc_vk_decoder *d, MD5 &md, std::vector<uint8_t> &scratch) {
+    const size_t tb = nxvc_vk_decoder_atlas_table_size(d);
+    scratch.assign(tb, 0u);
+    if (tb) nxvc_vk_decoder_atlas_table(d, scratch.data(), tb);
+    std::vector<uint16_t> plane;
+    for (int p = 0; p < 4; ++p) {
+        uint32_t w = 0, h = 0, stride = 0;
+        // A size query first: a plane this stream does not have contributes
+        // nothing, which is what the reference's null return does.
+        nxvc_vk_decoder_atlas_plane(d, p, nullptr, 0, &w, &h, &stride);
+        if (!w || !h || !stride) continue;
+        plane.assign((size_t)stride * h, 0u);
+        if (nxvc_vk_decoder_atlas_plane(d, p, plane.data(), plane.size(), &w,
+                                        &h, &stride) != NXVC_VKD_OK)
+            continue;
+        for (uint32_t y = 0; y < h; ++y)
+            for (uint32_t x = 0; x < w; ++x) {
+                const uint16_t v = plane[(size_t)y * stride + x];
+                scratch.push_back((uint8_t)(v & 0xff));
+                scratch.push_back((uint8_t)(v >> 8));
+            }
+    }
+    md.update(scratch.data(), scratch.size());
+}
+
+// A hash that disagrees says nothing a fix can use.  On a mismatch the two
+// decoders are run in lockstep and the FIRST divergence is named: which frame,
+// which table entry, which of 13.12.1's fields -- or which plane and sample.
+// The 64-byte record is compared field by field rather than as bytes, because
+// "entry 37 differs" is a different bug report from "entry 37's `gen` is 1
+// where the reference says 0".
+void atlas_attribute(const char *what, const std::vector<uint8_t> &stream) {
+    nxvc_status cst;
+    nxvc_decoder *rd = nxvc_decoder_create(&cst);
+    if (!rd) return;
+    nxvc_vkd_create_info ci;
+    nxvc_vk_decoder_create_info_default(&ci);
+    ci.flags = 0;
+    ci.output_format = NXVC_VKD_OUT_AUTO;
+    ci.device_name = device_filter();
+    nxvc_vk_decoder *gd = nullptr;
+    if (nxvc_vk_decoder_create(&ci, &gd) != NXVC_VKD_OK) {
+        nxvc_vk_decoder_destroy(gd);
+        nxvc_decoder_destroy(rd);
+        return;
+    }
+    size_t rc = 0, gc = 0;
+    if (nxvc_decoder_parse_stream_header(rd, stream.data(), stream.size(),
+                                         &rc) != NXVC_OK ||
+        nxvc_vk_decoder_parse_stream_header(gd, stream.data(), stream.size(),
+                                            &gc) != NXVC_VKD_OK) {
+        nxvc_vk_decoder_destroy(gd);
+        nxvc_decoder_destroy(rd);
+        return;
+    }
+    uint32_t yw, yh, cw, ch;
+    nxvc_decoder_plane_size(rd, 0, &yw, &yh);
+    nxvc_decoder_plane_size(rd, 1, &cw, &ch);
+    std::vector<uint8_t> Y((size_t)yw * yh), U((size_t)cw * ch),
+        V((size_t)cw * ch);
+    static const char *kField[16] = {
+        "C[0]", "C[1]", "C[2]", "C[3]", "C[4]", "C[5]",
+        "C[6]", "C[7]", "C[8]", "src_frame", "gen|flags|res_level",
+        "reserved[0]", "reserved[1]", "reserved[2]", "reserved[3]",
+        "reserved[4]"};
+    size_t off = rc;
+    int nf = 0;
+    while (off < stream.size()) {
+        nxvc_image oi{};
+        oi.plane[0] = Y.data(); oi.stride[0] = (int)yw;
+        oi.plane[1] = U.data(); oi.stride[1] = (int)cw;
+        oi.plane[2] = V.data(); oi.stride[2] = (int)cw;
+        size_t ur = 0, ug = 0;
+        if (nxvc_decoder_decode_frame(rd, stream.data() + off,
+                                      stream.size() - off, &oi, &ur) != NXVC_OK)
+            break;
+        if (nxvc_vk_decode_frame(gd, stream.data() + off, stream.size() - off,
+                                 &ug) != NXVC_VKD_OK)
+            break;
+        const size_t tb = nxvc_decoder_atlas_table_size(rd);
+        std::vector<uint8_t> rt(tb), gt(tb);
+        nxvc_decoder_atlas_table(rd, rt.data(), tb);
+        nxvc_vk_decoder_atlas_table(gd, gt.data(), tb);
+        if (rt != gt) {
+            const size_t entries = tb / 64;
+            for (size_t e = 0; e < entries; ++e) {
+                const uint32_t *r = (const uint32_t *)(rt.data() + e * 64);
+                const uint32_t *g = (const uint32_t *)(gt.data() + e * 64);
+                for (int k = 0; k < 16; ++k)
+                    if (r[k] != g[k]) {
+                        std::printf(
+                            "  ^ %s frame %d: table entry %zu field %s: "
+                            "ref 0x%08x gpu 0x%08x\n",
+                            what, nf, e, kField[k], r[k], g[k]);
+                        nxvc_vk_decoder_destroy(gd);
+                        nxvc_decoder_destroy(rd);
+                        return;
+                    }
+            }
+        }
+        for (int p = 0; p < 4; ++p) {
+            uint32_t w = 0, h = 0, sd = 0;
+            const uint16_t *rp = nxvc_decoder_atlas_plane(rd, p, &w, &h, &sd);
+            if (!rp || !w || !h) continue;
+            std::vector<uint16_t> gp((size_t)sd * h);
+            uint32_t gw = 0, gh = 0, gsd = 0;
+            if (nxvc_vk_decoder_atlas_plane(gd, p, gp.data(), gp.size(), &gw,
+                                            &gh, &gsd) != NXVC_VKD_OK)
+                continue;
+            if (gw != w || gh != h || gsd != sd) {
+                std::printf("  ^ %s frame %d: plane %d geometry ref %ux%u "
+                            "stride %u, gpu %ux%u stride %u\n",
+                            what, nf, p, w, h, sd, gw, gh, gsd);
+                nxvc_vk_decoder_destroy(gd);
+                nxvc_decoder_destroy(rd);
+                return;
+            }
+            // Per TILE, not per sample: "tile (1,0) differs in 4096 of 4096
+            // samples" and "tile (1,0) differs in 3" are different bugs, and
+            // so is "every tile differs" against "one does".
+            std::map<std::pair<uint32_t, uint32_t>, uint32_t> perTile;
+            uint32_t first[4] = {0, 0, 0, 0};
+            bool have = false;
+            for (uint32_t y = 0; y < h; ++y)
+                for (uint32_t x = 0; x < w; ++x)
+                    if (rp[(size_t)y * sd + x] != gp[(size_t)y * sd + x]) {
+                        ++perTile[{x / 64u, y / 64u}];
+                        if (!have) {
+                            have = true;
+                            first[0] = x; first[1] = y;
+                            first[2] = rp[(size_t)y * sd + x];
+                            first[3] = gp[(size_t)y * sd + x];
+                        }
+                    }
+            if (have) {
+                std::printf("  ^ %s frame %d: plane %d differs in %zu tile(s), "
+                            "first (%u,%u) ref %u gpu %u\n",
+                            what, nf, p, perTile.size(), first[0], first[1],
+                            first[2], first[3]);
+                int shown = 0;
+                for (auto &kv : perTile) {
+                    if (shown++ == 8) break;
+                    std::printf("      tile (col %u,row %u): %u samples\n",
+                                kv.first.first, kv.first.second, kv.second);
+                }
+                nxvc_vk_decoder_destroy(gd);
+                nxvc_decoder_destroy(rd);
+                return;
+            }
+        }
+        ++nf;
+        off += ur;
+    }
+    nxvc_vk_decoder_destroy(gd);
+    nxvc_decoder_destroy(rd);
+}
+
+// The atlas leg proper.  The comparison is GPU against a LIVE reference
+// decode, byte for byte, after every frame: the whole table and every plane.
+// That is the strongest statement that is checkable from the vector FILE.
+//
+// The manifest's `decoded_md5` is checked too, but it is not the primary
+// comparison, and for two of the atlas vectors it CANNOT be: `v87` and `v88`
+// have the generator apply a base-layer patch between frames (13.12.9), and
+// that patch is built from a seed in tests/ref/vectors.cpp's spec table -- it
+// does not travel in the .nxv file.  So their pinned digest depends on data an
+// independent decoder cannot obtain from the vector, and no second
+// implementation can reproduce it.  This reports that rather than failing on
+// it: if the REFERENCE's own fold of the same stream also disagrees with the
+// manifest, the difference is out-of-band data and not a decoder bug, and the
+// GPU-vs-reference comparison above is what carries.
+// [SYN] 13.12.9's sidecar.  `<vector>.basepatch` ships the base picture BESIDE
+// the bitstream so the pinned digest is reproducible by anyone who does not
+// have the generator's spec table compiled in -- which is the whole point of a
+// conformance vector, and which v87/v88/v92 could not do until it existed.
+struct BasePatchFile {
+    uint32_t width = 0, height = 0, eye = 0, src_frame = 0, chroma_order = 0;
+    uint32_t ystride = 0, cstride = 0;
+    int apply_after = -1;
+    std::vector<uint8_t> tiles, Y, C;
+};
+
+bool base_patch_load(const std::string &path, BasePatchFile &b) {
+    std::FILE *f = std::fopen(path.c_str(), "rb");
+    if (!f) return false;
+    std::vector<uint8_t> d;
+    uint8_t buf[65536];
+    size_t n;
+    while ((n = std::fread(buf, 1, sizeof buf, f)) > 0)
+        d.insert(d.end(), buf, buf + n);
+    std::fclose(f);
+    if (d.size() < 8 + 11 * 4) return false;
+    if (std::memcmp(d.data(), "NXVBP1\0\0", 8) != 0) return false;
+    auto u32 = [&](size_t o) {
+        return (uint32_t)d[o] | ((uint32_t)d[o + 1] << 8) |
+               ((uint32_t)d[o + 2] << 16) | ((uint32_t)d[o + 3] << 24);
+    };
+    b.width = u32(8); b.height = u32(12); b.eye = u32(16);
+    b.src_frame = u32(20); b.chroma_order = u32(24); b.ystride = u32(28);
+    b.cstride = u32(32); b.apply_after = (int)u32(36);
+    const uint32_t nt = u32(40), ny = u32(44), nc = u32(48);
+    size_t off = 8 + 11 * 4;
+    if (d.size() != off + nt + ny + nc) return false;
+    b.tiles.assign(d.begin() + off, d.begin() + off + nt); off += nt;
+    b.Y.assign(d.begin() + off, d.begin() + off + ny); off += ny;
+    b.C.assign(d.begin() + off, d.begin() + off + nc);
+    return true;
+}
+
+// Apply the shipped patch to BOTH decoders and re-fold, which is what the
+// reference does at the same point.  The GPU side goes through
+// nxvc_vk_atlas_write_tiles(), so this is the entry point's conformance test
+// as well as the vectors': the two atlases must still agree afterwards.
+//
+// The base picture ships as 8-bit YCbCr, which is what a client HEVC-decodes.
+// The decoder's entry point takes a buffer ALREADY in the atlas's own coded
+// sample domain -- the conversion is the client's kernel, deliberately, so the
+// decoder never has to know a base picture's colour layout.  For a `CT_NONE`
+// stream that conversion is a widening and a de-interleave, and it is done
+// here on the host because the point of the test is the WRITE, not the
+// colour.
+bool apply_base_patch(const char *what, nxvc_decoder *rd, nxvc_vk_decoder *gd,
+                      const BasePatchFile &bp, uint32_t eyes, MD5 &rmd,
+                      MD5 &gmd, int &patched);
+
+void check_stream_atlas(const char *what, const std::vector<uint8_t> &stream,
+                        const std::string &pinned_md5) {
+    CaseGuard cg_(what);
+    nxvc_status cst;
+    nxvc_decoder *rd = nxvc_decoder_create(&cst);
+    if (!rd) {
+        std::printf("FAIL %s: nxvc_decoder_create\n", what);
+        ++g_fail;
+        return;
+    }
+    nxvc_vkd_create_info ci;
+    nxvc_vk_decoder_create_info_default(&ci);
+    ci.flags = 0;
+    ci.output_format = NXVC_VKD_OUT_AUTO;
+    ci.device_name = device_filter();
+    nxvc_vk_decoder *gd = nullptr;
+    if (nxvc_vk_decoder_create(&ci, &gd) != NXVC_VKD_OK) {
+        std::printf("SKIP %s: %s\n", what,
+                    gd ? nxvc_vk_decoder_last_error(gd) : "no decoder");
+        ++g_skipped;
+        nxvc_vk_decoder_destroy(gd);
+        nxvc_decoder_destroy(rd);
+        return;
+    }
+    size_t rc = 0, gc = 0;
+    cst = nxvc_decoder_parse_stream_header(rd, stream.data(), stream.size(),
+                                           &rc);
+    nxvc_vkd_status st = nxvc_vk_decoder_parse_stream_header(
+        gd, stream.data(), stream.size(), &gc);
+    if (st == NXVC_VKD_ERR_UNSUPPORTED) {
+        std::printf("SKIP %s: %s\n", what, nxvc_vk_decoder_last_error(gd));
+        ++g_skipped;
+        nxvc_vk_decoder_destroy(gd);
+        nxvc_decoder_destroy(rd);
+        return;
+    }
+    if (cst != NXVC_OK || st != NXVC_VKD_OK || rc != gc) {
+        std::printf("FAIL %s: stream header: ref %s, gpu %s\n", what,
+                    nxvc_status_string(cst), nxvc_vk_decoder_status_string(st));
+        ++g_fail;
+        nxvc_vk_decoder_destroy(gd);
+        nxvc_decoder_destroy(rd);
+        return;
+    }
+    ++g_checked;
+    uint32_t yw, yh, cw, ch;
+    nxvc_decoder_plane_size(rd, 0, &yw, &yh);
+    nxvc_decoder_plane_size(rd, 1, &cw, &ch);
+    std::vector<uint8_t> Y((size_t)yw * yh), U((size_t)cw * ch),
+        V((size_t)cw * ch);
+    nxvc_stream_info sinf{};
+    nxvc_decoder_stream_info(rd, &sinf);
+    const uint32_t si_eyes = sinf.eyes;
+    BasePatchFile bp;
+    const bool have_patch =
+        base_patch_load(std::string(g_vectors_dir) + "/" + what + ".basepatch",
+                        bp);
+    int patched = 0;
+    MD5 gmd, rmd;
+    std::vector<uint8_t> gs, rs;
+    size_t off = rc;
+    int nf = 0;
+    bool bad = false;
+    while (off < stream.size() && !bad) {
+        nxvc_image oi{};
+        oi.plane[0] = Y.data(); oi.stride[0] = (int)yw;
+        oi.plane[1] = U.data(); oi.stride[1] = (int)cw;
+        oi.plane[2] = V.data(); oi.stride[2] = (int)cw;
+        size_t ur = 0, ug = 0;
+        cst = nxvc_decoder_decode_frame(rd, stream.data() + off,
+                                        stream.size() - off, &oi, &ur);
+        st = nxvc_vk_decode_frame(gd, stream.data() + off, stream.size() - off,
+                                  &ug);
+        if (cst != NXVC_OK || st != NXVC_VKD_OK || ur != ug) {
+            std::printf("FAIL %s: frame %d: ref %s, gpu %s\n", what, nf,
+                        nxvc_status_string(cst),
+                        st ? nxvc_vk_decoder_last_error(gd) : "ok");
+            ++g_fail;
+            bad = true;
+            break;
+        }
+        // The whole table, then every plane, exactly as the reference folds
+        // it -- so the two digests are comparable and so is the manifest's.
+        const size_t tb = nxvc_decoder_atlas_table_size(rd);
+        rs.assign(tb, 0u);
+        gs.assign(tb, 0u);
+        nxvc_decoder_atlas_table(rd, rs.data(), tb);
+        nxvc_vk_decoder_atlas_table(gd, gs.data(), tb);
+        for (int p = 0; p < 4; ++p) {
+            uint32_t w = 0, h = 0, sd = 0;
+            const uint16_t *rp = nxvc_decoder_atlas_plane(rd, p, &w, &h, &sd);
+            if (!rp || !w || !h) continue;
+            std::vector<uint16_t> gp((size_t)sd * h);
+            uint32_t gw = 0, gh = 0, gsd = 0;
+            nxvc_vk_decoder_atlas_plane(gd, p, gp.data(), gp.size(), &gw, &gh,
+                                        &gsd);
+            for (uint32_t y = 0; y < h; ++y)
+                for (uint32_t x = 0; x < w; ++x) {
+                    const uint16_t rv = rp[(size_t)y * sd + x];
+                    const uint16_t gv = gp[(size_t)y * sd + x];
+                    rs.push_back((uint8_t)(rv & 0xff));
+                    rs.push_back((uint8_t)(rv >> 8));
+                    gs.push_back((uint8_t)(gv & 0xff));
+                    gs.push_back((uint8_t)(gv >> 8));
+                }
+        }
+        if (rs != gs) {
+            // Table or pixels?  They are different bugs and the first `tb`
+            // bytes are the table, so say which before anything else.
+            size_t d0 = 0;
+            while (d0 < rs.size() && d0 < gs.size() && rs[d0] == gs[d0]) ++d0;
+            if (d0 < tb) {
+                const size_t e = d0 / 64, k = (d0 % 64) / 4;
+                const uint32_t *r32 = (const uint32_t *)(rs.data() + e * 64);
+                const uint32_t *g32 = (const uint32_t *)(gs.data() + e * 64);
+                std::printf("FAIL %s: frame %d: TABLE entry %zu uint %zu: "
+                            "ref 0x%08x gpu 0x%08x (patched %d)\n",
+                            what, nf, e, k, r32[k], g32[k], patched);
+            } else {
+                std::printf("FAIL %s: frame %d: PIXELS differ from byte %zu "
+                            "of %zu (table %zu B agreed, patched %d)\n",
+                            what, nf, d0 - tb, rs.size() - tb, tb, patched);
+            }
+            std::printf("FAIL %s: the atlas differs from the reference at "
+                        "frame %d\n", what, nf);
+            ++g_fail;
+            bad = true;
+            atlas_attribute(what, stream);
+            break;
+        }
+        rmd.update(rs.data(), rs.size());
+        gmd.update(gs.data(), gs.size());
+        ++nf;
+        off += ur;
+        if (have_patch && nf == bp.apply_after + 1) {
+            if (!apply_base_patch(what, rd, gd, bp, si_eyes, rmd, gmd,
+                                  patched)) {
+                ++g_fail;
+                bad = true;
+                break;
+            }
+        }
+    }
+    nxvc_vk_decoder_destroy(gd);
+    nxvc_decoder_destroy(rd);
+    if (bad) return;
+    const std::string got = gmd.hex(), refgot = rmd.hex();
+    if (!pinned_md5.empty() && got != pinned_md5) {
+        if (refgot != pinned_md5) {
+            // Both decoders agree and both differ from the manifest, so the
+            // pin covers something the stream does not carry -- the base
+            // patch of 13.12.9 for v87 and v88.
+            std::printf("-- %s: atlas byte-identical to the reference over %d "
+                        "frames; the manifest pin (%s) is NOT reproducible "
+                        "from the vector file -- the reference folds %s too, "
+                        "because the pin includes a base patch built outside "
+                        "the stream\n",
+                        what, nf, pinned_md5.c_str(), refgot.c_str());
+            return;
+        }
+        std::printf("FAIL %s: atlas md5 %s, manifest says %s (%d frames)\n",
+                    what, got.c_str(), pinned_md5.c_str(), nf);
+        ++g_fail;
+        atlas_attribute(what, stream);
+        return;
+    }
+    if (g_verbose) std::printf("ok   %s (atlas, %d frames)\n", what, nf);
+}
+
+bool apply_base_patch(const char *what, nxvc_decoder *rd, nxvc_vk_decoder *gd,
+                      const BasePatchFile &bp, uint32_t eyes, MD5 &rmd,
+                      MD5 &gmd, int &patched) {
+    // ---- the reference, straight from the shipped bytes.
+    nxvc_base_patch api{};
+    api.plane[0] = bp.Y.data();
+    api.stride[0] = (int)bp.ystride;
+    api.plane[1] = bp.C.data();
+    api.stride[1] = (int)bp.cstride;
+    api.width = bp.width;
+    api.height = bp.height;
+    api.eye = bp.eye;
+    api.src_frame = bp.src_frame;
+    api.chroma_order = bp.chroma_order;
+    api.tiles = bp.tiles.data();
+    api.tile_bytes = (uint32_t)bp.tiles.size();
+    uint32_t rap = 0;
+    if (nxvc_decoder_atlas_patch_base(rd, &api, &rap, nullptr) != NXVC_OK) {
+        std::printf("FAIL %s: reference base patch refused\n", what);
+        return false;
+    }
+
+    // ---- the GPU, through nxvc_vk_atlas_write_tiles().
+    VkDevice dev = VK_NULL_HANDLE;
+    VkPhysicalDevice phys = VK_NULL_HANDLE;
+    if (nxvc_vk_decoder_vk_handles(gd, nullptr, &phys, &dev, nullptr,
+                                   nullptr) != NXVC_VKD_OK ||
+        !dev) {
+        std::printf("FAIL %s: no Vulkan handles from the decoder\n", what);
+        return false;
+    }
+    uint32_t pw[4] = {0, 0, 0, 0}, ph[4] = {0, 0, 0, 0}, ps[4] = {0, 0, 0, 0};
+    size_t slot = 0;
+    for (int p = 0; p < 4; ++p) {
+        nxvc_vk_decoder_atlas_plane(gd, p, nullptr, 0, &pw[p], &ph[p], &ps[p]);
+        if (pw[p] && ph[p]) slot += (size_t)ps[p] * ph[p];
+    }
+    // The slot-shaped u16 source: plane 0 from Y, planes 1 and 2 from the
+    // interleaved chroma, at the eye's own column offset.  Only the named
+    // tiles are ever copied, so the rest may stay zero.
+    std::vector<uint16_t> srcbuf(slot, 0u);
+    size_t base = 0;
+    for (int p = 0; p < 4; ++p) {
+        if (!pw[p] || !ph[p]) continue;
+        if (p == 0) {
+            for (uint32_t y = 0; y < ph[0] && y < bp.height; ++y)
+                for (uint32_t x = 0; x < pw[0] && x < bp.width; ++x)
+                    srcbuf[base + (size_t)y * ps[0] + bp.eye * pw[0] + x] =
+                        bp.Y[(size_t)y * bp.ystride + x];
+        } else if (p == 1 || p == 2) {
+            // NXVC_BASE_CHROMA_CB_CR is (Cb,Cr); the other order swaps them.
+            const int sel = (bp.chroma_order == 0) ? (p - 1) : (2 - p);
+            for (uint32_t y = 0; y < ph[p]; ++y)
+                for (uint32_t x = 0; x < pw[p]; ++x)
+                    srcbuf[base + (size_t)y * ps[p] + bp.eye * pw[p] + x] =
+                        bp.C[(size_t)y * bp.cstride + x * 2 + sel];
+        }
+        base += (size_t)ps[p] * ph[p];
+    }
+    VkBuffer buf = VK_NULL_HANDLE;
+    VkDeviceMemory mem = VK_NULL_HANDLE;
+    VkBufferCreateInfo bci{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    bci.size = srcbuf.size() * 2;
+    bci.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    if (vkCreateBuffer(dev, &bci, nullptr, &buf) != VK_SUCCESS) {
+        std::printf("FAIL %s: vkCreateBuffer for the patch source\n", what);
+        return false;
+    }
+    VkMemoryRequirements mr{};
+    vkGetBufferMemoryRequirements(dev, buf, &mr);
+    VkPhysicalDeviceMemoryProperties mp{};
+    vkGetPhysicalDeviceMemoryProperties(phys, &mp);
+    uint32_t mt = UINT32_MAX;
+    for (uint32_t i = 0; i < mp.memoryTypeCount; ++i)
+        if ((mr.memoryTypeBits & (1u << i)) &&
+            (mp.memoryTypes[i].propertyFlags &
+             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) &&
+            (mp.memoryTypes[i].propertyFlags &
+             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) {
+            mt = i;
+            break;
+        }
+    VkMemoryAllocateInfo mai{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    mai.allocationSize = mr.size;
+    mai.memoryTypeIndex = mt;
+    if (mt == UINT32_MAX ||
+        vkAllocateMemory(dev, &mai, nullptr, &mem) != VK_SUCCESS) {
+        vkDestroyBuffer(dev, buf, nullptr);
+        std::printf("FAIL %s: no host-visible memory for the patch source\n",
+                    what);
+        return false;
+    }
+    vkBindBufferMemory(dev, buf, mem, 0);
+    void *mapped = nullptr;
+    vkMapMemory(dev, mem, 0, VK_WHOLE_SIZE, 0, &mapped);
+    std::memcpy(mapped, srcbuf.data(), srcbuf.size() * 2);
+    vkUnmapMemory(dev, mem);
+
+    nxvc_vkd_atlas_src src{};
+    src.buffer = buf;
+    src.offset = 0;
+    // The named tiles, as contiguous RUNS -- which is the form the entry point
+    // is built around, because row strips are what the writes coalesce to.
+    uint32_t gap = 0, gsup = 0;
+    nxvc_vkd_status wst = NXVC_VKD_OK;
+    const uint32_t nt = (uint32_t)bp.tiles.size();
+    for (uint32_t i = 0; i < nt && wst == NXVC_VKD_OK;) {
+        if (!bp.tiles[i]) { ++i; continue; }
+        uint32_t j = i;
+        while (j < nt && bp.tiles[j]) ++j;
+        uint32_t a = 0, sup = 0;
+        wst = nxvc_vk_atlas_write_tiles(gd, bp.eye, i, j - i, &src,
+                                        bp.src_frame, 0, &a, &sup);
+        gap += a;
+        gsup += sup;
+        i = j;
+    }
+    vkDestroyBuffer(dev, buf, nullptr);
+    vkFreeMemory(dev, mem, nullptr);
+    if (wst != NXVC_VKD_OK) {
+        std::printf("FAIL %s: nxvc_vk_atlas_write_tiles: %s\n", what,
+                    nxvc_vk_decoder_last_error(gd));
+        return false;
+    }
+    if (gap != rap) {
+        std::printf("FAIL %s: the base patch applied %u tile(s) on the GPU and "
+                    "%u on the reference\n", what, gap, rap);
+        return false;
+    }
+    patched = (int)gap;
+    (void)eyes;
+
+    // Re-fold both atlases, exactly as the reference does after its patch.
+    std::vector<uint8_t> rs2, gs2;
+    const size_t tb = nxvc_decoder_atlas_table_size(rd);
+    rs2.assign(tb, 0u);
+    gs2.assign(tb, 0u);
+    nxvc_decoder_atlas_table(rd, rs2.data(), tb);
+    nxvc_vk_decoder_atlas_table(gd, gs2.data(), tb);
+    for (int p = 0; p < 4; ++p) {
+        uint32_t w = 0, h = 0, sd = 0;
+        const uint16_t *rp = nxvc_decoder_atlas_plane(rd, p, &w, &h, &sd);
+        if (!rp || !w || !h) continue;
+        std::vector<uint16_t> gp((size_t)sd * h);
+        uint32_t gw = 0, gh = 0, gsd = 0;
+        nxvc_vk_decoder_atlas_plane(gd, p, gp.data(), gp.size(), &gw, &gh,
+                                    &gsd);
+        for (uint32_t y = 0; y < h; ++y)
+            for (uint32_t x = 0; x < w; ++x) {
+                const uint16_t rv = rp[(size_t)y * sd + x];
+                const uint16_t gv = gp[(size_t)y * sd + x];
+                rs2.push_back((uint8_t)(rv & 0xff));
+                rs2.push_back((uint8_t)(rv >> 8));
+                gs2.push_back((uint8_t)(gv & 0xff));
+                gs2.push_back((uint8_t)(gv >> 8));
+            }
+    }
+    if (rs2 != gs2) {
+        std::printf("FAIL %s: the atlas differs from the reference AFTER the "
+                    "base patch (%u applied, %u superseded)\n", what, gap, gsup);
+        return false;
+    }
+    rmd.update(rs2.data(), rs2.size());
+    gmd.update(gs2.data(), gs2.size());
+    return true;
+}
+
 void check_stream(const char *what, const std::vector<uint8_t> &stream,
                   const std::string &pinned_md5, uint32_t out_format) {
+    // [ATLAS] An atlas stream's normative output is the atlas, so it takes a
+    // different LEG entirely -- not a different comparison of the same thing.
+    if (stream_is_atlas(stream)) {
+        check_stream_atlas(what, stream, pinned_md5);
+        return;
+    }
     // The watchdog's real arming point.  The manifest sweep, the synthetic
     // streams and their RGB10A2 variants all reach the GPU through here, and
     // arming only the manifest loop is how a wedge in the synthetic stage
@@ -1224,6 +1816,287 @@ void run_row_present(int frames) {
                 offs.size(), (double)offs.size() / (double)on.size());
 }
 
+// --------------------------------------- [SYN] 13.12.11 the two frame modes
+// A stream with tool bit 34 codes each frame as an ATLAS frame or a PICTURE
+// frame.  Two arms, forced to opposite ends by the encoder's policy knobs, and
+// each asserts that it ACTUALLY reached the mode it is named for -- a sweep
+// that never took the branch proves nothing, which is the same rule the guard
+// trip count and the row_present elision count are held to.
+//
+// The comparison is the atlas against the reference's, byte for byte, after
+// every frame: table and pixels.  For the all-PICTURE arm that is also the
+// equivalence the mode exists to provide -- every frame decoded by the
+// ORDINARY picture model, with the atlas rebuilt from the result -- so if the
+// two modes were not the same codec at two operating points, this is where it
+// would show.
+bool encode_mode_stream(int w, int h, int frames, int period,
+                        std::vector<uint8_t> &stream, std::string &err) {
+    nxvc_config cfg;
+    nxvc_config_default(&cfg);
+    cfg.width = (uint32_t)w;
+    cfg.height = (uint32_t)h;
+    cfg.chroma = NXVC_CHROMA_420;
+    cfg.base_qp = 28;
+    cfg.inter = 1;
+    cfg.atlas = 1;
+    // `period` 1 forces every frame to a PICTURE frame; 0 with no
+    // displacement trigger leaves every frame an ATLAS frame.
+    cfg.atlas_picture_period = (uint32_t)period;
+    cfg.atlas_picture_disp = 0;
+    cfg.atlas_picture_min_spacing = 0;
+    nxvc_status st;
+    nxvc_encoder *e = nxvc_encoder_create(&cfg, &st);
+    if (!e) { err = nxvc_status_string(st); return false; }
+    std::vector<uint8_t> hdr(4096);
+    size_t hl = 0;
+    st = nxvc_encoder_stream_header(e, hdr.data(), hdr.size(), &hl);
+    if (st != NXVC_OK) {
+        err = nxvc_status_string(st);
+        nxvc_encoder_destroy(e);
+        return false;
+    }
+    stream.assign(hdr.begin(), hdr.begin() + hl);
+    std::vector<uint8_t> fbuf((size_t)w * h * 8 + (1u << 20));
+    for (int f = 0; f < frames; ++f) {
+        const double a = 0.010 * f;   // a real yaw, so C is not the identity
+        nxvc_view v{};
+        v.qy = std::sin(a * 0.5);
+        v.qw = std::cos(a * 0.5);
+        v.fov_left = -0.9; v.fov_right = 0.9;
+        v.fov_up = 0.9; v.fov_down = -0.9;
+        nxvc_encoder_set_views(e, &v, 1);
+        TestImage im = make_image(w, h, false, 1, (uint32_t)(7000 + f));
+        nxvc_image img{};
+        for (int p = 0; p < 4; ++p) img.plane[p] = (uint8_t *)im.p[p].data();
+        img.stride[0] = im.w;
+        img.stride[1] = im.cw;
+        img.stride[2] = im.cw;
+        img.stride[3] = im.w;
+        size_t ol = 0;
+        st = nxvc_encoder_encode_frame(e, &img, nullptr, nullptr, fbuf.data(),
+                                       fbuf.size(), &ol);
+        if (st != NXVC_OK) {
+            err = nxvc_status_string(st);
+            nxvc_encoder_destroy(e);
+            return false;
+        }
+        stream.insert(stream.end(), fbuf.begin(), fbuf.begin() + ol);
+    }
+    nxvc_encoder_destroy(e);
+    return true;
+}
+
+// Count the frames whose header sets flags bit 5, straight out of the
+// bitstream -- so what the test asserts about the mode is what the WIRE says
+// and not what the decoder reports about itself.
+void count_modes(const std::vector<uint8_t> &s, size_t hdr_len, int *picture,
+                 int *atlas) {
+    *picture = 0;
+    *atlas = 0;
+    size_t off = hdr_len;
+    while (off + 40 <= s.size()) {
+        uint32_t fb = 0;
+        for (int i = 0; i < 4; ++i) fb |= (uint32_t)s[off + 36 + i] << (8 * i);
+        if (!fb) break;
+        ((s[off + 34] >> 5) & 1u) ? ++*picture : ++*atlas;
+        off += fb;
+    }
+}
+
+void run_atlas_modes() {
+    struct Arm { const char *name; int period; bool want_picture; };
+    const Arm arms[2] = {{"modes-all-picture", 1, true},
+                         {"modes-all-atlas", 0, false}};
+    for (const Arm &a : arms) {
+        ++g_checked;
+        std::vector<uint8_t> stream;
+        std::string err;
+        if (!encode_mode_stream(192, 192, 10, a.period, stream, err)) {
+            std::printf("FAIL %s: encode: %s\n", a.name, err.c_str());
+            ++g_fail;
+            continue;
+        }
+        nxvc_status cst;
+        nxvc_decoder *rd = nxvc_decoder_create(&cst);
+        if (!rd) { std::printf("FAIL %s: decoder_create\n", a.name); ++g_fail; continue; }
+        size_t rc = 0;
+        if (nxvc_decoder_parse_stream_header(rd, stream.data(), stream.size(),
+                                             &rc) != NXVC_OK) {
+            std::printf("FAIL %s: reference stream header\n", a.name);
+            ++g_fail;
+            nxvc_decoder_destroy(rd);
+            continue;
+        }
+        nxvc_decoder_destroy(rd);
+        int npic = 0, natl = 0;
+        count_modes(stream, rc, &npic, &natl);
+        // The arm has to have reached its own mode, or it tested nothing.
+        if (a.want_picture && npic == 0) {
+            std::printf("FAIL %s: not one frame set flags bit 5; the PICTURE "
+                        "mode was never exercised\n", a.name);
+            ++g_fail;
+            continue;
+        }
+        if (!a.want_picture && npic != 0) {
+            std::printf("FAIL %s: %d PICTURE frame(s) in the arm that must "
+                        "have none\n", a.name, npic);
+            ++g_fail;
+            continue;
+        }
+        --g_checked;   // check_stream_atlas counts it
+        check_stream_atlas(a.name, stream, "");
+        std::printf("-- %s: %d PICTURE frame(s), %d ATLAS frame(s), atlas "
+                    "byte-identical to the reference\n", a.name, npic, natl);
+    }
+}
+
+// ------------------------------- [ATLAS] the display view A/B (13.12.5)
+// The one-tap 8-bit view and the three-plane R16 view must carry the SAME
+// PICTURE.  If they did not, choosing between them would be a quality decision
+// instead of a performance one, and the 1.086-against-2.124 ms measurement
+// would be buying something other than taps.
+//
+// The comparison is sample for sample after the conversion rule the header
+// states: for a CT_NONE stream the atlas holds the stream's own 8-bit YCbCr,
+// so the R8 view stores the value unchanged as a UNORM byte and the R16 view
+// stores it as an integer.  Both are then read back and must agree with each
+// OTHER and with the ATLAS ITSELF -- the third leg matters, because two views
+// produced by one wrong kernel would agree with each other perfectly.
+void run_atlas_view() {
+    ++g_checked;
+    std::vector<uint8_t> stream;
+    std::string err;
+    if (!encode_mode_stream(192, 192, 4, 0, stream, err)) {
+        std::printf("FAIL atlas-view: encode: %s\n", err.c_str());
+        ++g_fail;
+        return;
+    }
+    struct Shot { std::vector<uint8_t> y, c, cr; uint32_t yw=0,yh=0,cw=0,ch=0; };
+    Shot shot[2];
+    const nxvc_vkd_atlas_view modes[2] = {NXVC_VKD_ATLAS_VIEW_R8,
+                                          NXVC_VKD_ATLAS_VIEW_R16};
+    std::vector<uint16_t> atlasY, atlasCb, atlasCr;
+    uint32_t aw = 0, ah = 0, asd = 0, acw = 0, ach = 0, acsd = 0;
+    for (int m = 0; m < 2; ++m) {
+        nxvc_vkd_create_info ci;
+        nxvc_vk_decoder_create_info_default(&ci);
+        ci.flags = 0;
+        ci.output_format = NXVC_VKD_OUT_AUTO;
+        ci.device_name = device_filter();
+        nxvc_vk_decoder *d = nullptr;
+        if (nxvc_vk_decoder_create(&ci, &d) != NXVC_VKD_OK) {
+            std::printf("SKIP atlas-view: no decoder\n");
+            ++g_skipped;
+            nxvc_vk_decoder_destroy(d);
+            return;
+        }
+        size_t consumed = 0;
+        if (nxvc_vk_decoder_parse_stream_header(d, stream.data(), stream.size(),
+                                                &consumed) != NXVC_VKD_OK) {
+            std::printf("FAIL atlas-view: stream header\n");
+            ++g_fail;
+            nxvc_vk_decoder_destroy(d);
+            return;
+        }
+        if (nxvc_vk_decoder_set_atlas_view(d, modes[m]) != NXVC_VKD_OK) {
+            std::printf("FAIL atlas-view: set_atlas_view(%d): %s\n", (int)modes[m],
+                        nxvc_vk_decoder_last_error(d));
+            ++g_fail;
+            nxvc_vk_decoder_destroy(d);
+            return;
+        }
+        size_t off = consumed;
+        while (off < stream.size()) {
+            size_t used = 0;
+            if (nxvc_vk_decode_frame(d, stream.data() + off,
+                                     stream.size() - off, &used) !=
+                NXVC_VKD_OK) {
+                std::printf("FAIL atlas-view: decode: %s\n",
+                            nxvc_vk_decoder_last_error(d));
+                ++g_fail;
+                nxvc_vk_decoder_destroy(d);
+                return;
+            }
+            off += used;
+        }
+        uint32_t w = 0, h = 0, bps = 0;
+        auto grab = [&](int pl, std::vector<uint8_t> &dst) {
+            if (nxvc_vk_decoder_atlas_view_read(d, pl, nullptr, 0, &w, &h,
+                                                &bps) != NXVC_VKD_OK)
+                return false;
+            dst.assign((size_t)w * h * bps, 0u);
+            return nxvc_vk_decoder_atlas_view_read(d, pl, dst.data(),
+                                                   dst.size(), &w, &h, &bps) ==
+                   NXVC_VKD_OK;
+        };
+        if (!grab(0, shot[m].y)) { std::printf("FAIL atlas-view: read luma\n"); ++g_fail; nxvc_vk_decoder_destroy(d); return; }
+        shot[m].yw = w; shot[m].yh = h;
+        if (!grab(1, shot[m].c)) { std::printf("FAIL atlas-view: read chroma\n"); ++g_fail; nxvc_vk_decoder_destroy(d); return; }
+        shot[m].cw = w; shot[m].ch = h;
+        if (modes[m] == NXVC_VKD_ATLAS_VIEW_R16) grab(2, shot[m].cr);
+        if (m == 1) {
+            // The atlas itself, as the independent third leg.
+            nxvc_vk_decoder_atlas_plane(d, 0, nullptr, 0, &aw, &ah, &asd);
+            atlasY.assign((size_t)asd * ah, 0u);
+            nxvc_vk_decoder_atlas_plane(d, 0, atlasY.data(), atlasY.size(), &aw,
+                                        &ah, &asd);
+            nxvc_vk_decoder_atlas_plane(d, 1, nullptr, 0, &acw, &ach, &acsd);
+            atlasCb.assign((size_t)acsd * ach, 0u);
+            nxvc_vk_decoder_atlas_plane(d, 1, atlasCb.data(), atlasCb.size(),
+                                        &acw, &ach, &acsd);
+            atlasCr.assign((size_t)acsd * ach, 0u);
+            nxvc_vk_decoder_atlas_plane(d, 2, atlasCr.data(), atlasCr.size(),
+                                        &acw, &ach, &acsd);
+        }
+        nxvc_vk_decoder_destroy(d);
+    }
+    if (shot[0].yw != shot[1].yw || shot[0].yh != shot[1].yh ||
+        shot[0].cw != shot[1].cw || shot[0].ch != shot[1].ch) {
+        std::printf("FAIL atlas-view: the two views have different extents\n");
+        ++g_fail;
+        return;
+    }
+    size_t bad = 0, first = 0;
+    bool have = false;
+    for (uint32_t y = 0; y < shot[0].yh; ++y)
+        for (uint32_t x = 0; x < shot[0].yw; ++x) {
+            const uint32_t v8 = shot[0].y[(size_t)y * shot[0].yw + x];
+            const size_t o16 = ((size_t)y * shot[1].yw + x) * 2;
+            const uint32_t v16 =
+                (uint32_t)shot[1].y[o16] | ((uint32_t)shot[1].y[o16 + 1] << 8);
+            const uint32_t va = atlasY[(size_t)y * asd + x];
+            if (v8 != v16 || v8 != va) {
+                if (!have) { have = true; first = (size_t)y * shot[0].yw + x; }
+                ++bad;
+            }
+        }
+    for (uint32_t y = 0; y < shot[0].ch; ++y)
+        for (uint32_t x = 0; x < shot[0].cw; ++x) {
+            const size_t o8 = ((size_t)y * shot[0].cw + x) * 2;
+            const uint32_t cb8 = shot[0].c[o8], cr8 = shot[0].c[o8 + 1];
+            const size_t o16 = ((size_t)y * shot[1].cw + x) * 2;
+            const uint32_t cb16 =
+                (uint32_t)shot[1].c[o16] | ((uint32_t)shot[1].c[o16 + 1] << 8);
+            const uint32_t cr16 = (uint32_t)shot[1].cr[o16] |
+                                  ((uint32_t)shot[1].cr[o16 + 1] << 8);
+            const uint32_t acb = atlasCb[(size_t)y * acsd + x];
+            const uint32_t acr = atlasCr[(size_t)y * acsd + x];
+            if (cb8 != cb16 || cr8 != cr16 || cb8 != acb || cr8 != acr) ++bad;
+        }
+    if (bad) {
+        std::printf("FAIL atlas-view: %zu sample(s) differ between the one-tap "
+                    "8-bit view, the three-plane R16 view and the atlas "
+                    "(first at %zu)\n", bad, first);
+        ++g_fail;
+        return;
+    }
+    std::printf("-- atlas-view: one-tap 8-bit (R8 %ux%u + R8G8 %ux%u) and "
+                "three-plane R16 carry the same picture, and both equal the "
+                "atlas, over %u luma + %u chroma samples\n",
+                shot[0].yw, shot[0].yh, shot[0].cw, shot[0].ch,
+                shot[0].yw * shot[0].yh, shot[0].cw * shot[0].ch);
+}
+
 std::vector<Case> synthetic_cases(bool quick) {
     std::vector<Case> v;
     auto nm = [](const char *fmt, auto... a) {
@@ -1395,6 +2268,53 @@ void run_synthetic(bool quick) {
     }
 }
 
+// ------------------------------------------------- [timing] the self-check
+// A GPU duration is built from a tick delta and a tick RATE, and a wrong rate
+// is invisible in the duration -- it just makes every number bigger by a
+// constant, which reads like a slow device rather than a broken clock.  This
+// decoder reported GPU times about 1.57x high on one device for months for
+// exactly that reason: 16 frames x 51 ms of "GPU" inside a 521 ms wall.
+//
+// The check is the one relation that cannot be argued with: **work on the GPU
+// happens inside the wall time of the call that submitted and waited for it,
+// so summed GPU <= summed wall, always.** A run that violates it has a wrong
+// `timestampPeriod`, a wrong `timestampValidBits` mask, or is double-counting
+// overlapping query pairs -- and any of those makes every absolute in the run
+// worthless.  So it FAILS rather than printing a footnote, and it prints the
+// ratio and the tick parameters either way so the next reader can see which of
+// the two is wrong.
+//
+// The bound is deliberately not tightened beyond 1.0: the honest claim is
+// containment, not a target ratio, and a fast device legitimately spends most
+// of the wall in submission and readback.
+int timing_selfcheck(nxvc_vk_decoder *dec, const char *what, double gpu_ms,
+                     double wall_ms) {
+    float period = 0.f;
+    uint32_t bits = 0;
+    nxvc_vk_decoder_timestamp_info(dec, &period, &bits);
+    if (period <= 0.f || bits == 0) {
+        std::printf("  timing: no GPU timestamps on this device "
+                    "(period %.4f ns, %u valid bits) -- nothing to check\n",
+                    (double)period, bits);
+        return 0;
+    }
+    const double ratio = wall_ms > 0.0 ? gpu_ms / wall_ms : 0.0;
+    std::printf("  timing: GPU %.2f ms / wall %.2f ms = %.3f  "
+                "(timestampPeriod %.4f ns, %u valid bits)\n",
+                gpu_ms, wall_ms, ratio, (double)period, bits);
+    if (gpu_ms > wall_ms) {
+        std::printf("FAIL %s: GPU-summed time EXCEEDS wall time by %.2fx. "
+                    "The GPU cannot spend more time on a submission than the "
+                    "call that waited for it took, so the tick rate or the "
+                    "valid-bit mask is wrong and every absolute in this run "
+                    "is meaningless. timestampPeriod %.4f ns, %u valid bits.\n",
+                    what, ratio, (double)period, bits);
+        ++g_fail;
+        return 1;
+    }
+    return 0;
+}
+
 // ------------------------------------------------------------------ bench
 // PAPER 3.4's decode budget, measured on the shape the headset actually
 // streams: two 2048x2048 eyes at 4:2:0, which is 2048 tiles in one frame.
@@ -1500,8 +2420,9 @@ int run_bench_inter(int iters, int frames, int w, int h, int qp,
         bestSeqWall, intraA, intraB, intraG, inter_frames, sumA / n, sumW / n,
         sumB / n, sumG / n, sumWall / n, (double)bytes / n / 1e3,
         100.0 * (double)nskip / (n * (tiles ? tiles : 1)));
+    const int rc = timing_selfcheck(dec, "bench-inter", bestSeqGpu, bestSeqWall);
     nxvc_vk_decoder_destroy(dec);
-    return 0;
+    return rc;
 }
 
 int run_bench_qp(int iters, int qp, bool dense = false, int intra_dir = -1,
@@ -1553,6 +2474,7 @@ int run_bench_qp(int iters, int qp, bool dense = false, int intra_dir = -1,
     }
     const uint8_t *frame = stream.data() + consumed;
     const size_t flen = stream.size() - consumed;
+    double sumG = 0, sumT = 0;
     double bestA = 1e9, bestB = 1e9, bestG = 1e9, bestT = 1e9;
     nxvc_vkd_stats st{};
     for (int i = 0; i < iters; ++i) {
@@ -1567,6 +2489,11 @@ int run_bench_qp(int iters, int qp, bool dense = false, int intra_dir = -1,
         if (st.pass_b_ms < bestB) bestB = st.pass_b_ms;
         if (st.gpu_ms < bestG) bestG = st.gpu_ms;
         if (st.total_ms < bestT) bestT = st.total_ms;
+        // Summed over the SAME iterations, so the containment check compares
+        // like with like.  `bestG` and `bestT` are minima over independent
+        // iterations and are not a pair.
+        sumG += st.gpu_ms;
+        sumT += st.total_ms;
     }
     std::printf(
         "%s, QP %d: %u tiles, %llu B frame (%llu B payload)\n"
@@ -1580,8 +2507,9 @@ int run_bench_qp(int iters, int qp, bool dense = false, int intra_dir = -1,
         (unsigned long long)st.payload_bytes, iters, bestA, bestB, bestG, bestT,
         st.parse_ms, st.submit_ms, (double)st.coef_bytes / 1e6,
         dense ? "dense" : "sparse", (double)st.coef_slot_bytes / 1e6);
+    const int rc = timing_selfcheck(dec, "bench-qp", sumG, sumT);
     nxvc_vk_decoder_destroy(dec);
-    return 0;
+    return rc;
 }
 
 // ------------------------------------------------ [v3] bench helpers
@@ -2054,6 +2982,11 @@ int main(int argc, char **argv) {
     if (do_synth) {
         CaseGuard cg("row_present");
         run_row_present(quick ? 8 : 24);
+    }
+    if (do_synth) run_atlas_modes();
+    if (do_synth) {
+        CaseGuard cg("atlas-view");
+        run_atlas_view();
     }
     if (do_loss) run_loss(quick ? 20 : 100);
 

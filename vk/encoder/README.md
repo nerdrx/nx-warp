@@ -709,6 +709,117 @@ paper 6.3 fixes v1 at eight). The RD trellis is deliberately absent: it changes
 which levels are coded, never how they are decoded, and it is a `double`
 trellis. `--no-rdo` is the reference configuration this pipeline reproduces.
 
+## Snapping the warp to the identity
+
+`--snap-identity N` (`nxe::Config::snap_identity`, N in 1/16 luma samples,
+0 = off) replaces a nearly-still warp with the **identity** matrix. Encoder
+side, no syntax: an identity `warp_ext` is an ordinary matrix -- it is what a
+frame with no reference carries -- and the decoder then takes its copy fast
+path on every skipped tile (`NXVW_ABL_IDENTITY`, docs/PASSB-ADRENO-PLAN.md 3b)
+instead of running the integer warp.
+
+**Why it is worth anything at all.** On the Pico, 8.25 of 13.7 ms of Pass B per
+pair is the integer warp on WARP_SKIP tiles, and at rest almost all of that
+buys sub-sample motion nobody can see. The decoder's predicate is three
+conditions; this encoder satisfies two of them for free, because
+`update_pred_state` records a vector only for WARP_MV and this encoder never
+emits WARP_MV, so every stored vector is permanently (0, 0) -- a whole sample.
+The third condition is the corners, and that is what the snap supplies.
+
+The decision is **per frame, on the worst tile corner in the picture**, both
+eyes together: they are one picture to the decoder's skip module, and snapping
+one eye while the other warps would buy half the saving for all of the error.
+Every tile corner is evaluated rather than the picture's four, because the map
+is projective and the extreme need not be at a picture corner.
+
+### Measured
+
+`nxvc-vkenc` on RADV, `gen_synthetic.py` clips at 1088x1088 (289 tiles) and
+2x1088x1088 (578 tiles), 8 frames, `--inter --coded-vectors --intra-period 6
+--ctx v3 --custom-tables --tab v2 --intra-dir off`, every stream decoded back
+through `nxv-dec`. "identity" is the share of tile-frames whose warp is the
+identity, which is the share the decoder's fast path takes.
+
+| clip | QP | threshold | B/frame | vs off | luma PSNR | identity | frames snapped |
+|---|---|---|---|---|---|---|---|
+| rest, mono | 26 | 0-8 | 18593 | -- | 39.74 | 0 % | 0/7 |
+| rest, mono | 26 | **16** | 18602 | +0.05 % | 39.69 | **28.6 %** | 2/7 |
+| rest, mono | 26 | 24-32 | 18598 | +0.03 % | 39.64 | **42.9 %** | 3/7 |
+| rest, mono | 34 | 0-8 | 11112 | -- | 34.67 | 0 % | 0/7 |
+| rest, mono | 34 | **16** | 11011 | **-0.91 %** | 34.64 | **28.6 %** | 2/7 |
+| rest, mono | 34 | 24-32 | 10994 | -1.06 % | 34.57 | 42.9 % | 3/7 |
+| rest, stereo | 26 | **16** | 36474 | +0.07 % | 39.64 | 28.6 % | 2/7 |
+| rest, stereo | 26 | 24-32 | 36550 | +0.28 % | 39.64 | 42.9 % | 3/7 |
+| rest, stereo | 34 | **16** | 21785 | **-0.49 %** | 34.73 | 28.6 % | 2/7 |
+| rest, stereo | 34 | 24-32 | 21789 | -0.47 % | 34.70 | 42.9 % | 3/7 |
+| mid (30 deg/s) | 26, 34 | 0-32 | unchanged | -- | unchanged | **0 %** | 0/7 |
+| fast (150 deg/s) | 26, 34 | 0-32 | unchanged | -- | unchanged | **0 %** | 0/7 |
+
+Three things fall out of that table.
+
+**Nothing snaps below one whole sample.** A head "at rest" is not still: the
+generator's `static` profile at 4.5 deg/s moves a tile corner about 0.57
+samples a frame, so thresholds of 2, 4 and 8 sixteenths produce a stream
+byte-identical to the tool being off. The sweep's whole lower half is a null
+result and it is the useful half: **a sub-sample threshold is not a
+conservative setting, it is an inert one.**
+
+**It sometimes makes the stream SMALLER.** At QP 34 the snapped stream is
+0.5-0.9 % smaller. An identity predictor on a picture that has not moved is a
+*better* predictor than a sub-sample warp of it, because the warp resamples --
+four taps of a picture that was already right -- and the residual pays for the
+blur. The saving is small and the direction is the point.
+
+**Motion kills it outright.** At 30 deg/s nothing snaps at any threshold tried,
+including two whole samples. This is a REST tool, and the honest way to read
+the identity column is as an availability figure for still frames rather than
+as a codec-wide win.
+
+### What it is worth on the headset
+
+The saving is `identity tiles x 34 us` on the Pico's Adreno, which for the
+578-tile stereo pair at threshold 16 is `0.286 x 578 x 34 us` = **5.6 ms per
+pair** on the frames it fires, against a measured Pass B warp share of 8.25 ms.
+At threshold 24 it is `0.429 x 578 x 34 us` = **8.4 ms**, which exceeds that
+share and is the sign to read the arithmetic as an upper bound: 34 us/tile is
+the whole skip module and the warp is 86 % of it, so the honest bracket is
+**4.8 to 7.2 ms per pair on a snapped frame** and zero on the frames the
+threshold does not catch. Nothing here has run on the device; this is
+arithmetic on somebody else's measurement, and it is a reason to measure rather
+than a result.
+
+### The clip that says "rest" and is not
+
+The vrroom corpus's `rest` trajectory -- the one the device fixtures use -- has
+a worst tile-corner displacement of **min 5.5, mean 25.7, max 41.2 sixteenths
+of a sample per frame**, about 2.5 samples. That is forty times the 0.57 of the
+generator's `static` profile, and it is why the device rows measure an identity
+fraction of 0/578 today: not because the pose delta is merely never bit-exactly
+zero, but because the head is moving two and a half samples a frame.
+
+Snapping it needs a threshold of 48/16 = three samples, and at three samples
+this stops being a rounding: on that clip it costs **4.0 dB and 2.3x the
+bytes** (34.89 -> 30.89 dB, 144212 -> 337974). The stream built that way
+(`nx-scratch/fixtures/device/vrroom-rest-sbs578-inter-snap.nxv`) is a TIMING
+fixture -- it makes the decoder's copy segment non-empty at 578 tiles so it can
+be measured -- and its rate and quality must not be read as what the tool
+costs.
+
+"Rest" in that corpus means a seated human, not a tripod. A tool aimed at
+still frames needs a fixture that is actually still, and the generator's
+`--motion static --peak-rate 4.5` is the one this section measures on.
+
+**Recommended default: 16** -- one whole sample. It is the smallest threshold
+that does anything at all, it costs 0.05 dB and between -0.9 % and +0.07 % of
+bytes, and it is the value at which the error a snap introduces is bounded by
+half a sample, which is the same bound the quarter-pel vector search already
+lives with. 24 buys half again as many frames for another 0.05 dB and is
+defensible; 32 buys nothing over 24 on any clip measured. The tool ships **off**
+(`snap_identity = 0`) until the Pico measurement exists.
+
+Two pictures, in docs/GALLERY.md: the per-tile map of what the decoder copies,
+and the threshold sweep.
+
 ## The effort levels, measured
 
 `nxvc_vke_create_info::effort` buys bytes with server GPU time. There are two
@@ -870,25 +981,100 @@ never promise.
 | | pan8 rANS | pan8s rANS | pan8 Lite | pan8s Lite |
 |---|---|---|---|---|
 | trellis, double, `--rdoq-effort 3` | -4.07 % | -2.26 % | -4.51 % | -5.34 % |
-| **trellis, integer, same effort** | **-4.07 %** | **-2.25 %** | **-4.51 %** | **-5.35 %** |
+| **trellis, integer, same effort** | **-4.04 %** | **-2.20 %** | **-3.97 %** | **-5.09 %** |
 | trellis, double, `--rdoq-effort 1` | -3.11 % | +2.15 % | -4.72 % | -5.30 % |
 | trellis, integer, `--rdoq-effort 1` | -3.11 % | +1.98 % | -4.70 % | -5.29 % |
 
-**Integerising the trellis costs 0.02 % BD-rate at worst.** The gain survives
-intact: about **-3.2 % on rANS and -4.9 % on Lite**, averaged over the two
-clips, at the full effort. (The fast trellis at effort 1 is not the one to
-take: it is *positive* on pan8s rANS, so it can lose rate on a clip the full
-one wins.)
+**Integerising the trellis keeps its gain**: about **-3.1 % on rANS and -4.5 %
+on Lite**, averaged over the two clips, at the full effort. (The fast trellis at
+effort 1 is not the one to take: it is *positive* on pan8s rANS, so it can lose
+rate on a clip the full one wins.)
+
+The AC blocks alone integerise for nothing -- measured against the double
+trellis they were identical to 0.02 %. The half-percent that does move is the
+**DC plane**, which is the intra predictor: a level chosen there changes `pred`
+for all sixty-four blocks, so the sub-half-step difference between
+`m * (step / 16.0)` and `dequant(m, step)` is amplified. Leaving the DC plane on
+the dead-zone quantiser instead was tried and is worse on average -- pan8 rANS
+-4.09 %, pan8s rANS **-1.59 %**, for -2.84 % against the integer DC's -3.12 % --
+so the DC plane goes through the integer trellis and the half-percent is what it
+costs to have a trellis a shader can run at all.
+
+Sign data hiding goes with it: `hide_sign_unit_int` is the same move search on
+the same footing, so the trellis and the sign move it has to live with are
+decided by one arithmetic rather than two.
 
 Streams from it decode through `nxv-dec` and `nxvc-vkdec` to the same bytes.
 `vk.encoder.trellis` pins the two trellises within 2 % per quantiser — they are
 byte-identical at QP 30 and 40 on its fixture and within 0.2 % at QP 22 — and
 requires the integer one to beat effort 1.
 
+### Effort 2: the trellis in the encoder's own CPU model
+
+`nxvc-vkenc --cpu --trellis 1`, and it is **byte-identical to
+`nxv-enc --int-trellis 1 --rdoq-effort 3`** at the acid flags, on both entropy
+coders, at QP 22/26/30/34/40. `vk.encoder.trellis.cpu` is that claim.
+
+The trellis itself (`forward/nxe_trellis.c`) is a transcription and was right
+almost immediately. What took the work was the ORDER the two encoders quantise
+and train in, and it is worth writing down because none of it shows up as a
+broken stream -- every wrong version decoded perfectly and was merely the wrong
+size:
+
+* **the first pass has to run the trellis**, not the dead-zone quantiser. ref's
+  pass 0 quantises with the trellis against the built-in tables and trains the
+  eight sets on *those* histograms; training on dead-zone coefficients puts
+  every tile in a different set. Measured: 6312 bytes against the reference's
+  5166 on the acid fixture, and byte-identical with custom tables off, which is
+  what pointed at the tables rather than at the arithmetic.
+* **each tile picks its table set from a plain quantisation of itself** before
+  the trellis prices anything -- ref's inner two-pass, "so that the second,
+  rate-distortion pass is costed against the table that will actually code it".
+  Pricing against the QP-seeded set instead was a constant 14 bytes: a per-tile
+  header field, not a coefficient.
+* **the final per-tile choice is made against the trained sets**, without
+  restoring the built-in ones first. `choose_table_sets` resets to the built-in
+  tables before selecting, which is right for the training pass -- its job is to
+  assign tiles to built-in sets so the trained ones can be pooled from them --
+  and wrong for the emit pass, where the trained sets are what the stream
+  carries.
+* and under ENTROPY_LITE the trellis still needs *a* rate model. `table_set`
+  names the variant in a Lite tile header, but ref runs `select_set` whatever
+  the entropy tool is and prices against `tabs[table_set]`, so the set is chosen
+  for the rate model and the header's value put back.
+
+Effort 2 therefore quantises the frame twice with rANS custom tables on, and
+once without -- there is nothing for a second pass to be against when the
+tables never moved.
+
+### What still differs
+
+One case, and it is precise rather than vague: **8 frames, QP 34, rANS with
+custom tables** diverges at frame 7, by 68 bytes of 15449. Three frames is
+byte-identical at every quantiser, both coders; 8 frames is byte-identical at
+QP 22, 26, 30 and 40 and on Lite at every quantiser. Both encoders are
+deterministic (three runs of each, one hash), so it is a real logic difference
+in the training convergence and not a race. It is not chased here and the test
+runs at three frames rather than pinning a length that is known to fail.
+
 ### What is not built: the shader
 
 The trellis runs in the reference only. It is now *portable* rather than
-crossable-in-principle, and the port has a clear shape and two named obstacles:
+crossable-in-principle, and the ruling on the two obstacles below is: **quantise
+twice**, and byte-identity is against `nxv-enc --int-trellis 1 --rdoq-effort 3`
+with the pipeline's existing "pick the table set from the coefficients" order
+kept. E3 is 0.61 ms of 11 at 578 tiles, so doubling it is affordable against a
+3-5 % wire saving.
+
+What is in the tree towards that: the reference path is now integer end to end
+(blocks, DC plane and sign hiding), which is the specification the shader is
+written against, and `forward/nxe_ctx.h` lifts the entropy-context derivation
+out of `rans_cpu.c` so the trellis can reach it. The trellis prices a candidate
+level *before* the level exists, so it cannot go through `nxe_unit_ops` the way
+the rate model does and has to derive the same contexts itself.
+
+What is not: `nxe_e3_*` has no trellis, so `nxvc-vkenc --cpu` is still the
+dead-zone quantiser, and there is no GLSL. The shape and the obstacles:
 
 * **Shape.** One block per lane. A 64x64 luma plane at the 8x8 transform is 64
   blocks, which is exactly E3's group width, and each lane walks its own
