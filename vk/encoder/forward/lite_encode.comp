@@ -318,15 +318,24 @@ void main() {
         barrier();
 
         if (live && g_nunits > 0) {
-            // ---- H0 and H1: one lane per group.
-            for (int g = int(lid); g < ngroups; g += NXE_E4L_WG) {
+            // ---- H0: one lane per group.
+            for (int g = int(lid); g < ngroups; g += NXE_E4L_WG)
                 put_bits(uint(g), uint(s_gflag[g]), 1);
+
+            // ---- H1: one lane per UNIT, not one per group with an inner
+            // loop over the group's units.  A unit's H1 bit is
+            // s_gbase[group] + its index within the group, which every lane
+            // can compute on its own, so the nested form bought nothing --
+            // and it cost: lavapipe SEGFAULTS in JIT-compiled shader code on
+            // the nested version, where the outer loop is live on seven lanes
+            // of sixty-four and the inner one runs inside it.  The flat form
+            // is what the rest of this kernel already does and is portable.
+            for (int ui = int(lid); ui < g_nunits; ui += NXE_E4L_WG) {
+                int g = ui / NXE_LITE_CBF_GROUP;
                 if (s_gflag[g] == 0) continue;
-                int lo = g * NXE_LITE_CBF_GROUP;
-                int hi = min(lo + NXE_LITE_CBF_GROUP, g_nunits);
-                uint base = uint(s_sec[0] + s_gbase[g]);
-                for (int i = lo; i < hi; ++i)
-                    put_bits(base + uint(i - lo), uint(s_coded[i]), 1);
+                put_bits(uint(s_sec[0] + s_gbase[g] +
+                              ui - g * NXE_LITE_CBF_GROUP),
+                         uint(s_coded[ui]), 1);
             }
 
             // ---- P, S and B: one lane per unit.
