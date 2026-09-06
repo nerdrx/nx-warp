@@ -173,6 +173,33 @@ NXVW_AFN nxvw_atlas_col_of(int n, int cols_per_eye, int eyes) {
 // the alternative is a readback per frame.
 #define NXVW_ATLAS_OP_MATGEN 0u
 #define NXVW_ATLAS_OP_WRITEBACK 1u
+// [SYN] 13.12.11 step 1, the PICTURE frame's ASSEMBLE.  One thread per table
+// ENTRY -- every position, not just the coded ones -- writing the Pass W tile
+// record that re-poses that entry into a coherent picture:
+//
+//   mode      the entry's own `static` decides WARP_SKIP or STATIC_MV, which
+//             is exactly what atlas_assemble() passes to the atlas rule
+//   mv        zero
+//   refBase   the atlas slot -- or `NXVW_WARP_MAT_NONE`'s sibling
+//             0xffffffff when the entry is INVALID, because warp_pred.glsl
+//             already emits the correct per-plane mid-grey for "no usable
+//             reference", which is precisely 13.12.5's rule for an invalid
+//             entry.  That is what keeps validity DEVICE-side: the host never
+//             has to read the table back to know which positions are grey
+//   mat_idx   the entry's own matrix pair, filled from `C` as MATGEN does
+//
+// So the assemble runs on the UNMODIFIED predictor and the unmodified skip
+// store, which is what ADR-0029 turns on.
+#define NXVW_ATLAS_OP_ASSEMBLE 2u
+// [SYN] 13.12.11 step 3.  The reconstruction has become the atlas pixels, so
+// every entry -- coded or not -- takes `C := I`, `src_frame := N`, `gen := 0`,
+// `valid := 1`, `base_sourced := 0`, `res_level := 0`, and `static` exactly
+// when this frame coded that position STATIC_MV.
+//
+// This is the ONE place `src_frame` moves for a position the frame did not
+// code, and it is sound for the reason 13.12.10's rebase is not: after a
+// PICTURE frame every position's pixels really are new.
+#define NXVW_ATLAS_OP_MATERIALISE 3u
 
 // The status word MATGEN writes.  Bit 0 is the refusal; bits 8-31 carry the
 // FIRST offending tile index, so the report names a tile and not just a frame.
@@ -186,7 +213,13 @@ struct NxvwAtlasTilePush {
     uint colsPerEye;
     int lumaW, lumaH;   // per-eye luma dimensions -> sub-1 origin
     int chromaW, chromaH;  // per-eye chroma dimensions -> sub-2 origin
-    uint pad0, pad1;
+    // ASSEMBLE: the u16 element offset of the atlas slot the re-pose reads,
+    // and the stream's eye count -- which the index maths needs and MUST NOT
+    // assume.  [SYN] 3.3's tile index is eye-MINOR, so `row`, `col` and `eye`
+    // all divide by `eyes * colsPerEye`; hardcoding 2 there halves `ty` on
+    // every mono stream and puts the whole assemble one tile row out.
+    uint refBase;
+    uint eyes;
 };
 #endif
 

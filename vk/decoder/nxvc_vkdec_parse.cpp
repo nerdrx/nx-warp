@@ -249,6 +249,7 @@ constexpr uint64_t kToolsSupported =
     // Advertising a tool is promising a decode, so it was held out of the mask
     // until that was true rather than until the path merely ran.
     (1ull << 31) | // ATLAS: the per-tile atlas reference       [ATLAS]
+    (1ull << 34) | // ATLAS_REBASE: the two frame modes         [ATLAS]
     (1ull << 32);  // ROW_PRESENT: elide an idle row's header [SYN] 3.1.2
 // Bit 23 FILTER_CATMULL_ROM and bit 14 BITDEPTH10 are reject-in-v1
 // ([SYN] 2.3) and must stay out.
@@ -283,6 +284,7 @@ constexpr uint64_t kToolNearSkip = 1ull << 28;
 constexpr uint64_t kToolQuadMv = 1ull << 29;
 constexpr uint64_t kToolEntropyLite = 1ull << 30;
 constexpr uint64_t kToolAtlas = 1ull << 31;
+constexpr uint64_t kToolAtlasRebase = 1ull << 34;
 constexpr uint64_t kToolRowPresent = 1ull << 32;
 
 }  // namespace
@@ -567,7 +569,19 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
     fp.row_present = (flags >> 4) & 1;
     if (fp.row_present && !(si.tools & kToolRowPresent))
         REJECT("fp.row_present && !(si.tools & kToolRowPresent)");
-    if (flags & 0xe0) REJECT("flags & 0xe0");   // reserved bits 5-7
+    // [SYN] 13.12.11: flags bit 5 is the frame MODE -- clear is an ATLAS
+    // frame, set is a PICTURE frame -- gated on tool bit 34 AND on ATLAS
+    // itself, because re-posing an atlas that does not exist is not something
+    // a stream can ask for.
+    //
+    // There is no `rebase_count`.  13.12.10's rolling rebase was replaced by
+    // the whole-frame mode of 13.12.11, so bit 5 carries no u16 payload and
+    // the frame header prologue is unchanged.
+    fp.picture_frame = (flags >> 5) & 1;
+    if (fp.picture_frame &&
+        (!(si.tools & kToolAtlasRebase) || !(si.tools & kToolAtlas)))
+        REJECT("fp.picture_frame && (!(si.tools & kToolAtlasRebase) || !(si.tools & kToolAtlas))");
+    if (flags & 0xc0) REJECT("flags & 0xc0");   // reserved bits 6-7
     // Annex D D-1: warp_present requires the WARP tool bit (r21 is the other
     // direction, a warped tile without the flag).
     if (fp.warp_present && !fp.warp_tool) REJECT("fp.warp_present && !fp.warp_tool");

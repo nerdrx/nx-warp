@@ -30,6 +30,7 @@
 #include <unistd.h>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -421,18 +422,38 @@ void atlas_attribute(const char *what, const std::vector<uint8_t> &stream) {
                 nxvc_decoder_destroy(rd);
                 return;
             }
+            // Per TILE, not per sample: "tile (1,0) differs in 4096 of 4096
+            // samples" and "tile (1,0) differs in 3" are different bugs, and
+            // so is "every tile differs" against "one does".
+            std::map<std::pair<uint32_t, uint32_t>, uint32_t> perTile;
+            uint32_t first[4] = {0, 0, 0, 0};
+            bool have = false;
             for (uint32_t y = 0; y < h; ++y)
                 for (uint32_t x = 0; x < w; ++x)
                     if (rp[(size_t)y * sd + x] != gp[(size_t)y * sd + x]) {
-                        std::printf("  ^ %s frame %d: plane %d (%u,%u) "
-                                    "ref %u gpu %u  [tile col %u row %u]\n",
-                                    what, nf, p, x, y,
-                                    rp[(size_t)y * sd + x],
-                                    gp[(size_t)y * sd + x], x / 64u, y / 64u);
-                        nxvc_vk_decoder_destroy(gd);
-                        nxvc_decoder_destroy(rd);
-                        return;
+                        ++perTile[{x / 64u, y / 64u}];
+                        if (!have) {
+                            have = true;
+                            first[0] = x; first[1] = y;
+                            first[2] = rp[(size_t)y * sd + x];
+                            first[3] = gp[(size_t)y * sd + x];
+                        }
                     }
+            if (have) {
+                std::printf("  ^ %s frame %d: plane %d differs in %zu tile(s), "
+                            "first (%u,%u) ref %u gpu %u\n",
+                            what, nf, p, perTile.size(), first[0], first[1],
+                            first[2], first[3]);
+                int shown = 0;
+                for (auto &kv : perTile) {
+                    if (shown++ == 8) break;
+                    std::printf("      tile (col %u,row %u): %u samples\n",
+                                kv.first.first, kv.first.second, kv.second);
+                }
+                nxvc_vk_decoder_destroy(gd);
+                nxvc_decoder_destroy(rd);
+                return;
+            }
         }
         ++nf;
         off += ur;
@@ -1541,6 +1562,140 @@ void run_row_present(int frames) {
                 offs.size(), (double)offs.size() / (double)on.size());
 }
 
+// --------------------------------------- [SYN] 13.12.11 the two frame modes
+// A stream with tool bit 34 codes each frame as an ATLAS frame or a PICTURE
+// frame.  Two arms, forced to opposite ends by the encoder's policy knobs, and
+// each asserts that it ACTUALLY reached the mode it is named for -- a sweep
+// that never took the branch proves nothing, which is the same rule the guard
+// trip count and the row_present elision count are held to.
+//
+// The comparison is the atlas against the reference's, byte for byte, after
+// every frame: table and pixels.  For the all-PICTURE arm that is also the
+// equivalence the mode exists to provide -- every frame decoded by the
+// ORDINARY picture model, with the atlas rebuilt from the result -- so if the
+// two modes were not the same codec at two operating points, this is where it
+// would show.
+bool encode_mode_stream(int w, int h, int frames, int period,
+                        std::vector<uint8_t> &stream, std::string &err) {
+    nxvc_config cfg;
+    nxvc_config_default(&cfg);
+    cfg.width = (uint32_t)w;
+    cfg.height = (uint32_t)h;
+    cfg.chroma = NXVC_CHROMA_420;
+    cfg.base_qp = 28;
+    cfg.inter = 1;
+    cfg.atlas = 1;
+    // `period` 1 forces every frame to a PICTURE frame; 0 with no
+    // displacement trigger leaves every frame an ATLAS frame.
+    cfg.atlas_picture_period = (uint32_t)period;
+    cfg.atlas_picture_disp = 0;
+    cfg.atlas_picture_min_spacing = 0;
+    nxvc_status st;
+    nxvc_encoder *e = nxvc_encoder_create(&cfg, &st);
+    if (!e) { err = nxvc_status_string(st); return false; }
+    std::vector<uint8_t> hdr(4096);
+    size_t hl = 0;
+    st = nxvc_encoder_stream_header(e, hdr.data(), hdr.size(), &hl);
+    if (st != NXVC_OK) {
+        err = nxvc_status_string(st);
+        nxvc_encoder_destroy(e);
+        return false;
+    }
+    stream.assign(hdr.begin(), hdr.begin() + hl);
+    std::vector<uint8_t> fbuf((size_t)w * h * 8 + (1u << 20));
+    for (int f = 0; f < frames; ++f) {
+        const double a = 0.010 * f;   // a real yaw, so C is not the identity
+        nxvc_view v{};
+        v.qy = std::sin(a * 0.5);
+        v.qw = std::cos(a * 0.5);
+        v.fov_left = -0.9; v.fov_right = 0.9;
+        v.fov_up = 0.9; v.fov_down = -0.9;
+        nxvc_encoder_set_views(e, &v, 1);
+        TestImage im = make_image(w, h, false, 1, (uint32_t)(7000 + f));
+        nxvc_image img{};
+        for (int p = 0; p < 4; ++p) img.plane[p] = (uint8_t *)im.p[p].data();
+        img.stride[0] = im.w;
+        img.stride[1] = im.cw;
+        img.stride[2] = im.cw;
+        img.stride[3] = im.w;
+        size_t ol = 0;
+        st = nxvc_encoder_encode_frame(e, &img, nullptr, nullptr, fbuf.data(),
+                                       fbuf.size(), &ol);
+        if (st != NXVC_OK) {
+            err = nxvc_status_string(st);
+            nxvc_encoder_destroy(e);
+            return false;
+        }
+        stream.insert(stream.end(), fbuf.begin(), fbuf.begin() + ol);
+    }
+    nxvc_encoder_destroy(e);
+    return true;
+}
+
+// Count the frames whose header sets flags bit 5, straight out of the
+// bitstream -- so what the test asserts about the mode is what the WIRE says
+// and not what the decoder reports about itself.
+void count_modes(const std::vector<uint8_t> &s, size_t hdr_len, int *picture,
+                 int *atlas) {
+    *picture = 0;
+    *atlas = 0;
+    size_t off = hdr_len;
+    while (off + 40 <= s.size()) {
+        uint32_t fb = 0;
+        for (int i = 0; i < 4; ++i) fb |= (uint32_t)s[off + 36 + i] << (8 * i);
+        if (!fb) break;
+        ((s[off + 34] >> 5) & 1u) ? ++*picture : ++*atlas;
+        off += fb;
+    }
+}
+
+void run_atlas_modes() {
+    struct Arm { const char *name; int period; bool want_picture; };
+    const Arm arms[2] = {{"modes-all-picture", 1, true},
+                         {"modes-all-atlas", 0, false}};
+    for (const Arm &a : arms) {
+        ++g_checked;
+        std::vector<uint8_t> stream;
+        std::string err;
+        if (!encode_mode_stream(192, 192, 10, a.period, stream, err)) {
+            std::printf("FAIL %s: encode: %s\n", a.name, err.c_str());
+            ++g_fail;
+            continue;
+        }
+        nxvc_status cst;
+        nxvc_decoder *rd = nxvc_decoder_create(&cst);
+        if (!rd) { std::printf("FAIL %s: decoder_create\n", a.name); ++g_fail; continue; }
+        size_t rc = 0;
+        if (nxvc_decoder_parse_stream_header(rd, stream.data(), stream.size(),
+                                             &rc) != NXVC_OK) {
+            std::printf("FAIL %s: reference stream header\n", a.name);
+            ++g_fail;
+            nxvc_decoder_destroy(rd);
+            continue;
+        }
+        nxvc_decoder_destroy(rd);
+        int npic = 0, natl = 0;
+        count_modes(stream, rc, &npic, &natl);
+        // The arm has to have reached its own mode, or it tested nothing.
+        if (a.want_picture && npic == 0) {
+            std::printf("FAIL %s: not one frame set flags bit 5; the PICTURE "
+                        "mode was never exercised\n", a.name);
+            ++g_fail;
+            continue;
+        }
+        if (!a.want_picture && npic != 0) {
+            std::printf("FAIL %s: %d PICTURE frame(s) in the arm that must "
+                        "have none\n", a.name, npic);
+            ++g_fail;
+            continue;
+        }
+        --g_checked;   // check_stream_atlas counts it
+        check_stream_atlas(a.name, stream, "");
+        std::printf("-- %s: %d PICTURE frame(s), %d ATLAS frame(s), atlas "
+                    "byte-identical to the reference\n", a.name, npic, natl);
+    }
+}
+
 std::vector<Case> synthetic_cases(bool quick) {
     std::vector<Case> v;
     auto nm = [](const char *fmt, auto... a) {
@@ -2372,6 +2527,7 @@ int main(int argc, char **argv) {
         CaseGuard cg("row_present");
         run_row_present(quick ? 8 : 24);
     }
+    if (do_synth) run_atlas_modes();
     if (do_loss) run_loss(quick ? 20 : 100);
 
     std::printf("-- %d stream(s) checked, %d skipped, %d failure(s)\n",

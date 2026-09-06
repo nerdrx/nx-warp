@@ -57,7 +57,8 @@ layout(push_constant) uniform Push {
     uint colsPerEye;
     int lumaW, lumaH;
     int chromaW, chromaH;
-    uint pad0, pad1;
+    uint refBase;
+    uint eyes;
 } pc;
 
 // [REF] ref/src/inter.h half_round(): to nearest, ties AWAY from zero, so it
@@ -97,11 +98,101 @@ void atlas_write_mat(uint at, int c0, int c1, int c2, int c3, int c4, int c5,
 void main() {
     uint id = gl_GlobalInvocationID.x;
     if (id >= pc.tileCount) return;
-    uint n = coded[id];
+    // ASSEMBLE and MATERIALISE cover EVERY table entry, so their index is the
+    // thread id itself; the two coded-tile ops walk the frame's coded list.
+    uint n = (pc.op == NXVW_ATLAS_OP_ASSEMBLE ||
+              pc.op == NXVW_ATLAS_OP_MATERIALISE)
+                 ? id
+                 : coded[id];
     uint base = n * NXVW_ATLAS_ENTRY_UINTS;
     uint rec = uint(NXVW_WARP_HDR_UINTS) + n * uint(NXVW_WARP_TILE_UINTS);
     uint w0 = warp[rec + 0u];
     int mode = nxvw_wt_mode(w0);
+
+    if (pc.op == NXVW_ATLAS_OP_MATERIALISE) {
+        // [SYN] 13.12.11 step 3.  The reconstruction IS the atlas now, so
+        // every position is reset -- not just the coded ones.  `static` comes
+        // from THIS frame's mode: a position this frame coded STATIC_MV is
+        // static, and every other position -- including one the frame did not
+        // code at all -- is not, because its pixels were just rebuilt by the
+        // picture model and nothing about them is held.
+        tbl[base + 0u] = uint(1 << kWarpQNum);
+        tbl[base + 1u] = 0u;
+        tbl[base + 2u] = 0u;
+        tbl[base + 3u] = 0u;
+        tbl[base + 4u] = uint(1 << kWarpQNum);
+        tbl[base + 5u] = 0u;
+        tbl[base + 6u] = 0u;
+        tbl[base + 7u] = 0u;
+        tbl[base + 8u] = uint(kWarpH22);
+        tbl[base + NXVW_ATLAS_OFF_SRC] = pc.frame;
+        // `base_sourced` is CLEARED and `res_level` is 0: the pixels came from
+        // this frame's reconstruction, not from a base patch and not from a
+        // reduced-resolution tile.
+        uint flags = NXVW_ATLAS_FLAG_VALID |
+                     ((mode == kModeStaticMv && nxvw_wt_inter(w0) != 0)
+                          ? NXVW_ATLAS_FLAG_STATIC
+                          : 0u);
+        tbl[base + NXVW_ATLAS_OFF_PACK] = nxvw_atlas_pack(0u, flags, 0u);
+        for (uint k = uint(NXVW_ATLAS_OFF_RSVD);
+             k < uint(NXVW_ATLAS_ENTRY_UINTS); ++k)
+            tbl[base + k] = 0u;
+        advanced_to[n] = pc.frame;
+        return;
+    }
+
+    if (pc.op == NXVW_ATLAS_OP_ASSEMBLE) {
+        // [SYN] 13.12.11 step 1 / 13.12.10.  Build the Pass W record that
+        // re-poses this entry, and let the UNMODIFIED predictor do the warp.
+        uint pack_a = tbl[base + NXVW_ATLAS_OFF_PACK];
+        bool valid = nxvw_atlas_valid(pack_a) != 0;
+        bool is_static = nxvw_atlas_static(pack_a) != 0;
+        int cpe = int(pc.colsPerEye);
+        int eyes = int(pc.eyes);
+        uint eye = uint(nxvw_atlas_eye_of(int(n), cpe, eyes));
+        // The record: WARP_SKIP (or STATIC_MV), zero vector, this eye, and no
+        // residual of any kind.  Bit 3 is the inter bit, which is what makes
+        // Pass W predict it at all.
+        uint w0n = (is_static ? uint(kModeStaticMv) : 0u) | (1u << 3) |
+                   (eye << 4);
+        warp[rec + 0u] = w0n;
+        warp[rec + 1u] = uint(nxvw_atlas_col_of(int(n), cpe, eyes));  // tx
+        warp[rec + 2u] = uint(nxvw_atlas_row_of(int(n), cpe, eyes));  // ty
+        warp[rec + 3u] = 0u;   // mvx
+        warp[rec + 4u] = 0u;   // mvy
+        warp[rec + 5u] = 0u;   // quad
+        // An INVALID entry gets "no usable reference", and warp_pred.glsl
+        // already emits the correct per-plane mid-grey for that -- which is
+        // exactly 13.12.5's rule for an invalid entry.  This is what keeps
+        // validity device-side: the host never reads the table back.
+        warp[rec + 6u] = valid ? pc.refBase : 0xffffffffu;
+        warp[rec + 7u] = 0u;   // qp: no residual is dequantised here
+        warp[rec + 8u] = 0u;   // ns0
+        warp[rec + 9u] = 0u;   // ns1
+        warp[rec + 10u] = 0u;  // ns2
+        if (!valid) {
+            warp[rec + uint(NXVW_WARP_TILE_MATIDX)] = NXVW_WARP_MAT_NONE;
+            return;
+        }
+        uint mat_a = uint(NXVW_WARP_HDR_UINTS) +
+                     pc.tileCount * uint(NXVW_WARP_TILE_UINTS) +
+                     n * 2u * uint(NXVW_WARP_MAT_UINTS);
+        warp[rec + uint(NXVW_WARP_TILE_MATIDX)] = mat_a;
+        int a0 = int(tbl[base + 0u]), a1 = int(tbl[base + 1u]);
+        int a2 = int(tbl[base + 2u]), a3 = int(tbl[base + 3u]);
+        int a4 = int(tbl[base + 4u]), a5 = int(tbl[base + 5u]);
+        int a6 = int(tbl[base + 6u]), a7 = int(tbl[base + 7u]);
+        if (is_static) {
+            a0 = 1 << kWarpQNum; a1 = 0; a2 = 0;
+            a3 = 0; a4 = 1 << kWarpQNum; a5 = 0;
+            a6 = 0; a7 = 0;
+        }
+        atlas_write_mat(mat_a, a0, a1, a2, a3, a4, a5, a6, a7, 1, pc.lumaW,
+                        pc.lumaH);
+        atlas_write_mat(mat_a + uint(NXVW_WARP_MAT_UINTS), a0, a1, a2, a3, a4,
+                        a5, a6, a7, 2, pc.chromaW, pc.chromaH);
+        return;
+    }
 
     if (pc.op == NXVW_ATLAS_OP_WRITEBACK) {
         // 13.12.3 step 3.  The whole entry is reset, so nothing of the
