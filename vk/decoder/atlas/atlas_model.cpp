@@ -39,18 +39,33 @@ int64_t atlas_sdiv_round(int64_t a, int64_t b) {
 }
 
 bool atlas_renorm(const int64_t P[9], int32_t out[9]) {
+    // [SYN] 13.12.2, "Width of `P[k] << 29`": the guard is NORMATIVE and it is
+    // 2^33, not whatever the int64 shift happens to survive.  It is checked
+    // over ALL NINE elements BEFORE the shift is evaluated, and a 128-bit
+    // implementation must apply the same guard -- otherwise a 128-bit decoder
+    // accepts a composition an int64 decoder rejects, which is a conformance
+    // difference and not an optimisation.
+    //
+    // This used to be `INT64_MAX >> 29`, i.e. 2^34 - 1.  That is eight times
+    // the envelope rather than four and it admitted compositions the
+    // reference rejects; the two only ever disagree on illegal input, but
+    // "only on illegal input" is exactly where a conformance suite lives.
+    // [REF] ref/src/inter.h compose_warp().
+    for (int k = 0; k < 9; ++k)
+        if (P[k] >= kAtlasPGuard || P[k] <= -kAtlasPGuard) return false;
     const int64_t den = P[8];
     if (den == 0) return false;
     for (int k = 0; k < 9; ++k) {
-        // `P << 29` must not overflow.  For any pair of matrices satisfying
-        // 3.1.1 it cannot -- rows 0-1 of P are about 2^31 and row 2 about
-        // 2^29 -- so this is a guard against being handed something illegal,
-        // not a case the arithmetic is expected to reach.
-        if (P[k] > (INT64_MAX >> 29) || P[k] < (INT64_MIN >> 29)) return false;
         const int64_t v = atlas_sdiv_round(P[k] << 29, den);
-        if (v > INT32_MAX || v < INT32_MIN) return false;
+        // A legal composed entry is bounded by kEntryMax; the reference
+        // rejects here rather than deferring to condition 2, and the two must
+        // fail at the same step or the table they leave behind differs.
+        if (v > kWarpEntryMax || v < -kWarpEntryMax) return false;
         out[k] = (int32_t)v;
     }
+    // Exact by construction -- sdiv_round(P[8] << 29, P[8]) is 2^29 -- and
+    // stated so it cannot drift.  [REF] compose_warp()'s `r[8] = kH22`.
+    out[8] = kWarpH22;
     return true;
 }
 
@@ -93,18 +108,29 @@ bool atlas_advance(int32_t C[9], const int32_t H[9], int32_t width,
 bool atlas_advance_entry(AtlasEntry &e, const int32_t H[9], int32_t width,
                          int32_t height, uint32_t gen_max) {
     if ((e.flags & NXVW_ATLAS_FLAG_VALID) == 0u) return false;
+    // Three things here are the REFERENCE's behaviour rather than the shortest
+    // reading of 13.12.3 step 1, and each of them is observable in the 64
+    // bytes conformance compares.  [REF] ref/src/inter.h atlas_advance().
+    //
+    //   1. `gen` SATURATES at 0xffff.  The field is a u16; letting it wrap
+    //      would make a very old entry look freshly composed.
+    //   2. The `gen_max` cap is tested BEFORE the composition, so a capped
+    //      entry keeps the C it had.  Composing first and then invalidating
+    //      leaves a different nine words behind under the same `valid == 0`.
+    //   3. Invalidation clears the WHOLE flags byte, `static` included, not
+    //      just bit 0.
+    //
     // `gen` counts composition steps since src_frame and increments for a
     // static entry too -- it is the cadence clock, not a count of matrix
-    // multiplications ([SYN] 13.12.3 step 1).
-    e.gen += 1u;
-    if ((e.flags & NXVW_ATLAS_FLAG_STATIC) == 0u) {
-        if (!atlas_advance(e.C, H, width, height)) {
-            e.flags &= ~NXVW_ATLAS_FLAG_VALID;
-            return false;
-        }
-    }
+    // multiplications.
+    if (e.gen != 0xffffu) e.gen += 1u;
     if (gen_max != 0u && e.gen > gen_max) {
-        e.flags &= ~NXVW_ATLAS_FLAG_VALID;
+        e.flags = 0u;
+        return false;
+    }
+    if ((e.flags & NXVW_ATLAS_FLAG_STATIC) != 0u) return true;
+    if (!atlas_advance(e.C, H, width, height)) {
+        e.flags = 0u;
         return false;
     }
     return true;

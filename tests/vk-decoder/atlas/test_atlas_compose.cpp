@@ -243,6 +243,69 @@ int main() {
         }
     }
 
+    // 7. The four places the model has to agree with the REFERENCE CODEC and
+    //    not merely with the shortest reading of the spec.  Every one of them
+    //    is observable in the 64 bytes conformance compares, and every one of
+    //    them was wrong here before this test existed.
+    //    [REF] ref/src/inter.h compose_warp() and atlas_advance().
+    {
+        // (a) The 2^33 guard is NORMATIVE and it is 2^33, not whatever the
+        //     int64 shift survives.  P = 2^33 exactly must FAIL; 2^33 - 1
+        //     must be evaluated.  The guard is checked over ALL NINE elements
+        //     before any shift, so a large P[0] fails even though P[8] alone
+        //     would renormalise perfectly.
+        //     The denominator is put AT the guard too, so every quotient is
+        //     2^29 and lands inside kEntryMax: without that the range check
+        //     rejects first and the guard is never the reason, which is what
+        //     made the first version of this test pass for the wrong reason.
+        int64_t P[9];
+        for (int k = 0; k < 9; ++k) P[k] = ((int64_t)1 << 33) - 1;
+        int32_t out[9];
+        if (!atlas_renorm(P, out)) fail("2^33 - 1 rejected");
+        P[0] = (int64_t)1 << 33;
+        if (atlas_renorm(P, out)) fail("2^33 accepted");
+        P[0] = -((int64_t)1 << 33);
+        if (atlas_renorm(P, out)) fail("-2^33 accepted");
+        // The old guard was INT64_MAX >> 29, i.e. 2^34 - 1.  Pin the gap
+        // between the two directly, or a regression to it passes everything
+        // above except this line.
+        P[0] = ((int64_t)1 << 33) + 17;
+        if (atlas_renorm(P, out)) fail("2^33 + 17 accepted (the 2^34 guard)");
+
+        // (b) `gen` SATURATES at 0xffff rather than wrapping a u16 field.
+        AtlasEntry sat{};
+        atlas_identity(sat.C);
+        sat.flags = NXVW_ATLAS_FLAG_VALID | NXVW_ATLAS_FLAG_STATIC;
+        sat.gen = 0xffffu;
+        int32_t Hm[9];
+        make_legal(rng, W, H_, 1.0, Hm);
+        if (!atlas_advance_entry(sat, Hm, W, H_, 0)) fail("saturated entry died");
+        if (sat.gen != 0xffffu) fail("gen wrapped past 0xffff", sat.gen, 0xffff);
+
+        // (c) The `gen_max` cap is tested BEFORE the composition, so a capped
+        //     entry keeps the `C` it had.  Composing first and invalidating
+        //     after leaves a different nine words behind under the same
+        //     `valid == 0`, and conformance compares them.
+        AtlasEntry cap{};
+        atlas_identity(cap.C);
+        cap.flags = NXVW_ATLAS_FLAG_VALID;
+        cap.gen = 4;   // -> 5, which exceeds the cap
+        int32_t ident[9];
+        atlas_identity(ident);
+        if (atlas_advance_entry(cap, Hm, W, H_, 4)) fail("cap 4 at gen 5 lived");
+        for (int k = 0; k < 9; ++k)
+            if (cap.C[k] != ident[k])
+                fail("gen_max composed before capping", cap.C[k], ident[k]);
+
+        // (d) Invalidation clears the WHOLE flags byte, `static` included.
+        AtlasEntry st{};
+        atlas_identity(st.C);
+        st.flags = NXVW_ATLAS_FLAG_VALID | NXVW_ATLAS_FLAG_STATIC;
+        st.gen = 9;
+        if (atlas_advance_entry(st, Hm, W, H_, 9)) fail("cap 9 at gen 10 lived");
+        if (st.flags != 0u) fail("invalidation left static set", st.flags, 0);
+    }
+
     std::printf(g_fail ? "FAILED (%d)\n" : "PASSED\n", g_fail);
     return g_fail ? 1 : 0;
 }

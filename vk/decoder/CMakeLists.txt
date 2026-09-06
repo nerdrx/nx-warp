@@ -19,7 +19,8 @@ endif()
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/inter/CMakeLists.txt AND NXVW_GLSLC)
   add_subdirectory(inter)
 endif()
-# [ATLAS] The composition model; no Vulkan, no shaders.
+# [ATLAS] The composition model and its kernel.  After inter/, because
+# atlas_layout.h includes inter/inter_layout.h for the warp constants.
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/atlas/CMakeLists.txt)
   add_subdirectory(atlas)
 endif()
