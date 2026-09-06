@@ -83,6 +83,9 @@ static void usage() {
         "                       under ATLAS; the stream is only how two\n"
         "                       implementations arrive at one\n"
         "                       ([SYN] 13.12).  Needs --inter; forces ref_sel 0\n"
+        "  --atlas-layout-selftest  check that a patch buffer built from\n"
+        "                       nxvc_vk_encoder_atlas_layout() addresses the\n"
+        "                       same samples the encoder's copies do, then exit\n"
         "  --row-present        elide the 12-byte header of a tile row with\n"
         "                       no coded tile and name the rows that are\n"
         "                       there in a bitmap after warp_ext(), tool\n"
@@ -141,6 +144,7 @@ int main(int argc, char **argv) {
      * reference the client now holds, and that is the divergence that shows up
      * as drift rather than as a broken frame. */
     const char *atlas_dump = nullptr;
+    bool atlas_layout_selftest = false;
     /* A client that keeps up with only one frame in `hold_every`.  It drives
      * nxvc_vk_encoder_set_frame_held()'s half of the reference walk from the
      * command line, which is what the 289-tile drop-pattern test needs and
@@ -181,6 +185,7 @@ int main(int argc, char **argv) {
         else if (a == "--atlas") cfg.atlas = true;
         else if (a == "--row-present") cfg.row_present = true;
         else if (a == "--atlas-dump") atlas_dump = val();
+        else if (a == "--atlas-layout-selftest") atlas_layout_selftest = true;
         else if (a == "--atlas-disp-margin")
             cfg.atlas_disp_margin = std::atoi(val());
         else if (a == "--atlas-refresh-cap")
@@ -398,6 +403,29 @@ int main(int argc, char **argv) {
             if (fat) std::fclose(fat);
             std::remove(cfg.out.c_str());
             return 77;
+        }
+        /* The accessor's contract, checked against the copies themselves
+         * before anything is encoded: a caller building a patch buffer from
+         * nxvc_vk_encoder_atlas_layout() must land on the samples the
+         * encoder's own region builder addresses. */
+        if (atlas_layout_selftest) {
+            if (!cfg.atlas) {
+                std::fprintf(stderr, "nxvc-vkenc: --atlas-layout-selftest "
+                                     "needs --atlas\n");
+                return 2;
+            }
+            std::string lerr;
+            if (!gpu.atlas_layout_roundtrip(lerr)) {
+                std::fprintf(stderr,
+                             "nxvc-vkenc: atlas layout round-trip FAILED: %s\n",
+                             lerr.c_str());
+                return 1;
+            }
+            std::fclose(fi);
+            std::fclose(fo);
+            if (fat) std::fclose(fat);
+            std::remove(cfg.out.c_str());
+            return 0;
         }
     }
 

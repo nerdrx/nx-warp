@@ -161,6 +161,18 @@ if(TARGET nxvc-vkenc AND TARGET nxv-enc AND TARGET nxv-dec)
     list(APPEND NXENC_TESTS vk.encoder.atlas.acid.${ent})
   endforeach()
 
+  # The atlas patch layout the C ABI reports, against the copies that consume
+  # it.  The file says why a caller must not re-derive it.
+  add_test(NAME vk.encoder.atlas.layout
+           COMMAND ${CMAKE_COMMAND}
+           -DVKENC=$<TARGET_FILE:nxvc-vkenc>
+           -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/atlas-layout
+           -DDEVICE=0
+           -P ${CMAKE_CURRENT_SOURCE_DIR}/atlas_layout.cmake)
+  set_tests_properties(vk.encoder.atlas.layout PROPERTIES
+                       SKIP_REGULAR_EXPRESSION "SKIP:")
+  list(APPEND NXENC_TESTS vk.encoder.atlas.layout)
+
   # row_present() (tool bit 32).  Against the reference DECODER, because the
   # reference ENCODER never sets frame flag bit 4 -- the file says why.
   add_test(NAME vk.encoder.rowpresent

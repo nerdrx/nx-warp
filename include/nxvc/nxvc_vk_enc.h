@@ -612,6 +612,83 @@ nxvc_vke_status nxvc_vk_encoder_set_frame_held(nxvc_vk_encoder *enc,
                                                uint32_t frame_number,
                                                int held);
 
+/* ------------------------------------------------------ the atlas's layout
+ *
+ * THE LAYOUT `nxvc_vk_encoder_atlas_write_tiles` CONSUMES, reported by the
+ * encoder rather than re-derived by the caller.
+ *
+ * This exists because the alternative was observed to fail quietly.  A caller
+ * building the patch buffer has to reproduce the ring-slot layout exactly --
+ * plane offsets, the row stride's even padding, the per-eye column origin, and
+ * the fact that samples are u16 packed two to a uint -- and a second copy of
+ * that arithmetic passes every check the encoder makes (the copy sizes are
+ * right, the API returns OK, the stream is well formed) while writing the
+ * pixels to the wrong addresses.  The result is a wrong picture some frames
+ * later, attributed to anything but the layout.  So the numbers come from the
+ * same `RingLayout` the copies themselves are built from; there is one source
+ * and it cannot drift from the consumer.
+ *
+ * UNITS ARE GIVEN TWICE ON PURPOSE.  The internal layout counts u16 SAMPLES,
+ * `VkBufferCopy` counts BYTES, and the shaders address the buffer as uints of
+ * two packed samples.  Mixing the three is the mistake this struct is meant to
+ * make impossible, so each field says which it is and both spellings are
+ * reported for the two that matter.
+ *
+ * PLACING A TILE.  For plane `p`, tile column `col` and row `row` within eye
+ * `eye`, the tile's top-left sample is at
+ *
+ *     x0 = eye * plane[p].eye_stride + col * plane[p].tile_extent
+ *     y0 = row * plane[p].tile_extent
+ *
+ * and the byte offset of sample row `y` of that tile, from the start of the
+ * slot-shaped image, is
+ *
+ *     plane[p].offset_bytes + (y0 + y) * plane[p].stride_bytes
+ *                           + x0 * bytes_per_sample
+ *
+ * A tile is clipped WITHIN ITS EYE -- against `plane[p].width`, not against
+ * the pair's full span -- and against `plane[p].height`, so the last column
+ * and row of a picture that is not a whole number of tiles are short:
+ *
+ *     w = min(tile_extent, plane[p].width  - col * tile_extent)
+ *     h = min(tile_extent, plane[p].height - row * tile_extent)
+ *
+ * Clipping per eye rather than pair-wide is what stops a short last column of
+ * the left eye from running into the first column of the right one.  That is
+ * the same clipping the encoder's own copies do. */
+typedef struct nxvc_vke_atlas_plane_layout {
+    uint32_t offset_bytes;  /* plane origin within the slot-shaped image   */
+    uint32_t offset_u16;    /* the same, counted in u16 samples            */
+    uint32_t stride_bytes;  /* row stride                                  */
+    uint32_t stride_u16;    /* the same, in u16 samples; padded EVEN, so a
+                             * row starts on a uint boundary and no uint
+                             * straddles two rows                          */
+    uint32_t width;         /* PER-EYE sample width; the plane spans
+                             * `width * eyes` samples across              */
+    uint32_t height;        /* sample rows (chroma is halved under 4:2:0)  */
+    uint32_t eye_stride;    /* samples to advance per eye; equals `width`  */
+    uint32_t tile_extent;   /* tile side in samples: 64 luma, 32 chroma
+                             * under 4:2:0, 64 under 4:4:4                 */
+} nxvc_vke_atlas_plane_layout;
+
+typedef struct nxvc_vke_atlas_layout {
+    uint32_t plane_count;       /* 3 or 4; only these are addressable      */
+    nxvc_vke_atlas_plane_layout plane[4];
+    uint32_t bytes_per_sample;  /* 2 -- samples are u16                    */
+    uint32_t samples_per_uint;  /* 2 -- the shaders' packing               */
+    uint32_t slot_bytes;        /* one slot-shaped image, end to end; this
+                                 * is the minimum size of a patch buffer   */
+    uint32_t eyes;
+    uint32_t tiles_x;           /* tile columns PER EYE                    */
+    uint32_t tiles_y;           /* tile rows                               */
+} nxvc_vke_atlas_layout;
+
+/* Report the layout a patch buffer must be in.  Fails with
+ * NXVC_VKE_ERR_UNSUPPORTED on a stream without ATLAS, NXVC_VKE_ERR_ARG on a
+ * null argument.  The layout is fixed for the life of the encoder. */
+nxvc_vke_status nxvc_vk_encoder_atlas_layout(const nxvc_vk_encoder *enc,
+                                             nxvc_vke_atlas_layout *out);
+
 /* ------------------------------------------------- base-sourced atlas writes
  *
  * Where a base-layer patch comes from.  DEVICE memory on the encoder's own
@@ -625,6 +702,13 @@ nxvc_vke_status nxvc_vk_encoder_set_frame_held(nxvc_vk_encoder *enc,
  * slot-shaped image begins in the buffer; a tile's source address is then its
  * destination address plus `offset`, which is what "already in the atlas
  * layout" is worth: no address arithmetic on either side.
+ *
+ * ASK THE ENCODER FOR THAT LAYOUT -- `nxvc_vk_encoder_atlas_layout()` -- and
+ * do not re-derive it.  A caller's own copy of the plane offsets and the
+ * even-padded stride passes every check this call makes and still writes the
+ * pixels to the wrong addresses; the failure appears frames later as a wrong
+ * picture, nowhere near here.  The buffer must be at least `offset` plus the
+ * layout's `slot_bytes`.
  *
  * `image` is reserved and currently REFUSED with NXVC_VKE_ERR_UNSUPPORTED --
  * not for want of a spec, but for want of a device to validate against.

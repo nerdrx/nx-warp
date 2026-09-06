@@ -1908,6 +1908,190 @@ bool VkEncoder::atlas_table(std::vector<uint8_t> &out) const {
 
 uint64_t VkEncoder::atlas_disp_forced() const { return p_->disp_forced; }
 
+bool VkEncoder::atlas_layout(nxvc_vke_atlas_layout &out) const {
+    const Impl &d = *p_;
+    if (!d.ok || !d.atlas) return false;
+    std::memset(&out, 0, sizeof out);
+    const RingLayout &rl = d.ring;
+    const int chroma420 = d.cfg.chroma444 ? 0 : 1;
+    const int eyes = d.atlas_geom.eyes ? d.atlas_geom.eyes : 1;
+    const int height = d.atlas_geom.height;
+
+    out.plane_count = (uint32_t)rl.nplanes;
+    out.bytes_per_sample = 2u;
+    /* The shaders address the ring as packed pairs; this is the fact that
+     * makes the stride's even padding load-bearing rather than cosmetic. */
+    out.samples_per_uint = 2u;
+    out.slot_bytes = (uint32_t)((size_t)rl.slot_u16 * 2u);
+    out.eyes = (uint32_t)eyes;
+    out.tiles_x = (uint32_t)d.atlas_geom.cols_per_eye;
+    out.tiles_y = (uint32_t)d.atlas_geom.rows;
+
+    for (int p = 0; p < rl.nplanes && p < 4; ++p) {
+        nxvc_vke_atlas_plane_layout &pl = out.plane[p];
+        /* Exactly the terms atlas_tile_regions() uses -- `rl.off[p]`,
+         * `rl.stride[p]`, `rl.planeW[p]` and the same chroma halving -- so the
+         * reported layout and the copies cannot disagree. */
+        pl.offset_u16 = (uint32_t)rl.off[p];
+        pl.stride_u16 = (uint32_t)rl.stride[p];
+        pl.offset_bytes = (uint32_t)((size_t)rl.off[p] * 2u);
+        pl.stride_bytes = (uint32_t)((size_t)rl.stride[p] * 2u);
+        pl.width = (uint32_t)rl.planeW[p];
+        pl.height = (uint32_t)(((p == 1 || p == 2) && chroma420)
+                                   ? (height + 1) / 2
+                                   : height);
+        /* `x0 = eye * rl.planeW[p] + ...` in atlas_tile_regions(): the eye
+         * stride IS the per-eye plane width.  Reported as its own field
+         * because a caller reading only `width` cannot tell whether the plane
+         * spans one eye or the pair. */
+        pl.eye_stride = (uint32_t)rl.planeW[p];
+        pl.tile_extent = (uint32_t)nxvw::nxvw_inter_plane_full(p, chroma420);
+    }
+    return true;
+}
+
+bool VkEncoder::atlas_layout_roundtrip(std::string &err) {
+    Impl &d = *p_;
+    if (!d.ok || !d.atlas) { err = "needs an ATLAS encoder"; return false; }
+    nxvc_vke_atlas_layout L;
+    if (!atlas_layout(L)) { err = "atlas_layout() refused"; return false; }
+
+    /* The buffer is built from the ACCESSOR'S numbers and nothing else -- no
+     * RingLayout, no nxvw_ring_layout() -- and the copy is made by the
+     * PRODUCTION region builder.  So this pins the one property a caller
+     * depends on and cannot check for itself: that the layout the encoder
+     * reports addresses the same samples the encoder's own copies do.  A
+     * second derivation of the layout that is subtly wrong passes every other
+     * check in the codebase and shows up as a wrong picture much later. */
+    const size_t slot_u16 = (size_t)d.ring.slot_u16;
+    if (L.slot_bytes != slot_u16 * 2u) {
+        err = "slot_bytes disagrees with the ring slot";
+        return false;
+    }
+    if ((size_t)L.slot_bytes > d.coef_bytes) {
+        err = "staging buffer too small for a slot";
+        return false;
+    }
+
+    /* A value that depends on the plane and BOTH coordinates, so a wrong
+     * stride, a wrong plane origin and a wrong eye column all land on a
+     * different number rather than an equal one. */
+    auto pattern = [](uint32_t p, uint32_t x, uint32_t y) -> uint16_t {
+        return (uint16_t)((p * 7919u + y * 131u + x * 17u + 1u) & 0xffffu);
+    };
+    const uint16_t kBackground = 0xABCDu;
+
+    auto stage = [&](void) -> uint16_t * {
+        return (uint16_t *)d.b_stage_coef.map;
+    };
+    auto copy_whole_slot_from_stage = [&](void) -> bool {
+        VkCommandBuffer cb = d.dev.begin();
+        VkBufferCopy c{0, 0, (VkDeviceSize)L.slot_bytes};
+        vkCmdCopyBuffer(cb, d.b_stage_coef.buf, d.b_ring.buf, 1, &c);
+        std::string e2;
+        if (!d.dev.submit_and_wait(cb, e2)) { err = e2; return false; }
+        return true;
+    };
+
+    /* 1. Fill the whole atlas slot with a background the pattern never
+     *    produces, so "was this sample written?" is answerable. */
+    for (size_t i = 0; i < slot_u16; ++i) stage()[i] = kBackground;
+    if (!copy_whole_slot_from_stage()) return false;
+
+    /* 2. Build a slot-shaped patch image from the accessor alone. */
+    for (size_t i = 0; i < slot_u16; ++i) stage()[i] = 0u;
+    const uint32_t eyes = L.eyes ? L.eyes : 1u;
+    for (uint32_t p = 0; p < L.plane_count; ++p) {
+        const nxvc_vke_atlas_plane_layout &pl = L.plane[p];
+        for (uint32_t y = 0; y < pl.height; ++y)
+            for (uint32_t x = 0; x < pl.width * eyes; ++x) {
+                const size_t idx =
+                    (size_t)pl.offset_u16 + (size_t)y * pl.stride_u16 + x;
+                if (idx >= slot_u16) { err = "layout runs past the slot"; return false; }
+                stage()[idx] = pattern(p, x, y);
+            }
+    }
+
+    /* 3. Copy a CHECKERBOARD of tiles through the production builder, with
+     *    src_offset 0 -- the atlas_write_tiles contract exactly.  A
+     *    checkerboard means every patched tile borders unpatched ones, so an
+     *    off-by-one in a stride or an eye origin bleeds into a neighbour and
+     *    is caught rather than being invisibly self-consistent. */
+    const int cols = (int)L.tiles_x * (int)eyes;
+    std::vector<uint8_t> patched((size_t)cols * L.tiles_y, 0u);
+    std::vector<VkBufferCopy> regs;
+    for (uint32_t t = 0; t < (uint32_t)patched.size(); ++t) {
+        const uint32_t row = t / (uint32_t)cols;
+        const uint32_t rem = t % (uint32_t)cols;
+        const uint32_t col = rem % L.tiles_x;
+        if (((row + col) & 1u) != 0u) continue;
+        patched[t] = 1u;
+        atlas_tile_regions(d.ring, (int)eyes, (int)L.tiles_x,
+                           d.cfg.chroma444 ? 0 : 1, d.atlas_geom.height, t, 0u,
+                           0u, regs);
+    }
+    {
+        VkCommandBuffer cb = d.dev.begin();
+        for (size_t i = 0; i < regs.size(); i += 4096) {
+            const uint32_t n = (uint32_t)std::min<size_t>(4096, regs.size() - i);
+            vkCmdCopyBuffer(cb, d.b_stage_coef.buf, d.b_ring.buf, n, &regs[i]);
+        }
+        std::string e2;
+        if (!d.dev.submit_and_wait(cb, e2)) { err = e2; return false; }
+    }
+
+    /* 4. Read the atlas back and check every sample of every plane. */
+    std::vector<uint16_t> got(slot_u16, 0u);
+    if (!read_ring_luma(0u, got.data(), got.size())) {
+        err = "readback failed";
+        return false;
+    }
+    size_t nchecked = 0, nwritten = 0;
+    for (uint32_t p = 0; p < L.plane_count; ++p) {
+        const nxvc_vke_atlas_plane_layout &pl = L.plane[p];
+        for (uint32_t eye = 0; eye < eyes; ++eye)
+            for (uint32_t row = 0; row < L.tiles_y; ++row)
+                for (uint32_t col = 0; col < L.tiles_x; ++col) {
+                    const uint32_t t =
+                        row * (uint32_t)cols + eye * L.tiles_x + col;
+                    const uint32_t x0 = eye * pl.eye_stride + col * pl.tile_extent;
+                    const uint32_t y0 = row * pl.tile_extent;
+                    /* The clip of the header comment, per eye. */
+                    const int w = (int)std::min(pl.tile_extent,
+                                                pl.width - col * pl.tile_extent);
+                    const int h = (int)std::min(pl.tile_extent,
+                                                pl.height - row * pl.tile_extent);
+                    for (int y = 0; y < h; ++y)
+                        for (int x = 0; x < w; ++x) {
+                            const size_t idx = (size_t)pl.offset_u16 +
+                                               (size_t)(y0 + (uint32_t)y) *
+                                                   pl.stride_u16 +
+                                               (size_t)(x0 + (uint32_t)x);
+                            const uint16_t want =
+                                patched[t] ? pattern(p, x0 + (uint32_t)x,
+                                                     y0 + (uint32_t)y)
+                                           : kBackground;
+                            ++nchecked;
+                            if (patched[t]) ++nwritten;
+                            if (got[idx] != want) {
+                                char b[256];
+                                std::snprintf(
+                                    b, sizeof b,
+                                    "plane %u tile %u (eye %u row %u col %u) "
+                                    "sample (%d,%d): got 0x%04x want 0x%04x",
+                                    p, t, eye, row, col, x, y, got[idx], want);
+                                err = b;
+                                return false;
+                            }
+                        }
+                }
+    }
+    std::printf("-- atlas layout round-trip: %zu samples checked over %u "
+                "planes, %zu written by the patch, %zu left as background\n",
+                nchecked, L.plane_count, nwritten, nchecked - nwritten);
+    return true;
+}
+
 bool VkEncoder::atlas_write_tiles(uint32_t eye, uint32_t first_tile,
                                   uint32_t count, VkBuffer src,
                                   uint64_t src_offset, uint32_t src_frame,

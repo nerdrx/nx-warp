@@ -404,6 +404,14 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_set_frame_held(nxvc_vk_encoder *e,
     return NXVC_VKE_OK;
 }
 
+extern "C" nxvc_vke_status nxvc_vk_encoder_atlas_layout(
+    const nxvc_vk_encoder *e, nxvc_vke_atlas_layout *out) {
+    if (!e || !out) return NXVC_VKE_ERR_ARG;
+    if (!e->cfg.atlas) return NXVC_VKE_ERR_UNSUPPORTED;
+    if (!e->vk.atlas_layout(*out)) return NXVC_VKE_ERR_UNSUPPORTED;
+    return NXVC_VKE_OK;
+}
+
 extern "C" nxvc_vke_status nxvc_vk_encoder_atlas_write_tiles(
     nxvc_vk_encoder *e, uint32_t eye, uint32_t first_tile, uint32_t count,
     const nxvc_vke_atlas_src *src, uint32_t src_frame, uint32_t *applied,

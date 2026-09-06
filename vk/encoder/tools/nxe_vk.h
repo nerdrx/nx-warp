@@ -18,6 +18,8 @@
 
 #include <vulkan/vulkan.h>
 
+#include <nxvc/nxvc_vk_enc.h>
+
 #include "nxe_atlas.h"
 #include "nxe_host.h"
 #include "nxe_inter.h"
@@ -132,6 +134,19 @@ public:
      * FORCED REFRESH the displacement bound costs.  Zero when the bound is
      * off, which is the default. */
     uint64_t atlas_disp_forced() const;
+
+    /* The layout `atlas_write_tiles()` consumes, filled from the SAME
+     * `RingLayout` the copies are built from -- see nxvc_vk_enc.h for why a
+     * caller must not re-derive it.  False on a non-ATLAS stream. */
+    bool atlas_layout(nxvc_vke_atlas_layout &out) const;
+
+    /* Build a patch buffer from `atlas_layout()` ALONE, copy a checkerboard of
+     * tiles through the production region builder, and verify every sample of
+     * every plane came back where the accessor said it would.  This is the one
+     * property a caller depends on and cannot check itself: that the reported
+     * layout addresses the samples the encoder's own copies do.  False and
+     * `err` on the first sample that disagrees. */
+    bool atlas_layout_roundtrip(std::string &err);
 
     /* Fill a contiguous run of atlas tile positions from the BASE LAYER
      * ([SYN] 13.12.9).  `src` is DEVICE memory on this encoder's device,
