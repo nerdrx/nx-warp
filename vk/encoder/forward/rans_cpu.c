@@ -5,6 +5,7 @@
 
 #include "rans_cpu.h"
 
+#include "nxe_ctx.h"
 #include "nxe_rate.h"
 
 #include <string.h>
@@ -106,75 +107,6 @@ static void eg3_encode(uint32_t v, int *j, uint32_t *suffix, int *bits) {
     *suffix = n - (1u << b);
 }
 
-static int band_of(int p) {
-    if (p == 0) return 0;
-    if (p < 4) return 1;
-    if (p < 10) return 2;
-    return 3;
-}
-static int level_class(int m) { return m == 0 ? 0 : (m == 1 ? 1 : 2); }
-static int level_ctx(int p, int prev) {
-    return NXE_CTX_LEVEL_BASE + nxe_level_ctx_tab[band_of(p)][prev];
-}
-
-/* ------------------------------------------------- v3 context derivation
- *
- * These three are the only places a v3 context is chosen, exactly as they are
- * the only three on the decode side (`vk/decoder/passA/syntax_constants.h`,
- * `nxs_v3_ctx_*`) and in the reference (`ref/src/common.h`).  Each is
- * arithmetic over the unit's class and the lane's neighbour class.
- *
- * `nbr` is 0 none, 1 uncoded, 2 coded sparse, 3 coded dense; class 0 keeps the
- * v2 context, which is what makes v3 a refinement of v2 rather than a
- * replacement -- and is why the stream header refuses tool bit 25 without
- * bit 21.
- */
-static int v3_ctx_cbf(int ucls, int nbr) {
-    if (nbr == 0)
-        return ucls == NXE_UCLS_DC
-                   ? NXE_CTX_CBF_DC
-                   : (ucls == NXE_UCLS_CHROMA ? NXE_CTX_CBF_CHROMA
-                                              : NXE_CTX_CBF_LUMA);
-    return (ucls == NXE_UCLS_CHROMA ? NXE_CTX_CBF_CHROMA_N
-                                    : NXE_CTX_CBF_LUMA_N) + (nbr - 1);
-}
-/* LAST splits coded from not-coded only: the sparse/dense distinction pays on
- * CBF, where it says how likely a coefficient is at all, and not on LAST,
- * where the unit's own magnitudes already say it.  So LAST spends two extra
- * rows against CBF's six. */
-static int v3_ctx_last(int ucls, int nbr) {
-    if (nbr < 2)
-        return ucls == NXE_UCLS_DC
-                   ? NXE_CTX_LAST_DC
-                   : (ucls == NXE_UCLS_CHROMA ? NXE_CTX_LAST_CHROMA
-                                              : NXE_CTX_LAST_LUMA);
-    return ucls == NXE_UCLS_CHROMA ? NXE_CTX_LAST_CHROMA_N
-                                   : NXE_CTX_LAST_LUMA_N;
-}
-/* LEVEL is NOT conditioned on the neighbour: the previously coded level inside
- * the same unit already carries that, and about this unit rather than the one
- * before it.  It does split the coefficient at scan position LAST, which is
- * nonzero by construction, and gives the DC term of a DC plane its own row.
- *
- * `band_scan_pos` is the scan position after the band mappings of the two
- * transform tools; with neither XFORM_4X4_SPLIT nor XFORM_LARGE implemented
- * here it is always `scan_pos`, and the argument is kept separate so that
- * adding either is a change to the caller and not to this function. */
-static int v3_ctx_level(int ucls, int scan_pos, int band_scan_pos, int last,
-                        int prev_class) {
-    if (ucls == NXE_UCLS_DC)
-        return scan_pos == 0 ? NXE_CTX_LEVEL_DC0 : NXE_CTX_LEVEL_DC;
-    if (scan_pos == last)
-        return band_of(band_scan_pos) < 2 ? NXE_CTX_LEVEL_LAST_LO
-                                          : NXE_CTX_LEVEL_LAST_HI;
-    return level_ctx(band_scan_pos, prev_class);
-}
-/* The class a finished coefficient unit publishes to its lane. */
-static int nbr_class_of(int cbf, int last) {
-    if (cbf == 0) return 1;
-    return last < NXE_NBR_DENSE_LAST ? 2 : 3;
-}
-
 /* ----------------------------------------------------------- unit -> ops
  *
  * The LaneMachine of ref/src/entropy.cpp, unrolled.  Unrolling is legitimate
@@ -232,15 +164,15 @@ int nxe_unit_ops(const nxe_tile_units *tu, int ui, const int16_t *coef,
         for (p = ncoef - 1; p >= 0; --p)
             if (c[scan[p]] != 0) { last = p; break; }
 
-        const int ctx_cbf = v3 ? v3_ctx_cbf(u->ucls, in) : u->ctx_cbf;
-        const int ctx_last = v3 ? v3_ctx_last(u->ucls, in) : u->ctx_last;
+        const int ctx_cbf = v3 ? nxe_v3_ctx_cbf(u->ucls, in) : u->ctx_cbf;
+        const int ctx_last = v3 ? nxe_v3_ctx_last(u->ucls, in) : u->ctx_last;
 
         ops[n++] = NXE_OP_PACK(NXE_OP_SYM, ctx_cbf, last >= 0 ? 1 : 0);
         if (last < 0) {
             /* An uncoded unit still publishes: class 1 is "the previous unit
              * was not coded", which is a large part of what CBF conditions
-             * on.  ref's nbr_class_of(0, *). */
-            if (u->grp != 0) nbr->cls = nbr_class_of(0, 0);
+             * on.  ref's nxe_nbr_class_of(0, *). */
+            if (u->grp != 0) nbr->cls = nxe_nbr_class_of(0, 0);
             return n;
         }
 
@@ -263,9 +195,9 @@ int nxe_unit_ops(const nxe_tile_units *tu, int ui, const int16_t *coef,
              * `p & 15` and the large-transform shift is `last_shift_of(64)`,
              * which is 0.  Passing it separately is what makes adding either
              * a change to this line alone. */
-            int ctx = v3 ? v3_ctx_level(u->ucls, p, p, last, prev)
+            int ctx = v3 ? nxe_v3_ctx_level(u->ucls, p, p, last, prev)
                          : (u->ctx_level != NXE_CTX_NONE ? u->ctx_level
-                                                         : level_ctx(p, prev));
+                                                         : nxe_level_ctx(p, prev));
             ops[n++] = NXE_OP_PACK(NXE_OP_SYM, ctx, m > 14 ? NXE_ESC_SYM : m);
             if (m > 14) {
                 int j, bits, i, nchunks, done = 0;
@@ -285,12 +217,12 @@ int nxe_unit_ops(const nxe_tile_units *tu, int ui, const int16_t *coef,
             }
             if (m != 0 && !(hide && p == last))
                 ops[n++] = NXE_OP_PACK(NXE_OP_BYPASS, 1, q < 0 ? 1 : 0);
-            prev = level_class((int)m);
+            prev = nxe_level_class((int)m);
         }
         /* The decoder publishes at the end of the level loop, after the
          * hidden sign is settled, so the class depends only on CBF and LAST
          * and never on the sign SDH did not code. */
-        if (u->grp != 0) nbr->cls = nbr_class_of(1, last);
+        if (u->grp != 0) nbr->cls = nxe_nbr_class_of(1, last);
         return n;
     }
 }

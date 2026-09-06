@@ -29,6 +29,12 @@
 #include "nxvc_vkdec_parse.h"
 #include "passA/syntax_constants.h"
 #include "passB/syntax_constants.h"
+// [ATLAS] The one description of the table, the H ring and the push blocks,
+// and the host bookkeeping that goes with them.  atlas_layout.h is shared
+// verbatim with atlas_compose.comp and atlas_tiles.comp, so the host cannot
+// drift from the kernels it drives.
+#include "atlas/atlas_layout.h"
+#include "atlas/atlas_state.h"
 
 #include "rans_decode.spv.h"
 #include "rans_decode_lite.spv.h"
@@ -39,6 +45,11 @@
 #include "reconstruct_v1_x8.spv.h"
 #include "reconstruct_x8.spv.h"
 #include "warp_pred.spv.h"
+// [ATLAS] 13.12.3 step 1, and the coded-tile kernel that brackets Pass W.
+#include "atlas_compose.spv.h"
+#include "atlas_tiles.spv.h"
+#include "atlas_view8.spv.h"
+#include "atlas_view16.spv.h"
 
 namespace {
 
@@ -190,6 +201,25 @@ struct nxvc_vk_decoder {
     VkShaderModule smW = VK_NULL_HANDLE;
     VkDescriptorSet dsetW = VK_NULL_HANDLE;
     VkPipeline pipeW = VK_NULL_HANDLE;
+    // [ATLAS] Two more sets, two more layouts, two more modules.  Neither
+    // kernel has a specialisation constant, so both pipelines are created once
+    // in make_layouts() rather than through a cache keyed on a frame's shape.
+    VkDescriptorSetLayout dslAC = VK_NULL_HANDLE, dslAT = VK_NULL_HANDLE;
+    VkPipelineLayout plAC = VK_NULL_HANDLE, plAT = VK_NULL_HANDLE;
+    VkShaderModule smAC = VK_NULL_HANDLE, smAT = VK_NULL_HANDLE;
+    VkDescriptorSet dsetAC = VK_NULL_HANDLE, dsetAT = VK_NULL_HANDLE;
+    VkPipeline pipeAC = VK_NULL_HANDLE, pipeAT = VK_NULL_HANDLE;
+    // [ATLAS] The display view (13.12.5): its own set, and two pipelines --
+    // the one-tap 8-bit form and the three-plane R16 one.  Two BUILDS and not
+    // a specialisation constant, because the image format qualifier is part of
+    // the type and there is nothing a constant could select between.
+    VkDescriptorSetLayout dslAV = VK_NULL_HANDLE;
+    VkPipelineLayout plAV = VK_NULL_HANDLE;
+    VkShaderModule smAV8 = VK_NULL_HANDLE, smAV16 = VK_NULL_HANDLE;
+    VkDescriptorSet dsetAV = VK_NULL_HANDLE;
+    VkPipeline pipeAV8 = VK_NULL_HANDLE, pipeAV16 = VK_NULL_HANDLE;
+    Img imgViewY, imgViewC, imgViewCr;
+    uint32_t atlas_view = 0;   // nxvc_vkd_atlas_view
     VkDescriptorSet dsetA = VK_NULL_HANDLE, dsetB = VK_NULL_HANDLE;
     std::map<uint32_t, VkPipeline> pipesA;  // lanes | ctx_stride<<8 | xfl<<16
     // key: (format << 40) | (dirSched << 32) | storeWords
@@ -201,6 +231,32 @@ struct nxvc_vk_decoder {
     // [inter] The four-slot reference ring, the predictor Pass W hands to
     // Pass B, and the parameter block that drives both.
     Buf bRing, bWPred, bWarp;
+    // [ATLAS] The three objects that replace the ring ([SYN] 13.12.1), plus
+    // the two lists the kernels are driven by.
+    //
+    //   bTable    64 B per tile position of every eye, the normative table
+    //   bAdv      one u32 per entry, `advanced_to`.  DECODER-PRIVATE and
+    //             deliberately NOT in the table: 13.12.1's 64 bytes are fully
+    //             specified, its 20 reserved bytes are zero and compared, and
+    //             when the composition ran is not part of the atlas
+    //   bHRing     NXVW_ATLAS_HRING slots x eyes x 10 uints -- nine matrix
+    //             words and a flags word whose bit 0 is `warp_present`.  The
+    //             flags word is not padding: a frame with warp_present == 0
+    //             contributes NO step at all, and the bit cannot be inferred
+    //             from a matrix whose h22 is 2^29 for every legal value
+    //   bASel     the index list the compose dispatch walks under SEL_LIST
+    //   bACoded   this frame's coded tiles, by TABLE index, for MATGEN and
+    //             WRITEBACK
+    //   bAStatus  MATGEN's deferred 13.12.4 refusal: bit 0 and the FIRST
+    //             offending tile index, read back once the frame completes
+    Buf bTable, bAdv, bHRing, bASel, bACoded, bAStatus;
+    // The atlas PIXELS are the ring buffer with ONE slot instead of four --
+    // byte-for-byte the layout nxvw_ring_layout() already computes, at a fixed
+    // address instead of curSlot's.  So `bRing` IS the atlas under ATLAS and
+    // there is no second pixel buffer: warp_pred.glsl reads the reference
+    // through that layout, it is pinned byte-for-byte against the encoder, and
+    // ADR-0029 turns on it being unmodified.  Memory falls 4:1, which is the
+    // ADR's argument for ref_sel == 0.
     // [sparse] Pass A's per-unit coefficient counts, and a host-visible mirror
     // that only exists when the caller asked for coefficient statistics.
     Buf bULen, bULenHost;
@@ -239,6 +295,34 @@ struct nxvc_vk_decoder {
     // Byte layout of the readback buffer.
     VkDeviceSize rbLuma = 0, rbCbCr = 0, rbRgba = 0, rbBytes = 0;
     bool need_alpha_pass = false;  // second Pass B dispatch for the A channel
+
+    // ---- [ATLAS] state
+    // Set from the stream's tool bit 31 at parse_stream_header().  It is the
+    // one switch: under it the reference is the atlas, the skip module and the
+    // display store do not run, and the normative output is the atlas rather
+    // than a picture.
+    bool atlas_mode = false;
+    // [SYN] 13.12.11, tool bit 34.  The stream may carry PICTURE frames, so
+    // the ring needs a SECOND slot: slot 0 is the atlas and slot 1 holds the
+    // picture assembled from it, which is the reference the ordinary path
+    // then predicts from.  The reconstruction is written straight back into
+    // slot 0 -- the atlas it is about to become -- which is exactly the
+    // two-picture bound 13.12.11's "Memory" note describes.
+    bool atlas_modes = false;
+    // Set per frame from frame flags bit 5, before build_warp_params().
+    bool picture_frame = false;
+    // The last frame number decoded, which is where a base patch's entry sits
+    // on the COMPOSITION clock -- not its `src_frame`, which is provenance.
+    uint32_t last_frame = 0;
+    bool have_frame = false;
+    // The host half of 13.12.3 -- monotonicity, the lazy selection and the
+    // ring window.  Host and not device because every answer is host-known,
+    // and reading either back per frame would put a stall in every frame,
+    // which is the one thing tile streaming exists to remove.
+    nxvw::AtlasHostState astate;
+    // Scratch for the two index lists, rebuilt per call rather than per frame
+    // so a tile RUN and a whole frame take the same path.
+    std::vector<uint32_t> asel, acoded;
 
     // ---- [inter] state
     InterCtx inter{};
@@ -762,9 +846,43 @@ constexpr SetShape kSetA{8, 0};
 constexpr SetShape kSetB{10, 7};
 // Pass W: ring in, params in, predictor out, tile order in.
 constexpr SetShape kSetW{4, 0};
+// [ATLAS] atlas_compose.comp: table, advanced_to, H ring, selection list.
+constexpr SetShape kSetAC{4, 0};
+// [ATLAS] atlas_tiles.comp: table, advanced_to, warp params, coded list,
+// status.  It is a SEPARATE layout from the compose one rather than a union of
+// the two, because binding 2 is the H ring in one kernel and the warp
+// parameter buffer in the other -- and a set layout that lied about which
+// would be a validation error on a good driver and a silent wrong read on a
+// bad one.
+constexpr SetShape kSetAT{5, 0};
+// [ATLAS] The display view: the atlas in, three storage images out.  Three in
+// BOTH forms -- the 8-bit one binds a 1x1 placeholder as its third, because an
+// unbound descriptor is not legal and a placeholder costs nothing.
+constexpr SetShape kSetAV{1, 3};
 
-constexpr int kPoolBufs = kSetA.bufs + kSetB.bufs + kSetW.bufs;
-constexpr int kPoolImgs = kSetA.imgs + kSetB.imgs + kSetW.imgs;
+// Every set the pool must serve, in one list, so the two sums below cannot
+// fall behind the layouts.  The atlas sets are the fourth and fifth time this
+// table has grown; the comment above says what happened the previous three.
+constexpr SetShape kSets[] = {kSetA, kSetB, kSetW, kSetAC, kSetAT, kSetAV};
+constexpr int kNumSets = (int)(sizeof(kSets) / sizeof(kSets[0]));
+constexpr int sum_bufs() {
+    int n = 0;
+    for (int i = 0; i < kNumSets; ++i) n += kSets[i].bufs;
+    return n;
+}
+constexpr int sum_imgs() {
+    int n = 0;
+    for (int i = 0; i < kNumSets; ++i) n += kSets[i].imgs;
+    return n;
+}
+constexpr int kPoolBufs = sum_bufs();
+constexpr int kPoolImgs = sum_imgs();
+static_assert(kPoolBufs == kSetA.bufs + kSetB.bufs + kSetW.bufs + kSetAC.bufs +
+                               kSetAT.bufs + kSetAV.bufs,
+              "the descriptor pool is sized from kSets and every set must be "
+              "in it: a set the pool does not count is VK_ERROR_OUT_OF_POOL_"
+              "MEMORY on the Adreno 650 and nothing at all on RADV or "
+              "lavapipe, which is how this went unnoticed three times");
 
 // Pass B's bindings are not contiguous by type -- the images keep the numbers
 // they have always had -- so its layout is built from a predicate rather than
@@ -853,6 +971,29 @@ nxvc_vkd_status make_layouts(D *d) {
     pl.pPushConstantRanges = &pcW;
     VKTRY(d, vkCreatePipelineLayout(d->dev, &pl, nullptr, &d->plW));
 
+    // [ATLAS] The compose set and the coded-tile set.
+    VKTRY(d, set_layout(kSetAC.bufs, kSetAC.imgs, &d->dslAC));
+    VkPushConstantRange pcAC{VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                             (uint32_t)sizeof(nxvw::NxvwAtlasPush)};
+    pl.pSetLayouts = &d->dslAC;
+    pl.pPushConstantRanges = &pcAC;
+    VKTRY(d, vkCreatePipelineLayout(d->dev, &pl, nullptr, &d->plAC));
+
+    VKTRY(d, set_layout(kSetAV.bufs, kSetAV.imgs, &d->dslAV));
+    struct AtlasViewPush { int32_t v[10]; };
+    VkPushConstantRange pcAV{VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                             (uint32_t)sizeof(AtlasViewPush)};
+    pl.pSetLayouts = &d->dslAV;
+    pl.pPushConstantRanges = &pcAV;
+    VKTRY(d, vkCreatePipelineLayout(d->dev, &pl, nullptr, &d->plAV));
+
+    VKTRY(d, set_layout(kSetAT.bufs, kSetAT.imgs, &d->dslAT));
+    VkPushConstantRange pcAT{VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                             (uint32_t)sizeof(nxvw::NxvwAtlasTilePush)};
+    pl.pSetLayouts = &d->dslAT;
+    pl.pPushConstantRanges = &pcAT;
+    VKTRY(d, vkCreatePipelineLayout(d->dev, &pl, nullptr, &d->plAT));
+
     VkShaderModuleCreateInfo sm{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
     sm.codeSize = sizeof(rans_decode_spv);
     sm.pCode = rans_decode_spv;
@@ -881,6 +1022,43 @@ nxvc_vkd_status make_layouts(D *d) {
     sm.codeSize = sizeof(warp_pred_spv);
     sm.pCode = warp_pred_spv;
     VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smW));
+    sm.codeSize = sizeof(atlas_compose_spv);
+    sm.pCode = atlas_compose_spv;
+    VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smAC));
+    sm.codeSize = sizeof(atlas_tiles_spv);
+    sm.pCode = atlas_tiles_spv;
+    VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smAT));
+    sm.codeSize = sizeof(atlas_view8_spv);
+    sm.pCode = atlas_view8_spv;
+    VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smAV8));
+    sm.codeSize = sizeof(atlas_view16_spv);
+    sm.pCode = atlas_view16_spv;
+    VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smAV16));
+
+    // [ATLAS] Neither kernel takes a specialisation constant, so both
+    // pipelines are made once here.  Every other pipeline in this decoder is
+    // built through a cache keyed on a frame's shape because it IS specialised
+    // -- lane count, context stride, transform size, output format -- and
+    // these two are not: one thread per table entry, no shared memory, no
+    // variant.
+    auto make_pipe = [&](VkShaderModule mod, VkPipelineLayout lay,
+                         VkPipeline *out) {
+        VkPipelineShaderStageCreateInfo st_{
+            VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+        st_.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+        st_.module = mod;
+        st_.pName = "main";
+        VkComputePipelineCreateInfo ci{
+            VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
+        ci.stage = st_;
+        ci.layout = lay;
+        return vkCreateComputePipelines(d->dev, VK_NULL_HANDLE, 1, &ci,
+                                        nullptr, out);
+    };
+    VKTRY(d, make_pipe(d->smAC, d->plAC, &d->pipeAC));
+    VKTRY(d, make_pipe(d->smAT, d->plAT, &d->pipeAT));
+    VKTRY(d, make_pipe(d->smAV8, d->plAV, &d->pipeAV8));
+    VKTRY(d, make_pipe(d->smAV16, d->plAV, &d->pipeAV16));
 
     // Summed from the same table the three set layouts are built from, so it
     // cannot fall behind them.  See kSetA / kSetB / kSetW above for why that
@@ -890,21 +1068,25 @@ nxvc_vkd_status make_layouts(D *d) {
         {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, (uint32_t)kPoolImgs}};
     VkDescriptorPoolCreateInfo dp{
         VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
-    dp.maxSets = 3;
+    dp.maxSets = kNumSets;
     dp.poolSizeCount = 2;
     dp.pPoolSizes = sz;
     VKTRY(d, vkCreateDescriptorPool(d->dev, &dp, nullptr, &d->dpool));
-    VkDescriptorSetLayout ls[3] = {d->dslA, d->dslB, d->dslW};
-    VkDescriptorSet sets[3];
+    VkDescriptorSetLayout ls[kNumSets] = {d->dslA, d->dslB, d->dslW, d->dslAC,
+                                          d->dslAT, d->dslAV};
+    VkDescriptorSet sets[kNumSets];
     VkDescriptorSetAllocateInfo da{
         VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
     da.descriptorPool = d->dpool;
-    da.descriptorSetCount = 3;
+    da.descriptorSetCount = kNumSets;
     da.pSetLayouts = ls;
     VKTRY(d, vkAllocateDescriptorSets(d->dev, &da, sets));
     d->dsetA = sets[0];
     d->dsetB = sets[1];
     d->dsetW = sets[2];
+    d->dsetAC = sets[3];
+    d->dsetAT = sets[4];
+    d->dsetAV = sets[5];
     return NXVC_VKD_OK;
 }
 
@@ -1296,17 +1478,81 @@ nxvc_vkd_status make_resources(D *d) {
         d->ringSlotU16 = slot;
         d->wpredStrideI16 =
             nxvw::nxvw_wpred_stride_i16(chroma420 ? 1 : 0, si.alpha ? 1 : 0);
+        // [ATLAS] The atlas pixels ARE one ring slot, so an ATLAS stream
+        // allocates a quarter of what the four-slot ring costs -- which is
+        // ADR-0029's argument for `ref_sel == 0` turned into an allocation.
         const VkDeviceSize ringBytes =
-            want_inter ? (VkDeviceSize)slot * 4 * 2 : 4;
+            d->atlas_mode ? (VkDeviceSize)slot * (d->atlas_modes ? 2 : 1) * 2
+            : want_inter  ? (VkDeviceSize)slot * 4 * 2
+                          : 4;
         const VkDeviceSize wpredBytes =
             want_inter ? (VkDeviceSize)ntiles * d->wpredStrideI16 * 2 : 4;
+        // [ATLAS] MATGEN writes one matrix PAIR per coded tile into this same
+        // buffer at the tile record's `mat_idx`, so the buffer grows by a
+        // pair per tile POSITION.  It is sized for every position rather than
+        // for a frame's coded ones because `mat_idx` is the position's index:
+        // a run of tiles arriving out of order must land at a fixed address,
+        // and packing the region per frame would move every other tile's
+        // matrix under it.
         const VkDeviceSize warpBytes =
             (VkDeviceSize)(NXVW_WARP_HDR_UINTS +
-                           (size_t)ntiles * NXVW_WARP_TILE_UINTS) * 4;
+                           (size_t)ntiles * NXVW_WARP_TILE_UINTS +
+                           (d->atlas_mode
+                                ? (size_t)ntiles * 2 * NXVW_WARP_MAT_UINTS
+                                : 0u)) * 4;
         if ((st = make_buf(d, d->bRing, ringBytes, kSsbo, false))) return st;
         if ((st = make_buf(d, d->bWPred, wpredBytes, kSsbo, false))) return st;
         if ((st = make_buf(d, d->bWarp, warpBytes, kSsbo, false))) return st;
         d->inter.resize(ntiles);
+    }
+    // [ATLAS] The table and everything that indexes it.  All six exist
+    // whatever the stream's tools say -- an unbound descriptor is not legal --
+    // but only an ATLAS stream pays for more than a placeholder.
+    {
+        const uint32_t entries = ntiles;   // one per tile POSITION of every eye
+        const VkDeviceSize tabBytes =
+            d->atlas_mode
+                ? (VkDeviceSize)entries * NXVW_ATLAS_ENTRY_UINTS * 4
+                : 4;
+        const VkDeviceSize advBytes =
+            d->atlas_mode ? (VkDeviceSize)entries * 4 : 4;
+        // Ten uints per (slot, eye): nine matrix words and a flags word.  At
+        // the v1 stereo configuration that is 64 * 2 * 10 * 4 = 5120 B, and
+        // the flags word is the eleventh percent of it rather than padding.
+        const VkDeviceSize hringBytes =
+            d->atlas_mode ? (VkDeviceSize)NXVW_ATLAS_HRING * si.eyes *
+                                NXVW_ATLAS_HSLOT_UINTS * 4
+                          : 4;
+        const VkDeviceSize listBytes =
+            d->atlas_mode ? (VkDeviceSize)entries * 4 : 4;
+        if ((st = make_buf(d, d->bTable, tabBytes, kSsbo, false))) return st;
+        if ((st = make_buf(d, d->bAdv, advBytes, kSsbo, false))) return st;
+        if ((st = make_buf(d, d->bHRing, hringBytes, kSsbo, false))) return st;
+        if ((st = make_buf(d, d->bASel, listBytes, kSsbo, false))) return st;
+        if ((st = make_buf(d, d->bACoded, listBytes, kSsbo, false)))
+            return st;
+        // Two uints, host-visible: MATGEN's deferred 13.12.4 refusal and the
+        // FIRST tile it refused, so the report names a tile and not a frame.
+        if ((st = make_buf(d, d->bAStatus, 8,
+                           kSsbo | VK_BUFFER_USAGE_TRANSFER_DST_BIT, true)))
+            return st;
+        // [SYN] 13.12.1: on tile_map_reset the whole table is zeroed, which
+        // makes every entry invalid and leaves the atlas pixels undefined.
+        // The host mirror of that starts here; the device buffer is cleared
+        // on the first frame that sets the flag.
+        d->astate.reset(d->atlas_mode ? entries : 0u);
+        // [ATLAS] The display view's images are 1x1 placeholders until a view
+        // is SELECTED: the two forms want different FORMATS, not merely
+        // different sizes, so they are allocated by
+        // nxvc_vk_decoder_set_atlas_view() rather than here.  A placeholder
+        // still has to exist, because an unbound descriptor is not legal.
+        d->atlas_view = 0;
+        if ((st = make_img(d, d->imgViewY, VK_FORMAT_R8_UNORM, 1, 1)))
+            return st;
+        if ((st = make_img(d, d->imgViewC, VK_FORMAT_R8G8_UNORM, 1, 1)))
+            return st;
+        if ((st = make_img(d, d->imgViewCr, VK_FORMAT_R16_UINT, 1, 1)))
+            return st;
     }
     // Only when the caller asked for the exact coefficient traffic: a
     // host-visible copy of the same buffer, filled after Pass A.
@@ -1366,11 +1612,31 @@ nxvc_vkd_status make_resources(D *d) {
     // it does not -- and the WARP_SKIP bypass needs it to cover exactly the
     // range build_tile_order() partitioned.  Going through the order buffer
     // costs one uint load per workgroup and changes no output address.
+    VkDescriptorBufferInfo avb{d->bRing.buf, 0, VK_WHOLE_SIZE};
+    VkDescriptorImageInfo avi[3] = {
+        {VK_NULL_HANDLE, d->imgViewY.view, VK_IMAGE_LAYOUT_GENERAL},
+        {VK_NULL_HANDLE, d->imgViewC.view, VK_IMAGE_LAYOUT_GENERAL},
+        {VK_NULL_HANDLE, d->imgViewCr.view, VK_IMAGE_LAYOUT_GENERAL}};
     VkDescriptorBufferInfo wI[4] = {{d->bRing.buf, 0, VK_WHOLE_SIZE},
                                     {d->bWarp.buf, 0, VK_WHOLE_SIZE},
                                     {d->bWPred.buf, 0, VK_WHOLE_SIZE},
                                     {d->bOrder.buf, 0, VK_WHOLE_SIZE}};
-    VkWriteDescriptorSet w[29]{};   // [planar] +1 for binding 16
+    // [ATLAS] The compose set (table, advanced_to, H ring, selection list) and
+    // the coded-tile set (table, advanced_to, warp params, coded list,
+    // status).  Binding 2 differs between them, which is why they are two
+    // layouts rather than one union.
+    VkDescriptorBufferInfo ac[4] = {{d->bTable.buf, 0, VK_WHOLE_SIZE},
+                                    {d->bAdv.buf, 0, VK_WHOLE_SIZE},
+                                    {d->bHRing.buf, 0, VK_WHOLE_SIZE},
+                                    {d->bASel.buf, 0, VK_WHOLE_SIZE}};
+    VkDescriptorBufferInfo at[5] = {{d->bTable.buf, 0, VK_WHOLE_SIZE},
+                                    {d->bAdv.buf, 0, VK_WHOLE_SIZE},
+                                    {d->bWarp.buf, 0, VK_WHOLE_SIZE},
+                                    {d->bACoded.buf, 0, VK_WHOLE_SIZE},
+                                    {d->bAStatus.buf, 0, VK_WHOLE_SIZE}};
+    // [planar] +1 for Pass B binding 16.
+    VkWriteDescriptorSet w[29 + kSetAC.total() + kSetAT.total() +
+                          kSetAV.total()]{};
     uint32_t nw = 0;
     for (int i = 0; i < 8; ++i) {
         w[nw] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
@@ -1445,6 +1711,49 @@ nxvc_vkd_status make_resources(D *d) {
         w[nw].pBufferInfo = &wI[i];
         ++nw;
     }
+    for (int i = 0; i < kSetAC.bufs; ++i) {
+        w[nw] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        w[nw].dstSet = d->dsetAC;
+        w[nw].dstBinding = (uint32_t)i;
+        w[nw].descriptorCount = 1;
+        w[nw].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        w[nw].pBufferInfo = &ac[i];
+        ++nw;
+    }
+    // [ATLAS] The display view's set.  `avb` and `avi` are declared at FUNCTION
+    // scope beside every other descriptor info in this function, and that is
+    // load-bearing rather than stylistic: `vkUpdateDescriptorSets` is called
+    // once at the end, so anything it points at must outlive the block that
+    // filled it in.  A brace-scoped local here was a dangling pointer the
+    // driver dereferenced -- a segfault inside the ICD, from a function that
+    // looked like it had already returned successfully.
+    for (int i = 0; i < 1; ++i) {
+        w[nw] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        w[nw].dstSet = d->dsetAV;
+        w[nw].dstBinding = 0;
+        w[nw].descriptorCount = 1;
+        w[nw].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        w[nw].pBufferInfo = &avb;
+        ++nw;
+    }
+    for (int i = 0; i < 3; ++i) {
+        w[nw] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        w[nw].dstSet = d->dsetAV;
+        w[nw].dstBinding = (uint32_t)(1 + i);
+        w[nw].descriptorCount = 1;
+        w[nw].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        w[nw].pImageInfo = &avi[i];
+        ++nw;
+    }
+    for (int i = 0; i < kSetAT.bufs; ++i) {
+        w[nw] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        w[nw].dstSet = d->dsetAT;
+        w[nw].dstBinding = (uint32_t)i;
+        w[nw].descriptorCount = 1;
+        w[nw].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        w[nw].pBufferInfo = &at[i];
+        ++nw;
+    }
     vkUpdateDescriptorSets(d->dev, nw, w, 0, nullptr);
     d->resources_ready = true;
     return NXVC_VKD_OK;
@@ -1491,10 +1800,23 @@ nxvc_vkd_status ensure_bits(D *d, VkDeviceSize bytes) {
 // The conjugation of [SYN] 13.3 step 1 is done here, on the host, once per
 // frame: it is four integers and a rounding rule, and doing it per tile in the
 // shader would be four divides of arithmetic to save four uploads of 48 bytes.
+// [ATLAS] Where tile `t`'s matrix pair lives in the warp parameter buffer, as
+// a uint offset.  The region follows the tile records, two 12-uint matrices per
+// tile POSITION -- not per coded tile -- because `mat_idx` has to be a stable
+// address: tile runs arrive out of order and a per-frame packing would move
+// every other tile's matrix under it.
+static inline uint32_t atlas_mat_idx(uint32_t ntiles, uint32_t t) {
+    return (uint32_t)NXVW_WARP_HDR_UINTS + ntiles * NXVW_WARP_TILE_UINTS +
+           t * 2u * NXVW_WARP_MAT_UINTS;
+}
+
 void build_warp_params(D *d, const FrameParse &fp, uint32_t ntiles) {
     const StreamInfo &si = d->si;
     d->warp_words.assign((size_t)NXVW_WARP_HDR_UINTS +
-                             (size_t)ntiles * NXVW_WARP_TILE_UINTS,
+                             (size_t)ntiles * NXVW_WARP_TILE_UINTS +
+                             (d->atlas_mode
+                                  ? (size_t)ntiles * 2 * NXVW_WARP_MAT_UINTS
+                                  : 0u),
                          0u);
     uint32_t *w = d->warp_words.data();
     for (uint32_t eye = 0; eye < 2; ++eye)
@@ -1512,7 +1834,15 @@ void build_warp_params(D *d, const FrameParse &fp, uint32_t ntiles) {
     h[0] = (uint32_t)d->ringSlotU16;
     h[1] = si.eyes;
     h[2] = si.tiles_x;             // cols_per_eye
-    h[3] = fp.cur_slot;
+    // [ATLAS] There is ONE slot, so this frame writes slot 0 whatever its
+    // number is.  `cur_slot` is `frame_number mod 4` for the ring, and the
+    // atlas buffer is a quarter of that size -- so leaving it would be an
+    // out-of-bounds store three frames in four, not merely a wrong address.
+    // [ATLAS] Slot 0 always, for BOTH modes: an ATLAS frame stores its coded
+    // tiles into the atlas, and a PICTURE frame writes its reconstruction
+    // straight into the atlas it is about to become.  The ASSEMBLE pass is the
+    // one thing that writes slot 1, and it overrides this in its own header.
+    h[3] = d->atlas_mode ? 0u : fp.cur_slot;
     for (int p = 0; p < 4; ++p) {
         h[4 + p] = (uint32_t)d->ringOff[p];
         h[8 + p] = (uint32_t)d->ringStride[p];
@@ -1526,10 +1856,84 @@ void build_warp_params(D *d, const FrameParse &fp, uint32_t ntiles) {
         t[i] = fp.warp_tiles[i];
         if (t[i].refBase != 0xffffffffu)
             t[i].refBase = t[i].refBase * (uint32_t)d->ringSlotU16;
+        if (d->atlas_mode) {
+            // [ATLAS] An INTRA tile never reaches `emit_warp` -- the parse
+            // only builds a Pass W record for a tile that needs prediction --
+            // so its warp record is value-initialised, and a zero `w0` reads
+            // back as mode 0, which is WARP_SKIP and not INTRA.
+            //
+            // That is invisible to Pass W, which never runs on an INTRA tile,
+            // and fatal to MATGEN, which asks exactly the [SYN] 13.12.4
+            // question "is this a non-INTRA mode against an invalid entry?"
+            // -- and on the reset frame EVERY entry is invalid.  Left alone it
+            // refuses tile 0 of frame 0 of every ATLAS stream there is.
+            //
+            // So the fields 13.12 reads are filled from the Pass B record,
+            // which has the real mode.  Bit 3 stays CLEAR: this is not an
+            // inter tile and Pass W must not predict it.
+            if (!(t[i].w0 & 8u) && i < fp.recs.size()) {
+                const uint32_t r0 = fp.recs[i].w0, r1 = fp.recs[i].w1;
+                t[i].w0 = (r1 & 7u) | (((r0 >> 2) & 1u) << 4) |
+                          (((r1 >> 3) & 3u) << 5) | (((r1 >> 5) & 1u) << 7);
+            }
+            // Every tile Pass W predicts gets its own matrix slot, and
+            // `mat_idx` stops being the sentinel.  An INTRA tile keeps
+            // NXVW_WARP_MAT_NONE: there is no prediction to build a matrix
+            // for, and MATGEN returns on the sentinel before writing one.
+            //
+            // ONLY on an ATLAS frame.  [SYN] 13.12.11: a PICTURE frame is the
+            // ordinary process and "`warp_ext()` applies frame-wide", so its
+            // tiles predict through the FRAME's four matrices and `mat_idx`
+            // stays the sentinel.  Leaving it set here pointed every tile at
+            // the matrix region the ASSEMBLE had just filled with the
+            // entries' own `C` -- so a PICTURE frame that followed any frame
+            // with a non-identity `C` predicted through the wrong matrix, and
+            // 6 of v91's 9 tiles came out wrong in ~4050 of 4096 samples.
+            if ((t[i].w0 & 8u) && !d->picture_frame)
+                t[i].mat_idx = atlas_mat_idx(ntiles, i);
+            // The atlas is ONE slot, so `refBase` loses its slot arithmetic:
+            // there is nowhere else to read from and `ref_sel` is 0 for every
+            // tile of an ATLAS stream by ADR-0029.  A tile the parse could not
+            // resolve keeps its 0xffffffff, and Pass W still treats that as
+            // "no usable reference".
+            // An ATLAS frame predicts from the atlas itself (slot 0); a
+            // PICTURE frame predicts from the picture ASSEMBLED out of it
+            // (slot 1), which is the whole of 13.12.11's plumbing -- from
+            // there down it is the ordinary non-atlas path, unmodified.
+            if (t[i].refBase != 0xffffffffu)
+                t[i].refBase = d->picture_frame
+                                   ? (uint32_t)d->ringSlotU16
+                                   : 0u;
+        }
     }
 }
 
-void build_tile_order(D *d, const FrameParse &fp, uint32_t ntiles) {
+// [ATLAS] One frame's per-eye homography into the H ring slot the frame
+// number addresses, plus the flags word whose bit 0 is `warp_present`.
+//
+// The flags word is not padding and it cannot be dropped: a frame with
+// `warp_present == 0` contributes NO step at all -- not a composition and not
+// a `gen` increment, because [SYN] 13.12.3 step 1 is conditioned on it in its
+// entirety -- and the bit cannot be inferred from the matrix, whose h22 is
+// 2^29 for every legal value.  So it travels with the slot.
+void build_h_slot(const D *d, const FrameParse &fp, uint32_t frame,
+                  uint32_t *out) {
+    for (uint32_t eye = 0; eye < d->si.eyes; ++eye) {
+        uint32_t *h = out + (size_t)eye * NXVW_ATLAS_HSLOT_UINTS;
+        for (int i = 0; i < 9; ++i) h[i] = (uint32_t)fp.warp[eye].h[i];
+        h[9] = fp.warp_present ? NXVW_ATLAS_HFLAG_WARP_PRESENT : 0u;
+    }
+    (void)frame;
+}
+
+// `sup` marks tiles [SYN] 13.12.6 has superseded: they are partitioned with
+// the skipped ones, which under ATLAS is the range that is never dispatched.
+// That is the whole of "a superseded tile is dropped": not its metadata and
+// not its PIXELS either, and putting it in the skip range is what stops Pass W
+// and Pass B from reconstructing it over a position that holds something
+// newer.
+void build_tile_order(D *d, const FrameParse &fp, uint32_t ntiles,
+                      const std::vector<uint8_t> *sup = nullptr) {
     d->order.resize(ntiles);
     d->order_nodir[0] = d->order_nodir[1] = 0;
     d->order_nskip[0] = d->order_nskip[1] = 0;
@@ -1603,6 +2007,7 @@ void build_tile_order(D *d, const FrameParse &fp, uint32_t ntiles) {
         auto skipMid = beg;
         if (fp.any_inter) {
             skipMid = std::stable_partition(beg, end, [&](uint32_t t) {
+                if (sup && t < sup->size() && (*sup)[t]) return true;
                 // [planar] A PLANAR tile is mode 5, so it lands on the CODED
                 // side of this partition, and that is load-bearing beyond the
                 // dispatch shape.
@@ -1611,11 +2016,10 @@ void build_tile_order(D *d, const FrameParse &fp, uint32_t ntiles) {
                 // atlas entry, and a planar tile is a coded tile -- in fact the
                 // cheapest possible new patch for that store, since it needs no
                 // reference and can seed an entry that has none
-                // (docs/LOWPOLY-MODE.md 6).  The atlas decoder builds its
-                // "tiles this frame coded" list as the range of this order
-                // AFTER `order_nskip`, and hands that list to
-                // nxvw::AtlasState::commit().  So a planar tile seeds its entry
-                // by construction here, and would silently stop doing so if it
+                // (docs/LOWPOLY-MODE.md 6).  The atlas decoder builds `acoded`
+                // as the range of this order AFTER `order_nskip` and dispatches
+                // MATGEN/WRITEBACK over it, so a planar tile seeds its entry by
+                // construction here, and would silently stop doing so if it
                 // were ever moved to the skip side.
                 return (fp.recs[t].w1 & 7u) == 0u;   // WARP_SKIP
             });
@@ -1830,13 +2234,28 @@ extern "C" void nxvc_vk_decoder_destroy(nxvc_vk_decoder *d) {
                     vkDestroyShaderModule(d->dev, d->smB[i][j], nullptr);
         if (d->pipeW) vkDestroyPipeline(d->dev, d->pipeW, nullptr);
         if (d->smW) vkDestroyShaderModule(d->dev, d->smW, nullptr);
+        // [ATLAS]
+        if (d->pipeAV8) vkDestroyPipeline(d->dev, d->pipeAV8, nullptr);
+        if (d->pipeAV16) vkDestroyPipeline(d->dev, d->pipeAV16, nullptr);
+        if (d->smAV8) vkDestroyShaderModule(d->dev, d->smAV8, nullptr);
+        if (d->smAV16) vkDestroyShaderModule(d->dev, d->smAV16, nullptr);
+        if (d->plAV) vkDestroyPipelineLayout(d->dev, d->plAV, nullptr);
+        if (d->pipeAC) vkDestroyPipeline(d->dev, d->pipeAC, nullptr);
+        if (d->pipeAT) vkDestroyPipeline(d->dev, d->pipeAT, nullptr);
+        if (d->smAC) vkDestroyShaderModule(d->dev, d->smAC, nullptr);
+        if (d->smAT) vkDestroyShaderModule(d->dev, d->smAT, nullptr);
         if (d->plA) vkDestroyPipelineLayout(d->dev, d->plA, nullptr);
         if (d->plB) vkDestroyPipelineLayout(d->dev, d->plB, nullptr);
         if (d->plW) vkDestroyPipelineLayout(d->dev, d->plW, nullptr);
+        if (d->plAC) vkDestroyPipelineLayout(d->dev, d->plAC, nullptr);
+        if (d->plAT) vkDestroyPipelineLayout(d->dev, d->plAT, nullptr);
         if (d->dpool) vkDestroyDescriptorPool(d->dev, d->dpool, nullptr);
         if (d->dslA) vkDestroyDescriptorSetLayout(d->dev, d->dslA, nullptr);
         if (d->dslB) vkDestroyDescriptorSetLayout(d->dev, d->dslB, nullptr);
         if (d->dslW) vkDestroyDescriptorSetLayout(d->dev, d->dslW, nullptr);
+        if (d->dslAC) vkDestroyDescriptorSetLayout(d->dev, d->dslAC, nullptr);
+        if (d->dslAT) vkDestroyDescriptorSetLayout(d->dev, d->dslAT, nullptr);
+        if (d->dslAV) vkDestroyDescriptorSetLayout(d->dev, d->dslAV, nullptr);
         if (d->binsem) vkDestroySemaphore(d->dev, d->binsem, nullptr);
         if (d->queries) vkDestroyQueryPool(d->dev, d->queries, nullptr);
         if (d->timeline) vkDestroySemaphore(d->dev, d->timeline, nullptr);
@@ -1845,10 +2264,13 @@ extern "C" void nxvc_vk_decoder_destroy(nxvc_vk_decoder *d) {
         for (Buf *b : {&d->staging, &d->bBits, &d->bDesc, &d->bTables,
                        &d->bCoef, &d->bCbf, &d->bStatus, &d->bRecs, &d->bWgt,
                        &d->bModes, &d->bOrder, &d->bRead, &d->bULen,
-                       &d->bULenHost, &d->bRing, &d->bWPred, &d->bWarp, &d->bPlanar})
+                       &d->bULenHost, &d->bRing, &d->bWPred, &d->bWarp,
+                       &d->bTable, &d->bAdv, &d->bHRing, &d->bASel,
+                       &d->bACoded, &d->bAStatus, &d->bPlanar})
             destroy_buf(d, *b);
         for (Img *i : {&d->imgRgba, &d->imgRgb10, &d->imgLuma, &d->imgCbCr,
-                       &d->imgRgbaN, &d->imgLumaN, &d->imgCbCrN})
+                       &d->imgRgbaN, &d->imgLumaN, &d->imgCbCrN,
+                       &d->imgViewY, &d->imgViewC, &d->imgViewCr})
             destroy_img(d, *i);
         if (d->own_device) vkDestroyDevice(d->dev, nullptr);
     }
@@ -1894,6 +2316,19 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_parse_stream_header(
                           nxvc_vk_decoder_status_string(st));
     d->have_stream = true;
     d->resources_ready = false;
+    // [ATLAS] The one switch, and it is set BEFORE make_resources() because
+    // the allocation differs: the atlas is ONE ring slot, not four, and the
+    // table and the H ring only exist for a stream that asked for them.
+    //
+    // Tool bit 31 is not in `kToolsSupported` yet, so `parse_stream_header`
+    // has already refused any stream that sets it and this is false for every
+    // stream that reaches here.  The bit joins the mask in the commit that
+    // makes the decode path honour it; wiring the resources first keeps that
+    // commit to the path itself.
+    d->atlas_mode = (d->si.tools & (1ull << 31)) != 0;
+    // [SYN] 13.12.11: tool bit 34 says the stream may switch modes per frame,
+    // which is what makes the second ring slot necessary.
+    d->atlas_modes = d->atlas_mode && (d->si.tools & (1ull << 34)) != 0;
     st = make_resources(d);
     if (st) return st;
     // [inter] A new stream is a new reference ring and a new prediction
@@ -2227,6 +2662,15 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     o = align_up(o + sizeof fp.weights, 256);
     d->offOrder = o;
     o = align_up(o + (VkDeviceSize)ntiles * 4, 256);
+    // [SYN] 13.12.11.  A PICTURE frame is decoded by the ORDINARY non-ATLAS
+    // process against a reference assembled from the atlas; an ATLAS frame is
+    // 13.12 as written.  Everything below branches on these two rather than on
+    // `atlas_mode`, because half of the ATLAS path must NOT run on a PICTURE
+    // frame -- no advance, no MATGEN, no write-back, and the skip module comes
+    // back on, because a PICTURE frame really does reconstruct every tile.
+    d->picture_frame = d->atlas_mode && fp.picture_frame != 0;
+    const bool picture = d->picture_frame;
+    const bool atlas_frame = d->atlas_mode && !picture;
     // [inter] The Pass W parameter block: the ring geometry and the four
     // conjugated matrices, then one record per tile.
     build_warp_params(d, fp, ntiles);
@@ -2240,6 +2684,79 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
         fp.any_planar ? (VkDeviceSize)fp.planar.size() * 4 : 0;
     d->offPlanar = o;
     o = align_up(o + planarBytes, 256);
+    // ---- [ATLAS] this frame's H slot, and the two index lists.
+    //
+    // The lists are built from `build_tile_order()`'s partition rather than
+    // from a second walk of the tile records: the leading `order_nskip` range
+    // of each eye's segment IS the frame's skipped tiles, so what follows it
+    // is exactly the coded ones, already in dispatch order.  Under [SYN]
+    // 13.12 a skipped tile writes NOTHING to the atlas, so that range is
+    // simply never dispatched -- which is the whole of "Pass A and Pass B over
+    // coded tiles only" and needs no parser change at all.
+    VkDeviceSize hringBytes = 0, aselBytes = 0, acodedBytes = 0;
+    if (atlas_frame) {
+        build_tile_order(d, fp, ntiles);
+        const uint32_t passes = fp.any_stereo_tile ? d->si.eyes : 1u;
+        const uint32_t per = ntiles / passes;
+        d->acoded.clear();
+        for (uint32_t pass = 0; pass < passes; ++pass) {
+            const uint32_t nskip = fp.any_inter ? d->order_nskip[pass] : 0u;
+            for (uint32_t i = nskip; i < per; ++i)
+                d->acoded.push_back(d->order[(size_t)pass * per + i]);
+        }
+        // Which entries must be advanced before this frame's tiles read them.
+        // The frame-complete path advances EVERY entry -- that is the eager
+        // form of 13.12.3 and what the flushed atlas is defined as -- so the
+        // selection list is only built for the tile-run path.  Here the
+        // dispatch is SEL_ALL and covers every entry of both eyes in one go.
+        d->asel.clear();
+        // [SYN] 13.12.6, and it applies to a frame's OWN CODED TILES and not
+        // only to base patches: a tile of frame N at a position whose
+        // `src_frame` is already >= N has been overtaken and is DROPPED.  That
+        // is the ordinary case once a base patch is in play -- 13.12.9 lets a
+        // patch carry a `src_frame` ahead of the stream, and v88 pins exactly
+        // it -- and without this the write-back reset a position the patch had
+        // already claimed, throwing away the newer generation.
+        //
+        // `apply()` runs HERE, before anything is dispatched, which is the
+        // ordering `vk.atlas.state` pins: a coded tile is tested against the
+        // PREVIOUS state, never against a write this same frame makes.
+        {
+            nxvw::AtlasApply aa = d->astate.apply(
+                d->acoded.data(), (uint32_t)d->acoded.size(), fp.frame_number);
+            d->stats.tiles_superseded = (uint32_t)aa.superseded.size();
+            d->acoded.swap(aa.accepted);
+            if (!aa.superseded.empty()) {
+                // Re-partition with the superseded tiles alongside the
+                // skipped ones, so neither Pass W nor Pass B touches them, and
+                // rebuild the coded list from the order that results.
+                std::vector<uint8_t> sup(ntiles, 0u);
+                for (uint32_t t : aa.superseded)
+                    if (t < ntiles) sup[t] = 1u;
+                build_tile_order(d, fp, ntiles, &sup);
+                d->acoded.clear();
+                for (uint32_t pass = 0; pass < passes; ++pass) {
+                    const uint32_t ns = d->order_nskip[pass];
+                    for (uint32_t i = ns; i < per; ++i)
+                        d->acoded.push_back(d->order[(size_t)pass * per + i]);
+                }
+            }
+        }
+        hringBytes = (VkDeviceSize)d->si.eyes * NXVW_ATLAS_HSLOT_UINTS * 4;
+        acodedBytes = (VkDeviceSize)d->acoded.size() * 4;
+    }
+    // [SYN] 13.12.11 step 1.  The ASSEMBLE pass writes slot 1 and reads slot
+    // 0, so it needs its own copy of the warp HEADER -- the records come from
+    // the kernel itself.  Only the header differs, and only in `curSlot`.
+    const VkDeviceSize offWarpA = o;
+    const VkDeviceSize warpABytes =
+        picture ? (VkDeviceSize)NXVW_WARP_HDR_UINTS * 4 : 0;
+    o = align_up(o + warpABytes, 256);
+    const VkDeviceSize offHRing = o;
+    o = align_up(o + hringBytes, 256);
+    const VkDeviceSize offACoded = o;
+    o = align_up(o + acodedBytes, 256);
+    (void)aselBytes;
     if ((st = make_buf(d, d->staging, o, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                        true)))
         return st;
@@ -2249,12 +2766,27 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     std::memcpy(sp + d->offTables, fp.cum.data(), tabBytes);
     std::memcpy(sp + d->offRecs, fp.recs.data(), recBytes);
     std::memcpy(sp + d->offWgt, fp.weights, sizeof fp.weights);
-    build_tile_order(d, fp, ntiles);
+    // Already built above under ATLAS, where the coded list is derived from
+    // it; building it twice would be harmless and is still wrong to write.
+    if (!atlas_frame) build_tile_order(d, fp, ntiles);
     std::memcpy(sp + d->offOrder, d->order.data(), (size_t)ntiles * 4);
     if (warpBytes)
         std::memcpy(sp + d->offWarp, d->warp_words.data(), (size_t)warpBytes);
     if (planarBytes)
         std::memcpy(sp + d->offPlanar, fp.planar.data(), (size_t)planarBytes);
+    if (warpABytes) {
+        std::memcpy(sp + offWarpA, d->warp_words.data(), (size_t)warpABytes);
+        // The one field that differs: the ASSEMBLE stores into slot 1.
+        ((uint32_t *)(sp + offWarpA))[NXVW_WARP_HDR_RING + 3] = 1u;
+    }
+    if (atlas_frame) {
+        uint32_t hslot[2 * NXVW_ATLAS_HSLOT_UINTS] = {};
+        build_h_slot(d, fp, fp.frame_number, hslot);
+        std::memcpy(sp + offHRing, hslot, (size_t)hringBytes);
+        if (acodedBytes)
+            std::memcpy(sp + offACoded, d->acoded.data(),
+                        (size_t)acodedBytes);
+    }
 
     // ---- 3. record ----------------------------------------------------
     VKTRY(d, vkResetCommandBuffer(d->cmd, 0));
@@ -2309,6 +2841,69 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     image_to_general(d->cmd, d->imgRgbaN.img);
     image_to_general(d->cmd, d->imgLumaN.img);
     image_to_general(d->cmd, d->imgCbCrN.img);
+
+    // ---- [ATLAS] 13.12.3 step 1: compose and renorm --------------------
+    // ONE dispatch per frame over EVERY entry of BOTH eyes.  289 entries an
+    // eye is already in the starved region of the workgroup-count curve
+    // (passA/README.md) and splitting it per eye would halve the occupancy of
+    // each half for no gain: the thread reads its own eye out of its index.
+    if (atlas_frame) {
+        // [SYN] 13.12.1: on `tile_map_reset` the whole table is zeroed, which
+        // makes every entry invalid, and the atlas pixels are undefined until
+        // written.  `advanced_to` is filled with THIS frame rather than zero:
+        // it is not part of the atlas, and leaving it at zero would make the
+        // kernel try to walk an invalid entry forward by `frame_number`
+        // steps.  An invalid entry costs one early return either way, but the
+        // fill is what keeps that true after the first coded tile lands.
+        if (fp.flags & 1u) {
+            vkCmdFillBuffer(d->cmd, d->bTable.buf, 0, d->bTable.size, 0u);
+            vkCmdFillBuffer(d->cmd, d->bAdv.buf, 0, d->bAdv.size,
+                            fp.frame_number);
+            d->astate.reset(ntiles);
+            d->astate.mark_all_advanced(fp.frame_number);
+        }
+        // MATGEN's deferred 13.12.4 refusal starts clear every frame.
+        vkCmdFillBuffer(d->cmd, d->bAStatus.buf, 0, d->bAStatus.size, 0u);
+        if (hringBytes) {
+            VkBufferCopy c{offHRing,
+                           (VkDeviceSize)(fp.frame_number % NXVW_ATLAS_HRING) *
+                               d->si.eyes * NXVW_ATLAS_HSLOT_UINTS * 4,
+                           hringBytes};
+            vkCmdCopyBuffer(d->cmd, d->staging.buf, d->bHRing.buf, 1, &c);
+        }
+        if (acodedBytes) {
+            VkBufferCopy c{offACoded, 0, acodedBytes};
+            vkCmdCopyBuffer(d->cmd, d->staging.buf, d->bACoded.buf, 1, &c);
+        }
+        buffer_barrier(d->cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_ACCESS_TRANSFER_WRITE_BIT,
+                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
+        d->astate.record_frame(fp.frame_number);
+
+        nxvw::NxvwAtlasPush ap{};
+        ap.entryCount = ntiles;
+        ap.colsPerEye = d->si.tiles_x;
+        ap.eyes = d->si.eyes;
+        ap.lumaW = (int)d->si.width;
+        ap.lumaH = (int)d->si.height;
+        ap.genMax = 0u;   // the reference DECODER passes 0: no cap
+        ap.targetFrame = fp.frame_number;
+        // The frame-complete path advances EVERY entry, which is exactly the
+        // eager form of 13.12.3 -- and the flushed atlas the normative output
+        // is defined as.  The tile-run path is what uses SEL_LIST.
+        ap.sel = NXVW_ATLAS_SEL_ALL;
+        vkCmdBindDescriptorSets(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                d->plAC, 0, 1, &d->dsetAC, 0, nullptr);
+        vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, d->pipeAC);
+        vkCmdPushConstants(d->cmd, d->plAC, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                           (uint32_t)sizeof ap, &ap);
+        vkCmdDispatch(d->cmd, (ntiles + 63u) / 64u, 1, 1);
+        buffer_barrier(d->cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
+        d->astate.mark_all_advanced(fp.frame_number);
+    }
 
     // ---- Pass A: one dispatch per distinct lane count -----------------
     vkCmdBindDescriptorSets(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, d->plA, 0,
@@ -2412,7 +3007,17 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     // for a 4:2:0 stream that also codes an alpha plane, and a WARP_SKIP tile
     // codes no plane at all.
     VkPipeline pipeBSkip = VK_NULL_HANDLE;
-    const bool anySkip = d->order_nskip[0] != 0 || d->order_nskip[1] != 0;
+    // [ATLAS] `reconstruct_skip_store` does not run at all: under [SYN] 13.12
+    // a skipped tile is NOT reconstructed -- it stays in the atlas at the
+    // generation that last coded it and the display warp reaches it there.
+    // This is the deletion the whole ADR is for: 8.889 of Pass B's 10.760 ms
+    // at 289 tiles was that module over ~250 skipped tiles.  The skip RANGE
+    // still exists in `order`; it is simply never dispatched, by Pass W or by
+    // Pass B.
+    // A PICTURE frame reconstructs every tile, skipped ones included, so the
+    // module comes back: it is only an ATLAS frame that leaves them untouched.
+    const bool anySkip = !atlas_frame &&
+                         (d->order_nskip[0] != 0 || d->order_nskip[1] != 0);
     if (anySkip && !d->need_alpha_pass &&
         (st = pipeline_b(d, d->out_format,
                          fuse ? (int32_t)nxvw::kOutRgba8
@@ -2425,6 +3030,120 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     VkPipeline pipeWp = VK_NULL_HANDLE;
     if (fp.any_inter && (st = pipeline_w(d, &pipeWp))) return st;
 
+    // [ATLAS] The two ops of the coded-tile kernel.  MATGEN runs BEFORE Pass W
+    // and reads each entry's `C` as it stands after the advance ([SYN] 13.12.4,
+    // "read after step 1"), conjugates it for sub 1 and sub 2 and writes the
+    // pair at the tile record's `mat_idx`.  WRITEBACK runs after Pass B has
+    // stored the pixels and applies 13.12.3 step 3.  They are two ops of one
+    // kernel because they share every buffer and every index derivation.
+    auto atlas_tile_op = [&](uint32_t op) {
+        if (!d->atlas_mode) return;
+        // MATERIALISE covers every ENTRY; the coded-tile ops walk the list.
+        const bool all = op == NXVW_ATLAS_OP_MATERIALISE;
+        if (!all && (!atlas_frame || d->acoded.empty())) return;
+        if (all && !picture) return;
+        nxvw::NxvwAtlasTilePush tp{};
+        tp.tileCount = all ? ntiles : (uint32_t)d->acoded.size();
+        tp.op = op;
+        tp.frame = fp.frame_number;
+        tp.colsPerEye = d->si.tiles_x;
+        tp.lumaW = (int)d->si.width;
+        tp.lumaH = (int)d->si.height;
+        tp.chromaW = (int)d->si.cw;
+        tp.chromaH = (int)d->si.ch;
+        vkCmdBindDescriptorSets(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                d->plAT, 0, 1, &d->dsetAT, 0, nullptr);
+        vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, d->pipeAT);
+        vkCmdPushConstants(d->cmd, d->plAT, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                           (uint32_t)sizeof tp, &tp);
+        vkCmdDispatch(d->cmd, (tp.tileCount + 63u) / 64u, 1, 1);
+        buffer_barrier(d->cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
+        // Pass B's set has to come back: this kernel bound its own.
+        vkCmdBindDescriptorSets(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                d->plB, 0, 1, &d->dsetB, 0, nullptr);
+        vkCmdPushConstants(d->cmd, d->plB, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                           (uint32_t)sizeof(nxvw::NxvwPassBPush), &fp.push);
+    };
+    // ---- [SYN] 13.12.11 step 1: ASSEMBLE ------------------------------
+    // The picture the atlas holds, at the pose it holds it at -- frame N-1's
+    // pose, because the advance has NOT run on a PICTURE frame.  Built into
+    // ring slot 1, which the ordinary path below then predicts from; from
+    // there down nothing is atlas-aware.
+    //
+    // It runs on the UNMODIFIED predictor and the unmodified WARP_SKIP store.
+    // The ASSEMBLE op writes each entry's Pass W record -- mode from the
+    // entry's own `static`, zero vector, and `refBase = 0xffffffff` when the
+    // entry is INVALID, which warp_pred.glsl already answers with the correct
+    // per-plane mid-grey.  That is 13.12.5's rule for an invalid entry, and it
+    // is what lets validity stay DEVICE-side: no readback, no stall.
+    if (picture) {
+        VkPipeline pipeAsm = VK_NULL_HANDLE;
+        if ((st = pipeline_b(d, (uint32_t)nxvw::kOutNone,
+                             (int32_t)nxvw::kOutNone, fp.push.sparse,
+                             storeWords, 0, (int32_t)fp.split4, 0,
+                             inter_pred_on(d, interStream),
+                             ring_store_on(d, interStream), &pipeAsm, 2)))
+            return st;
+        // The assemble header: identical but for `curSlot`, which is 1.
+        {
+            VkBufferCopy c{offWarpA, 0, warpABytes};
+            vkCmdCopyBuffer(d->cmd, d->staging.buf, d->bWarp.buf, 1, &c);
+        }
+        buffer_barrier(d->cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_ACCESS_TRANSFER_WRITE_BIT,
+                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
+        nxvw::NxvwAtlasTilePush ap{};
+        ap.tileCount = ntiles;
+        ap.op = NXVW_ATLAS_OP_ASSEMBLE;
+        ap.frame = fp.frame_number;
+        ap.colsPerEye = d->si.tiles_x;
+        ap.lumaW = (int)d->si.width;
+        ap.lumaH = (int)d->si.height;
+        ap.chromaW = (int)d->si.cw;
+        ap.chromaH = (int)d->si.ch;
+        ap.refBase = 0u;   // the atlas is slot 0
+        ap.eyes = d->si.eyes;
+        vkCmdBindDescriptorSets(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                d->plAT, 0, 1, &d->dsetAT, 0, nullptr);
+        vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, d->pipeAT);
+        vkCmdPushConstants(d->cmd, d->plAT, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                           (uint32_t)sizeof ap, &ap);
+        vkCmdDispatch(d->cmd, (ntiles + 63u) / 64u, 1, 1);
+        buffer_barrier(d->cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
+        // One dispatch of the skip-store module over EVERY tile: it runs the
+        // predictor itself rather than reading back what Pass W wrote, so the
+        // assemble needs no Pass W of its own.
+        vkCmdBindDescriptorSets(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, d->plB,
+                                0, 1, &d->dsetB, 0, nullptr);
+        vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeAsm);
+        vkCmdPushConstants(d->cmd, d->plB, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                           (uint32_t)sizeof(nxvw::NxvwPassBPush), &fp.push);
+        vkCmdDispatchBase(d->cmd, 0, 0, 0, ntiles, 1, 1);
+        ++dispatches;
+        buffer_barrier(d->cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+        // ASSEMBLE overwrote every tile RECORD, so the frame's own records --
+        // and the header's destination slot -- have to be put back before the
+        // ordinary path reads them.
+        {
+            VkBufferCopy c{d->offWarp, 0,
+                           (VkDeviceSize)d->warp_words.size() * 4};
+            vkCmdCopyBuffer(d->cmd, d->staging.buf, d->bWarp.buf, 1, &c);
+        }
+        buffer_barrier(d->cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_ACCESS_TRANSFER_WRITE_BIT,
+                       VK_ACCESS_SHADER_READ_BIT);
+    }
+
+    atlas_tile_op(NXVW_ATLAS_OP_MATGEN);
+
     for (uint32_t pass = 0; pass < eyePasses; ++pass) {
         const uint32_t base = pass * tilesPerEye;
         // [inter] How many of this eye's tiles the WARP_SKIP module takes.
@@ -2434,8 +3153,15 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
         // alpha second-store configuration, which that module deliberately
         // does not carry -- folds this to zero, and then Pass W covers
         // everything exactly as it did before the split.
+        // [ATLAS] There is no skip PIPELINE and the skipped tiles must still
+        // be excluded, which is the opposite of the alpha case below: there,
+        // folding `nskip` to zero puts the skips back on a module that CAN
+        // reconstruct them, and here they must not be reconstructed at all.
+        // So the range is kept and segment 0 is dispatched on nothing.
         const uint32_t nskip =
-            pipeBSkip != VK_NULL_HANDLE ? d->order_nskip[pass] : 0u;
+            (pipeBSkip != VK_NULL_HANDLE || atlas_frame)
+                ? d->order_nskip[pass]
+                : 0u;
         if (fp.any_inter) {
             if (d->have_timestamps && pass == 0)
                 vkCmdWriteTimestamp(d->cmd,
@@ -2490,7 +3216,12 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
         // them on the module that would have had them before this split.
         const uint32_t nodir =
             fp.push.intraDir != 0 ? d->order_nodir[pass] : tilesPerEye;
-        const uint32_t seg[3] = {nskip, nodir - nskip, tilesPerEye - nodir};
+        // [ATLAS] Segment 0 is the skip range and there is no pipeline for
+        // it, so it is dispatched over ZERO tiles rather than over `nskip` on
+        // a null handle.  `segBase` still uses `nskip`, so segment 1 starts
+        // exactly where the coded tiles do.
+        const uint32_t seg[3] = {atlas_frame ? 0u : nskip,
+                                 nodir - nskip, tilesPerEye - nodir};
         const uint32_t segBase[3] = {base, base + nskip, base + nodir};
         VkPipeline segPipe[3] = {pipeBSkip, pipeB[0], pipeB[1]};
         VkPipeline segPipeA[3] = {VK_NULL_HANDLE, pipeBa[0], pipeBa[1]};
@@ -2532,6 +3263,61 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                            VK_ACCESS_SHADER_WRITE_BIT,
                            VK_ACCESS_SHADER_READ_BIT);
+    }
+    // [ATLAS] 13.12.3 step 3, after every eye pass has stored its pixels:
+    // C := identity, src_frame := N, gen := 0, static := (mode == STATIC_MV),
+    // valid := 1, res_level, and `advanced_to := N` beside it.  It runs after
+    // the loop and not inside it because a STEREO tile of eye 1 predicts from
+    // eye 0 of THIS frame, so eye 0's entries must not be reset until both
+    // passes have read them.
+    atlas_tile_op(NXVW_ATLAS_OP_WRITEBACK);
+    // [SYN] 13.12.11 step 3: the reconstruction becomes the atlas, at EVERY
+    // position.  The host mirror is `rebase_picture()` for the positions this
+    // frame did not code plus `commit()` for the ones it did -- in that order,
+    // and after `apply()`, which is what keeps a PICTURE frame's own coded
+    // tiles from superseding themselves.
+    // ---- [ATLAS] the display view (13.12.5), after the atlas is final -----
+    // Non-normative, and produced BESIDE the atlas rather than instead of it:
+    // the u16 layout stays what Pass W reads and what conformance compares.
+    // It covers the whole picture rather than the frame's coded tiles only --
+    // correctness first; the coded-only form is the optimisation the device
+    // pricing is for, and it is a dispatch bound, not a semantic change.
+    if (d->atlas_view) {
+        image_to_general(d->cmd, d->imgViewY.img);
+        image_to_general(d->cmd, d->imgViewC.img);
+        image_to_general(d->cmd, d->imgViewCr.img);
+        buffer_barrier(d->cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
+        int32_t vp[10] = {d->ringOff[0],    d->ringOff[1],
+                          d->ringOff[2],    d->ringStride[0],
+                          d->ringStride[1], d->ringStride[2],
+                          (int32_t)(d->si.width * d->si.eyes),
+                          (int32_t)d->si.height,
+                          (int32_t)(d->si.cw * d->si.eyes),
+                          (int32_t)d->si.ch};
+        vkCmdBindDescriptorSets(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                d->plAV, 0, 1, &d->dsetAV, 0, nullptr);
+        vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                          d->atlas_view == (uint32_t)NXVC_VKD_ATLAS_VIEW_R8
+                              ? d->pipeAV8
+                              : d->pipeAV16);
+        vkCmdPushConstants(d->cmd, d->plAV, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                           (uint32_t)sizeof vp, vp);
+        vkCmdDispatch(d->cmd, ((uint32_t)vp[6] + 7u) / 8u,
+                      ((uint32_t)vp[7] + 7u) / 8u, 1);
+        ++dispatches;
+    }
+
+    atlas_tile_op(NXVW_ATLAS_OP_MATERIALISE);
+    if (atlas_frame)
+        d->astate.commit(d->acoded.data(), (uint32_t)d->acoded.size(),
+                         fp.frame_number);
+    if (picture) {
+        d->astate.rebase_picture(d->acoded.data(), (uint32_t)d->acoded.size(),
+                                 fp.frame_number);
+        d->astate.commit(d->acoded.data(), (uint32_t)d->acoded.size(),
+                         fp.frame_number);
     }
     if (d->have_timestamps)
         vkCmdWriteTimestamp(d->cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
@@ -2631,6 +3417,8 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     d->stats.tiles_skipped = fp.tiles_skipped;
     d->stats.tiles_concealed = fp.tiles_concealed;
     d->stats.rows_elided = fp.rows_elided;
+    d->last_frame = fp.frame_number;
+    d->have_frame = true;
     d->stats.tiles_tskip = fp.tiles_tskip;
     d->stats.lane_groups = (uint32_t)fp.groups.size();
     d->stats.dispatches = dispatches;
@@ -2670,6 +3458,24 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
             coefs * 2 + (uint64_t)nwords * 4;
     }
 
+    // [ATLAS] [SYN] 13.12.4: "a tile with mode != INTRA whose own atlas entry
+    // has valid == 0 is BITSTREAM".  Only the DEVICE knows that -- validity is
+    // decided by the envelope check inside the composition -- so MATGEN
+    // records it in a status word and the refusal is made here, once the frame
+    // has completed.  Deferred, not absent: the alternative is a readback per
+    // frame, which is the one thing tile streaming exists to remove.
+    //
+    // Bit 0 is the refusal and bits 8-31 of the second word carry the FIRST
+    // offending tile, so the report names a tile rather than a frame.
+    if (atlas_frame && d->bAStatus.mapped) {
+        const uint32_t *as = (const uint32_t *)d->bAStatus.mapped;
+        if (as[0] & NXVW_ATLAS_STATUS_INVALID_REF)
+            return seterr(d, NXVC_VKD_ERR_BITSTREAM,
+                          "atlas: tile %u codes a non-INTRA mode against an "
+                          "INVALID entry ([SYN] 13.12.4)",
+                          as[1]);
+    }
+
     // Pass A reports per tile.  A non-zero status means the entropy decoder
     // refused that tile's payload; the frame's pixels are not conformant, so
     // the call fails rather than handing back a plausible-looking image.
@@ -2696,6 +3502,455 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame(nxvc_vk_decoder *d,
                                                 const uint8_t *bytes,
                                                 size_t len, size_t *consumed) {
     return nxvc_vk_decode_frame_ex(d, bytes, len, 0, consumed);
+}
+
+// --------------------------------------------------- [ATLAS] atlas readback
+// The atlas lives in device-local memory like every other decoder buffer, so
+// reading it is a copy through a host-visible staging buffer and a wait.  It
+// is a CONFORMANCE and inspection path, not a per-frame one: a client under
+// ATLAS consumes the atlas on the GPU through the published handles and never
+// calls these.
+namespace {
+nxvc_vkd_status atlas_readback(D *d, const Buf &src, VkDeviceSize bytes,
+                               void *out) {
+    nxvc_vkd_status st = nxvc_vk_decoder_wait(d, UINT64_MAX);
+    if (st) return st;
+    Buf host{};
+    if ((st = make_buf(d, host, bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, true)))
+        return st;
+    VKTRY(d, vkResetCommandBuffer(d->cmd, 0));
+    VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    VKTRY(d, vkBeginCommandBuffer(d->cmd, &bi));
+    VkBufferCopy c{0, 0, bytes};
+    vkCmdCopyBuffer(d->cmd, src.buf, host.buf, 1, &c);
+    VkMemoryBarrier mb{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+    mb.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    mb.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+    vkCmdPipelineBarrier(d->cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         VK_PIPELINE_STAGE_HOST_BIT, 0, 1, &mb, 0, nullptr, 0,
+                         nullptr);
+    VKTRY(d, vkEndCommandBuffer(d->cmd));
+    VkSubmitInfo su{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+    su.commandBufferCount = 1;
+    su.pCommandBuffers = &d->cmd;
+    VkFence f = VK_NULL_HANDLE;
+    VkFenceCreateInfo fi{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+    VKTRY(d, vkCreateFence(d->dev, &fi, nullptr, &f));
+    VkResult r = vkQueueSubmit(d->queue, 1, &su, f);
+    if (r == VK_SUCCESS) r = vkWaitForFences(d->dev, 1, &f, VK_TRUE, ~0ull);
+    vkDestroyFence(d->dev, f, nullptr);
+    if (r != VK_SUCCESS) {
+        destroy_buf(d, host);
+        return seterr(d, NXVC_VKD_ERR_VULKAN, "atlas readback: %s (%d)",
+                      vkresult_name(r), (int)r);
+    }
+    std::memcpy(out, host.mapped, (size_t)bytes);
+    destroy_buf(d, host);
+    return NXVC_VKD_OK;
+}
+}  // namespace
+
+// [ATLAS] Rebind the view set after the images have been (re)made.
+static void atlas_view_rebind(D *d) {
+    VkDescriptorBufferInfo avb{d->bRing.buf, 0, VK_WHOLE_SIZE};
+    VkDescriptorImageInfo avi[3] = {
+        {VK_NULL_HANDLE, d->imgViewY.view, VK_IMAGE_LAYOUT_GENERAL},
+        {VK_NULL_HANDLE, d->imgViewC.view, VK_IMAGE_LAYOUT_GENERAL},
+        {VK_NULL_HANDLE, d->imgViewCr.view, VK_IMAGE_LAYOUT_GENERAL}};
+    VkWriteDescriptorSet w[4]{};
+    w[0] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+    w[0].dstSet = d->dsetAV;
+    w[0].dstBinding = 0;
+    w[0].descriptorCount = 1;
+    w[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    w[0].pBufferInfo = &avb;
+    for (int i = 0; i < 3; ++i) {
+        w[1 + i] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        w[1 + i].dstSet = d->dsetAV;
+        w[1 + i].dstBinding = (uint32_t)(1 + i);
+        w[1 + i].descriptorCount = 1;
+        w[1 + i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        w[1 + i].pImageInfo = &avi[i];
+    }
+    vkUpdateDescriptorSets(d->dev, 4, w, 0, nullptr);
+}
+
+extern "C" nxvc_vkd_status nxvc_vk_decoder_set_atlas_view(
+    nxvc_vk_decoder *d, nxvc_vkd_atlas_view view) {
+    if (!d) return NXVC_VKD_ERR_ARG;
+    if (!d->atlas_mode)
+        return seterr(d, NXVC_VKD_ERR_UNSUPPORTED,
+                      "the display view exists only for an ATLAS stream");
+    // [SYN] 13.12.1: under a colour transform the chroma planes carry the
+    // extra bit that transform produces -- 9 bits for an 8-bit stream -- and
+    // an 8-bit UNORM cannot hold them.  Refused rather than truncated: a
+    // silently wrong picture is worse than an unavailable optimisation.
+    if (view == NXVC_VKD_ATLAS_VIEW_R8 && d->si.color_transform != 0)
+        return seterr(d, NXVC_VKD_ERR_UNSUPPORTED,
+                      "the one-tap 8-bit view needs CT_NONE; this stream's "
+                      "colour transform is %u, whose chroma is 9-bit",
+                      d->si.color_transform);
+    nxvc_vkd_status st = nxvc_vk_decoder_wait(d, UINT64_MAX);
+    if (st) return st;
+    const StreamInfo &si = d->si;
+    const uint32_t VW = si.width * si.eyes, VH = si.height;
+    const uint32_t VCW = si.cw * si.eyes, VCH = si.ch;
+    if (view == NXVC_VKD_ATLAS_VIEW_R8) {
+        if ((st = make_img(d, d->imgViewY, VK_FORMAT_R8_UNORM, VW, VH)))
+            return st;
+        if ((st = make_img(d, d->imgViewC, VK_FORMAT_R8G8_UNORM, VCW, VCH)))
+            return st;
+        if ((st = make_img(d, d->imgViewCr, VK_FORMAT_R16_UINT, 1, 1)))
+            return st;
+    } else if (view == NXVC_VKD_ATLAS_VIEW_R16) {
+        if ((st = make_img(d, d->imgViewY, VK_FORMAT_R16_UINT, VW, VH)))
+            return st;
+        if ((st = make_img(d, d->imgViewC, VK_FORMAT_R16_UINT, VCW, VCH)))
+            return st;
+        if ((st = make_img(d, d->imgViewCr, VK_FORMAT_R16_UINT, VCW, VCH)))
+            return st;
+    } else {
+        if ((st = make_img(d, d->imgViewY, VK_FORMAT_R8_UNORM, 1, 1)))
+            return st;
+        if ((st = make_img(d, d->imgViewC, VK_FORMAT_R8G8_UNORM, 1, 1)))
+            return st;
+        if ((st = make_img(d, d->imgViewCr, VK_FORMAT_R16_UINT, 1, 1)))
+            return st;
+    }
+    atlas_view_rebind(d);
+    d->atlas_view = (uint32_t)view;
+    return NXVC_VKD_OK;
+}
+
+extern "C" nxvc_vkd_atlas_view nxvc_vk_decoder_atlas_view(
+    const nxvc_vk_decoder *d) {
+    return d ? (nxvc_vkd_atlas_view)d->atlas_view : NXVC_VKD_ATLAS_VIEW_NONE;
+}
+
+extern "C" nxvc_vkd_status nxvc_vk_decoder_atlas_images(
+    const nxvc_vk_decoder *d, nxvc_vkd_atlas_images *o) {
+    if (!d || !o) return NXVC_VKD_ERR_ARG;
+    if (!d->atlas_view)
+        return NXVC_VKD_ERR_UNSUPPORTED;
+    const Img *im[3] = {&d->imgViewY, &d->imgViewC, &d->imgViewCr};
+    for (int i = 0; i < 3; ++i) {
+        const bool real =
+            !(d->atlas_view == (uint32_t)NXVC_VKD_ATLAS_VIEW_R8 && i == 2);
+        o->image[i] = real ? im[i]->img : VK_NULL_HANDLE;
+        o->view[i] = real ? im[i]->view : VK_NULL_HANDLE;
+        o->format[i] = real ? im[i]->fmt : VK_FORMAT_UNDEFINED;
+        o->width[i] = real ? im[i]->w : 0;
+        o->height[i] = real ? im[i]->h : 0;
+    }
+    return NXVC_VKD_OK;
+}
+
+extern "C" nxvc_vkd_status nxvc_vk_decoder_atlas_view_read(
+    nxvc_vk_decoder *d, int plane, uint8_t *out, size_t cap, uint32_t *w,
+    uint32_t *h, uint32_t *bps) {
+    if (!d || plane < 0 || plane > 2) return NXVC_VKD_ERR_ARG;
+    if (!d->atlas_view)
+        return seterr(d, NXVC_VKD_ERR_UNSUPPORTED, "no display view selected");
+    const Img *im = plane == 0   ? &d->imgViewY
+                    : plane == 1 ? &d->imgViewC
+                                 : &d->imgViewCr;
+    if (d->atlas_view == (uint32_t)NXVC_VKD_ATLAS_VIEW_R8 && plane == 2)
+        return NXVC_VKD_ERR_ARG;
+    uint32_t bytes = 1;
+    if (im->fmt == VK_FORMAT_R8G8_UNORM) bytes = 2;
+    else if (im->fmt == VK_FORMAT_R16_UINT) bytes = 2;
+    if (w) *w = im->w;
+    if (h) *h = im->h;
+    if (bps) *bps = bytes;
+    const size_t need = (size_t)im->w * im->h * bytes;
+    if (!out) return NXVC_VKD_OK;
+    if (cap < need)
+        return seterr(d, NXVC_VKD_ERR_ARG,
+                      "atlas_view_read: need %zu bytes, given %zu", need, cap);
+    nxvc_vkd_status st = nxvc_vk_decoder_wait(d, UINT64_MAX);
+    if (st) return st;
+    Buf host{};
+    if ((st = make_buf(d, host, need, VK_BUFFER_USAGE_TRANSFER_DST_BIT, true)))
+        return st;
+    VKTRY(d, vkResetCommandBuffer(d->cmd, 0));
+    VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    VKTRY(d, vkBeginCommandBuffer(d->cmd, &bi));
+    VkBufferImageCopy c{};
+    c.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    c.imageExtent = {im->w, im->h, 1};
+    vkCmdCopyImageToBuffer(d->cmd, im->img, VK_IMAGE_LAYOUT_GENERAL, host.buf,
+                           1, &c);
+    VkMemoryBarrier mb{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+    mb.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    mb.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+    vkCmdPipelineBarrier(d->cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         VK_PIPELINE_STAGE_HOST_BIT, 0, 1, &mb, 0, nullptr, 0,
+                         nullptr);
+    VKTRY(d, vkEndCommandBuffer(d->cmd));
+    VkSubmitInfo su{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+    su.commandBufferCount = 1;
+    su.pCommandBuffers = &d->cmd;
+    VkFence f = VK_NULL_HANDLE;
+    VkFenceCreateInfo fi{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+    VKTRY(d, vkCreateFence(d->dev, &fi, nullptr, &f));
+    VkResult r = vkQueueSubmit(d->queue, 1, &su, f);
+    if (r == VK_SUCCESS) r = vkWaitForFences(d->dev, 1, &f, VK_TRUE, ~0ull);
+    vkDestroyFence(d->dev, f, nullptr);
+    if (r != VK_SUCCESS) {
+        destroy_buf(d, host);
+        return seterr(d, NXVC_VKD_ERR_VULKAN, "view readback: %s (%d)",
+                      vkresult_name(r), (int)r);
+    }
+    std::memcpy(out, host.mapped, need);
+    destroy_buf(d, host);
+    return NXVC_VKD_OK;
+}
+
+extern "C" nxvc_vkd_status nxvc_vk_decoder_vk_handles(
+    const nxvc_vk_decoder *d, VkInstance *instance,
+    VkPhysicalDevice *physical_device, VkDevice *device, VkQueue *queue,
+    uint32_t *queue_family) {
+    if (!d) return NXVC_VKD_ERR_ARG;
+    if (instance) *instance = d->inst;
+    if (physical_device) *physical_device = d->phys;
+    if (device) *device = d->dev;
+    if (queue) *queue = d->queue;
+    if (queue_family) *queue_family = d->qfam;
+    return NXVC_VKD_OK;
+}
+
+extern "C" nxvc_vkd_status nxvc_vk_atlas_write_tiles(
+    nxvc_vk_decoder *d, uint32_t eye, uint32_t first_tile, uint32_t count,
+    const nxvc_vkd_atlas_src *src, uint32_t src_frame, uint32_t submit_flags,
+    uint32_t *applied, uint32_t *superseded) {
+    if (applied) *applied = 0;
+    if (superseded) *superseded = 0;
+    if (!d) return NXVC_VKD_ERR_ARG;
+    if (!d->atlas_mode)
+        return seterr(d, NXVC_VKD_ERR_UNSUPPORTED,
+                      "nxvc_vk_atlas_write_tiles: not an ATLAS stream");
+    if (!count) return NXVC_VKD_OK;
+    if (!src || src->buffer == VK_NULL_HANDLE)
+        return seterr(d, NXVC_VKD_ERR_ARG,
+                      "nxvc_vk_atlas_write_tiles: a buffer source is required");
+    if (src->image != VK_NULL_HANDLE)
+        return seterr(d, NXVC_VKD_ERR_UNSUPPORTED,
+                      "nxvc_vk_atlas_write_tiles: an image source is reserved "
+                      "-- [SYN] 13.12.9's channel order is only safe through a "
+                      "buffer the caller has already mapped");
+    const StreamInfo &si = d->si;
+    const uint32_t perEye = si.tiles_x * si.tiles_y;
+    if (eye >= si.eyes || first_tile > perEye || count > perEye - first_tile)
+        return seterr(d, NXVC_VKD_ERR_ARG,
+                      "nxvc_vk_atlas_write_tiles: run [%u,%u) leaves eye %u "
+                      "(%u tiles)",
+                      first_tile, first_tile + count, eye, perEye);
+    nxvc_vkd_status st = nxvc_vk_decoder_wait(d, UINT64_MAX);
+    if (st) return st;
+
+    // The run is within the eye, in that eye's row-major order; the TABLE is
+    // eye-minor ([SYN] 3.3).  The API takes `eye` explicitly so the caller
+    // stays on the pixel side of the two eye conventions and the decoder
+    // derives the table index.
+    std::vector<uint32_t> want;
+    want.reserve(count);
+    for (uint32_t i = 0; i < count; ++i) {
+        const uint32_t k = first_tile + i;
+        const uint32_t row = k / si.tiles_x, col = k % si.tiles_x;
+        want.push_back(nxvw::nxvw_atlas_index((int)row, (int)eye, (int)col,
+                                              (int)si.tiles_x, (int)si.eyes));
+    }
+    // 13.12.9's ordering rule, and it is the SAME `>=` a coded tile takes:
+    // a base tile can never move a position backwards over a coded one, and
+    // the two sources compose under one rule rather than two.
+    nxvw::AtlasApply ap = d->astate.apply(want.data(), (uint32_t)want.size(),
+                                          src_frame);
+    if (applied) *applied = (uint32_t)ap.accepted.size();
+    if (superseded) *superseded = (uint32_t)ap.superseded.size();
+    if (ap.accepted.empty()) return NXVC_VKD_OK;
+
+    // The accepted positions, as maximal runs of consecutive COLUMNS within
+    // one tile row: that is what turns a scattered per-tile copy into row
+    // strips, which the device measurement makes worth doing rather than
+    // tidy.  `accepted` is in the caller's order, which is row-major within
+    // the eye, so a run is a maximal ascending stretch of `k`.
+    std::vector<uint32_t> ks;
+    ks.reserve(ap.accepted.size());
+    for (uint32_t i = 0; i < count; ++i) {
+        const uint32_t k = first_tile + i;
+        const uint32_t row = k / si.tiles_x, col = k % si.tiles_x;
+        const uint32_t n = (uint32_t)nxvw::nxvw_atlas_index(
+            (int)row, (int)eye, (int)col, (int)si.tiles_x, (int)si.eyes);
+        if (std::find(ap.accepted.begin(), ap.accepted.end(), n) !=
+            ap.accepted.end())
+            ks.push_back(k);
+    }
+    if (ks.empty()) return NXVC_VKD_OK;
+
+    // `bACoded` is already sized for EVERY entry by make_resources(), and the
+    // accepted run can never be longer, so it is reused rather than
+    // reallocated.  Shrinking it here would have been silent corruption a
+    // frame later: the next decode copies its own coded list into the same
+    // buffer, and that list is usually longer than a patch's run.
+    Buf up{};
+    const VkDeviceSize listBytes = (VkDeviceSize)ap.accepted.size() * 4;
+    if ((st = make_buf(d, up, listBytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                       true)))
+        return st;
+    std::memcpy(up.mapped, ap.accepted.data(), (size_t)listBytes);
+
+    VKTRY(d, vkResetCommandBuffer(d->cmd, 0));
+    VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    VKTRY(d, vkBeginCommandBuffer(d->cmd, &bi));
+    { VkBufferCopy c{0, 0, listBytes};
+      vkCmdCopyBuffer(d->cmd, up.buf, d->bACoded.buf, 1, &c); }
+
+    // The pixels, plane by plane, one region per SAMPLE ROW of each strip.
+    std::vector<VkBufferCopy> regions;
+    const uint32_t tile = si.tile_size ? si.tile_size : 64u;
+    size_t i0 = 0;
+    while (i0 < ks.size()) {
+        size_t i1 = i0 + 1;
+        while (i1 < ks.size() && ks[i1] == ks[i1 - 1] + 1 &&
+               ks[i1] / si.tiles_x == ks[i0] / si.tiles_x)
+            ++i1;
+        const uint32_t row = ks[i0] / si.tiles_x;
+        const uint32_t c0 = ks[i0] % si.tiles_x;
+        const uint32_t ncol = (uint32_t)(i1 - i0);
+        for (int p = 0; p < si.nplanes(); ++p) {
+            const uint32_t sub = (p == 1 || p == 2) && si.chroma != 1 ? 2u : 1u;
+            const uint32_t tw = tile / sub, th = tile / sub;
+            const uint32_t pw = (uint32_t)d->ringPlaneW[p];
+            const uint32_t ph = (p == 1 || p == 2) ? si.ch : si.height;
+            const uint32_t x0 = c0 * tw;
+            const uint32_t x1 = std::min((c0 + ncol) * tw, pw);
+            const uint32_t y0 = row * th;
+            const uint32_t y1 = std::min(y0 + th, ph);
+            if (x0 >= x1 || y0 >= y1) continue;
+            for (uint32_t y = y0; y < y1; ++y) {
+                const VkDeviceSize e = (VkDeviceSize)d->ringOff[p] +
+                                       (VkDeviceSize)y * d->ringStride[p] +
+                                       eye * pw + x0;
+                VkBufferCopy c{};
+                c.srcOffset = src->offset + e * 2;
+                c.dstOffset = e * 2;
+                c.size = (VkDeviceSize)(x1 - x0) * 2;
+                regions.push_back(c);
+            }
+        }
+        i0 = i1;
+    }
+    if (!regions.empty())
+        vkCmdCopyBuffer(d->cmd, src->buffer, d->bRing.buf,
+                        (uint32_t)regions.size(), regions.data());
+    buffer_barrier(d->cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                   VK_ACCESS_TRANSFER_WRITE_BIT,
+                   VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
+
+    nxvw::NxvwAtlasTilePush tp{};
+    tp.tileCount = (uint32_t)ap.accepted.size();
+    tp.op = NXVW_ATLAS_OP_BASE_PATCH;
+    tp.frame = src_frame;
+    tp.colsPerEye = si.tiles_x;
+    tp.eyes = si.eyes;
+    tp.advanceTo = d->have_frame ? d->last_frame : src_frame;
+    vkCmdBindDescriptorSets(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, d->plAT, 0,
+                            1, &d->dsetAT, 0, nullptr);
+    vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, d->pipeAT);
+    vkCmdPushConstants(d->cmd, d->plAT, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                       (uint32_t)sizeof tp, &tp);
+    vkCmdDispatch(d->cmd, (tp.tileCount + 63u) / 64u, 1, 1);
+    VKTRY(d, vkEndCommandBuffer(d->cmd));
+
+    VkSubmitInfo su{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+    su.commandBufferCount = 1;
+    su.pCommandBuffers = &d->cmd;
+    VkFence f = VK_NULL_HANDLE;
+    VkFenceCreateInfo fi{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+    VKTRY(d, vkCreateFence(d->dev, &fi, nullptr, &f));
+    VkResult r = vkQueueSubmit(d->queue, 1, &su, f);
+    if (r == VK_SUCCESS) r = vkWaitForFences(d->dev, 1, &f, VK_TRUE, ~0ull);
+    vkDestroyFence(d->dev, f, nullptr);
+    destroy_buf(d, up);
+    if (r != VK_SUCCESS)
+        return seterr(d, NXVC_VKD_ERR_VULKAN, "atlas patch: %s (%d)",
+                      vkresult_name(r), (int)r);
+    d->astate.commit(ap.accepted.data(), (uint32_t)ap.accepted.size(),
+                     src_frame);
+    // `commit()` moves `advanced_to` with `src_frame`; a base patch's two
+    // clocks are different, so put the composition one back.
+    d->astate.mark_advanced(ap.accepted,
+                            d->have_frame ? d->last_frame : src_frame);
+    (void)submit_flags;
+    return NXVC_VKD_OK;
+}
+
+extern "C" size_t nxvc_vk_decoder_atlas_table_size(const nxvc_vk_decoder *d) {
+    if (!d || !d->atlas_mode) return 0;
+    return (size_t)d->si.tile_count * NXVW_ATLAS_ENTRY_BYTES;
+}
+
+extern "C" nxvc_vkd_status nxvc_vk_decoder_atlas_table(nxvc_vk_decoder *d,
+                                                       uint8_t *out,
+                                                       size_t cap) {
+    if (!d || !out) return NXVC_VKD_ERR_ARG;
+    if (!d->atlas_mode)
+        return seterr(d, NXVC_VKD_ERR_ARG,
+                      "nxvc_vk_decoder_atlas_table: not an ATLAS stream "
+                      "(tool bit 31 is not set)");
+    const size_t need = nxvc_vk_decoder_atlas_table_size(d);
+    if (cap < need)
+        return seterr(d, NXVC_VKD_ERR_ARG,
+                      "nxvc_vk_decoder_atlas_table: need %zu bytes, given %zu",
+                      need, cap);
+    return atlas_readback(d, d->bTable, (VkDeviceSize)need, out);
+}
+
+extern "C" nxvc_vkd_status nxvc_vk_decoder_atlas_plane(
+    nxvc_vk_decoder *d, int plane, uint16_t *out, size_t cap, uint32_t *w,
+    uint32_t *h, uint32_t *stride) {
+    // `out == nullptr` with `cap == 0` is a SIZE QUERY: it fills `w`, `h` and
+    // `stride` and copies nothing.  A caller has to be able to ask how big a
+    // plane is before allocating for it, and returning ERR_ARG before writing
+    // those three left every querying caller with zeroes -- which reads as
+    // "this plane does not exist" and silently folded NOTHING into the
+    // conformance digest.
+    if (!d || plane < 0 || plane > 3) return NXVC_VKD_ERR_ARG;
+    if (!out && cap) return NXVC_VKD_ERR_ARG;
+    if (!d->atlas_mode)
+        return seterr(d, NXVC_VKD_ERR_ARG,
+                      "nxvc_vk_decoder_atlas_plane: not an ATLAS stream "
+                      "(tool bit 31 is not set)");
+    if (plane >= d->si.nplanes()) return NXVC_VKD_ERR_ARG;
+    const uint32_t pw = (uint32_t)d->ringPlaneW[plane];
+    const uint32_t ph =
+        (plane == 1 || plane == 2) ? d->si.ch : d->si.height;
+    const uint32_t str = (uint32_t)d->ringStride[plane];
+    if (w) *w = pw;
+    if (h) *h = ph;
+    if (stride) *stride = str;
+    const size_t need = (size_t)str * ph;
+    if (!out) return NXVC_VKD_OK;   // the size query is answered
+    if (cap < need)
+        return seterr(d, NXVC_VKD_ERR_ARG,
+                      "nxvc_vk_decoder_atlas_plane: need %zu u16, given %zu",
+                      need, cap);
+    // The plane's slice of the single atlas slot.  `ringOff` is in u16
+    // elements, which is what the layout computes and what Pass B stores at.
+    Buf tmp = d->bRing;
+    (void)tmp;
+    nxvc_vkd_status st = nxvc_vk_decoder_wait(d, UINT64_MAX);
+    if (st) return st;
+    std::vector<uint16_t> all((size_t)d->ringSlotU16);
+    if ((st = atlas_readback(d, d->bRing,
+                             (VkDeviceSize)d->ringSlotU16 * 2, all.data())))
+        return st;
+    std::memcpy(out, all.data() + d->ringOff[plane], need * 2);
+    return NXVC_VKD_OK;
 }
 
 // ------------------------------------------------------------- readback

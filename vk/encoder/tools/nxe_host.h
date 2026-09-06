@@ -28,6 +28,7 @@ extern "C" {
 #include "forward_cpu.h"
 #include "lite_cpu.h"
 #include "nxe_enc.h"
+#include "../forward/nxe_trellis.h"
 #include "rans_cpu.h"
 }
 
@@ -129,12 +130,34 @@ struct Config {
      * is not an inter tool -- it applies to every coded tile of every frame --
      * and `nxv-enc --int-rdoq 1` is the reference configuration it matches. */
     int int_rdoq = 0;
+    /* SNAP TO IDENTITY, in 1/16 luma samples; 0 = off.
+     *
+     * When the frame's warp displaces every tile corner by less than this, the
+     * encoder emits the IDENTITY matrix instead of the exact sub-sample one.
+     * Encoder-side and no syntax: an identity warp_ext is an ordinary matrix,
+     * and every WARP_SKIP tile then hits the decoder's copy fast path
+     * (docs/PASSB-ADRENO-PLAN.md 3b) instead of running the integer warp --
+     * which on the Pico is 8.25 of 13.7 ms of Pass B per pair, most of it
+     * spent on motion below a sample.
+     *
+     * The trade is exact and one-sided: the prediction loses the snapped
+     * fraction, so the residual grows by whatever that fraction was worth, and
+     * a threshold above about half a sample starts costing visible bytes.  It
+     * is measured rather than assumed -- see vk/encoder/README.md, "Snapping
+     * the warp to the identity". */
+    int snap_identity = 0;
 
     /* Measure the integer rate model of nxe_rate.h against the bytes the
      * entropy coder actually produces, per tile, and print the distribution
      * at the end of the run.  Measurement only: it changes no decision and no
      * byte of the stream, and it is what the tolerance in
      * vk/encoder/README.md is quoted from. */
+    /* Effort 2: the rate-distortion trellis (forward/nxe_trellis.h).  0 off,
+     * which is the dead-zone quantiser and every effort below 2; 1 on.  The
+     * reference configuration it must match byte for byte is
+     * `nxv-enc --int-trellis 1 --rdoq-effort 3`. */
+    int trellis = 0;
+
     bool rate_check = false;
 
     /* Per-tile QP offsets (nxe_rate.h).  The ladder of `qp_delta` candidates
@@ -216,6 +239,10 @@ struct Frame {
     /* --rate-check.  See Config::rate_check; accumulated over every tile of
      * every frame, in Q10 bits against real bytes, and reported once. */
     bool rate_check = false;
+    int trellis = 0;
+    /* The rate cost table the trellis prices against, rebuilt per table set
+     * once the table sets are known.  Indexed by table set. */
+    nxe_rate_cost trellis_rc[8];
     /* The resolved qp_ladder: the candidate offsets, and how many.  1 (just 0)
      * is the decision off. */
     int qp_lambda_q12 = 0;

@@ -380,6 +380,31 @@ struct ViewState {
  * in the picture -- because an identity warp predicts badly and the mode
  * decision then notices, where a malformed matrix would be a bitstream error.
  */
+// The largest displacement, in Q.6 (1/64 sample), of any tile corner in the
+// picture under `m`.  Zero exactly when the matrix maps every tile corner onto
+// its own grid position, which is the decoder's identity fast path
+// (docs/PASSB-ADRENO-PLAN.md 3b).  `eyes` covers the pair, since a stereo
+// frame's second eye is offset in the same picture.
+int32_t warp_max_corner_offset(const WarpMatrix &m, int width, int height,
+                               int eyes);
+
+// The decoder's copy predicate on the matrix itself: true when `m` is
+// bit-exactly the identity, which is what warp_pred.glsl's NXVW_ABL_IDENTITY
+// block tests before it claims a WARP_SKIP tile.
+bool warp_is_identity(const WarpMatrix &m);
+
+// Tiles the decoder's copy path will claim under `m` -- all of them or none,
+// since the predicate is on the matrix.  `total_out` receives the tile count
+// considered.
+int warp_identity_tiles(const WarpMatrix &m, int width, int height, int eyes,
+                        int *total_out);
+
+// The same predicate per tile, in the frame's own tile order (row-major,
+// eye-minor): one byte each, 1 identity and 0 warped.  For the picture in
+// docs/GALLERY.md.
+void warp_identity_tile_map(const WarpMatrix &m, int width, int height,
+                            int eyes, std::vector<uint8_t> &out);
+
 WarpMatrix derive_warp(const ViewState &vs, int ref_slot, int eye, int width,
                        int height);
 
