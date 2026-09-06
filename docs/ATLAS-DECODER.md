@@ -81,6 +81,17 @@ marked otherwise.
 > `nxvc-atlas-gpu-test --bench`, a different harness, and are not known to be
 > affected -- but they are three orders of magnitude below the smallest line
 > here either way, so nothing turns on it.
+>
+> **The bench now refuses to report a number it cannot justify.** Summed GPU
+> time must be `<=` summed wall time -- work on the GPU happens inside the call
+> that submitted and waited for it -- and `timing_selfcheck()` prints that
+> ratio with `timestampPeriod` and `timestampValidBits` beside it, and FAILS
+> the run when it is violated. On RADV: `GPU 2.16 ms / wall 19.90 ms = 0.109,
+> timestampPeriod 10.0000 ns, 64 valid bits`. `NXVC_VKD_TS_PERIOD` overrides
+> the tick rate, which both proves the gate can fail (`=400` on RADV gives
+> `5.317` and a loud failure) and lets a rate hypothesis be tested on the
+> device without a rebuild -- the only way to tell a wrong clock from a slow
+> GPU, because the two are identical in a duration.
 
 **4-5x, and essentially all of it is one deletion:** 8.889 of the 10.760 ms is
 `reconstruct_skip_store` running the normative integer warp over ~250 skipped

@@ -192,6 +192,25 @@ public:
                            VkBuffer src, uint64_t src_offset,
                            uint32_t src_frame, uint32_t *applied,
                            uint32_t *superseded, std::string &err);
+    /* How the snap-to-identity threshold fared over the frames encoded so far:
+     * the number of inter frames it was asked about and the number it snapped.
+     * Both zero when the tool is off.  A stream cannot answer this afterwards
+     * -- a snapped matrix and a derived identity look the same on the wire --
+     * so the encoder is the only place that knows. */
+    void snap_stats(uint32_t &frames, uint32_t &applied) const;
+
+    /* Tiles whose warp is the identity, summed over the inter frames encoded,
+     * and the tiles considered.  This is the count the decoder's copy fast
+     * path will take (docs/PASSB-ADRENO-PLAN.md 3b), measured on the matrix
+     * each frame actually carries. */
+    void identity_stats(uint64_t &tiles, uint64_t &total) const;
+
+    /* The worst tile-corner displacement per inter frame, in SIXTEENTHS of a
+     * sample -- the quantity `snap_identity` is a threshold on.  Reporting the
+     * distribution is what turns "it did not fire" into "this clip moves 3.4
+     * sixteenths a frame and your threshold was 2".  Only collected while the
+     * tool is on, because it is only computed then. */
+    void warp_offset_stats(double &min16, double &mean16, double &max16) const;
 
     void bench(Frame &f, int iters);
 

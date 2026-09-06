@@ -2268,6 +2268,53 @@ void run_synthetic(bool quick) {
     }
 }
 
+// ------------------------------------------------- [timing] the self-check
+// A GPU duration is built from a tick delta and a tick RATE, and a wrong rate
+// is invisible in the duration -- it just makes every number bigger by a
+// constant, which reads like a slow device rather than a broken clock.  This
+// decoder reported GPU times about 1.57x high on one device for months for
+// exactly that reason: 16 frames x 51 ms of "GPU" inside a 521 ms wall.
+//
+// The check is the one relation that cannot be argued with: **work on the GPU
+// happens inside the wall time of the call that submitted and waited for it,
+// so summed GPU <= summed wall, always.** A run that violates it has a wrong
+// `timestampPeriod`, a wrong `timestampValidBits` mask, or is double-counting
+// overlapping query pairs -- and any of those makes every absolute in the run
+// worthless.  So it FAILS rather than printing a footnote, and it prints the
+// ratio and the tick parameters either way so the next reader can see which of
+// the two is wrong.
+//
+// The bound is deliberately not tightened beyond 1.0: the honest claim is
+// containment, not a target ratio, and a fast device legitimately spends most
+// of the wall in submission and readback.
+int timing_selfcheck(nxvc_vk_decoder *dec, const char *what, double gpu_ms,
+                     double wall_ms) {
+    float period = 0.f;
+    uint32_t bits = 0;
+    nxvc_vk_decoder_timestamp_info(dec, &period, &bits);
+    if (period <= 0.f || bits == 0) {
+        std::printf("  timing: no GPU timestamps on this device "
+                    "(period %.4f ns, %u valid bits) -- nothing to check\n",
+                    (double)period, bits);
+        return 0;
+    }
+    const double ratio = wall_ms > 0.0 ? gpu_ms / wall_ms : 0.0;
+    std::printf("  timing: GPU %.2f ms / wall %.2f ms = %.3f  "
+                "(timestampPeriod %.4f ns, %u valid bits)\n",
+                gpu_ms, wall_ms, ratio, (double)period, bits);
+    if (gpu_ms > wall_ms) {
+        std::printf("FAIL %s: GPU-summed time EXCEEDS wall time by %.2fx. "
+                    "The GPU cannot spend more time on a submission than the "
+                    "call that waited for it took, so the tick rate or the "
+                    "valid-bit mask is wrong and every absolute in this run "
+                    "is meaningless. timestampPeriod %.4f ns, %u valid bits.\n",
+                    what, ratio, (double)period, bits);
+        ++g_fail;
+        return 1;
+    }
+    return 0;
+}
+
 // ------------------------------------------------------------------ bench
 // PAPER 3.4's decode budget, measured on the shape the headset actually
 // streams: two 2048x2048 eyes at 4:2:0, which is 2048 tiles in one frame.
@@ -2373,8 +2420,9 @@ int run_bench_inter(int iters, int frames, int w, int h, int qp,
         bestSeqWall, intraA, intraB, intraG, inter_frames, sumA / n, sumW / n,
         sumB / n, sumG / n, sumWall / n, (double)bytes / n / 1e3,
         100.0 * (double)nskip / (n * (tiles ? tiles : 1)));
+    const int rc = timing_selfcheck(dec, "bench-inter", bestSeqGpu, bestSeqWall);
     nxvc_vk_decoder_destroy(dec);
-    return 0;
+    return rc;
 }
 
 int run_bench_qp(int iters, int qp, bool dense = false, int intra_dir = -1,
@@ -2426,6 +2474,7 @@ int run_bench_qp(int iters, int qp, bool dense = false, int intra_dir = -1,
     }
     const uint8_t *frame = stream.data() + consumed;
     const size_t flen = stream.size() - consumed;
+    double sumG = 0, sumT = 0;
     double bestA = 1e9, bestB = 1e9, bestG = 1e9, bestT = 1e9;
     nxvc_vkd_stats st{};
     for (int i = 0; i < iters; ++i) {
@@ -2440,6 +2489,11 @@ int run_bench_qp(int iters, int qp, bool dense = false, int intra_dir = -1,
         if (st.pass_b_ms < bestB) bestB = st.pass_b_ms;
         if (st.gpu_ms < bestG) bestG = st.gpu_ms;
         if (st.total_ms < bestT) bestT = st.total_ms;
+        // Summed over the SAME iterations, so the containment check compares
+        // like with like.  `bestG` and `bestT` are minima over independent
+        // iterations and are not a pair.
+        sumG += st.gpu_ms;
+        sumT += st.total_ms;
     }
     std::printf(
         "%s, QP %d: %u tiles, %llu B frame (%llu B payload)\n"
@@ -2453,8 +2507,9 @@ int run_bench_qp(int iters, int qp, bool dense = false, int intra_dir = -1,
         (unsigned long long)st.payload_bytes, iters, bestA, bestB, bestG, bestT,
         st.parse_ms, st.submit_ms, (double)st.coef_bytes / 1e6,
         dense ? "dense" : "sparse", (double)st.coef_slot_bytes / 1e6);
+    const int rc = timing_selfcheck(dec, "bench-qp", sumG, sumT);
     nxvc_vk_decoder_destroy(dec);
-    return 0;
+    return rc;
 }
 
 // ------------------------------------------------ [v3] bench helpers

@@ -125,6 +125,21 @@ struct VkEncoder::Impl {
      * predicted from (-1 when every tile came out INTRA).  Both are decided
      * before the dispatches and consumed after them. */
     int cur_ref_sel = 0;
+    /* Snap-to-identity, per frame, for the harness to report: the worst tile
+     * corner displacement in Q.6 (-1 when the tool is off or there was no
+     * reference) and whether the matrix was replaced.  A stream cannot be
+     * asked afterwards -- an identity warp_ext looks the same whether it was
+     * derived or snapped -- so the encoder is the only place that knows. */
+    int32_t snap_worst_q6 = -1;
+    bool snap_applied = false;
+    uint32_t snap_frames = 0, snap_frames_applied = 0;
+    uint64_t identity_tiles = 0, identity_tiles_total = 0;
+    /* The distribution of the thing the threshold is compared against, so a
+     * run can say "this clip moves N/16 of a sample a frame" instead of
+     * leaving the operator to bisect for it. */
+    int32_t off_min_q6 = -1, off_max_q6 = -1;
+    double off_sum_q6 = 0;
+    uint32_t off_n = 0;
     int64_t cur_pred_fn = -1;
     WarpParams warp{};
     int wpred_stride = 0;
@@ -1082,6 +1097,72 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
             wm[e] = derive_warp(d.views, warp_view_slot, e, (int)f.fp.width,
                                 (int)f.fp.height);
             for (int i = 0; i < 9; ++i) f.warp[e][i] = wm[e].h[i];
+        }
+        /* Snap a nearly-still warp to the identity, so every skipped tile is a
+         * copy on the decoder rather than an integer warp of a picture that
+         * has not moved (nxe_host.h `snap_identity`).  Both eyes are decided
+         * TOGETHER on the worse of the two: they are one picture to the
+         * decoder's skip module, and snapping one eye while the other warps
+         * would buy half the saving for all of the error.
+         *
+         * The measure is the largest tile-corner displacement in the picture,
+         * so a matrix that is identity where it matters and not at the edges
+         * does not qualify -- the fast path is per tile, but the choice is per
+         * frame, and half a frame of copies is not what this is for. */
+        if (d.cfg.snap_identity > 0 && ref_slot >= 0) {
+            const int32_t thr = d.cfg.snap_identity * 4;   /* 1/16 -> Q.6 */
+            int32_t worst = 0;
+            for (int e = 0; e < (int)f.fp.eyes; ++e) {
+                const int32_t o = nxe::warp_max_corner_offset(
+                    wm[e], (int)f.fp.width, (int)f.fp.height, 1);
+                if (o > worst) worst = o;
+            }
+            d.snap_worst_q6 = worst;
+            d.snap_applied = worst < thr;
+            if (d.off_min_q6 < 0 || worst < d.off_min_q6) d.off_min_q6 = worst;
+            if (worst > d.off_max_q6) d.off_max_q6 = worst;
+            d.off_sum_q6 += (double)worst;
+            ++d.off_n;
+            if (d.snap_applied)
+                for (int e = 0; e < 2; ++e) {
+                    wm[e] = WarpMatrix{};   /* the identity */
+                    for (int i = 0; i < 9; ++i) f.warp[e][i] = wm[e].h[i];
+                }
+        } else {
+            d.snap_worst_q6 = -1;
+            d.snap_applied = false;
+        }
+        if (d.cfg.snap_identity > 0 && ref_slot >= 0) {
+            ++d.snap_frames;
+            if (d.snap_applied) ++d.snap_frames_applied;
+        }
+        /* The identity predicate, COUNTED on the matrix this frame will carry,
+         * whether or not the snap is on.  It is the tile count the decoder's
+         * fast path will take, and the only place it can be measured: the
+         * stream cannot be asked, because a matrix does not say how it was
+         * arrived at. */
+        if (ref_slot >= 0) {
+            int total = 0;
+            const int id = nxe::warp_identity_tiles(wm[0], (int)f.fp.width,
+                                                    (int)f.fp.height,
+                                                    (int)f.fp.eyes, &total);
+            d.identity_tiles += (uint64_t)id;
+            d.identity_tiles_total += (uint64_t)total;
+            /* NXE_IDENTITY_MAP=<path> appends one byte per tile per inter
+             * frame -- 1 where the warp is the identity and the decoder will
+             * copy, 0 where it will interpolate.  It is the encoder's own
+             * predicate rather than a second implementation of it, which is
+             * the only way a picture of this can be trusted. */
+            if (const char *mp = std::getenv("NXE_IDENTITY_MAP")) {
+                if (std::FILE *mf = std::fopen(mp, "ab")) {
+                    std::vector<uint8_t> row;
+                    nxe::warp_identity_tile_map(wm[0], (int)f.fp.width,
+                                                (int)f.fp.height,
+                                                (int)f.fp.eyes, row);
+                    std::fwrite(row.data(), 1, row.size(), mf);
+                    std::fclose(mf);
+                }
+            }
         }
         bi.warp = wm;
         build_warp_params(bi, d.ring, d.warp);
@@ -2645,6 +2726,24 @@ void VkEncoder::set_frame_held(uint32_t frame_number, bool held) {
             d.atlas_tab.e[t].flags &= (uint8_t)~kAtlasValid;
         }
     }
+}
+
+void VkEncoder::snap_stats(uint32_t &frames, uint32_t &applied) const {
+    frames = p_->snap_frames;
+    applied = p_->snap_frames_applied;
+}
+
+void VkEncoder::identity_stats(uint64_t &tiles, uint64_t &total) const {
+    tiles = p_->identity_tiles;
+    total = p_->identity_tiles_total;
+}
+
+void VkEncoder::warp_offset_stats(double &min16, double &mean16,
+                                  double &max16) const {
+    /* Q.6 -> sixteenths, which is the unit the threshold is written in. */
+    min16 = p_->off_min_q6 < 0 ? 0.0 : (double)p_->off_min_q6 / 4.0;
+    max16 = p_->off_max_q6 < 0 ? 0.0 : (double)p_->off_max_q6 / 4.0;
+    mean16 = p_->off_n ? p_->off_sum_q6 / (double)p_->off_n / 4.0 : 0.0;
 }
 
 void VkEncoder::bench(Frame &f, int iters) {
