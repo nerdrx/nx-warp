@@ -1,0 +1,215 @@
+#version 450
+// NX Warp decoder, ATLAS: the compose-and-renormalise kernel.
+//
+// [SYN] 13.12.3 step 1, one thread per per-tile table entry, ONE dispatch per
+// frame covering every entry of BOTH eyes.  The table is eye-INTERLEAVED
+// within each row ([SYN] 3.3), so a thread reads its own eye out of its index
+// and picks that eye's `H`; the atlas PIXELS carry the eyes side by side
+// instead, which is a second and different convention and is not this file's
+// business.
+//
+// The same kernel serves the eager and the lazy path.  It advances a selected
+// entry from its decoder-private `advanced_to` up to `targetFrame`, one step
+// at a time, in frame order -- which is bit-exact to the eager form because
+// 13.12.2 is defined as one right-multiplication with its own
+// renormalisation, and this performs the same multiplications, with the same
+// rounding, in the same order.  The eager (frame-complete) path is simply the
+// case where every entry starts at `targetFrame - 1` and every thread takes
+// one step.
+//
+// NORMATIVE SOURCE: docs/SYNTAX.md 13.12.2, 13.12.3 and 3.1.1.
+// CHECKED AGAINST: vk/decoder/atlas/atlas_model.cpp (nxvc-atlas-gpu-test),
+// which is itself checked against a 128-bit oracle and pinned to
+// ref/src/inter.h's compose_warp()/atlas_advance().
+//
+// docs/ADRENO-RULES.md: no function-scope array is declared anywhere in this
+// file.  The nine matrix words are nine named variables and the nine products
+// are nine named variables, because an array the Adreno 650's compiler cannot
+// prove is constant-indexed goes to private memory and in one measured case
+// came back wrong.  That is also why the composition is written out nine
+// times rather than looped: correctness first, and the kernel is 578 threads.
+//
+// SPDX-License-Identifier: Apache-2.0
+#extension GL_GOOGLE_include_directive : require
+
+#include "atlas_layout.h"
+#include "atlas_arith.glsl"
+
+layout(local_size_x = 64) in;
+
+// The per-tile table, [SYN] 13.12.1: sixteen uints an entry.
+layout(std430, binding = 0) buffer TableBuf { uint tbl[]; };
+
+// `advanced_to`, one u32 an entry.  DECODER-PRIVATE and deliberately NOT in
+// the table: 13.12.1's 64 bytes are fully specified, its 20 reserved bytes are
+// zero and compared, and this is an implementation detail of WHEN the
+// composition ran, not part of the atlas.
+layout(std430, binding = 1) buffer AdvBuf { uint advanced_to[]; };
+
+// The `H` ring, NXVW_ATLAS_HSLOT_UINTS per (slot, eye): nine matrix words then
+// a flags word whose bit 0 is `warp_present`.
+layout(std430, binding = 2) readonly buffer HRingBuf { uint hring[]; };
+
+// SEL_LIST only: the entries to advance, by table index.
+layout(std430, binding = 3) readonly buffer SelBuf { uint sel_list[]; };
+
+layout(push_constant) uniform Push {
+    uint entryCount;
+    uint colsPerEye;
+    uint eyes;
+    int lumaW, lumaH;
+    uint genMax;
+    uint targetFrame;
+    uint sel;
+    uint pad0;
+} pc;
+
+// [SYN] 3.1.1 conditions 1-3 on a composed matrix.  A composed `C` is required
+// to satisfy exactly the same envelope as a transmitted one, which is the
+// property that lets 13.3's predictor consume it unmodified.
+bool atlas_in_envelope(int c0, int c1, int c2, int c3, int c4, int c5,
+                       int c6, int c7, int c8) {
+    if (c8 != kWarpH22) return false;
+    if (c0 < -kWarpEntryMax || c0 > kWarpEntryMax) return false;
+    if (c1 < -kWarpEntryMax || c1 > kWarpEntryMax) return false;
+    if (c2 < -kWarpEntryMax || c2 > kWarpEntryMax) return false;
+    if (c3 < -kWarpEntryMax || c3 > kWarpEntryMax) return false;
+    if (c4 < -kWarpEntryMax || c4 > kWarpEntryMax) return false;
+    if (c5 < -kWarpEntryMax || c5 > kWarpEntryMax) return false;
+    if (c6 < -kWarpEntryMax || c6 > kWarpEntryMax) return false;
+    if (c7 < -kWarpEntryMax || c7 > kWarpEntryMax) return false;
+    // Condition 3, at each of the four picture corners: the denominator is
+    // accumulated in 64 bits and must lie in [kWarpDenMin, kWarpDenMax).
+    int ox = pc.lumaW >> 1, oy = pc.lumaH >> 1;
+    for (int a = 0; a < 2; ++a) {
+        int cx = (a == 0) ? -ox : (pc.lumaW - ox);
+        for (int b = 0; b < 2; ++b) {
+            int cy = (b == 0) ? -oy : (pc.lumaH - oy);
+            uvec2 den = atlas_add64(
+                atlas_add64(atlas_imul_ext(c6, cx), atlas_imul_ext(c7, cy)),
+                atlas_from_i32(c8));
+            if (atlas_neg64_p(den)) return false;             // < 0 < 2^28
+            if (den.y != 0u) return false;                    // >= 2^32
+            if (den.x < uint(kWarpDenMin)) return false;
+            if (den.x >= uint(kWarpDenMax)) return false;
+        }
+    }
+    return true;
+}
+
+void main() {
+    uint id = gl_GlobalInvocationID.x;
+    if (id >= pc.entryCount) return;
+    uint n = (pc.sel == NXVW_ATLAS_SEL_LIST) ? sel_list[id] : id;
+    uint base = n * NXVW_ATLAS_ENTRY_UINTS;
+
+    uint at = advanced_to[n];
+    // `>=` and not `==`.  A base-layer patch ([SYN] 13.12.9) may carry a
+    // src_frame AHEAD of the current frame -- v88 pins exactly that -- and
+    // such an entry is already past the target: its `C` is the identity and
+    // there is nothing pending on it.  With `==` the walk below could never
+    // reach the target, so it ran the full ring depth composing whatever those
+    // slots held, and the atlas diverged one frame AFTER the patch rather than
+    // at it.
+    if (at >= pc.targetFrame) return;
+
+    uint pack = tbl[base + NXVW_ATLAS_OFF_PACK];
+    // An invalid entry is not advanced at all -- not its `C` and not its
+    // `gen`.  Its `advanced_to` still moves, because there is nothing left to
+    // replay: the next coded tile at this position resets every field.
+    if (nxvw_atlas_valid(pack) == 0) {
+        advanced_to[n] = pc.targetFrame;
+        return;
+    }
+
+    uint eye = uint(nxvw_atlas_eye_of(int(n), int(pc.colsPerEye), int(pc.eyes)));
+
+    int c0 = int(tbl[base + 0]), c1 = int(tbl[base + 1]), c2 = int(tbl[base + 2]);
+    int c3 = int(tbl[base + 3]), c4 = int(tbl[base + 4]), c5 = int(tbl[base + 5]);
+    int c6 = int(tbl[base + 6]), c7 = int(tbl[base + 7]), c8 = int(tbl[base + 8]);
+
+    uint gen = nxvw_atlas_gen(pack);
+    uint flags = nxvw_atlas_flags(pack);
+    uint res_level = nxvw_atlas_res_level(pack);
+    bool is_static = nxvw_atlas_static(pack) != 0;
+
+    // The trip count is bounded by the ring depth, which the host enforces:
+    // an entry whose `advanced_to` is older than the ring cannot be advanced
+    // because the steps no longer exist, and the host invalidates it before
+    // this dispatch rather than letting the kernel read a recycled slot.
+    for (uint step = 0u; step < NXVW_ATLAS_HRING && at != pc.targetFrame;
+         ++step) {
+        at += 1u;
+        uint hb = nxvw_atlas_hslot(at, eye, pc.eyes);
+        // A frame with `warp_present == 0` contributes NO step: not a
+        // composition and not a `gen` increment.  13.12.3 step 1 is
+        // conditioned on it in its entirety.
+        if ((hring[hb + 9u] & NXVW_ATLAS_HFLAG_WARP_PRESENT) == 0u) continue;
+
+        // `gen` SATURATES at 0xffff; the field is a u16 and wrapping it would
+        // make a very old entry look freshly composed.
+        if (gen != 0xffffu) gen += 1u;
+        // The cap is tested BEFORE the composition, so a capped entry keeps
+        // the `C` it had.  Invalidation clears the WHOLE flags byte, `static`
+        // included.  Both are observable in the 64 bytes conformance compares.
+        if (pc.genMax != 0u && gen > pc.genMax) { flags = 0u; break; }
+        if (is_static) continue;   // C stays at the identity
+
+        int h0 = int(hring[hb + 0]), h1 = int(hring[hb + 1]), h2 = int(hring[hb + 2]);
+        int h3 = int(hring[hb + 3]), h4 = int(hring[hb + 4]), h5 = int(hring[hb + 5]);
+        int h6 = int(hring[hb + 6]), h7 = int(hring[hb + 7]), h8 = int(hring[hb + 8]);
+
+        uvec2 p0 = atlas_pelem(c0, c1, c2, h0, h3, h6);
+        uvec2 p1 = atlas_pelem(c0, c1, c2, h1, h4, h7);
+        uvec2 p2 = atlas_pelem(c0, c1, c2, h2, h5, h8);
+        uvec2 p3 = atlas_pelem(c3, c4, c5, h0, h3, h6);
+        uvec2 p4 = atlas_pelem(c3, c4, c5, h1, h4, h7);
+        uvec2 p5 = atlas_pelem(c3, c4, c5, h2, h5, h8);
+        uvec2 p6 = atlas_pelem(c6, c7, c8, h0, h3, h6);
+        uvec2 p7 = atlas_pelem(c6, c7, c8, h1, h4, h7);
+        uvec2 p8 = atlas_pelem(c6, c7, c8, h2, h5, h8);
+
+        // The 2^33 guard, over ALL NINE, BEFORE any shift is evaluated.
+        bool ok = !(atlas_pguard_fails(p0) || atlas_pguard_fails(p1) ||
+                    atlas_pguard_fails(p2) || atlas_pguard_fails(p3) ||
+                    atlas_pguard_fails(p4) || atlas_pguard_fails(p5) ||
+                    atlas_pguard_fails(p6) || atlas_pguard_fails(p7) ||
+                    atlas_pguard_fails(p8));
+        if (ok && p8.x == 0u && p8.y == 0u) ok = false;
+
+        int r0 = 0, r1 = 0, r2 = 0, r3 = 0, r4 = 0, r5 = 0, r6 = 0, r7 = 0;
+        if (ok) ok = atlas_renorm_elem(p0, p8, r0);
+        if (ok) ok = atlas_renorm_elem(p1, p8, r1);
+        if (ok) ok = atlas_renorm_elem(p2, p8, r2);
+        if (ok) ok = atlas_renorm_elem(p3, p8, r3);
+        if (ok) ok = atlas_renorm_elem(p4, p8, r4);
+        if (ok) ok = atlas_renorm_elem(p5, p8, r5);
+        if (ok) ok = atlas_renorm_elem(p6, p8, r6);
+        if (ok) ok = atlas_renorm_elem(p7, p8, r7);
+        // r8 is exact by construction -- sdiv_round(P[8] << 29, P[8]) is
+        // 2^29 -- and stated so it cannot drift.
+        if (ok) ok = atlas_in_envelope(r0, r1, r2, r3, r4, r5, r6, r7, kWarpH22);
+        if (!ok) { flags = 0u; break; }
+
+        c0 = r0; c1 = r1; c2 = r2;
+        c3 = r3; c4 = r4; c5 = r5;
+        c6 = r6; c7 = r7; c8 = kWarpH22;
+    }
+
+    // `C` is written back even when the entry ended INVALID, and this is the
+    // whole of why the lazy form is byte-identical to the eager one.  The
+    // eager form persists `C` after every successful frame, so an entry that
+    // survives k steps and fails at k+1 is left holding the k-step matrix.
+    // The lazy form must leave the same nine words behind, and it does only
+    // because the successful steps are committed rather than discarded with
+    // the failed one.  A failed step does not roll `C` back on either side.
+    // For the eager path this is a no-op whenever the first step fails, which
+    // is why the bug hides there.
+    tbl[base + 0] = uint(c0); tbl[base + 1] = uint(c1);
+    tbl[base + 2] = uint(c2); tbl[base + 3] = uint(c3);
+    tbl[base + 4] = uint(c4); tbl[base + 5] = uint(c5);
+    tbl[base + 6] = uint(c6); tbl[base + 7] = uint(c7);
+    tbl[base + 8] = uint(c8);
+    tbl[base + NXVW_ATLAS_OFF_PACK] = nxvw_atlas_pack(gen, flags, res_level);
+    advanced_to[n] = pc.targetFrame;
+}

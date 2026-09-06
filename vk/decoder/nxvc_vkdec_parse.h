@@ -161,6 +161,13 @@ struct FrameParse {
     int row_present = 0;
     std::vector<uint8_t> row_bits;
     uint32_t rows_elided = 0;   // reporting only
+    // [SYN] 13.12.11, tool bit 34.  Frame flags bit 5: clear is an ATLAS
+    // frame (13.12 as written), set is a PICTURE frame -- decoded by the
+    // ORDINARY non-ATLAS process against a reference assembled from the
+    // atlas, with the reconstruction then becoming the atlas.  Two operating
+    // points of one codec, chosen per frame because "is the head moving fast"
+    // is a per-frame question.
+    int picture_frame = 0;
     WarpMatrix warp[2];     // warp_ext(), one 36-byte record per eye
     // One Pass W record per tile, raster order over the eye pair.  `refBase`
     // still holds the ring SLOT INDEX (0..3, or 0xffffffff for "this decoder

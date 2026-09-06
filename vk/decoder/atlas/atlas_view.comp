@@ -1,0 +1,96 @@
+// NX Warp decoder, ATLAS: the DISPLAY VIEW ([SYN] 13.12.5, ADR-0029).
+//
+// The atlas itself is an SSBO of u16 pairs, because that is the layout
+// `warp_pred.glsl` reads the reference through -- pinned byte-for-byte against
+// the encoder, and ADR-0029 turns on it being unmodified.  The client's
+// display pass wants a SAMPLER, so the sampled view is produced BESIDE the
+// atlas rather than instead of it, and this is that kernel.
+//
+// NOTHING HERE IS NORMATIVE.  The u16 storage layout stays the conformance
+// representation; this is a view, and 13.12.5's display warp is not compared
+// by conformance at all.  What it must be is EXACT: the picture the one-tap
+// 8-bit view carries has to be the picture the three-plane R16 view carries,
+// or the choice between them would be a quality decision instead of a
+// performance one.
+//
+// THE CONVERSION RULE, and it is the whole of the 8-bit path:
+//
+//   For a `CT_NONE` stream the atlas holds the stream's OWN YCbCr at the
+//   stream's own bit depth ([SYN] 13.12.1) -- 8 bits for an 8-bit stream.  So
+//   a sample is already a byte, and the R8 view stores its VALUE UNCHANGED as
+//   a UNORM byte (`v / 255.0`, which round-trips exactly for 0..255), while
+//   the R16 view stores the same value as an unsigned integer.  Both carry
+//   identical samples; only the tap count differs.
+//
+//   This holds ONLY for `CT_NONE`.  Under `CT_YCOCGR` the chroma planes carry
+//   the extra bit that transform produces -- 9 bits for an 8-bit stream --
+//   and an 8-bit UNORM view cannot represent them.  The host refuses the R8
+//   view on such a stream rather than truncating.
+//
+// Measured on the Pico 4 by the texture-native agent: a full 2176x1088 display
+// pass costs 2.124 ms/pair sampling three R16 planes against 1.086 ms/pair
+// one-tap 8-bit.  The difference is the number of TAPS, not the format --
+// 16-bit to 8-bit on the same tap count is worth 0.24 ms of the 1.04 ms gap.
+//
+// SPDX-License-Identifier: Apache-2.0
+#version 450
+#extension GL_GOOGLE_include_directive : require
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(std430, binding = 0) readonly buffer AtlasBuf { uint atlas[]; };
+
+#ifdef NXVW_VIEW8
+// NV12-shaped: one luma tap and one chroma tap.
+layout(r8, binding = 1) uniform writeonly image2D outLuma;
+layout(rg8, binding = 2) uniform writeonly image2D outChroma;
+#else
+// Three R16 planes, which is what the design specified before it was measured.
+layout(r16ui, binding = 1) uniform writeonly uimage2D outLuma;
+layout(r16ui, binding = 2) uniform writeonly uimage2D outCb;
+layout(r16ui, binding = 3) uniform writeonly uimage2D outCr;
+#endif
+
+layout(push_constant) uniform Push {
+    // Per plane 0..2: the u16 element offset of the plane inside one atlas
+    // slot, and its row stride in u16 elements.  Both eyes live side by side
+    // within each plane, so a row of `lumaW` covers the PAIR and the eye
+    // arithmetic never appears here.
+    int off0, off1, off2;
+    int stride0, stride1, stride2;
+    int lumaW, lumaH;      // over the eye PAIR
+    int chromaW, chromaH;  // over the eye PAIR
+} pc;
+
+uint atlas_sample(int off, int stride, int x, int y) {
+    int e = off + y * stride + x;
+    uint w = atlas[uint(e) >> 1u];
+    return ((e & 1) != 0) ? (w >> 16) : (w & 0xffffu);
+}
+
+void main() {
+    int x = int(gl_GlobalInvocationID.x);
+    int y = int(gl_GlobalInvocationID.y);
+
+    if (x < pc.lumaW && y < pc.lumaH) {
+        uint v = atlas_sample(pc.off0, pc.stride0, x, y);
+#ifdef NXVW_VIEW8
+        imageStore(outLuma, ivec2(x, y), vec4(float(v) / 255.0, 0.0, 0.0, 1.0));
+#else
+        imageStore(outLuma, ivec2(x, y), uvec4(v, 0u, 0u, 1u));
+#endif
+    }
+    if (x < pc.chromaW && y < pc.chromaH) {
+        uint cb = atlas_sample(pc.off1, pc.stride1, x, y);
+        uint cr = atlas_sample(pc.off2, pc.stride2, x, y);
+#ifdef NXVW_VIEW8
+        // One tap carries both: Cb in .r and Cr in .g, which is the order a
+        // G8_B8R8_2PLANE_420_UNORM sampler reports for the same picture.
+        imageStore(outChroma, ivec2(x, y),
+                   vec4(float(cb) / 255.0, float(cr) / 255.0, 0.0, 1.0));
+#else
+        imageStore(outCb, ivec2(x, y), uvec4(cb, 0u, 0u, 1u));
+        imageStore(outCr, ivec2(x, y), uvec4(cr, 0u, 0u, 1u));
+#endif
+    }
+}
