@@ -170,6 +170,10 @@ static void usage() {
         "                       sides stay byte-comparable.  Default off.\n"
         "  --int-lambda N       its SAD-domain lambda, Q8 per quantiser step\n"
         "                       (default 45)\n"
+        "  --int-rdoq N         integer requantiser: 0 off, 1 drop a +-1\n"
+        "                       coefficient that does not pay for itself.\n"
+        "                       The GPU encoder's effort 1; unlike\n"
+        "                       --rdoq-effort it is exact in integers\n"
         "  --int-intra-mad F    its INTRA fallback: mean |residual| per luma\n"
         "                       sample above which the tile codes intra\n"
         "                       (default 9)\n"
@@ -297,7 +301,7 @@ int main(int argc, char **argv) {
     int atlas_base_margin = 8;
     std::string atlas_dump;
     int mv_range = 16, skip_thresh = 0, mode_lambda = 0;
-    int int_decision = 0, int_lambda = 0, int_intra_mad = 0;
+    int int_decision = 0, int_lambda = 0, int_intra_mad = 0, int_rdoq = 0;
     int int_coded_vectors = 2;
     int threads = 0;   // 0 = auto
     // These mirror nxvc_config_default(): the inter-efficiency tools that the
@@ -438,6 +442,7 @@ int main(int argc, char **argv) {
             else if (v == "off") int_decision = 0;
             else { std::fprintf(stderr, "--int-decision: on|off\n"); return 2; }
         }
+        else if (a == "--int-rdoq") int_rdoq = std::atoi(val());
         else if (a == "--int-lambda") int_lambda = std::atoi(val());
         else if (a == "--int-coded-vectors") {
             std::string v = val();
@@ -738,6 +743,7 @@ int main(int argc, char **argv) {
     cfg.threads = (uint32_t)(threads > 0 ? threads : 0);
     cfg.skip_thresh = (uint32_t)(skip_thresh > 0 ? skip_thresh : 0);
     cfg.inter_int_decision = (uint32_t)int_decision;
+    cfg.int_rdoq = (uint32_t)int_rdoq;
     cfg.int_lambda_q8 = (uint32_t)(int_lambda > 0 ? int_lambda : 0);
     cfg.int_coded_vectors = (uint32_t)int_coded_vectors;
     cfg.int_intra_mad_q8 = (uint32_t)(int_intra_mad > 0 ? int_intra_mad : 0);

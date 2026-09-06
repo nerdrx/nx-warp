@@ -547,10 +547,6 @@ typedef struct nxvc_config {
                                    at all four of its corners is under this
                                    many luma samples.  0 = no bound, which
                                    is the rule as measured.                 */
-    /* --- ATLAS_REBASE (tool 34, SYNTAX 13.12.10).  Both are encoder-side
-     * TRIGGER policy: what they decide is whether this frame sets the
-     * `atlas_rebase` flag.  The rebase itself is normative and the decoder
-     * needs neither number. */
     /* 13.12.11, the per-frame MODE SWITCH.  A stream with `atlas` set codes
      * each frame either as an ATLAS frame (13.12) or as a PICTURE frame (the
      * ordinary model, every tile reconstructed, the atlas rebuilt from the
@@ -563,6 +559,27 @@ typedef struct nxvc_config {
                                       than this many frames apart            */
     uint32_t atlas_picture_period; /* force a PICTURE frame every N frames
                                       regardless of motion; 0 = never        */
+
+    /* The INTEGER RDOQ: a requantiser the GPU encoder can run.
+     *
+     * `rdoq_effort` above drives a `double` trellis over real rates from
+     * `table_set_cost`, which is a sum of `std::log2` terms -- the same thing
+     * that put the mode decision behind `inter_int_decision`, and for the same
+     * reason (ADR 0028).  This is the shape that survives the crossing: a
+     * per-coefficient rule, exact in 32-bit integers, with no dependency
+     * between coefficients and no scan order, so a shader lane can decide its
+     * own coefficients with no barrier and reach the same levels the host
+     * does.
+     *
+     *   0 = off, the plain dead-zone quantiser (the default, and what the GPU
+     *       encoder does at effort 0)
+     *   1 = drop a +-1 coefficient whose squared error costs less than the
+     *       bits it saves, at NXE_RDOQ_LAM_Q12 / NXE_RDOQ_BITS_Q8
+     *
+     * It is measurably worth much less than the trellis -- see
+     * vk/encoder/README.md, "The effort levels, measured" -- and it is here
+     * because it is the part of the trellis that can be reproduced at all. */
+    uint32_t int_rdoq;
 } nxvc_config;
 
 /* One eye's view for one frame: the orientation the frame was rendered with

@@ -177,6 +177,7 @@ struct nxe_frame_params {
     uint width, height, ycocgr, table_bytes;
     uint warp_bytes, ref_slots, wpred_stride, ref_sel;
     uint rowpresent_bytes;
+    uint int_rdoq;
     uint wm_luma[64];
     uint wm_chroma[64];
 };
@@ -429,6 +430,31 @@ void nxe_idct8_1d(ivec4 xlo, ivec4 xhi, out ivec4 ylo, out ivec4 yhi) {
 // -------------------------------------------------------------- quantizer
 int nxe_dequant_step(int qp, int w) { return (nxe_qstep[qp] * w + 8) >> 4; }
 int nxe_dequant(int q, int t) { return nxe_clamp16((q * t + 8) >> 4); }
+// ------------------------------------------------------------ integer RDOQ
+// Mirror of nxe_enc.h's nxe_rdoq_*.  The contract, and why the tool is shaped
+// this way rather than as the reference's trellis, is documented there.
+//
+// The lambda is the only term that needs more than 32 bits, and umulExtended
+// forms it exactly: `t * t` fits a uint (t <= 46340, so t*t <= 2147395600),
+// and the 64-bit product with NXE_RDOQ_LAM_Q12 is shifted right by 12 across
+// the halves.
+#define NXE_RDOQ_LAM_Q12 1400
+#define NXE_RDOQ_BITS_Q8 768
+
+uint nxe_rdoq_lambda_q8(int t) {
+    uint hi, lo;
+    umulExtended(uint(NXE_RDOQ_LAM_Q12), uint(t) * uint(t), hi, lo);
+    return (lo >> 12) | (hi << 20);
+}
+
+bool nxe_rdoq_drop(int orig, int q, int step, uint lam_q8) {
+    if (q != 1 && q != -1) return false;
+    int rec = nxe_clamp16((q * step + 8) >> 4);
+    int e1 = orig - rec;
+    int d = orig * orig - e1 * e1;      // the cost of going to zero
+    return d <= int((lam_q8 * 3u) >> 8);
+}
+
 int nxe_quantize(int c, int t, int dz) {
     int a = c < 0 ? -c : c;
     int q = int((uint(a * 16 + dz)) / uint(t));   // encoder-side division

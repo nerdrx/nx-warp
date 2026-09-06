@@ -243,6 +243,10 @@ struct FrameParams {
     int cfl = 0;            // stream tool bit 24
     int dir_layer = 0;      // frame flags bit 2
     int sdh = 0;            // stream tool bit 22
+    // ENCODER only, and no tool bit: the integer requantiser changes which
+    // levels are coded and nothing about how they are decoded, so a stream
+    // produced under it is an ordinary stream.  See int_rdoq_unit.
+    int int_rdoq = 0;
     u8 wm_luma[64] = {}, wm_chroma[64] = {};
     TableSet tabs[8];
 };
@@ -444,6 +448,7 @@ struct TileCoder {
     int intra_dir = 0;   // stream tool bit 17
     int dir_layer = 0;   // frame flag bit 2: predict the DC-plane residual
     int sdh = 0;         // stream tool bit 22
+    int int_rdoq = 0;    // encoder-only requantiser level (int_rdoq_unit)
     int split4 = 0;      // tile header bit 28: this tile codes split flags
     int cfl = 0;         // stream tool bit 24: chroma may use kIntraCfl
     int nctx = kNumCtxV1;
@@ -519,6 +524,7 @@ void TileCoder::setup() {
     intra_dir = fp->intra_dir && !inter;
     dir_layer = fp->dir_layer;
     sdh = fp->sdh;
+    int_rdoq = fp->int_rdoq;
     // The 4x4 split is mutually exclusive with transform skip, whose 64 coded
     // values are samples in raster order and have no sub-block structure, and
     // it is meaningful ONLY at the 8x8 transform (SYNTAX.md 4.1, 6.8): a tile
@@ -1847,10 +1853,74 @@ static void analyze_dc_plane(PlaneState &s, i16 *coefs, int sdh,
     (void)size;
 }
 
+
+// ------------------------------------------------------ the integer RDOQ
+// A requantiser a SHADER can run, which the trellis above is not.
+//
+// `rdoq_unit` prices every candidate level with a real rate from
+// `table_set_cost` -- a sum of `std::log2` terms -- and walks a trellis over
+// the scan.  Neither half crosses to a GPU: `log2` is not the same function on
+// a host libm and on a device (ADR 0028 makes the same point about the mode
+// decision), and a trellis over the scan is a serial dependency where the
+// hardware wants sixty-four independent lanes.
+//
+// So this decides ONE coefficient at a time, against a CONSTANT rate, in
+// 32-bit integers:
+//
+//     drop a coefficient quantised to +-1 when the squared error that costs
+//     is worth less than NXE_RDOQ_BITS_Q8 bits at the frame's lambda.
+//
+// +-1 is the whole of it, and deliberately.  It is the commonest level and the
+// cheapest to remove -- a significance flag and a sign, and nothing whose rate
+// depends on the block around it -- so a constant rate is a defensible model
+// for it and a poor one for anything larger.  Every other level is left where
+// the dead-zone quantiser put it.
+//
+// The arithmetic is exact and is the SAME arithmetic vk/encoder/forward's
+// nxe_rdoq_* helpers do, so the levels this reaches are the levels E3 reaches:
+//
+//     lam_q8 = (NXE_RDOQ_LAM_Q12 * t * t) >> 12      t = kQStep[qp], Q4
+//     drop when  (orig^2 - (orig - dequant(q,t))^2)  <=  (lam_q8 * 3) >> 8
+//
+// The `* 3 >> 8` is NXE_RDOQ_BITS_Q8 / 256 folded into the comparison so that
+// no term needs more than 32 bits: for a coefficient at +-1 the dead zone
+// bounds |orig| below t/8, so the squared-error difference is under 2^26, and
+// lam_q8 * 3 is under 2^32.  One 64-bit product remains, in the lambda, and
+// GLSL's umulExtended forms it exactly.
+//
+// The constants are NOT fitted here: only their PRODUCT matters (the test is
+// `d <= lam * bits`), so there is one degree of freedom, and it was swept on
+// the pan8 clip at five quantisers.  See vk/encoder/README.md.
+// The two constants, and the ONE degree of freedom they carry.  The test is
+// `d <= lam * bits`, so only their product is meaningful; they are written as
+// two numbers because that is how vk/encoder/forward/nxe_enc.h writes them,
+// and THOSE are the definitions -- these are a copy, kept honest by
+// `vk.encoder.acid.effort`, which requires this encoder and E3 to agree byte
+// for byte at every quantiser.
+#define NXE_RDOQ_LAM_Q12 1400   /* lambda = 0.342 * qstep^2, Q12 */
+#define NXE_RDOQ_BITS_Q8 768    /* 3.0 bits for a +-1 and its sign */
+
+static inline u32 int_rdoq_lambda_q8(int qp) {
+    const u32 t = (u32)kQStep[clamp_i32(qp, 0, 63)];
+    return (u32)(((u64)NXE_RDOQ_LAM_Q12 * (u64)(t * t)) >> 12);
+}
+
+static void int_rdoq_unit(i16 *c, const i32 *orig, const i32 *stepv, int ncoef,
+                          u32 lam_q8) {
+    const u32 thr = (lam_q8 * 3u) >> 8;
+    for (int i = 0; i < ncoef; ++i) {
+        if (c[i] != 1 && c[i] != -1) continue;
+        const i32 e0 = orig[i];
+        const i32 e1 = orig[i] - dequant(c[i], stepv[i]);
+        const i32 d = e0 * e0 - e1 * e1;   // the cost of going to zero
+        if (d <= (i32)thr) c[i] = 0;
+    }
+}
+
 // Encoder side: quantize a plane into `coefs` and leave the same
 // reconstruction in s.samples that the decoder will produce.
 static void analyze_plane(PlaneState &s, i16 *coefs, int tskip, int intra_dz,
-                          int sdh) {
+                          int sdh, int int_rdoq) {
     const int nb = s.nb, size = s.size, bs = s.bsize, lb = s.log2b;
     const int ndc = nb * nb, ncoef = bs * bs;
     const u8 *dzac = dead_zone_table(false);
@@ -1893,6 +1963,10 @@ static void analyze_plane(PlaneState &s, i16 *coefs, int tskip, int intra_dz,
                                            : dzac[band_of(pp >> band_shift)];
                 c[i] = (i16)quantize(orig[i], stepv[i], dead_zone(stepv[i], f));
             }
+            // Before sign hiding, which reads the levels: a coefficient
+            // this drops is one the hiding pass must not have counted.
+            if (int_rdoq)
+                int_rdoq_unit(c, orig, stepv, ncoef, int_rdoq_lambda_q8(s.qp));
             if (sdh) hide_sign_unit(c, orig, stepv, ncoef, scan);
         }
 }
@@ -2450,6 +2524,7 @@ void nxvc_config_default(nxvc_config *cfg) {
     cfg->dc_lambda_q8 = 0;     // built-in default
     cfg->dc_rdoq_off = 0;      // the DC plane goes through the trellis
     cfg->rdoq_effort = 0;      // built-in default (medium)
+    cfg->int_rdoq = 0;         // the integer requantiser is opt-in
     cfg->me_effort = 0;        // built-in default (medium)
     cfg->lambda_class_off = 0; // per-class lambda on
     for (int i = 0; i < 4; ++i) cfg->lambda_class_q8[i] = 0;

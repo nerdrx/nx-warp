@@ -234,6 +234,9 @@ int main(int argc, char **argv) {
     uint32_t coded_vectors = NXVC_VKE_CV_DEFAULT;
     uint32_t entropy = NXVC_VKE_ENTROPY_DEFAULT;
     uint32_t ref_sel = 0;
+    /* create_info::effort: 0 the dead-zone quantiser, 1 the integer
+     * requantiser.  The acid test drives both ends of the ABI with it. */
+    uint32_t effort = 0;
     /* 1 or 2.  As in nxvc-vkenc, `--w` is the FULL width either way, so a
      * stereo run passes the side-by-side pair and create() gets w/eyes. */
     uint32_t eyes = 1;
@@ -273,6 +276,7 @@ int main(int argc, char **argv) {
         else if (a == "--intra-period") intra_period = (uint32_t)std::atoi(next());
         else if (a == "--poses") poses_path = next();
         else if (a == "--drop-at") drop_at = std::atoi(next());
+        else if (a == "--effort") effort = (uint32_t)std::atoi(next());
         else if (a == "--entropy")
         {
             const std::string v = next();
@@ -317,7 +321,8 @@ int main(int argc, char **argv) {
                      "usage: nxvc-vkenc-api --in f.yuv --w W --h H --out f.nxv\n"
                      "                      [--qp N] [--frames N] [--matrix N] [--timing]\n"
                      "                      [--image] [--qp-cycle a,b,c] [--lengths f]\n"
-                     "                      [--eyes 1|2, --w is the side-by-side pair]\n");
+                     "                      [--eyes 1|2, --w is the side-by-side pair]\n"
+                     "                      [--effort 0|1]\n");
         return 2;
     }
 
@@ -390,6 +395,7 @@ int main(int argc, char **argv) {
     ci.ref_confirm = (inter && ack_delay >= 0) ? 1u : 0u;
     ci.quant_matrix = matrix;
     ci.entropy = entropy;
+    ci.effort = effort;
 
     /* The image path needs a device the caller owns: the image has to live on
      * the encoder's device, and a device the library created is one this tool

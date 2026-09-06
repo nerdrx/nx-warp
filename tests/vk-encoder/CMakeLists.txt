@@ -367,6 +367,48 @@ if(TARGET nxvc-vkenc)
       set_tests_properties(vk.encoder.acid.api.stereo.layers PROPERTIES
                            SKIP_REGULAR_EXPRESSION "SKIP:")
       list(APPEND NXENC_TESTS vk.encoder.acid.api.stereo.layers)
+      # The effort levels: the integer requantiser on both sides of the
+      # byte-identity line, and the refusal of a level that does not exist.
+      # It is registered next to the ABI tests because half of it is the
+      # ABI's own mapping of `create_info::effort`.
+      foreach(dev cpu 0)
+        add_test(NAME vk.encoder.acid.effort.${dev} COMMAND ${CMAKE_COMMAND}
+                 -DVKENC=$<TARGET_FILE:nxvc-vkenc>
+                 -DNXVENC=$<TARGET_FILE:nxv-enc>
+                 -DNXVDEC=$<TARGET_FILE:nxv-dec>
+                 -DVKENCAPI=$<IF:$<TARGET_EXISTS:nxvc-vkenc-api>,$<TARGET_FILE:nxvc-vkenc-api>,>
+                 -DVKDEC=$<IF:$<TARGET_EXISTS:nxvc-vkdec>,$<TARGET_FILE:nxvc-vkdec>,>
+                 -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/effort-${dev}
+                 -DDEVICE=${dev}
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/effort.cmake)
+        set_tests_properties(vk.encoder.acid.effort.${dev} PROPERTIES
+                             SKIP_REGULAR_EXPRESSION "SKIP:")
+        list(APPEND NXENC_TESTS vk.encoder.acid.effort.${dev})
+      endforeach()
+
+      # And the same legs on a SECOND ICD.  Byte-identity is a claim about
+      # the arithmetic, not about RADV: the requantiser's one 64-bit product
+      # goes through umulExtended and its comparison through a signed 32-bit
+      # subtraction of squares, both of which a different compiler is free to
+      # lower differently.  lavapipe is the second implementation this tree
+      # already keeps for the decoder (tests/vk), and it is where a vendor
+      # difference would show up as a stream that is not the reference's.
+      if(NXVC_LAVAPIPE_ICD AND EXISTS "${NXVC_LAVAPIPE_ICD}")
+        add_test(NAME vk.encoder.acid.effort.lavapipe COMMAND ${CMAKE_COMMAND}
+                 -DVKENC=$<TARGET_FILE:nxvc-vkenc>
+                 -DNXVENC=$<TARGET_FILE:nxv-enc>
+                 -DNXVDEC=$<TARGET_FILE:nxv-dec>
+                 -DVKENCAPI=$<IF:$<TARGET_EXISTS:nxvc-vkenc-api>,$<TARGET_FILE:nxvc-vkenc-api>,>
+                 -DVKDEC=$<IF:$<TARGET_EXISTS:nxvc-vkdec>,$<TARGET_FILE:nxvc-vkdec>,>
+                 -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/effort-lavapipe
+                 -DDEVICE=0
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/effort.cmake)
+        set_tests_properties(vk.encoder.acid.effort.lavapipe PROPERTIES
+                             SKIP_REGULAR_EXPRESSION "SKIP:"
+                             ENVIRONMENT
+                             "VK_DRIVER_FILES=${NXVC_LAVAPIPE_ICD};VK_ICD_FILENAMES=${NXVC_LAVAPIPE_ICD}")
+        list(APPEND NXENC_TESTS vk.encoder.acid.effort.lavapipe)
+      endif()
 
       # The same claim for a quantiser that MOVES, which is the entry point a
       # rate controller uses and the one the two tests above never touch: after

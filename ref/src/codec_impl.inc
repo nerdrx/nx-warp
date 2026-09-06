@@ -385,6 +385,7 @@ extern "C" nxvc_encoder *nxvc_encoder_create(const nxvc_config *cfg,
     e->fp.intra_dir = e->cfg.intra_dir ? 1 : 0;
     e->fp.dir_layer = (e->cfg.intra_dir && e->cfg.intra_dir_layer) ? 1 : 0;
     e->fp.sdh = e->cfg.sign_hide ? 1 : 0;
+    e->fp.int_rdoq = (int)e->cfg.int_rdoq;
     // The 4x4 split is decided per block by the directional-intra analysis
     // pass, which is the only place the encoder measures a per-block
     // rate-distortion cost, so the encoder ties the two together.  The
@@ -2071,7 +2072,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             } else {
                 for (int p = 0; p < np; ++p)
                     analyze_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
-                                  tc.tp.tskip, 1, tc.sdh);
+                                  tc.tp.tskip, 1, tc.sdh, tc.int_rdoq);
             }
             std::memset(th, 0, sizeof(th));
             if (count_units(tc.units.data(), (int)tc.units.size(),
@@ -2101,7 +2102,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             // --no-rdo` are the two ways to reach it from the CLI.
             for (int p = 0; p < np; ++p)
                 analyze_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
-                              tc.tp.tskip, 1, tc.sdh);
+                              tc.tp.tskip, 1, tc.sdh, tc.int_rdoq);
             std::memset(th, 0, sizeof(th));
             raw = 0;
             if (!count_units(tc.units.data(), (int)tc.units.size(),
@@ -4017,7 +4018,7 @@ extern "C" int nxvc_debug_histogram(const nxvc_config *cfg,
         int np = coded_planes(tc);
         for (int p = 0; p < np; ++p)
             analyze_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
-                          tc.tp.tskip, 1, tc.sdh);
+                          tc.tp.tskip, 1, tc.sdh, tc.int_rdoq);
         count_units(tc.units.data(), (int)tc.units.size(), 8,
                     hist[tc.tp.table_set], nullptr);
     }
@@ -4073,7 +4074,7 @@ extern "C" int nxvc_debug_tile_histograms(const nxvc_config *cfg,
         } else {
             for (int p = 0; p < np; ++p)
                 analyze_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)],
-                              tc.tp.tskip, 1, tc.sdh);
+                              tc.tp.tskip, 1, tc.sdh, tc.int_rdoq);
         }
         u32 (*h)[kNumSym] = (u32 (*)[kNumSym])(out + (size_t)t * kNumCtx * kNumSym);
         std::memset(h, 0, sizeof(u32) * kNumCtx * kNumSym);
