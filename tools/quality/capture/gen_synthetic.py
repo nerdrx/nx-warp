@@ -218,6 +218,7 @@ def build(
     legacy: bool = False,
     supersample: int = 4,
     ceiling: bool = True,
+    peak_rate: float | None = None,
 ) -> list[Sequence]:
     os.makedirs(outdir, exist_ok=True)
     log = (lambda *a: None) if quiet else (lambda *a: print(*a, flush=True))
@@ -248,7 +249,8 @@ def build(
         log(f"[synth] latitude prefilter to {eye_ppd * ss:.1f} px/deg "
             f"({ss}x{ss} supersampled) in {time.time() - t0:.1f}s")
 
-    poses = synth.make_poses(frames, motion=motion, fps=fps, seed=seed + 3)
+    poses = synth.make_poses(frames, motion=motion, fps=fps, seed=seed + 3,
+                             peak_rate=peak_rate)
     objs = synth.Objects(count=objects, seed=seed + 5) if objects > 0 else None
     dirs = synth._ray_grid(cam if legacy else synth.Camera(eye_w * ss, eye_h * ss, hfov, vfov))
 
@@ -331,7 +333,8 @@ def build(
             frames=frames,
             pose_log=pose_path,
             source=(f"synthetic:{motion}:seed{seed}" if legacy
-                    else f"synthetic:{motion}:seed{seed}:v2-bandlimited-ss{ss}"),
+                    else f"synthetic:{motion}{'' if peak_rate is None else f'@{peak_rate:g}'}"
+                         f":seed{seed}:v2-bandlimited-ss{ss}"),
             layout=layout,
         )
         sidecar = os.path.join(outdir, f"{name}.{pf}.json")
@@ -375,6 +378,12 @@ def main(argv=None) -> int:
     ap.add_argument("--eye-height", type=int, default=512)
     ap.add_argument("--motion", default="mixed", choices=(*synth.MOTIONS, "all"))
     ap.add_argument("--layout", default="sbs", choices=("sbs", "mono"))
+    ap.add_argument("--peak-rate", type=float, default=None, metavar="DEG_S",
+                    help="override the motion profile's peak yaw RATE in deg/s "
+                         "(pan: the steady rate; turn/mixed: the peak of the "
+                         "raised-cosine ramp). The profile shape is unchanged; "
+                         "only its scale is. Default: the profile's own rate "
+                         "(static 0, pan 30, turn 150, mixed 120)")
     ap.add_argument("--pix", default="yuv444p,yuv420p", help="comma-separated pixel formats")
     ap.add_argument("--fps", type=float, default=90.0)
     ap.add_argument("--seed", type=int, default=1)
@@ -433,6 +442,7 @@ def main(argv=None) -> int:
             pix_fmts, args.fps, args.seed, pano_w, pano_h, args.objects, not args.no_hud,
             args.hfov, args.vfov, args.quiet,
             legacy=args.legacy, supersample=args.supersample, ceiling=want_ceiling,
+            peak_rate=args.peak_rate,
         )
         made += seqs
         if args.preview and seqs:

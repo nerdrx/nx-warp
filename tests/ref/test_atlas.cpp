@@ -80,6 +80,7 @@ struct Opts {
     bool c444 = false;
     uint32_t atlas = 1, row_present = 0, near_skip = 0, quad_mv = 0;
     uint32_t intra_period = 1000, gen_max = 0;
+    uint32_t nbr = 0, skip_margin = 0;
     double yaw_per_frame = 0.4;
     int panel = 0;
     // lost[frame][tile]; the decoder is told, and the encoder is told the
@@ -137,6 +138,8 @@ static Run run(const Opts &o) {
     cfg.row_present = o.row_present;
     cfg.atlas_static_skip = o.atlas;
     cfg.atlas_gen_max = o.gen_max;
+    cfg.atlas_nbr = o.nbr;
+    cfg.atlas_skip_margin = o.skip_margin;
     cfg.near_skip = o.near_skip;
     cfg.quad_mv = o.quad_mv;
     cfg.intra_period = o.intra_period;
@@ -283,6 +286,23 @@ static void test_identity() {
     { Opts o; o.yaw_per_frame = 2.5;                  cases.push_back({"fast-turn", o}); }
     { Opts o; o.panel = 1;                            cases.push_back({"static-panel", o}); }
     { Opts o; o.gen_max = 3;                          cases.push_back({"gen-max", o}); }
+    // Tool bit 33, the neighbour-aware gather (13.12.4).  It is NORMATIVE --
+    // it changes which samples the predictor reads -- so the whole of the
+    // matrix above has to hold under it as well, and in particular under fast
+    // motion, which is the only condition in which it does anything at all.
+    { Opts o; o.nbr = 1;                              cases.push_back({"nbr", o}); }
+    { Opts o; o.nbr = 1; o.yaw_per_frame = 2.5;       cases.push_back({"nbr-fast-turn", o}); }
+    { Opts o; o.nbr = 1; o.c444 = true;               cases.push_back({"nbr-444", o}); }
+    { Opts o; o.nbr = 1; o.eyes = 2;                  cases.push_back({"nbr-stereo-geometry", o}); }
+    { Opts o; o.nbr = 1; o.near_skip = 1; o.quad_mv = 1;
+                                                      cases.push_back({"nbr-near-skip+quad-mv", o}); }
+    { Opts o; o.nbr = 1; o.panel = 1;                 cases.push_back({"nbr-static-panel", o}); }
+    { Opts o; o.nbr = 1; o.intra_period = 4;          cases.push_back({"nbr-refresh", o}); }
+    // The displacement bound is ENCODER-side and changes no rule, so the
+    // stream it produces must decode under the unchanged 13.12.4.
+    { Opts o; o.skip_margin = 8; o.yaw_per_frame = 2.5;
+                                                      cases.push_back({"skip-margin-8", o}); }
+    { Opts o; o.skip_margin = 4; o.nbr = 1;           cases.push_back({"skip-margin-4+nbr", o}); }
     for (auto &c : cases) {
         Run r = run(c.o);
         CHECK(r.ok, "%s: %s", c.name, r.err.c_str());
@@ -417,6 +437,175 @@ static void test_display() {
     }
 }
 
+// 6. The base layer as a patch source (13.12.9).  Three properties, and the
+//    third is the one that catches the bug the clause exists for.
+static void test_base_patch() {
+    const int W = 192, H = 192, TX = 3, TY = 3;
+    nxvc_config cfg;
+    nxvc_config_default(&cfg);
+    cfg.width = W; cfg.height = H; cfg.eyes = 1;
+    cfg.chroma = NXVC_CHROMA_420;
+    cfg.base_qp = 26;
+    cfg.inter = 1; cfg.atlas = 1; cfg.atlas_static_skip = 1;
+    cfg.custom_tables = 0; cfg.threads = 1;
+    nxvc_status st;
+    nxvc_encoder *e = nxvc_encoder_create(&cfg, &st);
+    nxvc_decoder *d = nxvc_decoder_create(&st);
+    CHECK(e && d, "base: create");
+    if (!e || !d) return;
+
+    std::vector<uint8_t> hdr(64);
+    size_t hn = 0, consumed = 0;
+    nxvc_encoder_stream_header(e, hdr.data(), hdr.size(), &hn);
+    nxvc_decoder_parse_stream_header(d, hdr.data(), hn, &consumed);
+
+    // One coded frame, so the atlas holds something to be overwritten.
+    Scene s0 = make_scene(W, H, false, 0.0, 30, 0);
+    nxvc_image img{};
+    img.plane[0] = s0.Y.data(); img.stride[0] = W;
+    img.plane[1] = s0.U.data(); img.stride[1] = s0.cw;
+    img.plane[2] = s0.V.data(); img.stride[2] = s0.cw;
+    std::vector<uint8_t> buf((size_t)W * H * 3 + (1 << 16));
+    size_t ol = 0;
+    std::vector<nxvc_view> v(1, view_yaw(0.0));
+    nxvc_encoder_set_views(e, v.data(), 1);
+    st = nxvc_encoder_encode_frame(e, &img, nullptr, nullptr, buf.data(),
+                                   buf.size(), &ol);
+    CHECK(st == NXVC_OK, "base: encode");
+    std::vector<uint8_t> dy((size_t)W * H), du((size_t)s0.cw * s0.ch),
+        dv((size_t)s0.cw * s0.ch);
+    nxvc_image dimg{};
+    dimg.plane[0] = dy.data(); dimg.stride[0] = W;
+    dimg.plane[1] = du.data(); dimg.stride[1] = s0.cw;
+    dimg.plane[2] = dv.data(); dimg.stride[2] = s0.cw;
+    st = nxvc_decoder_decode_frame(d, buf.data(), ol, &dimg, &consumed);
+    CHECK(st == NXVC_OK, "base: decode");
+
+    // An NV12 base picture: luma plane, then interleaved (Cb, Cr).
+    std::vector<uint8_t> bY((size_t)W * H), bC((size_t)W * H / 2);
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x)
+            bY[(size_t)y * W + x] = (uint8_t)((x * 3 + y * 5) & 0xff);
+    for (int y = 0; y < H / 2; ++y)
+        for (int x = 0; x < W / 2; ++x) {
+            bC[((size_t)y * (W / 2) + x) * 2 + 0] = (uint8_t)(60 + x);   // Cb
+            bC[((size_t)y * (W / 2) + x) * 2 + 1] = (uint8_t)(200 - y);  // Cr
+        }
+    std::vector<uint8_t> want(TX * TY, 0);
+    want[0] = want[4] = want[8] = 1;   // the diagonal
+
+    auto patch = [&](uint32_t src_frame, uint32_t order,
+                     const uint8_t *cplane) {
+        nxvc_base_patch bp{};
+        bp.plane[0] = bY.data(); bp.stride[0] = W;
+        bp.plane[1] = cplane;    bp.stride[1] = W;
+        bp.width = W; bp.height = H; bp.eye = 0;
+        bp.src_frame = src_frame;
+        bp.chroma_order = order;
+        bp.tiles = want.data(); bp.tile_bytes = (uint32_t)want.size();
+        return bp;
+    };
+
+    uint32_t ap = 0, sup = 0;
+    nxvc_base_patch bp = patch(1, NXVC_BASE_CHROMA_CB_CR, bC.data());
+    CHECK(nxvc_decoder_atlas_patch_base(d, &bp, &ap, &sup) == NXVC_OK,
+          "base: decoder patch");
+    CHECK(ap == 3 && sup == 0, "base: applied %u superseded %u", ap, sup);
+    uint32_t ap2 = 0, sup2 = 0;
+    CHECK(nxvc_encoder_atlas_patch_base(e, &bp, &ap2, &sup2) == NXVC_OK,
+          "base: encoder patch");
+
+    // (i) the two shadows agree, all 64 bytes and every plane.
+    const size_t tb = nxvc_decoder_atlas_table_size(d);
+    auto blob = [&](bool dec) {
+        return atlas_blob(
+            tb,
+            [&](uint8_t *p, size_t n) {
+                if (dec) nxvc_decoder_atlas_table(d, p, n);
+                else nxvc_encoder_atlas_table(e, p, n);
+            },
+            [&](int pl, uint32_t *w, uint32_t *h, uint32_t *sd) {
+                return dec ? nxvc_decoder_atlas_plane(d, pl, w, h, sd)
+                           : nxvc_encoder_atlas_plane(e, pl, w, h, sd);
+            });
+    };
+    CHECK(blob(true) == blob(false), "base: encoder shadow != decoder atlas");
+
+    // (ii) base_sourced is set on exactly the patched positions, and the
+    //      pixels are the base picture's, in the right planes.
+    std::vector<uint8_t> tab(tb);
+    nxvc_decoder_atlas_table(d, tab.data(), tb);
+    int nbs = 0;
+    for (size_t t = 0; t < tb / 64; ++t)
+        if (tab[t * 64 + 42] & 4u) ++nbs;
+    CHECK(nbs == 3, "base: base_sourced set on %d positions, want 3", nbs);
+    uint32_t pw = 0, ph = 0, pstr = 0;
+    const uint16_t *cb = nxvc_decoder_atlas_plane(d, 1, &pw, &ph, &pstr);
+    const uint16_t *cr = nxvc_decoder_atlas_plane(d, 2, &pw, &ph, &pstr);
+    CHECK(cb && cr && cb[0] == 60 && cr[0] == 200,
+          "base: chroma landed as (%d, %d), want (60, 200) -- the channel "
+          "order of 13.12.9 is wrong",
+          cb ? (int)cb[0] : -1, cr ? (int)cr[0] : -1);
+
+    // (iii) THE POINT OF THE CLAUSE: a device that reports the swapped
+    //       swizzle, fed the correspondingly swapped bytes, must produce the
+    //       SAME atlas.  An implementation that ignored `chroma_order` would
+    //       pass (ii) and fail this.
+    std::vector<uint8_t> bCs = bC;
+    for (size_t i = 0; i + 1 < bCs.size(); i += 2) std::swap(bCs[i], bCs[i + 1]);
+    nxvc_decoder *d2 = nxvc_decoder_create(&st);
+    nxvc_decoder_parse_stream_header(d2, hdr.data(), hn, &consumed);
+    st = nxvc_decoder_decode_frame(d2, buf.data(), ol, &dimg, &consumed);
+    CHECK(st == NXVC_OK, "base: swizzle decode");
+    nxvc_base_patch bp2 = patch(1, NXVC_BASE_CHROMA_CR_CB, bCs.data());
+    CHECK(nxvc_decoder_atlas_patch_base(d2, &bp2, nullptr, nullptr) == NXVC_OK,
+          "base: swizzle patch");
+    std::vector<uint8_t> t2(tb);
+    nxvc_decoder_atlas_table(d2, t2.data(), tb);
+    auto blob2 = atlas_blob(
+        tb, [&](uint8_t *p, size_t n) { nxvc_decoder_atlas_table(d2, p, n); },
+        [&](int pl, uint32_t *w, uint32_t *h, uint32_t *sd) {
+            return nxvc_decoder_atlas_plane(d2, pl, w, h, sd);
+        });
+    CHECK(blob2 == blob(true),
+          "base: the reported swizzle is not consumed -- a permuted order with "
+          "permuted data gave a different atlas");
+    nxvc_decoder_destroy(d2);
+
+    // (iv) monotonicity: a patch that does not advance the generation is
+    //      superseded and changes nothing (13.12.3, 13.12.9).
+    const auto before = blob(true);
+    nxvc_base_patch bp3 = patch(1, NXVC_BASE_CHROMA_CB_CR, bC.data());
+    ap = sup = 0;
+    CHECK(nxvc_decoder_atlas_patch_base(d, &bp3, &ap, &sup) == NXVC_OK,
+          "base: replay patch");
+    CHECK(ap == 0 && sup == 3, "base: replay applied %u superseded %u", ap,
+          sup);
+    CHECK(blob(true) == before, "base: a superseded patch changed the atlas");
+
+    // (v) excluded with a colour transform: 13.12.9 is a CT_NONE clause.
+    nxvc_config c2;
+    nxvc_config_default(&c2);
+    c2.width = 64; c2.height = 64; c2.chroma = NXVC_CHROMA_444;
+    c2.color_transform = NXVC_CT_YCOCGR; c2.color_space = NXVC_CS_RGB;
+    c2.inter = 1; c2.atlas = 1; c2.threads = 1; c2.custom_tables = 0;
+    nxvc_encoder *e2 = nxvc_encoder_create(&c2, &st);
+    if (e2) {
+        std::vector<uint8_t> ones(1, 1);
+        nxvc_base_patch bad{};
+        bad.plane[0] = bY.data(); bad.stride[0] = 64;
+        bad.plane[1] = bC.data(); bad.stride[1] = 64;
+        bad.width = 64; bad.height = 64;
+        bad.tiles = ones.data(); bad.tile_bytes = 1;
+        CHECK(nxvc_encoder_atlas_patch_base(e2, &bad, nullptr, nullptr) ==
+                  NXVC_ERR_ARG,
+              "base: a colour-transform stream accepted a base patch");
+        nxvc_encoder_destroy(e2);
+    }
+    nxvc_encoder_destroy(e);
+    nxvc_decoder_destroy(d);
+}
+
 }  // namespace
 
 int main() {
@@ -425,5 +614,6 @@ int main() {
     test_static_panel();
     test_row_present();
     test_display();
+    test_base_patch();
     return test_report("atlas");
 }
