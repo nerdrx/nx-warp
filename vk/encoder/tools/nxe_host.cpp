@@ -91,6 +91,12 @@ void setup(const Config &cfg, Frame &f) {
     fp.quant_matrix = (uint32_t)cfg.matrix;
     fp.tables_present = 0;                 /* set per frame by the training */
     fp.table_bytes = 0;
+    /* [SYN] 3.1.2.  Set here rather than only on the inter path, because it is
+     * a term in EVERY offset after warp_ext(): a frame that never reaches the
+     * inter setup -- an intra-only stream -- would otherwise carry whatever
+     * the record happened to hold, and every tile in it would be placed by
+     * that. */
+    fp.rowpresent_bytes = 0;
     f.custom_tables = cfg.custom_tables && !lite;
     /* TAB_V2 requires CUSTOM_TABLES (SYNTAX.md 9.4.1), exactly as ref's
      * `fp.tab_v2 = cfg.custom_tables && cfg.tab_v2`. */
@@ -364,6 +370,11 @@ std::vector<uint8_t> stream_header(const Config &cfg, const Frame &f) {
      * a runtime test.  The mask is asserted below so that stops being true
      * loudly rather than quietly. */
     if (cfg.atlas) tools |= 1ull << 31;
+    /* ROW_PRESENT (32).  Independent of everything above: [SYN] 3.1.2 says in
+     * as many words that it is orthogonal to ATLAS and that either may be set
+     * alone.  Frame flag bit 4 without this bit is BITSTREAM, which is why the
+     * two are set from the one config field. */
+    if (cfg.row_present) tools |= 1ull << 32;
     if (cfg.atlas && (tools & (1ull << 12)) != 0)
         std::fprintf(stderr,
                      "nxe: ATLAS and STEREO are mutually exclusive ([SYN] 2)\n");
@@ -856,12 +867,14 @@ void pack_frame(Frame &f, uint32_t frame_number) {
     /* The transmitted probability tables, between the frame header and the
      * first row header.  SYNTAX.md 9.4. */
     if (!f.table_area.empty())
-        std::memcpy(f.out.data() + NXE_FRAME_HEADER_BYTES + f.fp.warp_bytes,
+        std::memcpy(f.out.data() + NXE_FRAME_HEADER_BYTES + f.fp.warp_bytes +
+                        f.fp.rowpresent_bytes,
                     f.table_area.data(),
                     f.table_area.size());
     const uint32_t rowgroups = fp.tiles_y * fp.eyes;
     for (uint32_t g = 0; g < rowgroups; ++g) {
-        uint32_t off = NXE_FRAME_HEADER_BYTES + fp.warp_bytes + fp.table_bytes +
+        uint32_t off = NXE_FRAME_HEADER_BYTES + fp.warp_bytes +
+                       fp.rowpresent_bytes + fp.table_bytes +
                        NXE_ROW_HEADER_BYTES * g +
                        f.tile_prefix[g * fp.tiles_x];
         nxe_e5_row_header(&fp2, g, f.out.data() + off);

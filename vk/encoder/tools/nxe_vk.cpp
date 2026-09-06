@@ -1077,7 +1077,6 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
         /* Frame flag bit 0 is the tile-map reset -- set exactly when there is
          * no usable reference -- and bit 3 says warp_ext() is present. */
         fp.frame_flags = (fp.frame_flags & ~9u) | (ref_slot >= 0 ? 8u : 1u);
-
         /* The QP of THIS frame, from the frame parameter record -- not from
          * the create-time config.  nxvc_vk_encoder_set_qp() rewrites fp and
          * the job list between frames, so a decision reading d.cfg.qp would
@@ -1166,7 +1165,30 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
         f.fp.warp_bytes = fp.warp_bytes;
         f.fp.ref_slots = fp.ref_slots;
         f.fp.frame_flags = fp.frame_flags;
+        /* Same reason as warp_bytes: row_present() sits before the table area,
+         * so a value left only in the local copy would put every per-tile span
+         * the API reports `rowpresent_bytes` short. */
     }
+
+    /* [SYN] 3.1.2: flag bit 4 says the bitmap is present, and it is
+     * `ceil(tiles_y * eyes / 8)` bytes.  OUTSIDE the inter block, because it
+     * is set on every frame of a row_present stream including an all-intra
+     * one -- "a frame with no reference has no skipped tiles, so every row
+     * structure is present and the bitmap is all ones.  It is still legal, and
+     * still five bytes."  Emitting it only on inter frames would make the flag
+     * mean something the syntax does not say, and would move every offset
+     * after warp_ext() on exactly the frames that did not get it.
+     *
+     * `f.fp` as well as the local `fp`, for the reason warp_bytes is copied
+     * back: the API's per-tile spans read `f.fp`. */
+    if (d.cfg.row_present) {
+        fp.frame_flags |= 16u;
+        f.fp.frame_flags |= 16u;
+        fp.rowpresent_bytes = ((f.fp.tiles_y * f.fp.eyes) + 7u) / 8u;
+    } else {
+        fp.rowpresent_bytes = 0u;
+    }
+    f.fp.rowpresent_bytes = fp.rowpresent_bytes;
 
     /* ---- upload, then E3 alone.
      *
@@ -1622,7 +1644,28 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
     auto t4 = clk::now();
     uint32_t run = 0;
     for (uint32_t t = 0; t < d.ntiles; ++t) run += f.tile_bytes[t];
-    const uint32_t total = nxe_e5_frame_bytes(&fp, run);
+    uint32_t total = nxe_e5_frame_bytes(&fp, run);
+    /* [SYN] 3.1.2.  nxe_e5_frame_bytes() charges a 12-byte header to EVERY row
+     * structure; with row_present the shader emits one only for the rows it
+     * names, so the host has to subtract the rest or it copies past the end of
+     * the frame -- and the length it copies is the length the next frame
+     * starts at, which is why getting this wrong shows up as a malformed
+     * bitstream two frames later rather than as a short frame here.
+     *
+     * Presence is decided from `tile_bytes` on exactly the rule the shader
+     * uses on E2's prefix of the same numbers: a coded tile always occupies at
+     * least its 8-byte header, so a row that spans no bytes coded nothing. */
+    if (fp.rowpresent_bytes) {
+        const uint32_t rowgroups = f.fp.tiles_y * f.fp.eyes;
+        uint32_t absent = 0;
+        for (uint32_t g = 0; g < rowgroups; ++g) {
+            uint32_t bytes = 0;
+            for (uint32_t c = 0; c < f.fp.tiles_x; ++c)
+                bytes += f.tile_bytes[g * f.fp.tiles_x + c];
+            if (bytes == 0) ++absent;
+        }
+        total -= NXE_ROW_HEADER_BYTES * absent;
+    }
     f.out.assign(total, 0);
     std::memcpy(f.out.data(), d.b_out.map, total);
 

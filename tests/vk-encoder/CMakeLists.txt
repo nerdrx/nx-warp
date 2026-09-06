@@ -160,6 +160,19 @@ if(TARGET nxvc-vkenc AND TARGET nxv-enc AND TARGET nxv-dec)
                          SKIP_REGULAR_EXPRESSION "SKIP:")
     list(APPEND NXENC_TESTS vk.encoder.atlas.acid.${ent})
   endforeach()
+
+  # row_present() (tool bit 32).  Against the reference DECODER, because the
+  # reference ENCODER never sets frame flag bit 4 -- the file says why.
+  add_test(NAME vk.encoder.rowpresent
+           COMMAND ${CMAKE_COMMAND}
+           -DVKENC=$<TARGET_FILE:nxvc-vkenc>
+           -DNXVDEC=$<TARGET_FILE:nxv-dec>
+           -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/rowpresent
+           -DDEVICE=0
+           -P ${CMAKE_CURRENT_SOURCE_DIR}/row_present.cmake)
+  set_tests_properties(vk.encoder.rowpresent PROPERTIES
+                       SKIP_REGULAR_EXPRESSION "SKIP:")
+  list(APPEND NXENC_TESTS vk.encoder.rowpresent)
 endif()
 
 # The loop closed: what nxvc_vk_decoder -- the decoder that runs on the

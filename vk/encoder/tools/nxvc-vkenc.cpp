@@ -83,6 +83,10 @@ static void usage() {
         "                       under ATLAS; the stream is only how two\n"
         "                       implementations arrive at one\n"
         "                       ([SYN] 13.12).  Needs --inter; forces ref_sel 0\n"
+        "  --row-present        elide the 12-byte header of a tile row with\n"
+        "                       no coded tile and name the rows that are\n"
+        "                       there in a bitmap after warp_ext(), tool\n"
+        "                       bit 32 ([SYN] 3.1.2).  Orthogonal to --atlas\n"
         "  --atlas-disp-margin N  skip a tile only when the largest\n"
         "                       displacement over its four corners is under N\n"
         "                       luma samples (ADR-0029's cross-tile gather\n"
@@ -175,6 +179,7 @@ int main(int argc, char **argv) {
         else if (a == "--coded-vectors") cfg.int_coded_vectors = true;
         else if (a == "--ref-sel") cfg.ref_sel = std::atoi(val());
         else if (a == "--atlas") cfg.atlas = true;
+        else if (a == "--row-present") cfg.row_present = true;
         else if (a == "--atlas-dump") atlas_dump = val();
         else if (a == "--atlas-disp-margin")
             cfg.atlas_disp_margin = std::atoi(val());

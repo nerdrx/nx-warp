@@ -125,6 +125,52 @@ uint tile_byte(TileSlot s, uint i) {
 #define NXE_E5_PASS 1
 #endif
 
+// ------------------------------------------------------- [SYN] 3.1.2
+//
+// A tile-row structure is PRESENT when it carries at least one coded tile; a
+// row whose bit is 0 carries nothing at all -- no 12-byte header, no tile
+// structures -- and decodes exactly as a row whose skip_bitmap names every
+// column.  So an absent row removes NXE_ROW_HEADER_BYTES from every offset
+// after it, which is what these three helpers compute.
+//
+// Presence is derived from E2's byte prefix rather than by rescanning the
+// modes.  A coded tile always occupies at least its 8-byte header, so "this
+// row spans no bytes" and "this row coded nothing" are the same statement --
+// and the prefix answers it in `rowgroups` reads where the modes would cost
+// `tiles_x` per row, which matters because the lanes that need this are the
+// TILE lanes, one per tile.
+//
+// With the tool off, `rowpresent_bytes` is 0, every row is present, and each
+// of these collapses to the arithmetic that was here before.
+bool row_is_present(uint g, uint rowgroups) {
+    uint b0 = prefix.v[g * fp.tiles_x];
+    uint b1 = (g + 1u == rowgroups) ? tot.v[0]
+                                    : prefix.v[(g + 1u) * fp.tiles_x];
+    return b1 > b0;
+}
+
+uint rows_present_before(uint g, uint rowgroups) {
+    if (fp.rowpresent_bytes == 0u) return g;
+    uint n = 0u;
+    for (uint r = 0u; r < g; ++r)
+        if (row_is_present(r, rowgroups)) ++n;
+    return n;
+}
+
+// With the tool off every row structure is emitted, present or not; with it on,
+// an absent row emits nothing at all.
+bool row_is_present_or_tool_off(uint g, uint rowgroups) {
+    return fp.rowpresent_bytes == 0u || row_is_present(g, rowgroups);
+}
+
+uint rows_present_total(uint rowgroups) {
+    if (fp.rowpresent_bytes == 0u) return rowgroups;
+    uint n = 0u;
+    for (uint r = 0u; r < rowgroups; ++r)
+        if (row_is_present(r, rowgroups)) ++n;
+    return n;
+}
+
 #if NXE_E5_PASS == 0
 // Zero exactly the bytes this frame will occupy, so the atomicOr writes of
 // pass 1 land on a clean slate.  The output buffer is dimensioned for the
@@ -136,8 +182,10 @@ void main() {
     // Everything the frame carries before the first tile-row header, in the
     // order SYNTAX.md 12 fixes: the 40-byte header, then warp_ext(), then the
     // transmitted table area.  Both are 0 when their tool is off.
-    const uint hdr = NXE_FRAME_HEADER_BYTES + fp.warp_bytes + fp.table_bytes;
-    const uint total = hdr + NXE_ROW_HEADER_BYTES * rowgroups + tot.v[0];
+    const uint hdr = NXE_FRAME_HEADER_BYTES + fp.warp_bytes +
+                     fp.rowpresent_bytes + fp.table_bytes;
+    const uint total =
+        hdr + NXE_ROW_HEADER_BYTES * rows_present_total(rowgroups) + tot.v[0];
     const uint nwords = (total + 3u) >> 2;
     const uint stride = gl_NumWorkGroups.x * uint(NXE_E5_WG);
     for (uint w = gl_GlobalInvocationID.x; w < nwords; w += stride)
@@ -152,8 +200,10 @@ void main() {
     // Everything the frame carries before the first tile-row header, in the
     // order SYNTAX.md 12 fixes: the 40-byte header, then warp_ext(), then the
     // transmitted table area.  Both are 0 when their tool is off.
-    const uint hdr = NXE_FRAME_HEADER_BYTES + fp.warp_bytes + fp.table_bytes;
-    const uint total = hdr + NXE_ROW_HEADER_BYTES * rowgroups + tot.v[0];
+    const uint hdr = NXE_FRAME_HEADER_BYTES + fp.warp_bytes +
+                     fp.rowpresent_bytes + fp.table_bytes;
+    const uint total =
+        hdr + NXE_ROW_HEADER_BYTES * rows_present_total(rowgroups) + tot.v[0];
 
     // ---- the frame header.  Offset 0, so every one of its ten words is wholly
     // owned by this one lane; the buffer arrives zeroed from the E5 clear pass,
@@ -184,6 +234,27 @@ void main() {
         // these are whole-word stores like the header's own.
         for (uint k = 0u; k < (fp.warp_bytes >> 2); ++k)
             put_word(10u + k, warpext.v[k]);
+
+        // row_present(), immediately after warp_ext() and before the custom
+        // matrices this pipeline never emits ([SYN] 3.1.2).  Bit
+        // `i = row * eyes + eye` of byte `i >> 3` at position `i & 7`, in the
+        // decode order of 3.3 -- which is the rowgroup order this shader
+        // already indexes by, so `i` IS the rowgroup.
+        //
+        // Bits above the last row structure must be zero, "so that one frame
+        // has exactly one encoding"; the buffer arrives zeroed from pass 0 and
+        // only present rows are ORed in, so they are.
+        //
+        // Guarded on the tool being ON.  With it off there is no bitmap and
+        // offset 40 + warp_bytes is the FIRST ROW HEADER; writing there anyway
+        // ORs the bitmap over that header's frame_number, which is a two-byte
+        // corruption of every frame and exactly what an unguarded version of
+        // this loop did.
+        if (fp.rowpresent_bytes != 0u)
+            for (uint g = 0u; g < rowgroups; ++g)
+                if (row_is_present(g, rowgroups))
+                    put_byte(NXE_FRAME_HEADER_BYTES + fp.warp_bytes + (g >> 3),
+                             1u << (g & 7u));
     }
 
     // ---- the transmitted table area, AFTER warp_ext().  SYNTAX.md 12:
@@ -194,14 +265,16 @@ void main() {
     // NXE_TABLE_AREA_MAX bytes and no other lane touches the region.
     if (t == 0u) {
         for (uint k = lid; k < fp.table_bytes; k += uint(NXE_E5_WG))
-            put_byte(NXE_FRAME_HEADER_BYTES + fp.warp_bytes + k,
+            put_byte(NXE_FRAME_HEADER_BYTES + fp.warp_bytes +
+                         fp.rowpresent_bytes + k,
                      (tabb.v[k >> 2] >> ((k & 3u) * 8u)) & 0xffu);
     }
 
     // ---- the tile-row headers, one per row group.
-    if (t < rowgroups && lid == 0u) {
+    if (t < rowgroups && lid == 0u && row_is_present_or_tool_off(t, rowgroups)) {
         uint g = t;
-        uint off = hdr + NXE_ROW_HEADER_BYTES * g + prefix.v[g * fp.tiles_x];
+        uint off = hdr + NXE_ROW_HEADER_BYTES * rows_present_before(g, rowgroups)
+                 + prefix.v[g * fp.tiles_x];
         uint row = g / fp.eyes;
         // The row's skip bitmap, bit i for column i, and the count of tiles
         // that are NOT skipped -- which is what `tile_count` means and what
@@ -240,7 +313,13 @@ void main() {
     // ---- the tile: its 8-byte header and payload, contiguous in the slot.
     const uint nbytes = jobs[t].tile_bytes;
     const uint rowgroup = t / fp.tiles_x;
-    const uint d0 = hdr + NXE_ROW_HEADER_BYTES * (rowgroup + 1u) + prefix.v[t];
+    // Its own row is present by construction -- this tile is coded, so the row
+    // spans at least its bytes -- hence the `+ 1u` on the count of rows before
+    // it, exactly as the old `rowgroup + 1u` was.
+    const uint d0 = hdr +
+                    NXE_ROW_HEADER_BYTES *
+                        (rows_present_before(rowgroup, rowgroups) + 1u) +
+                    prefix.v[t];
     const uint d1 = d0 + nbytes;
     const TileSlot ts = tile_slot(t);
 

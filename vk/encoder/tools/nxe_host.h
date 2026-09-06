@@ -137,6 +137,13 @@ struct Config {
      * predicting one eye from the other within a frame, not against coding a
      * pair.  Each eye's tiles compose with their own eye's warp_ext(). */
     bool atlas = false;
+    /* `row_present()` (SYNTAX.md 3.1.2, tool bit 32): elide the 12-byte header
+     * of a tile row with no coded tile, and name the rows that are there in a
+     * bitmap after warp_ext().  Orthogonal to ATLAS -- separate tool bits,
+     * either may be set alone -- and off by default, because a stream that
+     * never sets frame flag bit 4 must decode byte-identically whether or not
+     * the tool is offered. */
+    bool row_present = false;
     /* Cheats 5, off by default: scale the WARP_SKIP threshold by the head's
      * angular velocity, which the encoder derives from the pose stream it
      * already receives.  A tile whose prediction error is under a perceptual
