@@ -424,9 +424,23 @@ function rewards:
 3.1x, 1.7x and 1.3x worse respectively. The two per-workgroup tables -- 8 KB of
 cumulative frequencies and 1 KB of scan tables -- do not shrink with the tile
 count, so a thin workgroup pays for them per tile; nothing about the extra
-occupancy pays that back. **`TILES_PER_GROUP` is already at its best supported
-value and there is no change to make here.** 64 is recorded above as hanging
-the device and was not run.
+occupancy pays that back.
+
+Every step up won, so the obvious question is whether the trend continues past
+32 -- 289 tiles at 40 is 8 groups and at 48 is 7, both on the 11.9 ms plateau,
+which would be worth about 5.5 ms a frame. It does not.
+
+**`TILES_PER_GROUP` 40 hangs the Adreno 650.** 320 threads, 289 tiles: two runs
+each sat past a 150 s timeout on a dispatch that takes about 2 s at 32, and
+produced no output at all because stdio is fully buffered when piped -- the same
+signature the `XFORM_LARGE` wedge had. The device recovered by itself both
+times, with no kgsl fault in logcat, and `TILES_PER_GROUP` 32 then reproduced
+17.464 ms against the 17.428-17.478 it had before, so nothing was left in a bad
+state. 48 was NOT run: it sits between 40 and the 64 already on record as
+hanging, so it can only confirm what both neighbours say, and the device it
+would be confirmed on is a headset somebody is using.
+
+**32 is the largest working value. Do not try 40, 48 or 64.**
 
 ### The round loop's barriers
 

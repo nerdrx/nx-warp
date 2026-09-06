@@ -657,7 +657,9 @@ NXS_CONST int kLiteMaxGroups = 17;
 // 8 -> 16 -> 32 tiles per group is 153.7 -> 102.5 -> 79.8 ms at QP 24 and
 // 26.7 -> 12.8 -> 10.1 at QP 36.  32 was blocked until the descriptor array
 // was sized from this number (nxs_desc_slots) instead of a fixed allowance.
-// 64 hangs the device and is not a supported value.
+// 40, 48 and 64 are NOT supported values: 40 (320 threads) and 64 (512) each
+// hang the Adreno 650 on a dispatch that takes ~2 s at 32, and 48 sits between
+// them and was deliberately not tried on a headset in use.  32 is the ceiling.
 #ifndef NXVW_PASSA_TILES_PER_GROUP
 #define NXVW_PASSA_TILES_PER_GROUP 32
 #endif
