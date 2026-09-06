@@ -164,6 +164,13 @@ if(TARGET nxenc-inter-test)
   list(APPEND NXENC_TESTS vk.encoder.inter.host)
 endif()
 
+# The ATLAS shadow: [SYN] 13.12.2's composition and 13.12.3's frame process
+# against the clause's own arithmetic.  Needs no GPU and no reference codec.
+if(TARGET nxenc-atlas-test)
+  add_test(NAME vk.encoder.atlas.host COMMAND nxenc-atlas-test)
+  list(APPEND NXENC_TESTS vk.encoder.atlas.host)
+endif()
+
 if(TARGET nxvc-vkenc)
   # -------------------------------------------------------- E3 / E4 / E5
   # The CPU models against their pinned stream digests.  No Vulkan, so it never

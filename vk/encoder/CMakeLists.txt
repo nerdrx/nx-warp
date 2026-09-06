@@ -267,7 +267,7 @@ add_custom_target(nxenc_shaders DEPENDS ${NXENC_SPV_HEADERS})
 # transcribing either, for the same reason the shader is the decoder's: two
 # copies of a layout agree until they do not.
 if(NXENC_HAVE_PASSW)
-  add_library(nxenc_inter STATIC inter/nxe_inter.cpp)
+  add_library(nxenc_inter STATIC inter/nxe_inter.cpp inter/nxe_atlas.cpp)
   target_include_directories(nxenc_inter PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/inter
     ${NXENC_DEC_INTER}
@@ -281,6 +281,15 @@ if(NXENC_HAVE_PASSW)
   add_executable(nxenc-inter-test inter/nxe_inter_test.cpp)
   target_link_libraries(nxenc-inter-test PRIVATE nxenc_inter)
   set_target_properties(nxenc-inter-test PROPERTIES CXX_STANDARD 20
+                        CXX_STANDARD_REQUIRED ON)
+
+  # The ATLAS shadow (tool bit 31): the composition and renormalisation of
+  # [SYN] 13.12.2 and the frame process of 13.12.3, against the clause's own
+  # arithmetic.  No GPU and no reference codec, so it runs in the standalone
+  # encoder build too.
+  add_executable(nxenc-atlas-test inter/nxe_atlas_test.cpp)
+  target_link_libraries(nxenc-atlas-test PRIVATE nxenc_inter)
+  set_target_properties(nxenc-atlas-test PROPERTIES CXX_STANDARD 20
                         CXX_STANDARD_REQUIRED ON)
 endif()
 

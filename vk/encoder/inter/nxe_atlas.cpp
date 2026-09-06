@@ -1,0 +1,242 @@
+/* nxe_atlas.cpp -- see nxe_atlas.h.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#include "nxe_atlas.h"
+
+#include <cstring>
+
+namespace nxe {
+
+namespace nw = ::nxvw;
+
+void atlas_identity(int32_t C[9]) {
+    C[0] = 1 << nw::kWarpQNum;  C[1] = 0;                   C[2] = 0;
+    C[3] = 0;                   C[4] = 1 << nw::kWarpQNum;  C[5] = 0;
+    C[6] = 0;                   C[7] = 0;                   C[8] = nw::kWarpH22;
+}
+
+/* [SYN] 13.12.2.  The two partial sums are what keep every intermediate inside
+ * int64 without 128-bit arithmetic: the linear term is exact at Q42 (rows 0-1)
+ * or Q50 (row 2) and the perspective term at Q50 or Q58, and each is rounded
+ * to the row's own scale BEFORE they are added.  The added constants are the
+ * round-to-nearest terms of each scale and the shifts are arithmetic, so the
+ * rounding is toward positive infinity on a tie -- which is what the reference
+ * does and what makes the two bit-identical.  It is deliberately NOT the
+ * half-away-from-zero rule sdiv_round uses; the two rules live in the same
+ * clause because they are different operations. */
+void atlas_compose_partial(const int32_t C[9], const int32_t H[9],
+                           int64_t P[9]) {
+    const int64_t kRn = (int64_t)1 << (nw::kWarpQNum - 1);   /* 1 << 20 */
+    const int64_t kRd = (int64_t)1 << (nw::kWarpQDen - 1);   /* 1 << 28 */
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j) {
+            const int64_t t_lin = (int64_t)C[i * 3 + 0] * (int64_t)H[0 * 3 + j] +
+                                  (int64_t)C[i * 3 + 1] * (int64_t)H[1 * 3 + j];
+            const int64_t t_per = (int64_t)C[i * 3 + 2] * (int64_t)H[2 * 3 + j];
+            P[i * 3 + j] = ((t_lin + kRn) >> nw::kWarpQNum) +
+                           ((t_per + kRd) >> nw::kWarpQDen);
+        }
+}
+
+int64_t atlas_sdiv_round(int64_t a, int64_t b) {
+    /* sign(a/b) * ((|a| * 2 + |b|) / (|b| * 2)), the division truncating
+     * toward zero, so the result is round-to-nearest with ties away from zero.
+     * Formed in 128 bits because |a| can be 2^60 inside the envelope and
+     * |a| * 2 would then be within one bit of int64's range; the value the
+     * expression denotes is unchanged. */
+    const bool neg = (a < 0) != (b < 0);
+    const unsigned __int128 ua =
+        a < 0 ? (unsigned __int128)(-(unsigned __int128)a) : (unsigned __int128)a;
+    const unsigned __int128 ub =
+        b < 0 ? (unsigned __int128)(-(unsigned __int128)b) : (unsigned __int128)b;
+    const unsigned __int128 q = (ua * 2u + ub) / (ub * 2u);
+    return neg ? -(int64_t)q : (int64_t)q;
+}
+
+bool atlas_renorm(const int64_t P[9], int32_t out[9]) {
+    if (P[8] == 0) return false;
+    for (int k = 0; k < 9; ++k) {
+        /* `P[k] << 29` in 128 bits.  Inside the envelope the product is at
+         * most about 2^60 and int64 holds it; the wider intermediate is here
+         * so that a composition the envelope check is about to reject is
+         * defined rather than undefined.  Every value int64 can represent is
+         * represented identically. */
+        const __int128 num = (__int128)P[k] << nw::kWarpQDen;
+        int64_t v;
+        {
+            const bool neg = (num < 0) != (P[8] < 0);
+            const unsigned __int128 ua = num < 0
+                                             ? (unsigned __int128)(-num)
+                                             : (unsigned __int128)num;
+            const unsigned __int128 ub =
+                P[8] < 0 ? (unsigned __int128)(-(__int128)P[8])
+                         : (unsigned __int128)P[8];
+            const unsigned __int128 q = (ua * 2u + ub) / (ub * 2u);
+            /* A quotient that does not fit i32 is a matrix far outside the
+             * envelope; it is saturated here so the stored entry is a defined
+             * value and atlas_envelope_ok() then rejects it, which is the same
+             * outcome as any wider arithmetic would reach. */
+            const unsigned __int128 cap = (unsigned __int128)1 << 62;
+            const int64_t s = q >= cap ? (int64_t)((uint64_t)1 << 62)
+                                       : (int64_t)(uint64_t)q;
+            v = neg ? -s : s;
+        }
+        out[k] = (int32_t)(v > (int64_t)INT32_MAX
+                               ? INT32_MAX
+                               : (v < (int64_t)INT32_MIN ? INT32_MIN : v));
+    }
+    /* The renormalisation's whole purpose: h22 is back on the normalised value
+     * the wire format fixes, so warp_plane_tile() consumes the composed matrix
+     * exactly as it consumes a transmitted one. */
+    out[8] = nw::kWarpH22;
+    return true;
+}
+
+bool atlas_compose(const int32_t C[9], const int32_t H[9], int32_t out[9]) {
+    int64_t P[9];
+    atlas_compose_partial(C, H, P);
+    return atlas_renorm(P, out);
+}
+
+bool atlas_envelope_ok(const int32_t C[9], int width, int height) {
+    /* Condition 1 is a post-condition of the renormalisation, not a test. */
+    if (C[8] != nw::kWarpH22) return false;
+    /* Condition 2: every entry in [-2^30, 2^30]. */
+    for (int k = 0; k < 9; ++k)
+        if (C[k] < -nw::kWarpEntryMax || C[k] > nw::kWarpEntryMax) return false;
+    /* Condition 3: at each of the four picture corners the denominator,
+     * accumulated in 64 bits, fits int32 and lies in [2^28, 2^30).  `den` is
+     * affine in (cx, cy), so the four corners bound the whole picture. */
+    const int ox = width >> 1, oy = height >> 1;
+    const int xs[2] = {-ox, width - ox};
+    const int ys[2] = {-oy, height - oy};
+    for (int a = 0; a < 2; ++a)
+        for (int b = 0; b < 2; ++b) {
+            const int64_t den = (int64_t)C[6] * (int64_t)xs[a] +
+                                (int64_t)C[7] * (int64_t)ys[b] + (int64_t)C[8];
+            if (den < (int64_t)INT32_MIN || den > (int64_t)INT32_MAX)
+                return false;
+            if (den < (int64_t)nw::kWarpDenMin || den >= (int64_t)nw::kWarpDenMax)
+                return false;
+        }
+    return true;
+}
+
+/* ---------------------------------------------------------------- the table */
+
+void AtlasTable::reset(const AtlasGeom &geom) {
+    g = geom;
+    /* [SYN] 13.12.1: on tile_map_reset the whole table is zeroed, which makes
+     * every entry invalid, and the atlas pixels are undefined until written.
+     * Zero is therefore the correct reset value and not merely a convenient
+     * one: `flags` zero is `valid == 0`. */
+    e.assign(g.ntiles(), AtlasEntry{});
+}
+
+void AtlasTable::advance(const int32_t H[2][9]) {
+    for (uint32_t t = 0; t < e.size(); ++t) {
+        AtlasEntry &a = e[t];
+        if (!(a.flags & kAtlasValid)) continue;   /* not advanced */
+        /* `gen` increments for every valid entry, static or not: it is the
+         * cadence clock and it counts frames since the source, not
+         * compositions. */
+        if (a.gen != 0xffffu) ++a.gen;
+        if (!(a.flags & kAtlasStatic)) {
+            const int eye = g.eye_of(t);
+            int32_t out[9];
+            if (!atlas_compose(a.C, H[eye & 1], out)) {
+                a.flags &= (uint8_t)~kAtlasValid;
+                continue;
+            }
+            std::memcpy(a.C, out, sizeof out);
+            if (!atlas_envelope_ok(a.C, g.width, g.height)) {
+                a.flags &= (uint8_t)~kAtlasValid;
+                continue;
+            }
+        }
+        if (gen_max != 0 && (uint32_t)a.gen > gen_max)
+            a.flags &= (uint8_t)~kAtlasValid;
+    }
+}
+
+void AtlasTable::code_tile(uint32_t t, uint32_t frame_number, int mode,
+                           int res_level) {
+    AtlasEntry &a = e[t];
+    atlas_identity(a.C);
+    a.src_frame = frame_number;
+    a.gen = 0;
+    a.flags = (uint8_t)(kAtlasValid |
+                        (mode == nw::kModeStaticMv ? kAtlasStatic : 0u));
+    a.res_level = (uint8_t)res_level;
+    std::memset(a.reserved, 0, sizeof a.reserved);
+}
+
+/* ----------------------------------------------------------- the undo log */
+
+void AtlasUndo::reset(const AtlasGeom &geom) {
+    g = geom;
+    s.assign(geom.ntiles(), Snap{});
+    for (int i = 0; i < kDepth; ++i) step[i] = Step{};
+}
+
+void AtlasUndo::note_frame(uint32_t frame_number, const int32_t H[2][9],
+                           bool advanced) {
+    Step &st = step[frame_number % (uint32_t)kDepth];
+    st = Step{};
+    st.frame = frame_number;
+    st.used = 1;
+    st.advanced = advanced ? 1u : 0u;
+    if (H) std::memcpy(st.H, H, sizeof st.H);
+}
+
+void AtlasUndo::note_coded(uint32_t t, uint32_t frame_number,
+                           const AtlasEntry &before) {
+    if (t >= s.size()) return;
+    s[t].before = before;
+    s[t].frame = frame_number;
+    s[t].used = 1;
+}
+
+bool AtlasUndo::rollback(uint32_t t, uint32_t lost_frame, uint32_t now,
+                         AtlasEntry &out) const {
+    if (!holds(t, lost_frame)) return false;
+    /* The snapshot is the state at frame `lost_frame`, after that frame's own
+     * advance and before its write-back.  Replay the advances of the frames
+     * strictly after it, which is bit-identical to having advanced the
+     * snapshot alongside the live entry every frame -- the advance is a fixed
+     * function of the entry and the frame's matrix -- and costs one
+     * composition per frame per NAMED tile rather than per frame per tile. */
+    AtlasEntry a = s[t].before;
+    const int eye = g.eye_of(t);
+    for (uint32_t f = lost_frame + 1u; f <= now; ++f) {
+        if (!(a.flags & kAtlasValid)) break;
+        const Step &st = step[f % (uint32_t)kDepth];
+        /* A frame outside the window is a frame whose matrix is gone, and
+         * replaying without it would produce a matrix neither side holds.
+         * Refusing is the safe direction: the caller invalidates instead and
+         * the tile is coded INTRA. */
+        if (!st.used || st.frame != f) return false;
+        if (!st.advanced) continue;
+        if (a.gen != 0xffffu) ++a.gen;
+        if (!(a.flags & kAtlasStatic)) {
+            int32_t o[9];
+            if (!atlas_compose(a.C, st.H[eye & 1], o)) {
+                a.flags &= (uint8_t)~kAtlasValid;
+                break;
+            }
+            std::memcpy(a.C, o, sizeof o);
+            if (!atlas_envelope_ok(a.C, g.width, g.height)) {
+                a.flags &= (uint8_t)~kAtlasValid;
+                break;
+            }
+        }
+        if (gen_max != 0 && (uint32_t)a.gen > gen_max)
+            a.flags &= (uint8_t)~kAtlasValid;
+    }
+    out = a;
+    return true;
+}
+
+}  // namespace nxe
