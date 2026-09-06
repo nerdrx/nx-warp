@@ -51,6 +51,20 @@ layout(std430, binding = 7) readonly buffer TabBytes  { uint v[]; } tabb;
 // encoders agree on and no decoder can read.
 layout(std430, binding = 8) readonly buffer WarpExtBuf { uint v[]; } warpext;
 
+// [planar] [SYN] 13.13.  One tile's raw body, NXE_PLANAR_BODY_UINTS per tile.
+//
+// A planar tile has no rANS payload -- no lanes, no flush states, no
+// renormalisation words -- so it does not pass through E3 or E4 at all and
+// there is nothing of it in `slot`.  The host fits it (the fit is integer and
+// shared with the reference, vk/encoder/forward/nxe_planar.h) and uploads the
+// finished body here; E5 copies it out verbatim.
+//
+// A buffer of its own rather than a corner of `slot`: the slot layout is
+// dimensioned by NXE_TILE_COEFS_MAX and indexed by the entropy pass's own
+// back-to-front emission rule, and threading a payload that has neither
+// through it would make both harder to read for no saving.
+layout(std430, binding = 9) readonly buffer PlanarBuf { uint v[]; } planarb;
+
 void put_byte(uint off, uint val) {
     uint w = off >> 2;
     if (w < uint(outb.v.length()))
@@ -71,10 +85,13 @@ void put_word(uint w, uint val) {
 // slot_end - 1 - e (see NXE_TILE_SLOT_WORDS).  Reading those forwards is
 // exactly the bitstream's order, because the sweep produces them in descending
 // global operation order.
-struct TileSlot { uint w0, wend, prefix_bytes; uint ewords; uint fields; };
+// [planar] `tile` is carried so tile_byte() can find the body buffer; every
+// other field is an offset into `slot`, which a planar tile does not use.
+struct TileSlot { uint w0, wend, prefix_bytes; uint ewords; uint fields; uint tile; };
 
 TileSlot tile_slot(uint t) {
     TileSlot s;
+    s.tile = t;
     s.w0 = t * uint(NXE_TILE_SLOT_WORDS);
     s.wend = s.w0 + uint(NXE_TILE_SLOT_WORDS);
     uint nlanes_active = (jobs[t].flags >> 8) & 0xffu;
@@ -84,6 +101,16 @@ TileSlot tile_slot(uint t) {
     const uint m = jobs[t].mode;
     s.fields = (m == uint(NXE_MODE_STATIC_MV) || m == uint(NXE_MODE_WARP_MV) ||
                 m == uint(NXE_MODE_STEREO)) ? 2u : 0u;
+    // [planar] A planar tile carries the two header words and then its body,
+    // and nothing else: 13.13 forbids every field that would sit between them
+    // (mv_present, quad_mv and the rest are all required to be 0), and it has
+    // no lanes to flush.
+    if (m == uint(NXE_MODE_PLANAR)) {
+        s.fields = 0u;
+        s.prefix_bytes = 8u;
+        s.ewords = 0u;
+        return s;
+    }
     s.prefix_bytes = 8u + s.fields + 4u * nlanes_active;
     s.ewords = (jobs[t].tile_bytes - s.prefix_bytes) >> 1;
     return s;
@@ -106,6 +133,15 @@ uint tile_byte(TileSlot s, uint i) {
                0xffu;
     }
     uint k = i - s.prefix_bytes;
+    // [planar] The body, verbatim from the host's fit: a plain byte run,
+    // four bytes to a word, low byte first.  No entropy state to unwind and
+    // no emission order to reverse -- which is the whole reason the mode is
+    // cheap to decode, showing up here as the simplest branch in the file.
+    if (jobs[s.tile].mode == uint(NXE_MODE_PLANAR)) {
+        uint wp = s.tile * uint(NXE_PLANAR_BODY_UINTS) + (k >> 2);
+        return (planarb.v[min(wp, uint(planarb.v.length()) - 1u)] >>
+                ((k & 3u) * 8u)) & 0xffu;
+    }
     if (NXE_SC_ENTROPY_LITE != 0) {
         // ENTROPY_LITE has no rANS flush states and no emission words: the
         // payload is a plain byte run starting at the word after the field

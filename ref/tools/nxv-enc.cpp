@@ -1235,7 +1235,7 @@ int main(int argc, char **argv) {
                 uint32_t tcn = 0;
                 const nxvc_tile_info *tin = nxvc_encoder_tiles(enc, &tcn);
                 unsigned nskip = 0, nnear = 0, nintra = 0, nwarp = 0,
-                         nstatic = 0, nwarped = 0;
+                         nstatic = 0, nplanar = 0, nwarped = 0;
                 for (uint32_t t = 0; t < tcn; ++t) {
                     if (tin[t].skipped) {
                         ++nskip;
@@ -1244,6 +1244,12 @@ int main(int argc, char **argv) {
                         ++nintra;
                     } else if (tin[t].mode == NXVC_MODE_STATIC_MV) {
                         ++nstatic;
+                    } else if (tin[t].mode == NXVC_MODE_PLANAR) {
+                        /* [planar] Counted apart from `warp_mv`: it is not a
+                         * predicted tile at all, and folding it into the
+                         * catch-all made a planar frame read as one the
+                         * decoder had to warp. */
+                        ++nplanar;
                     } else {
                         ++nwarp;
                     }
@@ -1252,11 +1258,13 @@ int main(int argc, char **argv) {
                 // warps nothing (13.12); on a PICTURE frame every tile that is
                 // not INTRA is reconstructed through the predictor.
                 const bool picframe = (st2.atlas_rebased != 0);
-                nwarped = picframe ? (tcn - nintra) : (nwarp + nstatic);
+                nwarped = picframe ? (tcn - nintra - nplanar)
+                                   : (nwarp + nstatic);
                 std::printf("  modes: skip %u (near %u)  intra %u  warp_mv %u"
-                            "  static_mv %u  -> decoder warps %u  [%s frame]\n",
-                            nskip, nnear, nintra, nwarp, nstatic, nwarped,
-                            picframe ? "PICTURE" : "ATLAS");
+                            "  static_mv %u  planar %u  -> decoder warps %u"
+                            "  [%s frame]\n",
+                            nskip, nnear, nintra, nwarp, nstatic, nplanar,
+                            nwarped, picframe ? "PICTURE" : "ATLAS");
             }
             if (st2.atlas_disp_entries)
                 std::printf("  disp: max %.3f  mean %.3f samples  "

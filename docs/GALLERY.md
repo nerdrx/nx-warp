@@ -786,3 +786,65 @@ nxvc-vkenc --in vrroom/fast.yuv420p.yuv --w 2176 --h 1088 --eyes 2 \
     --coded-vectors --atlas --atlas-mode --display-psnr --modes --out out.nxv
 # PICTURE % from NXE_MODE_TRACE=1 on stderr
 ```
+## The piecewise-planar tile mode, and what it costs
+
+![lowpoly at QP 46: source, transform, planar-prefer](assets/lowpoly-vrroom-qp46.png)
+
+Source, the transform coder, and `--planar-prefer`, on the same crop of the
+same frame. The mode does what it was designed to do -- the boundaries survive
+and the shading inside them coarsens, so it fails toward a low-polygon look
+rather than toward its own coding grid -- and the crops are the honest way to
+see that, because the numbers below do not.
+
+* **Date** 2026-09-07
+* **Fixture** `vrroom/mid` (2176x1088, **578 tiles**), 16 frames, `--inter on`
+* **Settings** QP 34/40/46, `--planar` (the rate-distortion decision) and
+  `--planar-prefer` (the same without the distortion condition)
+* **The numbers**
+
+  | QP | level | bytes | PSNR-Y | planar % | vs off |
+  |---|---|---|---|---|---|
+  | 34 | off | 76060 | 31.431 | 0.0 | — |
+  | 34 | rd | 79215 | 31.456 | 1.3 | **+4.1 %** |
+  | 34 | prefer | 92971 | 31.182 | 7.6 | **+22.2 %** |
+  | 40 | off | 39581 | 26.320 | 0.0 | — |
+  | 40 | rd | 47700 | 26.315 | 3.1 | **+20.5 %** |
+  | 40 | prefer | 63406 | 25.940 | 10.2 | **+60.2 %** |
+  | 46 | off | 17073 | 23.053 | 0.0 | — |
+  | 46 | rd | 20607 | 23.043 | 1.4 | **+20.7 %** |
+  | 46 | prefer | 41141 | 22.518 | 10.8 | **+141.0 %** |
+
+* **The finding, and it is not the one the mode was proposed on.** The mode
+  COSTS bytes at every quantiser measured, and the cost grows as the quantiser
+  does -- +141 % at QP 46, where a low-rate tool is supposed to earn its keep.
+  `--planar` buys about a hundredth of a dB for a fifth of the bitrate;
+  `--planar-prefer` spends between a fifth and two and a half times the bitrate
+  to lose half a dB.
+
+  Intra-only, which is the mode's natural home rather than a stress case, the
+  direction is the same: at QP 46 over 4 frames, 43282 B and 28.00 dB with the
+  mode off, 50665 B and 28.19 dB at `--planar`, 83473 B and 26.27 dB at
+  `--planar-prefer`.
+
+  Two things explain it and neither is a bug. A planar BODY is 27 to 101 bytes
+  and does not shrink with the quantiser, while the intra tile it replaces
+  does -- so at a coarse quantiser the mode is competing against tiles that
+  cost less than its own header. And the level-1 gate is a rate-distortion
+  test, not a byte test: it takes the mode where distortion is no worse, which
+  it can satisfy by spending bytes. The measurement in LOWPOLY-MODE.md 9 found
+  the opposite sign on `pan8` (fewer bytes, worse picture); on this fixture the
+  same rule lands the other way round, which says the decision is content
+  dependent in a way one clip could not show.
+
+* **What it does not say.** Nothing here measures the LOOK, which is the thing
+  the mode exists for and which the crops above are the evidence for. A tool
+  that costs bitrate to change how a picture fails is a legitimate taste --
+  that is why `planar` is a level and not a default -- but it should be chosen
+  on the picture rather than on this table.
+
+* **Command**
+
+  ```sh
+  nx-scratch/table.sh                     # the table
+  nx-scratch/tab/  ffmpeg crops + magick montage   # the figure
+  ```

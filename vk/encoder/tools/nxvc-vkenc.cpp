@@ -251,6 +251,11 @@ int main(int argc, char **argv) {
         else if (a == "--qp-table-search") cfg.qp_table_search = true;
         else if (a == "--mv-range") cfg.mv_range = std::atoi(val());
         else if (a == "--snap-identity") cfg.snap_identity = std::atoi(val());
+        /* [planar] [SYN] 13.13: 0 off, 1 the rate-distortion decision,
+         * 2 prefer.  --planar with no value means 1, matching nxv-enc. */
+        else if (a == "--planar") cfg.planar = 1;
+        else if (a == "--planar-prefer") cfg.planar = 2;
+        else if (a == "--planar-level") cfg.planar = std::atoi(val());
         else if (a == "--hold-every") hold_every = std::atoi(val());
         else if (a == "--ack-delay") {
             ack_delay = std::atoi(val());

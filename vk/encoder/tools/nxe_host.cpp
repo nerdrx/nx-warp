@@ -395,6 +395,10 @@ std::vector<uint8_t> stream_header(const Config &cfg, const Frame &f) {
      * carries eight lanes and must not claim the tool. */
     if (f.fp.nsub_log2 != 3) tools |= 1ull << 7;      /* NSUB_VAR */
     if (cfg.wm_id != 0) tools |= 1ull << 20;          /* WM_ID */
+    /* [planar] [SYN] 13.13.  Announced whenever the mode is ENABLED, not only
+     * when a tile happens to take it: the bit says what the stream may
+     * contain, and a decoder negotiates on it before any tile is parsed. */
+    if (cfg.planar) tools |= 1ull << 35;              /* PLANAR */
     if (cfg.intra_dir) tools |= 1ull << 17;           /* INTRA_DIR */
     if (cfg.ctx_v2) tools |= 1ull << 21;              /* CTX_V2 */
     if (cfg.ctx_v3) tools |= 1ull << 25;              /* CTX_V3 */

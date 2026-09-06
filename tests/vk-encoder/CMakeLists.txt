@@ -289,6 +289,22 @@ if(TARGET nxvc-vkenc)
       list(APPEND NXENC_TESTS ${_name})
     endforeach()
 
+    # [planar] [SYN] 13.13.  A separate leg for the same reason the Lite one is
+    # separate: it is a different STREAM shape -- a raw body where every other
+    # tile has an entropy payload -- and the six configurations sweep the map
+    # size, the label packing and the coefficient count that go with it.
+    foreach(dev cpu 0)
+      set(_name vk.encoder.acid.planar.${dev})
+      add_test(NAME ${_name} COMMAND ${CMAKE_COMMAND}
+               -DVKENC=$<TARGET_FILE:nxvc-vkenc>
+               -DREFENC=$<TARGET_FILE:nxv-enc>
+               -DDEVICE=${dev}
+               -P ${CMAKE_CURRENT_SOURCE_DIR}/planar_acid.cmake)
+      set_tests_properties(${_name} PROPERTIES
+                           SKIP_REGULAR_EXPRESSION "SKIP:")
+      list(APPEND NXENC_TESTS ${_name})
+    endforeach()
+
     # The same claim for the C ABI, which acid.cmake does not reach: the
     # library's own configuration mapping is what an integrator links.
     if(TARGET nxvc-vkenc-api)

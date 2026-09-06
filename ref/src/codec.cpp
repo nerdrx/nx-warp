@@ -12,6 +12,7 @@
 #include <thread>
 
 #include "nxe_planar.h"
+#include "nxe_planar_host.h"
 #include "common.h"
 #include "entropy.h"
 #include "entropy_lite.h"

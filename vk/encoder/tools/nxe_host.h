@@ -258,6 +258,13 @@ struct Config {
      * the warp to the identity". */
     int snap_identity = 0;
 
+    /* [planar] [SYN] 13.13, tool bit 35.  0 off, 1 the rate-distortion
+     * decision, 2 prefer -- the shape nxvc_vke_create_info::planar carries.
+     *
+     * The fit is nxe_planar_host.h, which the REFERENCE includes too, so the
+     * two encoders agree by construction rather than by test. */
+    int planar = 0;
+
     /* Measure the integer rate model of nxe_rate.h against the bytes the
      * entropy coder actually produces, per tile, and print the distribution
      * at the end of the run.  Measurement only: it changes no decision and no
