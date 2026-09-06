@@ -97,6 +97,35 @@ foreach(qp 22 30 40)
   endif()
 endforeach()
 
+# ---- 3. The rate model's consumer: a forced ladder is the QP it names.
+#
+# `--qp-ladder -4 --qp-lambda 1` makes the decision pick -4 for every tile of
+# every frame, which is "encode at base_qp - 4" by another route.  So it has to
+# come out the size of a uniform QP-4 run, and it did not: `Frame::jobs` is
+# allocated once and reused for every frame, so a search that read its own
+# previous answer back as the base compounded it -- -4 became -8 on frame 2 and
+# -16 by frame 4, a 44 % rate rise and 4 dB of PSNR nobody asked for.  A
+# single-frame test cannot see that, so this one runs several.
+#
+# 2 % rather than 0 %: the table-set seed is derived from the frame's base QP,
+# so the two runs are not required to be byte-identical, only to be the same
+# encode.
+run_rate(uniform26 --qp 26 --ctx v3 --custom-tables --tab v2 --nsub 3)
+file(SIZE ${WORKDIR}/uniform26.nxv sz_uniform)
+run_rate(forced26 --qp 30 --qp-ladder -4 --qp-lambda 1
+                  --ctx v3 --custom-tables --tab v2 --nsub 3)
+file(SIZE ${WORKDIR}/forced26.nxv sz_forced)
+math(EXPR sz_diff "(${sz_forced} - ${sz_uniform}) * 100 / ${sz_uniform}")
+if(sz_diff GREATER 2 OR sz_diff LESS -2)
+  message(SEND_ERROR
+    "a ladder forced to -4 is not the same encode as QP-4: "
+    "${sz_forced} against ${sz_uniform} bytes (${sz_diff}%).  The likely cause "
+    "is the per-tile decision reading back its own previous frame's answer.")
+  set(fail 1)
+else()
+  message(STATUS "PASS forced ladder == uniform QP-4 (${sz_diff}%)")
+endif()
+
 if(fail)
   message(FATAL_ERROR "rate.cmake: the rate model missed its bound")
 endif()

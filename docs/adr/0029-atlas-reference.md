@@ -970,6 +970,78 @@ already expressible with today's syntax, and it is not this ADR's.**
 rejected. Nothing in 13.12 changes, because nothing in 13.12 would have had
 to.
 
+### Single-level coarse refresh under the mode switch: REJECTED
+
+The half of the two-level idea that paid -- landing a stale tile at
+`res_level 1` and never refining it -- gained 0.5 to 0.6 dB at fast turn *in
+pure ATLAS mode*. That measurement is not wrong, and it does not survive the
+mode switch.
+
+Priced as a rate-control policy **under `D = 8`**, driven by the same corner
+displacement 13.12.11.1's trigger reads (including this frame's advance, for
+the same reason), applied to both a PICTURE frame's coded tiles and an ATLAS
+frame's refreshes. Equal rate, four quantisers, dB against the `D = 8`
+baseline:
+
+| T (luma samples) | near-still | mid 25.2 deg/s | fast turn 75.6 deg/s |
+|---|---|---|---|
+| 2 | -0.07 .. 0.00 | **-1.49 .. -5.29** | **-1.33 .. -3.17** |
+| 4 | 0.00 | -0.74 .. -2.81 | -1.25 .. -2.83 |
+| 8 | 0.00 | -0.06 .. -0.22 | -0.95 .. -1.96 |
+| 16 | 0.00 | 0.00 | -0.21 .. -0.95 |
+| 32 | 0.00 | 0.00 | -0.02 .. +0.04 |
+
+**There is no `T` that gains at fast turn.** Every threshold that engages
+loses; the only thresholds that do not lose are the ones that stop firing
+(at `T = 16` and above the policy is off at rest and at 25 deg/s, and at
+`T = 32` it lands 8 tiles out of 988 at fast turn). So the answer to "constant
+`T` or velocity hysteresis" is neither: **under the mode switch this policy has
+no operating point at all.**
+
+The reason is that the two mechanisms are **substitutes, not complements**.
+Coarse refresh won in pure ATLAS mode because a tile refreshed during a fast
+turn is replaced again before anyone looks at it, so its detail is wasted. At
+`D = 8` a fast turn is 73 % PICTURE frames, and a PICTURE frame's output *is*
+what the viewer sees and *is* what the atlas becomes -- there is no
+soon-to-be-discarded refresh left to cheapen. 13.12.11 had already collected
+that win, by a route that does not cost quality.
+
+**The decoder-side saving is real and badly priced.** Coded samples per frame
+at fast turn, QP 26, against 268 698 for the baseline: 255 386 at `T = 16`
+(-5.0 %), 230 468 at `T = 8` (-14.2 %), 208 964 at `T = 2` (-22.2 %). Pass B is
+proportional to this, and Pass B is 0.98 ms of a 3.30 ms decode -- so the
+largest saving on offer is **0.22 ms for 3.17 dB**, and the mildest is 0.05 ms
+for 0.95 dB. That is roughly 0.2 dB per 1 % of Pass B, which is not a trade
+worth having at any of these thresholds.
+
+**And it looks wrong, which is the reason that would have settled it anyway.**
+The stated preference is that degradation read as soft or low-poly rather than
+blocky. Measured on the decoded luma of a fast-turn frame -- mean absolute
+difference across sample pairs that straddle the 64-sample tile grid, over the
+same within tiles, so 1.0 means a tile edge looks like any other pair:
+
+| | seam ratio | HF energy |
+|---|---|---|
+| source | 0.93 | 3.24 |
+| `D = 8` baseline | 1.14 | 3.04 |
+| `T = 8` | **1.53** | 2.76 |
+| `T = 2` | **1.81** | 2.61 |
+
+Both numbers move at once, and that combination is the failure mode: high-
+frequency energy falls (the tiles really do get softer inside) while the seam
+ratio rises by 34 to 59 % over the baseline (the 64-sample grid becomes
+visible). Soft interiors separated by hard tile-aligned edges is the definition
+of blocking, not of low-poly. The rendered frames agree -- object silhouettes
+that are round in the baseline acquire straight, tile-aligned cuts. Even had
+the rate-distortion result been neutral, this is the wrong kind of artefact to
+spend it on.
+
+**Decision: no normative text, and no encoder default.** The policy stays
+expressible -- it is a `res_map`, and any encoder can choose it -- but it is
+recorded here as measured and rejected under the mode switch. Its earlier win
+in pure ATLAS mode is retained in the record above as the reason it was worth
+testing, and as the explanation for why it stopped winning.
+
 * **The seam, as originally written.** Two adjacent tiles with different source frames are each
   individually correctly reprojected, so static distant content is seamless. They diverge on moving
   content and on near parallax, growing with the age difference — a tile coded 30 frames ago beside

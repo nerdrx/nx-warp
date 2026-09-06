@@ -607,6 +607,12 @@ typedef struct nxvc_config {
                                       than this many frames apart            */
     uint32_t atlas_picture_period; /* force a PICTURE frame every N frames
                                       regardless of motion; 0 = never        */
+    /* SINGLE-LEVEL COARSE REFRESH (ADR-0029).  A tile whose corner
+     * displacement -- the same quantity 13.12.11.1's mode trigger reads,
+     * including THIS frame's advance -- exceeds this many luma samples is
+     * coded at res_level 1 and never refined.  Encoder-side rate control: it
+     * changes which tiles are cheap, not how any stream decodes.  0 = off. */
+    uint32_t atlas_coarse_disp;
 
     /* The INTEGER RDOQ: a requantiser the GPU encoder can run.
      *

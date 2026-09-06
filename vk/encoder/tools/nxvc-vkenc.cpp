@@ -87,6 +87,19 @@ static void usage() {
         "  --mv-range N         coarse integer search radius in samples\n"
         "                       (default 16); the library's effort 2 raises\n"
         "                       it, and it is `nxv-enc --mv-range N`\n"
+        "  --qp-ladder L        per-tile QP offsets: a comma-separated\n"
+        "                       ladder of qp_delta candidates the\n"
+        "                       rate-distortion decision scores, e.g.\n"
+        "                       \"-4,-2,0,2,4\".  Empty (the default) is\n"
+        "                       the decision off.  0 is always a\n"
+        "                       candidate and wins ties.  Measured a\n"
+        "                       wash on rANS and about -2%% BD-rate on\n"
+        "                       Lite, which is why it is not an effort\n"
+        "                       level -- see vk/encoder/README.md\n"
+        "  --qp-lambda K        override the decision's lambda constant\n"
+        "                       (default 901 = ref kLambdaScale 0.22)\n"
+        "  --qp-table-search    price each candidate under the best of\n"
+        "                       the eight table sets; a diagnostic\n"
         "  --rate-check         measure the integer rate model of\n"
         "                       nxe_rate.h against the bytes the entropy\n"
         "                       coder actually produced, per tile, and\n"
@@ -158,6 +171,9 @@ int main(int argc, char **argv) {
         else if (a == "--ref-sel") cfg.ref_sel = std::atoi(val());
         else if (a == "--int-rdoq") cfg.int_rdoq = std::atoi(val());
         else if (a == "--rate-check") cfg.rate_check = true;
+        else if (a == "--qp-ladder") cfg.qp_ladder = val();
+        else if (a == "--qp-lambda") cfg.qp_lambda_q12 = std::atoi(val());
+        else if (a == "--qp-table-search") cfg.qp_table_search = true;
         else if (a == "--mv-range") cfg.mv_range = std::atoi(val());
         else if (a == "--hold-every") hold_every = std::atoi(val());
         else if (a == "--ack-delay") {

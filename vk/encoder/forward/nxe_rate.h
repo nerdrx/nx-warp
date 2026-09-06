@@ -168,17 +168,46 @@ static inline uint32_t nxe_lite_bits_q10(int h0, int h1, int p, int s, int b) {
  * and a second thing to disagree about; the requantiser and the quantiser
  * choice are the same trade at the same operating point.
  *
- * `sse` is a tile's summed squared error, which for 64x64 three-plane 8-bit
- * tops out near 2^30, and `bits_q10` near 2^20 for a dense tile.  The product
- * `lam_q8 * bits_q10` reaches 2^48, so it is formed in 64 bits and shifted
- * back: `(lam_q8 * bits_q10) >> 18` puts lambda*rate in the same units as SSE
- * (Q8 lambda times Q10 bits, both removed).  GLSL forms the same product with
- * `umulExtended`, exactly as `nxe_rdoq_lambda_q8` already does.
+ * `sse` is the tile's TRANSFORM-domain squared error, the domain
+ * `nxe_rdoq_drop` already compares in -- so the QP decision and the
+ * requantiser share a distortion measure as well as a lambda, rather than
+ * wearing one constant over two different trades.
+ *
+ * Both terms are 64-bit and deliberately.  A 64x64 luma plane is 4096
+ * coefficients and a squared error per coefficient reaches 2^20, so a tile's
+ * SSE alone can pass 2^32; `lam_q8 * bits_q10` reaches 2^48.  `>> 18` removes
+ * the Q8 of lambda and the Q10 of the rate, leaving lambda*rate in the units
+ * SSE is already in.  GLSL forms the product with `umulExtended` exactly as
+ * `nxe_rdoq_lambda_q8` already does, and carries the accumulator as a uvec2.
  */
-static inline uint64_t nxe_rd_cost(uint32_t sse, uint32_t bits_q10,
+/* The tile decision's lambda, in the SAME FAMILY as the requantiser's --
+ * `(K * t * t) >> 12` over the Q4 quantiser step, integer, one 64-bit product
+ * -- with its own constant.
+ *
+ * Its own constant and not NXE_RDOQ_LAM_Q12, because the two decisions are not
+ * the same decision wearing different clothes.  `nxe_rdoq_drop` weighs ONE
+ * coefficient's squared error against a CONSTANT three bits, and 1400 was
+ * swept to make that one comparison come out right.  This weighs a whole
+ * tile's squared error against its REAL rate.
+ *
+ * 901 is `ref`'s own rate-distortion constant in this family: `make_lambda` is
+ * `kLambdaScale * qstep^2` with `kLambdaScale = 0.22`, and
+ * `(K * t * t) >> 12` over the Q4 step is `K / 4096 * qstep^2`, so
+ * K = 0.22 * 4096 = 901.  That makes this decision the same trade the
+ * reference's own QP search makes, which is the search it has to reproduce --
+ * and 1400 would be 0.342, the requantiser's, which is a different trade.
+ */
+#ifndef NXE_QPRD_LAM_Q12
+#define NXE_QPRD_LAM_Q12 901
+#endif
+
+static inline uint32_t nxe_qprd_lambda_q8(int t) {
+    return (uint32_t)(((uint64_t)NXE_QPRD_LAM_Q12 * (uint64_t)(t * t)) >> 12);
+}
+
+static inline uint64_t nxe_rd_cost(uint64_t sse, uint32_t bits_q10,
                                    uint32_t lam_q8) {
-    return (uint64_t)sse +
-           (((uint64_t)lam_q8 * (uint64_t)bits_q10) >> 18);
+    return sse + (((uint64_t)lam_q8 * (uint64_t)bits_q10) >> 18);
 }
 
 #ifdef __cplusplus
