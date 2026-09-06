@@ -3668,7 +3668,24 @@ shipped without one and tested nothing.
 
 `v87` and `v88` are the same bitstream and different atlases, which is the
 point: what separates them is the `src_frame` of a patch that does not travel
-in the stream at all. The base picture of both is generated deterministically
+in the stream at all. **That patch therefore ships as a sidecar**,
+`<name>.basepatch`, beside the bitstream: it carries the base picture's two
+planes, the tile map, `src_frame`, `chroma_order` and the frame index it lands
+after, so the pinned `decoded_md5` is reproducible **from the vector directory
+alone**. It did not always. The base picture used to be regenerated from the
+reference's own spec table, which reproduces the digest only for a checker with
+that table compiled into it; a third-party decoder folding the shipped file got
+one digest for *both* `v87` and `v88`, because the patch is the only thing that
+differs between them. A conformance vector whose pin only its author can
+reproduce is not a conformance vector.
+
+The generator now **refuses to write any atlas vector whose pinned digest it
+cannot reproduce from the shipped files**: after writing the bitstream and the
+sidecar it re-reads both from disk, decodes using only those, and compares. A
+vector that needs anything from the spec table to reach its own manifest entry
+is a build failure.
+
+The base picture of both is generated deterministically
 from the vector's own parameters, so a checker reproduces it; the generator
 refuses to write `v88` unless a tile actually reported `superseded`, so the
 vector cannot pin the rule doing nothing.
