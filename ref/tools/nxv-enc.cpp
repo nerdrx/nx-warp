@@ -146,6 +146,10 @@ static void usage() {
         "               syntax: the refinement is an ordinary coded tile\n"
         "               predicting from the upsampled coarse pixels\n"
         "  --atlas-coarse-budget N  at most N refinements per frame\n"
+        "  --atlas-coarse-disp T  SINGLE-LEVEL coarse refresh: a tile whose\n"
+        "               corner displacement since its last landing exceeds T\n"
+        "               luma samples lands at res_level 1 and is not refined.\n"
+        "               Same metric as the 13.12.11 mode trigger\n"
         "  --atlas-coarse-stats P  write the two-level accounting to P\n"
         "  --atlas-picture-disp N  13.12.11: code a PICTURE frame -- the\n"
         "               ordinary model, every tile reconstructed, the atlas\n"
@@ -317,6 +321,12 @@ int main(int argc, char **argv) {
     int coarse_level = 0;      // 0 = off, 1 = 32x32, 2 = 16x16
     int coarse_budget = 0;     // max refinements a frame may spend; 0 = all
     std::string coarse_stats_path;
+    // SINGLE-LEVEL COARSE REFRESH as a rate-control policy: a tile whose
+    // pixels have drifted more than T luma samples since they were last
+    // coded lands at res_level 1 and is never refined.  T is read against
+    // exactly the metric 13.12.11.1's mode trigger uses, through the codec's
+    // own nxvc_encoder_atlas_stale_tiles(), so the two cannot disagree.
+    int coarse_disp = 0;       // T in luma samples; 0 = off
     std::string atlas_dump;
     int mv_range = 16, skip_thresh = 0, mode_lambda = 0;
     int int_decision = 0, int_lambda = 0, int_intra_mad = 0, int_rdoq = 0;
@@ -418,6 +428,7 @@ int main(int argc, char **argv) {
         else if (a == "--atlas-coarse-budget")
             coarse_budget = std::atoi(val());
         else if (a == "--atlas-coarse-stats") coarse_stats_path = val();
+        else if (a == "--atlas-coarse-disp") coarse_disp = std::atoi(val());
         else if (a == "--atlas-gen-max") atlas_gen_max = std::atoi(val());
         else if (a == "--atlas-dump") atlas_dump = val();
         else if (a == "--eyes") eyes = std::atoi(val());
@@ -757,6 +768,7 @@ int main(int argc, char **argv) {
         (uint32_t)(atlas_picture_spacing > 0 ? atlas_picture_spacing : 0);
     cfg.atlas_picture_period =
         (uint32_t)(atlas_picture_period > 0 ? atlas_picture_period : 0);
+    cfg.atlas_coarse_disp = (uint32_t)(coarse_disp > 0 ? coarse_disp : 0);
     // 13.12.3: a STATIC_MV entry is held unwarped, so a head-locked tile may
     // be skipped.  On by default with the atlas -- it is the one behavioural
     // change to an existing mode and it is a strict gain.
@@ -929,6 +941,11 @@ int main(int argc, char **argv) {
     // Per-tile coarse debt: 1 while a tile's atlas entry holds upsampled
     // res_level > 0 pixels that no later frame has refined yet.
     std::vector<uint8_t> coarse_debt(tl.tile_count, 0);
+    std::vector<uint8_t> stale_map(tl.tile_count, 0);
+    // Coded SAMPLES, not coded tiles: a res_level 1 tile codes a quarter of
+    // them, and Pass B on the decoder is proportional to this rather than to
+    // the tile count.
+    uint64_t coded_samples = 0, coded_tiles_full = 0, coded_tiles_coarse = 0;
     uint64_t c_landed = 0, c_refined = 0, c_relanded_dirty = 0, c_coded_full = 0;
     std::vector<uint8_t> rmap(tl.tile_count), qmap(tl.tile_count),
         smap(tl.tile_count);
@@ -1033,6 +1050,17 @@ int main(int argc, char **argv) {
         }
         std::fwrite(outbuf.data(), 1, ol, fo);
         total += ol;
+        if (coarse_disp > 0) {
+            uint32_t tc2 = 0;
+            const nxvc_tile_info *ti2 = nxvc_encoder_tiles(enc, &tc2);
+            for (uint32_t t = 0; t < tc2 && t < (uint32_t)tl.tile_count; ++t) {
+                if (ti2[t].skipped) continue;
+                const int side = 64 >> ti2[t].res_level;
+                coded_samples += (uint64_t)side * side;
+                if (ti2[t].res_level > 0) ++coded_tiles_coarse;
+                else ++coded_tiles_full;
+            }
+        }
         // TWO-LEVEL accounting, read back from what the encoder actually did.
         if (coarse_level > 0) {
             uint32_t tc2 = 0;
@@ -1198,6 +1226,21 @@ int main(int argc, char **argv) {
     if (fatlas) std::fclose(fatlas);
     std::fclose(fo);
     std::fclose(fi);
+    if (coarse_disp > 0 && !coarse_stats_path.empty()) {
+        std::FILE *cs = std::fopen(coarse_stats_path.c_str(), "wb");
+        if (cs) {
+            const double fr = (double)(n > 1 ? n - 1 : 1);
+            std::fprintf(cs,
+                         "{\"coarse_disp\": %d, \"coded_samples\": %llu, "
+                         "\"coded_samples_per_frame\": %.1f, "
+                         "\"coded_full\": %llu, \"coded_coarse\": %llu}\n",
+                         coarse_disp, (unsigned long long)coded_samples,
+                         (double)coded_samples / fr,
+                         (unsigned long long)coded_tiles_full,
+                         (unsigned long long)coded_tiles_coarse);
+            std::fclose(cs);
+        }
+    }
     if (coarse_level > 0 && !coarse_stats_path.empty()) {
         uint64_t outstanding = 0;
         for (uint32_t t = 0; t < (uint32_t)tl.tile_count; ++t)
