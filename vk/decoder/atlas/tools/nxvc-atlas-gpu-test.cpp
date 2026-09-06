@@ -334,8 +334,14 @@ int main(int argc, char **argv) {
         si.pCode = atlas_compose_spv;
         VKCHECK(vkCreateShaderModule(c.dev, &si, nullptr, &mod));
     }
-    VkDescriptorSetLayoutBinding binds[4]{};
-    for (uint32_t i = 0; i < 4; ++i) {
+    // FIVE bindings, not four: atlas_compose.comp gained a status/counter
+    // buffer at binding 4 for the valid-entry statistic.  A set layout that is
+    // short of what the shader declares leaves a descriptor unbound, which
+    // RADV tolerated and lavapipe segfaulted on -- the same trap the decoder's
+    // own `kSets` table exists to make impossible, and this harness keeps its
+    // own copy of that decision.
+    VkDescriptorSetLayoutBinding binds[5]{};
+    for (uint32_t i = 0; i < 5; ++i) {
         binds[i].binding = i;
         binds[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         binds[i].descriptorCount = 1;
@@ -345,7 +351,7 @@ int main(int argc, char **argv) {
     {
         VkDescriptorSetLayoutCreateInfo li{
             VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
-        li.bindingCount = 4;
+        li.bindingCount = 5;
         li.pBindings = binds;
         VKCHECK(vkCreateDescriptorSetLayout(c.dev, &li, nullptr, &dsl));
     }
@@ -463,13 +469,14 @@ int main(int argc, char **argv) {
         dsL = sets[1];
     }
     auto bindSet = [&](VkDescriptorSet ds, Buf &tbl, Buf &adv) {
-        VkDescriptorBufferInfo bi[4] = {
+        VkDescriptorBufferInfo bi[5] = {
             {tbl.buf, 0, VK_WHOLE_SIZE},
             {adv.buf, 0, VK_WHOLE_SIZE},
             {hring.buf, 0, VK_WHOLE_SIZE},
-            {sel.buf, 0, VK_WHOLE_SIZE}};
-        VkWriteDescriptorSet w[4]{};
-        for (uint32_t i = 0; i < 4; ++i) {
+            {sel.buf, 0, VK_WHOLE_SIZE},
+            {statusB.buf, 0, VK_WHOLE_SIZE}};
+        VkWriteDescriptorSet w[5]{};
+        for (uint32_t i = 0; i < 5; ++i) {
             w[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             w[i].dstSet = ds;
             w[i].dstBinding = i;
@@ -477,7 +484,7 @@ int main(int argc, char **argv) {
             w[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
             w[i].pBufferInfo = &bi[i];
         }
-        vkUpdateDescriptorSets(c.dev, 4, w, 0, nullptr);
+        vkUpdateDescriptorSets(c.dev, 5, w, 0, nullptr);
     };
     bindSet(dsE, tblE, advE);
     bindSet(dsL, tblL, advL);
