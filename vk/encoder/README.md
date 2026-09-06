@@ -709,6 +709,117 @@ paper 6.3 fixes v1 at eight). The RD trellis is deliberately absent: it changes
 which levels are coded, never how they are decoded, and it is a `double`
 trellis. `--no-rdo` is the reference configuration this pipeline reproduces.
 
+## Snapping the warp to the identity
+
+`--snap-identity N` (`nxe::Config::snap_identity`, N in 1/16 luma samples,
+0 = off) replaces a nearly-still warp with the **identity** matrix. Encoder
+side, no syntax: an identity `warp_ext` is an ordinary matrix -- it is what a
+frame with no reference carries -- and the decoder then takes its copy fast
+path on every skipped tile (`NXVW_ABL_IDENTITY`, docs/PASSB-ADRENO-PLAN.md 3b)
+instead of running the integer warp.
+
+**Why it is worth anything at all.** On the Pico, 8.25 of 13.7 ms of Pass B per
+pair is the integer warp on WARP_SKIP tiles, and at rest almost all of that
+buys sub-sample motion nobody can see. The decoder's predicate is three
+conditions; this encoder satisfies two of them for free, because
+`update_pred_state` records a vector only for WARP_MV and this encoder never
+emits WARP_MV, so every stored vector is permanently (0, 0) -- a whole sample.
+The third condition is the corners, and that is what the snap supplies.
+
+The decision is **per frame, on the worst tile corner in the picture**, both
+eyes together: they are one picture to the decoder's skip module, and snapping
+one eye while the other warps would buy half the saving for all of the error.
+Every tile corner is evaluated rather than the picture's four, because the map
+is projective and the extreme need not be at a picture corner.
+
+### Measured
+
+`nxvc-vkenc` on RADV, `gen_synthetic.py` clips at 1088x1088 (289 tiles) and
+2x1088x1088 (578 tiles), 8 frames, `--inter --coded-vectors --intra-period 6
+--ctx v3 --custom-tables --tab v2 --intra-dir off`, every stream decoded back
+through `nxv-dec`. "identity" is the share of tile-frames whose warp is the
+identity, which is the share the decoder's fast path takes.
+
+| clip | QP | threshold | B/frame | vs off | luma PSNR | identity | frames snapped |
+|---|---|---|---|---|---|---|---|
+| rest, mono | 26 | 0-8 | 18593 | -- | 39.74 | 0 % | 0/7 |
+| rest, mono | 26 | **16** | 18602 | +0.05 % | 39.69 | **28.6 %** | 2/7 |
+| rest, mono | 26 | 24-32 | 18598 | +0.03 % | 39.64 | **42.9 %** | 3/7 |
+| rest, mono | 34 | 0-8 | 11112 | -- | 34.67 | 0 % | 0/7 |
+| rest, mono | 34 | **16** | 11011 | **-0.91 %** | 34.64 | **28.6 %** | 2/7 |
+| rest, mono | 34 | 24-32 | 10994 | -1.06 % | 34.57 | 42.9 % | 3/7 |
+| rest, stereo | 26 | **16** | 36474 | +0.07 % | 39.64 | 28.6 % | 2/7 |
+| rest, stereo | 26 | 24-32 | 36550 | +0.28 % | 39.64 | 42.9 % | 3/7 |
+| rest, stereo | 34 | **16** | 21785 | **-0.49 %** | 34.73 | 28.6 % | 2/7 |
+| rest, stereo | 34 | 24-32 | 21789 | -0.47 % | 34.70 | 42.9 % | 3/7 |
+| mid (30 deg/s) | 26, 34 | 0-32 | unchanged | -- | unchanged | **0 %** | 0/7 |
+| fast (150 deg/s) | 26, 34 | 0-32 | unchanged | -- | unchanged | **0 %** | 0/7 |
+
+Three things fall out of that table.
+
+**Nothing snaps below one whole sample.** A head "at rest" is not still: the
+generator's `static` profile at 4.5 deg/s moves a tile corner about 0.57
+samples a frame, so thresholds of 2, 4 and 8 sixteenths produce a stream
+byte-identical to the tool being off. The sweep's whole lower half is a null
+result and it is the useful half: **a sub-sample threshold is not a
+conservative setting, it is an inert one.**
+
+**It sometimes makes the stream SMALLER.** At QP 34 the snapped stream is
+0.5-0.9 % smaller. An identity predictor on a picture that has not moved is a
+*better* predictor than a sub-sample warp of it, because the warp resamples --
+four taps of a picture that was already right -- and the residual pays for the
+blur. The saving is small and the direction is the point.
+
+**Motion kills it outright.** At 30 deg/s nothing snaps at any threshold tried,
+including two whole samples. This is a REST tool, and the honest way to read
+the identity column is as an availability figure for still frames rather than
+as a codec-wide win.
+
+### What it is worth on the headset
+
+The saving is `identity tiles x 34 us` on the Pico's Adreno, which for the
+578-tile stereo pair at threshold 16 is `0.286 x 578 x 34 us` = **5.6 ms per
+pair** on the frames it fires, against a measured Pass B warp share of 8.25 ms.
+At threshold 24 it is `0.429 x 578 x 34 us` = **8.4 ms**, which exceeds that
+share and is the sign to read the arithmetic as an upper bound: 34 us/tile is
+the whole skip module and the warp is 86 % of it, so the honest bracket is
+**4.8 to 7.2 ms per pair on a snapped frame** and zero on the frames the
+threshold does not catch. Nothing here has run on the device; this is
+arithmetic on somebody else's measurement, and it is a reason to measure rather
+than a result.
+
+### The clip that says "rest" and is not
+
+The vrroom corpus's `rest` trajectory -- the one the device fixtures use -- has
+a worst tile-corner displacement of **min 5.5, mean 25.7, max 41.2 sixteenths
+of a sample per frame**, about 2.5 samples. That is forty times the 0.57 of the
+generator's `static` profile, and it is why the device rows measure an identity
+fraction of 0/578 today: not because the pose delta is merely never bit-exactly
+zero, but because the head is moving two and a half samples a frame.
+
+Snapping it needs a threshold of 48/16 = three samples, and at three samples
+this stops being a rounding: on that clip it costs **4.0 dB and 2.3x the
+bytes** (34.89 -> 30.89 dB, 144212 -> 337974). The stream built that way
+(`nx-scratch/fixtures/device/vrroom-rest-sbs578-inter-snap.nxv`) is a TIMING
+fixture -- it makes the decoder's copy segment non-empty at 578 tiles so it can
+be measured -- and its rate and quality must not be read as what the tool
+costs.
+
+"Rest" in that corpus means a seated human, not a tripod. A tool aimed at
+still frames needs a fixture that is actually still, and the generator's
+`--motion static --peak-rate 4.5` is the one this section measures on.
+
+**Recommended default: 16** -- one whole sample. It is the smallest threshold
+that does anything at all, it costs 0.05 dB and between -0.9 % and +0.07 % of
+bytes, and it is the value at which the error a snap introduces is bounded by
+half a sample, which is the same bound the quarter-pel vector search already
+lives with. 24 buys half again as many frames for another 0.05 dB and is
+defensible; 32 buys nothing over 24 on any clip measured. The tool ships **off**
+(`snap_identity = 0`) until the Pico measurement exists.
+
+Two pictures, in docs/GALLERY.md: the per-tile map of what the decoder copies,
+and the threshold sweep.
+
 ## The effort levels, measured
 
 `nxvc_vke_create_info::effort` buys bytes with server GPU time. There are two
