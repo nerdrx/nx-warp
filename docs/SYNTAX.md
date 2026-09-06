@@ -163,6 +163,7 @@ interleaved UV.
 | 28 | `NEAR_SKIP` | tile ROWS may carry near-skip corrections (sections 3.3 and 13.9) |
 | 29 | `QUAD_MV` | tiles may set `quad_mv` (section 13.10) |
 | 30 | `ENTROPY_LITE` | the table-free, fully parallel entropy tool (section 9.10) |
+| 31 | `ATLAS` | the reference is a per-tile atlas and the display warp is not normative (section 13.12) |
 
 Bits 17, 21 and 22 are independent: any subset may be set. `ENTROPY_LITE`
 (bit 30) is mutually exclusive with `SIGN_HIDE` (bit 22) and `CUSTOM_TABLES`
@@ -216,7 +217,15 @@ otherwise independent of every other bit -- it changes how coefficients are
 written, not which ones there are, so every transform, prediction and inter
 tool composes with it unchanged.
 
-Bits 31-63 are reserved and must be zero. Capability negotiation is an
+`ATLAS` (bit 31) requires `INTER` and is mutually exclusive with `STEREO`
+(bit 12); either violation is `BITSTREAM`. It changes no coded-tile syntax at
+all -- not one bit of a residual, a vector, a transform or a context moves --
+and changes only what the reconstruction process does with a tile once it is
+parsed, plus one constraint on `ref_sel` (4.1). Section 13.12 is the whole of
+it. A stream that sets it is decoded to an **atlas**, not to a picture, and the
+picture a client shows is outside this specification.
+
+Bits 32-63 are reserved and must be zero. Capability negotiation is an
 intersection: the sender only sets bits the receiver offered.
 
 ---
@@ -571,7 +580,10 @@ Inter constraints: `mode != INTRA` requires the `INTER` tool bit;
 frame; `mode == STEREO` requires the `STEREO` tool bit, `eye == 1` and
 `mv_present == 1`, and its `disparity` bits 15:12 must be zero.
 `ref_sel == 3` is reserved. For `mode == INTRA` and `mode == STEREO`, `ref_sel`
-must be 0 and **is ignored** by the decoding process.
+must be 0 and **is ignored** by the decoding process. When the `ATLAS` tool bit
+is set, `ref_sel` must be 0 in **every** tile header: the atlas holds one
+generation per tile position, and loss is handled by not updating a tile rather
+than by selecting an older reference (13.12.6).
 
 `quad_mv` requires the `QUAD_MV` tool bit and `mode == WARP_MV` or
 `mode == STATIC_MV`. The near-skip constraints are in 3.3, because they are
@@ -2913,6 +2925,196 @@ parallax, and it costs nothing to leave the bit unallocated until then.
 
 What a format should not do is spend its last reserved tile-header bit on a
 tool that is disabled and unproven.
+
+### 13.12 The atlas reference (tool bit 31)
+
+When `ATLAS` is set, the reference is not the previous decoded picture. It is a
+per-tile **atlas**: for each tile position, the pixels of the most recent frame
+in which that tile was *coded*, together with the composed warp from the current
+frame's pose back to that frame's pose. A skipped tile carries no pixels,
+produces no reference pixels and does not touch the atlas.
+
+The **normative output** of the decoding process is the atlas -- its pixels and
+its per-tile table -- after each frame, together with the per-tile mode and skip
+map. The picture a client displays is derived from the atlas and is **not
+normative**: it is 13.12.5, and nothing in it is tested by conformance.
+
+Sections 6 to 9 are unchanged. Section 13.3's predictor is unchanged. What
+changes is the reference it reads and what a reconstructed tile is written to.
+
+#### 13.12.1 The atlas
+
+Two objects per stream, both covering every eye.
+
+**Atlas pixels.** The layout of a reference-ring picture (13.2): the whole
+picture of every eye, every plane, in the coded sample domain (Y/Co/Cg, before
+the inverse colour transform), at full tile extent. A tile coded at
+`res_level > 0` is upsampled into the atlas by the rule of 13.3 step 4, so the
+atlas pixel layout never depends on any per-tile choice.
+
+**The per-tile table.** 64 bytes per tile position per eye, in the tile order of
+Annex D D-3. 37.0 kB at the version 1 configuration.
+
+| off | size | field |
+|---|---|---|
+| 0 | 36 | `C[9]`, composed homography, this frame -> source frame; nine little-endian i32, rows 0-1 Q10.21, row 2 Q2.29, in the order of 3.1.1 |
+| 36 | 4 | `src_frame`, u32, the frame number that last coded this tile |
+| 40 | 2 | `gen`, u16, composition steps since `src_frame` |
+| 42 | 1 | `flags`: bit 0 `valid`, bit 1 `static`, bits 2-7 reserved, zero |
+| 43 | 1 | `res_level` of the tile that last coded this position; advisory |
+| 44 | 20 | reserved, zero |
+
+Every field is written by a conforming decoder and every one of the 64 bytes is
+compared by conformance. On `tile_map_reset` the whole table is zeroed, which
+makes every entry invalid, and the atlas pixels are undefined until written.
+
+#### 13.12.2 Composition
+
+`warp_ext()` gives `H_N`, mapping frame-`N` centred sample indices to
+frame-`N-1` centred indices (3.1.1). For a tile last coded at frame `S`, the
+mapping from frame `N` to frame `S` is `H_{S+1} . H_{S+2} . ... . H_N`, and it
+is built one step at a time by right-multiplication.
+
+One step, `P = C . H`, with the row scales of 3.1.1 and **two independently
+rounded partial sums**, so that every intermediate fits `int64`:
+
+```
+for i in {0,1}, j in {0,1,2}:
+    t_lin = C[i][0]*H[0][j] + C[i][1]*H[1][j]
+    t_per = C[i][2]*H[2][j]
+    P[i][j] = ((t_lin + (1<<20)) >> 21) + ((t_per + (1<<28)) >> 29)
+
+for j in {0,1,2}:
+    t_lin = C[2][0]*H[0][j] + C[2][1]*H[1][j]
+    t_per = C[2][2]*H[2][j]
+    P[2][j] = ((t_lin + (1<<20)) >> 21) + ((t_per + (1<<28)) >> 29)
+```
+
+All products and sums are exact in 64 bits; the shifts are arithmetic and the
+added constants are the round-to-nearest terms of each scale.
+
+Then the result is renormalised so that `C[2][2]` is again `0x20000000`:
+
+```
+for i, j in 0..2:
+    C'[i][j] = sdiv_round(P[i][j] << 29, P[2][2])
+```
+
+`sdiv_round(a, b)` is `sign(a/b) * ((|a| * 2 + |b|) / (|b| * 2))` evaluated in
+64-bit integers -- division truncating toward zero, so the result is
+round-to-nearest with ties away from zero. `P[2][2]` is nonzero for any matrix
+that satisfies 3.1.1 condition 3.
+
+A renormalised `C` is in the same envelope as a transmitted matrix, so the
+predictor of 13.3 consumes it unchanged and `warp_tile()` is not modified.
+
+#### 13.12.3 The frame process
+
+For each frame `N`, in this order.
+
+**1. Advance.** If `warp_present`, then for every tile position with
+`valid == 1`:
+
+* `gen := gen + 1`;
+* if `static == 0`, `C := renorm(C . H_N[eye])` by 13.12.2;
+* if the resulting `C` fails 3.1.1 condition 2 or condition 3, or if `gen`
+  exceeds an implementation's declared cap, `valid := 0`.
+
+A tile with `static == 1` keeps `C` at the identity. Tiles with `valid == 0`
+are not advanced.
+
+**2. Decode.** Tiles are parsed and reconstructed as in sections 4 to 9 and
+13.3, with the reference of 13.12.4.
+
+**3. Write back.** A tile whose mode produced reconstructed samples --
+`INTRA`, `WARP_MV`, `STATIC_MV` -- writes those samples into the atlas pixels
+at its own tile position, by the rule of 13.2, and sets
+
+```
+C          := identity (0x00200000, 0, 0, 0, 0x00200000, 0, 0, 0, 0x20000000)
+src_frame  := N
+gen        := 0
+static     := (mode == STATIC_MV)
+valid      := 1
+res_level  := the tile's res_level
+```
+
+A `WARP_SKIP` tile writes nothing: not pixels, not metadata. The single
+exception is 13.12.7.
+
+The order of atlas writes within a frame is unobservable in the finished atlas,
+because every tile writes only its own position and reads only positions
+written before this frame. A decoder may therefore apply coded tiles as they
+arrive and need not assemble a whole frame.
+
+#### 13.12.4 The reference a coded tile reads
+
+A coded tile predicts from the **atlas pixels**, through the matrix of the
+atlas entry at its **own tile position**, read after step 1:
+
+| `mode` | source | matrix | vector |
+|---|---|---|---|
+| `WARP_SKIP` | atlas pixels (display only; no reconstruction) | that entry's `C` | the stored `last_mv` |
+| `STATIC_MV` | atlas pixels | identity | coded `mv` |
+| `WARP_MV` | atlas pixels | that entry's `C` | coded `mv` |
+| `INTRA` | none | -- | -- |
+
+A tile with `mode != INTRA` whose own atlas entry has `valid == 0` is
+**`BITSTREAM`**.
+
+The predictor of 13.3 reads samples outside the tile's own position, and those
+samples belong to neighbouring atlas entries whose source frames may differ.
+They are read as if they were at *this* entry's source pose. This is deliberate
+and it is not drift: encoder and decoder read the same atlas through the same
+matrix, so the difference is in the residual, in the same frame, and never in
+the reference. The alternative -- resolving each source sample against the entry
+it lands in -- is circular, because which entry a sample lands in depends on the
+matrix used to find it.
+
+#### 13.12.5 Display (not normative)
+
+A client displays a tile by warping its atlas pixels from the source pose to the
+pose it wants, **in one step**. Any arithmetic is permitted: the hardware
+texture sampler, floating point of any precision, any filter, any sharpening or
+upscaling. To display at a pose later than frame `N`'s, the client composes
+`C` with the transform from that pose to frame `N`'s, which it derives from the
+26 pose bytes of 3.2 -- opaque to the codec, available to the client, and which
+the client must therefore retain alongside the atlas.
+
+Nothing here affects the atlas, so nothing here is tested. A decoder is
+conforming if its atlas matches, whatever it puts on the panel.
+
+#### 13.12.6 Loss, and why `ref_sel` is zero
+
+A client that did not receive a tile does nothing. Its atlas entry keeps the
+generation it already had, and keeps composing. **There is no concealment
+process under `ATLAS`**: 13.6's `WARP_SKIP`-with-`last_mv` reconstruction is
+replaced by the empty operation, because not updating a tile is the correct
+behaviour and it is free. A lost skipped tile was already a no-op; a lost coded
+tile invalidates exactly the one tile position it would have refreshed, and no
+other.
+
+An encoder that learns a coded tile was not received rolls that tile's shadow
+atlas entry back to the generation before it, which is encoder-side and outside
+this specification. What this specification requires is that the two agree,
+and they do, per tile, with no signalling.
+
+`ref_sel` is therefore 0 in every tile header of an `ATLAS` stream (4.1). An
+older reference is what a picture-based model needs to survive a loss; a
+per-tile atlas survives it by construction, and four generations of atlas would
+cost a headset four times the memory to solve a problem that no longer exists.
+
+#### 13.12.7 `NEAR_SKIP` under `ATLAS`
+
+A tile named by a row's `dc_bitmap` (3.3, 13.9) applies its nine-byte
+correction to the **atlas pixels** at its own position, in place, by the rule
+of 13.9. `C`, `src_frame`, `gen`, `static` and `res_level` are unchanged. It is
+the one case in which a skipped tile writes to the atlas; it costs one addition
+per sample and no warp, and it is what lets a tile's content be nudged without
+re-coding it and without re-warping it.
+
+A tile that was not received is, as in 13.9, not corrected: the correction
+travels in a row header the transport does not replicate.
 
 ## 14. Phase 2 conformance
 

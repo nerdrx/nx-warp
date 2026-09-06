@@ -1,0 +1,566 @@
+# ADR-0029: The reference is a per-tile atlas, and display is one warp step from it
+
+- **Status**: Proposed
+- **Date**: 2026-09-06
+- **Source**: paper 2.1, 2.2, 2.6, 2.7, 2.8, 2.9; docs/SYNTAX.md 13; ADR-0010, ADR-0014, ADR-0027, ADR-0028
+- **Affects**: `ref/src/`, `ref/tools/`, `docs/SYNTAX.md`, `vk/decoder/` (later), `include/nxvc/nxvc.h`
+
+## Context
+
+### The measurement that forces this
+
+Measured on the Pico 4 (Adreno 650 class, 490 MHz), 1088x1088 per eye, 64x64 tiles, 17x17 = 289
+tiles per eye:
+
+| stage | measured |
+|---|---|
+| normative bit-exact integer warp of one `WARP_SKIP` tile | **34 us** |
+| `WARP_SKIP` tiles on a typical frame | **~250 of 289** |
+| skip warp, per eye per frame | **8.8 ms** |
+| Pass A entropy decode (`ENTROPY_LITE` module), per eye per frame | **~1 ms** |
+| coded-tile reconstruction (Pass B), per eye per frame | **~1 ms** |
+| Lite Pass A, per coded tile | **16 us** |
+| coded Pass B, per coded tile | **~25 us** |
+| intra tile, per tile | **~12 us** |
+| resulting frame rate | **~34 fps** |
+
+The two eyes do not overlap on this GPU, so the per-eye numbers add. Every micro-optimisation of the
+skip warp kernel has been measured and refused. The skip warp is 80 % of the decoder and it is spent
+re-deriving, every frame, a picture that is mostly the same pixels resampled one more time.
+
+The target is **240 fps-equivalent: 4.2 ms of headset GPU per displayed frame pair, all in** —
+entropy, coded-tile reconstruction, atlas update, display warp. That is 5x the current budget, and
+no schedule of micro-optimisations reaches it. The cost model has to change.
+
+### What the current model actually pays for
+
+Under SYNTAX 13.2 the reference is *the previous decoded picture*. To have one, every tile position
+must be reconstructed every frame, including the 250 that carry no bits. `WARP_SKIP` is free on the
+wire and costs 34 us on the GPU. Worse, the picture is built by chaining: a tile skipped for `k`
+frames has been through `k` successive bilinear resamplings, which is the blur PAPER 2.2 flags as
+risk 2 and which the encoder pays to correct.
+
+Both problems have the same root: **the reference is a picture at one pose, so it must be rebuilt at
+every new pose.**
+
+## Decision
+
+**The reference is a per-tile atlas.** For each tile position the atlas holds the pixels from the
+most recent frame in which that tile was *coded* (`INTRA`, `WARP_MV`, `STATIC_MV` — anything that
+produced residual-reconstructed samples), together with the composed warp from the current frame's
+pose back to that source frame's pose, and the source frame number. **A skipped tile carries no
+pixels, produces no reference pixels, and does not touch the atlas.**
+
+Enabled by tool bit 31 `ATLAS`. `profile` stays informative (SYNTAX 2), so the tool bit is the
+mechanism.
+
+### 1. The atlas
+
+Two objects, both per eye:
+
+**Atlas pixels.** Byte-for-byte the layout of a `RefPicture` (SYNTAX 13.2): the whole picture of
+every eye, every plane, in the **coded sample domain** (Y/Co/Cg, before the inverse colour
+transform), at full tile extent. A tile coded at `res_level > 0` is upsampled into the atlas by the
+existing `store_ref_tile` kernel, so **the atlas pixel layout never depends on any per-tile choice**
+and a fragment or compute pass samples it directly with no repacking. This is a hard requirement of
+the 4.2 ms budget and it is why per-tile resolution is metadata and not layout.
+
+**The per-tile table.** 64 bytes per tile position per eye. At the v1 configuration 578 tiles ->
+**37.0 kB**, which fits a uniform buffer.
+
+| off | size | field | v1 |
+|---|---|---|---|
+| 0 | 36 | `C[9]`, the composed homography, current frame -> source frame, rows 0-1 Q10.21, row 2 Q2.29 | normative |
+| 36 | 4 | `src_frame`, u32, the frame number that last coded this tile | normative |
+| 40 | 2 | `gen`, u16, composition steps since `src_frame` (the drift/cadence clock) | normative |
+| 42 | 1 | `flags`: bit0 `valid`, bit1 `static`, bit2 `base_sourced` (reserved), bit3 `has_depth` (reserved) | bits 0-1 normative, 2-3 reserved zero |
+| 43 | 1 | `res_level` the atlas tile was coded at (informative; the pixels are full extent) | written, advisory |
+| 44 | 4 | reserved — Phase 2 depth-plane handle | zero |
+| 48 | 12 | reserved — Phase 2 per-tile affine inverse depth `(a, b, c)`, 3 x i32 | zero |
+| 60 | 4 | reserved | zero |
+
+A v1 encoder and decoder write bytes 0..43 and zero 44..63. Conformance compares all 64.
+
+### 2. The update rule (normative)
+
+Per frame `N`, in this order:
+
+1. **Advance.** If `warp_present`, then for every tile position with `valid == 1` and `static == 0`:
+   `C := renorm(C . H_N[eye])`, `gen := gen + 1`. If the result leaves the legality envelope of
+   SYNTAX 3.1.1 (conditions 2 and 3), or `gen` would exceed `gen_max`, set `valid := 0`. Tiles with
+   `static == 1` are not advanced; `gen` still increments.
+2. **Decode tiles.** A tile's prediction reads the atlas as specified in 4 below.
+3. **Write back.** A *coded* tile (any mode that produces reconstructed samples) writes its
+   reconstruction into the atlas pixels at its own tile position and sets
+   `C := I`, `src_frame := N`, `gen := 0`, `static := (mode == STATIC_MV)`, `valid := 1`,
+   `res_level := the tile's res_level`. A *skipped* tile writes nothing — no pixels, no metadata —
+   with the single exception of `NEAR_SKIP` (see 6).
+4. **Display.** At any time and at any rate, non-normatively (see 5).
+
+`renorm` and the composition are defined in 3. `gen_max` is a stream constant, default 0 meaning
+"no cap"; it exists for the drift-tolerant experiment of the Cheats section.
+
+**The invariant the budget depends on:** step 2 never reconstructs a skipped tile, and never reads
+anything that a skipped tile would have had to produce. The atlas is persistent storage; a skipped
+neighbour's pixels are already in it, from whenever it was last coded.
+
+### 3. Composing the warp (normative)
+
+`warp_ext()` gives `H_N`, mapping frame-`N` centred sample indices to frame-`N-1` centred indices.
+For a tile last coded at `S`, the mapping frame-`N` -> frame-`S` is
+`C = H_{S+1} . H_{S+2} . ... . H_N`, built incrementally by right-multiplication, which is exactly
+step 1 above.
+
+The wire scales differ per row (SYNTAX 3.1.1: rows 0-1 Q10.21, row 2 Q2.29). The product is
+therefore defined with explicit per-term scale bookkeeping and **two independently rounded partial
+sums**, which is what keeps every intermediate inside `int64` without 128-bit arithmetic:
+
+```
+for i in {0,1}, j in {0,1,2}:
+    t_lin = C[i][0]*H[0][j] + C[i][1]*H[1][j]          // exact, Q42
+    t_per = C[i][2]*H[2][j]                            // exact, Q50
+    P[i][j] = ((t_lin + (1<<20)) >> 21) + ((t_per + (1<<28)) >> 29)     // Q21
+
+for j in {0,1,2}:
+    t_lin = C[2][0]*H[0][j] + C[2][1]*H[1][j]          // exact, Q50
+    t_per = C[2][2]*H[2][j]                            // exact, Q58
+    P[2][j] = ((t_lin + (1<<20)) >> 21) + ((t_per + (1<<28)) >> 29)     // Q29
+```
+
+Then `renorm` restores `C[2][2] == 2^29`, so that the composed matrix lives in exactly the envelope
+the wire format already defines:
+
+```
+C'[i][j] = sdiv_round(P[i][j] << 29, P[2][2])
+```
+
+`sdiv_round` is sign-magnitude, half away from zero, over the same fixed restoring division the
+corner derivation of SYNTAX 3.1.1 already mandates. Nine divisions per tile per eye per frame:
+5202 per stereo frame at the v1 configuration, one small dispatch.
+
+Two properties this buys, both load-bearing:
+
+* **`warp/` is not modified.** A renormalised `C` satisfies the same legality conditions as a
+  transmitted `H`, so `warp_plane_tile()` consumes it unchanged. The normative predictor kernel —
+  the one thing in this codec that must never quietly change — is reused verbatim.
+* **The envelope check is the staleness bound, for free.** A composition that would leave the
+  envelope invalidates the tile, and an invalid tile cannot be skipped or inter-predicted, so the
+  encoder must code it. No separate "too old" rule exists.
+
+**Precision.** Each composition step rounds twice, at 1 ulp of Q21 (2^-21 relative) and 1 ulp of
+Q29. Over a 100-frame skip chain the accumulated error behaves as a random walk of ~10 ulp, i.e.
+~5e-6 relative, which at a 512-sample translation term is **0.0026 samples**. It is also
+bit-identical on both sides by construction, so it is a quality question and never a conformance
+one. This is a design estimate from the arithmetic, not a measurement; Phase 2 reports the measured
+divergence of `C` from a double-precision recomposition on the test clips.
+
+### 4. Prediction for a coded tile (normative)
+
+A coded tile predicts from the **atlas**, through the composed matrix of its own **co-located**
+atlas tile, read after step 1:
+
+| mode | source | matrix | vector |
+|---|---|---|---|
+| `WARP_MV` | atlas pixels | `C` of the co-located tile | coded `mv` |
+| `STATIC_MV` | atlas pixels | identity | coded `mv` |
+| `INTRA` | none | — | — |
+| `WARP_SKIP` | atlas pixels (display only; no reconstruction) | `C` of the co-located tile | stored `last_mv` |
+
+Everything else — the residual syntax, the transform, the quantiser, the scan, the contexts, the DC
+plane, `QUAD_MV`, `tskip`, `res_level`, 4:4:4, alpha — is untouched. **The coded-tile residual
+syntax does not change by one bit.**
+
+A coded tile whose co-located atlas tile has `valid == 0` is malformed unless `mode == INTRA`.
+
+**The honest part.** The warp displacement plus the motion vector reach outside the tile's own
+position, into neighbouring atlas tiles whose source poses differ. Those samples are read as if they
+were at *this* tile's source pose, so they carry the pose difference as error. This is not drift and
+not a mismatch: the encoder computes the prediction from the same atlas with the same matrix, so the
+error lands in the residual and is corrected in the same frame. It is a pure rate cost, it is
+confined to a border strip whose width is the warp displacement, and it is bounded by the encoder's
+own skip threshold — which now measures the *real* one-step prediction error rather than the error
+of a chained one.
+
+The alternative — assembling a pose-aligned reference picture before decoding coded tiles — is
+rejected below; it reintroduces the warp cost we are removing.
+
+### 5. Display (non-normative)
+
+The normative output of the decoding process under `ATLAS` is **the atlas (pixels + per-tile table)
+after each frame, plus the per-tile mode/skip map**. Conformance is byte-identity of those. The
+displayed picture is not normative and is not part of conformance.
+
+To display, the client warps each atlas tile from its source pose to the pose it wants, **in one
+step**, with whatever it likes: the hardware texture sampler, fp16, bilinear or anisotropic
+filtering, sharpening, upscaling. For late-latched display at present time `t` the client composes
+`C_tile . H(pose_t <- pose_N)` in floating point, where `pose_N` is the 26 pose bytes of SYNTAX 3.2
+which the client already receives and which the codec does not interpret. **The client must retain
+`pose_N` alongside the atlas**; that is the only new client obligation.
+
+This is what decouples display from decode: the display pass reads persistent storage and a small
+uniform table, so it runs at panel rate with the newest pose whether or not any coded tile arrived.
+Decode only refreshes atlas content.
+
+### 6. `NEAR_SKIP` under `ATLAS`
+
+A `NEAR_SKIP` tile (tool bit 28) applies its nine-byte DC-and-ramps correction **to the atlas tile
+in place**; `C`, `src_frame`, `gen`, `static` and `res_level` are unchanged. It costs one add per
+sample and no warp. The correction was fitted at the current pose and is applied to source-pose
+pixels; a DC and two ramps are pose-independent to first order, and the residual error is what the
+encoder's own fit already measures. This keeps the tool's value — a cheap refresh that does not
+re-code and does not re-warp — and it is the one place a skipped tile touches the atlas.
+
+### 7. Loss, held frames and `ref_sel`
+
+**`ref_sel` SHALL be 0 when `ATLAS` is set.** The atlas holds one generation per tile position.
+Keeping four would multiply decoder memory by four (3.4 MB per generation per eye at u16 in the v1
+configuration) for a mechanism the atlas makes unnecessary.
+
+It is unnecessary because **loss is already per tile**. A client that missed frame `M` entirely
+missed exactly the tiles frame `M` coded; every other tile position's atlas entry is bit-identical
+to the encoder's, and continues to be. The client does nothing: its atlas simply still holds the
+previous generation for those positions. **There is no concealment kernel under `ATLAS`** — SYNTAX
+13.6's `WARP_SKIP`-with-`last_mv` reconstruction becomes the empty operation, because not updating a
+tile *is* the correct behaviour and it is free.
+
+The encoder's obligation is symmetric and equally cheap: on a negative receipt for tile `t` of frame
+`M`, it rolls tile `t`'s shadow atlas entry back to the generation before `M`, from a one-deep undo
+log it keeps for the tiles it coded in the last `K` frames. That replaces today's replay, which runs
+`predict_tile` per lost tile. Encoder-side, non-normative, and strictly cheaper.
+
+The residual risk is the same one the current model has: during the RTT before the encoder learns of
+a loss, it predicts from a generation the client does not hold. The existing positive-acknowledgement
+discipline (`set_frame_held(f, 1)`, `ref_confirm`) carries over unchanged in meaning, but its unit
+becomes the tile rather than the frame, which is what the receipt map already is.
+
+`tile_map_reset` clears the whole atlas: every entry `valid := 0`, so every tile must be `INTRA`.
+That is the late-joiner and bitmap-gap path, unchanged in role.
+
+### 8. What `ATLAS` excludes in v1
+
+* **`STEREO`.** It predicts from "the decoded first eye of *this* frame", and under `ATLAS` the
+  first eye is not reconstructed as a picture — only its coded tiles are. `ATLAS` and `STEREO` are
+  mutually exclusive; a stream setting both is `BITSTREAM`. `STEREO` is already Phase 4 and off in
+  Lite. Reconciling them means predicting from the left eye's *atlas*, whose tiles are at assorted
+  poses, and that is a Phase 2 question.
+* **Nothing else.** Chroma format, `res_level`, 4:4:4, `tskip`, `xform_size`, alpha, layers,
+  `QUAD_MV`, `INTRA_DIR`, `CTX_V3`, `ENTROPY_LITE` all stay orthogonal. The atlas holds whatever
+  plane layout the stream has.
+
+### 9. The syntax delta, in full
+
+That is the whole of it:
+
+1. **Tool bit 31 `ATLAS`** (`NXVC_TOOL_ATLAS = 1ull << 31`), added to `NXVC_TOOLS_V1`.
+2. **Constraint:** `ATLAS` requires `INTER`. `ATLAS` and `STEREO` are mutually exclusive.
+3. **Constraint:** when `ATLAS` is set, `ref_sel` SHALL be 0 in every tile header.
+4. **New normative clause 13.12**, the reconstruction and reference process above.
+5. **No new field on the wire.** The per-tile source frame number and composed matrix are
+   *derivable* by every conforming decoder from the transmitted `warp_ext()` and the skip/mode maps
+   it already parses. Transmitting them would be redundant, and a redundant field is a field that
+   can disagree. This is a refinement of the model as briefed, which allowed for "a per-tile
+   source-generation field only where needed": the answer measured against the syntax is that it is
+   needed nowhere.
+
+Optional, and separable from the atlas:
+
+6. **`row_present`**, a frame-header bitmap eliding the 12-byte header of every tile row with no
+   coded tile (Cheats 9). 5 bytes replacing up to 408 on an idle frame. Orthogonal to `ATLAS` and
+   useful without it; implemented behind its own tool bit so it can be measured alone.
+7. A stream constant `gen_max` and tool bit 32 `ATLAS_DRIFT` (Cheats 8). Neither is built in v1.
+
+## The budget
+
+Per eye per **coded** frame, at 1088x1088, 64x64 tiles, 289 tiles/eye, ~39 coded and ~250 skipped,
+using the inherited per-tile measurements:
+
+| stage | today | under `ATLAS` | basis |
+|---|---|---|---|
+| Pass A entropy | ~1 ms | 39 x 16 us = **0.62 ms** | measured 16 us/tile, coded tiles only |
+| coded-tile reconstruction (Pass B) | ~1 ms | 39 x 25 us = **0.98 ms** | measured 25 us/tile |
+| skip warp | 250 x 34 us = **8.8 ms** | **0** | removed |
+| atlas update (compose + renorm, 289 tiles) | — | **budget 0.05 ms** | 9 int64 mults + 9 divides per tile; below the current measurement floor |
+| **decode subtotal, per eye** | ~10.8 ms | **1.65 ms** | |
+| **decode, per frame pair** | ~21.6 ms | **3.30 ms** | |
+| display warp, per frame pair | (in the above) | **budget 1.0 ms** | **NOT MEASURED** |
+
+Read that honestly:
+
+* The **8.8 ms measured** skip warp goes to zero. That is the decision's entire content and it is
+  arithmetic on measured numbers, not a projection.
+* **The display warp is not measured.** It is a full-screen gather of 1.2 Mpix per eye through a
+  per-tile uniform matrix with hardware bilinear filtering. 1.0 ms per pair is a *budget*, not a
+  result. Phase 0 must measure it; if it exceeds ~2 ms per pair the model does not reach the target
+  and this ADR is wrong.
+* **A frame that is both decoded and displayed costs 3.30 + 1.0 = 4.30 ms against a 4.2 ms target.**
+  It does not fit. Two things make it fit, and both are in the Cheats section rather than being
+  decorations on it:
+  * **Amortisation.** Display runs at panel rate, decode at server rate. At 90 Hz server into a
+    240 Hz panel the decode cost per displayed pair is 3.30 x 90/240 = **1.24 ms**, plus 1.0 ms
+    display = **2.24 ms per displayed pair**, with margin. This is the whole point of decoupling
+    display from decode.
+  * **Spreading.** Cheat 1 (tile streaming) lets a frame's coded tiles be applied to the atlas as
+    they arrive, across several display intervals, so the 3.30 ms is never a single serial block in
+    front of a vsync.
+* The **fps claim**: at 8.8 ms removed per eye the decode of a coded frame pair drops from ~21.6 ms
+  to ~3.3 ms, a **6.5x reduction in decode work**. The *displayed* rate becomes the panel rate by
+  construction, because display no longer waits for decode. Neither number is a measured frame rate
+  and neither should be quoted as one until the Pico runs it.
+
+## Cheats
+
+The mandate is that the codec cheats wherever possible. The atlas makes cheating structural: **the
+normative object is the atlas, so anything that affects only the displayed picture and not the atlas
+is by definition allowed to be approximate.** That is cheat 0, and the seven below are instances of
+it. Each is a first-class mechanism with a switch, not a hack, and each is listed with what it saves
+and what it costs so it can be exposed in the GUI.
+
+**1. No whole-frame requirement on the client.** Coded tiles are applied to the atlas as they
+arrive; display never waits for a frame to complete. The frame id only orders atlas generations —
+which is precisely what step 1's advance and `src_frame` provide. *Saves:* the whole frame-assembly
+latency, and it spreads the 3.3 ms of decode across display intervals instead of blocking one.
+*Costs:* a tile arriving mid-display-pass shows one frame's worth of tearing at tile granularity
+during the pass; the client can double-buffer the per-tile table to avoid even that (25 kB per eye).
+*Normative status:* none needed — the order of atlas writes within a frame is unobservable in the
+final atlas.
+
+**2. Pose late-latching.** The display warp uses the newest pose at present time, not the pose of
+the last decoded frame. The atlas tile's *source* pose is what makes this exact rather than an
+approximation: there is a single correct one-step warp from source pose to present pose, and the
+client has both. *Saves:* all of the pose-to-photon latency that decode contributes, and it is the
+reason the display rate is the panel rate. *Costs:* nothing, for rotation. For translation it
+inherits the rotation-only limitation of PAPER 2.1 — this is exactly what Phase 2's depth removes.
+
+**3. Foveated refresh.** The encoder codes tiles in priority order, fovea first, and may leave
+periphery tiles skipped for longer, at a higher QP, or at a lower `res_level`. The atlas carries
+`res_level` and `gen` per tile from v1 so a client and a rate controller can see it. *Saves:*
+directly reduces the ~39 coded tiles per eye, which is the term that does not amortise; this is the
+lever that brings the coincident decode-and-display frame under 4.2 ms. *Costs:* periphery detail
+and periphery temporal fidelity, which is the trade ADR-0027 already chose. *Status:* fields written
+in v1; the encoder's eccentricity policy is a knob, not built this week.
+
+**4. Chroma cheats.** Chroma updating at a different cadence from luma needs a per-plane `C` and
+`src_frame`, which the atlas structure permits (the table is per tile, and per-plane costs 3x, still
+an SSBO-sized 111 kB). It also needs a tile-header bit to signal a luma-only coded tile, and **v1
+syntax has none**. Stated rather than invented: *this cheat is not available in v1*, it costs one
+tile-header bit, and the atlas is already shaped for it. What *is* available in v1 is `res_level`,
+which already codes chroma coarsely.
+
+**5. Temporal cheats.** A tile whose prediction error is under a perceptual threshold *in motion* is
+skipped even where it would not be at rest. The encoder derives head angular velocity from the pose
+stream it already receives and scales `skip_thresh` by it. *Saves:* bytes and coded tiles precisely
+on the frames that are most expensive today — fast head rotation. *Costs:* smear during fast
+rotation, which is where the eye's own contrast sensitivity has collapsed; the artefact appears at
+the moment rotation stops, for one refresh. *Status:* pure encoder, zero syntax, one config knob.
+Build it.
+
+**6. Display filtering is free.** Bilinear, anisotropic, sharpening, upscaling, tile-edge blending —
+all in the display pass, none of it normative, none of it in conformance. *Saves:* it is what lets
+the display warp be a sampler gather instead of the 34 us integer kernel. *Costs:* nothing the
+conformance vectors can see, by construction.
+
+**7. Hybrid base layer — the idle HEVC ASIC.** The headset's hardware HEVC decoder does nothing
+today. Under the atlas it becomes a second *patch source*: an atlas tile may be refreshed either
+from an nxvc coded tile or from a rect of a base-layer HEVC frame decoded by the ASIC and converted
+into the atlas domain, with the nxvc enhancement layer coding the residual over it (ADR-0014,
+PAPER 2.9). The atlas is the natural home for this because a patch source is already per tile.
+Bit-exactness has two answers and both must be written down:
+
+* *Option B — the encoder runs the same HEVC decoder.* HEVC's decoding process is normatively
+  bit-exact, so a conforming decoder anywhere produces identical samples; the encoder decodes its
+  own base stream in hardware on the PC (1-2 ms of encode pipeline, PAPER 2.9) and its shadow atlas
+  is exact. The residual risk is not the HEVC decode but the **NV12-to-atlas conversion**, which we
+  therefore define as a normative integer transform, and MediaCodec's own loss handling, which we
+  bound by never letting a base-sourced patch survive a base-layer loss. *Cost:* an HEVC decoder in
+  the encoder pipeline, and a normative colour-conversion clause. **This is the preferred option.**
+* *Option A — base-sourced patches are drift-tolerant.* Mark the patch `base_sourced` (flags bit 2,
+  already reserved), exclude it from conformance, and require a scheduled nxvc refresh within `T`
+  frames. *Cost:* the encoder's shadow is wrong for those tiles for up to `T` frames, so their
+  residuals are computed against a picture the client may not have — the exact failure ADR-0023 and
+  the shadow contract exist to prevent, bounded but real. *Use only if a real device diverges under
+  Option B.*
+
+*Saves:* an entire idle decode unit, and the base layer's tiles cost the compute decoder nothing.
+*Costs:* MediaCodec's 10-20 ms latency on the base layer, which is why this is the compatibility and
+bulk-refresh path and not the low-latency one. *Status:* flags bit 2 reserved in v1; not built.
+
+**8. Drift-tolerant mode (flagged experiment, off by default).** Optional tool bit 32
+`ATLAS_DRIFT`: the *display warp output* — non-normative, filtered, fp16 — may be written back as
+the atlas content for a skip chain, for at most `gen_max` generations before a mandatory coded
+refresh. *Saves:* it lets a tile's pixels track slow content change with no bits at all. *Costs:* it
+breaks bit-exactness for those tiles by design, so the encoder shadow can only bound the divergence,
+not reproduce it; `gen_max` is that bound and the mandatory refresh is its enforcement. This is
+exactly the property ADR-0023 defends, so it is an **experiment with a tool bit and a default of
+off**, and it does not ship in v1. `gen` and `gen_max` exist in v1 so the experiment costs no
+further syntax later.
+
+**9. Flat UI stays inside the video, and costs nothing.** WayVR panels are the primary content, so
+lifting flat UI out into runtime quad layers is explicitly rejected: the codec handles it. That
+makes a requirement, not a preference:
+
+> **An atlas patch that is not refreshed must cost the client nothing per frame beyond the sampler
+> read at display.**
+
+The design meets it, with this exact accounting:
+
+* **Pixels: zero.** A skipped tile is not reconstructed, not warped, not touched. There is no
+  concealment kernel and no `WARP_SKIP` reconstruction under `ATLAS` (7).
+* **Metadata, `static` tiles: zero.** A tile whose last coded mode was `STATIC_MV` — a WayVR panel —
+  is excluded from the step-1 advance by the `static == 0` guard. Nothing at all happens to it
+  between the frame that codes it and the frame that next codes it.
+* **Metadata, warped tiles: 9 int64 multiply-adds and 9 divides, touching no pixels**, in one
+  dispatch of 578 threads. This is the honest exception to "nothing at all", and it is the price of
+  the composed pose; it is why the atlas update is budgeted at 0.05 ms per eye and why that number
+  must be measured rather than assumed.
+* **Bits: the row skip bitmap already costs bytes proportional to the grid, not to changes.** A tile
+  row with no coded tiles still carries a 12-byte row header: 17 rows x 2 eyes x 12 = **408 bytes
+  per frame, 294 kbit/s at 90 Hz**, for a frame in which nothing changed. On a static-panel scene
+  that is most of the stream. The fix is a frame-header **`row_present` bitmap** — 34 bits, 5 bytes,
+  eliding the header of every row with no coded tile — which reduces the floor to
+  **5 bytes per frame, 3.6 kbit/s**, an 80x reduction on an idle frame. This is a real syntax
+  addition and it is listed as optional in the syntax delta rather than smuggled in; it is cheap,
+  it is orthogonal to the atlas, and it is what makes "a static scene costs nothing" true on the
+  wire as well as on the GPU.
+
+*Saves:* on a mostly static UI, everything. *Costs:* one optional frame-header field. Phase 2 of
+this work adds a **static-panels fixture** — 1088x1088, a mostly static UI with one moving element
+under slow head rotation — and reports its bytes per frame and coded-tile count under both models.
+
+### One cheat the atlas gets for free: static skip
+
+`STATIC_MV` content — menus, HUDs, laser pointers — is head-locked, so warping it is exactly wrong.
+Under the current model such a tile must be **coded every frame**, because skipping it applies the
+warp. Under `ATLAS` its atlas entry carries `static = 1`, its `C` is held at identity, and it may
+therefore be **skipped**, holding on screen at zero bits until the content changes. This is
+derivable by both sides from the mode that last coded the tile, so it costs zero syntax; it is in
+step 1 above as the `static == 0` guard. It is a strict gain that the old model could not express,
+and it is called out here because it is the one behavioural change to an existing mode.
+
+## Phase 2: nxModel
+
+The path beyond the atlas is **patches with depth**, so that the display warp becomes a true 6-DoF
+reprojection: translation and parallax handled on the headset, patches valid far longer, fewer
+refreshes. The v1 atlas is shaped so this needs no change to the pixel layout.
+
+**What v1 reserves.** Per-tile table bytes 44..59: a 4-byte depth-plane handle and a 12-byte
+per-tile affine inverse depth `(a, b, c)` with `1/z = a*x + b*y + c` over the tile, plus flags bit 3
+`has_depth`. Two representations, deliberately:
+
+* *Per-tile affine inverse depth* — 12 bytes per tile, 6.9 kB per eye at the v1 configuration. This
+  is the cheap one, and PAPER 2.1's own argument says it is nearly enough: once depth is
+  approximated as constant per tile the plane-induced homography differs from the rotation-only one
+  by a term constant within the tile. An affine term is the next order and is what carries a floor
+  or a wall that spans a tile.
+* *Per-pixel depth as a second atlas image with its own generation* — the same tile grid, a
+  single-channel plane, updated per tile exactly as the colour atlas is. This is the one that
+  handles a hand in front of a wall, and it is the one that costs bandwidth.
+
+Both are sourced from the compositor's depth when the application submits one:
+`XR_KHR_composition_layer_depth` is standard and WiVRn can receive it. When it does not, the tile
+falls back to `has_depth = 0` and rotation-only display, per tile, with no stream-level switch.
+
+**How coded-tile prediction uses depth: it does not.** Prediction stays rotation-only and normative;
+display uses depth non-normatively. This is the cheaper and the right split, for three reasons.
+Prediction is the thing that must be bit-exact on both ends, and adding a depth term to it doubles
+the normative surface for a gain that a per-tile motion vector already largely captures (PAPER 2.1).
+Display is where the parallax actually matters, because display runs at panel rate with a
+late-latched pose while prediction runs once per coded tile. And keeping depth out of the normative
+path means a client with no depth and a client with depth decode the same stream to the same atlas
+and merely show it differently — which is the same separation that makes cheats 1, 2 and 6 legal.
+
+**What the encoder needs.** Depth in, per tile, from the render pipeline; a fit of the affine
+inverse-depth plane per tile (least squares, encoder-side, non-normative); and a
+**disocclusion-aware skip decision** — the skip threshold must account for the region a 6-DoF
+display warp would tear open, which the rotation-only threshold does not see. That last is the real
+Phase 2 encoder work.
+
+**Where learned components sit, cheaply.** Server side: refresh priority and skip-threshold models —
+predicting which tiles will need coding, from pose, velocity, depth and past residuals. That is a
+small model on a PC GPU, it is entirely non-normative (it only chooses modes), and it is where the
+bits are. Client side: a tiny inpainting of disocclusion holes in the display pass, non-normative by
+construction because it touches only the displayed picture. **Not** a neural full-frame decoder on
+this chip: the 4.2 ms budget for two eyes at 2.4 Mpix rules it out, and it would put a learned
+component in the normative path, which ADR-0010 forbids.
+
+None of this enters the v1 syntax. The reserved fields are the whole of the forward commitment.
+
+## Consequences
+
+* The skip warp, 80 % of the measured decoder, ceases to exist. This is the decision.
+* The normative output of the codec changes: it is the atlas, not the picture. `nxvc_decoder_decode_frame`'s
+  output image becomes non-normative under `ATLAS`, produced by a display helper. New accessors are
+  needed for the atlas and the per-tile table, on both encoder (shadow) and decoder.
+* Conformance changes shape: a vector's expected output is the atlas + table, not a picture. The
+  existing vector format carries a per-frame hash of the reference; it carries the atlas hash the
+  same way. Phase 3 of this work delivers those vectors so the GPU decoder has a target.
+* Concealment code disappears under `ATLAS`. So does `ref_sel` and the replay in
+  `nxvc_encoder_set_received_tiles`, replaced by a one-deep per-tile undo.
+* Skip decisions should hold longer, because the encoder now measures a one-step warp instead of a
+  chained one and there is no accumulating resampling blur. **This is the expected result and it is
+  not yet measured.** Phase 2 of this work measures bytes per frame and PSNR of the *displayed*
+  picture against the old model, on the same clips at the same bytes. If skip runs do not lengthen,
+  the model still wins on GPU time and loses nothing on rate; if displayed PSNR falls, the seam
+  effect below is why.
+* **The new artefact is the seam.** Two adjacent tiles with different source frames are each
+  individually correctly reprojected, so static distant content is seamless. They diverge on moving
+  content and on near parallax, growing with the age difference — a tile coded 30 frames ago beside
+  one coded this frame, during a fast turn. The encoder's skip threshold bounds it, and bounds it
+  more directly than before because the threshold now measures exactly this error. It must be
+  measured, not assumed.
+* Decoder memory: one atlas per eye (the same size as one ring slot, and the ring shrinks from four
+  slots to one) plus 37 kB of table. This is a **reduction**.
+* `STEREO` is excluded in v1, and reconciling it is Phase 2 work.
+
+## Alternatives considered
+
+**Assemble a pose-aligned reference picture before decoding coded tiles.** Warp every atlas tile
+into current-frame coordinates, then predict coded tiles from it with the identity transform. It is
+the cleanest semantics — every prediction sample is at the right pose — and it is rejected because
+it reintroduces exactly the cost being removed: a coded tile with a full-range motion vector needs a
+196x196 source region, up to 9 tiles of assembly each, so 39 coded tiles can demand more warping
+than the 289 tiles do today. The per-tile-`C` rule accepts a bounded, residual-corrected border
+error to keep the cost proportional to coded tiles.
+
+**Per-pixel selection of the source tile's matrix.** For each source sample, use the matrix of the
+atlas tile it lands in. Circular: which tile it lands in depends on the matrix. Not decodable.
+
+**Transmit the per-tile source frame number and/or the composed matrix.** Rejected: both are
+derivable from data every conforming decoder already parses, so the field is redundant, and a
+redundant field is one that can disagree with its derivation. It also costs bytes on every frame for
+information the decoder computes in a dispatch too small to measure.
+
+**Keep four atlas generations, so `ref_sel` retains meaning.** Rejected: 3.4 MB per generation per
+eye on a headset, to solve a problem the per-tile update rule already solves for free. Loss under
+the atlas invalidates exactly the tiles a lost frame coded, and nothing else.
+
+**Compose the corner coordinates instead of the matrices.** Push the four Q.6 tile corners back
+through the chain each frame. It avoids matrix arithmetic entirely, but the corner at frame `N` is a
+different point from the corner at frame `N-1`, so the chain cannot be advanced incrementally and
+costs `N - S` matrix applications per tile per frame. The matrix composition is `O(1)` per tile per
+frame; this is `O(age)`.
+
+**128-bit accumulation in the composition.** Rejected in favour of two independently rounded partial
+sums, which keeps every intermediate in `int64` at a cost of ~10 ulp of Q21 over a 100-frame chain
+(0.003 samples) and keeps the operation implementable on the GPU with the arithmetic SPIR-V already
+requires.
+
+**Tighten `warp_ext()`'s legality envelope for `ATLAS` streams so the naive composition fits
+`int64`.** Rejected: it makes an `ATLAS` stream's matrices a different object from a non-`ATLAS`
+stream's, for no gain over the two-sum form.
+
+**Make the display warp normative.** Rejected, and this is the load-bearing rejection of the whole
+ADR: it is what makes the sampler, fp16, filtering, late latching, foveation, inpainting and every
+other cheat legal. ADR-0010 keeps the *reference* integer-only; it never required the *display* to
+be, and the atlas is the first model in which those are different objects.
+
+## References
+
+- PAPER 2.1, 2.2, 2.6, 2.7, 2.8, 2.9 — the predictor, determinism, the reference model, concealment,
+  temporal decoupling, hybrid mode
+- docs/SYNTAX.md 3.1.1 (`warp_ext()`), 4.1 (tile header), 13.1-13.10 (inter prediction)
+- docs/WARP.md — the normative predictor, unchanged by this ADR
+- ADR-0010 — integer-only normative path; the reference decoder is the specification
+- ADR-0014 — layered bitstream, hybrid mode (cheat 7)
+- ADR-0023 — bit-exactness stays (cheat 8 is the flagged exception)
+- ADR-0027 — no spatial hybrid; foveation inside the codec is the lever (cheat 3)
+- ADR-0028 — the GPU encoder's integer mode decision, which the atlas skip decision extends
