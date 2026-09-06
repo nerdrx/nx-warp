@@ -1206,6 +1206,72 @@ encoder in [docs/ENCODER-DECISION.md](../ENCODER-DECISION.md). `still` is the
 row a port should check first: it has an unambiguous right answer, and a port
 that codes anything on it has a bug the moving clips will hide.
 
+#### The still row's seam ratio is frame 0's, and there is nothing to fix
+
+The `still` row's seam ratio (3.27 at QP 26, 6.88 at QP 40) reads like an
+atlas artefact -- a codec that re-codes nothing, letting the 64-sample grid
+surface on a scene that is not moving. Measured per frame, it is not one.
+Figures 12-13 in [GALLERY.md](../GALLERY.md) carry the trace; the finding is
+that **the seam ratio is flat**, 3.262 at frame 0 against 3.270 at frame 31 at
+QP 26, and at QP 40 it *falls*, 6.925 to 6.820. The `3.27 -> 6.88` is the QP
+axis, not the time axis.
+
+The whole value is present at **frame 0**, the all-intra frame, before any warp
+and before an atlas entry exists. Three mechanisms were proposed for it and all
+three are measurably absent:
+
+| proposed mechanism | test | result |
+|---|---|---|
+| the display re-warps from the atlas at frame 0's pose, accumulating resampling | seam ratio per frame, 32 frames | flat to +0.2 % at QP 26, **-1.5 %** at QP 40 -- no accumulation |
+| per-tile `C` matrices diverge by rounding between neighbours (13.12.3 advances every entry by the same homography, so they must not) | synthetic **exactly-zero-motion** clip: `still` frame 0 repeated 32x at one fixed pose | **3.262 for all 32 frames**, identical to the picture model -- the advance is exact and neighbours do not drift apart |
+| tile-local corner rounding makes adjacent tiles disagree by a sample | min/max of the per-frame trace on `still` | real, and worth **+0.5 %** (3.262 to 3.277). That is the atlas's entire contribution |
+
+The control that settles it: with `--atlas off`, the plain picture codec with no
+atlas at any point, the trace is **3.262 flat and 6.925 flat** -- the same
+numbers to three decimals. A mechanism that produces identical output with the
+mechanism removed is not the mechanism.
+
+What it actually is: `docs/SYNTAX.md` states the format has **no deblocking
+filter and no loop filter**, so a tile-boundary step from intra quantisation is
+structural and permanent until the tile is re-coded. The moving clips hide
+theirs by re-coding: on `rest` the boundary gradient collapses 3.452 -> 1.756
+across the clip while the interior gradient barely moves (1.166 -> 1.044), and
+the atlas erases seams *harder* than the picture model does (1.682 against
+2.508 at frame 31). **The atlas is the seam-reducing mechanism here, not the
+seam-creating one.** `still` is simply the clip that never re-codes, so it
+keeps what frame 0 gave it.
+
+The three candidate fixes, evaluated:
+
+- **(a) one global integer transform for the whole atlas when every valid entry
+  shares a `src_frame`.** Refuted at the source: the zero-motion clip shows the
+  per-tile advance is *already* exact for 32 frames. It would forbid a
+  divergence that does not occur, and it buys nothing measurable.
+- **(b) sub-sample snapping in the decision** (`snap_identity`, threshold 16,
+  already in main at `b1d51ee`). This is the one that addresses a real
+  mechanism -- the +0.5 % rounding wobble -- and it should stay, on its own
+  merits. It cannot touch 3.26, because 3.26 is frame 0.
+- **(c) a gentle periodic refresh under the byte floor.** Measured, and it is
+  the worst of the three, because re-coding a static tile from an unchanged
+  source at an unchanged QP reproduces the *same* reconstruction:
+
+| `--intra-period` | QP 26 B/f (incl. frame 0) | QP 26 seam f31 | QP 40 B/f | QP 40 seam f31 |
+|---|---|---|---|---|
+| 4 | 9648 (**7.2x**) | 3.255 | 3790 (**6.6x**) | 6.978 (**worse**) |
+| 8 | 4906 | 3.293 (worse) | 1955 | 6.899 (worse) |
+| 16 | 2537 | 3.270 | 1035 | 6.856 (worse) |
+| 180 (default) | **1341** | **3.270** | **575** | **6.820** |
+
+  `--drift-refresh on --drift-gate 0.25` costs 2302 / 661 B/f and moves the
+  seam trace by exactly nothing. Seven times the bytes to make the artefact
+  worse is not a fix.
+
+**Decision: no change.** The reference stays as it is, and the `still` row's
+seam ratio is documented as what it is -- the format's intra quantisation with
+no loop filter to hide it, preserved rather than created. If this number is
+ever to move it is a deblocking question, which is a normative change the
+format has so far deliberately refused; it is not an atlas question.
+
 **The mode switch survives, and it is the thing that survives best.** At every
 velocity `D = 8` lands on whichever of the two modes wins there, without being
 told which: 6.5 % PICTURE frames at rest, 48.4 % at mid, and **100 % at fast**,

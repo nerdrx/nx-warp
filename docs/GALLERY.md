@@ -150,10 +150,13 @@ nothing else. `objmotion-still` holds the head there and walks the meshes:
 2800 B/f, which prices independent object motion at about **2650 B/frame** on
 its own.
 
-The high seam ratios in this row (3.27 at QP 26, 6.88 at QP 40) are inherited
-from the single intra frame: at 119 B/frame nothing is ever re-coded, so what
-is displayed is frame 0's quantisation warped forward, and at QP 40 that frame
-is blocky. It is a real artefact, and it is the cost of a floor this low.
+The high seam ratios in this row (3.27 at QP 26, 6.88 at QP 40 — the **QP**
+axis, not the time axis) are inherited from the single intra frame: at
+119 B/frame nothing is ever re-coded, so what is displayed is frame 0's
+quantisation warped forward, and at QP 40 that frame is blocky. It is a real
+artefact, and it is the cost of a floor this low. Figures 12-13 measure it per
+frame and show it is flat, that the atlas is not the mechanism, and that
+re-coding to remove it costs up to 7x the bytes and makes it worse.
 
 On the ADR-0028 integer decision the same clip is **125 B/frame at the same
 41.28 dB** — 25 bytes cheaper, because that path has no `NEAR_SKIP` to spend
@@ -166,6 +169,60 @@ python3 tools/quality/capture/gen_vrroom.py --out nx-scratch/fixtures/vrroom   -
 python3 nx-scratch/atlasprice/vrtable.py still
 python3 nx-scratch/atlasprice/encdec_still.py       # float decision
 python3 nx-scratch/atlasprice/encdec_still_int.py   # integer decision
+```
+
+---
+
+## Figures 12-13 — The still clip's seams are frame 0's, and nothing adds to them
+
+| | |
+|---|---|
+| ![Figure 12](assets/still-seam-f1.png) **Fig 12** frame 1, seam **6.925** | ![Figure 13](assets/still-seam-f31.png) **Fig 13** frame 31, seam **6.820** |
+
+**Date** 2026-09-06 · **Fixture** `nx-scratch/fixtures/vrroom`, `still`, left
+eye, 256x256 crop at 384,384 (tile-aligned) at 2x, nearest-neighbour ·
+**Settings** `--atlas on --row-present on --atlas-picture-disp 8`, QP 40.
+
+**The number it illustrates.** Whether the `still` row's high seam ratio is
+something the atlas *does* over the clip. It is not. Measured per frame, on a
+clip that codes 119 B/frame and re-codes nothing:
+
+| | frame 0 | frame 1 | frame 31 | min | max |
+|---|---|---|---|---|---|
+| QP 26 | 3.262 | 3.262 | 3.270 | 3.262 | 3.277 |
+| QP 40 | 6.925 | 6.925 | **6.820** | 6.820 | 6.925 |
+
+It is **flat, and at QP 40 it falls**. The `3.27 -> 6.88` quoted in Figures
+10-11 is the QP axis — QP 26 against QP 40 — not the time axis. The whole
+value is present at **frame 0**, which is the all-intra frame: before any warp,
+before an atlas entry exists. Frames 1 and 31 differ in 2.1 % of their samples
+by a mean of 0.035 and a maximum of 11 (5.4 % and 0.089 inside this crop),
+which is why the two figures look identical, because they nearly are.
+
+**The atlas is not the mechanism.** With `--atlas off` — the plain picture
+codec, no atlas at any point — the trace is 3.262 flat and 6.925 flat, the same
+numbers. On a synthetic exactly-zero-motion clip (`still` frame 0 repeated 32
+times at one fixed pose) the atlas reproduces **3.262 for all 32 frames**,
+identical to the picture model: the per-tile advance of 13.12.3 is exact, and
+neighbouring entries do not drift apart. The atlas's entire contribution is the
++0.5 % wobble visible in the min/max above, from sub-sample corner rounding.
+
+**It is the format, and deliberately.** `docs/SYNTAX.md` states there is no
+deblocking filter and no loop filter; a tile-boundary step from intra
+quantisation is therefore structural. What removes it is re-coding under
+motion: on `rest` the boundary gradient collapses **3.452 -> 1.756** across the
+clip while the interior gradient barely moves (1.166 -> 1.044), and the atlas
+erases seams *harder* than the picture model does (seam 1.682 against 2.508 at
+frame 31). The still clip is not growing seams; the moving clips are erasing
+theirs.
+
+```
+python3 nx-scratch/atlasprice/seamframe.py still 26 40   # seam ratio per frame
+python3 nx-scratch/atlasprice/seamdiag.py                # split by config, + the zero clip
+B=build/bin; W=nx-scratch/atlasprice/work9
+ffmpeg -f rawvideo -pix_fmt yuv420p -s 2176x1088 -i $W/still.q40.yuv \
+  -vf "select=eq(n\,31),crop=256:256:384:384,scale=512:512:flags=neighbor" \
+  -frames:v 1 docs/assets/still-seam-f31.png -y
 ```
 
 ---
