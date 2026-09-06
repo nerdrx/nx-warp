@@ -422,6 +422,72 @@ nxvc_vkd_status nxvc_vk_atlas_write_tiles(nxvc_vk_decoder *dec, uint32_t eye,
                                           uint32_t *applied,
                                           uint32_t *superseded);
 
+/* ------------------------------------------ [ATLAS] the display view (13.12.5)
+ * The atlas is an SSBO of u16 pairs because that is the layout Pass W reads the
+ * reference through.  A client's display pass wants a SAMPLER, so the sampled
+ * view is produced BESIDE the atlas, and these select and expose it.
+ *
+ * NOTHING HERE IS NORMATIVE.  The u16 layout stays what conformance compares;
+ * 13.12.5's display warp is not compared at all.  The two forms carry
+ * IDENTICAL samples and differ only in how many taps a display pass spends:
+ *
+ *   R16  three R16_UINT planes -- luma, Cb, Cr.  2.124 ms/pair on a Pico 4
+ *        over a full 2176x1088 display pass.
+ *   R8   NV12-shaped: R8_UNORM luma at full resolution and R8G8_UNORM chroma
+ *        at half, one luma tap plus one chroma tap.  1.086 ms/pair.
+ *
+ * The gap is the TAP COUNT, not the format: 16-bit to 8-bit at the same tap
+ * count is worth 0.24 ms of the 1.04 ms.  Both are kept so the device
+ * measurement stays an A/B rather than a claim.
+ *
+ * THE 8-BIT CONVERSION RULE.  For a `CT_NONE` stream the atlas holds the
+ * stream's own YCbCr at the stream's own bit depth (13.12.1), so a sample of
+ * an 8-bit stream is already a byte: the R8 view stores its VALUE UNCHANGED as
+ * a UNORM byte and the R16 view stores the same value as an integer.  The two
+ * views are therefore the same picture, and `vk.atlas.view` asserts exactly
+ * that, sample for sample.
+ *
+ * The R8 view is REFUSED on a stream whose colour transform is not `CT_NONE`:
+ * under `CT_YCOCGR` the chroma planes carry the extra bit that transform
+ * produces -- 9 bits for an 8-bit stream -- which an 8-bit UNORM cannot hold,
+ * and truncating it silently would be a wrong picture rather than a cheaper
+ * one. */
+typedef enum nxvc_vkd_atlas_view {
+    NXVC_VKD_ATLAS_VIEW_NONE = 0, /* no view produced (the default)         */
+    NXVC_VKD_ATLAS_VIEW_R16 = 1,  /* three R16_UINT planes                  */
+    NXVC_VKD_ATLAS_VIEW_R8 = 2    /* one-tap 8-bit, NV12-shaped; CT_NONE    */
+} nxvc_vkd_atlas_view;
+
+/* Takes effect on the next decoded frame.  Returns NXVC_VKD_ERR_UNSUPPORTED on
+ * a non-ATLAS stream, or for R8 on a stream with a colour transform. */
+nxvc_vkd_status nxvc_vk_decoder_set_atlas_view(nxvc_vk_decoder *dec,
+                                               nxvc_vkd_atlas_view view);
+nxvc_vkd_atlas_view nxvc_vk_decoder_atlas_view(const nxvc_vk_decoder *dec);
+
+/* The images the view was rendered into, for a client that binds them.
+ * `image[0]` is luma; under R8 `image[1]` is the interleaved CbCr and
+ * `image[2]` is VK_NULL_HANDLE, under R16 `image[1]` and `image[2]` are Cb and
+ * Cr.  Extents are over the eye PAIR, with eye `e` at column `e * (w / eyes)`.
+ * Handles are owned by the decoder and valid until destroy or the next
+ * nxvc_vk_decoder_parse_stream_header(). */
+typedef struct nxvc_vkd_atlas_images {
+    VkImage image[3];
+    VkImageView view[3];
+    VkFormat format[3];
+    uint32_t width[3], height[3];
+} nxvc_vkd_atlas_images;
+
+nxvc_vkd_status nxvc_vk_decoder_atlas_images(const nxvc_vk_decoder *dec,
+                                             nxvc_vkd_atlas_images *out);
+
+/* Read one view plane back, as bytes: 1 byte per sample for R8 luma, 2
+ * interleaved for R8 chroma, 2 (little-endian u16) for an R16 plane.  For
+ * inspection and for the conformance A/B; a client samples the images. */
+nxvc_vkd_status nxvc_vk_decoder_atlas_view_read(nxvc_vk_decoder *dec, int plane,
+                                                uint8_t *out, size_t cap,
+                                                uint32_t *w, uint32_t *h,
+                                                uint32_t *bytes_per_sample);
+
 /* Byte size of the per-tile table: 64 * tile_count, over the eye pair.  0 if
  * this is not an atlas stream. */
 size_t nxvc_vk_decoder_atlas_table_size(const nxvc_vk_decoder *dec);

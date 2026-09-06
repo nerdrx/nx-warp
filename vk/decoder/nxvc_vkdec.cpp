@@ -48,6 +48,8 @@
 // [ATLAS] 13.12.3 step 1, and the coded-tile kernel that brackets Pass W.
 #include "atlas_compose.spv.h"
 #include "atlas_tiles.spv.h"
+#include "atlas_view8.spv.h"
+#include "atlas_view16.spv.h"
 
 namespace {
 
@@ -207,6 +209,17 @@ struct nxvc_vk_decoder {
     VkShaderModule smAC = VK_NULL_HANDLE, smAT = VK_NULL_HANDLE;
     VkDescriptorSet dsetAC = VK_NULL_HANDLE, dsetAT = VK_NULL_HANDLE;
     VkPipeline pipeAC = VK_NULL_HANDLE, pipeAT = VK_NULL_HANDLE;
+    // [ATLAS] The display view (13.12.5): its own set, and two pipelines --
+    // the one-tap 8-bit form and the three-plane R16 one.  Two BUILDS and not
+    // a specialisation constant, because the image format qualifier is part of
+    // the type and there is nothing a constant could select between.
+    VkDescriptorSetLayout dslAV = VK_NULL_HANDLE;
+    VkPipelineLayout plAV = VK_NULL_HANDLE;
+    VkShaderModule smAV8 = VK_NULL_HANDLE, smAV16 = VK_NULL_HANDLE;
+    VkDescriptorSet dsetAV = VK_NULL_HANDLE;
+    VkPipeline pipeAV8 = VK_NULL_HANDLE, pipeAV16 = VK_NULL_HANDLE;
+    Img imgViewY, imgViewC, imgViewCr;
+    uint32_t atlas_view = 0;   // nxvc_vkd_atlas_view
     VkDescriptorSet dsetA = VK_NULL_HANDLE, dsetB = VK_NULL_HANDLE;
     std::map<uint32_t, VkPipeline> pipesA;  // lanes | ctx_stride<<8 | xfl<<16
     // key: (format << 40) | (dirSched << 32) | storeWords
@@ -839,11 +852,15 @@ constexpr SetShape kSetAC{4, 0};
 // would be a validation error on a good driver and a silent wrong read on a
 // bad one.
 constexpr SetShape kSetAT{5, 0};
+// [ATLAS] The display view: the atlas in, three storage images out.  Three in
+// BOTH forms -- the 8-bit one binds a 1x1 placeholder as its third, because an
+// unbound descriptor is not legal and a placeholder costs nothing.
+constexpr SetShape kSetAV{1, 3};
 
 // Every set the pool must serve, in one list, so the two sums below cannot
 // fall behind the layouts.  The atlas sets are the fourth and fifth time this
 // table has grown; the comment above says what happened the previous three.
-constexpr SetShape kSets[] = {kSetA, kSetB, kSetW, kSetAC, kSetAT};
+constexpr SetShape kSets[] = {kSetA, kSetB, kSetW, kSetAC, kSetAT, kSetAV};
 constexpr int kNumSets = (int)(sizeof(kSets) / sizeof(kSets[0]));
 constexpr int sum_bufs() {
     int n = 0;
@@ -858,7 +875,7 @@ constexpr int sum_imgs() {
 constexpr int kPoolBufs = sum_bufs();
 constexpr int kPoolImgs = sum_imgs();
 static_assert(kPoolBufs == kSetA.bufs + kSetB.bufs + kSetW.bufs + kSetAC.bufs +
-                               kSetAT.bufs,
+                               kSetAT.bufs + kSetAV.bufs,
               "the descriptor pool is sized from kSets and every set must be "
               "in it: a set the pool does not count is VK_ERROR_OUT_OF_POOL_"
               "MEMORY on the Adreno 650 and nothing at all on RADV or "
@@ -959,6 +976,14 @@ nxvc_vkd_status make_layouts(D *d) {
     pl.pPushConstantRanges = &pcAC;
     VKTRY(d, vkCreatePipelineLayout(d->dev, &pl, nullptr, &d->plAC));
 
+    VKTRY(d, set_layout(kSetAV.bufs, kSetAV.imgs, &d->dslAV));
+    struct AtlasViewPush { int32_t v[10]; };
+    VkPushConstantRange pcAV{VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                             (uint32_t)sizeof(AtlasViewPush)};
+    pl.pSetLayouts = &d->dslAV;
+    pl.pPushConstantRanges = &pcAV;
+    VKTRY(d, vkCreatePipelineLayout(d->dev, &pl, nullptr, &d->plAV));
+
     VKTRY(d, set_layout(kSetAT.bufs, kSetAT.imgs, &d->dslAT));
     VkPushConstantRange pcAT{VK_SHADER_STAGE_COMPUTE_BIT, 0,
                              (uint32_t)sizeof(nxvw::NxvwAtlasTilePush)};
@@ -1000,6 +1025,12 @@ nxvc_vkd_status make_layouts(D *d) {
     sm.codeSize = sizeof(atlas_tiles_spv);
     sm.pCode = atlas_tiles_spv;
     VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smAT));
+    sm.codeSize = sizeof(atlas_view8_spv);
+    sm.pCode = atlas_view8_spv;
+    VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smAV8));
+    sm.codeSize = sizeof(atlas_view16_spv);
+    sm.pCode = atlas_view16_spv;
+    VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smAV16));
 
     // [ATLAS] Neither kernel takes a specialisation constant, so both
     // pipelines are made once here.  Every other pipeline in this decoder is
@@ -1023,6 +1054,8 @@ nxvc_vkd_status make_layouts(D *d) {
     };
     VKTRY(d, make_pipe(d->smAC, d->plAC, &d->pipeAC));
     VKTRY(d, make_pipe(d->smAT, d->plAT, &d->pipeAT));
+    VKTRY(d, make_pipe(d->smAV8, d->plAV, &d->pipeAV8));
+    VKTRY(d, make_pipe(d->smAV16, d->plAV, &d->pipeAV16));
 
     // Summed from the same table the three set layouts are built from, so it
     // cannot fall behind them.  See kSetA / kSetB / kSetW above for why that
@@ -1037,7 +1070,7 @@ nxvc_vkd_status make_layouts(D *d) {
     dp.pPoolSizes = sz;
     VKTRY(d, vkCreateDescriptorPool(d->dev, &dp, nullptr, &d->dpool));
     VkDescriptorSetLayout ls[kNumSets] = {d->dslA, d->dslB, d->dslW, d->dslAC,
-                                          d->dslAT};
+                                          d->dslAT, d->dslAV};
     VkDescriptorSet sets[kNumSets];
     VkDescriptorSetAllocateInfo da{
         VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
@@ -1050,6 +1083,7 @@ nxvc_vkd_status make_layouts(D *d) {
     d->dsetW = sets[2];
     d->dsetAC = sets[3];
     d->dsetAT = sets[4];
+    d->dsetAV = sets[5];
     return NXVC_VKD_OK;
 }
 
@@ -1495,6 +1529,18 @@ nxvc_vkd_status make_resources(D *d) {
         // The host mirror of that starts here; the device buffer is cleared
         // on the first frame that sets the flag.
         d->astate.reset(d->atlas_mode ? entries : 0u);
+        // [ATLAS] The display view's images are 1x1 placeholders until a view
+        // is SELECTED: the two forms want different FORMATS, not merely
+        // different sizes, so they are allocated by
+        // nxvc_vk_decoder_set_atlas_view() rather than here.  A placeholder
+        // still has to exist, because an unbound descriptor is not legal.
+        d->atlas_view = 0;
+        if ((st = make_img(d, d->imgViewY, VK_FORMAT_R8_UNORM, 1, 1)))
+            return st;
+        if ((st = make_img(d, d->imgViewC, VK_FORMAT_R8G8_UNORM, 1, 1)))
+            return st;
+        if ((st = make_img(d, d->imgViewCr, VK_FORMAT_R16_UINT, 1, 1)))
+            return st;
     }
     // Only when the caller asked for the exact coefficient traffic: a
     // host-visible copy of the same buffer, filled after Pass A.
@@ -1553,6 +1599,11 @@ nxvc_vkd_status make_resources(D *d) {
     // it does not -- and the WARP_SKIP bypass needs it to cover exactly the
     // range build_tile_order() partitioned.  Going through the order buffer
     // costs one uint load per workgroup and changes no output address.
+    VkDescriptorBufferInfo avb{d->bRing.buf, 0, VK_WHOLE_SIZE};
+    VkDescriptorImageInfo avi[3] = {
+        {VK_NULL_HANDLE, d->imgViewY.view, VK_IMAGE_LAYOUT_GENERAL},
+        {VK_NULL_HANDLE, d->imgViewC.view, VK_IMAGE_LAYOUT_GENERAL},
+        {VK_NULL_HANDLE, d->imgViewCr.view, VK_IMAGE_LAYOUT_GENERAL}};
     VkDescriptorBufferInfo wI[4] = {{d->bRing.buf, 0, VK_WHOLE_SIZE},
                                     {d->bWarp.buf, 0, VK_WHOLE_SIZE},
                                     {d->bWPred.buf, 0, VK_WHOLE_SIZE},
@@ -1570,7 +1621,8 @@ nxvc_vkd_status make_resources(D *d) {
                                     {d->bWarp.buf, 0, VK_WHOLE_SIZE},
                                     {d->bACoded.buf, 0, VK_WHOLE_SIZE},
                                     {d->bAStatus.buf, 0, VK_WHOLE_SIZE}};
-    VkWriteDescriptorSet w[28 + kSetAC.total() + kSetAT.total()]{};
+    VkWriteDescriptorSet w[28 + kSetAC.total() + kSetAT.total() +
+                          kSetAV.total()]{};
     uint32_t nw = 0;
     for (int i = 0; i < 8; ++i) {
         w[nw] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
@@ -1642,6 +1694,31 @@ nxvc_vkd_status make_resources(D *d) {
         w[nw].descriptorCount = 1;
         w[nw].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         w[nw].pBufferInfo = &ac[i];
+        ++nw;
+    }
+    // [ATLAS] The display view's set.  `avb` and `avi` are declared at FUNCTION
+    // scope beside every other descriptor info in this function, and that is
+    // load-bearing rather than stylistic: `vkUpdateDescriptorSets` is called
+    // once at the end, so anything it points at must outlive the block that
+    // filled it in.  A brace-scoped local here was a dangling pointer the
+    // driver dereferenced -- a segfault inside the ICD, from a function that
+    // looked like it had already returned successfully.
+    for (int i = 0; i < 1; ++i) {
+        w[nw] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        w[nw].dstSet = d->dsetAV;
+        w[nw].dstBinding = 0;
+        w[nw].descriptorCount = 1;
+        w[nw].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        w[nw].pBufferInfo = &avb;
+        ++nw;
+    }
+    for (int i = 0; i < 3; ++i) {
+        w[nw] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        w[nw].dstSet = d->dsetAV;
+        w[nw].dstBinding = (uint32_t)(1 + i);
+        w[nw].descriptorCount = 1;
+        w[nw].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        w[nw].pImageInfo = &avi[i];
         ++nw;
     }
     for (int i = 0; i < kSetAT.bufs; ++i) {
@@ -2121,6 +2198,11 @@ extern "C" void nxvc_vk_decoder_destroy(nxvc_vk_decoder *d) {
         if (d->pipeW) vkDestroyPipeline(d->dev, d->pipeW, nullptr);
         if (d->smW) vkDestroyShaderModule(d->dev, d->smW, nullptr);
         // [ATLAS]
+        if (d->pipeAV8) vkDestroyPipeline(d->dev, d->pipeAV8, nullptr);
+        if (d->pipeAV16) vkDestroyPipeline(d->dev, d->pipeAV16, nullptr);
+        if (d->smAV8) vkDestroyShaderModule(d->dev, d->smAV8, nullptr);
+        if (d->smAV16) vkDestroyShaderModule(d->dev, d->smAV16, nullptr);
+        if (d->plAV) vkDestroyPipelineLayout(d->dev, d->plAV, nullptr);
         if (d->pipeAC) vkDestroyPipeline(d->dev, d->pipeAC, nullptr);
         if (d->pipeAT) vkDestroyPipeline(d->dev, d->pipeAT, nullptr);
         if (d->smAC) vkDestroyShaderModule(d->dev, d->smAC, nullptr);
@@ -2136,6 +2218,7 @@ extern "C" void nxvc_vk_decoder_destroy(nxvc_vk_decoder *d) {
         if (d->dslW) vkDestroyDescriptorSetLayout(d->dev, d->dslW, nullptr);
         if (d->dslAC) vkDestroyDescriptorSetLayout(d->dev, d->dslAC, nullptr);
         if (d->dslAT) vkDestroyDescriptorSetLayout(d->dev, d->dslAT, nullptr);
+        if (d->dslAV) vkDestroyDescriptorSetLayout(d->dev, d->dslAV, nullptr);
         if (d->binsem) vkDestroySemaphore(d->dev, d->binsem, nullptr);
         if (d->queries) vkDestroyQueryPool(d->dev, d->queries, nullptr);
         if (d->timeline) vkDestroySemaphore(d->dev, d->timeline, nullptr);
@@ -2149,7 +2232,8 @@ extern "C" void nxvc_vk_decoder_destroy(nxvc_vk_decoder *d) {
                        &d->bACoded, &d->bAStatus})
             destroy_buf(d, *b);
         for (Img *i : {&d->imgRgba, &d->imgRgb10, &d->imgLuma, &d->imgCbCr,
-                       &d->imgRgbaN, &d->imgLumaN, &d->imgCbCrN})
+                       &d->imgRgbaN, &d->imgLumaN, &d->imgCbCrN,
+                       &d->imgViewY, &d->imgViewC, &d->imgViewCr})
             destroy_img(d, *i);
         if (d->own_device) vkDestroyDevice(d->dev, nullptr);
     }
@@ -3097,6 +3181,39 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     // frame did not code plus `commit()` for the ones it did -- in that order,
     // and after `apply()`, which is what keeps a PICTURE frame's own coded
     // tiles from superseding themselves.
+    // ---- [ATLAS] the display view (13.12.5), after the atlas is final -----
+    // Non-normative, and produced BESIDE the atlas rather than instead of it:
+    // the u16 layout stays what Pass W reads and what conformance compares.
+    // It covers the whole picture rather than the frame's coded tiles only --
+    // correctness first; the coded-only form is the optimisation the device
+    // pricing is for, and it is a dispatch bound, not a semantic change.
+    if (d->atlas_view) {
+        image_to_general(d->cmd, d->imgViewY.img);
+        image_to_general(d->cmd, d->imgViewC.img);
+        image_to_general(d->cmd, d->imgViewCr.img);
+        buffer_barrier(d->cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
+        int32_t vp[10] = {d->ringOff[0],    d->ringOff[1],
+                          d->ringOff[2],    d->ringStride[0],
+                          d->ringStride[1], d->ringStride[2],
+                          (int32_t)(d->si.width * d->si.eyes),
+                          (int32_t)d->si.height,
+                          (int32_t)(d->si.cw * d->si.eyes),
+                          (int32_t)d->si.ch};
+        vkCmdBindDescriptorSets(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                d->plAV, 0, 1, &d->dsetAV, 0, nullptr);
+        vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                          d->atlas_view == (uint32_t)NXVC_VKD_ATLAS_VIEW_R8
+                              ? d->pipeAV8
+                              : d->pipeAV16);
+        vkCmdPushConstants(d->cmd, d->plAV, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                           (uint32_t)sizeof vp, vp);
+        vkCmdDispatch(d->cmd, ((uint32_t)vp[6] + 7u) / 8u,
+                      ((uint32_t)vp[7] + 7u) / 8u, 1);
+        ++dispatches;
+    }
+
     atlas_tile_op(NXVW_ATLAS_OP_MATERIALISE);
     if (atlas_frame)
         d->astate.commit(d->acoded.data(), (uint32_t)d->acoded.size(),
@@ -3338,6 +3455,163 @@ nxvc_vkd_status atlas_readback(D *d, const Buf &src, VkDeviceSize bytes,
     return NXVC_VKD_OK;
 }
 }  // namespace
+
+// [ATLAS] Rebind the view set after the images have been (re)made.
+static void atlas_view_rebind(D *d) {
+    VkDescriptorBufferInfo avb{d->bRing.buf, 0, VK_WHOLE_SIZE};
+    VkDescriptorImageInfo avi[3] = {
+        {VK_NULL_HANDLE, d->imgViewY.view, VK_IMAGE_LAYOUT_GENERAL},
+        {VK_NULL_HANDLE, d->imgViewC.view, VK_IMAGE_LAYOUT_GENERAL},
+        {VK_NULL_HANDLE, d->imgViewCr.view, VK_IMAGE_LAYOUT_GENERAL}};
+    VkWriteDescriptorSet w[4]{};
+    w[0] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+    w[0].dstSet = d->dsetAV;
+    w[0].dstBinding = 0;
+    w[0].descriptorCount = 1;
+    w[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    w[0].pBufferInfo = &avb;
+    for (int i = 0; i < 3; ++i) {
+        w[1 + i] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        w[1 + i].dstSet = d->dsetAV;
+        w[1 + i].dstBinding = (uint32_t)(1 + i);
+        w[1 + i].descriptorCount = 1;
+        w[1 + i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        w[1 + i].pImageInfo = &avi[i];
+    }
+    vkUpdateDescriptorSets(d->dev, 4, w, 0, nullptr);
+}
+
+extern "C" nxvc_vkd_status nxvc_vk_decoder_set_atlas_view(
+    nxvc_vk_decoder *d, nxvc_vkd_atlas_view view) {
+    if (!d) return NXVC_VKD_ERR_ARG;
+    if (!d->atlas_mode)
+        return seterr(d, NXVC_VKD_ERR_UNSUPPORTED,
+                      "the display view exists only for an ATLAS stream");
+    // [SYN] 13.12.1: under a colour transform the chroma planes carry the
+    // extra bit that transform produces -- 9 bits for an 8-bit stream -- and
+    // an 8-bit UNORM cannot hold them.  Refused rather than truncated: a
+    // silently wrong picture is worse than an unavailable optimisation.
+    if (view == NXVC_VKD_ATLAS_VIEW_R8 && d->si.color_transform != 0)
+        return seterr(d, NXVC_VKD_ERR_UNSUPPORTED,
+                      "the one-tap 8-bit view needs CT_NONE; this stream's "
+                      "colour transform is %u, whose chroma is 9-bit",
+                      d->si.color_transform);
+    nxvc_vkd_status st = nxvc_vk_decoder_wait(d, UINT64_MAX);
+    if (st) return st;
+    const StreamInfo &si = d->si;
+    const uint32_t VW = si.width * si.eyes, VH = si.height;
+    const uint32_t VCW = si.cw * si.eyes, VCH = si.ch;
+    if (view == NXVC_VKD_ATLAS_VIEW_R8) {
+        if ((st = make_img(d, d->imgViewY, VK_FORMAT_R8_UNORM, VW, VH)))
+            return st;
+        if ((st = make_img(d, d->imgViewC, VK_FORMAT_R8G8_UNORM, VCW, VCH)))
+            return st;
+        if ((st = make_img(d, d->imgViewCr, VK_FORMAT_R16_UINT, 1, 1)))
+            return st;
+    } else if (view == NXVC_VKD_ATLAS_VIEW_R16) {
+        if ((st = make_img(d, d->imgViewY, VK_FORMAT_R16_UINT, VW, VH)))
+            return st;
+        if ((st = make_img(d, d->imgViewC, VK_FORMAT_R16_UINT, VCW, VCH)))
+            return st;
+        if ((st = make_img(d, d->imgViewCr, VK_FORMAT_R16_UINT, VCW, VCH)))
+            return st;
+    } else {
+        if ((st = make_img(d, d->imgViewY, VK_FORMAT_R8_UNORM, 1, 1)))
+            return st;
+        if ((st = make_img(d, d->imgViewC, VK_FORMAT_R8G8_UNORM, 1, 1)))
+            return st;
+        if ((st = make_img(d, d->imgViewCr, VK_FORMAT_R16_UINT, 1, 1)))
+            return st;
+    }
+    atlas_view_rebind(d);
+    d->atlas_view = (uint32_t)view;
+    return NXVC_VKD_OK;
+}
+
+extern "C" nxvc_vkd_atlas_view nxvc_vk_decoder_atlas_view(
+    const nxvc_vk_decoder *d) {
+    return d ? (nxvc_vkd_atlas_view)d->atlas_view : NXVC_VKD_ATLAS_VIEW_NONE;
+}
+
+extern "C" nxvc_vkd_status nxvc_vk_decoder_atlas_images(
+    const nxvc_vk_decoder *d, nxvc_vkd_atlas_images *o) {
+    if (!d || !o) return NXVC_VKD_ERR_ARG;
+    if (!d->atlas_view)
+        return NXVC_VKD_ERR_UNSUPPORTED;
+    const Img *im[3] = {&d->imgViewY, &d->imgViewC, &d->imgViewCr};
+    for (int i = 0; i < 3; ++i) {
+        const bool real =
+            !(d->atlas_view == (uint32_t)NXVC_VKD_ATLAS_VIEW_R8 && i == 2);
+        o->image[i] = real ? im[i]->img : VK_NULL_HANDLE;
+        o->view[i] = real ? im[i]->view : VK_NULL_HANDLE;
+        o->format[i] = real ? im[i]->fmt : VK_FORMAT_UNDEFINED;
+        o->width[i] = real ? im[i]->w : 0;
+        o->height[i] = real ? im[i]->h : 0;
+    }
+    return NXVC_VKD_OK;
+}
+
+extern "C" nxvc_vkd_status nxvc_vk_decoder_atlas_view_read(
+    nxvc_vk_decoder *d, int plane, uint8_t *out, size_t cap, uint32_t *w,
+    uint32_t *h, uint32_t *bps) {
+    if (!d || plane < 0 || plane > 2) return NXVC_VKD_ERR_ARG;
+    if (!d->atlas_view)
+        return seterr(d, NXVC_VKD_ERR_UNSUPPORTED, "no display view selected");
+    const Img *im = plane == 0   ? &d->imgViewY
+                    : plane == 1 ? &d->imgViewC
+                                 : &d->imgViewCr;
+    if (d->atlas_view == (uint32_t)NXVC_VKD_ATLAS_VIEW_R8 && plane == 2)
+        return NXVC_VKD_ERR_ARG;
+    uint32_t bytes = 1;
+    if (im->fmt == VK_FORMAT_R8G8_UNORM) bytes = 2;
+    else if (im->fmt == VK_FORMAT_R16_UINT) bytes = 2;
+    if (w) *w = im->w;
+    if (h) *h = im->h;
+    if (bps) *bps = bytes;
+    const size_t need = (size_t)im->w * im->h * bytes;
+    if (!out) return NXVC_VKD_OK;
+    if (cap < need)
+        return seterr(d, NXVC_VKD_ERR_ARG,
+                      "atlas_view_read: need %zu bytes, given %zu", need, cap);
+    nxvc_vkd_status st = nxvc_vk_decoder_wait(d, UINT64_MAX);
+    if (st) return st;
+    Buf host{};
+    if ((st = make_buf(d, host, need, VK_BUFFER_USAGE_TRANSFER_DST_BIT, true)))
+        return st;
+    VKTRY(d, vkResetCommandBuffer(d->cmd, 0));
+    VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    VKTRY(d, vkBeginCommandBuffer(d->cmd, &bi));
+    VkBufferImageCopy c{};
+    c.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    c.imageExtent = {im->w, im->h, 1};
+    vkCmdCopyImageToBuffer(d->cmd, im->img, VK_IMAGE_LAYOUT_GENERAL, host.buf,
+                           1, &c);
+    VkMemoryBarrier mb{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+    mb.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    mb.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+    vkCmdPipelineBarrier(d->cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         VK_PIPELINE_STAGE_HOST_BIT, 0, 1, &mb, 0, nullptr, 0,
+                         nullptr);
+    VKTRY(d, vkEndCommandBuffer(d->cmd));
+    VkSubmitInfo su{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+    su.commandBufferCount = 1;
+    su.pCommandBuffers = &d->cmd;
+    VkFence f = VK_NULL_HANDLE;
+    VkFenceCreateInfo fi{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+    VKTRY(d, vkCreateFence(d->dev, &fi, nullptr, &f));
+    VkResult r = vkQueueSubmit(d->queue, 1, &su, f);
+    if (r == VK_SUCCESS) r = vkWaitForFences(d->dev, 1, &f, VK_TRUE, ~0ull);
+    vkDestroyFence(d->dev, f, nullptr);
+    if (r != VK_SUCCESS) {
+        destroy_buf(d, host);
+        return seterr(d, NXVC_VKD_ERR_VULKAN, "view readback: %s (%d)",
+                      vkresult_name(r), (int)r);
+    }
+    std::memcpy(out, host.mapped, need);
+    destroy_buf(d, host);
+    return NXVC_VKD_OK;
+}
 
 extern "C" nxvc_vkd_status nxvc_vk_decoder_vk_handles(
     const nxvc_vk_decoder *d, VkInstance *instance,

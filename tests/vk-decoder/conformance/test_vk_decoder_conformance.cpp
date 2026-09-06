@@ -1950,6 +1950,153 @@ void run_atlas_modes() {
     }
 }
 
+// ------------------------------- [ATLAS] the display view A/B (13.12.5)
+// The one-tap 8-bit view and the three-plane R16 view must carry the SAME
+// PICTURE.  If they did not, choosing between them would be a quality decision
+// instead of a performance one, and the 1.086-against-2.124 ms measurement
+// would be buying something other than taps.
+//
+// The comparison is sample for sample after the conversion rule the header
+// states: for a CT_NONE stream the atlas holds the stream's own 8-bit YCbCr,
+// so the R8 view stores the value unchanged as a UNORM byte and the R16 view
+// stores it as an integer.  Both are then read back and must agree with each
+// OTHER and with the ATLAS ITSELF -- the third leg matters, because two views
+// produced by one wrong kernel would agree with each other perfectly.
+void run_atlas_view() {
+    ++g_checked;
+    std::vector<uint8_t> stream;
+    std::string err;
+    if (!encode_mode_stream(192, 192, 4, 0, stream, err)) {
+        std::printf("FAIL atlas-view: encode: %s\n", err.c_str());
+        ++g_fail;
+        return;
+    }
+    struct Shot { std::vector<uint8_t> y, c, cr; uint32_t yw=0,yh=0,cw=0,ch=0; };
+    Shot shot[2];
+    const nxvc_vkd_atlas_view modes[2] = {NXVC_VKD_ATLAS_VIEW_R8,
+                                          NXVC_VKD_ATLAS_VIEW_R16};
+    std::vector<uint16_t> atlasY, atlasCb, atlasCr;
+    uint32_t aw = 0, ah = 0, asd = 0, acw = 0, ach = 0, acsd = 0;
+    for (int m = 0; m < 2; ++m) {
+        nxvc_vkd_create_info ci;
+        nxvc_vk_decoder_create_info_default(&ci);
+        ci.flags = 0;
+        ci.output_format = NXVC_VKD_OUT_AUTO;
+        ci.device_name = device_filter();
+        nxvc_vk_decoder *d = nullptr;
+        if (nxvc_vk_decoder_create(&ci, &d) != NXVC_VKD_OK) {
+            std::printf("SKIP atlas-view: no decoder\n");
+            ++g_skipped;
+            nxvc_vk_decoder_destroy(d);
+            return;
+        }
+        size_t consumed = 0;
+        if (nxvc_vk_decoder_parse_stream_header(d, stream.data(), stream.size(),
+                                                &consumed) != NXVC_VKD_OK) {
+            std::printf("FAIL atlas-view: stream header\n");
+            ++g_fail;
+            nxvc_vk_decoder_destroy(d);
+            return;
+        }
+        if (nxvc_vk_decoder_set_atlas_view(d, modes[m]) != NXVC_VKD_OK) {
+            std::printf("FAIL atlas-view: set_atlas_view(%d): %s\n", (int)modes[m],
+                        nxvc_vk_decoder_last_error(d));
+            ++g_fail;
+            nxvc_vk_decoder_destroy(d);
+            return;
+        }
+        size_t off = consumed;
+        while (off < stream.size()) {
+            size_t used = 0;
+            if (nxvc_vk_decode_frame(d, stream.data() + off,
+                                     stream.size() - off, &used) !=
+                NXVC_VKD_OK) {
+                std::printf("FAIL atlas-view: decode: %s\n",
+                            nxvc_vk_decoder_last_error(d));
+                ++g_fail;
+                nxvc_vk_decoder_destroy(d);
+                return;
+            }
+            off += used;
+        }
+        uint32_t w = 0, h = 0, bps = 0;
+        auto grab = [&](int pl, std::vector<uint8_t> &dst) {
+            if (nxvc_vk_decoder_atlas_view_read(d, pl, nullptr, 0, &w, &h,
+                                                &bps) != NXVC_VKD_OK)
+                return false;
+            dst.assign((size_t)w * h * bps, 0u);
+            return nxvc_vk_decoder_atlas_view_read(d, pl, dst.data(),
+                                                   dst.size(), &w, &h, &bps) ==
+                   NXVC_VKD_OK;
+        };
+        if (!grab(0, shot[m].y)) { std::printf("FAIL atlas-view: read luma\n"); ++g_fail; nxvc_vk_decoder_destroy(d); return; }
+        shot[m].yw = w; shot[m].yh = h;
+        if (!grab(1, shot[m].c)) { std::printf("FAIL atlas-view: read chroma\n"); ++g_fail; nxvc_vk_decoder_destroy(d); return; }
+        shot[m].cw = w; shot[m].ch = h;
+        if (modes[m] == NXVC_VKD_ATLAS_VIEW_R16) grab(2, shot[m].cr);
+        if (m == 1) {
+            // The atlas itself, as the independent third leg.
+            nxvc_vk_decoder_atlas_plane(d, 0, nullptr, 0, &aw, &ah, &asd);
+            atlasY.assign((size_t)asd * ah, 0u);
+            nxvc_vk_decoder_atlas_plane(d, 0, atlasY.data(), atlasY.size(), &aw,
+                                        &ah, &asd);
+            nxvc_vk_decoder_atlas_plane(d, 1, nullptr, 0, &acw, &ach, &acsd);
+            atlasCb.assign((size_t)acsd * ach, 0u);
+            nxvc_vk_decoder_atlas_plane(d, 1, atlasCb.data(), atlasCb.size(),
+                                        &acw, &ach, &acsd);
+            atlasCr.assign((size_t)acsd * ach, 0u);
+            nxvc_vk_decoder_atlas_plane(d, 2, atlasCr.data(), atlasCr.size(),
+                                        &acw, &ach, &acsd);
+        }
+        nxvc_vk_decoder_destroy(d);
+    }
+    if (shot[0].yw != shot[1].yw || shot[0].yh != shot[1].yh ||
+        shot[0].cw != shot[1].cw || shot[0].ch != shot[1].ch) {
+        std::printf("FAIL atlas-view: the two views have different extents\n");
+        ++g_fail;
+        return;
+    }
+    size_t bad = 0, first = 0;
+    bool have = false;
+    for (uint32_t y = 0; y < shot[0].yh; ++y)
+        for (uint32_t x = 0; x < shot[0].yw; ++x) {
+            const uint32_t v8 = shot[0].y[(size_t)y * shot[0].yw + x];
+            const size_t o16 = ((size_t)y * shot[1].yw + x) * 2;
+            const uint32_t v16 =
+                (uint32_t)shot[1].y[o16] | ((uint32_t)shot[1].y[o16 + 1] << 8);
+            const uint32_t va = atlasY[(size_t)y * asd + x];
+            if (v8 != v16 || v8 != va) {
+                if (!have) { have = true; first = (size_t)y * shot[0].yw + x; }
+                ++bad;
+            }
+        }
+    for (uint32_t y = 0; y < shot[0].ch; ++y)
+        for (uint32_t x = 0; x < shot[0].cw; ++x) {
+            const size_t o8 = ((size_t)y * shot[0].cw + x) * 2;
+            const uint32_t cb8 = shot[0].c[o8], cr8 = shot[0].c[o8 + 1];
+            const size_t o16 = ((size_t)y * shot[1].cw + x) * 2;
+            const uint32_t cb16 =
+                (uint32_t)shot[1].c[o16] | ((uint32_t)shot[1].c[o16 + 1] << 8);
+            const uint32_t cr16 = (uint32_t)shot[1].cr[o16] |
+                                  ((uint32_t)shot[1].cr[o16 + 1] << 8);
+            const uint32_t acb = atlasCb[(size_t)y * acsd + x];
+            const uint32_t acr = atlasCr[(size_t)y * acsd + x];
+            if (cb8 != cb16 || cr8 != cr16 || cb8 != acb || cr8 != acr) ++bad;
+        }
+    if (bad) {
+        std::printf("FAIL atlas-view: %zu sample(s) differ between the one-tap "
+                    "8-bit view, the three-plane R16 view and the atlas "
+                    "(first at %zu)\n", bad, first);
+        ++g_fail;
+        return;
+    }
+    std::printf("-- atlas-view: one-tap 8-bit (R8 %ux%u + R8G8 %ux%u) and "
+                "three-plane R16 carry the same picture, and both equal the "
+                "atlas, over %u luma + %u chroma samples\n",
+                shot[0].yw, shot[0].yh, shot[0].cw, shot[0].ch,
+                shot[0].yw * shot[0].yh, shot[0].cw * shot[0].ch);
+}
+
 std::vector<Case> synthetic_cases(bool quick) {
     std::vector<Case> v;
     auto nm = [](const char *fmt, auto... a) {
@@ -2782,6 +2929,10 @@ int main(int argc, char **argv) {
         run_row_present(quick ? 8 : 24);
     }
     if (do_synth) run_atlas_modes();
+    if (do_synth) {
+        CaseGuard cg("atlas-view");
+        run_atlas_view();
+    }
     if (do_loss) run_loss(quick ? 20 : 100);
 
     std::printf("-- %d stream(s) checked, %d skipped, %d failure(s)\n",

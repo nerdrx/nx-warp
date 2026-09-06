@@ -63,7 +63,39 @@ if(NXVW_GLSLC)
             ${NXVW_ATLAS_GEN_SPV} ${NXVW_ATLAS_SPV_PASSES_CMAKE}
     COMMENT "glslc atlas_tiles.comp -> atlas_tiles.spv.h"
     VERBATIM)
-  add_custom_target(nxvw_atlas_spv DEPENDS ${NXVW_ATLAS_SPV} ${NXVW_ATLAS_TSPV})
+  # The display view, twice: the one-tap 8-bit form and the three-plane R16
+  # one.  Two BUILDS of one source rather than a specialisation constant,
+  # because the image format qualifier is part of the type -- `image2D` and
+  # `uimage2D` are not the same variable -- so there is nothing a constant
+  # could select between.
+  foreach(v 8 16)
+    if(v STREQUAL "8")
+      set(_vdef "-DDEFS=-DNXVW_VIEW8=1")
+    else()
+      set(_vdef "-DDEFS=")
+    endif()
+    set(NXVW_ATLAS_VSPV_${v} ${NXVW_ATLAS_GEN}/atlas_view${v}.spv.h)
+    add_custom_command(
+      OUTPUT ${NXVW_ATLAS_VSPV_${v}}
+      COMMAND ${CMAKE_COMMAND}
+              -DGLSLC=${NXVW_GLSLC}
+              -DSRC=${CMAKE_CURRENT_SOURCE_DIR}/atlas_view.comp
+              -DOUT=${NXVW_ATLAS_VSPV_${v}}
+              -DNAME=atlas_view${v}
+              -DINCDIR=${CMAKE_CURRENT_SOURCE_DIR}
+              -DSTYLE=plain
+              ${_vdef}
+              -DDEPFILE=${NXVW_ATLAS_VSPV_${v}}.d
+              -P ${NXVW_ATLAS_GEN_SPV}
+      DEPFILE ${NXVW_ATLAS_VSPV_${v}}.d
+      DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/atlas_view.comp
+              ${NXVW_ATLAS_GEN_SPV} ${NXVW_ATLAS_SPV_PASSES_CMAKE}
+      COMMENT "glslc atlas_view.comp (view${v}) -> atlas_view${v}.spv.h"
+      VERBATIM)
+  endforeach()
+  add_custom_target(nxvw_atlas_spv DEPENDS ${NXVW_ATLAS_SPV} ${NXVW_ATLAS_TSPV}
+                                          ${NXVW_ATLAS_VSPV_8}
+                                          ${NXVW_ATLAS_VSPV_16})
 
   # ---------------------------------------------------------------- harness
   # GPU-vs-CPU for the compose kernel, the same shape passA/, passB/ and
