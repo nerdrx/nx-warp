@@ -317,6 +317,34 @@ with random tile loss. `nxvc_encoder_set_skip_map()` is the rate controller's
 `force_warp_skip` request (docs/RATECONTROL.md 8.7): applied after the mode
 search, overridden wherever a coded tile is required.
 
+### The piecewise-planar tile mode
+
+`--planar` (`nxvc_config::planar = 1`) offers a fourth answer per tile: code it
+as **2 to 4 shaded regions meeting at sharp boundaries** instead of as
+transform coefficients (tool bit 35, SYNTAX.md 13.13). A planar tile has no
+reference, no transform and no entropy-coded payload -- the body is a header
+byte, a raw label map and three signed bytes per region per plane -- so it is
+legal on an intra-only stream and costs a decoder less than any other coded
+tile.
+
+It is a **low-rate** tool and the decision is the whole of it. The mode
+saturates: there is no residual, so past its fit error more bytes buy nothing,
+while the transform keeps climbing. `--planar` therefore takes it only where it
+is both cheaper and no worse than the intra tile it replaces, which measures
+neutral -- within 0.015 dB and 2.4 % of the tool being off on both measured
+fixtures -- and fires on 2 to 17 % of tiles.
+
+`--planar-prefer` (`planar = 2`) takes it wherever it is cheaper, which is the
+low-polygon LOOK as a setting and costs 2 to 4 dB. That is a taste, and
+`docs/LOWPOLY-MODE.md` 9 is the measurement, the pictures and the reason the
+proposal's own +1.6 dB claim does not reproduce.
+
+Two development hooks, in the shape `NXVC_DZ_AC` already has:
+`NXVC_PLANAR_FORCE=1` codes every eligible tile planar and
+`NXVC_PLANAR_CONFIG=R,granularity` pins one configuration. They are how the
+mode's own rate-distortion curve is measured, because a stream where the
+decision picks it on a tenth of the tiles says nothing about the mode.
+
 ## Byte layout at a glance
 
 ```

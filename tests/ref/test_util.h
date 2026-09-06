@@ -166,6 +166,23 @@ static inline TestImage make_image(int w, int h, bool c444, int kind,
                     break;
                 case 2: v = ((x / 9 + y / 7) % 2) ? 235 : 16; break;
                 case 3: v = (int)(rng.next() & 255); break;
+                // 5: flat and ramped rectangles meeting at sharp boundaries,
+                // with two diagonal splits laid over them.  It is the content
+                // class the piecewise-planar tile mode is FOR (SYNTAX.md
+                // 13.13), and no other kind here has a region structure at
+                // all -- kind 1 is band-limited texture, which a plane cannot
+                // follow.  A vector for the mode built on any of the others
+                // would pin the mode never being chosen.
+                case 5: {
+                    // Panels large against a 64x64 tile, so a tile spans one
+                    // to three of them: that is the structure the mode codes.
+                    const int rx = x / 88, ry = y / 72;
+                    const int base = 26 + ((rx * 5 + ry * 3) % 6) * 38;
+                    const int gx = ((rx + ry) % 3) - 1, gy = ((rx * 2 + 1) % 3) - 1;
+                    v = base + (gx * (x % 88)) / 3 + (gy * (y % 72)) / 3;
+                    if ((x * 2 + y) % 349 < 26) v = 240;   // one diagonal band
+                    break;
+                }
                 default: v = 137; break;
             }
             im.p[0][(size_t)y * w + x] = (uint8_t)(v < 0 ? 0 : (v > 255 ? 255 : v));
@@ -183,6 +200,12 @@ static inline TestImage make_image(int w, int h, bool c444, int kind,
                     break;
                 case 2: u = ((x / 9) % 2) ? 210 : 40; v = ((y / 7) % 2) ? 30 : 220; break;
                 case 3: u = (int)(rng.next() & 255); v = (int)(rng.next() & 255); break;
+                case 5: {
+                    const int rx = (2 * x) / 88, ry = (2 * y) / 72;
+                    u = 96 + ((rx * 5 + ry * 3) % 5) * 24;
+                    v = 176 - ((rx * 3 + ry * 7) % 5) * 22;
+                    break;
+                }
                 default: u = 128; v = 128; break;
             }
             im.p[1][(size_t)y * im.cw + x] = (uint8_t)(u < 0 ? 0 : (u > 255 ? 255 : u));

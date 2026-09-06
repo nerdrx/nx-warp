@@ -833,7 +833,7 @@ class TileHeader:
         return out
 
     def validate(self, offset: int = 0) -> None:
-        if self.mode > 4:
+        if self.mode > TileMode.PLANAR:
             raise BitstreamError(f"mode {self.mode} is reserved", offset + 4)
         if self.res_level == 3:
             raise BitstreamError("res_level 3 is reserved", offset + 4)
@@ -1193,6 +1193,30 @@ _TILE_RULES: Sequence[tuple[Callable[[Any, Any, Any], bool], str]] = (
         "split4x4 without tool bit 19 XFORM_4X4_SPLIT",
     ),
     (
+        lambda t, h, s: t.mode == TileMode.PLANAR and not (s.tools & Tool.PLANAR),
+        "a PLANAR tile without tool bit 35 PLANAR",
+    ),
+    _TileRule(
+        # SYNTAX.md 13.13: the mode has no reference, no transform and no
+        # entropy-coded payload, so every field describing one must be zero.
+        lambda t, h, s: t.mode == TileMode.PLANAR
+        and (
+            t.res_level != 0
+            or t.tskip
+            or t.split4x4
+            or t.xform_size != 0
+            or t.wm_id != 0
+            or t.table_set != 0
+            or t.nsub_log2 != 0
+            or t.mv_present
+            or t.quad_mv
+            or t.ref_sel != 0
+            or t.wgt != 0
+            or t.alpha_mode == 2
+        ),
+        "a PLANAR tile setting a field the mode forbids",
+    ),
+    _TileRule(
         lambda t, h, s: t.quad_mv and not (s.tools & Tool.QUAD_MV),
         "quad_mv without tool bit 29 QUAD_MV",
     ),
@@ -1210,6 +1234,7 @@ _TILE_RULES: Sequence[tuple[Callable[[Any, Any, Any], bool], str]] = (
         # TileHeader.validate has already raised, not a missing-tool one.
         lambda t, h, s: t.mode <= TileMode.STEREO
         and t.mode != TileMode.INTRA
+        and t.mode != TileMode.PLANAR
         and not (s.tools & Tool.INTER),
         "an inter tile mode without tool bit 10 INTER",
     ),

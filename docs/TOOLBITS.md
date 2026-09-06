@@ -91,6 +91,8 @@ so a dropped tool leaves no bit with a history for a later package to inherit.
 | -- | ~~`SUBTILE_INTRA`~~ | one quadrant drops the predictor | `inter-a` (26) | 26 | **DROPPED by `JUDGE-inter.md`**, no bit allocated |
 | -- | ~~`TILE_EXT`~~ | the tile extension byte | -- | -- | **not needed** -- see section 4 |
 | 30 | `ENTROPY_LITE` | the table-free, fully parallel entropy coding | `exp/entropy-lite` (24) | 24 | **move to 30**, the first bit the tournament left free |
+| 31-34 | the `ATLAS` package | `ATLAS`, `ROW_PRESENT`, `ATLAS_NBR`, `ATLAS_REBASE` | `atlas` | 31-34 | allocated by the atlas work; not merged here |
+| 35 | `PLANAR` | the piecewise-planar tile mode, `mode == 5` (SYNTAX.md 13.13) | `lowpoly-coding` | 35 | **the next bit free after the atlas package**; adds a MODE and needs no other tool |
 
 `rdo-a` and `rdo-b` allocate **no tool bit at all**: both are pure encoder
 packages (rate-distortion search, lambda, effort presets) and change no

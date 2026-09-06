@@ -266,6 +266,52 @@ static void resolve_matrices(FrameParams &fp, const u8 *custom) {
     }
 }
 
+// ------------------------------------------------------- piecewise planar
+// SYNTAX.md 13.13, docs/LOWPOLY-MODE.md.  A planar tile is 2 to 4 REGIONS,
+// each one plane per coded colour plane -- a DC level and two ramps, in
+// exactly the three signed bytes and exactly the quantiser 13.9 uses -- over
+// a label map on a sub-block grid of 8x8 (kPlanarMapDimCoarse cells per edge)
+// or 4x4 (kPlanarMapDimFine).
+//
+// The map is coded RAW, one or two bits per cell, and that is a deliberate v1
+// choice rather than an oversight.  docs/LOWPOLY-MODE.md 3.2 measures a
+// context-coded map at roughly a quarter of the raw size, which is real and is
+// the obvious follow-up -- but it puts an entropy decode in front of a
+// reconstruction whose whole argument is that it has none, and the mode is
+// worth having without it (section 4's raw rows already beat the transform at
+// 51 bytes a tile).  A compressed map is a second tool bit when someone has
+// measured a coder rather than an entropy bound.
+constexpr int kPlanarMaxRegions = 4;
+constexpr int kPlanarMapDimCoarse = 8;   // 8x8 sub-blocks over a 64x64 tile
+constexpr int kPlanarMapDimFine = 16;    // 4x4 sub-blocks
+constexpr int kPlanarMaxCells = kPlanarMapDimFine * kPlanarMapDimFine;
+constexpr int kPlanarPlanes = 3;         // Y, Co, Cg; alpha is not regionised
+
+// One tile's planar record: what the body carries and what the reconstruction
+// reads.  `coef[r][p]` is region r's three bytes for colour plane p, in the
+// order c0 (DC), c1 (horizontal ramp), c2 (vertical ramp).
+struct PlanarRec {
+    int regions = 2;      // 2..4
+    int fine = 0;         // 0 = 8x8 sub-blocks, 1 = 4x4
+    u8 labels[kPlanarMaxCells] = {};
+    i8 coef[kPlanarMaxRegions][kPlanarPlanes][3] = {};
+
+    int map_dim() const { return fine ? kPlanarMapDimFine : kPlanarMapDimCoarse; }
+    int label_bits() const { return regions > 2 ? 2 : 1; }
+    int map_bytes() const {
+        const int cells = map_dim() * map_dim();
+        return (cells * label_bits() + 7) / 8;
+    }
+    // The body length for a tile with `np` coded colour planes: the header
+    // byte, the map, and three bytes per region per plane.  `payload_len` must
+    // equal it exactly, which is what makes a truncated or padded body a
+    // BITSTREAM error rather than a picture.
+    int body_bytes(int np) const {
+        return 1 + map_bytes() + 3 * regions * (np < kPlanarPlanes ? np
+                                                                  : kPlanarPlanes);
+    }
+};
+
 // --------------------------------------------------------------- tile info
 struct TileParams {
     int layer = 0, eye = 0, tile_index = 0, payload_len = 0;
@@ -284,6 +330,10 @@ struct TileParams {
     int quad_mv = 0;        // word1 bit 31: `qmv` refines the tile vector
     i8 corr[3][3] = {};     // [plane][0]=dc, [1]=horizontal, [2]=vertical
     i8 qmv[4][2] = {};      // [quadrant][x,y], quarter samples, TL TR BL BR
+    // --- syntax v1.7, tool bit 35 (docs/SYNTAX.md 13.13).  `mode ==
+    // NXVC_MODE_PLANAR` and `pr` is the tile's whole content: there is no
+    // rANS payload, and `payload_len` is the length of `pr`'s serialised body.
+    PlanarRec pr;
 };
 
 // The near-skip correction (SYNTAX.md 13.9).  Three signed bytes per coded
@@ -309,7 +359,6 @@ static inline int popcount64(u64 v) {
 
 constexpr int kNearSkipPlanes = 3;
 constexpr int kNearSkipBytes = 3 * kNearSkipPlanes;
-
 // Signed nibble, two's complement, -8..+7.  The quad_mv deltas are packed two
 // to a byte and this is the only place they are unpacked.
 static inline int sign_nibble(u32 v) {
@@ -321,7 +370,75 @@ static inline int sign_nibble(u32 v) {
 static inline bool mode_needs_warp(int mode) {
     return mode == NXVC_MODE_WARP_SKIP || mode == NXVC_MODE_WARP_MV;
 }
-static inline bool mode_is_inter(int mode) { return mode != NXVC_MODE_INTRA; }
+// PLANAR is NOT an inter mode.  It is a coded tile that carries its own
+// content and predicts from nothing, which is exactly what INTRA is in every
+// place this predicate is asked -- the wpred allocation, the DC plane's
+// residual form, the directional predictor's availability.  Reading "not
+// INTRA" as "has a reference" was true for every mode that existed before
+// 13.13 and stops being true here.
+static inline bool mode_is_inter(int mode) {
+    return mode != NXVC_MODE_INTRA && mode != NXVC_MODE_PLANAR;
+}
+
+// ------------------------------------------------- the planar tile body
+// SYNTAX.md 13.13's body, written and read by one pair of functions so a field
+// cannot be written in an order the parse does not expect.  Raw bytes in the
+// payload region: a planar tile has no rANS payload at all, and `payload_len`
+// is the length of this body, which keeps the tile skippable by a parser that
+// does not implement the mode.
+//
+// The label map is packed LSB-first, cell 0 in the low bits of byte 0, one bit
+// per cell at two regions and two bits at three or four.  Bit order is stated
+// because it is the sort of thing two implementations agree on by accident
+// until they do not.
+static void serialize_planar(std::vector<u8> &out, const PlanarRec &pr,
+                             int np) {
+    out.clear();
+    const int planes = np < kPlanarPlanes ? np : kPlanarPlanes;
+    out.push_back((u8)(((u32)(pr.regions - 2) & 3u) |
+                       /* bit 2 split_form: 0 = bitmap.  The line form of
+                        * docs/LOWPOLY-MODE.md 3 is reserved and refused. */
+                       (((u32)pr.fine & 1u) << 3)));
+    const int M = pr.map_dim(), lb = pr.label_bits();
+    std::vector<u8> map((size_t)pr.map_bytes(), 0);
+    for (int c = 0; c < M * M; ++c) {
+        const int bit = c * lb;
+        map[(size_t)(bit >> 3)] |= (u8)((pr.labels[c] & ((1 << lb) - 1))
+                                        << (bit & 7));
+    }
+    out.insert(out.end(), map.begin(), map.end());
+    for (int r = 0; r < pr.regions; ++r)
+        for (int p = 0; p < planes; ++p)
+            for (int k = 0; k < 3; ++k) out.push_back((u8)pr.coef[r][p][k]);
+}
+
+// Returns false for every malformed body: a reserved value, a label that names
+// a region the header did not declare, or a length that is not exactly the one
+// the fields imply.  The caller turns that into NXVC_ERR_BITSTREAM.
+static bool parse_planar(const u8 *buf, int len, int np, PlanarRec &pr) {
+    if (len < 1) return false;
+    const u32 h = buf[0];
+    if (h & 0xf4u) return false;          // reserved bits, and the line form
+    pr.regions = (int)(h & 3u) + 2;
+    if (pr.regions > kPlanarMaxRegions) return false;   // 3 -> R = 5, reserved
+    pr.fine = (int)((h >> 3) & 1u);
+    const int planes = np < kPlanarPlanes ? np : kPlanarPlanes;
+    if (len != pr.body_bytes(np)) return false;
+    const int M = pr.map_dim(), lb = pr.label_bits(), mb = pr.map_bytes();
+    for (int c = 0; c < M * M; ++c) {
+        const int bit = c * lb;
+        const int v = (buf[1 + (bit >> 3)] >> (bit & 7)) & ((1 << lb) - 1);
+        // Three regions leave the fourth label value unused, and a stream
+        // that names it is not decodable: there is no plane to evaluate.
+        if (v >= pr.regions) return false;
+        pr.labels[c] = (u8)v;
+    }
+    const u8 *co = buf + 1 + mb;
+    for (int r = 0; r < pr.regions; ++r)
+        for (int p = 0; p < planes; ++p)
+            for (int k = 0; k < 3; ++k) pr.coef[r][p][k] = (i8)*co++;
+    return true;
+}
 
 static void pack_tile_header(BW &bw, const TileParams &t) {
     u32 w0 = ((u32)t.layer & 3) | (((u32)t.eye & 1) << 2) |
@@ -1083,6 +1200,57 @@ static void reconstruct_near_skip(PlaneState &s, const i8 corr[3]) {
 }
 
 
+// SYNTAX.md 13.13's decoding process for one plane.
+//
+// This is 13.9 with its last indirection removed.  A near-skip record builds a
+// per-BLOCK mean field and then interpolates it; a planar region's three
+// coefficients ARE the sample field, evaluated per sample, so the ramp runs
+// over sample coordinates and the shift is log2(size) rather than log2(nb).
+// The difference matters and is the whole point of the mode: a per-sub-block
+// constant field would be a coarser version of the block noise the mode exists
+// to replace.
+//
+// Everything here is integer and every sample is independent of every other:
+// one label lookup and three multiply-adds, no scan, no neighbour, no state
+// carried between samples or between tiles.  That is what a GPU decoder needs
+// (docs/LOWPOLY-GPU-PLAN.md), and it is a constraint on the DESIGN, not a
+// property this implementation happens to have.
+//
+// `plane_index` selects which of the record's three coefficient sets the plane
+// reads.  A plane beyond the third -- alpha -- is never regionised and never
+// reaches here.
+static void reconstruct_planar(PlaneState &s, const PlanarRec &pr,
+                               int plane_index) {
+    const int size = s.size;
+    const int t = dc_plane_step(s);
+    const int lg = log2_of(size);
+    const int M = pr.map_dim();
+    // The map is defined over the TILE; a plane of edge `size` reads cell
+    // (x >> shift, y >> shift).  A chroma plane at 4:2:0 is half the luma
+    // edge, so it shares the luma's map at one shift less -- the regions are
+    // the same regions, which is why the chroma of a planar tile cannot be
+    // segmented independently of its luma.  `size >= M` holds because the mode
+    // requires res_level 0: 64 and 32 against 8 or 16.
+    const int shift = lg - log2_of(M);
+    i32 d0[kPlanarMaxRegions], dh[kPlanarMaxRegions], dv[kPlanarMaxRegions];
+    for (int r = 0; r < pr.regions; ++r) {
+        d0[r] = dequant(pr.coef[r][plane_index][0], t);
+        dh[r] = dequant(pr.coef[r][plane_index][1], t);
+        dv[r] = dequant(pr.coef[r][plane_index][2], t);
+    }
+    for (int y = 0; y < size; ++y)
+        for (int x = 0; x < size; ++x) {
+            const int r = pr.labels[(size_t)(y >> shift) * M + (x >> shift)];
+            const i32 v = s.dc_off + d0[r] +
+                          ((dh[r] * (2 * x - size + 1)) >> lg) +
+                          ((dv[r] * (2 * y - size + 1)) >> lg);
+            s.samples[(size_t)y * size + x] = clamp_i32(v, 0, s.maxval);
+        }
+    // A planar tile is its own prediction: nothing is added to it, and the
+    // reference picture stores exactly these samples.
+    s.pred = s.samples;
+}
+
 // The DC plane and the bilinear prediction it drives: s.means and s.pred.
 // Shared by the encoder's analysis pass and the decoder.
 //
@@ -1556,6 +1724,133 @@ constexpr double kRdInf = 1e30;
 // reconstruction step (the dequantizer's t, Q4).  Writes the chosen levels
 // back into `coefs`.  `sdh` says the unit will hide its `last` sign, which is
 // worth exactly one bit and is part of the LAST decision.
+// The trellis, in exact integers.
+//
+// Same states, same candidates, same LAST decision as the double form below --
+// only the arithmetic changes, and only in three places:
+//
+//   * DISTORTION is `orig - dequant(m, step)`, the decoder's own
+//     reconstruction, instead of `a - m * (step / 16.0)`.  That is not merely
+//     an integer version of the same number, it is the RIGHT number: the
+//     decoder reconstructs through `(q * t + 8) >> 4` and the float form was
+//     pricing an error the decoder never makes.  `int_rdoq_unit` already
+//     measures it this way.
+//   * RATE is `rc.sym[][]` unchanged -- it was always Q10 integers.
+//   * The ACCUMULATOR is `(d * d) << 18` plus `lam_q8 * rate_q10`, in i64,
+//     which is exactly 2^18 times the real cost with no division anywhere.
+//     lambda is `(K * t * t) >> 12` over the Q4 step, the same integer family
+//     effort 1 uses.
+//
+// Nothing else moves.  There is no epsilon, no tolerance and no tie-break
+// difference to argue about, because there is no rounding left to disagree on:
+// two implementations that do these adds in this order get the same levels or
+// they have a bug.
+static void rdoq_unit_int(i16 *coefs, const i32 *orig, const i32 *step,
+                          int ncoef, const u16 *scan, const UnitCtx &uc,
+                          const RateCost &rc, u32 lam_q8, int effort, int sdh) {
+    for (int i = 0; i < ncoef; ++i) coefs[i] = 0;
+
+    // The same provable bound as the double form: above the highest position
+    // whose magnitude reaches half a step, zero beats one in distortion and in
+    // rate.  `32|a| >= step` is `2|a| >= step/16` with no division.
+    int hi = -1;
+    i64 energy = 0;
+    for (int p = 0; p < ncoef; ++p) {
+        const int idx = scan[p];
+        const i64 c = orig[idx];
+        const i64 a = c < 0 ? -c : c;
+        energy += c * c;
+        if (32 * a >= (i64)step[idx]) hi = p;
+    }
+    if (hi < 0 || !rc.zero_cheapest) hi = hi < 0 ? -1 : ncoef - 1;
+    if (hi < 0) return;
+
+    constexpr int kMaxCoef = kMaxBlock * kMaxBlock;
+    // i64: a position's cost is under 2^48 and a unit accumulates 1024 of
+    // them, so the running total reaches 2^58.
+    static thread_local i64 f[kMaxCoef][3], fnz[kMaxCoef];
+    static thread_local i32 best_m[kMaxCoef][3], best_m_nz[kMaxCoef];
+    static constexpr i64 kInf = INT64_MAX / 4;
+    i64 prev[3] = {0, 0, 0};
+    for (int p = 0; p <= hi; ++p) {
+        const int idx = scan[p];
+        const i32 c = orig[idx];
+        const i32 a = c < 0 ? -c : c;
+        const i32 st = step[idx];
+        // floor(a / (st/16)) and round(a / (st/16)), without a divide by a
+        // fraction: st is Q4, so a/(st/16) is 16a/st.
+        i32 m0 = st > 0 ? (i32)(((i64)a * 16) / st) : 0;
+        if (m0 > 32767) m0 = 32767;
+        i32 cand[4];
+        int nc = 0;
+        cand[nc++] = 0;
+        if (effort == kRdoqFast) {
+            i32 mn = st > 0 ? (i32)(((i64)a * 32 + st) / (2 * (i64)st)) : 0;
+            if (mn > 32767) mn = 32767;
+            if (mn > 0) cand[nc++] = mn;
+        } else {
+            if (effort >= kRdoqFull && m0 >= 2) cand[nc++] = m0 - 1;
+            if (m0 > 0) cand[nc++] = m0;
+            if (m0 + 1 <= 32767) cand[nc++] = m0 + 1;
+        }
+        for (int sc = 0; sc < 3; ++sc) {
+            i64 best = kInf, bestnz = kInf;
+            i32 bm = 0, bmnz = -1;
+            for (int k = 0; k < nc; ++k) {
+                const i32 m = cand[k];
+                const i64 d = (i64)a - dequant(m, st);
+                const i64 dd = (d * d) << 18;
+                const i64 chain = prev[uc.level_markov() ? level_class(m) : 0];
+                const i64 cost =
+                    dd + (i64)lam_q8 * level_rate(rc, uc, p, -1, sc, m) + chain;
+                if (cost < best) { best = cost; bm = m; }
+                if (m != 0) {
+                    const i64 cnz =
+                        dd + (i64)lam_q8 * level_rate(rc, uc, p, p, sc, m) +
+                        chain;
+                    if (cnz < bestnz) { bestnz = cnz; bmnz = m; }
+                }
+            }
+            f[p][sc] = best;
+            best_m[p][sc] = bm;
+            if (sc == 0) { fnz[p] = bestnz; best_m_nz[p] = bmnz; }
+        }
+        for (int sc = 0; sc < 3; ++sc) prev[sc] = f[p][sc];
+    }
+
+    i64 best_total = (i64)lam_q8 * rc.sym[uc.cbf][0] + (energy << 18);
+    int best_last = -1;
+    i64 tail = 0;
+    for (int p = ncoef - 1; p > hi; --p) {
+        const i64 c = orig[scan[p]];
+        tail += c * c;
+    }
+    for (int p = hi; p >= 0; --p) {
+        if (fnz[p] < kInf) {
+            i32 r = rc.sym[uc.cbf][1];
+            if (ncoef > 1) {
+                const int cls = last_class_of(p >> uc.band_shift);
+                r += rc.sym[uc.last][cls] +
+                     ((kLastRawBits[cls] + uc.band_shift) << 10);
+            }
+            if (sdh && p >= kSdhMinLast) r -= 1 << 10;
+            const i64 total = fnz[p] + (tail << 18) + (i64)lam_q8 * r;
+            if (total < best_total) { best_total = total; best_last = p; }
+        }
+        const i64 c = orig[scan[p]];
+        tail += c * c;
+    }
+
+    if (best_last < 0) return;
+    int sc = 0;
+    for (int p = best_last; p >= 0; --p) {
+        const i32 m = (p == best_last) ? best_m_nz[p] : best_m[p][sc];
+        const int idx = scan[p];
+        coefs[idx] = (i16)(orig[idx] < 0 ? -m : m);
+        sc = uc.level_markov() ? level_class(m) : 0;
+    }
+}
+
 static void rdoq_unit(i16 *coefs, const i32 *orig, const i32 *step, int ncoef,
                       const u16 *scan, const UnitCtx &uc,
                       const RateCost &rc, double lambda, int effort, int sdh) {
@@ -1900,6 +2195,18 @@ static void analyze_dc_plane(PlaneState &s, i16 *coefs, int sdh,
 #define NXE_RDOQ_LAM_Q12 1400   /* lambda = 0.342 * qstep^2, Q12 */
 #define NXE_RDOQ_BITS_Q8 768    /* 3.0 bits for a +-1 and its sign */
 
+// The trellis's integer lambda: the same `(K * t * t) >> 12` family as the
+// requantiser's, with ref's own rate-distortion constant rather than the
+// requantiser's.  kLambdaScale is 0.22 and `(K / 4096) * qstep^2` is the
+// family, so K = 0.22 * 4096 = 901.  Written as a constant here because the
+// GPU has to compute the same number without reading a double.
+#define NXE_TRELLIS_LAM_Q12 901
+
+static inline u32 int_trellis_lambda_q8(int qp) {
+    const u32 t = (u32)kQStep[clamp_i32(qp, 0, 63)];
+    return (u32)(((u64)NXE_TRELLIS_LAM_Q12 * (u64)(t * t)) >> 12);
+}
+
 static inline u32 int_rdoq_lambda_q8(int qp) {
     const u32 t = (u32)kQStep[clamp_i32(qp, 0, 63)];
     return (u32)(((u64)NXE_RDOQ_LAM_Q12 * (u64)(t * t)) >> 12);
@@ -1978,7 +2285,8 @@ static void analyze_plane(PlaneState &s, i16 *coefs, int tskip, int intra_dz,
 // about it.
 static void rdoq_plane(PlaneState &s, i16 *coefs, int tskip, bool chroma,
                        const RateCost &rc, double lambda_scale, int sdh,
-                       int nctx, int nlanes, int effort, double dc_gain) {
+                       int nctx, int nlanes, int effort, double dc_gain,
+                       int int_trellis = 0) {
     const int nb = s.nb, size = s.size, bs = s.bsize, lb = s.log2b;
     const int ndc = nb * nb, ncoef = bs * bs;
     const double lambda = make_lambda(s.qp, lambda_scale).sse;
@@ -2025,7 +2333,12 @@ static void rdoq_plane(PlaneState &s, i16 *coefs, int tskip, bool chroma,
             // lane has no predecessor yet and the class is 0.
             const UnitCtx uc = with_nbr(
                 base_uc, bi >= nlanes ? nbr[bi - nlanes] : 0);
-            rdoq_unit(c, orig, stepv, ncoef, scan, uc, rc, lambda, effort, sdh);
+            if (int_trellis)
+                rdoq_unit_int(c, orig, stepv, ncoef, scan, uc, rc,
+                              int_trellis_lambda_q8(s.qp), effort, sdh);
+            else
+                rdoq_unit(c, orig, stepv, ncoef, scan, uc, rc, lambda, effort,
+                          sdh);
             if (sdh)
                 hide_sign_unit(c, orig, stepv, ncoef, scan, &rc, lambda, &uc);
             nbr[bi] = (u8)unit_nbr_class(c, ncoef, scan);
@@ -2356,6 +2669,11 @@ struct TileDecision {
     int disparity = 0;
     int skipped = 0;
     int near_skip = 0, quad_mv = 0;
+    // The piecewise-planar mode (SYNTAX.md 13.13).  `planar` implies
+    // `mode == NXVC_MODE_PLANAR`, and `pr` is then the tile's whole content:
+    // there is nothing else to code and nothing to predict from.
+    int planar = 0;
+    PlanarRec pr;
     i8 corr[3][3] = {};
     i8 qmv[4][2] = {};
     // Mean absolute difference per luma sample of the WARP_SKIP predictor with
@@ -2525,6 +2843,7 @@ void nxvc_config_default(nxvc_config *cfg) {
     cfg->dc_rdoq_off = 0;      // the DC plane goes through the trellis
     cfg->rdoq_effort = 0;      // built-in default (medium)
     cfg->int_rdoq = 0;         // the integer requantiser is opt-in
+    cfg->int_trellis = 0;      // and so is the integer trellis
     cfg->me_effort = 0;        // built-in default (medium)
     cfg->lambda_class_off = 0; // per-class lambda on
     for (int i = 0; i < 4; ++i) cfg->lambda_class_q8[i] = 0;
@@ -2586,6 +2905,12 @@ void nxvc_config_default(nxvc_config *cfg) {
     cfg->drift_refresh = 1;
     cfg->drift_gate_q8 = 0;    // built-in default, 4x the quantiser floor
     cfg->near_skip = 1;
+    // The piecewise-planar mode ships OFF.  It is a low-rate tool whose whole
+    // value is at quantisers most streams never reach, it costs the encoder a
+    // fit per tile, and it is a NEGOTIATED tool -- a decoder without bit 35
+    // refuses the stream header.  `nxv-enc --planar` and nxvc_config::planar
+    // turn it on.  docs/LOWPOLY-MODE.md.
+    cfg->planar = 0;
     cfg->quad_mv = 1;
     // ENTROPY_LITE ships OFF.  It is a NEGOTIATED tool, not a default: it buys
     // Pass A time with bits, and whether that trade is worth making depends on

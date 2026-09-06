@@ -73,6 +73,7 @@ static void usage() {
         "  --wm 0..3|auto       per-tile weighting matrix id (default 0)\n"
         "  --no-rdo             plain dead-zone quantizer (default: RD trellis)\n"
         "  --rdo-lambda F       RD lambda scale (default 0.22, fitted)\n"
+        "  --int-trellis N      run the RD trellis in exact integers (0/1)\n"
         "  --qp-search N        try per-tile qp_delta in [-N, +N] (default 0)\n"
         "  --qp-search-step N   spacing of those candidates (default 2)\n"
         "  --rdoq-effort N      1 fast, 2 medium, 3 full trellis candidates\n"
@@ -181,6 +182,17 @@ static void usage() {
         "                       sides stay byte-comparable.  Default off.\n"
         "  --int-lambda N       its SAD-domain lambda, Q8 per quantiser step\n"
         "                       (default 45)\n"
+        "  --planar             the piecewise-planar tile mode (35): a tile\n"
+        "                       may be coded as 2-4 shaded regions meeting at\n"
+        "                       sharp boundaries instead of as transform\n"
+        "                       coefficients, chosen per tile by RD.  A\n"
+        "                       LOW-RATE tool: it saturates, so it is picked\n"
+        "                       where the transform has run out of bits, and\n"
+        "                       what it buys there is the KIND of failure --\n"
+        "                       flat regions and edges rather than blocks\n"
+        "  --planar-prefer      the same, taken wherever it is CHEAPER even\n"
+        "                       when it is worse: the low-poly look as a\n"
+        "                       setting.  It costs PSNR; see LOWPOLY-MODE.md\n"
         "  --int-rdoq N         integer requantiser: 0 off, 1 drop a +-1\n"
         "                       coefficient that does not pay for itself.\n"
         "                       The GPU encoder's effort 1; unlike\n"
@@ -293,7 +305,7 @@ int main(int argc, char **argv) {
     int lossless = 0, tile420 = 0, custom_tables = 1, rgb = 0, quiet = 0;
     int tskip = 0, nsub = 255, stats = 0;  // nsub 255 = auto lane count
     int color_space = 0;
-    int rdo = 1, rdo_lambda_q8 = 0, qp_search = 0, wm = 0;
+    int rdo = 1, rdo_lambda_q8 = 0, qp_search = 0, wm = 0, int_trellis = 0;
     // These mirror nxvc_config_default(): the v2 intra tools are on, and the
     // entropy and context package is OFF (docs/TOOLBITS.md 7).
     int intra_dir = 1, intra_dir_layer = 0, ctx_v2 = 1, ctx_v3 = 0;
@@ -329,6 +341,7 @@ int main(int argc, char **argv) {
     std::string atlas_dump;
     int mv_range = 16, skip_thresh = 0, mode_lambda = 0;
     int int_decision = 0, int_lambda = 0, int_intra_mad = 0, int_rdoq = 0;
+    int planar = 0;
     int int_coded_vectors = 2;
     int threads = 0;   // 0 = auto
     // These mirror nxvc_config_default(): the inter-efficiency tools that the
@@ -474,6 +487,9 @@ int main(int argc, char **argv) {
             else if (v == "off") int_decision = 0;
             else { std::fprintf(stderr, "--int-decision: on|off\n"); return 2; }
         }
+        else if (a == "--planar") planar = 1;
+        else if (a == "--planar-prefer") planar = 2;
+        else if (a == "--no-planar") planar = 0;
         else if (a == "--int-rdoq") int_rdoq = std::atoi(val());
         else if (a == "--int-lambda") int_lambda = std::atoi(val());
         else if (a == "--int-coded-vectors") {
@@ -531,6 +547,7 @@ int main(int argc, char **argv) {
         else if (a == "--rdo") rdo = 1;
         else if (a == "--no-rdo") rdo = 0;
         else if (a == "--rdo-lambda") rdo_lambda_q8 = (int)(std::atof(val()) * 256.0 + 0.5);
+        else if (a == "--int-trellis") int_trellis = std::atoi(val());
         else if (a == "--qp-search") qp_search = std::atoi(val());
         else if (a == "--qp-search-step") qp_step = std::atoi(val());
         else if (a == "--dc-lambda") dc_lambda = (int)(std::atof(val()) * 256.0 + 0.5);
@@ -777,6 +794,7 @@ int main(int argc, char **argv) {
     cfg.skip_thresh = (uint32_t)(skip_thresh > 0 ? skip_thresh : 0);
     cfg.inter_int_decision = (uint32_t)int_decision;
     cfg.int_rdoq = (uint32_t)int_rdoq;
+    cfg.planar = (uint32_t)planar;
     cfg.int_lambda_q8 = (uint32_t)(int_lambda > 0 ? int_lambda : 0);
     cfg.int_coded_vectors = (uint32_t)int_coded_vectors;
     cfg.int_intra_mad_q8 = (uint32_t)(int_intra_mad > 0 ? int_intra_mad : 0);
@@ -795,6 +813,7 @@ int main(int argc, char **argv) {
     cfg.dc_lambda_q8 = (uint32_t)(dc_lambda > 0 ? dc_lambda : 0);
     cfg.dc_rdoq_off = (uint32_t)dc_off;
     cfg.qp_search = (uint32_t)qp_search;
+    cfg.int_trellis = (uint32_t)int_trellis;
     cfg.wm_id = (uint32_t)wm;
     cfg.intra_dir = (uint32_t)intra_dir;
     cfg.intra_dir_layer = (uint32_t)intra_dir_layer;

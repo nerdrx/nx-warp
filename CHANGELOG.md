@@ -14,6 +14,42 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
 
 ### Added
 
+**A piecewise-planar tile mode, and an honest re-measurement of it** (tool bit
+35, `mode == 5`, SYNTAX.md 13.13, `docs/LOWPOLY-MODE.md` 9)
+
+- A tile may be coded as **2 to 4 regions**, each a plane -- a DC level and two
+  ramps, in exactly the three signed bytes and the quantiser NEAR_SKIP already
+  uses -- over a raw label map on an 8x8 or 4x4 sub-block grid. No transform,
+  no entropy-coded payload, no reference. The reconstruction is per sample and
+  integer, with no dependency between samples, blocks or tiles, which is what
+  makes it crossable to a GPU decoder later (`docs/LOWPOLY-GPU-PLAN.md`, which
+  states the Adreno constraints the syntax was written against: 128-byte push
+  constants, no subgroup scans, 32 threads a group).
+- It exists for the KIND of failure it has. A transform codec starved of bits
+  turns the picture into its own coding grid; a planar tile loses detail and
+  keeps structure, degrading toward the look of a low-polygon model. That is
+  the whole case, and `docs/LOWPOLY-MODE.md` 9.3 is the picture that makes it.
+- **The proposal's +1.6 dB at 45 B/tile does not reproduce.** Its transform
+  baseline is about 15 dB adrift of what this encoder produces today at the
+  same rate, on a clip that no longer exists. Re-measured on pan8 and pan8s,
+  the transform is **5 to 12 dB ahead on luma at equal bytes** and the mode
+  **2 to 6 dB ahead on chroma**, at every configuration.
+- So it ships as a decision and OFF by default. `planar = 1` takes the mode only
+  where it is both cheaper and no worse, which measures neutral -- within
+  0.015 dB and 2.4 % of the tool being off on both fixtures at QP 34/40/46,
+  chosen on 2-17 % of tiles. `planar = 2` takes it wherever it is cheaper: the
+  low-polygon look as a setting, at 2.1 to 4.3 dB. A rate-distortion test alone
+  is a **bug** here and the second condition is why -- the mode's curve is flat
+  and the transform's is steep, so per-tile RD at the encoder's own lambda
+  walked the frame off its own convex hull (76 % of tiles, 5 % fewer bytes,
+  2.1 dB).
+- Conformance: `v82_planar_rd420` and `v83_planar_prefer420` (the generator
+  refuses to write either if the encoder declined the mode), and seven
+  rejection vectors `r44`-`r50` for the tool bit, the four header fields the
+  mode forbids, and the three reserved body encodings. `nxv-enc --planar` /
+  `--planar-prefer`, `nxv-info` names the mode, and the pure-Python parser
+  enforces the same constraints.
+
 **GPU encoder: an effort level, and the one that does not exist**
 
 - `nxvc_vke_create_info::effort`. Level 0 is the plain dead-zone quantiser -- what the encoder has
