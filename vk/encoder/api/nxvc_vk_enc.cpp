@@ -197,6 +197,18 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_create(const nxvc_vke_create_info *ci
     if (ci->ref_sel != 0 && ci->inter == 0)
         return createerr(NXVC_VKE_ERR_ARG, "ref_sel=%u needs inter=1",
                          ci->ref_sel);
+    /* The effort level.  A value above the highest is refused rather than
+     * clamped: a caller asking for a search this encoder does not have should
+     * hear so at create() and not discover it as a stream that is the same
+     * size as the one it was trying to beat.  Why there is no level 2 is in
+     * <nxvc/nxvc_vk_enc.h> and measured in vk/encoder/README.md. */
+    if (ci->effort > (uint32_t)NXVC_VKE_EFFORT_RDOQ)
+        return createerr(NXVC_VKE_ERR_ARG,
+                         "effort=%u: the range is 0..%d.  A wider motion "
+                         "search measures -0.05 %% BD-rate for +12 %% encoder "
+                         "time and the reference's trellis RDOQ cannot run on "
+                         "a GPU; see vk/encoder/README.md",
+                         ci->effort, (int)NXVC_VKE_EFFORT_RDOQ);
     if (ci->ref_confirm != 0 && ci->inter == 0)
         return createerr(NXVC_VKE_ERR_ARG, "ref_confirm=%u needs inter=1",
                          ci->ref_confirm);
@@ -230,6 +242,10 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_create(const nxvc_vke_create_info *ci
         ci->inter != 0 && ci->coded_vectors != NXVC_VKE_CV_NONE;
     e->cfg.ref_sel = ci->inter != 0 ? int(ci->ref_sel) : 0;
     e->cfg.ref_confirm = ci->inter != 0 && ci->ref_confirm != 0;
+    /* Effort 1 is the integer requantiser and nothing else, so the level maps
+     * to one config field.  It applies to intra and inter tiles alike -- it
+     * is a quantiser decision, not a prediction one. */
+    e->cfg.int_rdoq = ci->effort >= (uint32_t)NXVC_VKE_EFFORT_RDOQ ? 1 : 0;
     e->cfg.wm_id = 0;
     e->cfg.chroma_qp_off = 0;
     e->cfg.nsub_log2 = 3; /* eight rANS lanes; paper 6.3 fixes v1 at eight */

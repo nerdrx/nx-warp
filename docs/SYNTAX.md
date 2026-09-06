@@ -3507,6 +3507,52 @@ evaluated between a frame's own coded tiles and its own materialisation,
 because on a PICTURE frame the coded tiles are applied as coded tiles and not
 as patches: step 2 is the ordinary process, and step 3 runs once, after it.
 
+##### 13.12.11.1 Choosing the mode (informative)
+
+Which mode a frame is coded in is an **encoder decision** and is not normative:
+a decoder is told the answer in one bit and needs no policy at all. The metric
+below is written out exactly because two encoders that implement it differently
+produce differently shaped streams from the same content, and because the
+reference encoder implements this one.
+
+The trigger is the **worst corner displacement in the atlas, including this
+frame's advance**. For frame `N` with matrix `H_N`:
+
+```
+worst := 0
+for each tile position t:
+    e := the atlas entry at t
+    if e.valid == 0        : continue        # nothing to be stale
+    if e.static  != 0      : continue        # head-locked, never displaced
+    C' := advance(e.C, H_N)                  # 13.12.3 step 1, ON A COPY
+    if C' left the envelope: continue        # the advance invalidated it
+    d  := max over the four corners of t of
+              max(|x' - x|, |y' - y|)        # under C', in Q6 luma samples
+    worst := max(worst, d)
+code a PICTURE frame iff worst > D and (N - last_picture_frame) >= S
+```
+
+Three details are load-bearing:
+
+* **The advance is applied to a COPY.** The decision must not disturb the atlas
+  the frame is about to be coded against.
+* **`H_N` is this frame's matrix, not the previous frame's.** The metric must
+  include this frame's advance. Measuring the atlas as it stands instead caps
+  the PICTURE rate at 50 % under sustained motion, for a reason that is purely
+  an artifact of the measurement: the frame immediately after a PICTURE frame
+  always reads zero, because the materialisation just set every `C` to the
+  identity. The trigger then alternates fire / no-fire regardless of how fast
+  the head is moving. Measured on the fast-turn fixture: 47 % of frames with
+  the stale metric against 81 % with this one, on the same content and the same
+  threshold. An encoder must therefore derive `warp_ext()` **before** it
+  decides the mode.
+* **The comparison is the same `atlas_corner_disp` quantity** the
+  displacement-bounded skip and 13.12.9's staleness rule use, in the same Q6
+  format, so an implementation has one function to get right rather than three.
+
+`D` is in luma samples and `S` is a minimum spacing in frames (`S = 0` means
+none). ADR-0029 sweeps `D` and reports what each value costs.
+
 **Loss.** A lost PICTURE frame is the same problem a lost picture-model frame
 is, and not the per-tile problem 13.12.6 describes: every position depended on
 it. A receiver that misses one has no valid atlas until the next PICTURE frame
@@ -3622,7 +3668,24 @@ shipped without one and tested nothing.
 
 `v87` and `v88` are the same bitstream and different atlases, which is the
 point: what separates them is the `src_frame` of a patch that does not travel
-in the stream at all. The base picture of both is generated deterministically
+in the stream at all. **That patch therefore ships as a sidecar**,
+`<name>.basepatch`, beside the bitstream: it carries the base picture's two
+planes, the tile map, `src_frame`, `chroma_order` and the frame index it lands
+after, so the pinned `decoded_md5` is reproducible **from the vector directory
+alone**. It did not always. The base picture used to be regenerated from the
+reference's own spec table, which reproduces the digest only for a checker with
+that table compiled into it; a third-party decoder folding the shipped file got
+one digest for *both* `v87` and `v88`, because the patch is the only thing that
+differs between them. A conformance vector whose pin only its author can
+reproduce is not a conformance vector.
+
+The generator now **refuses to write any atlas vector whose pinned digest it
+cannot reproduce from the shipped files**: after writing the bitstream and the
+sidecar it re-reads both from disk, decodes using only those, and compares. A
+vector that needs anything from the spec table to reach its own manifest entry
+is a build failure.
+
+The base picture of both is generated deterministically
 from the vector's own parameters, so a checker reproduces it; the generator
 refuses to write `v88` unless a tile actually reported `superseded`, so the
 vector cannot pin the rule doing nothing.

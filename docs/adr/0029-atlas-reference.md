@@ -827,6 +827,92 @@ and not worth having when it is fast, and both of those are true within one
 second of the same session. The decision that follows is 13.12.11: the atlas
 becomes a per-frame MODE.
 
+### The decision: the atlas is a per-frame mode (13.12.11)
+
+Every frame is coded either as an **ATLAS frame** (13.12 as written: skipped
+tiles untouched, per-tile `C` advance, no warp) or as a **PICTURE frame** (the
+ordinary non-`ATLAS` process in full, the atlas rebuilt from its result). One
+frame-header bit carries which.
+
+**A PICTURE frame is the picture model, not an approximation of it.** This is
+verified rather than argued: an all-PICTURE stream is **byte-identical** to the
+same clip coded with no atlas at all -- 129226 bytes, frame for frame, on the
+fast-turn fixture. That is what the earlier full-rebase experiment could not
+do. It paid *atlas* bytes at QP 30 for what the picture model gets at QP 26,
+which is why it read as 2.58 dB behind rather than as equal; running the
+ordinary process instead of an atlas frame that happens to rebase closes that
+gap by construction. **The mode can therefore never be worse than not having
+it**, at any velocity, which is the property that makes it safe to ship.
+
+The encoder chooses per frame from the trigger of SYNTAX 13.12.11.1: the worst
+corner displacement in the atlas **including this frame's advance**, against a
+threshold `D` in luma samples and an optional minimum spacing `S`.
+
+**Measured, equal rate**, anchor = the picture model at QP 26, GPU from the
+encoder's own per-frame coded-tile counts at the measured 34 us a warped tile,
+per eye:
+
+| policy | near-still 4.2 deg/s | mid 25.2 deg/s | fast turn 75.6 deg/s |
+|---|---|---|---|
+| | dB / PICTURE % / ms | dB / PICTURE % / ms | dB / PICTURE % / ms |
+| all-ATLAS | **39.93** / 0 / 0.00 | 35.07 / 0 / 0.00 | 28.61 / 0 / 0.00 |
+| all-PICTURE (= no atlas) | 38.77 / 0 / 0.00 | 38.62 / 0 / 0.00 | 38.50 / 0 / 0.00 |
+| **D=4** | **39.93** / 0 / 0.00 | **38.62** / 100 / 8.35 | **38.53** / 87 / 7.15 |
+| **D=8** | **39.93** / 0 / 0.00 | **38.61** / 47 / 3.98 | **38.52** / 73 / 6.03 |
+| D=16 | 39.93 / 0 / 0.00 | 37.40 / 27 / 2.21 | 36.88 / 60 / 4.88 |
+| D=32 | 39.93 / 0 / 0.00 | 35.26 / 13 / 1.07 | 33.34 / 33 / 2.65 |
+| D=8, S=2 | 39.93 / 0 / 0.00 | 38.61 / 47 / 3.98 | 33.78 / 40 / 3.18 |
+| D=8, S=4 | 39.93 / 0 / 0.00 | 36.77 / 20 / 1.65 | 31.34 / 20 / 1.55 |
+| D=16, S=4 | 39.93 / 0 / 0.00 | 36.77 / 20 / 1.65 | 31.34 / 20 / 1.55 |
+
+**Recommended: `D = 8` luma samples, `S = 0` (no minimum spacing).**
+
+Read the three columns, because each answers a different question.
+
+* **At rest the trigger never fires, at any threshold.** Every `D` gives
+  exactly the all-ATLAS row -- 39.93 dB, 1 % fewer bytes than the picture
+  model, and **0.00 ms of warp**. The atlas's whole reason for existing is
+  untouched, and it is untouched by construction rather than by tuning: a head
+  that is not moving displaces nothing, so there is nothing to re-pose. The
+  mode switch also costs **zero bytes** here -- an atlas stream with the tool
+  enabled and never firing is byte-identical in its payload to one without it,
+  differing in exactly one byte of the stream header's tool field.
+* **At 25 deg/s, `D = 8` is within 0.01 dB of the picture model at 3.98 ms an
+  eye**, spending 47 % of frames as PICTURE frames. This is the case the whole
+  ADR has been failing to solve since the cross-tile gather was attributed:
+  four mechanisms landed between 1.5 and 4 dB short, and this one is level.
+* **At 75.6 deg/s, `D = 8` matches the picture model** (+0.02 dB) at 6.03 ms an
+  eye. Six milliseconds is over the 4 ms the atlas was supposed to buy -- and
+  it is **below the 8.8 ms the picture model spends to get the same quality**,
+  because the 27 % of frames that stay ATLAS frames warp nothing at all. At
+  this velocity no mechanism can be both under 4 ms and equal to the picture
+  model, since the picture model itself costs 8.8; the honest statement is that
+  the mode switch is strictly better than the status quo on both axes.
+
+`D = 4` is very slightly better on quality and materially worse on cost (8.35
+against 3.98 ms at 25 deg/s, for 0.01 dB), because it spends every frame as a
+PICTURE frame at mid velocity and gives the atlas up entirely. `D = 16` and
+above give back 1.2 to 5.2 dB to save GPU that is not scarce at those
+velocities.
+
+**The minimum spacing is rejected, and the table is why.** `S` was proposed to
+bound the PICTURE rate, and it does -- by throttling refresh exactly when
+refresh is what is needed. At fast turn `S = 2` costs **4.72 dB** against
+`S = 0` and `S = 4` costs **7.16 dB**, for 2.85 and 4.48 ms of saved warp that
+the frame budget did not need. `S = 4` also makes `D` irrelevant (`D = 8` and
+`D = 16` give identical results), which is the signature of a constraint that
+has stopped tracking the content. A rate controller that must bound the PICTURE
+rate should raise `D`, which throttles by *staleness*, not by the clock.
+
+**So the scope of this ADR changes.** The earlier conclusion -- "a win at low
+angular velocity and a loss at high, and neither fix recovers it" -- is
+superseded. With the mode switch the atlas is a win at low velocity (+1.16 dB
+at 1 % fewer bytes and no warp at all) and **level with the picture model at
+every higher velocity measured**, at less GPU than the picture model spends.
+The quality loss at speed is not fixed; it is **avoided**, by not being in
+atlas mode when the atlas is the wrong trade. That is a smaller claim than
+"the atlas is better everywhere" and it is the one the measurements support.
+
 * **The seam, as originally written.** Two adjacent tiles with different source frames are each
   individually correctly reprojected, so static distant content is seamless. They diverge on moving
   content and on near parallax, growing with the age difference — a tile coded 30 frames ago beside

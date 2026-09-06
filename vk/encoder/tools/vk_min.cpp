@@ -4,6 +4,8 @@
 
 #include "vk_min.h"
 
+#include <cstddef>
+
 #include <cstdio>
 #include <cstring>
 
@@ -26,6 +28,20 @@ const char *result_str(VkResult r)
     case VK_ERROR_FORMAT_NOT_SUPPORTED: return "VK_ERROR_FORMAT_NOT_SUPPORTED";
     default: return "VK_ERROR_<other>";
     }
+}
+
+// Drop the tracked copy of a resource the caller is freeing itself, matched on
+// its primary handle.  Keeps an explicit destroy_* correct without making
+// destroy() free it a second time.
+template <typename T, typename H>
+static void untrack(std::vector<T> &v, H handle, H T::*field)
+{
+    if (handle == VK_NULL_HANDLE) return;
+    for (size_t i = 0; i < v.size(); ++i)
+        if (v[i].*field == handle) {
+            v.erase(v.begin() + (ptrdiff_t)i);
+            return;
+        }
 }
 
 static bool mk_instance(VkInstance &inst, bool validation, std::string &err)
@@ -222,6 +238,43 @@ void Device::destroy()
 {
     if (dev_) {
         vkDeviceWaitIdle(dev_);
+
+        // Everything this object allocated and was not told to free, in an
+        // order that never destroys a pool before what was allocated from it.
+        // Unconditional, not `if (adopted_)`: on an owned device
+        // vkDestroyDevice would sweep these anyway, so doing it here changes
+        // nothing except that the two paths now agree, and a leak reported on
+        // one is a leak reported on both.
+        //
+        // Descriptor pools first, because freeing a pool frees its sets and a
+        // set outliving its pool is the one ordering Vulkan does care about.
+        for (auto &p : dpools_)
+            if (p) vkDestroyDescriptorPool(dev_, p, nullptr);
+        dpools_.clear();
+        // Then the pipelines, with their layouts and set layouts. destroy_*
+        // are not reused here: they untrack by handle, which would rewrite the
+        // vector being walked.
+        for (auto &p : tracked_pipelines_) {
+            if (p.pipe)   vkDestroyPipeline(dev_, p.pipe, nullptr);
+            if (p.layout) vkDestroyPipelineLayout(dev_, p.layout, nullptr);
+            if (p.dsl)    vkDestroyDescriptorSetLayout(dev_, p.dsl, nullptr);
+        }
+        tracked_pipelines_.clear();
+        // Views before their images, images before the memory they are bound
+        // to, and the same for buffers.
+        for (auto &i : tracked_images_) {
+            if (i.view) vkDestroyImageView(dev_, i.view, nullptr);
+            if (i.img)  vkDestroyImage(dev_, i.img, nullptr);
+            if (i.mem)  vkFreeMemory(dev_, i.mem, nullptr);
+        }
+        tracked_images_.clear();
+        for (auto &b : tracked_buffers_) {
+            if (b.map) vkUnmapMemory(dev_, b.mem);
+            if (b.buf) vkDestroyBuffer(dev_, b.buf, nullptr);
+            if (b.mem) vkFreeMemory(dev_, b.mem, nullptr);
+        }
+        tracked_buffers_.clear();
+
         for (auto q : qpools_) vkDestroyQueryPool(dev_, q, nullptr);
         qpools_.clear();
         if (pool_) vkDestroyCommandPool(dev_, pool_, nullptr);
@@ -293,11 +346,13 @@ bool Device::create_buffer(VkDeviceSize size, VkBufferUsageFlags usage,
         r = vkMapMemory(dev_, out.mem, 0, VK_WHOLE_SIZE, 0, &out.map);
         if (r != VK_SUCCESS) { err = "vkMapMemory failed"; return false; }
     }
+    tracked_buffers_.push_back(out);
     return true;
 }
 
 void Device::destroy_buffer(Buffer &b)
 {
+    untrack(tracked_buffers_, b.buf, &Buffer::buf);
     if (b.map) { vkUnmapMemory(dev_, b.mem); b.map = nullptr; }
     if (b.buf) { vkDestroyBuffer(dev_, b.buf, nullptr); b.buf = VK_NULL_HANDLE; }
     if (b.mem) { vkFreeMemory(dev_, b.mem, nullptr); b.mem = VK_NULL_HANDLE; }
@@ -342,11 +397,13 @@ bool Device::create_storage_image(uint32_t w, uint32_t h, VkFormat fmt,
     r = vkCreateImageView(dev_, &vi, nullptr, &out.view);
     if (r != VK_SUCCESS) { err = "vkCreateImageView failed"; return false; }
     out.w = w; out.h = h; out.fmt = fmt;
+    tracked_images_.push_back(out);
     return true;
 }
 
 void Device::destroy_image(Image &i)
 {
+    untrack(tracked_images_, i.img, &Image::img);
     if (i.view) { vkDestroyImageView(dev_, i.view, nullptr); i.view = VK_NULL_HANDLE; }
     if (i.img)  { vkDestroyImage(dev_, i.img, nullptr); i.img = VK_NULL_HANDLE; }
     if (i.mem)  { vkFreeMemory(dev_, i.mem, nullptr); i.mem = VK_NULL_HANDLE; }
@@ -400,11 +457,13 @@ bool Device::create_pipeline(const uint32_t *spv, size_t spv_bytes,
     r = vkCreateComputePipelines(dev_, VK_NULL_HANDLE, 1, &cpi, nullptr, &out.pipe);
     vkDestroyShaderModule(dev_, sm, nullptr);
     if (r != VK_SUCCESS) { err = std::string("vkCreateComputePipelines: ") + result_str(r); return false; }
+    tracked_pipelines_.push_back(out);
     return true;
 }
 
 void Device::destroy_pipeline(Pipeline &p)
 {
+    untrack(tracked_pipelines_, p.pipe, &Pipeline::pipe);
     if (p.pipe)   { vkDestroyPipeline(dev_, p.pipe, nullptr); p.pipe = VK_NULL_HANDLE; }
     if (p.layout) { vkDestroyPipelineLayout(dev_, p.layout, nullptr); p.layout = VK_NULL_HANDLE; }
     if (p.dsl)    { vkDestroyDescriptorSetLayout(dev_, p.dsl, nullptr); p.dsl = VK_NULL_HANDLE; }
@@ -424,7 +483,20 @@ VkDescriptorPool Device::create_descriptor_pool(uint32_t max_sets,
     pi.pPoolSizes = sizes.data();
     VkDescriptorPool p = VK_NULL_HANDLE;
     vkCreateDescriptorPool(dev_, &pi, nullptr, &p);
+    if (p) dpools_.push_back(p);
     return p;
+}
+
+void Device::destroy_descriptor_pool(VkDescriptorPool &pool)
+{
+    if (!pool) return;
+    for (size_t i = 0; i < dpools_.size(); ++i)
+        if (dpools_[i] == pool) {
+            dpools_.erase(dpools_.begin() + (ptrdiff_t)i);
+            break;
+        }
+    vkDestroyDescriptorPool(dev_, pool, nullptr);
+    pool = VK_NULL_HANDLE;
 }
 
 VkDescriptorSet Device::allocate_set(VkDescriptorPool pool, VkDescriptorSetLayout dsl)
