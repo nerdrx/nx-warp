@@ -480,6 +480,82 @@ attack next.
 
 ---
 
+## The ATLAS path (tool bit 31) — what exists
+
+`atlas/` is the decoder's half of ADR-0029 and SYNTAX 13.12: the reference stops
+being the previous decoded picture and becomes a **per-tile atlas**, pixels plus
+a 64-byte table per tile position. `docs/ATLAS-DECODER.md` is the design; this
+is what is built.
+
+| file | role |
+|---|---|
+| `atlas/atlas_layout.h` | the one description of the 64-byte table (13.12.1), the `H` ring, the two push blocks. Shared verbatim by the model, the kernels and the host |
+| `atlas/atlas_model.cpp` | 13.12.2's composition in ordinary C++ — the oracle |
+| `atlas/atlas_arith.glsl` | the same arithmetic in emulated 64-bit GLSL. Arithmetic only: no bindings, no entry point |
+| `atlas/atlas_compose.comp` | 13.12.3 step 1. **One dispatch per frame, one thread per table entry, both eyes** |
+| `atlas/atlas_tiles.comp` | the coded tiles: MATGEN before Pass W, WRITEBACK after Pass B |
+| `atlas/atlas_state.h` | the host bookkeeping — monotonicity, the lazy selection, the ring window. Vulkan-free |
+
+**One kernel serves the eager and the lazy advance.** It walks an entry from a
+decoder-private `advanced_to` up to `targetFrame`, one step at a time, in frame
+order; the frame-complete path is the case where every entry starts at `N - 1`
+and every thread takes exactly one step. So there is one transcription of
+13.12.2 on the GPU, not two to keep in agreement. `advanced_to` is deliberately
+**not** in the table: 13.12.1's 64 bytes are fully specified, its 20 reserved
+bytes are zero and compared, and when the composition ran is not part of the
+atlas.
+
+**Pass W and `warp_pred.glsl` are not modified.** A renormalised `C` satisfies
+the same legality conditions as a transmitted `H` — that is what 13.12.2's
+renorm step exists to preserve — so the predictor consumes it unchanged. What
+changes is where the matrix comes from, and `mat_idx` (commit `a0c0a69`) is
+already the road it comes down: `NXVW_WARP_MAT_NONE` means "the frame's four",
+which is what every stream without tool bit 31 sets, so the hook is
+byte-for-byte invisible to them. The 64-bit primitives in `atlas_arith.glsl` are
+transcribed from `warp_pred.glsl` rather than shared, because that kernel is
+pinned byte-for-byte against the encoder AND because its `warp_div` is a
+32-bit-quotient divide with an `n.hi < d` precondition the renormalisation does
+not satisfy.
+
+**Two eye conventions in one feature**, which is the thing most likely to be got
+wrong: the **table** is eye-MINOR and the two eyes' entries interleave within
+each row (SYNTAX 3.3), while the atlas **pixels** hold both eyes side by side
+within each plane (`nxvw_ring_layout()`). A compose thread reads its eye out of
+its index; the pixel path never needs to.
+
+**What the host cannot know.** Validity is decided by the envelope check inside
+the composition, on the device. So 13.12.4's "a coded non-INTRA tile whose own
+entry is invalid is BITSTREAM" is recorded by MATGEN in a status word and
+refused once the frame completes — deferred, not absent. A GPU decoder's only
+alternative is a readback per frame, which is what tile streaming exists to
+remove.
+
+### Tests
+
+| test | what it holds up |
+|---|---|
+| `vk.atlas.compose` | the model against a 128-bit oracle, and the `H` ring depth against the measured envelope |
+| `vk.atlas.vs_ref` | the model against `ref/src/inter.h` itself, in one binary. Negative controls run |
+| `vk.atlas.state` | monotonicity and the arrival-order equivalence, host side |
+| `vk.atlas.gpu_vs_cpu{,_radv,_lavapipe}` | both kernels against the model; eager vs lazy, both flushed, byte-identical |
+| `run-android.sh --atlas` | the same on the Adreno 650. **Mandatory**: a subgroup scan in Pass A once validated on both desktop ICDs and miscomputed here |
+
+### Measured
+
+`nxvc-atlas-gpu-test --bench` prices the compose dispatch, which
+`ATLAS-DECODER.md`'s budget table had as its one unmeasured line: **0.0051 ms**
+for all 578 entries of a stereo frame on RADV (0.0026 ms/eye), 0.0107 on
+llvmpipe. Three orders of magnitude under the smallest line beside it.
+
+### Not built yet
+
+The host integration in `nxvc_vkdec.cpp` — ATLAS mode, the single-slot atlas,
+coded-only Pass A/B, `reconstruct_skip_store` deleted, the display store turned
+off — and with it `nxvc_vk_decode_tiles`, `nxvc_vk_atlas_write_tiles`, the
+sampled display view, and the conformance leg against `nxv-dec --atlas-dump`.
+
+---
+
 ## Two dispatches, and why Pass A is sometimes more than one
 
 Pass B is always one dispatch, `(tiles_x, tiles_y)` workgroups, one per tile.
