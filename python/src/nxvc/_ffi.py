@@ -413,7 +413,10 @@ class nxvc_config(Structure):
         ("int_lambda_q8", c_uint32),
         ("int_coded_vectors", c_uint32),
         ("int_intra_mad_q8", c_uint32),
-
+        # The integer requantiser the GPU encoder can run: 0 off (the plain
+        # dead-zone quantiser), 1 drops a +-1 level that does not pay for
+        # itself.  The GPU encoder's effort level 1.
+        ("int_rdoq", c_uint32),
     ]
 
 

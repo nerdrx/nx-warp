@@ -123,6 +123,13 @@ struct Config {
      * HeldState::require_confirmed. */
     bool ref_confirm = false;
 
+    /* The integer requantiser of nxe_enc.h: 0 off (the plain dead-zone
+     * quantiser, and what this encoder has always done), 1 drop a +-1 level
+     * that does not pay for itself.  It is the encoder's effort level 1, it
+     * is not an inter tool -- it applies to every coded tile of every frame --
+     * and `nxv-enc --int-rdoq 1` is the reference configuration it matches. */
+    int int_rdoq = 0;
+
     int device = 0;
     bool cpu_only = false;
     bool bench = false;

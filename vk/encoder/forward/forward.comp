@@ -346,6 +346,30 @@ void residual_blocks(uint lid) {
             barrier();
         }
 
+        // The integer requantiser, at effort 1 (nxe_enc.h, "integer RDOQ"):
+        // drop a level of +-1 whose squared error is worth less than the bits
+        // it saves.  BEFORE sign hiding, which reads the levels -- a
+        // coefficient dropped here is one the hiding pass must not have
+        // counted -- and after the barrier that ends either quantise branch,
+        // so lane `r` may own column r whichever branch ran.  No coefficient's
+        // decision depends on another's, so this stage needs no barrier of its
+        // own, only the one that publishes it to lane 0.
+        //
+        // The lambda takes the plane's own quantiser step and NOT the
+        // weighted one: `int_rdoq_lambda_q8(s.qp)` in the reference is
+        // kQStep[qp], the same for every coefficient of the block, while the
+        // per-coefficient step below carries the weighting matrix.
+        if (fp.int_rdoq != 0u) {
+            const uint lam = nxe_rdoq_lambda_q8(nxe_qstep[g_qp]);
+            for (c = 0; c < 8; ++c) {
+                int idx = c * 8 + r;
+                if (nxe_rdoq_drop(s_orig[g][idx], s_q[g][idx], step_at(idx),
+                                  lam))
+                    s_q[g][idx] = 0;
+            }
+            barrier();
+        }
+
         if (g_sdh != 0 && r == 0) hide_sign_unit(g + 1, 64, g_tskip != 0, 0);
         barrier();
 

@@ -58,6 +58,7 @@ typedef struct nxe_plane {
     uint8_t wmat[64];       /* Q4, raster order inside the block */
     int tskip;
     int sdh;
+    int int_rdoq;           /* fp->int_rdoq: the integer requantiser */
     int ctx_level_dc;       /* NXE_CTX_LEVEL_DC under the v2 model, else 0 */
 } nxe_plane;
 
