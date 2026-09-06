@@ -236,7 +236,14 @@ constexpr uint64_t kToolsSupported =
     (1ull << 12) | // STEREO: inter-view prediction         [inter]
     (1ull << 28) | // NEAR_SKIP: row-header corrections     [inter]
     (1ull << 29) | // QUAD_MV: four quadrant vectors        [inter]
-    (1ull << 30);  // ENTROPY_LITE / FIXED                  [entropy-lite]
+    (1ull << 30) | // ENTROPY_LITE / FIXED                  [entropy-lite]
+    // [atlas] ROW_PRESENT is not a negotiable tool in the sense ENTROPY_LITE
+    // is: [SYN] 3.1.2 makes it REQUIRED in version 1, because the bitmap
+    // costs nothing to parse, has one code path, and its absence is what
+    // makes a static scene pay 408 B a frame -- 294 kbit/s at 90 Hz -- for
+    // its tile GRID rather than for its content.  A receiver that offers
+    // version 1 offers this bit.  It is orthogonal to ATLAS.
+    (1ull << 32);  // ROW_PRESENT: elide an idle row's header [SYN] 3.1.2
 // Bit 23 FILTER_CATMULL_ROM and bit 14 BITDEPTH10 are reject-in-v1
 // ([SYN] 2.3) and must stay out.
 //
@@ -269,6 +276,7 @@ constexpr uint64_t kToolStereo = 1ull << 12;
 constexpr uint64_t kToolNearSkip = 1ull << 28;
 constexpr uint64_t kToolQuadMv = 1ull << 29;
 constexpr uint64_t kToolEntropyLite = 1ull << 30;
+constexpr uint64_t kToolRowPresent = 1ull << 32;
 
 }  // namespace
 
@@ -544,7 +552,15 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
     fp.near_skip_tool = (si.tools & kToolNearSkip) ? 1 : 0;
     fp.quad_tool = (si.tools & kToolQuadMv) ? 1 : 0;
     fp.warp_present = (flags >> 3) & 1;
-    if (flags & 0xf0) REJECT("flags & 0xf0");   // reserved bits 4-7
+    // [SYN] 3.1.2: bit 4 is `row_present` and it REQUIRES tool bit 32.
+    // Setting it without the bit is BITSTREAM -- the same shape as
+    // `warp_present` without WARP below, and for the same reason: the flag
+    // says bytes were elided, and a decoder that was never told the tool is
+    // in play would read the next row header out of the bitmap.
+    fp.row_present = (flags >> 4) & 1;
+    if (fp.row_present && !(si.tools & kToolRowPresent))
+        REJECT("fp.row_present && !(si.tools & kToolRowPresent)");
+    if (flags & 0xe0) REJECT("flags & 0xe0");   // reserved bits 5-7
     // Annex D D-1: warp_present requires the WARP tool bit (r21 is the other
     // direction, a warped tile without the flag).
     if (fp.warp_present && !fp.warp_tool) REJECT("fp.warp_present && !fp.warp_tool");
@@ -605,6 +621,35 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
         if (!wr.ok) return NXVC_VKD_ERR_TRUNCATED;
         off += need;
     }
+    // --- row_present(), [SYN] 3.1.2 ------------------------------------
+    // `ceil(tiles_y * eyes / 8)` bytes, immediately after warp_ext() and
+    // before the custom quantization matrices.  One bit per tile-row
+    // STRUCTURE in the decode order of 3.3 -- row-major, eye-minor -- so the
+    // index is `i = row * eyes + eye` and NOT `row * eyes` with the eye
+    // folded in elsewhere.  Bit `i & 7` of byte `i >> 3`.
+    //
+    // A row whose bit is 0 carries NOTHING: no 12-byte header, no near-skip
+    // records, no tile structures.  There is no second code path for it --
+    // it is decoded exactly as a row whose skip_bitmap names every column,
+    // whose tile_count is 0 and whose dc_present is 0 -- which is why the
+    // walk below synthesises that row header rather than branching around
+    // the reconstruction.
+    fp.row_bits.clear();
+    if (fp.row_present) {
+        const uint32_t nrows = si.tiles_y * si.eyes;
+        const size_t need = (nrows + 7u) / 8u;
+        if (off + need > frame_bytes) return NXVC_VKD_ERR_TRUNCATED;
+        fp.row_bits.assign(buf + off, buf + off + need);
+        // "Bits above the last row structure must be zero, so that one frame
+        // has exactly one encoding."  Without this a frame has 2^k spellings
+        // and two conforming encoders disagree byte-for-byte on the same
+        // picture, which is what the vector set exists to forbid.
+        const uint32_t tail = nrows & 7u;
+        if (tail && (fp.row_bits.back() >> tail) != 0)
+            REJECT("row_present: bits above the last row structure are not zero");
+        off += need;
+    }
+
     const uint8_t *custom = nullptr;
     if (fp.quant_matrix == 255) {
         if (off + 128 > frame_bytes) return NXVC_VKD_ERR_TRUNCATED;
@@ -721,15 +766,49 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
         g_rjctx.eye = (int)eyeR;
         g_rjctx.col = -1;
         g_rjctx.tile = -1;
-        if (off + kTileRowHeaderBytes > frame_bytes)
-            return NXVC_VKD_ERR_TRUNCATED;
+        // [SYN] 3.1.2.  An elided row is decoded as "every column skipped,
+        // tile_count 0, dc_present 0" -- the exact row header the sender
+        // chose not to spend 12 bytes stating.  Synthesised here so the
+        // per-tile walk below is one code path: it already turns a set skip
+        // bit into conceal_tile(), which IS the WARP_SKIP predictor.
+        //
+        // `skip` is built by shifting rather than written as ~0: the bits
+        // above cols_per_eye must be zero for the same reason the transmitted
+        // form's must be, and `1 << 64` is undefined, which is why the
+        // 64-column case is spelled separately.
+        const uint32_t rowbit = row * si.eyes + eyeR;
+        const bool row_here =
+            !fp.row_present ||
+            ((fp.row_bits[rowbit >> 3] >> (rowbit & 7u)) & 1u) != 0u;
+        uint32_t tc8 = 0;
+        uint64_t skip = 0;
         BR rb{buf, frame_bytes, off, true};
-        uint32_t fn = rb.u16v();
-        uint32_t ri = rb.u8v();
-        uint32_t tc8 = rb.u8v();
-        uint64_t skip = rb.u64v();
-        if (!rb.ok) return NXVC_VKD_ERR_TRUNCATED;
-        if (fn != fp.frame_number || ri != row) REJECT("fn != fp.frame_number || ri != row");
+        if (row_here) {
+            if (off + kTileRowHeaderBytes > frame_bytes)
+                return NXVC_VKD_ERR_TRUNCATED;
+            uint32_t fn = rb.u16v();
+            uint32_t ri = rb.u8v();
+            tc8 = rb.u8v();
+            skip = rb.u64v();
+            if (!rb.ok) return NXVC_VKD_ERR_TRUNCATED;
+            if (fn != fp.frame_number || ri != row)
+                REJECT("fn != fp.frame_number || ri != row");
+        } else {
+            // Every column skipped, `tile_count` 0, `dc_present` 0.  Built by
+            // shifting rather than written as ~0, because the bits above
+            // cols_per_eye must be zero for the same reason the transmitted
+            // form's must be -- and because `1 << 64` is undefined, which is
+            // why the 64-column case is spelled separately.
+            skip = si.tiles_x >= 64 ? ~(uint64_t)0
+                                    : ((uint64_t)1 << si.tiles_x) - 1u;
+            ++fp.rows_elided;
+        }
+        // Every check below runs on BOTH forms.  That is the point of
+        // synthesising the header rather than branching around it: an elided
+        // row on a stream with no INTER tool bit is still a row of skipped
+        // tiles referencing a frame that stream cannot have, and it is
+        // refused by the same line that refuses the transmitted spelling of
+        // it.  One code path, one set of constraints.
         // [SYN] 3.3: bit 7 of the byte is `dc_present`, the count is bits 6:0.
         const uint32_t dc_present = tc8 >> 7;
         const uint32_t tcount = tc8 & 0x7fu;

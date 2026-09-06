@@ -3233,6 +3233,13 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
     const bool use_pool = e->pool && ntiles > 1 && !e->cfg.stereo;
 #endif
 
+    // [SYN] 3.1.2.  One bit per tile-row structure, in the decode order of
+    // 3.3, filled by the EMITTING pass -- the decide pass has no bytes to
+    // elide.  Sized here and cleared before that pass so a re-run cannot
+    // inherit the previous one's map.
+    std::vector<u8> rp_bits;
+    bool rp_any_elided = false;
+
     auto row_header = [&](u32 row, u32 eye, bool emit, BW &rowbuf) {
         u64 skipmap = 0, dcmap = 0;
         u32 coded = 0;
@@ -3249,6 +3256,29 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             }
         }
         if (!emit) return;
+        // ---- row_present() (SYNTAX.md 3.1.2), the sending half.
+        //
+        // A row every one of whose tiles is skipped, with no near-skip
+        // correction to carry, says nothing that its 12-byte header does not
+        // already imply -- and a decoder told so by the bitmap reconstructs it
+        // through the identical all-skipped path.  So the header is not sent
+        // and the row's bit stays 0.
+        //
+        // `dcmap` has to be empty as well as `coded`: a corrected row DOES
+        // carry information (the nine bytes per named column), and 3.1.2's
+        // elided row is defined as `dc_present == 0`, so a row with a
+        // correction is transmitted however idle it otherwise looks.
+        //
+        // The bit is SET here rather than cleared from an all-ones bitmap
+        // because the bits above the last row structure must be zero, and
+        // building the map by setting only real rows makes that true by
+        // construction instead of by a mask applied afterwards.
+        const size_t rp_i = (size_t)row * g.eyes + eye;
+        if (e->cfg.row_present && coded == 0 && dcmap == 0) {
+            rp_any_elided = true;
+            return;
+        }
+        if (!rp_bits.empty()) rp_bits[rp_i >> 3] |= (u8)(1u << (rp_i & 7));
         rowbuf.u16v(fp.frame_number);
         rowbuf.u8v(row);
         // Bit 7 of `tile_count` is `dc_present`.  `coded` is at most
@@ -3292,7 +3322,15 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                 }
                 if (emit) {
                     body.raw(rowbuf.b.data(), rowbuf.b.size());
-                    if (e->cfg.collect_stats)
+                    // An ELIDED row (3.1.2) spent no header bytes, so it must
+                    // not be counted as if it had: `bytes_row_headers` is
+                    // what the tool exists to reduce, and a figure that
+                    // counted the rows it removed would report no saving.
+                    const size_t rp_i = (size_t)row * g.eyes + eye;
+                    const bool sent =
+                        rp_bits.empty() ||
+                        ((rp_bits[rp_i >> 3] >> (rp_i & 7)) & 1u) != 0u;
+                    if (e->cfg.collect_stats && sent)
                         e->stats.bytes_row_headers += kTileRowHeaderBytes;
                 }
             }
@@ -3401,7 +3439,15 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                 }
                 if (emit) {
                     body.raw(rowbuf.b.data(), rowbuf.b.size());
-                    if (e->cfg.collect_stats)
+                    // An ELIDED row (3.1.2) spent no header bytes, so it must
+                    // not be counted as if it had: `bytes_row_headers` is
+                    // what the tool exists to reduce, and a figure that
+                    // counted the rows it removed would report no saving.
+                    const size_t rp_i = (size_t)row * g.eyes + eye;
+                    const bool sent =
+                        rp_bits.empty() ||
+                        ((rp_bits[rp_i >> 3] >> (rp_i & 7)) & 1u) != 0u;
+                    if (e->cfg.collect_stats && sent)
                         e->stats.bytes_row_headers += kTileRowHeaderBytes;
                 }
             }
@@ -3492,8 +3538,26 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
     xform_ctx_report(xhist, fp.nctx);
 #endif
 
+    // [SYN] 3.1.2.  Cleared, not resized-in-place: a second emit pass over the
+    // same frame must build its map from nothing.
+    if (e->cfg.row_present) {
+        rp_bits.assign(((size_t)g.tiles_y * g.eyes + 7) / 8, 0u);
+        rp_any_elided = false;
+    }
     run_pass(false, true, fp.tabs);
     if (err != NXVC_OK) return err;
+    // The flag is set only when the frame actually elided something.  Sending
+    // an all-ones bitmap is legal but costs bytes to say nothing, and the
+    // whole point of the tool is the frame where most rows are idle.  A frame
+    // that elides nothing is spelled exactly as it was before the tool
+    // existed, which is what keeps every non-idle frame byte-identical.
+    fp.row_present = rp_any_elided ? 1 : 0;
+    if (fp.row_present) {
+        fp.flags |= 16u;   // bit 4
+        fp.row_bits = rp_bits;
+    } else {
+        fp.row_bits.clear();
+    }
 
     // ---- frame header
     BW head;
@@ -3508,7 +3572,11 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
     head.u8v(fp.flags);
     head.u8v(0);
     const size_t warp_bytes = fp.warp_present ? 36u * g.eyes : 0u;
-    size_t extra = warp_bytes + (fp.quant_matrix == 255 ? 128 : 0) +
+    // [SYN] 3.1.2: immediately after warp_ext() and BEFORE the custom
+    // quantization matrices.  Its length is fixed by the geometry, not by the
+    // content: ceil(tiles_y * eyes / 8).
+    const size_t rp_bytes = fp.row_present ? fp.row_bits.size() : 0u;
+    size_t extra = warp_bytes + rp_bytes + (fp.quant_matrix == 255 ? 128 : 0) +
                    table_bytes.size();
     u32 total = (u32)(kFrameHeaderBytes + extra + body.size());
     head.u32v(total);
@@ -3525,6 +3593,10 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         std::memcpy(o, wb.b.data(), wb.size());
         o += wb.size();
     }
+    if (rp_bytes) {
+        std::memcpy(o, fp.row_bits.data(), rp_bytes);
+        o += rp_bytes;
+    }
     if (fp.quant_matrix == 255) {
         std::memcpy(o, e->custom_matrix.data(), 128);
         o += 128;
@@ -3540,7 +3612,8 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         e->stats.tiles_margin_forced = e->margin_forced.load();
         e->stats.bytes_total = *out_len;
         e->stats.bytes_frame_header =
-            kFrameHeaderBytes + warp_bytes + (fp.quant_matrix == 255 ? 128 : 0);
+            kFrameHeaderBytes + warp_bytes + rp_bytes +
+            (fp.quant_matrix == 255 ? 128 : 0);
         e->stats.bytes_tables = table_bytes.size();
     }
 
