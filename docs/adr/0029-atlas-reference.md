@@ -913,6 +913,63 @@ The quality loss at speed is not fixed; it is **avoided**, by not being in
 atlas mode when the atlas is the wrong trade. That is a smaller claim than
 "the atlas is better everywhere" and it is the one the measurements support.
 
+### Two-level refresh: coarse first, refine later -- REJECTED
+
+**It needs no syntax, and establishing that is half the result.** The atlas
+already carries `res_level` per entry, and 13.12.1 upsamples a `res_level > 0`
+tile into the atlas so the pixel layout never depends on a per-tile choice.
+Under `ATLAS` a coded tile predicts from its own entry. Put those together and
+a "refinement" is not a new mechanism at all: coding the tile again at
+`res_level 0` predicts from the upsampled coarse pixels, so the bits it sends
+**are** a residual on the coarse tile rather than a re-code of it. The whole
+proposal is therefore a per-frame `res_map`, which the library has always
+taken, and it was measured without changing one line of the codec.
+
+So the question is purely economic, and the answer is no. Measured on the two
+motion fixtures, four quantisers each, with every non-baseline curve read at
+the baseline's byte rate by interpolation in (log rate, PSNR):
+
+| | mid 25.2 deg/s | fast turn 75.6 deg/s |
+|---|---|---|
+| coarse `R=1`, refine when worth it | **-1.85 to -1.99 dB** | **-0.30 to -0.64 dB** |
+| coarse `R=2`, refine when worth it | -4.19 to -5.27 dB | -1.31 to -1.65 dB |
+| coarse `R=1`, at most 16 refinements a frame | -2.29 to -3.28 dB | +0.52 to +0.60 dB |
+
+At equal QP it is worse still and more obviously so: at 25 deg/s the
+unbudgeted two-level costs **20 % more bytes for 1.9 dB less** than coding the
+tile properly once. It is *dominated* -- worse on both axes at the same time --
+at every quantiser on both fixtures, which is a stronger negative than losing
+at equal rate.
+
+**Why it loses is the useful part.** The refinement's predictor is the
+upsampled coarse tile, which is missing exactly the high frequencies the
+refinement has to send. A residual against a blurred prediction is not cheap;
+it costs more than the original tile would have, so a landing plus a refinement
+is more total bytes than one full-resolution coding. The two-level split does
+not divide the cost of a tile in two. It pays for the tile twice.
+
+**The one configuration that wins is not two-level.** At fast turn the budgeted
+rows gain 0.5 to 0.6 dB -- and they do it with **0 refinements out of 1179
+landings**, with **75.5 %** of coarse landings replaced by the next refresh
+before anything refined them (70.8 % at 25 deg/s). That is not coarse-then-fine;
+it is *single-level coarse refresh*, and it wins for a reason that has nothing
+to do with the proposal: during a fast turn, full-resolution detail in a tile
+that will be re-refreshed within a few frames is detail nobody sees. The half
+of the idea that pays is the coarse landing. The half that costs is the
+refinement -- the half the proposal was actually about.
+
+Two caveats keep that from becoming a recommendation here. It is measured in
+**pure ATLAS mode**, at a velocity where the mode switch's recommended policy
+spends 73 % of frames as PICTURE frames instead, so the regime it wins in is
+largely one 13.12.11 now avoids; and it *loses* 2.3 dB at 25 deg/s, so it is
+velocity-dependent in the direction that needs a controller rather than a
+constant. **Resolution-adaptive refresh is an open rate-control question, it is
+already expressible with today's syntax, and it is not this ADR's.**
+
+**Decision: no normative text.** Two-level refresh is recorded as measured and
+rejected. Nothing in 13.12 changes, because nothing in 13.12 would have had
+to.
+
 * **The seam, as originally written.** Two adjacent tiles with different source frames are each
   individually correctly reprojected, so static distant content is seamless. They diverge on moving
   content and on near parallax, growing with the age difference — a tile coded 30 frames ago beside
