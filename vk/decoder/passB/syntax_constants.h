@@ -539,6 +539,9 @@ NXVW_CONST kModeStaticMv = 1;
 NXVW_CONST kModeWarpMv = 2;
 NXVW_CONST kModeIntra = 3;
 NXVW_CONST kModeStereo = 4;
+// [planar] [SYN] 13.13, tool bit 35.  A whole tile described as 2-4 shaded
+// regions: no transform, no entropy payload and no reference.
+NXVW_CONST kModePlanar = 5;
 
 // [SYN] 4.1 alpha_mode; 7.3 says modes 0 and 1 code no coefficients at all.
 NXVW_CONST kAlphaOpaque = 0;

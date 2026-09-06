@@ -276,6 +276,10 @@ constexpr uint64_t kToolStereo = 1ull << 12;
 constexpr uint64_t kToolNearSkip = 1ull << 28;
 constexpr uint64_t kToolQuadMv = 1ull << 29;
 constexpr uint64_t kToolEntropyLite = 1ull << 30;
+// [SYN] 13.13, tool bit 35.  Advertised in kToolsSupported only once the
+// planar vectors decode byte-identically on both drivers -- see the note
+// there.
+constexpr uint64_t kToolPlanar = 1ull << 35;
 constexpr uint64_t kToolRowPresent = 1ull << 32;
 
 }  // namespace
@@ -915,6 +919,11 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
             const uint32_t split4x4 = (w1 >> 28) & 1u;
             const uint32_t xform_size = (w1 >> 29) & 3u;
             const uint32_t quad_mv = (w1 >> 31) & 1u;
+            // [planar] Read only so 13.13's "these must be zero" can be
+            // checked; the ordinary paths take these fields from w1 further
+            // down, where they are needed.
+            const uint32_t table_set_f = (w1 >> 14) & 7u;
+            const uint32_t wgt_f = (w1 >> 24) & 3u;
 
             // Exactly the reference's checks, in the reference's order.
             // Word1 has no reserved bits left: 28 is `split4x4`, 29-30
@@ -925,8 +934,30 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
             // Annex D D-3: the `eye` field must agree with the eye the tile's
             // position in the frame derives.
             if (eye != eyeR) REJECT("eye != eyeR");
-            if (mode > 4) REJECT("mode > 4");         // r22
-            if (mode != kModeIntra && !fp.inter)
+            if (mode > kModePlanar) REJECT("mode > kModePlanar");   // r22
+            // [planar] The mode is gated on its own tool bit, and nothing
+            // else about the tile is inspected until that gate has passed:
+            // r44 is a well-formed planar tile in a stream that never
+            // offered the mode.
+            if (mode == kModePlanar && !(si.tools & kToolPlanar))
+                REJECT("mode == kModePlanar && !(si.tools & kToolPlanar)"); // r44
+            // [planar] [SYN] 13.13.  A planar tile has no reference, no
+            // vector and no transform, so every field that describes one of
+            // those must be zero.  Refused rather than ignored, for the
+            // reason ref/ gives: a decoder that ignored them would accept two
+            // spellings of one picture and the second is the one no other
+            // decoder agrees with.  r45 res_level, r46 nsub_log2, r47
+            // mv_present.
+            if (mode == kModePlanar &&
+                (res_level != 0 || tskip || split4x4 || xform_size != 0 ||
+                 wm_id != 0 || table_set_f != 0 || nsub_log2 != 0 ||
+                 mv_present || quad_mv || ref_sel != 0 || wgt_f != 0 ||
+                 alpha_mode == 2))
+                REJECT("planar tile sets a field 13.13 forbids");
+            // [planar] PLANAR needs neither INTER nor WARP: it carries its
+            // own picture and predicts from nothing, so an intra-only decoder
+            // decodes it.
+            if (mode != kModeIntra && mode != kModePlanar && !fp.inter)
                 return NXVC_VKD_ERR_UNSUPPORTED;
             if (mode_needs_warp((int)mode) && !fp.warp_present)
                 REJECT("mode_needs_warp((int)mode) && !fp.warp_present");                    // r21
@@ -938,12 +969,20 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
             // Annex D D-12: ref_sel 3 is reserved; INTRA and STEREO must
             // carry 0 and the decoding process ignores it (r23, r24).
             if (ref_sel == 3) REJECT("ref_sel == 3");
-            if ((mode == kModeIntra || mode == kModeStereo) && ref_sel != 0)
-                REJECT("(mode == kModeIntra || mode == kModeStereo) && ref_sel != 0");
+            if ((mode == kModeIntra || mode == kModeStereo ||
+                 mode == kModePlanar) &&
+                ref_sel != 0)
+                REJECT("(mode == kModeIntra || kModeStereo || kModePlanar) && ref_sel != 0");
             if (res_level > 2) REJECT("res_level > 2");
             if (alpha_mode == 3) REJECT("alpha_mode == 3");
             if (nsub_log2 > 5) REJECT("nsub_log2 > 5");
-            if (nsub_log2 != 3 && !(si.tools & kToolNsubVar))
+            // [planar] ... and it does not reach a planar tile, which is
+            // normative rather than a convenience: bit 7 says "this stream
+            // codes payloads with a lane count that is not eight", and a
+            // planar tile has no payload and no lanes.  Its nsub_log2 is
+            // already required to be 0 above.
+            if (mode != kModePlanar && nsub_log2 != 3 &&
+                !(si.tools & kToolNsubVar))
                 REJECT("nsub_log2 != 3 && !(si.tools & kToolNsubVar)");
             // [entropy-lite] Under tool bit 30 the tile header's table_set
             // field names the Lite VARIANT rather than a probability table
