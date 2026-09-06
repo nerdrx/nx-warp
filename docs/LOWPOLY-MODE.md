@@ -1,10 +1,17 @@
 # A piecewise-planar tile mode
 
-**Status:** proposal, with a measured CPU prototype. Nothing here is
-implemented in the codec, and no syntax has been allocated. Every number below
-was measured on `nx-scratch/inter_pan8.yuv` frame 0 (1088x1088, 4:2:0, 289
-tiles) against `nxv-enc` from `build-vk`, and the prototype is
-`nx-scratch/lowpoly-work/planar_tile.py`.
+**Status: IMPLEMENTED in the reference codec** as tool bit 35, `mode == 5`,
+SYNTAX.md 13.13 — and **re-measured, with a result section 9 states plainly:
+the +1.6 dB of section 4 does not reproduce.** Read sections 1 to 3 as the
+design (they are what shipped, minus the line form) and section 4's numbers as
+superseded by section 9's.
+
+The rest of this header is the document as it was written, kept because
+section 9 is a correction to it and a correction needs its subject. Every
+number in sections 3 to 5 was measured on `nx-scratch/inter_pan8.yuv` frame 0
+(1088x1088, 4:2:0, 289 tiles) against `nxv-enc` from `build-vk`, with the
+prototype `nx-scratch/lowpoly-work/planar_tile.py`. That clip no longer exists
+in the scratch tree; section 9 re-measures on the fixtures that do.
 
 ## 1. The failure mode this is about
 
@@ -295,3 +302,117 @@ and a `dir_qp`), the reference model, the warp, and every existing mode.
 * The staircase on non-axis-aligned boundaries is real and unaddressed.
 * No GPU decoder cost has been measured; the claim in section 6 is an argument
   from 13.9's, not a number.
+
+## 9. What shipped, and what it is worth (the re-measurement)
+
+Section 4's head-to-head is **not reproducible on the fixtures this tree
+has**, and the gap is not small. The transform baseline it compares against is
+about 15 dB adrift of what `nxv-enc` produces today at the same rate — that
+table has `--qp 43` at 91.4 B/tile and 20.47 dB, where the current encoder
+reaches **35.7 dB at 86 B/tile** on the pan8 fixture. Some of that is four
+merges of entropy and transform tools since; the rest is that `inter_pan8` was
+a tile atlas of flat panels and text, which section 4's own caveat says is
+"unusually kind to a piecewise-planar model", and it is gone.
+
+So the mode was implemented and measured again, on `pan8` (1088x1088
+band-limited synthetic VR content, 289 tiles) and `pan8s` (the same at
+2x1088x1088, 578 tiles), intra only, `nxv-enc --no-rdo --intra-dir off`, four
+frames, luma PSNR over the whole picture.
+
+### 9.1 The mode's own curve, against the transform's
+
+Every tile coded planar in one fixed configuration (`NXVC_PLANAR_FORCE=1
+NXVC_PLANAR_CONFIG=R,granularity`), against a QP sweep of the transform codec
+on the same clip. pan8:
+
+| configuration | B/tile | luma | chroma |
+|---|---|---|---|
+| planar R=2 8x8 | 35.9 | 22.30 | 35.15 |
+| planar R=3 8x8 | 52.9 | 22.91 | 36.79 |
+| planar R=4 8x8 | 61.9 | 23.14 | 37.38 |
+| planar R=2 4x4 | 59.9 | 24.25 | 36.15 |
+| planar R=3 4x4 | 100.9 | 25.58 | 36.84 |
+| planar R=4 4x4 | 109.9 | 26.08 | 37.84 |
+| transform QP 50 | 32.3 | 26.43 | 32.21 |
+| transform QP 46 | 39.6 | 28.54 | 33.51 |
+| transform QP 43 | 47.2 | 30.17 | 34.60 |
+| transform QP 40 | 56.9 | 31.94 | 35.24 |
+| transform QP 34 | 86.3 | 35.73 | 39.46 |
+
+**On luma the transform is 5 to 12 dB ahead at equal bytes, and the gap widens
+with rate** — the saturation section 4 predicted, from a much lower starting
+point than it measured. On the panel fixture built for this re-measurement
+(large flat and ramped rectangles with diagonal splits, the content class the
+model is *for*) the mode does better and still loses: 23.41 dB at 35.9 B/tile
+against about 26.1 for the transform, and 24.29 at 52.9 against about 29.5.
+
+**Chroma is the reverse, and consistently: the planar mode is 2 to 6 dB
+AHEAD**, at every configuration on both fixtures. Section 4 found the opposite,
+and this is the one place where the implementation may be better than the
+prototype rather than the content being different — the region planes are
+fitted per plane against the luma's map, and chroma at 4:2:0 is a smooth
+quantity that two to four planes fit well.
+
+### 9.2 What the mode is worth as a DECISION, which is how it ships
+
+`nxvc_config::planar = 1` offers the mode per tile and takes it only when it is
+**both cheaper and no worse** than the intra tile it would replace. The second
+condition is not decoration and its absence is a bug: a rate-distortion test
+alone, at the encoder's own lambda, chose planar on 76 % of pan8's tiles at
+QP 34 for 5 % fewer bytes and **2.1 dB**, where simply raising the quantiser
+would have given those bytes back for 0.9 dB. The mode's rate-distortion curve
+is nearly flat and the transform's is steep; minimising `D + lambda*R` per tile
+against a lambda derived from the steep one walks the frame off its own convex
+hull.
+
+With the condition, on 4 frames:
+
+| clip | QP | tool off | `planar = 1` | planar tiles |
+|---|---|---|---|---|
+| pan8 | 34 | 86.3 B/tile, 35.733 dB | 85.6, **35.736** | 23 / 1156 |
+| pan8 | 40 | 56.9, 31.939 | 57.1, **31.933** | 97 / 1156 |
+| pan8 | 46 | 39.6, 28.537 | 40.5, **28.523** | 98 / 1156 |
+| pan8s | 34 | 84.6, 35.742 | 83.9, **35.745** | 44 / 2312 |
+| pan8s | 40 | 55.5, 31.950 | 55.7, **31.943** | 192 / 2312 |
+| pan8s | 46 | 38.4, 28.564 | 39.3, **28.550** | 197 / 2312 |
+
+**Level 1 is neutral**: within 0.015 dB and 2.4 % of the tool being off,
+everywhere. It is chosen on 2 to 17 % of tiles and neither helps nor hurts,
+which on this content is the correct answer and is what the condition is for.
+
+`planar = 2` takes the mode wherever it is cheaper, distortion
+notwithstanding. That is the low-polygon LOOK as a setting, and it costs
+**2.1 to 4.3 dB** for about the same bytes (pan8 QP 46: 40.3 B/tile at
+24.210 dB against 39.6 at 28.537). It is a taste, and it is a separate level
+because a taste should not be a default.
+
+### 9.3 The look, which is the point
+
+![The look at equal bytes](assets/lowpoly-panels.png)
+
+Source, transform codec, piecewise-planar, at 15.3 kB a frame each (a 192x192
+crop at 3x, panel content). The transform (middle) softens the diagonal, rings
+along it and breaks the flat areas into blocks; the planar picture (right) has
+hard edges and flat facets, and its error is a **staircase on the diagonal**,
+quantised to the 4x4 sub-block grid. Which of those two is "worse" is not a
+question PSNR answers: it says 30.13 dB against 24.27 dB, and the right-hand
+picture is the one that looks like a low-polygon model rather than like a
+broken transform.
+
+![The same on the pan8 fixture](assets/lowpoly-pan8.png)
+
+The same three panels on `pan8`, the band-limited synthetic VR clip, at
+15.3 kB a frame (31.30 dB against 22.63). Here the transform's picture is
+simply better and the planar one is visibly a facet model of something that is
+not made of facets — which is the honest other half of the case, and the reason
+the mode is a per-tile decision rather than a frame-wide one.
+
+That is the whole case for the mode, and it is why it ships as a level rather
+than as an optimisation.
+
+### 9.4 What is still not proven
+
+Everything in section 8 stands. In particular the temporal behaviour is still
+unmeasured, and the staircase is still the mode's own artefact -- the line form
+of section 3 is **reserved in the syntax and not implemented**, which is where
+a true diagonal would come from.

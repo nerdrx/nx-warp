@@ -5,6 +5,8 @@
 
 #include "rans_cpu.h"
 
+#include "nxe_rate.h"
+
 #include <string.h>
 
 #include "nxe_tables.h"
@@ -291,6 +293,34 @@ int nxe_unit_ops(const nxe_tile_units *tu, int ui, const int16_t *coef,
         if (u->grp != 0) nbr->cls = nbr_class_of(1, last);
         return n;
     }
+}
+
+/* The tile's rate, in Q10 bits, without coding it.  See nxe_rate.h.
+ *
+ * This is Phase A of `nxe_e4_tile` with the byte machinery removed: the same
+ * lane walk, the same `nxe_unit_ops`, the same neighbour-class chain.  It is
+ * written as its own function rather than as a flag on E4 because a decision
+ * that has to price several candidates must not also be placing bytes -- but
+ * it is deliberately the same twelve lines, so a change to the unit walk that
+ * forgot this function would fail the tolerance test rather than pass quietly.
+ */
+uint32_t nxe_tile_bits_q10(const nxe_frame_params *fp, const nxe_tile_job *job,
+                           const nxe_tile_units *tu, const int16_t *coef,
+                           const uint8_t *modes, const nxe_tables *tabs) {
+    static uint32_t opbuf[NXE_UNIT_MAX_OPS];
+    const uint32_t *freq = &tabs->freq[job->table_set][0][0];
+    uint32_t bits = 0;
+    int l;
+    (void)fp;
+    for (l = 0; l < tu->active; ++l) {
+        int ui;
+        nxe_nbr nbr = NXE_NBR_INIT;
+        for (ui = l; ui < tu->nunits; ui += tu->nlanes) {
+            const int k = nxe_unit_ops(tu, ui, coef, modes, &nbr, opbuf);
+            bits += nxe_ops_bits_q10(opbuf, k, freq);
+        }
+    }
+    return bits + nxe_tile_overhead_bits_q10(tu->active);
 }
 
 /* ------------------------------------------------------------------- E4 */

@@ -135,7 +135,35 @@ struct StreamConfig {
         size_t b = mtu - kHeaderBytes - kTagBytes - (fec_enabled() ? kFecReserveBytes : 0);
         return b & ~size_t(3);  // keep the directory 4-byte aligned
     }
-    size_t max_tile_bytes() const { return run_payload_budget() - kDirEntryBytes; }
+    // The largest tile the packetizer can always place.
+    //
+    // The pose header is reserved here, not just in the run loop, because this
+    // is the number every caller sizes against and it has to be TRUE: a tile
+    // that passes this test must be placeable ANYWHERE, and the one place that
+    // is hardest is the opening run of a band, which carries the pose header
+    // (Packetizer::packetize_band takes `base = kPoseHeaderBytes` for it).
+    //
+    // Without the reservation a tile between `budget - kPoseHeaderBytes -
+    // kDirEntryBytes` and `budget - kDirEntryBytes` was not oversize by this
+    // test and still could not open a band: the run came back empty, the
+    // oversize branch declined it BECAUSE it fits this number, and
+    // packetize_band returned kBadInput -- which makes Sender::send_band drop
+    // the whole band, every tile in it, not just the one that did not fit.
+    // Measured on a 1088-square stream at mtu 1280: budget 1196, this number
+    // 1192, and a 1174-byte opening tile silently cost all 102 tiles of its
+    // band. The window is only kPoseHeaderBytes wide, so it read as an
+    // occasional unexplained incomplete frame rather than as a size limit.
+    //
+    // Conditional on the cap: a stream that carries no pose headers has no
+    // opening-run penalty and keeps the full budget. This is also what
+    // WiVRn's nxwarp_chunk_bytes() has always computed for the chunk mapping,
+    // so the two now agree instead of differing by exactly this reservation.
+    size_t max_tile_bytes() const {
+        const size_t reserve =
+            kDirEntryBytes + ((caps & kCapPoseHdr) ? kPoseHeaderBytes : 0);
+        const size_t b = run_payload_budget();
+        return b > reserve ? b - reserve : 0;
+    }
 };
 
 // ------------------------------------------------------------------ tiles

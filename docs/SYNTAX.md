@@ -167,6 +167,7 @@ interleaved UV.
 | 32 | `ROW_PRESENT` | the frame header may carry `row_present()`, eliding the header of a tile row with no coded tile (section 3.1.2) |
 | 33 | `ATLAS_NBR` | the neighbour-aware gather: an atlas sample landing outside the tile's own position is fetched through the entry it lands in (section 13.12.8) |
 | 34 | `ATLAS_REBASE` | every frame is either an ATLAS frame or a PICTURE frame, selected by frame flags bit 5 (sections 13.12.10 and 13.12.11) |
+| 35 | `PLANAR` | tiles may be coded as 2-4 shaded regions, `mode == 5` (section 13.13) |
 
 Bits 17, 21 and 22 are independent: any subset may be set. `ENTROPY_LITE`
 (bit 30) is mutually exclusive with `SIGN_HIDE` (bit 22) and `CUSTOM_TABLES`
@@ -233,8 +234,21 @@ restate what the skip bitmap already says, and a stream that never sets frame
 `flags` bit 4 decodes byte-identically whether or not the bit is offered.
 `ATLAS_NBR` (bit 33) requires `ATLAS`; setting it alone is `BITSTREAM`.
 
-Bits 34-63 are reserved and must be zero. Capability negotiation is an
-intersection: the sender only sets bits the receiver offered.
+`PLANAR` (bit 35) adds a tile MODE and nothing else. It requires no other
+tool: a planar tile carries its own content and has no reference, so unlike
+`NEAR_SKIP` and `QUAD_MV` it does not need `INTER`, and it is legal on an
+intra-only stream and on the first frame. It composes with every other bit
+because it replaces what a tile's payload IS rather than how a payload is
+written -- including with `ENTROPY_LITE`, whose subject is a coder a planar
+tile does not run. Its own constraints are entirely inside the tile: 4.1 and
+13.13 list the header fields it forbids, and a stream that sets one of them on
+a planar tile is `BITSTREAM`.
+
+Bits 36-63 are reserved and must be zero -- 31 to 34 are the `ATLAS` package
+above and 35 is `PLANAR`. (An earlier draft of this paragraph said "34-63",
+which was written before `ATLAS_REBASE` took bit 34; the tool table is the
+authority and it lists 34.) Capability negotiation is an intersection: the
+sender only sets bits the receiver offered.
 
 ---
 
@@ -549,7 +563,7 @@ Two little-endian u32 words. Bits are listed LSB first.
 
 | bits | field | notes |
 |---|---|---|
-| 0-2 | `mode` | 0 `WARP_SKIP`, 1 `STATIC_MV`, 2 `WARP_MV`, 3 `INTRA`, 4 `STEREO`, 5-7 reserved |
+| 0-2 | `mode` | 0 `WARP_SKIP`, 1 `STATIC_MV`, 2 `WARP_MV`, 3 `INTRA`, 4 `STEREO`, 5 `PLANAR` (tool bit 35, section 13.13), 6-7 reserved |
 | 3-4 | `res_level` | 0 = 64x64, 1 = 32x32, 2 = 16x16 coded; 3 reserved |
 | 5 | `chroma444` | 1 = this tile's chroma is coded at full tile resolution |
 | 6-7 | `alpha_mode` | 0 opaque, 1 constant (byte follows), 2 coded, 3 reserved |
@@ -579,7 +593,9 @@ Then, in this order:
    * `i8 mv_x, i8 mv_y` otherwise
 2. if `quad_mv`: four bytes of quadrant vector deltas (13.10)
 3. `u8 alpha_value` if `alpha_mode == 1`
-4. `payload_len` bytes of rANS payload
+4. `payload_len` bytes of rANS payload -- or, on a tile with `mode == PLANAR`,
+   the `payload_len` bytes of the planar body of 13.13, which is not entropy
+   coded
 
 The near-skip correction is **not** here: it is in the tile-row header (3.3
 and 13.9), because a near-skip tile is a skipped tile and has no tile
@@ -3569,12 +3585,98 @@ become. The reference decoder allocates ring slots instead because its slot
 index is `frame_number & 3`; that is a simplification of the model, not a
 requirement of the format.
 
+### 13.13 The piecewise-planar tile mode (tool bit 35)
+
+`mode == 5`, `PLANAR`. The tile is coded as **2 to 4 regions**, each one
+plane -- a DC level and two ramps -- over a label map on a sub-block grid.
+There is no transform, no entropy-coded payload and no reference. It is a
+whole tile rather than a correction, which is what distinguishes it from the
+near-skip record of 13.9 whose arithmetic it otherwise reuses exactly.
+
+**Why the format has it.** A transform codec starved of bits fails by turning
+the picture into its own coding grid, and in a headset that pattern reshuffles
+every frame. A tile described as regions fails by losing detail while keeping
+structure: the boundaries stay, the shading inside them coarsens, and the
+result degrades toward the look of a low-polygon model. The mode saturates --
+with no residual there is nothing more to spend bits on -- so it is a low-rate
+tool, chosen per tile, never a replacement for the transform.
+docs/LOWPOLY-MODE.md is the proposal and docs/LOWPOLY-GPU-PLAN.md the decoder
+plan; what each is worth is measured in LOWPOLY-MODE.md 9.
+
+**Constraints.** A tile with `mode == PLANAR` is `BITSTREAM` unless all of:
+
+* the stream sets tool bit 35;
+* `res_level`, `tskip`, `split4x4`, `xform_size`, `wm_id`, `table_set`,
+  `nsub_log2`, `mv_present`, `quad_mv`, `ref_sel` and `wgt` are **0**;
+* `alpha_mode` is 0 or 1 -- alpha is not regionised, so a planar tile may be
+  opaque or constant-alpha and may not carry a coded alpha plane.
+
+`nsub_log2` must be 0 and the `NSUB_VAR` gate of bit 7 does **not** apply to
+it: bit 7 says a stream codes payloads with a lane count other than eight, and
+a planar tile has no payload and no lanes. `qp_delta` keeps its meaning and is
+the quantiser the region coefficients are dequantised at.
+
+**The body** replaces the rANS payload. `payload_len` is its length, so a
+parser that does not implement the mode still walks the frame; it must equal
+`1 + map_bytes + 3 * R * planes` exactly, where `planes` is the number of coded
+colour planes, and any other length is `BITSTREAM`.
+
+| offset | size | field |
+|---|---|---|
+| 0 | u8 | bits 0-1 `region_count - 2` (`R`; the value 3, meaning 5 regions, is reserved); bit 2 `split_form`, **reserved in this version and must be 0**; bit 3 `granularity` (0 = 8x8 sub-blocks, 1 = 4x4); bits 4-7 reserved, must be 0 |
+| 1 | `map_bytes` | the label map: `M * M` cells in raster order, `1` bit each when `R == 2` and `2` bits otherwise, packed LSB first (cell 0 in the low bits of byte 0). `M` is 8 at `granularity == 0` and 16 at 1, and `map_bytes` is `ceil(M * M * bits / 8)`. A label `>= R` is `BITSTREAM` |
+| 1 + `map_bytes` | 3 x `R` x `planes` | per region, then per coded colour plane in the order Y, Co, Cg: the signed bytes `c0`, `c1`, `c2` |
+
+The label map is coded **raw**. A context-coded map is measured at roughly a
+quarter of the size (docs/LOWPOLY-MODE.md 3.2) and is deliberately not in this
+version: it would put an entropy decode in front of a reconstruction whose
+whole argument is that it has none. It is a candidate for a later tool bit,
+measured against a coder rather than an entropy bound.
+
+**Decoding process.** For each coded colour plane `p` of edge `size`, with
+`t = dequant_step(dc_qp_of(qp), 16)` -- the DC-plane step of 6.5, which 13.9
+uses for the same quantities -- and `shift = log2(size) - log2(M)`:
+
+```
+for each sample (x, y) of the plane:
+    r     = label[(y >> shift) * M + (x >> shift)]
+    d0    = dequant(c0[r][p], t)
+    dh    = dequant(c1[r][p], t)
+    dv    = dequant(c2[r][p], t)
+    value = dc_offset + d0
+          + ((dh * (2*x - size + 1)) >> log2(size))
+          + ((dv * (2*y - size + 1)) >> log2(size))
+    sample = clamp(value, 0, maxval)
+```
+
+`shift` is never negative: the mode requires `res_level == 0`, so `size` is 64
+for luma and 32 for 4:2:0 chroma, against an `M` of 8 or 16. A chroma plane
+therefore reads the same map at one shift less -- the regions are the tile's,
+not a plane's, and a planar tile cannot segment its chroma independently of
+its luma.
+
+There is **no `means` field and no planar interpolation**: the region's plane
+*is* the sample field, which is 13.9 without its final indirection. Evaluating
+per sub-block instead would reproduce, at a coarser grid, exactly the block
+structure this mode exists to avoid.
+
+The reconstructed samples are the tile's output and its contribution to the
+reference picture. Nothing is added to them and no predictor runs.
+
+**What it costs a GPU decoder.** Less than any other coded tile, by the
+argument 13.9 already makes: no entropy decode, no rANS lane flush, no inverse
+transform. One label lookup and three multiply-adds per sample, with no
+dependency between samples, between blocks or between tiles.
+docs/LOWPOLY-GPU-PLAN.md is the kernel plan; no GPU decoder implements the
+mode yet, and until one does the mode is CPU-reference only in practice.
+
 ## 14. Phase 2 conformance
 
 A Phase 2 decoder implements section 13 in addition to everything a Phase 1
 decoder implements. It must:
 
-* accept every value of `mode`, and reject `mode` 5 to 7;
+* accept every value of `mode`; reject `mode` 5 unless tool bit 35 is set and
+  the constraints of 13.13 hold, and reject `mode` 6 and 7 always;
 * reject `warp_ext()` violating any of the four conditions of section 3.1.1;
 * reject a warped mode in a frame with `warp_present == 0`, `mode == STEREO`
   on the left eye or without the `STEREO` tool bit, `ref_sel == 3`, a nonzero
