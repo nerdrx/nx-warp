@@ -761,9 +761,13 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
         d.decide_push[5] = d.cfg.mv_range > 0 ? d.cfg.mv_range : 16;
         d.decide_push[6] = d.cfg.int_coded_vectors ? 1 : 0;
         d.decide_push[7] = d.ring.stride[0];
+        /* ring_w is the luma plane's extent over the eye PAIR; eye_w is one
+         * eye's, which is what the search clamps at -- the reference's warp
+         * source is one eye's sub-picture (`ref_image()`), so an eye never
+         * samples across the seam.  They coincide at eyes == 1. */
         d.decide_push[8] = d.ring.planeW[0] * (int)f.fp.eyes;
         d.decide_push[9] = (int)f.fp.height;
-        d.decide_push[10] = 0;
+        d.decide_push[10] = d.ring.planeW[0];
         d.decide_push[11] = 0;
 
         /* Pass B's push block.  `coefStrideI16` is the lever that lets it read

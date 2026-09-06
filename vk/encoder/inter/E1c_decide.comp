@@ -103,19 +103,34 @@ layout(push_constant) uniform Push {
     int mv_range;    // coarse sweep radius in samples
     int coded_vectors; // 1 = search STATIC_MV, 0 = skip and intra only
     int ring_stride;   // u16 row stride of the ring's luma plane
-    int ring_w, ring_h; // the luma plane's sample extent
-    int pad0, pad1;
+    int ring_w, ring_h; // the luma plane's sample extent over the eye pair
+    int eye_w;          // ONE eye's sample width: ring_w / eyes
+    int pad1;
 } pc;
 
 // --------------------------------------------------------- the ring reader
+//
+// `g_ringBase` is the slot-and-plane base; `g_eyeX` is this tile's eye's x
+// origin inside the plane, which is `eye * eye_w` (inter_layout.h).
+//
+// WHY THE CLAMP IS AT `eye_w` AND NOT AT `ring_w`.  The reference builds its
+// warp source with `ref_image()` (ref/src/codec_impl.inc), which offsets the
+// plane pointer by `eye * pw` and sets `width = pw` -- ONE eye's sub-picture.
+// Its `fetch_clamped` therefore clamps at the EYE border, and a left-eye tile
+// can never read a right-eye sample however far the vector reaches.  Clamping
+// at the pair width instead would let eye 0 sample into eye 1 across the seam
+// and eye 1 sample back into eye 0, which is a different predictor and a
+// different stream.  At `eyes == 1` the two bounds coincide, which is why this
+// only ever mattered once a stereo frame reached the search.
 int g_ringBase;
+int g_eyeX;
 
 // One luma sample, clamp-to-edge on integer indices, exactly as
 // warp_ref.cpp's fetch() does it.
 int ref_at(int x, int y) {
-    x = clamp(x, 0, pc.ring_w - 1);
+    x = clamp(x, 0, pc.eye_w - 1);
     y = clamp(y, 0, pc.ring_h - 1);
-    const int idx = g_ringBase + y * pc.ring_stride + x;
+    const int idx = g_ringBase + y * pc.ring_stride + g_eyeX + x;
     const uint w = ring.v[uint(idx) >> 1u];
     return int((idx & 1) == 0 ? (w & 0xffffu) : (w >> 16u));
 }
@@ -348,6 +363,10 @@ void main() {
     // the plane's offset from the warp header.  Same two words Pass W adds.
     g_ringBase = int(warpb.v[b + 6u]) +
                  int(warpb.v[uint(NXVW_WARP_HDR_RING + 4)]);
+    // This tile's eye's x origin inside the plane.  A temporal reference is
+    // always the tile's OWN eye (only STEREO crosses over, and the encoder
+    // does not offer it), so this is the eye from the tile's own record.
+    g_eyeX = int(jobs[tile].eye) * pc.eye_w;
 
     // The luma plane only, at the tile's coded size.  res_level is 0 on this
     // path, so that is the full 64x64.
@@ -450,8 +469,8 @@ void main() {
     }
 
     // ---------------------------------------------------------- the search
-    const int ox = int(jobs[tile].col) * 64 +
-                   int(jobs[tile].eye) * pc.ring_w;
+    // Eye-LOCAL, because `ref_at` adds `g_eyeX` and clamps within the eye.
+    const int ox = int(jobs[tile].col) * 64;
     const int oy = int(jobs[tile].row) * 64;
 
     if (lid == 0u) {
