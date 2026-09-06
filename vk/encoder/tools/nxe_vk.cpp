@@ -103,6 +103,12 @@ struct VkEncoder::Impl {
     VkDescriptorSet s_w{}, s_dec{}, s_b{};
     VkQueryPool qpool = VK_NULL_HANDLE;
     bool e0_timed = false;
+    /* GPU-timestamp accounting, per frame, gated on NXE_TIME.  Wall clock
+     * around a submit is not the encoder's cost: it carries the submit itself,
+     * the fence wait, every host copy on either side and whatever else is
+     * running on the box.  These three are the device's own execution of the
+     * command buffers, read from the queue's timestamps. */
+    double gpu_ms_1 = 0.0, gpu_ms_2 = 0.0, gpu_ms_asm = 0.0;
     double e0_ms = 0;
 
     size_t src_bytes = 0, coef_bytes = 0, out_bytes = 0;
@@ -855,6 +861,33 @@ static void copy_up(VkCommandBuffer cb, vkmin::Buffer &stage, vkmin::Buffer &dst
 
 /* The five dispatches, with no host work between them: this is the shape
  * paper 3.6 specifies and the shape `bench` times. */
+/* Bracket a command buffer with a pair of timestamps, and read the pair back
+ * as milliseconds of DEVICE time.  `first` is the query index of the pair.
+ *
+ * TOP_OF_PIPE at the open and BOTTOM_OF_PIPE at the close, so the interval is
+ * everything the queue executed for this buffer and nothing the host did
+ * around it. */
+static void gpu_ts_begin(VkEncoder::Impl &d, VkCommandBuffer cb, uint32_t first) {
+    if (d.qpool == VK_NULL_HANDLE || !d.dev.timestamps_valid()) return;
+    vkCmdResetQueryPool(cb, d.qpool, first, 2);
+    vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, d.qpool, first);
+}
+static void gpu_ts_end(VkEncoder::Impl &d, VkCommandBuffer cb, uint32_t first) {
+    if (d.qpool == VK_NULL_HANDLE || !d.dev.timestamps_valid()) return;
+    vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, d.qpool,
+                        first + 1u);
+}
+static double gpu_ts_read(VkEncoder::Impl &d, uint32_t first) {
+    if (d.qpool == VK_NULL_HANDLE || !d.dev.timestamps_valid()) return 0.0;
+    uint64_t q[2] = {0, 0};
+    if (vkGetQueryPoolResults(d.dev.handle(), d.qpool, first, 2, sizeof q, q,
+                              sizeof(uint64_t),
+                              VK_QUERY_RESULT_64_BIT |
+                                  VK_QUERY_RESULT_WAIT_BIT) != VK_SUCCESS)
+        return 0.0;
+    return (double)(q[1] - q[0]) * (double)d.dev.timestamp_period() / 1e6;
+}
+
 static void record_passes(VkEncoder::Impl &d, VkCommandBuffer cb, bool e3,
                           bool timestamps) {
     uint32_t q = 0;
@@ -1395,6 +1428,7 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
     }
     {
         VkCommandBuffer cb = d.dev.begin();
+        if (nxe_time) gpu_ts_begin(d, cb, 10u);
         copy_up(cb, d.b_stage_small, d.b_params, &fp, sizeof fp, 0);
         copy_up(cb, d.b_stage_small, d.b_tabs, &f.tabs, sizeof f.tabs,
                 1 << 18);
@@ -1731,10 +1765,12 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
         }
         VkBufferCopy cc{0, 0, d.coef_bytes};
         vkCmdCopyBuffer(cb, d.b_coef.buf, d.b_stage_coef.buf, 1, &cc);
+        if (nxe_time) gpu_ts_end(d, cb, 10u);
         if (!d.dev.submit_and_wait(cb, err)) {
             std::fprintf(stderr, "E0/E3 submit: %s\n", err.c_str());
             return false;
         }
+        if (nxe_time) d.gpu_ms_1 = gpu_ts_read(d, 10u);
     }
     /* The frame's reconstruction is in its ring slot now, so the slot becomes
      * a reference for the frames that follow.  Published AFTER the submit that
@@ -1910,6 +1946,7 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
     /* ---- the jobs go back with their table sets, then E4, E2 and E5. */
     {
         VkCommandBuffer cb = d.dev.begin();
+        if (nxe_time) gpu_ts_begin(d, cb, 12u);
         std::memcpy(d.b_stage_small.map, f.jobs.data(),
                     f.jobs.size() * sizeof(nxe_tile_job));
         VkBufferCopy cj{0, 0, f.jobs.size() * sizeof(nxe_tile_job)};
@@ -1931,10 +1968,12 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
         record_passes(d, cb, false, false);
         VkBufferCopy cz{0, 1 << 19, (size_t)d.ntiles * 4};
         vkCmdCopyBuffer(cb, d.b_sizes.buf, d.b_stage_small.buf, 1, &cz);
+        if (nxe_time) gpu_ts_end(d, cb, 12u);
         if (!d.dev.submit_and_wait(cb, err)) {
             std::fprintf(stderr, "E4/E5 submit: %s\n", err.c_str());
             return false;
         }
+        if (nxe_time) d.gpu_ms_2 = gpu_ts_read(d, 12u);
         std::memcpy(f.tile_bytes.data(),
                     (uint8_t *)d.b_stage_small.map + (1 << 19), d.ntiles * 4);
     }
@@ -1992,12 +2031,26 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
             d.e0_ms = double(q[1] - q[0]) * d.dev.timestamp_period() * 1e-6;
         d.e0_timed = false;
     }
-    if (nxe_time)
+    if (nxe_time) {
         std::fprintf(stderr,
                      "nxe: E0 %.3f  passes to E3 %.2f  coef read %.2f  "
                      "table sets %.2f  E4/E5 %.2f  frame out %.2f  total %.2f ms\n",
                      d.e0_ms, ms(t0, t1), ms(t1, t2), ms(t2, t3), ms(t3, t4),
                      ms(t4, t5), ms(t0, t5));
+        /* The DEVICE's own execution, from the queue's timestamps, beside the
+         * host wall clock above.  The two answer different questions: the
+         * wall clock is what a serial file-driven harness takes per frame --
+         * submits, fence waits, host copies, the table-set choice and whatever
+         * else shares the box -- while these three are what the GPU actually
+         * ran.  Reporting only the first is how a 20 ms/frame figure gets
+         * quoted for a 2 ms encoder. */
+        std::fprintf(stderr,
+                     "nxe-gpu: E0..PassB %.3f  E4/E5 %.3f  assemble %.3f  "
+                     "gpu total %.3f ms\n",
+                     d.gpu_ms_1, d.gpu_ms_2, d.gpu_ms_asm,
+                     d.gpu_ms_1 + d.gpu_ms_2 + d.gpu_ms_asm);
+        d.gpu_ms_asm = 0.0;
+    }
     if (check) {
         std::vector<uint8_t> gpu = f.out;
         encode_frame_cpu(f, frame_number);
@@ -2201,7 +2254,9 @@ bool VkEncoder::assemble_atlas_picture(Frame &f, const WarpBuildInfo &bi_in,
 
     nxvw::NxvwWarpPush push = warp_push(bi, d.ring);
 
+    const bool tm = std::getenv("NXE_TIME") != nullptr;
     VkCommandBuffer cb = d.dev.begin();
+    if (tm) gpu_ts_begin(d, cb, 14u);
     VkBufferCopy cw{1 << 17, 0, wb};
     vkCmdCopyBuffer(cb, d.b_stage_small.buf, d.b_warp.buf, 1, &cw);
     VkBufferCopy cr{1 << 18, 0, rb};
@@ -2228,8 +2283,10 @@ bool VkEncoder::assemble_atlas_picture(Frame &f, const WarpBuildInfo &bi_in,
     vkCmdPushConstants(cb, d.p_b.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
                        (uint32_t)sizeof d.bpush, &d.bpush);
     vkCmdDispatch(cb, d.ntiles, 1, 1);
+    if (tm) gpu_ts_end(d, cb, 14u);
 
     if (!d.dev.submit_and_wait(cb, err)) return false;
+    if (tm) d.gpu_ms_asm = gpu_ts_read(d, 14u);
     (void)f;
     return true;
 }

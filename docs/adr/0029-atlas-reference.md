@@ -1061,6 +1061,84 @@ atlas mode when the atlas is the wrong trade. That is a smaller claim than
   slots to one) plus 37 kB of table. This is a **reduction**.
 * `STEREO` is excluded in v1, and reconciling it is Phase 2 work.
 
+### What the atlas is worth on the GPU encoder, plainly
+
+The per-frame mode is implemented and measured (`--atlas-mode`, tool bit 34), and so is the
+`--skip-thresh` sweep the switching policy was supposed to need. The result settles what the atlas
+buys on **this** encoder, and it is narrower than the model promised.
+
+**The atlas never wins on bytes.** Sweeping the skip gate over both arms at three velocities,
+1088×1088, 16 frames, QP 26, the two models track each other almost exactly at every threshold:
+
+| fixture | thresh | picture (dB / B) | atlas (dB / B) | skip % | warps a decoder pays |
+|---|---|---|---|---|---|
+| near-still | 0 | 31.4357 / 1196324 | 31.5308 / 1217492 | 42 | 123.6 → **0** |
+| near-still | 8 | 28.7360 / 799428 | 28.8028 / 818028 | 61 | 179.1 → **0** |
+| near-still | 32 | 22.8188 / 367462 | 23.0654 / 402804 | 81 | 238.9 → **0** |
+| 0.2 °/f | 8 | 32.4237 / 1924636 | 32.4155 / 1924636 | 6.6 | 19.0 → **0** |
+| 0.2 °/f | 32 | 23.6885 / 1018798 | 23.9138 / 1034736 | 51 | 148.6 → **0** |
+| fast turn | 16 | 33.5550 / 2048834 | 33.5554 / 2048834 | 0.3 | 0.9 → **0** |
+| fast turn | 32 | 29.6450 / 1908728 | 29.6086 / 1906072 | 7.1 | 20.2 → **0** |
+
+Under motion the two arms are within 0.25 dB and 0.2 % of each other at every threshold; at
+near-still the atlas is 0.07–0.25 dB better for 1.8–9.6 % *more* bytes. **There is no threshold at
+which an `ATLAS` frame is cheaper than a `PICTURE` frame at equal quality.** Raising the gate does
+not find one — it degrades both arms by the same amount, because the gate is a property of the
+decision and not of the reference model. The reference's `D = 8` shape (mid 38.61 dB at 47 %
+`PICTURE`) does not reproduce here, and the skip gate is not the missing variable.
+
+**What the atlas actually sells is decode warps, and only that.** It converts every skipped tile's
+decode-time warp into zero, moving the warp to display where a reprojection compositor performs one
+per tile per displayed frame regardless. That saving is exactly proportional to the SKIP RATE:
+
+* near-still, 42 % skip: 123.6 warps a frame removed — **4.2 ms** on the Pico at 34 µs a tile, and
+  up to 8.1 ms at a looser gate;
+* 0.2 °/frame, 6.6 % skip: 19 warps, **0.65 ms**;
+* fast turn, 0.3 % skip: one warp, **0.03 ms**.
+
+So the 8.8 ms an eye the budget claims is a near-still figure. Under motion ADR-0028's integer
+decision codes the tiles rather than skipping them, the skip rate collapses, and the atlas's product
+collapses with it — to nothing at fast turn, where the two models are bit-identical.
+
+**Which makes the per-frame mode inert on this encoder.** A `PICTURE` frame can only reproduce what
+an `ATLAS` frame already produces under motion, while paying to assemble the reference: measured on
+a 7900 XTX by GPU timestamp, 0.19 ms a frame at 289 tiles and 0.29 ms at 578. Where the mode would
+fire, it buys nothing and costs that; where the atlas genuinely wins, the trigger correctly stays
+quiet. The mechanism is correct and conformant — an all-`PICTURE` stream is byte-identical to a
+no-atlas stream apart from the tool bits and the mode bit — and it is off by default.
+
+**The conclusion, stated plainly: on this encoder the atlas is a NEAR-STILL optimisation.** It is
+worth 4–8 ms of decode warp and about a tenth of a dB when the head is nearly still, it is worth
+nothing when the head is moving, and it is never worth bytes. Making it worth more under motion is a
+question for the mode decision — a gate that skips when the warp is good enough rather than one that
+codes whenever the displacement is large — and not for the atlas syntax, the switching policy, or
+the skip threshold, all three of which have now been swept and none of which moves it.
+
+### A note on encoder timing figures
+
+An earlier report of this encoder at 19.7 ms a frame (289 tiles) and 31.8 ms (578) was **wall clock
+around the whole process divided by the frame count**, and it is wrong as an encoder cost: it
+carries process start-up, Vulkan instance and device creation, pipeline and shader creation, file
+I/O, and a `--display-psnr` readback and PSNR computation on every frame. Measured properly, by GPU
+timestamp, warm, median of 16 frames:
+
+| | 289 tiles | 578 tiles |
+|---|---|---|
+| picture | 3.61 ms | 6.32 ms |
+| atlas | 3.64 ms | 6.83 ms |
+| mode | 3.85 ms (assemble 0.19) | 5.99 ms (assemble 0.29) |
+| host wall clock | 5.3–6.5 ms | ~10.4 ms |
+
+The atlas path costs the picture path's time to within a few per cent — not 10×. The host figure
+exceeds the GPU figure by 4–5 ms, of which the table-set choice is 3.4 ms of pure CPU work on a
+shared box; the rest is submits, fence waits and staging copies.
+
+These are also not comparable with a `--bench` figure for E3 and E4 alone (1.44 ms at 578 here,
+E3 0.468 + E4 0.974): that pair is a strict subset, excluding Pass W, the mode decision, Pass B, E2
+and E5, and it is timed over an already-populated job array rather than a real frame. Three numbers
+of different scope for the same encoder is how a 2 ms encoder gets quoted at 20 ms; `NXE_TIME=1` now
+prints the GPU-timestamp line beside the wall-clock one so the two cannot be confused again.
+
 ## Alternatives considered
 
 **Assemble a pose-aligned reference picture before decoding coded tiles.** Warp every atlas tile
