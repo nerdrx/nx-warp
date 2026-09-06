@@ -140,8 +140,14 @@ void inter_model_predict(const InterModelInput &in, int16_t *wpred) {
             im.max_value = maxval;
 
             nw::Homography H{};
-            const uint32_t *m =
-                W + (size_t)(eye * 2 + (sub - 1)) * NXVW_WARP_MAT_UINTS;
+            // [ATLAS] Same selection as warp_pred.glsl: the tile's own matrix
+            // pair when it names one, the frame's four otherwise.
+            const uint32_t mat_idx = tb[NXVW_WARP_TILE_MATIDX];
+            const uint32_t moff =
+                mat_idx == NXVW_WARP_MAT_NONE
+                    ? (uint32_t)((eye * 2 + (sub - 1)) * NXVW_WARP_MAT_UINTS)
+                    : mat_idx + (uint32_t)((sub - 1) * NXVW_WARP_MAT_UINTS);
+            const uint32_t *m = W + (size_t)moff;
             for (int i = 0; i < 9; ++i) H.h[i] = (int32_t)m[i];
             H.ox = (int32_t)m[9];
             H.oy = (int32_t)m[10];
