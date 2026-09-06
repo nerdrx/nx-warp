@@ -467,12 +467,20 @@ void check_picture_frame() {
      * src_frame through code_tile(); 1 and 2 take it here. */
     nxe::AtlasTable pic = at;
     pic.code_tile(0, 11, nxvw::kModeWarpMv, 0);
-    std::vector<uint8_t> coded(pic.e.size(), 0u);
-    coded[0] = 1u;
-    pic.picture_frame(coded.data(), 11);
-    for (uint32_t t = 0; t < 3; ++t) {
+    std::vector<uint8_t> mode(pic.e.size(), nxe::AtlasTable::kPictureNotCoded);
+    mode[0] = (uint8_t)nxvw::kModeWarpMv;
+    pic.picture_frame(mode.data(), 11);
+    /* EVERY position, not just the three the fixture coded: 13.12.11 step 3
+     * reconstructs the whole picture, so a position that was invalid going in
+     * holds content coming out. */
+    for (uint32_t t = 0; t < (uint32_t)pic.e.size(); ++t) {
+        CHECK(pic.valid(t), "tile %u: a PICTURE frame left a position invalid",
+              t);
         CHECK(pic.e[t].gen == 0, "tile %u: a PICTURE frame left gen at %u", t,
               pic.e[t].gen);
+        CHECK(pic.e[t].res_level == 0, "tile %u: res_level not reset", t);
+        CHECK(!pic.is_base_sourced(t),
+              "tile %u: base_sourced survived a PICTURE frame", t);
         for (int k = 0; k < 9; ++k)
             CHECK(pic.e[t].C[k] == I[k],
                   "tile %u: a PICTURE frame left C off the identity", t);
@@ -480,11 +488,10 @@ void check_picture_frame() {
         CHECK(pic.e[t].src_frame == 11,
               "tile %u: src_frame is %u, want 11", t, pic.e[t].src_frame);
     }
-    /* And the coded position must NOT have been superseded by the frame's own
-     * materialisation -- the ordering is what prevents it.  Had
-     * picture_frame() run first, code_tile()'s write would have met
-     * `src_frame >= frame_number` and been dropped. */
-    CHECK(!pic.is_base_sourced(0), "a coded tile came back base-sourced");
+    /* `static` is set by THIS frame's mode and is not inherited: position 1
+     * was STATIC_MV before and was not recoded, so it is world-locked now. */
+    CHECK(!pic.is_static(1),
+          "a PICTURE frame inherited static from the previous coding");
 
     /* An ATLAS-frame rebase at 11 settles the transform and leaves provenance
      * alone, so age stays visible and the supersede rule keeps working. */
@@ -517,12 +524,14 @@ void check_picture_frame() {
           "a PICTURE frame skipped the static entry (src_frame %u)",
           pic.e[1].src_frame);
 
-    /* An invalid entry is touched by neither. */
+    /* An invalid entry: a PICTURE frame VALIDATES it, because the picture
+     * process reconstructed that position too; an ATLAS-frame rebase leaves
+     * it alone, because a rebase only re-poses pixels that already exist. */
     CHECK(!at.valid(5), "fixture assumption");
-    nxe::AtlasTable inv = at;
-    inv.picture_frame(nullptr, 11);
-    CHECK(!inv.valid(5), "a PICTURE frame validated an invalid entry");
-    CHECK(inv.e[5].src_frame == 0, "a PICTURE frame stamped an invalid entry");
+    CHECK(pic.valid(5), "a PICTURE frame left a previously-invalid entry "
+                        "invalid, so the picture it reconstructed is thrown "
+                        "away and the position codes INTRA for nothing");
+    CHECK(!reb.valid(5), "a rebase validated an entry with no pixels");
 }
 
 /* A materialising frame is a generation boundary for the undo log: the pixels

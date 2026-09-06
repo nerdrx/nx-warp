@@ -217,17 +217,26 @@ struct AtlasTable {
      * from firing.  This mirrors nxvw::AtlasHostState on the decoder side,
      * where `apply()` runs before `rebase_picture()` for the same reason. */
 
-    /* PICTURE frame `frame_number`.  Every valid entry is re-posed to this
-     * frame's pose and its pixels MATERIALISED, so every entry ends at age 0
-     * -- which is the truth, because every one of those pixels really is new.
-     * `src_frame := frame_number` is therefore legitimate here, and this is
-     * the one place it moves without the position being coded.
+    /* PICTURE frame `frame_number` -- [SYN] 13.12.11 step 3, the write-back
+     * that turns the reconstructed picture into the atlas.
      *
-     * `coded` is one byte per tile, non-zero where this frame coded the
-     * position; those entries took `src_frame` through `code_tile()` already
-     * and are skipped, exactly as the decoder's `rebase_picture()` skips
-     * them.  A null `coded` means the frame coded nothing. */
-    void picture_frame(const uint8_t *coded, uint32_t frame_number);
+     * The frame was decoded by the ORDINARY non-ATLAS process, so the whole
+     * picture was reconstructed and EVERY position now holds pixels of this
+     * frame.  So every position, not merely every valid one, ends up
+     * `C = I`, `gen = 0`, `valid = 1`, `base_sourced = 0`, `res_level = 0`
+     * and `src_frame = frame_number`.  Age 0 everywhere is the truth here and
+     * this is the one case in which `src_frame` moves for a position the
+     * frame did not code -- because its pixels really are new, having been
+     * warped from the assembled picture this frame.
+     *
+     * `coded_mode` is one byte per tile: the nxvw mode this frame coded the
+     * position with, or `kPictureNotCoded` where it coded none.  It decides
+     * `static`, which per 13.12.11 is set exactly when THIS frame coded the
+     * position `STATIC_MV` and is NOT inherited: after a PICTURE frame the
+     * atlas is one coherent picture at one time.  A null pointer means the
+     * frame coded nothing, so nothing is static. */
+    static const uint8_t kPictureNotCoded = 0xFFu;
+    void picture_frame(const uint8_t *coded_mode, uint32_t frame_number);
 
     /* ATLAS-frame rebase ([SYN] 13.12.10, tool bit 34).  The pending
      * transform is settled into the pixels and `C := I`, `gen := 0` -- but the

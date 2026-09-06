@@ -201,21 +201,34 @@ void AtlasTable::code_tile(uint32_t t, uint32_t frame_number, int mode,
      * position retires the patch, because that write replaces the pixels. */
 }
 
-void AtlasTable::picture_frame(const uint8_t *coded, uint32_t frame_number) {
+void AtlasTable::picture_frame(const uint8_t *coded_mode,
+                               uint32_t frame_number) {
+    /* [SYN] 13.12.11 step 3, for EVERY tile position and not only the valid
+     * ones: the frame was decoded by the ordinary picture process, so the
+     * whole picture was reconstructed and every position now holds pixels.
+     * `valid := 1` everywhere is therefore the point of the step, not a
+     * detail -- a position that was invalid going in has content coming out,
+     * and leaving it invalid would force an INTRA the picture already paid
+     * for. */
     for (uint32_t t = 0; t < e.size(); ++t) {
         AtlasEntry &a = e[t];
-        if (!(a.flags & kAtlasValid)) continue;
-        /* The pixels are materialised for every valid entry, so the pending
-         * transform is gone from all of them.  This half is the same on an
-         * ATLAS-frame rebase. */
         atlas_identity(a.C);
         a.gen = 0;
-        /* And this half is what makes it a PICTURE frame.  A position this
-         * frame coded already took `frame_number` through code_tile(); the
-         * rest take it here, because a materialised tile really does hold
-         * pixels of this frame. */
-        if (coded && coded[t]) continue;
+        a.res_level = 0;
+        /* Every position's pixels are new, so provenance really did move.
+         * A position this frame coded reached the same value through
+         * code_tile(); writing it again is the same number. */
         a.src_frame = frame_number;
+        /* `static` is set exactly when THIS frame coded the position
+         * STATIC_MV -- not inherited.  After a PICTURE frame the atlas is one
+         * coherent picture at one time, so a position that was head-locked
+         * before and was not recoded as such is not head-locked now.
+         * `base_sourced` clears for the same reason: these pixels came from
+         * the reconstruction, not from the base layer. */
+        const bool is_static =
+            coded_mode && coded_mode[t] == (uint8_t)nw::kModeStaticMv;
+        a.flags = (uint8_t)(kAtlasValid | (is_static ? kAtlasStatic : 0u));
+        std::memset(a.reserved, 0, sizeof a.reserved);
     }
 }
 
