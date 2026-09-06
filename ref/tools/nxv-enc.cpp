@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "nxvc/nxvc.h"
+#include "base_refresh.h"
 #include "nxrc/encdrive.hpp"
 
 // ------------------------------------------------------- tiny JSON scraping
@@ -138,6 +139,17 @@ static void usage() {
         "               atlas position is fetched through the matrix of the\n"
         "               entry it lands in, resolved with the co-located\n"
         "               matrix.  NORMATIVE; requires --atlas on\n"
+        "  --atlas-rebase-every N  ATLAS_REBASE, tool bit 34: re-pose the\n"
+        "               WHOLE atlas to the current pose every N frames.\n"
+        "               NORMATIVE, and it costs a full-picture warp when it\n"
+        "               fires; requires --atlas on\n"
+        "  --atlas-rebase-disp N  the same, triggered instead when any\n"
+        "               entry's composed corner displacement reaches N luma\n"
+        "               samples\n"
+        "  --atlas-rebase-roll N  ROLLING rebase: re-pose at most N entries\n"
+        "               per eye per frame, the most displaced first, so the\n"
+        "               per-frame warp is bounded at N x 34 us and nothing\n"
+        "               fires at rest; requires --atlas on\n"
         "  --atlas-skip-margin N  ENCODER ONLY, no syntax: a tile may be\n"
         "               skipped only while the composed displacement at all\n"
         "               four of its corners is under N luma samples.  0 =\n"
@@ -281,6 +293,9 @@ int main(int argc, char **argv) {
     // --- the atlas reference (SYNTAX.md 13.12, ADR-0029)
     int atlas = 0, row_present = 0, atlas_gen_max = 0;
     int atlas_nbr = 0, atlas_skip_margin = 0;
+    int atlas_rebase_period = 0, atlas_rebase_disp = 0, atlas_rebase_roll = 0;
+    std::string atlas_base_path;
+    int atlas_base_margin = 8;
     std::string atlas_dump;
     int mv_range = 16, skip_thresh = 0, mode_lambda = 0;
     int int_decision = 0, int_lambda = 0, int_intra_mad = 0;
@@ -369,6 +384,15 @@ int main(int argc, char **argv) {
             else { std::fprintf(stderr, "--atlas-nbr: on|off\n"); return 2; }
         }
         else if (a == "--atlas-skip-margin") atlas_skip_margin = std::atoi(val());
+        else if (a == "--atlas-rebase-every")
+            atlas_rebase_period = std::atoi(val());
+        else if (a == "--atlas-rebase-disp")
+            atlas_rebase_disp = std::atoi(val());
+        else if (a == "--atlas-rebase-roll")
+            atlas_rebase_roll = std::atoi(val());
+        else if (a == "--atlas-base") atlas_base_path = val();
+        else if (a == "--atlas-base-margin")
+            atlas_base_margin = std::atoi(val());
         else if (a == "--atlas-gen-max") atlas_gen_max = std::atoi(val());
         else if (a == "--atlas-dump") atlas_dump = val();
         else if (a == "--eyes") eyes = std::atoi(val());
@@ -674,6 +698,7 @@ int main(int argc, char **argv) {
     }
 
     nxvc_config cfg;
+    BaseRefresh brefresh;
     std::FILE *fatlas = nullptr;
     std::vector<uint8_t> atlas_buf;
     if (!atlas_dump.empty()) {
@@ -699,6 +724,12 @@ int main(int argc, char **argv) {
         (uint32_t)(atlas_skip_margin > 0 ? atlas_skip_margin : 0);
     cfg.row_present = (uint32_t)row_present;
     cfg.atlas_gen_max = (uint32_t)(atlas_gen_max > 0 ? atlas_gen_max : 0);
+    cfg.atlas_rebase_period =
+        (uint32_t)(atlas_rebase_period > 0 ? atlas_rebase_period : 0);
+    cfg.atlas_rebase_disp =
+        (uint32_t)(atlas_rebase_disp > 0 ? atlas_rebase_disp : 0);
+    cfg.atlas_rebase_roll =
+        (uint32_t)(atlas_rebase_roll > 0 ? atlas_rebase_roll : 0);
     // 13.12.3: a STATIC_MV entry is held unwarped, so a head-locked tile may
     // be skipped.  On by default with the atlas -- it is the one behavioural
     // change to an existing mode and it is a strict gain.
@@ -783,6 +814,20 @@ int main(int argc, char **argv) {
 
     nxvc_tile_layout tl;
     nxvc_tile_layout_get_ex(cfg.width, cfg.height, cfg.eyes, &tl);
+    if (!atlas_base_path.empty()) {
+        if (!atlas || eyes != 1) {
+            std::fprintf(stderr,
+                         "--atlas-base needs --atlas on and a one-eye stream\n");
+            return 1;
+        }
+        if (!brefresh.open(atlas_base_path, cfg.width, cfg.height,
+                           (uint32_t)(atlas_base_margin > 0 ? atlas_base_margin
+                                                            : 0),
+                           tl.tile_count)) {
+            std::perror("open --atlas-base");
+            return 1;
+        }
+    }
     const size_t cw = cfg.chroma == NXVC_CHROMA_444 ? (size_t)W : (size_t)((W + 1) / 2);
     const size_t chh = cfg.chroma == NXVC_CHROMA_444 ? (size_t)H : (size_t)((H + 1) / 2);
     const size_t ysz = (size_t)W * H, csz = cw * chh;
@@ -932,6 +977,21 @@ int main(int argc, char **argv) {
         }
         std::fwrite(outbuf.data(), 1, ol, fo);
         total += ol;
+        // Base-layer refresh, applied AFTER the frame and BEFORE the dump so
+        // the dump covers the patched atlas -- which is what the decoder will
+        // dump too, and therefore what proves the two agree.
+        if (brefresh.f &&
+            !brefresh.step(
+                (uint32_t)n,
+                [&](uint32_t m, uint8_t *o, uint32_t c, uint32_t *ns) {
+                    return nxvc_encoder_atlas_stale_tiles(enc, m, o, c, ns);
+                },
+                [&](const nxvc_base_patch *pp, uint32_t *ap, uint32_t *su) {
+                    return nxvc_encoder_atlas_patch_base(enc, pp, ap, su);
+                })) {
+            std::fprintf(stderr, "base refresh failed at frame %d\n", n);
+            return 1;
+        }
         // The NORMATIVE output under the atlas: dump the per-tile table so a
         // test can compare it against the decoder's, byte for byte (13.12.1).
         if (fatlas) {
@@ -1040,6 +1100,18 @@ int main(int argc, char **argv) {
                             "(%+.2f %%)\n",
                             pred, act, act > 0 ? (pred - act) / act * 100.0 : 0.0);
             }
+            // ADR-0029: what the atlas maintenance cost this frame, as counts.
+            // A rebase (13.12.10) is 34 us a tile on the Pico 4 and a
+            // base-sourced refresh is 1.9 us a tile, so these two numbers ARE
+            // the GPU cost model -- there is nothing to estimate.
+            if (st2.atlas_rebased || st2.tiles_base_refreshed ||
+                st2.tiles_margin_forced)
+                std::printf("  atlas: rebase %llu (%llu tiles), base refresh "
+                            "%llu tiles, margin-forced %llu tiles\n",
+                            (unsigned long long)st2.atlas_rebased,
+                            (unsigned long long)st2.tiles_rebased,
+                            (unsigned long long)st2.tiles_base_refreshed,
+                            (unsigned long long)st2.tiles_margin_forced);
             std::printf("  res levels 0/1/2: %llu / %llu / %llu\n",
                         (unsigned long long)st2.tiles_res[0],
                         (unsigned long long)st2.tiles_res[1],

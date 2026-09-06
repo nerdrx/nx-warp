@@ -694,6 +694,15 @@ static const AtlasSpec kAtlasVectors[] = {
     {"v86_atlas_row_present",   "13.12 + 3.1.2",             128, 128, 1, 1, 26, 6, 999,  0.2, 0.0, 0,  0, 1, 0, 0, 0, 0},
     {"v87_atlas_base_sourced",  "13.12.9 base patch",        128, 128, 1, 0, 26, 5, 999,  0.5, 1.0, 2,  0, 0, 0, 0, 1, 0},
     {"v88_atlas_superseded",    "13.12.3 superseded",        128, 128, 1, 0, 26, 5, 999,  0.5, 1.0, 2,  0, 0, 0, 0, 1, 2},
+    // 3.1.2 at the VERSION 1 GRID.  The 128x128 vectors have two tile rows, so
+    // their row_present bitmap is two bits of one byte and every constraint
+    // about the bits above the last row structure is vacuous.  At 1088x1088
+    // there are 17 rows: the bitmap is three bytes with SEVEN bits above the
+    // last row that a decoder must reject if set, which is the rule that has
+    // somewhere to go wrong.  The clip is static panels -- nothing moves --
+    // which is both the case row_present exists for and the case that elides
+    // the most rows.
+    {"v89_atlas_rp_1088",       "3.1.2 at the v1 grid",     1088,1088, 1, 0, 42, 4, 999,  0.1, 0.0, 0,  0, 1, 0, 0, 0, 0},
 };
 static const int kNumAtlasVectors =
     (int)(sizeof(kAtlasVectors) / sizeof(kAtlasVectors[0]));
