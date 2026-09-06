@@ -148,6 +148,11 @@ struct Config {
     /* Print each frame's tile mode census.  Reporting only; it changes no
      * stream and is off unless asked for. */
     bool mode_census = false;
+    /* Report the PSNR of the DISPLAYED picture against the source, per frame
+     * and as a clip mean.  Under ATLAS the displayed picture is one warp from
+     * the atlas ([SYN] 13.12.5, non-normative); without it, it is the
+     * reconstruction.  Reporting only. */
+    bool display_psnr = false;
 
     int device = 0;
     bool cpu_only = false;

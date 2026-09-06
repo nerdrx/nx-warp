@@ -18,6 +18,7 @@
 
 #include <vulkan/vulkan.h>
 
+#include "nxe_atlas.h"
 #include "nxe_host.h"
 #include "nxe_inter.h"
 
@@ -90,6 +91,21 @@ public:
      * `w * h` uint16 samples in the CODED domain.  Returns false if the
      * encoder has no ring (an intra-only stream). */
     bool read_ring_luma(uint32_t slot, uint16_t *out, size_t count);
+
+    /* The DISPLAYED luma picture, tile-major, for the non-normative display
+     * of [SYN] 13.12.5 -- which is the only way to price the atlas at equal
+     * rate, because under ATLAS the decoder's output image is not the
+     * normative object and comparing reconstructions would compare the wrong
+     * thing.
+     *
+     * With ATLAS this warps each atlas tile from its own source pose through
+     * its own `C`; without it the displayed picture IS the reconstruction, so
+     * it reads the ring slot this frame wrote and re-tiles it.  Either way the
+     * result is what a client would put on the panel for `frame_number`.
+     *
+     * Returns false on a stream with no ring at all. */
+    bool read_displayed_luma(uint32_t frame_number,
+                             std::vector<uint16_t> &out_tilemajor);
 
     void bench(Frame &f, int iters);
 

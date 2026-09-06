@@ -7,6 +7,7 @@
 
 #include "nxe_inter.h"
 
+#include <cmath>
 #include <cstring>
 
 namespace nxe {
@@ -239,6 +240,86 @@ bool AtlasUndo::rollback(uint32_t t, uint32_t lost_frame, uint32_t now,
     }
     out = a;
     return true;
+}
+
+/* [SYN] 13.12.5, and every word of the header comment applies: this is NOT
+ * normative and nothing it computes is compared by conformance. */
+void atlas_display_luma(const AtlasTable &at, const uint16_t *atlas, int stride,
+                        int eye_w, int height, std::vector<uint16_t> &out) {
+    const uint32_t ntiles = (uint32_t)at.e.size();
+    out.assign((size_t)ntiles * 64u * 64u, 0u);
+    const double ox = (double)(eye_w >> 1);
+    const double oy = (double)(height >> 1);
+    const int cols = at.g.cols_per_eye * at.g.eyes;
+    for (uint32_t t = 0; t < ntiles; ++t) {
+        uint16_t *dst = &out[(size_t)t * 64u * 64u];
+        if (!(at.e[t].flags & kAtlasValid)) {
+            /* No pixels a client could show.  Mid-grey rather than zero, so a
+             * picture with an invalid tile in it reads as a hole and not as a
+             * black rectangle that might be content. */
+            for (int i = 0; i < 64 * 64; ++i) dst[i] = 128;
+            continue;
+        }
+        const int row = (int)(t / (uint32_t)cols);
+        const int rem = (int)(t % (uint32_t)cols);
+        const int eye = rem / at.g.cols_per_eye;
+        const int col = rem % at.g.cols_per_eye;
+        /* The real matrix, in the row scales of 3.1.1.  m22 is 1 exactly,
+         * because the renormalisation put it there. */
+        double m[9];
+        for (int k = 0; k < 9; ++k)
+            m[k] = (double)at.e[t].C[k] / (k < 6 ? 2097152.0 : 536870912.0);
+        const int xbase = eye * eye_w;
+        for (int v = 0; v < 64; ++v)
+            for (int u = 0; u < 64; ++u) {
+                /* Centred indices of THIS frame, in this eye's own picture. */
+                const double cx = (double)(col * 64 + u) - ox;
+                const double cy = (double)(row * 64 + v) - oy;
+                const double den = m[6] * cx + m[7] * cy + m[8];
+                double sx, sy;
+                if (den == 0.0) {
+                    sx = cx; sy = cy;
+                } else {
+                    sx = (m[0] * cx + m[1] * cy + m[2]) / den;
+                    sy = (m[3] * cx + m[4] * cy + m[5]) / den;
+                }
+                /* Back to this eye's sample grid, then to the pair-wide
+                 * atlas.  Clamped inside the EYE: an eye never samples across
+                 * the seam into its neighbour's picture. */
+                double px = sx + ox, py = sy + oy;
+                if (px < 0) px = 0;
+                if (py < 0) py = 0;
+                if (px > (double)(eye_w - 1)) px = (double)(eye_w - 1);
+                if (py > (double)(height - 1)) py = (double)(height - 1);
+                const int ix = (int)px, iy = (int)py;
+                const int ix1 = ix + 1 < eye_w ? ix + 1 : ix;
+                const int iy1 = iy + 1 < height ? iy + 1 : iy;
+                const double fx = px - (double)ix, fy = py - (double)iy;
+                const double a = (double)atlas[(size_t)iy * stride + xbase + ix];
+                const double b = (double)atlas[(size_t)iy * stride + xbase + ix1];
+                const double c = (double)atlas[(size_t)iy1 * stride + xbase + ix];
+                const double d = (double)atlas[(size_t)iy1 * stride + xbase + ix1];
+                const double val = a * (1 - fx) * (1 - fy) + b * fx * (1 - fy) +
+                                   c * (1 - fx) * fy + d * fx * fy;
+                double r = val + 0.5;
+                if (r < 0) r = 0;
+                if (r > 65535.0) r = 65535.0;
+                dst[(size_t)v * 64 + (size_t)u] = (uint16_t)r;
+            }
+    }
+}
+
+double luma_psnr_tilemajor(const uint16_t *a, const int32_t *b, uint32_t ntiles,
+                           int maxval) {
+    double sse = 0;
+    const size_t n = (size_t)ntiles * 64u * 64u;
+    for (size_t i = 0; i < n; ++i) {
+        const double d = (double)a[i] - (double)b[i];
+        sse += d * d;
+    }
+    if (sse <= 0) return 99.0;
+    const double mse = sse / (double)n;
+    return 10.0 * std::log10((double)maxval * (double)maxval / mse);
 }
 
 void atlas_build_matrices(const AtlasTable &at, int width, int height, int cw,

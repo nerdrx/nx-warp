@@ -72,6 +72,8 @@ static void usage() {
         "                       first; a floor, the encoder walks outwards to\n"
         "                       the newest reference the client still holds\n"
         "  --modes              per-frame tile mode census and coded count\n"
+        "  --display-psnr       PSNR-Y of the DISPLAYED picture vs the source\n"
+        "                       (under --atlas, one warp from the atlas)\n"
         "  --atlas              the per-tile atlas reference, tool bit 31\n"
         "                       ([SYN] 13.12).  Needs --inter; forces ref_sel 0\n"
         "  --motion-skip Q8     scale the skip threshold by head angular\n"
@@ -151,6 +153,7 @@ int main(int argc, char **argv) {
         else if (a == "--ref-sel") cfg.ref_sel = std::atoi(val());
         else if (a == "--atlas") cfg.atlas = true;
         else if (a == "--modes") cfg.mode_census = true;
+        else if (a == "--display-psnr") cfg.display_psnr = true;
         else if (a == "--motion-skip") cfg.motion_skip_gain_q8 = std::atoi(val());
         else if (a == "--hold-every") hold_every = std::atoi(val());
         else if (a == "--ack-delay") {
@@ -352,6 +355,8 @@ int main(int argc, char **argv) {
     }
 
     size_t total = hdr.size();
+    double psnr_sum = 0;
+    int psnr_n = 0;
     int n = 0;
     int rc = 0;
     while (cfg.frames < 0 || n < cfg.frames) {
@@ -439,10 +444,30 @@ int main(int argc, char **argv) {
                         n, c[0], c[1], c[2], c[3], coded,
                         100.0 * coded / (double)f.fp.ntiles);
         }
+        /* [SYN] 13.12.5.  The displayed picture, which under ATLAS is NOT the
+         * normative object and is not what a conformance vector compares --
+         * which is exactly why it is the thing to measure when pricing the
+         * model against the picture-based one.  Comparing reconstructions
+         * would compare an object the two models do not both have. */
+        if (cfg.display_psnr && cfg.inter && !cfg.cpu_only) {
+            std::vector<uint16_t> shown;
+            if (gpu.read_displayed_luma((uint32_t)n, shown)) {
+                const double p = nxe::luma_psnr_tilemajor(
+                    shown.data(), f.src[0].data(), f.fp.ntiles, 255);
+                psnr_sum += p;
+                ++psnr_n;
+                if (!cfg.quiet)
+                    std::printf("  display %d: PSNR-Y %.4f dB\n", n, p);
+            }
+        }
         ++n;
     }
     std::fclose(fo);
     std::fclose(fi);
+
+    if (psnr_n)
+        std::printf("displayed PSNR-Y: %.4f dB mean over %d frame(s)\n",
+                    psnr_sum / psnr_n, psnr_n);
 
     if (cfg.bench && !cfg.cpu_only && n > 0) gpu.bench(f, cfg.bench_iters);
 

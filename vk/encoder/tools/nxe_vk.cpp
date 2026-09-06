@@ -387,7 +387,10 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
      * frame 0, which is what removes the startup window in which the encoder
      * would otherwise still be guessing. */
     d.heldst.require_confirmed = cfg.inter && cfg.ref_confirm;
-    if (d.atlas) {
+    /* The tile geometry is filled for every inter stream, not only an atlas
+     * one: the display helper needs it to re-tile a reconstruction as well as
+     * to warp an atlas. */
+    if (d.inter) {
         d.atlas_geom.width = cfg.w / cfg.eyes;
         d.atlas_geom.height = cfg.h;
         d.atlas_geom.cols_per_eye = (int)f.fp.tiles_x;
@@ -409,8 +412,10 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
             d.dev.destroy();
             return false;
         }
-        d.atlas_tab.reset(d.atlas_geom);
-        d.atlas_undo.reset(d.atlas_geom);
+        if (d.atlas) {
+            d.atlas_tab.reset(d.atlas_geom);
+            d.atlas_undo.reset(d.atlas_geom);
+        }
     }
     if (d.inter) {
         const int cw = cfg.chroma444 ? cfg.w / cfg.eyes : (cfg.w / cfg.eyes + 1) / 2;
@@ -1604,6 +1609,48 @@ bool VkEncoder::read_ring_luma(uint32_t slot, uint16_t *out, size_t count) {
     vkCmdCopyBuffer(cb, d.b_ring.buf, d.b_stage_coef.buf, 1, &c);
     if (!d.dev.submit_and_wait(cb, err)) return false;
     std::memcpy(out, d.b_stage_coef.map, count * 2);
+    return true;
+}
+
+bool VkEncoder::read_displayed_luma(uint32_t frame_number,
+                                    std::vector<uint16_t> &out) {
+    Impl &d = *p_;
+    if (!d.inter || !d.ok) return false;
+    const int stride = d.ring.stride[0];
+    const int h = d.bpush.imageH;
+    const int eye_w = d.ring.planeW[0];
+    const int cols = (int)d.atlas_geom.cols_per_eye * d.atlas_geom.eyes;
+    std::vector<uint16_t> plane((size_t)stride * (size_t)h, 0u);
+    const uint32_t slot = d.atlas ? 0u : (frame_number & 3u);
+    if (!read_ring_luma(slot, plane.data(), plane.size())) return false;
+    if (d.atlas) {
+        atlas_display_luma(d.atlas_tab, plane.data(), stride, eye_w, h, out);
+        return true;
+    }
+    /* No ATLAS: the displayed picture is the reconstruction itself.  Re-tiled
+     * so that the caller compares like with like against a tile-major
+     * source. */
+    const int cpe = (int)d.atlas_geom.cols_per_eye
+                        ? (int)d.atlas_geom.cols_per_eye
+                        : (int)(eye_w + 63) / 64;
+    out.assign((size_t)d.ntiles * 64u * 64u, 0u);
+    const int ncols = cols ? cols : cpe;
+    for (uint32_t t = 0; t < d.ntiles; ++t) {
+        const int row = (int)(t / (uint32_t)ncols);
+        const int rem = (int)(t % (uint32_t)ncols);
+        const int eye = rem / cpe;
+        const int col = rem % cpe;
+        uint16_t *dst = &out[(size_t)t * 64u * 64u];
+        for (int v = 0; v < 64; ++v)
+            for (int u = 0; u < 64; ++u) {
+                int x = eye * eye_w + col * 64 + u;
+                int y = row * 64 + v;
+                if (x >= eye * eye_w + eye_w) x = eye * eye_w + eye_w - 1;
+                if (y >= h) y = h - 1;
+                dst[(size_t)v * 64 + (size_t)u] =
+                    plane[(size_t)y * (size_t)stride + (size_t)x];
+            }
+    }
     return true;
 }
 

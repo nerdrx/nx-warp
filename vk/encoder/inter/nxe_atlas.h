@@ -263,6 +263,41 @@ struct AtlasUndo {
  * Declared here rather than in nxe_inter.h because it is the atlas that owns
  * the per-tile matrix; the conjugation it calls is nxe_inter's, so the two
  * paths cannot conjugate differently. */
+/* --------------------------------------------------- display (NOT normative)
+ *
+ * [SYN] 13.12.5.  A client displays a tile by warping its atlas pixels from
+ * its source pose to the pose it wants, IN ONE STEP, with whatever arithmetic
+ * it likes -- the hardware sampler, floating point of any precision, any
+ * filter.  Nothing here affects the atlas and nothing here is tested by
+ * conformance; a decoder is conforming if its atlas matches, whatever it puts
+ * on the panel.
+ *
+ * `C` is already exactly the map this needs: it takes THIS frame's centred
+ * sample indices to the source frame's, which is the one-step warp from the
+ * displayed pose back to the pixels.  So displaying at frame N is a gather
+ * through C and nothing else.
+ *
+ * Doubles and bilinear, deliberately.  This is the reference display, used to
+ * ask what the atlas would LOOK like -- which is the only way to price the
+ * model at equal rate -- and using the normative integer warp here would
+ * measure the predictor a second time instead of the picture.
+ *
+ * `atlas` is the luma plane of the atlas at `stride` u16 per row, holding
+ * `eyes` sub-pictures side by side, exactly as the ring stores it.  `out` is
+ * filled TILE-MAJOR, 64x64 per tile in the table's own tile order, because
+ * that is the layout the encoder's source is already in and un-tiling one of
+ * them only to compare would be work for nothing.  An invalid tile is left at
+ * mid-grey: it has no pixels a client could show.
+ */
+void atlas_display_luma(const AtlasTable &at, const uint16_t *atlas, int stride,
+                        int eye_w, int height, std::vector<uint16_t> &out);
+
+/* PSNR of a tile-major luma picture against a tile-major source, over the
+ * tiles the caller names (`nullptr` = all of them).  Returns 99.0 for an exact
+ * match, which is the convention every other tool in this tree uses. */
+double luma_psnr_tilemajor(const uint16_t *a, const int32_t *b, uint32_t ntiles,
+                           int maxval);
+
 struct WarpParams;
 void atlas_build_matrices(const AtlasTable &at, int width, int height, int cw,
                           int ch, WarpParams &wp);
