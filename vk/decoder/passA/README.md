@@ -503,6 +503,67 @@ count per dispatch, from 10 to 5, and the table above prices 5 groups and 10
 groups on the same plateau boundary rather than on a better one; there is no
 occupancy to be won that way. Both eyes already go in one dispatch.
 
+### What the Adreno compiler makes of the Lite kernel
+
+`nxvc-passA-test --shader-stats` asks the driver, through
+`VK_KHR_pipeline_executable_properties`, what it actually produced.  **The flag
+that enables it can change what the driver compiles, so it is off unless asked
+for and no timing from a `--shader-stats` run is comparable with one from a
+normal run** -- this is the same warning `nxvc_vkdec.cpp` carries about
+`NXVC_VKD_SHADER_STATS`.
+
+Adreno 650, 289 tiles, the two entropy kernels side by side:
+
+| | rANS | Lite |
+|---|---|---|
+| instruction count | 1908 | **990** |
+| ALU 16-bit / 32-bit | 1251 / 98 | 728 / 25 |
+| texture reads | 20 | 57 |
+| barriers and fences | 8 | **22** |
+| short-latency sync | 32 | **62** |
+| long-latency sync | 39 | 33 |
+| full-precision registers | 37 | 21 |
+| **scratch per shader instance** | **310 B** | **184 B** |
+| LDS (RADV, same kernel) | 19456 B | 19456 B |
+
+Two things stand out and neither has yielded a win yet.
+
+**Scratch memory.** 184 bytes per invocation is private memory, and at 256
+threads that is 47 KB of spill traffic per workgroup.  There is no
+function-local array in `rans_decode.comp` for it to be coming from -- no
+declaration matches, and unlike `reconstruct.comp` the file carries no
+`nxvc-lint: allow dynamic-local-array-index` waivers -- so it is register spill
+the compiler chose, and finding which live range is spilling needs a
+disassembler this driver does not expose.
+
+**Shared memory the Lite path never reads.**  `lite_main()` returns before the
+rANS table load, and `s_cum` -- the 8 KB cumulative-frequency table -- has
+**zero** references anywhere in the `lite_*()` functions.  It is still
+allocated, because the declaration is unconditional and `ENTROPY_MODE` is a
+specialisation constant rather than a build flag.
+
+The cheap version of that fix does not work: `s_cum` is sized by `CTX_STRIDE`,
+which IS a specialisation constant, but **specialising it does not shrink the
+allocation** -- `--ctx-stride 1` leaves RADV reporting the same 19456 B, while
+the same option makes the rANS path decode wrong, which proves the constant
+does reach the shader.  The array is allocated at its default size regardless.
+Shrinking it for real needs a Lite-only BUILD variant of the kernel, the way
+Pass B has one per module.
+
+That variant is not obviously worth building, for two independent reasons.
+Lite's cost per tile is **flat** -- 22148 / 22167 / 22329 ns at 289 / 578 /
+1156 tiles -- so it is not occupancy-limited to begin with; and
+`NXVW_ABL_LDSPAD` in Pass B already established that on this GPU taking an SP
+from two resident workgroups to one costs nothing at all
+(passB/README.md).  Someone should still price it before believing that, with
+`--shader-stats` to confirm the LDS actually moved.
+
+**So the 22 us/tile floor is unexplained.**  It is not the payload -- a Lite
+tile is ~911 B on this corpus -- not occupancy, and not instruction count, since
+Lite runs half of rANS's instructions for two-thirds of rANS's time.  The three
+prefix sums and their 22 barriers against rANS's 8 are the remaining suspect and
+have not been measured separately.
+
 ## Errors
 
 A tile that cannot be decoded sets a non-zero status and stops; other tiles in
