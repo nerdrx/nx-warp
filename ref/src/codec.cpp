@@ -232,6 +232,9 @@ struct FrameParams {
     std::vector<u8> row_bits;   // row_present(), one bit per row structure
     int atlas = 0;              // stream tool bit 31
     int atlas_rebase = 0;       // frame flags bit 5, tool bit 34 (13.12.10)
+    u32 atlas_rebase_count = 0; // 13.12.10: 0 = every entry, N = the N most
+                                //   displaced.  Present iff flags bit 5.
+    u32 rebase_roll = 0;        // encoder-side policy, never transmitted
     int inter = 0;              // stream tool bit 10
     int stereo = 0;             // stream tool bit 12
     int nctx = kNumCtxV1;   // 12, 16 or 27, from the CTX_V2/CTX_V3 tool bits

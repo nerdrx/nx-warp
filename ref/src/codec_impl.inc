@@ -443,7 +443,8 @@ extern "C" nxvc_encoder *nxvc_encoder_create(const nxvc_config *cfg,
     e->atlas = e->cfg.atlas != 0;
     e->atlas_nbr = e->atlas && e->cfg.atlas_nbr != 0;
     e->rebase_tool = e->atlas && (e->cfg.atlas_rebase_period != 0 ||
-                                 e->cfg.atlas_rebase_disp != 0);
+                                 e->cfg.atlas_rebase_disp != 0 ||
+                                 e->cfg.atlas_rebase_roll != 0);
     if (e->atlas) {
         atlas_alloc(e->at, e->g);
     } else {
@@ -1210,8 +1211,53 @@ static i64 atlas_corner_disp(const WarpMatrix &cw, const Geometry &g, int col,
 //
 // `tiles` returns the number of entries actually warped, which is what the
 // operation costs: 34 us a tile on the Pico 4, on the normative integer path.
+// The rank of an entry for a ROLLING rebase (13.12.10).  Most displaced
+// first; ties broken by age, then by tile index, so the order is total and
+// both sides build the same one.  Integers throughout -- a float comparison
+// here would be a conformance hazard, not a rounding detail.
+struct RebaseRank {
+    i64 disp;
+    u32 age;
+    u32 tile;
+};
+
+static bool rebase_rank_less(const RebaseRank &a, const RebaseRank &b) {
+    if (a.disp != b.disp) return a.disp > b.disp;
+    if (a.age != b.age) return a.age > b.age;
+    return a.tile < b.tile;
+}
+
+// `count` == 0 rebases every eligible entry; `count` == N rebases the N
+// highest-ranked.  An entry whose displacement is ZERO is never eligible: at
+// rest a rolling rebase does nothing at all, which is what keeps it off the
+// low-velocity case the atlas already wins.
 static void atlas_rebase(Atlas &at, const Geometry &g, const FrameParams &fp,
-                         bool nbr, u32 frame_number, u32 *tiles) {
+                         bool nbr, u32 frame_number, u32 count, u32 *tiles) {
+    std::vector<u8> pick;
+    if (count) {
+        const int cols = (int)(g.eyes * g.tiles_x);
+        std::vector<RebaseRank> rank;
+        rank.reserve(at.ent.size());
+        for (u32 t = 0; t < (u32)at.ent.size(); ++t) {
+            const AtlasEntry &e = at.ent[(size_t)t];
+            if (!(e.flags & kAtlasValid) || (e.flags & kAtlasStatic)) continue;
+            WarpMatrix cw{};
+            for (int k = 0; k < 9; ++k) cw.h[k] = e.C[k];
+            const int eye = (int)((t % (u32)cols) / g.tiles_x);
+            const int col = (int)(t % (u32)cols) - eye * (int)g.tiles_x;
+            const int row = (int)(t / (u32)cols);
+            const i64 d = atlas_corner_disp(cw, g, col, row, false);
+            if (d <= 0) continue;
+            rank.push_back(RebaseRank{d, frame_number - e.src_frame, t});
+        }
+        std::sort(rank.begin(), rank.end(), rebase_rank_less);
+        // `count` is PER EYE, so the budget for the frame is count * eyes.
+        const size_t take = (size_t)count * g.eyes < rank.size()
+                                ? (size_t)count * g.eyes
+                                : rank.size();
+        pick.assign(at.ent.size(), 0);
+        for (size_t i = 0; i < take; ++i) pick[rank[i].tile] = 1;
+    }
     RefPicture scratch = at.pix;
     u32 n = 0;
     for (u32 row = 0; row < g.tiles_y; ++row)
@@ -1221,6 +1267,7 @@ static void atlas_rebase(Atlas &at, const Geometry &g, const FrameParams &fp,
                 const AtlasEntry &e = at.ent[(size_t)t];
                 if (!(e.flags & kAtlasValid)) continue;
                 if (e.flags & kAtlasStatic) continue;
+                if (!pick.empty() && !pick[(size_t)t]) continue;
                 TileCoder tc;
                 tc.g = &g;
                 tc.fp = &fp;
@@ -1238,12 +1285,13 @@ static void atlas_rebase(Atlas &at, const Geometry &g, const FrameParams &fp,
                 ++n;
             }
     at.pix = std::move(scratch);
-    for (auto &e : at.ent) {
+    for (u32 t = 0; t < (u32)at.ent.size(); ++t) {
+        AtlasEntry &e = at.ent[(size_t)t];
         if (!(e.flags & kAtlasValid) || (e.flags & kAtlasStatic)) continue;
+        if (!pick.empty() && !pick[(size_t)t]) continue;
         atlas_identity(e.C);
         e.gen = 0;
     }
-    (void)frame_number;
     if (tiles) *tiles = n;
 }
 
@@ -1672,7 +1720,16 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         // this frame's coded tiles predict from.
         if (e->rebase_tool && have_ref) {
             bool fire = false;
-            if (e->cfg.atlas_rebase_period &&
+            u32 rcount = 0;
+            if (e->cfg.atlas_rebase_roll) {
+                // ROLLING: bound the per-frame warp instead of the interval
+                // between whole-atlas warps.  It fires on every frame that has
+                // anything to re-pose, and atlas_rebase() decides that nothing
+                // is displaced when the head is still.
+                rcount = e->cfg.atlas_rebase_roll;
+                fire = true;
+            }
+            if (!fire && e->cfg.atlas_rebase_period &&
                 (fp.frame_number % e->cfg.atlas_rebase_period) == 0)
                 fire = true;
             if (!fire && e->cfg.atlas_rebase_disp) {
@@ -1696,11 +1753,19 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             }
             if (fire) {
                 u32 nreb = 0;
+                fp.atlas_rebase_count = rcount;
                 atlas_rebase(e->at, g, fp, e->atlas_nbr, fp.frame_number,
-                             &nreb);
-                fp.flags |= 32;   // bit 5: atlas_rebase
-                e->rebased_frame = 1;
-                e->rebased_tiles = nreb;
+                             rcount, &nreb);
+                // A rolling rebase that found nothing displaced is not a
+                // rebase: leave the flag clear so an idle frame costs the two
+                // header bytes nowhere.
+                if (nreb) {
+                    fp.flags |= 32;   // bit 5: atlas_rebase
+                    e->rebased_frame = 1;
+                    e->rebased_tiles = nreb;
+                } else {
+                    fp.atlas_rebase_count = 0;
+                }
             }
         }
         e->at.snapshot();   // 13.12.3: predict from the pre-frame atlas
@@ -3706,8 +3771,11 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
     // quantization matrices.  Its length is fixed by the geometry, not by the
     // content: ceil(tiles_y * eyes / 8).
     const size_t rp_bytes = fp.row_present ? fp.row_bits.size() : 0u;
-    size_t extra = warp_bytes + rp_bytes + (fp.quant_matrix == 255 ? 128 : 0) +
-                   table_bytes.size();
+    // [SYN] 13.12.10: `rebase_count`, u16, present iff flags bit 5, after
+    // row_present() and before the custom quantization matrices.
+    const size_t rb_bytes = (fp.flags & 32) ? 2u : 0u;
+    size_t extra = warp_bytes + rp_bytes + rb_bytes +
+                   (fp.quant_matrix == 255 ? 128 : 0) + table_bytes.size();
     u32 total = (u32)(kFrameHeaderBytes + extra + body.size());
     head.u32v(total);
     if (head.size() != kFrameHeaderBytes) return NXVC_ERR_BITSTREAM;
@@ -3726,6 +3794,11 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
     if (rp_bytes) {
         std::memcpy(o, fp.row_bits.data(), rp_bytes);
         o += rp_bytes;
+    }
+    if (rb_bytes) {
+        o[0] = (u8)(fp.atlas_rebase_count & 0xff);
+        o[1] = (u8)(fp.atlas_rebase_count >> 8);
+        o += 2;
     }
     if (fp.quant_matrix == 255) {
         std::memcpy(o, e->custom_matrix.data(), 128);
@@ -4217,6 +4290,18 @@ static nxvc_status parse_frame_header(nxvc_decoder *d, const u8 *buf,
             return NXVC_ERR_BITSTREAM;
         off += need;
     }
+    // ---- 13.12.10 `rebase_count`, u16, present iff flags bit 5.  Zero means
+    // the whole atlas; N means the N most displaced entries per eye.  A count
+    // larger than the tile grid is not an error -- it simply saturates -- but
+    // a nonzero count on a frame that rebases nothing cannot be produced by a
+    // conforming encoder, and is not rejected here because it decodes to the
+    // same atlas either way.
+    fp.atlas_rebase_count = 0;
+    if (fp.atlas_rebase) {
+        if (off + 2 > frame_bytes) return NXVC_ERR_TRUNCATED;
+        fp.atlas_rebase_count = (u32)buf[off] | ((u32)buf[off + 1] << 8);
+        off += 2;
+    }
     const u8 *custom = nullptr;
     if (fp.quant_matrix == 255) {
         if (off + 128 > frame_bytes) return NXVC_ERR_TRUNCATED;
@@ -4297,7 +4382,7 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
         d->rebased_tiles = 0;
         if (fp.atlas_rebase)
             atlas_rebase(d->at, g, fp, d->atlas_nbr, fp.frame_number,
-                         &d->rebased_tiles);
+                         fp.atlas_rebase_count, &d->rebased_tiles);
         d->at.snapshot();   // 13.12.3: predict from the pre-frame atlas
     } else {
         // A frame that overwrites a slot invalidates whatever it held; from

@@ -555,6 +555,14 @@ typedef struct nxvc_config {
     uint32_t atlas_rebase_disp;    /* rebase when the composed displacement
                                       at any valid entry's corners reaches
                                       this many luma samples; 0 = never     */
+    uint32_t atlas_rebase_roll;    /* ROLLING rebase: re-pose at most this
+                                      many entries PER EYE PER FRAME, the
+                                      most displaced first (13.12.10).  It
+                                      bounds the per-frame warp cost at
+                                      N x 34 us instead of 289 x 34 us, and
+                                      at rest nothing fires.  0 = off; with
+                                      it set, `period` and `disp` are
+                                      ignored.                              */
 } nxvc_config;
 
 /* One eye's view for one frame: the orientation the frame was rendered with

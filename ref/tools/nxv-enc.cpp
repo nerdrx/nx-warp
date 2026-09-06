@@ -146,6 +146,10 @@ static void usage() {
         "  --atlas-rebase-disp N  the same, triggered instead when any\n"
         "               entry's composed corner displacement reaches N luma\n"
         "               samples\n"
+        "  --atlas-rebase-roll N  ROLLING rebase: re-pose at most N entries\n"
+        "               per eye per frame, the most displaced first, so the\n"
+        "               per-frame warp is bounded at N x 34 us and nothing\n"
+        "               fires at rest; requires --atlas on\n"
         "  --atlas-skip-margin N  ENCODER ONLY, no syntax: a tile may be\n"
         "               skipped only while the composed displacement at all\n"
         "               four of its corners is under N luma samples.  0 =\n"
@@ -289,7 +293,7 @@ int main(int argc, char **argv) {
     // --- the atlas reference (SYNTAX.md 13.12, ADR-0029)
     int atlas = 0, row_present = 0, atlas_gen_max = 0;
     int atlas_nbr = 0, atlas_skip_margin = 0;
-    int atlas_rebase_period = 0, atlas_rebase_disp = 0;
+    int atlas_rebase_period = 0, atlas_rebase_disp = 0, atlas_rebase_roll = 0;
     std::string atlas_base_path;
     int atlas_base_margin = 8;
     std::string atlas_dump;
@@ -384,6 +388,8 @@ int main(int argc, char **argv) {
             atlas_rebase_period = std::atoi(val());
         else if (a == "--atlas-rebase-disp")
             atlas_rebase_disp = std::atoi(val());
+        else if (a == "--atlas-rebase-roll")
+            atlas_rebase_roll = std::atoi(val());
         else if (a == "--atlas-base") atlas_base_path = val();
         else if (a == "--atlas-base-margin")
             atlas_base_margin = std::atoi(val());
@@ -722,6 +728,8 @@ int main(int argc, char **argv) {
         (uint32_t)(atlas_rebase_period > 0 ? atlas_rebase_period : 0);
     cfg.atlas_rebase_disp =
         (uint32_t)(atlas_rebase_disp > 0 ? atlas_rebase_disp : 0);
+    cfg.atlas_rebase_roll =
+        (uint32_t)(atlas_rebase_roll > 0 ? atlas_rebase_roll : 0);
     // 13.12.3: a STATIC_MV entry is held unwarped, so a head-locked tile may
     // be skipped.  On by default with the atlas -- it is the one behavioural
     // change to an existing mode and it is a strict gain.

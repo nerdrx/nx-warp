@@ -166,7 +166,7 @@ interleaved UV.
 | 31 | `ATLAS` | the reference is a per-tile atlas and the display warp is not normative (section 13.12) |
 | 32 | `ROW_PRESENT` | the frame header may carry `row_present()`, eliding the header of a tile row with no coded tile (section 3.1.2) |
 | 33 | `ATLAS_NBR` | the neighbour-aware gather: an atlas sample landing outside the tile's own position is fetched through the entry it lands in (section 13.12.8) |
-| 34 | `ATLAS_REBASE` | the frame header may carry `atlas_rebase` (flags bit 5), re-posing the whole atlas to this frame's pose (section 13.12.10) |
+| 34 | `ATLAS_REBASE` | the frame header may carry `atlas_rebase` (flags bit 5) and `rebase_count`, re-posing the whole atlas or its N most displaced entries (section 13.12.10) |
 
 Bits 17, 21 and 22 are independent: any subset may be set. `ENTROPY_LITE`
 (bit 30) is mutually exclusive with `SIGN_HIDE` (bit 22) and `CUSTOM_TABLES`
@@ -258,7 +258,7 @@ frames.
 | 31 | u8 | `quant_matrix` | 0..3 built in, 255 = custom (128 bytes follow) |
 | 32 | u8 | `tables_present` | bit *k*: probability table set *k* is transmitted |
 | 33 | u8 | `ref_slots` | bitmask of the reference-ring slots this frame overwrites, bit *s* for slot *s* (section 13.2) |
-| 34 | u8 | `flags` | bit 0: tile-map reset, bit 1: stereo inter-view, bit 2: layered directional intra (section 7.5), bit 3: `warp_present` (section 3.1.1), bit 4: `row_present` (section 3.1.2, tool bit 32), bit 5: `atlas_rebase` (section 13.12.10, tool bit 34), bits 6-7 reserved and must be 0 |
+| 34 | u8 | `flags` | bit 0: tile-map reset, bit 1: stereo inter-view, bit 2: layered directional intra (section 7.5), bit 3: `warp_present` (section 3.1.1), bit 4: `row_present` (section 3.1.2, tool bit 32), bit 5: `atlas_rebase` (section 13.12.10, tool bit 34; adds a u16 `rebase_count` to the header), bits 6-7 reserved and must be 0 |
 | 35 | u8 | reserved | must be 0 |
 | 36 | u32 | `frame_bytes` | total byte length of this frame unit, header included |
 
@@ -3398,16 +3398,66 @@ not version 1, and `base_sourced` is what a later version would key it on.
 `ATLAS_REBASE` permits a frame header to set **flags bit 5**, `atlas_rebase`.
 Setting it without tool bit 34, or on a stream without `ATLAS`, is `BITSTREAM`.
 
-When it is set, the following happens **after 13.12.3 step 1 (the advance) and
-before any tile of this frame is predicted**, and it is normative:
+When it is set, the frame header carries **`rebase_count`, a u16**, placed
+immediately after `row_present()` (3.1.2) -- or after `warp_ext()` when that is
+absent -- and before the custom quantization matrices. It selects how much of
+the atlas is re-posed, and it is the only thing this tool adds to the wire:
 
-> For every entry with `valid == 1` and `static == 0`, the atlas pixels at that
-> position are replaced by the tile that 13.12.5 would display for it -- the
-> predictor of 13.3 applied to the atlas through that entry's own `C`, with a
-> zero vector, in `WARP_SKIP` mode -- and then `C := I` and `gen := 0`.
+* `rebase_count == 0` -- **full rebase**: every eligible entry.
+* `rebase_count == N > 0` -- **rolling rebase**: the `N` highest-ranked
+  eligible entries **per eye**, by 13.12.10.1.
+
+An entry is **eligible** when `valid == 1`, `static == 0`, and the displacement
+its composed matrix produces at the four corners of its own tile is **greater
+than zero**. The last condition is what makes a rolling rebase free at rest: a
+head that is not moving displaces nothing and re-poses nothing.
+
+The following then happens **after 13.12.3 step 1 (the advance) and before any
+tile of this frame is predicted**, and it is normative:
+
+> For every SELECTED entry, the atlas pixels at that position are replaced by
+> the tile that 13.12.5 would display for it -- the predictor of 13.3 applied
+> to the atlas through that entry's own `C`, with a zero vector, in
+> `WARP_SKIP` mode -- and then `C := I` and `gen := 0`.
 >
 > The whole set of replacements is computed from the atlas **as it stood before
 > any of them**, and applied together.
+
+An entry that is not selected is not touched at all: it keeps its pixels, its
+`C` and its `gen`, and it is predicted through them exactly as if the frame had
+carried no rebase. A partial rebase therefore leaves the atlas holding two
+kinds of entry at once, which is not a new situation -- the atlas is a mosaic
+of poses by construction, and 13.12.4 already reads each entry through its own
+`C`.
+
+##### 13.12.10.1 The rolling rank
+
+The `N` entries a rolling rebase selects are **derived, not signalled**. The
+decoder holds `C`, `src_frame` and `gen` for every position already, so
+transmitting the selection would cost 37 bytes an eye a frame to say something
+the decoder can compute; the two bytes of `rebase_count` say it instead.
+
+Order the eligible entries by:
+
+1. **corner displacement, descending** -- the same quantity, in the same Q
+   format, that 13.12.9's staleness rule and the encoder's displacement bound
+   use;
+2. then **age, descending**, where age is `frame_number - src_frame`;
+3. then **tile index, ascending** (Annex D D-3).
+
+Take the first `min(N * eyes, eligible)`. The order is **total** -- no two
+entries compare equal, because the tile index breaks every remaining tie -- so
+both sides build the same set.
+
+Every comparison is on integers. This is a requirement and not an
+implementation note: a rank computed in floating point is a rank two
+conforming implementations can disagree about, and a disagreement here is not a
+rounding error in one tile but a different atlas from that frame onward.
+
+A `rebase_count` larger than the grid saturates and is not an error. A nonzero
+`rebase_count` on a frame with no eligible entry decodes to an unchanged atlas;
+a conforming encoder does not emit one, because it would be two bytes to say
+nothing, but a decoder accepts it.
 
 Three properties of that rule carry the whole of it.
 
@@ -3436,14 +3486,22 @@ not a bookkeeping preference. It makes every coded tile of the rebasing frame
 satisfy `src_frame >= frame_number` and therefore be **dropped as superseded**,
 and it makes every later base patch stale on arrival.
 
-**The cost, which is the reason this tool is optional.** A rebase is a warp of
-every world-locked entry on the *normative* path, so unlike the display warp of
-13.12.5 it may not use a sampler, fp16, or any filter but the specified one:
-the encoder reproduces it bit for bit. At the version 1 configuration that is
-up to 289 tiles an eye at a measured 34 us a tile on a Pico 4 -- **9.8 ms per
-eye on the frame it fires**, against a 4.2 ms budget. It does not amortise the
-way display does, because it is part of decode. An encoder that sets this bit
-every frame has rebuilt the picture model, at the picture model's price.
+**The cost, which is the reason this tool is optional and why
+`rebase_count` exists.** A rebase is a warp on the *normative* path, so unlike
+the display warp of 13.12.5 it may not use a sampler, fp16, or any filter but
+the specified one: the encoder reproduces it bit for bit. At the version 1
+configuration a FULL rebase is up to 289 tiles an eye at a measured 34 us a
+tile on a Pico 4 -- **9.8 ms per eye on the frame it fires**, against a 4.2 ms
+budget. It does not amortise the way display does, because it is part of
+decode. An encoder that sets `rebase_count = 0` every frame has rebuilt the
+picture model, at the picture model's price.
+
+A rolling rebase bounds that directly: the frame's warp is `N` tiles, so
+`N = 24 / 48 / 96` is **0.8 / 1.6 / 3.3 ms per eye**, every frame, with no
+spike. What it trades away is that the mosaic is no longer collapsed to one
+time -- under sustained motion an entry waits roughly `289 / N` frames for its
+turn -- so the two forms are a straight exchange of peak cost against age
+spread, and ADR-0029 prices both.
 
 Whether it is worth that is a rate-distortion question and not a syntax
 question; ADR-0029 prices it.
