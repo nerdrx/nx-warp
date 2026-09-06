@@ -14,6 +14,31 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
 
 ### Added
 
+**GPU encoder: an effort level, and the one that does not exist**
+
+- `nxvc_vke_create_info::effort`. Level 0 is the plain dead-zone quantiser -- what the encoder has
+  always done -- and level 1 adds the **integer requantiser**: a coefficient quantised to +-1 whose
+  squared error is worth less than the bits it saves is dropped. Exact in 32-bit integers, one
+  coefficient at a time, no scan order and no dependency between coefficients, so a shader lane
+  decides its own with no barrier. `nxvc_config::int_rdoq` and `nxv-enc --int-rdoq 1` are the
+  reference side, so every level is still byte-identical to the reference encoder.
+- Worth **-1.4 % BD-rate on rANS and -3.6 % on ENTROPY_LITE** at 578 tiles (-1.4 % / -3.5 % at 289),
+  for no measurable GPU time: 9.12 -> 9.18 ms a frame at 578 tiles, inside the run-to-run spread.
+  Lite gains twice as much because it spends a fixed field on every coded coefficient. **Effort 1 is
+  the recommendation at any budget.**
+- **There is no level 2, and that is a measurement.** A wider motion search (`--mv-range 31`) is
+  -0.05 % BD-rate on the stereo clip for +0.4 ms a frame -- the pose warp has already removed the
+  global motion, so the +-16 sweep already reaches what is left -- and the reference's own trellis
+  RDOQ (-5.7 %), its float mode decision (-8.6 %) and its per-tile QP search (-6.8 %) all price
+  candidates with `std::log2` or a serial trellis, which is what ADR 0028 found cannot cross to a
+  GPU. `create()` refuses `effort > 1` rather than clamping it. The full table is in
+  `vk/encoder/README.md`, "The effort levels, measured".
+- `vk.encoder.acid.effort.{cpu,0,lavapipe}`: byte-identity with `nxv-enc --int-rdoq 1` intra and
+  inter, over rANS and Lite, on the GPU, on the CPU model of E3 and on a second ICD; decode equality
+  through `nxv-dec`; the ABI at effort 1 reaching the harness's stream; and the refusal of effort 2.
+  It also pins both encoders at `--mv-range 31`, which no level selects, so that "the wider search
+  does not pay" is a statement about the tool and not about a disagreement.
+
 **GPU encoder: E3's inter residual path, and STATIC_MV**
 
 - A coded inter tile subtracts Pass W's predictor and its DC plane codes the block means of that

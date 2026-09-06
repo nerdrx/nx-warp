@@ -80,6 +80,13 @@ static void usage() {
         "                       stream unchanged\n"
         "  --report-delay K     frames of latency on the NOT-held report\n"
         "                       (default 0, which no real link delivers)\n"
+        "  --int-rdoq N         integer requantiser: 0 off (the default),\n"
+        "                       1 drop a +-1 level that does not pay for\n"
+        "                       itself.  The library's effort 1, and\n"
+        "                       `nxv-enc --int-rdoq N`\n"
+        "  --mv-range N         coarse integer search radius in samples\n"
+        "                       (default 16); the library's effort 2 raises\n"
+        "                       it, and it is `nxv-enc --mv-range N`\n"
         "  --chroma-qp-off N    chroma QP offset\n"
         "  --device N           Vulkan physical device index (default 0)\n"
         "  --cpu                run the CPU models, no Vulkan\n"
@@ -144,6 +151,8 @@ int main(int argc, char **argv) {
         else if (a == "--poses") cfg.poses = val();
         else if (a == "--coded-vectors") cfg.int_coded_vectors = true;
         else if (a == "--ref-sel") cfg.ref_sel = std::atoi(val());
+        else if (a == "--int-rdoq") cfg.int_rdoq = std::atoi(val());
+        else if (a == "--mv-range") cfg.mv_range = std::atoi(val());
         else if (a == "--hold-every") hold_every = std::atoi(val());
         else if (a == "--ack-delay") {
             ack_delay = std::atoi(val());

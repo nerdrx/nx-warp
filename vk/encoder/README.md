@@ -709,6 +709,125 @@ paper 6.3 fixes v1 at eight). The RD trellis is deliberately absent: it changes
 which levels are coded, never how they are decoded, and it is a `double`
 trellis. `--no-rdo` is the reference configuration this pipeline reproduces.
 
+## The effort levels, measured
+
+`nxvc_vke_create_info::effort` buys bytes with server GPU time. There are two
+levels, and the interesting part of this section is why there is no third.
+
+| level | what it adds | `nxv-enc` flags on top of the acid set |
+|---|---|---|
+| 0 | the plain dead-zone quantiser | -- |
+| 1 | the **integer requantiser**: a level of ±1 whose squared error is worth less than the bits it saves is dropped | `--int-rdoq 1` |
+
+Every level is byte-identical to `nxv-enc` at those flags, on the GPU and on
+the CPU model, over rANS and Lite, intra and inter; `vk.encoder.acid.effort.*`
+is that claim.
+
+### What each level is worth
+
+`nxvc-vkenc` on RADV (RX 7900 XTX), the `pan8` synthetic pan clip
+(`gen_synthetic.py --motion pan --seed 7`), 8 frames, inter with STATIC_MV
+searched, `--ctx v3`, QP 22/26/30/34/40, every stream decoded back through
+`nxv-dec` and the luma PSNR taken against the source. BD-rate is against
+effort 0 over the five points.
+
+| clip | entropy | effort 1 | wider search (`--mv-range 31`) | both |
+|---|---|---|---|---|
+| 1088×1088, 289 tiles | rANS | **-1.36 %** | -0.42 % | -1.88 % |
+| 1088×1088, 289 tiles | Lite | **-3.53 %** | -0.66 % | -4.14 % |
+| 2×1088×1088, 578 tiles | rANS | **-1.54 %** | -0.05 % | -1.45 % |
+| 2×1088×1088, 578 tiles | Lite | **-3.60 %** | +0.09 % | -3.53 % |
+
+At QP 30 on the stereo clip that is 28761 → 26333 B/frame for 0.68 dB, and
+26333 B is what effort 0 needs about 1.5 quantiser steps of quality to reach.
+**Lite gains twice as much as rANS**, which is the shape of the tool rather
+than an accident: Lite spends a fixed field on every coded coefficient, so a
+dropped ±1 saves a whole field, while rANS was already coding that level at
+close to its entropy.
+
+And it is free:
+
+| 578 tiles, 5 runs × 8 frames, median ms/frame | effort 0 | effort 1 | + `--mv-range 31` |
+|---|---|---|---|
+| rANS, QP 26 | 9.12 | **9.18** | 9.55 |
+| rANS, QP 30 | 9.07 | **9.21** | 9.53 |
+| Lite, QP 26 | 6.19 | **6.00** | 6.32 |
+| Lite, QP 30 | 6.06 | **5.97** | 6.62 |
+| 289 tiles, rANS, QP 30 | 5.56 | **5.61** | -- |
+
+Effort 1 is inside the run-to-run spread of effort 0 — it is 64 extra integer
+compares per block inside a pass that was already resident and already reading
+those two arrays. The wider search is **not** free: it is 0.3–0.6 ms a frame,
+because the sweep is (2r/2+1)² candidates and 31 is 1024 of them against 16's
+289.
+
+**The recommendation is effort 1**, for any budget. At 90 Hz the server has
+about 11 ms a frame, of which the encoder is spending 9.1 (578 tiles, rANS)
+or 6.1 (Lite); effort 1 does not move that and takes 1.5–3.6 % off the wire.
+
+### Why there is no level 2
+
+A level 2 would have to be a wider or finer search, a rate-distortion mode
+decision counting real bits, or an RDOQ over more than one level. All three
+were priced on the REFERENCE encoder first, which is the right place: the GPU
+reproduces `nxv-enc --int-decision on` byte for byte, so a knob that does not
+move the rate there cannot move it here. Same clip, same five quantisers,
+BD-rate against the same effort-0 curve:
+
+| reference-side candidate | BD-rate | can it cross to the GPU? |
+|---|---|---|
+| `--mv-range 32` (a wider sweep) | **+0.00 %** | yes, and it is worth nothing |
+| `--quad-mv on` (WARP_MV searched) | -2.02 % | no: its predictor is the full homography |
+| `--rdoq-effort 1` (the fast trellis) | -5.71 % | no |
+| `--rdoq-effort 3` (the full trellis) | -6.64 % | no |
+| `--qp-search 2` (per-tile QP offsets) | -6.79 % | not without a rate model on the device |
+| `--rdoq-effort 3 --qp-search 2` | -6.79 % | no |
+| that plus WARP_MV | -8.93 % | no |
+| `--int-decision off` (the float mode decision) | -8.63 % | no |
+| the DEAD ZONE retuned (`NXVC_DZ_AC`, twelve profiles) | best -0.26 % | yes, and it is worth nothing |
+
+The trellis is the biggest thing on that list that is *about the quantiser*,
+and it is the one that cannot cross. `rdoq_unit` prices every candidate level
+with a real rate from `table_set_cost` — a sum of `std::log2` terms — and walks
+a trellis over the scan. Neither half survives: `log2` is not the same function
+on a host libm and on a device, and a trellis over the scan is a serial
+dependency where the hardware wants sixty-four independent lanes. ADR 0028
+reached that conclusion about the mode decision and it is the same conclusion
+here.
+
+What is left of it, once both halves are removed, is one coefficient at a time
+against a constant rate — which is effort 1, and which recovers a quarter of
+the trellis's rANS gain and two thirds of its Lite gain for none of its cost.
+
+The dead zone is the other integer-friendly knob and the other negative
+result. It is four offsets in forty-eighths of a step, `NXVC_DZ_AC` overrides
+them, and the encoder's own quantiser is `(16|c| + dz) / t` on both sides -- so
+a profile that paid would be a level, and a cheap one. Twelve profiles were
+swept on the same clip and quantisers: the shipped flat 16 is inside 0.3 % of
+the best of them (flat 13, **-0.26 %**), every ramp over the four scan bands is
+worse (+2.4 % to +28 %), and a narrower flat dead zone trades rate for PSNR
+about as efficiently as the quantiser itself does (flat 10 is +1.12 %). The
+current value is where it should be, which is a duller finding than a tool but
+is the reason there is no tool.
+
+The wider search is the opposite finding and the more surprising one: it is
+implementable, exact, and worth nothing. The reference at `--mv-range 32`
+produces a stream within one byte a frame of the 16 one at four of five
+quantisers. The reason is that the pose warp has already removed the global
+motion before the search runs, so what is left is object motion inside a
+64×64 tile, and the ±16 sweep already reaches it; a candidate 24 samples away
+is not a better prediction of a disc that moved four. `--mv-range` stays on
+both harnesses, and `vk.encoder.acid.effort.*` pins the two encoders together
+at 31, so the measurement can be repeated on other material rather than
+believed.
+
+Per-tile QP offsets (-6.79 %) are the candidate worth revisiting, and they are
+a project rather than a level: the reference chooses `qp_delta` by comparing
+D + λR over candidate quantisers with R from its own rate model, which is the
+same `double` estimate the mode decision could not use. An integer version
+would need the E1 statistics to carry a bit estimate the device can trust,
+which is the piece of work ADR 0028 deferred.
+
 ## Measured
 
 `nxvc-stats-test --device 0`, 2048×4096 (both eyes, 2048 tiles), RGBA8 4:2:0,
