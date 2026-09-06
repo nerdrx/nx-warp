@@ -402,6 +402,21 @@ nxvc_vkd_status nxvc_vk_decoder_images(const nxvc_vk_decoder *dec,
  * device (WiVRn does) and untestable by anything that did not.  Any pointer
  * may be NULL.  The handles are owned by the decoder and are valid until
  * nxvc_vk_decoder_destroy(). */
+/* [timing] The two numbers every GPU duration this decoder reports is built
+ * from: `timestampPeriod` in NANOSECONDS PER TICK, and how many bits of the
+ * counter the decoder's queue family actually drives.  Bits above
+ * `valid_bits` are UNDEFINED per spec and are masked off before any
+ * subtraction; `valid_bits == 0` means the family has no timestamps and every
+ * `*_ms` field stays 0.
+ *
+ * Exposed because a wrong tick rate is invisible in a duration and obvious in
+ * the pair -- a bench that prints them alongside a GPU/wall ratio can say
+ * WHICH of the two is wrong, and this decoder shipped GPU times about 1.57x
+ * high on one device for want of exactly that. */
+nxvc_vkd_status nxvc_vk_decoder_timestamp_info(const nxvc_vk_decoder *dec,
+                                               float *period_ns,
+                                               uint32_t *valid_bits);
+
 nxvc_vkd_status nxvc_vk_decoder_vk_handles(const nxvc_vk_decoder *dec,
                                            VkInstance *instance,
                                            VkPhysicalDevice *physical_device,

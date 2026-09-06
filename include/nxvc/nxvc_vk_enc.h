@@ -288,6 +288,35 @@ typedef struct nxvc_vke_create_info {
      * it. */
     uint32_t effort;
 
+    /* --- SNAP TO IDENTITY, in 1/16 luma samples; 0 = off (the default).
+     *
+     * When the frame's warp displaces every tile corner by less than this, the
+     * encoder emits the IDENTITY matrix instead of the exact sub-sample one.
+     * Every WARP_SKIP tile then hits the decoder's copy fast path -- one fetch
+     * per sample instead of a four-tap interpolation -- which on a Pico 4 is
+     * the 8.25 of 13.7 ms of Pass B per pair that the integer warp costs, most
+     * of it spent following motion below a sample.
+     *
+     * Encoder-side and NO SYNTAX: an identity warp_ext is an ordinary matrix,
+     * it is what a frame with no reference already carries, and a decoder
+     * without the fast path decodes it correctly and merely slowly.
+     *
+     * The error it introduces is bounded by the threshold: the prediction
+     * loses the fraction that was snapped away, so at 16 (one whole sample)
+     * no corner moves more than half a sample from where the exact warp put
+     * it -- the same bound the quarter-pel vector search already lives with.
+     *
+     * MEASURED, on the encoder's own fixtures (vk/encoder/README.md,
+     * "Snapping the warp to the identity"): below 16 nothing snaps at all,
+     * because a head at rest still moves about 0.57 samples a frame; at 16 it
+     * catches 2 of 7 inter frames on a still clip for -0.05 dB, and the bytes
+     * go DOWN at a high quantiser because an identity predictor on a still
+     * picture beats a sub-sample warp that resamples it.  At 30 deg/s nothing
+     * snaps at any threshold up to two samples: it is a REST tool.
+     *
+     * It ships 0 until the saving is measured on the device it is for. */
+    uint32_t snap_identity;
+
     uint32_t flags; /* reserved, pass 0 */
 } nxvc_vke_create_info;
 
@@ -512,6 +541,20 @@ double nxvc_vk_encoder_last_encode_ms(const nxvc_vk_encoder *enc);
  * entry point.  Reported separately because it is the cost the image path
  * exists to remove. */
 double nxvc_vk_encoder_last_upload_ms(const nxvc_vk_encoder *enc);
+
+/* [additive] How many tiles the DECODER's copy fast path will claim, summed
+ * over the inter frames this encoder has produced, and the tiles considered.
+ *
+ * It cannot be read off the wire and it cannot be read from the decoder until
+ * one reports it: an identity warp_ext says nothing about how it was arrived
+ * at, and a decoder that has no fast path still decodes the stream.  The
+ * encoder is therefore the only place the number exists, which is why a host
+ * that wants to show "identity tiles N/M" asks here.
+ *
+ * Both are 0 on an intra-only stream.  Safe to call at any time; the counters
+ * are cumulative over the encoder's life. */
+void nxvc_vk_encoder_identity_tiles(const nxvc_vk_encoder *enc,
+                                    uint64_t *tiles, uint64_t *total);
 
 /* -------------------------------------------------------------- feedback */
 /* Which tiles of the last frame the client actually holds: `count` bytes, one
