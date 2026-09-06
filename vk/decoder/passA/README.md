@@ -503,6 +503,69 @@ count per dispatch, from 10 to 5, and the table above prices 5 groups and 10
 groups on the same plateau boundary rather than on a better one; there is no
 occupancy to be won that way. Both eyes already go in one dispatch.
 
+### Where the Lite time goes: the prefix sum is four fifths of it
+
+`NXVW_ABL_LITE_SCAN` replaces `lite_scan()` with a wrong-but-cheap stub -- 1
+drops the Hillis-Steele block scan, 2 drops the function entirely -- so the rest
+of the kernel can be timed without it.  289 tiles, sparse, three interleaved
+rounds, Adreno 650:
+
+| | mean ms | us/tile | vs baseline |
+|---|---|---|---|
+| baseline | 7.829 | 27.1 | -- |
+| block scan skipped | 4.496 | 15.6 | **-42.6 %** |
+| `lite_scan()` skipped | 1.659 | 5.7 | **-78.8 %** |
+
+**The prefix sum is 79 % of Lite Pass A.**  That is the floor, and it is one
+function.
+
+Two ways of making it cheaper were built and both LOST:
+
+* **double-buffered Hillis-Steele**, ping-ponging between two arrays so each
+  level costs one barrier instead of two -- eight barriers instead of sixteen,
+  for 1 KiB more shared memory.  Bit-exact, and **+12.4 %**.
+* **a subgroup scan** (`subgroupExclusiveAdd`, which needs
+  `GL_KHR_shader_subgroup_arithmetic`), collapsing the eight levels to two
+  barriers.  It is bit-exact on RADV and lavapipe and **WRONG on the Adreno
+  650** -- 223687 coefficient mismatches and every one of the 289 tiles
+  status-bad -- and 40 % slower there even so.  A subgroup-arithmetic scan that
+  validates on two ICDs and silently miscomputes on the target part is worth
+  knowing about before someone reaches for it again.
+
+So the barrier COUNT is not the cost either; halving it hurt.  Neither variant
+is kept.
+
+### The threads-per-tile of the Lite kernel is wrong, and it is worth 44 %
+
+The Lite path puts one tile in a workgroup, and the workgroup is
+`NXVW_PASSA_TILES_PER_GROUP * 8` threads -- a constant chosen for the rANS
+path.  Fewer threads means fewer scan levels but more units serially per
+thread, and the two trade off:
+
+| `TILES_PER_GROUP` | threads a Lite tile | scan levels | mean ms | us/tile |
+|---|---|---|---|---|
+| 4 | 32 | 5 | 6.240 | 21.6 |
+| 8 | 64 | 6 | 5.334 | 18.5 |
+| **16** | **128** | **7** | **4.769** | **16.5** |
+| 32 (shipped) | 256 | 8 | 8.569 | 29.7 |
+
+**128 threads a tile is 44 % faster than the 256 the build ships**, and it is
+correct there -- the harness passes at every one of these.  The optimum is
+interior, which is why neither end of the sweep found it.
+
+The two entropy paths want opposite shapes and cannot share the constant.  At
+289 tiles rANS costs 17.5 ms at 32 tiles a group and **30.0 ms at 16**; Lite
+costs 8.6 ms at 32 and **4.8 ms at 16**.  So this is not a retune of
+`NXVW_PASSA_TILES_PER_GROUP` -- that would trade 12.5 ms of rANS for 3.8 ms of
+Lite -- but an argument for a **Lite-only build variant of the kernel with its
+own workgroup size**, the way Pass B carries one module per tile shape.
+
+That variant is not built here.  The decoder does not offer `ENTROPY_LITE`
+(tool bit 30) yet and the encoder side is in progress, so there is nothing to
+turn it on for; when there is, this is the number that says how to compile it,
+and `nxvc-passA-test --entropy lite` with a `NXVW_PASSA_TPG=16` build is how to
+confirm it on the part.
+
 ### What the Adreno compiler makes of the Lite kernel
 
 `nxvc-passA-test --shader-stats` asks the driver, through
@@ -558,11 +621,12 @@ from two resident workgroups to one costs nothing at all
 (passB/README.md).  Someone should still price it before believing that, with
 `--shader-stats` to confirm the LDS actually moved.
 
-**So the 22 us/tile floor is unexplained.**  It is not the payload -- a Lite
-tile is ~911 B on this corpus -- not occupancy, and not instruction count, since
-Lite runs half of rANS's instructions for two-thirds of rANS's time.  The three
-prefix sums and their 22 barriers against rANS's 8 are the remaining suspect and
-have not been measured separately.
+**The floor is `lite_scan()`, measured above at 79 % of the kernel**, and the
+22 barriers are its sixteen plus six.  It is not the payload (~911 B a tile),
+not occupancy, and not instruction count.  The scratch remains unexplained and
+is the one thread not pulled: neither ablation was built with `--shader-stats`
+to see whether removing the scan removes the spill, which is the next cheap
+question.
 
 ## Errors
 
