@@ -1034,6 +1034,35 @@ None of the four is a *decoding* difference. Once the device came up, the
 pixels were right the first time, which is what the spirv-opt pass list
 (`bench/README.md`, "Adreno and spirv-opt") was already there to ensure.
 
+### Status, Adreno 650, ENTROPY_LITE, per eye
+
+The shape the headset actually decodes: `--entropy lite-fixed`, inter, one eye,
+`stream_scale`'s three sizes.  `nxvc-vkdec --stats` with `NXVC_VKD_SEG_MS`,
+mean of 8 inter frames, three interleaved rounds at 289 and 196 tiles and two
+at 144, idle gate and sha256 before every launch, gpuclk 490 MHz,
+gpuss-max-step **61.1-66.6 C** -- hot, this being the end of a long session on
+a passively cooled part.
+
+`Pass B` as the decoder reports it INCLUDES Pass W, so the column below is Pass
+B minus Pass W and the total is Pass A + Pass B.
+
+| | tiles | Pass A | Pass W | Pass B - W | **total/eye** | client | ratio |
+|---|---|---|---|---|---|---|---|
+| 1088x1088 | 289 | 1.534 | 0.661 | 10.099 | **12.293 ms** | 10.7 | 1.15x |
+| 896x896 | 196 | 1.354 | 0.712 | 6.626 | **8.692 ms** | 7.3 | 1.19x |
+| 768x768 | 144 | 0.942 | 0.382 | 5.280 | **6.603 ms** | 5.5 | 1.20x |
+
+The runner sits 15-20 % above what the client reports, consistently across all
+three sizes.  Some of that is temperature -- these were taken at 61-66 C where
+the client's numbers come from a fresh session -- and some is that this is a
+synthetic head-turn at QP 30 rather than whatever the client was streaming.
+The shapes agree, which is the point of putting them side by side.
+
+**Pass A is no longer the wall.**  It was 23.9 ms an eye at 289 tiles on rANS;
+on Lite with its own module it is **1.534**.  Pass B is now 82-88 % of the
+frame at every size, and inside it the WARP_SKIP module is the bulk -- 8.889 ms
+of the 10.894 at 289 tiles, over 250 of the 289 tiles.
+
 ### Two eyes: one decoder, not two
 
 The client runs **one decoder per eye**, each on its own thread and its own
