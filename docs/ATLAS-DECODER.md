@@ -18,10 +18,36 @@ verified on RADV, lavapipe **and the Adreno 650**:
 | the lazy per-entry advance, `advanced_to`, the 64-deep `H` ring | same kernel, `sel = LIST` | eager vs lazy, both flushed, byte-identical |
 | per-tile matrices from the composed `C`, and the 13.12.3 step 3 write-back | `atlas/atlas_tiles.comp` | against `nxvcvk::plane_homography()` |
 
+| the host bookkeeping -- monotonicity, lazy selection, the ring window | `atlas/atlas_state.h` | `vk.atlas.state` |
+| `row_present` (3.1.2), which tool bit 31 streams carry and which is REQUIRED in v1 | `nxvc_vkdec_parse.cpp` | the conformance sweep's `row_present` arm, three ICDs |
+
 What does NOT exist yet: the host integration in `nxvc_vkdec.cpp` (ATLAS mode,
 the single-slot atlas, coded-only Pass A/B, the display store turned off),
 `nxvc_vk_decode_tiles`, `nxvc_vk_atlas_write_tiles`, the sampled atlas view,
-and the conformance leg against `nxv-dec --atlas-dump`.
+and the conformance leg against the reference's
+`nxvc_decoder_atlas_table()` / `nxvc_decoder_atlas_plane()`.
+
+**The stream-header gate is open now and was not before.** Tool bit 31 is
+still absent from `kToolsSupported`, so an `ATLAS` stream is refused at the
+stream header -- deliberately, until the host integration exists to honour it.
+Tool bit 32 `ROW_PRESENT` IS accepted, which it had to be before two of the
+v82-v88 vectors could be reached at all -- `v84_atlas_refresh_eff` and
+`v86_atlas_row_present` carry it, and the other five do not:
+
+| vector | bit 31 `ATLAS` | bit 32 `ROW_PRESENT` |
+|---|---|---|
+| `v82_atlas_warp` | 1 | 0 |
+| `v83_atlas_420` | 1 | 0 |
+| `v84_atlas_refresh_eff` | 1 | **1** |
+| `v85_atlas_nbr` | 1 | 0 |
+| `v86_atlas_row_present` | 1 | **1** |
+| `v87_atlas_base_sourced` | 1 | 0 |
+| `v88_atlas_superseded` | 1 | 0 |
+
+Of the two, only `v86` regenerated differently once the encoder could emit the
+bitmap. `v84` advertises the tool and elides nothing -- its sequence has no
+row that is idle in the whole of it -- so its bytes are unchanged, and it is
+worth knowing that it tests the tool no more than the old `v86` did.
 
 ## Why: the budget
 
@@ -386,8 +412,32 @@ nxvc_vkd_status nxvc_vk_atlas_write_tiles(nxvc_vk_decoder *dec,
                                           uint32_t first_tile, uint32_t count,
                                           const nxvc_vkd_atlas_src *src,
                                           uint64_t src_frame,
-                                          uint32_t submit_flags);
+                                          uint32_t submit_flags,
+                                          uint32_t *applied,
+                                          uint32_t *superseded);
 ```
+
+**The two ends must agree, and the reference end is already built.** The
+encoder and reference side of this is `nxvc_{decoder,encoder}_atlas_patch_base`
+(`atlas-encoder` `948cf2a`, and the prototype is in `<nxvc/nxvc.h>` on this
+branch since the `atlas` merge). Three properties of it are the contract this
+entry point mirrors, and none of them is a free choice here:
+
+* **supersede is `>=`, and it is a PER-TILE drop, not a refusal of the call.**
+  "A write whose `src_frame` is not greater than the one the position already
+  holds is dropped." The positions that are not superseded still take. This is
+  the same rule and the same comparison a coded tile takes, which is the point
+  -- a base tile can never move a position backwards over a coded one, and the
+  two sources compose under one rule. `AtlasHostState::apply()` already
+  implements exactly this and returns both lists;
+* **`applied` and `superseded` are reported as counts**, both optional, rather
+  than the call failing on a superseded position;
+* **`base_sourced` is written.** 13.12.9 makes flags bit 2 normative in
+  version 1, so the metadata is `C = identity`, `gen = 0`, `static = 0`,
+  `valid = 1`, `base_sourced = 1`, `res_level = 0` -- and NOT a decoder-side
+  side table, which would be the one thing that makes this decoder's atlas
+  differ from the encoder's shadow on exactly the tiles the two exist to agree
+  about.
 
 It copies those tiles into the atlas pixels and sets their table entries:
 `C := I`, `src_frame := F`, `gen := 0`, `valid := 1`, `static := 0`,
