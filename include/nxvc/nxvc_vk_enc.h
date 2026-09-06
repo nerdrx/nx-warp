@@ -25,7 +25,9 @@
  *     over this encoder; what the encoder does not have is a controller.
  *   * no resolution levels, no alpha plane, no custom probability tables
  *   * eight rANS lanes exactly (paper 6.3 fixes v1 at eight)
- *   * 8-bit 4:2:0 only, one eye per encoder
+ *   * 8-bit 4:2:0 only.  One encoder codes one eye, or BOTH eyes of a
+ *     frame as one stereo frame -- create_info::eyes, whose comment has
+ *     the input layout
  *
  * The tools mask it emits is `nxvc_vk_encoder_tools_supported()`, and it is
  * the mask a stream from this encoder actually carries.  Every bitstream
@@ -101,9 +103,41 @@ typedef struct nxvc_vke_create_info {
      * vkEnumeratePhysicalDevices order. */
     uint32_t device_index;
 
-    /* Picture geometry, per eye, in luma samples. */
+    /* Picture geometry, PER EYE, in luma samples ([SYN] 3.3: a picture is one
+     * eye, and a stereo frame carries `eyes` pictures rather than one picture
+     * of double width). */
     uint32_t width, height;
-    uint32_t eyes;      /* 1; a WiVRn stream is one eye                     */
+
+    /* 1 or 2.  2 codes both eyes of a frame as ONE nxvc stereo frame in one
+     * submission, which is the shape the decoder wants: on the Pico 4 the GPU
+     * serialises two mono decoders (concurrent/sequential wall 0.977), while
+     * one stereo stream costs 49.25 ms of GPU against 68.93 for two mono
+     * decodes -- -28.6 %, almost all of it in Pass A, whose cost is a step
+     * function of workgroup count and is starved at 289 tiles.
+     *
+     * THE INPUT IS ONE SIDE-BY-SIDE PICTURE, eye 0 first.  Every plane is
+     * `eyes * width` samples wide and `height` tall, the two eyes' sub-pictures
+     * laid out left and right in the same rows -- so `nxvc_vke_image::width`
+     * and encode_planes()'s strides span the PAIR, while `width` here does not.
+     * That is what the reference encoder takes (`nxvc_config::width` is per eye
+     * and the image is side-by-side, Annex D D-3), what the ring holds
+     * (inter_layout.h: a tile's x origin in a plane is `eye * width + col*64`),
+     * and what the WiVRn compositor already produces, so it costs no repack on
+     * any of the three sides.  `width` must be a multiple of 64 when `eyes` is
+     * 2, so the seam falls on a tile boundary.
+     *
+     * The tile grid then spans the pair: `cols = eyes * cols_per_eye`, tile
+     * rows run row-major and eye-minor, and the linear index is
+     * `row * cols + eye * cols_per_eye + index`.  At 2 x 1088x1088 that is 578
+     * tiles against a mono 289.
+     *
+     * An eye is coded independently: prediction, the reference ring and the
+     * search all clamp inside one eye's sub-picture and never sample across
+     * the seam.  STEREO (tool 12, mode 4, the cross-eye predictor of
+     * docs/STEREO.md) is NOT implemented here -- the stream this encoder emits
+     * is a valid stereo stream with that tool bit clear, and is byte-identical
+     * to `nxv-enc --eyes 2 --stereo off` at the matching flags. */
+    uint32_t eyes;
     uint32_t chroma;    /* 0 = 4:2:0.  4:4:4 is refused.                    */
     uint32_t bit_depth; /* 8                                                */
 
@@ -119,8 +153,10 @@ typedef struct nxvc_vke_create_info {
     /* --- inter prediction (Phase 2).
      *
      * `inter` turns on the reference ring, the pose warp and the integer mode
-     * decision of docs/adr/0028.  It is refused for eyes > 1 and for 4:4:4,
-     * which the inter path does not implement yet.
+     * decision of docs/adr/0028.  It is refused for 4:4:4, which the inter
+     * path does not implement yet.  It works for `eyes == 2`: the search,
+     * the ring and the reference walk are per eye, and a stereo inter frame
+     * is byte-identical to `nxv-enc --eyes 2` at the matching flags.
      *
      * `intra_period` is the rolling intra refresh: 1/T of the tiles are forced
      * INTRA every frame and each tile position is refreshed exactly once every
@@ -379,7 +415,11 @@ nxvc_vke_status nxvc_vk_encoder_encode_planes(nxvc_vk_encoder *enc,
  * returns -- and must not be written before that.
  *
  * `array_layer` selects a layer of an array image, which is how WiVRn's
- * compositor stores its eyes; pass 0 for a plain 2D image.
+ * compositor stores its eyes; pass 0 for a plain 2D image.  With `eyes == 2`
+ * the picture in ONE layer is the side-by-side pair, so `width` below is
+ * `2 * create_info::width` and `array_layer` still selects a layer, not an
+ * eye.  A compositor that keeps its eyes in two array layers instead has to
+ * bring them into one side-by-side image itself, or use encode_planes().
  *
  * Everything after E0 is the code encode_planes() runs, so the bitstream is
  * the same bitstream: tests/vk-encoder's api acid test encodes the same
@@ -388,7 +428,8 @@ typedef struct nxvc_vke_image {
     VkImage image;
     VkImageLayout layout; /* must be VK_IMAGE_LAYOUT_GENERAL             */
     uint32_t array_layer;
-    uint32_t width, height; /* the picture in it; must match create()    */
+    uint32_t width, height; /* must be `eyes * create()'s width` by its
+                             * height: the side-by-side PAIR, not one eye  */
     uint32_t flags;         /* reserved, pass 0                          */
 } nxvc_vke_image;
 
@@ -540,8 +581,11 @@ nxvc_vke_status nxvc_vk_encoder_set_views(nxvc_vk_encoder *enc,
                                           const nxvc_vke_view *views,
                                           uint32_t count);
 
-/* The single-eye form, which is what a WiVRn stream wants: one encoder codes
- * one eye, so `count` is always 1 and the array is ceremony.  Identical to
+/* The single-eye form.  `count` must equal create_info::eyes, so this is the
+ * call for a mono stream and a stereo one must use set_views() with two
+ * entries, eye 0 first -- one view per eye, because the two eyes have
+ * different poses and each gets its own `warp_ext()` record ([SYN] 3.1.1
+ * carries `36 * eyes` bytes).  Identical to
  * nxvc_vk_encoder_set_views(enc, view, 1). */
 nxvc_vke_status nxvc_vk_encoder_set_view(nxvc_vk_encoder *enc,
                                          const nxvc_vke_view *view);

@@ -761,9 +761,13 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
         d.decide_push[5] = d.cfg.mv_range > 0 ? d.cfg.mv_range : 16;
         d.decide_push[6] = d.cfg.int_coded_vectors ? 1 : 0;
         d.decide_push[7] = d.ring.stride[0];
+        /* ring_w is the luma plane's extent over the eye PAIR; eye_w is one
+         * eye's, which is what the search clamps at -- the reference's warp
+         * source is one eye's sub-picture (`ref_image()`), so an eye never
+         * samples across the seam.  They coincide at eyes == 1. */
         d.decide_push[8] = d.ring.planeW[0] * (int)f.fp.eyes;
         d.decide_push[9] = (int)f.fp.height;
-        d.decide_push[10] = 0;
+        d.decide_push[10] = d.ring.planeW[0];
         d.decide_push[11] = 0;
 
         /* Pass B's push block.  `coefStrideI16` is the lever that lets it read
@@ -889,9 +893,21 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
              * memory: this is the whole reason the entry point exists. */
             d.e0.bind(d.dev, src_y, src_c, d.b_src.buf);
             E0Geometry g{};
-            g.width = f.fp.width;
+            /* Over the eye PAIR.  `fp.width` and `fp.tiles_x` are per eye
+             * ([SYN] 3.3), but the source image is the side-by-side pair and
+             * E0's `tile = ty * tiles_x + tx` is already the pair-wide linear
+             * index of 3.3 -- `row * cols + eye * cols_per_eye + index` is
+             * just `row * cols + col` once `tx` runs over the pair.  Passing
+             * the per-eye numbers converted eye 0 only and left eye 1's tiles
+             * holding whatever b_src had, which is a shorter and wrong stream.
+             *
+             * The clamp at `width - 1` is then the pair's right edge rather
+             * than each eye's, which is safe only because a stereo picture's
+             * per-eye width is a multiple of 64: no tile is partial, so no
+             * fetch ever reaches the seam.  create() enforces that. */
+            g.width = f.fp.width * f.fp.eyes;
             g.height = f.fp.height;
-            g.tiles_x = f.fp.tiles_x;
+            g.tiles_x = f.fp.tiles_x * f.fp.eyes;
             g.tiles_y = f.fp.tiles_y;
             g.plane_y_off = (uint32_t)f.plane_base[0];
             g.plane_co_off = (uint32_t)f.plane_base[1];

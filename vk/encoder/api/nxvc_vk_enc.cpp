@@ -150,9 +150,17 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_create(const nxvc_vke_create_info *ci
         return createerr(NXVC_VKE_ERR_ARG,
                          "width=%u height=%u: both must be non-zero",
                          ci->width, ci->height);
-    if (ci->eyes != 1)
+    if (ci->eyes != 1 && ci->eyes != 2)
         return createerr(NXVC_VKE_ERR_UNSUPPORTED,
-                         "eyes=%u: this encoder codes 1", ci->eyes);
+                         "eyes=%u: this encoder codes 1 or 2", ci->eyes);
+    /* A stereo frame's tile grid spans the eye pair ([SYN] 3.3), and both the
+     * width and the seam have to fall on a tile boundary for an eye's
+     * sub-picture to be addressable: `eye * pw` must be even for the ring's
+     * uint stores, and `cols_per_eye` must be a whole number of tiles or the
+     * skip bitmap's per-eye bound stops meaning anything. */
+    if (ci->eyes == 2 && (ci->width % 64) != 0)
+        return createerr(NXVC_VKE_ERR_UNSUPPORTED,
+                         "eyes=2 needs width=%u a multiple of 64", ci->width);
     if (ci->chroma != 0)
         return createerr(NXVC_VKE_ERR_UNSUPPORTED,
                          "chroma=%u: this encoder codes 4:2:0 (0)",
