@@ -388,6 +388,16 @@ typedef struct nxvc_vkd_stats {
      * covers eye 0 only.  0 on a frame with no inter tile, and on a device
      * with no timestamp support.                                          */
     double pass_w_ms;
+    /* --- [SYN] 3.1.2 APPENDED.  Tile-row structures this frame whose
+     * `row_present` bit was 0, so their 12-byte header, near-skip records and
+     * tile structures were not sent at all.  0 on every frame that does not
+     * set frame flags bit 4, which is every stream without tool bit 32.
+     *
+     * It is reported because "the bytes were elided" is otherwise invisible:
+     * an elided row decodes identically to a transmitted all-skipped one, so
+     * a test that does not read this cannot tell whether it exercised the
+     * tool or merely re-ran the ordinary skip path.                        */
+    uint32_t rows_elided;
 } nxvc_vkd_stats;
 
 nxvc_vkd_status nxvc_vk_decoder_stats(const nxvc_vk_decoder *dec,

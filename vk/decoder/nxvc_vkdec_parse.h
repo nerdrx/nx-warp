@@ -153,6 +153,14 @@ struct FrameParse {
     int quad_tool = 0;      // stream tool bit 29
     int warp_present = 0;   // frame flags bit 3
     uint32_t ref_slots = 0, flags = 0;
+    // [SYN] 3.1.2, tool bit 32.  Frame flags bit 4, and the bitmap it says is
+    // present: one bit per tile-row STRUCTURE in the decode order of 3.3
+    // (row-major, eye-minor, `i = row * eyes + eye`).  A zero bit means the
+    // row's 12-byte header, its near-skip records and its tile structures
+    // were not sent, and the row decodes as "every column skipped".
+    int row_present = 0;
+    std::vector<uint8_t> row_bits;
+    uint32_t rows_elided = 0;   // reporting only
     WarpMatrix warp[2];     // warp_ext(), one 36-byte record per eye
     // One Pass W record per tile, raster order over the eye pair.  `refBase`
     // still holds the ring SLOT INDEX (0..3, or 0xffffffff for "this decoder

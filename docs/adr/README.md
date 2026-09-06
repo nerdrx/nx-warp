@@ -53,3 +53,4 @@ measurements, and an ADR whose estimate turns out wrong gets superseded, not edi
 | [0026](0026-sparse-coefficient-transfer.md) | The Pass A to Pass B coefficient buffer is sparse | Accepted | 3.2.1, 3.2.5 |
 | [0027](0027-no-spatial-hybrid.md) | No spatial hybrid; foveation inside the codec is the lever | Accepted | 3.5, 5.1 |
 | [0028](0028-gpu-inter-needs-an-integer-mode-decision.md) | The GPU inter path needs its own integer mode decision, and a reference preset to match | Proposed | 2.3, 2.6, 3.6 |
+| [0029](0029-atlas-reference.md) | The reference is a per-tile atlas, and display is one warp step from it | Proposed | 2.1, 2.2, 2.6-2.9 |
