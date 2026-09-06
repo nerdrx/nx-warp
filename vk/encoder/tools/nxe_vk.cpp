@@ -59,6 +59,13 @@ struct VkEncoder::Impl {
      * intra-only stream, at four bytes each -- an unbound descriptor is
      * illegal and a branch in create() is worse than 12 bytes. */
     vkmin::Buffer b_ring, b_warp, b_wpred;
+    /* Effort 2 only.  `b_rate` is the trellis's Q10 rate model, uploaded per
+     * pass; `b_trelf`/`b_trelm` are its per-tile forward-pass scratch -- nine
+     * units (the DC plane and eight block entries) of 64 positions of four
+     * states, which is 24 kB a tile and belongs in a buffer rather than in the
+     * shared memory the directional predictor already fills. */
+    vkmin::Buffer b_rate, b_trelf, b_trelm;
+    bool trellis = false;
     /* Pass B's consumer buffers.  The COEFFICIENTS are not among them: Pass B
      * strides tiles by its `coefStrideI16` push constant, and E3's per-tile
      * layout is already the one it wants -- DC levels then blocks of 64, and
@@ -561,6 +568,9 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
         {&d.b_stage_src, d.src_bytes, true},
         {&d.b_stage_coef, d.coef_bytes, true},
         {&d.b_stage_small, 1 << 20, true},
+        {&d.b_rate,    (8 * 32 * 16 + 8) * 4, true},
+        {&d.b_trelf,   (size_t)d.ntiles * 9 * 64 * 4 * 8, false},
+        {&d.b_trelm,   (size_t)d.ntiles * 9 * 64 * 4 * 4, false},
     };
     for (auto &m : mk)
         if (!d.dev.create_buffer(m.size, kDevUsage, m.host, *m.b, err))
@@ -583,7 +593,7 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
     /* One module for both intra paths: the running reconstruction's shared
      * array is sized by the specialization constant, so a pipeline built with
      * NXE_SC_INTRA_DIR = 0 allocates none of it. */
-    const std::vector<VkDescriptorType> sb6e(6, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    const std::vector<VkDescriptorType> sb6e(9, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
     if (!d.dev.create_pipeline(E3_forward_spv, sizeof E3_forward_spv, sb6e, 0,
                                d.p_e3, err, &si))
         return false;
@@ -600,6 +610,7 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
      * NXE_SC_ENTROPY_LITE set, because the only thing the tool changes there
      * is where a tile's payload bytes live inside the slot. */
     d.entropy_lite = f.entropy_lite != 0;
+    d.trellis = cfg.trellis != 0;
     if (d.entropy_lite) {
         const uint32_t lite_vals[3] = {cfg.intra_dir ? 1u : 0u, 3u, 1u};
         VkSpecializationMapEntry lents[3] = {{0, 0, 4}, {1, 4, 4}, {2, 8, 4}};
@@ -679,7 +690,8 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
 
     VkDevice h = d.dev.handle();
     write_set(h, d.s_e3, {d.b_params.buf, d.b_jobs.buf, d.b_src.buf,
-                          d.b_coef.buf, d.b_modes.buf, d.b_wpred.buf});
+                          d.b_coef.buf, d.b_modes.buf, d.b_wpred.buf,
+                          d.b_rate.buf, d.b_trelf.buf, d.b_trelm.buf});
     write_set(h, d.s_e4, {d.b_params.buf, d.b_jobs.buf, d.b_coef.buf,
                           d.b_modes.buf, d.b_tabs.buf, d.b_slots.buf,
                           d.b_sizes.buf, d.b_ops.buf, d.b_slotops.buf});
@@ -2063,6 +2075,57 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
     }
 
     auto t2 = clk::now();
+
+    /* ---- effort 2: the trellis, and the pass structure it needs.
+     *
+     * The CPU model's `e3_tile_trellis` is, per tile, a PLAIN quantisation, a
+     * table-set choice from it, and then the trellis against that set.  Tiles
+     * are independent, so on the device the three become three whole-frame
+     * steps: the plain E3 that has just run, a host choice over every tile, and
+     * a second E3 with `fp.trellis` set.  Same order, same result, one dispatch
+     * instead of a loop.
+     *
+     * Everything about WHICH tables is host-side and unchanged: this only moves
+     * the quantisation onto the device. */
+    auto run_e3_trellis = [&](bool from_defaults) -> bool {
+        {
+            /* The per-tile set from the PLAIN coefficients the device just
+             * wrote, and the rate model the trellis will price against.  See
+             * prepare_trellis_pass: the ORDER of those steps is the part that
+             * is easy to get wrong. */
+            std::vector<int32_t> rate(8 * 32 * 16 + 8, 0);
+            prepare_trellis_pass(f, (const int16_t *)d.b_stage_coef.map,
+                                 from_defaults, rate.data());
+            std::memcpy(d.b_rate.map, rate.data(), rate.size() * 4);
+        }
+        nxe_frame_params tfp = fp;
+        tfp.trellis = 1u;
+        VkCommandBuffer cb = d.dev.begin();
+        std::memcpy(d.b_stage_small.map, f.jobs.data(),
+                    f.jobs.size() * sizeof(nxe_tile_job));
+        VkBufferCopy cj{0, 0, f.jobs.size() * sizeof(nxe_tile_job)};
+        vkCmdCopyBuffer(cb, d.b_stage_small.buf, d.b_jobs.buf, 1, &cj);
+        copy_up(cb, d.b_stage_small, d.b_params, &tfp, sizeof tfp, 1 << 18);
+        d.dev.barrier_transfer_to_compute(cb);
+        vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, d.p_e3.pipe);
+        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                d.p_e3.layout, 0, 1, &d.s_e3, 0, nullptr);
+        vkCmdDispatch(cb, d.ntiles, 1, 1);
+        d.dev.barrier_compute_to_host(cb);
+        VkBufferCopy cc2{0, 0, d.coef_bytes};
+        vkCmdCopyBuffer(cb, d.b_coef.buf, d.b_stage_coef.buf, 1, &cc2);
+        if (!d.dev.submit_and_wait(cb, err)) {
+            std::fprintf(stderr, "E3 trellis submit: %s\n", err.c_str());
+            return false;
+        }
+        /* The parameter record on the device is the trellis one now; the E4/E5
+         * upload below puts the frame's own back -- and so is the job array's
+         * `table_set` under Lite, which this puts back. */
+        restore_lite_variant(f);
+        return true;
+    };
+    if (d.trellis && !run_e3_trellis(true)) return false;
+
     /* The table-set choice reads the coefficients where E3 left them: the
      * staging buffer is host-cached, and copying seven megabytes into f.coef
      * first -- which nothing else on this path reads -- cost more than the
@@ -2080,6 +2143,33 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
      * the parameter record and the tables are uploaded again below rather than
      * only before E3. */
     if (!d.entropy_lite) train_table_sets(f);
+    /* Pass two, against the TRAINED sets -- and only when there are trained
+     * sets to be against.  Without custom tables the tables never moved, so a
+     * second pass reaches the same coefficients by the same arithmetic. */
+    if (d.trellis && f.custom_tables && !d.entropy_lite) {
+        /* The plain quantisation pass two's per-tile choice reads.  fp still
+         * has trellis 0 here, so this is the ordinary E3. */
+        {
+            VkCommandBuffer cb = d.dev.begin();
+            copy_up(cb, d.b_stage_small, d.b_params, &fp, sizeof fp, 1 << 18);
+            d.dev.barrier_transfer_to_compute(cb);
+            vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, d.p_e3.pipe);
+            vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                    d.p_e3.layout, 0, 1, &d.s_e3, 0, nullptr);
+            vkCmdDispatch(cb, d.ntiles, 1, 1);
+            d.dev.barrier_compute_to_host(cb);
+            VkBufferCopy cc3{0, 0, d.coef_bytes};
+            vkCmdCopyBuffer(cb, d.b_coef.buf, d.b_stage_coef.buf, 1, &cc3);
+            if (!d.dev.submit_and_wait(cb, err)) {
+                std::fprintf(stderr, "E3 pass2 plain submit: %s\n", err.c_str());
+                return false;
+            }
+        }
+        if (!run_e3_trellis(false)) return false;
+        /* The final per-tile choice, against the trained sets and without
+         * restoring the built-in ones first -- ref's emit pass. */
+        finish_trellis_pass(f, (const int16_t *)d.b_stage_coef.map);
+    }
     fp.tables_present = f.fp.tables_present;
     fp.table_bytes = f.fp.table_bytes;
     auto t3 = clk::now();

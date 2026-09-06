@@ -3663,6 +3663,34 @@ structure this mode exists to avoid.
 The reconstructed samples are the tile's output and its contribution to the
 reference picture. Nothing is added to them and no predictor runs.
 
+**How an encoder fits it, and why that is written down.** The decoding process
+above is the normative part; the fit is not. But the reference encoder's fit is
+the SPEC in practice -- a second encoder is compared against its bytes -- so the
+arithmetic that produces the coefficients is specified rather than left to
+whatever a machine's `libm` does, and it is integer for the same reason the
+decode is:
+
+* the normal equations of the per-region plane fit are formed with **cleared
+  denominators**: the basis is `R(i) / size` with `R(i) = 2i - size + 1`, so
+  row 0 is scaled by `size` and rows 1 and 2 by `size^2`, leaving every entry
+  an exact integer;
+* they are solved by **Cramer's rule in 128-bit integers**, and the only
+  degenerate test is `det == 0` -- singularity, not conditioning. A determinant
+  bound of `6 * (4096 * 63^2)^3`, about `2.6e22`, is what fixes the width;
+* the solution is rounded to **Q8 fixed point immediately, half away from
+  zero**. That is a definition rather than an approximation of some truer
+  real-valued answer: carrying exact rationals into the region-reassignment
+  step would put a squared error over those determinants near `2.6e54`, past
+  128 bits, and rounding first makes every later comparison a plain 64-bit sum
+  with a common denominator;
+* region reassignment and the k-means seeding compare **exactly**, and a tie
+  goes to the LOWEST region index, so the result does not depend on the order
+  the cells are swept in -- which is what lets a GPU do it a lane at a time.
+
+Nothing here constrains a decoder. An encoder that fits differently produces a
+different, equally valid stream; what this buys is that two encoders which
+intend to agree can.
+
 **What it costs a GPU decoder.** Less than any other coded tile, by the
 argument 13.9 already makes: no entropy decode, no rANS lane flush, no inverse
 transform. One label lookup and three multiply-adds per sample, with no

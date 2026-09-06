@@ -699,6 +699,36 @@ void nxvwWarpPlane(int tid, int p, uint tb, int size, int full, int sub,
     const bool nxvwPairSkipLoop = false;
 #endif
 
+#if NXVW_COPY_STORE
+    // [passb] The copy module.  The HOST decided this tile is a copy -- see
+    // warp_tile_is_copy() in inter/inter_state.h -- so there is no predicate
+    // here and no coordinate pipeline at all: no corner DDA, no stage-two
+    // multiplies, no Q.6 -> Q.4, no bilinear, no clamp chain.  One ring fetch
+    // per sample at a whole-sample offset, which is what the identity reduces
+    // the prediction to.
+    //
+    // The quadrant select stays because a quadrant tile still has four
+    // vectors; the host proved each of them is a whole number of samples, so
+    // each is a different integer offset and none of them has a fraction.
+    for (int j = 0; j < spt; j += 2) {
+        const int u0 = myU0 + j;
+        int s0 = 0, s1 = 0;
+        for (int h = 0; h < 2; ++h) {
+            const int u = u0 + h;
+            const int q = qrow + ((u >= qsplit) ? 1 : 0);
+            const int mqx = (q == 0) ? mvxq0 : (q == 1) ? mvxq1
+                          : (q == 2) ? mvxq2 : mvxq3;
+            const int mqy = (q == 0) ? mvyq0 : (q == 1) ? mvyq1
+                          : (q == 2) ? mvyq2 : mvyq3;
+            const int sv = clamp(fetchRef(tox + u + (mqx >> kWarpQCorner),
+                                          toy + myRow + (mqy >> kWarpQCorner)),
+                                 0, maxval);
+            if (h == 0) s0 = sv; else s1 = sv;
+        }
+        nxvwWarpScratchWrite((myRow * full + u0) >> 1,
+                             (uint(s0) & 0xffffu) | (uint(s1) << 16));
+    }
+#else
     for (int j = 0; j < spt && !nxvwPairSkipLoop; j += 2) {
         const int u0 = myU0 + j;
         int s0 = 0, s1 = 0;
@@ -791,6 +821,7 @@ void nxvwWarpPlane(int tid, int p, uint tb, int size, int full, int sub,
     // Uniform across the workgroup: nxvwPairing is a property of the tile.
     if (nxvwPairing) gPairDone = true;
 #endif
+#endif  /* NXVW_COPY_STORE */
     barrier();
 
     // ---- the near-skip mean field, if the row header named this tile.

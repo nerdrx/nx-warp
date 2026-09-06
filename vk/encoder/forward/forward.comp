@@ -52,6 +52,33 @@ layout(std430, binding = 4) readonly buffer ModeBuf  { uint v[]; } modeb;
 // will add, or the two disagree about what the residual means.
 layout(std430, binding = 5) readonly buffer WPredBuf { uint v[]; } wpredb;
 
+// ----------------------------------------------------------- effort 2 only
+// The trellis's rate model: Q10 bits per (table set, context, symbol), built
+// on the host from the frame's probability tables with nxe_neglog2_q10.  The
+// device never computes a log; the table IS the log.  8 * 32 * 16 ints.
+layout(std430, binding = 6) readonly buffer RateBuf { int v[]; } rateb;
+// Per (tile, group, scan position): the three state costs and the best
+// nonzero, as 64-bit pairs.  In a buffer rather than shared memory because a
+// 64-position trellis for eight blocks is 24 kB and this shader already spends
+// most of its shared allocation on the directional predictor's reconstruction.
+// E4 stages its operation lists the same way.
+layout(std430, binding = 7) buffer TrelFBuf { uvec2 v[]; } trelf;
+// The magnitudes those costs chose: three per state plus the nonzero one.
+layout(std430, binding = 8) buffer TrelMBuf { int v[]; } trelm;
+
+#define NXE_TREL_POS   64
+#define NXE_TREL_GROUP (NXE_TREL_POS * 4)
+#define RATE_AT(set, ctx, sym) rateb.v[(set) * 32 * 16 + (ctx) * 16 + (sym)]
+// Whether a zero is never dearer than a one in any context of this table set.
+// The `hi` bound below rests on it: the distortion half of "everything above
+// hi is provably zero" is an identity, the RATE half is a property of the
+// TABLE, and a transmitted set is whatever the frame chose to send.  So it is
+// computed once per set on the host and read here, exactly as
+// `RateCost::zero_cheapest` is on the CPU side.  Assuming it -- which this
+// shader did at first -- costs nothing with the built-in tables and diverges
+// on a trained one, which is a bug that only appears with CUSTOM_TABLES on.
+#define RATE_ZC(set) rateb.v[8 * 32 * 16 + (set)]
+
 // ------------------------------------------------------------ shared state
 shared int s_means[64];        // block means, then the reconstructed means
 shared int s_dca[64], s_dcb[64];
@@ -138,6 +165,274 @@ int pred_at(int x, int y) {
 bool cost_less(int a_hi, int a_lo, int b_hi, int b_lo) {
     if (a_hi != b_hi) return a_hi < b_hi;
     return uint(a_lo) < uint(b_lo);
+}
+
+// --------------------------------------------------------- effort 2: RDOQ
+//
+// nxe_trellis.c's nxe_rdoq_unit_int, transcribed.  ref/src/codec.cpp is the
+// specification of both; `vk.encoder.acid.trellis` requires this and
+// `nxv-enc --int-trellis 1 --rdoq-effort 3` to agree byte for byte.
+//
+// ONE LANE PER BLOCK.  The trellis is a serial walk over the scan, so lane
+// r == 0 of each group entry runs its whole block while the other seven wait
+// at the barrier that follows.  That is not a waste of the group: the eight
+// entries run eight blocks at once, and the plane's sixty-four blocks are
+// eight rounds of eight, which is exactly the neighbour chain -- block b
+// conditions on block b - 8, and entry g owns blocks g, g + 8, g + 16 ...
+// So the chain is per entry and carries in a register across the rounds; no
+// lane ever reads another lane's class.
+//
+// `uc_*` are the tile's contexts.  s_uc_cbf/s_uc_last are per entry because
+// v3 shifts them by the entry's own neighbour class.
+shared int s_uc_cbf[8], s_uc_last[8];
+// The neighbour class each BLOCK of this plane published, indexed by block.
+// Per block and not per group entry because the chain reaches back `nlanes`
+// blocks and `nlanes` is 8, 16 or 32 -- entry g owns g, g+8, g+16 ..., so at
+// 8 lanes the predecessor is the entry's own previous round and at 16 or 32 it
+// is two or four rounds back.  Either way it is already written.  Below 8 it
+// would be inside the CURRENT round, which this eight-blocks-in-flight shape
+// cannot satisfy; the library refuses effort 2 there rather than pretend.
+shared int s_nbr[64];
+int g_uc_ucls, g_uc_v3, g_uc_fixed, g_uc_bshift;
+int g_trel_set, g_trel_base, g_nlanes;
+uint g_trel_lam, g_trel_dclam;
+
+// nxe_block_ctx / nxe_dc_ctx, for the plane this invocation is on.
+void trellis_ctx_block(int chroma) {
+    g_uc_ucls = chroma != 0 ? NXE_UCLS_CHROMA : NXE_UCLS_LUMA;
+    g_uc_v3 = fp.nctx >= uint(NXE_NCTX_V3) ? 1 : 0;
+    g_uc_fixed = NXE_CTX_NONE;
+    g_uc_bshift = 0;   // 8x8 only: last_shift_of(64) is 0
+}
+void trellis_ctx_dc() {
+    g_uc_ucls = NXE_UCLS_DC;
+    g_uc_v3 = fp.nctx >= uint(NXE_NCTX_V3) ? 1 : 0;
+    g_uc_fixed = fp.nctx >= uint(NXE_NCTX_V2) ? NXE_CTX_LEVEL_DC : NXE_CTX_NONE;
+    g_uc_bshift = 0;
+}
+// with_nbr: v3 shifts CBF and LAST by the entry's class, nothing else moves.
+void trellis_nbr(int g, int base_cbf, int base_last, int nbr) {
+    if (g_uc_v3 == 0) { s_uc_cbf[g] = base_cbf; s_uc_last[g] = base_last; return; }
+    s_uc_cbf[g] = nxe_v3_ctx_cbf(g_uc_ucls, nbr);
+    s_uc_last[g] = nxe_v3_ctx_last(g_uc_ucls, nbr);
+}
+
+int uc_level_markov() {
+    if (g_uc_ucls == NXE_UCLS_DC) return 0;
+    return g_uc_fixed == NXE_CTX_NONE ? 1 : 0;
+}
+
+int uc_level(int scan_pos, int last, int prev_class) {
+    int bp = scan_pos >> g_uc_bshift;
+    if (g_uc_v3 != 0)
+        return nxe_v3_ctx_level(g_uc_ucls, scan_pos, bp, last, prev_class);
+    return g_uc_fixed != NXE_CTX_NONE ? g_uc_fixed
+                                      : nxe_level_ctx(bp, prev_class);
+}
+
+int level_rate(int set, int scan_pos, int last, int prev_class, int m) {
+    int ctx = uc_level(scan_pos, last, prev_class);
+    int r = RATE_AT(set, ctx, m > 14 ? NXE_ESC_SYM : m);
+    if (m > 14) r += nxe_escape_bits(m) << 10;
+    if (m != 0) r += 1 << 10;
+    return r;
+}
+
+// `unit` as in hide_sign_unit below: 0 the DC plane, 1..8 the block entry.
+// `base` is this tile's slot in the trellis scratch, in positions.
+void rdoq_unit_int(int unit, int ncoef, bool tskip, int const_step, int set,
+                   uint lam, int base, int cbf_ctx, int last_ctx, int sdh) {
+    int p, sc, k;
+    for (p = 0; p < ncoef; ++p) {
+        int idx = nxe_scan(ncoef, tskip, p);
+        if (unit == 0) s_dcq[idx] = 0; else s_q[unit - 1][idx] = 0;
+    }
+
+    // The provable bound: above the highest position whose magnitude reaches
+    // half a step, zero beats one in distortion AND in rate, so those
+    // positions are never searched.  The rate half holds only if the table
+    // agrees (RATE_ZC); when it does not, every position is searched -- a
+    // slower trellis, not a wrong one.
+    int hi = -1;
+    nxe_i64 energy = nxe_i64(0u, 0u);
+    for (p = 0; p < ncoef; ++p) {
+        int idx = nxe_scan(ncoef, tskip, p);
+        int c = unit == 0 ? s_dco[idx] : s_orig[unit - 1][idx];
+        int a = c < 0 ? -c : c;
+        int st = const_step > 0 ? const_step : step_at(idx);
+        energy = nxe_i64_add(energy, nxe_i64_sq_shl18(c));
+        if (32 * a >= st) hi = p;
+    }
+    if (hi < 0 || RATE_ZC(set) == 0) hi = hi < 0 ? -1 : ncoef - 1;
+    if (hi < 0) return;
+
+    nxe_i64 prev0 = nxe_i64(0u, 0u), prev1 = prev0, prev2 = prev0;
+    for (p = 0; p <= hi; ++p) {
+        int idx = nxe_scan(ncoef, tskip, p);
+        int c = unit == 0 ? s_dco[idx] : s_orig[unit - 1][idx];
+        int a = c < 0 ? -c : c;
+        int st = const_step > 0 ? const_step : step_at(idx);
+        int m0 = st > 0 ? int((uint(a) * 16u) / uint(st)) : 0;
+        if (m0 > 32767) m0 = 32767;
+
+        for (sc = 0; sc < 3; ++sc) {
+            nxe_i64 best = nxe_i64(0xFFFFFFFFu, 0x1FFFFFFFu);
+            nxe_i64 bestnz = best;
+            int bm = 0, bmnz = -1;
+            bool have = false, havenz = false;
+            // The candidate set, in the order nxe_trellis.c fills `cand[]`:
+            // 0, then m0-1, m0, m0+1 with the invalid ones skipped.  Written
+            // as four fixed slots rather than a local array because a local
+            // array with a dynamic index can be spilled to scratch memory --
+            // `shader-lint: dynamic-local-array-index`.  The ORDER is the
+            // tie-break (the first equal cost wins), so it is preserved
+            // exactly; NXE_RDOQ_FULL is the only effort the library allows.
+            for (k = 0; k < 4; ++k) {
+                int m;
+                bool valid;
+                if (k == 0) { m = 0; valid = true; }
+                else if (k == 1) { m = m0 - 1; valid = m0 >= 2; }
+                else if (k == 2) { m = m0; valid = m0 > 0; }
+                else { m = m0 + 1; valid = m0 + 1 <= 32767; }
+                if (!valid) continue;
+                int d = a - nxe_dequant(m, st);
+                nxe_i64 dd = nxe_i64_sq_shl18(d);
+                int lc = uc_level_markov() != 0 ? nxe_level_class(m) : 0;
+                nxe_i64 chain = lc == 0 ? prev0 : (lc == 1 ? prev1 : prev2);
+                nxe_i64 cost = nxe_i64_add(
+                    nxe_i64_add(dd, nxe_i64_mul(lam, level_rate(set, p, -1, sc, m))),
+                    chain);
+                if (!have || nxe_i64_lt(cost, best)) { best = cost; bm = m; have = true; }
+                if (m != 0) {
+                    nxe_i64 cnz = nxe_i64_add(
+                        nxe_i64_add(dd, nxe_i64_mul(lam, level_rate(set, p, p, sc, m))),
+                        chain);
+                    if (!havenz || nxe_i64_lt(cnz, bestnz)) {
+                        bestnz = cnz; bmnz = m; havenz = true;
+                    }
+                }
+            }
+            trelf.v[base + p * 4 + sc] = best;
+            trelm.v[base + p * 4 + sc] = bm;
+            if (sc == 0) {
+                trelf.v[base + p * 4 + 3] = havenz ? bestnz
+                                                   : nxe_i64(0xFFFFFFFFu, 0x1FFFFFFFu);
+                trelm.v[base + p * 4 + 3] = bmnz;
+            }
+        }
+        prev0 = trelf.v[base + p * 4 + 0];
+        prev1 = trelf.v[base + p * 4 + 1];
+        prev2 = trelf.v[base + p * 4 + 2];
+    }
+
+    nxe_i64 best_total =
+        nxe_i64_add(nxe_i64_mul(lam, RATE_AT(set, cbf_ctx, 0)), energy);
+    int best_last = -1;
+    nxe_i64 tail = nxe_i64(0u, 0u);
+    for (p = ncoef - 1; p > hi; --p) {
+        int idx = nxe_scan(ncoef, tskip, p);
+        int c = unit == 0 ? s_dco[idx] : s_orig[unit - 1][idx];
+        tail = nxe_i64_add(tail, nxe_i64_sq_shl18(c));
+    }
+    for (p = hi; p >= 0; --p) {
+        nxe_i64 fnz = trelf.v[base + p * 4 + 3];
+        if (!(fnz.y == 0x1FFFFFFFu && fnz.x == 0xFFFFFFFFu)) {
+            int r = RATE_AT(set, cbf_ctx, 1);
+            if (ncoef > 1) {
+                int cls = nxe_last_class_of(p >> g_uc_bshift);
+                r += RATE_AT(set, last_ctx, cls) +
+                     ((nxe_last_raw_bits[cls] + g_uc_bshift) << 10);
+            }
+            if (sdh != 0 && p >= NXE_SDH_MIN_LAST) r -= 1 << 10;
+            nxe_i64 total =
+                nxe_i64_add(nxe_i64_add(fnz, tail), nxe_i64_mul(lam, r));
+            if (nxe_i64_lt(total, best_total)) { best_total = total; best_last = p; }
+        }
+        int idx = nxe_scan(ncoef, tskip, p);
+        int c = unit == 0 ? s_dco[idx] : s_orig[unit - 1][idx];
+        tail = nxe_i64_add(tail, nxe_i64_sq_shl18(c));
+    }
+
+    if (best_last < 0) return;
+    int sc2 = 0;
+    for (p = best_last; p >= 0; --p) {
+        int m = (p == best_last) ? trelm.v[base + p * 4 + 3]
+                                 : trelm.v[base + p * 4 + sc2];
+        int idx = nxe_scan(ncoef, tskip, p);
+        int o = unit == 0 ? s_dco[idx] : s_orig[unit - 1][idx];
+        int v = o < 0 ? -m : m;
+        if (unit == 0) s_dcq[idx] = v; else s_q[unit - 1][idx] = v;
+        sc2 = uc_level_markov() != 0 ? nxe_level_class(m) : 0;
+    }
+}
+
+// nxe_trellis.c's nxe_hide_sign_unit_int: the same move search as the plain
+// one below, on the trellis's own footing so that the levels and the sign move
+// they have to live with are decided by one arithmetic.
+void hide_sign_unit_int(int unit, int ncoef, bool tskip, int const_step,
+                        int set, uint lam) {
+    int last = -1, sum = 0, p;
+    for (p = 0; p < ncoef; ++p) {
+        int idx = nxe_scan(ncoef, tskip, p);
+        int q = unit == 0 ? s_dcq[idx] : s_q[unit - 1][idx];
+        int m = q < 0 ? -q : q;
+        sum += m;
+        if (m != 0) last = p;
+    }
+    if (last < NXE_SDH_MIN_LAST) return;
+    int lastidx = nxe_scan(ncoef, tskip, last);
+    int want = (unit == 0 ? s_dcq[lastidx] : s_q[unit - 1][lastidx]) < 0 ? 1 : 0;
+    if ((sum & 1) == want) return;
+
+    nxe_i64 best = nxe_i64(0u, 0u);
+    int best_p = -1, best_d = 0;
+    for (p = 0; p <= last; ++p) {
+        int idx = nxe_scan(ncoef, tskip, p);
+        int o = unit == 0 ? s_dco[idx] : s_orig[unit - 1][idx];
+        int a = o < 0 ? -o : o;
+        int st = const_step > 0 ? const_step : step_at(idx);
+        int q = unit == 0 ? s_dcq[idx] : s_q[unit - 1][idx];
+        int m = q < 0 ? -q : q;
+        for (int d = -1; d <= 1; d += 2) {
+            int m2 = m + d;
+            if (m2 < 0 || m2 > 32767) continue;
+            if (p == last && m2 == 0) continue;
+            int e1 = a - nxe_dequant(m, st);
+            int e2 = a - nxe_dequant(m2, st);
+            nxe_i64 cost = nxe_i64_add(nxe_i64_sq_shl18(e2),
+                                       nxe_i64_neg(nxe_i64_sq_shl18(e1)));
+            int cx = uc_level(p, last, 0);
+            int r1 = RATE_AT(set, cx, m > 14 ? NXE_ESC_SYM : m) +
+                     (m > 14 ? (nxe_escape_bits(m) << 10) : 0) +
+                     (m != 0 ? (1 << 10) : 0);
+            int r2 = RATE_AT(set, cx, m2 > 14 ? NXE_ESC_SYM : m2) +
+                     (m2 > 14 ? (nxe_escape_bits(m2) << 10) : 0) +
+                     (m2 != 0 ? (1 << 10) : 0);
+            cost = nxe_i64_add(cost, nxe_i64_mul(lam, r2 - r1));
+            if (best_p < 0 || nxe_i64_lt(cost, best)) {
+                best = cost; best_p = p; best_d = d;
+            }
+        }
+    }
+    if (best_p < 0) return;
+    int idx = nxe_scan(ncoef, tskip, best_p);
+    int q = unit == 0 ? s_dcq[idx] : s_q[unit - 1][idx];
+    int o = unit == 0 ? s_dco[idx] : s_orig[unit - 1][idx];
+    int m = (q < 0 ? -q : q) + best_d;
+    bool neg = q != 0 ? (q < 0) : (o < 0);
+    int v = neg ? -m : m;
+    if (unit == 0) s_dcq[idx] = v; else s_q[unit - 1][idx] = v;
+}
+
+// The class a finished unit publishes to its entry's chain.
+int unit_nbr_class(int unit, int ncoef, bool tskip) {
+    int last = -1;
+    for (int p = ncoef - 1; p >= 0; --p) {
+        int idx = nxe_scan(ncoef, tskip, p);
+        int q = unit == 0 ? s_dcq[idx] : s_q[unit - 1][idx];
+        if (q != 0) { last = p; break; }
+    }
+    return nxe_nbr_class_of(last < 0 ? 0 : 1, last < 0 ? 0 : last);
 }
 
 // `unit` selects the arrays: 0 = the DC plane (s_dcq / s_dco, constant step),
@@ -244,11 +539,32 @@ void dc_plane(uint lid) {
         barrier();
     }
 
+    if (fp.trellis != 0u) {
+        // The DC plane through the trellis too: it is the intra predictor, so
+        // re-deciding it with the same D + lambda*R the blocks use keeps the
+        // predictor and the residual consistent by construction.  One lane,
+        // like ref's single analyze_dc_plane call.
+        if (lid == 0u) {
+            trellis_ctx_dc();
+            int cbf = fp.nctx >= uint(NXE_NCTX_V2) ? NXE_CTX_CBF_DC
+                                                   : NXE_CTX_CBF_LUMA;
+            int lst = fp.nctx >= uint(NXE_NCTX_V2) ? NXE_CTX_LAST_DC
+                                                   : NXE_CTX_LAST_LUMA;
+            rdoq_unit_int(0, g_ndc, false, tdc, g_trel_set, g_trel_dclam,
+                          g_trel_base, cbf, lst, g_sdh);
+            if (g_sdh != 0)
+                hide_sign_unit_int(0, g_ndc, false, tdc, g_trel_set,
+                                   g_trel_dclam);
+        }
+        barrier();
+    } else {
     if (lid < uint(g_ndc)) s_dcq[lid] = nxe_quantize(s_dco[lid], tdc, tdc / 3);
     barrier();
+    }
 
     // 3. sign hiding over the DC unit, then the levels go out.
-    if (g_sdh != 0 && lid == 0u) hide_sign_unit(0, g_ndc, false, tdc);
+    if (fp.trellis == 0u && g_sdh != 0 && lid == 0u)
+        hide_sign_unit(0, g_ndc, false, tdc);
     barrier();
     if (lid < uint(g_ndc / 2)) store_levels(g_coefoff, int(lid) * 2, 2, 0);
 
@@ -359,7 +675,29 @@ void residual_blocks(uint lid) {
         // weighted one: `int_rdoq_lambda_q8(s.qp)` in the reference is
         // kQStep[qp], the same for every coefficient of the block, while the
         // per-coefficient step below carries the weighting matrix.
-        if (fp.int_rdoq != 0u) {
+        if (fp.trellis != 0u) {
+            // Effort 2.  Lane r == 0 of each entry runs its block's whole
+            // trellis; the chain is per entry (block b conditions on b - 8,
+            // and entry g owns g, g+8, g+16 ...), so `s_nbr[g]` carries in
+            // shared memory across the rounds of this loop and no lane ever
+            // reads another's.
+            if (r == 0) {
+                trellis_ctx_block(g_chroma ? 1 : 0);
+                trellis_nbr(g, g_chroma ? NXE_CTX_CBF_CHROMA
+                                        : NXE_CTX_CBF_LUMA,
+                            g_chroma ? NXE_CTX_LAST_CHROMA
+                                     : NXE_CTX_LAST_LUMA,
+                            b >= g_nlanes ? s_nbr[b - g_nlanes] : 0);
+                rdoq_unit_int(g + 1, 64, g_tskip != 0, 0, g_trel_set,
+                              g_trel_lam, g_trel_base + (g + 1) * NXE_TREL_GROUP,
+                              s_uc_cbf[g], s_uc_last[g], g_sdh);
+                if (g_sdh != 0)
+                    hide_sign_unit_int(g + 1, 64, g_tskip != 0, 0, g_trel_set,
+                                       g_trel_lam);
+                s_nbr[b] = unit_nbr_class(g + 1, 64, g_tskip != 0);
+            }
+            barrier();
+        } else if (fp.int_rdoq != 0u) {
             const uint lam = nxe_rdoq_lambda_q8(nxe_qstep[g_qp]);
             for (c = 0; c < 8; ++c) {
                 int idx = c * 8 + r;
@@ -370,7 +708,8 @@ void residual_blocks(uint lid) {
             barrier();
         }
 
-        if (g_sdh != 0 && r == 0) hide_sign_unit(g + 1, 64, g_tskip != 0, 0);
+        if (fp.trellis == 0u && g_sdh != 0 && r == 0)
+            hide_sign_unit(g + 1, 64, g_tskip != 0, 0);
         barrier();
 
         store_levels(g_coefoff + g_ndc + b * 64, r * 8, 8, g + 1);
@@ -611,6 +950,17 @@ void main() {
         g_maxval = (fp.ycocgr != 0u && g_chroma) ? 511 : 255;
         g_dcoff = (fp.ycocgr != 0u && g_chroma) ? 256 : 128;
         g_wmsel = job.wm_id == 0u ? -1 : int(g_chroma ? 3u : job.wm_id);
+        // Effort 2's per-plane state: the rate model's table set, this tile's
+        // slot in the trellis scratch, and the two lambdas -- the plane's own
+        // and the DC plane's, at its own quantiser.  The chain starts empty on
+        // every plane, exactly as ref's `nbr[]` is local to rdoq_plane.
+        g_trel_set = int(job.table_set);
+        g_nlanes = 1 << int(fp.nsub_log2);
+        g_trel_base = int(gl_WorkGroupID.x) * (9 * NXE_TREL_GROUP);
+        g_trel_lam = nxe_trellis_lambda_q8(nxe_qstep[g_qp]);
+        g_trel_dclam = nxe_trellis_lambda_q8(nxe_qstep[g_qp >> 1]);
+        if (lid < 64u) s_nbr[lid] = 0;
+        barrier();
         // Captured before the pass calls below, which are free to move the
         // globals; the next plane's base must not depend on that.
         const uint plane_words = fp.ntiles * uint(g_size * g_size / 2);

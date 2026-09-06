@@ -614,7 +614,82 @@ typedef struct nxvc_vkd_stats {
      * position holds something newer, and the encoder must not answer it with
      * a refresh.                                                           */
     uint32_t tiles_superseded;
+    /* --- [passb] APPENDED, same rule again.
+     *
+     * The copy segment: skip tiles whose prediction is their reference
+     * unchanged, decided on the HOST (warp_tile_is_copy()) and dispatched to a
+     * module with no coordinate pipeline.  Both are 0 on a frame where no tile
+     * qualifies, which is every frame on an encoder that does not snap a
+     * near-identity pose to the identity -- so a run reporting
+     * tiles_identity_seg == 0 has NOT exercised the path.               */
+    double pass_b_identity_ms;
+    uint32_t tiles_identity_seg;
+    /* --- [ATLAS] APPENDED, same rule as every block above: after the
+     * existing fields, never inserted, so a caller built against an older
+     * header keeps every offset it was compiled with.  Guarded by
+     * NXVC_VK_DECODER_ATLAS_STATS.
+     *
+     * These exist for a client wiring the atlas up (WiVRn) that has to show
+     * what the decoder is doing without a readback of the 37 kB table every
+     * frame. */
+
+    /* Which of [SYN] 13.12.11's two modes this frame took:
+     *   0  not an ATLAS stream at all (tool bit 31 clear)
+     *   1  an ATLAS frame -- 13.12 as written; skipped tiles untouched
+     *   2  a PICTURE frame -- frame flags bit 5; the ordinary picture model
+     *      against a reference assembled from the atlas, and the atlas then
+     *      rebuilt from the reconstruction
+     * Derived from the tools word and the frame header, so it is what the
+     * WIRE said and not what the decoder decided.                         */
+    uint32_t frame_mode;
+
+    /* Atlas entries whose `valid` bit is set AFTER this frame -- the advance's
+     * invalidations and this frame's write-backs both accounted for.
+     *
+     * It cannot be derived on the host: validity is decided by 3.1.1's
+     * envelope check INSIDE the composition, on the device.  So the compose
+     * dispatch counts what survived its advance and the write-back counts what
+     * it newly validated, and the two are summed here -- exact, and with no
+     * per-frame readback of the table, which is the one thing tile streaming
+     * exists to remove.  On a PICTURE frame it is the tile count by
+     * construction, because 13.12.11 step 3 validates every position.
+     *
+     * Like the timestamps, it describes the most recently COMPLETED frame: an
+     * async caller reading it mid-flight gets the previous frame's number
+     * rather than a stall.                                                 */
+    uint32_t atlas_entries_valid;
+
+    /* Tile positions re-posed by a PICTURE frame's assembly (13.12.11 step 1),
+     * which is every position or none -- so this is the tile count on a
+     * PICTURE frame and 0 on an ATLAS one.  Kept as a count rather than a flag
+     * because it is the term that scales the mode's cost.                  */
+    uint32_t tiles_assembled;
+
+    /* The tiles the WARP_SKIP module warped, which is the same number as
+     * `tiles_skip_seg` above and is deliberately duplicated under a name that
+     * says what it MEANS rather than which dispatch segment produced it.
+     * `tiles_skip_seg` is eye pass 0's segment population; this is "how many
+     * tiles cost a pose warp this frame", which is the question a client
+     * budgeting a frame is actually asking.  Under ATLAS it is 0, because a
+     * skipped tile is not reconstructed at all.                            */
+    uint32_t tiles_warped_skip;
+
+    /* PICTURE frames decoded since the decoder was created -- a RUNNING total,
+     * for a caller that differences it across an interval rather than
+     * sampling every frame.  `frames` above is the matching denominator.   */
+    uint32_t picture_frames;
+
+    /* `pass_b_identity_ms` and `tiles_identity_seg` are ABOVE, from
+     * passb-adreno: they landed in main first and keep the offsets their
+     * callers were built against, and these six follow them.  They were
+     * deliberately never duplicated here -- one number at two offsets is a
+     * struct conflict waiting at every future merge.                       */
 } nxvc_vkd_stats;
+
+/* The feature test for the six atlas fields above, for an integrator building
+ * against both this header and an older one during a rollout -- a struct field
+ * is not something the preprocessor can see. */
+#define NXVC_VK_DECODER_ATLAS_STATS 1
 
 /* The feature test for the six pass_b_*_ms / tiles_*_seg fields, for an
  * integrator building against both this header and an older one during a
@@ -624,6 +699,8 @@ typedef struct nxvc_vkd_stats {
  * offset its callers were built against; appending ours after it is what makes
  * this merge ABI-safe in both directions. */
 #define NXVC_VK_DECODER_PASSB_SEGMENTS 1
+/* The identity/copy segment above, which arrived after the other three. */
+#define NXVC_VK_DECODER_PASSB_IDENTITY 1
 
 nxvc_vkd_status nxvc_vk_decoder_stats(const nxvc_vk_decoder *dec,
                                       nxvc_vkd_stats *out);

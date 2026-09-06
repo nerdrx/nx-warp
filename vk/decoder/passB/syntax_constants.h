@@ -539,6 +539,29 @@ NXVW_CONST kModeStaticMv = 1;
 NXVW_CONST kModeWarpMv = 2;
 NXVW_CONST kModeIntra = 3;
 NXVW_CONST kModeStereo = 4;
+// [planar] [SYN] 13.13, tool bit 35.  A whole tile described as 2-4 shaded
+// regions: no transform, no entropy payload and no reference.
+NXVW_CONST kModePlanar = 5;
+
+// [planar] One tile's validated planar body, as the host uploads it.
+//
+//   [0]      header: bits 0-1 regions-2, bit 3 granularity (0 = 8x8 cells,
+//            1 = 4x4), the rest zero.  Exactly the body's own header byte,
+//            already checked for the reserved bits and the reserved region
+//            count.
+//   [1..16]  the label map, 4 bytes per uint, LSB-first cell order: 64 bytes
+//            covers the worst case, a 16x16 grid at two bits a cell.
+//   [17..25] the signed coefficient bytes, 4 per uint: 4 regions x 3 planes
+//            x 3 terms = 36 bytes.
+//
+// Bytes rather than dequantised ints so the upload stays 104 B a tile and the
+// kernel needs no 8-bit storage extension -- it reads uints and shifts, which
+// is what docs/LOWPOLY-GPU-PLAN.md 3 asks for.
+NXVW_CONST kPlanarHeaderUints = 1;
+NXVW_CONST kPlanarMapUints = 16;
+NXVW_CONST kPlanarCoefUints = 9;
+NXVW_CONST kPlanarUintsPerTile = 26;   // 1 + 16 + 9
+NXVW_CONST kPlanarMaxRegions = 4;
 
 // [SYN] 4.1 alpha_mode; 7.3 says modes 0 and 1 code no coefficients at all.
 NXVW_CONST kAlphaOpaque = 0;

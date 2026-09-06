@@ -52,6 +52,11 @@ layout(std430, binding = 2) readonly buffer HRingBuf { uint hring[]; };
 
 // SEL_LIST only: the entries to advance, by table index.
 layout(std430, binding = 3) readonly buffer SelBuf { uint sel_list[]; };
+// [stats] Counters, not correctness.  Word 2 is how many entries are VALID
+// after this frame's advance -- which only the device can know, because
+// validity is decided by the envelope check inside the composition, and the
+// host would otherwise need a readback per frame to learn it.
+layout(std430, binding = 4) buffer StatusBuf { uint status[]; };
 
 layout(push_constant) uniform Push {
     uint entryCount;
@@ -103,6 +108,9 @@ void main() {
     uint n = (pc.sel == NXVW_ATLAS_SEL_LIST) ? sel_list[id] : id;
     uint base = n * NXVW_ATLAS_ENTRY_UINTS;
 
+    // Counted on EVERY exit path, so the total is over every entry and not
+    // only over the ones that took a step.
+    uint pack0 = tbl[base + NXVW_ATLAS_OFF_PACK];
     uint at = advanced_to[n];
     // `>=` and not `==`.  A base-layer patch ([SYN] 13.12.9) may carry a
     // src_frame AHEAD of the current frame -- v88 pins exactly that -- and
@@ -111,9 +119,12 @@ void main() {
     // reach the target, so it ran the full ring depth composing whatever those
     // slots held, and the atlas diverged one frame AFTER the patch rather than
     // at it.
-    if (at >= pc.targetFrame) return;
+    if (at >= pc.targetFrame) {
+        if (nxvw_atlas_valid(pack0) != 0) atomicAdd(status[2], 1u);
+        return;
+    }
 
-    uint pack = tbl[base + NXVW_ATLAS_OFF_PACK];
+    uint pack = pack0;
     // An invalid entry is not advanced at all -- not its `C` and not its
     // `gen`.  Its `advanced_to` still moves, because there is nothing left to
     // replay: the next coded tile at this position resets every field.
@@ -212,4 +223,5 @@ void main() {
     tbl[base + 8] = uint(c8);
     tbl[base + NXVW_ATLAS_OFF_PACK] = nxvw_atlas_pack(gen, flags, res_level);
     advanced_to[n] = pc.targetFrame;
+    if ((flags & NXVW_ATLAS_FLAG_VALID) != 0u) atomicAdd(status[2], 1u);
 }

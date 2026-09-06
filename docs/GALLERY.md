@@ -13,6 +13,13 @@ numbered, and a figure that illustrates no number does not belong here.
 Append; do not renumber. If a measurement is superseded, add the new figure and
 leave the old one with a note saying what replaced it.
 
+*One exception has occurred.* Branches `main` and `atlas` each appended figures
+10-12 independently, and the merge of 2026-09-06 produced duplicate numbers.
+`main`'s 10, 11 and 12 kept theirs, being the trunk's and already cited; the
+`atlas` additions moved to **13-14** (was 10-11) and **15-16** (was 12-13). Any
+citation of "Figures 10-11, the seated trajectories" or "Figures 12-13, the
+seams" written before that merge means 13-14 and 15-16.
+
 ---
 
 ## Figure 1 — Rate-distortion on the vrroom corpus
@@ -58,6 +65,13 @@ planar rd because absolute bars would hide a 0.03 dB spread inside the axis.
 ```
 python3 tools/quality/plot_vrroom.py --in nx-scratch/atlasprice/work5 --out docs/assets
 ```
+
+> **Superseded in part, 2026-09-06, by Figure 12.** The effort columns of this
+> figure are measured with `nxv-enc`'s full RD mode decision left on (no
+> `--no-rdo`), which already drops the coefficients `int_rdoq` would drop; the
+> 0.03 dB is a property of that configuration and not of the content. The GPU
+> encoder has no such search, and measured against it the tool moves 7–12 % of
+> the bytes. The planar columns are unaffected and still stand.
 
 ---
 
@@ -173,59 +187,6 @@ because 13.12.5's display warp is not normative.
 
 ```
 python3 tools/quality/plot_pose.py --csv pose_d8.csv --out docs/assets --disp 8
-```
-
----
-
-> **Figure-number collision.** The `atlas` branch independently numbered a
-> different pair of figures 10 and 11 (below). Both entries are kept because
-> both describe real measurements; whoever merges `atlas` into `main` should
-> renumber one pair. Nothing here has been renumbered by this branch.
-
-## Figures 10-11 — The seated trajectories, and the true rest floor
-
-| | |
-|---|---|
-| ![Figure 10](assets/vrroom-still.png) **Fig 10** still, 0.043 deg/s | ![Figure 11](assets/vrroom-objmotion-still.png) **Fig 11** objmotion-still |
-
-**Date** 2026-09-06 · **Fixture** `nx-scratch/fixtures/vrroom`, frame 8, left
-eye, 544x408 crop at 2x · **Settings** as Figures 3-6.
-
-**The number it illustrates.** `rest` was named for a head at rest and is not
-one: it moves the atlas's tile corners **0.97 samples in one frame and 3.83
-over four**, so a whole-sample identity is never available in it. `still` is a
-seated head — 0.030 deg of postural drift at 0.11 Hz plus 0.001 deg of tremor
-at 8 Hz — and measures **0.043 deg/s** with corner displacement of **0.016
-samples** after a frame and 0.016 after thirty, sixty times smaller.
-
-On it the atlas does exactly what it is for: **100 % skip, zero decoder warps,
-150 B/frame at 41.28 dB** for a stereo 1088x1088 pair. At QP 34 and 40 it
-converges to the structural floor of **119 B/frame** — 85.7 kbit/s at 90 Hz —
-which is frame header plus `warp_ext()` plus the `row_present` bitmap and
-nothing else. `objmotion-still` holds the head there and walks the meshes:
-2800 B/f, which prices independent object motion at about **2650 B/frame** on
-its own.
-
-The high seam ratios in this row (3.27 at QP 26, 6.88 at QP 40) are inherited
-from the single intra frame: at 119 B/frame nothing is ever re-coded, so what
-is displayed is frame 0's quantisation warped forward, and at QP 40 that frame
-is blocky. It is a real artefact, and it is the cost of a floor this low.
-
-On the ADR-0028 integer decision the same clip is **125 B/frame at the same
-41.28 dB** — 25 bytes cheaper, because that path has no `NEAR_SKIP` to spend
-and so lands six bytes above the structural floor rather than thirty. The full
-per-trajectory mode histogram both decisions produce is in
-[ENCODER-DECISION.md](ENCODER-DECISION.md) section 7.
-
-```
-python3 tools/quality/capture/gen_vrroom.py --out nx-scratch/fixtures/vrroom   --tracks still,objmotion-still
-python3 nx-scratch/atlasprice/vrtable.py still
-python3 nx-scratch/atlasprice/encdec_still.py       # float decision
-python3 nx-scratch/atlasprice/encdec_still_int.py   # integer decision
-```
-
----
-
 ## The seam ratio, since every entry above quotes it
 
 Mean `|x[i] - x[i-1]|` over sample pairs that straddle the 64-sample tile grid,
@@ -233,6 +194,14 @@ divided by the same over pairs inside tiles, on the decoded luma. **1.0 means a
 tile edge looks like any other pair; above 1 the grid is visible.** It is
 scale-free, so configurations at different bitrates can be compared directly,
 and it is reported for every visual result from now on. `nx-scratch/atlasprice/seams.py`.
+Every measured result gets a picture and an entry here: what device, what
+fixture, what settings, the number, and the command that produced it. An entry
+without a reproducible command is not an entry.
+
+Appends only. Two agents writing here at once conflict trivially.
+
+---
+
 ## Adreno 650 clock under load vs idle
 
 ![clock](assets/passb-clock.png)
@@ -287,6 +256,17 @@ and it is reported for every visual result from now on. `nx-scratch/atlasprice/s
   android-29, sha256 verified either side of every push
 * **Rows are interleaved** control/V2/identity within each round, three rounds,
   and the whole thing run twice independently. The ratio is the measurement.
+* **Contamination, marked rather than hidden.** The integrator ran `connect.sh`
+  against this device from **15:43:32 to ~15:45:35** during the slot — logcat
+  cleared at least twice, a VIEW intent, possibly a wake and a client relaunch.
+  Reconstructed from build artifact mtimes, the arm64 binaries finished at
+  15:43:42 / 15:44:18 / 15:44:41, so everything device-side between 15:44:41 and
+  15:45:35 sits inside that window:
+  * the **segment split** below, and
+  * **the first of the two interleaved run-throughs** (or its opening rounds).
+  The second run-through and the 578-tile probe are after 15:45:35 and are
+  clean. Both are re-taken on the next device slot; until then read them as
+  described here.
 
 ### The split
 
@@ -300,6 +280,13 @@ Confirms the Phase 1 attribution on the device: the warp of the skipped tiles
 is the term. `intra_dir` is not merely small, it is **zero tiles** — the
 directional wavefront never runs on this stream.
 
+**This row is inside the contaminated window** and the milliseconds are to be
+re-taken. Two parts of it survive anyway and are worth separating: the **tile
+counts** are a property of the fixture and cannot be perturbed by anything the
+integrator did, and the **95 % share** is a ratio between two segments of the
+same run, so contention that slows the device slows both terms together. What
+is not trustworthy is the absolute 15.079 ms.
+
 ### The variants
 
 | variant | mean | vs control | rows |
@@ -309,7 +296,11 @@ directional wavefront never runs on this stream.
 | identity predicate | **9.01 ms** | **+3.7 %** | 9.320 8.796 8.902 |
 
 **V2 is a regression, and not a marginal one.** Ranges do not overlap the
-control in either independent interleave (+18.6 % and +19.2 %). Sharing the
+control in either independent interleave (+18.6 % and +19.2 %) — and the
+**second interleave is entirely outside the contaminated window**, so the
+verdict rests on clean data on its own. That the contaminated first run
+reproduces it to within 0.6 points is a check on the contamination, not the
+basis of the conclusion. Sharing the
 coordinate between the two chroma planes removes 1024 coordinate computations a
 tile and costs a fifth of the segment. It is the same shape as every other
 "remove work" lever in `vk/decoder/passB/README.md`: the paired form puts two
@@ -415,9 +406,218 @@ command.** Pictures live in `docs/assets/`.
 
 ---
 
-## Figure 12 — The coded-vector search, not the atlas, decides whether the atlas pays
+## Figure 12 — The effort ladder changes sign with the content
 
-![Figure 12](assets/atlasenc-decision-sweep.png)
+![Figure 12](assets/effort-vrroom.png)
+
+**Date** 2026-09-06 · **Fixture** vrroom `rest`/`mid`/`fast`/`objmotion`/`still`
+and `pan8` · **Settings** `nxvc-vkenc --ctx v3 --intra-dir off --coded-vectors
+--inter --intra-period 180`, 8 frames, `--eyes 2` (mono for `pan8`), QP 22 / 26
+/ 30 / 34 / 40, rANS (`--custom-tables --tab v2`) and `--entropy lite`; the
+right panel is `nxv-enc --no-rdo` against `nxv-enc --int-trellis 1
+--rdoq-effort 3` at the acid flags.
+
+**The number it illustrates.** Effort 1 is **−2.4 / −4.4 %** BD-rate on `pan8`
+and **+0.1 to +3.2 %** on all five vrroom clips, on both entropy coders; the
+reference's integer trellis is **−2.8 to −10.7 %** on all six. Neither the
+coded-tile fraction (13–25 %; forcing it to 27–37 % with intra period 6 does
+not move a sign) nor the entropy coder explains it. Coding the same clips
+intra-only collapses the effect to **−0.9 to +1.0 %** everywhere, which locates
+it in the inter reference chain: the requantiser prices a dropped coefficient
+against the current frame only, and what compounds downstream is whether that
+coefficient was noise (`pan8`, which wins) or detail (vrroom, which loses).
+The earlier "within 0.03 dB" reading reproduces exactly — 34.204 dB against
+34.204 dB, 29433 B against 29355 B on `rest` at QP 34 — when `nxv-enc`'s full
+RD mode decision is left on. **Effort 0 becomes the default.**
+
+```sh
+FX=nx-scratch/fixtures/vrroom nx-scratch/effvr/sweep.py
+FX=nx-scratch/enceffort/fx W=1088 H=1088 EYES=1 \
+  OUT=nx-scratch/effvr/pan.json nx-scratch/effvr/sweep.py pan8
+nx-scratch/effvr/intra.py
+nx-scratch/effvr/chart.py
+```
+
+The bars are BD-rate and not a dB delta on purpose: this tool trades bytes for
+dB at a fixed quantiser, so a single-QP dB reading of it is guaranteed to be
+either zero or misleading. That is the whole of the discrepancy it settles.
+## Figure 12 — The HEVC base layer, priced on headset GPU time instead of bytes
+
+![Figure 12](assets/hybrid-gpu-time.png)
+
+**Date** 2026-09-06 · **Fixture** `nx-scratch/fixtures/vrroom`, all six trajectories,
+2176x1088 side by side, 32 frames · **Settings** nxvc-only: `--inter on --atlas on
+--row-present on --eyes 2 --atlas-picture-disp 8` (ADR-0029's recommendation) at
+QP 22/26/30/34/38. Hybrid: libx265 at 544x544 per eye, 10 Mbit/s, **zero latency**
+(`bframes=0 rc-lookahead=0`), bilinear upsample, nxvc patches where the base's per-tile luma
+MSE exceeds the MSE of 34 dB, coded through `--skip-map`.
+
+**The number it illustrates.** ADR-0030's headline: the base layer's Adreno saving tracks the
+**PICTURE-frame share and nothing else** — **0.7 → 1.8 ms** at `still` (0 % PICTURE, the hybrid
+is *worse*), **11.4 → 4.6 ms** at `mid` (47 %, +60 %) and **20.0 → 5.1 ms** at `fast` (97 %,
++74 %) — while costing **1.9x to 10.5x the bytes at equal PSNR** on every trajectory. The left
+panel's stack shows why the link loses: the 12,666 B/frame base is a floor paid every frame
+whether one tile is patched or none is. The right panel's pale segment is the point ADR-0029
+already won — a `WARP_SKIP` tile resident in the atlas costs a matrix compose, not the 34 us
+warp — which is why there is nothing left for the base layer to save except in a PICTURE frame.
+
+```sh
+python3 tools/quality/hybrid_gpu_price.py           # the streams and results.json
+python3 tools/quality/hybrid_gpu_annotate.py        # folds the ATLAS/PICTURE split in
+python3 tools/quality/plot_hybrid_gpu.py --in nx-scratch/hybgpu/results.json --out docs/assets
+python3 tools/quality/hybrid_gpu_table.py           # the ADR-0030 tables
+
+---
+
+## Figures 13-14 — The seated trajectories, and the true rest floor
+
+| | |
+|---|---|
+| ![Figure 13](assets/vrroom-still.png) **Fig 13** still, 0.043 deg/s | ![Figure 14](assets/vrroom-objmotion-still.png) **Fig 14** objmotion-still |
+
+**Date** 2026-09-06 · **Fixture** `nx-scratch/fixtures/vrroom`, frame 8, left
+eye, 544x408 crop at 2x · **Settings** as Figures 3-6.
+
+**The number it illustrates.** `rest` was named for a head at rest and is not
+one: it moves the atlas's tile corners **0.97 samples in one frame and 3.83
+over four**, so a whole-sample identity is never available in it. `still` is a
+seated head — 0.030 deg of postural drift at 0.11 Hz plus 0.001 deg of tremor
+at 8 Hz — and measures **0.043 deg/s** with corner displacement of **0.016
+samples** after a frame and 0.016 after thirty, sixty times smaller.
+
+On it the atlas does exactly what it is for: **100 % skip, zero decoder warps,
+150 B/frame at 41.28 dB** for a stereo 1088x1088 pair. At QP 34 and 40 it
+converges to the structural floor of **119 B/frame** — 85.7 kbit/s at 90 Hz —
+which is frame header plus `warp_ext()` plus the `row_present` bitmap and
+nothing else. `objmotion-still` holds the head there and walks the meshes:
+2800 B/f, which prices independent object motion at about **2650 B/frame** on
+its own.
+
+The high seam ratios in this row (3.27 at QP 26, 6.88 at QP 40 — the **QP**
+axis, not the time axis) are inherited from the single intra frame: at
+119 B/frame nothing is ever re-coded, so what is displayed is frame 0's
+quantisation warped forward, and at QP 40 that frame is blocky. It is a real
+artefact, and it is the cost of a floor this low. Figures 15-16 measure it per
+frame and show it is flat, that the atlas is not the mechanism, and that
+re-coding to remove it costs up to 7x the bytes and makes it worse.
+
+On the ADR-0028 integer decision the same clip is **125 B/frame at the same
+41.28 dB** — 25 bytes cheaper, because that path has no `NEAR_SKIP` to spend
+and so lands six bytes above the structural floor rather than thirty. The full
+per-trajectory mode histogram both decisions produce is in
+[ENCODER-DECISION.md](ENCODER-DECISION.md) section 7.
+
+```
+python3 tools/quality/capture/gen_vrroom.py --out nx-scratch/fixtures/vrroom   --tracks still,objmotion-still
+python3 nx-scratch/atlasprice/vrtable.py still
+python3 nx-scratch/atlasprice/encdec_still.py       # float decision
+python3 nx-scratch/atlasprice/encdec_still_int.py   # integer decision
+```
+
+---
+
+## Figures 15-16 — The still clip's seams are frame 0's, and nothing adds to them
+
+| | |
+|---|---|
+| ![Figure 15](assets/still-seam-f1.png) **Fig 15** frame 1, seam **6.925** | ![Figure 16](assets/still-seam-f31.png) **Fig 16** frame 31, seam **6.820** |
+
+**Date** 2026-09-06 · **Fixture** `nx-scratch/fixtures/vrroom`, `still`, left
+eye, 256x256 crop at 384,384 (tile-aligned) at 2x, nearest-neighbour ·
+**Settings** `--atlas on --row-present on --atlas-picture-disp 8`, QP 40.
+
+**The number it illustrates.** Whether the `still` row's high seam ratio is
+something the atlas *does* over the clip. It is not. Measured per frame, on a
+clip that codes 119 B/frame and re-codes nothing:
+
+| | frame 0 | frame 1 | frame 31 | min | max |
+|---|---|---|---|---|---|
+| QP 26 | 3.262 | 3.262 | 3.270 | 3.262 | 3.277 |
+| QP 40 | 6.925 | 6.925 | **6.820** | 6.820 | 6.925 |
+
+It is **flat, and at QP 40 it falls**. The `3.27 -> 6.88` quoted in Figures
+10-11 is the QP axis — QP 26 against QP 40 — not the time axis. The whole
+value is present at **frame 0**, which is the all-intra frame: before any warp,
+before an atlas entry exists. Frames 1 and 31 differ in 2.1 % of their samples
+by a mean of 0.035 and a maximum of 11 (5.4 % and 0.089 inside this crop),
+which is why the two figures look identical, because they nearly are.
+
+**The atlas is not the mechanism.** With `--atlas off` — the plain picture
+codec, no atlas at any point — the trace is 3.262 flat and 6.925 flat, the same
+numbers. On a synthetic exactly-zero-motion clip (`still` frame 0 repeated 32
+times at one fixed pose) the atlas reproduces **3.262 for all 32 frames**,
+identical to the picture model: the per-tile advance of 13.12.3 is exact, and
+neighbouring entries do not drift apart. The atlas's entire contribution is the
++0.5 % wobble visible in the min/max above, from sub-sample corner rounding.
+
+**It is the format, and deliberately.** `docs/SYNTAX.md` states there is no
+deblocking filter and no loop filter; a tile-boundary step from intra
+quantisation is therefore structural. What removes it is re-coding under
+motion: on `rest` the boundary gradient collapses **3.452 -> 1.756** across the
+clip while the interior gradient barely moves (1.166 -> 1.044), and the atlas
+erases seams *harder* than the picture model does (seam 1.682 against 2.508 at
+frame 31). The still clip is not growing seams; the moving clips are erasing
+theirs.
+
+```
+python3 nx-scratch/atlasprice/seamframe.py still 26 40   # seam ratio per frame
+python3 nx-scratch/atlasprice/seamdiag.py                # split by config, + the zero clip
+B=build/bin; W=nx-scratch/atlasprice/work9
+ffmpeg -f rawvideo -pix_fmt yuv420p -s 2176x1088 -i $W/still.q40.yuv \
+  -vf "select=eq(n\,31),crop=256:256:384:384,scale=512:512:flags=neighbor" \
+  -frames:v 1 docs/assets/still-seam-f31.png -y
+```
+
+---
+
+---
+
+## Figure 17 — The alternate-eye collapse the mean hides
+
+![Figure 17](assets/alteye-worsttile.png)
+
+**Date** 2026-09-06 · **Fixture** `nx-scratch/fixtures/vrroom`, `fast` and
+`mid`, 32 frames · **Settings** `--eyes 2 --atlas on --row-present on
+--atlas-picture-disp 8`, QP 26, the policy expressed as a per-frame
+`--skip-map` (every tile of the off eye skips) so the codec is untouched.
+
+**The number it illustrates.** ADR-0029's alternate-eye verdict, which is a
+table of means with one worst-tile column and is not believable from a table.
+Per frame and per eye, at `fast`: the **frame mean sits at 37.03 dB and looks
+affordable** (purple), the refreshed eye's worst tile tracks the baseline
+(green against grey), and the **synthesised eye's worst tile runs 15 to 20 dB
+below the mean for the whole clip and reaches 11.5 dB at frame 16** (red). At
+`mid` it settles at 15.4-17 dB against a 35.96 dB mean.
+
+That gap is the entire finding: **a 12 to 17 dB collapse in one 64x64 tile of
+one eye, at an instant when the other eye is correct.** The failure class is
+binocular rivalry — the viewer does not average the eyes, they fight — and a
+mean PSNR cannot express it. Rejected in general, viable only at rest, where
+the worst tile barely moves (25.5 against 26.2) for +0.19 dB at 13 % fewer
+bytes.
+
+The run reproduces ADR-0029's table exactly on the post-merge encoder: means
+37.03 / 35.96 dB and worst tiles 11.49 / 15.37 dB against the ADR's 37.03 /
+35.96 and 11.5 / 15.4. Grey is the baseline's worst tile over both eyes, whose
+minimum is 27.54 dB at `fast` and 19.96 at `mid`.
+
+```
+python3 nx-scratch/atlasprice/alteye_frames.py     # writes docs/assets/alteye-worsttile.png
+python3 nx-scratch/atlasprice/alteye.py fast       # and mid — the ADR's table
+```
+
+---
+
+> **Numbering note.** `main` at b43c3bb contains TWO entries numbered
+> Figure 12 (the effort ladder, and the HEVC base layer). Nothing here has
+> been renumbered to fix that; the entries below take 18-20, the next free
+> numbers after main's Figure 17.
+
+---
+
+## Figure 18 — The coded-vector search, not the atlas, decides whether the atlas pays
+
+![Figure 18](assets/atlasenc-decision-sweep.png)
 
 **Date** 2026-09-06 · **Fixture** `nx-scratch/atlasref/s{0.0,0.05,0.1,0.2,0.4,0.8,1.6,2.5}`,
 1088x1088, 16 frames — ONE synthetic content (`md5 a325d144`, static world, no
@@ -435,7 +635,7 @@ collapse to all-INTRA (128531 B/frame) and the atlas's advantage vanishes
 entirely. Every earlier GPU-encoder measurement in ADR-0029 was taken with it
 off, which is why the reference's shape never reproduced there.
 
-**Superseded in part by Figure 14, which measures the same question on RENDERED
+**Superseded in part by Figure 20, which measures the same question on RENDERED
 content and reverses it under head motion. Read this as the ceiling.**
 
 **Read this with Figure 1, which disagrees.** Figure 1 is RENDERED content
@@ -463,9 +663,9 @@ nxvc-vkenc --in atlasref/s0.4.yuv --w 1088 --h 1088 --pix yuv420p --qp 26 \
 
 ---
 
-## Figure 13 — What the two models decide, tile by tile, on one fast-turn frame
+## Figure 19 — What the two models decide, tile by tile, on one fast-turn frame
 
-![Figure 13](assets/atlasenc-tile-modes.png)
+![Figure 19](assets/atlasenc-tile-modes.png)
 
 **Date** 2026-09-06 · **Fixture** `nx-scratch/atlasref/fastturn-adr` (71 deg/s
 mean), 1088x1088, frame 8 of 16, 17x17 tiles · **Settings** QP 26, intra-period
@@ -496,9 +696,9 @@ nxvc-vkenc --in atlasref/fastturn-adr.yuv --w 1088 --h 1088 --pix yuv420p \
 
 ---
 
-## Figure 14 — On rendered content the atlas wins at rest, loses under head motion, and the mode picks the winner
+## Figure 20 — On rendered content the atlas wins at rest, loses under head motion, and the mode picks the winner
 
-![Figure 14](assets/atlasenc-vrroom-arms.png)
+![Figure 20](assets/atlasenc-vrroom-arms.png)
 
 **Date** 2026-09-06 · **Fixture** `nx-scratch/fixtures/vrroom`, all four
 trajectories, stereo 2176x1088, 578 tiles, 16 frames · **Settings** QP 26,
@@ -515,10 +715,10 @@ being told: **100 %** PICTURE frames at fast, landing exactly on the picture
 model to the byte (37.0930 / 10150); 47 % at mid; 6.7 % at rest and object
 motion, where it beats both single models (39.9954 dB at rest).
 
-**This supersedes Figure 12's generalisation.** Figure 12 measured a synthetic
+**This supersedes Figure 12's generalisation.** Figure 18 measured a synthetic
 static-world clip and found the atlas 2.06x better at every speed. That clip has
 no staleness cost — its world never changes, so a held tile is free — which is
-exactly the counterweight rendered content supplies. Figure 12 is the ceiling;
+exactly the counterweight rendered content supplies. Figure 18 is the ceiling;
 this is the expectation. It also reverses the reading that the per-frame mode is
 inert: on this corpus it is the mechanism that makes one configuration work
 across the whole velocity range.

@@ -2097,6 +2097,141 @@ void run_atlas_view() {
                 shot[0].yw * shot[0].yh, shot[0].cw * shot[0].ch);
 }
 
+// ------------------------------------- [ATLAS] the stats leg (13.12.11)
+// `frame_mode` is what a client wires its HUD and its budget to, so it is
+// asserted against the WIRE frame by frame -- flags bit 5 read straight out of
+// each frame header -- and not against anything the decoder reports about
+// itself.  A stat that agrees with the decoder's own opinion tests nothing.
+//
+// v90-v92 are the mode vectors and between them carry both transitions, so a
+// decoder that hardcoded either mode fails here.
+void run_atlas_stats() {
+    static const char *kVecs[3] = {"v90_mode_alternate", "v91_mode_disp",
+                                   "v92_mode_src_frame"};
+    for (const char *name : kVecs) {
+        ++g_checked;
+        std::vector<uint8_t> stream;
+        const std::string path = std::string(g_vectors_dir) + "/" + name + ".nxv";
+        if (!read_file(path, stream)) {
+            std::printf("FAIL stats %s: cannot read %s\n", name, path.c_str());
+            ++g_fail;
+            continue;
+        }
+        nxvc_vkd_create_info ci;
+        nxvc_vk_decoder_create_info_default(&ci);
+        ci.flags = 0;
+        ci.output_format = NXVC_VKD_OUT_AUTO;
+        ci.device_name = device_filter();
+        nxvc_vk_decoder *d = nullptr;
+        if (nxvc_vk_decoder_create(&ci, &d) != NXVC_VKD_OK) {
+            std::printf("SKIP stats %s: no decoder\n", name);
+            ++g_skipped;
+            nxvc_vk_decoder_destroy(d);
+            continue;
+        }
+        size_t consumed = 0;
+        if (nxvc_vk_decoder_parse_stream_header(d, stream.data(), stream.size(),
+                                                &consumed) != NXVC_VKD_OK) {
+            std::printf("FAIL stats %s: stream header: %s\n", name,
+                        nxvc_vk_decoder_last_error(d));
+            ++g_fail;
+            nxvc_vk_decoder_destroy(d);
+            continue;
+        }
+        size_t off = consumed;
+        int nf = 0, npic = 0, bad = 0;
+        uint32_t lastPicCounter = 0;
+        while (off < stream.size()) {
+            // The expected mode, straight from the frame header.
+            const uint32_t want = ((stream[off + 34] >> 5) & 1u) ? 2u : 1u;
+            size_t used = 0;
+            if (nxvc_vk_decode_frame(d, stream.data() + off,
+                                     stream.size() - off, &used) !=
+                NXVC_VKD_OK) {
+                std::printf("FAIL stats %s: frame %d: %s\n", name, nf,
+                            nxvc_vk_decoder_last_error(d));
+                ++g_fail;
+                bad = 1;
+                break;
+            }
+            nxvc_vkd_stats st{};
+            nxvc_vk_decoder_stats(d, &st);
+            if (st.frame_mode != want) {
+                std::printf("FAIL stats %s: frame %d: frame_mode %u, the wire "
+                            "says %u\n", name, nf, st.frame_mode, want);
+                ++g_fail;
+                bad = 1;
+                break;
+            }
+            // A PICTURE frame assembles every position and validates every
+            // position; an ATLAS frame assembles none.
+            const uint32_t want_asm = want == 2u ? st.tiles : 0u;
+            if (st.tiles_assembled != want_asm) {
+                std::printf("FAIL stats %s: frame %d: tiles_assembled %u, "
+                            "expected %u\n", name, nf, st.tiles_assembled,
+                            want_asm);
+                ++g_fail;
+                bad = 1;
+                break;
+            }
+            if (want == 2u && st.atlas_entries_valid != st.tiles) {
+                std::printf("FAIL stats %s: frame %d: a PICTURE frame left "
+                            "%u of %u entries valid; 13.12.11 step 3 validates "
+                            "every position\n", name, nf,
+                            st.atlas_entries_valid, st.tiles);
+                ++g_fail;
+                bad = 1;
+                break;
+            }
+            if (st.atlas_entries_valid > st.tiles) {
+                std::printf("FAIL stats %s: frame %d: atlas_entries_valid %u "
+                            "exceeds the %u tile positions\n", name, nf,
+                            st.atlas_entries_valid, st.tiles);
+                ++g_fail;
+                bad = 1;
+                break;
+            }
+            // Under ATLAS no tile costs a pose warp, which is the deletion the
+            // whole design is for.
+            if (want == 1u && st.tiles_warped_skip != 0u) {
+                std::printf("FAIL stats %s: frame %d: an ATLAS frame warped "
+                            "%u skipped tiles; it must warp none\n", name, nf,
+                            st.tiles_warped_skip);
+                ++g_fail;
+                bad = 1;
+                break;
+            }
+            if (want == 2u) ++npic;
+            if (st.picture_frames != (uint32_t)npic) {
+                std::printf("FAIL stats %s: frame %d: picture_frames %u, "
+                            "counted %d\n", name, nf, st.picture_frames, npic);
+                ++g_fail;
+                bad = 1;
+                break;
+            }
+            lastPicCounter = st.picture_frames;
+            ++nf;
+            off += used;
+        }
+        if (!bad) {
+            // A vector that took only one mode would prove nothing about the
+            // field, so the leg fails if it never saw both.
+            if (npic == 0 || npic == nf) {
+                std::printf("FAIL stats %s: %d of %d frames were PICTURE -- "
+                            "the vector took only ONE mode, so frame_mode was "
+                            "never actually distinguished\n", name, npic, nf);
+                ++g_fail;
+            } else {
+                std::printf("-- stats %s: %d frames, %d ATLAS / %d PICTURE, "
+                            "frame_mode matches the wire on every frame "
+                            "(picture_frames %u)\n", name, nf, nf - npic, npic,
+                            lastPicCounter);
+            }
+        }
+        nxvc_vk_decoder_destroy(d);
+    }
+}
+
 std::vector<Case> synthetic_cases(bool quick) {
     std::vector<Case> v;
     auto nm = [](const char *fmt, auto... a) {
@@ -2984,6 +3119,10 @@ int main(int argc, char **argv) {
         run_row_present(quick ? 8 : 24);
     }
     if (do_synth) run_atlas_modes();
+    if (do_vectors) {
+        CaseGuard cg("atlas-stats");
+        run_atlas_stats();
+    }
     if (do_synth) {
         CaseGuard cg("atlas-view");
         run_atlas_view();

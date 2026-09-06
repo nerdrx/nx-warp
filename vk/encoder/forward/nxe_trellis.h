@@ -81,7 +81,8 @@ int nxe_unit_nbr_class(const int16_t *c, int ncoef, const uint8_t *scan);
 #define NXE_RDOQ_MEDIUM 1
 #define NXE_RDOQ_FULL   2
 
-#define NXE_TRELLIS_LAM_Q12 901
+/* NXE_TRELLIS_LAM_Q12 lives in nxe_enc.h with the requantiser's, so the shader
+ * and this file take it from one place and `vk.encoder.mirror` polices it. */
 uint32_t nxe_trellis_lambda_q8(int qp);
 
 /* Writes the chosen levels into `coefs`.  `step[i]` is the reconstruction step
