@@ -721,6 +721,8 @@ struct AtlasSpec {
     int pic_disp;      // 13.12.11: PICTURE frame once the worst corner
                        //   displacement passes this many luma samples
     int pic_period;    // 13.12.11: a PICTURE frame every N frames
+    int planar;        // tool bit 35: 1 = the rate-distortion decision,
+                       //   2 = take the mode wherever it is cheaper
 };
 
 static const AtlasSpec kAtlasVectors[] = {
@@ -762,6 +764,36 @@ static const AtlasSpec kAtlasVectors[] = {
     // an implementation leaves src_frame alone on the materialised tiles, this
     // vector's atlas differs.
     {"v92_mode_src_frame",      "13.12.11 src_frame := N",   128, 128, 1, 0, 26, 6, 999,  3.0, 4.0, 2,  0, 0, 0, 0, 1, 0, 0, 3},
+    // [planar] 13.12.3 step 3 with 13.13: a PLANAR tile under the ATLAS.
+    //
+    // The transition this pins is the FIRST frame, and it is not a corner
+    // case: every atlas entry starts invalid, a planar tile predicts from
+    // nothing, and 13.12.4's "a coded non-INTRA tile whose entry is invalid is
+    // BITSTREAM" is about tiles that PREDICT from the entry -- which a planar
+    // tile does not.  It seeds one instead, and it is the cheapest possible
+    // patch for that store because it needs no reference at all
+    // (docs/LOWPOLY-MODE.md 6).
+    //
+    // What this vector pins is that the two tools COEXIST and stay
+    // byte-identical: planar tiles inside an atlas stream, seeding entries and
+    // being composed like any other coded tile.
+    //
+    // It does NOT pin the invalid-entry case, and that is worth saying plainly
+    // rather than leaving a reader to assume it does.  The atlas clips this
+    // generator builds code frame 0 fully INTRA whatever the quantiser -- tried
+    // at qp 40, 50, 56 and 63, with and without motion -- so every entry is
+    // seeded before a planar tile can meet an invalid one.  The case IS
+    // reachable: an encode of smooth content at `--atlas on --planar-prefer`
+    // takes planar in place of INTRA on frame 0, and the Vulkan decoder refused
+    // exactly that until MATGEN stopped reading 13.12.4 as "not INTRA".
+    // Reproducing it here needs planar-friendly content, which the atlas clip
+    // builder has no knob for.
+    //
+    // `planar` is 2 -- take the mode wherever it is cheaper -- for the reason
+    // v83 gives: the rate-distortion decision takes it on a minority of tiles,
+    // and a vector that exercises the interaction on a handful of tiles pins
+    // very little of it.
+    {"v93_atlas_planar",        "13.12.3 + 13.13",           192, 128, 1, 0, 46, 6, 999,  1.0, 2.0, 2,  0, 0, 0, 0, 0, 0, 0, 0, 2},
 };
 static const int kNumAtlasVectors =
     (int)(sizeof(kAtlasVectors) / sizeof(kAtlasVectors[0]));
@@ -1081,6 +1113,7 @@ static AtlasResult build_atlas(const AtlasSpec &v, const BasePatch *patch) {
     cfg.row_present = (uint32_t)v.row_present;
     cfg.atlas_picture_disp = (uint32_t)v.pic_disp;
     cfg.atlas_picture_period = (uint32_t)v.pic_period;
+    cfg.planar = (uint32_t)v.planar;
     cfg.intra_period = (uint32_t)v.iperiod;
     cfg.custom_tables = 0;
     cfg.split4x4 = 0;

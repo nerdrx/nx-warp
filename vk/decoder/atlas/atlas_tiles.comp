@@ -39,6 +39,8 @@ layout(local_size_x = 64) in;
 // carries the whole reconstruction's constant set.  Mirrors inter_state.h.
 const int kModeStaticMv = 1;
 const int kModeIntra = 3;
+// [planar] [SYN] 13.13, tool bit 35.  Named here for the 13.12.4 test below.
+const int kModePlanar = 5;
 
 layout(std430, binding = 0) buffer TableBuf { uint tbl[]; };
 layout(std430, binding = 1) buffer AdvBuf { uint advanced_to[]; };
@@ -247,7 +249,20 @@ void main() {
 
     // ---- MATGEN
     uint pack = tbl[base + NXVW_ATLAS_OFF_PACK];
-    if (nxvw_atlas_valid(pack) == 0 && mode != kModeIntra) {
+    // [planar] PLANAR is exempt for the same reason INTRA is, and the reason is
+    // not that the mode is "like intra": it is that 13.12.4's rule is about a
+    // tile that PREDICTS from its atlas entry, and a planar tile does not read
+    // its entry at all.  It carries its own picture, needs no reference, and
+    // SEEDS the entry -- 13.12.3 step 3, and docs/LOWPOLY-MODE.md 6 makes the
+    // point that it can seed one that has none.  ref/ never reaches this test
+    // for a planar tile: codec_impl.inc's planar branch returns before the
+    // predict-from-atlas block entirely.
+    //
+    // Without the exemption the first frame of any --atlas --planar stream is
+    // refused: every entry starts invalid, and a planar tile at a fresh
+    // position is exactly the case the mode is best at.
+    if (nxvw_atlas_valid(pack) == 0 && mode != kModeIntra &&
+        mode != kModePlanar) {
         // [SYN] 13.12.4.  Only the device knows this -- validity is decided by
         // the envelope check inside the composition -- so it is recorded and
         // the host refuses the frame once it completes.  The FIRST offending
