@@ -338,27 +338,46 @@ void main() {
                          uint(s_coded[ui]), 1);
             }
 
-            // ---- P, S and B: one lane per unit.
+            // ---- the mode units, one lane per BLOCK.
+            //
+            // Not a branch inside the unit loop below, for the same reason H1
+            // is not a nested loop: a mode unit exists only once per plane, so
+            // that branch would be live on three lanes of sixty-four with a
+            // loop inside it, and lavapipe segfaults on exactly that shape.
+            // Here every lane runs the same three iterations and the branch
+            // that survives is a bounds test.
+            //
+            // A block's section-B offset is three bits per non-MPM block
+            // BEFORE it in the same unit, which the reference gets from a
+            // tile-wide `mode_idx` vector and a lane gets by counting.  That
+            // costs at most 64 mpm_of() evaluations and needs no shared state.
+            for (int j = int(lid); j < NXE_MAX_PLANES * 64;
+                 j += NXE_E4L_WG) {
+                if (g_hasmode == 0) break;
+                const int pl = j >> 6, b = j & 63;
+                if (b >= g_nb[pl] * g_nb[pl]) continue;
+                const int ui = g_ustart[pl] + 1;
+                if (s_coded[ui] == 0) continue;
+                const int nbx = g_nb[pl];
+                const int mpm = mpm_of(pl, nbx, b);
+                const int m = mode_at(pl, b);
+                put_bits(uint(s_sec[2] + s_sw[ui] + b), m == mpm ? 1u : 0u, 1);
+                if (m == mpm) continue;
+                int k = 0;
+                for (int e = 0; e < b; ++e)
+                    if (mode_at(pl, e) != mpm_of(pl, nbx, e))
+                        k += NXE_LITE_MODE_BITS;
+                put_bits(uint(s_sec[3] + s_bw[ui] + k),
+                         uint(nonmpm_index(mpm, m)), NXE_LITE_MODE_BITS);
+            }
+
+            // ---- P, S and B of the COEFFICIENT units: one lane per unit.
             for (int ui = int(lid); ui < g_nunits; ui += NXE_E4L_WG) {
                 if (s_coded[ui] == 0) continue;
                 LiteUnit u = unit_desc(ui);
+                if (u.kind == 1) continue;
                 uint sb = uint(s_sec[2] + s_sw[ui]);
                 uint bb = uint(s_sec[3] + s_bw[ui]);
-                if (u.kind == 1) {
-                    int n = u.nbx * u.nbx;
-                    int k = 0;
-                    for (int b = 0; b < n; ++b) {
-                        int mpm = mpm_of(u.mode_off, u.nbx, b);
-                        int m = mode_at(u.mode_off, b);
-                        put_bits(sb + uint(b), m == mpm ? 1u : 0u, 1);
-                        if (m != mpm) {
-                            put_bits(bb + uint(k), uint(nonmpm_index(mpm, m)),
-                                     NXE_LITE_MODE_BITS);
-                            k += NXE_LITE_MODE_BITS;
-                        }
-                    }
-                    continue;
-                }
                 const int ncoef = u.ncoef;
                 const int last = s_last[ui];
                 const int mb = nxe_lite_mag_bits[s_param[ui]];

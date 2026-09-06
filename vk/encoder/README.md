@@ -21,6 +21,7 @@ and the degradation ladder), §5.2 (perceptual terms), §1.3 (colour), §3.7
 | **E2** `prefix` | workgroup scan + single-block second level | exclusive prefix sum over per-tile byte sizes, up to 8192 tiles | **done** |
 | **E3** `forward` | one group per tile, 64 lanes | DC-plane intra prediction, residual, forward 8×8 DCT through LDS, dead-zone quantisation with the weighting matrix, sign hiding, coefficients in coding-unit order. Directional intra behind a specialization constant | **done** |
 | **E4** `rans_encode` | 8 lanes per tile, 8 tiles per group, persistent | rANS backwards over the operation list into a bounded per-tile slot, over 12, 16 or 27 contexts, built-in or transmitted tables; writes the tile header and the byte count E2 scans | **done** |
+| **E4L** `lite_encode` | one tile per group, 64 lanes, one unit per lane | ENTROPY_LITE (30), FIXED variant: five byte-aligned sections per tile, offsets from two prefix sums, no arithmetic coder and no serial state. Selected instead of E4 by `--entropy lite` | **done** |
 | **E5** `packetize` | one group per tile | compaction into tile-row segments, tile-row and frame headers, the transmitted table area, straight into the host-cached output buffer | **done** |
 | E3b `reconstruct` | one group per tile | the decoder's Pass B, *byte-identical SPIR-V*, writes the new reference | not started |
 
@@ -55,6 +56,8 @@ forward/
   nxe_enc_common.glsl GLSL mirror of all of the above
   forward.comp        E3
   rans_encode.comp    E4
+  lite_encode.comp    E4-lite (ENTROPY_LITE, tool bit 30)
+  lite_cpu.h/.c       its bit-exact CPU model
   packetize.comp      E5 (two variants: zero the frame's bytes, then write)
   forward_cpu.h/.c    bit-exact CPU model of E3
   rans_cpu.h/.c       bit-exact CPU model of E4 and of E5's layout
@@ -290,7 +293,7 @@ why the list is here rather than in a commit message.
 | 27 | `XFORM_LARGE` | not started | follow-up |
 | 28 | `NEAR_SKIP` | not started | inter, Phase 2 |
 | 29 | `QUAD_MV` | not started | inter, Phase 2 |
-| 30 | `ENTROPY_LITE` | not started | decoder-side lever, negotiated, ships off |
+| 30 | `ENTROPY_LITE` | **done** | `--entropy lite`; byte-identical to the reference. Negotiated, ships off |
 
 **`CTX_V3` is the one that was worth doing now**, because it is the only
 minor-6 tool this harness can actually *prove*. It changes entropy coding
@@ -381,6 +384,108 @@ The stream side is three fields and one binding: `table_bytes` in
 every E5 offset shifted by it, and an eighth binding on E5 carrying the
 serialized area, which the shader lays down between the frame header and the
 first tile-row header.
+
+## `ENTROPY_LITE` (30), and what it is for
+
+Lite is the only tool here that is a **decoder** lever. Every other entropy
+tool on this list makes the stream smaller at no cost to the headset; Lite
+makes it *bigger* and makes the headset's Pass A four times faster, which is
+the trade that matters when Pass A is 8-11 ms per eye per frame on the Pico 4
+and the frame budget is 11.
+
+The reason Pass A costs that is not arithmetic, it is *latency*: the rANS
+round chain is serial per tile, and 289 tiles at eight tiles per workgroup is
+thirty-seven workgroups in flight on a GPU that wants hundreds. Lite has no
+chain at all. A tile is five byte-aligned sections -- H0, H1, P, S, B -- whose
+per-unit bit offsets follow from two prefix sums, so one lane can decode any
+unit and, in the FIXED variant, one thread can decode any single coefficient.
+
+`lite_encode.comp` is a **second kernel, not a branch in E4**, and the reason
+is that the two want opposite shapes. E4 is eight lanes in lockstep over a
+backward round chain, eight tiles to a workgroup, and all of that machinery
+exists to serialise an arithmetic coder. Lite has none: a unit's bits depend
+on that unit alone and its bit offset is a prefix sum, so the shape that pays
+is one tile per workgroup and one unit per lane. Phase A computes every unit's
+facts and its width in P, S and B at once; one lane turns the widths into
+exclusive prefixes; phase B writes, each lane owning a whole unit. Bits go in
+with `atomicOr` over a payload region the kernel zeroes first, because
+adjacent units share the byte at their boundary -- and that byte is the only
+cross-unit dependency anywhere in the tool.
+
+E5 needed one branch behind a specialization constant: a Lite tile has no
+rANS flush states, so its payload is a plain byte run four to a word after the
+field word, where E4's is one emission per whole word anchored at the END of
+the slot. The bound moved too -- `NXE_LITE_PAYLOAD_MAX` is 28330 bytes against
+rANS's 25000, derived section by section -- because a tool that trades bytes
+for time has to say so in its own sizing.
+
+### Two things that cost a debugging pass each, and are worth knowing
+
+**The scan tables are in SHARED memory.** `nxe_enc_common.glsl` declares
+`nxe_zigzag8` and friends as `shared` and every kernel that reads them must
+call `nxe_init_tables()` before its first barrier. E4-lite did not, and the
+zigzag came back as whatever LDS held. The stream that produced was internally
+consistent, decoded without complaint, and was not the reference's -- which is
+the worst shape a bug can have here.
+
+**lavapipe segfaults on a nested loop whose OUTER loop is live on a few lanes
+of sixty-four.** Twice: the H0/H1 section written as a loop over the tile's
+thirteen coded-unit groups with a loop over each group's units inside it, and
+the mode unit handled as a branch inside the unit loop -- three lanes of
+sixty-four, with a loop inside. RADV runs both correctly. Both are now flat
+loops over the thing there are many of (units, and mode blocks), which is
+better code anyway: a unit's H1 bit is `gbase[group]` plus its index in the
+group, and a mode block's section-B offset is three bits per non-MPM block
+before it, and every lane can work out its own. The rule this leaves behind:
+**in this directory, a loop that only a handful of lanes enter should not
+contain another loop.**
+
+### Measured
+
+Byte-identity is `vk.encoder.acid.lite.{cpu,0}` (the whole selftest table at
+tool bit 30, 18 configurations), `vk.encoder.acid.api.lite` (the C ABI, four
+quantisers), `vk.encoder.inter.acid.lite` (WARP_SKIP + INTRA + STATIC_MV), and
+five `--selftest` rows including a DIRECTIONAL one, which is the only coverage
+of Lite's mode unit and has no reference stream to compare against.
+`vk.encoder.lite.decode` closes the loop the other way: `nxvc_vk_decoder`
+decodes what this encoder produced to the same pixels `nxv-dec` does, intra
+and inter, at QP 22, 30 and 40.
+
+**Bytes per frame**, 1088x1088 4:2:0, 16 frames of the band-limited synthetic
+head turn (`gen_synthetic.py --motion turn --seed 7`), `--ctx v3
+--intra-dir off`, RX 7900 XTX on RADV. The rANS column carries the entropy
+tools the library ships on (frame-trained tables, TAB_V2); the Lite column
+cannot, because the syntax forbids the combination.
+
+| QP | intra rANS | intra Lite | | inter rANS | inter Lite | |
+|---|---|---|---|---|---|---|
+| 22 | 56700 | 68779 | +21.3 % | 16572 | 19487 | +17.6 % |
+| 26 | 45629 | 52363 | +14.8 % | 12395 | 13832 | +11.6 % |
+| 30 | 36774 | 39211 | +6.6 % | 9298 | 9846 | +5.9 % |
+| 34 | 29864 | 29513 | **-1.2 %** | 7214 | 7323 | +1.5 % |
+| 40 | 22170 | 19825 | **-10.6 %** | 4970 | 5180 | +4.2 % |
+
+**Lite is not uniformly more expensive, and above QP 34 on intra it is
+cheaper.** That is not a surprise once the constant is counted: an rANS tile
+pays a four-byte flush state per lane, which is 32 bytes a tile and 9248 bytes
+a frame at 289 tiles no matter how little the tile carries. Lite pays nothing
+per tile. At QP 22 the payload dwarfs that and Lite costs 21 %; at QP 40 the
+flush IS most of an intra frame and Lite wins outright. The headset's range is
+22..40 and the honest summary is "between +21 % and -11 %, crossing over
+around QP 34" rather than the single figure the decoder's merge report quotes
+for its own corpus.
+
+**Pass A**, `nxvc-passA-test --tiles 2048 --iters 50`, RX 7900 XTX on RADV,
+the harness's own corpus (610 B/tile rANS, 916 B/tile Lite):
+
+| variant | ballot/dense | ballot/sparse | lds/dense | lds/sparse |
+|---|---|---|---|---|
+| rANS | 1.211 ms | 1.202 ms | 1.238 ms | 1.209 ms |
+| Lite | 0.440 ms | 0.448 ms | **0.415 ms** | 0.449 ms |
+
+**2.7x to 3.0x**, on a box that was not idle -- a second ctest run was on the
+other core group -- so read this as a floor. `docs/MERGE-REPORT.md` measured
+4.1x on an idle machine and that number is not being replaced here.
 
 `XFORM_LARGE` (bit 27) is the largest single win in the tournament and is the
 next real piece of work here. It is a second E3 pipeline from the same source

@@ -23,10 +23,12 @@
  * or 27 contexts (tool bit 25, CTX_V3), with sign data hiding, over the
  * built-in tables or a set trained on the frame (tool bits 6 and 26).
  *
- * Of the minor-6 tools, CTX_V3 and TAB_V2 are implemented here.
- * XFORM_4X4_SPLIT (19), INTRA_CFL (24), XFORM_LARGE (27) and ENTROPY_LITE (30) are
- * not; vk/encoder/README.md says what each would take and why they are in the
- * order they are.
+ * Of the minor-6 tools, CTX_V3, TAB_V2 and ENTROPY_LITE are implemented here
+ * -- the last as a SECOND entropy kernel (`lite_encode.comp`) rather than a
+ * mode of E4, because Lite has no arithmetic coder and wants the opposite
+ * workgroup shape.  XFORM_4X4_SPLIT (19), INTRA_CFL (24) and XFORM_LARGE (27)
+ * are not; vk/encoder/README.md says what each would take and why they are in
+ * the order they are.
  *
  * ---------------------------------------------------------------------------
  * Room for the merge
