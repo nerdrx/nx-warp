@@ -1177,10 +1177,34 @@ needed to read it:
 
 | fixture | all-ATLAS | all-PICTURE | D=8 | winner |
 |---|---|---|---|---|
+| **still 0.043 deg/s** | **41.28 / 150 B** | 41.25 / 159 B | 41.28 / 150 B (0 % PIC) | tie; see below |
 | rest 2.7 deg/s | **38.94 / 1643 B** | 38.02 / 4208 B | 38.92 / 1777 B (6.5 % PIC) | ATLAS, by 0.92 dB at 2.6x fewer bytes |
 | mid 26.2 deg/s | 36.62 / 9780 B | **38.03 / 7031 B** | 37.71 / 7366 B (48.4 % PIC) | PICTURE, by 1.41 dB at 28 % fewer bytes |
 | fast 99.1 deg/s | 32.65 / 13843 B | **38.21 / 6566 B** | 38.21 / 6566 B (100 % PIC) | PICTURE, by 5.56 dB at half the bytes |
 | **objmotion** | **38.79 / 3510 B** | 37.97 / 5668 B | 38.74 / 3693 B (6.5 % PIC) | ATLAS, by 0.82 dB at 38 % fewer bytes |
+
+**`rest` was misnamed, and a fifth trajectory was needed to find the real
+floor.** It moves the atlas's tile corners 0.97 samples in one frame and 3.83
+over four, so a whole-sample identity is never available in it. `still` is a
+seated head -- 0.043 deg/s, corner displacement **0.016 samples** -- and on it
+the atlas does exactly what it exists for: **100 % skip, zero decoder warps,
+150 B/frame at 41.28 dB** for a stereo pair, converging at coarse QP to the
+structural floor of **119 B/frame** (frame header + `warp_ext()` +
+`row_present` bitmap, 85.7 kbit/s at 90 Hz).
+
+At true stillness the atlas and the picture model **tie** (41.28 against
+41.25), and that is not a disappointment but the expected result: the atlas's
+saving is the skip warp, and when nothing moves the picture model skips
+everything too. The atlas's advantage needs *some* motion to be worth
+anything, and `rest` at 2.7 deg/s is where it appears. `objmotion-still` prices
+independent object motion on its own at about **2650 B/frame** over the still
+floor.
+
+The per-tile decision that produces those numbers, and its expected output on
+every trajectory in this table frame for frame, is written down for a second
+encoder in [docs/ENCODER-DECISION.md](../ENCODER-DECISION.md). `still` is the
+row a port should check first: it has an unambiguous right answer, and a port
+that codes anything on it has a bug the moving clips will hide.
 
 **The mode switch survives, and it is the thing that survives best.** At every
 velocity `D = 8` lands on whichever of the two modes wins there, without being

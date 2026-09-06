@@ -173,6 +173,46 @@ because 13.12.5's display warp is not normative.
 
 ```
 python3 tools/quality/plot_pose.py --csv pose_d8.csv --out docs/assets --disp 8
+## Figures 10-11 — The seated trajectories, and the true rest floor
+
+| | |
+|---|---|
+| ![Figure 10](assets/vrroom-still.png) **Fig 10** still, 0.043 deg/s | ![Figure 11](assets/vrroom-objmotion-still.png) **Fig 11** objmotion-still |
+
+**Date** 2026-09-06 · **Fixture** `nx-scratch/fixtures/vrroom`, frame 8, left
+eye, 544x408 crop at 2x · **Settings** as Figures 3-6.
+
+**The number it illustrates.** `rest` was named for a head at rest and is not
+one: it moves the atlas's tile corners **0.97 samples in one frame and 3.83
+over four**, so a whole-sample identity is never available in it. `still` is a
+seated head — 0.030 deg of postural drift at 0.11 Hz plus 0.001 deg of tremor
+at 8 Hz — and measures **0.043 deg/s** with corner displacement of **0.016
+samples** after a frame and 0.016 after thirty, sixty times smaller.
+
+On it the atlas does exactly what it is for: **100 % skip, zero decoder warps,
+150 B/frame at 41.28 dB** for a stereo 1088x1088 pair. At QP 34 and 40 it
+converges to the structural floor of **119 B/frame** — 85.7 kbit/s at 90 Hz —
+which is frame header plus `warp_ext()` plus the `row_present` bitmap and
+nothing else. `objmotion-still` holds the head there and walks the meshes:
+2800 B/f, which prices independent object motion at about **2650 B/frame** on
+its own.
+
+The high seam ratios in this row (3.27 at QP 26, 6.88 at QP 40) are inherited
+from the single intra frame: at 119 B/frame nothing is ever re-coded, so what
+is displayed is frame 0's quantisation warped forward, and at QP 40 that frame
+is blocky. It is a real artefact, and it is the cost of a floor this low.
+
+On the ADR-0028 integer decision the same clip is **125 B/frame at the same
+41.28 dB** — 25 bytes cheaper, because that path has no `NEAR_SKIP` to spend
+and so lands six bytes above the structural floor rather than thirty. The full
+per-trajectory mode histogram both decisions produce is in
+[ENCODER-DECISION.md](ENCODER-DECISION.md) section 7.
+
+```
+python3 tools/quality/capture/gen_vrroom.py --out nx-scratch/fixtures/vrroom   --tracks still,objmotion-still
+python3 nx-scratch/atlasprice/vrtable.py still
+python3 nx-scratch/atlasprice/encdec_still.py       # float decision
+python3 nx-scratch/atlasprice/encdec_still_int.py   # integer decision
 ```
 
 ---
