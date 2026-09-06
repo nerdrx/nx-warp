@@ -302,6 +302,16 @@ extern "C" {
 #define NXE_MODE_WARP_MV        2
 #define NXE_MODE_INTRA          3
 #define NXE_MODE_STEREO         4
+/* [planar] [SYN] 13.13, tool bit 35: 2-4 shaded regions, no transform, no
+ * entropy payload and no reference. */
+#define NXE_MODE_PLANAR         5
+
+/* One tile's raw planar body, in uints, as E5 reads it.  The worst case is a
+ * 16x16 map at two bits a cell (64 B) plus the header byte plus 4 regions x 3
+ * planes x 3 coefficient bytes (36 B): 101 bytes, rounded up to 26 words.
+ * The same 26 the DECODER uses for its own upload, and for the same reason --
+ * bytes rather than dequantised values, so nothing needs 8-bit storage. */
+#define NXE_PLANAR_BODY_UINTS   26
 
 #define NXE_FRAME_HEADER_BYTES  40
 /* The transmitted probability tables (SYNTAX.md 9.4) sit between the frame

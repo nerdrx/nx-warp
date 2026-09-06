@@ -119,6 +119,9 @@ int nxe_lite_last_bits(int ncoef) {
 #define NXE_MODE_WARP_MV       2
 #define NXE_MODE_INTRA         3
 #define NXE_MODE_STEREO        4
+/* [planar] [SYN] 13.13, tool bit 35.  Mirrors nxe_enc.h. */
+#define NXE_MODE_PLANAR        5
+#define NXE_PLANAR_BODY_UINTS  26
 
 #define NXE_FRAME_HEADER_BYTES 40
 #define NXE_TABLE_AREA_MAX     2188

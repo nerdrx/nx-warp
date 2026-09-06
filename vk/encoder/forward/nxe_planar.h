@@ -65,7 +65,12 @@ typedef struct {
     int size;
     int dc_off;
     int maxval;
-    int qp;                        /* the TILE's qp; the step is derived */
+    /* The DC-plane step of [SYN] 6.5, dequant_step(dc_qp_of(qp), 16), which
+     * 13.13 dequantises the region coefficients at.  Passed in rather than
+     * derived so this header needs no quantiser table: the reference and the
+     * GPU encoder each have their own copy of the SAME table, and a shared
+     * header that reached for one of them would only pick a side. */
+    int dc_step;
 } nxe_planar_plane;
 
 static inline int nxe_planar_log2(int v) {

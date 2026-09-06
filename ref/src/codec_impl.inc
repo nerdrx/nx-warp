@@ -1700,7 +1700,7 @@ inline nxe_planar_plane as_plane(const PlaneState &s) {
     p.size = s.size;
     p.dc_off = s.dc_off;
     p.maxval = s.maxval;
-    p.qp = s.qp;
+    p.dc_step = dc_plane_step(s);
     return p;
 }
 
@@ -1720,7 +1720,7 @@ static void planar_fit_plane(const PlaneState &s, const u8 *labels, int M,
     pp.size = s.size;
     pp.dc_off = s.dc_off;
     pp.maxval = s.maxval;
-    pp.qp = s.qp;
+    pp.dc_step = dc_plane_step(s);
     nxe_planar_fit_plane(&pp, labels, M, regions, dc_plane_step(s), out);
 }
 
@@ -1744,134 +1744,30 @@ static i64 planar_cell_err(const PlaneState &s, const PlaneFit &f, int cx,
 // a sum of squared integer differences and never needed to be a double.
 static void fit_planar(TileCoder &tc, int regions, int fine, PlanarRec &pr,
                        i64 *sse_out) {
-    pr = PlanarRec{};
-    pr.regions = regions;
-    pr.fine = fine;
-    const PlaneState &luma = tc.pl[0];
-    const int M = pr.map_dim();
-    const int cell = luma.size / M;
-    const int ncell = M * M;
-    const int shift = log2_of(luma.size) - log2_of(M);
-
-    // 1-D k-means on cell mean luma, seeded at evenly spaced quantiles of the
-    // sorted means.  Deterministic, which matters: the encoder is compared
-    // byte for byte against itself across builds.
-    //
-    // Integer throughout, and the sort needs no argument about ties: the mean
-    // is the cell SUM over a constant `cell*cell`, so ordering the sums is
-    // ordering the means exactly, and equal sums are equal means -- whichever
-    // order std::sort leaves them in, the seeded value is the same number.
-    // Centroids stay exact rationals `cnum / cden` and the assignment compares
-    // |cs/A - cnum/cden| by cross multiplication, A cancelling.
-    std::vector<i64> cs((size_t)ncell, 0);
-    for (int cy = 0; cy < M; ++cy)
-        for (int cx = 0; cx < M; ++cx) {
-            i64 sum = 0;
-            for (int y = cy * cell; y < (cy + 1) * cell; ++y)
-                for (int x = cx * cell; x < (cx + 1) * cell; ++x)
-                    sum += luma.samples[(size_t)y * luma.size + x];
-            cs[(size_t)cy * M + cx] = sum;
-        }
-    const i64 A = (i64)cell * cell;
-    std::vector<i64> sorted = cs;
-    std::sort(sorted.begin(), sorted.end());
-    // cent[r] = cnum[r] / cden[r]; seeded from a cell sum, so cden starts at A.
-    std::vector<i64> cnum((size_t)regions, 0), cden((size_t)regions, 1);
-    for (int r = 0; r < regions; ++r) {
-        cnum[(size_t)r] = sorted[(size_t)((2 * r + 1) * (ncell - 1) / (2 * regions))];
-        cden[(size_t)r] = A;
-    }
-    for (int it = 0; it < 8; ++it) {
-        std::vector<i64> sum((size_t)regions, 0), cnt((size_t)regions, 0);
-        for (int c = 0; c < ncell; ++c) {
-            int best = 0;
-            // |cs/A - cnum_r/cden_r| compared across r.  Multiply by
-            // A * cden_0 * ... : it is enough to compare
-            //   |cs*cden_r - cnum_r*A| * cden_best   vs
-            //   |cs*cden_best - cnum_best*A| * cden_r
-            // which is exact and, for the seeded case (cden all equal), is the
-            // plain distance.  STRICTLY LESS keeps the first region on a tie,
-            // which is the double form's rule and is stated here because a tie
-            // is reachable: two centroids can be equidistant from a cell.
-            i64 bn = 0, bd = 0;
-            for (int r = 0; r < regions; ++r) {
-                i64 n = cs[(size_t)c] * cden[(size_t)r] - cnum[(size_t)r] * A;
-                if (n < 0) n = -n;
-                const i64 dd = cden[(size_t)r];
-                if (r == 0) { bn = n; bd = dd; best = 0; continue; }
-                if (n * bd < bn * dd) { bn = n; bd = dd; best = r; }
-            }
-            pr.labels[c] = (u8)best;
-            sum[(size_t)best] += cs[(size_t)c];
-            cnt[(size_t)best] += 1;
-        }
-        for (int r = 0; r < regions; ++r)
-            if (cnt[(size_t)r] > 0) {
-                // mean of the assigned cell means = (sum of sums) / (cnt * A)
-                cnum[(size_t)r] = sum[(size_t)r];
-                cden[(size_t)r] = cnt[(size_t)r] * A;
-            }
-    }
-
-    // k-planes on the luma: fit, reassign, repeat.
-    PlaneFit fits[kPlanarMaxRegions];
-    for (int r = 0; r < kPlanarMaxRegions; ++r) fits[r] = PlaneFit{};
-    for (int it = 0; it < 8; ++it) {
-        for (int r = 0; r < regions; ++r) {
-            __int128 a[3][4] = {};
-            const nxe_planar_plane lp = as_plane(luma);
-            nxe_planar_normal_eq(&lp, pr.labels, M, shift, r, a);
-            PlaneFit f{};
-            if (nxe_planar_solve(a, &f)) fits[r] = f;
-            // An empty or singular region keeps the plane it had.  It costs
-            // its three bytes and buys nothing, which the rate-distortion
-            // decision then sees as a reason to prefer a smaller region count
-            // -- the right place for that judgement.
-        }
-        bool moved = false;
-        for (int cy = 0; cy < M; ++cy)
-            for (int cx = 0; cx < M; ++cx) {
-                int best = pr.labels[(size_t)cy * M + cx];
-                i64 bd = 0;
-                bool first = true;
-                for (int r = 0; r < regions; ++r) {
-                    const i64 e = planar_cell_err(luma, fits[r], cx, cy, cell);
-                    // Strictly less: on a tie the LOWEST region index wins,
-                    // which makes the sweep order irrelevant and the result
-                    // independent of how the loop is scheduled -- the property
-                    // a GPU implementation needs.
-                    if (first || e < bd) { bd = e; best = r; first = false; }
-                }
-                if (best != pr.labels[(size_t)cy * M + cx]) moved = true;
-                pr.labels[(size_t)cy * M + cx] = (u8)best;
-            }
-        if (!moved) break;
-    }
-
-    // Quantise every coded colour plane against the settled map.
+    // Delegated whole to nxe_planar_host.h, which the GPU encoder compiles
+    // too.  The per-plane solve was already shared; sharing the SEQUENCE as
+    // well -- the k-means seed, the k-planes loop, the reassignment, the
+    // quantisation order -- is what removes the last way the two encoders
+    // could disagree while both being "correct".  Byte-identity against
+    // `nxv-enc --planar` is the GPU encoder's acceptance test, and it is now a
+    // property of there being one implementation rather than of two matching.
     const int np = coded_planes(tc);
     const int planes = np < kPlanarPlanes ? np : kPlanarPlanes;
-    for (int p = 0; p < planes; ++p) {
-        i8 co[kPlanarMaxRegions][3] = {};
-        planar_fit_plane(tc.pl[p], pr.labels, M, regions, co);
-        for (int r = 0; r < regions; ++r)
-            for (int k = 0; k < 3; ++k) pr.coef[r][p][k] = co[r][k];
-    }
+    nxe_planar_plane pp[kPlanarPlanes];
+    for (int p = 0; p < planes; ++p) pp[p] = as_plane(tc.pl[p]);
 
-    if (sse_out) {
-        i64 sse = 0;
-        for (int p = 0; p < planes; ++p) {
-            PlaneState &ps = tc.pl[p];
-            std::vector<i32> src = ps.samples;
-            reconstruct_planar(ps, pr, p);
-            for (size_t i = 0; i < src.size(); ++i) {
-                const i64 d = (i64)src[i] - (i64)ps.samples[i];
-                sse += d * d;
-            }
-            ps.samples.swap(src);
-        }
-        *sse_out = sse;
-    }
+    nxe_planar_rec rec;
+    const i64 sse = nxe_planar_fit_tile(pp, planes, regions, fine, &rec);
+
+    pr = PlanarRec{};
+    pr.regions = rec.regions;
+    pr.fine = rec.fine;
+    const int M = pr.map_dim();
+    for (int c = 0; c < M * M; ++c) pr.labels[c] = rec.labels[c];
+    for (int r = 0; r < regions; ++r)
+        for (int p = 0; p < planes; ++p)
+            for (int k = 0; k < 3; ++k) pr.coef[r][p][k] = rec.coef[r][p][k];
+    if (sse_out) *sse_out = sse;
 }
 
 // Mean squared error, per luma sample and in the coded domain, of a tile's
