@@ -173,6 +173,7 @@ struct nxvc_vk_decoder {
     // read after the frame completes.
     uint32_t ts_count = 0;
     bool ts_pending = false;
+    bool astats_pending = false;
 
     VkDescriptorPool dpool = VK_NULL_HANDLE;
     VkDescriptorSetLayout dslA = VK_NULL_HANDLE, dslB = VK_NULL_HANDLE;
@@ -886,7 +887,11 @@ constexpr SetShape kSetB{9, 7};
 // Pass W: ring in, params in, predictor out, tile order in.
 constexpr SetShape kSetW{4, 0};
 // [ATLAS] atlas_compose.comp: table, advanced_to, H ring, selection list.
-constexpr SetShape kSetAC{4, 0};
+// [stats] Binding 4 is the status/counter buffer: the valid-entry count is
+// decided by the envelope check ON THE DEVICE, so the host cannot know it
+// without either a readback per frame -- the one thing tile streaming exists
+// to remove -- or a counter the kernel already touching the table maintains.
+constexpr SetShape kSetAC{5, 0};
 // [ATLAS] atlas_tiles.comp: table, advanced_to, warp params, coded list,
 // status.  It is a SEPARATE layout from the compose one rather than a union of
 // the two, because binding 2 is the H ring in one kernel and the warp
@@ -1561,9 +1566,12 @@ nxvc_vkd_status make_resources(D *d) {
         if ((st = make_buf(d, d->bASel, listBytes, kSsbo, false))) return st;
         if ((st = make_buf(d, d->bACoded, listBytes, kSsbo, false)))
             return st;
-        // Two uints, host-visible: MATGEN's deferred 13.12.4 refusal and the
-        // FIRST tile it refused, so the report names a tile and not a frame.
-        if ((st = make_buf(d, d->bAStatus, 8,
+        // FOUR uints, host-visible: MATGEN's deferred 13.12.4 refusal, the
+        // FIRST tile it refused (so the report names a tile and not a frame),
+        // and the two validity counters -- valid-after-advance from the
+        // compose dispatch and newly-validated from the write-back, which sum
+        // to the exact post-frame count.
+        if ((st = make_buf(d, d->bAStatus, 16,
                            kSsbo | VK_BUFFER_USAGE_TRANSFER_DST_BIT, true)))
             return st;
         // [SYN] 13.12.1: on tile_map_reset the whole table is zeroed, which
@@ -1654,10 +1662,11 @@ nxvc_vkd_status make_resources(D *d) {
     // the coded-tile set (table, advanced_to, warp params, coded list,
     // status).  Binding 2 differs between them, which is why they are two
     // layouts rather than one union.
-    VkDescriptorBufferInfo ac[4] = {{d->bTable.buf, 0, VK_WHOLE_SIZE},
+    VkDescriptorBufferInfo ac[5] = {{d->bTable.buf, 0, VK_WHOLE_SIZE},
                                     {d->bAdv.buf, 0, VK_WHOLE_SIZE},
                                     {d->bHRing.buf, 0, VK_WHOLE_SIZE},
-                                    {d->bASel.buf, 0, VK_WHOLE_SIZE}};
+                                    {d->bASel.buf, 0, VK_WHOLE_SIZE},
+                                    {d->bAStatus.buf, 0, VK_WHOLE_SIZE}};
     VkDescriptorBufferInfo at[5] = {{d->bTable.buf, 0, VK_WHOLE_SIZE},
                                     {d->bAdv.buf, 0, VK_WHOLE_SIZE},
                                     {d->bWarp.buf, 0, VK_WHOLE_SIZE},
@@ -2424,6 +2433,25 @@ extern "C" uint64_t nxvc_vk_decoder_timeline_value(const nxvc_vk_decoder *d) {
 
 // Drain the frame's timestamp queries into `stats`.  Only ever called once
 // the frame is known complete, so VK_QUERY_RESULT_WAIT_BIT never blocks.
+// [stats] The device-side atlas counters, read on the same schedule as the
+// timestamps: when the frame has COMPLETED, never by stalling for it.  An
+// async client -- which is every real compositor -- would otherwise get either
+// a stall or the previous frame's number with no way to tell which.
+static void collect_atlas_stats(D *d) {
+    if (!d->astats_pending) return;
+    d->astats_pending = false;
+    if (!d->atlas_mode || !d->bAStatus.mapped) return;
+    const uint32_t *as = (const uint32_t *)d->bAStatus.mapped;
+    // Word 2 is what survived the advance, word 3 what the write-back newly
+    // validated.  On a PICTURE frame neither dispatch runs over every entry
+    // and 13.12.11 step 3 validates all of them, so the host knows the answer
+    // exactly without reading anything.
+    d->stats.atlas_entries_valid =
+        d->stats.frame_mode == 2u ? d->si.tile_count : as[2] + as[3];
+    if (d->stats.atlas_entries_valid > d->si.tile_count)
+        d->stats.atlas_entries_valid = d->si.tile_count;
+}
+
 static void collect_timestamps(D *d) {
     if (!d->ts_pending) return;
     d->ts_pending = false;
@@ -2478,6 +2506,14 @@ static void collect_timestamps(D *d) {
         d->stats.tiles_skip_seg = d->seg_tiles[0];
         d->stats.tiles_coded_seg = d->seg_tiles[1];
         d->stats.tiles_dir_seg = d->seg_tiles[2];
+        // [ATLAS stats] The same number under a name that says what it MEANS.
+        // Set HERE and not at submit time: the segment populations are only
+        // known once the frame's timestamps come back, so assigning it
+        // earlier would publish the PREVIOUS frame's count under this frame's
+        // other figures.  Under an ATLAS frame it is 0 -- a skipped tile is
+        // not reconstructed at all, which is the deletion the ADR exists for.
+        d->stats.tiles_warped_skip =
+            d->stats.frame_mode == 1u ? 0u : d->seg_tiles[0];
     } else {
         d->stats.pass_b_skip_ms = 0;
         d->stats.pass_b_coded_ms = 0;
@@ -2485,6 +2521,7 @@ static void collect_timestamps(D *d) {
         d->stats.tiles_skip_seg = 0;
         d->stats.tiles_coded_seg = 0;
         d->stats.tiles_dir_seg = 0;
+        d->stats.tiles_warped_skip = 0;
     }
     // [inter] Per-module Pass B, eye pass 0.  Env-gated because it is a
     // measurement aid rather than part of the ABI, and because a segment that
@@ -2505,7 +2542,8 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_wait(nxvc_vk_decoder *d,
     if (!d) return NXVC_VKD_ERR_ARG;
     if (d->timeline_value == 0) return NXVC_VKD_OK;
     if (d->timeline == VK_NULL_HANDLE) {
-        if (!d->fence_pending) { collect_timestamps(d); return NXVC_VKD_OK; }
+        if (!d->fence_pending) { collect_timestamps(d); collect_atlas_stats(d);
+                                 return NXVC_VKD_OK; }
         VkResult fr =
             vkWaitForFences(d->dev, 1, &d->fence, VK_TRUE, timeout_ns);
         if (fr == VK_TIMEOUT) return NXVC_VKD_ERR_INTERNAL;
@@ -2514,6 +2552,8 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_wait(nxvc_vk_decoder *d,
                           vkresult_name(fr), (int)fr);
         d->fence_pending = false;
         collect_timestamps(d);
+    collect_atlas_stats(d);
+        collect_atlas_stats(d);
         return NXVC_VKD_OK;
     }
     uint64_t v = d->timeline_value;
@@ -2602,6 +2642,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_stats(const nxvc_vk_decoder *d,
     // counter.
     D *m = const_cast<D *>(d);
     if (m->ts_pending && frame_complete(m)) collect_timestamps(m);
+    if (m->astats_pending && frame_complete(m)) collect_atlas_stats(m);
     *o = d->stats;
     return NXVC_VKD_OK;
 }
@@ -3406,6 +3447,15 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     d->stats.tiles_skipped = fp.tiles_skipped;
     d->stats.tiles_concealed = fp.tiles_concealed;
     d->stats.rows_elided = fp.rows_elided;
+    // [ATLAS stats] What the WIRE said, not what the decoder chose: the tools
+    // word decides whether this is an atlas stream at all and frame flags
+    // bit 5 decides which of 13.12.11's two modes the frame took.
+    d->stats.frame_mode = !d->atlas_mode ? 0u : (picture ? 2u : 1u);
+    d->stats.tiles_assembled = picture ? ntiles : 0u;
+    if (picture) ++d->stats.picture_frames;
+    // Carried forward until the counters come back; the frame in flight has
+    // not finished, so last frame's figure is the honest answer meanwhile.
+    d->astats_pending = d->atlas_mode;
     d->last_frame = fp.frame_number;
     d->have_frame = true;
     d->stats.tiles_tskip = fp.tiles_tskip;

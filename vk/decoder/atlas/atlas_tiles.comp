@@ -221,6 +221,12 @@ void main() {
     }
 
     if (pc.op == NXVW_ATLAS_OP_WRITEBACK) {
+        // [stats] An entry this write-back turns from INVALID to valid.  The
+        // compose dispatch counted validity as of the advance, before any of
+        // this frame's tiles landed; adding these two gives the exact
+        // post-frame count without a readback of the table.
+        if (nxvw_atlas_valid(tbl[base + NXVW_ATLAS_OFF_PACK]) == 0)
+            atomicAdd(status[3], 1u);
         // 13.12.3 step 3.  The whole entry is reset, so nothing of the
         // composition survives -- which is why MATGEN has to have run first.
         tbl[base + 0u] = uint(1 << kWarpQNum);
