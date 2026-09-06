@@ -59,6 +59,13 @@ planar rd because absolute bars would hide a 0.03 dB spread inside the axis.
 python3 tools/quality/plot_vrroom.py --in nx-scratch/atlasprice/work5 --out docs/assets
 ```
 
+> **Superseded in part, 2026-09-06, by Figure 12.** The effort columns of this
+> figure are measured with `nxv-enc`'s full RD mode decision left on (no
+> `--no-rdo`), which already drops the coefficients `int_rdoq` would drop; the
+> 0.03 dB is a property of that configuration and not of the content. The GPU
+> encoder has no such search, and measured against it the tool moves 7–12 % of
+> the bytes. The planar columns are unaffected and still stand.
+
 ---
 
 ## Figures 3-6 — The vrroom corpus, one frame per trajectory
@@ -490,3 +497,41 @@ command.** Pictures live in `docs/assets/`.
   The PSNR axis is a **delta against the unsnapped stream**, not the absolute
   figure: the question is what snapping costs, and on an absolute axis a
   0.05 dB change is a flat line that says nothing.
+
+---
+
+## Figure 12 — The effort ladder changes sign with the content
+
+![Figure 12](assets/effort-vrroom.png)
+
+**Date** 2026-09-06 · **Fixture** vrroom `rest`/`mid`/`fast`/`objmotion`/`still`
+and `pan8` · **Settings** `nxvc-vkenc --ctx v3 --intra-dir off --coded-vectors
+--inter --intra-period 180`, 8 frames, `--eyes 2` (mono for `pan8`), QP 22 / 26
+/ 30 / 34 / 40, rANS (`--custom-tables --tab v2`) and `--entropy lite`; the
+right panel is `nxv-enc --no-rdo` against `nxv-enc --int-trellis 1
+--rdoq-effort 3` at the acid flags.
+
+**The number it illustrates.** Effort 1 is **−2.4 / −4.4 %** BD-rate on `pan8`
+and **+0.1 to +3.2 %** on all five vrroom clips, on both entropy coders; the
+reference's integer trellis is **−2.8 to −10.7 %** on all six. Neither the
+coded-tile fraction (13–25 %; forcing it to 27–37 % with intra period 6 does
+not move a sign) nor the entropy coder explains it. Coding the same clips
+intra-only collapses the effect to **−0.9 to +1.0 %** everywhere, which locates
+it in the inter reference chain: the requantiser prices a dropped coefficient
+against the current frame only, and what compounds downstream is whether that
+coefficient was noise (`pan8`, which wins) or detail (vrroom, which loses).
+The earlier "within 0.03 dB" reading reproduces exactly — 34.204 dB against
+34.204 dB, 29433 B against 29355 B on `rest` at QP 34 — when `nxv-enc`'s full
+RD mode decision is left on. **Effort 0 becomes the default.**
+
+```sh
+FX=nx-scratch/fixtures/vrroom nx-scratch/effvr/sweep.py
+FX=nx-scratch/enceffort/fx W=1088 H=1088 EYES=1 \
+  OUT=nx-scratch/effvr/pan.json nx-scratch/effvr/sweep.py pan8
+nx-scratch/effvr/intra.py
+nx-scratch/effvr/chart.py
+```
+
+The bars are BD-rate and not a dB delta on purpose: this tool trades bytes for
+dB at a fixed quantiser, so a single-QP dB reading of it is guaranteed to be
+either zero or misleading. That is the whole of the discrepancy it settles.
