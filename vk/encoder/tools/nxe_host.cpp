@@ -379,6 +379,9 @@ std::vector<uint8_t> stream_header(const Config &cfg, const Frame &f) {
      * alone.  Frame flag bit 4 without this bit is BITSTREAM, which is why the
      * two are set from the one config field. */
     if (cfg.row_present) tools |= 1ull << 32;
+    /* [SYN] 13.12.11: ATLAS_REBASE, which is what makes frame flags bit 5
+     * legal.  Setting bit 5 without it is BITSTREAM. */
+    if (cfg.atlas_mode) tools |= 1ull << 34;
     if (cfg.atlas && (tools & (1ull << 12)) != 0)
         std::fprintf(stderr,
                      "nxe: ATLAS and STEREO are mutually exclusive ([SYN] 2)\n");

@@ -193,6 +193,25 @@ struct AtlasTable {
      * and assumes the position has already been found writable. */
     void write_base_tile(uint32_t t, uint32_t frame_number);
 
+    /* [SYN] 13.12.6: would a tile CODED by frame `frame_number` at position
+     * `t` be dropped as superseded?
+     *
+     * The decoder's test is `valid && src_frame >= frame_number` (with frame 0
+     * exempt), and it applies to a frame's OWN coded tiles, not only to late
+     * arrivals -- which stops being a hypothetical the moment a base patch
+     * carries a future-dated `src_frame`, the ordinary case under 13.12.9
+     * because the base arrives through a decoder with its own latency.
+     *
+     * The encoder must ask BEFORE it codes.  A tile it codes at such a
+     * position is discarded by the decoder, so the decoder's atlas keeps the
+     * patch while this encoder's shadow would take the coded write -- and the
+     * two then disagree about the reference, which is drift and not an error.
+     * The tile must be signalled in the SKIP range instead. */
+    bool superseded_by(uint32_t t, uint32_t frame_number) const {
+        if (t >= e.size() || frame_number == 0) return false;
+        return (e[t].flags & kAtlasValid) && e[t].src_frame >= frame_number;
+    }
+
     /* Whether the position was last filled from the base layer -- the flag
      * itself, not a shadow of it, so there is one place it can be wrong. */
     bool is_base_sourced(uint32_t t) const {

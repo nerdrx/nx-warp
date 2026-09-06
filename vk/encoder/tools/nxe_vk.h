@@ -138,6 +138,13 @@ public:
     /* The layout `atlas_write_tiles()` consumes, filled from the SAME
      * `RingLayout` the copies are built from -- see nxvc_vk_enc.h for why a
      * caller must not re-derive it.  False on a non-ATLAS stream. */
+    /* [SYN] 13.12.11 step 1: assemble the atlas into one coherent picture at
+     * the pose it holds, into ring slot `dst_slot`.  Pass W through each
+     * entry's own un-advanced `C`, then Pass B over every tile with a zeroed
+     * residual, which stores the prediction.  Submits and waits. */
+    bool assemble_atlas_picture(Frame &f, const WarpBuildInfo &bi,
+                                uint32_t dst_slot, std::string &err);
+
     bool atlas_layout(nxvc_vke_atlas_layout &out) const;
 
     /* Build a patch buffer from `atlas_layout()` ALONE, copy a checkerboard of

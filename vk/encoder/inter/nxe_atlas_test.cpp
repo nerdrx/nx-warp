@@ -667,6 +667,49 @@ void check_picture_trigger() {
           "an invalid atlas triggered a PICTURE frame");
 }
 
+/* [SYN] 13.12.6's supersede test, asked the way the ENCODER has to ask it:
+ * would a tile I code at this position be dropped?  It applies to a frame's own
+ * coded tiles and not only to late arrivals, which stops being hypothetical the
+ * moment a base patch carries a future-dated `src_frame` -- the ordinary case
+ * under 13.12.9, because the base arrives through a decoder with its own
+ * latency. */
+void check_superseded_by() {
+    const nxe::AtlasGeom g = geom_1088(1);
+    nxe::AtlasTable at;
+    at.reset(g);
+
+    /* An invalid entry can never supersede: there is nothing there. */
+    CHECK(!at.superseded_by(0, 5), "an invalid entry superseded a coded tile");
+
+    at.code_tile(0, 4, nxvw::kModeWarpMv, 0);
+    CHECK(!at.superseded_by(0, 5),
+          "an entry from frame 4 superseded a tile of frame 5");
+    CHECK(at.superseded_by(0, 4),
+          "an entry from frame 4 did not supersede a tile of frame 4 -- the "
+          "test is >=, not >");
+    CHECK(at.superseded_by(0, 3),
+          "an entry from frame 4 did not supersede a tile of frame 3");
+
+    /* Frame 0 is exempt, matching the reference's `frame_number > 0` guard:
+     * an entry that has never been coded must accept frame 0. */
+    CHECK(!at.superseded_by(0, 0), "frame 0 was superseded");
+
+    /* The case that makes this real: a base patch dated AHEAD of the stream.
+     * Every later coded tile at that position, up to and including the frame
+     * the patch names, must be recognised as unlandable. */
+    nxe::AtlasTable bp;
+    bp.reset(g);
+    bp.write_base_tile(7, 12);          /* a patch claiming frame 12 */
+    CHECK(bp.superseded_by(7, 10),
+          "a patch dated 12 did not supersede a tile of frame 10");
+    CHECK(bp.superseded_by(7, 12),
+          "a patch dated 12 did not supersede a tile of frame 12");
+    CHECK(!bp.superseded_by(7, 13),
+          "a patch dated 12 superseded a tile of frame 13, which is newer");
+    /* And it is per POSITION: the neighbours are untouched. */
+    CHECK(!bp.superseded_by(6, 10), "the patch superseded a different tile");
+}
+
 void check_table_rules() {
     const nxe::AtlasGeom g = geom_1088(2);
     nxe::AtlasTable at;
@@ -881,6 +924,7 @@ int main() {
     check_picture_frame();
     check_materialised_boundary();
     check_picture_trigger();
+    check_superseded_by();
     check_table_rules();
     check_static_skip();
     check_envelope_is_the_staleness_bound();
