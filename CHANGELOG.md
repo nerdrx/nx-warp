@@ -12,6 +12,42 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
 
 ## [Unreleased]
 
+### Changed
+
+**GPU encoder: effort 1 is withdrawn as a recommendation, on a measurement**
+
+- `effort` 1 (`int_rdoq`) was recommended for any budget on the strength of
+  -1.4 to -3.6 % BD-rate on `pan8`/`pan8s`. Re-measured on the rendered vrroom
+  corpus it is **positive on all five clips** (+0.1 to +3.2 %, rANS and Lite
+  alike). The library default was and stays `NXVC_VKE_EFFORT_DEFAULT` (0); what
+  changes is the advice -- **a caller should not raise it**, and the WiVRn
+  server's `"effort": 1` should go back to 0. Effort 1 remains selectable and
+  remains byte-identical to `nxv-enc --no-rdo --int-rdoq 1`; no bitstream,
+  syntax or API change.
+- A separate reading that the ladder "does nothing (within 0.03 dB) on vrroom"
+  reproduces exactly (34.204 dB vs 34.204 dB, 29433 B vs 29355 B on `rest` at
+  QP 34) and is a **configuration**, not a property of the content: it was taken
+  with `nxv-enc`'s full RD mode decision on, which already drops the
+  coefficients the requantiser would drop. The GPU encoder has no such search,
+  and against it the tool moves 0.6-1.4 dB and 7-12 % of the bytes at fixed QP.
+  A single-quantiser dB comparison of a tool that trades bytes for dB can only
+  read zero or mislead; the figures are BD-rate for that reason.
+- Why the sign moves: coding the same clips **intra-only** collapses the effect
+  to between -0.9 % and +1.0 % on every clip, so the immediate rate-distortion
+  trade is near a wash and the inter reference chain is the amplifier. The
+  requantiser prices a dropped coefficient against the current frame only, and
+  what compounds downstream is whether it was noise (`pan8`, which wins) or
+  specular detail and thin geometry (vrroom, which loses). Sharpening the
+  constant 3-bit rate estimate would not fix this; the missing term is
+  propagation, which a single-frame requantiser cannot have.
+- The tool that does pay on all six fixtures is the reference's integer trellis
+  (`--int-trellis 1 --rdoq-effort 3`): **-2.8 to -10.7 %**. It has no GPU
+  implementation, and this is the argument for a level 2 that is the trellis
+  rather than a wider search.
+- `vk/encoder/README.md` gains "The effort levels, re-measured on rendered
+  content"; `docs/GALLERY.md` gains Figure 12 and marks the effort columns of
+  Figure 2 superseded.
+
 ### Added
 
 **GPU encoder: `snap_identity`, and the null result underneath it**
