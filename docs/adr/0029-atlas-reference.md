@@ -1609,9 +1609,56 @@ Both results are charted in [docs/GALLERY.md](../GALLERY.md):
 
 ![Per-tile decisions on one fast-turn frame](../assets/atlasenc-tile-modes.png)
 
-**Revised conclusion.** The atlas is not a near-still optimisation. On this encoder, with a decision
+### The same question on RENDERED content, and the synthetic answer does not survive
+
+The table above is ONE synthetic clip whose world never changes, so a stale atlas tile costs
+nothing and the atlas's advantage has no counterweight. Re-run on the vrroom corpus — four
+rendered stereo trajectories, 2176x1088, 578 tiles, 16 frames, QP 26, coded-vector search on — it
+reverses under head motion:
+
+| trajectory | picture (dB / B per frame) | atlas (dB / B per frame) | winner |
+|---|---|---|---|
+| rest, 2.7 deg/s | 38.5435 / 7560 | **39.8043 / 5960** | atlas, +1.26 dB and 21 % fewer bytes |
+| object motion, head at rest | 38.5904 / 11181 | **39.5035 / 10251** | atlas, +0.91 dB and 8 % fewer |
+| mid, 26 deg/s | **38.1922 / 13711** | 36.7809 / 21261 | picture, +1.41 dB and 35 % fewer |
+| fast, 99 deg/s | **37.0930 / 10150** | 31.6560 / 17892 | picture, +5.44 dB and 43 % fewer |
+
+That is Figure 1's result reproduced from this branch, and it means the 2.06x of the previous
+section is a CEILING and not an expectation. Rendered content makes staleness cost something —
+parallax, shading, and anything that moves — and once it does, an atlas tile held across a fast turn
+is worse than a fresh warp of a coherent picture, by a lot.
+
+**Which makes the per-frame mode the point, not an inert mechanism.** The section above concluded
+the mode was inert; that too was the synthetic clip talking. At `D = 8` on rendered content it lands
+on whichever model wins, without being told which:
+
+| trajectory | mode (dB / B per frame) | PICTURE frames | best single model |
+|---|---|---|---|
+| rest | 39.9954 / 8206 | 6.7 % | atlas |
+| object motion | 39.7136 / 11728 | 6.7 % | atlas |
+| mid | 38.0577 / 14948 | 46.7 % | picture |
+| fast | 37.0930 / 10150 | **100 %** | picture |
+
+At the fast turn it spends every frame on PICTURE and lands *exactly* on the picture model, to the
+byte. At rest and under object motion it stays almost entirely on ATLAS frames and beats both single
+models on quality. `D = 8` is the right default after all; what was wrong was the fixture it had
+been judged on.
+
+**So the corrected picture, in one line each.** The coded-vector search is a large win for both
+models and the previous sections were all measured without it. The atlas is worth having at rest and
+under object motion, and is a liability under head motion. The per-frame mode is what makes that a
+single configuration rather than a choice, and it works. And a static-world synthetic clip is not a
+safe fixture for this question, because it removes the one cost the atlas has.
+
+Charted as Figure 14 in [docs/GALLERY.md](../GALLERY.md)
+(`atlasenc-vrroom-arms.png`), beside Figure 12's synthetic sweep.
+
+![The atlas on rendered content](../assets/atlasenc-vrroom-arms.png)
+
+**Revised conclusion (synthetic clip only; see the rendered-content section above, which supersedes
+the generalisation).** The atlas is not a near-still optimisation. On this encoder, with a decision
 that searches coded vectors, it is worth **about half the bitrate at equal quality for any head
-motion at all**, and 7.4x fewer coded tiles to decode. The blocker for shipping it in the headset
+motion at all ON A STATIC-WORLD CLIP**, and 7.4x fewer coded tiles to decode. The blocker for shipping it in the headset
 build is not the atlas: it is that the encoder's default decision does not search coded vectors, and
 that the configuration which does is not yet byte-identical to the reference.
 

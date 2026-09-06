@@ -332,6 +332,9 @@ collapse to all-INTRA (128531 B/frame) and the atlas's advantage vanishes
 entirely. Every earlier GPU-encoder measurement in ADR-0029 was taken with it
 off, which is why the reference's shape never reproduced there.
 
+**Superseded in part by Figure 14, which measures the same question on RENDERED
+content and reverses it under head motion. Read this as the ceiling.**
+
 **Read this with Figure 1, which disagrees.** Figure 1 is RENDERED content
 (vrroom) and has the atlas losing at mid and fast; this is a synthetic clip
 whose world never changes, so an atlas tile's source pixels stay valid
@@ -387,3 +390,42 @@ nxvc-vkenc --in atlasref/fastturn-adr.yuv --w 1088 --h 1088 --pix yuv420p \
 
 `mode` is the nxvw value: 0 `WARP_SKIP`, 1 `STATIC_MV`, 2 `WARP_MV`, 3 `INTRA`.
 `picture` is 1 on a frame coded as a PICTURE frame.
+
+---
+
+## Figure 14 — On rendered content the atlas wins at rest, loses under head motion, and the mode picks the winner
+
+![Figure 14](assets/atlasenc-vrroom-arms.png)
+
+**Date** 2026-09-06 · **Fixture** `nx-scratch/fixtures/vrroom`, all four
+trajectories, stereo 2176x1088, 578 tiles, 16 frames · **Settings** QP 26,
+intra-period 180, `--coded-vectors`, `--ctx v3 --tab v2 --custom-tables`; three
+arms — picture model, `--atlas`, and `--atlas --atlas-mode` at `D = 8`.
+
+**The number it illustrates.** The atlas wins at **rest** (39.8043 dB / 5960
+B/f against 38.5435 / 7560 — +1.26 dB *and* 21 % fewer bytes) and under
+**object motion** (39.5035 / 10251 against 38.5904 / 11181), and loses under
+head motion: **mid** 36.7809 / 21261 against 38.1922 / 13711 (-1.41 dB and 55 %
+more bytes) and **fast** 31.6560 / 17892 against 37.0930 / 10150 (**-5.44 dB**
+and 76 % more). The per-frame mode at `D = 8` lands on whichever wins without
+being told: **100 %** PICTURE frames at fast, landing exactly on the picture
+model to the byte (37.0930 / 10150); 47 % at mid; 6.7 % at rest and object
+motion, where it beats both single models (39.9954 dB at rest).
+
+**This supersedes Figure 12's generalisation.** Figure 12 measured a synthetic
+static-world clip and found the atlas 2.06x better at every speed. That clip has
+no staleness cost — its world never changes, so a held tile is free — which is
+exactly the counterweight rendered content supplies. Figure 12 is the ceiling;
+this is the expectation. It also reverses the reading that the per-frame mode is
+inert: on this corpus it is the mechanism that makes one configuration work
+across the whole velocity range.
+
+```sh
+# per trajectory, per arm; add --atlas / --atlas --atlas-mode for the other arms
+nxvc-vkenc --in vrroom/fast.yuv420p.yuv --w 2176 --h 1088 --eyes 2 \
+    --pix yuv420p --qp 26 --frames 16 --nsub 3 --matrix 1 --wm 0 --tskip off \
+    --chroma-qp-off 0 --ctx v3 --intra-dir off --poses vrroom/fast.poses.json \
+    --intra-period 180 --inter --custom-tables --tab v2 --device 0 \
+    --coded-vectors --atlas --atlas-mode --display-psnr --modes --out out.nxv
+# PICTURE % from NXE_MODE_TRACE=1 on stderr
+```
