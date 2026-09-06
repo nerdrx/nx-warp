@@ -228,6 +228,13 @@ int fetchRef(int x, int y) {
 }
 
 int sample_bilinear(int ix, int iy, int fx, int fy) {
+#ifdef NXVW_ABL_COPYWARP
+    // ABLATION ONLY, and it produces a wrong picture whenever the tile's
+    // displacement is not already integer: one ring fetch instead of four and
+    // no interpolation, which is exactly what the identity fast path would
+    // cost.  It prices that path's CEILING before anyone writes it.
+    return fetchRef(ix, iy);
+#endif
     int gx = 16 - fx;
     int gy = 16 - fy;
     int acc = gx * gy * fetchRef(ix, iy) + fx * gy * fetchRef(ix + 1, iy) +
