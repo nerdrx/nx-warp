@@ -520,12 +520,68 @@ None of this enters the v1 syntax. The reserved fields are the whole of the forw
 * Concealment code disappears under `ATLAS`. So does `ref_sel` and the replay in
   `nxvc_encoder_set_received_tiles`, replaced by a one-deep per-tile undo.
 * Skip decisions should hold longer, because the encoder now measures a one-step warp instead of a
-  chained one and there is no accumulating resampling blur. **This is the expected result and it is
-  not yet measured.** Phase 2 of this work measures bytes per frame and PSNR of the *displayed*
+  chained one and there is no accumulating resampling blur. **Measured: true at low angular
+  velocity** (79.8 % skip at +1.30 dB and -7.1 % bytes), **false at high** (72.3 % skip against the
+  picture model's 80.1 %), for the reason set out above. Phase 2 of this work measures bytes per frame and PSNR of the *displayed*
   picture against the old model, on the same clips at the same bytes. If skip runs do not lengthen,
   the model still wins on GPU time and loses nothing on rate; if displayed PSNR falls, the seam
   effect below is why.
-* **The new artefact is the seam.** Two adjacent tiles with different source frames are each
+### The measured quality result, and the defect it found
+
+Measured on this branch, 1088x1088, 16-frame synthetic fixtures, luma PSNR at
+equal QP, encoder shadow byte-identical to the decoder throughout:
+
+| fixture | angular velocity | atlas | picture model | delta |
+|---|---|---|---|---|
+| near-still | 5.2 deg/s mean, 8.4 peak | **41.99 dB @ 7131 B/f**, 79.8 % skip | 40.69 dB @ 7675 B/f, 78.7 % skip | **+1.30 dB, -7.1 % bytes** |
+| fast turn | 71.4 deg/s mean, 151.7 peak | 32.99 dB @ 11857 B/f, 72.3 % skip | 40.46 dB @ 8225 B/f, 80.1 % skip | **-7.47 dB, +44 % bytes** |
+| identity (`H = I`) | 0 | 39.85 dB @ 11347 B/f | 39.81 dB @ 11186 B/f | +0.04 dB, +1.4 % bytes |
+
+**At low angular velocity the atlas does exactly what this ADR claimed**: it
+wins on both axes at once, +1.30 dB *and* 7 % fewer bytes, because the one-step
+warp from the source pose carries none of the chained-bilinear blur the picture
+model accumulates. At high angular velocity it collapses.
+
+**The mechanism is cross-tile gather, and it is a defect in 13.12.4's
+co-located-`C` rule, not in an implementation.** A skipped tile is displayed and
+predicted by reading the atlas at `C(x)`. For a displacement `d`, samples land
+`d` pixels outside the tile's own position, in *neighbouring* atlas entries
+whose content was coded at a different frame and therefore belongs to a
+different pose. `d` grows as angular velocity times skip-run length, so:
+
+* at `H = I`, `d = 0` and the penalty is **0.04 dB** -- the model is exactly
+  sound when nothing moves;
+* excluding a border strip of width `b` around every tile recovers the penalty
+  monotonically -- **32.99 dB at b=0, 33.89 at 4, 34.69 at 8, 36.20 at 16,
+  37.38 at 24, 37.42 at 30** -- while the picture model is **flat** across the
+  same sweep (40.46 -> 40.94), which is the signature of an error that lives at
+  tile boundaries and nowhere else;
+* once `d` exceeds the 64-sample tile, a skipped tile displays *mostly its
+  neighbours' content*, which is the fast-turn column above.
+
+This was written up as "the seam", a border artefact bounded by the encoder's
+skip threshold. That was wrong in degree: it is not a strip, it is
+displacement-proportional contamination that consumes the whole tile once the
+head turns fast enough, and the encoder's threshold does not bound it because
+the encoder measures the same contaminated predictor and therefore cannot see
+that it is contaminated.
+
+**Bounding staleness does not fix it.** At `atlas_gen_max = 1` -- a tile may be
+skipped for a single frame -- the fast-turn case is still 37.49 dB at
+16910 B/frame, because invalidating an entry forces `INTRA` rather than
+shortening the gather distance. The knob trades the defect for intra bits.
+
+**The fix is neighbour-aware gather**, and it is now the open question this ADR
+turns on: resolve which atlas entry a source sample lands in, and fetch it
+through *that* entry's `C`. The affordable form keeps the corner structure of
+2.2 rather than dividing per sample -- for each neighbouring entry the
+footprint touches, four corners under that entry's `C`, bilinear-interpolated
+across the overlap; 4 divisions per (tile, neighbour) pair instead of per
+sample. Until it is priced, the honest scope of this ADR is: **the atlas is a
+win at low angular velocity and a loss at high**, and the 8.8 ms it removes is
+unaffected either way.
+
+* **The seam, as originally written.** Two adjacent tiles with different source frames are each
   individually correctly reprojected, so static distant content is seamless. They diverge on moving
   content and on near parallax, growing with the age difference — a tile coded 30 frames ago beside
   one coded this frame, during a fast turn. The encoder's skip threshold bounds it, and bounds it
