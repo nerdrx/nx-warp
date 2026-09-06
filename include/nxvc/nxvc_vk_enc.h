@@ -270,11 +270,18 @@ typedef struct nxvc_vke_create_info {
      *      done, and byte-identical to the flag set at the top of this file;
      *   1  also the INTEGER REQUANTISER: a level of +-1 whose squared error
      *      is worth less than the bits it saves is dropped.  It adds
-     *      `--int-rdoq 1` to that flag set, and it is what a compositor with
-     *      a frame budget should ask for -- measured on RADV at 1088x1088 and
-     *      at 2 x 1088x1088 it is -1.4 % to -3.5 % BD-rate for no measurable
-     *      GPU time, because the decision is 64 independent integer compares
-     *      a block inside a pass that was already running.
+     *      `--int-rdoq 1` to that flag set, and it costs no measurable GPU
+     *      time, because the decision is 64 independent integer compares a
+     *      block inside a pass that was already running.
+     *
+     * LEVEL 1 IS NOT THE ONE TO DEFAULT TO.  It is -1.4 % to -4.4 % BD-rate
+     * on the pan fixtures and +0.1 % to +3.2 % on all five clips of the
+     * rendered vrroom corpus, on both entropy coders: it wins only where the
+     * +-1 coefficients it drops are a synthetic noise layer, and on content
+     * where they are specular detail it degrades the reference and the loss
+     * compounds down the inter chain.  0 stays the default for that reason;
+     * see vk/encoder/README.md, "The effort levels, re-measured on rendered
+     * content", and docs/GALLERY.md Figure 12.
      *
      * THERE IS NO LEVEL 2, and that is a measurement rather than an omission.
      * The two things a level 2 could be are both priced in

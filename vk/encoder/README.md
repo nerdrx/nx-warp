@@ -872,9 +872,15 @@ those two arrays. The wider search is **not** free: it is 0.3–0.6 ms a frame,
 because the sweep is (2r/2+1)² candidates and 31 is 1024 of them against 16's
 289.
 
-**The recommendation is effort 1**, for any budget. At 90 Hz the server has
+**The recommendation was effort 1**, for any budget. At 90 Hz the server has
 about 11 ms a frame, of which the encoder is spending 9.1 (578 tiles, rANS)
 or 6.1 (Lite); effort 1 does not move that and takes 1.5–3.6 % off the wire.
+
+**It is withdrawn on rendered content.** Everything above is measured on the
+`pan8`/`pan8s` fixtures, and the sign of the result does not survive the move
+to the vrroom corpus. See "The effort levels, re-measured on rendered content"
+below; the short version is that effort 1 pays only on `pan8`, and the default
+should be effort 0.
 
 ### Why there is no level 2
 
@@ -943,6 +949,126 @@ same `double` estimate the mode decision could not use. An integer version
 needs a bit estimate the device can trust, which is the piece of work ADR 0028
 deferred. **That estimate now exists** — see below — and the decision that
 would use it does not.
+
+## The effort levels, re-measured on rendered content
+
+The section above recommends effort 1 on the strength of −1.4 to −3.6 % BD-rate
+on `pan8`/`pan8s`. A separate reading of the same tool on the vrroom corpus
+reported that it "does nothing (within 0.03 dB) across all four fixtures".
+Both are reproducible, and neither is the whole answer.
+
+![effort on vrroom](../../docs/assets/effort-vrroom.png)
+
+### The 0.03 dB reading is a configuration, not a property of the content
+
+`nxv-enc` without `--no-rdo` runs the reference's full rate-distortion mode
+decision, which already discards the coefficients a requantiser would drop.
+Run in that configuration the tool is very nearly inert, and the earlier number
+comes back exactly:
+
+| `rest`, QP 34, `--atlas on --atlas-picture-disp 8 --intra-dir on` | PSNR | bytes |
+|---|---|---|
+| `--int-rdoq 0` | 34.204 dB | 29433 |
+| `--int-rdoq 1` | 34.204 dB | 29355 |
+
+0.000 dB and 0.27 % of the bytes. **The GPU encoder has no such search** — that
+is why `int_rdoq` exists on it at all — so the number that decides the GPU
+default has to be measured with `--no-rdo`, or on `nxvc-vkenc` itself. With
+that done, the tool is not inert on vrroom at all: at QP 34 it costs 0.6–1.4 dB
+and saves 7–12 % of the bytes on every clip in the corpus. Whether that trade is
+worth taking is a question only a rate-distortion curve can answer, and a
+single-quantiser dB comparison cannot.
+
+### The curve says the sign depends on the content
+
+BD-rate over QP 22/26/30/34/40, 8 frames, `--eyes 2` (mono for `pan8`), inter,
+intra period 180, against the same encoder with the tool off. Negative is
+better. `coded` is the share of tiles outside the skip bitmap — the only tiles
+a requantiser can act on.
+
+| clip | coded | effort 1, rANS | effort 1, Lite | ref trellis, rANS | ref trellis, Lite |
+|---|---|---|---|---|---|
+| `pan8` | 25.0 % | **−2.41 %** | **−4.38 %** | −9.35 % | −9.82 % |
+| `still` | 13.0 % | +1.09 % | +0.12 % | −3.18 % | −4.96 % |
+| `rest` | 14.0 % | +3.19 % | +2.99 % | −2.77 % | −5.65 % |
+| `mid` | 18.0 % | +2.35 % | +1.15 % | −5.12 % | −9.00 % |
+| `objmotion` | 16.4 % | +2.43 % | +2.73 % | −6.47 % | −10.70 % |
+| `fast` | 15.6 % | +2.65 % | +2.59 % | −3.94 % | −7.41 % |
+
+The reference's integer trellis is negative on all six. Effort 1 is negative on
+exactly one — the fixture the low-poly work already called "unusually kind".
+
+The obvious confounder is the coded-tile fraction: `pan8` codes 25 % of its
+tiles and the vrroom clips 13–18 %, so perhaps real inter content simply leaves
+too few coefficients to requantise. It does not hold. Shortening the intra
+period to 6 raises the coded fraction on both — `pan8` to 36.7 %, `rest` to
+27.5 % — and the signs do not move:
+
+| clip | intra period | coded | effort 1, rANS | effort 1, Lite |
+|---|---|---|---|---|
+| `pan8` | 180 | 25.0 % | −2.41 % | −4.38 % |
+| `pan8` | 6 | 36.7 % | −1.36 % | −3.53 % |
+| `rest` | 180 | 14.0 % | +3.19 % | +2.99 % |
+| `rest` | 6 | 27.5 % | +2.29 % | +2.01 % |
+
+Nor is it the entropy coder: rANS and Lite agree on the sign in every row above.
+
+### Where the magnitude comes from
+
+The requantiser prices a dropped coefficient against **this frame only**. On an
+inter stream a coded tile's reconstruction is also the next frame's reference,
+so an error it introduces is paid again downstream — a cost the decision never
+sees. Coding the same clips intra-only removes the chain, and with it almost
+the whole effect, in *both* directions:
+
+| clip | entropy | inter | intra-only |
+|---|---|---|---|
+| `pan8` | rANS | −2.03 % | +0.58 % |
+| `pan8` | Lite | −4.17 % | −0.85 % |
+| `rest` | rANS | +3.49 % | +1.03 % |
+| `rest` | Lite | +2.92 % | +0.26 % |
+| `objmotion` | rANS | +2.59 % | +1.04 % |
+| `objmotion` | Lite | +2.33 % | +0.28 % |
+
+(6 frames, same quantisers; the inter column is re-run here at 6 frames, so it
+differs slightly from the 8-frame table above.)
+
+Intra-only the tool is worth between −0.9 % and +1.0 % everywhere: the immediate
+rate-distortion trade it makes is close to a wash, on kind content and unkind
+alike. The inter chain is the amplifier, and what it amplifies is whether the
+±1 coefficients being dropped were noise or signal. `pan8` is band-limited
+synthetic noise laid over a rendered scene; dropping its ±1s leaves a *cleaner*
+reference, the next prediction is better, and the gain compounds. The vrroom
+clips have no such layer — their ±1s are specular detail and thin geometry —
+so dropping them degrades the reference and the loss compounds instead.
+
+That is also why the constant 3-bit rate estimate (`NXE_RDOQ_BITS_Q8 768`) is
+not the fixable part. Making it exact would move the intra-only column, which
+is already within a point of zero. The term that is missing is propagation, and
+a single-frame requantiser cannot have it.
+
+### What to ship
+
+**Effort 0 is the default and callers should leave it there.** The library
+default was already `NXVC_VKE_EFFORT_DEFAULT`; what this measurement withdraws
+is the advice to raise it. Effort 1 stays selectable and stays byte-identical
+to `nxv-enc --no-rdo --int-rdoq 1`, but it is a `pan8` result, and the WiVRn
+server's `"effort": 1` should go back to 0 — on rendered content it costs
+0.1–3.2 %, which is real bytes on a wireless link for nothing.
+
+Where a CPU encoder is in the loop, the tool that pays is the reference's
+integer trellis (`--int-trellis 1 --rdoq-effort 3`): −2.8 to −10.7 % on the
+same six fixtures, and negative on every one of them. It has no GPU
+implementation, and this measurement is the argument for writing one — a level
+2 that is the trellis, not a wider search.
+
+```sh
+FX=nx-scratch/fixtures/vrroom nx-scratch/effvr/sweep.py     # the corpus
+FX=nx-scratch/enceffort/fx W=1088 H=1088 EYES=1 \
+  OUT=nx-scratch/effvr/pan.json nx-scratch/effvr/sweep.py pan8
+nx-scratch/effvr/intra.py                                  # inter vs intra-only
+nx-scratch/effvr/chart.py                                  # docs/assets/effort-vrroom.png
+```
 
 ## The trellis, in exact integers
 

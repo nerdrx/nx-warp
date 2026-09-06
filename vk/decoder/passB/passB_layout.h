@@ -23,6 +23,13 @@
 //  binding 7  Modes     readonly  [v3] uint[]: kNxvwModeWordsPerTile packed
 //                                 4-bit per-8x8-block intra modes per tile,
 //                                 written by Pass A (SYNTAX.md 7.4 / 9.6)
+//  binding 16 Planar    readonly  [planar] uint[]: kNxvwPlanarUintsPerTile
+//             uints per tile, the VALIDATED body of a mode-5 tile.  The host
+//             parses and checks it ([SYN] 13.13 is full of MUST-reject
+//             conditions and a kernel cannot reject a stream), so what
+//             arrives here is known-good: a header word, the label map as
+//             bytes, and the signed coefficient bytes.  Untouched for a
+//             frame with no planar tile.
 //  binding 9  UnitLens  readonly  [sparse] uint[]: one byte per coding unit,
 //                                 NXVW_UNIT_LEN_WORDS_PER_TILE uints per
 //                                 tile, holding LAST + 1 (0 = not coded)

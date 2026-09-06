@@ -614,6 +614,16 @@ typedef struct nxvc_vkd_stats {
      * position holds something newer, and the encoder must not answer it with
      * a refresh.                                                           */
     uint32_t tiles_superseded;
+    /* --- [passb] APPENDED, same rule again.
+     *
+     * The copy segment: skip tiles whose prediction is their reference
+     * unchanged, decided on the HOST (warp_tile_is_copy()) and dispatched to a
+     * module with no coordinate pipeline.  Both are 0 on a frame where no tile
+     * qualifies, which is every frame on an encoder that does not snap a
+     * near-identity pose to the identity -- so a run reporting
+     * tiles_identity_seg == 0 has NOT exercised the path.               */
+    double pass_b_identity_ms;
+    uint32_t tiles_identity_seg;
     /* --- [ATLAS] APPENDED, same rule as every block above: after the
      * existing fields, never inserted, so a caller built against an older
      * header keeps every offset it was compiled with.  Guarded by
@@ -669,10 +679,11 @@ typedef struct nxvc_vkd_stats {
      * sampling every frame.  `frames` above is the matching denominator.   */
     uint32_t picture_frames;
 
-    /* NOTE: `tiles_identity_seg` is NOT here.  It belongs to passb-adreno's
-     * identity-warp fast path and is appended by that branch; duplicating it
-     * would put the same number at two offsets and guarantee a struct
-     * conflict at the merge.                                               */
+    /* `pass_b_identity_ms` and `tiles_identity_seg` are ABOVE, from
+     * passb-adreno: they landed in main first and keep the offsets their
+     * callers were built against, and these six follow them.  They were
+     * deliberately never duplicated here -- one number at two offsets is a
+     * struct conflict waiting at every future merge.                       */
 } nxvc_vkd_stats;
 
 /* The feature test for the six atlas fields above, for an integrator building
@@ -688,6 +699,8 @@ typedef struct nxvc_vkd_stats {
  * offset its callers were built against; appending ours after it is what makes
  * this merge ABI-safe in both directions. */
 #define NXVC_VK_DECODER_PASSB_SEGMENTS 1
+/* The identity/copy segment above, which arrived after the other three. */
+#define NXVC_VK_DECODER_PASSB_IDENTITY 1
 
 nxvc_vkd_status nxvc_vk_decoder_stats(const nxvc_vk_decoder *dec,
                                       nxvc_vkd_stats *out);
