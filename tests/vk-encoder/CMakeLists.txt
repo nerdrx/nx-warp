@@ -269,6 +269,33 @@ if(TARGET nxvc-vkenc)
                            SKIP_REGULAR_EXPRESSION "SKIP:")
       list(APPEND NXENC_TESTS vk.encoder.acid.api.image)
 
+      # The eye PAIR, through the same ABI.  `eyes = 2` codes both eyes of a
+      # frame as one nxvc stereo frame in one submission, which is the shape
+      # the decoder wants -- and it is the configuration in which two latent
+      # per-eye/pair confusions lived: E1c's search took its origin at
+      # `eye * ring_w` with `ring_w` the PAIR width, and E0 was handed the
+      # per-eye geometry and converted eye 0 only.  Both are invisible at
+      # `eyes == 1`, where the two widths coincide, so only a stereo row of
+      # the selftest table can hold them down.  The image leg matters most:
+      # E0 runs on that path alone.
+      foreach(leg plain image)
+        set(stereo_extra)
+        if(leg STREQUAL "image")
+          set(stereo_extra -DIMAGE=ON)
+        endif()
+        add_test(NAME vk.encoder.acid.api.stereo.${leg} COMMAND ${CMAKE_COMMAND}
+                 -DAPIENC=$<TARGET_FILE:nxvc-vkenc-api>
+                 -DVKENC=$<TARGET_FILE:nxvc-vkenc>
+                 -DNXVENC=$<TARGET_FILE:nxv-enc>
+                 -DNXVDEC=$<TARGET_FILE:nxv-dec>
+                 -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/acid-api-stereo-${leg}
+                 -DEYES=2 ${stereo_extra}
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/api_acid.cmake)
+        set_tests_properties(vk.encoder.acid.api.stereo.${leg} PROPERTIES
+                             SKIP_REGULAR_EXPRESSION "SKIP:")
+        list(APPEND NXENC_TESTS vk.encoder.acid.api.stereo.${leg})
+      endforeach()
+
       # The same claim for a quantiser that MOVES, which is the entry point a
       # rate controller uses and the one the two tests above never touch: after
       # nxvc_vk_encoder_set_qp(q), every frame must be the frame nxv-enc codes

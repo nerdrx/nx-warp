@@ -50,14 +50,21 @@ file(MAKE_DIRECTORY ${WORKDIR})
 if(NOT VKENC)
   message(FATAL_ERROR "api_acid.cmake: VKENC is required")
 endif()
+
+# 1 or 2 eyes.  A stereo row of the selftest table drives the whole ABI over
+# the eye pair: `--w` is the side-by-side pair on both encoders, create() gets
+# `width / eyes`, and the tile grid is `eyes * cols_per_eye` wide ([SYN] 3.3).
+if(NOT DEFINED EYES)
+  set(EYES 1)
+endif()
 execute_process(COMMAND ${VKENC} --dump-selftest-yuv ${WORKDIR}/
                 OUTPUT_VARIABLE cases RESULT_VARIABLE rc)
 if(NOT rc EQUAL 0)
   message(FATAL_ERROR "nxvc-vkenc --dump-selftest-yuv failed: ${rc}")
 endif()
 
-# Take the first single-eye 4:2:0 case as the picture; the ABI is single-eye
-# 4:2:0 only, so any other row is one it could not encode anyway.
+# Take the first ${EYES}-eye 4:2:0 case as the picture; the ABI is 4:2:0 only,
+# so any other row is one it could not encode anyway.
 string(REPLACE "\n" ";" lines "${cases}")
 set(picked "")
 foreach(line ${lines})
@@ -69,7 +76,7 @@ foreach(line ${lines})
   list(GET f 2 h)
   list(GET f 3 eyes)
   list(GET f 4 pix)
-  if(eyes STREQUAL "1" AND pix STREQUAL "yuv420p")
+  if(eyes STREQUAL "${EYES}" AND pix STREQUAL "yuv420p")
     list(GET f 0 picked)
     set(pw ${w})
     set(ph ${h})
@@ -77,13 +84,17 @@ foreach(line ${lines})
   endif()
 endforeach()
 if(picked STREQUAL "")
-  message(FATAL_ERROR "api_acid.cmake: no single-eye 4:2:0 case to test with")
+  message(FATAL_ERROR
+    "api_acid.cmake: no ${EYES}-eye 4:2:0 case to test with")
 endif()
 
-set(APIARGS)
+set(APIARGS --eyes ${EYES})
 set(WHAT "nxvc_vk_encoder")
+if(NOT EYES STREQUAL "1")
+  set(WHAT "${WHAT} on a ${EYES}-eye frame")
+endif()
 if(IMAGE)
-  set(APIARGS --image)
+  set(APIARGS ${APIARGS} --image)
   set(WHAT "nxvc_vk_encoder's image entry point")
 endif()
 # The entropy tool, and the three tools it turns off.  A Lite stream carries
@@ -120,7 +131,7 @@ foreach(qp 20 26 30 40)
                           --pix yuv420p --qp ${qp} --frames 3
                           --nsub 3 --matrix 1 --wm 0 --tskip off
                           --chroma-qp-off 0 --ctx v3
-                          --eyes 1 --intra-dir off --quiet
+                          --eyes ${EYES} --intra-dir off --quiet
                           --no-rdo ${REF_ENTROPY}
                           --split4x4 off --cfl off --xform 8
                           --out ${WORKDIR}/ref.nxv
