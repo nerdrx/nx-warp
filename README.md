@@ -41,6 +41,19 @@ Library and codec identifier: `nxvc`.
 
 <br>
 
+## Gallery
+
+Measured on 2026-09-06; every figure has its fixture, settings, number and regenerating command in [docs/GALLERY.md](docs/GALLERY.md).
+
+| | |
+|---|---|
+| ![Rate-distortion on the Blender room](docs/assets/vrroom-rd.png) | ![The rendered stereo test scene, mid-speed turn](docs/assets/vrroom-mid.png) |
+| Rate-distortion on the rendered room, four head trajectories: at rest the atlas is 2.6x fewer bytes and +0.9 dB; at a fast turn the mode switch reproduces the plain picture model exactly. | The Blender "vrroom" corpus: text panels, specular floor, thin edges, two independently moving figures, true stereo poses. |
+| ![Low-poly mode: source, transform, planar](docs/assets/lowpoly-panels.png) | ![Alternate-eye worst tile](docs/assets/alteye-worsttile.png) |
+| The planar tile mode at equal bytes: hard-edged flat facets instead of ringing and blocking. It costs 2 to 4 dB, so it is a look switch, not a free win. | Why alternate-eye update was rejected: the frame mean looks affordable while the synthesised eye's worst tile collapses to 11.5 dB. |
+| ![Snap-identity tile map](docs/assets/snapid-tilemap.png) | ![Adreno clock under decode](docs/assets/passb-clock.png) |
+| Snapping sub-sample warps to the exact identity: still tiles become free copies on the headset (0/289 to 289/289). | The Pico 4's GPU clock does not boost for a decode: 490 MHz idle and under load, every sample. |
+
 ## Contents
 
 - [What it is, and what it is not](#what-it-is-and-what-it-is-not)
