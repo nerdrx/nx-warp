@@ -206,6 +206,12 @@ layout(set = 0, binding = 8, std430) readonly buffer TileOrder { uint i[]; } uOr
 // [sparse] One byte per coding unit, LAST + 1 (0 = not coded).  See
 // passB_layout.h and passA/syntax_constants.h section 8.
 layout(set = 0, binding = 9, std430) readonly buffer UnitLens { uint w[]; } uLens;
+
+// [planar] [SYN] 13.13.  One validated body per tile, kPlanarUintsPerTile
+// uints: the header word, the label map as bytes, and the signed coefficient
+// bytes.  The HOST parsed and checked it -- a kernel cannot return BITSTREAM,
+// and 13.13 is mostly MUST-reject conditions -- so nothing here validates.
+layout(set = 0, binding = 16, std430) readonly buffer Planar { uint w[]; } uPlanar;
 // [unorm] The same three 8-bit stores as bindings 3, 5 and 6 through
 // normalised images, selected by kUnormStore.  They are separate bindings
 // rather than a re-typed one because a GLSL image's format is a layout
@@ -1153,6 +1159,110 @@ void main() {
         int cflF = chroma ? (lumaSize == size ? 1
                              : (lumaSize == 2 * size ? 2 : 0))
                           : 0;
+
+        // --------------------------------------------- PLANAR ([SYN] 13.13)
+        //
+        // The whole tile, in one place: no entropy decode, no dequantised
+        // coefficients, no transform, no predictor and no reference.  Every
+        // sample is a label lookup and three multiply-adds, with no dependency
+        // on any other sample, block or tile -- which is why this needs no
+        // barrier of its own and no shared memory beyond the plane store the
+        // rest of the kernel already writes.
+        //
+        // The branch is UNIFORM across the workgroup: `mode` is a property of
+        // the tile, and one workgroup is one tile.
+        if (mode == kModePlanar) {
+            int pbase = tile * kPlanarUintsPerTile;
+            uint hdr = uPlanar.w[pbase];
+            int regions = int(hdr & 3u) + 2;
+            int mLog2 = ((hdr >> 3) & 1u) != 0u ? 4 : 3;   // 16 or 8 cells
+            int M = 1 << mLog2;
+            int lbits = regions > 2 ? 2 : 1;
+            int lg = findMSB(size);
+            // Never negative: the mode requires res_level 0, so `size` is 64
+            // for luma and 32 for 4:2:0 chroma against an M of 8 or 16.  A
+            // chroma plane reads the LUMA's map at one shift less -- the
+            // regions belong to the tile, not to a plane.
+            int shift = lg - mLog2;
+            // The DC-plane step of 6.5, which is what 13.13 dequantises the
+            // region coefficients at.  Identical expression to the near-skip
+            // path above, so the two cannot drift.
+            int tdc = dequantStep(nxvw_dc_qp(planeQp), kFlatWeight);
+
+            // Twelve scalars, not an int[4][3].  docs/ADRENO-RULES.md: a local
+            // array is a register file only where the compiler can prove every
+            // index is a constant, and `r` here is a per-sample value read out
+            // of the map -- exactly the dynamic index that gets demoted to
+            // private memory.  Four regions is a small enough fan to select.
+            //
+            // Byte order is [SYN] 13.13's: per region, then per plane, then
+            // c0/c1/c2, so the index of term k of plane p in region r is
+            // ((r * 3) + p) * 3 + k with three coded colour planes.
+            int cb = pbase + kPlanarHeaderUints + kPlanarMapUints;
+            int d00 = 0, d01 = 0, d02 = 0, d10 = 0, d11 = 0, d12 = 0;
+            int d20 = 0, d21 = 0, d22 = 0, d30 = 0, d31 = 0, d32 = 0;
+            for (int r = 0; r < 4; ++r) {
+                if (r >= regions) break;   // uniform
+                int i0 = ((r * 3) + p) * 3;
+                // Sign-extend the coefficient byte: the body stores i8.
+                int c0 = (int(uPlanar.w[cb + ((i0 + 0) >> 2)] <<
+                              (24 - ((i0 + 0) & 3) * 8))) >> 24;
+                int c1 = (int(uPlanar.w[cb + ((i0 + 1) >> 2)] <<
+                              (24 - ((i0 + 1) & 3) * 8))) >> 24;
+                int c2 = (int(uPlanar.w[cb + ((i0 + 2) >> 2)] <<
+                              (24 - ((i0 + 2) & 3) * 8))) >> 24;
+                int q0 = dequant(c0, tdc);
+                int q1 = dequant(c1, tdc);
+                int q2 = dequant(c2, tdc);
+                if (r == 0) { d00 = q0; d01 = q1; d02 = q2; }
+                else if (r == 1) { d10 = q0; d11 = q1; d12 = q2; }
+                else if (r == 2) { d20 = q0; d21 = q1; d22 = q2; }
+                else { d30 = q0; d31 = q1; d32 = q2; }
+            }
+
+            // Two samples a word, the layout the store already reads, and a
+            // lane owns whole PAIRS so the two halves of a word are never
+            // written by different lanes.  `size` is even at every legal
+            // res_level, so a pair never straddles two rows.
+            int pairs = (size * size) >> 1;
+            for (int w = tid; w < pairs; w += 256) {
+                int e0 = w << 1;
+                int y = e0 >> lg;
+                int x0 = e0 - (y << lg);
+                int cellRow = (y >> shift) * M;
+                int c0i = cellRow + (x0 >> shift);
+                int c1i = cellRow + ((x0 + 1) >> shift);
+                int b0 = c0i * lbits, b1 = c1i * lbits;
+                int mb0 = b0 >> 3, mb1 = b1 >> 3;
+                int r0 = int((uPlanar.w[pbase + kPlanarHeaderUints + (mb0 >> 2)] >>
+                              (((mb0 & 3) * 8) + (b0 & 7))) &
+                             uint((1 << lbits) - 1));
+                int r1 = int((uPlanar.w[pbase + kPlanarHeaderUints + (mb1 >> 2)] >>
+                              (((mb1 & 3) * 8) + (b1 & 7))) &
+                             uint((1 << lbits) - 1));
+                int a0 = r0 == 0 ? d00 : r0 == 1 ? d10 : r0 == 2 ? d20 : d30;
+                int h0 = r0 == 0 ? d01 : r0 == 1 ? d11 : r0 == 2 ? d21 : d31;
+                int v0 = r0 == 0 ? d02 : r0 == 1 ? d12 : r0 == 2 ? d22 : d32;
+                int a1 = r1 == 0 ? d00 : r1 == 1 ? d10 : r1 == 2 ? d20 : d30;
+                int h1 = r1 == 0 ? d01 : r1 == 1 ? d11 : r1 == 2 ? d21 : d31;
+                int v1 = r1 == 0 ? d02 : r1 == 1 ? d12 : r1 == 2 ? d22 : d32;
+                int ry = (2 * y - size + 1);
+                int s0 = dcOff + a0 + ((h0 * (2 * x0 - size + 1)) >> lg) +
+                         ((v0 * ry) >> lg);
+                int s1 = dcOff + a1 + ((h1 * (2 * (x0 + 1) - size + 1)) >> lg) +
+                         ((v1 * ry) >> lg);
+                sPlane[store + w] =
+                    pack16x2(clamp(s0, 0, maxval), clamp(s1, 0, maxval));
+            }
+            // The one barrier in the mode, and it is not optional: every
+            // lane wrote a strided share of this plane and nxvwStoreTile
+            // below reads the whole of it.  Reached by every lane, because
+            // the branch is uniform over the workgroup.
+            barrier();
+            // A planar tile IS its own prediction: nothing is added and no
+            // predictor runs, so the plane is finished.
+            continue;
+        }
 
 #if NXVW_SKIP_STORE
         // ------------------- WARP_SKIP: predict the tile, here, into sPlane

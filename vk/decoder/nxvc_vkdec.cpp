@@ -197,7 +197,7 @@ struct nxvc_vk_decoder {
 
     // ---- buffers
     Buf staging, bBits, bDesc, bTables, bCoef, bCbf, bStatus, bRecs, bWgt,
-        bModes, bOrder, bRead;
+        bModes, bOrder, bRead, bPlanar;
     // [inter] The four-slot reference ring, the predictor Pass W hands to
     // Pass B, and the parameter block that drives both.
     Buf bRing, bWPred, bWarp;
@@ -248,6 +248,7 @@ struct nxvc_vk_decoder {
     int wpredStrideI16 = 0;
     // The staging buffer's inter blocks.
     VkDeviceSize offWarp = 0;
+    VkDeviceSize offPlanar = 0;   // [planar] the validated planar bodies
     // Host-side scratch for the parameter block, rebuilt per frame.
     std::vector<uint32_t> warp_words;
 
@@ -756,7 +757,9 @@ struct SetShape {
 // [v3] intra modes, [sparse] unit lengths.
 constexpr SetShape kSetA{8, 0};
 // Pass B: buffers 0-2, 7-9 and [inter] 13-15; images 3-6 and [unorm] 10-12.
-constexpr SetShape kSetB{9, 7};
+// [planar] Buffer 16 is the validated planar body, appended after the inter
+// bindings so nothing that already referenced a binding has to move.
+constexpr SetShape kSetB{10, 7};
 // Pass W: ring in, params in, predictor out, tile order in.
 constexpr SetShape kSetW{4, 0};
 
@@ -1260,6 +1263,15 @@ nxvc_vkd_status make_resources(D *d) {
     if ((st = make_buf(d, d->bOrder, (VkDeviceSize)(ntiles + 1) * 4, kSsbo,
                        false)))
         return st;
+    // [planar] kPlanarUintsPerTile uints per tile, 104 B, allocated whether or
+    // not the stream uses the mode: it is a descriptor that must be bound, and
+    // 104 B a tile against the coefficient slot's 12.5 KB is not worth making
+    // conditional.  Only WRITTEN when a frame carries a planar tile.
+    if ((st = make_buf(d, d->bPlanar,
+                       (VkDeviceSize)(ntiles + 1) *
+                           nxvw::kPlanarUintsPerTile * 4,
+                       kSsbo, false)))
+        return st;
     // [sparse] One byte per coding unit, 264 B per tile against the
     // coefficient slot's 12.5 KB.  Pass A writes it, Pass B reads it.
     const VkDeviceSize ulenBytes =
@@ -1344,6 +1356,7 @@ nxvc_vkd_status make_resources(D *d) {
         {VK_NULL_HANDLE, d->imgLumaN.view, VK_IMAGE_LAYOUT_GENERAL},
         {VK_NULL_HANDLE, d->imgCbCrN.view, VK_IMAGE_LAYOUT_GENERAL}};
     // [inter] Pass B's 13-15 and Pass W's 0-2.
+    VkDescriptorBufferInfo bPlanarInfo{d->bPlanar.buf, 0, VK_WHOLE_SIZE};
     VkDescriptorBufferInfo b3[3] = {{d->bWPred.buf, 0, VK_WHOLE_SIZE},
                                     {d->bRing.buf, 0, VK_WHOLE_SIZE},
                                     {d->bWarp.buf, 0, VK_WHOLE_SIZE}};
@@ -1357,7 +1370,7 @@ nxvc_vkd_status make_resources(D *d) {
                                     {d->bWarp.buf, 0, VK_WHOLE_SIZE},
                                     {d->bWPred.buf, 0, VK_WHOLE_SIZE},
                                     {d->bOrder.buf, 0, VK_WHOLE_SIZE}};
-    VkWriteDescriptorSet w[28]{};
+    VkWriteDescriptorSet w[29]{};   // [planar] +1 for binding 16
     uint32_t nw = 0;
     for (int i = 0; i < 8; ++i) {
         w[nw] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
@@ -1411,6 +1424,16 @@ nxvc_vkd_status make_resources(D *d) {
         w[nw].descriptorCount = 1;
         w[nw].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         w[nw].pBufferInfo = &b3[i];
+        ++nw;
+    }
+    // [planar] binding 16.
+    {
+        w[nw] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        w[nw].dstSet = d->dsetB;
+        w[nw].dstBinding = 16;
+        w[nw].descriptorCount = 1;
+        w[nw].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        w[nw].pBufferInfo = &bPlanarInfo;
         ++nw;
     }
     for (int i = 0; i < 4; ++i) {
@@ -1580,6 +1603,20 @@ void build_tile_order(D *d, const FrameParse &fp, uint32_t ntiles) {
         auto skipMid = beg;
         if (fp.any_inter) {
             skipMid = std::stable_partition(beg, end, [&](uint32_t t) {
+                // [planar] A PLANAR tile is mode 5, so it lands on the CODED
+                // side of this partition, and that is load-bearing beyond the
+                // dispatch shape.
+                //
+                // [SYN] 13.12.3 step 3: under the atlas a CODED tile seeds its
+                // atlas entry, and a planar tile is a coded tile -- in fact the
+                // cheapest possible new patch for that store, since it needs no
+                // reference and can seed an entry that has none
+                // (docs/LOWPOLY-MODE.md 6).  The atlas decoder builds its
+                // "tiles this frame coded" list as the range of this order
+                // AFTER `order_nskip`, and hands that list to
+                // nxvw::AtlasState::commit().  So a planar tile seeds its entry
+                // by construction here, and would silently stop doing so if it
+                // were ever moved to the skip side.
                 return (fp.recs[t].w1 & 7u) == 0u;   // WARP_SKIP
             });
             d->order_nskip[pass] = (uint32_t)(skipMid - beg);
@@ -1808,7 +1845,7 @@ extern "C" void nxvc_vk_decoder_destroy(nxvc_vk_decoder *d) {
         for (Buf *b : {&d->staging, &d->bBits, &d->bDesc, &d->bTables,
                        &d->bCoef, &d->bCbf, &d->bStatus, &d->bRecs, &d->bWgt,
                        &d->bModes, &d->bOrder, &d->bRead, &d->bULen,
-                       &d->bULenHost, &d->bRing, &d->bWPred, &d->bWarp})
+                       &d->bULenHost, &d->bRing, &d->bWPred, &d->bWarp, &d->bPlanar})
             destroy_buf(d, *b);
         for (Img *i : {&d->imgRgba, &d->imgRgb10, &d->imgLuma, &d->imgCbCr,
                        &d->imgRgbaN, &d->imgLumaN, &d->imgCbCrN})
@@ -2181,6 +2218,13 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     const VkDeviceSize warpBytes = (VkDeviceSize)d->warp_words.size() * 4;
     d->offWarp = o;
     o = align_up(o + warpBytes, 256);
+    // [planar] Only staged when the frame carries a planar tile; every other
+    // frame moves nothing and leaves the buffer as it was, which no tile
+    // reads.
+    const VkDeviceSize planarBytes =
+        fp.any_planar ? (VkDeviceSize)fp.planar.size() * 4 : 0;
+    d->offPlanar = o;
+    o = align_up(o + planarBytes, 256);
     if ((st = make_buf(d, d->staging, o, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                        true)))
         return st;
@@ -2194,6 +2238,8 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     std::memcpy(sp + d->offOrder, d->order.data(), (size_t)ntiles * 4);
     if (warpBytes)
         std::memcpy(sp + d->offWarp, d->warp_words.data(), (size_t)warpBytes);
+    if (planarBytes)
+        std::memcpy(sp + d->offPlanar, fp.planar.data(), (size_t)planarBytes);
 
     // ---- 3. record ----------------------------------------------------
     VKTRY(d, vkResetCommandBuffer(d->cmd, 0));
@@ -2218,6 +2264,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     copy(d->bWgt, d->offWgt, sizeof fp.weights);
     copy(d->bOrder, d->offOrder, (VkDeviceSize)ntiles * 4);
     copy(d->bWarp, d->offWarp, warpBytes);
+    copy(d->bPlanar, d->offPlanar, planarBytes);
     // A skipped tile gets no Pass A descriptor, so nothing would zero its
     // coefficient slot.  Zero it here; Pass B then reconstructs it as
     // "no coefficients" over the WARP_SKIP record.

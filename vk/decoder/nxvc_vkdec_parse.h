@@ -143,6 +143,15 @@ struct FrameParse {
     // host (skipped tiles get no Pass A descriptor).  Tile indices.
     std::vector<uint32_t> zero_tiles;
 
+    // [planar] One validated planar body per tile, kPlanarUintsPerTile uints
+    // each, tile-indexed.  Empty for a frame with no planar tile, which is
+    // every frame of every stream that does not set tool bit 35 -- so the
+    // upload and the buffer cost nothing on a stream that never uses the mode.
+    std::vector<uint32_t> planar;
+    bool any_planar = false;
+    // Planar tiles in this frame, for the PASSB_SEGMENTS tile counts.
+    uint32_t tiles_planar = 0;
+
     // ------------------------------------------------- Phase 2 ([SYN] 13)
     // Frame-uniform inter state, from the stream's tool bits and the frame
     // header's flags and `ref_slots`.
