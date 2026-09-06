@@ -345,6 +345,37 @@ nxvc_vkd_status nxvc_vk_decoder_images(const nxvc_vk_decoder *dec,
  * pixel-for-pixel comparison.
  *
  * Requires NXVC_VKD_FLAG_READBACK.  Pass NULL for a plane to skip it. */
+/* ------------------------------------------------- [ATLAS] the atlas (13.12)
+ * Under tool bit 31 the decoder's normative output is the ATLAS -- its pixels
+ * and its per-tile table -- and NOT a picture.  These read it back, and they
+ * are what conformance compares against the reference's
+ * nxvc_decoder_atlas_table() / nxvc_decoder_atlas_plane().
+ *
+ * Both wait for the frame in flight.  Both return NXVC_VKD_ERR_ARG on a
+ * decoder whose stream does not set tool bit 31.
+ */
+
+/* Byte size of the per-tile table: 64 * tile_count, over the eye pair.  0 if
+ * this is not an atlas stream. */
+size_t nxvc_vk_decoder_atlas_table_size(const nxvc_vk_decoder *dec);
+
+/* The whole table, [SYN] 13.12.1's layout exactly, including the 20 reserved
+ * bytes a v1 decoder zeroes -- conformance compares all 64. */
+nxvc_vkd_status nxvc_vk_decoder_atlas_table(nxvc_vk_decoder *dec, uint8_t *out,
+                                            size_t cap);
+
+/* One plane of the atlas PIXELS, in the coded sample domain, as u16 samples.
+ * The layout is nxvw_ring_layout()'s: both eyes side by side within each
+ * plane, eye `e` beginning at column `e * (*w)`, rows `*stride` samples apart.
+ *
+ * Note the two EYE CONVENTIONS in one feature, which is the thing most likely
+ * to be got wrong: the PIXELS are side by side and the TABLE is interleaved
+ * per row ([SYN] 3.3, eye-minor).  */
+nxvc_vkd_status nxvc_vk_decoder_atlas_plane(nxvc_vk_decoder *dec, int plane,
+                                            uint16_t *out, size_t cap,
+                                            uint32_t *w, uint32_t *h,
+                                            uint32_t *stride);
+
 nxvc_vkd_status nxvc_vk_decoder_read_planes(nxvc_vk_decoder *dec,
                                             uint8_t *const plane[4],
                                             const int32_t stride[4]);

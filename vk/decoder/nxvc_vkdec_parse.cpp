@@ -243,6 +243,11 @@ constexpr uint64_t kToolsSupported =
     // makes a static scene pay 408 B a frame -- 294 kbit/s at 90 Hz -- for
     // its tile GRID rather than for its content.  A receiver that offers
     // version 1 offers this bit.  It is orthogonal to ATLAS.
+    // [ATLAS] Bit 31 is NOT here yet.  The decode path below is built and
+    // reaches the end of a frame, but the atlas it produces is not yet
+    // byte-identical to the reference's, so advertising the tool would be
+    // promising a decode this decoder cannot yet do correctly.  It joins the
+    // mask in the commit that makes the vectors pass.
     (1ull << 32);  // ROW_PRESENT: elide an idle row's header [SYN] 3.1.2
 // Bit 23 FILTER_CATMULL_ROM and bit 14 BITDEPTH10 are reject-in-v1
 // ([SYN] 2.3) and must stay out.
@@ -276,6 +281,7 @@ constexpr uint64_t kToolStereo = 1ull << 12;
 constexpr uint64_t kToolNearSkip = 1ull << 28;
 constexpr uint64_t kToolQuadMv = 1ull << 29;
 constexpr uint64_t kToolEntropyLite = 1ull << 30;
+constexpr uint64_t kToolAtlas = 1ull << 31;
 constexpr uint64_t kToolRowPresent = 1ull << 32;
 
 }  // namespace
