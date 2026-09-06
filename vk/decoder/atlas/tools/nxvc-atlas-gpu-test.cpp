@@ -233,6 +233,31 @@ void make_legal(Rng &rng, int32_t w, int32_t h, double scale, int32_t H[9]) {
     }
 }
 
+// A matrix that is LEGAL by 3.1.1 and nowhere near the identity.
+//
+// This exists because the near-identity sweep above never reaches 13.12.2's
+// 2^33 guard: for a head-motion homography the 3.1.1 ENVELOPE always trips
+// first, which is exactly what the spec says ("anything at 2^33 is already
+// eight times outside the envelope").  But 3.1.1 condition 2 bounds every entry
+// at kEntryMax = 2^30 and condition 3 constrains only ROW 2, so a matrix whose
+// linear part is a 512x scale is legal as written -- and composing two of those
+// gives `t_lin` around 2^60, i.e. a `P` of about 2^39, four orders past the
+// guard.  Nothing in the syntax forbids an encoder emitting one, so the guard
+// branch is reachable and has to be tested rather than reasoned away.
+//
+// Row 2 is left at zero so condition 3 holds trivially (`den` is h22 at every
+// corner) and the ONLY thing under test is the guard.
+void make_extreme(Rng &rng, int32_t H[9]) {
+    auto big = [&]() {
+        const int32_t m = kWarpEntryMax;
+        return (int32_t)(rng.range(1, 1000) * (int64_t)m / 1000) *
+               (rng.range(0, 1) ? 1 : -1);
+    };
+    H[0] = big(); H[1] = big(); H[2] = big();
+    H[3] = big(); H[4] = big(); H[5] = big();
+    H[6] = 0;     H[7] = 0;     H[8] = kWarpH22;
+}
+
 // The 64-byte wire record of 13.12.1, packed and unpacked in one place.
 void entry_pack(const AtlasEntry &e, uint32_t *w) {
     for (int k = 0; k < 9; ++k) w[k] = (uint32_t)e.C[k];
@@ -572,6 +597,11 @@ int main(int argc, char **argv) {
 
     uint32_t nCoded = 0, nInvalidated = 0, nForced = 0, nStatic = 0;
     uint32_t nInvalidRef = 0;
+    // How many invalidations were the 2^33 GUARD rather than the envelope.
+    // Asked rather than assumed: if the guard never fires, the kernel's
+    // transcription of it is untested and the run is quietly proving less than
+    // it looks like it proves.
+    uint32_t nGuard = 0;
     std::vector<uint32_t> selHost;
     selHost.reserve(entries);
     std::vector<uint32_t> codedList;
@@ -605,9 +635,22 @@ int main(int argc, char **argv) {
                     nxvw_atlas_eye_of((int)n, colsPerEye, eyes);
                 const bool wasValid =
                     (ref[n].flags & NXVW_ATLAS_FLAG_VALID) != 0u;
+                // Which BRANCH of the composition is about to fire, taken
+                // before the advance because the advance destroys the answer.
+                bool guardWouldTrip = false;
+                if (wasValid &&
+                    (ref[n].flags & NXVW_ATLAS_FLAG_STATIC) == 0u) {
+                    int64_t P[9];
+                    atlas_compose_step(ref[n].C, Hm[eye], P);
+                    for (int k = 0; k < 9; ++k)
+                        if (P[k] >= kAtlasPGuard || P[k] <= -kAtlasPGuard)
+                            guardWouldTrip = true;
+                }
                 atlas_advance_entry(ref[n], Hm[eye], lumaW, lumaH, genMax);
-                if (wasValid && (ref[n].flags & NXVW_ATLAS_FLAG_VALID) == 0u)
+                if (wasValid && (ref[n].flags & NXVW_ATLAS_FLAG_VALID) == 0u) {
                     ++nInvalidated;
+                    if (guardWouldTrip) ++nGuard;
+                }
             }
 
         NxvwAtlasPush push{};
@@ -836,6 +879,79 @@ int main(int argc, char **argv) {
         compare_tables(tblL.u32(), ref, "lazy-flushed", frames);
     }
 
+    // ---- the EXTREME phase.  A fresh table and thirty frames of
+    //      legal-but-far-from-identity matrices, purely to reach 13.12.2's
+    //      2^33 guard, which the head-motion sweep above provably never does.
+    //      Compared against the model every frame, exactly as the main loop is.
+    if (!g_fail) {
+        std::vector<AtlasEntry> xref(entries);
+        for (uint32_t n = 0; n < entries; ++n) {
+            atlas_identity(xref[n].C);
+            xref[n].flags = NXVW_ATLAS_FLAG_VALID;
+            xref[n].src_frame = 0;
+            xref[n].gen = 0;
+            xref[n].res_level = (uint32_t)rng.range(0, 2);
+            entry_pack(xref[n], tblE.u32() + n * NXVW_ATLAS_ENTRY_UINTS);
+            advE.u32()[n] = 0u;
+        }
+        const uint32_t xbase = frames + 100000u;
+        for (uint32_t i = 1; i <= 30 && !g_fail; ++i) {
+            const uint32_t f = xbase + i;
+            int32_t Hx[2][9];
+            for (int e = 0; e < eyes; ++e) make_extreme(rng, Hx[e]);
+            const uint32_t slot0 = (f % NXVW_ATLAS_HRING) * (uint32_t)eyes;
+            for (int e = 0; e < eyes; ++e) {
+                uint32_t *sp = hring.u32() +
+                               (slot0 + (uint32_t)e) * NXVW_ATLAS_HSLOT_UINTS;
+                for (int k = 0; k < 9; ++k) sp[k] = (uint32_t)Hx[e][k];
+                sp[9] = NXVW_ATLAS_HFLAG_WARP_PRESENT;
+            }
+            for (uint32_t n = 0; n < entries; ++n) {
+                const int eye = nxvw_atlas_eye_of((int)n, colsPerEye, eyes);
+                const bool wasValid =
+                    (xref[n].flags & NXVW_ATLAS_FLAG_VALID) != 0u;
+                bool guardWouldTrip = false;
+                if (wasValid) {
+                    int64_t P[9];
+                    atlas_compose_step(xref[n].C, Hx[eye], P);
+                    for (int k = 0; k < 9; ++k)
+                        if (P[k] >= kAtlasPGuard || P[k] <= -kAtlasPGuard)
+                            guardWouldTrip = true;
+                }
+                atlas_advance_entry(xref[n], Hx[eye], lumaW, lumaH, genMax);
+                if (wasValid &&
+                    (xref[n].flags & NXVW_ATLAS_FLAG_VALID) == 0u) {
+                    ++nInvalidated;
+                    if (guardWouldTrip) ++nGuard;
+                }
+            }
+            NxvwAtlasPush xp{};
+            xp.entryCount = entries;
+            xp.colsPerEye = (uint32_t)colsPerEye;
+            xp.eyes = (uint32_t)eyes;
+            xp.lumaW = lumaW;
+            xp.lumaH = lumaH;
+            xp.genMax = genMax;
+            xp.targetFrame = f;
+            xp.sel = NXVW_ATLAS_SEL_ALL;
+            // advanced_to has to start one frame behind, or every thread takes
+            // the `at == targetFrame` early return and nothing is composed.
+            for (uint32_t n = 0; n < entries; ++n) advE.u32()[n] = f - 1u;
+            dispatch(dsE, xp);
+            if (!compare_tables(tblE.u32(), xref, "extreme", i)) break;
+            // Re-seed the invalidated entries, or the table is all-invalid
+            // after one frame and the remaining 29 test nothing.
+            for (uint32_t n = 0; n < entries; ++n) {
+                if ((xref[n].flags & NXVW_ATLAS_FLAG_VALID) != 0u) continue;
+                atlas_identity(xref[n].C);
+                xref[n].flags = NXVW_ATLAS_FLAG_VALID;
+                xref[n].gen = 0;
+                xref[n].src_frame = f;
+                entry_pack(xref[n], tblE.u32() + n * NXVW_ATLAS_ENTRY_UINTS);
+            }
+        }
+    }
+
     // ---- the bench, AFTER the flush comparison and not before it: it walks
     //      the frame number past `frames`, which recycles H ring slots the
     //      lazy flush still needs.  Timing first quietly corrupted the
@@ -940,10 +1056,22 @@ int main(int argc, char **argv) {
     }
 
     std::printf("-- %u tiles coded (%u of them STATIC_MV), %u entries "
-                "invalidated by the envelope, %u forced-advanced before the "
+                "invalidated, %u forced-advanced before the "
                 "ring wrapped, %u coded tiles refused by 13.12.4 (invalid "
                 "entry, non-INTRA)\n",
                 nCoded, nStatic, nInvalidated, nForced, nInvalidRef);
+    std::printf("-- of those %u invalidations, %u tripped 13.12.2's 2^33 GUARD "
+                "and %u the 3.1.1 envelope\n",
+                nInvalidated, nGuard, nInvalidated - nGuard);
+    if (nInvalidated != 0 && nGuard == 0) {
+        // The two implementations agree byte for byte, so a guard the CPU
+        // never reaches is a guard the GPU never reaches either -- and the
+        // kernel's transcription of the one rule this branch exists to get
+        // right would be carried by nothing.
+        std::printf("FAIL the 2^33 guard never fired, so the kernel's "
+                    "transcription of it is untested\n");
+        ++g_fail;
+    }
     if (verbose)
         std::printf("-- table %u entries x %u B = %.1f kB\n", entries,
                     (unsigned)NXVW_ATLAS_ENTRY_BYTES,
