@@ -284,6 +284,10 @@ uint nxvwWarpParam(uint i) { return uWarpHdr.w[i]; }
 uint nxvwRingWord(uint i) { return uRingOut.w[i]; }
 uint nxvwWarpScratchRead(int i) { return sPlane[gScratchBase + i]; }
 void nxvwWarpScratchWrite(int i, uint v) { sPlane[gScratchBase + i] = v; }
+// [passb] V2: the same write against another plane's slot, for the chroma
+// pairing in inter/warp_pred.glsl.  Only this module has a per-plane scratch,
+// which is why only this module defines it.
+void nxvwWarpScratchWriteAt(int base, int i, uint v) { sPlane[base + i] = v; }
 void nxvwWarpEmit(int i, uint v) { sPlane[gScratchBase + i] = v; }
 #define NXVW_WARP_EMIT_IS_SCRATCH
 #include "../inter/warp_pred.glsl"
@@ -1193,6 +1197,22 @@ void main() {
             barrier();
         }
         if (false)
+#endif
+#if NXVW_PAIR
+        // [passb] V2: hand plane 1's call plane 2's slot, so one coordinate
+        // pipeline can fill both.  Only when both chroma planes are coded and
+        // the tail is the trivial one -- factor == 1 (the plane is already at
+        // coded extent) and no near-skip field -- because the pairing shares
+        // the sample loop and nothing after it.  res_level 0 with no near-skip
+        // is the live 1088 case; anything else falls through unpaired.
+        gPairScratchBase =
+            (p == 1 && ncoded > 2 && wNearSkip == 0 &&
+             nxvw_inter_plane_full(1, pc.p.chroma420) ==
+                     nxvw_plane_size(1, res_level, chroma444) &&
+             nxvw_plane_size(1, res_level, chroma444) ==
+                     nxvw_plane_size(2, res_level, chroma444))
+                ? planeStoreBase2
+                : -1;
 #endif
         nxvwWarpPlane(tid, p, wtb, size,
                       nxvw_inter_plane_full(p, pc.p.chroma420),
