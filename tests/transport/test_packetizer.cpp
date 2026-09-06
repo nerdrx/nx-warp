@@ -44,7 +44,14 @@ Band make_band(const StreamConfig& c, uint8_t band, tt::Rng& r, size_t mean_byte
             t.ref_delta = vary_ref ? uint8_t(r.u32(4)) : 0;
             t.qp = uint8_t(r.u32(64));
             t.mode = TileMode(r.u32(5));
+            // Clamped to what the config says a tile may be. These bands are
+            // for the packing invariants, not for the oversize policy -- that
+            // has its own test -- and the largest mean here (650) doubles to
+            // 1300, which is over max_tile_bytes() now that it reserves the
+            // pose header. Asking the config rather than hard-coding a bound
+            // keeps this generator honest against any future budget change.
             size_t n = 1 + r.u32(uint32_t(mean_bytes * 2));
+            n = std::min(n, c.max_tile_bytes());
             b.store.emplace_back(n, uint8_t(r.u32(256)));
             b.tiles.push_back(t);
         }
@@ -386,15 +393,141 @@ static void sender_datagrams_fit_mtu() {
     tt::end();
 }
 
+// Every size in the window that used to be unplaceable, opening a band.
+//
+// The regression: max_tile_bytes() did not reserve the pose header, but a
+// band's opening run carries one, so a tile between `budget - pose - dir` and
+// `budget - dir` passed the oversize test and still could not start a run. The
+// run came back empty, the oversize branch declined it because it fit
+// max_tile_bytes(), and packetize_band returned kBadInput -- which costs the
+// caller the WHOLE BAND, not the tile.
+//
+// So the property under test is not "the old window works now", it is the
+// invariant that makes the window a non-question: a tile of exactly
+// max_tile_bytes() or less is placeable as the FIRST tile of a band, with the
+// pose header in the same run. Swept one byte at a time across the old window
+// and a margin either side, under kReject -- the policy that turns any
+// mistake here into a hard failure rather than a dropped tile.
+static void opening_tile_sizes_are_placeable() {
+    tt::begin("a tile up to max_tile_bytes() can open a band, pose header and all");
+    StreamConfig c = small_cfg();
+    TT_CHECK((c.caps & kCapPoseHdr) != 0);
+    const size_t max_tile = c.max_tile_bytes();
+    // The window that used to fail, plus a few bytes of margin on both sides.
+    const size_t lo = max_tile > kPoseHeaderBytes + 4 ? max_tile - kPoseHeaderBytes - 4 : 1;
+
+    for (size_t len = lo; len <= max_tile; ++len) {
+        ByteVec payload(len, 0x5c);
+        TileInput t;
+        t.row = 0;   // row 0 of band 0: the opening tile, which takes the pose
+        t.col = 0;
+        t.cls = TileClass::kA;
+        t.ref_delta = 0;
+        t.bytes = payload;
+        std::vector<TileInput> tiles{t};
+
+        PoseHeader pose;
+        FrameContext ctx;
+        ctx.pose = &pose;
+
+        Packetizer p(c, Packetizer::OversizePolicy::kReject);
+        std::vector<SendUnit> u;
+        const Packetizer::Status st = p.packetize_band(0, tiles, ctx, &u);
+        TT_CHECK(st == Packetizer::Status::kOk);
+        TT_CHECK(p.oversize_tiles() == 0);
+
+        // Placed once, whole, in a datagram that still fits the wire.
+        size_t carried = 0, carried_bytes = 0;
+        bool saw_pose = false;
+        for (const SendUnit& su : u)
+            for (const PendingDatagram& d : su.data) {
+                carried += d.hdr.tile_count;
+                if (d.hdr.pose_hdr) saw_pose = true;
+                size_t off = d.hdr.pose_hdr ? kPoseHeaderBytes : 0;
+                for (uint32_t i = 0; i < d.hdr.tile_count; ++i) {
+                    TileDirEntry e = unpack_dir_entry(
+                        rd32(d.plaintext.data() + off + i * kDirEntryBytes));
+                    carried_bytes += e.len;
+                }
+                TT_CHECK(d.plaintext.size() <= c.run_payload_budget());
+            }
+        TT_EQ(carried, size_t(1));
+        TT_EQ(carried_bytes, len);
+        // The pose really was in the run this tile opened -- otherwise the test
+        // would pass by never exercising the case it exists for.
+        TT_CHECK(saw_pose);
+    }
+
+    // And one byte over is oversize: the boundary is the boundary, not a range
+    // that happens to work.
+    {
+        ByteVec payload(max_tile + 1, 0x5c);
+        TileInput t;
+        t.row = 0;
+        t.col = 0;
+        t.cls = TileClass::kA;
+        t.ref_delta = 0;
+        t.bytes = payload;
+        std::vector<TileInput> tiles{t};
+        PoseHeader pose;
+        FrameContext ctx;
+        ctx.pose = &pose;
+        Packetizer p(c, Packetizer::OversizePolicy::kReject);
+        std::vector<SendUnit> u;
+        TT_CHECK(p.packetize_band(0, tiles, ctx, &u) == Packetizer::Status::kOversizeTile);
+    }
+
+    // kBadInput means "a tile that fits could not be placed", which is now
+    // unreachable by construction. Sweep the same window under kDropTile and
+    // assert nothing is dropped: under the old arithmetic the band came back
+    // kBadInput and Sender::send_band discarded every tile in it.
+    for (size_t len = lo; len <= max_tile; ++len) {
+        ByteVec payload(len, 0x5c);
+        std::vector<ByteVec> store;
+        std::vector<TileInput> tiles;
+        for (uint16_t col = 0; col < 3; ++col) {
+            TileInput t;
+            t.row = 0;
+            t.col = col;
+            t.cls = TileClass::kA;
+            t.ref_delta = 0;
+            store.emplace_back(col == 0 ? payload : ByteVec(40, 2));
+            tiles.push_back(t);
+        }
+        for (size_t i = 0; i < tiles.size(); ++i) tiles[i].bytes = store[i];
+        PoseHeader pose;
+        FrameContext ctx;
+        ctx.pose = &pose;
+        Packetizer p(c, Packetizer::OversizePolicy::kDropTile);
+        std::vector<SendUnit> u;
+        TT_CHECK(p.packetize_band(0, tiles, ctx, &u) == Packetizer::Status::kOk);
+        size_t carried = 0;
+        for (const SendUnit& su : u)
+            for (const PendingDatagram& d : su.data) carried += d.hdr.tile_count;
+        TT_EQ(carried, size_t(3));
+        TT_CHECK(p.oversize_tiles() == 0);
+    }
+    tt::end();
+}
+
 static void budget_arithmetic() {
     tt::begin("budget arithmetic matches TRANSPORT.md 5");
     StreamConfig c = small_cfg();
     TT_EQ(c.run_payload_budget(), size_t(1316));
-    TT_EQ(c.max_tile_bytes(), size_t(1312));
+    // budget - kDirEntryBytes - kPoseHeaderBytes. The pose is reserved because
+    // a band's opening run carries it, and max_tile_bytes() has to be the size
+    // a tile can be placed ANYWHERE -- see the comment on it.
+    TT_EQ(c.max_tile_bytes(), size_t(1316 - kDirEntryBytes - kPoseHeaderBytes));
+    TT_EQ(c.max_tile_bytes(), size_t(1286));
     StreamConfig nofec = c;
     nofec.caps &= uint8_t(~kCapFec);
     TT_EQ(nofec.run_payload_budget(), size_t(1360));
-    TT_EQ(nofec.max_tile_bytes(), size_t(1356));
+    TT_EQ(nofec.max_tile_bytes(), size_t(1360 - kDirEntryBytes - kPoseHeaderBytes));
+    // A stream that carries no pose header keeps the whole budget: there is no
+    // opening-run penalty to reserve against.
+    StreamConfig nopose = c;
+    nopose.caps &= uint8_t(~kCapPoseHdr);
+    TT_EQ(nopose.max_tile_bytes(), nopose.run_payload_budget() - kDirEntryBytes);
     // A parity datagram over the largest legal data datagram still fits.
     TT_CHECK(kHeaderBytes + 2 + (kHeaderBytes + 1316 + kTagBytes + 2) + kTagBytes <= c.mtu);
     tt::end();
@@ -402,6 +535,7 @@ static void budget_arithmetic() {
 
 int main() {
     budget_arithmetic();
+    opening_tile_sizes_are_placeable();
     headroom_fec_ladder();
     sender_headroom_estimate();
     size_invariants();

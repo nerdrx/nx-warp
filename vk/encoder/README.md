@@ -825,8 +825,181 @@ Per-tile QP offsets (-6.79 %) are the candidate worth revisiting, and they are
 a project rather than a level: the reference chooses `qp_delta` by comparing
 D + λR over candidate quantisers with R from its own rate model, which is the
 same `double` estimate the mode decision could not use. An integer version
-would need the E1 statistics to carry a bit estimate the device can trust,
-which is the piece of work ADR 0028 deferred.
+needs a bit estimate the device can trust, which is the piece of work ADR 0028
+deferred. **That estimate now exists** — see below — and the decision that
+would use it does not.
+
+## The integer rate model, measured
+
+`forward/nxe_rate.h`. The bit estimate ADR 0028 deferred, built and measured;
+the per-tile QP decision that consumes it is not built (see the note at the
+end).
+
+The reference's rate model is `double` in two places and neither crosses:
+`build_rate_cost` fills its Q10 table with `-std::log2(freq / 1024.0) * 1024`,
+and `table_set_cost` sums `std::log2` terms. `log2` is not the same function on
+a host libm and on a device, and a rate model that disagrees in the last place
+is a decision that picks a different tile, which is a different stream.
+
+Two observations remove both, and neither needs new syntax:
+
+* **The cost of a symbol is a table lookup.** `-log2(freq / kProbTotal)` with
+  `freq` 10 bits has exactly 1024 possible values. `scripts/gen-neglog2.py`
+  computes them once and `forward/nxe_neglog2.inc` is them, checked in. A table
+  is the same function everywhere; `log2` is not.
+* **The symbol stream already exists.** `nxe_unit_ops` materialises the exact
+  operation list E4 encodes — `(context, symbol)` and `(bypass, bitcount)` —
+  so a tile's rate is a sum over that list. The model does not re-implement the
+  syntax and therefore cannot drift from it: it *is* the coder's own list.
+
+A bypass operation costs exactly its bit count, because rANS codes `k` bypass
+bits with `f = 1 << (10 - k)`, which is `k` bits with no rounding at all. So
+the whole of the variable part — every term that moves when the quantiser moves
+— is exact.
+
+### What is not exact, and why it does not matter to a decision
+
+Two terms sit outside the entropy coder: the 8-byte tile header, which is
+exact, and the rANS state flush, which is not. Each active lane writes a 32-bit
+state, but that state is not 32 bits of new information: it lives in
+`[L, 2^16 · L)` with `L = 2^16`, so the symbols coded last are still inside it
+when it is flushed, and this model has already charged them as entropy. The
+duplicated part is `log2(x / L)`, uniform over `[0, 16)`, so 8 bits in
+expectation — and the net cost of the flush is **24 bits per lane**, not 32.
+
+The reference charges the full 32. It can afford to: every candidate in its QP
+search has the same lane count, so a constant cancels out of the comparison. At
+24 the model is also unbiased as an absolute size, which is what a rate
+allocator would ask of it. Measured on pan8, 2 frames, QP 30, the whole-stream
+bias at the two charges:
+
+| lanes (`--nsub`) | flush at 32 bits | flush at 24 bits |
+|---|---|---|
+| 1 (0) | +0.80 % | **-0.04 %** |
+| 2 (1) | +1.69 % | **+0.06 %** |
+| 8 (3) | +4.63 % | **-1.02 %** |
+| 32 (5) | — | -6.88 % |
+
+24 is right from 1 to 8 lanes and drifts at 32, which is the expectation
+argument failing where it should: with 32 lanes a lane codes few enough symbols
+that its state never mixes, so less of the flush duplicates. 8 is the shipped
+default and what the numbers below are quoted at.
+
+### Measured against the coder
+
+`nxvc-vkenc --rate-check` prices every tile with the model and compares it with
+the bytes the coder then produced — same coefficients, same table set, same
+lane count. It changes no byte of the stream. 1088x1088, 8 frames, `--nsub 3`,
+rANS at `--ctx v3 --custom-tables --tab v2`:
+
+| coder | clip | QP 22 | QP 26 | QP 30 | QP 34 | QP 40 |
+|---|---|---|---|---|---|---|
+| rANS, per-tile mean | pan8 | -0.07 % | -0.37 % | -0.48 % | -0.67 % | -0.74 % |
+| rANS, per-tile mean \|err\| | pan8 | 1.15 % | 1.17 % | 1.26 % | 1.42 % | 1.68 % |
+| rANS, per-tile mean | pan8s | -0.07 % | -0.14 % | -0.12 % | -0.13 % | -0.42 % |
+| rANS, per-tile mean \|err\| | pan8s | 0.77 % | 0.84 % | 0.92 % | 1.14 % | 1.37 % |
+| **Lite**, both clips | | **0.000 %** | **0.000 %** | **0.000 %** | **0.000 %** | **0.000 %** |
+
+**The stated tolerance is therefore: exact under ENTROPY_LITE, and under rANS a
+per-tile bias under 0.8 % with a mean absolute error under 1.7 %,** over both
+clips at every quantiser from 22 to 40.
+
+Lite is exact rather than close because there is nothing to estimate: it has no
+arithmetic coder, so a tile's payload is a sum of fixed field widths and five
+align-to-byte roundings. The only non-additive term is the alignment, and that
+is additive one level up — a section's total is a sum over units and its pad is
+a function of that total — so the model is five sums and five roundings, a
+shape a workgroup produces in five reductions. `vk.encoder.rate` requires it to
+equal the coder's byte count **to the bit**, not within a bound.
+
+### The decision, and why it does not ship
+
+`--qp-ladder` is the per-tile QP decision the rate model was built for: for each
+offset in the ladder, quantise the tile, price it with `nxe_rate.h`, keep the
+cheapest `D + λR`. One lambda for every candidate -- the tile's own at its
+allocated QP -- because scoring each candidate at its own lambda compares two
+different cost functions and always prefers the coarsest step.
+
+λ is `(K · t · t) >> 12` over the Q4 quantiser step, the same integer family the
+requantiser uses, with **K = 901** rather than its 1400: `ref`'s own
+rate-distortion constant is `kLambdaScale = 0.22` and `0.22 · 4096 = 901`, while
+1400 is `0.342`, the constant swept for a different comparison (one coefficient
+against a constant three bits). `--qp-lambda` overrides it for a sweep.
+
+**It is off by default and it is not an effort level, because it does not pay.**
+
+First, the -6.79 % in the table above is not the QP search. `curve.py`'s legs
+strip `--no-rdo` whenever `--qp-search` or `--rdoq-effort` is present, so that
+row is the QP search **plus the trellis**, and `--rdoq-effort 3` alone is
+-6.64 %. Isolated on the reference, keeping `--no-rdo`, pan8:
+
+| reference leg | rANS | Lite |
+|---|---|---|
+| `--qp-search 2` | **-0.44 %** | **-1.37 %** |
+| `--qp-search 4` | -1.19 % | -2.25 % |
+| `--rdoq-effort 3` (trellis) | -3.49 % | -5.22 % |
+| trellis + `--qp-search 2` | -3.48 % | -4.81 % |
+
+The last row is the finding: on top of the trellis the QP search is worth
+**nothing** on rANS and is **negative** on Lite. The prize was the trellis all
+along, and the trellis is the half that cannot cross.
+
+Second, this encoder's own measurement agrees, and adds that the sign depends on
+the clip. 1088x1088, 8 frames, QP 22/26/30/34/40, against effort 1 alone:
+
+| ladder | K | pan8 rANS | pan8s rANS | pan8 Lite | pan8s Lite |
+|---|---|---|---|---|---|
+| `-4,-2,0,2,4` | 450 | -1.15 % | +0.75 % | -2.21 % | -1.07 % |
+| `-4,-2,0,2,4` | 600 | -0.91 % | +0.56 % | -1.95 % | -1.24 % |
+| `-4..+4` step 1 | 600 | -1.15 % | +0.24 % | -2.37 % | -1.55 % |
+| `-6..+6` step 2 | 600 | -1.07 % | — | -2.36 % | — |
+
+**rANS averages -0.2 % to -0.5 % over the two clips and is positive on one of
+them. Lite averages about -2 %.** Nine candidates buy a tenth of a percent over
+five, which is not a ladder the RD justifies; five at K = 450-600 is the whole
+of what is there.
+
+The asymmetry is not the probability tables. `--qp-table-search` prices every
+candidate under the best of the eight sets -- an upper bound on what re-picking
+the table set per candidate could be worth, which is the one part of `ref`'s
+rate model this decision does not otherwise reproduce -- and it moves pan8 from
+-0.91 % to -0.95 % and pan8s from +0.56 % to +0.19 %. rANS's adaptive tables
+have already absorbed most of what a per-tile quantiser would buy; Lite has no
+tables, which is why Lite keeps its ~2 %.
+
+So there is no shader. A candidate loop in E3 is perfectly buildable -- the
+transform does not depend on the quantiser, so only the quantise and the cost
+repeat, and at 578 tiles the whole encoder is 1.93 ms on an RX 7900 XTX (E3
+0.613, E4 1.273) against an 11 ms budget, so four extra quantise-and-cost passes
+would fit. It is not built because a wash on the default entropy coder is not
+worth a pass, three-way byte-identity and a permanent maintenance surface. This
+is the same verdict `--mv-range 32` got two sections above -- implementable,
+exact, and worth nothing -- reached the same way, and the ladder stays on the
+harness so the measurement can be repeated on other material rather than
+believed.
+
+If it is ever revisited, Lite is the case with something in it.
+
+### What is not built
+
+The shader. The decision above runs in the CPU model only, which is the
+specification but not the pipeline. Two things are worth recording for whoever
+does build it:
+
+* **The syntax needs nothing.** `qp_delta` is already a mandatory v1 tile-header
+  field — `docs/SYNTAX.md` 4.1 word1 bits 8-13, signed 6-bit, -32..+31, gated by
+  no tool bit — and both decoders already honour it. No new tool bit, no minor
+  bump, no `SYNTAX.md` change.
+* **It cannot live in E1.** E1 is source-domain analysis: it runs before the
+  transform and has no coefficients, and it is not wired into the encode
+  pipeline at all (only `nxvc-stats-test` instantiates it). The decision needs
+  quantised coefficients and the unit list, which is E3 and E4. The cheap shape
+  is a candidate loop that reuses E3's transform — the DCT does not depend on
+  the quantiser, so only the quantise and the cost repeat — with E3 writing the
+  chosen `qp_delta` back into the job buffer for E4's tile header, the way
+  `E1c_decide` already writes the job buffer.
+
+
 
 ## Measured
 

@@ -5,6 +5,10 @@
 
 #include "nxe_host.h"
 
+#include "../forward/nxe_rate.h"
+#include "../forward/forward_cpu.h"
+#include "../forward/lite_cpu.h"
+
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -13,6 +17,8 @@
 #include <mutex>
 #include <thread>
 #include <cstdio>
+#include <cstdlib>
+#include <stdexcept>
 #include <cstring>
 
 extern "C" {
@@ -89,6 +95,29 @@ void setup(const Config &cfg, Frame &f) {
      * frame-uniform: E3 reads it from the frame parameters so the CPU model
      * and the shader take it from one place. */
     fp.int_rdoq = (uint32_t)cfg.int_rdoq;
+    f.rate_check = cfg.rate_check;
+    /* The QP ladder, resolved once.  0 first, so a tie in the decision keeps
+     * the frame's own quantiser (see choose_qp_delta). */
+    f.qp_lambda_q12 = cfg.qp_lambda_q12;
+    f.qp_table_search = cfg.qp_table_search;
+    f.qp_cand[0] = 0;
+    f.qp_cand_n = 1;
+    {
+        const std::string &L = cfg.qp_ladder;
+        size_t i = 0;
+        while (i < L.size() && f.qp_cand_n < 16) {
+            size_t j = L.find(',', i);
+            if (j == std::string::npos) j = L.size();
+            const std::string tok = L.substr(i, j - i);
+            i = j + 1;
+            if (tok.empty()) continue;
+            const int v = std::atoi(tok.c_str());
+            if (v == 0) continue;   /* already first */
+            if (v < -32 || v > 31)
+                throw std::runtime_error("qp ladder offset out of range");
+            f.qp_cand[f.qp_cand_n++] = v;
+        }
+    }
     fp.intra_dir = cfg.intra_dir ? 1u : 0u;
     fp.dir_layer = cfg.dir_layer ? 1u : 0u;
     fp.nsub_log2 = lite ? 3u : (uint32_t)cfg.nsub_log2;
@@ -129,6 +158,13 @@ void setup(const Config &cfg, Frame &f) {
                 j.mode = 3;                /* NXVC_MODE_INTRA */
                 j.nsub_log2 = fp.nsub_log2;
             }
+
+    /* What the frame allocated, kept so the per-tile decision searches around
+     * it every frame instead of around its own last answer.  After the job
+     * loop, obviously: before it, there is nothing to record. */
+    f.qp_delta_alloc.assign(fp.ntiles, 0);
+    for (uint32_t t = 0; t < fp.ntiles; ++t)
+        f.qp_delta_alloc[t] = f.jobs[t].qp_delta;
 
     /* fp.base_qp and the per-tile table-set seed, in the one place that owns
      * them, so that a Frame set_qp() moved to q and a Frame setup() built at q
@@ -866,12 +902,116 @@ void pack_frame(Frame &f, uint32_t frame_number) {
     }
 }
 
+static int qp_clamp(int v, int lo, int hi) {
+    return v < lo ? lo : (v > hi ? hi : v);
+}
+
+/* The per-tile QP decision (nxe_rate.h).  One tile, and the shape a workgroup
+ * would take: quantise at each candidate offset, price it in integers, keep the
+ * cheapest.
+ *
+ * THE TRANSFORM IS NOT REPEATED in the shape this models -- the DCT does not
+ * depend on the quantiser, so only the quantise and the cost vary with the
+ * candidate.  The CPU model here does re-run the whole of E3 per candidate
+ * because `nxe_e3_tile_sse` is the unit it has; a shader keeps the transform
+ * coefficients in registers across the loop, which is the whole reason this is
+ * affordable at all.  The DECISION is identical either way, and the decision is
+ * what has to be byte-identical.
+ *
+ * ONE LAMBDA, the tile's own at its allocated QP, for every candidate.  Scoring
+ * each candidate at its own lambda would compare two different cost functions
+ * and always prefer the coarsest step -- ref/src/codec_impl.inc makes the same
+ * point in the same words, and it is the trap this kind of search falls into.
+ */
+static int choose_qp_delta(Frame &f, uint32_t t,
+                           const int32_t *const src[NXE_MAX_PLANES],
+                           std::vector<int16_t> &scratch) {
+    const nxe_frame_params &fp = f.fp;
+    /* The ALLOCATOR's qp_delta, not last frame's answer.
+     *
+     * `f.jobs` is allocated once and reused for every frame of the stream, so
+     * reading the search's own previous result back as the base compounds it:
+     * a ladder of -4 becomes -8 on frame 2 and -16 by frame 4, which measured
+     * as a 44 % rate rise and 4 dB of PSNR nobody asked for.  The search is
+     * around what the frame WANTED this tile coded at, every frame. */
+    nxe_tile_job base = f.jobs[t];
+    base.qp_delta = f.qp_delta_alloc.empty() ? 0 : f.qp_delta_alloc[t];
+    const uint8_t *modes = &f.modes[(size_t)t * 3 * 64];
+    const int qp0 = qp_clamp((int)fp.base_qp + base.qp_delta, 0, 63);
+    const uint32_t lam =
+        f.qp_lambda_q12
+            ? (uint32_t)(((uint64_t)f.qp_lambda_q12 *
+                          (uint64_t)(nxe_qstep[qp0] * nxe_qstep[qp0])) >> 12)
+            : nxe_qprd_lambda_q8(nxe_qstep[qp0]);
+    uint64_t best_cost = 0;
+    int best_dq = base.qp_delta;
+    bool have = false;
+
+    for (size_t k = 0; k < f.qp_cand_n; ++k) {
+        const int dq = f.qp_cand[k];
+        nxe_tile_job job = base;
+        uint64_t sse = 0;
+        uint32_t bits;
+        job.qp_delta = (int8_t)qp_clamp(base.qp_delta + dq, -32, 31);
+        /* A candidate that clamps to the same quantiser as one already scored
+         * is the same candidate; at QP 0 or 63 the ladder collapses. */
+        if (qp_clamp((int)fp.base_qp + job.qp_delta, 0, 63) != qp0 + dq &&
+            dq != 0)
+            continue;
+        nxe_e3_tile_sse(&fp, &job, src, modes, scratch.data(), &sse);
+        {
+            nxe_tile_units tu;
+            nxe_build_units(&fp, &job, &tu);
+            if (f.entropy_lite) {
+                bits = nxe_lite_tile_bits_q10(&fp, &job, &tu, scratch.data(),
+                                              modes, f.entropy_lite - 1);
+            } else if (f.qp_table_search) {
+                /* Price the candidate under the table set that would CODE it,
+                 * not under the one the frame's base QP seeded.  ref's search
+                 * re-runs `select_set` per candidate for exactly this reason,
+                 * and it is the one part of its rate model this decision does
+                 * not otherwise reproduce.  Eight sets, so this bounds what
+                 * the table choice is worth rather than approximating it. */
+                bits = 0xffffffffu;
+                for (uint32_t k = 0; k < 8; ++k) {
+                    nxe_tile_job jk = job;
+                    uint32_t b;
+                    jk.table_set = k;
+                    b = nxe_tile_bits_q10(&fp, &jk, &tu, scratch.data(), modes,
+                                          &f.tabs);
+                    if (b < bits) bits = b;
+                }
+            } else {
+                bits = nxe_tile_bits_q10(&fp, &job, &tu, scratch.data(), modes,
+                                         &f.tabs);
+            }
+        }
+        {
+            const uint64_t cost = nxe_rd_cost(sse, bits, lam);
+            /* Strictly cheaper, so a tie keeps the earlier candidate and the
+             * ladder's order is the tie-break.  0 is first in the ladder, so a
+             * tie keeps the frame's own quantiser -- which is the answer that
+             * costs no signalling change and no explanation. */
+            if (!have || cost < best_cost) {
+                best_cost = cost;
+                best_dq = job.qp_delta;
+                have = true;
+            }
+        }
+    }
+    return best_dq;
+}
+
 void encode_frame_cpu(Frame &f, uint32_t frame_number) {
     const nxe_frame_params &fp = f.fp;
+    std::vector<int16_t> qp_scratch;
+    if (f.qp_cand_n > 1) qp_scratch.resize(NXE_TILE_COEFS_MAX);
     for (uint32_t t = 0; t < fp.ntiles; ++t) {
         const int32_t *src[NXE_MAX_PLANES];
         for (int p = 0; p < NXE_MAX_PLANES; ++p)
             src[p] = &f.src[p][(size_t)t * f.plane_size[p] * f.plane_size[p]];
+        if (f.qp_cand_n > 1)
+            f.jobs[t].qp_delta = (int8_t)choose_qp_delta(f, t, src, qp_scratch);
         nxe_e3_tile(&fp, &f.jobs[t], src, &f.modes[(size_t)t * 3 * 64],
                     &f.coef[(size_t)t * NXE_TILE_COEFS_MAX]);
     }
@@ -898,6 +1038,42 @@ void encode_frame_cpu(Frame &f, uint32_t frame_number) {
                               &f.slots[(size_t)t * f.slot_stride]);
         f.jobs[t].payload_len = (uint32_t)len;
         f.tile_bytes[t] = (uint32_t)(NXE_TILE_HEADER_BYTES + len);
+        /* The model against the coder, on the very tile the coder just
+         * produced -- same coefficients, same table set, same lane count.
+         * Nothing here feeds back into the stream. */
+        if (f.rate_check) {
+            const uint32_t est_q10 =
+                f.entropy_lite
+                    ? nxe_lite_tile_bits_q10(
+                          &fp, &f.jobs[t], &tu,
+                          &f.coef[(size_t)t * NXE_TILE_COEFS_MAX],
+                          &f.modes[(size_t)t * 3 * 64], f.entropy_lite - 1)
+                    : nxe_tile_bits_q10(
+                          &fp, &f.jobs[t], &tu,
+                          &f.coef[(size_t)t * NXE_TILE_COEFS_MAX],
+                          &f.modes[(size_t)t * 3 * 64], &f.tabs);
+            const uint64_t real_bits = 8ull * f.tile_bytes[t];
+            f.rc_tiles++;
+            f.rc_est_q10 += est_q10;
+            f.rc_real_bits += real_bits;
+            /* Under about a hundred bits the rANS state flush dominates and a
+             * percentage says more about the flush than about the model. */
+            if (!f.entropy_lite && real_bits < 512) {
+                f.rc_tiny++;
+            } else {
+                const double e = 100.0 *
+                                 ((double)est_q10 / 1024.0 - (double)real_bits) /
+                                 (double)real_bits;
+                f.rc_err_sum += e;
+                f.rc_err_abs_sum += e < 0 ? -e : e;
+                if (f.rc_tiles - f.rc_tiny == 1) {
+                    f.rc_err_min = f.rc_err_max = e;
+                } else {
+                    if (e < f.rc_err_min) f.rc_err_min = e;
+                    if (e > f.rc_err_max) f.rc_err_max = e;
+                }
+            }
+        }
     }
     pack_frame(f, frame_number);
 }

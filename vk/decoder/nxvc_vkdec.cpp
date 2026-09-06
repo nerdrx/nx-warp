@@ -2401,7 +2401,40 @@ static void collect_timestamps(D *d) {
     // predictor's own share is broken out rather than hidden.
     d->stats.pass_b_ms = (double)(ts[2] - ts[1]) * k;
     d->stats.gpu_ms = (double)(ts[3] - ts[0]) * k;
-    if (nq >= 6) d->stats.pass_w_ms = (double)(ts[5] - ts[4]) * k;
+    // [passb] Zeroed rather than left holding the previous frame's value when
+    // this frame did not measure them.  `ts_count` is 12 on an inter frame and
+    // 4 otherwise, so on an intra frame neither Pass W nor the segment pairs
+    // were written -- and the header has always PROMISED pass_w_ms is "0 on a
+    // frame with no inter tile", which it was not: a HUD sampling an intra
+    // frame read the last inter frame's warp time as this frame's.  An intra
+    // frame's Pass B is one segment anyway, so pass_b_ms is already the
+    // reconstruction there and the breakdown has nothing to add.
+    if (nq >= 6) {
+        d->stats.pass_w_ms = (double)(ts[5] - ts[4]) * k;
+    } else {
+        d->stats.pass_w_ms = 0;
+    }
+    // [passb] The three Pass B segments, broken out into the stats struct so a
+    // caller can show A / W / B honestly instead of reading pass_b_ms as "the
+    // reconstruction".  On a live inter stream the skip segment -- the warp of
+    // the skipped tiles -- is most of that window, and nothing in the ABI said
+    // so.  The env-gated print below stays: it is the same numbers, in a form
+    // that needs no caller.
+    if (nq >= 12) {
+        d->stats.pass_b_skip_ms = (double)(ts[7] - ts[6]) * k;
+        d->stats.pass_b_coded_ms = (double)(ts[9] - ts[8]) * k;
+        d->stats.pass_b_dir_ms = (double)(ts[11] - ts[10]) * k;
+        d->stats.tiles_skip_seg = d->seg_tiles[0];
+        d->stats.tiles_coded_seg = d->seg_tiles[1];
+        d->stats.tiles_dir_seg = d->seg_tiles[2];
+    } else {
+        d->stats.pass_b_skip_ms = 0;
+        d->stats.pass_b_coded_ms = 0;
+        d->stats.pass_b_dir_ms = 0;
+        d->stats.tiles_skip_seg = 0;
+        d->stats.tiles_coded_seg = 0;
+        d->stats.tiles_dir_seg = 0;
+    }
     // [inter] Per-module Pass B, eye pass 0.  Env-gated because it is a
     // measurement aid rather than part of the ABI, and because a segment that
     // did not run leaves its pair equal and would otherwise print 0.000 three

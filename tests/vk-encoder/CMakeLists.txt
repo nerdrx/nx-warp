@@ -334,6 +334,17 @@ if(TARGET nxvc-vkenc)
         list(APPEND NXENC_TESTS vk.encoder.acid.effort.${dev})
       endforeach()
 
+      # The integer rate model, against both entropy coders.  CPU-only, so it
+      # is registered once rather than per device: the models are the
+      # specification and the shader has no rate model of its own yet.
+      add_test(NAME vk.encoder.rate COMMAND ${CMAKE_COMMAND}
+               -DVKENC=$<TARGET_FILE:nxvc-vkenc>
+               -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/rate
+               -P ${CMAKE_CURRENT_SOURCE_DIR}/rate.cmake)
+      set_tests_properties(vk.encoder.rate PROPERTIES
+                           SKIP_REGULAR_EXPRESSION "SKIP:")
+      list(APPEND NXENC_TESTS vk.encoder.rate)
+
       # And the same legs on a SECOND ICD.  Byte-identity is a claim about
       # the arithmetic, not about RADV: the requantiser's one 64-bit product
       # goes through umulExtended and its comparison through a signed 32-bit

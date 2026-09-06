@@ -562,6 +562,36 @@ typedef struct nxvc_vkd_stats {
      * a test that does not read this cannot tell whether it exercised the
      * tool or merely re-ran the ordinary skip path.                        */
     uint32_t rows_elided;
+    /* --- [passb] APPENDED, same rule as above.
+     *
+     * Pass B's three dispatch segments, broken out.  `pass_b_ms` is the whole
+     * of the Pass A -> Pass B window and therefore contains Pass W as well as
+     * all three of these, which is a genuine trap for anyone reading it as
+     * "the reconstruction": on a live inter stream the warp of the skipped
+     * tiles is most of it.  These make that split visible without the caller
+     * having to know the dispatch order.
+     *
+     *   pass_b_skip_ms   WARP_SKIP tiles -- the reconstruct_skip_store module,
+     *                    which runs the normative integer pose warp itself
+     *   pass_b_coded_ms  every other non-INTRA tile
+     *   pass_b_dir_ms    INTRA tiles on the directional-intra wavefront module
+     *
+     * Measured around eye pass 0, the same convention `pass_w_ms` already
+     * uses: a frame with a STEREO tile runs the segments once per eye and
+     * these then cover eye 0 only.  A segment with no tiles reports 0 and its
+     * tile count says why.  All zero on a device with no timestamp support,
+     * and on one whose query pool is shorter than 12 (`ts_count`).
+     *
+     * These are timestamps around dispatches, so they include the pipeline
+     * drain between segments and do not sum to `pass_b_ms`.  The gap is real
+     * -- it is what the segment split costs -- and is left visible rather
+     * than distributed.                                                    */
+    double pass_b_skip_ms;
+    double pass_b_coded_ms;
+    double pass_b_dir_ms;
+    uint32_t tiles_skip_seg;  /* tiles in the WARP_SKIP segment, eye pass 0 */
+    uint32_t tiles_coded_seg; /* tiles in the other-non-INTRA segment       */
+    uint32_t tiles_dir_seg;   /* tiles on the directional-intra module      */
     /* --- [SYN] 13.12.6 APPENDED.  Coded tiles this frame DROPPED because the
      * position already held a generation from this frame or a later one --
      * which a base-layer patch can produce, since 13.12.9 lets one carry a
@@ -570,6 +600,15 @@ typedef struct nxvc_vkd_stats {
      * a refresh.                                                           */
     uint32_t tiles_superseded;
 } nxvc_vkd_stats;
+
+/* The feature test for the six pass_b_*_ms / tiles_*_seg fields, for an
+ * integrator building against both this header and an older one during a
+ * rollout -- a struct field is not something the preprocessor can see.
+ *
+ * `rows_elided` sits before them because it was on main first and keeps the
+ * offset its callers were built against; appending ours after it is what makes
+ * this merge ABI-safe in both directions. */
+#define NXVC_VK_DECODER_PASSB_SEGMENTS 1
 
 nxvc_vkd_status nxvc_vk_decoder_stats(const nxvc_vk_decoder *dec,
                                       nxvc_vkd_stats *out);

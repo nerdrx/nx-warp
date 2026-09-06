@@ -530,6 +530,84 @@ void nxvwWarpPlane(int tid, int p, uint tb, int size, int full, int sub,
     int nBotX = c2.x * kWarpTile + (kWarpTile / 2) + dBotX * myU0;
     int nTopY = c0.y * kWarpTile + (kWarpTile / 2) + dTopY * myU0;
     int nBotY = c2.y * kWarpTile + (kWarpTile / 2) + dBotY * myU0;
+    // ---- the identity fast path's predicate.  [passb] Off unless
+    // NXVW_PASSB_EXTRA_DEFS asks for NXVW_ABL_IDENTITY.
+    //
+    // A tile whose corners are the identity grid and whose every active vector
+    // is a whole number of SAMPLES predicts each sample from exactly one
+    // reference sample: the bilinear degenerates to a copy at an integer
+    // offset.  That is a proof, and it needs all three parts.
+    //
+    // 1. The corner grid.  With c0 = (tox, toy) << 6 and the others one
+    //    kWarpTile away in each axis, dTopX = dBotX = kWarpTile << 6 = 4096
+    //    and c2.x == c0.x, so nTopX = 4096(tox + u) + 32, whose >> 6 is
+    //    64(tox + u) because 32 < 64 -- and nBotX >> 6 is the same integer.
+    //    Stage two's weights sum to kWarpTile, so
+    //        bx = (64(tox+u)*wv1 + 64(tox+u)*wv0 + 32) >> 6 = 64(tox + u)
+    //    exactly, for every u, whatever the row weights are.  Likewise by.
+    //    The geometry contributes no fractional part.
+    //
+    // 2. The vector.  mqx is the plane's own vector in quarter samples shifted
+    //    into Q.6, so mqx = 16*vx and
+    //        xq4 = (64(tox+u) + 16vx + 2) >> 2 = 16(tox+u) + 4vx
+    //        fx  = xq4 & 15 = (4vx) & 15
+    //    which is zero exactly when vx is a multiple of four -- a whole
+    //    sample.  Testing mq & 63 tests the same thing one step earlier and
+    //    covers both axes and all four quadrants at once.  Chroma asks about
+    //    the vector it already halved for sub == 2, not luma's.
+    //
+    // 3. No saturation.  sat_add_i32 and the clamp are not linear, so a copy
+    //    cannot reproduce them.  The corners are the grid, so the extreme
+    //    coordinates are the tile's own opposite corners plus the extreme
+    //    vector; if neither end saturates or clamps, no interior sample can.
+    //
+    // Then sample_bilinear(ix, iy, 0, 0) has gx = gy = 16, acc = 256*t00, and
+    // (256*t00 + 128) >> 8 == t00 for every t00 >= 0.  Every tap is a
+    // reconstructed sample already clamped to [0, maxval], so t00 >= 0 always
+    // and the fetch is the same integer the four-tap path produces.
+    bool nxvwIdentity = false;
+#ifdef NXVW_ABL_IDENTITY
+    {
+        const int gx0 = shl_i32_mod(tox, uint(kWarpQCorner));
+        const int gy0 = shl_i32_mod(toy, uint(kWarpQCorner));
+        const int gx1 = shl_i32_mod(tox + kWarpTile, uint(kWarpQCorner));
+        const int gy1 = shl_i32_mod(toy + kWarpTile, uint(kWarpQCorner));
+        nxvwIdentity = c0 == ivec2(gx0, gy0) && c1 == ivec2(gx1, gy0) &&
+                       c2 == ivec2(gx0, gy1) && c3 == ivec2(gx1, gy1) &&
+                       ((mvxq0 | mvyq0 | mvxq1 | mvyq1 |
+                         mvxq2 | mvyq2 | mvxq3 | mvyq3) & 63) == 0;
+        if (nxvwIdentity) {
+            const int mnx = min(min(mvxq0, mvxq1), min(mvxq2, mvxq3));
+            const int mxx = max(max(mvxq0, mvxq1), max(mvxq2, mvxq3));
+            const int mny = min(min(mvyq0, mvyq1), min(mvyq2, mvyq3));
+            const int mxy = max(max(mvyq0, mvyq1), max(mvyq2, mvyq3));
+            const int ex0 = shl_i32_mod(tox, uint(kWarpQCorner));
+            const int ex1 = shl_i32_mod(tox + full - 1, uint(kWarpQCorner));
+            const int ey0 = shl_i32_mod(toy, uint(kWarpQCorner));
+            const int ey1 = shl_i32_mod(toy + full - 1, uint(kWarpQCorner));
+            nxvwIdentity =
+                sat_add_i32(ex0, mnx) == ex0 + mnx &&
+                sat_add_i32(ex1, mxx) == ex1 + mxx &&
+                sat_add_i32(ey0, mny) == ey0 + mny &&
+                sat_add_i32(ey1, mxy) == ey1 + mxy &&
+                abs(ex0 + mnx) <= kWarpCoordClamp &&
+                abs(ex1 + mxx) <= kWarpCoordClamp &&
+                abs(ey0 + mny) <= kWarpCoordClamp &&
+                abs(ey1 + mxy) <= kWarpCoordClamp;
+        }
+    }
+#ifdef NXVW_ABL_IDENTITY_FORCE
+    // VALIDATION ONLY, and it produces a WRONG picture on any tile whose warp
+    // is not already the identity.  It exists to answer the question the
+    // byte-identity test cannot answer by passing: does the fast path ever
+    // FIRE on the fixtures?  If forcing it true leaves the conformance set
+    // green, then every fixture tile was an identity warp and the honest
+    // predicate was never gating anything -- the pass would be vacuous.  A
+    // failure here is the result being looked for.
+    nxvwIdentity = true;
+#endif
+#endif
+
     for (int j = 0; j < spt; j += 2) {
         const int u0 = myU0 + j;
         int s0 = 0, s1 = 0;
@@ -564,10 +642,24 @@ void nxvwWarpPlane(int tid, int p, uint tb, int size, int full, int sub,
             // Q.6 -> Q.4, round half up (paper 2.2 step 4: "(c + 2) >> 2").
             const int xq4 = (xq6 + 2) >> (kWarpQCorner - kWarpQSample);
             const int yq4 = (yq6 + 2) >> (kWarpQCorner - kWarpQSample);
-            const int sv = clamp(sample_bilinear(xq4 >> kWarpQSample,
-                                                 yq4 >> kWarpQSample,
-                                                 xq4 & 15, yq4 & 15),
-                                 0, maxval);
+            // The predicate is a property of the TILE, so this branch is
+            // uniform across the workgroup and over the whole loop; it is
+            // written here rather than as a second loop so that every barrier
+            // below, and the near-skip and box-average stages after it, are
+            // the code they always were.
+            int sv;
+            if (nxvwIdentity) {
+                // mqx is 16*vx with vx a multiple of four, so mqx >> 6 is
+                // vx / 4 exactly -- the whole-sample displacement.
+                sv = clamp(fetchRef(tox + u + (mqx >> kWarpQCorner),
+                                    toy + myRow + (mqy >> kWarpQCorner)),
+                           0, maxval);
+            } else {
+                sv = clamp(sample_bilinear(xq4 >> kWarpQSample,
+                                           yq4 >> kWarpQSample,
+                                           xq4 & 15, yq4 & 15),
+                           0, maxval);
+            }
             if (h == 0) s0 = sv; else s1 = sv;
             nTopX += dTopX; nBotX += dBotX;
             nTopY += dTopY; nBotY += dBotY;

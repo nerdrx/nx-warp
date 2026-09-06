@@ -913,6 +913,135 @@ The quality loss at speed is not fixed; it is **avoided**, by not being in
 atlas mode when the atlas is the wrong trade. That is a smaller claim than
 "the atlas is better everywhere" and it is the one the measurements support.
 
+### Two-level refresh: coarse first, refine later -- REJECTED
+
+**It needs no syntax, and establishing that is half the result.** The atlas
+already carries `res_level` per entry, and 13.12.1 upsamples a `res_level > 0`
+tile into the atlas so the pixel layout never depends on a per-tile choice.
+Under `ATLAS` a coded tile predicts from its own entry. Put those together and
+a "refinement" is not a new mechanism at all: coding the tile again at
+`res_level 0` predicts from the upsampled coarse pixels, so the bits it sends
+**are** a residual on the coarse tile rather than a re-code of it. The whole
+proposal is therefore a per-frame `res_map`, which the library has always
+taken, and it was measured without changing one line of the codec.
+
+So the question is purely economic, and the answer is no. Measured on the two
+motion fixtures, four quantisers each, with every non-baseline curve read at
+the baseline's byte rate by interpolation in (log rate, PSNR):
+
+| | mid 25.2 deg/s | fast turn 75.6 deg/s |
+|---|---|---|
+| coarse `R=1`, refine when worth it | **-1.85 to -1.99 dB** | **-0.30 to -0.64 dB** |
+| coarse `R=2`, refine when worth it | -4.19 to -5.27 dB | -1.31 to -1.65 dB |
+| coarse `R=1`, at most 16 refinements a frame | -2.29 to -3.28 dB | +0.52 to +0.60 dB |
+
+At equal QP it is worse still and more obviously so: at 25 deg/s the
+unbudgeted two-level costs **20 % more bytes for 1.9 dB less** than coding the
+tile properly once. It is *dominated* -- worse on both axes at the same time --
+at every quantiser on both fixtures, which is a stronger negative than losing
+at equal rate.
+
+**Why it loses is the useful part.** The refinement's predictor is the
+upsampled coarse tile, which is missing exactly the high frequencies the
+refinement has to send. A residual against a blurred prediction is not cheap;
+it costs more than the original tile would have, so a landing plus a refinement
+is more total bytes than one full-resolution coding. The two-level split does
+not divide the cost of a tile in two. It pays for the tile twice.
+
+**The one configuration that wins is not two-level.** At fast turn the budgeted
+rows gain 0.5 to 0.6 dB -- and they do it with **0 refinements out of 1179
+landings**, with **75.5 %** of coarse landings replaced by the next refresh
+before anything refined them (70.8 % at 25 deg/s). That is not coarse-then-fine;
+it is *single-level coarse refresh*, and it wins for a reason that has nothing
+to do with the proposal: during a fast turn, full-resolution detail in a tile
+that will be re-refreshed within a few frames is detail nobody sees. The half
+of the idea that pays is the coarse landing. The half that costs is the
+refinement -- the half the proposal was actually about.
+
+Two caveats keep that from becoming a recommendation here. It is measured in
+**pure ATLAS mode**, at a velocity where the mode switch's recommended policy
+spends 73 % of frames as PICTURE frames instead, so the regime it wins in is
+largely one 13.12.11 now avoids; and it *loses* 2.3 dB at 25 deg/s, so it is
+velocity-dependent in the direction that needs a controller rather than a
+constant. **Resolution-adaptive refresh is an open rate-control question, it is
+already expressible with today's syntax, and it is not this ADR's.**
+
+**Decision: no normative text.** Two-level refresh is recorded as measured and
+rejected. Nothing in 13.12 changes, because nothing in 13.12 would have had
+to.
+
+### Single-level coarse refresh under the mode switch: REJECTED
+
+The half of the two-level idea that paid -- landing a stale tile at
+`res_level 1` and never refining it -- gained 0.5 to 0.6 dB at fast turn *in
+pure ATLAS mode*. That measurement is not wrong, and it does not survive the
+mode switch.
+
+Priced as a rate-control policy **under `D = 8`**, driven by the same corner
+displacement 13.12.11.1's trigger reads (including this frame's advance, for
+the same reason), applied to both a PICTURE frame's coded tiles and an ATLAS
+frame's refreshes. Equal rate, four quantisers, dB against the `D = 8`
+baseline:
+
+| T (luma samples) | near-still | mid 25.2 deg/s | fast turn 75.6 deg/s |
+|---|---|---|---|
+| 2 | -0.07 .. 0.00 | **-1.49 .. -5.29** | **-1.33 .. -3.17** |
+| 4 | 0.00 | -0.74 .. -2.81 | -1.25 .. -2.83 |
+| 8 | 0.00 | -0.06 .. -0.22 | -0.95 .. -1.96 |
+| 16 | 0.00 | 0.00 | -0.21 .. -0.95 |
+| 32 | 0.00 | 0.00 | -0.02 .. +0.04 |
+
+**There is no `T` that gains at fast turn.** Every threshold that engages
+loses; the only thresholds that do not lose are the ones that stop firing
+(at `T = 16` and above the policy is off at rest and at 25 deg/s, and at
+`T = 32` it lands 8 tiles out of 988 at fast turn). So the answer to "constant
+`T` or velocity hysteresis" is neither: **under the mode switch this policy has
+no operating point at all.**
+
+The reason is that the two mechanisms are **substitutes, not complements**.
+Coarse refresh won in pure ATLAS mode because a tile refreshed during a fast
+turn is replaced again before anyone looks at it, so its detail is wasted. At
+`D = 8` a fast turn is 73 % PICTURE frames, and a PICTURE frame's output *is*
+what the viewer sees and *is* what the atlas becomes -- there is no
+soon-to-be-discarded refresh left to cheapen. 13.12.11 had already collected
+that win, by a route that does not cost quality.
+
+**The decoder-side saving is real and badly priced.** Coded samples per frame
+at fast turn, QP 26, against 268 698 for the baseline: 255 386 at `T = 16`
+(-5.0 %), 230 468 at `T = 8` (-14.2 %), 208 964 at `T = 2` (-22.2 %). Pass B is
+proportional to this, and Pass B is 0.98 ms of a 3.30 ms decode -- so the
+largest saving on offer is **0.22 ms for 3.17 dB**, and the mildest is 0.05 ms
+for 0.95 dB. That is roughly 0.2 dB per 1 % of Pass B, which is not a trade
+worth having at any of these thresholds.
+
+**And it looks wrong, which is the reason that would have settled it anyway.**
+The stated preference is that degradation read as soft or low-poly rather than
+blocky. Measured on the decoded luma of a fast-turn frame -- mean absolute
+difference across sample pairs that straddle the 64-sample tile grid, over the
+same within tiles, so 1.0 means a tile edge looks like any other pair:
+
+| | seam ratio | HF energy |
+|---|---|---|
+| source | 0.93 | 3.24 |
+| `D = 8` baseline | 1.14 | 3.04 |
+| `T = 8` | **1.53** | 2.76 |
+| `T = 2` | **1.81** | 2.61 |
+
+Both numbers move at once, and that combination is the failure mode: high-
+frequency energy falls (the tiles really do get softer inside) while the seam
+ratio rises by 34 to 59 % over the baseline (the 64-sample grid becomes
+visible). Soft interiors separated by hard tile-aligned edges is the definition
+of blocking, not of low-poly. The rendered frames agree -- object silhouettes
+that are round in the baseline acquire straight, tile-aligned cuts. Even had
+the rate-distortion result been neutral, this is the wrong kind of artefact to
+spend it on.
+
+**Decision: no normative text, and no encoder default.** The policy stays
+expressible -- it is a `res_map`, and any encoder can choose it -- but it is
+recorded here as measured and rejected under the mode switch. Its earlier win
+in pure ATLAS mode is retained in the record above as the reason it was worth
+testing, and as the explanation for why it stopped winning.
+
 * **The seam, as originally written.** Two adjacent tiles with different source frames are each
   individually correctly reprojected, so static distant content is seamless. They diverge on moving
   content and on near parallax, growing with the age difference — a tile coded 30 frames ago beside
