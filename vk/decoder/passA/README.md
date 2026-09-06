@@ -656,8 +656,29 @@ syncs from 62 to 44, and leaves **184 B per invocation exactly where it was**.
 So the 79 % the scan costs and the 184 B the kernel spills are two different
 things, and since the kernel is 79 % faster without the scan while still
 carrying the whole spill, the spill is not what the floor is made of either.
-Where it comes from is still open -- RADV reports zero scratch for the same
-source, so it is a Qualcomm codegen decision and not a property of the GLSL.
+**And it is not this kernel.**  Every module this codebase compiles for the
+Adreno carries one, and the Lite kernel carries the SMALLEST:
+
+| module | scratch, B per invocation |
+|---|---|
+| Pass A, Lite | **184** |
+| Pass A, rANS (lanes 1 / 2 / 4 / 8) | 288 / 312 / 312 / 310 |
+| Pass B, coded | 400 |
+| Pass B, skip_store | 400 |
+| Pass W | 422 |
+
+Nothing about it tracks speed.  The two Pass B modules report the identical
+400 B and one of them is far cheaper a tile than the other; Pass W carries the
+most of any module and is the cheapest pass in the frame; the Lite kernel
+carries the least and was the one under suspicion.  Removing `lite_scan()` --
+79 % of the Lite kernel's time -- leaves its 184 B untouched, so the spill is
+not on the path that matters.  And RADV compiles the same source with **zero**
+scratch on every one of these.
+
+So it is a Qualcomm codegen characteristic of the whole codebase, not a defect
+in one kernel, and it costs nothing measurable.  **Recorded, and not chased
+further.**  Anyone who does chase it should start from the fact that it is
+present everywhere and correlates with nothing.
 
 ## Errors
 
