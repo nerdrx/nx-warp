@@ -2026,17 +2026,32 @@ static void collect_timestamps(D *d) {
         d->stats.pass_b_skip_ms = (double)(ts[7] - ts[6]) * k;
         d->stats.pass_b_coded_ms = (double)(ts[9] - ts[8]) * k;
         d->stats.pass_b_dir_ms = (double)(ts[11] - ts[10]) * k;
-        d->stats.tiles_skip_seg = d->seg_tiles[0];
-        d->stats.tiles_coded_seg = d->seg_tiles[1];
-        d->stats.tiles_dir_seg = d->seg_tiles[2];
     } else {
         d->stats.pass_b_skip_ms = 0;
         d->stats.pass_b_coded_ms = 0;
         d->stats.pass_b_dir_ms = 0;
-        d->stats.tiles_skip_seg = 0;
-        d->stats.tiles_coded_seg = 0;
-        d->stats.tiles_dir_seg = 0;
     }
+    // [planar] The tile COUNTS are not timestamps: the partition that produces
+    // them is built on the host, in build_tile_order(), and is the same
+    // partition whether or not the device can time the segments.  They are
+    // therefore reported unconditionally, where they used to be zeroed
+    // alongside the times.
+    //
+    // That distinction is what makes the mode's cost legible. The segment
+    // timers arm only on a frame with an inter tile (ts_count above), so a
+    // planar-only frame measures no milliseconds -- but it does dispatch
+    // planar tiles, and a caller reading "0 ms over 0 tiles" cannot tell that
+    // from a frame that had none.  "0 ms over 96 tiles" says which it was, and
+    // matches how the client already reads the counts: a segment with tiles
+    // and no time is one the device could not measure.
+    //
+    // A planar tile is neither WARP_SKIP nor INTRA, so build_tile_order puts
+    // it in the middle group and it is counted in `tiles_coded_seg` -- which
+    // is exactly what <nxvc/nxvc_vk.h> defines that field as, "every other
+    // non-INTRA tile".
+    d->stats.tiles_skip_seg = d->seg_tiles[0];
+    d->stats.tiles_coded_seg = d->seg_tiles[1];
+    d->stats.tiles_dir_seg = d->seg_tiles[2];
     // [inter] Per-module Pass B, eye pass 0.  Env-gated because it is a
     // measurement aid rather than part of the ABI, and because a segment that
     // did not run leaves its pair equal and would otherwise print 0.000 three
