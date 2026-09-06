@@ -331,6 +331,43 @@ static inline int32_t sample_catmullrom(const RefImage& ref, int32_t ix, int32_t
     return sar(acc + 2048, 12);  // 64*64 == 4096
 }
 
+// Step 3b: the sampling position of one output sample.
+//
+// The geometric part is the WHOLE tile's corner basis, evaluated at (u, v)
+// exactly as it is for a single vector: only the vector added to it is per
+// quadrant.  That is what makes four equal vectors bit-identical to
+// warp_tile() (docs/SYNTAX.md 13.8).
+//
+// Factored out of the predictor loop so that warp_tile_landing() below is the
+// SAME arithmetic and not a second copy of it: a caller that has to resolve a
+// sample against the reference tile it lands in (SYNTAX.md 13.12.4) must land
+// on the sample the predictor would actually have fetched, or the resolution
+// and the fetch disagree.
+static inline void sample_position(const TileCorners& c, const int32_t mvx_q6[4],
+                                   const int32_t mvy_q6[4], int32_t quad_split,
+                                   int32_t u, int32_t v, int32_t* ix,
+                                   int32_t* iy, int32_t* fx, int32_t* fy) {
+    const int32_t q = (v >= quad_split ? 2 : 0) + (u >= quad_split ? 1 : 0);
+    // Saturate and clamp so the "+2" of the Q.6 -> Q.4 step below cannot
+    // overflow for a hostile vector. |xq6| is at most kCornerClamp + 4096 in
+    // the envelope, far inside kCoordClamp.
+    const int32_t xq6 = clamp_i32(
+        sat_add_i32(bilerp_corner(c.x[0], c.x[1], c.x[2], c.x[3], u, v), mvx_q6[q]),
+        -kCoordClamp, kCoordClamp);
+    const int32_t yq6 = clamp_i32(
+        sat_add_i32(bilerp_corner(c.y[0], c.y[1], c.y[2], c.y[3], u, v), mvy_q6[q]),
+        -kCoordClamp, kCoordClamp);
+
+    // Q.6 -> Q.4, round half up (paper 2.2 step 4: "(c + 2) >> 2").
+    const int32_t xq4 = sar(xq6 + 2, kQCorner - kQSample);
+    const int32_t yq4 = sar(yq6 + 2, kQCorner - kQSample);
+
+    *ix = sar(xq4, kQSample);
+    *iy = sar(yq4, kQSample);
+    *fx = xq4 & 15;
+    *fy = yq4 & 15;
+}
+
 // ---------------------------------------------------------------------------
 // The predictor.
 // ---------------------------------------------------------------------------
@@ -356,29 +393,9 @@ void warp_tile_quad(const RefImage& ref,
 
     for (int32_t v = 0; v < kTile; ++v) {
         for (int32_t u = 0; u < kTile; ++u) {
-            // The geometric part is the WHOLE tile's corner basis, evaluated
-            // at (u, v) exactly as it is for a single vector: only the vector
-            // added to it is per quadrant.  That is what makes four equal
-            // vectors bit-identical to warp_tile() (docs/SYNTAX.md 13.8).
-            const int32_t q = (v >= quad_split ? 2 : 0) + (u >= quad_split ? 1 : 0);
-            // Saturate and clamp so the "+2" of the Q.6 -> Q.4 step below
-            // cannot overflow for a hostile vector. |xq6| is at most
-            // kCornerClamp + 4096 in the envelope, far inside kCoordClamp.
-            const int32_t xq6 = clamp_i32(
-                sat_add_i32(bilerp_corner(c.x[0], c.x[1], c.x[2], c.x[3], u, v), mvx_q6[q]),
-                -kCoordClamp, kCoordClamp);
-            const int32_t yq6 = clamp_i32(
-                sat_add_i32(bilerp_corner(c.y[0], c.y[1], c.y[2], c.y[3], u, v), mvy_q6[q]),
-                -kCoordClamp, kCoordClamp);
-
-            // Q.6 -> Q.4, round half up (paper 2.2 step 4: "(c + 2) >> 2").
-            const int32_t xq4 = sar(xq6 + 2, kQCorner - kQSample);
-            const int32_t yq4 = sar(yq6 + 2, kQCorner - kQSample);
-
-            const int32_t ix = sar(xq4, kQSample);
-            const int32_t iy = sar(yq4, kQSample);
-            const int32_t fx = xq4 & 15;
-            const int32_t fy = yq4 & 15;
+            int32_t ix, iy, fx, fy;
+            sample_position(c, mvx_q6, mvy_q6, quad_split, u, v, &ix, &iy, &fx,
+                            &fy);
 
             uint16_t* dst = out_tile + static_cast<size_t>(v) * out_stride +
                             static_cast<size_t>(u) * ref.channels;
@@ -410,6 +427,43 @@ void warp_tile(const RefImage& ref,
                                {mv_qpel[0], mv_qpel[1]}};
     warp_tile_quad(ref, tile_x, tile_y, H, mv4, kTile / 2, filter, mode,
                    out_tile, out_stride);
+}
+
+// The integer source sample index every output sample of a tile lands on,
+// under exactly the arithmetic warp_tile_quad() uses -- same corners, same
+// in-tile interpolation, same vector, same Q.6 -> Q.4 rounding.  It fetches
+// nothing.
+//
+// It exists for SYNTAX.md 13.12.4's neighbour-aware gather, which has to know
+// WHICH reference tile a sample falls in before it can fetch it through that
+// tile's own matrix.  Exposing the position rather than letting the caller
+// recompute it is the point: a second copy of this arithmetic that rounded
+// differently would resolve a sample to one tile and fetch it from another.
+void warp_tile_landing(const Homography& H,
+                       int32_t tile_x,
+                       int32_t tile_y,
+                       const int32_t mv_qpel[4][2],
+                       int32_t quad_split,
+                       Mode mode,
+                       int32_t* out_ix,
+                       int32_t* out_iy,
+                       int32_t out_stride) {
+    const TileCorners c = warp_tile_corners(H, tile_x, tile_y, mode);
+    int32_t mvx_q6[4], mvy_q6[4];
+    for (int32_t q = 0; q < 4; ++q) {
+        mvx_q6[q] = shl_i32_mod(mv_qpel[q][0], kQCorner - kQMv);
+        mvy_q6[q] = shl_i32_mod(mv_qpel[q][1], kQCorner - kQMv);
+    }
+    for (int32_t v = 0; v < kTile; ++v) {
+        for (int32_t u = 0; u < kTile; ++u) {
+            int32_t ix, iy, fx, fy;
+            sample_position(c, mvx_q6, mvy_q6, quad_split, u, v, &ix, &iy, &fx,
+                            &fy);
+            const size_t o = static_cast<size_t>(v) * out_stride + u;
+            out_ix[o] = ix;
+            out_iy[o] = iy;
+        }
+    }
 }
 
 }  // namespace nxvc::warp

@@ -191,6 +191,29 @@ void warp_tile_quad(const RefImage& ref,
                     uint16_t* out_tile,
                     int32_t out_stride);
 
+// The integer source sample index every output sample of the tile lands on,
+// under exactly the arithmetic warp_tile_quad() uses: the same corners, the
+// same in-tile interpolation, the same vector and the same Q.6 -> Q.4
+// rounding.  It fetches nothing and touches no reference image.
+//
+// It exists for SYNTAX.md 13.12.4's neighbour-aware gather, which must know
+// WHICH reference tile a sample falls in before it can fetch that sample
+// through that tile's own matrix.  The position is exposed rather than
+// recomputed by the caller on purpose: a second copy of this arithmetic that
+// rounded differently would resolve a sample to one tile and fetch it from
+// another, and the two ends of the codec would disagree about which.
+//
+//   out_ix, out_iy   kTile*kTile int32 each, row stride `out_stride`
+void warp_tile_landing(const Homography& H,
+                       int32_t tile_x,
+                       int32_t tile_y,
+                       const int32_t mv_qpel[4][2],
+                       int32_t quad_split,
+                       Mode mode,
+                       int32_t* out_ix,
+                       int32_t* out_iy,
+                       int32_t out_stride);
+
 // ---------------------------------------------------------------------------
 // Homography derivation (encoder side, double precision, NOT normative)
 // ---------------------------------------------------------------------------
