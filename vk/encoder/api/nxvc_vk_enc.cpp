@@ -426,6 +426,13 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_set_frame_held(nxvc_vk_encoder *e,
     return NXVC_VKE_OK;
 }
 
+extern "C" nxvc_vke_status nxvc_vk_encoder_frame_report(
+    const nxvc_vk_encoder *e, nxvc_vke_frame_report *out) {
+    if (!e || !out) return NXVC_VKE_ERR_ARG;
+    *out = e->vk.last_frame_report();
+    return NXVC_VKE_OK;
+}
+
 extern "C" nxvc_vke_status nxvc_vk_encoder_atlas_layout(
     const nxvc_vk_encoder *e, nxvc_vke_atlas_layout *out) {
     if (!e || !out) return NXVC_VKE_ERR_ARG;

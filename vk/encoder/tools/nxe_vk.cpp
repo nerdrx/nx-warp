@@ -208,6 +208,13 @@ struct VkEncoder::Impl {
      * and the assembly must follow Pass B's push block being built. */
     WarpBuildInfo picture_bi{};
     std::vector<uint8_t> picture_modes;
+    /* Frames since each position last coded an INTRA, for the AGE form of the
+     * hard cap (`drift_refresh`).  A position that has never coded one starts
+     * at 0 -- frame 0 is all-INTRA, which is exactly that. */
+    std::vector<uint32_t> age_since_intra;
+    /* The last frame's report (nxvc_vk_encoder_frame_report).  Reporting only:
+     * every field is read off state the encode already produced. */
+    nxvc_vke_frame_report last_report{};
     /* How many tiles 13.12.6 forced into the skip range over the clip, because
      * a coded tile there would have been dropped as superseded. */
     uint64_t atlas_superseded = 0;
@@ -1189,6 +1196,10 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
                 const double worst = atlas_worst_disp_after(
                     d.atlas_tab, Hm, bi.width, bi.height);
                 d.picture_frame = worst > (double)d.cfg.atlas_picture_d;
+                /* The trigger's own number, in sixteenths of a sample, so a
+                 * caller can see how close the frame came to switching. */
+                d.last_report.worst_disp_q4 =
+                    (uint32_t)(worst * 16.0 + 0.5);
                 if (std::getenv("NXE_MODE_TRACE"))
                     std::fprintf(stderr,
                                  "[mode] frame %u worst=%.3f D=%d -> %s "
@@ -1283,8 +1294,16 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
                 t < d.force_intra.size() && d.force_intra[t] != 0;
             /* With Cheat 3 the refresh question is answered by the frame-wide
              * pick above; without it, by the staggered rule alone. */
-            const bool due = cheat3 ? d.refresh_pick[t] != 0
-                                    : refresh_due(t, frame_number, period);
+            /* ENCODER-DECISION.md section 2 step 1.  Two forms of the same
+             * cap: the AGE rule that `nxv-enc` defaults to, and the STAGGERED
+             * rule this encoder has always used.  Cheat 3's pick overrides
+             * both when it is on. */
+            const bool due =
+                cheat3 ? d.refresh_pick[t] != 0
+                       : (d.cfg.drift_refresh
+                              ? (t < d.age_since_intra.size() &&
+                                 d.age_since_intra[t] >= period)
+                              : refresh_due(t, frame_number, period));
             bool eligible = ref_slot >= 0 && !missing && !due;
             /* Under ATLAS eligibility is PER TILE and it is the whole of the
              * loss story ([SYN] 13.12.4: a tile with mode != INTRA whose own
@@ -1965,6 +1984,47 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
     }
 
 
+    /* The frame report, from the modes this frame settled on.  It is filled
+     * for every frame, atlas or not, so a caller can log one way. */
+    {
+        nxvc_vke_frame_report &r = d.last_report;
+        const uint32_t wd = r.worst_disp_q4;   /* set by the trigger above */
+        std::memset(&r, 0, sizeof r);
+        r.worst_disp_q4 = d.cfg.atlas_mode ? wd : 0u;
+        r.frame_number = frame_number;
+        r.tiles = d.ntiles;
+        r.mode = !d.atlas ? NXVC_VKE_FRAME_NON_ATLAS
+                          : (d.picture_frame ? NXVC_VKE_FRAME_PICTURE
+                                             : NXVC_VKE_FRAME_ATLAS);
+        for (uint32_t t = 0; t < d.ntiles; ++t) {
+            switch (f.jobs[t].mode) {
+                case (uint32_t)nxvw::kModeWarpSkip:  ++r.skip; break;
+                case (uint32_t)nxvw::kModeStaticMv:  ++r.static_mv; break;
+                case (uint32_t)nxvw::kModeWarpMv:    ++r.warp_mv; break;
+                case (uint32_t)nxvw::kModeIntra:     ++r.intra; break;
+                default: break;
+            }
+        }
+        r.coded = d.ntiles - r.skip;
+        /* 13.12.11 step 1 warps every position; an ATLAS frame warps none. */
+        r.assembled = (r.mode == NXVC_VKE_FRAME_PICTURE) ? d.ntiles : 0u;
+        /* r.bytes is filled after the frame is packed; see below. */
+    }
+
+    /* The AGE form of the cap needs the modes this frame actually coded, so
+     * it is updated here rather than at the decision: a position that coded
+     * INTRA restarts at zero, every other position ages by one. */
+    if (d.inter && d.cfg.drift_refresh) {
+        if (d.age_since_intra.size() != (size_t)d.ntiles)
+            d.age_since_intra.assign(d.ntiles, 0u);
+        for (uint32_t t = 0; t < d.ntiles; ++t) {
+            if (f.jobs[t].mode == (uint32_t)nxvw::kModeIntra)
+                d.age_since_intra[t] = 0u;
+            else if (d.age_since_intra[t] != 0xffffffffu)
+                ++d.age_since_intra[t];
+        }
+    }
+
     auto t1 = clk::now();
     if (check) {
         std::vector<int16_t> gpu(f.coef.size());
@@ -2096,6 +2156,11 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
     }
     f.out.assign(total, 0);
     std::memcpy(f.out.data(), d.b_out.map, total);
+    /* The report's byte count, HERE rather than with the rest of it: the
+     * census is settled as soon as the modes come back, but the frame is not
+     * packed until now, and reading `f.out` earlier reports the PREVIOUS
+     * frame's size -- which is exactly what it did before this line. */
+    d.last_report.bytes = (uint32_t)f.out.size();
 
     auto t5 = clk::now();
     if (d.e0_timed) {
@@ -2373,6 +2438,10 @@ bool VkEncoder::assemble_atlas_picture(Frame &f, const WarpBuildInfo &bi_in,
 }
 
 bool VkEncoder::last_picture_frame() const { return p_->picture_frame; }
+
+const nxvc_vke_frame_report &VkEncoder::last_frame_report() const {
+    return p_->last_report;
+}
 
 bool VkEncoder::atlas_layout(nxvc_vke_atlas_layout &out) const {
     const Impl &d = *p_;

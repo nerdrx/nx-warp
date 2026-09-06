@@ -680,6 +680,62 @@ nxvc_vke_status nxvc_vk_encoder_set_frame_held(nxvc_vk_encoder *enc,
                                                uint32_t frame_number,
                                                int held);
 
+/* ------------------------------------------------- the last frame's report
+ *
+ * What the encoder decided for the frame it just coded.  Reporting only: it
+ * reads state the encode already produced and changes no byte of any stream.
+ *
+ * The WiVRn wiring needs this because none of it is recoverable from the
+ * bitstream afterwards.  The per-frame MODE is one bit in a frame header a
+ * server would have to re-parse; the tile-mode census is not in the stream at
+ * all (a decoder derives it, an observer cannot cheaply); and the trigger's
+ * own displacement number exists only inside the decision that used it.  A
+ * caller that wants to log why a frame cost what it did, or drive a rate
+ * controller off the atlas's staleness, has to be told.
+ *
+ * Call it after nxvc_vk_encoder_encode(); it describes THAT frame.  Before the
+ * first encode every field is 0 and `mode` is NXVC_VKE_FRAME_NON_ATLAS. */
+#define NXVC_VK_ENCODER_FRAME_REPORT 1
+
+#define NXVC_VKE_FRAME_NON_ATLAS 0u /* not an ATLAS stream                    */
+#define NXVC_VKE_FRAME_ATLAS     1u /* an ATLAS frame ([SYN] 13.12)           */
+#define NXVC_VKE_FRAME_PICTURE   2u /* a PICTURE frame ([SYN] 13.12.11)       */
+
+typedef struct nxvc_vke_frame_report {
+    uint32_t mode;          /* NXVC_VKE_FRAME_*                               */
+    uint32_t frame_number;  /* the frame this report describes                */
+
+    /* The tile-mode census, over every tile of the frame (both eyes).  They
+     * sum to the tile count. */
+    uint32_t tiles;         /* tiles in the frame                             */
+    uint32_t skip;          /* WARP_SKIP: no bytes, no Pass B                 */
+    uint32_t intra;
+    uint32_t static_mv;
+    uint32_t warp_mv;
+    uint32_t coded;         /* every mode but WARP_SKIP; what Pass B costs    */
+
+    /* Tiles this frame ASSEMBLED, which is 13.12.11 step 1's full-picture
+     * warp: the tile count on a PICTURE frame and 0 on an ATLAS frame.  It is
+     * the term a PICTURE frame pays that an ATLAS frame does not. */
+    uint32_t assembled;
+
+    /* The mode trigger's own number ([SYN] 13.12.11.1): the worst corner
+     * displacement across the atlas INCLUDING this frame's advance, in
+     * SIXTEENTHS of a luma sample.  This is what was compared against `D`, so
+     * a caller can see how close a frame came to switching rather than only
+     * which side it landed on.  0 on a non-ATLAS stream, and 0 when the
+     * per-frame mode is off (the trigger does not run). */
+    uint32_t worst_disp_q4;
+
+    uint32_t bytes;         /* the frame's coded size                         */
+    uint32_t reserved[4];
+} nxvc_vke_frame_report;
+
+/* Fill `out` with the report for the frame most recently encoded.
+ * NXVC_VKE_ERR_ARG on a null argument. */
+nxvc_vke_status nxvc_vk_encoder_frame_report(const nxvc_vk_encoder *enc,
+                                             nxvc_vke_frame_report *out);
+
 /* ------------------------------------------------------ the atlas's layout
  *
  * THE LAYOUT `nxvc_vk_encoder_atlas_write_tiles` CONSUMES, reported by the

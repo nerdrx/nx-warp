@@ -75,6 +75,8 @@ static void usage() {
         "  --display-psnr       PSNR-Y of the DISPLAYED picture vs the source\n"
         "                       (under --atlas, one warp from the atlas)\n"
         "  --atlas              the per-tile atlas reference, tool bit 31\n"
+        "  --drift-refresh      the INTRA cap is per-tile AGE (nxv-enc's\n"
+        "                       default) rather than the staggered rule\n"
         "  --atlas-mode         the atlas as a per-frame MODE, tool bit 34\n"
         "                       ([SYN] 13.12.11): each frame is an ATLAS\n"
         "                       frame or a PICTURE frame.  Needs --atlas\n"
@@ -224,6 +226,7 @@ int main(int argc, char **argv) {
         else if (a == "--coded-vectors") cfg.int_coded_vectors = true;
         else if (a == "--ref-sel") cfg.ref_sel = std::atoi(val());
         else if (a == "--atlas") cfg.atlas = true;
+        else if (a == "--drift-refresh") cfg.drift_refresh = true;
         else if (a == "--atlas-mode") cfg.atlas_mode = true;
         else if (a == "--atlas-picture-d") cfg.atlas_picture_d = std::atoi(val());
         else if (a == "--row-present") cfg.row_present = true;
@@ -594,6 +597,20 @@ int main(int argc, char **argv) {
                         "coded %u (%.1f %%)\n",
                         n, c[0], c[1], c[2], c[3], coded,
                         100.0 * coded / (double)f.fp.ntiles);
+            /* The same census through the public report, which is what a
+             * caller of the ABI sees.  Printed beside the harness's own count
+             * so the two are visibly the same numbers. */
+            if (!cfg.cpu_only) {
+                const nxvc_vke_frame_report &r = gpu.last_frame_report();
+                static const char *kMode[] = {"non-atlas", "ATLAS", "PICTURE"};
+                std::printf("  report %u: %s  skip %u static %u warp %u intra "
+                            "%u  coded %u  assembled %u  disp %.2f px  "
+                            "%u bytes\n",
+                            r.frame_number,
+                            kMode[r.mode < 3 ? r.mode : 0], r.skip,
+                            r.static_mv, r.warp_mv, r.intra, r.coded,
+                            r.assembled, r.worst_disp_q4 / 16.0, r.bytes);
+            }
         }
         /* [SYN] 13.12.5.  The displayed picture, which under ATLAS is NOT the
          * normative object and is not what a conformance vector compares --

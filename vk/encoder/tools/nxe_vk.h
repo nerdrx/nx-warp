@@ -149,6 +149,9 @@ public:
      * reporting only -- the bit is already in the stream. */
     bool last_picture_frame() const;
 
+    /* The report for the frame most recently encoded; see nxvc_vk_enc.h. */
+    const nxvc_vke_frame_report &last_frame_report() const;
+
     bool atlas_layout(nxvc_vke_atlas_layout &out) const;
 
     /* Build a patch buffer from `atlas_layout()` ALONE, copy a checkerboard of

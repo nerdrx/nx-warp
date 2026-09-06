@@ -185,6 +185,21 @@ struct Config {
      * -4.7 dB at S=2 on the fast turn.  So it is not implemented rather than
      * implemented and defaulted off, because a knob that is always wrong is a
      * knob someone will eventually set. */
+    /* ADR-0028 / ENCODER-DECISION.md section 2 step 1, the hard INTRA cap.
+     *
+     * OFF (the default here) is the STAGGERED rule: a tile is forced INTRA
+     * when `((tile * 2654435761) >> 8 + frame) % intra_period == 0`, so
+     * `ntiles / intra_period` tiles refresh every frame -- 3.2 a frame at 578
+     * tiles and a period of 180.
+     *
+     * ON is the AGE rule: a tile is forced INTRA only once it has gone
+     * `intra_period` frames without one.  `nxv-enc` defaults it ON, and on a
+     * clip shorter than the period NOTHING is forced, which is why the
+     * reference's section 7 table reports ~0 INTRA tiles a frame where the
+     * staggered rule reports 3.2.  Getting this wrong is worth several
+     * thousand bytes a frame on a stereo pair and looks like a decision bug.
+     */
+    bool drift_refresh = false;
     bool atlas_mode = false;
     int atlas_picture_d = 8;
     /* Print each frame's tile mode census.  Reporting only; it changes no
