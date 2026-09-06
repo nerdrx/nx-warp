@@ -320,7 +320,7 @@ using the inherited per-tile measurements:
 | Pass A entropy | ~1 ms | 39 x 16 us = **0.62 ms** | measured 16 us/tile, coded tiles only |
 | coded-tile reconstruction (Pass B) | ~1 ms | 39 x 25 us = **0.98 ms** | measured 25 us/tile |
 | skip warp | 250 x 34 us = **8.8 ms** | **0** | removed |
-| atlas update (compose + renorm, 289 tiles) | — | **budget 0.05 ms** | 9 int64 mults + 9 divides per tile; below the current measurement floor |
+| atlas update (compose + renorm, 289 tiles) | — | **0.0048 ms MEASURED** | 0.0096 ms for 578 entries on the Pico 4 at gpuclk 490 MHz; 10x under the budget it replaces |
 | **decode subtotal, per eye** | ~10.8 ms | **1.65 ms** | |
 | **decode, per frame pair** | ~21.6 ms | **3.30 ms** | |
 | display warp, per frame pair | (in the above) | **1.086 ms MEASURED** | one-tap 8-bit atlas, Pico 4 |
@@ -518,8 +518,11 @@ The design meets it, with this exact accounting:
   between the frame that codes it and the frame that next codes it.
 * **Metadata, warped tiles: 9 int64 multiply-adds and 9 divides, touching no pixels**, in one
   dispatch of 578 threads. This is the honest exception to "nothing at all", and it is the price of
-  the composed pose; it is why the atlas update is budgeted at 0.05 ms per eye and why that number
-  must be measured rather than assumed.
+  the composed pose. It was budgeted at 0.05 ms per eye and required to be measured rather than
+  assumed; it has been. **Measured on the Pico 4: 0.0096 ms for all 578 entries, 0.0048 ms per eye,
+  at gpuclk 490 MHz** — an order of magnitude under the budget, and the one term of the atlas's
+  per-frame cost that is proportional to the tile grid rather than to what changed. The budget line
+  is retired: this is a result.
 * **Bits: the row skip bitmap already costs bytes proportional to the grid, not to changes.** A tile
   row with no coded tiles still carries a 12-byte row header: 17 rows x 2 eyes x 12 = **408 bytes
   per frame, 294 kbit/s at 90 Hz**, for a frame in which nothing changed. On a static-panel scene

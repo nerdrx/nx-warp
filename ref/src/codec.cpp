@@ -231,6 +231,7 @@ struct FrameParams {
     int row_present = 0;        // frame flags bit 4, tool bit 32
     std::vector<u8> row_bits;   // row_present(), one bit per row structure
     int atlas = 0;              // stream tool bit 31
+    int atlas_rebase = 0;       // frame flags bit 5, tool bit 34 (13.12.10)
     int inter = 0;              // stream tool bit 10
     int stereo = 0;             // stream tool bit 12
     int nctx = kNumCtxV1;   // 12, 16 or 27, from the CTX_V2/CTX_V3 tool bits
@@ -2325,6 +2326,20 @@ struct nxvc_encoder {
     // Tiles the displacement bound alone forced to be coded this frame; it is
     // an atomic because the tile decisions run on the thread pool.
     std::atomic<u64> margin_forced{0};
+    // ATLAS_REBASE (13.12.10).  `rebase_tool` is the tool bit; the two
+    // counters are what the most recent frame's rebase cost, reported through
+    // nxvc_encode_stats so a cost model has a count rather than an estimate.
+    bool rebase_tool = false;
+    u32 rebased_frame = 0;
+    u32 rebased_tiles = 0;
+    // Base-layer refresh (13.12.9 used as a REFRESH source).  The picture the
+    // caller's base decoder produced, and the frame it corresponds to; the
+    // margin is the staleness bound that decides which tiles take it.
+    std::vector<u8> base_pic[3];
+    u32 base_stride[3] = {0, 0, 0};
+    u32 base_frame = 0;
+    bool have_base = false;
+    u32 base_refreshed = 0;
     std::vector<nxvc_view> views_cur;
     // The view each ring slot was rendered with, so the matrix a frame emits
     // is the one between its actual reference (N-1-ref_sel) and itself.
@@ -2387,7 +2402,19 @@ struct nxvc_decoder {
     // is the NORMATIVE output of the decoding process and the picture is not.
     bool atlas = false;
     bool atlas_nbr = false;
+    bool rebase_tool = false;
     nxvc::Atlas at;
+    // Base-layer refresh: the decoder's side of the same rule the encoder
+    // runs, fed from its own base decoder.  `base_margin` must match the
+    // encoder's or the two atlases diverge, which is the point of it being a
+    // rule rather than a per-frame signal.
+    std::vector<u8> base_pic[3];
+    u32 base_stride[3] = {0, 0, 0};
+    u32 base_frame = 0;
+    bool have_base = false;
+    u32 base_margin = 0;
+    u32 base_refreshed = 0;
+    u32 rebased_tiles = 0;
     FrameParams last_fp;         // the frame the display helper renders at
     bool have_last_fp = false;
 };
