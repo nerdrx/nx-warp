@@ -111,6 +111,14 @@ struct nxvc_vk_decoder {
     PFN_vkGetPipelineExecutableStatisticsKHR fpExecStats = nullptr;
     bool have_timestamps = false;
     float ts_period = 0.f;
+    // [timing] Ticks the QUEUE FAMILY actually counts.  Vulkan guarantees 64
+    // valid bits only where `timestampComputeAndGraphics` is set AND the
+    // family has both bits; on a compute-only family the count is whatever
+    // `timestampValidBits` says, and the bits ABOVE it are UNDEFINED.  Reading
+    // a 64-bit result and subtracting without masking is therefore reading
+    // driver-defined garbage in the high bits -- which this decoder did.
+    uint32_t ts_valid_bits = 0;
+    uint64_t ts_mask = ~0ull;
 
     // ---- config
     uint32_t want_output = NXVC_VKD_OUT_AUTO;
@@ -775,9 +783,43 @@ nxvc_vkd_status probe_device(D *d) {
     // it implements.  nxvc_vkdec_parse.cpp tools_supported_for() says why.
     d->tools_mask =
         nxvcvk::tools_supported_for(d->props.vendorID, d->props.deviceName);
-    d->have_timestamps = d->props.limits.timestampComputeAndGraphics != 0 &&
-                         d->props.limits.timestampPeriod > 0.f;
+    // [timing] `timestampPeriod` is NANOSECONDS PER TICK and is what converts
+    // a tick delta to time; `timestampValidBits` is how many bits of the
+    // counter the queue family actually drives.  BOTH are needed and only the
+    // first was being read.
     d->ts_period = d->props.limits.timestampPeriod;
+    d->ts_valid_bits = 0;
+    {
+        uint32_t qn = 0;
+        vkGetPhysicalDeviceQueueFamilyProperties(d->phys, &qn, nullptr);
+        std::vector<VkQueueFamilyProperties> qs(qn);
+        if (qn) vkGetPhysicalDeviceQueueFamilyProperties(d->phys, &qn, qs.data());
+        if (d->qfam < qn) d->ts_valid_bits = qs[d->qfam].timestampValidBits;
+    }
+    // [timing] An OVERRIDE for the tick rate, which exists for two reasons and
+    // both are about the device this decoder could not otherwise diagnose.
+    //
+    // It PROVES THE GATE: `NXVC_VKD_TS_PERIOD=200` makes the bench's
+    // self-check fail on a device where it otherwise passes, so the check is
+    // known to be capable of failing rather than merely never having failed.
+    //
+    // And it tests a HYPOTHESIS without a rebuild: if a driver's reported
+    // period is wrong, the corrected value can be tried directly on the
+    // device -- which is the only way to tell a wrong rate from a slow GPU,
+    // because the two look identical in a duration.
+    if (const char *ov = std::getenv("NXVC_VKD_TS_PERIOD")) {
+        const double v = std::atof(ov);
+        if (v > 0.0) d->ts_period = (float)v;
+    }
+    d->ts_mask = (d->ts_valid_bits == 0 || d->ts_valid_bits >= 64)
+                     ? ~0ull
+                     : ((1ull << d->ts_valid_bits) - 1ull);
+    // A family that drives ZERO bits does not support timestamps at all, and
+    // a query pool on it returns nothing meaningful.  Refuse rather than
+    // report a number about nothing.
+    d->have_timestamps = d->props.limits.timestampComputeAndGraphics != 0 &&
+                         d->props.limits.timestampPeriod > 0.f &&
+                         d->ts_valid_bits > 0;
 
     VkPhysicalDeviceSubgroupProperties sg{
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES};
@@ -2394,13 +2436,22 @@ static void collect_timestamps(D *d) {
                               VK_QUERY_RESULT_64_BIT |
                                   VK_QUERY_RESULT_WAIT_BIT) != VK_SUCCESS)
         return;
+    // [timing] Mask to the bits the queue actually drives BEFORE subtracting,
+    // and take the difference modulo that width so a counter wrap is a small
+    // positive delta rather than a number near 2^64.  `ts_mask` is all-ones on
+    // a 64-bit family, so this is the identity there.
+    const uint64_t m = d->ts_mask;
+    for (uint32_t i = 0; i < nq; ++i) ts[i] &= m;
+    auto delta = [m](uint64_t b, uint64_t a) -> double {
+        return (double)((b - a) & m);
+    };
     const double k = (double)d->ts_period / 1e6;
-    d->stats.pass_a_ms = (double)(ts[1] - ts[0]) * k;
+    d->stats.pass_a_ms = delta(ts[1], ts[0]) * k;
     // [inter] Pass W sits inside the Pass A -> Pass B window, so the
     // reported Pass B is the predictor plus the reconstruction; the
     // predictor's own share is broken out rather than hidden.
-    d->stats.pass_b_ms = (double)(ts[2] - ts[1]) * k;
-    d->stats.gpu_ms = (double)(ts[3] - ts[0]) * k;
+    d->stats.pass_b_ms = delta(ts[2], ts[1]) * k;
+    d->stats.gpu_ms = delta(ts[3], ts[0]) * k;
     // [passb] Zeroed rather than left holding the previous frame's value when
     // this frame did not measure them.  `ts_count` is 12 on an inter frame and
     // 4 otherwise, so on an intra frame neither Pass W nor the segment pairs
@@ -2410,7 +2461,7 @@ static void collect_timestamps(D *d) {
     // frame's Pass B is one segment anyway, so pass_b_ms is already the
     // reconstruction there and the breakdown has nothing to add.
     if (nq >= 6) {
-        d->stats.pass_w_ms = (double)(ts[5] - ts[4]) * k;
+        d->stats.pass_w_ms = delta(ts[5], ts[4]) * k;
     } else {
         d->stats.pass_w_ms = 0;
     }
@@ -2421,9 +2472,9 @@ static void collect_timestamps(D *d) {
     // so.  The env-gated print below stays: it is the same numbers, in a form
     // that needs no caller.
     if (nq >= 12) {
-        d->stats.pass_b_skip_ms = (double)(ts[7] - ts[6]) * k;
-        d->stats.pass_b_coded_ms = (double)(ts[9] - ts[8]) * k;
-        d->stats.pass_b_dir_ms = (double)(ts[11] - ts[10]) * k;
+        d->stats.pass_b_skip_ms = delta(ts[7], ts[6]) * k;
+        d->stats.pass_b_coded_ms = delta(ts[9], ts[8]) * k;
+        d->stats.pass_b_dir_ms = delta(ts[11], ts[10]) * k;
         d->stats.tiles_skip_seg = d->seg_tiles[0];
         d->stats.tiles_coded_seg = d->seg_tiles[1];
         d->stats.tiles_dir_seg = d->seg_tiles[2];
@@ -2443,8 +2494,8 @@ static void collect_timestamps(D *d) {
         std::fprintf(stderr,
                      "[segms] skip %.4f  coded %.4f  intra_dir %.4f"
                      "  (tiles %u/%u/%u)\n",
-                     (double)(ts[7] - ts[6]) * k, (double)(ts[9] - ts[8]) * k,
-                     (double)(ts[11] - ts[10]) * k, d->seg_tiles[0],
+                     delta(ts[7], ts[6]) * k, delta(ts[9], ts[8]) * k,
+                     delta(ts[11], ts[10]) * k, d->seg_tiles[0],
                      d->seg_tiles[1], d->seg_tiles[2]);
     }
 }
@@ -3643,6 +3694,14 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_atlas_view_read(
     }
     std::memcpy(out, host.mapped, need);
     destroy_buf(d, host);
+    return NXVC_VKD_OK;
+}
+
+extern "C" nxvc_vkd_status nxvc_vk_decoder_timestamp_info(
+    const nxvc_vk_decoder *d, float *period_ns, uint32_t *valid_bits) {
+    if (!d) return NXVC_VKD_ERR_ARG;
+    if (period_ns) *period_ns = d->have_timestamps ? d->ts_period : 0.f;
+    if (valid_bits) *valid_bits = d->ts_valid_bits;
     return NXVC_VKD_OK;
 }
 

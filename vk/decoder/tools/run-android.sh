@@ -9,6 +9,7 @@
 #   ./vk/decoder/tools/run-android.sh --unorm 1        # opt into the UNORM store
 #   ./vk/decoder/tools/run-android.sh --no-build       # reuse what is there
 #   ./vk/decoder/tools/run-android.sh --atlas          # the ATLAS kernels only
+#   ./vk/decoder/tools/run-android.sh --build-only     # cross-build, touch no device
 #
 # Everything after `--` is passed straight to the test binary.
 #
@@ -35,6 +36,7 @@ DEST="${NXVC_ANDROID_DEST:-/data/local/tmp/nxwarp}"
 JOBS="${NXVC_JOBS:-4}"
 
 BUILD_IT=1
+BUILD_ONLY=0
 ATLAS=0
 UNORM=""
 MODE=(--verbose)
@@ -42,6 +44,12 @@ EXTRA=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --no-build) BUILD_IT=0; shift ;;
+    # Cross-build and STOP.  The headset is a shared resource and is often
+    # held by someone else for an hour at a time; this stages the arm64
+    # binaries so a row can be taken the moment it frees up, without touching
+    # adb at all.  It is also the only mode that is safe to run while a live
+    # session is up.
+    --build-only) BUILD_ONLY=1; shift ;;
     --quick)    MODE=(--quick); shift ;;
     --bench)    MODE=(--bench "${2:-10}"); shift 2 ;;
     --unorm)    UNORM="$2"; shift 2 ;;
@@ -54,7 +62,7 @@ done
 ADB=(adb)
 [[ -n "${ANDROID_SERIAL:-}" ]] && ADB=(adb -s "$ANDROID_SERIAL")
 
-if ! "${ADB[@]}" get-state >/dev/null 2>&1; then
+if [[ $BUILD_ONLY -eq 0 ]] && ! "${ADB[@]}" get-state >/dev/null 2>&1; then
   echo "no adb device (set ANDROID_SERIAL to pick one of several)" >&2
   exit 77
 fi
@@ -109,6 +117,11 @@ if [[ $ATLAS -eq 1 ]]; then
   fi
   ABIN="$BUILD/bin/nxvc-atlas-gpu-test"
   [[ -x "$ABIN" ]] || { echo "not built: $ABIN" >&2; exit 1; }
+  if [[ $BUILD_ONLY -eq 1 ]]; then
+    echo "== built (device untouched): $ABIN"
+    echo "== sha256 $(sha256sum "$ABIN" | cut -d' ' -f1)"
+    exit 0
+  fi
   "${ADB[@]}" shell "mkdir -p $DEST" >/dev/null
   push_checked "$ABIN" || exit 1
   "${ADB[@]}" shell "input keyevent KEYCODE_WAKEUP; svc power stayon usb" >/dev/null
@@ -145,6 +158,14 @@ fi
 
 BIN="$BUILD/bin/test_vk_decoder_conformance"
 [[ -x "$BIN" ]] || { echo "not built: $BIN" >&2; exit 1; }
+
+if [[ $BUILD_ONLY -eq 1 ]]; then
+  echo "== built (device untouched)"
+  for b in "$BIN" "$BUILD/bin/nxvc-vkdec"; do
+    [[ -x "$b" ]] && echo "== $(basename "$b") sha256 $(sha256sum "$b" | cut -d' ' -f1)"
+  done
+  exit 0
+fi
 
 echo "== pushing to $DEST"
 "${ADB[@]}" shell "mkdir -p $DEST/vectors" >/dev/null
