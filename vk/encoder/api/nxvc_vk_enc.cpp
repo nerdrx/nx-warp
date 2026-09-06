@@ -371,6 +371,15 @@ extern "C" double nxvc_vk_encoder_last_encode_ms(const nxvc_vk_encoder *e) {
     return e ? e->last_ms : 0.0;
 }
 
+extern "C" void nxvc_vk_encoder_identity_tiles(const nxvc_vk_encoder *e,
+                                              uint64_t *tiles,
+                                              uint64_t *total) {
+    uint64_t t = 0, n = 0;
+    if (e) e->vk.identity_stats(t, n);
+    if (tiles) *tiles = t;
+    if (total) *total = n;
+}
+
 extern "C" double nxvc_vk_encoder_last_upload_ms(const nxvc_vk_encoder *e) {
     return e ? e->last_upload_ms : 0.0;
 }

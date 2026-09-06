@@ -237,6 +237,8 @@ int main(int argc, char **argv) {
     /* create_info::effort: 0 the dead-zone quantiser, 1 the integer
      * requantiser.  The acid test drives both ends of the ABI with it. */
     uint32_t effort = 0;
+    /* create_info::snap_identity, in 1/16 luma samples; 0 = off. */
+    uint32_t snap_identity = 0;
     /* 1 or 2.  As in nxvc-vkenc, `--w` is the FULL width either way, so a
      * stereo run passes the side-by-side pair and create() gets w/eyes. */
     uint32_t eyes = 1;
@@ -277,6 +279,8 @@ int main(int argc, char **argv) {
         else if (a == "--poses") poses_path = next();
         else if (a == "--drop-at") drop_at = std::atoi(next());
         else if (a == "--effort") effort = (uint32_t)std::atoi(next());
+        else if (a == "--snap-identity")
+            snap_identity = (uint32_t)std::atoi(next());
         else if (a == "--entropy")
         {
             const std::string v = next();
@@ -322,7 +326,7 @@ int main(int argc, char **argv) {
                      "                      [--qp N] [--frames N] [--matrix N] [--timing]\n"
                      "                      [--image] [--qp-cycle a,b,c] [--lengths f]\n"
                      "                      [--eyes 1|2, --w is the side-by-side pair]\n"
-                     "                      [--effort 0|1]\n");
+                     "                      [--effort 0|1] [--snap-identity N]\n");
         return 2;
     }
 
@@ -396,6 +400,7 @@ int main(int argc, char **argv) {
     ci.quant_matrix = matrix;
     ci.entropy = entropy;
     ci.effort = effort;
+    ci.snap_identity = inter ? snap_identity : 0;
 
     /* The image path needs a device the caller owns: the image has to live on
      * the encoder's device, and a device the library created is one this tool
