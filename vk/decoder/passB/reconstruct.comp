@@ -246,6 +246,16 @@ shared int sMeans[64];
 // shared footprint is 480 B smaller than the one it replaces, which matters:
 // a 4:4:4 tile's plane slots alone are 24 KB of a 32 KB budget.
 shared ivec2 sCorner[4];
+#ifdef NXVW_ABL_LDSPAD
+// ABLATION ONLY.  Extra shared memory this kernel never reads for anything
+// that matters, to move the workgroup's LDS footprint and nothing else.  It
+// prices the "the skip module is LDS-occupancy limited" hypothesis in the
+// direction that costs nothing to build: if adding NXVW_ABL_LDSPAD words takes
+// the SP from two resident workgroups to one and the tile gets ~2x dearer,
+// then taking the footprint DOWN buys the third workgroup back and the store
+// restructure is worth writing.  Written and read so no compiler may drop it.
+shared uint sPad[NXVW_ABL_LDSPAD];
+#endif
 #else
 shared int sDcTmp[64];
 // Between the two passes of the second-level DC IDCT, so neither sDcTmp nor
@@ -1158,6 +1168,12 @@ void main() {
         // display conversion, the two-plane store and the reference-ring store
         // are the code they always were.
         gScratchBase = store;
+#ifdef NXVW_ABL_LDSPAD
+        sPad[(tid * 7u) % uint(NXVW_ABL_LDSPAD)] = uint(tid + p);
+        barrier();
+        if (sPad[(uint(tid) * 13u) % uint(NXVW_ABL_LDSPAD)] == 0xffffffffu)
+            sPlane[store] = 1u;   // never true; keeps sPad live
+#endif
 #ifdef NXVW_ABL_NOWARP
         // ABLATION ONLY, and it produces a grey picture: the plane is filled
         // with dc_offset instead of predicted, so everything downstream -- the
