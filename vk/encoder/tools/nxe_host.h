@@ -130,6 +130,22 @@ struct Config {
      * is not an inter tool -- it applies to every coded tile of every frame --
      * and `nxv-enc --int-rdoq 1` is the reference configuration it matches. */
     int int_rdoq = 0;
+    /* SNAP TO IDENTITY, in 1/16 luma samples; 0 = off.
+     *
+     * When the frame's warp displaces every tile corner by less than this, the
+     * encoder emits the IDENTITY matrix instead of the exact sub-sample one.
+     * Encoder-side and no syntax: an identity warp_ext is an ordinary matrix,
+     * and every WARP_SKIP tile then hits the decoder's copy fast path
+     * (docs/PASSB-ADRENO-PLAN.md 3b) instead of running the integer warp --
+     * which on the Pico is 8.25 of 13.7 ms of Pass B per pair, most of it
+     * spent on motion below a sample.
+     *
+     * The trade is exact and one-sided: the prediction loses the snapped
+     * fraction, so the residual grows by whatever that fraction was worth, and
+     * a threshold above about half a sample starts costing visible bytes.  It
+     * is measured rather than assumed -- see vk/encoder/README.md, "Snapping
+     * the warp to the identity". */
+    int snap_identity = 0;
 
     /* Measure the integer rate model of nxe_rate.h against the bytes the
      * entropy coder actually produces, per tile, and print the distribution

@@ -14,6 +14,36 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
 
 ### Added
 
+**GPU encoder: `snap_identity`, and the null result underneath it**
+
+- `--snap-identity N` (N in 1/16 luma samples, 0 = off, ships off) replaces a
+  nearly-still frame warp with the IDENTITY, so the decoder takes its copy fast
+  path (`NXVW_ABL_IDENTITY`) on every skipped tile instead of running the
+  integer warp -- 8.25 of 13.7 ms of Pass B per pair on the Pico. Encoder-side,
+  no syntax: an identity `warp_ext` is an ordinary matrix. Decided per frame on
+  the worst tile corner in the picture, both eyes together.
+- **Nothing snaps below one whole sample.** A head at rest still moves ~0.57
+  samples a frame, so thresholds 2, 4 and 8 produce a stream byte-identical to
+  the tool being off. The sweep's lower half is a null result and it is the
+  useful half: a sub-sample threshold is inert, not conservative.
+- At 16 the threshold catches 2 of 7 inter frames on the rest clip (28.6 % of
+  tile-frames identity) for -0.05 dB and between **-0.91 %** and +0.07 % of
+  bytes -- it makes the stream SMALLER at QP 34, because an identity predictor
+  on a still picture beats a sub-sample warp that resamples it. **Motion kills
+  it outright**: at 30 deg/s nothing snaps at any threshold up to two samples.
+- Recommended default 16, shipped 0 until the Pico measurement exists. The
+  headset arithmetic -- 4.8 to 7.2 ms per pair on a snapped frame -- is
+  arithmetic on somebody else's measurement and is a reason to measure.
+- **The vrroom corpus's `rest` trajectory is not at rest**: 2.5 samples of
+  tile-corner displacement a frame, forty times the generator's `static`
+  profile, which is the real reason the device rows see 0/578 identity tiles.
+  Snapping it needs a three-sample threshold and costs 4.0 dB and 2.3x the
+  bytes; the stream built that way is a timing fixture for the decoder's copy
+  segment and nothing else.
+- Byte-identical RADV vs lavapipe at a snapped setting; all 32 `vk.encoder`
+  tests pass with the tool off. Two committed pictures and a new
+  `docs/GALLERY.md`.
+
 **A piecewise-planar tile mode, and an honest re-measurement of it** (tool bit
 35, `mode == 5`, SYNTAX.md 13.13, `docs/LOWPOLY-MODE.md` 9)
 
