@@ -238,7 +238,7 @@ struct nxvc_vk_decoder {
 
     // ---- buffers
     Buf staging, bBits, bDesc, bTables, bCoef, bCbf, bStatus, bRecs, bWgt,
-        bModes, bOrder, bRead;
+        bModes, bOrder, bRead, bPlanar;
     // [inter] The four-slot reference ring, the predictor Pass W hands to
     // Pass B, and the parameter block that drives both.
     Buf bRing, bWPred, bWarp;
@@ -345,6 +345,7 @@ struct nxvc_vk_decoder {
     int wpredStrideI16 = 0;
     // The staging buffer's inter blocks.
     VkDeviceSize offWarp = 0;
+    VkDeviceSize offPlanar = 0;   // [planar] the validated planar bodies
     // Host-side scratch for the parameter block, rebuilt per frame.
     std::vector<uint32_t> warp_words;
 
@@ -887,7 +888,9 @@ struct SetShape {
 // [v3] intra modes, [sparse] unit lengths.
 constexpr SetShape kSetA{8, 0};
 // Pass B: buffers 0-2, 7-9 and [inter] 13-15; images 3-6 and [unorm] 10-12.
-constexpr SetShape kSetB{9, 7};
+// [planar] Buffer 16 is the validated planar body, appended after the inter
+// bindings so nothing that already referenced a binding has to move.
+constexpr SetShape kSetB{10, 7};
 // Pass W: ring in, params in, predictor out, tile order in.
 constexpr SetShape kSetW{4, 0};
 // [ATLAS] atlas_compose.comp: table, advanced_to, H ring, selection list.
@@ -1493,6 +1496,15 @@ nxvc_vkd_status make_resources(D *d) {
     if ((st = make_buf(d, d->bOrder, (VkDeviceSize)(ntiles + 1) * 4, kSsbo,
                        false)))
         return st;
+    // [planar] kPlanarUintsPerTile uints per tile, 104 B, allocated whether or
+    // not the stream uses the mode: it is a descriptor that must be bound, and
+    // 104 B a tile against the coefficient slot's 12.5 KB is not worth making
+    // conditional.  Only WRITTEN when a frame carries a planar tile.
+    if ((st = make_buf(d, d->bPlanar,
+                       (VkDeviceSize)(ntiles + 1) *
+                           nxvw::kPlanarUintsPerTile * 4,
+                       kSsbo, false)))
+        return st;
     // [sparse] One byte per coding unit, 264 B per tile against the
     // coefficient slot's 12.5 KB.  Pass A writes it, Pass B reads it.
     const VkDeviceSize ulenBytes =
@@ -1641,6 +1653,7 @@ nxvc_vkd_status make_resources(D *d) {
         {VK_NULL_HANDLE, d->imgLumaN.view, VK_IMAGE_LAYOUT_GENERAL},
         {VK_NULL_HANDLE, d->imgCbCrN.view, VK_IMAGE_LAYOUT_GENERAL}};
     // [inter] Pass B's 13-15 and Pass W's 0-2.
+    VkDescriptorBufferInfo bPlanarInfo{d->bPlanar.buf, 0, VK_WHOLE_SIZE};
     VkDescriptorBufferInfo b3[3] = {{d->bWPred.buf, 0, VK_WHOLE_SIZE},
                                     {d->bRing.buf, 0, VK_WHOLE_SIZE},
                                     {d->bWarp.buf, 0, VK_WHOLE_SIZE}};
@@ -1672,7 +1685,8 @@ nxvc_vkd_status make_resources(D *d) {
                                     {d->bWarp.buf, 0, VK_WHOLE_SIZE},
                                     {d->bACoded.buf, 0, VK_WHOLE_SIZE},
                                     {d->bAStatus.buf, 0, VK_WHOLE_SIZE}};
-    VkWriteDescriptorSet w[28 + kSetAC.total() + kSetAT.total() +
+    // [planar] +1 for Pass B binding 16.
+    VkWriteDescriptorSet w[29 + kSetAC.total() + kSetAT.total() +
                           kSetAV.total()]{};
     uint32_t nw = 0;
     for (int i = 0; i < 8; ++i) {
@@ -1727,6 +1741,16 @@ nxvc_vkd_status make_resources(D *d) {
         w[nw].descriptorCount = 1;
         w[nw].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         w[nw].pBufferInfo = &b3[i];
+        ++nw;
+    }
+    // [planar] binding 16.
+    {
+        w[nw] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        w[nw].dstSet = d->dsetB;
+        w[nw].dstBinding = 16;
+        w[nw].descriptorCount = 1;
+        w[nw].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        w[nw].pBufferInfo = &bPlanarInfo;
         ++nw;
     }
     for (int i = 0; i < 4; ++i) {
@@ -2087,6 +2111,19 @@ void build_tile_order(D *d, const FrameParse &fp, uint32_t ntiles,
         if (fp.any_inter) {
             skipMid = std::stable_partition(copyMid, end, [&](uint32_t t) {
                 if (sup && t < sup->size() && (*sup)[t]) return true;
+                // [planar] A PLANAR tile is mode 5, so it lands on the CODED
+                // side of this partition, and that is load-bearing beyond the
+                // dispatch shape.
+                //
+                // [SYN] 13.12.3 step 3: under the atlas a CODED tile seeds its
+                // atlas entry, and a planar tile is a coded tile -- in fact the
+                // cheapest possible new patch for that store, since it needs no
+                // reference and can seed an entry that has none
+                // (docs/LOWPOLY-MODE.md 6).  The atlas decoder builds `acoded`
+                // as the range of this order AFTER `order_nskip` and dispatches
+                // MATGEN/WRITEBACK over it, so a planar tile seeds its entry by
+                // construction here, and would silently stop doing so if it
+                // were ever moved to the skip side.
                 return (fp.recs[t].w1 & 7u) == 0u;   // WARP_SKIP
             });
             d->order_nskip[pass] = (uint32_t)(skipMid - beg);
@@ -2334,7 +2371,7 @@ extern "C" void nxvc_vk_decoder_destroy(nxvc_vk_decoder *d) {
                        &d->bModes, &d->bOrder, &d->bRead, &d->bULen,
                        &d->bULenHost, &d->bRing, &d->bWPred, &d->bWarp,
                        &d->bTable, &d->bAdv, &d->bHRing, &d->bASel,
-                       &d->bACoded, &d->bAStatus})
+                       &d->bACoded, &d->bAStatus, &d->bPlanar})
             destroy_buf(d, *b);
         for (Img *i : {&d->imgRgba, &d->imgRgb10, &d->imgLuma, &d->imgCbCr,
                        &d->imgRgbaN, &d->imgLumaN, &d->imgCbCrN,
@@ -2542,20 +2579,35 @@ static void collect_timestamps(D *d) {
         d->stats.pass_b_skip_ms = delta(ts[9], ts[8]) * k;
         d->stats.pass_b_coded_ms = delta(ts[11], ts[10]) * k;
         d->stats.pass_b_dir_ms = delta(ts[13], ts[12]) * k;
-        d->stats.tiles_identity_seg = d->seg_tiles[0];
-        d->stats.tiles_skip_seg = d->seg_tiles[1];
-        d->stats.tiles_coded_seg = d->seg_tiles[2];
-        d->stats.tiles_dir_seg = d->seg_tiles[3];
     } else {
         d->stats.pass_b_identity_ms = 0;
         d->stats.pass_b_skip_ms = 0;
         d->stats.pass_b_coded_ms = 0;
         d->stats.pass_b_dir_ms = 0;
-        d->stats.tiles_identity_seg = 0;
-        d->stats.tiles_skip_seg = 0;
-        d->stats.tiles_coded_seg = 0;
-        d->stats.tiles_dir_seg = 0;
     }
+    // [planar] The tile COUNTS are not timestamps: the partition that produces
+    // them is built on the host, in build_tile_order(), and is the same
+    // partition whether or not the device can time the segments.  They are
+    // therefore reported unconditionally, where they used to be zeroed
+    // alongside the times.
+    //
+    // That distinction is what makes the mode's cost legible. The segment
+    // timers arm only on a frame with an inter tile (ts_count above), so a
+    // planar-only frame measures no milliseconds -- but it does dispatch
+    // planar tiles, and a caller reading "0 ms over 0 tiles" cannot tell that
+    // from a frame that had none.  "0 ms over 96 tiles" says which it was, and
+    // matches how the client already reads the counts: a segment with tiles
+    // and no time is one the device could not measure.
+    //
+    // A planar tile is none of identity-copy, WARP_SKIP or INTRA -- it is mode
+    // 5, it carries its own picture and it has no warp matrix at all -- so
+    // build_tile_order puts it in the CODED group and it is counted in
+    // `tiles_coded_seg`, which is exactly what <nxvc/nxvc_vk.h> defines that
+    // field as: "every other non-INTRA tile".
+    d->stats.tiles_identity_seg = d->seg_tiles[0];
+    d->stats.tiles_skip_seg = d->seg_tiles[1];
+    d->stats.tiles_coded_seg = d->seg_tiles[2];
+    d->stats.tiles_dir_seg = d->seg_tiles[3];
     // [inter] Per-module Pass B, eye pass 0.  Env-gated because it is a
     // measurement aid rather than part of the ABI, and because a segment that
     // did not run leaves its pair equal and would otherwise print 0.000 three
@@ -2747,6 +2799,13 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     const VkDeviceSize warpBytes = (VkDeviceSize)d->warp_words.size() * 4;
     d->offWarp = o;
     o = align_up(o + warpBytes, 256);
+    // [planar] Only staged when the frame carries a planar tile; every other
+    // frame moves nothing and leaves the buffer as it was, which no tile
+    // reads.
+    const VkDeviceSize planarBytes =
+        fp.any_planar ? (VkDeviceSize)fp.planar.size() * 4 : 0;
+    d->offPlanar = o;
+    o = align_up(o + planarBytes, 256);
     // ---- [ATLAS] this frame's H slot, and the two index lists.
     //
     // The lists are built from `build_tile_order()`'s partition rather than
@@ -2835,6 +2894,8 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     std::memcpy(sp + d->offOrder, d->order.data(), (size_t)ntiles * 4);
     if (warpBytes)
         std::memcpy(sp + d->offWarp, d->warp_words.data(), (size_t)warpBytes);
+    if (planarBytes)
+        std::memcpy(sp + d->offPlanar, fp.planar.data(), (size_t)planarBytes);
     if (warpABytes) {
         std::memcpy(sp + offWarpA, d->warp_words.data(), (size_t)warpABytes);
         // The one field that differs: the ASSEMBLE stores into slot 1.
@@ -2872,6 +2933,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     copy(d->bWgt, d->offWgt, sizeof fp.weights);
     copy(d->bOrder, d->offOrder, (VkDeviceSize)ntiles * 4);
     copy(d->bWarp, d->offWarp, warpBytes);
+    copy(d->bPlanar, d->offPlanar, planarBytes);
     // A skipped tile gets no Pass A descriptor, so nothing would zero its
     // coefficient slot.  Zero it here; Pass B then reconstructs it as
     // "no coefficients" over the WARP_SKIP record.

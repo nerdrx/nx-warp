@@ -43,7 +43,11 @@ enum : uint8_t {
     kModeStaticMv = 1,
     kModeWarpMv = 2,
     kModeIntra = 3,
-    kModeStereo = 4
+    kModeStereo = 4,
+    // [planar] [SYN] 13.13, tool bit 35.  Listed here beside the others even
+    // though it is not an inter mode: this enum is what the parse compares
+    // `mode` against, and a mode missing from it reads as "not handled".
+    kModePlanar = 5
 };
 
 inline bool mode_needs_warp(int mode) {
