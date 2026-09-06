@@ -430,7 +430,6 @@ static void put32(uint8_t *p, uint32_t v) {
 void nxe_pack_tile_header(const nxe_frame_params *fp, const nxe_tile_job *job,
                           uint8_t out[8]) {
     uint32_t w0, w1;
-    (void)fp;
     w0 = ((uint32_t)job->col & 0xfffu) << 4;
     w0 |= ((uint32_t)job->eye & 1u) << 2;
     w0 |= ((uint32_t)job->payload_len & 0xffffu) << 16;
@@ -441,6 +440,10 @@ void nxe_pack_tile_header(const nxe_frame_params *fp, const nxe_tile_job *job,
     w1 |= ((uint32_t)job->table_set & 7u) << 14;
     w1 |= ((uint32_t)job->nsub_log2 & 7u) << 17;
     w1 |= ((uint32_t)job->tskip & 1u) << 23;
+    /* [SYN] 4.1 word1 bits 21-22.  Frame-uniform, and zero on an INTRA tile,
+     * which the syntax requires and the decoder checks (r23). */
+    if (job->mode != NXE_MODE_INTRA)
+        w1 |= ((uint32_t)fp->ref_sel & 3u) << 21;
     w1 |= ((uint32_t)job->wm_id & 3u) << 26;
     put32(out, w0);
     put32(out + 4, w1);

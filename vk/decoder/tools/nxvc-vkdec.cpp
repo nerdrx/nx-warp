@@ -20,6 +20,14 @@ void usage() {
         "usage: nxvc-vkdec --in file.nxv --out out.yuv [options]\n"
         "  --pix yuv444p|yuv420p  assert the stream's pixel format\n"
         "  --frames N             decode at most N frames\n"
+        "  --decode-every N       decode only every Nth frame and SKIP the\n"
+        "                         rest without parsing them, which is what a\n"
+        "                         headset that cannot keep up does.  The\n"
+        "                         skipped frames leave holes in the decoder's\n"
+        "                         reference ring, so this is the mode in which\n"
+        "                         an encoder that references a frame the\n"
+        "                         client never reconstructed is refused\n"
+
         "  --nv12                 write Y then interleaved UV (4:2:0 only)\n"
         "  --icd PATH             VK_DRIVER_FILES for a specific ICD\n"
         "  --device SUBSTR        pick a device by name substring\n"
@@ -60,6 +68,7 @@ int fail_no_icd(const char *why) {
 int main(int argc, char **argv) {
     std::string in, out, pix, icd, device, format = "auto";
     int frames = -1, quiet = 0, nv12 = 0, stats = 0, lds = 0;
+    int decode_every = 1;
     // [v3] measurement knobs, see nxvc_vk_decoder_set_dir_sched /
     // _set_tile_sort in <nxvc/nxvc_vk.h>.  --dir-sched is a BITSTREAM
     // property: anything but 0 decodes a normal stream to different pixels.
@@ -85,6 +94,7 @@ int main(int argc, char **argv) {
         else if (a == "--device") device = val();
         else if (a == "--format") format = val();
         else if (a == "--frames") frames = std::atoi(val());
+        else if (a == "--decode-every") decode_every = std::atoi(val());
         else if (a == "--quiet") quiet = 1;
         else if (a == "--nv12") nv12 = 1;
         else if (a == "--stats") stats = 1;
@@ -243,6 +253,25 @@ int main(int argc, char **argv) {
 
     int n = 0, rc = 0;
     while (off < data.size() && (frames < 0 || n < frames)) {
+        /* A frame this client does not even try: skipped whole, from the
+         * length in its own header ([SYN] 3.1, bytes 36-39), so the decoder
+         * never sees it and its ring slot stays empty.  That hole is the
+         * point -- it is what makes a later frame that references it refused,
+         * and therefore what an encoder walking `ref_sel` has to avoid. */
+        if (decode_every > 1 && (n % decode_every) != 0) {
+            if (off + 40 > data.size()) break;
+            const uint8_t *fh = data.data() + off;
+            const size_t fb = (size_t)fh[36] | ((size_t)fh[37] << 8) |
+                              ((size_t)fh[38] << 16) | ((size_t)fh[39] << 24);
+            if (fb < 40 || off + fb > data.size()) {
+                std::fprintf(stderr, "frame %d: bad frame length %zu\n", n, fb);
+                rc = 1;
+                break;
+            }
+            off += fb;
+            ++n;
+            continue;
+        }
         st = nxvc_vk_decode_frame(dec, data.data() + off, data.size() - off,
                                   &consumed);
         if (st != NXVC_VKD_OK) {

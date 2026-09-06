@@ -438,6 +438,14 @@ void main() {
                 h1 |= (job.nsub_log2 & 7u) << 17;
                 h1 |= (mvp ? 1u : 0u) << 20;
                 h1 |= (job.tskip & 1u) << 23;
+                /* SYNTAX.md 4.1 word1 bits 21-22: which reference the tile
+                 * predicts from.  A Lite tile carries the SAME word1 as a
+                 * rANS one -- the entropy tool reaches the payload, not the
+                 * header -- so this is E4's line, not a variant of it.
+                 * Frame-uniform, and zero on INTRA, which the syntax
+                 * requires and the decoder checks. */
+                if (job.mode != uint(NXE_MODE_INTRA))
+                    h1 |= (fp.ref_sel & 3u) << 21;
                 h1 |= (job.wm_id & 3u) << 26;
                 slot.v[w0] = h0;
                 slot.v[w0 + 1u] = h1;

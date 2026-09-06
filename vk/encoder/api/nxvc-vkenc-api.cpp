@@ -204,6 +204,10 @@ int main(int argc, char **argv) {
     int drop_at = -1;
     uint32_t coded_vectors = NXVC_VKE_CV_DEFAULT;
     uint32_t entropy = NXVC_VKE_ENTROPY_DEFAULT;
+    uint32_t ref_sel = 0;
+    /* The ABI's half of the reference walk: a client that reconstructs only
+     * every Nth frame and reports the rest not held. */
+    int hold_every = 0;
 
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
@@ -231,6 +235,8 @@ int main(int argc, char **argv) {
                 entropy = NXVC_VKE_ENTROPY_LITE;
             else { std::fprintf(stderr, "--entropy: rans|lite\n"); return 2; }
         }
+        else if (a == "--ref-sel") ref_sel = (uint32_t)std::atoi(next());
+        else if (a == "--hold-every") hold_every = std::atoi(next());
         else if (a == "--coded-vectors")
         {
             const std::string v = next();
@@ -313,6 +319,7 @@ int main(int argc, char **argv) {
     ci.inter = inter ? 1u : 0u;
     ci.intra_period = inter ? intra_period : 0u;
     ci.coded_vectors = inter ? coded_vectors : NXVC_VKE_CV_DEFAULT;
+    ci.ref_sel = inter ? ref_sel : 0u;
     ci.quant_matrix = matrix;
     ci.entropy = entropy;
 
@@ -471,6 +478,17 @@ int main(int argc, char **argv) {
         }
         std::fwrite(bytes, 1, len, fo);
         total_bytes += len;
+        /* The client's verdict on the frame just coded, before the next one is
+         * coded.  A real link delivers it a round trip later; this is the
+         * zero-latency case, which isolates the reference walk from the
+         * transport's timing. */
+        if (inter && hold_every > 1 && (n % (uint32_t)hold_every) != 0) {
+            if (nxvc_vk_encoder_set_frame_held(enc, n, 0) != NXVC_VKE_OK) {
+                std::fprintf(stderr, "set_frame_held failed at frame %u\n", n);
+                rc = 1;
+                break;
+            }
+        }
         frame_lengths.push_back(len);
 
         /* Every tile of a frame carries the frame's quantiser on this path;

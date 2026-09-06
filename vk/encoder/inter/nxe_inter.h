@@ -90,6 +90,130 @@ struct RingState {
     }
 };
 
+/* ------------------------------------------------------- what the CLIENT holds
+ *
+ * `RingState` answers "did this encoder produce that picture", which is what
+ * decides whether a stream is well formed in the abstract.  It is not what
+ * decides whether the stream this client is being sent is decodable, and the
+ * two are different the moment the client drops a frame: the decoder's own
+ * ring then has a hole, and docs/SYNTAX.md 4.1 makes an inter tile naming an
+ * absent slot a BITSTREAM error -- ref/src/codec_impl.inc `ref_for` returns
+ * NXVC_ERR_BITSTREAM, and vk/decoder/nxvc_vkdec_parse.cpp does the same.  The
+ * encoder therefore has to keep a SECOND record: which frames the headset is
+ * believed to be able to reconstruct.
+ *
+ * Two rules make that record, and the second is the one that is easy to miss:
+ *
+ *   1. a frame the client reports it did not decode is not held;
+ *   2. a frame coded from a reference that is not held is not held either,
+ *      however cleanly it arrived -- unless it was coded with no temporal
+ *      reference at all.  Holding is transitive backwards along the
+ *      prediction chain, so a single report invalidates every frame that
+ *      descends from it.
+ *
+ * The history is deeper than the four ring slots on purpose.  A report names
+ * a frame by number and arrives a round trip late, by which time the frame
+ * may have left the ring; forgetting it would silently promote its
+ * descendants back to "held".  Sixteen entries is about 180 ms at 90 Hz,
+ * comfortably past the round trip the transport is designed for, and a frame
+ * older than that can no longer be referenced anyway (`ref_sel` reaches three
+ * frames back at most).
+ *
+ * A frame this record has never seen is NOT held.  That is the safe direction:
+ * the cost of being wrong is one intra frame, and the cost of the other
+ * mistake is a frame the headset refuses.
+ */
+struct HeldState {
+    static const int kDepth = 16;
+    struct Rec {
+        uint32_t fn = 0;
+        int64_t pred_fn = -1;   /* the frame it predicts from; -1 = intra */
+        uint8_t used = 0;
+        uint8_t held = 0;
+    };
+    Rec r[kDepth];
+    uint32_t newest = 0;
+    bool any = false;
+
+    void reset() {
+        for (int i = 0; i < kDepth; ++i) r[i] = Rec{};
+        newest = 0;
+        any = false;
+    }
+
+    const Rec *find(uint32_t fn) const {
+        const Rec &e = r[fn % (uint32_t)kDepth];
+        return (e.used && e.fn == fn) ? &e : nullptr;
+    }
+    Rec *find(uint32_t fn) {
+        Rec &e = r[fn % (uint32_t)kDepth];
+        return (e.used && e.fn == fn) ? &e : nullptr;
+    }
+    bool holds(uint32_t fn) const {
+        const Rec *e = find(fn);
+        return e && e->held;
+    }
+
+    /* The encoder coded `fn`, predicting from `pred_fn` (-1 when the frame
+     * carries no temporal reference).  Its held state follows rule 2. */
+    void publish(uint32_t fn, int64_t pred_fn) {
+        Rec &e = r[fn % (uint32_t)kDepth];
+        e.fn = fn;
+        e.pred_fn = pred_fn;
+        e.used = 1;
+        e.held = (pred_fn < 0) || holds((uint32_t)pred_fn) ? 1u : 0u;
+        if (!any || fn > newest) newest = fn;
+        any = true;
+    }
+
+    /* The client said it did not reconstruct `fn`.  Clear it, then sweep
+     * forward once in frame order: every record is younger than the one it
+     * predicts from, so a single ascending pass is the whole transitive
+     * closure.  A report for a frame the history no longer covers clears
+     * nothing, which is sound -- `ref_sel` reaches three frames back, so
+     * nothing that old can be referenced.
+     *
+     * The sweep demotes a frame only when its predecessor is STILL IN THE
+     * HISTORY and unusable.  A predecessor that has merely aged out says
+     * nothing: its verdict was already folded into this frame's `held` at
+     * publish time, when it was certainly present, and treating "gone" as
+     * "not held" would make the oldest entry in the window demote its
+     * successor and cascade the whole history to unheld on any report at
+     * all. */
+    void not_held(uint32_t fn) {
+        if (Rec *e = find(fn)) e->held = 0;
+        if (!any) return;
+        const uint32_t first =
+            newest + 1u > (uint32_t)kDepth ? newest + 1u - (uint32_t)kDepth : 0u;
+        for (uint32_t k = first; k <= newest; ++k) {
+            Rec *e = find(k);
+            if (!e || !e->held || e->pred_fn < 0) continue;
+            const Rec *pe = find((uint32_t)e->pred_fn);
+            if (pe && !pe->held) e->held = 0;
+        }
+    }
+};
+
+/* The reference this frame should ask for: the nearest slot at or beyond
+ * `base_ref_sel`, up to 2, that the encoder produced AND the client is
+ * believed to hold.
+ *
+ * `base_ref_sel` is the configured distance -- `nxv-enc --ref-sel`'s field --
+ * and it is a FLOOR rather than a fixed choice, so a stream configured at 0
+ * with a client that holds everything is byte for byte the one this encoder
+ * produced before any of this existed, and a stream configured at 1 is the
+ * one nxv-enc --ref-sel 1 produces.  The walk only ever goes outwards:
+ * nearer is better, because the warp matrix is derived from the reference's
+ * view and a more distant reference is a larger inter-frame motion.
+ *
+ * `out_slot` receives the ring slot, `out_ref_sel` the syntax field.  Returns
+ * false when none of the candidates is usable, which is the one case that
+ * still costs an all-INTRA frame.
+ */
+bool select_reference(const RingState &ring, const HeldState &held,
+                      uint32_t frame_number, int base_ref_sel,
+                      int *out_ref_sel, int *out_slot);
+
 /* The rolling intra refresh of PAPER 2.6, byte for byte the reference's
  * (`refresh_stagger` / `refresh_due` in ref/src/codec_impl.inc).  A fixed
  * pseudo-random permutation of the tile index, so the 1/T of tiles forced

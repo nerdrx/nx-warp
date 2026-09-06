@@ -182,6 +182,13 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_create(const nxvc_vke_create_info *ci
         return createerr(NXVC_VKE_ERR_ARG,
                          "entropy=%u: the range is 0..%d (rans, lite)",
                          ci->entropy, (int)NXVC_VKE_ENTROPY_LITE);
+    if (ci->ref_sel > 2)
+        return createerr(NXVC_VKE_ERR_ARG,
+                         "ref_sel=%u: the range is 0..2 (3 is reserved)",
+                         ci->ref_sel);
+    if (ci->ref_sel != 0 && ci->inter == 0)
+        return createerr(NXVC_VKE_ERR_ARG, "ref_sel=%u needs inter=1",
+                         ci->ref_sel);
 
     const bool adopting = ci->device != VK_NULL_HANDLE;
     if (adopting && (!ci->physical_device || !ci->queue))
@@ -210,6 +217,7 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_create(const nxvc_vke_create_info *ci
      * the caller who says nothing gets it. */
     e->cfg.int_coded_vectors =
         ci->inter != 0 && ci->coded_vectors != NXVC_VKE_CV_NONE;
+    e->cfg.ref_sel = ci->inter != 0 ? int(ci->ref_sel) : 0;
     e->cfg.wm_id = 0;
     e->cfg.chroma_qp_off = 0;
     e->cfg.nsub_log2 = 3; /* eight rANS lanes; paper 6.3 fixes v1 at eight */
@@ -350,6 +358,18 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_set_received_tiles(
      * ignored -- a caller's plumbing does not have to branch on the backend. */
     if (!e->cfg.inter) return NXVC_VKE_OK;
     e->vk.set_received_tiles(received, count);
+    return NXVC_VKE_OK;
+}
+
+extern "C" nxvc_vke_status nxvc_vk_encoder_set_frame_held(nxvc_vk_encoder *e,
+                                                          uint32_t frame_number,
+                                                          int held) {
+    if (!e) return NXVC_VKE_ERR_ARG;
+    /* On an intra stream there is no reference chain to invalidate, so this is
+     * accepted and ignored -- a caller's plumbing does not have to branch on
+     * the backend, exactly as set_received_tiles() does not make it. */
+    if (!e->cfg.inter) return NXVC_VKE_OK;
+    e->vk.set_frame_held(frame_number, held != 0);
     return NXVC_VKE_OK;
 }
 
