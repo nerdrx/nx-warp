@@ -1015,6 +1015,7 @@ for 0.95 dB. That is roughly 0.2 dB per 1 % of Pass B, which is not a trade
 worth having at any of these thresholds.
 
 **And it looks wrong, which is the reason that would have settled it anyway.**
+Figures 7-9 in docs/GALLERY.md are the crops.
 The stated preference is that degradation read as soft or low-poly rather than
 blocky. Measured on the decoded luma of a fast-turn frame -- mean absolute
 difference across sample pairs that straddle the 64-sample tile grid, over the
@@ -1041,6 +1042,288 @@ expressible -- it is a `res_map`, and any encoder can choose it -- but it is
 recorded here as measured and rejected under the mode switch. Its earlier win
 in pure ATLAS mode is retained in the record above as the reason it was worth
 testing, and as the explanation for why it stopped winning.
+
+### Which tiles an ATLAS frame re-codes: the ranked scheduler, REJECTED
+
+**Today's policy, stated exactly, because it has never been written down.** An
+ATLAS frame chooses its coded tiles like this, and 13.12.9 is not part of it --
+that clause is base-patch monotonicity and has nothing to do with tile
+selection:
+
+1. **Hard intra cap.** A position that has gone `intra_period` frames without
+   an `INTRA` is forced to one (default 180). This is PAPER 2.6's loss-recovery
+   property and it is a cap, not a period, so it is never early.
+2. **Drift gate** (`drift_refresh`, on by default). A position whose *measured*
+   client-shadow drift exceeds `drift_gate x qstep^2/12` (default multiplier 4)
+   **may not skip**. It does not force `INTRA`; it removes the free option.
+3. **Displacement bound** (`atlas_skip_margin`, off by default).
+4. **Per-tile rate-distortion.** Every remaining tile picks its own mode by
+   minimising `D + lambda R`, with the skip candidate charged
+   `(kSkipPersist - 1) x excess`, `kSkipPersist = 4`, for the error a skip
+   leaves in the reference for later frames to pay for.
+
+**There is no frame byte budget anywhere in that list.** Each tile decides
+alone, and the frame costs whatever the decisions sum to. That is the gap a
+scheduler is supposed to fill: with a budget the question stops being "is this
+tile worth coding" and becomes "is this tile worth coding *more than that
+one*", which is a ranking.
+
+**The scheduler.** Score every tile by a first-order estimate of the display
+error it will show if left alone -- `gradient x displacement x (1 + age) +
+measured drift`, with the gradient read as mean absolute Laplacian off the
+atlas itself -- rank, and code the top tiles until the budget is spent. The
+budget becomes a tile count through an EMA of what a coded tile has been
+costing. It is encoder-side only and touches nothing normative; the encoder has
+the headroom (1.93 ms/frame at 578 tiles) so the scoring is free.
+
+**One thing had to change for a budget to be a budget at all, and it is a
+finding about today's encoder rather than about the scheduler.** The drift gate
+holds a *veto*: it says a drifted tile may not skip, and it outranked the
+budget. Measured on the near-still clip at a 500 B/frame target, the gate coded
+**31 tiles in a frame the scheduler had allowed 4**, and the frame came out at
+**6876 bytes**. So the precedence is now: the hard intra cap is absolute (loss
+recovery is not negotiable and a scheduler may not defer it), and the drift
+gate loses to the budget -- it is a quality mechanism, and under a budget the
+ranking subsumes it, because a drifted tile simply scores high and is picked on
+its merits.
+
+**Measured, and it loses.** The first sweep pinned the scheduler at QP 22,
+which flatters the baseline, so the honest test is the full QP x budget grid
+judged on the *best* point the scheduler can reach at each rate, against
+today's policy swept over QP:
+
+| fixture | best scheduler point | at |
+|---|---|---|
+| near-still | **-2.28 dB** | QP 30, 2000 B budget, 1422 B/f |
+| mid 25.2 deg/s | **+0.01 dB** | QP 34, 500 B budget, 1806 B/f |
+| fast turn | **-0.34 dB** | QP 34, 2000 B budget, 2559 B/f |
+
+Best case it is level; at rest it is 2.3 dB down. The criterion was "wins
+everywhere, or is neutral where it does not", and it is neither.
+
+**And it does not let `D` be raised**, which was the other hope for it: a
+scheduler that kept the atlas fresher might have afforded a laxer mode trigger
+and so fewer expensive PICTURE frames. Measured with the scheduler on, at a
+fixed 1000-8000 B budget:
+
+| fixture | D=8 | D=12 | D=16 |
+|---|---|---|---|
+| near-still | 0.0 % PICTURE | 0.0 % | 0.0 % |
+| mid 25.2 deg/s | 46.7 % | 33.3 % | 26.7 % |
+| fast turn | 73.3 % | 73.3 % | 60.0 % |
+
+Raising `D` does cut the PICTURE share, and it costs far more than it saves:
+at 25 deg/s `D = 12` is **-7.9 to -8.9 dB** and `D = 16` is **-8.5 to -9.4 dB**
+against the `D = 8` baseline, and at fast turn `D = 16` is **-6.3 to -7.6 dB**.
+The seam ratio moves with it -- 2.06 to 2.22 at `D = 16` on both motion
+fixtures, against 1.10 to 1.28 at `D = 8`. So the atlas frames the laxer
+trigger buys are exactly the frames the scheduler then has to starve, and the
+mosaic becomes visible. `D = 8` remains the recommendation and the scheduler
+does not relax it.
+
+**Why, and this is the part worth keeping.** At a fixed byte budget the QP knob
+dominates the tile-selection knob, and it dominates for a structural reason:
+squared error is **additive over tiles**. Spending a budget on 289 tiles coded
+slightly better lowers total error more than spending it on 8 tiles coded a lot
+better and leaving 281 untouched. Ranked scheduling is a mechanism for
+*concentrating* bytes, and concentration is the wrong direction when the metric
+is additive and the budget is what binds. The encoder already had a rate
+control -- the quantiser -- and it is the better one.
+
+**The visual check agrees**, and independently. Selective refresh leaves a
+mosaic of freshly coded tiles beside stale ones, which is exactly a visible
+tile grid: at every fixture the scheduler's best points sit at a **worse seam
+ratio** than the baseline at comparable rate (1.51 vs 1.31 at rest, 1.70 vs
+1.52 at 25 deg/s, 1.47 vs 1.38 at fast turn). It is the same failure mode
+coarse refresh had, reached by a different route -- and the same reason it is
+the wrong kind of artefact to spend quality on.
+
+**The rest-case floor, which is a genuinely useful number.** When the scheduler
+allows zero tiles and nothing has changed, an `ATLAS` frame costs **79 bytes**
+-- frame header, `warp_ext()`, and a `row_present` bitmap with all 17 rows
+elided. At 90 Hz that is **57 kbit/s** for a whole 1088x1088 eye. Without
+`row_present` the same frame is ~280 bytes, because the 17 transmitted row
+headers are 204 of them. So the idle floor is set by `row_present` (tool bit
+32) and not by the refresh policy, which is worth knowing before anyone tunes
+a scheduler to chase it.
+
+**Decision: no normative text and no encoder default.** `atlas_sched_bytes`
+stays in the reference encoder, off, because the negative is worth being able
+to reproduce. The open rate-control question is answered in the direction
+nobody wanted: for this codec, at a byte budget, **move the quantiser, not the
+tile set.**
+
+### Re-run on rendered content: what changes, and what does not
+
+Everything above was measured on `gen_synthetic.py`, and
+docs/LOWPOLY-MODE.md had already named the problem: that content is "unusually
+kind". It is a band-limited procedural panorama reprojected per eye, with no
+specular, no thin geometry, no text, and "objects" that move *with* the
+panorama -- so nothing in the frame ever disobeys the head's homography, which
+is the one assumption the whole codec rests on.
+
+`tools/quality/capture/gen_vrroom.py` renders the opposite in Blender: text
+panels at reading distance, a mirror-like specular floor, thin high-contrast
+bars, checkerboard walls, two textured humanoid meshes that move on their own,
+a gradient skybox; stereo at 63 mm, 1088x1088 an eye, 100 degrees, 90 Hz, four
+trajectories of 32 frames. Measured angular velocity 2.7 / 26.2 / 99.1 deg/s,
+the fast clip peaking at 796 deg/s across its one-frame 8-degree step.
+
+Plotted as Figure 1 in docs/GALLERY.md; the corpus itself is Figures 3-6.
+
+**Every comparison below is a DOMINANCE result at QP 26** -- one configuration
+is better on PSNR *and* cheaper in bytes -- so no equal-rate interpolation is
+needed to read it:
+
+| fixture | all-ATLAS | all-PICTURE | D=8 | winner |
+|---|---|---|---|---|
+| rest 2.7 deg/s | **38.94 / 1643 B** | 38.02 / 4208 B | 38.92 / 1777 B (6.5 % PIC) | ATLAS, by 0.92 dB at 2.6x fewer bytes |
+| mid 26.2 deg/s | 36.62 / 9780 B | **38.03 / 7031 B** | 37.71 / 7366 B (48.4 % PIC) | PICTURE, by 1.41 dB at 28 % fewer bytes |
+| fast 99.1 deg/s | 32.65 / 13843 B | **38.21 / 6566 B** | 38.21 / 6566 B (100 % PIC) | PICTURE, by 5.56 dB at half the bytes |
+| **objmotion** | **38.79 / 3510 B** | 37.97 / 5668 B | 38.74 / 3693 B (6.5 % PIC) | ATLAS, by 0.82 dB at 38 % fewer bytes |
+
+**The mode switch survives, and it is the thing that survives best.** At every
+velocity `D = 8` lands on whichever of the two modes wins there, without being
+told which: 6.5 % PICTURE frames at rest, 48.4 % at mid, and **100 % at fast**,
+where it collapses to exactly the picture model and reproduces it to the byte.
+The 13.12.11 decision is unchanged by real content.
+
+**The objmotion clip is a new case and the atlas passes it.** Nothing before
+this had ever tested content that moves independently of the head -- the old
+generator could not express it. The worry was that a per-tile atlas would smear
+a walking figure across the frames it is not re-coded in. It does not: the
+atlas *wins* there, by 0.82 dB at 38 % fewer bytes, because a moving mesh
+occupies a small minority of tiles and those tiles simply get coded while the
+static majority stay skipped. That is the atlas's argument working exactly as
+designed, on the case that was supposed to break it.
+
+**What does change is the seam ratio, and it changes a lot.** On synthetic
+content everything sat between 1.03 and 1.7. Here:
+
+| fixture | all-ATLAS | all-PICTURE | D=8 |
+|---|---|---|---|
+| rest | 2.03 | 2.44 | **1.89** |
+| mid | **3.20** | 1.93 | 1.99 |
+| fast | **4.57** | 2.07 | 2.07 |
+| objmotion | 1.99 | 2.43 | **1.97** |
+
+**The atlas's mosaic is visibly blocky at speed on real content, and the
+synthetic corpus hid that completely.** A seam ratio of 4.57 means a tile edge
+shows four and a half times the sample-to-sample step of the tile interior --
+the 64-grid is plainly visible. The rate-distortion tables had already said the
+atlas loses at speed; what they could not say is that it loses in the *ugly*
+way, which on this project's stated preference (soft, not blocky) is the worse
+of the two ways to lose. Conversely at rest and under object motion the atlas
+is the *better*-looking option as well as the cheaper one, and `all-PICTURE`
+degrades to 3.90 at QP 40 where the atlas holds 2.47.
+
+So the seam ratio is now the second axis of every atlas verdict rather than a
+tiebreaker, and it points the same way the mode switch does: be an atlas when
+the head is slow, be a picture when it is fast.
+
+**Two smaller results, both negative, both worth recording:**
+
+Figure 2 in docs/GALLERY.md plots both of the following.
+
+* **The effort levels do nothing here.** `int_rdoq` 0, `int_rdoq` 1 and the
+  full trellis land within **0.03 dB** of each other on all four fixtures at
+  QP 34 (e.g. fast: 32.46 / 32.44 / 32.46). The effort ladder was tuned on
+  content whose residuals look nothing like these; on rendered content with
+  text and specular, the quantiser refinement is not where the bits are.
+* **`--intra-dir layer` ("planar prefer") is consistently worse than
+  RD-selected.** It costs 0.12 to 0.27 dB *and* more bytes on every fixture --
+  another dominance result, in the wrong direction. RD selection stays the
+  default.
+
+**The bottom line for this ADR: no verdict is reversed by real content, and one
+is strengthened.** The atlas wins at rest and under independent object motion,
+loses at speed, the per-frame mode switch picks correctly at every velocity
+without tuning, and the visual evidence for the mode switch is much stronger on
+rendered content than the synthetic corpus was able to show.
+
+### Two ways to halve the stereo cost, both measured on rendered content
+
+Both ideas spend one eye to save the other, and both are priced on the vrroom
+corpus because neither is answerable on content without real stereo parallax.
+**They fail for the same reason, and it is a reason mean PSNR cannot express.**
+
+#### Alternate-eye update: refresh one eye a frame, synthesise the other
+
+Under the atlas this needs no new mechanism: "synthesise the off eye from its
+own previous frame by the pose warp" is precisely what a skipped tile already
+does (13.12). The policy is one line -- every tile of the off eye skips -- so it
+was measured as a per-frame skip map with the codec untouched.
+
+At equal rate, read against each fixture's own QP curve:
+
+| fixture | alt-eye | bytes | vs the curve | synthesised eye | **worst tile** |
+|---|---|---|---|---|---|
+| rest | 38.83 | 1545 (-13 %) | **+0.19 dB** | 38.69 vs 38.97 fresh | 25.5 dB (base 26.2) |
+| objmotion | 37.64 | 2869 (-22 %) | -0.16 dB | 36.48 vs 38.80 | 19.9 dB (base 26.4) |
+| fast | 37.03 | 5652 (-14 %) | -0.58 dB | 35.42 vs 38.64 | **11.5 dB** (base 28.1) |
+| mid | 35.96 | 6335 (-14 %) | -1.16 dB | 33.70 vs 38.22 | **15.4 dB** (base 22.0) |
+
+**On the mean it looks nearly affordable. On the worst tile it is not.** The
+synthesised eye's worst 64x64 tile falls to **11.5 dB at fast turn and 15.4 dB
+at mid**, against 28.1 and 22.0 for the baseline -- a 12 to 17 dB collapse in
+one tile of one eye while the other eye is correct at that instant. That is
+binocular rivalry, and it is the one artefact class a stereo display cannot
+absorb: the viewer does not average the eyes, they fight. The mean PSNR moves
+by 1.2 dB and hides the whole of it, which is why the worst tile is reported
+here and why it should be reported for anything that treats the eyes unequally.
+
+**Verdict: rejected in general, viable only at rest**, where it is +0.19 dB at
+13 % fewer bytes and the worst tile barely moves (25.5 against 26.2). An
+encoder already knows when it is at rest -- it is the same corner-displacement
+number 13.12.11.1 reads -- so this is expressible today as a skip-map policy
+and needs no syntax at all. It is not made a default: the gain at rest is small
+and the failure mode away from rest is severe and abrupt.
+
+#### Right eye from left, plus a coarse disparity field
+
+Measured as a **ceiling**: the disparity is searched against the true right
+eye, and the synthesis is from the true left eye, so no estimator and no coding
+loss can do better than these numbers. Integer horizontal disparity, 0 to 48
+samples, the field's cost estimated as the entropy of its horizontal first
+difference (the field is smooth, so the raw bit width would be a libel):
+
+| block | synthesised right | tiles needing a residual | disparity field |
+|---|---|---|---|
+| 8x8 | **38.8 - 41.6 dB** | 2.6 - 4.0 % | **6655 - 6927 B/frame** |
+| 64x64 | 30.5 - 31.9 dB | 9.4 - 10.6 % | **77 - 90 B/frame** |
+
+**The accurate version cannot pay for its own side information.** At 8x8 the
+field alone is 6.7 to 6.9 kB a frame, and the whole stereo frame today costs
+1643 B at rest and 6566 B at fast turn (QP 26). The field is **4.2x the entire
+frame** at rest and larger than all of it at fast turn -- to save one eye it
+spends more than both eyes cost.
+
+**The cheap version cannot reach the quality.** Per-tile disparity is nearly
+free at 77 to 90 B a frame and would let roughly 90 % of the right eye's tiles
+be synthesised rather than decoded -- which is the halved-Pass-B argument, and
+that part is real, since a synthesised tile is one warp and not a Pass B. But
+the synthesised eye lands at ~31 dB where simply coding it reaches 38.8, and
+the 10 % of tiles that fail are the ones with near geometry and occlusion, i.e.
+the ones the viewer is looking at.
+
+**And it inherits the alternate-eye result.** A right eye at 31 dB beside a left
+eye at 38.8 is the same unequal-eyes problem measured above, where the worst
+tile is what matters and the mean is not.
+
+**The syntax it would need, for the record**, since the question was asked: a
+`STEREO` tool variant in which a right-eye tile carries a small
+`disparity_level` field instead of a motion vector -- 6 bits of magnitude at
+tile granularity, in the tile header, with `mode == STEREO` already meaning
+"predict from this frame's left eye" (13.3). No new prediction path is needed;
+`STEREO` already exists and already predicts across eyes. What is missing is
+only the per-tile disparity, and 13.12 would need to say what a synthesised
+tile writes to the atlas (the warped pixels, `src_frame` of the left eye's
+entry, since provenance is the left eye's).
+
+**Verdict: rejected**, with the per-tile variant left described rather than
+specified. If it is revisited, the thing to fix first is the 31 dB, because the
+field cost at tile granularity is already negligible and the block-granularity
+field can never be.
 
 * **The seam, as originally written.** Two adjacent tiles with different source frames are each
   individually correctly reprojected, so static distant content is seamless. They diverge on moving
