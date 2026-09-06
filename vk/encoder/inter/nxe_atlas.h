@@ -297,6 +297,62 @@ struct AtlasUndo {
 void atlas_display_luma(const AtlasTable &at, const uint16_t *atlas, int stride,
                         int eye_w, int height, std::vector<uint16_t> &out);
 
+/* ------------------------------------------- the displacement-bounded skip
+ *
+ * ADR-0029's open defect.  A skipped tile is displayed and predicted by
+ * reading the atlas at `C(x)`; for a displacement `d` those samples land `d`
+ * pixels outside the tile's own position, in NEIGHBOURING entries whose
+ * content was coded at a different frame and therefore at a different pose.
+ * The contamination is proportional to `d`, and the encoder's error threshold
+ * cannot bound it because the encoder measures the same contaminated predictor
+ * and cannot see that it is contaminated.
+ *
+ * So bound `d` directly.  This returns the largest displacement, in luma
+ * samples, over the tile's FOUR CORNERS -- the corners rather than a sample
+ * grid because `C` is a homography and a homography maps a quadrilateral's
+ * extremes to its corners, which is the same argument 3.1.1's own corner
+ * derivation rests on.
+ *
+ * The caller skips only when this is under its margin.  A margin of 64 is the
+ * tile itself and is therefore no bound at all; the useful range is a small
+ * fraction of that, and the cost of a tight one is FORCED REFRESH -- a tile
+ * that would have been skipped is coded instead, so the rule trades bytes for
+ * the defect rather than removing it.
+ *
+ * An invalid entry returns 0: it cannot be skipped for a different reason and
+ * the caller has already refused it. */
+double atlas_corner_disp(const AtlasTable &at, uint32_t tile, int eye_w,
+                         int height);
+
+/* ------------------------------------------- Cheat 3: refresh priority
+ *
+ * The rolling refresh of `refresh_due()` re-codes a fixed, staggered fraction
+ * of tiles every frame regardless of where the eye is or how stale the tile
+ * is.  Cheat 3 orders them instead: given a per-frame CAP on how many
+ * refresh-driven tiles may be coded, code the highest-priority ones and let
+ * the rest keep their atlas entry for another frame.
+ *
+ * Priority is fovea distance plus age, both normalised, because the two say
+ * different things -- a stale tile in the periphery can wait, a fresh one at
+ * the fovea usually can too, and the tile that must not wait is the one that
+ * is both old and central.  `fovea_x`/`fovea_y` are in tile units within the
+ * eye; passing the eye's centre is the fixed-foveation case and is what a
+ * headset without eye tracking has.
+ *
+ * `out_refresh` is filled with `ntiles` bytes: 1 = code this tile now, 0 =
+ * leave it for a later frame.  Tiles the caller did not mark as refresh
+ * candidates are always 0.  With `cap == 0` the hook is OFF and every
+ * candidate is passed through unchanged, which is the default and is what
+ * keeps every existing stream byte-identical.
+ *
+ * This changes the bitstream.  It is a rate-shaping hook, not a conformance
+ * rule: the decoder neither knows nor cares which tiles an encoder chose to
+ * refresh. */
+void atlas_refresh_priority(const AtlasTable &at, const uint8_t *candidate,
+                            uint32_t ntiles, uint32_t frame_number,
+                            uint32_t cap, double fovea_x, double fovea_y,
+                            uint8_t *out_refresh);
+
 /* PSNR of a tile-major luma picture against a tile-major source, over the
  * tiles the caller names (`nullptr` = all of them).  Returns 99.0 for an exact
  * match, which is the convention every other tool in this tree uses. */

@@ -650,6 +650,75 @@ the open question -- with one correction to its urgency: on the GPU encoder as
 it stands, the case that motivates it does not arise, because the tiles that
 would suffer it are coded instead.
 
+### The displacement-bounded skip, priced
+
+The second of the two proposed fixes is implemented, off by default, as
+`--atlas-disp-margin N`: skip a tile only when the largest displacement over
+its four corners is under `N` luma samples. Corners rather than a sample grid,
+because `C` is a homography and a homography sends a quadrilateral's extremes
+to its corners -- the argument 3.1.1's own corner derivation already rests on.
+
+Measured on the same fixtures at qp 26, intra-period 4, the rule **does almost
+nothing, and the reason is the finding**:
+
+| fixture | margin 16 | margin 8 | margin 4 | margin 3 | margin 2 | margin 1 |
+|---|---|---|---|---|---|---|
+| near-still (0.0578 deg/f), 37.6 % skip | 0 forced | 0 | 0 | 0 | 124 | 1390 |
+| 0.05 deg/f, 42.5 % skip | 0 | 0 | 0 | 3 | 75 | 1009 |
+| 0.10 deg/f, 18.9 % skip | 0 | 0 | 4 | 50 | 361 | 2596 |
+
+(forced refreshes over 16 frames x 289 tiles; bytes move with them -- at margin
+1 the 0.05 deg/f clip goes 74943 -> 77956 B/f, +4.0 %, and by margin 4 it is
+back to the byte-identical baseline.)
+
+**The corner displacement of a tile this encoder actually skips is under three
+samples, essentially always.** A margin of 4 -- the tightest value the sweep
+was asked for -- is already looser than the distribution it is meant to clip.
+That is the same result as the fast-turn row above, reached from the other
+side: a tile whose displacement grows past a few samples has a prediction error
+that fails the skip threshold first, so it is coded, and the gather that would
+have contaminated it never happens. Contamination is bounded at roughly 3
+samples of a 64-sample tile without the rule being enabled at all.
+
+So the bound is kept -- it is cheap, it is off, and it is the instrument that
+*measured* the distribution -- but it is not the fix for anything currently
+observable on this encoder. Its value is as a guard for a future decision that
+skips more aggressively, which is exactly the regime the `--skip-thresh` sweep
+above shows the reference operating in.
+
+### Cheat 3: refresh priority, priced
+
+`--atlas-refresh-cap N`, also off by default: cap how many refresh-driven tiles
+may be coded in a frame, and spend the cap on the tiles with the highest fovea
+distance plus age -- equally weighted, because no measurement yet says
+otherwise and an invented weight is a constant nobody could later justify.
+Fixed foveation (the eye's centre in tile units), which is what a headset
+without eye tracking has.
+
+qp 26, intra-period 4, 289 tiles, 16 frames:
+
+| fixture | cap | PSNR-Y | B/frame | coded/frame | vs off |
+|---|---|---|---|---|---|
+| 0.05 deg/f | off | 31.384 dB | 74943 | 166.2 | -- |
+| 0.05 deg/f | 60 | 31.365 dB | 74049 | 164.2 | -0.02 dB, -1.2 % |
+| 0.05 deg/f | 40 | 31.327 dB | 70702 | 156.3 | -0.06 dB, -5.7 % |
+| 0.05 deg/f | 20 | 31.294 dB | 68498 | 151.1 | -0.09 dB, -8.6 % |
+| near-still | off | 31.571 dB | 81227 | 180.3 | -- |
+| near-still | 60 | 31.560 dB | 80714 | 179.2 | -0.01 dB, -0.6 % |
+| near-still | 40 | 31.525 dB | 78441 | 174.0 | -0.05 dB, -3.4 % |
+| near-still | 20 | 31.508 dB | 76892 | 170.2 | -0.06 dB, -5.3 % |
+
+Monotone in both axes and cheap in quality: **8.6 % of the bytes for 0.09 dB**
+at the tightest cap. That is a usable rate-shaping knob and a much better one
+than the displacement bound, which is the opposite of what the two were
+expected to be worth. It changes the bitstream and nothing else -- a decoder
+neither knows nor cares which tiles an encoder chose to refresh -- so it is a
+rate hook and not a conformance rule.
+
+The cap is only meaningful against the candidates the staggered rule offers:
+at intra-period 180 there are about 1.6 candidates a frame and every cap in the
+sweep is inert, which is why these were measured at intra-period 4 (about 72).
+
 * **The seam, as originally written.** Two adjacent tiles with different source frames are each
   individually correctly reprojected, so static distant content is seamless. They diverge on moving
   content and on near parallax, growing with the age difference — a tile coded 30 frames ago beside

@@ -145,6 +145,20 @@ struct Config {
      * of smear during fast rotation, which is where the eye's own contrast
      * sensitivity has collapsed.  Q8 gain per radian per frame; 0 is off. */
     int motion_skip_gain_q8 = 0;
+    /* ADR-0029's displacement bound, off by default (0).  A tile may be
+     * skipped only when the largest displacement over its four corners is
+     * under this many LUMA SAMPLES -- which bounds how far a skipped tile's
+     * gather reaches into its neighbours' atlas entries, the contamination
+     * 13.12.4's co-located-`C` rule admits and the encoder's error threshold
+     * cannot see.  64 is the tile itself and therefore no bound at all; the
+     * interesting range is 4 to 16.  It costs FORCED REFRESH: a tile that
+     * would have been skipped is coded instead. */
+    int atlas_disp_margin = 0;
+    /* Cheat 3, off by default (0): a per-frame cap on how many
+     * refresh-driven tiles may be coded, the survivors chosen by fovea
+     * distance plus age.  0 is no cap, which passes every refresh candidate
+     * through and leaves every stream byte-identical. */
+    int atlas_refresh_cap = 0;
     /* Print each frame's tile mode census.  Reporting only; it changes no
      * stream and is off unless asked for. */
     bool mode_census = false;

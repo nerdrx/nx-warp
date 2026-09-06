@@ -300,6 +300,100 @@ nxe::AtlasGeom geom_1088(int eyes) {
     return g;
 }
 
+/* ADR-0029's displacement bound.  The rule is only worth having if the number
+ * it computes is the displacement a skipped tile's gather actually travels, so
+ * this pins the two ends -- identity is exactly zero, a pure translation is
+ * exactly the translation -- and the two short-circuits. */
+void check_corner_disp() {
+    const nxe::AtlasGeom g = geom_1088(1);
+    nxe::AtlasTable at;
+    at.reset(g);
+
+    /* An invalid entry is 0: it cannot be skipped for a different reason and
+     * the caller has already refused it. */
+    CHECK(nxe::atlas_corner_disp(at, 0, g.width, g.height) == 0.0,
+          "an invalid entry reported a displacement");
+
+    at.code_tile(0, 1, nxvw::kModeWarpMv, 0);
+    CHECK(nxe::atlas_corner_disp(at, 0, g.width, g.height) == 0.0,
+          "a freshly coded entry is at the identity and must be 0");
+
+    /* A STATIC_MV entry is held at the identity by 13.12.3 step 1, so its
+     * displacement is zero however long it lives -- the case the rule must
+     * never charge for. */
+    at.code_tile(1, 1, nxvw::kModeStaticMv, 0);
+    int32_t H[2][9];
+    make_warp(0.0, 0.0, 0.0, H[0]);
+    /* A pure translation of exactly 5 samples, in the Q21 scale of row 0-1
+     * column 2. */
+    H[0][2] = 5 * (1 << 21);
+    H[0][5] = 0;
+    for (int k = 0; k < 9; ++k) H[1][k] = H[0][k];
+    at.advance(H);
+    CHECK(at.is_static(1), "tile 1 stopped being static");
+    CHECK(nxe::atlas_corner_disp(at, 1, g.width, g.height) == 0.0,
+          "a static entry must never report a displacement");
+
+    const double d1 = nxe::atlas_corner_disp(at, 0, g.width, g.height);
+    CHECK(d1 > 4.9 && d1 < 5.1, "one 5-sample step read as %.4f", d1);
+    /* And it accumulates: the advance is a right-multiplication per frame, so
+     * three steps of 5 is 15 and not 5. */
+    at.advance(H);
+    at.advance(H);
+    const double d3 = nxe::atlas_corner_disp(at, 0, g.width, g.height);
+    CHECK(d3 > 14.8 && d3 < 15.2, "three 5-sample steps read as %.4f", d3);
+}
+
+/* Cheat 3.  The property that matters is that it is a FUNCTION of the atlas
+ * state -- two encoders holding the same atlas must choose the same tiles --
+ * and that cap 0 is exactly off. */
+void check_refresh_priority() {
+    const nxe::AtlasGeom g = geom_1088(1);
+    nxe::AtlasTable at;
+    at.reset(g);
+    const uint32_t n = g.ntiles();
+    std::vector<uint8_t> cand(n, 0), pick(n, 0);
+
+    /* Every tile a candidate, coded at spread-out frames so age varies. */
+    for (uint32_t t = 0; t < n; ++t) {
+        at.code_tile(t, t % 50u, nxvw::kModeWarpMv, 0);
+        cand[t] = 1;
+    }
+    const double fx = (double)(g.cols_per_eye - 1) * 0.5;
+    const double fy = (double)(g.rows - 1) * 0.5;
+
+    /* cap 0 is OFF: every candidate survives, which is what keeps existing
+     * streams byte-identical. */
+    nxe::atlas_refresh_priority(at, cand.data(), n, 60u, 0u, fx, fy,
+                                pick.data());
+    for (uint32_t t = 0; t < n; ++t)
+        CHECK(pick[t] == cand[t], "cap 0 changed tile %u", t);
+
+    for (uint32_t cap : {1u, 20u, 40u, 60u}) {
+        nxe::atlas_refresh_priority(at, cand.data(), n, 60u, cap, fx, fy,
+                                    pick.data());
+        uint32_t got = 0;
+        for (uint32_t t = 0; t < n; ++t) got += pick[t] ? 1u : 0u;
+        CHECK(got == cap, "cap %u picked %u tiles", cap, got);
+        /* Deterministic: the same state must give the same choice, or two
+         * encoders drift apart for no reason a decoder could ever see. */
+        std::vector<uint8_t> again(n, 0);
+        nxe::atlas_refresh_priority(at, cand.data(), n, 60u, cap, fx, fy,
+                                    again.data());
+        CHECK(again == pick, "cap %u is not a function of the state", cap);
+    }
+
+    /* A non-candidate is never picked, however urgent it looks. */
+    std::fill(cand.begin(), cand.end(), (uint8_t)0);
+    cand[n / 2] = 1;
+    nxe::atlas_refresh_priority(at, cand.data(), n, 60u, 40u, fx, fy,
+                               pick.data());
+    uint32_t got = 0;
+    for (uint32_t t = 0; t < n; ++t) got += pick[t] ? 1u : 0u;
+    CHECK(got == 1 && pick[n / 2] == 1,
+          "a cap above the candidate count picked %u tiles", got);
+}
+
 void check_table_rules() {
     const nxe::AtlasGeom g = geom_1088(2);
     nxe::AtlasTable at;
@@ -508,6 +602,8 @@ int main() {
     report_chain_drift();
     check_renorm_guard();
     check_envelope();
+    check_corner_disp();
+    check_refresh_priority();
     check_table_rules();
     check_static_skip();
     check_envelope_is_the_staleness_bound();

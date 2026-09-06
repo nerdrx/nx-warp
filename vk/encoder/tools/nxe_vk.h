@@ -127,6 +127,11 @@ public:
     bool atlas_table(std::vector<uint8_t> &out) const;
     bool atlas_pixel_digest(uint8_t out[32]);
 
+    /* How many skips `atlas_disp_margin` refused over the clip so far: the
+     * FORCED REFRESH the displacement bound costs.  Zero when the bound is
+     * off, which is the default. */
+    uint64_t atlas_disp_forced() const;
+
     void bench(Frame &f, int iters);
 
 private:

@@ -7,8 +7,10 @@
 
 #include "nxe_inter.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <utility>
 
 namespace nxe {
 
@@ -327,6 +329,120 @@ void atlas_display_luma(const AtlasTable &at, const uint16_t *atlas, int stride,
                 dst[(size_t)v * 64 + (size_t)u] = (uint16_t)r;
             }
     }
+}
+
+double atlas_corner_disp(const AtlasTable &at, uint32_t tile, int eye_w,
+                         int height) {
+    if (tile >= at.e.size()) return 0.0;
+    const AtlasEntry &e = at.e[tile];
+    if (!(e.flags & kAtlasValid)) return 0.0;
+    /* A static entry holds `C` at the identity by 13.12.3 step 1, so its
+     * displacement is exactly zero and the arithmetic below would say so; it
+     * is short-circuited because that is the case the rule must never charge
+     * for -- a head-locked tile is the atlas's clearest win. */
+    if (e.flags & kAtlasStatic) return 0.0;
+
+    const int cols = at.g.cols_per_eye * at.g.eyes;
+    if (cols <= 0) return 0.0;
+    const int row = (int)(tile / (uint32_t)cols);
+    const int rem = (int)(tile % (uint32_t)cols);
+    const int col = rem % at.g.cols_per_eye;
+
+    /* The same centred-index convention atlas_display_luma() uses, so the
+     * displacement this bounds is the displacement that helper actually
+     * gathers over.  Doubles: this is a decision input, not a reconstruction,
+     * and it is compared against a margin in whole samples. */
+    const double ox = (double)(eye_w >> 1);
+    const double oy = (double)(height >> 1);
+    double m[9];
+    for (int k = 0; k < 9; ++k)
+        m[k] = (double)e.C[k] / (k < 6 ? 2097152.0 : 536870912.0);
+
+    double worst = 0.0;
+    for (int c = 0; c < 4; ++c) {
+        /* The four corners of this tile's 64x64 position.  63 rather than 64:
+         * the last SAMPLE, not the edge past it, which is the point the
+         * gather can actually reach. */
+        const double px = (double)(col * 64 + ((c & 1) ? 63 : 0));
+        const double py = (double)(row * 64 + ((c & 2) ? 63 : 0));
+        const double cx = px - ox, cy = py - oy;
+        const double den = m[6] * cx + m[7] * cy + m[8];
+        if (den == 0.0) continue;
+        const double sx = (m[0] * cx + m[1] * cy + m[2]) / den;
+        const double sy = (m[3] * cx + m[4] * cy + m[5]) / den;
+        const double dx = sx - cx, dy = sy - cy;
+        const double d = std::sqrt(dx * dx + dy * dy);
+        if (d > worst) worst = d;
+    }
+    return worst;
+}
+
+void atlas_refresh_priority(const AtlasTable &at, const uint8_t *candidate,
+                            uint32_t ntiles, uint32_t frame_number,
+                            uint32_t cap, double fovea_x, double fovea_y,
+                            uint8_t *out_refresh) {
+    if (!out_refresh || !candidate) return;
+    /* cap == 0 is OFF: every candidate passes through, which is what leaves
+     * every existing stream byte-identical. */
+    if (cap == 0) {
+        std::memcpy(out_refresh, candidate, ntiles);
+        return;
+    }
+    std::memset(out_refresh, 0, ntiles);
+
+    const int cols = at.g.cols_per_eye * at.g.eyes;
+    if (cols <= 0) return;
+    /* The normalisers: the eye's own diagonal in tile units, and the oldest
+     * age present this frame.  Both are per-frame so that the two terms stay
+     * comparable as the clip goes on -- a fixed age divisor would make the
+     * age term saturate and leave fovea distance in sole charge. */
+    const double dmax =
+        std::sqrt((double)(at.g.cols_per_eye * at.g.cols_per_eye +
+                           at.g.rows * at.g.rows));
+    uint32_t oldest = 1;
+    for (uint32_t t = 0; t < ntiles; ++t)
+        if (candidate[t] && (at.e[t].flags & kAtlasValid)) {
+            const uint32_t age = frame_number >= at.e[t].src_frame
+                                     ? frame_number - at.e[t].src_frame
+                                     : 0u;
+            if (age > oldest) oldest = age;
+        }
+
+    /* Priority, higher is more urgent: central and old.  A partial selection
+     * of the top `cap` would be enough, but the counts here are hundreds of
+     * tiles and a full sort is clearer than a nth_element with a comparator
+     * that has to be stable for the tie-break below. */
+    std::vector<std::pair<double, uint32_t>> rank;
+    rank.reserve(ntiles);
+    for (uint32_t t = 0; t < ntiles; ++t) {
+        if (!candidate[t]) continue;
+        const int row = (int)(t / (uint32_t)cols);
+        const int rem = (int)(t % (uint32_t)cols);
+        const int col = rem % at.g.cols_per_eye;
+        const double dx = (double)col - fovea_x;
+        const double dy = (double)row - fovea_y;
+        const double dist = std::sqrt(dx * dx + dy * dy) / (dmax > 0 ? dmax : 1);
+        const uint32_t age = (at.e[t].flags & kAtlasValid) &&
+                                     frame_number >= at.e[t].src_frame
+                                 ? frame_number - at.e[t].src_frame
+                                 : oldest;
+        const double aterm = (double)age / (double)oldest;
+        /* Nearness plus age, equally weighted.  Equal because there is no
+         * measurement yet that says otherwise, and a weight invented here
+         * would be a constant nobody could later justify. */
+        rank.push_back({(1.0 - dist) + aterm, t});
+    }
+    /* Descending by priority; ties broken by tile index so the choice is a
+     * function of the state and not of the sort's internals -- two encoders
+     * with the same atlas must pick the same tiles. */
+    std::sort(rank.begin(), rank.end(),
+              [](const std::pair<double, uint32_t> &a,
+                 const std::pair<double, uint32_t> &b) {
+                  if (a.first != b.first) return a.first > b.first;
+                  return a.second < b.second;
+              });
+    const size_t n = rank.size() < (size_t)cap ? rank.size() : (size_t)cap;
+    for (size_t i = 0; i < n; ++i) out_refresh[rank[i].second] = 1;
 }
 
 double luma_psnr_tilemajor(const uint16_t *a, const int32_t *b, uint32_t ntiles,

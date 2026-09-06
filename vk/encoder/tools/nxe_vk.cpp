@@ -162,6 +162,14 @@ struct VkEncoder::Impl {
      * the head of the next encode, because a receipt arrives between frames
      * and the restore is a device copy. */
     std::vector<uint32_t> atlas_restore;
+    /* Cheat 3's scratch: which tiles the staggered rule offered this frame,
+     * and which of them the cap kept.  Members rather than locals so the
+     * allocation does not recur per frame. */
+    std::vector<uint8_t> refresh_cand, refresh_pick;
+    /* How many skips the displacement bound refused, over the clip.  Reporting
+     * only -- it is the price of the rule, and a rule whose price is not
+     * measured is a rule nobody can decide about. */
+    uint64_t disp_forced = 0;
     /* The head's angular speed between this frame's view and the previous
      * one, in Q8 radians, for the motion-scaled skip threshold of Cheats 5.
      * Derived from the pose stream the encoder already receives; zero when
@@ -960,11 +968,41 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
 
         const uint32_t period =
             d.cfg.intra_period > 0 ? (uint32_t)d.cfg.intra_period : 180u;
+
+        /* Cheat 3, off unless `atlas_refresh_cap` is set.  The rolling refresh
+         * re-codes a staggered fraction of tiles every frame regardless of
+         * where the eye is or how stale the tile is; with a cap, the
+         * candidates are ordered by fovea distance plus age and only the
+         * urgent ones are coded this frame.
+         *
+         * Built BEFORE the per-tile loop because a cap is a property of the
+         * whole frame's candidate set: deciding tile by tile could not know
+         * how many better candidates were still to come. */
+        const bool cheat3 = d.atlas && d.cfg.atlas_refresh_cap > 0;
+        if (cheat3) {
+            d.refresh_cand.assign(d.ntiles, 0u);
+            d.refresh_pick.assign(d.ntiles, 0u);
+            for (uint32_t t = 0; t < d.ntiles; ++t)
+                if (refresh_due(t, frame_number, period)) d.refresh_cand[t] = 1u;
+            /* Fixed foveation: the eye's centre in tile units.  A headset
+             * without eye tracking has exactly this and no more, and wiring a
+             * tracker in here would be inventing an input the encoder is not
+             * given. */
+            atlas_refresh_priority(
+                d.atlas_tab, d.refresh_cand.data(), d.ntiles, frame_number,
+                (uint32_t)d.cfg.atlas_refresh_cap,
+                (double)(d.atlas_geom.cols_per_eye - 1) * 0.5,
+                (double)(d.atlas_geom.rows - 1) * 0.5, d.refresh_pick.data());
+        }
+
         for (uint32_t t = 0; t < d.ntiles; ++t) {
             const bool missing =
                 t < d.force_intra.size() && d.force_intra[t] != 0;
-            bool eligible = ref_slot >= 0 && !missing &&
-                            !refresh_due(t, frame_number, period);
+            /* With Cheat 3 the refresh question is answered by the frame-wide
+             * pick above; without it, by the staggered rule alone. */
+            const bool due = cheat3 ? d.refresh_pick[t] != 0
+                                    : refresh_due(t, frame_number, period);
+            bool eligible = ref_slot >= 0 && !missing && !due;
             /* Under ATLAS eligibility is PER TILE and it is the whole of the
              * loss story ([SYN] 13.12.4: a tile with mode != INTRA whose own
              * atlas entry is invalid is BITSTREAM).  Three things can make an
@@ -995,6 +1033,24 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
                         d.heldst.newest + 1u > (uint32_t)HeldState::kDepth &&
                         src < d.heldst.newest + 1u - (uint32_t)HeldState::kDepth;
                     if (!aged && !d.heldst.confirms(src)) eligible = false;
+                }
+                /* ADR-0029's displacement bound, off unless a margin is set.
+                 * A skipped tile gathers `d` samples outside its own position,
+                 * into neighbouring entries at other poses; bounding `d` at
+                 * the corners bounds that contamination directly, where the
+                 * error threshold cannot, because the threshold measures the
+                 * contaminated predictor.
+                 *
+                 * Refusing the skip here means the tile is CODED, so the
+                 * bound's price is forced refresh and it is paid in bytes. */
+                if (eligible && d.cfg.atlas_disp_margin > 0) {
+                    const double disp = atlas_corner_disp(
+                        d.atlas_tab, t, d.atlas_geom.width,
+                        d.atlas_geom.height);
+                    if (disp >= (double)d.cfg.atlas_disp_margin) {
+                        eligible = false;
+                        ++d.disp_forced;
+                    }
                 }
             }
             if (eligible)
@@ -1700,6 +1756,8 @@ bool VkEncoder::atlas_table(std::vector<uint8_t> &out) const {
     }
     return true;
 }
+
+uint64_t VkEncoder::atlas_disp_forced() const { return p_->disp_forced; }
 
 bool VkEncoder::atlas_pixel_digest(uint8_t out[32]) {
     Impl &d = *p_;

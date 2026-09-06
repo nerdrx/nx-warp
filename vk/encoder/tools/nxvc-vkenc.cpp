@@ -83,6 +83,15 @@ static void usage() {
         "                       under ATLAS; the stream is only how two\n"
         "                       implementations arrive at one\n"
         "                       ([SYN] 13.12).  Needs --inter; forces ref_sel 0\n"
+        "  --atlas-disp-margin N  skip a tile only when the largest\n"
+        "                       displacement over its four corners is under N\n"
+        "                       luma samples (ADR-0029's cross-tile gather\n"
+        "                       bound).  0 = off; 64 is the tile itself and\n"
+        "                       so no bound; the useful range is 4 to 16.\n"
+        "                       Costs forced refresh, reported at the end\n"
+        "  --atlas-refresh-cap N  Cheat 3: code at most N refresh-driven\n"
+        "                       tiles a frame, chosen by fovea distance plus\n"
+        "                       age.  0 = off (every candidate is coded)\n"
         "  --motion-skip Q8     scale the skip threshold by head angular\n"
         "                       velocity (Cheats 5).  0, the default, is off\n"
         "  --hold-every N       simulate a client that reconstructs only\n"
@@ -167,6 +176,10 @@ int main(int argc, char **argv) {
         else if (a == "--ref-sel") cfg.ref_sel = std::atoi(val());
         else if (a == "--atlas") cfg.atlas = true;
         else if (a == "--atlas-dump") atlas_dump = val();
+        else if (a == "--atlas-disp-margin")
+            cfg.atlas_disp_margin = std::atoi(val());
+        else if (a == "--atlas-refresh-cap")
+            cfg.atlas_refresh_cap = std::atoi(val());
         else if (a == "--modes") cfg.mode_census = true;
         else if (a == "--display-psnr") cfg.display_psnr = true;
         else if (a == "--motion-skip") cfg.motion_skip_gain_q8 = std::atoi(val());
@@ -512,6 +525,17 @@ int main(int argc, char **argv) {
     if (psnr_n)
         std::printf("displayed PSNR-Y: %.4f dB mean over %d frame(s)\n",
                     psnr_sum / psnr_n, psnr_n);
+    /* The displacement bound's price, stated whenever the bound is on: how
+     * many tiles it refused to skip.  A rule whose cost is not reported is a
+     * rule nobody can decide about. */
+    if (cfg.atlas_disp_margin > 0 && !cfg.cpu_only && n > 0) {
+        const unsigned long long forced = gpu.atlas_disp_forced();
+        std::printf("disp-margin %d: forced refresh %llu tiles, %.2f per "
+                    "frame (%.1f %% of %d)\n",
+                    cfg.atlas_disp_margin, forced, (double)forced / n,
+                    100.0 * (double)forced / ((double)n * f.fp.ntiles),
+                    (int)f.fp.ntiles);
+    }
 
     if (cfg.bench && !cfg.cpu_only && n > 0) gpu.bench(f, cfg.bench_iters);
 
