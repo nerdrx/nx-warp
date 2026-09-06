@@ -28,6 +28,15 @@ The design paper is left as written. Where it and a measurement disagree, the
 measurement wins and [ERRATA.md](../ERRATA.md) already records twenty-odd such
 disagreements found during implementation.
 
+**Branch.** Written on `atlas` after the 2026-09-06 merge of `main` (`8c6e91e`).
+Draft 0 was written before that merge and carried three claims that were
+**branch lag rather than findings**; each is withdrawn in place, with the
+withdrawal left visible rather than deleted — §8.2 (the Adreno clock is flat and
+measured), §8.2 (the 1.57x caveat is on this branch now), and §6.10/§6.11
+(compositor-pose and the Pass B chroma pair are real measured negatives, not
+absences). Leaving a withdrawal visible is cheap and it is the only way a reader
+can tell a corrected paper from a lucky one.
+
 **Three rules this paper holds itself to.**
 
 1. **Every number carries its source.** File, figure number, or report.
@@ -35,7 +44,7 @@ disagreements found during implementation.
    result by being quoted without its label. The design paper's estimates may be
    cited *as estimates* and must be marked.
 3. **The negatives get the same space as the positives.** Section 6 is the
-   longest section in this outline on purpose.
+   longest section in this outline on purpose, and now runs to twelve entries.
 
 ---
 
@@ -218,7 +227,8 @@ Its trade, both halves, because only quoting one of them would be advocacy:
 > support any claim. See §10.3.
 
 A further Lite result, **-7.9 % (4:4:4) / -8.3 % (4:2:0) BD-rate**, exists on
-branch `merge-main` (`1d211a1`) and is **not on `atlas`**. It is also not an
+branch `merge-main` (`1d211a1`) and is still **not on `atlas`** after the
+`8c6e91e` merge. It is also not an
 absolute win: it is the gain from pricing the Lite syntax with a matched rate
 model instead of the rANS model, i.e. a correction to a mis-priced baseline.
 Cite it that way or not at all.
@@ -237,25 +247,33 @@ QP 22/26/30/34/40): **-1.36 % / -3.53 %** (rANS / Lite) at 289 tiles and
 **-1.54 % / -3.60 %** at 578 tiles. That is the "-1.4 to -3.6 %" figure and the
 README recommends level 1 "for any budget".
 
-> **The recommendation has been withdrawn, and the paper must carry the
-> withdrawal.** On branch `effort-vrroom` (`a010fd2`, not on `atlas`) the same
-> ladder was re-run on the rendered corpus, and **effort 1 is negative on
-> exactly one fixture** — `pan8`, the one the low-poly work already called
-> "unusually kind". On the other five it *costs* bytes:
+> **The recommendation has been withdrawn, the reason is known, and it is the
+> best small result in the tree.** **Figure 12** — *The effort ladder changes
+> sign with the content*. Re-run on the rendered corpus, effort 1 is
+> **-2.4 / -4.4 %** on `pan8` and **+0.1 to +3.2 %** on all five vrroom clips,
+> on *both* entropy coders, while the reference's integer trellis is
+> **-2.8 to -10.7 %** on all six.
 >
-> | clip | effort 1, rANS / Lite |
-> |---|---|
-> | `pan8` | **-2.41 / -4.38** |
-> | `still` | +1.09 / +0.12 |
-> | `rest` | +3.19 / +2.99 |
-> | `mid` | +2.35 / +1.15 |
-> | `objmotion` | +2.43 / +2.73 |
-> | `fast` | +2.65 / +2.59 |
+> Two candidate explanations were tested and eliminated: the coded-tile fraction
+> (13-25 %, and forcing it to 27-37 % with intra period 6 does not move a sign)
+> and the entropy coder (both flip together). What locates it is coding the same
+> clips **intra-only**, which collapses the effect to **-0.9 to +1.0 %
+> everywhere**. So it lives in the **inter reference chain**: the requantiser
+> prices a dropped coefficient against the current frame only, and what
+> compounds downstream is whether that coefficient was **noise** — `pan8`, the
+> band-limited panorama, which wins — or **detail** — vrroom, which loses.
 >
-> Both readings reproduce; neither on its own is the answer. This is the
-> cleanest example in the tree of a **corpus-dependent result presented as a
-> general one**, and it deserves a paragraph in its own right — see §6.8 and
-> GALLERY Figure 2, which independently finds the ladder worth 0.03 dB on vrroom.
+> That is a general statement about rate-distortion optimisation in a codec with
+> a long reference chain, and it is worth a section of its own rather than a
+> footnote: **a per-frame RD decision that is correct per frame can be wrong per
+> sequence, and which way it is wrong is a property of the content, not of the
+> decision.** It is the same shape as §3's `kSkipPersist` result, reached from
+> the opposite direction.
+>
+> The apparent contradiction with GALLERY Figure 2's "within 0.03 dB" is not
+> one: that reading **reproduces exactly** (34.204 dB against 34.204 dB, 29433 B
+> against 29355 B on `rest` at QP 34) when `nxv-enc`'s full RD mode decision is
+> left on. **Effort 0 is now the default**, and level 2 is the integer trellis.
 
 **Why there is no level 2** (`vk/encoder/README.md:769`): every candidate that
 pays cannot cross to a GPU. The full trellis is **-6.64 %** and does not cross;
@@ -267,15 +285,16 @@ The blocker is that `log2` is not the same function on host libm and device, and
 a trellis over the scan is a serial dependency.
 
 The reference-side **exact-integer trellis** (`--int-trellis`, within 0.02 % of
-the double trellis, -3.2 % rANS / -4.9 % Lite against effort 1) landed on
-`main` via `046ab4b` and is **not on `atlas`**.
+the double trellis, -3.2 % rANS / -4.9 % Lite against effort 1, `046ab4b`) is on
+this branch after the merge, and Figure 12 measures it at **-2.8 to -10.7 %** on
+all six clips — the one leg of the ladder that pays everywhere. It is level 2.
 
 ### 2.5 What the format deliberately does not have
 
 **No deblocking filter and no loop filter** ([SYNTAX.md](../SYNTAX.md):2513).
 This is load-bearing for §6.9: a tile-boundary step from intra quantisation is
 structural and permanent until the tile is re-coded, and there is no in-loop
-mechanism to hide it. The consequence is measured in Figures 12-13.
+mechanism to hide it. The consequence is measured in Figures 15-16.
 
 ---
 
@@ -369,7 +388,7 @@ which: 6.5 % PICTURE frames at rest, 48.4 % at mid, 100 % at fast.
 
 ### 4.4 The still floor
 
-**Figures 10-11** — *The seated trajectories, and the true rest floor*.
+**Figures 13-14** — *The seated trajectories, and the true rest floor*.
 
 `rest` was named for a head at rest and is not one: 2.678 deg/s, dragging every
 atlas entry's corners **0.97 samples in one frame and 3.83 over four**, so a
@@ -393,7 +412,7 @@ where it appears.
 `objmotion-still` prices independent object motion on its own at about
 **2650 B/frame** over the still floor.
 
-Sources: ADR-0029, GALLERY Figures 10-11, `nx-scratch/atlasprice/vt-still.log`,
+Sources: ADR-0029, GALLERY Figures 13-14, `nx-scratch/atlasprice/vt-still.log`,
 `vt-objmotion-still.log`, ENCODER-DECISION.md §7.
 
 ---
@@ -402,11 +421,10 @@ Sources: ADR-0029, GALLERY Figures 10-11, `nx-scratch/atlasprice/vt-still.log`,
 
 Source: [LOWPOLY-MODE.md](../LOWPOLY-MODE.md).
 
-> **Branch note.** On `atlas` this is a **proposal with a measured CPU
-> prototype**: "Nothing here is implemented in the codec, and no syntax has been
-> allocated" (LOWPOLY-MODE.md:3). The implementation — tool bit 35, mode 5,
-> SYNTAX 13.13, and the level 1 / level 2 encoder decision — is on `main` via
-> `edefcdb`. The final paper should be written against `main`.
+> **Branch note.** The implementation — tool bit 35, mode 5, SYNTAX 13.13, and
+> the level 1 / level 2 encoder decision — arrived on this branch with the
+> `8c6e91e` merge (`edefcdb`). Draft 0 was written before it and described this
+> as a proposal only.
 
 **The interesting claim is look versus PSNR**, and it is the one place in the
 project where the metric and the eye are documented as disagreeing. At 35-45
@@ -515,6 +533,8 @@ ADR-0027:13-38. No figure.
 
 ### 6.5 Alternate-eye coding
 
+**Figure 17** — *The alternate-eye collapse the mean hides*.
+
 Refresh one eye per frame and synthesise the other by making every tile of the
 off eye skip — expressible as a per-frame skip map with the codec untouched.
 Mean PSNR moves only 1.2 dB and hides everything: the synthesised eye's **worst
@@ -525,7 +545,12 @@ binocular rivalry — **the viewer does not average the eyes, they fight**.
 Rejected in general; viable only at rest, where it is +0.19 dB at 13 % fewer
 bytes. Source: ADR-0029:1340-1370. No figure.
 
-**This is the entry that most needs a figure**, and none exists. See §10.3.
+Figure 17 is why this is written up as a *worst-tile* result rather than a mean
+one: the frame mean sits at 37.03 dB for the whole `fast` clip while the
+synthesised eye's worst tile runs 15 to 20 dB beneath it and touches 11.5 dB at
+frame 16, and the refreshed eye tracks the baseline throughout. **Any policy
+that treats the eyes unequally must report a per-eye worst tile**, and this
+codec's own harness did not until this measurement forced it.
 
 ### 6.6 Disparity synthesis
 
@@ -553,26 +578,18 @@ ADR-0029:667-816. No figure.
 
 ### 6.8 The effort ladder and the planar intra mode
 
-**Figure 2** — *The effort ladder and the planar mode do not pay*. `int_rdoq` 0,
-`int_rdoq` 1 and the full trellis land within **0.03 dB** of each other on all
-four vrroom fixtures. `--intra-dir layer` ("planar prefer") costs **0.12 to
-0.27 dB** *and* more bytes on every fixture — a dominance result in the wrong
-direction. Source: GALLERY Figure 2.
-
-> **Two items in the brief could not be sourced and are therefore not written.**
-> **"Compositor-pose"**: no measured negative about taking the pose from the
-> compositor exists in the tree. The nearest adjacent material is ADR-0029's
-> accepted cheat 2, *pose late-latching*, and a patent-claim reading in
-> FTO-BRIEF.md — neither is a rejection. **"V2"**: every `v2` in `docs/` is
-> either a v1 exclusion deferred behind a v2 tool bit (four MVs per tile,
-> `XFORM_WAVELET`, directional intra, the rANS lane-count field) or a fixture /
-> wire-format version name. There is no version-2 proposal that was measured and
-> rejected. What *does* exist under that name is §7's corpus regeneration, where
-> the material moved by 12 dB and every verdict stayed put.
+**Figures 2 and 12.** `int_rdoq` 0, `int_rdoq` 1 and the full trellis land
+within **0.03 dB** of each other on all four vrroom fixtures with the full RD
+mode decision on (Figure 2), and `--intra-dir layer` ("planar prefer") costs
+**0.12 to 0.27 dB** *and* more bytes on every fixture — a dominance result in
+the wrong direction. Figure 12 then finds the effort ladder **changes sign with
+the content** and locates the cause in the inter reference chain; §2.4 carries
+that result in full, because it is a statement about RD optimisation generally
+and not only about this ladder. Effort 0 is the default.
 
 ### 6.9 The still clip's seams
 
-**Figures 12-13** — *The still clip's seams are frame 0's, and nothing adds to
+**Figures 15-16** — *The still clip's seams are frame 0's, and nothing adds to
 them*.
 
 The `still` row's seam ratio (3.27 at QP 26, 6.88 at QP 40) reads like the atlas
@@ -620,10 +637,132 @@ Re-coding a static tile from an unchanged source at an unchanged QP reproduces
 the *same* reconstruction. Seven times the bytes to make the artefact worse is
 not a fix.
 
-Source: ADR-0029, GALLERY Figures 12-13,
+Source: ADR-0029, GALLERY Figures 15-16,
 `nx-scratch/atlasprice/seamframe.py`, `seamdiag.py`.
 
 ---
+
+### 6.10 Compositor-pose display: real, measured, and mostly already done
+
+**Figures 10-11** — *The atlas rarely holds one pose, except at rest* and *The
+compositor's warp is not avoided, it is used*.
+
+The Pico compositor re-warps every submitted layer to the latest pose whether or
+not anyone wants it, so the proposal is to stop fighting it: stamp the composite
+with a **dominant pose** instead of the current one. Entries already at that
+pose are not warped at all; the rest are warped only as far as the dominant
+pose, and the compositor's own re-warp carries the layer the remaining distance
+for free. It is exact rather than approximate because 13.12.3 advances every
+valid entry by the same per-frame homography, so two entries sharing a
+`src_frame` have had the same composition applied.
+
+Measured over 60 frames at five rotation rates (`nxv-posestats`, 1088x1088, 289
+tiles, QP 28, `D=8`):
+
+| rate | dominant-pose share | display-pass warps |
+|---|---|---|
+| rest | **100 %** | **0 against today's 289** |
+| creep, 9 deg/s | oscillates **49-89 %**, mean 61.7 | 167.5 -> 110.8 (**-34 %**) |
+| slow | — | 13.4 against 13.4 (no change) |
+| mid, fast | 100 % by construction | nothing left to skip |
+
+**Verdict: not a rejection, a shrinkage.** At rest it removes the display warp
+completely, which is the state a headset spends much of its time in. Everywhere
+else it is a third off a small number, nothing, or **already covered by the
+`D=8` mode switch** — at mid and fast the trigger makes every frame a PICTURE
+frame, which puts every entry at one pose by construction. The flat 100 % lines
+in Figure 10's upper panel are §4.2 doing the proposal's job already. Status:
+measured proposal, desktop only; it changes no bitstream and nothing conformance
+compares. Source: [COMPOSITOR-POSE-DISPLAY.md](../COMPOSITOR-POSE-DISPLAY.md),
+GALLERY Figures 10-11.
+
+This is the most useful shape of negative in the paper: an idea that is sound,
+cheap, and *made redundant by a decision taken for another reason*.
+
+### 6.11 "V2": the Pass B chroma pair
+
+The two chroma planes of a 4:2:0 picture share every input to the coordinate
+pipeline — same tile corners, same subsampled vector, same extent, same quadrant
+split — and differ only in which plane of the reference ring the taps come from.
+So compute the coordinate once and use it twice, removing 1024 of a tile's 6144
+warped sample-coordinates. It needs **no shared memory and no extra barrier**,
+which is what separates it from the LDS-staging lever this tree already measured
+at **+26 %**: nothing is published between the planes, so there is nothing to
+publish it through.
+
+**On the device it is +19.2 % — 10.26 ms against a control of 8.61 ms.** The
+paired form puts two dependent ring fetches in one thread where the separate
+passes had two independent memory streams, and the Adreno pays for the
+dependency, not for the instruction count. Removing arithmetic from a kernel
+that is latency-bound on memory makes it slower.
+
+The ablation is properly gated: `NXVW_ABL_CHROMAPAIR_FORCE` fills plane 2 from
+plane 1's ring base, and the forced-wrong build **fails 3 tests**
+(`vk.decoder.conformance`, `vk.decoder.loss`, `vk.encoder.inter.cv1088`) while
+the honest build passes **28/28 on both ICDs** — which is what proves the
+fixtures reach the paired path instead of falling through it.
+
+Source: [PASSB-ADRENO-PLAN.md](../PASSB-ADRENO-PLAN.md) 3c; GALLERY "Pass B
+device rows". Measured on a Pico 4, `ht.nxv`, 289 tiles, interleaved
+control/V2/identity, three rounds, run twice. **Read as a ratio only** (§8.2),
+and note the source marks part of that slot as contaminated by an unrelated
+integrator session and re-takes it.
+
+> A second variant in the same table, the **identity predicate**, "never fires
+> here and costs 3.7 % to ask" — correct, regression-free, and measured on the
+> wrong fixture, since `ht.nxv` is a head-turn clip whose `WARP_SKIP` corners are
+> never the identity grid. A `STATIC_MV`-heavy stream would price it and none
+> exists on the device. That is a *deferred* measurement, not a negative, and
+> the paper should not count it as one.
+
+### 6.12 Per-tile QP: a measured wash, and distinct from §6.4
+
+This is **not** ADR-0027's spatial hybrid and the two must not be conflated —
+§6.4 rejects putting a hardware HEVC codec in the periphery, while this rejects,
+on its own evidence, a per-tile `qp_delta` *decision* inside this codec.
+
+`--qp-ladder` quantises each tile at every offset in a ladder, prices it with
+the encoder's own rate model, and keeps the cheapest `D + lambda R`, with one
+lambda for every candidate (scoring each at its own lambda compares two
+different cost functions and always prefers the coarsest step). Isolated on the
+reference with `--no-rdo` kept, on `pan8`:
+
+| leg | rANS | Lite |
+|---|---|---|
+| `--qp-search 2` | **-0.44 %** | -1.37 % |
+| `--qp-search 4` | -1.19 % | -2.25 % |
+| `--rdoq-effort 3` (trellis alone) | **-3.49 %** | -5.22 % |
+| trellis + `--qp-search 2` | **-3.48 %** | **-4.81 %** |
+
+**The last row is the finding**: on top of the trellis the QP search is worth
+*nothing* on rANS and is *negative* on Lite. The -6.79 % that appears in the
+effort table is the QP search **plus** the trellis, because `curve.py` strips
+`--no-rdo` whenever either flag is present; the prize was the trellis all along,
+and the trellis is the half that cannot cross to a GPU.
+
+The encoder's own sweep agrees and adds that **the sign depends on the clip**:
+against effort 1, a `-4,-2,0,2,4` ladder gives -1.15 % on `pan8` but **+0.75 %**
+on `pan8s` (rANS), averaging -0.2 to -0.5 % over the two and positive on one.
+Lite keeps about -2 %, and the asymmetry is not the probability tables:
+`--qp-table-search`, an upper bound on re-picking the table set per candidate,
+moves `pan8` from -0.91 to -0.95 % and `pan8s` from +0.56 to +0.19 %. **rANS's
+adaptive tables have already absorbed most of what a per-tile quantiser would
+buy; Lite has no tables, which is why Lite keeps its 2 %.**
+
+So there is no shader — not because it could not be built (at 578 tiles the
+whole encoder is 1.93 ms against an 11 ms budget, and four extra
+quantise-and-cost passes would fit) but because **a wash on the default entropy
+coder is not worth a pass, three-way byte-identity and a permanent maintenance
+surface.** The syntax would need nothing: `qp_delta` is already a mandatory v1
+tile-header field that both decoders honour. Source:
+`vk/encoder/README.md`:1309-1385.
+
+> **Both statements stand, and the paper must keep both.** Per-tile QP as a
+> *rate-distortion decision* is measured and is a wash (this section). Per-tile
+> QP and `res_level` as a *foveation* lever — spending the periphery's bits on
+> the fovea rather than chasing RD — is what ADR-0027 calls the largest
+> unexploited lever and is still **untested** (§10.1). They are different
+> questions about the same syntax field.
 
 ## 7. Where the codec stands against the alternatives `[TO WRITE]`
 
@@ -722,10 +861,14 @@ fail (on RADV, `=400` gives 5.317 and a loud failure).
 > `1.534`, the `8.889`, and the ~34 us/tile. Their **ratios survive**; their
 > millisecond values do not.
 >
-> *Off-branch:* the caveat and the gate live on `hybrid-gpu-time`
-> (`nx-scratch/wt-hybridgpu`, merged to `main` as `40b33df`). Neither the 1.57x
-> block nor `NXVC_VKD_TS_PERIOD` exists anywhere on `atlas`, so this skeleton's
-> own copy of ATLAS-DECODER.md is the uncorrected one.
+> The arithmetic behind the factor, from the GALLERY's Pass B device rows
+> entry: 16 frames reporting ~51 ms of GPU each is 816 ms inside a measured
+> 521 ms wall, which is impossible; **816/521 = 1.57**. The discriminating tests
+> rule out the cheap explanations — `--stats` off changes nothing, and the
+> device shell timer is sound (a 2 s sleep measures 2021 ms) — while the numbers
+> stay internally consistent (`passA + passW + passB` equals `gpu` exactly), so
+> a uniformly wrong `timestampPeriod` scale is the surviving hypothesis. That
+> leaves **every ratio valid and every absolute unusable**.
 
 **Ratios carry; absolutes do not.** The project states this in at least six
 places independently, which is itself worth reporting; the sharpest form is
@@ -737,31 +880,56 @@ its own table (61-66 C at the end of a long session). The bench has a 10-minute
 thermal mode for the same reason and notes its continuous rather than periodic
 operation *inflates* thermal pressure relative to a real session.
 
-> **A correction to the brief, and a naming job for the paper.** There is **no
-> "contamination gate"** in either repository — the phrase does not appear. In
-> this project *contamination* is a **codec quality** term (ADR-0029: the
-> atlas's cross-tile gather across a mosaic of capture times is
-> "displacement-proportional contamination that consumes the whole tile once the
-> head turns fast enough"), and using it for measurement hygiene would collide
-> with that. The measurement-hygiene mechanisms that do exist are unnamed and
-> should be given a name in the paper:
+> **A naming collision the paper has to resolve.** *Contamination* carries two
+> meanings in this tree and they must not be allowed to blur. In ADR-0029 it is
+> a **codec-quality** term — the atlas's cross-tile gather across a mosaic of
+> capture times is "displacement-proportional contamination that consumes the
+> whole tile once the head turns fast enough". In the device work it is
+> **measurement hygiene**, and it is used well: the GALLERY's Pass B device rows
+> entry has a section headed *"Contamination, marked rather than hidden"* which
+> names an integrator's `connect.sh` session against the device from 15:43:32 to
+> ~15:45:35, reconstructs from build-artifact mtimes exactly which rows fall
+> inside that window, says which of them survive anyway and why (**tile counts
+> are a property of the fixture; the 95 % share is a ratio between two segments
+> of the same run**; the absolute 15.079 ms is not trustworthy), and commits to
+> re-taking them. That is the standard the paper should describe and hold to.
 >
-> - the **idle gate** and a sha256 either side of the push before every launch;
-> - **`gpuclk` sampled on the device while the run is in flight**, with
->   temperature reported either side (`scripts/passb-device-rows.sh`);
-> - the GPU <= wall **`timing_selfcheck()`** above.
+> The mechanisms around it are unnamed and the paper should name them: the
+> **idle gate** and a sha256 either side of every push; **`gpuclk` sampled on
+> the device while the run is in flight** (`scripts/passb-device-rows.sh`,
+> `scripts/adreno-clock-probe.sh`); the GPU <= wall **`timing_selfcheck()`**
+> above; and **interleaved** control/variant rows, three rounds, run twice
+> independently.
 
-**And one claim in the brief that the tree contradicts: the clock is not
-"490 MHz flat".** 490 MHz is well sourced as the clock *observed* during those
-runs, but nothing pins it — it is held there incidentally by the headset's own
-SLAM tracking. `bench/README.md` records that "the devfreq nodes that would pin
-it are not reachable without root, so the gate has no clock control";
-`bench/run.sh` parks a dozed GPU at its 305 MHz minimum OPP, and
-`vk/decoder/passA/README.md` reports `gpuclk` ranging **305-490 MHz**. The
-92 %-duty capture in §1.2 records no clock at all.
+**The clock is flat, and it is measured.** `scripts/adreno-clock-probe.sh`
+samples `/sys/class/kgsl/kgsl-3d0/gpuclk` on the device, and the GALLERY entry
+*Adreno 650 clock under load vs idle* reports **490 MHz idle and 490 MHz under
+decode load — 65/65 and 52/52 samples, one frequency, zero variance.** That is
+the device's own reading, not an inference, and it says something the paper
+should make an argument out of: **the GPU does not boost for a decode.** The
+A650's published top bin is 587 MHz, so roughly 20 % of clock is left on the
+table — and that figure is quoted from the part's specification and marked as
+such, because `max_gpuclk` is **unreadable without root**, as are
+`devfreq/cur_freq`, `devfreq/available_frequencies`, `devfreq/governor`,
+`thermal_pwrlevel`, `num_pwrlevels` and `gpu_busy_percentage`. Of the kgsl
+attributes only `gpuclk` reads back at all.
 
-**The consequence for this paper.** Every device figure in §1.2 and §8.1 is
-quoted as a ratio or with its thermal state attached, or it is not quoted.
+The actionable form: the client can ask for a performance level
+(`XR_EXT_performance_settings`, or Pico's own level API), which is the WiVRn
+integrator's change and not this repository's. The paper should carry the
+adjacent warning with it — `VK_EXT_global_priority` HIGH was a **10x
+regression** on a headset, because priority is per process and the compositor
+loses. Different mechanism, same class of knob, and it has bitten here before.
+
+> **A correction this skeleton previously carried, now withdrawn.** Draft 0
+> asserted that "490 MHz flat" was unsupported and that the clock was merely
+> held there incidentally by SLAM. That was **branch lag, not a finding**: the
+> clock probe, its figure and its GALLERY entry are on `main` and were not
+> visible from `atlas` before the 2026-09-06 merge. The 305-490 MHz range in
+> `vk/decoder/passA/README.md` and `bench/run.sh`'s 305 MHz minimum OPP describe
+> a **dozed** GPU, which is a different state, and `bench/README.md`'s "no clock
+> control" remains true and is not in conflict: nothing *pins* the clock, and it
+> is nevertheless flat at 490 under load. Both facts stand.
 
 ### 8.3 The seam ratio
 
@@ -847,19 +1015,32 @@ codec, or whether they only pay against this codec's own alternatives.
   docs/README.md say nothing has been measured on a headset. One of the four
   documents is wrong and the paper cannot cite the number until it is known
   which.
-- **Branch scope.** This skeleton is written against `atlas`. Three things it
-  needs are on other branches and must be merged or cited as off-branch: the
-  planar mode's implementation (`main`, `edefcdb`), the reference integer
-  trellis (`main`, `046ab4b`), and the effort-1 withdrawal (`effort-vrroom`,
-  `a010fd2`). `XFORM_FAST`, a multiply-free 8x8 transform on tool bit 28, exists
-  only on `exp/xform-fast` (`6567184`) and has no result on `atlas`; note that
-  bit 28 is `NEAR_SKIP` in the shipped table, so its tool-bit assignment is
-  provisional at best.
-- **Figures that do not exist and should.** §6.5 (alternate-eye) is the strongest
-  negative in the tree with no figure: a worst-tile collapse to 11.5 dB in one
-  eye is exactly the result a reader will not believe from a table. §6.3's
-  scheduler and §6.6's disparity synthesis are also figureless. The gallery's
-  house rule is that a figure illustrates a number; these numbers deserve one.
+- **Branch scope, and the lesson from draft 0.** This skeleton is now written
+  against `atlas` **after** the merge of `main` (`8c6e91e`), which brought in the
+  planar implementation, the reference integer trellis, the effort-1 withdrawal,
+  the clock probe, the 1.57x caveat, compositor-pose and the Pass B device rows.
+  Draft 0 was written one merge earlier and reported four of those as *absent
+  from the tree*. They were absent from the **branch**. Any future draft must
+  state the commit it was written against — this one is `8c6e91e` merged as
+  `0f98680` — because "I searched and did not find it" is a claim about a
+  worktree, not about a project. Still off-branch: `XFORM_FAST`, a multiply-free
+  8x8 transform, on `exp/xform-fast` (`6567184`), with no result on `atlas`;
+  note that it claims tool bit 28, which is `NEAR_SKIP` in the shipped table, so
+  its assignment is provisional at best.
+- **Two device measurements of the same quantity disagree**, and the paper must
+  reconcile them rather than pick one. ATLAS-DECODER.md puts the skip warp at
+  **8.889 of 10.760 ms (83 %)** of Pass B; the GALLERY's Pass B device rows put
+  it at **15.079 of ~15.9 ms (95 %)**. Different fixtures and states, both
+  inflated ~1.57x, and the second is inside a window its own entry marks as
+  contaminated and commits to re-taking. The *ratio* both are making — the skip
+  warp is the term — is the robust part, and that is all the paper should claim
+  from them.
+- **Figures that do not exist and should.** §6.5's gap is closed by Figure 17.
+  Still figureless: §6.1 two-level refresh, §6.3 the ranked scheduler, §6.4 the
+  spatial hybrid, §6.6 disparity synthesis, §6.7 the atlas repair attempts. Of
+  those, §6.6 is the one whose number is least believable from a table — a
+  synthesised eye at 30.5-31.9 dB where coding it reaches 38.8 dB, with the
+  failures concentrated on near geometry and occlusion.
 
 ---
 
@@ -874,10 +1055,22 @@ the gallery never renumbers, so these references are stable.
 | 2 | The effort ladder and the planar mode do not pay | §2.4, §5, §6.8 |
 | 3-6 | The vrroom corpus, one frame per trajectory | §9 |
 | 7-9 | Coarse landings are blocky, not soft | §6.2 |
-| 10-11 | The seated trajectories, and the true rest floor | §4.4 |
-| 12-13 | The still clip's seams are frame 0's, and nothing adds to them | §6.9 |
+| 10 | The atlas rarely holds one pose, except at rest | §6.10 |
+| 11 | The compositor's warp is not avoided, it is used | §6.10 |
+| 12 | The effort ladder changes sign with the content | §2.4, §6.8 |
+| 13-14 | The seated trajectories, and the true rest floor | §4.4 |
+| 15-16 | The still clip's seams are frame 0's, and nothing adds to them | §6.9 |
+| 17 | The alternate-eye collapse the mean hides | §6.5 |
 
-**Six of the ten negatives in §6 have no figure** (§6.1, §6.3, §6.4, §6.5, §6.6,
-§6.7). The gallery's house rule — *a figure that illustrates no number does not
-belong here* — has the useful converse: a number this load-bearing that has no
-figure is a gap. §10.3 lists the three worth drawing first.
+Unnumbered gallery entries this paper also cites: *Adreno 650 clock under load
+vs idle* (§8.2), *Pass B device rows* (§6.11, §8.2), and the two `snapid-*`
+entries.
+
+> **Numbering note.** `main` and `atlas` each appended figures 10-12
+> independently and the 2026-09-06 merge produced duplicates. `main` kept 10-12;
+> the `atlas` additions moved to 13-14 and 15-16. Text written before that merge
+> that cites "Figures 10-11, the seated trajectories" or "Figures 12-13, the
+> seams" means 13-14 and 15-16.
+
+**Five of the eleven negatives in §6 still have no figure** (§6.1, §6.3, §6.4,
+§6.6, §6.7). §6.5's gap is now closed by Figure 17.

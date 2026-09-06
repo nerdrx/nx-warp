@@ -13,6 +13,13 @@ numbered, and a figure that illustrates no number does not belong here.
 Append; do not renumber. If a measurement is superseded, add the new figure and
 leave the old one with a note saying what replaced it.
 
+*One exception has occurred.* Branches `main` and `atlas` each appended figures
+10-12 independently, and the merge of 2026-09-06 produced duplicate numbers.
+`main`'s 10, 11 and 12 kept theirs, being the trunk's and already cited; the
+`atlas` additions moved to **13-14** (was 10-11) and **15-16** (was 12-13). Any
+citation of "Figures 10-11, the seated trajectories" or "Figures 12-13, the
+seams" written before that merge means 13-14 and 15-16.
+
 ---
 
 ## Figure 1 — Rate-distortion on the vrroom corpus
@@ -180,107 +187,6 @@ because 13.12.5's display warp is not normative.
 
 ```
 python3 tools/quality/plot_pose.py --csv pose_d8.csv --out docs/assets --disp 8
-## Figures 10-11 — The seated trajectories, and the true rest floor
-
-| | |
-|---|---|
-| ![Figure 10](assets/vrroom-still.png) **Fig 10** still, 0.043 deg/s | ![Figure 11](assets/vrroom-objmotion-still.png) **Fig 11** objmotion-still |
-
-**Date** 2026-09-06 · **Fixture** `nx-scratch/fixtures/vrroom`, frame 8, left
-eye, 544x408 crop at 2x · **Settings** as Figures 3-6.
-
-**The number it illustrates.** `rest` was named for a head at rest and is not
-one: it moves the atlas's tile corners **0.97 samples in one frame and 3.83
-over four**, so a whole-sample identity is never available in it. `still` is a
-seated head — 0.030 deg of postural drift at 0.11 Hz plus 0.001 deg of tremor
-at 8 Hz — and measures **0.043 deg/s** with corner displacement of **0.016
-samples** after a frame and 0.016 after thirty, sixty times smaller.
-
-On it the atlas does exactly what it is for: **100 % skip, zero decoder warps,
-150 B/frame at 41.28 dB** for a stereo 1088x1088 pair. At QP 34 and 40 it
-converges to the structural floor of **119 B/frame** — 85.7 kbit/s at 90 Hz —
-which is frame header plus `warp_ext()` plus the `row_present` bitmap and
-nothing else. `objmotion-still` holds the head there and walks the meshes:
-2800 B/f, which prices independent object motion at about **2650 B/frame** on
-its own.
-
-The high seam ratios in this row (3.27 at QP 26, 6.88 at QP 40 — the **QP**
-axis, not the time axis) are inherited from the single intra frame: at
-119 B/frame nothing is ever re-coded, so what is displayed is frame 0's
-quantisation warped forward, and at QP 40 that frame is blocky. It is a real
-artefact, and it is the cost of a floor this low. Figures 12-13 measure it per
-frame and show it is flat, that the atlas is not the mechanism, and that
-re-coding to remove it costs up to 7x the bytes and makes it worse.
-
-On the ADR-0028 integer decision the same clip is **125 B/frame at the same
-41.28 dB** — 25 bytes cheaper, because that path has no `NEAR_SKIP` to spend
-and so lands six bytes above the structural floor rather than thirty. The full
-per-trajectory mode histogram both decisions produce is in
-[ENCODER-DECISION.md](ENCODER-DECISION.md) section 7.
-
-```
-python3 tools/quality/capture/gen_vrroom.py --out nx-scratch/fixtures/vrroom   --tracks still,objmotion-still
-python3 nx-scratch/atlasprice/vrtable.py still
-python3 nx-scratch/atlasprice/encdec_still.py       # float decision
-python3 nx-scratch/atlasprice/encdec_still_int.py   # integer decision
-```
-
----
-
-## Figures 12-13 — The still clip's seams are frame 0's, and nothing adds to them
-
-| | |
-|---|---|
-| ![Figure 12](assets/still-seam-f1.png) **Fig 12** frame 1, seam **6.925** | ![Figure 13](assets/still-seam-f31.png) **Fig 13** frame 31, seam **6.820** |
-
-**Date** 2026-09-06 · **Fixture** `nx-scratch/fixtures/vrroom`, `still`, left
-eye, 256x256 crop at 384,384 (tile-aligned) at 2x, nearest-neighbour ·
-**Settings** `--atlas on --row-present on --atlas-picture-disp 8`, QP 40.
-
-**The number it illustrates.** Whether the `still` row's high seam ratio is
-something the atlas *does* over the clip. It is not. Measured per frame, on a
-clip that codes 119 B/frame and re-codes nothing:
-
-| | frame 0 | frame 1 | frame 31 | min | max |
-|---|---|---|---|---|---|
-| QP 26 | 3.262 | 3.262 | 3.270 | 3.262 | 3.277 |
-| QP 40 | 6.925 | 6.925 | **6.820** | 6.820 | 6.925 |
-
-It is **flat, and at QP 40 it falls**. The `3.27 -> 6.88` quoted in Figures
-10-11 is the QP axis — QP 26 against QP 40 — not the time axis. The whole
-value is present at **frame 0**, which is the all-intra frame: before any warp,
-before an atlas entry exists. Frames 1 and 31 differ in 2.1 % of their samples
-by a mean of 0.035 and a maximum of 11 (5.4 % and 0.089 inside this crop),
-which is why the two figures look identical, because they nearly are.
-
-**The atlas is not the mechanism.** With `--atlas off` — the plain picture
-codec, no atlas at any point — the trace is 3.262 flat and 6.925 flat, the same
-numbers. On a synthetic exactly-zero-motion clip (`still` frame 0 repeated 32
-times at one fixed pose) the atlas reproduces **3.262 for all 32 frames**,
-identical to the picture model: the per-tile advance of 13.12.3 is exact, and
-neighbouring entries do not drift apart. The atlas's entire contribution is the
-+0.5 % wobble visible in the min/max above, from sub-sample corner rounding.
-
-**It is the format, and deliberately.** `docs/SYNTAX.md` states there is no
-deblocking filter and no loop filter; a tile-boundary step from intra
-quantisation is therefore structural. What removes it is re-coding under
-motion: on `rest` the boundary gradient collapses **3.452 -> 1.756** across the
-clip while the interior gradient barely moves (1.166 -> 1.044), and the atlas
-erases seams *harder* than the picture model does (seam 1.682 against 2.508 at
-frame 31). The still clip is not growing seams; the moving clips are erasing
-theirs.
-
-```
-python3 nx-scratch/atlasprice/seamframe.py still 26 40   # seam ratio per frame
-python3 nx-scratch/atlasprice/seamdiag.py                # split by config, + the zero clip
-B=build/bin; W=nx-scratch/atlasprice/work9
-ffmpeg -f rawvideo -pix_fmt yuv420p -s 2176x1088 -i $W/still.q40.yuv \
-  -vf "select=eq(n\,31),crop=256:256:384:384,scale=512:512:flags=neighbor" \
-  -frames:v 1 docs/assets/still-seam-f31.png -y
-```
-
----
-
 ## The seam ratio, since every entry above quotes it
 
 Mean `|x[i] - x[i-1]|` over sample pairs that straddle the 64-sample tile grid,
@@ -560,4 +466,142 @@ python3 tools/quality/hybrid_gpu_price.py           # the streams and results.js
 python3 tools/quality/hybrid_gpu_annotate.py        # folds the ATLAS/PICTURE split in
 python3 tools/quality/plot_hybrid_gpu.py --in nx-scratch/hybgpu/results.json --out docs/assets
 python3 tools/quality/hybrid_gpu_table.py           # the ADR-0030 tables
+
+---
+
+## Figures 13-14 — The seated trajectories, and the true rest floor
+
+| | |
+|---|---|
+| ![Figure 13](assets/vrroom-still.png) **Fig 13** still, 0.043 deg/s | ![Figure 14](assets/vrroom-objmotion-still.png) **Fig 14** objmotion-still |
+
+**Date** 2026-09-06 · **Fixture** `nx-scratch/fixtures/vrroom`, frame 8, left
+eye, 544x408 crop at 2x · **Settings** as Figures 3-6.
+
+**The number it illustrates.** `rest` was named for a head at rest and is not
+one: it moves the atlas's tile corners **0.97 samples in one frame and 3.83
+over four**, so a whole-sample identity is never available in it. `still` is a
+seated head — 0.030 deg of postural drift at 0.11 Hz plus 0.001 deg of tremor
+at 8 Hz — and measures **0.043 deg/s** with corner displacement of **0.016
+samples** after a frame and 0.016 after thirty, sixty times smaller.
+
+On it the atlas does exactly what it is for: **100 % skip, zero decoder warps,
+150 B/frame at 41.28 dB** for a stereo 1088x1088 pair. At QP 34 and 40 it
+converges to the structural floor of **119 B/frame** — 85.7 kbit/s at 90 Hz —
+which is frame header plus `warp_ext()` plus the `row_present` bitmap and
+nothing else. `objmotion-still` holds the head there and walks the meshes:
+2800 B/f, which prices independent object motion at about **2650 B/frame** on
+its own.
+
+The high seam ratios in this row (3.27 at QP 26, 6.88 at QP 40 — the **QP**
+axis, not the time axis) are inherited from the single intra frame: at
+119 B/frame nothing is ever re-coded, so what is displayed is frame 0's
+quantisation warped forward, and at QP 40 that frame is blocky. It is a real
+artefact, and it is the cost of a floor this low. Figures 15-16 measure it per
+frame and show it is flat, that the atlas is not the mechanism, and that
+re-coding to remove it costs up to 7x the bytes and makes it worse.
+
+On the ADR-0028 integer decision the same clip is **125 B/frame at the same
+41.28 dB** — 25 bytes cheaper, because that path has no `NEAR_SKIP` to spend
+and so lands six bytes above the structural floor rather than thirty. The full
+per-trajectory mode histogram both decisions produce is in
+[ENCODER-DECISION.md](ENCODER-DECISION.md) section 7.
+
+```
+python3 tools/quality/capture/gen_vrroom.py --out nx-scratch/fixtures/vrroom   --tracks still,objmotion-still
+python3 nx-scratch/atlasprice/vrtable.py still
+python3 nx-scratch/atlasprice/encdec_still.py       # float decision
+python3 nx-scratch/atlasprice/encdec_still_int.py   # integer decision
+```
+
+---
+
+## Figures 15-16 — The still clip's seams are frame 0's, and nothing adds to them
+
+| | |
+|---|---|
+| ![Figure 15](assets/still-seam-f1.png) **Fig 15** frame 1, seam **6.925** | ![Figure 16](assets/still-seam-f31.png) **Fig 16** frame 31, seam **6.820** |
+
+**Date** 2026-09-06 · **Fixture** `nx-scratch/fixtures/vrroom`, `still`, left
+eye, 256x256 crop at 384,384 (tile-aligned) at 2x, nearest-neighbour ·
+**Settings** `--atlas on --row-present on --atlas-picture-disp 8`, QP 40.
+
+**The number it illustrates.** Whether the `still` row's high seam ratio is
+something the atlas *does* over the clip. It is not. Measured per frame, on a
+clip that codes 119 B/frame and re-codes nothing:
+
+| | frame 0 | frame 1 | frame 31 | min | max |
+|---|---|---|---|---|---|
+| QP 26 | 3.262 | 3.262 | 3.270 | 3.262 | 3.277 |
+| QP 40 | 6.925 | 6.925 | **6.820** | 6.820 | 6.925 |
+
+It is **flat, and at QP 40 it falls**. The `3.27 -> 6.88` quoted in Figures
+10-11 is the QP axis — QP 26 against QP 40 — not the time axis. The whole
+value is present at **frame 0**, which is the all-intra frame: before any warp,
+before an atlas entry exists. Frames 1 and 31 differ in 2.1 % of their samples
+by a mean of 0.035 and a maximum of 11 (5.4 % and 0.089 inside this crop),
+which is why the two figures look identical, because they nearly are.
+
+**The atlas is not the mechanism.** With `--atlas off` — the plain picture
+codec, no atlas at any point — the trace is 3.262 flat and 6.925 flat, the same
+numbers. On a synthetic exactly-zero-motion clip (`still` frame 0 repeated 32
+times at one fixed pose) the atlas reproduces **3.262 for all 32 frames**,
+identical to the picture model: the per-tile advance of 13.12.3 is exact, and
+neighbouring entries do not drift apart. The atlas's entire contribution is the
++0.5 % wobble visible in the min/max above, from sub-sample corner rounding.
+
+**It is the format, and deliberately.** `docs/SYNTAX.md` states there is no
+deblocking filter and no loop filter; a tile-boundary step from intra
+quantisation is therefore structural. What removes it is re-coding under
+motion: on `rest` the boundary gradient collapses **3.452 -> 1.756** across the
+clip while the interior gradient barely moves (1.166 -> 1.044), and the atlas
+erases seams *harder* than the picture model does (seam 1.682 against 2.508 at
+frame 31). The still clip is not growing seams; the moving clips are erasing
+theirs.
+
+```
+python3 nx-scratch/atlasprice/seamframe.py still 26 40   # seam ratio per frame
+python3 nx-scratch/atlasprice/seamdiag.py                # split by config, + the zero clip
+B=build/bin; W=nx-scratch/atlasprice/work9
+ffmpeg -f rawvideo -pix_fmt yuv420p -s 2176x1088 -i $W/still.q40.yuv \
+  -vf "select=eq(n\,31),crop=256:256:384:384,scale=512:512:flags=neighbor" \
+  -frames:v 1 docs/assets/still-seam-f31.png -y
+```
+
+---
+
+---
+
+## Figure 17 — The alternate-eye collapse the mean hides
+
+![Figure 17](assets/alteye-worsttile.png)
+
+**Date** 2026-09-06 · **Fixture** `nx-scratch/fixtures/vrroom`, `fast` and
+`mid`, 32 frames · **Settings** `--eyes 2 --atlas on --row-present on
+--atlas-picture-disp 8`, QP 26, the policy expressed as a per-frame
+`--skip-map` (every tile of the off eye skips) so the codec is untouched.
+
+**The number it illustrates.** ADR-0029's alternate-eye verdict, which is a
+table of means with one worst-tile column and is not believable from a table.
+Per frame and per eye, at `fast`: the **frame mean sits at 37.03 dB and looks
+affordable** (purple), the refreshed eye's worst tile tracks the baseline
+(green against grey), and the **synthesised eye's worst tile runs 15 to 20 dB
+below the mean for the whole clip and reaches 11.5 dB at frame 16** (red). At
+`mid` it settles at 15.4-17 dB against a 35.96 dB mean.
+
+That gap is the entire finding: **a 12 to 17 dB collapse in one 64x64 tile of
+one eye, at an instant when the other eye is correct.** The failure class is
+binocular rivalry — the viewer does not average the eyes, they fight — and a
+mean PSNR cannot express it. Rejected in general, viable only at rest, where
+the worst tile barely moves (25.5 against 26.2) for +0.19 dB at 13 % fewer
+bytes.
+
+The run reproduces ADR-0029's table exactly on the post-merge encoder: means
+37.03 / 35.96 dB and worst tiles 11.49 / 15.37 dB against the ADR's 37.03 /
+35.96 and 11.5 / 15.4. Grey is the baseline's worst tile over both eyes, whose
+minimum is 27.54 dB at `fast` and 19.96 at `mid`.
+
+```
+python3 nx-scratch/atlasprice/alteye_frames.py     # writes docs/assets/alteye-worsttile.png
+python3 nx-scratch/atlasprice/alteye.py fast       # and mid — the ADR's table
 ```

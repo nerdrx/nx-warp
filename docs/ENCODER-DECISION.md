@@ -322,7 +322,7 @@ than by the refresh policy.
 look like a decision failure — a codec that re-codes nothing until the tile
 grid shows — and they are not. The value is already there at **frame 0**, the
 all-intra frame, it is the same with `--atlas off`, and it is flat for the
-whole clip (ADR-0029 and GALLERY Figures 12-13 carry the per-frame trace). It
+whole clip (ADR-0029 and GALLERY Figures 15-16 carry the per-frame trace). It
 is the format's intra quantisation with no loop filter to hide it. A port whose
 `still` row reads 100 % skip / 0 warps / ~150 B and a seam ratio near 3.27 is
 correct; one that lowered the seam ratio by re-coding has spent up to seven

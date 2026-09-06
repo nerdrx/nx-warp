@@ -1211,7 +1211,7 @@ that codes anything on it has a bug the moving clips will hide.
 The `still` row's seam ratio (3.27 at QP 26, 6.88 at QP 40) reads like an
 atlas artefact -- a codec that re-codes nothing, letting the 64-sample grid
 surface on a scene that is not moving. Measured per frame, it is not one.
-Figures 12-13 in [GALLERY.md](../GALLERY.md) carry the trace; the finding is
+Figures 15-16 in [GALLERY.md](../GALLERY.md) carry the trace; the finding is
 that **the seam ratio is flat**, 3.262 at frame 0 against 3.270 at frame 31 at
 QP 26, and at QP 40 it *falls*, 6.925 to 6.820. The `3.27 -> 6.88` is the QP
 axis, not the time axis.
