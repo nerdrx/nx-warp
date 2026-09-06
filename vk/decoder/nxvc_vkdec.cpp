@@ -42,6 +42,7 @@
 #include "reconstruct_v1.spv.h"
 #include "reconstruct_skip.spv.h"
 #include "reconstruct_skip_store.spv.h"
+#include "reconstruct_copy.spv.h"
 #include "reconstruct_v1_x8.spv.h"
 #include "reconstruct_x8.spv.h"
 #include "warp_pred.spv.h"
@@ -199,6 +200,8 @@ struct nxvc_vk_decoder {
     // [inter] The same tile kind, predicting for itself instead of reading
     // back what Pass W wrote.  See passB/CMakeLists.txt.
     VkShaderModule smBSkipStore = VK_NULL_HANDLE;
+    // [passb] skip_kind == 3: the copy path for identity tiles.
+    VkShaderModule smBCopy = VK_NULL_HANDLE;
     VkShaderModule smB[2][2] = {{VK_NULL_HANDLE, VK_NULL_HANDLE},
                                 {VK_NULL_HANDLE, VK_NULL_HANDLE}};
     // [inter] Pass W: the predictor.  Its own set layout, because it binds
@@ -276,9 +279,11 @@ struct nxvc_vk_decoder {
     // [inter] How many of each eye's tiles are WARP_SKIP, and therefore the
     // length of the leading range build_tile_order() puts them in.
     uint32_t order_nskip[2] = {0, 0};
+    // [passb] Tiles of each eye whose prediction is a straight copy.
+    uint32_t order_ncopy[2] = {0, 0};
     // [inter] Tiles dispatched on each Pass B module in eye pass 0, for the
     // per-module timestamps.
-    uint32_t seg_tiles[3] = {0, 0, 0};
+    uint32_t seg_tiles[4] = {0, 0, 0, 0};
     Img imgRgba, imgRgb10, imgLuma, imgCbCr;
     // [unorm] The same three 8-bit stores through normalised images.  Only
     // one group is ever real; the other is a 1x1 placeholder.
@@ -1058,6 +1063,9 @@ nxvc_vkd_status make_layouts(D *d) {
     sm.codeSize = sizeof(reconstruct_skip_store_spv);
     sm.pCode = reconstruct_skip_store_spv;
     VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smBSkipStore));
+    sm.codeSize = sizeof(reconstruct_copy_spv);
+    sm.pCode = reconstruct_copy_spv;
+    VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smBCopy));
     sm.codeSize = sizeof(warp_pred_spv);
     sm.pCode = warp_pred_spv;
     VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smW));
@@ -1281,7 +1289,8 @@ nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2, int32_t sparse,
     ci.stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
     ci.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
     ci.stage.module =
-        skip_kind == 2 ? d->smBSkipStore
+        skip_kind == 3 ? d->smBCopy
+        : skip_kind == 2 ? d->smBSkipStore
         : skip_kind == 1
             ? d->smBSkip
             : d->smB[intra_dir != 0 ? 1 : 0][xform_large != 0 ? 1 : 0];
@@ -1955,6 +1964,16 @@ void build_tile_order(D *d, const FrameParse &fp, uint32_t ntiles,
     d->order.resize(ntiles);
     d->order_nodir[0] = d->order_nodir[1] = 0;
     d->order_nskip[0] = d->order_nskip[1] = 0;
+    d->order_ncopy[0] = d->order_ncopy[1] = 0;
+    // [passb] Whether each eye's LUMA plane matrix is exactly the identity.
+    // Testing luma is enough: plane_homography() derives the chroma matrix by
+    // halving h[2]/h[5] and doubling h[6]/h[7], and half_round(0) is 0 and
+    // 0 * 2 is 0, so an identity luma matrix gives an identity chroma matrix.
+    bool identity_corners[2] = {false, false};
+    for (uint32_t eye = 0; eye < d->si.eyes && eye < 2; ++eye)
+        identity_corners[eye] = nxvcvk::plane_matrix_is_identity(
+            nxvcvk::plane_homography(fp.warp[eye], (int)d->si.width,
+                                     (int)d->si.height, 1));
     // [inter] A frame with a STEREO tile is dispatched one eye at a time, so
     // the map has to make each eye a contiguous range of workgroups.  A tile
     // index is `row * cols + eye * cols_per_eye + col` ([SYN] 3.3), which
@@ -2022,9 +2041,51 @@ void build_tile_order(D *d, const FrameParse &fp, uint32_t ntiles,
         // saw minus the skips -- which are not INTRA and so were always on its
         // first side anyway.  Both are stable, so tile_sort still composes
         // inside each group.
-        auto skipMid = beg;
+        // [passb] FOUR ranges now, and the copy one leads.  A skip tile whose
+        // prediction is its reference unchanged runs a module with no
+        // coordinate pipeline at all, and the decision is made HERE rather
+        // than in the kernel: the host has already parsed every warp record
+        // and computed the plane homography, so it can answer the question
+        // once per tile instead of once per workgroup.
+        auto copyMid = beg;
         if (fp.any_inter) {
-            skipMid = std::stable_partition(beg, end, [&](uint32_t t) {
+            copyMid = std::stable_partition(beg, end, [&](uint32_t t) {
+                // [SYN] 13.12.6: a superseded tile is DROPPED, not
+                // reconstructed, and the skip range is what never gets
+                // dispatched.  It must not reach the copy module either --
+                // copying it would write pixels over a position that already
+                // holds a newer generation, which is the one thing dropping it
+                // exists to prevent.
+                if (sup && t < sup->size() && (*sup)[t]) return false;
+                const uint32_t w1 = fp.recs[t].w1;
+                const int mode = int(w1 & 7u);
+                if (mode != 0) return false;   // WARP_SKIP only; see the header
+                if (t >= fp.warp_tiles.size()) return false;
+                const auto &wt = fp.warp_tiles[t];
+                // A tile with no reference is mid-grey, not a copy.
+                if (wt.refBase == 0xffffffffu) return false;
+#ifdef NXVC_VKD_FORCE_COPY
+                // VALIDATION ONLY, and it produces a WRONG picture on any tile
+                // whose warp is not already the identity: every WARP_SKIP tile
+                // is claimed for the copy module regardless of its pose.  It
+                // answers the question the byte-identity test cannot answer by
+                // passing -- does the copy path ever FIRE?  If forcing it
+                // leaves the conformance set green, no fixture tile reached it
+                // and the pass was vacuous.  A failure is the result wanted.
+                if (!nxvw::nxvw_wt_near_skip(wt.w0) &&
+                    nxvw::nxvw_wt_res_level(wt.w0) == 0)
+                    return true;
+#endif
+                return nxvcvk::warp_tile_is_copy(
+                    mode, wt.mvx, wt.mvy, wt.quad,
+                    nxvw::nxvw_wt_quad(wt.w0) != 0, nxvw::nxvw_wt_near_skip(wt.w0) != 0,
+                    nxvw::nxvw_wt_res_level(wt.w0), identity_corners[nxvw::nxvw_wt_eye(wt.w0)]);
+            });
+            d->order_ncopy[pass] = (uint32_t)(copyMid - beg);
+        }
+        auto skipMid = copyMid;
+        if (fp.any_inter) {
+            skipMid = std::stable_partition(copyMid, end, [&](uint32_t t) {
                 if (sup && t < sup->size() && (*sup)[t]) return true;
                 return (fp.recs[t].w1 & 7u) == 0u;   // WARP_SKIP
             });
@@ -2209,7 +2270,8 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_create(
         // cannot: at 81 % WARP_SKIP the skip module and the coded modules are
         // both in it.  Written only for pass 0; a stereo frame's second eye is
         // the same three modules over the other half of the tiles.
-        qp.queryCount = 12;
+        // [passb] 14: four Pass B segments (queries 6..13) rather than three.
+        qp.queryCount = 14;
         if (vkCreateQueryPool(d->dev, &qp, nullptr, &d->queries) != VK_SUCCESS)
             d->have_timestamps = false;
     }
@@ -2229,6 +2291,7 @@ extern "C" void nxvc_vk_decoder_destroy(nxvc_vk_decoder *d) {
         if (d->smBSkip) vkDestroyShaderModule(d->dev, d->smBSkip, nullptr);
         if (d->smBSkipStore)
             vkDestroyShaderModule(d->dev, d->smBSkipStore, nullptr);
+        if (d->smBCopy) vkDestroyShaderModule(d->dev, d->smBCopy, nullptr);
         for (auto &kv : d->pipesA) vkDestroyPipeline(d->dev, kv.second, nullptr);
         for (auto &kv : d->pipesB) vkDestroyPipeline(d->dev, kv.second, nullptr);
         if (d->smA) vkDestroyShaderModule(d->dev, d->smA, nullptr);
@@ -2428,7 +2491,10 @@ static void collect_timestamps(D *d) {
     if (!d->ts_pending) return;
     d->ts_pending = false;
     if (!d->have_timestamps || !d->queries) return;
-    uint64_t ts[12] = {};
+    // [passb] 14, not 12: four Pass B segments occupy queries 6..13, and this
+    // buffer is what vkGetQueryPoolResults is handed `sizeof ts` for.  At 12 it
+    // was a 96-byte array asked to receive 112 bytes.
+    uint64_t ts[14] = {};
     const uint32_t nq = d->ts_count;
     if (nq < 4) return;
     if (vkGetQueryPoolResults(d->dev, d->queries, 0, nq, sizeof ts, ts,
@@ -2471,17 +2537,21 @@ static void collect_timestamps(D *d) {
     // the skipped tiles -- is most of that window, and nothing in the ABI said
     // so.  The env-gated print below stays: it is the same numbers, in a form
     // that needs no caller.
-    if (nq >= 12) {
-        d->stats.pass_b_skip_ms = delta(ts[7], ts[6]) * k;
-        d->stats.pass_b_coded_ms = delta(ts[9], ts[8]) * k;
-        d->stats.pass_b_dir_ms = delta(ts[11], ts[10]) * k;
-        d->stats.tiles_skip_seg = d->seg_tiles[0];
-        d->stats.tiles_coded_seg = d->seg_tiles[1];
-        d->stats.tiles_dir_seg = d->seg_tiles[2];
+    if (nq >= 14) {
+        d->stats.pass_b_identity_ms = delta(ts[7], ts[6]) * k;
+        d->stats.pass_b_skip_ms = delta(ts[9], ts[8]) * k;
+        d->stats.pass_b_coded_ms = delta(ts[11], ts[10]) * k;
+        d->stats.pass_b_dir_ms = delta(ts[13], ts[12]) * k;
+        d->stats.tiles_identity_seg = d->seg_tiles[0];
+        d->stats.tiles_skip_seg = d->seg_tiles[1];
+        d->stats.tiles_coded_seg = d->seg_tiles[2];
+        d->stats.tiles_dir_seg = d->seg_tiles[3];
     } else {
+        d->stats.pass_b_identity_ms = 0;
         d->stats.pass_b_skip_ms = 0;
         d->stats.pass_b_coded_ms = 0;
         d->stats.pass_b_dir_ms = 0;
+        d->stats.tiles_identity_seg = 0;
         d->stats.tiles_skip_seg = 0;
         d->stats.tiles_coded_seg = 0;
         d->stats.tiles_dir_seg = 0;
@@ -2490,13 +2560,14 @@ static void collect_timestamps(D *d) {
     // measurement aid rather than part of the ABI, and because a segment that
     // did not run leaves its pair equal and would otherwise print 0.000 three
     // times on an intra frame.
-    if (nq >= 12 && std::getenv("NXVC_VKD_SEG_MS")) {
+    if (nq >= 14 && std::getenv("NXVC_VKD_SEG_MS")) {
         std::fprintf(stderr,
-                     "[segms] skip %.4f  coded %.4f  intra_dir %.4f"
-                     "  (tiles %u/%u/%u)\n",
+                     "[segms] copy %.4f  skip %.4f  coded %.4f  intra_dir %.4f"
+                     "  (tiles %u/%u/%u/%u)\n",
                      delta(ts[7], ts[6]) * k, delta(ts[9], ts[8]) * k,
-                     delta(ts[11], ts[10]) * k, d->seg_tiles[0],
-                     d->seg_tiles[1], d->seg_tiles[2]);
+                     delta(ts[11], ts[10]) * k, delta(ts[13], ts[12]) * k,
+                     d->seg_tiles[0], d->seg_tiles[1], d->seg_tiles[2],
+                     d->seg_tiles[3]);
     }
 }
 
@@ -2996,6 +3067,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     // for a 4:2:0 stream that also codes an alpha plane, and a WARP_SKIP tile
     // codes no plane at all.
     VkPipeline pipeBSkip = VK_NULL_HANDLE;
+    VkPipeline pipeBCopy = VK_NULL_HANDLE;
     // [ATLAS] `reconstruct_skip_store` does not run at all: under [SYN] 13.12
     // a skipped tile is NOT reconstructed -- it stays in the atlas at the
     // generation that last coded it and the display warp reaches it there.
@@ -3014,6 +3086,22 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
                          fp.push.sparse, storeWords, 0, (int32_t)fp.split4, 0,
                          inter_pred_on(d, interStream),
                          ring_store_on(d, interStream), &pipeBSkip, 2)))
+        return st;
+
+    // [passb] The copy module, built only when a tile actually qualifies.  On
+    // an encoder that never emits an exactly-identity pose this is never
+    // created, so the path costs nothing it is not used for.
+    // [ATLAS] Not on an atlas frame: a copy is a reconstruction, and an atlas
+    // frame leaves its skipped tiles where they are.
+    const bool anyCopy = !atlas_frame &&
+                         (d->order_ncopy[0] != 0 || d->order_ncopy[1] != 0);
+    if (anyCopy && !d->need_alpha_pass &&
+        (st = pipeline_b(d, d->out_format,
+                         fuse ? (int32_t)nxvw::kOutRgba8
+                              : (int32_t)nxvw::kOutNone,
+                         fp.push.sparse, storeWords, 0, (int32_t)fp.split4, 0,
+                         inter_pred_on(d, interStream),
+                         ring_store_on(d, interStream), &pipeBCopy, 3)))
         return st;
 
     VkPipeline pipeWp = VK_NULL_HANDLE;
@@ -3205,16 +3293,37 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
         // them on the module that would have had them before this split.
         const uint32_t nodir =
             fp.push.intraDir != 0 ? d->order_nodir[pass] : tilesPerEye;
-        // [ATLAS] Segment 0 is the skip range and there is no pipeline for
-        // it, so it is dispatched over ZERO tiles rather than over `nskip` on
-        // a null handle.  `segBase` still uses `nskip`, so segment 1 starts
-        // exactly where the coded tiles do.
-        const uint32_t seg[3] = {atlas_frame ? 0u : nskip,
+        // [passb] The copy range leads, so four segments.  It collapses to the
+        // previous three the moment no tile qualifies, which is every frame on
+        // an encoder that does not snap a near-identity pose to the identity.
+        //
+        // [ATLAS] An atlas frame reconstructs no skipped tile at all, and a
+        // copy IS a reconstruction -- the tile is meant to stay in the atlas
+        // at the generation that last coded it.  So the copy range is
+        // dispatched over ZERO tiles there for exactly the reason the skip
+        // range is, while `segBase` keeps using `ncopy` and `nskip` so the
+        // later segments still start where their tiles do.
+        // `ncopy` is what the copy module ACTUALLY takes, which is not the
+        // same as how many tiles qualified.  The skip segment starts where
+        // the copy module stopped, so the two degrade correctly and
+        // differently:
+        //   atlas frame          -- neither runs; the qualifying tiles are
+        //                           left in the atlas, which is the point;
+        //   no copy pipeline     -- ncopy folds to 0 and the skip segment
+        //     (the alpha            starts at `base` and covers them, so they
+        //      configuration)       are reconstructed the way they were before
+        //                           this split existed.
+        const uint32_t ncopy =
+            (!atlas_frame && pipeBCopy != VK_NULL_HANDLE) ? d->order_ncopy[pass]
+                                                          : 0u;
+        const uint32_t seg[4] = {ncopy, atlas_frame ? 0u : nskip - ncopy,
                                  nodir - nskip, tilesPerEye - nodir};
-        const uint32_t segBase[3] = {base, base + nskip, base + nodir};
-        VkPipeline segPipe[3] = {pipeBSkip, pipeB[0], pipeB[1]};
-        VkPipeline segPipeA[3] = {VK_NULL_HANDLE, pipeBa[0], pipeBa[1]};
-        for (int g = 0; g < 3; ++g) {
+        const uint32_t segBase[4] = {base, base + ncopy, base + nskip,
+                                     base + nodir};
+        VkPipeline segPipe[4] = {pipeBCopy, pipeBSkip, pipeB[0], pipeB[1]};
+        VkPipeline segPipeA[4] = {VK_NULL_HANDLE, VK_NULL_HANDLE, pipeBa[0],
+                                  pipeBa[1]};
+        for (int g = 0; g < 4; ++g) {
             if (pass == 0) d->seg_tiles[g] = seg[g];
             // Both ends are written even for an empty segment: the results are
             // read back with WAIT_BIT, so a query that is never written would
@@ -3421,7 +3530,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     // anyone could read them.  collect_timestamps() overwrites all four.
     ++d->stats.frames;
 
-    d->ts_count = d->have_timestamps ? (fp.any_inter ? 12u : 4u) : 0u;
+    d->ts_count = d->have_timestamps ? (fp.any_inter ? 14u : 4u) : 0u;
     d->ts_pending = d->have_timestamps;
     if (submit_flags & NXVC_VKD_SUBMIT_ASYNC) {
         d->stats.total_ms = now_ms() - t0;

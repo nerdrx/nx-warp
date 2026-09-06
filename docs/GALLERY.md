@@ -286,6 +286,17 @@ Appends only. Two agents writing here at once conflict trivially.
   android-29, sha256 verified either side of every push
 * **Rows are interleaved** control/V2/identity within each round, three rounds,
   and the whole thing run twice independently. The ratio is the measurement.
+* **Contamination, marked rather than hidden.** The integrator ran `connect.sh`
+  against this device from **15:43:32 to ~15:45:35** during the slot — logcat
+  cleared at least twice, a VIEW intent, possibly a wake and a client relaunch.
+  Reconstructed from build artifact mtimes, the arm64 binaries finished at
+  15:43:42 / 15:44:18 / 15:44:41, so everything device-side between 15:44:41 and
+  15:45:35 sits inside that window:
+  * the **segment split** below, and
+  * **the first of the two interleaved run-throughs** (or its opening rounds).
+  The second run-through and the 578-tile probe are after 15:45:35 and are
+  clean. Both are re-taken on the next device slot; until then read them as
+  described here.
 
 ### The split
 
@@ -299,6 +310,13 @@ Confirms the Phase 1 attribution on the device: the warp of the skipped tiles
 is the term. `intra_dir` is not merely small, it is **zero tiles** — the
 directional wavefront never runs on this stream.
 
+**This row is inside the contaminated window** and the milliseconds are to be
+re-taken. Two parts of it survive anyway and are worth separating: the **tile
+counts** are a property of the fixture and cannot be perturbed by anything the
+integrator did, and the **95 % share** is a ratio between two segments of the
+same run, so contention that slows the device slows both terms together. What
+is not trustworthy is the absolute 15.079 ms.
+
 ### The variants
 
 | variant | mean | vs control | rows |
@@ -308,7 +326,11 @@ directional wavefront never runs on this stream.
 | identity predicate | **9.01 ms** | **+3.7 %** | 9.320 8.796 8.902 |
 
 **V2 is a regression, and not a marginal one.** Ranges do not overlap the
-control in either independent interleave (+18.6 % and +19.2 %). Sharing the
+control in either independent interleave (+18.6 % and +19.2 %) — and the
+**second interleave is entirely outside the contaminated window**, so the
+verdict rests on clean data on its own. That the contaminated first run
+reproduces it to within 0.6 points is a check on the contamination, not the
+basis of the conclusion. Sharing the
 coordinate between the two chroma planes removes 1024 coordinate computations a
 tile and costs a fifth of the segment. It is the same shape as every other
 "remove work" lever in `vk/decoder/passB/README.md`: the paired form puts two
