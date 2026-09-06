@@ -480,22 +480,23 @@ the harness's own corpus (610 B/tile rANS, 916 B/tile Lite):
 
 | variant | ballot/dense | ballot/sparse | lds/dense | lds/sparse |
 |---|---|---|---|---|
-| rANS | 1.211 ms | 1.202 ms | 1.238 ms | 1.209 ms |
-| Lite | 0.440 ms | 0.448 ms | **0.415 ms** | 0.449 ms |
+| rANS | 1.193 ms | 1.195 ms | 1.217 ms | 1.184 ms |
+| Lite | 0.430 ms | **0.383 ms** | 0.406 ms | 0.405 ms |
 
-**2.7x to 3.0x**, on a box that was not idle -- a second ctest run was on the
-other core group -- so read this as a floor. `docs/MERGE-REPORT.md` measured
-4.1x on an idle machine and that number is not being replaced here.
+**2.8x to 3.1x** on an idle box, variant for variant.
+`docs/MERGE-REPORT.md` measured 4.1x on its own corpus and that number is not
+being replaced here -- this is the same harness on the same 2048 tiles, and
+the two corpora are not the same content.
 
 **The ENCODER is faster too**, which was not the point of the tool and is
 worth knowing anyway. `nxvc-vkenc --bench 50`, 1088x1088 (289 tiles), QP 30,
 `--ctx v3` with no transmitted tables on either side, RX 7900 XTX on RADV,
-median of 50, three runs:
+median of 50, four runs (the fourth on an idle box):
 
 | | E3 forward | E4 / E4L | E2 | E5 | total |
 |---|---|---|---|---|---|
-| rANS | 0.343 / 0.399 / 0.436 | 0.885 / 0.967 / 1.049 | 0.013 | 0.014 | 1.255 / 1.402 / 1.525 |
-| Lite | 0.117 / 0.116 / 0.128 | 0.144 / 0.196 / 0.199 | 0.013 | 0.013 | 0.286 / 0.353 / 0.367 |
+| rANS | 0.343 / 0.399 / 0.436 / 0.384 | 0.885 / 0.967 / 1.049 / 0.973 | 0.013 | 0.014 | 1.255 / 1.402 / 1.525 / 1.390 |
+| Lite | 0.117 / 0.116 / 0.128 / 0.117 | 0.144 / 0.196 / 0.199 / 0.196 | 0.013 | 0.013 | 0.286 / 0.353 / 0.367 / 0.355 |
 
 The entropy pass is **5x to 6x** faster, which is the shape of the tool: E4's
 eight lanes per tile over a serial round chain against E4-lite's whole
