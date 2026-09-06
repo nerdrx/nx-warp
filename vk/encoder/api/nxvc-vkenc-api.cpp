@@ -327,8 +327,9 @@ int main(int argc, char **argv) {
     nxvc_vk_encoder *enc = nullptr;
     nxvc_vke_status st = nxvc_vk_encoder_create(&ci, &enc);
     if (st != NXVC_VKE_OK) {
-        std::fprintf(stderr, "nxvc_vk_encoder_create: %s\n",
-                     nxvc_vk_encoder_status_string(st));
+        std::fprintf(stderr, "nxvc_vk_encoder_create: %s: %s\n",
+                     nxvc_vk_encoder_status_string(st),
+                     nxvc_vk_encoder_last_create_error());
         /* No device is a skip, not a failure: this runs on CI boxes with no
          * ICD at all. */
         return (st == NXVC_VKE_ERR_NO_DEVICE || st == NXVC_VKE_ERR_VULKAN) ? 77 : 1;

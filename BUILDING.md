@@ -158,6 +158,32 @@ ctest --preset vk-only
 lavapipe is not a fallback here. Its subgroup size of 8 is why the cluster size
 is 8, and it is the device CI proves determinism against.
 
+### Configuring in a `git worktree`: pass the header paths as ABSOLUTE
+
+The Vulkan header options — `NXVC_VK_HEADERS_DIR`, `NXWARP_VK_INCLUDE`,
+`NXVW_VK_INCLUDE`, `NXENC_VULKAN_INC` — are frequently written relative, as
+`-DNXVC_VK_HEADERS_DIR=tools/local/include`. `tools/local/` is not tracked, so
+it exists in the main checkout and in **no worktree**. A worktree configured
+that way still succeeds: every GPU target is silently dropped and `ctest`
+reports **69 tests instead of 111**, all passing. Nothing warns you, and the
+42 missing tests are exactly the ones that would exercise a change to `vk/`.
+
+So in a worktree, give them absolute paths:
+
+```sh
+cmake -S . -B build-vk -G Ninja -DCMAKE_BUILD_TYPE=Release \
+      -DNXWARP_BUILD_VK=ON \
+      -DNXVC_VK_HEADERS_DIR=/abs/path/to/tools/local/include \
+      -DNXWARP_VK_INCLUDE=/abs/path/to/tools/local/include \
+      -DNXVW_VK_INCLUDE=/abs/path/to/tools/vulkan-sdk/include \
+      -DNXENC_VULKAN_INC=/abs/path/to/tools/local/include
+ctest --test-dir build-vk -N | tail -1     # must say 111, not 69
+```
+
+`NXWARP_VK_INCLUDE` is the one most easily missed: it alone gates
+`nxvc-warpdiff` and therefore `warp.gpu_diff`, so leaving it out gives 110 —
+a count close enough to 111 to read past.
+
 ---
 
 ## Cross-compiling for Windows

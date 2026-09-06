@@ -810,18 +810,21 @@ environment selects:
 
 | ICD | streams | mismatching samples |
 |---|---|---|
-| RX 7900 XTX (RADV NAVI31) | 228 checked, 6 skipped | **0** |
-| llvmpipe (lavapipe) | 228 checked, 6 skipped | **0** |
-| Adreno 650 (Pico 4, Qualcomm 1.1.128) | see "Conformance on Adreno" | 24 streams, all `XFORM_LARGE` |
+| RX 7900 XTX (RADV NAVI31) | 232 checked, 2 skipped | **0** |
+| llvmpipe (lavapipe) | 232 checked, 2 skipped | **0** |
+| Adreno 650 (Pico 4, Qualcomm 1.1.128) | 226 checked, 2 skipped | **0** |
 
 The last two streams are the loss test, mono and stereo: each is a sweep of
 its own and they are counted here because a decoder that concealed differently
 from the reference would be as non-conformant as one that decoded differently.
 
-**The Adreno column is not clean and that is `XFORM_LARGE`'s doing alone**:
-the 24 streams that reach the 16x16 / 32x32 module come back wrong on that
-driver, and every other stream on the device is as clean as it was. "The
-transform size, priced" has the footprint and what has been tried.
+**The Adreno column is clean, and `XFORM_LARGE` is the reason it is six
+streams shorter.** The 24 streams that reach the 16x16 / 32x32 module still
+come back wrong on that driver, so the decoder does not offer bit 27 there and
+refuses them at the header instead -- which is the promised behaviour and is
+checked as such, not skipped. "The transform size, priced" has the footprint
+and what has been tried, and "Conformance on Adreno" has why the count is 226
+rather than 232.
 
 The Adreno column is the one that matters: it is the target part, it is a
 third driver rather than a second one, and getting to it found three defects
@@ -1037,12 +1040,36 @@ The same streams as the desktop table, on the Pico 4, from `run-android.sh`:
 
 | ICD | streams | mismatching samples |
 |---|---|---|
-| Adreno 650 (Qualcomm 1.1.128), UINT store | 201 checked, 15 skipped | **0** |
+| Adreno 650 (Qualcomm 1.1.128), UINT store | 226 checked, 2 skipped | **0** |
 | ... `--bench-inter`, 36-frame sequence | see "The inter path" | **0** |
 
 The skip set is decided from each stream's own `tools` field, exactly as on
-the other two ICDs, so it is the same 15 streams and not a device-specific
-exemption.
+the other two ICDs, so it is the same two streams (`v77`, `v79`, `ENTROPY_LITE`)
+and not a device-specific exemption.
+
+**The 24 `XFORM_LARGE` streams are results here, not failures and not skips.**
+This device does not offer bit 27 (`tools_supported_for()` clears it, because
+`v70_xform32_444` wedges the driver), and the contract for a tool a decoder
+does not offer is that the stream is refused at the header with `VERSION`.
+That is a testable promise, so the harness tests it: it asks
+`nxvc_vk_decoder_tools()` for the mask of the device under test rather than
+`nxvc_vk_decoder_tools_supported()` for the build-wide superset, and a stream
+the device declines is **checked** — it must be refused, and refused with
+`VERSION`; a successful decode there is a failure. The three rejection vectors
+`r36`, `r38` and `r39` are malformed inside `XFORM_LARGE` syntax, so their
+manifest status is `BITSTREAM`; on a device without the tool the header
+refuses them first, and `VERSION` is then the right answer rather than a wrong
+one.
+
+Until that distinction existed the sweep read **208 checked, 2 skipped, 27
+failures** on this device, and all 27 were the decoder doing exactly what it
+guarantees. A sweep that cries wolf 27 times is a sweep nobody reads, and it
+hid a real regression once already.
+
+The `checked` count is 226 here against 232 on the desktop ICDs because a
+declined stream is refused before a store format is chosen: the six 4:4:4
+`XFORM_LARGE` cases contribute one result each instead of also being run
+through the RGB10A2 store.
 
 **[inter] The Phase 2 path needed nothing device-specific.** Pass W passed on
 the Adreno 650 first time, and the 100-frame loss test is byte-identical to

@@ -181,6 +181,21 @@ void nxvc_vk_encoder_destroy(nxvc_vk_encoder *enc);
 /* Human-readable detail for the last failure.  Never NULL. */
 const char *nxvc_vk_encoder_last_error(const nxvc_vk_encoder *enc);
 
+/* [additive] Human-readable detail for the last nxvc_vk_encoder_create() on
+ * THIS THREAD, readable with no handle.  Never NULL; "no error" when the last
+ * create on this thread succeeded or none has run.
+ *
+ * Every configuration refusal in create() returns before there is an encoder
+ * to hang a message on, and the device-creation failure deletes the encoder on
+ * its way out, so nxvc_vk_encoder_last_error() cannot reach any of them: a
+ * caller got a bare status code and had to guess which field was refused.
+ * This names the field and its value, e.g. "bit_depth=10: this encoder codes
+ * 8".
+ *
+ * The storage is thread-local and owned by the library.  It is valid until the
+ * next nxvc_vk_encoder_create() on the same thread; copy it to keep it. */
+const char *nxvc_vk_encoder_last_create_error(void);
+
 /* Device the encoder is running on, for logging.  Never NULL. */
 const char *nxvc_vk_encoder_device_name(const nxvc_vk_encoder *enc);
 

@@ -11,7 +11,7 @@
 #
 #   cmake -DGLSLC=<glslc> -DSRC=<in.comp> -DOUT=<out> -DNAME=<symbol>
 #         [-DINCDIR=<dir>] [-DINCDIR2=<dir>] [-DDEFS="-DA=1 -DB"]
-#         [-DSTYLE=plain|guarded|raw]
+#         [-DSTYLE=plain|guarded|raw] [-DDEPFILE=<out.d>]
 #         [-DTARGET_ENV=vulkan1.1] [-DSTAGE=compute]
 #         -P vk/common/cmake/nxvc_gen_spv.cmake
 #
@@ -19,6 +19,15 @@
 #   plain    (default)  static const uint32_t <NAME>_spv[] = {...};
 #   guarded             the same, behind #pragma once + #include <stdint.h>
 #   raw                 the .spv module itself, no wrapper
+#
+# DEPFILE asks glslc for the shader's real include tree, written as a make rule
+# whose target is OUT.  Every caller should pass it and let Ninja track the
+# includes, because the alternative -- a hand-written DEPENDS list per shader --
+# has already failed: warp_pred.comp's list named three headers and, when a
+# fourth include appeared, kept building the OLD SPIR-V while reporting
+# success.  A stale shader is the worst failure this build can produce, because
+# every test still passes and the module on the device is not the one in the
+# tree.
 #
 # The environment variable NXVC_SPV_PASSES overrides the pass list: empty means
 # "no spirv-opt at all", otherwise a space-separated list.  It exists to bisect
@@ -75,10 +84,21 @@ endif()
 
 # -O0 on purpose: the optimiser runs below, from a pass list we control.  See
 # NxvcShaderPasses.cmake.
+set(_dep)
+if(DEFINED DEPFILE AND NOT DEPFILE STREQUAL "")
+  # -MT names the target OUT and not the intermediate .spv, because OUT is what
+  # the build system knows about.
+  set(_dep -MD -MF "${DEPFILE}" -MT "${OUT}")
+  get_filename_component(_depdir "${DEPFILE}" DIRECTORY)
+  if(_depdir)
+    file(MAKE_DIRECTORY "${_depdir}")
+  endif()
+endif()
+
 execute_process(
   COMMAND "${GLSLC}" -fshader-stage=${STAGE}
           --target-env=${NXVC_SPIRV_TARGET_ENV} -O0
-          ${_incs} ${_defs} -o "${_spv}" "${SRC}"
+          ${_incs} ${_defs} ${_dep} -o "${_spv}" "${SRC}"
   RESULT_VARIABLE _rc
   ERROR_VARIABLE  _err)
 if(NOT _rc EQUAL 0)

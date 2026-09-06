@@ -224,7 +224,9 @@ bool gpu_decode(const std::vector<uint8_t> &stream, uint32_t out_format,
     nxvc_vk_decoder *dec = nullptr;
     nxvc_vkd_status st = nxvc_vk_decoder_create(&ci, &dec);
     if (st != NXVC_VKD_OK) {
-        err = dec ? nxvc_vk_decoder_last_error(dec) : "create failed";
+        /* Handle-free: this reports the failure even when create() never
+         * produced a decoder to ask. */
+        err = nxvc_vk_decoder_last_create_error();
         *unsupported = (st == NXVC_VKD_ERR_NO_DEVICE);
         nxvc_vk_decoder_destroy(dec);
         return false;
@@ -389,12 +391,100 @@ const char *vkd_status_token(nxvc_vkd_status st);
 // speak", so driving it to zero is what finishing the tool set means.
 uint64_t supported_tools() { return nxvc_vk_decoder_tools_supported(); }
 
+// The tools THIS DEVICE accepts, which can be less than the build implements:
+// a device that hangs on a legal stream must not advertise the tool that
+// reaches it, and the Adreno 650 clears XFORM_LARGE (bit 27) for exactly that
+// reason.  Asked once, of a real decoder on the device under test, and cached;
+// the build-wide mask stands in when there is no device to ask.
+//
+// The harness used to consult only the build-wide mask, and so judged every
+// XFORM_LARGE vector against a tool the LIBRARY has and the DEVICE refuses.
+// On the headset that was 24 vectors reported as decode failures and three
+// rejection vectors reported as refused with the wrong status -- 27 "failures"
+// that were the decoder doing precisely what it promises.  A sweep that cries
+// wolf 27 times is a sweep nobody reads.
+uint64_t device_tools() {
+    static uint64_t cached = 0;
+    static bool asked = false;
+    if (!asked) {
+        asked = true;
+        cached = supported_tools();
+        nxvc_vkd_create_info ci;
+        nxvc_vk_decoder_create_info_default(&ci);
+        ci.device_name = device_filter();
+        nxvc_vk_decoder *dec = nullptr;
+        if (nxvc_vk_decoder_create(&ci, &dec) == NXVC_VKD_OK)
+            cached = nxvc_vk_decoder_tools(dec);
+        nxvc_vk_decoder_destroy(dec);
+    }
+    return cached;
+}
+
 // docs/SYNTAX.md 11: `tools` is a u64 at byte 32 of the 64-byte stream header.
-bool stream_needs_phase2(const std::vector<uint8_t> &s, uint64_t &tools) {
-    tools = 0;
-    if (s.size() < 40) return false;
+uint64_t stream_tools(const std::vector<uint8_t> &s) {
+    uint64_t tools = 0;
+    if (s.size() < 40) return 0;
     for (int i = 0; i < 8; ++i) tools |= (uint64_t)s[32 + i] << (8 * i);
+    return tools;
+}
+
+// The stream asks for something the BUILD has not implemented.  Not a result:
+// the sweep skips it, and the skip count is exactly "how many vectors this
+// decoder cannot yet speak", so driving it to zero is what finishing the tool
+// set means.
+bool stream_needs_phase2(const std::vector<uint8_t> &s, uint64_t &tools) {
+    tools = stream_tools(s);
     return (tools & ~supported_tools()) != 0;
+}
+
+// The stream asks for something this build HAS but this device declines.  That
+// is not a gap and never will be closed: refusing the stream at the header is
+// the promised behaviour, so it is a RESULT -- checked, and passed when the
+// refusal happens and is named VERSION.
+bool stream_declined_by_device(const std::vector<uint8_t> &s, uint64_t &tools) {
+    tools = stream_tools(s);
+    return (tools & ~supported_tools()) == 0 &&
+           (tools & supported_tools() & ~device_tools()) != 0;
+}
+
+// A stream whose tools this build has and this device declines must be refused
+// at the header, with VERSION.  Returns true when it handled the case (checked
+// and scored); false when the stream is nothing to do with the device mask and
+// the caller should decode it normally.
+//
+// Shared by the vector sweep and the synthetic sweep because the promise is
+// the same in both, and because the synthetic sweep had no tool gate at all:
+// on the headset its eighteen XFORM_LARGE streams were reported as decode
+// failures for doing exactly what the decoder guarantees.
+bool handled_as_device_refusal(const char *name,
+                               const std::vector<uint8_t> &stream) {
+    uint64_t tools = 0;
+    if (!stream_declined_by_device(stream, tools)) return false;
+    nxvc_vkd_create_info ci;
+    nxvc_vk_decoder_create_info_default(&ci);
+    ci.device_name = device_filter();
+    nxvc_vk_decoder *dec = nullptr;
+    if (nxvc_vk_decoder_create(&ci, &dec) != NXVC_VKD_OK) {
+        nxvc_vk_decoder_destroy(dec);
+        ++g_skipped;
+        return true;
+    }
+    size_t consumed = 0;
+    nxvc_vkd_status st = nxvc_vk_decoder_parse_stream_header(
+        dec, stream.data(), stream.size(), &consumed);
+    nxvc_vk_decoder_destroy(dec);
+    ++g_checked;
+    if (st != NXVC_VKD_ERR_VERSION) {
+        std::printf("FAIL %s: tools 0x%llx are not offered by this device and "
+                    "must be refused with VERSION, got %s\n",
+                    name, (unsigned long long)tools, vkd_status_token(st));
+        ++g_fail;
+    } else if (g_verbose) {
+        std::printf("ok   %s (tools 0x%llx declined by this device, refused "
+                    "with VERSION)\n",
+                    name, (unsigned long long)tools);
+    }
+    return true;
 }
 
 void run_vectors() {
@@ -430,6 +520,7 @@ void run_vectors() {
             continue;
         }
         uint64_t tools = 0;
+        if (handled_as_device_refusal(r.name.c_str(), stream)) continue;
         if (stream_needs_phase2(stream, tools)) {
             // Must be refused, and refused with VERSION: "the tools mask is
             // not something this decoder speaks".
@@ -523,6 +614,14 @@ void run_rejects() {
         // path lands.
         uint64_t tools = 0;
         const bool phase2 = stream_needs_phase2(stream, tools);
+        // ... and the same for a tool this build has but this DEVICE declines.
+        // r36, r38 and r39 are malformed inside XFORM_LARGE syntax, so their
+        // manifest status is BITSTREAM; on a device that does not offer the
+        // tool the header refuses them first, and VERSION is then the right
+        // answer rather than a wrong one.  The vector is still REFUSED, which
+        // is the property that matters and is checked either way.
+        uint64_t dtools = 0;
+        const bool declined = stream_declined_by_device(stream, dtools);
         nxvc_vkd_create_info ci;
         nxvc_vk_decoder_create_info_default(&ci);
         ci.device_name = device_filter();
@@ -552,6 +651,15 @@ void run_rejects() {
         }
         nxvc_vk_decoder_destroy(dec);
         const bool match = std::strcmp(vkd_status_token(st), want) == 0;
+        if (!match && declined && st == NXVC_VKD_ERR_VERSION) {
+            ++n;
+            ++g_checked;
+            if (g_verbose)
+                std::printf("ok   %s (%s or, on a device without tools "
+                            "0x%llx, VERSION)\n",
+                            name, want, (unsigned long long)dtools);
+            continue;
+        }
         if (!match && phase2 &&
             (st == NXVC_VKD_ERR_VERSION || st == NXVC_VKD_ERR_UNSUPPORTED)) {
             // Refused, just earlier than the manifest describes.
@@ -1051,6 +1159,14 @@ void run_synthetic(bool quick) {
             ++g_fail;
             continue;
         }
+        // A stream this device declines is refused at the HEADER, before any
+        // store format is chosen, so the RGB10A2 twin below would re-check the
+        // identical refusal.  It is not run, which is why a device with a
+        // smaller tool mask reports a smaller `checked` count than the desktop
+        // ICDs and not merely a different pass/fail split: on the Adreno 650
+        // the six 4:4:4 XFORM_LARGE cases contribute one result each instead
+        // of two, so 226 against 232.
+        if (handled_as_device_refusal(c.name.c_str(), s)) continue;
         check_stream(c.name.c_str(), s, "", NXVC_VKD_OUT_AUTO);
         // A 4:4:4 stream also goes through the RGB10A2 store: its 8-bit
         // samples are replicated into 10 bits and read back by taking the top

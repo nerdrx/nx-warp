@@ -34,6 +34,7 @@
 #include "reconstruct.spv.h"
 #include "reconstruct_v1.spv.h"
 #include "reconstruct_skip.spv.h"
+#include "reconstruct_skip_store.spv.h"
 #include "reconstruct_v1_x8.spv.h"
 #include "reconstruct_x8.spv.h"
 #include "warp_pred.spv.h"
@@ -170,6 +171,9 @@ struct nxvc_vk_decoder {
     // [inter] The WARP_SKIP module: one, not four.  A skip tile is never
     // INTRA and runs no transform, so neither build variant can reach it.
     VkShaderModule smBSkip = VK_NULL_HANDLE;
+    // [inter] The same tile kind, predicting for itself instead of reading
+    // back what Pass W wrote.  See passB/CMakeLists.txt.
+    VkShaderModule smBSkipStore = VK_NULL_HANDLE;
     VkShaderModule smB[2][2] = {{VK_NULL_HANDLE, VK_NULL_HANDLE},
                                 {VK_NULL_HANDLE, VK_NULL_HANDLE}};
     // [inter] Pass W: the predictor.  Its own set layout, because it binds
@@ -248,6 +252,61 @@ namespace {
 
 using D = nxvc_vk_decoder;
 
+// The VkResult spelled the way the spec spells it.  A caller reading a log
+// should not have to look up -1000069000, which is the number that cost this
+// project a device round: the pool was one descriptor short and the only
+// report anyone had was "vulkan error".
+const char *vkresult_name(VkResult r) {
+    switch (r) {
+    case VK_SUCCESS: return "VK_SUCCESS";
+    case VK_NOT_READY: return "VK_NOT_READY";
+    case VK_TIMEOUT: return "VK_TIMEOUT";
+    case VK_INCOMPLETE: return "VK_INCOMPLETE";
+    case VK_ERROR_OUT_OF_HOST_MEMORY: return "VK_ERROR_OUT_OF_HOST_MEMORY";
+    case VK_ERROR_OUT_OF_DEVICE_MEMORY: return "VK_ERROR_OUT_OF_DEVICE_MEMORY";
+    case VK_ERROR_INITIALIZATION_FAILED:
+        return "VK_ERROR_INITIALIZATION_FAILED";
+    case VK_ERROR_DEVICE_LOST: return "VK_ERROR_DEVICE_LOST";
+    case VK_ERROR_MEMORY_MAP_FAILED: return "VK_ERROR_MEMORY_MAP_FAILED";
+    case VK_ERROR_LAYER_NOT_PRESENT: return "VK_ERROR_LAYER_NOT_PRESENT";
+    case VK_ERROR_EXTENSION_NOT_PRESENT:
+        return "VK_ERROR_EXTENSION_NOT_PRESENT";
+    case VK_ERROR_FEATURE_NOT_PRESENT: return "VK_ERROR_FEATURE_NOT_PRESENT";
+    case VK_ERROR_INCOMPATIBLE_DRIVER: return "VK_ERROR_INCOMPATIBLE_DRIVER";
+    case VK_ERROR_TOO_MANY_OBJECTS: return "VK_ERROR_TOO_MANY_OBJECTS";
+    case VK_ERROR_FORMAT_NOT_SUPPORTED: return "VK_ERROR_FORMAT_NOT_SUPPORTED";
+    case VK_ERROR_FRAGMENTED_POOL: return "VK_ERROR_FRAGMENTED_POOL";
+    case VK_ERROR_UNKNOWN: return "VK_ERROR_UNKNOWN";
+    case VK_ERROR_OUT_OF_POOL_MEMORY: return "VK_ERROR_OUT_OF_POOL_MEMORY";
+    case VK_ERROR_INVALID_EXTERNAL_HANDLE:
+        return "VK_ERROR_INVALID_EXTERNAL_HANDLE";
+    case VK_ERROR_FRAGMENTATION: return "VK_ERROR_FRAGMENTATION";
+    case VK_ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS:
+        return "VK_ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS";
+    default: return "VkResult";
+    }
+}
+
+// ------------------------------------------------- the create diagnostic
+// nxvc_vk_decoder_last_error() needs a decoder, so a failure that happens
+// BEFORE there is one -- or one whose caller does not know the library hands
+// the half-built decoder back for exactly this purpose -- has nowhere to be
+// read.  The WiVRn client's report of the out-of-pool bug was the whole of
+// "nxvc_vk_decoder_create: vulkan error", which named neither the call nor
+// the VkResult, and that is the entire diagnostic budget of a headset.
+//
+// So every failure path also writes here, and this is readable with no handle
+// at all.  Thread-local because two threads may create decoders at once and
+// a diagnostic that races is worse than none.  Never NULL, never empty.
+char *create_err_buf() {
+    static thread_local char b[512] = "no error";
+    return b;
+}
+void set_create_err(const char *s) {
+    char *b = create_err_buf();
+    std::snprintf(b, 512, "%s", s && s[0] ? s : "unspecified failure");
+}
+
 nxvc_vkd_status seterr(D *d, nxvc_vkd_status st, const char *fmt, ...) {
     char b[512];
     va_list ap;
@@ -255,6 +314,18 @@ nxvc_vkd_status seterr(D *d, nxvc_vkd_status st, const char *fmt, ...) {
     std::vsnprintf(b, sizeof b, fmt, ap);
     va_end(ap);
     d->err = b;
+    set_create_err(b);
+    return st;
+}
+
+// Used where the failure is before or without a decoder object.
+nxvc_vkd_status createerr(nxvc_vkd_status st, const char *fmt, ...) {
+    char b[512];
+    va_list ap;
+    va_start(ap, fmt);
+    std::vsnprintf(b, sizeof b, fmt, ap);
+    va_end(ap);
+    set_create_err(b);
     return st;
 }
 
@@ -262,8 +333,8 @@ nxvc_vkd_status seterr(D *d, nxvc_vkd_status st, const char *fmt, ...) {
     do {                                                                  \
         VkResult _r = (expr);                                             \
         if (_r != VK_SUCCESS)                                             \
-            return seterr((d), NXVC_VKD_ERR_VULKAN, "%s failed: VkResult %d", \
-                          #expr, (int)_r);                                \
+            return seterr((d), NXVC_VKD_ERR_VULKAN, "%s failed: %s (%d)", \
+                          #expr, vkresult_name(_r), (int)_r);             \
     } while (0)
 
 // ------------------------------------------------------------------ memory
@@ -409,7 +480,8 @@ nxvc_vkd_status create_device(D *d, const nxvc_vkd_create_info *ci) {
     VkResult r = vkCreateInstance(&ii, nullptr, &d->inst);
     if (r != VK_SUCCESS)
         return seterr(d, NXVC_VKD_ERR_NO_DEVICE,
-                      "vkCreateInstance failed: VkResult %d", (int)r);
+                      "vkCreateInstance failed: %s (%d)", vkresult_name(r),
+                      (int)r);
     d->own_instance = true;
 
     uint32_t n = 0;
@@ -541,8 +613,8 @@ nxvc_vkd_status create_device(D *d, const nxvc_vkd_create_info *ci) {
     }
     r = vkCreateDevice(d->phys, &di, nullptr, &d->dev);
     if (r != VK_SUCCESS)
-        return seterr(d, NXVC_VKD_ERR_VULKAN, "vkCreateDevice failed: %d",
-                      (int)r);
+        return seterr(d, NXVC_VKD_ERR_VULKAN, "vkCreateDevice failed: %s (%d)",
+                      vkresult_name(r), (int)r);
     d->own_device = true;
     vkGetDeviceQueue(d->dev, d->qfam, 0, &d->queue);
     if (d->has_exec_props) {
@@ -788,6 +860,9 @@ nxvc_vkd_status make_layouts(D *d) {
     sm.codeSize = sizeof(reconstruct_skip_spv);
     sm.pCode = reconstruct_skip_spv;
     VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smBSkip));
+    sm.codeSize = sizeof(reconstruct_skip_store_spv);
+    sm.pCode = reconstruct_skip_store_spv;
+    VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smBSkipStore));
     sm.codeSize = sizeof(warp_pred_spv);
     sm.pCode = warp_pred_spv;
     VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smW));
@@ -913,9 +988,16 @@ nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2, int32_t sparse,
                            uint32_t store_words, int32_t intra_dir,
                            int32_t split_tool, int32_t xform_large,
                            int32_t inter_pred, int32_t ring_store,
-                           VkPipeline *out, bool skip_only = false) {
+                           VkPipeline *out, int skip_kind = 0) {
     const uint32_t sched = d->dir_sched;
-    uint64_t key = ((uint64_t)(uint32_t)skip_only << 59) |
+    // `skip_kind` is 0, 1 or 2 and so needs TWO bits.  It had one, at 59, from
+    // when it was a bool -- and 2 << 59 is bit 60, which is `split_tool`.  A
+    // frame with XFORM_4X4_SPLIT therefore handed the WARP_SKIP dispatch the
+    // GENERAL module out of this cache, which reads a WPred buffer that by
+    // then is deliberately not written for those tiles: the skip tiles came
+    // out black, and only on a stream that sets one particular tool.
+    // 57-58 is the free pair; every other field's shift is unchanged.
+    uint64_t key = ((uint64_t)(uint32_t)skip_kind << 57) |
                    ((uint64_t)(uint32_t)ring_store << 63) |
                    ((uint64_t)(uint32_t)inter_pred << 62) |
                    ((uint64_t)(uint32_t)xform_large << 61) |
@@ -957,8 +1039,10 @@ nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2, int32_t sparse,
     ci.stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
     ci.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
     ci.stage.module =
-        skip_only ? d->smBSkip
-                  : d->smB[intra_dir != 0 ? 1 : 0][xform_large != 0 ? 1 : 0];
+        skip_kind == 2 ? d->smBSkipStore
+        : skip_kind == 1
+            ? d->smBSkip
+            : d->smB[intra_dir != 0 ? 1 : 0][xform_large != 0 ? 1 : 0];
     ci.stage.pName = "main";
     ci.stage.pSpecializationInfo = &spec;
     ci.layout = d->plB;
@@ -1547,10 +1631,19 @@ extern "C" void nxvc_vk_decoder_create_info_default(nxvc_vkd_create_info *ci) {
 
 extern "C" nxvc_vkd_status nxvc_vk_decoder_create(
     const nxvc_vkd_create_info *ci, nxvc_vk_decoder **out) {
-    if (!ci || !out) return NXVC_VKD_ERR_ARG;
+    // Cleared here so a caller that reads the create diagnostic after a
+    // SUCCESSFUL create does not see the last failure of a previous one.
+    set_create_err("no error");
+    if (!ci || !out)
+        return createerr(NXVC_VKD_ERR_ARG,
+                         "nxvc_vk_decoder_create: %s must not be NULL",
+                         !ci ? "create_info" : "out");
     *out = nullptr;
     D *d = new (std::nothrow) D();
-    if (!d) return NXVC_VKD_ERR_NOMEM;
+    if (!d)
+        return createerr(NXVC_VKD_ERR_NOMEM,
+                         "nxvc_vk_decoder_create: out of memory allocating the "
+                         "decoder");
     d->want_output = ci->output_format;
     d->flags = ci->flags;
     // Opt-in, and only on a device this library creates: the statistics
@@ -1569,7 +1662,10 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_create(
         d->qfam = ci->queue_family;
         if (!d->phys || !d->queue) {
             nxvc_vk_decoder_destroy(d);
-            return NXVC_VKD_ERR_ARG;
+            return createerr(NXVC_VKD_ERR_ARG,
+                             "nxvc_vk_decoder_create: adopting a device needs "
+                             "all five handles; %s is NULL",
+                             !d->phys ? "physical_device" : "queue");
         }
     } else if ((st = create_device(d, ci))) {
         *out = d;  // hand back the decoder so the caller can read last_error
@@ -1583,18 +1679,22 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_create(
     VkCommandPoolCreateInfo cp{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
     cp.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
     cp.queueFamilyIndex = d->qfam;
-    if (vkCreateCommandPool(d->dev, &cp, nullptr, &d->pool) != VK_SUCCESS) {
+    if (VkResult r = vkCreateCommandPool(d->dev, &cp, nullptr, &d->pool)) {
         *out = d;
-        return seterr(d, NXVC_VKD_ERR_VULKAN, "vkCreateCommandPool failed");
+        return seterr(d, NXVC_VKD_ERR_VULKAN,
+                      "vkCreateCommandPool failed: %s (%d)", vkresult_name(r),
+                      (int)r);
     }
     VkCommandBufferAllocateInfo cb{
         VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
     cb.commandPool = d->pool;
     cb.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     cb.commandBufferCount = 1;
-    if (vkAllocateCommandBuffers(d->dev, &cb, &d->cmd) != VK_SUCCESS) {
+    if (VkResult r = vkAllocateCommandBuffers(d->dev, &cb, &d->cmd)) {
         *out = d;
-        return seterr(d, NXVC_VKD_ERR_VULKAN, "vkAllocateCommandBuffers failed");
+        return seterr(d, NXVC_VKD_ERR_VULKAN,
+                      "vkAllocateCommandBuffers failed: %s (%d)",
+                      vkresult_name(r), (int)r);
     }
 
     // Core name first, then the KHR alias a 1.1 device exposes.
@@ -1654,6 +1754,8 @@ extern "C" void nxvc_vk_decoder_destroy(nxvc_vk_decoder *d) {
     if (d->dev) {
         vkDeviceWaitIdle(d->dev);
         if (d->smBSkip) vkDestroyShaderModule(d->dev, d->smBSkip, nullptr);
+        if (d->smBSkipStore)
+            vkDestroyShaderModule(d->dev, d->smBSkipStore, nullptr);
         for (auto &kv : d->pipesA) vkDestroyPipeline(d->dev, kv.second, nullptr);
         for (auto &kv : d->pipesB) vkDestroyPipeline(d->dev, kv.second, nullptr);
         if (d->smA) vkDestroyShaderModule(d->dev, d->smA, nullptr);
@@ -1701,6 +1803,10 @@ extern "C" uint64_t nxvc_vk_decoder_tools(const nxvc_vk_decoder *d) {
 
 extern "C" const char *nxvc_vk_decoder_last_error(const nxvc_vk_decoder *d) {
     return d ? d->err.c_str() : "null decoder";
+}
+
+extern "C" const char *nxvc_vk_decoder_last_create_error(void) {
+    return create_err_buf();
 }
 
 extern "C" const char *nxvc_vk_decoder_device_name(const nxvc_vk_decoder *d) {
@@ -1838,8 +1944,8 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_wait(nxvc_vk_decoder *d,
             vkWaitForFences(d->dev, 1, &d->fence, VK_TRUE, timeout_ns);
         if (fr == VK_TIMEOUT) return NXVC_VKD_ERR_INTERNAL;
         if (fr != VK_SUCCESS)
-            return seterr(d, NXVC_VKD_ERR_VULKAN, "vkWaitForFences: %d",
-                          (int)fr);
+            return seterr(d, NXVC_VKD_ERR_VULKAN, "vkWaitForFences: %s (%d)",
+                          vkresult_name(fr), (int)fr);
         d->fence_pending = false;
         collect_timestamps(d);
         return NXVC_VKD_OK;
@@ -1855,7 +1961,8 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_wait(nxvc_vk_decoder *d,
     VkResult r = d->fpWaitSemaphores(d->dev, &wi, timeout_ns);
     if (r == VK_TIMEOUT) return NXVC_VKD_ERR_INTERNAL;
     if (r != VK_SUCCESS)
-        return seterr(d, NXVC_VKD_ERR_VULKAN, "vkWaitSemaphores: %d", (int)r);
+        return seterr(d, NXVC_VKD_ERR_VULKAN, "vkWaitSemaphores: %s (%d)", vkresult_name(r),
+                      (int)r);
     collect_timestamps(d);
     return NXVC_VKD_OK;
 }
@@ -2164,13 +2271,23 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
                               : (int32_t)nxvw::kOutNone,
                          fp.push.sparse, storeWords, 0, (int32_t)fp.split4, 0,
                          inter_pred_on(d, interStream),
-                         ring_store_on(d, interStream), &pipeBSkip, true)))
+                         ring_store_on(d, interStream), &pipeBSkip, 2)))
         return st;
 
     VkPipeline pipeWp = VK_NULL_HANDLE;
     if (fp.any_inter && (st = pipeline_w(d, &pipeWp))) return st;
 
     for (uint32_t pass = 0; pass < eyePasses; ++pass) {
+        const uint32_t base = pass * tilesPerEye;
+        // [inter] How many of this eye's tiles the WARP_SKIP module takes.
+        // It is computed HERE, before Pass W, because both passes have to
+        // agree: whatever Pass B's skip module does not take, Pass W must
+        // still predict.  A frame with skip tiles but no skip PIPELINE -- the
+        // alpha second-store configuration, which that module deliberately
+        // does not carry -- folds this to zero, and then Pass W covers
+        // everything exactly as it did before the split.
+        const uint32_t nskip =
+            pipeBSkip != VK_NULL_HANDLE ? d->order_nskip[pass] : 0u;
         if (fp.any_inter) {
             if (d->have_timestamps && pass == 0)
                 vkCmdWriteTimestamp(d->cmd,
@@ -2182,8 +2299,21 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
             vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeWp);
             vkCmdPushConstants(d->cmd, d->plW, VK_SHADER_STAGE_COMPUTE_BIT, 0,
                                (uint32_t)sizeof(nxvw::NxvwWarpPush), &wpush);
-            vkCmdDispatchBase(d->cmd, 0, 0, 0, ntiles, 1, 1);
-            ++dispatches;
+            // [inter] Over this eye's CODED tiles only.  The skip range leads
+            // each eye's segment of the order buffer, and the module that
+            // takes it now runs the predictor itself -- so predicting those
+            // tiles here as well would write a WPred slot nothing ever reads.
+            // That is the saving: 12.3 KB stored and 12.3 KB loaded per
+            // skipped tile, both gone.
+            //
+            // The range is one eye's, so `eyeFilter` no longer has anything
+            // to reject; it stays set because it is also what keeps a STEREO
+            // tile in the pass that has its reference.
+            if (nskip < tilesPerEye) {
+                vkCmdDispatchBase(d->cmd, base + nskip, 0, 0,
+                                  tilesPerEye - nskip, 1, 1);
+                ++dispatches;
+            }
             if (d->have_timestamps && pass == 0)
                 vkCmdWriteTimestamp(d->cmd,
                                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
@@ -2198,7 +2328,6 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
             vkCmdPushConstants(d->cmd, d->plB, VK_SHADER_STAGE_COMPUTE_BIT, 0,
                                (uint32_t)sizeof(nxvw::NxvwPassBPush), &fp.push);
         }
-        const uint32_t base = pass * tilesPerEye;
         // Three contiguous ranges, in build_tile_order()'s order:
         //   [0, nskip)        WARP_SKIP        -> the skip module
         //   [nskip, nodir)    other non-INTRA  -> the module with no wavefront
@@ -2209,11 +2338,8 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
         // A frame that has skip tiles but no skip PIPELINE -- the alpha
         // second-store configuration, which the skip module deliberately does
         // not carry -- must not lose them: they are non-INTRA, so they are
-        // already inside [0, nodir), and folding the range back to zero puts
+        // already inside [0, nodir), and folding `nskip` to zero above puts
         // them on the module that would have had them before this split.
-        const uint32_t nskip = pipeBSkip != VK_NULL_HANDLE
-                                   ? d->order_nskip[pass]
-                                   : 0u;
         const uint32_t nodir =
             fp.push.intraDir != 0 ? d->order_nodir[pass] : tilesPerEye;
         const uint32_t seg[3] = {nskip, nodir - nskip, tilesPerEye - nodir};

@@ -121,6 +121,32 @@ const int kIntraDir = NXVW_INTRA_DIR;
 #define NXVW_SKIP_ONLY 0
 #endif
 
+// [inter] NXVW_SKIP_ONLY, taken one step further: the module that predicts the
+// tile ITSELF instead of reading back what Pass W wrote for it.
+//
+// NXVW_SKIP_ONLY already establishes that a WARP_SKIP tile's reconstruction is
+// exactly clamp(W).  What it still does is fetch that W from the WPred buffer
+// -- which means Pass W spent a 12.3 KB store per tile putting it there, and
+// this kernel spends a 12.3 KB load per tile taking it back out, for samples
+// neither pass changes in between.  For the ONE tile shape whose predictor is
+// the whole answer, that round trip through global memory is the entire cost.
+//
+// So run the predictor here.  It lands in the tile's own plane slot in
+// sPlane -- which is not extra shared memory: a plane's slot is sized at
+// res_level 0 (nxvw_plane_store_words) and so is exactly the (full * full) / 2
+// words the full-extent predictor needs, the same block Pass W stages in its
+// own sFull.  The DC scratch this module cannot reach pays for the corners,
+// so the module's shared footprint goes DOWN by 480 B.
+//
+// Pass W then stops dispatching over the skip range entirely, and the WPred
+// buffer is written and read for coded tiles only.
+#ifndef NXVW_SKIP_STORE
+#define NXVW_SKIP_STORE 0
+#endif
+#if NXVW_SKIP_STORE && !NXVW_SKIP_ONLY
+#error "NXVW_SKIP_STORE is a refinement of NXVW_SKIP_ONLY and needs it set"
+#endif
+
 // [minor 6] XFORM_LARGE (tool bit 27): the stream may name a 16x16 or 32x32
 // transform, and every block grid, DC plane, planar mapping, weighting-matrix
 // index and intra predictor then follows the tile's `bsize` instead of 8.
@@ -214,10 +240,18 @@ layout(push_constant) uniform Push { NxvwPassBPush p; } pc;
 shared uint sPlane[kPlaneStoreWords];
 // DC plane: up to 8x8 block means, plus scratch for its second-level IDCT.
 shared int sMeans[64];
+#if NXVW_SKIP_STORE
+// A skipped tile runs no DC plane at all, so the 512 B of IDCT scratch is
+// dead here and the predictor's four corners take 32 B of it.  The module's
+// shared footprint is 480 B smaller than the one it replaces, which matters:
+// a 4:4:4 tile's plane slots alone are 24 KB of a 32 KB budget.
+shared ivec2 sCorner[4];
+#else
 shared int sDcTmp[64];
 // Between the two passes of the second-level DC IDCT, so neither sDcTmp nor
 // sMeans is both read and written; see the transform below.
 shared int sDcRow[64];
+#endif
 // [sparse] Set when any 8x8 block of the current plane names a directional
 // mode other than 0.  Mode 0 predicts from the DC plane alone, so a plane
 // whose modes are all 0 has no dependency between blocks at all and takes the
@@ -229,6 +263,21 @@ shared uint sModesNz;
 // a prototype cannot forward declare; everything else it needs it declares
 // itself.  vk/decoder/inter/inter_hook.glsl.
 #include "../inter/inter_hook.glsl"
+
+#if NXVW_SKIP_STORE
+// The predictor, run in this kernel.  inter/warp_pred.glsl names the five
+// things it does not contain; these are this module's answers.  The scratch
+// and the destination are the same place -- the tile's plane slot -- so the
+// file is told not to copy one to the other.
+int gScratchBase = 0;
+uint nxvwWarpParam(uint i) { return uWarpHdr.w[i]; }
+uint nxvwRingWord(uint i) { return uRingOut.w[i]; }
+uint nxvwWarpScratchRead(int i) { return sPlane[gScratchBase + i]; }
+void nxvwWarpScratchWrite(int i, uint v) { sPlane[gScratchBase + i] = v; }
+void nxvwWarpEmit(int i, uint v) { sPlane[gScratchBase + i] = v; }
+#define NXVW_WARP_EMIT_IS_SCRATCH
+#include "../inter/warp_pred.glsl"
+#endif
 
 // =========================================================== primitives
 int clamp16(int v) { return clamp(v, kI16Min, kI16Max); }
@@ -1011,6 +1060,30 @@ void main() {
     // docs/ADRENO-RULES.md.
     int lumaStore = 0, lumaSize = 0;
 
+#if NXVW_SKIP_STORE
+    // [inter] The tile's warp record, read here because this module runs the
+    // predictor instead of reading its output.  It is the same record Pass W
+    // reads, at the same index, out of the same buffer -- binding 15 is the
+    // whole warp parameter block and not just its header.
+    const uint wtb = uint(NXVW_WARP_HDR_UINTS + tile * NXVW_WARP_TILE_UINTS);
+    const uint ww0 = uWarpHdr.w[wtb];
+    const int wEye = nxvw_wt_eye(ww0);
+    const int wQuad = nxvw_wt_quad(ww0);
+    const int wNearSkip = nxvw_wt_near_skip(ww0);
+    const int wTx = int(uWarpHdr.w[wtb + 1u]);
+    const int wTy = int(uWarpHdr.w[wtb + 2u]);
+    const int wMvx = int(uWarpHdr.w[wtb + 3u]);
+    const int wMvy = int(uWarpHdr.w[wtb + 4u]);
+    const uint wQbits = uWarpHdr.w[wtb + 5u];
+    const uint wRefBase = uWarpHdr.w[wtb + 6u];
+    const int wTileQp = int(uWarpHdr.w[wtb + 7u]);
+    // Every tile this module is dispatched over is WARP_SKIP ([SYN] 4.1 mode
+    // 0), which build_tile_order() puts in its own contiguous range.  So the
+    // predictor is the warped one and never the identity, and the reference
+    // eye is the tile's own -- only STEREO reads the other eye, and a STEREO
+    // tile is not a skipped one.
+#endif
+
     for (int p = 0; p < 4; ++p) {
         if (p >= ncoded) break;   // uniform across the workgroup
 
@@ -1067,7 +1140,35 @@ void main() {
                              : (lumaSize == 2 * size ? 2 : 0))
                           : 0;
 
-#if NXVW_SKIP_ONLY
+#if NXVW_SKIP_STORE
+        // ------------------- WARP_SKIP: predict the tile, here, into sPlane
+        // [SYN] 13.3 reduces to `clamp(W)` for a skipped tile and
+        // [REF] codec_impl.inc reconstruct_skip() says the same, so W is the
+        // whole reconstruction.  Producing it in this kernel rather than
+        // reading it back is worth a 12.3 KB store in Pass W and a 12.3 KB
+        // load here, per tile, for samples neither pass alters in between.
+        //
+        // The full-extent block goes in this plane's own slot: the slot is
+        // sized at res_level 0 and so is exactly (full * full) / 2 words, and
+        // the box average down to `size` runs in place inside it.
+        // inter/warp_pred.glsl carries the argument and the barrier.
+        //
+        // Everything downstream is untouched and shared with the intra path:
+        // sPlane is left holding the samples it would have held, so the
+        // display conversion, the two-plane store and the reference-ring store
+        // are the code they always were.
+        gScratchBase = store;
+        nxvwWarpPlane(tid, p, wtb, size,
+                      nxvw_inter_plane_full(p, pc.p.chroma420),
+                      nxvw_inter_plane_sub(p, pc.p.chroma420), wEye, wEye,
+                      kWarpModeWarp,
+                      int(uWarpHdr.w[uint(NXVW_WARP_HDR_RING + 12 + p)]),
+                      chroma ? (pc.p.chroma420 != 0 ? (pc.p.imageH + 1) >> 1
+                                                    : pc.p.imageH)
+                             : pc.p.imageH,
+                      wNearSkip, wQuad, wTileQp, wQbits, wRefBase, wMvx, wMvy,
+                      wTx, wTy);
+#elif NXVW_SKIP_ONLY
         // ------------------------------ WARP_SKIP: the reconstruction IS W
         // A skipped tile codes no unit, so this whole plane -- the DC plane's
         // dequantize and second-level inverse transform, the block-mean field,

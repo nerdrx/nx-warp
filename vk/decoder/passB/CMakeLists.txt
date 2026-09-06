@@ -62,13 +62,10 @@ foreach(_xl 1 0)
             "-DDEFS=-DNXVW_INTRA_DIR=${_dir} -DNXVW_XFORM_LARGE=${_xl} ${NXVW_PASSB_EXTRA_DEFS}"
             -DINCDIR=${NXVW_PASSB_DIR}
             -DSTYLE=plain
+            -DDEPFILE=${_out}.d
             -P ${NXVW_PASSB_GEN_SPV}
+    DEPFILE ${_out}.d
     DEPENDS ${NXVW_PASSB_DIR}/reconstruct.comp
-            ${NXVW_PASSB_DIR}/syntax_constants.h
-            ${NXVW_PASSB_DIR}/passB_layout.h
-            ${NXVW_PASSB_DIR}/store.glsl
-            ${NXVW_PASSB_DIR}/../inter/inter_hook.glsl
-            ${NXVW_PASSB_DIR}/../inter/inter_layout.h
             ${NXVW_PASSB_GEN_SPV} ${NXVW_PASSB_SPV_PASSES_CMAKE}
     COMMENT "glslc reconstruct.comp (dir=${_dir} xl=${_xl}) -> ${_name}.spv.h"
     VERBATIM)
@@ -101,15 +98,44 @@ add_custom_command(
           "-DDEFS=-DNXVW_INTRA_DIR=0 -DNXVW_XFORM_LARGE=0 -DNXVW_SKIP_ONLY=1 ${NXVW_PASSB_EXTRA_DEFS}"
           -DINCDIR=${NXVW_PASSB_DIR}
           -DSTYLE=plain
+          -DDEPFILE=${_skip_out}.d
           -P ${NXVW_PASSB_GEN_SPV}
+  DEPFILE ${_skip_out}.d
   DEPENDS ${NXVW_PASSB_DIR}/reconstruct.comp
-          ${NXVW_PASSB_DIR}/syntax_constants.h
-          ${NXVW_PASSB_DIR}/passB_layout.h
-            ${NXVW_PASSB_DIR}/store.glsl
-          ${NXVW_PASSB_DIR}/../inter/inter_hook.glsl
-          ${NXVW_PASSB_DIR}/../inter/inter_layout.h
           ${NXVW_PASSB_GEN_SPV} ${NXVW_PASSB_SPV_PASSES_CMAKE}
   COMMENT "glslc reconstruct.comp (WARP_SKIP only) -> reconstruct_skip.spv.h"
+  VERBATIM)
+
+# [inter] A sixth module: the WARP_SKIP kernel that runs the predictor itself.
+#
+# Same tile kind as reconstruct_skip, one step further along.  That module
+# still reads W back out of the WPred buffer, which means Pass W stored 12.3 KB
+# per tile and this loads it again, for samples neither pass changes.  This one
+# predicts the tile in place, in the plane slot it was going to reconstruct
+# into, so the WPred round trip disappears for the one tile shape whose
+# predictor is the entire answer -- and Pass W stops dispatching over the skip
+# range at all.
+#
+# Like reconstruct_skip it needs no dir/xform_large variants: a skip tile is
+# never INTRA and runs no transform.
+set(_skipst_out ${NXVW_PASSB_GEN}/reconstruct_skip_store.spv.h)
+list(APPEND NXVW_PASSB_SPV_LIST ${_skipst_out})
+add_custom_command(
+  OUTPUT ${_skipst_out}
+  COMMAND ${CMAKE_COMMAND}
+          -DGLSLC=${NXVW_GLSLC}
+          -DSRC=${NXVW_PASSB_DIR}/reconstruct.comp
+          -DOUT=${_skipst_out}
+          -DNAME=reconstruct_skip_store
+          "-DDEFS=-DNXVW_INTRA_DIR=0 -DNXVW_XFORM_LARGE=0 -DNXVW_SKIP_ONLY=1 -DNXVW_SKIP_STORE=1 ${NXVW_PASSB_EXTRA_DEFS}"
+          -DINCDIR=${NXVW_PASSB_DIR}
+          -DSTYLE=plain
+          -DDEPFILE=${_skipst_out}.d
+          -P ${NXVW_PASSB_GEN_SPV}
+  DEPFILE ${_skipst_out}.d
+  DEPENDS ${NXVW_PASSB_DIR}/reconstruct.comp
+          ${NXVW_PASSB_GEN_SPV} ${NXVW_PASSB_SPV_PASSES_CMAKE}
+  COMMENT "glslc reconstruct.comp (WARP_SKIP + predict) -> reconstruct_skip_store.spv.h"
   VERBATIM)
 
 set(NXVW_PASSB_SPV ${NXVW_PASSB_GEN}/reconstruct.spv.h)
