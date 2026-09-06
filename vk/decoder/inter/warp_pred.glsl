@@ -284,6 +284,13 @@ int sample_bilinear(int ix, int iy, int fx, int fy) {
     int t00, t10, t01, t11;
     fetchRefPair(ix, iy, t00, t10);
     fetchRefPair(ix, iy + 1, t01, t11);
+    // Four INDEPENDENT products, deliberately.  `gy * (gx * t00 + fx * t10) +
+    // fy * (gx * t01 + fx * t11)` is the same integer -- nothing rounds before
+    // the shift, so the regrouping is exact -- and it is six multiplies rather
+    // than eight.  It was measured and it is 22 % SLOWER on the Adreno 650,
+    // because the flat form's four products issue in parallel and the
+    // factored form is a dependency chain.  See "what does NOT work" in
+    // ../passB/README.md.
     int acc = gx * gy * t00 + fx * gy * t10 + gx * fy * t01 + fx * fy * t11;
     return (acc + 128) >> 8;   // the weights sum to 256
 }
@@ -525,6 +532,11 @@ void nxvwWarpPlane(int tid, int p, uint tb, int size, int full, int sub,
             // (u, v); only the vector added to it is per quadrant, which is
             // what makes four equal quadrant vectors bit-identical to a
             // single-vector tile ([SYN] 13.10).
+            // Per sample, and NOT hoisted, though it could be: a thread's run
+            // starts at a multiple of its own length and `qsplit` is full / 2,
+            // so `q` is in fact constant over the run.  Hoisting it -- strictly
+            // less work -- costs 22 % on the Adreno 650.  Measured twice, three
+            // interleaved rounds each; see ../passB/README.md.
             const int q = qrow + ((u >= qsplit) ? 1 : 0);
             const int mqx = (q == 0) ? mvxq0
                           : (q == 1) ? mvxq1

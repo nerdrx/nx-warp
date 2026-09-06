@@ -355,6 +355,81 @@ not to want a per-tile index into a side buffer at all: Pass W is indexed by
 the tile index directly, and Pass B addresses `WPred` the same way, so the
 coefficient side of this interface did not have to change.
 
+## The WARP_SKIP module: what does NOT work
+
+`reconstruct_skip_store` runs the pose warp itself rather than reading back what
+Pass W wrote, and on the Adreno 650 the warp is **86 %** of it (34.75 us/tile
+baseline against 4.73 with the predictor ablated out, 251 skip tiles). Every
+lever below was priced with an ablation before anything was written, and most
+of them lost. They are recorded because each one looks obviously right on
+paper, and the next person to have the idea should be able to see the number
+instead of spending a day earning it.
+
+Method for every row: `nxvc-vkdec --stats`, head-turn fixture, 289 tiles
+(251 skip / 38 coded), mean of 8 inter frames, binaries interleaved so thermal
+drift is shared, sha256 of the pushed binary checked against the local one
+before every launch. The headset is awake and running its SLAM tracking during
+these, which holds the GPU at 490 MHz and 52-57 C, so the absolutes sit ~30 %
+above a cold device. **The ratio is the measurement; the absolute is not.**
+
+| lever | result |
+|---|---|
+| smaller LDS footprint (store the tile in halves) | **no effect** — see below |
+| stage the source footprint in LDS, take taps from there | **+26 %** |
+| factor the bilinear to six multiplies instead of eight | **+22 %** (with the hoist) |
+| hoist the quadrant vector out of the per-sample loop | **+22 %** |
+| shifts for the power-of-two divides, alone | +3 % |
+| paired tap fetch, alone | +1 % |
+| shifts **and** paired fetch together | **-11 %** |
+| incremental (DDA) corner interpolation | **-17 %** |
+
+**Shared memory is not the limiter.** `NXVW_ABL_LDSPAD` adds shared memory the
+kernel never really reads, so only the footprint moves. With the probe's own
+overhead held constant, +256 B (still two resident workgroups) is 11.689 ms,
++8 KB (one workgroup) is 10.535 and +16 KB (still one) is 10.351. Halving the
+SP's resident workgroups costs nothing and is slightly faster; the two
+one-workgroup points agreeing to 1.8 % is the control that says the step was
+real and the kernel did not care. A restructure of the normative store to halve
+its staging would have bought nothing.
+
+**Staging the source footprint loses by a quarter**, and the two halves have to
+be priced separately to see why: the copy alone is -3.0 % (a contiguous run
+through the ring prefetches what the taps then read), taps-from-LDS alone is
+-7.2 %, and both together are +26.3 %. Once the taps stop reading the ring the
+prefetch stops paying, and what is left is two more barriers a plane and 8 KB of
+shared traffic. That was already the optimistic shape — contiguous copy, no
+warp margin, no does-it-fit fallback.
+
+The taps-only row is the one worth keeping: **taking essentially every tap load
+out of the ring is worth 7.2 %.** The loads were never the cost.
+
+**The arithmetic is the cost, but not by instruction count.** Three separate
+changes that each remove work made it slower, and two that add instructions
+made it faster:
+
+* the flat `gx*gy*t00 + fx*gy*t10 + gx*fy*t01 + fx*fy*t11` is four INDEPENDENT
+  products. Regrouping it to `gy*(gx*t00 + fx*t10) + fy*(gx*t01 + fx*t11)` is
+  the same integer exactly — nothing rounds before the shift — and two fewer
+  multiplies, and it is slower, because the regrouped form is a dependency
+  chain.
+* the quadrant vector is provably constant over a thread's run (the run starts
+  at a multiple of its own length and `qsplit` is `full / 2`). Hoisting the
+  select out of the per-sample loop costs **22 %** on its own, measured over
+  three interleaved rounds against its own control.
+* the DDA and the shift/paired-fetch pair both GREW the SPIR-V (+156 and +112
+  words) and both got faster.
+
+So this kernel is latency- and ILP-bound, not instruction-bound, and a change
+should be judged by whether it shortens the dependency chain rather than by how
+many operations it removes. `NXVW_ABL_NOWARP`, `NXVW_ABL_COPYWARP`,
+`NXVW_ABL_LDSPAD` and `NXVW_ABL_STAGE*` are all still there, off unless
+`NXVW_PASSB_EXTRA_DEFS` asks, so the next candidate can be priced the same way.
+
+`scripts/passb-device-rows.sh` is the harness these rows came from: it gates on
+the headset being idle, checks the sha256 either side of the push, samples
+`gpuclk` on the device while the run is in flight, and reports per-module Pass B
+with the temperature either side.
+
 ## Running it
 
 ```
