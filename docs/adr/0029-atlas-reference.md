@@ -581,6 +581,75 @@ sample. Until it is priced, the honest scope of this ADR is: **the atlas is a
 win at low angular velocity and a loss at high**, and the 8.8 ms it removes is
 unaffected either way.
 
+### The same question asked of the GPU encoder
+
+The table above was measured on the CPU reference. Asked of the GPU encoder --
+same material, same scale, same displayed object -- it returns a different
+answer, and the difference is not an implementation gap. Both encoders are
+byte-identical at the acid test's flag set; what differs is the mode decision
+each is run with.
+
+The fixture is the ref suite's own `make_scene` at 1088x1088 over 16 frames,
+written out by `scripts/atlas-fixture.py` so that a file-driven encoder sees
+exactly what the in-process ref test sees. One change was forced: `make_scene`
+pans its content 2 px/frame, which at 1088 drives **every** tile to `INTRA`
+under the integer decision and leaves nothing skipped and therefore no atlas to
+measure, so the world is held still and only the head turns -- which is the
+variable cross-tile gather is a function of anyway. Angular velocities are this
+ADR's, converted at the 90 Hz `--rc-fps` default: 5.2 deg/s = 0.0578 deg/frame,
+71.4 deg/s = 0.793 deg/frame.
+
+`nxvc-vkenc --display-psnr`, luma, at equal QP:
+
+| fixture | qp | atlas | picture | delta |
+|---|---|---|---|---|
+| near-still | 22 | 32.65 dB @ 107049 B/f, 43.3 % skip | 32.63 dB @ 105716 B/f, 44.0 % skip | +0.02 dB, +1.3 % |
+| near-still | 26 | 31.53 dB @ 76093 B/f, 41.7 % skip | 31.44 dB @ 74770 B/f, 42.8 % skip | +0.10 dB, +1.8 % |
+| near-still | 30 | 30.26 dB @ 56912 B/f, 38.8 % skip | 30.23 dB @ 56323 B/f, 39.5 % skip | +0.03 dB, +1.0 % |
+| fast turn | 22 | 36.82 dB @ 186498 B/f, 0 % skip | 36.82 dB @ 186498 B/f, 0 % skip | +0.00 dB, +0.0 % |
+| fast turn | 26 | 33.79 dB @ 128532 B/f, 0 % skip | 33.79 dB @ 128532 B/f, 0 % skip | +0.00 dB, +0.0 % |
+| fast turn | 30 | 31.29 dB @ 91276 B/f, 0 % skip | 31.29 dB @ 91276 B/f, 0 % skip | +0.00 dB, +0.0 % |
+
+**At the fast-turn rate the two arms are bit-identical**, because the GPU
+encoder skips nothing there. That is the whole result. Cross-tile gather is
+paid by a *skipped* tile reading its neighbours' pixels; ADR-0028's integer
+mode decision will not skip at that displacement, so it codes the tile instead
+and the gather never happens. The -7.47 dB is not avoided by being cleverer --
+it is converted into bits, and at 0 % skip the atlas has no opportunity to
+differ from the picture model at all.
+
+So **the fast-turn penalty is a property of the decision, not of 13.12.4**, and
+the encoder it was measured on keeps skipping (72.3 %) where this one stops.
+Sweeping `nxv-enc --skip-thresh`, which is that gate, moves the answer across
+its whole range on this same fixture at qp 26 -- and in the direction opposite
+to the +44 %:
+
+| fixture | skip-thresh | atlas | picture | delta |
+|---|---|---|---|---|
+| fast turn | 1 | 32.96 dB @ 7998 B/f | 33.06 dB @ 11250 B/f | -0.10 dB, **-28.9 %** |
+| fast turn | 16 | 32.93 dB @ 7576 B/f | 32.87 dB @ 11328 B/f | +0.06 dB, -33.1 % |
+| fast turn | 64 | 28.66 dB @ 7578 B/f | 20.66 dB @ 23036 B/f | +8.00 dB, -67.1 % |
+| near-still | 1 | 32.99 dB @ 8048 B/f | 32.99 dB @ 11685 B/f | +0.00 dB, -31.1 % |
+| near-still | 16 | 30.45 dB @ 7607 B/f | 26.65 dB @ 13977 B/f | +3.80 dB, -45.6 % |
+
+Two things follow. First, **the earlier +19.6 % and this ADR's +44 % are not
+competing measurements of one quantity**; they are the same encoder at
+different points of the skip gate, on fixtures at different scales, and neither
+reproduces here. Second, the exact fixture behind the 41.99 / 40.69 / 32.99 /
+40.46 figures **cannot be rebuilt from the tree** -- b86f819 committed the
+conclusion and not the harness, and the angular velocities are quoted as a mean
+and a peak, so the track was not constant-rate. The numbers above are therefore
+reported beside this ADR's rather than against them: same material and same
+scale, but not the same track, and the comparison that is exact is the one
+within each table.
+
+What none of this disturbs is the decision. The 8.8 ms stands, the encoder's
+shadow atlas is byte-identical to the decoder's throughout (both entropy tools,
+both eye counts, table and pixel digest), and neighbour-aware gather remains
+the open question -- with one correction to its urgency: on the GPU encoder as
+it stands, the case that motivates it does not arise, because the tiles that
+would suffer it are coded instead.
+
 * **The seam, as originally written.** Two adjacent tiles with different source frames are each
   individually correctly reprojected, so static distant content is seamless. They diverge on moving
   content and on near parallax, growing with the age difference — a tile coded 30 frames ago beside
