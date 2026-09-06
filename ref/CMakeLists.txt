@@ -20,6 +20,17 @@ add_library(nxvc_ref_obj OBJECT
 )
 target_include_directories(nxvc_ref_obj PUBLIC ${CMAKE_SOURCE_DIR}/include)
 target_include_directories(nxvc_ref_obj PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+# [planar] The piecewise-planar fit of [SYN] 13.13 is SHARED with the GPU
+# encoder, header-only, and included rather than reimplemented -- the same
+# rule warp/ states above, for the same reason: byte-identity against this
+# encoder is the GPU encoder's acceptance test, and two transcriptions of an
+# exact integer algorithm are two chances to get it wrong.
+#
+# It lives under vk/encoder/forward/ rather than here because vk/encoder is
+# also built STANDALONE, without ref/, and that build has to see it too. The
+# dependency is a header and no library, so nothing links backwards.
+target_include_directories(nxvc_ref_obj PRIVATE
+                           ${CMAKE_SOURCE_DIR}/vk/encoder/forward)
 # The warp predictor is normative and lives in warp/.  It is linked, never
 # reimplemented: nxvc_warp_ref owns warp_tile(), the corner derivation and the
 # saturation rules (docs/WARP.md).

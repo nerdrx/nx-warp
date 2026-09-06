@@ -1674,167 +1674,54 @@ static void fit_near_skip(const TileCoder &tc, i8 corr[3][3]) {
 // 40-70 % of the tile.
 namespace {
 
-// The planar fit is INTEGER, end to end, and that is a property of the format
-// rather than of this implementation.
+// The planar fit is INTEGER, end to end, and SHARED with the GPU encoder.
 //
-// SYNTAX.md 13.13's decoding process has no float in it, and
+// [SYN] 13.13's decoding process has no float in it, and
 // docs/LOWPOLY-GPU-PLAN.md 1 lists that first among the four things that make
-// the mode cheap on a GPU.  An encoder whose FIT was double would undo half of
-// that: a GPU encoder could not reproduce this one bit for bit, and "the
-// reference is the spec" would mean "the spec is whatever this machine's libm
-// did".  So the fit below is specified in integers, exactly, and a second
-// implementation that does these operations in this order gets these bytes.
+// the mode cheap on a GPU.  A double FIT would have undone half of it: a GPU
+// encoder could not reproduce this one bit for bit, and "the reference is the
+// spec" would have meant "the spec is whatever this machine's libm did".
 //
-// Three decisions carry that, and each is a DEFINITION rather than an
-// approximation of some truer real-valued answer:
-//
-//   1. The normal equations are formed with cleared denominators.  The ramp
-//      basis is `R(i) / size` with `R(i) = 2i - size + 1`, so scaling row 0 by
-//      `size` and rows 1 and 2 by `size^2` leaves every entry an exact integer
-//      sum of products of samples and ramps.
-//   2. They are solved by CRAMER in __int128, and the only degenerate test is
-//      `det == 0`.  The old double form declared failure on a pivot under
-//      1e-9, which is a statement about conditioning rather than about
-//      singularity; an exact solve has no conditioning to worry about, so a
-//      system with a nonzero determinant is now solved rather than refused.
-//   3. The solution is rounded to Q8 fixed point IMMEDIATELY, half away from
-//      zero.  That is the load-bearing one.  Carrying the exact rationals into
-//      the reassignment step is what does not fit: the determinants reach
-//      2.6e22, and a squared cell error over them lands near 2.6e54, past
-//      __int128.  Rounding first makes every downstream comparison a plain
-//      i64 sum with a common denominator -- no cross-multiplication, no
-//      shared-denominator bookkeeping, and an argmin a GPU can do in a lane.
-//
-// BOUNDS, stated because the choice of width has to be checkable:
-//   * |R| <= size - 1 <= 63, N <= 4096, |e| <= 512 (a chroma plane under the
-//     colour transform has the widest range).
-//   * matrix entries: max |Sxx| = N * R^2 <= 4096 * 63^2 = 1.63e7.
-//   * det(M): 6 * (1.63e7)^3 = 2.6e22  -- needs __int128.
-//   * RHS entries: |size * Sxe| <= 64 * 4096 * 63 * 512 = 8.5e9.
-//   * Cramer numerators: 6 * (1.63e7)^2 * 8.5e9 = 1.4e25 -- __int128, and
-//     with the Q8 shift applied, 3.6e27.  __int128 holds 1.7e38.
-//   * after rounding: |coef| <= ~512 so the Q8 value fits i32, a cell
-//     residual fits i32, and a cell's squared error over 64 samples reaches
-//     2.6e16 -- i64, with three orders of headroom.
-using i128 = __int128;
+// The arithmetic lives in vk/encoder/forward/nxe_planar.h and both encoders
+// include it -- the same rule warp/ already states for the predictor, and for
+// the same reason.  The four decisions it implements are written out in [SYN]
+// 13.13's encoder notes: cleared-denominator normal equations, an __int128
+// Cramer solve whose only degenerate test is det == 0, Q8 rounding half away
+// from zero applied immediately, and exact comparisons with ties going to the
+// lowest region index.
+using PlaneFit = nxe_planar_fit;
 
-// The ramp numerator of 13.13: the reconstruction computes
-// `(dh * (2*x - size + 1)) >> log2(size)`, so the basis is this over `size`.
-inline int ramp_i(int i, int size) { return 2 * i - size + 1; }
+inline int ramp_i(int i, int size) { return nxe_planar_ramp(i, size); }
 
-// Q8, half away from zero.  The rounding rule is part of the definition: a
-// half that rounded toward even, or toward zero, would be a different encoder.
-constexpr int kPlanarFitFrac = 8;
-
-inline i64 round_q(i128 num, i128 den) {
-    if (den == 0) return 0;
-    if (den < 0) { num = -num; den = -den; }
-    const i128 scaled = num << kPlanarFitFrac;
-    const i128 half = den / 2;
-    const i128 r = scaled >= 0 ? (scaled + half) / den : -((-scaled + half) / den);
-    return (i64)r;
-}
-
-// One region's fitted plane, in Q8 sample units.
-struct PlaneFit { i32 d0 = 0, dh = 0, dv = 0; };
-
-// Solve the cleared-denominator normal equations by Cramer.  `a` is the 3x4
-// augmented system; `out` receives the three coefficients in Q8.  Returns
-// false only when the system is singular, which is the honest degenerate test
-// and the only one an exact solve admits.
-bool solve3_q8(const i128 a[3][4], PlaneFit &out) {
-    auto det3 = [](i128 m00, i128 m01, i128 m02, i128 m10, i128 m11, i128 m12,
-                   i128 m20, i128 m21, i128 m22) -> i128 {
-        return m00 * (m11 * m22 - m12 * m21) - m01 * (m10 * m22 - m12 * m20) +
-               m02 * (m10 * m21 - m11 * m20);
-    };
-    const i128 det = det3(a[0][0], a[0][1], a[0][2], a[1][0], a[1][1], a[1][2],
-                          a[2][0], a[2][1], a[2][2]);
-    if (det == 0) return false;
-    const i128 d0 = det3(a[0][3], a[0][1], a[0][2], a[1][3], a[1][1], a[1][2],
-                         a[2][3], a[2][1], a[2][2]);
-    const i128 d1 = det3(a[0][0], a[0][3], a[0][2], a[1][0], a[1][3], a[1][2],
-                         a[2][0], a[2][3], a[2][2]);
-    const i128 d2 = det3(a[0][0], a[0][1], a[0][3], a[1][0], a[1][1], a[1][3],
-                         a[2][0], a[2][1], a[2][3]);
-    out.d0 = (i32)round_q(d0, det);
-    out.dh = (i32)round_q(d1, det);
-    out.dv = (i32)round_q(d2, det);
-    return true;
-}
-
-// Accumulate the cleared-denominator normal equations over the samples of one
-// region.  `pick(cx, cy)` says whether a map cell belongs to the region.
-template <typename Pick>
-void planar_normal_eq(const PlaneState &s, int M, int cell, int shift,
-                      Pick pick, i128 a[3][4]) {
-    const int size = s.size;
-    i64 N = 0, Sx = 0, Sy = 0, Sxx = 0, Sxy = 0, Syy = 0;
-    i64 Se = 0, Sxe = 0, Sye = 0;
-    (void)cell;
-    for (int y = 0; y < size; ++y) {
-        const int ry = ramp_i(y, size);
-        for (int x = 0; x < size; ++x) {
-            if (!pick(x >> shift, y >> shift)) continue;
-            const int rx = ramp_i(x, size);
-            const i64 e = (i64)s.samples[(size_t)y * size + x] - s.dc_off;
-            N += 1;
-            Sx += rx;       Sy += ry;
-            Sxx += (i64)rx * rx;
-            Sxy += (i64)rx * ry;
-            Syy += (i64)ry * ry;
-            Se += e;
-            Sxe += (i64)rx * e;
-            Sye += (i64)ry * e;
-        }
-    }
-    (void)M;
-    const i128 sz = size;
-    // Row 0 scaled by size, rows 1 and 2 by size^2; see the header note.
-    a[0][0] = (i128)N * sz;  a[0][1] = Sx;   a[0][2] = Sy;   a[0][3] = (i128)Se * sz;
-    a[1][0] = (i128)Sx * sz; a[1][1] = Sxx;  a[1][2] = Sxy;  a[1][3] = (i128)Sxe * sz;
-    a[2][0] = (i128)Sy * sz; a[2][1] = Sxy;  a[2][2] = Syy;  a[2][3] = (i128)Sye * sz;
+// Wrap a PlaneState as the shared header sees a plane.
+inline nxe_planar_plane as_plane(const PlaneState &s) {
+    nxe_planar_plane p;
+    p.samples = s.samples.data();
+    p.size = s.size;
+    p.dc_off = s.dc_off;
+    p.maxval = s.maxval;
+    p.qp = s.qp;
+    return p;
 }
 
 }  // namespace
 
 // Fit one plane state to a label map, returning the per-region coefficients in
 // the decoder's quantised units.
+//
+// Delegated to nxe_planar.h, which the GPU encoder compiles too.  Two
+// transcriptions of an exact integer algorithm are two chances to disagree,
+// and byte-identity between the two encoders is the acceptance test -- so
+// there is one transcription and both include it.
 static void planar_fit_plane(const PlaneState &s, const u8 *labels, int M,
                              int regions, i8 out[kPlanarMaxRegions][3]) {
-    const int size = s.size;
-    const int shift = log2_of(size) - log2_of(M);
-    const int t = dc_plane_step(s);
-    for (int r = 0; r < regions; ++r) {
-        i128 a[3][4] = {};
-        planar_normal_eq(s, M, size / M, shift,
-                         [&](int cx, int cy) {
-                             return labels[(size_t)cy * M + cx] == r;
-                         },
-                         a);
-        PlaneFit f;
-        if (!solve3_q8(a, f)) {
-            // Singular: an empty region, or one whose samples are collinear in
-            // the basis.  Keep the mean if there was one, and no ramps -- the
-            // same fallback the double form had, reached by an exact test.
-            const i128 N = a[0][0];  // N * size
-            f = PlaneFit{};
-            if (N != 0) f.d0 = (i32)round_q(a[0][3], N);
-        }
-        // The near-skip quantiser, for the reason it uses it: three bytes for
-        // a whole region are not where a dead zone earns anything, and biasing
-        // a region's DC toward zero is visible.  In Q8:
-        //   lvl = floor((16*|q|/256 + t/2) / t) = floor((32|q| + 256t) / (512t))
-        auto q = [&](i32 v) -> i8 {
-            const i64 av = v < 0 ? -(i64)v : (i64)v;
-            i64 lvl = (32 * av + 256 * (i64)t) / (512 * (i64)t);
-            lvl = lvl < 0 ? 0 : (lvl > 127 ? 127 : lvl);
-            return (i8)(v < 0 ? -lvl : lvl);
-        };
-        out[r][0] = q(f.d0);
-        out[r][1] = q(f.dh);
-        out[r][2] = q(f.dv);
-    }
+    nxe_planar_plane pp;
+    pp.samples = s.samples.data();
+    pp.size = s.size;
+    pp.dc_off = s.dc_off;
+    pp.maxval = s.maxval;
+    pp.qp = s.qp;
+    nxe_planar_fit_plane(&pp, labels, M, regions, dc_plane_step(s), out);
 }
 
 // The squared error one region's fitted plane leaves over one map cell, used
@@ -1847,20 +1734,8 @@ static void planar_fit_plane(const PlaneState &s, const u8 *labels, int M,
 // multiplication at all.
 static i64 planar_cell_err(const PlaneState &s, const PlaneFit &f, int cx,
                            int cy, int cell) {
-    const int size = s.size;
-    i64 e = 0;
-    for (int y = cy * cell; y < (cy + 1) * cell; ++y) {
-        const i64 ry = ramp_i(y, size);
-        for (int x = cx * cell; x < (cx + 1) * cell; ++x) {
-            const i64 rx = ramp_i(x, size);
-            const i64 E = (i64)s.samples[(size_t)y * size + x] - s.dc_off;
-            // (E - value) * size * 256
-            const i64 num = E * size * (1 << kPlanarFitFrac) -
-                            ((i64)f.d0 * size + (i64)f.dh * rx + (i64)f.dv * ry);
-            e += num * num;
-        }
-    }
-    return e;
+    const nxe_planar_plane p = as_plane(s);
+    return nxe_planar_cell_err(&p, &f, cx, cy, cell);
 }
 
 // The whole fit for one configuration.  `sse_out` is the distortion of the
@@ -1943,14 +1818,11 @@ static void fit_planar(TileCoder &tc, int regions, int fine, PlanarRec &pr,
     for (int r = 0; r < kPlanarMaxRegions; ++r) fits[r] = PlaneFit{};
     for (int it = 0; it < 8; ++it) {
         for (int r = 0; r < regions; ++r) {
-            i128 a[3][4] = {};
-            planar_normal_eq(luma, M, cell, shift,
-                             [&](int cx, int cy) {
-                                 return pr.labels[(size_t)cy * M + cx] == r;
-                             },
-                             a);
-            PlaneFit f;
-            if (solve3_q8(a, f)) fits[r] = f;
+            __int128 a[3][4] = {};
+            const nxe_planar_plane lp = as_plane(luma);
+            nxe_planar_normal_eq(&lp, pr.labels, M, shift, r, a);
+            PlaneFit f{};
+            if (nxe_planar_solve(a, &f)) fits[r] = f;
             // An empty or singular region keeps the plane it had.  It costs
             // its three bytes and buys nothing, which the rate-distortion
             // decision then sees as a reason to prefer a smaller region count

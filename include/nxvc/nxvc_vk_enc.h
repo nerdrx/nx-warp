@@ -390,6 +390,29 @@ typedef struct nxvc_vke_create_info {
      * It ships 0 until the saving is measured on the device it is for. */
     uint32_t snap_identity;
 
+    /* PLANAR, tool bit 35: the piecewise-planar tile mode of [SYN] 13.13.
+     *
+     *   0  off.  The encoder never emits mode 5 and the stream does not set
+     *      the bit, which is what every stream did before this field existed.
+     *   1  the rate-distortion decision.  A tile is coded planar when the mode
+     *      is CHEAPER than coding it and NOT WORSE than coding it -- both
+     *      conditions, because the mode's rate-distortion curve is nearly flat
+     *      (it has no residual) while the transform's is steep, and minimising
+     *      D + lambda*R alone puts the frame off its own convex hull.
+     *   2  prefer.  The same decision without the distortion condition: the
+     *      mode wherever it is cheaper, which is the low-polygon LOOK as a
+     *      setting rather than as a debug hook.  It costs what
+     *      docs/LOWPOLY-MODE.md 9 says it costs, and it is a taste, so it is a
+     *      level and not a default.
+     *
+     * The fit is integer and specified -- [SYN] 13.13's encoder notes give the
+     * cleared-denominator normal equations, the __int128 Cramer solve, the Q8
+     * rounding half away from zero, and the lowest-index tie rule -- so this
+     * encoder and the reference agree byte for byte rather than approximately.
+     *
+     * Refused at create() on a stream that cannot carry the mode. */
+    uint32_t planar;
+
     uint32_t flags; /* reserved, pass 0 */
 } nxvc_vke_create_info;
 
