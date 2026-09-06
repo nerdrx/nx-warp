@@ -27,6 +27,10 @@
 #include "rans_decode.spv.h"
 #define HAVE_EMBEDDED_SPV 1
 #endif
+#if __has_include("rans_decode_lite.spv.h")
+#include "rans_decode_lite.spv.h"
+#define HAVE_EMBEDDED_LITE_SPV 1
+#endif
 
 using namespace nxwarp_passA;
 using namespace nxwarp_passA::test;
@@ -241,6 +245,10 @@ void download(const Gpu &g, Buf &src, void *dst, VkDeviceSize bytes) {
 }
 
 // ---------------------------------------------------------------------------
+// The decoder binds a SEPARATE module for the Lite path, compiled with a
+// workgroup sized for one tile rather than for rANS's lane clusters, so the
+// harness has to test that module and not the rANS one -- otherwise it
+// validates a kernel nothing ships.  `--spv` still overrides both.
 std::vector<uint32_t> load_spv(const Options &opt) {
     if (!opt.spv.empty()) {
         std::FILE *f = std::fopen(opt.spv.c_str(), "rb");
@@ -256,6 +264,12 @@ std::vector<uint32_t> load_spv(const Options &opt) {
         std::fclose(f);
         return v;
     }
+#ifdef HAVE_EMBEDDED_LITE_SPV
+    if (opt.entropy == "lite")
+        return std::vector<uint32_t>(
+            rans_decode_lite_spv,
+            rans_decode_lite_spv + (sizeof(rans_decode_lite_spv) / 4));
+#endif
 #ifdef HAVE_EMBEDDED_SPV
     return std::vector<uint32_t>(
         rans_decode_spv, rans_decode_spv + (sizeof(rans_decode_spv) / 4));

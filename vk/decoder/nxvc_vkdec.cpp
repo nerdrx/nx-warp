@@ -31,6 +31,7 @@
 #include "passB/syntax_constants.h"
 
 #include "rans_decode.spv.h"
+#include "rans_decode_lite.spv.h"
 #include "reconstruct.spv.h"
 #include "reconstruct_v1.spv.h"
 #include "reconstruct_skip.spv.h"
@@ -158,6 +159,11 @@ struct nxvc_vk_decoder {
     VkDescriptorSetLayout dslA = VK_NULL_HANDLE, dslB = VK_NULL_HANDLE;
     VkPipelineLayout plA = VK_NULL_HANDLE, plB = VK_NULL_HANDLE;
     VkShaderModule smA = VK_NULL_HANDLE;
+    // [entropy-lite] The same kernel compiled with a workgroup sized for the
+    // Lite path, which puts ONE tile in a workgroup: 128 threads a tile
+    // against the 256 rANS wants.  44 % on an Adreno 650 at 289 tiles; see
+    // passA/CMakeLists.txt and passA/README.md.
+    VkShaderModule smALite = VK_NULL_HANDLE;
     // Pass B's four build variants of one source, indexed
     // [intra_dir][xform_large]: the directional-intra wavefront and the 16x16
     // / 32x32 transform forms each exist or do not exist in the module rather
@@ -848,6 +854,9 @@ nxvc_vkd_status make_layouts(D *d) {
     sm.codeSize = sizeof(rans_decode_spv);
     sm.pCode = rans_decode_spv;
     VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smA));
+    sm.codeSize = sizeof(rans_decode_lite_spv);
+    sm.pCode = rans_decode_lite_spv;
+    VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smALite));
     sm.codeSize = sizeof(reconstruct_spv);
     sm.pCode = reconstruct_spv;
     VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smB[1][1]));
@@ -937,7 +946,12 @@ nxvc_vkd_status pipeline_a(D *d, uint32_t lanes, uint32_t ctx_stride,
         ci.flags |= VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR;
     ci.stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
     ci.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-    ci.stage.module = d->smA;
+    // [entropy-lite] The Lite module is the same source with a workgroup
+    // sized for one tile rather than for rANS's lane clusters.  Everything
+    // that crosses the host boundary is the same in both: the dispatch is one
+    // workgroup per tile either way, the buffer layouts are per unit, and the
+    // prefix sum's result does not depend on how many threads computed it.
+    ci.stage.module = lite ? d->smALite : d->smA;
     ci.stage.pName = "main";
     ci.stage.pSpecializationInfo = &spec;
     // The lane cluster must not straddle a subgroup; a partial trailing
@@ -953,8 +967,9 @@ nxvc_vkd_status pipeline_a(D *d, uint32_t lanes, uint32_t ctx_stride,
     if (d->has_exec_props) {
         char tag[64];
         std::snprintf(tag, sizeof tag,
-                      "passA lanes=%u mode=%u tpg=%u ctx=%u xfl=%u", lanes,
-                      mode, tpg, ctx_stride, xform_large);
+                      "passA[%s] lanes=%u mode=%u tpg=%u ctx=%u xfl=%u",
+                      lite ? "lite" : "rans", lanes, mode, tpg, ctx_stride,
+                      xform_large);
         dump_shader_stats(d, p, tag);
     }
     return NXVC_VKD_OK;
@@ -1771,6 +1786,7 @@ extern "C" void nxvc_vk_decoder_destroy(nxvc_vk_decoder *d) {
         for (auto &kv : d->pipesA) vkDestroyPipeline(d->dev, kv.second, nullptr);
         for (auto &kv : d->pipesB) vkDestroyPipeline(d->dev, kv.second, nullptr);
         if (d->smA) vkDestroyShaderModule(d->dev, d->smA, nullptr);
+        if (d->smALite) vkDestroyShaderModule(d->dev, d->smALite, nullptr);
         for (int i = 0; i < 2; ++i)
             for (int j = 0; j < 2; ++j)
                 if (d->smB[i][j])

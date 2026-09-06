@@ -560,11 +560,37 @@ costs 8.6 ms at 32 and **4.8 ms at 16**.  So this is not a retune of
 Lite -- but an argument for a **Lite-only build variant of the kernel with its
 own workgroup size**, the way Pass B carries one module per tile shape.
 
-That variant is not built here.  The decoder does not offer `ENTROPY_LITE`
-(tool bit 30) yet and the encoder side is in progress, so there is nothing to
-turn it on for; when there is, this is the number that says how to compile it,
-and `nxvc-passA-test --entropy lite` with a `NXVW_PASSA_TPG=16` build is how to
-confirm it on the part.
+**That variant now exists.**  `rans_decode_lite.spv.h` is the same source
+compiled at `NXVW_PASSA_LITE_TPG` (16, so 128 threads a tile) while rANS keeps
+`NXVW_PASSA_TPG` (32); `pipeline_a()` binds it wherever `ENTROPY_MODE` says
+Lite, which is the test it already made for the specialisation constant.
+Nothing that crosses the host boundary moves: the Lite dispatch is one
+workgroup per tile either way, the coefficient and unit-length layouts are per
+UNIT, and `lite_scan()` is a prefix sum over units whose result does not depend
+on how many threads computed it.  `kLiteUnitsPad` changes, and it sizes shared
+memory only -- it stays >= `kMaxUnitsPerTile` at every value in the table.
+
+Measured, Adreno 650, 289-tile Lite corpus, sparse, three interleaved rounds,
+sha256 checked before every launch, gpuclk 490 MHz, gpuss-max-step 54.9-58.4 C:
+
+| | ms | us/tile |
+|---|---|---|
+| 256 threads a tile (rANS's shape) | 7.391 / 8.743 / 8.725 | 28.67 |
+| **128 threads a tile (shipped)** | **4.743 / 4.744 / 4.707** | **16.37** |
+
+**-42.9 %**, and every run PASSED -- the harness compares against the CPU model
+on every coefficient, CBF bit, unit length and mode word.
+
+The harness itself had to change: it embedded the rANS module and would have
+gone on validating a kernel nothing ships, so `--entropy lite` now loads the
+Lite module unless `--spv` overrides it.
+
+**And the static counters do not see it.**  The two modules report 990 against
+985 instructions, the SAME 22 barriers, the same 184 B of scratch and the same
+64 % processor utilisation, for a 43 % difference in time.  The barrier count
+is static and the scan is a loop, so it cannot see that the loop runs seven
+levels instead of eight; nothing exposed here can.  This is the third kernel
+where that has held (passB/README.md has the other two).
 
 ### What the Adreno compiler makes of the Lite kernel
 
@@ -623,10 +649,15 @@ from two resident workgroups to one costs nothing at all
 
 **The floor is `lite_scan()`, measured above at 79 % of the kernel**, and the
 22 barriers are its sixteen plus six.  It is not the payload (~911 B a tile),
-not occupancy, and not instruction count.  The scratch remains unexplained and
-is the one thread not pulled: neither ablation was built with `--shader-stats`
-to see whether removing the scan removes the spill, which is the next cheap
-question.
+not occupancy, and not instruction count.  **The scratch is not the scan.**  Both ablations were rebuilt under
+`--shader-stats` and the spill does not move: removing `lite_scan()` entirely
+takes instructions from 990 to 928, barriers from 22 to 13 and short-latency
+syncs from 62 to 44, and leaves **184 B per invocation exactly where it was**.
+So the 79 % the scan costs and the 184 B the kernel spills are two different
+things, and since the kernel is 79 % faster without the scan while still
+carrying the whole spill, the spill is not what the floor is made of either.
+Where it comes from is still open -- RADV reports zero scratch for the same
+source, so it is a Qualcomm codegen decision and not a property of the GLSL.
 
 ## Errors
 
