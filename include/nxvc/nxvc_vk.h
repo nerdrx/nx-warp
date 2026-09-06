@@ -355,6 +355,73 @@ nxvc_vkd_status nxvc_vk_decoder_images(const nxvc_vk_decoder *dec,
  * decoder whose stream does not set tool bit 31.
  */
 
+/* [SYN] 13.12.9: fill a contiguous run of atlas tile positions from the BASE
+ * LAYER instead of coding them.  The client HEVC-decodes the base picture,
+ * converts it into the atlas's own coded sample domain with its own kernel,
+ * and hands the decoder the buffer to import.
+ *
+ * `first_tile` and `count` are within `eye`, in that eye's own row-major
+ * order.  A contiguous RUN is the primary form because row strips are what the
+ * writes coalesce to -- measured at 3.43 us per scattered tile against a full
+ * refresh at 0.071 ms when the same bytes go as full-width strips, which is
+ * 28x -- so the run is turned into strips inside the decoder rather than
+ * passed through as one region per tile.
+ *
+ * `src` is a buffer already in the atlas's own SLOT-SHAPED layout: the layout
+ * nxvc_vk_decoder_atlas_plane() reports, u16 samples, both eyes side by side
+ * within each plane.  An image source is not accepted -- 13.12.9 warns that a
+ * base picture sampled through an external format can yield
+ * (.r,.g,.b) == (Cr,Y,Cb), and a conformance matrix without a
+ * non-identity-swizzle device cannot catch getting that wrong.  A buffer
+ * carries no such risk: the caller has already done the mapping.
+ *
+ * SUPERSEDE IS NOT AN ERROR.  A write whose `src_frame` does not ADVANCE the
+ * position is dropped rather than applied -- the ordinary case, because the
+ * base arrives through a hardware decoder with its own latency while coded
+ * tiles come down the usual path, so the two interleave.  Those positions are
+ * skipped, the rest of the run is applied, and the call SUCCEEDS.  `applied`
+ * and `superseded` (either may be NULL) report how the run split; a caller
+ * that needs to know a patch landed must read them and not the status.
+ *
+ * The entry gets 13.12.9's metadata: identity `C`, `src_frame` as given,
+ * `gen` 0, valid, NEVER static, `res_level` 0, and `base_sourced` (flags
+ * bit 2) SET.  A later coded tile at the same position clears it.
+ *
+ * The copy is recorded on the DECODER's command buffer, so it and
+ * nxvc_vk_decode_frame() serialise by submission order and the caller needs no
+ * fence of its own.
+ *
+ * Returns NXVC_VKD_ERR_UNSUPPORTED on a non-ATLAS stream, NXVC_VKD_ERR_ARG on
+ * a run that leaves the eye or a null buffer.  A `count` of 0 is a no-op, and
+ * a fully superseded run is a success with `*applied == 0`. */
+/* The decoder's Vulkan handles, for a caller that did NOT adopt a device.
+ *
+ * nxvc_vk_atlas_write_tiles() takes a VkBuffer on the decoder's device, and a
+ * caller that let the decoder create that device had no way to allocate one --
+ * which made the entry point callable only by a client that already owned the
+ * device (WiVRn does) and untestable by anything that did not.  Any pointer
+ * may be NULL.  The handles are owned by the decoder and are valid until
+ * nxvc_vk_decoder_destroy(). */
+nxvc_vkd_status nxvc_vk_decoder_vk_handles(const nxvc_vk_decoder *dec,
+                                           VkInstance *instance,
+                                           VkPhysicalDevice *physical_device,
+                                           VkDevice *device, VkQueue *queue,
+                                           uint32_t *queue_family);
+
+typedef struct nxvc_vkd_atlas_src {
+    VkBuffer buffer;      /* the patch source; required          */
+    VkDeviceSize offset;  /* where the slot-shaped image starts  */
+    VkImage image;        /* reserved; must be VK_NULL_HANDLE    */
+} nxvc_vkd_atlas_src;
+
+nxvc_vkd_status nxvc_vk_atlas_write_tiles(nxvc_vk_decoder *dec, uint32_t eye,
+                                          uint32_t first_tile, uint32_t count,
+                                          const nxvc_vkd_atlas_src *src,
+                                          uint32_t src_frame,
+                                          uint32_t submit_flags,
+                                          uint32_t *applied,
+                                          uint32_t *superseded);
+
 /* Byte size of the per-tile table: 64 * tile_count, over the eye pair.  0 if
  * this is not an atlas stream. */
 size_t nxvc_vk_decoder_atlas_table_size(const nxvc_vk_decoder *dec);
@@ -429,6 +496,13 @@ typedef struct nxvc_vkd_stats {
      * a test that does not read this cannot tell whether it exercised the
      * tool or merely re-ran the ordinary skip path.                        */
     uint32_t rows_elided;
+    /* --- [SYN] 13.12.6 APPENDED.  Coded tiles this frame DROPPED because the
+     * position already held a generation from this frame or a later one --
+     * which a base-layer patch can produce, since 13.12.9 lets one carry a
+     * `src_frame` ahead of the stream.  It is a REPORT and not a loss: the
+     * position holds something newer, and the encoder must not answer it with
+     * a refresh.                                                           */
+    uint32_t tiles_superseded;
 } nxvc_vkd_stats;
 
 nxvc_vkd_status nxvc_vk_decoder_stats(const nxvc_vk_decoder *dec,

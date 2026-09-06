@@ -200,6 +200,15 @@ NXVW_AFN nxvw_atlas_col_of(int n, int cols_per_eye, int eyes) {
 // code, and it is sound for the reason 13.12.10's rebase is not: after a
 // PICTURE frame every position's pixels really are new.
 #define NXVW_ATLAS_OP_MATERIALISE 3u
+// [SYN] 13.12.9, the base-layer patch.  A coded tile's metadata block with one
+// bit added: identity `C`, `src_frame` as given, `gen` 0, valid, NEVER static,
+// `res_level` 0, and `base_sourced` (flags bit 2) SET.  The entry says where
+// the pixels are and at which pose, which is the same statement however they
+// were produced; the bit is what lets a receiver, a rate controller and a
+// conformance vector tell the two patch sources apart, and it is normative in
+// version 1.  A later coded tile at the same position clears it, which is the
+// scheduled refresh.
+#define NXVW_ATLAS_OP_BASE_PATCH 4u
 
 // The status word MATGEN writes.  Bit 0 is the refusal; bits 8-31 carry the
 // FIRST offending tile index, so the report names a tile and not just a frame.
@@ -220,6 +229,14 @@ struct NxvwAtlasTilePush {
     // every mono stream and puts the whole assemble one tile row out.
     uint refBase;
     uint eyes;
+    // BASE_PATCH: where the entry sits on the COMPOSITION clock, which is not
+    // `frame`.  `src_frame` is PROVENANCE and may be ahead of the stream (a
+    // base picture arrives with its own latency); `advanced_to` is "when did
+    // 13.12.2 last run on this entry", and that is the decoder's current
+    // position.  Conflating them leaves a patched entry permanently ahead of
+    // the advance, so it is never composed again.
+    uint advanceTo;
+    uint pad2;
 };
 #endif
 

@@ -175,7 +175,10 @@ class AtlasHostState {
         for (uint32_t i = 0; i < count; ++i)
             if ((size_t)tiles[i] < n) named[tiles[i]] = 1u;
         for (uint32_t t = 0; t < (uint32_t)n; ++t) {
-            if (advanced_to_[t] == frame) continue;
+            // `>=`: an entry a future-dated base patch ([SYN] 13.12.9) has put
+            // AHEAD of this frame needs no advance, and the subtraction below
+            // would underflow on it.
+            if (advanced_to_[t] >= frame) continue;
             const bool falling =
                 (uint64_t)(frame - advanced_to_[t]) >= NXVW_ATLAS_HRING - 1u;
             if (named[t] || falling) out.push_back(t);

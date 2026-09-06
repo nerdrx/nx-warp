@@ -59,6 +59,8 @@ layout(push_constant) uniform Push {
     int chromaW, chromaH;
     uint refBase;
     uint eyes;
+    uint advanceTo;
+    uint pad2;
 } pc;
 
 // [REF] ref/src/inter.h half_round(): to nearest, ties AWAY from zero, so it
@@ -108,6 +110,30 @@ void main() {
     uint rec = uint(NXVW_WARP_HDR_UINTS) + n * uint(NXVW_WARP_TILE_UINTS);
     uint w0 = warp[rec + 0u];
     int mode = nxvw_wt_mode(w0);
+
+    if (pc.op == NXVW_ATLAS_OP_BASE_PATCH) {
+        // [SYN] 13.12.9.  The pixels have already been copied in; this is the
+        // metadata that says so.  NEVER static: a base-sourced position holds
+        // a picture, not a held tile.
+        tbl[base + 0u] = uint(1 << kWarpQNum);
+        tbl[base + 1u] = 0u;
+        tbl[base + 2u] = 0u;
+        tbl[base + 3u] = 0u;
+        tbl[base + 4u] = uint(1 << kWarpQNum);
+        tbl[base + 5u] = 0u;
+        tbl[base + 6u] = 0u;
+        tbl[base + 7u] = 0u;
+        tbl[base + 8u] = uint(kWarpH22);
+        tbl[base + NXVW_ATLAS_OFF_SRC] = pc.frame;
+        tbl[base + NXVW_ATLAS_OFF_PACK] =
+            nxvw_atlas_pack(0u, NXVW_ATLAS_FLAG_VALID |
+                                    NXVW_ATLAS_FLAG_BASE_SOURCED, 0u);
+        for (uint k = uint(NXVW_ATLAS_OFF_RSVD);
+             k < uint(NXVW_ATLAS_ENTRY_UINTS); ++k)
+            tbl[base + k] = 0u;
+        advanced_to[n] = pc.advanceTo;
+        return;
+    }
 
     if (pc.op == NXVW_ATLAS_OP_MATERIALISE) {
         // [SYN] 13.12.11 step 3.  The reconstruction IS the atlas now, so

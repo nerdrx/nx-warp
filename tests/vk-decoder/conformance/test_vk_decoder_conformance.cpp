@@ -476,6 +476,60 @@ void atlas_attribute(const char *what, const std::vector<uint8_t> &stream) {
 // it: if the REFERENCE's own fold of the same stream also disagrees with the
 // manifest, the difference is out-of-band data and not a decoder bug, and the
 // GPU-vs-reference comparison above is what carries.
+// [SYN] 13.12.9's sidecar.  `<vector>.basepatch` ships the base picture BESIDE
+// the bitstream so the pinned digest is reproducible by anyone who does not
+// have the generator's spec table compiled in -- which is the whole point of a
+// conformance vector, and which v87/v88/v92 could not do until it existed.
+struct BasePatchFile {
+    uint32_t width = 0, height = 0, eye = 0, src_frame = 0, chroma_order = 0;
+    uint32_t ystride = 0, cstride = 0;
+    int apply_after = -1;
+    std::vector<uint8_t> tiles, Y, C;
+};
+
+bool base_patch_load(const std::string &path, BasePatchFile &b) {
+    std::FILE *f = std::fopen(path.c_str(), "rb");
+    if (!f) return false;
+    std::vector<uint8_t> d;
+    uint8_t buf[65536];
+    size_t n;
+    while ((n = std::fread(buf, 1, sizeof buf, f)) > 0)
+        d.insert(d.end(), buf, buf + n);
+    std::fclose(f);
+    if (d.size() < 8 + 11 * 4) return false;
+    if (std::memcmp(d.data(), "NXVBP1\0\0", 8) != 0) return false;
+    auto u32 = [&](size_t o) {
+        return (uint32_t)d[o] | ((uint32_t)d[o + 1] << 8) |
+               ((uint32_t)d[o + 2] << 16) | ((uint32_t)d[o + 3] << 24);
+    };
+    b.width = u32(8); b.height = u32(12); b.eye = u32(16);
+    b.src_frame = u32(20); b.chroma_order = u32(24); b.ystride = u32(28);
+    b.cstride = u32(32); b.apply_after = (int)u32(36);
+    const uint32_t nt = u32(40), ny = u32(44), nc = u32(48);
+    size_t off = 8 + 11 * 4;
+    if (d.size() != off + nt + ny + nc) return false;
+    b.tiles.assign(d.begin() + off, d.begin() + off + nt); off += nt;
+    b.Y.assign(d.begin() + off, d.begin() + off + ny); off += ny;
+    b.C.assign(d.begin() + off, d.begin() + off + nc);
+    return true;
+}
+
+// Apply the shipped patch to BOTH decoders and re-fold, which is what the
+// reference does at the same point.  The GPU side goes through
+// nxvc_vk_atlas_write_tiles(), so this is the entry point's conformance test
+// as well as the vectors': the two atlases must still agree afterwards.
+//
+// The base picture ships as 8-bit YCbCr, which is what a client HEVC-decodes.
+// The decoder's entry point takes a buffer ALREADY in the atlas's own coded
+// sample domain -- the conversion is the client's kernel, deliberately, so the
+// decoder never has to know a base picture's colour layout.  For a `CT_NONE`
+// stream that conversion is a widening and a de-interleave, and it is done
+// here on the host because the point of the test is the WRITE, not the
+// colour.
+bool apply_base_patch(const char *what, nxvc_decoder *rd, nxvc_vk_decoder *gd,
+                      const BasePatchFile &bp, uint32_t eyes, MD5 &rmd,
+                      MD5 &gmd, int &patched);
+
 void check_stream_atlas(const char *what, const std::vector<uint8_t> &stream,
                         const std::string &pinned_md5) {
     CaseGuard cg_(what);
@@ -526,6 +580,14 @@ void check_stream_atlas(const char *what, const std::vector<uint8_t> &stream,
     nxvc_decoder_plane_size(rd, 1, &cw, &ch);
     std::vector<uint8_t> Y((size_t)yw * yh), U((size_t)cw * ch),
         V((size_t)cw * ch);
+    nxvc_stream_info sinf{};
+    nxvc_decoder_stream_info(rd, &sinf);
+    const uint32_t si_eyes = sinf.eyes;
+    BasePatchFile bp;
+    const bool have_patch =
+        base_patch_load(std::string(g_vectors_dir) + "/" + what + ".basepatch",
+                        bp);
+    int patched = 0;
     MD5 gmd, rmd;
     std::vector<uint8_t> gs, rs;
     size_t off = rc;
@@ -575,6 +637,22 @@ void check_stream_atlas(const char *what, const std::vector<uint8_t> &stream,
                 }
         }
         if (rs != gs) {
+            // Table or pixels?  They are different bugs and the first `tb`
+            // bytes are the table, so say which before anything else.
+            size_t d0 = 0;
+            while (d0 < rs.size() && d0 < gs.size() && rs[d0] == gs[d0]) ++d0;
+            if (d0 < tb) {
+                const size_t e = d0 / 64, k = (d0 % 64) / 4;
+                const uint32_t *r32 = (const uint32_t *)(rs.data() + e * 64);
+                const uint32_t *g32 = (const uint32_t *)(gs.data() + e * 64);
+                std::printf("FAIL %s: frame %d: TABLE entry %zu uint %zu: "
+                            "ref 0x%08x gpu 0x%08x (patched %d)\n",
+                            what, nf, e, k, r32[k], g32[k], patched);
+            } else {
+                std::printf("FAIL %s: frame %d: PIXELS differ from byte %zu "
+                            "of %zu (table %zu B agreed, patched %d)\n",
+                            what, nf, d0 - tb, rs.size() - tb, tb, patched);
+            }
             std::printf("FAIL %s: the atlas differs from the reference at "
                         "frame %d\n", what, nf);
             ++g_fail;
@@ -586,6 +664,14 @@ void check_stream_atlas(const char *what, const std::vector<uint8_t> &stream,
         gmd.update(gs.data(), gs.size());
         ++nf;
         off += ur;
+        if (have_patch && nf == bp.apply_after + 1) {
+            if (!apply_base_patch(what, rd, gd, bp, si_eyes, rmd, gmd,
+                                  patched)) {
+                ++g_fail;
+                bad = true;
+                break;
+            }
+        }
     }
     nxvc_vk_decoder_destroy(gd);
     nxvc_decoder_destroy(rd);
@@ -611,6 +697,174 @@ void check_stream_atlas(const char *what, const std::vector<uint8_t> &stream,
         return;
     }
     if (g_verbose) std::printf("ok   %s (atlas, %d frames)\n", what, nf);
+}
+
+bool apply_base_patch(const char *what, nxvc_decoder *rd, nxvc_vk_decoder *gd,
+                      const BasePatchFile &bp, uint32_t eyes, MD5 &rmd,
+                      MD5 &gmd, int &patched) {
+    // ---- the reference, straight from the shipped bytes.
+    nxvc_base_patch api{};
+    api.plane[0] = bp.Y.data();
+    api.stride[0] = (int)bp.ystride;
+    api.plane[1] = bp.C.data();
+    api.stride[1] = (int)bp.cstride;
+    api.width = bp.width;
+    api.height = bp.height;
+    api.eye = bp.eye;
+    api.src_frame = bp.src_frame;
+    api.chroma_order = bp.chroma_order;
+    api.tiles = bp.tiles.data();
+    api.tile_bytes = (uint32_t)bp.tiles.size();
+    uint32_t rap = 0;
+    if (nxvc_decoder_atlas_patch_base(rd, &api, &rap, nullptr) != NXVC_OK) {
+        std::printf("FAIL %s: reference base patch refused\n", what);
+        return false;
+    }
+
+    // ---- the GPU, through nxvc_vk_atlas_write_tiles().
+    VkDevice dev = VK_NULL_HANDLE;
+    VkPhysicalDevice phys = VK_NULL_HANDLE;
+    if (nxvc_vk_decoder_vk_handles(gd, nullptr, &phys, &dev, nullptr,
+                                   nullptr) != NXVC_VKD_OK ||
+        !dev) {
+        std::printf("FAIL %s: no Vulkan handles from the decoder\n", what);
+        return false;
+    }
+    uint32_t pw[4] = {0, 0, 0, 0}, ph[4] = {0, 0, 0, 0}, ps[4] = {0, 0, 0, 0};
+    size_t slot = 0;
+    for (int p = 0; p < 4; ++p) {
+        nxvc_vk_decoder_atlas_plane(gd, p, nullptr, 0, &pw[p], &ph[p], &ps[p]);
+        if (pw[p] && ph[p]) slot += (size_t)ps[p] * ph[p];
+    }
+    // The slot-shaped u16 source: plane 0 from Y, planes 1 and 2 from the
+    // interleaved chroma, at the eye's own column offset.  Only the named
+    // tiles are ever copied, so the rest may stay zero.
+    std::vector<uint16_t> srcbuf(slot, 0u);
+    size_t base = 0;
+    for (int p = 0; p < 4; ++p) {
+        if (!pw[p] || !ph[p]) continue;
+        if (p == 0) {
+            for (uint32_t y = 0; y < ph[0] && y < bp.height; ++y)
+                for (uint32_t x = 0; x < pw[0] && x < bp.width; ++x)
+                    srcbuf[base + (size_t)y * ps[0] + bp.eye * pw[0] + x] =
+                        bp.Y[(size_t)y * bp.ystride + x];
+        } else if (p == 1 || p == 2) {
+            // NXVC_BASE_CHROMA_CB_CR is (Cb,Cr); the other order swaps them.
+            const int sel = (bp.chroma_order == 0) ? (p - 1) : (2 - p);
+            for (uint32_t y = 0; y < ph[p]; ++y)
+                for (uint32_t x = 0; x < pw[p]; ++x)
+                    srcbuf[base + (size_t)y * ps[p] + bp.eye * pw[p] + x] =
+                        bp.C[(size_t)y * bp.cstride + x * 2 + sel];
+        }
+        base += (size_t)ps[p] * ph[p];
+    }
+    VkBuffer buf = VK_NULL_HANDLE;
+    VkDeviceMemory mem = VK_NULL_HANDLE;
+    VkBufferCreateInfo bci{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    bci.size = srcbuf.size() * 2;
+    bci.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    if (vkCreateBuffer(dev, &bci, nullptr, &buf) != VK_SUCCESS) {
+        std::printf("FAIL %s: vkCreateBuffer for the patch source\n", what);
+        return false;
+    }
+    VkMemoryRequirements mr{};
+    vkGetBufferMemoryRequirements(dev, buf, &mr);
+    VkPhysicalDeviceMemoryProperties mp{};
+    vkGetPhysicalDeviceMemoryProperties(phys, &mp);
+    uint32_t mt = UINT32_MAX;
+    for (uint32_t i = 0; i < mp.memoryTypeCount; ++i)
+        if ((mr.memoryTypeBits & (1u << i)) &&
+            (mp.memoryTypes[i].propertyFlags &
+             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) &&
+            (mp.memoryTypes[i].propertyFlags &
+             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) {
+            mt = i;
+            break;
+        }
+    VkMemoryAllocateInfo mai{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    mai.allocationSize = mr.size;
+    mai.memoryTypeIndex = mt;
+    if (mt == UINT32_MAX ||
+        vkAllocateMemory(dev, &mai, nullptr, &mem) != VK_SUCCESS) {
+        vkDestroyBuffer(dev, buf, nullptr);
+        std::printf("FAIL %s: no host-visible memory for the patch source\n",
+                    what);
+        return false;
+    }
+    vkBindBufferMemory(dev, buf, mem, 0);
+    void *mapped = nullptr;
+    vkMapMemory(dev, mem, 0, VK_WHOLE_SIZE, 0, &mapped);
+    std::memcpy(mapped, srcbuf.data(), srcbuf.size() * 2);
+    vkUnmapMemory(dev, mem);
+
+    nxvc_vkd_atlas_src src{};
+    src.buffer = buf;
+    src.offset = 0;
+    // The named tiles, as contiguous RUNS -- which is the form the entry point
+    // is built around, because row strips are what the writes coalesce to.
+    uint32_t gap = 0, gsup = 0;
+    nxvc_vkd_status wst = NXVC_VKD_OK;
+    const uint32_t nt = (uint32_t)bp.tiles.size();
+    for (uint32_t i = 0; i < nt && wst == NXVC_VKD_OK;) {
+        if (!bp.tiles[i]) { ++i; continue; }
+        uint32_t j = i;
+        while (j < nt && bp.tiles[j]) ++j;
+        uint32_t a = 0, sup = 0;
+        wst = nxvc_vk_atlas_write_tiles(gd, bp.eye, i, j - i, &src,
+                                        bp.src_frame, 0, &a, &sup);
+        gap += a;
+        gsup += sup;
+        i = j;
+    }
+    vkDestroyBuffer(dev, buf, nullptr);
+    vkFreeMemory(dev, mem, nullptr);
+    if (wst != NXVC_VKD_OK) {
+        std::printf("FAIL %s: nxvc_vk_atlas_write_tiles: %s\n", what,
+                    nxvc_vk_decoder_last_error(gd));
+        return false;
+    }
+    if (gap != rap) {
+        std::printf("FAIL %s: the base patch applied %u tile(s) on the GPU and "
+                    "%u on the reference\n", what, gap, rap);
+        return false;
+    }
+    patched = (int)gap;
+    (void)eyes;
+
+    // Re-fold both atlases, exactly as the reference does after its patch.
+    std::vector<uint8_t> rs2, gs2;
+    const size_t tb = nxvc_decoder_atlas_table_size(rd);
+    rs2.assign(tb, 0u);
+    gs2.assign(tb, 0u);
+    nxvc_decoder_atlas_table(rd, rs2.data(), tb);
+    nxvc_vk_decoder_atlas_table(gd, gs2.data(), tb);
+    for (int p = 0; p < 4; ++p) {
+        uint32_t w = 0, h = 0, sd = 0;
+        const uint16_t *rp = nxvc_decoder_atlas_plane(rd, p, &w, &h, &sd);
+        if (!rp || !w || !h) continue;
+        std::vector<uint16_t> gp((size_t)sd * h);
+        uint32_t gw = 0, gh = 0, gsd = 0;
+        nxvc_vk_decoder_atlas_plane(gd, p, gp.data(), gp.size(), &gw, &gh,
+                                    &gsd);
+        for (uint32_t y = 0; y < h; ++y)
+            for (uint32_t x = 0; x < w; ++x) {
+                const uint16_t rv = rp[(size_t)y * sd + x];
+                const uint16_t gv = gp[(size_t)y * sd + x];
+                rs2.push_back((uint8_t)(rv & 0xff));
+                rs2.push_back((uint8_t)(rv >> 8));
+                gs2.push_back((uint8_t)(gv & 0xff));
+                gs2.push_back((uint8_t)(gv >> 8));
+            }
+    }
+    if (rs2 != gs2) {
+        std::printf("FAIL %s: the atlas differs from the reference AFTER the "
+                    "base patch (%u applied, %u superseded)\n", what, gap, gsup);
+        return false;
+    }
+    rmd.update(rs2.data(), rs2.size());
+    gmd.update(gs2.data(), gs2.size());
+    return true;
 }
 
 void check_stream(const char *what, const std::vector<uint8_t> &stream,

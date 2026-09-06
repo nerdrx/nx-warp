@@ -104,7 +104,14 @@ void main() {
     uint base = n * NXVW_ATLAS_ENTRY_UINTS;
 
     uint at = advanced_to[n];
-    if (at == pc.targetFrame) return;
+    // `>=` and not `==`.  A base-layer patch ([SYN] 13.12.9) may carry a
+    // src_frame AHEAD of the current frame -- v88 pins exactly that -- and
+    // such an entry is already past the target: its `C` is the identity and
+    // there is nothing pending on it.  With `==` the walk below could never
+    // reach the target, so it ran the full ring depth composing whatever those
+    // slots held, and the atlas diverged one frame AFTER the patch rather than
+    // at it.
+    if (at >= pc.targetFrame) return;
 
     uint pack = tbl[base + NXVW_ATLAS_OFF_PACK];
     // An invalid entry is not advanced at all -- not its `C` and not its
