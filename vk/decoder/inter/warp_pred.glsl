@@ -420,9 +420,16 @@ void nxvwWarpPlane(int tid, int p, uint tb, int size, int full, int sub,
 
     // ---- step 1: four corners, four threads, one barrier.
     barrier();
-    if (tid < 4)
-        compute_corner(tid, uint((eye * 2 + (sub - 1)) * NXVW_WARP_MAT_UINTS),
-                       tox, toy, wmode);
+    // [ATLAS] The matrix is the tile's own when it names one, and the frame's
+    // otherwise.  `NXVW_WARP_MAT_NONE` is the whole compatibility story: a
+    // stream without tool bit 31 sets it on every tile, this resolves to the
+    // expression that was here before, and the kernel is byte-for-byte the
+    // kernel it was -- which `vk.encoder.passw.same` pins.
+    const uint matIdx = nxvwWarpParam(tb + uint(NXVW_WARP_TILE_MATIDX));
+    const uint mat = (matIdx == NXVW_WARP_MAT_NONE)
+                         ? uint((eye * 2 + (sub - 1)) * NXVW_WARP_MAT_UINTS)
+                         : matIdx + uint(sub - 1) * uint(NXVW_WARP_MAT_UINTS);
+    if (tid < 4) compute_corner(tid, mat, tox, toy, wmode);
     barrier();
     const ivec2 c0 = sCorner[0], c1 = sCorner[1];
     const ivec2 c2 = sCorner[2], c3 = sCorner[3];

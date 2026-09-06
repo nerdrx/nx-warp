@@ -190,6 +190,12 @@ struct Case {
     int quad;            // 1 = every tile carries quadrant vectors
     int near_skip;       // 1 = every skipped tile carries a correction
     int warp_kind;       // 0 identity, 1 mild, 2 near the envelope edge
+    // [ATLAS] 1 = give every tile its OWN matrix pair, appended after the tile
+    // records, and point mat_idx at it.  Every tile gets a DIFFERENT matrix, so
+    // a kernel that ignored mat_idx and used the frame's four would disagree
+    // with the model on almost every sample.  LAST in the struct so every
+    // existing positional initialiser keeps its meaning and defaults to 0.
+    int per_tile_mat;
 };
 
 struct Scene {
@@ -296,8 +302,12 @@ void build_scene(const Case &cs, uint32_t seed, Scene &sc) {
         }
 
     // --- the parameter block.
-    sc.params.assign((size_t)NXVW_WARP_HDR_UINTS +
-                         (size_t)sc.ntiles * NXVW_WARP_TILE_UINTS,
+    const size_t _mat_base = (size_t)NXVW_WARP_HDR_UINTS +
+                             (size_t)sc.ntiles * NXVW_WARP_TILE_UINTS;
+    sc.params.assign(_mat_base + (cs.per_tile_mat
+                                      ? (size_t)sc.ntiles * 2 *
+                                            NXVW_WARP_MAT_UINTS
+                                      : 0u),
                      0u);
     uint32_t *W = sc.params.data();
     for (int eye = 0; eye < 2; ++eye) {
@@ -370,6 +380,31 @@ void build_scene(const Case &cs, uint32_t seed, Scene &sc) {
         t[i].ns0 = near_skip ? (uint32_t)(rng.next() & 0xffffffu) : 0u;
         t[i].ns1 = near_skip ? (uint32_t)(rng.next() & 0xffffffu) : 0u;
         t[i].ns2 = near_skip ? (uint32_t)(rng.next() & 0xffffffu) : 0u;
+        // [ATLAS] The frame's four matrices unless this case says otherwise.
+        t[i].mat_idx = NXVW_WARP_MAT_NONE;
+        if (cs.per_tile_mat) {
+            const size_t base = _mat_base + (size_t)i * 2 * NXVW_WARP_MAT_UINTS;
+            int32_t hh[9];
+            make_matrix(cs.warp_kind, cs.w, cs.h, rng, hh);
+            for (int sub = 1; sub <= 2; ++sub) {
+                uint32_t *m = W + base + (size_t)(sub - 1) * NXVW_WARP_MAT_UINTS;
+                for (int k = 0; k < 9; ++k) m[k] = (uint32_t)hh[k];
+                if (sub == 2) {
+                    auto half = [](int32_t v) {
+                        return v >= 0
+                                   ? (int32_t)((v + 1) >> 1)
+                                   : (int32_t)(-(int32_t)((-(int64_t)v + 1) >> 1));
+                    };
+                    m[2] = (uint32_t)half(hh[2]);
+                    m[5] = (uint32_t)half(hh[5]);
+                    m[6] = (uint32_t)(hh[6] * 2);
+                    m[7] = (uint32_t)(hh[7] * 2);
+                }
+                m[9] = (uint32_t)((sub == 2 ? cw : cs.w) / 2);
+                m[10] = (uint32_t)((sub == 2 ? ch : cs.h) / 2);
+            }
+            t[i].mat_idx = (uint32_t)base;
+        }
     }
 }
 
@@ -537,6 +572,15 @@ const Case kCases[] = {
     // has to agree.
     {"odd_size_420",          200, 140, 1,  1, 0, 0,  1,  0,  1,  1,  1},
     {"odd_size_444",          200, 140, 1,  0, 0, 0,  1,  0,  0,  1,  2},
+    // [ATLAS] The per-tile matrix path: every tile names its own matrix pair
+    // instead of one of the frame's four.  The 4:2:0 rows are the ones that
+    // matter most -- they exercise `mat_idx + (sub - 1) * MAT_UINTS`, the
+    // chroma half of the pair, which is where an off-by-one record would hide.
+    // name                     w    h  eyes 420 a  ct mix res quad ns warp ptm
+    {"pertile_mat_444",       192, 128, 1,  0, 0, 0,  0,  0,  0,  0,  1,  1},
+    {"pertile_mat_420",       192, 128, 1,  1, 0, 0,  0,  0,  0,  0,  1,  1},
+    {"pertile_mat_420_edge",  256, 192, 1,  1, 0, 0,  1,  1,  1,  1,  2,  1},
+    {"pertile_mat_stereo",    128, 128, 2,  1, 0, 0,  1,  1,  1,  1,  1,  1},
 };
 
 }  // namespace

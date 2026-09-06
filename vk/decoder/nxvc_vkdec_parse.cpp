@@ -656,7 +656,11 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
 
     const uint32_t ntiles = si.tile_count;
     fp.recs.assign(ntiles, NxvwTileRec{0, 0, 0, 0xffffffffu});
-    fp.warp_tiles.assign(ntiles, nxvw::NxvwWarpTile{});
+    // [ATLAS] Every tile names the frame's matrices unless something sets it
+    // otherwise, which is what keeps a stream without tool bit 31 identical.
+    nxvw::NxvwWarpTile _wt_default{};
+    _wt_default.mat_idx = NXVW_WARP_MAT_NONE;
+    fp.warp_tiles.assign(ntiles, _wt_default);
     // [SYN] 13.5: the whole prediction state is cleared when `tile_map_reset`
     // is set.  Annex D D-9.
     if (ic && (flags & 1u))
