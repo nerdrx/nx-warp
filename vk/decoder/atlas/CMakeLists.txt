@@ -45,7 +45,25 @@ if(NXVW_GLSLC)
             ${NXVW_ATLAS_GEN_SPV} ${NXVW_ATLAS_SPV_PASSES_CMAKE}
     COMMENT "glslc atlas_compose.comp -> atlas_compose.spv.h"
     VERBATIM)
-  add_custom_target(nxvw_atlas_spv DEPENDS ${NXVW_ATLAS_SPV})
+  # The coded-tile kernel: MATGEN before Pass W, WRITEBACK after Pass B.
+  set(NXVW_ATLAS_TSPV ${NXVW_ATLAS_GEN}/atlas_tiles.spv.h)
+  add_custom_command(
+    OUTPUT ${NXVW_ATLAS_TSPV}
+    COMMAND ${CMAKE_COMMAND}
+            -DGLSLC=${NXVW_GLSLC}
+            -DSRC=${CMAKE_CURRENT_SOURCE_DIR}/atlas_tiles.comp
+            -DOUT=${NXVW_ATLAS_TSPV}
+            -DNAME=atlas_tiles
+            -DINCDIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -DSTYLE=plain
+            -DDEPFILE=${NXVW_ATLAS_TSPV}.d
+            -P ${NXVW_ATLAS_GEN_SPV}
+    DEPFILE ${NXVW_ATLAS_TSPV}.d
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/atlas_tiles.comp
+            ${NXVW_ATLAS_GEN_SPV} ${NXVW_ATLAS_SPV_PASSES_CMAKE}
+    COMMENT "glslc atlas_tiles.comp -> atlas_tiles.spv.h"
+    VERBATIM)
+  add_custom_target(nxvw_atlas_spv DEPENDS ${NXVW_ATLAS_SPV} ${NXVW_ATLAS_TSPV})
 
   # ---------------------------------------------------------------- harness
   # GPU-vs-CPU for the compose kernel, the same shape passA/, passB/ and
@@ -66,6 +84,12 @@ if(NXVW_GLSLC)
     add_dependencies(nxvc-atlas-gpu-test nxvw_atlas_spv)
     target_include_directories(nxvc-atlas-gpu-test PRIVATE ${NXVW_ATLAS_GEN})
     target_link_libraries(nxvc-atlas-gpu-test PRIVATE nxvw_atlas_model)
+    # inter_state.h, for nxvcvk::plane_homography(): the harness checks the
+    # MATGEN kernel against the SAME host helper that builds the frame's four
+    # matrices, so the per-tile and frame-uniform paths are provably one
+    # arithmetic rather than two transcriptions of it.
+    target_include_directories(nxvc-atlas-gpu-test PRIVATE
+                               ${CMAKE_CURRENT_SOURCE_DIR}/../inter)
     if(Vulkan_FOUND)
       target_link_libraries(nxvc-atlas-gpu-test PRIVATE Vulkan::Vulkan)
     else()

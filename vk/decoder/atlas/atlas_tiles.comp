@@ -1,0 +1,161 @@
+#version 450
+// NX Warp decoder, ATLAS: the two things that happen to a CODED tile's atlas
+// entry.  One thread per coded tile, over the frame's coded tiles only.
+//
+//   MATGEN     before Pass W.  Reads the entry's `C` as it stands AFTER the
+//              advance ([SYN] 13.12.4) and writes the conjugated matrix PAIR
+//              into the warp parameter buffer at the tile record's `mat_idx`.
+//              Also records, in a status word, a coded non-INTRA tile whose
+//              own entry is invalid -- which 13.12.4 makes BITSTREAM.
+//
+//   WRITEBACK  after Pass B has stored the tile's pixels.  [SYN] 13.12.3
+//              step 3: C := identity, src_frame := N, gen := 0,
+//              static := (mode == STATIC_MV), valid := 1, res_level -- and
+//              `advanced_to := N` beside it.
+//
+// Pass W is NOT modified.  A renormalised `C` satisfies the same legality
+// conditions as a transmitted `H`, which is the property 13.12.2's renorm step
+// exists to preserve, so the predictor consumes it unchanged; all that changes
+// is where the matrix comes from, and `mat_idx` (commit a0c0a69) is already
+// the road it comes down.
+//
+// NORMATIVE SOURCE: docs/SYNTAX.md 13.12.3, 13.12.4 and 13.3 step 1.
+// CHECKED AGAINST: nxvcvk::plane_homography() in inter/inter_state.h, which is
+// the host helper that builds the frame's four matrices today -- so the
+// per-tile matrices and the frame-uniform ones are provably the same
+// arithmetic and not two transcriptions of it.
+//
+// docs/ADRENO-RULES.md: no function-scope array.
+//
+// SPDX-License-Identifier: Apache-2.0
+#extension GL_GOOGLE_include_directive : require
+
+#include "atlas_layout.h"
+
+layout(local_size_x = 64) in;
+
+// [SYN] 4.1's mode values, spelled here rather than pulled in from
+// passB/syntax_constants.h: this kernel needs two of them and that header
+// carries the whole reconstruction's constant set.  Mirrors inter_state.h.
+const int kModeStaticMv = 1;
+const int kModeIntra = 3;
+
+layout(std430, binding = 0) buffer TableBuf { uint tbl[]; };
+layout(std430, binding = 1) buffer AdvBuf { uint advanced_to[]; };
+// The warp parameter buffer: header, then one NXVW_WARP_TILE_UINTS record per
+// tile, then the per-tile matrix pairs this kernel fills in.
+layout(std430, binding = 2) buffer WarpBuf { uint warp[]; };
+// The coded tiles of this frame, by TABLE index -- which is the linear tile
+// index of [SYN] 3.3 and therefore also the warp record index.
+layout(std430, binding = 3) readonly buffer CodedBuf { uint coded[]; };
+layout(std430, binding = 4) buffer StatusBuf { uint status[]; };
+
+layout(push_constant) uniform Push {
+    uint tileCount;
+    uint op;
+    uint frame;
+    uint colsPerEye;
+    int lumaW, lumaH;
+    int chromaW, chromaH;
+    uint pad0, pad1;
+} pc;
+
+// [REF] ref/src/inter.h half_round(): to nearest, ties AWAY from zero, so it
+// is symmetric about zero and identical on every implementation.  A plain
+// arithmetic shift is floor and would be off by one on every negative
+// translation, which is half of them.
+int atlas_half_round(int v) {
+    return v >= 0 ? ((v + 1) >> 1) : -(((-v) + 1) >> 1);
+}
+
+// [SYN] 13.3 step 1 / [REF] plane_homography(): the matrix conjugated by the
+// plane's subsampling factor, S H S^-1 with S = diag(1/sub, 1/sub, 1).  Only
+// sub 1 and sub 2 exist in version 1.  Written into the same 12-uint record
+// compute_corner() already consumes: nine matrix words, then ox, oy, pad.
+void atlas_write_mat(uint at, int c0, int c1, int c2, int c3, int c4, int c5,
+                     int c6, int c7, int sub, int planeW, int planeH) {
+    if (sub == 2) {
+        c2 = atlas_half_round(c2);
+        c5 = atlas_half_round(c5);
+        c6 = c6 * 2;
+        c7 = c7 * 2;
+    }
+    warp[at + 0u] = uint(c0);
+    warp[at + 1u] = uint(c1);
+    warp[at + 2u] = uint(c2);
+    warp[at + 3u] = uint(c3);
+    warp[at + 4u] = uint(c4);
+    warp[at + 5u] = uint(c5);
+    warp[at + 6u] = uint(c6);
+    warp[at + 7u] = uint(c7);
+    warp[at + 8u] = uint(kWarpH22);
+    warp[at + 9u] = uint(planeW / 2);
+    warp[at + 10u] = uint(planeH / 2);
+    warp[at + 11u] = 0u;
+}
+
+void main() {
+    uint id = gl_GlobalInvocationID.x;
+    if (id >= pc.tileCount) return;
+    uint n = coded[id];
+    uint base = n * NXVW_ATLAS_ENTRY_UINTS;
+    uint rec = uint(NXVW_WARP_HDR_UINTS) + n * uint(NXVW_WARP_TILE_UINTS);
+    uint w0 = warp[rec + 0u];
+    int mode = nxvw_wt_mode(w0);
+
+    if (pc.op == NXVW_ATLAS_OP_WRITEBACK) {
+        // 13.12.3 step 3.  The whole entry is reset, so nothing of the
+        // composition survives -- which is why MATGEN has to have run first.
+        tbl[base + 0u] = uint(1 << kWarpQNum);
+        tbl[base + 1u] = 0u;
+        tbl[base + 2u] = 0u;
+        tbl[base + 3u] = 0u;
+        tbl[base + 4u] = uint(1 << kWarpQNum);
+        tbl[base + 5u] = 0u;
+        tbl[base + 6u] = 0u;
+        tbl[base + 7u] = 0u;
+        tbl[base + 8u] = uint(kWarpH22);
+        tbl[base + NXVW_ATLAS_OFF_SRC] = pc.frame;
+        uint flags = NXVW_ATLAS_FLAG_VALID |
+                     ((mode == kModeStaticMv) ? NXVW_ATLAS_FLAG_STATIC : 0u);
+        tbl[base + NXVW_ATLAS_OFF_PACK] =
+            nxvw_atlas_pack(0u, flags, uint(nxvw_wt_res_level(w0)));
+        // The 20 reserved bytes are zero and conformance compares them.
+        for (uint k = uint(NXVW_ATLAS_OFF_RSVD);
+             k < uint(NXVW_ATLAS_ENTRY_UINTS); ++k)
+            tbl[base + k] = 0u;
+        advanced_to[n] = pc.frame;
+        return;
+    }
+
+    // ---- MATGEN
+    uint pack = tbl[base + NXVW_ATLAS_OFF_PACK];
+    if (nxvw_atlas_valid(pack) == 0 && mode != kModeIntra) {
+        // [SYN] 13.12.4.  Only the device knows this -- validity is decided by
+        // the envelope check inside the composition -- so it is recorded and
+        // the host refuses the frame once it completes.  The FIRST offending
+        // tile is kept, so the report names a tile rather than a frame.
+        uint prev = atomicOr(status[0], NXVW_ATLAS_STATUS_INVALID_REF);
+        if ((prev & NXVW_ATLAS_STATUS_INVALID_REF) == 0u) status[1] = n;
+        return;
+    }
+    uint mat = warp[rec + uint(NXVW_WARP_TILE_MATIDX)];
+    if (mat == NXVW_WARP_MAT_NONE) return;   // frame-uniform: nothing to build
+
+    int c0 = int(tbl[base + 0u]), c1 = int(tbl[base + 1u]);
+    int c2 = int(tbl[base + 2u]), c3 = int(tbl[base + 3u]);
+    int c4 = int(tbl[base + 4u]), c5 = int(tbl[base + 5u]);
+    int c6 = int(tbl[base + 6u]), c7 = int(tbl[base + 7u]);
+    // A STATIC_MV tile reads the IDENTITY and not its stored C ([SYN] 13.12.4
+    // table).  Its C is the identity anyway -- 13.12.3 step 1 never composes a
+    // static entry -- but the predictor must not depend on that being true, so
+    // it is stated here rather than assumed of the table.
+    if (mode == kModeStaticMv) {
+        c0 = 1 << kWarpQNum; c1 = 0; c2 = 0;
+        c3 = 0; c4 = 1 << kWarpQNum; c5 = 0;
+        c6 = 0; c7 = 0;
+    }
+    atlas_write_mat(mat, c0, c1, c2, c3, c4, c5, c6, c7, 1, pc.lumaW, pc.lumaH);
+    atlas_write_mat(mat + uint(NXVW_WARP_MAT_UINTS), c0, c1, c2, c3, c4, c5,
+                    c6, c7, 2, pc.chromaW, pc.chromaH);
+}

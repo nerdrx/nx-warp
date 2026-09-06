@@ -6,6 +6,15 @@
 //   EAGER  atlas_compose.comp dispatched over EVERY entry of BOTH eyes once
 //          per frame -- the frame-complete path, and the default;
 //          compared against REF after every single frame;
+// A fourth thing is checked alongside them: `atlas_tiles.comp`, the coded-tile
+// kernel.  MATGEN builds each coded tile's conjugated matrix PAIR out of the
+// entry's composed `C` and writes it at the tile record's `mat_idx`, and the
+// harness compares those 24 words against `nxvcvk::plane_homography()` -- the
+// SAME host helper that builds the frame's four matrices today, so the
+// per-tile and frame-uniform paths are provably one arithmetic and not two
+// transcriptions of it.  WRITEBACK is checked as part of the LAZY table's
+// byte-identity, because it is what resets a coded entry.
+//
 //   LAZY   the same kernel dispatched over the CODED entries only, each
 //          advanced from its private `advanced_to` up to N one step at a time,
 //          then FLUSHED at the end.
@@ -40,7 +49,9 @@
 #include <vector>
 
 #include "atlas_model.h"
+#include "inter_state.h"
 #include "atlas_compose.spv.h"
+#include "atlas_tiles.spv.h"
 
 using namespace nxvw;
 
@@ -277,6 +288,9 @@ int main(int argc, char **argv) {
 
     // ---- the scene: the v1 stereo configuration, 1088x1088 an eye.
     const int lumaW = 1088, lumaH = 1088;
+    // 4:2:0, so the sub-2 conjugation has a different origin from the sub-1
+    // one and a wrong `ox`/`oy` cannot hide behind an equal pair.
+    const int chromaW = (lumaW + 1) / 2, chromaH = (lumaH + 1) / 2;
     const int colsPerEye = (lumaW + 63) / 64;      // 17
     const int rows = (lumaH + 63) / 64;            // 17
     const int eyes = 2;
@@ -334,12 +348,55 @@ int main(int argc, char **argv) {
         VKCHECK(vkCreateComputePipelines(c.dev, VK_NULL_HANDLE, 1, &ci, nullptr,
                                          &pipe));
     }
+    // ---- the coded-tile pipeline: five bindings, its own push block.
+    VkDescriptorSetLayout dslT;
+    VkPipelineLayout plT;
+    VkPipeline pipeT;
+    {
+        VkShaderModule modT;
+        VkShaderModuleCreateInfo si{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
+        si.codeSize = sizeof(atlas_tiles_spv);
+        si.pCode = atlas_tiles_spv;
+        VKCHECK(vkCreateShaderModule(c.dev, &si, nullptr, &modT));
+        VkDescriptorSetLayoutBinding tb[5]{};
+        for (uint32_t i = 0; i < 5; ++i) {
+            tb[i].binding = i;
+            tb[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            tb[i].descriptorCount = 1;
+            tb[i].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        }
+        VkDescriptorSetLayoutCreateInfo li{
+            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+        li.bindingCount = 5;
+        li.pBindings = tb;
+        VKCHECK(vkCreateDescriptorSetLayout(c.dev, &li, nullptr, &dslT));
+        VkPushConstantRange pr{VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                               sizeof(NxvwAtlasTilePush)};
+        VkPipelineLayoutCreateInfo pi{
+            VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+        pi.setLayoutCount = 1;
+        pi.pSetLayouts = &dslT;
+        pi.pushConstantRangeCount = 1;
+        pi.pPushConstantRanges = &pr;
+        VKCHECK(vkCreatePipelineLayout(c.dev, &pi, nullptr, &plT));
+        VkComputePipelineCreateInfo ci{
+            VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
+        ci.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        ci.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+        ci.stage.module = modT;
+        ci.stage.pName = "main";
+        ci.layout = plT;
+        VKCHECK(vkCreateComputePipelines(c.dev, VK_NULL_HANDLE, 1, &ci, nullptr,
+                                         &pipeT));
+        vkDestroyShaderModule(c.dev, modT, nullptr);
+    }
+
     VkDescriptorPool dpool;
     {
-        VkDescriptorPoolSize ps{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 8};
+        VkDescriptorPoolSize ps{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 16};
         VkDescriptorPoolCreateInfo pi{
             VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
-        pi.maxSets = 2;
+        pi.maxSets = 3;
         pi.poolSizeCount = 1;
         pi.pPoolSizes = &ps;
         VKCHECK(vkCreateDescriptorPool(c.dev, &pi, nullptr, &dpool));
@@ -355,6 +412,17 @@ int main(int argc, char **argv) {
     Buf hring = createBuffer(c,
         (VkDeviceSize)NXVW_ATLAS_HRING * eyes * NXVW_ATLAS_HSLOT_UINTS * 4);
     Buf sel = createBuffer(c, (VkDeviceSize)entries * 4);
+    // The warp parameter buffer, in the decoder's own layout: header, then one
+    // NXVW_WARP_TILE_UINTS record per tile, then the per-tile matrix PAIRS the
+    // MATGEN op fills in.  Two NXVW_WARP_MAT_UINTS records per tile, sub 1 and
+    // sub 2, which is exactly what compute_corner() consumes.
+    const uint32_t matBase =
+        (uint32_t)NXVW_WARP_HDR_UINTS + entries * (uint32_t)NXVW_WARP_TILE_UINTS;
+    const uint32_t warpUints =
+        matBase + entries * 2u * (uint32_t)NXVW_WARP_MAT_UINTS;
+    Buf warpB = createBuffer(c, (VkDeviceSize)warpUints * 4);
+    Buf codedB = createBuffer(c, (VkDeviceSize)entries * 4);
+    Buf statusB = createBuffer(c, 16);
 
     VkDescriptorSet dsE, dsL;
     {
@@ -389,6 +457,35 @@ int main(int argc, char **argv) {
     bindSet(dsE, tblE, advE);
     bindSet(dsL, tblL, advL);
 
+    VkDescriptorSet dsT;
+    {
+        VkDescriptorSetAllocateInfo ai{
+            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+        ai.descriptorPool = dpool;
+        ai.descriptorSetCount = 1;
+        ai.pSetLayouts = &dslT;
+        VKCHECK(vkAllocateDescriptorSets(c.dev, &ai, &dsT));
+        // The coded-tile kernel drives the LAZY table: that is the path with
+        // arrival order, so it is the one whose write-back has to be the
+        // kernel's and not the host's.  The EAGER table keeps a host-side
+        // write-back and is the control.
+        VkDescriptorBufferInfo bi[5] = {{tblL.buf, 0, VK_WHOLE_SIZE},
+                                        {advL.buf, 0, VK_WHOLE_SIZE},
+                                        {warpB.buf, 0, VK_WHOLE_SIZE},
+                                        {codedB.buf, 0, VK_WHOLE_SIZE},
+                                        {statusB.buf, 0, VK_WHOLE_SIZE}};
+        VkWriteDescriptorSet w[5]{};
+        for (uint32_t i = 0; i < 5; ++i) {
+            w[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            w[i].dstSet = dsT;
+            w[i].dstBinding = i;
+            w[i].descriptorCount = 1;
+            w[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            w[i].pBufferInfo = &bi[i];
+        }
+        vkUpdateDescriptorSets(c.dev, 5, w, 0, nullptr);
+    }
+
     VkCommandBuffer cb;
     {
         VkCommandBufferAllocateInfo ai{
@@ -415,6 +512,27 @@ int main(int argc, char **argv) {
         vkCmdPushConstants(cb, pl, VK_SHADER_STAGE_COMPUTE_BIT, 0,
                            sizeof(push), &push);
         vkCmdDispatch(cb, (push.entryCount + 63u) / 64u, 1, 1);
+        VKCHECK(vkEndCommandBuffer(cb));
+        VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+        si.commandBufferCount = 1;
+        si.pCommandBuffers = &cb;
+        VKCHECK(vkResetFences(c.dev, 1, &fence));
+        VKCHECK(vkQueueSubmit(c.queue, 1, &si, fence));
+        VKCHECK(vkWaitForFences(c.dev, 1, &fence, VK_TRUE, UINT64_MAX));
+    };
+
+    auto dispatchT = [&](const NxvwAtlasTilePush &push) {
+        if (push.tileCount == 0) return;
+        VKCHECK(vkResetCommandBuffer(cb, 0));
+        VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+        bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        VKCHECK(vkBeginCommandBuffer(cb, &bi));
+        vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, pipeT);
+        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, plT, 0, 1,
+                                &dsT, 0, nullptr);
+        vkCmdPushConstants(cb, plT, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                           sizeof(push), &push);
+        vkCmdDispatch(cb, (push.tileCount + 63u) / 64u, 1, 1);
         VKCHECK(vkEndCommandBuffer(cb));
         VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO};
         si.commandBufferCount = 1;
@@ -453,8 +571,12 @@ int main(int argc, char **argv) {
     std::vector<uint32_t> lazyAdv(entries, 0u);
 
     uint32_t nCoded = 0, nInvalidated = 0, nForced = 0, nStatic = 0;
+    uint32_t nInvalidRef = 0;
     std::vector<uint32_t> selHost;
     selHost.reserve(entries);
+    std::vector<uint32_t> codedList;
+    codedList.reserve(entries);
+    std::vector<uint32_t> tileMode(entries, 0u), tileRes(entries, 0u);
 
     for (uint32_t f = 1; f <= frames && !g_fail; ++f) {
         // ---- this frame's per-eye H.  One frame in eight carries
@@ -535,28 +657,164 @@ int main(int argc, char **argv) {
         //      at the frame it happens rather than 300 frames later.
         if (!compare_tables(tblE.u32(), ref, "eager", f)) break;
 
-        // ---- the write-back of 13.12.3 step 3, on all three tables.  A tile
-        //      whose mode produced reconstructed samples resets its entry
-        //      completely.  Pass B does this on the GPU under
-        //      nxvc_vk_decode_tiles; here it is the host, because what is
-        //      under test is the composition and not the store.
+        // ---- 13.12.3 step 3, the write-back.  A tile whose mode produced
+        //      reconstructed samples resets its entry completely.
+        //
+        //      This is where the coded-tile KERNEL enters.  The list of coded
+        //      tiles, each one's mode and res_level, and a warp record per
+        //      tile carrying `mat_idx` go to the device; MATGEN builds the
+        //      matrix pairs out of the composed `C` and WRITEBACK resets the
+        //      entries.  The EAGER table keeps the host-side write-back and is
+        //      the control, so the two are not the same code checking itself.
+        codedList.clear();
         for (uint32_t n = 0; n < entries; ++n) {
             if (!coded[n]) continue;
             ++nCoded;
+            // A mix of modes, because MATGEN treats them differently: INTRA
+            // reads nothing and is exempt from 13.12.4's validity rule,
+            // STATIC_MV reads the IDENTITY rather than its stored C, and
+            // WARP_MV reads C.
+            const int roll = rng.range(0, 9);
+            const uint32_t mode = (roll == 0)   ? 1u    // STATIC_MV
+                                  : (roll == 1) ? 3u    // INTRA
+                                                : 2u;   // WARP_MV
+            if (mode == 1u) ++nStatic;
+            const uint32_t res = (uint32_t)rng.range(0, 2);
+            tileMode[n] = mode;
+            tileRes[n] = res;
+            codedList.push_back(n);
+        }
+        // The warp records, in the decoder's own layout.  The matrix area is
+        // cleared to a poison value first: a MATGEN that writes nothing would
+        // otherwise pass against a buffer that happens to hold the right
+        // answer from the previous frame.
+        for (uint32_t k = matBase; k < warpUints; ++k)
+            warpB.u32()[k] = 0xdeadbeefu;
+        for (uint32_t i = 0; i < codedList.size(); ++i) {
+            const uint32_t n = codedList[i];
+            uint32_t *rec = warpB.u32() + NXVW_WARP_HDR_UINTS +
+                            (size_t)n * NXVW_WARP_TILE_UINTS;
+            rec[0] = tileMode[n] | (tileRes[n] << 5);
+            rec[NXVW_WARP_TILE_MATIDX] =
+                matBase + (uint32_t)i * 2u * (uint32_t)NXVW_WARP_MAT_UINTS;
+        }
+        if (!codedList.empty())
+            std::memcpy(codedB.mapped, codedList.data(), codedList.size() * 4);
+        statusB.u32()[0] = 0u;
+        statusB.u32()[1] = 0xffffffffu;
+
+        NxvwAtlasTilePush tp{};
+        tp.tileCount = (uint32_t)codedList.size();
+        tp.frame = f;
+        tp.colsPerEye = (uint32_t)colsPerEye;
+        tp.lumaW = lumaW;
+        tp.lumaH = lumaH;
+        tp.chromaW = chromaW;
+        tp.chromaH = chromaH;
+        tp.op = NXVW_ATLAS_OP_MATGEN;
+        dispatchT(tp);
+
+        // ---- MATGEN against nxvcvk::plane_homography(), the SAME host helper
+        //      that builds the frame's four frame-uniform matrices.  So the
+        //      per-tile path is checked against the frame-uniform one's
+        //      arithmetic rather than against a second transcription of it.
+        uint32_t wantInvalid = 0;
+        for (uint32_t i = 0; i < codedList.size() && !g_fail; ++i) {
+            const uint32_t n = codedList[i];
+            const uint32_t mat =
+                matBase + i * 2u * (uint32_t)NXVW_WARP_MAT_UINTS;
+            const bool valid = (ref[n].flags & NXVW_ATLAS_FLAG_VALID) != 0u;
+            if (!valid && tileMode[n] != 3u) {
+                ++wantInvalid;
+                // 13.12.4 makes it BITSTREAM, so no matrix is built at all.
+                if (warpB.u32()[mat] != 0xdeadbeefu) {
+                    std::printf("FAIL matgen frame %u: tile %u has an invalid "
+                                "entry but a matrix was written\n", f, n);
+                    ++g_fail;
+                }
+                continue;
+            }
+            nxvcvk::WarpMatrix src{};
+            if (tileMode[n] == 1u) {          // STATIC_MV reads the identity
+                int32_t I[9];
+                atlas_identity(I);
+                for (int k = 0; k < 9; ++k) src.h[k] = I[k];
+            } else {
+                for (int k = 0; k < 9; ++k) src.h[k] = ref[n].C[k];
+            }
+            for (int sub = 1; sub <= 2; ++sub) {
+                const int pw = sub == 2 ? chromaW : lumaW;
+                const int ph = sub == 2 ? chromaH : lumaH;
+                const nxvcvk::PlaneMatrix want =
+                    nxvcvk::plane_homography(src, pw, ph, sub);
+                const uint32_t *got =
+                    warpB.u32() + mat +
+                    (uint32_t)(sub - 1) * (uint32_t)NXVW_WARP_MAT_UINTS;
+                for (int k = 0; k < 9; ++k)
+                    if ((int32_t)got[k] != want.h[k]) {
+                        std::printf("FAIL matgen frame %u: tile %u sub %d "
+                                    "h[%d]: gpu %d, plane_homography %d\n",
+                                    f, n, sub, k, (int32_t)got[k], want.h[k]);
+                        ++g_fail;
+                        break;
+                    }
+                if ((int32_t)got[9] != want.ox || (int32_t)got[10] != want.oy) {
+                    std::printf("FAIL matgen frame %u: tile %u sub %d origin: "
+                                "gpu (%d,%d), want (%d,%d)\n", f, n, sub,
+                                (int32_t)got[9], (int32_t)got[10], want.ox,
+                                want.oy);
+                    ++g_fail;
+                }
+            }
+        }
+        if (!g_fail) {
+            const uint32_t st0 = statusB.u32()[0];
+            const bool wantBit = wantInvalid != 0;
+            if (((st0 & NXVW_ATLAS_STATUS_INVALID_REF) != 0u) != wantBit) {
+                std::printf("FAIL matgen frame %u: status 0x%08x, %u tiles had "
+                            "an invalid entry\n", f, st0, wantInvalid);
+                ++g_fail;
+            }
+            nInvalidRef += wantInvalid;
+        }
+        if (g_fail) break;
+
+        tp.op = NXVW_ATLAS_OP_WRITEBACK;
+        dispatchT(tp);
+
+        // ---- the same write-back on REF and on the EAGER table, by hand.
+        for (uint32_t n : codedList) {
             AtlasEntry &e = ref[n];
             atlas_identity(e.C);
             e.src_frame = f;
             e.gen = 0;
-            e.res_level = (uint32_t)rng.range(0, 2);
-            const bool st = (rng.range(0, 9) == 0);   // mode == STATIC_MV
-            if (st) ++nStatic;
+            e.res_level = tileRes[n];
             e.flags = NXVW_ATLAS_FLAG_VALID |
-                      (st ? NXVW_ATLAS_FLAG_STATIC : 0u);
+                      (tileMode[n] == 1u ? NXVW_ATLAS_FLAG_STATIC : 0u);
             entry_pack(e, tblE.u32() + n * NXVW_ATLAS_ENTRY_UINTS);
-            entry_pack(e, tblL.u32() + n * NXVW_ATLAS_ENTRY_UINTS);
             advE.u32()[n] = f;
-            advL.u32()[n] = f;
             lazyAdv[n] = f;
+        }
+        // And the kernel's own write-back has to have produced exactly that.
+        // Checking it HERE rather than only at the flush names the frame.
+        for (uint32_t n : codedList) {
+            const uint32_t *got = tblL.u32() + n * NXVW_ATLAS_ENTRY_UINTS;
+            uint32_t want[NXVW_ATLAS_ENTRY_UINTS];
+            entry_pack(ref[n], want);
+            for (int k = 0; k < NXVW_ATLAS_ENTRY_UINTS; ++k)
+                if (got[k] != want[k]) {
+                    std::printf("FAIL writeback frame %u: entry %u word %d: "
+                                "gpu 0x%08x, model 0x%08x\n", f, n, k, got[k],
+                                want[k]);
+                    ++g_fail;
+                    break;
+                }
+            if (advL.u32()[n] != f) {
+                std::printf("FAIL writeback frame %u: entry %u advanced_to %u, "
+                            "want %u\n", f, n, advL.u32()[n], f);
+                ++g_fail;
+            }
+            if (g_fail) break;
         }
     }
 
@@ -683,8 +941,9 @@ int main(int argc, char **argv) {
 
     std::printf("-- %u tiles coded (%u of them STATIC_MV), %u entries "
                 "invalidated by the envelope, %u forced-advanced before the "
-                "ring wrapped\n",
-                nCoded, nStatic, nInvalidated, nForced);
+                "ring wrapped, %u coded tiles refused by 13.12.4 (invalid "
+                "entry, non-INTRA)\n",
+                nCoded, nStatic, nInvalidated, nForced, nInvalidRef);
     if (verbose)
         std::printf("-- table %u entries x %u B = %.1f kB\n", entries,
                     (unsigned)NXVW_ATLAS_ENTRY_BYTES,
@@ -702,6 +961,12 @@ int main(int argc, char **argv) {
     destroyBuffer(c, advL);
     destroyBuffer(c, hring);
     destroyBuffer(c, sel);
+    destroyBuffer(c, warpB);
+    destroyBuffer(c, codedB);
+    destroyBuffer(c, statusB);
+    vkDestroyPipeline(c.dev, pipeT, nullptr);
+    vkDestroyPipelineLayout(c.dev, plT, nullptr);
+    vkDestroyDescriptorSetLayout(c.dev, dslT, nullptr);
     vkDestroyCommandPool(c.dev, c.pool, nullptr);
     vkDestroyDevice(c.dev, nullptr);
     vkDestroyInstance(c.inst, nullptr);

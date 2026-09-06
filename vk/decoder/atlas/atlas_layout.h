@@ -141,6 +141,55 @@ NXVW_AFN nxvw_atlas_col_of(int n, int cols_per_eye, int eyes) {
     return (n % (eyes * cols_per_eye)) % cols_per_eye;
 }
 
+// ----------------------------------------------- the coded-tile dispatch
+// The two things that happen to a CODED tile's atlas entry, both over the
+// frame's coded tiles only and both one thread per tile.  They are two ops of
+// ONE kernel because they share every buffer and every index derivation and
+// differ in six lines.
+//
+// MATGEN runs BEFORE Pass W and reads the entry's `C` as it stands after the
+// advance -- [SYN] 13.12.4, "read after step 1".  It conjugates that `C` for
+// sub 1 and sub 2 ([SYN] 13.3 step 1) and writes the PAIR into the warp
+// parameter buffer at the tile record's `mat_idx`, which is the per-tile
+// matrix hook: `NXVW_WARP_MAT_NONE` keeps the frame's four and is what every
+// stream without tool bit 31 sets, so the hook is byte-for-byte invisible to
+// them.  Pass W is NOT modified; it already reads `mat_idx`.
+//
+// It has to be a KERNEL and not host arithmetic.  `C` is composed on the
+// device, and reading it back to build the matrices on the host would put a
+// full stall in every frame -- which is the one thing tile streaming exists to
+// remove.
+//
+// WRITEBACK runs AFTER Pass B has stored the tile's pixels and applies
+// 13.12.3 step 3: C := identity, src_frame := N, gen := 0,
+// static := (mode == STATIC_MV), valid := 1, res_level, and `advanced_to := N`
+// beside it.
+//
+// [SYN] 13.12.4: "a tile with mode != INTRA whose own atlas entry has
+// valid == 0 is BITSTREAM".  Only the device knows that -- validity is decided
+// by the envelope check inside the composition -- so MATGEN records it in a
+// status word the host reads once the frame completes, and the refusal is
+// DEFERRED rather than absent.  A GPU decoder has no other shape available:
+// the alternative is a readback per frame.
+#define NXVW_ATLAS_OP_MATGEN 0u
+#define NXVW_ATLAS_OP_WRITEBACK 1u
+
+// The status word MATGEN writes.  Bit 0 is the refusal; bits 8-31 carry the
+// FIRST offending tile index, so the report names a tile and not just a frame.
+#define NXVW_ATLAS_STATUS_INVALID_REF 1u
+
+#ifdef __cplusplus
+struct NxvwAtlasTilePush {
+    uint tileCount;     // coded tiles in the list
+    uint op;            // NXVW_ATLAS_OP_*
+    uint frame;         // N
+    uint colsPerEye;
+    int lumaW, lumaH;   // per-eye luma dimensions -> sub-1 origin
+    int chromaW, chromaH;  // per-eye chroma dimensions -> sub-2 origin
+    uint pad0, pad1;
+};
+#endif
+
 // ------------------------------------------------- the compose dispatch
 // ONE dispatch per frame over EVERY entry of BOTH eyes.  289 entries an eye is
 // already in the starved region of the workgroup-count curve
