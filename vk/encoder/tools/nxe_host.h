@@ -107,6 +107,16 @@ struct Config {
      * Pass W would be a second copy of the one piece of arithmetic this
      * project refuses to have two of. */
     bool int_coded_vectors = false;
+    /* The reference distance an inter frame ASKS for first, `nxv-enc
+     * --ref-sel`'s field and docs/SYNTAX.md 4.1's `ref_sel`.  0 is frame N-1.
+     *
+     * It is a floor, not a fixed choice: the encoder starts here and walks
+     * outwards to 2 until it finds a slot the headset is believed to hold
+     * (nxe_inter.h HeldState), and only falls to an all-INTRA frame when none
+     * of the three is.  With a client that holds everything -- every fixture,
+     * every CI run -- the walk stops immediately and the stream is the one
+     * this encoder has always produced. */
+    int ref_sel = 0;
 
     int device = 0;
     bool cpu_only = false;

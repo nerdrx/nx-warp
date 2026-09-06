@@ -101,6 +101,94 @@ int main() {
         CHECK(r.resolve(4, 0) < 0, "reset must invalidate every slot");
     }
 
+    /* ---- what the CLIENT holds, and which reference that leaves.
+     *
+     * `RingState` above says what the ENCODER produced.  This says what the
+     * headset can reconstruct, which is a different question the moment a
+     * frame is dropped there -- and the difference is the whole reason an
+     * inter frame gets refused as malformed (docs/SYNTAX.md 4.1: a tile whose
+     * `ref_sel` names a picture the decoder does not hold is a BITSTREAM
+     * error).  The rules under test are in nxe_inter.h: a reported frame is
+     * not held, a frame predicted from an unheld frame is not held either,
+     * and a frame coded with no temporal reference is held regardless. */
+    {
+        nxe::HeldState h;
+        CHECK(!h.holds(0), "a frame never published is not held");
+        h.publish(0, -1);                       /* frame 0, intra */
+        CHECK(h.holds(0), "an intra frame is held");
+        h.publish(1, 0);
+        h.publish(2, 1);
+        h.publish(3, 2);
+        CHECK(h.holds(3), "a chain over held frames is held");
+        /* One report, and every descendant of it goes with it. */
+        h.not_held(1);
+        CHECK(h.holds(0), "the report must not reach backwards");
+        CHECK(!h.holds(1), "the reported frame is not held");
+        CHECK(!h.holds(2), "a frame predicted from an unheld frame is not held");
+        CHECK(!h.holds(3), "the cascade must be transitive");
+        /* An all-INTRA frame ends the cascade: it reconstructs from nothing,
+         * so nothing its nominal reference did can make it unusable.  Getting
+         * this wrong would leave the encoder in INTRA for ever after one
+         * dropped frame. */
+        h.publish(4, -1);
+        CHECK(h.holds(4), "an intra resync frame is held whatever preceded it");
+        h.publish(5, 4);
+        CHECK(h.holds(5), "and its successors are held again");
+        /* A report for a frame older than the history is accepted and does
+         * nothing.  Nothing that old can be referenced -- ref_sel reaches
+         * three frames back -- so this is sound, and it must not crash or
+         * clear anything. */
+        for (uint32_t k = 6; k < 40; ++k) h.publish(k, (int64_t)k - 1);
+        h.not_held(2);
+        CHECK(h.holds(39), "a report older than the history changes nothing");
+    }
+
+    /* ---- the reference walk.  `select_reference` is what turns the held
+     * record into the `ref_sel` a frame carries: the nearest reference at or
+     * beyond the configured floor that the encoder produced AND the headset
+     * holds, and no reference at all when none of the three qualifies. */
+    {
+        nxe::RingState r;
+        nxe::HeldState h;
+        for (uint32_t k = 0; k < 4; ++k) {
+            r.publish(k);
+            h.publish(k, k == 0 ? -1 : (int64_t)k - 1);
+        }
+        int d = -1, slot = -1;
+        CHECK(nxe::select_reference(r, h, 4, 0, &d, &slot),
+              "a client holding everything must have a reference");
+        CHECK(d == 0 && slot == 3, "and it must be the newest: d %d slot %d",
+              d, slot);
+        /* The floor is honoured, which is what makes the encoder byte-
+         * identical to `nxv-enc --ref-sel 1` when the client holds all four. */
+        CHECK(nxe::select_reference(r, h, 4, 1, &d, &slot) && d == 1 &&
+                  slot == 2,
+              "a floor of 1 must select d 1, got %d", d);
+        /* Now the client drops frame 3.  Frame 4 must step out to frame 2
+         * rather than resync. */
+        h.not_held(3);
+        CHECK(nxe::select_reference(r, h, 4, 0, &d, &slot) && d == 1 &&
+                  slot == 2,
+              "dropping N-1 must step out to d 1, got %d", d);
+        h.not_held(2);
+        CHECK(nxe::select_reference(r, h, 4, 0, &d, &slot) && d == 2 &&
+                  slot == 1,
+              "dropping N-2 as well must step out to d 2, got %d", d);
+        /* Three gone is the case ref_sel cannot express: the fourth candidate
+         * would be d 3, which the syntax reserves.  This is the one case that
+         * still costs an all-INTRA frame, and it must be reported as no
+         * reference rather than as d 3. */
+        h.not_held(1);
+        CHECK(!nxe::select_reference(r, h, 4, 0, &d, &slot),
+              "three unheld frames must leave no reference");
+        /* A floor above 2 is clamped rather than producing the reserved
+         * value. */
+        nxe::HeldState h2;
+        for (uint32_t k = 0; k < 4; ++k) h2.publish(k, k == 0 ? -1 : (int64_t)k - 1);
+        CHECK(nxe::select_reference(r, h2, 4, 9, &d, &slot) && d == 2,
+              "a floor above 2 must clamp to 2, got %d", d);
+    }
+
     /* ---- the rolling refresh.  Every tile must be refreshed exactly once in
      * every window of `period` frames -- that is the loss-recovery bound of
      * PAPER 2.6 -- and the tiles due on one frame must be scattered rather

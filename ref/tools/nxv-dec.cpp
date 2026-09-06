@@ -11,13 +11,17 @@ static void usage() {
     std::fprintf(stderr,
         "usage: nxv-dec --in out.nxv --out out.yuv [--pix yuv444p|yuv420p]\n"
         "  --frames N   decode at most N frames\n"
+        "  --decode-every N  decode only every Nth frame and skip the\n"
+        "               rest without parsing them, as a client that\n"
+        "               cannot keep up does; the skipped frames leave\n"
+        "               holes in the reference ring\n"
         "  --nv12       write Y then interleaved UV (4:2:0 streams only)\n"
         "  --quiet\n");
 }
 
 int main(int argc, char **argv) {
     std::string in, out, pix;
-    int frames = -1, quiet = 0, nv12 = 0;
+    int frames = -1, quiet = 0, nv12 = 0, decode_every = 1;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         auto val = [&]() -> const char * {
@@ -28,6 +32,7 @@ int main(int argc, char **argv) {
         else if (a == "--out") out = val();
         else if (a == "--pix") pix = val();
         else if (a == "--frames") frames = std::atoi(val());
+        else if (a == "--decode-every") decode_every = std::atoi(val());
         else if (a == "--quiet") quiet = 1;
         else if (a == "--nv12") nv12 = 1;
         else if (a == "-h" || a == "--help") { usage(); return 0; }
@@ -78,6 +83,24 @@ int main(int argc, char **argv) {
     if (!fo) { std::perror("open output"); return 1; }
     int n = 0;
     while (off < data.size() && (frames < 0 || n < frames)) {
+        /* A frame this client does not even try: skipped whole, from the
+         * length in its own header (SYNTAX.md 3.1, bytes 36-39).  The
+         * decoder never sees it, so its ring slot stays empty -- which is
+         * exactly the state that makes a later frame referencing it a
+         * BITSTREAM error. */
+        if (decode_every > 1 && (n % decode_every) != 0) {
+            if (off + 40 > data.size()) break;
+            const uint8_t *fh = data.data() + off;
+            const size_t fb = (size_t)fh[36] | ((size_t)fh[37] << 8) |
+                              ((size_t)fh[38] << 16) | ((size_t)fh[39] << 24);
+            if (fb < 40 || off + fb > data.size()) {
+                std::fprintf(stderr, "frame %d: bad frame length %zu\n", n, fb);
+                return 1;
+            }
+            off += fb;
+            ++n;
+            continue;
+        }
         nxvc_image img{};
         img.plane[0] = Y.data(); img.stride[0] = (int)yw;
         img.plane[1] = U.data(); img.stride[1] = (int)cw;

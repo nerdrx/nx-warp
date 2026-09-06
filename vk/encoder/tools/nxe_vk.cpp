@@ -100,6 +100,14 @@ struct VkEncoder::Impl {
     bool inter = false;
     RingLayout ring{};
     RingState ringst{};
+    /* What the HEADSET is believed to hold, which is not what the encoder
+     * produced the moment a frame is dropped on the client.  nxe_inter.h. */
+    HeldState heldst{};
+    /* The distance this frame ended up asking for, and the frame number it
+     * predicted from (-1 when every tile came out INTRA).  Both are decided
+     * before the dispatches and consumed after them. */
+    int cur_ref_sel = 0;
+    int64_t cur_pred_fn = -1;
     WarpParams warp{};
     int wpred_stride = 0;
     nxvw::NxvwWarpPush wpush{};
@@ -658,7 +666,20 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
      */
     int ref_slot = -1;
     if (d.inter) {
-        ref_slot = d.ringst.resolve(frame_number, 0);
+        /* Which reference, not merely whether there is one.  `ref_sel` walks
+         * outwards from the configured distance to the nearest slot the
+         * headset still holds, so a client that dropped frame N-1 is sent a
+         * frame predicting from N-2 instead of a full INTRA resync.  The
+         * fallback is unchanged: nothing held within three frames is still an
+         * all-INTRA frame with the tile-map reset flag. */
+        d.cur_ref_sel = 0;
+        if (!select_reference(d.ringst, d.heldst, frame_number, d.cfg.ref_sel,
+                              &d.cur_ref_sel, &ref_slot))
+            ref_slot = -1;
+        d.cur_pred_fn =
+            ref_slot >= 0
+                ? (int64_t)frame_number - 1 - (int64_t)d.cur_ref_sel
+                : -1;
         WarpBuildInfo bi;
         bi.width = (int)f.fp.width;
         bi.height = (int)f.fp.height;
@@ -704,6 +725,11 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
         /* warp_ext() travels only when there is a reference to warp. */
         fp.warp_bytes = ref_slot >= 0 ? (uint32_t)(36 * f.fp.eyes) : 0u;
         fp.ref_slots = 1u << (frame_number & 3u);
+        /* Frame-uniform: the warp matrix is derived from ONE reference view,
+         * so every inter tile of the frame predicts from the same slot and
+         * carries the same `ref_sel`.  E4 writes it into word1 bits 21-22 of
+         * a tile whose mode is not INTRA. */
+        fp.ref_sel = ref_slot >= 0 ? (uint32_t)d.cur_ref_sel : 0u;
         /* Frame flag bit 0 is the tile-map reset -- set exactly when there is
          * no usable reference -- and bit 3 says warp_ext() is present. */
         fp.frame_flags = (fp.frame_flags & ~9u) | (ref_slot >= 0 ? 8u : 1u);
@@ -984,10 +1010,19 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
         // mode was read back from the start; leaving the vector behind cost a
         // debugging pass in which E1c demonstrably chose mv (-1,0) and the
         // bitstream carried (0,0), because the readback was one field short.
+        bool any_inter = false;
         for (uint32_t t = 0; t < d.ntiles; ++t) {
             f.jobs[t].mode = back[t].mode;
             f.jobs[t].mv = back[t].mv;
+            if (back[t].mode != (uint32_t)nxvw::kModeIntra) any_inter = true;
         }
+        /* What the CLIENT will hold, once this frame reaches it.  A frame
+         * every tile of which came out INTRA reconstructs from nothing, so it
+         * is held whatever happened to its nominal reference -- which is
+         * exactly the resync frame, and getting this wrong would keep the
+         * encoder in INTRA for ever after one drop.  Any other frame is held
+         * only if the frame it predicted from is (nxe_inter.h, rule 2). */
+        d.heldst.publish(frame_number, any_inter ? d.cur_pred_fn : -1);
     }
 
 
@@ -1140,6 +1175,18 @@ void VkEncoder::set_received_tiles(const uint8_t *received, uint32_t count) {
     d.force_intra.assign(count, 0);
     for (uint32_t t = 0; t < count; ++t)
         d.force_intra[t] = received[t] ? 0u : 1u;
+}
+
+void VkEncoder::set_frame_held(uint32_t frame_number, bool held) {
+    Impl &d = *p_;
+    if (!d.inter) return;
+    if (!held) d.heldst.not_held(frame_number);
+    /* `held == true` is deliberately not an override.  The encoder's own
+     * record is derived from the prediction chain and is never optimistic;
+     * a client that decoded frame N necessarily held N's reference, so the
+     * positive report can only agree with what publish() already computed.
+     * Accepting it as an override would let one stale report resurrect a
+     * frame the chain says is unreconstructible. */
 }
 
 void VkEncoder::bench(Frame &f, int iters) {

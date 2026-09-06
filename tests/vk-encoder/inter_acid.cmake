@@ -279,6 +279,55 @@ if(VKENCAPI)
   endif()
 endif()
 
+# ---- the reference walk, through the library ABI.
+#
+# The 289-tile leg (inter_1088.cmake) proves this at the headset's size; this
+# is the same claim at twelve tiles, which is the size CI can afford, and it
+# goes through the ABI because the ABI is what a compositor calls.
+#
+# `--hold-every 2` is a client that reconstructs every other frame and reports
+# the rest not held; `--decode-every 2` is that same client at decode time,
+# skipping the frames it never asked for so its reference ring has the holes
+# the reports described.  The control is the same clip with no reports, which
+# that client must REFUSE -- otherwise this test would pass against an encoder
+# that ignored the reports entirely.
+if(VKENCAPI)
+  execute_process(COMMAND ${VKENCAPI} --in ${YUV} --w ${W} --h ${H} --qp 26
+                          --frames ${FRAMES} --matrix 1
+                          --inter --intra-period 180 --poses ${POSES}
+                          --hold-every 2
+                          --out ${WORKDIR}/hold2.nxv
+                  RESULT_VARIABLE rc ERROR_VARIABLE eout)
+  if(NOT rc EQUAL 0)
+    message(FATAL_ERROR "nxvc-vkenc-api --hold-every 2 failed (${rc}): ${eout}")
+  endif()
+  execute_process(COMMAND ${VKENCAPI} --in ${YUV} --w ${W} --h ${H} --qp 26
+                          --frames ${FRAMES} --matrix 1
+                          --inter --intra-period 180 --poses ${POSES}
+                          --out ${WORKDIR}/nohold.nxv
+                  RESULT_VARIABLE rc ERROR_VARIABLE eout)
+  if(NOT rc EQUAL 0)
+    message(FATAL_ERROR "nxvc-vkenc-api (no reports) failed (${rc}): ${eout}")
+  endif()
+  execute_process(COMMAND ${NXVDEC} --in ${WORKDIR}/nohold.nxv
+                          --out ${WORKDIR}/nohold2.yuv --pix yuv420p
+                          --decode-every 2 --quiet
+                  RESULT_VARIABLE rc OUTPUT_QUIET ERROR_QUIET)
+  if(rc EQUAL 0)
+    message(FATAL_ERROR
+      "a client decoding every other frame accepted a stream coded with no "
+      "held reports, so this test is no longer measuring anything")
+  endif()
+  execute_process(COMMAND ${NXVDEC} --in ${WORKDIR}/hold2.nxv
+                          --out ${WORKDIR}/hold2.yuv --pix yuv420p
+                          --decode-every 2 --quiet
+                  RESULT_VARIABLE rc ERROR_VARIABLE derr)
+  if(NOT rc EQUAL 0)
+    message(FATAL_ERROR
+      "nxv-dec refused a frame of the --hold-every 2 stream: ${derr}")
+  endif()
+endif()
+
 message(STATUS "vk.encoder.inter.acid: ${FRAMES} frames byte-identical, "
                "decoded identical, ring == decoder, ABI agrees, "
                "STATIC_MV byte-identical")

@@ -379,7 +379,14 @@ typedef struct nxe_frame_params {
      * which E3 subtracts for a coded inter tile.  0 on an intra stream, where
      * the buffer is a 4-byte placeholder and nothing reads it. */
     uint32_t wpred_stride;
-    uint32_t pad1;
+
+    /* The frame's reference distance, SYNTAX.md 4.1 word1 bits 21-22.  It is
+     * frame-uniform because warp_ext() is: the matrix is derived from one
+     * reference view, so every inter tile of the frame predicts from the same
+     * slot.  E4 writes it on a tile whose mode is not INTRA and leaves it 0
+     * otherwise, which is what the syntax requires (INTRA and STEREO must
+     * carry ref_sel 0). */
+    uint32_t ref_sel;
 
     /* Frame weighting matrices, Q4, raster order in the 8x8 block.  wm_id 0
      * on a tile selects these; 1..3 select a built-in pair (kWeight). */

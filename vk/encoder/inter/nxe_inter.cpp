@@ -174,6 +174,26 @@ void set_tile_mode(WarpParams &wp, uint32_t tile, int mode, int mv_x,
 
 
 
+bool select_reference(const RingState &ring, const HeldState &held,
+                      uint32_t frame_number, int base_ref_sel,
+                      int *out_ref_sel, int *out_slot) {
+    if (base_ref_sel < 0) base_ref_sel = 0;
+    /* [SYN] 4.1: ref_sel is two bits and the value 3 is reserved. */
+    if (base_ref_sel > 2) base_ref_sel = 2;
+    for (int d = base_ref_sel; d <= 2; ++d) {
+        const int slot = ring.resolve(frame_number, d);
+        if (slot < 0) continue;
+        /* The encoder has the picture; the question is whether the headset
+         * does.  Both must be true, and the second is the one a dropped frame
+         * makes false. */
+        if (!held.holds(frame_number - 1u - (uint32_t)d)) continue;
+        if (out_ref_sel) *out_ref_sel = d;
+        if (out_slot) *out_slot = slot;
+        return true;
+    }
+    return false;
+}
+
 WarpMatrix derive_warp(const ViewState &vs, int ref_slot, int eye, int width,
                        int height) {
     WarpMatrix m;   /* identity */

@@ -185,6 +185,20 @@ typedef struct nxvc_vke_create_info {
      * particular stream carries. */
     uint32_t entropy;
 
+    /* The reference distance an inter frame asks for FIRST: 0 is frame N-1,
+     * and it is the default.  docs/SYNTAX.md 4.1 `ref_sel`, and the same
+     * field `nxv-enc --ref-sel` sets.
+     *
+     * It is a floor, not a fixed choice.  The encoder starts here and walks
+     * outwards to 2 until it finds a frame the headset is believed to hold
+     * (see nxvc_vk_encoder_set_frame_held), so a caller that never reports a
+     * dropped frame gets ref_sel 0 on every frame and the stream this encoder
+     * has always produced.  Values above 2 are clamped: ref_sel is two bits
+     * and 3 is reserved.
+     *
+     * Refused at create() if `inter` is clear and this is not 0. */
+    uint32_t ref_sel;
+
     uint32_t flags; /* reserved, pass 0 */
 } nxvc_vke_create_info;
 
@@ -406,6 +420,53 @@ double nxvc_vk_encoder_last_upload_ms(const nxvc_vk_encoder *enc);
 nxvc_vke_status nxvc_vk_encoder_set_received_tiles(nxvc_vk_encoder *enc,
                                                    const uint8_t *received,
                                                    uint32_t count);
+
+/* Whether the headset reconstructed a frame it was sent.
+ *
+ * This is the FRAME-level counterpart of set_received_tiles(), and the two
+ * answer different questions.  A receipt map says which tiles arrived, which
+ * is about the transport; this says whether the decoder actually produced a
+ * picture, which is about the decoder -- a frame whose every datagram landed
+ * is still not held if the client dropped it from a decode queue it could not
+ * keep up with, and that is the common case on a headset, not the rare one.
+ *
+ * Why it exists.  An inter tile names its reference with `ref_sel`, and
+ * docs/SYNTAX.md 4.1 makes a tile naming a picture the decoder does not hold
+ * a BITSTREAM error -- ref/src/codec_impl.inc `ref_for` refuses it, so the
+ * frame is refused whole, not concealed.  Before this call the only way to
+ * say "the client lost a frame" was an all-zero receipt map, which codes the
+ * NEXT frame entirely INTRA: correct, and expensive enough that a headset
+ * dropping one frame in four spends a fifth of its bitrate on resyncs.  With
+ * this call the encoder instead asks for the newest frame the headset still
+ * holds -- ref_sel 1 or 2 -- and codes an ordinary inter frame.
+ *
+ * `frame_number` is the value the encoder put in that frame's header, which
+ * is the same number the client reports.  `held` is 0 for "did not
+ * reconstruct it".
+ *
+ * A negative report is transitive: the frame is unusable as a reference, and
+ * so is every later frame that predicted from it, however cleanly that one
+ * arrived.  The encoder tracks the whole chain, so one call is enough and
+ * repeating it is harmless.  A frame coded with no temporal reference at all
+ * is unaffected, which is what lets an all-INTRA resync end the cascade.
+ *
+ * A positive report is accepted and ignored.  The encoder's own record is
+ * derived from the prediction chain and is never optimistic; a client that
+ * decoded a frame necessarily held that frame's reference, so `held == 1` can
+ * only agree with what the encoder already computed, and treating it as an
+ * override would let a stale report resurrect a frame the chain says is
+ * unreconstructible.
+ *
+ * The history is sixteen frames deep -- about 180 ms at 90 Hz.  A report for
+ * a frame older than that is accepted and has no effect, which is sound:
+ * ref_sel reaches three frames back, so nothing that old can be referenced.
+ *
+ * Falling back to an all-INTRA frame still happens, but only when NONE of the
+ * three candidate references is held.  On an intra stream the call is accepted
+ * and ignored. */
+nxvc_vke_status nxvc_vk_encoder_set_frame_held(nxvc_vk_encoder *enc,
+                                               uint32_t frame_number,
+                                               int held);
 
 /* The frame's pose and projection, for the frame the NEXT encode() codes.
  *

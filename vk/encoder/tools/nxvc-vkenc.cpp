@@ -68,6 +68,12 @@ static void usage() {
         "  --no-sign-hide       code every sign (default: hide one per unit)\n"
         "  --intra-dir on|off|layer   directional intra, modes from the host\n"
         "  --dir-mode-seed N    fill the per-block modes from a PRNG (test aid)\n"
+        "  --ref-sel 0..2       reference distance an inter frame asks for\n"
+        "                       first; a floor, the encoder walks outwards to\n"
+        "                       the newest reference the client still holds\n"
+        "  --hold-every N       simulate a client that reconstructs only\n"
+        "                       every Nth frame and reports the rest not\n"
+        "                       held.  0 = holds everything (the default)\n"
         "  --chroma-qp-off N    chroma QP offset\n"
         "  --device N           Vulkan physical device index (default 0)\n"
         "  --cpu                run the CPU models, no Vulkan\n"
@@ -95,6 +101,11 @@ int main(int argc, char **argv) {
      * and every other fixture in this tree is under 256 tiles. */
     int fx_w = 256, fx_h = 192, fx_frames = 8;
     const char *ring_prefix = nullptr, *ring_decoded = nullptr;
+    /* A client that keeps up with only one frame in `hold_every`.  It drives
+     * nxvc_vk_encoder_set_frame_held()'s half of the reference walk from the
+     * command line, which is what the 289-tile drop-pattern test needs and
+     * what nothing else in this tool can express.  0 holds everything. */
+    int hold_every = 0;
     int ring_frames = 0;
     std::string pix = "yuv420p";
 
@@ -113,6 +124,8 @@ int main(int argc, char **argv) {
         else if (a == "--inter") cfg.inter = true;
         else if (a == "--poses") cfg.poses = val();
         else if (a == "--coded-vectors") cfg.int_coded_vectors = true;
+        else if (a == "--ref-sel") cfg.ref_sel = std::atoi(val());
+        else if (a == "--hold-every") hold_every = std::atoi(val());
         else if (a == "--intra-period") cfg.intra_period = std::atoi(val());
         else if (a == "--skip-thresh")
             cfg.skip_thresh = (int)(std::atof(val()) * 256.0 + 0.5);
@@ -333,6 +346,12 @@ int main(int argc, char **argv) {
             rc = 1;
             break;
         }
+        /* The client's verdict on the frame just coded, delivered before the
+         * next encode.  A real link delivers it a round trip later; this is
+         * the zero-latency case, which is the one that isolates the reference
+         * walk from the transport's timing. */
+        if (hold_every > 1 && cfg.inter && (n % hold_every) != 0)
+            gpu.set_frame_held((uint32_t)n, false);
         /* NXE_DUMP_RING=<path> writes the ring slot this frame just wrote,
          * luma only, as raw uint16.  It is what the ring-vs-decoder test
          * compares; the encoder is otherwise the only thing that can see it. */
