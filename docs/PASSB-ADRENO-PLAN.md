@@ -322,6 +322,51 @@ qualifying tile is nearly free, and says nothing about how many there are. A
 frame of pure head rotation may have none. Worth reading alongside the segment
 split, not before it.
 
+## 3c. V2, the chroma pair (`NXVW_ABL_CHROMAPAIR`)
+
+The two chroma planes of a 4:2:0 picture share **every input to the coordinate
+pipeline** — the same tile corners, the same subsampled vector, the same
+extent, the same quadrant split — and differ only in which plane of the
+reference ring the taps come from. So the coordinate is computed once and used
+twice, which removes a whole plane's worth of corner interpolation, clamping
+and Q.6 -> Q.4 conversion: 1024 of the tile's 6144 warped sample-coordinates.
+
+**It needs no shared memory and no extra barrier**, because both taps happen in
+the same thread at the same loop iteration. That is what separates it from the
+LDS-staging lever this tree measured at +26 %: nothing is published between the
+planes, so there is nothing to publish it *through*. It was the reason to
+prefer this over H1's luma-to-chroma sharing, which cannot avoid LDS.
+
+Scoped to the module whose scratch is per-plane. `NXVW_WARP_EMIT_IS_SCRATCH`
+says the destination is the tile's own plane slot, so plane 2's slot already
+exists; Pass W reuses one `sFull` across planes and would need a second buffer,
+which is LDS spent on the smaller term.
+
+Paired only when the tail after the sample loop is the trivial one — `factor ==
+1` and no near-skip field — because the sharing covers the loop and nothing
+after it. That is res_level 0 without a near-skip record, which is the live 1088
+case; anything else falls through unpaired. Plane 2's stride is compared against
+plane 1's rather than assumed equal.
+
+The refactor underneath is `fetchRefAt` / `fetchRefPairAt` / `sample_bilinearAt`,
+taking the plane base as a parameter, with the existing no-base forms kept as
+thin wrappers on `refElemBase` — so every existing call site produces the
+integer it always did, in the default build as much as the ablated one.
+
+### The proof that the test gates it
+
+`NXVW_ABL_CHROMAPAIR_FORCE` fills plane 2 from plane 1's ring base, so the two
+chroma planes come out equal — a wrong picture on any tile that is actually
+paired.
+
+| build | result |
+|---|---|
+| forced wrong base | **3 fail**: `vk.decoder.conformance`, `vk.decoder.loss`, `vk.encoder.inter.cv1088` |
+| honest | **28/28 pass**, both ICDs |
+
+The same three tests that detect the forced identity detect this, which is what
+says the fixtures reach the paired path rather than skipping it.
+
 ## 4. What Phase 1 did not establish
 
 * The split of the 23.1 ms between Pass W, the skip module, the non-directional

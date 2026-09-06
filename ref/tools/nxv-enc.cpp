@@ -146,6 +146,10 @@ static void usage() {
         "               syntax: the refinement is an ordinary coded tile\n"
         "               predicting from the upsampled coarse pixels\n"
         "  --atlas-coarse-budget N  at most N refinements per frame\n"
+        "  --atlas-sched-bytes N  RANKED REFRESH SCHEDULER: an ATLAS frame\n"
+        "               spends at most N bytes on coded tiles, choosing them\n"
+        "               by predicted display error rather than letting every\n"
+        "               tile decide alone.  Encoder-side rate control\n"
         "  --atlas-coarse-disp T  SINGLE-LEVEL coarse refresh: a tile whose\n"
         "               corner displacement since its last landing exceeds T\n"
         "               luma samples lands at res_level 1 and is not refined.\n"
@@ -182,6 +186,17 @@ static void usage() {
         "                       sides stay byte-comparable.  Default off.\n"
         "  --int-lambda N       its SAD-domain lambda, Q8 per quantiser step\n"
         "                       (default 45)\n"
+        "  --planar             the piecewise-planar tile mode (35): a tile\n"
+        "                       may be coded as 2-4 shaded regions meeting at\n"
+        "                       sharp boundaries instead of as transform\n"
+        "                       coefficients, chosen per tile by RD.  A\n"
+        "                       LOW-RATE tool: it saturates, so it is picked\n"
+        "                       where the transform has run out of bits, and\n"
+        "                       what it buys there is the KIND of failure --\n"
+        "                       flat regions and edges rather than blocks\n"
+        "  --planar-prefer      the same, taken wherever it is CHEAPER even\n"
+        "                       when it is worse: the low-poly look as a\n"
+        "                       setting.  It costs PSNR; see LOWPOLY-MODE.md\n"
         "  --int-rdoq N         integer requantiser: 0 off, 1 drop a +-1\n"
         "                       coefficient that does not pay for itself.\n"
         "                       The GPU encoder's effort 1; unlike\n"
@@ -327,9 +342,11 @@ int main(int argc, char **argv) {
     // exactly the metric 13.12.11.1's mode trigger uses, through the codec's
     // own nxvc_encoder_atlas_stale_tiles(), so the two cannot disagree.
     int coarse_disp = 0;       // T in luma samples; 0 = off
+    int sched_bytes = 0;       // ranked-scheduler budget, bytes/frame; 0 = off
     std::string atlas_dump;
     int mv_range = 16, skip_thresh = 0, mode_lambda = 0;
     int int_decision = 0, int_lambda = 0, int_intra_mad = 0, int_rdoq = 0;
+    int planar = 0;
     int int_coded_vectors = 2;
     int threads = 0;   // 0 = auto
     // These mirror nxvc_config_default(): the inter-efficiency tools that the
@@ -429,6 +446,7 @@ int main(int argc, char **argv) {
             coarse_budget = std::atoi(val());
         else if (a == "--atlas-coarse-stats") coarse_stats_path = val();
         else if (a == "--atlas-coarse-disp") coarse_disp = std::atoi(val());
+        else if (a == "--atlas-sched-bytes") sched_bytes = std::atoi(val());
         else if (a == "--atlas-gen-max") atlas_gen_max = std::atoi(val());
         else if (a == "--atlas-dump") atlas_dump = val();
         else if (a == "--eyes") eyes = std::atoi(val());
@@ -475,6 +493,9 @@ int main(int argc, char **argv) {
             else if (v == "off") int_decision = 0;
             else { std::fprintf(stderr, "--int-decision: on|off\n"); return 2; }
         }
+        else if (a == "--planar") planar = 1;
+        else if (a == "--planar-prefer") planar = 2;
+        else if (a == "--no-planar") planar = 0;
         else if (a == "--int-rdoq") int_rdoq = std::atoi(val());
         else if (a == "--int-lambda") int_lambda = std::atoi(val());
         else if (a == "--int-coded-vectors") {
@@ -769,6 +790,7 @@ int main(int argc, char **argv) {
     cfg.atlas_picture_period =
         (uint32_t)(atlas_picture_period > 0 ? atlas_picture_period : 0);
     cfg.atlas_coarse_disp = (uint32_t)(coarse_disp > 0 ? coarse_disp : 0);
+    cfg.atlas_sched_bytes = (uint32_t)(sched_bytes > 0 ? sched_bytes : 0);
     // 13.12.3: a STATIC_MV entry is held unwarped, so a head-locked tile may
     // be skipped.  On by default with the atlas -- it is the one behavioural
     // change to an existing mode and it is a strict gain.
@@ -779,6 +801,7 @@ int main(int argc, char **argv) {
     cfg.skip_thresh = (uint32_t)(skip_thresh > 0 ? skip_thresh : 0);
     cfg.inter_int_decision = (uint32_t)int_decision;
     cfg.int_rdoq = (uint32_t)int_rdoq;
+    cfg.planar = (uint32_t)planar;
     cfg.int_lambda_q8 = (uint32_t)(int_lambda > 0 ? int_lambda : 0);
     cfg.int_coded_vectors = (uint32_t)int_coded_vectors;
     cfg.int_intra_mad_q8 = (uint32_t)(int_intra_mad > 0 ? int_intra_mad : 0);

@@ -63,6 +63,11 @@ struct VecSpec {
     int xform;        // transform size: 0 = 8x8, 1 = 16x16, 2 = 32x32,
                       // 255 = the encoder's per-tile RD choice (tool 27)
     int lite;         // ENTROPY_LITE (tool 30): 0 rANS, 1 FIXED, 2 RICE
+    // The piecewise-planar tile mode (tool 35, SYNTAX.md 13.13): 0 off, 1 the
+    // rate-distortion decision, 2 the same wherever it is cheaper.  It is the
+    // last column, so every row above it keeps the value it was written with
+    // and no committed digest moves.
+    int planar;
 };
 
 static const VecSpec kVectors[] = {
@@ -172,6 +177,19 @@ static const VecSpec kVectors[] = {
     {"v80_lite_fixed_res_ts",  192, 128, 0,  1, 28,  0, 0,  1,  3,  0,  0, 0,  1,  1,  1, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 1},
     // Lossless through the Lite coder: magnitude class 7 and nothing else.
     {"v81_lite_lossless444",   192, 128, 1,  1,  0,  1, 0,  1,  3,  0,  0, 0,  0,  0,  0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1},
+    // --- syntax v1.7: the piecewise-planar tile mode (tool 35, 13.13).
+    //
+    // Both are `kind 5`, the panel content, because the mode is only ever
+    // chosen on content that has regions: a vector on the textured kind would
+    // pin the mode being offered and declined, which is the defect the inter
+    // vectors' own note warns about.  v82 is the rate-distortion decision as
+    // it ships; v83 is `planar = 2`, the level that takes the mode wherever it
+    // is cheaper, which is what codes most of a picture in it and is
+    // therefore the vector that exercises the BODY on every region count the
+    // fit reaches.  build() refuses to write either if the stream turns out to
+    // contain no planar tile at all.
+    {"v82_planar_rd420",       192, 128, 0,  5, 40,  0, 0,  0,  3,  1,  0, 0,  1,  0,  0, 1, 0, 0, 0, 2, 1, 0, 0, 1, 0, 0, 1},
+    {"v83_planar_prefer420",   192, 128, 0,  5, 46,  0, 0,  0,  3,  1,  0, 0,  1,  0,  0, 2, 0, 0, 0, 2, 1, 0, 0, 1, 0, 0, 2},
 };
 static const int kNumVectors = (int)(sizeof(kVectors) / sizeof(kVectors[0]));
 
@@ -301,6 +319,7 @@ static Result build(const VecSpec &v) {
     cfg.tab_v2 = (uint32_t)v.tab;
     cfg.xform_size = (uint32_t)v.xform;
     cfg.entropy_lite = (uint32_t)v.lite;
+    cfg.planar = (uint32_t)v.planar;
 
 
     nxvc_status st;
@@ -339,6 +358,22 @@ static Result build(const VecSpec &v) {
             v.res_pattern ? rmap.data() : nullptr, fbuf.data(), fbuf.size(), &ol);
         if (st != NXVC_OK) { r.err = nxvc_status_string(st); return r; }
         r.stream.insert(r.stream.end(), fbuf.begin(), fbuf.begin() + ol);
+        // A vector for a tool the encoder declined to use pins the tool doing
+        // nothing.  The planar rows say what they are for, so the generator
+        // checks that the encoder actually chose the mode rather than trusting
+        // that it would.
+        if (v.planar) {
+            uint32_t nt = 0;
+            const nxvc_tile_info *ti = nxvc_encoder_tiles(e, &nt);
+            uint32_t np = 0;
+            for (uint32_t i = 0; i < nt; ++i)
+                if (ti[i].mode == NXVC_MODE_PLANAR) ++np;
+            if (np == 0) {
+                r.err = "no tile chose the planar mode";
+                return r;
+            }
+            if (f == 0) std::printf("  (%u/%u planar tiles) ", np, nt);
+        }
     }
     nxvc_encoder_destroy(e);
     if (v.raw) {
@@ -1455,6 +1490,32 @@ static const RejectSpec kRejects[] = {
 };
 static const int kNumRejects = (int)(sizeof(kRejects) / sizeof(kRejects[0]));
 
+// --- syntax v1.7: the piecewise-planar tile mode (SYNTAX.md 13.13).
+//
+// These need their own base, because every one of them corrupts a PLANAR tile
+// and the v01 stream has none.  The base is `v83_planar_prefer420`, whose
+// every tile is planar, so tile 0 is at the same fixed offsets the table above
+// uses and its body starts immediately after the two header words: the mode
+// forbids every optional field except a constant alpha value, and the base is
+// opaque.
+struct PlanarReject {
+    const char *name;
+    const char *why;
+    int expect;
+};
+static const PlanarReject kPlanarRejects[] = {
+    {"r44_planar_no_tool",    "a PLANAR tile without tool bit 35",        NXVC_ERR_BITSTREAM},
+    {"r45_planar_res_level",  "a PLANAR tile with res_level != 0",        NXVC_ERR_BITSTREAM},
+    {"r46_planar_nsub",       "a PLANAR tile with nsub_log2 != 0",        NXVC_ERR_BITSTREAM},
+    {"r47_planar_mv_present", "a PLANAR tile with mv_present set",        NXVC_ERR_BITSTREAM},
+    {"r48_planar_line_form",  "planar body: the line split form is reserved", NXVC_ERR_BITSTREAM},
+    {"r49_planar_regions",    "planar body: region_count 5 is reserved",  NXVC_ERR_BITSTREAM},
+    {"r50_planar_body_bits",  "planar body: a reserved header bit is set", NXVC_ERR_BITSTREAM},
+};
+static const int kNumPlanarRejects =
+    (int)(sizeof(kPlanarRejects) / sizeof(kPlanarRejects[0]));
+
+
 // The manifest is whitespace-separated, so the status travels as a token.
 static const char *status_token(int st) {
     switch ((nxvc_status)st) {
@@ -1476,6 +1537,26 @@ static uint32_t get_u32(const std::vector<uint8_t> &b, size_t off) {
     uint32_t v = 0;
     for (int i = 0; i < 4; ++i) v |= (uint32_t)b[off + i] << (8 * i);
     return v;
+}
+
+// The body of tile 0 begins right after its two header words.
+enum { kOffPlanarBody = kOffTile0 + 8 };
+
+static std::vector<uint8_t> make_planar_reject(int idx,
+                                               const std::vector<uint8_t> &base) {
+    std::vector<uint8_t> b = base;
+    const uint32_t w1 = get_u32(b, kOffTile0 + 4);
+    switch (idx) {
+        case 0: clear_tool(b, NXVC_TOOL_PLANAR); break;
+        case 1: put_u32(b, kOffTile0 + 4, w1 | (1u << 3)); break;   // res_level 1
+        case 2: put_u32(b, kOffTile0 + 4, w1 | (3u << 17)); break;  // nsub_log2 3
+        case 3: put_u32(b, kOffTile0 + 4, w1 | (1u << 20)); break;  // mv_present
+        case 4: b[kOffPlanarBody] |= 0x04; break;                   // split_form 1
+        case 5: b[kOffPlanarBody] |= 0x03; break;                   // R = 5
+        case 6: b[kOffPlanarBody] |= 0x10; break;                   // reserved bit 4
+        default: break;
+    }
+    return b;
 }
 
 static std::vector<uint8_t> make_reject(int idx, const std::vector<uint8_t> &base) {
@@ -1828,6 +1909,45 @@ int main(int argc, char **argv) {
                         data.size(), status_token(kRejects[i].expect),
                         kRejects[i].why);
         }
+        // --- syntax v1.7 rejection vectors (the planar mode).  Their base is
+        // the all-planar vector, which must therefore have been built above.
+        {
+            Result pbase;
+            for (int i = 0; i < kNumVectors; ++i)
+                if (std::string(kVectors[i].name) == "v83_planar_prefer420")
+                    pbase = build(kVectors[i]);
+            if (!pbase.ok) {
+                std::fprintf(stderr, "planar reject base: %s\n",
+                             pbase.err.c_str());
+                return 1;
+            }
+            std::fprintf(rm, "# --- syntax v1.7 (the planar tile mode)\n");
+            for (int i = 0; i < kNumPlanarRejects; ++i) {
+                std::vector<uint8_t> data = make_planar_reject(i, pbase.stream);
+                int got = reject_status(data);
+                if (got != kPlanarRejects[i].expect) {
+                    std::fprintf(stderr,
+                                 "%s: decoder returned %s, expected %s\n",
+                                 kPlanarRejects[i].name, status_token(got),
+                                 status_token(kPlanarRejects[i].expect));
+                    ++bad;
+                    continue;
+                }
+                std::string path = dir + "/" + kPlanarRejects[i].name + ".nxv";
+                std::FILE *f = std::fopen(path.c_str(), "wb");
+                if (!f) { std::perror(path.c_str()); return 1; }
+                std::fwrite(data.data(), 1, data.size(), f);
+                std::fclose(f);
+                std::fprintf(rm, "%s %s %s %s\n", kPlanarRejects[i].name,
+                             md5_hex(data.data(), data.size()).c_str(),
+                             status_token(kPlanarRejects[i].expect),
+                             kPlanarRejects[i].why);
+                std::printf("%-26s %7zu B  rejected as %-12s %s\n",
+                            kPlanarRejects[i].name, data.size(),
+                            status_token(kPlanarRejects[i].expect),
+                            kPlanarRejects[i].why);
+            }
+        }
         // --- Phase 2 rejection vectors
         Result mono = build_inter(kRejectBaseMono);
         Result ster = build_inter(kRejectBaseStereo);
@@ -2042,8 +2162,8 @@ int main(int argc, char **argv) {
         ++rchecked;
     }
     if (rm) std::fclose(rm);
-    CHECK(rchecked == kNumRejects + kNumInterRejects,
+    CHECK(rchecked == kNumRejects + kNumInterRejects + kNumPlanarRejects,
           "checked %d of %d rejection vectors", rchecked,
-          kNumRejects + kNumInterRejects);
+          kNumRejects + kNumInterRejects + kNumPlanarRejects);
     return test_report("test_vectors");
 }
