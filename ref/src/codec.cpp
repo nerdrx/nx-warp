@@ -2417,6 +2417,11 @@ struct nxvc_encoder {
     u32 base_frame = 0;
     bool have_base = false;
     u32 base_refreshed = 0;
+    // Ranked scheduler: what a coded tile has been costing lately, so a
+    // byte budget can be turned into a tile count before any tile is
+    // coded.  Encoder-side rate control; nothing normative depends on it.
+    double sched_bytes_per_tile = 0.0;
+    u64 sched_frames = 0, sched_allowed = 0, sched_forced_skip = 0;
     std::vector<nxvc_view> views_cur;
     // The view each ring slot was rendered with, so the matrix a frame emits
     // is the one between its actual reference (N-1-ref_sel) and itself.

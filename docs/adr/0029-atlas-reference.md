@@ -1042,6 +1042,116 @@ recorded here as measured and rejected under the mode switch. Its earlier win
 in pure ATLAS mode is retained in the record above as the reason it was worth
 testing, and as the explanation for why it stopped winning.
 
+### Which tiles an ATLAS frame re-codes: the ranked scheduler, REJECTED
+
+**Today's policy, stated exactly, because it has never been written down.** An
+ATLAS frame chooses its coded tiles like this, and 13.12.9 is not part of it --
+that clause is base-patch monotonicity and has nothing to do with tile
+selection:
+
+1. **Hard intra cap.** A position that has gone `intra_period` frames without
+   an `INTRA` is forced to one (default 180). This is PAPER 2.6's loss-recovery
+   property and it is a cap, not a period, so it is never early.
+2. **Drift gate** (`drift_refresh`, on by default). A position whose *measured*
+   client-shadow drift exceeds `drift_gate x qstep^2/12` (default multiplier 4)
+   **may not skip**. It does not force `INTRA`; it removes the free option.
+3. **Displacement bound** (`atlas_skip_margin`, off by default).
+4. **Per-tile rate-distortion.** Every remaining tile picks its own mode by
+   minimising `D + lambda R`, with the skip candidate charged
+   `(kSkipPersist - 1) x excess`, `kSkipPersist = 4`, for the error a skip
+   leaves in the reference for later frames to pay for.
+
+**There is no frame byte budget anywhere in that list.** Each tile decides
+alone, and the frame costs whatever the decisions sum to. That is the gap a
+scheduler is supposed to fill: with a budget the question stops being "is this
+tile worth coding" and becomes "is this tile worth coding *more than that
+one*", which is a ranking.
+
+**The scheduler.** Score every tile by a first-order estimate of the display
+error it will show if left alone -- `gradient x displacement x (1 + age) +
+measured drift`, with the gradient read as mean absolute Laplacian off the
+atlas itself -- rank, and code the top tiles until the budget is spent. The
+budget becomes a tile count through an EMA of what a coded tile has been
+costing. It is encoder-side only and touches nothing normative; the encoder has
+the headroom (1.93 ms/frame at 578 tiles) so the scoring is free.
+
+**One thing had to change for a budget to be a budget at all, and it is a
+finding about today's encoder rather than about the scheduler.** The drift gate
+holds a *veto*: it says a drifted tile may not skip, and it outranked the
+budget. Measured on the near-still clip at a 500 B/frame target, the gate coded
+**31 tiles in a frame the scheduler had allowed 4**, and the frame came out at
+**6876 bytes**. So the precedence is now: the hard intra cap is absolute (loss
+recovery is not negotiable and a scheduler may not defer it), and the drift
+gate loses to the budget -- it is a quality mechanism, and under a budget the
+ranking subsumes it, because a drifted tile simply scores high and is picked on
+its merits.
+
+**Measured, and it loses.** The first sweep pinned the scheduler at QP 22,
+which flatters the baseline, so the honest test is the full QP x budget grid
+judged on the *best* point the scheduler can reach at each rate, against
+today's policy swept over QP:
+
+| fixture | best scheduler point | at |
+|---|---|---|
+| near-still | **-2.28 dB** | QP 30, 2000 B budget, 1422 B/f |
+| mid 25.2 deg/s | **+0.01 dB** | QP 34, 500 B budget, 1806 B/f |
+| fast turn | **-0.34 dB** | QP 34, 2000 B budget, 2559 B/f |
+
+Best case it is level; at rest it is 2.3 dB down. The criterion was "wins
+everywhere, or is neutral where it does not", and it is neither.
+
+**And it does not let `D` be raised**, which was the other hope for it: a
+scheduler that kept the atlas fresher might have afforded a laxer mode trigger
+and so fewer expensive PICTURE frames. Measured with the scheduler on, at a
+fixed 1000-8000 B budget:
+
+| fixture | D=8 | D=12 | D=16 |
+|---|---|---|---|
+| near-still | 0.0 % PICTURE | 0.0 % | 0.0 % |
+| mid 25.2 deg/s | 46.7 % | 33.3 % | 26.7 % |
+| fast turn | 73.3 % | 73.3 % | 60.0 % |
+
+Raising `D` does cut the PICTURE share, and it costs far more than it saves:
+at 25 deg/s `D = 12` is **-7.9 to -8.9 dB** and `D = 16` is **-8.5 to -9.4 dB**
+against the `D = 8` baseline, and at fast turn `D = 16` is **-6.3 to -7.6 dB**.
+The seam ratio moves with it -- 2.06 to 2.22 at `D = 16` on both motion
+fixtures, against 1.10 to 1.28 at `D = 8`. So the atlas frames the laxer
+trigger buys are exactly the frames the scheduler then has to starve, and the
+mosaic becomes visible. `D = 8` remains the recommendation and the scheduler
+does not relax it.
+
+**Why, and this is the part worth keeping.** At a fixed byte budget the QP knob
+dominates the tile-selection knob, and it dominates for a structural reason:
+squared error is **additive over tiles**. Spending a budget on 289 tiles coded
+slightly better lowers total error more than spending it on 8 tiles coded a lot
+better and leaving 281 untouched. Ranked scheduling is a mechanism for
+*concentrating* bytes, and concentration is the wrong direction when the metric
+is additive and the budget is what binds. The encoder already had a rate
+control -- the quantiser -- and it is the better one.
+
+**The visual check agrees**, and independently. Selective refresh leaves a
+mosaic of freshly coded tiles beside stale ones, which is exactly a visible
+tile grid: at every fixture the scheduler's best points sit at a **worse seam
+ratio** than the baseline at comparable rate (1.51 vs 1.31 at rest, 1.70 vs
+1.52 at 25 deg/s, 1.47 vs 1.38 at fast turn). It is the same failure mode
+coarse refresh had, reached by a different route -- and the same reason it is
+the wrong kind of artefact to spend quality on.
+
+**The rest-case floor, which is a genuinely useful number.** When the scheduler
+allows zero tiles and nothing has changed, an `ATLAS` frame costs **79 bytes**
+-- frame header, `warp_ext()`, and a `row_present` bitmap with all 17 rows
+elided. At 90 Hz that is **57 kbit/s** for a whole 1088x1088 eye. Without
+`row_present` the same frame is ~280 bytes, because the 17 transmitted row
+headers are 204 of them. So the idle floor is set by `row_present` (tool bit
+32) and not by the refresh policy, which is worth knowing before anyone tunes
+a scheduler to chase it.
+
+**Decision: no normative text and no encoder default.** `atlas_sched_bytes`
+stays in the reference encoder, off, because the negative is worth being able
+to reproduce. The open rate-control question is answered in the direction
+nobody wanted: for this codec, at a byte budget, **move the quantiser, not the
+tile set.**
+
 * **The seam, as originally written.** Two adjacent tiles with different source frames are each
   individually correctly reprojected, so static distant content is seamless. They diverge on moving
   content and on near parallax, growing with the age difference — a tile coded 30 frames ago beside
