@@ -428,6 +428,16 @@ typedef struct nxvc_vkd_stats {
     uint32_t tiles_skip_seg;  /* tiles in the WARP_SKIP segment, eye pass 0 */
     uint32_t tiles_coded_seg; /* tiles in the other-non-INTRA segment       */
     uint32_t tiles_dir_seg;   /* tiles on the directional-intra module      */
+    /* --- [passb] APPENDED, same rule again.
+     *
+     * The copy segment: skip tiles whose prediction is their reference
+     * unchanged, decided on the HOST (warp_tile_is_copy()) and dispatched to a
+     * module with no coordinate pipeline.  Both are 0 on a frame where no tile
+     * qualifies, which is every frame on an encoder that does not snap a
+     * near-identity pose to the identity -- so a run reporting
+     * tiles_identity_seg == 0 has NOT exercised the path.               */
+    double pass_b_identity_ms;
+    uint32_t tiles_identity_seg;
 } nxvc_vkd_stats;
 
 /* The feature test for the six pass_b_*_ms / tiles_*_seg fields, for an
@@ -438,6 +448,8 @@ typedef struct nxvc_vkd_stats {
  * offset its callers were built against; appending ours after it is what makes
  * this merge ABI-safe in both directions. */
 #define NXVC_VK_DECODER_PASSB_SEGMENTS 1
+/* The identity/copy segment above, which arrived after the other three. */
+#define NXVC_VK_DECODER_PASSB_IDENTITY 1
 
 nxvc_vkd_status nxvc_vk_decoder_stats(const nxvc_vk_decoder *dec,
                                       nxvc_vkd_stats *out);

@@ -123,6 +123,87 @@ inline PlaneMatrix plane_homography(const WarpMatrix &m, int plane_w,
     return H;
 }
 
+// [passb] Is this plane matrix the identity, exactly?
+//
+// The identity homography is h[0] = h[4] = 1 << kQNum, h[8] = 1 << kQDen and
+// every other term zero (warp/ref/warp_ref.cpp identity_homography()).  Feed
+// that through the corner derivation and the result is the identity grid, with
+// no rounding left over:
+//
+//   den    = h[6]*cx + h[7]*cy + h[8]           = 2^29
+//   num_x  = h[0]*cx + h[1]*cy + h[2]           = 2^21 * cx
+//   mag    = |2^21 * cx| << kDivShift           = |cx| * 2^35
+//   mag   += den >> 1                           = + 2^28
+//   q      = mag / den = |cx| * 2^6 + 0         (2^28 / 2^29 floors to 0)
+//   corner = (cx << 6) + (ox << 6) = (tile_x + offset) << kQCorner
+//
+// So the four corners are exactly the tile's own grid and the in-tile
+// interpolation is exactly the sample position -- which is what makes the
+// prediction a copy.  This is a SUFFICIENT test, not a necessary one: a
+// homography that is the identity in effect but not in these nine integers
+// takes the ordinary path, which is correct and merely slower.
+//
+// Deliberately a test on the matrix rather than a re-derivation of the
+// corners.  The decoder does not link the reference warp library, and a second
+// copy of normative corner arithmetic on the host is exactly what
+// `vk.encoder.passw.same` exists to prevent.
+inline bool plane_matrix_is_identity(const PlaneMatrix &H) {
+    return H.h[0] == (int32_t(1) << nxvw::kWarpQNum) &&
+           H.h[4] == (int32_t(1) << nxvw::kWarpQNum) &&
+           H.h[8] == nxvw::kWarpH22 &&
+           H.h[1] == 0 && H.h[2] == 0 && H.h[3] == 0 &&
+           H.h[5] == 0 && H.h[6] == 0 && H.h[7] == 0;
+}
+
+// [passb] Does this WARP_SKIP tile reduce to a copy of its reference?
+//
+// Three conditions, and all three are the host's half of the proof written out
+// in vk/decoder/inter/warp_pred.glsl (see docs/PASSB-ADRENO-PLAN.md 3b):
+//
+//  1. the tile is WARP_SKIP and the corners are the identity grid --
+//     plane_matrix_is_identity() above;
+//  2. every vector the tile can select is a whole number of SAMPLES.  mv is
+//     Q.2 quarter samples, so that is `& 3`, and a quadrant tile has four
+//     vectors rather than one -- each a signed nibble DELTA on the tile
+//     vector, so each sum is tested;
+//  3. the tail after the prediction is the trivial one.  A near-skip tile adds
+//     a mean field and a res_level > 0 tile box-averages, and neither is a
+//     copy; both fall through to the ordinary path.
+//
+// Chroma is not separately tested: a 4:2:0 chroma vector is the luma vector
+// arithmetically shifted right ([SYN] 13.3 step 2), so a luma vector that is a
+// multiple of 4 quarter-samples gives a chroma vector that is a multiple of 2,
+// and the chroma plane's own quarter-sample grid is half as fine.  A luma
+// vector of 4k quarter-samples is k whole luma samples and k/2 whole chroma
+// samples -- which is only whole when k is even.  So luma is tested at `& 7`,
+// not `& 3`: eight quarter-samples is two whole luma samples and one whole
+// chroma sample, and that is the condition BOTH planes need.
+inline bool warp_tile_is_copy(int mode, int mvx, int mvy, uint32_t quad,
+                              bool quad_mv, bool near_skip, int res_level,
+                              bool corners_are_identity) {
+    if (near_skip || res_level != 0) return false;
+    // WARP_SKIP ONLY, and this is the constraint that matters most.
+    //
+    // A STATIC_MV tile also has the identity corner grid, by construction, and
+    // it is tempting to take it here for free.  It cannot be taken: STATIC_MV
+    // is a CODED mode, so the tile may carry a residual, and the copy module
+    // is built NXVW_SKIP_ONLY -- it runs no transform and would silently drop
+    // that residual.  WARP_SKIP is the mode whose reconstruction is the
+    // predictor and nothing else ([SYN] 13.3, [REF] reconstruct_skip()), which
+    // is what makes a copy the whole answer.
+    if (mode != 0 || !corners_are_identity) return false;
+    auto whole = [](int v) { return (v & 7) == 0; };
+    if (!whole(mvx) || !whole(mvy)) return false;
+    if (quad_mv) {
+        for (int q = 0; q < 4; ++q) {
+            const int dx = nxvw::nxvw_sign_nibble(quad >> (8 * q));
+            const int dy = nxvw::nxvw_sign_nibble(quad >> (8 * q + 4));
+            if (!whole(mvx + dx) || !whole(mvy + dy)) return false;
+        }
+    }
+    return true;
+}
+
 // ------------------------------------------------------------ the ring
 // [SYN] 13.2.  Four slots, addressed by `frame_number mod 4`.  Only the
 // bookkeeping lives here; the samples are a device buffer the two kernels

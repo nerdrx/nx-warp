@@ -118,6 +118,35 @@ add_custom_command(
 #
 # Like reconstruct_skip it needs no dir/xform_large variants: a skip tile is
 # never INTRA and runs no transform.
+# [passb] A seventh module: the COPY path for a skip tile whose prediction is
+# its reference, unchanged.
+#
+# The host decides which tiles these are (warp_tile_is_copy() in
+# inter/inter_state.h) and dispatches them here as their own contiguous range,
+# so the kernel carries no predicate: it is reconstruct_skip_store with the
+# coordinate pipeline deleted rather than branched around.  One ring fetch a
+# sample at a whole-sample offset, which is what the identity reduces the
+# prediction to.
+set(_copy_out ${NXVW_PASSB_GEN}/reconstruct_copy.spv.h)
+list(APPEND NXVW_PASSB_SPV_LIST ${_copy_out})
+add_custom_command(
+  OUTPUT ${_copy_out}
+  COMMAND ${CMAKE_COMMAND}
+          -DGLSLC=${NXVW_GLSLC}
+          -DSRC=${NXVW_PASSB_DIR}/reconstruct.comp
+          -DOUT=${_copy_out}
+          -DNAME=reconstruct_copy
+          "-DDEFS=-DNXVW_INTRA_DIR=0 -DNXVW_XFORM_LARGE=0 -DNXVW_SKIP_ONLY=1 -DNXVW_SKIP_STORE=1 -DNXVW_COPY_STORE=1 ${NXVW_PASSB_EXTRA_DEFS}"
+          -DINCDIR=${NXVW_PASSB_DIR}
+          -DSTYLE=plain
+          -DDEPFILE=${_copy_out}.d
+          -P ${NXVW_PASSB_GEN_SPV}
+  DEPFILE ${_copy_out}.d
+  DEPENDS ${NXVW_PASSB_DIR}/reconstruct.comp
+          ${NXVW_PASSB_GEN_SPV} ${NXVW_PASSB_SPV_PASSES_CMAKE}
+  COMMENT "glslc reconstruct.comp (copy path) -> reconstruct_copy.spv.h"
+  VERBATIM)
+
 set(_skipst_out ${NXVW_PASSB_GEN}/reconstruct_skip_store.spv.h)
 list(APPEND NXVW_PASSB_SPV_LIST ${_skipst_out})
 add_custom_command(
