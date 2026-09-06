@@ -45,6 +45,16 @@ TRAJECTORIES = {
     "mid":       dict(yaw=25.0, sway=0.4, trans=0.05,  objects=False),
     "fast":      dict(yaw=75.0, sway=0.3, trans=0.02,  objects=False, step=True),
     "objmotion": dict(yaw=0.0,  sway=0.9, trans=0.004, objects=True),
+    # A SEATED head, which "rest" is not.  Measured with `nxv-enc --stats`,
+    # `rest` runs at 2.678 deg/s and drags the atlas's tile corners 0.97
+    # samples off in ONE frame and 3.83 over four, so a whole-sample identity
+    # is never available in it and the still-case floor it reports is not the
+    # floor.  These two are: 0.043 deg/s and a corner displacement that stays
+    # at 0.016 samples for the whole clip -- sixty times smaller -- built from
+    # a slow postural drift and a physiological tremor and nothing else.
+    "still":     dict(yaw=0.0, sway=0.0, trans=0.0, objects=False, seated=True),
+    "objmotion-still": dict(yaw=0.0, sway=0.0, trans=0.0, objects=True,
+                            seated=True),
 }
 
 FPS = 90.0
@@ -77,6 +87,29 @@ def pose_track(name, nframes):
     """Head poses in the OpenXR convention: y up, -z forward, camera-to-world."""
     t = TRAJECTORIES[name]
     out = []
+    if t.get("seated"):
+        # Amplitudes chosen so ANGULAR VELOCITY stays under 0.1 deg/s: the
+        # drift contributes 2*pi*f*A = 0.021 deg/s and the tremor
+        # 2*pi*8*0.001 = 0.05 deg/s.  That is what a seated head in a headset
+        # does between deliberate movements, and it is the regime in which a
+        # whole-sample identity warp is actually reachable.
+        for i in range(nframes):
+            s = i / FPS
+            drift = math.radians(0.030) * math.sin(2 * math.pi * 0.11 * s)
+            tremor = math.radians(0.0010) * math.sin(2 * math.pi * 8.0 * s + 0.7)
+            yaw = drift + tremor
+            pitch = (math.radians(0.022) * math.sin(2 * math.pi * 0.09 * s + 2.0)
+                     + math.radians(0.0008) * math.sin(2 * math.pi * 7.3 * s))
+            roll = math.radians(0.008) * math.sin(2 * math.pi * 0.07 * s + 1.3)
+            q = qnorm(qmul(qmul(q_axis(0, 1, 0, yaw), q_axis(1, 0, 0, pitch)),
+                           q_axis(0, 0, 1, roll)))
+            # 0.2 mm/s of postural sway: the translation a seated person cannot
+            # suppress either.
+            px = 0.0002 * math.sin(2 * math.pi * 0.13 * s)
+            py = 0.00015 * math.sin(2 * math.pi * 0.17 * s + 0.9)
+            out.append(dict(t=s, q=q, pos=(px, py, 0.0),
+                            yaw=yaw, pitch=pitch, roll=roll))
+        return out
     for i in range(nframes):
         s = i / FPS
         yaw = math.radians(t["yaw"]) * s
