@@ -1453,7 +1453,10 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
             d.cfg.int_lambda_q8 > 0 ? (int32_t)d.cfg.int_lambda_q8 : 45;
         d.decide_push[4] = (int32_t)(((int64_t)lam0 * nxe_qstep[qpc]) / 16);
         d.decide_push[5] = d.cfg.mv_range > 0 ? d.cfg.mv_range : 16;
-        d.decide_push[6] = d.cfg.int_coded_vectors ? 1 : 0;
+        /* 0 none, 1 STATIC_MV, 2 also WARP_MV (section 6). */
+        d.decide_push[6] = d.cfg.int_coded_vectors
+                               ? (d.cfg.int_warp_mv ? 2 : 1)
+                               : 0;
         d.decide_push[7] = d.ring.stride[0];
         /* ring_w is the luma plane's extent over the eye PAIR; eye_w is one
          * eye's, which is what the search clamps at -- the reference's warp
