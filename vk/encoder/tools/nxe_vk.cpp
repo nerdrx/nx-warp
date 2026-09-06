@@ -85,6 +85,10 @@ struct VkEncoder::Impl {
     struct SrcViews {
         VkImage image = VK_NULL_HANDLE;
         uint32_t layer = 0;
+        /* Layers the view spans: 1, or 2 when the eyes are separate layers.
+         * Part of the key because the same image and base layer can be asked
+         * for both ways and the views are not interchangeable. */
+        uint32_t layers = 1;
         VkImageView y = VK_NULL_HANDLE, c = VK_NULL_HANDLE;
     };
     std::vector<SrcViews> src_views;
@@ -92,6 +96,8 @@ struct VkEncoder::Impl {
     VkDescriptorSet s_e3{}, s_e4{}, s_e5{}, s_e5z{}, s_e2[3]{};
     VkDescriptorSet s_w{}, s_dec{}, s_b{};
     VkQueryPool qpool = VK_NULL_HANDLE;
+    bool e0_timed = false;
+    double e0_ms = 0;
 
     size_t src_bytes = 0, coef_bytes = 0, out_bytes = 0;
     uint32_t e4_groups = 1;
@@ -495,9 +501,10 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
  * a storage view exist over an image whose planar format has no storage
  * feature of its own (the EXTENDED_USAGE rule of maintenance2). */
 static bool src_views_for(VkEncoder::Impl &d, VkImage image, uint32_t layer,
-                          VkImageView &vy, VkImageView &vc, std::string &err) {
+                          uint32_t layers, VkImageView &vy, VkImageView &vc,
+                          std::string &err) {
     for (const auto &s : d.src_views)
-        if (s.image == image && s.layer == layer) {
+        if (s.image == image && s.layer == layer && s.layers == layers) {
             vy = s.y;
             vc = s.c;
             return true;
@@ -513,12 +520,17 @@ static bool src_views_for(VkEncoder::Impl &d, VkImage image, uint32_t layer,
         ci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         ci.pNext = &usage;
         ci.image = image;
-        ci.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        /* Always an ARRAY view, even for the one layer a mono picture uses:
+         * E0 samples through a uimage2DArray so that one binding can carry
+         * both eyes when they arrive as separate layers, and a 2D view is not
+         * a legal array view.  layerCount is `layers`, which is 1 unless the
+         * caller asked for the layered stereo shape. */
+        ci.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
         ci.format = fmt;
         ci.subresourceRange.aspectMask = VkImageAspectFlags(aspect);
         ci.subresourceRange.levelCount = 1;
         ci.subresourceRange.baseArrayLayer = layer;
-        ci.subresourceRange.layerCount = 1;
+        ci.subresourceRange.layerCount = layers;
         VkResult r = vkCreateImageView(d.dev.handle(), &ci, nullptr, &out);
         if (r != VK_SUCCESS) {
             err = std::string("vkCreateImageView for the source plane: ") +
@@ -537,6 +549,7 @@ static bool src_views_for(VkEncoder::Impl &d, VkImage image, uint32_t layer,
         vkDestroyImageView(d.dev.handle(), s.y, nullptr);
         return false;
     }
+    s.layers = layers;
     d.src_views.push_back(s);
     vy = s.y;
     vc = s.c;
@@ -622,24 +635,25 @@ static void record_passes(VkEncoder::Impl &d, VkCommandBuffer cb, bool e3,
 bool VkEncoder::encode_frame(Frame &f, uint32_t frame_number, bool check,
                              bool quiet) {
     std::string err;
-    return encode_frame_common(f, frame_number, check, quiet, nullptr, 0, err);
+    return encode_frame_common(f, frame_number, check, quiet, nullptr, 0, 1, err);
 }
 
 bool VkEncoder::encode_frame_image(Frame &f, uint32_t frame_number,
                                    VkImage image, uint32_t array_layer,
-                                   std::string &err) {
+                                   uint32_t layers, std::string &err) {
     return encode_frame_common(f, frame_number, false, true, &image,
-                               array_layer, err);
+                               array_layer, layers, err);
 }
 
 bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
                                     bool quiet, const VkImage *image,
-                                    uint32_t array_layer, std::string &err) {
+                                    uint32_t array_layer, uint32_t src_layers,
+                                    std::string &err) {
     Impl &d = *p_;
     /* The plane views before anything is recorded: a failure here is a
      * bring-up failure and there is nothing to unwind. */
     VkImageView src_y = VK_NULL_HANDLE, src_c = VK_NULL_HANDLE;
-    if (image && !src_views_for(d, *image, array_layer, src_y, src_c, err))
+    if (image && !src_views_for(d, *image, array_layer, src_layers, src_y, src_c, err))
         return false;
     /* NXE_TIME=1 prints where a frame's milliseconds went, in the four pieces
      * that can move independently: the GPU passes up to E3, the table-set
@@ -905,15 +919,46 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
              * than each eye's, which is safe only because a stereo picture's
              * per-eye width is a multiple of 64: no tile is partial, so no
              * fetch ever reaches the seam.  create() enforces that. */
-            g.width = f.fp.width * f.fp.eyes;
+            /* `width` is the picture in ONE LAYER: the pair's when both eyes
+             * share a layer side by side, one eye's when each has its own.
+             * `tiles_x` is pair-wide either way -- it indexes the output. */
+            const bool layered = src_layers > 1;
+            g.width = layered ? f.fp.width : f.fp.width * f.fp.eyes;
             g.height = f.fp.height;
             g.tiles_x = f.fp.tiles_x * f.fp.eyes;
             g.tiles_y = f.fp.tiles_y;
+            g.eye_cols = layered ? f.fp.tiles_x : 0u;
             g.plane_y_off = (uint32_t)f.plane_base[0];
             g.plane_co_off = (uint32_t)f.plane_base[1];
             g.plane_cg_off = (uint32_t)f.plane_base[2];
             g.plane_words = (uint32_t)(f.src_packed.size() / 2);
+            /* E0's own cost, on the device.  It is the only pass whose work
+             * changes with the source shape -- side by side in one layer, or
+             * one layer per eye -- so it is the one that has to be measured
+             * before the layered path can be said to cost nothing.  Slots 8
+             * and 9 of a 16-slot pool that record_passes uses 0..4 of. */
+            /* Reset our own two slots: record_passes resets 0..16 but only
+             * when it is asked for timestamps, which is `bench` and not a
+             * normal encode, so these would otherwise be read back stale.
+             *
+             * Only when someone is asking, and only where the queue can
+             * answer: a queue family with timestampValidBits == 0 may not be
+             * written to at all, and an encode nobody is timing should record
+             * exactly the commands it recorded before this pass was measured.
+             */
+            const bool time_e0 = nxe_time && d.qpool != VK_NULL_HANDLE &&
+                                 d.dev.timestamps_valid();
+            if (time_e0) {
+                vkCmdResetQueryPool(cb, d.qpool, 8, 2);
+                vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                                    d.qpool, 8);
+            }
             d.e0.record(cb, g);
+            if (time_e0) {
+                vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                    d.qpool, 9);
+                d.e0_timed = true;
+            }
             d.dev.barrier_compute_to_compute(cb);
         }
         if (d.inter) {
@@ -1145,12 +1190,26 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
     std::memcpy(f.out.data(), d.b_out.map, total);
 
     auto t5 = clk::now();
+    if (d.e0_timed) {
+        /* Slots 8 and 9 only.  read_timestamps() starts at query 0 and waits,
+         * and 0..7 are written only by `bench`, so asking for ten would block
+         * on queries this submit never wrote. */
+        uint64_t q[2] = {0, 0};
+        if (vkGetQueryPoolResults(d.dev.handle(), d.qpool, 8, 2, sizeof q, q,
+                                  sizeof(uint64_t),
+                                  VK_QUERY_RESULT_64_BIT |
+                                          VK_QUERY_RESULT_WAIT_BIT) ==
+                    VK_SUCCESS &&
+            q[1] >= q[0])
+            d.e0_ms = double(q[1] - q[0]) * d.dev.timestamp_period() * 1e-6;
+        d.e0_timed = false;
+    }
     if (nxe_time)
         std::fprintf(stderr,
-                     "nxe: passes to E3 %.2f  coef read %.2f  table sets %.2f  "
-                     "E4/E5 %.2f  frame out %.2f  total %.2f ms\n",
-                     ms(t0, t1), ms(t1, t2), ms(t2, t3), ms(t3, t4), ms(t4, t5),
-                     ms(t0, t5));
+                     "nxe: E0 %.3f  passes to E3 %.2f  coef read %.2f  "
+                     "table sets %.2f  E4/E5 %.2f  frame out %.2f  total %.2f ms\n",
+                     d.e0_ms, ms(t0, t1), ms(t1, t2), ms(t2, t3), ms(t3, t4),
+                     ms(t4, t5), ms(t0, t5));
     if (check) {
         std::vector<uint8_t> gpu = f.out;
         encode_frame_cpu(f, frame_number);

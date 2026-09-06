@@ -1,0 +1,11 @@
+--- 3-plane atlas (Y/Co/Cg as three single-channel textures, 3 taps)
+R8_UNORM             atlas VRAM  2.26 MiB x 3 plane(s) (payload 2.26 MiB each)   GPU ms/pair min 1.278  p50 1.298  p90 1.301  max 1.315   (40 iters, 578 tiles, LINEAR, 3 tap) 
+R16_UNORM            atlas VRAM  4.52 MiB x 3 plane(s) (payload 4.52 MiB each)   GPU ms/pair min 2.122  p50 2.124  p90 2.129  max 2.129   (40 iters, 578 tiles, LINEAR, 3 tap) 
+EAC_R11_UNORM        atlas VRAM  1.13 MiB x 3 plane(s) (payload 1.13 MiB each)   GPU ms/pair min 1.275  p50 1.290  p90 1.292  max 1.301   (40 iters, 578 tiles, LINEAR, 3 tap) 
+ASTC_8x8_UNORM       atlas VRAM  0.60 MiB x 3 plane(s) (payload 0.56 MiB each)   GPU ms/pair min 1.272  p50 1.282  p90 1.284  max 1.297   (40 iters, 578 tiles, LINEAR, 3 tap) 
+
+--- 1-plane 3-channel atlas (1 tap), for reference
+ASTC_8x8_UNORM       atlas VRAM  0.60 MiB x 1 plane(s) (payload 0.56 MiB each)   GPU ms/pair min 1.048  p50 1.053  p90 1.061  max 1.069   (40 iters, 578 tiles, LINEAR, 1 tap) 
+ASTC_6x6_UNORM       atlas VRAM  1.08 MiB x 1 plane(s) (payload 1.01 MiB each)   GPU ms/pair min 1.086  p50 1.091  p90 1.100  max 1.105   (40 iters, 578 tiles, LINEAR, 1 tap) 
+ASTC_4x4_UNORM       atlas VRAM  2.26 MiB x 1 plane(s) (payload 2.26 MiB each)   GPU ms/pair min 1.091  p50 1.114  p90 1.117  max 1.128   (40 iters, 578 tiles, LINEAR, 1 tap) 
+ETC2_R8G8B8_UNORM    atlas VRAM  1.13 MiB x 1 plane(s) (payload 1.13 MiB each)   GPU ms/pair min 1.066  p50 1.076  p90 1.089  max 1.097   (40 iters, 578 tiles, LINEAR, 1 tap) 

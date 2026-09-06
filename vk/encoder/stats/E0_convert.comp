@@ -105,20 +105,20 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
   // whose compatible UINT views are R16_UINT and R16G16_UINT; the sample sits
   // in the top 10 bits, hence the shift.
   #if NXE_SRC_DEPTH10
-    layout(binding = 0, r16ui)  uniform readonly uimage2D u_luma;
-    layout(binding = 2, rg16ui) uniform readonly uimage2D u_chroma;
+    layout(binding = 0, r16ui)  uniform readonly uimage2DArray u_luma;
+    layout(binding = 2, rg16ui) uniform readonly uimage2DArray u_chroma;
     #define NXE_YCBCR_SHIFT 6
     #define NXE_CHROMA_MID  512
   #else
-    layout(binding = 0, r8ui)  uniform readonly uimage2D u_luma;
-    layout(binding = 2, rg8ui) uniform readonly uimage2D u_chroma;
+    layout(binding = 0, r8ui)  uniform readonly uimage2DArray u_luma;
+    layout(binding = 2, rg8ui) uniform readonly uimage2DArray u_chroma;
     #define NXE_YCBCR_SHIFT 0
     #define NXE_CHROMA_MID  128
   #endif
 #elif NXE_SRC_FMT == NXE_SRC_RGB10A2
-layout(binding = 0, rgb10_a2ui) uniform readonly uimage2D u_src;
+layout(binding = 0, rgb10_a2ui) uniform readonly uimage2DArray u_src;
 #else
-layout(binding = 0, rgba8ui)    uniform readonly uimage2D u_src;
+layout(binding = 0, rgba8ui)    uniform readonly uimage2DArray u_src;
 #endif
 
 layout(std430, binding = 1) writeonly buffer Planes { uint w[]; } planes;
@@ -133,7 +133,32 @@ layout(push_constant) uniform PC {
     uint plane_cg_off;
     uint flags;
     uint plane_words;
+    // Columns of ONE eye, when the eyes arrive as separate ARRAY LAYERS of the
+    // source image; 0 when they do not.  See `g_layer` in main().
+    uint eye_cols;
 } pc;
+
+// The array layer this workgroup's tile reads from, and its x origin inside that
+// layer.  Set once at the top of main() and read by every load below.
+int g_layer;
+
+// One binding, two source shapes.  The eyes reach this pass either
+//
+//   * SIDE BY SIDE in a single layer -- `eye_cols` 0, `width` the pair's, and a
+//     tile's x origin is its own column times the tile size, exactly as a mono
+//     picture's is.  This is what a caller that already has the pair in one
+//     image passes, and it is the only shape that existed before; or
+//   * ONE LAYER PER EYE -- `eye_cols` the per-eye column count, `width` ONE
+//     eye's, and the tile's eye selects the layer while its column within that
+//     eye gives the x origin.
+//
+// The second exists because a compositor's eyes are usually already in separate
+// layers (WiVRn's are), and making it copy them into one side-by-side image to
+// satisfy this pass costs a full-frame blit per frame for nothing: the tile
+// index this pass writes to is pair-wide either way, so the only thing that
+// differs is where a tile READS.  Both shapes produce the same coded planes and
+// therefore the same bitstream, which is what tests/vk-encoder pins.
+#define NXE_LOAD_AT(img, p) imageLoad(img, ivec3((p), g_layer))
 
 #if NXE_CHROMA_420
 #define NXE_CWORDS NXE_CHROMA_WORDS_420
@@ -178,7 +203,7 @@ void store(uint idx, uint v) {
     {                                                                          \
         /* Edge replication pads a frame that is not a multiple of 64. */      \
         ivec2 p = clamp(org + ivec2(lx * 4 + (i), row), ivec2(0), last);        \
-        uvec4 s = imageLoad(u_src, p);                                         \
+        uvec4 s = NXE_LOAD_AT(u_src, p);                                       \
         int yy, cco, ccg;                                                      \
         nxe_rgb_to_ycocgr(int(s.r), int(s.g), int(s.b), yy, cco, ccg);         \
         y.comp = yy; co.comp = cco; cg.comp = ccg;                             \
@@ -198,9 +223,19 @@ void main() {
     uint tx = gl_WorkGroupID.x;
     uint ty = gl_WorkGroupID.y;
     if (tx >= pc.tiles_x || ty >= pc.tiles_y) return;
+    // The OUTPUT index is pair-wide in both shapes: it is [SYN] 3.3's
+    // `row * cols + eye * cols_per_eye + index`, which is just `ty * tiles_x + tx`
+    // once tx runs over the pair.  Only the source column and layer differ.
     uint tile = ty * pc.tiles_x + tx;
 
-    ivec2 org  = ivec2(int(tx) * NXE_TILE_SIZE, int(ty) * NXE_TILE_SIZE);
+    uint src_tx = tx;
+    g_layer = 0;
+    if (pc.eye_cols != 0u) {
+        g_layer = int(tx / pc.eye_cols);
+        src_tx = tx % pc.eye_cols;
+    }
+
+    ivec2 org  = ivec2(int(src_tx) * NXE_TILE_SIZE, int(ty) * NXE_TILE_SIZE);
     ivec2 last = ivec2(int(pc.width) - 1, int(pc.height) - 1);
 
     int lx = int(gl_LocalInvocationID.x);   // 0..15 -> pixels 4lx .. 4lx+3
@@ -215,10 +250,10 @@ void main() {
     // Luma: 4x4 quad copied straight across, one row at a time.
     for (int j = 0; j < 4; ++j) {
         int row = ly * 4 + j;
-        int y0 = int(imageLoad(u_luma, clamp(org + ivec2(lx * 4 + 0, row), ivec2(0), last)).r) >> NXE_YCBCR_SHIFT;
-        int y1 = int(imageLoad(u_luma, clamp(org + ivec2(lx * 4 + 1, row), ivec2(0), last)).r) >> NXE_YCBCR_SHIFT;
-        int y2 = int(imageLoad(u_luma, clamp(org + ivec2(lx * 4 + 2, row), ivec2(0), last)).r) >> NXE_YCBCR_SHIFT;
-        int y3 = int(imageLoad(u_luma, clamp(org + ivec2(lx * 4 + 3, row), ivec2(0), last)).r) >> NXE_YCBCR_SHIFT;
+        int y0 = int(NXE_LOAD_AT(u_luma, clamp(org + ivec2(lx * 4 + 0, row), ivec2(0), last)).r) >> NXE_YCBCR_SHIFT;
+        int y1 = int(NXE_LOAD_AT(u_luma, clamp(org + ivec2(lx * 4 + 1, row), ivec2(0), last)).r) >> NXE_YCBCR_SHIFT;
+        int y2 = int(NXE_LOAD_AT(u_luma, clamp(org + ivec2(lx * 4 + 2, row), ivec2(0), last)).r) >> NXE_YCBCR_SHIFT;
+        int y3 = int(NXE_LOAD_AT(u_luma, clamp(org + ivec2(lx * 4 + 3, row), ivec2(0), last)).r) >> NXE_YCBCR_SHIFT;
         uint wrow = ybase + uint(row * (NXE_TILE_SIZE / 2) + lx * 2);
         store(wrow + 0u, nxe_pack2(y0, y1));
         store(wrow + 1u, nxe_pack2(y2, y3));
@@ -228,14 +263,14 @@ void main() {
     // a 2x2 chroma quad read directly.  No filter runs here -- decimating an
     // already-decimated plane is what a naive RGBA-shaped path would do.
     ivec2 clast = ivec2(int((pc.width + 1u) >> 1) - 1, int((pc.height + 1u) >> 1) - 1);
-    ivec2 corg  = ivec2(int(tx) * 32, int(ty) * 32);
+    ivec2 corg  = ivec2(int(src_tx) * 32, int(ty) * 32);
     for (int j = 0; j < 2; ++j) {
         int cb0, cr0, cb1, cr1;
         {
             ivec2 p0 = clamp(corg + ivec2(lx * 2 + 0, ly * 2 + j), ivec2(0), clast);
             ivec2 p1 = clamp(corg + ivec2(lx * 2 + 1, ly * 2 + j), ivec2(0), clast);
-            uvec4 s0 = imageLoad(u_chroma, p0);
-            uvec4 s1 = imageLoad(u_chroma, p1);
+            uvec4 s0 = NXE_LOAD_AT(u_chroma, p0);
+            uvec4 s1 = NXE_LOAD_AT(u_chroma, p1);
             // NXE_TS_F_CHROMA_RAW picks the reference encoder's convention
             // (unsigned chroma, as nxvc_image delivers it) over the paper's
             // zero-centred one.  See the flag's comment in tile_stats.h: a

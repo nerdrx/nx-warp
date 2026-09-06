@@ -296,6 +296,26 @@ if(TARGET nxvc-vkenc)
         list(APPEND NXENC_TESTS vk.encoder.acid.api.stereo.${leg})
       endforeach()
 
+      # The eyes as separate ARRAY LAYERS.  This is the shape a compositor
+      # actually has -- WiVRn's eyes are layers of one image, and so are
+      # OpenXR's projection views in general -- and the reason the flag exists
+      # is that without it such a caller has to copy both layers into one
+      # side-by-side image before every encode, a full-frame blit per frame to
+      # satisfy a layout this pass can read directly.  The claim that makes it
+      # safe is that the two shapes are the SAME STREAM, so it is pinned against
+      # the same reference every other leg uses.
+      add_test(NAME vk.encoder.acid.api.stereo.layers COMMAND ${CMAKE_COMMAND}
+               -DAPIENC=$<TARGET_FILE:nxvc-vkenc-api>
+               -DVKENC=$<TARGET_FILE:nxvc-vkenc>
+               -DNXVENC=$<TARGET_FILE:nxv-enc>
+               -DNXVDEC=$<TARGET_FILE:nxv-dec>
+               -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/acid-api-stereo-layers
+               -DEYES=2 -DIMAGE=ON -DEYE_LAYERS=ON
+               -P ${CMAKE_CURRENT_SOURCE_DIR}/api_acid.cmake)
+      set_tests_properties(vk.encoder.acid.api.stereo.layers PROPERTIES
+                           SKIP_REGULAR_EXPRESSION "SKIP:")
+      list(APPEND NXENC_TESTS vk.encoder.acid.api.stereo.layers)
+
       # The same claim for a quantiser that MOVES, which is the entry point a
       # rate controller uses and the one the two tests above never touch: after
       # nxvc_vk_encoder_set_qp(q), every frame must be the frame nxv-enc codes

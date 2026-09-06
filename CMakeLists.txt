@@ -41,6 +41,7 @@ endforeach()
 # so a missing sibling never breaks configure. tests/CMakeLists.txt is NOT used.
 if(NXWARP_BUILD_TESTS)
   enable_testing()
+  set(_nxwarp_test_bindirs "")
   file(GLOB _nxwarp_test_dirs LIST_DIRECTORIES true ${CMAKE_CURRENT_SOURCE_DIR}/tests/*)
   foreach(dir IN LISTS _nxwarp_test_dirs)
     if(IS_DIRECTORY ${dir} AND EXISTS ${dir}/CMakeLists.txt)
@@ -56,8 +57,48 @@ if(NXWARP_BUILD_TESTS)
         continue()
       endif()
       add_subdirectory(${dir} ${CMAKE_CURRENT_BINARY_DIR}/tests/${_name})
+      list(APPEND _nxwarp_test_bindirs ${CMAKE_CURRENT_BINARY_DIR}/tests/${_name})
     endif()
   endforeach()
+
+  # --------------------------------------------------------- the stale-tool guard
+  # A test that runs a tool binary -- `$<TARGET_FILE:nxvc-vkenc>`, or a target
+  # named in a COMMAND -- gets the tool's PATH from CMake and no dependency on
+  # it.  ctest builds nothing, so `ctest` after an edit happily runs yesterday's
+  # binary and reports whatever that binary does.  It cost a false bug report
+  # against main: `vk.encoder.inter.cv1088` "failed" for two runs because this
+  # worktree's nxvc-vkenc predated the option the test passes it.  The failure
+  # was the build, not the code, and nothing in the test graph could have said
+  # so.  It is the same family as a shader compiled from a stale include: the
+  # build system quietly decides the verdict.
+  #
+  # So one fixture, and every test requires it.  The fixture builds the default
+  # target, which is a sub-second no-op when everything is current and is the
+  # only formulation that cannot fall behind a new tool or a new test -- there
+  # is no list of tools here to keep in step, which is the whole point.
+  #
+  # Applied from here rather than in each tests/*/CMakeLists.txt so that a test
+  # directory added later is covered without anyone remembering to opt in.
+  # `set_property(TEST ... DIRECTORY)` is what makes that possible and needs
+  # CMake 3.28; below it the guard is skipped and says so, because a silent
+  # downgrade is how this class of bug survives in the first place.
+  add_test(NAME nxwarp.tools
+           COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR})
+  set_tests_properties(nxwarp.tools PROPERTIES
+                       FIXTURES_SETUP nxwarp_tools TIMEOUT 3600)
+  if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.28)
+    foreach(_bd IN LISTS _nxwarp_test_bindirs)
+      get_property(_nxwarp_dir_tests DIRECTORY ${_bd} PROPERTY TESTS)
+      foreach(_t IN LISTS _nxwarp_dir_tests)
+        set_property(TEST ${_t} DIRECTORY ${_bd}
+                     PROPERTY FIXTURES_REQUIRED nxwarp_tools)
+      endforeach()
+    endforeach()
+  else()
+    message(STATUS
+            "tests: CMake ${CMAKE_VERSION} < 3.28, the stale-tool fixture is "
+            "NOT attached; run a build before ctest")
+  endif()
 endif()
 
 option(NXWARP_BUILD_EXAMPLES "Build the examples in examples/" ON)
