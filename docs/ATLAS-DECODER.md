@@ -7,10 +7,20 @@ decoder's side of them — which buffers
 exist, which kernels run, which existing modules survive, which die, what the
 client is handed, and what conformance compares.
 
-**Status:** design. Nothing here is implemented. The reference codec (Phase 2,
-branch `atlas`) has to produce a byte-identity target before the decoder can be
-written against it; the parts that do not depend on that target are listed under
-"What can start now".
+**Status:** partly implemented, on branch `atlas-decoder`. What exists and is
+verified on RADV, lavapipe **and the Adreno 650**:
+
+| | where | verified by |
+|---|---|---|
+| the composition of 13.12.2, CPU | `atlas/atlas_model.cpp` | `vk.atlas.compose` (128-bit oracle), `vk.atlas.vs_ref` (the reference codec itself) |
+| the compose+renorm kernel, one dispatch per frame over both eyes | `atlas/atlas_compose.comp` | `vk.atlas.gpu_vs_cpu`, three ICDs |
+| the lazy per-entry advance, `advanced_to`, the 64-deep `H` ring | same kernel, `sel = LIST` | eager vs lazy, both flushed, byte-identical |
+| per-tile matrices from the composed `C`, and the 13.12.3 step 3 write-back | `atlas/atlas_tiles.comp` | against `nxvcvk::plane_homography()` |
+
+What does NOT exist yet: the host integration in `nxvc_vkdec.cpp` (ATLAS mode,
+the single-slot atlas, coded-only Pass A/B, the display store turned off),
+`nxvc_vk_decode_tiles`, `nxvc_vk_atlas_write_tiles`, the sampled atlas view,
+and the conformance leg against `nxv-dec --atlas-dump`.
 
 ## Why: the budget
 
@@ -23,7 +33,7 @@ marked otherwise.
 | | today | under `ATLAS` | |
 |---|---|---|---|
 | Pass A | 1.534 ms | **~0.64 ms** | measured, 40 fully-coded tiles |
-| compose + renorm | — | **unmeasured** | new; 9 divides x 289 tiles |
+| compose + renorm | — | **0.0026 ms/eye** | MEASURED, see below |
 | Pass W | 0.661 ms | **~0.66 ms** | measured; same kernel, atlas-sourced |
 | Pass B | 10.760 ms | **~1.1 ms** + atlas store | measured coded module, 39 tiles |
 | **total per eye** | **12.293 ms** | **~2.4-3.0 ms** | |
@@ -33,12 +43,26 @@ marked otherwise.
 tiles, and under `ATLAS` those tiles are not reconstructed at all. The rest of
 the decoder barely moves.
 
-Two honest caveats on that table. The compose dispatch is the one cost that is
-new and unmeasured — it is 9 divisions per tile per eye against a Pass W that
-already does two per tile per plane and costs 0.66 ms for 38 tiles, so it should
-be small, but "should be" is not a measurement and it is the first thing to
-price. And the absolutes are from a device at 61-66 C at the end of a long
-session; the ratios are what carry.
+**The compose dispatch is no longer the unmeasured line.** `nxvc-atlas-gpu-test
+--bench` times it with GPU timestamps over the full 578-entry stereo table --
+one dispatch, both eyes -- targeting a fresh frame number each iteration so
+every thread takes a real one-step advance and nothing is a null dispatch:
+
+| ICD | median, 578 entries | per eye |
+|---|---|---|
+| RADV NAVI31 | 0.0051 ms | **0.0026 ms** |
+| llvmpipe (LLVM 21) | 0.0107 ms | 0.0054 ms |
+| Adreno 650 (Pico 4) | *see the branch report* | |
+
+Median and best rather than the mean: a headset's clocks move under a long run
+and the mean becomes a number about thermals rather than about the kernel. On
+the desktop parts it is **three orders of magnitude** below the smallest line in
+the table, which settles the "9 divisions a tile" worry -- and the divisions are
+not even the cheap kind, because the renormalisation needs a full 64-bit
+quotient that `warp_pred.glsl`'s 32-bit `warp_div` cannot produce.
+
+The other caveat stands: the absolutes in the table above are from a device at
+61-66 C at the end of a long session, and the ratios are what carry.
 
 Not in this budget: the client's own display warp (13.12.5), one sampler pass
 over every tile. That is new work on the same GPU, outside the decoder, and it
@@ -242,11 +266,25 @@ nowhere to put it and it does not belong there anyway: it is an implementation
 detail of when the composition ran, not part of the atlas. It lives in a
 parallel array, one u32 per entry, initialised to `src_frame`.
 
-**The `H` ring.** Nine i32 per eye per frame, 36 B. It bounds how far behind an
-entry may fall: an entry whose `advanced_to` is older than the ring must be
-invalidated, because the steps to advance it no longer exist. That is a
-decoder-side cap in the same role as `gen_max`, and the API states it rather
-than leaving it to be discovered.
+**The `H` ring.** As built: **ten uints per (slot, eye)** -- nine matrix words
+and a flags word whose bit 0 is `warp_present`. 64 slots x 2 eyes = **5120 B**,
+not the 4.6 kB this document first claimed, which counted the matrix words
+only.
+
+The flags word is not padding and it cannot be dropped. A frame with
+`warp_present == 0` contributes **no step at all** -- not a composition and not
+a `gen` increment, because 13.12.3 step 1 is conditioned on it in its entirety
+and `atlas_advance_frame()` in the reference returns early. The bit cannot be
+inferred from the matrix, whose `h22` is `2^29` for every legal value, so it has
+to travel with the slot.
+
+The ring bounds how far behind an entry may fall: an entry whose `advanced_to`
+is older than the ring must be invalidated, because the steps to advance it no
+longer exist. In practice the decoder advances such an entry *before* the slot
+is recycled rather than invalidating it -- the host tracks `advanced_to` anyway
+-- and `nxvc-atlas-gpu-test` exercises that path deliberately by swinging the
+coded rate from 2 % to 21 % over a 300-frame run. At a flat 15 % it never fired
+and the policy was untested.
 
 **The depth is set by the envelope, and the envelope is measured.**
 `vk.atlas.compose` composes a yaw homography with itself until 3.1.1's
@@ -288,6 +326,15 @@ path flushes every frame, which is exactly the eager form. So:
 `superseded` is a report, not a loss: the position already holds a newer
 generation than the dropped tile, and the encoder must not answer it with a
 refresh.
+
+**One bug class belongs only to the lazy form, and it is worth naming here
+because it passed every eager test.** `C` must be written back even when the
+entry ends INVALID. The eager form persists `C` after every successful frame, so
+an entry that survives k steps and fails at step k+1 is left holding the k-step
+matrix; a lazy implementation that discards the successful steps along with the
+failed one diverges the moment k > 0 -- which, for the eager path, is never,
+because k is always 0 there. All 64 bytes are compared, so this shows up as a
+table mismatch and not as a wrong pixel.
 
 ## The base layer: importing tiles the decoder did not decode
 
@@ -402,6 +449,18 @@ atlas-sourced prediction, `NEAR_SKIP` in place, and the conformance leg.
 Implementation goes on `atlas-decoder` off `atlas`.
 
 ## Open questions
+
+* **The atlas image format, and what was actually built.** The design above
+  wants the atlas to be an IMAGE so the client's display pass can sample it.
+  The kernels as built keep it as the SSBO of u16 pairs that
+  `nxvw_ring_layout()` already describes, and for a reason that is not
+  laziness: `warp_pred.glsl` reads the reference through that layout, it is
+  pinned byte-for-byte against the encoder, and ADR-0029 turns on it being
+  unmodified. So the sampled view has to be produced BESIDE the atlas rather
+  than instead of it -- a small kernel over the CODED tiles only, which is ~40
+  of 289, not a full-picture copy. That is the plan; it is not built and it is
+  not measured, and the R8_UNORM variant for `CT_NONE` streams is priced
+  against it when it is.
 
 * **`base_sourced` needs a syntax change, and the decoder cannot make it.**
   ADR-0029's table lists flags bit 2 as `base_sourced` and calls it reserved;
