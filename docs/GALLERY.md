@@ -371,3 +371,32 @@ command.** Pictures live in `docs/assets/`.
   The PSNR axis is a **delta against the unsnapped stream**, not the absolute
   figure: the question is what snapping costs, and on an absolute axis a
   0.05 dB change is a flat line that says nothing.
+
+---
+
+## Figure 12 — The HEVC base layer, priced on headset GPU time instead of bytes
+
+![Figure 12](assets/hybrid-gpu-time.png)
+
+**Date** 2026-09-06 · **Fixture** `nx-scratch/fixtures/vrroom`, all six trajectories,
+2176x1088 side by side, 32 frames · **Settings** nxvc-only: `--inter on --atlas on
+--row-present on --eyes 2 --atlas-picture-disp 8` (ADR-0029's recommendation) at
+QP 22/26/30/34/38. Hybrid: libx265 at 544x544 per eye, 10 Mbit/s, **zero latency**
+(`bframes=0 rc-lookahead=0`), bilinear upsample, nxvc patches where the base's per-tile luma
+MSE exceeds the MSE of 34 dB, coded through `--skip-map`.
+
+**The number it illustrates.** ADR-0030's headline: the base layer's Adreno saving tracks the
+**PICTURE-frame share and nothing else** — **0.7 → 1.8 ms** at `still` (0 % PICTURE, the hybrid
+is *worse*), **11.4 → 4.6 ms** at `mid` (47 %, +60 %) and **20.0 → 5.1 ms** at `fast` (97 %,
++74 %) — while costing **1.9x to 10.5x the bytes at equal PSNR** on every trajectory. The left
+panel's stack shows why the link loses: the 12,666 B/frame base is a floor paid every frame
+whether one tile is patched or none is. The right panel's pale segment is the point ADR-0029
+already won — a `WARP_SKIP` tile resident in the atlas costs a matrix compose, not the 34 us
+warp — which is why there is nothing left for the base layer to save except in a PICTURE frame.
+
+```sh
+python3 tools/quality/hybrid_gpu_price.py           # the streams and results.json
+python3 tools/quality/hybrid_gpu_annotate.py        # folds the ATLAS/PICTURE split in
+python3 tools/quality/plot_hybrid_gpu.py --in nx-scratch/hybgpu/results.json --out docs/assets
+python3 tools/quality/hybrid_gpu_table.py           # the ADR-0030 tables
+```
