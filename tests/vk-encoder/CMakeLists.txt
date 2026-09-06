@@ -358,15 +358,35 @@ if(TARGET nxvc-vkenc)
                            SKIP_REGULAR_EXPRESSION "SKIP:")
       list(APPEND NXENC_TESTS vk.encoder.trellis)
 
-      # Effort 2's CPU model against the reference, byte for byte.
-      add_test(NAME vk.encoder.trellis.cpu COMMAND ${CMAKE_COMMAND}
-               -DVKENC=$<TARGET_FILE:nxvc-vkenc>
-               -DNXVENC=$<TARGET_FILE:nxv-enc>
-               -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/trellis-cpu
-               -P ${CMAKE_CURRENT_SOURCE_DIR}/trellis_cpu.cmake)
-      set_tests_properties(vk.encoder.trellis.cpu PROPERTIES
-                           SKIP_REGULAR_EXPRESSION "SKIP:")
-      list(APPEND NXENC_TESTS vk.encoder.trellis.cpu)
+      # Effort 2 against the reference, byte for byte, on the CPU models and on
+      # a real device.
+      foreach(dev cpu 0)
+        add_test(NAME vk.encoder.trellis.${dev} COMMAND ${CMAKE_COMMAND}
+                 -DVKENC=$<TARGET_FILE:nxvc-vkenc>
+                 -DNXVENC=$<TARGET_FILE:nxv-enc>
+                 -DNXVDEC=$<TARGET_FILE:nxv-dec>
+                 -DVKDEC=$<IF:$<TARGET_EXISTS:nxvc-vkdec>,$<TARGET_FILE:nxvc-vkdec>,>
+                 -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/trellis-${dev}
+                 -DDEVICE=${dev}
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/trellis_cpu.cmake)
+        set_tests_properties(vk.encoder.trellis.${dev} PROPERTIES
+                             SKIP_REGULAR_EXPRESSION "SKIP:")
+        list(APPEND NXENC_TESTS vk.encoder.trellis.${dev})
+      endforeach()
+      if(NXVC_LAVAPIPE_ICD AND EXISTS "${NXVC_LAVAPIPE_ICD}")
+        add_test(NAME vk.encoder.trellis.lavapipe COMMAND ${CMAKE_COMMAND}
+                 -DVKENC=$<TARGET_FILE:nxvc-vkenc>
+                 -DNXVENC=$<TARGET_FILE:nxv-enc>
+                 -DNXVDEC=$<TARGET_FILE:nxv-dec>
+                 -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/trellis-lavapipe
+                 -DDEVICE=0
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/trellis_cpu.cmake)
+        set_tests_properties(vk.encoder.trellis.lavapipe PROPERTIES
+                             SKIP_REGULAR_EXPRESSION "SKIP:"
+                             ENVIRONMENT
+                             "VK_DRIVER_FILES=${NXVC_LAVAPIPE_ICD};VK_ICD_FILENAMES=${NXVC_LAVAPIPE_ICD}")
+        list(APPEND NXENC_TESTS vk.encoder.trellis.lavapipe)
+      endif()
 
       # And the same legs on a SECOND ICD.  Byte-identity is a claim about
       # the arithmetic, not about RADV: the requantiser's one 64-bit product

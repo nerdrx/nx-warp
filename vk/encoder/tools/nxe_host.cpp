@@ -95,8 +95,19 @@ void setup(const Config &cfg, Frame &f) {
      * frame-uniform: E3 reads it from the frame parameters so the CPU model
      * and the shader take it from one place. */
     fp.int_rdoq = (uint32_t)cfg.int_rdoq;
+    /* E3 reads the trellis level here, like int_rdoq, so the CPU model and the
+     * shader take it from one place.  The host turns it on for pass two only. */
+    fp.trellis = 0u;
     f.rate_check = cfg.rate_check;
     f.trellis = cfg.trellis;
+    /* Effort 2 needs the neighbour chain to reach back at least a whole round
+     * of the eight blocks E3 keeps in flight.  Below 8 rANS lanes the chain
+     * would reach inside the current round, which that shape cannot satisfy --
+     * so it is refused on both paths rather than silently differing between
+     * them.  8 is the default and ENTROPY_LITE forces it. */
+    if (f.trellis && cfg.nsub_log2 < 3)
+        throw std::runtime_error(
+            "NX Warp effort 2 (the trellis) needs --nsub 3 or more");
     /* The QP ladder, resolved once.  0 first, so a tie in the decision keeps
      * the frame's own quantiser (see choose_qp_delta). */
     f.qp_lambda_q12 = cfg.qp_lambda_q12;
@@ -1001,6 +1012,47 @@ static int choose_qp_delta(Frame &f, uint32_t t,
         }
     }
     return best_dq;
+}
+
+void prepare_trellis_pass(Frame &f, const int16_t *coefs, bool from_defaults,
+                          int32_t *rate) {
+    const nxe_frame_params &fp = f.fp;
+    if (from_defaults && f.custom_tables) {
+        for (int k = 0; k < 8; ++k) set_from_default(f, k, (int)fp.nctx);
+    }
+    refresh_log_freq(f);
+    /* Under ENTROPY_LITE too.  `table_set` names the VARIANT in a Lite tile
+     * header, but the trellis still needs A rate model and ref gives it the
+     * same one -- `quantize_tile_ex` runs `select_set` whatever the entropy
+     * tool is.  So the field carries the rate set for the trellis dispatch and
+     * `restore_lite_variant` puts the header's value back before E4 reads it;
+     * the two dispatches upload the job array separately, so nothing else has
+     * to know. */
+    for (uint32_t t = 0; t < fp.ntiles; ++t)
+        choose_tile_table_set(f, coefs, t);
+    for (int k = 0; k < 8; ++k) {
+        nxe_rate_cost rc;
+        nxe_build_rate_cost(&f.tabs.freq[k][0][0], (int)fp.nctx, &rc);
+        for (int c = 0; c < NXE_MAX_CTX; ++c)
+            for (int sy = 0; sy < NXE_NUM_SYM; ++sy)
+                rate[k * NXE_MAX_CTX * NXE_NUM_SYM + c * NXE_NUM_SYM + sy] =
+                    rc.sym[c][sy];
+        /* And the bound's rate half, per set: see RATE_ZC in forward.comp. */
+        rate[8 * NXE_MAX_CTX * NXE_NUM_SYM + k] = rc.zero_cheapest;
+    }
+}
+
+void finish_trellis_pass(Frame &f, const int16_t *coefs) {
+    if (f.entropy_lite) return;
+    refresh_log_freq(f);
+    for (uint32_t t = 0; t < f.fp.ntiles; ++t)
+        choose_tile_table_set(f, coefs, t);
+}
+
+void restore_lite_variant(Frame &f) {
+    if (!f.entropy_lite) return;
+    const uint32_t v = (uint32_t)(f.entropy_lite - 1);
+    for (auto &j : f.jobs) j.table_set = v;
 }
 
 /* E3 over one tile, with the trellis if this frame is running it.

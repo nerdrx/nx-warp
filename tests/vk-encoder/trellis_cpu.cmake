@@ -26,12 +26,31 @@
 #     That one takes SEVEN FRAMES of training to show, which is why this test
 #     runs eight.
 #
-# Expects VKENC, NXVENC, WORKDIR.
+# Runs on the CPU models, on a real device, and on lavapipe: byte-identity is a
+# claim about the arithmetic, not about RADV, and the 64-bit accumulator is
+# carried as two uints through umulExtended/uaddCarry precisely so that no ICD
+# has to offer shaderInt64 for the claim to be checkable on it.
+#
+# Expects VKENC, NXVENC, WORKDIR, DEVICE.
 
 cmake_minimum_required(VERSION 3.22)
 
 if(NOT VKENC OR NOT NXVENC OR NOT WORKDIR)
   message(FATAL_ERROR "trellis_cpu.cmake: VKENC/NXVENC/WORKDIR are required")
+endif()
+if(NOT DEVICE)
+  set(DEVICE cpu)
+endif()
+if(DEVICE STREQUAL "cpu")
+  set(DEVARGS --cpu)
+else()
+  set(DEVARGS --device ${DEVICE})
+  execute_process(COMMAND ${VKENC} --list RESULT_VARIABLE rc OUTPUT_QUIET
+                  ERROR_QUIET)
+  if(rc EQUAL 77)
+    message(STATUS "SKIP: no Vulkan ICD or no physical device")
+    return()
+  endif()
 endif()
 
 file(REMOVE_RECURSE ${WORKDIR})
@@ -76,7 +95,7 @@ foreach(qp 22 26 30 34 40)
     if(NOT rc EQUAL 0)
       message(FATAL_ERROR "nxv-enc failed (${ent} QP ${qp}): ${rc}\n${e}")
     endif()
-    execute_process(COMMAND ${VKENC} --cpu ${COMMON} --qp ${qp} ${egpu}
+    execute_process(COMMAND ${VKENC} ${DEVARGS} ${COMMON} --qp ${qp} ${egpu}
                             --trellis 1 --out ${WORKDIR}/${ent}${qp}.cpu
                     RESULT_VARIABLE rc OUTPUT_QUIET ERROR_VARIABLE e)
     if(NOT rc EQUAL 0)
@@ -90,7 +109,7 @@ foreach(qp 22 26 30 34 40)
       file(SIZE ${WORKDIR}/${ent}${qp}.ref sz_r)
       file(SIZE ${WORKDIR}/${ent}${qp}.cpu sz_c)
       message(SEND_ERROR
-        "${ent} QP ${qp}: effort 2's CPU model is not byte-identical to "
+        "${ent} QP ${qp} on ${DEVICE}: effort 2 is not byte-identical to "
         "nxv-enc --int-trellis 1 --rdoq-effort 3 (${sz_c} B against ${sz_r} B). "
         "An effort level that is not byte-identical is not an effort level; it "
         "is a different encoder.")
@@ -103,5 +122,30 @@ endforeach()
 
 if(fail)
   message(FATAL_ERROR "trellis_cpu.cmake: effort 2 is not the reference's trellis")
+endif()
+# And the stream a device produced has to DECODE, through both decoders, to the
+# same pixels: two encoders can agree byte for byte and both be wrong.
+if(NXVDEC AND NOT DEVICE STREQUAL "cpu")
+  execute_process(COMMAND ${NXVDEC} --in ${WORKDIR}/rans30.cpu
+                          --out ${WORKDIR}/rans30.yuv --pix yuv420p --quiet
+                  RESULT_VARIABLE rc)
+  if(NOT rc EQUAL 0)
+    message(FATAL_ERROR "nxv-dec will not decode an effort-2 stream")
+  endif()
+  if(VKDEC)
+    execute_process(COMMAND ${VKDEC} --in ${WORKDIR}/rans30.cpu
+                            --out ${WORKDIR}/rans30.gpu.yuv --pix yuv420p
+                    RESULT_VARIABLE rc OUTPUT_QUIET ERROR_QUIET)
+    if(rc EQUAL 0)
+      execute_process(COMMAND ${CMAKE_COMMAND} -E compare_files
+                              ${WORKDIR}/rans30.yuv ${WORKDIR}/rans30.gpu.yuv
+                      RESULT_VARIABLE rc)
+      if(NOT rc EQUAL 0)
+        message(FATAL_ERROR
+          "nxv-dec and nxvc-vkdec disagree about an effort-2 stream")
+      endif()
+      message(STATUS "PASS both decoders agree on the effort-2 stream")
+    endif()
+  endif()
 endif()
 message(STATUS "trellis_cpu.cmake: effort 2 matches nxv-enc byte for byte")

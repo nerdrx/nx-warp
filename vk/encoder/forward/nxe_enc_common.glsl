@@ -177,6 +177,7 @@ struct nxe_frame_params {
     uint width, height, ycocgr, table_bytes;
     uint warp_bytes, ref_slots, wpred_stride, ref_sel;
     uint int_rdoq;
+    uint trellis;
     uint wm_luma[64];
     uint wm_chroma[64];
 };
@@ -273,6 +274,66 @@ int nxe_scan(int n, bool tskip, int p) {
     if (n == 16) return nxe_zigzag4[p];
     if (n == 4) return p;
     return 0;
+}
+
+// ------------------------------------------------- 64-bit signed accumulator
+//
+// The trellis accumulates `(d * d) << 18 + lam_q8 * rate_q10` over up to 64
+// scan positions, which reaches 2^54.  That does not fit an int, and the rule
+// at the top of this file -- int32 arithmetic only, no int64 type -- is not
+// waived for it: a 64-bit value is carried as two uints and built with
+// `umulExtended` and `uaddCarry`, which are int32 operations that happen to
+// produce a 64-bit result.  The same `umulExtended` the requantiser's lambda
+// already uses.
+//
+// So the shader needs no `shaderInt64` and the two ICDs need not agree about
+// one, which matters because byte-identity is checked on both.
+//
+// `x` is the low word, `y` the high word read as signed.  Two's complement
+// throughout, so the adds do not care about the sign.
+#define nxe_i64 uvec2
+
+nxe_i64 nxe_i64_add(nxe_i64 a, nxe_i64 b) {
+    uint carry;
+    uint lo = uaddCarry(a.x, b.x, carry);
+    return nxe_i64(lo, a.y + b.y + carry);
+}
+
+nxe_i64 nxe_i64_neg(nxe_i64 a) {
+    uint borrow;
+    uint lo = usubBorrow(0u, a.x, borrow);
+    return nxe_i64(lo, 0u - a.y - borrow);
+}
+
+bool nxe_i64_lt(nxe_i64 a, nxe_i64 b) {
+    if (a.y != b.y) return int(a.y) < int(b.y);
+    return a.x < b.x;
+}
+
+// (d * d) << 18, exactly.  `d` may be either sign; the square is not.
+nxe_i64 nxe_i64_sq_shl18(int d) {
+    uint v = uint(d < 0 ? -d : d);
+    uint hi, lo;
+    umulExtended(v, v, hi, lo);
+    return nxe_i64(lo << 18, (hi << 18) | (lo >> 14));
+}
+
+// a * b, a unsigned, b signed.
+nxe_i64 nxe_i64_mul(uint a, int b) {
+    uint m = uint(b < 0 ? -b : b);
+    uint hi, lo;
+    umulExtended(a, m, hi, lo);
+    nxe_i64 r = nxe_i64(lo, hi);
+    return b < 0 ? nxe_i64_neg(r) : r;
+}
+
+// Bypass bits an escape suffix costs for magnitude m >= 15 (Exp-Golomb 3 of
+// m - 15), matching eg3_encode and ref's escape_bits exactly.
+int nxe_escape_bits(int m) {
+    uint n = uint(m - 15) + 8u;
+    int b = 0;
+    while ((n >> (b + 1)) != 0u) ++b;
+    return (b - NXE_ESC_ORDER) + 1 + b;
 }
 
 int nxe_last_class_of(int pos) {
@@ -438,11 +499,19 @@ int nxe_dequant(int q, int t) { return nxe_clamp16((q * t + 8) >> 4); }
 // and the 64-bit product with NXE_RDOQ_LAM_Q12 is shifted right by 12 across
 // the halves.
 #define NXE_RDOQ_LAM_Q12 1400
+#define NXE_TRELLIS_LAM_Q12 901
 #define NXE_RDOQ_BITS_Q8 768
 
 uint nxe_rdoq_lambda_q8(int t) {
     uint hi, lo;
     umulExtended(uint(NXE_RDOQ_LAM_Q12), uint(t) * uint(t), hi, lo);
+    return (lo >> 12) | (hi << 20);
+}
+
+// Effort 2's lambda, the same shape at the same precision.
+uint nxe_trellis_lambda_q8(int t) {
+    uint hi, lo;
+    umulExtended(uint(NXE_TRELLIS_LAM_Q12), uint(t) * uint(t), hi, lo);
     return (lo >> 12) | (hi << 20);
 }
 
