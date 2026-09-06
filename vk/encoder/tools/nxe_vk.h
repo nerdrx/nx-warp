@@ -62,7 +62,8 @@ public:
      * on the device.  Everything after E0 is the path encode_frame() runs, so
      * the bitstream is the same bitstream. */
     bool encode_frame_image(Frame &f, uint32_t frame_number, VkImage image,
-                            uint32_t array_layer, std::string &err);
+                            uint32_t array_layer, uint32_t layers,
+                            std::string &err);
     /* The frame's pose and projection, one per eye, for the frame the NEXT
      * encode() call will code.  Must be called before that encode, and the
      * encoder keeps the history the warp derivation needs. */
@@ -99,7 +100,8 @@ private:
      * is one bitstream producer, not two. */
     bool encode_frame_common(Frame &f, uint32_t frame_number, bool check,
                              bool quiet, const VkImage *image,
-                             uint32_t array_layer, std::string &err);
+                             uint32_t array_layer, uint32_t src_layers,
+                             std::string &err);
 
     Impl *p_;
 };
