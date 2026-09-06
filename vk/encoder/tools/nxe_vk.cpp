@@ -168,6 +168,21 @@ struct VkEncoder::Impl {
      * the head of the next encode, because a receipt arrives between frames
      * and the restore is a device copy. */
     std::vector<uint32_t> atlas_restore;
+    /* Base-sourced patches queued by atlas_write_tiles(), applied at the top of
+     * the next encode -- in the SAME command buffer as the rollback restore
+     * and one barrier ahead of the E-stages, which is the ordering the caller
+     * needs and cannot arrange itself: the write must land after the previous
+     * frame's Pass B and before this frame's Pass W reads the atlas.
+     *
+     * Queued rather than submitted on the spot because a submit per call would
+     * serialise the caller against the GPU once per patch run, and the whole
+     * point of the entry point is that a patch costs 1.9 us. */
+    struct BaseWrite {
+        VkBuffer src = VK_NULL_HANDLE;
+        VkDeviceSize src_offset = 0;
+        uint32_t first_tile = 0, count = 0, src_frame = 0;
+    };
+    std::vector<BaseWrite> atlas_base_writes;
     /* Cheat 3's scratch: which tiles the staggered rule offered this frame,
      * and which of them the cap kept.  Members rather than locals so the
      * allocation does not recur per frame. */
@@ -1305,6 +1320,38 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
             }
             d.atlas_restore.clear();
         }
+        /* Base-sourced patches, in the same command buffer and under the same
+         * barrier.  AFTER the rollback restore, deliberately: a rollback undoes
+         * a coded write the client never got, and a patch is a NEW statement
+         * about the same position made after it.  Applying them the other way
+         * round would let a stale restore overwrite a fresh patch.
+         *
+         * The source is already in the atlas's own plane layout, so a patch is
+         * the same set of strided row regions a rollback is -- one region per
+         * tile row per plane, which is what the writes coalesce to. */
+        if (d.atlas && !d.atlas_base_writes.empty()) {
+            for (const auto &bw : d.atlas_base_writes) {
+                std::vector<VkBufferCopy> regs;
+                for (uint32_t k = 0; k < bw.count; ++k)
+                    atlas_tile_regions(d.ring, (int)f.fp.eyes,
+                                       (int)f.fp.tiles_x,
+                                       d.cfg.chroma444 ? 0 : 1,
+                                       (int)f.fp.height, bw.first_tile + k, 0u,
+                                       0u, regs);
+                /* The source buffer holds the SAME slot layout, so a region's
+                 * source offset is its destination offset plus the caller's
+                 * base.  That is what "already in the atlas layout" buys: no
+                 * per-tile address arithmetic on the caller's side and none
+                 * here either. */
+                for (auto &r : regs) r.srcOffset = r.dstOffset + bw.src_offset;
+                for (size_t i = 0; i < regs.size(); i += 4096) {
+                    const uint32_t n =
+                        (uint32_t)std::min<size_t>(4096, regs.size() - i);
+                    vkCmdCopyBuffer(cb, bw.src, d.b_ring.buf, n, &regs[i]);
+                }
+            }
+            d.atlas_base_writes.clear();
+        }
         d.dev.barrier_transfer_to_compute(cb);
         if (image) {
             /* E0 fills b_src from the caller's image, in the same command
@@ -1860,6 +1907,78 @@ bool VkEncoder::atlas_table(std::vector<uint8_t> &out) const {
 }
 
 uint64_t VkEncoder::atlas_disp_forced() const { return p_->disp_forced; }
+
+bool VkEncoder::atlas_write_tiles(uint32_t eye, uint32_t first_tile,
+                                  uint32_t count, VkBuffer src,
+                                  uint64_t src_offset, uint32_t src_frame,
+                                  std::string &err) {
+    Impl &d = *p_;
+    if (!d.ok) { err = "encoder not created"; return false; }
+    if (!d.atlas) { err = "atlas_write_tiles needs ATLAS"; return false; }
+    if (src == VK_NULL_HANDLE) { err = "src buffer is null"; return false; }
+    const int eyes = d.atlas_geom.eyes ? d.atlas_geom.eyes : 1;
+    if ((int)eye >= eyes) { err = "eye out of range"; return false; }
+    const uint32_t per_eye =
+        (uint32_t)(d.atlas_geom.cols_per_eye * d.atlas_geom.rows);
+    if (count == 0) return true;               /* an empty run is a no-op */
+    if (first_tile >= per_eye || count > per_eye - first_tile) {
+        err = "tile run leaves the eye";
+        return false;
+    }
+    /* [SYN] 13.12.3's src_frame is a frame NUMBER and the entry it lands in
+     * must not go backwards: a patch claiming an older source than the entry
+     * already holds would make the composition chain run the wrong way, and
+     * the encoder would then predict through a matrix the client never
+     * builds.  The same rule a coded tile obeys by construction is checked
+     * here, because this one comes from outside. */
+    const int cols = d.atlas_geom.cols_per_eye * eyes;
+    for (uint32_t k = 0; k < count; ++k) {
+        const uint32_t idx = first_tile + k;
+        const uint32_t row = idx / (uint32_t)d.atlas_geom.cols_per_eye;
+        const uint32_t col = idx % (uint32_t)d.atlas_geom.cols_per_eye;
+        const uint32_t t =
+            row * (uint32_t)cols + eye * (uint32_t)d.atlas_geom.cols_per_eye +
+            col;
+        if (t >= d.atlas_tab.e.size()) { err = "tile index out of range"; return false; }
+        const AtlasEntry &a = d.atlas_tab.e[t];
+        if ((a.flags & kAtlasValid) && src_frame < a.src_frame) {
+            err = "src_frame goes backwards on a tile the atlas already holds";
+            return false;
+        }
+    }
+
+    /* The run is contiguous WITHIN THE EYE, which with two eyes is not
+     * contiguous pair-wide -- the tile order of Annex D D-3 interleaves the
+     * eyes every `cols_per_eye` -- so it is queued as one span per row and the
+     * table is updated per tile. */
+    for (uint32_t k = 0; k < count; ++k) {
+        const uint32_t idx = first_tile + k;
+        const uint32_t row = idx / (uint32_t)d.atlas_geom.cols_per_eye;
+        const uint32_t col = idx % (uint32_t)d.atlas_geom.cols_per_eye;
+        const uint32_t t =
+            row * (uint32_t)cols + eye * (uint32_t)d.atlas_geom.cols_per_eye +
+            col;
+        Impl::BaseWrite bw;
+        bw.src = src;
+        bw.src_offset = (VkDeviceSize)src_offset;
+        bw.first_tile = t;
+        bw.count = 1;
+        bw.src_frame = src_frame;
+        d.atlas_base_writes.push_back(bw);
+        /* The table is updated NOW, not when the copy runs.  The encoder's
+         * shadow has to describe the atlas the next encode will predict from,
+         * and the next encode is what runs the copy; deferring both would make
+         * the decision pass see the old entry. */
+        d.atlas_tab.write_base_tile(t, src_frame, 0);
+        /* A patched position's undo snapshot is gone: the pixels it would
+         * restore are no longer the ones the client holds.  Dropping the
+         * snapshot makes a later rollback INVALIDATE the entry instead, which
+         * is the safe direction -- an invalid tile is coded INTRA and a
+         * wrongly-held one is a prediction from a picture nobody has. */
+        if (t < d.atlas_undo.s.size()) d.atlas_undo.s[t].used = 0;
+    }
+    return true;
+}
 
 bool VkEncoder::atlas_pixel_digest(uint8_t out[32]) {
     Impl &d = *p_;

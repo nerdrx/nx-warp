@@ -158,6 +158,7 @@ void AtlasTable::reset(const AtlasGeom &geom) {
      * Zero is therefore the correct reset value and not merely a convenient
      * one: `flags` zero is `valid == 0`. */
     e.assign(g.ntiles(), AtlasEntry{});
+    base_sourced.assign(g.ntiles(), 0u);
 }
 
 void AtlasTable::advance(const int32_t H[2][9]) {
@@ -196,6 +197,29 @@ void AtlasTable::code_tile(uint32_t t, uint32_t frame_number, int mode,
                         (mode == nw::kModeStaticMv ? kAtlasStatic : 0u));
     a.res_level = (uint8_t)res_level;
     std::memset(a.reserved, 0, sizeof a.reserved);
+    /* A coded tile REPLACES a base-sourced one: the position now holds pixels
+     * this encoder produced and the client decoded, which is the scheduled
+     * refresh ADR-0029 requires a base-sourced patch to get. */
+    if (t < base_sourced.size()) base_sourced[t] = 0u;
+}
+
+void AtlasTable::write_base_tile(uint32_t t, uint32_t frame_number,
+                                 int res_level) {
+    /* [SYN] 13.12.3 step 3's write-back, with the one difference that matters:
+     * the pixels came from the base layer, not from a coded nxvc tile.  The
+     * TABLE is identical either way -- identity `C`, this frame as the source,
+     * generation zero, valid, not static -- because the atlas entry describes
+     * WHERE the pixels are and at which pose, and that is the same statement
+     * however they were produced.  Only the provenance differs, and that is
+     * encoder-side. */
+    AtlasEntry &a = e[t];
+    atlas_identity(a.C);
+    a.src_frame = frame_number;
+    a.gen = 0;
+    a.flags = kAtlasValid;   /* never static: a patch is content, not a pose */
+    a.res_level = (uint8_t)res_level;
+    std::memset(a.reserved, 0, sizeof a.reserved);
+    if (t < base_sourced.size()) base_sourced[t] = 1u;
 }
 
 /* ----------------------------------------------------------- the undo log */

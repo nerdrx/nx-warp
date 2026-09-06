@@ -394,6 +394,48 @@ void check_refresh_priority() {
           "a cap above the candidate count picked %u tiles", got);
 }
 
+/* Base-sourced patches (ADR-0029 section 7).  The property that has to hold is
+ * that provenance is encoder-side and the WIRE RECORD is untouched: [SYN]
+ * 13.12.1 reserves flags bits 2-7 as zero and has conformance compare all 64
+ * bytes, so a patch that set bit 2 would break the shadow-equals-decoder
+ * identity on exactly the tiles the two must agree about. */
+void check_base_sourced() {
+    const nxe::AtlasGeom g = geom_1088(1);
+    nxe::AtlasTable at;
+    at.reset(g);
+    CHECK(at.base_sourced.size() == at.e.size(),
+          "base_sourced is not sized with the table");
+    for (uint8_t b : at.base_sourced)
+        CHECK(b == 0, "a reset table has a base-sourced tile");
+
+    at.write_base_tile(7, 42, 0);
+    CHECK(at.valid(7), "a patched tile is not valid");
+    CHECK(!at.is_static(7), "a patch must never be static");
+    CHECK(at.base_sourced[7] == 1, "the patch was not recorded");
+    CHECK(at.e[7].src_frame == 42 && at.e[7].gen == 0, "patch src/gen");
+    int32_t I[9];
+    nxe::atlas_identity(I);
+    for (int k = 0; k < 9; ++k)
+        CHECK(at.e[7].C[k] == I[k], "a patched tile's C is not the identity");
+    /* The whole point: bits 2-7 of `flags` stay zero, and so do the twenty
+     * reserved bytes, so the 64-byte record is what a conforming decoder
+     * writes. */
+    CHECK((at.e[7].flags & 0xFCu) == 0,
+          "a patch set a reserved flags bit (0x%02x)", at.e[7].flags);
+    for (int k = 0; k < 20; ++k)
+        CHECK(at.e[7].reserved[k] == 0, "a patch wrote reserved byte %d", k);
+
+    /* A coded tile at the same position RETIRES the patch: that is the
+     * scheduled refresh the ADR requires, and the flag has to stop being set
+     * or a tile would look base-sourced forever. */
+    at.code_tile(7, 50, nxvw::kModeWarpMv, 0);
+    CHECK(at.base_sourced[7] == 0, "a coded tile did not retire the patch");
+
+    /* And a patch over a coded tile sets it again. */
+    at.write_base_tile(7, 51, 0);
+    CHECK(at.base_sourced[7] == 1, "a patch over a coded tile was not recorded");
+}
+
 void check_table_rules() {
     const nxe::AtlasGeom g = geom_1088(2);
     nxe::AtlasTable at;
@@ -604,6 +646,7 @@ int main() {
     check_envelope();
     check_corner_disp();
     check_refresh_priority();
+    check_base_sourced();
     check_table_rules();
     check_static_skip();
     check_envelope_is_the_staleness_bound();

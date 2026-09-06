@@ -143,6 +143,19 @@ struct AtlasGeom {
 struct AtlasTable {
     std::vector<AtlasEntry> e;
     AtlasGeom g{};
+    /* Which positions were last filled from the BASE LAYER rather than by a
+     * coded nxvc tile (ADR-0029 section 7, "base-sourced patches").
+     *
+     * It is a parallel array and NOT a bit of `AtlasEntry::flags`, which is
+     * where ADR-0029 reserved it (bit 2).  [SYN] 13.12.1 says flags bits 2-7
+     * are reserved and ZERO, and that "every one of the 64 bytes is compared
+     * by conformance" -- so setting bit 2 in the record would make this
+     * encoder's shadow differ from the decoder's atlas on exactly the tiles it
+     * is meant to agree about, and the byte-identity that the whole shadow
+     * contract rests on would be gone.  Until the bit is un-reserved in the
+     * syntax, the flag is encoder-side state about encoder-side provenance,
+     * and the wire record stays spec-clean. */
+    std::vector<uint8_t> base_sourced;
     /* [SYN] 13.12.3 step 1, "an implementation's declared cap".  0 is no cap,
      * which is the v1 default: `gen_max` and tool bit 32 ATLAS_DRIFT are the
      * Cheats-8 experiment and are NOT built. */
@@ -172,6 +185,14 @@ struct AtlasTable {
      * samples.  The PIXELS are written by Pass B; this is the metadata half.
      * `mode` is an nxvw::kMode* value. */
     void code_tile(uint32_t t, uint32_t frame_number, int mode, int res_level);
+
+    /* The same write-back for a tile filled from the BASE LAYER: identity `C`,
+     * this frame as the source, generation 0, valid, never static -- the table
+     * says WHERE the pixels are and at which pose, which is the same statement
+     * however they were produced.  It marks `base_sourced[t]`; `code_tile()`
+     * clears it, because a coded tile is the scheduled refresh that retires a
+     * patch. */
+    void write_base_tile(uint32_t t, uint32_t frame_number, int res_level);
 
     /* 13.12.7.  A NEAR_SKIP tile applies its correction to the atlas pixels in
      * place and changes NO metadata.  It is here as a named no-op so that the

@@ -612,6 +612,83 @@ nxvc_vke_status nxvc_vk_encoder_set_frame_held(nxvc_vk_encoder *enc,
                                                uint32_t frame_number,
                                                int held);
 
+/* ------------------------------------------------- base-sourced atlas writes
+ *
+ * Where a base-layer patch comes from.  DEVICE memory on the encoder's own
+ * device: the server's shadow decode is uploaded once per frame and patched
+ * from there, so no patch ever touches host memory and there are no per-tile
+ * host copies.
+ *
+ * `buffer` must already be in the ATLAS's own plane layout -- the same strided
+ * u16 planes a reference-ring slot holds, at the same offsets -- so that a
+ * patch is a plain copy of the tile's row regions.  `offset` is where that
+ * slot-shaped image begins in the buffer; a tile's source address is then its
+ * destination address plus `offset`, which is what "already in the atlas
+ * layout" is worth: no address arithmetic on either side.
+ *
+ * `image` is reserved and currently REFUSED with NXVC_VKE_ERR_UNSUPPORTED.
+ * A base-layer image is in the decoder's colour space, and converting it to the
+ * atlas's coded sample domain needs the YCbCr -> RGB -> YCoCg-R clause of
+ * ADR-0029 section 7 -- including its normative trap, that the driver's
+ * samplerYcbcrConversionComponents is NOT identity and the conversion must
+ * consume the reported swizzle rather than assume a channel order.  That clause
+ * is not yet written, and an encoder inventing one would ship a wrong colour
+ * conversion undetected on exactly the hardware the base layer exists for. */
+typedef struct nxvc_vke_atlas_src {
+    VkBuffer buffer;        /* the patch source; required today          */
+    VkDeviceSize offset;    /* where the slot-shaped image starts        */
+    VkImage image;          /* reserved; must be VK_NULL_HANDLE          */
+} nxvc_vke_atlas_src;
+
+/* Fill a contiguous run of atlas tile positions from the base layer, instead
+ * of coding them (docs/adr/0029 section 7).
+ *
+ * A base-sourced patch costs about 1.9 us a tile on the Adreno against ~41 us
+ * for a coded nxvc tile, which is a 21x reduction on the one term of the
+ * budget that does not amortise -- so this is a LATENCY tool as much as a
+ * compatibility one.
+ *
+ * `first_tile` and `count` are within `eye`, in that eye's own row-major
+ * order.  A contiguous run is the primary form because row strips are what the
+ * writes coalesce to; a caller with a fovea or priority pattern batches
+ * several runs rather than passing a tile list, and the runs cost one
+ * vkCmdCopyBuffer region per tile row per plane either way.
+ *
+ * WHAT THE ENCODER DOES WITH IT.  The tile's atlas entry is written exactly as
+ * a coded tile's is -- identity `C`, `src_frame` as given, generation 0, valid,
+ * never static -- because the entry says WHERE the pixels are and at which
+ * pose, and that is the same statement however they were produced.  The
+ * encoder also records that the position is base-sourced, in its OWN state:
+ * the caller keeps nothing and passes nothing back.  A later coded tile at the
+ * same position clears it, which is the scheduled refresh ADR-0029 requires.
+ *
+ * `src_frame` obeys the same monotonicity a coded tile's does: a patch naming
+ * a frame older than the entry already holds is refused, because the
+ * composition chain of SYNTAX 13.12.2 would then run backwards and the encoder
+ * would predict through a matrix the client never builds.
+ *
+ * ORDERING.  The copy is recorded on the encoder's own command buffer at the
+ * top of the next encode, after the previous frame's reconstruction and one
+ * barrier ahead of the E-stages, so it lands before Pass W reads the atlas.
+ * That is the only correct ordering and it is not one a caller can arrange
+ * from outside; the call itself neither submits nor waits.  The TABLE is
+ * updated immediately, because the next encode's mode decision has to see it.
+ *
+ * NOTE ON CONFORMANCE.  ADR-0029 reserved `base_sourced` as bit 2 of the
+ * per-tile record's `flags`.  It is NOT written there: SYNTAX 13.12.1 makes
+ * flags bits 2-7 reserved and zero and has conformance compare all 64 bytes,
+ * so setting it would make the encoder's shadow differ from the decoder's
+ * atlas on exactly the tiles the two must agree about.  Until the syntax
+ * un-reserves the bit, provenance is encoder-side and the wire record stays
+ * spec-clean.
+ *
+ * Returns NXVC_VKE_ERR_UNSUPPORTED on a non-ATLAS stream or an image source,
+ * NXVC_VKE_ERR_ARG on a run that leaves the eye, a null buffer, or a
+ * `src_frame` that goes backwards.  A `count` of 0 is a no-op. */
+nxvc_vke_status nxvc_vk_encoder_atlas_write_tiles(
+    nxvc_vk_encoder *enc, uint32_t eye, uint32_t first_tile, uint32_t count,
+    const nxvc_vke_atlas_src *src, uint32_t src_frame);
+
 /* The frame's pose and projection, for the frame the NEXT encode() codes.
  *
  * The fields are OpenXR's: a unit quaternion in the convention docs/WARP.md

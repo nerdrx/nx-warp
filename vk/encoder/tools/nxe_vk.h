@@ -133,6 +133,31 @@ public:
      * off, which is the default. */
     uint64_t atlas_disp_forced() const;
 
+    /* Fill a contiguous run of atlas tile positions from the BASE LAYER
+     * (ADR-0029 section 7).  `src` is DEVICE memory on this encoder's device,
+     * already in the atlas's own plane layout -- the same strided u16 planes a
+     * ring slot holds -- so a patch is the same set of row regions a rollback
+     * is and needs no per-tile address arithmetic on either side.
+     *
+     * `first_tile` and `count` are within `eye`, in that eye's row-major
+     * order; the pair-wide index of Annex D D-3 is derived here, because a run
+     * that is contiguous in one eye is not contiguous pair-wide.
+     *
+     * The copy is QUEUED, not submitted: it is recorded at the top of the next
+     * encode, in the same command buffer as the rollback restore and one
+     * barrier ahead of the E-stages, which is the only ordering that is
+     * correct (after the previous frame's Pass B, before this frame's Pass W
+     * reads the atlas) and is not one the caller can arrange.  The table,
+     * however, is updated immediately, because the next encode's decision pass
+     * has to see it.
+     *
+     * Returns false and fills `err` on a run that leaves the eye, on a null
+     * buffer, on a non-ATLAS stream, or on a `src_frame` older than one the
+     * entry already holds. */
+    bool atlas_write_tiles(uint32_t eye, uint32_t first_tile, uint32_t count,
+                           VkBuffer src, uint64_t src_offset,
+                           uint32_t src_frame, std::string &err);
+
     void bench(Frame &f, int iters);
 
 private:

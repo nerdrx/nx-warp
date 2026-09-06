@@ -404,6 +404,43 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_set_frame_held(nxvc_vk_encoder *e,
     return NXVC_VKE_OK;
 }
 
+extern "C" nxvc_vke_status nxvc_vk_encoder_atlas_write_tiles(
+    nxvc_vk_encoder *e, uint32_t eye, uint32_t first_tile, uint32_t count,
+    const nxvc_vke_atlas_src *src, uint32_t src_frame) {
+    if (!e || !src) return NXVC_VKE_ERR_ARG;
+    if (!e->cfg.atlas) {
+        e->err = "atlas_write_tiles needs the ATLAS tool";
+        return NXVC_VKE_ERR_UNSUPPORTED;
+    }
+    if (src->image != VK_NULL_HANDLE) {
+        /* Deliberately refused rather than approximated.  A base-layer image
+         * arrives in the DECODER's colour space, and getting it into the
+         * atlas's coded sample domain needs the YCbCr->RGB->YCoCg-R conversion
+         * ADR-0029 measured -- including its one normative trap, that the
+         * driver's `samplerYcbcrConversionComponents` is NOT identity (the
+         * sampled r/g/b came back as Cr, Y, Cb) and the conversion must consume
+         * the reported swizzle rather than assume a channel order.  That clause
+         * is listed in ADR-0029 as a COST of the option and is not written yet,
+         * so an image path here would be this encoder inventing a colour
+         * conversion the syntax has not fixed -- and getting it wrong ships
+         * undetected on exactly the hardware the base layer is for.
+         *
+         * The buffer form has no such ambiguity: it is already in the atlas's
+         * own sample domain and layout, so the write is a copy. */
+        e->err = "image sources need the colour-conversion clause of "
+                 "ADR-0029 section 7, which is not yet normative; supply a "
+                 "buffer already in the atlas sample domain";
+        return NXVC_VKE_ERR_UNSUPPORTED;
+    }
+    std::string err;
+    if (!e->vk.atlas_write_tiles(eye, first_tile, count, src->buffer,
+                                 src->offset, src_frame, err)) {
+        e->err = err;
+        return NXVC_VKE_ERR_ARG;
+    }
+    return NXVC_VKE_OK;
+}
+
 extern "C" nxvc_vke_status nxvc_vk_encoder_set_views(nxvc_vk_encoder *e,
                                                      const nxvc_vke_view *v,
                                                      uint32_t count) {
