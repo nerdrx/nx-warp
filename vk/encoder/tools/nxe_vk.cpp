@@ -1756,7 +1756,17 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
                 bytes += f.tile_bytes[g * f.fp.tiles_x + c];
             if (bytes == 0) ++absent;
         }
-        total -= NXE_ROW_HEADER_BYTES * absent;
+        if (absent == 0) {
+            /* Nothing was elided, so E5's `rp_eff` emitted NO bitmap and
+             * cleared flags bit 4 -- the frame is spelled exactly as a
+             * tool-off frame, which is what the reference emits and what makes
+             * enabling the tool cost nothing.  `nxe_e5_frame_bytes()` charged
+             * the bitmap, so give it back or the copy runs past the frame and
+             * the NEXT frame starts in the wrong place. */
+            total -= fp.rowpresent_bytes;
+        } else {
+            total -= NXE_ROW_HEADER_BYTES * absent;
+        }
     }
     f.out.assign(total, 0);
     std::memcpy(f.out.data(), d.b_out.map, total);

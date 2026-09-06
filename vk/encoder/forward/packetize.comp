@@ -171,6 +171,27 @@ uint rows_present_total(uint rowgroups) {
     return n;
 }
 
+// The bitmap's EFFECTIVE size, which is not `fp.rowpresent_bytes` whenever the
+// tool is on and this frame elides nothing.
+//
+// [SYN] 3.1.2 lets a frame set flags bit 4 and name every row, and that is
+// legal; it is not what the REFERENCE emits, and the reference is the interop
+// target.  nxv-enc sets bit 4 only when a row was actually elided, so a frame
+// that elides nothing is spelled exactly as it was before the tool existed and
+// enabling the tool never COSTS bytes -- on a grid where no row can ever be
+// elided (every row carrying a coded tile) an unconditional bitmap is pure
+// overhead, +8 B a frame at 3 row structures and +3 B at 17.
+//
+// Deciding it here rather than on the host is forced: presence comes from E2's
+// byte prefix, which does not exist until this shader runs, while the host
+// fixes `fp` before the dispatch.  So the shader owns both the flag and the
+// layout it moves.
+uint rp_eff(uint rowgroups) {
+    if (fp.rowpresent_bytes == 0u) return 0u;
+    return rows_present_total(rowgroups) == rowgroups ? 0u
+                                                      : fp.rowpresent_bytes;
+}
+
 #if NXE_E5_PASS == 0
 // Zero exactly the bytes this frame will occupy, so the atomicOr writes of
 // pass 1 land on a clean slate.  The output buffer is dimensioned for the
@@ -183,7 +204,7 @@ void main() {
     // order SYNTAX.md 12 fixes: the 40-byte header, then warp_ext(), then the
     // transmitted table area.  Both are 0 when their tool is off.
     const uint hdr = NXE_FRAME_HEADER_BYTES + fp.warp_bytes +
-                     fp.rowpresent_bytes + fp.table_bytes;
+                     rp_eff(rowgroups) + fp.table_bytes;
     const uint total =
         hdr + NXE_ROW_HEADER_BYTES * rows_present_total(rowgroups) + tot.v[0];
     const uint nwords = (total + 3u) >> 2;
@@ -201,7 +222,7 @@ void main() {
     // order SYNTAX.md 12 fixes: the 40-byte header, then warp_ext(), then the
     // transmitted table area.  Both are 0 when their tool is off.
     const uint hdr = NXE_FRAME_HEADER_BYTES + fp.warp_bytes +
-                     fp.rowpresent_bytes + fp.table_bytes;
+                     rp_eff(rowgroups) + fp.table_bytes;
     const uint total =
         hdr + NXE_ROW_HEADER_BYTES * rows_present_total(rowgroups) + tot.v[0];
 
@@ -224,9 +245,16 @@ void main() {
                    | ((uint(fp.chroma_qp_off) & 0xffu) << 8)      // byte 29
                                                                   // byte 30 alpha_qp_off, 0
                    | ((fp.quant_matrix & 0xffu) << 24));          // byte 31
+        // Byte 34's bit 4 is `row_present`, and it must agree with the
+        // bitmap this frame actually carries: the host set it from the CONFIG,
+        // which cannot know whether anything was elided.  Cleared when
+        // `rp_eff` came back zero, so the frame is spelled exactly as a
+        // tool-off frame is.
+        const uint ff = (rp_eff(rowgroups) != 0u) ? (fp.frame_flags | 16u)
+                                                  : (fp.frame_flags & ~16u);
         put_word(8u, (fp.tables_present & 0xffu)                  // byte 32
                    | ((fp.ref_slots & 0xffu) << 8)                // byte 33
-                   | ((fp.frame_flags & 0xffu) << 16));           // byte 34
+                   | ((ff & 0xffu) << 16));                       // byte 34
                                                                   // byte 35 reserved, 0
         put_word(9u, total);
         // warp_ext(), immediately after the 40-byte header and before the
@@ -250,7 +278,7 @@ void main() {
         // ORs the bitmap over that header's frame_number, which is a two-byte
         // corruption of every frame and exactly what an unguarded version of
         // this loop did.
-        if (fp.rowpresent_bytes != 0u)
+        if (rp_eff(rowgroups) != 0u)
             for (uint g = 0u; g < rowgroups; ++g)
                 if (row_is_present(g, rowgroups))
                     put_byte(NXE_FRAME_HEADER_BYTES + fp.warp_bytes + (g >> 3),
@@ -266,7 +294,7 @@ void main() {
     if (t == 0u) {
         for (uint k = lid; k < fp.table_bytes; k += uint(NXE_E5_WG))
             put_byte(NXE_FRAME_HEADER_BYTES + fp.warp_bytes +
-                         fp.rowpresent_bytes + k,
+                         rp_eff(rowgroups) + k,
                      (tabb.v[k >> 2] >> ((k & 3u) * 8u)) & 0xffu);
     }
 

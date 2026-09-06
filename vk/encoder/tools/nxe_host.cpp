@@ -851,6 +851,31 @@ void train_table_sets(Frame &f) {
 
 /* -------------------------------------------------------------------- E5 */
 void pack_frame(Frame &f, uint32_t frame_number) {
+    /* [SYN] 3.1.2, the same rule E5's `rp_eff` applies and for the same
+     * reason: the bitmap is emitted, and flags bit 4 set, only when a row was
+     * actually elided.  The reference does it this way, so enabling the tool
+     * never costs bytes -- and this model has to agree with the shader byte
+     * for byte or `--check` compares two different frame layouts.
+     *
+     * A row that spans no bytes coded nothing, which is the rule the shader
+     * reads off E2's prefix and this reads off `tile_bytes`.  Note this path
+     * usually finds NOTHING elided (it is the intra-only model, where a frame
+     * with no reference has no skipped tiles), which is exactly the case the
+     * fix is about. */
+    if (f.fp.rowpresent_bytes) {
+        const uint32_t rowgroups = f.fp.tiles_y * f.fp.eyes;
+        uint32_t absent = 0;
+        for (uint32_t g = 0; g < rowgroups; ++g) {
+            uint32_t bytes = 0;
+            for (uint32_t c = 0; c < f.fp.tiles_x; ++c)
+                bytes += f.tile_bytes[g * f.fp.tiles_x + c];
+            if (bytes == 0) ++absent;
+        }
+        if (absent == 0) {
+            f.fp.rowpresent_bytes = 0;
+            f.fp.frame_flags &= ~16u;
+        }
+    }
     const nxe_frame_params &fp = f.fp;
     uint32_t run = 0;
     for (uint32_t t = 0; t < fp.ntiles; ++t) {

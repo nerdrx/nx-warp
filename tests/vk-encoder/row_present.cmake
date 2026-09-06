@@ -119,8 +119,33 @@ foreach(leg "plain;;rans" "atlas;--atlas;rans" "atlas-lite;--atlas;lite")
 
   file(SIZE ${WORKDIR}/${name}.off.nxv soff)
   file(SIZE ${WORKDIR}/${name}.on.nxv son)
+  # ENABLING THE TOOL MUST NEVER COST BYTES.  [SYN] 3.1.2 permits a frame to
+  # set flags bit 4 and name every row, but the REFERENCE sets the bit only
+  # when a row was actually elided, so a frame that elides nothing is spelled
+  # exactly as it was before the tool existed.  Emitting the bitmap
+  # unconditionally is legal, decodes identically, and is byte-for-byte
+  # DIFFERENT from nxv-enc -- which is how it was found.
+  #
+  # On this fixture every row structure always carries a coded tile, so
+  # nothing is ever elided and the two sizes are EQUAL: the leg is the
+  # "enabled but never firing" case, and equality is the whole assertion.  The
+  # relation is written `LESS_EQUAL` rather than `EQUAL` so a fixture that does
+  # elide still passes, since the tool may only ever remove bytes.
+  if(son GREATER soff)
+    message(FATAL_ERROR
+      "${name}: --row-present made the stream LARGER (${soff} -> ${son}). "
+      "The bitmap is being emitted on a frame that elided nothing, which is "
+      "legal but is not what nxv-enc emits, so the streams are no longer "
+      "byte-identical to the reference.")
+  endif()
+  if(son EQUAL soff)
+    set(fired "no rows elided; identical size, as the reference emits")
+  else()
+    math(EXPR saved "${soff} - ${son}")
+    set(fired "${saved} bytes elided")
+  endif()
   message(STATUS "vk.encoder.rowpresent ${name}: ${soff} -> ${son} bytes, "
-                 "decoded identical")
+                 "${fired}, decoded identical")
 endforeach()
 
 # The control that keeps the three legs above honest: with the tool OFF the
