@@ -75,6 +75,8 @@ static void usage() {
         "  --display-psnr       PSNR-Y of the DISPLAYED picture vs the source\n"
         "                       (under --atlas, one warp from the atlas)\n"
         "  --atlas              the per-tile atlas reference, tool bit 31\n"
+        "  --warp-mv            also offer WARP_MV, scored from Pass W's own\n"
+        "                       prediction (implies --coded-vectors)\n"
         "  --drift-refresh      the INTRA cap is per-tile AGE (nxv-enc's\n"
         "                       default) rather than the staggered rule\n"
         "  --atlas-mode         the atlas as a per-frame MODE, tool bit 34\n"
@@ -226,6 +228,7 @@ int main(int argc, char **argv) {
         else if (a == "--coded-vectors") cfg.int_coded_vectors = true;
         else if (a == "--ref-sel") cfg.ref_sel = std::atoi(val());
         else if (a == "--atlas") cfg.atlas = true;
+        else if (a == "--warp-mv") { cfg.int_coded_vectors = true; cfg.int_warp_mv = true; }
         else if (a == "--drift-refresh") cfg.drift_refresh = true;
         else if (a == "--atlas-mode") cfg.atlas_mode = true;
         else if (a == "--atlas-picture-d") cfg.atlas_picture_d = std::atoi(val());

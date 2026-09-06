@@ -1740,8 +1740,8 @@ under object motion, and is a liability under head motion. The per-frame mode is
 single configuration rather than a choice, and it works. And a static-world synthetic clip is not a
 safe fixture for this question, because it removes the one cost the atlas has.
 
-Charted as Figure 14 in [docs/GALLERY.md](../GALLERY.md)
-(`atlasenc-vrroom-arms.png`), beside Figure 12's synthetic sweep.
+Charted as Figure 20 in [docs/GALLERY.md](../GALLERY.md)
+(`atlasenc-vrroom-arms.png`), beside Figure 18's synthetic sweep.
 
 ![The atlas on rendered content](../assets/atlasenc-vrroom-arms.png)
 

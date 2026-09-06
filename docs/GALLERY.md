@@ -247,6 +247,14 @@ divided by the same over pairs inside tiles, on the decoded luma. **1.0 means a
 tile edge looks like any other pair; above 1 the grid is visible.** It is
 scale-free, so configurations at different bitrates can be compared directly,
 and it is reported for every visual result from now on. `nx-scratch/atlasprice/seams.py`.
+Every measured result gets a picture and an entry here: what device, what
+fixture, what settings, the number, and the command that produced it. An entry
+without a reproducible command is not an entry.
+
+Appends only. Two agents writing here at once conflict trivially.
+
+---
+
 ## Adreno 650 clock under load vs idle
 
 ![clock](assets/passb-clock.png)
@@ -650,8 +658,20 @@ minimum is 27.54 dB at `fast` and 19.96 at `mid`.
 python3 nx-scratch/atlasprice/alteye_frames.py     # writes docs/assets/alteye-worsttile.png
 python3 nx-scratch/atlasprice/alteye.py fast       # and mid — the ADR's table
 ## Figure 12 — The coded-vector search, not the atlas, decides whether the atlas pays
+```
 
-![Figure 12](assets/atlasenc-decision-sweep.png)
+---
+
+> **Numbering note.** `main` at b43c3bb contains TWO entries numbered
+> Figure 12 (the effort ladder, and the HEVC base layer). Nothing here has
+> been renumbered to fix that; the entries below take 18-20, the next free
+> numbers after main's Figure 17.
+
+---
+
+## Figure 18 — The coded-vector search, not the atlas, decides whether the atlas pays
+
+![Figure 18](assets/atlasenc-decision-sweep.png)
 
 **Date** 2026-09-06 · **Fixture** `nx-scratch/atlasref/s{0.0,0.05,0.1,0.2,0.4,0.8,1.6,2.5}`,
 1088x1088, 16 frames — ONE synthetic content (`md5 a325d144`, static world, no
@@ -669,7 +689,7 @@ collapse to all-INTRA (128531 B/frame) and the atlas's advantage vanishes
 entirely. Every earlier GPU-encoder measurement in ADR-0029 was taken with it
 off, which is why the reference's shape never reproduced there.
 
-**Superseded in part by Figure 14, which measures the same question on RENDERED
+**Superseded in part by Figure 20, which measures the same question on RENDERED
 content and reverses it under head motion. Read this as the ceiling.**
 
 **Read this with Figure 1, which disagrees.** Figure 1 is RENDERED content
@@ -697,9 +717,9 @@ nxvc-vkenc --in atlasref/s0.4.yuv --w 1088 --h 1088 --pix yuv420p --qp 26 \
 
 ---
 
-## Figure 13 — What the two models decide, tile by tile, on one fast-turn frame
+## Figure 19 — What the two models decide, tile by tile, on one fast-turn frame
 
-![Figure 13](assets/atlasenc-tile-modes.png)
+![Figure 19](assets/atlasenc-tile-modes.png)
 
 **Date** 2026-09-06 · **Fixture** `nx-scratch/atlasref/fastturn-adr` (71 deg/s
 mean), 1088x1088, frame 8 of 16, 17x17 tiles · **Settings** QP 26, intra-period
@@ -730,9 +750,9 @@ nxvc-vkenc --in atlasref/fastturn-adr.yuv --w 1088 --h 1088 --pix yuv420p \
 
 ---
 
-## Figure 14 — On rendered content the atlas wins at rest, loses under head motion, and the mode picks the winner
+## Figure 20 — On rendered content the atlas wins at rest, loses under head motion, and the mode picks the winner
 
-![Figure 14](assets/atlasenc-vrroom-arms.png)
+![Figure 20](assets/atlasenc-vrroom-arms.png)
 
 **Date** 2026-09-06 · **Fixture** `nx-scratch/fixtures/vrroom`, all four
 trajectories, stereo 2176x1088, 578 tiles, 16 frames · **Settings** QP 26,
@@ -749,10 +769,10 @@ being told: **100 %** PICTURE frames at fast, landing exactly on the picture
 model to the byte (37.0930 / 10150); 47 % at mid; 6.7 % at rest and object
 motion, where it beats both single models (39.9954 dB at rest).
 
-**This supersedes Figure 12's generalisation.** Figure 12 measured a synthetic
+**This supersedes Figure 12's generalisation.** Figure 18 measured a synthetic
 static-world clip and found the atlas 2.06x better at every speed. That clip has
 no staleness cost — its world never changes, so a held tile is free — which is
-exactly the counterweight rendered content supplies. Figure 12 is the ceiling;
+exactly the counterweight rendered content supplies. Figure 18 is the ceiling;
 this is the expectation. It also reverses the reading that the per-frame mode is
 inert: on this corpus it is the mechanism that makes one configuration work
 across the whole velocity range.

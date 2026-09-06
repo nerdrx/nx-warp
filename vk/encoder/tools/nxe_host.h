@@ -199,6 +199,30 @@ struct Config {
      * staggered rule reports 3.2.  Getting this wrong is worth several
      * thousand bytes a frame on a stereo pair and looks like a decision bug.
      */
+    /* ENCODER-DECISION.md section 6, `int_coded_vectors = 2`: also offer
+     * WARP_MV.  Requires `int_coded_vectors`.
+     *
+     * Its predictor is the homography warp at the tile's skip vector, which is
+     * the picture Pass W already produced, so the candidate costs nothing new
+     * to score and needs no second copy of the warp.  What it does NOT do is
+     * search a vector around the warp, which the reference's WARP_MV does --
+     * that would need the reference resampled at a shifted position, and
+     * resampling is the warp.  So this reproduces the reference's CHOICE of
+     * predictor and not its search, and streams are not byte-identical to
+     * `nxv-enc --int-coded-vectors on`.
+     *
+     * Off leaves every stream byte-identical. */
+    /* EXPERIMENTAL, and it does not pay: measured on vrroom it is chosen for
+     * 0.0 % of tiles against the reference's 34.3 % at mid, because an
+     * UNSEARCHED warp loses to a searched translation on essentially every
+     * tile.  It also surfaces a pre-existing GPU/CPU-model disagreement --
+     * `nxe_e5_frame_header` hardcodes `ref_slots` to 0 where the E5 shader
+     * emits `fp.ref_slots`, so `--check` fails on any mid-clip all-intra
+     * frame, which this option makes reachable.  Left off and left in place
+     * because the CANDIDATE is exact and free; what is missing is the vector
+     * refinement, and E1c_decide.comp says what Pass W would have to emit for
+     * it. */
+    bool int_warp_mv = false;
     bool drift_refresh = false;
     bool atlas_mode = false;
     int atlas_picture_d = 8;

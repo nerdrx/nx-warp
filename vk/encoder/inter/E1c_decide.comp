@@ -43,6 +43,27 @@
 // at a quarter-pel one it is warp_tile()'s own bilinear tap, which is eight
 // lines of integer arithmetic reproduced below.
 //
+// WARP_MV IS offered here when `coded_vectors >= 2`, but only AT THE SKIP
+// VECTOR, and the measurement says that is not enough.  Its predictor at that
+// vector is exactly the picture Pass W already wrote, so the candidate costs
+// nothing to score and duplicates nothing; but the reference SEARCHES a vector
+// around the warp, and an unsearched warp loses to a searched translation on
+// essentially every tile.  Measured on vrroom at QP 26: 0.0 % WARP_MV against
+// the reference's 34.3 % at mid, and forcing the choice makes a frame LARGER
+// (2793 B against 2373).
+//
+// WHAT PASS W WOULD HAVE TO EMIT to close it, without a second copy of the
+// homography: the tile's FOUR CORNER SAMPLING POSITIONS, which `compute_corner`
+// already produces and then throws away.  With those, this kernel can run
+// [SYN] 13.3's own in-tile corner bilerp to get the sampling position of any
+// output pixel, add a candidate vector to it, and take the same bilinear tap
+// `static_pred` already takes -- so the search becomes the one this kernel
+// already knows how to do, over positions Pass W handed it.  The homography
+// stays where it is: it is what PRODUCED the corners, and the corners are what
+// crosses the boundary.  That is eight ints a tile per plane and an inner loop
+// this kernel already has the shape of.  It is not implemented.
+//
+// The old note, still true of the SEARCH:
 // WARP_MV is NOT searched here.  Its predictor is the full homography and
 // reproducing it outside Pass W would be a second copy of the one piece of
 // arithmetic this project refuses to have two of.  `--int-coded-vectors on`
@@ -121,7 +142,8 @@ layout(push_constant) uniform Push {
     int intra_mad;   // Q8 mean |residual| per luma sample above which INTRA
     int lambda_q8;   // SAD-domain lambda, Q8: cost = SAD + (lambda*bits >> 8)
     int mv_range;    // coarse sweep radius in samples
-    int coded_vectors; // 1 = search STATIC_MV, 0 = skip and intra only
+    int coded_vectors; // 0 = skip and intra only; 1 = also STATIC_MV;
+                       // 2 = also WARP_MV (section 6's int_coded_vectors 2)
     int ring_stride;   // u16 row stride of the ring's luma plane
     int ring_w, ring_h; // the luma plane's sample extent over the eye pair
     int eye_w;          // ONE eye's sample width: ring_w / eyes
@@ -553,6 +575,27 @@ void main() {
     const uint cost_vec =
         best_sad + ((uint(pc.lambda_q8) * bits_vec) >> 8);
 
+    // WARP_MV, and it costs NOTHING NEW TO SCORE.  Its predictor is the
+    // homography warp at the tile's skip vector, which is (0,0) here -- and
+    // that is exactly the picture Pass W already wrote and `s_sadskip` already
+    // measures.  So the candidate is the skip's own SAD charged as a CODED
+    // tile: it transmits a vector and codes a residual where WARP_SKIP
+    // transmits nothing and leaves its error in the atlas.
+    //
+    // This is why nothing had to be duplicated.  Reproducing the homography
+    // outside Pass W is the one copy this project refuses, and a WARP_MV
+    // candidate at the skip vector does not need it: the pixels are already
+    // here.  What it CANNOT do is refine the vector around the warp -- that
+    // would need the reference resampled at a shifted position, which is the
+    // warp again -- so this searches no vector and the reference's WARP_MV
+    // search is not reproduced, only its CHOICE of predictor.
+    //
+    // It differs from `cost_skip` in the persistence term alone: a coded tile
+    // corrects its error this frame, so none of it is charged forward.
+    const uint cost_warp =
+        s_sadskip + ((uint(pc.lambda_q8) * bits_vec) >> 8);
+    const bool have_warp = pc.coded_vectors >= 2;
+
     // The skip, charged kIntSkipPersist on its EXCESS over the best coded
     // candidate: its error goes into the ring and stays there until the tile
     // is next coded, so the part a coded tile would NOT have left behind is
@@ -561,8 +604,17 @@ void main() {
     const uint cost_skip =
         s_sadskip + 3u * excess + ((uint(pc.lambda_q8) * 1u) >> 8);
 
-    const bool take_skip = cost_skip <= cost_vec;
-    const uint best_pred_sad = min(s_sadskip, best_sad);
+    // The best CODED candidate, and which one it is.  WARP_MV wins over
+    // STATIC_MV exactly when the warped predictor beats the best translation,
+    // which on a rotating head is the ordinary case -- and is why an encoder
+    // without this candidate answers a turn with STATIC_MV, "the cheapest
+    // wrong answer", and pays for it in residual.
+    const bool warp_beats_static = have_warp && cost_warp < cost_vec;
+    const uint cost_coded = warp_beats_static ? cost_warp : cost_vec;
+
+    const bool take_skip = cost_skip <= cost_coded;
+    const uint best_pred_sad =
+        min(s_sadskip, warp_beats_static ? s_sadskip : best_sad);
 
     // INTRA is a fallback, never a costed candidate: costing it needs the
     // rate of a coded tile, which is the quantity that cannot be reproduced.
@@ -582,6 +634,14 @@ void main() {
         jobs[tile].mode = uint(NXE_MODE_WARP_SKIP);
         jobs[tile].mv = 0u;
         write_rec(tile, uint(NXE_MODE_WARP_SKIP), 0, 0);
+        return;
+    }
+    if (warp_beats_static) {
+        // The vector is the skip vector, (0,0), which is the one this
+        // candidate's predictor was measured at.
+        jobs[tile].mode = uint(NXE_MODE_WARP_MV);
+        jobs[tile].mv = 0u;
+        write_rec(tile, uint(NXE_MODE_WARP_MV), 0, 0);
         return;
     }
     jobs[tile].mode = uint(NXE_MODE_STATIC_MV);
