@@ -2006,7 +2006,8 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         for (int p = 0; p < np; ++p)
             rdoq_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)], tc.tp.tskip,
                        p == 1 || p == 2, rc, lambda_scale, tc.sdh, tc.nctx,
-                       1 << tc.tp.nsub_log2, rdoq_effort, dc_lambda_gain);
+                       1 << tc.tp.nsub_log2, rdoq_effort, dc_lambda_gain,
+                       (int)e->cfg.int_trellis);
     };
 
     auto analyze_tile_dir = [&](TileCoder &tc, const TableSet *tabs, int pass,
