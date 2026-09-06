@@ -35,7 +35,7 @@
 namespace nxe {
 int selftest(int device, bool cpu_only, bool print_digests, bool quiet);
 int selftest_dump(const char *prefix);
-int inter_fixture_dump(const char *prefix);
+int inter_fixture_dump(const char *prefix, int w, int h, int frames);
 int ring_check(const char *prefix, const char *decoded, int w, int h, int frames);
 }
 
@@ -83,6 +83,11 @@ int main(int argc, char **argv) {
     bool list = false, check = false, self = false, digests = false;
     const char *dump = nullptr;
     const char *dump_inter = nullptr;
+    /* The inter fixture's picture size and length.  Defaults are the
+     * 256x192x8 clip the acid test has always used; the 1088x1088 leg
+     * overrides them, because 289 tiles is the headset's real tile count
+     * and every other fixture in this tree is under 256 tiles. */
+    int fx_w = 256, fx_h = 192, fx_frames = 8;
     const char *ring_prefix = nullptr, *ring_decoded = nullptr;
     int ring_frames = 0;
     std::string pix = "yuv420p";
@@ -144,6 +149,11 @@ int main(int argc, char **argv) {
         else if (a == "--print-digests") digests = true;
         else if (a == "--dump-selftest-yuv") dump = val();
         else if (a == "--dump-inter") dump_inter = val();
+        else if (a == "--dump-inter-size") {
+            fx_w = std::atoi(val());
+            fx_h = std::atoi(val());
+            fx_frames = std::atoi(val());
+        }
         else if (a == "--check-ring") ring_prefix = val();
         else if (a == "--check-ring-decoded") ring_decoded = val();
         else if (a == "--check-ring-frames") ring_frames = std::atoi(val());
@@ -154,7 +164,8 @@ int main(int argc, char **argv) {
 
     if (list) return nxe::vk_list_devices();
     if (dump) return nxe::selftest_dump(dump);
-    if (dump_inter) return nxe::inter_fixture_dump(dump_inter);
+    if (dump_inter)
+        return nxe::inter_fixture_dump(dump_inter, fx_w, fx_h, fx_frames);
     if (ring_prefix && ring_decoded)
         return nxe::ring_check(ring_prefix, ring_decoded, cfg.w, cfg.h,
                                ring_frames);

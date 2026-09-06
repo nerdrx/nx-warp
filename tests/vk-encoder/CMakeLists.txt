@@ -101,6 +101,27 @@ if(TARGET nxvc-vkenc AND TARGET nxv-enc AND TARGET nxv-dec)
   set_tests_properties(vk.encoder.inter.acid.0 PROPERTIES
                        SKIP_REGULAR_EXPRESSION "SKIP:")
   list(APPEND NXENC_TESTS vk.encoder.inter.acid.0)
+
+  # The same chain at the headset's own tile count.  The acid test above runs
+  # at 256x192 -- 12 tiles -- and every other inter fixture in the tree is
+  # 320x240 or smaller, so nothing here has ever crossed 256 tiles, which is
+  # where a byte-wide tile index, a row bitmap or a prefix sum would first go
+  # wrong.  This leg is 1088x1088: a 17x17 grid, 289 tiles, with the coded
+  # vector searched, and it takes the stream all the way through the GPU
+  # decoder's own parser.
+  add_test(NAME vk.encoder.inter.cv1088
+           COMMAND ${CMAKE_COMMAND}
+           -DVKENC=$<TARGET_FILE:nxvc-vkenc>
+           -DNXVENC=$<TARGET_FILE:nxv-enc>
+           -DNXVDEC=$<TARGET_FILE:nxv-dec>
+           -DVKDEC=$<IF:$<TARGET_EXISTS:nxvc-vkdec>,$<TARGET_FILE:nxvc-vkdec>,>
+           -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/inter-cv1088
+           -DVKENCAPI=$<IF:$<TARGET_EXISTS:nxvc-vkenc-api>,$<TARGET_FILE:nxvc-vkenc-api>,>
+           -DDEVICE=0
+           -P ${CMAKE_CURRENT_SOURCE_DIR}/inter_1088.cmake)
+  set_tests_properties(vk.encoder.inter.cv1088 PROPERTIES
+                       SKIP_REGULAR_EXPRESSION "SKIP:")
+  list(APPEND NXENC_TESTS vk.encoder.inter.cv1088)
 endif()
 
 if(TARGET nxenc-inter-test)
