@@ -1674,33 +1674,126 @@ static void fit_near_skip(const TileCoder &tc, i8 corr[3][3]) {
 // 40-70 % of the tile.
 namespace {
 
-// Solve the 3x3 normal equations of a plane fit by Gaussian elimination with
-// partial pivoting.  Returns false when the region is empty or degenerate --
-// one sub-block wide, say -- and the caller then keeps the DC term alone.
-bool solve3(double a[3][4], double x[3]) {
-    for (int c = 0; c < 3; ++c) {
-        int piv = c;
-        for (int r = c + 1; r < 3; ++r)
-            if (std::fabs(a[r][c]) > std::fabs(a[piv][c])) piv = r;
-        if (std::fabs(a[piv][c]) < 1e-9) return false;
-        if (piv != c)
-            for (int k = 0; k < 4; ++k) std::swap(a[c][k], a[piv][k]);
-        for (int r = 0; r < 3; ++r) {
-            if (r == c) continue;
-            const double f = a[r][c] / a[c][c];
-            for (int k = c; k < 4; ++k) a[r][k] -= f * a[c][k];
-        }
-    }
-    for (int c = 0; c < 3; ++c) x[c] = a[c][3] / a[c][c];
+// The planar fit is INTEGER, end to end, and that is a property of the format
+// rather than of this implementation.
+//
+// SYNTAX.md 13.13's decoding process has no float in it, and
+// docs/LOWPOLY-GPU-PLAN.md 1 lists that first among the four things that make
+// the mode cheap on a GPU.  An encoder whose FIT was double would undo half of
+// that: a GPU encoder could not reproduce this one bit for bit, and "the
+// reference is the spec" would mean "the spec is whatever this machine's libm
+// did".  So the fit below is specified in integers, exactly, and a second
+// implementation that does these operations in this order gets these bytes.
+//
+// Three decisions carry that, and each is a DEFINITION rather than an
+// approximation of some truer real-valued answer:
+//
+//   1. The normal equations are formed with cleared denominators.  The ramp
+//      basis is `R(i) / size` with `R(i) = 2i - size + 1`, so scaling row 0 by
+//      `size` and rows 1 and 2 by `size^2` leaves every entry an exact integer
+//      sum of products of samples and ramps.
+//   2. They are solved by CRAMER in __int128, and the only degenerate test is
+//      `det == 0`.  The old double form declared failure on a pivot under
+//      1e-9, which is a statement about conditioning rather than about
+//      singularity; an exact solve has no conditioning to worry about, so a
+//      system with a nonzero determinant is now solved rather than refused.
+//   3. The solution is rounded to Q8 fixed point IMMEDIATELY, half away from
+//      zero.  That is the load-bearing one.  Carrying the exact rationals into
+//      the reassignment step is what does not fit: the determinants reach
+//      2.6e22, and a squared cell error over them lands near 2.6e54, past
+//      __int128.  Rounding first makes every downstream comparison a plain
+//      i64 sum with a common denominator -- no cross-multiplication, no
+//      shared-denominator bookkeeping, and an argmin a GPU can do in a lane.
+//
+// BOUNDS, stated because the choice of width has to be checkable:
+//   * |R| <= size - 1 <= 63, N <= 4096, |e| <= 512 (a chroma plane under the
+//     colour transform has the widest range).
+//   * matrix entries: max |Sxx| = N * R^2 <= 4096 * 63^2 = 1.63e7.
+//   * det(M): 6 * (1.63e7)^3 = 2.6e22  -- needs __int128.
+//   * RHS entries: |size * Sxe| <= 64 * 4096 * 63 * 512 = 8.5e9.
+//   * Cramer numerators: 6 * (1.63e7)^2 * 8.5e9 = 1.4e25 -- __int128, and
+//     with the Q8 shift applied, 3.6e27.  __int128 holds 1.7e38.
+//   * after rounding: |coef| <= ~512 so the Q8 value fits i32, a cell
+//     residual fits i32, and a cell's squared error over 64 samples reaches
+//     2.6e16 -- i64, with three orders of headroom.
+using i128 = __int128;
+
+// The ramp numerator of 13.13: the reconstruction computes
+// `(dh * (2*x - size + 1)) >> log2(size)`, so the basis is this over `size`.
+inline int ramp_i(int i, int size) { return 2 * i - size + 1; }
+
+// Q8, half away from zero.  The rounding rule is part of the definition: a
+// half that rounded toward even, or toward zero, would be a different encoder.
+constexpr int kPlanarFitFrac = 8;
+
+inline i64 round_q(i128 num, i128 den) {
+    if (den == 0) return 0;
+    if (den < 0) { num = -num; den = -den; }
+    const i128 scaled = num << kPlanarFitFrac;
+    const i128 half = den / 2;
+    const i128 r = scaled >= 0 ? (scaled + half) / den : -((-scaled + half) / den);
+    return (i64)r;
+}
+
+// One region's fitted plane, in Q8 sample units.
+struct PlaneFit { i32 d0 = 0, dh = 0, dv = 0; };
+
+// Solve the cleared-denominator normal equations by Cramer.  `a` is the 3x4
+// augmented system; `out` receives the three coefficients in Q8.  Returns
+// false only when the system is singular, which is the honest degenerate test
+// and the only one an exact solve admits.
+bool solve3_q8(const i128 a[3][4], PlaneFit &out) {
+    auto det3 = [](i128 m00, i128 m01, i128 m02, i128 m10, i128 m11, i128 m12,
+                   i128 m20, i128 m21, i128 m22) -> i128 {
+        return m00 * (m11 * m22 - m12 * m21) - m01 * (m10 * m22 - m12 * m20) +
+               m02 * (m10 * m21 - m11 * m20);
+    };
+    const i128 det = det3(a[0][0], a[0][1], a[0][2], a[1][0], a[1][1], a[1][2],
+                          a[2][0], a[2][1], a[2][2]);
+    if (det == 0) return false;
+    const i128 d0 = det3(a[0][3], a[0][1], a[0][2], a[1][3], a[1][1], a[1][2],
+                         a[2][3], a[2][1], a[2][2]);
+    const i128 d1 = det3(a[0][0], a[0][3], a[0][2], a[1][0], a[1][3], a[1][2],
+                         a[2][0], a[2][3], a[2][2]);
+    const i128 d2 = det3(a[0][0], a[0][1], a[0][3], a[1][0], a[1][1], a[1][3],
+                         a[2][0], a[2][1], a[2][3]);
+    out.d0 = (i32)round_q(d0, det);
+    out.dh = (i32)round_q(d1, det);
+    out.dv = (i32)round_q(d2, det);
     return true;
 }
 
-struct PlaneFit { double d0 = 0, dh = 0, dv = 0; };
-
-// The ramp basis, in the units the reconstruction uses: gx runs over
-// +-(1 - 1/size), which is what `(2*x - size + 1) >> log2(size)` computes.
-inline double ramp_at(int i, int size) {
-    return (double)(2 * i - size + 1) / (double)size;
+// Accumulate the cleared-denominator normal equations over the samples of one
+// region.  `pick(cx, cy)` says whether a map cell belongs to the region.
+template <typename Pick>
+void planar_normal_eq(const PlaneState &s, int M, int cell, int shift,
+                      Pick pick, i128 a[3][4]) {
+    const int size = s.size;
+    i64 N = 0, Sx = 0, Sy = 0, Sxx = 0, Sxy = 0, Syy = 0;
+    i64 Se = 0, Sxe = 0, Sye = 0;
+    (void)cell;
+    for (int y = 0; y < size; ++y) {
+        const int ry = ramp_i(y, size);
+        for (int x = 0; x < size; ++x) {
+            if (!pick(x >> shift, y >> shift)) continue;
+            const int rx = ramp_i(x, size);
+            const i64 e = (i64)s.samples[(size_t)y * size + x] - s.dc_off;
+            N += 1;
+            Sx += rx;       Sy += ry;
+            Sxx += (i64)rx * rx;
+            Sxy += (i64)rx * ry;
+            Syy += (i64)ry * ry;
+            Se += e;
+            Sxe += (i64)rx * e;
+            Sye += (i64)ry * e;
+        }
+    }
+    (void)M;
+    const i128 sz = size;
+    // Row 0 scaled by size, rows 1 and 2 by size^2; see the header note.
+    a[0][0] = (i128)N * sz;  a[0][1] = Sx;   a[0][2] = Sy;   a[0][3] = (i128)Se * sz;
+    a[1][0] = (i128)Sx * sz; a[1][1] = Sxx;  a[1][2] = Sxy;  a[1][3] = (i128)Sxe * sz;
+    a[2][0] = (i128)Sy * sz; a[2][1] = Sxy;  a[2][2] = Syy;  a[2][3] = (i128)Sye * sz;
 }
 
 }  // namespace
@@ -1713,69 +1806,69 @@ static void planar_fit_plane(const PlaneState &s, const u8 *labels, int M,
     const int shift = log2_of(size) - log2_of(M);
     const int t = dc_plane_step(s);
     for (int r = 0; r < regions; ++r) {
-        double a[3][4] = {};
-        for (int y = 0; y < size; ++y)
-            for (int x = 0; x < size; ++x) {
-                if (labels[(size_t)(y >> shift) * M + (x >> shift)] != r)
-                    continue;
-                const double b[3] = {1.0, ramp_at(x, size), ramp_at(y, size)};
-                const double e =
-                    (double)s.samples[(size_t)y * size + x] - (double)s.dc_off;
-                for (int i = 0; i < 3; ++i) {
-                    for (int j = 0; j < 3; ++j) a[i][j] += b[i] * b[j];
-                    a[i][3] += b[i] * e;
-                }
-            }
-        double x3[3] = {0, 0, 0};
-        if (!solve3(a, x3)) {
-            // Degenerate: keep the mean if there was one, and no ramps.
-            double n = 0, sum = 0;
-            for (int y = 0; y < size; ++y)
-                for (int x = 0; x < size; ++x)
-                    if (labels[(size_t)(y >> shift) * M + (x >> shift)] == r) {
-                        sum += (double)s.samples[(size_t)y * size + x] -
-                               (double)s.dc_off;
-                        n += 1;
-                    }
-            x3[0] = n > 0 ? sum / n : 0;
+        i128 a[3][4] = {};
+        planar_normal_eq(s, M, size / M, shift,
+                         [&](int cx, int cy) {
+                             return labels[(size_t)cy * M + cx] == r;
+                         },
+                         a);
+        PlaneFit f;
+        if (!solve3_q8(a, f)) {
+            // Singular: an empty region, or one whose samples are collinear in
+            // the basis.  Keep the mean if there was one, and no ramps -- the
+            // same fallback the double form had, reached by an exact test.
+            const i128 N = a[0][0];  // N * size
+            f = PlaneFit{};
+            if (N != 0) f.d0 = (i32)round_q(a[0][3], N);
         }
-        auto q = [&](double v) -> i8 {
-            // The near-skip quantiser, for the same reason it uses it: three
-            // bytes for a whole region are not where a dead zone earns
-            // anything, and biasing a region's DC towards zero is visible.
-            const double av = v < 0 ? -v : v;
-            int lvl = (int)((av * 16.0 + (double)t / 2.0) / (double)t);
-            lvl = clamp_i32(lvl, 0, 127);
+        // The near-skip quantiser, for the reason it uses it: three bytes for
+        // a whole region are not where a dead zone earns anything, and biasing
+        // a region's DC toward zero is visible.  In Q8:
+        //   lvl = floor((16*|q|/256 + t/2) / t) = floor((32|q| + 256t) / (512t))
+        auto q = [&](i32 v) -> i8 {
+            const i64 av = v < 0 ? -(i64)v : (i64)v;
+            i64 lvl = (32 * av + 256 * (i64)t) / (512 * (i64)t);
+            lvl = lvl < 0 ? 0 : (lvl > 127 ? 127 : lvl);
             return (i8)(v < 0 ? -lvl : lvl);
         };
-        out[r][0] = q(x3[0]);
-        out[r][1] = q(x3[1]);
-        out[r][2] = q(x3[2]);
+        out[r][0] = q(f.d0);
+        out[r][1] = q(f.dh);
+        out[r][2] = q(f.dv);
     }
 }
 
 // The squared error one region's fitted plane leaves over one map cell, used
 // by the reassignment step.  Unquantised on purpose: the assignment is a
 // choice between regions and the quantiser applies equally to all of them.
-static double planar_cell_err(const PlaneState &s, const PlaneFit &f, int cx,
-                              int cy, int cell) {
+//
+// Exact in i64.  The plane is Q8 and the ramps divide by `size`, so the
+// residual is formed at scale `size << 8` and every region's error carries the
+// same denominator -- which is why the argmin below needs no cross
+// multiplication at all.
+static i64 planar_cell_err(const PlaneState &s, const PlaneFit &f, int cx,
+                           int cy, int cell) {
     const int size = s.size;
-    double e = 0;
-    for (int y = cy * cell; y < (cy + 1) * cell; ++y)
+    i64 e = 0;
+    for (int y = cy * cell; y < (cy + 1) * cell; ++y) {
+        const i64 ry = ramp_i(y, size);
         for (int x = cx * cell; x < (cx + 1) * cell; ++x) {
-            const double v = (double)s.dc_off + f.d0 +
-                             f.dh * ramp_at(x, size) + f.dv * ramp_at(y, size);
-            const double d = (double)s.samples[(size_t)y * size + x] - v;
-            e += d * d;
+            const i64 rx = ramp_i(x, size);
+            const i64 E = (i64)s.samples[(size_t)y * size + x] - s.dc_off;
+            // (E - value) * size * 256
+            const i64 num = E * size * (1 << kPlanarFitFrac) -
+                            ((i64)f.d0 * size + (i64)f.dh * rx + (i64)f.dv * ry);
+            e += num * num;
         }
+    }
     return e;
 }
 
 // The whole fit for one configuration.  `sse_out` is the distortion of the
 // RECONSTRUCTION -- what the decoder will produce -- over every coded colour
-// plane, so the caller can price it against any other mode.
+// plane, so the caller can price it against any other mode.  Exact i64: it is
+// a sum of squared integer differences and never needed to be a double.
 static void fit_planar(TileCoder &tc, int regions, int fine, PlanarRec &pr,
-                       double *sse_out) {
+                       i64 *sse_out) {
     pr = PlanarRec{};
     pr.regions = regions;
     pr.fine = fine;
@@ -1783,83 +1876,99 @@ static void fit_planar(TileCoder &tc, int regions, int fine, PlanarRec &pr,
     const int M = pr.map_dim();
     const int cell = luma.size / M;
     const int ncell = M * M;
+    const int shift = log2_of(luma.size) - log2_of(M);
 
     // 1-D k-means on cell mean luma, seeded at evenly spaced quantiles of the
     // sorted means.  Deterministic, which matters: the encoder is compared
     // byte for byte against itself across builds.
-    std::vector<double> cm((size_t)ncell, 0.0);
+    //
+    // Integer throughout, and the sort needs no argument about ties: the mean
+    // is the cell SUM over a constant `cell*cell`, so ordering the sums is
+    // ordering the means exactly, and equal sums are equal means -- whichever
+    // order std::sort leaves them in, the seeded value is the same number.
+    // Centroids stay exact rationals `cnum / cden` and the assignment compares
+    // |cs/A - cnum/cden| by cross multiplication, A cancelling.
+    std::vector<i64> cs((size_t)ncell, 0);
     for (int cy = 0; cy < M; ++cy)
         for (int cx = 0; cx < M; ++cx) {
-            double sum = 0;
+            i64 sum = 0;
             for (int y = cy * cell; y < (cy + 1) * cell; ++y)
                 for (int x = cx * cell; x < (cx + 1) * cell; ++x)
-                    sum += (double)luma.samples[(size_t)y * luma.size + x];
-            cm[(size_t)cy * M + cx] = sum / (double)(cell * cell);
+                    sum += luma.samples[(size_t)y * luma.size + x];
+            cs[(size_t)cy * M + cx] = sum;
         }
-    std::vector<double> sorted = cm;
+    const i64 A = (i64)cell * cell;
+    std::vector<i64> sorted = cs;
     std::sort(sorted.begin(), sorted.end());
-    std::vector<double> cent((size_t)regions, 0.0);
-    for (int r = 0; r < regions; ++r)
-        cent[(size_t)r] =
-            sorted[(size_t)((2 * r + 1) * (ncell - 1) / (2 * regions))];
+    // cent[r] = cnum[r] / cden[r]; seeded from a cell sum, so cden starts at A.
+    std::vector<i64> cnum((size_t)regions, 0), cden((size_t)regions, 1);
+    for (int r = 0; r < regions; ++r) {
+        cnum[(size_t)r] = sorted[(size_t)((2 * r + 1) * (ncell - 1) / (2 * regions))];
+        cden[(size_t)r] = A;
+    }
     for (int it = 0; it < 8; ++it) {
-        std::vector<double> sum((size_t)regions, 0.0);
-        std::vector<double> cnt((size_t)regions, 0.0);
+        std::vector<i64> sum((size_t)regions, 0), cnt((size_t)regions, 0);
         for (int c = 0; c < ncell; ++c) {
             int best = 0;
-            double bd = 1e30;
+            // |cs/A - cnum_r/cden_r| compared across r.  Multiply by
+            // A * cden_0 * ... : it is enough to compare
+            //   |cs*cden_r - cnum_r*A| * cden_best   vs
+            //   |cs*cden_best - cnum_best*A| * cden_r
+            // which is exact and, for the seeded case (cden all equal), is the
+            // plain distance.  STRICTLY LESS keeps the first region on a tie,
+            // which is the double form's rule and is stated here because a tie
+            // is reachable: two centroids can be equidistant from a cell.
+            i64 bn = 0, bd = 0;
             for (int r = 0; r < regions; ++r) {
-                const double d = std::fabs(cm[(size_t)c] - cent[(size_t)r]);
-                if (d < bd) { bd = d; best = r; }
+                i64 n = cs[(size_t)c] * cden[(size_t)r] - cnum[(size_t)r] * A;
+                if (n < 0) n = -n;
+                const i64 dd = cden[(size_t)r];
+                if (r == 0) { bn = n; bd = dd; best = 0; continue; }
+                if (n * bd < bn * dd) { bn = n; bd = dd; best = r; }
             }
             pr.labels[c] = (u8)best;
-            sum[(size_t)best] += cm[(size_t)c];
+            sum[(size_t)best] += cs[(size_t)c];
             cnt[(size_t)best] += 1;
         }
         for (int r = 0; r < regions; ++r)
-            if (cnt[(size_t)r] > 0) cent[(size_t)r] = sum[(size_t)r] / cnt[(size_t)r];
+            if (cnt[(size_t)r] > 0) {
+                // mean of the assigned cell means = (sum of sums) / (cnt * A)
+                cnum[(size_t)r] = sum[(size_t)r];
+                cden[(size_t)r] = cnt[(size_t)r] * A;
+            }
     }
 
     // k-planes on the luma: fit, reassign, repeat.
     PlaneFit fits[kPlanarMaxRegions];
+    for (int r = 0; r < kPlanarMaxRegions; ++r) fits[r] = PlaneFit{};
     for (int it = 0; it < 8; ++it) {
         for (int r = 0; r < regions; ++r) {
-            double a[3][4] = {};
-            for (int cy = 0; cy < M; ++cy)
-                for (int cx = 0; cx < M; ++cx) {
-                    if (pr.labels[(size_t)cy * M + cx] != r) continue;
-                    for (int y = cy * cell; y < (cy + 1) * cell; ++y)
-                        for (int x = cx * cell; x < (cx + 1) * cell; ++x) {
-                            const double b[3] = {1.0, ramp_at(x, luma.size),
-                                                 ramp_at(y, luma.size)};
-                            const double e =
-                                (double)luma.samples[(size_t)y * luma.size + x] -
-                                (double)luma.dc_off;
-                            for (int i = 0; i < 3; ++i) {
-                                for (int j = 0; j < 3; ++j) a[i][j] += b[i] * b[j];
-                                a[i][3] += b[i] * e;
-                            }
-                        }
-                }
-            double x3[3] = {0, 0, 0};
-            if (!solve3(a, x3)) {
-                // An empty region keeps the plane it had.  It costs its three
-                // bytes and buys nothing, which the rate-distortion decision
-                // then sees as a reason to prefer a smaller region count --
-                // the right place for that judgement.
-                fits[r] = fits[r];
-            } else {
-                fits[r] = PlaneFit{x3[0], x3[1], x3[2]};
-            }
+            i128 a[3][4] = {};
+            planar_normal_eq(luma, M, cell, shift,
+                             [&](int cx, int cy) {
+                                 return pr.labels[(size_t)cy * M + cx] == r;
+                             },
+                             a);
+            PlaneFit f;
+            if (solve3_q8(a, f)) fits[r] = f;
+            // An empty or singular region keeps the plane it had.  It costs
+            // its three bytes and buys nothing, which the rate-distortion
+            // decision then sees as a reason to prefer a smaller region count
+            // -- the right place for that judgement.
         }
         bool moved = false;
         for (int cy = 0; cy < M; ++cy)
             for (int cx = 0; cx < M; ++cx) {
                 int best = pr.labels[(size_t)cy * M + cx];
-                double bd = 1e30;
+                i64 bd = 0;
+                bool first = true;
                 for (int r = 0; r < regions; ++r) {
-                    const double e = planar_cell_err(luma, fits[r], cx, cy, cell);
-                    if (e < bd) { bd = e; best = r; }
+                    const i64 e = planar_cell_err(luma, fits[r], cx, cy, cell);
+                    // Strictly less: on a tie the LOWEST region index wins,
+                    // which makes the sweep order irrelevant and the result
+                    // independent of how the loop is scheduled -- the property
+                    // a GPU implementation needs.
+                    if (first || e < bd) { bd = e; best = r; first = false; }
                 }
                 if (best != pr.labels[(size_t)cy * M + cx]) moved = true;
                 pr.labels[(size_t)cy * M + cx] = (u8)best;
@@ -1878,13 +1987,13 @@ static void fit_planar(TileCoder &tc, int regions, int fine, PlanarRec &pr,
     }
 
     if (sse_out) {
-        double sse = 0;
+        i64 sse = 0;
         for (int p = 0; p < planes; ++p) {
             PlaneState &ps = tc.pl[p];
             std::vector<i32> src = ps.samples;
             reconstruct_planar(ps, pr, p);
             for (size_t i = 0; i < src.size(); ++i) {
-                const double d = (double)src[i] - (double)ps.samples[i];
+                const i64 d = (i64)src[i] - (i64)ps.samples[i];
                 sse += d * d;
             }
             ps.samples.swap(src);
@@ -2663,7 +2772,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             e->cfg.mode_lambda_q8 ? (double)e->cfg.mode_lambda_q8 / 256.0 : 1.0;
         const Lambda Lmode = make_lambda(qp, tile_scale * mode_scale);
         const double lambda = Lmode.sse;
-        const double c_intra = d_intra + lambda * bits;
+        // (the double form is gone: the comparison below is integer)
 
         // Six configurations -- two granularities by three region counts --
         // and only the best of them competes.  All six are fitted because the
@@ -2679,7 +2788,31 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         pl.quad_mv = 0;
         pl.mv_x = pl.mv_y = 0;
         pl.ref_sel = 0;
-        double best_p = 0, best_sse = 0;
+        // The planar comparison is INTEGER.  `sse` is an exact sum of squared
+        // integer differences, the body is an exact byte count, and the two
+        // quantities that come from the transform path -- its distortion and
+        // its rate -- are converted ONCE, here, at a stated scale.
+        //
+        // Converted rather than recomputed on purpose: changing how the INTRA
+        // path scores itself would move every tile decision in every stream,
+        // and this must move only the planar ones.  d_intra is already an
+        // exact integer in disguise (tile_distortion sums squared integer
+        // differences into a double, and 4096 samples x 3 planes x 255^2 is
+        // 8e8, far inside i64), so llround recovers it exactly; the rate and
+        // lambda are quantised to Q10 and Q16, which is a definition and the
+        // only place a rounding enters the decision.
+        const i64 d_intra_i = (i64)llround(d_intra);
+        const i64 bits_i_q10 = (i64)llround(bits * 1024.0);
+        const i64 lam_q16 = (i64)llround(lambda * 65536.0);
+        // cost = sse * 2^26 + lam_q16 * bits_q10, both terms at scale 2^26.
+        // i128: lam_q16 reaches 1.4e11 and a rate 1.6e8, so the product is
+        // 2.2e19 -- past i64 and nowhere near __int128.
+        auto planar_cost = [&](i64 sse, i64 bits_q10) -> __int128 {
+            return ((__int128)sse << 26) + (__int128)lam_q16 * bits_q10;
+        };
+        const __int128 c_intra_i = planar_cost(d_intra_i, bits_i_q10);
+        __int128 best_p = 0;
+        i64 best_sse = 0;
         bool have_p = false;
         // NXVC_PLANAR_CONFIG="R,fine" pins one configuration instead of
         // searching the six.  With NXVC_PLANAR_FORCE it is how the mode's own
@@ -2701,15 +2834,15 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             for (int regions = 2; regions <= kPlanarMaxRegions; ++regions) {
                 if (cfg_r && (regions != cfg_r || fine != cfg_fine)) continue;
                 PlanarRec pr;
-                double sse = 0;
+                i64 sse = 0;
                 fit_planar(tc, regions, fine, pr, &sse);
                 // The body, the tile header, and the fields that survive the
                 // mode's constraints -- the constant alpha byte and nothing
                 // else.  No rANS lane flush: a planar tile has no lanes.
-                const double b =
-                    8.0 * (double)(kTileHeaderBytes + tile_field_bytes(tc.tp) +
-                                   pr.body_bytes(np));
-                const double c = sse + lambda * b;
+                const i64 b_q10 =
+                    8 * (i64)(kTileHeaderBytes + tile_field_bytes(tc.tp) +
+                              pr.body_bytes(np)) * 1024;
+                const __int128 c = planar_cost(sse, b_q10);
                 if (!have_p || c < best_p) {
                     have_p = true;
                     best_p = c;
@@ -2755,8 +2888,8 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         // setting rather than as a debug hook.  It costs what the measurement
         // above says it costs, and it is a taste, so it is a level and not a
         // default.
-        const bool gate = e->cfg.planar < 2 ? (best_sse <= d_intra) : true;
-        if (have_p && (force || (best_p < c_intra && gate))) d = pl;
+        const bool gate = e->cfg.planar < 2 ? (best_sse <= d_intra_i) : true;
+        if (have_p && (force || (best_p < c_intra_i && gate))) d = pl;
     };
 
     auto decide_tile = [&](int t, int eye, int col, int row,
