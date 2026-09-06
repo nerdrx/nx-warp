@@ -96,6 +96,7 @@ void setup(const Config &cfg, Frame &f) {
      * and the shader take it from one place. */
     fp.int_rdoq = (uint32_t)cfg.int_rdoq;
     f.rate_check = cfg.rate_check;
+    f.trellis = cfg.trellis;
     /* The QP ladder, resolved once.  0 first, so a tie in the decision keeps
      * the frame's own quantiser (see choose_qp_delta). */
     f.qp_lambda_q12 = cfg.qp_lambda_q12;
@@ -1002,24 +1003,122 @@ static int choose_qp_delta(Frame &f, uint32_t t,
     return best_dq;
 }
 
+/* E3 over one tile, with the trellis if this frame is running it.
+ *
+ * The trellis prices against the table set that will CODE the tile, and in this
+ * pipeline the table set is chosen after E3 from the coefficients E3 produced.
+ * So the frame is quantised twice: once plainly to give the table-set choice
+ * something to look at, and once through the trellis against the set it chose.
+ * That is `ref`'s own two-pass `quantize_tile_ex`, and it is why effort 2 costs
+ * measurable time where effort 1 does not. */
+static void e3_tile_trellis(Frame &f, uint32_t t,
+                            const int32_t *const src[NXE_MAX_PLANES]) {
+    const nxe_frame_params &fp = f.fp;
+    const nxe_tile_job &job = f.jobs[t];
+    const uint8_t *modes = &f.modes[(size_t)t * 3 * 64];
+    int16_t *coef = &f.coef[(size_t)t * NXE_TILE_COEFS_MAX];
+    static int32_t pred[NXE_TILE * NXE_TILE];
+    static int32_t recon[NXE_TILE * NXE_TILE];
+    /* The tile's own table set, chosen from a PLAIN quantisation of it, before
+     * the trellis prices anything.
+     *
+     * This is `ref`'s inner two-pass (`quantize_tile_ex`: "the first pass
+     * exists only to give the table-set choice something to look at, so that
+     * the second, rate-distortion pass is costed against the table that will
+     * actually code it").  Pricing against the QP-seeded set instead is a
+     * different decision on a handful of tiles -- measured, a constant 14
+     * bytes on the acid fixture, which is a per-tile header field and not a
+     * coefficient. */
+    nxe_e3_tile(&fp, &job, src, modes, coef);
+    /* Under ENTROPY_LITE `table_set` names the VARIANT in the tile header, not
+     * a probability table set -- but the trellis still needs A rate model, and
+     * ref gives it the same one: `quantize_tile_ex` runs `select_set`
+     * whatever the entropy tool is, and `rdoq_plane` prices against
+     * `tabs[table_set]`.  So the set is chosen for the rate model and the
+     * header's value is put back. */
+    const uint32_t lite_variant = f.jobs[t].table_set;
+    choose_tile_table_set(f, f.coef.data(), t);
+    const uint32_t rate_set = f.jobs[t].table_set;
+    if (f.entropy_lite) f.jobs[t].table_set = lite_variant;
+    for (int p = 0; p < NXE_MAX_PLANES; ++p) {
+        nxe_plane pl;
+        const int off = nxe_plane_coef_offset(&fp, &job, p);
+        nxe_plane_setup(&fp, &job, p, &pl);
+        pl.rc = &f.trellis_rc[rate_set];
+        if (fp.intra_dir)
+            nxe_e3_plane_dir(&pl, src[p], modes + (size_t)p * 64,
+                             (int)fp.dir_layer, coef + off, pred, recon, NULL);
+        else
+            nxe_e3_plane(&pl, src[p], coef + off, pred, NULL);
+    }
+}
+
 void encode_frame_cpu(Frame &f, uint32_t frame_number) {
     const nxe_frame_params &fp = f.fp;
     std::vector<int16_t> qp_scratch;
     if (f.qp_cand_n > 1) qp_scratch.resize(NXE_TILE_COEFS_MAX);
-    for (uint32_t t = 0; t < fp.ntiles; ++t) {
-        const int32_t *src[NXE_MAX_PLANES];
+    auto tile_src = [&](uint32_t t, const int32_t **src) {
         for (int p = 0; p < NXE_MAX_PLANES; ++p)
             src[p] = &f.src[p][(size_t)t * f.plane_size[p] * f.plane_size[p]];
+    };
+    /* Pass one prices against the BUILT-IN tables, and it runs the trellis too.
+     *
+     * That second half is not an optimisation, it is what makes the two
+     * encoders the same encoder: `ref`'s pass 0 quantises with the trellis
+     * against `deftabs` and trains the eight sets on THOSE histograms, so a
+     * first pass that quantised plainly here would train on coefficients the
+     * reference never saw and every tile would land in a different set.
+     * Measured: with custom tables on, that alone was 6312 bytes against the
+     * reference's 5166 on the acid fixture, and byte-identical without them. */
+    if (f.trellis) {
+        if (f.custom_tables)
+            for (int k = 0; k < 8; ++k) set_from_default(f, k, (int)fp.nctx);
+        for (int k = 0; k < 8; ++k)
+            nxe_build_rate_cost(&f.tabs.freq[k][0][0], (int)fp.nctx,
+                                &f.trellis_rc[k]);
+    }
+    for (uint32_t t = 0; t < fp.ntiles; ++t) {
+        const int32_t *src[NXE_MAX_PLANES];
+        tile_src(t, src);
         if (f.qp_cand_n > 1)
             f.jobs[t].qp_delta = (int8_t)choose_qp_delta(f, t, src, qp_scratch);
-        nxe_e3_tile(&fp, &f.jobs[t], src, &f.modes[(size_t)t * 3 * 64],
-                    &f.coef[(size_t)t * NXE_TILE_COEFS_MAX]);
+        if (f.trellis)
+            e3_tile_trellis(f, t, src);
+        else
+            nxe_e3_tile(&fp, &f.jobs[t], src, &f.modes[(size_t)t * 3 * 64],
+                        &f.coef[(size_t)t * NXE_TILE_COEFS_MAX]);
     }
     /* The table stage is the tool's, not the pipeline's: ENTROPY_LITE has no
      * probability tables to choose between or to train. */
     if (!f.entropy_lite) {
         choose_table_sets(f, f.coef.data());
         train_table_sets(f);
+    }
+    /* Pass two, against the TRAINED sets -- ref's emit pass.  Only when there
+     * are trained sets to be against: without custom tables the tables never
+     * moved, so a second pass would reach the same coefficients by the same
+     * arithmetic and is pure cost. */
+    if (f.trellis && f.custom_tables && !f.entropy_lite) {
+        for (int k = 0; k < 8; ++k)
+            nxe_build_rate_cost(&f.tabs.freq[k][0][0], (int)fp.nctx,
+                                &f.trellis_rc[k]);
+        refresh_log_freq(f);
+        for (uint32_t t = 0; t < fp.ntiles; ++t) {
+            const int32_t *src[NXE_MAX_PLANES];
+            tile_src(t, src);
+            e3_tile_trellis(f, t, src);
+        }
+        /* The final per-tile choice, against the TRAINED sets and without
+         * restoring the built-in ones first.
+         *
+         * Not `choose_table_sets`, which resets f.tabs to the defaults before
+         * it selects -- that is right for the training pass, whose job is to
+         * assign tiles to built-in sets so the trained ones can be pooled from
+         * them, and wrong here, where the trained sets are what the stream
+         * carries and what E4 will code with.  ref's emit pass selects against
+         * `fp.tabs` and does not retrain. */
+        for (uint32_t t = 0; t < fp.ntiles; ++t)
+            choose_tile_table_set(f, f.coef.data(), t);
     }
     for (uint32_t t = 0; t < fp.ntiles; ++t) {
         nxe_tile_units tu;

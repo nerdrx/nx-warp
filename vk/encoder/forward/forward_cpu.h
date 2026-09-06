@@ -43,6 +43,7 @@
 #include <stdint.h>
 
 #include "nxe_enc.h"
+#include "nxe_trellis.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -60,6 +61,20 @@ typedef struct nxe_plane {
     int sdh;
     int int_rdoq;           /* fp->int_rdoq: the integer requantiser */
     int ctx_level_dc;       /* NXE_CTX_LEVEL_DC under the v2 model, else 0 */
+
+    /* --- effort 2: the trellis (nxe_trellis.h).  NULL `rc` is the dead-zone
+     * quantiser, which is every effort below 2 and what this encoder has
+     * always run.  When it is set, `lam_q8`, `nctx` and `nlanes` are read too:
+     * the trellis conditions a block on the class left by the block `nlanes`
+     * before it in the same plane, which is the lane schedule E4 will code
+     * them in. */
+    const nxe_rate_cost *rc;
+    uint32_t lam_q8;        /* nxe_trellis_lambda_q8(qp) */
+    uint32_t dc_lam_q8;     /* the same at the DC plane's own quantiser */
+    int effort;             /* NXE_RDOQ_* */
+    int nctx;
+    int nlanes;
+    int chroma;
 } nxe_plane;
 
 /* Fill `pl` from the frame parameters and the tile job for plane `p`. */

@@ -898,6 +898,54 @@ Streams from it decode through `nxv-dec` and `nxvc-vkdec` to the same bytes.
 byte-identical at QP 30 and 40 on its fixture and within 0.2 % at QP 22 — and
 requires the integer one to beat effort 1.
 
+### Effort 2: the trellis in the encoder's own CPU model
+
+`nxvc-vkenc --cpu --trellis 1`, and it is **byte-identical to
+`nxv-enc --int-trellis 1 --rdoq-effort 3`** at the acid flags, on both entropy
+coders, at QP 22/26/30/34/40. `vk.encoder.trellis.cpu` is that claim.
+
+The trellis itself (`forward/nxe_trellis.c`) is a transcription and was right
+almost immediately. What took the work was the ORDER the two encoders quantise
+and train in, and it is worth writing down because none of it shows up as a
+broken stream -- every wrong version decoded perfectly and was merely the wrong
+size:
+
+* **the first pass has to run the trellis**, not the dead-zone quantiser. ref's
+  pass 0 quantises with the trellis against the built-in tables and trains the
+  eight sets on *those* histograms; training on dead-zone coefficients puts
+  every tile in a different set. Measured: 6312 bytes against the reference's
+  5166 on the acid fixture, and byte-identical with custom tables off, which is
+  what pointed at the tables rather than at the arithmetic.
+* **each tile picks its table set from a plain quantisation of itself** before
+  the trellis prices anything -- ref's inner two-pass, "so that the second,
+  rate-distortion pass is costed against the table that will actually code it".
+  Pricing against the QP-seeded set instead was a constant 14 bytes: a per-tile
+  header field, not a coefficient.
+* **the final per-tile choice is made against the trained sets**, without
+  restoring the built-in ones first. `choose_table_sets` resets to the built-in
+  tables before selecting, which is right for the training pass -- its job is to
+  assign tiles to built-in sets so the trained ones can be pooled from them --
+  and wrong for the emit pass, where the trained sets are what the stream
+  carries.
+* and under ENTROPY_LITE the trellis still needs *a* rate model. `table_set`
+  names the variant in a Lite tile header, but ref runs `select_set` whatever
+  the entropy tool is and prices against `tabs[table_set]`, so the set is chosen
+  for the rate model and the header's value put back.
+
+Effort 2 therefore quantises the frame twice with rANS custom tables on, and
+once without -- there is nothing for a second pass to be against when the
+tables never moved.
+
+### What still differs
+
+One case, and it is precise rather than vague: **8 frames, QP 34, rANS with
+custom tables** diverges at frame 7, by 68 bytes of 15449. Three frames is
+byte-identical at every quantiser, both coders; 8 frames is byte-identical at
+QP 22, 26, 30 and 40 and on Lite at every quantiser. Both encoders are
+deterministic (three runs of each, one hash), so it is a real logic difference
+in the training convergence and not a race. It is not chased here and the test
+runs at three frames rather than pinning a length that is known to fail.
+
 ### What is not built: the shader
 
 The trellis runs in the reference only. It is now *portable* rather than

@@ -164,15 +164,15 @@ int nxe_unit_ops(const nxe_tile_units *tu, int ui, const int16_t *coef,
         for (p = ncoef - 1; p >= 0; --p)
             if (c[scan[p]] != 0) { last = p; break; }
 
-        const int ctx_cbf = v3 ? v3_ctx_cbf(u->ucls, in) : u->ctx_cbf;
-        const int ctx_last = v3 ? v3_ctx_last(u->ucls, in) : u->ctx_last;
+        const int ctx_cbf = v3 ? nxe_v3_ctx_cbf(u->ucls, in) : u->ctx_cbf;
+        const int ctx_last = v3 ? nxe_v3_ctx_last(u->ucls, in) : u->ctx_last;
 
         ops[n++] = NXE_OP_PACK(NXE_OP_SYM, ctx_cbf, last >= 0 ? 1 : 0);
         if (last < 0) {
             /* An uncoded unit still publishes: class 1 is "the previous unit
              * was not coded", which is a large part of what CBF conditions
-             * on.  ref's nbr_class_of(0, *). */
-            if (u->grp != 0) nbr->cls = nbr_class_of(0, 0);
+             * on.  ref's nxe_nbr_class_of(0, *). */
+            if (u->grp != 0) nbr->cls = nxe_nbr_class_of(0, 0);
             return n;
         }
 
@@ -195,9 +195,9 @@ int nxe_unit_ops(const nxe_tile_units *tu, int ui, const int16_t *coef,
              * `p & 15` and the large-transform shift is `last_shift_of(64)`,
              * which is 0.  Passing it separately is what makes adding either
              * a change to this line alone. */
-            int ctx = v3 ? v3_ctx_level(u->ucls, p, p, last, prev)
+            int ctx = v3 ? nxe_v3_ctx_level(u->ucls, p, p, last, prev)
                          : (u->ctx_level != NXE_CTX_NONE ? u->ctx_level
-                                                         : level_ctx(p, prev));
+                                                         : nxe_level_ctx(p, prev));
             ops[n++] = NXE_OP_PACK(NXE_OP_SYM, ctx, m > 14 ? NXE_ESC_SYM : m);
             if (m > 14) {
                 int j, bits, i, nchunks, done = 0;
@@ -217,12 +217,12 @@ int nxe_unit_ops(const nxe_tile_units *tu, int ui, const int16_t *coef,
             }
             if (m != 0 && !(hide && p == last))
                 ops[n++] = NXE_OP_PACK(NXE_OP_BYPASS, 1, q < 0 ? 1 : 0);
-            prev = level_class((int)m);
+            prev = nxe_level_class((int)m);
         }
         /* The decoder publishes at the end of the level loop, after the
          * hidden sign is settled, so the class depends only on CBF and LAST
          * and never on the sign SDH did not code. */
-        if (u->grp != 0) nbr->cls = nbr_class_of(1, last);
+        if (u->grp != 0) nbr->cls = nxe_nbr_class_of(1, last);
         return n;
     }
 }
