@@ -36,9 +36,22 @@ layout(constant_id = 8) const int kRefRingStore = 0;
 layout(set = 0, binding = 13, std430) readonly buffer WPredIn { uint w[]; } uWPredIn;
 // The reference ring, u16 packed two per uint.  Pass B writes the slot this
 // frame owns; Pass W reads the slots it does not.
+//
+// The WARP_SKIP module (NXVW_SKIP_STORE) does both through this one binding,
+// because it runs the predictor itself: it READS an older slot through
+// refBase and WRITES the current one, and the two never overlap -- a skipped
+// tile's refBase is a previous frame's slot, and the only tile kind that
+// predicts from the CURRENT slot is STEREO, which is never WARP_SKIP.  So the
+// qualifier comes off for that module and stays on for every other.
+#if NXVW_SKIP_STORE
+layout(set = 0, binding = 14, std430) buffer RefRingOut {
+    uint w[];
+} uRingOut;
+#else
 layout(set = 0, binding = 14, std430) writeonly buffer RefRingOut {
     uint w[];
 } uRingOut;
+#endif
 // The warp parameter buffer, for its ring-geometry header.  Pass B needs the
 // geometry and nothing else out of it; the per-tile records are Pass W's.
 layout(set = 0, binding = 15, std430) readonly buffer WarpHdr { uint w[]; } uWarpHdr;

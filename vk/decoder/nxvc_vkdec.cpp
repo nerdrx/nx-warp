@@ -34,6 +34,7 @@
 #include "reconstruct.spv.h"
 #include "reconstruct_v1.spv.h"
 #include "reconstruct_skip.spv.h"
+#include "reconstruct_skip_store.spv.h"
 #include "reconstruct_v1_x8.spv.h"
 #include "reconstruct_x8.spv.h"
 #include "warp_pred.spv.h"
@@ -170,6 +171,9 @@ struct nxvc_vk_decoder {
     // [inter] The WARP_SKIP module: one, not four.  A skip tile is never
     // INTRA and runs no transform, so neither build variant can reach it.
     VkShaderModule smBSkip = VK_NULL_HANDLE;
+    // [inter] The same tile kind, predicting for itself instead of reading
+    // back what Pass W wrote.  See passB/CMakeLists.txt.
+    VkShaderModule smBSkipStore = VK_NULL_HANDLE;
     VkShaderModule smB[2][2] = {{VK_NULL_HANDLE, VK_NULL_HANDLE},
                                 {VK_NULL_HANDLE, VK_NULL_HANDLE}};
     // [inter] Pass W: the predictor.  Its own set layout, because it binds
@@ -856,6 +860,9 @@ nxvc_vkd_status make_layouts(D *d) {
     sm.codeSize = sizeof(reconstruct_skip_spv);
     sm.pCode = reconstruct_skip_spv;
     VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smBSkip));
+    sm.codeSize = sizeof(reconstruct_skip_store_spv);
+    sm.pCode = reconstruct_skip_store_spv;
+    VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smBSkipStore));
     sm.codeSize = sizeof(warp_pred_spv);
     sm.pCode = warp_pred_spv;
     VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smW));
@@ -981,9 +988,16 @@ nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2, int32_t sparse,
                            uint32_t store_words, int32_t intra_dir,
                            int32_t split_tool, int32_t xform_large,
                            int32_t inter_pred, int32_t ring_store,
-                           VkPipeline *out, bool skip_only = false) {
+                           VkPipeline *out, int skip_kind = 0) {
     const uint32_t sched = d->dir_sched;
-    uint64_t key = ((uint64_t)(uint32_t)skip_only << 59) |
+    // `skip_kind` is 0, 1 or 2 and so needs TWO bits.  It had one, at 59, from
+    // when it was a bool -- and 2 << 59 is bit 60, which is `split_tool`.  A
+    // frame with XFORM_4X4_SPLIT therefore handed the WARP_SKIP dispatch the
+    // GENERAL module out of this cache, which reads a WPred buffer that by
+    // then is deliberately not written for those tiles: the skip tiles came
+    // out black, and only on a stream that sets one particular tool.
+    // 57-58 is the free pair; every other field's shift is unchanged.
+    uint64_t key = ((uint64_t)(uint32_t)skip_kind << 57) |
                    ((uint64_t)(uint32_t)ring_store << 63) |
                    ((uint64_t)(uint32_t)inter_pred << 62) |
                    ((uint64_t)(uint32_t)xform_large << 61) |
@@ -1025,8 +1039,10 @@ nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2, int32_t sparse,
     ci.stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
     ci.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
     ci.stage.module =
-        skip_only ? d->smBSkip
-                  : d->smB[intra_dir != 0 ? 1 : 0][xform_large != 0 ? 1 : 0];
+        skip_kind == 2 ? d->smBSkipStore
+        : skip_kind == 1
+            ? d->smBSkip
+            : d->smB[intra_dir != 0 ? 1 : 0][xform_large != 0 ? 1 : 0];
     ci.stage.pName = "main";
     ci.stage.pSpecializationInfo = &spec;
     ci.layout = d->plB;
@@ -1738,6 +1754,8 @@ extern "C" void nxvc_vk_decoder_destroy(nxvc_vk_decoder *d) {
     if (d->dev) {
         vkDeviceWaitIdle(d->dev);
         if (d->smBSkip) vkDestroyShaderModule(d->dev, d->smBSkip, nullptr);
+        if (d->smBSkipStore)
+            vkDestroyShaderModule(d->dev, d->smBSkipStore, nullptr);
         for (auto &kv : d->pipesA) vkDestroyPipeline(d->dev, kv.second, nullptr);
         for (auto &kv : d->pipesB) vkDestroyPipeline(d->dev, kv.second, nullptr);
         if (d->smA) vkDestroyShaderModule(d->dev, d->smA, nullptr);
@@ -2253,13 +2271,23 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
                               : (int32_t)nxvw::kOutNone,
                          fp.push.sparse, storeWords, 0, (int32_t)fp.split4, 0,
                          inter_pred_on(d, interStream),
-                         ring_store_on(d, interStream), &pipeBSkip, true)))
+                         ring_store_on(d, interStream), &pipeBSkip, 2)))
         return st;
 
     VkPipeline pipeWp = VK_NULL_HANDLE;
     if (fp.any_inter && (st = pipeline_w(d, &pipeWp))) return st;
 
     for (uint32_t pass = 0; pass < eyePasses; ++pass) {
+        const uint32_t base = pass * tilesPerEye;
+        // [inter] How many of this eye's tiles the WARP_SKIP module takes.
+        // It is computed HERE, before Pass W, because both passes have to
+        // agree: whatever Pass B's skip module does not take, Pass W must
+        // still predict.  A frame with skip tiles but no skip PIPELINE -- the
+        // alpha second-store configuration, which that module deliberately
+        // does not carry -- folds this to zero, and then Pass W covers
+        // everything exactly as it did before the split.
+        const uint32_t nskip =
+            pipeBSkip != VK_NULL_HANDLE ? d->order_nskip[pass] : 0u;
         if (fp.any_inter) {
             if (d->have_timestamps && pass == 0)
                 vkCmdWriteTimestamp(d->cmd,
@@ -2271,8 +2299,21 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
             vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeWp);
             vkCmdPushConstants(d->cmd, d->plW, VK_SHADER_STAGE_COMPUTE_BIT, 0,
                                (uint32_t)sizeof(nxvw::NxvwWarpPush), &wpush);
-            vkCmdDispatchBase(d->cmd, 0, 0, 0, ntiles, 1, 1);
-            ++dispatches;
+            // [inter] Over this eye's CODED tiles only.  The skip range leads
+            // each eye's segment of the order buffer, and the module that
+            // takes it now runs the predictor itself -- so predicting those
+            // tiles here as well would write a WPred slot nothing ever reads.
+            // That is the saving: 12.3 KB stored and 12.3 KB loaded per
+            // skipped tile, both gone.
+            //
+            // The range is one eye's, so `eyeFilter` no longer has anything
+            // to reject; it stays set because it is also what keeps a STEREO
+            // tile in the pass that has its reference.
+            if (nskip < tilesPerEye) {
+                vkCmdDispatchBase(d->cmd, base + nskip, 0, 0,
+                                  tilesPerEye - nskip, 1, 1);
+                ++dispatches;
+            }
             if (d->have_timestamps && pass == 0)
                 vkCmdWriteTimestamp(d->cmd,
                                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
@@ -2287,7 +2328,6 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
             vkCmdPushConstants(d->cmd, d->plB, VK_SHADER_STAGE_COMPUTE_BIT, 0,
                                (uint32_t)sizeof(nxvw::NxvwPassBPush), &fp.push);
         }
-        const uint32_t base = pass * tilesPerEye;
         // Three contiguous ranges, in build_tile_order()'s order:
         //   [0, nskip)        WARP_SKIP        -> the skip module
         //   [nskip, nodir)    other non-INTRA  -> the module with no wavefront
@@ -2298,11 +2338,8 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
         // A frame that has skip tiles but no skip PIPELINE -- the alpha
         // second-store configuration, which the skip module deliberately does
         // not carry -- must not lose them: they are non-INTRA, so they are
-        // already inside [0, nodir), and folding the range back to zero puts
+        // already inside [0, nodir), and folding `nskip` to zero above puts
         // them on the module that would have had them before this split.
-        const uint32_t nskip = pipeBSkip != VK_NULL_HANDLE
-                                   ? d->order_nskip[pass]
-                                   : 0u;
         const uint32_t nodir =
             fp.push.intraDir != 0 ? d->order_nodir[pass] : tilesPerEye;
         const uint32_t seg[3] = {nskip, nodir - nskip, tilesPerEye - nodir};
