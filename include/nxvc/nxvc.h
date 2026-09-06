@@ -200,10 +200,33 @@ typedef enum nxvc_tile_mode {
  * frame budget at all. */
 #define NXVC_TOOL_ENTROPY_LITE    (1ull << 30)
 
-/* Bits 31-34 are allocated to the ATLAS package (ADR-0029, SYNTAX.md 13.12):
- * 31 ATLAS, 32 ROW_PRESENT, 33 ATLAS_NBR, 34 ATLAS_REBASE.  They are not
- * defined here because that package is not merged; 35 is the next free bit
- * and this is what has it. */
+/* The reference is a per-tile atlas and the display warp is not normative
+ * (SYNTAX.md 13.12, ADR-0029).  Requires INTER; mutually exclusive with
+ * STEREO.  Changes NO coded-tile syntax: only what the reconstruction process
+ * does with a tile once it is parsed, plus ref_sel == 0. */
+#define NXVC_TOOL_ATLAS           (1ull << 31)
+
+/* A frame-header bitmap eliding the 12-byte tile-row header of every row with
+ * no coded tile (SYNTAX.md 3.1.2).  Orthogonal to ATLAS and useful without it:
+ * it is what makes an idle frame cost bytes proportional to what CHANGED
+ * rather than to the tile grid. */
+#define NXVC_TOOL_ROW_PRESENT     (1ull << 32)
+
+/* NEIGHBOUR-AWARE GATHER: the alternative reference rule of SYNTAX.md 13.12.4.
+ * A prediction sample that lands outside the tile's own atlas position is
+ * fetched through the matrix of the ENTRY IT LANDS IN, resolved with the
+ * co-located matrix so the choice is not circular.  Requires ATLAS.  Changes
+ * no coded-tile syntax; it changes which samples the predictor reads. */
+#define NXVC_TOOL_ATLAS_NBR       (1ull << 33)
+
+/* ATLAS_REBASE: the frame header may carry `atlas_rebase` (flags bit 5), which
+ * re-poses the WHOLE atlas to this frame's pose before any tile is predicted
+ * (SYNTAX.md 13.12.10).  Every valid non-static entry's pixels are warped
+ * through its own `C` by the normative predictor and its `C` becomes the
+ * identity, so the mosaic of capture times collapses to one time.  Requires
+ * ATLAS.  This puts a full-picture warp on the NORMATIVE path -- the encoder
+ * reproduces it bit for bit -- which is the cost the tool is priced on. */
+#define NXVC_TOOL_ATLAS_REBASE    (1ull << 34)
 
 /* PLANAR: the piecewise-planar tile mode of SYNTAX.md 13.13 and
  * docs/LOWPOLY-MODE.md.  A tile is 2 to 4 REGIONS, each a plane -- a DC level
@@ -238,7 +261,8 @@ typedef enum nxvc_tile_mode {
      NXVC_TOOL_CTX_V3 | NXVC_TOOL_TAB_V2 | NXVC_TOOL_XFORM_LARGE |            \
      NXVC_TOOL_NEAR_SKIP | NXVC_TOOL_QUAD_MV |                                \
      NXVC_TOOL_INTER | NXVC_TOOL_WARP | NXVC_TOOL_STEREO |                    \
-     NXVC_TOOL_ENTROPY_LITE | NXVC_TOOL_PLANAR)
+     NXVC_TOOL_ENTROPY_LITE | NXVC_TOOL_ATLAS | NXVC_TOOL_ROW_PRESENT |       \
+     NXVC_TOOL_ATLAS_NBR | NXVC_TOOL_ATLAS_REBASE | NXVC_TOOL_PLANAR)
 
 /* ---------------------------------------------------------------- images */
 /* 8-bit planar image.  plane[0]=Y/R', plane[1]=Co/G', plane[2]=Cg/B',
@@ -551,6 +575,39 @@ typedef struct nxvc_config {
                                    36.62 dB for 30 % more bytes; at 24 it is
                                    0.7 dB worse for 12 % fewer.             */
 
+    /* --- additive since syntax v1.7: the atlas reference (ADR-0029).
+     * `atlas` sets tool bit 31 and changes the reconstruction process; the
+     * rest are encoder-side knobs that change which mode is chosen and never
+     * how a stream decodes. */
+    uint32_t atlas;             /* 1 = ATLAS reference (tool 31)            */
+    uint32_t row_present;       /* 1 = row_present bitmap (tool 32)         */
+    uint32_t atlas_gen_max;     /* hard cap on composition steps before an
+                                   entry is invalidated; 0 = envelope only  */
+    uint32_t atlas_static_skip; /* 1 = a STATIC_MV tile may be skipped and
+                                   held unwarped (default on with atlas)    */
+    uint32_t skip_thresh_motion_q8; /* scales skip_thresh by head angular
+                                   velocity; 0 = off (cheat 5)              */
+    uint32_t atlas_nbr;         /* 1 = neighbour-aware gather (tool 33).
+                                   Requires `atlas`.  NORMATIVE: it changes
+                                   the reference a coded tile reads.        */
+    uint32_t atlas_skip_margin; /* ENCODER ONLY, no syntax: a tile may be
+                                   skipped only if the composed displacement
+                                   at all four of its corners is under this
+                                   many luma samples.  0 = no bound, which
+                                   is the rule as measured.                 */
+    /* 13.12.11, the per-frame MODE SWITCH.  A stream with `atlas` set codes
+     * each frame either as an ATLAS frame (13.12) or as a PICTURE frame (the
+     * ordinary model, every tile reconstructed, the atlas rebuilt from the
+     * result).  These are the encoder's policy for choosing; the decoder is
+     * told the answer in one frame-header bit and needs none of them. */
+    uint32_t atlas_picture_disp;   /* code a PICTURE frame once the worst
+                                      corner displacement in the atlas passes
+                                      this many luma samples; 0 = never      */
+    uint32_t atlas_picture_min_spacing; /* never two PICTURE frames closer
+                                      than this many frames apart            */
+    uint32_t atlas_picture_period; /* force a PICTURE frame every N frames
+                                      regardless of motion; 0 = never        */
+
     /* The INTEGER RDOQ: a requantiser the GPU encoder can run.
      *
      * `rdoq_effort` above drives a `double` trellis over real rates from
@@ -599,6 +656,19 @@ typedef struct nxvc_encode_stats {
      * with `bytes_payload` is how one tells whether they were shown the truth.
      * Added with the v1.5 effort knobs; 0 unless collect_stats is set. */
     uint64_t bits_predicted_q10;
+    /* Tiles this frame that `atlas_skip_margin` alone took the free
+     * WARP_SKIP away from: the FORCED REFRESH the displacement bound costs,
+     * as a count rather than as a difference between two runs. 0 when the
+     * bound is off. */
+    uint64_t tiles_margin_forced;
+    /* ATLAS_REBASE (13.12.10): 1 if this frame re-posed the atlas, and the
+     * number of entries it warped, which is what the rebase COSTS -- 34 us
+     * a tile on the Pico 4, on the normative integer path. */
+    uint64_t atlas_rebased;
+    uint64_t tiles_rebased;
+    /* Tiles refreshed from the base layer this frame (13.12.9 as a refresh
+     * source), at a measured 1.9 us a tile. */
+    uint64_t tiles_base_refreshed;
 } nxvc_encode_stats;
 
 void nxvc_config_default(nxvc_config *cfg);
@@ -634,6 +704,12 @@ typedef struct nxvc_tile_info {
     uint8_t skipped;            /* 1: WARP_SKIP via skip_bitmap, not coded  */
     uint8_t concealed;          /* decoder: the tile was reported lost and
                                    was reconstructed by clause 6.11         */
+    /* --- additive since syntax v1.7 (the atlas).  A tile whose position
+     * already holds an atlas generation from this frame or a later one: it
+     * arrived after it was overtaken and was DROPPED, not applied.  It is not
+     * a loss -- the position holds newer content than the tile carried -- and
+     * a receiver must not report it as one. */
+    uint8_t superseded;
     uint16_t disparity;         /* STEREO: quarter samples, 12 bits used    */
     uint8_t ref_delta;          /* the transport's advisory copy of ref_sel,
                                    with the extra value 3 = "no temporal
@@ -833,6 +909,137 @@ nxvc_status nxvc_decoder_set_lost_tiles(nxvc_decoder *dec, const uint8_t *lost,
                                         uint32_t count);
 
 uint32_t nxvc_decoder_tile_count(const nxvc_decoder *dec);
+
+/* ------------------------------------------------------- the atlas (13.12)
+ *
+ * When the ATLAS tool bit is set the NORMATIVE output of the decoding process
+ * is the atlas -- its pixels and its per-tile table -- and NOT the picture.
+ * The nxvc_image passed to nxvc_decoder_decode_frame() is then produced by the
+ * non-normative display helper below, and is not what conformance compares.
+ *
+ * The per-tile table is 64 bytes per tile position per eye, in the tile order
+ * of Annex D D-3, laid out exactly as SYNTAX.md 13.12.1 states.  These
+ * accessors hand back the raw bytes, because that is what a conformance
+ * comparison and a GPU upload both want. */
+#define NXVC_ATLAS_ENTRY_BYTES 64
+
+/* Byte size of the per-tile table: 64 * tile_count.  0 if not an atlas
+ * stream. */
+size_t nxvc_decoder_atlas_table_size(const nxvc_decoder *dec);
+size_t nxvc_encoder_atlas_table_size(const nxvc_encoder *enc);
+
+/* Copy the per-tile table into `out`, which must be at least
+ * nxvc_*_atlas_table_size() bytes. */
+nxvc_status nxvc_decoder_atlas_table(const nxvc_decoder *dec, uint8_t *out,
+                                     size_t out_bytes);
+nxvc_status nxvc_encoder_atlas_table(const nxvc_encoder *enc, uint8_t *out,
+                                     size_t out_bytes);
+
+/* The atlas pixels of one plane, in the CODED sample domain -- whatever
+ * domain the stream's colour transform leaves: the stream's own YCbCr for
+ * NXVC_CT_NONE, which is what a live WiVRn NX stream is, and Y/Co/Cg-R with a
+ * 9-bit chroma plane for NXVC_CT_YCOCGR.  Samples are u16 either way.
+ * `eyes * eye_width` wide and `height` tall, `*stride` in samples.
+ * Returns NULL if the plane does not exist or this is not an atlas stream. */
+const uint16_t *nxvc_decoder_atlas_plane(const nxvc_decoder *dec, int plane,
+                                         uint32_t *w, uint32_t *h,
+                                         uint32_t *stride);
+const uint16_t *nxvc_encoder_atlas_plane(const nxvc_encoder *enc, int plane,
+                                         uint32_t *w, uint32_t *h,
+                                         uint32_t *stride);
+
+/* ------------------------------------------- the base layer (SYNTAX 13.12.9)
+ *
+ * An atlas entry may be refreshed from a picture decoded OUTSIDE this codec --
+ * a hardware HEVC decoder, on a headset where that unit is otherwise idle.
+ * The atlas is what makes it expressible: a patch source is already per tile.
+ *
+ * Only for an NXVC_CT_NONE stream.  With a colour transform set, the atlas
+ * holds Y/Co/Cg-R and the base decoder's output does not, so the write would
+ * need a colour matrix on the normative path; the call returns NXVC_ERR_ARG.
+ * For CT_NONE there is NO colour matrix at all: the two are the same domain
+ * and the whole of the conversion is a channel mapping and a widen.
+ *
+ * The picture is given as the two planes of
+ * VK_FORMAT_G8_B8R8_2PLANE_420_UNORM -- luma, then interleaved chroma -- which
+ * is the format the WiVRn compositor already writes and the format an Android
+ * hardware decoder's AHardwareBuffer imports as.  `chroma_order` is the
+ * NORMATIVE part, and it exists because it is the thing implementations get
+ * wrong: the format carries luma in G, Cb in B and Cr in R, so a
+ * channel-identity sampler yields (.r,.g,.b) == (Cr, Y, Cb), and a driver may
+ * report a conversion that permutes them.  An implementation SHALL consume the
+ * reported order rather than assume one. */
+typedef enum nxvc_base_chroma_order {
+    NXVC_BASE_CHROMA_CB_CR = 0, /* the format's own order: byte 0 Cb, byte 1 Cr */
+    NXVC_BASE_CHROMA_CR_CB = 1  /* a device whose reported swizzle swaps them  */
+} nxvc_base_chroma_order;
+
+typedef struct nxvc_base_patch {
+    const uint8_t *plane[2];  /* 0 = luma, 1 = interleaved chroma pairs     */
+    int stride[2];            /* bytes                                      */
+    uint32_t width, height;   /* of the base picture, in luma samples; must
+                                 match one eye of the stream                */
+    uint32_t eye;
+    uint32_t src_frame;       /* the frame number the base picture is of     */
+    uint32_t chroma_order;    /* nxvc_base_chroma_order                      */
+    /* One byte per tile POSITION of this eye, in the tile order of Annex D
+     * D-3 restricted to `eye`: nonzero = refresh this position from the base.
+     * `tile_bytes` is tiles_x * tiles_y. */
+    const uint8_t *tiles;
+    uint32_t tile_bytes;
+} nxvc_base_patch;
+
+/* Apply a base-sourced patch to the atlas.  Each named position that is not
+ * SUPERSEDED (13.12.3: a write whose `src_frame` is not greater than the one
+ * the position already holds is dropped) takes the base picture's samples and
+ * the metadata of 13.12.9: C = identity, gen = 0, static = 0, valid = 1,
+ * base_sourced = 1, res_level = 0.
+ *
+ * `*applied` and `*superseded`, if given, report how many positions did and
+ * did not take.  The encoder call exists so its shadow atlas stays exact --
+ * that is Option B of ADR-0029 cheat 7, and it is what keeps a base-sourced
+ * patch inside conformance rather than outside it. */
+nxvc_status nxvc_decoder_atlas_patch_base(nxvc_decoder *dec,
+                                          const nxvc_base_patch *patch,
+                                          uint32_t *applied,
+                                          uint32_t *superseded);
+/* The tile positions whose stored pixels are more than `margin` luma samples
+ * from where they would be if they had been captured at the last decoded
+ * frame's pose -- the staleness rule of 13.12.9 used as a REFRESH TRIGGER.
+ *
+ * `out` takes one byte per tile position of the whole frame (tile order Annex
+ * D D-3, `count` == nxvc_*_tile_count): nonzero = stale.  A position whose
+ * entry is invalid or `static` is never stale: an invalid one has nothing to
+ * refresh and a static one is head-locked and does not move.
+ *
+ * Encoder and decoder MUST agree on which tiles a base picture refreshes, or
+ * their atlases diverge; that is why this is one function in the codec taking
+ * one threshold rather than a computation each side does for itself.  The
+ * threshold is the caller's policy and is not carried in the bitstream. */
+nxvc_status nxvc_encoder_atlas_stale_tiles(const nxvc_encoder *enc,
+                                           uint32_t margin, uint8_t *out,
+                                           uint32_t count, uint32_t *n_stale);
+nxvc_status nxvc_decoder_atlas_stale_tiles(const nxvc_decoder *dec,
+                                           uint32_t margin, uint8_t *out,
+                                           uint32_t count, uint32_t *n_stale);
+
+nxvc_status nxvc_encoder_atlas_patch_base(nxvc_encoder *enc,
+                                          const nxvc_base_patch *patch,
+                                          uint32_t *applied,
+                                          uint32_t *superseded);
+
+/* NON-NORMATIVE display helper (SYNTAX.md 13.12.5).  Renders a displayable
+ * picture from the atlas by warping each tile from its source pose to the pose
+ * of the last decoded frame, in ONE step, on the CPU.  It exists for PSNR and
+ * for inspection.  A real client does this with the texture sampler in fp16
+ * and is free to use any filter it likes; nothing here is tested by
+ * conformance, which is the entire point of the atlas.
+ *
+ * `img` is filled in the OUTPUT domain, exactly as decode_frame fills it. */
+nxvc_status nxvc_decoder_atlas_display(const nxvc_decoder *dec,
+                                       nxvc_image *img);
+nxvc_status nxvc_encoder_atlas_display(const nxvc_encoder *enc,
+                                       nxvc_image *img);
 
 const nxvc_tile_info *nxvc_decoder_tiles(const nxvc_decoder *dec,
                                          uint32_t *count);

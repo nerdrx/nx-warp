@@ -87,6 +87,11 @@ static void usage() {
         "  --mv-range N         coarse integer search radius in samples\n"
         "                       (default 16); the library's effort 2 raises\n"
         "                       it, and it is `nxv-enc --mv-range N`\n"
+        "  --rate-check         measure the integer rate model of\n"
+        "                       nxe_rate.h against the bytes the entropy\n"
+        "                       coder actually produced, per tile, and\n"
+        "                       print the distribution.  Changes no byte\n"
+        "                       of the stream\n"
         "  --chroma-qp-off N    chroma QP offset\n"
         "  --device N           Vulkan physical device index (default 0)\n"
         "  --cpu                run the CPU models, no Vulkan\n"
@@ -152,6 +157,7 @@ int main(int argc, char **argv) {
         else if (a == "--coded-vectors") cfg.int_coded_vectors = true;
         else if (a == "--ref-sel") cfg.ref_sel = std::atoi(val());
         else if (a == "--int-rdoq") cfg.int_rdoq = std::atoi(val());
+        else if (a == "--rate-check") cfg.rate_check = true;
         else if (a == "--mv-range") cfg.mv_range = std::atoi(val());
         else if (a == "--hold-every") hold_every = std::atoi(val());
         else if (a == "--ack-delay") {
@@ -432,6 +438,28 @@ int main(int argc, char **argv) {
     if (!cfg.quiet)
         std::printf("%d frame(s), %zu bytes total, %.4f bpp mean\n", n, total,
                     n ? total * 8.0 / ((double)cfg.w * cfg.h * n) : 0.0);
+    /* --rate-check: the integer rate model of nxe_rate.h against the bytes the
+     * entropy coder produced, over every tile of the run.  The mean signed
+     * error is the model's bias and the mean absolute error is its spread; the
+     * first is the number a rate-distortion decision cares about, because a
+     * constant bias cancels between two candidates and a spread does not. */
+    if (cfg.rate_check && f.rc_tiles) {
+        const double nz = (double)(f.rc_tiles - f.rc_tiny);
+        std::printf("rate model: %llu tiles (%llu too small to score), "
+                    "estimate %.0f bits vs coded %llu bits, total %+.3f%%\n",
+                    (unsigned long long)f.rc_tiles,
+                    (unsigned long long)f.rc_tiny,
+                    (double)f.rc_est_q10 / 1024.0,
+                    (unsigned long long)f.rc_real_bits,
+                    100.0 * ((double)f.rc_est_q10 / 1024.0 -
+                             (double)f.rc_real_bits) /
+                            (double)f.rc_real_bits);
+        if (nz > 0)
+            std::printf("rate model: per tile mean %+.3f%%, mean |err| %.3f%%, "
+                        "range %+.3f%% .. %+.3f%%\n",
+                        f.rc_err_sum / nz, f.rc_err_abs_sum / nz,
+                        f.rc_err_min, f.rc_err_max);
+    }
     if (rc) return rc;
     return n > 0 ? 0 : 1;
 }

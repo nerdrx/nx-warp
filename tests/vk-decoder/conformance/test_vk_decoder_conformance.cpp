@@ -1006,6 +1006,224 @@ void run_loss(int frames) {
     }
 }
 
+// ------------------------------------------------ [SYN] 3.1.2 row_present
+// The tool elides the 12-byte header of a tile row with no coded tile.  An
+// elided row decodes exactly as a transmitted all-skipped one, which is what
+// makes it cheap -- and also what makes it invisible to a pixel comparison
+// alone: a decoder that ignored the bitmap entirely and read the next row
+// header out of it would produce garbage, but a decoder that never REACHED an
+// elided row would pass a pixel test having tested nothing.
+//
+// So this asserts three things and not one:
+//
+//   1. the GPU decoder and the reference agree byte for byte, every frame;
+//   2. rows were ACTUALLY elided -- `rows_elided` summed over the sequence is
+//      non-zero, and the test FAILS if it is zero;
+//   3. the same content with the tool off decodes to the SAME pixels and
+//      costs MORE bytes, which is the tool's entire claim.
+//
+// The sequence repeats one image so nearly every tile is WARP_SKIP and whole
+// rows have nothing to say, which is the case 3.1.2 exists for.
+bool encode_idle_stream(int w, int h, int frames, int row_present,
+                        std::vector<uint8_t> &stream, std::string &err) {
+    nxvc_config cfg;
+    nxvc_config_default(&cfg);
+    cfg.width = (uint32_t)w;
+    cfg.height = (uint32_t)h;
+    cfg.chroma = NXVC_CHROMA_420;
+    cfg.base_qp = 26;
+    cfg.inter = 1;
+    cfg.row_present = (uint32_t)row_present;
+    nxvc_status st;
+    nxvc_encoder *e = nxvc_encoder_create(&cfg, &st);
+    if (!e) { err = nxvc_status_string(st); return false; }
+    std::vector<uint8_t> hdr(4096);
+    size_t hl = 0;
+    st = nxvc_encoder_stream_header(e, hdr.data(), hdr.size(), &hl);
+    if (st != NXVC_OK) {
+        err = nxvc_status_string(st);
+        nxvc_encoder_destroy(e);
+        return false;
+    }
+    stream.assign(hdr.begin(), hdr.begin() + hl);
+    // ONE image, encoded `frames` times.  The pose does not move either: a
+    // yaw would make every tile WARP_MV and there would be no idle row left
+    // to elide, which is the shape this test needs and the shape a headset
+    // looking at a static scene actually produces.
+    TestImage im = make_image(w, h, false, 1, 7001u);
+    std::vector<uint8_t> fbuf((size_t)w * h * 8 + (1u << 20));
+    for (int f = 0; f < frames; ++f) {
+        nxvc_view v{};
+        v.qw = 1.0;
+        v.fov_left = -0.9; v.fov_right = 0.9;
+        v.fov_up = 0.9; v.fov_down = -0.9;
+        nxvc_encoder_set_views(e, &v, 1);
+        nxvc_image img{};
+        for (int p = 0; p < 4; ++p) img.plane[p] = (uint8_t *)im.p[p].data();
+        img.stride[0] = im.w;
+        img.stride[1] = im.cw;
+        img.stride[2] = im.cw;
+        img.stride[3] = im.w;
+        size_t ol = 0;
+        st = nxvc_encoder_encode_frame(e, &img, nullptr, nullptr, fbuf.data(),
+                                       fbuf.size(), &ol);
+        if (st != NXVC_OK) {
+            err = nxvc_status_string(st);
+            nxvc_encoder_destroy(e);
+            return false;
+        }
+        stream.insert(stream.end(), fbuf.begin(), fbuf.begin() + ol);
+    }
+    nxvc_encoder_destroy(e);
+    return true;
+}
+
+struct RowPresentResult {
+    int frames = 0;
+    uint64_t rows_elided = 0;
+    int first_bad_frame = -1;
+    std::string err;
+    MD5 md;   // the whole sequence's pixels, so the two streams can be equated
+};
+
+bool decode_both(const std::vector<uint8_t> &stream, RowPresentResult &r) {
+    nxvc_status cst;
+    nxvc_decoder *rd = nxvc_decoder_create(&cst);
+    if (!rd) { r.err = "nxvc_decoder_create"; return false; }
+    nxvc_vkd_create_info ci;
+    nxvc_vk_decoder_create_info_default(&ci);
+    ci.flags = (uint32_t)NXVC_VKD_FLAG_READBACK;
+    ci.output_format = NXVC_VKD_OUT_AUTO;
+    ci.device_name = device_filter();
+    nxvc_vk_decoder *gd = nullptr;
+    if (nxvc_vk_decoder_create(&ci, &gd) != NXVC_VKD_OK) {
+        r.err = gd ? nxvc_vk_decoder_last_error(gd) : "no decoder";
+        nxvc_vk_decoder_destroy(gd);
+        nxvc_decoder_destroy(rd);
+        return false;
+    }
+    size_t rc = 0, gc = 0;
+    cst = nxvc_decoder_parse_stream_header(rd, stream.data(), stream.size(), &rc);
+    nxvc_vkd_status gst =
+        nxvc_vk_decoder_parse_stream_header(gd, stream.data(), stream.size(), &gc);
+    if (cst != NXVC_OK || gst != NXVC_VKD_OK || rc != gc) {
+        r.err = std::string("stream header: ref ") + nxvc_status_string(cst) +
+                ", gpu " + nxvc_vk_decoder_status_string(gst);
+        nxvc_vk_decoder_destroy(gd);
+        nxvc_decoder_destroy(rd);
+        return false;
+    }
+    uint32_t yw = 0, yh = 0, cw = 0, ch = 0;
+    nxvc_decoder_plane_size(rd, 0, &yw, &yh);
+    nxvc_decoder_plane_size(rd, 1, &cw, &ch);
+    nxvc_stream_info si;
+    nxvc_decoder_stream_info(rd, &si);
+    size_t off = rc;
+    while (off < stream.size()) {
+        Planes rp, gp;
+        rp.size_for(yw, yh, cw, ch, si.alpha != 0);
+        gp.size_for(yw, yh, cw, ch, si.alpha != 0);
+        nxvc_image img{};
+        img.plane[0] = rp.p[0].data(); img.stride[0] = (int)yw;
+        img.plane[1] = rp.p[1].data(); img.stride[1] = (int)cw;
+        img.plane[2] = rp.p[2].data(); img.stride[2] = (int)cw;
+        img.plane[3] = rp.p[3].data(); img.stride[3] = (int)yw;
+        size_t used_r = 0, used_g = 0;
+        cst = nxvc_decoder_decode_frame(rd, stream.data() + off,
+                                        stream.size() - off, &img, &used_r);
+        gst = nxvc_vk_decode_frame(gd, stream.data() + off, stream.size() - off,
+                                   &used_g);
+        if (cst != NXVC_OK || gst != NXVC_VKD_OK || used_r != used_g) {
+            r.err = std::string("frame ") + std::to_string(r.frames) + ": ref " +
+                    nxvc_status_string(cst) + ", gpu " +
+                    nxvc_vk_decoder_status_string(gst);
+            break;
+        }
+        uint8_t *gpl[4] = {gp.p[0].data(), gp.p[1].data(), gp.p[2].data(),
+                           gp.p[3].data()};
+        int32_t gstr[4] = {(int32_t)yw, (int32_t)cw, (int32_t)cw, (int32_t)yw};
+        if (nxvc_vk_decoder_read_planes(gd, gpl, gstr) != NXVC_VKD_OK) {
+            r.err = "read_planes";
+            break;
+        }
+        if (r.first_bad_frame < 0)
+            for (int p = 0; p < (si.alpha ? 4 : 3); ++p)
+                if (rp.p[p] != gp.p[p]) { r.first_bad_frame = r.frames; break; }
+        rp.hash_into(r.md);
+        nxvc_vkd_stats stg{};
+        nxvc_vk_decoder_stats(gd, &stg);
+        r.rows_elided += stg.rows_elided;
+        ++r.frames;
+        off += used_r;
+    }
+    nxvc_vk_decoder_destroy(gd);
+    nxvc_decoder_destroy(rd);
+    return r.err.empty();
+}
+
+void run_row_present(int frames) {
+    ++g_checked;
+    std::vector<uint8_t> on, offs;
+    std::string err;
+    if (!encode_idle_stream(320, 256, frames, 1, on, err) ||
+        !encode_idle_stream(320, 256, frames, 0, offs, err)) {
+        std::printf("FAIL row_present: encode: %s\n", err.c_str());
+        ++g_fail;
+        return;
+    }
+    RowPresentResult a, b;
+    if (!decode_both(on, a) || !decode_both(offs, b)) {
+        std::printf("FAIL row_present: %s\n",
+                    a.err.empty() ? b.err.c_str() : a.err.c_str());
+        ++g_fail;
+        return;
+    }
+    if (a.first_bad_frame >= 0 || b.first_bad_frame >= 0) {
+        std::printf("FAIL row_present: GPU and reference diverge at frame %d "
+                    "(tool on) / %d (tool off)\n",
+                    a.first_bad_frame, b.first_bad_frame);
+        ++g_fail;
+        return;
+    }
+    // A sweep that never reached an elided row proves nothing, so it fails
+    // rather than passing quietly -- the same rule the ATLAS guard test
+    // applies to the 2^33 trip count.
+    if (a.rows_elided == 0) {
+        std::printf("FAIL row_present: %d frames and NOT ONE row was elided; "
+                    "the tool was never exercised\n", a.frames);
+        ++g_fail;
+        return;
+    }
+    if (b.rows_elided != 0) {
+        std::printf("FAIL row_present: the tool-off stream reported %llu "
+                    "elided rows and must report none\n",
+                    (unsigned long long)b.rows_elided);
+        ++g_fail;
+        return;
+    }
+    // The pixels are the same picture either way: 3.1.2 elides BYTES, not
+    // content.  "A stream that never sets flags bit 4 decodes byte-identically
+    // whether or not the tool bit is offered" -- and so does one that does.
+    if (a.md.hex() != b.md.hex()) {
+        std::printf("FAIL row_present: the two encodings decode to different "
+                    "pictures (%s vs %s)\n",
+                    a.md.hex().c_str(), b.md.hex().c_str());
+        ++g_fail;
+        return;
+    }
+    if (on.size() >= offs.size()) {
+        std::printf("FAIL row_present: the tool cost bytes instead of saving "
+                    "them: %zu with, %zu without\n", on.size(), offs.size());
+        ++g_fail;
+        return;
+    }
+    std::printf("-- row_present: %d frames, %llu row structures elided, "
+                "%zu B against %zu B without the tool (%.1fx), "
+                "byte-identical to the reference and to itself\n",
+                a.frames, (unsigned long long)a.rows_elided, on.size(),
+                offs.size(), (double)offs.size() / (double)on.size());
+}
+
 std::vector<Case> synthetic_cases(bool quick) {
     std::vector<Case> v;
     auto nm = [](const char *fmt, auto... a) {
@@ -1833,6 +2051,10 @@ int main(int argc, char **argv) {
         run_rejects();
     }
     if (do_synth) run_synthetic(quick);
+    if (do_synth) {
+        CaseGuard cg("row_present");
+        run_row_present(quick ? 8 : 24);
+    }
     if (do_loss) run_loss(quick ? 20 : 100);
 
     std::printf("-- %d stream(s) checked, %d skipped, %d failure(s)\n",

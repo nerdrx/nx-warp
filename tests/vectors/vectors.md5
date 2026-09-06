@@ -84,3 +84,18 @@ v66_inter_ctxv3 981af134aa95af85b14c622f740476ff 731cc1f406ec99e142f9fcdcc5478ce
 v67_inter_stereo_v3 4e102014adaaace447eaecaedf6fd0df eba3258ac5f6ac3f111fbf58a9b87c2d 256 128 yuv444p 0 4
 v74_quad_mv ed89ba24beca38f26843d1f7ffc4aec1 31f44d1d55e52704b66054b2f917f4b1 128 128 yuv444p 0 6
 v75_inter_eff_all 4d51205b59c27237995e9f4d5406aec9 e85923829f9bffbf5eb9b64081cf2ef1 128 128 yuv444p 0 8
+# --- ATLAS vectors (13.12).  decoded_md5 is the ATLAS digest:
+# the 64-byte per-tile table and every atlas plane, after every decoding
+# step.  The displayed picture is 13.12.5, is not normative, and is not
+# compared.
+v82_atlas_warp 81ea9a68402b1376dc05a34a35740fec 34b34664d7ca5dc4e8a217f5f205227f 128 128 yuv444p 0 6
+v83_atlas_420 bb59b8ab265b1b66acebc2cd5350f1ca d0d80acbb151d3649887624c65c3aaf4 128 128 yuv420p 0 5
+v84_atlas_refresh_eff 9cb9c5315131dcc74469b528fc7b80eb 4399d42d5d3900a9ae4ef15f842a108b 128 128 yuv444p 0 8
+v85_atlas_nbr 9d441948c580a39bd51502b2b596e793 1c3f956d584f7a419a414f1540b8cbb6 128 128 yuv444p 0 6
+v86_atlas_row_present c6f20eddbbc63bc0ff4786cde2c1c66d 9b83bd615049cffc1e3db1792f66e171 128 128 yuv444p 0 6
+v87_atlas_base_sourced 396fa3d2f93143053effd9adc44ad0f7 9a7e4d7569b927b3b31369de011a950e 128 128 yuv420p 0 5
+v88_atlas_superseded 396fa3d2f93143053effd9adc44ad0f7 731c06458e056eace77ea6425eb46fbd 128 128 yuv420p 0 5
+v89_atlas_rp_1088 7d213adf271f47f6f05eb65a9a611a87 e8c142af08a3163dcaf236efed4a5933 1088 1088 yuv420p 0 4
+v90_mode_alternate 96dce9106cd76794ba0f01b4175d10f7 9c0440c26c3d2d1bafd2a4d6febc412a 128 128 yuv444p 0 6
+v91_mode_disp 7c7d1874889083ed4745214e9623bce7 da19f8f788aaeb4ff38e1c2357800068 192 192 yuv420p 0 16
+v92_mode_src_frame b372dd3668930633e5e3c9c2b1608dc9 c24a63cec35b61c1f6856b7fbb5223b6 128 128 yuv420p 0 6

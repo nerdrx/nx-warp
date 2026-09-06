@@ -825,8 +825,113 @@ Per-tile QP offsets (-6.79 %) are the candidate worth revisiting, and they are
 a project rather than a level: the reference chooses `qp_delta` by comparing
 D + λR over candidate quantisers with R from its own rate model, which is the
 same `double` estimate the mode decision could not use. An integer version
-would need the E1 statistics to carry a bit estimate the device can trust,
-which is the piece of work ADR 0028 deferred.
+needs a bit estimate the device can trust, which is the piece of work ADR 0028
+deferred. **That estimate now exists** — see below — and the decision that
+would use it does not.
+
+## The integer rate model, measured
+
+`forward/nxe_rate.h`. The bit estimate ADR 0028 deferred, built and measured;
+the per-tile QP decision that consumes it is not built (see the note at the
+end).
+
+The reference's rate model is `double` in two places and neither crosses:
+`build_rate_cost` fills its Q10 table with `-std::log2(freq / 1024.0) * 1024`,
+and `table_set_cost` sums `std::log2` terms. `log2` is not the same function on
+a host libm and on a device, and a rate model that disagrees in the last place
+is a decision that picks a different tile, which is a different stream.
+
+Two observations remove both, and neither needs new syntax:
+
+* **The cost of a symbol is a table lookup.** `-log2(freq / kProbTotal)` with
+  `freq` 10 bits has exactly 1024 possible values. `scripts/gen-neglog2.py`
+  computes them once and `forward/nxe_neglog2.inc` is them, checked in. A table
+  is the same function everywhere; `log2` is not.
+* **The symbol stream already exists.** `nxe_unit_ops` materialises the exact
+  operation list E4 encodes — `(context, symbol)` and `(bypass, bitcount)` —
+  so a tile's rate is a sum over that list. The model does not re-implement the
+  syntax and therefore cannot drift from it: it *is* the coder's own list.
+
+A bypass operation costs exactly its bit count, because rANS codes `k` bypass
+bits with `f = 1 << (10 - k)`, which is `k` bits with no rounding at all. So
+the whole of the variable part — every term that moves when the quantiser moves
+— is exact.
+
+### What is not exact, and why it does not matter to a decision
+
+Two terms sit outside the entropy coder: the 8-byte tile header, which is
+exact, and the rANS state flush, which is not. Each active lane writes a 32-bit
+state, but that state is not 32 bits of new information: it lives in
+`[L, 2^16 · L)` with `L = 2^16`, so the symbols coded last are still inside it
+when it is flushed, and this model has already charged them as entropy. The
+duplicated part is `log2(x / L)`, uniform over `[0, 16)`, so 8 bits in
+expectation — and the net cost of the flush is **24 bits per lane**, not 32.
+
+The reference charges the full 32. It can afford to: every candidate in its QP
+search has the same lane count, so a constant cancels out of the comparison. At
+24 the model is also unbiased as an absolute size, which is what a rate
+allocator would ask of it. Measured on pan8, 2 frames, QP 30, the whole-stream
+bias at the two charges:
+
+| lanes (`--nsub`) | flush at 32 bits | flush at 24 bits |
+|---|---|---|
+| 1 (0) | +0.80 % | **-0.04 %** |
+| 2 (1) | +1.69 % | **+0.06 %** |
+| 8 (3) | +4.63 % | **-1.02 %** |
+| 32 (5) | — | -6.88 % |
+
+24 is right from 1 to 8 lanes and drifts at 32, which is the expectation
+argument failing where it should: with 32 lanes a lane codes few enough symbols
+that its state never mixes, so less of the flush duplicates. 8 is the shipped
+default and what the numbers below are quoted at.
+
+### Measured against the coder
+
+`nxvc-vkenc --rate-check` prices every tile with the model and compares it with
+the bytes the coder then produced — same coefficients, same table set, same
+lane count. It changes no byte of the stream. 1088x1088, 8 frames, `--nsub 3`,
+rANS at `--ctx v3 --custom-tables --tab v2`:
+
+| coder | clip | QP 22 | QP 26 | QP 30 | QP 34 | QP 40 |
+|---|---|---|---|---|---|---|
+| rANS, per-tile mean | pan8 | -0.07 % | -0.37 % | -0.48 % | -0.67 % | -0.74 % |
+| rANS, per-tile mean \|err\| | pan8 | 1.15 % | 1.17 % | 1.26 % | 1.42 % | 1.68 % |
+| rANS, per-tile mean | pan8s | -0.07 % | -0.14 % | -0.12 % | -0.13 % | -0.42 % |
+| rANS, per-tile mean \|err\| | pan8s | 0.77 % | 0.84 % | 0.92 % | 1.14 % | 1.37 % |
+| **Lite**, both clips | | **0.000 %** | **0.000 %** | **0.000 %** | **0.000 %** | **0.000 %** |
+
+**The stated tolerance is therefore: exact under ENTROPY_LITE, and under rANS a
+per-tile bias under 0.8 % with a mean absolute error under 1.7 %,** over both
+clips at every quantiser from 22 to 40.
+
+Lite is exact rather than close because there is nothing to estimate: it has no
+arithmetic coder, so a tile's payload is a sum of fixed field widths and five
+align-to-byte roundings. The only non-additive term is the alignment, and that
+is additive one level up — a section's total is a sum over units and its pad is
+a function of that total — so the model is five sums and five roundings, a
+shape a workgroup produces in five reductions. `vk.encoder.rate` requires it to
+equal the coder's byte count **to the bit**, not within a bound.
+
+### What is not built
+
+The decision. `nxe_rate.h` prices a tile; nothing yet uses it to choose
+`qp_delta`, which is still written as 0 by the host (`nxe_host.cpp`). Two
+things are worth recording for whoever does build it:
+
+* **The syntax needs nothing.** `qp_delta` is already a mandatory v1 tile-header
+  field — `docs/SYNTAX.md` 4.1 word1 bits 8-13, signed 6-bit, -32..+31, gated by
+  no tool bit — and both decoders already honour it. No new tool bit, no minor
+  bump, no `SYNTAX.md` change.
+* **It cannot live in E1.** E1 is source-domain analysis: it runs before the
+  transform and has no coefficients, and it is not wired into the encode
+  pipeline at all (only `nxvc-stats-test` instantiates it). The decision needs
+  quantised coefficients and the unit list, which is E3 and E4. The cheap shape
+  is a candidate loop that reuses E3's transform — the DCT does not depend on
+  the quantiser, so only the quantise and the cost repeat — with E3 writing the
+  chosen `qp_delta` back into the job buffer for E4's tile header, the way
+  `E1c_decide` already writes the job buffer.
+
+
 
 ## Measured
 

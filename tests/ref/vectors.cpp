@@ -661,6 +661,492 @@ static Result build_inter(const InterSpec &v) {
 }
 
 
+// ------------------------------------------------ ATLAS vectors (13.12)
+//
+// Under `ATLAS` the normative output of the decoding process is the ATLAS --
+// its pixels and all 64 bytes of every per-tile record -- and NOT the picture,
+// which 13.12.5 makes non-normative and which conformance therefore does not
+// look at.  So these vectors keep the manifest's shape and change what the
+// `decoded_md5` column MEANS: it is the digest of the atlas after every
+// decoding step, and the display helper never runs.
+//
+// Two legs exist that no earlier vector could express, and one that was
+// attempted and is recorded as NOT expressible:
+//
+//   * A BASE-SOURCED PATCH (13.12.9).  A base picture is applied to the atlas
+//     between frame units.  The picture is generated deterministically from
+//     the spec, so a checker reproduces it without it being shipped; what the
+//     vector pins is the atlas it produces, `base_sourced` in every affected
+//     record's flags byte included.
+//   * A SUPERSEDED TILE (13.12.3).  The base patch carries a `src_frame`
+//     AHEAD of the stream, which is the ordinary case and not a contrived
+//     one: the base arrives through a hardware decoder with its own latency,
+//     so it can reach a position before the coded tile for the same frame
+//     does.  The coded tiles at those positions must then be DROPPED, and the
+//     vector asserts that tiles actually report `superseded` -- otherwise it
+//     would pin the rule doing nothing.
+//   * OUT-OF-ORDER FRAME UNITS: attempted, and NOT shipped, because it is not
+//     well defined.  13.12.3 advances every valid entry by the frame's `H`,
+//     and the lazy-advance rule requires those steps "one step at a time, in
+//     frame order".  A stream whose frame units are delivered in a different
+//     order therefore composes the entries in a different order, and matrix
+//     composition does not commute: the atlas differs in its TABLE, not only
+//     in its pixels, which was measured on exactly this material.  Splitting
+//     one refresh across two units with disjoint row sets does not rescue it
+//     -- the advance applies to every valid entry, not only to the rows a
+//     unit carries.  ADR-0029 cheat 1's "the frame id only orders atlas
+//     generations" is therefore true of the WRITES and not of the ADVANCE,
+//     and closing that gap is a normative question this branch has not been
+//     asked to answer.  Within one frame the order IS unobservable, which is
+//     what 13.12.3's pre-frame snapshot delivers and what tests/ref/test_atlas
+//     asserts directly; the bitstream cannot express it, because `row_index`
+//     must equal `row` (3.3).
+struct AtlasSpec {
+    const char *name;
+    const char *fixes;
+    int eye_w, h;
+    int eyes;
+    int c444;
+    int qp;
+    int frames;
+    int iperiod;
+    double yaw, pan;
+    int obj;
+    int nbr;           // tool bit 33, the neighbour-aware gather (13.12.8)
+    int row_present;   // tool bit 32
+    int near_skip, quad_mv;
+    int base;          // 1 = a base-sourced patch between the last two units
+    int base_ahead;    // how far the patch's src_frame runs ahead of the
+                       //   stream; > 0 supersedes the next frame's tiles
+    int pic_disp;      // 13.12.11: PICTURE frame once the worst corner
+                       //   displacement passes this many luma samples
+    int pic_period;    // 13.12.11: a PICTURE frame every N frames
+};
+
+static const AtlasSpec kAtlasVectors[] = {
+    // name                     fixes                          w    h ey 444 qp fr per   yaw  pan obj nbr rp ns qm base ahead
+    {"v82_atlas_warp",          "13.12 warp + skip",         128, 128, 1, 1, 26, 6, 999,  0.7, 2.0, 3,  0, 0, 0, 0, 0, 0, 0, 0},
+    {"v83_atlas_420",           "13.12 on 4:2:0",            128, 128, 1, 0, 26, 5, 999,  1.5, 3.0, 3,  0, 0, 0, 0, 0, 0, 0, 0},
+    {"v84_atlas_refresh_eff",   "13.12 + 13.9 + 13.10",      128, 128, 1, 1, 28, 8,   4,  0.8, 1.5, 3,  0, 1, 1, 1, 0, 0, 0, 0},
+    {"v85_atlas_nbr",           "13.12.8 neighbour gather",  128, 128, 1, 1, 26, 6, 999,  4.5, 6.0, 2,  1, 0, 0, 0, 0, 0, 0, 0},
+    {"v86_atlas_row_present",   "13.12 + 3.1.2",             128, 128, 1, 1, 26, 6, 999,  0.2, 0.0, 0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v87_atlas_base_sourced",  "13.12.9 base patch",        128, 128, 1, 0, 26, 5, 999,  0.5, 1.0, 2,  0, 0, 0, 0, 1, 0, 0, 0},
+    {"v88_atlas_superseded",    "13.12.3 superseded",        128, 128, 1, 0, 26, 5, 999,  0.5, 1.0, 2,  0, 0, 0, 0, 1, 2, 0, 0},
+    // 3.1.2 at the VERSION 1 GRID.  The 128x128 vectors have two tile rows, so
+    // their row_present bitmap is two bits of one byte and every constraint
+    // about the bits above the last row structure is vacuous.  At 1088x1088
+    // there are 17 rows: the bitmap is three bytes with SEVEN bits above the
+    // last row that a decoder must reject if set, which is the rule that has
+    // somewhere to go wrong.  The clip is static panels -- nothing moves --
+    // which is both the case row_present exists for and the case that elides
+    // the most rows.
+    {"v89_atlas_rp_1088",       "3.1.2 at the v1 grid",     1088,1088, 1, 0, 42, 4, 999,  0.1, 0.0, 0,  0, 1, 0, 0, 0, 0, 0, 0},
+    // 13.12.11, the per-frame MODE SWITCH.  Three vectors, because the thing
+    // that can go wrong is not a mode but a TRANSITION.
+    //
+    // v90 forces a PICTURE frame every second frame, so the stream alternates
+    // and every unit is a transition in one direction or the other: it pins
+    // ATLAS -> PICTURE (assemble, reconstruct everything, rebuild the atlas)
+    // and PICTURE -> ATLAS (predict from an atlas whose entries are all
+    // identity and age 0) in one digest chain.
+    {"v90_mode_alternate",      "13.12.11 both transitions", 128, 128, 1, 1, 26, 6, 999,  2.0, 3.0, 3,  0, 0, 0, 0, 0, 0, 0, 2},
+    // v91 drives the switch from MOTION rather than from a period, which is
+    // what an encoder actually does: a displacement threshold on a clip that
+    // accelerates, so the PICTURE frames land where the head moves and the
+    // ATLAS runs are ragged.
+    {"v91_mode_disp",           "13.12.11 displacement",     192, 192, 1, 0, 32,16, 999,  0.5, 0.8, 0,  0, 0, 0, 0, 0, 0, 1, 0},
+    // v92 is the src_frame rule of 13.12.11 with a base patch in the same
+    // stream: after a PICTURE frame EVERY entry has src_frame = N and age 0,
+    // so a base patch carrying an older src_frame must be dropped by 13.12.9's
+    // monotonicity where before the PICTURE frame it would have applied.  If
+    // an implementation leaves src_frame alone on the materialised tiles, this
+    // vector's atlas differs.
+    {"v92_mode_src_frame",      "13.12.11 src_frame := N",   128, 128, 1, 0, 26, 6, 999,  3.0, 4.0, 2,  0, 0, 0, 0, 1, 0, 0, 3},
+};
+static const int kNumAtlasVectors =
+    (int)(sizeof(kAtlasVectors) / sizeof(kAtlasVectors[0]));
+
+// The material, reusing the inter generator so an atlas vector and an inter
+// vector of the same shape differ only in the reference model.
+static InterSpec atlas_material(const AtlasSpec &v) {
+    InterSpec m{};
+    m.name = v.name;
+    m.eye_w = v.eye_w; m.h = v.h; m.eyes = v.eyes; m.c444 = v.c444;
+    m.qp = v.qp; m.frames = v.frames; m.iperiod = v.iperiod;
+    m.yaw = v.yaw; m.pan = v.pan; m.obj = v.obj;
+    m.ctx = 1;
+    return m;
+}
+
+// The base picture of 13.12.9: NV12, luma then interleaved (Cb, Cr), derived
+// from the spec so a checker reproduces it byte for byte without shipping it.
+struct BasePicture {
+    std::vector<uint8_t> Y, C;
+};
+static BasePicture make_base_picture(const AtlasSpec &v, int seed) {
+    BasePicture b;
+    const int w = v.eye_w * v.eyes, h = v.h;
+    b.Y.assign((size_t)w * h, 0);
+    b.C.assign((size_t)(w / 2) * (h / 2) * 2, 0);
+    for (int y = 0; y < h; ++y)
+        for (int x = 0; x < w; ++x)
+            b.Y[(size_t)y * w + x] =
+                (uint8_t)(vec_tex(x + seed * 13, y + seed * 7) ^ 0x55);
+    for (int y = 0; y < h / 2; ++y)
+        for (int x = 0; x < w / 2; ++x) {
+            b.C[((size_t)y * (w / 2) + x) * 2 + 0] =
+                (uint8_t)(90 + ((x + seed) & 0x3f));    // Cb
+            b.C[((size_t)y * (w / 2) + x) * 2 + 1] =
+                (uint8_t)(170 - ((y + seed) & 0x3f));   // Cr
+        }
+    return b;
+}
+
+// THE WHOLE base patch of 13.12.9 -- pixels, tile map, and every field of
+// `nxvc_base_patch` -- as one object, because the digest a vector pins depends
+// on all of it and none of it travels in the .nxv.
+//
+// It used to be rebuilt from the spec table on both sides, and the comment
+// above make_base_picture() claimed that let "a checker reproduce it byte for
+// byte without shipping it".  That is only true of a checker with this source
+// file compiled into it.  A third-party decoder holding the vector DIRECTORY
+// cannot reproduce the pin at all: the reference's own fold of v87 and v88
+// without the patch gives one digest for BOTH of them, because the patch is
+// the only thing that differs.  So the patch is now SHIPPED, as a sidecar
+// beside the bitstream, and the generator refuses to write a vector whose
+// digest it cannot reproduce from the shipped files alone.
+static bool read_file(const std::string &path, std::vector<uint8_t> &out) {
+    std::FILE *f = std::fopen(path.c_str(), "rb");
+    if (!f) return false;
+    std::fseek(f, 0, SEEK_END);
+    long n = std::ftell(f);
+    std::fseek(f, 0, SEEK_SET);
+    out.assign((size_t)(n > 0 ? n : 0), 0);
+    const size_t rd = out.empty() ? 0 : std::fread(out.data(), 1, out.size(), f);
+    std::fclose(f);
+    return rd == out.size();
+}
+
+struct BasePatch {
+    uint32_t width = 0, height = 0, eye = 0, src_frame = 0, chroma_order = 0;
+    uint32_t ystride = 0, cstride = 0;
+    int apply_after = -1;      // patch lands after this frame index
+    std::vector<uint8_t> tiles, Y, C;
+};
+
+static void put_u32(std::vector<uint8_t> &b, uint32_t v) {
+    b.push_back((uint8_t)(v & 0xff));
+    b.push_back((uint8_t)((v >> 8) & 0xff));
+    b.push_back((uint8_t)((v >> 16) & 0xff));
+    b.push_back((uint8_t)((v >> 24) & 0xff));
+}
+static uint32_t get_u32(const uint8_t *p) {
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) |
+           ((uint32_t)p[3] << 24);
+}
+
+static const char kBasePatchMagic[8] = {'N','X','V','B','P','1','\0','\0'};
+
+static std::vector<uint8_t> base_patch_serialise(const BasePatch &b) {
+    std::vector<uint8_t> o(kBasePatchMagic, kBasePatchMagic + 8);
+    put_u32(o, b.width);
+    put_u32(o, b.height);
+    put_u32(o, b.eye);
+    put_u32(o, b.src_frame);
+    put_u32(o, b.chroma_order);
+    put_u32(o, b.ystride);
+    put_u32(o, b.cstride);
+    put_u32(o, (uint32_t)b.apply_after);
+    put_u32(o, (uint32_t)b.tiles.size());
+    put_u32(o, (uint32_t)b.Y.size());
+    put_u32(o, (uint32_t)b.C.size());
+    o.insert(o.end(), b.tiles.begin(), b.tiles.end());
+    o.insert(o.end(), b.Y.begin(), b.Y.end());
+    o.insert(o.end(), b.C.begin(), b.C.end());
+    return o;
+}
+
+static bool base_patch_parse(const std::vector<uint8_t> &d, BasePatch &b) {
+    if (d.size() < 8 + 11 * 4) return false;
+    if (std::memcmp(d.data(), kBasePatchMagic, 8) != 0) return false;
+    const uint8_t *p = d.data() + 8;
+    b.width = get_u32(p + 0);
+    b.height = get_u32(p + 4);
+    b.eye = get_u32(p + 8);
+    b.src_frame = get_u32(p + 12);
+    b.chroma_order = get_u32(p + 16);
+    b.ystride = get_u32(p + 20);
+    b.cstride = get_u32(p + 24);
+    b.apply_after = (int)get_u32(p + 28);
+    const uint32_t nt = get_u32(p + 32), ny = get_u32(p + 36),
+                   nc = get_u32(p + 40);
+    size_t off = 8 + 11 * 4;
+    if (d.size() != off + nt + ny + nc) return false;
+    b.tiles.assign(d.begin() + off, d.begin() + off + nt);
+    off += nt;
+    b.Y.assign(d.begin() + off, d.begin() + off + ny);
+    off += ny;
+    b.C.assign(d.begin() + off, d.begin() + off + nc);
+    return true;
+}
+
+// Build the patch from the spec.  This runs on the GENERATE path only; every
+// other path reads the sidecar, which is the point.
+static BasePatch make_base_patch(const AtlasSpec &v) {
+    BasePatch b;
+    const int f = v.frames - 2;          // it lands after the second-to-last
+    BasePicture pic = make_base_picture(v, f);
+    b.width = (uint32_t)v.eye_w;
+    b.height = (uint32_t)v.h;
+    b.eye = 0;
+    b.src_frame = (uint32_t)(f + 1 + v.base_ahead);
+    b.chroma_order = (uint32_t)NXVC_BASE_CHROMA_CB_CR;
+    b.ystride = (uint32_t)(v.eye_w * v.eyes);
+    b.cstride = (uint32_t)(v.eye_w * v.eyes);
+    b.apply_after = f;
+    b.tiles.assign((size_t)((v.eye_w + 63) / 64) * ((v.h + 63) / 64), 0);
+    for (size_t i = 0; i < b.tiles.size(); i += 2) b.tiles[i] = 1;
+    b.Y = std::move(pic.Y);
+    b.C = std::move(pic.C);
+    return b;
+}
+
+// Fill an nxvc_base_patch that points into `b`.  `b` must outlive the call.
+static nxvc_base_patch base_patch_api(const BasePatch &b) {
+    nxvc_base_patch bp{};
+    bp.plane[0] = b.Y.data();
+    bp.stride[0] = (int)b.ystride;
+    bp.plane[1] = b.C.data();
+    bp.stride[1] = (int)b.cstride;
+    bp.width = b.width;
+    bp.height = b.height;
+    bp.eye = b.eye;
+    bp.src_frame = b.src_frame;
+    bp.chroma_order = b.chroma_order;
+    bp.tiles = b.tiles.data();
+    bp.tile_bytes = (uint32_t)b.tiles.size();
+    return bp;
+}
+
+// Every 64-byte record and every atlas plane, folded into a running MD5.  This
+// is the whole normative output of 13.12, and it is what the manifest's
+// `decoded_md5` column holds for an atlas vector.
+template <class Table, class Plane>
+static std::vector<uint8_t> atlas_bytes(size_t tbytes, Table tab, Plane plane) {
+    std::vector<uint8_t> out(tbytes);
+    tab(out.data(), tbytes);
+    for (int p = 0; p < 4; ++p) {
+        uint32_t w = 0, h = 0, stride = 0;
+        const uint16_t *d = plane(p, &w, &h, &stride);
+        if (!d) continue;
+        for (uint32_t y = 0; y < h; ++y)
+            for (uint32_t x = 0; x < w; ++x) {
+                const uint16_t v = d[(size_t)y * stride + x];
+                out.push_back((uint8_t)(v & 0xff));
+                out.push_back((uint8_t)(v >> 8));
+            }
+    }
+    return out;
+}
+
+struct AtlasResult : Result {
+    int superseded_tiles = 0;
+    int picture_frames = 0;   // 13.12.11: frames that set flags bit 5
+    int atlas_frames = 0;
+    // Both TRANSITIONS, which is what a mode vector is for: an ATLAS frame
+    // followed by a PICTURE frame, and a PICTURE frame followed by an ATLAS
+    // frame.  Counting the two modes is not enough -- a stream whose only
+    // PICTURE frame is its last one has no PICTURE -> ATLAS edge in it.
+    bool saw_atlas_to_picture = false;
+    bool saw_picture_to_atlas = false;
+    int prev_mode = -1;       // 0 = ATLAS, 1 = PICTURE
+    int base_applied = 0;
+};
+
+// The decode half, shared by the generator and the checker so that what is
+// pinned and what is verified are the same procedure.  It walks the stream in
+// FILE order -- which is arrival order -- and folds the atlas into the digest
+// after every step that can change it, the base patch included.
+static AtlasResult decode_atlas(const AtlasSpec &v,
+                                const std::vector<uint8_t> &stream,
+                                const BasePatch *patch) {
+    AtlasResult r;
+    nxvc_status st;
+    nxvc_decoder *d = nxvc_decoder_create(&st);
+    if (!d) { r.err = "decoder_create"; return r; }
+    size_t off = 0, consumed = 0;
+    st = nxvc_decoder_parse_stream_header(d, stream.data(), stream.size(),
+                                          &consumed);
+    if (st != NXVC_OK) {
+        r.err = nxvc_status_string(st);
+        nxvc_decoder_destroy(d);
+        return r;
+    }
+    off = consumed;
+    uint32_t yw, yh, cw, ch;
+    nxvc_decoder_plane_size(d, 0, &yw, &yh);
+    nxvc_decoder_plane_size(d, 1, &cw, &ch);
+    // The display picture is written because decode_frame wants somewhere to
+    // put it, and it is then IGNORED: 13.12.5 is not normative and this digest
+    // does not look at it.
+    std::vector<uint8_t> Y((size_t)yw * yh), U((size_t)cw * ch),
+        V((size_t)cw * ch);
+    MD5 md;
+    int nf = 0;
+    while (off < stream.size()) {
+        nxvc_image oi{};
+        oi.plane[0] = Y.data(); oi.stride[0] = (int)yw;
+        oi.plane[1] = U.data(); oi.stride[1] = (int)cw;
+        oi.plane[2] = V.data(); oi.stride[2] = (int)cw;
+        st = nxvc_decoder_decode_frame(d, stream.data() + off,
+                                       stream.size() - off, &oi, &consumed);
+        if (st != NXVC_OK) {
+            r.err = nxvc_status_string(st);
+            nxvc_decoder_destroy(d);
+            return r;
+        }
+        off += consumed;
+        uint32_t tc = 0;
+        const nxvc_tile_info *ti = nxvc_decoder_tiles(d, &tc);
+        for (uint32_t t = 0; t < tc; ++t)
+            if (ti[t].superseded) ++r.superseded_tiles;
+        {
+            // 13.12.11: which MODE this frame was, read back from the decoder
+            // rather than from the encoder's intent.
+            nxvc_frame_info dfi{};
+            if (nxvc_decoder_frame_info(d, &dfi) == NXVC_OK) {
+                const int mode = (dfi.flags & 0x20) ? 1 : 0;
+                if (mode) ++r.picture_frames; else ++r.atlas_frames;
+                if (r.prev_mode == 0 && mode == 1)
+                    r.saw_atlas_to_picture = true;
+                if (r.prev_mode == 1 && mode == 0)
+                    r.saw_picture_to_atlas = true;
+                r.prev_mode = mode;
+            }
+        }
+        const size_t tb = nxvc_decoder_atlas_table_size(d);
+        auto snap = [&]() {
+            std::vector<uint8_t> b = atlas_bytes(
+                tb,
+                [&](uint8_t *p, size_t n) {
+                    nxvc_decoder_atlas_table(d, p, n);
+                },
+                [&](int pl, uint32_t *w, uint32_t *h, uint32_t *sd) {
+                    return nxvc_decoder_atlas_plane(d, pl, w, h, sd);
+                });
+            md.update(b.data(), b.size());
+        };
+        snap();
+        ++nf;
+        if (v.base && patch && nf == patch->apply_after + 1) {
+            // 13.12.9 from the SHIPPED patch, not from the spec table: this is
+            // the path a third-party checker takes, so it is the path the
+            // reference takes too.
+            nxvc_base_patch bp = base_patch_api(*patch);
+            uint32_t ap = 0;
+            st = nxvc_decoder_atlas_patch_base(d, &bp, &ap, nullptr);
+            if (st != NXVC_OK) {
+                r.err = "base patch (decoder)";
+                nxvc_decoder_destroy(d);
+                return r;
+            }
+            r.base_applied = (int)ap;
+            snap();
+        }
+    }
+    nxvc_decoder_destroy(d);
+    if (nf != v.frames) { r.err = "frame count mismatch"; return r; }
+    r.decoded_md5 = md.hex();
+    r.ok = true;
+    return r;
+}
+
+// Build one atlas vector.  Frame units are produced in FRAME order and then
+// emitted in ARRIVAL order; the decode side walks the file, which is arrival
+// order, and applies the base patch at the same point the encoder did.
+static AtlasResult build_atlas(const AtlasSpec &v, const BasePatch *patch) {
+    AtlasResult r;
+    const InterSpec mat = atlas_material(v);
+    nxvc_config cfg;
+    nxvc_config_default(&cfg);
+    cfg.width = (uint32_t)v.eye_w;
+    cfg.height = (uint32_t)v.h;
+    cfg.eyes = (uint32_t)v.eyes;
+    cfg.chroma = v.c444 ? NXVC_CHROMA_444 : NXVC_CHROMA_420;
+    cfg.base_qp = (uint32_t)v.qp;
+    cfg.inter = 1;
+    cfg.atlas = 1;
+    cfg.atlas_static_skip = 1;
+    cfg.atlas_nbr = (uint32_t)v.nbr;
+    cfg.row_present = (uint32_t)v.row_present;
+    cfg.atlas_picture_disp = (uint32_t)v.pic_disp;
+    cfg.atlas_picture_period = (uint32_t)v.pic_period;
+    cfg.intra_period = (uint32_t)v.iperiod;
+    cfg.custom_tables = 0;
+    cfg.split4x4 = 0;
+    cfg.chroma_from_luma = 0;
+    cfg.ctx_v2 = 1;
+    cfg.near_skip = (uint32_t)v.near_skip;
+    cfg.quad_mv = (uint32_t)v.quad_mv;
+
+    nxvc_status st;
+    nxvc_encoder *e = nxvc_encoder_create(&cfg, &st);
+    if (!e) { r.err = nxvc_status_string(st); return r; }
+    uint8_t pose[26];
+    for (int i = 0; i < 26; ++i) pose[i] = (uint8_t)(0x21 + i * 5);
+    nxvc_encoder_set_pose(e, pose);
+
+    std::vector<uint8_t> hdr(4096);
+    size_t hl = 0;
+    st = nxvc_encoder_stream_header(e, hdr.data(), hdr.size(), &hl);
+    if (st != NXVC_OK) { r.err = nxvc_status_string(st); return r; }
+
+    std::vector<std::vector<uint8_t>> units;
+    std::vector<uint8_t> fbuf((size_t)v.eye_w * v.eyes * v.h * 8 + (1u << 20));
+    for (int f = 0; f < v.frames; ++f) {
+        InterFrame s = make_inter_frame(mat, f);
+        nxvc_image img{};
+        img.plane[0] = s.Y.data(); img.stride[0] = s.w;
+        img.plane[1] = s.U.data(); img.stride[1] = s.cw;
+        img.plane[2] = s.V.data(); img.stride[2] = s.cw;
+        nxvc_view views[2];
+        for (int k = 0; k < v.eyes; ++k) views[k] = vec_view_yaw(v.yaw * f);
+        nxvc_encoder_set_views(e, views, (uint32_t)v.eyes);
+        size_t ol = 0;
+        st = nxvc_encoder_encode_frame(e, &img, nullptr, nullptr, fbuf.data(),
+                                       fbuf.size(), &ol);
+        if (st != NXVC_OK) { r.err = nxvc_status_string(st); return r; }
+        units.push_back(std::vector<uint8_t>(fbuf.begin(), fbuf.begin() + ol));
+        // 13.12.9: the base patch lands between two frame units, and the
+        // encoder applies it to its shadow at the same point so that the two
+        // atlases stay identical -- ADR-0029 cheat 7, option B.
+        if (v.base && patch && f == patch->apply_after) {
+            nxvc_base_patch bp = base_patch_api(*patch);
+            uint32_t ap = 0;
+            st = nxvc_encoder_atlas_patch_base(e, &bp, &ap, nullptr);
+            if (st != NXVC_OK) { r.err = "base patch (encoder)"; return r; }
+            r.base_applied = (int)ap;
+        }
+    }
+    nxvc_encoder_destroy(e);
+
+    r.stream.assign(hdr.begin(), hdr.begin() + hl);
+    for (const auto &u : units)
+        r.stream.insert(r.stream.end(), u.begin(), u.end());
+    r.stream_md5 = md5_hex(r.stream.data(), r.stream.size());
+
+    AtlasResult dec = decode_atlas(v, r.stream, patch);
+    if (!dec.ok) { r.err = dec.err; return r; }
+    r.decoded_md5 = dec.decoded_md5;
+    r.superseded_tiles = dec.superseded_tiles;
+    r.picture_frames = dec.picture_frames;
+    r.atlas_frames = dec.atlas_frames;
+    r.saw_atlas_to_picture = dec.saw_atlas_to_picture;
+    r.saw_picture_to_atlas = dec.saw_picture_to_atlas;
+    r.ok = true;
+    return r;
+}
+
 // ------------------------------------------- Phase 2 rejection vectors
 // D-21 again: "the rejection vectors matter more than the positive ones".
 // Each is a legal inter stream with exactly one field corrupted, and the
@@ -1270,9 +1756,122 @@ int main(int argc, char **argv) {
             std::printf("%-26s %7zu B  %s   [%s]\n", v.name, r.stream.size(),
                         r.decoded_md5.c_str(), v.fixes);
         }
+        // --- the ATLAS profile (SYNTAX.md 13.12).  `decoded_md5` is the
+        // digest of the ATLAS, not of a picture; see build_atlas().
+        std::fprintf(m, "# --- ATLAS vectors (13.12).  decoded_md5 is the "
+                        "ATLAS digest:\n"
+                        "# the 64-byte per-tile table and every atlas plane, "
+                        "after every decoding\n"
+                        "# step.  The displayed picture is 13.12.5, is not "
+                        "normative, and is not\n"
+                        "# compared.\n");
+        for (int i = 0; i < kNumAtlasVectors; ++i) {
+            const AtlasSpec &v = kAtlasVectors[i];
+            BasePatch patch;
+            const bool has_patch = v.base != 0;
+            if (has_patch) patch = make_base_patch(v);
+            AtlasResult r = build_atlas(v, has_patch ? &patch : nullptr);
+            if (!r.ok) {
+                std::fprintf(stderr, "%s: %s\n", v.name, r.err.c_str());
+                return 1;
+            }
+            // A vector that pins a rule doing NOTHING is the defect the inter
+            // generator's guard exists for, so each special leg asserts that
+            // its rule actually fired.
+            if (v.base_ahead && r.superseded_tiles == 0) {
+                std::fprintf(stderr,
+                             "%s: no tile was superseded -- the vector would "
+                             "pin 13.12.3 doing nothing\n", v.name);
+                return 1;
+            }
+            if (v.base && r.base_applied == 0) {
+                std::fprintf(stderr, "%s: no base patch applied\n", v.name);
+                return 1;
+            }
+            // 13.12.11: a mode vector must contain BOTH kinds of frame, or it
+            // pins one mode and calls itself a transition test.  This is the
+            // guard `v86` did not have, and `v86` is why it exists.
+            if ((v.pic_disp || v.pic_period) &&
+                (!r.saw_atlas_to_picture || !r.saw_picture_to_atlas)) {
+                std::fprintf(stderr,
+                             "%s: %d PICTURE / %d ATLAS frames, "
+                             "ATLAS->PICTURE %s, PICTURE->ATLAS %s -- a mode "
+                             "vector must contain BOTH transitions\n",
+                             v.name, r.picture_frames, r.atlas_frames,
+                             r.saw_atlas_to_picture ? "yes" : "NO",
+                             r.saw_picture_to_atlas ? "yes" : "NO");
+                return 1;
+            }
+            // Ship the patch BESIDE the bitstream.  Without it the pinned
+            // digest is not reproducible by anyone who does not have this
+            // file's spec table compiled in -- which is the whole point of a
+            // conformance vector, and which v87 and v88 failed for a while.
+            const std::string bp_path = dir + "/" + v.name + ".basepatch";
+            if (has_patch) {
+                const std::vector<uint8_t> ser = base_patch_serialise(patch);
+                std::FILE *bf = std::fopen(bp_path.c_str(), "wb");
+                if (!bf) { std::perror(bp_path.c_str()); return 1; }
+                std::fwrite(ser.data(), 1, ser.size(), bf);
+                std::fclose(bf);
+            }
+            std::string path = dir + "/" + v.name + ".nxv";
+            std::FILE *f = std::fopen(path.c_str(), "wb");
+            if (!f) { std::perror(path.c_str()); return 1; }
+            std::fwrite(r.stream.data(), 1, r.stream.size(), f);
+            std::fclose(f);
+            // THE GUARD.  Re-read what was just written and reproduce the
+            // digest from the SHIPPED FILES ALONE -- the bitstream and, where
+            // there is one, the sidecar.  Nothing from the spec table above
+            // may be needed to reach the number the manifest is about to
+            // claim.
+            {
+                std::vector<uint8_t> disk_stream;
+                if (!read_file(path, disk_stream)) {
+                    std::fprintf(stderr, "%s: cannot re-read\n", v.name);
+                    return 1;
+                }
+                BasePatch disk_patch;
+                bool have = false;
+                if (has_patch) {
+                    std::vector<uint8_t> pb;
+                    if (!read_file(bp_path, pb) ||
+                        !base_patch_parse(pb, disk_patch)) {
+                        std::fprintf(stderr, "%s: sidecar unreadable\n",
+                                     v.name);
+                        return 1;
+                    }
+                    have = true;
+                }
+                AtlasResult cold =
+                    decode_atlas(v, disk_stream, have ? &disk_patch : nullptr);
+                if (!cold.ok || cold.decoded_md5 != r.decoded_md5) {
+                    std::fprintf(stderr,
+                                 "%s: the pinned digest is NOT reproducible "
+                                 "from the shipped files (%s != %s)\n",
+                                 v.name,
+                                 cold.ok ? cold.decoded_md5.c_str()
+                                         : cold.err.c_str(),
+                                 r.decoded_md5.c_str());
+                    return 1;
+                }
+                if (has_patch && cold.base_applied == 0) {
+                    std::fprintf(stderr, "%s: sidecar applied no tile\n",
+                                 v.name);
+                    return 1;
+                }
+            }
+            std::fprintf(m, "%s %s %s %d %d %s %d %d\n", v.name,
+                         r.stream_md5.c_str(), r.decoded_md5.c_str(),
+                         v.eye_w * v.eyes, v.h,
+                         v.c444 ? "yuv444p" : "yuv420p", 0, v.frames);
+            std::printf("%-26s %7zu B  %s   [%s]%s\n", v.name, r.stream.size(),
+                        r.decoded_md5.c_str(), v.fixes,
+                        has_patch ? "  +sidecar" : "");
+        }
         std::fclose(m);
         std::printf("%d vectors written to %s\n",
-                    kNumVectors + kNumInterVectors, dir.c_str());
+                    kNumVectors + kNumInterVectors + kNumAtlasVectors,
+                    dir.c_str());
 
         // Rejection vectors: the v01 stream with one field corrupted each.
         Result base = build(kVectors[0]);
@@ -1412,14 +2011,18 @@ int main(int argc, char **argv) {
             continue;
         const VecSpec *spec = nullptr;
         const InterSpec *ispec = nullptr;
+        const AtlasSpec *aspec = nullptr;
         for (int i = 0; i < kNumVectors; ++i)
             if (std::strcmp(kVectors[i].name, name) == 0) spec = &kVectors[i];
         for (int i = 0; i < kNumInterVectors; ++i)
             if (std::strcmp(kInterVectors[i].name, name) == 0)
                 ispec = &kInterVectors[i];
-        CHECK(spec != nullptr || ispec != nullptr,
+        for (int i = 0; i < kNumAtlasVectors; ++i)
+            if (std::strcmp(kAtlasVectors[i].name, name) == 0)
+                aspec = &kAtlasVectors[i];
+        CHECK(spec != nullptr || ispec != nullptr || aspec != nullptr,
               "vector %s is in the manifest but not the table", name);
-        if (!spec && !ispec) continue;
+        if (!spec && !ispec && !aspec) continue;
 
         // (a) the committed file decodes to the committed plane MD5
         std::string path = dir + "/" + name + ".nxv";
@@ -1435,6 +2038,47 @@ int main(int argc, char **argv) {
         CHECK(rd == data.size(), "short read %s", name);
         CHECK(md5_hex(data.data(), data.size()) == smd5,
               "%s: bitstream md5 changed", name);
+
+        // An ATLAS vector's normative output is the atlas, so it is compared
+        // through the same procedure that generated it, and the display
+        // picture -- 13.12.5, non-normative -- is not looked at.
+        if (aspec) {
+            // From the shipped files only: the bitstream read above and, for a
+            // vector that carries one, the sidecar beside it.
+            BasePatch cpatch;
+            bool have_patch = false;
+            if (aspec->base) {
+                std::vector<uint8_t> pb;
+                const std::string bpp = dir + "/" + name + ".basepatch";
+                CHECK(read_file(bpp, pb), "%s: missing %s.basepatch", name,
+                      name);
+                if (!pb.empty()) {
+                    CHECK(base_patch_parse(pb, cpatch),
+                          "%s: malformed base patch sidecar", name);
+                    have_patch = true;
+                }
+            }
+            AtlasResult dr = decode_atlas(*aspec, data,
+                                          have_patch ? &cpatch : nullptr);
+            CHECK(dr.ok, "%s: decode (%s)", name, dr.err.c_str());
+            if (dr.ok)
+                CHECK(dr.decoded_md5 == dmd5, "%s: ATLAS digest %s != %s", name,
+                      dr.decoded_md5.c_str(), dmd5);
+            if (aspec->base_ahead)
+                CHECK(dr.superseded_tiles > 0,
+                      "%s: no tile superseded; the vector pins nothing", name);
+            if (aspec->base)
+                CHECK(dr.base_applied > 0, "%s: no base patch applied", name);
+            AtlasResult rr = build_atlas(*aspec,
+                                         have_patch ? &cpatch : nullptr);
+            CHECK(rr.ok, "%s: re-encode failed (%s)", name, rr.err.c_str());
+            if (rr.ok) {
+                CHECK(rr.stream_md5 == smd5, "%s: encoder output changed", name);
+                CHECK(rr.decoded_md5 == dmd5, "%s: atlas changed", name);
+            }
+            ++checked;
+            continue;
+        }
 
         nxvc_status st;
         nxvc_decoder *d = nxvc_decoder_create(&st);
@@ -1487,9 +2131,9 @@ int main(int argc, char **argv) {
         ++checked;
     }
     std::fclose(m);
-    CHECK(checked == kNumVectors + kNumInterVectors,
+    CHECK(checked == kNumVectors + kNumInterVectors + kNumAtlasVectors,
           "checked %d of %d vectors", checked,
-          kNumVectors + kNumInterVectors);
+          kNumVectors + kNumInterVectors + kNumAtlasVectors);
 
     // Rejection vectors.
     std::FILE *rm = std::fopen(reject_manifest_path(dir).c_str(), "rb");

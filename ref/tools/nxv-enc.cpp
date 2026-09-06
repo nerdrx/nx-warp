@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "nxvc/nxvc.h"
+#include "base_refresh.h"
 #include "nxrc/encdrive.hpp"
 
 // ------------------------------------------------------- tiny JSON scraping
@@ -125,7 +126,44 @@ static void usage() {
         "                       fixed 1-in-T permutation (default on)\n"
         "  --drift-gate F       --drift-refresh gate, multiples of the\n"
         "                       quantiser noise floor qstep^2/12 (default 4)\n"
-        "  --near-skip on|off   DC-correction tile form, tool bit 28\n"
+        "  --atlas on|off       the per-tile ATLAS reference, tool bit 31.\n"
+        "               A skipped tile writes no reference pixels; the\n"
+        "               normative output is the atlas, not the picture, and\n"
+        "               the displayed picture is the non-normative one-step\n"
+        "               warp of 13.12.5.  Requires --inter on, excludes\n"
+        "               --stereo on.\n"
+        "  --row-present on|off elide the 12-byte header of a tile row with\n"
+        "               no coded tile, tool bit 32\n"
+        "  --atlas-nbr on|off   NEIGHBOUR-AWARE GATHER, tool bit 33: a\n"
+        "               prediction sample landing outside the tile's own\n"
+        "               atlas position is fetched through the matrix of the\n"
+        "               entry it lands in, resolved with the co-located\n"
+        "               matrix.  NORMATIVE; requires --atlas on\n"
+        "  --atlas-coarse R     TWO-LEVEL REFRESH: a tile being refreshed\n"
+        "               lands at res_level R (1 or 2) and a later frame\n"
+        "               refines it to res_level 0.  Encoder policy only, no\n"
+        "               syntax: the refinement is an ordinary coded tile\n"
+        "               predicting from the upsampled coarse pixels\n"
+        "  --atlas-coarse-budget N  at most N refinements per frame\n"
+        "  --atlas-coarse-stats P  write the two-level accounting to P\n"
+        "  --atlas-picture-disp N  13.12.11: code a PICTURE frame -- the\n"
+        "               ordinary model, every tile reconstructed, the atlas\n"
+        "               rebuilt from it -- once the worst corner displacement\n"
+        "               in the atlas passes N luma samples.  Requires\n"
+        "               --atlas on; sets tool bit 34\n"
+        "  --atlas-picture-spacing N  never two PICTURE frames closer than N\n"
+        "               frames apart\n"
+        "  --atlas-picture-period N  a PICTURE frame every N frames whatever\n"
+        "               the motion\n"
+        "  --atlas-skip-margin N  ENCODER ONLY, no syntax: a tile may be\n"
+        "               skipped only while the composed displacement at all\n"
+        "               four of its corners is under N luma samples.  0 =\n"
+        "               unbounded (the default, and the rule as measured)\n"
+        "  --atlas-gen-max N    invalidate an atlas entry after N composition\n"
+        "               steps; 0 = the warp envelope alone bounds staleness\n"
+        "  --atlas-dump P       write the encoder's shadow atlas table after\n"
+        "               each frame to P (64 bytes per tile per frame), which\n"
+        "               is what a conformance comparison reads\n"        "  --near-skip on|off   DC-correction tile form, tool bit 28\n"
         "                       (default on)\n"
         "  --quad-mv on|off     four vectors per tile, one per 32x32\n"
         "                       quadrant, tool bit 29 (default on)\n"
@@ -228,6 +266,34 @@ static bool read_exact(std::FILE *f, void *p, size_t n) {
     return std::fread(p, 1, n, f) == n;
 }
 
+
+// FNV-1a over the atlas pixels of every plane, appended to the table dump so
+// that a comparison covers the whole normative output of 13.12 and not only
+// its metadata.  Pixels are compared as a digest because the atlas is 3.4 MB
+// an eye and a conformance vector should not be.
+static void atlas_digest(const uint16_t *(*plane_fn)(const void *, int,
+                                                     uint32_t *, uint32_t *,
+                                                     uint32_t *),
+                         const void *ctx, uint8_t out[32]) {
+    for (int p = 0; p < 4; ++p) {
+        uint64_t h = 1469598103934665603ull;
+        uint32_t w = 0, ht = 0, stride = 0;
+        const uint16_t *d = plane_fn(ctx, p, &w, &ht, &stride);
+        if (d)
+            for (uint32_t y = 0; y < ht; ++y)
+                for (uint32_t x = 0; x < w; ++x) {
+                    const uint16_t v = d[(size_t)y * stride + x];
+                    h = (h ^ (v & 0xff)) * 1099511628211ull;
+                    h = (h ^ (v >> 8)) * 1099511628211ull;
+                }
+        for (int k = 0; k < 8; ++k) out[p * 8 + k] = (uint8_t)(h >> (8 * k));
+    }
+}
+
+static const uint16_t *atlas_plane_shim(const void *c, int pl, uint32_t *w,
+                                        uint32_t *h, uint32_t *st) {
+    return nxvc_encoder_atlas_plane((const nxvc_encoder *)c, pl, w, h, st);
+}
 int main(int argc, char **argv) {
     std::string in, out, pix = "yuv420p", resmap_path, qpmap_path;
     int W = 0, H = 0, qp = 24, frames = -1, matrix = 1, chroma_qp_off = 0;
@@ -244,6 +310,24 @@ int main(int argc, char **argv) {
     int sign_hide = 1;
     int split4x4 = 1, cfl = 1;
     int inter = 0, eyes = 1, intra_period = 180, ref_sel = 0, stereo = 0;
+    // --- the atlas reference (SYNTAX.md 13.12, ADR-0029)
+    int atlas = 0, row_present = 0, atlas_gen_max = 0;
+    int atlas_nbr = 0, atlas_skip_margin = 0;
+    int atlas_picture_disp = 0, atlas_picture_spacing = 0;
+    int atlas_picture_period = 0;
+    std::string atlas_base_path;
+    int atlas_base_margin = 8;
+    // TWO-LEVEL REFRESH (ADR-0029).  A tile that is being refreshed lands at
+    // res_level R -- cheap, few bytes -- and a later frame refines it to full
+    // resolution.  The refinement needs NO syntax: under the atlas a coded
+    // tile predicts from its own entry, which holds the upsampled coarse
+    // pixels, so coding it again at res_level 0 IS a residual on the coarse
+    // tile rather than a re-code of it.  The whole policy is therefore a
+    // per-frame res_map, which the library already takes.
+    int coarse_level = 0;      // 0 = off, 1 = 32x32, 2 = 16x16
+    int coarse_budget = 0;     // max refinements a frame may spend; 0 = all
+    std::string coarse_stats_path;
+    std::string atlas_dump;
     int mv_range = 16, skip_thresh = 0, mode_lambda = 0;
     int int_decision = 0, int_lambda = 0, int_intra_mad = 0, int_rdoq = 0;
     int planar = 0;
@@ -313,6 +397,40 @@ int main(int argc, char **argv) {
             else if (v == "off") stereo = 0;
             else { std::fprintf(stderr, "--stereo: on|off\n"); return 2; }
         }
+        else if (a == "--atlas") {
+            std::string v = val();
+            if (v == "on") atlas = 1;
+            else if (v == "off") atlas = 0;
+            else { std::fprintf(stderr, "--atlas: on|off\n"); return 2; }
+        }
+        else if (a == "--row-present") {
+            std::string v = val();
+            if (v == "on") row_present = 1;
+            else if (v == "off") row_present = 0;
+            else { std::fprintf(stderr, "--row-present: on|off\n"); return 2; }
+        }
+        else if (a == "--atlas-nbr") {
+            std::string v = val();
+            if (v == "on") atlas_nbr = 1;
+            else if (v == "off") atlas_nbr = 0;
+            else { std::fprintf(stderr, "--atlas-nbr: on|off\n"); return 2; }
+        }
+        else if (a == "--atlas-skip-margin") atlas_skip_margin = std::atoi(val());
+        else if (a == "--atlas-picture-disp")
+            atlas_picture_disp = std::atoi(val());
+        else if (a == "--atlas-picture-spacing")
+            atlas_picture_spacing = std::atoi(val());
+        else if (a == "--atlas-picture-period")
+            atlas_picture_period = std::atoi(val());
+        else if (a == "--atlas-base") atlas_base_path = val();
+        else if (a == "--atlas-base-margin")
+            atlas_base_margin = std::atoi(val());
+        else if (a == "--atlas-coarse") coarse_level = std::atoi(val());
+        else if (a == "--atlas-coarse-budget")
+            coarse_budget = std::atoi(val());
+        else if (a == "--atlas-coarse-stats") coarse_stats_path = val();
+        else if (a == "--atlas-gen-max") atlas_gen_max = std::atoi(val());
+        else if (a == "--atlas-dump") atlas_dump = val();
         else if (a == "--eyes") eyes = std::atoi(val());
         else if (a == "--poses") poses_path = val();
         else if (a == "--skip-map") skipmap_path = val();
@@ -620,6 +738,13 @@ int main(int argc, char **argv) {
     }
 
     nxvc_config cfg;
+    BaseRefresh brefresh;
+    std::FILE *fatlas = nullptr;
+    std::vector<uint8_t> atlas_buf;
+    if (!atlas_dump.empty()) {
+        fatlas = std::fopen(atlas_dump.c_str(), "wb");
+        if (!fatlas) { std::perror("open --atlas-dump"); return 1; }
+    }
     nxvc_config_default(&cfg);
     cfg.width = (uint32_t)(W / eyes);
     cfg.height = (uint32_t)H;
@@ -633,6 +758,22 @@ int main(int argc, char **argv) {
     cfg.chroma_weight_q8 = (uint32_t)chroma_weight;
     cfg.near_skip = (uint32_t)near_skip;
     cfg.quad_mv = (uint32_t)quad_mv;
+    cfg.atlas = (uint32_t)atlas;
+    cfg.atlas_nbr = (uint32_t)atlas_nbr;
+    cfg.atlas_skip_margin =
+        (uint32_t)(atlas_skip_margin > 0 ? atlas_skip_margin : 0);
+    cfg.row_present = (uint32_t)row_present;
+    cfg.atlas_gen_max = (uint32_t)(atlas_gen_max > 0 ? atlas_gen_max : 0);
+    cfg.atlas_picture_disp =
+        (uint32_t)(atlas_picture_disp > 0 ? atlas_picture_disp : 0);
+    cfg.atlas_picture_min_spacing =
+        (uint32_t)(atlas_picture_spacing > 0 ? atlas_picture_spacing : 0);
+    cfg.atlas_picture_period =
+        (uint32_t)(atlas_picture_period > 0 ? atlas_picture_period : 0);
+    // 13.12.3: a STATIC_MV entry is held unwarped, so a head-locked tile may
+    // be skipped.  On by default with the atlas -- it is the one behavioural
+    // change to an existing mode and it is a strict gain.
+    cfg.atlas_static_skip = (uint32_t)atlas;
     cfg.ref_sel = (uint32_t)(ref_sel < 0 ? 0 : (ref_sel > 2 ? 2 : ref_sel));
     cfg.mv_range = (uint32_t)(mv_range > 0 ? mv_range : 16);
     cfg.threads = (uint32_t)(threads > 0 ? threads : 0);
@@ -715,6 +856,20 @@ int main(int argc, char **argv) {
 
     nxvc_tile_layout tl;
     nxvc_tile_layout_get_ex(cfg.width, cfg.height, cfg.eyes, &tl);
+    if (!atlas_base_path.empty()) {
+        if (!atlas || eyes != 1) {
+            std::fprintf(stderr,
+                         "--atlas-base needs --atlas on and a one-eye stream\n");
+            return 1;
+        }
+        if (!brefresh.open(atlas_base_path, cfg.width, cfg.height,
+                           (uint32_t)(atlas_base_margin > 0 ? atlas_base_margin
+                                                            : 0),
+                           tl.tile_count)) {
+            std::perror("open --atlas-base");
+            return 1;
+        }
+    }
     const size_t cw = cfg.chroma == NXVC_CHROMA_444 ? (size_t)W : (size_t)((W + 1) / 2);
     const size_t chh = cfg.chroma == NXVC_CHROMA_444 ? (size_t)H : (size_t)((H + 1) / 2);
     const size_t ysz = (size_t)W * H, csz = cw * chh;
@@ -784,6 +939,10 @@ int main(int argc, char **argv) {
     }
 
     std::vector<uint8_t> Y(ysz), U(csz), V(csz);
+    // Per-tile coarse debt: 1 while a tile's atlas entry holds upsampled
+    // res_level > 0 pixels that no later frame has refined yet.
+    std::vector<uint8_t> coarse_debt(tl.tile_count, 0);
+    uint64_t c_landed = 0, c_refined = 0, c_relanded_dirty = 0, c_coded_full = 0;
     std::vector<uint8_t> rmap(tl.tile_count), qmap(tl.tile_count),
         smap(tl.tile_count);
     std::vector<uint8_t> outbuf(ysz * 4 + csz * 8 + (1u << 20));
@@ -826,6 +985,29 @@ int main(int argc, char **argv) {
         }
         const uint8_t *rm = nullptr, *qm = nullptr;
         if (fr && read_exact(fr, rmap.data(), rmap.size())) rm = rmap.data();
+        // TWO-LEVEL REFRESH: the whole policy, as a res_map.
+        //   a tile with no coarse debt   -> res_level R  (land it cheap)
+        //   a tile carrying coarse debt  -> res_level 0  (refine it)
+        // Whether either actually happens is the encoder's RD decision: a
+        // tile only lands if it is being refreshed at all, and a coarse tile
+        // only refines if its upsampled pixels are a bad enough predictor to
+        // be worth coding.  The budget caps how many may refine in one frame.
+        if (coarse_level > 0) {
+            int spent = 0;
+            for (uint32_t t = 0; t < (uint32_t)tl.tile_count; ++t) {
+                if (coarse_debt[t]) {
+                    if (coarse_budget == 0 || spent < coarse_budget) {
+                        rmap[t] = 0;
+                        ++spent;
+                    } else {
+                        rmap[t] = (uint8_t)coarse_level;   // wait its turn
+                    }
+                } else {
+                    rmap[t] = (uint8_t)coarse_level;
+                }
+            }
+            rm = rmap.data();
+        }
         if (fq && read_exact(fq, qmap.data(), qmap.size())) qm = qmap.data();
         if (fs && read_exact(fs, smap.data(), smap.size()))
             nxvc_encoder_set_skip_map(enc, smap.data(), (uint32_t)smap.size());
@@ -864,6 +1046,73 @@ int main(int argc, char **argv) {
         }
         std::fwrite(outbuf.data(), 1, ol, fo);
         total += ol;
+        // TWO-LEVEL accounting, read back from what the encoder actually did.
+        if (coarse_level > 0) {
+            uint32_t tc2 = 0;
+            const nxvc_tile_info *ti2 = nxvc_encoder_tiles(enc, &tc2);
+            for (uint32_t t = 0; t < tc2 && t < (uint32_t)tl.tile_count; ++t) {
+                if (ti2[t].skipped) continue;          // untouched this frame
+                if (ti2[t].res_level > 0) {
+                    // A coarse landing.  If the tile already carried debt, its
+                    // previous coarse pixels are being REPLACED before anyone
+                    // refined them: those bytes bought nothing that survived.
+                    if (coarse_debt[t]) ++c_relanded_dirty;
+                    coarse_debt[t] = 1;
+                    ++c_landed;
+                } else {
+                    if (coarse_debt[t]) ++c_refined;   // the refinement
+                    else ++c_coded_full;
+                    coarse_debt[t] = 0;
+                }
+            }
+        }
+        // Base-layer refresh, applied AFTER the frame and BEFORE the dump so
+        // the dump covers the patched atlas -- which is what the decoder will
+        // dump too, and therefore what proves the two agree.
+        if (brefresh.f &&
+            !brefresh.step(
+                (uint32_t)n,
+                [&](uint32_t m, uint8_t *o, uint32_t c, uint32_t *ns) {
+                    return nxvc_encoder_atlas_stale_tiles(enc, m, o, c, ns);
+                },
+                [&](const nxvc_base_patch *pp, uint32_t *ap, uint32_t *su) {
+                    return nxvc_encoder_atlas_patch_base(enc, pp, ap, su);
+                })) {
+            std::fprintf(stderr, "base refresh failed at frame %d\n", n);
+            return 1;
+        }
+        // The NORMATIVE output under the atlas: dump the per-tile table so a
+        // test can compare it against the decoder's, byte for byte (13.12.1).
+        if (fatlas) {
+            const size_t nb = nxvc_encoder_atlas_table_size(enc);
+            if (nb) {
+                atlas_buf.resize(nb);
+                if (nxvc_encoder_atlas_table(enc, atlas_buf.data(), nb) ==
+                    NXVC_OK)
+                    std::fwrite(atlas_buf.data(), 1, nb, fatlas);
+                uint8_t dg[32];
+                atlas_digest(atlas_plane_shim, enc, dg);
+                std::fwrite(dg, 1, sizeof(dg), fatlas);
+                if (std::getenv("NXV_ATLAS_TILEDIG")) {
+                    uint32_t w=0,h=0,stq=0;
+                    const uint16_t *d1 = atlas_plane_shim(enc, 1, &w, &h, &stq);
+                    for (uint32_t ty2 = 0; ty2 * 32 < h; ++ty2)
+                      for (uint32_t tx2 = 0; tx2 * 32 < w; ++tx2) {
+                        uint64_t hh = 1469598103934665603ull;
+                        for (uint32_t y = 0; y < 32; ++y)
+                          for (uint32_t x = 0; x < 32; ++x) {
+                            uint32_t gy = ty2*32+y, gx = tx2*32+x;
+                            uint16_t v = (gy<h&&gx<w)? d1[(size_t)gy*stq+gx] : 0;
+                            hh = (hh ^ (v & 0xff)) * 1099511628211ull;
+                            hh = (hh ^ (v >> 8)) * 1099511628211ull;
+                          }
+                        uint8_t b[8];
+                        for (int k=0;k<8;k++) b[k]=(uint8_t)(hh>>(8*k));
+                        std::fwrite(b,1,8,fatlas);
+                      }
+                }
+            }
+        }
         if (drv) {
             uint32_t tc = 0;
             const nxvc_tile_info *ti = nxvc_encoder_tiles(enc, &tc);
@@ -940,6 +1189,18 @@ int main(int argc, char **argv) {
                             "(%+.2f %%)\n",
                             pred, act, act > 0 ? (pred - act) / act * 100.0 : 0.0);
             }
+            // ADR-0029: what the atlas maintenance cost this frame, as counts.
+            // A rebase (13.12.10) is 34 us a tile on the Pico 4 and a
+            // base-sourced refresh is 1.9 us a tile, so these two numbers ARE
+            // the GPU cost model -- there is nothing to estimate.
+            if (st2.atlas_rebased || st2.tiles_base_refreshed ||
+                st2.tiles_margin_forced)
+                std::printf("  atlas: rebase %llu (%llu tiles), base refresh "
+                            "%llu tiles, margin-forced %llu tiles\n",
+                            (unsigned long long)st2.atlas_rebased,
+                            (unsigned long long)st2.tiles_rebased,
+                            (unsigned long long)st2.tiles_base_refreshed,
+                            (unsigned long long)st2.tiles_margin_forced);
             std::printf("  res levels 0/1/2: %llu / %llu / %llu\n",
                         (unsigned long long)st2.tiles_res[0],
                         (unsigned long long)st2.tiles_res[1],
@@ -947,8 +1208,29 @@ int main(int argc, char **argv) {
         }
         ++n;
     }
+    if (fatlas) std::fclose(fatlas);
     std::fclose(fo);
     std::fclose(fi);
+    if (coarse_level > 0 && !coarse_stats_path.empty()) {
+        uint64_t outstanding = 0;
+        for (uint32_t t = 0; t < (uint32_t)tl.tile_count; ++t)
+            outstanding += coarse_debt[t] ? 1u : 0u;
+        std::FILE *cs = std::fopen(coarse_stats_path.c_str(), "wb");
+        if (cs) {
+            std::fprintf(cs,
+                         "{\"coarse_level\": %d, \"budget\": %d, "
+                         "\"landed\": %llu, \"refined\": %llu, "
+                         "\"relanded_before_refine\": %llu, "
+                         "\"coded_full\": %llu, \"outstanding\": %llu}\n",
+                         coarse_level, coarse_budget,
+                         (unsigned long long)c_landed,
+                         (unsigned long long)c_refined,
+                         (unsigned long long)c_relanded_dirty,
+                         (unsigned long long)c_coded_full,
+                         (unsigned long long)outstanding);
+            std::fclose(cs);
+        }
+    }
     if (fr) std::fclose(fr);
     if (fq) std::fclose(fq);
     if (fs) std::fclose(fs);

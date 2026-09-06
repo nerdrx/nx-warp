@@ -672,6 +672,13 @@ int main() {
         cfg.inter = 1;
         cfg.intra_period = 8;
         cfg.planar = 2;
+        // ATLAS as well on the second pass: under it a coded tile seeds an
+        // atlas entry instead of writing the ring, and a planar tile is a
+        // coded tile.  That composition is one line in each of the encoder and
+        // the decoder and it was resolved by hand when 13.12 and 13.13 met, so
+        // it is worth a test rather than an argument.
+        for (int atlas = 0; atlas <= 1; ++atlas) {
+        cfg.atlas = (uint32_t)atlas;
         nxvc_status st;
         nxvc_encoder *e = nxvc_encoder_create(&cfg, &st);
         CHECK(e != nullptr, "inter+planar encoder create: %s",
@@ -715,14 +722,23 @@ int main() {
                 CHECK(nxvc_decoder_decode_frame(d, fb.data(), ol, &oi,
                                                 &consumed) == NXVC_OK,
                       "inter+planar decode frame %d", f);
-                for (int pl = 0; pl < 3; ++pl)
-                    CHECK(out.p[pl] == shadow.p[pl],
-                          "inter+planar frame %d: decoder differs from the "
-                          "encoder's shadow on plane %d", f, pl);
+                // The shadow comparison is meaningful only without ATLAS:
+                // under it the normative output is the atlas and the picture
+                // the decoder writes is the non-normative display of 13.12.5,
+                // which the encoder's shadow is not.  What the atlas pass
+                // checks is that the stream codes, parses and reconstructs at
+                // all -- which is exactly what the hand-resolved branch does.
+                if (!atlas)
+                    for (int pl = 0; pl < 3; ++pl)
+                        CHECK(out.p[pl] == shadow.p[pl],
+                              "inter+planar frame %d: decoder differs from the "
+                              "encoder's shadow on plane %d", f, pl);
             }
-            CHECK(saw_planar, "no planar tile in the inter stream");
+            CHECK(saw_planar, "no planar tile in the inter stream (atlas %d)",
+                  atlas);
             nxvc_decoder_destroy(d);
             nxvc_encoder_destroy(e);
+        }
         }
     }
     return test_report("test_codec");
