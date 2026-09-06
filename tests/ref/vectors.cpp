@@ -683,17 +683,20 @@ struct AtlasSpec {
     int base;          // 1 = a base-sourced patch between the last two units
     int base_ahead;    // how far the patch's src_frame runs ahead of the
                        //   stream; > 0 supersedes the next frame's tiles
+    int pic_disp;      // 13.12.11: PICTURE frame once the worst corner
+                       //   displacement passes this many luma samples
+    int pic_period;    // 13.12.11: a PICTURE frame every N frames
 };
 
 static const AtlasSpec kAtlasVectors[] = {
     // name                     fixes                          w    h ey 444 qp fr per   yaw  pan obj nbr rp ns qm base ahead
-    {"v82_atlas_warp",          "13.12 warp + skip",         128, 128, 1, 1, 26, 6, 999,  0.7, 2.0, 3,  0, 0, 0, 0, 0, 0},
-    {"v83_atlas_420",           "13.12 on 4:2:0",            128, 128, 1, 0, 26, 5, 999,  1.5, 3.0, 3,  0, 0, 0, 0, 0, 0},
-    {"v84_atlas_refresh_eff",   "13.12 + 13.9 + 13.10",      128, 128, 1, 1, 28, 8,   4,  0.8, 1.5, 3,  0, 1, 1, 1, 0, 0},
-    {"v85_atlas_nbr",           "13.12.8 neighbour gather",  128, 128, 1, 1, 26, 6, 999,  4.5, 6.0, 2,  1, 0, 0, 0, 0, 0},
-    {"v86_atlas_row_present",   "13.12 + 3.1.2",             128, 128, 1, 1, 26, 6, 999,  0.2, 0.0, 0,  0, 1, 0, 0, 0, 0},
-    {"v87_atlas_base_sourced",  "13.12.9 base patch",        128, 128, 1, 0, 26, 5, 999,  0.5, 1.0, 2,  0, 0, 0, 0, 1, 0},
-    {"v88_atlas_superseded",    "13.12.3 superseded",        128, 128, 1, 0, 26, 5, 999,  0.5, 1.0, 2,  0, 0, 0, 0, 1, 2},
+    {"v82_atlas_warp",          "13.12 warp + skip",         128, 128, 1, 1, 26, 6, 999,  0.7, 2.0, 3,  0, 0, 0, 0, 0, 0, 0, 0},
+    {"v83_atlas_420",           "13.12 on 4:2:0",            128, 128, 1, 0, 26, 5, 999,  1.5, 3.0, 3,  0, 0, 0, 0, 0, 0, 0, 0},
+    {"v84_atlas_refresh_eff",   "13.12 + 13.9 + 13.10",      128, 128, 1, 1, 28, 8,   4,  0.8, 1.5, 3,  0, 1, 1, 1, 0, 0, 0, 0},
+    {"v85_atlas_nbr",           "13.12.8 neighbour gather",  128, 128, 1, 1, 26, 6, 999,  4.5, 6.0, 2,  1, 0, 0, 0, 0, 0, 0, 0},
+    {"v86_atlas_row_present",   "13.12 + 3.1.2",             128, 128, 1, 1, 26, 6, 999,  0.2, 0.0, 0,  0, 1, 0, 0, 0, 0, 0, 0},
+    {"v87_atlas_base_sourced",  "13.12.9 base patch",        128, 128, 1, 0, 26, 5, 999,  0.5, 1.0, 2,  0, 0, 0, 0, 1, 0, 0, 0},
+    {"v88_atlas_superseded",    "13.12.3 superseded",        128, 128, 1, 0, 26, 5, 999,  0.5, 1.0, 2,  0, 0, 0, 0, 1, 2, 0, 0},
     // 3.1.2 at the VERSION 1 GRID.  The 128x128 vectors have two tile rows, so
     // their row_present bitmap is two bits of one byte and every constraint
     // about the bits above the last row structure is vacuous.  At 1088x1088
@@ -702,7 +705,28 @@ static const AtlasSpec kAtlasVectors[] = {
     // somewhere to go wrong.  The clip is static panels -- nothing moves --
     // which is both the case row_present exists for and the case that elides
     // the most rows.
-    {"v89_atlas_rp_1088",       "3.1.2 at the v1 grid",     1088,1088, 1, 0, 42, 4, 999,  0.1, 0.0, 0,  0, 1, 0, 0, 0, 0},
+    {"v89_atlas_rp_1088",       "3.1.2 at the v1 grid",     1088,1088, 1, 0, 42, 4, 999,  0.1, 0.0, 0,  0, 1, 0, 0, 0, 0, 0, 0},
+    // 13.12.11, the per-frame MODE SWITCH.  Three vectors, because the thing
+    // that can go wrong is not a mode but a TRANSITION.
+    //
+    // v90 forces a PICTURE frame every second frame, so the stream alternates
+    // and every unit is a transition in one direction or the other: it pins
+    // ATLAS -> PICTURE (assemble, reconstruct everything, rebuild the atlas)
+    // and PICTURE -> ATLAS (predict from an atlas whose entries are all
+    // identity and age 0) in one digest chain.
+    {"v90_mode_alternate",      "13.12.11 both transitions", 128, 128, 1, 1, 26, 6, 999,  2.0, 3.0, 3,  0, 0, 0, 0, 0, 0, 0, 2},
+    // v91 drives the switch from MOTION rather than from a period, which is
+    // what an encoder actually does: a displacement threshold on a clip that
+    // accelerates, so the PICTURE frames land where the head moves and the
+    // ATLAS runs are ragged.
+    {"v91_mode_disp",           "13.12.11 displacement",     192, 192, 1, 0, 32,16, 999,  0.5, 0.8, 0,  0, 0, 0, 0, 0, 0, 1, 0},
+    // v92 is the src_frame rule of 13.12.11 with a base patch in the same
+    // stream: after a PICTURE frame EVERY entry has src_frame = N and age 0,
+    // so a base patch carrying an older src_frame must be dropped by 13.12.9's
+    // monotonicity where before the PICTURE frame it would have applied.  If
+    // an implementation leaves src_frame alone on the materialised tiles, this
+    // vector's atlas differs.
+    {"v92_mode_src_frame",      "13.12.11 src_frame := N",   128, 128, 1, 0, 26, 6, 999,  3.0, 4.0, 2,  0, 0, 0, 0, 1, 0, 0, 3},
 };
 static const int kNumAtlasVectors =
     (int)(sizeof(kAtlasVectors) / sizeof(kAtlasVectors[0]));
@@ -766,6 +790,15 @@ static std::vector<uint8_t> atlas_bytes(size_t tbytes, Table tab, Plane plane) {
 
 struct AtlasResult : Result {
     int superseded_tiles = 0;
+    int picture_frames = 0;   // 13.12.11: frames that set flags bit 5
+    int atlas_frames = 0;
+    // Both TRANSITIONS, which is what a mode vector is for: an ATLAS frame
+    // followed by a PICTURE frame, and a PICTURE frame followed by an ATLAS
+    // frame.  Counting the two modes is not enough -- a stream whose only
+    // PICTURE frame is its last one has no PICTURE -> ATLAS edge in it.
+    bool saw_atlas_to_picture = false;
+    bool saw_picture_to_atlas = false;
+    int prev_mode = -1;       // 0 = ATLAS, 1 = PICTURE
     int base_applied = 0;
 };
 
@@ -815,6 +848,20 @@ static AtlasResult decode_atlas(const AtlasSpec &v,
         const nxvc_tile_info *ti = nxvc_decoder_tiles(d, &tc);
         for (uint32_t t = 0; t < tc; ++t)
             if (ti[t].superseded) ++r.superseded_tiles;
+        {
+            // 13.12.11: which MODE this frame was, read back from the decoder
+            // rather than from the encoder's intent.
+            nxvc_frame_info dfi{};
+            if (nxvc_decoder_frame_info(d, &dfi) == NXVC_OK) {
+                const int mode = (dfi.flags & 0x20) ? 1 : 0;
+                if (mode) ++r.picture_frames; else ++r.atlas_frames;
+                if (r.prev_mode == 0 && mode == 1)
+                    r.saw_atlas_to_picture = true;
+                if (r.prev_mode == 1 && mode == 0)
+                    r.saw_picture_to_atlas = true;
+                r.prev_mode = mode;
+            }
+        }
         const size_t tb = nxvc_decoder_atlas_table_size(d);
         auto snap = [&]() {
             std::vector<uint8_t> b = atlas_bytes(
@@ -881,6 +928,8 @@ static AtlasResult build_atlas(const AtlasSpec &v) {
     cfg.atlas_static_skip = 1;
     cfg.atlas_nbr = (uint32_t)v.nbr;
     cfg.row_present = (uint32_t)v.row_present;
+    cfg.atlas_picture_disp = (uint32_t)v.pic_disp;
+    cfg.atlas_picture_period = (uint32_t)v.pic_period;
     cfg.intra_period = (uint32_t)v.iperiod;
     cfg.custom_tables = 0;
     cfg.split4x4 = 0;
@@ -953,6 +1002,10 @@ static AtlasResult build_atlas(const AtlasSpec &v) {
     if (!dec.ok) { r.err = dec.err; return r; }
     r.decoded_md5 = dec.decoded_md5;
     r.superseded_tiles = dec.superseded_tiles;
+    r.picture_frames = dec.picture_frames;
+    r.atlas_frames = dec.atlas_frames;
+    r.saw_atlas_to_picture = dec.saw_atlas_to_picture;
+    r.saw_picture_to_atlas = dec.saw_picture_to_atlas;
     r.ok = true;
     return r;
 }
@@ -1547,6 +1600,20 @@ int main(int argc, char **argv) {
             }
             if (v.base && r.base_applied == 0) {
                 std::fprintf(stderr, "%s: no base patch applied\n", v.name);
+                return 1;
+            }
+            // 13.12.11: a mode vector must contain BOTH kinds of frame, or it
+            // pins one mode and calls itself a transition test.  This is the
+            // guard `v86` did not have, and `v86` is why it exists.
+            if ((v.pic_disp || v.pic_period) &&
+                (!r.saw_atlas_to_picture || !r.saw_picture_to_atlas)) {
+                std::fprintf(stderr,
+                             "%s: %d PICTURE / %d ATLAS frames, "
+                             "ATLAS->PICTURE %s, PICTURE->ATLAS %s -- a mode "
+                             "vector must contain BOTH transitions\n",
+                             v.name, r.picture_frames, r.atlas_frames,
+                             r.saw_atlas_to_picture ? "yes" : "NO",
+                             r.saw_picture_to_atlas ? "yes" : "NO");
                 return 1;
             }
             std::string path = dir + "/" + v.name + ".nxv";
