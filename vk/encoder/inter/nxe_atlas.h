@@ -416,6 +416,29 @@ void atlas_display_luma(const AtlasTable &at, const uint16_t *atlas, int stride,
 double atlas_corner_disp(const AtlasTable &at, uint32_t tile, int eye_w,
                          int height);
 
+/* [SYN] 13.12.11.1, the mode trigger: the WORST corner displacement in the
+ * atlas INCLUDING this frame's advance.
+ *
+ * `H` is THIS frame's matrix, not the previous frame's, and that is the detail
+ * the clause calls load-bearing.  Measuring the atlas as it stands caps the
+ * PICTURE rate at 50 % under sustained motion for a reason that is purely an
+ * artefact of the measurement: the frame right after a PICTURE frame always
+ * reads zero, because the materialisation just set every `C` to the identity,
+ * so the trigger alternates fire / no-fire however fast the head is moving.
+ * The reference measured 47 % of frames with the stale metric against 81 %
+ * with this one, same content and same threshold.  An encoder must therefore
+ * derive `warp_ext()` BEFORE it decides the mode.
+ *
+ * The advance runs ON A COPY: the decision must not disturb the atlas the
+ * frame is about to be coded against.  Entries the advance invalidates -- a
+ * composition that overflows the 2^33 guard or leaves the envelope -- are
+ * skipped, as are invalid and `static` ones, which is what `atlas_corner_disp`
+ * already returns 0 for.  It is deliberately the SAME quantity the
+ * displacement-bounded skip and 13.12.9's staleness rule use, so there is one
+ * function to get right rather than three. */
+double atlas_worst_disp_after(const AtlasTable &at, const int32_t H[2][9],
+                              int eye_w, int height);
+
 /* ------------------------------------------- Cheat 3: refresh priority
  *
  * The rolling refresh of `refresh_due()` re-codes a fixed, staggered fraction

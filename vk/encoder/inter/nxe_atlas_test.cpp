@@ -588,6 +588,85 @@ void check_materialised_boundary() {
     }
 }
 
+/* [SYN] 13.12.11.1, the mode trigger.  The property that carries the clause is
+ * that the metric includes THIS frame's advance -- measuring the atlas as it
+ * stands reads zero on the frame right after a PICTURE frame, because the
+ * materialisation just set every C to the identity, and the trigger then
+ * alternates fire / no-fire however fast the head is moving. */
+void check_picture_trigger() {
+    const nxe::AtlasGeom g = geom_1088(1);
+    nxe::AtlasTable at;
+    at.reset(g);
+    for (uint32_t t = 0; t < (uint32_t)at.e.size(); ++t)
+        at.code_tile(t, 0, nxvw::kModeWarpMv, 0);
+
+    int32_t I2[2][9];
+    nxe::atlas_identity(I2[0]);
+    nxe::atlas_identity(I2[1]);
+    /* A freshly coded atlas is at the identity everywhere, so it is not
+     * displaced at all -- and with an identity advance it still is not. */
+    CHECK(nxe::atlas_worst_disp_after(at, I2, g.width, g.height) == 0.0,
+          "an identity advance over an identity atlas is displaced");
+
+    /* A real translation.  The metric must see it on THIS call, from an atlas
+     * that is still entirely at the identity -- which is precisely the state
+     * the frame after a PICTURE frame is in. */
+    int32_t H[2][9];
+    nxe::atlas_identity(H[0]);
+    nxe::atlas_identity(H[1]);
+    H[0][2] += 40 << nxvw::kWarpQNum;   /* 40 luma samples */
+    H[1][2] += 40 << nxvw::kWarpQNum;
+    const double d1 = nxe::atlas_worst_disp_after(at, H, g.width, g.height);
+    CHECK(d1 > 0.0,
+          "the trigger read zero on an atlas at the identity, so it is "
+          "measuring the atlas as it stands and not this frame's advance -- "
+          "the failure 13.12.11.1 names, which caps the PICTURE rate at 50%%");
+    /* The stale metric is what `atlas_corner_disp` alone reports over the
+     * un-advanced table: zero here.  The two must NOT agree. */
+    double stale = 0.0;
+    for (uint32_t t = 0; t < (uint32_t)at.e.size(); ++t) {
+        const double d = nxe::atlas_corner_disp(at, t, g.width, g.height);
+        if (d > stale) stale = d;
+    }
+    CHECK(stale == 0.0, "fixture assumption: the un-advanced atlas is at rest");
+
+    /* THE COPY.  The probe must not disturb the atlas the frame is about to be
+     * coded against: every entry is still at the identity and still gen 0. */
+    int32_t Ident[9];
+    nxe::atlas_identity(Ident);
+    for (uint32_t t = 0; t < (uint32_t)at.e.size(); ++t) {
+        CHECK(at.e[t].gen == 0, "the trigger advanced the real table (gen)");
+        for (int k = 0; k < 9; ++k)
+            CHECK(at.e[t].C[k] == Ident[k],
+                  "the trigger advanced the real table (C)");
+    }
+
+    /* Monotone in the motion, which is what makes D a usable threshold. */
+    int32_t H2[2][9];
+    nxe::atlas_identity(H2[0]);
+    nxe::atlas_identity(H2[1]);
+    H2[0][2] += 80 << nxvw::kWarpQNum;
+    H2[1][2] += 80 << nxvw::kWarpQNum;
+    const double d2 = nxe::atlas_worst_disp_after(at, H2, g.width, g.height);
+    CHECK(d2 > d1, "twice the translation did not read as more displacement "
+                   "(%f vs %f)", d2, d1);
+
+    /* A STATIC entry is never displaced, so an all-static atlas never fires --
+     * which is what keeps a scene of head-locked panels on ATLAS frames. */
+    nxe::AtlasTable st;
+    st.reset(g);
+    for (uint32_t t = 0; t < (uint32_t)st.e.size(); ++t)
+        st.code_tile(t, 0, nxvw::kModeStaticMv, 0);
+    CHECK(nxe::atlas_worst_disp_after(st, H2, g.width, g.height) == 0.0,
+          "a head-locked atlas triggered a PICTURE frame");
+
+    /* And an empty (all-invalid) atlas has nothing to be stale. */
+    nxe::AtlasTable empty;
+    empty.reset(g);
+    CHECK(nxe::atlas_worst_disp_after(empty, H2, g.width, g.height) == 0.0,
+          "an invalid atlas triggered a PICTURE frame");
+}
+
 void check_table_rules() {
     const nxe::AtlasGeom g = geom_1088(2);
     nxe::AtlasTable at;
@@ -801,6 +880,7 @@ int main() {
     check_base_sourced();
     check_picture_frame();
     check_materialised_boundary();
+    check_picture_trigger();
     check_table_rules();
     check_static_skip();
     check_envelope_is_the_staleness_bound();

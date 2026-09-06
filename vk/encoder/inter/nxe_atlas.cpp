@@ -415,6 +415,26 @@ void atlas_display_luma(const AtlasTable &at, const uint16_t *atlas, int stride,
     }
 }
 
+double atlas_worst_disp_after(const AtlasTable &at, const int32_t H[2][9],
+                              int eye_w, int height) {
+    /* "ON A COPY" ([SYN] 13.12.11.1).  The decision must not disturb the atlas
+     * the frame is about to be coded against, and `advance()` mutates -- it
+     * composes every C, ticks every gen, and invalidates whatever leaves the
+     * envelope.  A table is `ntiles` 64-byte records, 18 KB at the v1
+     * configuration, so copying it once a frame is cheaper than any scheme for
+     * undoing it. */
+    AtlasTable probe = at;
+    probe.advance(H);
+    double worst = 0.0;
+    for (uint32_t t = 0; t < (uint32_t)probe.e.size(); ++t) {
+        /* Invalid, static, and advance-invalidated entries all come back 0
+         * from here, which is exactly the clause's three `continue`s. */
+        const double d = atlas_corner_disp(probe, t, eye_w, height);
+        if (d > worst) worst = d;
+    }
+    return worst;
+}
+
 double atlas_corner_disp(const AtlasTable &at, uint32_t tile, int eye_w,
                          int height) {
     if (tile >= at.e.size()) return 0.0;

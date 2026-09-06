@@ -166,6 +166,26 @@ struct Config {
      * distance plus age.  0 is no cap, which passes every refresh candidate
      * through and leaves every stream byte-identical. */
     int atlas_refresh_cap = 0;
+    /* [SYN] 13.12.11 / 13.12.11.1, the per-frame MODE.  `atlas_mode` turns the
+     * two-mode atlas on -- tool bit 34, and frame flags bit 5 carries which
+     * mode each frame is.  Off leaves every frame an ATLAS frame, which is
+     * 13.12 exactly as it was and leaves every existing stream
+     * byte-identical.
+     *
+     * `atlas_picture_d` is the trigger's threshold `D` in LUMA SAMPLES: a
+     * PICTURE frame is coded when the worst corner displacement in the atlas,
+     * including this frame's advance, exceeds it.  The reference's sweep
+     * settled on 8 (adr-0029, "the switching policy, measured"), which is the
+     * default here; a rate controller that must bound the PICTURE rate raises
+     * it.
+     *
+     * There is NO minimum spacing `S`.  The clause allows one and the sweep
+     * rejected it: spacing throttles refresh exactly when refresh is needed,
+     * -4.7 dB at S=2 on the fast turn.  So it is not implemented rather than
+     * implemented and defaulted off, because a knob that is always wrong is a
+     * knob someone will eventually set. */
+    bool atlas_mode = false;
+    int atlas_picture_d = 8;
     /* Print each frame's tile mode census.  Reporting only; it changes no
      * stream and is off unless asked for. */
     bool mode_census = false;

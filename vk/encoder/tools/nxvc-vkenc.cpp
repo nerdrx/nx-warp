@@ -75,6 +75,11 @@ static void usage() {
         "  --display-psnr       PSNR-Y of the DISPLAYED picture vs the source\n"
         "                       (under --atlas, one warp from the atlas)\n"
         "  --atlas              the per-tile atlas reference, tool bit 31\n"
+        "  --atlas-mode         the atlas as a per-frame MODE, tool bit 34\n"
+        "                       ([SYN] 13.12.11): each frame is an ATLAS\n"
+        "                       frame or a PICTURE frame.  Needs --atlas\n"
+        "  --atlas-picture-d N  the mode trigger threshold D in luma\n"
+        "                       samples (default 8, ADR-0029 sweep)\n"
         "  --atlas-dump P       write the encoder's shadow atlas after each\n"
         "                       frame to P: the 64-byte records of [SYN]\n"
         "                       13.12.1 followed by a 32-byte digest of the\n"
@@ -190,6 +195,8 @@ int main(int argc, char **argv) {
         else if (a == "--coded-vectors") cfg.int_coded_vectors = true;
         else if (a == "--ref-sel") cfg.ref_sel = std::atoi(val());
         else if (a == "--atlas") cfg.atlas = true;
+        else if (a == "--atlas-mode") cfg.atlas_mode = true;
+        else if (a == "--atlas-picture-d") cfg.atlas_picture_d = std::atoi(val());
         else if (a == "--row-present") cfg.row_present = true;
         else if (a == "--atlas-dump") atlas_dump = val();
         else if (a == "--atlas-layout-selftest") atlas_layout_selftest = true;

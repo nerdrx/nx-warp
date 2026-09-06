@@ -292,6 +292,40 @@ typedef struct nxvc_vke_create_info {
      * nothing for a caller to do about it.  Refused at create() if `inter` is
      * clear, or if `ref_sel` is not 0. */
     uint32_t atlas;
+
+    /* ATLAS_REBASE, tool bit 34: the atlas becomes a per-frame MODE
+     * ([SYN] 13.12.11).  Requires `atlas`.
+     *
+     * With it set, every frame is coded either as an ATLAS frame -- 13.12 as
+     * written, the reference is the per-tile atlas, a skipped tile costs
+     * nothing -- or as a PICTURE frame, which is decoded by the ORDINARY
+     * non-ATLAS process against one coherent picture assembled from the atlas,
+     * and whose reconstruction then BECOMES the atlas.  Frame flags bit 5
+     * carries which, so a decoder needs no policy at all.
+     *
+     * The point of the pair is that these are the same codec at two operating
+     * points, not two codecs.  An ATLAS frame buys the 8.8 ms an eye that
+     * skipped tiles cost in the picture model, at the price of a reference
+     * assembled from tiles captured at different times; a PICTURE frame pays
+     * that time and gets a reference with no such disagreement in it.  Which
+     * is worth more depends on how fast the head is moving, which is a
+     * per-frame question.
+     *
+     * Leaving this clear leaves every frame an ATLAS frame and every existing
+     * stream byte-identical. */
+    uint32_t atlas_mode;
+
+    /* The mode trigger's threshold `D`, in LUMA SAMPLES ([SYN] 13.12.11.1).
+     * A PICTURE frame is coded when the worst corner displacement in the
+     * atlas, INCLUDING this frame's advance, exceeds it.
+     *
+     * 0 selects the default, which is 8 -- the value ADR-0029's sweep settled
+     * on.  Lower fires more often and costs the picture model's time more
+     * often; higher bounds the PICTURE rate at the price of a staler mosaic.
+     * A rate controller that must cap the PICTURE rate raises this.
+     *
+     * Ignored unless `atlas_mode` is set. */
+    uint32_t atlas_picture_d;
     /* --- how hard the encoder looks (nxvc_vke_effort below).
      *
      * Encoder-side only: it changes which levels are coded, never how they

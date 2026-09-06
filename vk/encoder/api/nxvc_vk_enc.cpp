@@ -261,6 +261,12 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_create(const nxvc_vke_create_info *ci
     e->cfg.ref_sel = ci->inter != 0 ? int(ci->ref_sel) : 0;
     e->cfg.ref_confirm = ci->inter != 0 && ci->ref_confirm != 0;
     e->cfg.atlas = ci->inter != 0 && ci->atlas != 0;
+    e->cfg.atlas_mode = e->cfg.atlas && ci->atlas_mode != 0;
+    /* 0 means "the default", which is the reference's swept value.  Spelled
+     * here rather than in the Config default so that a caller passing a
+     * zeroed create_info gets the same 8 the harness does. */
+    e->cfg.atlas_picture_d =
+        ci->atlas_picture_d ? (int)ci->atlas_picture_d : 8;
     /* Effort 1 is the integer requantiser and nothing else, so the level maps
      * to one config field.  It applies to intra and inter tiles alike -- it
      * is a quantiser decision, not a prediction one. */
