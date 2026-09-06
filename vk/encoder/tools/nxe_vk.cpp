@@ -470,6 +470,41 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
                 return false;
             views.push_back(d.ph[(size_t)i].view);
         }
+
+        /* Into GENERAL, once, here.  The descriptor written just below says
+         * VK_IMAGE_LAYOUT_GENERAL for all seven, and a descriptor's declared
+         * layout is a promise about the image at the moment the command that
+         * reads it executes -- not about whether the shader touches it.  These
+         * are created VK_IMAGE_LAYOUT_UNDEFINED and Pass B never writes them
+         * (it runs with kOutFormat == kOutNone), so nothing here ever moved
+         * them and every submit that bound this set was submitting seven
+         * images in the wrong layout: VUID-vkCmdDraw-None-09600, ten of them
+         * on a twelve-frame encode.
+         *
+         * One command buffer for all seven, at create time, so the encode path
+         * is untouched.  TOP_OF_PIPE with no access mask on either side is the
+         * correct pair for a layout transition out of UNDEFINED that discards
+         * whatever the contents were: there is nothing to make visible, and
+         * these images have no contents anybody wants. */
+        {
+            VkCommandBuffer cb = d.dev.begin();
+            VkImageMemoryBarrier bs[7]{};
+            for (int i = 0; i < 7; ++i) {
+                bs[i].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+                bs[i].srcAccessMask = 0;
+                bs[i].dstAccessMask = 0;
+                bs[i].oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+                bs[i].newLayout = VK_IMAGE_LAYOUT_GENERAL;
+                bs[i].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                bs[i].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                bs[i].image = d.ph[(size_t)i].img;
+                bs[i].subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+            }
+            vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                                 VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, 0,
+                                 nullptr, 0, nullptr, 7, bs);
+            if (!d.dev.submit_and_wait(cb, err)) return false;
+        }
         d.s_b = d.dev.allocate_set(d.pool, d.p_b.dsl);
         const VkBuffer N = VK_NULL_HANDLE;
         write_set_mixed(h, d.s_b,
