@@ -145,6 +145,10 @@ public:
     bool assemble_atlas_picture(Frame &f, const WarpBuildInfo &bi,
                                 uint32_t dst_slot, std::string &err);
 
+    /* Was the frame just encoded a PICTURE frame ([SYN] 13.12.11)?  For
+     * reporting only -- the bit is already in the stream. */
+    bool last_picture_frame() const;
+
     bool atlas_layout(nxvc_vke_atlas_layout &out) const;
 
     /* Build a patch buffer from `atlas_layout()` ALONE, copy a checkerboard of

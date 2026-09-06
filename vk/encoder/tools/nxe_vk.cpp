@@ -2291,6 +2291,8 @@ bool VkEncoder::assemble_atlas_picture(Frame &f, const WarpBuildInfo &bi_in,
     return true;
 }
 
+bool VkEncoder::last_picture_frame() const { return p_->picture_frame; }
+
 bool VkEncoder::atlas_layout(nxvc_vke_atlas_layout &out) const {
     const Impl &d = *p_;
     if (!d.ok || !d.atlas) return false;

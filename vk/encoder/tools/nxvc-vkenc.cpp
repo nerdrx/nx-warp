@@ -88,6 +88,8 @@ static void usage() {
         "                       under ATLAS; the stream is only how two\n"
         "                       implementations arrive at one\n"
         "                       ([SYN] 13.12).  Needs --inter; forces ref_sel 0\n"
+        "  --tile-map P         write every frame's per-tile decision to P\n"
+        "                       as CSV (frame,tile,row,col,eye,mode,picture)\n"
         "  --atlas-layout-selftest  check that a patch buffer built from\n"
         "                       nxvc_vk_encoder_atlas_layout() addresses the\n"
         "                       same samples the encoder's copies do, then exit\n"
@@ -174,6 +176,7 @@ int main(int argc, char **argv) {
      * reference the client now holds, and that is the divergence that shows up
      * as drift rather than as a broken frame. */
     const char *atlas_dump = nullptr;
+    const char *tile_map = nullptr;
     bool atlas_layout_selftest = false;
     /* A client that keeps up with only one frame in `hold_every`.  It drives
      * nxvc_vk_encoder_set_frame_held()'s half of the reference walk from the
@@ -217,6 +220,7 @@ int main(int argc, char **argv) {
         else if (a == "--atlas-picture-d") cfg.atlas_picture_d = std::atoi(val());
         else if (a == "--row-present") cfg.row_present = true;
         else if (a == "--atlas-dump") atlas_dump = val();
+        else if (a == "--tile-map") tile_map = val();
         else if (a == "--atlas-layout-selftest") atlas_layout_selftest = true;
         else if (a == "--atlas-disp-margin")
             cfg.atlas_disp_margin = std::atoi(val());
@@ -358,6 +362,16 @@ int main(int argc, char **argv) {
         fat = std::fopen(atlas_dump, "wb");
         if (!fat) { std::perror("open --atlas-dump"); return 1; }
     }
+    std::FILE *ftm = nullptr;
+    if (tile_map) {
+        ftm = std::fopen(tile_map, "w");
+        if (!ftm) { std::perror("open --tile-map"); return 1; }
+        /* `mode` is the nxvw value E1c settled on: 0 WARP_SKIP, 1 STATIC_MV,
+         * 2 WARP_MV, 3 INTRA.  `picture` is 1 on a frame [SYN] 13.12.11 coded
+         * as a PICTURE frame, which is a property of the FRAME and repeated on
+         * every one of its rows so a reader needs no join. */
+        std::fprintf(ftm, "frame,tile,row,col,eye,mode,picture\n");
+    }
 
     std::vector<uint8_t> hdr = nxe::stream_header(cfg, f);
     std::fwrite(hdr.data(), 1, hdr.size(), fo);
@@ -439,6 +453,7 @@ int main(int argc, char **argv) {
             std::fclose(fi);
             std::fclose(fo);
             if (fat) std::fclose(fat);
+    if (ftm) std::fclose(ftm);
             std::remove(cfg.out.c_str());
             return 77;
         }
@@ -462,6 +477,7 @@ int main(int argc, char **argv) {
             std::fclose(fi);
             std::fclose(fo);
             if (fat) std::fclose(fat);
+    if (ftm) std::fclose(ftm);
             std::remove(cfg.out.c_str());
             return 0;
         }
@@ -545,6 +561,18 @@ int main(int argc, char **argv) {
          * the term that does not amortise across display intervals.  It is
          * printed rather than derived from the stream because the stream does
          * not carry a mode histogram and reconstructing one means parsing. */
+        if (ftm && cfg.inter) {
+            const uint32_t cols = f.fp.tiles_x * f.fp.eyes;
+            const int pic = (!cfg.cpu_only && gpu.last_picture_frame()) ? 1 : 0;
+            for (uint32_t t = 0; t < f.fp.ntiles; ++t) {
+                const uint32_t row = t / cols;
+                const uint32_t rem = t % cols;
+                const uint32_t eye = rem / f.fp.tiles_x;
+                const uint32_t col = rem % f.fp.tiles_x;
+                std::fprintf(ftm, "%d,%u,%u,%u,%u,%u,%d\n", n, t, row, col,
+                             eye, f.jobs[t].mode, pic);
+            }
+        }
         if (cfg.mode_census && cfg.inter) {
             unsigned c[5] = {0, 0, 0, 0, 0};
             for (uint32_t t = 0; t < f.fp.ntiles; ++t) {
@@ -592,6 +620,7 @@ int main(int argc, char **argv) {
     std::fclose(fo);
     std::fclose(fi);
     if (fat) std::fclose(fat);
+    if (ftm) std::fclose(ftm);
 
     if (psnr_n)
         std::printf("displayed PSNR-Y: %.4f dB mean over %d frame(s)\n",

@@ -1353,6 +1353,95 @@ question for the mode decision — a gate that skips when the warp is good enoug
 codes whenever the displacement is large — and not for the atlas syntax, the switching policy, or
 the skip threshold, all three of which have now been swept and none of which moves it.
 
+### CORRECTION: the atlas is worth 2x under motion, and the missing variable was the coded-vector search
+
+**The section above is wrong, and this one supersedes it.** It concluded that on this encoder the
+atlas is a near-still optimisation worth nothing under motion. That conclusion was an artefact of
+running the GPU encoder with `--int-coded-vectors off`, which is the flag set the byte-identity acid
+tests use. With the coded-vector search ON the result reverses completely.
+
+**The rule that was supposedly missing was already there.** `E1c_decide.comp` implements the
+reference's warp-error skip gate exactly -- `sse * 786432 <= qstep^2 * skip_thresh * npix`, which is
+`skip_sse <= qnoise * (thresh/256) * npix` with the divisions cleared -- and `--int-decision on` is
+byte-identical to it. The GPU encoder never decided on displacement. So there was no "skip when the
+warp is good enough" rule to add.
+
+What was missing is what the reference does when that gate FAILS: it searches a coded VECTOR and
+compares, instead of falling through to the INTRA fallback. Measured on the reference at 1088x1088,
+16 frames, QP 26, `--atlas on`:
+
+| decision | fast turn | near-still |
+|---|---|---|
+| `--int-decision on --int-coded-vectors off` | 33.7889 dB / 2056508 B | 31.4356 dB / 1217492 B |
+| `--int-decision off` (full double RD) | 33.8356 dB / **159729 B** | 33.8699 dB / **162234 B** |
+
+Twelve times the rate at equal quality on the fast turn, and 7.5x the rate for 2.4 dB LESS at
+near-still. Every GPU-encoder measurement in the sections above was taken in that regime, where the
+decision dominates and swamps any atlas effect -- which is why the reference's shape never
+reproduced here.
+
+**With `--coded-vectors` the atlas's own claim reproduces.** Both arms, same content, the pose track
+the only variable, 1088x1088, 16 frames, QP 26:
+
+| head speed | picture (dB / B / skip) | atlas (dB / B / skip / coded per frame) | rate ratio |
+|---|---|---|---|
+| 0.00 °/f | 33.7889 / 144258 / 93.2 % | 33.7889 / 144258 / 93.2 % / 19.6 | 1.00x |
+| 0.05 °/f | 33.8417 / 328924 / 0.2 % | 33.8281 / 159559 / 86.5 % / 38.9 | **2.06x** |
+| 0.10 °/f | 33.8370 / 328754 / 0.0 % | 33.8300 / 159505 / 86.5 % / 38.9 | **2.06x** |
+| 0.20 °/f | 33.8370 / 328754 / 0.0 % | 33.8300 / 159505 / 86.5 % / 38.9 | **2.06x** |
+| 0.40 °/f | 33.8370 / 328754 / 0.0 % | 33.8300 / 159505 / 86.5 % / 38.9 | **2.06x** |
+| 0.80 °/f | 33.8370 / 328754 / 0.0 % | 33.8300 / 159505 / 86.5 % / 38.9 | **2.06x** |
+| 1.60 °/f | 33.8370 / 328754 / 0.0 % | 33.8300 / 159505 / 86.5 % / 38.9 | **2.06x** |
+| 2.50 °/f | 33.8370 / 328754 / 0.0 % | 33.8300 / 159505 / 86.5 % / 38.9 | **2.06x** |
+
+At rest the two models are identical. **The instant the head moves at all the picture model's skip
+rate collapses to zero and its rate doubles, while the atlas holds 86.5 % skip and its rate does
+not move.** The mechanism is the one the ADR claimed from the start: the picture model's reference
+is the previous RECONSTRUCTION, so every skipped tile re-warps an already-warped picture and the
+chained blur pushes the prediction error over the gate within one frame of motion; an atlas tile
+warps ONCE from its own source pose, so its error does not grow with head speed. That is why the
+atlas column is flat from 0.05 to 2.5 °/frame -- a factor of fifty in angular velocity and no change
+at all.
+
+**Decoder cost moves the same way.** The atlas codes 38.9 tiles a frame against the picture model's
+289 -- 7.4x less Pass B -- and warps nothing at decode, against the picture model's skipped tiles
+(zero here only because it skips nothing). So the atlas is cheaper on the wire AND cheaper to
+decode, at the same quality, at every speed above rest.
+
+**And it settles the per-frame mode: it should not fire.** A `PICTURE` frame is strictly worse than
+an `ATLAS` frame in exactly this regime -- at the fast turn with `D = 8` the mode codes 73.3 % of
+frames as `PICTURE` and pays 280482 B against the atlas's 159505 B for +0.007 dB. The switching
+policy was designed for an encoder whose atlas degrades under motion; this one's does not. `D = 8`
+is therefore the wrong default for THIS encoder and the mode is best left off, which it is.
+
+**Two caveats, both load-bearing.**
+
+* **`--coded-vectors` leaves the byte-identity contract.** `E1c` searches `STATIC_MV` only, while the
+  reference under `--int-coded-vectors on` searches `WARP_MV` as well (the kernel's own header says
+  so, and reproducing the homography outside Pass W is the one duplication this project refuses).
+  Measured: the fast turn is byte-identical to `nxv-enc`, near-still differs by 94 bytes in 159505.
+  So the configuration that makes the atlas pay is NOT the configuration the acid tests pin, and
+  closing that gap is real work, not a flag.
+* **One content.** All eight fixtures above are the same rendered scene with a static world and a
+  different pose track -- identical YUV, `md5 a325d144`. That is precisely the WiVRn case (a
+  world-locked scene, a moving head) and it is the case the atlas is for, but it is one content and
+  the 2.06x should be re-measured on a clip with moving objects in it before it is treated as
+  general.
+
+Both results are charted in [docs/GALLERY.md](../GALLERY.md):
+`atlasenc-decision-sweep.png` for the velocity sweep and
+`atlasenc-tile-modes.png` for the per-tile decision maps on one fast-turn frame.
+
+![ATLAS vs picture across head speed](../assets/atlasenc-decision-sweep.png)
+
+![Per-tile decisions on one fast-turn frame](../assets/atlasenc-tile-modes.png)
+
+**Revised conclusion.** The atlas is not a near-still optimisation. On this encoder, with a decision
+that searches coded vectors, it is worth **about half the bitrate at equal quality for any head
+motion at all**, and 7.4x fewer coded tiles to decode. The blocker for shipping it in the headset
+build is not the atlas: it is that the encoder's default decision does not search coded vectors, and
+that the configuration which does is not yet byte-identical to the reference.
+
 ### A note on encoder timing figures
 
 An earlier report of this encoder at 19.7 ms a frame (289 tiles) and 31.8 ms (578) was **wall clock
