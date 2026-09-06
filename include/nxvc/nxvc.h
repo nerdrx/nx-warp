@@ -551,10 +551,18 @@ typedef struct nxvc_config {
      * TRIGGER policy: what they decide is whether this frame sets the
      * `atlas_rebase` flag.  The rebase itself is normative and the decoder
      * needs neither number. */
-    uint32_t atlas_rebase_period;  /* rebase every N frames; 0 = never      */
-    uint32_t atlas_rebase_disp;    /* rebase when the composed displacement
-                                      at any valid entry's corners reaches
-                                      this many luma samples; 0 = never     */
+    /* 13.12.11, the per-frame MODE SWITCH.  A stream with `atlas` set codes
+     * each frame either as an ATLAS frame (13.12) or as a PICTURE frame (the
+     * ordinary model, every tile reconstructed, the atlas rebuilt from the
+     * result).  These are the encoder's policy for choosing; the decoder is
+     * told the answer in one frame-header bit and needs none of them. */
+    uint32_t atlas_picture_disp;   /* code a PICTURE frame once the worst
+                                      corner displacement in the atlas passes
+                                      this many luma samples; 0 = never      */
+    uint32_t atlas_picture_min_spacing; /* never two PICTURE frames closer
+                                      than this many frames apart            */
+    uint32_t atlas_picture_period; /* force a PICTURE frame every N frames
+                                      regardless of motion; 0 = never        */
 } nxvc_config;
 
 /* One eye's view for one frame: the orientation the frame was rendered with

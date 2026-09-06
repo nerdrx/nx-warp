@@ -882,6 +882,89 @@ The cap is only meaningful against the candidates the staggered rule offers:
 at intra-period 180 there are about 1.6 candidates a frame and every cap in the
 sweep is inert, which is why these were measured at intra-period 4 (about 72).
 
+### Acting on the mosaic: two more fixes, both measured, both negative
+
+The diagnosis above -- the defect is the MOSAIC of capture times, not the
+gather rule -- names two mechanisms that act on the mosaic itself. Both are
+implemented, both are priced on the same three fixtures at the same equal-rate
+anchor (the picture model at QP 26), and both fail.
+
+**(c) ROLLING REBASE.** Re-pose the `N` most displaced entries every frame
+(13.12.10), `N` per eye, so the per-frame warp is bounded at `N x 34 us`
+instead of `289 x 34 us` and there is no spike. Entries with zero displacement
+are ineligible, so nothing fires at rest.
+
+| fixture | N=24 (0.82 ms) | N=48 (1.63 ms) | N=96 (3.26 ms) | plain atlas | picture |
+|---|---|---|---|---|---|
+| mid 25 deg/s | 34.48 | 34.62 | 36.54 | **35.07** | **38.62** |
+| fast turn | 29.34 | 29.82 | 30.95 | 28.61 | **38.50** |
+
+At `N = 24` and `N = 48` the rolling rebase is **worse than doing nothing** at
+25 deg/s -- 34.48 and 34.62 against the plain atlas's 35.07. Re-posing a
+fraction of the mosaic still costs bytes while leaving the disagreement between
+neighbours in place, so it buys a partial fix and pays a full price. Only
+`N = 96` -- a third of the grid, every frame -- turns positive, and it is still
+2.08 dB behind the picture model. The cost axis works exactly as designed; the
+quality axis never arrives.
+
+**(d) BASE-LAYER REFRESH.** Use an HEVC base layer decoded outside the codec
+(13.12.9, cheat 7) as the refresh source instead of nxvc intra: every position
+whose corner displacement passes a margin is patched from the base picture of
+that frame. Bytes are `nxvc + the base's own HEVC bytes`, because a base layer
+is a whole-picture stream whose cost is paid every frame whether one tile takes
+a patch or all of them do.
+
+| fixture | best result | at | picture model | plain atlas |
+|---|---|---|---|---|
+| near-still | 39.19 (0 patches ever) | crf26/30, m8 | 38.77 | **39.93** |
+| mid 25 deg/s | 34.82 | crf30, m8 | **38.62** | 35.07 |
+| fast turn | 30.99 | crf26, m8 | **38.50** | 28.61 |
+
+It loses at every velocity. At 25 deg/s the best point is **below the plain
+atlas**. At rest it is worse than useless: the margin never binds, **zero
+patches are applied on any frame**, and the stream has simply paid 509 to 1944
+B/frame for a base layer it never reads. At fast turn the best point is 7.5 dB
+behind the picture model, and the result is flat across four operating points
+(29.28 / 30.48 / 30.99 / 30.91 at CRF 18 / 22 / 26 / 30) because cheapening the
+base frees nxvc budget at exactly the rate it degrades the patches.
+
+Two things must be said about this result so it is not read as contradicting
+the hybrid gate:
+
+* **The base's bytes count against Wi-Fi.** They are not free because they
+  travel on a different decoder; they are bytes on the same link, and the
+  equal-rate table charges them.
+* **The gate's 45-71 % saving was measured against nxvc INTRA refresh**, not
+  against inter prediction. Against a working inter predictor the base has to
+  beat *prediction*, not beat an I-frame, and on this corpus it does not. Both
+  results are correct and they are answers to different questions.
+
+One caveat runs in the base layer's favour and so strengthens the negative:
+these synthetic fixtures are bandlimited and unusually cheap for HEVC -- CRF 26
+costs 1795 B/frame here against the gate's 5915 B/frame on real content -- so a
+real base layer would take a larger share of the same budget, not a smaller
+one.
+
+### What the whole sweep actually established
+
+Set the four fixes beside the one measurement that explains them. At fast turn,
+re-posing the *whole* atlas *every* frame recovers 7.31 dB of the atlas's
+9.89 dB deficit -- the mosaic is the mechanism, and collapsing it is what fixes
+the quality. It costs 9.83 ms per eye per frame to do, which is the entire
+8.8 ms the atlas exists to save, plus interest.
+
+**The atlas's quality loss at speed and its GPU win are the same fact.** Every
+point on every sweep above is a different exchange rate between them, and none
+of them is an escape from the trade. That is why four mechanisms aimed at the
+quality side all failed in the same shape: each one bought back some of the
+loss by paying back some of the win.
+
+Which settles what the atlas *is*. It is not a profile a stream picks once and
+lives with. It is an **operating point**, worth having when the head is slow
+and not worth having when it is fast, and both of those are true within one
+second of the same session. The decision that follows is 13.12.11: the atlas
+becomes a per-frame MODE.
+
 * **The seam, as originally written.** Two adjacent tiles with different source frames are each
   individually correctly reprojected, so static distant content is seamless. They diverge on moving
   content and on near parallax, growing with the age difference — a tile coded 30 frames ago beside
