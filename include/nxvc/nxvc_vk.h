@@ -208,6 +208,34 @@ uint64_t nxvc_vk_decoder_tools_supported(void);
  * report when there is no device yet.  NULL returns the build-wide mask. */
 uint64_t nxvc_vk_decoder_tools(const nxvc_vk_decoder *dec);
 
+/* The same per-device mask, for a caller that has the device's PROPERTIES but
+ * no decoder yet.
+ *
+ * That caller is the capability handshake, and it is the normal case rather
+ * than an odd one: a receiver has to tell the sender what it can decode BEFORE
+ * a stream exists, and a decoder is not created until the stream description
+ * arrives.  Without this entry point such a caller has two choices, and both
+ * are wrong -- send nxvc_vk_decoder_tools_supported(), which over-promises on
+ * exactly the device the subtraction exists for, or repeat the vendor test in
+ * its own tree, which is one rule in two places and drifts.  WiVRn's client did
+ * the second, with a runtime comparison to catch the drift; this is what
+ * replaces it.
+ *
+ * `vendor_id` is VkPhysicalDeviceProperties::vendorID and `device_name` its
+ * deviceName (NULL is allowed).  Both are used: the vendor id is the reliable
+ * half, the name is what catches a Qualcomm part behind a translation layer
+ * reporting someone else's id.
+ *
+ * nxvc_vk_decoder_tools(dec) on a decoder created for that same device returns
+ * this same value, and the toolmask test pins that.
+ *
+ * The macro is the feature test.  An integrator that has to build against both
+ * this header and an older one -- which is every integrator during a rollout --
+ * needs something to ask, and a declaration is not something the preprocessor
+ * can see. */
+#define NXVC_VK_DECODER_TOOLS_FOR 1
+uint64_t nxvc_vk_decoder_tools_for(uint32_t vendor_id, const char *device_name);
+
 /* --------------------------------------------------------------- stream */
 typedef struct nxvc_vkd_stream_info {
     uint32_t width, height; /* luma samples                                */

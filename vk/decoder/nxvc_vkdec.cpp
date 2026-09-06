@@ -1807,6 +1807,13 @@ extern "C" uint64_t nxvc_vk_decoder_tools_supported(void) {
     return nxvcvk::tools_supported();
 }
 
+extern "C" uint64_t nxvc_vk_decoder_tools_for(uint32_t vendor_id,
+                                             const char *device_name) {
+    // The same table probe_device() uses, so a handshake answered before the
+    // decoder exists cannot disagree with the decoder that is created later.
+    return nxvcvk::tools_supported_for(vendor_id, device_name);
+}
+
 extern "C" uint64_t nxvc_vk_decoder_tools(const nxvc_vk_decoder *d) {
     // The build-wide mask when there is no decoder to ask; a device may accept
     // less, and this is the number a handshake must use.
