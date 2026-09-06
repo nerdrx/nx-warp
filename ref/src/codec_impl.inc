@@ -233,6 +233,32 @@ static nw::RefImage ref_image(const RefPicture &rp, const Geometry &g, int p,
     return im;
 }
 
+// ------------------------------------------------------------------ atlas
+// SYNTAX.md 13.12.  The helpers here are the whole of the atlas maintenance;
+// the composition arithmetic itself is in inter.h.
+static void atlas_alloc(Atlas &at, const Geometry &g) {
+    ref_alloc(at.pix, g);
+    ref_alloc(at.prev, g);
+    at.ent.assign(g.ntiles(), AtlasEntry{});
+}
+
+// The eye a linear tile index belongs to (Annex D D-3).
+static inline int tile_eye(const Geometry &g, u32 t) {
+    const u32 cols = g.eyes * g.tiles_x;
+    return (int)((t % cols) / g.tiles_x);
+}
+
+// 13.12.3 step 1.  Every valid entry's clock advances; only a non-static one
+// composes.  A STATIC_MV entry keeps C at the identity, which is what lets a
+// head-locked tile be SKIPPED and cost the client nothing at all per frame.
+static void atlas_advance_frame(Atlas &at, const Geometry &g,
+                                const FrameParams &fp, u32 gen_max) {
+    if (!fp.warp_present) return;
+    for (u32 t = 0; t < (u32)at.ent.size(); ++t)
+        atlas_advance(at.ent[t], fp.warp[tile_eye(g, t)], (int)g.width,
+                      (int)g.height, gen_max);
+}
+
 // ------------------------------------------------------------- intra refresh
 // A fixed pseudo-random permutation of the tile index.  Both refresh schemes
 // use it and neither owns it: the fixed scheme spreads the tiles it forces
@@ -285,6 +311,10 @@ extern "C" nxvc_encoder *nxvc_encoder_create(const nxvc_config *cfg,
     if (cfg->bit_depth != 8) return fail(NXVC_ERR_UNSUPPORTED);
     const u32 eyes = cfg->eyes == 0 ? 1u : cfg->eyes;
     if (eyes > 2) return fail(NXVC_ERR_UNSUPPORTED);
+    // ADR-0029: ATLAS is a statement about the reference, so it needs INTER;
+    // and STEREO's reference is a picture the atlas model never assembles.
+    if (cfg->atlas && !cfg->inter) return fail(NXVC_ERR_ARG);
+    if (cfg->atlas && cfg->stereo) return fail(NXVC_ERR_ARG);
     if (cfg->ref_sel > 2) return fail(NXVC_ERR_ARG);
     if (cfg->stereo && (!cfg->inter || eyes != 2)) return fail(NXVC_ERR_ARG);
     if (cfg->chroma > 1 || cfg->color_transform > 1) return fail(NXVC_ERR_ARG);
@@ -409,7 +439,12 @@ extern "C" nxvc_encoder *nxvc_encoder_create(const nxvc_config *cfg,
     }
     e->views_cur.assign(eyes, nxvc_view{0, 0, 0, 1, -0.8, 0.8, 0.8, -0.8});
     for (int i = 0; i < 4; ++i) e->views_slot[i] = e->views_cur;
-    for (int i = 0; i < 4; ++i) ref_alloc(e->ring.slot[i], e->g);
+    e->atlas = e->cfg.atlas != 0;
+    if (e->atlas) {
+        atlas_alloc(e->at, e->g);
+    } else {
+        for (int i = 0; i < 4; ++i) ref_alloc(e->ring.slot[i], e->g);
+    }
     for (int p = 0; p < 4; ++p) {
         size_t w = (size_t)e->g.pw(p) * eyes, h = e->g.ph(p);
         if (p < e->g.nplanes()) {
@@ -467,6 +502,8 @@ static u64 encoder_tools(const nxvc_encoder *e) {
     if (e->cfg.inter && e->cfg.near_skip) t |= NXVC_TOOL_NEAR_SKIP;
     if (e->cfg.inter && e->cfg.quad_mv) t |= NXVC_TOOL_QUAD_MV;
     if (e->cfg.entropy_lite) t |= NXVC_TOOL_ENTROPY_LITE;
+    if (e->cfg.atlas) t |= NXVC_TOOL_ATLAS;
+    if (e->cfg.row_present) t |= NXVC_TOOL_ROW_PRESENT;
     t |= NXVC_TOOL_RES_LEVEL;
     return t;
 }
@@ -717,6 +754,129 @@ static void reconstruct_skip(TileCoder &tc) {
         for (size_t i = 0; i < s.samples.size(); ++i)
             s.samples[i] = clamp_i32(s.wpred[i], 0, s.maxval);
     }
+}
+
+// 13.12.4.  A coded tile predicts from the atlas pixels through the matrix of
+// the atlas entry at its OWN tile position.  Samples the predictor fetches
+// from outside that position belong to neighbouring entries at other source
+// poses and are read as if they were at this one's; that is deliberate, it is
+// bounded by the warp displacement, and because the encoder does exactly the
+// same thing it lands in the residual and never in the reference.
+// `src` is `at.prev` for DECODING -- 13.12.3, the atlas as it stood at the
+// start of the frame; see Atlas::prev for why that is not an optimisation
+// detail -- and `at.pix` for DISPLAY, which renders the finished atlas.
+static void predict_tile_atlas(TileCoder &tc, const Geometry &g,
+                               const RefPicture &src, const AtlasEntry &ent,
+                               int eye, int tx, int ty, int mode, int mv_x,
+                               int mv_y, const i8 (*qmv)[2] = nullptr) {
+    WarpMatrix wm;
+    for (int k = 0; k < 9; ++k) wm.h[k] = ent.C[k];
+    predict_tile(tc, g, src, wm, eye, tx, ty, mode, mv_x, mv_y, 0, qmv);
+}
+
+// 13.12.3 step 3: a CODED tile writes its reconstruction and resets its entry.
+static void atlas_store(Atlas &at, TileCoder &tc, const Geometry &g, int t,
+                        int eye, int tx, int ty, int mode, u32 frame_number,
+                        bool static_skip) {
+    store_ref_tile(tc, g, at.pix, eye, tx, ty);
+    AtlasEntry &e = at.ent[(size_t)t];
+    atlas_identity(e.C);
+    e.src_frame = frame_number;
+    e.gen = 0;
+    e.flags = (u8)(kAtlasValid | ((static_skip && mode == NXVC_MODE_STATIC_MV)
+                                      ? kAtlasStatic
+                                      : 0u));
+    e.res_level = (u8)tc.tp.res_level;
+    for (int k = 0; k < 20; ++k) e.reserved[k] = 0;
+}
+
+// Read a tile's atlas pixels back into `wpred`, the inverse of
+// store_ref_tile.  Used only by the in-place NEAR_SKIP correction of 13.12.7,
+// which is the one case where a skipped tile touches the atlas: setting the
+// predictor to the atlas tile's own samples makes reconstruct_near_skip()
+// compute `atlas + planar(correction) - dc_off`, i.e. the correction applied
+// in place, with no warp and one addition per sample.
+static void load_ref_tile(TileCoder &tc, const Geometry &g,
+                          const RefPicture &rp, int eye, int tx, int ty) {
+    for (int p = 0; p < tc.nplanes; ++p) {
+        PlaneState &s = tc.pl[p];
+        if (s.wpred.empty()) s.wpred.assign((size_t)s.size * s.size, 0);
+        int ox, oy;
+        plane_tile_origin(g, p, tx, ty, ox, oy);
+        ox += (int)(eye * g.pw(p));
+        const int pwe = (int)(g.pw(p) * (eye + 1));
+        const int phe = (int)g.ph(p);
+        const u16 *src = rp.plane[p].data();
+        const int stride = rp.w[p];
+        for (int y = 0; y < s.size; ++y)
+            for (int x = 0; x < s.size; ++x) {
+                const int gx = ox + x < pwe ? ox + x : pwe - 1;
+                const int gy = oy + y < phe ? oy + y : phe - 1;
+                s.wpred[(size_t)y * s.size + x] =
+                    (i32)src[(size_t)gy * stride + gx];
+            }
+    }
+}
+
+// 13.12.5, NON-NORMATIVE.  Render a displayable picture from the atlas by
+// warping every tile from its source pose to this frame's pose, in ONE step.
+// It exists for PSNR and for inspection.  A real client does this with the
+// texture sampler in fp16 at panel rate with a late-latched pose, and is free
+// to use any filter; nothing here is compared by conformance, which is the
+// entire point of the atlas.  This helper deliberately uses the same bilinear
+// kernel the normative predictor uses, so that a PSNR comparison against the
+// picture model is a comparison of the MODEL and not of two filters.
+static void atlas_display(const Atlas &at, const Geometry &g,
+                          const FrameParams &fp,
+                          const std::vector<PredState> &state,
+                          nxvc_image *img) {
+    for (u32 row = 0; row < g.tiles_y; ++row)
+        for (u32 eye = 0; eye < g.eyes; ++eye)
+            for (u32 col = 0; col < g.tiles_x; ++col) {
+                const int t = linear_tile(g, (int)row, (int)eye, (int)col);
+                const AtlasEntry &e = at.ent[(size_t)t];
+                TileCoder tc;
+                tc.g = &g;
+                tc.fp = &fp;
+                tc.tp = TileParams{};
+                tc.tp.eye = (int)eye;
+                tc.tp.tile_index = (int)col;
+                tc.tp.mode = NXVC_MODE_WARP_SKIP;
+                tc.tp.chroma444 = (g.chroma == NXVC_CHROMA_444) ? 1 : 0;
+                tc.setup();
+                if (!(e.flags & kAtlasValid)) {
+                    // An entry that has never been coded, or one whose warp
+                    // left the envelope.  Mid-grey is what a decoder holding
+                    // no content for a tile position can honestly show.
+                    for (int p = 0; p < tc.nplanes; ++p)
+                        for (auto &v : tc.pl[p].samples) v = tc.pl[p].dc_off;
+                } else {
+                    // `at.pix`, the FINISHED atlas: a tile coded this frame
+                    // must display the pixels it just produced, not the ones
+                    // it replaced.
+                    //
+                    // The vector is ZERO, and that is the whole difference
+                    // between the two models.  In the picture model a skipped
+                    // tile's reconstruction is warp(prev) + last_mv, and the
+                    // vector accumulates over a skip run because `prev`
+                    // already carries the previous frame's shift.  Under the
+                    // atlas the stored pixels ARE the object, already at their
+                    // own position, and C carries the whole pose change since
+                    // they were coded; adding last_mv on top would slide every
+                    // tile by a vector that has already been accounted for.
+                    // Object-motion extrapolation over a long skip run is a
+                    // DISPLAY choice (PAPER 2.8's motion smoothing, which
+                    // would want gen * last_mv), not part of the reference.
+                    (void)state;
+                    predict_tile_atlas(
+                        tc, g, at.pix, e, (int)eye, (int)col, (int)row,
+                        (e.flags & kAtlasStatic) ? NXVC_MODE_STATIC_MV
+                                                 : NXVC_MODE_WARP_SKIP,
+                        0, 0);
+                    reconstruct_skip(tc);
+                }
+                store_tile(tc, g, img, (int)eye, (int)col, (int)row);
+            }
 }
 
 // Squared error of the reconstruction this tile's coefficients will produce,
@@ -1073,10 +1233,26 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
     const int want_d = e->cfg.inter ? (int)e->cfg.ref_sel : 0;
     const int ref_slot = (int)((fp.frame_number - 1 - want_d) & 3u);
     const u16 ref_fn = (u16)(fp.frame_number - 1 - want_d);
-    const bool have_ref = e->cfg.inter && e->ring.slot[ref_slot].valid &&
-                          e->ring.slot[ref_slot].frame_number == ref_fn &&
-                          e->frame_number >= (u32)(1 + want_d);
-    const RefPicture &refpic = e->ring.slot[ref_slot];
+    const bool atlas = e->atlas;
+    fp.atlas = atlas ? 1 : 0;
+    // Under the atlas "do I have a reference" is a PER-TILE question -- the
+    // whole point of the model -- so the frame-level answer is only whether
+    // any entry is valid at all.  A first frame has none, which is the
+    // tile_map_reset that forces the picture intra.
+    bool any_valid = false;
+    if (atlas)
+        for (const auto &ae : e->at.ent)
+            if (ae.flags & kAtlasValid) { any_valid = true; break; }
+    const bool have_ref =
+        atlas ? (e->cfg.inter && any_valid && e->frame_number > 0)
+              : (e->cfg.inter && e->ring.slot[ref_slot].valid &&
+                 e->ring.slot[ref_slot].frame_number == ref_fn &&
+                 e->frame_number >= (u32)(1 + want_d));
+    // 13.12.3: the encoder predicts from the atlas as it stood at the START
+    // of the frame, exactly as the decoder does.  Binding `prev` here and
+    // filling it at snapshot() below is deliberate -- the reference is to the
+    // object, not to its contents.
+    const RefPicture &refpic = atlas ? e->at.prev : e->ring.slot[ref_slot];
 
     fp.flags = have_ref ? 0u : 1u;   // bit 0: tile-map reset
     if (fp.dir_layer) fp.flags |= 4;
@@ -1106,6 +1282,70 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             fp.warp[eye].h[8] = kH22;
         }
     }
+
+    // ---- 13.12.3 step 1, on the encoder's shadow atlas, in exactly the same
+    // order the decoder does it: advance BEFORE any tile is decided, so the
+    // matrix a decision is made against is the one the decoder will predict
+    // through.  `atlas_wm[t]` is that matrix, per tile position, and it
+    // replaces the frame-level fp.warp[eye] everywhere the encoder predicts.
+    std::vector<WarpMatrix> atlas_wm;
+    std::vector<u8> atlas_ok;
+    if (atlas) {
+        if (!have_ref) e->at.reset();
+        atlas_advance_frame(e->at, g, fp, e->cfg.atlas_gen_max);
+        e->at.snapshot();   // 13.12.3: predict from the pre-frame atlas
+        atlas_wm.assign(ntiles, WarpMatrix{});
+        atlas_ok.assign(ntiles, 0);
+        for (int t = 0; t < ntiles; ++t) {
+            const AtlasEntry &ae = e->at.ent[(size_t)t];
+            atlas_ok[t] = (ae.flags & kAtlasValid) ? 1u : 0u;
+            for (int k = 0; k < 9; ++k) atlas_wm[(size_t)t].h[k] = ae.C[k];
+        }
+        e->undo.assign((size_t)ntiles, nxvc_encoder::AtlasUndo{});
+    }
+    // The reference picture a tile predicts from, and the matrix it predicts
+    // through.  Under the picture model both are frame-level; under the atlas
+    // the picture is the atlas and the matrix is the tile's own entry.
+    auto wm_for = [&](int t, int eye) -> const WarpMatrix & {
+        return atlas ? atlas_wm[(size_t)t] : fp.warp[eye];
+    };
+    // 13.12.4: a tile whose own entry is invalid has no reference at all.
+    auto tile_has_ref = [&](int t) -> bool {
+        return atlas ? (atlas_ok[(size_t)t] != 0) : have_ref;
+    };
+    // 13.12.3: a STATIC_MV entry holds C at the identity, so a tile last coded
+    // head-locked may be SKIPPED and held unwarped.  The old model had to
+    // re-code it every frame.
+    auto tile_static = [&](int t) -> bool {
+        return atlas && (e->at.ent[(size_t)t].flags & kAtlasStatic) != 0;
+    };
+    // 13.12.3 step 3, plus the one-deep undo of 13.12.6.
+    auto atlas_write = [&](TileCoder &tc, int t, int eye, int col, int row,
+                           int mode) {
+        nxvc_encoder::AtlasUndo &u = e->undo[(size_t)t];
+        u.valid = 1;
+        u.ent = e->at.ent[(size_t)t];
+        for (int p = 0; p < tc.nplanes; ++p) {
+            const int full = plane_full_extent(g, p, tc.tp.chroma444);
+            int ox, oy;
+            plane_tile_origin(g, p, col, row, ox, oy);
+            ox += (int)(eye * g.pw(p));
+            u.pix[p].assign((size_t)full * full, 0);
+            const u16 *src = e->at.pix.plane[p].data();
+            const int stride = e->at.pix.w[p];
+            const int pwe = (int)(g.pw(p) * (eye + 1));
+            const int phe = (int)g.ph(p);
+            for (int y = 0; y < full; ++y)
+                for (int x = 0; x < full; ++x) {
+                    const int gx = ox + x < pwe ? ox + x : pwe - 1;
+                    const int gy = oy + y < phe ? oy + y : phe - 1;
+                    u.pix[p][(size_t)y * full + x] =
+                        src[(size_t)gy * stride + gx];
+                }
+        }
+        atlas_store(e->at, tc, g, t, eye, col, row, mode, fp.frame_number,
+                    e->cfg.atlas_static_skip != 0);
+    };
 
     std::vector<u8> table_bytes;
     // The eight built-in sets, on the ENCODER rather than in a function-local
@@ -1373,7 +1613,10 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         // force_warp_skip request (docs/RATECONTROL.md 8.7) are exactly these
         // two lines: no eligible reference, and a refresh due.  A skipped tile
         // also cannot carry a coded alpha plane, which is checked below.
-        if (!have_ref) return d;
+        // 13.12.4: under the atlas this is a PER-TILE question -- a tile
+        // whose own entry has never been coded, or whose composed warp left
+        // the envelope, has no reference and must be INTRA.
+        if (!tile_has_ref(t)) return d;
         const nxvc::PredState &ps = e->state[t];
         const int qp = qp_map ? clamp_i32(qp_map[t], 0, 63) : fp.base_qp;
         const double qstep = (double)kQStep[qp] / 16.0;
@@ -1450,8 +1693,22 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         const Lambda Lmode = make_lambda(qp, tile_scale * mode_scale);
 
         // --- WARP_SKIP with the stored vector: no bits at all.
-        predict_tile(probe, g, refpic, fp.warp[eye], eye, col, row,
-                     NXVC_MODE_WARP_SKIP, ps.last_mv_x, ps.last_mv_y);
+        //
+        // Under the atlas this is the ONE-STEP warp from the tile's source
+        // pose, not a chained one, so what the gate below measures is the
+        // error the client will actually display.  A tile whose entry is
+        // static (last coded STATIC_MV -- a head-locked panel) is held
+        // unwarped, which is what lets it be skipped at all.
+        const int skip_pred_mode =
+            tile_static(t) ? NXVC_MODE_STATIC_MV : NXVC_MODE_WARP_SKIP;
+        // The vector the skip is evaluated at must be the vector the client
+        // will DISPLAY at, or the threshold bounds an error nobody sees.
+        // Under the atlas that is zero (see atlas_display); under the picture
+        // model it is the stored vector, which the reconstruction re-applies.
+        const int skip_mv_x = atlas ? 0 : ps.last_mv_x;
+        const int skip_mv_y = atlas ? 0 : ps.last_mv_y;
+        predict_tile(probe, g, refpic, wm_for(t, eye), eye, col, row,
+                     skip_pred_mode, skip_mv_x, skip_mv_y);
         const double skip_sse = sse_pred(probe.pl[0]);
         // The complexity input of docs/RATECONTROL.md 4.1, measured on the
         // predictor the search has just built: mean |residual| per luma
@@ -1496,8 +1753,8 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             // this path returns before the floating-point one declares its own.
             TileDecision skip_cand;
             skip_cand.mode = NXVC_MODE_WARP_SKIP;
-            skip_cand.mv_x = ps.last_mv_x;
-            skip_cand.mv_y = ps.last_mv_y;
+            skip_cand.mv_x = skip_mv_x;
+            skip_cand.mv_y = skip_mv_y;
             skip_cand.skipped = 1;
             skip_cand.warp_mad_q8 = warp_mad_q8;
 
@@ -1544,7 +1801,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                 const int mode = int_modes[mi];
                 const bool warped = mode_needs_warp(mode);
                 nw::Homography H =
-                    plane_homography(fp.warp[eye], (int)g.width, (int)g.height, 1);
+                    plane_homography(wm_for(t, eye), (int)g.width, (int)g.height, 1);
                 nw::TileCorners c = nw::warp_tile_corners(
                     H, col * 64, row * 64,
                     warped ? nw::kModeWarp : nw::kModeStatic);
@@ -1622,7 +1879,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                         const int mx = bx * 4 + dx, my = by * 4 + dy;
                         if (mx < -128 || mx > 127 || my < -128 || my > 127)
                             continue;
-                        predict_tile(probe, g, refpic, fp.warp[eye], eye, col,
+                        predict_tile(probe, g, refpic, wm_for(t, eye), eye, col,
                                      row, mode, mx, my, 1);
                         const i64 v = sad_pred(probe.pl[0]);
                         // Strictly-less keeps the first winner in the fixed
@@ -1707,8 +1964,8 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                                          : 1.0);
         TileDecision skip_cand;
         skip_cand.mode = NXVC_MODE_WARP_SKIP;
-        skip_cand.mv_x = ps.last_mv_x;
-        skip_cand.mv_y = ps.last_mv_y;
+        skip_cand.mv_x = skip_mv_x;
+        skip_cand.mv_y = skip_mv_y;
         skip_cand.skipped = 1;
         skip_cand.warp_mad_q8 = warp_mad_q8;
         if (force_skip ||
@@ -1737,7 +1994,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             const RefPicture &rp = *cands[ci].ref;
             const bool warped = mode_needs_warp(mode);
             nw::Homography H =
-                plane_homography(fp.warp[eye], (int)g.width, (int)g.height, 1);
+                plane_homography(wm_for(t, eye), (int)g.width, (int)g.height, 1);
             nw::TileCorners c = nw::warp_tile_corners(
                 H, col * 64, row * 64, warped ? nw::kModeWarp : nw::kModeStatic);
             SearchCtx sc;
@@ -1841,7 +2098,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             i64 qcost = -1;
             auto try_exact = [&](int mx, int my) {
                 if (!vec_ok(mx, my)) return;
-                predict_tile(probe, g, rp, fp.warp[eye],
+                predict_tile(probe, g, rp, wm_for(t, eye),
                              st ? 0 : eye, col, row, mode, mx, my, 1);
                 i64 v = me_effort >= 2 ? satd_pred(probe.pl[0])
                                        : sad_pred(probe.pl[0]);
@@ -1864,7 +2121,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             // The winner's SAD against the free skip vector, in the SAD
             // domain and at the mode decision's own lambda.  A coded vector
             // is kTileHeaderBytes + 2 bytes the skip does not pay for.
-            predict_tile(probe, g, rp, fp.warp[eye], st ? 0 : eye, col, row,
+            predict_tile(probe, g, rp, wm_for(t, eye), st ? 0 : eye, col, row,
                          mode, qx, st ? 0 : qy, 1);
             const i64 qsad = sad_pred(probe.pl[0]);
             const i64 bias =
@@ -1916,7 +2173,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                 const RefPicture &rp = cand.mode == NXVC_MODE_STEREO
                                            ? e->ring.slot[slot]
                                            : refpic;
-                predict_tile(tc, g, rp, fp.warp[eye],
+                predict_tile(tc, g, rp, wm_for(t, eye),
                              cand.mode == NXVC_MODE_STEREO ? 0 : eye, col, row,
                              cand.mode,
                              cand.mode == NXVC_MODE_STEREO ? cand.disparity
@@ -2015,7 +2272,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             int bq[4][2] = {};
             for (int k = 0; k < kQuadPatternSize; ++k) {
                 const int dx = kQuadPattern[k][0], dy = kQuadPattern[k][1];
-                predict_tile(probe, g, refpic, fp.warp[eye], eye, col, row,
+                predict_tile(probe, g, refpic, wm_for(t, eye), eye, col, row,
                              cand.mode, cand.mv_x + dx, cand.mv_y + dy, 1);
                 const PlaneState &ps = probe.pl[0];
                 for (int q = 0; q < 4; ++q) {
@@ -2068,7 +2325,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             load_tile(ns, g, img, eye, col, row);
             const RefPicture &rp =
                 out.mode == NXVC_MODE_STEREO ? e->ring.slot[slot] : refpic;
-            predict_tile(ns, g, rp, fp.warp[eye],
+            predict_tile(ns, g, rp, wm_for(t, eye),
                          out.mode == NXVC_MODE_STEREO ? 0 : eye, col, row,
                          out.mode,
                          out.mode == NXVC_MODE_STEREO ? out.disparity : out.mv_x,
@@ -2242,7 +2499,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         if (d.mode != NXVC_MODE_INTRA) {
             const RefPicture &rp =
                 d.mode == NXVC_MODE_STEREO ? cur : refpic;
-            predict_tile(tc, g, rp, fp.warp[eye],
+            predict_tile(tc, g, rp, wm_for(t, eye),
                          d.mode == NXVC_MODE_STEREO ? 0 : (int)eye,
                          (int)col, (int)row, d.mode,
                          d.mode == NXVC_MODE_STEREO ? d.disparity
@@ -2257,16 +2514,48 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             // the planar interpolation, the warp predictor -- is
             // the ordinary skip path, which is why the correction
             // needs no tile structure at all.  SYNTAX.md 13.9.
-            if (d.near_skip)
-                for (int p = 0; p < kNearSkipPlanes && p < tc.nplanes;
-                     ++p)
-                    reconstruct_near_skip(tc.pl[p], d.corr[p]);
-            else
-                reconstruct_skip(tc);
-            store_ref_tile(tc, g, cur, (int)eye, (int)col, (int)row);
-            if (emit) {
-                store_tile(tc, g, &e->shadow_img, (int)eye, (int)col,
-                           (int)row);
+            if (atlas) {
+                // 13.12: a skipped tile writes NOTHING to the atlas.  The
+                // exception is 13.12.7's in-place near-skip correction, which
+                // is applied to the atlas tile's own samples -- no warp -- so
+                // the predictor built above is replaced by the atlas tile
+                // itself.  Both sides do exactly this; see the decoder's
+                // atlas_skip_tile.
+                //
+                // Gated on `emit` for the same reason the coded write is: the
+                // decide pass runs this code too, and applying the correction
+                // twice would correct already-corrected pixels.  In the
+                // picture model that was harmless -- the skip path wrote to a
+                // ring slot the frame rebuilds from scratch -- but the atlas
+                // is PERSISTENT, so every write to it must happen exactly
+                // once.  This is the one place the atlas's persistence changes
+                // what an encoder pass is allowed to do.
+                if (d.near_skip && emit) {
+                    load_ref_tile(tc, g, e->at.pix, (int)eye, (int)col,
+                                  (int)row);
+                    for (int p = 0; p < kNearSkipPlanes && p < tc.nplanes; ++p)
+                        reconstruct_near_skip(tc.pl[p], d.corr[p]);
+                    for (int p = kNearSkipPlanes; p < tc.nplanes; ++p) {
+                        PlaneState &ps = tc.pl[p];
+                        for (size_t i = 0; i < ps.samples.size(); ++i)
+                            ps.samples[i] =
+                                clamp_i32(ps.wpred[i], 0, ps.maxval);
+                    }
+                    store_ref_tile(tc, g, e->at.pix, (int)eye, (int)col,
+                                   (int)row);
+                }
+            } else {
+                if (d.near_skip)
+                    for (int p = 0; p < kNearSkipPlanes && p < tc.nplanes;
+                         ++p)
+                        reconstruct_near_skip(tc.pl[p], d.corr[p]);
+                else
+                    reconstruct_skip(tc);
+                store_ref_tile(tc, g, cur, (int)eye, (int)col, (int)row);
+                if (emit) {
+                    store_tile(tc, g, &e->shadow_img, (int)eye, (int)col,
+                               (int)row);
+                }
             }
             nxvc_tile_info &ti = e->tiles[t];
             ti.tile_index = (u16)col;
@@ -2519,10 +2808,24 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             }
         }
         finalize_recon(tc);
-        store_ref_tile(tc, g, cur, (int)eye, (int)col, (int)row);
-        if (emit) {
-            store_tile(tc, g, &e->shadow_img, (int)eye, (int)col,
-                       (int)row);
+        if (atlas) {
+            // 13.12.3 step 3, with the one-deep undo of 13.12.6 recorded
+            // first.  This is the ONLY place the encoder's shadow atlas gains
+            // content, which is what makes the rollback a single un-write.
+            //
+            // Gated on `emit`: the decide pass reconstructs with the BUILT-IN
+            // tables and the emit pass with the frame's trained ones, so the
+            // decide pass's samples are not the ones the decoder will produce.
+            // Writing them would put content in the atlas that no bitstream
+            // describes -- and would make the undo log two-deep for one frame.
+            if (emit)
+                atlas_write(tc, t, (int)eye, (int)col, (int)row, tc.tp.mode);
+        } else {
+            store_ref_tile(tc, g, cur, (int)eye, (int)col, (int)row);
+            if (emit) {
+                store_tile(tc, g, &e->shadow_img, (int)eye, (int)col,
+                           (int)row);
+            }
         }
 
         nxvc_tile_info &ti = e->tiles[t];
@@ -2902,8 +3205,17 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
 
     // ---- the frame is now a reference; update the ring and the prediction
     // state by the rules of Annex D D-9.
-    e->ring.slot[slot].valid = true;
-    e->ring.slot[slot].frame_number = (u16)fp.frame_number;
+    if (atlas) {
+        // The shadow the drift gate reads is what the CLIENT DISPLAYS, and
+        // under the atlas that is the non-normative display of 13.12.5, not a
+        // reconstructed picture.  Rendering it here keeps the gate measuring
+        // the right thing -- and the encoder is a PC, so a full display pass
+        // per frame is affordable where it would not be on the headset.
+        atlas_display(e->at, g, fp, e->state, &e->shadow_img);
+    } else {
+        e->ring.slot[slot].valid = true;
+        e->ring.slot[slot].frame_number = (u16)fp.frame_number;
+    }
     for (int t = 0; t < ntiles; ++t) {
         const TileDecision &d = e->dec[t];
         nxvc::update_pred_state(e->state[t], d.mode, d.mv_x, d.mv_y, d.disparity);
@@ -3160,6 +3472,13 @@ extern "C" nxvc_status nxvc_decoder_parse_stream_header(nxvc_decoder *d,
     if ((si.tools & NXVC_TOOL_CTX_V3) && !(si.tools & NXVC_TOOL_CTX_V2))
         return NXVC_ERR_BITSTREAM;
     // The row-skip flag only exists inside a transmitted table set.
+    // SYNTAX.md 2.3: ATLAS requires INTER (it is a statement about the
+    // reference) and excludes STEREO, whose reference is "the decoded first
+    // eye of THIS frame" -- a picture the atlas model never assembles.
+    if ((si.tools & NXVC_TOOL_ATLAS) && !(si.tools & NXVC_TOOL_INTER))
+        return NXVC_ERR_BITSTREAM;
+    if ((si.tools & NXVC_TOOL_ATLAS) && (si.tools & NXVC_TOOL_STEREO))
+        return NXVC_ERR_BITSTREAM;
     if ((si.tools & NXVC_TOOL_TAB_V2) &&
         !(si.tools & NXVC_TOOL_CUSTOM_TABLES))
         return NXVC_ERR_BITSTREAM;
@@ -3187,7 +3506,14 @@ extern "C" nxvc_status nxvc_decoder_parse_stream_header(nxvc_decoder *d,
     d->g.alpha = si.alpha;
     derive_geometry(d->g);
     if (d->g.tiles_x > kMaxTilesPerRow) return NXVC_ERR_BITSTREAM;
-    for (int i = 0; i < 4; ++i) ref_alloc(d->ring.slot[i], d->g);
+    d->atlas = (d->si.tools & NXVC_TOOL_ATLAS) != 0;
+    if (d->atlas) {
+        // One atlas replaces four ring slots, which is a REDUCTION in decoder
+        // memory, not an addition (ADR-0029).
+        atlas_alloc(d->at, d->g);
+    } else {
+        for (int i = 0; i < 4; ++i) ref_alloc(d->ring.slot[i], d->g);
+    }
     d->state.assign(d->g.ntiles(), nxvc::PredState{});
     d->lost.clear();
     d->have_stream = true;
@@ -3263,7 +3589,11 @@ static nxvc_status parse_frame_header(nxvc_decoder *d, const u8 *buf,
     // form, and none of the three is optional for it.
     if (fp.cfl && (!fp.intra_dir || fp.nctx < kNumCtxV2 || fp.dir_layer))
         return NXVC_ERR_BITSTREAM;
-    if (fp.flags & 0xf0) return NXVC_ERR_BITSTREAM;   // reserved bits 4-7
+    // SYNTAX.md 3.1.2: flags bit 4 is `row_present`, gated on tool bit 32.
+    fp.row_present = (fp.flags >> 4) & 1;
+    if (fp.row_present && !(d->si.tools & NXVC_TOOL_ROW_PRESENT))
+        return NXVC_ERR_BITSTREAM;
+    if (fp.flags & 0xe0) return NXVC_ERR_BITSTREAM;   // reserved bits 5-7
     // Annex D D-1: warp_present requires the WARP tool bit.
     if (fp.warp_present && !(d->si.tools & NXVC_TOOL_WARP))
         return NXVC_ERR_BITSTREAM;
@@ -3309,6 +3639,23 @@ static nxvc_status parse_frame_header(nxvc_decoder *d, const u8 *buf,
                         return NXVC_ERR_BITSTREAM;
                 }
         }
+        off += need;
+    }
+    // ---- row_present() (SYNTAX.md 3.1.2).  One bit per tile-row structure in
+    // decode order, so a row with no coded tile carries no 12-byte header at
+    // all.  It is what makes an idle frame cost bytes proportional to what
+    // CHANGED rather than to the tile grid: 5 bytes replacing 408 at the v1
+    // configuration.
+    fp.row_bits.clear();
+    if (fp.row_present) {
+        const size_t nrows = (size_t)d->g.tiles_y * d->g.eyes;
+        const size_t need = (nrows + 7) / 8;
+        if (off + need > frame_bytes) return NXVC_ERR_TRUNCATED;
+        fp.row_bits.assign(buf + off, buf + off + need);
+        // Bits above the last row must be zero, so one frame has one encoding.
+        const size_t slack = need * 8 - nrows;
+        if (slack && (fp.row_bits.back() >> (8 - slack)) != 0)
+            return NXVC_ERR_BITSTREAM;
         off += need;
     }
     const u8 *custom = nullptr;
@@ -3374,12 +3721,24 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
     if (fp.flags & 1)
         for (auto &ps : d->state) ps = nxvc::PredState{};
 
+    const bool atlas = d->atlas;
+    fp.atlas = atlas ? 1 : 0;
     const int slot = (int)(fp.frame_number & 3);
     RefPicture &cur = d->ring.slot[slot];
-    // A frame that overwrites a slot invalidates whatever it held; from here
-    // on the slot is this frame, filled tile by tile.
-    cur.valid = false;
-    cur.frame_number = (u16)fp.frame_number;
+    if (atlas) {
+        // 13.12.3 step 1: advance every valid entry's composed warp BEFORE
+        // any tile is predicted, so a coded tile reads a matrix that maps THIS
+        // frame's coordinates to its source frame's.  A tile_map_reset has
+        // just cleared the table, in which case there is nothing to advance.
+        if (fp.flags & 1) d->at.reset();
+        atlas_advance_frame(d->at, g, fp, 0u);
+        d->at.snapshot();   // 13.12.3: predict from the pre-frame atlas
+    } else {
+        // A frame that overwrites a slot invalidates whatever it held; from
+        // here on the slot is this frame, filled tile by tile.
+        cur.valid = false;
+        cur.frame_number = (u16)fp.frame_number;
+    }
 
     auto ref_for = [&](int ref_sel, const RefPicture **out) -> bool {
         const int rs = (int)((fp.frame_number - 1 - (u32)ref_sel) & 3u);
@@ -3442,8 +3801,79 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
         return NXVC_OK;
     };
 
+    // 13.12: under the atlas a skipped tile does NOTHING.  No prediction, no
+    // reconstruction, no reference write -- which is the entire decision: the
+    // measured 34 us normative warp of a WARP_SKIP tile stops existing, and
+    // with it 8.8 ms an eye a frame on the Pico.  The one exception is the
+    // in-place NEAR_SKIP correction of 13.12.7.
+    //
+    // Concealment collapses into this too (13.12.6): a tile the client did not
+    // receive is a tile whose atlas entry is simply not updated, which is
+    // already the correct state.  There is no concealment kernel to run and
+    // none to test.
+    auto atlas_skip_tile = [&](int t, int eye, int col, int row,
+                               const i8 (*corr)[3]) -> void {
+        if (!corr) return;
+        AtlasEntry &e = d->at.ent[(size_t)t];
+        if (!(e.flags & kAtlasValid)) return;
+        TileCoder tc;
+        tc.g = &g;
+        tc.fp = &fp;
+        tc.tp = TileParams{};
+        tc.tp.eye = eye;
+        tc.tp.tile_index = col;
+        tc.tp.mode = NXVC_MODE_WARP_SKIP;
+        tc.tp.chroma444 = (g.chroma == NXVC_CHROMA_444);
+        tc.setup();
+        load_ref_tile(tc, g, d->at.pix, eye, col, row);
+        for (int p = 0; p < kNearSkipPlanes && p < tc.nplanes; ++p)
+            reconstruct_near_skip(tc.pl[p], corr[p]);
+        // Planes the correction does not reach keep the atlas samples they
+        // already had, which load_ref_tile put in wpred.
+        for (int p = kNearSkipPlanes; p < tc.nplanes; ++p) {
+            PlaneState &ps = tc.pl[p];
+            for (size_t i = 0; i < ps.samples.size(); ++i)
+                ps.samples[i] = clamp_i32(ps.wpred[i], 0, ps.maxval);
+        }
+        // 13.12.7: the pixels move, the pose metadata does not.
+        store_ref_tile(tc, g, d->at.pix, eye, col, row);
+    };
+
     for (u32 row = 0; row < g.tiles_y; ++row) {
         for (u32 eye = 0; eye < g.eyes; ++eye) {
+            // 3.1.2: a row the row_present bitmap does not name carries no
+            // header and no tiles.  It is exactly a row whose skip_bitmap is
+            // all ones with tile_count 0, so everything below it is the
+            // ordinary all-skipped path and there is no second code path.
+            if (fp.row_present) {
+                const size_t ri = (size_t)row * g.eyes + eye;
+                if (!((fp.row_bits[ri >> 3] >> (ri & 7)) & 1u)) {
+                    for (u32 col = 0; col < g.tiles_x; ++col) {
+                        const int t =
+                            linear_tile(g, (int)row, (int)eye, (int)col);
+                        nxvc_tile_info &ti = d->tiles[t];
+                        if (atlas) {
+                            atlas_skip_tile(t, (int)eye, (int)col, (int)row,
+                                            nullptr);
+                        } else {
+                            st = reconstruct_skip_tile(
+                                t, (int)eye, (int)col, (int)row,
+                                d->state[t].last_mv_x, d->state[t].last_mv_y);
+                            if (st != NXVC_OK) return st;
+                        }
+                        ti.tile_index = (u16)col;
+                        ti.eye = (u8)eye;
+                        ti.mode = NXVC_MODE_WARP_SKIP;
+                        ti.skipped = 1;
+                        ti.chroma444 = (g.chroma == NXVC_CHROMA_444) ? 1 : 0;
+                        ti.mv_x = (i8)d->state[t].last_mv_x;
+                        ti.mv_y = (i8)d->state[t].last_mv_y;
+                        ti.qp = (u8)clamp_i32(fp.base_qp, 0, 63);
+                        ti.warp_mad_q8 = NXVC_WARP_MAD_UNMEASURED;
+                    }
+                    continue;
+                }
+            }
             if (off + kTileRowHeaderBytes > frame_bytes) return NXVC_ERR_TRUNCATED;
             BR br{buf, frame_bytes, off, true};
             u32 fn = br.u16v();
@@ -3498,13 +3928,21 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
                 const int t = linear_tile(g, (int)row, (int)eye, (int)col);
                 nxvc_tile_info &ti = d->tiles[t];
                 if ((skip >> col) & 1u) {
-                    // A skipped tile carries no structure at all: the
-                    // predictor runs with the tile's stored vector.
-                    st = reconstruct_skip_tile(
-                        t, (int)eye, (int)col, (int)row,
-                        d->state[t].last_mv_x, d->state[t].last_mv_y,
-                        ((dcmap >> col) & 1u) ? dcrec[col] : nullptr);
-                    if (st != NXVC_OK) return st;
+                    // A skipped tile carries no structure at all.  Under the
+                    // picture model the predictor runs with the tile's stored
+                    // vector; under the atlas nothing runs at all (13.12).
+                    if (atlas) {
+                        atlas_skip_tile(t, (int)eye, (int)col, (int)row,
+                                        (((dcmap >> col) & 1u) && !tile_lost(t))
+                                            ? dcrec[col]
+                                            : nullptr);
+                    } else {
+                        st = reconstruct_skip_tile(
+                            t, (int)eye, (int)col, (int)row,
+                            d->state[t].last_mv_x, d->state[t].last_mv_y,
+                            ((dcmap >> col) & 1u) ? dcrec[col] : nullptr);
+                        if (st != NXVC_OK) return st;
+                    }
                     ti.near_skip = (u8)((dcmap >> col) & 1u);
                     ti.tile_index = (u16)col;
                     ti.eye = (u8)eye;
@@ -3601,6 +4039,9 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
                 if (tp.quad_mv && !(tp.mode == NXVC_MODE_WARP_MV ||
                                     tp.mode == NXVC_MODE_STATIC_MV))
                     return NXVC_ERR_BITSTREAM;
+                // SYNTAX.md 4.1 and 13.12.6: the atlas holds one generation
+                // per tile position, so an older reference cannot be named.
+                if (atlas && tp.ref_sel != 0) return NXVC_ERR_BITSTREAM;
                 off = tb.i;
                 if (tp.mv_present) {
                     if (off + 2 > frame_bytes) return NXVC_ERR_TRUNCATED;
@@ -3637,11 +4078,22 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
                 if (tile_lost(t)) {
                     // The tile's bytes are parsed (so the frame stays
                     // self-delimiting) and then discarded: the client does not
-                    // hold them.  Clause 6.11 runs instead, with last_mv.
-                    st = reconstruct_skip_tile(t, (int)eye, (int)col, (int)row,
-                                               d->state[t].last_mv_x,
-                                               d->state[t].last_mv_y);
-                    if (st != NXVC_OK) return st;
+                    // hold them.
+                    //
+                    // Under the atlas that is the WHOLE of loss handling
+                    // (13.12.6): the tile's atlas entry is simply not updated,
+                    // which is already the state the encoder will roll its
+                    // shadow back to.  A missed frame invalidates exactly the
+                    // tiles it coded and nothing else, with no signalling and
+                    // no concealment kernel.  Under the picture model clause
+                    // 6.11 runs instead, with last_mv.
+                    if (!atlas) {
+                        st = reconstruct_skip_tile(t, (int)eye, (int)col,
+                                                   (int)row,
+                                                   d->state[t].last_mv_x,
+                                                   d->state[t].last_mv_y);
+                        if (st != NXVC_OK) return st;
+                    }
                     ti.tile_index = (u16)col;
                     ti.eye = (u8)eye;
                     ti.mode = NXVC_MODE_WARP_SKIP;
@@ -3659,7 +4111,35 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
                 tc.fp = &fp;
                 tc.tp = tp;
                 tc.setup();
-                if (tp.mode != NXVC_MODE_INTRA) {
+                // 13.12.6: a tile whose position already holds an atlas
+                // generation from this frame or a later one has been overtaken
+                // -- it arrived late and its content is stale.  It is DROPPED,
+                // and reported `superseded` rather than lost: the position
+                // holds newer content than the tile carries, so there is
+                // nothing for a receiver to ask for again.  In frame-order
+                // decoding this cannot arise; it exists for a decoder that
+                // applies coded tiles in arrival order.
+                if (atlas && (d->at.ent[(size_t)t].flags & kAtlasValid) &&
+                    d->at.ent[(size_t)t].src_frame >= fp.frame_number &&
+                    fp.frame_number > 0) {
+                    ti.tile_index = (u16)col;
+                    ti.eye = (u8)eye;
+                    ti.mode = (u8)tp.mode;
+                    ti.superseded = 1;
+                    ti.qp = (u8)clamp_i32(fp.base_qp + tp.qp_delta, 0, 63);
+                    ti.warp_mad_q8 = NXVC_WARP_MAD_UNMEASURED;
+                    continue;
+                }
+                if (tp.mode != NXVC_MODE_INTRA && atlas) {
+                    // 13.12.4: predict from the ATLAS, through the matrix of
+                    // the atlas entry at this tile's own position.
+                    const AtlasEntry &ae = d->at.ent[(size_t)t];
+                    if (!(ae.flags & kAtlasValid)) return NXVC_ERR_BITSTREAM;
+                    predict_tile_atlas(tc, g, d->at.prev, ae, (int)eye,
+                                       (int)col, (int)row, tp.mode, tp.mv_x,
+                                       tp.mv_y,
+                                       tp.quad_mv ? tp.qmv : nullptr);
+                } else if (tp.mode != NXVC_MODE_INTRA) {
                     const RefPicture *rp = nullptr;
                     if (tp.mode == NXVC_MODE_STEREO) {
                         rp = &cur;   // this frame's already-decoded left eye
@@ -3693,8 +4173,16 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
                                       tp.tskip, tc.intra_dir, tc.dir_layer,
                                       cf.on() ? &cf : nullptr);
                 }
-                store_tile(tc, g, img, (int)eye, (int)col, (int)row);
-                store_ref_tile(tc, g, cur, (int)eye, (int)col, (int)row);
+                if (atlas) {
+                    // 13.12.3 step 3.  The picture is not written per tile:
+                    // under the atlas the output image is the non-normative
+                    // display of 13.12.5, rendered once at the end.
+                    atlas_store(d->at, tc, g, t, (int)eye, (int)col, (int)row,
+                                tp.mode, fp.frame_number, true);
+                } else {
+                    store_tile(tc, g, img, (int)eye, (int)col, (int)row);
+                    store_ref_tile(tc, g, cur, (int)eye, (int)col, (int)row);
+                }
                 nxvc::update_pred_state(d->state[t], tp.mode, tp.mv_x, tp.mv_y,
                                         tp.disparity);
 
@@ -3704,7 +4192,16 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
         }
     }
     if (off != frame_bytes) return NXVC_ERR_BITSTREAM;
-    cur.valid = true;
+    if (atlas) {
+        // The NORMATIVE output is now the atlas.  The picture is rendered from
+        // it by the non-normative display helper (13.12.5), which a real
+        // client does on the GPU at panel rate with a late-latched pose.
+        d->last_fp = fp;
+        d->have_last_fp = true;
+        atlas_display(d->at, g, fp, d->state, img);
+    } else {
+        cur.valid = true;
+    }
     d->fi.tile_count = (u32)ntiles;
     if (consumed) *consumed = frame_bytes;
     return NXVC_OK;
@@ -3788,6 +4285,54 @@ extern "C" nxvc_status nxvc_encoder_set_received_tiles(nxvc_encoder *e,
     if (!e || !received) return NXVC_ERR_ARG;
     if (count != e->g.ntiles()) return NXVC_ERR_ARG;
     if (e->last_slot < 0) return NXVC_ERR_BITSTREAM;   // nothing encoded yet
+    if (e->atlas) {
+        // 13.12.6.  Under the atlas there is nothing to replay: a tile the
+        // client did not receive is a tile whose atlas entry it never updated,
+        // so the encoder brings its shadow back into agreement by UN-WRITING
+        // exactly that entry.  The undo log holds the pre-write pixels and
+        // metadata of every tile this frame coded, which is the only thing
+        // that can have diverged.
+        //
+        // The picture model needed a full-frame replay through the concealment
+        // kernel here; the atlas needs a memcpy per lost tile, and the result
+        // is exact rather than exact-by-construction-of-a-second-kernel.
+        const Geometry &g = e->g;
+        for (u32 ti = 0; ti < (u32)e->undo.size() && ti < count; ++ti) {
+            const auto &u = e->undo[ti];
+            if (!u.valid || received[ti]) continue;
+            const int cols = (int)(g.eyes * g.tiles_x);
+            const int row = (int)(ti / (u32)cols);
+            const int col_all = (int)(ti % (u32)cols);
+            const int eye = col_all / (int)g.tiles_x;
+            const int col = col_all % (int)g.tiles_x;
+            for (int p = 0; p < g.nplanes(); ++p) {
+                if (u.pix[p].empty()) continue;
+                const int full = plane_full_extent(
+                    g, p, (g.chroma == NXVC_CHROMA_444) ? 1 : 0);
+                int ox, oy;
+                plane_tile_origin(g, p, col, row, ox, oy);
+                ox += (int)(eye * g.pw(p));
+                const int pwe = (int)(g.pw(p) * (eye + 1));
+                const int phe = (int)g.ph(p);
+                u16 *dst = e->at.pix.plane[p].data();
+                const int stride = e->at.pix.w[p];
+                for (int y = 0; y < full; ++y) {
+                    const int gy = oy + y;
+                    if (gy >= phe) break;
+                    for (int x = 0; x < full; ++x) {
+                        const int gx = ox + x;
+                        if (gx >= pwe) break;
+                        dst[(size_t)gy * stride + gx] =
+                            u.pix[p][(size_t)y * full + x];
+                    }
+                }
+            }
+            e->at.ent[ti] = u.ent;
+            // The tile was not decoded, so its prediction state never advanced.
+            e->state[ti] = e->state_pre[ti];
+        }
+        return NXVC_OK;
+    }
     const Geometry &g = e->g;
     FrameParams fp = e->fp;
     fp.frame_number = (u16)e->last_frame_number;
@@ -3852,6 +4397,100 @@ extern "C" nxvc_status nxvc_decoder_set_lost_tiles(nxvc_decoder *d,
     if (!d->have_stream) return NXVC_ERR_BITSTREAM;
     if (count != d->g.ntiles()) return NXVC_ERR_ARG;
     d->lost.assign(lost, lost + count);
+    return NXVC_OK;
+}
+
+// ============================================== the atlas accessors (13.12)
+//
+// The per-tile table is handed back as the raw 64-byte records of 13.12.1,
+// because that is what both a conformance comparison and a GPU upload want.
+namespace {
+static void atlas_table_bytes(const nxvc::Atlas &at, u8 *out) {
+    for (size_t t = 0; t < at.ent.size(); ++t) {
+        const nxvc::AtlasEntry &e = at.ent[t];
+        u8 *p = out + t * 64;
+        for (int k = 0; k < 9; ++k) {
+            const u32 v = (u32)e.C[k];
+            p[k * 4 + 0] = (u8)(v & 0xff);
+            p[k * 4 + 1] = (u8)((v >> 8) & 0xff);
+            p[k * 4 + 2] = (u8)((v >> 16) & 0xff);
+            p[k * 4 + 3] = (u8)((v >> 24) & 0xff);
+        }
+        p[36] = (u8)(e.src_frame & 0xff);
+        p[37] = (u8)((e.src_frame >> 8) & 0xff);
+        p[38] = (u8)((e.src_frame >> 16) & 0xff);
+        p[39] = (u8)((e.src_frame >> 24) & 0xff);
+        p[40] = (u8)(e.gen & 0xff);
+        p[41] = (u8)((e.gen >> 8) & 0xff);
+        p[42] = e.flags;
+        p[43] = e.res_level;
+        for (int k = 44; k < 64; ++k) p[k] = 0;
+    }
+}
+static const u16 *atlas_plane_of(const nxvc::Atlas &at, const Geometry &g,
+                                 int plane, u32 *w, u32 *h, u32 *stride) {
+    if (plane < 0 || plane >= g.nplanes()) return nullptr;
+    if (at.pix.plane[plane].empty()) return nullptr;
+    if (w) *w = (u32)at.pix.w[plane];
+    if (h) *h = (u32)at.pix.h[plane];
+    if (stride) *stride = (u32)at.pix.w[plane];
+    return at.pix.plane[plane].data();
+}
+}  // namespace
+
+extern "C" size_t nxvc_decoder_atlas_table_size(const nxvc_decoder *d) {
+    return (d && d->have_stream && d->atlas) ? d->at.ent.size() * 64u : 0u;
+}
+extern "C" size_t nxvc_encoder_atlas_table_size(const nxvc_encoder *e) {
+    return (e && e->atlas) ? e->at.ent.size() * 64u : 0u;
+}
+extern "C" nxvc_status nxvc_decoder_atlas_table(const nxvc_decoder *d, u8 *out,
+                                                size_t out_bytes) {
+    if (!d || !out) return NXVC_ERR_ARG;
+    if (!d->have_stream || !d->atlas) return NXVC_ERR_UNSUPPORTED;
+    if (out_bytes < d->at.ent.size() * 64u) return NXVC_ERR_ARG;
+    atlas_table_bytes(d->at, out);
+    return NXVC_OK;
+}
+extern "C" nxvc_status nxvc_encoder_atlas_table(const nxvc_encoder *e, u8 *out,
+                                                size_t out_bytes) {
+    if (!e || !out) return NXVC_ERR_ARG;
+    if (!e->atlas) return NXVC_ERR_UNSUPPORTED;
+    if (out_bytes < e->at.ent.size() * 64u) return NXVC_ERR_ARG;
+    atlas_table_bytes(e->at, out);
+    return NXVC_OK;
+}
+extern "C" const uint16_t *nxvc_decoder_atlas_plane(const nxvc_decoder *d,
+                                                    int plane, uint32_t *w,
+                                                    uint32_t *h,
+                                                    uint32_t *stride) {
+    if (!d || !d->have_stream || !d->atlas) return nullptr;
+    return atlas_plane_of(d->at, d->g, plane, w, h, stride);
+}
+extern "C" const uint16_t *nxvc_encoder_atlas_plane(const nxvc_encoder *e,
+                                                    int plane, uint32_t *w,
+                                                    uint32_t *h,
+                                                    uint32_t *stride) {
+    if (!e || !e->atlas) return nullptr;
+    return atlas_plane_of(e->at, e->g, plane, w, h, stride);
+}
+extern "C" nxvc_status nxvc_decoder_atlas_display(const nxvc_decoder *d,
+                                                  nxvc_image *img) {
+    if (!d || !img) return NXVC_ERR_ARG;
+    if (!d->have_stream || !d->atlas) return NXVC_ERR_UNSUPPORTED;
+    if (!d->have_last_fp) return NXVC_ERR_BITSTREAM;
+    for (int p = 0; p < d->g.nplanes(); ++p)
+        if (!img->plane[p]) return NXVC_ERR_ARG;
+    atlas_display(d->at, d->g, d->last_fp, d->state, img);
+    return NXVC_OK;
+}
+extern "C" nxvc_status nxvc_encoder_atlas_display(const nxvc_encoder *e,
+                                                  nxvc_image *img) {
+    if (!e || !img) return NXVC_ERR_ARG;
+    if (!e->atlas) return NXVC_ERR_UNSUPPORTED;
+    for (int p = 0; p < e->g.nplanes(); ++p)
+        if (!img->plane[p]) return NXVC_ERR_ARG;
+    atlas_display(e->at, e->g, e->fp, e->state, img);
     return NXVC_OK;
 }
 

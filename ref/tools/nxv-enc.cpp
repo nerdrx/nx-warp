@@ -125,7 +125,19 @@ static void usage() {
         "                       fixed 1-in-T permutation (default on)\n"
         "  --drift-gate F       --drift-refresh gate, multiples of the\n"
         "                       quantiser noise floor qstep^2/12 (default 4)\n"
-        "  --near-skip on|off   DC-correction tile form, tool bit 28\n"
+        "  --atlas on|off       the per-tile ATLAS reference, tool bit 31.\n"
+        "               A skipped tile writes no reference pixels; the\n"
+        "               normative output is the atlas, not the picture, and\n"
+        "               the displayed picture is the non-normative one-step\n"
+        "               warp of 13.12.5.  Requires --inter on, excludes\n"
+        "               --stereo on.\n"
+        "  --row-present on|off elide the 12-byte header of a tile row with\n"
+        "               no coded tile, tool bit 32\n"
+        "  --atlas-gen-max N    invalidate an atlas entry after N composition\n"
+        "               steps; 0 = the warp envelope alone bounds staleness\n"
+        "  --atlas-dump P       write the encoder's shadow atlas table after\n"
+        "               each frame to P (64 bytes per tile per frame), which\n"
+        "               is what a conformance comparison reads\n"        "  --near-skip on|off   DC-correction tile form, tool bit 28\n"
         "                       (default on)\n"
         "  --quad-mv on|off     four vectors per tile, one per 32x32\n"
         "                       quadrant, tool bit 29 (default on)\n"
@@ -213,6 +225,34 @@ static bool read_exact(std::FILE *f, void *p, size_t n) {
     return std::fread(p, 1, n, f) == n;
 }
 
+
+// FNV-1a over the atlas pixels of every plane, appended to the table dump so
+// that a comparison covers the whole normative output of 13.12 and not only
+// its metadata.  Pixels are compared as a digest because the atlas is 3.4 MB
+// an eye and a conformance vector should not be.
+static void atlas_digest(const uint16_t *(*plane_fn)(const void *, int,
+                                                     uint32_t *, uint32_t *,
+                                                     uint32_t *),
+                         const void *ctx, uint8_t out[32]) {
+    for (int p = 0; p < 4; ++p) {
+        uint64_t h = 1469598103934665603ull;
+        uint32_t w = 0, ht = 0, stride = 0;
+        const uint16_t *d = plane_fn(ctx, p, &w, &ht, &stride);
+        if (d)
+            for (uint32_t y = 0; y < ht; ++y)
+                for (uint32_t x = 0; x < w; ++x) {
+                    const uint16_t v = d[(size_t)y * stride + x];
+                    h = (h ^ (v & 0xff)) * 1099511628211ull;
+                    h = (h ^ (v >> 8)) * 1099511628211ull;
+                }
+        for (int k = 0; k < 8; ++k) out[p * 8 + k] = (uint8_t)(h >> (8 * k));
+    }
+}
+
+static const uint16_t *atlas_plane_shim(const void *c, int pl, uint32_t *w,
+                                        uint32_t *h, uint32_t *st) {
+    return nxvc_encoder_atlas_plane((const nxvc_encoder *)c, pl, w, h, st);
+}
 int main(int argc, char **argv) {
     std::string in, out, pix = "yuv420p", resmap_path, qpmap_path;
     int W = 0, H = 0, qp = 24, frames = -1, matrix = 1, chroma_qp_off = 0;
@@ -229,6 +269,9 @@ int main(int argc, char **argv) {
     int sign_hide = 1;
     int split4x4 = 1, cfl = 1;
     int inter = 0, eyes = 1, intra_period = 180, ref_sel = 0, stereo = 0;
+    // --- the atlas reference (SYNTAX.md 13.12, ADR-0029)
+    int atlas = 0, row_present = 0, atlas_gen_max = 0;
+    std::string atlas_dump;
     int mv_range = 16, skip_thresh = 0, mode_lambda = 0;
     int int_decision = 0, int_lambda = 0, int_intra_mad = 0;
     int int_coded_vectors = 2;
@@ -297,6 +340,20 @@ int main(int argc, char **argv) {
             else if (v == "off") stereo = 0;
             else { std::fprintf(stderr, "--stereo: on|off\n"); return 2; }
         }
+        else if (a == "--atlas") {
+            std::string v = val();
+            if (v == "on") atlas = 1;
+            else if (v == "off") atlas = 0;
+            else { std::fprintf(stderr, "--atlas: on|off\n"); return 2; }
+        }
+        else if (a == "--row-present") {
+            std::string v = val();
+            if (v == "on") row_present = 1;
+            else if (v == "off") row_present = 0;
+            else { std::fprintf(stderr, "--row-present: on|off\n"); return 2; }
+        }
+        else if (a == "--atlas-gen-max") atlas_gen_max = std::atoi(val());
+        else if (a == "--atlas-dump") atlas_dump = val();
         else if (a == "--eyes") eyes = std::atoi(val());
         else if (a == "--poses") poses_path = val();
         else if (a == "--skip-map") skipmap_path = val();
@@ -600,6 +657,12 @@ int main(int argc, char **argv) {
     }
 
     nxvc_config cfg;
+    std::FILE *fatlas = nullptr;
+    std::vector<uint8_t> atlas_buf;
+    if (!atlas_dump.empty()) {
+        fatlas = std::fopen(atlas_dump.c_str(), "wb");
+        if (!fatlas) { std::perror("open --atlas-dump"); return 1; }
+    }
     nxvc_config_default(&cfg);
     cfg.width = (uint32_t)(W / eyes);
     cfg.height = (uint32_t)H;
@@ -613,6 +676,13 @@ int main(int argc, char **argv) {
     cfg.chroma_weight_q8 = (uint32_t)chroma_weight;
     cfg.near_skip = (uint32_t)near_skip;
     cfg.quad_mv = (uint32_t)quad_mv;
+    cfg.atlas = (uint32_t)atlas;
+    cfg.row_present = (uint32_t)row_present;
+    cfg.atlas_gen_max = (uint32_t)(atlas_gen_max > 0 ? atlas_gen_max : 0);
+    // 13.12.3: a STATIC_MV entry is held unwarped, so a head-locked tile may
+    // be skipped.  On by default with the atlas -- it is the one behavioural
+    // change to an existing mode and it is a strict gain.
+    cfg.atlas_static_skip = (uint32_t)atlas;
     cfg.ref_sel = (uint32_t)(ref_sel < 0 ? 0 : (ref_sel > 2 ? 2 : ref_sel));
     cfg.mv_range = (uint32_t)(mv_range > 0 ? mv_range : 16);
     cfg.threads = (uint32_t)(threads > 0 ? threads : 0);
@@ -842,6 +912,38 @@ int main(int argc, char **argv) {
         }
         std::fwrite(outbuf.data(), 1, ol, fo);
         total += ol;
+        // The NORMATIVE output under the atlas: dump the per-tile table so a
+        // test can compare it against the decoder's, byte for byte (13.12.1).
+        if (fatlas) {
+            const size_t nb = nxvc_encoder_atlas_table_size(enc);
+            if (nb) {
+                atlas_buf.resize(nb);
+                if (nxvc_encoder_atlas_table(enc, atlas_buf.data(), nb) ==
+                    NXVC_OK)
+                    std::fwrite(atlas_buf.data(), 1, nb, fatlas);
+                uint8_t dg[32];
+                atlas_digest(atlas_plane_shim, enc, dg);
+                std::fwrite(dg, 1, sizeof(dg), fatlas);
+                if (std::getenv("NXV_ATLAS_TILEDIG")) {
+                    uint32_t w=0,h=0,stq=0;
+                    const uint16_t *d1 = atlas_plane_shim(enc, 1, &w, &h, &stq);
+                    for (uint32_t ty2 = 0; ty2 * 32 < h; ++ty2)
+                      for (uint32_t tx2 = 0; tx2 * 32 < w; ++tx2) {
+                        uint64_t hh = 1469598103934665603ull;
+                        for (uint32_t y = 0; y < 32; ++y)
+                          for (uint32_t x = 0; x < 32; ++x) {
+                            uint32_t gy = ty2*32+y, gx = tx2*32+x;
+                            uint16_t v = (gy<h&&gx<w)? d1[(size_t)gy*stq+gx] : 0;
+                            hh = (hh ^ (v & 0xff)) * 1099511628211ull;
+                            hh = (hh ^ (v >> 8)) * 1099511628211ull;
+                          }
+                        uint8_t b[8];
+                        for (int k=0;k<8;k++) b[k]=(uint8_t)(hh>>(8*k));
+                        std::fwrite(b,1,8,fatlas);
+                      }
+                }
+            }
+        }
         if (drv) {
             uint32_t tc = 0;
             const nxvc_tile_info *ti = nxvc_encoder_tiles(enc, &tc);
@@ -925,6 +1027,7 @@ int main(int argc, char **argv) {
         }
         ++n;
     }
+    if (fatlas) std::fclose(fatlas);
     std::fclose(fo);
     std::fclose(fi);
     if (fr) std::fclose(fr);

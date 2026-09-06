@@ -359,6 +359,41 @@ pose bytes is impossible for a decoder that does no floating-point arithmetic
 (section 1), which is the whole reason the quantised matrix and not the pose is
 the thing on the wire.
 
+### 3.1.2 `row_present()` (tool bit 32)
+
+Present if and only if `flags` bit 4 (`row_present`) is set, immediately after
+`warp_ext()` and before the custom quantization matrices. `flags` bit 4
+requires tool bit 32 `ROW_PRESENT`; setting it without the tool bit is
+`BITSTREAM`.
+
+It is `ceil(tiles_y * eyes / 8)` bytes: one bit per **tile-row structure**, in
+the decode order of 3.3 (row-major, eye-minor), bit `i` of byte `i >> 3` at
+position `i & 7`, where `i = row * eyes + eye`. Bits above the last row
+structure **must be zero**, so that one frame has exactly one encoding.
+
+A row whose bit is **1** carries its tile-row structure exactly as 3.3
+describes. A row whose bit is **0** carries **nothing at all**: no 12-byte row
+header, no near-skip records, no tile structures. It is decoded exactly as a
+row whose `skip_bitmap` names every column, whose `tile_count` is 0 and whose
+`dc_present` is 0 -- every tile in it is skipped. There is no second code path
+and no new reconstruction rule; the bitmap only says that the bytes stating
+that were not sent.
+
+Why it exists: a tile row costs a 12-byte header whether or not anything in it
+changed, so an idle picture pays for its tile *grid* rather than for its
+content. At the v1 configuration (17 rows, 2 eyes) that floor is **408 bytes a
+frame, 294 kbit/s at 90 Hz**, on a frame in which nothing moved. The bitmap
+replaces it with **5 bytes**, an 80x reduction, and the saving is exactly
+proportional to how much of the picture is idle.
+
+It is **orthogonal to `ATLAS`** and useful without it: the two are separate
+tool bits and either may be set alone. A stream that never sets `flags` bit 4
+decodes byte-identically whether or not the tool bit is offered.
+
+Interaction with an all-intra frame: a frame with no reference has no skipped
+tiles, so every row structure is present and the bitmap is all ones. It is
+still legal, and still five bytes.
+
 ### 3.2 Pose
 
 The 26 pose bytes are **opaque to the codec**: they are carried, hashed and
@@ -3005,6 +3040,24 @@ for i, j in 0..2:
 round-to-nearest with ties away from zero. `P[2][2]` is nonzero for any matrix
 that satisfies 3.1.1 condition 3.
 
+**Width of `P[k] << 29`.** The normative arithmetic is **`int64`**, and the
+shift is made safe by a guard rather than by a wider type: if any `|P[k]|` is
+at least `2^33`, the composition **fails** and the entry is invalidated, before
+the shift is evaluated. `2^33 << 29` is `2^62`, so every shift the normative
+path evaluates fits `int64`. The guard is not a threshold to be tuned: a legal
+composed matrix is bounded by `kEntryMax` (`2^30`), so anything at `2^33` is
+already eight times outside the envelope and would have been rejected by the
+check that follows.
+
+An implementation may use 128-bit arithmetic instead. It agrees with the
+`int64` form on every value either produces, because the two differ only where
+`|P[k]| >= 2^33` and the `int64` form does not evaluate the shift there --
+it has already failed the composition. A 128-bit implementation must therefore
+apply the same `2^33` guard, so that an out-of-envelope composition fails at
+the same step on both; without it a 128-bit decoder would accept a composition
+an `int64` decoder rejects, which is a conformance difference and not an
+optimisation.
+
 A renormalised `C` is in the same envelope as a transmitted matrix, so the
 predictor of 13.3 consumes it unchanged and `warp_tile()` is not modified.
 
@@ -3042,10 +3095,42 @@ res_level  := the tile's res_level
 A `WARP_SKIP` tile writes nothing: not pixels, not metadata. The single
 exception is 13.12.7.
 
-The order of atlas writes within a frame is unobservable in the finished atlas,
-because every tile writes only its own position and reads only positions
-written before this frame. A decoder may therefore apply coded tiles as they
-arrive and need not assemble a whole frame.
+`ref_slots` (3.1) keeps its ordinary meaning under `ATLAS`:
+`1 << (frame_number mod 4)`. The atlas is not a ring and the field names no
+atlas state -- an encoder's storage slot is its own business -- but the field
+is checked on parse for every `INTER` stream, so writing anything else would
+make the frame malformed for no gain. It is inert under `ATLAS`, exactly as it
+is inert on a stream with no inter tools.
+
+**A tile predicts from the atlas as it stood at the START of the frame**, that
+is, after step 1 and before any of step 3's writes. This is normative and it
+is not an implementation note: the predictor of 13.3 reaches outside the tile's
+own position, so a coded tile's footprint can cover a neighbour that is also
+coded this frame, and reading that neighbour's new pixels instead of its old
+ones would make the decoded atlas depend on the order tiles were processed in.
+
+With the rule, the order of atlas writes within a frame is unobservable in the
+finished atlas: every tile writes only its own position and reads only
+positions as they were before this frame. A decoder may therefore apply coded
+tiles as they arrive and need not assemble a whole frame -- which is the
+property the latency argument rests on.
+
+**Lazy advance (informative).** Step 1 may be deferred per entry: a stored `C`
+need only move when a coded tile at that position is about to read it, by
+right-multiplying the retained `H` of each intervening frame **one step at a
+time, in frame order**. That is bit-exact to the eager form, because 13.12.2 is
+defined as one right-multiplication with its own renormalisation and the lazy
+form performs the same multiplications, with the same rounding, in the same
+order. It is *not* equivalent to composing the intervening matrices into one
+product first and applying that: the renormalisation of each step is part of
+the definition. A lazy implementation must also apply each step's envelope and
+`gen` checks, so that an entry is invalidated at the same step the eager form
+would have invalidated it.
+
+An implementation does not need a second atlas for this. Only the pre-frame
+pixels of the tiles CODED this frame can ever be read stale, so a scratch of
+that many tiles is sufficient; the CPU reference keeps a whole copy because it
+is simple, not because the rule demands it.
 
 #### 13.12.4 The reference a coded tile reads
 

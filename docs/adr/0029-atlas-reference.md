@@ -148,11 +148,22 @@ Two properties this buys, both load-bearing:
   encoder must code it. No separate "too old" rule exists.
 
 **Precision.** Each composition step rounds twice, at 1 ulp of Q21 (2^-21 relative) and 1 ulp of
-Q29. Over a 100-frame skip chain the accumulated error behaves as a random walk of ~10 ulp, i.e.
-~5e-6 relative, which at a 512-sample translation term is **0.0026 samples**. It is also
-bit-identical on both sides by construction, so it is a quality question and never a conformance
-one. This is a design estimate from the arithmetic, not a measurement; Phase 2 reports the measured
-divergence of `C` from a double-precision recomposition on the test clips.
+Q29, and the error is bit-identical on both sides by construction, so it is a quality question and
+never a conformance one. The budget set here was 0.0026 samples of translation drift over a
+100-frame chain, from a random-walk estimate of ~5e-6 relative.
+
+**Measured** (two independent implementations, both against a double-precision recomposition):
+
+| measurement | result | source |
+|---|---|---|
+| worst relative divergence over a 100-step chain | **4.8e-5** (~10x the 5e-6 estimate) | encoder-side CPU model |
+| the same, as translation drift at a 512-sample term | **0.00035 samples** | derived from the above |
+| worst corner divergence over a 30-step chain at 3.3 deg/frame | **0.0048 samples** | `ref/` composition check, this branch |
+
+The estimate was optimistic by an order of magnitude and the conclusion is unchanged: the measured
+drift is **7x inside the 0.0026-sample budget**, and a tenth of a hundredth of a sample is not
+visible in any predictor. The estimate is replaced by the measurements above rather than left
+standing.
 
 ### 4. Prediction for a coded tile (normative)
 
@@ -366,13 +377,23 @@ into the atlas domain, with the nxvc enhancement layer coding the residual over 
 PAPER 2.9). The atlas is the natural home for this because a patch source is already per tile.
 Bit-exactness has two answers and both must be written down:
 
-* *Option B — the encoder runs the same HEVC decoder.* HEVC's decoding process is normatively
-  bit-exact, so a conforming decoder anywhere produces identical samples; the encoder decodes its
-  own base stream in hardware on the PC (1-2 ms of encode pipeline, PAPER 2.9) and its shadow atlas
-  is exact. The residual risk is not the HEVC decode but the **NV12-to-atlas conversion**, which we
-  therefore define as a normative integer transform, and MediaCodec's own loss handling, which we
-  bound by never letting a base-sourced patch survive a base-layer loss. *Cost:* an HEVC decoder in
-  the encoder pipeline, and a normative colour-conversion clause. **This is the preferred option.**
+* *Option B — the encoder runs the same HEVC decoder.* **Validated on the Pico 4**, and the
+  measurements are stronger than the argument was:
+
+  | measurement | result |
+  |---|---|
+  | `OMX.qcom` HEVC decode vs FFmpeg, 180 frames at 4.7 / 9.6 / 50 Mbit | **byte-identical** |
+  | AHardwareBuffer -> Vulkan sampler -> integer YCbCr->RGB->YCoCg-R -> atlas, vs the CPU computation | **0 of 1,183,744 samples differ** |
+  | MediaCodec latency at 9.6 Mbit | **2.76 ms mean, 5.63 ms p99** |
+  | a base-sourced patch, per 64x64 tile on the Adreno | **1.9 us** (vs ~41 us for an nxvc coded tile) |
+
+  **One trap, and it is normative.** The driver's `samplerYcbcrConversionComponents` is **not
+  identity**: the sampled `.r`/`.g`/`.b` came back as Cr, Y, Cb. The conversion clause must therefore
+  **consume the reported swizzle** rather than assume a channel order, and conformance needs a
+  **non-identity-swizzle device** in the matrix or the bug ships undetected on exactly the hardware
+  this is for. *Cost:* an HEVC decoder in the encoder pipeline, and a normative colour-conversion
+  clause that reads the swizzle. **This is the preferred option, and it is now measured rather than
+  argued.**
 * *Option A — base-sourced patches are drift-tolerant.* Mark the patch `base_sourced` (flags bit 2,
   already reserved), exclude it from conformance, and require a scheduled nxvc refresh within `T`
   frames. *Cost:* the encoder's shadow is wrong for those tiles for up to `T` frames, so their
@@ -380,9 +401,12 @@ Bit-exactness has two answers and both must be written down:
   the shadow contract exist to prevent, bounded but real. *Use only if a real device diverges under
   Option B.*
 
-*Saves:* an entire idle decode unit, and the base layer's tiles cost the compute decoder nothing.
-*Costs:* MediaCodec's 10-20 ms latency on the base layer, which is why this is the compatibility and
-bulk-refresh path and not the low-latency one. *Status:* flags bit 2 reserved in v1; not built.
+*Saves:* an entire idle decode unit, and a base-sourced patch costs **1.9 us a tile against ~41 us**
+for an nxvc coded tile -- a 21x reduction on the one term of the budget that does not amortise, which
+makes this a *latency* tool and not only a compatibility one. *Costs:* the base layer's own latency,
+**measured at 2.76 ms mean / 5.63 ms p99**, not the 8-20 ms PAPER 2.9 carried; that number was
+inherited from general MediaCodec lore and is wrong for this decoder at this bitrate. *Status:*
+flags bit 2 reserved in v1. Whether the base layer ships in v1 waits on the patch-quality table.
 
 **8. Drift-tolerant mode (flagged experiment, off by default).** Optional tool bit 32
 `ATLAS_DRIFT`: the *display warp output* — non-normative, filtered, fp16 — may be written back as

@@ -16,12 +16,49 @@ static void usage() {
         "               cannot keep up does; the skipped frames leave\n"
         "               holes in the reference ring\n"
         "  --nv12       write Y then interleaved UV (4:2:0 streams only)\n"
+        "  --atlas-dump P  write the atlas per-tile table after each frame\n"
+        "               to P, 64 bytes per tile per frame (SYNTAX 13.12.1)\n"
+        "  --lose-every N  mark tiles lost on every Nth frame\n"
+        "  --lose-frac M   ...one tile in M of them (default 4)\n"
         "  --quiet\n");
 }
 
+
+// FNV-1a over the atlas pixels of every plane, appended to the table dump so
+// that a comparison covers the whole normative output of 13.12 and not only
+// its metadata.  Pixels are compared as a digest because the atlas is 3.4 MB
+// an eye and a conformance vector should not be.
+static void atlas_digest(const uint16_t *(*plane_fn)(const void *, int,
+                                                     uint32_t *, uint32_t *,
+                                                     uint32_t *),
+                         const void *ctx, uint8_t out[32]) {
+    for (int p = 0; p < 4; ++p) {
+        uint64_t h = 1469598103934665603ull;
+        uint32_t w = 0, ht = 0, stride = 0;
+        const uint16_t *d = plane_fn(ctx, p, &w, &ht, &stride);
+        if (d)
+            for (uint32_t y = 0; y < ht; ++y)
+                for (uint32_t x = 0; x < w; ++x) {
+                    const uint16_t v = d[(size_t)y * stride + x];
+                    h = (h ^ (v & 0xff)) * 1099511628211ull;
+                    h = (h ^ (v >> 8)) * 1099511628211ull;
+                }
+        for (int k = 0; k < 8; ++k) out[p * 8 + k] = (uint8_t)(h >> (8 * k));
+    }
+}
+
+static const uint16_t *atlas_plane_shim(const void *c, int pl, uint32_t *w,
+                                        uint32_t *h, uint32_t *st) {
+    return nxvc_decoder_atlas_plane((const nxvc_decoder *)c, pl, w, h, st);
+}
 int main(int argc, char **argv) {
     std::string in, out, pix;
     int frames = -1, quiet = 0, nv12 = 0, decode_every = 1;
+    // --atlas-dump writes the NORMATIVE output under the atlas: the per-tile
+    // table after each decoded frame (13.12.1), which is what a conformance
+    // comparison reads.  --lose-* injects tile loss deterministically.
+    std::string atlas_dump;
+    int lose_every = 0, lose_frac = 0;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         auto val = [&]() -> const char * {
@@ -35,6 +72,9 @@ int main(int argc, char **argv) {
         else if (a == "--decode-every") decode_every = std::atoi(val());
         else if (a == "--quiet") quiet = 1;
         else if (a == "--nv12") nv12 = 1;
+        else if (a == "--atlas-dump") atlas_dump = val();
+        else if (a == "--lose-every") lose_every = std::atoi(val());
+        else if (a == "--lose-frac") lose_frac = std::atoi(val());
         else if (a == "-h" || a == "--help") { usage(); return 0; }
         else { std::fprintf(stderr, "unknown option %s\n", a.c_str()); return 2; }
     }
@@ -53,6 +93,12 @@ int main(int argc, char **argv) {
     }
     std::fclose(fi);
 
+    std::FILE *fatlas = nullptr;
+    std::vector<uint8_t> atlas_buf, lost;
+    if (!atlas_dump.empty()) {
+        fatlas = std::fopen(atlas_dump.c_str(), "wb");
+        if (!fatlas) { std::perror("open --atlas-dump"); return 1; }
+    }
     nxvc_status st;
     nxvc_decoder *dec = nxvc_decoder_create(&st);
     size_t off = 0, consumed = 0;
@@ -106,11 +152,52 @@ int main(int argc, char **argv) {
         img.plane[1] = U.data(); img.stride[1] = (int)cw;
         img.plane[2] = V.data(); img.stride[2] = (int)cw;
         img.plane[3] = A.data(); img.stride[3] = (int)yw;
+        // Deterministic tile loss.  Under the atlas this is the whole of
+        // loss handling on the client side: the tile's atlas entry is simply
+        // not updated (13.12.6).
+        if (lose_every > 0 && (n % lose_every) == 0 && n > 0) {
+            const uint32_t tc = nxvc_decoder_tile_count(dec);
+            const int frac = lose_frac > 0 ? lose_frac : 4;
+            lost.assign(tc, 0);
+            for (uint32_t t = 0; t < tc; ++t)
+                if ((int)((t + (uint32_t)n) % (uint32_t)frac) == 0) lost[t] = 1;
+            nxvc_decoder_set_lost_tiles(dec, lost.data(), tc);
+        }
         st = nxvc_decoder_decode_frame(dec, data.data() + off, data.size() - off,
                                        &img, &consumed);
         if (st != NXVC_OK) {
             std::fprintf(stderr, "frame %d: %s\n", n, nxvc_status_string(st));
             return 1;
+        }
+        if (fatlas) {
+            const size_t nb = nxvc_decoder_atlas_table_size(dec);
+            if (nb) {
+                atlas_buf.resize(nb);
+                if (nxvc_decoder_atlas_table(dec, atlas_buf.data(), nb) ==
+                    NXVC_OK)
+                    std::fwrite(atlas_buf.data(), 1, nb, fatlas);
+                uint8_t dg[32];
+                atlas_digest(atlas_plane_shim, dec, dg);
+                std::fwrite(dg, 1, sizeof(dg), fatlas);
+                if (std::getenv("NXV_ATLAS_TILEDIG")) {
+                    uint32_t w=0,h=0,stq=0;
+                    const uint16_t *d1 = atlas_plane_shim(dec, 1, &w, &h, &stq);
+                    for (uint32_t ty2 = 0; ty2 * 32 < h; ++ty2)
+                      for (uint32_t tx2 = 0; tx2 * 32 < w; ++tx2) {
+                        uint64_t hh = 1469598103934665603ull;
+                        for (uint32_t y = 0; y < 32; ++y)
+                          for (uint32_t x = 0; x < 32; ++x) {
+                            uint32_t gy = ty2*32+y, gx = tx2*32+x;
+                            uint16_t v = (gy<h&&gx<w)? d1[(size_t)gy*stq+gx] : 0;
+                            hh = (hh ^ (v & 0xff)) * 1099511628211ull;
+                            hh = (hh ^ (v >> 8)) * 1099511628211ull;
+                          }
+                        uint8_t b[8];
+                        for (int k=0;k<8;k++) b[k]=(uint8_t)(hh>>(8*k));
+                        std::fwrite(b,1,8,fatlas);
+                      }
+                }
+            }
         }
         std::fwrite(Y.data(), 1, Y.size(), fo);
         if (nv12) {
@@ -128,6 +215,7 @@ int main(int argc, char **argv) {
         off += consumed;
         ++n;
     }
+    if (fatlas) std::fclose(fatlas);
     std::fclose(fo);
     if (!quiet)
         std::printf("%d frame(s), %ux%u %s%s\n", n, yw, yh, want,

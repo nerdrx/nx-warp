@@ -228,6 +228,9 @@ struct FrameParams {
     u32 ref_slots = 0, flags = 1;
     int warp_present = 0;       // frame flags bit 3
     WarpMatrix warp[2];         // warp_ext(), one record per eye
+    int row_present = 0;        // frame flags bit 4, tool bit 32
+    std::vector<u8> row_bits;   // row_present(), one bit per row structure
+    int atlas = 0;              // stream tool bit 31
     int inter = 0;              // stream tool bit 10
     int stereo = 0;             // stream tool bit 12
     int nctx = kNumCtxV1;   // 12, 16 or 27, from the CTX_V2/CTX_V3 tool bits
@@ -2338,6 +2341,26 @@ struct nxvc_encoder {
     nxvc_image last_src_img{};
     int last_warp_present = 0;
     nxvc::WarpMatrix last_warp[2];
+
+    // --- syntax v1.7: the atlas (SYNTAX.md 13.12, ADR-0029)
+    bool atlas = false;
+    nxvc::Atlas at;             // the encoder's shadow atlas
+    // 13.12.6: a one-deep per-tile undo, so that a negative receipt rolls a
+    // tile's shadow entry back to the generation the client actually holds.
+    // It replaces the full replay of the picture model, because under the
+    // atlas a lost frame invalidates exactly the tiles it coded and nothing
+    // else -- so there is nothing to replay, only something to un-write.
+    struct AtlasUndo {
+        u8 valid = 0;
+        nxvc::AtlasEntry ent;
+        std::vector<u16> pix[4];
+    };
+    // Indexed BY TILE, not appended: the emit pass runs on a thread pool and
+    // every worker writes its own tile's undo slot, so there is no shared
+    // container to race on.  An append-based log corrupted its own heap here
+    // (double free at qp 36), which is the kind of bug that only shows up
+    // under a thread count the tests did not use.
+    std::vector<AtlasUndo> undo;
 };
 
 struct nxvc_decoder {
@@ -2352,6 +2375,13 @@ struct nxvc_decoder {
     nxvc::RefRing ring;
     std::vector<nxvc::PredState> state;
     std::vector<u8> lost;        // consumed by one decode_frame call
+
+    // --- syntax v1.7: the atlas (SYNTAX.md 13.12).  When `atlas` is set this
+    // is the NORMATIVE output of the decoding process and the picture is not.
+    bool atlas = false;
+    nxvc::Atlas at;
+    FrameParams last_fp;         // the frame the display helper renders at
+    bool have_last_fp = false;
 };
 
 #include "codec_impl.inc"
