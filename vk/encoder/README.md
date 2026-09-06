@@ -784,6 +784,7 @@ BD-rate against the same effort-0 curve:
 | `--rdoq-effort 3 --qp-search 2` | -6.79 % | no |
 | that plus WARP_MV | -8.93 % | no |
 | `--int-decision off` (the float mode decision) | -8.63 % | no |
+| the DEAD ZONE retuned (`NXVC_DZ_AC`, twelve profiles) | best -0.26 % | yes, and it is worth nothing |
 
 The trellis is the biggest thing on that list that is *about the quantiser*,
 and it is the one that cannot cross. `rdoq_unit` prices every candidate level
@@ -797,6 +798,17 @@ here.
 What is left of it, once both halves are removed, is one coefficient at a time
 against a constant rate — which is effort 1, and which recovers a quarter of
 the trellis's rANS gain and two thirds of its Lite gain for none of its cost.
+
+The dead zone is the other integer-friendly knob and the other negative
+result. It is four offsets in forty-eighths of a step, `NXVC_DZ_AC` overrides
+them, and the encoder's own quantiser is `(16|c| + dz) / t` on both sides -- so
+a profile that paid would be a level, and a cheap one. Twelve profiles were
+swept on the same clip and quantisers: the shipped flat 16 is inside 0.3 % of
+the best of them (flat 13, **-0.26 %**), every ramp over the four scan bands is
+worse (+2.4 % to +28 %), and a narrower flat dead zone trades rate for PSNR
+about as efficiently as the quantiser itself does (flat 10 is +1.12 %). The
+current value is where it should be, which is a duller finding than a tool but
+is the reason there is no tool.
 
 The wider search is the opposite finding and the more surprising one: it is
 implementable, exact, and worth nothing. The reference at `--mv-range 32`

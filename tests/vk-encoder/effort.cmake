@@ -152,6 +152,13 @@ if(NOT DEVICE STREQUAL "cpu")
       "--mv-range;31;--int-rdoq;1" "--mv-range;31;--int-rdoq;1")
 endif()
 
+# ---- transform skip, where the quantiser step is flat and the scan is the
+# raster one.  The requantiser reads the step per coefficient, so the tskip
+# path is the one that would silently use the weighted step instead of the
+# flat one and still look right at wm 0.
+leg(e1_tskip_rans "${RANS_REF}" "${RANS_GPU}" "" "" "--int-rdoq;1;--tskip;on"
+    "--int-rdoq;1;--tskip;on")
+
 # ---- effort 0 is unchanged.  The level is opt-in or it is a silent bitstream
 # change for every caller that never asked for one.
 leg(e0_intra_rans "${RANS_REF}" "${RANS_GPU}" "" "" "" "")
