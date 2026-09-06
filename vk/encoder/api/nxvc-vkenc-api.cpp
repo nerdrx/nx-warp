@@ -55,6 +55,14 @@ struct PlanarSource {
     vkmin::Buffer stage{};
     uint32_t w = 0, h = 0;
     static const uint32_t layer = 1;
+    /* Eyes this source carries, and whether they are separate ARRAY LAYERS
+     * (eye e at `layer + e`, each layer one eye wide) rather than side by side
+     * in `layer`.  The picture handed to upload() is the side-by-side pair
+     * either way -- that is what the .yuv file holds -- so the layered case
+     * splits it here, which is exactly the work
+     * NXVC_VKE_IMAGE_EYE_LAYERS exists to let a real compositor skip. */
+    uint32_t eyes = 1;
+    bool layered = false;
     bool first = true;
 
     bool create(uint32_t width, uint32_t height, uint32_t device_index,
@@ -80,7 +88,7 @@ struct PlanarSource {
         ci.format = VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
         ci.extent = {w, h, 1};
         ci.mipLevels = 1;
-        ci.arrayLayers = layer + 1;
+        ci.arrayLayers = layer + (layered ? eyes : 1u);
         ci.samples = VK_SAMPLE_COUNT_1_BIT;
         ci.tiling = VK_IMAGE_TILING_OPTIMAL;
         ci.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
@@ -114,8 +122,10 @@ struct PlanarSource {
             return false;
         }
 
-        const VkDeviceSize bytes =
+        /* One eye's worth per layer, so the staging buffer holds as many. */
+        const VkDeviceSize per =
             (VkDeviceSize)w * h + (VkDeviceSize)((w + 1) / 2) * ((h + 1) / 2) * 2;
+        const VkDeviceSize bytes = per * (layered ? eyes : 1u);
         return dev.create_buffer(bytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, true,
                                  stage, err);
     }
@@ -126,12 +136,25 @@ struct PlanarSource {
     bool upload(const uint8_t *y, const uint8_t *cb, const uint8_t *cr,
                 std::string &err) {
         const size_t cw = (w + 1) / 2, chh = (h + 1) / 2;
+        const uint32_t n = layered ? eyes : 1u;
+        /* `w` is one layer's width, so the SOURCE row stride over the pair is
+         * `w * eyes` when the eyes are split and `w` when they are not. */
+        const size_t sy = (size_t)w * (layered ? eyes : 1u);
+        const size_t sc = cw * (layered ? eyes : 1u);
+        const size_t per = (size_t)w * h + cw * chh * 2;
         uint8_t *p = (uint8_t *)stage.map;
-        std::memcpy(p, y, (size_t)w * h);
-        uint8_t *c = p + (size_t)w * h;
-        for (size_t i = 0; i < cw * chh; ++i) {
-            c[i * 2 + 0] = cb[i];
-            c[i * 2 + 1] = cr[i];
+        for (uint32_t e = 0; e < n; ++e) {
+            uint8_t *dst = p + per * e;
+            for (uint32_t row = 0; row < h; ++row)
+                std::memcpy(dst + (size_t)row * w,
+                            y + (size_t)row * sy + (size_t)e * w, w);
+            uint8_t *c = dst + (size_t)w * h;
+            for (size_t row = 0; row < chh; ++row)
+                for (size_t i = 0; i < cw; ++i) {
+                    const size_t s = row * sc + (size_t)e * cw + i;
+                    c[(row * cw + i) * 2 + 0] = cb[s];
+                    c[(row * cw + i) * 2 + 1] = cr[s];
+                }
         }
 
         VkCommandBuffer cbuf = dev.begin();
@@ -149,7 +172,7 @@ struct PlanarSource {
             b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             b.image = img;
             b.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0,
-                                  layer + 1};
+                                  layer + (layered ? eyes : 1u)};
             vkCmdPipelineBarrier(cbuf, sstage, dstage, 0, 0, nullptr, 0,
                                  nullptr, 1, &b);
         };
@@ -160,14 +183,20 @@ struct PlanarSource {
                 VK_PIPELINE_STAGE_TRANSFER_BIT);
         first = false;
 
-        VkBufferImageCopy rg[2]{};
-        rg[0].imageSubresource = {VK_IMAGE_ASPECT_PLANE_0_BIT, 0, layer, 1};
-        rg[0].imageExtent = {w, h, 1};
-        rg[1].bufferOffset = (VkDeviceSize)w * h;
-        rg[1].imageSubresource = {VK_IMAGE_ASPECT_PLANE_1_BIT, 0, layer, 1};
-        rg[1].imageExtent = {(uint32_t)cw, (uint32_t)chh, 1};
+        VkBufferImageCopy rg[4]{};
+        for (uint32_t e = 0; e < n; ++e) {
+            rg[e * 2 + 0].bufferOffset = (VkDeviceSize)per * e;
+            rg[e * 2 + 0].imageSubresource = {VK_IMAGE_ASPECT_PLANE_0_BIT, 0,
+                                              layer + e, 1};
+            rg[e * 2 + 0].imageExtent = {w, h, 1};
+            rg[e * 2 + 1].bufferOffset =
+                (VkDeviceSize)per * e + (VkDeviceSize)w * h;
+            rg[e * 2 + 1].imageSubresource = {VK_IMAGE_ASPECT_PLANE_1_BIT, 0,
+                                              layer + e, 1};
+            rg[e * 2 + 1].imageExtent = {(uint32_t)cw, (uint32_t)chh, 1};
+        }
         vkCmdCopyBufferToImage(cbuf, stage.buf, img,
-                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 2, rg);
+                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 2 * n, rg);
 
         barrier(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
                 VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
@@ -208,6 +237,9 @@ int main(int argc, char **argv) {
     /* 1 or 2.  As in nxvc-vkenc, `--w` is the FULL width either way, so a
      * stereo run passes the side-by-side pair and create() gets w/eyes. */
     uint32_t eyes = 1;
+    /* Hand the encoder the eyes as separate array layers rather than side by
+     * side in one, which is the shape a compositor already has. */
+    bool eye_layers = false;
     /* The ABI's half of the reference walk: a client that reconstructs only
      * every Nth frame and reports the rest not held. */
     int hold_every = 0;
@@ -232,6 +264,7 @@ int main(int argc, char **argv) {
         else if (a == "--frames") frames = (uint32_t)std::atoi(next());
         else if (a == "--matrix") matrix = (uint32_t)std::atoi(next());
         else if (a == "--eyes") eyes = (uint32_t)std::atoi(next());
+        else if (a == "--eye-layers") eye_layers = true;
         else if (a == "--timing") timing = true;
         else if (a == "--image") use_image = true;
         else if (a == "--qp-cycle") qp_cycle_arg = next();
@@ -264,6 +297,10 @@ int main(int argc, char **argv) {
             std::fprintf(stderr, "unknown argument: %s\n", a.c_str());
             return 2;
         }
+    }
+    if (eye_layers && (eyes != 2 || !use_image)) {
+        std::fprintf(stderr, "--eye-layers needs --eyes 2 and --image\n");
+        return 2;
     }
     if (eyes != 1 && eyes != 2) {
         std::fprintf(stderr, "--eyes must be 1 or 2\n");
@@ -360,7 +397,11 @@ int main(int argc, char **argv) {
     PlanarSource src;
     if (use_image) {
         std::string err;
-        if (!src.create(w, h, 0, err)) {
+        src.eyes = eyes;
+        src.layered = eye_layers;
+        /* One LAYER's width: one eye's when they are split, the pair's when
+         * they share a layer. */
+        if (!src.create(eye_layers ? w / eyes : w, h, 0, err)) {
             std::fprintf(stderr, "source image: %s\n", err.c_str());
             /* No ICD and no device are a skip, exactly as create() is. */
             return 77;
@@ -445,7 +486,8 @@ int main(int argc, char **argv) {
             im.image = src.img;
             im.layout = VK_IMAGE_LAYOUT_GENERAL;
             im.array_layer = PlanarSource::layer;
-            im.width = w;
+            im.flags = eye_layers ? NXVC_VKE_IMAGE_EYE_LAYERS : 0u;
+            im.width = eye_layers ? w / eyes : w;
             im.height = h;
             st = nxvc_vk_encoder_encode_image(enc, &im, &bytes, &len);
         } else {

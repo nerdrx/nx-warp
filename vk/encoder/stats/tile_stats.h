@@ -280,7 +280,12 @@ typedef struct nxe_frame_params {
 typedef struct nxe_e0_push {
     nxe_frame_params f;
     uint32_t plane_words;   /* size of the plane buffer, for store clamping  */
-} nxe_e0_push;              /* 36 bytes */
+    /* Columns of ONE eye when the eyes arrive as separate ARRAY LAYERS of the
+     * source image, and 0 when they arrive side by side in a single layer.
+     * E0_convert.comp has the two shapes; the output tile index is pair-wide
+     * either way, so this changes only where a tile reads. */
+    uint32_t eye_cols;
+} nxe_e0_push;              /* 40 bytes */
 
 typedef struct nxe_e1_push {
     nxe_frame_params f;
