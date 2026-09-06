@@ -15,21 +15,33 @@ Pass B consumes. It is the first of the two decoder dispatches (PAPER 3.2.1).
 ## Dispatch shape
 
 ```
-workgroup     64 threads  = 8 tiles x 8 rANS lanes
-groups        ceil(num_tiles / 8)
+workgroup     TILES_PER_GROUP * 8 threads = TILES_PER_GROUP tiles x 8 rANS lanes
+groups        ceil(num_tiles / TILES_PER_GROUP)
 tile slot     gl_LocalInvocationID.x >> 3
 lane          gl_LocalInvocationID.x &  7
 ```
 
-`local_size_x` is fixed at 64. `TILES_PER_GROUP` (spec constant 1) exists so the
-value is visible to the host, but the kernel assumes 8 tiles of 8 lanes; the
-lane count is a v1 syntax constant (`nsub_log2 == 3`), not a tuning knob.
+`TILES_PER_GROUP` is the build constant `NXVW_PASSA_TILES_PER_GROUP`, **32**, so
+`local_size_x` is 256 and a workgroup carries 32 tiles. It is a build constant
+and not a tuning knob at runtime because `local_size_x`, `kMaxSlots` and the
+descriptor-slot arithmetic all derive from it; spec constant 1 carries the same
+number into the kernel so the host and the shader cannot disagree. The lane
+count is a v1 syntax constant (`nsub_log2 == 3`).
 
-The 8-lane cluster must not straddle a subgroup. A 64-thread workgroup satisfies
-this for every subgroup size that is a multiple of 8 — 8 (lavapipe), 32 and 64
-(RADV), 128 — which is why the workgroup is 64 and not 256. Create the pipeline
-with `VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT` where
+The 8-lane cluster must not straddle a subgroup. Any workgroup that is a
+multiple of the subgroup size satisfies this for every subgroup size that is a
+multiple of 8 — 8 (lavapipe), 32 and 64 (RADV, Adreno 650), 128 — because 8
+divides all of them. Create the pipeline with
+`VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT` where
 `subgroupSizeControl` is offered; the harness does.
+
+> This section said "64 threads, 8 tiles" and "which is why the workgroup is 64
+> and not 256" until the `TILES_PER_GROUP` sweep moved the build default to 32.
+> The cluster argument survives the change — 8 divides every subgroup size in
+> play — but the number did not, and the sentence that justified 64 was still
+> here. **A workgroup of 256 threads is four subgroups on the Adreno 650, not
+> one**, which matters for the round loop's barriers: see "The round loop's
+> barriers" below.
 
 ## The shared read pointer
 
@@ -347,6 +359,135 @@ prefix sums. lavapipe gains far less because it is CPU-bound on total
 instructions rather than on a dependency chain, and the Lite payload is larger
 (916 vs 612 bytes per tile on this corpus — the tool trades bitrate for
 parallelism).
+
+## Pass A on the Pico 4, at a real frame's tile count
+
+Everything above was measured at 512 or 2048 tiles. **A head-turn frame is 289
+tiles** (1088x1088, 17x17), and at that size the device behaves differently
+enough that the earlier numbers do not carry over.
+
+Method: `nxvc-passA-test`, Adreno 650 (`Adreno650v3`, Qualcomm 1.1.128,
+subgroup 64, min 64 max 128, `subgroupSizeControl`), sparse layout, best of 6-8
+dispatches, sha256 of the pushed binary compared against the local one before
+every launch. `gpuclk` ranged 305-490 MHz and `gpuss-max-step` 37.2-42.0 C over
+every row below, with no systematic difference between paired rows.
+`/sys/class/kgsl/kgsl-3d0/gpuclk` is readable by the shell user; every other
+kgsl attribute (`gpu_busy_percentage`, `max_gpuclk`,
+`gpu_available_frequencies`, `throttling`) and every devfreq path is
+permission-denied without root, so clock is reported and utilisation is not.
+
+### Wall time is a step function of the WORKGROUP count
+
+rANS, LDS fallback, `TILES_PER_GROUP` 32, so `groups = ceil(tiles / 32)`. The
+corpus is uniform across these sizes -- 603-610 B/tile, 0.497-0.502
+symbols/pixel -- so per-tile work is constant and only the dispatch shape moves:
+
+| tiles | groups | ms | ns/tile |
+|---|---|---|---|
+| 72 | 3 | 6.544 | 90892 |
+| 145 | 5 | 6.674 | 46027 |
+| 160 | 5 | 6.656 | 41602 |
+| 192 | 6 | **6.746** | 35137 |
+| 224 | 7 | 11.898 | 53118 |
+| 256 | 8 | **11.845** | 46271 |
+| 288 | 9 | 17.454 | 60605 |
+| **289** | **10** | **17.428** | **60305** |
+| 320 | 10 | 17.457 | 54553 |
+| 352 | 11 | 17.478 | 49655 |
+| 384 | 12 | **17.519** | 45623 |
+| 578 | 19 | 26.742 | 46266 |
+| 1156 | 37 | 51.114 | 44216 |
+| 2312 | 73 | 101.857 | 44056 |
+
+Three plateaus -- 6.7 ms up to 6 groups, 11.9 ms at 7-8, 17.5 ms at 9-12 --
+and then roughly 1.4 ms per group beyond that. **A 289-tile frame sits at the
+top of the third plateau and costs exactly what a 384-tile frame costs**:
+17.428 against 17.519 ms, for a third fewer tiles. The same frame at 8 groups
+would cost 11.845 and at 6 groups 6.746.
+
+This is the shape of the starvation, and it is not the shape "more workgroups
+is better" predicts.
+
+### Fewer, fatter workgroups win -- `TILES_PER_GROUP` at 289 tiles
+
+The build default of 32 was chosen at 2048 tiles. At 289 it is not merely still
+right, it is right by more, because a smaller group count is what the step
+function rewards:
+
+| `TILES_PER_GROUP` | workgroup | groups | ms | ns/tile |
+|---|---|---|---|---|
+| 4 | 32 threads | 73 | 53.862 | 186373 |
+| 8 | 64 threads | 37 | 30.246 | 104656 |
+| 16 | 128 threads | 19 | 23.205 | 80294 |
+| **32** | **256 threads** | **10** | **17.458** | **60408** |
+
+3.1x, 1.7x and 1.3x worse respectively. The two per-workgroup tables -- 8 KB of
+cumulative frequencies and 1 KB of scan tables -- do not shrink with the tile
+count, so a thin workgroup pays for them per tile; nothing about the extra
+occupancy pays that back. **`TILES_PER_GROUP` is already at its best supported
+value and there is no change to make here.** 64 is recorded above as hanging
+the device and was not run.
+
+### The round loop's barriers
+
+The Adreno 650's subgroup is **64** wide, so a 256-thread workgroup is **four
+subgroups** and `barrier()` is a real barrier here -- not the no-op it was when
+the workgroup was 64 threads and the driver could elide it. The two-loop split
+that removed the round loop's barriers from the ballot path and reduced the
+fallback to one is therefore doing more work on this device now than it was
+when it was measured, and the measurement that justified it ("nothing on RADV
+wave64, 2x on lavapipe") no longer describes this part.
+
+It does not, however, make the ballot path faster than the fallback here. Five
+paired runs at 289 tiles, both modes in one process:
+
+| | ballot | LDS fallback |
+|---|---|---|
+| ms | 17.670 / 17.627 / 17.611 / 17.635 | 17.459 / 17.482 / 17.453 / 17.441 / 17.443 |
+
+The fallback is consistently **1.0-1.3 % faster** despite taking one barrier per
+round that the ballot path does not take. The ranges do not overlap. The
+decoder selects ballot whenever the device offers `VK_SUBGROUP_FEATURE_BALLOT_BIT`,
+which the Adreno does, so the headset is on the slower of the two by about
+0.19 ms a frame. That is left alone deliberately: it is 1 %, it would need a
+device-specific branch to capture, and the entropy tool below is worth sixty
+times as much.
+
+### `ENTROPY_LITE` is worth 2.7x here, and the dispatch shape is half the reason
+
+Same corpus, same tiles, same coefficients, three alternating rounds:
+
+| | rANS | Lite | |
+|---|---|---|---|
+| ballot, ms | 17.627 / 17.611 / 17.635 | 6.420 / 6.443 / 6.419 | |
+| LDS, ms | 17.482 / 17.453 / 17.441 | 6.421 / 6.438 / 6.446 | |
+| ns per tile (LDS) | 60492 / 60392 / 60349 | 22218 / 22278 / 22305 | **2.71x** |
+| payload | 175304 B, **607 B/tile** | 263392 B, **911 B/tile** | 1.50x |
+
+**2.71x the speed for 1.50x the bytes**, at the tile count the headset actually
+decodes.
+
+Half of that ratio is the entropy coder and half is the dispatch shape. The
+Lite path puts **one workgroup per tile**, so a 289-tile frame is 289
+workgroups rather than 10, and it is nowhere near the step function above --
+its cost per tile is flat where rANS's is not:
+
+| tiles | Lite groups | ms | ns/tile |
+|---|---|---|---|
+| 289 | 289 | 6.401 | 22148 |
+| 578 | 578 | 12.812 | 22167 |
+| 1156 | 1156 | 25.812 | 22329 |
+
+Flat to 0.8 % over 4x the tiles, against rANS's 60305 -> 44056 ns/tile over the
+same range. So rANS's disadvantage at 289 tiles is 2.71x, and at the tile count
+where rANS is no longer starved it would be about 2x -- which is what the RADV
+and lavapipe numbers above already showed. **The headset is exactly where the
+gap is widest.**
+
+Splitting a frame's Pass A into one dispatch per eye would halve the workgroup
+count per dispatch, from 10 to 5, and the table above prices 5 groups and 10
+groups on the same plateau boundary rather than on a better one; there is no
+occupancy to be won that way. Both eyes already go in one dispatch.
 
 ## Errors
 
