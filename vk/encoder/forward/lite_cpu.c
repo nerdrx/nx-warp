@@ -12,6 +12,8 @@
 
 #include "lite_cpu.h"
 
+#include "nxe_rate.h"
+
 #include <stddef.h>
 
 #include "nxe_tables.h"
@@ -91,6 +93,91 @@ typedef struct {
     int nnz;
     int param;      /* FIXED: the magnitude class */
 } LiteFacts;
+
+/* Lite's rate, exactly, without coding it.  See nxe_rate.h.
+ *
+ * Lite has no arithmetic coder, so there is nothing to estimate: every field is
+ * a fixed width and the only non-additive term is the align-to-byte at the end
+ * of each of the five sections.  And that is additive too, one level up -- a
+ * section's total is a sum over units, and the pad is a function of that total
+ * -- so this is five independent sums and five roundings, which is a shape a
+ * workgroup can produce in five reductions.  It agrees with `nxe_lite_tile`
+ * exactly, and `--rate-check` requires it to.
+ *
+ * The unit classification below is `nxe_lite_tile`'s first loop verbatim; it is
+ * repeated rather than shared because the coder's copy fills a `unitf` array it
+ * then codes from, and a rate query has nowhere to put one. */
+uint32_t nxe_lite_tile_bits_q10(const nxe_frame_params *fp,
+                                const nxe_tile_job *job,
+                                const nxe_tile_units *tu, const int16_t *coef,
+                                const uint8_t *modes, int variant) {
+    const int nunits = tu->nunits;
+    int h0 = 0, h1 = 0, pp = 0, ss = 0, bb = 0;
+    int ngroups, g, i;
+    (void)fp;
+    (void)job;
+    (void)variant;
+
+    ngroups = (nunits + NXE_LITE_CBF_GROUP - 1) / NXE_LITE_CBF_GROUP;
+    h0 = ngroups;
+
+    for (g = 0; g < ngroups; ++g) {
+        const int lo = g * NXE_LITE_CBF_GROUP;
+        const int hi = lo + NXE_LITE_CBF_GROUP < nunits ? lo + NXE_LITE_CBF_GROUP
+                                                       : nunits;
+        int any = 0;
+        for (i = lo; i < hi && !any; ++i) {
+            const nxe_unit *u = &tu->u[i];
+            if (u->kind == 1) {
+                any = u->nbx != 0;
+            } else {
+                const int16_t *c = coef + u->coef_off;
+                const uint8_t *scan = nxe_scan_table((int)u->ncoef, u->tskip);
+                int p;
+                for (p = (int)u->ncoef - 1; p >= 0; --p)
+                    if (c[scan[p]] != 0) { any = 1; break; }
+            }
+        }
+        if (any) h1 += hi - lo;
+    }
+
+    for (i = 0; i < nunits; ++i) {
+        const nxe_unit *u = &tu->u[i];
+        if (u->kind == 1) {
+            const uint8_t *md = modes + (size_t)u->mode_off * 64;
+            const int n = u->nbx * u->nbx;
+            int b;
+            if (!u->nbx) continue;
+            ss += n;
+            for (b = 0; b < n; ++b)
+                if (md[b] != lite_mpm_of(md, u->nbx, b))
+                    bb += NXE_LITE_MODE_BITS;
+        } else {
+            const int16_t *c = coef + u->coef_off;
+            const uint8_t *scan = nxe_scan_table((int)u->ncoef, u->tskip);
+            int last = -1, p, nnz = 0, cls = 0, mb;
+            int32_t maxa = 0;
+            for (p = (int)u->ncoef - 1; p >= 0; --p)
+                if (c[scan[p]] != 0) { last = p; break; }
+            if (last < 0) continue;
+            for (p = 0; p <= last; ++p) {
+                int32_t q = c[scan[p]];
+                int32_t a = q < 0 ? -q : q;
+                if (a) { ++nnz; if (a > maxa) maxa = a; }
+            }
+            for (cls = 0; cls < 8; ++cls)
+                if ((int64_t)maxa <= ((int64_t)1 << nxe_lite_mag_bits[cls]))
+                    break;
+            if (cls > 7) cls = 7;
+            mb = nxe_lite_mag_bits[cls];
+            pp += nxe_lite_last_bits((int)u->ncoef) + NXE_LITE_PARAM_BITS;
+            ss += last;
+            bb += nnz * (mb + 1);
+        }
+    }
+
+    return nxe_lite_bits_q10(h0, h1, pp, ss, bb);
+}
 
 int nxe_lite_tile(const nxe_frame_params *fp, const nxe_tile_job *job,
                   const nxe_tile_units *tu, const int16_t *coef,

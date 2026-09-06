@@ -130,6 +130,13 @@ struct Config {
      * and `nxv-enc --int-rdoq 1` is the reference configuration it matches. */
     int int_rdoq = 0;
 
+    /* Measure the integer rate model of nxe_rate.h against the bytes the
+     * entropy coder actually produces, per tile, and print the distribution
+     * at the end of the run.  Measurement only: it changes no decision and no
+     * byte of the stream, and it is what the tolerance in
+     * vk/encoder/README.md is quoted from. */
+    bool rate_check = false;
+
     int device = 0;
     bool cpu_only = false;
     bool bench = false;
@@ -187,6 +194,18 @@ struct Frame {
     int plane_size[NXE_MAX_PLANES]{};
     int plane_words[NXE_MAX_PLANES]{};     /* tile stride in the packed buffer */
     int plane_base[NXE_MAX_PLANES]{};      /* word base of the plane */
+
+    /* --rate-check.  See Config::rate_check; accumulated over every tile of
+     * every frame, in Q10 bits against real bytes, and reported once. */
+    bool rate_check = false;
+    uint64_t rc_tiles = 0;
+    uint64_t rc_est_q10 = 0;               /* sum of the model's Q10 bits */
+    uint64_t rc_real_bits = 0;             /* sum of 8 * coded bytes */
+    double rc_err_sum = 0, rc_err_abs_sum = 0;
+    double rc_err_min = 0, rc_err_max = 0;
+    /* Tiles too small for a relative error to mean anything (a handful of
+     * bytes), counted rather than folded into the mean. */
+    uint64_t rc_tiny = 0;
 };
 
 /* Set up geometry, jobs and the frame parameter record. */
