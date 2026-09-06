@@ -521,6 +521,11 @@ static u64 encoder_tools(const nxvc_encoder *e) {
     if (e->cfg.atlas && e->cfg.atlas_nbr) t |= NXVC_TOOL_ATLAS_NBR;
     if (e->mode_switch) t |= NXVC_TOOL_ATLAS_REBASE;
     if (e->cfg.row_present) t |= NXVC_TOOL_ROW_PRESENT;
+    // PLANAR needs neither INTER nor WARP: a planar tile carries its own
+    // content and has no reference.  It is the only mode besides INTRA of
+    // which that is true, which is what makes it usable on the first frame
+    // and on a tile whose prediction chain has been lost.
+    if (e->cfg.planar) t |= NXVC_TOOL_PLANAR;
     t |= NXVC_TOOL_RES_LEVEL;
     return t;
 }
@@ -1645,6 +1650,249 @@ static void fit_near_skip(const TileCoder &tc, i8 corr[3][3]) {
     }
 }
 
+// ------------------------------------------------------ the planar fit
+// The encoder half of SYNTAX.md 13.13: k-planes over the tile.
+//
+// Alternate a least-squares plane fit per region with a reassignment of every
+// sub-block to the region whose plane leaves it the smallest squared error,
+// initialised from a 1-D k-means on sub-block mean luma.  It converges in
+// under eight iterations on essentially every tile, which is why the loop is
+// bounded rather than tested for convergence alone.
+//
+// The fit is DOUBLE and that is allowed: it is a decision, and the same rule
+// the rest of this encoder follows applies -- the reconstruction has to be
+// integer and reproducible, the search that found it does not.  What the
+// search may not do is reach a record the decoder cannot evaluate, which is
+// why the quantisation below is the decoder's own step and the distortion the
+// caller measures is taken from reconstruct_planar() rather than from the
+// unquantised fit.
+//
+// The map is decided on LUMA alone and the chroma planes are fitted to it.
+// docs/LOWPOLY-MODE.md 4 measures that as the mode's weakest point (chroma
+// 17.9 dB against the transform's 19.2-21.8) and it is a design choice rather
+// than an omission: a chroma-only split would double the map, which is already
+// 40-70 % of the tile.
+namespace {
+
+// Solve the 3x3 normal equations of a plane fit by Gaussian elimination with
+// partial pivoting.  Returns false when the region is empty or degenerate --
+// one sub-block wide, say -- and the caller then keeps the DC term alone.
+bool solve3(double a[3][4], double x[3]) {
+    for (int c = 0; c < 3; ++c) {
+        int piv = c;
+        for (int r = c + 1; r < 3; ++r)
+            if (std::fabs(a[r][c]) > std::fabs(a[piv][c])) piv = r;
+        if (std::fabs(a[piv][c]) < 1e-9) return false;
+        if (piv != c)
+            for (int k = 0; k < 4; ++k) std::swap(a[c][k], a[piv][k]);
+        for (int r = 0; r < 3; ++r) {
+            if (r == c) continue;
+            const double f = a[r][c] / a[c][c];
+            for (int k = c; k < 4; ++k) a[r][k] -= f * a[c][k];
+        }
+    }
+    for (int c = 0; c < 3; ++c) x[c] = a[c][3] / a[c][c];
+    return true;
+}
+
+struct PlaneFit { double d0 = 0, dh = 0, dv = 0; };
+
+// The ramp basis, in the units the reconstruction uses: gx runs over
+// +-(1 - 1/size), which is what `(2*x - size + 1) >> log2(size)` computes.
+inline double ramp_at(int i, int size) {
+    return (double)(2 * i - size + 1) / (double)size;
+}
+
+}  // namespace
+
+// Fit one plane state to a label map, returning the per-region coefficients in
+// the decoder's quantised units.
+static void planar_fit_plane(const PlaneState &s, const u8 *labels, int M,
+                             int regions, i8 out[kPlanarMaxRegions][3]) {
+    const int size = s.size;
+    const int shift = log2_of(size) - log2_of(M);
+    const int t = dc_plane_step(s);
+    for (int r = 0; r < regions; ++r) {
+        double a[3][4] = {};
+        for (int y = 0; y < size; ++y)
+            for (int x = 0; x < size; ++x) {
+                if (labels[(size_t)(y >> shift) * M + (x >> shift)] != r)
+                    continue;
+                const double b[3] = {1.0, ramp_at(x, size), ramp_at(y, size)};
+                const double e =
+                    (double)s.samples[(size_t)y * size + x] - (double)s.dc_off;
+                for (int i = 0; i < 3; ++i) {
+                    for (int j = 0; j < 3; ++j) a[i][j] += b[i] * b[j];
+                    a[i][3] += b[i] * e;
+                }
+            }
+        double x3[3] = {0, 0, 0};
+        if (!solve3(a, x3)) {
+            // Degenerate: keep the mean if there was one, and no ramps.
+            double n = 0, sum = 0;
+            for (int y = 0; y < size; ++y)
+                for (int x = 0; x < size; ++x)
+                    if (labels[(size_t)(y >> shift) * M + (x >> shift)] == r) {
+                        sum += (double)s.samples[(size_t)y * size + x] -
+                               (double)s.dc_off;
+                        n += 1;
+                    }
+            x3[0] = n > 0 ? sum / n : 0;
+        }
+        auto q = [&](double v) -> i8 {
+            // The near-skip quantiser, for the same reason it uses it: three
+            // bytes for a whole region are not where a dead zone earns
+            // anything, and biasing a region's DC towards zero is visible.
+            const double av = v < 0 ? -v : v;
+            int lvl = (int)((av * 16.0 + (double)t / 2.0) / (double)t);
+            lvl = clamp_i32(lvl, 0, 127);
+            return (i8)(v < 0 ? -lvl : lvl);
+        };
+        out[r][0] = q(x3[0]);
+        out[r][1] = q(x3[1]);
+        out[r][2] = q(x3[2]);
+    }
+}
+
+// The squared error one region's fitted plane leaves over one map cell, used
+// by the reassignment step.  Unquantised on purpose: the assignment is a
+// choice between regions and the quantiser applies equally to all of them.
+static double planar_cell_err(const PlaneState &s, const PlaneFit &f, int cx,
+                              int cy, int cell) {
+    const int size = s.size;
+    double e = 0;
+    for (int y = cy * cell; y < (cy + 1) * cell; ++y)
+        for (int x = cx * cell; x < (cx + 1) * cell; ++x) {
+            const double v = (double)s.dc_off + f.d0 +
+                             f.dh * ramp_at(x, size) + f.dv * ramp_at(y, size);
+            const double d = (double)s.samples[(size_t)y * size + x] - v;
+            e += d * d;
+        }
+    return e;
+}
+
+// The whole fit for one configuration.  `sse_out` is the distortion of the
+// RECONSTRUCTION -- what the decoder will produce -- over every coded colour
+// plane, so the caller can price it against any other mode.
+static void fit_planar(TileCoder &tc, int regions, int fine, PlanarRec &pr,
+                       double *sse_out) {
+    pr = PlanarRec{};
+    pr.regions = regions;
+    pr.fine = fine;
+    const PlaneState &luma = tc.pl[0];
+    const int M = pr.map_dim();
+    const int cell = luma.size / M;
+    const int ncell = M * M;
+
+    // 1-D k-means on cell mean luma, seeded at evenly spaced quantiles of the
+    // sorted means.  Deterministic, which matters: the encoder is compared
+    // byte for byte against itself across builds.
+    std::vector<double> cm((size_t)ncell, 0.0);
+    for (int cy = 0; cy < M; ++cy)
+        for (int cx = 0; cx < M; ++cx) {
+            double sum = 0;
+            for (int y = cy * cell; y < (cy + 1) * cell; ++y)
+                for (int x = cx * cell; x < (cx + 1) * cell; ++x)
+                    sum += (double)luma.samples[(size_t)y * luma.size + x];
+            cm[(size_t)cy * M + cx] = sum / (double)(cell * cell);
+        }
+    std::vector<double> sorted = cm;
+    std::sort(sorted.begin(), sorted.end());
+    std::vector<double> cent((size_t)regions, 0.0);
+    for (int r = 0; r < regions; ++r)
+        cent[(size_t)r] =
+            sorted[(size_t)((2 * r + 1) * (ncell - 1) / (2 * regions))];
+    for (int it = 0; it < 8; ++it) {
+        std::vector<double> sum((size_t)regions, 0.0);
+        std::vector<double> cnt((size_t)regions, 0.0);
+        for (int c = 0; c < ncell; ++c) {
+            int best = 0;
+            double bd = 1e30;
+            for (int r = 0; r < regions; ++r) {
+                const double d = std::fabs(cm[(size_t)c] - cent[(size_t)r]);
+                if (d < bd) { bd = d; best = r; }
+            }
+            pr.labels[c] = (u8)best;
+            sum[(size_t)best] += cm[(size_t)c];
+            cnt[(size_t)best] += 1;
+        }
+        for (int r = 0; r < regions; ++r)
+            if (cnt[(size_t)r] > 0) cent[(size_t)r] = sum[(size_t)r] / cnt[(size_t)r];
+    }
+
+    // k-planes on the luma: fit, reassign, repeat.
+    PlaneFit fits[kPlanarMaxRegions];
+    for (int it = 0; it < 8; ++it) {
+        for (int r = 0; r < regions; ++r) {
+            double a[3][4] = {};
+            for (int cy = 0; cy < M; ++cy)
+                for (int cx = 0; cx < M; ++cx) {
+                    if (pr.labels[(size_t)cy * M + cx] != r) continue;
+                    for (int y = cy * cell; y < (cy + 1) * cell; ++y)
+                        for (int x = cx * cell; x < (cx + 1) * cell; ++x) {
+                            const double b[3] = {1.0, ramp_at(x, luma.size),
+                                                 ramp_at(y, luma.size)};
+                            const double e =
+                                (double)luma.samples[(size_t)y * luma.size + x] -
+                                (double)luma.dc_off;
+                            for (int i = 0; i < 3; ++i) {
+                                for (int j = 0; j < 3; ++j) a[i][j] += b[i] * b[j];
+                                a[i][3] += b[i] * e;
+                            }
+                        }
+                }
+            double x3[3] = {0, 0, 0};
+            if (!solve3(a, x3)) {
+                // An empty region keeps the plane it had.  It costs its three
+                // bytes and buys nothing, which the rate-distortion decision
+                // then sees as a reason to prefer a smaller region count --
+                // the right place for that judgement.
+                fits[r] = fits[r];
+            } else {
+                fits[r] = PlaneFit{x3[0], x3[1], x3[2]};
+            }
+        }
+        bool moved = false;
+        for (int cy = 0; cy < M; ++cy)
+            for (int cx = 0; cx < M; ++cx) {
+                int best = pr.labels[(size_t)cy * M + cx];
+                double bd = 1e30;
+                for (int r = 0; r < regions; ++r) {
+                    const double e = planar_cell_err(luma, fits[r], cx, cy, cell);
+                    if (e < bd) { bd = e; best = r; }
+                }
+                if (best != pr.labels[(size_t)cy * M + cx]) moved = true;
+                pr.labels[(size_t)cy * M + cx] = (u8)best;
+            }
+        if (!moved) break;
+    }
+
+    // Quantise every coded colour plane against the settled map.
+    const int np = coded_planes(tc);
+    const int planes = np < kPlanarPlanes ? np : kPlanarPlanes;
+    for (int p = 0; p < planes; ++p) {
+        i8 co[kPlanarMaxRegions][3] = {};
+        planar_fit_plane(tc.pl[p], pr.labels, M, regions, co);
+        for (int r = 0; r < regions; ++r)
+            for (int k = 0; k < 3; ++k) pr.coef[r][p][k] = co[r][k];
+    }
+
+    if (sse_out) {
+        double sse = 0;
+        for (int p = 0; p < planes; ++p) {
+            PlaneState &ps = tc.pl[p];
+            std::vector<i32> src = ps.samples;
+            reconstruct_planar(ps, pr, p);
+            for (size_t i = 0; i < src.size(); ++i) {
+                const double d = (double)src[i] - (double)ps.samples[i];
+                sse += d * d;
+            }
+            ps.samples.swap(src);
+        }
+        *sse_out = sse;
+    }
+}
+
 // Mean squared error, per luma sample and in the coded domain, of a tile's
 // reconstruction against the source it was meant to reproduce.  `src` is the
 // luma the tile was loaded with; `tc.pl[0].samples` is what the client will
@@ -2153,7 +2401,8 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         for (int p = 0; p < np; ++p)
             rdoq_plane(tc.pl[p], &tc.coef[plane_coef_offset(tc, p)], tc.tp.tskip,
                        p == 1 || p == 2, rc, lambda_scale, tc.sdh, tc.nctx,
-                       1 << tc.tp.nsub_log2, rdoq_effort, dc_lambda_gain);
+                       1 << tc.tp.nsub_log2, rdoq_effort, dc_lambda_gain,
+                       (int)e->cfg.int_trellis);
     };
 
     auto analyze_tile_dir = [&](TileCoder &tc, const TableSet *tabs, int pass,
@@ -2303,6 +2552,27 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
     // Apply a decision to a tile's header fields.
     auto apply_decision = [&](TileParams &tp, const TileDecision &d) {
         tp.mode = d.mode;
+        if (d.planar) {
+            // SYNTAX.md 13.13's constraints, applied at the one place a
+            // decision becomes a header.  Every one of them is a field the
+            // mode has no use for, and the decoder refuses a planar tile that
+            // sets any of them -- so writing them here rather than trusting
+            // the defaults is what keeps the encoder inside its own syntax.
+            tp.pr = d.pr;
+            tp.res_level = 0;
+            tp.tskip = 0;
+            tp.split4 = 0;
+            tp.xform_size = 0;
+            tp.wm_id = 0;
+            tp.table_set = 0;
+            tp.nsub_log2 = 0;
+            tp.mv_present = 0;
+            tp.quad_mv = 0;
+            tp.ref_sel = 0;
+            tp.wgt = 0;
+            tp.skipped = 0;
+            tp.near_skip = 0;
+        }
         tp.mv_x = d.mv_x;
         tp.mv_y = d.mv_y;
         tp.disparity = d.disparity;
@@ -2337,6 +2607,158 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
     // right-eye tile of the same row is reached -- the one intra-frame
     // dependency in the format (Annex D D-3).
     // ------------------------------------------------------------------
+    // --- PLANAR (SYNTAX.md 13.13), priced against the INTRA tile that would
+    // otherwise be coded.
+    //
+    // It sits OUTSIDE decide_tile rather than among its candidates, and the
+    // reason is structural: decide_tile returns INTRA from three places -- no
+    // reference at all, a refresh due, and the mode comparison at the bottom
+    // -- and the first two return before any of the machinery below exists.
+    // An intra-only stream takes the first of them on every tile of every
+    // frame, which is exactly the case docs/LOWPOLY-MODE.md measured.  So the
+    // alternative is offered wherever the decision LANDED on a coded intra
+    // tile, whichever road it took to get there.
+    //
+    // A tile that skipped, near-skipped or found a usable prediction is left
+    // alone.  That is not a shortcut: a planar tile is an intra-class answer
+    // with no reference, so it competes with INTRA and never with a mode that
+    // has a working predictor.  It is also what makes the tool free to leave
+    // on -- the fit only runs on tiles that were going to spend real bits.
+    auto planar_alternative = [&](int t, int eye, int col, int row,
+                                  const TableSet *tabs, TileDecision &d) {
+        if (!e->cfg.planar || e->cfg.alpha) return;
+        if (d.mode != NXVC_MODE_INTRA || d.skipped || d.near_skip) return;
+        const int qp = qp_map ? clamp_i32(qp_map[t], 0, 63) : fp.base_qp;
+
+        TileCoder tc;
+        tc.g = &g;
+        tc.fp = &fp;
+        tc.tp = make_tile_params(t, eye, col);
+        apply_decision(tc.tp, d);
+        tc.setup();
+        load_tile(tc, g, img, eye, col, row);
+        if (e->cfg.transform_skip == 2) {
+            tc.tp.tskip = tskip_decision(tc);
+            tc.apply_tskip_to_split();
+        }
+        // The INTRA cost, computed the way decide_tile's own `score` computes
+        // it: quantise the tile, charge its payload, its header and its rANS
+        // lane flushes.  The two must agree or the comparison is against a
+        // tile nobody codes.
+        tc.build_units();
+        double bits = quantize_tile(tc, tabs);
+        int active = 1 << tc.tp.nsub_log2;
+        if ((size_t)active > tc.units.size()) active = (int)tc.units.size();
+        bits += 8 * (kTileHeaderBytes + 4 * active + tile_field_bytes(tc.tp));
+        const double d_intra = tile_distortion(tc);
+
+        const double tile_scale =
+            rdo_lambda_scale *
+            (lambda_class ? class_lambda_gain(
+                                classify_tile(tc.pl[0].samples.data(),
+                                              tc.pl[0].size),
+                                e->cfg.lambda_class_q8)
+                          : 1.0);
+        const double mode_scale =
+            e->cfg.mode_lambda_q8 ? (double)e->cfg.mode_lambda_q8 / 256.0 : 1.0;
+        const Lambda Lmode = make_lambda(qp, tile_scale * mode_scale);
+        const double lambda = Lmode.sse;
+        const double c_intra = d_intra + lambda * bits;
+
+        // Six configurations -- two granularities by three region counts --
+        // and only the best of them competes.  All six are fitted because the
+        // three counts trade against each other differently on every tile: the
+        // map is 40 to 70 % of the body, so a third region has to earn eight
+        // more bytes of map as well as its own nine.
+        const int np = coded_planes(tc);
+        TileDecision pl = d;
+        pl.mode = NXVC_MODE_PLANAR;
+        pl.planar = 1;
+        pl.skipped = 0;
+        pl.near_skip = 0;
+        pl.quad_mv = 0;
+        pl.mv_x = pl.mv_y = 0;
+        pl.ref_sel = 0;
+        double best_p = 0, best_sse = 0;
+        bool have_p = false;
+        // NXVC_PLANAR_CONFIG="R,fine" pins one configuration instead of
+        // searching the six.  With NXVC_PLANAR_FORCE it is how the mode's own
+        // rate-distortion curve is measured -- one point per configuration,
+        // which is the shape docs/LOWPOLY-MODE.md 4 tabulates.  Without it the
+        // rate-distortion decision picks the cheapest configuration on almost
+        // every tile, so a forced run measures 27 bytes a tile and nothing
+        // else.  Development hook, encoder-only.
+        static const int cfg_r = [] {
+            const char *v = std::getenv("NXVC_PLANAR_CONFIG");
+            return v ? std::atoi(v) : 0;
+        }();
+        static const int cfg_fine = [] {
+            const char *v = std::getenv("NXVC_PLANAR_CONFIG");
+            const char *c = v ? std::strchr(v, ',') : nullptr;
+            return c ? std::atoi(c + 1) : 0;
+        }();
+        for (int fine = 0; fine < 2; ++fine)
+            for (int regions = 2; regions <= kPlanarMaxRegions; ++regions) {
+                if (cfg_r && (regions != cfg_r || fine != cfg_fine)) continue;
+                PlanarRec pr;
+                double sse = 0;
+                fit_planar(tc, regions, fine, pr, &sse);
+                // The body, the tile header, and the fields that survive the
+                // mode's constraints -- the constant alpha byte and nothing
+                // else.  No rANS lane flush: a planar tile has no lanes.
+                const double b =
+                    8.0 * (double)(kTileHeaderBytes + tile_field_bytes(tc.tp) +
+                                   pr.body_bytes(np));
+                const double c = sse + lambda * b;
+                if (!have_p || c < best_p) {
+                    have_p = true;
+                    best_p = c;
+                    best_sse = sse;
+                    pl.pr = pr;
+                }
+            }
+        // NXVC_PLANAR_FORCE=1 codes every eligible tile planar whatever the
+        // rate-distortion says.  It is the development hook the dead-zone
+        // sweep already has (dead_zone_table): the mode's own rate-distortion
+        // curve cannot be read off a stream where the decision picks it on a
+        // handful of tiles, and the LOOK the mode exists for is a property of
+        // a whole picture coded in it.  Encoder-only; the stream is ordinary.
+        static const bool force = [] {
+            const char *v = std::getenv("NXVC_PLANAR_FORCE");
+            return v && v[0] == '1';
+        }();
+        // Two conditions, and the second is the one measurement put here.
+        //
+        // The rate-distortion comparison alone is not enough, and that is not
+        // a tuning detail: the planar mode's rate-distortion curve is nearly
+        // FLAT -- it has no residual, so past its fit error more bytes buy
+        // almost nothing -- while the transform's is steep.  Minimising
+        // D + lambda*R per tile against a lambda derived from the steep curve
+        // then trades real distortion for bytes at a slope the frame cannot
+        // actually achieve, and the frame lands OFF its own convex hull:
+        // measured on pan8 at QP 34, the rate-distortion test alone chose
+        // planar on 76 % of tiles for 5 % fewer bytes and 2.1 dB, where
+        // simply raising the quantiser would have given those bytes back for
+        // 0.9 dB.  See docs/LOWPOLY-MODE.md 9.
+        //
+        // So the mode must also not be WORSE than the tile it replaces.  That
+        // is the honest form of the positioning the proposal already argues
+        // for -- the cheapest answer on a tile the rate controller has
+        // starved, not a cheaper answer on a tile that codes well -- and it
+        // is a condition on distortion, which is the axis the mode saturates
+        // on.  Where the content suits the model the fit is better AND
+        // cheaper and the condition costs nothing; where it does not, the
+        // mode declines rather than degrading the picture.
+        //
+        // `planar` 2 is the same decision without the distortion condition:
+        // the mode wherever it is CHEAPER, which is the low-polygon look as a
+        // setting rather than as a debug hook.  It costs what the measurement
+        // above says it costs, and it is a taste, so it is a level and not a
+        // default.
+        const bool gate = e->cfg.planar < 2 ? (best_sse <= d_intra) : true;
+        if (have_p && (force || (best_p < c_intra && gate))) d = pl;
+    };
+
     auto decide_tile = [&](int t, int eye, int col, int row,
                            const TableSet *tabs) -> TileDecision {
         TileDecision d;
@@ -2958,7 +3380,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                 // here would discard the tile that was just loaded.
                 tc.apply_tskip_to_split();
             }
-            if (cand.mode != NXVC_MODE_INTRA) {
+            if (mode_is_inter(cand.mode)) {
                 const RefPicture &rp = cand.mode == NXVC_MODE_STEREO
                                            ? e->ring.slot[slot]
                                            : refpic;
@@ -3289,7 +3711,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             tc.tp.alpha_mode = constant ? ((first == 255) ? 0 : 1) : 2;
             tc.tp.alpha_value = first;
         }
-        if (d.mode != NXVC_MODE_INTRA) {
+        if (mode_is_inter(d.mode)) {
             const RefPicture &rp =
                 d.mode == NXVC_MODE_STEREO ? cur : refpic;
             predict_tile(tc, g, rp, wm_for(t, eye),
@@ -3366,6 +3788,71 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             ti.qp_delta = (i8)tc.tp.qp_delta;
             ti.qp = (u8)clamp_i32(fp.base_qp + tc.tp.qp_delta, 0, 63);
             ti.near_skip = (u8)d.near_skip;
+            ti.warp_mad_q8 = (u16)d.warp_mad_q8;
+            return NXVC_OK;
+        }
+        if (d.planar) {
+            // SYNTAX.md 13.13.  A planar tile has no units, no coefficients
+            // and no rANS payload: the body IS the tile, and the
+            // reconstruction is the same function the decoder runs.
+            //
+            // It therefore skips the table training as well as the coding --
+            // there are no symbols to count -- which is why this returns
+            // before `tilehist` is touched.  A frame of nothing but planar
+            // tiles trains no tables and transmits none, and that is correct
+            // rather than a special case: there is nothing to model.
+            const int np = coded_planes(tc);
+            const int planes = np < kPlanarPlanes ? np : kPlanarPlanes;
+            for (int p = 0; p < planes; ++p)
+                reconstruct_planar(tc.pl[p], d.pr, p);
+            // A plane the record does not reach -- alpha only, and the mode
+            // is not offered on an alpha stream -- would be left as loaded.
+            std::vector<u8> body;
+            serialize_planar(body, d.pr, np);
+            tc.tp.payload_len = (int)body.size();
+            if (emit) {
+                pack_tile_header(rowbuf, tc.tp);
+                emit_tile_fields(rowbuf, tc.tp);
+                rowbuf.raw(body.data(), body.size());
+                if (e->cfg.collect_stats) {
+                    S.bytes_tile_headers +=
+                        kTileHeaderBytes + tile_field_bytes(tc.tp);
+                    S.bytes_payload += body.size();
+                    S.tiles++;
+                    S.tiles_res[0]++;
+                }
+            }
+            // Under the atlas a coded tile seeds its atlas entry instead of
+            // writing the ring and the shadow picture, and a planar tile is a
+            // coded tile.  Gated on `emit` for the reason the ordinary path is
+            // gated: the decide pass reconstructs with the built-in tables and
+            // its samples are not the ones the decoder will produce -- which
+            // costs a planar tile nothing, since it has no tables, but the two
+            // paths must stay one rule.
+            if (atlas) {
+                if (emit)
+                    atlas_write(tc, t, (int)eye, (int)col, (int)row, tc.tp.mode);
+            } else {
+                store_ref_tile(tc, g, cur, (int)eye, (int)col, (int)row);
+                if (emit)
+                    store_tile(tc, g, &e->shadow_img, (int)eye, (int)col,
+                               (int)row);
+            }
+            nxvc_tile_info &ti = e->tiles[t];
+            ti.tile_index = (u16)col;
+            ti.eye = (u8)eye;
+            ti.mode = (u8)NXVC_MODE_PLANAR;
+            ti.payload_len = (u16)tc.tp.payload_len;
+            ti.res_level = 0;
+            ti.chroma444 = (u8)tc.tp.chroma444;
+            ti.alpha_mode = (u8)tc.tp.alpha_mode;
+            ti.alpha_value = (u8)tc.tp.alpha_value;
+            ti.table_set = 0;
+            ti.nsub_log2 = 0;
+            ti.ref_delta = 3;   // no reference, as INTRA reports
+            ti.qp_delta = (i8)tc.tp.qp_delta;
+            ti.qp = (u8)clamp_i32(fp.base_qp + tc.tp.qp_delta, 0, 63);
+            ti.skipped = 0;
             ti.warp_mad_q8 = (u16)d.warp_mad_q8;
             return NXVC_OK;
         }
@@ -3765,6 +4252,8 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                             linear_tile(g, (int)row, (int)eye, (int)col);
                         e->dec[t] = decide_tile(t, (int)eye, (int)col,
                                                 (int)row, tabs);
+                        planar_alternative(t, (int)eye, (int)col, (int)row,
+                                           tabs, e->dec[t]);
                     }
                 BW rowbuf;
                 row_header(row, eye, emit, rowbuf);
@@ -3849,6 +4338,8 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                                 linear_tile(g, (int)row, (int)eye, (int)col);
                             e->dec[t] = decide_tile(t, (int)eye, (int)col,
                                                     (int)row, tabs);
+                            planar_alternative(t, (int)eye, (int)col, (int)row,
+                                               tabs, e->dec[t]);
                         } else {
                             const u32 j = i - na, row = b0 + j;
                             run_code(row, eye, (k - 1) - row, w);
@@ -4915,8 +5406,26 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
                 // Annex D D-3: the eye field must agree with the eye the
                 // tile's position in the frame derives.
                 if ((u32)tp.eye != eye) return NXVC_ERR_BITSTREAM;
-                if (tp.mode > NXVC_MODE_STEREO) return NXVC_ERR_BITSTREAM;
-                if (tp.mode != NXVC_MODE_INTRA && !fp.inter)
+                if (tp.mode > NXVC_MODE_PLANAR) return NXVC_ERR_BITSTREAM;
+                if (tp.mode == NXVC_MODE_PLANAR &&
+                    !(d->si.tools & NXVC_TOOL_PLANAR))
+                    return NXVC_ERR_BITSTREAM;
+                // SYNTAX.md 13.13: a planar tile has no reference, no vector
+                // and no transform, so every field that describes one of
+                // those must be zero.  They are refused rather than ignored:
+                // a decoder that ignored them would accept two spellings of
+                // one picture, and the second would be the one no other
+                // decoder agrees with.
+                if (tp.mode == NXVC_MODE_PLANAR) {
+                    if (tp.res_level != 0 || tp.tskip || tp.split4 ||
+                        tp.xform_size != 0 || tp.wm_id != 0 ||
+                        tp.table_set != 0 || tp.nsub_log2 != 0 ||
+                        tp.mv_present || tp.quad_mv || tp.ref_sel != 0 ||
+                        tp.wgt != 0 || tp.alpha_mode == 2)
+                        return NXVC_ERR_BITSTREAM;
+                }
+                if (tp.mode != NXVC_MODE_INTRA && tp.mode != NXVC_MODE_PLANAR &&
+                    !fp.inter)
                     return NXVC_ERR_UNSUPPORTED;
                 if (mode_needs_warp(tp.mode) && !fp.warp_present)
                     return NXVC_ERR_BITSTREAM;
@@ -4927,13 +5436,23 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
                 // Annex D D-12: ref_sel 3 is reserved; INTRA and STEREO must
                 // carry 0 and the decoding process ignores it.
                 if (tp.ref_sel == 3) return NXVC_ERR_BITSTREAM;
-                if ((tp.mode == NXVC_MODE_INTRA || tp.mode == NXVC_MODE_STEREO) &&
+                if ((tp.mode == NXVC_MODE_INTRA || tp.mode == NXVC_MODE_STEREO ||
+                     tp.mode == NXVC_MODE_PLANAR) &&
                     tp.ref_sel != 0)
                     return NXVC_ERR_BITSTREAM;
                 if (tp.res_level > 2) return NXVC_ERR_BITSTREAM;
                 if (tp.alpha_mode == 3) return NXVC_ERR_BITSTREAM;
                 if (tp.nsub_log2 > 5) return NXVC_ERR_BITSTREAM;
-                if (tp.nsub_log2 != 3 && !(d->si.tools & NXVC_TOOL_NSUB_VAR))
+                // The lane-count gate does not reach a planar tile, and that
+                // is normative rather than an exemption of convenience: tool
+                // bit 7 says "this stream codes payloads with a lane count
+                // that is not eight", and a planar tile has no payload and no
+                // lanes.  Its `nsub_log2` must be 0 -- checked above with the
+                // rest of the mode's constraints -- so requiring bit 7 for it
+                // would make every planar stream carry a tool bit about a
+                // coder it never runs.
+                if (tp.mode != NXVC_MODE_PLANAR && tp.nsub_log2 != 3 &&
+                    !(d->si.tools & NXVC_TOOL_NSUB_VAR))
                     return NXVC_ERR_BITSTREAM;
                 if (tp.res_level != 0 && !(d->si.tools & NXVC_TOOL_RES_LEVEL))
                     return NXVC_ERR_BITSTREAM;
@@ -5066,6 +5585,54 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
                     ti.mode = (u8)tp.mode;
                     ti.superseded = 1;
                     ti.qp = (u8)clamp_i32(fp.base_qp + tp.qp_delta, 0, 63);
+                    ti.warp_mad_q8 = NXVC_WARP_MAD_UNMEASURED;
+                    continue;
+                }
+                if (tp.mode == NXVC_MODE_PLANAR) {
+                    // SYNTAX.md 13.13.  The body replaces the rANS payload
+                    // entirely: parse it, evaluate each region's plane per
+                    // sample, and the tile is done.  No entropy decode, no
+                    // lane flush, no inverse transform, and no dependency on
+                    // any other tile.
+                    const int np = coded_planes(tc);
+                    PlanarRec pr;
+                    if (!parse_planar(buf + payload_off, (int)tp.payload_len,
+                                      np, pr))
+                        return NXVC_ERR_BITSTREAM;
+                    const int planes = np < kPlanarPlanes ? np : kPlanarPlanes;
+                    for (int p = 0; p < planes; ++p)
+                        reconstruct_planar(tc.pl[p], pr, p);
+                    // 13.12.3 step 3: under the atlas a coded tile seeds
+                    // its atlas entry and the picture is rendered once at the
+                    // end, and a planar tile is a coded tile.  It is in fact
+                    // the cheapest possible new patch for that store -- it
+                    // needs no reference, so it can seed an entry that has
+                    // none (docs/LOWPOLY-MODE.md 6).
+                    if (atlas)
+                        atlas_store(d->at, tc, g, t, (int)eye, (int)col,
+                                    (int)row, tp.mode, fp.frame_number, true);
+                    else {
+                        store_tile(tc, g, img, (int)eye, (int)col, (int)row);
+                        store_ref_tile(tc, g, cur, (int)eye, (int)col, (int)row);
+                    }
+                    // A planar tile has no vector, and leaves the tile's
+                    // stored one alone: the next WARP_SKIP at this position
+                    // predicts with whatever the last coded vector was, which
+                    // is what an INTRA tile does too.
+                    nxvc::update_pred_state(d->state[t], NXVC_MODE_INTRA, 0, 0,
+                                            0);
+                    ti.tile_index = (u16)col;
+                    ti.eye = (u8)eye;
+                    ti.mode = (u8)NXVC_MODE_PLANAR;
+                    ti.payload_len = (u16)tp.payload_len;
+                    ti.res_level = 0;
+                    ti.chroma444 = (u8)tp.chroma444;
+                    ti.alpha_mode = (u8)tp.alpha_mode;
+                    ti.alpha_value = (u8)tp.alpha_value;
+                    ti.ref_delta = 3;
+                    ti.qp_delta = (i8)tp.qp_delta;
+                    ti.qp = (u8)clamp_i32(fp.base_qp + tp.qp_delta, 0, 63);
+                    ti.skipped = 0;
                     ti.warp_mad_q8 = NXVC_WARP_MAD_UNMEASURED;
                     continue;
                 }

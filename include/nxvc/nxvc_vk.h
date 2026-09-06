@@ -345,6 +345,185 @@ nxvc_vkd_status nxvc_vk_decoder_images(const nxvc_vk_decoder *dec,
  * pixel-for-pixel comparison.
  *
  * Requires NXVC_VKD_FLAG_READBACK.  Pass NULL for a plane to skip it. */
+/* ------------------------------------------------- [ATLAS] the atlas (13.12)
+ * Under tool bit 31 the decoder's normative output is the ATLAS -- its pixels
+ * and its per-tile table -- and NOT a picture.  These read it back, and they
+ * are what conformance compares against the reference's
+ * nxvc_decoder_atlas_table() / nxvc_decoder_atlas_plane().
+ *
+ * Both wait for the frame in flight.  Both return NXVC_VKD_ERR_ARG on a
+ * decoder whose stream does not set tool bit 31.
+ */
+
+/* [SYN] 13.12.9: fill a contiguous run of atlas tile positions from the BASE
+ * LAYER instead of coding them.  The client HEVC-decodes the base picture,
+ * converts it into the atlas's own coded sample domain with its own kernel,
+ * and hands the decoder the buffer to import.
+ *
+ * `first_tile` and `count` are within `eye`, in that eye's own row-major
+ * order.  A contiguous RUN is the primary form because row strips are what the
+ * writes coalesce to -- measured at 3.43 us per scattered tile against a full
+ * refresh at 0.071 ms when the same bytes go as full-width strips, which is
+ * 28x -- so the run is turned into strips inside the decoder rather than
+ * passed through as one region per tile.
+ *
+ * `src` is a buffer already in the atlas's own SLOT-SHAPED layout: the layout
+ * nxvc_vk_decoder_atlas_plane() reports, u16 samples, both eyes side by side
+ * within each plane.  An image source is not accepted -- 13.12.9 warns that a
+ * base picture sampled through an external format can yield
+ * (.r,.g,.b) == (Cr,Y,Cb), and a conformance matrix without a
+ * non-identity-swizzle device cannot catch getting that wrong.  A buffer
+ * carries no such risk: the caller has already done the mapping.
+ *
+ * SUPERSEDE IS NOT AN ERROR.  A write whose `src_frame` does not ADVANCE the
+ * position is dropped rather than applied -- the ordinary case, because the
+ * base arrives through a hardware decoder with its own latency while coded
+ * tiles come down the usual path, so the two interleave.  Those positions are
+ * skipped, the rest of the run is applied, and the call SUCCEEDS.  `applied`
+ * and `superseded` (either may be NULL) report how the run split; a caller
+ * that needs to know a patch landed must read them and not the status.
+ *
+ * The entry gets 13.12.9's metadata: identity `C`, `src_frame` as given,
+ * `gen` 0, valid, NEVER static, `res_level` 0, and `base_sourced` (flags
+ * bit 2) SET.  A later coded tile at the same position clears it.
+ *
+ * The copy is recorded on the DECODER's command buffer, so it and
+ * nxvc_vk_decode_frame() serialise by submission order and the caller needs no
+ * fence of its own.
+ *
+ * Returns NXVC_VKD_ERR_UNSUPPORTED on a non-ATLAS stream, NXVC_VKD_ERR_ARG on
+ * a run that leaves the eye or a null buffer.  A `count` of 0 is a no-op, and
+ * a fully superseded run is a success with `*applied == 0`. */
+/* The decoder's Vulkan handles, for a caller that did NOT adopt a device.
+ *
+ * nxvc_vk_atlas_write_tiles() takes a VkBuffer on the decoder's device, and a
+ * caller that let the decoder create that device had no way to allocate one --
+ * which made the entry point callable only by a client that already owned the
+ * device (WiVRn does) and untestable by anything that did not.  Any pointer
+ * may be NULL.  The handles are owned by the decoder and are valid until
+ * nxvc_vk_decoder_destroy(). */
+/* [timing] The two numbers every GPU duration this decoder reports is built
+ * from: `timestampPeriod` in NANOSECONDS PER TICK, and how many bits of the
+ * counter the decoder's queue family actually drives.  Bits above
+ * `valid_bits` are UNDEFINED per spec and are masked off before any
+ * subtraction; `valid_bits == 0` means the family has no timestamps and every
+ * `*_ms` field stays 0.
+ *
+ * Exposed because a wrong tick rate is invisible in a duration and obvious in
+ * the pair -- a bench that prints them alongside a GPU/wall ratio can say
+ * WHICH of the two is wrong, and this decoder shipped GPU times about 1.57x
+ * high on one device for want of exactly that. */
+nxvc_vkd_status nxvc_vk_decoder_timestamp_info(const nxvc_vk_decoder *dec,
+                                               float *period_ns,
+                                               uint32_t *valid_bits);
+
+nxvc_vkd_status nxvc_vk_decoder_vk_handles(const nxvc_vk_decoder *dec,
+                                           VkInstance *instance,
+                                           VkPhysicalDevice *physical_device,
+                                           VkDevice *device, VkQueue *queue,
+                                           uint32_t *queue_family);
+
+typedef struct nxvc_vkd_atlas_src {
+    VkBuffer buffer;      /* the patch source; required          */
+    VkDeviceSize offset;  /* where the slot-shaped image starts  */
+    VkImage image;        /* reserved; must be VK_NULL_HANDLE    */
+} nxvc_vkd_atlas_src;
+
+nxvc_vkd_status nxvc_vk_atlas_write_tiles(nxvc_vk_decoder *dec, uint32_t eye,
+                                          uint32_t first_tile, uint32_t count,
+                                          const nxvc_vkd_atlas_src *src,
+                                          uint32_t src_frame,
+                                          uint32_t submit_flags,
+                                          uint32_t *applied,
+                                          uint32_t *superseded);
+
+/* ------------------------------------------ [ATLAS] the display view (13.12.5)
+ * The atlas is an SSBO of u16 pairs because that is the layout Pass W reads the
+ * reference through.  A client's display pass wants a SAMPLER, so the sampled
+ * view is produced BESIDE the atlas, and these select and expose it.
+ *
+ * NOTHING HERE IS NORMATIVE.  The u16 layout stays what conformance compares;
+ * 13.12.5's display warp is not compared at all.  The two forms carry
+ * IDENTICAL samples and differ only in how many taps a display pass spends:
+ *
+ *   R16  three R16_UINT planes -- luma, Cb, Cr.  2.124 ms/pair on a Pico 4
+ *        over a full 2176x1088 display pass.
+ *   R8   NV12-shaped: R8_UNORM luma at full resolution and R8G8_UNORM chroma
+ *        at half, one luma tap plus one chroma tap.  1.086 ms/pair.
+ *
+ * The gap is the TAP COUNT, not the format: 16-bit to 8-bit at the same tap
+ * count is worth 0.24 ms of the 1.04 ms.  Both are kept so the device
+ * measurement stays an A/B rather than a claim.
+ *
+ * THE 8-BIT CONVERSION RULE.  For a `CT_NONE` stream the atlas holds the
+ * stream's own YCbCr at the stream's own bit depth (13.12.1), so a sample of
+ * an 8-bit stream is already a byte: the R8 view stores its VALUE UNCHANGED as
+ * a UNORM byte and the R16 view stores the same value as an integer.  The two
+ * views are therefore the same picture, and `vk.atlas.view` asserts exactly
+ * that, sample for sample.
+ *
+ * The R8 view is REFUSED on a stream whose colour transform is not `CT_NONE`:
+ * under `CT_YCOCGR` the chroma planes carry the extra bit that transform
+ * produces -- 9 bits for an 8-bit stream -- which an 8-bit UNORM cannot hold,
+ * and truncating it silently would be a wrong picture rather than a cheaper
+ * one. */
+typedef enum nxvc_vkd_atlas_view {
+    NXVC_VKD_ATLAS_VIEW_NONE = 0, /* no view produced (the default)         */
+    NXVC_VKD_ATLAS_VIEW_R16 = 1,  /* three R16_UINT planes                  */
+    NXVC_VKD_ATLAS_VIEW_R8 = 2    /* one-tap 8-bit, NV12-shaped; CT_NONE    */
+} nxvc_vkd_atlas_view;
+
+/* Takes effect on the next decoded frame.  Returns NXVC_VKD_ERR_UNSUPPORTED on
+ * a non-ATLAS stream, or for R8 on a stream with a colour transform. */
+nxvc_vkd_status nxvc_vk_decoder_set_atlas_view(nxvc_vk_decoder *dec,
+                                               nxvc_vkd_atlas_view view);
+nxvc_vkd_atlas_view nxvc_vk_decoder_atlas_view(const nxvc_vk_decoder *dec);
+
+/* The images the view was rendered into, for a client that binds them.
+ * `image[0]` is luma; under R8 `image[1]` is the interleaved CbCr and
+ * `image[2]` is VK_NULL_HANDLE, under R16 `image[1]` and `image[2]` are Cb and
+ * Cr.  Extents are over the eye PAIR, with eye `e` at column `e * (w / eyes)`.
+ * Handles are owned by the decoder and valid until destroy or the next
+ * nxvc_vk_decoder_parse_stream_header(). */
+typedef struct nxvc_vkd_atlas_images {
+    VkImage image[3];
+    VkImageView view[3];
+    VkFormat format[3];
+    uint32_t width[3], height[3];
+} nxvc_vkd_atlas_images;
+
+nxvc_vkd_status nxvc_vk_decoder_atlas_images(const nxvc_vk_decoder *dec,
+                                             nxvc_vkd_atlas_images *out);
+
+/* Read one view plane back, as bytes: 1 byte per sample for R8 luma, 2
+ * interleaved for R8 chroma, 2 (little-endian u16) for an R16 plane.  For
+ * inspection and for the conformance A/B; a client samples the images. */
+nxvc_vkd_status nxvc_vk_decoder_atlas_view_read(nxvc_vk_decoder *dec, int plane,
+                                                uint8_t *out, size_t cap,
+                                                uint32_t *w, uint32_t *h,
+                                                uint32_t *bytes_per_sample);
+
+/* Byte size of the per-tile table: 64 * tile_count, over the eye pair.  0 if
+ * this is not an atlas stream. */
+size_t nxvc_vk_decoder_atlas_table_size(const nxvc_vk_decoder *dec);
+
+/* The whole table, [SYN] 13.12.1's layout exactly, including the 20 reserved
+ * bytes a v1 decoder zeroes -- conformance compares all 64. */
+nxvc_vkd_status nxvc_vk_decoder_atlas_table(nxvc_vk_decoder *dec, uint8_t *out,
+                                            size_t cap);
+
+/* One plane of the atlas PIXELS, in the coded sample domain, as u16 samples.
+ * The layout is nxvw_ring_layout()'s: both eyes side by side within each
+ * plane, eye `e` beginning at column `e * (*w)`, rows `*stride` samples apart.
+ *
+ * Note the two EYE CONVENTIONS in one feature, which is the thing most likely
+ * to be got wrong: the PIXELS are side by side and the TABLE is interleaved
+ * per row ([SYN] 3.3, eye-minor).  */
+nxvc_vkd_status nxvc_vk_decoder_atlas_plane(nxvc_vk_decoder *dec, int plane,
+                                            uint16_t *out, size_t cap,
+                                            uint32_t *w, uint32_t *h,
+                                            uint32_t *stride);
+
 nxvc_vkd_status nxvc_vk_decoder_read_planes(nxvc_vk_decoder *dec,
                                             uint8_t *const plane[4],
                                             const int32_t stride[4]);
@@ -398,7 +577,65 @@ typedef struct nxvc_vkd_stats {
      * a test that does not read this cannot tell whether it exercised the
      * tool or merely re-ran the ordinary skip path.                        */
     uint32_t rows_elided;
+    /* --- [passb] APPENDED, same rule as above.
+     *
+     * Pass B's three dispatch segments, broken out.  `pass_b_ms` is the whole
+     * of the Pass A -> Pass B window and therefore contains Pass W as well as
+     * all three of these, which is a genuine trap for anyone reading it as
+     * "the reconstruction": on a live inter stream the warp of the skipped
+     * tiles is most of it.  These make that split visible without the caller
+     * having to know the dispatch order.
+     *
+     *   pass_b_skip_ms   WARP_SKIP tiles -- the reconstruct_skip_store module,
+     *                    which runs the normative integer pose warp itself
+     *   pass_b_coded_ms  every other non-INTRA tile
+     *   pass_b_dir_ms    INTRA tiles on the directional-intra wavefront module
+     *
+     * Measured around eye pass 0, the same convention `pass_w_ms` already
+     * uses: a frame with a STEREO tile runs the segments once per eye and
+     * these then cover eye 0 only.  A segment with no tiles reports 0 and its
+     * tile count says why.  All zero on a device with no timestamp support,
+     * and on one whose query pool is shorter than 12 (`ts_count`).
+     *
+     * These are timestamps around dispatches, so they include the pipeline
+     * drain between segments and do not sum to `pass_b_ms`.  The gap is real
+     * -- it is what the segment split costs -- and is left visible rather
+     * than distributed.                                                    */
+    double pass_b_skip_ms;
+    double pass_b_coded_ms;
+    double pass_b_dir_ms;
+    uint32_t tiles_skip_seg;  /* tiles in the WARP_SKIP segment, eye pass 0 */
+    uint32_t tiles_coded_seg; /* tiles in the other-non-INTRA segment       */
+    uint32_t tiles_dir_seg;   /* tiles on the directional-intra module      */
+    /* --- [SYN] 13.12.6 APPENDED.  Coded tiles this frame DROPPED because the
+     * position already held a generation from this frame or a later one --
+     * which a base-layer patch can produce, since 13.12.9 lets one carry a
+     * `src_frame` ahead of the stream.  It is a REPORT and not a loss: the
+     * position holds something newer, and the encoder must not answer it with
+     * a refresh.                                                           */
+    uint32_t tiles_superseded;
+    /* --- [passb] APPENDED, same rule again.
+     *
+     * The copy segment: skip tiles whose prediction is their reference
+     * unchanged, decided on the HOST (warp_tile_is_copy()) and dispatched to a
+     * module with no coordinate pipeline.  Both are 0 on a frame where no tile
+     * qualifies, which is every frame on an encoder that does not snap a
+     * near-identity pose to the identity -- so a run reporting
+     * tiles_identity_seg == 0 has NOT exercised the path.               */
+    double pass_b_identity_ms;
+    uint32_t tiles_identity_seg;
 } nxvc_vkd_stats;
+
+/* The feature test for the six pass_b_*_ms / tiles_*_seg fields, for an
+ * integrator building against both this header and an older one during a
+ * rollout -- a struct field is not something the preprocessor can see.
+ *
+ * `rows_elided` sits before them because it was on main first and keeps the
+ * offset its callers were built against; appending ours after it is what makes
+ * this merge ABI-safe in both directions. */
+#define NXVC_VK_DECODER_PASSB_SEGMENTS 1
+/* The identity/copy segment above, which arrived after the other three. */
+#define NXVC_VK_DECODER_PASSB_IDENTITY 1
 
 nxvc_vkd_status nxvc_vk_decoder_stats(const nxvc_vk_decoder *dec,
                                       nxvc_vkd_stats *out);

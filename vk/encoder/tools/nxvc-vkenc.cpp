@@ -87,6 +87,32 @@ static void usage() {
         "  --mv-range N         coarse integer search radius in samples\n"
         "                       (default 16); the library's effort 2 raises\n"
         "                       it, and it is `nxv-enc --mv-range N`\n"
+        "  --qp-ladder L        per-tile QP offsets: a comma-separated\n"
+        "                       ladder of qp_delta candidates the\n"
+        "                       rate-distortion decision scores, e.g.\n"
+        "                       \"-4,-2,0,2,4\".  Empty (the default) is\n"
+        "                       the decision off.  0 is always a\n"
+        "                       candidate and wins ties.  Measured a\n"
+        "                       wash on rANS and about -2%% BD-rate on\n"
+        "                       Lite, which is why it is not an effort\n"
+        "                       level -- see vk/encoder/README.md\n"
+        "  --qp-lambda K        override the decision's lambda constant\n"
+        "                       (default 901 = ref kLambdaScale 0.22)\n"
+        "  --qp-table-search    price each candidate under the best of\n"
+        "                       the eight table sets; a diagnostic\n"
+        "  --trellis N          effort 2: the rate-distortion trellis in\n"
+        "                       exact integers (0 off, 1 on).  Matches\n"
+        "                       `nxv-enc --int-trellis 1 --rdoq-effort 3`\n"
+        "  --rate-check         measure the integer rate model of\n"
+        "                       nxe_rate.h against the bytes the entropy\n"
+        "                       coder actually produced, per tile, and\n"
+        "                       print the distribution.  Changes no byte\n"
+        "                       of the stream\n"
+        "  --snap-identity N    snap a nearly-still warp to the IDENTITY when\n"
+        "                       every tile corner moves less than N/16 of a\n"
+        "                       sample (0 = off).  Encoder-side, no syntax:\n"
+        "                       every skipped tile is then a copy on the\n"
+        "                       decoder instead of an integer warp\n"
         "  --chroma-qp-off N    chroma QP offset\n"
         "  --device N           Vulkan physical device index (default 0)\n"
         "  --cpu                run the CPU models, no Vulkan\n"
@@ -152,7 +178,13 @@ int main(int argc, char **argv) {
         else if (a == "--coded-vectors") cfg.int_coded_vectors = true;
         else if (a == "--ref-sel") cfg.ref_sel = std::atoi(val());
         else if (a == "--int-rdoq") cfg.int_rdoq = std::atoi(val());
+        else if (a == "--rate-check") cfg.rate_check = true;
+        else if (a == "--trellis") cfg.trellis = std::atoi(val());
+        else if (a == "--qp-ladder") cfg.qp_ladder = val();
+        else if (a == "--qp-lambda") cfg.qp_lambda_q12 = std::atoi(val());
+        else if (a == "--qp-table-search") cfg.qp_table_search = true;
         else if (a == "--mv-range") cfg.mv_range = std::atoi(val());
+        else if (a == "--snap-identity") cfg.snap_identity = std::atoi(val());
         else if (a == "--hold-every") hold_every = std::atoi(val());
         else if (a == "--ack-delay") {
             ack_delay = std::atoi(val());
@@ -432,6 +464,53 @@ int main(int argc, char **argv) {
     if (!cfg.quiet)
         std::printf("%d frame(s), %zu bytes total, %.4f bpp mean\n", n, total,
                     n ? total * 8.0 / ((double)cfg.w * cfg.h * n) : 0.0);
+    /* --snap-identity: how often the threshold actually fired.  Printed
+     * whatever the answer, including "on 0 of 8", because a tool that was
+     * asked for and never triggered is the thing a sweep most needs to see. */
+    if (cfg.inter && !cfg.cpu_only) {
+        uint64_t idt = 0, idtot = 0;
+        gpu.identity_stats(idt, idtot);
+        if (idtot)
+            std::printf("identity tiles: %llu of %llu (%.1f %%) over the inter "
+                        "frames\n",
+                        (unsigned long long)idt, (unsigned long long)idtot,
+                        100.0 * (double)idt / (double)idtot);
+    }
+    if (cfg.snap_identity > 0 && !cfg.cpu_only) {
+        uint32_t sf = 0, sa = 0;
+        gpu.snap_stats(sf, sa);
+        std::printf("snap-identity %d/16 sample: snapped %u of %u inter frame(s)"
+                    " (%.1f %%)\n",
+                    cfg.snap_identity, sa, sf,
+                    sf ? 100.0 * (double)sa / (double)sf : 0.0);
+        double lo = 0, mean = 0, hi = 0;
+        gpu.warp_offset_stats(lo, mean, hi);
+        if (sf)
+            std::printf("  warp corner displacement: min %.1f, mean %.1f, "
+                        "max %.1f /16 sample\n", lo, mean, hi);
+    }
+    /* --rate-check: the integer rate model of nxe_rate.h against the bytes the
+     * entropy coder produced, over every tile of the run.  The mean signed
+     * error is the model's bias and the mean absolute error is its spread; the
+     * first is the number a rate-distortion decision cares about, because a
+     * constant bias cancels between two candidates and a spread does not. */
+    if (cfg.rate_check && f.rc_tiles) {
+        const double nz = (double)(f.rc_tiles - f.rc_tiny);
+        std::printf("rate model: %llu tiles (%llu too small to score), "
+                    "estimate %.0f bits vs coded %llu bits, total %+.3f%%\n",
+                    (unsigned long long)f.rc_tiles,
+                    (unsigned long long)f.rc_tiny,
+                    (double)f.rc_est_q10 / 1024.0,
+                    (unsigned long long)f.rc_real_bits,
+                    100.0 * ((double)f.rc_est_q10 / 1024.0 -
+                             (double)f.rc_real_bits) /
+                            (double)f.rc_real_bits);
+        if (nz > 0)
+            std::printf("rate model: per tile mean %+.3f%%, mean |err| %.3f%%, "
+                        "range %+.3f%% .. %+.3f%%\n",
+                        f.rc_err_sum / nz, f.rc_err_abs_sum / nz,
+                        f.rc_err_min, f.rc_err_max);
+    }
     if (rc) return rc;
     return n > 0 ? 0 : 1;
 }

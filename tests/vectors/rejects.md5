@@ -29,6 +29,14 @@ r36_xform_size_three 0730eca7adccfc5942f58436a11f232b BITSTREAM xform_size 3 is 
 r37_xform_no_tool a1cf4bf2f4557af1ab87bafdf0a1076d BITSTREAM xform_size != 0 without XFORM_LARGE
 r38_xform_with_tskip adfe74bb75f97ececa16b5adc58a5440 BITSTREAM xform_size != 0 on a transform-skip tile
 r39_split_with_xform a53380c8941c69766352ee8e9ae90d84 BITSTREAM split4x4 with xform_size != 8
+# --- syntax v1.7 (the planar tile mode)
+r44_planar_no_tool 937ccec28a222273b1459441ec9f938a BITSTREAM a PLANAR tile without tool bit 35
+r45_planar_res_level 6c9c3c0acaae1721edbe44c81ccbb545 BITSTREAM a PLANAR tile with res_level != 0
+r46_planar_nsub 7aefd6a3ad1344ba648d3317f80bb80a BITSTREAM a PLANAR tile with nsub_log2 != 0
+r47_planar_mv_present f28c2ba46643603ceb9ce7dc164eadb6 BITSTREAM a PLANAR tile with mv_present set
+r48_planar_line_form e5d115476dedc082f6fa454e0d466c80 BITSTREAM planar body: the line split form is reserved
+r49_planar_regions 70488d2d43e61468089cfd9fc867f989 BITSTREAM planar body: region_count 5 is reserved
+r50_planar_body_bits 8cc104a9a56c5ccedfbb9ed90c3afdc3 BITSTREAM planar body: a reserved header bit is set
 # --- Phase 2 (Annex D D-21)
 r18_h22_not_one a03af651f79c682363a2233fa159c3b0 BITSTREAM warp_ext h22 != 2^29
 r19_entry_range 644f470d0a6c61a16d7959befb83353e BITSTREAM a warp_ext entry beyond kEntryMax

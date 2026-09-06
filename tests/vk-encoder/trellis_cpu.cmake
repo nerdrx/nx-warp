@@ -1,0 +1,102 @@
+# trellis_cpu.cmake -- effort 2's CPU model against the reference.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# The reference is the specification of what this encoder produces, so the
+# claim is byte-identity and not resemblance: `nxvc-vkenc --cpu --trellis 1`
+# must be `nxv-enc --int-trellis 1 --rdoq-effort 3` at the matching flags, on
+# both entropy coders and at every quantiser.
+#
+# It is a sharper test than it looks.  The trellis is only half of it -- the
+# other half is the ORDER the two encoders quantise and train in, and three
+# separate mismatches there each produced a stream that decoded perfectly and
+# was the wrong size:
+#
+#   * the first pass has to run the TRELLIS, not the dead-zone quantiser, or
+#     the table sets are trained on coefficients the reference never saw;
+#   * each tile picks its table set from a PLAIN quantisation of itself before
+#     the trellis prices anything (ref's inner two-pass), not from the QP seed;
+#   * the final per-tile choice is made against the TRAINED sets without
+#     restoring the built-in ones first, which is what the training pass does
+#     and the emit pass must not.
+#
+# Expects VKENC, NXVENC, WORKDIR.
+
+cmake_minimum_required(VERSION 3.22)
+
+if(NOT VKENC OR NOT NXVENC OR NOT WORKDIR)
+  message(FATAL_ERROR "trellis_cpu.cmake: VKENC/NXVENC/WORKDIR are required")
+endif()
+
+file(REMOVE_RECURSE ${WORKDIR})
+file(MAKE_DIRECTORY ${WORKDIR})
+
+execute_process(COMMAND ${VKENC} --dump-inter ${WORKDIR}/
+                OUTPUT_VARIABLE fixture RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+  message(FATAL_ERROR "nxvc-vkenc --dump-inter failed: ${rc}")
+endif()
+string(STRIP "${fixture}" fixture)
+string(REPLACE " " ";" fx "${fixture}")
+list(GET fx 0 YUV)
+list(GET fx 2 W)
+list(GET fx 3 H)
+
+# Three frames.  The eight-frame run has one open divergence (see
+# vk/encoder/README.md, "What still differs") and pinning a known-failing
+# length here would make this test a reminder rather than a gate.
+set(COMMON --in ${YUV} --w ${W} --h ${H} --frames 3 --pix yuv420p --nsub 3
+           --matrix 1 --wm 0 --tskip off --chroma-qp-off 0 --ctx v3 --eyes 1
+           --intra-dir off --quiet)
+set(MINOR6 --split4x4 off --cfl off --xform 8)
+set(RANS_REF --entropy rans --sign-hide --custom-tables --tab v2)
+set(RANS_GPU --custom-tables --tab v2)
+set(LITE_REF --entropy lite-fixed --no-sign-hide --no-custom-tables --tab v1)
+set(LITE_GPU --entropy lite)
+
+set(fail 0)
+foreach(qp 22 26 30 34 40)
+  foreach(ent rans lite)
+    if(ent STREQUAL "rans")
+      set(eref ${RANS_REF})
+      set(egpu ${RANS_GPU})
+    else()
+      set(eref ${LITE_REF})
+      set(egpu ${LITE_GPU})
+    endif()
+    execute_process(COMMAND ${NXVENC} ${COMMON} --qp ${qp} ${MINOR6} ${eref}
+                            --int-trellis 1 --rdoq-effort 3
+                            --out ${WORKDIR}/${ent}${qp}.ref
+                    RESULT_VARIABLE rc OUTPUT_QUIET ERROR_VARIABLE e)
+    if(NOT rc EQUAL 0)
+      message(FATAL_ERROR "nxv-enc failed (${ent} QP ${qp}): ${rc}\n${e}")
+    endif()
+    execute_process(COMMAND ${VKENC} --cpu ${COMMON} --qp ${qp} ${egpu}
+                            --trellis 1 --out ${WORKDIR}/${ent}${qp}.cpu
+                    RESULT_VARIABLE rc OUTPUT_QUIET ERROR_VARIABLE e)
+    if(NOT rc EQUAL 0)
+      message(FATAL_ERROR "nxvc-vkenc failed (${ent} QP ${qp}): ${rc}\n${e}")
+    endif()
+    execute_process(COMMAND ${CMAKE_COMMAND} -E compare_files
+                            ${WORKDIR}/${ent}${qp}.ref
+                            ${WORKDIR}/${ent}${qp}.cpu
+                    RESULT_VARIABLE rc)
+    if(NOT rc EQUAL 0)
+      file(SIZE ${WORKDIR}/${ent}${qp}.ref sz_r)
+      file(SIZE ${WORKDIR}/${ent}${qp}.cpu sz_c)
+      message(SEND_ERROR
+        "${ent} QP ${qp}: effort 2's CPU model is not byte-identical to "
+        "nxv-enc --int-trellis 1 --rdoq-effort 3 (${sz_c} B against ${sz_r} B). "
+        "An effort level that is not byte-identical is not an effort level; it "
+        "is a different encoder.")
+      set(fail 1)
+    else()
+      message(STATUS "PASS ${ent} QP ${qp}: byte-identical")
+    endif()
+  endforeach()
+endforeach()
+
+if(fail)
+  message(FATAL_ERROR "trellis_cpu.cmake: effort 2 is not the reference's trellis")
+endif()
+message(STATUS "trellis_cpu.cmake: effort 2 matches nxv-enc byte for byte")

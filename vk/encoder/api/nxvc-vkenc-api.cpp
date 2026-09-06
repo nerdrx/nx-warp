@@ -237,6 +237,8 @@ int main(int argc, char **argv) {
     /* create_info::effort: 0 the dead-zone quantiser, 1 the integer
      * requantiser.  The acid test drives both ends of the ABI with it. */
     uint32_t effort = 0;
+    /* create_info::snap_identity, in 1/16 luma samples; 0 = off. */
+    uint32_t snap_identity = 0;
     /* 1 or 2.  As in nxvc-vkenc, `--w` is the FULL width either way, so a
      * stereo run passes the side-by-side pair and create() gets w/eyes. */
     uint32_t eyes = 1;
@@ -277,6 +279,8 @@ int main(int argc, char **argv) {
         else if (a == "--poses") poses_path = next();
         else if (a == "--drop-at") drop_at = std::atoi(next());
         else if (a == "--effort") effort = (uint32_t)std::atoi(next());
+        else if (a == "--snap-identity")
+            snap_identity = (uint32_t)std::atoi(next());
         else if (a == "--entropy")
         {
             const std::string v = next();
@@ -322,7 +326,7 @@ int main(int argc, char **argv) {
                      "                      [--qp N] [--frames N] [--matrix N] [--timing]\n"
                      "                      [--image] [--qp-cycle a,b,c] [--lengths f]\n"
                      "                      [--eyes 1|2, --w is the side-by-side pair]\n"
-                     "                      [--effort 0|1]\n");
+                     "                      [--effort 0|1] [--snap-identity N]\n");
         return 2;
     }
 
@@ -396,6 +400,10 @@ int main(int argc, char **argv) {
     ci.quant_matrix = matrix;
     ci.entropy = entropy;
     ci.effort = effort;
+    /* Passed through unmasked, unlike the inter-only fields above: the library
+     * refuses snap_identity without inter, and a harness that quietly zeroed it
+     * would hide the refusal it exists to exercise. */
+    ci.snap_identity = snap_identity;
 
     /* The image path needs a device the caller owns: the image has to live on
      * the encoder's device, and a device the library created is one this tool
@@ -674,6 +682,17 @@ int main(int argc, char **argv) {
                     n, w, h, qp, sum_ms / n, max_ms, sum_up / n,
                     total_bytes / n);
     }
+	/* What the decoder's copy fast path will claim, which is the only reason
+	 * --snap-identity exists and the only place the number lives. */
+	{
+		uint64_t idt = 0, idtot = 0;
+		nxvc_vk_encoder_identity_tiles(enc, &idt, &idtot);
+		if (idtot)
+			std::printf("identity tiles: %llu of %llu (%.1f %%), "
+			            "snap-identity %u/16\n",
+			            (unsigned long long)idt, (unsigned long long)idtot,
+			            100.0 * (double)idt / (double)idtot, snap_identity);
+	}
     nxvc_vk_encoder_destroy(enc);
     if (use_image) src.destroy();
     if (rc) return rc;

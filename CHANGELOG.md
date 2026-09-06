@@ -12,7 +12,121 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
 
 ## [Unreleased]
 
+### Changed
+
+**GPU encoder: effort 1 is withdrawn as a recommendation, on a measurement**
+
+- `effort` 1 (`int_rdoq`) was recommended for any budget on the strength of
+  -1.4 to -3.6 % BD-rate on `pan8`/`pan8s`. Re-measured on the rendered vrroom
+  corpus it is **positive on all five clips** (+0.1 to +3.2 %, rANS and Lite
+  alike). The library default was and stays `NXVC_VKE_EFFORT_DEFAULT` (0); what
+  changes is the advice -- **a caller should not raise it**, and the WiVRn
+  server's `"effort": 1` should go back to 0. Effort 1 remains selectable and
+  remains byte-identical to `nxv-enc --no-rdo --int-rdoq 1`; no bitstream,
+  syntax or API change.
+- A separate reading that the ladder "does nothing (within 0.03 dB) on vrroom"
+  reproduces exactly (34.204 dB vs 34.204 dB, 29433 B vs 29355 B on `rest` at
+  QP 34) and is a **configuration**, not a property of the content: it was taken
+  with `nxv-enc`'s full RD mode decision on, which already drops the
+  coefficients the requantiser would drop. The GPU encoder has no such search,
+  and against it the tool moves 0.6-1.4 dB and 7-12 % of the bytes at fixed QP.
+  A single-quantiser dB comparison of a tool that trades bytes for dB can only
+  read zero or mislead; the figures are BD-rate for that reason.
+- Why the sign moves: coding the same clips **intra-only** collapses the effect
+  to between -0.9 % and +1.0 % on every clip, so the immediate rate-distortion
+  trade is near a wash and the inter reference chain is the amplifier. The
+  requantiser prices a dropped coefficient against the current frame only, and
+  what compounds downstream is whether it was noise (`pan8`, which wins) or
+  specular detail and thin geometry (vrroom, which loses). Sharpening the
+  constant 3-bit rate estimate would not fix this; the missing term is
+  propagation, which a single-frame requantiser cannot have.
+- The tool that does pay on all six fixtures is the reference's integer trellis
+  (`--int-trellis 1 --rdoq-effort 3`): **-2.8 to -10.7 %**. It has no GPU
+  implementation, and this is the argument for a level 2 that is the trellis
+  rather than a wider search.
+- `vk/encoder/README.md` gains "The effort levels, re-measured on rendered
+  content"; `docs/GALLERY.md` gains Figure 12 and marks the effort columns of
+  Figure 2 superseded.
+
 ### Added
+
+**GPU encoder: `snap_identity` on the library ABI**
+
+- `nxvc_vke_create_info::snap_identity` and
+  `nxvc_vk_encoder_identity_tiles()`, so a host can ask for the snap and then
+  ask how many tiles the decoder's copy path will claim. The count exists
+  nowhere else: an identity `warp_ext` says nothing about how it was arrived
+  at, and a decoder without the fast path decodes the stream anyway.
+- Refused rather than clamped in two cases, both of them easy mistakes:
+  without `inter` (there is no warp to snap) and above 32/16 (the unit is
+  SIXTEENTHS of a sample, which is an easy unit to misread as samples, and
+  past two samples the tool discards real motion rather than rounding it).
+
+**GPU encoder: `snap_identity`, and the null result underneath it**
+
+- `--snap-identity N` (N in 1/16 luma samples, 0 = off, ships off) replaces a
+  nearly-still frame warp with the IDENTITY, so the decoder takes its copy fast
+  path (`NXVW_ABL_IDENTITY`) on every skipped tile instead of running the
+  integer warp -- 8.25 of 13.7 ms of Pass B per pair on the Pico. Encoder-side,
+  no syntax: an identity `warp_ext` is an ordinary matrix. Decided per frame on
+  the worst tile corner in the picture, both eyes together.
+- **Nothing snaps below one whole sample.** A head at rest still moves ~0.57
+  samples a frame, so thresholds 2, 4 and 8 produce a stream byte-identical to
+  the tool being off. The sweep's lower half is a null result and it is the
+  useful half: a sub-sample threshold is inert, not conservative.
+- At 16 the threshold catches 2 of 7 inter frames on the rest clip (28.6 % of
+  tile-frames identity) for -0.05 dB and between **-0.91 %** and +0.07 % of
+  bytes -- it makes the stream SMALLER at QP 34, because an identity predictor
+  on a still picture beats a sub-sample warp that resamples it. **Motion kills
+  it outright**: at 30 deg/s nothing snaps at any threshold up to two samples.
+- Recommended default 16, shipped 0 until the Pico measurement exists. The
+  headset arithmetic -- 4.8 to 7.2 ms per pair on a snapped frame -- is
+  arithmetic on somebody else's measurement and is a reason to measure.
+- **The vrroom corpus's `rest` trajectory is not at rest**: 2.5 samples of
+  tile-corner displacement a frame, forty times the generator's `static`
+  profile, which is the real reason the device rows see 0/578 identity tiles.
+  Snapping it needs a three-sample threshold and costs 4.0 dB and 2.3x the
+  bytes; the stream built that way is a timing fixture for the decoder's copy
+  segment and nothing else.
+- Byte-identical RADV vs lavapipe at a snapped setting; all 32 `vk.encoder`
+  tests pass with the tool off. Two committed pictures and a new
+  `docs/GALLERY.md`.
+
+**A piecewise-planar tile mode, and an honest re-measurement of it** (tool bit
+35, `mode == 5`, SYNTAX.md 13.13, `docs/LOWPOLY-MODE.md` 9)
+
+- A tile may be coded as **2 to 4 regions**, each a plane -- a DC level and two
+  ramps, in exactly the three signed bytes and the quantiser NEAR_SKIP already
+  uses -- over a raw label map on an 8x8 or 4x4 sub-block grid. No transform,
+  no entropy-coded payload, no reference. The reconstruction is per sample and
+  integer, with no dependency between samples, blocks or tiles, which is what
+  makes it crossable to a GPU decoder later (`docs/LOWPOLY-GPU-PLAN.md`, which
+  states the Adreno constraints the syntax was written against: 128-byte push
+  constants, no subgroup scans, 32 threads a group).
+- It exists for the KIND of failure it has. A transform codec starved of bits
+  turns the picture into its own coding grid; a planar tile loses detail and
+  keeps structure, degrading toward the look of a low-polygon model. That is
+  the whole case, and `docs/LOWPOLY-MODE.md` 9.3 is the picture that makes it.
+- **The proposal's +1.6 dB at 45 B/tile does not reproduce.** Its transform
+  baseline is about 15 dB adrift of what this encoder produces today at the
+  same rate, on a clip that no longer exists. Re-measured on pan8 and pan8s,
+  the transform is **5 to 12 dB ahead on luma at equal bytes** and the mode
+  **2 to 6 dB ahead on chroma**, at every configuration.
+- So it ships as a decision and OFF by default. `planar = 1` takes the mode only
+  where it is both cheaper and no worse, which measures neutral -- within
+  0.015 dB and 2.4 % of the tool being off on both fixtures at QP 34/40/46,
+  chosen on 2-17 % of tiles. `planar = 2` takes it wherever it is cheaper: the
+  low-polygon look as a setting, at 2.1 to 4.3 dB. A rate-distortion test alone
+  is a **bug** here and the second condition is why -- the mode's curve is flat
+  and the transform's is steep, so per-tile RD at the encoder's own lambda
+  walked the frame off its own convex hull (76 % of tiles, 5 % fewer bytes,
+  2.1 dB).
+- Conformance: `v82_planar_rd420` and `v83_planar_prefer420` (the generator
+  refuses to write either if the encoder declined the mode), and seven
+  rejection vectors `r44`-`r50` for the tool bit, the four header fields the
+  mode forbids, and the three reserved body encodings. `nxv-enc --planar` /
+  `--planar-prefer`, `nxv-info` names the mode, and the pure-Python parser
+  enforces the same constraints.
 
 **GPU encoder: an effort level, and the one that does not exist**
 

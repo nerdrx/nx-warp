@@ -334,6 +334,40 @@ if(TARGET nxvc-vkenc)
         list(APPEND NXENC_TESTS vk.encoder.acid.effort.${dev})
       endforeach()
 
+      # The integer rate model, against both entropy coders.  CPU-only, so it
+      # is registered once rather than per device: the models are the
+      # specification and the shader has no rate model of its own yet.
+      add_test(NAME vk.encoder.rate COMMAND ${CMAKE_COMMAND}
+               -DVKENC=$<TARGET_FILE:nxvc-vkenc>
+               -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/rate
+               -P ${CMAKE_CURRENT_SOURCE_DIR}/rate.cmake)
+      set_tests_properties(vk.encoder.rate PROPERTIES
+                           SKIP_REGULAR_EXPRESSION "SKIP:")
+      list(APPEND NXENC_TESTS vk.encoder.rate)
+
+      # The RD trellis in exact integers, against the double one it replaces.
+      # Reference-side only: it is the reference's trellis whose arithmetic
+      # changed, and the GPU has no trellis yet.
+      add_test(NAME vk.encoder.trellis COMMAND ${CMAKE_COMMAND}
+               -DVKENC=$<TARGET_FILE:nxvc-vkenc>
+               -DNXVENC=$<TARGET_FILE:nxv-enc>
+               -DNXVDEC=$<TARGET_FILE:nxv-dec>
+               -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/trellis
+               -P ${CMAKE_CURRENT_SOURCE_DIR}/trellis.cmake)
+      set_tests_properties(vk.encoder.trellis PROPERTIES
+                           SKIP_REGULAR_EXPRESSION "SKIP:")
+      list(APPEND NXENC_TESTS vk.encoder.trellis)
+
+      # Effort 2's CPU model against the reference, byte for byte.
+      add_test(NAME vk.encoder.trellis.cpu COMMAND ${CMAKE_COMMAND}
+               -DVKENC=$<TARGET_FILE:nxvc-vkenc>
+               -DNXVENC=$<TARGET_FILE:nxv-enc>
+               -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/trellis-cpu
+               -P ${CMAKE_CURRENT_SOURCE_DIR}/trellis_cpu.cmake)
+      set_tests_properties(vk.encoder.trellis.cpu PROPERTIES
+                           SKIP_REGULAR_EXPRESSION "SKIP:")
+      list(APPEND NXENC_TESTS vk.encoder.trellis.cpu)
+
       # And the same legs on a SECOND ICD.  Byte-identity is a claim about
       # the arithmetic, not about RADV: the requantiser's one 64-bit product
       # goes through umulExtended and its comparison through a signed 32-bit

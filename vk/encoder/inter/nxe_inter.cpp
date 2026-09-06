@@ -6,6 +6,7 @@
 #include "nxe_inter.h"
 
 #include <cstring>
+#include <vector>
 
 #include "nxvc/warp.h"
 
@@ -195,6 +196,103 @@ bool select_reference(const RingState &ring, const HeldState &held,
         return true;
     }
     return false;
+}
+
+// ------------------------------------------------------ snap to identity
+// docs/PASSB-ADRENO-PLAN.md 3b: a skipped tile whose warp is the IDENTITY on
+// the integer grid is a plain copy, and the decoder's fast path takes it --
+// 8.25 of 13.7 ms of Pass B per pair on the Pico is the integer warp on
+// WARP_SKIP tiles, and at rest almost all of it buys sub-sample motion nobody
+// can see.
+//
+// This measures how far from the identity the frame's warp actually is, in Q.6
+// (1/64 sample), as the LARGEST displacement of any tile corner in the
+// picture.  Every tile corner is evaluated rather than only the picture's four:
+// the map is projective, so the extreme need not be at a picture corner, and
+// 289 corners of host arithmetic once a frame is not worth an approximation
+// that could be wrong.
+//
+// The caller compares it against its threshold and, if it is under, uses the
+// identity matrix instead.  That is encoder-side and needs no syntax: an
+// identity warp_ext is a legal matrix -- it is what a frame with no reference
+// carries -- and every WARP_SKIP tile then derives identity corners, which
+// with this encoder's permanently-zero stored vectors (update_pred_state only
+// records one for WARP_MV, which this encoder never emits) is exactly the
+// decoder's copy predicate.
+int32_t warp_max_corner_offset(const WarpMatrix &m, int width, int height,
+                               int eyes) {
+    ::nxvc::warp::Homography H{};
+    for (int i = 0; i < 9; ++i) H.h[i] = m.h[i];
+    const int cols = (width + 63) / 64, rows = (height + 63) / 64;
+    int32_t worst = 0;
+    for (int e = 0; e < eyes; ++e)
+        for (int ty = 0; ty < rows; ++ty)
+            for (int tx = 0; tx < cols; ++tx) {
+                const int32_t px = (int32_t)(e * width) + tx * 64;
+                const int32_t py = ty * 64;
+                const ::nxvc::warp::TileCorners c = ::nxvc::warp::warp_tile_corners(
+                    H, px, py, ::nxvc::warp::kModeWarp);
+                // The identity corners of this tile, in Q.6, in the order
+                // warp_tile_corners returns them.
+                const int32_t ix[4] = {px << 6, (px + 64) << 6, px << 6,
+                                       (px + 64) << 6};
+                const int32_t iy[4] = {py << 6, py << 6, (py + 64) << 6,
+                                       (py + 64) << 6};
+                for (int k = 0; k < 4; ++k) {
+                    const int32_t dx = c.x[k] - ix[k];
+                    const int32_t dy = c.y[k] - iy[k];
+                    const int32_t ax = dx < 0 ? -dx : dx;
+                    const int32_t ay = dy < 0 ? -dy : dy;
+                    if (ax > worst) worst = ax;
+                    if (ay > worst) worst = ay;
+                }
+            }
+    return worst;
+}
+
+// The DECODER's predicate, exactly (vk/decoder/inter/warp_pred.glsl, the
+// NXVW_ABL_IDENTITY block): the copy path claims a tile only when the tile is
+// WARP_SKIP and the luma matrix is bit-exactly the identity.  Not "the corners
+// come out on the grid" -- the decoder does not evaluate corners to decide, it
+// tests the matrix, and a corner test would count tiles the decoder then warps
+// anyway.  A predicate measured differently from the one that runs is a
+// measurement of the difference.
+bool warp_is_identity(const WarpMatrix &m) {
+    static const WarpMatrix kIdentity{};
+    for (int i = 0; i < 9; ++i)
+        if (m.h[i] != kIdentity.h[i]) return false;
+    return true;
+}
+
+// How many of the picture's tiles map onto their own grid position exactly --
+// the decoder's identity predicate, counted rather than assumed.  With a
+// snapped (or derived-identity) matrix this is every tile; with a real warp it
+// is however many happen to round to the grid, which near the centre of a slow
+// rotation is not always zero.
+int warp_identity_tiles(const WarpMatrix &m, int width, int height, int eyes,
+                        int *total_out) {
+    const int cols = (width + 63) / 64, rows = (height + 63) / 64;
+    const bool id = warp_is_identity(m);
+    int identity = 0, total = 0;
+    for (int e = 0; e < eyes; ++e)
+        for (int ty = 0; ty < rows; ++ty)
+            for (int tx = 0; tx < cols; ++tx) {
+                (void)tx;
+                identity += id ? 1 : 0;
+                ++total;
+            }
+    if (total_out) *total_out = total;
+    return identity;
+}
+
+// The same predicate, per tile, in raster order over the picture (eye-minor,
+// exactly the tile order the frame uses).  One byte per tile: 1 identity,
+// 0 warped.
+void warp_identity_tile_map(const WarpMatrix &m, int width, int height,
+                            int eyes, std::vector<uint8_t> &out) {
+    const int cols = (width + 63) / 64, rows = (height + 63) / 64;
+    const uint8_t id = warp_is_identity(m) ? 1u : 0u;
+    out.assign((size_t)cols * rows * eyes, id);
 }
 
 WarpMatrix derive_warp(const ViewState &vs, int ref_slot, int eye, int width,

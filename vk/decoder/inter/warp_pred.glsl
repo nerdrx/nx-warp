@@ -42,6 +42,17 @@
 //   pc.p.{chroma420, colorTransform, chromaQpOff, imageH}
 //
 // SPDX-License-Identifier: Apache-2.0
+// [passb] V2 pairing is only for the module whose scratch is PER PLANE.
+// NXVW_WARP_EMIT_IS_SCRATCH is defined by reconstruct.comp before this include
+// and says exactly that: the destination is the tile's own plane slot, so
+// plane 2's slot already exists.  Pass W reuses one sFull across planes and
+// would need a second buffer, which is LDS spent on the smaller term.
+#if defined(NXVW_ABL_CHROMAPAIR) && defined(NXVW_WARP_EMIT_IS_SCRATCH)
+#define NXVW_PAIR 1
+#else
+#define NXVW_PAIR 0
+#endif
+
 #ifndef NXVW_WARP_PRED_GLSL
 #define NXVW_WARP_PRED_GLSL
 
@@ -220,12 +231,46 @@ int refElemBase = 0;   // u16 element index of (0, 0) of the eye sub-picture
 int refStride = 0;     // u16 row stride of the whole plane
 int refW = 0, refH = 0;
 
-int fetchRef(int x, int y) {
+#if NXVW_PAIR
+// [passb] V2: the two chroma planes of a 4:2:0 picture share every input to
+// the coordinate pipeline -- the same tile corners, the same subsampled
+// vector, the same extent, the same quadrant split -- and differ only in which
+// plane of the reference ring the taps come from.  So the coordinate can be
+// computed ONCE and used for both, which removes a whole plane's worth of
+// corner interpolation, clamping and Q.6 -> Q.4 conversion.
+//
+// It needs no shared memory and no extra barrier, because both taps happen in
+// the same thread at the same loop iteration.  That is what separates it from
+// the LDS-staging lever this tree already measured at +26 %: nothing is
+// published between planes, so there is nothing to publish it THROUGH.
+//
+// Only for the module whose scratch is per-plane -- the Pass B skip module,
+// where NXVW_WARP_EMIT_IS_SCRATCH says the destination is the tile's own plane
+// slot and plane 2's slot already exists.  Pass W reuses one `sFull` across
+// planes, so pairing there would need a second buffer, and Pass W is not the
+// term worth spending LDS on.
+//
+// The caller sets gPairScratchBase to plane 2's slot before the p == 1 call
+// and to -1 otherwise.  gPairDone says plane 2's samples are already written,
+// which is what the p == 2 call tests to skip its sample loop.
+int gPairScratchBase = -1;
+bool gPairDone = false;
+#endif
+
+// [passb] The ring fetch, with the plane's base as a parameter.  The two
+// chroma planes of a 4:2:0 picture differ ONLY in this base -- same stride,
+// same extent, same everything else -- which is what lets NXVW_ABL_CHROMAPAIR
+// take one coordinate and read two planes with it.  The no-base forms below
+// are thin wrappers on refElemBase, so every existing call site produces the
+// integer it always did.
+int fetchRefAt(int base, int x, int y) {
     x = clamp(x, 0, refW - 1);
     y = clamp(y, 0, refH - 1);
-    uint e = uint(refElemBase + y * refStride + x);
+    uint e = uint(base + y * refStride + x);
     return int((nxvwRingWord(e >> 1u) >> ((e & 1u) * 16u)) & 0xffffu);
 }
+
+int fetchRef(int x, int y) { return fetchRefAt(refElemBase, x, y); }
 
 #ifdef NXVW_ABL_STAGE
 // ABLATION ONLY.  A staging block for the tile's source footprint, sized 2048
@@ -251,11 +296,11 @@ shared uint sSrc[2048];
 // The clamp has to be applied to each x separately before the comparison: at
 // the right edge both clamp to refW - 1 and share a word trivially, and at a
 // row start they do not.
-void fetchRefPair(int x, int y, out int a, out int b) {
+void fetchRefPairAt(int pbase, int x, int y, out int a, out int b) {
     const int xa = clamp(x, 0, refW - 1);
     const int xb = clamp(x + 1, 0, refW - 1);
     const int yc = clamp(y, 0, refH - 1);
-    const uint base = uint(refElemBase + yc * refStride);
+    const uint base = uint(pbase + yc * refStride);
     const uint ea = base + uint(xa);
     const uint eb = base + uint(xb);
 #if defined(NXVW_ABL_STAGE) && NXVW_ABL_STAGE_TAP
@@ -271,19 +316,23 @@ void fetchRefPair(int x, int y, out int a, out int b) {
     b = int((wb >> ((eb & 1u) * 16u)) & 0xffffu);
 }
 
-int sample_bilinear(int ix, int iy, int fx, int fy) {
+void fetchRefPair(int x, int y, out int a, out int b) {
+    fetchRefPairAt(refElemBase, x, y, a, b);
+}
+
+int sample_bilinearAt(int pbase, int ix, int iy, int fx, int fy) {
 #ifdef NXVW_ABL_COPYWARP
     // ABLATION ONLY, and it produces a wrong picture whenever the tile's
     // displacement is not already integer: one ring fetch instead of four and
     // no interpolation, which is exactly what the identity fast path would
     // cost.  It prices that path's CEILING before anyone writes it.
-    return fetchRef(ix, iy);
+    return fetchRefAt(pbase, ix, iy);
 #endif
     int gx = 16 - fx;
     int gy = 16 - fy;
     int t00, t10, t01, t11;
-    fetchRefPair(ix, iy, t00, t10);
-    fetchRefPair(ix, iy + 1, t01, t11);
+    fetchRefPairAt(pbase, ix, iy, t00, t10);
+    fetchRefPairAt(pbase, ix, iy + 1, t01, t11);
     // Four INDEPENDENT products, deliberately.  `gy * (gx * t00 + fx * t10) +
     // fy * (gx * t01 + fx * t11)` is the same integer -- nothing rounds before
     // the shift, so the regrouping is exact -- and it is six multiplies rather
@@ -293,6 +342,10 @@ int sample_bilinear(int ix, int iy, int fx, int fy) {
     // ../passB/README.md.
     int acc = gx * gy * t00 + fx * gy * t10 + gx * fy * t01 + fx * fy * t11;
     return (acc + 128) >> 8;   // the weights sum to 256
+}
+
+int sample_bilinear(int ix, int iy, int fx, int fy) {
+    return sample_bilinearAt(refElemBase, ix, iy, fx, fy);
 }
 
 // ------------------------------------------------------ near-skip [SYN] 13.9
@@ -420,9 +473,16 @@ void nxvwWarpPlane(int tid, int p, uint tb, int size, int full, int sub,
 
     // ---- step 1: four corners, four threads, one barrier.
     barrier();
-    if (tid < 4)
-        compute_corner(tid, uint((eye * 2 + (sub - 1)) * NXVW_WARP_MAT_UINTS),
-                       tox, toy, wmode);
+    // [ATLAS] The matrix is the tile's own when it names one, and the frame's
+    // otherwise.  `NXVW_WARP_MAT_NONE` is the whole compatibility story: a
+    // stream without tool bit 31 sets it on every tile, this resolves to the
+    // expression that was here before, and the kernel is byte-for-byte the
+    // kernel it was -- which `vk.encoder.passw.same` pins.
+    const uint matIdx = nxvwWarpParam(tb + uint(NXVW_WARP_TILE_MATIDX));
+    const uint mat = (matIdx == NXVW_WARP_MAT_NONE)
+                         ? uint((eye * 2 + (sub - 1)) * NXVW_WARP_MAT_UINTS)
+                         : matIdx + uint(sub - 1) * uint(NXVW_WARP_MAT_UINTS);
+    if (tid < 4) compute_corner(tid, mat, tox, toy, wmode);
     barrier();
     const ivec2 c0 = sCorner[0], c1 = sCorner[1];
     const ivec2 c2 = sCorner[2], c3 = sCorner[3];
@@ -523,9 +583,158 @@ void nxvwWarpPlane(int tid, int p, uint tb, int size, int full, int sub,
     int nBotX = c2.x * kWarpTile + (kWarpTile / 2) + dBotX * myU0;
     int nTopY = c0.y * kWarpTile + (kWarpTile / 2) + dTopY * myU0;
     int nBotY = c2.y * kWarpTile + (kWarpTile / 2) + dBotY * myU0;
+    // ---- the identity fast path's predicate.  [passb] Off unless
+    // NXVW_PASSB_EXTRA_DEFS asks for NXVW_ABL_IDENTITY.
+    //
+    // A tile whose corners are the identity grid and whose every active vector
+    // is a whole number of SAMPLES predicts each sample from exactly one
+    // reference sample: the bilinear degenerates to a copy at an integer
+    // offset.  That is a proof, and it needs all three parts.
+    //
+    // 1. The corner grid.  With c0 = (tox, toy) << 6 and the others one
+    //    kWarpTile away in each axis, dTopX = dBotX = kWarpTile << 6 = 4096
+    //    and c2.x == c0.x, so nTopX = 4096(tox + u) + 32, whose >> 6 is
+    //    64(tox + u) because 32 < 64 -- and nBotX >> 6 is the same integer.
+    //    Stage two's weights sum to kWarpTile, so
+    //        bx = (64(tox+u)*wv1 + 64(tox+u)*wv0 + 32) >> 6 = 64(tox + u)
+    //    exactly, for every u, whatever the row weights are.  Likewise by.
+    //    The geometry contributes no fractional part.
+    //
+    // 2. The vector.  mqx is the plane's own vector in quarter samples shifted
+    //    into Q.6, so mqx = 16*vx and
+    //        xq4 = (64(tox+u) + 16vx + 2) >> 2 = 16(tox+u) + 4vx
+    //        fx  = xq4 & 15 = (4vx) & 15
+    //    which is zero exactly when vx is a multiple of four -- a whole
+    //    sample.  Testing mq & 63 tests the same thing one step earlier and
+    //    covers both axes and all four quadrants at once.  Chroma asks about
+    //    the vector it already halved for sub == 2, not luma's.
+    //
+    // 3. No saturation.  sat_add_i32 and the clamp are not linear, so a copy
+    //    cannot reproduce them.  The corners are the grid, so the extreme
+    //    coordinates are the tile's own opposite corners plus the extreme
+    //    vector; if neither end saturates or clamps, no interior sample can.
+    //
+    // Then sample_bilinear(ix, iy, 0, 0) has gx = gy = 16, acc = 256*t00, and
+    // (256*t00 + 128) >> 8 == t00 for every t00 >= 0.  Every tap is a
+    // reconstructed sample already clamped to [0, maxval], so t00 >= 0 always
+    // and the fetch is the same integer the four-tap path produces.
+    bool nxvwIdentity = false;
+#ifdef NXVW_ABL_IDENTITY
+    {
+        const int gx0 = shl_i32_mod(tox, uint(kWarpQCorner));
+        const int gy0 = shl_i32_mod(toy, uint(kWarpQCorner));
+        const int gx1 = shl_i32_mod(tox + kWarpTile, uint(kWarpQCorner));
+        const int gy1 = shl_i32_mod(toy + kWarpTile, uint(kWarpQCorner));
+        nxvwIdentity = c0 == ivec2(gx0, gy0) && c1 == ivec2(gx1, gy0) &&
+                       c2 == ivec2(gx0, gy1) && c3 == ivec2(gx1, gy1) &&
+                       ((mvxq0 | mvyq0 | mvxq1 | mvyq1 |
+                         mvxq2 | mvyq2 | mvxq3 | mvyq3) & 63) == 0;
+        if (nxvwIdentity) {
+            const int mnx = min(min(mvxq0, mvxq1), min(mvxq2, mvxq3));
+            const int mxx = max(max(mvxq0, mvxq1), max(mvxq2, mvxq3));
+            const int mny = min(min(mvyq0, mvyq1), min(mvyq2, mvyq3));
+            const int mxy = max(max(mvyq0, mvyq1), max(mvyq2, mvyq3));
+            const int ex0 = shl_i32_mod(tox, uint(kWarpQCorner));
+            const int ex1 = shl_i32_mod(tox + full - 1, uint(kWarpQCorner));
+            const int ey0 = shl_i32_mod(toy, uint(kWarpQCorner));
+            const int ey1 = shl_i32_mod(toy + full - 1, uint(kWarpQCorner));
+            nxvwIdentity =
+                sat_add_i32(ex0, mnx) == ex0 + mnx &&
+                sat_add_i32(ex1, mxx) == ex1 + mxx &&
+                sat_add_i32(ey0, mny) == ey0 + mny &&
+                sat_add_i32(ey1, mxy) == ey1 + mxy &&
+                abs(ex0 + mnx) <= kWarpCoordClamp &&
+                abs(ex1 + mxx) <= kWarpCoordClamp &&
+                abs(ey0 + mny) <= kWarpCoordClamp &&
+                abs(ey1 + mxy) <= kWarpCoordClamp;
+        }
+    }
+#ifdef NXVW_ABL_IDENTITY_FORCE
+    // VALIDATION ONLY, and it produces a WRONG picture on any tile whose warp
+    // is not already the identity.  It exists to answer the question the
+    // byte-identity test cannot answer by passing: does the fast path ever
+    // FIRE on the fixtures?  If forcing it true leaves the conformance set
+    // green, then every fixture tile was an identity warp and the honest
+    // predicate was never gating anything -- the pass would be vacuous.  A
+    // failure here is the result being looked for.
+    nxvwIdentity = true;
+#endif
+#endif
+
+    // [passb] V2 eligibility, and the second plane's ring base.
+    //
+    // Paired only when plane 2 is geometrically the same picture as plane 1 --
+    // same stride, same extent -- which 4:2:0 guarantees and this checks
+    // rather than assumes.  A mismatch falls through to the unpaired path.
+    int gPairRefBase = -1;
+#if NXVW_PAIR
+    bool nxvwPairing = false;
+    if (p == 1 && gPairScratchBase >= 0 && refBase != 0xffffffffu) {
+        const int b2 = int(refBase) +
+                       int(nxvwWarpParam(uint(NXVW_WARP_HDR_RING + 4 + 2))) +
+                       refEye * pw;
+        const int st2 = int(nxvwWarpParam(uint(NXVW_WARP_HDR_RING + 8 + 2)));
+        if (st2 == refStride) {
+            gPairRefBase = b2;
+            nxvwPairing = true;
+        }
+#ifdef NXVW_ABL_CHROMAPAIR_FORCE
+        // VALIDATION ONLY, and it produces a WRONG picture: plane 2 is filled
+        // from plane 1's ring base, so the two chroma planes come out equal.
+        // It answers the question the byte-identity test cannot answer by
+        // passing -- does the pairing ever FIRE on the fixtures?  If forcing
+        // the wrong base leaves the conformance set green, no fixture tile was
+        // paired and the pass was vacuous.  A failure is the result wanted.
+        gPairRefBase = refElemBase;
+        nxvwPairing = true;
+#endif
+    }
+    // Plane 2's samples were written by plane 1's call, so its own call has
+    // nothing to compute.  Everything AFTER the loop still runs: the barriers,
+    // the near-skip field and the box average are plane 2's own and are the
+    // code they always were.
+    const bool nxvwPairSkipLoop = (p == 2) && gPairDone;
+    if (p == 1) gPairDone = false;
+#else
+    const bool nxvwPairSkipLoop = false;
+#endif
+
+#if NXVW_COPY_STORE
+    // [passb] The copy module.  The HOST decided this tile is a copy -- see
+    // warp_tile_is_copy() in inter/inter_state.h -- so there is no predicate
+    // here and no coordinate pipeline at all: no corner DDA, no stage-two
+    // multiplies, no Q.6 -> Q.4, no bilinear, no clamp chain.  One ring fetch
+    // per sample at a whole-sample offset, which is what the identity reduces
+    // the prediction to.
+    //
+    // The quadrant select stays because a quadrant tile still has four
+    // vectors; the host proved each of them is a whole number of samples, so
+    // each is a different integer offset and none of them has a fraction.
     for (int j = 0; j < spt; j += 2) {
         const int u0 = myU0 + j;
         int s0 = 0, s1 = 0;
+        for (int h = 0; h < 2; ++h) {
+            const int u = u0 + h;
+            const int q = qrow + ((u >= qsplit) ? 1 : 0);
+            const int mqx = (q == 0) ? mvxq0 : (q == 1) ? mvxq1
+                          : (q == 2) ? mvxq2 : mvxq3;
+            const int mqy = (q == 0) ? mvyq0 : (q == 1) ? mvyq1
+                          : (q == 2) ? mvyq2 : mvyq3;
+            const int sv = clamp(fetchRef(tox + u + (mqx >> kWarpQCorner),
+                                          toy + myRow + (mqy >> kWarpQCorner)),
+                                 0, maxval);
+            if (h == 0) s0 = sv; else s1 = sv;
+        }
+        nxvwWarpScratchWrite((myRow * full + u0) >> 1,
+                             (uint(s0) & 0xffffu) | (uint(s1) << 16));
+    }
+#else
+    for (int j = 0; j < spt && !nxvwPairSkipLoop; j += 2) {
+        const int u0 = myU0 + j;
+        int s0 = 0, s1 = 0;
+#if NXVW_PAIR
+        int t0 = 0, t1 = 0;
+#endif
         for (int h = 0; h < 2; ++h) {
             const int u = u0 + h;
             // The geometric part is the WHOLE tile's corner basis evaluated at
@@ -557,17 +766,62 @@ void nxvwWarpPlane(int tid, int p, uint tb, int size, int full, int sub,
             // Q.6 -> Q.4, round half up (paper 2.2 step 4: "(c + 2) >> 2").
             const int xq4 = (xq6 + 2) >> (kWarpQCorner - kWarpQSample);
             const int yq4 = (yq6 + 2) >> (kWarpQCorner - kWarpQSample);
-            const int sv = clamp(sample_bilinear(xq4 >> kWarpQSample,
-                                                 yq4 >> kWarpQSample,
-                                                 xq4 & 15, yq4 & 15),
-                                 0, maxval);
+            // The predicate is a property of the TILE, so this branch is
+            // uniform across the workgroup and over the whole loop; it is
+            // written here rather than as a second loop so that every barrier
+            // below, and the near-skip and box-average stages after it, are
+            // the code they always were.
+            int sv;
+            if (nxvwIdentity) {
+                // mqx is 16*vx with vx a multiple of four, so mqx >> 6 is
+                // vx / 4 exactly -- the whole-sample displacement.
+                sv = clamp(fetchRef(tox + u + (mqx >> kWarpQCorner),
+                                    toy + myRow + (mqy >> kWarpQCorner)),
+                           0, maxval);
+            } else {
+                sv = clamp(sample_bilinear(xq4 >> kWarpQSample,
+                                           yq4 >> kWarpQSample,
+                                           xq4 & 15, yq4 & 15),
+                           0, maxval);
+            }
             if (h == 0) s0 = sv; else s1 = sv;
+#if NXVW_PAIR
+            // The SAME coordinate, the other plane's ring base.  This is the
+            // whole of V2: one corner interpolation, one clamp chain, one
+            // Q.6 -> Q.4, and two taps.
+            if (nxvwPairing) {
+                int sv2;
+                if (nxvwIdentity) {
+                    sv2 = clamp(fetchRefAt(gPairRefBase,
+                                           tox + u + (mqx >> kWarpQCorner),
+                                           toy + myRow + (mqy >> kWarpQCorner)),
+                                0, maxval);
+                } else {
+                    sv2 = clamp(sample_bilinearAt(gPairRefBase,
+                                                  xq4 >> kWarpQSample,
+                                                  yq4 >> kWarpQSample,
+                                                  xq4 & 15, yq4 & 15),
+                                0, maxval);
+                }
+                if (h == 0) t0 = sv2; else t1 = sv2;
+            }
+#endif
             nTopX += dTopX; nBotX += dBotX;
             nTopY += dTopY; nBotY += dBotY;
         }
         nxvwWarpScratchWrite((myRow * full + u0) >> 1,
                              (uint(s0) & 0xffffu) | (uint(s1) << 16));
+#if NXVW_PAIR
+        if (nxvwPairing)
+            nxvwWarpScratchWriteAt(gPairScratchBase, (myRow * full + u0) >> 1,
+                                   (uint(t0) & 0xffffu) | (uint(t1) << 16));
+#endif
     }
+#if NXVW_PAIR
+    // Uniform across the workgroup: nxvwPairing is a property of the tile.
+    if (nxvwPairing) gPairDone = true;
+#endif
+#endif  /* NXVW_COPY_STORE */
     barrier();
 
     // ---- the near-skip mean field, if the row header named this tile.

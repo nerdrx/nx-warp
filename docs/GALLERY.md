@@ -59,6 +59,13 @@ planar rd because absolute bars would hide a 0.03 dB spread inside the axis.
 python3 tools/quality/plot_vrroom.py --in nx-scratch/atlasprice/work5 --out docs/assets
 ```
 
+> **Superseded in part, 2026-09-06, by Figure 12.** The effort columns of this
+> figure are measured with `nxv-enc`'s full RD mode decision left on (no
+> `--no-rdo`), which already drops the coefficients `int_rdoq` would drop; the
+> 0.03 dB is a property of that configuration and not of the content. The GPU
+> encoder has no such search, and measured against it the tool moves 7–12 % of
+> the bytes. The planar columns are unaffected and still stand.
+
 ---
 
 ## Figures 3-6 — The vrroom corpus, one frame per trajectory
@@ -126,6 +133,53 @@ python3 nx-scratch/atlasprice/seams.py 12 source=$T.yuv420p.yuv baseline=T0.yuv 
 
 ---
 
+## Figure 10 — The atlas rarely holds one pose, except at rest
+
+![Figure 10](assets/atlasdec-dominant-pose.png)
+
+**Date** 2026-09-06 · **Fixture** synthetic pose-consistent pan, a fixed
+multi-frequency scene sampled through the yaw (`nxv-posestats`) · **Settings**
+1088x1088, 289 tiles, one eye, 4:2:0, QP 28, inter + atlas, `D=8`
+(`atlas_picture_disp`), 60 frames, five rotation rates.
+
+**The number it illustrates.** The dominant-pose share of
+`docs/COMPOSITOR-POSE-DISPLAY.md`, and with it the whole case for the proposal.
+**At rest the display pass warps 0 tiles against today's 289** — one pose, 100 %
+dominant, the flat purple pair in the lower panel. At `creep` (0.10 deg/frame,
+9 deg/s) the share **oscillates between 49 % and 89 %** on the encoder's refresh
+cycle rather than decaying smoothly, averaging 61.7 %, and the warped count
+falls from 167.5 to 110.8 — 34 %. At `slow` and above the two schemes coincide
+(13.4 against 13.4), and at `mid` and `fast` the `D=8` trigger makes every frame
+a PICTURE frame, which puts every entry at one pose by construction and leaves
+nothing to skip. The upper panel's flat 100 % lines for `mid`/`fast` are the
+mode switch doing the proposal's job already.
+
+```
+cmake --build build --target nxv-posestats
+./build/bin/nxv-posestats --size 1088 1088 --frames 60 --disp 8 --csv > pose_d8.csv
+python3 tools/quality/plot_pose.py --csv pose_d8.csv --out docs/assets --disp 8
+```
+
+---
+
+## Figure 11 — The compositor's warp is not avoided, it is used
+
+![Figure 11](assets/atlasdec-display-path.png)
+
+**Date** 2026-09-06 · **Fixture** none — a diagram of the proposed display path
+· **Settings** n/a.
+
+**The number it illustrates.** The two paths Figure 10 counts, and which entry
+takes which: entries at the dominant pose are sampled with **no warp at all**
+(100 % of them at rest, about 62 % at 9 deg/s), the rest are warped to the
+*dominant* pose rather than the current one, and the Pico compositor's own
+re-warp — which happens whether or not anyone wants it — carries the composite
+the remaining distance. It also carries the exactness claim the document makes:
+the atlas, the 64-byte table and everything conformance compares are untouched,
+because 13.12.5's display warp is not normative.
+
+```
+python3 tools/quality/plot_pose.py --csv pose_d8.csv --out docs/assets --disp 8
 ## Figures 10-11 — The seated trajectories, and the true rest floor
 
 | | |
@@ -234,3 +288,250 @@ divided by the same over pairs inside tiles, on the decoded luma. **1.0 means a
 tile edge looks like any other pair; above 1 the grid is visible.** It is
 scale-free, so configurations at different bitrates can be compared directly,
 and it is reported for every visual result from now on. `nx-scratch/atlasprice/seams.py`.
+Every measured result gets a picture and an entry here: what device, what
+fixture, what settings, the number, and the command that produced it. An entry
+without a reproducible command is not an entry.
+
+Appends only. Two agents writing here at once conflict trivially.
+
+---
+
+## Adreno 650 clock under load vs idle
+
+![clock](assets/passb-clock.png)
+
+* **Date** 2026-09-06
+* **Device** Pico 4, Adreno 650, non-root `adb shell`, headset awake (SLAM and
+  passthrough running), gpuss 76.3 -> 76.8 C across the load sample
+* **Fixture** `ht.nxv` (289 tiles, 251 skip / 38 coded) for the load pass;
+  nothing streaming for the idle pass
+* **Settings** stock; no performance level requested by the client
+* **The number** **490 MHz idle, 490 MHz under decode load** — 65/65 and 52/52
+  samples respectively, one frequency, zero variance. The GPU does not boost
+  for a decode. The A650's published top bin is 587 MHz, so this is roughly
+  20 % of clock left on the table — but `max_gpuclk` is **UNREADABLE** without
+  root, so the top bin is quoted from the part's spec and is not a device
+  reading.
+* **Also measured** of the kgsl attributes, only `gpuclk` is readable without
+  root. `devfreq/cur_freq`, `devfreq/available_frequencies`, `devfreq/governor`,
+  `max_gpuclk`, `thermal_pwrlevel`, `num_pwrlevels`, `gpu_busy_percentage` all
+  come back empty. This confirms the note in `scripts/passb-device-rows.sh`.
+* **Command**
+
+  ```sh
+  ./scripts/adreno-clock-probe.sh idle 20
+  # load pass: sample gpuclk while a decode runs
+  adb shell "cd /data/local/tmp/nxwarp-vkds && \
+    (./nxvc-vkdec --in ht.nxv --out /dev/null --stats > seg.txt 2>&1 &) ; \
+    end=\$((\$(date +%s)+12)); : > clkload.txt; \
+    while [ \$(date +%s) -lt \$end ]; do cat /sys/class/kgsl/kgsl-3d0/gpuclk >> clkload.txt; sleep 0.2; done; \
+    sort -n clkload.txt | uniq -c"
+  ```
+* **What it means** the client can ask for a performance level
+  (`XR_EXT_performance_settings`, or Pico's own level API). That is the WiVRn
+  integrator's change, not this repo's. Note the nearest prior in this tree:
+  `VK_EXT_global_priority` HIGH was a **10x regression** on a headset because
+  priority is per process and the compositor loses. Different mechanism, but
+  this class of knob has bitten here before.
+
+---
+
+## Pass B device rows: the segment split, and two variants that both lose
+
+![rows](assets/passb-rows.png)
+
+* **Date** 2026-09-06
+* **Device** Pico 4, Adreno 650, gpuclk pinned 490 MHz, gpuss 65.4 -> 71.3 C
+  across the rows (the ~76 C plateau of the awake device drifted down while the
+  cross-builds ran; every row reports its own temperatures)
+* **Fixture** `ht.nxv`, 289 tiles, 251 skip / 38 coded, 16 frames, mean of the
+  last 12
+* **Binaries** built from `passb-adreno` for arm64-v8a, NDK 29.0.14206865,
+  android-29, sha256 verified either side of every push
+* **Rows are interleaved** control/V2/identity within each round, three rounds,
+  and the whole thing run twice independently. The ratio is the measurement.
+* **Contamination, marked rather than hidden.** The integrator ran `connect.sh`
+  against this device from **15:43:32 to ~15:45:35** during the slot — logcat
+  cleared at least twice, a VIEW intent, possibly a wake and a client relaunch.
+  Reconstructed from build artifact mtimes, the arm64 binaries finished at
+  15:43:42 / 15:44:18 / 15:44:41, so everything device-side between 15:44:41 and
+  15:45:35 sits inside that window:
+  * the **segment split** below, and
+  * **the first of the two interleaved run-throughs** (or its opening rounds).
+  The second run-through and the 578-tile probe are after 15:45:35 and are
+  clean. Both are re-taken on the next device slot; until then read them as
+  described here.
+
+### The split
+
+| segment | tiles | ms/frame | share of Pass B |
+|---|---|---|---|
+| skip (`reconstruct_skip_store`) | 251 | **15.079** | **95 %** |
+| coded | 38 | 0.781 | 5 % |
+| intra_dir | 0 | 0.0004 | 0 % |
+
+Confirms the Phase 1 attribution on the device: the warp of the skipped tiles
+is the term. `intra_dir` is not merely small, it is **zero tiles** — the
+directional wavefront never runs on this stream.
+
+**This row is inside the contaminated window** and the milliseconds are to be
+re-taken. Two parts of it survive anyway and are worth separating: the **tile
+counts** are a property of the fixture and cannot be perturbed by anything the
+integrator did, and the **95 % share** is a ratio between two segments of the
+same run, so contention that slows the device slows both terms together. What
+is not trustworthy is the absolute 15.079 ms.
+
+### The variants
+
+| variant | mean | vs control | rows |
+|---|---|---|---|
+| control | **8.61 ms** | — | 8.344 8.720 8.650 8.644 8.846 8.560 |
+| V2, chroma pair | **10.26 ms** | **+19.2 %** | 10.114 9.989 10.390 10.279 10.334 10.438 |
+| identity predicate | **9.01 ms** | **+3.7 %** | 9.320 8.796 8.902 |
+
+**V2 is a regression, and not a marginal one.** Ranges do not overlap the
+control in either independent interleave (+18.6 % and +19.2 %) — and the
+**second interleave is entirely outside the contaminated window**, so the
+verdict rests on clean data on its own. That the contaminated first run
+reproduces it to within 0.6 points is a check on the contamination, not the
+basis of the conclusion. Sharing the
+coordinate between the two chroma planes removes 1024 coordinate computations a
+tile and costs a fifth of the segment. It is the same shape as every other
+"remove work" lever in `vk/decoder/passB/README.md`: the paired form puts two
+dependent ring fetches in one thread where the separate passes had two
+independent streams, and this part pays for the dependency, not the
+instruction.
+
+**The identity predicate never fires here and costs 3.7 % to ask.** `ht.nxv` is
+a head-turn fixture, so its WARP_SKIP tiles carry a real homography and their
+corners are not the identity grid. The predicate is correct and free of
+regressions in correctness — it is simply the wrong fixture. A STATIC_MV-heavy
+stream is what would price it, and one does not exist on the device.
+
+### Commands
+
+```sh
+# split + variants, interleaved
+adb shell "cd /data/local/tmp/nxwarp-vkds && \
+  run(){ NXVC_VKD_SEG_MS=1 ./\$1 --in \$2 --out /dev/null --stats 2>&1 \
+         | grep segms | tail -12 \
+         | awk '{s+=\$3; c+=\$5; n++} END{printf \"%.3f %.3f %d\", s/n, c/n, n}'; }; \
+  for r in 1 2 3; do for b in ctl v2 id; do echo \"round\$r \$b \$(run vkdec-\$b ht.nxv)\"; done; done"
+```
+
+### Two limits on these numbers
+
+* **No 578-tile inter fixture exists on the device.** `T2.nxv` and `sbs.nxv` are
+  578 tiles but INTRA, so they have no skip segment and `segms` does not print
+  for them at all (`ts_count` is 12 only on an inter frame). Every skip row here
+  is 289 tiles. A paired-inter fixture would have to be encoded first.
+* **The bench absolutes are inflated about 1.57x and must not be compared to
+  live figures.** 16 frames reporting ~51 ms of GPU each is 816 ms inside a
+  measured 521 ms wall, which is impossible. The discriminating test was cheap
+  and rules out the obvious cause: `--stats` off changes nothing (261/325 ms
+  with, 314/321 ms without), and the device shell timer is sound (a 2 s sleep
+  measures 2021 ms). The numbers are internally consistent — `passA + passW +
+  passB` equals `gpu` exactly, and the two `segms` segments sum to `passB` less
+  the inter-segment drain — so the best hypothesis is a uniformly wrong
+  `timestampPeriod` scale, which leaves every RATIO here valid and every
+  absolute unusable. 816/521 = 1.57 is the implied factor.
+Every visual result in this repository, with what produced it. A picture that
+cannot be regenerated from the line beside it does not belong here.
+
+The rule: **date, fixture, settings, the number the picture is making, and the
+command.** Pictures live in `docs/assets/`.
+
+---
+
+## `snapid-tilemap.png` — which tiles the headset copies
+
+![snap_identity tile map](assets/snapid-tilemap.png)
+
+* **Date** 2026-09-06
+* **Fixture** `rest` and `mid`, 1088x1088 mono, 8 frames, generated by
+  `tools/quality/capture/gen_synthetic.py` — `rest` is `--motion static
+  --peak-rate 4.5` (0.05 deg/frame at 90 Hz), `mid` is `--motion pan`
+  (30 deg/s)
+* **Settings** QP 26, `--inter --coded-vectors --intra-period 6 --ctx v3
+  --custom-tables --tab v2 --intra-dir off`; left panels `--snap-identity 0`,
+  right panels `--snap-identity 24`
+* **The number** at rest, snapping takes the frame from **0 of 289** identity
+  tiles to **289 of 289** — every skipped tile becomes a copy on the decoder.
+  On `mid` it is 0 of 289 either way: at 30 deg/s a tile corner moves several
+  samples a frame and there is nothing to snap.
+* **Command**
+
+  ```sh
+  NXE_IDENTITY_MAP=map.bin nxvc-vkenc --in rest.yuv420p.yuv --w 1088 --h 1088 \
+      --pix yuv420p --frames 8 --qp 26 --poses rest.poses.json \
+      --inter --coded-vectors --intra-period 6 --ctx v3 --custom-tables \
+      --tab v2 --intra-dir off --snap-identity 24 --device 0 --out out.nxv
+  # then nx-scratch/snapid/pictures.py map
+  ```
+
+  The map is the encoder's own predicate (`warp_identity_tile_map`) written out
+  through `NXE_IDENTITY_MAP`, not a second implementation of it — a picture of
+  a predicate drawn by different code would be a picture of the difference.
+
+---
+
+## `snapid-threshold.png` — what the threshold buys, and what it costs
+
+![snap_identity threshold sweep](assets/snapid-threshold.png)
+
+* **Date** 2026-09-06
+* **Fixture** `rest` (mono, 289 tiles) and `rests` (stereo 2x1088x1088, 578
+  tiles), 8 frames each, same generator settings as above
+* **Settings** QP 26 and 34, thresholds 0/2/4/8/16/24/32 in 1/16 luma samples
+* **The number** nothing snaps below **16/16 = one whole sample**, because a
+  head "at rest" still moves about 0.57 samples a frame; at 16 the threshold
+  catches 2 of 7 inter frames and at 24 it catches 3, for **−0.05 to −0.08 dB**
+  and a byte change between **−1.1 % and +0.3 %**
+* **Command**
+
+  ```sh
+  nx-scratch/snapid/sweep.py     # every clip, QP and threshold
+  nx-scratch/snapid/pictures.py chart
+  ```
+
+  The PSNR axis is a **delta against the unsnapped stream**, not the absolute
+  figure: the question is what snapping costs, and on an absolute axis a
+  0.05 dB change is a flat line that says nothing.
+
+---
+
+## Figure 12 — The effort ladder changes sign with the content
+
+![Figure 12](assets/effort-vrroom.png)
+
+**Date** 2026-09-06 · **Fixture** vrroom `rest`/`mid`/`fast`/`objmotion`/`still`
+and `pan8` · **Settings** `nxvc-vkenc --ctx v3 --intra-dir off --coded-vectors
+--inter --intra-period 180`, 8 frames, `--eyes 2` (mono for `pan8`), QP 22 / 26
+/ 30 / 34 / 40, rANS (`--custom-tables --tab v2`) and `--entropy lite`; the
+right panel is `nxv-enc --no-rdo` against `nxv-enc --int-trellis 1
+--rdoq-effort 3` at the acid flags.
+
+**The number it illustrates.** Effort 1 is **−2.4 / −4.4 %** BD-rate on `pan8`
+and **+0.1 to +3.2 %** on all five vrroom clips, on both entropy coders; the
+reference's integer trellis is **−2.8 to −10.7 %** on all six. Neither the
+coded-tile fraction (13–25 %; forcing it to 27–37 % with intra period 6 does
+not move a sign) nor the entropy coder explains it. Coding the same clips
+intra-only collapses the effect to **−0.9 to +1.0 %** everywhere, which locates
+it in the inter reference chain: the requantiser prices a dropped coefficient
+against the current frame only, and what compounds downstream is whether that
+coefficient was noise (`pan8`, which wins) or detail (vrroom, which loses).
+The earlier "within 0.03 dB" reading reproduces exactly — 34.204 dB against
+34.204 dB, 29433 B against 29355 B on `rest` at QP 34 — when `nxv-enc`'s full
+RD mode decision is left on. **Effort 0 becomes the default.**
+
+```sh
+FX=nx-scratch/fixtures/vrroom nx-scratch/effvr/sweep.py
+FX=nx-scratch/enceffort/fx W=1088 H=1088 EYES=1 \
+  OUT=nx-scratch/effvr/pan.json nx-scratch/effvr/sweep.py pan8
+nx-scratch/effvr/intra.py
+nx-scratch/effvr/chart.py
+```
+
+The bars are BD-rate and not a dB delta on purpose: this tool trades bytes for
+dB at a fixed quantiser, so a single-QP dB reading of it is guaranteed to be
+either zero or misleading. That is the whole of the discrepancy it settles.

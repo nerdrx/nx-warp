@@ -5,6 +5,8 @@
 
 #include "forward_cpu.h"
 
+#include "nxe_trellis.h"
+
 #include <string.h>
 
 #include "nxe_tables.h"
@@ -230,7 +232,22 @@ static void nxe_dc_plane(const nxe_plane *pl, const int32_t *src, int16_t *coefs
             coefs[i] = (int16_t)nxe_quantize(orig[i], tdc, tdc / 3);
         }
     }
-    if (pl->sdh) {
+    if (pl->rc) {
+        /* The DC plane through the trellis too: it is the intra predictor, so
+         * re-deciding it with the same D + lambda*R the blocks use keeps the
+         * predictor and the residual consistent by construction.  It is also
+         * where integerising costs the half-percent -- a level chosen here
+         * changes `pred` for all sixty-four blocks; see vk/encoder/README.md. */
+        int32_t stepv[64];
+        const uint8_t *dcscan = nxe_scan_table(ndc, 0);
+        const nxe_unit_ctx dc_uc = nxe_dc_ctx(pl->nctx, ndc);
+        for (i = 0; i < ndc; ++i) stepv[i] = tdc;
+        nxe_rdoq_unit_int(coefs, orig, stepv, ndc, dcscan, &dc_uc, pl->rc,
+                          pl->dc_lam_q8, pl->effort, pl->sdh);
+        if (pl->sdh)
+            nxe_hide_sign_unit_int(coefs, orig, stepv, ndc, dcscan, pl->rc,
+                                   pl->dc_lam_q8, &dc_uc);
+    } else if (pl->sdh) {
         int32_t stepv[64];
         for (i = 0; i < ndc; ++i) stepv[i] = tdc;
         nxe_hide_sign_unit(coefs, orig, stepv, ndc, nxe_scan_table(ndc, 0));
@@ -306,10 +323,14 @@ static void residual_block(const nxe_plane *pl, const int16_t *c, int32_t res[64
 }
 
 void nxe_e3_plane(const nxe_plane *pl, const int32_t *src, int16_t *coef,
-                  int32_t *pred) {
+                  int32_t *pred, uint64_t *sse) {
     const int nb = pl->nb, size = pl->size, ndc = nb * nb;
     int16_t *bc = coef + ndc;
     int by, bx, i, j;
+    /* The trellis conditions block `bi` on the class left by block
+     * `bi - nlanes`, which is the unit that lane finished before reaching it.
+     * Below `nlanes` the lane has no predecessor and the class is 0. */
+    uint8_t nbr[NXE_TILE / 8 * (NXE_TILE / 8)] = {0};
     nxe_dc_plane(pl, src, coef, pred);
     for (by = 0; by < nb; ++by)
         for (bx = 0; bx < nb; ++bx) {
@@ -321,7 +342,47 @@ void nxe_e3_plane(const nxe_plane *pl, const int32_t *src, int16_t *coef,
                     res[j * 8 + i] = src[(size_t)y * size + x] -
                                      pred[(size_t)y * size + x];
                 }
-            quantize_block(pl, res, c);
+            if (pl->rc) {
+                /* Effort 2: the trellis, on the same residual.  ref's
+                 * rdoq_plane, one block at a time. */
+                const uint8_t *scan = nxe_scan_table(64, pl->tskip);
+                const int bi = by * nb + bx;
+                int32_t orig[64], stepv[64];
+                nxe_unit_ctx uc =
+                    nxe_block_ctx(pl->nctx, pl->chroma, 64);
+                uc = nxe_unit_ctx_nbr(
+                    uc, bi >= pl->nlanes ? nbr[bi - pl->nlanes] : 0);
+                if (pl->tskip) {
+                    const int t = nxe_dequant_step(pl->qp, 16);
+                    for (i = 0; i < 64; ++i) {
+                        orig[i] = res[i];
+                        stepv[i] = t;
+                    }
+                } else {
+                    int16_t co[64];
+                    nxe_fdct8x8(res, co);
+                    for (i = 0; i < 64; ++i) {
+                        orig[i] = co[i];
+                        stepv[i] = nxe_dequant_step(pl->qp, pl->wmat[i]);
+                    }
+                }
+                nxe_rdoq_unit_int(c, orig, stepv, 64, scan, &uc, pl->rc,
+                                  pl->lam_q8, pl->effort, pl->sdh);
+                if (pl->sdh)
+                    nxe_hide_sign_unit_int(c, orig, stepv, 64, scan, pl->rc,
+                                           pl->lam_q8, &uc);
+                nbr[bi] = (uint8_t)nxe_unit_nbr_class(c, 64, scan);
+            } else {
+                quantize_block(pl, res, c);
+            }
+            if (sse) {
+                int32_t rr[64];
+                residual_block(pl, c, rr);
+                for (i = 0; i < 64; ++i) {
+                    const int32_t e = res[i] - rr[i];
+                    *sse += (uint64_t)((int64_t)e * e);
+                }
+            }
         }
 }
 
@@ -445,7 +506,7 @@ static void nxe_predict_block(int mode, const nxe_refs *r, const int32_t *base,
 
 void nxe_e3_plane_dir(const nxe_plane *pl, const int32_t *src,
                       const uint8_t *modes, int layer, int16_t *coef,
-                      int32_t *pred, int32_t *recon) {
+                      int32_t *pred, int32_t *recon, uint64_t *sse) {
     const int nb = pl->nb, size = pl->size, ndc = nb * nb;
     int16_t *bc = coef + ndc;
     int by, bx, i, j;
@@ -479,6 +540,27 @@ void nxe_e3_plane_dir(const nxe_plane *pl, const int32_t *src,
             for (i = 0; i < 64; ++i) res[i] = tgt[i] - P[i];
             quantize_block(pl, res, c);
             residual_block(pl, c, rr);
+            /* The tile's distortion, in the SAMPLE domain and through the
+             * decoder's own reconstruction path -- `rr` is what the decoder
+             * will add to the prediction, so `res - rr` is exactly the error
+             * the viewer gets.  It is measured after the requantiser and sign
+             * hiding, both of which move levels, so it prices the tile the
+             * encoder is actually going to send.
+             *
+             * The sample domain because that is what lambda is calibrated in
+             * -- ref's `make_lambda` is `kLambdaScale * qstep^2` over sample
+             * squared error, and `tile_distortion`, which its own QP search
+             * compares, is a sample-domain sum.  Measured on pan8 the two
+             * domains differ here by under half a percent (39344 against
+             * 39547 on tile 0 at QP 30), so this transform is orthonormal
+             * enough that the choice barely moves a decision; it is made the
+             * way it is so that the constant means what its derivation says
+             * rather than by accident. */
+            if (sse)
+                for (i = 0; i < 64; ++i) {
+                    const int32_t e = res[i] - rr[i];
+                    *sse += (uint64_t)((int64_t)e * e);
+                }
             for (j = 0; j < 8; ++j)
                 for (i = 0; i < 8; ++i) {
                     int y = by * 8 + j, x = bx * 8 + i;
@@ -538,22 +620,39 @@ void nxe_plane_setup(const nxe_frame_params *fp, const nxe_tile_job *job, int p,
     pl->sdh = (int)fp->sdh;
     pl->int_rdoq = (int)fp->int_rdoq;
     pl->ctx_level_dc = fp->nctx >= NXE_NCTX_V2 ? NXE_CTX_LEVEL_DC : 0;
+    /* The trellis is opt-in and the caller turns it on by setting `rc` after
+     * this returns; everything it needs that this function can already know is
+     * filled here so a caller cannot half-configure it. */
+    pl->rc = NULL;
+    pl->lam_q8 = nxe_trellis_lambda_q8(pl->qp);
+    pl->dc_lam_q8 = nxe_trellis_lambda_q8(dc_qp_of(pl->qp));
+    pl->effort = NXE_RDOQ_FULL;
+    pl->nctx = (int)fp->nctx;
+    pl->nlanes = 1 << fp->nsub_log2;
+    pl->chroma = chroma;
 }
 
 void nxe_e3_tile(const nxe_frame_params *fp, const nxe_tile_job *job,
                  const int32_t *const src[NXE_MAX_PLANES], const uint8_t *modes,
                  int16_t *coef) {
+    nxe_e3_tile_sse(fp, job, src, modes, coef, NULL);
+}
+
+void nxe_e3_tile_sse(const nxe_frame_params *fp, const nxe_tile_job *job,
+                     const int32_t *const src[NXE_MAX_PLANES],
+                     const uint8_t *modes, int16_t *coef, uint64_t *sse) {
     static int32_t pred[NXE_TILE * NXE_TILE];
     static int32_t recon[NXE_TILE * NXE_TILE];
     int p;
+    if (sse) *sse = 0;
     for (p = 0; p < NXE_MAX_PLANES; ++p) {
         nxe_plane pl;
         int off = nxe_plane_coef_offset(fp, job, p);
         nxe_plane_setup(fp, job, p, &pl);
         if (fp->intra_dir)
             nxe_e3_plane_dir(&pl, src[p], modes + (size_t)p * 64,
-                             (int)fp->dir_layer, coef + off, pred, recon);
+                             (int)fp->dir_layer, coef + off, pred, recon, sse);
         else
-            nxe_e3_plane(&pl, src[p], coef + off, pred);
+            nxe_e3_plane(&pl, src[p], coef + off, pred, sse);
     }
 }

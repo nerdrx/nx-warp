@@ -14,6 +14,7 @@ static const char *mode_name(int m) {
         case NXVC_MODE_WARP_MV: return "WARP_MV";
         case NXVC_MODE_INTRA: return "INTRA";
         case NXVC_MODE_STEREO: return "STEREO";
+        case NXVC_MODE_PLANAR: return "PLANAR";
     }
     return "?";
 }
@@ -36,7 +37,7 @@ int main(int argc, char **argv) {
     if (in.empty()) { std::fputs(kUsage, stderr); return 2; }
     // The histogram needs the tile records, which only a full decode produces.
     const int walk_tiles = tiles || modes;
-    unsigned long hist[5] = {}, n_skipped = 0, n_near = 0,
+    unsigned long hist[NXVC_MODE_PLANAR + 1] = {}, n_skipped = 0, n_near = 0,
                   n_quad = 0, n_tiles = 0, bytes_payload = 0;
 
     std::FILE *f = std::fopen(in.c_str(), "rb");
@@ -130,7 +131,7 @@ int main(int argc, char **argv) {
                 for (uint32_t i = 0; i < count; ++i) {
                     const nxvc_tile_info &t = ti[i];
                     ++n_tiles;
-                    if (t.mode < 5) ++hist[t.mode];
+                    if (t.mode <= NXVC_MODE_PLANAR) ++hist[t.mode];
                     n_skipped += t.skipped;
                     n_near += t.near_skip;
                     n_quad += t.quad_mv;
@@ -159,7 +160,7 @@ int main(int argc, char **argv) {
     if (modes && n_tiles) {
         const double pc = 100.0 / (double)n_tiles;
         std::printf("tile modes over %lu tiles\n", n_tiles);
-        for (int m = 0; m < 5; ++m)
+        for (int m = 0; m <= NXVC_MODE_PLANAR; ++m)
             std::printf("  %-10s %8lu  %5.1f %%\n", mode_name(m), hist[m],
                         hist[m] * pc);
         std::printf("  of which skip_bitmap %lu (%.1f %%)\n", n_skipped,
