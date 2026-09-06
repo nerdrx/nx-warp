@@ -228,6 +228,100 @@ the headset being idle, checks the sha256 either side of the push, samples
 interleaved; the ratio is the measurement and the absolute is not. Two tile
 counts, 289 and 578. Between rows, the headset stays below 50 C.
 
+## 3b. The identity fast path (`NXVW_ABL_IDENTITY`)
+
+Attacks the tile COUNT rather than the kernel: a tile whose prediction is a
+straight copy need not run the warp at all.
+
+### It is byte-identical, and here is the proof rather than the claim
+
+Three conditions, all tested per tile in `nxvwWarpPlane`:
+
+1. **The corners are the identity grid.** With `c0 = (tox, toy) << 6` and the
+   other three one `kWarpTile` away in each axis, `dTopX = dBotX = 4096` and
+   `c2.x == c0.x`, so `nTopX = 4096(tox + u) + 32`, whose `>> 6` is
+   `64(tox + u)` because 32 < 64 — and `nBotX >> 6` is the same integer. Stage
+   two's weights sum to `kWarpTile`, so
+
+       bx = (64(tox+u)*wv1 + 64(tox+u)*wv0 + 32) >> 6 = 64(tox + u)
+
+   exactly, for every `u`, **whatever the row weights are**. Likewise `by`. The
+   geometry contributes no fractional part.
+2. **Every active vector is a whole sample.** `mqx` is the plane's own vector in
+   quarter samples shifted into Q.6, so `mqx = 16*vx` and
+   `xq4 = (64(tox+u) + 16vx + 2) >> 2 = 16(tox+u) + 4vx`, giving
+   `fx = xq4 & 15 = (4vx) & 15` — zero exactly when `vx` is a multiple of four.
+   Testing `mq & 63` asks the same question one step earlier and covers both
+   axes and all four quadrant vectors at once. Chroma asks about the vector it
+   already halved for `sub == 2`, not luma's.
+3. **Nothing saturates.** `sat_add_i32` and the clamp are not linear, so a copy
+   cannot reproduce them. The corners being the grid means the extreme
+   coordinates are the tile's own opposite corners plus the extreme vector, so
+   testing those four bounds covers every interior sample.
+
+Then `sample_bilinear(ix, iy, 0, 0)` has `gx = gy = 16`, `acc = 256*t00`, and
+`(256*t00 + 128) >> 8 == t00` for every `t00 >= 0`. Every tap is a reconstructed
+sample already clamped to `[0, maxval]`, so `t00 >= 0` always. **One fetch, and
+it is the same integer the four-tap path produces.**
+
+### The reference does not special-case it, and does not need to
+
+`warp/ref/warp_ref.cpp:224` gives `kModeStatic` the identity corners directly —
+"STATIC_MV: the identity predictor, exactly. No homography, no divide." — and
+then runs the ordinary bilinear over them. So the reference *derives* the copy
+rather than shortcutting to it, which is why the fast path is a decoder-side
+optimisation and not a syntax change: there is nothing to agree with.
+
+### Detection is cheap, and the hit rate is not luck
+
+The corners are already in `sCorner[0..3]` before the sample loop, so the test
+is a handful of integer compares on values the kernel has in hand, once per
+plane, against 1024 to 4096 samples of work. There is no new traffic and no new
+barrier.
+
+**`kWarpModeStatic` produces the identity grid by construction**
+(`warp_pred.glsl:152`, `inter_layout.h:87`), so a STATIC_MV tile qualifies
+whenever its vector is a whole sample — deterministically, not by accident. A
+WARP_SKIP tile qualifies only if its homography happens to come out as the
+identity, which at rest it may or may not.
+
+`warp_pred.glsl` is included by **both** `warp_pred.comp` (Pass W) and
+`reconstruct.comp`'s skip module, so one edit covers the coded tiles and the
+skipped ones together.
+
+### Ceiling
+
+`NXVW_ABL_NOWARP` already prices the predictor's whole share of the skip module
+at **86 %** (34.75 us/tile against 4.73 ablated). The identity path keeps the
+fetch and the store, so it lands between those two rather than at the floor.
+`NXVW_ABL_COPYWARP` — one fetch, no interpolation, coordinate pipeline still
+running — is the other bracket and its number has never been published.
+
+### The byte-identity test, and why it needed a second switch
+
+A conformance pass proves nothing on its own here: if no fixture tile has a
+non-identity warp, the predicate is never gating and the pass is vacuous.
+`NXVW_ABL_IDENTITY_FORCE` answers that by forcing the predicate true, which
+produces a wrong picture on any tile whose warp is not already the identity. A
+failure is the result being looked for.
+
+| build | `vk.passB.*` | the warp-exercising set |
+|---|---|---|
+| forced true | **4/4 pass** — the passB fixtures contain no warped tile at all, so this suite cannot validate the path | **3 fail**: `vk.encoder.inter.cv1088`, `vk.decoder.conformance`, `vk.decoder.loss` |
+| honest predicate | pass | **28/28 pass** |
+
+The middle column is the reason the switch exists: `vk.passB.*` alone would have
+gone green either way. The right column is the actual gate — the same three
+tests that detect a forced identity accept the real one, on both ICDs.
+
+### What is NOT established
+
+**How many live tiles qualify.** That is the device question, and it is the one
+that decides whether this is worth shipping: the arithmetic above says each
+qualifying tile is nearly free, and says nothing about how many there are. A
+frame of pure head rotation may have none. Worth reading alongside the segment
+split, not before it.
+
 ## 4. What Phase 1 did not establish
 
 * The split of the 23.1 ms between Pass W, the skip module, the non-directional
