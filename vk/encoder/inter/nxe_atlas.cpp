@@ -60,6 +60,26 @@ int64_t atlas_sdiv_round(int64_t a, int64_t b) {
 
 bool atlas_renorm(const int64_t P[9], int32_t out[9]) {
     if (P[8] == 0) return false;
+    /* [SYN] 13.12.2, "Width of P[k] << 29".  The NORMATIVE arithmetic is
+     * int64, made safe by this guard rather than by a wider type: if any
+     * |P[k]| is at least 2^33 the composition FAILS and the entry is
+     * invalidated, before the shift is evaluated.
+     *
+     * This implementation shifts in 128 bits, and the clause permits that --
+     * but only WITH the same guard.  Without it a 128-bit implementation would
+     * accept a composition an int64 one rejects, which is a conformance
+     * difference and not an optimisation.  So the guard is applied first and
+     * the wider intermediate is then merely a way of writing the same values.
+     *
+     * It is not a threshold to be tuned: a legal composed matrix is bounded by
+     * kEntryMax (2^30), so anything at 2^33 is eight times outside the
+     * envelope and the check that follows would reject it anyway. */
+    const int64_t kGuard = (int64_t)1 << 33;
+    for (int k = 0; k < 9; ++k) {
+        const int64_t v = P[k];
+        const int64_t a = v < 0 ? -v : v;
+        if (a >= kGuard) return false;
+    }
     for (int k = 0; k < 9; ++k) {
         /* `P[k] << 29` in 128 bits.  Inside the envelope the product is at
          * most about 2^60 and int64 holds it; the wider intermediate is here
@@ -77,10 +97,10 @@ bool atlas_renorm(const int64_t P[9], int32_t out[9]) {
                 P[8] < 0 ? (unsigned __int128)(-(__int128)P[8])
                          : (unsigned __int128)P[8];
             const unsigned __int128 q = (ua * 2u + ub) / (ub * 2u);
-            /* A quotient that does not fit i32 is a matrix far outside the
-             * envelope; it is saturated here so the stored entry is a defined
-             * value and atlas_envelope_ok() then rejects it, which is the same
-             * outcome as any wider arithmetic would reach. */
+            /* A quotient that does not fit i32 is a matrix outside the
+             * envelope -- reachable inside the 2^33 guard when P[2][2] is
+             * small -- so it is saturated to a defined value and
+             * atlas_envelope_ok() then rejects it. */
             const unsigned __int128 cap = (unsigned __int128)1 << 62;
             const int64_t s = q >= cap ? (int64_t)((uint64_t)1 << 62)
                                        : (int64_t)(uint64_t)q;

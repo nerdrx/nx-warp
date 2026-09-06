@@ -220,6 +220,43 @@ void report_chain_drift() {
           ty);
 }
 
+/* [SYN] 13.12.2's 2^33 guard.  The normative arithmetic is int64 and this
+ * implementation shifts in 128 bits, which the clause allows only WITH the
+ * same guard -- so the test is that a composition past the guard FAILS rather
+ * than succeeding with a wide-arithmetic answer an int64 decoder never
+ * computes.  A conformance difference is exactly what this pins. */
+void check_renorm_guard() {
+    int64_t P[9] = {0};
+    P[0] = 1 << 21; P[4] = 1 << 21; P[8] = 1 << 29;
+    int32_t o[9];
+    CHECK(nxe::atlas_renorm(P, o), "renorm refused a legal product");
+
+    for (int k = 0; k < 9; ++k) {
+        int64_t Q[9] = {0};
+        Q[0] = 1 << 21; Q[4] = 1 << 21; Q[8] = 1 << 29;
+        Q[k] = (int64_t)1 << 33;
+        CHECK(!nxe::atlas_renorm(Q, o), "renorm accepted |P[%d]| == 2^33", k);
+        Q[k] = -((int64_t)1 << 33);
+        CHECK(!nxe::atlas_renorm(Q, o), "renorm accepted |P[%d]| == -2^33", k);
+        /* One below the guard is still evaluated: the guard is exactly at
+         * 2^33 and not near it. */
+        Q[k] = ((int64_t)1 << 33) - 1;
+        const bool ok = nxe::atlas_renorm(Q, o);
+        CHECK(ok, "renorm refused |P[%d]| == 2^33 - 1", k);
+    }
+    /* And the guard fires through the composition, not only the renorm: an
+     * entry that composes past it is invalidated rather than stored. */
+    int32_t big[9], H[9];
+    nxe::atlas_identity(big);
+    big[0] = 1 << 30;   /* at kEntryMax */
+    make_warp(0.0, 0.0, 0.0, H);
+    H[0] = 1 << 30;
+    int32_t out[9];
+    const bool composed = nxe::atlas_compose(big, H, out);
+    /* 2^30 * 2^30 >> 21 is 2^39, well past the guard, so this must fail. */
+    CHECK(!composed, "a composition at 2^39 was not caught by the guard");
+}
+
 void check_envelope() {
     int32_t I[9];
     nxe::atlas_identity(I);
@@ -469,6 +506,7 @@ int main() {
     check_partial_sums_are_the_spec();
     check_one_step_against_double();
     report_chain_drift();
+    check_renorm_guard();
     check_envelope();
     check_table_rules();
     check_static_skip();

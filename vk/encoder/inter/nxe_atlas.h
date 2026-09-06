@@ -93,16 +93,21 @@ int64_t atlas_sdiv_round(int64_t a, int64_t b);
  * 3.1.1 condition 3 can produce, and which is therefore a caller error or an
  * already-invalid entry rather than a stream condition.
  *
- * `P[i][j] << 29` is formed in 128 bits.  Inside the envelope it fits `int64`
- * with room to spare, and both the reference codec and the GPU may use `int64`
- * for it; the wider intermediate exists so that a composition which the
- * envelope check on the NEXT line is about to reject is DEFINED rather than
- * undefined behaviour.  The two agree on every value either can represent, so
- * this is not a second arithmetic. */
+ * Returns false ALSO when any `|P[k]| >= 2^33`.  That is the guard of 13.12.2:
+ * the normative arithmetic is `int64`, and it is the guard rather than a wider
+ * type that keeps it safe -- a composition past the bound FAILS and the entry
+ * is invalidated, before the shift is evaluated.
+ *
+ * `P[i][j] << 29` is then formed in 128 bits, which the clause permits only
+ * WITH that same guard: without it a 128-bit implementation would accept
+ * compositions an `int64` one rejects, and that is a conformance difference
+ * rather than an optimisation.  Guarded, the wider intermediate is merely
+ * another way of writing the same values, so this is not a second
+ * arithmetic. */
 bool atlas_renorm(const int64_t P[9], int32_t out[9]);
 
-/* Both of the above: `out := renorm(C . H)`.  Returns false only for the
- * degenerate `P[2][2] == 0`. */
+/* Both of the above: `out := renorm(C . H)`.  Returns false for the degenerate
+ * `P[2][2] == 0` and for a product that trips the 2^33 guard. */
 bool atlas_compose(const int32_t C[9], const int32_t H[9], int32_t out[9]);
 
 /* [SYN] 3.1.1 conditions 2 and 3, which under 13.12.3 step 1 are the staleness
