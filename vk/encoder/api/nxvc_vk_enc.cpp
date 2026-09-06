@@ -477,10 +477,19 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_encode_image(
         e->err = "the source image must be in VK_IMAGE_LAYOUT_GENERAL";
         return NXVC_VKE_ERR_ARG;
     }
-    if (img->flags) return NXVC_VKE_ERR_ARG;
+    if (img->flags & ~NXVC_VKE_IMAGE_EYE_LAYERS) return NXVC_VKE_ERR_ARG;
+    const bool eye_layers = (img->flags & NXVC_VKE_IMAGE_EYE_LAYERS) != 0;
+    if (eye_layers && e->cfg.eyes != 2) {
+        e->err = "NXVC_VKE_IMAGE_EYE_LAYERS needs create_info::eyes == 2";
+        return NXVC_VKE_ERR_ARG;
+    }
     /* The geometry is fixed at create(): a picture of another size would be
      * silently cropped or read out of bounds, which is worse than an error. */
-    if (img->width != uint32_t(e->cfg.w) || img->height != uint32_t(e->cfg.h)) {
+    /* `width` is what ONE LAYER holds: the pair side by side, or one eye when
+     * each eye has its own layer. */
+    const uint32_t want_w =
+        eye_layers ? uint32_t(e->cfg.w / e->cfg.eyes) : uint32_t(e->cfg.w);
+    if (img->width != want_w || img->height != uint32_t(e->cfg.h)) {
         e->err = "the image geometry does not match the one create() was given";
         return NXVC_VKE_ERR_ARG;
     }
@@ -488,7 +497,8 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_encode_image(
     const auto t0 = std::chrono::steady_clock::now();
     std::string err;
     if (!e->vk.encode_frame_image(e->frame, e->frame_number, img->image,
-                                  img->array_layer, err)) {
+                                  img->array_layer, eye_layers ? 2u : 1u,
+                                  err)) {
         e->err = err.empty() ? "the encode pipeline failed; see stderr" : err;
         return NXVC_VKE_ERR_VULKAN;
     }

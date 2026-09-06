@@ -1,0 +1,90 @@
+device        Adreno (TM) 650
+api           1.1.128
+driver        0x802aa000
+tsPeriod      52.083 ns
+feat.textureCompressionASTC_LDR  1
+feat.textureCompressionETC2      1
+feat.textureCompressionBC        1
+queueFamily   0  timestampValidBits 48
+
+bench: 2176x1088 output (= 1088x1088 per eye, one displayed frame PAIR)
+
+== ASTC_4x4_UNORM
+  atlas VRAM  2.26 MiB (payload 2.26 MiB)
+  payload     synthetic pseudo-random
+  GPU ms/pair min 1.080  p50 1.086  p90 1.110  max 1.284   (60 iters, 578 tiles, LINEAR)
+
+== ASTC_4x4_SRGB
+  atlas VRAM  2.26 MiB (payload 2.26 MiB)
+  payload     synthetic pseudo-random
+  GPU ms/pair min 1.080  p50 1.086  p90 1.111  max 1.272   (60 iters, 578 tiles, LINEAR)
+
+== ASTC_6x6_UNORM
+  atlas VRAM  1.08 MiB (payload 1.01 MiB)
+  payload     synthetic pseudo-random
+  GPU ms/pair min 1.065  p50 1.071  p90 1.090  max 1.221   (60 iters, 578 tiles, LINEAR)
+
+== ASTC_6x6_SRGB
+  atlas VRAM  1.08 MiB (payload 1.01 MiB)
+  payload     synthetic pseudo-random
+  GPU ms/pair min 1.066  p50 1.073  p90 1.093  max 1.184   (60 iters, 578 tiles, LINEAR)
+
+== ASTC_8x8_UNORM
+  atlas VRAM  0.60 MiB (payload 0.56 MiB)
+  payload     synthetic pseudo-random
+  GPU ms/pair min 1.050  p50 1.060  p90 1.080  max 1.167   (60 iters, 578 tiles, LINEAR)
+
+== ASTC_8x8_SRGB
+  atlas VRAM  0.60 MiB (payload 0.56 MiB)
+  payload     synthetic pseudo-random
+  GPU ms/pair min 1.048  p50 1.056  p90 1.073  max 1.174   (60 iters, 578 tiles, LINEAR)
+
+== ETC2_R8G8B8_UNORM
+  atlas VRAM  1.13 MiB (payload 1.13 MiB)
+  payload     synthetic pseudo-random
+  GPU ms/pair min 1.063  p50 1.071  p90 1.097  max 1.205   (60 iters, 578 tiles, LINEAR)
+
+== ETC2_R8G8B8_SRGB
+  atlas VRAM  1.13 MiB (payload 1.13 MiB)
+  payload     synthetic pseudo-random
+  GPU ms/pair min 1.067  p50 1.074  p90 1.092  max 1.220   (60 iters, 578 tiles, LINEAR)
+
+== ETC2_R8G8B8A1_UNORM
+  atlas VRAM  1.13 MiB (payload 1.13 MiB)
+  payload     synthetic pseudo-random
+  GPU ms/pair min 1.064  p50 1.071  p90 1.091  max 1.223   (60 iters, 578 tiles, LINEAR)
+
+== ETC2_R8G8B8A8_UNORM
+  atlas VRAM  2.26 MiB (payload 2.26 MiB)
+  payload     synthetic pseudo-random
+  GPU ms/pair min 1.077  p50 1.086  p90 1.120  max 1.275   (60 iters, 578 tiles, LINEAR)
+
+== EAC_R11_UNORM
+  atlas VRAM  1.13 MiB (payload 1.13 MiB)
+  payload     synthetic pseudo-random
+  GPU ms/pair min 1.067  p50 1.073  p90 1.088  max 1.215   (60 iters, 578 tiles, LINEAR)
+
+== EAC_R11G11_UNORM
+  atlas VRAM  2.26 MiB (payload 2.26 MiB)
+  payload     synthetic pseudo-random
+  GPU ms/pair min 1.122  p50 1.125  p90 1.141  max 1.281   (60 iters, 578 tiles, LINEAR)
+
+== R8_UNORM
+  atlas VRAM  2.26 MiB (payload 2.26 MiB)
+  payload     synthetic pseudo-random
+  GPU ms/pair min 1.082  p50 1.086  p90 1.111  max 1.247   (60 iters, 578 tiles, LINEAR)
+
+== R16_UNORM
+  atlas VRAM  4.52 MiB (payload 4.52 MiB)
+  payload     synthetic pseudo-random
+  GPU ms/pair min 1.326  p50 1.327  p90 1.352  max 1.416   (60 iters, 578 tiles, LINEAR)
+
+== R8G8_UNORM
+  atlas VRAM  4.54 MiB (payload 4.52 MiB)
+  payload     synthetic pseudo-random
+  GPU ms/pair min 1.099  p50 1.105  p90 1.142  max 1.288   (60 iters, 578 tiles, LINEAR)
+
+== R8G8B8A8_UNORM
+  atlas VRAM  9.08 MiB (payload 9.03 MiB)
+  payload     synthetic pseudo-random
+  GPU ms/pair min 1.130  p50 1.136  p90 1.193  max 1.451   (60 iters, 578 tiles, LINEAR)

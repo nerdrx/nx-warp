@@ -81,6 +81,7 @@ void E0::record(VkCommandBuffer cb, const E0Geometry &g) {
      * is the one that convention produces. */
     pc.f.flags = NXE_TS_F_CHROMA_420 | NXE_TS_F_YCBCR | NXE_TS_F_CHROMA_RAW;
     pc.plane_words = g.plane_words;
+    pc.eye_cols = g.eye_cols;
 
     vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, p_.pipe);
     vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, p_.layout, 0, 1,
