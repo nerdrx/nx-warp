@@ -59,8 +59,14 @@ mechanism.
 Two objects, both per eye:
 
 **Atlas pixels.** Byte-for-byte the layout of a `RefPicture` (SYNTAX 13.2): the whole picture of
-every eye, every plane, in the **coded sample domain** (Y/Co/Cg, before the inverse colour
-transform), at full tile extent. A tile coded at `res_level > 0` is upsampled into the atlas by the
+every eye, every plane, in the **coded sample domain -- whatever domain the stream's colour
+transform leaves**, at full tile extent. That is **YCbCr at 8 bits for a `CT_NONE` stream**, which
+is what a live WiVRn NX stream is (its capture path is already
+`VK_FORMAT_G8_B8R8_2PLANE_420_UNORM` and its encoder leaves the transform at `CT_NONE`), and
+Y/Co/Cg-R with 9-bit chroma when a colour transform is set. Earlier drafts of this ADR wrote
+"Y/Co/Cg" as though it were the only case; it is the *rarer* case, and the difference decides
+whether an 8-bit single-tap atlas image is legal -- which the display measurement above turns into
+a millisecond of headset GPU per frame pair. A tile coded at `res_level > 0` is upsampled into the atlas by the
 existing `store_ref_tile` kernel, so **the atlas pixel layout never depends on any per-tile choice**
 and a fragment or compute pass samples it directly with no repacking. This is a hard requirement of
 the 4.2 ms budget and it is why per-tile resolution is metadata and not layout.
@@ -99,6 +105,22 @@ Per frame `N`, in this order:
 
 `renorm` and the composition are defined in 3. `gen_max` is a stream constant, default 0 meaning
 "no cap"; it exists for the drift-tolerant experiment of the Cheats section.
+
+**The normative atlas is the FLUSHED state**, the one this process produces with step 1 applied to
+every valid entry every frame. An implementation MAY advance an entry lazily -- only when something
+is about to read it, one right-multiplication per intervening frame in frame order -- and must
+flush before the atlas is published or compared. That is bit-exact, and it is bit-exact *because*
+section 3 defines composition as one right-multiplication with its own renormalisation: the lazy
+form does the same multiplications with the same rounding in the same order. Folding the
+intervening matrices into one product first is a different answer and is not permitted.
+
+The two ends do not carry the same obligation about age, and the difference is the whole loss
+contract. **A decoder MAY invalidate** an entry it can no longer advance from the history it
+retains -- it costs itself one `INTRA` tile and nothing else. **An encoder MUST NOT rely** on an
+entry older than the envelope bound of step 1. *That bound is the guarantee*: it is derived
+identically on both sides from data both sides parse, so an entry inside it is an entry every
+conforming decoder still holds. A decoder's own retention limit is additional and unsignalled, and
+what protects the encoder there is the receipt discipline of section 7, not the envelope.
 
 **The invariant the budget depends on:** step 2 never reconstructs a skipped tile, and never reads
 anything that a skipped tile would have had to produce. The atlas is persistent storage; a skipped
@@ -149,8 +171,10 @@ Two properties this buys, both load-bearing:
 
 **Precision.** Each composition step rounds twice, at 1 ulp of Q21 (2^-21 relative) and 1 ulp of
 Q29, and the error is bit-identical on both sides by construction, so it is a quality question and
-never a conformance one. The budget set here was 0.0026 samples of translation drift over a
-100-frame chain, from a random-walk estimate of ~5e-6 relative.
+never a conformance one. **The drift is measured, and the measurement is what this ADR carries.**
+An earlier draft carried a random-walk *estimate* of ~5e-6 relative and a 0.0026-sample budget
+derived from it; the estimate was optimistic by an order of magnitude and is not repeated here as
+though it were a result.
 
 **Measured** (two independent implementations, both against a double-precision recomposition):
 
@@ -160,10 +184,11 @@ never a conformance one. The budget set here was 0.0026 samples of translation d
 | the same, as translation drift at a 512-sample term | **0.00035 samples** | derived from the above |
 | worst corner divergence over a 30-step chain at 3.3 deg/frame | **0.0048 samples** | `ref/` composition check, this branch |
 
-The estimate was optimistic by an order of magnitude and the conclusion is unchanged: the measured
-drift is **7x inside the 0.0026-sample budget**, and a tenth of a hundredth of a sample is not
-visible in any predictor. The estimate is replaced by the measurements above rather than left
-standing.
+The conclusion survives the correction: **4.8e-5 relative, 0.00035 samples of translation drift at
+a 512-sample term over 100 composition steps**, 7x inside the budget the estimate had set, and a
+tenth of a hundredth of a sample is not visible in any predictor. Those two numbers are this ADR's
+statement about precision. The estimate they replaced is recorded only so that nobody re-derives
+it and believes it.
 
 ### 4. Prediction for a coded tile (normative)
 
@@ -275,10 +300,15 @@ That is the whole of it:
 
 Optional, and separable from the atlas:
 
-6. **`row_present`**, a frame-header bitmap eliding the 12-byte header of every tile row with no
-   coded tile (Cheats 9). 5 bytes replacing up to 408 on an idle frame. Orthogonal to `ATLAS` and
-   useful without it; implemented behind its own tool bit so it can be measured alone.
-7. A stream constant `gen_max` and tool bit 32 `ATLAS_DRIFT` (Cheats 8). Neither is built in v1.
+6. **`row_present`** (tool bit 32), a frame-header bitmap eliding the 12-byte header of every tile
+   row with no coded tile (Cheats 9). 5 bytes replacing up to 408 on an idle frame. Orthogonal to
+   `ATLAS` and useful without it, behind its own tool bit so it can be measured alone -- and
+   **required of a version 1 decoder**, which is a change from this list's first draft.
+7. **Tool bit 33 `ATLAS_NBR`**, the neighbour-aware gather of SYNTAX 13.12.8. Implemented and
+   measured; see the quality section. It recovers about a dB of an eight-and-a-half dB deficit, so
+   it is specified because it exists, not because it fixes anything.
+8. A stream constant `gen_max` and a tool bit for `ATLAS_DRIFT` (Cheats 8). Neither is built in v1,
+   and the bit is NOT 32 -- 32 is `ROW_PRESENT` and 33 is `ATLAS_NBR`.
 
 ## The budget
 
@@ -293,23 +323,38 @@ using the inherited per-tile measurements:
 | atlas update (compose + renorm, 289 tiles) | — | **budget 0.05 ms** | 9 int64 mults + 9 divides per tile; below the current measurement floor |
 | **decode subtotal, per eye** | ~10.8 ms | **1.65 ms** | |
 | **decode, per frame pair** | ~21.6 ms | **3.30 ms** | |
-| display warp, per frame pair | (in the above) | **budget 1.0 ms** | **NOT MEASURED** |
+| display warp, per frame pair | (in the above) | **1.086 ms MEASURED** | one-tap 8-bit atlas, Pico 4 |
 
 Read that honestly:
 
 * The **8.8 ms measured** skip warp goes to zero. That is the decision's entire content and it is
   arithmetic on measured numbers, not a projection.
-* **The display warp is not measured.** It is a full-screen gather of 1.2 Mpix per eye through a
-  per-tile uniform matrix with hardware bilinear filtering. 1.0 ms per pair is a *budget*, not a
-  result. Phase 0 must measure it; if it exceeds ~2 ms per pair the model does not reach the target
-  and this ADR is wrong.
-* **A frame that is both decoded and displayed costs 3.30 + 1.0 = 4.30 ms against a 4.2 ms target.**
-  It does not fit. Two things make it fit, and both are in the Cheats section rather than being
+* **The display warp is measured**, on the Pico 4 at 1088x1088 per eye, per frame pair
+  (`docs/TEXTURE-NATIVE-PATCHES.md`, branch `texture-native`). The previous draft carried a 1.0 ms
+  *budget* here and said Phase 0 had to measure it. It did:
+
+  | atlas layout | display warp, per frame pair |
+  |---|---|
+  | **one tap per output pixel, 8-bit** | **1.086 ms** |
+  | one tap per output pixel, R16 | 1.327 ms |
+  | three separate R16 planes, which is what section 1 above specified | 2.124 ms |
+
+  **The condition is the LAYOUT, not the format.** What buys the number is *one sampler tap per
+  output pixel*; the three-plane form costs three taps and doubles the figure. An 8-bit single-tap
+  atlas is available exactly when the coded sample domain is 8-bit, which is every `CT_NONE`
+  stream -- and `CT_NONE` is what a live WiVRn NX stream is (SYNTAX 13.12.1). A `CT_YCOCGR` stream
+  has 9-bit chroma and pays the R16 line. This is a constraint on the decoder's atlas layout and it
+  should be read as one.
+* **A frame that is both decoded and displayed costs 3.30 + 1.09 = 4.39 ms against a 4.2 ms
+  target** on a `CT_NONE` stream, and 5.42 ms on the three-plane layout. So the arithmetic that
+  said "it does not fit" is still the arithmetic, by 0.19 ms rather than by 0.10 ms -- what changed
+  is that the display term is now a result, and that the three-plane layout is off the table. Two
+  things make the coincident frame fit, and both are in the Cheats section rather than being
   decorations on it:
   * **Amortisation.** Display runs at panel rate, decode at server rate. At 90 Hz server into a
-    240 Hz panel the decode cost per displayed pair is 3.30 x 90/240 = **1.24 ms**, plus 1.0 ms
-    display = **2.24 ms per displayed pair**, with margin. This is the whole point of decoupling
-    display from decode.
+    240 Hz panel the decode cost per displayed pair is 3.30 x 90/240 = **1.24 ms**, plus the
+    measured 1.09 ms display = **2.33 ms per displayed pair**, with margin. This is the whole point
+    of decoupling display from decode, and both of its terms are now measured.
   * **Spreading.** Cheat 1 (tile streaming) lets a frame's coded tiles be applied to the atlas as
     they arrive, across several display intervals, so the 3.30 ms is never a single serial block in
     front of a vsync.
@@ -405,8 +450,47 @@ Bit-exactness has two answers and both must be written down:
 for an nxvc coded tile -- a 21x reduction on the one term of the budget that does not amortise, which
 makes this a *latency* tool and not only a compatibility one. *Costs:* the base layer's own latency,
 **measured at 2.76 ms mean / 5.63 ms p99**, not the 8-20 ms PAPER 2.9 carried; that number was
-inherited from general MediaCodec lore and is wrong for this decoder at this bitrate. *Status:*
-flags bit 2 reserved in v1. Whether the base layer ships in v1 waits on the patch-quality table.
+inherited from general MediaCodec lore and is wrong for this decoder at this bitrate.
+
+*Status: **flags bit 2 `base_sourced` is NORMATIVE in v1**, and SYNTAX 13.12.9 is the clause.* The
+measurement that promoted it from reserved is section 9 of the hybrid report: for a `CT_NONE`
+stream the atlas and the base decoder's output are **the same domain**, so the "normative integer
+colour transform" this ADR asked for **does not exist** -- the conversion is a channel mapping and
+a widen. What is left, and what 13.12.9 makes normative, is the **channel order**:
+`VK_FORMAT_G8_B8R8_2PLANE_420_UNORM` carries luma in G, Cb in B and Cr in R, so a channel-identity
+sampler yields `(Cr, Y, Cb)`, and an implementation must consume the reported swizzle rather than
+assume an order. Measured identically on the Pico 4's Adreno 650 through an AHardwareBuffer
+external format and on RADV through the plain format, so it is a property of the format and not of
+a driver. Three consequences are written into 13.12.9 rather than left as advice: **a base layer is
+disallowed when a colour transform is set** (there the domains differ, and a matrix would be back
+on the normative path); an externally sourced write **obeys the same `src_frame` monotonicity** as
+a coded tile, because the base arrives through a different decoder with a different latency and
+out-of-order arrival between the two paths is ordinary rather than exceptional; and the encoder
+reproduces the write, which is Option B, now the specified one.
+
+**7b. Texture-native patches (ASTC): measured and REJECTED as a bulk mechanism.** If the atlas held
+ASTC blocks the display pass would sample compressed data directly and the atlas would shrink.
+Measured on the Pico 4 (`docs/TEXTURE-NATIVE-PATCHES.md`, branch `texture-native`):
+
+| question | measured |
+|---|---|
+| does the device sample ASTC 4x4 / 6x6 / 8x8 with free bilinear? | **yes**, and with no `STORAGE_IMAGE` usage |
+| bytes at matched PSNR, against nxvc | **1.9x to 2.4x** |
+| GPU ASTC encoder | **none exists**; CPU `astcenc` is **27 ms per 289 tiles** |
+| tiles per frame affordable over Wi-Fi at 43 Mbit/s | **12 to 45** |
+
+So it is refused as the way patches travel: at 1.9-2.4x the bytes it loses the argument the codec
+exists to win, and there is no encoder that could produce it in a frame budget. What it may still
+be is a **trickle source** -- a few tiles a frame of periphery refresh on a link with headroom,
+which is 12 to 45 tiles at the measured rate. **The HEVC base layer stays the fast-motion refresh
+mechanism** (cheat 7); ASTC is not a competitor to it and the numbers above are why.
+
+**7c. A note for 13.12 implementers: coalesce the atlas writes.** On this driver an atlas write is
+**per-region bound at 3.43 us a tile**, not bandwidth bound, so an implementation that issues one
+write per coded tile pays for the region and not for the pixels. Coded tiles are contiguous in row
+order (Annex D D-3), so a decoder should coalesce a row's coded tiles into one strip write. This is
+non-normative -- the atlas contents are the same either way -- and it is the difference between the
+atlas update being below the measurement floor and being a term in the budget.
 
 **8. Drift-tolerant mode (flagged experiment, off by default).** Optional tool bit 32
 `ATLAS_DRIFT`: the *display warp output* — non-normative, filtered, fp16 — may be written back as
@@ -441,10 +525,16 @@ The design meets it, with this exact accounting:
   per frame, 294 kbit/s at 90 Hz**, for a frame in which nothing changed. On a static-panel scene
   that is most of the stream. The fix is a frame-header **`row_present` bitmap** — 34 bits, 5 bytes,
   eliding the header of every row with no coded tile — which reduces the floor to
-  **5 bytes per frame, 3.6 kbit/s**, an 80x reduction on an idle frame. This is a real syntax
-  addition and it is listed as optional in the syntax delta rather than smuggled in; it is cheap,
-  it is orthogonal to the atlas, and it is what makes "a static scene costs nothing" true on the
-  wire as well as on the GPU.
+  **5 bytes per frame, 3.6 kbit/s**, an 80x reduction on an idle frame. It is orthogonal to the
+  atlas, and it is what makes "a static scene costs nothing" true on the wire as well as on the
+  GPU.
+
+  **It is REQUIRED of a version 1 decoder** (SYNTAX 3.1.2 and 14). The syntax delta below listed it
+  as optional; that is now wrong, and deliberately so. Unlike `ENTROPY_LITE`, whose value depends
+  on a Pass A time only the decoder knows, there is nothing here for a receiver to weigh: the
+  bitmap costs nothing to parse, adds no second code path, and its absence is what makes a static
+  scene pay for the tile grid forever. The tool BIT stays, because a sender still has to know
+  whether the bytes may be elided.
 
 *Saves:* on a mostly static UI, everything. *Costs:* one optional frame-header field. Phase 2 of
 this work adds a **static-panels fixture** — 1088x1088, a mostly static UI with one moving element
@@ -571,15 +661,74 @@ skipped for a single frame -- the fast-turn case is still 37.49 dB at
 16910 B/frame, because invalidating an entry forces `INTRA` rather than
 shortening the gather distance. The knob trades the defect for intra bits.
 
-**The fix is neighbour-aware gather**, and it is now the open question this ADR
-turns on: resolve which atlas entry a source sample lands in, and fetch it
-through *that* entry's `C`. The affordable form keeps the corner structure of
-2.2 rather than dividing per sample -- for each neighbouring entry the
-footprint touches, four corners under that entry's `C`, bilinear-interpolated
-across the overlap; 4 divisions per (tile, neighbour) pair instead of per
-sample. Until it is priced, the honest scope of this ADR is: **the atlas is a
-win at low angular velocity and a loss at high**, and the 8.8 ms it removes is
-unaffected either way.
+### The two fixes, priced
+
+Both candidates are now implemented and measured. Three motion rates,
+1088x1088, 16 frames, luma PSNR of the DISPLAYED picture against the source
+over frames 1..15:
+
+* **(a) neighbour-aware gather** -- tool bit 33 `ATLAS_NBR`, SYNTAX 13.12.8.
+  Resolve which entry a sample lands in with the co-located `C`, fetch through
+  that entry's `C`; four corners per (tile, entry) pair, no per-sample divide.
+* **(b) displacement-bounded skip** -- encoder only, no syntax. A tile may be
+  skipped only while the composed displacement at its four corners is under a
+  margin.
+
+**Equal QP** (PSNR / bytes per frame):
+
+| fixture | QP | picture | atlas | (a) atlas+nbr | (b) margin 4 | (b) margin 8 | (b) margin 16 |
+|---|---|---|---|---|---|---|---|
+| near-still, 4.2 deg/s | 22 | 41.78 / 8956 | **42.85 / 8152** | 42.90 / 8087 | 42.85 / 8152 | 42.85 / 8152 | 42.85 / 8152 |
+| near-still | 26 | 38.77 / 5471 | **39.93 / 5416** | 39.93 / 5296 | 39.93 / 5416 | 39.93 / 5416 | 39.93 / 5416 |
+| mid, 25.2 deg/s | 22 | 41.52 / 10196 | 37.12 / 12824 | 36.55 / 11548 | 41.76 / 20696 | 38.75 / 16191 | 37.26 / 13961 |
+| mid | 26 | 38.62 / 6092 | 34.68 / 8562 | 35.51 / 7841 | 39.27 / 15566 | 36.99 / 11795 | 35.66 / 9707 |
+| fast turn, 75.6 deg/s | 22 | 41.38 / 10483 | 30.46 / 15061 | 31.32 / 13799 | 42.32 / 24084 | 39.70 / 22178 | 36.59 / 18340 |
+| fast turn | 26 | 38.50 / 6582 | 29.94 / 10518 | 31.36 / 9345 | 39.61 / 18301 | 37.63 / 16607 | 35.50 / 13362 |
+
+At the margin the atlas *beats* the picture model on quality -- +0.94 dB at
+fast turn, QP 22 -- and pays 2.3x the bytes for it. **The margin never binds at
+4.2 deg/s at any of 2/4/8/16**, so the low-velocity win is untouched by it.
+
+**Equal rate** is the test that decides, and it is unambiguous. Each
+configuration is re-quantised to the bytes the picture model spends at QP 26:
+
+| fixture | anchor | picture | atlas | (a) | (b) m8 | (b) m16 | (a)+(b) m8 |
+|---|---|---|---|---|---|---|---|
+| near-still | 5471 B/f | 38.77 | **39.93** | **39.93** (-3.2 % bytes) | 39.93 | 39.93 | 39.93 |
+| mid 25 deg/s | 6092 B/f | **38.62** | 35.07 | 34.11 | 32.77 | 33.42 | 32.05 |
+| fast turn | 6582 B/f | **38.50** | 28.61 | 29.52 | 27.12 | 30.68 | 28.12 |
+
+**Neither fix works.** (a) recovers 0.9 dB of a 9.9 dB deficit at fast turn and
+*loses* 0.96 dB at 25 deg/s. (b) buys its quality with forced refresh, and once
+the bytes are held fixed the QP it has to pay for that refresh gives back more
+than the refresh gained: at fast turn margin 8 lands at **QP 43** and 27.12 dB,
+worse than the plain atlas. Margin 16 is the best of them at 30.68 dB, still
+**7.8 dB behind the picture model at the same bytes**. Combining them is worse
+than either.
+
+One thing (b) did establish, and it is a real finding rather than a null one:
+the first implementation of the bound bought 0.1 dB because forbidding
+`WARP_SKIP` without also forbidding `NEAR_SKIP` moves 2073 of 4624 tiles from
+one to the other. **A `NEAR_SKIP` tile is still a skipped tile** -- still
+displayed by warping from its own source pose -- so a DC and two ramps cannot
+undo samples fetched out of a neighbour captured at another pose. With that
+closed the bound works, exactly as far as the table says.
+
+Also measured and rejected: iterating (a)'s resolution toward the fixed point
+it is approximating (`C_N(x)` inside `N`) is **worse** at every rate --
+30.28 / 29.74 / 28.32 dB against one step's 31.32 / 31.36 / 29.52. The one-step
+form is normative because it measured better, not because it is simpler.
+
+**So the honest scope of this ADR is unchanged and now bounded by measurement
+rather than by argument: the atlas is a win at low angular velocity -- +1.16 dB
+at 3 % fewer bytes, equal rate -- and a loss at high, and neither of the two
+fixes proposed for the loss recovers it.** The 8.8 ms the atlas removes is
+unaffected either way, which is why the decision above still stands; what does
+not stand is any claim that the quality loss at speed is a detail with a known
+remedy. It is an open problem, and the next place to look is not the gather
+rule but the *skipped tile's displayed reconstruction*: the picture model wins
+because it warps a coherent picture, and every mechanism tried here still warps
+each tile out of storage that its neighbours do not agree with.
 
 * **The seam, as originally written.** Two adjacent tiles with different source frames are each
   individually correctly reprojected, so static distant content is seamless. They diverge on moving

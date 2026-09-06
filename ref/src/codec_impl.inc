@@ -4825,6 +4825,133 @@ extern "C" const uint16_t *nxvc_encoder_atlas_plane(const nxvc_encoder *e,
     if (!e || !e->atlas) return nullptr;
     return atlas_plane_of(e->at, e->g, plane, w, h, stride);
 }
+// SYNTAX.md 13.12.9.  The base layer as a patch source.
+//
+// For a CT_NONE stream the base picture and the atlas are the SAME domain --
+// the stream's own YCbCr -- so there is no colour matrix here and there is not
+// meant to be one.  What IS normative is the channel order, because it is the
+// thing an implementation gets wrong: G8_B8R8_2PLANE_420_UNORM carries luma in
+// G, Cb in B and Cr in R, so the interleaved plane's byte pair is (Cb, Cr) as
+// the format defines it, and `chroma_order` is how a device that reports a
+// permuted swizzle says so.  A kernel that assumed an order would put Cr where
+// Y belongs and produce a plausible, wholly wrong picture.
+static nxvc_status atlas_patch_base(Atlas &at, const Geometry &g,
+                                    const nxvc_base_patch *p, u32 *applied,
+                                    u32 *superseded) {
+    if (!p || !p->plane[0] || !p->plane[1] || !p->tiles) return NXVC_ERR_ARG;
+    // Excluded by 13.12.9 rather than approximated: with a colour transform
+    // set the two domains differ and the write would need a matrix on the
+    // normative path.
+    if (g.color_transform != NXVC_CT_NONE) return NXVC_ERR_ARG;
+    if (g.chroma != NXVC_CHROMA_420) return NXVC_ERR_ARG;
+    if (p->eye >= g.eyes) return NXVC_ERR_ARG;
+    if (p->width != g.width || p->height != g.height) return NXVC_ERR_ARG;
+    if (p->chroma_order > NXVC_BASE_CHROMA_CR_CB) return NXVC_ERR_ARG;
+    if (p->tile_bytes < g.tiles_x * g.tiles_y) return NXVC_ERR_ARG;
+    // Byte 0 of the interleaved pair is Cb and byte 1 is Cr in the format's
+    // own order; a device that reports the swap says so here, and the atlas
+    // that comes out is the same atlas.
+    const int cb_off = (p->chroma_order == NXVC_BASE_CHROMA_CB_CR) ? 0 : 1;
+    const int cr_off = 1 - cb_off;
+
+    u32 nap = 0, nsup = 0;
+    for (u32 row = 0; row < g.tiles_y; ++row)
+        for (u32 col = 0; col < g.tiles_x; ++col) {
+            if (!p->tiles[(size_t)row * g.tiles_x + col]) continue;
+            const int t = linear_tile(g, (int)row, (int)p->eye, (int)col);
+            AtlasEntry &e = at.ent[(size_t)t];
+            // 13.12.3 / 13.12.9: a write that does not advance the position's
+            // generation has been overtaken and is DROPPED.  The base and the
+            // coded tiles arrive through different decoders with different
+            // latencies, so this is the ordinary case and not the exception.
+            if ((e.flags & kAtlasValid) && p->src_frame > 0 &&
+                e.src_frame >= p->src_frame) {
+                ++nsup;
+                continue;
+            }
+            // Luma: 64x64 at the tile origin, widened.  Clamp-to-edge on the
+            // right and bottom, as store_ref_tile does.
+            {
+                u16 *dst = at.pix.plane[0].data();
+                const int stride = at.pix.w[0];
+                const int ox = (int)(p->eye * g.width) + (int)col * 64;
+                const int oy = (int)row * 64;
+                for (int y = 0; y < 64; ++y) {
+                    const int sy = std::min(oy + y, (int)g.height - 1);
+                    const u8 *src = p->plane[0] + (size_t)sy * p->stride[0];
+                    for (int x = 0; x < 64; ++x) {
+                        const int sx = std::min((int)col * 64 + x,
+                                                (int)g.width - 1);
+                        dst[(size_t)(oy + y < (int)g.height ? oy + y
+                                                            : (int)g.height - 1) *
+                                stride +
+                            (ox + x < (int)((p->eye + 1) * g.width)
+                                 ? ox + x
+                                 : (int)((p->eye + 1) * g.width) - 1)] =
+                            (u16)src[sx];
+                    }
+                }
+            }
+            // Chroma: 32x32 of interleaved pairs, split into the two planes.
+            {
+                u16 *dcb = at.pix.plane[1].data();
+                u16 *dcr = at.pix.plane[2].data();
+                const int stride = at.pix.w[1];
+                const int ox = (int)(p->eye * g.cw) + (int)col * 32;
+                const int oy = (int)row * 32;
+                for (int y = 0; y < 32; ++y) {
+                    const int dy = std::min(oy + y, (int)g.ch - 1);
+                    const int sy = dy;
+                    const u8 *src = p->plane[1] + (size_t)sy * p->stride[1];
+                    for (int x = 0; x < 32; ++x) {
+                        const int sx = std::min((int)col * 32 + x,
+                                                (int)g.cw - 1);
+                        const int dx =
+                            std::min(ox + x, (int)((p->eye + 1) * g.cw) - 1);
+                        dcb[(size_t)dy * stride + dx] =
+                            (u16)src[(size_t)sx * 2 + cb_off];
+                        dcr[(size_t)dy * stride + dx] =
+                            (u16)src[(size_t)sx * 2 + cr_off];
+                    }
+                }
+            }
+            atlas_identity(e.C);
+            e.src_frame = p->src_frame;
+            e.gen = 0;
+            e.flags = (u8)(kAtlasValid | kAtlasBaseSourced);
+            e.res_level = 0;
+            for (int k = 0; k < 20; ++k) e.reserved[k] = 0;
+            ++nap;
+        }
+    if (applied) *applied = nap;
+    if (superseded) *superseded = nsup;
+    return NXVC_OK;
+}
+
+extern "C" nxvc_status nxvc_decoder_atlas_patch_base(nxvc_decoder *d,
+                                                     const nxvc_base_patch *p,
+                                                     uint32_t *applied,
+                                                     uint32_t *superseded) {
+    if (!d || !d->have_stream || !d->atlas) return NXVC_ERR_UNSUPPORTED;
+    const nxvc_status st =
+        atlas_patch_base(d->at, d->g, p, applied, superseded);
+    // The pre-frame snapshot has to follow, or a coded tile decoded later in
+    // this frame would predict from pixels the patch has replaced on one side
+    // and not on the other.
+    if (st == NXVC_OK) d->at.snapshot();
+    return st;
+}
+extern "C" nxvc_status nxvc_encoder_atlas_patch_base(nxvc_encoder *e,
+                                                     const nxvc_base_patch *p,
+                                                     uint32_t *applied,
+                                                     uint32_t *superseded) {
+    if (!e || !e->atlas) return NXVC_ERR_UNSUPPORTED;
+    const nxvc_status st =
+        atlas_patch_base(e->at, e->g, p, applied, superseded);
+    if (st == NXVC_OK) e->at.snapshot();
+    return st;
+}
+
 extern "C" nxvc_status nxvc_decoder_atlas_display(const nxvc_decoder *d,
                                                   nxvc_image *img) {
     if (!d || !img) return NXVC_ERR_ARG;

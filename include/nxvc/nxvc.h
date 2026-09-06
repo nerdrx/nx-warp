@@ -837,8 +837,11 @@ nxvc_status nxvc_decoder_atlas_table(const nxvc_decoder *dec, uint8_t *out,
 nxvc_status nxvc_encoder_atlas_table(const nxvc_encoder *enc, uint8_t *out,
                                      size_t out_bytes);
 
-/* The atlas pixels of one plane, in the CODED sample domain (Y/Co/Cg, u16),
- * `eyes * eye_width` wide and `height` tall.  `*stride` is in samples.
+/* The atlas pixels of one plane, in the CODED sample domain -- whatever
+ * domain the stream's colour transform leaves: the stream's own YCbCr for
+ * NXVC_CT_NONE, which is what a live WiVRn NX stream is, and Y/Co/Cg-R with a
+ * 9-bit chroma plane for NXVC_CT_YCOCGR.  Samples are u16 either way.
+ * `eyes * eye_width` wide and `height` tall, `*stride` in samples.
  * Returns NULL if the plane does not exist or this is not an atlas stream. */
 const uint16_t *nxvc_decoder_atlas_plane(const nxvc_decoder *dec, int plane,
                                          uint32_t *w, uint32_t *h,
@@ -846,6 +849,66 @@ const uint16_t *nxvc_decoder_atlas_plane(const nxvc_decoder *dec, int plane,
 const uint16_t *nxvc_encoder_atlas_plane(const nxvc_encoder *enc, int plane,
                                          uint32_t *w, uint32_t *h,
                                          uint32_t *stride);
+
+/* ------------------------------------------- the base layer (SYNTAX 13.12.9)
+ *
+ * An atlas entry may be refreshed from a picture decoded OUTSIDE this codec --
+ * a hardware HEVC decoder, on a headset where that unit is otherwise idle.
+ * The atlas is what makes it expressible: a patch source is already per tile.
+ *
+ * Only for an NXVC_CT_NONE stream.  With a colour transform set, the atlas
+ * holds Y/Co/Cg-R and the base decoder's output does not, so the write would
+ * need a colour matrix on the normative path; the call returns NXVC_ERR_ARG.
+ * For CT_NONE there is NO colour matrix at all: the two are the same domain
+ * and the whole of the conversion is a channel mapping and a widen.
+ *
+ * The picture is given as the two planes of
+ * VK_FORMAT_G8_B8R8_2PLANE_420_UNORM -- luma, then interleaved chroma -- which
+ * is the format the WiVRn compositor already writes and the format an Android
+ * hardware decoder's AHardwareBuffer imports as.  `chroma_order` is the
+ * NORMATIVE part, and it exists because it is the thing implementations get
+ * wrong: the format carries luma in G, Cb in B and Cr in R, so a
+ * channel-identity sampler yields (.r,.g,.b) == (Cr, Y, Cb), and a driver may
+ * report a conversion that permutes them.  An implementation SHALL consume the
+ * reported order rather than assume one. */
+typedef enum nxvc_base_chroma_order {
+    NXVC_BASE_CHROMA_CB_CR = 0, /* the format's own order: byte 0 Cb, byte 1 Cr */
+    NXVC_BASE_CHROMA_CR_CB = 1  /* a device whose reported swizzle swaps them  */
+} nxvc_base_chroma_order;
+
+typedef struct nxvc_base_patch {
+    const uint8_t *plane[2];  /* 0 = luma, 1 = interleaved chroma pairs     */
+    int stride[2];            /* bytes                                      */
+    uint32_t width, height;   /* of the base picture, in luma samples; must
+                                 match one eye of the stream                */
+    uint32_t eye;
+    uint32_t src_frame;       /* the frame number the base picture is of     */
+    uint32_t chroma_order;    /* nxvc_base_chroma_order                      */
+    /* One byte per tile POSITION of this eye, in the tile order of Annex D
+     * D-3 restricted to `eye`: nonzero = refresh this position from the base.
+     * `tile_bytes` is tiles_x * tiles_y. */
+    const uint8_t *tiles;
+    uint32_t tile_bytes;
+} nxvc_base_patch;
+
+/* Apply a base-sourced patch to the atlas.  Each named position that is not
+ * SUPERSEDED (13.12.3: a write whose `src_frame` is not greater than the one
+ * the position already holds is dropped) takes the base picture's samples and
+ * the metadata of 13.12.9: C = identity, gen = 0, static = 0, valid = 1,
+ * base_sourced = 1, res_level = 0.
+ *
+ * `*applied` and `*superseded`, if given, report how many positions did and
+ * did not take.  The encoder call exists so its shadow atlas stays exact --
+ * that is Option B of ADR-0029 cheat 7, and it is what keeps a base-sourced
+ * patch inside conformance rather than outside it. */
+nxvc_status nxvc_decoder_atlas_patch_base(nxvc_decoder *dec,
+                                          const nxvc_base_patch *patch,
+                                          uint32_t *applied,
+                                          uint32_t *superseded);
+nxvc_status nxvc_encoder_atlas_patch_base(nxvc_encoder *enc,
+                                          const nxvc_base_patch *patch,
+                                          uint32_t *applied,
+                                          uint32_t *superseded);
 
 /* NON-NORMATIVE display helper (SYNTAX.md 13.12.5).  Renders a displayable
  * picture from the atlas by warping each tile from its source pose to the pose

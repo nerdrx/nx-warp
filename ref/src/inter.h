@@ -68,14 +68,17 @@ struct AtlasEntry {
     i32 C[9] = {1 << kQNum, 0, 0, 0, 1 << kQNum, 0, 0, 0, kH22};
     u32 src_frame = 0;
     u16 gen = 0;
-    u8 flags = 0;       // bit 0 valid, bit 1 static; bits 2-7 reserved zero
+    u8 flags = 0;       // bit 0 valid, 1 static, 2 base_sourced; 3-7 zero
     u8 res_level = 0;   // advisory; the pixels are always full extent
     u8 reserved[20] = {};
 };
 static_assert(sizeof(AtlasEntry) == 64,
               "13.12.1 fixes the atlas entry at 64 bytes");
 
-enum : u8 { kAtlasValid = 1u, kAtlasStatic = 2u };
+// 13.12.1 flags.  Bit 2 `base_sourced` is NORMATIVE in v1 (13.12.9): it is
+// written, compared by conformance like every other bit of the 64, and it is
+// what lets a receiver tell the two patch sources apart.
+enum : u8 { kAtlasValid = 1u, kAtlasStatic = 2u, kAtlasBaseSourced = 4u };
 
 struct Atlas {
     RefPicture pix;               // 13.12.1 atlas pixels
