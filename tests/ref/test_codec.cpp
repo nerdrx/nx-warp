@@ -601,5 +601,129 @@ int main() {
         for (int p = 0; p < 3; ++p)
             CHECK(r.out.p[p] == im.p[p], "lossless plane %d differs", p);
     }
+    // 12. The piecewise-planar tile mode (tool 35, SYNTAX.md 13.13).
+    //
+    // The properties that matter are not rate or PSNR -- the mode is a taste
+    // and docs/LOWPOLY-MODE.md 9 measures what it costs -- but these three:
+    // the encoder chooses it on content that has regions, the decoder
+    // reproduces the encoder's own reconstruction exactly, and the tool bit
+    // appears only when the mode is enabled, since it is negotiated.
+    {
+        auto tools = [](const std::vector<uint8_t> &h) {
+            uint64_t t = 0;
+            for (int i = 0; i < 8; ++i) t |= (uint64_t)h[32 + i] << (8 * i);
+            return t;
+        };
+        // kind 5 is panels: flat and ramped regions meeting at sharp
+        // boundaries.  On the textured kinds the mode is offered and declined,
+        // which is the correct behaviour and would make a useless test.
+        TestImage im = make_image(W, H, false, 5, 4242);
+        for (int level = 0; level <= 2; ++level)
+            for (int qp : {28, 40, 52}) {
+                nxvc_config cfg;
+                nxvc_config_default(&cfg);
+                cfg.width = W; cfg.height = H; cfg.base_qp = (uint32_t)qp;
+                cfg.planar = (uint32_t)level;
+                Coded r;
+                CHECK(code(cfg, im, r), "planar level %d qp %d: %s/%s", level,
+                      qp, nxvc_status_string(r.enc_status),
+                      nxvc_status_string(r.dec_status));
+                if (r.out.p[0].empty()) continue;
+                const bool bit = (tools(r.header) & NXVC_TOOL_PLANAR) != 0;
+                CHECK(bit == (level != 0),
+                      "planar level %d: tool bit %d", level, (int)bit);
+                // The decoder's picture must be the encoder's shadow, sample
+                // for sample, on every plane.  A planar tile is reconstructed
+                // by two separate copies of one function; this is what says
+                // they are one function.
+                for (int pl = 0; pl < 3; ++pl)
+                    CHECK(r.out.p[pl] == r.shadow.p[pl],
+                          "planar level %d qp %d: decoder differs from the "
+                          "encoder's shadow on plane %d", level, qp, pl);
+            }
+        // And it is actually chosen: `planar = 2` on panel content at a low
+        // rate must produce a stream that differs from the same encode with
+        // the mode off.  A tool that is enabled and never used would pass
+        // every check above.
+        nxvc_config off_cfg, on_cfg;
+        nxvc_config_default(&off_cfg);
+        off_cfg.width = W; off_cfg.height = H; off_cfg.base_qp = 46;
+        on_cfg = off_cfg;
+        on_cfg.planar = 2;
+        Coded ro, rn;
+        CHECK(code(off_cfg, im, ro), "planar off encode");
+        CHECK(code(on_cfg, im, rn), "planar on encode");
+        CHECK(ro.frame != rn.frame,
+              "planar = 2 produced the same stream as planar = 0: the mode "
+              "was never chosen, so nothing here tests it");
+    }
+
+    // 13. The same mode on an INTER stream, which is where "not INTRA" and
+    // "has a reference" stop being the same statement.  A planar tile is a
+    // coded tile that predicts from nothing, so every gate that used to read
+    // `mode != INTRA` as "run the predictor" has to exclude it -- and this is
+    // the configuration in which getting that wrong runs the warp on a tile
+    // with no vector.
+    {
+        TestImage im = make_image(W, H, false, 5, 99);
+        nxvc_config cfg;
+        nxvc_config_default(&cfg);
+        cfg.width = W; cfg.height = H; cfg.base_qp = 44;
+        cfg.inter = 1;
+        cfg.intra_period = 8;
+        cfg.planar = 2;
+        nxvc_status st;
+        nxvc_encoder *e = nxvc_encoder_create(&cfg, &st);
+        CHECK(e != nullptr, "inter+planar encoder create: %s",
+              nxvc_status_string(st));
+        if (e) {
+            std::vector<uint8_t> hdr(4096);
+            size_t hl = 0;
+            CHECK(nxvc_encoder_stream_header(e, hdr.data(), hdr.size(), &hl) ==
+                      NXVC_OK, "inter+planar stream header");
+            hdr.resize(hl);
+            nxvc_decoder *d = nxvc_decoder_create(&st);
+            size_t consumed = 0;
+            CHECK(nxvc_decoder_parse_stream_header(d, hdr.data(), hdr.size(),
+                                                   &consumed) == NXVC_OK,
+                  "inter+planar header parse");
+            std::vector<uint8_t> fb((size_t)W * H * 6 + (1u << 20));
+            TestImage out = im, shadow = im;
+            bool saw_planar = false;
+            for (int f = 0; f < 4; ++f) {
+                nxvc_image img{};
+                for (int p = 0; p < 4; ++p) img.plane[p] = (uint8_t *)im.p[p].data();
+                img.stride[0] = im.w; img.stride[1] = im.cw;
+                img.stride[2] = im.cw; img.stride[3] = im.w;
+                size_t ol = 0;
+                CHECK(nxvc_encoder_encode_frame(e, &img, nullptr, nullptr,
+                                                fb.data(), fb.size(), &ol) ==
+                          NXVC_OK, "inter+planar encode frame %d", f);
+                uint32_t nt = 0;
+                const nxvc_tile_info *ti = nxvc_encoder_tiles(e, &nt);
+                for (uint32_t i = 0; i < nt; ++i)
+                    if (ti[i].mode == NXVC_MODE_PLANAR) saw_planar = true;
+                nxvc_image si{};
+                for (int p = 0; p < 4; ++p) si.plane[p] = shadow.p[p].data();
+                si.stride[0] = im.w; si.stride[1] = im.cw;
+                si.stride[2] = im.cw; si.stride[3] = im.w;
+                nxvc_encoder_shadow_image(e, &si);
+                nxvc_image oi{};
+                for (int p = 0; p < 4; ++p) oi.plane[p] = out.p[p].data();
+                oi.stride[0] = im.w; oi.stride[1] = im.cw;
+                oi.stride[2] = im.cw; oi.stride[3] = im.w;
+                CHECK(nxvc_decoder_decode_frame(d, fb.data(), ol, &oi,
+                                                &consumed) == NXVC_OK,
+                      "inter+planar decode frame %d", f);
+                for (int pl = 0; pl < 3; ++pl)
+                    CHECK(out.p[pl] == shadow.p[pl],
+                          "inter+planar frame %d: decoder differs from the "
+                          "encoder's shadow on plane %d", f, pl);
+            }
+            CHECK(saw_planar, "no planar tile in the inter stream");
+            nxvc_decoder_destroy(d);
+            nxvc_encoder_destroy(e);
+        }
+    }
     return test_report("test_codec");
 }

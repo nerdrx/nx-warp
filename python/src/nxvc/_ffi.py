@@ -156,8 +156,16 @@ class TileMode:
     WARP_MV = 2
     INTRA = 3
     STEREO = 4
+    PLANAR = 5
 
-    _NAMES = {0: "WARP_SKIP", 1: "STATIC_MV", 2: "WARP_MV", 3: "INTRA", 4: "STEREO"}
+    _NAMES = {
+        0: "WARP_SKIP",
+        1: "STATIC_MV",
+        2: "WARP_MV",
+        3: "INTRA",
+        4: "STEREO",
+        5: "PLANAR",
+    }
 
     @classmethod
     def name(cls, value: int) -> str:
@@ -207,6 +215,8 @@ class Tool:
     QUAD_MV = 1 << 29
     #: The table-free, fully parallel entropy tool (SYNTAX.md 9.10).
     ENTROPY_LITE = 1 << 30
+    # 31-34 are the ATLAS package (not merged); 35 is the planar tile mode.
+    PLANAR = 1 << 35
 
     _NAMES = [
         (1 << 0, "INTRA_DC_PLANE"),
@@ -387,6 +397,9 @@ class nxvc_config(Structure):
         ("table_iters_set", c_uint32),
         # the inter efficiency package
         ("near_skip", c_uint32),
+        # The piecewise-planar tile mode (tool bit 35): a low-rate mode the
+        # encoder picks per tile by rate-distortion.
+        ("planar", c_uint32),
         ("quad_mv", c_uint32),
         ("drift_refresh", c_uint32),
         ("drift_gate_q8", c_uint32),

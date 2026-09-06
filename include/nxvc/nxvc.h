@@ -127,7 +127,8 @@ typedef enum nxvc_tile_mode {
     NXVC_MODE_STATIC_MV = 1,
     NXVC_MODE_WARP_MV   = 2,   /* "INTER" */
     NXVC_MODE_INTRA     = 3,
-    NXVC_MODE_STEREO    = 4
+    NXVC_MODE_STEREO    = 4,
+    NXVC_MODE_PLANAR    = 5    /* piecewise-planar, tool bit 35            */
 } nxvc_tile_mode;
 
 /* Tool bits of the stream header `tools` u64.  See SYNTAX.md 2.2. */
@@ -199,6 +200,33 @@ typedef enum nxvc_tile_mode {
  * frame budget at all. */
 #define NXVC_TOOL_ENTROPY_LITE    (1ull << 30)
 
+/* Bits 31-34 are allocated to the ATLAS package (ADR-0029, SYNTAX.md 13.12):
+ * 31 ATLAS, 32 ROW_PRESENT, 33 ATLAS_NBR, 34 ATLAS_REBASE.  They are not
+ * defined here because that package is not merged; 35 is the next free bit
+ * and this is what has it. */
+
+/* PLANAR: the piecewise-planar tile mode of SYNTAX.md 13.13 and
+ * docs/LOWPOLY-MODE.md.  A tile is 2 to 4 REGIONS, each a plane -- a DC level
+ * and two ramps, in the three bytes NEAR_SKIP already uses -- over a label map
+ * on an 8x8 or 4x4 sub-block grid.  It is a whole tile rather than a
+ * correction, so it needs no reference and requires neither INTER nor WARP.
+ *
+ * What it is FOR is the way it fails.  A transform codec starved of bits turns
+ * the picture into its own coding grid: blocks of the wrong colour, ringing on
+ * every edge, and the whole pattern reshuffling frame to frame, which is the
+ * artefact the eye is least willing to forgive in a headset.  A planar tile
+ * that runs out of bits loses detail and keeps STRUCTURE -- the boundaries stay
+ * where they are and the regions get coarser -- which degrades toward the look
+ * of a low-polygon model.  It saturates, so it is a low-rate tool and never a
+ * replacement for the transform: the encoder picks it per tile by
+ * rate-distortion, which is where its whole value is.
+ *
+ * The reconstruction is per sample, integer, and has no dependency between
+ * samples or between tiles: a label lookup and three multiply-adds.  That is
+ * deliberate -- it is what lets the mode cross to a GPU decoder later
+ * (docs/LOWPOLY-GPU-PLAN.md), the same property int_rdoq was built around. */
+#define NXVC_TOOL_PLANAR          (1ull << 35)
+
 /* Tools this reference decoder implements. */
 #define NXVC_TOOLS_SUPPORTED                                                  \
     (NXVC_TOOL_INTRA_DC_PLANE | NXVC_TOOL_TRANSFORM_SKIP |                    \
@@ -210,7 +238,7 @@ typedef enum nxvc_tile_mode {
      NXVC_TOOL_CTX_V3 | NXVC_TOOL_TAB_V2 | NXVC_TOOL_XFORM_LARGE |            \
      NXVC_TOOL_NEAR_SKIP | NXVC_TOOL_QUAD_MV |                                \
      NXVC_TOOL_INTER | NXVC_TOOL_WARP | NXVC_TOOL_STEREO |                    \
-     NXVC_TOOL_ENTROPY_LITE)
+     NXVC_TOOL_ENTROPY_LITE | NXVC_TOOL_PLANAR)
 
 /* ---------------------------------------------------------------- images */
 /* 8-bit planar image.  plane[0]=Y/R', plane[1]=Co/G', plane[2]=Cg/B',
@@ -339,6 +367,31 @@ typedef struct nxvc_config {
                                    smooth is corrected by nine signed bytes
                                    in the TILE-ROW header instead of a coded
                                    residual.  SYNTAX.md 13.9.              */
+    /* 1 = allow the piecewise-planar tile mode (tool bit 35, SYNTAX.md
+     * 13.13).  A tile whose content is a few smoothly shaded regions meeting
+     * at sharp boundaries is coded as those regions instead of as transform
+     * coefficients, and the encoder picks between the two per tile by
+     * rate-distortion like any other mode.
+     *
+     * It is a LOW-RATE tool and the decision is where its value is: the mode
+     * saturates -- there is no residual, so past a point more bytes buy
+     * nothing -- while the transform keeps climbing, so at a high enough rate
+     * the decision simply never chooses it and the stream is the one this
+     * encoder always produced.  What it buys at a low rate is not decibels
+     * but the KIND of failure: flat regions and sharp edges rather than
+     * transform blocks.  See docs/LOWPOLY-MODE.md.
+     *
+     *   0 = off (the default; the mode is a negotiated tool and its bit is
+     *       not emitted)
+     *   1 = on, and a tile takes it only when it is BOTH cheaper and no worse
+     *       than the intra tile it replaces.  Measured safe: the streams it
+     *       changes it does not make worse.
+     *   2 = on wherever it is cheaper, distortion notwithstanding.  This is
+     *       the low-polygon LOOK as a setting: it trades measured PSNR for a
+     *       failure mode made of flat regions and edges, which is a taste and
+     *       is why it is a separate level rather than the default.  On the
+     *       pan8 fixture at QP 34 it costs about 2 dB for 5 % fewer bytes.  */
+    uint32_t planar;
     uint32_t quad_mv;           /* 1 = allow four motion vectors per tile,
                                    one per 32x32 quadrant, as nibble deltas
                                    from the tile vector (29).              */
