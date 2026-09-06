@@ -315,6 +315,23 @@ if(TARGET nxvc-vkenc)
       set_tests_properties(vk.encoder.acid.api.stereo.layers PROPERTIES
                            SKIP_REGULAR_EXPRESSION "SKIP:")
       list(APPEND NXENC_TESTS vk.encoder.acid.api.stereo.layers)
+      # The effort levels: the integer requantiser on both sides of the
+      # byte-identity line, and the refusal of a level that does not exist.
+      # It is registered next to the ABI tests because half of it is the
+      # ABI's own mapping of `create_info::effort`.
+      foreach(dev cpu 0)
+        add_test(NAME vk.encoder.acid.effort.${dev} COMMAND ${CMAKE_COMMAND}
+                 -DVKENC=$<TARGET_FILE:nxvc-vkenc>
+                 -DNXVENC=$<TARGET_FILE:nxv-enc>
+                 -DNXVDEC=$<TARGET_FILE:nxv-dec>
+                 -DVKENCAPI=$<IF:$<TARGET_EXISTS:nxvc-vkenc-api>,$<TARGET_FILE:nxvc-vkenc-api>,>
+                 -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/effort-${dev}
+                 -DDEVICE=${dev}
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/effort.cmake)
+        set_tests_properties(vk.encoder.acid.effort.${dev} PROPERTIES
+                             SKIP_REGULAR_EXPRESSION "SKIP:")
+        list(APPEND NXENC_TESTS vk.encoder.acid.effort.${dev})
+      endforeach()
 
       # The same claim for a quantiser that MOVES, which is the entry point a
       # rate controller uses and the one the two tests above never touch: after
