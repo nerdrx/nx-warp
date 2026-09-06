@@ -218,6 +218,15 @@ typedef enum nxvc_tile_mode {
  * no coded-tile syntax; it changes which samples the predictor reads. */
 #define NXVC_TOOL_ATLAS_NBR       (1ull << 33)
 
+/* ATLAS_REBASE: the frame header may carry `atlas_rebase` (flags bit 5), which
+ * re-poses the WHOLE atlas to this frame's pose before any tile is predicted
+ * (SYNTAX.md 13.12.10).  Every valid non-static entry's pixels are warped
+ * through its own `C` by the normative predictor and its `C` becomes the
+ * identity, so the mosaic of capture times collapses to one time.  Requires
+ * ATLAS.  This puts a full-picture warp on the NORMATIVE path -- the encoder
+ * reproduces it bit for bit -- which is the cost the tool is priced on. */
+#define NXVC_TOOL_ATLAS_REBASE    (1ull << 34)
+
 /* Tools this reference decoder implements. */
 #define NXVC_TOOLS_SUPPORTED                                                  \
     (NXVC_TOOL_INTRA_DC_PLANE | NXVC_TOOL_TRANSFORM_SKIP |                    \
@@ -230,7 +239,7 @@ typedef enum nxvc_tile_mode {
      NXVC_TOOL_NEAR_SKIP | NXVC_TOOL_QUAD_MV |                                \
      NXVC_TOOL_INTER | NXVC_TOOL_WARP | NXVC_TOOL_STEREO |                    \
      NXVC_TOOL_ENTROPY_LITE | NXVC_TOOL_ATLAS | NXVC_TOOL_ROW_PRESENT |       \
-     NXVC_TOOL_ATLAS_NBR)
+     NXVC_TOOL_ATLAS_NBR | NXVC_TOOL_ATLAS_REBASE)
 
 /* ---------------------------------------------------------------- images */
 /* 8-bit planar image.  plane[0]=Y/R', plane[1]=Co/G', plane[2]=Cg/B',
@@ -538,6 +547,14 @@ typedef struct nxvc_config {
                                    at all four of its corners is under this
                                    many luma samples.  0 = no bound, which
                                    is the rule as measured.                 */
+    /* --- ATLAS_REBASE (tool 34, SYNTAX 13.12.10).  Both are encoder-side
+     * TRIGGER policy: what they decide is whether this frame sets the
+     * `atlas_rebase` flag.  The rebase itself is normative and the decoder
+     * needs neither number. */
+    uint32_t atlas_rebase_period;  /* rebase every N frames; 0 = never      */
+    uint32_t atlas_rebase_disp;    /* rebase when the composed displacement
+                                      at any valid entry's corners reaches
+                                      this many luma samples; 0 = never     */
 } nxvc_config;
 
 /* One eye's view for one frame: the orientation the frame was rendered with
@@ -571,6 +588,14 @@ typedef struct nxvc_encode_stats {
      * as a count rather than as a difference between two runs. 0 when the
      * bound is off. */
     uint64_t tiles_margin_forced;
+    /* ATLAS_REBASE (13.12.10): 1 if this frame re-posed the atlas, and the
+     * number of entries it warped, which is what the rebase COSTS -- 34 us
+     * a tile on the Pico 4, on the normative integer path. */
+    uint64_t atlas_rebased;
+    uint64_t tiles_rebased;
+    /* Tiles refreshed from the base layer this frame (13.12.9 as a refresh
+     * source), at a measured 1.9 us a tile. */
+    uint64_t tiles_base_refreshed;
 } nxvc_encode_stats;
 
 void nxvc_config_default(nxvc_config *cfg);
@@ -905,6 +930,26 @@ nxvc_status nxvc_decoder_atlas_patch_base(nxvc_decoder *dec,
                                           const nxvc_base_patch *patch,
                                           uint32_t *applied,
                                           uint32_t *superseded);
+/* The tile positions whose stored pixels are more than `margin` luma samples
+ * from where they would be if they had been captured at the last decoded
+ * frame's pose -- the staleness rule of 13.12.9 used as a REFRESH TRIGGER.
+ *
+ * `out` takes one byte per tile position of the whole frame (tile order Annex
+ * D D-3, `count` == nxvc_*_tile_count): nonzero = stale.  A position whose
+ * entry is invalid or `static` is never stale: an invalid one has nothing to
+ * refresh and a static one is head-locked and does not move.
+ *
+ * Encoder and decoder MUST agree on which tiles a base picture refreshes, or
+ * their atlases diverge; that is why this is one function in the codec taking
+ * one threshold rather than a computation each side does for itself.  The
+ * threshold is the caller's policy and is not carried in the bitstream. */
+nxvc_status nxvc_encoder_atlas_stale_tiles(const nxvc_encoder *enc,
+                                           uint32_t margin, uint8_t *out,
+                                           uint32_t count, uint32_t *n_stale);
+nxvc_status nxvc_decoder_atlas_stale_tiles(const nxvc_decoder *dec,
+                                           uint32_t margin, uint8_t *out,
+                                           uint32_t count, uint32_t *n_stale);
+
 nxvc_status nxvc_encoder_atlas_patch_base(nxvc_encoder *enc,
                                           const nxvc_base_patch *patch,
                                           uint32_t *applied,

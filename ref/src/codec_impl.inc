@@ -442,6 +442,8 @@ extern "C" nxvc_encoder *nxvc_encoder_create(const nxvc_config *cfg,
     for (int i = 0; i < 4; ++i) e->views_slot[i] = e->views_cur;
     e->atlas = e->cfg.atlas != 0;
     e->atlas_nbr = e->atlas && e->cfg.atlas_nbr != 0;
+    e->rebase_tool = e->atlas && (e->cfg.atlas_rebase_period != 0 ||
+                                 e->cfg.atlas_rebase_disp != 0);
     if (e->atlas) {
         atlas_alloc(e->at, e->g);
     } else {
@@ -506,6 +508,7 @@ static u64 encoder_tools(const nxvc_encoder *e) {
     if (e->cfg.entropy_lite) t |= NXVC_TOOL_ENTROPY_LITE;
     if (e->cfg.atlas) t |= NXVC_TOOL_ATLAS;
     if (e->cfg.atlas && e->cfg.atlas_nbr) t |= NXVC_TOOL_ATLAS_NBR;
+    if (e->rebase_tool) t |= NXVC_TOOL_ATLAS_REBASE;
     if (e->cfg.row_present) t |= NXVC_TOOL_ROW_PRESENT;
     t |= NXVC_TOOL_RES_LEVEL;
     return t;
@@ -1144,6 +1147,106 @@ static void atlas_display(const Atlas &at, const Geometry &g,
             }
 }
 
+// The largest displacement, in Q`kQCorner` luma samples, that an entry's
+// composed matrix produces at the four corners of its own tile.  This is the
+// one number that says how far a tile's stored pixels are from where they
+// would be if they had been captured now, and both the displacement-bounded
+// skip and the ATLAS_REBASE trigger are thresholds on it.  Factored so the
+// two cannot drift apart.
+static i64 atlas_corner_disp(const WarpMatrix &cw, const Geometry &g, int col,
+                             int row, bool is_static) {
+    const nw::Homography Hd =
+        plane_homography(cw, (int)g.width, (int)g.height, 1);
+    const nw::TileCorners cc = nw::warp_tile_corners(
+        Hd, col * 64, row * 64, is_static ? nw::kModeStatic : nw::kModeWarp);
+    const i32 bx[4] = {col * 64, col * 64 + 64, col * 64, col * 64 + 64};
+    const i32 by[4] = {row * 64, row * 64, row * 64 + 64, row * 64 + 64};
+    i64 worst = 0;
+    for (int k = 0; k < 4; ++k) {
+        const i64 dx = (i64)cc.x[k] - ((i64)bx[k] << nw::kQCorner);
+        const i64 dy = (i64)cc.y[k] - ((i64)by[k] << nw::kQCorner);
+        const i64 ax = dx < 0 ? -dx : dx, ay = dy < 0 ? -dy : dy;
+        if (ax > worst) worst = ax;
+        if (ay > worst) worst = ay;
+    }
+    return worst;
+}
+
+// 13.12.10, NORMATIVE.  ATLAS_REBASE: re-pose the whole atlas to this frame.
+//
+// Every valid non-static entry's pixels are warped through its own `C` -- the
+// same one-step warp 13.12.5 displays with, but with the NORMATIVE integer
+// predictor and written back into the atlas -- and its `C` becomes the
+// identity with `src_frame` this frame.  The mosaic of capture times, which is
+// what the atlas trades quality for, collapses to a single time.
+//
+// Three things are deliberate:
+//
+//  * It reads `at.pix` and writes a SEPARATE picture.  A tile's warp reads
+//    samples that land in its neighbours' atlas positions (13.12.4), so an
+//    in-place rebase would read pixels that had already been re-posed and the
+//    result would depend on tile order.  The scratch starts as a copy so the
+//    positions of invalid entries keep whatever they held.
+//  * A STATIC entry is left completely alone.  Its `C` is already the identity
+//    because its content is head-locked, so re-posing it would move content
+//    that is not supposed to move -- and it costs nothing, which is the whole
+//    reason a head-locked tile can be skipped forever.
+//  * `base_sourced` is NOT cleared.  A re-posed base patch is still base
+//    content; only a coded-tile write replaces the pixels (13.12.9).
+//
+// `src_frame` is NOT touched, and that is the load-bearing half of the rule.
+// `src_frame` is PROVENANCE -- "the frame number that last CODED this tile"
+// (13.12.1) -- while `C` and `gen` are the transform still pending on those
+// pixels.  A rebase settles the pending transform INTO the pixels; it does not
+// make the content newer.  Writing `src_frame := N` here instead is not a
+// harmless bookkeeping choice, it breaks two rules that key on provenance:
+// every coded tile in the rebasing frame is then `src_frame >= N` and is
+// DROPPED as superseded (13.12.6), and every later base patch is dropped by
+// the same monotonicity (13.12.9).  Measured while getting this wrong: 35 of
+// 46 coded tiles at the first rebasing frame silently discarded, encoder and
+// decoder still agreeing on the frame header and disagreeing on the picture.
+// So a rebase leaves age visible: staleness is `frame_number - src_frame` and
+// a re-posed tile is exactly as old as it was.
+//
+// `tiles` returns the number of entries actually warped, which is what the
+// operation costs: 34 us a tile on the Pico 4, on the normative integer path.
+static void atlas_rebase(Atlas &at, const Geometry &g, const FrameParams &fp,
+                         bool nbr, u32 frame_number, u32 *tiles) {
+    RefPicture scratch = at.pix;
+    u32 n = 0;
+    for (u32 row = 0; row < g.tiles_y; ++row)
+        for (u32 eye = 0; eye < g.eyes; ++eye)
+            for (u32 col = 0; col < g.tiles_x; ++col) {
+                const int t = linear_tile(g, (int)row, (int)eye, (int)col);
+                const AtlasEntry &e = at.ent[(size_t)t];
+                if (!(e.flags & kAtlasValid)) continue;
+                if (e.flags & kAtlasStatic) continue;
+                TileCoder tc;
+                tc.g = &g;
+                tc.fp = &fp;
+                tc.tp = TileParams{};
+                tc.tp.eye = (int)eye;
+                tc.tp.tile_index = (int)col;
+                tc.tp.mode = NXVC_MODE_WARP_SKIP;
+                tc.tp.chroma444 = (g.chroma == NXVC_CHROMA_444) ? 1 : 0;
+                tc.setup();
+                predict_tile_atlas_rule(tc, g, at.pix, at.ent, t, (int)eye,
+                                        (int)col, (int)row,
+                                        NXVC_MODE_WARP_SKIP, 0, 0, nbr);
+                reconstruct_skip(tc);
+                store_ref_tile(tc, g, scratch, (int)eye, (int)col, (int)row);
+                ++n;
+            }
+    at.pix = std::move(scratch);
+    for (auto &e : at.ent) {
+        if (!(e.flags & kAtlasValid) || (e.flags & kAtlasStatic)) continue;
+        atlas_identity(e.C);
+        e.gen = 0;
+    }
+    (void)frame_number;
+    if (tiles) *tiles = n;
+}
+
 // Squared error of the reconstruction this tile's coefficients will produce,
 // summed over every coded plane in the *coded* domain (before res_level or
 // chroma upsampling).  The encoder runs the real decoder to get it, so the
@@ -1480,6 +1583,9 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
     e->tiles.assign(ntiles, nxvc_tile_info{});
     std::memset(&e->stats, 0, sizeof(e->stats));
     e->margin_forced.store(0);
+    e->rebased_frame = 0;
+    e->rebased_tiles = 0;
+    e->base_refreshed = 0;
 
     FrameParams fp = e->fp;
     fp.frame_number = (u16)e->frame_number;
@@ -1559,6 +1665,44 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
     if (atlas) {
         if (!have_ref) e->at.reset();
         atlas_advance_frame(e->at, g, fp, e->cfg.atlas_gen_max);
+        // ---- 13.12.10, the ATLAS_REBASE trigger.  Encoder-side policy; what
+        // it decides is one flag bit.  It runs AFTER the advance, because the
+        // displacement it tests is the one this frame's tiles would predict
+        // through, and BEFORE the snapshot, because a rebased atlas is what
+        // this frame's coded tiles predict from.
+        if (e->rebase_tool && have_ref) {
+            bool fire = false;
+            if (e->cfg.atlas_rebase_period &&
+                (fp.frame_number % e->cfg.atlas_rebase_period) == 0)
+                fire = true;
+            if (!fire && e->cfg.atlas_rebase_disp) {
+                // Any entry past the bound triggers the whole rebase: the
+                // operation has no per-tile form, since a partial rebase
+                // leaves the gather reading two poses at once.
+                const i64 lim = (i64)e->cfg.atlas_rebase_disp << nw::kQCorner;
+                for (int t = 0; t < ntiles && !fire; ++t) {
+                    const AtlasEntry &ae = e->at.ent[(size_t)t];
+                    if (!(ae.flags & kAtlasValid)) continue;
+                    if (ae.flags & kAtlasStatic) continue;
+                    WarpMatrix cw{};
+                    for (int k = 0; k < 9; ++k) cw.h[k] = ae.C[k];
+                    const int eyec = tile_eye(g, (u32)t);
+                    const int cols = (int)(g.eyes * g.tiles_x);
+                    const int colc = (t % cols) - eyec * (int)g.tiles_x;
+                    const int rowc = t / cols;
+                    if (atlas_corner_disp(cw, g, colc, rowc, false) > lim)
+                        fire = true;
+                }
+            }
+            if (fire) {
+                u32 nreb = 0;
+                atlas_rebase(e->at, g, fp, e->atlas_nbr, fp.frame_number,
+                             &nreb);
+                fp.flags |= 32;   // bit 5: atlas_rebase
+                e->rebased_frame = 1;
+                e->rebased_tiles = nreb;
+            }
+        }
         e->at.snapshot();   // 13.12.3: predict from the pre-frame atlas
         atlas_wm.assign(ntiles, WarpMatrix{});
         atlas_ok.assign(ntiles, 0);
@@ -1971,26 +2115,12 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         // WARP_SKIP to NEAR_SKIP on the fast-turn clip and buys 0.1 dB.
         bool margin_bound = false;
         if (atlas && e->cfg.atlas_skip_margin && !skip_forbidden) {
-            const WarpMatrix &cw = wm_for(t, eye);
-            const nw::Homography Hd =
-                plane_homography(cw, (int)g.width, (int)g.height, 1);
-            const nw::TileCorners cc = nw::warp_tile_corners(
-                Hd, col * 64, row * 64,
-                tile_static(t) ? nw::kModeStatic : nw::kModeWarp);
-            const i32 bx[4] = {col * 64, col * 64 + 64, col * 64,
-                               col * 64 + 64};
-            const i32 by[4] = {row * 64, row * 64, row * 64 + 64,
-                               row * 64 + 64};
             const i64 lim = (i64)e->cfg.atlas_skip_margin << nw::kQCorner;
-            for (int k = 0; k < 4; ++k) {
-                const i64 dx = (i64)cc.x[k] - ((i64)bx[k] << nw::kQCorner);
-                const i64 dy = (i64)cc.y[k] - ((i64)by[k] << nw::kQCorner);
-                if (dx > lim || dx < -lim || dy > lim || dy < -lim) {
-                    skip_forbidden = true;
-                    margin_bound = true;
-                    e->margin_forced.fetch_add(1);
-                    break;
-                }
+            if (atlas_corner_disp(wm_for(t, eye), g, col, row,
+                                  tile_static(t)) > lim) {
+                skip_forbidden = true;
+                margin_bound = true;
+                e->margin_forced.fetch_add(1);
             }
         }
         const bool force_skip =
@@ -3233,6 +3363,13 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
     const bool use_pool = e->pool && ntiles > 1 && !e->cfg.stereo;
 #endif
 
+    // [SYN] 3.1.2.  One bit per tile-row structure, in the decode order of
+    // 3.3, filled by the EMITTING pass -- the decide pass has no bytes to
+    // elide.  Sized here and cleared before that pass so a re-run cannot
+    // inherit the previous one's map.
+    std::vector<u8> rp_bits;
+    bool rp_any_elided = false;
+
     auto row_header = [&](u32 row, u32 eye, bool emit, BW &rowbuf) {
         u64 skipmap = 0, dcmap = 0;
         u32 coded = 0;
@@ -3249,6 +3386,29 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             }
         }
         if (!emit) return;
+        // ---- row_present() (SYNTAX.md 3.1.2), the sending half.
+        //
+        // A row every one of whose tiles is skipped, with no near-skip
+        // correction to carry, says nothing that its 12-byte header does not
+        // already imply -- and a decoder told so by the bitmap reconstructs it
+        // through the identical all-skipped path.  So the header is not sent
+        // and the row's bit stays 0.
+        //
+        // `dcmap` has to be empty as well as `coded`: a corrected row DOES
+        // carry information (the nine bytes per named column), and 3.1.2's
+        // elided row is defined as `dc_present == 0`, so a row with a
+        // correction is transmitted however idle it otherwise looks.
+        //
+        // The bit is SET here rather than cleared from an all-ones bitmap
+        // because the bits above the last row structure must be zero, and
+        // building the map by setting only real rows makes that true by
+        // construction instead of by a mask applied afterwards.
+        const size_t rp_i = (size_t)row * g.eyes + eye;
+        if (e->cfg.row_present && coded == 0 && dcmap == 0) {
+            rp_any_elided = true;
+            return;
+        }
+        if (!rp_bits.empty()) rp_bits[rp_i >> 3] |= (u8)(1u << (rp_i & 7));
         rowbuf.u16v(fp.frame_number);
         rowbuf.u8v(row);
         // Bit 7 of `tile_count` is `dc_present`.  `coded` is at most
@@ -3292,7 +3452,15 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                 }
                 if (emit) {
                     body.raw(rowbuf.b.data(), rowbuf.b.size());
-                    if (e->cfg.collect_stats)
+                    // An ELIDED row (3.1.2) spent no header bytes, so it must
+                    // not be counted as if it had: `bytes_row_headers` is
+                    // what the tool exists to reduce, and a figure that
+                    // counted the rows it removed would report no saving.
+                    const size_t rp_i = (size_t)row * g.eyes + eye;
+                    const bool sent =
+                        rp_bits.empty() ||
+                        ((rp_bits[rp_i >> 3] >> (rp_i & 7)) & 1u) != 0u;
+                    if (e->cfg.collect_stats && sent)
                         e->stats.bytes_row_headers += kTileRowHeaderBytes;
                 }
             }
@@ -3401,7 +3569,15 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                 }
                 if (emit) {
                     body.raw(rowbuf.b.data(), rowbuf.b.size());
-                    if (e->cfg.collect_stats)
+                    // An ELIDED row (3.1.2) spent no header bytes, so it must
+                    // not be counted as if it had: `bytes_row_headers` is
+                    // what the tool exists to reduce, and a figure that
+                    // counted the rows it removed would report no saving.
+                    const size_t rp_i = (size_t)row * g.eyes + eye;
+                    const bool sent =
+                        rp_bits.empty() ||
+                        ((rp_bits[rp_i >> 3] >> (rp_i & 7)) & 1u) != 0u;
+                    if (e->cfg.collect_stats && sent)
                         e->stats.bytes_row_headers += kTileRowHeaderBytes;
                 }
             }
@@ -3492,8 +3668,26 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
     xform_ctx_report(xhist, fp.nctx);
 #endif
 
+    // [SYN] 3.1.2.  Cleared, not resized-in-place: a second emit pass over the
+    // same frame must build its map from nothing.
+    if (e->cfg.row_present) {
+        rp_bits.assign(((size_t)g.tiles_y * g.eyes + 7) / 8, 0u);
+        rp_any_elided = false;
+    }
     run_pass(false, true, fp.tabs);
     if (err != NXVC_OK) return err;
+    // The flag is set only when the frame actually elided something.  Sending
+    // an all-ones bitmap is legal but costs bytes to say nothing, and the
+    // whole point of the tool is the frame where most rows are idle.  A frame
+    // that elides nothing is spelled exactly as it was before the tool
+    // existed, which is what keeps every non-idle frame byte-identical.
+    fp.row_present = rp_any_elided ? 1 : 0;
+    if (fp.row_present) {
+        fp.flags |= 16u;   // bit 4
+        fp.row_bits = rp_bits;
+    } else {
+        fp.row_bits.clear();
+    }
 
     // ---- frame header
     BW head;
@@ -3508,7 +3702,11 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
     head.u8v(fp.flags);
     head.u8v(0);
     const size_t warp_bytes = fp.warp_present ? 36u * g.eyes : 0u;
-    size_t extra = warp_bytes + (fp.quant_matrix == 255 ? 128 : 0) +
+    // [SYN] 3.1.2: immediately after warp_ext() and BEFORE the custom
+    // quantization matrices.  Its length is fixed by the geometry, not by the
+    // content: ceil(tiles_y * eyes / 8).
+    const size_t rp_bytes = fp.row_present ? fp.row_bits.size() : 0u;
+    size_t extra = warp_bytes + rp_bytes + (fp.quant_matrix == 255 ? 128 : 0) +
                    table_bytes.size();
     u32 total = (u32)(kFrameHeaderBytes + extra + body.size());
     head.u32v(total);
@@ -3525,6 +3723,10 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         std::memcpy(o, wb.b.data(), wb.size());
         o += wb.size();
     }
+    if (rp_bytes) {
+        std::memcpy(o, fp.row_bits.data(), rp_bytes);
+        o += rp_bytes;
+    }
     if (fp.quant_matrix == 255) {
         std::memcpy(o, e->custom_matrix.data(), 128);
         o += 128;
@@ -3538,9 +3740,13 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
     *out_len = (size_t)(o - buf);
     if (e->cfg.collect_stats) {
         e->stats.tiles_margin_forced = e->margin_forced.load();
+        e->stats.atlas_rebased = e->rebased_frame;
+        e->stats.tiles_rebased = e->rebased_tiles;
+        e->stats.tiles_base_refreshed = e->base_refreshed;
         e->stats.bytes_total = *out_len;
         e->stats.bytes_frame_header =
-            kFrameHeaderBytes + warp_bytes + (fp.quant_matrix == 255 ? 128 : 0);
+            kFrameHeaderBytes + warp_bytes + rp_bytes +
+            (fp.quant_matrix == 255 ? 128 : 0);
         e->stats.bytes_tables = table_bytes.size();
     }
 
@@ -3939,7 +4145,14 @@ static nxvc_status parse_frame_header(nxvc_decoder *d, const u8 *buf,
     fp.row_present = (fp.flags >> 4) & 1;
     if (fp.row_present && !(d->si.tools & NXVC_TOOL_ROW_PRESENT))
         return NXVC_ERR_BITSTREAM;
-    if (fp.flags & 0xe0) return NXVC_ERR_BITSTREAM;   // reserved bits 5-7
+    // SYNTAX.md 13.12.10: flags bit 5 is `atlas_rebase`, gated on tool bit 34
+    // and on ATLAS itself -- re-posing an atlas that does not exist is not a
+    // thing a stream can ask for.
+    fp.atlas_rebase = (fp.flags >> 5) & 1;
+    if (fp.atlas_rebase &&
+        (!(d->si.tools & NXVC_TOOL_ATLAS_REBASE) || !d->atlas))
+        return NXVC_ERR_BITSTREAM;
+    if (fp.flags & 0xc0) return NXVC_ERR_BITSTREAM;   // reserved bits 6-7
     // Annex D D-1: warp_present requires the WARP tool bit.
     if (fp.warp_present && !(d->si.tools & NXVC_TOOL_WARP))
         return NXVC_ERR_BITSTREAM;
@@ -4078,6 +4291,13 @@ extern "C" nxvc_status nxvc_decoder_decode_frame(nxvc_decoder *d,
         // just cleared the table, in which case there is nothing to advance.
         if (fp.flags & 1) d->at.reset();
         atlas_advance_frame(d->at, g, fp, 0u);
+        // 13.12.10: the rebase runs between the advance and the snapshot, so
+        // this frame's coded tiles predict from an atlas that is entirely at
+        // this frame's pose.  The encoder does the same, in the same place.
+        d->rebased_tiles = 0;
+        if (fp.atlas_rebase)
+            atlas_rebase(d->at, g, fp, d->atlas_nbr, fp.frame_number,
+                         &d->rebased_tiles);
         d->at.snapshot();   // 13.12.3: predict from the pre-frame atlas
     } else {
         // A frame that overwrites a slot invalidates whatever it held; from
@@ -4926,6 +5146,55 @@ static nxvc_status atlas_patch_base(Atlas &at, const Geometry &g,
     if (applied) *applied = nap;
     if (superseded) *superseded = nsup;
     return NXVC_OK;
+}
+
+// 13.12.9 as a refresh trigger.  The staleness of an entry is the SAME
+// quantity the displacement-bounded skip thresholds (atlas_corner_disp), read
+// off the entry's current composed matrix: how far its stored pixels are from
+// where content captured now would be.  One implementation, called from both
+// sides, so the two cannot disagree about which tiles a base picture replaces.
+static nxvc_status atlas_stale_tiles(const Atlas &at, const Geometry &g,
+                                     u32 margin, u8 *out, u32 count,
+                                     u32 *n_stale) {
+    if (count != g.ntiles()) return NXVC_ERR_ARG;
+    const i64 lim = (i64)margin << nw::kQCorner;
+    const int cols = (int)(g.eyes * g.tiles_x);
+    u32 n = 0;
+    for (u32 t = 0; t < count; ++t) {
+        const AtlasEntry &e = at.ent[(size_t)t];
+        out[t] = 0;
+        if (!(e.flags & kAtlasValid)) continue;
+        if (e.flags & kAtlasStatic) continue;
+        WarpMatrix cw{};
+        for (int k = 0; k < 9; ++k) cw.h[k] = e.C[k];
+        const int eye = (int)((t % (u32)cols) / g.tiles_x);
+        const int col = (int)(t % (u32)cols) - eye * (int)g.tiles_x;
+        const int row = (int)(t / (u32)cols);
+        if (atlas_corner_disp(cw, g, col, row, false) > lim) {
+            out[t] = 1;
+            ++n;
+        }
+    }
+    if (n_stale) *n_stale = n;
+    return NXVC_OK;
+}
+
+extern "C" nxvc_status nxvc_encoder_atlas_stale_tiles(const nxvc_encoder *e,
+                                                      uint32_t margin,
+                                                      uint8_t *out,
+                                                      uint32_t count,
+                                                      uint32_t *n_stale) {
+    if (!e || !out || !e->atlas) return NXVC_ERR_UNSUPPORTED;
+    return atlas_stale_tiles(e->at, e->g, margin, out, count, n_stale);
+}
+
+extern "C" nxvc_status nxvc_decoder_atlas_stale_tiles(const nxvc_decoder *d,
+                                                      uint32_t margin,
+                                                      uint8_t *out,
+                                                      uint32_t count,
+                                                      uint32_t *n_stale) {
+    if (!d || !out || !d->have_stream || !d->atlas) return NXVC_ERR_UNSUPPORTED;
+    return atlas_stale_tiles(d->at, d->g, margin, out, count, n_stale);
 }
 
 extern "C" nxvc_status nxvc_decoder_atlas_patch_base(nxvc_decoder *d,

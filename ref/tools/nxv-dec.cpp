@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "nxvc/nxvc.h"
+#include "base_refresh.h"
 
 static void usage() {
     std::fprintf(stderr,
@@ -57,7 +58,8 @@ int main(int argc, char **argv) {
     // --atlas-dump writes the NORMATIVE output under the atlas: the per-tile
     // table after each decoded frame (13.12.1), which is what a conformance
     // comparison reads.  --lose-* injects tile loss deterministically.
-    std::string atlas_dump;
+    std::string atlas_dump, atlas_base_path;
+    int atlas_base_margin = 8;
     int lose_every = 0, lose_frac = 0;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
@@ -73,6 +75,9 @@ int main(int argc, char **argv) {
         else if (a == "--quiet") quiet = 1;
         else if (a == "--nv12") nv12 = 1;
         else if (a == "--atlas-dump") atlas_dump = val();
+        else if (a == "--atlas-base") atlas_base_path = val();
+        else if (a == "--atlas-base-margin")
+            atlas_base_margin = std::atoi(val());
         else if (a == "--lose-every") lose_every = std::atoi(val());
         else if (a == "--lose-frac") lose_frac = std::atoi(val());
         else if (a == "-h" || a == "--help") { usage(); return 0; }
@@ -94,6 +99,7 @@ int main(int argc, char **argv) {
     std::fclose(fi);
 
     std::FILE *fatlas = nullptr;
+    BaseRefresh brefresh;
     std::vector<uint8_t> atlas_buf, lost;
     if (!atlas_dump.empty()) {
         fatlas = std::fopen(atlas_dump.c_str(), "wb");
@@ -125,6 +131,21 @@ int main(int argc, char **argv) {
     std::vector<uint8_t> Y((size_t)yw * yh), U((size_t)cw * ch), V((size_t)cw * ch),
         A((size_t)yw * yh, 255);
 
+    if (!atlas_base_path.empty()) {
+        // The decoder's side of the SAME rule the encoder ran: same threshold,
+        // same base pictures, tile selection from the same codec function.
+        if (si.eyes != 1) {
+            std::fprintf(stderr, "--atlas-base needs a one-eye stream\n");
+            return 1;
+        }
+        if (!brefresh.open(atlas_base_path, yw, yh,
+                           (uint32_t)(atlas_base_margin > 0 ? atlas_base_margin
+                                                            : 0),
+                           nxvc_decoder_tile_count(dec))) {
+            std::perror("open --atlas-base");
+            return 1;
+        }
+    }
     std::FILE *fo = std::fopen(out.c_str(), "wb");
     if (!fo) { std::perror("open output"); return 1; }
     int n = 0;
@@ -167,6 +188,18 @@ int main(int argc, char **argv) {
                                        &img, &consumed);
         if (st != NXVC_OK) {
             std::fprintf(stderr, "frame %d: %s\n", n, nxvc_status_string(st));
+            return 1;
+        }
+        if (brefresh.f &&
+            !brefresh.step(
+                (uint32_t)n,
+                [&](uint32_t m, uint8_t *o, uint32_t c, uint32_t *ns) {
+                    return nxvc_decoder_atlas_stale_tiles(dec, m, o, c, ns);
+                },
+                [&](const nxvc_base_patch *pp, uint32_t *ap, uint32_t *su) {
+                    return nxvc_decoder_atlas_patch_base(dec, pp, ap, su);
+                })) {
+            std::fprintf(stderr, "base refresh failed at frame %d\n", n);
             return 1;
         }
         if (fatlas) {
