@@ -1208,6 +1208,45 @@ int main(int argc, char **argv) {
                             "(%+.2f %%)\n",
                             pred, act, act > 0 ? (pred - act) / act * 100.0 : 0.0);
             }
+            // docs/ENCODER-DECISION.md: the per-frame mode histogram, so a
+            // second encoder can check its port of the tile decision FRAME FOR
+            // FRAME rather than on a sequence average, which hides a decision
+            // that is wrong on half the tiles in both directions.
+            {
+                uint32_t tcn = 0;
+                const nxvc_tile_info *tin = nxvc_encoder_tiles(enc, &tcn);
+                unsigned nskip = 0, nnear = 0, nintra = 0, nwarp = 0,
+                         nstatic = 0, nwarped = 0;
+                for (uint32_t t = 0; t < tcn; ++t) {
+                    if (tin[t].skipped) {
+                        ++nskip;
+                        if (tin[t].near_skip) ++nnear;
+                    } else if (tin[t].mode == NXVC_MODE_INTRA) {
+                        ++nintra;
+                    } else if (tin[t].mode == NXVC_MODE_STATIC_MV) {
+                        ++nstatic;
+                    } else {
+                        ++nwarp;
+                    }
+                }
+                // What the DECODER warps.  On an ATLAS frame a skipped tile
+                // warps nothing (13.12); on a PICTURE frame every tile that is
+                // not INTRA is reconstructed through the predictor.
+                const bool picframe = (st2.atlas_rebased != 0);
+                nwarped = picframe ? (tcn - nintra) : (nwarp + nstatic);
+                std::printf("  modes: skip %u (near %u)  intra %u  warp_mv %u"
+                            "  static_mv %u  -> decoder warps %u  [%s frame]\n",
+                            nskip, nnear, nintra, nwarp, nstatic, nwarped,
+                            picframe ? "PICTURE" : "ATLAS");
+            }
+            if (st2.atlas_disp_entries)
+                std::printf("  disp: max %.3f  mean %.3f samples  "
+                            "(%llu/%llu sixteenths) over %llu entries\n",
+                            (double)st2.atlas_disp_max_q6 / 64.0,
+                            (double)st2.atlas_disp_mean_q6 / 64.0,
+                            (unsigned long long)(st2.atlas_disp_max_q6 / 4),
+                            (unsigned long long)(st2.atlas_disp_mean_q6 / 4),
+                            (unsigned long long)st2.atlas_disp_entries);
             // ADR-0029: what the atlas maintenance cost this frame, as counts.
             // A rebase (13.12.10) is 34 us a tile on the Pico 4 and a
             // base-sourced refresh is 1.9 us a tile, so these two numbers ARE

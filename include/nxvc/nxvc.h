@@ -636,6 +636,12 @@ typedef struct nxvc_encode_stats {
     /* Tiles refreshed from the base layer this frame (13.12.9 as a refresh
      * source), at a measured 1.9 us a tile. */
     uint64_t tiles_base_refreshed;
+    /* Corner displacement across the atlas this frame, in 1/64 luma sample
+     * (the Q6 the corner derivation of 3.1.1 works in), over valid non-static
+     * entries AFTER this frame's advance -- the same quantity 13.12.11.1's
+     * mode trigger thresholds.  It is what says whether a clip is actually
+     * still: a "rest" clip whose corners move two samples a frame is not. */
+    uint64_t atlas_disp_max_q6, atlas_disp_mean_q6, atlas_disp_entries;
 } nxvc_encode_stats;
 
 void nxvc_config_default(nxvc_config *cfg);

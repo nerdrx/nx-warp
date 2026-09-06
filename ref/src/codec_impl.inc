@@ -1791,7 +1791,8 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
     // that number IS "displacement since the last PICTURE frame", and there is
     // no separate clock to keep.
     bool picture_frame = false;
-    if (atlas_stream && e->mode_switch && have_ref) {
+    e->disp_max_q6 = e->disp_sum_q6 = e->disp_entries = 0;
+    if (atlas_stream && have_ref) {
         i64 worst = 0;
         const int cols = (int)(g.eyes * g.tiles_x);
         for (int t = 0; t < ntiles; ++t) {
@@ -1811,7 +1812,14 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
             const int row = t / cols;
             const i64 d0 = atlas_corner_disp(cw, g, col, row, false);
             if (d0 > worst) worst = d0;
+            // Reported whether or not the mode switch is on: a clip's
+            // stillness is a property of the clip, and it is the number that
+            // decides whether a whole-sample identity is ever available.
+            if ((u64)d0 > e->disp_max_q6) e->disp_max_q6 = (u64)d0;
+            e->disp_sum_q6 += (u64)d0;
+            ++e->disp_entries;
         }
+        if (!e->mode_switch) worst = -1;   // measured only, decides nothing
         const i64 lim = (i64)e->cfg.atlas_picture_disp << nw::kQCorner;
         const u32 since = e->frame_number - e->last_picture_frame;
         if (e->cfg.atlas_picture_disp && worst > lim &&
@@ -1855,6 +1863,11 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
     }
     if (picture_frame) {
         fp.flags |= 32;   // bit 5: 13.12.11, a PICTURE frame
+        // The field as well as the bit.  The decoder sets this when it parses
+        // flags bit 5; the encoder has to set it for itself, and until it did,
+        // every encoder-side consumer of `fp.picture_frame` -- the stats, and
+        // anything a later reader adds -- silently saw an ATLAS frame.
+        fp.picture_frame = 1;
         // The reference is the picture the atlas holds, assembled at the pose
         // it holds it at.  Written into the ring slot so that everything below
         // takes the ordinary non-atlas path unmodified -- which is what makes
@@ -4054,6 +4067,10 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         e->stats.atlas_rebased = fp.picture_frame ? 1u : 0u;
         e->stats.tiles_rebased = fp.picture_frame ? (u64)ntiles : 0u;
         e->stats.tiles_base_refreshed = e->base_refreshed;
+        e->stats.atlas_disp_max_q6 = e->disp_max_q6;
+        e->stats.atlas_disp_mean_q6 =
+            e->disp_entries ? e->disp_sum_q6 / e->disp_entries : 0;
+        e->stats.atlas_disp_entries = e->disp_entries;
         e->stats.bytes_total = *out_len;
         e->stats.bytes_frame_header =
             kFrameHeaderBytes + warp_bytes + rp_bytes +
