@@ -375,6 +375,10 @@ above a cold device. **The ratio is the measurement; the absolute is not.**
 | lever | result |
 |---|---|
 | smaller LDS footprint (store the tile in halves) | **no effect** — see below |
+| two independent sample chains a thread | 0 % |
+| four independent sample chains a thread | **+31 %** |
+| 16-bit packed arithmetic | **impossible** — see the ranges below |
+| software pipelining (loads issued a pair ahead) | **+5 %** |
 | stage the source footprint in LDS, take taps from there | **+26 %** |
 | factor the bilinear to six multiplies instead of eight | **+22 %** (with the hoist) |
 | hoist the quadrant vector out of the per-sample loop | **+22 %** |
@@ -419,11 +423,78 @@ made it faster:
 * the DDA and the shift/paired-fetch pair both GREW the SPIR-V (+156 and +112
   words) and both got faster.
 
-So this kernel is latency- and ILP-bound, not instruction-bound, and a change
-should be judged by whether it shortens the dependency chain rather than by how
-many operations it removes. `NXVW_ABL_NOWARP`, `NXVW_ABL_COPYWARP`,
+An earlier version of this section concluded from that "the kernel is latency-
+and ILP-bound, so judge a change by whether it shortens the dependency chain".
+**That was overstated, and the next two experiments killed it.**
+
+Giving each thread more independent sample chains is the direct test of an ILP
+shortage, and there is none: two chains is 34.11 us/tile against the shipped
+34.10, and four is 44.61 (**+31 %**).
+
+Nor does any static metric predict the results. The driver's own shader
+statistics for the skip module, against the runtimes measured for the same
+binaries:
+
+| variant | instr | tex reads | short sync | long sync | us/tile |
+|---|---|---|---|---|---|
+| pre-DDA | 1698 | 32 | 33 | 21 | 41.78 |
+| shipped (post-DDA) | 1699 | 32 | 33 | 21 | **34.10** |
+| quadrant hoisted | 1686 | 32 | 33 | 21 | 41.60 |
+| four chains | 2170 | 32 | 42 | 20 | 44.61 |
+
+The first three are the SAME counters to within one instruction, and they span
+22 % of runtime. Instruction count explains the four-chain row and nothing
+else; SPIR-V word count predicts the wrong sign twice.
+
+So the honest rule is the narrow one: **on this driver, for this kernel, no
+metric available to us predicts the outcome, and every candidate has to be
+measured.** That is why the ablation switches and
+`scripts/passb-device-rows.sh` exist, and why the table above is a list of
+refusals rather than a design principle. `NXVW_ABL_NOWARP`, `NXVW_ABL_COPYWARP`,
 `NXVW_ABL_LDSPAD` and `NXVW_ABL_STAGE*` are all still there, off unless
 `NXVW_PASSB_EXTRA_DEFS` asks, so the next candidate can be priced the same way.
+
+### Software pipelining does not help either
+
+The four ring loads of a sample pair can be issued a full pair of arithmetic
+ahead, which is the one thing the compiler cannot do for itself here: the DDA
+accumulator carries between iterations, so it cannot unroll across them. Split
+the coordinate computation from the tap combine, run a prologue for pair 0, and
+have each iteration issue the NEXT pair's eight loads before reducing the
+current pair. Bit-identical, and **+4.8 %** (34.77 -> 36.45 us/tile, three
+interleaved rounds, ranges non-overlapping).
+
+The probe is NOT kept. Every other ablation here is a small edit to the shipped
+kernel -- a constant fill, one changed `return`, an extra array, a copy loop --
+but this one is a second copy of the coordinate pipeline behind an `#ifdef`
+that CI never builds, and a second copy of normative arithmetic is the thing
+`vk.encoder.passw.same` exists to prevent. The number is the result; the code
+is not worth the drift risk.
+
+### 16-bit packed arithmetic cannot carry this kernel
+
+The taps are narrow -- the ring holds reconstructed samples, which are clamped
+to `maxval`, so 255 or 511 -- and the bilinear weights are 0..16. Everything
+built from them is not:
+
+| stage | max abs | bits | fits int16 |
+|---|---|---|---|
+| corner (`kWarpCornerClamp`) | 524288 | 21 | no |
+| stage-1 numerator `c*64 + 32 + dc*u` | 99614752 | 28 | no |
+| stage-2 `top*(64-v) + bot*v + 32` | 99614752 | 28 | no |
+| `xq6` (`kWarpCoordClamp`) | 4194304 | 24 | no |
+| `xq4` | 1048576 | 22 | no |
+| tap | 511 | 10 | **yes** |
+| horizontal `gx*t00 + fx*t10` | 16352 | 15 | **yes** |
+| bilinear accumulator | 523264 | 20 | no |
+| ring element index (1088x1088, 4 slots) | 7102464 | 24 | no |
+
+Exactly one interior expression fits, the horizontal partial sum -- and
+reaching it requires the factored bilinear that is measured above at +22 %.
+Every other stage exceeds 16 bits by the spec's own clamps, so there is no pair
+of samples that can share a 32-bit lane. The driver also already reports **677
+of 684 ALU instructions in the 16-bit pipe** for this module, so whatever
+narrowing is legal here is being done without being asked.
 
 `scripts/passb-device-rows.sh` is the harness these rows came from: it gates on
 the headset being idle, checks the sha256 either side of the push, samples
