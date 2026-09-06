@@ -400,6 +400,62 @@ failed one diverges the moment k > 0 -- which, for the eager path, is never,
 because k is always 0 there. All 64 bytes are compared, so this shows up as a
 table mismatch and not as a wrong pixel.
 
+## The per-frame MODE, and one contradiction to settle before it is built
+
+The pricing decision hands the decoder a second frame kind: a frame is either
+an **ATLAS frame** (this whole document -- skipped tiles untouched, per-entry
+lazy advance, coded-only Pass A/B) or a **PICTURE frame** (every valid entry
+re-posed to the current pose by the normative warp, pixels materialised into
+the atlas, `C := I`, `gen := 0`, and then the frame's coded tiles applied on
+top as usual). One frame-header bit selects it; the encoder chooses by measured
+head displacement, so at rest nothing rebases and at fast turns every frame is
+a PICTURE frame at today's cost.
+
+Three consequences the host integration is designed to now: the rebase kernel
+is **per entry** and dispatchable over "all valid entries" in one dispatch; a
+PICTURE frame's cost is the old skip warp (~34 us/tile x entries) and is
+ALLOWED to be slow because display is decoupled; and the display view must
+work identically in both modes. Rolling rebase and base-layer refresh are not
+adopted -- base patches stay a patch source through
+`nxvc_vk_atlas_write_tiles`, just not a refresh policy.
+
+> **`src_frame` on a PICTURE frame is specified twice, and the two disagree.**
+> This is not a wording preference and it is not something the decoder can pick
+> a side of quietly, so it is written down here rather than resolved in code.
+>
+> SYNTAX 13.12.10, **normative and merged on this branch**, says of a rebase:
+> *"`src_frame` does not change... Writing `src_frame := frame_number` here
+> instead is not a bookkeeping preference. It makes every coded tile of the
+> rebasing frame satisfy `src_frame >= frame_number` and therefore be dropped
+> as superseded, and it makes every later base patch stale on arrival."* That
+> failure is **measured**: 35 of 46 coded tiles silently dropped.
+>
+> The PICTURE-frame decision says the opposite -- `src_frame := N` for every
+> tile, *"the one legitimate case where src_frame moves without coding, because
+> every tile's pixels are new"* -- **and in the same sentence** says the
+> frame's coded tiles then apply on top as usual. Under 13.12.6's supersede
+> test, which is `>=`, those two cannot both hold: every coded tile of that
+> frame is dropped, which is exactly the 35-of-46 result again.
+>
+> The distinction the two are reaching for is real -- a rebase settles a
+> pending transform and changes no content, while a PICTURE frame materialises
+> genuinely new pixels for every position -- so the resolution is probably one
+> of:
+>
+> 1. **the PICTURE re-pose does not write `src_frame` at all**, matching
+>    13.12.10, and "the pixels are new" is carried by `gen := 0` alone (age
+>    then stays `N - src_frame`, which is what the rolling rank and the base
+>    monotonicity both already key on); or
+> 2. **it writes `src_frame := N` only for entries this frame does NOT code**,
+>    so the frame's own coded tiles are still strictly newer and apply; or
+> 3. the supersede test becomes `>` for a same-frame write, which reopens the
+>    retransmit case `AtlasHostState::apply()` documents `>=` for and is
+>    therefore the worst of the three.
+>
+> Until the ADR owner says which, `AtlasHostState::apply()` keeps `>=` and the
+> rebase path does not touch `src_frame` -- option 1, because it is the only
+> one of the three that is currently normative text.
+
 ## The base layer: importing tiles the decoder did not decode
 
 The base layer ships in atlas v1 as a patch source. The client HEVC-decodes it,
