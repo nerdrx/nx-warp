@@ -5,6 +5,8 @@
 
 #include "nxe_host.h"
 
+#include "../forward/nxe_rate.h"
+
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -89,6 +91,7 @@ void setup(const Config &cfg, Frame &f) {
      * frame-uniform: E3 reads it from the frame parameters so the CPU model
      * and the shader take it from one place. */
     fp.int_rdoq = (uint32_t)cfg.int_rdoq;
+    f.rate_check = cfg.rate_check;
     fp.intra_dir = cfg.intra_dir ? 1u : 0u;
     fp.dir_layer = cfg.dir_layer ? 1u : 0u;
     fp.nsub_log2 = lite ? 3u : (uint32_t)cfg.nsub_log2;
@@ -898,6 +901,42 @@ void encode_frame_cpu(Frame &f, uint32_t frame_number) {
                               &f.slots[(size_t)t * f.slot_stride]);
         f.jobs[t].payload_len = (uint32_t)len;
         f.tile_bytes[t] = (uint32_t)(NXE_TILE_HEADER_BYTES + len);
+        /* The model against the coder, on the very tile the coder just
+         * produced -- same coefficients, same table set, same lane count.
+         * Nothing here feeds back into the stream. */
+        if (f.rate_check) {
+            const uint32_t est_q10 =
+                f.entropy_lite
+                    ? nxe_lite_tile_bits_q10(
+                          &fp, &f.jobs[t], &tu,
+                          &f.coef[(size_t)t * NXE_TILE_COEFS_MAX],
+                          &f.modes[(size_t)t * 3 * 64], f.entropy_lite - 1)
+                    : nxe_tile_bits_q10(
+                          &fp, &f.jobs[t], &tu,
+                          &f.coef[(size_t)t * NXE_TILE_COEFS_MAX],
+                          &f.modes[(size_t)t * 3 * 64], &f.tabs);
+            const uint64_t real_bits = 8ull * f.tile_bytes[t];
+            f.rc_tiles++;
+            f.rc_est_q10 += est_q10;
+            f.rc_real_bits += real_bits;
+            /* Under about a hundred bits the rANS state flush dominates and a
+             * percentage says more about the flush than about the model. */
+            if (!f.entropy_lite && real_bits < 512) {
+                f.rc_tiny++;
+            } else {
+                const double e = 100.0 *
+                                 ((double)est_q10 / 1024.0 - (double)real_bits) /
+                                 (double)real_bits;
+                f.rc_err_sum += e;
+                f.rc_err_abs_sum += e < 0 ? -e : e;
+                if (f.rc_tiles - f.rc_tiny == 1) {
+                    f.rc_err_min = f.rc_err_max = e;
+                } else {
+                    if (e < f.rc_err_min) f.rc_err_min = e;
+                    if (e > f.rc_err_max) f.rc_err_max = e;
+                }
+            }
+        }
     }
     pack_frame(f, frame_number);
 }

@@ -137,6 +137,13 @@ int nxe_e4_tile(const nxe_frame_params *fp, const nxe_tile_job *job,
                 const nxe_tile_units *tu, const int16_t *coef,
                 const uint8_t *modes, const nxe_tables *tabs, uint8_t *out);
 
+/* The tile's rate in Q10 bits, from the operation list E4 would encode, without
+ * encoding it.  The estimate the per-tile QP decision is built on; see
+ * nxe_rate.h for what it is exact about and what it is not. */
+uint32_t nxe_tile_bits_q10(const nxe_frame_params *fp, const nxe_tile_job *job,
+                           const nxe_tile_units *tu, const int16_t *coef,
+                           const uint8_t *modes, const nxe_tables *tabs);
+
 /* Pack the 8-byte tile header, ref's pack_tile_header restricted to what an
  * intra tile of this pipeline can carry. */
 void nxe_pack_tile_header(const nxe_frame_params *fp, const nxe_tile_job *job,
