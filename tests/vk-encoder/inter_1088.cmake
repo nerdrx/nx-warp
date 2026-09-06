@@ -328,3 +328,85 @@ else()
   message(STATUS "vk.encoder.inter.cv1088: --entropy lite not available, "
                  "Lite leg skipped")
 endif()
+
+# ---- 8. the confirmation, which is what makes a refusal impossible.
+#
+# Leg 6 above proves the reference walk works when the encoder is told about a
+# drop BEFORE it codes the next frame.  No link delivers that: a not-held
+# report is negative, so silence means "held", and silence is also what a frame
+# dropped a moment ago produces.  `--report-delay 2` is that reality, and under
+# it the walk alone is not enough -- the encoder codes two frames on the
+# chain's optimism and they are refused.
+#
+# `--ack-delay K` is the client also CONFIRMING what it reconstructed, K frames
+# later, which is a statement about a picture that exists on the device and so
+# has no such window.  The control leg is the same clip WITHOUT confirmations,
+# which must be refused; without it this would pass against an encoder that
+# ignored them.
+set(latecommon --in ${YUV} --w ${W} --h ${H} --pix yuv420p --qp 26
+               --frames ${FRAMES} --nsub 3 --matrix 1 --ctx v3 --intra-dir off
+               --quiet --poses ${POSES} --intra-period 180 --inter
+               --coded-vectors --custom-tables --tab v2 --device ${DEVICE}
+               --report-delay 2)
+
+foreach(n 2 3)
+  # The control: reports arrive late and nothing confirms.  Refused.
+  execute_process(COMMAND ${VKENC} ${latecommon} --hold-every ${n}
+                          --out ${WORKDIR}/late${n}.nxv
+                  RESULT_VARIABLE rc ERROR_VARIABLE eout)
+  if(NOT rc EQUAL 0)
+    message(FATAL_ERROR "nxvc-vkenc --report-delay 2 failed (${rc}): ${eout}")
+  endif()
+  execute_process(COMMAND ${NXVDEC} --in ${WORKDIR}/late${n}.nxv
+                          --out ${WORKDIR}/late${n}.yuv --pix yuv420p
+                          --decode-every ${n} --quiet
+                  RESULT_VARIABLE rc OUTPUT_QUIET ERROR_QUIET)
+  if(rc EQUAL 0)
+    message(FATAL_ERROR
+      "a client reconstructing one frame in ${n} accepted a stream whose "
+      "not-held reports arrived two frames late and which carried no "
+      "confirmations.  That is the window confirmations exist to close, so "
+      "this test is no longer measuring anything.")
+  endif()
+
+  # With confirmations at the same latency: every frame the client decodes
+  # must decode, on both decoders, identically.
+  execute_process(COMMAND ${VKENC} ${latecommon} --hold-every ${n}
+                          --ack-delay 1
+                          --out ${WORKDIR}/ack${n}.nxv
+                  RESULT_VARIABLE rc ERROR_VARIABLE eout)
+  if(NOT rc EQUAL 0)
+    message(FATAL_ERROR "nxvc-vkenc --ack-delay 1 failed (${rc}): ${eout}")
+  endif()
+  execute_process(COMMAND ${NXVDEC} --in ${WORKDIR}/ack${n}.nxv
+                          --out ${WORKDIR}/ack${n}.yuv --pix yuv420p
+                          --decode-every ${n} --quiet
+                  RESULT_VARIABLE rc ERROR_VARIABLE derr)
+  if(NOT rc EQUAL 0)
+    message(FATAL_ERROR
+      "nxv-dec refused a frame of the confirmed --hold-every ${n} stream, "
+      "which is the one thing confirmations are supposed to make "
+      "impossible: ${derr}")
+  endif()
+  if(VKDEC)
+    execute_process(COMMAND ${VKDEC} --in ${WORKDIR}/ack${n}.nxv
+                            --out ${WORKDIR}/ack${n}-vk.yuv --pix yuv420p
+                            --decode-every ${n} --quiet
+                    RESULT_VARIABLE rc ERROR_VARIABLE derr)
+    if(NOT rc EQUAL 0 AND NOT rc EQUAL 77)
+      message(FATAL_ERROR
+        "the GPU decoder refused a frame of the confirmed --hold-every ${n} "
+        "stream at 289 tiles: ${derr}")
+    endif()
+    if(rc EQUAL 0)
+      execute_process(COMMAND ${CMAKE_COMMAND} -E compare_files
+                              ${WORKDIR}/ack${n}.yuv ${WORKDIR}/ack${n}-vk.yuv
+                      RESULT_VARIABLE rc)
+      if(NOT rc EQUAL 0)
+        message(FATAL_ERROR
+          "the two decoders disagree on the confirmed --hold-every ${n} "
+          "stream")
+      endif()
+    endif()
+  endif()
+endforeach()

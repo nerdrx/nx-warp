@@ -189,6 +189,9 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_create(const nxvc_vke_create_info *ci
     if (ci->ref_sel != 0 && ci->inter == 0)
         return createerr(NXVC_VKE_ERR_ARG, "ref_sel=%u needs inter=1",
                          ci->ref_sel);
+    if (ci->ref_confirm != 0 && ci->inter == 0)
+        return createerr(NXVC_VKE_ERR_ARG, "ref_confirm=%u needs inter=1",
+                         ci->ref_confirm);
 
     const bool adopting = ci->device != VK_NULL_HANDLE;
     if (adopting && (!ci->physical_device || !ci->queue))
@@ -218,6 +221,7 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_create(const nxvc_vke_create_info *ci
     e->cfg.int_coded_vectors =
         ci->inter != 0 && ci->coded_vectors != NXVC_VKE_CV_NONE;
     e->cfg.ref_sel = ci->inter != 0 ? int(ci->ref_sel) : 0;
+    e->cfg.ref_confirm = ci->inter != 0 && ci->ref_confirm != 0;
     e->cfg.wm_id = 0;
     e->cfg.chroma_qp_off = 0;
     e->cfg.nsub_log2 = 3; /* eight rANS lanes; paper 6.3 fixes v1 at eight */

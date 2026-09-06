@@ -130,15 +130,50 @@ struct HeldState {
         int64_t pred_fn = -1;   /* the frame it predicts from; -1 = intra */
         uint8_t used = 0;
         uint8_t held = 0;
+        /* The client SAID it reconstructed this frame.  Ground truth, not an
+         * inference: `held` above is what the encoder can deduce from the
+         * prediction chain, and it is optimistic between a drop and the report
+         * that names it -- which is a round trip, and which is exactly when
+         * the encoder codes the frames that then get refused.  A confirmation
+         * has no such window and needs no cascade: a frame the headset says it
+         * reconstructed is one it can predict from, whatever happened before
+         * or after it. */
+        uint8_t confirmed = 0;
     };
     Rec r[kDepth];
     uint32_t newest = 0;
     bool any = false;
+    /* Whether a confirmation has EVER arrived.  Until one has, the caller is
+     * one that does not send them -- an older client, or a harness -- and the
+     * chain-derived `held` is the only evidence there is, so that is what
+     * select_reference() uses.  From the first confirmation on it uses
+     * confirmations only, which is what makes a refusal impossible rather than
+     * merely rarer.  There is deliberately no timeout back the other way: a
+     * client that has stopped confirming is a client whose held set is unknown,
+     * and coding INTRA for it is correct where guessing is not -- and an INTRA
+     * frame it does reconstruct starts the confirmations again. */
+    bool any_confirmed = false;
+    uint32_t newest_confirmed = 0;
+    /* The caller has SAID its client confirms, so confirmations are required
+     * from the first frame rather than from the first one that arrives.
+     *
+     * Without it there is a startup window -- before any confirmation has
+     * landed the encoder has nothing but the chain to go on, and the chain is
+     * optimistic, so the first frames after the initial INTRA can still be
+     * refused.  A caller that knows its client's protocol can close that
+     * window by saying so, and pays for it with INTRA frames until the first
+     * confirmation, which is a handful of frames once. */
+    bool require_confirmed = false;
+    bool confirmation_required() const {
+        return require_confirmed || any_confirmed;
+    }
 
     void reset() {
         for (int i = 0; i < kDepth; ++i) r[i] = Rec{};
         newest = 0;
         any = false;
+        any_confirmed = false;
+        newest_confirmed = 0;
     }
 
     const Rec *find(uint32_t fn) const {
@@ -153,6 +188,30 @@ struct HeldState {
         const Rec *e = find(fn);
         return e && e->held;
     }
+    bool confirms(uint32_t fn) const {
+        const Rec *e = find(fn);
+        return e && e->confirmed;
+    }
+
+    /* The client said it DID reconstruct `fn`.  Monotonic: nothing later can
+     * take it back, because it is a statement about a picture that exists on
+     * the device rather than about a chain the encoder is reasoning over.
+     *
+     * A confirmation for a frame the history no longer covers is accepted and
+     * recorded as "confirmations are flowing" without a record to hang it on,
+     * because that is all a frame that old can contribute -- `ref_sel` reaches
+     * three frames back. */
+    void confirm(uint32_t fn) {
+        if (Rec *e = find(fn)) {
+            e->confirmed = 1;
+            /* A frame the client reconstructed is one it holds, whatever the
+             * chain deduced.  Saying so keeps the two records from
+             * contradicting each other in a log. */
+            e->held = 1;
+        }
+        if (!any_confirmed || fn > newest_confirmed) newest_confirmed = fn;
+        any_confirmed = true;
+    }
 
     /* The encoder coded `fn`, predicting from `pred_fn` (-1 when the frame
      * carries no temporal reference).  Its held state follows rule 2. */
@@ -162,6 +221,9 @@ struct HeldState {
         e.pred_fn = pred_fn;
         e.used = 1;
         e.held = (pred_fn < 0) || holds((uint32_t)pred_fn) ? 1u : 0u;
+        /* A frame the encoder has only just made cannot have been confirmed:
+         * the slot may be carrying an older frame's verdict. */
+        e.confirmed = 0;
         if (!any || fn > newest) newest = fn;
         any = true;
     }
@@ -195,8 +257,19 @@ struct HeldState {
 };
 
 /* The reference this frame should ask for: the nearest slot at or beyond
- * `base_ref_sel`, up to 2, that the encoder produced AND the client is
- * believed to hold.
+ * `base_ref_sel`, up to 2, that the encoder produced AND the client can
+ * predict from.
+ *
+ * "Can predict from" is the whole question, and it has two answers.  Until a
+ * confirmation has ever arrived it is `HeldState::holds` -- what the
+ * prediction chain deduces -- which is optimistic for one round trip and is
+ * why a dropped frame still costs a refusal.  From the first confirmation on
+ * it is `HeldState::confirms`, the client's own statement, which cannot be
+ * optimistic: a frame it says it reconstructed is one it holds.  Requiring a
+ * confirmation makes a refusal structurally impossible at the cost of a
+ * reference one feedback period older, and turns the storm case -- nothing
+ * confirmed within reach -- into an INTRA frame, which is decodable, instead
+ * of an inter frame that is refused.
  *
  * `base_ref_sel` is the configured distance -- `nxv-enc --ref-sel`'s field --
  * and it is a FLOOR rather than a fixed choice, so a stream configured at 0

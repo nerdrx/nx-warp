@@ -117,6 +117,11 @@ struct Config {
      * every CI run -- the walk stops immediately and the stream is the one
      * this encoder has always produced. */
     int ref_sel = 0;
+    /* The client CONFIRMS the frames it reconstructs, so the encoder must
+     * reference only confirmed frames from the first frame on rather than
+     * waiting for the first confirmation to arrive.  See nxe_inter.h
+     * HeldState::require_confirmed. */
+    bool ref_confirm = false;
 
     int device = 0;
     bool cpu_only = false;

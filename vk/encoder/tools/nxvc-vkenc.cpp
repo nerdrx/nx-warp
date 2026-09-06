@@ -74,6 +74,12 @@ static void usage() {
         "  --hold-every N       simulate a client that reconstructs only\n"
         "                       every Nth frame and reports the rest not\n"
         "                       held.  0 = holds everything (the default)\n"
+        "  --ack-delay K        that client also CONFIRMS the frames it did\n"
+        "                       reconstruct, K frames later.  Off unless\n"
+        "                       given, which is what leaves every fixture\n"
+        "                       stream unchanged\n"
+        "  --report-delay K     frames of latency on the NOT-held report\n"
+        "                       (default 0, which no real link delivers)\n"
         "  --chroma-qp-off N    chroma QP offset\n"
         "  --device N           Vulkan physical device index (default 0)\n"
         "  --cpu                run the CPU models, no Vulkan\n"
@@ -106,6 +112,19 @@ int main(int argc, char **argv) {
      * command line, which is what the 289-tile drop-pattern test needs and
      * what nothing else in this tool can express.  0 holds everything. */
     int hold_every = 0;
+    /* Frames of latency on the POSITIVE report -- the confirmation that the
+     * headset reconstructed a frame.  On a real link it is one feedback
+     * period, which is a fraction of a frame; here it is whole frames, so 1 is
+     * already pessimistic.  Negative means the client sends no confirmations
+     * at all, which is every fixture and is what leaves their streams
+     * untouched. */
+    int ack_delay = -1;
+    /* Frames of latency on the NEGATIVE report.  Zero -- the encoder is told
+     * about a drop before it codes the next frame -- is the case no real link
+     * delivers, and it is the case in which the chain-derived record is
+     * already right.  A realistic value is one or two frames, and that is
+     * where the difference between guessing and being told shows up. */
+    int report_delay = 0;
     int ring_frames = 0;
     std::string pix = "yuv420p";
 
@@ -126,6 +145,13 @@ int main(int argc, char **argv) {
         else if (a == "--coded-vectors") cfg.int_coded_vectors = true;
         else if (a == "--ref-sel") cfg.ref_sel = std::atoi(val());
         else if (a == "--hold-every") hold_every = std::atoi(val());
+        else if (a == "--ack-delay") {
+            ack_delay = std::atoi(val());
+            /* A client that confirms is one whose confirmations may be
+             * required from the first frame. */
+            cfg.ref_confirm = ack_delay >= 0;
+        }
+        else if (a == "--report-delay") report_delay = std::atoi(val());
         else if (a == "--intra-period") cfg.intra_period = std::atoi(val());
         else if (a == "--skip-thresh")
             cfg.skip_thresh = (int)(std::atof(val()) * 256.0 + 0.5);
@@ -350,8 +376,20 @@ int main(int argc, char **argv) {
          * next encode.  A real link delivers it a round trip later; this is
          * the zero-latency case, which is the one that isolates the reference
          * walk from the transport's timing. */
-        if (hold_every > 1 && cfg.inter && (n % hold_every) != 0)
-            gpu.set_frame_held((uint32_t)n, false);
+        if (hold_every > 1 && cfg.inter) {
+            const int reportable = n - report_delay;
+            if (reportable >= 0 && (reportable % hold_every) != 0)
+                gpu.set_frame_held((uint32_t)reportable, false);
+        }
+        /* And the positive one, `ack_delay` frames behind.  A frame the
+         * simulated client reconstructed is one it can predict from, and
+         * saying so is what lets the encoder reference it. */
+        if (ack_delay >= 0 && cfg.inter) {
+            const int ackable = n - ack_delay;
+            if (ackable >= 0 &&
+                (hold_every <= 1 || (ackable % hold_every) == 0))
+                gpu.set_frame_held((uint32_t)ackable, true);
+        }
         /* NXE_DUMP_RING=<path> writes the ring slot this frame just wrote,
          * luma only, as raw uint16.  It is what the ring-vs-decoder test
          * compares; the encoder is otherwise the only thing that can see it. */

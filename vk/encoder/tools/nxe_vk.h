@@ -73,11 +73,16 @@ public:
      * full reset.  See nxvc_vk_enc.h for why the rule is the blunt one. */
     void set_received_tiles(const uint8_t *received, uint32_t count);
 
-    /* Whether the headset reconstructed a frame it was sent.  A `false`
-     * report makes that frame, and every later frame that predicted from it,
+    /* Whether the headset reconstructed a frame it was sent.
+     *
+     * `false` makes that frame, and every later frame that predicted from it,
      * unusable as a reference; the next inter frame then asks for the newest
-     * one that is still usable (ref_sel 0..2) instead of resyncing.  See
-     * nxvc_vk_enc.h for the contract and nxe_inter.h for the record. */
+     * one that is still usable (ref_sel 0..2) instead of resyncing.
+     *
+     * `true` is a CONFIRMATION, and from the first one the encoder references
+     * confirmed frames only -- which is what makes a refusal impossible rather
+     * than merely rarer.  See nxvc_vk_enc.h for the contract and nxe_inter.h
+     * for the record. */
     void set_frame_held(uint32_t frame_number, bool held);
 
     /* Read one ring slot's luma plane back, for the test that pins the

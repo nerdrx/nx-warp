@@ -186,7 +186,10 @@ bool select_reference(const RingState &ring, const HeldState &held,
         /* The encoder has the picture; the question is whether the headset
          * does.  Both must be true, and the second is the one a dropped frame
          * makes false. */
-        if (!held.holds(frame_number - 1u - (uint32_t)d)) continue;
+        const uint32_t want = frame_number - 1u - (uint32_t)d;
+        if (held.confirmation_required() ? !held.confirms(want)
+                                          : !held.holds(want))
+            continue;
         if (out_ref_sel) *out_ref_sel = d;
         if (out_slot) *out_slot = slot;
         return true;

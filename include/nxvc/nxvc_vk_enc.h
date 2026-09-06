@@ -199,6 +199,30 @@ typedef struct nxvc_vke_create_info {
      * Refused at create() if `inter` is clear and this is not 0. */
     uint32_t ref_sel;
 
+    /* The client CONFIRMS the frames it reconstructs, through
+     * nxvc_vk_encoder_set_frame_held(enc, f, 1).
+     *
+     * Setting it makes confirmations REQUIRED from the first frame instead of
+     * from the first one that arrives, which is the difference between "a
+     * refusal is impossible" and "a refusal is impossible after the first
+     * few frames".  Without it the encoder has nothing but the prediction
+     * chain to go on until a confirmation lands, and the chain is optimistic
+     * for exactly one round trip -- which is the window the frames right after
+     * the initial INTRA fall into.
+     *
+     * The price is INTRA frames until the first confirmation arrives, and
+     * INTRA frames whenever nothing within ref_sel's three-frame reach is
+     * confirmed.  How often that happens is decided by the CONFIRMATION
+     * LATENCY and not by anything in the encoder: measured at 1088x1088 over a
+     * client reconstructing every other frame, a confirmation that arrives
+     * within the frame costs 3 % more bytes than a client that drops nothing,
+     * one frame of latency costs 31 %, and two frames cost 3.9x.  A caller
+     * setting this must put the confirmation on a report that goes out at
+     * least once per frame.
+     *
+     * Refused at create() if `inter` is clear and this is not 0. */
+    uint32_t ref_confirm;
+
     uint32_t flags; /* reserved, pass 0 */
 } nxvc_vke_create_info;
 
@@ -450,12 +474,35 @@ nxvc_vke_status nxvc_vk_encoder_set_received_tiles(nxvc_vk_encoder *enc,
  * repeating it is harmless.  A frame coded with no temporal reference at all
  * is unaffected, which is what lets an all-INTRA resync end the cascade.
  *
- * A positive report is accepted and ignored.  The encoder's own record is
- * derived from the prediction chain and is never optimistic; a client that
- * decoded a frame necessarily held that frame's reference, so `held == 1` can
- * only agree with what the encoder already computed, and treating it as an
- * override would let a stale report resurrect a frame the chain says is
- * unreconstructible.
+ * A positive report -- `held == 1` -- is a CONFIRMATION, and it is what makes
+ * a refusal structurally impossible rather than merely rarer.
+ *
+ * The negative report alone cannot do that, and the reason is timing, not
+ * logic: it is negative, so silence means "held", and silence is exactly what
+ * a frame that was dropped a moment ago also produces.  The encoder codes
+ * frame N believing N-1 is held, and only learns otherwise after N has already
+ * been refused.  That window is one round trip and no amount of chain
+ * reasoning closes it.
+ *
+ * A confirmation has no window.  A frame the headset says it reconstructed is
+ * one it can predict from, whatever happened before or after, so an inter
+ * frame that references only confirmed frames cannot be refused.  The cost is
+ * a reference one confirmation-latency older -- ref_sel 1 or 2 instead of 0 --
+ * and, when nothing within the three-frame reach is confirmed, an INTRA frame,
+ * which is decodable where the inter frame it replaces was not.
+ *
+ * The two are not alternatives.  The negative report stays the fast path: it
+ * reaches the encoder on its own message as soon as the headset knows, where a
+ * confirmation waits for the next periodic feedback, and it is what stops the
+ * encoder spending a frame predicting from something already known to be gone.
+ *
+ * Until the FIRST confirmation arrives the encoder uses the chain-derived
+ * record, so a caller that never sends one behaves exactly as before and needs
+ * no flag to say so.  From that point on it uses confirmations only, and there
+ * is deliberately no timeout back the other way: a client that has stopped
+ * confirming is a client whose held set is unknown, and coding INTRA for it is
+ * correct where guessing is not -- and the INTRA frame it does reconstruct
+ * starts the confirmations again.
  *
  * The history is sixteen frames deep -- about 180 ms at 90 Hz.  A report for
  * a frame older than that is accepted and has no effect, which is sound:
