@@ -261,11 +261,13 @@ bool compare_tables(const uint32_t *got, const std::vector<AtlasEntry> &want,
 
 int main(int argc, char **argv) {
     bool verbose = false;
+    int bench = 0;             // --bench N: time the compose dispatch N times
     std::string deviceName;
     if (const char *d = std::getenv("NXVC_VKD_DEVICE")) deviceName = d;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         if (a == "--verbose") verbose = true;
+        else if (a == "--bench") bench = (i + 1 < argc) ? std::atoi(argv[++i]) : 200;
         else if (a == "--device" && i + 1 < argc) deviceName = argv[++i];
     }
 
@@ -574,6 +576,109 @@ int main(int argc, char **argv) {
         push.sel = NXVW_ATLAS_SEL_ALL;
         dispatch(dsL, push);
         compare_tables(tblL.u32(), ref, "lazy-flushed", frames);
+    }
+
+    // ---- the bench, AFTER the flush comparison and not before it: it walks
+    //      the frame number past `frames`, which recycles H ring slots the
+    //      lazy flush still needs.  Timing first quietly corrupted the
+    //      correctness result it was meant to sit beside.
+    //
+    //      ATLAS-DECODER.md's budget table has exactly one line
+    //      marked "unmeasured": the compose dispatch.  It is the only cost
+    //      under ATLAS that is NEW rather than a kernel that already exists in
+    //      that shape, so it is the first thing to price.  This times the
+    //      EAGER dispatch -- one thread per table entry, every entry of both
+    //      eyes, which is the frame-complete path and the default -- with GPU
+    //      timestamps, on the same table the correctness run left behind.
+    //
+    //      The budget table is per EYE, so the per-eye figure is the dispatch
+    //      halved: the dispatch covers both eyes and splitting it per eye
+    //      would only cost occupancy.
+    if (!g_fail && bench > 0) {
+        VkQueryPool qp = VK_NULL_HANDLE;
+        VkQueryPoolCreateInfo qi{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
+        qi.queryType = VK_QUERY_TYPE_TIMESTAMP;
+        qi.queryCount = 2;
+        const bool haveTs =
+            c.props.limits.timestampComputeAndGraphics &&
+            c.props.limits.timestampPeriod > 0.f &&
+            vkCreateQueryPool(c.dev, &qi, nullptr, &qp) == VK_SUCCESS;
+        if (!haveTs) {
+            std::printf("-- bench: no usable timestamp queries on this device\n");
+        } else {
+            NxvwAtlasPush bp{};
+            bp.entryCount = entries;
+            bp.colsPerEye = (uint32_t)colsPerEye;
+            bp.eyes = (uint32_t)eyes;
+            bp.lumaW = lumaW;
+            bp.lumaH = lumaH;
+            bp.genMax = genMax;
+            bp.sel = NXVW_ATLAS_SEL_ALL;
+            std::vector<double> ms;
+            ms.reserve((size_t)bench);
+            for (int it = 0; it < bench; ++it) {
+                // Every iteration targets a fresh frame number so no thread
+                // takes the `at == targetFrame` early return: what is timed is
+                // a REAL one-step advance of every entry, not a null dispatch.
+                bp.targetFrame = frames + 1u + (uint32_t)it;
+                const uint32_t slot0 =
+                    (bp.targetFrame % NXVW_ATLAS_HRING) * (uint32_t)eyes;
+                for (int e = 0; e < eyes; ++e) {
+                    uint32_t *sptr = hring.u32() +
+                                     (slot0 + (uint32_t)e) *
+                                         NXVW_ATLAS_HSLOT_UINTS;
+                    int32_t Hb[9];
+                    make_legal(rng, lumaW, lumaH, 1.0, Hb);
+                    for (int k = 0; k < 9; ++k) sptr[k] = (uint32_t)Hb[k];
+                    sptr[9] = NXVW_ATLAS_HFLAG_WARP_PRESENT;
+                }
+                VKCHECK(vkResetCommandBuffer(cb, 0));
+                VkCommandBufferBeginInfo bi{
+                    VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+                bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+                VKCHECK(vkBeginCommandBuffer(cb, &bi));
+                vkCmdResetQueryPool(cb, qp, 0, 2);
+                vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, qp, 0);
+                vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, pipe);
+                vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, pl,
+                                        0, 1, &dsE, 0, nullptr);
+                vkCmdPushConstants(cb, pl, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                                   sizeof(bp), &bp);
+                vkCmdDispatch(cb, (entries + 63u) / 64u, 1, 1);
+                vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                    qp, 1);
+                VKCHECK(vkEndCommandBuffer(cb));
+                VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+                si.commandBufferCount = 1;
+                si.pCommandBuffers = &cb;
+                VKCHECK(vkResetFences(c.dev, 1, &fence));
+                VKCHECK(vkQueueSubmit(c.queue, 1, &si, fence));
+                VKCHECK(vkWaitForFences(c.dev, 1, &fence, VK_TRUE, UINT64_MAX));
+                uint64_t ts[2] = {0, 0};
+                if (vkGetQueryPoolResults(c.dev, qp, 0, 2, sizeof ts, ts,
+                                          sizeof(uint64_t),
+                                          VK_QUERY_RESULT_64_BIT |
+                                              VK_QUERY_RESULT_WAIT_BIT) ==
+                    VK_SUCCESS)
+                    ms.push_back((double)(ts[1] - ts[0]) *
+                                 (double)c.props.limits.timestampPeriod / 1e6);
+            }
+            if (ms.empty()) {
+                std::printf("-- bench: no timestamps came back\n");
+            } else {
+                std::sort(ms.begin(), ms.end());
+                // The MEDIAN, and the best, because a headset's clocks move
+                // under a long run and the mean is then a number about
+                // thermals rather than about the kernel.
+                const double med = ms[ms.size() / 2];
+                std::printf("-- compose+renorm: %u entries (both eyes), %zu "
+                            "runs: best %.4f ms, median %.4f ms, worst %.4f ms"
+                            "  (%.4f ms/eye at the median)\n",
+                            entries, ms.size(), ms.front(), med, ms.back(),
+                            med / 2.0);
+            }
+            vkDestroyQueryPool(c.dev, qp, nullptr);
+        }
     }
 
     std::printf("-- %u tiles coded (%u of them STATIC_MV), %u entries "

@@ -21,6 +21,9 @@ if(NOT TARGET nxvc-atlas-gpu-test)
 endif()
 
 add_test(NAME vk.atlas.gpu_vs_cpu COMMAND nxvc-atlas-gpu-test --verbose)
+# --bench is not registered as a test: a timing number is not a pass/fail, and
+# it walks the frame number past the correctness run, which is why the bench
+# block runs AFTER the flush comparison and not before it.
 set_tests_properties(vk.atlas.gpu_vs_cpu PROPERTIES
   SKIP_RETURN_CODE 77 TIMEOUT 900)
 
