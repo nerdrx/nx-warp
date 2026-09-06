@@ -193,6 +193,118 @@ A small kernel over the tiles the row header names: one add per sample against
 the atlas tile in place, `C`, `src_frame`, `gen`, `static` and `res_level`
 unchanged. Nine bytes of DC and ramps, no warp.
 
+## Tile streaming and the lazy advance
+
+The client does not wait for a frame (WiVRn `docs/NXWARP-TILESTREAM.md`, ADR
+Cheat 1): coded tiles are applied to the atlas as they arrive, and display never
+waits. The decoder therefore needs an entry point whose unit is a run of tiles,
+and it takes **Option A** of that document:
+
+```c
+nxvc_vkd_status nxvc_vk_decode_tiles(nxvc_vk_decoder *dec,
+                                     uint64_t frame_number,
+                                     const uint8_t *frame_header, size_t header_len,
+                                     const uint8_t *bytes, size_t len,
+                                     uint32_t first_tile, uint32_t tile_count,
+                                     uint32_t submit_flags);
+```
+
+Option B keeps the reassembly wait, which is most of what Cheat 1 exists to
+remove. A is the larger change here and it is the one worth making.
+
+**The advance becomes lazy, and the decoder owns it.** SYNTAX 13.12.3 step 1
+advances every valid entry once per frame, and 13.12.4 has a coded tile of frame
+`N` read its entry after frame `N`'s advance and no later. Arrivals are not in
+frame order, and the advance cannot be walked back -- `renorm` is a rounding
+integer division, so `C . H . H^-1 != C`. So an entry is advanced only when a
+coded tile is about to read it:
+
+```
+apply(t, N):
+    if table[t].src_frame >= N: drop, report `superseded`
+    while advanced_to[t] < N:
+        C[t] := renorm(C[t] . H[advanced_to[t] + 1][eye]);  gen[t] += 1
+        advanced_to[t] += 1
+    decode t against C[t]
+    write back: C := I, src_frame := N, gen := 0, advanced_to := N, valid := 1
+```
+
+This is bit-exact against the eager form because 13.12.2 composes one
+right-multiplication at a time and this performs the same steps in the same
+order. The decoder performs it rather than exposing the table for the client to
+advance, so 13.12.2's integer arithmetic stays in one implementation.
+
+Two pieces of state follow.
+
+**`advanced_to` is decoder-private and NOT in the table.** 13.12.1's 64 bytes
+are fully specified and its 20 reserved bytes are zero and compared, so there is
+nowhere to put it and it does not belong there anyway: it is an implementation
+detail of when the composition ran, not part of the atlas. It lives in a
+parallel array, one u32 per entry, initialised to `src_frame`.
+
+**The `H` ring.** Nine i32 per eye per frame, 36 B; a 64-frame window is 4.6 kB
+for the pair. It bounds how far behind an entry may fall: an entry whose
+`advanced_to` is older than the ring must be invalidated, because the steps to
+advance it no longer exist. That is a decoder-side cap in the same role as
+`gen_max` and it has to be stated in the API, not discovered.
+
+**The normative atlas is the flushed state.** With a lazy advance, at a frame
+boundary some entries are behind, so the table is not the eager form's table
+until every entry is advanced to `N`. Materialising it -- the flush -- is what
+conformance and any client read of the table observe, and the frame-complete
+path flushes every frame, which is exactly the eager form. So:
+
+> **The required equivalence test:** the same input decoded frame-complete and
+> decoded as tile runs in arrival order, both flushed, must produce a
+> byte-identical atlas -- pixels and all 64 bytes of every entry. Where the link
+> is clean they agree trivially; where it loses, they agree because the set of
+> tiles applied is the same and only the order differs.
+
+`superseded` is a report, not a loss: the position already holds a newer
+generation than the dropped tile, and the encoder must not answer it with a
+refresh.
+
+## The base layer: importing tiles the decoder did not decode
+
+The base layer ships in atlas v1 as a patch source. The client HEVC-decodes it,
+converts to the coded YCoCg-R domain in the side-by-side u16 layout with its own
+kernel (WiVRn branch `nx-warp-hybrid`), and hands the decoder tiles to import:
+
+```c
+nxvc_vkd_status nxvc_vk_atlas_write_tiles(nxvc_vk_decoder *dec,
+                                          uint32_t eye,
+                                          uint32_t first_tile, uint32_t count,
+                                          const nxvc_vkd_atlas_src *src,
+                                          uint64_t src_frame,
+                                          uint32_t submit_flags);
+```
+
+It copies those tiles into the atlas pixels and sets their table entries:
+`C := I`, `src_frame := F`, `gen := 0`, `valid := 1`, `static := 0`,
+`base_sourced := 1`. **The same `src_frame` monotonicity rule as a coded tile**
+-- an import at a position whose `src_frame` is already `>= F` is dropped and
+reported -- so a base tile can never move a position backwards over a coded one,
+and the two sources compose under one rule rather than two.
+
+It is **ordered against in-flight decodes on the decoder's queue**: the import
+is recorded on the decoder's command buffer, so it and `decode_tiles` serialise
+by submission order and the client needs no fence of its own. `submit_flags`
+carries the same `NXVC_VKD_SUBMIT_ASYNC` / `SIGNAL_BINARY` meanings as the
+decode calls.
+
+**The layout the import kernel writes to, normatively:** the atlas pixels are
+`nxvw_ring_layout()`'s -- coded sample domain, u16 samples packed two per uint,
+per-plane offsets `ringPlaneOff[p]`, row stride `ringStride[p]` (padded to an
+even number of samples so every row starts on a uint boundary), and both eyes
+side by side within each plane with eye `e` beginning at column `e * planeW[p]`.
+`nxvc_vk_atlas_write_tiles` takes `eye` explicitly and the tile indices are
+within that eye, so the caller does not have to reproduce the eye-minor table
+index -- the decoder derives it.
+
+Note the **two eye conventions**, which is the thing most likely to be got
+wrong: the pixels are side by side, and the table is interleaved per row. The
+import API is deliberately per eye to keep the caller on the pixel side of that.
+
 ## The publish contract
 
 `ATLAS` needs an output mode that hands the client the atlas rather than a
@@ -241,6 +353,10 @@ not evidence about the target part.
 
 Before the reference codec gives a byte-identity target:
 
+0. **Blocked on the ADR owner:** the `base_sourced` bit (see Open questions).
+   The import entry point can be built without it -- everything except that one
+   flag is unambiguous -- but it cannot be called conforming until 13.12.1
+   settles what bit 2 is.
 1. **The compose kernel and its CPU model.** The composition of 13.12.2 is
    fully specified arithmetic with no dependency on the rest of the atlas: a CPU
    model, a GPU kernel, and a test that they agree exactly over random legal
@@ -252,12 +368,27 @@ Before the reference codec gives a byte-identity target:
 3. **The envelope and staleness check**, which is 3.1.1's existing condition
    applied to `C` — reusable and testable on its own.
 
+Then, in order: `nxvc_vk_decode_tiles` with the lazy advance and the
+frame-complete equivalence test, and then `nxvc_vk_atlas_write_tiles`.
+
 What must wait: everything with a byte-identity obligation — the write-back, the
 atlas-sourced prediction, `NEAR_SKIP` in place, and the conformance leg.
 
 Implementation goes on `atlas-decoder` off `atlas`.
 
 ## Open questions
+
+* **`base_sourced` needs a syntax change, and the decoder cannot make it.**
+  ADR-0029's table lists flags bit 2 as `base_sourced` and calls it reserved;
+  SYNTAX 13.12.1 as written says "bits 2-7 reserved, zero", and that every one
+  of the 64 bytes is compared by conformance. So a decoder that sets bit 2 on
+  an imported tile produces a table a conforming decoder must not produce, and
+  the base-layer import above cannot be implemented as specified until 13.12.1
+  says bit 2 is `base_sourced` and what it means. **This is a question for the
+  ADR owner, not something to paper over in the decoder**: the alternative --
+  keeping the bit zero and tracking base-sourcing decoder-side -- loses the
+  property that makes it worth having, which is that the atlas states where
+  each tile came from.
 
 * **The atlas image format.** The ring is u16 samples packed two per uint in an
   SSBO. The atlas must be sampled by the client, so it wants an image — but
