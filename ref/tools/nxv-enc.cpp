@@ -146,6 +146,10 @@ static void usage() {
         "               syntax: the refinement is an ordinary coded tile\n"
         "               predicting from the upsampled coarse pixels\n"
         "  --atlas-coarse-budget N  at most N refinements per frame\n"
+        "  --atlas-sched-bytes N  RANKED REFRESH SCHEDULER: an ATLAS frame\n"
+        "               spends at most N bytes on coded tiles, choosing them\n"
+        "               by predicted display error rather than letting every\n"
+        "               tile decide alone.  Encoder-side rate control\n"
         "  --atlas-coarse-disp T  SINGLE-LEVEL coarse refresh: a tile whose\n"
         "               corner displacement since its last landing exceeds T\n"
         "               luma samples lands at res_level 1 and is not refined.\n"
@@ -338,6 +342,7 @@ int main(int argc, char **argv) {
     // exactly the metric 13.12.11.1's mode trigger uses, through the codec's
     // own nxvc_encoder_atlas_stale_tiles(), so the two cannot disagree.
     int coarse_disp = 0;       // T in luma samples; 0 = off
+    int sched_bytes = 0;       // ranked-scheduler budget, bytes/frame; 0 = off
     std::string atlas_dump;
     int mv_range = 16, skip_thresh = 0, mode_lambda = 0;
     int int_decision = 0, int_lambda = 0, int_intra_mad = 0, int_rdoq = 0;
@@ -441,6 +446,7 @@ int main(int argc, char **argv) {
             coarse_budget = std::atoi(val());
         else if (a == "--atlas-coarse-stats") coarse_stats_path = val();
         else if (a == "--atlas-coarse-disp") coarse_disp = std::atoi(val());
+        else if (a == "--atlas-sched-bytes") sched_bytes = std::atoi(val());
         else if (a == "--atlas-gen-max") atlas_gen_max = std::atoi(val());
         else if (a == "--atlas-dump") atlas_dump = val();
         else if (a == "--eyes") eyes = std::atoi(val());
@@ -784,6 +790,7 @@ int main(int argc, char **argv) {
     cfg.atlas_picture_period =
         (uint32_t)(atlas_picture_period > 0 ? atlas_picture_period : 0);
     cfg.atlas_coarse_disp = (uint32_t)(coarse_disp > 0 ? coarse_disp : 0);
+    cfg.atlas_sched_bytes = (uint32_t)(sched_bytes > 0 ? sched_bytes : 0);
     // 13.12.3: a STATIC_MV entry is held unwarped, so a head-locked tile may
     // be skipped.  On by default with the atlas -- it is the one behavioural
     // change to an existing mode and it is a strict gain.

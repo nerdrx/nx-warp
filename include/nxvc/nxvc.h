@@ -613,6 +613,15 @@ typedef struct nxvc_config {
      * coded at res_level 1 and never refined.  Encoder-side rate control: it
      * changes which tiles are cheap, not how any stream decodes.  0 = off. */
     uint32_t atlas_coarse_disp;
+    /* RANKED REFRESH SCHEDULER (ADR-0029).  Today an ATLAS frame's tiles each
+     * decide independently by rate-distortion and the frame costs whatever
+     * that sums to; there is no frame budget anywhere in the encoder.  With
+     * this set, an ATLAS frame spends at most this many bytes on coded tiles,
+     * choosing them by predicted display error -- so the question stops being
+     * "is this tile worth coding" and becomes "is this tile worth coding MORE
+     * THAN THAT ONE".  Encoder-side only; it touches nothing normative.
+     * 0 = off, which is today's behaviour exactly. */
+    uint32_t atlas_sched_bytes;
 
     /* The INTEGER RDOQ: a requantiser the GPU encoder can run.
      *

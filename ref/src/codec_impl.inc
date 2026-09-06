@@ -2148,6 +2148,110 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         }
         e->undo.assign((size_t)ntiles, nxvc_encoder::AtlasUndo{});
     }
+    // ---- RANKED REFRESH SCHEDULER (encoder only, nothing normative).
+    //
+    // Today every tile decides alone, by rate-distortion against a lambda, and
+    // the frame costs whatever those decisions sum to.  There is no frame
+    // budget in the encoder at all.  That is fine when the link has room and
+    // wrong when it does not: with a budget the question stops being "is this
+    // tile worth coding" and becomes "is this tile worth coding MORE THAN THAT
+    // ONE", which is a ranking, and a ranking is a thing an encoder can only
+    // answer by looking at every tile before it codes any of them.
+    //
+    // The score is a first-order estimate of the DISPLAY error the tile will
+    // show if it is left alone:
+    //
+    //     err ~= gradient x displacement          (content of mean gradient g
+    //                                              displaced by d samples is
+    //                                              wrong by about g*d)
+    //     score = err * (1 + age) + drift
+    //
+    // `age` because that error is shown once a frame for as long as the tile
+    // stays stale, `drift` because the encoder already measures what its
+    // client shadow has accumulated and that is the one term that is measured
+    // rather than predicted.  Only the ORDER matters, so the units do not have
+    // to agree; what must not happen is a tie broken differently on two runs,
+    // and the tile index breaks every tie.
+    //
+    // Tiles outside the budget are pushed into the existing `skip_map` path,
+    // which deliberately loses to the hard intra cap and the drift gate: loss
+    // recovery is not negotiable and the scheduler may not defer it.
+    std::vector<u8> sched_skip;
+    if (atlas && e->cfg.atlas_sched_bytes && have_ref) {
+        const double bpt = e->sched_bytes_per_tile > 1.0
+                               ? e->sched_bytes_per_tile
+                               : 64.0;   // seed before anything is measured
+        int budget_tiles =
+            (int)((double)e->cfg.atlas_sched_bytes / bpt + 0.5);
+        if (budget_tiles < 0) budget_tiles = 0;
+        if (budget_tiles > ntiles) budget_tiles = ntiles;
+        struct Cand { double score; int tile; };
+        std::vector<Cand> cand;
+        cand.reserve((size_t)ntiles);
+        const int cols = (int)(g.eyes * g.tiles_x);
+        for (int t = 0; t < ntiles; ++t) {
+            const AtlasEntry &ae = e->at.ent[(size_t)t];
+            if (!(ae.flags & kAtlasValid)) { cand.push_back({1e30, t}); continue; }
+            if (ae.flags & kAtlasStatic) { cand.push_back({0.0, t}); continue; }
+            const int eye2 = (int)((u32)t % (u32)cols) / (int)g.tiles_x;
+            const int col2 = (int)((u32)t % (u32)cols) - eye2 * (int)g.tiles_x;
+            const int row2 = t / cols;
+            WarpMatrix cw{};
+            for (int k = 0; k < 9; ++k) cw.h[k] = ae.C[k];
+            const double disp =
+                (double)atlas_corner_disp(cw, g, col2, row2, false) /
+                (double)(1 << nw::kQCorner);
+            // The tile's own high-frequency energy, read off the ATLAS -- the
+            // pixels that will actually be displayed -- as a mean absolute
+            // Laplacian.  Flat content displaced by 8 samples is still flat;
+            // detailed content displaced by 1 is visibly wrong.
+            double hf = 0.0;
+            {
+                int ox, oy;
+                plane_tile_origin(g, 0, col2, row2, ox, oy);
+                ox += (int)(eye2 * g.pw(0));
+                const u16 *pix = e->at.pix.plane[0].data();
+                const int stride = e->at.pix.w[0];
+                const int ph = (int)g.ph(0);
+                const int pwe = (int)(g.pw(0) * (u32)(eye2 + 1));
+                long n = 0;
+                double acc = 0.0;
+                for (int y = 1; y < 63; ++y) {
+                    const int gy = oy + y;
+                    if (gy < 1 || gy >= ph - 1) continue;
+                    for (int x = 1; x < 63; ++x) {
+                        const int gx = ox + x;
+                        if (gx < 1 || gx >= pwe - 1) continue;
+                        const double c = (double)pix[(size_t)gy * stride + gx];
+                        const double l =
+                            -4.0 * c +
+                            (double)pix[(size_t)(gy - 1) * stride + gx] +
+                            (double)pix[(size_t)(gy + 1) * stride + gx] +
+                            (double)pix[(size_t)gy * stride + gx - 1] +
+                            (double)pix[(size_t)gy * stride + gx + 1];
+                        acc += l < 0 ? -l : l;
+                        ++n;
+                    }
+                }
+                hf = n ? acc / (double)n : 0.0;
+            }
+            const double age = (double)(fp.frame_number - ae.src_frame);
+            const double drift = t < (int)e->drift.size() ? e->drift[t] : 0.0;
+            cand.push_back({disp * hf * (1.0 + age) + drift, t});
+        }
+        std::stable_sort(cand.begin(), cand.end(),
+                         [](const Cand &a, const Cand &b) {
+                             if (a.score != b.score) return a.score > b.score;
+                             return a.tile < b.tile;
+                         });
+        sched_skip.assign((size_t)ntiles, 1);
+        for (int i = 0; i < budget_tiles && i < (int)cand.size(); ++i)
+            sched_skip[(size_t)cand[(size_t)i].tile] = 0;
+        e->sched_allowed += (u64)budget_tiles;
+        e->sched_forced_skip += (u64)(ntiles - budget_tiles);
+        ++e->sched_frames;
+    }
+
     // The reference picture a tile predicts from, and the matrix it predicts
     // through.  Under the picture model both are frame-level; under the atlas
     // the picture is the atlas and the matrix is the tile's own entry.
@@ -2733,9 +2837,28 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                 e->margin_forced.fetch_add(1);
             }
         }
+        // PRECEDENCE, and it is a real decision rather than a detail.
+        //
+        // The hard intra cap is absolute: it returned above, so nothing here
+        // can defer it, and loss recovery stays a property of the stream
+        // rather than of the link's mood.
+        //
+        // The DRIFT GATE, though, must lose to the budget.  The gate says
+        // "this tile has drifted too far to skip"; the scheduler says "we
+        // cannot afford it this frame".  If the gate wins, the budget is not a
+        // budget -- measured on the near-still clip at a 500 B/frame budget,
+        // the gate coded 31 tiles in a frame the scheduler had allowed 4, and
+        // the frame came out at 6876 bytes.  The gate is a quality mechanism,
+        // not a correctness one, so under a budget the ranking subsumes it:
+        // a drifted tile simply scores high and gets picked on its merits.
+        const bool sched_force =
+            t < (int)sched_skip.size() && sched_skip[(size_t)t] != 0;
+        if (sched_force) skip_forbidden = false;
         const bool force_skip =
-            !skip_forbidden && !e->cfg.alpha &&
-            t < (int)e->skip_map.size() && e->skip_map[t] != 0;
+            !e->cfg.alpha &&
+            (sched_force ||
+             (!skip_forbidden && t < (int)e->skip_map.size() &&
+              e->skip_map[t] != 0));
 
         TileCoder probe;
         probe.g = &g;
@@ -4447,6 +4570,21 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
                                  fp.frame_number, e->tiles);
             e->last_picture_frame = fp.frame_number;
             e->picture_frames++;
+        }
+    }
+    // The scheduler's one measured input: what a coded tile actually cost this
+    // frame.  An EMA, because a single frame's average is noisy and the
+    // budget only has to be approximately right -- it is a rate controller,
+    // not a conformance rule.
+    if (e->cfg.atlas_sched_bytes) {
+        int coded_now = 0;
+        for (int t = 0; t < ntiles; ++t)
+            if (!e->dec[t].skipped) ++coded_now;
+        if (coded_now > 0) {
+            const double per = (double)*out_len / (double)coded_now;
+            e->sched_bytes_per_tile = e->sched_bytes_per_tile > 0.0
+                                          ? 0.5 * e->sched_bytes_per_tile + 0.5 * per
+                                          : per;
         }
     }
     for (int t = 0; t < ntiles; ++t) {
