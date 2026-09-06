@@ -309,6 +309,15 @@ struct WarpParams {
     size_t bytes() const { return w.size() * sizeof(uint32_t); }
 };
 
+/* The conjugated matrix record Pass W's compute_corner() consumes: nine matrix
+ * words in the plane's own scale, then `ox`, `oy`, then a pad -- [SYN] 13.3
+ * step 1 for `sub` 2, the identity for `sub` 1.  Exposed because the ATLAS
+ * path builds one PAIR of these per tile from the tile's own composed `C`,
+ * where a non-atlas frame builds four for the whole frame; both must be the
+ * same function or the two paths conjugate differently. */
+void conjugate_plane_matrix(const int32_t h[9], int plane_w, int plane_h,
+                            int sub, uint32_t out[NXVW_WARP_MAT_UINTS]);
+
 struct WarpBuildInfo {
     int width = 0, height = 0;   /* per eye, luma */
     int cw = 0, ch = 0;          /* per eye, chroma */
@@ -319,7 +328,29 @@ struct WarpBuildInfo {
     uint32_t frame_number = 0;
     int ref_slot = -1;           /* -1 = no reference: every tile is INTRA */
     const WarpMatrix *warp = nullptr;  /* one per eye */
+    /* ATLAS: every tile names its OWN matrix pair, so the buffer grows by
+     * `ntiles * 2` matrix records after the tile records and each record's
+     * `mat_idx` points into that area.  The matrices themselves are written by
+     * atlas_build_matrices(), which needs the per-tile table; build_warp_params
+     * only reserves the room and names the offsets, so the two cannot disagree
+     * about where a tile's matrix is. */
+    int atlas = 0;
 };
+
+/* uints in the warp parameter buffer for a frame of `ntiles` tiles. */
+inline size_t warp_params_uints(uint32_t ntiles, int atlas) {
+    size_t n = (size_t)NXVW_WARP_HDR_UINTS +
+               (size_t)ntiles * NXVW_WARP_TILE_UINTS;
+    if (atlas) n += (size_t)ntiles * 2u * NXVW_WARP_MAT_UINTS;
+    return n;
+}
+/* The uint offset of tile `t`'s matrix PAIR, which is what its `mat_idx`
+ * names: sub 1 there, sub 2 one record later. */
+inline uint32_t warp_atlas_mat_idx(uint32_t ntiles, uint32_t t) {
+    return (uint32_t)(NXVW_WARP_HDR_UINTS +
+                      ntiles * (uint32_t)NXVW_WARP_TILE_UINTS +
+                      t * 2u * (uint32_t)NXVW_WARP_MAT_UINTS);
+}
 
 void build_warp_params(const WarpBuildInfo &bi, const RingLayout &rl,
                        WarpParams &out);

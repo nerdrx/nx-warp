@@ -122,6 +122,29 @@ struct Config {
      * waiting for the first confirmation to arrive.  See nxe_inter.h
      * HeldState::require_confirmed. */
     bool ref_confirm = false;
+    /* ATLAS, tool bit 31 (docs/SYNTAX.md 13.12, docs/adr/0029).  The reference
+     * stops being the previous decoded picture and becomes a per-tile atlas:
+     * for each tile POSITION, the pixels of the most recent frame that CODED
+     * it plus the composed warp back to that frame's pose.  A skipped tile
+     * produces no reference pixels and does not touch the atlas.
+     *
+     * It requires `inter`, it forces `ref_sel` to 0 in every tile header --
+     * the atlas holds one generation per position, so an older reference has
+     * nothing to select -- and it is mutually exclusive with the STEREO tool
+     * bit, which this encoder does not implement in any configuration.
+     *
+     * Two eyes are fine and are NOT the STEREO tool: the exclusion is against
+     * predicting one eye from the other within a frame, not against coding a
+     * pair.  Each eye's tiles compose with their own eye's warp_ext(). */
+    bool atlas = false;
+    /* Cheats 5, off by default: scale the WARP_SKIP threshold by the head's
+     * angular velocity, which the encoder derives from the pose stream it
+     * already receives.  A tile whose prediction error is under a perceptual
+     * threshold IN MOTION is skipped even where it would not be at rest --
+     * bytes saved exactly on the frames that are most expensive -- at the cost
+     * of smear during fast rotation, which is where the eye's own contrast
+     * sensitivity has collapsed.  Q8 gain per radian per frame; 0 is off. */
+    int motion_skip_gain_q8 = 0;
 
     int device = 0;
     bool cpu_only = false;

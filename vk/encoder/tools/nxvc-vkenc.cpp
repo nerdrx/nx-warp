@@ -71,6 +71,10 @@ static void usage() {
         "  --ref-sel 0..2       reference distance an inter frame asks for\n"
         "                       first; a floor, the encoder walks outwards to\n"
         "                       the newest reference the client still holds\n"
+        "  --atlas              the per-tile atlas reference, tool bit 31\n"
+        "                       ([SYN] 13.12).  Needs --inter; forces ref_sel 0\n"
+        "  --motion-skip Q8     scale the skip threshold by head angular\n"
+        "                       velocity (Cheats 5).  0, the default, is off\n"
         "  --hold-every N       simulate a client that reconstructs only\n"
         "                       every Nth frame and reports the rest not\n"
         "                       held.  0 = holds everything (the default)\n"
@@ -144,6 +148,8 @@ int main(int argc, char **argv) {
         else if (a == "--poses") cfg.poses = val();
         else if (a == "--coded-vectors") cfg.int_coded_vectors = true;
         else if (a == "--ref-sel") cfg.ref_sel = std::atoi(val());
+        else if (a == "--atlas") cfg.atlas = true;
+        else if (a == "--motion-skip") cfg.motion_skip_gain_q8 = std::atoi(val());
         else if (a == "--hold-every") hold_every = std::atoi(val());
         else if (a == "--ack-delay") {
             ack_delay = std::atoi(val());

@@ -59,6 +59,22 @@ static void plane_matrix(const WarpMatrix &m, int plane_w, int plane_h, int sub,
     out.pad = 0;
 }
 
+/* The same conjugation, against a raw nine-int32 matrix, for the ATLAS path's
+ * per-tile records.  One function, two callers: a frame matrix and a tile's
+ * composed C must be conjugated identically or the chroma planes of the two
+ * paths predict from different places. */
+void conjugate_plane_matrix(const int32_t h[9], int plane_w, int plane_h,
+                            int sub, uint32_t out[NXVW_WARP_MAT_UINTS]) {
+    WarpMatrix m;
+    for (int i = 0; i < 9; ++i) m.h[i] = h[i];
+    nw::NxvwWarpMat mm{};
+    plane_matrix(m, plane_w, plane_h, sub, mm);
+    for (int i = 0; i < 9; ++i) out[i] = (uint32_t)mm.h[i];
+    out[9] = (uint32_t)mm.ox;
+    out[10] = (uint32_t)mm.oy;
+    out[11] = 0u;
+}
+
 nxvw::NxvwWarpPush warp_push(const WarpBuildInfo &bi, const RingLayout &rl) {
     nw::NxvwWarpPush p{};
     p.eyeW = bi.width;
@@ -87,9 +103,7 @@ void build_warp_params(const WarpBuildInfo &bi, const RingLayout &rl,
                        WarpParams &out) {
     const uint32_t ntiles =
         (uint32_t)(bi.cols_per_eye * bi.rows * bi.eyes);
-    out.w.assign((size_t)NXVW_WARP_HDR_UINTS +
-                     (size_t)ntiles * NXVW_WARP_TILE_UINTS,
-                 0u);
+    out.w.assign(warp_params_uints(ntiles, bi.atlas), 0u);
 
     /* ---- the four matrix records, indexed (eye * 2 + (sub - 1)) * 12.
      * Both subsamplings of both eyes are always present, even for a mono
@@ -158,7 +172,14 @@ void build_warp_params(const WarpBuildInfo &bi, const RingLayout &rl,
         out.w[b + 8] = 0u;   /* near-skip records, unused here */
         out.w[b + 9] = 0u;
         out.w[b + 10] = 0u;
-        out.w[b + 11] = 0u;
+        /* Word 11 is `mat_idx`, and its zero value is NOT "none": zero is a
+         * legal matrix offset -- it is the frame's eye-0 sub-1 record -- so a
+         * value-initialised word would silently point every tile at it.  A
+         * non-atlas frame must therefore say NONE explicitly, which is what
+         * keeps every stream this encoder has ever produced byte-identical
+         * across the per-tile-matrix change. */
+        out.w[b + NXVW_WARP_TILE_MATIDX] =
+            bi.atlas ? warp_atlas_mat_idx(ntiles, t) : NXVW_WARP_MAT_NONE;
     }
 }
 

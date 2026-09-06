@@ -200,6 +200,24 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_create(const nxvc_vke_create_info *ci
     if (ci->ref_confirm != 0 && ci->inter == 0)
         return createerr(NXVC_VKE_ERR_ARG, "ref_confirm=%u needs inter=1",
                          ci->ref_confirm);
+    /* ATLAS (31).  [SYN] 2: it requires INTER.  Refusing is the whole point --
+     * an ATLAS stream with no temporal reference is not a degraded stream, it
+     * is a contradiction, and accepting it would emit a tool bit for a
+     * reconstruction process the frames do not use. */
+    if (ci->atlas != 0 && ci->inter == 0)
+        return createerr(NXVC_VKE_ERR_ARG, "atlas=%u needs inter=1",
+                         ci->atlas);
+    /* [SYN] 4.1 and 13.12.6: ref_sel SHALL be 0 in every tile header of an
+     * ATLAS stream.  A caller that asked for both is refused rather than
+     * quietly given one of them: the atlas holds one generation per tile
+     * position, so a non-zero ref_sel is a request the model cannot honour and
+     * silently honouring the other half would produce a stream the caller did
+     * not ask for. */
+    if (ci->atlas != 0 && ci->ref_sel != 0)
+        return createerr(NXVC_VKE_ERR_ARG,
+                         "atlas=1 forces ref_sel to 0 ([SYN] 13.12.6); "
+                         "ref_sel=%u was requested",
+                         ci->ref_sel);
 
     const bool adopting = ci->device != VK_NULL_HANDLE;
     if (adopting && (!ci->physical_device || !ci->queue))
@@ -230,6 +248,7 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_create(const nxvc_vke_create_info *ci
         ci->inter != 0 && ci->coded_vectors != NXVC_VKE_CV_NONE;
     e->cfg.ref_sel = ci->inter != 0 ? int(ci->ref_sel) : 0;
     e->cfg.ref_confirm = ci->inter != 0 && ci->ref_confirm != 0;
+    e->cfg.atlas = ci->inter != 0 && ci->atlas != 0;
     e->cfg.wm_id = 0;
     e->cfg.chroma_qp_off = 0;
     e->cfg.nsub_log2 = 3; /* eight rANS lanes; paper 6.3 fixes v1 at eight */

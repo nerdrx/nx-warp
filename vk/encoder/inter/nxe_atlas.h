@@ -247,6 +247,26 @@ struct AtlasUndo {
     }
 };
 
+/* Fill the per-tile matrix area of an ATLAS frame's warp parameter buffer:
+ * for every tile, its own composed `C` conjugated for sub 1 and sub 2, at the
+ * offset that tile's `mat_idx` names.  build_warp_params() with
+ * `WarpBuildInfo::atlas` set has already reserved the room and written the
+ * offsets, so this writes matrices and never geometry.
+ *
+ * A tile whose entry is INVALID gets the identity rather than a stale `C`.  It
+ * cannot be predicted -- [SYN] 13.12.4 makes a non-INTRA tile over an invalid
+ * entry BITSTREAM, and the host has already forced it to INTRA -- so nothing
+ * reads the record; writing the identity means a stray read is a still picture
+ * rather than a confident prediction through a matrix that is no longer in the
+ * envelope.
+ *
+ * Declared here rather than in nxe_inter.h because it is the atlas that owns
+ * the per-tile matrix; the conjugation it calls is nxe_inter's, so the two
+ * paths cannot conjugate differently. */
+struct WarpParams;
+void atlas_build_matrices(const AtlasTable &at, int width, int height, int cw,
+                          int ch, WarpParams &wp);
+
 }  // namespace nxe
 
 #endif /* NXE_ATLAS_H */

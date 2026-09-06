@@ -5,6 +5,8 @@
 
 #include "nxe_atlas.h"
 
+#include "nxe_inter.h"
+
 #include <cstring>
 
 namespace nxe {
@@ -237,6 +239,24 @@ bool AtlasUndo::rollback(uint32_t t, uint32_t lost_frame, uint32_t now,
     }
     out = a;
     return true;
+}
+
+void atlas_build_matrices(const AtlasTable &at, int width, int height, int cw,
+                          int ch, WarpParams &wp) {
+    const uint32_t ntiles = (uint32_t)at.e.size();
+    int32_t I[9];
+    atlas_identity(I);
+    for (uint32_t t = 0; t < ntiles; ++t) {
+        const int32_t *C =
+            (at.e[t].flags & kAtlasValid) ? at.e[t].C : I;
+        const uint32_t base = warp_atlas_mat_idx(ntiles, t);
+        uint32_t rec[NXVW_WARP_MAT_UINTS];
+        conjugate_plane_matrix(C, width, height, 1, rec);
+        for (int i = 0; i < NXVW_WARP_MAT_UINTS; ++i) wp.w[base + (uint32_t)i] = rec[i];
+        conjugate_plane_matrix(C, cw, ch, 2, rec);
+        for (int i = 0; i < NXVW_WARP_MAT_UINTS; ++i)
+            wp.w[base + (uint32_t)NXVW_WARP_MAT_UINTS + (uint32_t)i] = rec[i];
+    }
 }
 
 }  // namespace nxe

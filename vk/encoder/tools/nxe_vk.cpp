@@ -5,6 +5,7 @@
 
 #include "nxe_vk.h"
 
+#include "nxe_atlas.h"
 #include "nxe_inter.h"
 #include "E1c_decide.spv.h"
 #include "warp_pred.spv.h"
@@ -12,6 +13,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -118,6 +120,51 @@ struct VkEncoder::Impl {
      * consumed by the next frame's eligibility pass and then cleared: a tile
      * coded INTRA is a tile the client can hold again. */
     std::vector<uint8_t> force_intra;
+
+    /* ---------------------------------------------------- ATLAS (bit 31)
+     *
+     * The encoder's shadow of [SYN] 13.12.  `atlas_tab` is the per-tile table
+     * the decoder derives independently from warp_ext() and the skip map, so
+     * every rule that touches it is normative even though the object is
+     * encoder-side.  The PIXELS are ring slot 0; slot 1 is their one-deep
+     * undo, and there are no other slots -- the ring shrinks from four to two,
+     * which is a reduction even before the model's own saving.
+     *
+     * Why a WHOLE-picture copy into slot 1 each frame is the right one-deep
+     * undo, rather than a copy of the coded tiles: a tile's atlas pixels
+     * change only when the tile is CODED, so a full copy taken before every
+     * Pass B leaves each tile position holding exactly the pixels it had
+     * before its own most recent coded write-back.  That is one-deep per TILE,
+     * which is what ADR-0029 section 7 asks for, and it costs one buffer copy
+     * on the encoder's PC rather than a device-side compaction of a list the
+     * host does not learn until after the submit. */
+    bool atlas = false;
+    AtlasGeom atlas_geom{};
+    AtlasTable atlas_tab{};
+    AtlasUndo atlas_undo{};
+    /* Which tiles each of the last kDepth frames CODED, so a negative receipt
+     * naming a frame can name its tiles.  The decoder needs no such record --
+     * it simply does not update what it did not receive -- and neither would a
+     * transport that reported tiles rather than frames; this exists because
+     * nxvc_vk_encoder_set_frame_held() reports a FRAME. */
+    struct CodedFrame {
+        uint32_t frame = 0;
+        uint8_t used = 0;
+        std::vector<uint32_t> tiles;
+    };
+    CodedFrame atlas_coded[AtlasUndo::kDepth];
+    uint32_t atlas_now = 0;         /* the newest frame the shadow has seen */
+    /* Tile positions a receipt has invalidated or restored since the last
+     * frame, and whether their PIXELS need restoring from slot 1.  Applied at
+     * the head of the next encode, because a receipt arrives between frames
+     * and the restore is a device copy. */
+    std::vector<uint32_t> atlas_restore;
+    /* The head's angular speed between this frame's view and the previous
+     * one, in Q8 radians, for the motion-scaled skip threshold of Cheats 5.
+     * Derived from the pose stream the encoder already receives; zero when
+     * there is no pose input, which is what makes the cheat inert on every
+     * fixture that does not drive one. */
+    int atlas_motion_q8 = 0;
 };
 
 int vk_list_devices() {
@@ -190,6 +237,65 @@ static void write_set_mixed(VkDevice dev, VkDescriptorSet set,
     vkUpdateDescriptorSets(dev, (uint32_t)w.size(), w.data(), 0, nullptr);
 }
 
+/* A memory barrier between a compute write and a transfer read, and back.
+ * vk_min has the three the coding passes needed and this is the fourth: the
+ * ATLAS undo snapshot is a buffer copy sitting between two dispatches. */
+static void barrier_compute_transfer(VkCommandBuffer cb, bool compute_first) {
+    VkMemoryBarrier mb{};
+    mb.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+    mb.srcAccessMask = compute_first ? VK_ACCESS_SHADER_WRITE_BIT
+                                     : VK_ACCESS_TRANSFER_WRITE_BIT;
+    mb.dstAccessMask = compute_first ? VK_ACCESS_TRANSFER_READ_BIT
+                                     : (VK_ACCESS_SHADER_READ_BIT |
+                                        VK_ACCESS_SHADER_WRITE_BIT);
+    const VkPipelineStageFlags src = compute_first
+                                         ? VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
+                                         : VK_PIPELINE_STAGE_TRANSFER_BIT;
+    const VkPipelineStageFlags dst = compute_first
+                                         ? VK_PIPELINE_STAGE_TRANSFER_BIT
+                                         : VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+    vkCmdPipelineBarrier(cb, src, dst, 0, 1, &mb, 0, nullptr, 0, nullptr);
+}
+
+/* The byte regions one tile position occupies in a ring slot, over every coded
+ * plane -- the rect a rollback restores.  A tile is `full` samples square in
+ * its plane (64 luma, 32 chroma of a 4:2:0 stream) and its rows are strided,
+ * so it is one region per row rather than one per tile; the edge tiles of a
+ * picture that is not a multiple of 64 are clipped to the plane, because the
+ * samples past the edge belong to the next eye or to nothing. */
+static void atlas_tile_regions(const RingLayout &rl, int eyes, int cols_per_eye,
+                               int chroma420, int height, uint32_t tile,
+                               uint32_t src_slot, uint32_t dst_slot,
+                               std::vector<VkBufferCopy> &out) {
+    const int cols = cols_per_eye * eyes;
+    const int row = (int)(tile / (uint32_t)cols);
+    const int rem = (int)(tile % (uint32_t)cols);
+    const int eye = rem / cols_per_eye;
+    const int col = rem % cols_per_eye;
+    const VkDeviceSize sbase = (VkDeviceSize)src_slot * (VkDeviceSize)rl.slot_u16;
+    const VkDeviceSize dbase = (VkDeviceSize)dst_slot * (VkDeviceSize)rl.slot_u16;
+    for (int p = 0; p < rl.nplanes; ++p) {
+        const int full = nxvw::nxvw_inter_plane_full(p, chroma420);
+        const int ph = (p == 1 || p == 2) && chroma420 ? (height + 1) / 2 : height;
+        const int x0 = eye * rl.planeW[p] + col * full;
+        const int y0 = row * full;
+        int w = full, h = full;
+        if (col * full + w > rl.planeW[p]) w = rl.planeW[p] - col * full;
+        if (y0 + h > ph) h = ph - y0;
+        if (w <= 0 || h <= 0) continue;
+        for (int y = 0; y < h; ++y) {
+            const VkDeviceSize off =
+                (VkDeviceSize)rl.off[p] + (VkDeviceSize)(y0 + y) * rl.stride[p] +
+                (VkDeviceSize)x0;
+            VkBufferCopy c{};
+            c.srcOffset = (sbase + off) * 2u;
+            c.dstOffset = (dbase + off) * 2u;
+            c.size = (VkDeviceSize)w * 2u;
+            out.push_back(c);
+        }
+    }
+}
+
 static const VkBufferUsageFlags kDevUsage =
     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
     VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
@@ -249,23 +355,58 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
     /* Inter geometry.  On an intra-only stream every one of these is the
      * minimum legal size and nothing ever reads them. */
     d.inter = cfg.inter;
+    /* [SYN] 2: ATLAS requires INTER.  Refused rather than downgraded, because
+     * an ATLAS stream with no temporal reference is a contradiction and not a
+     * degraded configuration. */
+    if (cfg.atlas && !cfg.inter) {
+        err = "atlas needs inter ([SYN] 2: tool bit 31 requires bit 10)";
+        d.dev.destroy();
+        return false;
+    }
+    /* [SYN] 4.1 / 13.12.6: ref_sel SHALL be 0 in every tile header of an
+     * ATLAS stream.  The atlas holds ONE generation per tile position, so
+     * there is no older reference to select and the walk of select_reference()
+     * has nothing to walk.  A configuration asking for both is refused, not
+     * resolved: silently coding at ref_sel 0 would produce a stream the caller
+     * did not ask for, and silently keeping the ring would produce one the
+     * decoder must reject. */
+    if (cfg.atlas && cfg.ref_sel != 0) {
+        err = "atlas forces ref_sel to 0 ([SYN] 13.12.6); ref_sel is not 0";
+        d.dev.destroy();
+        return false;
+    }
+    d.atlas = cfg.atlas;
     /* A caller that says its client confirms gets confirmations REQUIRED from
      * frame 0, which is what removes the startup window in which the encoder
      * would otherwise still be guessing. */
     d.heldst.require_confirmed = cfg.inter && cfg.ref_confirm;
+    if (d.atlas) {
+        d.atlas_geom.width = cfg.w / cfg.eyes;
+        d.atlas_geom.height = cfg.h;
+        d.atlas_geom.cols_per_eye = (int)f.fp.tiles_x;
+        d.atlas_geom.rows = (int)f.fp.tiles_y;
+        d.atlas_geom.eyes = cfg.eyes;
+        d.atlas_tab.reset(d.atlas_geom);
+        d.atlas_undo.reset(d.atlas_geom);
+    }
     if (d.inter) {
         const int cw = cfg.chroma444 ? cfg.w / cfg.eyes : (cfg.w / cfg.eyes + 1) / 2;
         const int ch = cfg.chroma444 ? cfg.h : (cfg.h + 1) / 2;
         ring_layout(cfg.w / cfg.eyes, cfg.h, cw, ch, cfg.eyes, 3, d.ring);
         d.wpred_stride = wpred_stride_i16(cfg.chroma444 ? 0 : 1, 0);
     }
-    const size_t ring_bytes = d.inter ? d.ring.bytes() : 4u;
+    /* Four slots without ATLAS, TWO with it: the atlas at slot 0 and its
+     * one-deep pixel undo at slot 1.  The ADR's memory claim is a reduction
+     * and this is where it lands on the encoder as well as the decoder. */
+    const size_t ring_bytes =
+        d.inter ? (d.atlas ? (size_t)d.ring.slot_u16 * 2u * 2u : d.ring.bytes())
+                : 4u;
     const size_t wpred_b =
         d.inter ? wpred_bytes(d.ntiles, cfg.chroma444 ? 0 : 1, 0) : 4u;
+    /* With ATLAS the buffer carries a matrix PAIR per tile after the tile
+     * records, which is where each tile's composed C lives. */
     const size_t warp_b =
-        d.inter ? ((size_t)NXVW_WARP_HDR_UINTS +
-                   (size_t)d.ntiles * NXVW_WARP_TILE_UINTS) * 4u
-                : 4u;
+        d.inter ? warp_params_uints(d.ntiles, d.atlas ? 1 : 0) * 4u : 4u;
 
     d.e4_groups = std::min(kE4GroupsMax,
                            (d.ntiles + NXE_E4_TILES_PER_WG - 1) /
@@ -677,13 +818,38 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
          * fallback is unchanged: nothing held within three frames is still an
          * all-INTRA frame with the tile-map reset flag. */
         d.cur_ref_sel = 0;
-        if (!select_reference(d.ringst, d.heldst, frame_number, d.cfg.ref_sel,
-                              &d.cur_ref_sel, &ref_slot))
-            ref_slot = -1;
-        d.cur_pred_fn =
-            ref_slot >= 0
-                ? (int64_t)frame_number - 1 - (int64_t)d.cur_ref_sel
-                : -1;
+        if (d.atlas) {
+            /* [SYN] 13.12.6.  There is no reference SELECTION under ATLAS:
+             * `ref_sel` is 0 in every tile header and the atlas holds one
+             * generation per tile position.  What replaces the walk is
+             * per-tile validity -- a tile whose own atlas entry is invalid
+             * must be INTRA, and every other tile predicts -- so the only
+             * frame-level question left is whether ANY entry is valid, which
+             * is the difference between an ordinary frame and a
+             * tile_map_reset one.
+             *
+             * Slot 0 is the atlas.  It is not `frame_number & 3` and it never
+             * moves: the generations the ring used to carry are what the
+             * per-tile `src_frame` now carries instead. */
+            bool any_valid = false;
+            for (uint32_t t = 0; t < d.ntiles && !any_valid; ++t)
+                if (d.atlas_tab.valid(t)) any_valid = true;
+            ref_slot = any_valid ? 0 : -1;
+            /* The frame this one predicts from is always its immediate
+             * predecessor, whatever any tile's source frame is: warp_ext() is
+             * the step from N to N-1 and the chain back to a tile's own source
+             * is the COMPOSITION, not a different matrix.  The held record
+             * still wants a predecessor, and this is it. */
+            d.cur_pred_fn = ref_slot >= 0 ? (int64_t)frame_number - 1 : -1;
+        } else {
+            if (!select_reference(d.ringst, d.heldst, frame_number,
+                                  d.cfg.ref_sel, &d.cur_ref_sel, &ref_slot))
+                ref_slot = -1;
+            d.cur_pred_fn =
+                ref_slot >= 0
+                    ? (int64_t)frame_number - 1 - (int64_t)d.cur_ref_sel
+                    : -1;
+        }
         WarpBuildInfo bi;
         bi.width = (int)f.fp.width;
         bi.height = (int)f.fp.height;
@@ -696,14 +862,29 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
         bi.nplanes = 3;
         bi.frame_number = frame_number;
         bi.ref_slot = ref_slot;
+        bi.atlas = d.atlas ? 1 : 0;
         /* warp_ext(), from the view that went with the reference slot and the
          * view of this frame.  With no pose input the view history is all
          * identity and so is the matrix, which predicts a still picture
          * correctly and a turning head badly -- and the mode decision then
          * declines to skip, which is the right failure. */
+        /* Which VIEW the matrix is derived against.  Without ATLAS it is the
+         * view that went with the ring slot this frame predicts from, because
+         * that is the picture being warped.  With ATLAS the picture being
+         * warped is the atlas, whose tiles are at assorted poses, and the
+         * matrix is the ONE-STEP delta from this frame to its predecessor --
+         * so the view is frame N-1's, and the per-tile chain back to each
+         * tile's own source pose is built by composition instead.  Deriving
+         * it against a tile's source view would be the same mistake in the
+         * other direction: a confident prediction of the wrong place. */
+        const int warp_view_slot =
+            d.atlas ? (ref_slot >= 0 && frame_number > 0
+                           ? (int)((frame_number - 1u) & 3u)
+                           : -1)
+                    : ref_slot;
         WarpMatrix wm[2];
         for (int e = 0; e < 2; ++e) {
-            wm[e] = derive_warp(d.views, ref_slot, e, (int)f.fp.width,
+            wm[e] = derive_warp(d.views, warp_view_slot, e, (int)f.fp.width,
                                 (int)f.fp.height);
             for (int i = 0; i < 9; ++i) f.warp[e][i] = wm[e].h[i];
         }
@@ -711,13 +892,72 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
         build_warp_params(bi, d.ring, d.warp);
         d.wpush = warp_push(bi, d.ring);
 
+        /* [SYN] 13.12.3 step 1, the advance, and it happens HERE: after the
+         * frame's matrix is derived and before a single tile is decided,
+         * because step 2's prediction reads the table AFTER step 1.  Getting
+         * the order wrong would predict every tile through a matrix one frame
+         * stale, which is a wrong picture and not an error. */
+        if (d.atlas) {
+            int32_t Hm[2][9];
+            for (int e = 0; e < 2; ++e)
+                for (int i = 0; i < 9; ++i) Hm[e][i] = wm[e].h[i];
+            d.atlas_undo.note_frame(frame_number, Hm, ref_slot >= 0);
+            if (ref_slot >= 0) d.atlas_tab.advance(Hm);
+            d.atlas_now = frame_number;
+            /* Pass B stores into the slot the warp header names, and under
+             * ATLAS that is always slot 0 -- the atlas -- rather than
+             * `frame_number & 3`.  build_warp_params() wrote the ring rule; it
+             * is overridden here rather than parameterised, so the non-atlas
+             * path keeps exactly the words it has always had. */
+            d.warp.w[(size_t)NXVW_WARP_HDR_RING + 3] = 0u;
+            /* Each tile's own composed C, conjugated for both subsamplings,
+             * into the area its `mat_idx` names.  AFTER the advance: [SYN]
+             * 13.12.4 says a coded tile reads the matrix of its own atlas
+             * entry "read after step 1", so building these before the advance
+             * would predict every tile one frame stale. */
+            atlas_build_matrices(d.atlas_tab, bi.width, bi.height, bi.cw, bi.ch,
+                                 d.warp);
+        }
+
         const uint32_t period =
             d.cfg.intra_period > 0 ? (uint32_t)d.cfg.intra_period : 180u;
         for (uint32_t t = 0; t < d.ntiles; ++t) {
             const bool missing =
                 t < d.force_intra.size() && d.force_intra[t] != 0;
-            const bool eligible = ref_slot >= 0 && !missing &&
-                                  !refresh_due(t, frame_number, period);
+            bool eligible = ref_slot >= 0 && !missing &&
+                            !refresh_due(t, frame_number, period);
+            /* Under ATLAS eligibility is PER TILE and it is the whole of the
+             * loss story ([SYN] 13.12.4: a tile with mode != INTRA whose own
+             * atlas entry is invalid is BITSTREAM).  Three things can make an
+             * entry unusable, and they are different questions:
+             *
+             *   * `valid == 0` -- the composition left the envelope, or a
+             *     receipt rolled the entry back past the history.  The
+             *     envelope check IS the staleness bound; there is no separate
+             *     "too old" rule.
+             *   * the client has not CONFIRMED the generation.  Positive acks
+             *     keep their meaning under ATLAS, per tile rather than per
+             *     frame: the question is whether the client holds the frame
+             *     that last CODED this position, which is `src_frame`.
+             *   * `src_frame` has aged out of the held history.  That is
+             *     treated as HELD, and the direction matters: the history is
+             *     deeper than the round trip the transport is designed for, so
+             *     a negative report for a frame that old would have arrived
+             *     long ago.  Treating it as unheld instead would force INTRA
+             *     on precisely the long-lived tiles the atlas exists to keep,
+             *     which is the model's whole benefit thrown away to re-answer
+             *     a question that has already been answered. */
+            if (eligible && d.atlas) {
+                eligible = d.atlas_tab.valid(t);
+                if (eligible && d.heldst.confirmation_required()) {
+                    const uint32_t src = d.atlas_tab.e[t].src_frame;
+                    const bool aged =
+                        d.heldst.any &&
+                        d.heldst.newest + 1u > (uint32_t)HeldState::kDepth &&
+                        src < d.heldst.newest + 1u - (uint32_t)HeldState::kDepth;
+                    if (!aged && !d.heldst.confirms(src)) eligible = false;
+                }
+            }
             if (eligible)
                 set_tile_mode(d.warp, t, nxvw::kModeWarpSkip, 0, 0);
             /* The job's mode is what E3/E4/E5 read.  It starts INTRA and E1c
@@ -733,7 +973,12 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
          * so every inter tile of the frame predicts from the same slot and
          * carries the same `ref_sel`.  E4 writes it into word1 bits 21-22 of
          * a tile whose mode is not INTRA. */
-        fp.ref_sel = ref_slot >= 0 ? (uint32_t)d.cur_ref_sel : 0u;
+        /* [SYN] 4.1: 0 in every tile header when ATLAS is set.  create()
+         * has already refused a configuration that asked for anything else,
+         * so this is the invariant restated where it is emitted rather than a
+         * silent correction of a live value. */
+        fp.ref_sel =
+            (d.atlas || ref_slot < 0) ? 0u : (uint32_t)d.cur_ref_sel;
         /* Frame flag bit 0 is the tile-map reset -- set exactly when there is
          * no usable reference -- and bit 3 says warp_ext() is present. */
         fp.frame_flags = (fp.frame_flags & ~9u) | (ref_slot >= 0 ? 8u : 1u);
@@ -744,8 +989,30 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
          * gate every skip at the quantiser the stream STARTED at. */
         const int qpc = (int)fp.base_qp > 63 ? 63 : (int)fp.base_qp;
         d.decide_push[0] = (int32_t)nxe_qstep[qpc];
-        d.decide_push[1] =
+        int32_t skip_thresh =
             d.cfg.skip_thresh > 0 ? (int32_t)d.cfg.skip_thresh : 256;
+        /* Cheats 5, the motion-scaled skip threshold.  A tile whose prediction
+         * error is under a perceptual threshold IN MOTION may be skipped where
+         * it would not be at rest: the artefact is smear during fast rotation,
+         * which is where the eye's own contrast sensitivity has collapsed, and
+         * it appears at the moment rotation STOPS, for one refresh.
+         *
+         * Off by default, and the default is what every fixture and every acid
+         * test runs, so byte-identity against `nxv-enc` is unaffected by this
+         * existing.  Turning it on makes the stream depend on a quantity the
+         * reference encoder does not yet derive, so a stream coded with it is
+         * NOT byte-comparable until the reference carries the same knob.
+         *
+         * The angular speed is the frame-to-frame rotation the encoder reads
+         * out of the pose stream it already receives; with no pose input it is
+         * zero and the cheat is inert. */
+        if (d.cfg.motion_skip_gain_q8 > 0) {
+            const int64_t add = ((int64_t)d.cfg.motion_skip_gain_q8 *
+                                 (int64_t)d.atlas_motion_q8) >> 8;
+            const int64_t v = (int64_t)skip_thresh + add;
+            skip_thresh = (int32_t)(v > 65535 ? 65535 : v);
+        }
+        d.decide_push[1] = skip_thresh;
         d.decide_push[2] = d.wpred_stride;
         /* The INTRA fallback threshold, Q8.  nxvc_config::int_intra_mad_q8's
          * default is 2304 (a MAD of 9) and the harness has no knob for it
@@ -886,6 +1153,27 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
             VkBufferCopy cor{(1 << 15) + 512 * 4, 0, (size_t)d.ntiles * 4};
             vkCmdCopyBuffer(cb, d.b_stage_small.buf, d.b_order.buf, 1, &cor);
         }
+        /* The pixel half of a rollback (ADR-0029 section 7).  A receipt since
+         * the last encode named tiles whose atlas pixels still hold the
+         * generation the client did not receive; they are restored from the
+         * undo slot here, before Pass W reads the atlas, so the predictor and
+         * the client's atlas describe the same pixels.  It is a transfer and
+         * the barrier below covers it. */
+        if (d.atlas && !d.atlas_restore.empty()) {
+            std::vector<VkBufferCopy> regs;
+            for (uint32_t t : d.atlas_restore)
+                atlas_tile_regions(d.ring, (int)f.fp.eyes, (int)f.fp.tiles_x,
+                                   d.cfg.chroma444 ? 0 : 1, (int)f.fp.height, t,
+                                   1u, 0u, regs);
+            /* One command per 4096 regions: vkCmdCopyBuffer takes a count and
+             * a very long receipt would otherwise build an unbounded one. */
+            for (size_t i = 0; i < regs.size(); i += 4096) {
+                const uint32_t n =
+                    (uint32_t)std::min<size_t>(4096, regs.size() - i);
+                vkCmdCopyBuffer(cb, d.b_ring.buf, d.b_ring.buf, n, &regs[i]);
+            }
+            d.atlas_restore.clear();
+        }
         d.dev.barrier_transfer_to_compute(cb);
         if (image) {
             /* E0 fills b_src from the caller's image, in the same command
@@ -977,6 +1265,25 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
              * the sum of nb*nb*65 over earlier planes -- and the only
              * difference, the per-tile stride, is a push constant. */
             d.dev.barrier_compute_to_compute(cb);
+            /* The one-deep pixel undo, taken HERE: after everything that reads
+             * the atlas and before Pass B writes it.  The whole picture is
+             * copied rather than the coded tiles, because the coded set is
+             * E1c's decision and the host does not learn it until after this
+             * submit -- and copying everything is EQUIVALENT, because a tile's
+             * atlas pixels change only when the tile is coded, so every
+             * position ends up holding exactly the pixels it had before its own
+             * most recent coded write-back.  That is the one-deep-per-TILE log
+             * ADR-0029 section 7 asks for, at one buffer copy on the encoder's
+             * PC. */
+            if (d.atlas) {
+                barrier_compute_transfer(cb, true);
+                VkBufferCopy snap{};
+                snap.srcOffset = 0;
+                snap.dstOffset = (VkDeviceSize)d.ring.slot_u16 * 2u;
+                snap.size = (VkDeviceSize)d.ring.slot_u16 * 2u;
+                vkCmdCopyBuffer(cb, d.b_ring.buf, d.b_ring.buf, 1, &snap);
+                barrier_compute_transfer(cb, false);
+            }
             vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, d.p_b.pipe);
             vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE,
                                     d.p_b.layout, 0, 1, &d.s_b, 0, nullptr);
@@ -1017,6 +1324,24 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
      * not. */
     if (d.inter) {
         d.ringst.publish(frame_number);
+        /* The head's rotation between this frame's view and its predecessor's,
+         * for the motion-scaled skip threshold the NEXT frame will use.  It is
+         * read here, before publish() overwrites the slot, and it is the only
+         * floating-point quantity on this path -- encoder-side, non-normative,
+         * and inert unless Cheats 5 is switched on. */
+        if (d.cfg.motion_skip_gain_q8 > 0 && d.views.have && frame_number > 0) {
+            const View &a = d.views.slot[(frame_number - 1u) & 3u][0];
+            const View &b = d.views.cur[0];
+            /* |2 * acos(|<qa, qb>|)| is the angle between two orientations.
+             * The dot is clamped because a quantised pose pair can leave it a
+             * hair outside [-1, 1] and acos would then be NaN. */
+            double dot = a.qx * b.qx + a.qy * b.qy + a.qz * b.qz + a.qw * b.qw;
+            if (dot < 0) dot = -dot;
+            if (dot > 1.0) dot = 1.0;
+            const double ang = 2.0 * std::acos(dot);
+            const double q = ang * 256.0;
+            d.atlas_motion_q8 = (int32_t)(q > 1e6 ? 1e6 : q);
+        }
         d.views.publish(frame_number);
         /* One frame's worth: the tiles just coded INTRA are tiles the client
          * can hold again.  A caller whose client is still missing them says
@@ -1043,6 +1368,36 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
          * encoder in INTRA for ever after one drop.  Any other frame is held
          * only if the frame it predicted from is (nxe_inter.h, rule 2). */
         d.heldst.publish(frame_number, any_inter ? d.cur_pred_fn : -1);
+
+        /* [SYN] 13.12.3 step 3, the write-back, and the whole of the atlas's
+         * cost model is in which tiles it touches.  A tile whose mode produced
+         * reconstructed samples -- INTRA, WARP_MV, STATIC_MV -- resets its
+         * entry to the identity at this frame.  A WARP_SKIP tile writes
+         * NOTHING: not pixels, not metadata.  That is not an optimisation, it
+         * is the definition; writing a skipped tile's warped predictor back
+         * would be exactly the chaining the model exists to remove, and would
+         * leave the pixels and `C` describing different poses.
+         *
+         * The PIXEL half is Pass B's ring store, which ran in the submit
+         * above; this is the metadata half and the undo snapshot that goes
+         * with it. */
+        if (d.atlas) {
+            Impl::CodedFrame &cl =
+                d.atlas_coded[frame_number % (uint32_t)AtlasUndo::kDepth];
+            cl.frame = frame_number;
+            cl.used = 1;
+            cl.tiles.clear();
+            for (uint32_t t = 0; t < d.ntiles; ++t) {
+                const uint32_t m = f.jobs[t].mode;
+                if (m == (uint32_t)nxvw::kModeWarpSkip) continue;
+                /* The snapshot is the entry as it was BEFORE this write-back,
+                 * which is what a receipt for this frame rolls back to. */
+                d.atlas_undo.note_coded(t, frame_number, d.atlas_tab.e[t]);
+                d.atlas_tab.code_tile(t, frame_number, (int)m,
+                                      (int)f.jobs[t].res_level);
+                cl.tiles.push_back(t);
+            }
+        }
     }
 
 
@@ -1204,6 +1559,41 @@ void VkEncoder::set_frame_held(uint32_t frame_number, bool held) {
         d.heldst.confirm(frame_number);
     else
         d.heldst.not_held(frame_number);
+    if (!d.atlas || held) return;
+
+    /* ADR-0029 section 7.  A negative report under ATLAS invalidates exactly
+     * the tiles the lost frame CODED, per tile, and nothing else -- every
+     * other tile position's entry is still bit-identical to the client's and
+     * continues to be.  There is no cascade along a prediction chain and no
+     * INTRA resync: the frame-level `not_held` sweep above still runs because
+     * the held record is shared with the non-atlas path, but under ATLAS it
+     * decides nothing, because eligibility is per tile.
+     *
+     * For each tile the frame coded, roll the shadow entry back to the
+     * generation before it, replaying the advances since.  When the log can no
+     * longer produce that generation -- the frame has aged out, or the tile
+     * has been coded AGAIN since, so the one-deep snapshot is a later one --
+     * the entry is invalidated instead.  That second case is the residual risk
+     * the ADR names: during the round trip before the report arrives the
+     * encoder predicted from a generation the client does not hold, and the
+     * only sound answer is to code the tile INTRA.  Invalidating is that
+     * answer, and it is the safe direction: an INTRA tile costs bytes, a
+     * wrongly-held one costs a refusal. */
+    const Impl::CodedFrame &cl =
+        d.atlas_coded[frame_number % (uint32_t)AtlasUndo::kDepth];
+    if (!cl.used || cl.frame != frame_number) return;
+    for (uint32_t t : cl.tiles) {
+        AtlasEntry back{};
+        if (d.atlas_undo.rollback(t, frame_number, d.atlas_now, back)) {
+            d.atlas_tab.e[t] = back;
+            /* The metadata is the client's again; the PIXELS still hold the
+             * lost generation's reconstruction, so the tile is queued for a
+             * restore from the undo slot at the head of the next encode. */
+            d.atlas_restore.push_back(t);
+        } else {
+            d.atlas_tab.e[t].flags &= (uint8_t)~kAtlasValid;
+        }
+    }
 }
 
 void VkEncoder::bench(Frame &f, int iters) {

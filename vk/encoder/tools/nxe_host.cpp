@@ -356,6 +356,17 @@ std::vector<uint8_t> stream_header(const Config &cfg, const Frame &f) {
      * path always carries warp_ext() on the frames that have a reference, and
      * a decoder that implements one and not the other cannot decode it. */
     if (cfg.inter) tools |= (1ull << 10) | (1ull << 11);
+    /* ATLAS (31).  [SYN] 2: it requires INTER and is mutually exclusive with
+     * STEREO (12); either violation is BITSTREAM.  INTER is guaranteed by
+     * VkEncoder::create(), which refuses `atlas` without it, and bit 12 is never set by
+     * this encoder in any configuration -- the STEREO tool is not implemented
+     * here at all -- so the exclusion is a property of the emitter rather than
+     * a runtime test.  The mask is asserted below so that stops being true
+     * loudly rather than quietly. */
+    if (cfg.atlas) tools |= 1ull << 31;
+    if (cfg.atlas && (tools & (1ull << 12)) != 0)
+        std::fprintf(stderr,
+                     "nxe: ATLAS and STEREO are mutually exclusive ([SYN] 2)\n");
 
     u32(0x3156584Eu);            /* 'NXV1' */
     u8(1);                       /* NXVC_VERSION */

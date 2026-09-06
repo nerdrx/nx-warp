@@ -259,6 +259,39 @@ typedef struct nxvc_vke_create_info {
      * Refused at create() if `inter` is clear and this is not 0. */
     uint32_t ref_confirm;
 
+    /* ATLAS, tool bit 31: docs/SYNTAX.md 13.12 and docs/adr/0029.
+     *
+     * The reference stops being the previous decoded picture and becomes a
+     * per-tile ATLAS -- for each tile position, the pixels of the most recent
+     * frame that CODED that position, plus the composed warp from this frame's
+     * pose back to that frame's pose.  A skipped tile produces no reference
+     * pixels and does not touch the atlas, which is what removes the whole of
+     * the decoder's skip warp.
+     *
+     * What it changes for a CALLER of this ABI:
+     *
+     *   * the stream carries tool bit 31, so a decoder that does not offer it
+     *     cannot decode the stream.  It is a negotiated tool like any other;
+     *     do not set it against a client that did not offer it.
+     *   * `ref_sel` is 0 in every tile header whatever this struct asked for,
+     *     because the atlas holds ONE generation per tile position and there
+     *     is no older reference to select.  Setting both is refused rather
+     *     than silently resolved.
+     *   * loss stops needing a mechanism.  A negative report through
+     *     nxvc_vk_encoder_set_frame_held(enc, f, 0) invalidates exactly the
+     *     tiles frame `f` coded, per tile, and the encoder rolls its shadow
+     *     back to the generation before them; every other tile position is
+     *     untouched and stays predictable.  A whole-frame INTRA resync is no
+     *     longer the recovery path and is no longer the cost of a drop.
+     *   * the picture nxvc_vk_decoder or nxv-dec produces is DERIVED from the
+     *     atlas and is not normative; conformance is the atlas.
+     *
+     * Requires `inter`.  Mutually exclusive with the STEREO tool bit, which
+     * this encoder does not implement in any configuration, so there is
+     * nothing for a caller to do about it.  Refused at create() if `inter` is
+     * clear, or if `ref_sel` is not 0. */
+    uint32_t atlas;
+
     uint32_t flags; /* reserved, pass 0 */
 } nxvc_vke_create_info;
 

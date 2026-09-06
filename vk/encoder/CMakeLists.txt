@@ -322,7 +322,8 @@ if(EXISTS ${NXENC_REF_TABLES})
   # nxenc_inter stays, for the unit test.
   set(NXENC_INTER_SRC)
   if(NXENC_HAVE_PASSW)
-    set(NXENC_INTER_SRC ${CMAKE_CURRENT_SOURCE_DIR}/inter/nxe_inter.cpp)
+    set(NXENC_INTER_SRC ${CMAKE_CURRENT_SOURCE_DIR}/inter/nxe_inter.cpp
+                        ${CMAKE_CURRENT_SOURCE_DIR}/inter/nxe_atlas.cpp)
   endif()
 
   add_executable(nxvc-vkenc
