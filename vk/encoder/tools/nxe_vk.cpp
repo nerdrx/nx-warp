@@ -66,6 +66,9 @@ struct VkEncoder::Impl {
      * nxvw_plane_coef_count.  So b_coef is bound straight through with the
      * stride set to NXE_TILE_COEFS_MAX, and there is no repack pass. */
     vkmin::Buffer b_tilerecs, b_weights, b_order, b_dummy;
+    /* [ATLAS] the compacted coded-tile order E1c builds, and the
+     * indirect dispatch that walks it. */
+    vkmin::Buffer b_order_coded, b_indirect;
     std::vector<vkmin::Image> ph;   /* 1x1 placeholders, Pass B's 7 images */
     vkmin::Buffer b_stage_src, b_stage_coef, b_stage_small;
 
@@ -298,7 +301,11 @@ static void atlas_tile_regions(const RingLayout &rl, int eyes, int cols_per_eye,
 
 static const VkBufferUsageFlags kDevUsage =
     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-    VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+    /* [ATLAS] Pass B is dispatched INDIRECTLY over the coded-tile count E1c
+     * produces, so one buffer in this set is a dispatch argument.  They are
+     * all created with one usage mask, and the bit is free on the rest. */
+    VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
 
 VkEncoder::VkEncoder() : p_(new Impl) {}
 VkEncoder::~VkEncoder() {
@@ -386,6 +393,22 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
         d.atlas_geom.cols_per_eye = (int)f.fp.tiles_x;
         d.atlas_geom.rows = (int)f.fp.tiles_y;
         d.atlas_geom.eyes = cfg.eyes;
+        /* The atlas is one table over BOTH eyes, keyed by the row-major
+         * eye-minor tile index of [SYN] 3.3 -- rows interleave the eyes, so
+         * eye = (n % cols) / cols_per_eye -- and each eye's tiles compose with
+         * their own eye's warp_ext().  That is not the same thing as the
+         * STEREO tool, which ATLAS excludes: STEREO predicts one eye from the
+         * other WITHIN a frame, and nothing here does.
+         *
+         * The guard is not decoration.  `fp.tiles_x` and `fp.width` are per
+         * eye and `fp.ntiles` is over the pair, and getting that backwards
+         * would size the table to one eye and index it with pair-wide indices
+         * -- which is a wrong matrix per tile rather than a crash. */
+        if (d.atlas_geom.ntiles() != d.ntiles) {
+            err = "atlas geometry disagrees with the tile count";
+            d.dev.destroy();
+            return false;
+        }
         d.atlas_tab.reset(d.atlas_geom);
         d.atlas_undo.reset(d.atlas_geom);
     }
@@ -438,6 +461,8 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
         {&d.b_tilerecs, (size_t)std::max(d.ntiles, 1u) * 16, false},
         {&d.b_weights,  512 * 4,    false},
         {&d.b_order,    (size_t)std::max(d.ntiles, 1u) * 4, false},
+        {&d.b_order_coded, (size_t)std::max(d.ntiles, 1u) * 4, false},
+        {&d.b_indirect, 16,         false},
         {&d.b_dummy,    4096,       false},
         {&d.b_out,     d.out_bytes, true},
         {&d.b_stage_src, d.src_bytes, true},
@@ -512,7 +537,9 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
     if (!d.dev.create_pipeline(warp_pred_spv, sizeof warp_pred_spv, sb3,
                                (uint32_t)sizeof(nxvw::NxvwWarpPush), d.p_w, err))
         return false;
-    const std::vector<VkDescriptorType> sb8d(8, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    /* Ten now: eight, plus the compacted coded-tile order and its indirect
+     * dispatch argument ([ATLAS], E1c_decide.comp). */
+    const std::vector<VkDescriptorType> sb8d(10, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
     if (!d.dev.create_pipeline(E1c_decide_spv, sizeof E1c_decide_spv, sb8d,
                                (uint32_t)sizeof d.decide_push, d.p_dec, err))
         return false;
@@ -585,7 +612,8 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
               {d.b_ring.buf, d.b_warp.buf, d.b_wpred.buf, d.b_order.buf});
     write_set(h, d.s_dec, {d.b_params.buf, d.b_jobs.buf, d.b_src.buf,
                            d.b_wpred.buf, d.b_warp.buf, d.b_tilerecs.buf,
-                           d.b_ring.buf, d.b_warp.buf});
+                           d.b_ring.buf, d.b_warp.buf, d.b_order_coded.buf,
+                           d.b_indirect.buf});
 
     /* Pass B's sixteen bindings.  The seven image ones get 1x1 placeholders of
      * exactly the format each declares; nothing is ever written to them. */
@@ -610,7 +638,13 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
         write_set_mixed(h, d.s_b,
                         {d.b_coef.buf, d.b_tilerecs.buf, d.b_weights.buf,
                          N, N, N, N,
-                         d.b_dummy.buf, d.b_order.buf, d.b_dummy.buf,
+                         d.b_dummy.buf,
+                         /* [ATLAS] Pass B walks the CODED tiles only; every
+                          * other configuration walks them all.  Pass W keeps
+                          * the full order: it must predict every eligible tile
+                          * so the decision has something to measure. */
+                         d.atlas ? d.b_order_coded.buf : d.b_order.buf,
+                         d.b_dummy.buf,
                          N, N, N,
                          d.b_wpred.buf, d.b_ring.buf, d.b_warp.buf},
                         views);
@@ -1217,6 +1251,16 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
             vkCmdDispatch(cb, d.ntiles, 1, 1);
             d.dev.barrier_compute_to_compute(cb);
 
+            /* The indirect dispatch argument E1c counts up: (0, 1, 1).  It is
+             * reset every frame, before the decision, because it is a running
+             * total and a stale one would dispatch Pass B over last frame's
+             * count -- reconstructing tiles this frame did not code and
+             * skipping ones it did. */
+            {
+                const uint32_t init[4] = {0u, 1u, 1u, 0u};
+                vkCmdUpdateBuffer(cb, d.b_indirect.buf, 0, sizeof init, init);
+                barrier_compute_transfer(cb, false);
+            }
             vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, d.p_dec.pipe);
             vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE,
                                     d.p_dec.layout, 0, 1, &d.s_dec, 0, nullptr);
@@ -1289,7 +1333,29 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
                                     d.p_b.layout, 0, 1, &d.s_b, 0, nullptr);
             vkCmdPushConstants(cb, d.p_b.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
                                (uint32_t)sizeof d.bpush, &d.bpush);
-            vkCmdDispatch(cb, d.ntiles, 1, 1);
+            if (d.atlas) {
+                /* [SYN] 13.12.3 step 3: a WARP_SKIP tile writes NOTHING to the
+                 * atlas.  Running Pass B over it would store its warped
+                 * predictor while its `C` still composes back to an older
+                 * source frame, so the pixels and the matrix would describe
+                 * different poses and every later prediction of that tile
+                 * would be warped twice -- the chaining the model exists to
+                 * remove.  So the dispatch is over the CODED tiles only, whose
+                 * count is not known until E1c has run, which is what the
+                 * indirect dispatch is for.
+                 *
+                 * This is also, on the decoder, where the 8.8 ms goes. */
+                VkMemoryBarrier mb{};
+                mb.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+                mb.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+                mb.dstAccessMask = VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
+                vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                     VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, 0, 1,
+                                     &mb, 0, nullptr, 0, nullptr);
+                vkCmdDispatchIndirect(cb, d.b_indirect.buf, 0);
+            } else {
+                vkCmdDispatch(cb, d.ntiles, 1, 1);
+            }
         }
         d.dev.barrier_compute_to_host(cb);
         if (d.inter) {

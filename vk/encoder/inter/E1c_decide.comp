@@ -93,6 +93,26 @@ layout(std430, binding = 6) readonly buffer RingBuf  { uint v[]; } ring;
 // Two bindings on one buffer rather than one read-write binding, so the
 // read side stays `readonly` and the compiler keeps its loads hoisted.
 layout(std430, binding = 7) buffer WarpWBuf { uint v[]; } warpw;
+// [ATLAS] The compacted order of the tiles this frame CODED, and the indirect
+// dispatch that walks it.
+//
+// Under [SYN] 13.12.3 a WARP_SKIP tile writes NOTHING to the atlas -- not
+// pixels, not metadata -- so Pass B must not run over it.  Writing its warped
+// predictor back while its `C` still composes to an older source frame would
+// leave the pixels and the matrix describing DIFFERENT poses, and every later
+// prediction of that tile would be warped twice.  That is the chaining the
+// whole model exists to remove, so this is a correctness requirement and not
+// an optimisation -- though it is also exactly where the decoder's saving
+// comes from.
+//
+// The append is an atomicAdd, so the ORDER of the compacted list varies run to
+// run.  That is sound and deliberate: every workgroup writes only its own
+// tile's position and reads only positions written before this frame, which
+// [SYN] 13.12.3 states explicitly, so the finished atlas cannot depend on the
+// order.  `indirect` is (x, y, z) group counts; the host presets it to
+// (0, 1, 1) and this kernel counts x up.
+layout(std430, binding = 8) writeonly buffer CodedOrder { uint i[]; } coded;
+layout(std430, binding = 9) buffer Indirect { uint g[]; } ind;
 
 layout(push_constant) uniform Push {
     int qstep;       // kQStep[qp], Q4
@@ -309,6 +329,12 @@ void add64(inout uint lo, inout uint hi, uint v) {
 // tile at all; w3 is the warp-record index, unused because the hook addresses
 // the tile records by tile index.
 void write_rec(uint tile, uint mode, int mvx, int mvy) {
+    // Called by lane 0 only, on every path, exactly once per tile -- which is
+    // what makes it the right place to append to the coded list.
+    if (mode != uint(NXE_MODE_WARP_SKIP)) {
+        const uint slot = atomicAdd(ind.g[0], 1u);
+        coded.i[slot] = tile;
+    }
     const nxe_tile_job j = jobs[tile];
     uint w0 = (j.col & 0xfffu) << 4;
     w0 |= (j.eye & 1u) << 2;

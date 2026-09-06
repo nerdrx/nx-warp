@@ -145,6 +145,9 @@ struct Config {
      * of smear during fast rotation, which is where the eye's own contrast
      * sensitivity has collapsed.  Q8 gain per radian per frame; 0 is off. */
     int motion_skip_gain_q8 = 0;
+    /* Print each frame's tile mode census.  Reporting only; it changes no
+     * stream and is off unless asked for. */
+    bool mode_census = false;
 
     int device = 0;
     bool cpu_only = false;

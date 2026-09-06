@@ -71,6 +71,7 @@ static void usage() {
         "  --ref-sel 0..2       reference distance an inter frame asks for\n"
         "                       first; a floor, the encoder walks outwards to\n"
         "                       the newest reference the client still holds\n"
+        "  --modes              per-frame tile mode census and coded count\n"
         "  --atlas              the per-tile atlas reference, tool bit 31\n"
         "                       ([SYN] 13.12).  Needs --inter; forces ref_sel 0\n"
         "  --motion-skip Q8     scale the skip threshold by head angular\n"
@@ -149,6 +150,7 @@ int main(int argc, char **argv) {
         else if (a == "--coded-vectors") cfg.int_coded_vectors = true;
         else if (a == "--ref-sel") cfg.ref_sel = std::atoi(val());
         else if (a == "--atlas") cfg.atlas = true;
+        else if (a == "--modes") cfg.mode_census = true;
         else if (a == "--motion-skip") cfg.motion_skip_gain_q8 = std::atoi(val());
         else if (a == "--hold-every") hold_every = std::atoi(val());
         else if (a == "--ack-delay") {
@@ -419,6 +421,24 @@ int main(int argc, char **argv) {
         if (!cfg.quiet)
             std::printf("frame %d: %zu bytes  %.4f bpp\n", n, f.out.size(),
                         f.out.size() * 8.0 / ((double)cfg.w * cfg.h));
+        /* The per-frame mode census.  Under ATLAS the CODED count -- every
+         * mode but WARP_SKIP -- is the quantity the whole model is about: it
+         * is what the decoder pays for, what the atlas write-back touches, and
+         * the term that does not amortise across display intervals.  It is
+         * printed rather than derived from the stream because the stream does
+         * not carry a mode histogram and reconstructing one means parsing. */
+        if (cfg.mode_census && cfg.inter) {
+            unsigned c[5] = {0, 0, 0, 0, 0};
+            for (uint32_t t = 0; t < f.fp.ntiles; ++t) {
+                const uint32_t m = f.jobs[t].mode;
+                if (m < 5) ++c[m];
+            }
+            const unsigned coded = f.fp.ntiles - c[0];
+            std::printf("  modes %u: skip %u  static %u  warp %u  intra %u  "
+                        "coded %u (%.1f %%)\n",
+                        n, c[0], c[1], c[2], c[3], coded,
+                        100.0 * coded / (double)f.fp.ntiles);
+        }
         ++n;
     }
     std::fclose(fo);
