@@ -189,6 +189,71 @@ int main() {
               "a floor above 2 must clamp to 2, got %d", d);
     }
 
+    /* ---- confirmations, which are the difference between a refusal being
+     * rarer and a refusal being impossible.
+     *
+     * The negative report is negative: silence means "held", and silence is
+     * also what a frame dropped a moment ago produces, so the chain-derived
+     * record is optimistic for one round trip.  A confirmation is a statement
+     * about a picture that exists on the device, so it has no such window and
+     * needs no cascade. */
+    {
+        nxe::RingState r;
+        nxe::HeldState h;
+        for (uint32_t k = 0; k < 4; ++k) {
+            r.publish(k);
+            h.publish(k, k == 0 ? -1 : (int64_t)k - 1);
+        }
+        int d = -1, slot = -1;
+        /* Nothing confirmed yet and no caller promise: the chain answers, as
+         * it did before confirmations existed. */
+        CHECK(!h.confirmation_required(), "no promise and no confirmation");
+        CHECK(nxe::select_reference(r, h, 4, 0, &d, &slot) && d == 0,
+              "the chain still answers before any confirmation");
+        /* One confirmation and the policy changes for good: from here the
+         * chain's opinion is not consulted. */
+        h.confirm(2);
+        CHECK(h.confirmation_required(), "one confirmation switches the policy");
+        CHECK(h.confirms(2) && !h.confirms(3), "only 2 is confirmed");
+        CHECK(nxe::select_reference(r, h, 4, 0, &d, &slot) && d == 1 &&
+                  slot == 2,
+              "frame 4 must step back to the confirmed frame 2, got d %d", d);
+        /* A confirmation is monotonic: a not-held report for a DIFFERENT frame
+         * cannot take it away, and the confirmed frame stays selectable. */
+        h.not_held(3);
+        CHECK(h.confirms(2), "a report about 3 must not unconfirm 2");
+        CHECK(nxe::select_reference(r, h, 4, 0, &d, &slot) && d == 1,
+              "and 2 is still the reference");
+        /* Nothing confirmed within reach is an INTRA frame, which is
+         * decodable -- where the inter frame it replaces would have been
+         * refused.  Frame 6 can reach 5, 4 and 3; only 2 is confirmed. */
+        for (uint32_t k = 4; k < 6; ++k) {
+            r.publish(k);
+            h.publish(k, (int64_t)k - 1);
+        }
+        CHECK(!nxe::select_reference(r, h, 6, 0, &d, &slot),
+              "no confirmed frame within reach must mean no reference");
+    }
+
+    /* ---- the caller's promise, which closes the startup window.
+     *
+     * Without it the frames between the first INTRA and the first confirmation
+     * are still coded on the chain's optimism, and those are exactly the ones
+     * a client that is already behind refuses. */
+    {
+        nxe::RingState r;
+        nxe::HeldState h;
+        h.require_confirmed = true;
+        r.publish(0);
+        h.publish(0, -1);
+        int d = -1, slot = -1;
+        CHECK(!nxe::select_reference(r, h, 1, 0, &d, &slot),
+              "with the promise, frame 1 has no reference until 0 is confirmed");
+        h.confirm(0);
+        CHECK(nxe::select_reference(r, h, 1, 0, &d, &slot) && d == 0,
+              "and once 0 is confirmed it is the reference");
+    }
+
     /* ---- the rolling refresh.  Every tile must be refreshed exactly once in
      * every window of `period` frames -- that is the loss-recovery bound of
      * PAPER 2.6 -- and the tiles due on one frame must be scattered rather

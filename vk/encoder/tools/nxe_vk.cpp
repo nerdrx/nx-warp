@@ -249,6 +249,10 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
     /* Inter geometry.  On an intra-only stream every one of these is the
      * minimum legal size and nothing ever reads them. */
     d.inter = cfg.inter;
+    /* A caller that says its client confirms gets confirmations REQUIRED from
+     * frame 0, which is what removes the startup window in which the encoder
+     * would otherwise still be guessing. */
+    d.heldst.require_confirmed = cfg.inter && cfg.ref_confirm;
     if (d.inter) {
         const int cw = cfg.chroma444 ? cfg.w / cfg.eyes : (cfg.w / cfg.eyes + 1) / 2;
         const int ch = cfg.chroma444 ? cfg.h : (cfg.h + 1) / 2;
@@ -1180,13 +1184,10 @@ void VkEncoder::set_received_tiles(const uint8_t *received, uint32_t count) {
 void VkEncoder::set_frame_held(uint32_t frame_number, bool held) {
     Impl &d = *p_;
     if (!d.inter) return;
-    if (!held) d.heldst.not_held(frame_number);
-    /* `held == true` is deliberately not an override.  The encoder's own
-     * record is derived from the prediction chain and is never optimistic;
-     * a client that decoded frame N necessarily held N's reference, so the
-     * positive report can only agree with what publish() already computed.
-     * Accepting it as an override would let one stale report resurrect a
-     * frame the chain says is unreconstructible. */
+    if (held)
+        d.heldst.confirm(frame_number);
+    else
+        d.heldst.not_held(frame_number);
 }
 
 void VkEncoder::bench(Frame &f, int iters) {

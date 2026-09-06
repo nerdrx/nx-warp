@@ -208,6 +208,15 @@ int main(int argc, char **argv) {
     /* The ABI's half of the reference walk: a client that reconstructs only
      * every Nth frame and reports the rest not held. */
     int hold_every = 0;
+    /* Frames of latency on the confirmation.  Negative = the client sends
+     * none, which is every fixture. */
+    int ack_delay = -1;
+    /* Frames of latency on the NEGATIVE report.  Zero -- the encoder is told
+     * about a drop before it codes the next frame -- is the case no real link
+     * delivers, and it is the case in which the chain-derived record is
+     * already right.  A realistic value is one or two frames, and that is
+     * where the difference between guessing and being told shows up. */
+    int report_delay = 0;
 
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
@@ -237,6 +246,8 @@ int main(int argc, char **argv) {
         }
         else if (a == "--ref-sel") ref_sel = (uint32_t)std::atoi(next());
         else if (a == "--hold-every") hold_every = std::atoi(next());
+        else if (a == "--ack-delay") ack_delay = std::atoi(next());
+        else if (a == "--report-delay") report_delay = std::atoi(next());
         else if (a == "--coded-vectors")
         {
             const std::string v = next();
@@ -320,6 +331,9 @@ int main(int argc, char **argv) {
     ci.intra_period = inter ? intra_period : 0u;
     ci.coded_vectors = inter ? coded_vectors : NXVC_VKE_CV_DEFAULT;
     ci.ref_sel = inter ? ref_sel : 0u;
+    /* A client that confirms is one whose confirmations may be required
+     * from the first frame. */
+    ci.ref_confirm = (inter && ack_delay >= 0) ? 1u : 0u;
     ci.quant_matrix = matrix;
     ci.entropy = entropy;
 
@@ -482,11 +496,28 @@ int main(int argc, char **argv) {
          * coded.  A real link delivers it a round trip later; this is the
          * zero-latency case, which isolates the reference walk from the
          * transport's timing. */
-        if (inter && hold_every > 1 && (n % (uint32_t)hold_every) != 0) {
-            if (nxvc_vk_encoder_set_frame_held(enc, n, 0) != NXVC_VKE_OK) {
-                std::fprintf(stderr, "set_frame_held failed at frame %u\n", n);
+        if (inter && hold_every > 1 && (int)n >= report_delay) {
+            const uint32_t reportable = n - (uint32_t)report_delay;
+            if ((reportable % (uint32_t)hold_every) != 0 &&
+                nxvc_vk_encoder_set_frame_held(enc, reportable, 0) !=
+                    NXVC_VKE_OK) {
+                std::fprintf(stderr, "set_frame_held failed at frame %u\n",
+                             reportable);
                 rc = 1;
                 break;
+            }
+        }
+        /* The confirmation, `ack_delay` frames behind. */
+        if (inter && ack_delay >= 0 && (int)n >= ack_delay) {
+            const uint32_t ackable = n - (uint32_t)ack_delay;
+            if (hold_every <= 1 || (ackable % (uint32_t)hold_every) == 0) {
+                if (nxvc_vk_encoder_set_frame_held(enc, ackable, 1) !=
+                    NXVC_VKE_OK) {
+                    std::fprintf(stderr, "confirm failed at frame %u\n",
+                                 ackable);
+                    rc = 1;
+                    break;
+                }
             }
         }
         frame_lengths.push_back(len);
