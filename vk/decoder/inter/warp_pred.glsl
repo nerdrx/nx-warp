@@ -227,6 +227,28 @@ int fetchRef(int x, int y) {
     return int((nxvwRingWord(e >> 1u) >> ((e & 1u) * 16u)) & 0xffffu);
 }
 
+// The two horizontally adjacent taps of one row, in one or two loads instead
+// of two.  The ring is u16 packed two per uint, so `x` and `x + 1` land in the
+// SAME uint whenever the clamped `x` is even -- which is half the time, the
+// source coordinate being whatever the warp lands on.  Same samples, same
+// clamping, one fewer load when they share a word.
+//
+// The clamp has to be applied to each x separately before the comparison: at
+// the right edge both clamp to refW - 1 and share a word trivially, and at a
+// row start they do not.
+void fetchRefPair(int x, int y, out int a, out int b) {
+    const int xa = clamp(x, 0, refW - 1);
+    const int xb = clamp(x + 1, 0, refW - 1);
+    const int yc = clamp(y, 0, refH - 1);
+    const uint base = uint(refElemBase + yc * refStride);
+    const uint ea = base + uint(xa);
+    const uint eb = base + uint(xb);
+    const uint wa = nxvwRingWord(ea >> 1u);
+    const uint wb = ((eb >> 1u) == (ea >> 1u)) ? wa : nxvwRingWord(eb >> 1u);
+    a = int((wa >> ((ea & 1u) * 16u)) & 0xffffu);
+    b = int((wb >> ((eb & 1u) * 16u)) & 0xffffu);
+}
+
 int sample_bilinear(int ix, int iy, int fx, int fy) {
 #ifdef NXVW_ABL_COPYWARP
     // ABLATION ONLY, and it produces a wrong picture whenever the tile's
@@ -237,8 +259,10 @@ int sample_bilinear(int ix, int iy, int fx, int fy) {
 #endif
     int gx = 16 - fx;
     int gy = 16 - fy;
-    int acc = gx * gy * fetchRef(ix, iy) + fx * gy * fetchRef(ix + 1, iy) +
-              gx * fy * fetchRef(ix, iy + 1) + fx * fy * fetchRef(ix + 1, iy + 1);
+    int t00, t10, t01, t11;
+    fetchRefPair(ix, iy, t00, t10);
+    fetchRefPair(ix, iy + 1, t01, t11);
+    int acc = gx * gy * t00 + fx * gy * t10 + gx * fy * t01 + fx * fy * t11;
     return (acc + 128) >> 8;   // the weights sum to 256
 }
 
@@ -402,11 +426,21 @@ void nxvwWarpPlane(int tid, int p, uint tb, int size, int full, int sub,
 
     // ---- steps 2-4: the predictor, at full extent, into the scratch.  Each
     // thread owns a horizontally adjacent PAIR so every word has one writer.
+    // `full`, `size` and `factor * factor` are always powers of two -- 64 or 32
+    // for the extent, 64/32/16/8 for the coded edge (nxvw_plane_size floors
+    // chroma at 8), 1/4/16/64 for the box-average divisor -- so every division
+    // in the per-sample loops below is a shift.  It was written as `/` and the
+    // Adreno 650 has no integer divide: each one was a software sequence, run
+    // once per sample PAIR, 3072 times a tile on a 4:2:0 frame.  The results
+    // are bit-identical because both operands are non-negative: `e` is 2*i for
+    // i >= 0, and `acc` is a sum of samples already clamped to [0, maxval].
+    const int lfull = log2of(full);
+    const int lsize = log2of(size);
     const int npairFull = (full * full) >> 1;
     for (int i = tid; i < npairFull; i += 256) {
         const int e = 2 * i;
-        const int v = e / full;
-        const int u0 = e - v * full;
+        const int v = e >> lfull;
+        const int u0 = e & (full - 1);
         const int qrow = (v >= qsplit) ? 2 : 0;
         int s0 = 0, s1 = 0;
         for (int h = 0; h < 2; ++h) {
@@ -460,7 +494,9 @@ void nxvwWarpPlane(int tid, int p, uint tb, int size, int full, int sub,
         const int dv = dequantW(signByte(rec >> 16u), t);
         const int lb = log2of(nb);
         if (tid < nb * nb) {
-            const int by = tid / nb, bx = tid - by * nb;
+            // nb is size >> 3, so 8/4/2/1: a shift here too, and `lb` is
+            // already the log2 the ramps need.
+            const int by = tid >> lb, bx = tid & (nb - 1);
             sMeans[tid] = dcOff + d0 + ((dh * (2 * bx - nb + 1)) >> lb) +
                           ((dv * (2 * by - nb + 1)) >> lb);
         }
@@ -491,8 +527,8 @@ void nxvwWarpPlane(int tid, int p, uint tb, int size, int full, int sub,
         // no barrier to take even when the destination is the scratch.
         for (int i = tid; i < npair; i += 256) {
             const int e = 2 * i;
-            const int y = e / size;
-            const int x0 = e - y * size;
+            const int y = e >> lsize;
+            const int x0 = e & (size - 1);
             const uint w = nxvwWarpScratchRead(i);
             int r0 = 0, r1 = 0;
             for (int h = 0; h < 2; ++h) {
@@ -514,14 +550,15 @@ void nxvwWarpPlane(int tid, int p, uint tb, int size, int full, int sub,
     // factor > 1, so size <= 32 and npair <= 512: two output pairs a thread,
     // held in registers until the whole workgroup has finished reading.
     const int n = factor * factor;
+    const int ln = log2of(n);
     int o0a = 0, o0b = 0, o1a = 0, o1b = 0;
     const int i0 = tid, i1 = tid + 256;
     for (int slot = 0; slot < 2; ++slot) {
         const int i = (slot == 0) ? i0 : i1;
         if (i >= npair) continue;
         const int e = 2 * i;
-        const int y = e / size;
-        const int x0 = e - y * size;
+        const int y = e >> lsize;
+        const int x0 = e & (size - 1);
         int r0 = 0, r1 = 0;
         for (int h = 0; h < 2; ++h) {
             const int x = x0 + h;
@@ -532,7 +569,7 @@ void nxvwWarpPlane(int tid, int p, uint tb, int size, int full, int sub,
                     acc += int((nxvwWarpScratchRead(fe >> 1) >>
                                 ((uint(fe) & 1u) * 16u)) & 0xffffu);
                 }
-            int val = (acc + n / 2) / n;
+            int val = (acc + (n >> 1)) >> ln;
             if (ns) {
                 // [SYN] 13.9: from `means` the tile is finished by exactly the
                 // path 13.3 already defines -- the planar interpolation of
