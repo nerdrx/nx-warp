@@ -93,19 +93,30 @@ void nxe_hide_sign_unit(int16_t *coefs, const int32_t *orig, const int32_t *step
  * non-null, receives the DC-plane prediction (`size*size`) -- the shader keeps
  * it only in registers, but the harness wants it for diffing.
  */
+/* `sse` accumulates the tile's TRANSFORM-domain squared error -- the same
+ * domain nxe_rdoq_drop compares in, so the QP decision and the requantiser
+ * share one distortion measure as well as one lambda.  NULL to skip it. */
 void nxe_e3_plane(const nxe_plane *pl, const int32_t *src, int16_t *coef,
-                  int32_t *pred);
+                  int32_t *pred, uint64_t *sse);
 
 /* Directional intra (tool bit 17).  `modes` is `nb*nb` per-block modes, an
  * input.  `recon` (size*size) receives the running reconstruction. */
 void nxe_e3_plane_dir(const nxe_plane *pl, const int32_t *src,
                       const uint8_t *modes, int layer, int16_t *coef,
-                      int32_t *pred, int32_t *recon);
+                      int32_t *pred, int32_t *recon, uint64_t *sse);
 
 /* One whole tile: every coded plane, in plane order. */
 void nxe_e3_tile(const nxe_frame_params *fp, const nxe_tile_job *job,
                  const int32_t *const src[NXE_MAX_PLANES], const uint8_t *modes,
                  int16_t *coef);
+
+/* The same, also reporting the tile's transform-domain squared error.  This is
+ * the form the per-tile QP decision drives: it prices a candidate `qp_delta`
+ * by setting it on a copy of the job and reading back both the coefficients
+ * and what they cost in distortion. */
+void nxe_e3_tile_sse(const nxe_frame_params *fp, const nxe_tile_job *job,
+                     const int32_t *const src[NXE_MAX_PLANES],
+                     const uint8_t *modes, int16_t *coef, uint64_t *sse);
 
 #ifdef __cplusplus
 }

@@ -912,11 +912,79 @@ a function of that total — so the model is five sums and five roundings, a
 shape a workgroup produces in five reductions. `vk.encoder.rate` requires it to
 equal the coder's byte count **to the bit**, not within a bound.
 
+### The decision, and why it does not ship
+
+`--qp-ladder` is the per-tile QP decision the rate model was built for: for each
+offset in the ladder, quantise the tile, price it with `nxe_rate.h`, keep the
+cheapest `D + λR`. One lambda for every candidate -- the tile's own at its
+allocated QP -- because scoring each candidate at its own lambda compares two
+different cost functions and always prefers the coarsest step.
+
+λ is `(K · t · t) >> 12` over the Q4 quantiser step, the same integer family the
+requantiser uses, with **K = 901** rather than its 1400: `ref`'s own
+rate-distortion constant is `kLambdaScale = 0.22` and `0.22 · 4096 = 901`, while
+1400 is `0.342`, the constant swept for a different comparison (one coefficient
+against a constant three bits). `--qp-lambda` overrides it for a sweep.
+
+**It is off by default and it is not an effort level, because it does not pay.**
+
+First, the -6.79 % in the table above is not the QP search. `curve.py`'s legs
+strip `--no-rdo` whenever `--qp-search` or `--rdoq-effort` is present, so that
+row is the QP search **plus the trellis**, and `--rdoq-effort 3` alone is
+-6.64 %. Isolated on the reference, keeping `--no-rdo`, pan8:
+
+| reference leg | rANS | Lite |
+|---|---|---|
+| `--qp-search 2` | **-0.44 %** | **-1.37 %** |
+| `--qp-search 4` | -1.19 % | -2.25 % |
+| `--rdoq-effort 3` (trellis) | -3.49 % | -5.22 % |
+| trellis + `--qp-search 2` | -3.48 % | -4.81 % |
+
+The last row is the finding: on top of the trellis the QP search is worth
+**nothing** on rANS and is **negative** on Lite. The prize was the trellis all
+along, and the trellis is the half that cannot cross.
+
+Second, this encoder's own measurement agrees, and adds that the sign depends on
+the clip. 1088x1088, 8 frames, QP 22/26/30/34/40, against effort 1 alone:
+
+| ladder | K | pan8 rANS | pan8s rANS | pan8 Lite | pan8s Lite |
+|---|---|---|---|---|---|
+| `-4,-2,0,2,4` | 450 | -1.15 % | +0.75 % | -2.21 % | -1.07 % |
+| `-4,-2,0,2,4` | 600 | -0.91 % | +0.56 % | -1.95 % | -1.24 % |
+| `-4..+4` step 1 | 600 | -1.15 % | +0.24 % | -2.37 % | -1.55 % |
+| `-6..+6` step 2 | 600 | -1.07 % | — | -2.36 % | — |
+
+**rANS averages -0.2 % to -0.5 % over the two clips and is positive on one of
+them. Lite averages about -2 %.** Nine candidates buy a tenth of a percent over
+five, which is not a ladder the RD justifies; five at K = 450-600 is the whole
+of what is there.
+
+The asymmetry is not the probability tables. `--qp-table-search` prices every
+candidate under the best of the eight sets -- an upper bound on what re-picking
+the table set per candidate could be worth, which is the one part of `ref`'s
+rate model this decision does not otherwise reproduce -- and it moves pan8 from
+-0.91 % to -0.95 % and pan8s from +0.56 % to +0.19 %. rANS's adaptive tables
+have already absorbed most of what a per-tile quantiser would buy; Lite has no
+tables, which is why Lite keeps its ~2 %.
+
+So there is no shader. A candidate loop in E3 is perfectly buildable -- the
+transform does not depend on the quantiser, so only the quantise and the cost
+repeat, and at 578 tiles the whole encoder is 1.93 ms on an RX 7900 XTX (E3
+0.613, E4 1.273) against an 11 ms budget, so four extra quantise-and-cost passes
+would fit. It is not built because a wash on the default entropy coder is not
+worth a pass, three-way byte-identity and a permanent maintenance surface. This
+is the same verdict `--mv-range 32` got two sections above -- implementable,
+exact, and worth nothing -- reached the same way, and the ladder stays on the
+harness so the measurement can be repeated on other material rather than
+believed.
+
+If it is ever revisited, Lite is the case with something in it.
+
 ### What is not built
 
-The decision. `nxe_rate.h` prices a tile; nothing yet uses it to choose
-`qp_delta`, which is still written as 0 by the host (`nxe_host.cpp`). Two
-things are worth recording for whoever does build it:
+The shader. The decision above runs in the CPU model only, which is the
+specification but not the pipeline. Two things are worth recording for whoever
+does build it:
 
 * **The syntax needs nothing.** `qp_delta` is already a mandatory v1 tile-header
   field — `docs/SYNTAX.md` 4.1 word1 bits 8-13, signed 6-bit, -32..+31, gated by
