@@ -206,6 +206,9 @@ struct nxvc_vk_decoder {
     // [inter] How many of each eye's tiles are WARP_SKIP, and therefore the
     // length of the leading range build_tile_order() puts them in.
     uint32_t order_nskip[2] = {0, 0};
+    // [inter] Tiles dispatched on each Pass B module in eye pass 0, for the
+    // per-module timestamps.
+    uint32_t seg_tiles[3] = {0, 0, 0};
     Img imgRgba, imgRgb10, imgLuma, imgCbCr;
     // [unorm] The same three 8-bit stores through normalised images.  Only
     // one group is ever real; the other is a 1x1 placeholder.
@@ -1054,8 +1057,11 @@ nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2, int32_t sparse,
     if (d->has_exec_props) {
         char tag[96];
         std::snprintf(tag, sizeof tag,
-                      "passB fmt=%u fmt2=%d sched=%u storeWords=%u lds=%zuB "
-                      "intraDir=%d xformLarge=%d",
+                      "passB[%s] fmt=%u fmt2=%d sched=%u storeWords=%u "
+                      "lds=%zuB intraDir=%d xformLarge=%d",
+                      skip_kind == 2   ? "skip_store"
+                      : skip_kind == 1 ? "skip"
+                                       : "coded",
                       fmt, fmt2, sched, store_words, lds, intra_dir,
                       xform_large);
         dump_shader_stats(d, p, tag);
@@ -1736,7 +1742,13 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_create(
     if (d->have_timestamps) {
         VkQueryPoolCreateInfo qp{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
         qp.queryType = VK_QUERY_TYPE_TIMESTAMP;
-        qp.queryCount = 6;   // [inter] +2 for Pass W
+        // 0-3 frame/PassA/PassB/end, 4-5 Pass W, 6-11 the three Pass B
+        // module segments of eye pass 0.  The segment pair is what says which
+        // MODULE a frame's Pass B time is in, which a single Pass B number
+        // cannot: at 81 % WARP_SKIP the skip module and the coded modules are
+        // both in it.  Written only for pass 0; a stereo frame's second eye is
+        // the same three modules over the other half of the tiles.
+        qp.queryCount = 12;
         if (vkCreateQueryPool(d->dev, &qp, nullptr, &d->queries) != VK_SUCCESS)
             d->have_timestamps = false;
     }
@@ -1916,7 +1928,7 @@ static void collect_timestamps(D *d) {
     if (!d->ts_pending) return;
     d->ts_pending = false;
     if (!d->have_timestamps || !d->queries) return;
-    uint64_t ts[6] = {};
+    uint64_t ts[12] = {};
     const uint32_t nq = d->ts_count;
     if (nq < 4) return;
     if (vkGetQueryPoolResults(d->dev, d->queries, 0, nq, sizeof ts, ts,
@@ -1932,6 +1944,18 @@ static void collect_timestamps(D *d) {
     d->stats.pass_b_ms = (double)(ts[2] - ts[1]) * k;
     d->stats.gpu_ms = (double)(ts[3] - ts[0]) * k;
     if (nq >= 6) d->stats.pass_w_ms = (double)(ts[5] - ts[4]) * k;
+    // [inter] Per-module Pass B, eye pass 0.  Env-gated because it is a
+    // measurement aid rather than part of the ABI, and because a segment that
+    // did not run leaves its pair equal and would otherwise print 0.000 three
+    // times on an intra frame.
+    if (nq >= 12 && std::getenv("NXVC_VKD_SEG_MS")) {
+        std::fprintf(stderr,
+                     "[segms] skip %.4f  coded %.4f  intra_dir %.4f"
+                     "  (tiles %u/%u/%u)\n",
+                     (double)(ts[7] - ts[6]) * k, (double)(ts[9] - ts[8]) * k,
+                     (double)(ts[11] - ts[10]) * k, d->seg_tiles[0],
+                     d->seg_tiles[1], d->seg_tiles[2]);
+    }
 }
 
 extern "C" nxvc_vkd_status nxvc_vk_decoder_wait(nxvc_vk_decoder *d,
@@ -2121,7 +2145,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     VKTRY(d, vkBeginCommandBuffer(d->cmd, &bi));
     if (d->have_timestamps) {
-        vkCmdResetQueryPool(d->cmd, d->queries, 0, 6);
+        vkCmdResetQueryPool(d->cmd, d->queries, 0, 12);
         vkCmdWriteTimestamp(d->cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
                             d->queries, 0);
     }
@@ -2353,7 +2377,23 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
         VkPipeline segPipe[3] = {pipeBSkip, pipeB[0], pipeB[1]};
         VkPipeline segPipeA[3] = {VK_NULL_HANDLE, pipeBa[0], pipeBa[1]};
         for (int g = 0; g < 3; ++g) {
-            if (seg[g] == 0) continue;
+            if (pass == 0) d->seg_tiles[g] = seg[g];
+            // Both ends are written even for an empty segment: the results are
+            // read back with WAIT_BIT, so a query that is never written would
+            // block the wait forever.  An empty segment then reports 0.000,
+            // which is what it cost.
+            const bool tsSeg = d->have_timestamps && pass == 0;
+            if (tsSeg)
+                vkCmdWriteTimestamp(d->cmd,
+                                    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                    d->queries, 6 + 2 * (uint32_t)g);
+            if (seg[g] == 0) {
+                if (tsSeg)
+                    vkCmdWriteTimestamp(d->cmd,
+                                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                        d->queries, 7 + 2 * (uint32_t)g);
+                continue;
+            }
             vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
                               segPipe[g]);
             vkCmdDispatchBase(d->cmd, segBase[g], 0, 0, seg[g], 1, 1);
@@ -2364,6 +2404,10 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
                 vkCmdDispatchBase(d->cmd, segBase[g], 0, 0, seg[g], 1, 1);
                 ++dispatches;
             }
+            if (tsSeg)
+                vkCmdWriteTimestamp(d->cmd,
+                                    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                    d->queries, 7 + 2 * (uint32_t)g);
         }
         if (pass + 1 < eyePasses)
             buffer_barrier(d->cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
@@ -2481,7 +2525,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     // anyone could read them.  collect_timestamps() overwrites all four.
     ++d->stats.frames;
 
-    d->ts_count = d->have_timestamps ? (fp.any_inter ? 6u : 4u) : 0u;
+    d->ts_count = d->have_timestamps ? (fp.any_inter ? 12u : 4u) : 0u;
     d->ts_pending = d->have_timestamps;
     if (submit_flags & NXVC_VKD_SUBMIT_ASYNC) {
         d->stats.total_ms = now_ms() - t0;

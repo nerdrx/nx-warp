@@ -1158,6 +1158,26 @@ void main() {
         // display conversion, the two-plane store and the reference-ring store
         // are the code they always were.
         gScratchBase = store;
+#ifdef NXVW_ABL_NOWARP
+        // ABLATION ONLY, and it produces a grey picture: the plane is filled
+        // with dc_offset instead of predicted, so everything downstream -- the
+        // display conversion, the two-plane store and the reference-ring
+        // store -- runs on exactly the same amount of data it always did while
+        // the predictor costs nothing.  It prices the warp against the stores
+        // without changing either.
+        {
+            const bool ablChroma = (p == 1 || p == 2);
+            const int ablDc =
+                ((pc.p.colorTransform == kCtYCoCgR) && ablChroma)
+                    ? kDcOffsetChromaCT
+                    : kDcOffset8;
+            for (int i = tid; i < ((size * size) >> 1); i += 256)
+                sPlane[store + i] =
+                    (uint(ablDc) & 0xffffu) | (uint(ablDc) << 16);
+            barrier();
+        }
+        if (false)
+#endif
         nxvwWarpPlane(tid, p, wtb, size,
                       nxvw_inter_plane_full(p, pc.p.chroma420),
                       nxvw_inter_plane_sub(p, pc.p.chroma420), wEye, wEye,
