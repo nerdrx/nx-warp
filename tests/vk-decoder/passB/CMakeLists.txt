@@ -42,6 +42,8 @@ if(TARGET nxvc-passB-test)
 
   # Informational: 2048-tile dispatch time and coefficient SSBO traffic.
   add_test(NAME vk.passB.bench COMMAND nxvc-passB-test --bench)
+  # RUN_SERIAL: the bench's own 30 s fence wait has timed out twice on CI's
+  # lavapipe when four tests shared the CPU; it measures, it does not check.
   set_tests_properties(vk.passB.bench PROPERTIES
-    SKIP_RETURN_CODE 77 TIMEOUT 600)
+    SKIP_RETURN_CODE 77 TIMEOUT 600 RUN_SERIAL TRUE LABELS bench)
 endif()

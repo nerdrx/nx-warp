@@ -1052,6 +1052,14 @@ B minus Pass W and the total is Pass A + Pass B.
 | 896x896 | 196 | 1.354 | 0.712 | 6.626 | **8.692 ms** | 7.3 | 1.19x |
 | 768x768 | 144 | 0.942 | 0.382 | 5.280 | **6.603 ms** | 5.5 | 1.20x |
 
+> **Correction to the commit that added this table** (`828df24`, merged as
+> `2ebd6a0`): its message records `vk.encoder.inter.cv1088` as failing on that
+> merged head "with and without this commit". That is wrong -- the test passes
+> on main. This worktree's `nxvc-vkenc` was stale, built before the ref-sel-ack
+> merge and missing the `--report-delay` the test passes it, because `ctest`
+> was run after a rebase without a build. The top-level `nxwarp.tools` fixture
+> now makes that impossible; see the stale-tool guard in `CMakeLists.txt`.
+
 The runner sits 15-20 % above what the client reports, consistently across all
 three sizes.  Some of that is temperature -- these were taken at 61-66 C where
 the client's numbers come from a fresh session -- and some is that this is a
