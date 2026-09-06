@@ -1057,6 +1057,24 @@ void encode_frame_cpu(Frame &f, uint32_t frame_number) {
     const nxe_frame_params &fp = f.fp;
     std::vector<int16_t> qp_scratch;
     if (f.qp_cand_n > 1) qp_scratch.resize(NXE_TILE_COEFS_MAX);
+    /* Reseed every tile's table set from the frame's quantiser.
+     *
+     * ref builds `tp` fresh for every tile of every frame -- `make_tile_params`
+     * is `clamp((base_qp + qp_delta) >> 3, 0, 7)` -- while `Frame::jobs` here
+     * is allocated once and reused, so without this the value a tile ENDS a
+     * frame with is the value it STARTS the next one with.  `select_set` takes
+     * the current set as its fallback, so a tile whose histogram is empty keeps
+     * whatever it last chose instead of the seed, and the two encoders drift.
+     *
+     * It takes seven frames of a sparse clip to show: at 8 frames, QP 34, rANS
+     * with custom tables, frame 7 was 1870 bytes against the reference's 1938
+     * and frames 0..6 were byte-identical. */
+    {
+        const uint32_t seed = f.entropy_lite
+                                  ? (uint32_t)(f.entropy_lite - 1)
+                                  : table_set_seed((int)fp.base_qp);
+        for (uint32_t t = 0; t < fp.ntiles; ++t) f.jobs[t].table_set = seed;
+    }
     auto tile_src = [&](uint32_t t, const int32_t **src) {
         for (int p = 0; p < NXE_MAX_PLANES; ++p)
             src[p] = &f.src[p][(size_t)t * f.plane_size[p] * f.plane_size[p]];
@@ -1071,8 +1089,20 @@ void encode_frame_cpu(Frame &f, uint32_t frame_number) {
      * Measured: with custom tables on, that alone was 6312 bytes against the
      * reference's 5166 on the acid fixture, and byte-identical without them. */
     if (f.trellis) {
-        if (f.custom_tables)
+        if (f.custom_tables) {
             for (int k = 0; k < 8; ++k) set_from_default(f, k, (int)fp.nctx);
+            /* And the log of them.  `f.log_freq` is the hoisted `std::log2` the
+             * per-tile table-set choice scores with, and it is NOT rebuilt by
+             * writing f.tabs -- `choose_table_sets` restores the built-in sets
+             * and refreshes it in the same breath, and this pass has to do the
+             * same.  Without it the first pass of frame N scores against the
+             * logs of frame N-1's TRAINED tables while reading frame N's
+             * built-in ones, which is a mismatch that takes several frames of
+             * training to grow: frames 0..6 of the acid clip were
+             * byte-identical and frame 7 chose table set 4 where the reference
+             * chose 5, on every tile. */
+            refresh_log_freq(f);
+        }
         for (int k = 0; k < 8; ++k)
             nxe_build_rate_cost(&f.tabs.freq[k][0][0], (int)fp.nctx,
                                 &f.trellis_rc[k]);

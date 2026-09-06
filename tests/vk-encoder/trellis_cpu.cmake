@@ -18,7 +18,13 @@
 #     the trellis prices anything (ref's inner two-pass), not from the QP seed;
 #   * the final per-tile choice is made against the TRAINED sets without
 #     restoring the built-in ones first, which is what the training pass does
-#     and the emit pass must not.
+#     and the emit pass must not;
+#   * and restoring the built-in sets means restoring their LOGS too.  The
+#     per-tile choice scores through `f.log_freq`, a hoisted `std::log2` that
+#     writing `f.tabs` does not rebuild, so the first pass of frame N was
+#     scoring frame N-1's trained tables while reading frame N's built-in ones.
+#     That one takes SEVEN FRAMES of training to show, which is why this test
+#     runs eight.
 #
 # Expects VKENC, NXVENC, WORKDIR.
 
@@ -42,10 +48,9 @@ list(GET fx 0 YUV)
 list(GET fx 2 W)
 list(GET fx 3 H)
 
-# Three frames.  The eight-frame run has one open divergence (see
-# vk/encoder/README.md, "What still differs") and pinning a known-failing
-# length here would make this test a reminder rather than a gate.
-set(COMMON --in ${YUV} --w ${W} --h ${H} --frames 3 --pix yuv420p --nsub 3
+# Eight frames, deliberately.  Three would pass over a stale-table bug that
+# needs seven frames of training to become visible, and did.
+set(COMMON --in ${YUV} --w ${W} --h ${H} --frames 8 --pix yuv420p --nsub 3
            --matrix 1 --wm 0 --tskip off --chroma-qp-off 0 --ctx v3 --eyes 1
            --intra-dir off --quiet)
 set(MINOR6 --split4x4 off --cfl off --xform 8)

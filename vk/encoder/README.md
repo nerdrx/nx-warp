@@ -902,7 +902,8 @@ requires the integer one to beat effort 1.
 
 `nxvc-vkenc --cpu --trellis 1`, and it is **byte-identical to
 `nxv-enc --int-trellis 1 --rdoq-effort 3`** at the acid flags, on both entropy
-coders, at QP 22/26/30/34/40. `vk.encoder.trellis.cpu` is that claim.
+coders, at QP 22/26/30/34/40, over 8 and 16 frames.
+`vk.encoder.trellis.cpu` is that claim.
 
 The trellis itself (`forward/nxe_trellis.c`) is a transcription and was right
 almost immediately. What took the work was the ORDER the two encoders quantise
@@ -927,6 +928,15 @@ size:
   assign tiles to built-in sets so the trained ones can be pooled from them --
   and wrong for the emit pass, where the trained sets are what the stream
   carries.
+* **restoring the built-in sets means restoring their logs too.** The per-tile
+  choice scores through `f.log_freq`, a hoisted `std::log2` that writing
+  `f.tabs` does not rebuild -- `choose_table_sets` restores the sets and
+  refreshes it in the same breath, and the trellis's first pass has to as well.
+  Without it the first pass of frame N scored frame N-1's *trained* tables
+  while reading frame N's *built-in* ones. It takes seven frames of training to
+  become visible: frames 0-6 of the acid clip were byte-identical and frame 7
+  chose table set 4 where the reference chose 5, on every tile, for 68 bytes of
+  15449. The test runs eight frames because three would pass over it.
 * and under ENTROPY_LITE the trellis still needs *a* rate model. `table_set`
   names the variant in a Lite tile header, but ref runs `select_set` whatever
   the entropy tool is and prices against `tabs[table_set]`, so the set is chosen
@@ -935,16 +945,6 @@ size:
 Effort 2 therefore quantises the frame twice with rANS custom tables on, and
 once without -- there is nothing for a second pass to be against when the
 tables never moved.
-
-### What still differs
-
-One case, and it is precise rather than vague: **8 frames, QP 34, rANS with
-custom tables** diverges at frame 7, by 68 bytes of 15449. Three frames is
-byte-identical at every quantiser, both coders; 8 frames is byte-identical at
-QP 22, 26, 30 and 40 and on Lite at every quantiser. Both encoders are
-deterministic (three runs of each, one hash), so it is a real logic difference
-in the training convergence and not a race. It is not chased here and the test
-runs at three frames rather than pinning a length that is known to fail.
 
 ### What is not built: the shader
 
