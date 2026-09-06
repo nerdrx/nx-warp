@@ -2,8 +2,9 @@
 
 How `vk/decoder/` implements ADR-0029 and SYNTAX 13.12. The normative rules are
 in those two documents -- `docs/adr/0029-atlas-reference.md` and SYNTAX 13.12,
-both on branch `atlas` (commit `0b162e5`) and not yet in main; this one is the
-decoder's side of them — which buffers
+both merged into this branch from `atlas` (`af108db`, which also brings the
+reference codec, `row_present` and the ATLAS conformance vectors v82-v88) and
+not yet in main; this one is the decoder's side of them — which buffers
 exist, which kernels run, which existing modules survive, which die, what the
 client is handed, and what conformance compares.
 
@@ -33,7 +34,7 @@ marked otherwise.
 | | today | under `ATLAS` | |
 |---|---|---|---|
 | Pass A | 1.534 ms | **~0.64 ms** | measured, 40 fully-coded tiles |
-| compose + renorm | — | **0.0026 ms/eye** | MEASURED, see below |
+| compose + renorm | — | **0.0048 ms/eye** | MEASURED ON THE ADRENO 650, see below |
 | Pass W | 0.661 ms | **~0.66 ms** | measured; same kernel, atlas-sourced |
 | Pass B | 10.760 ms | **~1.1 ms** + atlas store | measured coded module, 39 tiles |
 | **total per eye** | **12.293 ms** | **~2.4-3.0 ms** | |
@@ -48,18 +49,38 @@ the decoder barely moves.
 one dispatch, both eyes -- targeting a fresh frame number each iteration so
 every thread takes a real one-step advance and nothing is a null dispatch:
 
-| ICD | median, 578 entries | per eye |
-|---|---|---|
-| RADV NAVI31 | 0.0051 ms | **0.0026 ms** |
-| llvmpipe (LLVM 21) | 0.0107 ms | 0.0054 ms |
-| Adreno 650 (Pico 4) | *see the branch report* | |
+| ICD | median, 578 entries | per eye | runs |
+|---|---|---|---|
+| RADV NAVI31 | 0.0051 ms | **0.0026 ms** | 300 |
+| llvmpipe (LLVM 21) | 0.0107 ms | 0.0054 ms | 200 |
+| **Adreno 650 (Pico 4)** | **0.0096 ms** | **0.0048 ms** | 300 |
+
+**The device leg is taken and the target part is the slowest of the three by
+under 2x** — 0.0096 ms against RADV's 0.0051, best 0.0091, at gpuclk 490 MHz
+with gpuss-max-step 43.2 C before the run and 51.8 C after. The worst of the
+300 is 1.2949 ms and it is the first iteration: pipeline warm-up, which is why
+the median is what the table reports.
 
 Median and best rather than the mean: a headset's clocks move under a long run
 and the mean becomes a number about thermals rather than about the kernel. On
-the desktop parts it is **three orders of magnitude** below the smallest line in
-the table, which settles the "9 divisions a tile" worry -- and the divisions are
-not even the cheap kind, because the renormalisation needs a full 64-bit
-quotient that `warp_pred.glsl`'s 32-bit `warp_div` cannot produce.
+**all three parts, the Adreno included**, it is **three orders of magnitude**
+below the smallest line in the table — 0.0048 ms/eye against Pass W's 0.66 —
+which settles the "9 divisions a tile" worry, and settles it on the part that
+has to run it. The divisions are not even the cheap kind, because the
+renormalisation needs a full 64-bit quotient that `warp_pred.glsl`'s 32-bit
+`warp_div` cannot produce.
+
+That the compose dispatch does not scale with the desktop/device ratio the
+other rows show is what one thread per tile and no shared memory buys: 578
+threads is too small a dispatch for the Adreno's memory system to be the thing
+being measured, and what is left is nine integer divisions.
+
+The same run is the correctness leg, and it is reported here because a timing
+number from a run that computed the wrong answer is worth nothing: 19940 tiles
+coded (1943 of them `STATIC_MV`), 21207 entries invalidated — **8670 by
+13.12.2's `2^33` guard and 12537 by the 3.1.1 envelope** — 12 entries
+force-advanced before the ring wrapped, and 10990 coded tiles refused by
+13.12.4. `PASSED` on the Adreno 650.
 
 The other caveat stands: the absolutes in the table above are from a device at
 61-66 C at the end of a long session, and the ratios are what carry.
@@ -445,10 +466,9 @@ not evidence about the target part.
 
 Before the reference codec gives a byte-identity target:
 
-0. **Blocked on the ADR owner:** the `base_sourced` bit (see Open questions).
-   The import entry point can be built without it -- everything except that one
-   flag is unambiguous -- but it cannot be called conforming until 13.12.1
-   settles what bit 2 is.
+0. ~~**Blocked on the ADR owner:** the `base_sourced` bit.~~ **Unblocked:**
+   13.12.1 now names `flags` bit 2 `base_sourced` and 13.12.9 says what it
+   means, so the import entry point is fully specified.
 1. **The compose kernel and its CPU model.** The composition of 13.12.2 is
    fully specified arithmetic with no dependency on the rest of the atlas: a CPU
    model, a GPU kernel, and a test that they agree exactly over random legal
@@ -529,17 +549,14 @@ Implementation goes on `atlas-decoder` off `atlas`.
   not measured, and the R8_UNORM variant for `CT_NONE` streams is priced
   against it when it is.
 
-* **`base_sourced` needs a syntax change, and the decoder cannot make it.**
-  ADR-0029's table lists flags bit 2 as `base_sourced` and calls it reserved;
-  SYNTAX 13.12.1 as written says "bits 2-7 reserved, zero", and that every one
-  of the 64 bytes is compared by conformance. So a decoder that sets bit 2 on
-  an imported tile produces a table a conforming decoder must not produce, and
-  the base-layer import above cannot be implemented as specified until 13.12.1
-  says bit 2 is `base_sourced` and what it means. **This is a question for the
-  ADR owner, not something to paper over in the decoder**: the alternative --
-  keeping the bit zero and tracking base-sourcing decoder-side -- loses the
-  property that makes it worth having, which is that the atlas states where
-  each tile came from.
+* ~~**`base_sourced` needs a syntax change, and the decoder cannot make it.**~~
+  **SETTLED, and in the decoder's favour.** The `atlas` merge brings SYNTAX
+  13.12.1 with `flags` bit 2 named `base_sourced` and pointing at a new clause
+  13.12.9, "the base layer as a patch source"; the reserved run is now bits
+  3-7. It is **normative in version 1** -- written, and compared with the other
+  63 bytes -- and `v87_atlas_base_sourced` is the vector for it. So
+  `nxvc_vk_atlas_write_tiles` can be implemented as specified, bit and all,
+  and item 0 of "What can start now" is no longer blocked on the ADR owner.
 
 * **The atlas image format.** The ring is u16 samples packed two per uint in an
   SSBO. The atlas must be sampled by the client, so it wants an image — but

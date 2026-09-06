@@ -543,9 +543,22 @@ remove.
 ### Measured
 
 `nxvc-atlas-gpu-test --bench` prices the compose dispatch, which
-`ATLAS-DECODER.md`'s budget table had as its one unmeasured line: **0.0051 ms**
-for all 578 entries of a stereo frame on RADV (0.0026 ms/eye), 0.0107 on
-llvmpipe. Three orders of magnitude under the smallest line beside it.
+`ATLAS-DECODER.md`'s budget table had as its one unmeasured line. Median of the
+run, all 578 entries of a stereo frame in ONE dispatch:
+
+| ICD | median | per eye | runs |
+|---|---|---|---|
+| RADV NAVI31 | 0.0051 ms | 0.0026 ms | 300 |
+| llvmpipe (LLVM 21) | 0.0107 ms | 0.0054 ms | 200 |
+| **Adreno 650 (Pico 4)** | **0.0096 ms** | **0.0048 ms** | 300 |
+
+Three orders of magnitude under the smallest line beside it **on the target
+part too** — 0.0048 ms/eye against Pass W's 0.661 — which is the form of that
+claim that is worth anything. Taken at gpuclk 490 MHz, gpuss-max-step 43.2 C
+before and 51.8 C after, sha256 of the pushed binary verified on the device.
+The same run passes the correctness leg: 21207 invalidations, of which **8670
+tripped the `2^33` guard and 12537 the 3.1.1 envelope**, and 12 entries
+force-advanced before the ring wrapped.
 
 ### Not built yet
 
