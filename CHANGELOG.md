@@ -50,6 +50,18 @@ been measured on target hardware. See [ROADMAP.md](ROADMAP.md) for what any of i
 
 ### Added
 
+**GPU encoder: `snap_identity` on the library ABI**
+
+- `nxvc_vke_create_info::snap_identity` and
+  `nxvc_vk_encoder_identity_tiles()`, so a host can ask for the snap and then
+  ask how many tiles the decoder's copy path will claim. The count exists
+  nowhere else: an identity `warp_ext` says nothing about how it was arrived
+  at, and a decoder without the fast path decodes the stream anyway.
+- Refused rather than clamped in two cases, both of them easy mistakes:
+  without `inter` (there is no warp to snap) and above 32/16 (the unit is
+  SIXTEENTHS of a sample, which is an easy unit to misread as samples, and
+  past two samples the tool discards real motion rather than rounding it).
+
 **GPU encoder: `snap_identity`, and the null result underneath it**
 
 - `--snap-identity N` (N in 1/16 luma samples, 0 = off, ships off) replaces a

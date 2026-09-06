@@ -69,6 +69,9 @@ wire format and for behaviour `ref/` does not exercise.
 - **[RATECONTROL.md](RATECONTROL.md)** - rate control, allocation, the degradation ladder and the
   decode-time governor.
 - **HYBRID.md** - the hybrid hardware-base path (in progress).
+- **[ENCODER-DECISION.md](ENCODER-DECISION.md)** - the reference encoder's per-tile decision as
+  integer pseudocode, every constant, and its expected output on the vrroom corpus frame for
+  frame. Encoder-side only: nothing in it changes how a stream decodes.
 
 ### Integration
 
