@@ -86,13 +86,27 @@ if(NXWARP_BUILD_TESTS)
            COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR})
   set_tests_properties(nxwarp.tools PROPERTIES
                        FIXTURES_SETUP nxwarp_tools TIMEOUT 3600)
+  # Recursively, because most decoder tests live a level down --
+  # tests/vk-decoder/{passA,passB,inter,unorm,toolmask} -- and a
+  # directory's TESTS property lists only the tests added in that directory,
+  # not in its children.  Attaching only the top level left every nested test
+  # without the fixture, which the full suite hid (some other test pulls the
+  # fixture in, and the fixture builds everything) and `ctest -R` on one nested
+  # test exposes immediately: no build, "Unable to find executable".
+  function(_nxwarp_attach_fixture _dir)
+    get_property(_dt DIRECTORY ${_dir} PROPERTY TESTS)
+    foreach(_t IN LISTS _dt)
+      set_property(TEST ${_t} DIRECTORY ${_dir}
+                   PROPERTY FIXTURES_REQUIRED nxwarp_tools)
+    endforeach()
+    get_property(_subs DIRECTORY ${_dir} PROPERTY SUBDIRECTORIES)
+    foreach(_s IN LISTS _subs)
+      _nxwarp_attach_fixture(${_s})
+    endforeach()
+  endfunction()
   if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.28)
     foreach(_bd IN LISTS _nxwarp_test_bindirs)
-      get_property(_nxwarp_dir_tests DIRECTORY ${_bd} PROPERTY TESTS)
-      foreach(_t IN LISTS _nxwarp_dir_tests)
-        set_property(TEST ${_t} DIRECTORY ${_bd}
-                     PROPERTY FIXTURES_REQUIRED nxwarp_tools)
-      endforeach()
+      _nxwarp_attach_fixture(${_bd})
     endforeach()
   else()
     message(STATUS
