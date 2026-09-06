@@ -19,6 +19,10 @@ endif()
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/inter/CMakeLists.txt AND NXVW_GLSLC)
   add_subdirectory(inter)
 endif()
+# [ATLAS] The composition model; no Vulkan, no shaders.
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/atlas/CMakeLists.txt)
+  add_subdirectory(atlas)
+endif()
 
 # Pass A's workgroup shape reaches this library too: nxs_tiles_per_group() in
 # passA/syntax_constants.h is what the host uses to size a dispatch, and it has

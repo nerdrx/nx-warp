@@ -242,11 +242,36 @@ nowhere to put it and it does not belong there anyway: it is an implementation
 detail of when the composition ran, not part of the atlas. It lives in a
 parallel array, one u32 per entry, initialised to `src_frame`.
 
-**The `H` ring.** Nine i32 per eye per frame, 36 B; a 64-frame window is 4.6 kB
-for the pair. It bounds how far behind an entry may fall: an entry whose
-`advanced_to` is older than the ring must be invalidated, because the steps to
-advance it no longer exist. That is a decoder-side cap in the same role as
-`gen_max` and it has to be stated in the API, not discovered.
+**The `H` ring.** Nine i32 per eye per frame, 36 B. It bounds how far behind an
+entry may fall: an entry whose `advanced_to` is older than the ring must be
+invalidated, because the steps to advance it no longer exist. That is a
+decoder-side cap in the same role as `gen_max`, and the API states it rather
+than leaving it to be discovered.
+
+**The depth is set by the envelope, and the envelope is measured.**
+`vk.atlas.compose` composes a yaw homography with itself until 3.1.1's
+condition 2 or 3 trips:
+
+| yaw per frame | at 90 Hz | compositions before the envelope trips |
+|---|---|---|
+| 1.37 deg | 123 deg/s, the fastest the paper measures | **19** |
+| 2.74 deg | 247 deg/s | 9 |
+| 5.00 deg | 450 deg/s | 5 |
+| the most aggressive matrix 3.1.1 permits at all | -- | 2 |
+
+So at the fastest rotation a head produces, a tile's `C` survives **19**
+compositions and then invalidates itself -- which is the ADR's claim that "the
+envelope check is the staleness bound, for free", now with a number on it. The
+ring only has to outlast that. **A 64-frame ring (4.6 kB for the pair) clears
+the fastest measured rotation by more than 3x**, so the ring is never the
+binding constraint and a tile is always invalidated for a reason the atlas can
+state, never because the decoder forgot an `H`.
+
+The bottom row is worth keeping in view: a matrix at the very edge of what
+3.1.1 permits survives two compositions. Nothing forbids an encoder emitting
+one, so the ring depth is not what makes the lazy advance safe -- the envelope
+check on every step is, and the ring depth only stops it being the thing that
+trips first.
 
 **The normative atlas is the flushed state.** With a lazy advance, at a frame
 boundary some entries are behind, so the table is not the eager form's table

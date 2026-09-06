@@ -87,7 +87,7 @@ if(NXWARP_BUILD_TESTS)
   set_tests_properties(nxwarp.tools PROPERTIES
                        FIXTURES_SETUP nxwarp_tools TIMEOUT 3600)
   # Recursively, because most decoder tests live a level down --
-  # tests/vk-decoder/{passA,passB,inter,unorm,toolmask} -- and a
+  # tests/vk-decoder/{passA,passB,inter,unorm,toolmask,atlas} -- and a
   # directory's TESTS property lists only the tests added in that directory,
   # not in its children.  Attaching only the top level left every nested test
   # without the fixture, which the full suite hid (some other test pulls the
