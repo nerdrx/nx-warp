@@ -55,7 +55,8 @@ static VkQueryPool qpool;
 static VkCommandPool cpool;
 static VkCommandBuffer cmd;
 static VkFence fence;
-static int g_strips = 0;   // --strips: copy as full-width 64-row strips instead of per-tile regions
+static int g_strips = 0;   
+static int g_planes = 1;  // --planes 3: atlas held as three single-channel planes   // --strips: copy as full-width 64-row strips instead of per-tile regions
 
 static int cmpd(const void * a, const void * b)
 {
@@ -289,19 +290,23 @@ static void bench_one(const struct fmt * f, int W, int H, const char * payload, 
 	                         .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
 	                         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
 	                         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED};
-	VkImage atlas;
-	VKC(vkCreateImage(vkd, &ici, NULL, &atlas));
+	int np = g_planes == 3 ? 3 : 1;
+	VkImage atlas[3];
+	VkDeviceMemory atlasMem[3];
 	VkMemoryRequirements mr;
-	vkGetImageMemoryRequirements(vkd, atlas, &mr);
-	VkMemoryAllocateInfo mai = {.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-	                            .allocationSize = mr.size,
-	                            .memoryTypeIndex = mem_type(mr.memoryTypeBits,
-	                                                        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)};
-	VkDeviceMemory atlasMem;
-	VKC(vkAllocateMemory(vkd, &mai, NULL, &atlasMem));
-	VKC(vkBindImageMemory(vkd, atlas, atlasMem, 0));
-	printf("  atlas VRAM  %.2f MiB (payload %.2f MiB)\n", mr.size / 1048576.0,
-	       fmt_bytes(f, W, H) / 1048576.0);
+	for (int pl = 0; pl < np; pl++)
+	{
+		VKC(vkCreateImage(vkd, &ici, NULL, &atlas[pl]));
+		vkGetImageMemoryRequirements(vkd, atlas[pl], &mr);
+		VkMemoryAllocateInfo mai = {.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+		                            .allocationSize = mr.size,
+		                            .memoryTypeIndex = mem_type(mr.memoryTypeBits,
+		                                                        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)};
+		VKC(vkAllocateMemory(vkd, &mai, NULL, &atlasMem[pl]));
+		VKC(vkBindImageMemory(vkd, atlas[pl], atlasMem[pl], 0));
+	}
+	printf("  atlas VRAM  %.2f MiB x %d plane(s) (payload %.2f MiB each)\n", mr.size / 1048576.0,
+	       np, fmt_bytes(f, W, H) / 1048576.0);
 
 	// --- output storage image, identical for every format so it cancels out
 	VkImageCreateInfo oci = ici;
@@ -419,12 +424,16 @@ static void bench_one(const struct fmt * f, int W, int H, const char * payload, 
 
 	// --- views and sampler
 	VkImageViewCreateInfo avi = {.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-	                             .image = atlas,
+	                             .image = atlas[0],
 	                             .viewType = VK_IMAGE_VIEW_TYPE_2D,
 	                             .format = f->f,
 	                             .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}};
-	VkImageView atlasView;
-	VKC(vkCreateImageView(vkd, &avi, NULL, &atlasView));
+	VkImageView atlasView[3];
+	for (int pl = 0; pl < np; pl++)
+	{
+		avi.image = atlas[pl];
+		VKC(vkCreateImageView(vkd, &avi, NULL, &atlasView[pl]));
+	}
 	VkImageViewCreateInfo ovi = avi;
 	ovi.image = outImg;
 	ovi.format = VK_FORMAT_R8G8B8A8_UINT;
@@ -444,13 +453,15 @@ static void bench_one(const struct fmt * f, int W, int H, const char * payload, 
 	VKC(vkCreateSampler(vkd, &sci, NULL, &samp));
 
 	// --- pipeline
-	VkDescriptorSetLayoutBinding b[3] = {
+	VkDescriptorSetLayoutBinding b[5] = {
 	        {0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, NULL},
 	        {1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT, NULL},
 	        {2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, NULL},
+	        {3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, NULL},
+	        {4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, NULL},
 	};
 	VkDescriptorSetLayoutCreateInfo dslci = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-	                                         .bindingCount = 3,
+	                                         .bindingCount = (uint32_t)(np == 3 ? 5 : 3),
 	                                         .pBindings = b};
 	VkDescriptorSetLayout dsl;
 	VKC(vkCreateDescriptorSetLayout(vkd, &dslci, NULL, &dsl));
@@ -474,7 +485,7 @@ static void bench_one(const struct fmt * f, int W, int H, const char * payload, 
 	VkPipeline pipe;
 	VKC(vkCreateComputePipelines(vkd, VK_NULL_HANDLE, 1, &cpci, NULL, &pipe));
 
-	VkDescriptorPoolSize ps[3] = {{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1},
+	VkDescriptorPoolSize ps[3] = {{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, (uint32_t)np},
 	                              {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1},
 	                              {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1}};
 	VkDescriptorPoolCreateInfo dpci = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
@@ -490,7 +501,9 @@ static void bench_one(const struct fmt * f, int W, int H, const char * payload, 
 	VkDescriptorSet ds;
 	VKC(vkAllocateDescriptorSets(vkd, &dsai, &ds));
 
-	VkDescriptorImageInfo dii = {samp, atlasView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+	VkDescriptorImageInfo dii = {samp, atlasView[0], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+	VkDescriptorImageInfo dii1 = {samp, atlasView[np > 1 ? 1 : 0], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+	VkDescriptorImageInfo dii2 = {samp, atlasView[np > 2 ? 2 : 0], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
 	VkDescriptorImageInfo doi = {VK_NULL_HANDLE, outView, VK_IMAGE_LAYOUT_GENERAL};
 	VkDescriptorBufferInfo dbi = {tbuf, 0, tbytes};
 	VkWriteDescriptorSet w[3] = {
@@ -504,7 +517,17 @@ static void bench_one(const struct fmt * f, int W, int H, const char * payload, 
 	         .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
 	         .pBufferInfo = &dbi},
 	};
+	VkWriteDescriptorSet w2[2] = {
+	        {.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = ds, .dstBinding = 3,
+	         .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+	         .pImageInfo = &dii1},
+	        {.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = ds, .dstBinding = 4,
+	         .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+	         .pImageInfo = &dii2},
+	};
 	vkUpdateDescriptorSets(vkd, 3, w, 0, NULL);
+	if (np == 3)
+		vkUpdateDescriptorSets(vkd, 2, w2, 0, NULL);
 
 	// --- upload + layout transitions, once
 	VkCommandBufferBeginInfo cbi = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -516,7 +539,7 @@ static void bench_one(const struct fmt * f, int W, int H, const char * payload, 
 	         .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 	         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
 	         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-	         .image = atlas,
+	         .image = atlas[0],
 	         .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
 	         .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}},
 	        {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
@@ -534,18 +557,33 @@ static void bench_one(const struct fmt * f, int W, int H, const char * payload, 
 	VkBufferImageCopy bic = {.bufferOffset = 0,
 	                         .imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
 	                         .imageExtent = {(uint32_t)W, (uint32_t)H, 1}};
-	vkCmdCopyBufferToImage(cmd, stage, atlas, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &bic);
+	vkCmdCopyBufferToImage(cmd, stage, atlas[0], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &bic);
+	for (int pl = 1; pl < np; pl++)
+	{
+		VkImageMemoryBarrier e = mb[0];
+		e.image = atlas[pl];
+		vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+		                     0, 0, NULL, 0, NULL, 1, &e);
+		vkCmdCopyBufferToImage(cmd, stage, atlas[pl], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &bic);
+	}
 	VkImageMemoryBarrier mb2 = {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
 	                            .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 	                            .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	                            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
 	                            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-	                            .image = atlas,
+	                            .image = atlas[0],
 	                            .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
 	                            .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
 	                            .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}};
 	vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
 	                     0, NULL, 0, NULL, 1, &mb2);
+	for (int pl = 1; pl < np; pl++)
+	{
+		VkImageMemoryBarrier e = mb2;
+		e.image = atlas[pl];
+		vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+		                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL, 0, NULL, 1, &e);
+	}
 	VKC(vkEndCommandBuffer(cmd));
 	VkSubmitInfo si = {.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO, .commandBufferCount = 1, .pCommandBuffers = &cmd};
 	VKC(vkQueueSubmit(vkq, 1, &si, fence));
@@ -579,9 +617,9 @@ static void bench_one(const struct fmt * f, int W, int H, const char * payload, 
 	qsort(samples, (size_t)iters, sizeof(double), cmpd);
 	*out_med = samples[iters / 2];
 	*out_min = samples[0];
-	printf("  GPU ms/pair min %.3f  p50 %.3f  p90 %.3f  max %.3f   (%d iters, %d tiles, %s)\n",
+	printf("  GPU ms/pair min %.3f  p50 %.3f  p90 %.3f  max %.3f   (%d iters, %d tiles, %s, %d tap)\n",
 	       samples[0], samples[iters / 2], samples[(int)(iters * 0.9)], samples[iters - 1], iters,
-	       nTiles, nearest ? "NEAREST" : "LINEAR");
+	       nTiles, nearest ? "NEAREST" : "LINEAR", np);
 	free(samples);
 
 	vkDestroyDescriptorPool(vkd, dpool, NULL);
@@ -591,15 +629,19 @@ static void bench_one(const struct fmt * f, int W, int H, const char * payload, 
 	vkDestroyDescriptorSetLayout(vkd, dsl, NULL);
 	vkDestroySampler(vkd, samp, NULL);
 	vkDestroyImageView(vkd, outView, NULL);
-	vkDestroyImageView(vkd, atlasView, NULL);
+	for (int pl = 0; pl < np; pl++)
+		vkDestroyImageView(vkd, atlasView[pl], NULL);
 	vkDestroyBuffer(vkd, tbuf, NULL);
 	vkFreeMemory(vkd, tmem, NULL);
 	vkDestroyBuffer(vkd, stage, NULL);
 	vkFreeMemory(vkd, stageMem, NULL);
 	vkDestroyImage(vkd, outImg, NULL);
 	vkFreeMemory(vkd, outMem, NULL);
-	vkDestroyImage(vkd, atlas, NULL);
-	vkFreeMemory(vkd, atlasMem, NULL);
+	for (int pl = 0; pl < np; pl++)
+	{
+		vkDestroyImage(vkd, atlas[pl], NULL);
+		vkFreeMemory(vkd, atlasMem[pl], NULL);
+	}
 }
 
 // ------------------------------------------------------------------ mode: update
@@ -782,6 +824,8 @@ int main(int argc, char ** argv)
 			mode = "bench";
 		else if (!strcmp(argv[i], "--update"))
 			mode = "update";
+		else if (!strcmp(argv[i], "--planes") && i + 1 < argc)
+			g_planes = atoi(argv[++i]);
 		else if (!strcmp(argv[i], "--strips"))
 			g_strips = 1;
 		else if (!strcmp(argv[i], "--ntiles") && i + 1 < argc)

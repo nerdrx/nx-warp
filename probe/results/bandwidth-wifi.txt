@@ -1,0 +1,26 @@
+
+=== 47 fps -- refreshed tiles per frame that fit (both eyes, payload only)
+scheme        B/tile        43Mb        60Mb       100Mb
+ASTC 4x4        5120        22.3        31.2        51.9
+ASTC 6x6        2512        45.5        63.5       105.9
+ASTC 8x8        1280        89.3       124.7       207.8
+nxvc QP22        720       158.9       221.7       369.5
+nxvc QP26        542       211.0       294.5       490.8
+nxvc QP30        399       286.5       399.7       666.2
+
+=== 90 fps -- refreshed tiles per frame that fit (both eyes, payload only)
+scheme        B/tile        43Mb        60Mb       100Mb
+ASTC 4x4        5120        11.7        16.3        27.1
+ASTC 6x6        2512        23.8        33.2        55.3
+ASTC 8x8        1280        46.7        65.1       108.5
+nxvc QP22        720        83.0       115.8       193.0
+nxvc QP26        542       110.2       153.8       256.3
+nxvc QP30        399       149.6       208.8       347.9
+
+=== Mbit/s needed for a 289-tile (one full eye) refresh
+-- 47 fps: ASTC 4x4 556, ASTC 6x6 273, ASTC 8x8 139, nxvc QP22 78, nxvc QP26 59, nxvc QP30 43
+-- 90 fps: ASTC 4x4 1065, ASTC 6x6 523, ASTC 8x8 266, nxvc QP22 150, nxvc QP26 113, nxvc QP30 83
+
+=== Mbit/s needed for 40 tiles
+-- 47 fps: ASTC 4x4 77.0, ASTC 6x6 37.8, ASTC 8x8 19.3, nxvc QP22 10.8, nxvc QP26 8.2, nxvc QP30 6.0
+-- 90 fps: ASTC 4x4 147.5, ASTC 6x6 72.3, ASTC 8x8 36.9, nxvc QP22 20.7, nxvc QP26 15.6, nxvc QP30 11.5

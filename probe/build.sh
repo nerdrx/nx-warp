@@ -15,6 +15,7 @@ CC=$TC/bin/aarch64-linux-android29-clang
 mkdir -p build
 echo "== display.spv"
 "${NICE[@]}" glslc -fshader-stage=comp -O src/display.comp -o build/display.spv
+"${NICE[@]}" glslc -fshader-stage=comp -O src/display3.comp -o build/display3.spv
 
 echo "== nxtexnative"
 "${NICE[@]}" "$CC" -O2 -Wall -Wextra -Wno-unused-parameter \
@@ -23,6 +24,6 @@ echo "== nxtexnative"
 ls -la build/nxtexnative build/display.spv
 
 adb shell mkdir -p /data/local/tmp/nxtex
-adb push build/nxtexnative build/display.spv /data/local/tmp/nxtex/ >/dev/null
+adb push build/nxtexnative build/display.spv build/display3.spv /data/local/tmp/nxtex/ >/dev/null
 adb shell chmod 755 /data/local/tmp/nxtex/nxtexnative
 echo "pushed to /data/local/tmp/nxtex"
