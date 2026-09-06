@@ -16,6 +16,7 @@
 #define NXE_PLANAR_HOST_H
 
 #include "nxe_planar.h"
+#include "nxe_tables.h"
 
 #include <stdint.h>
 #include <string.h>
@@ -23,6 +24,15 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* The DC-plane step of [SYN] 6.5 from a tile QP, using THIS library's copy of
+ * the quantiser table.  The reference derives the same number from its own
+ * copy; the shared fit takes the step as a parameter so neither has to reach
+ * for the other's table. */
+static inline int nxe_planar_dc_step_qp(int qp) {
+    const int q = qp < 0 ? 0 : (qp > 63 ? 63 : qp);
+    return ((int)nxe_qstep[q >> 1] * 16 + 8) >> 4;
+}
 
 static inline int nxe_planar_map_dim(int fine) { return fine ? 16 : 8; }
 static inline int nxe_planar_label_bits(int regions) { return regions > 2 ? 2 : 1; }

@@ -501,7 +501,10 @@ typedef struct nxe_tile_job {
      * coded-vector one, and written by E1c rather than by the host, because
      * it is the decision's own output. */
     uint32_t mv;
-    uint32_t pad_job;
+    /* [planar] The body length in bytes, when `mode` is PLANAR: the host fits
+     * the tile and E4 needs the length to write the header and the sizes
+     * entry.  Zero for every other mode, which is what the old pad was. */
+    uint32_t planar_bytes;
 } nxe_tile_job;
 
 #define NXE_JOB_F_OK        1u

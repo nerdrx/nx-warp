@@ -324,7 +324,14 @@ void main() {
         // on a per-tile condition would be a divergent barrier.  With
         // g_nunits 0 every lane loop below has an empty range and the `live`
         // guards do the rest.
-        const bool skipped = job.mode == uint(NXE_MODE_WARP_SKIP);
+        // [planar] A PLANAR tile has no units for the same reason a skipped one
+        // does not: [SYN] 13.13 replaces the rANS payload with a raw body, so
+        // there is nothing here to entropy-code.  Zeroing the unit count rather
+        // than skipping the tile is deliberate for the reason below -- this
+        // kernel runs NXE_E4_TILES_PER_WG tiles per workgroup and its barriers
+        // are workgroup-uniform.
+        const bool planar = job.mode == uint(NXE_MODE_PLANAR);
+        const bool skipped = job.mode == uint(NXE_MODE_WARP_SKIP) || planar;
         if (skipped) g_nunits = 0;
         g_nlanes = 1 << job.nsub_log2;
         g_active = min(g_nlanes, g_nunits);
@@ -439,7 +446,29 @@ void main() {
             uint w0 = g_tile * uint(NXE_TILE_SLOT_WORDS);
             /* The flush states start after the field word, at w0 + 3. */
             if (lane < g_active) slot.v[w0 + 3u + uint(lane)] = state;
-            if (lane == 0 && skipped) {
+            if (lane == 0 && planar) {
+                // [planar] The two header words and the lengths, from the body
+                // the HOST fitted.  Everything 13.13 forbids is already zero in
+                // the job -- res_level, tskip, table_set, nsub_log2, wm_id,
+                // mv_present, ref_sel -- so the header is the mode, the column,
+                // the eye and the length, and nothing else.
+                const uint plen = job.planar_bytes;
+                uint p0 = (job.col & 0xfffu) << 4;
+                p0 |= (job.eye & 1u) << 2;
+                p0 |= (plen & 0xffffu) << 16;
+                uint p1 = uint(NXE_MODE_PLANAR) & 7u;
+                p1 |= (job.chroma444 & 1u) << 5;
+                p1 |= uint(job.qp_delta & 0x3f) << 8;
+                slot.v[w0] = p0;
+                slot.v[w0 + 1u] = p1;
+                jobs[g_tile].payload_len = plen;
+                jobs[g_tile].tile_bytes = uint(NXE_TILE_HEADER_BYTES) + plen;
+                jobs[g_tile].nunits = 0u;
+                // nlanes_active 0: E5's prefix is the two header words alone.
+                jobs[g_tile].flags = 1u;
+                sizes.v[g_tile] = uint(NXE_TILE_HEADER_BYTES) + plen;
+            }
+            if (lane == 0 && skipped && !planar) {
                 // Nothing in the slot, nothing in the frame.  `sizes` still
                 // has to be written, because E2 prefix-sums every tile and a
                 // stale entry would move every later tile in the row.

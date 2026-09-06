@@ -191,7 +191,7 @@ struct nxe_tile_job {
     uint table_set, tskip, wm_id;
     uint chroma444, res_level, mode, nsub_log2;
     uint payload_len, tile_bytes, nunits, flags;
-    uint mv, pad_job;
+    uint mv, planar_bytes;
 };
 
 // ------------------------------------------------------------------ tables

@@ -4,6 +4,7 @@
  */
 
 #include "nxe_vk.h"
+#include "nxe_planar_host.h"
 
 #include "nxe_inter.h"
 #include "E1c_decide.spv.h"
@@ -865,6 +866,66 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
              * writes it; setting it here as well would make the CPU model and
              * the GPU disagree about who owns the field. */
             f.jobs[t].mode = (uint32_t)nxvw::kModeIntra;
+        }
+
+        /* [planar] [SYN] 13.13.  The fit runs HERE, on the host, because it is
+         * the shared exact-integer one (nxe_planar_host.h, which the reference
+         * includes too) and because its output is a raw body that E3 and E4
+         * have nothing to do with: a planar tile has no units, no lanes and no
+         * coefficients.  E4 writes its header from `planar_bytes` and E5 copies
+         * the body out of b_planar.
+         *
+         * CONFIGURATION AND GATE.  The reference searches six configurations
+         * -- two granularities by three region counts -- and prices them
+         * against the transform with the frame's lambda, then applies the
+         * level-1 or level-2 rule.  That comparison needs the INTRA cost, which
+         * on this pipeline is not known until E3 and E4 have run, so it is not
+         * wired yet; what is wired is the fit and the emission, held to the
+         * reference by NXVC_PLANAR_CONFIG and NXVC_PLANAR_FORCE -- the same two
+         * development hooks ref/ has, pinning one configuration and taking it
+         * on every eligible tile.  With them set on both sides the streams are
+         * comparable byte for byte and what they compare is the fit.
+         */
+        if (d.cfg.planar) {
+            static const int cfg_r = [] {
+                const char *v = std::getenv("NXVC_PLANAR_CONFIG");
+                return v ? std::atoi(v) : 0;
+            }();
+            static const int cfg_fine = [] {
+                const char *v = std::getenv("NXVC_PLANAR_CONFIG");
+                const char *c = v ? std::strchr(v, ',') : nullptr;
+                return c ? std::atoi(c + 1) : 0;
+            }();
+            static const bool force = [] {
+                const char *v = std::getenv("NXVC_PLANAR_FORCE");
+                return v && v[0] == '1';
+            }();
+            if (force && cfg_r >= 2) {
+                uint32_t *pb = (uint32_t *)d.b_planar.map;
+                const int np = 3;   /* Y, Co, Cg; alpha is never regionised */
+                for (uint32_t t = 0; t < d.ntiles; ++t) {
+                    if (f.jobs[t].mode != (uint32_t)nxvw::kModeIntra) continue;
+                    nxe_planar_plane pp[NXE_PLANAR_PLANES];
+                    for (int p = 0; p < np; ++p) {
+                        const int sz = nxe_plane_size(&fp, &f.jobs[t], p);
+                        pp[p].samples =
+                            &f.src[p][(size_t)t * f.plane_size[p] * f.plane_size[p]];
+                        pp[p].size = sz;
+                        pp[p].dc_off = fp.ycocgr && p ? 256 : 128;
+                        pp[p].maxval = fp.ycocgr && p ? 511 : 255;
+                        pp[p].dc_step = nxe_planar_dc_step_qp(
+                            (int)d.cfg.qp + (int)f.jobs[t].qp_delta);
+                    }
+                    nxe_planar_rec rec;
+                    (void)nxe_planar_fit_tile(pp, np, cfg_r, cfg_fine, &rec);
+                    uint8_t body[NXE_PLANAR_BODY_UINTS * 4];
+                    const int len = nxe_planar_serialize(&rec, np, body);
+                    std::memcpy(&pb[(size_t)t * NXE_PLANAR_BODY_UINTS], body,
+                                (size_t)len);
+                    f.jobs[t].mode = (uint32_t)NXE_MODE_PLANAR;
+                    f.jobs[t].planar_bytes = (uint32_t)len;
+                }
+            }
         }
 
         /* warp_ext() travels only when there is a reference to warp. */
