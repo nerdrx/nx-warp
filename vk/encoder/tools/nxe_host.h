@@ -137,6 +137,24 @@ struct Config {
      * vk/encoder/README.md is quoted from. */
     bool rate_check = false;
 
+    /* Per-tile QP offsets (nxe_rate.h).  The ladder of `qp_delta` candidates
+     * the decision scores, as a string like "-4,-2,0,2,4"; empty or "0" is the
+     * decision off, which is what every stream this encoder has produced so
+     * far did.  0 must be in the ladder or the frame's own quantiser is not a
+     * candidate.
+     *
+     * A string rather than a radius-and-step pair because the useful ladders
+     * are not symmetric-and-even: the measurement that justifies one is in
+     * vk/encoder/README.md, and a knob that cannot express what was measured
+     * invites a second knob. */
+    std::string qp_ladder;
+    /* Override NXE_QPRD_LAM_Q12 for a sweep.  0 = the built-in constant. */
+    int qp_lambda_q12 = 0;
+    /* Price each candidate under the best of the eight table sets rather than
+     * under the frame's seed.  A diagnostic: it bounds what re-picking the
+     * table set per candidate is worth. */
+    bool qp_table_search = false;
+
     int device = 0;
     bool cpu_only = false;
     bool bench = false;
@@ -198,6 +216,16 @@ struct Frame {
     /* --rate-check.  See Config::rate_check; accumulated over every tile of
      * every frame, in Q10 bits against real bytes, and reported once. */
     bool rate_check = false;
+    /* The resolved qp_ladder: the candidate offsets, and how many.  1 (just 0)
+     * is the decision off. */
+    int qp_lambda_q12 = 0;
+    bool qp_table_search = false;
+    /* The qp_delta the frame ALLOCATED to each tile, before the per-tile
+     * decision moved it.  `jobs` is reused across frames, so without this the
+     * search would compound its own previous answer -- see choose_qp_delta. */
+    std::vector<int8_t> qp_delta_alloc;
+    int qp_cand[16]{};
+    size_t qp_cand_n = 1;
     uint64_t rc_tiles = 0;
     uint64_t rc_est_q10 = 0;               /* sum of the model's Q10 bits */
     uint64_t rc_real_bits = 0;             /* sum of 8 * coded bytes */

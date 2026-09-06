@@ -345,6 +345,19 @@ if(TARGET nxvc-vkenc)
                            SKIP_REGULAR_EXPRESSION "SKIP:")
       list(APPEND NXENC_TESTS vk.encoder.rate)
 
+      # The RD trellis in exact integers, against the double one it replaces.
+      # Reference-side only: it is the reference's trellis whose arithmetic
+      # changed, and the GPU has no trellis yet.
+      add_test(NAME vk.encoder.trellis COMMAND ${CMAKE_COMMAND}
+               -DVKENC=$<TARGET_FILE:nxvc-vkenc>
+               -DNXVENC=$<TARGET_FILE:nxv-enc>
+               -DNXVDEC=$<TARGET_FILE:nxv-dec>
+               -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/trellis
+               -P ${CMAKE_CURRENT_SOURCE_DIR}/trellis.cmake)
+      set_tests_properties(vk.encoder.trellis PROPERTIES
+                           SKIP_REGULAR_EXPRESSION "SKIP:")
+      list(APPEND NXENC_TESTS vk.encoder.trellis)
+
       # And the same legs on a SECOND ICD.  Byte-identity is a claim about
       # the arithmetic, not about RADV: the requantiser's one 64-bit product
       # goes through umulExtended and its comparison through a signed 32-bit
