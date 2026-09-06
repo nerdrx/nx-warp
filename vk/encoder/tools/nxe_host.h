@@ -26,6 +26,7 @@
 
 extern "C" {
 #include "forward_cpu.h"
+#include "lite_cpu.h"
 #include "nxe_enc.h"
 #include "rans_cpu.h"
 }
@@ -64,6 +65,18 @@ struct Config {
      * against the trained tables and retrain.  ref's nxvc_config::table_iters,
      * whose default is 3. */
     int table_iters = 3;
+    /* Tool bit 30, ENTROPY_LITE.  0 = interleaved rANS (the default), 1 =
+     * Lite/FIXED.  It is the same numbering as `nxvc_config::entropy_lite`,
+     * where the value is the variant plus one, so that 0 means "the tool is
+     * off"; Lite/RICE (2 there) is refused here because Pass A implements
+     * only FIXED.
+     *
+     * Lite has no arithmetic coder, so it has neither a parity to spend a
+     * sign on nor a probability table to transmit: the reference forces
+     * sign_hide and custom_tables off and nsub_log2 to 3 at create(), and
+     * setup() does the same here, or the two encoders would disagree at the
+     * first tile header. */
+    int entropy_lite = 0;
     bool intra_dir = false;
     bool dir_layer = false;
     /* Directional intra takes its per-block modes as an input (the search is a
@@ -127,6 +140,15 @@ struct Frame {
      * be driven with one configuration and coded with another. */
     bool custom_tables = false, tab_v2 = false;
     int table_iters = 0;
+    /* Resolved from Config::entropy_lite at setup(), for the same reason the
+     * custom-table settings are: the encode entry points take a Frame and not
+     * a Config, so a Frame set up for one entropy tool must not be codable
+     * with the other. */
+    int entropy_lite = 0;
+    /* Stride of `slots`.  Lite payloads are larger than rANS ones -- the tool
+     * trades bytes for decode time -- so the per-tile staging slot is sized
+     * from the tool rather than from a constant. */
+    uint32_t slot_stride = NXE_TILE_BYTES_MAX;
     std::vector<uint8_t> out;              /* the assembled frame */
     nxe_tables tabs{};
     /* log2(freq / 1024) for every (table set, context, symbol) of `tabs`,

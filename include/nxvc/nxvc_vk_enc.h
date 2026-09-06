@@ -162,6 +162,29 @@ typedef struct nxvc_vke_create_info {
      * rather than be quietly ignored. */
     uint32_t coded_vectors;
 
+    /* --- the entropy tool (bit 30, ENTROPY_LITE).
+     *
+     * One of NXVC_VKE_ENTROPY_* below; 0 takes the default, which is
+     * interleaved rANS.  ENTROPY_LITE trades bytes for DECODE time and is
+     * therefore a negotiated choice, never a default: the decoder's Pass A
+     * costs 8-11 ms per eye per frame on the Pico 4's Adreno 650 at 289 tiles
+     * because it is latency-bound on the serial rANS round chain, and Lite has
+     * no chain -- 0.651 ms to 0.158 ms per 2048 tiles measured on RADV -- for
+     * roughly a third more bytes on 4:2:0.
+     *
+     * A caller must only select it when the client's advertised tool mask has
+     * bit 30 (NXVC_TOOL_ENTROPY_LITE); a decoder without it refuses the stream
+     * header outright, which is the correct behaviour and a black screen.
+     *
+     * Selecting it turns three tools OFF, because the syntax does not allow
+     * them together and the reference encoder makes the same substitution at
+     * create(): SIGN_HIDE (there is no coder parity to spend a sign on),
+     * CUSTOM_TABLES and TAB_V2 (there are no probability tables).  So a Lite
+     * stream's mask is not a superset of a rANS one, and
+     * nxvc_vk_encoder_stream_header() remains the authority on what a
+     * particular stream carries. */
+    uint32_t entropy;
+
     uint32_t flags; /* reserved, pass 0 */
 } nxvc_vke_create_info;
 
@@ -171,6 +194,11 @@ void nxvc_vk_encoder_create_info_default(nxvc_vke_create_info *ci);
 #define NXVC_VKE_CV_DEFAULT 0u /* STATIC                                    */
 #define NXVC_VKE_CV_NONE    1u /* WARP_SKIP and INTRA only                  */
 #define NXVC_VKE_CV_STATIC  2u /* also STATIC_MV: the identity predictor    */
+
+/* nxvc_vke_create_info::entropy */
+#define NXVC_VKE_ENTROPY_DEFAULT 0u /* interleaved rANS                      */
+#define NXVC_VKE_ENTROPY_RANS    1u /* the same, said out loud               */
+#define NXVC_VKE_ENTROPY_LITE    2u /* ENTROPY_LITE / FIXED, tool bit 30     */
 
 typedef struct nxvc_vk_encoder nxvc_vk_encoder;
 

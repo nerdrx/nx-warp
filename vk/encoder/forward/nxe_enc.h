@@ -23,10 +23,12 @@
  * or 27 contexts (tool bit 25, CTX_V3), with sign data hiding, over the
  * built-in tables or a set trained on the frame (tool bits 6 and 26).
  *
- * Of the minor-6 tools, CTX_V3 and TAB_V2 are implemented here.
- * XFORM_4X4_SPLIT (19), INTRA_CFL (24), XFORM_LARGE (27) and ENTROPY_LITE (30) are
- * not; vk/encoder/README.md says what each would take and why they are in the
- * order they are.
+ * Of the minor-6 tools, CTX_V3, TAB_V2 and ENTROPY_LITE are implemented here
+ * -- the last as a SECOND entropy kernel (`lite_encode.comp`) rather than a
+ * mode of E4, because Lite has no arithmetic coder and wants the opposite
+ * workgroup shape.  XFORM_4X4_SPLIT (19), INTRA_CFL (24) and XFORM_LARGE (27)
+ * are not; vk/encoder/README.md says what each would take and why they are in
+ * the order they are.
  *
  * ---------------------------------------------------------------------------
  * Room for the merge
@@ -241,6 +243,55 @@ extern "C" {
 #define NXE_TILE_SLOT_WORDS (2 + 1 + 8 + NXE_TILE_COEFS_MAX)      /* 12491 */
 #define NXE_TILE_SLOT_BYTES (NXE_TILE_SLOT_WORDS * 4)             /* 49960 */
 
+/* ------------------------------------------------------- ENTROPY_LITE (30)
+ *
+ * `ref/src/entropy_lite.h`, mirrored.  Lite has no arithmetic coder, no
+ * probability tables and no serial state: a tile's payload is five byte-
+ * aligned sections -- H0, H1, P, S, B -- whose per-unit bit offsets follow
+ * from two prefix sums over quantities every lane can compute on its own.
+ * That is what makes it decodable by one lane per unit, which is the whole
+ * point of the tool: Pass A on the Pico 4 is latency-bound on the rANS round
+ * chain and this replaces the chain with arithmetic.
+ *
+ * The tile header's `table_set` names the VARIANT here rather than a table
+ * set, because there are no tables for it to name.  Only kLiteFixed is
+ * implemented, on this side as on the decoder's.
+ */
+#define NXE_LITE_FIXED       0
+#define NXE_LITE_RICE        1
+/* Units per group in the two-level coded-unit map (H0 over groups, H1 over
+ * the units of a flagged group). */
+#define NXE_LITE_CBF_GROUP   16
+/* Width of the per-unit magnitude-class field in section P, and of a non-MPM
+ * mode index in section B. */
+#define NXE_LITE_PARAM_BITS  3
+#define NXE_LITE_MODE_BITS   3
+
+/* The largest payload the FIXED variant can produce for one tile, section by
+ * section, each padded to a byte:
+ *
+ *   H0  one bit per group of NXE_LITE_CBF_GROUP units
+ *   H1  one bit per unit
+ *   P   NXE_LITE_PARAM_BITS + at most 6 bits of LAST per coded unit
+ *   S   one significance bit per coefficient
+ *   B   magnitude class 7 is 16 bits, plus a sign, per nonzero coefficient
+ *
+ * It is 28330 bytes against rANS's NXE_TILE_BYTES_MAX of 25000 -- Lite trades
+ * bytes for decode time and the bound has to say so.  Both stay well inside
+ * the 65535 the tile header's payload_len field can carry, and inside
+ * NXE_TILE_SLOT_WORDS, which E4-lite writes into unchanged. */
+/* Per-section worst case, in bytes, each section padded to a byte.  Kept as
+ * five names on five single lines rather than one continued expression: the
+ * mirror check is textual and line-based, and a trailing backslash in a value
+ * corrupts the CMake list it builds. */
+#define NXE_LITE_H0_BYTES_MAX (((NXE_TILE_UNITS_MAX + NXE_LITE_CBF_GROUP - 1) / NXE_LITE_CBF_GROUP + 7) / 8)
+#define NXE_LITE_H1_BYTES_MAX ((NXE_TILE_UNITS_MAX + 7) / 8)
+#define NXE_LITE_P_BYTES_MAX ((NXE_TILE_UNITS_MAX * (NXE_LITE_PARAM_BITS + 6) + 7) / 8)
+#define NXE_LITE_S_BYTES_MAX ((NXE_TILE_COEFS_MAX + 7) / 8)
+#define NXE_LITE_B_BYTES_MAX ((NXE_TILE_COEFS_MAX * 17 + 7) / 8)
+#define NXE_LITE_PAYLOAD_MAX (NXE_LITE_H0_BYTES_MAX + NXE_LITE_H1_BYTES_MAX + NXE_LITE_P_BYTES_MAX + NXE_LITE_S_BYTES_MAX + NXE_LITE_B_BYTES_MAX)
+#define NXE_TILE_BYTES_MAX_LITE (8 + NXE_LITE_PAYLOAD_MAX)
+
 /* Header sizes, ref/src/common.h. */
 #define NXE_STREAM_HEADER_BYTES 64
 /* Tile modes, nxvc_tile_mode's numbering (SYNTAX.md 6.2).  This pipeline
@@ -266,6 +317,11 @@ extern "C" {
 #define NXE_E3_WG           64    /* one tile; 8 blocks x 8 rows per step */
 #define NXE_E4_TILES_PER_WG 8
 #define NXE_E4_WG           (NXE_E4_TILES_PER_WG * 8)   /* 64 */
+/* E4-lite: ONE tile per workgroup and one unit per lane.  Lite has no serial
+ * chain to hide, so the shape that pays is the one that gives a unit its own
+ * lane; 64 covers NXE_TILE_UNITS_MAX in four strides and matches E3's
+ * workgroup so the two occupy the device the same way. */
+#define NXE_E4L_WG          64
 #define NXE_E5_WG           256
 
 /* ------------------------------------------------------------- frame params

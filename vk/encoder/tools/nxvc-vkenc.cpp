@@ -57,6 +57,12 @@ static void usage() {
         "  --tab v1|v2          transmitted-table coding: flat 5-bit rows\n"
         "                       or the compact per-row-flag form (26);\n"
         "                       v2 needs --custom-tables\n"
+        "  --entropy rans|lite-fixed  entropy tool: interleaved rANS\n"
+        "                       (default) or ENTROPY_LITE / FIXED (30).\n"
+        "                       `lite` is accepted for `lite-fixed`.  Lite\n"
+        "                       forces --no-sign-hide, --no-custom-tables\n"
+        "                       and --nsub 3, as nxv-enc does.  lite-rice is\n"
+        "                       refused: Pass A implements only FIXED\n"
         "  --table-iters N      Lloyd iterations refining the trained\n"
         "                       sets (default 3, 0 = the v1.4 encoder)\n"
         "  --no-sign-hide       code every sign (default: hide one per unit)\n"
@@ -123,6 +129,20 @@ int main(int argc, char **argv) {
              * without bit 21, so v3 sets both. */
             cfg.ctx_v3 = std::strcmp(v, "v3") == 0;
             cfg.ctx_v2 = cfg.ctx_v3 || std::strcmp(v, "v2") == 0;
+        }
+        else if (a == "--entropy") {
+            const char *v = val();
+            /* Same spelling and same numbering as `nxv-enc --entropy`: the
+             * two tools are driven from one description by the acid test and
+             * a divergence here would be a divergence in the test. */
+            if (std::strcmp(v, "lite-fixed") == 0 ||
+                std::strcmp(v, "lite") == 0)
+                cfg.entropy_lite = 1;
+            else if (std::strcmp(v, "rans") == 0) cfg.entropy_lite = 0;
+            else {
+                std::fprintf(stderr, "--entropy: rans|lite-fixed\n");
+                return 2;
+            }
         }
         else if (a == "--custom-tables") cfg.custom_tables = true;
         else if (a == "--no-custom-tables") cfg.custom_tables = false;

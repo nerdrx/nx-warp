@@ -61,7 +61,8 @@ set_target_properties(nxenc_stats_cpu PROPERTIES POSITION_INDEPENDENT_CODE ON)
 add_library(nxenc_forward_cpu STATIC
   forward/nxe_tables.c
   forward/forward_cpu.c
-  forward/rans_cpu.c)
+  forward/rans_cpu.c
+  forward/lite_cpu.c)
 target_include_directories(nxenc_forward_cpu PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/forward)
 set_target_properties(nxenc_forward_cpu PROPERTIES POSITION_INDEPENDENT_CODE ON)
@@ -82,6 +83,14 @@ set(NXENC_GEN_DIR    ${CMAKE_CURRENT_BINARY_DIR}/generated)
 file(MAKE_DIRECTORY ${NXENC_GEN_DIR})
 
 set(NXENC_SPV_HEADERS)
+# The include tree comes from glslc through a depfile, never from a list kept
+# by hand.  The hand-kept form has already failed in this tree -- vk/decoder's
+# warp_pred.comp named three headers, a fourth include was invisible to the
+# rule, and editing it rebuilt nothing while the build reported success and
+# linked the PREVIOUS SPIR-V.  That is the worst failure this build can
+# produce: every test passes and the module on the device is not the one in
+# the tree, so every measurement taken over it is a measurement of something
+# else.  These rules had the same hole.
 function(nxenc_shader name src defs)
   set(out ${NXENC_GEN_DIR}/${name}.spv.h)
   add_custom_command(
@@ -94,9 +103,10 @@ function(nxenc_shader name src defs)
             -DINCDIR=${NXENC_SHADER_DIR}
             -DDEFS=${defs}
             -DSTYLE=guarded
+            -DDEPFILE=${out}.d
             -P ${NXENC_GEN_SPV}
+    DEPFILE ${out}.d
     DEPENDS ${NXENC_SHADER_DIR}/${src}
-            ${NXENC_SHADER_DIR}/nxe_common.glsl
             ${NXENC_GEN_SPV} ${NXENC_SPV_PASSES_CMAKE}
     COMMENT "glslc ${src} [${defs}] -> ${name}.spv.h"
     VERBATIM)
@@ -138,9 +148,10 @@ function(nxenc_fwd_shader name src)
             -DINCDIR=${NXENC_FWD_DIR}
             -DDEFS=${_fdefs}
             -DSTYLE=guarded
+            -DDEPFILE=${out}.d
             -P ${NXENC_GEN_SPV}
+    DEPFILE ${out}.d
     DEPENDS ${NXENC_FWD_DIR}/${src}
-            ${NXENC_FWD_DIR}/nxe_enc_common.glsl
             ${NXENC_GEN_SPV} ${NXENC_SPV_PASSES_CMAKE}
     COMMENT "glslc ${src} -> ${name}.spv.h"
     VERBATIM)
@@ -148,6 +159,9 @@ function(nxenc_fwd_shader name src)
 endfunction()
 nxenc_fwd_shader(E3_forward      forward.comp)
 nxenc_fwd_shader(E4_rans_encode  rans_encode.comp)
+# E4-lite, ENTROPY_LITE (30).  A second module rather than a branch: see the
+# head of lite_encode.comp for why the two kernels have opposite shapes.
+nxenc_fwd_shader(E4_lite_encode  lite_encode.comp)
 nxenc_fwd_shader(E5_zero        packetize.comp "-DNXE_E5_PASS=0")
 nxenc_fwd_shader(E5_packetize    packetize.comp "-DNXE_E5_PASS=1")
 
@@ -180,11 +194,10 @@ if(EXISTS ${NXENC_DEC_INTER}/warp_pred.comp)
             -DNAME=warp_pred
             -DINCDIR=${NXENC_DEC_INTER}
             -DSTYLE=guarded
+            -DDEPFILE=${_wout}.d
             -P ${NXENC_GEN_SPV}
+    DEPFILE ${_wout}.d
     DEPENDS ${NXENC_DEC_INTER}/warp_pred.comp
-            ${NXENC_DEC_INTER}/inter_layout.h
-            ${NXENC_DEC_PASSB}/syntax_constants.h
-            ${NXENC_DEC_PASSB}/passB_layout.h
             ${NXENC_GEN_SPV} ${NXENC_SPV_PASSES_CMAKE}
     COMMENT "glslc (decoder) warp_pred.comp -> warp_pred.spv.h"
     VERBATIM)
@@ -205,10 +218,10 @@ if(EXISTS ${NXENC_DEC_INTER}/warp_pred.comp)
             -DINCDIR=${NXENC_DEC_INTER}
             -DINCDIR2=${NXENC_FWD_DIR}
             -DSTYLE=guarded
+            -DDEPFILE=${_dout}.d
             -P ${NXENC_GEN_SPV}
+    DEPFILE ${_dout}.d
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/inter/E1c_decide.comp
-            ${NXENC_DEC_INTER}/inter_layout.h
-            ${NXENC_FWD_DIR}/nxe_enc_common.glsl
             ${NXENC_GEN_SPV} ${NXENC_SPV_PASSES_CMAKE}
     COMMENT "glslc E1c_decide.comp -> E1c_decide.spv.h"
     VERBATIM)
@@ -232,12 +245,10 @@ if(EXISTS ${NXENC_DEC_INTER}/warp_pred.comp)
             "-DDEFS=-DNXVW_INTRA_DIR=0 -DNXVW_XFORM_LARGE=0"
             -DINCDIR=${NXENC_DEC_PASSB}
             -DSTYLE=guarded
+            -DDEPFILE=${_bout}.d
             -P ${NXENC_GEN_SPV}
+    DEPFILE ${_bout}.d
     DEPENDS ${NXENC_DEC_PASSB}/reconstruct.comp
-            ${NXENC_DEC_PASSB}/syntax_constants.h
-            ${NXENC_DEC_PASSB}/passB_layout.h
-            ${NXENC_DEC_INTER}/inter_hook.glsl
-            ${NXENC_DEC_INTER}/inter_layout.h
             ${NXENC_GEN_SPV} ${NXENC_SPV_PASSES_CMAKE}
     COMMENT "glslc (decoder) reconstruct.comp v1_x8 -> reconstruct_v1_x8.spv.h"
     VERBATIM)
@@ -365,6 +376,7 @@ if(EXISTS ${NXENC_REF_TABLES})
     forward/nxe_tables.c
     forward/forward_cpu.c
     forward/rans_cpu.c
+    forward/lite_cpu.c
     ${NXENC_INTER_SRC}
     ${NXENC_REF_TABLES}
     ${NXENC_SPV_HEADERS})

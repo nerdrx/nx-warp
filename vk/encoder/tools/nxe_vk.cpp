@@ -27,6 +27,7 @@ extern "C" {
 #include "E2_prefix_p1.spv.h"
 #include "E2_prefix_p2.spv.h"
 #include "E3_forward.spv.h"
+#include "E4_lite_encode.spv.h"
 #include "E4_rans_encode.spv.h"
 #include "E5_packetize.spv.h"
 #include "E5_zero.spv.h"
@@ -67,6 +68,12 @@ struct VkEncoder::Impl {
     vkmin::Buffer b_stage_src, b_stage_coef, b_stage_small;
 
     vkmin::Pipeline p_e3, p_e4, p_e5, p_e5z, p_e2[3];
+    /* E4-lite (ENTROPY_LITE, 30) and the E5 variant that reads its payload
+     * layout.  Both are created only when the stream carries the tool: they
+     * share E4's and E5's descriptor set layouts, so what a Lite frame
+     * changes is which pipeline is bound and nothing else. */
+    vkmin::Pipeline p_e4l, p_e5l;
+    bool entropy_lite = false;
     /* Pass W is the DECODER's warp_pred.comp; E1c is the mode decision. */
     vkmin::Pipeline p_w, p_dec, p_b;
     E0 e0;
@@ -318,6 +325,22 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
     if (!d.dev.create_pipeline(E5_zero_spv, sizeof E5_zero_spv, sb9, 0, d.p_e5z,
                                err, &si))
         return false;
+    /* ENTROPY_LITE.  E4-lite is its own module; E5 is the same module with
+     * NXE_SC_ENTROPY_LITE set, because the only thing the tool changes there
+     * is where a tile's payload bytes live inside the slot. */
+    d.entropy_lite = f.entropy_lite != 0;
+    if (d.entropy_lite) {
+        const uint32_t lite_vals[3] = {cfg.intra_dir ? 1u : 0u, 3u, 1u};
+        VkSpecializationMapEntry lents[3] = {{0, 0, 4}, {1, 4, 4}, {2, 8, 4}};
+        VkSpecializationInfo lsi{3, lents, sizeof lite_vals, lite_vals};
+        if (!d.dev.create_pipeline(E4_lite_encode_spv,
+                                   sizeof E4_lite_encode_spv, sb9, 0, d.p_e4l,
+                                   err, &lsi))
+            return false;
+        if (!d.dev.create_pipeline(E5_packetize_spv, sizeof E5_packetize_spv,
+                                   sb9, 0, d.p_e5l, err, &lsi))
+            return false;
+    }
     const uint32_t *e2[3] = {E2_prefix_p0_spv, E2_prefix_p1_spv, E2_prefix_p2_spv};
     const size_t e2n[3] = {sizeof E2_prefix_p0_spv, sizeof E2_prefix_p1_spv,
                            sizeof E2_prefix_p2_spv};
@@ -536,10 +559,17 @@ static void record_passes(VkEncoder::Impl &d, VkCommandBuffer cb, bool e3,
         ts(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
     }
 
-    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, d.p_e4.pipe);
-    vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, d.p_e4.layout,
+    /* E4, or E4-lite.  The two take the same descriptor set and write the
+     * same three job fields and the same `sizes` entry, so everything after
+     * this point is unchanged: only the workgroup shape differs, one tile per
+     * group against eight, because Lite has no serial chain to keep resident
+     * and wants a whole workgroup per tile instead. */
+    const vkmin::Pipeline &pe4 = d.entropy_lite ? d.p_e4l : d.p_e4;
+    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, pe4.pipe);
+    vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, pe4.layout,
                             0, 1, &d.s_e4, 0, nullptr);
-    vkCmdDispatch(cb, d.e4_groups, 1, 1);
+    vkCmdDispatch(cb, d.entropy_lite ? std::max(d.ntiles, 1u) : d.e4_groups,
+                  1, 1);
     d.dev.barrier_compute_to_compute(cb);
     ts(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
@@ -568,8 +598,9 @@ static void record_passes(VkEncoder::Impl &d, VkCommandBuffer cb, bool e3,
                             0, 1, &d.s_e5z, 0, nullptr);
     vkCmdDispatch(cb, 256, 1, 1);
     d.dev.barrier_compute_to_compute(cb);
-    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, d.p_e5.pipe);
-    vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, d.p_e5.layout,
+    const vkmin::Pipeline &pe5 = d.entropy_lite ? d.p_e5l : d.p_e5;
+    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, pe5.pipe);
+    vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, pe5.layout,
                             0, 1, &d.s_e5, 0, nullptr);
     vkCmdDispatch(cb, std::max(d.ntiles, 1u), 1, 1);
     d.dev.barrier_compute_to_host(cb);
@@ -1003,14 +1034,18 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
      * first -- which nothing else on this path reads -- cost more than the
      * choice it fed.  The `check` path above has already copied them, because
      * it compares them against the CPU model. */
-    choose_table_sets(f, check ? f.coef.data()
-                               : (const int16_t *)d.b_stage_coef.map);
+    /* ENTROPY_LITE has no probability tables: the tile header's `table_set`
+     * field names the VARIANT, which setup() already put on every job, and
+     * running the choice here would overwrite it with a table index. */
+    if (!d.entropy_lite)
+        choose_table_sets(f, check ? f.coef.data()
+                                   : (const int16_t *)d.b_stage_coef.map);
     /* Custom tables (tool bit 6) are trained on the histogram the choice above
      * has just built, so they cost no second walk of the coefficients.  They
      * rewrite f.tabs, f.fp.tables_present and f.fp.table_bytes, which is why
      * the parameter record and the tables are uploaded again below rather than
      * only before E3. */
-    train_table_sets(f);
+    if (!d.entropy_lite) train_table_sets(f);
     fp.tables_present = f.fp.tables_present;
     fp.table_bytes = f.fp.table_bytes;
     auto t3 = clk::now();

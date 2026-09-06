@@ -1,0 +1,460 @@
+#version 460
+// lite_encode.comp -- E4-lite: ENTROPY_LITE (tool bit 30), FIXED variant.
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// The alternative to E4 for a link that has bytes and does not have decode
+// time.  On the Pico 4's Adreno 650 the decoder's Pass A is 8-11 ms per eye at
+// 289 tiles because it is latency-bound on the serial rANS round chain with
+// 37 workgroups in flight; Lite has no chain at all, and on RADV the same 2048
+// tiles decode in 0.158 ms against rANS's 0.651.  It costs about a third more
+// bytes on 4:2:0.  That is the whole trade, and this kernel is the encoder's
+// half of it.
+//
+// ---------------------------------------------------------------------------
+// Why this is a second kernel and not a branch in rans_encode.comp
+// ---------------------------------------------------------------------------
+// Every structural decision in E4 -- rounds, eight lanes in lockstep, a
+// backward sweep, emissions anchored at the END of the slot -- exists to
+// serialise an arithmetic coder.  Lite has no coder: a unit's bits depend on
+// that unit alone and its bit OFFSET is a prefix sum.  So the shape that pays
+// is the opposite one, ONE TILE PER WORKGROUP and one unit per lane, and
+// sharing a kernel would mean carrying E4's machinery through a path that uses
+// none of it.
+//
+// ---------------------------------------------------------------------------
+// The layout, and how the offsets are found
+// ---------------------------------------------------------------------------
+// Five sections, each padded to a byte boundary, bits MSB-first inside a byte
+// (ref/src/entropy_lite.cpp `BitW`):
+//
+//   H0  one bit per group of NXE_LITE_CBF_GROUP units: is any unit coded?
+//   H1  one bit per unit, for the groups H0 flagged
+//   P   LAST then the 3-bit magnitude class, per coded coefficient unit
+//   S   MPM-hit bits (mode unit) or significance bits 0..LAST-1 (coefficient
+//       unit), per coded unit
+//   B   the bodies: non-MPM mode indices, or |q|-1 in the class's field width
+//       followed by a sign, per nonzero coefficient
+//
+// A unit's width in each of P, S and B is a function of that unit's own
+// coefficients, so phase A computes all three in parallel and one lane turns
+// them into exclusive prefixes.  198 units is a serial scan too short to
+// matter beside the coefficient reads that produced it.
+//
+// Phase B then writes: a lane owns a whole unit and emits its P, S and B bits
+// at the offsets the scan gave it.  Bits go in through atomicOr over a payload
+// region this kernel zeroes first, because adjacent units share the byte at
+// their boundary.  There is no other cross-unit dependency anywhere in the
+// tool -- that is the property it exists for, and it is what makes the decoder
+// able to put one lane on any unit.
+//
+// The mode indices are NOT collected into a tile-wide list the way the
+// reference collects them: section S and section B walk the units in the same
+// order and each unit's blocks in the same order, so the reference's global
+// `mode_idx` vector is exactly the concatenation of per-unit slices and a lane
+// can regenerate its own.
+
+#extension GL_GOOGLE_include_directive : require
+#include "nxe_enc_common.glsl"
+
+layout(local_size_x = NXE_E4L_WG, local_size_y = 1, local_size_z = 1) in;
+
+// The same nine bindings E4 takes, in the same order, so the two share one
+// descriptor set layout and the host switches pipelines and nothing else.
+// Lite reads no probability tables and needs no operation scratch, so
+// bindings 4, 7 and 8 are declared and unused.
+layout(std430, binding = 0) readonly buffer ParamBuf { nxe_frame_params fp; };
+layout(std430, binding = 1)          buffer JobBuf   { nxe_tile_job jobs[]; };
+layout(std430, binding = 2) readonly buffer CoefBuf  { uint v[]; } coefb;
+layout(std430, binding = 3) readonly buffer ModeBuf  { uint v[]; } modeb;
+layout(std430, binding = 4) readonly buffer TabBuf   { uint v[]; } tabs;
+layout(std430, binding = 5)          buffer SlotBuf  { uint v[]; } slot;
+layout(std430, binding = 6)          buffer SizeBuf  { uint v[]; } sizes;
+layout(std430, binding = 7)          buffer OpBuf    { uint v[]; } ops;
+layout(std430, binding = 8)          buffer SlotOpBuf{ uint v[]; } slotops;
+
+#define NXE_LITE_MAX_GROUPS \
+    ((NXE_TILE_UNITS_MAX + NXE_LITE_CBF_GROUP - 1) / NXE_LITE_CBF_GROUP)
+
+shared int s_coded[NXE_TILE_UNITS_MAX];
+shared int s_last[NXE_TILE_UNITS_MAX];
+shared int s_param[NXE_TILE_UNITS_MAX];
+// Written as widths by phase A, rewritten as exclusive bit offsets by the scan.
+shared int s_pw[NXE_TILE_UNITS_MAX];
+shared int s_sw[NXE_TILE_UNITS_MAX];
+shared int s_bw[NXE_TILE_UNITS_MAX];
+shared int s_gflag[NXE_LITE_MAX_GROUPS];
+shared int s_gbase[NXE_LITE_MAX_GROUPS];   // H1 bit offset, relative to H1
+shared int s_sec[4];                       // bit base of H1, P, S, B
+shared int s_bits;                         // the payload, in bits
+
+// ------------------------------------------------------------ per-tile state
+uint g_tile;
+uint g_coefbase;
+uint g_pword;        // slot word holding payload byte 0
+int  g_nunits, g_hasmode, g_tskip;
+int  g_ndc[NXE_MAX_PLANES], g_nb[NXE_MAX_PLANES];
+int  g_coefoff[NXE_MAX_PLANES], g_ustart[NXE_MAX_PLANES];
+
+struct LiteUnit {
+    int coef_off, ncoef, kind, nbx, mode_off;
+    bool tskip;
+};
+
+// TileCoder::build_units, addressed rather than materialised -- the same
+// derivation rans_encode.comp's unit_desc() does, with the context fields
+// dropped: Lite conditions on nothing, so it needs none of them.
+LiteUnit unit_desc(int ui) {
+    LiteUnit u;
+    u.coef_off = 0; u.ncoef = 0; u.kind = 0; u.nbx = 0; u.mode_off = 0;
+    u.tskip = false;
+    int p = 0;
+    for (int k = NXE_MAX_PLANES - 1; k >= 0; --k)
+        if (ui >= g_ustart[k]) { p = k; break; }
+    int rel = ui - g_ustart[p];
+    if (rel == 0) {                       // the DC plane
+        u.coef_off = g_coefoff[p];
+        u.ncoef = g_ndc[p];
+        return u;
+    }
+    if (g_hasmode != 0 && rel == 1) {     // the mode unit
+        u.kind = 1;
+        u.nbx = g_nb[p];
+        u.mode_off = p;
+        return u;
+    }
+    int b = rel - 1 - g_hasmode;
+    u.coef_off = g_coefoff[p] + g_ndc[p] + b * 64;
+    u.ncoef = 64;
+    u.tskip = g_tskip != 0;
+    return u;
+}
+
+int coef_at(int level_index) {
+    uint w = g_coefbase + uint(level_index >> 1);
+    w = min(w, uint(coefb.v.length()) - 1u);
+    return nxe_unpack16(coefb.v[w], level_index & 1);
+}
+int mode_at(int plane, int b) {
+    uint idx = g_tile * 3u * 64u + uint(plane) * 64u + uint(b);
+    uint w = idx >> 2;
+    if (w >= uint(modeb.v.length())) return 0;
+    return int((modeb.v[w] >> ((idx & 3u) * 8u)) & 0xffu);
+}
+
+int mpm_of(int plane, int nbx, int b) {
+    int bx = b % nbx, by = b / nbx;
+    int left = bx > 0 ? mode_at(plane, b - 1) : NXE_INTRA_DC_PLANE;
+    int above = by > 0 ? mode_at(plane, b - nbx) : NXE_INTRA_DC_PLANE;
+    if (left == above) return left;
+    return left < above ? left : above;
+}
+int nonmpm_index(int mpm, int mode) {
+    int n = 0;
+    for (int m = 0; m < NXE_NUM_INTRA_MODES; ++m) {
+        if (m == mpm) continue;
+        if (m == mode) return n;
+        ++n;
+    }
+    return 0;
+}
+
+// ---------------------------------------------------------- the bit writer
+//
+// ref's BitW, addressed rather than streamed: MSB-first inside a byte, so bit
+// `i` of the payload is bit (7 - (i & 7)) of byte (i >> 3).  A byte is ORed in
+// rather than stored because the unit before this one may own the bits above
+// it in the same byte; the payload region is zeroed before any lane writes.
+void put_bits(uint bitoff, uint v, int k) {
+    while (k > 0) {
+        uint bidx = bitoff >> 3;
+        int off = int(bitoff & 7u);
+        int take = min(k, 8 - off);
+        uint chunk = (v >> uint(k - take)) & ((1u << uint(take)) - 1u);
+        uint b8 = chunk << uint(8 - off - take);
+        uint w = g_pword + (bidx >> 2);
+        if (w < uint(slot.v.length()))
+            atomicOr(slot.v[w], b8 << ((bidx & 3u) * 8u));
+        bitoff += uint(take);
+        k -= take;
+    }
+}
+
+int align8(int bits) { return (bits + 7) & ~7; }
+
+void main() {
+    const uint lid = gl_LocalInvocationID.x;
+    const uint nwg = gl_NumWorkGroups.x;
+
+    // The scan tables live in SHARED memory (nxe_enc_common.glsl) and every
+    // kernel that reads them has to fill them once, from uniform control flow,
+    // before its first barrier.  Skipping this reads uninitialised LDS: the
+    // zigzag comes back as whatever the workgroup's memory happened to hold,
+    // which is a wrong `last` for every unit and a stream that is internally
+    // consistent and not the reference's.
+    nxe_init_tables(lid, uint(NXE_E4L_WG));
+    barrier();
+    // A uniform iteration count keeps every barrier below in uniform control
+    // flow even when the tile count is not a multiple of the dispatch.
+    const uint iters = (fp.ntiles + nwg - 1u) / nwg;
+
+    for (uint it = 0u; it < iters; ++it) {
+        g_tile = it * nwg + gl_WorkGroupID.x;
+        const bool live = g_tile < fp.ntiles;
+        nxe_tile_job job = jobs[live ? g_tile : 0u];
+
+        g_coefbase = g_tile * uint(NXE_TILE_COEF_WORDS);
+        g_tskip = int(job.tskip);
+        g_hasmode = int(fp.intra_dir);
+        g_nunits = 0;
+        for (int p = 0; p < NXE_MAX_PLANES; ++p) {
+            int nb = nxe_plane_size(job.chroma444, job.res_level, p) / 8;
+            g_nb[p] = nb;
+            g_ndc[p] = nb * nb;
+            g_coefoff[p] = nxe_plane_coef_offset(job.chroma444, job.res_level, p);
+            g_ustart[p] = g_nunits;
+            g_nunits += 1 + g_hasmode + g_ndc[p];
+        }
+        // A WARP_SKIP tile is not transmitted at all; its only trace is its
+        // bit in the row header's skip bitmap, which E5 derives from the same
+        // `mode`.  Zeroing the unit count rather than skipping the tile keeps
+        // the barriers below workgroup-uniform, exactly as E4 does.
+        const bool skipped = job.mode == uint(NXE_MODE_WARP_SKIP);
+        if (skipped) g_nunits = 0;
+        // The payload starts after the two header words and the reserved
+        // optional-field word.  Lite has no rANS flush states, so nothing
+        // stands between that word and the first payload byte.
+        const uint w0 = g_tile * uint(NXE_TILE_SLOT_WORDS);
+        g_pword = w0 + 3u;
+        const int ngroups =
+            (g_nunits + NXE_LITE_CBF_GROUP - 1) / NXE_LITE_CBF_GROUP;
+
+        // ---- phase A: one lane per unit, the facts and the three widths.
+        for (int ui = int(lid); ui < g_nunits; ui += NXE_E4L_WG) {
+            LiteUnit u = unit_desc(ui);
+            int coded = 0, last = 0, param = 0, pw = 0, sw = 0, bw = 0;
+            if (u.kind == 1) {
+                int n = u.nbx * u.nbx;
+                coded = n != 0 ? 1 : 0;
+                sw = n;
+                for (int b = 0; b < n; ++b)
+                    if (mode_at(u.mode_off, b) != mpm_of(u.mode_off, u.nbx, b))
+                        bw += NXE_LITE_MODE_BITS;
+            } else {
+                int ncoef = u.ncoef;
+                int l = -1;
+                for (int p = ncoef - 1; p >= 0; --p)
+                    if (coef_at(u.coef_off + nxe_scan(ncoef, u.tskip, p)) != 0) {
+                        l = p;
+                        break;
+                    }
+                if (l >= 0) {
+                    int maxa = 0, nnz = 0;
+                    for (int p = 0; p <= l; ++p) {
+                        int q = coef_at(u.coef_off + nxe_scan(ncoef, u.tskip, p));
+                        int a = q < 0 ? -q : q;
+                        if (a != 0) { ++nnz; maxa = max(maxa, a); }
+                    }
+                    int cls = 7;
+                    for (int c = 0; c < 8; ++c)
+                        if (maxa <= (1 << nxe_lite_mag_bits[c])) { cls = c; break; }
+                    coded = 1;
+                    last = l;
+                    param = cls;
+                    pw = nxe_lite_last_bits(ncoef) + NXE_LITE_PARAM_BITS;
+                    sw = l;   // position `last` is nonzero and is not coded
+                    bw = nnz * (nxe_lite_mag_bits[cls] + 1);
+                }
+            }
+            s_coded[ui] = coded;
+            s_last[ui] = last;
+            s_param[ui] = param;
+            s_pw[ui] = pw;
+            s_sw[ui] = sw;
+            s_bw[ui] = bw;
+        }
+        barrier();
+
+        // ---- the scan.  One lane, because the whole of it is 198 units of
+        // three running sums plus thirteen group flags -- shorter than the
+        // barrier a parallel scan would need, and the only serial thing left
+        // in the tool.
+        if (lid == 0u) {
+            int h1 = 0;
+            for (int g = 0; g < ngroups; ++g) {
+                int lo = g * NXE_LITE_CBF_GROUP;
+                int hi = min(lo + NXE_LITE_CBF_GROUP, g_nunits);
+                int any = 0;
+                for (int i = lo; i < hi; ++i) any |= s_coded[i];
+                s_gflag[g] = any;
+                s_gbase[g] = h1;
+                if (any != 0) h1 += hi - lo;
+            }
+            int p = 0, s = 0, b = 0;
+            for (int i = 0; i < g_nunits; ++i) {
+                int wp = s_pw[i], ws = s_sw[i], wb = s_bw[i];
+                s_pw[i] = p; s_sw[i] = s; s_bw[i] = b;
+                p += wp; s += ws; b += wb;
+            }
+            s_sec[0] = align8(ngroups);                  // H1
+            s_sec[1] = s_sec[0] + align8(h1);            // P
+            s_sec[2] = s_sec[1] + align8(p);             // S
+            s_sec[3] = s_sec[2] + align8(s);             // B
+            s_bits = g_nunits > 0 ? s_sec[3] + align8(b) : 0;
+        }
+        barrier();
+
+        const int payload = s_bits >> 3;
+
+        // ---- zero the payload region, so the ORs below are stores.
+        const uint pwords = uint((payload + 3) >> 2);
+        for (uint w = lid; w < pwords; w += uint(NXE_E4L_WG))
+            if (live && g_pword + w < uint(slot.v.length()))
+                slot.v[g_pword + w] = 0u;
+        // barrier() alone orders SHARED memory; the zeroing above and the
+        // atomicOr below are BUFFER accesses to the same words from different
+        // lanes, so the buffer barrier is the one that matters.
+        memoryBarrierBuffer();
+        barrier();
+
+        if (live && g_nunits > 0) {
+            // ---- H0: one lane per group.
+            for (int g = int(lid); g < ngroups; g += NXE_E4L_WG)
+                put_bits(uint(g), uint(s_gflag[g]), 1);
+
+            // ---- H1: one lane per UNIT, not one per group with an inner
+            // loop over the group's units.  A unit's H1 bit is
+            // s_gbase[group] + its index within the group, which every lane
+            // can compute on its own, so the nested form bought nothing --
+            // and it cost: lavapipe SEGFAULTS in JIT-compiled shader code on
+            // the nested version, where the outer loop is live on seven lanes
+            // of sixty-four and the inner one runs inside it.  The flat form
+            // is what the rest of this kernel already does and is portable.
+            for (int ui = int(lid); ui < g_nunits; ui += NXE_E4L_WG) {
+                int g = ui / NXE_LITE_CBF_GROUP;
+                if (s_gflag[g] == 0) continue;
+                put_bits(uint(s_sec[0] + s_gbase[g] +
+                              ui - g * NXE_LITE_CBF_GROUP),
+                         uint(s_coded[ui]), 1);
+            }
+
+            // ---- the mode units, one lane per BLOCK.
+            //
+            // Not a branch inside the unit loop below, for the same reason H1
+            // is not a nested loop: a mode unit exists only once per plane, so
+            // that branch would be live on three lanes of sixty-four with a
+            // loop inside it, and lavapipe segfaults on exactly that shape.
+            // Here every lane runs the same three iterations and the branch
+            // that survives is a bounds test.
+            //
+            // A block's section-B offset is three bits per non-MPM block
+            // BEFORE it in the same unit, which the reference gets from a
+            // tile-wide `mode_idx` vector and a lane gets by counting.  That
+            // costs at most 64 mpm_of() evaluations and needs no shared state.
+            for (int j = int(lid); j < NXE_MAX_PLANES * 64;
+                 j += NXE_E4L_WG) {
+                if (g_hasmode == 0) break;
+                const int pl = j >> 6, b = j & 63;
+                if (b >= g_nb[pl] * g_nb[pl]) continue;
+                const int ui = g_ustart[pl] + 1;
+                if (s_coded[ui] == 0) continue;
+                const int nbx = g_nb[pl];
+                const int mpm = mpm_of(pl, nbx, b);
+                const int m = mode_at(pl, b);
+                put_bits(uint(s_sec[2] + s_sw[ui] + b), m == mpm ? 1u : 0u, 1);
+                if (m == mpm) continue;
+                int k = 0;
+                for (int e = 0; e < b; ++e)
+                    if (mode_at(pl, e) != mpm_of(pl, nbx, e))
+                        k += NXE_LITE_MODE_BITS;
+                put_bits(uint(s_sec[3] + s_bw[ui] + k),
+                         uint(nonmpm_index(mpm, m)), NXE_LITE_MODE_BITS);
+            }
+
+            // ---- P, S and B of the COEFFICIENT units: one lane per unit.
+            for (int ui = int(lid); ui < g_nunits; ui += NXE_E4L_WG) {
+                if (s_coded[ui] == 0) continue;
+                LiteUnit u = unit_desc(ui);
+                if (u.kind == 1) continue;
+                uint sb = uint(s_sec[2] + s_sw[ui]);
+                uint bb = uint(s_sec[3] + s_bw[ui]);
+                const int ncoef = u.ncoef;
+                const int last = s_last[ui];
+                const int mb = nxe_lite_mag_bits[s_param[ui]];
+                uint pb = uint(s_sec[1] + s_pw[ui]);
+                const int lb = nxe_lite_last_bits(ncoef);
+                put_bits(pb, uint(last), lb);
+                put_bits(pb + uint(lb), uint(s_param[ui]), NXE_LITE_PARAM_BITS);
+                int k = 0;
+                for (int p = 0; p <= last; ++p) {
+                    int q = coef_at(u.coef_off + nxe_scan(ncoef, u.tskip, p));
+                    if (p < last) put_bits(sb + uint(p), q != 0 ? 1u : 0u, 1);
+                    if (q == 0) continue;
+                    int a = q < 0 ? -q : q;
+                    if (mb != 0) {
+                        put_bits(bb + uint(k), uint(a - 1), mb);
+                        k += mb;
+                    }
+                    put_bits(bb + uint(k), q < 0 ? 1u : 0u, 1);
+                    k += 1;
+                }
+            }
+        }
+        barrier();
+
+        // ---- the 8-byte tile header and the sizes E2 prefix-sums.
+        if (live && lid == 0u) {
+            if (skipped) {
+                jobs[g_tile].payload_len = 0u;
+                jobs[g_tile].tile_bytes = 0u;
+                jobs[g_tile].nunits = 0u;
+                jobs[g_tile].flags = 1u;
+                sizes.v[g_tile] = 0u;
+            } else {
+                /* SYNTAX.md 4.1's optional fields sit between the two header
+                 * words and the payload, and are the same on this path as on
+                 * E4's: a coded-vector tile carries mv_present and two vector
+                 * bytes, and nothing else this pipeline emits is optional.
+                 * The entropy tool does not reach them -- they are tile
+                 * header, not payload -- but E5 sizes the payload from
+                 * `tile_bytes` minus them, so getting this wrong here moves
+                 * every byte of an inter tile. */
+                const bool mvp = job.mode == uint(NXE_MODE_STATIC_MV) ||
+                                 job.mode == uint(NXE_MODE_WARP_MV) ||
+                                 job.mode == uint(NXE_MODE_STEREO);
+                const uint fields = mvp ? 2u : 0u;
+                uint h0 = (job.col & 0xfffu) << 4;
+                h0 |= (job.eye & 1u) << 2;
+                h0 |= (uint(payload) & 0xffffu) << 16;
+                uint h1 = job.mode & 7u;
+                h1 |= (job.res_level & 3u) << 3;
+                h1 |= (job.chroma444 & 1u) << 5;
+                h1 |= uint(job.qp_delta & 0x3f) << 8;
+                // `table_set` names the VARIANT under ENTROPY_LITE, and
+                // `nsub_log2` is fixed at 3: the decoder refuses any other
+                // value (codec_impl.inc).  The host resolves both onto the
+                // job, so this is a read of that and not a second decision.
+                h1 |= (job.table_set & 7u) << 14;
+                h1 |= (job.nsub_log2 & 7u) << 17;
+                h1 |= (mvp ? 1u : 0u) << 20;
+                h1 |= (job.tskip & 1u) << 23;
+                h1 |= (job.wm_id & 3u) << 26;
+                slot.v[w0] = h0;
+                slot.v[w0 + 1u] = h1;
+                /* mv_x then mv_y, low byte first, as emit_tile_fields(). */
+                slot.v[w0 + 2u] = job.mv & 0xffffu;
+                jobs[g_tile].payload_len = uint(payload);
+                jobs[g_tile].tile_bytes =
+                    uint(NXE_TILE_HEADER_BYTES) + fields + uint(payload);
+                jobs[g_tile].nunits = uint(g_nunits);
+                // The active-lane count E5 uses to find the rANS flush states
+                // is ZERO here, because there are none: E5's Lite variant
+                // reads the payload straight after the field word.
+                jobs[g_tile].flags = 1u;
+                sizes.v[g_tile] =
+                    uint(NXE_TILE_HEADER_BYTES) + fields + uint(payload);
+            }
+        }
+        barrier();
+    }
+}

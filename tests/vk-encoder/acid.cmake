@@ -16,13 +16,28 @@
 # ever they disagree the second line tells you the difference was in the
 # bitstream rather than in the decode.
 #
-# Variables: VKENC, NXVENC, NXVDEC, WORKDIR, DEVICE ("cpu" or an index).
+# Variables: VKENC, NXVENC, NXVDEC, WORKDIR, DEVICE ("cpu" or an index), and
+# ENTROPY ("rans", the default, or "lite").  ENTROPY=lite runs the same table
+# through tool bit 30: the reference gets `--entropy lite-fixed` and this
+# encoder `--entropy lite`, and BOTH resolve sign hiding, custom tables and the
+# lane count the same way, so the configurations that name those tools still
+# compare -- they just compare a stream in which the tools are off.
 
 if(NOT VKENC OR NOT NXVENC OR NOT NXVDEC OR NOT WORKDIR)
   message(FATAL_ERROR "acid.cmake: VKENC/NXVENC/NXVDEC/WORKDIR are required")
 endif()
 if(NOT DEFINED DEVICE)
   set(DEVICE 0)
+endif()
+if(NOT DEFINED ENTROPY)
+  set(ENTROPY rans)
+endif()
+if(ENTROPY STREQUAL "lite")
+  set(REF_ENTROPY --entropy lite-fixed)
+  set(GPU_ENTROPY --entropy lite)
+else()
+  set(REF_ENTROPY --entropy rans)
+  set(GPU_ENTROPY --entropy rans)
 endif()
 
 file(REMOVE_RECURSE ${WORKDIR})
@@ -76,6 +91,17 @@ foreach(line ${lines})
   list(GET f 16 frames)
   list(GET f 17 ct)         # tool bit 6, CUSTOM_TABLES
   list(GET f 18 tab)        # tool bit 26, TAB_V2 (needs bit 6)
+  list(GET f 19 ent)        # tool bit 30, ENTROPY_LITE
+
+  # The Lite rows of the selftest table exist for `--selftest`: they pin a
+  # digest in the standalone build and they cover the DIRECTIONAL Lite stream,
+  # which has no reference to be identical to.  This test drives the whole
+  # table at one entropy tool, chosen by ENTROPY, so a row that names its own
+  # would be encoded at a setting it did not ask for.
+  if(NOT ent STREQUAL "0")
+    math(EXPR nskip "${nskip} + 1")
+    continue()
+  endif()
 
   # The reference encoder searches its own per-block intra modes; this pipeline
   # takes them as an input.  A directional configuration therefore has no
@@ -130,7 +156,7 @@ foreach(line ${lines})
   #
   # The GPU pipeline implements none of the six, so this is the flag set that
   # makes byte-identity a meaningful claim rather than a coincidence.
-  set(minor6_off --split4x4 off --cfl off --xform 8 --entropy rans)
+  set(minor6_off --split4x4 off --cfl off --xform 8 ${REF_ENTROPY})
 
   execute_process(COMMAND ${NXVENC} ${common} --out ${WORKDIR}/ref.nxv
                           --no-rdo ${minor6_off}
@@ -138,7 +164,8 @@ foreach(line ${lines})
   if(NOT rc EQUAL 0)
     message(FATAL_ERROR "${path}: nxv-enc failed (${rc})")
   endif()
-  execute_process(COMMAND ${VKENC} ${common} --out ${WORKDIR}/gpu.nxv ${DEVARGS}
+  execute_process(COMMAND ${VKENC} ${common} ${GPU_ENTROPY}
+                          --out ${WORKDIR}/gpu.nxv ${DEVARGS}
                   RESULT_VARIABLE rc OUTPUT_QUIET ERROR_VARIABLE eout)
   if(rc EQUAL 77)
     file(REMOVE_RECURSE ${WORKDIR})
@@ -183,5 +210,7 @@ file(REMOVE_RECURSE ${WORKDIR})
 if(npass EQUAL 0)
   message(FATAL_ERROR "acid.cmake: no configuration ran")
 endif()
-message(STATUS "${npass} configurations byte-identical and pixel-identical, "
-               "${nskip} directional configurations covered by --selftest")
+message(STATUS "${npass} configurations byte-identical and pixel-identical "
+               "at --entropy ${ENTROPY}, "
+               "${nskip} directional or Lite-only configurations covered by "
+               "--selftest")

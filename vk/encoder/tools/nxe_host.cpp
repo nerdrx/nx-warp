@@ -49,7 +49,11 @@ static uint32_t table_set_seed(int qp) {
 /* Everything a QP change touches on a Frame whose job list already exists. */
 static void apply_qp(Frame &f, int qp) {
     f.fp.base_qp = (uint32_t)qp;
-    const uint32_t seed = table_set_seed(qp);
+    /* Under ENTROPY_LITE the tile header's `table_set` field names the
+     * VARIANT and nothing chooses it per tile, so the seed -- and the whole
+     * table stage that would overwrite it -- does not apply. */
+    const uint32_t seed = f.entropy_lite ? (uint32_t)(f.entropy_lite - 1)
+                                         : table_set_seed(qp);
     for (auto &j : f.jobs)
         j.table_set = seed;
 }
@@ -72,18 +76,28 @@ void setup(const Config &cfg, Frame &f) {
     fp.chroma_qp_off = cfg.chroma_qp_off;
     fp.nctx = cfg.ctx_v3 ? NXE_NCTX_V3
                          : (cfg.ctx_v2 ? NXE_NCTX_V2 : NXE_NCTX_V1);
-    fp.sdh = cfg.sign_hide ? 1u : 0u;
+    /* ENTROPY_LITE forces three things, exactly as `nxvc_encoder_create`
+     * does: no sign data hiding (there is no coder parity to spend), no
+     * transmitted tables (there are no tables), and eight lanes (the tile
+     * header's nsub_log2 field is fixed at 3 and the decoder rejects any
+     * other value).  Resolving them here rather than trusting the caller is
+     * what keeps the two encoders' tile headers identical. */
+    f.entropy_lite = cfg.entropy_lite;
+    const bool lite = f.entropy_lite != 0;
+    fp.sdh = (cfg.sign_hide && !lite) ? 1u : 0u;
     fp.intra_dir = cfg.intra_dir ? 1u : 0u;
     fp.dir_layer = cfg.dir_layer ? 1u : 0u;
-    fp.nsub_log2 = (uint32_t)cfg.nsub_log2;
+    fp.nsub_log2 = lite ? 3u : (uint32_t)cfg.nsub_log2;
     fp.quant_matrix = (uint32_t)cfg.matrix;
     fp.tables_present = 0;                 /* set per frame by the training */
     fp.table_bytes = 0;
-    f.custom_tables = cfg.custom_tables;
+    f.custom_tables = cfg.custom_tables && !lite;
     /* TAB_V2 requires CUSTOM_TABLES (SYNTAX.md 9.4.1), exactly as ref's
      * `fp.tab_v2 = cfg.custom_tables && cfg.tab_v2`. */
-    f.tab_v2 = cfg.custom_tables && cfg.tab_v2;
-    f.table_iters = cfg.custom_tables ? cfg.table_iters : 0;
+    f.tab_v2 = f.custom_tables && cfg.tab_v2;
+    f.table_iters = f.custom_tables ? cfg.table_iters : 0;
+    f.slot_stride = lite ? (uint32_t)NXE_TILE_BYTES_MAX_LITE
+                         : (uint32_t)NXE_TILE_BYTES_MAX;
     fp.frame_flags = 1;                    /* bit 0: tile-map reset */
     if (cfg.intra_dir && cfg.dir_layer) fp.frame_flags |= 4;
     fp.ycocgr = 0;
@@ -109,7 +123,7 @@ void setup(const Config &cfg, Frame &f) {
                 j.chroma444 = cfg.chroma444 ? 1u : 0u;
                 j.res_level = 0;
                 j.mode = 3;                /* NXVC_MODE_INTRA */
-                j.nsub_log2 = (uint32_t)cfg.nsub_log2;
+                j.nsub_log2 = fp.nsub_log2;
             }
 
     /* fp.base_qp and the per-tile table-set seed, in the one place that owns
@@ -128,7 +142,7 @@ void setup(const Config &cfg, Frame &f) {
     f.src_packed.assign((size_t)base * 2, 0);   /* u16 halves of `base` words */
     f.coef.assign((size_t)fp.ntiles * NXE_TILE_COEFS_MAX, 0);
     f.modes.assign((size_t)fp.ntiles * 3 * 64, 0);
-    f.slots.assign((size_t)fp.ntiles * NXE_TILE_BYTES_MAX, 0);
+    f.slots.assign((size_t)fp.ntiles * f.slot_stride, 0);
     f.tile_bytes.assign(fp.ntiles, 0);
     f.tile_prefix.assign(fp.ntiles, 0);
     if (f.custom_tables)
@@ -317,7 +331,11 @@ std::vector<uint8_t> stream_header(const Config &cfg, const Frame &f) {
     if (cfg.tskip) tools |= 1ull << 1;                /* TRANSFORM_SKIP */
     tools |= 1ull << 2;                               /* RES_LEVEL */
     if (cfg.chroma444) tools |= 1ull << 3;            /* CHROMA444 */
-    if (cfg.nsub_log2 != 3) tools |= 1ull << 7;       /* NSUB_VAR */
+    /* NSUB_VAR is the RESOLVED lane count, not the requested one:
+     * ENTROPY_LITE fixes nsub_log2 at 3 (setup() does it, as
+     * `nxvc_encoder_create` does), so a `--nsub 1 --entropy lite` stream
+     * carries eight lanes and must not claim the tool. */
+    if (f.fp.nsub_log2 != 3) tools |= 1ull << 7;      /* NSUB_VAR */
     if (cfg.wm_id != 0) tools |= 1ull << 20;          /* WM_ID */
     if (cfg.intra_dir) tools |= 1ull << 17;           /* INTRA_DIR */
     if (cfg.ctx_v2) tools |= 1ull << 21;              /* CTX_V2 */
@@ -328,6 +346,12 @@ std::vector<uint8_t> stream_header(const Config &cfg, const Frame &f) {
      * BITSTREAM (SYNTAX.md 9.4.1), which is why this is the resolved pair and
      * not cfg.tab_v2 on its own. */
     if (cfg.custom_tables && cfg.tab_v2) tools |= 1ull << 26;  /* TAB_V2 */
+    /* ENTROPY_LITE (30).  The stream header refuses it alongside SIGN_HIDE or
+     * CUSTOM_TABLES (codec_impl.inc, parse_stream_header), which is why the
+     * two above are resolved against `f.entropy_lite` rather than against the
+     * Config: setup() has already turned them off. */
+    if (f.entropy_lite) tools |= 1ull << 30;                   /* ENTROPY_LITE */
+    if (f.entropy_lite) tools &= ~((1ull << 22) | (1ull << 6) | (1ull << 26));
     /* Bit 10 INTER and bit 11 WARP travel together: an inter stream on this
      * path always carries warp_ext() on the frames that have a reference, and
      * a decoder that implements one and not the other cannot decode it. */
@@ -834,7 +858,7 @@ void pack_frame(Frame &f, uint32_t frame_number) {
     for (uint32_t t = 0; t < fp.ntiles; ++t) {
         uint32_t off = nxe_e5_tile_offset(&fp, t, f.tile_prefix.data());
         std::memcpy(f.out.data() + off,
-                    &f.slots[(size_t)t * NXE_TILE_BYTES_MAX], f.tile_bytes[t]);
+                    &f.slots[(size_t)t * f.slot_stride], f.tile_bytes[t]);
     }
 }
 
@@ -847,15 +871,27 @@ void encode_frame_cpu(Frame &f, uint32_t frame_number) {
         nxe_e3_tile(&fp, &f.jobs[t], src, &f.modes[(size_t)t * 3 * 64],
                     &f.coef[(size_t)t * NXE_TILE_COEFS_MAX]);
     }
-    choose_table_sets(f, f.coef.data());
-    train_table_sets(f);
+    /* The table stage is the tool's, not the pipeline's: ENTROPY_LITE has no
+     * probability tables to choose between or to train. */
+    if (!f.entropy_lite) {
+        choose_table_sets(f, f.coef.data());
+        train_table_sets(f);
+    }
     for (uint32_t t = 0; t < fp.ntiles; ++t) {
         nxe_tile_units tu;
         nxe_build_units(&fp, &f.jobs[t], &tu);
-        int len = nxe_e4_tile(&fp, &f.jobs[t], &tu,
+        int len;
+        if (f.entropy_lite)
+            len = nxe_lite_tile(&fp, &f.jobs[t], &tu,
+                                &f.coef[(size_t)t * NXE_TILE_COEFS_MAX],
+                                &f.modes[(size_t)t * 3 * 64],
+                                f.entropy_lite - 1,
+                                &f.slots[(size_t)t * f.slot_stride]);
+        else
+            len = nxe_e4_tile(&fp, &f.jobs[t], &tu,
                               &f.coef[(size_t)t * NXE_TILE_COEFS_MAX],
                               &f.modes[(size_t)t * 3 * 64], &f.tabs,
-                              &f.slots[(size_t)t * NXE_TILE_BYTES_MAX]);
+                              &f.slots[(size_t)t * f.slot_stride]);
         f.jobs[t].payload_len = (uint32_t)len;
         f.tile_bytes[t] = (uint32_t)(NXE_TILE_HEADER_BYTES + len);
     }

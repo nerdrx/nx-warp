@@ -67,6 +67,7 @@
 #define NXE_ESC_MAX_PREFIX  16
 #define NXE_SDH_MIN_LAST    4
 #define NXE_NUM_INTRA_MODES 9
+#define NXE_INTRA_DC_PLANE  0
 
 #define NXE_RANS_L          (1u << 16)
 #define NXE_PROB_BITS       10
@@ -82,6 +83,37 @@
 #define NXE_TILE_SLOT_WORDS (2 + 1 + 8 + NXE_TILE_COEFS_MAX)
 #define NXE_TILE_SLOT_BYTES (NXE_TILE_SLOT_WORDS * 4)
 
+// ------------------------------------------------------- ENTROPY_LITE (30)
+// ref/src/entropy_lite.h, mirrored.  See nxe_enc.h for the reasoning; these
+// are the constants lite_encode.comp and packetize.comp share with the host.
+#define NXE_LITE_FIXED       0
+#define NXE_LITE_RICE        1
+#define NXE_LITE_CBF_GROUP   16
+#define NXE_LITE_PARAM_BITS  3
+#define NXE_LITE_MODE_BITS   3
+// Per-section worst case, in bytes, each section padded to a byte.  Kept as
+// five names on five single lines rather than one continued expression: the
+// mirror check is textual and line-based, and a trailing backslash in a value
+// corrupts the CMake list it builds.
+#define NXE_LITE_H0_BYTES_MAX (((NXE_TILE_UNITS_MAX + NXE_LITE_CBF_GROUP - 1) / NXE_LITE_CBF_GROUP + 7) / 8)
+#define NXE_LITE_H1_BYTES_MAX ((NXE_TILE_UNITS_MAX + 7) / 8)
+#define NXE_LITE_P_BYTES_MAX ((NXE_TILE_UNITS_MAX * (NXE_LITE_PARAM_BITS + 6) + 7) / 8)
+#define NXE_LITE_S_BYTES_MAX ((NXE_TILE_COEFS_MAX + 7) / 8)
+#define NXE_LITE_B_BYTES_MAX ((NXE_TILE_COEFS_MAX * 17 + 7) / 8)
+#define NXE_LITE_PAYLOAD_MAX (NXE_LITE_H0_BYTES_MAX + NXE_LITE_H1_BYTES_MAX + NXE_LITE_P_BYTES_MAX + NXE_LITE_S_BYTES_MAX + NXE_LITE_B_BYTES_MAX)
+#define NXE_TILE_BYTES_MAX_LITE (8 + NXE_LITE_PAYLOAD_MAX)
+
+// FIXED: 3-bit magnitude class -> field width.  |q| in 1 .. 2^bits, coded as
+// |q| - 1, so class 7 spans int16 and the variant needs no escape.
+const int nxe_lite_mag_bits[8] = int[8](0, 1, 2, 3, 4, 6, 8, 16);
+
+// Bits the per-unit LAST field takes, given the unit's coefficient count.
+int nxe_lite_last_bits(int ncoef) {
+    int b = 0;
+    while ((1 << b) < ncoef) ++b;
+    return b;
+}
+
 #define NXE_MODE_WARP_SKIP     0
 #define NXE_MODE_STATIC_MV     1
 #define NXE_MODE_WARP_MV       2
@@ -96,6 +128,7 @@
 #define NXE_E3_WG           64
 #define NXE_E4_TILES_PER_WG 8
 #define NXE_E4_WG           (NXE_E4_TILES_PER_WG * 8)
+#define NXE_E4L_WG          64
 #define NXE_E5_WG           256
 
 #define NXE_OP_SYM          0u
@@ -123,6 +156,11 @@
 // not change any loop bound, only how much of the table buffer is live.
 layout(constant_id = 0) const int NXE_SC_INTRA_DIR  = 0;
 layout(constant_id = 1) const int NXE_SC_XFORM_LOG2 = 3;
+// ENTROPY_LITE (30).  E5 is the only pass that needs it: a Lite tile's
+// payload is a contiguous byte run after the field word, where a rANS tile's
+// is the flush states plus one emission per WORD anchored at the end of the
+// slot.  The entropy kernel itself is a different module, not a branch.
+layout(constant_id = 2) const int NXE_SC_ENTROPY_LITE = 0;
 
 #define NXE_XB   (1 << NXE_SC_XFORM_LOG2)      // transform edge
 #define NXE_XN   (NXE_XB * NXE_XB)             // coefficients per block
