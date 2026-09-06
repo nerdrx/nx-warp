@@ -20,6 +20,56 @@ namespace nxvcvk {
 
 using namespace nxwarp_passA;
 
+// ------------------------------------------------------- rejection detail
+// `g_rjctx` is the rolling position of the walk -- frame, row, eye, column,
+// linear tile -- kept current as the parser descends.  REJECT() freezes it
+// together with the source text of the constraint that failed, so a caller
+// that gets NXVC_VKD_ERR_BITSTREAM can say *which field of which tile* was
+// wrong.  Thread-local: two decoders on two threads keep their own.
+static thread_local ParseReject g_rjctx;
+static thread_local ParseReject g_rjlast;
+
+#define REJECT(cond_text)                     \
+    do {                                      \
+        g_rjlast = g_rjctx;                   \
+        g_rjlast.cond = (cond_text);          \
+        g_rjlast.line = __LINE__;             \
+        return NXVC_VKD_ERR_BITSTREAM;        \
+    } while (0)
+
+const ParseReject &last_parse_reject() { return g_rjlast; }
+
+const char *last_parse_reject_text() {
+    static thread_local std::string s;
+    const ParseReject &r = g_rjlast;
+    if (!r.cond) return "no rejection recorded";
+    s.clear();
+    if (r.tile >= 0) {
+        s += "tile " + std::to_string(r.tile) + " (row " +
+             std::to_string(r.row) + " eye " + std::to_string(r.eye) +
+             " col " + std::to_string(r.col) + ") of frame " +
+             std::to_string(r.frame_number) + ": ";
+    } else if (r.row >= 0) {
+        s += "tile row " + std::to_string(r.row) + " eye " +
+             std::to_string(r.eye) + " of frame " +
+             std::to_string(r.frame_number) + ": ";
+    } else {
+        s += "frame " + std::to_string(r.frame_number) + ": ";
+    }
+    s += r.cond;
+    if (r.ref_sel >= 0) {
+        s += " (ref_sel " + std::to_string(r.ref_sel) + " wants frame " +
+             std::to_string(r.want_frame) + "; ring";
+        for (int i = 0; i < 4; ++i)
+            s += " [" + std::to_string(i) + "]=" +
+                 (r.ring_valid[i] ? std::to_string(r.ring_frame[i])
+                                  : std::string("invalid"));
+        s += ")";
+    }
+    s += " [nxvc_vkdec_parse.cpp:" + std::to_string(r.line) + "]";
+    return s.c_str();
+}
+
 namespace {
 
 // ---------------------------------------------------------------------------
@@ -325,6 +375,7 @@ nxvc_vkd_status parse_stream_header(const uint8_t *buf, size_t len,
                                     StreamInfo &si, size_t *consumed,
                                     uint64_t tools_mask) {
     const uint64_t accept = tools_mask ? tools_mask : kToolsSupported;
+    g_rjctx = ParseReject{};
     if (!buf) return NXVC_VKD_ERR_ARG;
     if (len < kStreamHeaderBytes) return NXVC_VKD_ERR_TRUNCATED;
     BR br{buf, len, 0, true};
@@ -336,7 +387,7 @@ nxvc_vkd_status parse_stream_header(const uint8_t *buf, size_t len,
     si.profile = br.u8v();
     si.level = br.u8v();
     si.tile_size = br.u8v();
-    if (si.tile_size & 0xfe) return NXVC_VKD_ERR_BITSTREAM;
+    if (si.tile_size & 0xfe) REJECT("si.tile_size & 0xfe");
     if (si.tile_size & 1) return NXVC_VKD_ERR_UNSUPPORTED;  // 32x32 profile
     si.width = br.u16v();
     si.height = br.u16v();
@@ -355,7 +406,7 @@ nxvc_vkd_status parse_stream_header(const uint8_t *buf, size_t len,
     if (len < kStreamHeaderBytes + si.ext_len) return NXVC_VKD_ERR_TRUNCATED;
     if (si.width < 16 || si.height < 16 || si.width > 4096 ||
         si.height > 4096 || (si.width & 1) || (si.height & 1))
-        return NXVC_VKD_ERR_BITSTREAM;
+        REJECT("si.width < 16 || si.height < 16 || si.width > 4096 || si.height > 4096 || (si.width & 1) || (si.height & 1)");
     if (si.eyes < 1 || si.eyes > 2 || si.bit_depth != 8 || si.num_layers != 1)
         return NXVC_VKD_ERR_UNSUPPORTED;
     // [inter] A stereo frame is `eyes` PICTURES, not one double-width picture
@@ -373,42 +424,42 @@ nxvc_vkd_status parse_stream_header(const uint8_t *buf, size_t len,
     // [REF] Annex D D-1: `warp_present` and the warped tile modes need the
     // WARP tool, and WARP without INTER says nothing (r27).
     if ((si.tools & kToolWarp) && !(si.tools & kToolInter))
-        return NXVC_VKD_ERR_BITSTREAM;
+        REJECT("(si.tools & kToolWarp) && !(si.tools & kToolInter)");
     if ((si.tools & kToolStereo) && si.eyes != 2)
-        return NXVC_VKD_ERR_BITSTREAM;
+        REJECT("(si.tools & kToolStereo) && si.eyes != 2");
     if (si.chroma > 1 || si.color_transform > 1 || si.alpha > 1 ||
         si.color_space > 3)
-        return NXVC_VKD_ERR_BITSTREAM;
+        REJECT("si.chroma > 1 || si.color_transform > 1 || si.alpha > 1 || si.color_space > 3");
     if ((si.color_space == 3) != (si.color_transform == 1))
-        return NXVC_VKD_ERR_BITSTREAM;
+        REJECT("(si.color_space == 3) != (si.color_transform == 1)");
     // [REF] docs/SYNTAX.md 2: YCoCg-R chroma is 9-bit and biased by 256 and
     // the transform runs before subsampling, so a 4:2:0 YCoCg-R stream would
     // push 9-bit chroma through an 8-bit plane.  r15 pins the refusal.
-    if (si.color_transform == 1 && si.chroma != 1) return NXVC_VKD_ERR_BITSTREAM;
+    if (si.color_transform == 1 && si.chroma != 1) REJECT("si.color_transform == 1 && si.chroma != 1");
     if (si.tools & ~accept) return NXVC_VKD_ERR_VERSION;
     // [SYN] 2.3: hiding a sign spends one level step, so a lossless stream
     // cannot carry it and a decoder that accepted both would not know which.
     // r17 pins the refusal.
     if ((si.tools & kToolLossless) && (si.tools & kToolSignHide))
-        return NXVC_VKD_ERR_BITSTREAM;
+        REJECT("(si.tools & kToolLossless) && (si.tools & kToolSignHide)");
     // [SYN] 9.9: v3 REFINES the v2 model rather than replacing it -- it reuses
     // v2's DC-plane and mode splits and only says how the rest is conditioned
     // -- so CTX_V3 without CTX_V2 names no model at all.
     if ((si.tools & kToolCtxV3) && !(si.tools & kToolCtxV2))
-        return NXVC_VKD_ERR_BITSTREAM;
+        REJECT("(si.tools & kToolCtxV3) && !(si.tools & kToolCtxV2)");
     // [SYN] 9.4: the row-skip flag only exists inside a transmitted table set.
     if ((si.tools & kToolTabV2) && !(si.tools & kToolCustomTables))
-        return NXVC_VKD_ERR_BITSTREAM;
+        REJECT("(si.tools & kToolTabV2) && !(si.tools & kToolCustomTables)");
 
     // TLV area: every unrecognised type is skipped (docs/SYNTAX.md 2.1).
     size_t p = kStreamHeaderBytes, end = kStreamHeaderBytes + si.ext_len;
     while (p + 4 <= end) {
         uint32_t tl = (uint32_t)buf[p + 2] | ((uint32_t)buf[p + 3] << 8);
         size_t adv = 4 + tl + ((4 - (tl & 3)) & 3);
-        if (p + adv > end) return NXVC_VKD_ERR_BITSTREAM;
+        if (p + adv > end) REJECT("p + adv > end");
         p += adv;
     }
-    if (p != end) return NXVC_VKD_ERR_BITSTREAM;
+    if (p != end) REJECT("p != end");
 
     // [SYN] 3.3: cols_per_eye = ceil(width / 64), rows = ceil(height / 64),
     // cols = eyes * cols_per_eye, and a frame holds `eyes * rows` tile-row
@@ -424,7 +475,7 @@ nxvc_vkd_status parse_stream_header(const uint8_t *buf, size_t len,
         si.cw = si.width;
         si.ch = si.height;
     }
-    if (si.tiles_x > 64) return NXVC_VKD_ERR_BITSTREAM;
+    if (si.tiles_x > 64) REJECT("si.tiles_x > 64");
     if (consumed) *consumed = kStreamHeaderBytes + si.ext_len;
     return NXVC_VKD_OK;
 }
@@ -433,6 +484,7 @@ nxvc_vkd_status parse_stream_header(const uint8_t *buf, size_t len,
 nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
                             size_t len, bool allow_skipped, FrameParse &fp,
                             InterCtx *ic) {
+    g_rjctx = ParseReject{};
     if (!buf) return NXVC_VKD_ERR_ARG;
     if (len < kFrameHeaderBytes) return NXVC_VKD_ERR_TRUNCATED;
 
@@ -440,6 +492,7 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
     BR br{buf, len, 0, true};
     fp = FrameParse{};
     fp.frame_number = br.u16v();
+    g_rjctx.frame_number = fp.frame_number;
     br.i += 26;  // pose, opaque to the codec (docs/SYNTAX.md 3.2)
     fp.base_qp = br.u8v();
     fp.chroma_qp_off = (int8_t)br.u8v();
@@ -473,16 +526,16 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
     fp.entropy_lite = (si.tools & kToolEntropyLite) != 0;
     if (fp.entropy_lite &&
         (si.tools & (kToolSignHide | kToolCustomTables | kToolTabV2)))
-        return NXVC_VKD_ERR_BITSTREAM;
+        REJECT("fp.entropy_lite && (si.tools & (kToolSignHide | kToolCustomTables | kToolTabV2))");
     fp.split4 = (si.tools & kToolSplit4) ? 1 : 0;
     fp.cfl = (si.tools & kToolCfl) ? 1 : 0;
     fp.dir_layer = (flags >> 2) & 1;
-    if (fp.dir_layer && !fp.intra_dir) return NXVC_VKD_ERR_BITSTREAM;
+    if (fp.dir_layer && !fp.intra_dir) REJECT("fp.dir_layer && !fp.intra_dir");
     // [SYN] 7.7: CFL is a mode inside the CTX_V2 mode symbol of the REPLACE
     // form of directional intra, and none of the three is optional for it.
     // [REF] codec_impl.inc parse_frame_header(), same place, same order.
     if (fp.cfl && (!fp.intra_dir || fp.nctx < kNumCtxV2 || fp.dir_layer))
-        return NXVC_VKD_ERR_BITSTREAM;
+        REJECT("fp.cfl && (!fp.intra_dir || fp.nctx < kNumCtxV2 || fp.dir_layer)");
     // [inter] Frame-uniform Phase 2 state.  [REF] codec_impl.inc
     // parse_frame_header(), same place, same order, same statuses.
     fp.inter = (si.tools & kToolInter) ? 1 : 0;
@@ -491,22 +544,22 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
     fp.near_skip_tool = (si.tools & kToolNearSkip) ? 1 : 0;
     fp.quad_tool = (si.tools & kToolQuadMv) ? 1 : 0;
     fp.warp_present = (flags >> 3) & 1;
-    if (flags & 0xf0) return NXVC_VKD_ERR_BITSTREAM;   // reserved bits 4-7
+    if (flags & 0xf0) REJECT("flags & 0xf0");   // reserved bits 4-7
     // Annex D D-1: warp_present requires the WARP tool bit (r21 is the other
     // direction, a warped tile without the flag).
-    if (fp.warp_present && !fp.warp_tool) return NXVC_VKD_ERR_BITSTREAM;
+    if (fp.warp_present && !fp.warp_tool) REJECT("fp.warp_present && !fp.warp_tool");
     // Annex D D-10: `ref_slots` is a bitmask and in version 1 it must name
     // exactly the slot this frame's number addresses.  Only an inter stream
     // has a ring for it to describe (r25).
     if (fp.inter && fp.ref_slots != (1u << (fp.frame_number & 3u)))
-        return NXVC_VKD_ERR_BITSTREAM;
+        REJECT("fp.inter && fp.ref_slots != (1u << (fp.frame_number & 3u))");
     if (fp.inter && !ic) return NXVC_VKD_ERR_UNSUPPORTED;
     fp.cur_slot = fp.frame_number & 3u;
     uint32_t frame_bytes = br.u32v();
     if (!br.ok) return NXVC_VKD_ERR_TRUNCATED;
-    if (fp.base_qp > 63) return NXVC_VKD_ERR_BITSTREAM;
+    if (fp.base_qp > 63) REJECT("fp.base_qp > 63");
     if (fp.quant_matrix > 3 && fp.quant_matrix != 255)
-        return NXVC_VKD_ERR_BITSTREAM;
+        REJECT("fp.quant_matrix > 3 && fp.quant_matrix != 255");
     if (frame_bytes < kFrameHeaderBytes || frame_bytes > len)
         return NXVC_VKD_ERR_TRUNCATED;
     fp.frame_bytes = frame_bytes;
@@ -527,11 +580,11 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
             for (int i = 0; i < 9; ++i)
                 fp.warp[eye].h[i] = (int32_t)wr.u32v();
             if (fp.warp[eye].h[8] != nxvw::kWarpH22)
-                return NXVC_VKD_ERR_BITSTREAM;
+                REJECT("fp.warp[eye].h[8] != nxvw::kWarpH22");
             for (int i = 0; i < 9; ++i)
                 if (fp.warp[eye].h[i] < -(int32_t)nxvw::kWarpEntryMax ||
                     fp.warp[eye].h[i] > (int32_t)nxvw::kWarpEntryMax)
-                    return NXVC_VKD_ERR_BITSTREAM;
+                    REJECT("fp.warp[eye].h[i] < -(int32_t)nxvw::kWarpEntryMax || fp.warp[eye].h[i] > (int32_t)nxvw::kWarpEntryMax");
             // `den` is affine in (cx, cy), so the four picture corners bound
             // the whole picture.  Accumulated in 64 bits and required to fit
             // int32 and to lie in [2^28, 2^30).
@@ -546,7 +599,7 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
                                         (int64_t)fp.warp[eye].h[8];
                     if (den < (int64_t)nxvw::kWarpDenMin ||
                         den >= (int64_t)nxvw::kWarpDenMax)
-                        return NXVC_VKD_ERR_BITSTREAM;
+                        REJECT("den < (int64_t)nxvw::kWarpDenMin || den >= (int64_t)nxvw::kWarpDenMax");
                 }
         }
         if (!wr.ok) return NXVC_VKD_ERR_TRUNCATED;
@@ -580,7 +633,7 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
             if (!parse_table_set(bitr, k, fp.nctx, fp.tab_v2,
                                  &fp.cum[(size_t)k * table_stride(fp.nctx) *
                                          kNumSym]))
-                return NXVC_VKD_ERR_BITSTREAM;
+                REJECT("!parse_table_set(bitr, k, fp.nctx, fp.tab_v2, &fp.cum[(size_t)k * table_stride(fp.nctx) * kNumSym])");
         }
         if (bitr.bit > (frame_bytes - off) * 8) return NXVC_VKD_ERR_TRUNCATED;
         off += (bitr.bit + 7) / 8;
@@ -660,6 +713,10 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
     // tile's dependency satisfiable.
     for (uint32_t row = 0; row < si.tiles_y; ++row) {
       for (uint32_t eyeR = 0; eyeR < si.eyes; ++eyeR) {
+        g_rjctx.row = (int)row;
+        g_rjctx.eye = (int)eyeR;
+        g_rjctx.col = -1;
+        g_rjctx.tile = -1;
         if (off + kTileRowHeaderBytes > frame_bytes)
             return NXVC_VKD_ERR_TRUNCATED;
         BR rb{buf, frame_bytes, off, true};
@@ -668,15 +725,15 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
         uint32_t tc8 = rb.u8v();
         uint64_t skip = rb.u64v();
         if (!rb.ok) return NXVC_VKD_ERR_TRUNCATED;
-        if (fn != fp.frame_number || ri != row) return NXVC_VKD_ERR_BITSTREAM;
+        if (fn != fp.frame_number || ri != row) REJECT("fn != fp.frame_number || ri != row");
         // [SYN] 3.3: bit 7 of the byte is `dc_present`, the count is bits 6:0.
         const uint32_t dc_present = tc8 >> 7;
         const uint32_t tcount = tc8 & 0x7fu;
-        if (dc_present && !fp.near_skip_tool) return NXVC_VKD_ERR_BITSTREAM;
+        if (dc_present && !fp.near_skip_tool) REJECT("dc_present && !fp.near_skip_tool");
         // [REF] the skip bitmap covers one tile row of one eye, so the bits
         // above cols_per_eye must be zero (r08).
         if (si.tiles_x < 64 && (skip >> si.tiles_x) != 0)
-            return NXVC_VKD_ERR_BITSTREAM;
+            REJECT("si.tiles_x < 64 && (skip >> si.tiles_x) != 0");
         uint32_t nskip = 0;
         for (uint32_t i = 0; i < si.tiles_x; ++i) nskip += (skip >> i) & 1u;
         // [REF] a skip references a frame a stream without the INTER tool bit
@@ -685,9 +742,9 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
         // hatch that predates the inter path: it emits a WARP_SKIP record over
         // a zeroed coefficient slot, which is deterministic and is exactly
         // what the predictor now fills in.
-        if (nskip && !fp.inter && !allow_skipped) return NXVC_VKD_ERR_BITSTREAM;
-        if (nskip && fp.inter && !fp.warp_present) return NXVC_VKD_ERR_BITSTREAM;
-        if (tcount != si.tiles_x - nskip) return NXVC_VKD_ERR_BITSTREAM;
+        if (nskip && !fp.inter && !allow_skipped) REJECT("nskip && !fp.inter && !allow_skipped");
+        if (nskip && fp.inter && !fp.warp_present) REJECT("nskip && fp.inter && !fp.warp_present");
+        if (tcount != si.tiles_x - nskip) REJECT("tcount != si.tiles_x - nskip");
         // [SYN] 3.3: `dc_bitmap` follows the skip bitmap, then one nine-byte
         // correction per set bit in ascending column order, before the first
         // tile structure.  Each constraint below is BITSTREAM (r42, r43).
@@ -696,13 +753,13 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
             dcmap = rb.u64v();
             if (!rb.ok) return NXVC_VKD_ERR_TRUNCATED;
             // An all-zero bitmap would be two encodings of one stream.
-            if (dcmap == 0) return NXVC_VKD_ERR_BITSTREAM;
+            if (dcmap == 0) REJECT("dcmap == 0");
             if (si.tiles_x < 64 && (dcmap >> si.tiles_x) != 0)
-                return NXVC_VKD_ERR_BITSTREAM;
+                REJECT("si.tiles_x < 64 && (dcmap >> si.tiles_x) != 0");
             // Every corrected tile is a skipped tile: the correction replaces
             // a skipped tile's flat mean field and there is nothing for it to
             // correct on a coded one.
-            if (dcmap & ~skip) return NXVC_VKD_ERR_BITSTREAM;
+            if (dcmap & ~skip) REJECT("dcmap & ~skip");
         }
         off = rb.i;
         int8_t dcrec[64][nxvw::kNearSkipPlanes][3] = {};
@@ -718,6 +775,8 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
 
         for (uint32_t k = 0; k < si.tiles_x; ++k) {
             const uint32_t tindex = row * si.cols + eyeR * si.tiles_x + k;
+            g_rjctx.col = (int)k;
+            g_rjctx.tile = (int)tindex;
             const bool lost = ic && fp.inter && ic->is_missing(tindex);
             // A skipped or concealed tile derives every parameter rather than
             // coding it: res_level 0, the stream's own chroma, alpha_mode 0,
@@ -782,31 +841,31 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
             // Word1 has no reserved bits left: 28 is `split4x4`, 29-30
             // `xform_size` and 31 `quad_mv`, so the reserved-bit vector r09
             // moved to word0 bit 3 (docs/TOOLBITS.md 4.1).
-            if ((w0 >> 3) & 1) return NXVC_VKD_ERR_BITSTREAM;
+            if ((w0 >> 3) & 1) REJECT("(w0 >> 3) & 1");
             if (layer != 0) return NXVC_VKD_ERR_UNSUPPORTED;
             // Annex D D-3: the `eye` field must agree with the eye the tile's
             // position in the frame derives.
-            if (eye != eyeR) return NXVC_VKD_ERR_BITSTREAM;
-            if (mode > 4) return NXVC_VKD_ERR_BITSTREAM;         // r22
+            if (eye != eyeR) REJECT("eye != eyeR");
+            if (mode > 4) REJECT("mode > 4");         // r22
             if (mode != kModeIntra && !fp.inter)
                 return NXVC_VKD_ERR_UNSUPPORTED;
             if (mode_needs_warp((int)mode) && !fp.warp_present)
-                return NXVC_VKD_ERR_BITSTREAM;                    // r21
+                REJECT("mode_needs_warp((int)mode) && !fp.warp_present");                    // r21
             if (mode == kModeStereo) {
                 if (!fp.stereo_tool || eye != 1)
-                    return NXVC_VKD_ERR_BITSTREAM;                // r28
-                if (!mv_present) return NXVC_VKD_ERR_BITSTREAM;
+                    REJECT("!fp.stereo_tool || eye != 1");                // r28
+                if (!mv_present) REJECT("!mv_present");
             }
             // Annex D D-12: ref_sel 3 is reserved; INTRA and STEREO must
             // carry 0 and the decoding process ignores it (r23, r24).
-            if (ref_sel == 3) return NXVC_VKD_ERR_BITSTREAM;
+            if (ref_sel == 3) REJECT("ref_sel == 3");
             if ((mode == kModeIntra || mode == kModeStereo) && ref_sel != 0)
-                return NXVC_VKD_ERR_BITSTREAM;
-            if (res_level > 2) return NXVC_VKD_ERR_BITSTREAM;
-            if (alpha_mode == 3) return NXVC_VKD_ERR_BITSTREAM;
-            if (nsub_log2 > 5) return NXVC_VKD_ERR_BITSTREAM;
+                REJECT("(mode == kModeIntra || mode == kModeStereo) && ref_sel != 0");
+            if (res_level > 2) REJECT("res_level > 2");
+            if (alpha_mode == 3) REJECT("alpha_mode == 3");
+            if (nsub_log2 > 5) REJECT("nsub_log2 > 5");
             if (nsub_log2 != 3 && !(si.tools & kToolNsubVar))
-                return NXVC_VKD_ERR_BITSTREAM;
+                REJECT("nsub_log2 != 3 && !(si.tools & kToolNsubVar)");
             // [entropy-lite] Under tool bit 30 the tile header's table_set
             // field names the Lite VARIANT rather than a probability table
             // (ref/src/codec_impl.inc: `table_set = entropy_lite - 1`).  Only
@@ -816,43 +875,43 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
             if (fp.entropy_lite && ((w1 >> 14) & 7u) != 0u)
                 return NXVC_VKD_ERR_UNSUPPORTED;
             if (res_level != 0 && !(si.tools & kToolResLevel))
-                return NXVC_VKD_ERR_BITSTREAM;
+                REJECT("res_level != 0 && !(si.tools & kToolResLevel)");
             if (tskip && !(si.tools & kToolTransformSkip))
-                return NXVC_VKD_ERR_BITSTREAM;
+                REJECT("tskip && !(si.tools & kToolTransformSkip)");
             if (wm_id != 0 && !(si.tools & kToolWmId))
-                return NXVC_VKD_ERR_BITSTREAM;
+                REJECT("wm_id != 0 && !(si.tools & kToolWmId)");
             // [minor 6] docs/TOOLBITS.md 4.2 / SYNTAX.md 4.1: the split flag
             // needs its tool, and is mutually exclusive with transform skip,
             // whose 64 coded values are samples in raster order and have no
             // sub-block structure.
             if (split4x4 && !(si.tools & kToolSplit4))
-                return NXVC_VKD_ERR_BITSTREAM;
-            if (split4x4 && tskip) return NXVC_VKD_ERR_BITSTREAM;
+                REJECT("split4x4 && !(si.tools & kToolSplit4)");
+            if (split4x4 && tskip) REJECT("split4x4 && tskip");
             // [SYN] 4.1 / 6.7: xform_size 3 is reserved; a nonzero value needs
             // tool bit 27 and is mutually exclusive with transform skip; and
             // the 4x4 split is a subdivision OF the 8x8 transform, so it is
             // meaningful only at xform_size == 0 (docs/TOOLBITS.md 4.2).
-            if (xform_size == 3) return NXVC_VKD_ERR_BITSTREAM;
+            if (xform_size == 3) REJECT("xform_size == 3");
             if (xform_size != 0 && !(si.tools & kToolXformLarge))
-                return NXVC_VKD_ERR_BITSTREAM;
-            if (xform_size != 0 && tskip) return NXVC_VKD_ERR_BITSTREAM;
-            if (split4x4 && xform_size != 0) return NXVC_VKD_ERR_BITSTREAM;
+                REJECT("xform_size != 0 && !(si.tools & kToolXformLarge)");
+            if (xform_size != 0 && tskip) REJECT("xform_size != 0 && tskip");
+            if (split4x4 && xform_size != 0) REJECT("split4x4 && xform_size != 0");
             // A frame that carries its own matrices leaves no room for a
             // built-in override: the two would silently disagree.
             if (wm_id != 0 && fp.quant_matrix == 255)
-                return NXVC_VKD_ERR_BITSTREAM;
+                REJECT("wm_id != 0 && fp.quant_matrix == 255");
             if (!chroma444 && si.chroma == 1 &&
                 !(si.tools & kToolPerTileChroma))
-                return NXVC_VKD_ERR_BITSTREAM;
-            if (chroma444 && si.chroma != 1) return NXVC_VKD_ERR_BITSTREAM;
-            if (alpha_mode != 0 && !si.alpha) return NXVC_VKD_ERR_BITSTREAM;
-            if (tile_index != k) return NXVC_VKD_ERR_BITSTREAM;
+                REJECT("!chroma444 && si.chroma == 1 && !(si.tools & kToolPerTileChroma)");
+            if (chroma444 && si.chroma != 1) REJECT("chroma444 && si.chroma != 1");
+            if (alpha_mode != 0 && !si.alpha) REJECT("alpha_mode != 0 && !si.alpha");
+            if (tile_index != k) REJECT("tile_index != k");
             // --- syntax v1.6: QUAD_MV ([SYN] 13.10).  NEAR_SKIP is not a
             // tile-header bit at all: its record and its bitmap are in the
             // tile-ROW header and were validated there (r40, r41).
-            if (quad_mv && !fp.quad_tool) return NXVC_VKD_ERR_BITSTREAM;
+            if (quad_mv && !fp.quad_tool) REJECT("quad_mv && !fp.quad_tool");
             if (quad_mv && !(mode == kModeWarpMv || mode == kModeStaticMv))
-                return NXVC_VKD_ERR_BITSTREAM;
+                REJECT("quad_mv && !(mode == kModeWarpMv || mode == kModeStaticMv)");
 
             const size_t hdr_off = off;
             off = tb.i;
@@ -865,7 +924,7 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
                 if (mode == kModeStereo) {
                     disparity = (uint32_t)buf[off] | ((uint32_t)buf[off + 1] << 8);
                     // Annex D D-4: bits 15:12 are reserved (r29).
-                    if (disparity & 0xf000u) return NXVC_VKD_ERR_BITSTREAM;
+                    if (disparity & 0xf000u) REJECT("disparity & 0xf000u");
                 } else {
                     mv_x = (int)(int8_t)buf[off];
                     mv_y = (int)(int8_t)buf[off + 1];
@@ -906,7 +965,16 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
             if (mode != kModeIntra) {
                 refslot = (mode == kModeStereo) ? fp.cur_slot
                                                 : ref_slot_of((int)ref_sel);
-                if (refslot == 0xffffffffu) return NXVC_VKD_ERR_BITSTREAM;
+                if (refslot == 0xffffffffu) {
+                    g_rjctx.ref_sel = (int)ref_sel;
+                    g_rjctx.want_frame =
+                        (int)(uint16_t)(fp.frame_number - 1u - ref_sel);
+                    for (int i = 0; i < 4; ++i) {
+                        g_rjctx.ring_valid[i] = ic->ring.valid[i];
+                        g_rjctx.ring_frame[i] = ic->ring.frame_number[i];
+                    }
+                    REJECT("ref_sel names a reference this decoder does not hold");
+                }
                 emit_warp(tindex, eyeR, k, row, (int)mode,
                           mode == kModeStereo ? (int)disparity : mv_x,
                           mode == kModeStereo ? 0 : mv_y, refslot,
@@ -937,7 +1005,7 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
         }
       }
     }
-    if (off != frame_bytes) return NXVC_VKD_ERR_BITSTREAM;
+    if (off != frame_bytes) REJECT("off != frame_bytes");
     // [inter] The slot this frame writes now holds this frame.  A frame
     // overwrites the slot its own number names ([SYN] 13.2), so the slot's
     // previous contents are gone whether or not every tile of it was coded.

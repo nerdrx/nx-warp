@@ -256,8 +256,13 @@ int selftest(int device, bool cpu_only, bool print_digests, bool quiet) {
  * matrix then has real off-diagonal terms, warp_ext() carries something a
  * reader can be wrong about, and the conjugated chroma matrix is exercised.
  */
-int inter_fixture_dump(const char *prefix) {
-    const int W = 256, H = 192, F = 8;
+int inter_fixture_dump(const char *prefix, int W, int H, int F) {
+    if (W <= 0 || H <= 0 || F <= 0) { W = 256; H = 192; F = 8; }
+    /* The moving disc is placed and sized relative to the picture, so the
+     * fixture is the same content at any size: at 256x192 it reproduces the
+     * clip byte for byte, and at 1088x1088 it is the same mix of warp-exact
+     * background and unpredictable disc over 289 tiles. */
+    const double sx = (double)W / 256.0, sy = (double)H / 192.0;
     const double kFovDeg = 95.0;
     std::string base(prefix);
     const std::string yuv = base + "inter.yuv";
@@ -269,13 +274,14 @@ int inter_fixture_dump(const char *prefix) {
         V((size_t)(W / 2) * (H / 2));
     for (int n = 0; n < F; ++n) {
         /* The disc moves; everything else is a function of position alone. */
-        const double cx = 60.0 + 9.0 * n, cy = 96.0 + 4.0 * n;
+        const double cx = (60.0 + 9.0 * n) * sx, cy = (96.0 + 4.0 * n) * sy;
+        const double rad = 22.0 * sx;
         for (int y = 0; y < H; ++y)
             for (int x = 0; x < W; ++x) {
                 int v = 128 + ((x * 3 + y * 5) & 63) - 32;
                 if (((x >> 4) + (y >> 4)) % 3 == 0) v += 40;
                 const double dx = x - cx, dy = y - cy;
-                if (dx * dx + dy * dy < 22.0 * 22.0) v = 235;
+                if (dx * dx + dy * dy < rad * rad) v = 235;
                 Y[(size_t)y * W + x] = (uint8_t)(v < 0 ? 0 : (v > 255 ? 255 : v));
             }
         for (int y = 0; y < H / 2; ++y)

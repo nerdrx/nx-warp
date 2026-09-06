@@ -2062,6 +2062,12 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     // it armed for the next one.  [REF] codec_impl.inc, which clears
     // `d->lost` at the top of every decode.
     d->inter.consume_missing();
+    // A refusal names the constraint and the tile, not just "malformed": the
+    // parser records both (nxvcvk::last_parse_reject).
+    if (st == NXVC_VKD_ERR_BITSTREAM)
+        return seterr(d, st, "frame: %s -- %s",
+                      nxvc_vk_decoder_status_string(st),
+                      nxvcvk::last_parse_reject_text());
     if (st) return seterr(d, st, "frame: %s",
                           nxvc_vk_decoder_status_string(st));
     if (consumed) *consumed = fp.frame_bytes;

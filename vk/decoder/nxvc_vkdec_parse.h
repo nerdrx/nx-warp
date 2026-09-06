@@ -186,6 +186,33 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
                             size_t len, bool allow_skipped, FrameParse &out,
                             InterCtx *ic = nullptr);
 
+// ------------------------------------------------------- rejection detail
+// "malformed bitstream" on its own says nothing a bug report can use.  Every
+// NXVC_VKD_ERR_BITSTREAM return in the parser records the constraint it
+// failed and where in the frame it failed, so a refusal names a field and a
+// tile rather than a frame.  Thread-local and valid until the next parse call
+// on the same thread.
+struct ParseReject {
+    const char *cond = nullptr;   // source text of the constraint that failed
+    int line = 0;                 // nxvc_vkdec_parse.cpp line
+    int tile = -1;                // linear tile index, or -1 outside the walk
+    int row = -1, eye = -1, col = -1;
+    uint32_t frame_number = 0;
+    // Reference-ring detail, filled only by the `ref_sel` resolution failure,
+    // which is the one rejection whose cause is decoder STATE rather than a
+    // field of the stream: without the ring contents the message cannot say
+    // whether the encoder named the wrong picture or the client lost one.
+    int ref_sel = -1;
+    int want_frame = -1;          // the frame number ref_sel asks for
+    uint8_t ring_valid[4] = {};
+    uint16_t ring_frame[4] = {};
+};
+const ParseReject &last_parse_reject();
+// One line, e.g.
+//   "tile 231 (row 13 eye 0 col 12) of frame 8: tile_index != k
+//    [nxvc_vkdec_parse.cpp:849]"
+const char *last_parse_reject_text();
+
 // Probability tables, exposed so the conformance test can diff them against
 // ref/src/tables.cpp.  `cum` is filled with 8 * 16 * 16 entries; cum[16] is
 // implicitly 1024 and is not stored, which is the layout Pass A's binding 2
