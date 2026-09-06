@@ -9,7 +9,7 @@
 //
 //   nxvc-passA-test [--device SUBSTR] [--tiles N] [--seed S]
 //                   [--mode ballot|lds|both] [--subgroup N] [--iters N]
-//                   [--entropy rans|lite] [--intra]
+//                   [--entropy rans|lite] [--intra] [--shader-stats]
 //                   [--list] [--validate] [--spv PATH] [--quick]
 
 #include <vulkan/vulkan.h>
@@ -59,11 +59,29 @@ struct Options {
     // [entropy-lite] Which entropy tool to build the corpus with and to
     // specialise the pipeline for: "rans" (default) or "lite".
     std::string entropy = "rans";
+    // [stats] VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT may change what the
+    // driver compiles, so it is OFF unless asked for and no timing quoted from
+    // a --shader-stats run is comparable with one from a normal run.
+    bool shader_stats = false;
+    // [entropy-lite probe] CTX_STRIDE sizes the rANS cumulative-frequency
+    // table in shared memory, and the Lite path never reads it -- 0 references
+    // in lite_*() -- yet the declaration is unconditional, so a Lite pipeline
+    // still allocates it.  Shrinking the stride shrinks that array and nothing
+    // else, which prices "is the Lite floor its shared-memory footprint?"
+    // without restructuring the kernel first.  0 = leave it at kNumCtx.
+    int ctx_stride = 0;
     // [entropy-lite] INTRA_DIR: mode units in the unit list.  Only the Lite
     // encoder codes them, so this is rejected with --entropy rans.  Off by
     // default so the rANS and Lite corpora are the same tiles.
     bool intra = false;
 };
+
+// [stats] What the Adreno compiler actually produced.  The warp work showed
+// that instruction mix and sync counts are worth having beside a timing --
+// there, three variants with identical counters spanned 22 % of runtime, which
+// is itself the finding.
+void dump_pipeline_stats(const struct Gpu &g, VkPipeline p, const char *what,
+                         uint32_t mode);
 
 // ---------------------------------------------------------------------------
 struct Gpu {
@@ -78,9 +96,52 @@ struct Gpu {
     VkPhysicalDeviceSubgroupProperties subgroup{};
     VkPhysicalDeviceSubgroupSizeControlProperties sgsize{};
     bool has_size_control = false;
+    bool has_exec_props = false;
+    PFN_vkGetPipelineExecutablePropertiesKHR fpExecProps = nullptr;
+    PFN_vkGetPipelineExecutableStatisticsKHR fpExecStats = nullptr;
     float timestamp_period = 1.0f;
     uint32_t timestamp_valid_bits = 0;
 };
+
+void dump_pipeline_stats(const Gpu &g, VkPipeline p, const char *what,
+                        uint32_t mode) {
+    if (!g.has_exec_props || !p) return;
+    VkPipelineInfoKHR pi{VK_STRUCTURE_TYPE_PIPELINE_INFO_KHR};
+    pi.pipeline = p;
+    uint32_t n = 0;
+    if (g.fpExecProps(g.device, &pi, &n, nullptr) != VK_SUCCESS || !n) return;
+    std::vector<VkPipelineExecutablePropertiesKHR> eps(
+        n, {VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_PROPERTIES_KHR});
+    g.fpExecProps(g.device, &pi, &n, eps.data());
+    for (uint32_t e = 0; e < n; ++e) {
+        VkPipelineExecutableInfoKHR ei{
+            VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_INFO_KHR};
+        ei.pipeline = p;
+        ei.executableIndex = e;
+        uint32_t sn = 0;
+        if (g.fpExecStats(g.device, &ei, &sn, nullptr) != VK_SUCCESS) continue;
+        std::vector<VkPipelineExecutableStatisticKHR> ss(
+            sn, {VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_STATISTIC_KHR});
+        g.fpExecStats(g.device, &ei, &sn, ss.data());
+        std::printf("[shader-stats] passA/%s mode=%u / %s, subgroup %u\n", what,
+                    mode, eps[e].name, eps[e].subgroupSize);
+        for (uint32_t i = 0; i < sn; ++i) {
+            const auto &st = ss[i];
+            if (st.format == VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_UINT64_KHR)
+                std::printf("    %-40s %llu\n", st.name,
+                            (unsigned long long)st.value.u64);
+            else if (st.format == VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_INT64_KHR)
+                std::printf("    %-40s %lld\n", st.name,
+                            (long long)st.value.i64);
+            else if (st.format == VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_BOOL32_KHR)
+                std::printf("    %-40s %s\n", st.name,
+                            st.value.b32 ? "true" : "false");
+            else
+                std::printf("    %-40s %f\n", st.name, st.value.f64);
+        }
+    }
+}
+
 
 struct Buf {
     VkBuffer buf = VK_NULL_HANDLE;
@@ -346,7 +407,8 @@ RunResult run_gpu(const Gpu &g, const Options &opt, const Corpus &c,
         // cumulative-frequency table.  This harness builds its corpora with
         // the widest model, so it always compiles the wide kernel.
         uint32_t ctx_stride;
-    } spec{mode, kTilesPerGroup, c.entropy, uint32_t(kNumCtx)};
+    } spec{mode, kTilesPerGroup, c.entropy,
+            opt.ctx_stride > 0 ? uint32_t(opt.ctx_stride) : uint32_t(kNumCtx)};
     VkSpecializationMapEntry sme[4] = {
         {kSpecIdReadPtrMode, offsetof(SpecData, read_ptr_mode), 4},
         {kSpecIdWorkgroupTiles, offsetof(SpecData, tiles_per_group), 4},
@@ -356,6 +418,8 @@ RunResult run_gpu(const Gpu &g, const Options &opt, const Corpus &c,
 
     VkComputePipelineCreateInfo cpi{
         VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
+    if (g.has_exec_props)
+        cpi.flags |= VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR;
     cpi.stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
     cpi.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
     cpi.stage.module = sm;
@@ -376,6 +440,8 @@ RunResult run_gpu(const Gpu &g, const Options &opt, const Corpus &c,
     VkPipeline pipe;
     VKCHECK(vkCreateComputePipelines(g.device, VK_NULL_HANDLE, 1, &cpi, nullptr,
                                      &pipe));
+    dump_pipeline_stats(g, pipe, c.entropy == kEntropyLiteFixed ? "lite" : "rans",
+                        mode);
 
     // --- timestamps --------------------------------------------------------
     VkQueryPool qpool = VK_NULL_HANDLE;
@@ -521,6 +587,8 @@ int main(int argc, char **argv) {
         else if (a == "--iters") opt.iters = std::stoi(val());
         else if (a == "--spv") opt.spv = val();
         else if (a == "--entropy") opt.entropy = val();
+        else if (a == "--shader-stats") opt.shader_stats = true;
+        else if (a == "--ctx-stride") opt.ctx_stride = std::atoi(val().c_str());
         else if (a == "--intra") opt.intra = true;
         else if (a == "--list") opt.list = true;
         else if (a == "--validate") opt.validate = true;
@@ -634,11 +702,43 @@ int main(int argc, char **argv) {
     e2.features.shaderInt16 = VK_TRUE;
     e2.pNext = &e11;
 
+    // [stats] VK_KHR_pipeline_executable_properties, when the driver has it:
+    // it is the only way to see what the Adreno compiler actually produced --
+    // instruction mix and sync counts -- and the warp work showed those are
+    // worth having next to a timing.  Optional: a driver without it just
+    // prints nothing.
+    uint32_t nde = 0;
+    vkEnumerateDeviceExtensionProperties(g.phys, nullptr, &nde, nullptr);
+    std::vector<VkExtensionProperties> dext(nde);
+    vkEnumerateDeviceExtensionProperties(g.phys, nullptr, &nde, dext.data());
+    if (opt.shader_stats)
+        for (auto &e : dext)
+            if (!std::strcmp(e.extensionName,
+                             VK_KHR_PIPELINE_EXECUTABLE_PROPERTIES_EXTENSION_NAME))
+                g.has_exec_props = true;
+    const char *exec_ext = VK_KHR_PIPELINE_EXECUTABLE_PROPERTIES_EXTENSION_NAME;
+    VkPhysicalDevicePipelineExecutablePropertiesFeaturesKHR epf{
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PIPELINE_EXECUTABLE_PROPERTIES_FEATURES_KHR};
+    epf.pipelineExecutableInfo = VK_TRUE;
+
     VkDeviceCreateInfo dci{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
     dci.pNext = &e2;
     dci.queueCreateInfoCount = 1;
     dci.pQueueCreateInfos = &qci;
+    if (g.has_exec_props) {
+        epf.pNext = (void *)e2.pNext;
+        e2.pNext = &epf;
+        dci.enabledExtensionCount = 1;
+        dci.ppEnabledExtensionNames = &exec_ext;
+    }
     VKCHECK(vkCreateDevice(g.phys, &dci, nullptr, &g.device));
+    if (g.has_exec_props) {
+        g.fpExecProps = (PFN_vkGetPipelineExecutablePropertiesKHR)
+            vkGetDeviceProcAddr(g.device, "vkGetPipelineExecutablePropertiesKHR");
+        g.fpExecStats = (PFN_vkGetPipelineExecutableStatisticsKHR)
+            vkGetDeviceProcAddr(g.device, "vkGetPipelineExecutableStatisticsKHR");
+        if (!g.fpExecProps || !g.fpExecStats) g.has_exec_props = false;
+    }
     vkGetDeviceQueue(g.device, g.qfamily, 0, &g.queue);
 
     VkCommandPoolCreateInfo cpi{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};

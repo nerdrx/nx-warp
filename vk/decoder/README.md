@@ -1034,6 +1034,45 @@ None of the four is a *decoding* difference. Once the device came up, the
 pixels were right the first time, which is what the spirv-opt pass list
 (`bench/README.md`, "Adreno and spirv-opt") was already there to ensure.
 
+### Two eyes: one decoder, not two
+
+The client runs **one decoder per eye**, each on its own thread and its own
+queue. On the Adreno 650 that buys almost nothing, and the alternative is worth
+a third of the frame.
+
+`nxvc-vkdec-wrap --mode eyes` is that client shape exactly: N decoders, one
+queue each (family 0 has three), one thread each, decoding the whole head-turn
+sequence. It measures the concurrent wall and then the sequential wall back to
+back in one process, so both share a clock and a temperature.
+
+| | ratio (concurrent / sequential) |
+|---|---|
+| round 1 | 0.973 |
+| round 2 | 0.977 |
+| round 3 | 0.977 |
+
+**1.00 is fully serialised and 0.50 would be perfect overlap of two.** The GPU
+does not overlap one eye's Pass A with the other's Pass B in any useful amount;
+two queues in the one family it exposes are two names for the same hardware.
+
+Decoding both eyes in ONE decoder and one submission is a different matter,
+because Pass A's cost is a step function of the workgroup count and 289 tiles
+sits deep in its starved region (passA/README.md, "Wall time is a step function
+of the WORKGROUP count"). A stereo stream is 578 tiles in one dispatch:
+
+| per frame, Adreno 650 | Pass A | Pass B (incl. W) | GPU |
+|---|---|---|---|
+| mono, 289 tiles, x2 for two eyes | 2 x 23.648 = 47.30 | 2 x 10.816 = 21.63 | **68.93 ms** |
+| stereo, 578 tiles, one submission | **28.00** | 21.25 | **49.25 ms** |
+
+**28.6 % less GPU for the same two eyes**, and effectively all of it is Pass A
+(-40.8 %); Pass B is flat to within 2 %, which is right, since Pass B's cost is
+per tile and the tile count is the same either way.
+
+So the guidance for the client is: **one decoder, one submission, both eyes** --
+a stereo stream, or the two eyes' tiles in one frame. Splitting them across two
+decoders costs Pass A its occupancy and gains no concurrency to pay for it.
+
 ### Conformance on Adreno
 
 The same streams as the desktop table, on the Pico 4, from `run-android.sh`:

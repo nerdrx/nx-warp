@@ -188,7 +188,8 @@ void record_copy(VkCommandBuffer cmd, const nxvc_vkd_images &img,
 void usage() {
     std::fprintf(stderr,
                  "usage: nxvc-vkdec-wrap --in FILE [options]\n"
-                 "  --mode wrapper|binsem|nocopy|decode  (default wrapper)\n"
+                 "  --mode wrapper|binsem|nocopy|decode|eyes  (default wrapper)\n"
+                 "  --queues N      queues to ask the family for (default 1)\n"
                  "  --streams N     decoder instances on one queue (default 1)\n"
                  "  --priority / --prio-decode P   VK_EXT_global_priority on the\n"
                  "                  decode queue: low|medium|high|realtime\n"
@@ -234,7 +235,13 @@ int main(int argc, char **argv) {
     const bool do_copy = mode == "wrapper" || mode == "binsem";
     const bool use_binsem = mode == "binsem";
     if (mode != "wrapper" && mode != "binsem" && mode != "nocopy" &&
-        mode != "decode") { usage(); return 2; }
+        mode != "decode" && mode != "eyes") { usage(); return 2; }
+    // [eyes] The client runs one decoder per eye on its own thread and its own
+    // queue.  This mode is that shape: `--streams` decoders, one queue each,
+    // one thread each, measured CONCURRENTLY and then SEQUENTIALLY in the same
+    // process so the two numbers share a thermal state.  A frame budget is for
+    // both eyes, so the sequential sum is what concurrency has to beat.
+    if (mode == "eyes" && queues < streams) queues = streams;
 
     std::FILE *f = std::fopen(in.c_str(), "rb");
     if (!f) { std::perror("open"); return 1; }
@@ -417,6 +424,10 @@ int main(int argc, char **argv) {
     }
     vkGetDeviceQueue(d.dev, d.qfam, got_queues - 1, &d.queue);
     vkGetDeviceQueue(d.dev, d.qfam, 0, &d.render_queue);
+    // [eyes] One queue per decoder, distinct while the family has them.
+    std::vector<VkQueue> eyeq((size_t)streams, d.queue);
+    for (int i = 0; i < streams; ++i)
+        vkGetDeviceQueue(d.dev, d.qfam, (uint32_t)i % got_queues, &eyeq[(size_t)i]);
     if (want_queues > 1)
         std::printf("  asked for %u queues in family %u, got %u; decoding on "
                     "queue %u\n",
@@ -434,7 +445,7 @@ int main(int argc, char **argv) {
         ci.instance = d.inst;
         ci.physical_device = d.phys;
         ci.device = d.dev;
-        ci.queue = d.queue;
+        ci.queue = (mode == "eyes") ? eyeq[(size_t)(&s - S.data())] : d.queue;
         ci.queue_family = d.qfam;
         ci.output_format = NXVC_VKD_OUT_YCBCR420;
         if (nxvc_vk_decoder_create(&ci, &s.dec) != NXVC_VKD_OK) {
@@ -477,6 +488,88 @@ int main(int argc, char **argv) {
 
     const uint8_t *frame = data.data() + hdr;
     const size_t frame_len = data.size() - hdr;
+
+    // [eyes] Two eyes the way the client runs them: one decoder each, one
+    // queue each, one thread each.  Measured concurrently and then
+    // sequentially in the same process, back to back, so both numbers share a
+    // thermal state and a clock.  The frame budget is for BOTH eyes, so the
+    // question is whether the concurrent wall beats the sequential sum -- that
+    // is, whether the GPU overlaps one eye's Pass A with the other's Pass B or
+    // simply serialises the two submissions.
+    if (mode == "eyes") {
+        // One pass = the WHOLE sequence, not frame 0 `n` times: frame 0 is
+        // all-INTRA and would measure a workload the headset never sees after
+        // the first frame.  Re-parsing the header empties the reference ring,
+        // so every pass decodes the same sequence from the same state.
+        auto decode_n = [&](Stream &st, int n) {
+            for (int i = 0; i < n; ++i) {
+                size_t off = 0, consumed = 0;
+                nxvc_vk_decoder_wait(st.dec, UINT64_MAX);
+                if (nxvc_vk_decoder_parse_stream_header(
+                        st.dec, data.data(), data.size(), &consumed) !=
+                    NXVC_VKD_OK) {
+                    std::fprintf(stderr, "stream header: %s\n",
+                                 nxvc_vk_decoder_last_error(st.dec));
+                    std::exit(1);
+                }
+                off = consumed;
+                while (off < data.size()) {
+                    size_t used = 0;
+                    if (nxvc_vk_decode_frame_ex(
+                            st.dec, data.data() + off, data.size() - off,
+                            NXVC_VKD_SUBMIT_ASYNC, &used) != NXVC_VKD_OK) {
+                        std::fprintf(stderr, "decode: %s\n",
+                                     nxvc_vk_decoder_last_error(st.dec));
+                        std::exit(1);
+                    }
+                    nxvc_vk_decoder_wait(st.dec, UINT64_MAX);
+                    if (used == 0) break;
+                    off += used;
+                }
+            }
+        };
+        for (auto &st : S) decode_n(st, 1);   // pipelines, first touch
+
+        double t0 = now_ms();
+        for (auto &st : S) decode_n(st, repeat);
+        const double seq = now_ms() - t0;
+
+        t0 = now_ms();
+        {
+            std::vector<std::thread> th;
+            for (size_t i = 0; i < S.size(); ++i)
+                th.emplace_back([&, i] { decode_n(S[i], repeat); });
+            for (auto &t : th) t.join();
+        }
+        const double con = now_ms() - t0;
+
+        const double nf = (double)repeat;
+        std::printf("\n-- eyes: %d decoder(s), %u queue(s) in family %u, "
+                    "%d frames each\n",
+                    streams, got_queues, d.qfam, repeat);
+        for (int i = 0; i < streams; ++i)
+            std::printf("   decoder %d on queue %u\n", i,
+                        (uint32_t)i % got_queues);
+        std::printf("   sequential : %8.3f ms total, %7.3f ms per sequence "
+                    "per eye\n", seq, seq / nf);
+        std::printf("   concurrent : %8.3f ms total, %7.3f ms per eye-pair "
+                    "(both eyes)\n", con, con / nf);
+        std::printf("   concurrent / sequential = %.3f  (1.00 = fully "
+                    "serialised, 0.50 = perfect overlap of %d)\n",
+                    con / seq, streams);
+        for (int i = 0; i < streams; ++i) {
+            nxvc_vkd_stats fs{};
+            nxvc_vk_decoder_stats(S[(size_t)i].dec, &fs);
+            std::printf("   decoder %d last frame: passA %.3f  passW %.4f  "
+                        "passB %.4f  gpu %.3f ms\n",
+                        i, fs.pass_a_ms, fs.pass_w_ms, fs.pass_b_ms,
+                        fs.gpu_ms);
+        }
+        for (auto &st : S) nxvc_vk_decoder_destroy(st.dec);
+        vkDestroyDevice(d.dev, nullptr);
+        vkDestroyInstance(d.inst, nullptr);
+        return 0;
+    }
 
     // ---- the co-tenant ---------------------------------------------------
     // The difference between this bench and the real client was never the
