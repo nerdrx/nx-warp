@@ -137,6 +137,9 @@ static void usage() {
         "                       (default 901 = ref kLambdaScale 0.22)\n"
         "  --qp-table-search    price each candidate under the best of\n"
         "                       the eight table sets; a diagnostic\n"
+        "  --trellis N          effort 2: the rate-distortion trellis in\n"
+        "                       exact integers (0 off, 1 on).  Matches\n"
+        "                       `nxv-enc --int-trellis 1 --rdoq-effort 3`\n"
         "  --rate-check         measure the integer rate model of\n"
         "                       nxe_rate.h against the bytes the entropy\n"
         "                       coder actually produced, per tile, and\n"
@@ -231,6 +234,7 @@ int main(int argc, char **argv) {
         else if (a == "--motion-skip") cfg.motion_skip_gain_q8 = std::atoi(val());
         else if (a == "--int-rdoq") cfg.int_rdoq = std::atoi(val());
         else if (a == "--rate-check") cfg.rate_check = true;
+        else if (a == "--trellis") cfg.trellis = std::atoi(val());
         else if (a == "--qp-ladder") cfg.qp_ladder = val();
         else if (a == "--qp-lambda") cfg.qp_lambda_q12 = std::atoi(val());
         else if (a == "--qp-table-search") cfg.qp_table_search = true;

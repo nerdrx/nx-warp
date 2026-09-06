@@ -65,6 +65,23 @@ marked otherwise.
 | Pass B | 10.760 ms | **~1.1 ms** + atlas store | measured coded module, 39 tiles |
 | **total per eye** | **12.293 ms** | **~2.4-3.0 ms** | |
 
+> **The absolute milliseconds in this table are inflated and the RATIOS are
+> what carry.** The Pass B agent found the on-device bench reporting GPU time
+> in excess of wall time -- most likely a wrong `timestampPeriod` -- which puts
+> the absolutes about **1.57x** too high. Every figure in this document that
+> came from that bench is affected: the `12.293 ms`, the `10.760`, the `1.534`,
+> the `8.889` below, and the `~34 us/tile` quoted later. They are left as
+> measured rather than silently divided, because the correction factor is
+> itself provisional and a re-measured number is worth more than a rescaled
+> one; what is safe to use meanwhile is the RATIO between rows, which a common
+> scale factor leaves untouched. That is also what the "4-5x" claim below
+> rests on, so the claim survives the correction unchanged.
+>
+> The compose-dispatch numbers earlier in this document come from
+> `nxvc-atlas-gpu-test --bench`, a different harness, and are not known to be
+> affected -- but they are three orders of magnitude below the smallest line
+> here either way, so nothing turns on it.
+
 **4-5x, and essentially all of it is one deletion:** 8.889 of the 10.760 ms is
 `reconstruct_skip_store` running the normative integer warp over ~250 skipped
 tiles, and under `ATLAS` those tiles are not reconstructed at all. The rest of
@@ -413,7 +430,9 @@ a PICTURE frame at today's cost.
 
 Three consequences the host integration is designed to now: the rebase kernel
 is **per entry** and dispatchable over "all valid entries" in one dispatch; a
-PICTURE frame's cost is the old skip warp (~34 us/tile x entries) and is
+PICTURE frame's cost is the old skip warp (~34 us/tile x entries, and see the
+budget table's caveat -- that figure is from the bench now believed to be
+~1.57x high, so treat it as a ratio against the other rows) and is
 ALLOWED to be slow because display is decoupled; and the display view must
 work identically in both modes. Rolling rebase and base-layer refresh are not
 adopted -- base patches stay a patch source through

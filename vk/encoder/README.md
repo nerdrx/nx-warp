@@ -870,25 +870,100 @@ never promise.
 | | pan8 rANS | pan8s rANS | pan8 Lite | pan8s Lite |
 |---|---|---|---|---|
 | trellis, double, `--rdoq-effort 3` | -4.07 % | -2.26 % | -4.51 % | -5.34 % |
-| **trellis, integer, same effort** | **-4.07 %** | **-2.25 %** | **-4.51 %** | **-5.35 %** |
+| **trellis, integer, same effort** | **-4.04 %** | **-2.20 %** | **-3.97 %** | **-5.09 %** |
 | trellis, double, `--rdoq-effort 1` | -3.11 % | +2.15 % | -4.72 % | -5.30 % |
 | trellis, integer, `--rdoq-effort 1` | -3.11 % | +1.98 % | -4.70 % | -5.29 % |
 
-**Integerising the trellis costs 0.02 % BD-rate at worst.** The gain survives
-intact: about **-3.2 % on rANS and -4.9 % on Lite**, averaged over the two
-clips, at the full effort. (The fast trellis at effort 1 is not the one to
-take: it is *positive* on pan8s rANS, so it can lose rate on a clip the full
-one wins.)
+**Integerising the trellis keeps its gain**: about **-3.1 % on rANS and -4.5 %
+on Lite**, averaged over the two clips, at the full effort. (The fast trellis at
+effort 1 is not the one to take: it is *positive* on pan8s rANS, so it can lose
+rate on a clip the full one wins.)
+
+The AC blocks alone integerise for nothing -- measured against the double
+trellis they were identical to 0.02 %. The half-percent that does move is the
+**DC plane**, which is the intra predictor: a level chosen there changes `pred`
+for all sixty-four blocks, so the sub-half-step difference between
+`m * (step / 16.0)` and `dequant(m, step)` is amplified. Leaving the DC plane on
+the dead-zone quantiser instead was tried and is worse on average -- pan8 rANS
+-4.09 %, pan8s rANS **-1.59 %**, for -2.84 % against the integer DC's -3.12 % --
+so the DC plane goes through the integer trellis and the half-percent is what it
+costs to have a trellis a shader can run at all.
+
+Sign data hiding goes with it: `hide_sign_unit_int` is the same move search on
+the same footing, so the trellis and the sign move it has to live with are
+decided by one arithmetic rather than two.
 
 Streams from it decode through `nxv-dec` and `nxvc-vkdec` to the same bytes.
 `vk.encoder.trellis` pins the two trellises within 2 % per quantiser — they are
 byte-identical at QP 30 and 40 on its fixture and within 0.2 % at QP 22 — and
 requires the integer one to beat effort 1.
 
+### Effort 2: the trellis in the encoder's own CPU model
+
+`nxvc-vkenc --cpu --trellis 1`, and it is **byte-identical to
+`nxv-enc --int-trellis 1 --rdoq-effort 3`** at the acid flags, on both entropy
+coders, at QP 22/26/30/34/40. `vk.encoder.trellis.cpu` is that claim.
+
+The trellis itself (`forward/nxe_trellis.c`) is a transcription and was right
+almost immediately. What took the work was the ORDER the two encoders quantise
+and train in, and it is worth writing down because none of it shows up as a
+broken stream -- every wrong version decoded perfectly and was merely the wrong
+size:
+
+* **the first pass has to run the trellis**, not the dead-zone quantiser. ref's
+  pass 0 quantises with the trellis against the built-in tables and trains the
+  eight sets on *those* histograms; training on dead-zone coefficients puts
+  every tile in a different set. Measured: 6312 bytes against the reference's
+  5166 on the acid fixture, and byte-identical with custom tables off, which is
+  what pointed at the tables rather than at the arithmetic.
+* **each tile picks its table set from a plain quantisation of itself** before
+  the trellis prices anything -- ref's inner two-pass, "so that the second,
+  rate-distortion pass is costed against the table that will actually code it".
+  Pricing against the QP-seeded set instead was a constant 14 bytes: a per-tile
+  header field, not a coefficient.
+* **the final per-tile choice is made against the trained sets**, without
+  restoring the built-in ones first. `choose_table_sets` resets to the built-in
+  tables before selecting, which is right for the training pass -- its job is to
+  assign tiles to built-in sets so the trained ones can be pooled from them --
+  and wrong for the emit pass, where the trained sets are what the stream
+  carries.
+* and under ENTROPY_LITE the trellis still needs *a* rate model. `table_set`
+  names the variant in a Lite tile header, but ref runs `select_set` whatever
+  the entropy tool is and prices against `tabs[table_set]`, so the set is chosen
+  for the rate model and the header's value put back.
+
+Effort 2 therefore quantises the frame twice with rANS custom tables on, and
+once without -- there is nothing for a second pass to be against when the
+tables never moved.
+
+### What still differs
+
+One case, and it is precise rather than vague: **8 frames, QP 34, rANS with
+custom tables** diverges at frame 7, by 68 bytes of 15449. Three frames is
+byte-identical at every quantiser, both coders; 8 frames is byte-identical at
+QP 22, 26, 30 and 40 and on Lite at every quantiser. Both encoders are
+deterministic (three runs of each, one hash), so it is a real logic difference
+in the training convergence and not a race. It is not chased here and the test
+runs at three frames rather than pinning a length that is known to fail.
+
 ### What is not built: the shader
 
 The trellis runs in the reference only. It is now *portable* rather than
-crossable-in-principle, and the port has a clear shape and two named obstacles:
+crossable-in-principle, and the ruling on the two obstacles below is: **quantise
+twice**, and byte-identity is against `nxv-enc --int-trellis 1 --rdoq-effort 3`
+with the pipeline's existing "pick the table set from the coefficients" order
+kept. E3 is 0.61 ms of 11 at 578 tiles, so doubling it is affordable against a
+3-5 % wire saving.
+
+What is in the tree towards that: the reference path is now integer end to end
+(blocks, DC plane and sign hiding), which is the specification the shader is
+written against, and `forward/nxe_ctx.h` lifts the entropy-context derivation
+out of `rans_cpu.c` so the trellis can reach it. The trellis prices a candidate
+level *before* the level exists, so it cannot go through `nxe_unit_ops` the way
+the rate model does and has to derive the same contexts itself.
+
+What is not: `nxe_e3_*` has no trellis, so `nxvc-vkenc --cpu` is still the
+dead-zone quantiser, and there is no GLSL. The shape and the obstacles:
 
 * **Shape.** One block per lane. A 64x64 luma plane at the 8x8 transform is 64
   blocks, which is exactly E3's group width, and each lane walks its own

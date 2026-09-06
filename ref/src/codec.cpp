@@ -1993,6 +1993,68 @@ static void rdoq_unit(i16 *coefs, const i32 *orig, const i32 *step, int ncoef,
 // sign, and raising a level across a class boundary changes the context of
 // the level below it.  `rc`/`lambda` may be null/0 for a rate-blind choice
 // (the DC plane, which has no trellis).
+// Sign data hiding, in exact integers, for the integer trellis.
+//
+// The same move search as the double form below: every scan position at or
+// below LAST, plus or minus one level, never zeroing LAST itself, cheapest
+// D + lambda*R wins.  The arithmetic is `rdoq_unit_int`'s -- the error is the
+// decoder's `orig - dequant(m, step)` and the accumulator is i64 scaled by
+// 2^18 -- so the trellis and the sign move it has to live with are decided on
+// one footing rather than two.
+static void hide_sign_unit_int(i16 *coefs, const i32 *orig, const i32 *step,
+                               int ncoef, const u16 *scan, const RateCost *rc,
+                               u32 lam_q8, const UnitCtx *uc) {
+    int last = -1;
+    i32 sum = 0;
+    for (int p = 0; p < ncoef; ++p) {
+        const i32 q = coefs[scan[p]];
+        const i32 m = q < 0 ? -q : q;
+        sum += m;
+        if (m) last = p;
+    }
+    if (last < kSdhMinLast) return;
+    const int want = coefs[scan[last]] < 0 ? 1 : 0;
+    if ((sum & 1) == want) return;
+    i64 best = 0;
+    int best_p = -1, best_d = 0;
+    for (int p = 0; p <= last; ++p) {
+        const int idx = scan[p];
+        const i32 a = orig[idx] < 0 ? -orig[idx] : orig[idx];
+        const i32 st = step[idx];
+        const i32 q = coefs[idx];
+        const i32 m = q < 0 ? -q : q;
+        for (int d = -1; d <= 1; d += 2) {
+            const i32 m2 = m + d;
+            if (m2 < 0 || m2 > 32767) continue;
+            if (p == last && m2 == 0) continue;
+            const i64 e1 = (i64)a - dequant(m, st);
+            const i64 e2 = (i64)a - dequant(m2, st);
+            i64 cost = (e2 * e2 - e1 * e1) << 18;
+            if (rc && lam_q8) {
+                const int cx = uc ? uc->level(p, last, 0) : level_ctx(p, 0, 0);
+                const i32 r1 = rc->sym[cx][m > 14 ? kEscSym : m] +
+                               (m > 14 ? (escape_bits(m) << 10) : 0) +
+                               (m != 0 ? (1 << 10) : 0);
+                const i32 r2 = rc->sym[cx][m2 > 14 ? kEscSym : m2] +
+                               (m2 > 14 ? (escape_bits(m2) << 10) : 0) +
+                               (m2 != 0 ? (1 << 10) : 0);
+                cost += (i64)lam_q8 * (r2 - r1);
+            }
+            if (best_p < 0 || cost < best) {
+                best = cost;
+                best_p = p;
+                best_d = d;
+            }
+        }
+    }
+    if (best_p < 0) return;
+    const int idx = scan[best_p];
+    const i32 q = coefs[idx];
+    const i32 m = (q < 0 ? -q : q) + best_d;
+    const bool neg = q != 0 ? (q < 0) : (orig[idx] < 0);
+    coefs[idx] = (i16)(neg ? -m : m);
+}
+
 static void hide_sign_unit(i16 *coefs, const i32 *orig, const i32 *step,
                            int ncoef, const u16 *scan,
                            const RateCost *rc = nullptr, double lambda = 0,
@@ -2084,7 +2146,8 @@ static const u8 *dead_zone_table(bool dc) {
 // on the DC plane's lambda, fitted on the harness (ref/RESULTS-rdo-b.md 4).
 static void analyze_dc_plane(PlaneState &s, i16 *coefs, int sdh,
                              const RateCost *rc = nullptr, double lambda = 0,
-                             int nctx = kNumCtxV1, int effort = kRdoqMedium) {
+                             int nctx = kNumCtxV1, int effort = kRdoqMedium,
+                             u32 lam_q8 = 0) {
     const int nb = s.nb, size = s.size;
     const int ndc = nb * nb;
     std::vector<i32> m(ndc);
@@ -2124,7 +2187,14 @@ static void analyze_dc_plane(PlaneState &s, i16 *coefs, int sdh,
     for (int i = 0; i < ndc; ++i) stepv[i] = tdc;
     const u16 *dcscan = scan_table(ndc, false);
     const UnitCtx dc_uc = with_ncoef(dc_plane_ctx(nctx), ndc);
-    if (rc) {
+    if (rc && lam_q8) {
+        // The DC plane through the INTEGER trellis, for the same reason the
+        // blocks go through it: the predictor and the residual are decided on
+        // one footing.  `lam_q8` non-zero is what selects the integer path --
+        // the caller has already folded the DC lambda gain into it.
+        rdoq_unit_int(coefs, orig, stepv, ndc, dcscan, dc_uc, *rc, lam_q8,
+                      effort, sdh);
+    } else if (rc) {
         // The DC plane through the trellis too.  It is the intra predictor,
         // so re-deciding it with the same D + lambda*R the blocks use keeps
         // the predictor and the residual consistent by construction.
@@ -2141,9 +2211,14 @@ static void analyze_dc_plane(PlaneState &s, i16 *coefs, int sdh,
                                      dead_zone(tdc, dz[band_of(pp)]));
         }
     }
-    if (sdh)
-        hide_sign_unit(coefs, orig, stepv, ndc, dcscan, rc, rc ? lambda : 0.0,
-                       rc ? &dc_uc : nullptr);
+    if (sdh) {
+        if (rc && lam_q8)
+            hide_sign_unit_int(coefs, orig, stepv, ndc, dcscan, rc, lam_q8,
+                               &dc_uc);
+        else
+            hide_sign_unit(coefs, orig, stepv, ndc, dcscan, rc,
+                           rc ? lambda : 0.0, rc ? &dc_uc : nullptr);
+    }
     reconstruct_dc_plane(s, coefs);
     (void)size;
 }
@@ -2294,9 +2369,16 @@ static void rdoq_plane(PlaneState &s, i16 *coefs, int tskip, bool chroma,
     // every block's residual from s.pred below, so re-deciding the plane the
     // predictor is built from stays consistent by construction.
     if (dc_gain > 0)
-        analyze_dc_plane(s, coefs, sdh, &rc,
-                         make_lambda(dc_qp_of(s.qp), lambda_scale * dc_gain).sse,
-                         nctx, effort);
+        analyze_dc_plane(
+            s, coefs, sdh, &rc,
+            make_lambda(dc_qp_of(s.qp), lambda_scale * dc_gain).sse, nctx,
+            effort,
+            /* The DC plane's integer lambda: its own quantiser's, with the DC
+             * gain folded in at Q8.  The gain is 1.00 by default, so this is
+             * the plane's lambda unchanged in every shipped configuration. */
+            int_trellis ? (u32)(((u64)int_trellis_lambda_q8(dc_qp_of(s.qp)) *
+                                 (u64)(i64)(dc_gain * 256.0 + 0.5)) >> 8)
+                        : 0u);
     const u16 *scan = scan_table(ncoef, tskip != 0);
     const UnitCtx base_uc = with_ncoef(block_ctx(nctx, chroma), ncoef);
     u8 nbr[kMaxBlocksPerPlane] = {};
@@ -2339,8 +2421,14 @@ static void rdoq_plane(PlaneState &s, i16 *coefs, int tskip, bool chroma,
             else
                 rdoq_unit(c, orig, stepv, ncoef, scan, uc, rc, lambda, effort,
                           sdh);
-            if (sdh)
-                hide_sign_unit(c, orig, stepv, ncoef, scan, &rc, lambda, &uc);
+            if (sdh) {
+                if (int_trellis)
+                    hide_sign_unit_int(c, orig, stepv, ncoef, scan, &rc,
+                                       int_trellis_lambda_q8(s.qp), &uc);
+                else
+                    hide_sign_unit(c, orig, stepv, ncoef, scan, &rc, lambda,
+                                   &uc);
+            }
             nbr[bi] = (u8)unit_nbr_class(c, ncoef, scan);
         }
 }

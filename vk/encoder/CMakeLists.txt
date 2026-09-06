@@ -62,6 +62,7 @@ add_library(nxenc_forward_cpu STATIC
   forward/nxe_tables.c
   forward/forward_cpu.c
   forward/rans_cpu.c
+  forward/nxe_trellis.c
   forward/lite_cpu.c)
 target_include_directories(nxenc_forward_cpu PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/forward)
@@ -386,6 +387,7 @@ if(EXISTS ${NXENC_REF_TABLES})
     forward/nxe_tables.c
     forward/forward_cpu.c
     forward/rans_cpu.c
+    forward/nxe_trellis.c
     forward/lite_cpu.c
     ${NXENC_INTER_SRC}
     ${NXENC_REF_TABLES}
