@@ -744,6 +744,144 @@ rule but the *skipped tile's displayed reconstruction*: the picture model wins
 because it warps a coherent picture, and every mechanism tried here still warps
 each tile out of storage that its neighbours do not agree with.
 
+### The same question asked of the GPU encoder
+
+The table above was measured on the CPU reference. Asked of the GPU encoder --
+same material, same scale, same displayed object -- it returns a different
+answer, and the difference is not an implementation gap. Both encoders are
+byte-identical at the acid test's flag set; what differs is the mode decision
+each is run with.
+
+The fixture is the ref suite's own `make_scene` at 1088x1088 over 16 frames,
+written out by `scripts/atlas-fixture.py` so that a file-driven encoder sees
+exactly what the in-process ref test sees. One change was forced: `make_scene`
+pans its content 2 px/frame, which at 1088 drives **every** tile to `INTRA`
+under the integer decision and leaves nothing skipped and therefore no atlas to
+measure, so the world is held still and only the head turns -- which is the
+variable cross-tile gather is a function of anyway. Angular velocities are this
+ADR's, converted at the 90 Hz `--rc-fps` default: 5.2 deg/s = 0.0578 deg/frame,
+71.4 deg/s = 0.793 deg/frame.
+
+`nxvc-vkenc --display-psnr`, luma, at equal QP:
+
+| fixture | qp | atlas | picture | delta |
+|---|---|---|---|---|
+| near-still | 22 | 32.65 dB @ 107049 B/f, 43.3 % skip | 32.63 dB @ 105716 B/f, 44.0 % skip | +0.02 dB, +1.3 % |
+| near-still | 26 | 31.53 dB @ 76093 B/f, 41.7 % skip | 31.44 dB @ 74770 B/f, 42.8 % skip | +0.10 dB, +1.8 % |
+| near-still | 30 | 30.26 dB @ 56912 B/f, 38.8 % skip | 30.23 dB @ 56323 B/f, 39.5 % skip | +0.03 dB, +1.0 % |
+| fast turn | 22 | 36.82 dB @ 186498 B/f, 0 % skip | 36.82 dB @ 186498 B/f, 0 % skip | +0.00 dB, +0.0 % |
+| fast turn | 26 | 33.79 dB @ 128532 B/f, 0 % skip | 33.79 dB @ 128532 B/f, 0 % skip | +0.00 dB, +0.0 % |
+| fast turn | 30 | 31.29 dB @ 91276 B/f, 0 % skip | 31.29 dB @ 91276 B/f, 0 % skip | +0.00 dB, +0.0 % |
+
+**At the fast-turn rate the two arms are bit-identical**, because the GPU
+encoder skips nothing there. That is the whole result. Cross-tile gather is
+paid by a *skipped* tile reading its neighbours' pixels; ADR-0028's integer
+mode decision will not skip at that displacement, so it codes the tile instead
+and the gather never happens. The -7.47 dB is not avoided by being cleverer --
+it is converted into bits, and at 0 % skip the atlas has no opportunity to
+differ from the picture model at all.
+
+So **the fast-turn penalty is a property of the decision, not of 13.12.4**, and
+the encoder it was measured on keeps skipping (72.3 %) where this one stops.
+Sweeping `nxv-enc --skip-thresh`, which is that gate, moves the answer across
+its whole range on this same fixture at qp 26 -- and in the direction opposite
+to the +44 %:
+
+| fixture | skip-thresh | atlas | picture | delta |
+|---|---|---|---|---|
+| fast turn | 1 | 32.96 dB @ 7998 B/f | 33.06 dB @ 11250 B/f | -0.10 dB, **-28.9 %** |
+| fast turn | 16 | 32.93 dB @ 7576 B/f | 32.87 dB @ 11328 B/f | +0.06 dB, -33.1 % |
+| fast turn | 64 | 28.66 dB @ 7578 B/f | 20.66 dB @ 23036 B/f | +8.00 dB, -67.1 % |
+| near-still | 1 | 32.99 dB @ 8048 B/f | 32.99 dB @ 11685 B/f | +0.00 dB, -31.1 % |
+| near-still | 16 | 30.45 dB @ 7607 B/f | 26.65 dB @ 13977 B/f | +3.80 dB, -45.6 % |
+
+Two things follow. First, **the earlier +19.6 % and this ADR's +44 % are not
+competing measurements of one quantity**; they are the same encoder at
+different points of the skip gate, on fixtures at different scales, and neither
+reproduces here. Second, the exact fixture behind the 41.99 / 40.69 / 32.99 /
+40.46 figures **cannot be rebuilt from the tree** -- b86f819 committed the
+conclusion and not the harness, and the angular velocities are quoted as a mean
+and a peak, so the track was not constant-rate. The numbers above are therefore
+reported beside this ADR's rather than against them: same material and same
+scale, but not the same track, and the comparison that is exact is the one
+within each table.
+
+What none of this disturbs is the decision. The 8.8 ms stands, the encoder's
+shadow atlas is byte-identical to the decoder's throughout (both entropy tools,
+both eye counts, table and pixel digest), and neighbour-aware gather remains
+the open question -- with one correction to its urgency: on the GPU encoder as
+it stands, the case that motivates it does not arise, because the tiles that
+would suffer it are coded instead.
+
+### The displacement-bounded skip, priced
+
+The second of the two proposed fixes is implemented, off by default, as
+`--atlas-disp-margin N`: skip a tile only when the largest displacement over
+its four corners is under `N` luma samples. Corners rather than a sample grid,
+because `C` is a homography and a homography sends a quadrilateral's extremes
+to its corners -- the argument 3.1.1's own corner derivation already rests on.
+
+Measured on the same fixtures at qp 26, intra-period 4, the rule **does almost
+nothing, and the reason is the finding**:
+
+| fixture | margin 16 | margin 8 | margin 4 | margin 3 | margin 2 | margin 1 |
+|---|---|---|---|---|---|---|
+| near-still (0.0578 deg/f), 37.6 % skip | 0 forced | 0 | 0 | 0 | 124 | 1390 |
+| 0.05 deg/f, 42.5 % skip | 0 | 0 | 0 | 3 | 75 | 1009 |
+| 0.10 deg/f, 18.9 % skip | 0 | 0 | 4 | 50 | 361 | 2596 |
+
+(forced refreshes over 16 frames x 289 tiles; bytes move with them -- at margin
+1 the 0.05 deg/f clip goes 74943 -> 77956 B/f, +4.0 %, and by margin 4 it is
+back to the byte-identical baseline.)
+
+**The corner displacement of a tile this encoder actually skips is under three
+samples, essentially always.** A margin of 4 -- the tightest value the sweep
+was asked for -- is already looser than the distribution it is meant to clip.
+That is the same result as the fast-turn row above, reached from the other
+side: a tile whose displacement grows past a few samples has a prediction error
+that fails the skip threshold first, so it is coded, and the gather that would
+have contaminated it never happens. Contamination is bounded at roughly 3
+samples of a 64-sample tile without the rule being enabled at all.
+
+So the bound is kept -- it is cheap, it is off, and it is the instrument that
+*measured* the distribution -- but it is not the fix for anything currently
+observable on this encoder. Its value is as a guard for a future decision that
+skips more aggressively, which is exactly the regime the `--skip-thresh` sweep
+above shows the reference operating in.
+
+### Cheat 3: refresh priority, priced
+
+`--atlas-refresh-cap N`, also off by default: cap how many refresh-driven tiles
+may be coded in a frame, and spend the cap on the tiles with the highest fovea
+distance plus age -- equally weighted, because no measurement yet says
+otherwise and an invented weight is a constant nobody could later justify.
+Fixed foveation (the eye's centre in tile units), which is what a headset
+without eye tracking has.
+
+qp 26, intra-period 4, 289 tiles, 16 frames:
+
+| fixture | cap | PSNR-Y | B/frame | coded/frame | vs off |
+|---|---|---|---|---|---|
+| 0.05 deg/f | off | 31.384 dB | 74943 | 166.2 | -- |
+| 0.05 deg/f | 60 | 31.365 dB | 74049 | 164.2 | -0.02 dB, -1.2 % |
+| 0.05 deg/f | 40 | 31.327 dB | 70702 | 156.3 | -0.06 dB, -5.7 % |
+| 0.05 deg/f | 20 | 31.294 dB | 68498 | 151.1 | -0.09 dB, -8.6 % |
+| near-still | off | 31.571 dB | 81227 | 180.3 | -- |
+| near-still | 60 | 31.560 dB | 80714 | 179.2 | -0.01 dB, -0.6 % |
+| near-still | 40 | 31.525 dB | 78441 | 174.0 | -0.05 dB, -3.4 % |
+| near-still | 20 | 31.508 dB | 76892 | 170.2 | -0.06 dB, -5.3 % |
+
+Monotone in both axes and cheap in quality: **8.6 % of the bytes for 0.09 dB**
+at the tightest cap. That is a usable rate-shaping knob and a much better one
+than the displacement bound, which is the opposite of what the two were
+expected to be worth. It changes the bitstream and nothing else -- a decoder
+neither knows nor cares which tiles an encoder chose to refresh -- so it is a
+rate hook and not a conformance rule.
+
+The cap is only meaningful against the candidates the staggered rule offers:
+at intra-period 180 there are about 1.6 candidates a frame and every cap in the
+sweep is inert, which is why these were measured at intra-period 4 (about 72).
+
 ### Acting on the mosaic: two more fixes, both measured, both negative
 
 The diagnosis above -- the defect is the MOSAIC of capture times, not the
@@ -1424,6 +1562,220 @@ field can never be.
 * Decoder memory: one atlas per eye (the same size as one ring slot, and the ring shrinks from four
   slots to one) plus 37 kB of table. This is a **reduction**.
 * `STEREO` is excluded in v1, and reconciling it is Phase 2 work.
+
+### What the atlas is worth on the GPU encoder, plainly
+
+The per-frame mode is implemented and measured (`--atlas-mode`, tool bit 34), and so is the
+`--skip-thresh` sweep the switching policy was supposed to need. The result settles what the atlas
+buys on **this** encoder, and it is narrower than the model promised.
+
+**The atlas never wins on bytes.** Sweeping the skip gate over both arms at three velocities,
+1088×1088, 16 frames, QP 26, the two models track each other almost exactly at every threshold:
+
+| fixture | thresh | picture (dB / B) | atlas (dB / B) | skip % | warps a decoder pays |
+|---|---|---|---|---|---|
+| near-still | 0 | 31.4357 / 1196324 | 31.5308 / 1217492 | 42 | 123.6 → **0** |
+| near-still | 8 | 28.7360 / 799428 | 28.8028 / 818028 | 61 | 179.1 → **0** |
+| near-still | 32 | 22.8188 / 367462 | 23.0654 / 402804 | 81 | 238.9 → **0** |
+| 0.2 °/f | 8 | 32.4237 / 1924636 | 32.4155 / 1924636 | 6.6 | 19.0 → **0** |
+| 0.2 °/f | 32 | 23.6885 / 1018798 | 23.9138 / 1034736 | 51 | 148.6 → **0** |
+| fast turn | 16 | 33.5550 / 2048834 | 33.5554 / 2048834 | 0.3 | 0.9 → **0** |
+| fast turn | 32 | 29.6450 / 1908728 | 29.6086 / 1906072 | 7.1 | 20.2 → **0** |
+
+Under motion the two arms are within 0.25 dB and 0.2 % of each other at every threshold; at
+near-still the atlas is 0.07–0.25 dB better for 1.8–9.6 % *more* bytes. **There is no threshold at
+which an `ATLAS` frame is cheaper than a `PICTURE` frame at equal quality.** Raising the gate does
+not find one — it degrades both arms by the same amount, because the gate is a property of the
+decision and not of the reference model. The reference's `D = 8` shape (mid 38.61 dB at 47 %
+`PICTURE`) does not reproduce here, and the skip gate is not the missing variable.
+
+**What the atlas actually sells is decode warps, and only that.** It converts every skipped tile's
+decode-time warp into zero, moving the warp to display where a reprojection compositor performs one
+per tile per displayed frame regardless. That saving is exactly proportional to the SKIP RATE:
+
+* near-still, 42 % skip: 123.6 warps a frame removed — **4.2 ms** on the Pico at 34 µs a tile, and
+  up to 8.1 ms at a looser gate;
+* 0.2 °/frame, 6.6 % skip: 19 warps, **0.65 ms**;
+* fast turn, 0.3 % skip: one warp, **0.03 ms**.
+
+So the 8.8 ms an eye the budget claims is a near-still figure. Under motion ADR-0028's integer
+decision codes the tiles rather than skipping them, the skip rate collapses, and the atlas's product
+collapses with it — to nothing at fast turn, where the two models are bit-identical.
+
+**Which makes the per-frame mode inert on this encoder.** A `PICTURE` frame can only reproduce what
+an `ATLAS` frame already produces under motion, while paying to assemble the reference: measured on
+a 7900 XTX by GPU timestamp, 0.19 ms a frame at 289 tiles and 0.29 ms at 578. Where the mode would
+fire, it buys nothing and costs that; where the atlas genuinely wins, the trigger correctly stays
+quiet. The mechanism is correct and conformant — an all-`PICTURE` stream is byte-identical to a
+no-atlas stream apart from the tool bits and the mode bit — and it is off by default.
+
+**The conclusion, stated plainly: on this encoder the atlas is a NEAR-STILL optimisation.** It is
+worth 4–8 ms of decode warp and about a tenth of a dB when the head is nearly still, it is worth
+nothing when the head is moving, and it is never worth bytes. Making it worth more under motion is a
+question for the mode decision — a gate that skips when the warp is good enough rather than one that
+codes whenever the displacement is large — and not for the atlas syntax, the switching policy, or
+the skip threshold, all three of which have now been swept and none of which moves it.
+
+### CORRECTION: the atlas is worth 2x under motion, and the missing variable was the coded-vector search
+
+**The section above is wrong, and this one supersedes it.** It concluded that on this encoder the
+atlas is a near-still optimisation worth nothing under motion. That conclusion was an artefact of
+running the GPU encoder with `--int-coded-vectors off`, which is the flag set the byte-identity acid
+tests use. With the coded-vector search ON the result reverses completely.
+
+**The rule that was supposedly missing was already there.** `E1c_decide.comp` implements the
+reference's warp-error skip gate exactly -- `sse * 786432 <= qstep^2 * skip_thresh * npix`, which is
+`skip_sse <= qnoise * (thresh/256) * npix` with the divisions cleared -- and `--int-decision on` is
+byte-identical to it. The GPU encoder never decided on displacement. So there was no "skip when the
+warp is good enough" rule to add.
+
+What was missing is what the reference does when that gate FAILS: it searches a coded VECTOR and
+compares, instead of falling through to the INTRA fallback. Measured on the reference at 1088x1088,
+16 frames, QP 26, `--atlas on`:
+
+| decision | fast turn | near-still |
+|---|---|---|
+| `--int-decision on --int-coded-vectors off` | 33.7889 dB / 2056508 B | 31.4356 dB / 1217492 B |
+| `--int-decision off` (full double RD) | 33.8356 dB / **159729 B** | 33.8699 dB / **162234 B** |
+
+Twelve times the rate at equal quality on the fast turn, and 7.5x the rate for 2.4 dB LESS at
+near-still. Every GPU-encoder measurement in the sections above was taken in that regime, where the
+decision dominates and swamps any atlas effect -- which is why the reference's shape never
+reproduced here.
+
+**With `--coded-vectors` the atlas's own claim reproduces.** Both arms, same content, the pose track
+the only variable, 1088x1088, 16 frames, QP 26:
+
+| head speed | picture (dB / B / skip) | atlas (dB / B / skip / coded per frame) | rate ratio |
+|---|---|---|---|
+| 0.00 °/f | 33.7889 / 144258 / 93.2 % | 33.7889 / 144258 / 93.2 % / 19.6 | 1.00x |
+| 0.05 °/f | 33.8417 / 328924 / 0.2 % | 33.8281 / 159559 / 86.5 % / 38.9 | **2.06x** |
+| 0.10 °/f | 33.8370 / 328754 / 0.0 % | 33.8300 / 159505 / 86.5 % / 38.9 | **2.06x** |
+| 0.20 °/f | 33.8370 / 328754 / 0.0 % | 33.8300 / 159505 / 86.5 % / 38.9 | **2.06x** |
+| 0.40 °/f | 33.8370 / 328754 / 0.0 % | 33.8300 / 159505 / 86.5 % / 38.9 | **2.06x** |
+| 0.80 °/f | 33.8370 / 328754 / 0.0 % | 33.8300 / 159505 / 86.5 % / 38.9 | **2.06x** |
+| 1.60 °/f | 33.8370 / 328754 / 0.0 % | 33.8300 / 159505 / 86.5 % / 38.9 | **2.06x** |
+| 2.50 °/f | 33.8370 / 328754 / 0.0 % | 33.8300 / 159505 / 86.5 % / 38.9 | **2.06x** |
+
+At rest the two models are identical. **The instant the head moves at all the picture model's skip
+rate collapses to zero and its rate doubles, while the atlas holds 86.5 % skip and its rate does
+not move.** The mechanism is the one the ADR claimed from the start: the picture model's reference
+is the previous RECONSTRUCTION, so every skipped tile re-warps an already-warped picture and the
+chained blur pushes the prediction error over the gate within one frame of motion; an atlas tile
+warps ONCE from its own source pose, so its error does not grow with head speed. That is why the
+atlas column is flat from 0.05 to 2.5 °/frame -- a factor of fifty in angular velocity and no change
+at all.
+
+**Decoder cost moves the same way.** The atlas codes 38.9 tiles a frame against the picture model's
+289 -- 7.4x less Pass B -- and warps nothing at decode, against the picture model's skipped tiles
+(zero here only because it skips nothing). So the atlas is cheaper on the wire AND cheaper to
+decode, at the same quality, at every speed above rest.
+
+**And it settles the per-frame mode: it should not fire.** A `PICTURE` frame is strictly worse than
+an `ATLAS` frame in exactly this regime -- at the fast turn with `D = 8` the mode codes 73.3 % of
+frames as `PICTURE` and pays 280482 B against the atlas's 159505 B for +0.007 dB. The switching
+policy was designed for an encoder whose atlas degrades under motion; this one's does not. `D = 8`
+is therefore the wrong default for THIS encoder and the mode is best left off, which it is.
+
+**Two caveats, both load-bearing.**
+
+* **`--coded-vectors` leaves the byte-identity contract.** `E1c` searches `STATIC_MV` only, while the
+  reference under `--int-coded-vectors on` searches `WARP_MV` as well (the kernel's own header says
+  so, and reproducing the homography outside Pass W is the one duplication this project refuses).
+  Measured: the fast turn is byte-identical to `nxv-enc`, near-still differs by 94 bytes in 159505.
+  So the configuration that makes the atlas pay is NOT the configuration the acid tests pin, and
+  closing that gap is real work, not a flag.
+* **One content.** All eight fixtures above are the same rendered scene with a static world and a
+  different pose track -- identical YUV, `md5 a325d144`. That is precisely the WiVRn case (a
+  world-locked scene, a moving head) and it is the case the atlas is for, but it is one content and
+  the 2.06x should be re-measured on a clip with moving objects in it before it is treated as
+  general.
+
+Both results are charted in [docs/GALLERY.md](../GALLERY.md):
+`atlasenc-decision-sweep.png` for the velocity sweep and
+`atlasenc-tile-modes.png` for the per-tile decision maps on one fast-turn frame.
+
+![ATLAS vs picture across head speed](../assets/atlasenc-decision-sweep.png)
+
+![Per-tile decisions on one fast-turn frame](../assets/atlasenc-tile-modes.png)
+
+### The same question on RENDERED content, and the synthetic answer does not survive
+
+The table above is ONE synthetic clip whose world never changes, so a stale atlas tile costs
+nothing and the atlas's advantage has no counterweight. Re-run on the vrroom corpus — four
+rendered stereo trajectories, 2176x1088, 578 tiles, 16 frames, QP 26, coded-vector search on — it
+reverses under head motion:
+
+| trajectory | picture (dB / B per frame) | atlas (dB / B per frame) | winner |
+|---|---|---|---|
+| rest, 2.7 deg/s | 38.5435 / 7560 | **39.8043 / 5960** | atlas, +1.26 dB and 21 % fewer bytes |
+| object motion, head at rest | 38.5904 / 11181 | **39.5035 / 10251** | atlas, +0.91 dB and 8 % fewer |
+| mid, 26 deg/s | **38.1922 / 13711** | 36.7809 / 21261 | picture, +1.41 dB and 35 % fewer |
+| fast, 99 deg/s | **37.0930 / 10150** | 31.6560 / 17892 | picture, +5.44 dB and 43 % fewer |
+
+That is Figure 1's result reproduced from this branch, and it means the 2.06x of the previous
+section is a CEILING and not an expectation. Rendered content makes staleness cost something —
+parallax, shading, and anything that moves — and once it does, an atlas tile held across a fast turn
+is worse than a fresh warp of a coherent picture, by a lot.
+
+**Which makes the per-frame mode the point, not an inert mechanism.** The section above concluded
+the mode was inert; that too was the synthetic clip talking. At `D = 8` on rendered content it lands
+on whichever model wins, without being told which:
+
+| trajectory | mode (dB / B per frame) | PICTURE frames | best single model |
+|---|---|---|---|
+| rest | 39.9954 / 8206 | 6.7 % | atlas |
+| object motion | 39.7136 / 11728 | 6.7 % | atlas |
+| mid | 38.0577 / 14948 | 46.7 % | picture |
+| fast | 37.0930 / 10150 | **100 %** | picture |
+
+At the fast turn it spends every frame on PICTURE and lands *exactly* on the picture model, to the
+byte. At rest and under object motion it stays almost entirely on ATLAS frames and beats both single
+models on quality. `D = 8` is the right default after all; what was wrong was the fixture it had
+been judged on.
+
+**So the corrected picture, in one line each.** The coded-vector search is a large win for both
+models and the previous sections were all measured without it. The atlas is worth having at rest and
+under object motion, and is a liability under head motion. The per-frame mode is what makes that a
+single configuration rather than a choice, and it works. And a static-world synthetic clip is not a
+safe fixture for this question, because it removes the one cost the atlas has.
+
+Charted as Figure 14 in [docs/GALLERY.md](../GALLERY.md)
+(`atlasenc-vrroom-arms.png`), beside Figure 12's synthetic sweep.
+
+![The atlas on rendered content](../assets/atlasenc-vrroom-arms.png)
+
+**Revised conclusion (synthetic clip only; see the rendered-content section above, which supersedes
+the generalisation).** The atlas is not a near-still optimisation. On this encoder, with a decision
+that searches coded vectors, it is worth **about half the bitrate at equal quality for any head
+motion at all ON A STATIC-WORLD CLIP**, and 7.4x fewer coded tiles to decode. The blocker for shipping it in the headset
+build is not the atlas: it is that the encoder's default decision does not search coded vectors, and
+that the configuration which does is not yet byte-identical to the reference.
+
+### A note on encoder timing figures
+
+An earlier report of this encoder at 19.7 ms a frame (289 tiles) and 31.8 ms (578) was **wall clock
+around the whole process divided by the frame count**, and it is wrong as an encoder cost: it
+carries process start-up, Vulkan instance and device creation, pipeline and shader creation, file
+I/O, and a `--display-psnr` readback and PSNR computation on every frame. Measured properly, by GPU
+timestamp, warm, median of 16 frames:
+
+| | 289 tiles | 578 tiles |
+|---|---|---|
+| picture | 3.61 ms | 6.32 ms |
+| atlas | 3.64 ms | 6.83 ms |
+| mode | 3.85 ms (assemble 0.19) | 5.99 ms (assemble 0.29) |
+| host wall clock | 5.3–6.5 ms | ~10.4 ms |
+
+The atlas path costs the picture path's time to within a few per cent — not 10×. The host figure
+exceeds the GPU figure by 4–5 ms, of which the table-set choice is 3.4 ms of pure CPU work on a
+shared box; the rest is submits, fence waits and staging copies.
+
+These are also not comparable with a `--bench` figure for E3 and E4 alone (1.44 ms at 578 here,
+E3 0.468 + E4 0.974): that pair is a strict subset, excluding Pass W, the mode decision, Pass B, E2
+and E5, and it is timed over an already-populated job array rather than a real frame. Three numbers
+of different scope for the same encoder is how a 2 ms encoder gets quoted at 20 ms; `NXE_TIME=1` now
+prints the GPU-timestamp line beside the wall-clock one so the two cannot be confused again.
 
 ## Alternatives considered
 

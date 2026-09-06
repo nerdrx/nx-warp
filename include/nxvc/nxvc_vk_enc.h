@@ -260,6 +260,72 @@ typedef struct nxvc_vke_create_info {
      * Refused at create() if `inter` is clear and this is not 0. */
     uint32_t ref_confirm;
 
+    /* ATLAS, tool bit 31: docs/SYNTAX.md 13.12 and docs/adr/0029.
+     *
+     * The reference stops being the previous decoded picture and becomes a
+     * per-tile ATLAS -- for each tile position, the pixels of the most recent
+     * frame that CODED that position, plus the composed warp from this frame's
+     * pose back to that frame's pose.  A skipped tile produces no reference
+     * pixels and does not touch the atlas, which is what removes the whole of
+     * the decoder's skip warp.
+     *
+     * What it changes for a CALLER of this ABI:
+     *
+     *   * the stream carries tool bit 31, so a decoder that does not offer it
+     *     cannot decode the stream.  It is a negotiated tool like any other;
+     *     do not set it against a client that did not offer it.
+     *   * `ref_sel` is 0 in every tile header whatever this struct asked for,
+     *     because the atlas holds ONE generation per tile position and there
+     *     is no older reference to select.  Setting both is refused rather
+     *     than silently resolved.
+     *   * loss stops needing a mechanism.  A negative report through
+     *     nxvc_vk_encoder_set_frame_held(enc, f, 0) invalidates exactly the
+     *     tiles frame `f` coded, per tile, and the encoder rolls its shadow
+     *     back to the generation before them; every other tile position is
+     *     untouched and stays predictable.  A whole-frame INTRA resync is no
+     *     longer the recovery path and is no longer the cost of a drop.
+     *   * the picture nxvc_vk_decoder or nxv-dec produces is DERIVED from the
+     *     atlas and is not normative; conformance is the atlas.
+     *
+     * Requires `inter`.  Mutually exclusive with the STEREO tool bit, which
+     * this encoder does not implement in any configuration, so there is
+     * nothing for a caller to do about it.  Refused at create() if `inter` is
+     * clear, or if `ref_sel` is not 0. */
+    uint32_t atlas;
+
+    /* ATLAS_REBASE, tool bit 34: the atlas becomes a per-frame MODE
+     * ([SYN] 13.12.11).  Requires `atlas`.
+     *
+     * With it set, every frame is coded either as an ATLAS frame -- 13.12 as
+     * written, the reference is the per-tile atlas, a skipped tile costs
+     * nothing -- or as a PICTURE frame, which is decoded by the ORDINARY
+     * non-ATLAS process against one coherent picture assembled from the atlas,
+     * and whose reconstruction then BECOMES the atlas.  Frame flags bit 5
+     * carries which, so a decoder needs no policy at all.
+     *
+     * The point of the pair is that these are the same codec at two operating
+     * points, not two codecs.  An ATLAS frame buys the 8.8 ms an eye that
+     * skipped tiles cost in the picture model, at the price of a reference
+     * assembled from tiles captured at different times; a PICTURE frame pays
+     * that time and gets a reference with no such disagreement in it.  Which
+     * is worth more depends on how fast the head is moving, which is a
+     * per-frame question.
+     *
+     * Leaving this clear leaves every frame an ATLAS frame and every existing
+     * stream byte-identical. */
+    uint32_t atlas_mode;
+
+    /* The mode trigger's threshold `D`, in LUMA SAMPLES ([SYN] 13.12.11.1).
+     * A PICTURE frame is coded when the worst corner displacement in the
+     * atlas, INCLUDING this frame's advance, exceeds it.
+     *
+     * 0 selects the default, which is 8 -- the value ADR-0029's sweep settled
+     * on.  Lower fires more often and costs the picture model's time more
+     * often; higher bounds the PICTURE rate at the price of a staler mosaic.
+     * A rate controller that must cap the PICTURE rate raises this.
+     *
+     * Ignored unless `atlas_mode` is set. */
+    uint32_t atlas_picture_d;
     /* --- how hard the encoder looks (nxvc_vke_effort below).
      *
      * Encoder-side only: it changes which levels are coded, never how they
@@ -663,6 +729,240 @@ nxvc_vke_status nxvc_vk_encoder_set_received_tiles(nxvc_vk_encoder *enc,
 nxvc_vke_status nxvc_vk_encoder_set_frame_held(nxvc_vk_encoder *enc,
                                                uint32_t frame_number,
                                                int held);
+
+/* ------------------------------------------------- the last frame's report
+ *
+ * What the encoder decided for the frame it just coded.  Reporting only: it
+ * reads state the encode already produced and changes no byte of any stream.
+ *
+ * The WiVRn wiring needs this because none of it is recoverable from the
+ * bitstream afterwards.  The per-frame MODE is one bit in a frame header a
+ * server would have to re-parse; the tile-mode census is not in the stream at
+ * all (a decoder derives it, an observer cannot cheaply); and the trigger's
+ * own displacement number exists only inside the decision that used it.  A
+ * caller that wants to log why a frame cost what it did, or drive a rate
+ * controller off the atlas's staleness, has to be told.
+ *
+ * Call it after nxvc_vk_encoder_encode(); it describes THAT frame.  Before the
+ * first encode every field is 0 and `mode` is NXVC_VKE_FRAME_NON_ATLAS. */
+#define NXVC_VK_ENCODER_FRAME_REPORT 1
+
+#define NXVC_VKE_FRAME_NON_ATLAS 0u /* not an ATLAS stream                    */
+#define NXVC_VKE_FRAME_ATLAS     1u /* an ATLAS frame ([SYN] 13.12)           */
+#define NXVC_VKE_FRAME_PICTURE   2u /* a PICTURE frame ([SYN] 13.12.11)       */
+
+typedef struct nxvc_vke_frame_report {
+    uint32_t mode;          /* NXVC_VKE_FRAME_*                               */
+    uint32_t frame_number;  /* the frame this report describes                */
+
+    /* The tile-mode census, over every tile of the frame (both eyes).  They
+     * sum to the tile count. */
+    uint32_t tiles;         /* tiles in the frame                             */
+    uint32_t skip;          /* WARP_SKIP: no bytes, no Pass B                 */
+    uint32_t intra;
+    uint32_t static_mv;
+    uint32_t warp_mv;
+    uint32_t coded;         /* every mode but WARP_SKIP; what Pass B costs    */
+
+    /* Tiles this frame ASSEMBLED, which is 13.12.11 step 1's full-picture
+     * warp: the tile count on a PICTURE frame and 0 on an ATLAS frame.  It is
+     * the term a PICTURE frame pays that an ATLAS frame does not. */
+    uint32_t assembled;
+
+    /* The mode trigger's own number ([SYN] 13.12.11.1): the worst corner
+     * displacement across the atlas INCLUDING this frame's advance, in
+     * SIXTEENTHS of a luma sample.  This is what was compared against `D`, so
+     * a caller can see how close a frame came to switching rather than only
+     * which side it landed on.  0 on a non-ATLAS stream, and 0 when the
+     * per-frame mode is off (the trigger does not run). */
+    uint32_t worst_disp_q4;
+
+    uint32_t bytes;         /* the frame's coded size                         */
+    uint32_t reserved[4];
+} nxvc_vke_frame_report;
+
+/* Fill `out` with the report for the frame most recently encoded.
+ * NXVC_VKE_ERR_ARG on a null argument. */
+nxvc_vke_status nxvc_vk_encoder_frame_report(const nxvc_vk_encoder *enc,
+                                             nxvc_vke_frame_report *out);
+
+/* ------------------------------------------------------ the atlas's layout
+ *
+ * THE LAYOUT `nxvc_vk_encoder_atlas_write_tiles` CONSUMES, reported by the
+ * encoder rather than re-derived by the caller.
+ *
+ * This exists because the alternative was observed to fail quietly.  A caller
+ * building the patch buffer has to reproduce the ring-slot layout exactly --
+ * plane offsets, the row stride's even padding, the per-eye column origin, and
+ * the fact that samples are u16 packed two to a uint -- and a second copy of
+ * that arithmetic passes every check the encoder makes (the copy sizes are
+ * right, the API returns OK, the stream is well formed) while writing the
+ * pixels to the wrong addresses.  The result is a wrong picture some frames
+ * later, attributed to anything but the layout.  So the numbers come from the
+ * same `RingLayout` the copies themselves are built from; there is one source
+ * and it cannot drift from the consumer.
+ *
+ * UNITS ARE GIVEN TWICE ON PURPOSE.  The internal layout counts u16 SAMPLES,
+ * `VkBufferCopy` counts BYTES, and the shaders address the buffer as uints of
+ * two packed samples.  Mixing the three is the mistake this struct is meant to
+ * make impossible, so each field says which it is and both spellings are
+ * reported for the two that matter.
+ *
+ * PLACING A TILE.  For plane `p`, tile column `col` and row `row` within eye
+ * `eye`, the tile's top-left sample is at
+ *
+ *     x0 = eye * plane[p].eye_stride + col * plane[p].tile_extent
+ *     y0 = row * plane[p].tile_extent
+ *
+ * and the byte offset of sample row `y` of that tile, from the start of the
+ * slot-shaped image, is
+ *
+ *     plane[p].offset_bytes + (y0 + y) * plane[p].stride_bytes
+ *                           + x0 * bytes_per_sample
+ *
+ * A tile is clipped WITHIN ITS EYE -- against `plane[p].width`, not against
+ * the pair's full span -- and against `plane[p].height`, so the last column
+ * and row of a picture that is not a whole number of tiles are short:
+ *
+ *     w = min(tile_extent, plane[p].width  - col * tile_extent)
+ *     h = min(tile_extent, plane[p].height - row * tile_extent)
+ *
+ * Clipping per eye rather than pair-wide is what stops a short last column of
+ * the left eye from running into the first column of the right one.  That is
+ * the same clipping the encoder's own copies do. */
+typedef struct nxvc_vke_atlas_plane_layout {
+    uint32_t offset_bytes;  /* plane origin within the slot-shaped image   */
+    uint32_t offset_u16;    /* the same, counted in u16 samples            */
+    uint32_t stride_bytes;  /* row stride                                  */
+    uint32_t stride_u16;    /* the same, in u16 samples; padded EVEN, so a
+                             * row starts on a uint boundary and no uint
+                             * straddles two rows                          */
+    uint32_t width;         /* PER-EYE sample width; the plane spans
+                             * `width * eyes` samples across              */
+    uint32_t height;        /* sample rows (chroma is halved under 4:2:0)  */
+    uint32_t eye_stride;    /* samples to advance per eye; equals `width`  */
+    uint32_t tile_extent;   /* tile side in samples: 64 luma, 32 chroma
+                             * under 4:2:0, 64 under 4:4:4                 */
+} nxvc_vke_atlas_plane_layout;
+
+typedef struct nxvc_vke_atlas_layout {
+    uint32_t plane_count;       /* 3 or 4; only these are addressable      */
+    nxvc_vke_atlas_plane_layout plane[4];
+    uint32_t bytes_per_sample;  /* 2 -- samples are u16                    */
+    uint32_t samples_per_uint;  /* 2 -- the shaders' packing               */
+    uint32_t slot_bytes;        /* one slot-shaped image, end to end; this
+                                 * is the minimum size of a patch buffer   */
+    uint32_t eyes;
+    uint32_t tiles_x;           /* tile columns PER EYE                    */
+    uint32_t tiles_y;           /* tile rows                               */
+} nxvc_vke_atlas_layout;
+
+/* Report the layout a patch buffer must be in.  Fails with
+ * NXVC_VKE_ERR_UNSUPPORTED on a stream without ATLAS, NXVC_VKE_ERR_ARG on a
+ * null argument.  The layout is fixed for the life of the encoder. */
+nxvc_vke_status nxvc_vk_encoder_atlas_layout(const nxvc_vk_encoder *enc,
+                                             nxvc_vke_atlas_layout *out);
+
+/* ------------------------------------------------- base-sourced atlas writes
+ *
+ * Where a base-layer patch comes from.  DEVICE memory on the encoder's own
+ * device: the server's shadow decode is uploaded once per frame and patched
+ * from there, so no patch ever touches host memory and there are no per-tile
+ * host copies.
+ *
+ * `buffer` must already be in the ATLAS's own plane layout -- the same strided
+ * u16 planes a reference-ring slot holds, at the same offsets -- so that a
+ * patch is a plain copy of the tile's row regions.  `offset` is where that
+ * slot-shaped image begins in the buffer; a tile's source address is then its
+ * destination address plus `offset`, which is what "already in the atlas
+ * layout" is worth: no address arithmetic on either side.
+ *
+ * ASK THE ENCODER FOR THAT LAYOUT -- `nxvc_vk_encoder_atlas_layout()` -- and
+ * do not re-derive it.  A caller's own copy of the plane offsets and the
+ * even-padded stride passes every check this call makes and still writes the
+ * pixels to the wrong addresses; the failure appears frames later as a wrong
+ * picture, nowhere near here.  The buffer must be at least `offset` plus the
+ * layout's `slot_bytes`.
+ *
+ * `image` is reserved and currently REFUSED with NXVC_VKE_ERR_UNSUPPORTED --
+ * not for want of a spec, but for want of a device to validate against.
+ * [SYN] 13.12.9 makes the channel order normative and warns that a base
+ * picture sampled as G8_B8R8_2PLANE_420_UNORM, or through an external format
+ * whose reported conversion is channel-identity, yields
+ * `(.r, .g, .b) == (Cr, Y, Cb)`; an implementation SHALL consume the reported
+ * swizzle rather than assume an order.  The same clause says a conformance
+ * matrix without a non-identity-swizzle device will not catch getting it
+ * wrong, and this branch's matrix is RADV and lavapipe.  Assuming (Y, Cb, Cr)
+ * produces a plausible, wholly wrong picture, so the path stays unimplemented
+ * rather than unverified.  A buffer carries no such risk: the caller has
+ * already done the mapping, into the atlas's own sample domain. */
+typedef struct nxvc_vke_atlas_src {
+    VkBuffer buffer;        /* the patch source; required today          */
+    VkDeviceSize offset;    /* where the slot-shaped image starts        */
+    VkImage image;          /* reserved; must be VK_NULL_HANDLE          */
+} nxvc_vke_atlas_src;
+
+/* Fill a contiguous run of atlas tile positions from the base layer, instead
+ * of coding them (docs/adr/0029 section 7).
+ *
+ * A base-sourced patch costs about 1.9 us a tile on the Adreno against ~41 us
+ * for a coded nxvc tile, which is a 21x reduction on the one term of the
+ * budget that does not amortise -- so this is a LATENCY tool as much as a
+ * compatibility one.
+ *
+ * `first_tile` and `count` are within `eye`, in that eye's own row-major
+ * order.  A contiguous run is the primary form because row strips are what the
+ * writes coalesce to; a caller with a fovea or priority pattern batches
+ * several runs rather than passing a tile list, and the runs cost one
+ * vkCmdCopyBuffer region per tile row per plane either way.
+ *
+ * WHAT THE ENCODER DOES WITH IT.  The tile's atlas entry gets SYNTAX 13.12.9's
+ * metadata block, which is a coded tile's with one bit added: identity `C`,
+ * `src_frame` as given, generation 0, valid, never static, res_level 0, and
+ * `base_sourced` (flags bit 2) SET.  The entry says WHERE the pixels are and
+ * at which pose, which is the same statement however they were produced; the
+ * bit is what lets a receiver, a rate controller and a conformance vector tell
+ * the two patch sources apart, and it is NORMATIVE in version 1 -- written,
+ * and compared by conformance like every other bit of the 64.  A later coded
+ * tile at the same position clears it, which is the scheduled refresh.
+ *
+ * SUPERSEDE, AND WHY IT IS NOT AN ERROR.  Per 13.12.9's ordering rule a write
+ * whose `src_frame` does not advance the position -- not merely one that goes
+ * backwards -- has been overtaken and SHALL be dropped rather than applied.
+ * That is the ordinary case, not a caller mistake: the base arrives through a
+ * hardware decoder with its own latency (2.76 ms mean, 5.63 ms p99 in the
+ * measurement the clause cites) while coded tiles come down the usual path, so
+ * the two interleave.  Those positions are skipped, the rest of the run is
+ * applied, and the call SUCCEEDS.  `applied` and `superseded` (either may be
+ * NULL) report how the run split; a caller that needs to know a patch landed
+ * must read them rather than the status.
+ *
+ * COLOUR.  13.12.9 permits a base-sourced write only on a `CT_NONE` stream,
+ * and this encoder emits `color_transform = 0` on every stream it writes, so
+ * the exclusion is satisfied by construction rather than by a check.
+ *
+ * ORDERING.  The copy is recorded on the encoder's own command buffer at the
+ * top of the next encode, after the previous frame's reconstruction and one
+ * barrier ahead of the E-stages, so it lands before Pass W reads the atlas.
+ * That is the only correct ordering and it is not one a caller can arrange
+ * from outside; the call itself neither submits nor waits.  The TABLE is
+ * updated immediately, because the next encode's mode decision has to see it.
+ *
+ * BIT-EXACTNESS.  13.12.9 requires a base-sourced write to be reproducible on
+ * the encoder side -- the shadow atlas of 13.12.6 must hold the same samples
+ * the client's atlas does, and the patch is compared by conformance like any
+ * other write.  Marking base-sourced patches drift-tolerant and excluding them
+ * is explicitly NOT version 1.  Supplying a buffer that is not what the client
+ * decoded therefore breaks the stream, silently and some frames later.
+ *
+ * Returns NXVC_VKE_ERR_UNSUPPORTED on a non-ATLAS stream or an image source,
+ * NXVC_VKE_ERR_ARG on a run that leaves the eye or a null buffer.  A `count`
+ * of 0 is a no-op, and a fully superseded run is a success with
+ * `*applied == 0`. */
+nxvc_vke_status nxvc_vk_encoder_atlas_write_tiles(
+    nxvc_vk_encoder *enc, uint32_t eye, uint32_t first_tile, uint32_t count,
+    const nxvc_vke_atlas_src *src, uint32_t src_frame, uint32_t *applied,
+    uint32_t *superseded);
 
 /* The frame's pose and projection, for the frame the NEXT encode() codes.
  *

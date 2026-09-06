@@ -123,6 +123,93 @@ struct Config {
      * waiting for the first confirmation to arrive.  See nxe_inter.h
      * HeldState::require_confirmed. */
     bool ref_confirm = false;
+    /* ATLAS, tool bit 31 (docs/SYNTAX.md 13.12, docs/adr/0029).  The reference
+     * stops being the previous decoded picture and becomes a per-tile atlas:
+     * for each tile POSITION, the pixels of the most recent frame that CODED
+     * it plus the composed warp back to that frame's pose.  A skipped tile
+     * produces no reference pixels and does not touch the atlas.
+     *
+     * It requires `inter`, it forces `ref_sel` to 0 in every tile header --
+     * the atlas holds one generation per position, so an older reference has
+     * nothing to select -- and it is mutually exclusive with the STEREO tool
+     * bit, which this encoder does not implement in any configuration.
+     *
+     * Two eyes are fine and are NOT the STEREO tool: the exclusion is against
+     * predicting one eye from the other within a frame, not against coding a
+     * pair.  Each eye's tiles compose with their own eye's warp_ext(). */
+    bool atlas = false;
+    /* `row_present()` (SYNTAX.md 3.1.2, tool bit 32): elide the 12-byte header
+     * of a tile row with no coded tile, and name the rows that are there in a
+     * bitmap after warp_ext().  Orthogonal to ATLAS -- separate tool bits,
+     * either may be set alone -- and off by default, because a stream that
+     * never sets frame flag bit 4 must decode byte-identically whether or not
+     * the tool is offered. */
+    bool row_present = false;
+    /* Cheats 5, off by default: scale the WARP_SKIP threshold by the head's
+     * angular velocity, which the encoder derives from the pose stream it
+     * already receives.  A tile whose prediction error is under a perceptual
+     * threshold IN MOTION is skipped even where it would not be at rest --
+     * bytes saved exactly on the frames that are most expensive -- at the cost
+     * of smear during fast rotation, which is where the eye's own contrast
+     * sensitivity has collapsed.  Q8 gain per radian per frame; 0 is off. */
+    int motion_skip_gain_q8 = 0;
+    /* ADR-0029's displacement bound, off by default (0).  A tile may be
+     * skipped only when the largest displacement over its four corners is
+     * under this many LUMA SAMPLES -- which bounds how far a skipped tile's
+     * gather reaches into its neighbours' atlas entries, the contamination
+     * 13.12.4's co-located-`C` rule admits and the encoder's error threshold
+     * cannot see.  64 is the tile itself and therefore no bound at all; the
+     * interesting range is 4 to 16.  It costs FORCED REFRESH: a tile that
+     * would have been skipped is coded instead. */
+    int atlas_disp_margin = 0;
+    /* Cheat 3, off by default (0): a per-frame cap on how many
+     * refresh-driven tiles may be coded, the survivors chosen by fovea
+     * distance plus age.  0 is no cap, which passes every refresh candidate
+     * through and leaves every stream byte-identical. */
+    int atlas_refresh_cap = 0;
+    /* [SYN] 13.12.11 / 13.12.11.1, the per-frame MODE.  `atlas_mode` turns the
+     * two-mode atlas on -- tool bit 34, and frame flags bit 5 carries which
+     * mode each frame is.  Off leaves every frame an ATLAS frame, which is
+     * 13.12 exactly as it was and leaves every existing stream
+     * byte-identical.
+     *
+     * `atlas_picture_d` is the trigger's threshold `D` in LUMA SAMPLES: a
+     * PICTURE frame is coded when the worst corner displacement in the atlas,
+     * including this frame's advance, exceeds it.  The reference's sweep
+     * settled on 8 (adr-0029, "the switching policy, measured"), which is the
+     * default here; a rate controller that must bound the PICTURE rate raises
+     * it.
+     *
+     * There is NO minimum spacing `S`.  The clause allows one and the sweep
+     * rejected it: spacing throttles refresh exactly when refresh is needed,
+     * -4.7 dB at S=2 on the fast turn.  So it is not implemented rather than
+     * implemented and defaulted off, because a knob that is always wrong is a
+     * knob someone will eventually set. */
+    /* ADR-0028 / ENCODER-DECISION.md section 2 step 1, the hard INTRA cap.
+     *
+     * OFF (the default here) is the STAGGERED rule: a tile is forced INTRA
+     * when `((tile * 2654435761) >> 8 + frame) % intra_period == 0`, so
+     * `ntiles / intra_period` tiles refresh every frame -- 3.2 a frame at 578
+     * tiles and a period of 180.
+     *
+     * ON is the AGE rule: a tile is forced INTRA only once it has gone
+     * `intra_period` frames without one.  `nxv-enc` defaults it ON, and on a
+     * clip shorter than the period NOTHING is forced, which is why the
+     * reference's section 7 table reports ~0 INTRA tiles a frame where the
+     * staggered rule reports 3.2.  Getting this wrong is worth several
+     * thousand bytes a frame on a stereo pair and looks like a decision bug.
+     */
+    bool drift_refresh = false;
+    bool atlas_mode = false;
+    int atlas_picture_d = 8;
+    /* Print each frame's tile mode census.  Reporting only; it changes no
+     * stream and is off unless asked for. */
+    bool mode_census = false;
+    /* Report the PSNR of the DISPLAYED picture against the source, per frame
+     * and as a clip mean.  Under ATLAS the displayed picture is one warp from
+     * the atlas ([SYN] 13.12.5, non-normative); without it, it is the
+     * reconstruction.  Reporting only. */
+    bool display_psnr = false;
 
     /* The integer requantiser of nxe_enc.h: 0 off (the plain dead-zone
      * quantiser, and what this encoder has always done), 1 drop a +-1 level

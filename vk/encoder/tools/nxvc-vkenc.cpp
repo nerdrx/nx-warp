@@ -71,6 +71,45 @@ static void usage() {
         "  --ref-sel 0..2       reference distance an inter frame asks for\n"
         "                       first; a floor, the encoder walks outwards to\n"
         "                       the newest reference the client still holds\n"
+        "  --modes              per-frame tile mode census and coded count\n"
+        "  --display-psnr       PSNR-Y of the DISPLAYED picture vs the source\n"
+        "                       (under --atlas, one warp from the atlas)\n"
+        "  --atlas              the per-tile atlas reference, tool bit 31\n"
+        "  --drift-refresh      the INTRA cap is per-tile AGE (nxv-enc's\n"
+        "                       default) rather than the staggered rule\n"
+        "  --atlas-mode         the atlas as a per-frame MODE, tool bit 34\n"
+        "                       ([SYN] 13.12.11): each frame is an ATLAS\n"
+        "                       frame or a PICTURE frame.  Needs --atlas\n"
+        "  --atlas-picture-d N  the mode trigger threshold D in luma\n"
+        "                       samples (default 8, ADR-0029 sweep)\n"
+        "  --atlas-dump P       write the encoder's shadow atlas after each\n"
+        "                       frame to P: the 64-byte records of [SYN]\n"
+        "                       13.12.1 followed by a 32-byte digest of the\n"
+        "                       atlas planes, in the layout nxv-enc and\n"
+        "                       nxv-dec use.  This is the NORMATIVE output\n"
+        "                       under ATLAS; the stream is only how two\n"
+        "                       implementations arrive at one\n"
+        "                       ([SYN] 13.12).  Needs --inter; forces ref_sel 0\n"
+        "  --tile-map P         write every frame's per-tile decision to P\n"
+        "                       as CSV (frame,tile,row,col,eye,mode,picture)\n"
+        "  --atlas-layout-selftest  check that a patch buffer built from\n"
+        "                       nxvc_vk_encoder_atlas_layout() addresses the\n"
+        "                       same samples the encoder's copies do, then exit\n"
+        "  --row-present        elide the 12-byte header of a tile row with\n"
+        "                       no coded tile and name the rows that are\n"
+        "                       there in a bitmap after warp_ext(), tool\n"
+        "                       bit 32 ([SYN] 3.1.2).  Orthogonal to --atlas\n"
+        "  --atlas-disp-margin N  skip a tile only when the largest\n"
+        "                       displacement over its four corners is under N\n"
+        "                       luma samples (ADR-0029's cross-tile gather\n"
+        "                       bound).  0 = off; 64 is the tile itself and\n"
+        "                       so no bound; the useful range is 4 to 16.\n"
+        "                       Costs forced refresh, reported at the end\n"
+        "  --atlas-refresh-cap N  Cheat 3: code at most N refresh-driven\n"
+        "                       tiles a frame, chosen by fovea distance plus\n"
+        "                       age.  0 = off (every candidate is coded)\n"
+        "  --motion-skip Q8     scale the skip threshold by head angular\n"
+        "                       velocity (Cheats 5).  0, the default, is off\n"
         "  --hold-every N       simulate a client that reconstructs only\n"
         "                       every Nth frame and reports the rest not\n"
         "                       held.  0 = holds everything (the default)\n"
@@ -140,6 +179,15 @@ int main(int argc, char **argv) {
      * and every other fixture in this tree is under 256 tiles. */
     int fx_w = 256, fx_h = 192, fx_frames = 8;
     const char *ring_prefix = nullptr, *ring_decoded = nullptr;
+    /* Where to write the encoder's shadow atlas after each frame, so a test
+     * can hold it against the atlas nxv-dec builds from this encoder's own
+     * stream.  [SYN] 13.12 makes the atlas the normative output; the stream
+     * agreeing byte for byte does not imply the two sides agree about the
+     * reference the client now holds, and that is the divergence that shows up
+     * as drift rather than as a broken frame. */
+    const char *atlas_dump = nullptr;
+    const char *tile_map = nullptr;
+    bool atlas_layout_selftest = false;
     /* A client that keeps up with only one frame in `hold_every`.  It drives
      * nxvc_vk_encoder_set_frame_held()'s half of the reference walk from the
      * command line, which is what the 289-tile drop-pattern test needs and
@@ -177,6 +225,21 @@ int main(int argc, char **argv) {
         else if (a == "--poses") cfg.poses = val();
         else if (a == "--coded-vectors") cfg.int_coded_vectors = true;
         else if (a == "--ref-sel") cfg.ref_sel = std::atoi(val());
+        else if (a == "--atlas") cfg.atlas = true;
+        else if (a == "--drift-refresh") cfg.drift_refresh = true;
+        else if (a == "--atlas-mode") cfg.atlas_mode = true;
+        else if (a == "--atlas-picture-d") cfg.atlas_picture_d = std::atoi(val());
+        else if (a == "--row-present") cfg.row_present = true;
+        else if (a == "--atlas-dump") atlas_dump = val();
+        else if (a == "--tile-map") tile_map = val();
+        else if (a == "--atlas-layout-selftest") atlas_layout_selftest = true;
+        else if (a == "--atlas-disp-margin")
+            cfg.atlas_disp_margin = std::atoi(val());
+        else if (a == "--atlas-refresh-cap")
+            cfg.atlas_refresh_cap = std::atoi(val());
+        else if (a == "--modes") cfg.mode_census = true;
+        else if (a == "--display-psnr") cfg.display_psnr = true;
+        else if (a == "--motion-skip") cfg.motion_skip_gain_q8 = std::atoi(val());
         else if (a == "--int-rdoq") cfg.int_rdoq = std::atoi(val());
         else if (a == "--rate-check") cfg.rate_check = true;
         else if (a == "--trellis") cfg.trellis = std::atoi(val());
@@ -299,6 +362,29 @@ int main(int argc, char **argv) {
     if (!fi) { std::perror("open input"); return 1; }
     std::FILE *fo = std::fopen(cfg.out.c_str(), "wb");
     if (!fo) { std::perror("open output"); return 1; }
+    std::FILE *fat = nullptr;
+    if (atlas_dump) {
+        if (!cfg.atlas) {
+            std::fprintf(stderr,
+                         "nxvc-vkenc: --atlas-dump needs --atlas; there is no "
+                         "atlas to dump without it\n");
+            std::fclose(fi);
+            std::fclose(fo);
+            return 2;
+        }
+        fat = std::fopen(atlas_dump, "wb");
+        if (!fat) { std::perror("open --atlas-dump"); return 1; }
+    }
+    std::FILE *ftm = nullptr;
+    if (tile_map) {
+        ftm = std::fopen(tile_map, "w");
+        if (!ftm) { std::perror("open --tile-map"); return 1; }
+        /* `mode` is the nxvw value E1c settled on: 0 WARP_SKIP, 1 STATIC_MV,
+         * 2 WARP_MV, 3 INTRA.  `picture` is 1 on a frame [SYN] 13.12.11 coded
+         * as a PICTURE frame, which is a property of the FRAME and repeated on
+         * every one of its rows so a reader needs no join. */
+        std::fprintf(ftm, "frame,tile,row,col,eye,mode,picture\n");
+    }
 
     std::vector<uint8_t> hdr = nxe::stream_header(cfg, f);
     std::fwrite(hdr.data(), 1, hdr.size(), fo);
@@ -379,12 +465,40 @@ int main(int argc, char **argv) {
             std::fprintf(stderr, "nxvc-vkenc: %s\n", err.c_str());
             std::fclose(fi);
             std::fclose(fo);
+            if (fat) std::fclose(fat);
+    if (ftm) std::fclose(ftm);
             std::remove(cfg.out.c_str());
             return 77;
+        }
+        /* The accessor's contract, checked against the copies themselves
+         * before anything is encoded: a caller building a patch buffer from
+         * nxvc_vk_encoder_atlas_layout() must land on the samples the
+         * encoder's own region builder addresses. */
+        if (atlas_layout_selftest) {
+            if (!cfg.atlas) {
+                std::fprintf(stderr, "nxvc-vkenc: --atlas-layout-selftest "
+                                     "needs --atlas\n");
+                return 2;
+            }
+            std::string lerr;
+            if (!gpu.atlas_layout_roundtrip(lerr)) {
+                std::fprintf(stderr,
+                             "nxvc-vkenc: atlas layout round-trip FAILED: %s\n",
+                             lerr.c_str());
+                return 1;
+            }
+            std::fclose(fi);
+            std::fclose(fo);
+            if (fat) std::fclose(fat);
+    if (ftm) std::fclose(ftm);
+            std::remove(cfg.out.c_str());
+            return 0;
         }
     }
 
     size_t total = hdr.size();
+    double psnr_sum = 0;
+    int psnr_n = 0;
     int n = 0;
     int rc = 0;
     while (cfg.frames < 0 || n < cfg.frames) {
@@ -454,10 +568,101 @@ int main(int argc, char **argv) {
         if (!cfg.quiet)
             std::printf("frame %d: %zu bytes  %.4f bpp\n", n, f.out.size(),
                         f.out.size() * 8.0 / ((double)cfg.w * cfg.h));
+        /* The per-frame mode census.  Under ATLAS the CODED count -- every
+         * mode but WARP_SKIP -- is the quantity the whole model is about: it
+         * is what the decoder pays for, what the atlas write-back touches, and
+         * the term that does not amortise across display intervals.  It is
+         * printed rather than derived from the stream because the stream does
+         * not carry a mode histogram and reconstructing one means parsing. */
+        if (ftm && cfg.inter) {
+            const uint32_t cols = f.fp.tiles_x * f.fp.eyes;
+            const int pic = (!cfg.cpu_only && gpu.last_picture_frame()) ? 1 : 0;
+            for (uint32_t t = 0; t < f.fp.ntiles; ++t) {
+                const uint32_t row = t / cols;
+                const uint32_t rem = t % cols;
+                const uint32_t eye = rem / f.fp.tiles_x;
+                const uint32_t col = rem % f.fp.tiles_x;
+                std::fprintf(ftm, "%d,%u,%u,%u,%u,%u,%d\n", n, t, row, col,
+                             eye, f.jobs[t].mode, pic);
+            }
+        }
+        if (cfg.mode_census && cfg.inter) {
+            unsigned c[5] = {0, 0, 0, 0, 0};
+            for (uint32_t t = 0; t < f.fp.ntiles; ++t) {
+                const uint32_t m = f.jobs[t].mode;
+                if (m < 5) ++c[m];
+            }
+            const unsigned coded = f.fp.ntiles - c[0];
+            std::printf("  modes %u: skip %u  static %u  warp %u  intra %u  "
+                        "coded %u (%.1f %%)\n",
+                        n, c[0], c[1], c[2], c[3], coded,
+                        100.0 * coded / (double)f.fp.ntiles);
+            /* The same census through the public report, which is what a
+             * caller of the ABI sees.  Printed beside the harness's own count
+             * so the two are visibly the same numbers. */
+            if (!cfg.cpu_only) {
+                const nxvc_vke_frame_report &r = gpu.last_frame_report();
+                static const char *kMode[] = {"non-atlas", "ATLAS", "PICTURE"};
+                std::printf("  report %u: %s  skip %u static %u warp %u intra "
+                            "%u  coded %u  assembled %u  disp %.2f px  "
+                            "%u bytes\n",
+                            r.frame_number,
+                            kMode[r.mode < 3 ? r.mode : 0], r.skip,
+                            r.static_mv, r.warp_mv, r.intra, r.coded,
+                            r.assembled, r.worst_disp_q4 / 16.0, r.bytes);
+            }
+        }
+        /* [SYN] 13.12.5.  The displayed picture, which under ATLAS is NOT the
+         * normative object and is not what a conformance vector compares --
+         * which is exactly why it is the thing to measure when pricing the
+         * model against the picture-based one.  Comparing reconstructions
+         * would compare an object the two models do not both have. */
+        /* The normative output of 13.12, in the layout nxv-enc --atlas-dump
+         * and nxv-dec --atlas-dump write: the whole per-tile table, then a
+         * 32-byte digest of the atlas planes.  Written after the frame is
+         * coded, which is after step 3's write-back, so it is the atlas as it
+         * stands at the END of frame `n` -- the state the next frame's step 1
+         * advances. */
+        if (fat && !cfg.cpu_only) {
+            std::vector<uint8_t> tab;
+            uint8_t dg[32];
+            if (gpu.atlas_table(tab) && gpu.atlas_pixel_digest(dg)) {
+                std::fwrite(tab.data(), 1, tab.size(), fat);
+                std::fwrite(dg, 1, sizeof(dg), fat);
+            }
+        }
+        if (cfg.display_psnr && cfg.inter && !cfg.cpu_only) {
+            std::vector<uint16_t> shown;
+            if (gpu.read_displayed_luma((uint32_t)n, shown)) {
+                const double p = nxe::luma_psnr_tilemajor(
+                    shown.data(), f.src[0].data(), f.fp.ntiles, 255);
+                psnr_sum += p;
+                ++psnr_n;
+                if (!cfg.quiet)
+                    std::printf("  display %d: PSNR-Y %.4f dB\n", n, p);
+            }
+        }
         ++n;
     }
     std::fclose(fo);
     std::fclose(fi);
+    if (fat) std::fclose(fat);
+    if (ftm) std::fclose(ftm);
+
+    if (psnr_n)
+        std::printf("displayed PSNR-Y: %.4f dB mean over %d frame(s)\n",
+                    psnr_sum / psnr_n, psnr_n);
+    /* The displacement bound's price, stated whenever the bound is on: how
+     * many tiles it refused to skip.  A rule whose cost is not reported is a
+     * rule nobody can decide about. */
+    if (cfg.atlas_disp_margin > 0 && !cfg.cpu_only && n > 0) {
+        const unsigned long long forced = gpu.atlas_disp_forced();
+        std::printf("disp-margin %d: forced refresh %llu tiles, %.2f per "
+                    "frame (%.1f %% of %d)\n",
+                    cfg.atlas_disp_margin, forced, (double)forced / n,
+                    100.0 * (double)forced / ((double)n * f.fp.ntiles),
+                    (int)f.fp.ntiles);
+    }
 
     if (cfg.bench && !cfg.cpu_only && n > 0) gpu.bench(f, cfg.bench_iters);
 

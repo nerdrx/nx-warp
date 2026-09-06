@@ -389,6 +389,11 @@ typedef struct nxe_frame_params {
      * carry ref_sel 0). */
     uint32_t ref_sel;
 
+    /* Bytes of `row_present()` (SYNTAX.md 3.1.2, tool bit 32):
+     * `ceil(tiles_y * eyes / 8)` when frame flag bit 4 is set, 0 otherwise.
+     * It sits between `warp_ext()` and the custom matrices, so it is added to
+     * every offset after the two of them and before the table area. */
+    uint32_t rowpresent_bytes;
     /* The INTEGER RDOQ level: 0 the plain dead-zone quantiser, 1 the +-1 drop
      * that nxe_rdoq_drop decides.  Encoder-only and no tool bit -- it changes
      * which levels are coded and nothing about how they are decoded -- so a

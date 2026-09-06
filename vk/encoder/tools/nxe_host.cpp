@@ -136,6 +136,12 @@ void setup(const Config &cfg, Frame &f) {
     fp.quant_matrix = (uint32_t)cfg.matrix;
     fp.tables_present = 0;                 /* set per frame by the training */
     fp.table_bytes = 0;
+    /* [SYN] 3.1.2.  Set here rather than only on the inter path, because it is
+     * a term in EVERY offset after warp_ext(): a frame that never reaches the
+     * inter setup -- an intra-only stream -- would otherwise carry whatever
+     * the record happened to hold, and every tile in it would be placed by
+     * that. */
+    fp.rowpresent_bytes = 0;
     f.custom_tables = cfg.custom_tables && !lite;
     /* TAB_V2 requires CUSTOM_TABLES (SYNTAX.md 9.4.1), exactly as ref's
      * `fp.tab_v2 = cfg.custom_tables && cfg.tab_v2`. */
@@ -408,6 +414,25 @@ std::vector<uint8_t> stream_header(const Config &cfg, const Frame &f) {
      * path always carries warp_ext() on the frames that have a reference, and
      * a decoder that implements one and not the other cannot decode it. */
     if (cfg.inter) tools |= (1ull << 10) | (1ull << 11);
+    /* ATLAS (31).  [SYN] 2: it requires INTER and is mutually exclusive with
+     * STEREO (12); either violation is BITSTREAM.  INTER is guaranteed by
+     * VkEncoder::create(), which refuses `atlas` without it, and bit 12 is never set by
+     * this encoder in any configuration -- the STEREO tool is not implemented
+     * here at all -- so the exclusion is a property of the emitter rather than
+     * a runtime test.  The mask is asserted below so that stops being true
+     * loudly rather than quietly. */
+    if (cfg.atlas) tools |= 1ull << 31;
+    /* ROW_PRESENT (32).  Independent of everything above: [SYN] 3.1.2 says in
+     * as many words that it is orthogonal to ATLAS and that either may be set
+     * alone.  Frame flag bit 4 without this bit is BITSTREAM, which is why the
+     * two are set from the one config field. */
+    if (cfg.row_present) tools |= 1ull << 32;
+    /* [SYN] 13.12.11: ATLAS_REBASE, which is what makes frame flags bit 5
+     * legal.  Setting bit 5 without it is BITSTREAM. */
+    if (cfg.atlas_mode) tools |= 1ull << 34;
+    if (cfg.atlas && (tools & (1ull << 12)) != 0)
+        std::fprintf(stderr,
+                     "nxe: ATLAS and STEREO are mutually exclusive ([SYN] 2)\n");
 
     u32(0x3156584Eu);            /* 'NXV1' */
     u8(1);                       /* NXVC_VERSION */
@@ -881,6 +906,31 @@ void train_table_sets(Frame &f) {
 
 /* -------------------------------------------------------------------- E5 */
 void pack_frame(Frame &f, uint32_t frame_number) {
+    /* [SYN] 3.1.2, the same rule E5's `rp_eff` applies and for the same
+     * reason: the bitmap is emitted, and flags bit 4 set, only when a row was
+     * actually elided.  The reference does it this way, so enabling the tool
+     * never costs bytes -- and this model has to agree with the shader byte
+     * for byte or `--check` compares two different frame layouts.
+     *
+     * A row that spans no bytes coded nothing, which is the rule the shader
+     * reads off E2's prefix and this reads off `tile_bytes`.  Note this path
+     * usually finds NOTHING elided (it is the intra-only model, where a frame
+     * with no reference has no skipped tiles), which is exactly the case the
+     * fix is about. */
+    if (f.fp.rowpresent_bytes) {
+        const uint32_t rowgroups = f.fp.tiles_y * f.fp.eyes;
+        uint32_t absent = 0;
+        for (uint32_t g = 0; g < rowgroups; ++g) {
+            uint32_t bytes = 0;
+            for (uint32_t c = 0; c < f.fp.tiles_x; ++c)
+                bytes += f.tile_bytes[g * f.fp.tiles_x + c];
+            if (bytes == 0) ++absent;
+        }
+        if (absent == 0) {
+            f.fp.rowpresent_bytes = 0;
+            f.fp.frame_flags &= ~16u;
+        }
+    }
     const nxe_frame_params &fp = f.fp;
     uint32_t run = 0;
     for (uint32_t t = 0; t < fp.ntiles; ++t) {
@@ -897,12 +947,14 @@ void pack_frame(Frame &f, uint32_t frame_number) {
     /* The transmitted probability tables, between the frame header and the
      * first row header.  SYNTAX.md 9.4. */
     if (!f.table_area.empty())
-        std::memcpy(f.out.data() + NXE_FRAME_HEADER_BYTES + f.fp.warp_bytes,
+        std::memcpy(f.out.data() + NXE_FRAME_HEADER_BYTES + f.fp.warp_bytes +
+                        f.fp.rowpresent_bytes,
                     f.table_area.data(),
                     f.table_area.size());
     const uint32_t rowgroups = fp.tiles_y * fp.eyes;
     for (uint32_t g = 0; g < rowgroups; ++g) {
-        uint32_t off = NXE_FRAME_HEADER_BYTES + fp.warp_bytes + fp.table_bytes +
+        uint32_t off = NXE_FRAME_HEADER_BYTES + fp.warp_bytes +
+                       fp.rowpresent_bytes + fp.table_bytes +
                        NXE_ROW_HEADER_BYTES * g +
                        f.tile_prefix[g * fp.tiles_x];
         nxe_e5_row_header(&fp2, g, f.out.data() + off);

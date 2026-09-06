@@ -187,6 +187,59 @@ because 13.12.5's display warp is not normative.
 
 ```
 python3 tools/quality/plot_pose.py --csv pose_d8.csv --out docs/assets --disp 8
+```
+
+---
+
+> **Figure-number collision.** The `atlas` branch independently numbered a
+> different pair of figures 10 and 11 (below). Both entries are kept because
+> both describe real measurements; whoever merges `atlas` into `main` should
+> renumber one pair. Nothing here has been renumbered by this branch.
+
+## Figures 10-11 — The seated trajectories, and the true rest floor
+
+| | |
+|---|---|
+| ![Figure 10](assets/vrroom-still.png) **Fig 10** still, 0.043 deg/s | ![Figure 11](assets/vrroom-objmotion-still.png) **Fig 11** objmotion-still |
+
+**Date** 2026-09-06 · **Fixture** `nx-scratch/fixtures/vrroom`, frame 8, left
+eye, 544x408 crop at 2x · **Settings** as Figures 3-6.
+
+**The number it illustrates.** `rest` was named for a head at rest and is not
+one: it moves the atlas's tile corners **0.97 samples in one frame and 3.83
+over four**, so a whole-sample identity is never available in it. `still` is a
+seated head — 0.030 deg of postural drift at 0.11 Hz plus 0.001 deg of tremor
+at 8 Hz — and measures **0.043 deg/s** with corner displacement of **0.016
+samples** after a frame and 0.016 after thirty, sixty times smaller.
+
+On it the atlas does exactly what it is for: **100 % skip, zero decoder warps,
+150 B/frame at 41.28 dB** for a stereo 1088x1088 pair. At QP 34 and 40 it
+converges to the structural floor of **119 B/frame** — 85.7 kbit/s at 90 Hz —
+which is frame header plus `warp_ext()` plus the `row_present` bitmap and
+nothing else. `objmotion-still` holds the head there and walks the meshes:
+2800 B/f, which prices independent object motion at about **2650 B/frame** on
+its own.
+
+The high seam ratios in this row (3.27 at QP 26, 6.88 at QP 40) are inherited
+from the single intra frame: at 119 B/frame nothing is ever re-coded, so what
+is displayed is frame 0's quantisation warped forward, and at QP 40 that frame
+is blocky. It is a real artefact, and it is the cost of a floor this low.
+
+On the ADR-0028 integer decision the same clip is **125 B/frame at the same
+41.28 dB** — 25 bytes cheaper, because that path has no `NEAR_SKIP` to spend
+and so lands six bytes above the structural floor rather than thirty. The full
+per-trajectory mode histogram both decisions produce is in
+[ENCODER-DECISION.md](ENCODER-DECISION.md) section 7.
+
+```
+python3 tools/quality/capture/gen_vrroom.py --out nx-scratch/fixtures/vrroom   --tracks still,objmotion-still
+python3 nx-scratch/atlasprice/vrtable.py still
+python3 nx-scratch/atlasprice/encdec_still.py       # float decision
+python3 nx-scratch/atlasprice/encdec_still_int.py   # integer decision
+```
+
+---
+
 ## The seam ratio, since every entry above quotes it
 
 Mean `|x[i] - x[i-1]|` over sample pairs that straddle the 64-sample tile grid,
@@ -194,14 +247,6 @@ divided by the same over pairs inside tiles, on the decoded luma. **1.0 means a
 tile edge looks like any other pair; above 1 the grid is visible.** It is
 scale-free, so configurations at different bitrates can be compared directly,
 and it is reported for every visual result from now on. `nx-scratch/atlasprice/seams.py`.
-Every measured result gets a picture and an entry here: what device, what
-fixture, what settings, the number, and the command that produced it. An entry
-without a reproducible command is not an entry.
-
-Appends only. Two agents writing here at once conflict trivially.
-
----
-
 ## Adreno 650 clock under load vs idle
 
 ![clock](assets/passb-clock.png)
@@ -604,4 +649,120 @@ minimum is 27.54 dB at `fast` and 19.96 at `mid`.
 ```
 python3 nx-scratch/atlasprice/alteye_frames.py     # writes docs/assets/alteye-worsttile.png
 python3 nx-scratch/atlasprice/alteye.py fast       # and mid — the ADR's table
+## Figure 12 — The coded-vector search, not the atlas, decides whether the atlas pays
+
+![Figure 12](assets/atlasenc-decision-sweep.png)
+
+**Date** 2026-09-06 · **Fixture** `nx-scratch/atlasref/s{0.0,0.05,0.1,0.2,0.4,0.8,1.6,2.5}`,
+1088x1088, 16 frames — ONE synthetic content (`md5 a325d144`, static world, no
+object motion) with eight pose tracks; head rotation rate is the only variable ·
+**Settings** QP 26, intra-period 180, rANS, `--ctx v3 --tab v2
+--custom-tables`, one eye, 289 tiles; two arms (picture model, `--atlas`) x two
+decisions (`--coded-vectors` on and off).
+
+**The number it illustrates.** **2.06x.** With the coded-vector search ON the
+atlas holds 86.5 % `WARP_SKIP` and half the picture model's rate at equal PSNR
+(9969 against 20547 B/frame, -0.007 dB) at *every* speed from 0.05 to 2.5
+deg/frame — flat across a factor of fifty in angular velocity — and codes 38.9
+tiles a frame against 289, 7.4x less Pass B. With the search OFF both models
+collapse to all-INTRA (128531 B/frame) and the atlas's advantage vanishes
+entirely. Every earlier GPU-encoder measurement in ADR-0029 was taken with it
+off, which is why the reference's shape never reproduced there.
+
+**Superseded in part by Figure 14, which measures the same question on RENDERED
+content and reverses it under head motion. Read this as the ceiling.**
+
+**Read this with Figure 1, which disagrees.** Figure 1 is RENDERED content
+(vrroom) and has the atlas losing at mid and fast; this is a synthetic clip
+whose world never changes, so an atlas tile's source pixels stay valid
+indefinitely and only the pose moves. The two are not in conflict about the
+mechanism — they bound it. This figure shows what the atlas is worth when
+staleness costs nothing; Figure 1 shows what it is worth when staleness costs
+what rendered content makes it cost. The honest reading is that 2.06x is the
+ceiling, not the expectation.
+
+**Caveat.** `--coded-vectors` is not byte-identical to `nxv-enc`: E1c searches
+`STATIC_MV` only while the reference under `--int-coded-vectors on` also
+searches `WARP_MV`. Fast turn matched exactly; near-still differed by 94 bytes
+in 159505.
+
+```sh
+# per speed, per arm; --atlas for the atlas arm, --coded-vectors for "cv on"
+nxvc-vkenc --in atlasref/s0.4.yuv --w 1088 --h 1088 --pix yuv420p --qp 26 \
+    --frames 16 --nsub 3 --matrix 1 --wm 0 --tskip off --chroma-qp-off 0 \
+    --ctx v3 --eyes 1 --intra-dir off --poses atlasref/s0.4.poses.json \
+    --intra-period 180 --inter --custom-tables --tab v2 --device 0 \
+    --coded-vectors --atlas --display-psnr --modes --out out.nxv
+```
+
+---
+
+## Figure 13 — What the two models decide, tile by tile, on one fast-turn frame
+
+![Figure 13](assets/atlasenc-tile-modes.png)
+
+**Date** 2026-09-06 · **Fixture** `nx-scratch/atlasref/fastturn-adr` (71 deg/s
+mean), 1088x1088, frame 8 of 16, 17x17 tiles · **Settings** QP 26, intra-period
+180, `--coded-vectors`, one eye; three arms — picture model, `--atlas`, and
+`--atlas --atlas-mode` at the default `D = 8`.
+
+**The number it illustrates.** **287 of 289 tiles skipped** under ATLAS on a
+frame where the picture model skips **none** and codes 288 `STATIC_MV` vectors.
+The per-frame-mode arm fires a PICTURE frame here and reproduces the picture
+model's map exactly — 0 skip, 288 static — which is 13.12.11 behaving as
+specified and also why `D = 8` is the wrong default for THIS encoder on THIS
+content: the PICTURE frame throws away 287 tiles that cost nothing. (On the
+rendered corpus of Figure 1 the same `D = 8` is what makes the mode win, so the
+default is content-dependent and not simply wrong.)
+
+```sh
+# once per arm; --tile-map writes frame,tile,row,col,eye,mode,picture
+nxvc-vkenc --in atlasref/fastturn-adr.yuv --w 1088 --h 1088 --pix yuv420p \
+    --qp 26 --frames 16 --nsub 3 --matrix 1 --wm 0 --tskip off \
+    --chroma-qp-off 0 --ctx v3 --eyes 1 --intra-dir off \
+    --poses atlasref/fastturn-adr.poses.json --intra-period 180 --inter \
+    --custom-tables --tab v2 --device 0 --coded-vectors \
+    --atlas --atlas-mode --tile-map tf-mode.csv --out /dev/null
+```
+
+`mode` is the nxvw value: 0 `WARP_SKIP`, 1 `STATIC_MV`, 2 `WARP_MV`, 3 `INTRA`.
+`picture` is 1 on a frame coded as a PICTURE frame.
+
+---
+
+## Figure 14 — On rendered content the atlas wins at rest, loses under head motion, and the mode picks the winner
+
+![Figure 14](assets/atlasenc-vrroom-arms.png)
+
+**Date** 2026-09-06 · **Fixture** `nx-scratch/fixtures/vrroom`, all four
+trajectories, stereo 2176x1088, 578 tiles, 16 frames · **Settings** QP 26,
+intra-period 180, `--coded-vectors`, `--ctx v3 --tab v2 --custom-tables`; three
+arms — picture model, `--atlas`, and `--atlas --atlas-mode` at `D = 8`.
+
+**The number it illustrates.** The atlas wins at **rest** (39.8043 dB / 5960
+B/f against 38.5435 / 7560 — +1.26 dB *and* 21 % fewer bytes) and under
+**object motion** (39.5035 / 10251 against 38.5904 / 11181), and loses under
+head motion: **mid** 36.7809 / 21261 against 38.1922 / 13711 (-1.41 dB and 55 %
+more bytes) and **fast** 31.6560 / 17892 against 37.0930 / 10150 (**-5.44 dB**
+and 76 % more). The per-frame mode at `D = 8` lands on whichever wins without
+being told: **100 %** PICTURE frames at fast, landing exactly on the picture
+model to the byte (37.0930 / 10150); 47 % at mid; 6.7 % at rest and object
+motion, where it beats both single models (39.9954 dB at rest).
+
+**This supersedes Figure 12's generalisation.** Figure 12 measured a synthetic
+static-world clip and found the atlas 2.06x better at every speed. That clip has
+no staleness cost — its world never changes, so a held tile is free — which is
+exactly the counterweight rendered content supplies. Figure 12 is the ceiling;
+this is the expectation. It also reverses the reading that the per-frame mode is
+inert: on this corpus it is the mechanism that makes one configuration work
+across the whole velocity range.
+
+```sh
+# per trajectory, per arm; add --atlas / --atlas --atlas-mode for the other arms
+nxvc-vkenc --in vrroom/fast.yuv420p.yuv --w 2176 --h 1088 --eyes 2 \
+    --pix yuv420p --qp 26 --frames 16 --nsub 3 --matrix 1 --wm 0 --tskip off \
+    --chroma-qp-off 0 --ctx v3 --intra-dir off --poses vrroom/fast.poses.json \
+    --intra-period 180 --inter --custom-tables --tab v2 --device 0 \
+    --coded-vectors --atlas --atlas-mode --display-psnr --modes --out out.nxv
+# PICTURE % from NXE_MODE_TRACE=1 on stderr
 ```

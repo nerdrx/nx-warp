@@ -227,6 +227,24 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_create(const nxvc_vke_create_info *ci
     if (ci->ref_confirm != 0 && ci->inter == 0)
         return createerr(NXVC_VKE_ERR_ARG, "ref_confirm=%u needs inter=1",
                          ci->ref_confirm);
+    /* ATLAS (31).  [SYN] 2: it requires INTER.  Refusing is the whole point --
+     * an ATLAS stream with no temporal reference is not a degraded stream, it
+     * is a contradiction, and accepting it would emit a tool bit for a
+     * reconstruction process the frames do not use. */
+    if (ci->atlas != 0 && ci->inter == 0)
+        return createerr(NXVC_VKE_ERR_ARG, "atlas=%u needs inter=1",
+                         ci->atlas);
+    /* [SYN] 4.1 and 13.12.6: ref_sel SHALL be 0 in every tile header of an
+     * ATLAS stream.  A caller that asked for both is refused rather than
+     * quietly given one of them: the atlas holds one generation per tile
+     * position, so a non-zero ref_sel is a request the model cannot honour and
+     * silently honouring the other half would produce a stream the caller did
+     * not ask for. */
+    if (ci->atlas != 0 && ci->ref_sel != 0)
+        return createerr(NXVC_VKE_ERR_ARG,
+                         "atlas=1 forces ref_sel to 0 ([SYN] 13.12.6); "
+                         "ref_sel=%u was requested",
+                         ci->ref_sel);
 
     const bool adopting = ci->device != VK_NULL_HANDLE;
     if (adopting && (!ci->physical_device || !ci->queue))
@@ -257,6 +275,13 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_create(const nxvc_vke_create_info *ci
         ci->inter != 0 && ci->coded_vectors != NXVC_VKE_CV_NONE;
     e->cfg.ref_sel = ci->inter != 0 ? int(ci->ref_sel) : 0;
     e->cfg.ref_confirm = ci->inter != 0 && ci->ref_confirm != 0;
+    e->cfg.atlas = ci->inter != 0 && ci->atlas != 0;
+    e->cfg.atlas_mode = e->cfg.atlas && ci->atlas_mode != 0;
+    /* 0 means "the default", which is the reference's swept value.  Spelled
+     * here rather than in the Config default so that a caller passing a
+     * zeroed create_info gets the same 8 the harness does. */
+    e->cfg.atlas_picture_d =
+        ci->atlas_picture_d ? (int)ci->atlas_picture_d : 8;
     /* Effort 1 is the integer requantiser and nothing else, so the level maps
      * to one config field.  It applies to intra and inter tiles alike -- it
      * is a quantiser decision, not a prediction one. */
@@ -425,6 +450,67 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_set_frame_held(nxvc_vk_encoder *e,
      * the backend, exactly as set_received_tiles() does not make it. */
     if (!e->cfg.inter) return NXVC_VKE_OK;
     e->vk.set_frame_held(frame_number, held != 0);
+    return NXVC_VKE_OK;
+}
+
+extern "C" nxvc_vke_status nxvc_vk_encoder_frame_report(
+    const nxvc_vk_encoder *e, nxvc_vke_frame_report *out) {
+    if (!e || !out) return NXVC_VKE_ERR_ARG;
+    *out = e->vk.last_frame_report();
+    return NXVC_VKE_OK;
+}
+
+extern "C" nxvc_vke_status nxvc_vk_encoder_atlas_layout(
+    const nxvc_vk_encoder *e, nxvc_vke_atlas_layout *out) {
+    if (!e || !out) return NXVC_VKE_ERR_ARG;
+    if (!e->cfg.atlas) return NXVC_VKE_ERR_UNSUPPORTED;
+    if (!e->vk.atlas_layout(*out)) return NXVC_VKE_ERR_UNSUPPORTED;
+    return NXVC_VKE_OK;
+}
+
+extern "C" nxvc_vke_status nxvc_vk_encoder_atlas_write_tiles(
+    nxvc_vk_encoder *e, uint32_t eye, uint32_t first_tile, uint32_t count,
+    const nxvc_vke_atlas_src *src, uint32_t src_frame, uint32_t *applied,
+    uint32_t *superseded) {
+    if (applied) *applied = 0;
+    if (superseded) *superseded = 0;
+    if (!e || !src) return NXVC_VKE_ERR_ARG;
+    if (!e->cfg.atlas) {
+        e->err = "atlas_write_tiles needs the ATLAS tool";
+        return NXVC_VKE_ERR_UNSUPPORTED;
+    }
+    if (src->image != VK_NULL_HANDLE) {
+        /* Not refused for want of a spec -- [SYN] 13.12.9 now says exactly
+         * what this path would have to do -- but because it is UNIMPLEMENTED
+         * and cannot be validated here.  The clause makes the channel order
+         * normative and warns that a base picture sampled as
+         * G8_B8R8_2PLANE_420_UNORM, or through an external format whose
+         * reported conversion is channel-identity, yields
+         * `(.r, .g, .b) == (Cr, Y, Cb)`; an implementation SHALL consume the
+         * reported swizzle rather than assume an order.  It also says in as
+         * many words that a conformance matrix without a non-identity-swizzle
+         * device will not catch getting it wrong -- and RADV and lavapipe,
+         * which is this branch's whole matrix, are not that device.  Shipping
+         * an unverifiable channel mapping that produces a plausible, wholly
+         * wrong picture on exactly the hardware the base layer exists for is
+         * worse than refusing it.
+         *
+         * The buffer form carries no such risk: it is already in the atlas's
+         * own sample domain and layout, so the write is a copy and the
+         * swizzle obligation sits with the caller who did the conversion. */
+        e->err = "image sources are not implemented: the channel mapping of "
+                 "[SYN] 13.12.9 cannot be validated without a "
+                 "non-identity-swizzle device; supply a buffer already in the "
+                 "atlas sample domain";
+        return NXVC_VKE_ERR_UNSUPPORTED;
+    }
+    std::string err;
+    if (!e->vk.atlas_write_tiles(eye, first_tile, count, src->buffer,
+                                 src->offset, src_frame, applied, superseded,
+                                 err)) {
+        e->err = err;
+        return NXVC_VKE_ERR_ARG;
+    }
     return NXVC_VKE_OK;
 }
 

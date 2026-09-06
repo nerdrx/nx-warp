@@ -418,14 +418,25 @@ uint32_t nxe_e5_tile_offset(const nxe_frame_params *fp, uint32_t t,
      * fixes them.  Both are 0 when their tool is off; E5 adds the same pair to
      * every offset it computes, and a model that dropped either would disagree
      * with the shader about where every tile in the frame begins. */
-    return NXE_FRAME_HEADER_BYTES + fp->warp_bytes + fp->table_bytes +
+    /* `rowpresent_bytes` joins warp_ext() and the table area for the same
+     * reason they are here: [SYN] 12 puts all three before the first row
+     * header, so an offset that omits one is short by it.
+     *
+     * What this does NOT do is ELIDE an absent row's header -- that needs the
+     * byte prefix, and it is the E5 shader's job.  These two helpers are used
+     * by the CPU model and by the API's per-tile spans, both of which run only
+     * where every row is present: the CPU path is intra-only, where a frame
+     * with no reference has no skipped tiles and the bitmap is all ones. */
+    return NXE_FRAME_HEADER_BYTES + fp->warp_bytes + fp->rowpresent_bytes +
+           fp->table_bytes +
            NXE_ROW_HEADER_BYTES * (rowgroup + 1u) + tile_prefix[t];
 }
 
 uint32_t nxe_e5_frame_bytes(const nxe_frame_params *fp,
                             uint32_t total_tile_bytes) {
     uint32_t rowgroups = fp->tiles_y * fp->eyes;
-    return NXE_FRAME_HEADER_BYTES + fp->warp_bytes + fp->table_bytes +
+    return NXE_FRAME_HEADER_BYTES + fp->warp_bytes + fp->rowpresent_bytes +
+           fp->table_bytes +
            NXE_ROW_HEADER_BYTES * rowgroups + total_tile_bytes;
 }
 

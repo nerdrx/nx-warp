@@ -140,6 +140,64 @@ if(TARGET nxvc-vkenc AND TARGET nxv-enc AND TARGET nxv-dec)
   set_tests_properties(vk.encoder.inter.acid.lite PROPERTIES
                        SKIP_REGULAR_EXPRESSION "SKIP:")
   list(APPEND NXENC_TESTS vk.encoder.inter.acid.lite)
+
+  # The ATLAS reference (tool bit 31).  Byte-identity against nxv-enc, and --
+  # the claim [SYN] 13.12 actually makes -- the encoder's shadow atlas against
+  # the atlas nxv-dec builds from the GPU's own stream.  Both entropy tools,
+  # because the atlas changes which tiles are coded and Lite changes what a
+  # coded tile costs, so the two compose rather than stack.
+  foreach(ent rans lite)
+    add_test(NAME vk.encoder.atlas.acid.${ent}
+             COMMAND ${CMAKE_COMMAND}
+             -DVKENC=$<TARGET_FILE:nxvc-vkenc>
+             -DNXVENC=$<TARGET_FILE:nxv-enc>
+             -DNXVDEC=$<TARGET_FILE:nxv-dec>
+             -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/atlas-acid-${ent}
+             -DDEVICE=0
+             -DENTROPY=${ent}
+             -P ${CMAKE_CURRENT_SOURCE_DIR}/atlas_acid.cmake)
+    set_tests_properties(vk.encoder.atlas.acid.${ent} PROPERTIES
+                         SKIP_REGULAR_EXPRESSION "SKIP:")
+    list(APPEND NXENC_TESTS vk.encoder.atlas.acid.${ent})
+  endforeach()
+
+  # The atlas patch layout the C ABI reports, against the copies that consume
+  # it.  The file says why a caller must not re-derive it.
+  add_test(NAME vk.encoder.atlas.layout
+           COMMAND ${CMAKE_COMMAND}
+           -DVKENC=$<TARGET_FILE:nxvc-vkenc>
+           -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/atlas-layout
+           -DDEVICE=0
+           -P ${CMAKE_CURRENT_SOURCE_DIR}/atlas_layout.cmake)
+  set_tests_properties(vk.encoder.atlas.layout PROPERTIES
+                       SKIP_REGULAR_EXPRESSION "SKIP:")
+  list(APPEND NXENC_TESTS vk.encoder.atlas.layout)
+
+  # [SYN] 13.12.11, the per-frame mode: an all-PICTURE stream must be the
+  # no-atlas stream, byte for byte apart from the tool bits and the mode bit.
+  add_test(NAME vk.encoder.atlas.mode
+           COMMAND ${CMAKE_COMMAND}
+           -DVKENC=$<TARGET_FILE:nxvc-vkenc>
+           -DNXVDEC=$<TARGET_FILE:nxv-dec>
+           -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/atlas-mode
+           -DDEVICE=0
+           -P ${CMAKE_CURRENT_SOURCE_DIR}/atlas_mode.cmake)
+  set_tests_properties(vk.encoder.atlas.mode PROPERTIES
+                       SKIP_REGULAR_EXPRESSION "SKIP:")
+  list(APPEND NXENC_TESTS vk.encoder.atlas.mode)
+
+  # row_present() (tool bit 32).  Against the reference DECODER, because the
+  # reference ENCODER never sets frame flag bit 4 -- the file says why.
+  add_test(NAME vk.encoder.rowpresent
+           COMMAND ${CMAKE_COMMAND}
+           -DVKENC=$<TARGET_FILE:nxvc-vkenc>
+           -DNXVDEC=$<TARGET_FILE:nxv-dec>
+           -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/rowpresent
+           -DDEVICE=0
+           -P ${CMAKE_CURRENT_SOURCE_DIR}/row_present.cmake)
+  set_tests_properties(vk.encoder.rowpresent PROPERTIES
+                       SKIP_REGULAR_EXPRESSION "SKIP:")
+  list(APPEND NXENC_TESTS vk.encoder.rowpresent)
 endif()
 
 # The loop closed: what nxvc_vk_decoder -- the decoder that runs on the
@@ -162,6 +220,13 @@ endif()
 if(TARGET nxenc-inter-test)
   add_test(NAME vk.encoder.inter.host COMMAND nxenc-inter-test)
   list(APPEND NXENC_TESTS vk.encoder.inter.host)
+endif()
+
+# The ATLAS shadow: [SYN] 13.12.2's composition and 13.12.3's frame process
+# against the clause's own arithmetic.  Needs no GPU and no reference codec.
+if(TARGET nxenc-atlas-test)
+  add_test(NAME vk.encoder.atlas.host COMMAND nxenc-atlas-test)
+  list(APPEND NXENC_TESTS vk.encoder.atlas.host)
 endif()
 
 if(TARGET nxvc-vkenc)
