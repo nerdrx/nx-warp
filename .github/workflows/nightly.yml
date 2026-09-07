@@ -26,7 +26,7 @@ jobs:
       fuzz: ${{ steps.d.outputs.fuzz }}
       quality: ${{ steps.d.outputs.quality }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: d
         run: |
           set -eu
@@ -65,7 +65,7 @@ jobs:
       CC: clang
       CXX: clang++
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install clang and build tools
         run: |
@@ -152,7 +152,7 @@ jobs:
 
       - name: Upload crashers and corpus
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fuzz-artifacts
           if-no-files-found: ignore
@@ -173,12 +173,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Point the harness scratch at the runner temp, never at the repo
         run: echo "NXQ_SCRATCH=${RUNNER_TEMP}/nxq-scratch" >> "$GITHUB_ENV"
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
           cache: pip
@@ -252,7 +252,7 @@ jobs:
 
       - name: Upload the results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: quality-small
           if-no-files-found: ignore
