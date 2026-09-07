@@ -15,14 +15,15 @@
 
 <br>
 
-**Nothing here is usable yet.** This repository is a design paper and the code
-that is growing underneath it. Read the [status table](#status) before you clone
-it with a plan.
+This is a pre-alpha research prototype for custom WiVRn NX streams, with measured
+host and Pico experiments but no production-ready client or server. Read the
+[status table](#status) before you clone it with a plan.
 
 <br>
 
-General-purpose video codecs are the wrong tool for VR streaming. H.264, HEVC
-and AV1 were built for storage and broadcast: whole-frame slices, reference
+General-purpose video codecs expose tradeoffs that are poorly matched to this
+VR streaming design. H.264, HEVC and AV1 were built for storage and broadcast:
+whole-frame slices, reference
 lists, serial entropy coding, and fixed-function silicon whose latency and
 session limits nobody can change. A VR streamer knows things those codecs cannot
 see. It knows the head pose that produced the frame and the pose the next frame
@@ -39,36 +40,52 @@ ceilings on the PC. It is being built for [WiVRn NX](https://github.com/nerdrx/w
 
 ## 240 Hz experiment
 
-**240 Hz presentation is a stretch target, not an achieved frame rate.** The
-checkpoints are 90 → 120 → 144 → 180 → 240 Hz. On Pico, speed and clean motion
-take priority over fidelity at low bitrate. The experiment removes work on
-unchanged tiles and separates correction frequency from presentation frequency.
-Read the [direction and limitations](docs/240FPS.md) and the
-[Pico measurements, fixture and correctness results](bench/results/240fps-2026-09-07/README.md).
-The [first live atlas comparison](bench/results/240fps-2026-09-07/live-atlas/README.md)
-regressed new-source cadence (65.0 → 52.5/s median window rate), despite a cheaper
-display pass. Atlas remains opt-in. Actual headset screenshots and the limited
-resting-headset scene are included with the results. The captures contain
-multi-second render-report gaps; the result separates active-window medians from
-boundary-excluded wall-clock counts.
-The [patterned workload](bench/results/240fps-2026-09-07/live-atlas/patterned/README.md)
-exposed zero skipped tiles in the confirmation-enabled atlas path. A
-[confirmation-bypass diagnostic](bench/results/240fps-2026-09-07/live-atlas/no-confirm/README.md)
-restored tile reuse and reduced median decode GPU time from 17.9 to 6.05 ms,
-but fresh-source delivery fell and frames were withheld. This isolates work
-worth removing; it does not justify disabling reference confirmation.
-The [matched fixed-QP40 pace-45 comparison](bench/results/240fps-2026-09-07/live-atlas/fixed-qp40/README.md)
-held active new-source cadence at 45/s for both off and atlas; its wall-clock
-counts were 32.35 versus 32.43/s with uncontrolled gaps, so it verifies no
-causal gain. The ACK merge correction is in `8868b201`.
-The [pipeline-demand result](bench/results/240fps-2026-09-07/pipeline-demand/README.md)
-measures a 67–80 ms first all-skipped-frame setup cost falling to 2.9–5.3 ms
-when unused pipelines are created on demand. Clear omission and demand
-creation remove default dead work; dirty display views remain opt-in.
-WiVRn NX now counts new-source projection submissions by frame-ID high-water
-across windows. Desktop and Pico builds passed; the
-[live counter evidence](bench/results/240fps-2026-09-07/live-source/README.md)
-separates new-source cadence from render-loop iterations.
+**Goal.** Move codec and presentation work toward budgets of 90 → 120 → 144 →
+180 → 240 Hz by avoiding unchanged-tile work and separating correction frequency
+from presentation frequency. The current Pico experiments use its 90 Hz mode;
+240 Hz is a workload target for suitable hardware, not a claim about this panel. This is
+an experiment, not a 240 Hz result; the [full methods and limitations](docs/240FPS.md)
+define the fixtures and interpretation.
+
+**Method.** Custom WiVRn NX streamed a static checkerboard with animated cube
+edges to Pico. The matched live comparison changed only `atlas:auto` versus
+`atlas:off`, with fixed QP 40 and server pace 45. New-source counts are frame-ID
+high-water counts at projection submission. Active 2 s report windows and their
+wall-clock gaps are reported separately because the headset session pauses.
+
+**Results.** In the matched capture, active new-source medians were 45/s for both
+paths; decoder GPU medians were 13.9 ms (off) and 13.2 ms (atlas). Boundary-excluded
+wall counts were 32.35/s and 32.43/s, with gaps up to 6.842 s. The evidence shows
+no verified end-to-end gain and no physical-FPS claim.
+
+<figure>
+  <img src="bench/results/240fps-2026-09-07/live-atlas/fixed-qp40/off-awake-1.png" alt="Pico headset off-path checkerboard and cube scene" width="300">
+  <img src="bench/results/240fps-2026-09-07/live-atlas/fixed-qp40/atlas-awake-1.png" alt="Pico headset atlas-path checkerboard and cube scene" width="300">
+  <figcaption>Matched fixed-QP40 Pico captures, off (left) and atlas (right), showing the recorded scene rather than a quality proof. The <a href="bench/results/240fps-2026-09-07/live-atlas/fixed-qp40/fixed-qp40-window-results.png">window plot</a> shows every active report window.</figcaption>
+</figure>
+
+![GPU time and fresh-source delivery across all matched active reporting windows](bench/results/240fps-2026-09-07/live-atlas/fixed-qp40/fixed-qp40-window-results.png)
+
+The [initial atlas comparison](bench/results/240fps-2026-09-07/live-atlas/README.md)
+and [patterned workload](bench/results/240fps-2026-09-07/live-atlas/patterned/README.md)
+exposed the cost of confirmation and snapshot work. A confirmation-bypass run
+restored tile reuse and cut decoder GPU time, but withheld frames and reduced
+fresh-source delivery, so confirmation remains required. The ACK merge correction
+in `8868b201` shifts an older held window correctly across the 16-bit wire-id wrap.
+
+The [live copy measurement](bench/results/240fps-2026-09-07/live-atlas/copy-elision/README.md)
+fell from 0.56 to 0.29 ms after removing a redundant image copy. Separately,
+[cold standalone pipeline setup](bench/results/240fps-2026-09-07/pipeline-demand/README.md)
+fell from 67–80 to 2.9–5.3 ms when unused pipelines were created on demand. These remove default dead work; neither
+measurement establishes an end-to-end FPS gain. Dirty display views remain opt-in.
+
+[R16 copy validation](bench/results/240fps-2026-09-07/r16-copy/README.md) now passes the full-resolution host and Pico conformance
+fixture; the custom live renderer remains R8-only. On 2176×1088 stereo, warm
+frames 1–31 measured old-compute/direct-copy GPU medians of 1.095/0.755 ms and wall
+medians of 1.356/1.017 ms, with one dispatch removed. The first frame has no
+usable GPU timing, and the motion fixture failed with an invalid reference, so
+this is not a general performance claim. Some directional-INTRA fixtures still encounter a separate Pico decoder failure. Next work is to repeat matched off/atlas
+captures without session gaps and evaluate quality alongside cadence.
 
 <figure>
   <img src="docs/figures/240fps/atlas-reference-frame15.png" alt="Reference-decoded atlas frame 15, not a headset screenshot" width="320">
@@ -94,10 +111,12 @@ Measured on 2026-09-06; every figure has its fixture, settings, number and regen
 | ![Low-poly mode: source, transform, planar](docs/assets/lowpoly-panels.png) | ![Alternate-eye worst tile](docs/assets/alteye-worsttile.png) |
 | The planar tile mode at equal bytes: hard-edged flat facets instead of ringing and blocking. It costs 2 to 4 dB, so it is a look switch, not a free win. | Why alternate-eye update was rejected: the frame mean looks affordable while the synthesised eye's worst tile collapses to 11.5 dB. |
 | ![Snap-identity tile map](docs/assets/snapid-tilemap.png) | ![Adreno clock under decode](docs/assets/passb-clock.png) |
-| Snapping sub-sample warps to the exact identity: still tiles become free copies on the headset (0/289 to 289/289). | The Pico 4's GPU clock does not boost for a decode: 490 MHz idle and under load, every sample. |
+| Snapping sub-sample warps to the exact identity: still tiles become free copies on the headset (0/289 to 289/289). | In this historical Pico 4 capture, the GPU clock stayed at 490 MHz idle and under load; current thermal and clock state is not established. |
 
 ## Contents
 
+- [240 Hz experiment and live measurements](#240-hz-experiment)
+- [Gallery](#gallery)
 - [What it is, and what it is not](#what-it-is-and-what-it-is-not)
 - [Design principles](#design-principles)
 - [How the pipeline fits together](#how-the-pipeline-fits-together)
@@ -122,7 +141,7 @@ Measured on 2026-09-06; every figure has its fixture, settings, number and regen
 | Vendor-neutral on the PC, so no encoder session ceilings and no driver-version roulette. | Free of hardware decoders. The hybrid path deliberately uses the headset's licensed HEVC decoder as a base layer. |
 | Bit-exact by construction, with a CPU reference decoder as the normative spec. | Fast yet. The reference codec exists to be correct, not quick. |
 | Open, Apache-2.0, built from public-domain and expired coding tools. | Patent-cleared. A formal freedom-to-operate review is a Phase 3 gate, not a claim made today. |
-| A research project with a paper, a benchmark gate and measured exit criteria. | Shipping. Every number in `docs/` is a target until a report in `tools/quality/reports/` says otherwise. |
+| A research project with a paper, a benchmark gate and measured exit criteria. | Shipping. The measured evidence is scoped to its fixture, build and capture limitations. |
 
 <br>
 

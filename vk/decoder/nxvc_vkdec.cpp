@@ -244,6 +244,8 @@ struct nxvc_vk_decoder {
     uint32_t atlas_view = 0;   // nxvc_vkd_atlas_view
     bool atlas_view_initialized = false;
     bool atlas_view_needs_full = true;
+    bool atlas_r16_copy_supported = false;
+    bool atlas_view_copy_last = false;
     VkDescriptorSet dsetA = VK_NULL_HANDLE, dsetB = VK_NULL_HANDLE;
     std::map<uint32_t, VkPipeline> pipesA;  // lanes | ctx_stride<<8 | xfl<<16
     // key: (format << 40) | (dirSched << 32) | storeWords
@@ -542,7 +544,8 @@ void destroy_img(D *d, Img &i) {
     i = Img{};
 }
 
-nxvc_vkd_status make_img(D *d, Img &im, VkFormat fmt, uint32_t w, uint32_t h) {
+nxvc_vkd_status make_img(D *d, Img &im, VkFormat fmt, uint32_t w, uint32_t h,
+                         VkImageUsageFlags extra_usage = 0) {
     destroy_img(d, im);
     if (w == 0) w = 1;
     if (h == 0) h = 1;
@@ -554,7 +557,8 @@ nxvc_vkd_status make_img(D *d, Img &im, VkFormat fmt, uint32_t w, uint32_t h) {
     ii.arrayLayers = 1;
     ii.samples = VK_SAMPLE_COUNT_1_BIT;
     ii.tiling = VK_IMAGE_TILING_OPTIMAL;
-    ii.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    ii.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+               extra_usage;
     ii.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     VKTRY(d, vkCreateImage(d->dev, &ii, nullptr, &im.img));
     VkMemoryRequirements mr{};
@@ -2225,7 +2229,8 @@ void buffer_barrier(VkCommandBuffer cmd, VkPipelineStageFlags src,
     vkCmdPipelineBarrier(cmd, src, dst, 0, 1, &mb, 0, nullptr, 0, nullptr);
 }
 
-void image_to_general(VkCommandBuffer cmd, VkImage img, bool fresh = true) {
+void image_to_general(VkCommandBuffer cmd, VkImage img, bool fresh = true,
+                      bool from_copy = false) {
     VkImageMemoryBarrier ib{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
     ib.oldLayout = fresh ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_GENERAL;
     ib.newLayout = VK_IMAGE_LAYOUT_GENERAL;
@@ -2233,10 +2238,12 @@ void image_to_general(VkCommandBuffer cmd, VkImage img, bool fresh = true) {
     ib.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     ib.image = img;
     ib.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-    ib.srcAccessMask = fresh ? 0 : VK_ACCESS_SHADER_WRITE_BIT;
+    ib.srcAccessMask = fresh ? 0 : (from_copy ? VK_ACCESS_MEMORY_WRITE_BIT
+                                               : VK_ACCESS_SHADER_WRITE_BIT);
     ib.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
     vkCmdPipelineBarrier(cmd, fresh ? VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT
-                                    : VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                    : (from_copy ? VK_PIPELINE_STAGE_ALL_COMMANDS_BIT
+                                                 : VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT),
                          VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0,
                          nullptr, 1, &ib);
 }
@@ -3698,9 +3705,66 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
                                !dirty || dirty[0] != '1' ||
                                (full && full[0] == '1');
         if (full_view || !d->acoded.empty()) {
-            image_to_general(d->cmd, d->imgViewY.img, !d->atlas_view_initialized);
-            image_to_general(d->cmd, d->imgViewC.img, !d->atlas_view_initialized);
-            image_to_general(d->cmd, d->imgViewCr.img, !d->atlas_view_initialized);
+            const bool copy_r16 =
+                d->atlas_view == (uint32_t)NXVC_VKD_ATLAS_VIEW_R16 &&
+                d->atlas_r16_copy_supported && full_view &&
+                !std::getenv("NXVC_VKD_ATLAS_R16_COMPUTE");
+            if (copy_r16) {
+                // The normative atlas is packed u16 rows in bRing.  Its
+                // offsets/strides are already valid VkBufferImageCopy rows;
+                // copy the three planes directly into the R16 view images.
+                buffer_barrier(d->cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                               VK_PIPELINE_STAGE_TRANSFER_BIT,
+                               VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                               VK_ACCESS_TRANSFER_READ_BIT);
+                const VkImage images[3] = {d->imgViewY.img, d->imgViewC.img,
+                                            d->imgViewCr.img};
+                const uint32_t widths[3] = {
+                    (uint32_t)d->ringPlaneW[0] * d->si.eyes,
+                    (uint32_t)d->ringPlaneW[1] * d->si.eyes,
+                    (uint32_t)d->ringPlaneW[2] * d->si.eyes};
+                const uint32_t heights[3] = {d->si.height, d->si.ch, d->si.ch};
+                for (int p = 0; p < 3; ++p) {
+                    VkImageMemoryBarrier ib{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+                    ib.oldLayout = d->atlas_view_initialized
+                        ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_UNDEFINED;
+                    ib.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+                    ib.srcAccessMask = d->atlas_view_initialized
+                        ? VK_ACCESS_MEMORY_WRITE_BIT : 0;
+                    ib.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                    ib.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                    ib.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                    ib.image = images[p];
+                    ib.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+                    vkCmdPipelineBarrier(
+                        d->cmd,
+                        d->atlas_view_initialized ? VK_PIPELINE_STAGE_ALL_COMMANDS_BIT
+                                                   : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                        VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr,
+                        1, &ib);
+                    VkBufferImageCopy c{};
+                    c.bufferOffset = (VkDeviceSize)d->ringOff[p] * 2;
+                    c.bufferRowLength = (uint32_t)d->ringStride[p];
+                    c.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+                    c.imageExtent = {widths[p], heights[p], 1};
+                    vkCmdCopyBufferToImage(d->cmd, d->bRing.buf,
+                                           images[p], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                           1, &c);
+                    ib.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+                    ib.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+                    ib.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                    ib.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+                vkCmdPipelineBarrier(d->cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                         VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0,
+                                         nullptr, 0, nullptr, 1, &ib);
+                }
+            } else {
+            image_to_general(d->cmd, d->imgViewY.img, !d->atlas_view_initialized,
+                             d->atlas_view_copy_last);
+            image_to_general(d->cmd, d->imgViewC.img, !d->atlas_view_initialized,
+                             d->atlas_view_copy_last);
+            image_to_general(d->cmd, d->imgViewCr.img, !d->atlas_view_initialized,
+                             d->atlas_view_copy_last);
             buffer_barrier(d->cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                            VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
@@ -3734,6 +3798,8 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
                               (uint32_t)d->acoded.size());
                 ++dispatches;
             }
+            }
+            d->atlas_view_copy_last = copy_r16;
             d->atlas_view_initialized = true;
             d->atlas_view_needs_full = false;
         }
@@ -4047,6 +4113,14 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_set_atlas_view(
     const StreamInfo &si = d->si;
     const uint32_t VW = si.width * si.eyes, VH = si.height;
     const uint32_t VCW = si.cw * si.eyes, VCH = si.ch;
+    VkFormatProperties r16_props{};
+    vkGetPhysicalDeviceFormatProperties(d->phys, VK_FORMAT_R16_UINT,
+                                        &r16_props);
+    d->atlas_r16_copy_supported =
+        (r16_props.optimalTilingFeatures & VK_FORMAT_FEATURE_TRANSFER_DST_BIT) &&
+        (d->ringOff[0] % 2 == 0) && (d->ringOff[1] % 2 == 0) &&
+        (d->ringOff[2] % 2 == 0) && (d->ringStride[0] % 2 == 0) &&
+        (d->ringStride[1] % 2 == 0) && (d->ringStride[2] % 2 == 0);
     if (view == NXVC_VKD_ATLAS_VIEW_R8) {
         if ((st = make_img(d, d->imgViewY, VK_FORMAT_R8_UNORM, VW, VH)))
             return st;
@@ -4055,11 +4129,16 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_set_atlas_view(
         if ((st = make_img(d, d->imgViewCr, VK_FORMAT_R16_UINT, 1, 1)))
             return st;
     } else if (view == NXVC_VKD_ATLAS_VIEW_R16) {
-        if ((st = make_img(d, d->imgViewY, VK_FORMAT_R16_UINT, VW, VH)))
+        const VkImageUsageFlags copy_usage = d->atlas_r16_copy_supported
+            ? VK_IMAGE_USAGE_TRANSFER_DST_BIT : 0;
+        if ((st = make_img(d, d->imgViewY, VK_FORMAT_R16_UINT, VW, VH,
+                           copy_usage)))
             return st;
-        if ((st = make_img(d, d->imgViewC, VK_FORMAT_R16_UINT, VCW, VCH)))
+        if ((st = make_img(d, d->imgViewC, VK_FORMAT_R16_UINT, VCW, VCH,
+                           copy_usage)))
             return st;
-        if ((st = make_img(d, d->imgViewCr, VK_FORMAT_R16_UINT, VCW, VCH)))
+        if ((st = make_img(d, d->imgViewCr, VK_FORMAT_R16_UINT, VCW, VCH,
+                           copy_usage)))
             return st;
     } else {
         if ((st = make_img(d, d->imgViewY, VK_FORMAT_R8_UNORM, 1, 1)))
@@ -4073,6 +4152,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_set_atlas_view(
     d->atlas_view = (uint32_t)view;
     d->atlas_view_initialized = false;
     d->atlas_view_needs_full = true;
+    d->atlas_view_copy_last = false;
     return NXVC_VKD_OK;
 }
 

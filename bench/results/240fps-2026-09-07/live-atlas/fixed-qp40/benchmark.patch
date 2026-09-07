@@ -1,0 +1,107 @@
+diff --git a/BENCHMARK.md b/BENCHMARK.md
+new file mode 100644
+index 0000000..d7f5684
+--- /dev/null
++++ b/BENCHMARK.md
+@@ -0,0 +1,16 @@
++# View scene benchmark
++
++Run the built sample with `NXWARP_BENCH_VIEW_SCENE=1` to draw a 3x5 grid of
++18 cm cubes 2.0–2.35 m in front of the current located view pose. Positions
++and yaw animate from predicted display time; the same world-space anchor is
++used for both eyes. The environment gate suppresses HelloXr's default
++reference-space and hand cubes so the scene stays controlled.
++
++The view-relative anchor keeps the geometry in gaze when the headset is resting
++face down, while `xrLocateViews` and predicted display timing remain genuine.
++
++Set `NXWARP_BENCH_PATTERN=1` to add an opt-in synthetic high-contrast 8x8
++checkerboard over each submitted view subimage. This is useful for codec/input
++visibility checks and is separate from the moving-cube scene.
++Build used the cached/system OpenXR, OpenGL, and glslc dependencies in
++`hello-xr-bench-build`; no launch or device deployment is part of this setup.
+diff --git a/src/tests/hello_xr/graphicsplugin_vulkan.cpp b/src/tests/hello_xr/graphicsplugin_vulkan.cpp
+index 7e68c2d..690ae85 100644
+--- a/src/tests/hello_xr/graphicsplugin_vulkan.cpp
++++ b/src/tests/hello_xr/graphicsplugin_vulkan.cpp
+@@ -876,6 +876,30 @@ struct VulkanGraphicsPlugin : public IGraphicsPlugin {
+         VkClearRect clearRect{renderArea, 0, 1};
+         vkCmdClearAttachments(m_cmdBuffer.buf, 2, &clearAttachments[0], 1, &clearRect);
+ 
++        // Optional codec benchmark marker: a high-contrast 8x8 checkerboard fills
++        // the submitted subimage, independent of camera/view placement.
++        if (std::getenv("NXWARP_BENCH_PATTERN") != nullptr) {
++            const uint32_t cells = 8;
++            for (uint32_t y = 0; y < cells; ++y) {
++                for (uint32_t x = 0; x < cells; ++x) {
++                    VkClearValue color{};
++                    const bool bright = ((x + y) & 1u) != 0;
++                    color.color.float32[0] = bright ? 1.0f : 0.02f;
++                    color.color.float32[1] = bright ? 0.05f : 0.02f;
++                    color.color.float32[2] = bright ? 0.02f : 1.0f;
++                    color.color.float32[3] = 1.0f;
++                    const int32_t left = r.offset.x + int32_t(x * uint32_t(r.extent.width) / cells);
++                    const int32_t top = r.offset.y + int32_t(y * uint32_t(r.extent.height) / cells);
++                    const int32_t right = r.offset.x + int32_t((x + 1) * uint32_t(r.extent.width) / cells);
++                    const int32_t bottom = r.offset.y + int32_t((y + 1) * uint32_t(r.extent.height) / cells);
++                    // imageArrayIndex is already part of the bound image view.
++                    const VkClearRect cell{VkRect2D{{left, top}, {uint32_t(right - left), uint32_t(bottom - top)}}, 0, 1};
++                    const VkClearAttachment attachment{VK_IMAGE_ASPECT_COLOR_BIT, 0, color};
++                    vkCmdClearAttachments(m_cmdBuffer.buf, 1, &attachment, 1, &cell);
++                }
++            }
++        }
++
+         // Bind index and vertex buffers
+         vkCmdBindIndexBuffer(m_cmdBuffer.buf, m_drawBuffer.idx.buf, 0, VK_INDEX_TYPE_UINT16);
+ 
+diff --git a/src/tests/hello_xr/openxr_program.cpp b/src/tests/hello_xr/openxr_program.cpp
+index 554a166..1bd1656 100644
+--- a/src/tests/hello_xr/openxr_program.cpp
++++ b/src/tests/hello_xr/openxr_program.cpp
+@@ -1003,10 +1003,44 @@ struct OpenXrProgram : IOpenXrProgram {
+             depthInfos.resize(viewCountOutput);
+         }
+ 
+-        // For each locatable space that we want to visualize, render a 25cm cube.
++        const bool benchViewScene = std::getenv("NXWARP_BENCH_VIEW_SCENE") != nullptr;
+         std::vector<Cube> cubes;
+ 
++        // A deterministic, view-relative scene for headset benchmarks.  The anchor is
++        // the located left-eye pose, so it remains in gaze while the headset rests
++        // in any orientation; both views render the same world-space cubes.
++        if (benchViewScene) {
++            const XrPosef anchor = m_views[0].pose;
++            static const XrTime epoch = predictedDisplayTime;
++            const float t = static_cast<float>(double(predictedDisplayTime - epoch) * 1.0e-9);
++            const auto rotate = [](const XrQuaternionf& q, XrVector3f v) {
++                const XrVector3f u{q.x, q.y, q.z};
++                const float s = q.w;
++                const float dotuv = u.x * v.x + u.y * v.y + u.z * v.z;
++                const float dotuu = u.x * u.x + u.y * u.y + u.z * u.z;
++                const XrVector3f cross{u.y * v.z - u.z * v.y, u.z * v.x - u.x * v.z, u.x * v.y - u.y * v.x};
++                return XrVector3f{2.0f * dotuv * u.x + (s * s - dotuu) * v.x + 2.0f * s * cross.x,
++                                  2.0f * dotuv * u.y + (s * s - dotuu) * v.y + 2.0f * s * cross.y,
++                                  2.0f * dotuv * u.z + (s * s - dotuu) * v.z + 2.0f * s * cross.z};
++            };
++            for (int row = -1; row <= 1; ++row) {
++                for (int col = -2; col <= 2; ++col) {
++                    const float phase = t * 0.8f + float(row * 3 + col) * 0.17f;
++                    const XrVector3f local{float(col) * 0.32f + 0.08f * std::sin(phase),
++                                           float(row) * 0.32f + 0.08f * std::cos(phase * 1.13f),
++                                           -2.0f - 0.35f * float((row + col + 3) & 1)};
++                    XrPosef pose = anchor;
++                    const XrVector3f world = rotate(anchor.orientation, local);
++                    pose.position = {anchor.position.x + world.x, anchor.position.y + world.y,
++                                     anchor.position.z + world.z};
++                    pose.orientation = Math::Pose::RotateCCWAboutYAxis(phase * 0.4f, {0, 0, 0}).orientation;
++                    cubes.push_back(Cube{pose, {0.18f, 0.18f, 0.18f}});
++                }
++            }
++        }
++
+         for (XrSpace visualizedSpace : m_visualizedSpaces) {
++            if (benchViewScene) break;
+             XrSpaceLocation spaceLocation{XR_TYPE_SPACE_LOCATION};
+             res = xrLocateSpace(visualizedSpace, m_appSpace, predictedDisplayTime, &spaceLocation);
+             CHECK_XRRESULT(res, "xrLocateSpace");
