@@ -1,0 +1,287 @@
+{
+  "binary": "hello_xr",
+  "apk": "atlas-native-resolution.apk",
+  "scene": "checkerboard + animated cube grid",
+  "optin": {
+    "measure.log": "c761a3319357e06b87cbf7b6533975f038536b091ca04320058a19d17fefab18",
+    "server.log": "b6067263c11ed397f17bd3133b5c775d7a8d0cf383c4e3423a7a6f5f67ebd0c1",
+    "screen-06.png": "e28defb517a4e7c3eaa0e03b12840d0b8a06efcbed658eb348b53955df52df93",
+    "screen-49.png": "366b0917a00b57027d3815aa0bfd0dae02adefc5bd96fb067cb42ad58d4433bc"
+  },
+  "optout": {
+    "measure.log": "e793670902821c87250c430e7361e78c15fec26fd2b239288a6c7572165377d8",
+    "server.log": "14bb21222297face2f4d65163e35f9a64c5e47c0836f6b9932fbdada6745b61a",
+    "screen-06.png": "894c80790c129280d3f9bff2e4607b9ea0a6bcfe6e86b92320543c2469f8afa4",
+    "screen-49.png": "67128f17cc6460476ce603f6e1abfc9a17088ef7b48679c89b8a4c9a94f5e74a"
+  },
+  "summary": {
+    "off": {
+      "files": {
+        "scene": "pattern2-optout-measure.log",
+        "server": "pattern2-optout-server.log",
+        "scene_sha256": "e793670902821c87250c430e7361e78c15fec26fd2b239288a6c7572165377d8",
+        "server_sha256": "14bb21222297face2f4d65163e35f9a64c5e47c0836f6b9932fbdada6745b61a"
+      },
+      "render_iterations": {
+        "count": 22,
+        "p50": 129.0,
+        "p95": 154.0,
+        "zeros": 0,
+        "outliers": []
+      },
+      "submitted_layers": {
+        "count": 22,
+        "p50": 128.5,
+        "p95": 154,
+        "zeros": 0,
+        "outliers": []
+      },
+      "display_gpu_ms": {
+        "count": 22,
+        "p50": 4.0,
+        "p95": 4.8,
+        "zeros": 0,
+        "outliers": []
+      },
+      "decoder_gpu_ms": {
+        "count": 28,
+        "p50": 13.2,
+        "p95": 21.2,
+        "zeros": 0,
+        "outliers": []
+      },
+      "decoder_wall_ms": {
+        "count": 28,
+        "p50": 15.75,
+        "p95": 26.1,
+        "zeros": 0,
+        "outliers": []
+      },
+      "decoder_passA_ms": {
+        "count": 28,
+        "p50": 2.7,
+        "p95": 5.6,
+        "zeros": 0,
+        "outliers": []
+      },
+      "decoder_passB_ms": {
+        "count": 28,
+        "p50": 10.100000000000001,
+        "p95": 15.7,
+        "zeros": 0,
+        "outliers": []
+      },
+      "new_source": {
+        "count": 22,
+        "p50": 78.5,
+        "p95": 91,
+        "zeros": 0,
+        "outliers": []
+      },
+      "new_source_per_s": {
+        "count": 22,
+        "p50": 39.25,
+        "p95": 45.5,
+        "zeros": 0,
+        "outliers": []
+      },
+      "server_reported_window_s": [
+        2.6,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.1,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0
+      ],
+      "startup_excluded": "only if caller removes the first explicit window"
+    },
+    "auto": {
+      "files": {
+        "scene": "pattern2-optin-measure.log",
+        "server": "pattern2-optin-server.log",
+        "scene_sha256": "c761a3319357e06b87cbf7b6533975f038536b091ca04320058a19d17fefab18",
+        "server_sha256": "b6067263c11ed397f17bd3133b5c775d7a8d0cf383c4e3423a7a6f5f67ebd0c1"
+      },
+      "render_iterations": {
+        "count": 24,
+        "p50": 177.0,
+        "p95": 178.0,
+        "zeros": 0,
+        "outliers": []
+      },
+      "submitted_layers": {
+        "count": 24,
+        "p50": 177.0,
+        "p95": 178,
+        "zeros": 0,
+        "outliers": []
+      },
+      "display_gpu_ms": {
+        "count": 24,
+        "p50": 5.9,
+        "p95": 6.0,
+        "zeros": 0,
+        "outliers": []
+      },
+      "decoder_gpu_ms": {
+        "count": 29,
+        "p50": 5.0,
+        "p95": 5.1,
+        "zeros": 0,
+        "outliers": []
+      },
+      "decoder_wall_ms": {
+        "count": 29,
+        "p50": 9.9,
+        "p95": 10.4,
+        "zeros": 0,
+        "outliers": []
+      },
+      "decoder_passA_ms": {
+        "count": 29,
+        "p50": 0.6,
+        "p95": 0.6,
+        "zeros": 0,
+        "outliers": []
+      },
+      "decoder_passB_ms": {
+        "count": 29,
+        "p50": 4.5,
+        "p95": 4.5,
+        "zeros": 0,
+        "outliers": []
+      },
+      "new_source": {
+        "count": 24,
+        "p50": 164.0,
+        "p95": 167,
+        "zeros": 0,
+        "outliers": []
+      },
+      "new_source_per_s": {
+        "count": 24,
+        "p50": 82.0,
+        "p95": 83.5,
+        "zeros": 0,
+        "outliers": []
+      },
+      "server_reported_window_s": [
+        3.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        2.0
+      ],
+      "startup_excluded": "only if caller removes the first explicit window"
+    }
+  },
+  "build_hashes": {
+    "source_file_sha256": "f8d92bbcbb29922f9b276548ea104e9272c1983700e7dbc25bb1d5a14af72829",
+    "encoder_binary_sha256": "e5a1d0071a6a190cc7aaa0040649bbd487e81ae1f2f21fbd4f0f0b41a54570c2",
+    "server_binary_sha256": "e220c9c86e465a2363439d0ec4070a524286d87856326234d8f068f73a99d8b6",
+    "apk_sha256": "1a484ee3a88c57ac74402ba8d7a3a127b2d825c8e03e9b46bb473d560b6aced3"
+  },
+  "config": {
+    "encoder": {
+      "encoder": "nxwarp",
+      "codec": "nxwarp",
+      "options": {
+        "backend": "vk",
+        "inter": "true",
+        "intra-period": "180",
+        "rc": "fixed",
+        "min-qp": "22",
+        "max-qp": "40",
+        "coded-vectors": "none",
+        "entropy": "auto",
+        "stereo-frame": "auto",
+        "atlas": "auto",
+        "qp": "40",
+        "pace": "auto"
+      }
+    },
+    "quad-layers": false
+  }
+}
