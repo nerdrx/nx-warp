@@ -153,6 +153,10 @@ struct VkEncoder::Impl {
     int32_t off_min_q6 = -1, off_max_q6 = -1;
     double off_sum_q6 = 0;
     uint32_t off_n = 0;
+    /* Opt-in diagnosis of the first ATLAS admission gate per eye. */
+    bool admission_stats = false;
+    uint64_t admission[2][8] = {};
+    uint32_t admission_frames = 0;
     int64_t cur_pred_fn = -1;
     WarpParams warp{};
     int wpred_stride = 0;
@@ -399,7 +403,10 @@ static const VkBufferUsageFlags kDevUsage =
      * all created with one usage mask, and the bit is free on the rest. */
     VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
 
-VkEncoder::VkEncoder() : p_(new Impl) {}
+VkEncoder::VkEncoder() : p_(new Impl)
+{
+    p_->admission_stats = std::getenv("NXVC_VKE_ATLAS_ADMISSION_STATS") != nullptr;
+}
 VkEncoder::~VkEncoder() {
     if (p_ && p_->ok) {
         vkDeviceWaitIdle(p_->dev.handle());
@@ -1329,6 +1336,16 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
                                  d.age_since_intra[t] >= period)
                               : refresh_due(t, frame_number, period));
             bool eligible = ref_slot >= 0 && !missing && !due;
+            const unsigned admission_eye = (d.admission_stats && d.atlas)
+                                                ? d.atlas_geom.eye_of(t) : 0;
+            auto admission_reject = [&](unsigned gate) {
+                if (d.admission_stats && admission_eye < 2) ++d.admission[admission_eye][gate];
+            };
+            if (d.admission_stats && d.atlas) {
+                if (ref_slot < 0) admission_reject(6); /* no reference */
+                else if (missing) admission_reject(5); /* forced refresh */
+                else if (due) admission_reject(3); /* refresh due */
+            }
             /* Under ATLAS eligibility is PER TILE and it is the whole of the
              * loss story ([SYN] 13.12.4: a tile with mode != INTRA whose own
              * atlas entry is invalid is BITSTREAM).  Three things can make an
@@ -1352,13 +1369,19 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
              *     a question that has already been answered. */
             if (eligible && d.atlas) {
                 eligible = d.atlas_tab.valid(t);
+                if (!eligible) admission_reject(0); /* invalid */
                 if (eligible && d.heldst.confirmation_required()) {
                     const uint32_t src = d.atlas_tab.e[t].src_frame;
                     const bool aged =
                         d.heldst.any &&
                         d.heldst.newest + 1u > (uint32_t)HeldState::kDepth &&
                         src < d.heldst.newest + 1u - (uint32_t)HeldState::kDepth;
-                    if (!aged && !d.heldst.confirms(src)) eligible = false;
+                    if (aged) {
+                        admission_reject(2); /* aged */
+                    } else if (!d.heldst.confirms(src)) {
+                        eligible = false;
+                        admission_reject(1); /* unconfirmed */
+                    }
                 }
                 /* ADR-0029's displacement bound, off unless a margin is set.
                  * A skipped tile gathers `d` samples outside its own position,
@@ -1376,9 +1399,12 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
                     if (disp >= (double)d.cfg.atlas_disp_margin) {
                         eligible = false;
                         ++d.disp_forced;
+                        admission_reject(7); /* displacement */
                     }
                 }
             }
+            if (d.admission_stats && d.atlas && eligible && ref_slot >= 0)
+                admission_reject(4); /* admitted before E1c may overturn it */
             /* [SYN] 13.12.6, and it is a FORCED skip rather than a refused
              * one.  A position whose entry already holds `src_frame >= N` has
              * been overtaken -- in practice by a base patch carrying a
@@ -2096,6 +2122,20 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
         /* 13.12.11 step 1 warps every position; an ATLAS frame warps none. */
         r.assembled = (r.mode == NXVC_VKE_FRAME_PICTURE) ? d.ntiles : 0u;
         /* r.bytes is filled after the frame is packed; see below. */
+    }
+
+    if (d.admission_stats && d.atlas && ++d.admission_frames >= 60) {
+        std::fprintf(stderr, "nxvc atlas admission/eye (first rejection; aged allowed): L invalid %llu unconfirmed %llu aged %llu refresh %llu admitted %llu missing %llu no-ref %llu displacement %llu; R invalid %llu unconfirmed %llu aged %llu refresh %llu admitted %llu missing %llu no-ref %llu displacement %llu\n",
+                (unsigned long long)d.admission[0][0], (unsigned long long)d.admission[0][1],
+                (unsigned long long)d.admission[0][2], (unsigned long long)d.admission[0][3],
+                (unsigned long long)d.admission[0][4], (unsigned long long)d.admission[0][5],
+                (unsigned long long)d.admission[0][6], (unsigned long long)d.admission[0][7],
+                (unsigned long long)d.admission[1][0], (unsigned long long)d.admission[1][1],
+                (unsigned long long)d.admission[1][2], (unsigned long long)d.admission[1][3],
+                (unsigned long long)d.admission[1][4], (unsigned long long)d.admission[1][5],
+                (unsigned long long)d.admission[1][6], (unsigned long long)d.admission[1][7]);
+        std::memset(d.admission, 0, sizeof d.admission);
+        d.admission_frames = 0;
     }
 
     /* The AGE form of the cap needs the modes this frame actually coded, so

@@ -711,6 +711,17 @@ trellis. `--no-rdo` is the reference configuration this pipeline reproduces.
 
 ## Snapping the warp to the identity
 
+## ATLAS admission profiling
+
+Set `NXVC_VKE_ATLAS_ADMISSION_STATS=1` to print a per-eye ATLAS admission
+census every 60 frames. The counters report the first rejection gate
+(invalid entry, unconfirmed source, refresh due, missing receipt, no reference,
+or displacement) and tiles admitted before the GPU mode decision. `aged` is
+reported separately as an allowed pass and therefore overlaps `admitted`.
+`missing` means the received-tile map requested a refresh; it is not, by itself,
+proof of network loss. The option is read once when the Vulkan encoder is
+created and changes no predictor or stream output.
+
 `--snap-identity N` (`nxe::Config::snap_identity`, N in 1/16 luma samples,
 0 = off) replaces a nearly-still warp with the **identity** matrix. Encoder
 side, no syntax: an identity `warp_ext` is an ordinary matrix -- it is what a
