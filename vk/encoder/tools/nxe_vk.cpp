@@ -1043,6 +1043,9 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
     };
     nxe_frame_params fp = f.fp;
     fp.frame_number = frame_number;
+    /* frame_params is reused between encodes; bit 5 is the per-frame PICTURE
+     * declaration and must not survive an ATLAS decision on the next frame. */
+    fp.frame_flags &= ~32u;
 
     /* ---- the inter frame's own parameters, decided on the host before a
      * single dispatch: which ring slot this frame predicts from, whether
