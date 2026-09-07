@@ -8,7 +8,7 @@ def parse(p):
   v=[float(x) for x in re.findall(pat,t,re.I)]; return statistics.median(v) if v else None
  return {'decoder_wall_ms':med(r'nxwarp\[\d+\]: \d+ frames in .*? wall ([\d.]+) ms'),
  'decoder_gpu_ms':med(r'nxwarp\[\d+\]: .*? gpu ([\d.]+) ms'),
- 'copy_gpu_ms':med(r'copy gpu ([\d.]+) ms'),
+ 'copy_gpu_ms':med(r'copy gpu ([\d.]+) \+ queue'),
  'render_gpu_ms':med(r"own GPU pass ([\d.]+) ms"),
  'render_windows':len(re.findall(r'render: \d+ iterations in [\d.]+ s',t)),
  'active_source_per_s': (statistics.median([int(n)/float(d) for d,n in re.findall(r'render: \d+ iterations in ([\d.]+) s.*?, (\d+) new-source',t,re.I)]) if re.findall(r'render: \d+ iterations in ([\d.]+) s.*?, (\d+) new-source',t,re.I) else None)}
