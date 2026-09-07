@@ -1,12 +1,13 @@
 # Exploratory pace comparison
 
-This is an exploratory capture, not a matched optimization benchmark. The
+This is an exploratory capture, not a matched optimization benchmark.
 The captures are **pace45** (the earlier `live-r8-full-q40-repeat`) and
 **pace60** (`live-r8-full-q40-pace60`); both use atlas auto mode. Each preserves its raw
 scene, server, measure, startup, manifest, configuration, and screenshots.
 
 The observed active new-source medians were 45.0/s for pace45 and
-36.25/s for pace60. Decoder GPU median was 8.8 ms in both captures.
+36.25/s for pace60. The median of reported decoder GPU window means was 8.8 ms in both captures;
+this is not a per-frame latency percentile.
 The report-span source rates were 37.04/s and 31.28/s respectively. These
 runs were not matched for thermal state or capture duration, and do not
 support a 60 FPS claim. Screenshots are retained for visual inspection only;
