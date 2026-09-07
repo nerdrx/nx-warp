@@ -1,0 +1,216 @@
+diff --git a/client/decoder/nxwarp/nxwarp_decoder.cpp b/client/decoder/nxwarp/nxwarp_decoder.cpp
+index bb757531..a6076836 100644
+--- a/client/decoder/nxwarp/nxwarp_decoder.cpp
++++ b/client/decoder/nxwarp/nxwarp_decoder.cpp
+@@ -663,6 +663,12 @@ bool nxwarp_decoder::on_stream_header(std::span<const uint8_t> header)
+ 		return false;
+ 	}
+ 
++#ifdef NXVC_VKD_ATLAS_BORROWED_TARGET
++	const char * direct = std::getenv("NXWARP_ATLAS_DIRECT");
++	atlas_direct_targets = atlas_view_active && si.bit_depth == 8 && si.chroma == 0 &&
++	                       direct && direct[0] == '1';
++	spdlog::info("nxwarp[{}]: direct atlas targets {}", stream_index, atlas_direct_targets);
++#endif
+ 	if (atlas_view_active)
+ 		spdlog::info("nxwarp[{}]: real R8 atlas display with per-frame GPU snapshots", stream_index);
+ 	spdlog::info("nxwarp[{}]: {}x{} per eye, {} {}, on {}, {} x {} tiles, {} bytes per tile",
+@@ -1327,6 +1333,33 @@ void nxwarp_decoder::close_frame(inflight_frame & f)
+ 	jobs.push(std::move(job));
+ }
+ 
++void nxwarp_decoder::prepare_atlas_images(image & item, const nxvc_vkd_atlas_images & source)
++{
++	for (int p = 0; p < 2; ++p)
++	{
++		if (item.atlas_snapshot.width[p] == source.width[p] &&
++		    item.atlas_snapshot.height[p] == source.height[p] &&
++		    item.atlas_snapshot.format[p] == source.format[p]) continue;
++		item.atlas_views[p] = nullptr;
++		item.atlas_planes[p] = image_allocation(device, vk::ImageCreateInfo{
++		    .imageType = vk::ImageType::e2D, .format = vk::Format(source.format[p]),
++		    .extent = {source.width[p], source.height[p], 1},
++		    .mipLevels = 1, .arrayLayers = 1, .tiling = vk::ImageTiling::eOptimal,
++		    .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled |
++		        (atlas_direct_targets ? vk::ImageUsageFlagBits::eStorage : vk::ImageUsageFlags{})},
++		    {.usage = VMA_MEMORY_USAGE_AUTO}, "nxwarp atlas snapshot");
++		item.atlas_views[p] = vk::raii::ImageView(device, vk::ImageViewCreateInfo{
++		    .image = item.atlas_planes[p], .viewType = vk::ImageViewType::e2D,
++		    .format = vk::Format(source.format[p]),
++		    .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1}});
++		item.atlas_snapshot.image[p] = VkImage(vk::Image(item.atlas_planes[p]));
++		item.atlas_snapshot.view[p] = VkImageView(*item.atlas_views[p]);
++		item.atlas_snapshot.format[p] = source.format[p];
++		item.atlas_snapshot.width[p] = source.width[p];
++		item.atlas_snapshot.height[p] = source.height[p];
++	}
++}
++
+ void nxwarp_decoder::decode_unit(decode_job & job)
+ {
+ 	// The frame is handed to the decoder HERE -- off the bounded queue and onto the
+@@ -1381,6 +1414,41 @@ void nxwarp_decoder::decode_unit(decode_job & job)
+ 	const auto t_wait0 = std::chrono::steady_clock::now();
+ 	nxvc_vk_decoder_wait(nxvc, UINT64_MAX);
+ 	const auto t_decode0 = std::chrono::steady_clock::now();
++	bool direct_target = false;
++	auto release_reserved = [&](image * reserved) {
++#ifdef NXVC_VKD_ATLAS_BORROWED_TARGET
++		if (direct_target)
++		{
++			nxvc_vk_decoder_wait(nxvc, UINT64_MAX);
++			(void)nxvc_vk_decoder_set_atlas_borrowed_target(nxvc, nullptr);
++		}
++#endif
++		reserved->free = true;
++	};
++	std::unique_ptr<image, decltype(release_reserved)> reserved(nullptr, release_reserved);
++#ifdef NXVC_VKD_ATLAS_BORROWED_TARGET
++	if (atlas_direct_targets)
++	{
++		if (nxvc_vk_decoder_set_atlas_borrowed_target(nxvc, nullptr) != NXVC_VKD_OK)
++		{
++			++frames_dropped_codec;
++			host.report_frame_not_held(stream_index, job.frame_id, from_headset::nxwarp_frame_not_held::reason::refused);
++			return;
++		}
++		nxvc_vkd_atlas_images source{};
++		if (nxvc_vk_decoder_atlas_images(nxvc, &source) == NXVC_VKD_OK && source.image[0] && source.image[1])
++		{
++			reserved.reset(get_free());
++			if (reserved)
++			{
++				prepare_atlas_images(*reserved, source);
++				direct_target = nxvc_vk_decoder_set_atlas_borrowed_target(nxvc, &reserved->atlas_snapshot) == NXVC_VKD_OK;
++				if (!direct_target)
++					reserved.reset();
++			}
++		}
++	}
++#endif
+ 	auto t_qlocked = t_decode0;
+ 	host.with_queue(stream_index, [&](vk::Queue) {
+ 		// Inside the lambda, so it is after the lock was taken: everything before it
+@@ -1481,7 +1549,7 @@ void nxwarp_decoder::decode_unit(decode_job & job)
+ 		return;
+ 	}
+ 
+-	auto item = get_free();
++	auto item = reserved ? reserved.get() : get_free();
+ 	const auto t_got_free = std::chrono::steady_clock::now();
+ 	if (not item)
+ 	{
+@@ -1504,28 +1572,7 @@ void nxwarp_decoder::decode_unit(decode_job & job)
+ 	// while the codec updates its single mutable atlas for the next frame.
+ 	if (atlas_view_active)
+ 	{
+-		for (int p = 0; p < 2; ++p)
+-		{
+-			if (item->atlas_snapshot.width[p] == atlas_images.width[p] &&
+-			    item->atlas_snapshot.height[p] == atlas_images.height[p] &&
+-			    item->atlas_snapshot.format[p] == atlas_images.format[p]) continue;
+-			item->atlas_views[p] = nullptr;
+-			item->atlas_planes[p] = image_allocation(device, vk::ImageCreateInfo{
+-			    .imageType = vk::ImageType::e2D, .format = vk::Format(atlas_images.format[p]),
+-			    .extent = {atlas_images.width[p], atlas_images.height[p], 1},
+-			    .mipLevels = 1, .arrayLayers = 1, .tiling = vk::ImageTiling::eOptimal,
+-			    .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled},
+-			    {.usage = VMA_MEMORY_USAGE_AUTO}, "nxwarp atlas snapshot");
+-			item->atlas_views[p] = vk::raii::ImageView(device, vk::ImageViewCreateInfo{
+-			    .image = item->atlas_planes[p], .viewType = vk::ImageViewType::e2D,
+-			    .format = vk::Format(atlas_images.format[p]),
+-			    .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1}});
+-			item->atlas_snapshot.image[p] = VkImage(vk::Image(item->atlas_planes[p]));
+-			item->atlas_snapshot.view[p] = VkImageView(*item->atlas_views[p]);
+-			item->atlas_snapshot.format[p] = atlas_images.format[p];
+-			item->atlas_snapshot.width[p] = atlas_images.width[p];
+-			item->atlas_snapshot.height[p] = atlas_images.height[p];
+-		}
++		prepare_atlas_images(*item, atlas_images);
+ 		if (item->atlas_table_size != atlas_table_bytes)
+ 		{
+ 			item->atlas_table = buffer_allocation(device, vk::BufferCreateInfo{
+@@ -1625,6 +1672,16 @@ void nxwarp_decoder::decode_unit(decode_job & job)
+ 	{
+ 		for (int p = 0; p < 2; ++p)
+ 		{
++			if (direct_target)
++			{
++				const vk::ImageMemoryBarrier ready{
++				    .srcAccessMask = vk::AccessFlagBits::eShaderWrite, .dstAccessMask = vk::AccessFlagBits::eShaderRead,
++				    .oldLayout = vk::ImageLayout::eGeneral, .newLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
++				    .image = item->atlas_planes[p],
++				    .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1}};
++				cmd.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader, vk::PipelineStageFlagBits::eAllCommands, {}, {}, {}, ready);
++				continue;
++			}
+ 			std::array<vk::ImageMemoryBarrier, 2> barriers{
+ 			    vk::ImageMemoryBarrier{.srcAccessMask = vk::AccessFlagBits::eShaderWrite,
+ 			        .dstAccessMask = vk::AccessFlagBits::eTransferRead,
+@@ -1701,6 +1758,7 @@ void nxwarp_decoder::decode_unit(decode_job & job)
+ 	        *item->semaphore,
+ 	        item->semaphore_val,
+ 	        item->free);
++	(void)reserved.release(); // The blit handle now owns the pool reservation.
+ 	if (atlas_table_buffer != VK_NULL_HANDLE && atlas_table_bytes != 0)
+ 	{
+ 		handle->set_atlas(item->atlas_snapshot, item->atlas_table, item->atlas_table_size);
+@@ -1718,7 +1776,7 @@ void nxwarp_decoder::decode_unit(decode_job & job)
+ 	const auto t_recorded = std::chrono::steady_clock::now();
+ 	device.resetFences(*fence);
+ 	host.with_queue(stream_index, [&](vk::Queue queue) {
+-		const vk::PipelineStageFlags wait_stage = vk::PipelineStageFlagBits::eTransfer;
++		const vk::PipelineStageFlags wait_stage = direct_target ? vk::PipelineStageFlagBits::eAllCommands : vk::PipelineStageFlagBits::eTransfer;
+ 		const uint64_t signal_val = ++item->semaphore_val;
+ 		std::array<vk::Semaphore, 1> wait{wait_sem};
+ 		std::array<vk::Semaphore, 1> signal{*item->semaphore};
+@@ -1894,6 +1952,7 @@ void nxwarp_decoder::decode_unit(decode_job & job)
+ 		if (atlas_view_active)
+ 		{
+ 			prof.atlas_dispatches += st.dispatches;
++			prof.atlas_direct_frames += direct_target ? 1 : 0;
+ #ifdef NXVC_VK_DECODER_ATLAS_STATS
+ 			// PICTURE assembly covers every tile; ATLAS frames assemble none.
+ 			if (st.tiles_assembled > 0)
+@@ -2039,10 +2098,10 @@ void nxwarp_decoder::decode_unit(decode_job & job)
+ 			if (atlas_view_active)
+ 			{
+ 				spdlog::info("nxwarp[{}] atlas: frames {}, atlas {}, picture {}, avg dispatches {:.1f}, "
+-				             "avg assembled {:.1f}, avg valid {:.1f}",
++				             "avg assembled {:.1f}, avg valid {:.1f}, direct targets {}",
+ 				             stream_index, prof.n, prof.atlas_frames, prof.picture_frames,
+ 				             prof.atlas_dispatches / n, prof.atlas_tiles_assembled / n,
+-				             prof.atlas_entries_valid / n);
++				             prof.atlas_entries_valid / n, prof.atlas_direct_frames);
+ 			}
+ 
+ 			// The same window, republished for stats(): the GUI shows these under the
+diff --git a/client/decoder/nxwarp/nxwarp_decoder.h b/client/decoder/nxwarp/nxwarp_decoder.h
+index 339c05a0..8da64b3d 100644
+--- a/client/decoder/nxwarp/nxwarp_decoder.h
++++ b/client/decoder/nxwarp/nxwarp_decoder.h
+@@ -148,6 +148,7 @@ class nxwarp_decoder : public decoder
+ 	bool host_sync = false;
+ 	// Requested only after the stream header confirms the negotiated ATLAS tool.
+ 	bool atlas_view_active = false;
++	bool atlas_direct_targets = false;
+ 	// Rolling per-stream timing, reported every two seconds (decode_unit).
+ 	struct
+ 	{
+@@ -207,7 +208,7 @@ class nxwarp_decoder : public decoder
+ 		// clipped rather than believed (see decode_us_report).
+ 		uint64_t stalls = 0;
+ 		// Atlas-only mode/cost counters, reported separately from ordinary decode timing.
+-		uint64_t atlas_frames = 0, picture_frames = 0;
++		uint64_t atlas_frames = 0, picture_frames = 0, atlas_direct_frames = 0;
+ 		double atlas_tiles_assembled = 0, atlas_entries_valid = 0, atlas_dispatches = 0;
+ 		// Frames that reached the worker and were decoded but withheld (see showable).
+ 		uint64_t withheld = 0;
+@@ -668,6 +669,7 @@ public:
+ 
+ private:
+ 	image * get_free();
++	void prepare_atlas_images(image & item, const nxvc_vkd_atlas_images & source);
+ 	// Build (or rebuild) the pool of images the worker copies decoded pictures into, at
+ 	// the current `extent`. Called from the constructor, and a second time only when the
+ 	// stream header turns out to describe a stereo stream and the pool built from the
