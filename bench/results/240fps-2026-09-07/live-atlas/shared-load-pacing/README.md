@@ -10,7 +10,7 @@ Three approximately 55-second captures use the same full APK and QP40/pace90 fix
 
 Active source is a median of render report windows. Aligned rates use the printed report span after the first report; gaps and off-head intervals remain visible in the raw records. The signed offset shifts from 44.6 to 0.1 to -32.25 ms, so it is not a physical pose-age or latency measurement and gives no latency claim.
 
-Host samples record the display GPU at roughly 78–100% busy. Temperature ranges are kept per sensor path: baseline card1 temp3 98–100°C, temp1 84–86°C, temp2 92–98°C; display-time 100–102°C, 88°C, 99–100°C; reverse 94–98°C, 80–84°C, 91–95°C. Card0 stayed 0% busy at 55–57°C. Shared gaming load and thermal variation prevent causal attribution. Screenshots and all raw logs/manifests are retained without a visual or FPS claim.
+Host samples record the display GPU at roughly 78–100% busy. Temperature ranges are kept per sensor path: baseline card1 temp3 98–100°C, temp1 84–86°C, temp2 92–98°C; display-time 100–102°C, 88°C, 99–100°C; reverse 94–98°C, 80–84°C, 91–95°C. Card0 stayed 0% busy at 55–57°C. Shared gaming load and thermal variation prevent causal attribution. All six screenshots (6 s and 49 s for each arm) are black. Screenshots and all raw logs/manifests are retained without a visual or FPS claim.
 
 ![Shared-load pacing diagnostics](shared-load-pacing.png)
 
