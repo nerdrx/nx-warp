@@ -56,6 +56,20 @@ This is not verified visible 90 FPS. The [raw evidence and limitations](bench/re
 include the preceding failed run (29.5 ms decoder GPU, no render reports). An
 automated API regression checks PICTURE → ATLAS on a reused encoder.
 
+**Shared-load check.** With concurrent Counter-Strike play and sampled PC GPU
+utilization at a median of 100%, the retained path reported **89 fresh sources/s**
+in active windows and **1.0 ms** median decoder GPU window means. Session gaps
+reduced the aligned reported rate to **70.02/s**. A display-timestamp pacing
+prototype produced no meaningful delivery gain and was removed; the
+[three-run comparison](bench/results/240fps-2026-09-07/live-atlas/shared-load-pacing/README.md)
+retains the experiment and GPU-load records.
+
+**Measurement correction.** Historical logs and plots labeled “displayed pose age”
+measure `predictedDisplayTime - source.view_info.display_time`: a difference between
+display timestamps, **not physical pose age or motion-to-photon latency**. New client
+logs call this “source display-time offset.” Signed offsets changed from 44.6 to
+0.1 to −32.25 ms across the shared-load runs; they do not establish a latency gain.
+
 **Earlier integration results.** Two integration bugs were making sparse ATLAS frames expensive:
 intentional skips were treated as missing tiles, and frames with an empty final
 band lacked their completion marker. The [receipt correction](bench/results/240fps-2026-09-07/live-atlas/skip-receipt/README.md)
