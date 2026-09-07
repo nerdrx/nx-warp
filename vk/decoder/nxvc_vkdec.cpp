@@ -46,6 +46,10 @@
 #include "reconstruct_copy.spv.h"
 #include "reconstruct_v1_x8.spv.h"
 #include "reconstruct_x8.spv.h"
+#include "reconstruct_pl.spv.h"
+#include "reconstruct_v1_pl.spv.h"
+#include "reconstruct_x8_pl.spv.h"
+#include "reconstruct_v1_x8_pl.spv.h"
 #include "warp_pred.spv.h"
 // [ATLAS] 13.12.3 step 1, and the coded-tile kernel that brackets Pass W.
 #include "atlas_compose.spv.h"
@@ -213,8 +217,10 @@ struct nxvc_vk_decoder {
     VkShaderModule smBSkipStore = VK_NULL_HANDLE;
     // [passb] skip_kind == 3: the copy path for identity tiles.
     VkShaderModule smBCopy = VK_NULL_HANDLE;
-    VkShaderModule smB[2][2] = {{VK_NULL_HANDLE, VK_NULL_HANDLE},
-                                {VK_NULL_HANDLE, VK_NULL_HANDLE}};
+    // [planar] [intra_dir][xform_large][planar].  The planar half exists
+    // because the body cannot merely be branched around: see
+    // passB/reconstruct.comp.
+    VkShaderModule smB[2][2][2] = {};
     // [inter] Pass W: the predictor.  Its own set layout, because it binds
     // three buffers and no image and has nothing to say about Pass B's
     // thirteen.  vk/decoder/inter/.
@@ -343,6 +349,7 @@ struct nxvc_vk_decoder {
     // attempt read as a negative on the DESKTOP, where the write plainly
     // works.
     bool atlas_sentinel = false;
+    bool no_copy_partition = false;
     // The last frame number decoded, which is where a base patch's entry sits
     // on the COMPOSITION clock -- not its `src_frame`, which is provenance.
     uint32_t last_frame = 0;
@@ -1108,18 +1115,22 @@ nxvc_vkd_status make_layouts(D *d) {
     sm.codeSize = sizeof(rans_decode_lite_spv);
     sm.pCode = rans_decode_lite_spv;
     VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smALite));
-    sm.codeSize = sizeof(reconstruct_spv);
-    sm.pCode = reconstruct_spv;
-    VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smB[1][1]));
-    sm.codeSize = sizeof(reconstruct_v1_spv);
-    sm.pCode = reconstruct_v1_spv;
-    VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smB[0][1]));
-    sm.codeSize = sizeof(reconstruct_x8_spv);
-    sm.pCode = reconstruct_x8_spv;
-    VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smB[1][0]));
-    sm.codeSize = sizeof(reconstruct_v1_x8_spv);
-    sm.pCode = reconstruct_v1_x8_spv;
-    VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smB[0][0]));
+    struct BMod { const uint32_t *code; size_t bytes; int dir, xl, pl; };
+    const BMod bmods[8] = {
+        {reconstruct_spv, sizeof(reconstruct_spv), 1, 1, 0},
+        {reconstruct_v1_spv, sizeof(reconstruct_v1_spv), 0, 1, 0},
+        {reconstruct_x8_spv, sizeof(reconstruct_x8_spv), 1, 0, 0},
+        {reconstruct_v1_x8_spv, sizeof(reconstruct_v1_x8_spv), 0, 0, 0},
+        {reconstruct_pl_spv, sizeof(reconstruct_pl_spv), 1, 1, 1},
+        {reconstruct_v1_pl_spv, sizeof(reconstruct_v1_pl_spv), 0, 1, 1},
+        {reconstruct_x8_pl_spv, sizeof(reconstruct_x8_pl_spv), 1, 0, 1},
+        {reconstruct_v1_x8_pl_spv, sizeof(reconstruct_v1_x8_pl_spv), 0, 0, 1}};
+    for (const BMod &m : bmods) {
+        sm.codeSize = m.bytes;
+        sm.pCode = m.code;
+        VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr,
+                                      &d->smB[m.dir][m.xl][m.pl]));
+    }
     sm.codeSize = sizeof(reconstruct_skip_spv);
     sm.pCode = reconstruct_skip_spv;
     VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smBSkip));
@@ -1301,7 +1312,8 @@ nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2, int32_t sparse,
                            uint32_t store_words, int32_t intra_dir,
                            int32_t split_tool, int32_t xform_large,
                            int32_t inter_pred, int32_t ring_store,
-                           VkPipeline *out, int skip_kind = 0) {
+                           VkPipeline *out, int skip_kind = 0,
+                           int32_t planar_on = 1) {
     const uint32_t sched = d->dir_sched;
     // `skip_kind` is 0, 1 or 2 and so needs TWO bits.  It had one, at 59, from
     // when it was a bool -- and 2 << 59 is bit 60, which is `split_tool`.  A
@@ -1310,7 +1322,11 @@ nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2, int32_t sparse,
     // then is deliberately not written for those tiles: the skip tiles came
     // out black, and only on a stream that sets one particular tool.
     // 57-58 is the free pair; every other field's shift is unchanged.
-    uint64_t key = ((uint64_t)(uint32_t)skip_kind << 57) |
+    // Bit 55 is `planar_on`; 53-55 were the free run left after skip_kind took
+    // 57-58.  A module built without the planar body is a DIFFERENT module and
+    // must not be served from the cache to a frame that has planar tiles.
+    uint64_t key = ((uint64_t)(uint32_t)(planar_on ? 1 : 0) << 55) |
+                   ((uint64_t)(uint32_t)skip_kind << 57) |
                    ((uint64_t)(uint32_t)ring_store << 63) |
                    ((uint64_t)(uint32_t)inter_pred << 62) |
                    ((uint64_t)(uint32_t)xform_large << 61) |
@@ -1330,15 +1346,16 @@ nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2, int32_t sparse,
         return seterr(d, NXVC_VKD_ERR_UNSUPPORTED,
                       "Pass B needs %zu B of shared memory, device offers %u B",
                       lds, d->props.limits.maxComputeSharedMemorySize);
-    const int32_t data[9] = {(int32_t)fmt,  (int32_t)store_words,
-                             (int32_t)sched, fmt2,
-                             sparse,         (int32_t)d->unorm_store,
-                             split_tool,     inter_pred,
-                             ring_store};
-    VkSpecializationMapEntry me[9] = {{0, 0, 4},  {1, 4, 4},  {2, 8, 4},
-                                      {3, 12, 4}, {4, 16, 4}, {5, 20, 4},
-                                      {6, 24, 4}, {7, 28, 4}, {8, 32, 4}};
-    VkSpecializationInfo spec{9, me, sizeof(data), data};
+    const int32_t data[10] = {(int32_t)fmt,  (int32_t)store_words,
+                              (int32_t)sched, fmt2,
+                              sparse,         (int32_t)d->unorm_store,
+                              split_tool,     inter_pred,
+                              ring_store,     planar_on};
+    VkSpecializationMapEntry me[10] = {{0, 0, 4},  {1, 4, 4},  {2, 8, 4},
+                                       {3, 12, 4}, {4, 16, 4}, {5, 20, 4},
+                                       {6, 24, 4}, {7, 28, 4}, {8, 32, 4},
+                                       {9, 36, 4}};
+    VkSpecializationInfo spec{10, me, sizeof(data), data};
     VkComputePipelineCreateInfo ci{
         VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
     // [inter] A frame that carries a STEREO tile runs Pass B once per eye,
@@ -1356,7 +1373,8 @@ nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2, int32_t sparse,
         : skip_kind == 2 ? d->smBSkipStore
         : skip_kind == 1
             ? d->smBSkip
-            : d->smB[intra_dir != 0 ? 1 : 0][xform_large != 0 ? 1 : 0];
+            : d->smB[intra_dir != 0 ? 1 : 0][xform_large != 0 ? 1 : 0]
+                     [planar_on ? 1 : 0];
     ci.stage.pName = "main";
     ci.stage.pSpecializationInfo = &spec;
     ci.layout = d->plB;
@@ -2145,6 +2163,15 @@ void build_tile_order(D *d, const FrameParse &fp, uint32_t ntiles,
                 // holds a newer generation, which is the one thing dropping it
                 // exists to prevent.
                 if (sup && t < sup->size() && (*sup)[t]) return false;
+                // [diag] NXVC_VKD_NO_COPY_PARTITION empties the copy segment,
+                // so every WARP_SKIP tile goes back to the module that had it
+                // before the identity fast path existed.  Byte-neutral by
+                // definition: the copy module exists precisely because its
+                // tiles' predictions are their reference unchanged, so moving
+                // them to the general module cannot change a sample -- only
+                // what it costs.  It is here to answer, on a device, whether
+                // the partition is what broke the picture.
+                if (d->no_copy_partition) return false;
                 const uint32_t w1 = fp.recs[t].w1;
                 const int mode = int(w1 & 7u);
                 if (mode != 0) return false;   // WARP_SKIP only; see the header
@@ -2399,8 +2426,10 @@ extern "C" void nxvc_vk_decoder_destroy(nxvc_vk_decoder *d) {
         if (d->smALite) vkDestroyShaderModule(d->dev, d->smALite, nullptr);
         for (int i = 0; i < 2; ++i)
             for (int j = 0; j < 2; ++j)
-                if (d->smB[i][j])
-                    vkDestroyShaderModule(d->dev, d->smB[i][j], nullptr);
+                for (int k = 0; k < 2; ++k)
+                    if (d->smB[i][j][k])
+                        vkDestroyShaderModule(d->dev, d->smB[i][j][k],
+                                              nullptr);
         if (d->pipeW) vkDestroyPipeline(d->dev, d->pipeW, nullptr);
         if (d->smW) vkDestroyShaderModule(d->dev, d->smW, nullptr);
         // [ATLAS]
@@ -2499,6 +2528,8 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_parse_stream_header(
     // which is what makes the second ring slot necessary.
     d->atlas_modes = d->atlas_mode && (d->si.tools & (1ull << 34)) != 0;
     d->atlas_sentinel = std::getenv("NXVC_VKD_ATLAS_SENTINEL") != nullptr;
+    d->no_copy_partition =
+        std::getenv("NXVC_VKD_NO_COPY_PARTITION") != nullptr;
     st = make_resources(d);
     if (st) return st;
     // [inter] A new stream is a new reference ring and a new prediction
@@ -3301,14 +3332,16 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
                              (int32_t)fp.split4, (int32_t)fp.xform_large,
                              inter_pred_on(d, interStream),
                              ring_store_on(d, interStream),
-                             &pipeB[dir])))
+                             &pipeB[dir], 0,
+                             fp.any_planar ? 1 : 0)))
             return st;
         if (d->need_alpha_pass && !fuse) {
             if ((st = pipeline_b(d, (uint32_t)nxvw::kOutRgba8,
                                  (int32_t)nxvw::kOutNone, fp.push.sparse,
                                  storeWords, dir, (int32_t)fp.split4,
                                  (int32_t)fp.xform_large,
-                                 interStream ? 1 : 0, 0, &pipeBa[dir])))
+                                 interStream ? 1 : 0, 0, &pipeBa[dir], 0,
+                                 fp.any_planar ? 1 : 0)))
                 return st;
         }
     }
@@ -3335,7 +3368,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
                               : (int32_t)nxvw::kOutNone,
                          fp.push.sparse, storeWords, 0, (int32_t)fp.split4, 0,
                          inter_pred_on(d, interStream),
-                         ring_store_on(d, interStream), &pipeBSkip, 2)))
+                         ring_store_on(d, interStream), &pipeBSkip, 2, 0)))
         return st;
 
     // [passb] The copy module, built only when a tile actually qualifies.  On
@@ -3351,7 +3384,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
                               : (int32_t)nxvw::kOutNone,
                          fp.push.sparse, storeWords, 0, (int32_t)fp.split4, 0,
                          inter_pred_on(d, interStream),
-                         ring_store_on(d, interStream), &pipeBCopy, 3)))
+                         ring_store_on(d, interStream), &pipeBCopy, 3, 0)))
         return st;
 
     VkPipeline pipeWp = VK_NULL_HANDLE;
@@ -3411,7 +3444,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
                              (int32_t)nxvw::kOutNone, fp.push.sparse,
                              storeWords, 0, (int32_t)fp.split4, 0,
                              inter_pred_on(d, interStream),
-                             ring_store_on(d, interStream), &pipeAsm, 2)))
+                             ring_store_on(d, interStream), &pipeAsm, 2, 0)))
             return st;
         // The assemble header: identical but for `curSlot`, which is 1.
         //

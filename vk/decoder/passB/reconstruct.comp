@@ -68,6 +68,22 @@ layout(constant_id = 5) const int kUnormStore = 0;
 //    such a frame decodes through exactly the kernel it did before the tool
 //    existed.
 layout(constant_id = 6) const int kSplitTool = 0;
+
+// [planar] Whether this BUILD of the module carries [SYN] 13.13's planar body.
+//
+// A build variant and not a specialisation constant, for the reason this file
+// already gives for NXVW_INTRA_DIR and NXVW_XFORM_LARGE, and now with a second
+// measurement behind it: on the Adreno 650 the planar body's mere PRESENCE
+// broke the GENERAL reconstruction.  Every inter stream decoded to a black
+// picture -- 1 non-zero byte in 49152 -- while both desktop ICDs were
+// byte-identical, and no non-planar tile ever entered the branch.  Replacing
+// the condition with `if (false)`, which glslc folds away before SPIR-V, put
+// the picture back; a specialisation constant set to 0, which the DRIVER folds,
+// did not.  The code has to be absent from the module, not merely unreachable
+// inside it.
+#ifndef NXVW_PLANAR
+#define NXVW_PLANAR 0
+#endif
 // The frame's INTRA_DIR tool bit is a *build* variant, not a specialization
 // constant and no longer a push constant.  It was a push constant, which meant
 // one pipeline carried both the v1 predictor and the directional wavefront and
@@ -1171,6 +1187,7 @@ void main() {
         //
         // The branch is UNIFORM across the workgroup: `mode` is a property of
         // the tile, and one workgroup is one tile.
+#if NXVW_PLANAR
         if (mode == kModePlanar) {
             int pbase = tile * kPlanarUintsPerTile;
             uint hdr = uPlanar.w[pbase];
@@ -1263,6 +1280,7 @@ void main() {
             // predictor runs, so the plane is finished.
             continue;
         }
+#endif  // NXVW_PLANAR
 
 #if NXVW_SKIP_STORE
         // ------------------- WARP_SKIP: predict the tile, here, into sPlane

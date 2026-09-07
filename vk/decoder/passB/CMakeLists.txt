@@ -38,6 +38,11 @@ set(NXVW_PASSB_EXTRA_DEFS "" CACHE STRING
     "extra -D flags for the Pass B shader modules (ablations)")
 
 set(NXVW_PASSB_SPV_LIST)
+# [planar] A THIRD dimension: whether the module carries 13.13's planar body.
+# It is a build variant for the reason the other two are, and reconstruct.comp
+# records the measurement -- its presence alone blacked out every inter stream
+# on the Adreno 650.
+foreach(_pl 1 0)
 foreach(_dir 1 0)
 foreach(_xl 1 0)
   # reconstruct, reconstruct_v1, reconstruct_x8, reconstruct_v1_x8 -- the
@@ -50,6 +55,9 @@ foreach(_xl 1 0)
   if(NOT _xl)
     string(APPEND _name "_x8")
   endif()
+  if(_pl)
+    string(APPEND _name "_pl")
+  endif()
   set(_out ${NXVW_PASSB_GEN}/${_name}.spv.h)
   list(APPEND NXVW_PASSB_SPV_LIST ${_out})
   add_custom_command(
@@ -59,7 +67,7 @@ foreach(_xl 1 0)
             -DSRC=${NXVW_PASSB_DIR}/reconstruct.comp
             -DOUT=${_out}
             -DNAME=${_name}
-            "-DDEFS=-DNXVW_INTRA_DIR=${_dir} -DNXVW_XFORM_LARGE=${_xl} ${NXVW_PASSB_EXTRA_DEFS}"
+            "-DDEFS=-DNXVW_INTRA_DIR=${_dir} -DNXVW_XFORM_LARGE=${_xl} -DNXVW_PLANAR=${_pl} ${NXVW_PASSB_EXTRA_DEFS}"
             -DINCDIR=${NXVW_PASSB_DIR}
             -DSTYLE=plain
             -DDEPFILE=${_out}.d
@@ -67,8 +75,9 @@ foreach(_xl 1 0)
     DEPFILE ${_out}.d
     DEPENDS ${NXVW_PASSB_DIR}/reconstruct.comp
             ${NXVW_PASSB_GEN_SPV} ${NXVW_PASSB_SPV_PASSES_CMAKE}
-    COMMENT "glslc reconstruct.comp (dir=${_dir} xl=${_xl}) -> ${_name}.spv.h"
+    COMMENT "glslc reconstruct.comp (dir=${_dir} xl=${_xl} pl=${_pl}) -> ${_name}.spv.h"
     VERBATIM)
+endforeach()
 endforeach()
 endforeach()
 # [inter] A fifth module: the WARP_SKIP kernel.
