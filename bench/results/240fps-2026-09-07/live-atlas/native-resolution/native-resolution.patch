@@ -1,0 +1,251 @@
+diff --git a/client/configuration.cpp b/client/configuration.cpp
+index e5573e8d..29638f94 100644
+--- a/client/configuration.cpp
++++ b/client/configuration.cpp
+@@ -462,6 +462,8 @@ float configuration::get_stream_scale() const
+ 
+ float configuration::get_default_stream_scale() const
+ {
++	if (nxwarp)
++		return 1.0f;
+ 	if (check_feature(feature::eye_gaze))
+ 		return 0.3;
+ 	return 0.5;
+diff --git a/client/scenes/stream.cpp b/client/scenes/stream.cpp
+index ed9cc042..ed43ddc0 100644
+--- a/client/scenes/stream.cpp
++++ b/client/scenes/stream.cpp
+@@ -1221,17 +1221,9 @@ float scenes::stream::resolve_defoveate_scale(
+ 	if (cfg > 0.f)
+ 		return std::clamp(cfg, 0.4f, 1.0f);
+ 
+-	// AUTO. The pass's output is the size the stream already is, so it does no
+-	// enlargement: a 1088x1088 stream is drawn at 1088x1088 and the runtime's
+-	// compositor performs the one resampling it was always going to perform when it
+-	// timewarps the layer. Measured on a Pico 4, this is the difference between
+-	// 2160x2160 per eye at 8.4 ms a frame and 1080x1080 at 2.7 ms, with the render
+-	// loop going from 34 to 73 iterations a second.
+-	//
+-	// The stream's per-eye size is the decoded image in hand, not anything configured:
+-	// stream_scale, a mid-session renegotiation and a server that simply chose
+-	// something else all arrive the same way. With no frame yet there is nothing to
+-	// match, and the pass falls back to the defoveated size it has always used.
++	// AUTO keeps real atlas output at the full defoveated size. Other decoder
++	// paths retain their source-matched output policy. With no frame available,
++	// use the full extent until its source geometry can be inspected.
+ 	float s = 1.f;
+ 	bool have_any = false;
+ 	for (size_t i = 0; i < view_count; ++i)
+@@ -1257,10 +1249,10 @@ float scenes::stream::resolve_defoveate_scale(
+ 		if (eye_w == 0)
+ 			continue;
+ 		have_any = true;
+-		// The measured Pico atlas preset trades output resolution for fragment cost.
+-		// Explicit defoveate_scale was handled above; source geometry is unchanged.
+-		if (h->atlas_table_buffer && application::get_hmd_traits().nxwarp_atlas_speed)
+-			s = std::min(s, 0.4f);
++		// Real atlas output targets the full defoveated resolution. An explicit
++		// quality setting was handled above; AUTO must not lower atlas resolution.
++		if (h->atlas_table_buffer)
++			continue;
+ 		// The smaller of the two ratios, so neither axis is ever enlarged. One
+ 		// scalar for both axes because the viewport and the swapchain take one.
+ 		s = std::min({s,
+@@ -1731,11 +1723,16 @@ void scenes::stream::render(const XrFrameState & frame_state)
+ 				        },
+ 				        .layout_rgb = blit_handle->current_layout,
+ 				};
+-				// The first R8 consumer is deliberately scoped to the measured v1 layout;
+-				// refuse other dimensions until this consumer supports them.
+-				const bool atlas_layout_supported =
+-				                       blit_handle->atlas_extents[0] == vk::Extent2D{2176, 1088} &&
+-				                       blit_handle->atlas_extents[1] == vk::Extent2D{1088, 544} &&
++				// R8 stereo 4:2:0 geometry comes from the decoded image, including
++				// partial 64-pixel edge tiles at native headset resolutions.
++				const auto atlas_y = blit_handle->atlas_extents[0];
++				const auto atlas_c = blit_handle->atlas_extents[1];
++				const uint64_t atlas_entries = uint64_t((atlas_y.width / 2 + 63) / 64) *
++				                               ((atlas_y.height + 63) / 64) * 2;
++				const bool atlas_layout_supported = eyes_joined && atlas_y.width > 0 && atlas_y.height > 0 &&
++				                       atlas_y.width % 4 == 0 && atlas_y.height % 2 == 0 &&
++				                       atlas_c == vk::Extent2D{atlas_y.width / 2, atlas_y.height / 2} &&
++				                       blit_handle->atlas_table_bytes >= atlas_entries * 64 &&
+ 				                       blit_handle->atlas_formats[0] == vk::Format::eR8Unorm &&
+ 				                       blit_handle->atlas_formats[1] == vk::Format::eR8G8Unorm;
+ 				if (blit_handle->atlas_valid && not atlas_layout_supported)
+diff --git a/client/scenes/stream_defoveator.cpp b/client/scenes/stream_defoveator.cpp
+index 92c1bdcd..ef9ce15b 100644
+--- a/client/scenes/stream_defoveator.cpp
++++ b/client/scenes/stream_defoveator.cpp
+@@ -922,11 +922,9 @@ void stream_defoveator::defoveate(vk::raii::CommandBuffer & command_buffer,
+ 		// is what every failure path in stream_grid produces, and what the caller
+ 		// passes when the setting is off -- writes the grid exactly as it always was.
+ 		const auto & mask = view < lens_masks.size() ? lens_masks[view] : wivrn::stream_grid::cell_mask{};
+-		drawn_vertices[view] = wivrn::stream_grid::emit(
++		drawn_vertices[view] = wivrn::stream_grid::emit_full_view(
+ 		        px,
+ 		        py,
+-		        out_size.width,
+-		        out_size.height,
+ 		        mask,
+ 		        reinterpret_cast<wivrn::stream_grid::vertex *>(vertices),
+ 		        vertices_size / sizeof(vertex));
+@@ -1115,10 +1113,8 @@ static uint16_t count_pixels(const std::vector<uint16_t> & param)
+ 
+ XrExtent2Di stream_defoveator::defoveated_size(const wivrn::to_headset::foveation_parameter & view, float scale)
+ {
+-	// `scale` shrinks the pass's OUTPUT only. The geometry is untouched: the vertex
+-	// positions below are normalised by the same out_size they are laid out in
+-	// (out_pixel_size = 2 / out_size), so the drawn picture is identical and only the
+-	// number of fragments changes -- which is the whole cost of this pass.
++	// Scale changes viewport/swapchain size only. emit_full_view normalizes vertices
++	// against the full foveation extent so lowering resolution preserves the FOV.
+ 	//
+ 	// Measured on a Pico 4: the pass renders 2160x2160 PER EYE, invariant across
+ 	// stream_scale, because the defoveated size is what the panel wants and not what
+diff --git a/client/scenes/stream_grid.h b/client/scenes/stream_grid.h
+index 415d70a0..8bb8755b 100644
+--- a/client/scenes/stream_grid.h
++++ b/client/scenes/stream_grid.h
+@@ -225,6 +225,27 @@ inline size_t emit(const std::vector<uint16_t> & px,
+ 	return size_t(w - out);
+ }
+ 
++// Geometry is normalized by the full foveation extent. Output resolution belongs
++// only to the viewport: using a reduced viewport here would crop the source.
++inline size_t emit_full_view(const std::vector<uint16_t> & px,
++                             const std::vector<uint16_t> & py,
++                             const cell_mask & mask,
++                             vertex * out,
++                             size_t capacity)
++{
++	const auto extent = [](const std::vector<uint16_t> & runs) {
++		int pixels = 0;
++		const int centre = (int(runs.size()) - 1) / 2;
++		for (size_t i = 0; i < runs.size(); ++i)
++			pixels += int(runs[i]) * (std::abs(centre - int(i)) + 1);
++		return pixels;
++	};
++	const int width = extent(px), height = extent(py);
++	if (width <= 0 || height <= 0)
++		return 0;
++	return emit(px, py, width, height, mask, out, capacity);
++}
++
+ // Which cells of this view's grid the optics can never show.
+ //
+ // One `region_covers` test per grid cell, against the same ellipse the server's own lens
+diff --git a/client/shaders/reprojection_atlas_r8.glsl b/client/shaders/reprojection_atlas_r8.glsl
+index fe76cf97..0ff29d8f 100644
+--- a/client/shaders/reprojection_atlas_r8.glsl
++++ b/client/shaders/reprojection_atlas_r8.glsl
+@@ -32,14 +32,18 @@ layout(std430,set=0,binding=5) readonly buffer atlas_table_t { uint e[]; } tbl;
+ layout(location=0) in vec4 inUV;
+ layout(location=1) in vec4 inPosition;
+ layout(location=0) out vec4 outColor;
+-const vec2 picture=vec2(1088.0,1088.0);
+-const vec2 luma_image=vec2(2176.0,1088.0);
+-const vec2 chroma_image=vec2(1088.0,544.0);
++// The decoder view spans both eyes horizontally; derive the geometry from the
++// actual snapshot so non-1088 streams and clipped edge tiles use the same table.
+ vec3 srgb_linear(vec3 c) { return mix(c/12.92,pow((c+0.055)/1.055,vec3(2.4)),step(vec3(0.04045),c)); }
+ void main() {
++	vec2 luma_image=vec2(textureSize(atlas_y,0));
++	vec2 picture=vec2(luma_image.x*0.5,luma_image.y);
++	vec2 chroma_image=vec2(textureSize(atlas_cbcr,0));
+  vec2 eye_uv=clamp((inUV.xy*vec2(rgb_rect.zw)-vec2(rgb_rect.xy))/picture,vec2(0),vec2(0.999999));
+- ivec2 cell=ivec2(eye_uv*float(atlas_tiles));
+- int idx=(cell.y*atlas_tiles*2+atlas_eye*atlas_tiles+cell.x)*16;
++	int tiles_x=int(ceil(picture.x/64.0));
++	ivec2 cell=ivec2(floor((eye_uv*picture)/64.0));
++	cell=clamp(cell,ivec2(0),ivec2(tiles_x-1,int(ceil(picture.y/64.0))-1));
++	int idx=(cell.y*tiles_x*2+atlas_eye*tiles_x+cell.x)*16;
+  if (((tbl.e[idx+10]>>16u)&1u)==0u) { outColor=vec4(0); return; }
+  vec3 h=vec3((eye_uv-0.5)*picture,1.0);
+  vec3 r0=vec3(int(tbl.e[idx]),int(tbl.e[idx+1]),int(tbl.e[idx+2]))/2097152.0;
+diff --git a/docs/nxwarp-atlas-live.md b/docs/nxwarp-atlas-live.md
+index 0a2b7816..f580385c 100644
+--- a/docs/nxwarp-atlas-live.md
++++ b/docs/nxwarp-atlas-live.md
+@@ -34,33 +34,33 @@ The default `"atlas":"off"` retains ordinary coding. Optional
+ The server ACK merge is covered by `g++ -std=c++23 -Wall -Wextra -Werror -Icommon tests/nxwarp_held_ack_test.cpp`: an older report at wire 98 with bit 0 must shift left two places when merged into base 100. Empty ACK-only payloads update reconstruction state but carry no transport receipt and are not passed to the sender.
+ 
+ 
+-## Pico 4 speed preset
++## Full-resolution atlas output
+ 
+-The `PICO 4` model now defaults to caller-owned R8 atlas targets and a 0.40
+-AUTO output scale (864×864 per eye in the measured stream). This preserves the
+-encoded atlas resolution while reducing display fragment work and image copies.
+-An explicit `defoveate_scale` still takes precedence. Other headset models keep
+-their existing defaults.
++NX Warp's automatic source scale is now 1.0, and the real atlas renderer uses
++full defoveated output resolution. Explicit source/output scale settings still
++take precedence. R8 stereo source dimensions and partial 64-pixel edge tiles are
++read from decoded images instead of assuming a 1088-pixel source.
+ 
+-Four 180-second control/combined/combined/control captures measured renderer GPU
+-medians of 2.5/1.6/1.6/2.3 ms and copy medians of 0.29/0.01/0.01/0.29 ms.
+-Decoder wall medians were 2.3/1.9/2.0/2.3 ms. These summarize report-window means
+-under uncontrolled shared host load; session gaps prevent a physical-FPS claim.
+-The smaller output is a quality tradeoff. See the
+-[raw evidence](https://github.com/nerdrx/nx-warp/tree/main/bench/results/240fps-2026-09-07/live-atlas/abba-180s).
++The display mesh is normalized against the full foveation extent. Viewport size
++only controls raster resolution; it must not change field of view. Earlier
++scaled-output experiments used the reduced viewport as the geometry basis and
++cropped the image. Their timing remains historical evidence, but not a comparison
++of equivalent full-field output. The grid regression rejects that old behavior.
+ 
+-For comparison, disable the model preset before restarting the client:
++PICO 4 retains exact caller-owned R8 output to remove the snapshot image copy.
++Its `nxwarp_atlas_speed` trait now controls only that optimization; it no longer
++reduces output resolution. For comparisons, disable it before restarting:
+ 
+ ```sh
+ adb shell setprop debug.wivrn.nxwarp_atlas_speed false
+ ```
+ 
+-Clear that override to restore model selection:
++Restore automatic model selection:
+ 
+ ```sh
+ adb shell 'setprop debug.wivrn.nxwarp_atlas_speed ""'
+ ```
+ 
+-`NXWARP_ATLAS_DIRECT=0` also disables direct targets when the client process is
+-launched with that environment variable. Exact sRGB conversion remains in use;
+-the polynomial approximation was measured and rejected.
++The previous [ABBA results](https://github.com/nerdrx/nx-warp/tree/main/bench/results/240fps-2026-09-07/live-atlas/abba-180s)
++are explicitly caveated; new full-resolution measurements must identify both
++encoded source and output dimensions. Exact sRGB conversion remains in use.
+diff --git a/tests/stream_grid_test.cpp b/tests/stream_grid_test.cpp
+index 54fca56c..0290a0bf 100644
+--- a/tests/stream_grid_test.cpp
++++ b/tests/stream_grid_test.cpp
+@@ -221,6 +221,26 @@ int main(int argc, char ** argv)
+ 		check(id2, "non-square output identical to the original loop");
+ 	}
+ 
++	std::printf("reduced viewports retain the complete source field of view\n");
++	{
++		for (const auto & runs : {std::vector<uint16_t>{1088}, std::vector<uint16_t>{16, 32, 64}})
++		{
++			std::vector<vertex> grid(max_vertices(runs.size(), runs.size()));
++			const size_t n = emit_full_view(runs, runs, {}, grid.data(), grid.size());
++			uint32_t source = 0;
++			for (auto run : runs) source += run;
++			bool bounded = n > 0, left = false, right = false;
++			for (size_t i = 0; i < n; ++i)
++			{
++				const auto & v = grid[i];
++				bounded &= v.px >= -1.00001f && v.px <= 1.00001f && v.py >= -1.00001f && v.py <= 1.00001f;
++				left |= std::abs(v.px + 1.f) < 0.00001f && v.u == 0;
++				right |= std::abs(v.px - 1.f) < 0.00001f && v.u == source;
++			}
++			check(bounded && left && right, "full source reaches both viewport edges without clipping");
++		}
++	}
++
+ 	std::printf("the lens cell mask never eats the overscan ring\n");
+ 	{
+ 		using namespace wivrn::view_geometry;
