@@ -1,0 +1,16 @@
+diff --git a/tests/vk-decoder/atlas/test_borrowed_r8.cpp b/tests/vk-decoder/atlas/test_borrowed_r8.cpp
+index f6ce01c..e694fdc 100644
+--- a/tests/vk-decoder/atlas/test_borrowed_r8.cpp
++++ b/tests/vk-decoder/atlas/test_borrowed_r8.cpp
+@@ -232,8 +232,10 @@ int main(int argc, char** argv) {
+         std::fprintf(stderr, "FAIL: NULL clear before view selection\n");
+         return 1;
+     }
++    setenv("NXVC_VKD_ATLAS_VIEW8_PAIR", "0", 1);
+     if (nxvc_vk_decoder_set_atlas_view(owned, NXVC_VKD_ATLAS_VIEW_R8) ||
+-        nxvc_vk_decoder_set_atlas_view(borrowed, NXVC_VKD_ATLAS_VIEW_R8))
++        (setenv("NXVC_VKD_ATLAS_VIEW8_PAIR", "1", 1),
++         nxvc_vk_decoder_set_atlas_view(borrowed, NXVC_VKD_ATLAS_VIEW_R8)))
+         return 77;
+     uint32_t yw, yh, cw, ch;
+     nxvc_vk_decoder_plane_size(owned, 0, &yw, &yh);

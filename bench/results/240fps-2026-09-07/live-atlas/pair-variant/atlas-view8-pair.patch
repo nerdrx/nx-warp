@@ -1,0 +1,167 @@
+diff --git a/vk/decoder/atlas/CMakeLists.txt b/vk/decoder/atlas/CMakeLists.txt
+index 87f7c6c..fa5dce9 100644
+--- a/vk/decoder/atlas/CMakeLists.txt
++++ b/vk/decoder/atlas/CMakeLists.txt
+@@ -68,9 +68,11 @@ if(NXVW_GLSLC)
+   # because the image format qualifier is part of the type -- `image2D` and
+   # `uimage2D` are not the same variable -- so there is nothing a constant
+   # could select between.
+-  foreach(v 8 16)
++  foreach(v 8 8pair 16)
+     if(v STREQUAL "8")
+       set(_vdef "-DDEFS=-DNXVW_VIEW8=1")
++    elseif(v STREQUAL "8pair")
++      set(_vdef "-DDEFS=-DNXVW_VIEW8=1 -DNXVW_VIEW8_PAIR=1")
+     else()
+       set(_vdef "-DDEFS=")
+     endif()
+@@ -95,6 +97,7 @@ if(NXVW_GLSLC)
+   endforeach()
+   add_custom_target(nxvw_atlas_spv DEPENDS ${NXVW_ATLAS_SPV} ${NXVW_ATLAS_TSPV}
+                                           ${NXVW_ATLAS_VSPV_8}
++                                          ${NXVW_ATLAS_VSPV_8pair}
+                                           ${NXVW_ATLAS_VSPV_16})
+ 
+   # ---------------------------------------------------------------- harness
+diff --git a/vk/decoder/atlas/atlas_view.comp b/vk/decoder/atlas/atlas_view.comp
+index 293c8ed..d0266e3 100644
+--- a/vk/decoder/atlas/atlas_view.comp
++++ b/vk/decoder/atlas/atlas_view.comp
+@@ -95,17 +95,39 @@ void main() {
+     int lx = x - ox;
+     int ly = y - oy;
+ 
++ #ifdef NXVW_VIEW8_PAIR
++    lx *= 2; ly *= 2; x = ox + lx; y = oy + ly;
++ #endif
+     if (lx < tw && ly < th && x < pc.lumaW && y < pc.lumaH) {
+         uint v = atlas_sample(pc.off0, pc.stride0, x, y);
+ #ifdef NXVW_VIEW8
+         imageStore(outLuma, ivec2(x, y), vec4(float(v) / 255.0, 0.0, 0.0, 1.0));
++#ifdef NXVW_VIEW8_PAIR
++        if (x + 1 < pc.lumaW)
++            imageStore(outLuma, ivec2(x + 1, y), vec4(float(atlas_sample(pc.off0, pc.stride0, x + 1, y)) / 255.0, 0.0, 0.0, 1.0));
++        if (y + 1 < pc.lumaH) {
++            imageStore(outLuma, ivec2(x, y + 1), vec4(float(atlas_sample(pc.off0, pc.stride0, x, y + 1)) / 255.0, 0.0, 0.0, 1.0));
++            if (x + 1 < pc.lumaW)
++                imageStore(outLuma, ivec2(x + 1, y + 1), vec4(float(atlas_sample(pc.off0, pc.stride0, x + 1, y + 1)) / 255.0, 0.0, 0.0, 1.0));
++        }
++#endif
+ #else
+         imageStore(outLuma, ivec2(x, y), uvec4(v, 0u, 0u, 1u));
+ #endif
+     }
++ #ifdef NXVW_VIEW8_PAIR
++    int cx = ocx + lx / 2;
++    int cy = ocy + ly / 2;
++ #else
+     int cx = ocx + lx;
+     int cy = ocy + ly;
+-    if (lx < ctw && ly < cth && cx < pc.chromaW && cy < pc.chromaH) {
++ #endif
++ #ifdef NXVW_VIEW8_PAIR
++    int clx = lx / 2, cly = ly / 2;
++ #else
++    int clx = lx, cly = ly;
++ #endif
++    if (clx < ctw && cly < cth && cx < pc.chromaW && cy < pc.chromaH) {
+         uint cb = atlas_sample(pc.off1, pc.stride1, cx, cy);
+         uint cr = atlas_sample(pc.off2, pc.stride2, cx, cy);
+ #ifdef NXVW_VIEW8
+diff --git a/vk/decoder/nxvc_vkdec.cpp b/vk/decoder/nxvc_vkdec.cpp
+index bd36a80..48d0a9a 100644
+--- a/vk/decoder/nxvc_vkdec.cpp
++++ b/vk/decoder/nxvc_vkdec.cpp
+@@ -51,6 +51,7 @@
+ #include "atlas_compose.spv.h"
+ #include "atlas_tiles.spv.h"
+ #include "atlas_view8.spv.h"
++#include "atlas_view8pair.spv.h"
+ #include "atlas_view16.spv.h"
+ 
+ namespace {
+@@ -237,9 +238,10 @@ struct nxvc_vk_decoder {
+     // the type and there is nothing a constant could select between.
+     VkDescriptorSetLayout dslAV = VK_NULL_HANDLE;
+     VkPipelineLayout plAV = VK_NULL_HANDLE;
+-    VkShaderModule smAV8 = VK_NULL_HANDLE, smAV16 = VK_NULL_HANDLE;
++    VkShaderModule smAV8 = VK_NULL_HANDLE, smAV8Pair = VK_NULL_HANDLE, smAV16 = VK_NULL_HANDLE;
+     VkDescriptorSet dsetAV = VK_NULL_HANDLE;
+-    VkPipeline pipeAV8 = VK_NULL_HANDLE, pipeAV16 = VK_NULL_HANDLE;
++    VkPipeline pipeAV8 = VK_NULL_HANDLE, pipeAV8Pair = VK_NULL_HANDLE, pipeAV16 = VK_NULL_HANDLE;
++    bool atlas_view8_pair = false;
+     Img imgViewY, imgViewC, imgViewCr;
+     uint32_t atlas_view = 0;   // nxvc_vkd_atlas_view
+     bool atlas_view_initialized = false;
+@@ -1141,6 +1143,9 @@ nxvc_vkd_status make_layouts(D *d) {
+     sm.codeSize = sizeof(atlas_view8_spv);
+     sm.pCode = atlas_view8_spv;
+     VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smAV8));
++    sm.codeSize = sizeof(atlas_view8pair_spv);
++    sm.pCode = atlas_view8pair_spv;
++    VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smAV8Pair));
+     sm.codeSize = sizeof(atlas_view16_spv);
+     sm.pCode = atlas_view16_spv;
+     VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smAV16));
+@@ -1168,6 +1173,7 @@ nxvc_vkd_status make_layouts(D *d) {
+     VKTRY(d, make_pipe(d->smAC, d->plAC, &d->pipeAC));
+     VKTRY(d, make_pipe(d->smAT, d->plAT, &d->pipeAT));
+     VKTRY(d, make_pipe(d->smAV8, d->plAV, &d->pipeAV8));
++    VKTRY(d, make_pipe(d->smAV8Pair, d->plAV, &d->pipeAV8Pair));
+     VKTRY(d, make_pipe(d->smAV16, d->plAV, &d->pipeAV16));
+ 
+     // Summed from the same table the three set layouts are built from, so it
+@@ -2426,8 +2432,10 @@ extern "C" void nxvc_vk_decoder_destroy(nxvc_vk_decoder *d) {
+         if (d->smW) vkDestroyShaderModule(d->dev, d->smW, nullptr);
+         // [ATLAS]
+         if (d->pipeAV8) vkDestroyPipeline(d->dev, d->pipeAV8, nullptr);
++        if (d->pipeAV8Pair) vkDestroyPipeline(d->dev, d->pipeAV8Pair, nullptr);
+         if (d->pipeAV16) vkDestroyPipeline(d->dev, d->pipeAV16, nullptr);
+         if (d->smAV8) vkDestroyShaderModule(d->dev, d->smAV8, nullptr);
++        if (d->smAV8Pair) vkDestroyShaderModule(d->dev, d->smAV8Pair, nullptr);
+         if (d->smAV16) vkDestroyShaderModule(d->dev, d->smAV16, nullptr);
+         if (d->plAV) vkDestroyPipelineLayout(d->dev, d->plAV, nullptr);
+         if (d->pipeAC) vkDestroyPipeline(d->dev, d->pipeAC, nullptr);
+@@ -3784,21 +3792,28 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
+                               (int32_t)d->si.tiles_x, (int32_t)d->si.eyes};
+             vkCmdBindDescriptorSets(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                     d->plAV, 0, 1, &d->dsetAV, 0, nullptr);
++            const bool pair_active = d->atlas_view8_pair && full_view;
+             vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                               d->atlas_view == (uint32_t)NXVC_VKD_ATLAS_VIEW_R8
+-                                  ? d->pipeAV8
++                                  ? (pair_active ? d->pipeAV8Pair : d->pipeAV8)
+                                   : d->pipeAV16);
+             if (full_view) {
+                 vkCmdPushConstants(d->cmd, d->plAV, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                                    (uint32_t)sizeof vp, vp);
+-                vkCmdDispatch(d->cmd, ((uint32_t)vp[6] + 7u) / 8u,
+-                              ((uint32_t)vp[7] + 7u) / 8u, 1);
++                const uint32_t factor = pair_active ? 2u : 1u;
++                vkCmdDispatch(d->cmd, ((uint32_t)vp[6] + 8u * factor - 1u) /
++                                             (8u * factor),
++                              ((uint32_t)vp[7] + 8u * factor - 1u) /
++                                  (8u * factor),
++                              1);
+                 ++dispatches;
+             } else {
+                 vp[10] = (int32_t)d->acoded.size();
+                 vkCmdPushConstants(d->cmd, d->plAV, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                                    (uint32_t)sizeof vp, vp);
+-                vkCmdDispatch(d->cmd, (tile + 7u) / 8u, (tile + 7u) / 8u,
++                const uint32_t factor = 1u;
++                vkCmdDispatch(d->cmd, ((tile / factor) + 7u) / 8u,
++                              ((tile / factor) + 7u) / 8u,
+                               (uint32_t)d->acoded.size());
+                 ++dispatches;
+             }
+@@ -4160,6 +4175,9 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_set_atlas_view(
+     d->borrowed_atlas = {};
+     atlas_view_rebind(d);
+     d->atlas_view = (uint32_t)view;
++    d->atlas_view8_pair = view == NXVC_VKD_ATLAS_VIEW_R8 &&
++                          std::getenv("NXVC_VKD_ATLAS_VIEW8_PAIR") &&
++                          std::getenv("NXVC_VKD_ATLAS_VIEW8_PAIR")[0] == '1';
+     d->atlas_view_initialized = false;
+     d->atlas_view_needs_full = true;
+     d->atlas_view_copy_last = false;

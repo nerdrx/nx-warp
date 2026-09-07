@@ -1,0 +1,16 @@
+diff --git a/client/decoder/nxwarp/nxwarp_decoder.cpp b/client/decoder/nxwarp/nxwarp_decoder.cpp
+index 7fd84378..264f3ba2 100644
+--- a/client/decoder/nxwarp/nxwarp_decoder.cpp
++++ b/client/decoder/nxwarp/nxwarp_decoder.cpp
+@@ -647,6 +647,11 @@ bool nxwarp_decoder::on_stream_header(std::span<const uint8_t> header)
+ 	// the ordinary picture output, which is not normative for an atlas stream.
+ 	atlas_view_active = false;
+ #if defined(WIVRN_NXVC_ATLAS_DECODE) && defined(NXVC_VK_DECODER_ATLAS_TABLE_BUFFER)
++	#ifdef __ANDROID__
++	char atlas_pair[PROP_VALUE_MAX]{};
++	if (__system_property_get("debug.wivrn.atlas_view_pair", atlas_pair) > 0)
++		setenv("NXVC_VKD_ATLAS_VIEW8_PAIR", atlas_pair, 1);
++	#endif
+ 	if ((si.tools & (1ull << 31)) && si.color_transform == 0)
+ 	{
+ 		if (nxvc_vk_decoder_set_atlas_view(nxvc, NXVC_VKD_ATLAS_VIEW_R8) == NXVC_VKD_OK)
