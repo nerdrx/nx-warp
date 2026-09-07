@@ -1,0 +1,12 @@
+diff --git a/client/decoder/nxwarp/nxwarp_decoder.cpp b/client/decoder/nxwarp/nxwarp_decoder.cpp
+index bb757531..fc2066ef 100644
+--- a/client/decoder/nxwarp/nxwarp_decoder.cpp
++++ b/client/decoder/nxwarp/nxwarp_decoder.cpp
+@@ -648,6 +648,7 @@ bool nxwarp_decoder::on_stream_header(std::span<const uint8_t> header)
+ #if defined(WIVRN_NXVC_ATLAS_DECODE) && defined(NXVC_VK_DECODER_ATLAS_TABLE_BUFFER)
+ 	if ((si.tools & (1ull << 31)) && si.color_transform == 0)
+ 	{
++		setenv("NXVC_VKD_ATLAS_VIEW_DIRTY", "1", 1);
+ 		if (nxvc_vk_decoder_set_atlas_view(nxvc, NXVC_VKD_ATLAS_VIEW_R8) == NXVC_VKD_OK)
+ 			atlas_view_active = true;
+ 		else
