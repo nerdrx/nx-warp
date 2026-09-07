@@ -149,7 +149,19 @@ this is not a general performance claim. A subsequent [live R16 renderer experim
 was rejected: R16 reduced decoder GPU work but increased snapshot copies to
 0.59 ms and renderer GPU time to 3.9 ms. The R8 reverse run measured 0.28 ms
 and 2.7 ms respectively, with the same 89/s active fresh-source median.
-The live client remains R8.  Some directional-INTRA fixtures still encounter a separate Pico decoder failure. Next work is to validate longer ATLAS/PICTURE transitions, then repeat matched captures without session gaps and test moving-head quality.
+The live client remains R8.
+
+An opt-in [direct R8 handoff](bench/results/240fps-2026-09-07/live-atlas/direct-r8-handoff/README.md)
+now writes into retired display-pool images, removing the image snapshot copy.
+In a control/probe/reverse sequence, copy GPU time was **0.28 / 0.01 / 0.28 ms**.
+Decoder wall time was **2.4 / 2.6 / 2.3 ms**, so this is a copy-stage saving,
+not an overall speedup; the default stays unchanged. These are medians of report-window
+means under uncontrolled shared host load. The caller-owned output passed exact-pixel
+comparison and Vulkan synchronization validation on the host.
+
+![Pico R8 control capture with visible block and ghosting artifacts](bench/results/240fps-2026-09-07/live-atlas/direct-r8-handoff/control/live-direct-r8-control-pace90-screen-06.png)
+
+Some directional-INTRA fixtures still encounter a separate Pico decoder failure. Next work is to validate longer ATLAS/PICTURE transitions, then repeat matched captures without session gaps and test moving-head quality.
 
 <figure>
   <img src="docs/figures/240fps/atlas-reference-frame15.png" alt="Reference-decoded atlas frame 15, not a headset screenshot" width="320">
