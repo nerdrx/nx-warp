@@ -47,13 +47,27 @@ from presentation frequency. The current Pico experiments use its 90 Hz mode;
 an experiment, not a 240 Hz result; the [full methods and limitations](docs/240FPS.md)
 define the fixtures and interpretation.
 
-**Method.** Custom WiVRn NX streamed a static checkerboard with animated cube
+**Latest result.** Two integration bugs were making sparse ATLAS frames expensive:
+intentional skips were treated as missing tiles, and frames with an empty final
+band lacked their completion marker. The [receipt correction](bench/results/240fps-2026-09-07/live-atlas/skip-receipt/README.md)
+removed most forced refreshes. The subsequent
+[frame-completion comparison](bench/results/240fps-2026-09-07/live-atlas/last-band/README.md)
+measured **34.0 → 56.75 reported new sources/s** at the same QP40/pace60 setting;
+repeating the old sender returned to **34.0/s**. Median reported pose-age means
+fell from **70.5 to 50.35 ms**, and decoder GPU window means from **1.9 to 1.2 ms**.
+These are short off-head application measurements, with session gaps and black
+after-capture screenshots; they establish neither sustained visible headset FPS
+nor moving-head quality. The larger two-frame queue was rejected and reverted.
+
+![Sparse-frame completion: every measured source-rate and pose-age window](bench/results/240fps-2026-09-07/live-atlas/last-band/last-band-windows.png)
+
+**Earlier method.** Custom WiVRn NX streamed a static checkerboard with animated cube
 edges to Pico. The matched live comparison changed only `atlas:auto` versus
 `atlas:off`, with fixed QP 40 and server pace 45. New-source counts are frame-ID
 high-water counts at projection submission. Active 2 s report windows and their
 wall-clock gaps are reported separately because the headset session pauses.
 
-**Results.** In the matched capture, active new-source medians were 45/s for both
+**Earlier results.** In the matched capture, active new-source medians were 45/s for both
 paths; decoder GPU medians were 13.9 ms (off) and 13.2 ms (atlas). Boundary-excluded
 wall counts were 32.35/s and 32.43/s, with gaps up to 6.842 s. The evidence shows
 no verified end-to-end gain and no physical-FPS claim.
@@ -97,7 +111,7 @@ fixture; the custom live renderer remains R8-only. On 2176×1088 stereo, warm
 frames 1–31 measured old-compute/direct-copy GPU medians of 1.095/0.755 ms and wall
 medians of 1.356/1.017 ms, with one dispatch removed. The first frame has no
 usable GPU timing, and the motion fixture failed with an invalid reference, so
-this is not a general performance claim. Some directional-INTRA fixtures still encounter a separate Pico decoder failure. Next work is to identify why static tiles are recoded and why decoded frames fail to reach presentation, then repeat matched captures without session gaps.
+this is not a general performance claim. Some directional-INTRA fixtures still encounter a separate Pico decoder failure. Next work is to validate longer ATLAS/PICTURE transitions, then repeat matched captures without session gaps and test moving-head quality.
 
 <figure>
   <img src="docs/figures/240fps/atlas-reference-frame15.png" alt="Reference-decoded atlas frame 15, not a headset screenshot" width="320">
