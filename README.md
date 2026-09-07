@@ -166,6 +166,8 @@ The [output-scale 0.40 experiment](bench/results/240fps-2026-09-07/live-atlas/ou
 
 ![Pico R8 control capture with visible block and ghosting artifacts](bench/results/240fps-2026-09-07/live-atlas/direct-r8-handoff/control/live-direct-r8-control-pace90-screen-06.png)
 
+The [cubic colour experiment](bench/results/240fps-2026-09-07/live-atlas/cubic-color/README.md) was not retained: its measured stage delta produced no wall-time benefit, and its approximation has documented transfer-function error.
+
 Some directional-INTRA fixtures still encounter a separate Pico decoder failure. Next work is to validate longer ATLAS/PICTURE transitions, then repeat matched captures without session gaps and test moving-head quality.
 
 <figure>

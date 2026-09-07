@@ -1,0 +1,13 @@
+diff --git a/client/shaders/reprojection_atlas_r8.glsl b/client/shaders/reprojection_atlas_r8.glsl
+index fe76cf97..503ab65c 100644
+--- a/client/shaders/reprojection_atlas_r8.glsl
++++ b/client/shaders/reprojection_atlas_r8.glsl
+@@ -35,7 +35,7 @@ layout(location=0) out vec4 outColor;
+ const vec2 picture=vec2(1088.0,1088.0);
+ const vec2 luma_image=vec2(2176.0,1088.0);
+ const vec2 chroma_image=vec2(1088.0,544.0);
+-vec3 srgb_linear(vec3 c) { return mix(c/12.92,pow((c+0.055)/1.055,vec3(2.4)),step(vec3(0.04045),c)); }
++vec3 srgb_linear(vec3 c) { return c*(c*(0.3053040463*c+0.6821741187)+0.0125218351); } // Temporary measured approximation.
+ void main() {
+  vec2 eye_uv=clamp((inUV.xy*vec2(rgb_rect.zw)-vec2(rgb_rect.xy))/picture,vec2(0),vec2(0.999999));
+  ivec2 cell=ivec2(eye_uv*float(atlas_tiles));
