@@ -65,17 +65,40 @@ marked otherwise.
 | Pass B | 10.760 ms | **~1.1 ms** + atlas store | measured coded module, 39 tiles |
 | **total per eye** | **12.293 ms** | **~2.4-3.0 ms** | |
 
-> **The absolute milliseconds in this table are inflated and the RATIOS are
+> **SETTLED (2026-09-07): the tick rate was never wrong, the QUERY POOL was.**
+> The Adreno's reported `timestampPeriod` is correct. Measured on a warm
+> `--repeat 40` loop, where wall is real work rather than first-submit stall,
+> at 441.6 MHz:
+>
+> | period | gpu | wall | ratio |
+> |---|---|---|---|
+> | driver-reported | 2.661 ms | 2.841 ms | **0.937** |
+> | forced `33.33` ns | 1.703 ms | 2.838 ms | 0.600 |
+>
+> Same wall to 0.1 %, so the same work. At the reported period the GPU
+> accounts for 93.7 % of the frame and host parse plus submit (0.072 ms)
+> accounts for most of the rest -- a tight, physical fit. At 33.33 ns, 40 % of
+> a warm decode loop would be doing nothing, which it is not. **`33.33` is
+> wrong and the driver is right.**
+>
+> The 1.57x came from the query pool instead: it was created with 14 queries
+> and reset with 12, so queries 12-13 were written every inter frame and never
+> reset, and the readback used `VK_QUERY_RESULT_WAIT_BIT` over the lot. Both
+> are fixed. The absolutes below were taken through that broken path and must
+> be RE-MEASURED rather than rescaled -- there is no correction factor to
+> apply, because the error was garbage in specific queries and not a uniform
+> scale.
+>
+> **The absolute milliseconds in this table are stale and the RATIOS are
 > what carry.** The Pass B agent found the on-device bench reporting GPU time
 > in excess of wall time -- most likely a wrong `timestampPeriod` -- which puts
 > the absolutes about **1.57x** too high. Every figure in this document that
 > came from that bench is affected: the `12.293 ms`, the `10.760`, the `1.534`,
 > the `8.889` below, and the `~34 us/tile` quoted later. They are left as
-> measured rather than silently divided, because the correction factor is
-> itself provisional and a re-measured number is worth more than a rescaled
-> one; what is safe to use meanwhile is the RATIO between rows, which a common
-> scale factor leaves untouched. That is also what the "4-5x" claim below
-> rests on, so the claim survives the correction unchanged.
+> measured rather than adjusted, because there is no scale factor that would
+> fix them -- see above. What is safe to use meanwhile is the RATIO between
+> rows, and that is what the "4-5x" claim below rests on, so the claim
+> survives unchanged.
 >
 > The compose-dispatch numbers earlier in this document come from
 > `nxvc-atlas-gpu-test --bench`, a different harness, and are not known to be
