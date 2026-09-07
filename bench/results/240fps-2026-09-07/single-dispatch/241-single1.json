@@ -1,0 +1,92 @@
+{
+  "input_sha256": "bc0f2d4034af8fd1d7a1999b5e21316300a278d5b67f533b856325164ec99d01",
+  "sample_count": 14,
+  "samples_seen": 16,
+  "warmup_frames": 2,
+  "pass_b_includes_pass_w": true,
+  "metrics": {
+    "parse_ms": {
+      "p50": 0.049,
+      "p95": 0.086,
+      "p99": 0.088,
+      "available_samples": 14,
+      "unavailable_samples": 0
+    },
+    "submit_ms": {
+      "p50": 1.014,
+      "p95": 1.273,
+      "p99": 1.489,
+      "available_samples": 14,
+      "unavailable_samples": 0
+    },
+    "total_ms": {
+      "p50": 8.424,
+      "p95": 11.549,
+      "p99": 12.496,
+      "available_samples": 14,
+      "unavailable_samples": 0
+    },
+    "pass_a_ms": {
+      "p50": 5.691,
+      "p95": 7.964,
+      "p99": 8.039,
+      "available_samples": 14,
+      "unavailable_samples": 0
+    },
+    "pass_w_ms": {
+      "p50": 0.146,
+      "p95": 0.22,
+      "p99": 0.221,
+      "available_samples": 14,
+      "unavailable_samples": 0
+    },
+    "pass_b_ms": {
+      "p50": 0.433,
+      "p95": 0.678,
+      "p99": 0.68,
+      "available_samples": 14,
+      "unavailable_samples": 0
+    },
+    "gpu_ms": {
+      "p50": 6.011,
+      "p95": 8.413,
+      "p99": 8.463,
+      "available_samples": 14,
+      "unavailable_samples": 0
+    }
+  },
+  "counts": {
+    "tiles": {
+      "p50": 578.0,
+      "p95": 578.0,
+      "p99": 578.0,
+      "available_samples": 14,
+      "unavailable_samples": 0
+    },
+    "dispatches": {
+      "p50": 4.0,
+      "p95": 4.0,
+      "p99": 4.0,
+      "available_samples": 14,
+      "unavailable_samples": 0
+    }
+  },
+  "deadline_miss_fraction_decoder_only": {
+    "90": 0.07142857142857142,
+    "120": 0.5714285714285714,
+    "144": 0.8571428571428571,
+    "180": 0.8571428571428571,
+    "240": 0.9285714285714286
+  },
+  "timestamps_available": true,
+  "warnings": [
+    "nxvc-vkdec passB includes passW; do not add them together."
+  ],
+  "unmeasured": {
+    "occupancy": null,
+    "memory_traffic": null,
+    "thermal": null,
+    "quality": null,
+    "end_to_end": null
+  }
+}

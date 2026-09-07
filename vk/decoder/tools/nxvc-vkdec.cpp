@@ -46,6 +46,8 @@ void usage() {
         "                         where an integer storage image costs about\n"
         "                         3x a normalised one\n"
         "  --stats                per-frame timing to stderr\n"
+        "  --atlas-view none|r8|r16  generate the sampled atlas view for timing;\n"
+        "                         requires --no-out, without --repeat\n"
         "  --dense                the pre-ADR-0026 dense coefficient layout\n"
         "  --repeat N             decode the first frame N times and report\n"
         "                         the best per-pass device time.  A timing\n"
@@ -66,7 +68,7 @@ int fail_no_icd(const char *why) {
 }  // namespace
 
 int main(int argc, char **argv) {
-    std::string in, out, pix, icd, device, format = "auto";
+    std::string in, out, pix, icd, device, format = "auto", atlas_view = "none";
     int frames = -1, quiet = 0, nv12 = 0, stats = 0, lds = 0;
     int decode_every = 1;
     // [v3] measurement knobs, see nxvc_vk_decoder_set_dir_sched /
@@ -98,6 +100,7 @@ int main(int argc, char **argv) {
         else if (a == "--quiet") quiet = 1;
         else if (a == "--nv12") nv12 = 1;
         else if (a == "--stats") stats = 1;
+        else if (a == "--atlas-view") atlas_view = val();
         else if (a == "--lds") lds = 1;
         else if (a == "--dir-sched") dir_sched = std::atoi(val());
         else if (a == "--tile-sort") tile_sort = 1;
@@ -115,6 +118,12 @@ int main(int argc, char **argv) {
         }
     }
     if (in.empty() || (out.empty() && !no_out)) { usage(); return 2; }
+    if ((atlas_view != "none" && atlas_view != "r8" && atlas_view != "r16") ||
+        (atlas_view != "none" && (!no_out || repeat != 0))) {
+        std::fprintf(stderr, "--atlas-view expects none|r8|r16 and requires "
+                             "--no-out without --repeat\n");
+        return 2;
+    }
     if (!icd.empty()) {
 #ifdef _WIN32
         _putenv_s("VK_DRIVER_FILES", icd.c_str());
@@ -180,6 +189,18 @@ int main(int argc, char **argv) {
         return rc;
     }
     off += consumed;
+
+    if (atlas_view != "none") {
+        st = nxvc_vk_decoder_set_atlas_view(
+            dec, atlas_view == "r8" ? NXVC_VKD_ATLAS_VIEW_R8
+                                    : NXVC_VKD_ATLAS_VIEW_R16);
+        if (st != NXVC_VKD_OK) {
+            std::fprintf(stderr, "atlas view: %s\n",
+                         nxvc_vk_decoder_last_error(dec));
+            nxvc_vk_decoder_destroy(dec);
+            return 1;
+        }
+    }
 
     nxvc_vkd_stream_info si;
     nxvc_vk_decoder_stream_info(dec, &si);
@@ -259,6 +280,12 @@ int main(int argc, char **argv) {
                 return st == NXVC_VKD_ERR_UNSUPPORTED ? 77 : 1;
             }
             nxvc_vk_decoder_stats(dec, &s);
+            if (s.gpu_ms <= 0) {
+                std::fprintf(stderr, "repeat %d: GPU timestamps unavailable; benchmark invalid\n", i);
+                if (fo) std::fclose(fo);
+                nxvc_vk_decoder_destroy(dec);
+                return 1;
+            }
             if (s.pass_a_ms < bestA) bestA = s.pass_a_ms;
             if (s.pass_b_ms < bestB) bestB = s.pass_b_ms;
             if (s.gpu_ms < bestG) bestG = s.gpu_ms;
@@ -344,6 +371,8 @@ int main(int argc, char **argv) {
                          s.tiles_tskip, s.lane_groups, s.dispatches, s.parse_ms,
                          s.submit_ms, s.pass_a_ms, s.pass_w_ms, s.pass_b_ms,
                          s.gpu_ms, s.total_ms);
+            if (s.gpu_ms <= 0)
+                std::fprintf(stderr, "[timing] frame %d GPU timestamps unavailable; zero is not a performance result\n", n);
         }
         off += consumed;
         ++n;

@@ -1836,6 +1836,8 @@ bool encode_mode_stream(int w, int h, int frames, int period,
     cfg.width = (uint32_t)w;
     cfg.height = (uint32_t)h;
     cfg.chroma = NXVC_CHROMA_420;
+    if (std::getenv("NXVC_TEST_ATLAS_VIEW_LITE")) cfg.entropy_lite = 1;
+    if (std::getenv("NXVC_TEST_ATLAS_VIEW_NODIR")) cfg.intra_dir = 0;
     cfg.base_qp = 28;
     cfg.inter = 1;
     cfg.atlas = 1;
@@ -1844,6 +1846,7 @@ bool encode_mode_stream(int w, int h, int frames, int period,
     cfg.atlas_picture_period = (uint32_t)period;
     cfg.atlas_picture_disp = 0;
     cfg.atlas_picture_min_spacing = 0;
+    const bool static_fixture = std::getenv("NXVC_TEST_ATLAS_VIEW_STATIC") != nullptr;
     nxvc_status st;
     nxvc_encoder *e = nxvc_encoder_create(&cfg, &st);
     if (!e) { err = nxvc_status_string(st); return false; }
@@ -1858,14 +1861,15 @@ bool encode_mode_stream(int w, int h, int frames, int period,
     stream.assign(hdr.begin(), hdr.begin() + hl);
     std::vector<uint8_t> fbuf((size_t)w * h * 8 + (1u << 20));
     for (int f = 0; f < frames; ++f) {
-        const double a = 0.010 * f;   // a real yaw, so C is not the identity
+        const double a = static_fixture ? 0.0 : 0.010 * f;
         nxvc_view v{};
         v.qy = std::sin(a * 0.5);
         v.qw = std::cos(a * 0.5);
         v.fov_left = -0.9; v.fov_right = 0.9;
         v.fov_up = 0.9; v.fov_down = -0.9;
         nxvc_encoder_set_views(e, &v, 1);
-        TestImage im = make_image(w, h, false, 1, (uint32_t)(7000 + f));
+        TestImage im = make_image(w, h, false, 1,
+                                  (uint32_t)(static_fixture ? 7000 : 7000 + f));
         nxvc_image img{};
         for (int p = 0; p < 4; ++p) img.plane[p] = (uint8_t *)im.p[p].data();
         img.stride[0] = im.w;
@@ -1962,22 +1966,75 @@ void run_atlas_modes() {
 // stores it as an integer.  Both are then read back and must agree with each
 // OTHER and with the ATLAS ITSELF -- the third leg matters, because two views
 // produced by one wrong kernel would agree with each other perfectly.
+void view_test_env(const char *name, const char *value) {
+#ifdef _WIN32
+    _putenv_s(name, value ? value : "");
+#else
+    if (value) setenv(name, value, 1);
+    else unsetenv(name);
+#endif
+}
+
+struct ViewTestEnvGuard {
+    const char *name;
+    bool present;
+    std::string value;
+    explicit ViewTestEnvGuard(const char *n) : name(n), present(std::getenv(n) != nullptr),
+        value(present ? std::getenv(n) : "") {}
+    ~ViewTestEnvGuard() { view_test_env(name, present ? value.c_str() : nullptr); }
+};
+
 void run_atlas_view() {
+    ViewTestEnvGuard full_env("NXVC_VKD_ATLAS_VIEW_FULL");
+    ViewTestEnvGuard dirty_env("NXVC_VKD_ATLAS_VIEW_DIRTY");
+    ViewTestEnvGuard force_clear_env("NXVC_VKD_ATLAS_FORCE_CLEAR");
+    ViewTestEnvGuard force_pipeline_env("NXVC_VKD_ATLAS_FORCE_PIPELINES");
     ++g_checked;
     std::vector<uint8_t> stream;
     std::string err;
-    if (!encode_mode_stream(192, 192, 4, 0, stream, err)) {
+    // Non-tile-aligned extents force the final tile/chroma tile to exercise its clipped
+    // rectangle.  The first arm is the full-frame A/B baseline; the second
+    // uses coded-tile updates and must produce the same view.
+    int test_w = 194, test_h = 130;
+    if (const char *size = std::getenv("NXVC_TEST_ATLAS_VIEW_SIZE")) {
+        if (std::sscanf(size, "%dx%d", &test_w, &test_h) != 2) {
+            std::printf("FAIL atlas-view: invalid test size\n"); ++g_fail; return;
+        }
+    }
+    const char *fixture = std::getenv("NXVC_TEST_ATLAS_VIEW_INPUT");
+    if (!(fixture ? read_file(fixture, stream)
+                  : encode_mode_stream(test_w, test_h, 4, 0, stream, err))) {
         std::printf("FAIL atlas-view: encode: %s\n", err.c_str());
         ++g_fail;
         return;
     }
+    if (const char *save = std::getenv("NXVC_TEST_ATLAS_VIEW_SAVE")) {
+        std::FILE *file = std::fopen(save, "wb");
+        if (!file) { std::perror("atlas fixture"); ++g_fail; return; }
+        const bool ok = std::fwrite(stream.data(), 1, stream.size(), file) == stream.size();
+        const int closed = std::fclose(file);
+        if (!ok || closed != 0) ++g_fail;
+        std::printf("atlas-view: saved %zu fixture bytes; no decode test run\n", stream.size());
+        return;
+    }
     struct Shot { std::vector<uint8_t> y, c, cr; uint32_t yw=0,yh=0,cw=0,ch=0; };
-    Shot shot[2];
-    const nxvc_vkd_atlas_view modes[2] = {NXVC_VKD_ATLAS_VIEW_R8,
+    Shot shot[4];
+    std::vector<Shot> fullshots[2];
+    const nxvc_vkd_atlas_view modes[4] = {NXVC_VKD_ATLAS_VIEW_R8,
+                                          NXVC_VKD_ATLAS_VIEW_R16,
+                                          NXVC_VKD_ATLAS_VIEW_R8,
                                           NXVC_VKD_ATLAS_VIEW_R16};
     std::vector<uint16_t> atlasY, atlasCb, atlasCr;
     uint32_t aw = 0, ah = 0, asd = 0, acw = 0, ach = 0, acsd = 0;
-    for (int m = 0; m < 2; ++m) {
+    for (int m = 0; m < 4; ++m) {
+        if (m < 2)
+            view_test_env("NXVC_VKD_ATLAS_VIEW_FULL", "1");
+        else {
+            view_test_env("NXVC_VKD_ATLAS_VIEW_FULL", nullptr);
+            view_test_env("NXVC_VKD_ATLAS_VIEW_DIRTY", "1");
+        }
+        view_test_env("NXVC_VKD_ATLAS_FORCE_CLEAR", m < 2 ? "1" : nullptr);
+        view_test_env("NXVC_VKD_ATLAS_FORCE_PIPELINES", m < 2 ? "1" : nullptr);
         nxvc_vkd_create_info ci;
         nxvc_vk_decoder_create_info_default(&ci);
         ci.flags = 0;
@@ -2006,18 +2063,55 @@ void run_atlas_view() {
             return;
         }
         size_t off = consumed;
+        size_t frame = 0;
         while (off < stream.size()) {
+            // Recreating the sampled images must refresh unchanged atlas tiles,
+            // as well as those coded by the next frame.
+            if (frame == 2 &&
+                (nxvc_vk_decoder_set_atlas_view(d, NXVC_VKD_ATLAS_VIEW_NONE) != NXVC_VKD_OK ||
+                 nxvc_vk_decoder_set_atlas_view(d, modes[m]) != NXVC_VKD_OK)) {
+                std::printf("FAIL atlas-view: recreate\n");
+                ++g_fail; nxvc_vk_decoder_destroy(d); return;
+            }
             size_t used = 0;
             if (nxvc_vk_decode_frame(d, stream.data() + off,
                                      stream.size() - off, &used) !=
                 NXVC_VKD_OK) {
-                std::printf("FAIL atlas-view: decode: %s\n",
-                            nxvc_vk_decoder_last_error(d));
+                std::printf("FAIL atlas-view: arm %d frame %zu decode: %s\n",
+                            m, frame, nxvc_vk_decoder_last_error(d));
                 ++g_fail;
                 nxvc_vk_decoder_destroy(d);
                 return;
             }
             off += used;
+            if (std::getenv("NXVC_TEST_ATLAS_VIEW_TRACE")) {
+                nxvc_vkd_stats stats{};
+                nxvc_vk_decoder_stats(d, &stats);
+                std::printf("atlas-view arm %d frame %zu: %u valid entries\n",
+                            m, frame, stats.atlas_entries_valid);
+            }
+            Shot current;
+            auto read_shot = [&](int pl, std::vector<uint8_t> &dst) {
+                uint32_t w = 0, h = 0, bps = 0;
+                if (nxvc_vk_decoder_atlas_view_read(d, pl, nullptr, 0, &w, &h, &bps) != NXVC_VKD_OK)
+                    return false;
+                dst.resize((size_t)w * h * bps);
+                return nxvc_vk_decoder_atlas_view_read(d, pl, dst.data(), dst.size(), &w, &h, &bps) == NXVC_VKD_OK;
+            };
+            if (!read_shot(0, current.y) || !read_shot(1, current.c) ||
+                (modes[m] == NXVC_VKD_ATLAS_VIEW_R16 && !read_shot(2, current.cr))) {
+                std::printf("FAIL atlas-view: per-frame read\n"); ++g_fail;
+                nxvc_vk_decoder_destroy(d); return;
+            }
+            if (m < 2) fullshots[m].push_back(current);
+            else {
+                const Shot &base = fullshots[m - 2].at(frame);
+                if (base.y != current.y || base.c != current.c || base.cr != current.cr) {
+                    std::printf("FAIL atlas-view: dirty/full frame %zu mode %d\n", frame, m);
+                    ++g_fail; nxvc_vk_decoder_destroy(d); return;
+                }
+            }
+            ++frame;
         }
         uint32_t w = 0, h = 0, bps = 0;
         auto grab = [&](int pl, std::vector<uint8_t> &dst) {
@@ -2050,6 +2144,8 @@ void run_atlas_view() {
         }
         nxvc_vk_decoder_destroy(d);
     }
+    view_test_env("NXVC_VKD_ATLAS_VIEW_FULL", nullptr);
+    view_test_env("NXVC_VKD_ATLAS_VIEW_DIRTY", nullptr);
     if (shot[0].yw != shot[1].yw || shot[0].yh != shot[1].yh ||
         shot[0].cw != shot[1].cw || shot[0].ch != shot[1].ch) {
         std::printf("FAIL atlas-view: the two views have different extents\n");
@@ -3000,6 +3096,7 @@ int main(int argc, char **argv) {
     // timed bench stream: 8, 16, 32 or `auto`.  -1 leaves the encoder's
     // default, which is 8 and sets no tool bit.
     int bench_xform = -1;
+    bool only_atlas_view = false;
     // Line buffered, always.  stdout to a file is fully buffered by default,
     // which is why a wedged sweep left a zero-byte log naming nothing.
     setvbuf(stdout, nullptr, _IOLBF, 0);
@@ -3019,6 +3116,7 @@ int main(int argc, char **argv) {
         else if (a == "--only-vectors") { do_synth = false; do_loss = false; }
         else if (a == "--only-synthetic") { do_vectors = false; do_loss = false; }
         else if (a == "--only-loss") { do_vectors = false; do_synth = false; }
+        else if (a == "--only-atlas-view") { do_vectors = false; do_synth = false; do_loss = false; only_atlas_view = true; }
         else if (a == "--no-loss") do_loss = false;
         else if (a == "--bench") bench = i + 1 < argc && argv[i + 1][0] != '-'
                                              ? std::atoi(argv[++i])
@@ -3056,12 +3154,26 @@ int main(int argc, char **argv) {
                          "       [--bench-xform 8|16|32|auto]\n"
                          "       [--bench-save FILE]\n"
                          "       [--only-loss] [--no-loss]\n"
+                         "       [--only-atlas-view]\n"
                          "       [--bench-inter FRAMES] [--bench-size W H]\n",
                          argv[0]);
             return 2;
         }
     }
     if (!g_vectors_dir) g_vectors_dir = NXVC_VECTORS_DIR;
+    if (only_atlas_view) {
+        nxvc_vkd_create_info ci;
+        nxvc_vk_decoder_create_info_default(&ci);
+        ci.device_name = device_filter();
+        nxvc_vk_decoder *dec = nullptr;
+        if (nxvc_vk_decoder_create(&ci, &dec) != NXVC_VKD_OK) {
+            nxvc_vk_decoder_destroy(dec);
+            return 77;
+        }
+        nxvc_vk_decoder_destroy(dec);
+        run_atlas_view();
+        return g_fail ? 1 : (g_skipped ? 77 : 0);
+    }
     if (bench_save) {
         Case c{"bench_2x2048sq_420", 2048, 4096, 0, 1, bench_qp < 0 ? 24 : bench_qp,
                0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 1};

@@ -1,0 +1,92 @@
+{
+  "input_sha256": "898fc1a044b16589edbd70f2de21777d8a8c6da45b86c017c33a7e444087a978",
+  "sample_count": 14,
+  "samples_seen": 16,
+  "warmup_frames": 2,
+  "pass_b_includes_pass_w": true,
+  "metrics": {
+    "parse_ms": {
+      "p50": 0.051,
+      "p95": 0.064,
+      "p99": 0.071,
+      "available_samples": 14,
+      "unavailable_samples": 0
+    },
+    "submit_ms": {
+      "p50": 1.315,
+      "p95": 2.391,
+      "p99": 3.054,
+      "available_samples": 14,
+      "unavailable_samples": 0
+    },
+    "total_ms": {
+      "p50": 9.374,
+      "p95": 12.797,
+      "p99": 13.227,
+      "available_samples": 14,
+      "unavailable_samples": 0
+    },
+    "pass_a_ms": {
+      "p50": 5.082,
+      "p95": 7.807,
+      "p99": 7.829,
+      "available_samples": 14,
+      "unavailable_samples": 0
+    },
+    "pass_w_ms": {
+      "p50": 0.135,
+      "p95": 0.864,
+      "p99": 1.841,
+      "available_samples": 14,
+      "unavailable_samples": 0
+    },
+    "pass_b_ms": {
+      "p50": 1.186,
+      "p95": 2.711,
+      "p99": 2.961,
+      "available_samples": 14,
+      "unavailable_samples": 0
+    },
+    "gpu_ms": {
+      "p50": 6.55,
+      "p95": 8.975,
+      "p99": 9.097,
+      "available_samples": 14,
+      "unavailable_samples": 0
+    }
+  },
+  "counts": {
+    "tiles": {
+      "p50": 578.0,
+      "p95": 578.0,
+      "p99": 578.0,
+      "available_samples": 14,
+      "unavailable_samples": 0
+    },
+    "dispatches": {
+      "p50": 4.0,
+      "p95": 4.0,
+      "p99": 4.0,
+      "available_samples": 14,
+      "unavailable_samples": 0
+    }
+  },
+  "deadline_miss_fraction_decoder_only": {
+    "90": 0.14285714285714285,
+    "120": 0.6428571428571429,
+    "144": 0.8571428571428571,
+    "180": 0.9285714285714286,
+    "240": 1.0
+  },
+  "timestamps_available": true,
+  "warnings": [
+    "nxvc-vkdec passB includes passW; do not add them together."
+  ],
+  "unmeasured": {
+    "occupancy": null,
+    "memory_traffic": null,
+    "thermal": null,
+    "quality": null,
+    "end_to_end": null
+  }
+}

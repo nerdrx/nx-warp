@@ -1,0 +1,11 @@
+stage=A
+frame 0: 1624 B, 12 tiles (0 tskip, 2 lane group(s), 6 dispatches)  parse 0.018  submit 2592.761  passA 0.000  passW 0.000  passB 0.000  gpu 0.000  total 2621.774 ms
+frame 1: atlas: tile 0 codes a non-INTRA mode against an INVALID entry ([SYN] 13.12.4)
+exit=1
+stage=B
+frame 0: 1624 B, 12 tiles (0 tskip, 2 lane group(s), 6 dispatches)  parse 0.019  submit 2614.036  passA 7.931  passW 0.000  passB 0.018  gpu 7.949  total 2622.086 ms
+frame 1: 354 B, 12 tiles (0 tskip, 1 lane group(s), 6 dispatches)  parse 0.016  submit 78.286  passA 0.821  passW 0.093  passB 2.276  gpu 3.097  total 81.530 ms
+frame 2: 662 B, 12 tiles (0 tskip, 1 lane group(s), 7 dispatches)  parse 0.027  submit 0.094  passA 0.821  passW 0.093  passB 2.276  gpu 3.097  total 32.683 ms
+frame 3: 342 B, 12 tiles (0 tskip, 1 lane group(s), 6 dispatches)  parse 0.023  submit 0.185  passA 0.528  passW 0.092  passB 0.561  gpu 1.089  total 4.720 ms
+4 frame(s), 194x130 yuv420p on Adreno (TM) 650
+exit=0

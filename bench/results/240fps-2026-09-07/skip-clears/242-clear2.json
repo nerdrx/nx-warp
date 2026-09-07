@@ -1,0 +1,93 @@
+{
+  "counts": {
+    "dispatches": {
+      "available_samples": 14,
+      "p50": 7.0,
+      "p95": 7.0,
+      "p99": 7.0,
+      "unavailable_samples": 0
+    },
+    "tiles": {
+      "available_samples": 14,
+      "p50": 578.0,
+      "p95": 578.0,
+      "p99": 578.0,
+      "unavailable_samples": 0
+    }
+  },
+  "deadline_miss_fraction_decoder_only": {
+    "120": 0.07142857142857142,
+    "144": 0.2857142857142857,
+    "180": 0.7857142857142857,
+    "240": 1.0,
+    "90": 0.0
+  },
+  "input_sha256": "65af1418287151ac9339e377cadc312ca2fc4d4d0e9f8894adf77f144fb7e02f",
+  "metrics": {
+    "gpu_ms": {
+      "available_samples": 14,
+      "p50": 3.759,
+      "p95": 4.701,
+      "p99": 4.75,
+      "unavailable_samples": 0
+    },
+    "parse_ms": {
+      "available_samples": 14,
+      "p50": 0.068,
+      "p95": 0.28,
+      "p99": 0.475,
+      "unavailable_samples": 0
+    },
+    "pass_a_ms": {
+      "available_samples": 14,
+      "p50": 3.448,
+      "p95": 4.294,
+      "p99": 4.389,
+      "unavailable_samples": 0
+    },
+    "pass_b_ms": {
+      "available_samples": 14,
+      "p50": 0.371,
+      "p95": 0.583,
+      "p99": 0.59,
+      "unavailable_samples": 0
+    },
+    "pass_w_ms": {
+      "available_samples": 14,
+      "p50": 0.132,
+      "p95": 0.195,
+      "p99": 0.196,
+      "unavailable_samples": 0
+    },
+    "submit_ms": {
+      "available_samples": 14,
+      "p50": 1.635,
+      "p95": 3.539,
+      "p99": 4.989,
+      "unavailable_samples": 0
+    },
+    "total_ms": {
+      "available_samples": 14,
+      "p50": 6.601,
+      "p95": 8.765,
+      "p99": 10.576,
+      "unavailable_samples": 0
+    }
+  },
+  "pass_b_includes_pass_w": true,
+  "sample_count": 14,
+  "samples_seen": 16,
+  "timestamps_available": true,
+  "unmeasured": {
+    "end_to_end": null,
+    "memory_traffic": null,
+    "occupancy": null,
+    "quality": null,
+    "thermal": null
+  },
+  "warmup_frames": 2,
+  "warnings": [
+    "passA includes upload+atlas compose; timestamp 0 is before upload/compose and timestamp 1 is after entropy.",
+    "nxvc-vkdec passB includes passW; do not add them together."
+  ]
+}

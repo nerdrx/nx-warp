@@ -2,6 +2,11 @@
 
 Phases, exit criteria, and what actually exists in the tree today.
 
+Current performance direction and device experiment record:
+[240 Hz: remove work first](docs/240FPS.md). On Pico, speed and clean motion
+take priority over low-bitrate fidelity. The phase table below is historical
+and must not substitute for measurements of the current working tree.
+
 The phases and their exit criteria come from [docs/PAPER.md](docs/PAPER.md) sections 3.11 and 7.3 and
 are reproduced here unchanged. The status column is an honest statement of what is in the repository,
 not a claim that any of it is finished or correct.

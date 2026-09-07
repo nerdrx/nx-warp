@@ -33,13 +33,38 @@ around exactly those facts.** The frame is a set of independent 64x64 tiles,
 each its own bitstream, each decoded by one GPU workgroup. Prediction is a
 pose-warped reprojection of the last decoded frame plus a small per-tile
 correction, so motion search largely disappears and a lost tile conceals itself.
-Everything runs in Vulkan compute on both ends, with no CPU on the hot path and
-no vendor SDK anywhere, which is what removes the NVENC, AMF and VAAPI session
+The GPU codec path uses Vulkan compute on both ends; CPU parsing, scheduling
+and integration work remain. It needs no vendor encoder SDK, which is what removes the NVENC, AMF and VAAPI session
 ceilings on the PC. It is being built for [WiVRn NX](https://github.com/nerdrx/wivrn-nx).
+
+## 240 Hz experiment
+
+**240 Hz presentation is a stretch target, not an achieved frame rate.** The
+checkpoints are 90 → 120 → 144 → 180 → 240 Hz. On Pico, speed and clean motion
+take priority over fidelity at low bitrate. The experiment removes work on
+unchanged tiles and separates correction frequency from presentation frequency.
+Read the [direction and limitations](docs/240FPS.md) and the
+[Pico measurements, fixture and correctness results](bench/results/240fps-2026-09-07/README.md).
+The [pipeline-demand result](bench/results/240fps-2026-09-07/pipeline-demand/README.md)
+measures a 67–80 ms first all-skipped-frame setup cost falling to 2.9–5.3 ms
+when unused pipelines are created on demand. Clear omission and demand
+creation remove default dead work; dirty display views remain opt-in. Local
+WiVRn NX `stream.cpp/h` edits now count new-source projection submissions by
+frame-ID high-water across windows; the desktop build is in progress and is
+not installed on Pico, so no live measurement exists yet.
+
+<figure>
+  <img src="docs/figures/240fps/atlas-reference-frame15.png" alt="Reference-decoded atlas frame 15, not a headset screenshot" width="320">
+  <figcaption>Reference-decoded frame 15 used to inspect the atlas path; this is decoded from the capture, not a headset screenshot.</figcaption>
+</figure>
 
 Library and codec identifier: `nxvc`.
 
 <br>
+
+![Measured removal of decoder work on Pico](docs/figures/240fps/dead-work-results.png)
+
+Short decoder-only experiments; see the [methods and limitations](docs/240FPS.md).
 
 ## Gallery
 

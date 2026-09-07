@@ -1,0 +1,93 @@
+{
+  "counts": {
+    "dispatches": {
+      "available_samples": 14,
+      "p50": 7.0,
+      "p95": 7.0,
+      "p99": 7.0,
+      "unavailable_samples": 0
+    },
+    "tiles": {
+      "available_samples": 14,
+      "p50": 578.0,
+      "p95": 578.0,
+      "p99": 578.0,
+      "unavailable_samples": 0
+    }
+  },
+  "deadline_miss_fraction_decoder_only": {
+    "120": 0.42857142857142855,
+    "144": 0.6428571428571429,
+    "180": 0.8571428571428571,
+    "240": 0.9285714285714286,
+    "90": 0.14285714285714285
+  },
+  "input_sha256": "5e27badcf747e6bd07887c37705514696e8e1b9293e3c0d704dcb9c5ba871c18",
+  "metrics": {
+    "gpu_ms": {
+      "available_samples": 14,
+      "p50": 5.626,
+      "p95": 8.06,
+      "p99": 8.98,
+      "unavailable_samples": 0
+    },
+    "parse_ms": {
+      "available_samples": 14,
+      "p50": 0.044,
+      "p95": 0.055,
+      "p99": 0.056,
+      "unavailable_samples": 0
+    },
+    "pass_a_ms": {
+      "available_samples": 14,
+      "p50": 5.151,
+      "p95": 7.655,
+      "p99": 8.493,
+      "unavailable_samples": 0
+    },
+    "pass_b_ms": {
+      "available_samples": 14,
+      "p50": 0.475,
+      "p95": 1.015,
+      "p99": 1.581,
+      "unavailable_samples": 0
+    },
+    "pass_w_ms": {
+      "available_samples": 14,
+      "p50": 0.15,
+      "p95": 0.654,
+      "p99": 1.303,
+      "unavailable_samples": 0
+    },
+    "submit_ms": {
+      "available_samples": 14,
+      "p50": 0.968,
+      "p95": 1.793,
+      "p99": 2.119,
+      "unavailable_samples": 0
+    },
+    "total_ms": {
+      "available_samples": 14,
+      "p50": 7.774,
+      "p95": 11.646,
+      "p99": 12.36,
+      "unavailable_samples": 0
+    }
+  },
+  "pass_b_includes_pass_w": true,
+  "sample_count": 14,
+  "samples_seen": 16,
+  "timestamps_available": true,
+  "unmeasured": {
+    "end_to_end": null,
+    "memory_traffic": null,
+    "occupancy": null,
+    "quality": null,
+    "thermal": null
+  },
+  "warmup_frames": 2,
+  "warnings": [
+    "passA includes upload+atlas compose; timestamp 0 is before upload/compose and timestamp 1 is after entropy.",
+    "nxvc-vkdec passB includes passW; do not add them together."
+  ]
+}

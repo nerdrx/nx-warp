@@ -542,7 +542,7 @@ typedef struct nxvc_vkd_stats {
     /* Device timestamps, 0 when the device has no timestamp support. */
     double pass_a_ms;
     double pass_b_ms;
-    double gpu_ms; /* first to last timestamp                              */
+    double gpu_ms; /* first to last timestamp; 0 means unavailable         */
 
     uint64_t frame_bytes;   /* the frame unit, header included             */
     uint64_t payload_bytes; /* entropy-coded tile payloads only            */

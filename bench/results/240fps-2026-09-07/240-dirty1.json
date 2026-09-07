@@ -1,0 +1,92 @@
+{
+  "input_sha256": "09d9190ee057dcde1d7146bee4d2935b2b0c4c75ca17f6611cc996944a0d1ca5",
+  "sample_count": 14,
+  "samples_seen": 16,
+  "warmup_frames": 2,
+  "pass_b_includes_pass_w": true,
+  "metrics": {
+    "parse_ms": {
+      "p50": 0.051,
+      "p95": 0.078,
+      "p99": 0.086,
+      "available_samples": 14,
+      "unavailable_samples": 0
+    },
+    "submit_ms": {
+      "p50": 1.04,
+      "p95": 1.311,
+      "p99": 1.484,
+      "available_samples": 14,
+      "unavailable_samples": 0
+    },
+    "total_ms": {
+      "p50": 7.185,
+      "p95": 10.072,
+      "p99": 10.941,
+      "available_samples": 14,
+      "unavailable_samples": 0
+    },
+    "pass_a_ms": {
+      "p50": 4.78,
+      "p95": 6.792,
+      "p99": 7.886,
+      "available_samples": 14,
+      "unavailable_samples": 0
+    },
+    "pass_w_ms": {
+      "p50": 0.135,
+      "p95": 0.644,
+      "p99": 1.302,
+      "available_samples": 14,
+      "unavailable_samples": 0
+    },
+    "pass_b_ms": {
+      "p50": 0.432,
+      "p95": 1.047,
+      "p99": 1.615,
+      "available_samples": 14,
+      "unavailable_samples": 0
+    },
+    "gpu_ms": {
+      "p50": 5.186,
+      "p95": 7.591,
+      "p99": 8.413,
+      "available_samples": 14,
+      "unavailable_samples": 0
+    }
+  },
+  "counts": {
+    "tiles": {
+      "p50": 578.0,
+      "p95": 578.0,
+      "p99": 578.0,
+      "available_samples": 14,
+      "unavailable_samples": 0
+    },
+    "dispatches": {
+      "p50": 12.5,
+      "p95": 21.35,
+      "p99": 21.87,
+      "available_samples": 14,
+      "unavailable_samples": 0
+    }
+  },
+  "deadline_miss_fraction_decoder_only": {
+    "90": 0.07142857142857142,
+    "120": 0.21428571428571427,
+    "144": 0.5714285714285714,
+    "180": 1.0,
+    "240": 1.0
+  },
+  "timestamps_available": true,
+  "warnings": [
+    "nxvc-vkdec passB includes passW; do not add them together."
+  ],
+  "unmeasured": {
+    "occupancy": null,
+    "memory_traffic": null,
+    "thermal": null,
+    "quality": null,
+    "end_to_end": null
+  }
+}

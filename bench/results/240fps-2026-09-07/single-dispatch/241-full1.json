@@ -1,0 +1,92 @@
+{
+  "input_sha256": "984998ef58fe208eccd950c0704e365fc547576ffb516b24265c62ee063271d7",
+  "sample_count": 14,
+  "samples_seen": 16,
+  "warmup_frames": 2,
+  "pass_b_includes_pass_w": true,
+  "metrics": {
+    "parse_ms": {
+      "p50": 0.048,
+      "p95": 0.06,
+      "p99": 0.061,
+      "available_samples": 14,
+      "unavailable_samples": 0
+    },
+    "submit_ms": {
+      "p50": 1.087,
+      "p95": 1.544,
+      "p99": 1.736,
+      "available_samples": 14,
+      "unavailable_samples": 0
+    },
+    "total_ms": {
+      "p50": 9.703,
+      "p95": 12.749,
+      "p99": 12.941,
+      "available_samples": 14,
+      "unavailable_samples": 0
+    },
+    "pass_a_ms": {
+      "p50": 5.897,
+      "p95": 8.069,
+      "p99": 8.533,
+      "available_samples": 14,
+      "unavailable_samples": 0
+    },
+    "pass_w_ms": {
+      "p50": 0.151,
+      "p95": 0.22,
+      "p99": 0.222,
+      "available_samples": 14,
+      "unavailable_samples": 0
+    },
+    "pass_b_ms": {
+      "p50": 1.28,
+      "p95": 1.848,
+      "p99": 2.376,
+      "available_samples": 14,
+      "unavailable_samples": 0
+    },
+    "gpu_ms": {
+      "p50": 7.163,
+      "p95": 9.2,
+      "p99": 9.746,
+      "available_samples": 14,
+      "unavailable_samples": 0
+    }
+  },
+  "counts": {
+    "tiles": {
+      "p50": 578.0,
+      "p95": 578.0,
+      "p99": 578.0,
+      "available_samples": 14,
+      "unavailable_samples": 0
+    },
+    "dispatches": {
+      "p50": 4.0,
+      "p95": 4.0,
+      "p99": 4.0,
+      "available_samples": 14,
+      "unavailable_samples": 0
+    }
+  },
+  "deadline_miss_fraction_decoder_only": {
+    "90": 0.35714285714285715,
+    "120": 0.7857142857142857,
+    "144": 1.0,
+    "180": 1.0,
+    "240": 1.0
+  },
+  "timestamps_available": true,
+  "warnings": [
+    "nxvc-vkdec passB includes passW; do not add them together."
+  ],
+  "unmeasured": {
+    "occupancy": null,
+    "memory_traffic": null,
+    "thermal": null,
+    "quality": null,
+    "end_to_end": null
+  }
+}

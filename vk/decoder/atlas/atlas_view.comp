@@ -42,24 +42,26 @@ layout(std430, binding = 0) readonly buffer AtlasBuf { uint atlas[]; };
 
 #ifdef NXVW_VIEW8
 // NV12-shaped: one luma tap and one chroma tap.
-layout(r8, binding = 1) uniform writeonly image2D outLuma;
-layout(rg8, binding = 2) uniform writeonly image2D outChroma;
+layout(r8, binding = 2) uniform writeonly image2D outLuma;
+layout(rg8, binding = 3) uniform writeonly image2D outChroma;
 #else
 // Three R16 planes, which is what the design specified before it was measured.
-layout(r16ui, binding = 1) uniform writeonly uimage2D outLuma;
-layout(r16ui, binding = 2) uniform writeonly uimage2D outCb;
-layout(r16ui, binding = 3) uniform writeonly uimage2D outCr;
+layout(r16ui, binding = 2) uniform writeonly uimage2D outLuma;
+layout(r16ui, binding = 3) uniform writeonly uimage2D outCb;
+layout(r16ui, binding = 4) uniform writeonly uimage2D outCr;
 #endif
+layout(std430, binding = 1) readonly buffer CodedBuf { uint coded[]; };
 
 layout(push_constant) uniform Push {
     // Per plane 0..2: the u16 element offset of the plane inside one atlas
     // slot, and its row stride in u16 elements.  Both eyes live side by side
-    // within each plane, so a row of `lumaW` covers the PAIR and the eye
-    // arithmetic never appears here.
+    // within each plane, so `lumaW` and `chromaW` cover the eye PAIR.  The
+    // shader applies the eye offset when walking the coded-tile list.
     int off0, off1, off2;
     int stride0, stride1, stride2;
     int lumaW, lumaH;      // over the eye PAIR
     int chromaW, chromaH;  // over the eye PAIR
+    int tileCount, colsPerEye, eyes;
 } pc;
 
 uint atlas_sample(int off, int stride, int x, int y) {
@@ -69,10 +71,31 @@ uint atlas_sample(int off, int stride, int x, int y) {
 }
 
 void main() {
-    int x = int(gl_GlobalInvocationID.x);
-    int y = int(gl_GlobalInvocationID.y);
+    int ox = 0, oy = 0;
+    int ocx = 0, ocy = 0;
+    int tw = pc.lumaW, th = pc.lumaH;
+    int ctw = pc.chromaW, cth = pc.chromaH;
+    if (pc.tileCount > 0) {
+        uint t = coded[gl_WorkGroupID.z];
+        uint row = t / uint(pc.colsPerEye * pc.eyes);
+        uint rem = t % uint(pc.colsPerEye * pc.eyes);
+        uint eye = rem / uint(pc.colsPerEye);
+        uint col = rem % uint(pc.colsPerEye);
+        ox = int(eye * uint(pc.lumaW / pc.eyes) + col * 64u);
+        oy = int(row * 64u);
+        ocx = int(eye * uint(pc.chromaW / pc.eyes) + col * 32u);
+        ocy = int(row * 32u);
+        tw = min(64, pc.lumaW / pc.eyes - int(col * 64u));
+        th = min(64, pc.lumaH - int(row * 64u));
+        ctw = min(32, pc.chromaW / pc.eyes - int(col * 32u));
+        cth = min(32, pc.chromaH - int(row * 32u));
+    }
+    int x = int(gl_GlobalInvocationID.x) + ox;
+    int y = int(gl_GlobalInvocationID.y) + oy;
+    int lx = x - ox;
+    int ly = y - oy;
 
-    if (x < pc.lumaW && y < pc.lumaH) {
+    if (lx < tw && ly < th && x < pc.lumaW && y < pc.lumaH) {
         uint v = atlas_sample(pc.off0, pc.stride0, x, y);
 #ifdef NXVW_VIEW8
         imageStore(outLuma, ivec2(x, y), vec4(float(v) / 255.0, 0.0, 0.0, 1.0));
@@ -80,17 +103,19 @@ void main() {
         imageStore(outLuma, ivec2(x, y), uvec4(v, 0u, 0u, 1u));
 #endif
     }
-    if (x < pc.chromaW && y < pc.chromaH) {
-        uint cb = atlas_sample(pc.off1, pc.stride1, x, y);
-        uint cr = atlas_sample(pc.off2, pc.stride2, x, y);
+    int cx = ocx + lx;
+    int cy = ocy + ly;
+    if (lx < ctw && ly < cth && cx < pc.chromaW && cy < pc.chromaH) {
+        uint cb = atlas_sample(pc.off1, pc.stride1, cx, cy);
+        uint cr = atlas_sample(pc.off2, pc.stride2, cx, cy);
 #ifdef NXVW_VIEW8
         // One tap carries both: Cb in .r and Cr in .g, which is the order a
         // G8_B8R8_2PLANE_420_UNORM sampler reports for the same picture.
-        imageStore(outChroma, ivec2(x, y),
+        imageStore(outChroma, ivec2(cx, cy),
                    vec4(float(cb) / 255.0, float(cr) / 255.0, 0.0, 1.0));
 #else
-        imageStore(outCb, ivec2(x, y), uvec4(cb, 0u, 0u, 1u));
-        imageStore(outCr, ivec2(x, y), uvec4(cr, 0u, 0u, 1u));
+        imageStore(outCb, ivec2(cx, cy), uvec4(cb, 0u, 0u, 1u));
+        imageStore(outCr, ivec2(cx, cy), uvec4(cr, 0u, 0u, 1u));
 #endif
     }
 }
