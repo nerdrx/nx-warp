@@ -64,3 +64,12 @@ if(NXVC_LAVAPIPE_ICD AND EXISTS "${NXVC_LAVAPIPE_ICD}")
   set_tests_properties(vk.atlas.gpu_vs_cpu_lavapipe PROPERTIES
     ENVIRONMENT "VK_DRIVER_FILES=${NXVC_LAVAPIPE_ICD};VK_ICD_FILENAMES=${NXVC_LAVAPIPE_ICD};NXVC_VKD_DEVICE=llvmpipe")
 endif()
+
+if(TARGET nxvc_vk_decoder)
+  add_executable(nxvc-atlas-borrowed-r8-test test_borrowed_r8.cpp)
+  target_link_libraries(nxvc-atlas-borrowed-r8-test PRIVATE nxvc_vk_decoder)
+  target_include_directories(nxvc-atlas-borrowed-r8-test PRIVATE ${CMAKE_SOURCE_DIR}/include)
+  set_target_properties(nxvc-atlas-borrowed-r8-test PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+  add_test(NAME vk.decoder.atlas_borrowed_r8 COMMAND nxvc-atlas-borrowed-r8-test)
+  set_tests_properties(vk.decoder.atlas_borrowed_r8 PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 300)
+endif()

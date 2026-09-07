@@ -494,6 +494,21 @@ typedef struct nxvc_vkd_atlas_images {
     uint32_t width[3], height[3];
 } nxvc_vkd_atlas_images;
 
+/* Optional borrowed R8 display target. The caller owns storage-capable images
+ * and views on the decoder's adopted VkDevice,
+ * keeps them retired until the decode submission completes, and supplies them
+ * in an undefined/discardable layout; the decoder never frees or retains
+ * ownership. Only CT_NONE 8-bit 4:2:0 R8 (Y + CbCr) targets are accepted.
+ * Reset the target before reusing it after a caller layout transition.
+ * atlas_view_read() is unavailable while a borrowed target is active; the caller
+ * performs readback with its own image usage flags and synchronization. */
+#define NXVC_VKD_ATLAS_BORROWED_TARGET 1
+/* Set only between completed decode submissions; changing it while a decode is
+ * in flight is rejected. Passing NULL clears the target and restores the
+ * decoder-owned atlas images. atlas_images() reports the active target. */
+nxvc_vkd_status nxvc_vk_decoder_set_atlas_borrowed_target(
+    nxvc_vk_decoder *dec, const nxvc_vkd_atlas_images *target);
+
 nxvc_vkd_status nxvc_vk_decoder_atlas_images(const nxvc_vk_decoder *dec,
                                              nxvc_vkd_atlas_images *out);
 

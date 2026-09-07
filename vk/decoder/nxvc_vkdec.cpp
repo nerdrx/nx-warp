@@ -246,6 +246,8 @@ struct nxvc_vk_decoder {
     bool atlas_view_needs_full = true;
     bool atlas_r16_copy_supported = false;
     bool atlas_view_copy_last = false;
+    nxvc_vkd_atlas_images borrowed_atlas{};
+    bool has_borrowed_atlas = false;
     VkDescriptorSet dsetA = VK_NULL_HANDLE, dsetB = VK_NULL_HANDLE;
     std::map<uint32_t, VkPipeline> pipesA;  // lanes | ctx_stride<<8 | xfl<<16
     // key: (format << 40) | (dirSched << 32) | storeWords
@@ -1663,6 +1665,8 @@ nxvc_vkd_status make_resources(D *d) {
         // nxvc_vk_decoder_set_atlas_view() rather than here.  A placeholder
         // still has to exist, because an unbound descriptor is not legal.
         d->atlas_view = 0;
+        d->has_borrowed_atlas = false;
+        d->borrowed_atlas = {};
         d->atlas_view_initialized = false;
         d->atlas_view_needs_full = true;
         if ((st = make_img(d, d->imgViewY, VK_FORMAT_R8_UNORM, 1, 1)))
@@ -3700,7 +3704,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     if (d->atlas_view) {
         const char *dirty = std::getenv("NXVC_VKD_ATLAS_VIEW_DIRTY");
         const char *full = std::getenv("NXVC_VKD_ATLAS_VIEW_FULL");
-        const bool full_view = d->atlas_view_needs_full || picture ||
+        const bool full_view = d->has_borrowed_atlas || d->atlas_view_needs_full || picture ||
                                d->si.chroma != 0 || d->si.color_transform != 0 ||
                                !dirty || dirty[0] != '1' ||
                                (full && full[0] == '1');
@@ -3759,9 +3763,9 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
                                          nullptr, 0, nullptr, 1, &ib);
                 }
             } else {
-            image_to_general(d->cmd, d->imgViewY.img, !d->atlas_view_initialized,
+            image_to_general(d->cmd, d->has_borrowed_atlas ? d->borrowed_atlas.image[0] : d->imgViewY.img, !d->atlas_view_initialized,
                              d->atlas_view_copy_last);
-            image_to_general(d->cmd, d->imgViewC.img, !d->atlas_view_initialized,
+            image_to_general(d->cmd, d->has_borrowed_atlas ? d->borrowed_atlas.image[1] : d->imgViewC.img, !d->atlas_view_initialized,
                              d->atlas_view_copy_last);
             image_to_general(d->cmd, d->imgViewCr.img, !d->atlas_view_initialized,
                              d->atlas_view_copy_last);
@@ -4065,10 +4069,14 @@ nxvc_vkd_status atlas_readback(D *d, const Buf &src, VkDeviceSize bytes,
 static void atlas_view_rebind(D *d) {
     VkDescriptorBufferInfo avb{d->bRing.buf, 0, VK_WHOLE_SIZE};
     VkDescriptorBufferInfo avc{d->bACoded.buf, 0, VK_WHOLE_SIZE};
+    const VkImageView v[3] = {
+        d->has_borrowed_atlas ? d->borrowed_atlas.view[0] : d->imgViewY.view,
+        d->has_borrowed_atlas ? d->borrowed_atlas.view[1] : d->imgViewC.view,
+        d->imgViewCr.view};
     VkDescriptorImageInfo avi[3] = {
-        {VK_NULL_HANDLE, d->imgViewY.view, VK_IMAGE_LAYOUT_GENERAL},
-        {VK_NULL_HANDLE, d->imgViewC.view, VK_IMAGE_LAYOUT_GENERAL},
-        {VK_NULL_HANDLE, d->imgViewCr.view, VK_IMAGE_LAYOUT_GENERAL}};
+        {VK_NULL_HANDLE, v[0], VK_IMAGE_LAYOUT_GENERAL},
+        {VK_NULL_HANDLE, v[1], VK_IMAGE_LAYOUT_GENERAL},
+        {VK_NULL_HANDLE, v[2], VK_IMAGE_LAYOUT_GENERAL}};
     VkWriteDescriptorSet w[5]{};
     w[0] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
     w[0].dstSet = d->dsetAV;
@@ -4148,6 +4156,8 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_set_atlas_view(
         if ((st = make_img(d, d->imgViewCr, VK_FORMAT_R16_UINT, 1, 1)))
             return st;
     }
+    d->has_borrowed_atlas = false;
+    d->borrowed_atlas = {};
     atlas_view_rebind(d);
     d->atlas_view = (uint32_t)view;
     d->atlas_view_initialized = false;
@@ -4161,11 +4171,64 @@ extern "C" nxvc_vkd_atlas_view nxvc_vk_decoder_atlas_view(
     return d ? (nxvc_vkd_atlas_view)d->atlas_view : NXVC_VKD_ATLAS_VIEW_NONE;
 }
 
+extern "C" nxvc_vkd_status nxvc_vk_decoder_set_atlas_borrowed_target(
+    nxvc_vk_decoder *d, const nxvc_vkd_atlas_images *target) {
+    if (!d) return NXVC_VKD_ERR_ARG;
+    bool in_flight = d->fence_pending;
+    if (!in_flight && d->timeline != VK_NULL_HANDLE && d->timeline_value &&
+        d->fpGetSemaphoreCounterValue) {
+        uint64_t completed = 0;
+        const VkResult qr = d->fpGetSemaphoreCounterValue(d->dev, d->timeline, &completed);
+        if (qr != VK_SUCCESS)
+            return seterr(d, NXVC_VKD_ERR_VULKAN,
+                          "cannot check borrowed atlas target completion (%d)", (int)qr);
+        in_flight = completed < d->timeline_value;
+    }
+    if (in_flight)
+        return seterr(d, NXVC_VKD_ERR_INTERNAL,
+                      "cannot change borrowed atlas target while decode is in flight");
+    if (!target) {
+        if (!d->has_borrowed_atlas) return NXVC_VKD_OK;
+        d->has_borrowed_atlas = false;
+        d->borrowed_atlas = {};
+        atlas_view_rebind(d);
+        d->atlas_view_initialized = false;
+        d->atlas_view_needs_full = true;
+        return NXVC_VKD_OK;
+    }
+    if (d->atlas_view != (uint32_t)NXVC_VKD_ATLAS_VIEW_R8 ||
+        d->si.bit_depth != 8 || d->si.color_transform != 0 || d->si.chroma != 0)
+        return seterr(d, NXVC_VKD_ERR_UNSUPPORTED,
+                      "borrowed atlas target requires 8-bit CT_NONE R8 view");
+    const uint32_t w = d->si.width * d->si.eyes, h = d->si.height;
+    if (target->image[0] == VK_NULL_HANDLE || target->image[1] == VK_NULL_HANDLE ||
+        target->view[0] == VK_NULL_HANDLE || target->view[1] == VK_NULL_HANDLE ||
+        target->format[0] != VK_FORMAT_R8_UNORM || target->format[1] != VK_FORMAT_R8G8_UNORM ||
+        target->width[0] != w || target->height[0] != h ||
+        target->width[1] != d->si.cw * d->si.eyes || target->height[1] != d->si.ch)
+        return seterr(d, NXVC_VKD_ERR_ARG, "borrowed atlas target has wrong R8 layout");
+    d->borrowed_atlas = *target;
+    d->has_borrowed_atlas = true;
+    atlas_view_rebind(d);
+    d->atlas_view_initialized = false;
+    d->atlas_view_needs_full = true;
+    d->atlas_view_copy_last = false;
+    return NXVC_VKD_OK;
+}
+
 extern "C" nxvc_vkd_status nxvc_vk_decoder_atlas_images(
     const nxvc_vk_decoder *d, nxvc_vkd_atlas_images *o) {
     if (!d || !o) return NXVC_VKD_ERR_ARG;
     if (!d->atlas_view)
         return NXVC_VKD_ERR_UNSUPPORTED;
+    if (d->has_borrowed_atlas) {
+        *o = d->borrowed_atlas;
+        o->image[2] = VK_NULL_HANDLE;
+        o->view[2] = VK_NULL_HANDLE;
+        o->format[2] = VK_FORMAT_UNDEFINED;
+        o->width[2] = o->height[2] = 0;
+        return NXVC_VKD_OK;
+    }
     const Img *im[3] = {&d->imgViewY, &d->imgViewC, &d->imgViewCr};
     for (int i = 0; i < 3; ++i) {
         const bool real =
@@ -4183,6 +4246,9 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_atlas_view_read(
     nxvc_vk_decoder *d, int plane, uint8_t *out, size_t cap, uint32_t *w,
     uint32_t *h, uint32_t *bps) {
     if (!d || plane < 0 || plane > 2) return NXVC_VKD_ERR_ARG;
+    if (d->has_borrowed_atlas)
+        return seterr(d, NXVC_VKD_ERR_UNSUPPORTED,
+                      "caller-owned atlas targets require caller-owned readback");
     if (!d->atlas_view)
         return seterr(d, NXVC_VKD_ERR_UNSUPPORTED, "no display view selected");
     const Img *im = plane == 0   ? &d->imgViewY
