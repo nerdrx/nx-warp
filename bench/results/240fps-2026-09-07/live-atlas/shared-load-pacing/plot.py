@@ -1,0 +1,4 @@
+#!/usr/bin/env python3
+import argparse,matplotlib.pyplot as plt
+labels=['baseline','display-time','reverse']; active=[89.0,89.5,88.5]; aligned=[70.02,67.01,63.81]; offset=[44.6,0.1,-32.25]
+a=argparse.ArgumentParser(); a.add_argument('--out',required=True); z=a.parse_args(); fig,(u,v)=plt.subplots(2,1,figsize=(8,5.8),layout='constrained'); x=range(3); u.plot(x,active,'o-',label='active source/s'); u.plot(x,aligned,'s--',label='aligned report source/s'); v.plot(x,offset,'o-',color='#c06c84',label='signed display offset (ms)'); u.set_ylabel('Source rate / s'); v.set_ylabel('Signed offset (ms)'); v.set_xlabel('Capture'); u.set_xticks(x,labels); v.set_xticks(x,labels); u.grid(alpha=.25); v.grid(alpha=.25); u.legend(frameon=False,ncol=2,loc='lower center',bbox_to_anchor=(.5,1.01)); v.legend(frameon=False); fig.savefig(z.out+'.svg'); fig.savefig(z.out+'.png',dpi=180)
