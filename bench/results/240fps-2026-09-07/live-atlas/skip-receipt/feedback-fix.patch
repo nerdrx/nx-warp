@@ -1,0 +1,85 @@
+diff --git a/server/encoder/nxwarp_codec.h b/server/encoder/nxwarp_codec.h
+index 087a9e55..bacfcf8f 100644
+--- a/server/encoder/nxwarp_codec.h
++++ b/server/encoder/nxwarp_codec.h
+@@ -397,6 +397,9 @@ public:
+ 
+ 	// Per-tile records of the frame encode() just produced.
+ 	virtual std::span<const nxwarp_tile_desc> tiles() const = 0;
++	// True only when the most recently encoded frame was an ATLAS frame; PICTURE
++	// frames must not be classified from their tile modes.
++	virtual bool last_frame_is_atlas() const { return false; }
+ 
+ 	// Whether tiles() fills `offset` and `length`.
+ 	//
+diff --git a/server/encoder/nxwarp_codec_vk.cpp b/server/encoder/nxwarp_codec_vk.cpp
+index 04f30264..31967424 100644
+--- a/server/encoder/nxwarp_codec_vk.cpp
++++ b/server/encoder/nxwarp_codec_vk.cpp
+@@ -648,6 +648,17 @@ public:
+ 		return tile_descs;
+ 	}
+ 
++	bool last_frame_is_atlas() const override
++	{
++#ifdef WIVRN_NXVC_ATLAS_ENCODE
++		nxvc_vke_frame_report r{};
++		return enc && nxvc_vk_encoder_frame_report(enc, &r) == NXVC_VKE_OK &&
++		       r.mode == NXVC_VKE_FRAME_ATLAS;
++#else
++		return false;
++#endif
++	}
++
+ 	bool reports_tile_spans() const override
+ 	{
+ 		return true;
+diff --git a/server/encoder/video_encoder_nxwarp.cpp b/server/encoder/video_encoder_nxwarp.cpp
+index cbc90c7a..588c70ed 100644
+--- a/server/encoder/video_encoder_nxwarp.cpp
++++ b/server/encoder/video_encoder_nxwarp.cpp
+@@ -18,6 +18,7 @@
+ 
+ #include "video_encoder_nxwarp.h"
+ #include "nxwarp_held_ack.h"
++#include "nxwarp_atlas_receipt.h"
+ 
+ #include "nxwarp_stats.h"
+ #include <chrono>
+@@ -2101,8 +2102,10 @@ std::optional<wivrn::video_encoder::data> wivrn::video_encoder_nxwarp::encode(ui
+ 		{
+ 			for (uint16_t col = 0; col < stream_cfg.cols; ++col)
+ 			{
+-				received_tiles[stream_cfg.tile_index(row, col)] =
+-				        shadow.state(previous_frame_id, row, col) == nxt::ShadowState::kConcealed ? 0 : 1;
++				const auto tile = stream_cfg.tile_index(row, col);
++				received_tiles[tile] = nxwarp_tile_received(
++				        shadow.state(previous_frame_id, row, col) == nxt::ShadowState::kConcealed,
++				        previous_intentional_skips, tile);
+ 			}
+ 		}
+ 		codec->set_received_tiles(received_tiles);
+@@ -2802,6 +2805,8 @@ std::optional<wivrn::video_encoder::data> wivrn::video_encoder_nxwarp::encode(ui
+ 	}
+ 	previous_frame_id = frame_id16;
+ 	have_previous_frame = true;
++	nxwarp_record_intentional_skips(previous_intentional_skips, tiles_per_frame,
++	                                 codec->last_frame_is_atlas(), codec->tiles());
+ 
+ 	// The quantiser for the NEXT frame, from the size of this one. Last, because
+ 	// everything above describes the frame that was just sent and the controller
+diff --git a/server/encoder/video_encoder_nxwarp.h b/server/encoder/video_encoder_nxwarp.h
+index 5e27318e..dc9d967d 100644
+--- a/server/encoder/video_encoder_nxwarp.h
++++ b/server/encoder/video_encoder_nxwarp.h
+@@ -160,6 +160,10 @@ class video_encoder_nxwarp : public video_encoder
+ 	// Per-tile receipt map derived from the client shadow, handed back to the
+ 	// codec so it predicts from what the client actually holds.
+ 	std::vector<uint8_t> received_tiles;
++	// For ATLAS, a WARP_SKIP tile in the previous frame has no packet and is
++	// intentionally reported concealed by the receiver. Preserve that fact so
++	// it is not mistaken for loss on the next encode.
++	std::vector<uint8_t> previous_intentional_skips;
+ 	uint16_t previous_frame_id = 0;
+ 	bool have_previous_frame = false;
+ 	// Set by reset() on the session thread, acted on by the next encode(): the client
