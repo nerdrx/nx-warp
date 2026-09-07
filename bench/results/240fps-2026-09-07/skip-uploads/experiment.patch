@@ -1,0 +1,63 @@
+diff --git a/vk/decoder/nxvc_vkdec.cpp b/vk/decoder/nxvc_vkdec.cpp
+index 8b681ff..d888dbb 100644
+--- a/vk/decoder/nxvc_vkdec.cpp
++++ b/vk/decoder/nxvc_vkdec.cpp
+@@ -3054,19 +3054,26 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
+     if ((st = make_buf(d, d->staging, o, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                        true)))
+         return st;
++    const bool skip_atlas_uploads =
++        atlas_frame && d->acoded.empty() &&
++        !std::getenv("NXVC_VKD_ATLAS_FORCE_UPLOADS");
+     uint8_t *sp = (uint8_t *)d->staging.mapped;
+-    std::memcpy(sp + d->offBits, bytes, fp.frame_bytes);
+-    if (descBytes) std::memcpy(sp + d->offDesc, fp.desc.data(), descBytes);
+-    std::memcpy(sp + d->offTables, fp.cum.data(), tabBytes);
++    if (!skip_atlas_uploads) {
++        std::memcpy(sp + d->offBits, bytes, fp.frame_bytes);
++        if (descBytes) std::memcpy(sp + d->offDesc, fp.desc.data(), descBytes);
++        std::memcpy(sp + d->offTables, fp.cum.data(), tabBytes);
++    }
+     std::memcpy(sp + d->offRecs, fp.recs.data(), recBytes);
+-    std::memcpy(sp + d->offWgt, fp.weights, sizeof fp.weights);
++    if (!skip_atlas_uploads)
++        std::memcpy(sp + d->offWgt, fp.weights, sizeof fp.weights);
+     // Already built above under ATLAS, where the coded list is derived from
+     // it; building it twice would be harmless and is still wrong to write.
+     if (!atlas_frame) build_tile_order(d, fp, ntiles);
+-    std::memcpy(sp + d->offOrder, d->order.data(), (size_t)ntiles * 4);
++    if (!skip_atlas_uploads)
++        std::memcpy(sp + d->offOrder, d->order.data(), (size_t)ntiles * 4);
+     if (warpBytes)
+         std::memcpy(sp + d->offWarp, d->warp_words.data(), (size_t)warpBytes);
+-    if (planarBytes)
++    if (planarBytes && !skip_atlas_uploads)
+         std::memcpy(sp + d->offPlanar, fp.planar.data(), (size_t)planarBytes);
+     if (warpABytes) {
+         std::memcpy(sp + offWarpA, d->warp_words.data(), (size_t)warpABytes);
+@@ -3130,14 +3137,19 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
+         VkBufferCopy c{src_off, 0, n};
+         vkCmdCopyBuffer(d->cmd, d->staging.buf, dst.buf, 1, &c);
+     };
+-    copy(d->bBits, d->offBits, fp.frame_bytes);
+-    copy(d->bDesc, d->offDesc, descBytes);
+-    copy(d->bTables, d->offTables, tabBytes);
++    if (!skip_atlas_uploads) {
++        copy(d->bBits, d->offBits, fp.frame_bytes);
++        copy(d->bDesc, d->offDesc, descBytes);
++        copy(d->bTables, d->offTables, tabBytes);
++    }
+     copy(d->bRecs, d->offRecs, recBytes);
+-    copy(d->bWgt, d->offWgt, sizeof fp.weights);
+-    copy(d->bOrder, d->offOrder, (VkDeviceSize)ntiles * 4);
++    if (!skip_atlas_uploads) {
++        copy(d->bWgt, d->offWgt, sizeof fp.weights);
++        copy(d->bOrder, d->offOrder, (VkDeviceSize)ntiles * 4);
++    }
+     copy(d->bWarp, d->offWarp, warpBytes);
+-    copy(d->bPlanar, d->offPlanar, planarBytes);
++    if (!skip_atlas_uploads)
++        copy(d->bPlanar, d->offPlanar, planarBytes);
+     // A skipped tile gets no Pass A descriptor, so nothing would zero its
+     // coefficient slot.  Zero it here; Pass B then reconstructs it as
+     // "no coefficients" over the WARP_SKIP record.
