@@ -155,7 +155,9 @@ struct VkEncoder::Impl {
     uint32_t off_n = 0;
     /* Opt-in diagnosis of the first ATLAS admission gate per eye. */
     bool admission_stats = false;
+    bool optimistic_atlas = false;
     uint64_t admission[2][8] = {};
+    uint64_t optimistic_bypassed[2] = {};
     uint32_t admission_frames = 0;
     int64_t cur_pred_fn = -1;
     WarpParams warp{};
@@ -406,6 +408,10 @@ static const VkBufferUsageFlags kDevUsage =
 VkEncoder::VkEncoder() : p_(new Impl)
 {
     p_->admission_stats = std::getenv("NXVC_VKE_ATLAS_ADMISSION_STATS") != nullptr;
+    const char *optimistic = std::getenv("NXVC_VKE_ATLAS_OPTIMISTIC");
+    p_->optimistic_atlas = optimistic && optimistic[0] == '1';
+    if (p_->optimistic_atlas)
+        std::fprintf(stderr, "nxvc atlas optimistic admission enabled (after first confirmation)\n");
 }
 VkEncoder::~VkEncoder() {
     if (p_ && p_->ok) {
@@ -1382,8 +1388,13 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
                     if (aged) {
                         admission_reject(2); /* aged */
                     } else if (!d.heldst.confirms(src)) {
-                        eligible = false;
-                        admission_reject(1); /* unconfirmed */
+                        if (d.optimistic_atlas && d.heldst.any_confirmed) {
+                            if (d.admission_stats && admission_eye < 2)
+                                ++d.optimistic_bypassed[admission_eye];
+                        } else {
+                            eligible = false;
+                            admission_reject(1); /* unconfirmed */
+                        }
                     }
                 }
                 /* ADR-0029's displacement bound, off unless a margin is set.
@@ -2128,7 +2139,8 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
     }
 
     if (d.admission_stats && d.atlas && ++d.admission_frames >= 60) {
-        std::fprintf(stderr, "nxvc atlas admission/eye (first rejection; aged allowed): L invalid %llu unconfirmed %llu aged %llu refresh %llu admitted %llu missing %llu no-ref %llu displacement %llu; R invalid %llu unconfirmed %llu aged %llu refresh %llu admitted %llu missing %llu no-ref %llu displacement %llu\n",
+        std::fprintf(stderr, "nxvc atlas admission/eye (first rejection; aged allowed; optimistic bypass L/R %llu/%llu): L invalid %llu unconfirmed %llu aged %llu refresh %llu admitted %llu missing %llu no-ref %llu displacement %llu; R invalid %llu unconfirmed %llu aged %llu refresh %llu admitted %llu missing %llu no-ref %llu displacement %llu\n",
+                (unsigned long long)d.optimistic_bypassed[0], (unsigned long long)d.optimistic_bypassed[1],
                 (unsigned long long)d.admission[0][0], (unsigned long long)d.admission[0][1],
                 (unsigned long long)d.admission[0][2], (unsigned long long)d.admission[0][3],
                 (unsigned long long)d.admission[0][4], (unsigned long long)d.admission[0][5],
@@ -2138,6 +2150,7 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
                 (unsigned long long)d.admission[1][4], (unsigned long long)d.admission[1][5],
                 (unsigned long long)d.admission[1][6], (unsigned long long)d.admission[1][7]);
         std::memset(d.admission, 0, sizeof d.admission);
+        std::memset(d.optimistic_bypassed, 0, sizeof d.optimistic_bypassed);
         d.admission_frames = 0;
     }
 

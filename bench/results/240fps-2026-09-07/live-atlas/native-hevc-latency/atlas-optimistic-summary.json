@@ -1,0 +1,62 @@
+{
+  "source": "atlas-optimistic-provenance.json; native-optout-timings.csv and native-optin-timings.csv",
+  "definitions": {
+    "fresh_source_per_s": "median of render report-window new-source count divided by that report span; not FPS",
+    "timing_units": "timing CSV XrTime nanoseconds; percentiles are milliseconds",
+    "stream_scope": "stream 0; one stereo picture stream, counts are pictures not per-eye doubled frames",
+    "warmup": "10 seconds based on earliest receive_begin"
+  },
+  "arms": {
+    "native-optout": {
+      "fresh_source_median_per_s": 46.0,
+      "render_rate_median_per_s": 67.4,
+      "timing_complete_counts": {
+        "arrival_to_ready": 2667,
+        "ready_to_render_selection": 2508
+      },
+      "arrival_to_ready_ms": {
+        "p50": 16.526,
+        "p95": 43.282,
+        "p99": 57.061
+      },
+      "ready_to_render_selection_ms": {
+        "p50": 6.234,
+        "p95": 11.485,
+        "p99": 18.974
+      },
+      "arrival_to_render_selection_ms": {
+        "p50": 23.746,
+        "p95": 51.911,
+        "p99": 64.324
+      }
+    },
+    "native-optin": {
+      "fresh_source_median_per_s": 75.0,
+      "render_rate_median_per_s": 88.6,
+      "timing_complete_counts": {
+        "arrival_to_ready": 4708,
+        "ready_to_render_selection": 4033
+      },
+      "arrival_to_ready_ms": {
+        "p50": 10.542,
+        "p95": 20.152,
+        "p99": 21.924
+      },
+      "ready_to_render_selection_ms": {
+        "p50": 6.204,
+        "p95": 8.796,
+        "p99": 10.819
+      },
+      "arrival_to_render_selection_ms": {
+        "p50": 15.604,
+        "p95": 27.104,
+        "p99": 30.433
+      }
+    }
+  },
+  "optimistic_recovery": {
+    "env": "NXVC_VKE_ATLAS_OPTIMISTIC=1",
+    "eligibility": "after any confirmation, bypasses only !heldst.confirms(src); still requires ref_slot, no missing, no due refresh, valid atlas, and displacement pass",
+    "refresh": "with drift_refresh, age_since_intra increments for every non-INTRA tile and due forces INTRA at configured period; without drift_refresh, staggered refresh_due still forces candidates. However superseded atlas entries can override due/missing into WARP_SKIP, so no unconditional per-tile refresh guarantee. Negative not-held feedback can force refresh."
+  }
+}
