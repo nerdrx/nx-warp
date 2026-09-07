@@ -3056,6 +3056,34 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     VKTRY(d, vkBeginCommandBuffer(d->cmd, &bi));
+    // [ATLAS] Make the PREVIOUS submission's device writes visible to this one
+    // before anything in this frame reads them.
+    //
+    // Submission ORDER is guaranteed on a queue; memory VISIBILITY between two
+    // submissions is not, unless a semaphore carries the dependency -- and the
+    // decoder's fence path does not.  Every frame of an atlas stream reads a
+    // table the previous frame's WRITEBACK wrote, from a different command
+    // buffer, so the compose at the top of frame N depends on a write at the
+    // bottom of frame N-1 with nothing between them but the submit.
+    //
+    // Desktop ICDs flush at submission boundaries and never showed it; the
+    // Adreno 650 refuses `v90_mode_alternate` at frame 1 -- the first ATLAS
+    // frame after the reset -- with "tile 0 codes a non-INTRA mode against an
+    // INVALID entry", which is what frame 0's write-back not being visible
+    // looks like from inside MATGEN.
+    //
+    // Byte-neutral by construction: it adds an ordering guarantee and removes
+    // none, so a device that was already coherent decodes exactly as before.
+    if (d->atlas_mode)
+        buffer_barrier(d->cmd,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                           VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                           VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT,
+                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT |
+                           VK_ACCESS_TRANSFER_READ_BIT |
+                           VK_ACCESS_TRANSFER_WRITE_BIT);
     if (d->have_timestamps) {
         // The WHOLE pool, every frame.  Resetting fewer than were created
         // leaves the tail permanently unavailable, and a WAIT_BIT read that
@@ -3371,6 +3399,25 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
                              ring_store_on(d, interStream), &pipeAsm, 2)))
             return st;
         // The assemble header: identical but for `curSlot`, which is 1.
+        //
+        // ORDERED AGAINST THE STAGING COPY THAT ALREADY WROTE THIS BUFFER.
+        // The frame's whole warp block -- header and tile records -- was
+        // copied into `bWarp` up in the staging section, and this overwrites
+        // its first 256 bytes.  Two `vkCmdCopyBuffer`s to the same range with
+        // nothing between them is a write-after-write hazard, and the only
+        // barrier here was TRANSFER -> COMPUTE, which orders the copy against
+        // the DISPATCH and says nothing about the other copy.
+        //
+        // Caught by synchronization validation, not by a test: RADV and
+        // lavapipe both happen to serialise these, so every desktop run was
+        // byte-identical while the ordering was undefined.  The word at risk
+        // is `curSlot` -- the assemble stores to slot 1 and the decode to
+        // slot 0 -- so losing the race sends a whole re-posed picture to the
+        // wrong half of the ring.
+        buffer_barrier(d->cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       VK_ACCESS_TRANSFER_WRITE_BIT,
+                       VK_ACCESS_TRANSFER_WRITE_BIT);
         {
             VkBufferCopy c{offWarpA, 0, warpABytes};
             vkCmdCopyBuffer(d->cmd, d->staging.buf, d->bWarp.buf, 1, &c);
@@ -3409,9 +3456,14 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
                            (uint32_t)sizeof(nxvw::NxvwPassBPush), &fp.push);
         vkCmdDispatchBase(d->cmd, 0, 0, 0, ntiles, 1, 1);
         ++dispatches;
+        // Both the WRITES and the READS: the assemble's Pass B module reads
+        // the tile records this copy is about to overwrite, so a
+        // read-after-write ordering is as necessary as the write-after-write
+        // one.
         buffer_barrier(d->cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                        VK_PIPELINE_STAGE_TRANSFER_BIT,
-                       VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+                       VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT,
+                       VK_ACCESS_TRANSFER_WRITE_BIT);
         // ASSEMBLE overwrote every tile RECORD, so the frame's own records --
         // and the header's destination slot -- have to be put back before the
         // ordinary path reads them.

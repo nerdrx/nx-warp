@@ -222,6 +222,33 @@ int main(int argc, char **argv) {
         double bestP = 1e9, bestS = 1e9, bestW = 1e9;
         nxvc_vkd_stats s{};
         for (int i = 0; i < repeat; ++i) {
+            // Re-initialise the stream state before every repeat, so each one
+            // is the SAME decode rather than the next step of a sequence.
+            //
+            // Without this, `--repeat` feeds one frame to a decoder whose
+            // inter state advances underneath it: the reference ring fills,
+            // the per-tile prediction state moves on, and by the second pass
+            // the frame is being decoded against a reference its own header
+            // does not describe.  On an intra stream that is harmless and the
+            // numbers were fine; on an INTER stream it lost the device at
+            // repeat 2 on the Adreno 650 (VK_ERROR_DEVICE_LOST from
+            // vkQueueSubmit) while both desktop ICDs tolerated it.
+            //
+            // `parse_stream_header` is what a fresh decode does, and it resets
+            // exactly what needs resetting -- InterCtx::resize() clears the
+            // ring and every PredState, and the atlas host state with them.
+            // It is outside the timed call, so the reported numbers are
+            // unaffected.
+            size_t reinit = 0;
+            st = nxvc_vk_decoder_parse_stream_header(dec, data.data(),
+                                                     data.size(), &reinit);
+            if (st != NXVC_VKD_OK) {
+                std::fprintf(stderr, "repeat %d: re-init: %s\n", i,
+                             nxvc_vk_decoder_last_error(dec));
+                if (fo) std::fclose(fo);
+                nxvc_vk_decoder_destroy(dec);
+                return 1;
+            }
             st = nxvc_vk_decode_frame(dec, data.data() + off,
                                       data.size() - off, &consumed);
             if (st != NXVC_VKD_OK) {
