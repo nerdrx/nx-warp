@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 import argparse, json, re, statistics
+import importlib.util
 from pathlib import Path
+
+_parent = Path(__file__).resolve().parents[1] / 'summarize_live_atlas.py'
+_spec = importlib.util.spec_from_file_location('live_atlas_reader', _parent)
+_reader = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(_reader)
 
 def stat(xs):
     if not xs: return {'count': 0, 'p50': None, 'p95': None}
@@ -15,7 +20,9 @@ def parse(prefix):
     win=r'nxwarp\[\d+\]: \d+ frames in .*?'
     reports=re.findall(r'render: \d+ iterations in ([\d.]+) s.*?, (\d+) new-source',s,re.I)
     atlas=re.findall(r'atlas: frames (\d+), atlas (\d+), picture (\d+), avg dispatches ([\d.]+), avg assembled ([\d.]+), avg valid ([\d.]+)',s,re.I)
+    base = _reader.read_pair(scene, server)
     return {'files':{'scene':str(scene),'server':str(server)},
+      'reported_sources_per_wall_s': (base['aligned_report_span'] or {}).get('reported_sources_per_wall_s'),
       'new_source_per_s':stat([int(n)/float(d) for d,n in reports]),
       'decoder_gpu_ms':stat(nums(win+r'gpu ([\d.]+) ms')),
       'decoder_wall_ms':stat(nums(win+r'wall ([\d.]+) ms')),
@@ -26,6 +33,6 @@ def parse(prefix):
       'encoded_window_s':nums(r'encoded \d+ frames in ([\d.]+) s',v)}
 
 def main():
-    ap=argparse.ArgumentParser(); ap.add_argument('--off-prefix',required=True); ap.add_argument('--auto-prefix',required=True); ap.add_argument('--out',required=True); a=ap.parse_args()
-    Path(a.out).write_text(json.dumps({'off_pace45':parse(a.off_prefix),'auto_pace60':parse(a.auto_prefix)},indent=2)+'\n')
+    ap=argparse.ArgumentParser(); ap.add_argument('--pace45-prefix',required=True); ap.add_argument('--pace60-prefix',required=True); ap.add_argument('--out',required=True); a=ap.parse_args()
+    Path(a.out).write_text(json.dumps({'pace45':parse(a.pace45_prefix),'pace60':parse(a.pace60_prefix)},indent=2)+'\n')
 if __name__=='__main__': main()
