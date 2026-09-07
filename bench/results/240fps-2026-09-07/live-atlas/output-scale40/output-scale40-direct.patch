@@ -1,0 +1,25 @@
+diff --git a/client/decoder/nxwarp/nxwarp_decoder.cpp b/client/decoder/nxwarp/nxwarp_decoder.cpp
+index a6076836..0391dcf6 100644
+--- a/client/decoder/nxwarp/nxwarp_decoder.cpp
++++ b/client/decoder/nxwarp/nxwarp_decoder.cpp
+@@ -664,6 +664,7 @@ bool nxwarp_decoder::on_stream_header(std::span<const uint8_t> header)
+ 	}
+ 
+ #ifdef NXVC_VKD_ATLAS_BORROWED_TARGET
++	setenv("NXWARP_ATLAS_DIRECT", "1", 1); // Temporary combined benchmark.
+ 	const char * direct = std::getenv("NXWARP_ATLAS_DIRECT");
+ 	atlas_direct_targets = atlas_view_active && si.bit_depth == 8 && si.chroma == 0 &&
+ 	                       direct && direct[0] == '1';
+diff --git a/client/scenes/stream.cpp b/client/scenes/stream.cpp
+index f242ecd1..3ed6640e 100644
+--- a/client/scenes/stream.cpp
++++ b/client/scenes/stream.cpp
+@@ -1217,7 +1217,7 @@ struct render_probe
+ float scenes::stream::resolve_defoveate_scale(
+         const std::array<wivrn::to_headset::foveation_parameter, view_count> & foveation) const
+ {
+-	const float cfg = application::get_config().defoveate_scale;
++	const float cfg = 0.4f; // Temporary combined benchmark.
+ 	if (cfg > 0.f)
+ 		return std::clamp(cfg, 0.4f, 1.0f);
+ 
