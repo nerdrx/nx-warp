@@ -1,0 +1,414 @@
+diff --git a/include/nxvc/nxvc_vk.h b/include/nxvc/nxvc_vk.h
+index d1ff839..ba291a0 100644
+--- a/include/nxvc/nxvc_vk.h
++++ b/include/nxvc/nxvc_vk.h
+@@ -509,6 +509,14 @@ typedef struct nxvc_vkd_atlas_images {
+ nxvc_vkd_status nxvc_vk_decoder_set_atlas_borrowed_target(
+     nxvc_vk_decoder *dec, const nxvc_vkd_atlas_images *target);
+ 
++/* Opt-in persistent-target catchup.  `generation` is a nonzero value unique
++ * for the lifetime of this decoder and must change whenever the caller
++ * destroys/recreates the target storage.  Generation zero disables caching
++ * and has the same full-refresh semantics as the legacy setter above. */
++nxvc_vkd_status nxvc_vk_decoder_set_atlas_borrowed_target_generation(
++    nxvc_vk_decoder *dec, const nxvc_vkd_atlas_images *target,
++    uint64_t generation);
++
+ nxvc_vkd_status nxvc_vk_decoder_atlas_images(const nxvc_vk_decoder *dec,
+                                              nxvc_vkd_atlas_images *out);
+ 
+diff --git a/tests/vk-decoder/atlas/test_borrowed_r8.cpp b/tests/vk-decoder/atlas/test_borrowed_r8.cpp
+index f6ce01c..4ea6442 100644
+--- a/tests/vk-decoder/atlas/test_borrowed_r8.cpp
++++ b/tests/vk-decoder/atlas/test_borrowed_r8.cpp
+@@ -241,6 +241,11 @@ int main(int argc, char** argv) {
+     I y{}, chroma{};
+     if (!image(c, y, VK_FORMAT_R8_UNORM, yw, yh) || !image(c, chroma, VK_FORMAT_R8G8_UNORM, cw, ch))
+         return 1;
++    I y_extra[2]{}, c_extra[2]{};
++    for (int i = 0; i < 2; ++i)
++        if (!image(c, y_extra[i], VK_FORMAT_R8_UNORM, yw, yh) ||
++            !image(c, c_extra[i], VK_FORMAT_R8G8_UNORM, cw, ch))
++            return 1;
+     nxvc_vkd_atlas_images target{};
+     target.image[0] = y.x;
+     target.view[0] = y.v;
+@@ -252,13 +257,20 @@ int main(int argc, char** argv) {
+     target.format[1] = VK_FORMAT_R8G8_UNORM;
+     target.width[1] = cw;
+     target.height[1] = ch;
++    nxvc_vkd_atlas_images targets[3] = {target, target, target};
++    for (int i = 0; i < 2; ++i) {
++        targets[i + 1].image[0] = y_extra[i].x;
++        targets[i + 1].view[0] = y_extra[i].v;
++        targets[i + 1].image[1] = c_extra[i].x;
++        targets[i + 1].view[1] = c_extra[i].v;
++    }
+     nxvc_vkd_atlas_images malformed = target;
+     malformed.width[1]++;
+     if (nxvc_vk_decoder_set_atlas_borrowed_target(borrowed, &malformed) != NXVC_VKD_ERR_ARG) {
+         std::fprintf(stderr, "FAIL: malformed borrowed target was accepted\n");
+         return 1;
+     }
+-    if (nxvc_vk_decoder_set_atlas_borrowed_target(borrowed, &target) != NXVC_VKD_OK) {
++    if (nxvc_vk_decoder_set_atlas_borrowed_target_generation(borrowed, &target, 1) != NXVC_VKD_OK) {
+         std::fprintf(stderr, "FAIL: supported borrowed target rejected: %s\n",
+                      nxvc_vk_decoder_last_error(borrowed));
+         return 1;
+@@ -282,40 +294,51 @@ int main(int argc, char** argv) {
+         return nxvc_vk_decoder_atlas_view_read(d, p, z.data(), z.size(), &w, &hh, &bs) ==
+                NXVC_VKD_OK;
+     };
+-    for (int frame = 0; frame < 2; ++frame) {
++    int processed = 0;
++    bool changing_pixels = false;
++    std::vector<uint8_t> previous_owned_y;
++    for (int frame = 0; frame < 3; ++frame) {
++        const int ti = frame % 3;
++        if (nxvc_vk_decoder_set_atlas_borrowed_target_generation(borrowed, &targets[ti], ti + 1) !=
++                NXVC_VKD_OK) {
++            std::fprintf(stderr, "FAIL: target switch %d\n", ti);
++            return 1;
++        }
+         size_t used = 0;
+         if (nxvc_vk_decode_frame(owned, stream.data() + off, stream.size() - off, &used) !=
+             NXVC_VKD_OK)
+             return 1;
+         size_t used2 = 0;
++        setenv("NXVC_VKD_ATLAS_VIEW_DIRTY", "1", 1);
+         if (nxvc_vk_decode_frame(borrowed, stream.data() + off, stream.size() - off, &used2) !=
+             NXVC_VKD_OK)
+             return 1;
++        unsetenv("NXVC_VKD_ATLAS_VIEW_DIRTY");
+         if (used != used2) {
+             std::fprintf(stderr, "FAIL: frame sizes differ\n");
+             return 1;
+         }
+         off += used;
+-        if (!rd(owned, 0, oy) || !rd(owned, 1, oc) || !readimg(c, y, 1, by) ||
+-            !readimg(c, chroma, 2, bc) || oy != by || oc != bc) {
++        if (!rd(owned, 0, oy) || !rd(owned, 1, oc) ||
++            !readimg(c, ti == 0 ? y : y_extra[ti - 1], 1, by) ||
++            !readimg(c, ti == 0 ? chroma : c_extra[ti - 1], 2, bc) || oy != by || oc != bc) {
+             std::fprintf(stderr, "FAIL: borrowed pixel mismatch at frame %d\n", frame);
+             return 1;
+         }
++        if (!previous_owned_y.empty() && previous_owned_y != oy)
++            changing_pixels = true;
++        previous_owned_y = oy;
++        if (frame == 3) {
++            nxvc_vkd_stats s{};
++            if (nxvc_vk_decoder_stats(borrowed, &s) != NXVC_VKD_OK || s.frame_mode != 1u) {
++                std::fprintf(stderr, "FAIL: frame 3 was not an ATLAS frame for partial reuse\n");
++                return 1;
++            }
++        }
++        ++processed;
+     }
+     if (nxvc_vk_decoder_set_atlas_borrowed_target(borrowed, nullptr) != NXVC_VKD_OK)
+         return 1;
+-    size_t used3 = 0, used4 = 0;
+-    if (nxvc_vk_decode_frame(owned, stream.data() + off, stream.size() - off, &used3) !=
+-            NXVC_VKD_OK ||
+-        nxvc_vk_decode_frame(borrowed, stream.data() + off, stream.size() - off, &used4) !=
+-            NXVC_VKD_OK ||
+-        used3 != used4)
+-        return 1;
+-    if (!rd(owned, 0, oy) || !rd(owned, 1, oc) || !rd(borrowed, 0, by) || !rd(borrowed, 1, bc) ||
+-        oy != by || oc != bc) {
+-        std::fprintf(stderr, "FAIL: restored owned pixels mismatch at frame 2\n");
+-        return 1;
+-    }
+     nxvc_vkd_atlas_images restored{};
+     if (nxvc_vk_decoder_atlas_images(borrowed, &restored) != NXVC_VKD_OK ||
+         restored.image[0] == y.x) {
+@@ -331,9 +354,21 @@ int main(int argc, char** argv) {
+     vkDestroyImageView(c.d, chroma.v, nullptr);
+     vkDestroyImage(c.d, chroma.x, nullptr);
+     vkFreeMemory(c.d, chroma.m, nullptr);
++    for (int i = 0; i < 2; ++i) {
++        vkDestroyImageView(c.d, c_extra[i].v, nullptr);
++        vkDestroyImage(c.d, c_extra[i].x, nullptr);
++        vkFreeMemory(c.d, c_extra[i].m, nullptr);
++        vkDestroyImageView(c.d, y_extra[i].v, nullptr);
++        vkDestroyImage(c.d, y_extra[i].x, nullptr);
++        vkFreeMemory(c.d, y_extra[i].m, nullptr);
++    }
+     vkDestroyDevice(c.d, nullptr);
+     vkDestroyInstance(c.i, nullptr);
+-    std::printf("PASS borrowed R8 exact pixels for 3 frames Y=%zu C=%zu (%ux%u/%ux%u)\n", by.size(),
++    if (!changing_pixels) {
++        std::fprintf(stderr, "FAIL: temporal fixture produced identical owned pixels\n");
++        return 1;
++    }
++    std::printf("PASS borrowed R8 exact pixels for %d frames across 3 targets Y=%zu C=%zu (%ux%u/%ux%u)\n", processed, by.size(),
+                 bc.size(), yw, yh, cw, ch);
+     return 0;
+ }
+diff --git a/vk/decoder/nxvc_vkdec.cpp b/vk/decoder/nxvc_vkdec.cpp
+index bd36a80..471e4f7 100644
+--- a/vk/decoder/nxvc_vkdec.cpp
++++ b/vk/decoder/nxvc_vkdec.cpp
+@@ -22,6 +22,8 @@
+ #include <cstdlib>
+ #include <cstring>
+ #include <map>
++#include <deque>
++#include <unordered_map>
+ #include <thread>
+ #include <string>
+ #include <vector>
+@@ -248,6 +250,11 @@ struct nxvc_vk_decoder {
+     bool atlas_view_copy_last = false;
+     nxvc_vkd_atlas_images borrowed_atlas{};
+     bool has_borrowed_atlas = false;
++    uint64_t borrowed_target_generation = 0;
++    uint64_t atlas_epoch = 0;
++    struct AtlasDirtyEpoch { uint64_t epoch; std::vector<uint32_t> tiles; };
++    std::deque<AtlasDirtyEpoch> atlas_dirty_history;
++    std::unordered_map<uint64_t, uint64_t> atlas_target_epochs;
+     VkDescriptorSet dsetA = VK_NULL_HANDLE, dsetB = VK_NULL_HANDLE;
+     std::map<uint32_t, VkPipeline> pipesA;  // lanes | ctx_stride<<8 | xfl<<16
+     // key: (format << 40) | (dirSched << 32) | storeWords
+@@ -277,7 +284,7 @@ struct nxvc_vk_decoder {
+     //             WRITEBACK
+     //   bAStatus  MATGEN's deferred 13.12.4 refusal: bit 0 and the FIRST
+     //             offending tile index, read back once the frame completes
+-    Buf bTable, bAdv, bHRing, bASel, bACoded, bAStatus;
++    Buf bTable, bAdv, bHRing, bASel, bACoded, bADirty, bAStatus;
+     // The atlas PIXELS are the ring buffer with ONE slot instead of four --
+     // byte-for-byte the layout nxvw_ring_layout() already computes, at a fixed
+     // address instead of curSlot's.  So `bRing` IS the atlas under ATLAS and
+@@ -321,7 +328,7 @@ struct nxvc_vk_decoder {
+     bool resources_ready = false;
+     // Byte layout of the staging buffer.
+     VkDeviceSize offBits = 0, offDesc = 0, offTables = 0, offRecs = 0,
+-                 offWgt = 0, offOrder = 0;
++                 offWgt = 0, offOrder = 0, offACoded = 0, offADirty = 0;
+     // Byte layout of the readback buffer.
+     VkDeviceSize rbLuma = 0, rbCbCr = 0, rbRgba = 0, rbBytes = 0;
+     bool need_alpha_pass = false;  // second Pass B dispatch for the A channel
+@@ -1646,6 +1653,8 @@ nxvc_vkd_status make_resources(D *d) {
+         if ((st = make_buf(d, d->bASel, listBytes, kSsbo, false))) return st;
+         if ((st = make_buf(d, d->bACoded, listBytes, kSsbo, false)))
+             return st;
++        if ((st = make_buf(d, d->bADirty, listBytes, kSsbo, false)))
++            return st;
+         // FOUR uints, host-visible: MATGEN's deferred 13.12.4 refusal, the
+         // FIRST tile it refused (so the report names a tile and not a frame),
+         // and the two validity counters -- valid-after-advance from the
+@@ -1666,6 +1675,10 @@ nxvc_vkd_status make_resources(D *d) {
+         // still has to exist, because an unbound descriptor is not legal.
+         d->atlas_view = 0;
+         d->has_borrowed_atlas = false;
++        d->borrowed_target_generation = 0;
++        d->atlas_epoch = 0;
++        d->atlas_dirty_history.clear();
++        d->atlas_target_epochs.clear();
+         d->borrowed_atlas = {};
+         d->atlas_view_initialized = false;
+         d->atlas_view_needs_full = true;
+@@ -1735,7 +1748,7 @@ nxvc_vkd_status make_resources(D *d) {
+     // range build_tile_order() partitioned.  Going through the order buffer
+     // costs one uint load per workgroup and changes no output address.
+     VkDescriptorBufferInfo avb{d->bRing.buf, 0, VK_WHOLE_SIZE};
+-    VkDescriptorBufferInfo avc{d->bACoded.buf, 0, VK_WHOLE_SIZE};
++    VkDescriptorBufferInfo avc{d->bADirty.buf, 0, VK_WHOLE_SIZE};
+     VkDescriptorImageInfo avi[3] = {
+         {VK_NULL_HANDLE, d->imgViewY.view, VK_IMAGE_LAYOUT_GENERAL},
+         {VK_NULL_HANDLE, d->imgViewC.view, VK_IMAGE_LAYOUT_GENERAL},
+@@ -2456,7 +2469,7 @@ extern "C" void nxvc_vk_decoder_destroy(nxvc_vk_decoder *d) {
+                        &d->bModes, &d->bOrder, &d->bRead, &d->bULen,
+                        &d->bULenHost, &d->bRing, &d->bWPred, &d->bWarp,
+                        &d->bTable, &d->bAdv, &d->bHRing, &d->bASel,
+-                       &d->bACoded, &d->bAStatus, &d->bPlanar})
++                       &d->bACoded, &d->bADirty, &d->bAStatus, &d->bPlanar})
+             destroy_buf(d, *b);
+         for (Img *i : {&d->imgRgba, &d->imgRgb10, &d->imgLuma, &d->imgCbCr,
+                        &d->imgRgbaN, &d->imgLumaN, &d->imgCbCrN,
+@@ -2992,7 +3005,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
+     // simply never dispatched -- which is the whole of "Pass A and Pass B over
+     // coded tiles only" and needs no parser change at all.
+     VkDeviceSize hringBytes = 0, aselBytes = 0, acodedBytes = 0;
+-    if (atlas_frame) {
++    if (atlas_frame && d->borrowed_target_generation != 0) {
+         build_tile_order(d, fp, ntiles);
+         const uint32_t passes = fp.any_stereo_tile ? d->si.eyes : 1u;
+         const uint32_t per = ntiles / passes;
+@@ -3053,7 +3066,12 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
+     const VkDeviceSize offHRing = o;
+     o = align_up(o + hringBytes, 256);
+     const VkDeviceSize offACoded = o;
++    d->offACoded = offACoded;
+     o = align_up(o + acodedBytes, 256);
++    const VkDeviceSize dirtyCapacity = atlas_frame ? (VkDeviceSize)ntiles * 4 : 0;
++    const VkDeviceSize offADirty = o;
++    d->offADirty = offADirty;
++    o = align_up(o + dirtyCapacity, 256);
+     (void)aselBytes;
+     if ((st = make_buf(d, d->staging, o, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                        true)))
+@@ -3691,6 +3709,14 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
+     // eye 0 of THIS frame, so eye 0's entries must not be reset until both
+     // passes have read them.
+     atlas_tile_op(NXVW_ATLAS_OP_WRITEBACK);
++    // Retain a bounded history so a recycled borrowed target can catch up
++    // with every tile changed while it was in use by the compositor.
++    if (atlas_frame) {
++        ++d->atlas_epoch;
++        d->atlas_dirty_history.push_back({d->atlas_epoch, d->acoded});
++        while (d->atlas_dirty_history.size() > 64)
++            d->atlas_dirty_history.pop_front();
++    }
+     // [SYN] 13.12.11 step 3: the reconstruction becomes the atlas, at EVERY
+     // position.  The host mirror is `rebase_picture()` for the positions this
+     // frame did not code plus `commit()` for the ones it did -- in that order,
+@@ -3704,11 +3730,35 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
+     if (d->atlas_view) {
+         const char *dirty = std::getenv("NXVC_VKD_ATLAS_VIEW_DIRTY");
+         const char *full = std::getenv("NXVC_VKD_ATLAS_VIEW_FULL");
+-        const bool full_view = d->has_borrowed_atlas || d->atlas_view_needs_full || picture ||
++        std::vector<uint32_t> dirty_tiles = d->acoded;
++        bool target_history_gap = false;
++        if (d->has_borrowed_atlas && d->borrowed_target_generation != 0 &&
++            !d->atlas_view_needs_full && !picture) {
++            const uint64_t synced = d->atlas_target_epochs[
++                d->borrowed_target_generation];
++            if (!synced || (!d->atlas_dirty_history.empty() &&
++                            synced + 1 < d->atlas_dirty_history.front().epoch)) {
++                target_history_gap = true;
++            } else {
++                for (const auto &h : d->atlas_dirty_history)
++                    if (h.epoch > synced)
++                        dirty_tiles.insert(dirty_tiles.end(), h.tiles.begin(), h.tiles.end());
++                std::sort(dirty_tiles.begin(), dirty_tiles.end());
++                dirty_tiles.erase(std::unique(dirty_tiles.begin(), dirty_tiles.end()),
++                                  dirty_tiles.end());
++            }
++        }
++        if (picture) {
++            d->atlas_dirty_history.clear();
++            d->atlas_target_epochs.clear();
++        }
++        const bool full_view = (d->has_borrowed_atlas &&
++                                d->borrowed_target_generation == 0) ||
++                               d->atlas_view_needs_full || picture || target_history_gap ||
+                                d->si.chroma != 0 || d->si.color_transform != 0 ||
+                                !dirty || dirty[0] != '1' ||
+                                (full && full[0] == '1');
+-        if (full_view || !d->acoded.empty()) {
++        if (full_view || !dirty_tiles.empty()) {
+             const bool copy_r16 =
+                 d->atlas_view == (uint32_t)NXVC_VKD_ATLAS_VIEW_R16 &&
+                 d->atlas_r16_copy_supported && full_view &&
+@@ -3795,17 +3845,36 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
+                               ((uint32_t)vp[7] + 7u) / 8u, 1);
+                 ++dispatches;
+             } else {
+-                vp[10] = (int32_t)d->acoded.size();
++                // Pass B is complete; upload the accumulated dirty list for
++                // the borrowed view through its dedicated buffer.
++                if (!dirty_tiles.empty()) {
++                    std::memcpy((uint8_t *)d->staging.mapped + d->offADirty,
++                                dirty_tiles.data(), dirty_tiles.size() * sizeof(uint32_t));
++                    buffer_barrier(d->cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
++                                   VK_PIPELINE_STAGE_TRANSFER_BIT,
++                                   VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
++                                   VK_ACCESS_TRANSFER_WRITE_BIT);
++                    VkBufferCopy lc{d->offADirty, 0,
++                                    (VkDeviceSize)dirty_tiles.size() * sizeof(uint32_t)};
++                    vkCmdCopyBuffer(d->cmd, d->staging.buf, d->bADirty.buf, 1, &lc);
++                    buffer_barrier(d->cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
++                                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
++                                   VK_ACCESS_TRANSFER_WRITE_BIT,
++                                   VK_ACCESS_SHADER_READ_BIT);
++                }
++                vp[10] = (int32_t)dirty_tiles.size();
+                 vkCmdPushConstants(d->cmd, d->plAV, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                                    (uint32_t)sizeof vp, vp);
+                 vkCmdDispatch(d->cmd, (tile + 7u) / 8u, (tile + 7u) / 8u,
+-                              (uint32_t)d->acoded.size());
++                              (uint32_t)dirty_tiles.size());
+                 ++dispatches;
+             }
+             }
+             d->atlas_view_copy_last = copy_r16;
+             d->atlas_view_initialized = true;
+             d->atlas_view_needs_full = false;
++            if (d->has_borrowed_atlas && d->borrowed_target_generation != 0)
++                d->atlas_target_epochs[d->borrowed_target_generation] = d->atlas_epoch;
+         }
+     }
+ 
+@@ -3902,9 +3971,17 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
+         vkResetFences(d->dev, 1, &d->fence);
+         d->fence_pending = true;
+     }
+-    VKTRY(d, vkQueueSubmit(d->queue, 1, &su,
+-                           d->timeline == VK_NULL_HANDLE ? d->fence
+-                                                         : VK_NULL_HANDLE));
++    const VkResult submit_result = vkQueueSubmit(
++        d->queue, 1, &su, d->timeline == VK_NULL_HANDLE ? d->fence : VK_NULL_HANDLE);
++    if (submit_result != VK_SUCCESS) {
++        // The epoch/history was needed while recording, but no target may
++        // consume it after a failed submission.  Force a conservative rebuild.
++        d->atlas_dirty_history.clear();
++        d->atlas_target_epochs.clear();
++        d->atlas_view_needs_full = true;
++        return seterr(d, NXVC_VKD_ERR_VULKAN, "queue submit: %s (%d)",
++                      vkresult_name(submit_result), (int)submit_result);
++    }
+     const double t_submit = now_ms();
+ 
+     d->stats.parse_ms = t_parse - t0;
+@@ -4173,6 +4250,11 @@ extern "C" nxvc_vkd_atlas_view nxvc_vk_decoder_atlas_view(
+ 
+ extern "C" nxvc_vkd_status nxvc_vk_decoder_set_atlas_borrowed_target(
+     nxvc_vk_decoder *d, const nxvc_vkd_atlas_images *target) {
++    return nxvc_vk_decoder_set_atlas_borrowed_target_generation(d, target, 0);
++}
++
++extern "C" nxvc_vkd_status nxvc_vk_decoder_set_atlas_borrowed_target_generation(
++    nxvc_vk_decoder *d, const nxvc_vkd_atlas_images *target, uint64_t generation) {
+     if (!d) return NXVC_VKD_ERR_ARG;
+     bool in_flight = d->fence_pending;
+     if (!in_flight && d->timeline != VK_NULL_HANDLE && d->timeline_value &&
+@@ -4207,12 +4289,26 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_set_atlas_borrowed_target(
+         target->width[0] != w || target->height[0] != h ||
+         target->width[1] != d->si.cw * d->si.eyes || target->height[1] != d->si.ch)
+         return seterr(d, NXVC_VKD_ERR_ARG, "borrowed atlas target has wrong R8 layout");
++    const bool new_target = generation == 0 ||
++                            d->atlas_target_epochs.find(generation) ==
++                                d->atlas_target_epochs.end();
+     d->borrowed_atlas = *target;
+     d->has_borrowed_atlas = true;
++    d->borrowed_target_generation = generation;
+     atlas_view_rebind(d);
+-    d->atlas_view_initialized = false;
+-    d->atlas_view_needs_full = true;
+-    d->atlas_view_copy_last = false;
++    if (new_target || generation == 0) {
++        d->atlas_view_initialized = new_target ? false : true;
++        d->atlas_view_needs_full = new_target;
++        d->atlas_view_copy_last = false;
++    }
++    if (generation != 0 && !new_target) {
++        d->atlas_view_initialized = true;
++        d->atlas_view_needs_full = false;
++    }
++    if (generation == 0)
++        d->atlas_target_epochs.clear();
++    else if (d->atlas_target_epochs.size() > 128)
++        d->atlas_target_epochs.clear();
+     return NXVC_VKD_OK;
+ }
+ 
+@@ -4495,6 +4591,8 @@ extern "C" nxvc_vkd_status nxvc_vk_atlas_write_tiles(
+     // The patch changes atlas pixels outside the decode submission.  The next
+     // view pass must repopulate every pixel before coded-only updates resume.
+     d->atlas_view_needs_full = true;
++    d->atlas_dirty_history.clear();
++    d->atlas_target_epochs.clear();
+     (void)submit_flags;
+     return NXVC_VKD_OK;
+ }

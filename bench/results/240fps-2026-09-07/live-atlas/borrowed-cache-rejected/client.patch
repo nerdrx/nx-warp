@@ -1,0 +1,53 @@
+diff --git a/client/decoder/nxwarp/nxwarp_decoder.cpp b/client/decoder/nxwarp/nxwarp_decoder.cpp
+index 7fd84378..94ba606c 100644
+--- a/client/decoder/nxwarp/nxwarp_decoder.cpp
++++ b/client/decoder/nxwarp/nxwarp_decoder.cpp
+@@ -668,6 +668,7 @@ bool nxwarp_decoder::on_stream_header(std::span<const uint8_t> header)
+ 	const char * direct = std::getenv("NXWARP_ATLAS_DIRECT");
+ 	atlas_direct_targets = atlas_view_active && si.bit_depth == 8 && si.chroma == 0 &&
+ 	                       (direct ? direct[0] == '1' : application::get_hmd_traits().nxwarp_atlas_speed);
++	atlas_dirty_catchup = std::getenv("NXWARP_ATLAS_DIRTY_CATCHUP") != nullptr;
+ 	spdlog::info("nxwarp[{}]: direct atlas targets {}", stream_index, atlas_direct_targets);
+ #endif
+ 	if (atlas_view_active)
+@@ -1358,6 +1359,7 @@ void nxwarp_decoder::prepare_atlas_images(image & item, const nxvc_vkd_atlas_ima
+ 		item.atlas_snapshot.format[p] = source.format[p];
+ 		item.atlas_snapshot.width[p] = source.width[p];
+ 		item.atlas_snapshot.height[p] = source.height[p];
++		item.atlas_generation = next_atlas_generation++;
+ 	}
+ }
+ 
+@@ -1443,7 +1445,10 @@ void nxwarp_decoder::decode_unit(decode_job & job)
+ 			if (reserved)
+ 			{
+ 				prepare_atlas_images(*reserved, source);
+-				direct_target = nxvc_vk_decoder_set_atlas_borrowed_target(nxvc, &reserved->atlas_snapshot) == NXVC_VKD_OK;
++				direct_target = atlas_dirty_catchup
++					? nxvc_vk_decoder_set_atlas_borrowed_target_generation(
++						nxvc, &reserved->atlas_snapshot, reserved->atlas_generation) == NXVC_VKD_OK
++					: nxvc_vk_decoder_set_atlas_borrowed_target(nxvc, &reserved->atlas_snapshot) == NXVC_VKD_OK;
+ 				if (!direct_target)
+ 					reserved.reset();
+ 			}
+diff --git a/client/decoder/nxwarp/nxwarp_decoder.h b/client/decoder/nxwarp/nxwarp_decoder.h
+index 8da64b3d..a97f19ff 100644
+--- a/client/decoder/nxwarp/nxwarp_decoder.h
++++ b/client/decoder/nxwarp/nxwarp_decoder.h
+@@ -142,6 +142,7 @@ class nxwarp_decoder : public decoder
+ 		std::atomic_bool free = true;
+ 		vk::raii::Semaphore semaphore = nullptr;
+ 		uint64_t semaphore_val = 0;
++		uint64_t atlas_generation = 0;
+ 	};
+ 	// Set when the device refuses timeline semaphores (Adreno 650): frames are then
+ 	// fenced on the host and published with no semaphore.
+@@ -149,6 +150,8 @@ class nxwarp_decoder : public decoder
+ 	// Requested only after the stream header confirms the negotiated ATLAS tool.
+ 	bool atlas_view_active = false;
+ 	bool atlas_direct_targets = false;
++	bool atlas_dirty_catchup = false;
++	uint64_t next_atlas_generation = 1;
+ 	// Rolling per-stream timing, reported every two seconds (decode_unit).
+ 	struct
+ 	{

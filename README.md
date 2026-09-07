@@ -157,6 +157,8 @@ The [pattern 2 visual appendix](bench/results/240fps-2026-09-07/live-atlas/patte
 
 The [validated static-only pair](bench/results/240fps-2026-09-07/live-atlas/static-valid/README.md) confirms the banner and dimensions before capture. Its static-only restriction was a test condition (36 fresh sources/s, 13.8 ms decoder GPU) versus the unrestricted optimistic arm (82/s, 5.1 ms); the restriction was removed afterward. The unrestricted screenshot has worse cube-edge trails, so this remains an experimental result. The reusable [live preflight checker](tools/validate-live-probe.py) fails closed on missing identity, banners, dimensions, or timing data.
 
+The [borrowed-target dirty-catchup prototype](bench/results/240fps-2026-09-07/live-atlas/borrowed-cache-rejected/README.md) is rejected after a CPU staging `memcpy` crash before GPU submission; it supplies no speed result. A future implementation target is a validated GPU image handoff and frame-identity/coverage contract before omitting any NX tiles.
+
 The current priority is the corrected [native full-resolution atlas run](bench/results/240fps-2026-09-07/live-atlas/native-resolution/README.md): grid normalization now preserves full field of view at 2160x2160 per eye, while the prior 0.40 output is no longer the default. Its fixed/auto measurements are exploratory and show feedback starvation in AUTO, not a performance or FPS claim.
 
 **Rendering caveat (2026-09-07): review found the earlier scaled-output captures, including AUTO 0.50, cropped/zoomed the field because viewport dimensions and foveation runs were inconsistent. Their timing numbers remain genuine, but they are not equivalent full-field rendering results; corrected measurements are pending.**
