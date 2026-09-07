@@ -22,3 +22,10 @@ is not included in this comparison.
 Recompute window statistics: `python3 summarize_live_atlas.py --out recomputed.json`.
 The table reports medians of logged window means; these are not individual-frame
 percentiles. New-source rates use printed, rounded window durations.
+
+Render timestamps contained 1.99–6.78 s gaps, with three gaps above 2.5 s in
+each capture. Excluding each capture's first reported window, the remaining
+reported source counts were 1933/41.959 s = 46.07/s (off) and 1703/42.051 s =
+40.50/s (auto). These are observed counts per the timestamp span between
+reports; missing reports or session pauses may lie inside that span. No cause is
+assigned to the gaps.

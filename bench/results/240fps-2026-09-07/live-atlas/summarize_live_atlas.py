@@ -2,6 +2,7 @@
 """Summarize matched live ATLAS off/auto logs; exits 2 while a pair is absent."""
 import argparse, hashlib, json, re, statistics, sys
 from pathlib import Path
+from datetime import datetime
 
 NUM = r"(?:\d+(?:\.\d+)?|\.\d+)"
 
@@ -33,7 +34,18 @@ def read_pair(scene, server):
         return {"count": len(xs), "p50": med, "p95": p(.95), "zeros": sum(x == 0 for x in xs),
                 "outliers": [x for x in xs if x > (p(.95) * 1.5 if p(.95) else 0)]}
     digest = lambda p: hashlib.sha256(Path(p).read_bytes()).hexdigest()
-    return {"files": {"scene": str(scene), "server": str(server),
+    reports = re.findall(r"^(\d\d-\d\d \d\d:\d\d:\d\d\.\d+).*render:.*?, (\d+) new-source", s, re.M)
+    aligned = None
+    if len(reports) > 1:
+        times = [datetime.strptime("2026-" + t, "%Y-%m-%d %H:%M:%S.%f") for t, _ in reports]
+        span = (times[-1] - times[0]).total_seconds()
+        count = sum(int(n) for _, n in reports[1:])
+        aligned = {"first_report": reports[0][0], "last_report": reports[-1][0],
+                   "span_s": span, "count_excluding_first_report": count,
+                   "reported_sources_per_wall_s": count / span if span > 0 else None,
+                   "max_report_gap_s": max((b-a).total_seconds() for a,b in zip(times, times[1:])),
+                   "note": "Observed reported counts; missing reports or session pauses are not reconstructed."}
+    return {"aligned_report_span": aligned, "files": {"scene": str(scene), "server": str(server),
                        "scene_sha256": digest(scene), "server_sha256": digest(server)},
             "render_iterations": stats(render), "submitted_layers": stats(submitted),
             "display_gpu_ms": stats(display), "decoder_gpu_ms": stats(gpu),

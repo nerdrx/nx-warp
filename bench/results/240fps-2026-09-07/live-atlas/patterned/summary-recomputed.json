@@ -1,0 +1,769 @@
+{
+  "off": {
+    "aligned_report_span": {
+      "first_report": "09-07 18:52:31.841",
+      "last_report": "09-07 18:53:20.117",
+      "span_s": 48.276,
+      "count_excluding_first_report": 1644,
+      "reported_sources_per_wall_s": 34.054188416604525,
+      "max_report_gap_s": 4.648,
+      "note": "Observed reported counts; missing reports or session pauses are not reconstructed."
+    },
+    "files": {
+      "scene": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/240fps-2026-09-07/live-atlas/patterned/off-measure-filtered.log",
+      "server": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/240fps-2026-09-07/live-atlas/patterned/off-server-filtered.log",
+      "scene_sha256": "f451c2fb202900bf0c379864ad7acc44c291dcc46a360b5b54ef536d4567b45b",
+      "server_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "render_iterations": {
+      "count": 22,
+      "p50": 173.5,
+      "p95": 178.0,
+      "zeros": 0,
+      "outliers": []
+    },
+    "submitted_layers": {
+      "count": 22,
+      "p50": 173.0,
+      "p95": 178,
+      "zeros": 0,
+      "outliers": []
+    },
+    "display_gpu_ms": {
+      "count": 22,
+      "p50": 1.2,
+      "p95": 1.6,
+      "zeros": 0,
+      "outliers": []
+    },
+    "decoder_gpu_ms": {
+      "count": 26,
+      "p50": 13.5,
+      "p95": 13.9,
+      "zeros": 0,
+      "outliers": []
+    },
+    "decoder_wall_ms": {
+      "count": 26,
+      "p50": 15.3,
+      "p95": 15.6,
+      "zeros": 0,
+      "outliers": []
+    },
+    "decoder_passA_ms": {
+      "count": 26,
+      "p50": 3.8,
+      "p95": 4.1,
+      "zeros": 0,
+      "outliers": []
+    },
+    "decoder_passB_ms": {
+      "count": 26,
+      "p50": 9.6,
+      "p95": 9.8,
+      "zeros": 0,
+      "outliers": []
+    },
+    "new_source": {
+      "count": 22,
+      "p50": 80.5,
+      "p95": 93,
+      "zeros": 0,
+      "outliers": []
+    },
+    "new_source_per_s": {
+      "count": 22,
+      "p50": 40.25,
+      "p95": 46.5,
+      "zeros": 0,
+      "outliers": []
+    },
+    "server_reported_window_s": [],
+    "startup_excluded": "only if caller removes the first explicit window",
+    "server_atlas_reports": []
+  },
+  "auto": {
+    "aligned_report_span": {
+      "first_report": "09-07 18:54:34.536",
+      "last_report": "09-07 18:55:20.413",
+      "span_s": 45.877,
+      "count_excluding_first_report": 1617,
+      "reported_sources_per_wall_s": 35.24641977461473,
+      "max_report_gap_s": 6.537,
+      "note": "Observed reported counts; missing reports or session pauses are not reconstructed."
+    },
+    "files": {
+      "scene": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/240fps-2026-09-07/live-atlas/patterned/auto-measure-filtered.log",
+      "server": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/240fps-2026-09-07/live-atlas/patterned/auto-server-filtered.log",
+      "scene_sha256": "a45157e5603828565614b952dbfd2d346766d03743337a73b3b8bf75e9d309c5",
+      "server_sha256": "02d0ec55777b67e5220bd7a90fe61b5b71aae4a96fef75abe39de8379d417ea9"
+    },
+    "render_iterations": {
+      "count": 19,
+      "p50": 145.0,
+      "p95": 156.0,
+      "zeros": 0,
+      "outliers": []
+    },
+    "submitted_layers": {
+      "count": 19,
+      "p50": 145,
+      "p95": 156,
+      "zeros": 0,
+      "outliers": []
+    },
+    "display_gpu_ms": {
+      "count": 19,
+      "p50": 1.4,
+      "p95": 1.5,
+      "zeros": 0,
+      "outliers": []
+    },
+    "decoder_gpu_ms": {
+      "count": 23,
+      "p50": 17.9,
+      "p95": 18.1,
+      "zeros": 0,
+      "outliers": []
+    },
+    "decoder_wall_ms": {
+      "count": 23,
+      "p50": 19.0,
+      "p95": 19.5,
+      "zeros": 0,
+      "outliers": []
+    },
+    "decoder_passA_ms": {
+      "count": 23,
+      "p50": 5.8,
+      "p95": 6.1,
+      "zeros": 0,
+      "outliers": []
+    },
+    "decoder_passB_ms": {
+      "count": 23,
+      "p50": 12.0,
+      "p95": 12.2,
+      "zeros": 0,
+      "outliers": []
+    },
+    "new_source": {
+      "count": 19,
+      "p50": 90,
+      "p95": 91,
+      "zeros": 0,
+      "outliers": []
+    },
+    "new_source_per_s": {
+      "count": 19,
+      "p50": 45.0,
+      "p95": 45.5,
+      "zeros": 0,
+      "outliers": []
+    },
+    "server_reported_window_s": [],
+    "startup_excluded": "only if caller removes the first explicit window",
+    "server_atlas_reports": [
+      {
+        "frames": 1,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 1,
+        "picture": 0
+      },
+      {
+        "frames": 133,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 133,
+        "picture": 0
+      },
+      {
+        "frames": 90,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 90,
+        "picture": 0
+      },
+      {
+        "frames": 91,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 91,
+        "picture": 0
+      },
+      {
+        "frames": 162,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 162,
+        "picture": 0
+      },
+      {
+        "frames": 130,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 130,
+        "picture": 0
+      },
+      {
+        "frames": 90,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 90,
+        "picture": 0
+      },
+      {
+        "frames": 90,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 90,
+        "picture": 0
+      },
+      {
+        "frames": 91,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 91,
+        "picture": 0
+      },
+      {
+        "frames": 91,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 91,
+        "picture": 0
+      },
+      {
+        "frames": 139,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 139,
+        "picture": 0
+      },
+      {
+        "frames": 152,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 152,
+        "picture": 0
+      },
+      {
+        "frames": 90,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 90,
+        "picture": 0
+      },
+      {
+        "frames": 90,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 90,
+        "picture": 0
+      },
+      {
+        "frames": 91,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 91,
+        "picture": 0
+      },
+      {
+        "frames": 90,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 90,
+        "picture": 0
+      },
+      {
+        "frames": 116,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 116,
+        "picture": 0
+      },
+      {
+        "frames": 180,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 180,
+        "picture": 0
+      },
+      {
+        "frames": 96,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 96,
+        "picture": 0
+      },
+      {
+        "frames": 91,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 91,
+        "picture": 0
+      },
+      {
+        "frames": 90,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 90,
+        "picture": 0
+      },
+      {
+        "frames": 91,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 91,
+        "picture": 0
+      },
+      {
+        "frames": 91,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 91,
+        "picture": 0
+      },
+      {
+        "frames": 168,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 168,
+        "picture": 0
+      },
+      {
+        "frames": 123,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 123,
+        "picture": 0
+      },
+      {
+        "frames": 90,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 90,
+        "picture": 0
+      },
+      {
+        "frames": 91,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 91,
+        "picture": 0
+      },
+      {
+        "frames": 90,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 90,
+        "picture": 0
+      },
+      {
+        "frames": 91,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 91,
+        "picture": 0
+      },
+      {
+        "frames": 149,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 149,
+        "picture": 0
+      },
+      {
+        "frames": 145,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 145,
+        "picture": 0
+      },
+      {
+        "frames": 91,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 91,
+        "picture": 0
+      },
+      {
+        "frames": 91,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 91,
+        "picture": 0
+      },
+      {
+        "frames": 90,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 90,
+        "picture": 0
+      },
+      {
+        "frames": 90,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 90,
+        "picture": 0
+      },
+      {
+        "frames": 107,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 107,
+        "picture": 0
+      },
+      {
+        "frames": 173,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 173,
+        "picture": 0
+      },
+      {
+        "frames": 91,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 91,
+        "picture": 0
+      },
+      {
+        "frames": 90,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 90,
+        "picture": 0
+      },
+      {
+        "frames": 90,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 90,
+        "picture": 0
+      },
+      {
+        "frames": 90,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 90,
+        "picture": 0
+      },
+      {
+        "frames": 90,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 90,
+        "picture": 0
+      },
+      {
+        "frames": 176,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 176,
+        "picture": 0
+      },
+      {
+        "frames": 114,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 114,
+        "picture": 0
+      },
+      {
+        "frames": 90,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 90,
+        "picture": 0
+      },
+      {
+        "frames": 90,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 90,
+        "picture": 0
+      },
+      {
+        "frames": 90,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 90,
+        "picture": 0
+      },
+      {
+        "frames": 91,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 91,
+        "picture": 0
+      },
+      {
+        "frames": 154,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 154,
+        "picture": 0
+      },
+      {
+        "frames": 140,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 140,
+        "picture": 0
+      },
+      {
+        "frames": 91,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 91,
+        "picture": 0
+      },
+      {
+        "frames": 90,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 90,
+        "picture": 0
+      },
+      {
+        "frames": 90,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 90,
+        "picture": 0
+      },
+      {
+        "frames": 91,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 91,
+        "picture": 0
+      },
+      {
+        "frames": 111,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 111,
+        "picture": 0
+      },
+      {
+        "frames": 167,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 167,
+        "picture": 0
+      },
+      {
+        "frames": 91,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 91,
+        "picture": 0
+      },
+      {
+        "frames": 90,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 90,
+        "picture": 0
+      },
+      {
+        "frames": 91,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 91,
+        "picture": 0
+      },
+      {
+        "frames": 91,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 91,
+        "picture": 0
+      },
+      {
+        "frames": 95,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 95,
+        "picture": 0
+      },
+      {
+        "frames": 180,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 180,
+        "picture": 0
+      },
+      {
+        "frames": 108,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 108,
+        "picture": 0
+      },
+      {
+        "frames": 90,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 90,
+        "picture": 0
+      },
+      {
+        "frames": 90,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 90,
+        "picture": 0
+      },
+      {
+        "frames": 91,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 91,
+        "picture": 0
+      },
+      {
+        "frames": 91,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 91,
+        "picture": 0
+      },
+      {
+        "frames": 163,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 163,
+        "picture": 0
+      },
+      {
+        "frames": 129,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 129,
+        "picture": 0
+      },
+      {
+        "frames": 90,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 90,
+        "picture": 0
+      },
+      {
+        "frames": 91,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 91,
+        "picture": 0
+      },
+      {
+        "frames": 91,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 91,
+        "picture": 0
+      },
+      {
+        "frames": 90,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 90,
+        "picture": 0
+      },
+      {
+        "frames": 120,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 120,
+        "picture": 0
+      },
+      {
+        "frames": 160,
+        "skip": 0,
+        "intra": 578,
+        "coded": 578,
+        "atlas": 160,
+        "picture": 0
+      }
+    ]
+  }
+}
