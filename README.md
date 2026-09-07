@@ -159,6 +159,11 @@ not an overall speedup; the default stays unchanged. These are medians of report
 means under uncontrolled shared host load. The caller-owned output passed exact-pixel
 comparison and Vulkan synchronization validation on the host.
 
+The [output-scale 0.40 experiment](bench/results/240fps-2026-09-07/live-atlas/output-scale40/README.md) reduced the live display target from 1088 to 864 pixels per eye. Its matched active-window medians were 1.65 ms renderer GPU versus 2.55 ms baseline, but the run showed checkerboard ghosting/block artifacts and no end-to-end FPS gain; it remains opt-in and has no quality-equivalence claim.
+
+![Output-scale 0.40 matched live measurements](docs/figures/240fps/output-scale40.png)
+
+
 ![Pico R8 control capture with visible block and ghosting artifacts](bench/results/240fps-2026-09-07/live-atlas/direct-r8-handoff/control/live-direct-r8-control-pace90-screen-06.png)
 
 Some directional-INTRA fixtures still encounter a separate Pico decoder failure. Next work is to validate longer ATLAS/PICTURE transitions, then repeat matched captures without session gaps and test moving-head quality.

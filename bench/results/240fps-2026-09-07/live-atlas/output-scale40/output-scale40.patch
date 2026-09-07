@@ -1,0 +1,13 @@
+diff --git a/client/scenes/stream.cpp b/client/scenes/stream.cpp
+index f242ecd1..66abec00 100644
+--- a/client/scenes/stream.cpp
++++ b/client/scenes/stream.cpp
+@@ -1217,7 +1217,7 @@ struct render_probe
+ float scenes::stream::resolve_defoveate_scale(
+         const std::array<wivrn::to_headset::foveation_parameter, view_count> & foveation) const
+ {
+-	const float cfg = application::get_config().defoveate_scale;
++	const float cfg = 0.4f; // Temporary reduced-output benchmark.
+ 	if (cfg > 0.f)
+ 		return std::clamp(cfg, 0.4f, 1.0f);
+ 
