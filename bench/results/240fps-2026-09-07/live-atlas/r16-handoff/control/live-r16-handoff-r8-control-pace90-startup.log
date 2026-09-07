@@ -1,0 +1,554 @@
+--------- beginning of main
+--------- beginning of system
+09-07 21:59:05.284 21585 20660 I WiVRn   : [2026-09-07 21:59:05.284] [WiVRn] [info] Sending query for _wivrn._tcp.local., type PTR
+09-07 21:59:06.786 21585 21585 I WiVRn   : [2026-09-07 21:59:06.786] [WiVRn] [info] Received intent wivrn://192.168.1.2
+09-07 21:59:06.793 21585 20654 I WiVRn   : [2026-09-07 21:59:06.793] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_FOCUSED => XR_SESSION_STATE_VISIBLE
+09-07 21:59:06.802 21585 20654 I WiVRn   : [2026-09-07 21:59:06.802] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_VISIBLE => XR_SESSION_STATE_SYNCHRONIZED
+09-07 21:59:06.802 21585 20654 I WiVRn   : [2026-09-07 21:59:06.802] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_SYNCHRONIZED => XR_SESSION_STATE_STOPPING
+09-07 21:59:06.804 21585 20654 I WiVRn   : [2026-09-07 21:59:06.804] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_STOPPING => XR_SESSION_STATE_IDLE
+09-07 21:59:06.804 21585 20654 I WiVRn   : [2026-09-07 21:59:06.804] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_IDLE => XR_SESSION_STATE_READY
+09-07 21:59:06.805 21585 20654 I WiVRn   : [2026-09-07 21:59:06.805] [WiVRn] [info] Received event type XR_TYPE_EVENT_DATA_USER_PRESENCE_CHANGED_EXT
+09-07 21:59:06.812 21585 20654 I WiVRn   : [2026-09-07 21:59:06.811] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_READY => XR_SESSION_STATE_SYNCHRONIZED
+09-07 21:59:06.812 21585 20654 I WiVRn   : [2026-09-07 21:59:06.812] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_SYNCHRONIZED => XR_SESSION_STATE_VISIBLE
+09-07 21:59:06.812 21585 20654 I WiVRn   : [2026-09-07 21:59:06.812] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_VISIBLE => XR_SESSION_STATE_FOCUSED
+09-07 21:59:06.816 21585 20804 I WiVRn   : [2026-09-07 21:59:06.816] [WiVRn] [info] Using pin "000000"
+09-07 21:59:06.823 21585 20804 I WiVRn   : [2026-09-07 21:59:06.823] [WiVRn] [info] Wi-Fi QoS marks enabled (uplink EF / AC_VO)
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info] Supported swapchain formats:
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     R8G8B8A8Srgb
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     R8Unorm
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     R8G8Unorm
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     R8G8B8A8Unorm
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     R5G6B5UnormPack16
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     A2B10G10R10UnormPack32
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     R16Unorm
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     R16G16Unorm
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     R16G16B16A16Unorm
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     R16Uint
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     R16G16Uint
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     R16G16B16A16Uint
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     R16Sint
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     R16G16Sint
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     R16G16B16A16Sint
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     R16Sfloat
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     R16G16Sfloat
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     R16G16B16A16Sfloat
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     A1R5G5B5UnormPack16
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     Etc2R8G8B8UnormBlock
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     Etc2R8G8B8A1UnormBlock
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     Etc2R8G8B8A8UnormBlock
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     Etc2R8G8B8SrgbBlock
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     Etc2R8G8B8A1SrgbBlock
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     Etc2R8G8B8A8SrgbBlock
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     EacR11UnormBlock
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     EacR11G11UnormBlock
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     EacR11SnormBlock
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     EacR11G11SnormBlock
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     Astc4x4UnormBlock
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     Astc5x4UnormBlock
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     Astc5x5UnormBlock
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     Astc6x5UnormBlock
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     Astc6x6UnormBlock
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     Astc8x5UnormBlock
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     Astc8x6UnormBlock
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     Astc8x8UnormBlock
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     Astc10x5UnormBlock
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     Astc10x6UnormBlock
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     Astc10x8UnormBlock
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     Astc10x10UnormBlock
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     Astc12x10UnormBlock
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     Astc12x12UnormBlock
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     Astc4x4SrgbBlock
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     Astc5x4SrgbBlock
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     Astc5x5SrgbBlock
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     Astc6x5SrgbBlock
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     Astc6x6SrgbBlock
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     Astc8x5SrgbBlock
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     Astc8x6SrgbBlock
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     Astc8x8SrgbBlock
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     Astc10x5SrgbBlock
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     Astc10x6SrgbBlock
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     Astc10x8SrgbBlock
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     Astc10x10SrgbBlock
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     Astc12x10SrgbBlock
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     Astc12x12SrgbBlock
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     D16Unorm
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     X8D24UnormPack32
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     D32Sfloat
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     D24UnormS8Uint
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     B8G8R8A8Unorm
+09-07 21:59:06.834 21585 20654 I WiVRn   : [2026-09-07 21:59:06.834] [WiVRn] [info]     B8G8R8A8Srgb
+09-07 21:59:06.836 21585 20654 I WiVRn   : [2026-09-07 21:59:06.836] [WiVRn] [info] Using panel size: 2160x2160
+09-07 21:59:06.855 21585 20654 I WiVRn   : [2026-09-07 21:59:06.855] [WiVRn] [info] video codec av1: NOT supported
+09-07 21:59:06.899 21585 20654 I WiVRn   : [2026-09-07 21:59:06.899] [WiVRn] [info] video codec h265: supported
+09-07 21:59:06.933 21585 20654 I WiVRn   : [2026-09-07 21:59:06.933] [WiVRn] [info] video codec h264: supported
+09-07 21:59:06.941 21585 20654 I WiVRn   : [2026-09-07 21:59:06.941] [WiVRn] [info] Using format R8G8B8A8Srgb
+09-07 21:59:06.944 21585 20654 I WiVRn   : [2026-09-07 21:59:06.944] [WiVRn] [info] WifiLock low latency acquired
+09-07 21:59:06.984 21585 20825 I WiVRn   : [2026-09-07 21:59:06.984] [WiVRn] [info] setup, refresh rate 90
+09-07 21:59:06.984 21585 20825 I WiVRn   : [2026-09-07 21:59:06.984] [WiVRn] [info] set refresh rate to 90Hz
+09-07 21:59:06.985 21585 20825 I WiVRn   : [2026-09-07 21:59:06.985] [WiVRn] [info] Creating decoders, size 1088x1088
+09-07 21:59:06.985 21585 20825 I WiVRn   : [2026-09-07 21:59:06.985] [WiVRn] [info] edge bleed: server overscan 5.0%, client ring 0.0% (fade)
+09-07 21:59:06.985 21585 20825 I WiVRn   : [2026-09-07 21:59:06.985] [WiVRn] [info]   stream 0: role 0, 1088x1088
+09-07 21:59:06.985 21585 20825 I WiVRn   : [2026-09-07 21:59:06.985] [WiVRn] [info] nxwarp: decoupled display on
+09-07 21:59:06.985 21585 20825 I WiVRn   : [2026-09-07 21:59:06.985] [WiVRn] [info] nxwarp: ycbcr chroma filter linear
+09-07 21:59:06.985 21585 20825 I WiVRn   : [2026-09-07 21:59:06.985] [WiVRn] [info] nxwarp[0]: decoupled display -- frames are published complete and the reprojection pass waits on nothing
+09-07 21:59:06.985 21585 20825 I WiVRn   : [2026-09-07 21:59:06.985] [WiVRn] [info]   stream 2: role 1, 1088x544
+09-07 21:59:06.985 21585 20825 I WiVRn   : [2026-09-07 21:59:06.985] [WiVRn] [info] nxwarp: decoupled display on
+09-07 21:59:06.985 21585 20825 I WiVRn   : [2026-09-07 21:59:06.985] [WiVRn] [info] nxwarp: ycbcr chroma filter linear
+09-07 21:59:06.985 21585 20825 I WiVRn   : [2026-09-07 21:59:06.985] [WiVRn] [info] nxwarp[2]: decoupled display -- frames are published complete and the reprojection pass waits on nothing
+09-07 21:59:06.985 21585 20830 I WiVRn   : [2026-09-07 21:59:06.985] [WiVRn] [info] Adding hand_interaction poses to device list
+09-07 21:59:06.986 21585 20830 I WiVRn   : [2026-09-07 21:59:06.986] [WiVRn] [info] interaction profile for /user/hand/left: /interaction_profiles/ext/hand_interaction_ext
+09-07 21:59:06.986 21585 20830 I WiVRn   : [2026-09-07 21:59:06.986] [WiVRn] [info] interaction profile for /user/hand/right: /interaction_profiles/ext/hand_interaction_ext
+09-07 21:59:06.986 21585 20830 I WiVRn   : [2026-09-07 21:59:06.986] [WiVRn] [info] interaction profile for /user/gamepad: XR_NULL_PATH
+09-07 21:59:06.986 21585 20830 W WiVRn   : [2026-09-07 21:59:06.986] [WiVRn] [warning] unknown interaction profile XR_NULL_PATH
+09-07 21:59:06.986 21585 20830 I WiVRn   : [2026-09-07 21:59:06.986] [WiVRn] [info] Tracking pattern (5000µs):
+09-07 21:59:06.986 21585 20830 I WiVRn   : [2026-09-07 21:59:06.986] [WiVRn] [info] 	t+5000µs HEAD (0µs)
+09-07 21:59:07.011 21585 20825 I WiVRn   : [2026-09-07 21:59:07.011] [WiVRn] [info] Speaker stream started
+09-07 21:59:07.011 21585 20825 I WiVRn   : [2026-09-07 21:59:07.011] [WiVRn] [info] setup, refresh rate 90
+09-07 21:59:07.011 21585 20825 I WiVRn   : [2026-09-07 21:59:07.011] [WiVRn] [info] set refresh rate to 90Hz
+09-07 21:59:08.403 21585 20654 I WiVRn   : [2026-09-07 21:59:08.403] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_FOCUSED => XR_SESSION_STATE_VISIBLE
+09-07 21:59:08.403 21585 20654 I WiVRn   : [2026-09-07 21:59:08.403] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_VISIBLE => XR_SESSION_STATE_SYNCHRONIZED
+09-07 21:59:08.403 21585 20654 I WiVRn   : [2026-09-07 21:59:08.403] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_SYNCHRONIZED => XR_SESSION_STATE_STOPPING
+09-07 21:59:08.404 21585 20654 I WiVRn   : [2026-09-07 21:59:08.404] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_STOPPING => XR_SESSION_STATE_IDLE
+09-07 21:59:10.288 21585 20660 I WiVRn   : [2026-09-07 21:59:10.288] [WiVRn] [info] Sending query for _wivrn._tcp.local., type PTR
+09-07 21:59:10.444 21585 20825 I WiVRn   : [2026-09-07 21:59:10.444] [WiVRn] [info] nxwarp[0]: sampled atlas snapshot R8
+09-07 21:59:10.444 21585 20825 I WiVRn   : [2026-09-07 21:59:10.444] [WiVRn] [info] nxwarp[0]: real R8 atlas display with per-frame GPU snapshots
+09-07 21:59:10.444 21585 20825 I WiVRn   : [2026-09-07 21:59:10.444] [WiVRn] [info] nxwarp[0]: 1088x1088 per eye, 2 eyes, on Adreno (TM) 650, 34 x 17 tiles, 1166 bytes per tile
+09-07 21:59:10.446 21585 20825 I WiVRn   : [2026-09-07 21:59:10.446] [WiVRn] [info] nxwarp[0] net: 1 frames closed in 3.5 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 0 decoded so far, 0 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 21:59:10.446 21585 20825 I WiVRn   : [2026-09-07 21:59:10.446] [WiVRn] [info] nxwarp[0] net: 0.066 ms per datagram over 18 datagrams (0.35 ms of every second)
+09-07 21:59:10.446 21585 20825 I WiVRn   : [2026-09-07 21:59:10.446] [WiVRn] [info] nxwarp[0] sel: stride 1, arrival 0.0 ms, dropped-late 0, withheld 0, decoded 0
+09-07 21:59:10.446 21585 20825 I WiVRn   : [2026-09-07 21:59:10.446] [WiVRn] [info] nxwarp[0] rx: 19 datagrams, placed 578 (+578), late 0 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 0
+09-07 21:59:10.485 21585 20830 I WiVRn   : [2026-09-07 21:59:10.485] [WiVRn] [info] Tracking pattern (5000µs):
+09-07 21:59:10.485 21585 20830 I WiVRn   : [2026-09-07 21:59:10.485] [WiVRn] [info] 	t+94µs LEFT_GRIP (39905µs)
+09-07 21:59:10.485 21585 20830 I WiVRn   : [2026-09-07 21:59:10.485] [WiVRn] [info] 	t+94µs LEFT_GRIP (54905µs)
+09-07 21:59:10.485 21585 20830 I WiVRn   : [2026-09-07 21:59:10.485] [WiVRn] [info] 	t+145µs RIGHT_GRIP (39854µs)
+09-07 21:59:10.485 21585 20830 I WiVRn   : [2026-09-07 21:59:10.485] [WiVRn] [info] 	t+145µs RIGHT_GRIP (54854µs)
+09-07 21:59:10.485 21585 20830 I WiVRn   : [2026-09-07 21:59:10.485] [WiVRn] [info] 	t+560µs HEAD (39439µs)
+09-07 21:59:10.485 21585 20830 I WiVRn   : [2026-09-07 21:59:10.485] [WiVRn] [info] 	t+560µs HEAD (54439µs)
+09-07 21:59:10.485 21585 20830 I WiVRn   : [2026-09-07 21:59:10.485] [WiVRn] [info] 	t+1094µs LEFT_GRIP (48905µs)
+09-07 21:59:10.485 21585 20830 I WiVRn   : [2026-09-07 21:59:10.485] [WiVRn] [info] 	t+1145µs RIGHT_GRIP (48854µs)
+09-07 21:59:10.485 21585 20830 I WiVRn   : [2026-09-07 21:59:10.485] [WiVRn] [info] 	t+1560µs HEAD (48439µs)
+09-07 21:59:10.485 21585 20830 I WiVRn   : [2026-09-07 21:59:10.485] [WiVRn] [info] 	t+2094µs LEFT_GRIP (42905µs)
+09-07 21:59:10.485 21585 20830 I WiVRn   : [2026-09-07 21:59:10.485] [WiVRn] [info] 	t+2145µs RIGHT_GRIP (42854µs)
+09-07 21:59:10.485 21585 20830 I WiVRn   : [2026-09-07 21:59:10.485] [WiVRn] [info] 	t+2560µs HEAD (42439µs)
+09-07 21:59:10.485 21585 20830 I WiVRn   : [2026-09-07 21:59:10.485] [WiVRn] [info] 	t+3094µs LEFT_GRIP (51905µs)
+09-07 21:59:10.485 21585 20830 I WiVRn   : [2026-09-07 21:59:10.485] [WiVRn] [info] 	t+3145µs RIGHT_GRIP (51854µs)
+09-07 21:59:10.485 21585 20830 I WiVRn   : [2026-09-07 21:59:10.485] [WiVRn] [info] 	t+3560µs HEAD (36439µs)
+09-07 21:59:10.485 21585 20830 I WiVRn   : [2026-09-07 21:59:10.485] [WiVRn] [info] 	t+3560µs HEAD (51439µs)
+09-07 21:59:10.485 21585 20830 I WiVRn   : [2026-09-07 21:59:10.485] [WiVRn] [info] 	t+4094µs LEFT_GRIP (45905µs)
+09-07 21:59:10.485 21585 20830 I WiVRn   : [2026-09-07 21:59:10.485] [WiVRn] [info] 	t+4145µs RIGHT_GRIP (45854µs)
+09-07 21:59:10.485 21585 20830 I WiVRn   : [2026-09-07 21:59:10.485] [WiVRn] [info] 	t+4560µs HEAD (45439µs)
+09-07 21:59:10.954 21585 20654 I WiVRn   : [2026-09-07 21:59:10.954] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_IDLE => XR_SESSION_STATE_READY
+09-07 21:59:10.955 21585 20654 I WiVRn   : [2026-09-07 21:59:10.955] [WiVRn] [info] Received event type Unknown
+09-07 21:59:10.955 21585 20654 I WiVRn   : [2026-09-07 21:59:10.955] [WiVRn] [info] Received event type XR_TYPE_EVENT_DATA_USER_PRESENCE_CHANGED_EXT
+09-07 21:59:10.958 21585 20654 I WiVRn   : [2026-09-07 21:59:10.958] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_READY => XR_SESSION_STATE_SYNCHRONIZED
+09-07 21:59:10.958 21585 20654 I WiVRn   : [2026-09-07 21:59:10.958] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_SYNCHRONIZED => XR_SESSION_STATE_VISIBLE
+09-07 21:59:10.958 21585 20654 I WiVRn   : [2026-09-07 21:59:10.958] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_VISIBLE => XR_SESSION_STATE_FOCUSED
+09-07 21:59:10.986 21585 20830 I WiVRn   : [2026-09-07 21:59:10.986] [WiVRn] [info] Tracking pattern (5000µs):
+09-07 21:59:10.986 21585 20830 I WiVRn   : [2026-09-07 21:59:10.986] [WiVRn] [info] 	t+677µs HEAD (9322µs)
+09-07 21:59:10.986 21585 20830 I WiVRn   : [2026-09-07 21:59:10.986] [WiVRn] [info] 	t+703µs LEFT_GRIP (9296µs)
+09-07 21:59:10.986 21585 20830 I WiVRn   : [2026-09-07 21:59:10.986] [WiVRn] [info] 	t+709µs RIGHT_GRIP (9290µs)
+09-07 21:59:10.986 21585 20830 I WiVRn   : [2026-09-07 21:59:10.986] [WiVRn] [info] 	t+1677µs HEAD (18322µs)
+09-07 21:59:10.986 21585 20830 I WiVRn   : [2026-09-07 21:59:10.986] [WiVRn] [info] 	t+1703µs LEFT_GRIP (18296µs)
+09-07 21:59:10.986 21585 20830 I WiVRn   : [2026-09-07 21:59:10.986] [WiVRn] [info] 	t+1709µs RIGHT_GRIP (18290µs)
+09-07 21:59:10.986 21585 20830 I WiVRn   : [2026-09-07 21:59:10.986] [WiVRn] [info] 	t+2677µs HEAD (12322µs)
+09-07 21:59:10.986 21585 20830 I WiVRn   : [2026-09-07 21:59:10.986] [WiVRn] [info] 	t+2703µs LEFT_GRIP (12296µs)
+09-07 21:59:10.986 21585 20830 I WiVRn   : [2026-09-07 21:59:10.986] [WiVRn] [info] 	t+2709µs RIGHT_GRIP (12290µs)
+09-07 21:59:10.986 21585 20830 I WiVRn   : [2026-09-07 21:59:10.986] [WiVRn] [info] 	t+3677µs HEAD (6322µs)
+09-07 21:59:10.986 21585 20830 I WiVRn   : [2026-09-07 21:59:10.986] [WiVRn] [info] 	t+3703µs LEFT_GRIP (6296µs)
+09-07 21:59:10.986 21585 20830 I WiVRn   : [2026-09-07 21:59:10.986] [WiVRn] [info] 	t+3709µs RIGHT_GRIP (6290µs)
+09-07 21:59:10.986 21585 20830 I WiVRn   : [2026-09-07 21:59:10.986] [WiVRn] [info] 	t+4677µs HEAD (15322µs)
+09-07 21:59:10.986 21585 20830 I WiVRn   : [2026-09-07 21:59:10.986] [WiVRn] [info] 	t+4703µs LEFT_GRIP (15296µs)
+09-07 21:59:10.986 21585 20830 I WiVRn   : [2026-09-07 21:59:10.986] [WiVRn] [info] 	t+4709µs RIGHT_GRIP (15290µs)
+09-07 21:59:11.046 21585 20654 I WiVRn   : [2026-09-07 21:59:11.046] [WiVRn] [info] Received event type Unknown
+09-07 21:59:11.568 21585 20828 I WiVRn   : [2026-09-07 21:59:11.568] [WiVRn] [info] Stream scene ready at t=80984937297543
+09-07 21:59:11.568 21585 20828 I WiVRn   : [2026-09-07 21:59:11.568] [WiVRn] [info] nxwarp[0]: 1 frames in 4.6 s: 9118 B/frame, wait-prev 0.0 ms, wall 1121.7 ms, nxvc passA 1.9 passB 11.9 gpu 13.8 ms; holes 1, refused 0
+09-07 21:59:11.568 21585 20828 I WiVRn   : [2026-09-07 21:59:11.568] [WiVRn] [info] nxwarp[0] gpu duty 3 ms/s (0% of one GPU) for decode alone; the display pass is extra
+09-07 21:59:11.568 21585 20828 I WiVRn   : [2026-09-07 21:59:11.568] [WiVRn] [info] nxwarp[0] passB 11.9 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 11.9; tiles skip 0 / coded 578 / dir 0 (eye pass 0)
+09-07 21:59:11.568 21585 20828 I WiVRn   : [2026-09-07 21:59:11.568] [WiVRn] [info] nxwarp[0]: 129 frames dropped late (queue kept to 1)
+09-07 21:59:11.568 21585 20828 I WiVRn   : [2026-09-07 21:59:11.568] [WiVRn] [info] nxwarp[0] stage: gap 0.0 | wait-prev 0.0 | submit 1106.2 (qlock 0.0 + codec 1106.2) | get_free 0.0 | fence-pre 0.0 | record 0.3 | qsubmit 0.0 | fence-post 15.0 | publish 0.1 ms; withheld 0, stride 1, arrival 14.9 ms
+09-07 21:59:11.568 21585 20828 I WiVRn   : [2026-09-07 21:59:11.568] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.06 ms/frame over 132 frames, buffer 54 kB held for 54 kB of unit (1.0x)
+09-07 21:59:11.568 21585 20828 I WiVRn   : [2026-09-07 21:59:11.568] [WiVRn] [info] nxwarp[0] fence-post 15.1 ms = nxvc gpu 13.8 + copy gpu 0.57 + queue 0.7 (over 1 frames with timestamps)
+09-07 21:59:11.568 21585 20828 I WiVRn   : [2026-09-07 21:59:11.568] [WiVRn] [info] nxwarp[0] atlas: frames 1, atlas 1, picture 0, avg dispatches 6.0, avg assembled 0.0, avg valid 578.0
+09-07 21:59:11.573 21585 20654 I WiVRn   : [2026-09-07 21:59:11.573] [WiVRn] [info] MulticastLock released
+09-07 21:59:11.623 21585 20654 I WiVRn   : [2026-09-07 21:59:11.623] [WiVRn] [info] Loaded input profile pico-4
+09-07 21:59:11.623 21585 20654 I WiVRn   : [2026-09-07 21:59:11.623] [WiVRn] [info] Initializing offset of space aim_left to (-5, 0, 20) mm, (0, -0, 0)°
+09-07 21:59:11.623 21585 20654 I WiVRn   : [2026-09-07 21:59:11.623] [WiVRn] [info] Initializing offset of space aim_right to (5, 0, 20) mm, (0, -0, 0)°
+09-07 21:59:11.623 21585 20654 I WiVRn   : [2026-09-07 21:59:11.623] [WiVRn] [info] Initializing offset of space grip_left to (0, -20, -50) mm, (-30.000002, -0, 0)°
+09-07 21:59:11.623 21585 20654 I WiVRn   : [2026-09-07 21:59:11.623] [WiVRn] [info] Initializing offset of space grip_right to (0, -20, -50) mm, (-30.000002, -0, 0)°
+09-07 21:59:11.649 21585 20654 I WiVRn   : [2026-09-07 21:59:11.649] [WiVRn] [info] Font for de /system/fonts/PICOSans.ttf
+09-07 21:59:11.650 21585 20654 I WiVRn   : [2026-09-07 21:59:11.650] [WiVRn] [info] Font for es /system/fonts/PICOSans.ttf
+09-07 21:59:11.650 21585 20654 I WiVRn   : [2026-09-07 21:59:11.650] [WiVRn] [info] Font for fr /system/fonts/PICOSans.ttf
+09-07 21:59:11.650 21585 20654 I WiVRn   : [2026-09-07 21:59:11.650] [WiVRn] [info] Font for fr /system/fonts/Roboto-Regular.ttf
+09-07 21:59:11.650 21585 20654 I WiVRn   : [2026-09-07 21:59:11.650] [WiVRn] [info] Font for it /system/fonts/PICOSans.ttf
+09-07 21:59:11.650 21585 20654 I WiVRn   : [2026-09-07 21:59:11.650] [WiVRn] [info] Font for ja /system/fonts/PICOSans.ttf
+09-07 21:59:11.650 21585 20654 I WiVRn   : [2026-09-07 21:59:11.650] [WiVRn] [info] Font for ja /system/fonts/PICOSansVFJP.ttf
+09-07 21:59:11.650 21585 20654 I WiVRn   : [2026-09-07 21:59:11.650] [WiVRn] [info] Font for ka /system/fonts/PICOSans.ttf
+09-07 21:59:11.650 21585 20654 I WiVRn   : [2026-09-07 21:59:11.650] [WiVRn] [info] Font for ka /system/fonts/NotoSansGeorgian-Regular.otf
+09-07 21:59:11.650 21585 20654 I WiVRn   : [2026-09-07 21:59:11.650] [WiVRn] [info] Font for ka /system/fonts/PICOSans.ttf
+09-07 21:59:11.650 21585 20654 I WiVRn   : [2026-09-07 21:59:11.650] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:59:11.650 21585 20654 I WiVRn   : [2026-09-07 21:59:11.650] [WiVRn] [info] Font for pl /system/fonts/Roboto-Regular.ttf
+09-07 21:59:11.650 21585 20654 I WiVRn   : [2026-09-07 21:59:11.650] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:59:11.650 21585 20654 I WiVRn   : [2026-09-07 21:59:11.650] [WiVRn] [info] Font for pl /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:59:11.650 21585 20654 I WiVRn   : [2026-09-07 21:59:11.650] [WiVRn] [info] Font for pl /system/fonts/Roboto-Regular.ttf
+09-07 21:59:11.650 21585 20654 I WiVRn   : [2026-09-07 21:59:11.650] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:59:11.650 21585 20654 I WiVRn   : [2026-09-07 21:59:11.650] [WiVRn] [info] Font for pt_BR /system/fonts/PICOSans.ttf
+09-07 21:59:11.650 21585 20654 I WiVRn   : [2026-09-07 21:59:11.650] [WiVRn] [info] Font for ru /system/fonts/PICOSans.ttf
+09-07 21:59:11.650 21585 20654 I WiVRn   : [2026-09-07 21:59:11.650] [WiVRn] [info] Font for ru /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:59:11.650 21585 20654 I WiVRn   : [2026-09-07 21:59:11.650] [WiVRn] [info] Font for ru /system/fonts/PICOSans.ttf
+09-07 21:59:11.650 21585 20654 I WiVRn   : [2026-09-07 21:59:11.650] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:59:11.650 21585 20654 I WiVRn   : [2026-09-07 21:59:11.650] [WiVRn] [info] Font for sk /system/fonts/Roboto-Regular.ttf
+09-07 21:59:11.650 21585 20654 I WiVRn   : [2026-09-07 21:59:11.650] [WiVRn] [info] Font for sk /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:59:11.650 21585 20654 I WiVRn   : [2026-09-07 21:59:11.650] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:59:11.650 21585 20654 I WiVRn   : [2026-09-07 21:59:11.650] [WiVRn] [info] Font for sk /system/fonts/Roboto-Regular.ttf
+09-07 21:59:11.650 21585 20654 I WiVRn   : [2026-09-07 21:59:11.650] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:59:11.650 21585 20654 I WiVRn   : [2026-09-07 21:59:11.650] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:59:11.650 21585 20654 I WiVRn   : [2026-09-07 21:59:11.650] [WiVRn] [info] Font for tr /system/fonts/Roboto-Regular.ttf
+09-07 21:59:11.650 21585 20654 I WiVRn   : [2026-09-07 21:59:11.650] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:59:11.650 21585 20654 I WiVRn   : [2026-09-07 21:59:11.650] [WiVRn] [info] Font for tr /system/fonts/Roboto-Regular.ttf
+09-07 21:59:11.650 21585 20654 I WiVRn   : [2026-09-07 21:59:11.650] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:59:11.650 21585 20654 I WiVRn   : [2026-09-07 21:59:11.650] [WiVRn] [info] Font for zh_CN /system/fonts/PICOSans.ttf
+09-07 21:59:11.650 21585 20654 I WiVRn   : [2026-09-07 21:59:11.650] [WiVRn] [info] Font for zh_CN /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:59:11.651 21585 20654 I WiVRn   : [2026-09-07 21:59:11.651] [WiVRn] [info] Font for zh_TW /system/fonts/PICOSans.ttf
+09-07 21:59:11.651 21585 20654 I WiVRn   : [2026-09-07 21:59:11.651] [WiVRn] [info] Font for zh_TW /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:59:11.655 21585 20654 I WiVRn   : [2026-09-07 21:59:11.655] [WiVRn] [info] Using font /system/fonts/PICOSans.ttf
+09-07 21:59:11.655 21585 20654 I WiVRn   : [2026-09-07 21:59:11.655] [WiVRn] [info] Using font /system/fonts/Roboto-Regular.ttf
+09-07 21:59:11.655 21585 20654 I WiVRn   : [2026-09-07 21:59:11.655] [WiVRn] [info] Using font /system/fonts/PICOSansVFJP.ttf
+09-07 21:59:11.673 21585 20654 I WiVRn   : [2026-09-07 21:59:11.673] [WiVRn] [info] Using font /system/fonts/NotoSansGeorgian-Regular.otf
+09-07 21:59:11.673 21585 20654 I WiVRn   : [2026-09-07 21:59:11.673] [WiVRn] [info] Using font /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:59:11.686 21585 20654 I WiVRn   : [2026-09-07 21:59:11.686] [WiVRn] [info] Performance level: CPU domain asked for sustained_high
+09-07 21:59:11.686 21585 20654 I WiVRn   : [2026-09-07 21:59:11.686] [WiVRn] [info] nxwarp: GPU performance level setting 2
+09-07 21:59:11.686 21585 20654 I WiVRn   : [2026-09-07 21:59:11.686] [WiVRn] [info] Performance level: GPU domain asked for boost
+09-07 21:59:11.686 21585 20654 I WiVRn   : [2026-09-07 21:59:11.686] [WiVRn] [info] swapchain setup, refresh rate 90
+09-07 21:59:11.686 21585 20654 I WiVRn   : [2026-09-07 21:59:11.686] [WiVRn] [info] set refresh rate to 90Hz
+09-07 21:59:11.688 21585 20654 I WiVRn   : [2026-09-07 21:59:11.688] [WiVRn] [info] Created stream swapchain: 1088x1088
+09-07 21:59:11.688 21585 20654 I WiVRn   : [2026-09-07 21:59:11.688] [WiVRn] [info] Initializing reprojector
+09-07 21:59:11.714 21585 20654 I WiVRn   : [2026-09-07 21:59:11.714] [WiVRn] [info] geometry[eye 0]: view_info fov L-53.34 R53.34 U53.34 D-53.34 | layer fov L-53.34 R53.34 U53.34 D-53.34 deg | layer rect 1088x1088 | defoveated 1088x1088 | scale 0.50
+09-07 21:59:11.714 21585 20654 I WiVRn   : [2026-09-07 21:59:11.714] [WiVRn] [info] geometry[eye 1]: view_info fov L-53.34 R53.34 U53.34 D-53.34 | layer fov L-53.34 R53.34 U53.34 D-53.34 deg | layer rect 1088x1088 | defoveated 1088x1088 | scale 0.50
+09-07 21:59:11.717 21585 20654 I WiVRn   : [2026-09-07 21:59:11.717] [WiVRn] [info] render: 1 iterations in 17.0 s (0.1/s), 1 submitted a layer, 1 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.1 ms
+09-07 21:59:11.717 21585 20654 I WiVRn   : [2026-09-07 21:59:11.717] [WiVRn] [info] render: selected source transitions forward 0 backward 0 repeat 0, greatest forward gap 0
+09-07 21:59:11.717 21585 20654 I WiVRn   : [2026-09-07 21:59:11.717] [WiVRn] [info] render: this app's own GPU pass 0.0 ms per iteration
+09-07 21:59:11.717 21585 20654 I WiVRn   : [2026-09-07 21:59:11.717] [WiVRn] [info] render: defoveate 1088x1088 per eye x2 = 2.37 Mpx/frame at scale 0.50 atlas-prototype 0; 0 re-presented from the cache (reduce_gpu_load on)
+09-07 21:59:11.717 21585 20654 I WiVRn   : [2026-09-07 21:59:11.717] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.28 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-07 21:59:11.717 21585 20654 I WiVRn   : [2026-09-07 21:59:11.717] [WiVRn] [info] render: per iteration fence 0.0 (worst 0.0) | queries 0.0 | submit 0.1 | whole render() 31.6 ms
+09-07 21:59:11.717 21585 20654 I WiVRn   : [2026-09-07 21:59:11.717] [WiVRn] [info] render: jit on | wake slack 38.0 ms | slept 0.0 ms mean (max 0.0, 0 of 1 iterations) | budget 1.0 = pass 0.0 + margin 1.0 | sleep cap 45.0 ms
+09-07 21:59:11.717 21585 20654 I WiVRn   : [2026-09-07 21:59:11.717] [WiVRn] [info] render: source display-time offset 95.0 ms mean (worst 95.0) over 1 frames | submit lead 0.0 ms mean (worst 0.0) | misses: 0 overrun 0 late 0 skipped refresh
+09-07 21:59:11.717 21585 20654 I WiVRn   : [2026-09-07 21:59:11.717] [WiVRn] [info] Received event type XR_TYPE_EVENT_DATA_INTERACTION_PROFILE_CHANGED
+09-07 21:59:11.718 21585 20654 I WiVRn   : [2026-09-07 21:59:11.718] [WiVRn] [info] interaction profile for /user/hand/left: /interaction_profiles/ext/hand_interaction_ext
+09-07 21:59:11.718 21585 20654 I WiVRn   : [2026-09-07 21:59:11.718] [WiVRn] [info] interaction profile for /user/hand/right: /interaction_profiles/ext/hand_interaction_ext
+09-07 21:59:11.718 21585 20654 I WiVRn   : [2026-09-07 21:59:11.718] [WiVRn] [info] interaction profile for /user/gamepad: XR_NULL_PATH
+09-07 21:59:11.718 21585 20654 W WiVRn   : [2026-09-07 21:59:11.718] [WiVRn] [warning] unknown interaction profile XR_NULL_PATH
+09-07 21:59:11.718 21585 20654 I WiVRn   : [2026-09-07 21:59:11.718] [WiVRn] [info] Received event type XR_TYPE_EVENT_DATA_INTERACTION_PROFILE_CHANGED
+09-07 21:59:11.718 21585 20654 I WiVRn   : [2026-09-07 21:59:11.718] [WiVRn] [info] interaction profile for /user/hand/left: /interaction_profiles/ext/hand_interaction_ext
+09-07 21:59:11.718 21585 20654 I WiVRn   : [2026-09-07 21:59:11.718] [WiVRn] [info] interaction profile for /user/hand/right: /interaction_profiles/ext/hand_interaction_ext
+09-07 21:59:11.718 21585 20654 I WiVRn   : [2026-09-07 21:59:11.718] [WiVRn] [info] interaction profile for /user/gamepad: XR_NULL_PATH
+09-07 21:59:11.718 21585 20654 W WiVRn   : [2026-09-07 21:59:11.718] [WiVRn] [warning] unknown interaction profile XR_NULL_PATH
+09-07 21:59:11.718 21585 20654 I WiVRn   : [2026-09-07 21:59:11.718] [WiVRn] [info] Received event type XR_TYPE_EVENT_DATA_INTERACTION_PROFILE_CHANGED
+09-07 21:59:11.718 21585 20654 I WiVRn   : [2026-09-07 21:59:11.718] [WiVRn] [info] interaction profile for /user/hand/left: /interaction_profiles/ext/hand_interaction_ext
+09-07 21:59:11.718 21585 20654 I WiVRn   : [2026-09-07 21:59:11.718] [WiVRn] [info] interaction profile for /user/hand/right: /interaction_profiles/ext/hand_interaction_ext
+09-07 21:59:11.718 21585 20654 I WiVRn   : [2026-09-07 21:59:11.718] [WiVRn] [info] interaction profile for /user/gamepad: XR_NULL_PATH
+09-07 21:59:11.718 21585 20654 W WiVRn   : [2026-09-07 21:59:11.718] [WiVRn] [warning] unknown interaction profile XR_NULL_PATH
+09-07 21:59:11.721 21585 20654 I WiVRn   : [2026-09-07 21:59:11.721] [WiVRn] [info] Received event type Unknown
+09-07 21:59:11.991 21585 20830 I WiVRn   : [2026-09-07 21:59:11.991] [WiVRn] [info] Tracking pattern (11111µs):
+09-07 21:59:11.991 21585 20830 I WiVRn   : [2026-09-07 21:59:11.991] [WiVRn] [info] 	t+629µs HEAD (21592µs)
+09-07 21:59:11.991 21585 20830 I WiVRn   : [2026-09-07 21:59:11.991] [WiVRn] [info] 	t+662µs LEFT_GRIP (21559µs)
+09-07 21:59:11.991 21585 20830 I WiVRn   : [2026-09-07 21:59:11.991] [WiVRn] [info] 	t+670µs RIGHT_GRIP (21551µs)
+09-07 21:59:11.991 21585 20830 I WiVRn   : [2026-09-07 21:59:11.991] [WiVRn] [info] 	t+1518µs HEAD (9592µs)
+09-07 21:59:11.991 21585 20830 I WiVRn   : [2026-09-07 21:59:11.991] [WiVRn] [info] 	t+1551µs LEFT_GRIP (9559µs)
+09-07 21:59:11.991 21585 20830 I WiVRn   : [2026-09-07 21:59:11.991] [WiVRn] [info] 	t+1559µs RIGHT_GRIP (9551µs)
+09-07 21:59:11.991 21585 20830 I WiVRn   : [2026-09-07 21:59:11.991] [WiVRn] [info] 	t+3629µs HEAD (18592µs)
+09-07 21:59:11.991 21585 20830 I WiVRn   : [2026-09-07 21:59:11.991] [WiVRn] [info] 	t+3662µs LEFT_GRIP (18559µs)
+09-07 21:59:11.991 21585 20830 I WiVRn   : [2026-09-07 21:59:11.991] [WiVRn] [info] 	t+3670µs RIGHT_GRIP (18551µs)
+09-07 21:59:11.991 21585 20830 I WiVRn   : [2026-09-07 21:59:11.991] [WiVRn] [info] 	t+4518µs HEAD (6592µs)
+09-07 21:59:11.991 21585 20830 I WiVRn   : [2026-09-07 21:59:11.991] [WiVRn] [info] 	t+4551µs LEFT_GRIP (6559µs)
+09-07 21:59:11.991 21585 20830 I WiVRn   : [2026-09-07 21:59:11.991] [WiVRn] [info] 	t+4559µs RIGHT_GRIP (6551µs)
+09-07 21:59:11.991 21585 20830 I WiVRn   : [2026-09-07 21:59:11.991] [WiVRn] [info] 	t+6629µs HEAD (15592µs)
+09-07 21:59:11.991 21585 20830 I WiVRn   : [2026-09-07 21:59:11.991] [WiVRn] [info] 	t+6662µs LEFT_GRIP (15559µs)
+09-07 21:59:11.991 21585 20830 I WiVRn   : [2026-09-07 21:59:11.991] [WiVRn] [info] 	t+6670µs RIGHT_GRIP (15551µs)
+09-07 21:59:11.991 21585 20830 I WiVRn   : [2026-09-07 21:59:11.991] [WiVRn] [info] 	t+9629µs HEAD (12592µs)
+09-07 21:59:11.991 21585 20830 I WiVRn   : [2026-09-07 21:59:11.991] [WiVRn] [info] 	t+9662µs LEFT_GRIP (12559µs)
+09-07 21:59:11.991 21585 20830 I WiVRn   : [2026-09-07 21:59:11.991] [WiVRn] [info] 	t+9670µs RIGHT_GRIP (12551µs)
+09-07 21:59:12.452 21585 20825 I WiVRn   : [2026-09-07 21:59:12.452] [WiVRn] [info] nxwarp[0] net: 192 frames closed in 2.0 s, 1 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 53 decoded so far, 192 stragglers dropped; last hole 283/350 chunks, first missing 204, short false, chunk 1166 B
+09-07 21:59:12.452 21585 20825 I WiVRn   : [2026-09-07 21:59:12.452] [WiVRn] [info] nxwarp[0] net: 0.056 ms per datagram over 9861 datagrams (275.60 ms of every second)
+09-07 21:59:12.452 21585 20825 I WiVRn   : [2026-09-07 21:59:12.452] [WiVRn] [info] nxwarp[0] sel: stride 1, arrival 18.0 ms, dropped-late 138, withheld 5, decoded 53
+09-07 21:59:12.452 21585 20825 I WiVRn   : [2026-09-07 21:59:12.452] [WiVRn] [info] nxwarp[0] rx: 9880 datagrams, placed 79314 (+78736), late 1038 (+1038), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 7
+09-07 21:59:12.991 21585 20830 I WiVRn   : [2026-09-07 21:59:12.991] [WiVRn] [info] Tracking pattern (11110µs):
+09-07 21:59:12.991 21585 20830 I WiVRn   : [2026-09-07 21:59:12.991] [WiVRn] [info] 	t+2628µs HEAD (8481µs)
+09-07 21:59:12.991 21585 20830 I WiVRn   : [2026-09-07 21:59:12.991] [WiVRn] [info] 	t+2713µs LEFT_GRIP (8396µs)
+09-07 21:59:12.991 21585 20830 I WiVRn   : [2026-09-07 21:59:12.991] [WiVRn] [info] 	t+2727µs RIGHT_GRIP (8382µs)
+09-07 21:59:12.991 21585 20830 I WiVRn   : [2026-09-07 21:59:12.991] [WiVRn] [info] 	t+4738µs HEAD (17481µs)
+09-07 21:59:12.991 21585 20830 I WiVRn   : [2026-09-07 21:59:12.991] [WiVRn] [info] 	t+4824µs LEFT_GRIP (17396µs)
+09-07 21:59:12.991 21585 20830 I WiVRn   : [2026-09-07 21:59:12.991] [WiVRn] [info] 	t+4837µs RIGHT_GRIP (17382µs)
+09-07 21:59:12.991 21585 20830 I WiVRn   : [2026-09-07 21:59:12.991] [WiVRn] [info] 	t+5628µs HEAD (5481µs)
+09-07 21:59:12.991 21585 20830 I WiVRn   : [2026-09-07 21:59:12.991] [WiVRn] [info] 	t+5713µs LEFT_GRIP (5396µs)
+09-07 21:59:12.991 21585 20830 I WiVRn   : [2026-09-07 21:59:12.991] [WiVRn] [info] 	t+5727µs RIGHT_GRIP (5382µs)
+09-07 21:59:12.991 21585 20830 I WiVRn   : [2026-09-07 21:59:12.991] [WiVRn] [info] 	t+7738µs HEAD (14481µs)
+09-07 21:59:12.991 21585 20830 I WiVRn   : [2026-09-07 21:59:12.991] [WiVRn] [info] 	t+7824µs LEFT_GRIP (14396µs)
+09-07 21:59:12.991 21585 20830 I WiVRn   : [2026-09-07 21:59:12.991] [WiVRn] [info] 	t+7837µs RIGHT_GRIP (14382µs)
+09-07 21:59:12.991 21585 20830 I WiVRn   : [2026-09-07 21:59:12.991] [WiVRn] [info] 	t+10738µs HEAD (11481µs)
+09-07 21:59:12.991 21585 20830 I WiVRn   : [2026-09-07 21:59:12.991] [WiVRn] [info] 	t+10824µs LEFT_GRIP (11396µs)
+09-07 21:59:12.991 21585 20830 I WiVRn   : [2026-09-07 21:59:12.991] [WiVRn] [info] 	t+10837µs RIGHT_GRIP (11382µs)
+09-07 21:59:13.577 21585 20828 I WiVRn   : [2026-09-07 21:59:13.577] [WiVRn] [info] nxwarp[0]: 132 frames in 2.0 s: 2862 B/frame, wait-prev 0.0 ms, wall 3.7 ms, nxvc passA 0.5 passB 1.5 gpu 2.0 ms; holes 1, refused 0
+09-07 21:59:13.577 21585 20828 I WiVRn   : [2026-09-07 21:59:13.577] [WiVRn] [info] nxwarp[0] gpu duty 135 ms/s (13% of one GPU) for decode alone; the display pass is extra
+09-07 21:59:13.577 21585 20828 I WiVRn   : [2026-09-07 21:59:13.577] [WiVRn] [info] nxwarp[0] passB 1.5 ms = warp 0.0 + skip 0.0 + coded 0.1 + dir 0.0 + other 1.4; tiles skip 0 / coded 23 / dir 0 (eye pass 0)
+09-07 21:59:13.577 21585 20828 I WiVRn   : [2026-09-07 21:59:13.577] [WiVRn] [info] nxwarp[0]: 138 frames dropped late (queue kept to 1)
+09-07 21:59:13.577 21585 20828 I WiVRn   : [2026-09-07 21:59:13.577] [WiVRn] [info] nxwarp[0] stage: gap 11.5 | wait-prev 0.0 | submit 1.0 (qlock 0.0 + codec 1.0) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 2.6 | publish 0.0 ms; withheld 5, stride 1, arrival 15.1 ms
+09-07 21:59:13.577 21585 20828 I WiVRn   : [2026-09-07 21:59:13.577] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.01 ms/frame over 140 frames, buffer 3 kB held for 3 kB of unit (1.0x)
+09-07 21:59:13.577 21585 20828 I WiVRn   : [2026-09-07 21:59:13.577] [WiVRn] [info] nxwarp[0] fence-post 2.6 ms = nxvc gpu 2.0 + copy gpu 0.30 + queue 0.2 (over 132 frames with timestamps)
+09-07 21:59:13.577 21585 20828 I WiVRn   : [2026-09-07 21:59:13.577] [WiVRn] [info] nxwarp[0] atlas: frames 132, atlas 132, picture 0, avg dispatches 7.0, avg assembled 0.0, avg valid 578.0
+09-07 21:59:13.694 21585 20654 I WiVRn   : [2026-09-07 21:59:13.694] [WiVRn] [info] render: 171 iterations in 2.0 s (85.2/s), 171 submitted a layer, 121 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.7 ms
+09-07 21:59:13.694 21585 20654 I WiVRn   : [2026-09-07 21:59:13.694] [WiVRn] [info] render: selected source transitions forward 121 backward 0 repeat 50, greatest forward gap 10
+09-07 21:59:13.694 21585 20654 I WiVRn   : [2026-09-07 21:59:13.694] [WiVRn] [info] render: this app's own GPU pass 1.6 ms per iteration
+09-07 21:59:13.694 21585 20654 I WiVRn   : [2026-09-07 21:59:13.694] [WiVRn] [info] render: defoveate 1088x1088 per eye x2 = 2.37 Mpx/frame at scale 0.50 atlas-prototype 0; 50 re-presented from the cache (reduce_gpu_load on)
+09-07 21:59:13.694 21585 20654 I WiVRn   : [2026-09-07 21:59:13.694] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.28 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-07 21:59:13.694 21585 20654 I WiVRn   : [2026-09-07 21:59:13.694] [WiVRn] [info] render: per iteration fence 0.0 (worst 1.0) | queries 0.0 | submit 0.0 | whole render() 0.6 ms
+09-07 21:59:13.694 21585 20654 I WiVRn   : [2026-09-07 21:59:13.694] [WiVRn] [info] render: jit on | wake slack 32.6 ms | slept 1.4 ms mean (max 17.9, 81 of 171 iterations) | budget 22.4 = pass 21.4 + margin 1.0 | sleep cap 0.6 ms
+09-07 21:59:13.694 21585 20654 I WiVRn   : [2026-09-07 21:59:13.694] [WiVRn] [info] render: source display-time offset 49.7 ms mean (worst 195.0) over 171 frames | submit lead 30.5 ms mean (worst 6.3) | misses: 0 overrun 0 late 4 skipped refresh
+09-07 21:59:13.991 21585 20830 I WiVRn   : [2026-09-07 21:59:13.991] [WiVRn] [info] Tracking pattern (11111µs):
+09-07 21:59:13.991 21585 20830 I WiVRn   : [2026-09-07 21:59:13.991] [WiVRn] [info] 	t+2165µs HEAD (8945µs)
+09-07 21:59:13.991 21585 20830 I WiVRn   : [2026-09-07 21:59:13.991] [WiVRn] [info] 	t+2223µs LEFT_GRIP (8888µs)
+09-07 21:59:13.991 21585 20830 I WiVRn   : [2026-09-07 21:59:13.991] [WiVRn] [info] 	t+2243µs RIGHT_GRIP (8867µs)
+09-07 21:59:13.991 21585 20830 I WiVRn   : [2026-09-07 21:59:13.991] [WiVRn] [info] 	t+4276µs HEAD (17945µs)
+09-07 21:59:13.991 21585 20830 I WiVRn   : [2026-09-07 21:59:13.991] [WiVRn] [info] 	t+4334µs LEFT_GRIP (17888µs)
+09-07 21:59:13.991 21585 20830 I WiVRn   : [2026-09-07 21:59:13.991] [WiVRn] [info] 	t+4354µs RIGHT_GRIP (17867µs)
+09-07 21:59:13.991 21585 20830 I WiVRn   : [2026-09-07 21:59:13.991] [WiVRn] [info] 	t+5165µs HEAD (5945µs)
+09-07 21:59:13.991 21585 20830 I WiVRn   : [2026-09-07 21:59:13.991] [WiVRn] [info] 	t+5223µs LEFT_GRIP (5888µs)
+09-07 21:59:13.991 21585 20830 I WiVRn   : [2026-09-07 21:59:13.991] [WiVRn] [info] 	t+5243µs RIGHT_GRIP (5867µs)
+09-07 21:59:13.991 21585 20830 I WiVRn   : [2026-09-07 21:59:13.991] [WiVRn] [info] 	t+7276µs HEAD (14945µs)
+09-07 21:59:13.991 21585 20830 I WiVRn   : [2026-09-07 21:59:13.991] [WiVRn] [info] 	t+7334µs LEFT_GRIP (14888µs)
+09-07 21:59:13.991 21585 20830 I WiVRn   : [2026-09-07 21:59:13.991] [WiVRn] [info] 	t+7354µs RIGHT_GRIP (14867µs)
+09-07 21:59:13.991 21585 20830 I WiVRn   : [2026-09-07 21:59:13.991] [WiVRn] [info] 	t+10276µs HEAD (11945µs)
+09-07 21:59:13.991 21585 20830 I WiVRn   : [2026-09-07 21:59:13.991] [WiVRn] [info] 	t+10334µs LEFT_GRIP (11888µs)
+09-07 21:59:13.991 21585 20830 I WiVRn   : [2026-09-07 21:59:13.991] [WiVRn] [info] 	t+10354µs RIGHT_GRIP (11867µs)
+09-07 21:59:14.456 21585 20825 I WiVRn   : [2026-09-07 21:59:14.456] [WiVRn] [info] nxwarp[0] net: 137 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 190 decoded so far, 329 stragglers dropped; last hole 283/350 chunks, first missing 204, short false, chunk 1166 B
+09-07 21:59:14.456 21585 20825 I WiVRn   : [2026-09-07 21:59:14.456] [WiVRn] [info] nxwarp[0] net: 0.044 ms per datagram over 862 datagrams (19.03 ms of every second)
+09-07 21:59:14.456 21585 20825 I WiVRn   : [2026-09-07 21:59:14.456] [WiVRn] [info] nxwarp[0] sel: stride 1, arrival 13.8 ms, dropped-late 138, withheld 5, decoded 190
+09-07 21:59:14.456 21585 20825 I WiVRn   : [2026-09-07 21:59:14.456] [WiVRn] [info] nxwarp[0] rx: 10742 datagrams, placed 80016 (+702), late 1038 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 7
+09-07 21:59:14.991 21585 20830 I WiVRn   : [2026-09-07 21:59:14.991] [WiVRn] [info] Tracking pattern (11112µs):
+09-07 21:59:14.991 21585 20830 I WiVRn   : [2026-09-07 21:59:14.991] [WiVRn] [info] 	t+2551µs HEAD (8561µs)
+09-07 21:59:14.991 21585 20830 I WiVRn   : [2026-09-07 21:59:14.991] [WiVRn] [info] 	t+2651µs LEFT_GRIP (8461µs)
+09-07 21:59:14.991 21585 20830 I WiVRn   : [2026-09-07 21:59:14.991] [WiVRn] [info] 	t+2660µs RIGHT_GRIP (8451µs)
+09-07 21:59:14.991 21585 20830 I WiVRn   : [2026-09-07 21:59:14.991] [WiVRn] [info] 	t+4664µs HEAD (17561µs)
+09-07 21:59:14.991 21585 20830 I WiVRn   : [2026-09-07 21:59:14.991] [WiVRn] [info] 	t+4764µs LEFT_GRIP (17461µs)
+09-07 21:59:14.991 21585 20830 I WiVRn   : [2026-09-07 21:59:14.991] [WiVRn] [info] 	t+4773µs RIGHT_GRIP (17451µs)
+09-07 21:59:14.991 21585 20830 I WiVRn   : [2026-09-07 21:59:14.991] [WiVRn] [info] 	t+5551µs HEAD (5561µs)
+09-07 21:59:14.991 21585 20830 I WiVRn   : [2026-09-07 21:59:14.991] [WiVRn] [info] 	t+5651µs LEFT_GRIP (5461µs)
+09-07 21:59:14.991 21585 20830 I WiVRn   : [2026-09-07 21:59:14.991] [WiVRn] [info] 	t+5660µs RIGHT_GRIP (5451µs)
+09-07 21:59:14.991 21585 20830 I WiVRn   : [2026-09-07 21:59:14.991] [WiVRn] [info] 	t+7664µs HEAD (14561µs)
+09-07 21:59:14.991 21585 20830 I WiVRn   : [2026-09-07 21:59:14.991] [WiVRn] [info] 	t+7764µs LEFT_GRIP (14461µs)
+09-07 21:59:14.991 21585 20830 I WiVRn   : [2026-09-07 21:59:14.991] [WiVRn] [info] 	t+7773µs RIGHT_GRIP (14451µs)
+09-07 21:59:14.991 21585 20830 I WiVRn   : [2026-09-07 21:59:14.991] [WiVRn] [info] 	t+10664µs HEAD (11561µs)
+09-07 21:59:14.991 21585 20830 I WiVRn   : [2026-09-07 21:59:14.991] [WiVRn] [info] 	t+10764µs LEFT_GRIP (11461µs)
+09-07 21:59:14.991 21585 20830 I WiVRn   : [2026-09-07 21:59:14.991] [WiVRn] [info] 	t+10773µs RIGHT_GRIP (11451µs)
+09-07 21:59:15.584 21585 20828 I WiVRn   : [2026-09-07 21:59:15.584] [WiVRn] [info] nxwarp[0]: 138 frames in 2.0 s: 1096 B/frame, wait-prev 0.0 ms, wall 2.2 ms, nxvc passA 0.3 passB 1.0 gpu 1.3 ms; holes 1, refused 0
+09-07 21:59:15.584 21585 20828 I WiVRn   : [2026-09-07 21:59:15.584] [WiVRn] [info] nxwarp[0] gpu duty 87 ms/s (9% of one GPU) for decode alone; the display pass is extra
+09-07 21:59:15.584 21585 20828 I WiVRn   : [2026-09-07 21:59:15.584] [WiVRn] [info] nxwarp[0] passB 1.0 ms = warp 0.0 + skip 0.0 + coded 0.1 + dir 0.0 + other 0.8; tiles skip 0 / coded 5 / dir 0 (eye pass 0)
+09-07 21:59:15.584 21585 20828 I WiVRn   : [2026-09-07 21:59:15.584] [WiVRn] [info] nxwarp[0]: 138 frames dropped late (queue kept to 1)
+09-07 21:59:15.584 21585 20828 I WiVRn   : [2026-09-07 21:59:15.584] [WiVRn] [info] nxwarp[0] stage: gap 12.4 | wait-prev 0.0 | submit 0.3 (qlock 0.0 + codec 0.3) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 1.8 | publish 0.0 ms; withheld 0, stride 1, arrival 15.7 ms
+09-07 21:59:15.584 21585 20828 I WiVRn   : [2026-09-07 21:59:15.584] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.00 ms/frame over 138 frames, buffer 1 kB held for 1 kB of unit (1.0x)
+09-07 21:59:15.584 21585 20828 I WiVRn   : [2026-09-07 21:59:15.584] [WiVRn] [info] nxwarp[0] fence-post 1.8 ms = nxvc gpu 1.3 + copy gpu 0.29 + queue 0.3 (over 138 frames with timestamps)
+09-07 21:59:15.584 21585 20828 I WiVRn   : [2026-09-07 21:59:15.584] [WiVRn] [info] nxwarp[0] atlas: frames 138, atlas 138, picture 0, avg dispatches 7.0, avg assembled 0.0, avg valid 578.0
+09-07 21:59:15.695 21585 20654 I WiVRn   : [2026-09-07 21:59:15.695] [WiVRn] [info] render: 180 iterations in 2.0 s (90.0/s), 180 submitted a layer, 129 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.1 ms
+09-07 21:59:15.695 21585 20654 I WiVRn   : [2026-09-07 21:59:15.695] [WiVRn] [info] render: selected source transitions forward 129 backward 0 repeat 51, greatest forward gap 2
+09-07 21:59:15.695 21585 20654 I WiVRn   : [2026-09-07 21:59:15.695] [WiVRn] [info] render: this app's own GPU pass 1.9 ms per iteration
+09-07 21:59:15.695 21585 20654 I WiVRn   : [2026-09-07 21:59:15.695] [WiVRn] [info] render: defoveate 1088x1088 per eye x2 = 2.37 Mpx/frame at scale 0.50 atlas-prototype 0; 51 re-presented from the cache (reduce_gpu_load on)
+09-07 21:59:15.695 21585 20654 I WiVRn   : [2026-09-07 21:59:15.695] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.28 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-07 21:59:15.695 21585 20654 I WiVRn   : [2026-09-07 21:59:15.695] [WiVRn] [info] render: per iteration fence 0.0 (worst 0.0) | queries 0.0 | submit 0.0 | whole render() 0.5 ms
+09-07 21:59:15.695 21585 20654 I WiVRn   : [2026-09-07 21:59:15.695] [WiVRn] [info] render: jit on | wake slack 30.4 ms | slept 0.6 ms mean (max 0.6, 180 of 180 iterations) | budget 20.6 = pass 19.6 + margin 1.0 | sleep cap 0.6 ms
+09-07 21:59:15.695 21585 20654 I WiVRn   : [2026-09-07 21:59:15.695] [WiVRn] [info] render: source display-time offset 46.0 ms mean (worst 61.8) over 180 frames | submit lead 29.3 ms mean (worst 28.6) | misses: 0 overrun 0 late 0 skipped refresh
+09-07 21:59:15.991 21585 20830 I WiVRn   : [2026-09-07 21:59:15.991] [WiVRn] [info] Tracking pattern (11111µs):
+09-07 21:59:15.991 21585 20830 I WiVRn   : [2026-09-07 21:59:15.991] [WiVRn] [info] 	t+2765µs HEAD (8346µs)
+09-07 21:59:15.991 21585 20830 I WiVRn   : [2026-09-07 21:59:15.991] [WiVRn] [info] 	t+2808µs LEFT_GRIP (8303µs)
+09-07 21:59:15.991 21585 20830 I WiVRn   : [2026-09-07 21:59:15.991] [WiVRn] [info] 	t+2818µs RIGHT_GRIP (8292µs)
+09-07 21:59:15.991 21585 20830 I WiVRn   : [2026-09-07 21:59:15.991] [WiVRn] [info] 	t+4876µs HEAD (17346µs)
+09-07 21:59:15.991 21585 20830 I WiVRn   : [2026-09-07 21:59:15.991] [WiVRn] [info] 	t+4920µs LEFT_GRIP (17303µs)
+09-07 21:59:15.991 21585 20830 I WiVRn   : [2026-09-07 21:59:15.991] [WiVRn] [info] 	t+4930µs RIGHT_GRIP (17292µs)
+09-07 21:59:15.991 21585 20830 I WiVRn   : [2026-09-07 21:59:15.991] [WiVRn] [info] 	t+5765µs HEAD (5346µs)
+09-07 21:59:15.991 21585 20830 I WiVRn   : [2026-09-07 21:59:15.991] [WiVRn] [info] 	t+5808µs LEFT_GRIP (5303µs)
+09-07 21:59:15.991 21585 20830 I WiVRn   : [2026-09-07 21:59:15.991] [WiVRn] [info] 	t+5818µs RIGHT_GRIP (5292µs)
+09-07 21:59:15.991 21585 20830 I WiVRn   : [2026-09-07 21:59:15.991] [WiVRn] [info] 	t+7876µs HEAD (14346µs)
+09-07 21:59:15.991 21585 20830 I WiVRn   : [2026-09-07 21:59:15.991] [WiVRn] [info] 	t+7920µs LEFT_GRIP (14303µs)
+09-07 21:59:15.991 21585 20830 I WiVRn   : [2026-09-07 21:59:15.991] [WiVRn] [info] 	t+7930µs RIGHT_GRIP (14292µs)
+09-07 21:59:15.991 21585 20830 I WiVRn   : [2026-09-07 21:59:15.991] [WiVRn] [info] 	t+10876µs HEAD (11346µs)
+09-07 21:59:15.991 21585 20830 I WiVRn   : [2026-09-07 21:59:15.991] [WiVRn] [info] 	t+10920µs LEFT_GRIP (11303µs)
+09-07 21:59:15.991 21585 20830 I WiVRn   : [2026-09-07 21:59:15.991] [WiVRn] [info] 	t+10930µs RIGHT_GRIP (11292µs)
+09-07 21:59:16.465 21585 20825 I WiVRn   : [2026-09-07 21:59:16.465] [WiVRn] [info] nxwarp[0] net: 143 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 333 decoded so far, 472 stragglers dropped; last hole 283/350 chunks, first missing 204, short false, chunk 1166 B
+09-07 21:59:16.465 21585 20825 I WiVRn   : [2026-09-07 21:59:16.465] [WiVRn] [info] nxwarp[0] net: 0.047 ms per datagram over 848 datagrams (19.89 ms of every second)
+09-07 21:59:16.465 21585 20825 I WiVRn   : [2026-09-07 21:59:16.465] [WiVRn] [info] nxwarp[0] sel: stride 1, arrival 13.0 ms, dropped-late 138, withheld 5, decoded 333
+09-07 21:59:16.465 21585 20825 I WiVRn   : [2026-09-07 21:59:16.465] [WiVRn] [info] nxwarp[0] rx: 11590 datagrams, placed 80708 (+692), late 1038 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 7
+09-07 21:59:16.991 21585 20830 I WiVRn   : [2026-09-07 21:59:16.991] [WiVRn] [info] Tracking pattern (11110µs):
+09-07 21:59:16.991 21585 20830 I WiVRn   : [2026-09-07 21:59:16.991] [WiVRn] [info] 	t+2802µs HEAD (8307µs)
+09-07 21:59:16.991 21585 20830 I WiVRn   : [2026-09-07 21:59:16.991] [WiVRn] [info] 	t+2838µs LEFT_GRIP (8271µs)
+09-07 21:59:16.991 21585 20830 I WiVRn   : [2026-09-07 21:59:16.991] [WiVRn] [info] 	t+2847µs RIGHT_GRIP (8262µs)
+09-07 21:59:16.991 21585 20830 I WiVRn   : [2026-09-07 21:59:16.991] [WiVRn] [info] 	t+5802µs HEAD (5307µs)
+09-07 21:59:16.991 21585 20830 I WiVRn   : [2026-09-07 21:59:16.991] [WiVRn] [info] 	t+5838µs LEFT_GRIP (5271µs)
+09-07 21:59:16.991 21585 20830 I WiVRn   : [2026-09-07 21:59:16.991] [WiVRn] [info] 	t+5847µs RIGHT_GRIP (5262µs)
+09-07 21:59:17.596 21585 20828 I WiVRn   : [2026-09-07 21:59:17.596] [WiVRn] [info] nxwarp[0]: 144 frames in 2.0 s: 1068 B/frame, wait-prev 0.0 ms, wall 2.3 ms, nxvc passA 0.3 passB 1.0 gpu 1.2 ms; holes 1, refused 0
+09-07 21:59:17.596 21585 20828 I WiVRn   : [2026-09-07 21:59:17.596] [WiVRn] [info] nxwarp[0] gpu duty 88 ms/s (9% of one GPU) for decode alone; the display pass is extra
+09-07 21:59:17.596 21585 20828 I WiVRn   : [2026-09-07 21:59:17.596] [WiVRn] [info] nxwarp[0] passB 1.0 ms = warp 0.0 + skip 0.0 + coded 0.1 + dir 0.0 + other 0.8; tiles skip 0 / coded 5 / dir 0 (eye pass 0)
+09-07 21:59:17.596 21585 20828 I WiVRn   : [2026-09-07 21:59:17.596] [WiVRn] [info] nxwarp[0]: 138 frames dropped late (queue kept to 1)
+09-07 21:59:17.596 21585 20828 I WiVRn   : [2026-09-07 21:59:17.596] [WiVRn] [info] nxwarp[0] stage: gap 11.6 | wait-prev 0.0 | submit 0.3 (qlock 0.0 + codec 0.3) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 2.0 | publish 0.0 ms; withheld 0, stride 1, arrival 16.1 ms
+09-07 21:59:17.596 21585 20828 I WiVRn   : [2026-09-07 21:59:17.596] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.00 ms/frame over 144 frames, buffer 1 kB held for 1 kB of unit (1.0x)
+09-07 21:59:17.596 21585 20828 I WiVRn   : [2026-09-07 21:59:17.596] [WiVRn] [info] nxwarp[0] fence-post 2.0 ms = nxvc gpu 1.2 + copy gpu 0.30 + queue 0.4 (over 144 frames with timestamps)
+09-07 21:59:17.596 21585 20828 I WiVRn   : [2026-09-07 21:59:17.596] [WiVRn] [info] nxwarp[0] atlas: frames 144, atlas 144, picture 0, avg dispatches 7.0, avg assembled 0.0, avg valid 578.0
+09-07 21:59:17.696 21585 20654 I WiVRn   : [2026-09-07 21:59:17.696] [WiVRn] [info] render: 179 iterations in 2.0 s (89.5/s), 179 submitted a layer, 138 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.2 ms
+09-07 21:59:17.696 21585 20654 I WiVRn   : [2026-09-07 21:59:17.696] [WiVRn] [info] render: selected source transitions forward 138 backward 0 repeat 41, greatest forward gap 2
+09-07 21:59:17.696 21585 20654 I WiVRn   : [2026-09-07 21:59:17.696] [WiVRn] [info] render: this app's own GPU pass 2.0 ms per iteration
+09-07 21:59:17.696 21585 20654 I WiVRn   : [2026-09-07 21:59:17.696] [WiVRn] [info] render: defoveate 1088x1088 per eye x2 = 2.37 Mpx/frame at scale 0.50 atlas-prototype 0; 41 re-presented from the cache (reduce_gpu_load on)
+09-07 21:59:17.696 21585 20654 I WiVRn   : [2026-09-07 21:59:17.696] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.28 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-07 21:59:17.696 21585 20654 I WiVRn   : [2026-09-07 21:59:17.696] [WiVRn] [info] render: per iteration fence 0.0 (worst 1.2) | queries 0.0 | submit 0.0 | whole render() 0.4 ms
+09-07 21:59:17.696 21585 20654 I WiVRn   : [2026-09-07 21:59:17.696] [WiVRn] [info] render: jit on | wake slack 30.0 ms | slept 1.1 ms mean (max 11.7, 179 of 179 iterations) | budget 18.8 = pass 17.8 + margin 1.0 | sleep cap 0.6 ms
+09-07 21:59:17.696 21585 20654 I WiVRn   : [2026-09-07 21:59:17.696] [WiVRn] [info] render: source display-time offset 43.4 ms mean (worst 62.0) over 179 frames | submit lead 28.5 ms mean (worst 19.9) | misses: 0 overrun 0 late 1 skipped refresh
+09-07 21:59:17.991 21585 20830 I WiVRn   : [2026-09-07 21:59:17.991] [WiVRn] [info] Tracking pattern (11111µs):
+09-07 21:59:17.991 21585 20830 I WiVRn   : [2026-09-07 21:59:17.991] [WiVRn] [info] 	t+2003µs HEAD (9108µs)
+09-07 21:59:17.991 21585 20830 I WiVRn   : [2026-09-07 21:59:17.991] [WiVRn] [info] 	t+2042µs LEFT_GRIP (9069µs)
+09-07 21:59:17.991 21585 20830 I WiVRn   : [2026-09-07 21:59:17.991] [WiVRn] [info] 	t+2056µs RIGHT_GRIP (9054µs)
+09-07 21:59:17.991 21585 20830 I WiVRn   : [2026-09-07 21:59:17.991] [WiVRn] [info] 	t+4114µs HEAD (18108µs)
+09-07 21:59:17.991 21585 20830 I WiVRn   : [2026-09-07 21:59:17.991] [WiVRn] [info] 	t+4153µs LEFT_GRIP (18069µs)
+09-07 21:59:17.991 21585 20830 I WiVRn   : [2026-09-07 21:59:17.991] [WiVRn] [info] 	t+4167µs RIGHT_GRIP (18054µs)
+09-07 21:59:17.991 21585 20830 I WiVRn   : [2026-09-07 21:59:17.991] [WiVRn] [info] 	t+5003µs HEAD (6108µs)
+09-07 21:59:17.991 21585 20830 I WiVRn   : [2026-09-07 21:59:17.991] [WiVRn] [info] 	t+5042µs LEFT_GRIP (6069µs)
+09-07 21:59:17.991 21585 20830 I WiVRn   : [2026-09-07 21:59:17.991] [WiVRn] [info] 	t+5056µs RIGHT_GRIP (6054µs)
+09-07 21:59:17.991 21585 20830 I WiVRn   : [2026-09-07 21:59:17.991] [WiVRn] [info] 	t+7114µs HEAD (15108µs)
+09-07 21:59:17.991 21585 20830 I WiVRn   : [2026-09-07 21:59:17.991] [WiVRn] [info] 	t+7153µs LEFT_GRIP (15069µs)
+09-07 21:59:17.991 21585 20830 I WiVRn   : [2026-09-07 21:59:17.991] [WiVRn] [info] 	t+7167µs RIGHT_GRIP (15054µs)
+09-07 21:59:17.991 21585 20830 I WiVRn   : [2026-09-07 21:59:17.991] [WiVRn] [info] 	t+10114µs HEAD (12108µs)
+09-07 21:59:17.991 21585 20830 I WiVRn   : [2026-09-07 21:59:17.991] [WiVRn] [info] 	t+10153µs LEFT_GRIP (12069µs)
+09-07 21:59:17.991 21585 20830 I WiVRn   : [2026-09-07 21:59:17.991] [WiVRn] [info] 	t+10167µs RIGHT_GRIP (12054µs)
+09-07 21:59:18.467 21585 20825 I WiVRn   : [2026-09-07 21:59:18.467] [WiVRn] [info] nxwarp[0] net: 142 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 475 decoded so far, 614 stragglers dropped; last hole 283/350 chunks, first missing 204, short false, chunk 1166 B
+09-07 21:59:18.467 21585 20825 I WiVRn   : [2026-09-07 21:59:18.467] [WiVRn] [info] nxwarp[0] net: 0.044 ms per datagram over 921 datagrams (20.36 ms of every second)
+09-07 21:59:18.467 21585 20825 I WiVRn   : [2026-09-07 21:59:18.467] [WiVRn] [info] nxwarp[0] sel: stride 1, arrival 15.6 ms, dropped-late 138, withheld 5, decoded 475
+09-07 21:59:18.467 21585 20825 I WiVRn   : [2026-09-07 21:59:18.467] [WiVRn] [info] nxwarp[0] rx: 12511 datagrams, placed 81461 (+753), late 1038 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 7
+09-07 21:59:18.991 21585 20830 I WiVRn   : [2026-09-07 21:59:18.991] [WiVRn] [info] Tracking pattern (11110µs):
+09-07 21:59:18.991 21585 20830 I WiVRn   : [2026-09-07 21:59:18.991] [WiVRn] [info] 	t+2023µs HEAD (9086µs)
+09-07 21:59:18.991 21585 20830 I WiVRn   : [2026-09-07 21:59:18.991] [WiVRn] [info] 	t+2254µs LEFT_GRIP (8856µs)
+09-07 21:59:18.991 21585 20830 I WiVRn   : [2026-09-07 21:59:18.991] [WiVRn] [info] 	t+2282µs RIGHT_GRIP (8827µs)
+09-07 21:59:18.991 21585 20830 I WiVRn   : [2026-09-07 21:59:18.991] [WiVRn] [info] 	t+4134µs HEAD (18086µs)
+09-07 21:59:18.991 21585 20830 I WiVRn   : [2026-09-07 21:59:18.991] [WiVRn] [info] 	t+4364µs LEFT_GRIP (17856µs)
+09-07 21:59:18.991 21585 20830 I WiVRn   : [2026-09-07 21:59:18.991] [WiVRn] [info] 	t+4393µs RIGHT_GRIP (17827µs)
+09-07 21:59:18.991 21585 20830 I WiVRn   : [2026-09-07 21:59:18.991] [WiVRn] [info] 	t+5023µs HEAD (6086µs)
+09-07 21:59:18.991 21585 20830 I WiVRn   : [2026-09-07 21:59:18.991] [WiVRn] [info] 	t+5254µs LEFT_GRIP (5856µs)
+09-07 21:59:18.991 21585 20830 I WiVRn   : [2026-09-07 21:59:18.991] [WiVRn] [info] 	t+5282µs RIGHT_GRIP (5827µs)
+09-07 21:59:18.991 21585 20830 I WiVRn   : [2026-09-07 21:59:18.991] [WiVRn] [info] 	t+7134µs HEAD (15086µs)
+09-07 21:59:18.991 21585 20830 I WiVRn   : [2026-09-07 21:59:18.991] [WiVRn] [info] 	t+7364µs LEFT_GRIP (14856µs)
+09-07 21:59:18.991 21585 20830 I WiVRn   : [2026-09-07 21:59:18.991] [WiVRn] [info] 	t+7393µs RIGHT_GRIP (14827µs)
+09-07 21:59:18.991 21585 20830 I WiVRn   : [2026-09-07 21:59:18.991] [WiVRn] [info] 	t+10134µs HEAD (12086µs)
+09-07 21:59:18.991 21585 20830 I WiVRn   : [2026-09-07 21:59:18.991] [WiVRn] [info] 	t+10364µs LEFT_GRIP (11856µs)
+09-07 21:59:18.991 21585 20830 I WiVRn   : [2026-09-07 21:59:18.991] [WiVRn] [info] 	t+10393µs RIGHT_GRIP (11827µs)
+09-07 21:59:19.606 21585 20828 I WiVRn   : [2026-09-07 21:59:19.606] [WiVRn] [info] nxwarp[0]: 143 frames in 2.0 s: 1225 B/frame, wait-prev 0.0 ms, wall 2.5 ms, nxvc passA 0.3 passB 1.0 gpu 1.3 ms; holes 1, refused 0
+09-07 21:59:19.606 21585 20828 I WiVRn   : [2026-09-07 21:59:19.606] [WiVRn] [info] nxwarp[0] gpu duty 91 ms/s (9% of one GPU) for decode alone; the display pass is extra
+09-07 21:59:19.606 21585 20828 I WiVRn   : [2026-09-07 21:59:19.606] [WiVRn] [info] nxwarp[0] passB 1.0 ms = warp 0.0 + skip 0.0 + coded 0.1 + dir 0.0 + other 0.8; tiles skip 0 / coded 6 / dir 0 (eye pass 0)
+09-07 21:59:19.606 21585 20828 I WiVRn   : [2026-09-07 21:59:19.606] [WiVRn] [info] nxwarp[0]: 138 frames dropped late (queue kept to 1)
+09-07 21:59:19.606 21585 20828 I WiVRn   : [2026-09-07 21:59:19.606] [WiVRn] [info] nxwarp[0] stage: gap 11.5 | wait-prev 0.0 | submit 0.3 (qlock 0.0 + codec 0.3) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 2.2 | publish 0.0 ms; withheld 0, stride 1, arrival 14.0 ms
+09-07 21:59:19.606 21585 20828 I WiVRn   : [2026-09-07 21:59:19.606] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.00 ms/frame over 143 frames, buffer 1 kB held for 1 kB of unit (1.0x)
+09-07 21:59:19.606 21585 20828 I WiVRn   : [2026-09-07 21:59:19.606] [WiVRn] [info] nxwarp[0] fence-post 2.2 ms = nxvc gpu 1.3 + copy gpu 0.29 + queue 0.6 (over 143 frames with timestamps)
+09-07 21:59:19.606 21585 20828 I WiVRn   : [2026-09-07 21:59:19.606] [WiVRn] [info] nxwarp[0] atlas: frames 143, atlas 143, picture 0, avg dispatches 7.0, avg assembled 0.0, avg valid 578.0
+09-07 21:59:19.696 21585 20654 I WiVRn   : [2026-09-07 21:59:19.696] [WiVRn] [info] render: 179 iterations in 2.0 s (89.5/s), 179 submitted a layer, 139 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.2 ms
+09-07 21:59:19.696 21585 20654 I WiVRn   : [2026-09-07 21:59:19.696] [WiVRn] [info] render: selected source transitions forward 139 backward 0 repeat 40, greatest forward gap 2
+09-07 21:59:19.696 21585 20654 I WiVRn   : [2026-09-07 21:59:19.696] [WiVRn] [info] render: this app's own GPU pass 2.1 ms per iteration
+09-07 21:59:19.696 21585 20654 I WiVRn   : [2026-09-07 21:59:19.696] [WiVRn] [info] render: defoveate 1088x1088 per eye x2 = 2.37 Mpx/frame at scale 0.50 atlas-prototype 0; 40 re-presented from the cache (reduce_gpu_load on)
+09-07 21:59:19.696 21585 20654 I WiVRn   : [2026-09-07 21:59:19.696] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.28 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-07 21:59:19.696 21585 20654 I WiVRn   : [2026-09-07 21:59:19.696] [WiVRn] [info] render: per iteration fence 0.0 (worst 2.0) | queries 0.0 | submit 0.0 | whole render() 0.4 ms
+09-07 21:59:19.696 21585 20654 I WiVRn   : [2026-09-07 21:59:19.696] [WiVRn] [info] render: jit on | wake slack 29.4 ms | slept 0.9 ms mean (max 11.7, 179 of 179 iterations) | budget 17.0 = pass 16.0 + margin 1.0 | sleep cap 0.6 ms
+09-07 21:59:19.696 21585 20654 I WiVRn   : [2026-09-07 21:59:19.696] [WiVRn] [info] render: source display-time offset 43.6 ms mean (worst 62.0) over 179 frames | submit lead 28.1 ms mean (worst 17.3) | misses: 0 overrun 0 late 1 skipped refresh
+09-07 21:59:19.991 21585 20830 I WiVRn   : [2026-09-07 21:59:19.991] [WiVRn] [info] Tracking pattern (11111µs):
+09-07 21:59:19.991 21585 20830 I WiVRn   : [2026-09-07 21:59:19.991] [WiVRn] [info] 	t+2431µs HEAD (8679µs)
+09-07 21:59:19.991 21585 20830 I WiVRn   : [2026-09-07 21:59:19.991] [WiVRn] [info] 	t+2474µs LEFT_GRIP (8637µs)
+09-07 21:59:19.991 21585 20830 I WiVRn   : [2026-09-07 21:59:19.991] [WiVRn] [info] 	t+2483µs RIGHT_GRIP (8628µs)
+09-07 21:59:19.991 21585 20830 I WiVRn   : [2026-09-07 21:59:19.991] [WiVRn] [info] 	t+4542µs HEAD (17679µs)
+09-07 21:59:19.991 21585 20830 I WiVRn   : [2026-09-07 21:59:19.991] [WiVRn] [info] 	t+4585µs LEFT_GRIP (17637µs)
+09-07 21:59:19.991 21585 20830 I WiVRn   : [2026-09-07 21:59:19.991] [WiVRn] [info] 	t+4594µs RIGHT_GRIP (17628µs)
+09-07 21:59:19.991 21585 20830 I WiVRn   : [2026-09-07 21:59:19.991] [WiVRn] [info] 	t+5431µs HEAD (5679µs)
+09-07 21:59:19.991 21585 20830 I WiVRn   : [2026-09-07 21:59:19.991] [WiVRn] [info] 	t+5474µs LEFT_GRIP (5637µs)
+09-07 21:59:19.991 21585 20830 I WiVRn   : [2026-09-07 21:59:19.991] [WiVRn] [info] 	t+5483µs RIGHT_GRIP (5628µs)
+09-07 21:59:19.991 21585 20830 I WiVRn   : [2026-09-07 21:59:19.991] [WiVRn] [info] 	t+7542µs HEAD (14679µs)
+09-07 21:59:19.991 21585 20830 I WiVRn   : [2026-09-07 21:59:19.991] [WiVRn] [info] 	t+7585µs LEFT_GRIP (14637µs)
+09-07 21:59:19.991 21585 20830 I WiVRn   : [2026-09-07 21:59:19.991] [WiVRn] [info] 	t+7594µs RIGHT_GRIP (14628µs)
+09-07 21:59:19.991 21585 20830 I WiVRn   : [2026-09-07 21:59:19.991] [WiVRn] [info] 	t+10542µs HEAD (11679µs)
+09-07 21:59:19.991 21585 20830 I WiVRn   : [2026-09-07 21:59:19.991] [WiVRn] [info] 	t+10585µs LEFT_GRIP (11637µs)
+09-07 21:59:19.991 21585 20830 I WiVRn   : [2026-09-07 21:59:19.991] [WiVRn] [info] 	t+10594µs RIGHT_GRIP (11628µs)
+09-07 21:59:20.474 21585 20825 I WiVRn   : [2026-09-07 21:59:20.474] [WiVRn] [info] nxwarp[0] net: 142 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 617 decoded so far, 756 stragglers dropped; last hole 283/350 chunks, first missing 204, short false, chunk 1166 B
+09-07 21:59:20.474 21585 20825 I WiVRn   : [2026-09-07 21:59:20.474] [WiVRn] [info] nxwarp[0] net: 0.046 ms per datagram over 890 datagrams (20.39 ms of every second)
+09-07 21:59:20.474 21585 20825 I WiVRn   : [2026-09-07 21:59:20.474] [WiVRn] [info] nxwarp[0] sel: stride 1, arrival 14.0 ms, dropped-late 138, withheld 5, decoded 617
+09-07 21:59:20.474 21585 20825 I WiVRn   : [2026-09-07 21:59:20.474] [WiVRn] [info] nxwarp[0] rx: 13401 datagrams, placed 82203 (+742), late 1038 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 7
+09-07 21:59:20.908 21585 20654 I WiVRn   : [2026-09-07 21:59:20.908] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_FOCUSED => XR_SESSION_STATE_VISIBLE
+09-07 21:59:20.908 21585 20654 I WiVRn   : [2026-09-07 21:59:20.908] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_VISIBLE => XR_SESSION_STATE_SYNCHRONIZED
+09-07 21:59:20.908 21585 20654 I WiVRn   : [2026-09-07 21:59:20.908] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_SYNCHRONIZED => XR_SESSION_STATE_STOPPING
+09-07 21:59:20.909 21585 20654 I WiVRn   : [2026-09-07 21:59:20.909] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_STOPPING => XR_SESSION_STATE_IDLE
+09-07 21:59:20.988 21585 20830 I WiVRn   : [2026-09-07 21:59:20.987] [WiVRn] [info] Tracking pattern (11105µs):
+09-07 21:59:20.988 21585 20830 I WiVRn   : [2026-09-07 21:59:20.988] [WiVRn] [info] 	t+446µs HEAD (21765µs)
+09-07 21:59:20.988 21585 20830 I WiVRn   : [2026-09-07 21:59:20.988] [WiVRn] [info] 	t+1340µs HEAD (9765µs)
+09-07 21:59:20.988 21585 20830 I WiVRn   : [2026-09-07 21:59:20.988] [WiVRn] [info] 	t+1924µs LEFT_GRIP (20286µs)
+09-07 21:59:20.988 21585 20830 I WiVRn   : [2026-09-07 21:59:20.988] [WiVRn] [info] 	t+2344µs RIGHT_GRIP (19866µs)
+09-07 21:59:20.988 21585 20830 I WiVRn   : [2026-09-07 21:59:20.988] [WiVRn] [info] 	t+2551µs HEAD (30765µs)
+09-07 21:59:20.988 21585 20830 I WiVRn   : [2026-09-07 21:59:20.988] [WiVRn] [info] 	t+3446µs HEAD (18765µs)
+09-07 21:59:20.988 21585 20830 I WiVRn   : [2026-09-07 21:59:20.988] [WiVRn] [info] 	t+4030µs LEFT_GRIP (29286µs)
+09-07 21:59:20.988 21585 20830 I WiVRn   : [2026-09-07 21:59:20.988] [WiVRn] [info] 	t+4449µs RIGHT_GRIP (28866µs)
+09-07 21:59:20.988 21585 20830 I WiVRn   : [2026-09-07 21:59:20.988] [WiVRn] [info] 	t+4924µs LEFT_GRIP (17286µs)
+09-07 21:59:20.988 21585 20830 I WiVRn   : [2026-09-07 21:59:20.988] [WiVRn] [info] 	t+5344µs RIGHT_GRIP (16866µs)
+09-07 21:59:20.988 21585 20830 I WiVRn   : [2026-09-07 21:59:20.988] [WiVRn] [info] 	t+5551µs HEAD (27765µs)
+09-07 21:59:20.988 21585 20830 I WiVRn   : [2026-09-07 21:59:20.988] [WiVRn] [info] 	t+6446µs HEAD (15765µs)
+09-07 21:59:20.988 21585 20830 I WiVRn   : [2026-09-07 21:59:20.988] [WiVRn] [info] 	t+7030µs LEFT_GRIP (26286µs)
+09-07 21:59:20.988 21585 20830 I WiVRn   : [2026-09-07 21:59:20.988] [WiVRn] [info] 	t+7449µs RIGHT_GRIP (25866µs)
+09-07 21:59:20.988 21585 20830 I WiVRn   : [2026-09-07 21:59:20.988] [WiVRn] [info] 	t+8551µs HEAD (24765µs)
+09-07 21:59:20.988 21585 20830 I WiVRn   : [2026-09-07 21:59:20.988] [WiVRn] [info] 	t+9446µs HEAD (12765µs)
+09-07 21:59:20.988 21585 20830 I WiVRn   : [2026-09-07 21:59:20.988] [WiVRn] [info] 	t+10030µs LEFT_GRIP (23286µs)
+09-07 21:59:20.988 21585 20830 I WiVRn   : [2026-09-07 21:59:20.988] [WiVRn] [info] 	t+10449µs RIGHT_GRIP (22866µs)
+09-07 21:59:21.606 21585 20828 I WiVRn   : [2026-09-07 21:59:21.606] [WiVRn] [info] nxwarp[0]: 154 frames in 2.0 s: 1181 B/frame, wait-prev 0.0 ms, wall 2.7 ms, nxvc passA 0.3 passB 1.2 gpu 1.5 ms; holes 1, refused 0
+09-07 21:59:21.606 21585 20828 I WiVRn   : [2026-09-07 21:59:21.606] [WiVRn] [info] nxwarp[0] gpu duty 116 ms/s (12% of one GPU) for decode alone; the display pass is extra
+09-07 21:59:21.606 21585 20828 I WiVRn   : [2026-09-07 21:59:21.606] [WiVRn] [info] nxwarp[0] passB 1.2 ms = warp 0.0 + skip 0.0 + coded 0.1 + dir 0.0 + other 1.1; tiles skip 0 / coded 26 / dir 0 (eye pass 0)
+09-07 21:59:21.606 21585 20828 I WiVRn   : [2026-09-07 21:59:21.606] [WiVRn] [info] nxwarp[0]: 138 frames dropped late (queue kept to 1)
+09-07 21:59:21.606 21585 20828 I WiVRn   : [2026-09-07 21:59:21.606] [WiVRn] [info] nxwarp[0] stage: gap 10.3 | wait-prev 0.0 | submit 0.5 (qlock 0.0 + codec 0.5) | get_free 0.0 | fence-pre 0.0 | record 0.1 | qsubmit 0.1 | fence-post 2.0 | publish 0.0 ms; withheld 0, stride 1, arrival 10.9 ms
+09-07 21:59:21.606 21585 20828 I WiVRn   : [2026-09-07 21:59:21.606] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.01 ms/frame over 154 frames, buffer 1 kB held for 1 kB of unit (1.0x)
+09-07 21:59:21.610 21585 20828 I WiVRn   : [2026-09-07 21:59:21.610] [WiVRn] [info] nxwarp[0] fence-post 2.1 ms = nxvc gpu 1.5 + copy gpu 0.29 + queue 0.2 (over 154 frames with timestamps)
+09-07 21:59:21.610 21585 20828 I WiVRn   : [2026-09-07 21:59:21.610] [WiVRn] [info] nxwarp[0]: 1 of 154 frames measured a stall not attributable to decoding (worst wall 11.2 ms); clipped out of the reported decode cost and out of the stride
+09-07 21:59:21.610 21585 20828 I WiVRn   : [2026-09-07 21:59:21.610] [WiVRn] [info] nxwarp[0] atlas: frames 154, atlas 154, picture 0, avg dispatches 7.0, avg assembled 0.0, avg valid 578.0
+09-07 21:59:22.011 21585 20830 I WiVRn   : [2026-09-07 21:59:22.011] [WiVRn] [info] Tracking pattern (11105µs):
+09-07 21:59:22.011 21585 20830 I WiVRn   : [2026-09-07 21:59:22.011] [WiVRn] [info] 	t+7606µs HEAD (14604µs)
+09-07 21:59:22.011 21585 20830 I WiVRn   : [2026-09-07 21:59:22.011] [WiVRn] [info] 	t+10606µs HEAD (11604µs)
+09-07 21:59:22.482 21585 20825 I WiVRn   : [2026-09-07 21:59:22.482] [WiVRn] [info] nxwarp[0] net: 173 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 790 decoded so far, 929 stragglers dropped; last hole 283/350 chunks, first missing 204, short false, chunk 1166 B
+09-07 21:59:22.482 21585 20825 I WiVRn   : [2026-09-07 21:59:22.482] [WiVRn] [info] nxwarp[0] net: 0.134 ms per datagram over 842 datagrams (56.31 ms of every second)
+09-07 21:59:22.482 21585 20825 I WiVRn   : [2026-09-07 21:59:22.482] [WiVRn] [info] nxwarp[0] sel: stride 1, arrival 10.9 ms, dropped-late 138, withheld 5, decoded 790
+09-07 21:59:22.482 21585 20825 I WiVRn   : [2026-09-07 21:59:22.482] [WiVRn] [info] nxwarp[0] rx: 14243 datagrams, placed 86257 (+4054), late 1038 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 7
+09-07 21:59:23.015 21585 20830 I WiVRn   : [2026-09-07 21:59:23.015] [WiVRn] [info] Tracking pattern (11105µs):
+09-07 21:59:23.015 21585 20830 I WiVRn   : [2026-09-07 21:59:23.015] [WiVRn] [info] 	t+5972µs HEAD (38450µs)
+09-07 21:59:23.015 21585 20830 I WiVRn   : [2026-09-07 21:59:23.015] [WiVRn] [info] 	t+8972µs HEAD (35450µs)
+09-07 21:59:23.606 21585 20828 I WiVRn   : [2026-09-07 21:59:23.606] [WiVRn] [info] nxwarp[0]: 180 frames in 2.0 s: 569 B/frame, wait-prev 0.0 ms, wall 2.2 ms, nxvc passA 0.2 passB 0.8 gpu 1.0 ms; holes 1, refused 0
+09-07 21:59:23.606 21585 20828 I WiVRn   : [2026-09-07 21:59:23.606] [WiVRn] [info] nxwarp[0] gpu duty 91 ms/s (9% of one GPU) for decode alone; the display pass is extra
+09-07 21:59:23.606 21585 20828 I WiVRn   : [2026-09-07 21:59:23.606] [WiVRn] [info] nxwarp[0] passB 0.8 ms = warp 0.0 + skip 0.0 + coded 0.1 + dir 0.0 + other 0.8; tiles skip 0 / coded 3 / dir 0 (eye pass 0)
+09-07 21:59:23.606 21585 20828 I WiVRn   : [2026-09-07 21:59:23.606] [WiVRn] [info] nxwarp[0]: 138 frames dropped late (queue kept to 1)
+09-07 21:59:23.606 21585 20828 I WiVRn   : [2026-09-07 21:59:23.606] [WiVRn] [info] nxwarp[0] stage: gap 8.9 | wait-prev 0.0 | submit 0.8 (qlock 0.0 + codec 0.8) | get_free 0.0 | fence-pre 0.0 | record 0.1 | qsubmit 0.1 | fence-post 1.2 | publish 0.0 ms; withheld 0, stride 1, arrival 11.1 ms
+09-07 21:59:23.606 21585 20828 I WiVRn   : [2026-09-07 21:59:23.606] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.01 ms/frame over 180 frames, buffer 1 kB held for 1 kB of unit (1.0x)
+09-07 21:59:23.606 21585 20828 I WiVRn   : [2026-09-07 21:59:23.606] [WiVRn] [info] nxwarp[0] fence-post 1.3 ms = nxvc gpu 1.0 + copy gpu 0.26 + queue -0.1 (over 180 frames with timestamps)
+09-07 21:59:23.606 21585 20828 I WiVRn   : [2026-09-07 21:59:23.606] [WiVRn] [info] nxwarp[0] atlas: frames 180, atlas 180, picture 0, avg dispatches 7.0, avg assembled 0.0, avg valid 578.0
+09-07 21:59:23.753 21585 20654 I WiVRn   : [2026-09-07 21:59:23.753] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_IDLE => XR_SESSION_STATE_READY
+09-07 21:59:23.755 21585 20654 I WiVRn   : [2026-09-07 21:59:23.755] [WiVRn] [info] Received event type XR_TYPE_EVENT_DATA_USER_PRESENCE_CHANGED_EXT
+09-07 21:59:23.761 21585 20654 I WiVRn   : [2026-09-07 21:59:23.761] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_READY => XR_SESSION_STATE_SYNCHRONIZED
+09-07 21:59:23.761 21585 20654 I WiVRn   : [2026-09-07 21:59:23.761] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_SYNCHRONIZED => XR_SESSION_STATE_VISIBLE
+09-07 21:59:23.761 21585 20654 I WiVRn   : [2026-09-07 21:59:23.761] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_VISIBLE => XR_SESSION_STATE_FOCUSED
+09-07 21:59:23.773 21585 20828 I WiVRn   : [2026-09-07 21:59:23.773] [WiVRn] [info] Stream scene ready at t=80997142814882
+09-07 21:59:23.780 21585 20830 I WiVRn   : [2026-09-07 21:59:23.780] [WiVRn] [info] Tracking pattern (11155µs):
+09-07 21:59:23.780 21585 20830 I WiVRn   : [2026-09-07 21:59:23.780] [WiVRn] [info] 	t+4354µs LEFT_GRIP (6801µs)
+09-07 21:59:23.780 21585 20830 I WiVRn   : [2026-09-07 21:59:23.780] [WiVRn] [info] 	t+6171µs HEAD (38450µs)
+09-07 21:59:23.780 21585 20830 I WiVRn   : [2026-09-07 21:59:23.780] [WiVRn] [info] 	t+9171µs HEAD (35450µs)
+09-07 21:59:23.991 21585 20830 I WiVRn   : [2026-09-07 21:59:23.991] [WiVRn] [info] Tracking pattern (11155µs):
+09-07 21:59:23.991 21585 20830 I WiVRn   : [2026-09-07 21:59:23.991] [WiVRn] [info] 	t+1129µs LEFT_GRIP (10026µs)
+09-07 21:59:23.991 21585 20830 I WiVRn   : [2026-09-07 21:59:23.991] [WiVRn] [info] 	t+1139µs RIGHT_GRIP (10015µs)
+09-07 21:59:23.991 21585 20830 I WiVRn   : [2026-09-07 21:59:23.991] [WiVRn] [info] 	t+2155µs HEAD (9000µs)
+09-07 21:59:23.991 21585 20830 I WiVRn   : [2026-09-07 21:59:23.991] [WiVRn] [info] 	t+3284µs LEFT_GRIP (19026µs)
+09-07 21:59:23.991 21585 20830 I WiVRn   : [2026-09-07 21:59:23.991] [WiVRn] [info] 	t+3294µs RIGHT_GRIP (19015µs)
+09-07 21:59:23.991 21585 20830 I WiVRn   : [2026-09-07 21:59:23.991] [WiVRn] [info] 	t+4129µs LEFT_GRIP (7026µs)
+09-07 21:59:23.991 21585 20830 I WiVRn   : [2026-09-07 21:59:23.991] [WiVRn] [info] 	t+4139µs RIGHT_GRIP (7015µs)
+09-07 21:59:23.991 21585 20830 I WiVRn   : [2026-09-07 21:59:23.991] [WiVRn] [info] 	t+4310µs HEAD (18000µs)
+09-07 21:59:23.991 21585 20830 I WiVRn   : [2026-09-07 21:59:23.991] [WiVRn] [info] 	t+5155µs HEAD (6000µs)
+09-07 21:59:23.991 21585 20830 I WiVRn   : [2026-09-07 21:59:23.991] [WiVRn] [info] 	t+6284µs LEFT_GRIP (16026µs)
+09-07 21:59:23.991 21585 20830 I WiVRn   : [2026-09-07 21:59:23.991] [WiVRn] [info] 	t+6294µs RIGHT_GRIP (16015µs)
+09-07 21:59:23.991 21585 20830 I WiVRn   : [2026-09-07 21:59:23.991] [WiVRn] [info] 	t+7310µs HEAD (15000µs)
+09-07 21:59:23.991 21585 20830 I WiVRn   : [2026-09-07 21:59:23.991] [WiVRn] [info] 	t+8155µs HEAD (3000µs)
+09-07 21:59:23.991 21585 20830 I WiVRn   : [2026-09-07 21:59:23.991] [WiVRn] [info] 	t+9284µs LEFT_GRIP (13026µs)
+09-07 21:59:23.991 21585 20830 I WiVRn   : [2026-09-07 21:59:23.991] [WiVRn] [info] 	t+9294µs RIGHT_GRIP (13015µs)
+09-07 21:59:23.991 21585 20830 I WiVRn   : [2026-09-07 21:59:23.991] [WiVRn] [info] 	t+10310µs HEAD (12000µs)
+09-07 21:59:23.991 21585 20830 I WiVRn   : [2026-09-07 21:59:23.991] [WiVRn] [info] 	t+11155µs HEAD (0µs)
+09-07 21:59:24.491 21585 20825 I WiVRn   : [2026-09-07 21:59:24.491] [WiVRn] [info] nxwarp[0] net: 167 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 953 decoded so far, 1096 stragglers dropped; last hole 283/350 chunks, first missing 204, short false, chunk 1166 B
+09-07 21:59:24.491 21585 20825 I WiVRn   : [2026-09-07 21:59:24.491] [WiVRn] [info] nxwarp[0] net: 0.077 ms per datagram over 1431 datagrams (54.65 ms of every second)
+09-07 21:59:24.491 21585 20825 I WiVRn   : [2026-09-07 21:59:24.491] [WiVRn] [info] nxwarp[0] sel: stride 1, arrival 14.0 ms, dropped-late 142, withheld 8, decoded 953
+09-07 21:59:24.491 21585 20825 I WiVRn   : [2026-09-07 21:59:24.491] [WiVRn] [info] nxwarp[0] rx: 15674 datagrams, placed 93148 (+6891), late 1038 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 7

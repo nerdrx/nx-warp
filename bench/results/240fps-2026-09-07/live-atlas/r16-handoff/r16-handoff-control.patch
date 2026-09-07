@@ -1,0 +1,379 @@
+diff --git a/client/decoder/nxwarp/nxwarp_decoder.cpp b/client/decoder/nxwarp/nxwarp_decoder.cpp
+index bb757531..4a193d3e 100644
+--- a/client/decoder/nxwarp/nxwarp_decoder.cpp
++++ b/client/decoder/nxwarp/nxwarp_decoder.cpp
+@@ -641,22 +641,36 @@ bool nxwarp_decoder::on_stream_header(std::span<const uint8_t> header)
+ 	hdr_tools.store(si.tools, std::memory_order_relaxed);
+ 
+ 	// Select the decoder's real sampled atlas view only when the negotiated stream
+-	// carries the ATLAS tool.  This bounded handoff is R8-only: it is valid only for
++	// carries the ATLAS tool. The sampled handoff is valid only for
+ 	// CT_NONE. Other ATLAS representations are refused rather than displayed through
+ 	// the ordinary picture output, which is not normative for an atlas stream.
+ 	atlas_view_active = false;
++	atlas_view_r16 = false;
+ #if defined(WIVRN_NXVC_ATLAS_DECODE) && defined(NXVC_VK_DECODER_ATLAS_TABLE_BUFFER)
+ 	if ((si.tools & (1ull << 31)) && si.color_transform == 0)
+ 	{
+-		if (nxvc_vk_decoder_set_atlas_view(nxvc, NXVC_VKD_ATLAS_VIEW_R8) == NXVC_VKD_OK)
++		const char * r16 = std::getenv("NXWARP_ATLAS_R16");
++		if (r16 && r16[0] == '1' && si.bit_depth == 8 && si.chroma == 0 && !si.alpha)
++		{
++			const auto features = physical_device.getFormatProperties(vk::Format::eR16Unorm).optimalTilingFeatures;
++			const auto required = vk::FormatFeatureFlagBits::eSampledImage |
++			                      vk::FormatFeatureFlagBits::eSampledImageFilterLinear |
++			                      vk::FormatFeatureFlagBits::eTransferDst;
++			atlas_view_r16 = (features & required) == required;
++		}
++		const auto view = atlas_view_r16 ? NXVC_VKD_ATLAS_VIEW_R16 : NXVC_VKD_ATLAS_VIEW_R8;
++		if (nxvc_vk_decoder_set_atlas_view(nxvc, view) == NXVC_VKD_OK)
++		{
+ 			atlas_view_active = true;
++			spdlog::info("nxwarp[{}]: sampled atlas snapshot {}", stream_index, atlas_view_r16 ? "R16_UNORM" : "R8");
++		}
+ 		else
+ 			spdlog::warn("nxwarp[{}]: atlas view refused", stream_index);
+ 	}
+ #endif
+ 	if ((si.tools & (1ull << 31)) && !atlas_view_active)
+ 	{
+-		spdlog::error("nxwarp[{}]: negotiated ATLAS stream has no supported R8 handoff", stream_index);
++		spdlog::error("nxwarp[{}]: negotiated ATLAS stream has no supported sampled handoff", stream_index);
+ 		nxvc_vk_decoder_destroy(nxvc);
+ 		nxvc = nullptr;
+ 		nxvc_failed = true;
+@@ -664,7 +678,7 @@ bool nxwarp_decoder::on_stream_header(std::span<const uint8_t> header)
+ 	}
+ 
+ 	if (atlas_view_active)
+-		spdlog::info("nxwarp[{}]: real R8 atlas display with per-frame GPU snapshots", stream_index);
++		spdlog::info("nxwarp[{}]: real {} atlas display with per-frame GPU snapshots", stream_index, atlas_view_r16 ? "R16_UNORM" : "R8");
+ 	spdlog::info("nxwarp[{}]: {}x{} per eye, {} {}, on {}, {} x {} tiles, {} bytes per tile",
+ 	             stream_index, si.width, si.height, si.eyes, si.eyes == 1 ? "eye" : "eyes",
+ 	             nxvc_vk_decoder_device_name(nxvc), cfg.cols, cfg.rows, chunk);
+@@ -1472,7 +1486,8 @@ void nxwarp_decoder::decode_unit(decode_job & job)
+ 	}
+ #endif
+ 
+-	if (atlas_view_active && (!atlas_table_buffer || !atlas_table_bytes || !atlas_images.image[1]))
++	if (atlas_view_active && (!atlas_table_buffer || !atlas_table_bytes || !atlas_images.image[1] ||
++	    (atlas_view_r16 && !atlas_images.image[2])))
+ 	{
+ 		++frames_dropped_codec;
+ 		host.report_frame_not_held(stream_index, job.frame_id,
+@@ -1504,25 +1519,28 @@ void nxwarp_decoder::decode_unit(decode_job & job)
+ 	// while the codec updates its single mutable atlas for the next frame.
+ 	if (atlas_view_active)
+ 	{
+-		for (int p = 0; p < 2; ++p)
++		for (int p = 0; p < (atlas_view_r16 ? 3 : 2); ++p)
+ 		{
++			// Raw same-size image copies preserve the byte-valued uint16 samples.
++			// UNORM snapshots enable hardware filtering; the renderer rescales by 257.
++			const VkFormat snapshot_format = atlas_view_r16 ? VK_FORMAT_R16_UNORM : atlas_images.format[p];
+ 			if (item->atlas_snapshot.width[p] == atlas_images.width[p] &&
+ 			    item->atlas_snapshot.height[p] == atlas_images.height[p] &&
+-			    item->atlas_snapshot.format[p] == atlas_images.format[p]) continue;
++			    item->atlas_snapshot.format[p] == snapshot_format) continue;
+ 			item->atlas_views[p] = nullptr;
+ 			item->atlas_planes[p] = image_allocation(device, vk::ImageCreateInfo{
+-			    .imageType = vk::ImageType::e2D, .format = vk::Format(atlas_images.format[p]),
++			    .imageType = vk::ImageType::e2D, .format = vk::Format(snapshot_format),
+ 			    .extent = {atlas_images.width[p], atlas_images.height[p], 1},
+ 			    .mipLevels = 1, .arrayLayers = 1, .tiling = vk::ImageTiling::eOptimal,
+ 			    .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled},
+ 			    {.usage = VMA_MEMORY_USAGE_AUTO}, "nxwarp atlas snapshot");
+ 			item->atlas_views[p] = vk::raii::ImageView(device, vk::ImageViewCreateInfo{
+ 			    .image = item->atlas_planes[p], .viewType = vk::ImageViewType::e2D,
+-			    .format = vk::Format(atlas_images.format[p]),
++			    .format = vk::Format(snapshot_format),
+ 			    .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1}});
+ 			item->atlas_snapshot.image[p] = VkImage(vk::Image(item->atlas_planes[p]));
+ 			item->atlas_snapshot.view[p] = VkImageView(*item->atlas_views[p]);
+-			item->atlas_snapshot.format[p] = atlas_images.format[p];
++			item->atlas_snapshot.format[p] = snapshot_format;
+ 			item->atlas_snapshot.width[p] = atlas_images.width[p];
+ 			item->atlas_snapshot.height[p] = atlas_images.height[p];
+ 		}
+@@ -1623,10 +1641,10 @@ void nxwarp_decoder::decode_unit(decode_job & job)
+ 
+ 	if (atlas_view_active)
+ 	{
+-		for (int p = 0; p < 2; ++p)
++		for (int p = 0; p < (atlas_view_r16 ? 3 : 2); ++p)
+ 		{
+ 			std::array<vk::ImageMemoryBarrier, 2> barriers{
+-			    vk::ImageMemoryBarrier{.srcAccessMask = vk::AccessFlagBits::eShaderWrite,
++			    vk::ImageMemoryBarrier{.srcAccessMask = vk::AccessFlagBits::eShaderWrite | vk::AccessFlagBits::eTransferWrite,
+ 			        .dstAccessMask = vk::AccessFlagBits::eTransferRead,
+ 			        .oldLayout = vk::ImageLayout::eGeneral, .newLayout = vk::ImageLayout::eGeneral,
+ 			        .image = atlas_images.image[p],
+diff --git a/client/decoder/nxwarp/nxwarp_decoder.h b/client/decoder/nxwarp/nxwarp_decoder.h
+index 339c05a0..4867aaeb 100644
+--- a/client/decoder/nxwarp/nxwarp_decoder.h
++++ b/client/decoder/nxwarp/nxwarp_decoder.h
+@@ -132,8 +132,8 @@ class nxwarp_decoder : public decoder
+ 	struct image
+ 	{
+ 		image_allocation image;
+-		std::array<image_allocation, 2> atlas_planes;
+-		std::array<vk::raii::ImageView, 2> atlas_views{nullptr, nullptr};
++		std::array<image_allocation, 3> atlas_planes;
++		std::array<vk::raii::ImageView, 3> atlas_views{nullptr, nullptr, nullptr};
+ 		buffer_allocation atlas_table;
+ 		nxvc_vkd_atlas_images atlas_snapshot{};
+ 		VkDeviceSize atlas_table_size = 0;
+@@ -148,6 +148,7 @@ class nxwarp_decoder : public decoder
+ 	bool host_sync = false;
+ 	// Requested only after the stream header confirms the negotiated ATLAS tool.
+ 	bool atlas_view_active = false;
++	bool atlas_view_r16 = false;
+ 	// Rolling per-stream timing, reported every two seconds (decode_unit).
+ 	struct
+ 	{
+diff --git a/client/scenes/stream.cpp b/client/scenes/stream.cpp
+index f242ecd1..22fce4f8 100644
+--- a/client/scenes/stream.cpp
++++ b/client/scenes/stream.cpp
+@@ -1733,10 +1733,18 @@ void scenes::stream::render(const XrFrameState & frame_state)
+ 				                       blit_handle->atlas_extents[0] == vk::Extent2D{2176, 1088} &&
+ 				                       blit_handle->atlas_extents[1] == vk::Extent2D{1088, 544} &&
+ 				                       blit_handle->atlas_formats[0] == vk::Format::eR8Unorm &&
+-				                       blit_handle->atlas_formats[1] == vk::Format::eR8G8Unorm;
+-				if (blit_handle->atlas_valid && not atlas_layout_supported)
+-					throw std::runtime_error("NX Warp atlas view dimensions/formats are unsupported by the R8 renderer");
++					                       blit_handle->atlas_formats[1] == vk::Format::eR8G8Unorm;
++				const bool atlas_r16_supported =
++				                       blit_handle->atlas_extents[0] == vk::Extent2D{2176, 1088} &&
++				                       blit_handle->atlas_extents[1] == vk::Extent2D{1088, 544} &&
++				                       blit_handle->atlas_extents[2] == vk::Extent2D{1088, 544} &&
++				                       blit_handle->atlas_formats[0] == vk::Format::eR16Unorm &&
++				                       blit_handle->atlas_formats[1] == vk::Format::eR16Unorm &&
++				                       blit_handle->atlas_formats[2] == vk::Format::eR16Unorm;
++				if (blit_handle->atlas_valid && not atlas_layout_supported && not atlas_r16_supported)
++					throw std::runtime_error("NX Warp atlas view dimensions/formats are unsupported by the renderer");
+ 				images[v].atlas_valid = blit_handle->atlas_valid;
++				images[v].atlas_mode = atlas_r16_supported ? 2 : (atlas_layout_supported ? 1 : 0);
+ 				if (images[v].atlas_valid)
+ 				{
+ 					for (size_t p = 0; p < images[v].atlas_views.size(); ++p)
+diff --git a/client/scenes/stream_defoveator.cpp b/client/scenes/stream_defoveator.cpp
+index 92c1bdcd..35c0ce7d 100644
+--- a/client/scenes/stream_defoveator.cpp
++++ b/client/scenes/stream_defoveator.cpp
+@@ -136,9 +136,10 @@ stream_defoveator::vertex * stream_defoveator::get_vertices(size_t view)
+ 	return reinterpret_cast<vertex *>(reinterpret_cast<uintptr_t>(buffer.map()) + view * vertices_size);
+ }
+ 
+-stream_defoveator::pipeline_t & stream_defoveator::ensure_pipeline(size_t view, vk::Sampler rgb, vk::Sampler a, bool atlas_r8)
++stream_defoveator::pipeline_t & stream_defoveator::ensure_pipeline(size_t view, vk::Sampler rgb, vk::Sampler a, int atlas_mode)
+ {
+-	auto & target = atlas_r8 ? (a ? pipeline_atlas_r8_a[view] : pipeline_atlas_r8_rgb[view])
++	auto & target = atlas_mode == 1 ? (a ? pipeline_atlas_r8_a[view] : pipeline_atlas_r8_rgb[view])
++	                         : atlas_mode == 2 ? (a ? pipeline_atlas_r16_a[view] : pipeline_atlas_r16_rgb[view])
+ 	                         : (a ? pipeline_a[view] : pipeline_rgb[view]);
+ 	if (*target.pipeline)
+ 		return target;
+@@ -185,13 +186,13 @@ stream_defoveator::pipeline_t & stream_defoveator::ensure_pipeline(size_t view,
+ 	        },
+ 		vk::DescriptorSetLayoutBinding{
+ 		                .binding = 4,
+-		                .descriptorType = atlas_r8 ? vk::DescriptorType::eCombinedImageSampler : vk::DescriptorType::eStorageImage,
++	                .descriptorType = atlas_mode ? vk::DescriptorType::eCombinedImageSampler : vk::DescriptorType::eStorageImage,
+ 	                .descriptorCount = 1,
+ 	                .stageFlags = vk::ShaderStageFlagBits::eFragment,
+ 	        },
+ 		vk::DescriptorSetLayoutBinding{
+ 		                .binding = 5,
+-		                .descriptorType = atlas_r8 ? vk::DescriptorType::eStorageBuffer : vk::DescriptorType::eUniformBuffer,
++	                .descriptorType = atlas_mode ? vk::DescriptorType::eStorageBuffer : vk::DescriptorType::eUniformBuffer,
+ 	                .descriptorCount = 1,
+ 	                .stageFlags = vk::ShaderStageFlagBits::eFragment,
+ 	        },
+@@ -234,7 +235,7 @@ stream_defoveator::pipeline_t & stream_defoveator::ensure_pipeline(size_t view,
+ 	const auto & vk_device_extensions = application::get_vk_device_extensions();
+ 
+ 	// Vertex shader
+-	auto vertex_shader = load_shader(device, atlas_r8 ? "reprojection_atlas_r8.vert" : "reprojection.vert");
++	auto vertex_shader = load_shader(device, atlas_mode ? "reprojection_atlas_r8.vert" : "reprojection.vert");
+ 
+ 	// Fragment shader
+ 	auto specialization = make_specialization_constants(
+@@ -242,12 +243,12 @@ stream_defoveator::pipeline_t & stream_defoveator::ensure_pipeline(size_t view,
+ 	        VkBool32(application::get_hmd_traits().needs_srgb_conversion),
+ 	        VkBool32(cas_full_baked),
+ 	        VkBool32(fsr_baked),
+-	        int32_t(atlas_r8 ? 1 : atlas_baked),
++			int32_t(atlas_mode ? atlas_mode : atlas_baked),
+ 	        int32_t(kAtlasTiles),
+ 	        int32_t(view),
+ 	        VkBool32(lowpoly_baked),
+ 	        VkBool32(lowpoly_full_baked));
+-	auto fragment_shader = load_shader(device, atlas_r8 ? "reprojection_atlas_r8.frag" : "reprojection.frag");
++	auto fragment_shader = load_shader(device, atlas_mode ? "reprojection_atlas_r8.frag" : "reprojection.frag");
+ 
+ 	vk::pipeline_builder pipeline_info{
+ 	        .flags = {},
+@@ -355,9 +356,9 @@ stream_defoveator::stream_defoveator(
+ 	std::array pool_sizes{
+ 	        vk::DescriptorPoolSize{
+ 	                .type = vk::DescriptorType::eCombinedImageSampler,
+-	                // rgb, alpha, the motion field, the previous frame and the two
+-	                // atlas planes, for both variants
+-	                .descriptorCount = view_count * 24,
++	                // Up to seven sampled bindings in each of six pipeline variants:
++	                // ordinary, R8, and R16, each with or without alpha.
++	                .descriptorCount = view_count * 42,
+ 	        },
+ 	        // [atlas prototype] the per-tile table
+ 	        vk::DescriptorPoolSize{
+@@ -370,12 +371,12 @@ stream_defoveator::stream_defoveator(
+ 		},
+ 		vk::DescriptorPoolSize{
+ 		                .type = vk::DescriptorType::eStorageBuffer,
+-		                .descriptorCount = view_count * 2,
++		                .descriptorCount = view_count * 4,
+ 		},
+ 	};
+ 
+ 	ds_pool = device.createDescriptorPool(vk::DescriptorPoolCreateInfo{
+-	        .maxSets = view_count * 4,
++	        .maxSets = view_count * 6,
+ 	        .poolSizeCount = pool_sizes.size(),
+ 	        .pPoolSizes = pool_sizes.data(),
+ 	});
+@@ -450,6 +451,10 @@ void stream_defoveator::reset_pipelines()
+ 		p = {};
+ 	for (auto & p: pipeline_atlas_r8_a)
+ 		p = {};
++	for (auto & p: pipeline_atlas_r16_rgb)
++		p = {};
++	for (auto & p: pipeline_atlas_r16_a)
++		p = {};
+ 	// Reclaim the descriptor sets; the pool is sized for one generation and has
+ 	// no free-flag, so without this a rebuild (resolution/codec change, or the
+ 	// CAS full-kernel toggle) exhausts it and allocateDescriptorSets throws.
+@@ -944,8 +949,8 @@ void stream_defoveator::defoveate(vk::raii::CommandBuffer & command_buffer,
+ 		};
+ 
+ 		const auto & input = inputs[view];
+-		const bool atlas_r8 = input.atlas_valid && input.atlas_table != nullptr && input.atlas_table_bytes != 0;
+-		auto & pipeline = ensure_pipeline(view, input.sampler_rgb, input.sampler_a, atlas_r8);
++		const int atlas_mode = input.atlas_valid && input.atlas_table != nullptr && input.atlas_table_bytes != 0 ? input.atlas_mode : 0;
++		auto & pipeline = ensure_pipeline(view, input.sampler_rgb, input.sampler_a, atlas_mode);
+ 
+ 		std::array image_info{
+ 		        vk::DescriptorImageInfo{
+@@ -984,22 +989,23 @@ void stream_defoveator::defoveate(vk::raii::CommandBuffer & command_buffer,
+ 		// never reads on that path.
+ 		vk::DescriptorImageInfo atlas_r16_info{
+ 		        .sampler = *atlas_sampler,
+-		        .imageView = atlas_r8 ? input.atlas_views[0] : (*atlas_r16_sampled ? *atlas_r16_sampled : *motion_views[view]),
+-		        .imageLayout = atlas_r8 ? vk::ImageLayout::eShaderReadOnlyOptimal : (*atlas_r16_sampled ? vk::ImageLayout::eGeneral : vk::ImageLayout::eShaderReadOnlyOptimal),
++		        .imageView = atlas_mode ? input.atlas_views[0] : (*atlas_r16_sampled ? *atlas_r16_sampled : *motion_views[view]),
++		        .imageLayout = atlas_mode ? vk::ImageLayout::eShaderReadOnlyOptimal : (*atlas_r16_sampled ? vk::ImageLayout::eGeneral : vk::ImageLayout::eShaderReadOnlyOptimal),
+ 		};
+ 		vk::DescriptorImageInfo atlas_store_info{
+ 		        .sampler = *atlas_sampler,
+-		        .imageView = atlas_r8 ? input.atlas_views[1] : ((atlas_storage_ok and *atlas_r16_storage) ? *atlas_r16_storage : *output_image_views[destination * view_count + view]),
+-		        .imageLayout = atlas_r8 ? vk::ImageLayout::eShaderReadOnlyOptimal : vk::ImageLayout::eGeneral,
++		        .imageView = atlas_mode ? input.atlas_views[1] : ((atlas_storage_ok and *atlas_r16_storage) ? *atlas_r16_storage : *output_image_views[destination * view_count + view]),
++		        .imageLayout = atlas_mode ? vk::ImageLayout::eShaderReadOnlyOptimal : vk::ImageLayout::eGeneral,
+ 		};
+ 		vk::DescriptorImageInfo atlas_rgba8_info{
+-		        .imageView = *atlas_rgba8_view ? *atlas_rgba8_view : *motion_views[view],
++		        .sampler = *atlas_sampler,
++		        .imageView = atlas_mode == 2 ? input.atlas_views[2] : (*atlas_rgba8_view ? *atlas_rgba8_view : *motion_views[view]),
+ 		        .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
+ 		};
+ 		vk::DescriptorBufferInfo atlas_table_info{
+-		        .buffer = atlas_r8 ? input.atlas_table : (atlas_table_buffer ? vk::Buffer(atlas_table_buffer) : vk::Buffer(buffer)),
++		        .buffer = atlas_mode ? input.atlas_table : (atlas_table_buffer ? vk::Buffer(atlas_table_buffer) : vk::Buffer(buffer)),
+ 		        .offset = 0,
+-		        .range = atlas_r8 ? input.atlas_table_bytes : VK_WHOLE_SIZE,
++		        .range = atlas_mode ? input.atlas_table_bytes : VK_WHOLE_SIZE,
+ 		};
+ 
+ 		std::array descriptor_writes{
+@@ -1035,14 +1041,14 @@ void stream_defoveator::defoveate(vk::raii::CommandBuffer & command_buffer,
+ 		                .dstSet = pipeline.ds,
+ 		                .dstBinding = 4,
+ 		                .descriptorCount = 1,
+-		                .descriptorType = atlas_r8 ? vk::DescriptorType::eCombinedImageSampler : vk::DescriptorType::eStorageImage,
++		                .descriptorType = atlas_mode ? vk::DescriptorType::eCombinedImageSampler : vk::DescriptorType::eStorageImage,
+ 		                .pImageInfo = &atlas_store_info,
+ 		        },
+ 		        vk::WriteDescriptorSet{
+ 		                .dstSet = pipeline.ds,
+ 		                .dstBinding = 5,
+ 		                .descriptorCount = 1,
+-		                .descriptorType = atlas_r8 ? vk::DescriptorType::eStorageBuffer : vk::DescriptorType::eUniformBuffer,
++		                .descriptorType = atlas_mode ? vk::DescriptorType::eStorageBuffer : vk::DescriptorType::eUniformBuffer,
+ 		                .pBufferInfo = &atlas_table_info,
+ 		        },
+ 		        vk::WriteDescriptorSet{
+diff --git a/client/scenes/stream_defoveator.h b/client/scenes/stream_defoveator.h
+index 2bb023e5..61805c3b 100644
+--- a/client/scenes/stream_defoveator.h
++++ b/client/scenes/stream_defoveator.h
+@@ -80,6 +80,8 @@ private:
+ 	pipeline_t pipeline_a[view_count];
+ 	pipeline_t pipeline_atlas_r8_rgb[view_count];
+ 	pipeline_t pipeline_atlas_r8_a[view_count];
++	pipeline_t pipeline_atlas_r16_rgb[view_count];
++	pipeline_t pipeline_atlas_r16_a[view_count];
+ 
+ 	// CAS kernel the currently built pipelines were specialized for. defoveate()
+ 	// rebuilds them if the requested kernel differs, so switching is a rare pipeline
+@@ -156,7 +158,7 @@ private:
+ 	void ensure_vertices(size_t num_vertices);
+ 	vertex * get_vertices(size_t view);
+ 
+-	pipeline_t & ensure_pipeline(size_t view, vk::Sampler rgb, vk::Sampler a, bool atlas_r8);
++	pipeline_t & ensure_pipeline(size_t view, vk::Sampler rgb, vk::Sampler a, int atlas_mode);
+ 
+ public:
+ 	struct input
+@@ -176,6 +178,7 @@ public:
+ 		vk::ImageView prev_rgb = nullptr;
+ 		vk::ImageLayout layout_prev_rgb = vk::ImageLayout::eGeneral;
+ 		bool atlas_valid = false;
++		int atlas_mode = 0; // 1 R8, 2 real R16 renderer snapshot
+ 		std::array<vk::ImageView, 3> atlas_views{};
+ 		std::array<vk::Extent2D, 3> atlas_extents{};
+ 		vk::Buffer atlas_table = nullptr;
+diff --git a/client/shaders/reprojection_atlas_r8.glsl b/client/shaders/reprojection_atlas_r8.glsl
+index fe76cf97..419f2723 100644
+--- a/client/shaders/reprojection_atlas_r8.glsl
++++ b/client/shaders/reprojection_atlas_r8.glsl
+@@ -1,5 +1,5 @@
+ #version 450
+-// R8 atlas-only display consumer; ordinary effects remain in reprojection.glsl.
++// Sampled R8/R16 atlas display; ordinary effects remain in reprojection.glsl.
+ layout(push_constant) uniform pc { ivec4 rgb_rect; ivec4 a_rect; vec4 scale; vec4 bias; vec4 post; vec4 motion; vec4 glow; vec4 deband; };
+ 
+ #ifdef VERT_SHADER
+@@ -28,6 +28,7 @@ layout(constant_id=8) const bool lowpoly_full_kernel=false;
+ layout(set=0,binding=0) uniform sampler2D rgb[alpha+1];
+ layout(set=0,binding=3) uniform sampler2D atlas_y;
+ layout(set=0,binding=4) uniform sampler2D atlas_cbcr;
++layout(set=0,binding=6) uniform sampler2D atlas_cr;
+ layout(std430,set=0,binding=5) readonly buffer atlas_table_t { uint e[]; } tbl;
+ layout(location=0) in vec4 inUV;
+ layout(location=1) in vec4 inPosition;
+@@ -51,7 +52,14 @@ void main() {
+  vec2 lp=src+vec2(float(atlas_eye)*picture.x,0);
+  vec2 cp=src*0.5+vec2(float(atlas_eye)*picture.x*0.5,0);
+  float y=texture(atlas_y,(lp+0.5)/luma_image).r;
+- vec2 cbcr=texture(atlas_cbcr,(cp+0.5)/chroma_image).rg-0.5;
++ if (atlas_mode == 2) y *= 257.0;
++	vec2 cbcr;
++	if (atlas_mode == 2)
++		// R16_UNORM maps the raw 8-bit value to raw/65535; 257 restores raw/255.
++		cbcr = vec2(texture(atlas_cbcr,(cp+0.5)/chroma_image).r,
++		            texture(atlas_cr,(cp+0.5)/chroma_image).r) * 257.0 - 0.5;
++	else
++		cbcr=texture(atlas_cbcr,(cp+0.5)/chroma_image).rg-0.5;
+  vec3 c=vec3(y+1.5748*cbcr.y,y-0.1873*cbcr.x-0.4681*cbcr.y,y+1.8556*cbcr.x);
+  c=clamp(c,0.0,1.0);
+  if (do_srgb) c=srgb_linear(c);

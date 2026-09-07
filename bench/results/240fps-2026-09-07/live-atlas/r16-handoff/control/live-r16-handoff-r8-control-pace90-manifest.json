@@ -1,0 +1,504 @@
+{
+  "name": "live-r16-handoff-r8-control-pace90",
+  "serial": "PA8150MGGB110166G",
+  "started_utc": "2026-09-07T19:59:49.565227+00:00",
+  "requested_seconds": 55.0,
+  "actual_elapsed_s": 55.067246202001115,
+  "wake_period_s": 4.0,
+  "wakes": [
+    {
+      "elapsed_s": 1.360261697001988
+    },
+    {
+      "elapsed_s": 4.225455831998261
+    },
+    {
+      "elapsed_s": 8.233896766003454
+    },
+    {
+      "elapsed_s": 12.248127472994383
+    },
+    {
+      "elapsed_s": 16.21614404799766
+    },
+    {
+      "elapsed_s": 20.23146369800088
+    },
+    {
+      "elapsed_s": 24.309623949986417
+    },
+    {
+      "elapsed_s": 28.22452651298954
+    },
+    {
+      "elapsed_s": 32.242420766007854
+    },
+    {
+      "elapsed_s": 36.26700444499147
+    },
+    {
+      "elapsed_s": 40.233319824998034
+    },
+    {
+      "elapsed_s": 44.24797685298836
+    },
+    {
+      "elapsed_s": 48.22478687498369
+    },
+    {
+      "elapsed_s": 52.22478662998765
+    }
+  ],
+  "screenshots": [
+    {
+      "target_s": 6.0,
+      "elapsed_s": 7.774493704986526,
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/240fps-20260907/live-r16-handoff-r8-control-pace90-screen-06.png",
+      "sha256": "a9b77018603c103e7e164217c69dd50ebc9a40843236cd0ed2082463f46ad883"
+    },
+    {
+      "target_s": 49.0,
+      "elapsed_s": 49.66564407199621,
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/240fps-20260907/live-r16-handoff-r8-control-pace90-screen-49.png",
+      "sha256": "ca44d87755e2b04ad031397705e2d5039ff28a1c8d490af534c3fd1979560c9c"
+    }
+  ],
+  "host_samples": [
+    {
+      "elapsed_s": 1.3602665269863792,
+      "gpus": [
+        {
+          "device_path": "/sys/devices/pci0000:00/0000:00:08.1/0000:7b:00.0",
+          "busy_percent": "0",
+          "device_id": "0x13c0",
+          "temperatures_millidegrees_c": {
+            "/sys/class/drm/card0/device/hwmon/hwmon3/temp1_input": 55000
+          },
+          "temperature_labels": {
+            "/sys/class/drm/card0/device/hwmon/hwmon3/temp1_input": "edge"
+          }
+        },
+        {
+          "device_path": "/sys/devices/pci0000:00/0000:00:01.1/0000:01:00.0/0000:02:00.0/0000:03:00.0",
+          "busy_percent": "78",
+          "device_id": "0x744c",
+          "temperatures_millidegrees_c": {
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp3_input": 90000,
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp1_input": 73000,
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp2_input": 83000
+          },
+          "temperature_labels": {
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp3_input": "mem",
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp1_input": "edge",
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp2_input": "junction"
+          }
+        }
+      ]
+    },
+    {
+      "elapsed_s": 4.225458472006721,
+      "gpus": [
+        {
+          "device_path": "/sys/devices/pci0000:00/0000:00:08.1/0000:7b:00.0",
+          "busy_percent": "0",
+          "device_id": "0x13c0",
+          "temperatures_millidegrees_c": {
+            "/sys/class/drm/card0/device/hwmon/hwmon3/temp1_input": 54000
+          },
+          "temperature_labels": {
+            "/sys/class/drm/card0/device/hwmon/hwmon3/temp1_input": "edge"
+          }
+        },
+        {
+          "device_path": "/sys/devices/pci0000:00/0000:00:01.1/0000:01:00.0/0000:02:00.0/0000:03:00.0",
+          "busy_percent": "80",
+          "device_id": "0x744c",
+          "temperatures_millidegrees_c": {
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp3_input": 90000,
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp1_input": 73000,
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp2_input": 82000
+          },
+          "temperature_labels": {
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp3_input": "mem",
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp1_input": "edge",
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp2_input": "junction"
+          }
+        }
+      ]
+    },
+    {
+      "elapsed_s": 8.233899095997913,
+      "gpus": [
+        {
+          "device_path": "/sys/devices/pci0000:00/0000:00:08.1/0000:7b:00.0",
+          "busy_percent": "0",
+          "device_id": "0x13c0",
+          "temperatures_millidegrees_c": {
+            "/sys/class/drm/card0/device/hwmon/hwmon3/temp1_input": 54000
+          },
+          "temperature_labels": {
+            "/sys/class/drm/card0/device/hwmon/hwmon3/temp1_input": "edge"
+          }
+        },
+        {
+          "device_path": "/sys/devices/pci0000:00/0000:00:01.1/0000:01:00.0/0000:02:00.0/0000:03:00.0",
+          "busy_percent": "80",
+          "device_id": "0x744c",
+          "temperatures_millidegrees_c": {
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp3_input": 89000,
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp1_input": 72000,
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp2_input": 82000
+          },
+          "temperature_labels": {
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp3_input": "mem",
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp1_input": "edge",
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp2_input": "junction"
+          }
+        }
+      ]
+    },
+    {
+      "elapsed_s": 12.248130043008132,
+      "gpus": [
+        {
+          "device_path": "/sys/devices/pci0000:00/0000:00:08.1/0000:7b:00.0",
+          "busy_percent": "0",
+          "device_id": "0x13c0",
+          "temperatures_millidegrees_c": {
+            "/sys/class/drm/card0/device/hwmon/hwmon3/temp1_input": 54000
+          },
+          "temperature_labels": {
+            "/sys/class/drm/card0/device/hwmon/hwmon3/temp1_input": "edge"
+          }
+        },
+        {
+          "device_path": "/sys/devices/pci0000:00/0000:00:01.1/0000:01:00.0/0000:02:00.0/0000:03:00.0",
+          "busy_percent": "79",
+          "device_id": "0x744c",
+          "temperatures_millidegrees_c": {
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp3_input": 88000,
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp1_input": 72000,
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp2_input": 82000
+          },
+          "temperature_labels": {
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp3_input": "mem",
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp1_input": "edge",
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp2_input": "junction"
+          }
+        }
+      ]
+    },
+    {
+      "elapsed_s": 16.216147108003497,
+      "gpus": [
+        {
+          "device_path": "/sys/devices/pci0000:00/0000:00:08.1/0000:7b:00.0",
+          "busy_percent": "0",
+          "device_id": "0x13c0",
+          "temperatures_millidegrees_c": {
+            "/sys/class/drm/card0/device/hwmon/hwmon3/temp1_input": 54000
+          },
+          "temperature_labels": {
+            "/sys/class/drm/card0/device/hwmon/hwmon3/temp1_input": "edge"
+          }
+        },
+        {
+          "device_path": "/sys/devices/pci0000:00/0000:00:01.1/0000:01:00.0/0000:02:00.0/0000:03:00.0",
+          "busy_percent": "80",
+          "device_id": "0x744c",
+          "temperatures_millidegrees_c": {
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp3_input": 88000,
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp1_input": 72000,
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp2_input": 81000
+          },
+          "temperature_labels": {
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp3_input": "mem",
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp1_input": "edge",
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp2_input": "junction"
+          }
+        }
+      ]
+    },
+    {
+      "elapsed_s": 20.23146545799682,
+      "gpus": [
+        {
+          "device_path": "/sys/devices/pci0000:00/0000:00:08.1/0000:7b:00.0",
+          "busy_percent": "0",
+          "device_id": "0x13c0",
+          "temperatures_millidegrees_c": {
+            "/sys/class/drm/card0/device/hwmon/hwmon3/temp1_input": 54000
+          },
+          "temperature_labels": {
+            "/sys/class/drm/card0/device/hwmon/hwmon3/temp1_input": "edge"
+          }
+        },
+        {
+          "device_path": "/sys/devices/pci0000:00/0000:00:01.1/0000:01:00.0/0000:02:00.0/0000:03:00.0",
+          "busy_percent": "79",
+          "device_id": "0x744c",
+          "temperatures_millidegrees_c": {
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp3_input": 88000,
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp1_input": 71000,
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp2_input": 81000
+          },
+          "temperature_labels": {
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp3_input": "mem",
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp1_input": "edge",
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp2_input": "junction"
+          }
+        }
+      ]
+    },
+    {
+      "elapsed_s": 24.309626889997162,
+      "gpus": [
+        {
+          "device_path": "/sys/devices/pci0000:00/0000:00:08.1/0000:7b:00.0",
+          "busy_percent": "0",
+          "device_id": "0x13c0",
+          "temperatures_millidegrees_c": {
+            "/sys/class/drm/card0/device/hwmon/hwmon3/temp1_input": 55000
+          },
+          "temperature_labels": {
+            "/sys/class/drm/card0/device/hwmon/hwmon3/temp1_input": "edge"
+          }
+        },
+        {
+          "device_path": "/sys/devices/pci0000:00/0000:00:01.1/0000:01:00.0/0000:02:00.0/0000:03:00.0",
+          "busy_percent": "94",
+          "device_id": "0x744c",
+          "temperatures_millidegrees_c": {
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp3_input": 90000,
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp1_input": 74000,
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp2_input": 85000
+          },
+          "temperature_labels": {
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp3_input": "mem",
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp1_input": "edge",
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp2_input": "junction"
+          }
+        }
+      ]
+    },
+    {
+      "elapsed_s": 28.224530982988654,
+      "gpus": [
+        {
+          "device_path": "/sys/devices/pci0000:00/0000:00:08.1/0000:7b:00.0",
+          "busy_percent": "0",
+          "device_id": "0x13c0",
+          "temperatures_millidegrees_c": {
+            "/sys/class/drm/card0/device/hwmon/hwmon3/temp1_input": 54000
+          },
+          "temperature_labels": {
+            "/sys/class/drm/card0/device/hwmon/hwmon3/temp1_input": "edge"
+          }
+        },
+        {
+          "device_path": "/sys/devices/pci0000:00/0000:00:01.1/0000:01:00.0/0000:02:00.0/0000:03:00.0",
+          "busy_percent": "100",
+          "device_id": "0x744c",
+          "temperatures_millidegrees_c": {
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp3_input": 92000,
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp1_input": 75000,
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp2_input": 87000
+          },
+          "temperature_labels": {
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp3_input": "mem",
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp1_input": "edge",
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp2_input": "junction"
+          }
+        }
+      ]
+    },
+    {
+      "elapsed_s": 32.24242467599106,
+      "gpus": [
+        {
+          "device_path": "/sys/devices/pci0000:00/0000:00:08.1/0000:7b:00.0",
+          "busy_percent": "0",
+          "device_id": "0x13c0",
+          "temperatures_millidegrees_c": {
+            "/sys/class/drm/card0/device/hwmon/hwmon3/temp1_input": 54000
+          },
+          "temperature_labels": {
+            "/sys/class/drm/card0/device/hwmon/hwmon3/temp1_input": "edge"
+          }
+        },
+        {
+          "device_path": "/sys/devices/pci0000:00/0000:00:01.1/0000:01:00.0/0000:02:00.0/0000:03:00.0",
+          "busy_percent": "100",
+          "device_id": "0x744c",
+          "temperatures_millidegrees_c": {
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp3_input": 92000,
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp1_input": 75000,
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp2_input": 88000
+          },
+          "temperature_labels": {
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp3_input": "mem",
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp1_input": "edge",
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp2_input": "junction"
+          }
+        }
+      ]
+    },
+    {
+      "elapsed_s": 36.26700623499346,
+      "gpus": [
+        {
+          "device_path": "/sys/devices/pci0000:00/0000:00:08.1/0000:7b:00.0",
+          "busy_percent": "0",
+          "device_id": "0x13c0",
+          "temperatures_millidegrees_c": {
+            "/sys/class/drm/card0/device/hwmon/hwmon3/temp1_input": 54000
+          },
+          "temperature_labels": {
+            "/sys/class/drm/card0/device/hwmon/hwmon3/temp1_input": "edge"
+          }
+        },
+        {
+          "device_path": "/sys/devices/pci0000:00/0000:00:01.1/0000:01:00.0/0000:02:00.0/0000:03:00.0",
+          "busy_percent": "77",
+          "device_id": "0x744c",
+          "temperatures_millidegrees_c": {
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp3_input": 90000,
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp1_input": 73000,
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp2_input": 82000
+          },
+          "temperature_labels": {
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp3_input": "mem",
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp1_input": "edge",
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp2_input": "junction"
+          }
+        }
+      ]
+    },
+    {
+      "elapsed_s": 40.23332283500349,
+      "gpus": [
+        {
+          "device_path": "/sys/devices/pci0000:00/0000:00:08.1/0000:7b:00.0",
+          "busy_percent": "0",
+          "device_id": "0x13c0",
+          "temperatures_millidegrees_c": {
+            "/sys/class/drm/card0/device/hwmon/hwmon3/temp1_input": 54000
+          },
+          "temperature_labels": {
+            "/sys/class/drm/card0/device/hwmon/hwmon3/temp1_input": "edge"
+          }
+        },
+        {
+          "device_path": "/sys/devices/pci0000:00/0000:00:01.1/0000:01:00.0/0000:02:00.0/0000:03:00.0",
+          "busy_percent": "79",
+          "device_id": "0x744c",
+          "temperatures_millidegrees_c": {
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp3_input": 89000,
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp1_input": 72000,
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp2_input": 82000
+          },
+          "temperature_labels": {
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp3_input": "mem",
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp1_input": "edge",
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp2_input": "junction"
+          }
+        }
+      ]
+    },
+    {
+      "elapsed_s": 44.24798285399447,
+      "gpus": [
+        {
+          "device_path": "/sys/devices/pci0000:00/0000:00:08.1/0000:7b:00.0",
+          "busy_percent": "0",
+          "device_id": "0x13c0",
+          "temperatures_millidegrees_c": {
+            "/sys/class/drm/card0/device/hwmon/hwmon3/temp1_input": 56000
+          },
+          "temperature_labels": {
+            "/sys/class/drm/card0/device/hwmon/hwmon3/temp1_input": "edge"
+          }
+        },
+        {
+          "device_path": "/sys/devices/pci0000:00/0000:00:01.1/0000:01:00.0/0000:02:00.0/0000:03:00.0",
+          "busy_percent": "78",
+          "device_id": "0x744c",
+          "temperatures_millidegrees_c": {
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp3_input": 88000,
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp1_input": 72000,
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp2_input": 81000
+          },
+          "temperature_labels": {
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp3_input": "mem",
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp1_input": "edge",
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp2_input": "junction"
+          }
+        }
+      ]
+    },
+    {
+      "elapsed_s": 48.224790934997145,
+      "gpus": [
+        {
+          "device_path": "/sys/devices/pci0000:00/0000:00:08.1/0000:7b:00.0",
+          "busy_percent": "0",
+          "device_id": "0x13c0",
+          "temperatures_millidegrees_c": {
+            "/sys/class/drm/card0/device/hwmon/hwmon3/temp1_input": 54000
+          },
+          "temperature_labels": {
+            "/sys/class/drm/card0/device/hwmon/hwmon3/temp1_input": "edge"
+          }
+        },
+        {
+          "device_path": "/sys/devices/pci0000:00/0000:00:01.1/0000:01:00.0/0000:02:00.0/0000:03:00.0",
+          "busy_percent": "81",
+          "device_id": "0x744c",
+          "temperatures_millidegrees_c": {
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp3_input": 88000,
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp1_input": 72000,
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp2_input": 81000
+          },
+          "temperature_labels": {
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp3_input": "mem",
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp1_input": "edge",
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp2_input": "junction"
+          }
+        }
+      ]
+    },
+    {
+      "elapsed_s": 52.22478869999759,
+      "gpus": [
+        {
+          "device_path": "/sys/devices/pci0000:00/0000:00:08.1/0000:7b:00.0",
+          "busy_percent": "0",
+          "device_id": "0x13c0",
+          "temperatures_millidegrees_c": {
+            "/sys/class/drm/card0/device/hwmon/hwmon3/temp1_input": 54000
+          },
+          "temperature_labels": {
+            "/sys/class/drm/card0/device/hwmon/hwmon3/temp1_input": "edge"
+          }
+        },
+        {
+          "device_path": "/sys/devices/pci0000:00/0000:00:01.1/0000:01:00.0/0000:02:00.0/0000:03:00.0",
+          "busy_percent": "79",
+          "device_id": "0x744c",
+          "temperatures_millidegrees_c": {
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp3_input": 88000,
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp1_input": 71000,
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp2_input": 80000
+          },
+          "temperature_labels": {
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp3_input": "mem",
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp1_input": "edge",
+            "/sys/class/drm/card1/device/hwmon/hwmon2/temp2_input": "junction"
+          }
+        }
+      ]
+    }
+  ],
+  "host_workload": "User reports concurrent Counter-Strike; uncontrolled shared host load",
+  "measure_log": "/run/media/nerdrx/Lex/claude/nx-scratch/240fps-20260907/live-r16-handoff-r8-control-pace90-measure.log"
+}
