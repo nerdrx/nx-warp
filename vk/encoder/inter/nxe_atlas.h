@@ -254,7 +254,7 @@ struct AtlasTable {
      * position `STATIC_MV` and is NOT inherited: after a PICTURE frame the
      * atlas is one coherent picture at one time.  A null pointer means the
      * frame coded nothing, so nothing is static. */
-    static const uint8_t kPictureNotCoded = 0xFFu;
+    static constexpr uint8_t kPictureNotCoded = 0xFFu;
     void picture_frame(const uint8_t *coded_mode, uint32_t frame_number);
 
     /* ATLAS-frame rebase ([SYN] 13.12.10, tool bit 34).  The pending
