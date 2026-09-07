@@ -263,6 +263,15 @@ int main(int argc, char** argv) {
                      nxvc_vk_decoder_last_error(borrowed));
         return 1;
     }
+    malformed = target;
+    malformed.format[0] = VK_FORMAT_R16_UNORM;
+    nxvc_vkd_atlas_images still_bound{};
+    if (nxvc_vk_decoder_set_atlas_borrowed_target(borrowed, &malformed) != NXVC_VKD_ERR_ARG ||
+        nxvc_vk_decoder_atlas_images(borrowed, &still_bound) != NXVC_VKD_OK ||
+        still_bound.image[0] != target.image[0] || still_bound.image[1] != target.image[1]) {
+        std::fprintf(stderr, "FAIL: rejected target disturbed active binding\n");
+        return 1;
+    }
     size_t off = header;
     std::vector<uint8_t> oy, oc, by, bc;
     uint32_t w, hh, bs;
