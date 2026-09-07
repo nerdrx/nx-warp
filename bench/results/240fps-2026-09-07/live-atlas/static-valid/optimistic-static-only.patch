@@ -1,0 +1,35 @@
+diff --git a/vk/encoder/tools/nxe_vk.cpp b/vk/encoder/tools/nxe_vk.cpp
+index 43e6e09..88b5d5a 100644
+--- a/vk/encoder/tools/nxe_vk.cpp
++++ b/vk/encoder/tools/nxe_vk.cpp
+@@ -156,6 +156,7 @@ struct VkEncoder::Impl {
+     /* Opt-in diagnosis of the first ATLAS admission gate per eye. */
+     bool admission_stats = false;
+     bool optimistic_atlas = false;
++    bool optimistic_static_only = false;
+     uint64_t admission[2][8] = {};
+     uint64_t optimistic_bypassed[2] = {};
+     uint32_t admission_frames = 0;
+@@ -410,8 +411,11 @@ VkEncoder::VkEncoder() : p_(new Impl)
+     p_->admission_stats = std::getenv("NXVC_VKE_ATLAS_ADMISSION_STATS") != nullptr;
+     const char *optimistic = std::getenv("NXVC_VKE_ATLAS_OPTIMISTIC");
+     p_->optimistic_atlas = optimistic && optimistic[0] == '1';
++    const char *optimistic_static = std::getenv("NXVC_VKE_ATLAS_OPTIMISTIC_STATIC_ONLY");
++    p_->optimistic_static_only = optimistic_static && optimistic_static[0] == '1';
+     if (p_->optimistic_atlas)
+-        std::fprintf(stderr, "nxvc atlas optimistic admission enabled (after first confirmation)\n");
++        std::fprintf(stderr, "nxvc atlas optimistic admission enabled%s (after first confirmation)\n",
++                     p_->optimistic_static_only ? ", static tiles only" : "");
+ }
+ VkEncoder::~VkEncoder() {
+     if (p_ && p_->ok) {
+@@ -1388,7 +1392,8 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
+                     if (aged) {
+                         admission_reject(2); /* aged */
+                     } else if (!d.heldst.confirms(src)) {
+-                        if (d.optimistic_atlas && d.heldst.any_confirmed) {
++                        if (d.optimistic_atlas && d.heldst.any_confirmed &&
++                            (!d.optimistic_static_only || d.atlas_tab.is_static(t))) {
+                             if (d.admission_stats && admission_eye < 2)
+                                 ++d.optimistic_bypassed[admission_eye];
+                         } else {
