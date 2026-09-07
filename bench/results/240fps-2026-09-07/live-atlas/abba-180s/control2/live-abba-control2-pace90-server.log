@@ -1,0 +1,761 @@
+WiVRn nx-atlas-live-920ac878-dirty starting
+Service published: x0x0x0x0x0x
+Client connected
+Server started, PID 3847632
+ INFO [ipc_server_main_common] WiVRn 'nx-atlas-live-920ac878-dirty' starting up...
+Setting the OpenVR compatibility library to /opt/xrizer
+Listening for secondary paths on port 9757
+ INFO [vk_bundle] Vulkan instance created:
+	GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+	queue families: 1 3 1 (main, encode, transfer)
+
+ INFO [get_encoder_settings] nxwarp: both eyes on stream 0 as one 2176x1088 stereo frame (578 tiles), stream 1 has no encoder
+ INFO [compositor] compositor: lens mask on, margin 1 tile; the foveation pass flattens what it covers (0 of 0 tiles per eye so far)
+ INFO [comp_vulkan_formats_log] Supported formats:
+	VK_FORMAT_R16G16B16A16_UNORM: true
+	VK_FORMAT_R16G16B16A16_SFLOAT: true
+	VK_FORMAT_R16G16B16_UNORM: false
+	VK_FORMAT_R16G16B16_SFLOAT: false
+	VK_FORMAT_R8G8B8A8_SRGB: true
+	VK_FORMAT_B8G8R8A8_SRGB: true
+	VK_FORMAT_R8G8B8_SRGB: false
+	VK_FORMAT_R8G8B8A8_UNORM: true
+	VK_FORMAT_B8G8R8A8_UNORM: true
+	VK_FORMAT_R8G8B8_UNORM: false
+	VK_FORMAT_B8G8R8_UNORM: false
+	VK_FORMAT_R5G6B5_UNORM_PACK16: true
+	VK_FORMAT_R32_SFLOAT: true
+	VK_FORMAT_D32_SFLOAT: true
+	VK_FORMAT_D16_UNORM: true
+	VK_FORMAT_X8_D24_UNORM_PACK32: false
+	VK_FORMAT_D24_UNORM_S8_UINT: false
+	VK_FORMAT_D32_SFLOAT_S8_UINT: true
+	VK_FORMAT_S8_UINT: true
+ INFO [print_encoders] Encoder configuration:
+	* nxwarp (nxwarp 8-bit)
+	  size: 1088x1088
+	  bitrate: 48.7Mbit/s
+	* nxwarp (nxwarp 8-bit)
+	  size: 1088x544
+	  bitrate: 1.2Mbit/s
+ INFO [video_encoder_nxwarp] nxwarp: "entropy": "auto" -> lite (the headset advertises ENTROPY_LITE)
+ INFO [video_encoder_nxwarp] nxwarp: "snap-identity": 16/16 sample (still tiles become a copy on the headset; error bounded by 0.50 sample)
+ INFO [video_encoder_nxwarp] nxwarp: "planar": "rd" -> "off" (the GPU backend has no planar mode)
+ INFO [video_encoder_nxwarp] nxwarp: stream 0 tools 0x4c2200c05 (INTRA_DC_PLANE RES_LEVEL INTER WARP CTX_V2 CTX_V3 ENTROPY_LITE bit31 bit34), headset 0xdf77a1fff -- negotiated
+ INFO [video_encoder_nxwarp] nxwarp: stream 0 backend: nxvc_vk_encoder GPU compute encoder, nxvc_vk_encoder (E0/E3/E4/E5, intra only) (34x17 tiles, intra only, one QP per frame), reading the compositor image directly
+ INFO [video_encoder_nxwarp] nxwarp: stream 0 1088x1088, nxvc_vk_encoder GPU compute encoder, nxvc_vk_encoder (E0/E3/E4/E5, intra only) (34x17 tiles, intra only, one QP per frame), fixed QP 40, paced at a fixed 90.0 fps, 34x17 tiles in 3 band(s), 1166 bytes per transport tile
+ INFO [video_encoder_nxwarp] nxwarp: "entropy": "auto" -> lite (the headset advertises ENTROPY_LITE)
+ INFO [video_encoder_nxwarp] nxwarp: "snap-identity": 16/16 sample (still tiles become a copy on the headset; error bounded by 0.50 sample)
+ INFO [video_encoder_nxwarp] nxwarp: "planar": "rd" -> "off" (the GPU backend has no planar mode)
+ INFO [video_encoder_nxwarp] nxwarp: stream 2 tools 0x4c2200c05 (INTRA_DC_PLANE RES_LEVEL INTER WARP CTX_V2 CTX_V3 ENTROPY_LITE bit31 bit34), headset 0xdf77a1fff -- negotiated
+ INFO [video_encoder_nxwarp] nxwarp: stream 2 backend: nxvc_vk_encoder GPU compute encoder, nxvc_vk_encoder (E0/E3/E4/E5, intra only) (17x9 tiles, intra only, one QP per frame), reading the compositor image directly
+ INFO [video_encoder_nxwarp] nxwarp: stream 2 1088x544, nxvc_vk_encoder GPU compute encoder, nxvc_vk_encoder (E0/E3/E4/E5, intra only) (17x9 tiles, intra only, one QP per frame), fixed QP 40, paced at a fixed 90.0 fps, 17x9 tiles in 2 band(s), 1166 bytes per transport tile
+ INFO [wivrn_hmd] edge bleed: rendering 5.0% overscan, 1.35 deg left / 1.35 deg up on eye 0 (same encoded size, so about 4.8% less sharp)
+ INFO [pipewire_device] pipewire speaker stream created (quantum: 240 frames, 5.00 ms)
+ INFO [configure] Automatic bitrate enabled, AIMD (v1), ceiling 50.0 Mbit/s, floor 10.0 Mbit/s, radio trend on
+ INFO [set_pacing] Packet pacing enabled, spreading each frame over 40% of a frame period
+ INFO [apply_qos] Wi-Fi QoS marks enabled (video AF41 / AC_VI, control EF / AC_VO)
+ INFO [set_fec] Forward error correction enabled, one parity shard per 8 video shards
+ INFO [set_fec_adaptive] Adaptive error correction enabled, parity ratio between 16+1 and 4+1 with interleaved groups
+ INFO [set_shard_retransmit] Shard retransmission enabled, keeping 1024 kB of recently sent shards per stream
+ WARN [check_socket_path] path not found: /run/user/1000/SlimeVRRpc
+ WARN [check_socket_path] path not found: /run/user/1000/.flatpak/dev.slimevr.SlimeVR/xdg-run/SlimeVRRpc
+ WARN [check_socket_path] path not found: /home/nerdrx/.local/share/dev.slimevr.SlimeVR/SlimeVRRpc
+ERROR [solarxr_ipc_socket_find] failed to resolve socket path
+ INFO [u_linux_try_to_set_realtime_priority_on_thread] Raised priority of thread 'Multi Client Module' to policy: 'SCHED_FIFO', priority: '99'
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+ INFO [reset_stream] nxwarp: stream 0 resumed for a new client: transport sequence restarted, stream header resent, next frame coded without a reference
+ INFO [reset_stream] nxwarp: stream 2 resumed for a new client: transport sequence restarted, stream header resent, next frame coded without a reference
+ INFO [operator()] Updating interaction profiles: from 
+	XRT_DEVICE_TOUCH_CONTROLLER (left)  to XRT_DEVICE_EXT_HAND_INTERACTION
+	XRT_DEVICE_TOUCH_CONTROLLER (right) to XRT_DEVICE_EXT_HAND_INTERACTION
+
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_STOPPING
+ INFO [operator()] Session state changed: XR_SESSION_STATE_IDLE
+ INFO [client_connected] Client 1 connected
+ INFO [ipc_handle_instance_describe_client] Client info:
+	id: 1
+	application_name: 'HelloXR'
+	pid: 3847917
+	extensions:
+		ext_hand_tracking_enabled: false
+		ext_hand_tracking_data_source_enabled: false
+		ext_eye_gaze_interaction_enabled: false
+		ext_future_enabled: false
+		ext_hand_interaction_enabled: false
+		htc_facial_tracking_enabled: false
+		fb_body_tracking_enabled: false
+		meta_body_tracking_full_body_enabled: false
+		meta_body_tracking_calibration_enabled: false
+		meta_body_tracking_fidelity_enabled: false
+		fb_face_tracking2_enabled: false
+		android_face_tracking_enabled: false
+ INFO [update_session_state_locked] Started native session, 1 active app session(s).
+ INFO [get_view_poses] geometry[eye 0]: panel fov L-51.99 R51.99 U51.99 D-51.99 -> rendered fov L-53.34 R53.34 U53.34 D-53.34 deg (overscan 0.050)
+ INFO [get_view_poses] geometry[eye 1]: panel fov L-51.99 R51.99 U51.99 D-51.99 -> rendered fov L-53.34 R53.34 U53.34 D-53.34 deg (overscan 0.050)
+ INFO [update_lens_mask] nxwarp: stream 0 lens mask: 0 of 289 tiles per eye masked (margin 1 tile, fov -53.3/53.3/53.3/-53.3 deg); flattened only: this backend has no skip-map input, so the tiles are coded as whatever the mode search makes of a constant grey
+ INFO [encode] nxwarp: stream 0 is at fixed QP 40 by configuration; the bitrate controller's 43360433 bit/s is ignored (unset "rc": "fixed" to honour it)
+ INFO [report_frame] nxwarp atlas: 1 frames, avg skip 0 intra 578 coded 578, atlas 1 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 6.3 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 1 frames in 2.9 s: 6.3 ms/frame (max 6.3), 9118 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n0; rejected n0
+ INFO [layer_commit] geometry[eye 0]: layer fov (what the app rendered, and what goes on the wire) L-53.34 R53.34 U53.34 D-53.34 deg
+ INFO [layer_commit] geometry[eye 1]: layer fov (what the app rendered, and what goes on the wire) L-53.34 R53.34 U53.34 D-53.34 deg
+ INFO [operator()] Session state changed: XR_SESSION_STATE_READY
+ INFO [operator()] user presence changed to false
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 34 intra 543 coded 543, atlas 180 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.2 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 4.2 ms/frame (max 6.3), 52811 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 1 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11107.9/6750.9/14825.7 us display 11.178/11.102/17.496 ms; rejected n1 host 4256.8/4256.8/4256.8 us display 11.111/11.111/11.111 ms
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 159 frame(s) since the last report; 58 of them cost an all-intra frame and 101 named a frame older than one already coded intra and cost nothing. Last was frame 177, dropped by the worker backlog
+ INFO [evaluate_aimd] Automatic bitrate: congestion, 50.0 -> 35.0 Mbit/s (p90 utilisation 1.00, 1 lost, 2 late over 40 frames)
+ INFO [report_frame] nxwarp atlas: 178 frames, avg skip 573 intra 4 coded 4, atlas 178 picture 0, avg worst disp 26.1 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 178 frames in 2.0 s: 3.9 ms/frame (max 5.9), 1021 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 1 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n178 host 11227.6/3620.9/22121.5 us display 11.326/11.108/14.069 ms; rejected n1 host 4796.1/4796.1/4796.1 us display 44.806/44.806/44.806 ms
+ INFO [encode] nxwarp: stream 0 tile mapping: 178 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 179 frames, avg skip 573 intra 4 coded 4, atlas 179 picture 0, avg worst disp 49.5 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.1 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 179 frames in 2.0 s: 4.1 ms/frame (max 6.3), 999 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 2 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n179 host 11156.2/7332.6/15448.7 us display 11.123/11.106/11.315 ms; rejected n2 host 4543.7/4380.8/4706.7 us display 11.113/11.113/11.113 ms
+ INFO [encode] nxwarp: stream 0 tile mapping: 179 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 573 intra 4 coded 4, atlas 181 picture 0, avg worst disp 42.2 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.0 ms/frame (max 6.3), 1001 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 1 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11090.9/5615.9/14153.5 us display 11.082/10.009/11.112 ms; rejected n1 host 3970.1/3970.1/3970.1 us display 10.526/10.526/10.526 ms
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 573 intra 4 coded 4, atlas 180 picture 0, avg worst disp 45.2 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 4.0 ms/frame (max 5.8), 1079 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11122.3/8055.5/14511.1 us display 11.111/11.094/11.117 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_STOPPING
+ INFO [operator()] Session state changed: XR_SESSION_STATE_IDLE
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 571 intra 6 coded 6, atlas 181 picture 0, avg worst disp 36.5 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.0 ms/frame (max 6.0), 832 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11111.7/8159.5/13796.3 us display 11.111/11.100/11.119 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [operator()] Session state changed: XR_SESSION_STATE_READY
+ INFO [operator()] user presence changed to false
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 571 intra 6 coded 6, atlas 181 picture 0, avg worst disp 19.4 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 3.9 ms/frame (max 6.0), 930 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11098.8/8623.2/13630.2 us display 11.114/11.109/11.723 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 574 intra 3 coded 3, atlas 181 picture 0, avg worst disp 36.4 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.0 ms/frame (max 6.2), 928 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11122.3/7792.5/14582.3 us display 11.111/11.104/11.117 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 574 intra 3 coded 3, atlas 181 picture 0, avg worst disp 52.8 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.1 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.1 ms/frame (max 5.5), 946 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11101.6/7830.7/14035.2 us display 11.111/11.102/11.115 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 573 intra 4 coded 4, atlas 180 picture 0, avg worst disp 36.8 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 4.0 ms/frame (max 6.2), 1033 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11118.1/7829.0/14638.2 us display 11.111/11.103/11.112 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 573 intra 4 coded 4, atlas 180 picture 0, avg worst disp 38.4 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.1 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 4.1 ms/frame (max 6.0), 969 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11110.0/7806.1/14101.0 us display 11.111/11.100/11.119 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_STOPPING
+ INFO [operator()] Session state changed: XR_SESSION_STATE_IDLE
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 564 intra 13 coded 13, atlas 180 picture 0, avg worst disp 31.3 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 4.0 ms/frame (max 6.4), 1082 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11117.8/8289.4/13969.8 us display 11.111/11.105/11.114 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 574 intra 3 coded 3, atlas 181 picture 0, avg worst disp 24.8 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 3.9 ms/frame (max 5.9), 568 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11111.3/9997.7/12255.0 us display 11.111/11.103/11.113 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [operator()] Session state changed: XR_SESSION_STATE_READY
+ INFO [operator()] user presence changed to false
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 554 intra 23 coded 23, atlas 181 picture 0, avg worst disp 29.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 3.9 ms/frame (max 5.9), 2788 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11104.4/8163.3/13995.9 us display 11.114/10.817/11.959 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 3 frame(s) since the last report; 2 of them cost an all-intra frame and 1 named a frame older than one already coded intra and cost nothing. Last was frame 2382, dropped by the worker backlog
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 573 intra 4 coded 4, atlas 181 picture 0, avg worst disp 37.6 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.0 ms/frame (max 5.5), 1047 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11111.2/7743.7/14735.7 us display 11.111/11.107/11.116 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 573 intra 4 coded 4, atlas 181 picture 0, avg worst disp 30.1 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.0 ms/frame (max 5.4), 1032 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11104.6/7885.7/14579.0 us display 11.111/11.105/11.113 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 573 intra 4 coded 4, atlas 180 picture 0, avg worst disp 32.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 4.0 ms/frame (max 6.0), 991 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11118.0/8180.9/14667.3 us display 11.111/11.105/11.114 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 574 intra 3 coded 3, atlas 180 picture 0, avg worst disp 48.9 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 4.0 ms/frame (max 6.6), 933 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11111.4/8050.0/14526.7 us display 11.111/11.105/11.113 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_STOPPING
+ INFO [operator()] Session state changed: XR_SESSION_STATE_IDLE
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 571 intra 6 coded 6, atlas 180 picture 0, avg worst disp 24.9 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 3.9 ms/frame (max 6.4), 714 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11111.6/7925.3/14179.7 us display 11.111/11.103/11.117 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [operator()] Session state changed: XR_SESSION_STATE_READY
+ INFO [operator()] user presence changed to false
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 571 intra 6 coded 6, atlas 181 picture 0, avg worst disp 26.4 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.0 ms/frame (max 6.1), 1074 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11098.6/8151.0/14134.9 us display 11.115/11.104/11.841 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 574 intra 3 coded 3, atlas 181 picture 0, avg worst disp 46.2 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 3.9 ms/frame (max 6.4), 949 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11124.7/7579.8/14699.2 us display 11.111/11.105/11.111 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 573 intra 4 coded 4, atlas 181 picture 0, avg worst disp 76.4 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.0 ms/frame (max 5.9), 1015 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11099.8/7647.3/14331.3 us display 11.111/11.105/11.113 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 574 intra 3 coded 3, atlas 180 picture 0, avg worst disp 34.5 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 4.0 ms/frame (max 7.0), 952 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11114.7/8120.6/13897.9 us display 11.111/11.102/11.113 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 573 intra 4 coded 4, atlas 180 picture 0, avg worst disp 37.3 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.1 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 4.1 ms/frame (max 5.6), 1010 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11115.5/8407.6/13772.5 us display 11.111/11.100/11.113 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_STOPPING
+ INFO [operator()] Session state changed: XR_SESSION_STATE_IDLE
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 571 intra 6 coded 6, atlas 180 picture 0, avg worst disp 22.9 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 4.0 ms/frame (max 6.1), 805 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11115.8/8198.6/14281.3 us display 11.111/11.101/11.114 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [operator()] Session state changed: XR_SESSION_STATE_READY
+ INFO [operator()] user presence changed to false
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 365 intra 212 coded 212, atlas 181 picture 0, avg worst disp 18.1 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.1 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.1 ms/frame (max 6.1), 21192 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11097.8/8301.7/13992.0 us display 11.111/11.074/11.122 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 25 frame(s) since the last report; 23 of them cost an all-intra frame and 2 named a frame older than one already coded intra and cost nothing. Last was frame 4687, dropped by the worker backlog
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 532 intra 45 coded 45, atlas 180 picture 0, avg worst disp 34.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 3.9 ms/frame (max 6.0), 5004 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11109.1/7833.9/14432.8 us display 11.122/11.107/13.129 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 7 frame(s) since the last report; 6 of them cost an all-intra frame and 1 named a frame older than one already coded intra and cost nothing. Last was frame 4704, dropped by the worker backlog
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 574 intra 3 coded 3, atlas 180 picture 0, avg worst disp 37.8 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 4.0 ms/frame (max 6.0), 948 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11119.6/7964.5/14180.1 us display 11.111/11.105/11.120 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 573 intra 4 coded 4, atlas 180 picture 0, avg worst disp 38.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 3.9 ms/frame (max 5.4), 972 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11117.2/8061.8/14183.8 us display 11.111/11.107/11.115 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 573 intra 4 coded 4, atlas 180 picture 0, avg worst disp 48.1 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 3.9 ms/frame (max 6.1), 982 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11113.2/7317.7/15221.7 us display 11.111/11.105/11.118 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_STOPPING
+ INFO [operator()] Session state changed: XR_SESSION_STATE_IDLE
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 570 intra 7 coded 7, atlas 181 picture 0, avg worst disp 40.5 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.1 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.1 ms/frame (max 6.3), 948 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11109.3/8338.9/14207.2 us display 11.111/11.097/11.111 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [operator()] Session state changed: XR_SESSION_STATE_READY
+ INFO [operator()] user presence changed to false
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 571 intra 6 coded 6, atlas 181 picture 0, avg worst disp 18.4 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 3.8 ms/frame (max 6.2), 969 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11112.5/8016.7/14305.1 us display 11.115/11.106/11.857 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 573 intra 4 coded 4, atlas 181 picture 0, avg worst disp 29.9 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.0 ms/frame (max 6.4), 1011 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11112.1/7707.2/14539.8 us display 11.111/11.105/11.115 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 573 intra 4 coded 4, atlas 181 picture 0, avg worst disp 37.1 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.1 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.1 ms/frame (max 6.2), 1104 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11106.8/7868.7/13856.9 us display 11.111/11.105/11.111 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 573 intra 4 coded 4, atlas 181 picture 0, avg worst disp 31.7 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.0 ms/frame (max 6.2), 993 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11111.0/8143.6/14354.5 us display 11.111/11.105/11.113 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 573 intra 4 coded 4, atlas 181 picture 0, avg worst disp 48.3 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.1 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.1 ms/frame (max 8.0), 1038 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11112.8/7982.8/14609.3 us display 11.111/11.107/11.113 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_STOPPING
+ INFO [operator()] Session state changed: XR_SESSION_STATE_IDLE
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 567 intra 10 coded 10, atlas 180 picture 0, avg worst disp 32.9 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 3.9 ms/frame (max 6.4), 913 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11114.4/8418.7/14327.6 us display 11.111/11.104/11.115 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [operator()] Session state changed: XR_SESSION_STATE_READY
+ INFO [operator()] user presence changed to false
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 571 intra 6 coded 6, atlas 181 picture 0, avg worst disp 18.7 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 3.8 ms/frame (max 5.3), 1020 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11104.7/7837.0/14560.8 us display 11.113/11.100/11.480 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 1 frame(s) since the last report; 1 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 6773, dropped by the worker backlog
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 573 intra 4 coded 4, atlas 180 picture 0, avg worst disp 29.7 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 4.0 ms/frame (max 5.9), 986 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11111.0/7971.2/14556.5 us display 11.111/11.108/11.115 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 573 intra 4 coded 4, atlas 181 picture 0, avg worst disp 41.1 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.0 ms/frame (max 6.2), 1035 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11103.7/7513.3/14711.5 us display 11.111/11.105/11.114 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 573 intra 4 coded 4, atlas 181 picture 0, avg worst disp 29.8 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.1 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.1 ms/frame (max 5.4), 1003 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11125.3/6982.9/14407.3 us display 11.111/11.104/11.112 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 573 intra 4 coded 4, atlas 181 picture 0, avg worst disp 36.2 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.1 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.1 ms/frame (max 6.7), 980 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11099.9/8329.0/13888.9 us display 11.111/11.106/11.114 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_STOPPING
+ INFO [operator()] Session state changed: XR_SESSION_STATE_IDLE
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 570 intra 7 coded 7, atlas 180 picture 0, avg worst disp 32.2 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.1 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 4.1 ms/frame (max 6.3), 959 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11122.9/5943.5/15046.7 us display 11.111/11.106/11.114 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [operator()] Session state changed: XR_SESSION_STATE_READY
+ INFO [operator()] user presence changed to false
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 523 intra 54 coded 54, atlas 181 picture 0, avg worst disp 18.6 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.0 ms/frame (max 6.9), 5662 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11108.0/7475.1/14003.8 us display 11.109/10.787/11.125 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 6 frame(s) since the last report; 5 of them cost an all-intra frame and 1 named a frame older than one already coded intra and cost nothing. Last was frame 7897, dropped by the worker backlog
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 573 intra 4 coded 4, atlas 181 picture 0, avg worst disp 47.3 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.0 ms/frame (max 6.0), 1048 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11094.6/7834.6/14282.8 us display 11.111/11.107/11.120 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 573 intra 4 coded 4, atlas 180 picture 0, avg worst disp 35.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 4.0 ms/frame (max 5.4), 984 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11114.8/8261.2/14472.5 us display 11.111/11.106/11.112 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 574 intra 3 coded 3, atlas 181 picture 0, avg worst disp 40.3 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.0 ms/frame (max 6.1), 948 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11109.2/8029.8/14112.9 us display 11.111/11.105/11.113 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 574 intra 3 coded 3, atlas 180 picture 0, avg worst disp 59.9 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 3.9 ms/frame (max 5.9), 943 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11114.6/8038.8/13971.8 us display 11.111/11.107/11.113 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_STOPPING
+ INFO [operator()] Session state changed: XR_SESSION_STATE_IDLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_READY
+ INFO [operator()] user presence changed to false
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 564 intra 13 coded 13, atlas 181 picture 0, avg worst disp 29.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.0 ms/frame (max 6.6), 1243 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11111.6/6176.0/14063.3 us display 11.113/11.096/11.550 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 573 intra 4 coded 4, atlas 180 picture 0, avg worst disp 24.4 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 4.0 ms/frame (max 6.0), 1006 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11111.6/6481.2/14115.5 us display 11.111/11.107/11.114 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 573 intra 4 coded 4, atlas 180 picture 0, avg worst disp 33.7 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 3.9 ms/frame (max 6.0), 963 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 1 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11160.0/7853.7/14378.4 us display 11.111/11.106/11.113 ms; rejected n1 host 4389.7/4389.7/4389.7 us display 11.111/11.111/11.111 ms
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 573 intra 4 coded 4, atlas 181 picture 0, avg worst disp 33.2 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 3.9 ms/frame (max 6.4), 970 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11100.3/8227.6/14253.1 us display 11.111/11.105/11.115 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 573 intra 4 coded 4, atlas 180 picture 0, avg worst disp 56.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 3.9 ms/frame (max 5.9), 1009 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11110.8/7537.8/14559.6 us display 11.111/11.106/11.114 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_STOPPING
+ INFO [operator()] Session state changed: XR_SESSION_STATE_IDLE
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 570 intra 7 coded 7, atlas 180 picture 0, avg worst disp 42.6 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.1 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 4.1 ms/frame (max 6.9), 981 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11123.2/7763.8/13930.3 us display 11.111/11.102/11.123 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 574 intra 3 coded 3, atlas 181 picture 0, avg worst disp 12.8 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 3.9 ms/frame (max 6.4), 569 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11111.8/9959.9/12173.1 us display 11.111/11.105/11.120 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [operator()] Session state changed: XR_SESSION_STATE_READY
+ INFO [operator()] user presence changed to false
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 491 intra 86 coded 86, atlas 181 picture 0, avg worst disp 24.8 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.0 ms/frame (max 6.2), 8816 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11112.1/8000.9/14065.8 us display 11.121/11.104/12.595 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 11 frame(s) since the last report; 8 of them cost an all-intra frame and 3 named a frame older than one already coded intra and cost nothing. Last was frame 9987, dropped by the worker backlog
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 573 intra 4 coded 4, atlas 181 picture 0, avg worst disp 35.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 3.8 ms/frame (max 6.2), 960 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11092.6/7536.8/14607.3 us display 11.111/11.105/11.114 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 573 intra 4 coded 4, atlas 180 picture 0, avg worst disp 44.7 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 3.9 ms/frame (max 6.0), 969 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11113.5/7887.1/14196.6 us display 11.111/11.105/11.114 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 573 intra 4 coded 4, atlas 180 picture 0, avg worst disp 33.2 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 3.9 ms/frame (max 6.1), 991 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11112.2/7882.4/14371.2 us display 11.111/11.096/11.112 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 573 intra 4 coded 4, atlas 180 picture 0, avg worst disp 38.4 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 3.9 ms/frame (max 6.5), 1049 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11119.1/7863.9/14705.7 us display 11.111/11.094/11.111 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_STOPPING
+ INFO [operator()] Session state changed: XR_SESSION_STATE_IDLE
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 567 intra 10 coded 10, atlas 180 picture 0, avg worst disp 24.1 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 3.9 ms/frame (max 6.1), 851 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11115.1/8702.9/13800.0 us display 11.111/11.096/11.115 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [operator()] Session state changed: XR_SESSION_STATE_READY
+ INFO [operator()] user presence changed to false
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 555 intra 22 coded 22, atlas 181 picture 0, avg worst disp 19.3 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.0 ms/frame (max 6.6), 2590 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11099.0/8068.9/14073.1 us display 11.107/10.441/11.116 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 2 frame(s) since the last report; 1 of them cost an all-intra frame and 1 named a frame older than one already coded intra and cost nothing. Last was frame 11113, dropped by the worker backlog
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 573 intra 4 coded 4, atlas 181 picture 0, avg worst disp 33.8 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 3.9 ms/frame (max 6.3), 1024 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11121.7/8114.1/14088.9 us display 11.111/11.107/11.111 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 573 intra 4 coded 4, atlas 181 picture 0, avg worst disp 59.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.0 ms/frame (max 6.5), 1050 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11098.1/8143.5/14371.3 us display 11.111/11.106/11.111 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 573 intra 4 coded 4, atlas 180 picture 0, avg worst disp 61.7 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.1 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 4.1 ms/frame (max 6.1), 990 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11111.8/7126.0/14563.8 us display 11.111/11.106/11.111 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 574 intra 3 coded 3, atlas 180 picture 0, avg worst disp 41.4 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.1 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 4.1 ms/frame (max 6.1), 944 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11120.8/7275.4/14630.6 us display 11.111/11.107/11.112 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_STOPPING
+ INFO [operator()] Session state changed: XR_SESSION_STATE_IDLE
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 571 intra 6 coded 6, atlas 180 picture 0, avg worst disp 27.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 4.0 ms/frame (max 6.2), 856 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11117.0/7824.8/14654.9 us display 11.111/11.105/11.116 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [operator()] Session state changed: XR_SESSION_STATE_READY
+ INFO [operator()] user presence changed to false
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 482 intra 95 coded 95, atlas 181 picture 0, avg worst disp 16.3 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.0 ms/frame (max 6.4), 9858 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11098.8/7400.8/15419.9 us display 11.111/11.107/11.115 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 11 frame(s) since the last report; 10 of them cost an all-intra frame and 1 named a frame older than one already coded intra and cost nothing. Last was frame 12210, dropped by the worker backlog
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 573 intra 4 coded 4, atlas 180 picture 0, avg worst disp 21.8 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 3.9 ms/frame (max 6.1), 1051 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11107.2/7584.0/14248.7 us display 11.111/11.108/11.113 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 574 intra 3 coded 3, atlas 180 picture 0, avg worst disp 42.2 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 3.9 ms/frame (max 6.6), 951 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11119.0/7457.8/14202.3 us display 11.111/11.107/11.117 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 573 intra 4 coded 4, atlas 181 picture 0, avg worst disp 39.8 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 3.9 ms/frame (max 6.1), 1018 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11114.3/7730.6/14462.0 us display 11.111/11.106/11.113 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 573 intra 4 coded 4, atlas 181 picture 0, avg worst disp 54.1 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.0 ms/frame (max 5.2), 989 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11099.5/7872.2/14339.5 us display 11.111/11.105/11.112 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_STOPPING
+ INFO [operator()] Session state changed: XR_SESSION_STATE_IDLE
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 570 intra 7 coded 7, atlas 180 picture 0, avg worst disp 33.9 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 3.9 ms/frame (max 5.9), 926 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11127.0/7646.7/14282.5 us display 11.111/11.103/11.119 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [operator()] Session state changed: XR_SESSION_STATE_READY
+ INFO [operator()] user presence changed to false
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 570 intra 7 coded 7, atlas 181 picture 0, avg worst disp 27.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 3.9 ms/frame (max 5.3), 1130 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11108.7/7736.6/14635.2 us display 11.111/11.106/11.117 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 573 intra 4 coded 4, atlas 181 picture 0, avg worst disp 32.2 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 3.9 ms/frame (max 5.9), 1020 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11101.6/7721.0/14665.0 us display 11.111/11.101/11.114 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 573 intra 4 coded 4, atlas 180 picture 0, avg worst disp 38.8 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 4.0 ms/frame (max 6.0), 970 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11117.3/7820.8/14384.9 us display 11.111/11.105/11.113 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 574 intra 3 coded 3, atlas 181 picture 0, avg worst disp 42.4 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.1 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.1 ms/frame (max 6.6), 933 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11122.8/7364.1/15345.8 us display 11.111/11.107/11.112 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 573 intra 4 coded 4, atlas 181 picture 0, avg worst disp 45.1 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 3.9 ms/frame (max 6.2), 974 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11105.0/7022.6/14331.5 us display 11.111/11.100/11.112 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_STOPPING
+ INFO [operator()] Session state changed: XR_SESSION_STATE_IDLE
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 570 intra 7 coded 7, atlas 180 picture 0, avg worst disp 25.6 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 3.9 ms/frame (max 5.4), 885 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11111.6/6903.4/16227.5 us display 11.111/11.101/11.117 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [operator()] Session state changed: XR_SESSION_STATE_READY
+ INFO [operator()] user presence changed to false
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 571 intra 6 coded 6, atlas 181 picture 0, avg worst disp 19.2 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.0 ms/frame (max 5.5), 1071 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11094.4/7119.2/14564.1 us display 11.111/11.105/11.116 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 573 intra 4 coded 4, atlas 180 picture 0, avg worst disp 33.1 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.1 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 4.1 ms/frame (max 6.1), 1009 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11113.5/7777.7/14265.4 us display 11.111/11.107/11.115 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 573 intra 4 coded 4, atlas 181 picture 0, avg worst disp 31.2 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.1 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.1 ms/frame (max 6.1), 961 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11115.7/7018.5/15368.4 us display 11.111/11.107/11.114 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 573 intra 4 coded 4, atlas 181 picture 0, avg worst disp 54.1 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.0 ms/frame (max 6.1), 1014 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11120.4/7682.5/14482.6 us display 11.111/11.106/11.114 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 573 intra 4 coded 4, atlas 181 picture 0, avg worst disp 36.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.0 ms/frame (max 6.0), 987 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11106.6/7185.9/14683.4 us display 11.111/11.098/11.114 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_STOPPING
+ INFO [operator()] Session state changed: XR_SESSION_STATE_IDLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_READY
+ INFO [operator()] user presence changed to false
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 434 intra 143 coded 143, atlas 181 picture 0, avg worst disp 22.1 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.0 ms/frame (max 6.0), 7001 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11102.4/7955.5/14948.3 us display 11.111/11.104/11.115 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 8 frame(s) since the last report; 7 of them cost an all-intra frame and 1 named a frame older than one already coded intra and cost nothing. Last was frame 15312, dropped by the worker backlog
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 574 intra 3 coded 3, atlas 180 picture 0, avg worst disp 34.8 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 4.0 ms/frame (max 6.8), 932 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11120.3/8183.5/14450.1 us display 11.111/11.101/11.113 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 574 intra 3 coded 3, atlas 181 picture 0, avg worst disp 46.4 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.0 ms/frame (max 6.1), 931 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11105.3/8028.0/14266.0 us display 11.111/11.104/11.113 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 573 intra 4 coded 4, atlas 180 picture 0, avg worst disp 48.5 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.1 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 4.1 ms/frame (max 5.6), 989 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11121.0/7946.2/14166.0 us display 11.111/11.107/11.114 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 573 intra 4 coded 4, atlas 181 picture 0, avg worst disp 47.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.0 ms/frame (max 5.2), 981 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11102.7/8006.1/14012.0 us display 11.111/11.106/11.114 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_STOPPING
+ INFO [operator()] Session state changed: XR_SESSION_STATE_IDLE
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 561 intra 16 coded 16, atlas 180 picture 0, avg worst disp 34.9 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 3.9 ms/frame (max 6.4), 1124 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11120.4/8129.9/14205.0 us display 11.111/11.103/11.114 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [operator()] Session state changed: XR_SESSION_STATE_READY
+ INFO [operator()] user presence changed to false
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 571 intra 6 coded 6, atlas 181 picture 0, avg worst disp 25.1 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 3.9 ms/frame (max 6.4), 888 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11104.2/7794.1/12919.0 us display 11.111/11.105/11.113 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 573 intra 4 coded 4, atlas 181 picture 0, avg worst disp 26.9 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 3.9 ms/frame (max 6.2), 1013 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11117.1/7858.1/14271.8 us display 11.111/11.104/11.112 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 573 intra 4 coded 4, atlas 181 picture 0, avg worst disp 31.9 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 3.9 ms/frame (max 6.4), 1095 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11097.8/7965.0/14370.8 us display 11.111/11.104/11.111 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 573 intra 4 coded 4, atlas 181 picture 0, avg worst disp 24.8 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 3.9 ms/frame (max 6.0), 988 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11117.9/7356.0/14644.7 us display 11.111/11.107/11.111 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 573 intra 4 coded 4, atlas 180 picture 0, avg worst disp 36.8 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 3.9 ms/frame (max 6.3), 1017 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n180 host 11114.5/7938.2/14467.6 us display 11.111/11.104/11.114 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 574 intra 3 coded 3, atlas 181 picture 0, avg worst disp 60.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.0 ms/frame (max 6.5), 933 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11109.6/7745.2/14541.8 us display 11.111/11.107/11.113 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_STOPPING
+ INFO [operator()] Session state changed: XR_SESSION_STATE_IDLE
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 558 intra 19 coded 19, atlas 181 picture 0, avg worst disp 14.8 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 3.9 ms/frame (max 6.6), 827 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 pace diagnostics (mean/min/max; interval 11.111 ms, tolerance 5.556 ms): admitted n181 host 11120.1/9577.8/12901.8 us display 11.111/11.106/11.119 ms; rejected n0
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [operator()] Session state changed: XR_SESSION_STATE_READY
+ INFO [operator()] user presence changed to false
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+ WARN [on_control_send_error] Primary control socket failed: Error on control socket
+ WARN [run_net] Exception in network thread: Error on control socket, Session paused.
+ INFO [ipc_server_mainloop_poll] Got shutdown signal, shutting down.
+Terminated
+No longer listening for secondary paths
+ INFO [client_disconnected] Client 1 disconnected
+ INFO [update_session_state_locked] Stopped native session, 0 active app session(s).
+ INFO [reconnect] Waiting for new connection
+ INFO [multi_main_loop] Already stopped, nothing to clean up.
+ INFO [ipc_server_main_common] Server exiting: '0'
+Server exited, exit status 0

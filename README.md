@@ -151,6 +151,9 @@ was rejected: R16 reduced decoder GPU work but increased snapshot copies to
 and 2.7 ms respectively, with the same 89/s active fresh-source median.
 The live client remains R8.
 
+A longer [180 s ABBA comparison](bench/results/240fps-2026-09-07/live-atlas/abba-180s/README.md) repeated the combined handoff stage savings in alternating order; cadence and report gaps still prevent an FPS or causal claim. This motivates a forthcoming PICO4-only speed preset, with the default unchanged.
+
+
 An opt-in [direct R8 handoff](bench/results/240fps-2026-09-07/live-atlas/direct-r8-handoff/README.md)
 now writes into retired display-pool images, removing the image snapshot copy.
 In a control/probe/reverse sequence, copy GPU time was **0.28 / 0.01 / 0.28 ms**.

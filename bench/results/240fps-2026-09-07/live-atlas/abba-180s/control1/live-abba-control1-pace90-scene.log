@@ -1,0 +1,299 @@
+LOG in xrCreateInstance: Instance created
+	createInfo->applicationInfo.applicationName: HelloXR
+	createInfo->applicationInfo.applicationVersion: 0
+	createInfo->applicationInfo.engineName: 
+	createInfo->applicationInfo.engineVersion: 0
+	createInfo->applicationInfo.apiVersion: 1.0.63
+	appinfo.detected.engine.name: (null)
+	appinfo.detected.engine.version: 0.0.0
+	quirks.disable_vulkan_format_depth: false
+	quirks.disable_vulkan_format_depth_stencil: false
+	quirks.disable_quad_views: false
+	quirks.no_validation_error_in_create_ref_space: true
+	quirks.skip_end_session: false
+	quirks.parallel_views: false
+	quirks.no_texture_source_alpha: false
+	quirks.ignore_invalid_swapchain_usage_bits: false
+
+LOG in xrGetSystem: Selected devices
+	Head: 'WiVRn HMD'
+	Eyes: '<none>'
+	Left: 'WiVRn left hand interaction'
+	Right: 'WiVRn right hand interaction'
+	Gamepad: 'WiVRn Gamepad'
+	Hand-Tracking Left (unobstructed): 'WiVRn left controller'
+	Hand-Tracking Right (unobstructed): 'WiVRn right controller'
+	Hand-Tracking Left (conforming): '<none>'
+	Hand-Tracking Right (conforming): '<none>'
+[23:00:49.822][Info   ] Press any key to shutdown...
+[23:00:49.823][Info   ] Available Layers: (3)
+[23:00:49.823][Info   ] Depth submission supported (XR_KHR_composition_layer_depth)
+[23:00:49.860][Info   ] Instance RuntimeName=WiVRn 'nx-atlas-live-920ac878-dirty' RuntimeVersion=0.0.0
+[23:00:49.860][Info   ] Available View Configuration Types: (1)
+[23:00:49.860][Info   ]   Available Environment Blend Mode count : (2)
+[23:00:49.860][Info   ]     Environment Blend Mode (XR_ENVIRONMENT_BLEND_MODE_OPAQUE) : (Selected)
+[23:00:49.860][Info   ]     Environment Blend Mode (XR_ENVIRONMENT_BLEND_MODE_ALPHA_BLEND) : 
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990) vkCreateInstance: applicationName: "hello_xr", applicationVersion: 1, engineName: "hello_xr", engineVersion: 1, apiVersion: 1.0.0
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990) vkCreateInstance: Requested 1 instance layer(s):
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990)    VK_LAYER_KHRONOS_validation
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990) vkCreateInstance: Requested 5 instance extension(s):
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990)    VK_KHR_external_fence_capabilities
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990)    VK_KHR_external_memory_capabilities
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990)    VK_KHR_external_semaphore_capabilities
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990)    VK_KHR_get_physical_device_properties2
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990)    VK_EXT_debug_utils
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990) No valid vk_loader_settings.json file found, no loader settings will be active
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990) Searching for implicit layer manifest files
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990)    In following locations:
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990)       /home/nerdrx/.config/vulkan/implicit_layer.d
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990)       /home/nerdrx/.config/kdedefaults/vulkan/implicit_layer.d
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990)       /etc/xdg/vulkan/implicit_layer.d
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990)       /etc/vulkan/implicit_layer.d
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990)       /home/nerdrx/.local/share/vulkan/implicit_layer.d
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990)       /usr/local/share/vulkan/implicit_layer.d
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990)       /usr/share/vulkan/implicit_layer.d
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990)    Found the following files:
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990)       /home/nerdrx/.local/share/vulkan/implicit_layer.d/steamoverlay_i386.json
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990)       /home/nerdrx/.local/share/vulkan/implicit_layer.d/steamoverlay_x86_64.json
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990)       /home/nerdrx/.local/share/vulkan/implicit_layer.d/steamfossilize_i386.json
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990)       /home/nerdrx/.local/share/vulkan/implicit_layer.d/steamfossilize_x86_64.json
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990)       /usr/share/vulkan/implicit_layer.d/MangoHud.x86.json
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990)       /usr/share/vulkan/implicit_layer.d/MangoHud.x86_64.json
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990)       /usr/share/vulkan/implicit_layer.d/VkLayer_FROG_gamescope_wsi.x86_64.json
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990)       /usr/share/vulkan/implicit_layer.d/VkLayer_MESA_anti_lag.json
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990)       /usr/share/vulkan/implicit_layer.d/VkLayer_MESA_device_select.json
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990) Found manifest file /home/nerdrx/.local/share/vulkan/implicit_layer.d/steamoverlay_i386.json (file version 1.0.0)
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990) Found manifest file /home/nerdrx/.local/share/vulkan/implicit_layer.d/steamoverlay_x86_64.json (file version 1.0.0)
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990) Found manifest file /home/nerdrx/.local/share/vulkan/implicit_layer.d/steamfossilize_i386.json (file version 1.0.0)
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990) Found manifest file /home/nerdrx/.local/share/vulkan/implicit_layer.d/steamfossilize_x86_64.json (file version 1.0.0)
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990) Found manifest file /usr/share/vulkan/implicit_layer.d/MangoHud.x86.json (file version 1.0.0)
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990) Found manifest file /usr/share/vulkan/implicit_layer.d/MangoHud.x86_64.json (file version 1.0.0)
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990) Found manifest file /usr/share/vulkan/implicit_layer.d/VkLayer_FROG_gamescope_wsi.x86_64.json (file version 1.0.0)
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990) Found manifest file /usr/share/vulkan/implicit_layer.d/VkLayer_MESA_anti_lag.json (file version 1.2.1)
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990) Found manifest file /usr/share/vulkan/implicit_layer.d/VkLayer_MESA_device_select.json (file version 1.0.0)
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990) Searching for explicit layer manifest files
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990)    In following locations:
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990)       /home/nerdrx/.config/vulkan/explicit_layer.d
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990)       /home/nerdrx/.config/kdedefaults/vulkan/explicit_layer.d
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990)       /etc/xdg/vulkan/explicit_layer.d
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990)       /etc/vulkan/explicit_layer.d
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990)       /home/nerdrx/.local/share/vulkan/explicit_layer.d
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990)       /usr/local/share/vulkan/explicit_layer.d
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990)       /usr/share/vulkan/explicit_layer.d
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990)    Found the following files:
+[23:00:49.868][Info   ] INFO: (INSTANCE 0x55b83cd49990)       /usr/share/vulkan/explicit_layer.d/VkLayer_khronos_validation.json
+[23:00:49.869][Info   ] INFO: (INSTANCE 0x55b83cd49990) Found manifest file /usr/share/vulkan/explicit_layer.d/VkLayer_khronos_validation.json (file version 1.2.0)
+[23:00:49.869][Info   ] INFO: (INSTANCE 0x55b83cd49990) Searching for driver manifest files
+[23:00:49.869][Info   ] INFO: (INSTANCE 0x55b83cd49990)    In following locations:
+[23:00:49.869][Info   ] INFO: (INSTANCE 0x55b83cd49990)       /home/nerdrx/.config/vulkan/icd.d
+[23:00:49.869][Info   ] INFO: (INSTANCE 0x55b83cd49990)       /home/nerdrx/.config/kdedefaults/vulkan/icd.d
+[23:00:49.869][Info   ] INFO: (INSTANCE 0x55b83cd49990)       /etc/xdg/vulkan/icd.d
+[23:00:49.869][Info   ] INFO: (INSTANCE 0x55b83cd49990)       /etc/vulkan/icd.d
+[23:00:49.869][Info   ] INFO: (INSTANCE 0x55b83cd49990)       /home/nerdrx/.local/share/vulkan/icd.d
+[23:00:49.869][Info   ] INFO: (INSTANCE 0x55b83cd49990)       /usr/local/share/vulkan/icd.d
+[23:00:49.869][Info   ] INFO: (INSTANCE 0x55b83cd49990)       /usr/share/vulkan/icd.d
+[23:00:49.869][Info   ] INFO: (INSTANCE 0x55b83cd49990)    Found the following files:
+[23:00:49.869][Info   ] INFO: (INSTANCE 0x55b83cd49990)       /usr/share/vulkan/icd.d/radeon_icd.json
+[23:00:49.869][Info   ] INFO: (INSTANCE 0x55b83cd49990) Found ICD manifest file /usr/share/vulkan/icd.d/radeon_icd.json, version 1.0.1
+[23:00:49.870][Info   ] INFO: (INSTANCE 0x55b83cd49990) Insert instance layer "VK_LAYER_KHRONOS_validation" (/usr/lib/libVkLayer_khronos_validation.so)
+[23:00:49.870][Info   ] INFO: (INSTANCE 0x55b83cd49990) Insert instance layer "VK_LAYER_MESA_device_select" (/usr/lib/libVkLayer_MESA_device_select.so)
+[23:00:49.870][Info   ] INFO: (INSTANCE 0x55b83cd49990) vkCreateInstance layer callstack setup to:
+[23:00:49.870][Info   ] INFO: (INSTANCE 0x55b83cd49990)    <Application>
+[23:00:49.870][Info   ] INFO: (INSTANCE 0x55b83cd49990)      ||
+[23:00:49.870][Info   ] INFO: (INSTANCE 0x55b83cd49990)    <Loader>
+[23:00:49.870][Info   ] INFO: (INSTANCE 0x55b83cd49990)      ||
+[23:00:49.870][Info   ] INFO: (INSTANCE 0x55b83cd49990)    VK_LAYER_MESA_device_select
+[23:00:49.870][Info   ] INFO: (INSTANCE 0x55b83cd49990)            Type: Implicit
+[23:00:49.870][Info   ] INFO: (INSTANCE 0x55b83cd49990)            Enabled By: Implicit Layer
+[23:00:49.870][Info   ] INFO: (INSTANCE 0x55b83cd49990)                Disable Env Var:  NODEVICE_SELECT
+[23:00:49.870][Info   ] INFO: (INSTANCE 0x55b83cd49990)            Manifest: /usr/share/vulkan/implicit_layer.d/VkLayer_MESA_device_select.json
+[23:00:49.870][Info   ] INFO: (INSTANCE 0x55b83cd49990)            Library:  /usr/lib/libVkLayer_MESA_device_select.so
+[23:00:49.870][Info   ] INFO: (INSTANCE 0x55b83cd49990)      ||
+[23:00:49.870][Info   ] INFO: (INSTANCE 0x55b83cd49990)    VK_LAYER_KHRONOS_validation
+[23:00:49.870][Info   ] INFO: (INSTANCE 0x55b83cd49990)            Type: Explicit
+[23:00:49.870][Info   ] INFO: (INSTANCE 0x55b83cd49990)            Enabled By: By the Application
+[23:00:49.870][Info   ] INFO: (INSTANCE 0x55b83cd49990)            Manifest: /usr/share/vulkan/explicit_layer.d/VkLayer_khronos_validation.json
+[23:00:49.870][Info   ] INFO: (INSTANCE 0x55b83cd49990)            Library:  /usr/lib/libVkLayer_khronos_validation.so
+[23:00:49.870][Info   ] INFO: (INSTANCE 0x55b83cd49990)      ||
+[23:00:49.870][Info   ] INFO: (INSTANCE 0x55b83cd49990)    <Drivers>
+[23:00:49.871][Info   ] INFO: (INSTANCE 0x55b83cd49990) vkCreateInstance(): Current Validaiton Enabled:
+  - Core Checks
+  - Stateless Parameter
+  - Object lifetime
+  - Thread Safety
+  - Handle Wrapping
+
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990) linux_read_sorted_physical_devices:
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)      Original order:
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)            [0] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)            [1] AMD Radeon RX 7900 XTX (RADV NAVI31)
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)      Sorted order:
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)            [0] AMD Radeon RX 7900 XTX (RADV NAVI31)  
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)            [1] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)  
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990) linux_read_sorted_physical_devices:
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)      Original order:
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)            [0] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)            [1] AMD Radeon RX 7900 XTX (RADV NAVI31)
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)      Sorted order:
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)            [0] AMD Radeon RX 7900 XTX (RADV NAVI31)  
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)            [1] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)  
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990) linux_read_sorted_physical_devices:
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)      Original order:
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)            [0] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)            [1] AMD Radeon RX 7900 XTX (RADV NAVI31)
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)      Sorted order:
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)            [0] AMD Radeon RX 7900 XTX (RADV NAVI31)  
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)            [1] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)  
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990) linux_read_sorted_physicaLOG in xrCreateVulkanInstanceKHR: Creation of VkInstance:
+	result: VK_SUCCESS
+	vulkanInstance: 0x55b83cd49990
+	extensions:
+		VK_KHR_external_fence_capabilities
+		VK_KHR_external_memory_capabilities
+		VK_KHR_external_semaphore_capabilities
+		VK_KHR_get_physical_device_properties2
+		VK_EXT_debug_utils
+l_devices:
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)      Original order:
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)            [0] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)            [1] AMD Radeon RX 7900 XTX (RADV NAVI31)
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)      Sorted order:
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)            [0] AMD Radeon RX 7900 XTX (RADV NAVI31)  
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)            [1] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)  
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990) linux_read_sorted_physical_devices:
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)      Original order:
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)            [0] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)            [1] AMD Radeon RX 7900 XTX (RADV NAVI31)
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)      Sorted order:
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)            [0] AMD Radeon RX 7900 XTX (RADV NAVI31)  
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)            [1] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)  
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990) linux_read_sorted_physical_devices:
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)      Original order:
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)            [0] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)            [1] AMD Radeon RX 7900 XTX (RADV NAVI31)
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)      Sorted order:
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)            [0] AMD Radeon RX 7900 XTX (RADV NAVI31)  
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)            [1] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)  
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990) linux_read_sorted_physical_devices:
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)      Original order:
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)            [0] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)            [1] AMD Radeon RX 7900 XTX (RADV NAVI31)
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)      Sorted order:
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)            [0] AMD Radeon RX 7900 XTX (RADV NAVI31)  
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)            [1] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)  
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990) linux_read_sorted_physical_devices:
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)      Original order:
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)            [0] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)            [1] AMD Radeon RX 7900 XTX (RADV NAVI31)
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)      Sorted order:
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)            [0] AMD Radeon RX 7900 XTX (RADV NAVI31)  
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)            [1] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)  
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990) Inserted device layer "VK_LAYER_KHRONOS_validation" (/usr/lib/libVkLayer_khronos_validation.so)
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990) Failed to find vkGetDeviceProcAddr in layer "/usr/lib/libVkLayer_MESA_device_select.so"
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990) vkCreateDevice layer callstack setup to:
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)    <Application>
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49LOG in xrGetVulkanGraphicsDeviceKHR: Creation of VkDevice:
+	result: VK_SUCCESS
+	vulkanDevice: 0x55b83ce0d330
+	vulkanInstance: 0x55b83cd49990
+	external_fence_fd: true
+	external_semaphore_fd: true
+	timelineSemaphore: true
+	extensions:
+		VK_KHR_dedicated_allocation
+		VK_KHR_external_fence
+		VK_KHR_external_memory
+		VK_KHR_external_semaphore
+		VK_KHR_get_memory_requirements2
+		VK_KHR_external_memory_fd
+		VK_KHR_external_semaphore_fd
+		VK_KHR_external_fence_fd
+		VK_KHR_image_format_list
+		VK_KHR_timeline_semaphore
+990)      ||
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)    <Loader>
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)      ||
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)    VK_LAYER_KHRONOS_validation
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)            Type: Explicit
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)            Enabled By: By the Application
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)            Manifest: /usr/share/vulkan/explicit_layer.d/VkLayer_khronos_validation.json
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)            Library:  /usr/lib/libVkLayer_khronos_validation.so
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)      ||
+[23:00:49.875][Info   ] INFO: (INSTANCE 0x55b83cd49990)    <Device>
+[23:00:49.876][Info   ] INFO: (INSTANCE 0x55b83cd49990)        Using "AMD Radeon RX 7900 XTX (RADV NAVI31)" with driver: "/usr/lib/libvulkan_radeon.so"
+[23:00:49.878][Info   ] Available reference spaces: 3
+[23:00:49.878][Info   ] System Properties: Name=PICO 4 HMD on WiVRn VendorId=0
+[23:00:49.878][Info   ] System Graphics Properties: MaxWidth=16384 MaxHeight=16384 MaxLayers=128
+[23:00:49.878][Info   ] System Tracking Properties: OrientationTracking=True PositionTracking=True
+[23:00:49.878][Info   ] Creating color and depth swapchain for view 0 with dimensions Width=2160 Height=2160 SampleCount=1
+[23:00:49.880][Info   ] Creating color and depth swapchain for view 1 with dimensions Width=2160 Height=2160 SampleCount=1
+[23:00:49.881][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_UNKNOWN->XR_SESSION_STATE_IDLE session=94249782702512 time=2821569013321
+[23:00:49.881][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_IDLE->XR_SESSION_STATE_READY session=94249782702512 time=2821569013321
+[23:00:49.890][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_READY->XR_SESSION_STATE_SYNCHRONIZED session=94249782702512 time=2821581608629
+[23:00:49.890][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_SYNCHRONIZED->XR_SESSION_STATE_VISIBLE session=94249782702512 time=2821581633699
+[23:00:49.890][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_VISIBLE->XR_SESSION_STATE_FOCUSED session=94249782702512 time=2821581633699
+[23:00:49.907][Info   ] Grab action is bound to 'Left Khronos Simple Controller Select' and 'Right Khronos Simple Controller Select'
+[23:00:49.907][Info   ] Quit action is bound to nothing
+[23:00:49.907][Info   ] Pose action is bound to 'Left Khronos Simple Controller Grip' and 'Right Khronos Simple Controller Grip'
+[23:00:49.907][Info   ] Vibrate action is bound to nothing
+[23:00:59.786][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_FOCUSED->XR_SESSION_STATE_VISIBLE session=94249782702512 time=2831477513995
+[23:00:59.786][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_VISIBLE->XR_SESSION_STATE_SYNCHRONIZED session=94249782702512 time=2831477513995
+[23:01:02.374][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_SYNCHRONIZED->XR_SESSION_STATE_VISIBLE session=94249782702512 time=2834065719691
+[23:01:02.374][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_VISIBLE->XR_SESSION_STATE_FOCUSED session=94249782702512 time=2834065719691
+[23:01:12.782][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_FOCUSED->XR_SESSION_STATE_VISIBLE session=94249782702512 time=2844473488573
+[23:01:12.782][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_VISIBLE->XR_SESSION_STATE_SYNCHRONIZED session=94249782702512 time=2844473488573
+[23:01:13.325][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_SYNCHRONIZED->XR_SESSION_STATE_VISIBLE session=94249782702512 time=2845016653497
+[23:01:13.325][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_VISIBLE->XR_SESSION_STATE_FOCUSED session=94249782702512 time=2845016653497
+[23:01:23.783][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_FOCUSED->XR_SESSION_STATE_VISIBLE session=94249782702512 time=2855474522870
+[23:01:23.783][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_VISIBLE->XR_SESSION_STATE_SYNCHRONIZED session=94249782702512 time=2855474522870
+[23:01:25.482][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_SYNCHRONIZED->XR_SESSION_STATE_VISIBLE session=94249782702512 time=2857172925996
+[23:01:25.482][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_VISIBLE->XR_SESSION_STATE_FOCUSED session=94249782702512 time=2857172925996
+[23:01:35.293][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_FOCUSED->XR_SESSION_STATE_VISIBLE session=94249782702512 time=2866984792980
+[23:01:35.293][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_VISIBLE->XR_SESSION_STATE_SYNCHRONIZED session=94249782702512 time=2866984792980
+[23:01:36.126][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_SYNCHRONIZED->XR_SESSION_STATE_VISIBLE session=94249782702512 time=2867817201502
+[23:01:36.126][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_VISIBLE->XR_SESSION_STATE_FOCUSED session=94249782702512 time=2867817201502
+[23:01:46.294][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_FOCUSED->XR_SESSION_STATE_VISIBLE session=94249782702512 time=2877985472047
+[23:01:46.294][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_VISIBLE->XR_SESSION_STATE_SYNCHRONIZED session=94249782702512 time=2877985472047
+[23:01:48.793][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_SYNCHRONIZED->XR_SESSION_STATE_VISIBLE session=94249782702512 time=2880483807304
+[23:01:48.793][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_VISIBLE->XR_SESSION_STATE_FOCUSED session=94249782702512 time=2880483807304
+[23:01:58.805][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_FOCUSED->XR_SESSION_STATE_VISIBLE session=94249782702512 time=2890496433191
+[23:01:58.805][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_VISIBLE->XR_SESSION_STATE_SYNCHRONIZED session=94249782702512 time=2890496433191
+[23:02:01.337][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_SYNCHRONIZED->XR_SESSION_STATE_VISIBLE session=94249782702512 time=2893028460269
+[23:02:01.337][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_VISIBLE->XR_SESSION_STATE_FOCUSED session=94249782702512 time=2893028460269
+[23:02:11.316][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_FOCUSED->XR_SESSION_STATE_VISIBLE session=94249782702512 time=2903007333611
+[23:02:11.316][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_VISIBLE->XR_SESSION_STATE_SYNCHRONIZED session=94249782702512 time=2903007333611
+[23:02:13.304][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_SYNCHRONIZED->XR_SESSION_STATE_VISIBLE session=94249782702512 time=2904995245943
+[23:02:13.304][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_VISIBLE->XR_SESSION_STATE_FOCUSED session=94249782702512 time=2904995245943
+[23:02:23.316][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_FOCUSED->XR_SESSION_STATE_VISIBLE session=94249782702512 time=2915007081516
+[23:02:23.316][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_VISIBLE->XR_SESSION_STATE_SYNCHRONIZED session=94249782702512 time=2915007081516
+[23:02:25.271][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_SYNCHRONIZED->XR_SESSION_STATE_VISIBLE session=94249782702512 time=2916961835834
+[23:02:25.271][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_VISIBLE->XR_SESSION_STATE_FOCUSED session=94249782702512 time=2916961835834
+[23:02:35.327][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_FOCUSED->XR_SESSION_STATE_VISIBLE session=94249782702512 time=2927018064662
+[23:02:35.327][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_VISIBLE->XR_SESSION_STATE_SYNCHRONIZED session=94249782702512 time=2927018064662
+[23:02:37.337][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_SYNCHRONIZED->XR_SESSION_STATE_VISIBLE session=94249782702512 time=2929028412352
+[23:02:37.337][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_VISIBLE->XR_SESSION_STATE_FOCUSED session=94249782702512 time=2929028412352
+[23:02:47.326][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_FOCUSED->XR_SESSION_STATE_VISIBLE session=94249782702512 time=2939017786971
+[23:02:47.326][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_VISIBLE->XR_SESSION_STATE_SYNCHRONIZED session=94249782702512 time=2939017786971
+[23:02:47.870][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_SYNCHRONIZED->XR_SESSION_STATE_VISIBLE session=94249782702512 time=2939561487826
+[23:02:47.870][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_VISIBLE->XR_SESSION_STATE_FOCUSED session=94249782702512 time=2939561487826
+[23:02:58.340][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_FOCUSED->XR_SESSION_STATE_VISIBLE session=94249782702512 time=2950030891286
+[23:02:58.340][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_VISIBLE->XR_SESSION_STATE_SYNCHRONIZED session=94249782702512 time=2950030891286
+[23:03:00.592][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_SYNCHRONIZED->XR_SESSION_STATE_VISIBLE session=94249782702512 time=2952283484127
+[23:03:00.592][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_VISIBLE->XR_SESSION_STATE_FOCUSED session=94249782702512 time=2952283484127
+[23:03:10.838][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_FOCUSED->XR_SESSION_STATE_VISIBLE session=94249782702512 time=2962529279249
+[23:03:10.838][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_VISIBLE->XR_SESSION_STATE_SYNCHRONIZED session=94249782702512 time=2962529279249
+[23:03:13.392][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_SYNCHRONIZED->XR_SESSION_STATE_VISIBLE session=94249782702512 time=2965083299573
+[23:03:13.392][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_VISIBLE->XR_SESSION_STATE_FOCUSED session=94249782702512 time=2965083299573
+[23:03:23.348][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_FOCUSED->XR_SESSION_STATE_VISIBLE session=94249782702512 time=2975039702798
+[23:03:23.348][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_VISIBLE->XR_SESSION_STATE_SYNCHRONIZED session=94249782702512 time=2975039702798
+[23:03:25.380][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_SYNCHRONIZED->XR_SESSION_STATE_VISIBLE session=94249782702512 time=2977071738309
+[23:03:25.380][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_VISIBLE->XR_SESSION_STATE_FOCUSED session=94249782702512 time=2977071738309
+[23:03:35.349][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_FOCUSED->XR_SESSION_STATE_VISIBLE session=94249782702512 time=2987040302459
+[23:03:35.349][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_VISIBLE->XR_SESSION_STATE_SYNCHRONIZED session=94249782702512 time=2987040302459
+[23:03:37.325][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_SYNCHRONIZED->XR_SESSION_STATE_VISIBLE session=94249782702512 time=2989016148687
+[23:03:37.325][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_VISIBLE->XR_SESSION_STATE_FOCUSED session=94249782702512 time=2989016148687
+[23:03:47.370][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_FOCUSED->XR_SESSION_STATE_VISIBLE session=94249782702512 time=2999061367570
+[23:03:47.370][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_VISIBLE->XR_SESSION_STATE_SYNCHRONIZED session=94249782702512 time=2999061367570
+[23:03:49.380][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_SYNCHRONIZED->XR_SESSION_STATE_VISIBLE session=94249782702512 time=3001071146378
+[23:03:49.380][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_VISIBLE->XR_SESSION_STATE_FOCUSED session=94249782702512 time=3001071146378
+[23:03:59.372][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_FOCUSED->XR_SESSION_STATE_VISIBLE session=94249782702512 time=30110635278
