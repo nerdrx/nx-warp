@@ -51,6 +51,16 @@ display pass. Atlas remains opt-in. Actual headset screenshots and the limited
 resting-headset scene are included with the results. The captures contain
 multi-second render-report gaps; the result separates active-window medians from
 boundary-excluded wall-clock counts.
+The [patterned workload](bench/results/240fps-2026-09-07/live-atlas/patterned/README.md)
+exposed zero skipped tiles in the confirmation-enabled atlas path. A
+[confirmation-bypass diagnostic](bench/results/240fps-2026-09-07/live-atlas/no-confirm/README.md)
+restored tile reuse and reduced median decode GPU time from 17.9 to 6.05 ms,
+but fresh-source delivery fell and frames were withheld. This isolates work
+worth removing; it does not justify disabling reference confirmation.
+The [matched fixed-QP40 pace-45 comparison](bench/results/240fps-2026-09-07/live-atlas/fixed-qp40/README.md)
+held active new-source cadence at 45/s for both off and atlas; its wall-clock
+counts were 32.35 versus 32.43/s with uncontrolled gaps, so it verifies no
+causal gain. The ACK merge correction is in `8868b201`.
 The [pipeline-demand result](bench/results/240fps-2026-09-07/pipeline-demand/README.md)
 measures a 67–80 ms first all-skipped-frame setup cost falling to 2.9–5.3 ms
 when unused pipelines are created on demand. Clear omission and demand
