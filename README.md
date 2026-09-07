@@ -145,7 +145,11 @@ fixture; the custom live renderer remains R8-only. On 2176×1088 stereo, warm
 frames 1–31 measured old-compute/direct-copy GPU medians of 1.095/0.755 ms and wall
 medians of 1.356/1.017 ms, with one dispatch removed. The first frame has no
 usable GPU timing, and the motion fixture failed with an invalid reference, so
-this is not a general performance claim. Some directional-INTRA fixtures still encounter a separate Pico decoder failure. Next work is to validate longer ATLAS/PICTURE transitions, then repeat matched captures without session gaps and test moving-head quality.
+this is not a general performance claim. A subsequent [live R16 renderer experiment](bench/results/240fps-2026-09-07/live-atlas/r16-handoff/README.md)
+was rejected: R16 reduced decoder GPU work but increased snapshot copies to
+0.59 ms and renderer GPU time to 3.9 ms. The R8 reverse run measured 0.28 ms
+and 2.7 ms respectively, with the same 89/s active fresh-source median.
+The live client remains R8.  Some directional-INTRA fixtures still encounter a separate Pico decoder failure. Next work is to validate longer ATLAS/PICTURE transitions, then repeat matched captures without session gaps and test moving-head quality.
 
 <figure>
   <img src="docs/figures/240fps/atlas-reference-frame15.png" alt="Reference-decoded atlas frame 15, not a headset screenshot" width="320">
