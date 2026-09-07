@@ -22,6 +22,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <map>
+#include <thread>
 #include <string>
 #include <vector>
 
@@ -173,6 +174,15 @@ struct nxvc_vk_decoder {
     // where its frame time went.  It is now taken on the first wait or stats
     // read after the frame completes.
     uint32_t ts_count = 0;
+    // Which of the four Pass B segment pairs were WRITTEN this frame.  A pair
+    // is written only when its dispatch ran, so the readback must be told
+    // which exist rather than assuming a contiguous range.
+    uint32_t ts_seg_mask = 0;
+    uint32_t ts_limit = 14;
+    // Frames whose timestamps could not be read within the poll budget.  A
+    // counter rather than a log line: on a driver that never publishes them
+    // this would otherwise print every frame.
+    uint64_t ts_dropped = 0;
     bool ts_pending = false;
     bool astats_pending = false;
 
@@ -359,6 +369,27 @@ struct nxvc_vk_decoder {
 namespace {
 
 using D = nxvc_vk_decoder;
+
+// [timing] The timestamp query pool's depth, in ONE place.
+//
+// It is a constant and not a literal because the three sites that must agree
+// about it -- the pool's `queryCount`, the per-frame `vkCmdResetQueryPool`,
+// and the `ts_count` that `vkGetQueryPoolResults` reads -- drifted apart the
+// moment a fourth Pass B segment was added: the pool grew to 14 and the reset
+// stayed at 12.  Queries 12 and 13 were then WRITTEN every inter frame and
+// never RESET, and a `vkGetQueryPoolResults` with `WAIT_BIT` over 14 queries
+// waits forever for two results that can never become available.
+//
+// No GPU fault, no validation error on a permissive driver, and no symptom at
+// all on a frame that uses only the first four queries -- so intra decoded and
+// every inter stream wedged, on the one part that enforces it.
+//
+//   0-3    frame / Pass A / Pass B / end
+//   4-5    Pass W
+//   6-13   the FOUR Pass B module segments of eye pass 0 (copy, skip, coded,
+//          intra_dir), two timestamps each
+constexpr uint32_t kQueryCount = 14;
+
 
 // The VkResult spelled the way the spec spells it.  A caller reading a log
 // should not have to look up -1000069000, which is the number that cost this
@@ -827,6 +858,22 @@ nxvc_vkd_status probe_device(D *d) {
     d->have_timestamps = d->props.limits.timestampComputeAndGraphics != 0 &&
                          d->props.limits.timestampPeriod > 0.f &&
                          d->ts_valid_bits > 0;
+    // [timing] Turn the query pool off entirely.  A diagnostic switch, and a
+    // pointed one: the segment timers arm 14 queries and write pairs around
+    // dispatches that a given frame may not issue, so "does it still wedge
+    // with no timestamps at all" separates a TIMING-instrumentation hang from
+    // a decode hang in one run and without a bisect.
+    if (std::getenv("NXVC_VKD_NO_TIMESTAMPS")) d->have_timestamps = false;
+    // [timing] Cap how many queries a frame arms, so which GROUP of timers
+    // wedges a device can be found without a rebuild per hypothesis:
+    //   4  frame/PassA/PassB/end only -- what an intra frame already arms
+    //   6  ... plus Pass W's pair
+    //  14  ... plus the four Pass B segment pairs (the default)
+    d->ts_limit = kQueryCount;
+    if (const char *e = std::getenv("NXVC_VKD_TS_LIMIT")) {
+        const int v = std::atoi(e);
+        if (v >= 4) d->ts_limit = (uint32_t)v;
+    }
 
     VkPhysicalDeviceSubgroupProperties sg{
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES};
@@ -2317,7 +2364,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_create(
         // both in it.  Written only for pass 0; a stereo frame's second eye is
         // the same three modules over the other half of the tiles.
         // [passb] 14: four Pass B segments (queries 6..13) rather than three.
-        qp.queryCount = 14;
+        qp.queryCount = kQueryCount;
         if (vkCreateQueryPool(d->dev, &qp, nullptr, &d->queries) != VK_SUCCESS)
             d->have_timestamps = false;
     }
@@ -2559,14 +2606,53 @@ static void collect_timestamps(D *d) {
     // [passb] 14, not 12: four Pass B segments occupy queries 6..13, and this
     // buffer is what vkGetQueryPoolResults is handed `sizeof ts` for.  At 12 it
     // was a 96-byte array asked to receive 112 bytes.
-    uint64_t ts[14] = {};
+    uint64_t ts[kQueryCount] = {};
+    static_assert(sizeof(ts) / sizeof(ts[0]) == kQueryCount,
+                  "the readback buffer, the pool's queryCount and the "
+                  "per-frame reset are one number; they have drifted twice");
     const uint32_t nq = d->ts_count;
     if (nq < 4) return;
-    if (vkGetQueryPoolResults(d->dev, d->queries, 0, nq, sizeof ts, ts,
-                              sizeof(uint64_t),
-                              VK_QUERY_RESULT_64_BIT |
-                                  VK_QUERY_RESULT_WAIT_BIT) != VK_SUCCESS)
+    // The BASE queries -- 0-3 always, and 4-5 whenever the segment timers were
+    // armed at all -- are written on every frame that reaches here, so they
+    // are read as one contiguous range.
+    const uint32_t nbase = nq > 6 ? 6u : nq;
+    // BOUNDED, never WAIT_BIT.  This runs only after the frame's fence or
+    // timeline has already signalled, so every result is expected to be
+    // available immediately; `VK_QUERY_RESULT_WAIT_BIT` therefore buys nothing
+    // and costs everything, because a driver that never marks a query
+    // available turns a statistics read into an unkillable hang.
+    //
+    // That is not hypothetical: on the Adreno 650 every INTER frame wedged
+    // here -- no GPU fault, no validation error, the process unkillable by
+    // anything but SIGKILL -- while intra frames and the same streams with
+    // timestamps disabled ran fine.  A measurement path must never be able to
+    // hang a decode, so it polls briefly and gives up.
+    auto poll = [&](uint32_t first, uint32_t count, uint64_t *dst) -> bool {
+        for (int attempt = 0; attempt < 50; ++attempt) {
+            const VkResult r = vkGetQueryPoolResults(
+                d->dev, d->queries, first, count,
+                sizeof(uint64_t) * count, dst, sizeof(uint64_t),
+                VK_QUERY_RESULT_64_BIT);
+            if (r == VK_SUCCESS) return true;
+            if (r != VK_NOT_READY) return false;
+            std::this_thread::sleep_for(std::chrono::microseconds(200));
+        }
+        return false;   // ~10 ms; the frame is already complete, so this is a
+                        // broken driver rather than a slow one
+    };
+    if (!poll(0, nbase, ts)) {
+        d->ts_dropped++;
         return;
+    }
+    // The segment pairs, one at a time and ONLY the ones whose dispatch ran.
+    // Waiting on a query that was never written is a hang, not an error, and
+    // that is exactly how this wedged the Adreno.
+    uint32_t segmask = d->ts_seg_mask;
+    for (uint32_t g = 0; g < 4 && nq > 6; ++g) {
+        if (!(segmask & (1u << g))) continue;
+        const uint32_t q = 6u + 2u * g;
+        if (!poll(q, 2, &ts[q])) segmask &= ~(1u << g);
+    }
     // [timing] Mask to the bits the queue actually drives BEFORE subtracting,
     // and take the difference modulo that width so a counter wrap is a small
     // positive delta rather than a number near 2^64.  `ts_mask` is all-ones on
@@ -2603,10 +2689,19 @@ static void collect_timestamps(D *d) {
     // so.  The env-gated print below stays: it is the same numbers, in a form
     // that needs no caller.
     if (nq >= 14) {
-        d->stats.pass_b_identity_ms = delta(ts[7], ts[6]) * k;
-        d->stats.pass_b_skip_ms = delta(ts[9], ts[8]) * k;
-        d->stats.pass_b_coded_ms = delta(ts[11], ts[10]) * k;
-        d->stats.pass_b_dir_ms = delta(ts[13], ts[12]) * k;
+        // A segment whose pair was never written reports 0.000 -- which is
+        // what it cost, and what the old always-write form reported too.  Its
+        // tile count below says whether that 0 means "no tiles" or "the
+        // device could not time it".
+        auto segms = [&](uint32_t g) {
+            return (segmask & (1u << g))
+                       ? delta(ts[7 + 2 * g], ts[6 + 2 * g]) * k
+                       : 0.0;
+        };
+        d->stats.pass_b_identity_ms = segms(0);
+        d->stats.pass_b_skip_ms = segms(1);
+        d->stats.pass_b_coded_ms = segms(2);
+        d->stats.pass_b_dir_ms = segms(3);
     } else {
         d->stats.pass_b_identity_ms = 0;
         d->stats.pass_b_skip_ms = 0;
@@ -2658,8 +2753,8 @@ static void collect_timestamps(D *d) {
         std::fprintf(stderr,
                      "[segms] copy %.4f  skip %.4f  coded %.4f  intra_dir %.4f"
                      "  (tiles %u/%u/%u/%u)\n",
-                     delta(ts[7], ts[6]) * k, delta(ts[9], ts[8]) * k,
-                     delta(ts[11], ts[10]) * k, delta(ts[13], ts[12]) * k,
+                     d->stats.pass_b_identity_ms, d->stats.pass_b_skip_ms,
+                     d->stats.pass_b_coded_ms, d->stats.pass_b_dir_ms,
                      d->seg_tiles[0], d->seg_tiles[1], d->seg_tiles[2],
                      d->seg_tiles[3]);
     }
@@ -2962,7 +3057,11 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     VKTRY(d, vkBeginCommandBuffer(d->cmd, &bi));
     if (d->have_timestamps) {
-        vkCmdResetQueryPool(d->cmd, d->queries, 0, 12);
+        // The WHOLE pool, every frame.  Resetting fewer than were created
+        // leaves the tail permanently unavailable, and a WAIT_BIT read that
+        // covers it never returns.
+        vkCmdResetQueryPool(d->cmd, d->queries, 0, kQueryCount);
+        d->ts_seg_mask = 0u;
         vkCmdWriteTimestamp(d->cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
                             d->queries, 0);
     }
@@ -3348,7 +3447,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
                 ? d->order_nskip[pass]
                 : 0u;
         if (fp.any_inter) {
-            if (d->have_timestamps && pass == 0)
+            if (d->have_timestamps && pass == 0 && d->ts_limit > 4)
                 vkCmdWriteTimestamp(d->cmd,
                                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                                     d->queries, 4);
@@ -3373,7 +3472,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
                                   tilesPerEye - nskip, 1, 1);
                 ++dispatches;
             }
-            if (d->have_timestamps && pass == 0)
+            if (d->have_timestamps && pass == 0 && d->ts_limit > 4)
                 vkCmdWriteTimestamp(d->cmd,
                                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                                     d->queries, 5);
@@ -3433,21 +3532,32 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
                                   pipeBa[1]};
         for (int g = 0; g < 4; ++g) {
             if (pass == 0) d->seg_tiles[g] = seg[g];
-            // Both ends are written even for an empty segment: the results are
-            // read back with WAIT_BIT, so a query that is never written would
-            // block the wait forever.  An empty segment then reports 0.000,
-            // which is what it cost.
-            const bool tsSeg = d->have_timestamps && pass == 0;
-            if (tsSeg)
+            // A segment's timestamp pair is written ONLY when its dispatch
+            // actually runs.
+            //
+            // It used to write both ends for an EMPTY segment too, so that a
+            // WAIT_BIT readback over a contiguous range never waited on an
+            // unwritten query.  That reasoning is sound about the readback and
+            // wrong about the device: on the Adreno 650 a frame that arms the
+            // segment timers and then writes a pair with NO DISPATCH BETWEEN
+            // THEM wedges -- the fence never signals, with no GPU fault and no
+            // validation error.  Every inter stream hung; intra, which arms
+            // only four queries and no segment pairs, did not.  Both desktop
+            // ICDs accept it, so nothing caught it until the device ran.
+            //
+            // The readback's constraint is met instead by telling it WHICH
+            // pairs exist (`ts_seg_mask`) and having it read only those, so
+            // no query is ever waited on that was not written.  An empty
+            // segment still reports 0.000 ms with its tile count beside it,
+            // which is where that number always came from.
+            const bool tsSeg =
+                d->have_timestamps && pass == 0 && d->ts_limit > 6;
+            if (seg[g] == 0) continue;
+            if (tsSeg) {
+                d->ts_seg_mask |= 1u << g;
                 vkCmdWriteTimestamp(d->cmd,
                                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                                     d->queries, 6 + 2 * (uint32_t)g);
-            if (seg[g] == 0) {
-                if (tsSeg)
-                    vkCmdWriteTimestamp(d->cmd,
-                                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                        d->queries, 7 + 2 * (uint32_t)g);
-                continue;
             }
             vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
                               segPipe[g]);
@@ -3647,7 +3757,12 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     // anyone could read them.  collect_timestamps() overwrites all four.
     ++d->stats.frames;
 
-    d->ts_count = d->have_timestamps ? (fp.any_inter ? 14u : 4u) : 0u;
+    d->ts_count = d->have_timestamps
+                      ? (fp.any_inter ? (d->ts_limit < kQueryCount
+                                             ? (d->ts_limit >= 6 ? 6u : 4u)
+                                             : kQueryCount)
+                                      : 4u)
+                      : 0u;
     d->ts_pending = d->have_timestamps;
     if (submit_flags & NXVC_VKD_SUBMIT_ASYNC) {
         d->stats.total_ms = now_ms() - t0;
