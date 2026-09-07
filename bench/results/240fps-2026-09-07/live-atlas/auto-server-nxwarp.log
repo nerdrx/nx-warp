@@ -1,0 +1,775 @@
+ INFO [get_encoder_settings] nxwarp: both eyes on stream 0 as one 2176x1088 stereo frame (578 tiles), stream 1 has no encoder
+	* nxwarp (nxwarp 8-bit)
+	* nxwarp (nxwarp 8-bit)
+ INFO [video_encoder_nxwarp] nxwarp: "entropy": "auto" -> lite (the headset advertises ENTROPY_LITE)
+ INFO [video_encoder_nxwarp] nxwarp: "snap-identity": 16/16 sample (still tiles become a copy on the headset; error bounded by 0.50 sample)
+ INFO [video_encoder_nxwarp] nxwarp: "planar": "rd" -> "off" (the GPU backend has no planar mode)
+ INFO [video_encoder_nxwarp] nxwarp: stream 0 tools 0x4c2200c05 (INTRA_DC_PLANE RES_LEVEL INTER WARP CTX_V2 CTX_V3 ENTROPY_LITE bit31 bit34), headset 0xdf77a1fff -- negotiated
+ INFO [video_encoder_nxwarp] nxwarp: stream 0 backend: nxvc_vk_encoder GPU compute encoder, nxvc_vk_encoder (E0/E3/E4/E5, intra only) (34x17 tiles, intra only, one QP per frame), reading the compositor image directly
+ INFO [video_encoder_nxwarp] nxwarp: stream 0 1088x1088, nxvc_vk_encoder GPU compute encoder, nxvc_vk_encoder (E0/E3/E4/E5, intra only) (34x17 tiles, intra only, one QP per frame), rate control from QP 28 in 22..40 at 90 Hz, send pacing follows the headset's decode cost, 15..90 fps, 34x17 tiles in 3 band(s), 1166 bytes per transport tile
+ INFO [video_encoder_nxwarp] nxwarp: "entropy": "auto" -> lite (the headset advertises ENTROPY_LITE)
+ INFO [video_encoder_nxwarp] nxwarp: "snap-identity": 16/16 sample (still tiles become a copy on the headset; error bounded by 0.50 sample)
+ INFO [video_encoder_nxwarp] nxwarp: "planar": "rd" -> "off" (the GPU backend has no planar mode)
+ INFO [video_encoder_nxwarp] nxwarp: stream 2 tools 0x4c2200c05 (INTRA_DC_PLANE RES_LEVEL INTER WARP CTX_V2 CTX_V3 ENTROPY_LITE bit31 bit34), headset 0xdf77a1fff -- negotiated
+ INFO [video_encoder_nxwarp] nxwarp: stream 2 backend: nxvc_vk_encoder GPU compute encoder, nxvc_vk_encoder (E0/E3/E4/E5, intra only) (17x9 tiles, intra only, one QP per frame), reading the compositor image directly
+ INFO [video_encoder_nxwarp] nxwarp: stream 2 1088x544, nxvc_vk_encoder GPU compute encoder, nxvc_vk_encoder (E0/E3/E4/E5, intra only) (17x9 tiles, intra only, one QP per frame), rate control from QP 28 in 22..40 at 90 Hz, send pacing follows the headset's decode cost, 15..90 fps, 17x9 tiles in 2 band(s), 1166 bytes per transport tile
+ INFO [reset_stream] nxwarp: stream 0 resumed for a new client: transport sequence restarted, stream header resent, next frame coded without a reference
+ INFO [reset_stream] nxwarp: stream 2 resumed for a new client: transport sequence restarted, stream header resent, next frame coded without a reference
+ INFO [update_lens_mask] nxwarp: stream 0 lens mask: 0 of 289 tiles per eye masked (margin 1 tile, fov -53.3/53.3/53.3/-53.3 deg); flattened only: this backend has no skip-map input, so the tiles are coded as whatever the mode search makes of a constant grey
+ INFO [encode] nxwarp: stream 0 rate control on: 43360433 bit/s is 60223 B/frame at 90 Hz, QP band 22..40
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 22.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 1 frames in 24.5 s: 22.6 ms/frame (max 22.6), 9118 B/frame at fixed QP 28, paced to 90.0 fps (client decode not reported yet), 0 composited frame(s) not sent
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 16.1 ms is over the 15.8 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +29 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 136 frames in 2.0 s: 3.9 ms/frame (max 5.6), 32886 B/frame vs 105910 target (-69%), QP 24.1 [22..36], controller allows 43.4 Mbit/s, paced to 51.5 fps (client decode 15.6 ms), 47 composited frame(s) not sent, binding: decode (decode 15.6 of 15.6 ms budget, floor +29)
+ INFO [encode] nxwarp: stream 0 tile mapping: 136 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 98 frame(s) since the last report; 53 of them cost an all-intra frame and 45 named a frame older than one already coded intra and cost nothing. Last was frame 99, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 142 frames in 2.0 s: 3.8 ms/frame (max 5.5), 14087 B/frame vs 68596 target (-79%), QP 28.0 [28..28], controller allows 43.4 Mbit/s, paced to 79.0 fps (client decode 10.5 ms), 38 composited frame(s) not sent, binding: decode (decode 10.5 of 10.1 ms budget, floor +28)
+ INFO [encode] nxwarp: stream 0 tile mapping: 142 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 174 frames in 2.0 s: 3.9 ms/frame (max 5.9), 15515 B/frame vs 95932 target (-84%), QP 27.0 [27..27], controller allows 43.4 Mbit/s, paced to 55.9 fps (client decode 17.0 ms), 8 composited frame(s) not sent, binding: decode (decode 17.0 of 14.2 ms budget, floor +27)
+ INFO [encode] nxwarp: stream 0 tile mapping: 174 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 8 frame(s) since the last report; 8 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 443, dropped by the worker backlog
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode window mean 11.4 ms is back under the 14.3 ms budget: the floor may rise again.
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 17.0 ms is over the 14.6 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +29 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 96 frames in 2.0 s: 4.0 ms/frame (max 5.1), 29485 B/frame vs 94385 target (-69%), QP 29.0 [28..29], controller allows 43.4 Mbit/s, paced to 57.5 fps (client decode 14.7 ms), 85 composited frame(s) not sent, binding: decode (decode 14.7 of 13.9 ms budget, floor +29)
+ INFO [encode] nxwarp: stream 0 tile mapping: 96 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 99 frames in 2.0 s: 3.9 ms/frame (max 5.1), 29641 B/frame vs 94297 target (-69%), QP 28.0 [28..28], controller allows 43.4 Mbit/s, paced to 57.4 fps (client decode 15.1 ms), 82 composited frame(s) not sent, binding: decode (decode 15.1 of 13.9 ms budget, floor +28)
+ INFO [encode] nxwarp: stream 0 tile mapping: 99 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 94 frames in 2.0 s: 3.9 ms/frame (max 5.6), 44708 B/frame vs 101944 target (-56%), QP 27.0 [27..27], controller allows 43.4 Mbit/s, paced to 53.2 fps (client decode 16.1 ms), 87 composited frame(s) not sent, binding: decode (decode 16.1 of 15.0 ms budget, floor +27)
+ INFO [encode] nxwarp: stream 0 tile mapping: 94 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.1 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 91 frames in 2.0 s: 4.1 ms/frame (max 5.3), 44820 B/frame vs 102785 target (-56%), QP 26.0 [26..26], controller allows 43.4 Mbit/s, paced to 52.6 fps (client decode 16.7 ms), 91 composited frame(s) not sent, binding: decode (decode 16.7 of 15.2 ms budget, floor +26)
+ INFO [encode] nxwarp: stream 0 tile mapping: 91 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 123 frames in 2.0 s: 3.9 ms/frame (max 6.2), 18332 B/frame vs 73881 target (-75%), QP 25.0 [25..25], controller allows 43.4 Mbit/s, paced to 73.7 fps (client decode 10.5 ms), 57 composited frame(s) not sent, binding: decode (decode 10.5 of 10.9 ms budget, floor +25)
+ INFO [encode] nxwarp: stream 0 tile mapping: 123 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 2 frame(s) since the last report; 2 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 871, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 3.7 ms/frame (max 5.8), 9190 B/frame vs 68590 target (-87%), QP 24.0 [24..24], controller allows 43.4 Mbit/s, paced to 78.7 fps (client decode 11.5 ms), 0 composited frame(s) not sent, binding: decode (decode 11.5 of 10.1 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 1 frame(s) since the last report; 1 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 1131, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 119 frames in 2.0 s: 3.9 ms/frame (max 5.6), 30344 B/frame vs 91150 target (-67%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 59.5 fps (client decode 14.4 ms), 62 composited frame(s) not sent, binding: decode (decode 14.4 of 13.5 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 119 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 7 frame(s) since the last report; 7 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 1175, dropped by the worker backlog
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 14.6 ms is over the 13.5 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 129 frames in 2.0 s: 3.9 ms/frame (max 6.0), 21876 B/frame vs 89317 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 60.4 fps (client decode 14.7 ms), 51 composited frame(s) not sent, binding: decode (decode 14.7 of 13.2 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 129 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 7 frame(s) since the last report; 7 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 1363, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 100 frames in 2.0 s: 3.9 ms/frame (max 5.0), 34016 B/frame vs 93261 target (-64%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 58.1 fps (client decode 14.7 ms), 80 composited frame(s) not sent, binding: decode (decode 14.7 of 13.8 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 100 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 14.8 ms is over the 13.8 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 127 frames in 2.0 s: 3.9 ms/frame (max 6.3), 21880 B/frame vs 87256 target (-75%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 62.1 fps (client decode 13.7 ms), 55 composited frame(s) not sent, binding: decode (decode 13.7 of 12.9 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 127 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 6 frame(s) since the last report; 6 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 1588, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 104 frames in 2.0 s: 3.9 ms/frame (max 5.0), 34015 B/frame vs 92457 target (-63%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 58.7 fps (client decode 14.5 ms), 76 composited frame(s) not sent, binding: decode (decode 14.5 of 13.6 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 104 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 2 frame(s) since the last report; 2 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 1618, dropped by the worker backlog
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 14.3 ms is over the 13.6 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 176 frames in 2.0 s: 3.8 ms/frame (max 5.7), 9757 B/frame vs 67384 target (-86%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 80.4 fps (client decode 10.4 ms), 4 composited frame(s) not sent, binding: decode (decode 10.4 of 9.9 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 176 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 136 frames in 2.0 s: 3.8 ms/frame (max 5.6), 22958 B/frame vs 95025 target (-76%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 56.9 fps (client decode 15.3 ms), 45 composited frame(s) not sent, binding: decode (decode 15.3 of 14.0 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 136 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 7 frame(s) since the last report; 7 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 1973, dropped by the worker backlog
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 15.0 ms is over the 14.1 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 129 frames in 2.0 s: 3.9 ms/frame (max 4.9), 21878 B/frame vs 87708 target (-75%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 61.8 fps (client decode 13.7 ms), 53 composited frame(s) not sent, binding: decode (decode 13.7 of 12.9 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 129 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 5 frame(s) since the last report; 5 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 2133, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 110 frames in 2.0 s: 3.7 ms/frame (max 4.7), 34015 B/frame vs 93688 target (-64%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 57.8 fps (client decode 14.9 ms), 72 composited frame(s) not sent, binding: decode (decode 14.9 of 13.8 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 110 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 1 frame(s) since the last report; 1 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 2160, dropped by the worker backlog
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 14.7 ms is over the 13.8 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 121 frames in 2.0 s: 3.8 ms/frame (max 4.9), 21891 B/frame vs 87801 target (-75%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 61.6 fps (client decode 14.1 ms), 59 composited frame(s) not sent, binding: decode (decode 14.1 of 13.0 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 121 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 3 frame(s) since the last report; 3 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 2320, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 108 frames in 2.0 s: 3.8 ms/frame (max 5.9), 34016 B/frame vs 92466 target (-63%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 58.7 fps (client decode 14.4 ms), 73 composited frame(s) not sent, binding: decode (decode 14.4 of 13.6 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 108 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 14.6 ms is over the 13.6 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 150 frames in 2.0 s: 3.9 ms/frame (max 5.6), 14770 B/frame vs 69130 target (-79%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 78.4 fps (client decode 10.7 ms), 30 composited frame(s) not sent, binding: decode (decode 10.7 of 10.2 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 150 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 3 frame(s) since the last report; 3 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 2543, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 164 frames in 2.0 s: 3.8 ms/frame (max 5.8), 16418 B/frame vs 93132 target (-82%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 58.3 fps (client decode 14.5 ms), 18 composited frame(s) not sent, binding: decode (decode 14.5 of 13.7 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 164 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 8 frame(s) since the last report; 8 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 2787, dropped by the worker backlog
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 15.1 ms is over the 13.8 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 114 frames in 2.0 s: 3.9 ms/frame (max 5.6), 21905 B/frame vs 89034 target (-75%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 61.0 fps (client decode 13.5 ms), 66 composited frame(s) not sent, binding: decode (decode 13.5 of 13.1 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 114 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 1 frame(s) since the last report; 1 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 2855, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 100 frames in 2.0 s: 4.0 ms/frame (max 5.4), 34015 B/frame vs 93744 target (-64%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 57.9 fps (client decode 14.5 ms), 80 composited frame(s) not sent, binding: decode (decode 14.5 of 13.8 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 100 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 2 frame(s) since the last report; 2 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 2928, dropped by the worker backlog
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 14.6 ms is over the 13.8 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 117 frames in 2.0 s: 3.9 ms/frame (max 5.7), 21898 B/frame vs 89851 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 60.3 fps (client decode 14.1 ms), 64 composited frame(s) not sent, binding: decode (decode 14.1 of 13.3 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 117 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 3 frame(s) since the last report; 3 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 3073, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 102 frames in 2.0 s: 3.9 ms/frame (max 5.0), 34016 B/frame vs 95097 target (-64%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 57.0 fps (client decode 15.2 ms), 79 composited frame(s) not sent, binding: decode (decode 15.2 of 14.0 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 102 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 15.3 ms is over the 14.1 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 128 frames in 2.0 s: 3.8 ms/frame (max 6.4), 17586 B/frame vs 71343 target (-75%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 76.1 fps (client decode 10.6 ms), 52 composited frame(s) not sent, binding: decode (decode 10.6 of 10.5 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 128 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 3.9 ms/frame (max 6.2), 9768 B/frame vs 73607 target (-87%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 73.6 fps (client decode 11.6 ms), 0 composited frame(s) not sent, binding: decode (decode 11.6 of 10.9 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 2 frame(s) since the last report; 2 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 3537, dropped by the worker backlog
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 11.3 ms is over the 10.9 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 136 frames in 2.0 s: 4.0 ms/frame (max 5.6), 21507 B/frame vs 89272 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 60.8 fps (client decode 13.8 ms), 45 composited frame(s) not sent, binding: decode (decode 13.8 of 13.2 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 136 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 11 frame(s) since the last report; 11 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 3665, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 102 frames in 2.0 s: 3.9 ms/frame (max 5.2), 34016 B/frame vs 95214 target (-64%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 57.1 fps (client decode 14.6 ms), 79 composited frame(s) not sent, binding: decode (decode 14.6 of 14.1 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 102 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 14.7 ms is over the 13.9 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 115 frames in 2.0 s: 3.9 ms/frame (max 5.7), 21904 B/frame vs 88583 target (-75%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 61.2 fps (client decode 14.0 ms), 65 composited frame(s) not sent, binding: decode (decode 14.0 of 13.1 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 115 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 101 frames in 2.0 s: 4.0 ms/frame (max 5.7), 34015 B/frame vs 92668 target (-63%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 58.5 fps (client decode 14.6 ms), 81 composited frame(s) not sent, binding: decode (decode 14.6 of 13.7 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 101 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 1 frame(s) since the last report; 1 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 3903, dropped by the worker backlog
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 14.4 ms is over the 13.6 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 114 frames in 2.0 s: 4.0 ms/frame (max 6.1), 21466 B/frame vs 89996 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 60.6 fps (client decode 13.2 ms), 67 composited frame(s) not sent, binding: decode (decode 13.2 of 13.3 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 114 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 1 frame(s) since the last report; 1 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 4080, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 3.9 ms/frame (max 5.7), 9768 B/frame vs 67413 target (-86%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 80.4 fps (client decode 10.3 ms), 0 composited frame(s) not sent, binding: decode (decode 10.3 of 10.0 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 10.4 ms is over the 9.9 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 152 frames in 2.0 s: 3.8 ms/frame (max 5.5), 16100 B/frame vs 90100 target (-82%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 60.3 fps (client decode 13.7 ms), 30 composited frame(s) not sent, binding: decode (decode 13.7 of 13.3 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 152 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 11 frame(s) since the last report; 11 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 4403, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 97 frames in 2.0 s: 4.0 ms/frame (max 5.1), 34015 B/frame vs 96488 target (-65%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 56.1 fps (client decode 15.5 ms), 83 composited frame(s) not sent, binding: decode (decode 15.5 of 14.2 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 97 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 1 frame(s) since the last report; 1 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 4455, dropped by the worker backlog
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 15.6 ms is over the 14.3 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 114 frames in 2.0 s: 4.0 ms/frame (max 5.1), 21906 B/frame vs 90812 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 59.7 fps (client decode 14.3 ms), 67 composited frame(s) not sent, binding: decode (decode 14.3 of 13.4 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 114 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 99 frames in 2.0 s: 4.0 ms/frame (max 6.2), 34016 B/frame vs 96238 target (-65%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 56.2 fps (client decode 15.5 ms), 82 composited frame(s) not sent, binding: decode (decode 15.5 of 14.2 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 99 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 15.2 ms is over the 14.2 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 119 frames in 2.0 s: 3.9 ms/frame (max 5.0), 21895 B/frame vs 89828 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 60.3 fps (client decode 14.1 ms), 61 composited frame(s) not sent, binding: decode (decode 14.1 of 13.3 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 119 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 3 frame(s) since the last report; 3 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 4851, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 138 frames in 2.0 s: 3.8 ms/frame (max 5.9), 17147 B/frame vs 68853 target (-75%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 78.8 fps (client decode 10.5 ms), 42 composited frame(s) not sent, binding: decode (decode 10.5 of 10.2 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 138 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 2 frame(s) since the last report; 2 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 4965, dropped by the worker backlog
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 10.4 ms is over the 10.1 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 166 frames in 2.0 s: 3.9 ms/frame (max 4.9), 13710 B/frame vs 91141 target (-85%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 59.7 fps (client decode 13.8 ms), 16 composited frame(s) not sent, binding: decode (decode 13.8 of 13.5 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 166 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 9 frame(s) since the last report; 9 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 5159, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 102 frames in 2.0 s: 3.9 ms/frame (max 5.4), 34016 B/frame vs 93826 target (-64%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 57.6 fps (client decode 15.3 ms), 79 composited frame(s) not sent, binding: decode (decode 15.3 of 13.8 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 102 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 15.0 ms is over the 13.9 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 119 frames in 2.0 s: 3.7 ms/frame (max 4.9), 21897 B/frame vs 90784 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 59.7 fps (client decode 14.3 ms), 61 composited frame(s) not sent, binding: decode (decode 14.3 of 13.4 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 119 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 102 frames in 2.0 s: 4.0 ms/frame (max 5.6), 34016 B/frame vs 93670 target (-64%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 57.9 fps (client decode 14.6 ms), 79 composited frame(s) not sent, binding: decode (decode 14.6 of 13.8 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 102 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 15.0 ms is over the 13.9 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 123 frames in 2.0 s: 4.0 ms/frame (max 5.2), 21887 B/frame vs 89212 target (-75%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 60.5 fps (client decode 14.7 ms), 58 composited frame(s) not sent, binding: decode (decode 14.7 of 13.2 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 123 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 5 frame(s) since the last report; 5 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 5628, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 128 frames in 2.0 s: 3.8 ms/frame (max 5.8), 23218 B/frame vs 71610 target (-68%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 75.8 fps (client decode 10.6 ms), 52 composited frame(s) not sent, binding: decode (decode 10.6 of 10.6 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 128 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 1 frame(s) since the last report; 1 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 5736, dropped by the worker backlog
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 10.5 ms is over the 10.5 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 3.8 ms/frame (max 6.2), 9890 B/frame vs 75019 target (-87%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 71.6 fps (client decode 13.9 ms), 1 composited frame(s) not sent, binding: decode (decode 13.9 of 11.1 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 3 frame(s) since the last report; 3 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 5937, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 102 frames in 2.0 s: 3.9 ms/frame (max 5.6), 34015 B/frame vs 94950 target (-64%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 57.0 fps (client decode 15.2 ms), 80 composited frame(s) not sent, binding: decode (decode 15.2 of 14.0 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 102 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 2 frame(s) since the last report; 2 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 5949, dropped by the worker backlog
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 14.8 ms is over the 14.0 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 117 frames in 2.0 s: 3.9 ms/frame (max 5.6), 21899 B/frame vs 90844 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 59.6 fps (client decode 14.4 ms), 63 composited frame(s) not sent, binding: decode (decode 14.4 of 13.4 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 117 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 2 frame(s) since the last report; 2 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 6147, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.1 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 100 frames in 2.0 s: 4.1 ms/frame (max 5.1), 34016 B/frame vs 94111 target (-64%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 57.7 fps (client decode 14.5 ms), 80 composited frame(s) not sent, binding: decode (decode 14.5 of 13.9 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 100 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 14.5 ms is over the 13.8 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 118 frames in 2.0 s: 3.9 ms/frame (max 5.0), 21896 B/frame vs 90165 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 60.0 fps (client decode 14.6 ms), 63 composited frame(s) not sent, binding: decode (decode 14.6 of 13.3 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 118 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 3 frame(s) since the last report; 3 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 6374, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 101 frames in 2.0 s: 3.9 ms/frame (max 4.9), 30895 B/frame vs 85199 target (-64%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 64.2 fps (client decode 10.7 ms), 79 composited frame(s) not sent, binding: decode (decode 10.7 of 12.6 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 101 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 10.6 ms is over the 10.5 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +25 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 3.9 ms/frame (max 5.8), 9293 B/frame vs 67568 target (-86%), QP 24.5 [22..25], controller allows 43.4 Mbit/s, paced to 80.3 fps (client decode 10.3 ms), 0 composited frame(s) not sent, binding: decode (decode 10.3 of 10.0 ms budget, floor +25)
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 150 frames in 2.0 s: 3.9 ms/frame (max 5.4), 17184 B/frame vs 88671 target (-81%), QP 24.0 [24..24], controller allows 43.4 Mbit/s, paced to 61.0 fps (client decode 14.5 ms), 31 composited frame(s) not sent, binding: decode (decode 14.5 of 13.1 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 150 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 10 frame(s) since the last report; 10 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 6778, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 100 frames in 2.0 s: 3.9 ms/frame (max 5.7), 34015 B/frame vs 93387 target (-64%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 58.0 fps (client decode 14.9 ms), 81 composited frame(s) not sent, binding: decode (decode 14.9 of 13.8 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 100 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 1 frame(s) since the last report; 1 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 6807, dropped by the worker backlog
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 14.9 ms is over the 13.8 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 115 frames in 2.0 s: 3.9 ms/frame (max 5.1), 21903 B/frame vs 91064 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 59.6 fps (client decode 14.2 ms), 66 composited frame(s) not sent, binding: decode (decode 14.2 of 13.4 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 115 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 1 frame(s) since the last report; 1 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 7014, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 97 frames in 2.0 s: 3.9 ms/frame (max 5.9), 34016 B/frame vs 93752 target (-64%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 57.7 fps (client decode 15.0 ms), 84 composited frame(s) not sent, binding: decode (decode 15.0 of 13.8 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 97 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 15.0 ms is over the 13.9 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 116 frames in 2.0 s: 4.0 ms/frame (max 5.6), 21899 B/frame vs 90870 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 59.4 fps (client decode 15.0 ms), 64 composited frame(s) not sent, binding: decode (decode 15.0 of 13.4 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 116 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 4 frame(s) since the last report; 4 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 7223, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 138 frames in 2.0 s: 4.0 ms/frame (max 5.8), 16269 B/frame vs 67902 target (-76%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 79.8 fps (client decode 10.7 ms), 42 composited frame(s) not sent, binding: decode (decode 10.7 of 10.0 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 138 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 10.6 ms is over the 10.0 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 164 frames in 2.0 s: 3.8 ms/frame (max 5.0), 14146 B/frame vs 91326 target (-85%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 59.4 fps (client decode 14.3 ms), 17 composited frame(s) not sent, binding: decode (decode 14.3 of 13.5 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 164 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 10 frame(s) since the last report; 10 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 7525, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 97 frames in 2.0 s: 4.0 ms/frame (max 5.0), 34016 B/frame vs 93467 target (-64%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 58.0 fps (client decode 14.7 ms), 84 composited frame(s) not sent, binding: decode (decode 14.7 of 13.8 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 97 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 14.5 ms is over the 13.7 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 115 frames in 2.0 s: 4.0 ms/frame (max 5.2), 21903 B/frame vs 89811 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 60.6 fps (client decode 13.6 ms), 66 composited frame(s) not sent, binding: decode (decode 13.6 of 13.3 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 115 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 1 frame(s) since the last report; 1 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 7696, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 98 frames in 2.0 s: 3.9 ms/frame (max 6.3), 34016 B/frame vs 94660 target (-64%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 57.0 fps (client decode 15.8 ms), 84 composited frame(s) not sent, binding: decode (decode 15.8 of 14.0 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 98 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 15.3 ms is over the 14.1 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 123 frames in 2.0 s: 3.9 ms/frame (max 5.5), 21886 B/frame vs 88123 target (-75%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 61.3 fps (client decode 14.3 ms), 59 composited frame(s) not sent, binding: decode (decode 14.3 of 13.0 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 123 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 6 frame(s) since the last report; 6 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 7966, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 129 frames in 2.0 s: 3.9 ms/frame (max 5.8), 20858 B/frame vs 69588 target (-70%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 77.9 fps (client decode 10.7 ms), 51 composited frame(s) not sent, binding: decode (decode 10.7 of 10.3 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 129 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 10.5 ms is over the 10.2 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 3.8 ms/frame (max 5.7), 10860 B/frame vs 82988 target (-87%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 64.9 fps (client decode 14.7 ms), 1 composited frame(s) not sent, binding: decode (decode 14.7 of 12.2 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 6 frame(s) since the last report; 6 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 8276, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 102 frames in 2.0 s: 3.9 ms/frame (max 5.8), 34014 B/frame vs 93865 target (-64%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 57.6 fps (client decode 15.2 ms), 79 composited frame(s) not sent, binding: decode (decode 15.2 of 13.9 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 102 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 3 frame(s) since the last report; 3 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 8287, dropped by the worker backlog
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 14.9 ms is over the 13.9 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 116 frames in 2.0 s: 3.9 ms/frame (max 5.5), 21901 B/frame vs 91677 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 59.0 fps (client decode 14.7 ms), 65 composited frame(s) not sent, binding: decode (decode 14.7 of 13.5 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 116 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 2 frame(s) since the last report; 2 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 8482, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 96 frames in 2.0 s: 3.9 ms/frame (max 5.1), 34016 B/frame vs 95274 target (-64%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 56.9 fps (client decode 15.0 ms), 84 composited frame(s) not sent, binding: decode (decode 15.0 of 14.1 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 96 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 15.1 ms is over the 14.0 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 118 frames in 2.0 s: 3.8 ms/frame (max 5.2), 21896 B/frame vs 91504 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 59.3 fps (client decode 14.3 ms), 62 composited frame(s) not sent, binding: decode (decode 14.3 of 13.5 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 118 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 3 frame(s) since the last report; 3 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 8698, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 105 frames in 2.0 s: 3.9 ms/frame (max 5.0), 28243 B/frame vs 77464 target (-64%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 70.4 fps (client decode 10.4 ms), 75 composited frame(s) not sent, binding: decode (decode 10.4 of 11.4 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 105 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 10.8 ms is over the 10.6 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 3.8 ms/frame (max 5.9), 9247 B/frame vs 67824 target (-86%), QP 23.8 [22..24], controller allows 43.4 Mbit/s, paced to 79.9 fps (client decode 10.4 ms), 0 composited frame(s) not sent, binding: decode (decode 10.4 of 10.0 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 2 frame(s) since the last report; 2 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 8830, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 132 frames in 2.0 s: 3.9 ms/frame (max 5.7), 25194 B/frame vs 95065 target (-73%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 57.0 fps (client decode 15.1 ms), 49 composited frame(s) not sent, binding: decode (decode 15.1 of 14.0 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 132 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 9 frame(s) since the last report; 9 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 9071, dropped by the worker backlog
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 14.8 ms is over the 14.0 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 120 frames in 2.0 s: 3.9 ms/frame (max 5.9), 21893 B/frame vs 90314 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 59.9 fps (client decode 14.8 ms), 61 composited frame(s) not sent, binding: decode (decode 14.8 of 13.3 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 120 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 3 frame(s) since the last report; 3 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 9241, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 96 frames in 2.0 s: 4.0 ms/frame (max 5.7), 34016 B/frame vs 95752 target (-64%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 56.7 fps (client decode 15.0 ms), 85 composited frame(s) not sent, binding: decode (decode 15.0 of 14.1 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 96 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 15.1 ms is over the 14.1 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 117 frames in 2.0 s: 3.8 ms/frame (max 5.0), 21899 B/frame vs 88533 target (-75%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 61.2 fps (client decode 14.0 ms), 63 composited frame(s) not sent, binding: decode (decode 14.0 of 13.1 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 117 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 2 frame(s) since the last report; 2 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 9384, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 111 frames in 2.0 s: 3.7 ms/frame (max 4.7), 34016 B/frame vs 95050 target (-64%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 57.0 fps (client decode 15.2 ms), 70 composited frame(s) not sent, binding: decode (decode 15.2 of 14.0 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 111 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 15.3 ms is over the 14.1 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 160 frames in 2.0 s: 3.7 ms/frame (max 5.0), 12079 B/frame vs 67382 target (-82%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 80.4 fps (client decode 10.5 ms), 20 composited frame(s) not sent, binding: decode (decode 10.5 of 9.9 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 160 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 1 frame(s) since the last report; 1 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 9607, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 157 frames in 2.0 s: 3.7 ms/frame (max 5.2), 17795 B/frame vs 93661 target (-81%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 58.0 fps (client decode 14.5 ms), 24 composited frame(s) not sent, binding: decode (decode 14.5 of 13.8 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 157 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 9 frame(s) since the last report; 9 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 9864, dropped by the worker backlog
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 14.5 ms is over the 13.7 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 119 frames in 2.0 s: 3.9 ms/frame (max 5.5), 21895 B/frame vs 90064 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 60.1 fps (client decode 14.8 ms), 62 composited frame(s) not sent, binding: decode (decode 14.8 of 13.3 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 119 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 3 frame(s) since the last report; 3 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 10005, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 98 frames in 2.0 s: 3.8 ms/frame (max 4.9), 34016 B/frame vs 94630 target (-64%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 57.3 fps (client decode 14.8 ms), 83 composited frame(s) not sent, binding: decode (decode 14.8 of 14.0 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 98 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 14.7 ms is over the 13.9 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 115 frames in 2.0 s: 3.9 ms/frame (max 5.7), 21904 B/frame vs 89490 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 60.3 fps (client decode 14.9 ms), 67 composited frame(s) not sent, binding: decode (decode 14.9 of 13.2 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 115 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 101 frames in 2.0 s: 3.9 ms/frame (max 6.5), 34016 B/frame vs 95643 target (-64%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 56.7 fps (client decode 14.9 ms), 81 composited frame(s) not sent, binding: decode (decode 14.9 of 14.1 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 101 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 14.7 ms is over the 14.0 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 146 frames in 2.0 s: 3.8 ms/frame (max 4.9), 14581 B/frame vs 68847 target (-79%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 78.8 fps (client decode 10.5 ms), 34 composited frame(s) not sent, binding: decode (decode 10.5 of 10.2 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 146 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 1 frame(s) since the last report; 1 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 10343, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 177 frames in 2.0 s: 3.9 ms/frame (max 5.7), 13875 B/frame vs 90229 target (-85%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 59.5 fps (client decode 15.8 ms), 4 composited frame(s) not sent, binding: decode (decode 15.8 of 13.3 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 177 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 8 frame(s) since the last report; 8 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 10642, dropped by the worker backlog
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode window mean 11.3 ms is back under the 13.5 ms budget: the floor may rise again.
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 14.7 ms is over the 13.6 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +26 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 93 frames in 2.0 s: 3.9 ms/frame (max 5.1), 44321 B/frame vs 99520 target (-55%), QP 26.0 [24..26], controller allows 43.4 Mbit/s, paced to 54.4 fps (client decode 16.0 ms), 88 composited frame(s) not sent, binding: decode (decode 16.0 of 14.7 ms budget, floor +26)
+ INFO [encode] nxwarp: stream 0 tile mapping: 93 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 122 frames in 2.0 s: 3.8 ms/frame (max 5.2), 21546 B/frame vs 88563 target (-76%), QP 25.0 [25..25], controller allows 43.4 Mbit/s, paced to 61.1 fps (client decode 14.5 ms), 59 composited frame(s) not sent, binding: decode (decode 14.5 of 13.1 ms budget, floor +25)
+ INFO [encode] nxwarp: stream 0 tile mapping: 122 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 3 frame(s) since the last report; 3 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 10839, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 131 frames in 2.0 s: 3.9 ms/frame (max 5.3), 21683 B/frame vs 91428 target (-76%), QP 24.0 [24..24], controller allows 43.4 Mbit/s, paced to 59.3 fps (client decode 14.3 ms), 50 composited frame(s) not sent, binding: decode (decode 14.3 of 13.5 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 131 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 10 frame(s) since the last report; 10 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 10981, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 97 frames in 2.0 s: 4.0 ms/frame (max 5.8), 34016 B/frame vs 93730 target (-64%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 57.7 fps (client decode 15.3 ms), 85 composited frame(s) not sent, binding: decode (decode 15.3 of 13.8 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 97 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 14.9 ms is over the 13.9 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 120 frames in 2.0 s: 3.9 ms/frame (max 5.2), 21893 B/frame vs 89096 target (-75%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 61.2 fps (client decode 13.0 ms), 62 composited frame(s) not sent, binding: decode (decode 13.0 of 13.2 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 120 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 3 frame(s) since the last report; 3 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 11168, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 3.8 ms/frame (max 6.0), 9903 B/frame vs 68276 target (-85%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 79.4 fps (client decode 10.5 ms), 0 composited frame(s) not sent, binding: decode (decode 10.5 of 10.1 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 10.5 ms is over the 10.1 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 145 frames in 2.0 s: 3.8 ms/frame (max 4.8), 19277 B/frame vs 89434 target (-78%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 60.6 fps (client decode 14.0 ms), 36 composited frame(s) not sent, binding: decode (decode 14.0 of 13.2 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 145 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 12 frame(s) since the last report; 12 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 11465, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 98 frames in 2.0 s: 4.0 ms/frame (max 4.9), 34015 B/frame vs 92323 target (-63%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 58.6 fps (client decode 15.0 ms), 82 composited frame(s) not sent, binding: decode (decode 15.0 of 13.6 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 98 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 1 frame(s) since the last report; 1 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 11534, dropped by the worker backlog
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 14.7 ms is over the 13.7 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 128 frames in 2.0 s: 3.9 ms/frame (max 4.9), 21878 B/frame vs 89936 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 60.2 fps (client decode 14.6 ms), 53 composited frame(s) not sent, binding: decode (decode 14.6 of 13.3 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 128 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 7 frame(s) since the last report; 7 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 11757, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 102 frames in 2.0 s: 3.9 ms/frame (max 5.2), 34016 B/frame vs 92695 target (-63%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 58.6 fps (client decode 14.3 ms), 80 composited frame(s) not sent, binding: decode (decode 14.3 of 13.7 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 102 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 14.4 ms is over the 13.6 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 122 frames in 2.0 s: 3.9 ms/frame (max 5.8), 21889 B/frame vs 89800 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 60.3 fps (client decode 14.4 ms), 59 composited frame(s) not sent, binding: decode (decode 14.4 of 13.3 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 122 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 4 frame(s) since the last report; 4 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 11964, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 161 frames in 2.0 s: 3.8 ms/frame (max 5.5), 12931 B/frame vs 68494 target (-81%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 79.2 fps (client decode 10.4 ms), 19 composited frame(s) not sent, binding: decode (decode 10.4 of 10.1 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 161 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 10.5 ms is over the 10.1 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 161 frames in 2.0 s: 3.9 ms/frame (max 5.6), 14937 B/frame vs 89399 target (-83%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 60.7 fps (client decode 13.8 ms), 20 composited frame(s) not sent, binding: decode (decode 13.8 of 13.2 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 161 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 10 frame(s) since the last report; 10 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 12285, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 95 frames in 2.0 s: 3.9 ms/frame (max 5.0), 34016 B/frame vs 94728 target (-64%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 57.2 fps (client decode 15.0 ms), 87 composited frame(s) not sent, binding: decode (decode 15.0 of 14.0 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 95 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 15.2 ms is over the 14.0 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 120 frames in 2.0 s: 3.9 ms/frame (max 5.8), 21892 B/frame vs 89926 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 60.3 fps (client decode 14.2 ms), 61 composited frame(s) not sent, binding: decode (decode 14.2 of 13.3 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 120 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 5 frame(s) since the last report; 5 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 12512, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 99 frames in 2.0 s: 4.0 ms/frame (max 5.9), 34016 B/frame vs 94277 target (-64%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 57.5 fps (client decode 14.9 ms), 81 composited frame(s) not sent, binding: decode (decode 14.9 of 13.9 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 99 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 15.6 ms is over the 14.0 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.1 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 116 frames in 2.0 s: 4.1 ms/frame (max 5.1), 21901 B/frame vs 90539 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 60.0 fps (client decode 13.9 ms), 66 composited frame(s) not sent, binding: decode (decode 13.9 of 13.4 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 116 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 2 frame(s) since the last report; 2 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 12724, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 140 frames in 2.0 s: 4.0 ms/frame (max 6.2), 17042 B/frame vs 67962 target (-75%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 79.8 fps (client decode 10.4 ms), 40 composited frame(s) not sent, binding: decode (decode 10.4 of 10.0 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 140 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 10.3 ms is over the 10.0 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 168 frames in 2.0 s: 3.8 ms/frame (max 5.0), 12171 B/frame vs 90357 target (-87%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 60.1 fps (client decode 14.0 ms), 13 composited frame(s) not sent, binding: decode (decode 14.0 of 13.3 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 168 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 5 frame(s) since the last report; 5 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 13018, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 99 frames in 2.0 s: 4.0 ms/frame (max 5.2), 34015 B/frame vs 93483 target (-64%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 58.1 fps (client decode 14.5 ms), 81 composited frame(s) not sent, binding: decode (decode 14.5 of 13.8 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 99 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 1 frame(s) since the last report; 1 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 13094, dropped by the worker backlog
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 14.9 ms is over the 13.8 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 117 frames in 2.0 s: 3.9 ms/frame (max 5.1), 21898 B/frame vs 91471 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 59.2 fps (client decode 14.7 ms), 64 composited frame(s) not sent, binding: decode (decode 14.7 of 13.5 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 117 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 3 frame(s) since the last report; 3 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 13255, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 97 frames in 2.0 s: 3.9 ms/frame (max 4.9), 34016 B/frame vs 96151 target (-65%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 56.2 fps (client decode 15.6 ms), 84 composited frame(s) not sent, binding: decode (decode 15.6 of 14.2 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 97 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 15.5 ms is over the 14.3 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 114 frames in 2.0 s: 3.9 ms/frame (max 5.8), 21906 B/frame vs 92263 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 58.8 fps (client decode 14.5 ms), 68 composited frame(s) not sent, binding: decode (decode 14.5 of 13.6 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 114 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 100 frames in 2.0 s: 4.0 ms/frame (max 5.7), 31349 B/frame vs 88037 target (-64%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 62.1 fps (client decode 11.1 ms), 80 composited frame(s) not sent, binding: decode (decode 11.1 of 13.0 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 100 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 11.0 ms is over the 11.0 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 3.9 ms/frame (max 5.8), 9263 B/frame vs 68496 target (-86%), QP 23.8 [22..24], controller allows 43.4 Mbit/s, paced to 78.9 fps (client decode 11.3 ms), 0 composited frame(s) not sent, binding: decode (decode 11.3 of 10.1 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 112 frames in 2.0 s: 3.9 ms/frame (max 5.3), 32278 B/frame vs 93232 target (-65%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 58.1 fps (client decode 14.9 ms), 69 composited frame(s) not sent, binding: decode (decode 14.9 of 13.8 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 112 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 9 frame(s) since the last report; 9 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 13787, dropped by the worker backlog
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 14.9 ms is over the 13.8 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 124 frames in 2.0 s: 3.8 ms/frame (max 4.9), 21886 B/frame vs 89557 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 60.6 fps (client decode 13.9 ms), 56 composited frame(s) not sent, binding: decode (decode 13.9 of 13.2 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 124 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 4 frame(s) since the last report; 4 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 13935, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 104 frames in 2.0 s: 3.9 ms/frame (max 5.6), 34015 B/frame vs 94681 target (-64%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 57.3 fps (client decode 14.8 ms), 77 composited frame(s) not sent, binding: decode (decode 14.8 of 14.0 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 104 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 1 frame(s) since the last report; 1 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 13990, dropped by the worker backlog
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 14.6 ms is over the 13.9 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 115 frames in 2.0 s: 3.9 ms/frame (max 4.9), 21902 B/frame vs 90725 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 59.8 fps (client decode 14.2 ms), 66 composited frame(s) not sent, binding: decode (decode 14.2 of 13.4 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 115 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 3 frame(s) since the last report; 3 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 14182, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 97 frames in 2.0 s: 3.9 ms/frame (max 5.7), 34016 B/frame vs 97008 target (-65%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 56.0 fps (client decode 15.0 ms), 84 composited frame(s) not sent, binding: decode (decode 15.0 of 14.3 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 97 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 14.9 ms is over the 14.2 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 164 frames in 2.0 s: 3.8 ms/frame (max 5.8), 10746 B/frame vs 67905 target (-84%), QP 23.1 [22..24], controller allows 43.4 Mbit/s, paced to 79.8 fps (client decode 10.5 ms), 16 composited frame(s) not sent, binding: decode (decode 10.5 of 10.0 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 164 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 10.6 ms is over the 10.0 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 158 frames in 2.0 s: 3.9 ms/frame (max 5.5), 15837 B/frame vs 90851 target (-83%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 59.7 fps (client decode 14.3 ms), 24 composited frame(s) not sent, binding: decode (decode 14.3 of 13.4 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 158 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 11 frame(s) since the last report; 11 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 14606, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 96 frames in 2.0 s: 3.9 ms/frame (max 4.8), 34016 B/frame vs 96033 target (-65%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 56.4 fps (client decode 15.2 ms), 85 composited frame(s) not sent, binding: decode (decode 15.2 of 14.2 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 96 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 15.3 ms is over the 14.2 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 118 frames in 2.0 s: 3.9 ms/frame (max 5.2), 21896 B/frame vs 90265 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 60.1 fps (client decode 14.2 ms), 62 composited frame(s) not sent, binding: decode (decode 14.2 of 13.3 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 118 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 4 frame(s) since the last report; 4 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 14820, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 100 frames in 2.0 s: 3.9 ms/frame (max 5.8), 34016 B/frame vs 91624 target (-63%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 59.2 fps (client decode 14.5 ms), 81 composited frame(s) not sent, binding: decode (decode 14.5 of 13.5 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 100 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 14.3 ms is over the 13.5 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 126 frames in 2.0 s: 3.9 ms/frame (max 5.7), 21881 B/frame vs 90725 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 59.6 fps (client decode 15.1 ms), 55 composited frame(s) not sent, binding: decode (decode 15.1 of 13.4 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 126 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 7 frame(s) since the last report; 7 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 15062, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 149 frames in 2.0 s: 3.7 ms/frame (max 5.9), 15463 B/frame vs 67883 target (-77%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 79.9 fps (client decode 10.4 ms), 31 composited frame(s) not sent, binding: decode (decode 10.4 of 10.0 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 149 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 1 frame(s) since the last report; 1 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 15143, dropped by the worker backlog
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 10.4 ms is over the 10.0 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 179 frames in 2.0 s: 3.8 ms/frame (max 5.5), 11776 B/frame vs 88476 target (-87%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 60.9 fps (client decode 14.9 ms), 3 composited frame(s) not sent, binding: decode (decode 14.9 of 13.1 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 179 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 9 frame(s) since the last report; 9 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 15391, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 100 frames in 2.0 s: 3.8 ms/frame (max 5.1), 34016 B/frame vs 94750 target (-64%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 57.3 fps (client decode 14.7 ms), 80 composited frame(s) not sent, binding: decode (decode 14.7 of 14.0 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 100 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 15.1 ms is over the 13.9 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 125 frames in 2.0 s: 3.9 ms/frame (max 5.0), 21884 B/frame vs 89259 target (-75%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 60.7 fps (client decode 14.3 ms), 56 composited frame(s) not sent, binding: decode (decode 14.3 of 13.2 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 125 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 5 frame(s) since the last report; 5 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 15616, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 96 frames in 2.0 s: 3.9 ms/frame (max 5.1), 34016 B/frame vs 93963 target (-64%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 57.7 fps (client decode 14.8 ms), 84 composited frame(s) not sent, binding: decode (decode 14.8 of 13.9 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 96 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 14.8 ms is over the 13.8 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 123 frames in 2.0 s: 3.8 ms/frame (max 5.7), 21888 B/frame vs 91701 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 59.1 fps (client decode 14.4 ms), 57 composited frame(s) not sent, binding: decode (decode 14.4 of 13.5 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 123 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 3 frame(s) since the last report; 3 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 15810, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 110 frames in 2.0 s: 3.9 ms/frame (max 5.5), 27844 B/frame vs 76037 target (-63%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 71.7 fps (client decode 10.4 ms), 70 composited frame(s) not sent, binding: decode (decode 10.4 of 11.2 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 110 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 11.0 ms is over the 10.8 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 3.6 ms/frame (max 4.8), 9212 B/frame vs 69444 target (-87%), QP 23.9 [22..24], controller allows 43.4 Mbit/s, paced to 77.8 fps (client decode 11.3 ms), 0 composited frame(s) not sent, binding: decode (decode 11.3 of 10.2 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 1 frame(s) since the last report; 1 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 16121, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 116 frames in 2.0 s: 3.9 ms/frame (max 4.9), 29622 B/frame vs 94424 target (-69%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 57.4 fps (client decode 15.0 ms), 66 composited frame(s) not sent, binding: decode (decode 15.0 of 13.9 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 116 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 7 frame(s) since the last report; 7 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 16170, dropped by the worker backlog
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 15.0 ms is over the 14.0 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 119 frames in 2.0 s: 3.8 ms/frame (max 5.6), 21896 B/frame vs 88409 target (-75%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 61.4 fps (client decode 13.5 ms), 61 composited frame(s) not sent, binding: decode (decode 13.5 of 13.0 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 119 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 1 frame(s) since the last report; 1 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 16341, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 101 frames in 2.0 s: 3.9 ms/frame (max 4.9), 34016 B/frame vs 91367 target (-63%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 59.4 fps (client decode 14.2 ms), 81 composited frame(s) not sent, binding: decode (decode 14.2 of 13.5 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 101 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 14.5 ms is over the 13.5 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 126 frames in 2.0 s: 3.9 ms/frame (max 5.1), 21882 B/frame vs 89207 target (-75%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 60.7 fps (client decode 14.3 ms), 54 composited frame(s) not sent, binding: decode (decode 14.3 of 13.2 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 126 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 5 frame(s) since the last report; 5 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 16584, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 101 frames in 2.0 s: 4.0 ms/frame (max 5.1), 34015 B/frame vs 93451 target (-64%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 58.0 fps (client decode 14.7 ms), 80 composited frame(s) not sent, binding: decode (decode 14.7 of 13.8 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 101 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 2 frame(s) since the last report; 2 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 16594, dropped by the worker backlog
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 14.4 ms is over the 13.8 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +26 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 170 frames in 2.0 s: 3.7 ms/frame (max 5.9), 9839 B/frame vs 67274 target (-85%), QP 25.9 [22..26], controller allows 43.4 Mbit/s, paced to 80.6 fps (client decode 10.4 ms), 10 composited frame(s) not sent, binding: decode (decode 10.4 of 9.9 ms budget, floor +26)
+ INFO [encode] nxwarp: stream 0 tile mapping: 170 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 155 frames in 2.0 s: 3.9 ms/frame (max 5.0), 16918 B/frame vs 90294 target (-81%), QP 25.0 [25..25], controller allows 43.4 Mbit/s, paced to 59.8 fps (client decode 14.8 ms), 26 composited frame(s) not sent, binding: decode (decode 14.8 of 13.3 ms budget, floor +25)
+ INFO [encode] nxwarp: stream 0 tile mapping: 155 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 13 frame(s) since the last report; 13 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 17013, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 121 frames in 2.0 s: 3.9 ms/frame (max 5.0), 21687 B/frame vs 89963 target (-76%), QP 24.0 [24..24], controller allows 43.4 Mbit/s, paced to 60.4 fps (client decode 13.7 ms), 60 composited frame(s) not sent, binding: decode (decode 13.7 of 13.3 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 121 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 2 frame(s) since the last report; 2 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 17107, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 99 frames in 2.0 s: 4.0 ms/frame (max 5.0), 34015 B/frame vs 97454 target (-65%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 55.6 fps (client decode 15.4 ms), 83 composited frame(s) not sent, binding: decode (decode 15.4 of 14.4 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 99 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 1 frame(s) since the last report; 1 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 17143, dropped by the worker backlog
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 15.3 ms is over the 14.4 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 115 frames in 2.0 s: 4.0 ms/frame (max 5.1), 21903 B/frame vs 90107 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 60.2 fps (client decode 13.9 ms), 66 composited frame(s) not sent, binding: decode (decode 13.9 of 13.3 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 115 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 2 frame(s) since the last report; 2 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 17309, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 106 frames in 2.0 s: 3.9 ms/frame (max 5.3), 34015 B/frame vs 93215 target (-64%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 58.2 fps (client decode 14.6 ms), 76 composited frame(s) not sent, binding: decode (decode 14.6 of 13.8 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 106 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 1 frame(s) since the last report; 1 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 17359, dropped by the worker backlog
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 14.5 ms is over the 13.7 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 147 frames in 2.0 s: 3.9 ms/frame (max 5.8), 14545 B/frame vs 68751 target (-79%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 78.8 fps (client decode 10.6 ms), 33 composited frame(s) not sent, binding: decode (decode 10.6 of 10.1 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 147 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 1 frame(s) since the last report; 1 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 17511, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 160 frames in 2.0 s: 3.8 ms/frame (max 5.7), 16737 B/frame vs 93257 target (-82%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 58.0 fps (client decode 15.0 ms), 21 composited frame(s) not sent, binding: decode (decode 15.0 of 13.8 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 160 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 6 frame(s) since the last report; 6 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 17739, dropped by the worker backlog
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 15.1 ms is over the 13.8 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 123 frames in 2.0 s: 3.8 ms/frame (max 6.2), 21886 B/frame vs 90997 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 59.7 fps (client decode 14.1 ms), 58 composited frame(s) not sent, binding: decode (decode 14.1 of 13.4 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 123 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 6 frame(s) since the last report; 6 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 17853, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 99 frames in 2.0 s: 3.9 ms/frame (max 5.7), 34016 B/frame vs 92201 target (-63%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 58.9 fps (client decode 14.2 ms), 82 composited frame(s) not sent, binding: decode (decode 14.2 of 13.6 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 99 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 14.9 ms is over the 13.6 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 120 frames in 2.0 s: 3.9 ms/frame (max 5.9), 21894 B/frame vs 88577 target (-75%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 61.3 fps (client decode 13.3 ms), 60 composited frame(s) not sent, binding: decode (decode 13.3 of 13.1 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 120 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 2 frame(s) since the last report; 2 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 18086, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 105 frames in 2.0 s: 3.8 ms/frame (max 5.7), 34015 B/frame vs 94781 target (-64%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 57.0 fps (client decode 15.6 ms), 75 composited frame(s) not sent, binding: decode (decode 15.6 of 14.0 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 105 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 1 frame(s) since the last report; 1 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 18115, dropped by the worker backlog
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 15.0 ms is over the 14.1 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 134 frames in 2.0 s: 3.9 ms/frame (max 5.4), 17860 B/frame vs 73354 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 74.1 fps (client decode 10.8 ms), 46 composited frame(s) not sent, binding: decode (decode 10.8 of 10.8 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 134 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 4 frame(s) since the last report; 4 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 18335, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 3.8 ms/frame (max 5.6), 9767 B/frame vs 71254 target (-86%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 76.0 fps (client decode 11.4 ms), 0 composited frame(s) not sent, binding: decode (decode 11.4 of 10.5 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 2 frame(s) since the last report; 2 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 18525, dropped by the worker backlog
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 11.5 ms is over the 10.6 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 134 frames in 2.0 s: 3.9 ms/frame (max 5.7), 21131 B/frame vs 89655 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 60.5 fps (client decode 14.0 ms), 47 composited frame(s) not sent, binding: decode (decode 14.0 of 13.2 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 134 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 11 frame(s) since the last report; 11 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 18603, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 101 frames in 2.0 s: 3.8 ms/frame (max 6.3), 34015 B/frame vs 94286 target (-64%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 57.5 fps (client decode 14.8 ms), 80 composited frame(s) not sent, binding: decode (decode 14.8 of 13.9 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 101 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 1 frame(s) since the last report; 1 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 18668, dropped by the worker backlog
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 14.6 ms is over the 13.9 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 123 frames in 2.0 s: 3.7 ms/frame (max 5.7), 21888 B/frame vs 88970 target (-75%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 60.8 fps (client decode 14.8 ms), 57 composited frame(s) not sent, binding: decode (decode 14.8 of 13.1 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 123 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 3 frame(s) since the last report; 3 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 18882, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 101 frames in 2.0 s: 3.8 ms/frame (max 4.9), 34016 B/frame vs 93157 target (-63%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 58.2 fps (client decode 14.5 ms), 80 composited frame(s) not sent, binding: decode (decode 14.5 of 13.8 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 101 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 14.6 ms is over the 13.7 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 127 frames in 2.0 s: 3.9 ms/frame (max 5.5), 21684 B/frame vs 92220 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 58.7 fps (client decode 14.9 ms), 53 composited frame(s) not sent, binding: decode (decode 14.9 of 13.6 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 127 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 4 frame(s) since the last report; 4 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 19080, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 178 frames in 2.0 s: 3.8 ms/frame (max 5.7), 9768 B/frame vs 67768 target (-86%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 80.0 fps (client decode 10.4 ms), 3 composited frame(s) not sent, binding: decode (decode 10.4 of 10.0 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 178 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 10.5 ms is over the 10.0 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 154 frames in 2.0 s: 3.9 ms/frame (max 5.7), 16171 B/frame vs 90783 target (-82%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 59.9 fps (client decode 13.8 ms), 27 composited frame(s) not sent, binding: decode (decode 13.8 of 13.4 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 154 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 14 frame(s) since the last report; 14 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 19433, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 98 frames in 2.0 s: 3.9 ms/frame (max 4.9), 34016 B/frame vs 94584 target (-64%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 57.3 fps (client decode 14.9 ms), 84 composited frame(s) not sent, binding: decode (decode 14.9 of 14.0 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 98 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 14.7 ms is over the 13.9 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 122 frames in 2.0 s: 3.9 ms/frame (max 5.1), 21889 B/frame vs 90146 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 60.2 fps (client decode 14.0 ms), 59 composited frame(s) not sent, binding: decode (decode 14.0 of 13.3 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 122 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 4 frame(s) since the last report; 4 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 19643, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 97 frames in 2.0 s: 3.9 ms/frame (max 5.8), 34016 B/frame vs 96567 target (-65%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 56.0 fps (client decode 15.5 ms), 84 composited frame(s) not sent, binding: decode (decode 15.5 of 14.3 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 97 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 15.3 ms is over the 14.3 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 115 frames in 2.0 s: 3.9 ms/frame (max 5.5), 21901 B/frame vs 90709 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 59.9 fps (client decode 14.0 ms), 66 composited frame(s) not sent, binding: decode (decode 14.0 of 13.4 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 115 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 4 frame(s) since the last report; 4 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 19839, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 137 frames in 2.0 s: 3.8 ms/frame (max 4.9), 17378 B/frame vs 68257 target (-75%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 79.4 fps (client decode 10.4 ms), 43 composited frame(s) not sent, binding: decode (decode 10.4 of 10.1 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 137 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 2 frame(s) since the last report; 2 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 19949, dropped by the worker backlog
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 10.4 ms is over the 10.1 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 166 frames in 2.0 s: 3.9 ms/frame (max 5.8), 13710 B/frame vs 90886 target (-85%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 59.5 fps (client decode 14.7 ms), 15 composited frame(s) not sent, binding: decode (decode 14.7 of 13.4 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 166 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 10 frame(s) since the last report; 10 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 20156, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 98 frames in 2.0 s: 3.9 ms/frame (max 5.8), 34016 B/frame vs 95685 target (-64%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 56.6 fps (client decode 15.1 ms), 83 composited frame(s) not sent, binding: decode (decode 15.1 of 14.1 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 98 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 15.0 ms is over the 14.1 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 121 frames in 2.0 s: 3.9 ms/frame (max 5.7), 21891 B/frame vs 90238 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 59.9 fps (client decode 14.9 ms), 59 composited frame(s) not sent, binding: decode (decode 14.9 of 13.3 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 121 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 3 frame(s) since the last report; 3 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 20374, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 96 frames in 2.0 s: 3.9 ms/frame (max 5.6), 34016 B/frame vs 94596 target (-64%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 57.3 fps (client decode 15.0 ms), 86 composited frame(s) not sent, binding: decode (decode 15.0 of 14.0 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 96 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 15.1 ms is over the 14.0 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 114 frames in 2.0 s: 4.0 ms/frame (max 5.7), 21904 B/frame vs 91801 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 59.2 fps (client decode 14.1 ms), 67 composited frame(s) not sent, binding: decode (decode 14.1 of 13.5 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 114 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 3 frame(s) since the last report; 3 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 20592, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 119 frames in 2.0 s: 3.8 ms/frame (max 5.8), 23420 B/frame vs 71100 target (-67%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 76.4 fps (client decode 10.5 ms), 61 composited frame(s) not sent, binding: decode (decode 10.5 of 10.5 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 119 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 10.5 ms is over the 10.4 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 3.8 ms/frame (max 5.7), 9477 B/frame vs 73478 target (-87%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 73.4 fps (client decode 12.5 ms), 1 composited frame(s) not sent, binding: decode (decode 12.5 of 10.8 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 4 frame(s) since the last report; 4 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 20896, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 106 frames in 2.0 s: 4.0 ms/frame (max 5.0), 34011 B/frame vs 91879 target (-63%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 59.0 fps (client decode 14.5 ms), 74 composited frame(s) not sent, binding: decode (decode 14.5 of 13.6 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 106 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 7 frame(s) since the last report; 7 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 20930, dropped by the worker backlog
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 14.7 ms is over the 13.6 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 116 frames in 2.0 s: 3.8 ms/frame (max 5.6), 21900 B/frame vs 91373 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 59.5 fps (client decode 14.1 ms), 65 composited frame(s) not sent, binding: decode (decode 14.1 of 13.5 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 116 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 3 frame(s) since the last report; 3 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 21114, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 101 frames in 2.0 s: 3.8 ms/frame (max 5.7), 34016 B/frame vs 95088 target (-64%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 57.1 fps (client decode 14.7 ms), 80 composited frame(s) not sent, binding: decode (decode 14.7 of 14.0 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 101 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 15.4 ms is over the 14.1 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +25 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 120 frames in 2.0 s: 4.0 ms/frame (max 5.4), 21755 B/frame vs 89931 target (-76%), QP 24.9 [22..25], controller allows 43.4 Mbit/s, paced to 60.2 fps (client decode 14.3 ms), 61 composited frame(s) not sent, binding: decode (decode 14.3 of 13.3 ms budget, floor +25)
+ INFO [encode] nxwarp: stream 0 tile mapping: 120 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 5 frame(s) since the last report; 5 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 21342, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 123 frames in 2.0 s: 3.9 ms/frame (max 4.9), 20366 B/frame vs 84912 target (-76%), QP 24.0 [24..24], controller allows 43.4 Mbit/s, paced to 64.4 fps (client decode 10.8 ms), 57 composited frame(s) not sent, binding: decode (decode 10.8 of 12.5 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 123 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 1 frame(s) since the last report; 1 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 21357, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 3.8 ms/frame (max 5.5), 9768 B/frame vs 68031 target (-86%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 79.7 fps (client decode 10.5 ms), 0 composited frame(s) not sent, binding: decode (decode 10.5 of 10.0 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 10.5 ms is over the 10.0 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 153 frames in 2.0 s: 3.9 ms/frame (max 5.8), 17034 B/frame vs 88615 target (-81%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 61.1 fps (client decode 14.3 ms), 28 composited frame(s) not sent, binding: decode (decode 14.3 of 13.1 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 153 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 12 frame(s) since the last report; 12 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 21797, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 98 frames in 2.0 s: 4.0 ms/frame (max 5.7), 34016 B/frame vs 92051 target (-63%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 58.9 fps (client decode 14.3 ms), 82 composited frame(s) not sent, binding: decode (decode 14.3 of 13.6 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 98 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 14.4 ms is over the 13.5 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 123 frames in 2.0 s: 3.9 ms/frame (max 5.9), 21886 B/frame vs 90984 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 59.5 fps (client decode 14.6 ms), 58 composited frame(s) not sent, binding: decode (decode 14.6 of 13.4 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 123 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 6 frame(s) since the last report; 6 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 22016, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 99 frames in 2.0 s: 3.9 ms/frame (max 5.9), 34016 B/frame vs 93950 target (-64%), QP 23.0 [23..23], controller allows 43.4 Mbit/s, paced to 57.8 fps (client decode 14.5 ms), 81 composited frame(s) not sent, binding: decode (decode 14.5 of 13.9 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 99 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 14.6 ms is over the 13.8 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +24 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 121 frames in 2.0 s: 3.9 ms/frame (max 5.9), 21891 B/frame vs 90018 target (-76%), QP 24.0 [22..24], controller allows 43.4 Mbit/s, paced to 60.0 fps (client decode 15.1 ms), 60 composited frame(s) not sent, binding: decode (decode 15.1 of 13.3 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 121 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 3 frame(s) since the last report; 3 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 22237, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 149 frames in 2.0 s: 3.8 ms/frame (max 5.4), 17254 B/frame vs 68083 target (-75%), QP 22.4 [22..23], controller allows 43.4 Mbit/s (at min QP), paced to 79.6 fps (client decode 10.4 ms), 31 composited frame(s) not sent, binding: bytes (decode 10.4 of 10.0 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 149 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 153 frames in 2.0 s: 3.9 ms/frame (max 5.8), 18537 B/frame vs 91921 target (-80%), QP 22.0 [22..22], controller allows 43.4 Mbit/s (at min QP), paced to 59.0 fps (client decode 14.4 ms), 29 composited frame(s) not sent, binding: bytes (decode 14.4 of 13.6 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 153 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 7 frame(s) since the last report; 7 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 22524, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.1 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 98 frames in 2.0 s: 4.1 ms/frame (max 6.0), 34172 B/frame vs 91339 target (-63%), QP 22.0 [22..22], controller allows 43.4 Mbit/s (at min QP), paced to 59.4 fps (client decode 14.3 ms), 83 composited frame(s) not sent, binding: bytes (decode 14.3 of 13.5 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 98 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 99 frames in 2.0 s: 3.9 ms/frame (max 5.1), 34172 B/frame vs 93637 target (-64%), QP 22.0 [22..22], controller allows 43.4 Mbit/s (at min QP), paced to 57.9 fps (client decode 14.8 ms), 82 composited frame(s) not sent, binding: bytes (decode 14.8 of 13.8 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 99 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 104 frames in 2.0 s: 4.0 ms/frame (max 5.7), 34172 B/frame vs 94624 target (-64%), QP 22.0 [22..22], controller allows 43.4 Mbit/s (at min QP), paced to 57.3 fps (client decode 14.8 ms), 77 composited frame(s) not sent, binding: bytes (decode 14.8 of 14.0 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 104 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 102 frames in 2.0 s: 3.9 ms/frame (max 5.9), 34172 B/frame vs 92861 target (-63%), QP 22.0 [22..22], controller allows 43.4 Mbit/s (at min QP), paced to 58.4 fps (client decode 14.6 ms), 79 composited frame(s) not sent, binding: bytes (decode 14.6 of 13.7 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 102 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 130 frames in 2.0 s: 3.7 ms/frame (max 4.8), 22158 B/frame vs 70001 target (-68%), QP 22.0 [22..22], controller allows 43.4 Mbit/s (at min QP), paced to 77.5 fps (client decode 10.5 ms), 50 composited frame(s) not sent, binding: bytes (decode 10.5 of 10.3 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 130 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")

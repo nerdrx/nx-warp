@@ -1,0 +1,25 @@
+{
+  "artifacts": {
+    "apk": {
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/240fps-20260907/atlas-live-candidate.apk",
+      "sha256": "88a70c8c9abfc15fc9ceba496ab2aef761fa08f69ecb1b24a16dde04c404d5d0"
+    },
+    "server": {
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/wivrn-atlas-live-current-build/server/wivrn-server",
+      "sha256": "28a9c04887ac432a143d05da75454a9b0d7bc66a58d5fa104b3071d46afaab20"
+    },
+    "runtime": {
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/wivrn-atlas-live-current-build/_deps/monado-build/src/xrt/targets/openxr/libopenxr_wivrn.so",
+      "sha256": "764172a39e1bcf65f9c2aca45eb9841ab34e27cda8d00678da90087017f3548b"
+    }
+  },
+  "integration_base": "920ac878161231320352c105815bb1144ecf3d4c",
+  "codec_commit": "6030bab041e72eaa37f0469b95b03af0dc67ea01",
+  "integration_diff_sha256": "4c5623572d4251e3e1162947ec98f95f8feeefcf0d8a7eafbdcf8eda601813f6",
+  "scene": "hello_xr -g Vulkan2",
+  "scene_cpu_affinity": "24-31",
+  "scene_nice": 10,
+  "scene_scheduler": "idle",
+  "duration_s": 40,
+  "scope": "ordinary off vs explicit atlas auto; same APK/server; device clocks not fixed"
+}

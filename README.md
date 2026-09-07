@@ -45,13 +45,18 @@ take priority over fidelity at low bitrate. The experiment removes work on
 unchanged tiles and separates correction frequency from presentation frequency.
 Read the [direction and limitations](docs/240FPS.md) and the
 [Pico measurements, fixture and correctness results](bench/results/240fps-2026-09-07/README.md).
+The [first live atlas comparison](bench/results/240fps-2026-09-07/live-atlas/README.md)
+regressed new-source cadence (65.0 → 52.5/s median window rate), despite a cheaper
+display pass. Atlas remains opt-in. Actual headset screenshots and the limited
+resting-headset scene are included with the results.
 The [pipeline-demand result](bench/results/240fps-2026-09-07/pipeline-demand/README.md)
 measures a 67–80 ms first all-skipped-frame setup cost falling to 2.9–5.3 ms
 when unused pipelines are created on demand. Clear omission and demand
-creation remove default dead work; dirty display views remain opt-in. Local
-WiVRn NX `stream.cpp/h` edits now count new-source projection submissions by
-frame-ID high-water across windows; the desktop build is in progress and is
-not installed on Pico, so no live measurement exists yet.
+creation remove default dead work; dirty display views remain opt-in.
+WiVRn NX now counts new-source projection submissions by frame-ID high-water
+across windows. Desktop and Pico builds passed; the
+[live counter evidence](bench/results/240fps-2026-09-07/live-source/README.md)
+separates new-source cadence from render-loop iterations.
 
 <figure>
   <img src="docs/figures/240fps/atlas-reference-frame15.png" alt="Reference-decoded atlas frame 15, not a headset screenshot" width="320">

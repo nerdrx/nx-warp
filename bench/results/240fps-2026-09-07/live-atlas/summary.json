@@ -1,0 +1,26 @@
+{
+  "scope": "Initial headset comparison; same atlas-live APK/server, clocks not fixed",
+  "apk_sha256": "88a70c8c9abfc15fc9ceba496ab2aef761fa08f69ecb1b24a16dde04c404d5d0",
+  "codec_commit": "6030bab041e72eaa37f0469b95b03af0dc67ea01",
+  "off": {
+    "new_source_per_s_p50": 65.0,
+    "decoder_gpu_ms_p50": 10.5,
+    "display_gpu_ms_p50": 1.8,
+    "windows": 16
+  },
+  "auto": {
+    "new_source_per_s_p50": 52.5,
+    "decoder_gpu_ms_p50": 12.8,
+    "display_gpu_ms_p50": 1.5,
+    "windows": 17
+  },
+  "interpretation": "Initial atlas auto run regressed source cadence and decoder GPU time; retain off by default. No physical FPS claim.",
+  "source_logs": {
+    "off": "off-measure-filtered.log",
+    "auto": "auto-measure-filtered.log"
+  },
+  "server_logs": {
+    "off": "off-server-nxwarp.log",
+    "auto": "auto-server-nxwarp.log"
+  }
+}

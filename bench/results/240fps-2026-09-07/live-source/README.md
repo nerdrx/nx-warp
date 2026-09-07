@@ -26,3 +26,10 @@ and dirty-view optimizations have no live gain claim. `screencap` was again
 all-black and is not repository visual evidence. The mDNS connect helper
 falsely retried an active session, causing `xrEndSession` followed by finalizer
 SIGSEGV; this is under investigation and gives no conformance claim.
+
+
+## Exit experiment live cadence
+
+The paired `_Exit` captures used the same `ba7729` APK and ordinary `atlas-mode 0`; they are separate captures, so no cross-capture elapsed time is inferred. Startup windows are retained in [exit-live-series.json](exit-live-series.json) and excluded from summaries. Recorded 2 s windows report render-loop iterations and new-source submissions only; these are client counters, never physical display FPS. The new-source/s ratio uses the log's printed, rounded window duration, so it is approximate. The variable cadence motivates matched A/B captures. Filtered raw render lines and SHA-256 hashes are retained beside the JSON. Reproduce with [parse_exit_live.py](parse_exit_live.py).
+
+![Exit live cadence](../../../../docs/figures/240fps/exit-live-series.png)

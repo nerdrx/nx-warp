@@ -1,0 +1,716 @@
+09-07 18:17:40.538 17110 25869 I WiVRn   : [2026-09-07 18:17:40.538] [WiVRn] [info] render: 175 iterations in 2.0 s (87.1/s), 175 submitted a layer, 102 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.4 ms
+09-07 18:17:40.538 17110 25869 I WiVRn   : [2026-09-07 18:17:40.538] [WiVRn] [info] render: this app's own GPU pass 1.4 ms per iteration
+09-07 18:17:40.538 17110 25869 I WiVRn   : [2026-09-07 18:17:40.538] [WiVRn] [info] render: defoveate 1088x1088 per eye x2 = 2.37 Mpx/frame at scale 0.50 atlas-mode 0; 73 re-presented from the cache (reduce_gpu_load on)
+09-07 18:17:40.538 17110 25869 I WiVRn   : [2026-09-07 18:17:40.538] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.28 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-07 18:17:40.538 17110 25869 I WiVRn   : [2026-09-07 18:17:40.538] [WiVRn] [info] render: per iteration fence 1.7 (worst 15.7) | queries 0.0 | submit 0.0 | whole render() 2.1 ms
+09-07 18:17:40.538 17110 25869 I WiVRn   : [2026-09-07 18:17:40.538] [WiVRn] [info] render: jit on | wake slack 42.7 ms | slept 0.6 ms mean (max 0.6, 175 of 175 iterations) | budget 16.4 = pass 15.4 + margin 1.0 | sleep cap 0.6 ms
+09-07 18:17:40.538 17110 25869 I WiVRn   : [2026-09-07 18:17:40.538] [WiVRn] [info] render: displayed pose age 71.4 ms mean (worst 81.7) over 175 frames | submit lead 40.0 ms mean (worst 19.5) | misses: 0 overrun 0 late 0 skipped refresh
+09-07 18:17:40.562 17110 25865 I PxrMetric: FPS=87/90,MTP=40.78ms,AppSW=off,FrmEarly=45,FrmLate=6,FrmCpu=0.24ms,FrmGpu=11.12ms,FrmTime=12.38ms,ATWGPU=1.12ms,VsyncDelay=2,GPU=99%/587Mhz,GPUTemp=63.2C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=6583
+09-07 18:17:40.699 17110 26060 I WiVRn   : [2026-09-07 18:17:40.699] [WiVRn] [info] nxwarp[0] net: 100 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 3619 decoded so far, 6205 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 18:17:40.699 17110 26060 I WiVRn   : [2026-09-07 18:17:40.699] [WiVRn] [info] nxwarp[0] net: 0.035 ms per datagram over 4386 datagrams (77.35 ms of every second)
+09-07 18:17:40.699 17110 26060 I WiVRn   : [2026-09-07 18:17:40.699] [WiVRn] [info] nxwarp[0] sel: stride 1, arrival 22.2 ms, dropped-late 177, withheld 80, decoded 3619
+09-07 18:17:40.699 17110 26060 I WiVRn   : [2026-09-07 18:17:40.699] [WiVRn] [info] nxwarp[0] rx: 138591 datagrams, placed 2194666 (+57800), late 1091 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 0
+09-07 18:17:40.820 17110 26065 I WiVRn   : [2026-09-07 18:17:40.820] [WiVRn] [info] Tracking pattern (11110µs):
+09-07 18:17:40.820 17110 26065 I WiVRn   : [2026-09-07 18:17:40.820] [WiVRn] [info] 	t+4880µs HEAD (6229µs)
+09-07 18:17:40.820 17110 26065 I WiVRn   : [2026-09-07 18:17:40.820] [WiVRn] [info] 	t+5287µs LEFT_GRIP (5823µs)
+09-07 18:17:40.820 17110 26065 I WiVRn   : [2026-09-07 18:17:40.820] [WiVRn] [info] 	t+5294µs RIGHT_GRIP (5815µs)
+09-07 18:17:40.820 17110 26065 I WiVRn   : [2026-09-07 18:17:40.820] [WiVRn] [info] 	t+7880µs HEAD (3229µs)
+09-07 18:17:40.820 17110 26065 I WiVRn   : [2026-09-07 18:17:40.820] [WiVRn] [info] 	t+8287µs LEFT_GRIP (2823µs)
+09-07 18:17:40.820 17110 26065 I WiVRn   : [2026-09-07 18:17:40.820] [WiVRn] [info] 	t+8294µs RIGHT_GRIP (2815µs)
+09-07 18:17:41.564 17110 25865 I PxrMetric: FPS=87/90,MTP=36.77ms,AppSW=off,FrmEarly=34,FrmLate=5,FrmCpu=0.24ms,FrmGpu=11.49ms,FrmTime=15.84ms,ATWGPU=1.10ms,VsyncDelay=2,GPU=98%/587Mhz,GPUTemp=63.6C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=6669
+09-07 18:17:41.608 17110 26063 I WiVRn   : [2026-09-07 18:17:41.608] [WiVRn] [info] nxwarp[0]: 108 frames in 2.0 s: 27397 B/frame, wait-prev 0.0 ms, wall 14.6 ms, nxvc passA 3.7 passB 9.1 gpu 12.8 ms; holes 0, refused 0
+09-07 18:17:41.608 17110 26063 I WiVRn   : [2026-09-07 18:17:41.608] [WiVRn] [info] nxwarp[0] gpu duty 687 ms/s (69% of one GPU) for decode alone; the display pass is extra
+09-07 18:17:41.608 17110 26063 I WiVRn   : [2026-09-07 18:17:41.608] [WiVRn] [info] nxwarp[0] passB 9.1 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 9.1; tiles skip 0 / coded 578 / dir 0 (eye pass 0)
+09-07 18:17:41.608 17110 26063 I WiVRn   : [2026-09-07 18:17:41.608] [WiVRn] [info] nxwarp[0]: 177 frames dropped late (queue kept to 1)
+09-07 18:17:41.608 17110 26063 I WiVRn   : [2026-09-07 18:17:41.608] [WiVRn] [info] nxwarp[0] stage: gap 4.1 | wait-prev 0.0 | submit 0.2 (qlock 0.0 + codec 0.2) | get_free 0.0 | fence-pre 0.0 | record 0.1 | qsubmit 0.0 | fence-post 14.2 | publish 0.0 ms; withheld 0, stride 1, arrival 15.7 ms
+09-07 18:17:41.608 17110 26063 I WiVRn   : [2026-09-07 18:17:41.608] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.03 ms/frame over 108 frames, buffer 27 kB held for 27 kB of unit (1.0x)
+09-07 18:17:41.608 17110 26063 I WiVRn   : [2026-09-07 18:17:41.608] [WiVRn] [info] nxwarp[0] fence-post 14.3 ms = nxvc gpu 12.8 + copy gpu 0.58 + queue 0.8 (over 108 frames with timestamps)
+09-07 18:17:41.820 17110 26065 I WiVRn   : [2026-09-07 18:17:41.820] [WiVRn] [info] Tracking pattern (11111µs):
+09-07 18:17:41.820 17110 26065 I WiVRn   : [2026-09-07 18:17:41.820] [WiVRn] [info] 	t+5047µs HEAD (6063µs)
+09-07 18:17:41.820 17110 26065 I WiVRn   : [2026-09-07 18:17:41.820] [WiVRn] [info] 	t+5776µs LEFT_GRIP (5334µs)
+09-07 18:17:41.820 17110 26065 I WiVRn   : [2026-09-07 18:17:41.820] [WiVRn] [info] 	t+5797µs RIGHT_GRIP (5314µs)
+09-07 18:17:41.820 17110 26065 I WiVRn   : [2026-09-07 18:17:41.820] [WiVRn] [info] 	t+8047µs HEAD (3063µs)
+09-07 18:17:41.820 17110 26065 I WiVRn   : [2026-09-07 18:17:41.820] [WiVRn] [info] 	t+8776µs LEFT_GRIP (2334µs)
+09-07 18:17:41.820 17110 26065 I WiVRn   : [2026-09-07 18:17:41.820] [WiVRn] [info] 	t+8797µs RIGHT_GRIP (2314µs)
+09-07 18:17:42.548 17110 25869 I WiVRn   : [2026-09-07 18:17:42.548] [WiVRn] [info] render: 173 iterations in 2.0 s (86.5/s), 173 submitted a layer, 114 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.6 ms
+09-07 18:17:42.548 17110 25869 I WiVRn   : [2026-09-07 18:17:42.548] [WiVRn] [info] render: this app's own GPU pass 1.5 ms per iteration
+09-07 18:17:42.548 17110 25869 I WiVRn   : [2026-09-07 18:17:42.548] [WiVRn] [info] render: defoveate 1088x1088 per eye x2 = 2.37 Mpx/frame at scale 0.50 atlas-mode 0; 59 re-presented from the cache (reduce_gpu_load on)
+09-07 18:17:42.548 17110 25869 I WiVRn   : [2026-09-07 18:17:42.548] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.28 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-07 18:17:42.548 17110 25869 I WiVRn   : [2026-09-07 18:17:42.548] [WiVRn] [info] render: per iteration fence 2.1 (worst 14.5) | queries 0.0 | submit 0.0 | whole render() 2.5 ms
+09-07 18:17:42.548 17110 25869 I WiVRn   : [2026-09-07 18:17:42.548] [WiVRn] [info] render: jit on | wake slack 42.7 ms | slept 0.7 ms mean (max 11.7, 173 of 173 iterations) | budget 15.4 = pass 14.4 + margin 1.0 | sleep cap 0.6 ms
+09-07 18:17:42.548 17110 25869 I WiVRn   : [2026-09-07 18:17:42.548] [WiVRn] [info] render: displayed pose age 68.8 ms mean (worst 92.9) over 173 frames | submit lead 39.5 ms mean (worst 22.5) | misses: 0 overrun 0 late 1 skipped refresh
+09-07 18:17:42.589 17110 25865 I PxrMetric: FPS=86/90,MTP=43.38ms,AppSW=off,FrmEarly=40,FrmLate=8,FrmCpu=0.22ms,FrmGpu=10.75ms,FrmTime=14.09ms,ATWGPU=1.25ms,VsyncDelay=2,GPU=99%/587Mhz,GPUTemp=64.0C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=6758
+09-07 18:17:42.711 17110 26060 I WiVRn   : [2026-09-07 18:17:42.711] [WiVRn] [info] nxwarp[0] net: 117 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 3735 decoded so far, 6439 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 18:17:42.711 17110 26060 I WiVRn   : [2026-09-07 18:17:42.711] [WiVRn] [info] nxwarp[0] net: 0.030 ms per datagram over 4824 datagrams (71.76 ms of every second)
+09-07 18:17:42.711 17110 26060 I WiVRn   : [2026-09-07 18:17:42.711] [WiVRn] [info] nxwarp[0] sel: stride 1, arrival 16.6 ms, dropped-late 178, withheld 81, decoded 3735
+09-07 18:17:42.711 17110 26060 I WiVRn   : [2026-09-07 18:17:42.711] [WiVRn] [info] nxwarp[0] rx: 143415 datagrams, placed 2262292 (+67626), late 1091 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 0
+09-07 18:17:42.820 17110 26065 I WiVRn   : [2026-09-07 18:17:42.820] [WiVRn] [info] Tracking pattern (11110µs):
+09-07 18:17:42.820 17110 26065 I WiVRn   : [2026-09-07 18:17:42.820] [WiVRn] [info] 	t+4969µs HEAD (6141µs)
+09-07 18:17:42.820 17110 26065 I WiVRn   : [2026-09-07 18:17:42.820] [WiVRn] [info] 	t+5109µs LEFT_GRIP (6000µs)
+09-07 18:17:42.820 17110 26065 I WiVRn   : [2026-09-07 18:17:42.820] [WiVRn] [info] 	t+5118µs RIGHT_GRIP (5992µs)
+09-07 18:17:42.820 17110 26065 I WiVRn   : [2026-09-07 18:17:42.820] [WiVRn] [info] 	t+7969µs HEAD (3141µs)
+09-07 18:17:42.820 17110 26065 I WiVRn   : [2026-09-07 18:17:42.820] [WiVRn] [info] 	t+8109µs LEFT_GRIP (3000µs)
+09-07 18:17:42.820 17110 26065 I WiVRn   : [2026-09-07 18:17:42.820] [WiVRn] [info] 	t+8118µs RIGHT_GRIP (2992µs)
+09-07 18:17:43.592 17110 25865 I PxrMetric: FPS=88/90,MTP=36.67ms,AppSW=off,FrmEarly=40,FrmLate=1,FrmCpu=0.20ms,FrmGpu=9.69ms,FrmTime=10.88ms,ATWGPU=1.25ms,VsyncDelay=2,GPU=94%/587Mhz,GPUTemp=65.1C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=6847
+09-07 18:17:43.614 17110 26063 I WiVRn   : [2026-09-07 18:17:43.614] [WiVRn] [info] nxwarp[0]: 108 frames in 2.0 s: 27851 B/frame, wait-prev 0.0 ms, wall 14.6 ms, nxvc passA 3.9 passB 9.1 gpu 13.0 ms; holes 0, refused 0
+09-07 18:17:43.614 17110 26063 I WiVRn   : [2026-09-07 18:17:43.614] [WiVRn] [info] nxwarp[0] gpu duty 698 ms/s (70% of one GPU) for decode alone; the display pass is extra
+09-07 18:17:43.614 17110 26063 I WiVRn   : [2026-09-07 18:17:43.614] [WiVRn] [info] nxwarp[0] passB 9.1 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 9.1; tiles skip 0 / coded 578 / dir 0 (eye pass 0)
+09-07 18:17:43.614 17110 26063 I WiVRn   : [2026-09-07 18:17:43.614] [WiVRn] [info] nxwarp[0]: 178 frames dropped late (queue kept to 1)
+09-07 18:17:43.614 17110 26063 I WiVRn   : [2026-09-07 18:17:43.614] [WiVRn] [info] nxwarp[0] stage: gap 4.0 | wait-prev 0.0 | submit 0.2 (qlock 0.0 + codec 0.2) | get_free 0.0 | fence-pre 0.0 | record 0.1 | qsubmit 0.0 | fence-post 14.3 | publish 0.0 ms; withheld 1, stride 1, arrival 21.5 ms
+09-07 18:17:43.614 17110 26063 I WiVRn   : [2026-09-07 18:17:43.614] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.03 ms/frame over 109 frames, buffer 27 kB held for 27 kB of unit (1.0x)
+09-07 18:17:43.614 17110 26063 I WiVRn   : [2026-09-07 18:17:43.614] [WiVRn] [info] nxwarp[0] fence-post 14.3 ms = nxvc gpu 13.0 + copy gpu 0.57 + queue 0.7 (over 108 frames with timestamps)
+09-07 18:17:43.820 17110 26065 I WiVRn   : [2026-09-07 18:17:43.820] [WiVRn] [info] Tracking pattern (11111µs):
+09-07 18:17:43.820 17110 26065 I WiVRn   : [2026-09-07 18:17:43.820] [WiVRn] [info] 	t+5095µs HEAD (6015µs)
+09-07 18:17:43.820 17110 26065 I WiVRn   : [2026-09-07 18:17:43.820] [WiVRn] [info] 	t+5625µs LEFT_GRIP (5485µs)
+09-07 18:17:43.820 17110 26065 I WiVRn   : [2026-09-07 18:17:43.820] [WiVRn] [info] 	t+5633µs RIGHT_GRIP (5478µs)
+09-07 18:17:43.820 17110 26065 I WiVRn   : [2026-09-07 18:17:43.820] [WiVRn] [info] 	t+8095µs HEAD (3015µs)
+09-07 18:17:43.820 17110 26065 I WiVRn   : [2026-09-07 18:17:43.820] [WiVRn] [info] 	t+8625µs LEFT_GRIP (2485µs)
+09-07 18:17:43.820 17110 26065 I WiVRn   : [2026-09-07 18:17:43.820] [WiVRn] [info] 	t+8633µs RIGHT_GRIP (2478µs)
+09-07 18:17:44.547 17110 25869 I WiVRn   : [2026-09-07 18:17:44.547] [WiVRn] [info] render: 175 iterations in 2.0 s (87.1/s), 175 submitted a layer, 99 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.5 ms
+09-07 18:17:44.547 17110 25869 I WiVRn   : [2026-09-07 18:17:44.547] [WiVRn] [info] render: this app's own GPU pass 1.3 ms per iteration
+09-07 18:17:44.547 17110 25869 I WiVRn   : [2026-09-07 18:17:44.547] [WiVRn] [info] render: defoveate 1088x1088 per eye x2 = 2.37 Mpx/frame at scale 0.50 atlas-mode 0; 76 re-presented from the cache (reduce_gpu_load on)
+09-07 18:17:44.547 17110 25869 I WiVRn   : [2026-09-07 18:17:44.547] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.28 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-07 18:17:44.547 17110 25869 I WiVRn   : [2026-09-07 18:17:44.547] [WiVRn] [info] render: per iteration fence 1.2 (worst 14.2) | queries 0.0 | submit 0.0 | whole render() 1.6 ms
+09-07 18:17:44.547 17110 25869 I WiVRn   : [2026-09-07 18:17:44.547] [WiVRn] [info] render: jit on | wake slack 40.0 ms | slept 0.8 ms mean (max 11.7, 175 of 175 iterations) | budget 14.0 = pass 13.0 + margin 1.0 | sleep cap 0.6 ms
+09-07 18:17:44.547 17110 25869 I WiVRn   : [2026-09-07 18:17:44.547] [WiVRn] [info] render: displayed pose age 68.8 ms mean (worst 104.1) over 175 frames | submit lead 37.5 ms mean (worst 21.6) | misses: 0 overrun 0 late 1 skipped refresh
+09-07 18:17:44.604 17110 25865 I PxrMetric: FPS=88/90,MTP=38.65ms,AppSW=off,FrmEarly=35,FrmLate=4,FrmCpu=0.20ms,FrmGpu=11.14ms,FrmTime=13.49ms,ATWGPU=1.35ms,VsyncDelay=2,GPU=58%/587Mhz,GPUTemp=64.3C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=6934
+09-07 18:17:44.721 17110 26060 I WiVRn   : [2026-09-07 18:17:44.721] [WiVRn] [info] nxwarp[0] net: 99 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 3834 decoded so far, 6637 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 18:17:44.721 17110 26060 I WiVRn   : [2026-09-07 18:17:44.721] [WiVRn] [info] nxwarp[0] net: 0.035 ms per datagram over 4342 datagrams (75.76 ms of every second)
+09-07 18:17:44.721 17110 26060 I WiVRn   : [2026-09-07 18:17:44.721] [WiVRn] [info] nxwarp[0] sel: stride 1, arrival 22.2 ms, dropped-late 178, withheld 81, decoded 3834
+09-07 18:17:44.721 17110 26060 I WiVRn   : [2026-09-07 18:17:44.721] [WiVRn] [info] nxwarp[0] rx: 147757 datagrams, placed 2319514 (+57222), late 1091 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 0
+09-07 18:17:44.820 17110 26065 I WiVRn   : [2026-09-07 18:17:44.820] [WiVRn] [info] Tracking pattern (11111µs):
+09-07 18:17:44.820 17110 26065 I WiVRn   : [2026-09-07 18:17:44.820] [WiVRn] [info] 	t+4978µs HEAD (6132µs)
+09-07 18:17:44.820 17110 26065 I WiVRn   : [2026-09-07 18:17:44.820] [WiVRn] [info] 	t+5020µs LEFT_GRIP (6090µs)
+09-07 18:17:44.820 17110 26065 I WiVRn   : [2026-09-07 18:17:44.820] [WiVRn] [info] 	t+5026µs RIGHT_GRIP (6085µs)
+09-07 18:17:44.820 17110 26065 I WiVRn   : [2026-09-07 18:17:44.820] [WiVRn] [info] 	t+7978µs HEAD (3132µs)
+09-07 18:17:44.820 17110 26065 I WiVRn   : [2026-09-07 18:17:44.820] [WiVRn] [info] 	t+8020µs LEFT_GRIP (3090µs)
+09-07 18:17:44.820 17110 26065 I WiVRn   : [2026-09-07 18:17:44.820] [WiVRn] [info] 	t+8026µs RIGHT_GRIP (3085µs)
+09-07 18:17:45.612 17110 25865 I PxrMetric: FPS=86/90,MTP=39.25ms,AppSW=off,FrmEarly=24,FrmLate=8,FrmCpu=0.24ms,FrmGpu=11.33ms,FrmTime=12.89ms,ATWGPU=1.13ms,VsyncDelay=2,GPU=51%/587Mhz,GPUTemp=64.7C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=7023
+09-07 18:17:45.625 17110 26063 I WiVRn   : [2026-09-07 18:17:45.625] [WiVRn] [info] nxwarp[0]: 105 frames in 2.0 s: 27443 B/frame, wait-prev 0.0 ms, wall 14.5 ms, nxvc passA 4.0 passB 9.0 gpu 12.9 ms; holes 0, refused 0
+09-07 18:17:45.625 17110 26063 I WiVRn   : [2026-09-07 18:17:45.625] [WiVRn] [info] nxwarp[0] gpu duty 675 ms/s (68% of one GPU) for decode alone; the display pass is extra
+09-07 18:17:45.625 17110 26063 I WiVRn   : [2026-09-07 18:17:45.625] [WiVRn] [info] nxwarp[0] passB 9.0 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 9.0; tiles skip 0 / coded 578 / dir 0 (eye pass 0)
+09-07 18:17:45.625 17110 26063 I WiVRn   : [2026-09-07 18:17:45.625] [WiVRn] [info] nxwarp[0]: 178 frames dropped late (queue kept to 1)
+09-07 18:17:45.625 17110 26063 I WiVRn   : [2026-09-07 18:17:45.625] [WiVRn] [info] nxwarp[0] stage: gap 4.7 | wait-prev 0.0 | submit 0.3 (qlock 0.0 + codec 0.3) | get_free 0.0 | fence-pre 0.0 | record 0.1 | qsubmit 0.0 | fence-post 14.1 | publish 0.0 ms; withheld 0, stride 1, arrival 16.3 ms
+09-07 18:17:45.625 17110 26063 I WiVRn   : [2026-09-07 18:17:45.625] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.03 ms/frame over 105 frames, buffer 27 kB held for 27 kB of unit (1.0x)
+09-07 18:17:45.625 17110 26063 I WiVRn   : [2026-09-07 18:17:45.625] [WiVRn] [info] nxwarp[0] fence-post 14.1 ms = nxvc gpu 12.9 + copy gpu 0.58 + queue 0.6 (over 105 frames with timestamps)
+09-07 18:17:45.820 17110 26065 I WiVRn   : [2026-09-07 18:17:45.820] [WiVRn] [info] Tracking pattern (11111µs):
+09-07 18:17:45.820 17110 26065 I WiVRn   : [2026-09-07 18:17:45.820] [WiVRn] [info] 	t+5457µs HEAD (5654µs)
+09-07 18:17:45.820 17110 26065 I WiVRn   : [2026-09-07 18:17:45.820] [WiVRn] [info] 	t+5508µs LEFT_GRIP (5603µs)
+09-07 18:17:45.820 17110 26065 I WiVRn   : [2026-09-07 18:17:45.820] [WiVRn] [info] 	t+5515µs RIGHT_GRIP (5596µs)
+09-07 18:17:45.820 17110 26065 I WiVRn   : [2026-09-07 18:17:45.820] [WiVRn] [info] 	t+8457µs HEAD (2654µs)
+09-07 18:17:45.820 17110 26065 I WiVRn   : [2026-09-07 18:17:45.820] [WiVRn] [info] 	t+8508µs LEFT_GRIP (2603µs)
+09-07 18:17:45.820 17110 26065 I WiVRn   : [2026-09-07 18:17:45.820] [WiVRn] [info] 	t+8515µs RIGHT_GRIP (2596µs)
+09-07 18:17:46.503 17110 25869 I WiVRn   : [2026-09-07 18:17:46.503] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_FOCUSED => XR_SESSION_STATE_VISIBLE
+09-07 18:17:46.503 17110 25869 I WiVRn   : [2026-09-07 18:17:46.503] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_VISIBLE => XR_SESSION_STATE_SYNCHRONIZED
+09-07 18:17:46.503 17110 25869 I WiVRn   : [2026-09-07 18:17:46.503] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_SYNCHRONIZED => XR_SESSION_STATE_STOPPING
+09-07 18:17:46.505 17110 25869 I WiVRn   : [2026-09-07 18:17:46.505] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_STOPPING => XR_SESSION_STATE_IDLE
+09-07 18:17:46.727 17110 26060 I WiVRn   : [2026-09-07 18:17:46.727] [WiVRn] [info] nxwarp[0] net: 120 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 3953 decoded so far, 6861 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 18:17:46.727 17110 26060 I WiVRn   : [2026-09-07 18:17:46.727] [WiVRn] [info] nxwarp[0] net: 0.034 ms per datagram over 4546 datagrams (76.39 ms of every second)
+09-07 18:17:46.727 17110 26060 I WiVRn   : [2026-09-07 18:17:46.727] [WiVRn] [info] nxwarp[0] sel: stride 1, arrival 11.7 ms, dropped-late 179, withheld 82, decoded 3953
+09-07 18:17:46.727 17110 26060 I WiVRn   : [2026-09-07 18:17:46.727] [WiVRn] [info] nxwarp[0] rx: 152303 datagrams, placed 2388874 (+69360), late 1091 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 0
+09-07 18:17:46.881 17110 26065 I WiVRn   : [2026-09-07 18:17:46.881] [WiVRn] [info] Tracking pattern (11112µs):
+09-07 18:17:46.881 17110 26065 I WiVRn   : [2026-09-07 18:17:46.881] [WiVRn] [info] 	t+212µs HEAD (22012µs)
+09-07 18:17:46.881 17110 26065 I WiVRn   : [2026-09-07 18:17:46.881] [WiVRn] [info] 	t+3212µs HEAD (19012µs)
+09-07 18:17:46.881 17110 26065 I WiVRn   : [2026-09-07 18:17:46.881] [WiVRn] [info] 	t+6597µs LEFT_GRIP (26740µs)
+09-07 18:17:46.881 17110 26065 I WiVRn   : [2026-09-07 18:17:46.881] [WiVRn] [info] 	t+6612µs RIGHT_GRIP (26726µs)
+09-07 18:17:46.881 17110 26065 I WiVRn   : [2026-09-07 18:17:46.881] [WiVRn] [info] 	t+8325µs HEAD (25012µs)
+09-07 18:17:46.881 17110 26065 I WiVRn   : [2026-09-07 18:17:46.881] [WiVRn] [info] 	t+9597µs LEFT_GRIP (23740µs)
+09-07 18:17:46.881 17110 26065 I WiVRn   : [2026-09-07 18:17:46.881] [WiVRn] [info] 	t+9612µs RIGHT_GRIP (23726µs)
+09-07 18:17:47.626 17110 26063 I WiVRn   : [2026-09-07 18:17:47.626] [WiVRn] [info] nxwarp[0]: 148 frames in 2.0 s: 13859 B/frame, wait-prev 0.0 ms, wall 11.8 ms, nxvc passA 2.6 passB 7.6 gpu 10.3 ms; holes 0, refused 0
+09-07 18:17:47.627 17110 26063 I WiVRn   : [2026-09-07 18:17:47.627] [WiVRn] [info] nxwarp[0] gpu duty 759 ms/s (76% of one GPU) for decode alone; the display pass is extra
+09-07 18:17:47.627 17110 26063 I WiVRn   : [2026-09-07 18:17:47.627] [WiVRn] [info] nxwarp[0] passB 7.6 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 7.6; tiles skip 0 / coded 578 / dir 0 (eye pass 0)
+09-07 18:17:47.627 17110 26063 I WiVRn   : [2026-09-07 18:17:47.627] [WiVRn] [info] nxwarp[0]: 179 frames dropped late (queue kept to 1)
+09-07 18:17:47.627 17110 26063 I WiVRn   : [2026-09-07 18:17:47.627] [WiVRn] [info] nxwarp[0] stage: gap 1.7 | wait-prev 0.0 | submit 0.6 (qlock 0.0 + codec 0.6) | get_free 0.0 | fence-pre 0.0 | record 0.1 | qsubmit 0.0 | fence-post 11.1 | publish 0.0 ms; withheld 1, stride 1, arrival 10.9 ms
+09-07 18:17:47.627 17110 26063 I WiVRn   : [2026-09-07 18:17:47.627] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.06 ms/frame over 149 frames, buffer 14 kB held for 14 kB of unit (1.0x)
+09-07 18:17:47.627 17110 26063 I WiVRn   : [2026-09-07 18:17:47.627] [WiVRn] [info] nxwarp[0] fence-post 11.1 ms = nxvc gpu 10.3 + copy gpu 0.54 + queue 0.3 (over 148 frames with timestamps)
+09-07 18:17:47.849 17110 26065 I WiVRn   : [2026-09-07 18:17:47.849] [WiVRn] [info] Tracking pattern (11112µs):
+09-07 18:17:47.849 17110 26065 I WiVRn   : [2026-09-07 18:17:47.849] [WiVRn] [info] 	t+5733µs HEAD (27604µs)
+09-07 18:17:47.849 17110 26065 I WiVRn   : [2026-09-07 18:17:47.849] [WiVRn] [info] 	t+8733µs HEAD (24604µs)
+09-07 18:17:48.737 17110 26060 I WiVRn   : [2026-09-07 18:17:48.737] [WiVRn] [info] nxwarp[0] net: 181 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 4134 decoded so far, 7042 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 18:17:48.737 17110 26060 I WiVRn   : [2026-09-07 18:17:48.737] [WiVRn] [info] nxwarp[0] net: 0.113 ms per datagram over 3439 datagrams (193.26 ms of every second)
+09-07 18:17:48.737 17110 26060 I WiVRn   : [2026-09-07 18:17:48.737] [WiVRn] [info] nxwarp[0] sel: stride 1, arrival 11.2 ms, dropped-late 179, withheld 82, decoded 4134
+09-07 18:17:48.737 17110 26060 I WiVRn   : [2026-09-07 18:17:48.737] [WiVRn] [info] nxwarp[0] rx: 155742 datagrams, placed 2493492 (+104618), late 1091 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 0
+09-07 18:17:48.860 17110 26065 I WiVRn   : [2026-09-07 18:17:48.860] [WiVRn] [info] Tracking pattern (11112µs):
+09-07 18:17:48.860 17110 26065 I WiVRn   : [2026-09-07 18:17:48.860] [WiVRn] [info] 	t+2756µs HEAD (30582µs)
+09-07 18:17:48.860 17110 26065 I WiVRn   : [2026-09-07 18:17:48.860] [WiVRn] [info] 	t+10868µs HEAD (33582µs)
+09-07 18:17:49.321 17110 25869 I WiVRn   : [2026-09-07 18:17:49.321] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_IDLE => XR_SESSION_STATE_READY
+09-07 18:17:49.323 17110 25869 I WiVRn   : [2026-09-07 18:17:49.323] [WiVRn] [info] Received event type XR_TYPE_EVENT_DATA_USER_PRESENCE_CHANGED_EXT
+09-07 18:17:49.325 17110 25869 I WiVRn   : [2026-09-07 18:17:49.325] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_READY => XR_SESSION_STATE_SYNCHRONIZED
+09-07 18:17:49.325 17110 25869 I WiVRn   : [2026-09-07 18:17:49.325] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_SYNCHRONIZED => XR_SESSION_STATE_VISIBLE
+09-07 18:17:49.325 17110 25869 I WiVRn   : [2026-09-07 18:17:49.325] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_VISIBLE => XR_SESSION_STATE_FOCUSED
+09-07 18:17:49.343 17110 25865 I PxrMetric: FPS=88/90,MTP=40.92ms,AppSW=off,FrmEarly=31,FrmLate=8,FrmCpu=0.25ms,FrmGpu=9.52ms,FrmTime=10.61ms,ATWGPU=1.31ms,VsyncDelay=2,GPU=96%/587Mhz,GPUTemp=64.3C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=7100
+09-07 18:17:49.353 17110 26065 I WiVRn   : [2026-09-07 18:17:49.353] [WiVRn] [info] Tracking pattern (11104µs):
+09-07 18:17:49.353 17110 26065 I WiVRn   : [2026-09-07 18:17:49.353] [WiVRn] [info] 	t+2731µs HEAD (30582µs)
+09-07 18:17:49.353 17110 26065 I WiVRn   : [2026-09-07 18:17:49.353] [WiVRn] [info] 	t+8929µs LEFT_GRIP (2175µs)
+09-07 18:17:49.353 17110 26065 I WiVRn   : [2026-09-07 18:17:49.353] [WiVRn] [info] 	t+10835µs HEAD (33582µs)
+09-07 18:17:49.633 17110 26063 I WiVRn   : [2026-09-07 18:17:49.633] [WiVRn] [info] nxwarp[0]: 171 frames in 2.0 s: 10807 B/frame, wait-prev 0.0 ms, wall 11.1 ms, nxvc passA 2.2 passB 7.5 gpu 9.6 ms; holes 0, refused 0
+09-07 18:17:49.633 17110 26063 I WiVRn   : [2026-09-07 18:17:49.633] [WiVRn] [info] nxwarp[0] gpu duty 822 ms/s (82% of one GPU) for decode alone; the display pass is extra
+09-07 18:17:49.633 17110 26063 I WiVRn   : [2026-09-07 18:17:49.633] [WiVRn] [info] nxwarp[0] passB 7.5 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 7.5; tiles skip 0 / coded 578 / dir 0 (eye pass 0)
+09-07 18:17:49.633 17110 26063 I WiVRn   : [2026-09-07 18:17:49.633] [WiVRn] [info] nxwarp[0]: 188 frames dropped late (queue kept to 1)
+09-07 18:17:49.633 17110 26063 I WiVRn   : [2026-09-07 18:17:49.633] [WiVRn] [info] nxwarp[0] stage: gap 0.6 | wait-prev 0.0 | submit 0.6 (qlock 0.0 + codec 0.6) | get_free 0.0 | fence-pre 0.0 | record 0.1 | qsubmit 0.0 | fence-post 10.4 | publish 0.0 ms; withheld 7, stride 1, arrival 11.2 ms
+09-07 18:17:49.633 17110 26063 I WiVRn   : [2026-09-07 18:17:49.633] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.04 ms/frame over 181 frames, buffer 11 kB held for 11 kB of unit (1.0x)
+09-07 18:17:49.633 17110 26063 I WiVRn   : [2026-09-07 18:17:49.633] [WiVRn] [info] nxwarp[0] fence-post 10.4 ms = nxvc gpu 9.6 + copy gpu 0.51 + queue 0.2 (over 171 frames with timestamps)
+09-07 18:17:49.822 17110 26065 I WiVRn   : [2026-09-07 18:17:49.822] [WiVRn] [info] Tracking pattern (11109µs):
+09-07 18:17:49.822 17110 26065 I WiVRn   : [2026-09-07 18:17:49.822] [WiVRn] [info] 	t+5109µs HEAD (6000µs)
+09-07 18:17:49.822 17110 26065 I WiVRn   : [2026-09-07 18:17:49.822] [WiVRn] [info] 	t+5247µs LEFT_GRIP (5862µs)
+09-07 18:17:49.822 17110 26065 I WiVRn   : [2026-09-07 18:17:49.822] [WiVRn] [info] 	t+5252µs RIGHT_GRIP (5857µs)
+09-07 18:17:49.822 17110 26065 I WiVRn   : [2026-09-07 18:17:49.822] [WiVRn] [info] 	t+8109µs HEAD (3000µs)
+09-07 18:17:49.822 17110 26065 I WiVRn   : [2026-09-07 18:17:49.822] [WiVRn] [info] 	t+8247µs LEFT_GRIP (2862µs)
+09-07 18:17:49.822 17110 26065 I WiVRn   : [2026-09-07 18:17:49.822] [WiVRn] [info] 	t+8252µs RIGHT_GRIP (2857µs)
+09-07 18:17:49.822 17110 26065 I WiVRn   : [2026-09-07 18:17:49.822] [WiVRn] [info] 	t+11109µs HEAD (0µs)
+09-07 18:17:50.355 17110 25865 I PxrMetric: FPS=20/90,MTP=37.17ms,AppSW=off,FrmEarly=33,FrmLate=16,FrmCpu=0.24ms,FrmGpu=12.97ms,FrmTime=22.33ms,ATWGPU=1.13ms,VsyncDelay=3,GPU=86%/587Mhz,GPUTemp=62.8C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=7183
+09-07 18:17:50.754 17110 26060 I WiVRn   : [2026-09-07 18:17:50.754] [WiVRn] [info] nxwarp[0] net: 149 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 4271 decoded so far, 7284 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 18:17:50.755 17110 26060 I WiVRn   : [2026-09-07 18:17:50.755] [WiVRn] [info] nxwarp[0] net: 0.042 ms per datagram over 4929 datagrams (102.40 ms of every second)
+09-07 18:17:50.755 17110 26060 I WiVRn   : [2026-09-07 18:17:50.755] [WiVRn] [info] nxwarp[0] sel: stride 1, arrival 15.8 ms, dropped-late 191, withheld 93, decoded 4271
+09-07 18:17:50.755 17110 26060 I WiVRn   : [2026-09-07 18:17:50.755] [WiVRn] [info] nxwarp[0] rx: 160671 datagrams, placed 2579614 (+86122), late 1261 (+170), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 0
+09-07 18:17:50.822 17110 26065 I WiVRn   : [2026-09-07 18:17:50.822] [WiVRn] [info] Tracking pattern (11112µs):
+09-07 18:17:50.822 17110 26065 I WiVRn   : [2026-09-07 18:17:50.822] [WiVRn] [info] 	t+5417µs HEAD (5694µs)
+09-07 18:17:50.822 17110 26065 I WiVRn   : [2026-09-07 18:17:50.822] [WiVRn] [info] 	t+5467µs LEFT_GRIP (5645µs)
+09-07 18:17:50.822 17110 26065 I WiVRn   : [2026-09-07 18:17:50.822] [WiVRn] [info] 	t+5476µs RIGHT_GRIP (5635µs)
+09-07 18:17:50.822 17110 26065 I WiVRn   : [2026-09-07 18:17:50.822] [WiVRn] [info] 	t+8417µs HEAD (2694µs)
+09-07 18:17:50.822 17110 26065 I WiVRn   : [2026-09-07 18:17:50.822] [WiVRn] [info] 	t+8467µs LEFT_GRIP (2645µs)
+09-07 18:17:50.822 17110 26065 I WiVRn   : [2026-09-07 18:17:50.822] [WiVRn] [info] 	t+8476µs RIGHT_GRIP (2635µs)
+09-07 18:17:51.326 17110 25869 I WiVRn   : [2026-09-07 18:17:51.326] [WiVRn] [info] render: 169 iterations in 2.0 s (84.5/s), 168 submitted a layer, 105 new-source, 0 skipped by the repeat gate, 1 with nothing to show; display period 11.8 ms
+09-07 18:17:51.326 17110 25869 I WiVRn   : [2026-09-07 18:17:51.326] [WiVRn] [info] render: this app's own GPU pass 1.5 ms per iteration
+09-07 18:17:51.326 17110 25869 I WiVRn   : [2026-09-07 18:17:51.326] [WiVRn] [info] render: defoveate 1088x1088 per eye x2 = 2.37 Mpx/frame at scale 0.50 atlas-mode 0; 63 re-presented from the cache (reduce_gpu_load on)
+09-07 18:17:51.326 17110 25869 I WiVRn   : [2026-09-07 18:17:51.326] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.28 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-07 18:17:51.326 17110 25869 I WiVRn   : [2026-09-07 18:17:51.326] [WiVRn] [info] render: per iteration fence 2.6 (worst 15.6) | queries 0.0 | submit 0.0 | whole render() 3.0 ms
+09-07 18:17:51.326 17110 25869 I WiVRn   : [2026-09-07 18:17:51.326] [WiVRn] [info] render: jit on | wake slack 45.7 ms | slept 0.8 ms mean (max 11.7, 168 of 169 iterations) | budget 16.6 = pass 15.6 + margin 1.0 | sleep cap 0.6 ms
+09-07 18:17:51.326 17110 25869 I WiVRn   : [2026-09-07 18:17:51.326] [WiVRn] [info] render: displayed pose age 75.0 ms mean (worst 106.1) over 168 frames | submit lead 41.9 ms mean (worst 23.4) | misses: 0 overrun 0 late 1 skipped refresh
+09-07 18:17:51.369 17110 25865 I PxrMetric: FPS=82/90,MTP=42.82ms,AppSW=off,FrmEarly=46,FrmLate=8,FrmCpu=0.19ms,FrmGpu=11.16ms,FrmTime=12.28ms,ATWGPU=1.13ms,VsyncDelay=2,GPU=99%/587Mhz,GPUTemp=62.8C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=7270
+09-07 18:17:51.647 17110 26063 I WiVRn   : [2026-09-07 18:17:51.647] [WiVRn] [info] nxwarp[0]: 108 frames in 2.0 s: 27393 B/frame, wait-prev 0.0 ms, wall 14.7 ms, nxvc passA 3.7 passB 9.1 gpu 12.8 ms; holes 0, refused 0
+09-07 18:17:51.647 17110 26063 I WiVRn   : [2026-09-07 18:17:51.647] [WiVRn] [info] nxwarp[0] gpu duty 688 ms/s (69% of one GPU) for decode alone; the display pass is extra
+09-07 18:17:51.647 17110 26063 I WiVRn   : [2026-09-07 18:17:51.647] [WiVRn] [info] nxwarp[0] passB 9.1 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 9.1; tiles skip 0 / coded 578 / dir 0 (eye pass 0)
+09-07 18:17:51.647 17110 26063 I WiVRn   : [2026-09-07 18:17:51.647] [WiVRn] [info] nxwarp[0]: 191 frames dropped late (queue kept to 1)
+09-07 18:17:51.648 17110 26063 I WiVRn   : [2026-09-07 18:17:51.648] [WiVRn] [info] nxwarp[0] stage: gap 4.0 | wait-prev 0.0 | submit 0.3 (qlock 0.0 + codec 0.3) | get_free 0.0 | fence-pre 0.0 | record 0.1 | qsubmit 0.0 | fence-post 14.4 | publish 0.0 ms; withheld 4, stride 1, arrival 20.7 ms
+09-07 18:17:51.648 17110 26063 I WiVRn   : [2026-09-07 18:17:51.648] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.03 ms/frame over 110 frames, buffer 27 kB held for 27 kB of unit (1.0x)
+09-07 18:17:51.648 17110 26063 I WiVRn   : [2026-09-07 18:17:51.648] [WiVRn] [info] nxwarp[0] fence-post 14.4 ms = nxvc gpu 12.8 + copy gpu 0.55 + queue 1.0 (over 108 frames with timestamps)
+09-07 18:17:51.822 17110 26065 I WiVRn   : [2026-09-07 18:17:51.822] [WiVRn] [info] Tracking pattern (11111µs):
+09-07 18:17:51.822 17110 26065 I WiVRn   : [2026-09-07 18:17:51.822] [WiVRn] [info] 	t+5179µs HEAD (5932µs)
+09-07 18:17:51.822 17110 26065 I WiVRn   : [2026-09-07 18:17:51.822] [WiVRn] [info] 	t+5220µs LEFT_GRIP (5891µs)
+09-07 18:17:51.822 17110 26065 I WiVRn   : [2026-09-07 18:17:51.822] [WiVRn] [info] 	t+5234µs RIGHT_GRIP (5876µs)
+09-07 18:17:51.822 17110 26065 I WiVRn   : [2026-09-07 18:17:51.822] [WiVRn] [info] 	t+8179µs HEAD (2932µs)
+09-07 18:17:51.822 17110 26065 I WiVRn   : [2026-09-07 18:17:51.822] [WiVRn] [info] 	t+8220µs LEFT_GRIP (2891µs)
+09-07 18:17:51.822 17110 26065 I WiVRn   : [2026-09-07 18:17:51.822] [WiVRn] [info] 	t+8234µs RIGHT_GRIP (2876µs)
+09-07 18:17:52.382 17110 25865 I PxrMetric: FPS=86/90,MTP=34.22ms,AppSW=off,FrmEarly=31,FrmLate=4,FrmCpu=0.19ms,FrmGpu=6.01ms,FrmTime=6.97ms,ATWGPU=1.11ms,VsyncDelay=1,GPU=99%/587Mhz,GPUTemp=62.8C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=7360
+09-07 18:17:52.765 17110 26060 I WiVRn   : [2026-09-07 18:17:52.765] [WiVRn] [info] nxwarp[0] net: 94 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 4365 decoded so far, 7472 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 18:17:52.765 17110 26060 I WiVRn   : [2026-09-07 18:17:52.765] [WiVRn] [info] nxwarp[0] net: 0.035 ms per datagram over 4122 datagrams (71.73 ms of every second)
+09-07 18:17:52.765 17110 26060 I WiVRn   : [2026-09-07 18:17:52.765] [WiVRn] [info] nxwarp[0] sel: stride 1, arrival 22.2 ms, dropped-late 191, withheld 93, decoded 4365
+09-07 18:17:52.765 17110 26060 I WiVRn   : [2026-09-07 18:17:52.765] [WiVRn] [info] nxwarp[0] rx: 164793 datagrams, placed 2633946 (+54332), late 1261 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 0
+09-07 18:17:52.822 17110 26065 I WiVRn   : [2026-09-07 18:17:52.822] [WiVRn] [info] Tracking pattern (11111µs):
+09-07 18:17:52.822 17110 26065 I WiVRn   : [2026-09-07 18:17:52.822] [WiVRn] [info] 	t+5376µs HEAD (5735µs)
+09-07 18:17:52.822 17110 26065 I WiVRn   : [2026-09-07 18:17:52.822] [WiVRn] [info] 	t+5421µs LEFT_GRIP (5689µs)
+09-07 18:17:52.822 17110 26065 I WiVRn   : [2026-09-07 18:17:52.822] [WiVRn] [info] 	t+5427µs RIGHT_GRIP (5684µs)
+09-07 18:17:52.822 17110 26065 I WiVRn   : [2026-09-07 18:17:52.822] [WiVRn] [info] 	t+8376µs HEAD (2735µs)
+09-07 18:17:52.822 17110 26065 I WiVRn   : [2026-09-07 18:17:52.822] [WiVRn] [info] 	t+8421µs LEFT_GRIP (2689µs)
+09-07 18:17:52.822 17110 26065 I WiVRn   : [2026-09-07 18:17:52.822] [WiVRn] [info] 	t+8427µs RIGHT_GRIP (2684µs)
+09-07 18:17:53.334 17110 25869 I WiVRn   : [2026-09-07 18:17:53.334] [WiVRn] [info] render: 178 iterations in 2.0 s (88.6/s), 178 submitted a layer, 97 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.3 ms
+09-07 18:17:53.334 17110 25869 I WiVRn   : [2026-09-07 18:17:53.334] [WiVRn] [info] render: this app's own GPU pass 1.2 ms per iteration
+09-07 18:17:53.334 17110 25869 I WiVRn   : [2026-09-07 18:17:53.334] [WiVRn] [info] render: defoveate 1088x1088 per eye x2 = 2.37 Mpx/frame at scale 0.50 atlas-mode 0; 81 re-presented from the cache (reduce_gpu_load on)
+09-07 18:17:53.334 17110 25869 I WiVRn   : [2026-09-07 18:17:53.334] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.28 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-07 18:17:53.334 17110 25869 I WiVRn   : [2026-09-07 18:17:53.334] [WiVRn] [info] render: per iteration fence 0.8 (worst 13.7) | queries 0.0 | submit 0.0 | whole render() 1.2 ms
+09-07 18:17:53.334 17110 25869 I WiVRn   : [2026-09-07 18:17:53.334] [WiVRn] [info] render: jit on | wake slack 37.7 ms | slept 0.9 ms mean (max 11.7, 178 of 178 iterations) | budget 15.1 = pass 14.1 + margin 1.0 | sleep cap 0.6 ms
+09-07 18:17:53.334 17110 25869 I WiVRn   : [2026-09-07 18:17:53.334] [WiVRn] [info] render: displayed pose age 66.9 ms mean (worst 84.0) over 178 frames | submit lead 35.6 ms mean (worst 22.2) | misses: 0 overrun 0 late 1 skipped refresh
+09-07 18:17:53.382 17110 25865 I PxrMetric: FPS=89/90,MTP=42.33ms,AppSW=off,FrmEarly=9,FrmLate=16,FrmCpu=0.23ms,FrmGpu=9.47ms,FrmTime=14.45ms,ATWGPU=1.12ms,VsyncDelay=2,GPU=40%/587Mhz,GPUTemp=67.1C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=7448
+09-07 18:17:53.658 17110 26063 I WiVRn   : [2026-09-07 18:17:53.658] [WiVRn] [info] nxwarp[0]: 101 frames in 2.0 s: 27548 B/frame, wait-prev 0.0 ms, wall 14.7 ms, nxvc passA 3.7 passB 9.2 gpu 12.9 ms; holes 0, refused 0
+09-07 18:17:53.658 17110 26063 I WiVRn   : [2026-09-07 18:17:53.658] [WiVRn] [info] nxwarp[0] gpu duty 647 ms/s (65% of one GPU) for decode alone; the display pass is extra
+09-07 18:17:53.658 17110 26063 I WiVRn   : [2026-09-07 18:17:53.658] [WiVRn] [info] nxwarp[0] passB 9.2 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 9.2; tiles skip 0 / coded 578 / dir 0 (eye pass 0)
+09-07 18:17:53.658 17110 26063 I WiVRn   : [2026-09-07 18:17:53.658] [WiVRn] [info] nxwarp[0]: 191 frames dropped late (queue kept to 1)
+09-07 18:17:53.658 17110 26063 I WiVRn   : [2026-09-07 18:17:53.658] [WiVRn] [info] nxwarp[0] stage: gap 5.2 | wait-prev 0.0 | submit 0.2 (qlock 0.0 + codec 0.2) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 14.3 | publish 0.0 ms; withheld 0, stride 1, arrival 19.0 ms
+09-07 18:17:53.658 17110 26063 I WiVRn   : [2026-09-07 18:17:53.658] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.03 ms/frame over 101 frames, buffer 27 kB held for 27 kB of unit (1.0x)
+09-07 18:17:53.658 17110 26063 I WiVRn   : [2026-09-07 18:17:53.658] [WiVRn] [info] nxwarp[0] fence-post 14.4 ms = nxvc gpu 12.9 + copy gpu 0.59 + queue 0.9 (over 101 frames with timestamps)
+09-07 18:17:53.822 17110 26065 I WiVRn   : [2026-09-07 18:17:53.822] [WiVRn] [info] Tracking pattern (11111µs):
+09-07 18:17:53.822 17110 26065 I WiVRn   : [2026-09-07 18:17:53.822] [WiVRn] [info] 	t+5065µs HEAD (6045µs)
+09-07 18:17:53.822 17110 26065 I WiVRn   : [2026-09-07 18:17:53.822] [WiVRn] [info] 	t+5102µs LEFT_GRIP (6009µs)
+09-07 18:17:53.822 17110 26065 I WiVRn   : [2026-09-07 18:17:53.822] [WiVRn] [info] 	t+5109µs RIGHT_GRIP (6002µs)
+09-07 18:17:53.822 17110 26065 I WiVRn   : [2026-09-07 18:17:53.822] [WiVRn] [info] 	t+8065µs HEAD (3045µs)
+09-07 18:17:53.822 17110 26065 I WiVRn   : [2026-09-07 18:17:53.822] [WiVRn] [info] 	t+8102µs LEFT_GRIP (3009µs)
+09-07 18:17:53.822 17110 26065 I WiVRn   : [2026-09-07 18:17:53.822] [WiVRn] [info] 	t+8109µs RIGHT_GRIP (3002µs)
+09-07 18:17:54.390 17110 25865 I PxrMetric: FPS=88/90,MTP=50.80ms,AppSW=off,FrmEarly=29,FrmLate=16,FrmCpu=0.25ms,FrmGpu=13.77ms,FrmTime=23.20ms,ATWGPU=1.12ms,VsyncDelay=3,GPU=99%/587Mhz,GPUTemp=63.6C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=7527
+09-07 18:17:54.770 17110 26060 I WiVRn   : [2026-09-07 18:17:54.770] [WiVRn] [info] nxwarp[0] net: 115 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 4480 decoded so far, 7702 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 18:17:54.770 17110 26060 I WiVRn   : [2026-09-07 18:17:54.770] [WiVRn] [info] nxwarp[0] net: 0.029 ms per datagram over 4739 datagrams (68.83 ms of every second)
+09-07 18:17:54.770 17110 26060 I WiVRn   : [2026-09-07 18:17:54.770] [WiVRn] [info] nxwarp[0] sel: stride 1, arrival 17.8 ms, dropped-late 191, withheld 93, decoded 4480
+09-07 18:17:54.770 17110 26060 I WiVRn   : [2026-09-07 18:17:54.770] [WiVRn] [info] nxwarp[0] rx: 169532 datagrams, placed 2700416 (+66470), late 1261 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 0
+09-07 18:17:54.822 17110 26065 I WiVRn   : [2026-09-07 18:17:54.822] [WiVRn] [info] Tracking pattern (11112µs):
+09-07 18:17:54.822 17110 26065 I WiVRn   : [2026-09-07 18:17:54.822] [WiVRn] [info] 	t+4858µs HEAD (6254µs)
+09-07 18:17:54.822 17110 26065 I WiVRn   : [2026-09-07 18:17:54.822] [WiVRn] [info] 	t+5098µs LEFT_GRIP (6014µs)
+09-07 18:17:54.822 17110 26065 I WiVRn   : [2026-09-07 18:17:54.822] [WiVRn] [info] 	t+5112µs RIGHT_GRIP (6000µs)
+09-07 18:17:54.822 17110 26065 I WiVRn   : [2026-09-07 18:17:54.822] [WiVRn] [info] 	t+7858µs HEAD (3254µs)
+09-07 18:17:54.822 17110 26065 I WiVRn   : [2026-09-07 18:17:54.822] [WiVRn] [info] 	t+8098µs LEFT_GRIP (3014µs)
+09-07 18:17:54.822 17110 26065 I WiVRn   : [2026-09-07 18:17:54.822] [WiVRn] [info] 	t+8112µs RIGHT_GRIP (3000µs)
+09-07 18:17:55.339 17110 25869 I WiVRn   : [2026-09-07 18:17:55.339] [WiVRn] [info] render: 163 iterations in 2.0 s (81.3/s), 163 submitted a layer, 114 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 12.3 ms
+09-07 18:17:55.339 17110 25869 I WiVRn   : [2026-09-07 18:17:55.339] [WiVRn] [info] render: this app's own GPU pass 1.7 ms per iteration
+09-07 18:17:55.339 17110 25869 I WiVRn   : [2026-09-07 18:17:55.339] [WiVRn] [info] render: defoveate 1088x1088 per eye x2 = 2.37 Mpx/frame at scale 0.50 atlas-mode 0; 49 re-presented from the cache (reduce_gpu_load on)
+09-07 18:17:55.339 17110 25869 I WiVRn   : [2026-09-07 18:17:55.339] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.28 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-07 18:17:55.339 17110 25869 I WiVRn   : [2026-09-07 18:17:55.339] [WiVRn] [info] render: per iteration fence 3.3 (worst 16.0) | queries 0.0 | submit 0.0 | whole render() 3.8 ms
+09-07 18:17:55.339 17110 25869 I WiVRn   : [2026-09-07 18:17:55.339] [WiVRn] [info] render: jit on | wake slack 45.3 ms | slept 0.6 ms mean (max 0.6, 163 of 163 iterations) | budget 17.1 = pass 16.1 + margin 1.0 | sleep cap 0.6 ms
+09-07 18:17:55.339 17110 25869 I WiVRn   : [2026-09-07 18:17:55.339] [WiVRn] [info] render: displayed pose age 70.4 ms mean (worst 95.2) over 163 frames | submit lead 40.9 ms mean (worst 24.2) | misses: 0 overrun 0 late 0 skipped refresh
+09-07 18:17:55.392 17110 25865 I PxrMetric: FPS=79/90,MTP=39.06ms,AppSW=off,FrmEarly=47,FrmLate=6,FrmCpu=0.20ms,FrmGpu=10.45ms,FrmTime=11.37ms,ATWGPU=1.12ms,VsyncDelay=2,GPU=99%/587Mhz,GPUTemp=63.6C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=7612
+09-07 18:17:55.659 17110 26063 I WiVRn   : [2026-09-07 18:17:55.659] [WiVRn] [info] nxwarp[0]: 111 frames in 2.0 s: 27463 B/frame, wait-prev 0.0 ms, wall 14.7 ms, nxvc passA 3.9 passB 9.1 gpu 13.0 ms; holes 0, refused 0
+09-07 18:17:55.659 17110 26063 I WiVRn   : [2026-09-07 18:17:55.659] [WiVRn] [info] nxwarp[0] gpu duty 719 ms/s (72% of one GPU) for decode alone; the display pass is extra
+09-07 18:17:55.659 17110 26063 I WiVRn   : [2026-09-07 18:17:55.659] [WiVRn] [info] nxwarp[0] passB 9.1 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 9.1; tiles skip 0 / coded 578 / dir 0 (eye pass 0)
+09-07 18:17:55.659 17110 26063 I WiVRn   : [2026-09-07 18:17:55.659] [WiVRn] [info] nxwarp[0]: 191 frames dropped late (queue kept to 1)
+09-07 18:17:55.659 17110 26063 I WiVRn   : [2026-09-07 18:17:55.659] [WiVRn] [info] nxwarp[0] stage: gap 3.4 | wait-prev 0.0 | submit 0.3 (qlock 0.0 + codec 0.3) | get_free 0.0 | fence-pre 0.0 | record 0.1 | qsubmit 0.0 | fence-post 14.3 | publish 0.0 ms; withheld 0, stride 1, arrival 19.6 ms
+09-07 18:17:55.659 17110 26063 I WiVRn   : [2026-09-07 18:17:55.659] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.03 ms/frame over 111 frames, buffer 27 kB held for 27 kB of unit (1.0x)
+09-07 18:17:55.659 17110 26063 I WiVRn   : [2026-09-07 18:17:55.659] [WiVRn] [info] nxwarp[0] fence-post 14.3 ms = nxvc gpu 13.0 + copy gpu 0.58 + queue 0.8 (over 111 frames with timestamps)
+09-07 18:17:55.822 17110 26065 I WiVRn   : [2026-09-07 18:17:55.822] [WiVRn] [info] Tracking pattern (11112µs):
+09-07 18:17:55.822 17110 26065 I WiVRn   : [2026-09-07 18:17:55.822] [WiVRn] [info] 	t+5117µs HEAD (5995µs)
+09-07 18:17:55.822 17110 26065 I WiVRn   : [2026-09-07 18:17:55.822] [WiVRn] [info] 	t+5153µs LEFT_GRIP (5959µs)
+09-07 18:17:55.822 17110 26065 I WiVRn   : [2026-09-07 18:17:55.822] [WiVRn] [info] 	t+5160µs RIGHT_GRIP (5951µs)
+09-07 18:17:55.822 17110 26065 I WiVRn   : [2026-09-07 18:17:55.822] [WiVRn] [info] 	t+8117µs HEAD (2995µs)
+09-07 18:17:55.822 17110 26065 I WiVRn   : [2026-09-07 18:17:55.822] [WiVRn] [info] 	t+8153µs LEFT_GRIP (2959µs)
+09-07 18:17:55.822 17110 26065 I WiVRn   : [2026-09-07 18:17:55.822] [WiVRn] [info] 	t+8160µs RIGHT_GRIP (2951µs)
+09-07 18:17:56.407 17110 25865 I PxrMetric: FPS=84/90,MTP=25.64ms,AppSW=off,FrmEarly=41,FrmLate=5,FrmCpu=0.22ms,FrmGpu=10.00ms,FrmTime=14.36ms,ATWGPU=1.15ms,VsyncDelay=1,GPU=88%/587Mhz,GPUTemp=63.6C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=7700
+09-07 18:17:56.789 17110 26060 I WiVRn   : [2026-09-07 18:17:56.789] [WiVRn] [info] nxwarp[0] net: 98 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 4578 decoded so far, 7898 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 18:17:56.789 17110 26060 I WiVRn   : [2026-09-07 18:17:56.789] [WiVRn] [info] nxwarp[0] net: 0.035 ms per datagram over 4298 datagrams (74.10 ms of every second)
+09-07 18:17:56.789 17110 26060 I WiVRn   : [2026-09-07 18:17:56.789] [WiVRn] [info] nxwarp[0] sel: stride 1, arrival 21.2 ms, dropped-late 191, withheld 93, decoded 4578
+09-07 18:17:56.789 17110 26060 I WiVRn   : [2026-09-07 18:17:56.789] [WiVRn] [info] nxwarp[0] rx: 173830 datagrams, placed 2757060 (+56644), late 1289 (+28), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 1
+09-07 18:17:56.822 17110 26065 I WiVRn   : [2026-09-07 18:17:56.822] [WiVRn] [info] Tracking pattern (11112µs):
+09-07 18:17:56.822 17110 26065 I WiVRn   : [2026-09-07 18:17:56.822] [WiVRn] [info] 	t+4939µs HEAD (6172µs)
+09-07 18:17:56.822 17110 26065 I WiVRn   : [2026-09-07 18:17:56.822] [WiVRn] [info] 	t+4990µs LEFT_GRIP (6122µs)
+09-07 18:17:56.822 17110 26065 I WiVRn   : [2026-09-07 18:17:56.822] [WiVRn] [info] 	t+5001µs RIGHT_GRIP (6110µs)
+09-07 18:17:56.822 17110 26065 I WiVRn   : [2026-09-07 18:17:56.822] [WiVRn] [info] 	t+7939µs HEAD (3172µs)
+09-07 18:17:56.822 17110 26065 I WiVRn   : [2026-09-07 18:17:56.822] [WiVRn] [info] 	t+7990µs LEFT_GRIP (3122µs)
+09-07 18:17:56.822 17110 26065 I WiVRn   : [2026-09-07 18:17:56.822] [WiVRn] [info] 	t+8001µs RIGHT_GRIP (3110µs)
+09-07 18:17:57.351 17110 25869 I WiVRn   : [2026-09-07 18:17:57.351] [WiVRn] [info] render: 175 iterations in 2.0 s (87.1/s), 175 submitted a layer, 100 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.5 ms
+09-07 18:17:57.351 17110 25869 I WiVRn   : [2026-09-07 18:17:57.351] [WiVRn] [info] render: this app's own GPU pass 1.3 ms per iteration
+09-07 18:17:57.351 17110 25869 I WiVRn   : [2026-09-07 18:17:57.351] [WiVRn] [info] render: defoveate 1088x1088 per eye x2 = 2.37 Mpx/frame at scale 0.50 atlas-mode 0; 75 re-presented from the cache (reduce_gpu_load on)
+09-07 18:17:57.351 17110 25869 I WiVRn   : [2026-09-07 18:17:57.351] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.28 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-07 18:17:57.351 17110 25869 I WiVRn   : [2026-09-07 18:17:57.351] [WiVRn] [info] render: per iteration fence 1.5 (worst 15.3) | queries 0.0 | submit 0.0 | whole render() 1.9 ms
+09-07 18:17:57.351 17110 25869 I WiVRn   : [2026-09-07 18:17:57.351] [WiVRn] [info] render: jit on | wake slack 42.2 ms | slept 0.8 ms mean (max 11.7, 175 of 175 iterations) | budget 15.5 = pass 14.5 + margin 1.0 | sleep cap 0.6 ms
+09-07 18:17:57.351 17110 25869 I WiVRn   : [2026-09-07 18:17:57.351] [WiVRn] [info] render: displayed pose age 70.3 ms mean (worst 95.3) over 175 frames | submit lead 39.6 ms mean (worst 22.6) | misses: 0 overrun 0 late 1 skipped refresh
+09-07 18:17:57.413 17110 25865 I PxrMetric: FPS=87/90,MTP=40.94ms,AppSW=off,FrmEarly=39,FrmLate=3,FrmCpu=0.22ms,FrmGpu=9.20ms,FrmTime=10.58ms,ATWGPU=1.04ms,VsyncDelay=2,GPU=63%/587Mhz,GPUTemp=63.6C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=7788
+09-07 18:17:57.664 17110 26063 I WiVRn   : [2026-09-07 18:17:57.664] [WiVRn] [info] nxwarp[0]: 102 frames in 2.0 s: 27611 B/frame, wait-prev 0.0 ms, wall 14.5 ms, nxvc passA 4.0 passB 9.1 gpu 13.1 ms; holes 0, refused 0
+09-07 18:17:57.664 17110 26063 I WiVRn   : [2026-09-07 18:17:57.664] [WiVRn] [info] nxwarp[0] gpu duty 665 ms/s (66% of one GPU) for decode alone; the display pass is extra
+09-07 18:17:57.664 17110 26063 I WiVRn   : [2026-09-07 18:17:57.664] [WiVRn] [info] nxwarp[0] passB 9.1 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 9.1; tiles skip 0 / coded 578 / dir 0 (eye pass 0)
+09-07 18:17:57.664 17110 26063 I WiVRn   : [2026-09-07 18:17:57.664] [WiVRn] [info] nxwarp[0]: 192 frames dropped late (queue kept to 1)
+09-07 18:17:57.664 17110 26063 I WiVRn   : [2026-09-07 18:17:57.664] [WiVRn] [info] nxwarp[0] stage: gap 5.1 | wait-prev 0.0 | submit 0.2 (qlock 0.0 + codec 0.2) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 14.2 | publish 0.0 ms; withheld 1, stride 1, arrival 14.6 ms
+09-07 18:17:57.664 17110 26063 I WiVRn   : [2026-09-07 18:17:57.664] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.03 ms/frame over 104 frames, buffer 27 kB held for 27 kB of unit (1.0x)
+09-07 18:17:57.664 17110 26063 I WiVRn   : [2026-09-07 18:17:57.664] [WiVRn] [info] nxwarp[0] fence-post 14.2 ms = nxvc gpu 13.1 + copy gpu 0.56 + queue 0.6 (over 102 frames with timestamps)
+09-07 18:17:57.822 17110 26065 I WiVRn   : [2026-09-07 18:17:57.822] [WiVRn] [info] Tracking pattern (11113µs):
+09-07 18:17:57.822 17110 26065 I WiVRn   : [2026-09-07 18:17:57.822] [WiVRn] [info] 	t+5196µs HEAD (5916µs)
+09-07 18:17:57.822 17110 26065 I WiVRn   : [2026-09-07 18:17:57.822] [WiVRn] [info] 	t+5234µs LEFT_GRIP (5878µs)
+09-07 18:17:57.822 17110 26065 I WiVRn   : [2026-09-07 18:17:57.822] [WiVRn] [info] 	t+5239µs RIGHT_GRIP (5873µs)
+09-07 18:17:57.822 17110 26065 I WiVRn   : [2026-09-07 18:17:57.822] [WiVRn] [info] 	t+8196µs HEAD (2916µs)
+09-07 18:17:57.822 17110 26065 I WiVRn   : [2026-09-07 18:17:57.822] [WiVRn] [info] 	t+8234µs LEFT_GRIP (2878µs)
+09-07 18:17:57.822 17110 26065 I WiVRn   : [2026-09-07 18:17:57.822] [WiVRn] [info] 	t+8239µs RIGHT_GRIP (2873µs)
+09-07 18:17:58.414 17110 25865 I PxrMetric: FPS=88/90,MTP=44.86ms,AppSW=off,FrmEarly=30,FrmLate=12,FrmCpu=0.22ms,FrmGpu=13.69ms,FrmTime=23.74ms,ATWGPU=1.04ms,VsyncDelay=2,GPU=99%/587Mhz,GPUTemp=63.6C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=7873
+09-07 18:17:58.801 17110 26060 I WiVRn   : [2026-09-07 18:17:58.801] [WiVRn] [info] nxwarp[0] net: 121 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 4696 decoded so far, 8140 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 18:17:58.801 17110 26060 I WiVRn   : [2026-09-07 18:17:58.801] [WiVRn] [info] nxwarp[0] net: 0.029 ms per datagram over 4988 datagrams (72.14 ms of every second)
+09-07 18:17:58.801 17110 26060 I WiVRn   : [2026-09-07 18:17:58.801] [WiVRn] [info] nxwarp[0] sel: stride 1, arrival 17.9 ms, dropped-late 194, withheld 96, decoded 4696
+09-07 18:17:58.801 17110 26060 I WiVRn   : [2026-09-07 18:17:58.801] [WiVRn] [info] nxwarp[0] rx: 178818 datagrams, placed 2826998 (+69938), late 1289 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 1
+09-07 18:17:58.822 17110 26065 I WiVRn   : [2026-09-07 18:17:58.822] [WiVRn] [info] Tracking pattern (11111µs):
+09-07 18:17:58.822 17110 26065 I WiVRn   : [2026-09-07 18:17:58.822] [WiVRn] [info] 	t+4853µs HEAD (6257µs)
+09-07 18:17:58.822 17110 26065 I WiVRn   : [2026-09-07 18:17:58.822] [WiVRn] [info] 	t+5047µs LEFT_GRIP (6064µs)
+09-07 18:17:58.822 17110 26065 I WiVRn   : [2026-09-07 18:17:58.822] [WiVRn] [info] 	t+5080µs RIGHT_GRIP (6031µs)
+09-07 18:17:58.822 17110 26065 I WiVRn   : [2026-09-07 18:17:58.822] [WiVRn] [info] 	t+7853µs HEAD (3257µs)
+09-07 18:17:58.822 17110 26065 I WiVRn   : [2026-09-07 18:17:58.822] [WiVRn] [info] 	t+8047µs LEFT_GRIP (3064µs)
+09-07 18:17:58.822 17110 26065 I WiVRn   : [2026-09-07 18:17:58.822] [WiVRn] [info] 	t+8080µs RIGHT_GRIP (3031µs)
+09-07 18:17:59.350 17110 25869 I WiVRn   : [2026-09-07 18:17:59.350] [WiVRn] [info] render: 170 iterations in 2.0 s (84.9/s), 170 submitted a layer, 111 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.8 ms
+09-07 18:17:59.350 17110 25869 I WiVRn   : [2026-09-07 18:17:59.350] [WiVRn] [info] render: this app's own GPU pass 1.5 ms per iteration
+09-07 18:17:59.350 17110 25869 I WiVRn   : [2026-09-07 18:17:59.350] [WiVRn] [info] render: defoveate 1088x1088 per eye x2 = 2.37 Mpx/frame at scale 0.50 atlas-mode 0; 59 re-presented from the cache (reduce_gpu_load on)
+09-07 18:17:59.350 17110 25869 I WiVRn   : [2026-09-07 18:17:59.350] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.28 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-07 18:17:59.350 17110 25869 I WiVRn   : [2026-09-07 18:17:59.350] [WiVRn] [info] render: per iteration fence 2.2 (worst 14.6) | queries 0.0 | submit 0.0 | whole render() 2.6 ms
+09-07 18:17:59.350 17110 25869 I WiVRn   : [2026-09-07 18:17:59.350] [WiVRn] [info] render: jit on | wake slack 42.2 ms | slept 0.6 ms mean (max 0.6, 170 of 170 iterations) | budget 15.3 = pass 14.3 + margin 1.0 | sleep cap 0.6 ms
+09-07 18:17:59.350 17110 25869 I WiVRn   : [2026-09-07 18:17:59.350] [WiVRn] [info] render: displayed pose age 67.6 ms mean (worst 106.4) over 170 frames | submit lead 38.9 ms mean (worst 23.4) | misses: 0 overrun 0 late 0 skipped refresh
+09-07 18:17:59.427 17110 25865 I PxrMetric: FPS=85/90,MTP=29.44ms,AppSW=off,FrmEarly=39,FrmLate=4,FrmCpu=0.20ms,FrmGpu=7.52ms,FrmTime=10.14ms,ATWGPU=1.04ms,VsyncDelay=2,GPU=64%/587Mhz,GPUTemp=63.6C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=7959
+09-07 18:17:59.511 17110 25869 I WiVRn   : [2026-09-07 18:17:59.511] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_FOCUSED => XR_SESSION_STATE_VISIBLE
+09-07 18:17:59.511 17110 25869 I WiVRn   : [2026-09-07 18:17:59.511] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_VISIBLE => XR_SESSION_STATE_SYNCHRONIZED
+09-07 18:17:59.511 17110 25869 I WiVRn   : [2026-09-07 18:17:59.511] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_SYNCHRONIZED => XR_SESSION_STATE_STOPPING
+09-07 18:17:59.513 17110 25869 I WiVRn   : [2026-09-07 18:17:59.513] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_STOPPING => XR_SESSION_STATE_IDLE
+09-07 18:17:59.669 17110 26063 I WiVRn   : [2026-09-07 18:17:59.669] [WiVRn] [info] nxwarp[0]: 111 frames in 2.0 s: 25492 B/frame, wait-prev 0.0 ms, wall 14.3 ms, nxvc passA 3.8 passB 8.8 gpu 12.6 ms; holes 0, refused 0
+09-07 18:17:59.669 17110 26063 I WiVRn   : [2026-09-07 18:17:59.669] [WiVRn] [info] nxwarp[0] gpu duty 696 ms/s (70% of one GPU) for decode alone; the display pass is extra
+09-07 18:17:59.669 17110 26063 I WiVRn   : [2026-09-07 18:17:59.669] [WiVRn] [info] nxwarp[0] passB 8.8 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 8.8; tiles skip 0 / coded 578 / dir 0 (eye pass 0)
+09-07 18:17:59.669 17110 26063 I WiVRn   : [2026-09-07 18:17:59.669] [WiVRn] [info] nxwarp[0]: 194 frames dropped late (queue kept to 1)
+09-07 18:17:59.669 17110 26063 I WiVRn   : [2026-09-07 18:17:59.669] [WiVRn] [info] nxwarp[0] stage: gap 3.8 | wait-prev 0.0 | submit 0.3 (qlock 0.0 + codec 0.3) | get_free 0.0 | fence-pre 0.0 | record 0.1 | qsubmit 0.0 | fence-post 13.9 | publish 0.0 ms; withheld 2, stride 1, arrival 19.4 ms
+09-07 18:17:59.669 17110 26063 I WiVRn   : [2026-09-07 18:17:59.669] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.03 ms/frame over 112 frames, buffer 25 kB held for 25 kB of unit (1.0x)
+09-07 18:17:59.669 17110 26063 I WiVRn   : [2026-09-07 18:17:59.669] [WiVRn] [info] nxwarp[0] fence-post 13.9 ms = nxvc gpu 12.6 + copy gpu 0.60 + queue 0.7 (over 111 frames with timestamps)
+09-07 18:17:59.837 17110 26065 I WiVRn   : [2026-09-07 18:17:59.837] [WiVRn] [info] Tracking pattern (11112µs):
+09-07 18:17:59.837 17110 26065 I WiVRn   : [2026-09-07 18:17:59.837] [WiVRn] [info] 	t+1011µs HEAD (21213µs)
+09-07 18:17:59.837 17110 26065 I WiVRn   : [2026-09-07 18:17:59.837] [WiVRn] [info] 	t+2016µs LEFT_GRIP (20209µs)
+09-07 18:17:59.837 17110 26065 I WiVRn   : [2026-09-07 18:17:59.837] [WiVRn] [info] 	t+2021µs RIGHT_GRIP (20203µs)
+09-07 18:17:59.837 17110 26065 I WiVRn   : [2026-09-07 18:17:59.837] [WiVRn] [info] 	t+4011µs HEAD (18213µs)
+09-07 18:17:59.837 17110 26065 I WiVRn   : [2026-09-07 18:17:59.837] [WiVRn] [info] 	t+7011µs HEAD (15213µs)
+09-07 18:17:59.837 17110 26065 I WiVRn   : [2026-09-07 18:17:59.837] [WiVRn] [info] 	t+10129µs LEFT_GRIP (23209µs)
+09-07 18:17:59.837 17110 26065 I WiVRn   : [2026-09-07 18:17:59.837] [WiVRn] [info] 	t+10134µs RIGHT_GRIP (23203µs)
+09-07 18:18:00.804 17110 26060 I WiVRn   : [2026-09-07 18:18:00.804] [WiVRn] [info] nxwarp[0] net: 144 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 4838 decoded so far, 8318 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 18:18:00.804 17110 26060 I WiVRn   : [2026-09-07 18:18:00.804] [WiVRn] [info] nxwarp[0] net: 0.084 ms per datagram over 3561 datagrams (150.21 ms of every second)
+09-07 18:18:00.804 17110 26060 I WiVRn   : [2026-09-07 18:18:00.804] [WiVRn] [info] nxwarp[0] sel: stride 1, arrival 11.1 ms, dropped-late 196, withheld 98, decoded 4838
+09-07 18:18:00.804 17110 26060 I WiVRn   : [2026-09-07 18:18:00.804] [WiVRn] [info] nxwarp[0] rx: 182379 datagrams, placed 2910230 (+83232), late 1595 (+306), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 1
+09-07 18:18:00.822 17110 26065 I WiVRn   : [2026-09-07 18:18:00.822] [WiVRn] [info] Tracking pattern (11112µs):
+09-07 18:18:00.822 17110 26065 I WiVRn   : [2026-09-07 18:18:00.822] [WiVRn] [info] 	t+669µs HEAD (10443µs)
+09-07 18:18:00.822 17110 26065 I WiVRn   : [2026-09-07 18:18:00.822] [WiVRn] [info] 	t+3669µs HEAD (7443µs)
+09-07 18:18:01.672 17110 26063 I WiVRn   : [2026-09-07 18:18:01.672] [WiVRn] [info] nxwarp[0]: 178 frames in 2.0 s: 9475 B/frame, wait-prev 0.0 ms, wall 10.6 ms, nxvc passA 1.9 passB 7.2 gpu 9.1 ms; holes 0, refused 0
+09-07 18:18:01.672 17110 26063 I WiVRn   : [2026-09-07 18:18:01.672] [WiVRn] [info] nxwarp[0] gpu duty 808 ms/s (81% of one GPU) for decode alone; the display pass is extra
+09-07 18:18:01.672 17110 26063 I WiVRn   : [2026-09-07 18:18:01.672] [WiVRn] [info] nxwarp[0] passB 7.2 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 7.2; tiles skip 0 / coded 578 / dir 0 (eye pass 0)
+09-07 18:18:01.672 17110 26063 I WiVRn   : [2026-09-07 18:18:01.672] [WiVRn] [info] nxwarp[0]: 196 frames dropped late (queue kept to 1)
+09-07 18:18:01.672 17110 26063 I WiVRn   : [2026-09-07 18:18:01.672] [WiVRn] [info] nxwarp[0] stage: gap 0.7 | wait-prev 0.0 | submit 0.7 (qlock 0.0 + codec 0.7) | get_free 0.0 | fence-pre 0.0 | record 0.1 | qsubmit 0.1 | fence-post 9.7 | publish 0.0 ms; withheld 2, stride 1, arrival 10.9 ms
+09-07 18:18:01.672 17110 26063 I WiVRn   : [2026-09-07 18:18:01.672] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.04 ms/frame over 180 frames, buffer 9 kB held for 9 kB of unit (1.0x)
+09-07 18:18:01.672 17110 26063 I WiVRn   : [2026-09-07 18:18:01.672] [WiVRn] [info] nxwarp[0] fence-post 9.7 ms = nxvc gpu 9.1 + copy gpu 0.49 + queue 0.1 (over 178 frames with timestamps)
+09-07 18:18:01.791 17110 25869 I WiVRn   : [2026-09-07 18:18:01.791] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_IDLE => XR_SESSION_STATE_READY
+09-07 18:18:01.792 17110 25869 I WiVRn   : [2026-09-07 18:18:01.792] [WiVRn] [info] Received event type XR_TYPE_EVENT_DATA_USER_PRESENCE_CHANGED_EXT
+09-07 18:18:01.794 17110 25869 I WiVRn   : [2026-09-07 18:18:01.794] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_READY => XR_SESSION_STATE_SYNCHRONIZED
+09-07 18:18:01.794 17110 25869 I WiVRn   : [2026-09-07 18:18:01.794] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_SYNCHRONIZED => XR_SESSION_STATE_VISIBLE
+09-07 18:18:01.794 17110 25869 I WiVRn   : [2026-09-07 18:18:01.794] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_VISIBLE => XR_SESSION_STATE_FOCUSED
+09-07 18:18:01.812 17110 25865 I PxrMetric: FPS=85/90,MTP=43.21ms,AppSW=off,FrmEarly=1,FrmLate=3,FrmCpu=0.26ms,FrmGpu=6.79ms,FrmTime=14.08ms,ATWGPU=1.04ms,VsyncDelay=2,GPU=64%/587Mhz,GPUTemp=63.6C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=7968
+09-07 18:18:01.822 17110 26065 I WiVRn   : [2026-09-07 18:18:01.822] [WiVRn] [info] Tracking pattern (11117µs):
+09-07 18:18:01.822 17110 26065 I WiVRn   : [2026-09-07 18:18:01.822] [WiVRn] [info] 	t+184µs LEFT_GRIP (10933µs)
+09-07 18:18:01.822 17110 26065 I WiVRn   : [2026-09-07 18:18:01.822] [WiVRn] [info] 	t+205µs RIGHT_GRIP (10912µs)
+09-07 18:18:01.822 17110 26065 I WiVRn   : [2026-09-07 18:18:01.822] [WiVRn] [info] 	t+2161µs HEAD (8956µs)
+09-07 18:18:01.822 17110 26065 I WiVRn   : [2026-09-07 18:18:01.822] [WiVRn] [info] 	t+5161µs HEAD (5956µs)
+09-07 18:18:01.822 17110 26065 I WiVRn   : [2026-09-07 18:18:01.822] [WiVRn] [info] 	t+10278µs HEAD (11956µs)
+09-07 18:18:02.810 17110 25865 I PxrMetric: FPS=3/90,MTP=30.65ms,AppSW=off,FrmEarly=29,FrmLate=10,FrmCpu=0.24ms,FrmGpu=12.85ms,FrmTime=17.53ms,ATWGPU=1.05ms,VsyncDelay=2,GPU=99%/587Mhz,GPUTemp=64.0C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=8048
+09-07 18:18:02.822 17110 26060 I WiVRn   : [2026-09-07 18:18:02.822] [WiVRn] [info] nxwarp[0] net: 161 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 4989 decoded so far, 8548 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 18:18:02.822 17110 26060 I WiVRn   : [2026-09-07 18:18:02.822] [WiVRn] [info] nxwarp[0] net: 0.062 ms per datagram over 4629 datagrams (141.66 ms of every second)
+09-07 18:18:02.822 17110 26060 I WiVRn   : [2026-09-07 18:18:02.822] [WiVRn] [info] nxwarp[0] sel: stride 1, arrival 16.5 ms, dropped-late 205, withheld 107, decoded 4989
+09-07 18:18:02.822 17110 26060 I WiVRn   : [2026-09-07 18:18:02.822] [WiVRn] [info] nxwarp[0] rx: 187008 datagrams, placed 3003288 (+93058), late 1595 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 1
+09-07 18:18:02.824 17110 26065 I WiVRn   : [2026-09-07 18:18:02.824] [WiVRn] [info] Tracking pattern (11113µs):
+09-07 18:18:02.824 17110 26065 I WiVRn   : [2026-09-07 18:18:02.824] [WiVRn] [info] 	t+5080µs HEAD (6032µs)
+09-07 18:18:02.824 17110 26065 I WiVRn   : [2026-09-07 18:18:02.824] [WiVRn] [info] 	t+5128µs LEFT_GRIP (5984µs)
+09-07 18:18:02.824 17110 26065 I WiVRn   : [2026-09-07 18:18:02.824] [WiVRn] [info] 	t+5140µs RIGHT_GRIP (5973µs)
+09-07 18:18:02.824 17110 26065 I WiVRn   : [2026-09-07 18:18:02.824] [WiVRn] [info] 	t+8080µs HEAD (3032µs)
+09-07 18:18:02.824 17110 26065 I WiVRn   : [2026-09-07 18:18:02.824] [WiVRn] [info] 	t+8128µs LEFT_GRIP (2984µs)
+09-07 18:18:02.824 17110 26065 I WiVRn   : [2026-09-07 18:18:02.824] [WiVRn] [info] 	t+8140µs RIGHT_GRIP (2973µs)
+09-07 18:18:03.673 17110 26063 I WiVRn   : [2026-09-07 18:18:03.673] [WiVRn] [info] nxwarp[0]: 114 frames in 2.0 s: 25556 B/frame, wait-prev 0.0 ms, wall 14.5 ms, nxvc passA 3.7 passB 8.8 gpu 12.6 ms; holes 0, refused 0
+09-07 18:18:03.673 17110 26063 I WiVRn   : [2026-09-07 18:18:03.673] [WiVRn] [info] nxwarp[0] gpu duty 715 ms/s (72% of one GPU) for decode alone; the display pass is extra
+09-07 18:18:03.673 17110 26063 I WiVRn   : [2026-09-07 18:18:03.673] [WiVRn] [info] nxwarp[0] passB 8.8 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 8.8; tiles skip 0 / coded 578 / dir 0 (eye pass 0)
+09-07 18:18:03.673 17110 26063 I WiVRn   : [2026-09-07 18:18:03.673] [WiVRn] [info] nxwarp[0]: 205 frames dropped late (queue kept to 1)
+09-07 18:18:03.673 17110 26063 I WiVRn   : [2026-09-07 18:18:03.673] [WiVRn] [info] nxwarp[0] stage: gap 3.1 | wait-prev 0.0 | submit 0.3 (qlock 0.0 + codec 0.3) | get_free 0.0 | fence-pre 0.0 | record 0.1 | qsubmit 0.0 | fence-post 14.1 | publish 0.0 ms; withheld 9, stride 1, arrival 20.3 ms
+09-07 18:18:03.673 17110 26063 I WiVRn   : [2026-09-07 18:18:03.673] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.03 ms/frame over 123 frames, buffer 25 kB held for 25 kB of unit (1.0x)
+09-07 18:18:03.673 17110 26063 I WiVRn   : [2026-09-07 18:18:03.673] [WiVRn] [info] nxwarp[0] fence-post 14.1 ms = nxvc gpu 12.6 + copy gpu 0.63 + queue 0.9 (over 114 frames with timestamps)
+09-07 18:18:03.802 17110 25869 I WiVRn   : [2026-09-07 18:18:03.802] [WiVRn] [info] render: 171 iterations in 2.0 s (85.2/s), 170 submitted a layer, 103 new-source, 0 skipped by the repeat gate, 1 with nothing to show; display period 11.8 ms
+09-07 18:18:03.802 17110 25869 I WiVRn   : [2026-09-07 18:18:03.802] [WiVRn] [info] render: this app's own GPU pass 1.4 ms per iteration
+09-07 18:18:03.802 17110 25869 I WiVRn   : [2026-09-07 18:18:03.802] [WiVRn] [info] render: defoveate 1088x1088 per eye x2 = 2.37 Mpx/frame at scale 0.50 atlas-mode 0; 67 re-presented from the cache (reduce_gpu_load on)
+09-07 18:18:03.802 17110 25869 I WiVRn   : [2026-09-07 18:18:03.802] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.28 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-07 18:18:03.802 17110 25869 I WiVRn   : [2026-09-07 18:18:03.802] [WiVRn] [info] render: per iteration fence 2.5 (worst 15.9) | queries 0.0 | submit 0.0 | whole render() 2.9 ms
+09-07 18:18:03.802 17110 25869 I WiVRn   : [2026-09-07 18:18:03.802] [WiVRn] [info] render: jit on | wake slack 45.1 ms | slept 0.6 ms mean (max 0.6, 170 of 171 iterations) | budget 16.5 = pass 15.5 + margin 1.0 | sleep cap 0.6 ms
+09-07 18:18:03.802 17110 25869 I WiVRn   : [2026-09-07 18:18:03.802] [WiVRn] [info] render: displayed pose age 74.1 ms mean (worst 106.4) over 170 frames | submit lead 41.7 ms mean (worst 24.6) | misses: 0 overrun 0 late 0 skipped refresh
+09-07 18:18:03.813 17110 25865 I PxrMetric: FPS=80/90,MTP=44.23ms,AppSW=off,FrmEarly=40,FrmLate=2,FrmCpu=0.24ms,FrmGpu=10.00ms,FrmTime=11.16ms,ATWGPU=1.05ms,VsyncDelay=2,GPU=79%/587Mhz,GPUTemp=63.6C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=8137
+09-07 18:18:03.824 17110 26065 I WiVRn   : [2026-09-07 18:18:03.824] [WiVRn] [info] Tracking pattern (11112µs):
+09-07 18:18:03.824 17110 26065 I WiVRn   : [2026-09-07 18:18:03.824] [WiVRn] [info] 	t+4654µs HEAD (6457µs)
+09-07 18:18:03.824 17110 26065 I WiVRn   : [2026-09-07 18:18:03.824] [WiVRn] [info] 	t+4680µs LEFT_GRIP (6431µs)
+09-07 18:18:03.824 17110 26065 I WiVRn   : [2026-09-07 18:18:03.824] [WiVRn] [info] 	t+4685µs RIGHT_GRIP (6426µs)
+09-07 18:18:03.824 17110 26065 I WiVRn   : [2026-09-07 18:18:03.824] [WiVRn] [info] 	t+7654µs HEAD (3457µs)
+09-07 18:18:03.824 17110 26065 I WiVRn   : [2026-09-07 18:18:03.824] [WiVRn] [info] 	t+7680µs LEFT_GRIP (3431µs)
+09-07 18:18:03.824 17110 26065 I WiVRn   : [2026-09-07 18:18:03.824] [WiVRn] [info] 	t+7685µs RIGHT_GRIP (3426µs)
+09-07 18:18:04.823 17110 25865 I PxrMetric: FPS=89/90,MTP=30.73ms,AppSW=off,FrmEarly=28,FrmLate=4,FrmCpu=0.20ms,FrmGpu=10.75ms,FrmTime=16.27ms,ATWGPU=1.09ms,VsyncDelay=2,GPU=97%/587Mhz,GPUTemp=62.8C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=8225
+09-07 18:18:04.824 17110 26065 I WiVRn   : [2026-09-07 18:18:04.824] [WiVRn] [info] Tracking pattern (11111µs):
+09-07 18:18:04.824 17110 26065 I WiVRn   : [2026-09-07 18:18:04.824] [WiVRn] [info] 	t+4772µs HEAD (6339µs)
+09-07 18:18:04.824 17110 26065 I WiVRn   : [2026-09-07 18:18:04.824] [WiVRn] [info] 	t+4830µs LEFT_GRIP (6280µs)
+09-07 18:18:04.824 17110 26065 I WiVRn   : [2026-09-07 18:18:04.824] [WiVRn] [info] 	t+4840µs RIGHT_GRIP (6271µs)
+09-07 18:18:04.824 17110 26065 I WiVRn   : [2026-09-07 18:18:04.824] [WiVRn] [info] 	t+7772µs HEAD (3339µs)
+09-07 18:18:04.824 17110 26065 I WiVRn   : [2026-09-07 18:18:04.824] [WiVRn] [info] 	t+7830µs LEFT_GRIP (3280µs)
+09-07 18:18:04.824 17110 26065 I WiVRn   : [2026-09-07 18:18:04.824] [WiVRn] [info] 	t+7840µs RIGHT_GRIP (3271µs)
+09-07 18:18:04.832 17110 26060 I WiVRn   : [2026-09-07 18:18:04.832] [WiVRn] [info] nxwarp[0] net: 100 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 5090 decoded so far, 8748 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 18:18:04.832 17110 26060 I WiVRn   : [2026-09-07 18:18:04.832] [WiVRn] [info] nxwarp[0] net: 0.035 ms per datagram over 4383 datagrams (75.76 ms of every second)
+09-07 18:18:04.832 17110 26060 I WiVRn   : [2026-09-07 18:18:04.832] [WiVRn] [info] nxwarp[0] sel: stride 1, arrival 20.6 ms, dropped-late 205, withheld 107, decoded 5090
+09-07 18:18:04.832 17110 26060 I WiVRn   : [2026-09-07 18:18:04.832] [WiVRn] [info] nxwarp[0] rx: 191391 datagrams, placed 3061088 (+57800), late 1595 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 1
+09-07 18:18:05.680 17110 26063 I WiVRn   : [2026-09-07 18:18:05.680] [WiVRn] [info] nxwarp[0]: 111 frames in 2.0 s: 27798 B/frame, wait-prev 0.0 ms, wall 14.3 ms, nxvc passA 3.8 passB 9.0 gpu 12.9 ms; holes 0, refused 0
+09-07 18:18:05.680 17110 26063 I WiVRn   : [2026-09-07 18:18:05.680] [WiVRn] [info] nxwarp[0] gpu duty 711 ms/s (71% of one GPU) for decode alone; the display pass is extra
+09-07 18:18:05.680 17110 26063 I WiVRn   : [2026-09-07 18:18:05.680] [WiVRn] [info] nxwarp[0] passB 9.0 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 9.0; tiles skip 0 / coded 578 / dir 0 (eye pass 0)
+09-07 18:18:05.680 17110 26063 I WiVRn   : [2026-09-07 18:18:05.680] [WiVRn] [info] nxwarp[0]: 205 frames dropped late (queue kept to 1)
+09-07 18:18:05.680 17110 26063 I WiVRn   : [2026-09-07 18:18:05.680] [WiVRn] [info] nxwarp[0] stage: gap 3.8 | wait-prev 0.0 | submit 0.2 (qlock 0.0 + codec 0.2) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 14.0 | publish 0.0 ms; withheld 0, stride 1, arrival 16.1 ms
+09-07 18:18:05.680 17110 26063 I WiVRn   : [2026-09-07 18:18:05.680] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.03 ms/frame over 111 frames, buffer 27 kB held for 27 kB of unit (1.0x)
+09-07 18:18:05.680 17110 26063 I WiVRn   : [2026-09-07 18:18:05.680] [WiVRn] [info] nxwarp[0] fence-post 14.0 ms = nxvc gpu 12.9 + copy gpu 0.67 + queue 0.5 (over 111 frames with timestamps)
+09-07 18:18:05.814 17110 25869 I WiVRn   : [2026-09-07 18:18:05.814] [WiVRn] [info] render: 173 iterations in 2.0 s (86.0/s), 173 submitted a layer, 112 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.6 ms
+09-07 18:18:05.814 17110 25869 I WiVRn   : [2026-09-07 18:18:05.814] [WiVRn] [info] render: this app's own GPU pass 1.5 ms per iteration
+09-07 18:18:05.814 17110 25869 I WiVRn   : [2026-09-07 18:18:05.814] [WiVRn] [info] render: defoveate 1088x1088 per eye x2 = 2.37 Mpx/frame at scale 0.50 atlas-mode 0; 61 re-presented from the cache (reduce_gpu_load on)
+09-07 18:18:05.814 17110 25869 I WiVRn   : [2026-09-07 18:18:05.814] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.28 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-07 18:18:05.814 17110 25869 I WiVRn   : [2026-09-07 18:18:05.814] [WiVRn] [info] render: per iteration fence 2.1 (worst 14.5) | queries 0.0 | submit 0.0 | whole render() 2.5 ms
+09-07 18:18:05.814 17110 25869 I WiVRn   : [2026-09-07 18:18:05.814] [WiVRn] [info] render: jit on | wake slack 45.2 ms | slept 1.0 ms mean (max 11.7, 173 of 173 iterations) | budget 15.7 = pass 14.7 + margin 1.0 | sleep cap 0.6 ms
+09-07 18:18:05.814 17110 25869 I WiVRn   : [2026-09-07 18:18:05.814] [WiVRn] [info] render: displayed pose age 70.0 ms mean (worst 86.3) over 173 frames | submit lead 41.6 ms mean (worst 23.9) | misses: 0 overrun 0 late 1 skipped refresh
+09-07 18:18:05.824 17110 26065 I WiVRn   : [2026-09-07 18:18:05.824] [WiVRn] [info] Tracking pattern (11111µs):
+09-07 18:18:05.824 17110 26065 I WiVRn   : [2026-09-07 18:18:05.824] [WiVRn] [info] 	t+4884µs HEAD (6227µs)
+09-07 18:18:05.824 17110 26065 I WiVRn   : [2026-09-07 18:18:05.824] [WiVRn] [info] 	t+5077µs LEFT_GRIP (6034µs)
+09-07 18:18:05.824 17110 26065 I WiVRn   : [2026-09-07 18:18:05.824] [WiVRn] [info] 	t+5096µs RIGHT_GRIP (6015µs)
+09-07 18:18:05.824 17110 26065 I WiVRn   : [2026-09-07 18:18:05.824] [WiVRn] [info] 	t+7884µs HEAD (3227µs)
+09-07 18:18:05.824 17110 26065 I WiVRn   : [2026-09-07 18:18:05.824] [WiVRn] [info] 	t+8077µs LEFT_GRIP (3034µs)
+09-07 18:18:05.824 17110 26065 I WiVRn   : [2026-09-07 18:18:05.824] [WiVRn] [info] 	t+8096µs RIGHT_GRIP (3015µs)
+09-07 18:18:05.838 17110 25865 I PxrMetric: FPS=87/90,MTP=43.33ms,AppSW=off,FrmEarly=31,FrmLate=6,FrmCpu=0.23ms,FrmGpu=10.52ms,FrmTime=11.94ms,ATWGPU=1.07ms,VsyncDelay=2,GPU=96%/587Mhz,GPUTemp=62.8C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=8311
+09-07 18:18:06.824 17110 26065 I WiVRn   : [2026-09-07 18:18:06.824] [WiVRn] [info] Tracking pattern (11110µs):
+09-07 18:18:06.824 17110 26065 I WiVRn   : [2026-09-07 18:18:06.824] [WiVRn] [info] 	t+4750µs HEAD (6360µs)
+09-07 18:18:06.824 17110 26065 I WiVRn   : [2026-09-07 18:18:06.824] [WiVRn] [info] 	t+4784µs LEFT_GRIP (6325µs)
+09-07 18:18:06.824 17110 26065 I WiVRn   : [2026-09-07 18:18:06.824] [WiVRn] [info] 	t+4797µs RIGHT_GRIP (6312µs)
+09-07 18:18:06.824 17110 26065 I WiVRn   : [2026-09-07 18:18:06.824] [WiVRn] [info] 	t+7750µs HEAD (3360µs)
+09-07 18:18:06.824 17110 26065 I WiVRn   : [2026-09-07 18:18:06.824] [WiVRn] [info] 	t+7784µs LEFT_GRIP (3325µs)
+09-07 18:18:06.824 17110 26065 I WiVRn   : [2026-09-07 18:18:06.824] [WiVRn] [info] 	t+7797µs RIGHT_GRIP (3312µs)
+09-07 18:18:06.833 17110 26060 I WiVRn   : [2026-09-07 18:18:06.833] [WiVRn] [info] nxwarp[0] net: 120 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 5210 decoded so far, 8988 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 18:18:06.833 17110 26060 I WiVRn   : [2026-09-07 18:18:06.833] [WiVRn] [info] nxwarp[0] net: 0.030 ms per datagram over 4947 datagrams (73.49 ms of every second)
+09-07 18:18:06.833 17110 26060 I WiVRn   : [2026-09-07 18:18:06.833] [WiVRn] [info] nxwarp[0] sel: stride 1, arrival 18.1 ms, dropped-late 205, withheld 107, decoded 5210
+09-07 18:18:06.833 17110 26060 I WiVRn   : [2026-09-07 18:18:06.833] [WiVRn] [info] nxwarp[0] rx: 196338 datagrams, placed 3130448 (+69360), late 1595 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 1
+09-07 18:18:06.847 17110 25865 I PxrMetric: FPS=85/90,MTP=39.83ms,AppSW=off,FrmEarly=36,FrmLate=15,FrmCpu=0.23ms,FrmGpu=11.65ms,FrmTime=13.41ms,ATWGPU=1.07ms,VsyncDelay=2,GPU=60%/587Mhz,GPUTemp=63.6C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=8392
+09-07 18:18:07.684 17110 26063 I WiVRn   : [2026-09-07 18:18:07.684] [WiVRn] [info] nxwarp[0]: 114 frames in 2.0 s: 27419 B/frame, wait-prev 0.0 ms, wall 14.3 ms, nxvc passA 3.8 passB 9.0 gpu 12.8 ms; holes 0, refused 0
+09-07 18:18:07.684 17110 26063 I WiVRn   : [2026-09-07 18:18:07.684] [WiVRn] [info] nxwarp[0] gpu duty 726 ms/s (73% of one GPU) for decode alone; the display pass is extra
+09-07 18:18:07.684 17110 26063 I WiVRn   : [2026-09-07 18:18:07.684] [WiVRn] [info] nxwarp[0] passB 9.0 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 9.0; tiles skip 0 / coded 578 / dir 0 (eye pass 0)
+09-07 18:18:07.684 17110 26063 I WiVRn   : [2026-09-07 18:18:07.684] [WiVRn] [info] nxwarp[0]: 205 frames dropped late (queue kept to 1)
+09-07 18:18:07.684 17110 26063 I WiVRn   : [2026-09-07 18:18:07.684] [WiVRn] [info] nxwarp[0] stage: gap 3.2 | wait-prev 0.0 | submit 0.2 (qlock 0.0 + codec 0.2) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 14.0 | publish 0.0 ms; withheld 0, stride 1, arrival 16.9 ms
+09-07 18:18:07.684 17110 26063 I WiVRn   : [2026-09-07 18:18:07.684] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.03 ms/frame over 115 frames, buffer 27 kB held for 27 kB of unit (1.0x)
+09-07 18:18:07.684 17110 26063 I WiVRn   : [2026-09-07 18:18:07.684] [WiVRn] [info] nxwarp[0] fence-post 14.0 ms = nxvc gpu 12.8 + copy gpu 0.60 + queue 0.7 (over 114 frames with timestamps)
+09-07 18:18:07.822 17110 25869 I WiVRn   : [2026-09-07 18:18:07.822] [WiVRn] [info] render: 170 iterations in 2.0 s (84.6/s), 170 submitted a layer, 113 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.8 ms
+09-07 18:18:07.822 17110 25869 I WiVRn   : [2026-09-07 18:18:07.822] [WiVRn] [info] render: this app's own GPU pass 1.5 ms per iteration
+09-07 18:18:07.822 17110 25869 I WiVRn   : [2026-09-07 18:18:07.822] [WiVRn] [info] render: defoveate 1088x1088 per eye x2 = 2.37 Mpx/frame at scale 0.50 atlas-mode 0; 57 re-presented from the cache (reduce_gpu_load on)
+09-07 18:18:07.822 17110 25869 I WiVRn   : [2026-09-07 18:18:07.822] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.28 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-07 18:18:07.822 17110 25869 I WiVRn   : [2026-09-07 18:18:07.822] [WiVRn] [info] render: per iteration fence 2.3 (worst 14.7) | queries 0.0 | submit 0.0 | whole render() 2.7 ms
+09-07 18:18:07.822 17110 25869 I WiVRn   : [2026-09-07 18:18:07.822] [WiVRn] [info] render: jit on | wake slack 43.2 ms | slept 0.6 ms mean (max 0.6, 170 of 170 iterations) | budget 14.8 = pass 13.8 + margin 1.0 | sleep cap 0.6 ms
+09-07 18:18:07.822 17110 25869 I WiVRn   : [2026-09-07 18:18:07.822] [WiVRn] [info] render: displayed pose age 69.1 ms mean (worst 86.4) over 170 frames | submit lead 40.0 ms mean (worst 24.7) | misses: 0 overrun 0 late 0 skipped refresh
+09-07 18:18:07.824 17110 26065 I WiVRn   : [2026-09-07 18:18:07.824] [WiVRn] [info] Tracking pattern (11110µs):
+09-07 18:18:07.824 17110 26065 I WiVRn   : [2026-09-07 18:18:07.824] [WiVRn] [info] 	t+5727µs HEAD (5382µs)
+09-07 18:18:07.824 17110 26065 I WiVRn   : [2026-09-07 18:18:07.824] [WiVRn] [info] 	t+5841µs LEFT_GRIP (5268µs)
+09-07 18:18:07.824 17110 26065 I WiVRn   : [2026-09-07 18:18:07.824] [WiVRn] [info] 	t+5882µs RIGHT_GRIP (5227µs)
+09-07 18:18:07.824 17110 26065 I WiVRn   : [2026-09-07 18:18:07.824] [WiVRn] [info] 	t+8727µs HEAD (2382µs)
+09-07 18:18:07.824 17110 26065 I WiVRn   : [2026-09-07 18:18:07.824] [WiVRn] [info] 	t+8841µs LEFT_GRIP (2268µs)
+09-07 18:18:07.824 17110 26065 I WiVRn   : [2026-09-07 18:18:07.824] [WiVRn] [info] 	t+8882µs RIGHT_GRIP (2227µs)
+09-07 18:18:07.860 17110 25865 I PxrMetric: FPS=80/90,MTP=36.66ms,AppSW=off,FrmEarly=54,FrmLate=3,FrmCpu=0.20ms,FrmGpu=8.89ms,FrmTime=9.95ms,ATWGPU=1.05ms,VsyncDelay=1,GPU=76%/587Mhz,GPUTemp=63.2C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=8483
+09-07 18:18:08.824 17110 26065 I WiVRn   : [2026-09-07 18:18:08.824] [WiVRn] [info] Tracking pattern (11110µs):
+09-07 18:18:08.824 17110 26065 I WiVRn   : [2026-09-07 18:18:08.824] [WiVRn] [info] 	t+5364µs HEAD (5745µs)
+09-07 18:18:08.824 17110 26065 I WiVRn   : [2026-09-07 18:18:08.824] [WiVRn] [info] 	t+5416µs LEFT_GRIP (5693µs)
+09-07 18:18:08.824 17110 26065 I WiVRn   : [2026-09-07 18:18:08.824] [WiVRn] [info] 	t+5425µs RIGHT_GRIP (5684µs)
+09-07 18:18:08.824 17110 26065 I WiVRn   : [2026-09-07 18:18:08.824] [WiVRn] [info] 	t+8364µs HEAD (2745µs)
+09-07 18:18:08.824 17110 26065 I WiVRn   : [2026-09-07 18:18:08.824] [WiVRn] [info] 	t+8416µs LEFT_GRIP (2693µs)
+09-07 18:18:08.824 17110 26065 I WiVRn   : [2026-09-07 18:18:08.824] [WiVRn] [info] 	t+8425µs RIGHT_GRIP (2684µs)
+09-07 18:18:08.855 17110 26060 I WiVRn   : [2026-09-07 18:18:08.855] [WiVRn] [info] nxwarp[0] net: 101 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 5311 decoded so far, 9190 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 18:18:08.855 17110 26060 I WiVRn   : [2026-09-07 18:18:08.855] [WiVRn] [info] nxwarp[0] net: 0.035 ms per datagram over 4427 datagrams (76.64 ms of every second)
+09-07 18:18:08.855 17110 26060 I WiVRn   : [2026-09-07 18:18:08.855] [WiVRn] [info] nxwarp[0] sel: stride 1, arrival 22.1 ms, dropped-late 205, withheld 107, decoded 5311
+09-07 18:18:08.855 17110 26060 I WiVRn   : [2026-09-07 18:18:08.855] [WiVRn] [info] nxwarp[0] rx: 200765 datagrams, placed 3188826 (+58378), late 1595 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 1
+09-07 18:18:08.871 17110 25865 I PxrMetric: FPS=90/90,MTP=35.78ms,AppSW=off,FrmEarly=35,FrmLate=17,FrmCpu=0.20ms,FrmGpu=8.11ms,FrmTime=9.00ms,ATWGPU=1.07ms,VsyncDelay=1,GPU=99%/587Mhz,GPUTemp=63.2C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=8572
+09-07 18:18:09.692 17110 26063 I WiVRn   : [2026-09-07 18:18:09.692] [WiVRn] [info] nxwarp[0]: 105 frames in 2.0 s: 27677 B/frame, wait-prev 0.0 ms, wall 14.4 ms, nxvc passA 3.7 passB 9.1 gpu 12.8 ms; holes 0, refused 0
+09-07 18:18:09.692 17110 26063 I WiVRn   : [2026-09-07 18:18:09.692] [WiVRn] [info] nxwarp[0] gpu duty 667 ms/s (67% of one GPU) for decode alone; the display pass is extra
+09-07 18:18:09.692 17110 26063 I WiVRn   : [2026-09-07 18:18:09.692] [WiVRn] [info] nxwarp[0] passB 9.1 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 9.1; tiles skip 0 / coded 578 / dir 0 (eye pass 0)
+09-07 18:18:09.692 17110 26063 I WiVRn   : [2026-09-07 18:18:09.692] [WiVRn] [info] nxwarp[0]: 206 frames dropped late (queue kept to 1)
+09-07 18:18:09.692 17110 26063 I WiVRn   : [2026-09-07 18:18:09.692] [WiVRn] [info] nxwarp[0] stage: gap 4.7 | wait-prev 0.0 | submit 0.2 (qlock 0.0 + codec 0.2) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 14.1 | publish 0.0 ms; withheld 1, stride 1, arrival 12.8 ms
+09-07 18:18:09.692 17110 26063 I WiVRn   : [2026-09-07 18:18:09.692] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.03 ms/frame over 106 frames, buffer 27 kB held for 27 kB of unit (1.0x)
+09-07 18:18:09.692 17110 26063 I WiVRn   : [2026-09-07 18:18:09.692] [WiVRn] [info] nxwarp[0] fence-post 14.1 ms = nxvc gpu 12.8 + copy gpu 0.62 + queue 0.7 (over 105 frames with timestamps)
+09-07 18:18:09.824 17110 26065 I WiVRn   : [2026-09-07 18:18:09.824] [WiVRn] [info] Tracking pattern (11108µs):
+09-07 18:18:09.824 17110 26065 I WiVRn   : [2026-09-07 18:18:09.824] [WiVRn] [info] 	t+4756µs HEAD (6352µs)
+09-07 18:18:09.824 17110 26065 I WiVRn   : [2026-09-07 18:18:09.824] [WiVRn] [info] 	t+5599µs LEFT_GRIP (5509µs)
+09-07 18:18:09.824 17110 26065 I WiVRn   : [2026-09-07 18:18:09.824] [WiVRn] [info] 	t+5614µs RIGHT_GRIP (5494µs)
+09-07 18:18:09.824 17110 26065 I WiVRn   : [2026-09-07 18:18:09.824] [WiVRn] [info] 	t+7756µs HEAD (3352µs)
+09-07 18:18:09.824 17110 26065 I WiVRn   : [2026-09-07 18:18:09.824] [WiVRn] [info] 	t+8599µs LEFT_GRIP (2509µs)
+09-07 18:18:09.824 17110 26065 I WiVRn   : [2026-09-07 18:18:09.824] [WiVRn] [info] 	t+8614µs RIGHT_GRIP (2494µs)
+09-07 18:18:09.832 17110 25869 I WiVRn   : [2026-09-07 18:18:09.832] [WiVRn] [info] render: 170 iterations in 2.0 s (84.9/s), 170 submitted a layer, 104 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.8 ms
+09-07 18:18:09.832 17110 25869 I WiVRn   : [2026-09-07 18:18:09.832] [WiVRn] [info] render: this app's own GPU pass 1.4 ms per iteration
+09-07 18:18:09.832 17110 25869 I WiVRn   : [2026-09-07 18:18:09.832] [WiVRn] [info] render: defoveate 1088x1088 per eye x2 = 2.37 Mpx/frame at scale 0.50 atlas-mode 0; 66 re-presented from the cache (reduce_gpu_load on)
+09-07 18:18:09.832 17110 25869 I WiVRn   : [2026-09-07 18:18:09.832] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.28 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-07 18:18:09.832 17110 25869 I WiVRn   : [2026-09-07 18:18:09.832] [WiVRn] [info] render: per iteration fence 1.5 (worst 12.3) | queries 0.0 | submit 0.0 | whole render() 1.9 ms
+09-07 18:18:09.832 17110 25869 I WiVRn   : [2026-09-07 18:18:09.832] [WiVRn] [info] render: jit on | wake slack 37.2 ms | slept 0.8 ms mean (max 11.7, 170 of 170 iterations) | budget 13.3 = pass 12.3 + margin 1.0 | sleep cap 0.6 ms
+09-07 18:18:09.832 17110 25869 I WiVRn   : [2026-09-07 18:18:09.832] [WiVRn] [info] render: displayed pose age 65.8 ms mean (worst 86.5) over 170 frames | submit lead 34.5 ms mean (worst 17.6) | misses: 0 overrun 0 late 1 skipped refresh
+09-07 18:18:09.882 17110 25865 I PxrMetric: FPS=88/90,MTP=46.94ms,AppSW=off,FrmEarly=23,FrmLate=17,FrmCpu=0.24ms,FrmGpu=13.41ms,FrmTime=19.24ms,ATWGPU=1.06ms,VsyncDelay=2,GPU=99%/587Mhz,GPUTemp=63.2C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=8653
+09-07 18:18:10.824 17110 26065 I WiVRn   : [2026-09-07 18:18:10.824] [WiVRn] [info] Tracking pattern (11110µs):
+09-07 18:18:10.824 17110 26065 I WiVRn   : [2026-09-07 18:18:10.824] [WiVRn] [info] 	t+4761µs HEAD (6349µs)
+09-07 18:18:10.824 17110 26065 I WiVRn   : [2026-09-07 18:18:10.824] [WiVRn] [info] 	t+4941µs LEFT_GRIP (6169µs)
+09-07 18:18:10.824 17110 26065 I WiVRn   : [2026-09-07 18:18:10.824] [WiVRn] [info] 	t+4965µs RIGHT_GRIP (6145µs)
+09-07 18:18:10.824 17110 26065 I WiVRn   : [2026-09-07 18:18:10.824] [WiVRn] [info] 	t+7761µs HEAD (3349µs)
+09-07 18:18:10.824 17110 26065 I WiVRn   : [2026-09-07 18:18:10.824] [WiVRn] [info] 	t+7941µs LEFT_GRIP (3169µs)
+09-07 18:18:10.824 17110 26065 I WiVRn   : [2026-09-07 18:18:10.824] [WiVRn] [info] 	t+7965µs RIGHT_GRIP (3145µs)
+09-07 18:18:10.867 17110 26060 I WiVRn   : [2026-09-07 18:18:10.867] [WiVRn] [info] nxwarp[0] net: 126 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 5431 decoded so far, 9442 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 18:18:10.867 17110 26060 I WiVRn   : [2026-09-07 18:18:10.867] [WiVRn] [info] nxwarp[0] net: 0.030 ms per datagram over 5199 datagrams (76.36 ms of every second)
+09-07 18:18:10.867 17110 26060 I WiVRn   : [2026-09-07 18:18:10.867] [WiVRn] [info] nxwarp[0] sel: stride 1, arrival 16.7 ms, dropped-late 210, withheld 112, decoded 5431
+09-07 18:18:10.867 17110 26060 I WiVRn   : [2026-09-07 18:18:10.867] [WiVRn] [info] nxwarp[0] rx: 205964 datagrams, placed 3261654 (+72828), late 1595 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 1
+09-07 18:18:10.887 17110 25865 I PxrMetric: FPS=81/90,MTP=42.98ms,AppSW=off,FrmEarly=39,FrmLate=10,FrmCpu=0.24ms,FrmGpu=14.21ms,FrmTime=18.69ms,ATWGPU=1.07ms,VsyncDelay=2,GPU=99%/587Mhz,GPUTemp=64.7C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=8738
+09-07 18:18:11.702 17110 26063 I WiVRn   : [2026-09-07 18:18:11.702] [WiVRn] [info] nxwarp[0]: 117 frames in 2.0 s: 27480 B/frame, wait-prev 0.0 ms, wall 14.6 ms, nxvc passA 3.7 passB 9.2 gpu 12.8 ms; holes 0, refused 0
+09-07 18:18:11.702 17110 26063 I WiVRn   : [2026-09-07 18:18:11.702] [WiVRn] [info] nxwarp[0] gpu duty 747 ms/s (75% of one GPU) for decode alone; the display pass is extra
+09-07 18:18:11.702 17110 26063 I WiVRn   : [2026-09-07 18:18:11.702] [WiVRn] [info] nxwarp[0] passB 9.2 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 9.2; tiles skip 0 / coded 578 / dir 0 (eye pass 0)
+09-07 18:18:11.702 17110 26063 I WiVRn   : [2026-09-07 18:18:11.702] [WiVRn] [info] nxwarp[0]: 210 frames dropped late (queue kept to 1)
+09-07 18:18:11.702 17110 26063 I WiVRn   : [2026-09-07 18:18:11.702] [WiVRn] [info] nxwarp[0] stage: gap 2.6 | wait-prev 0.0 | submit 0.3 (qlock 0.0 + codec 0.3) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 14.2 | publish 0.0 ms; withheld 4, stride 1, arrival 20.0 ms
+09-07 18:18:11.702 17110 26063 I WiVRn   : [2026-09-07 18:18:11.702] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.03 ms/frame over 120 frames, buffer 27 kB held for 27 kB of unit (1.0x)
+09-07 18:18:11.702 17110 26063 I WiVRn   : [2026-09-07 18:18:11.702] [WiVRn] [info] nxwarp[0] fence-post 14.3 ms = nxvc gpu 12.8 + copy gpu 0.55 + queue 0.9 (over 117 frames with timestamps)
+09-07 18:18:11.824 17110 26065 I WiVRn   : [2026-09-07 18:18:11.824] [WiVRn] [info] Tracking pattern (11110µs):
+09-07 18:18:11.824 17110 26065 I WiVRn   : [2026-09-07 18:18:11.824] [WiVRn] [info] 	t+5128µs HEAD (5982µs)
+09-07 18:18:11.824 17110 26065 I WiVRn   : [2026-09-07 18:18:11.824] [WiVRn] [info] 	t+5152µs LEFT_GRIP (5957µs)
+09-07 18:18:11.824 17110 26065 I WiVRn   : [2026-09-07 18:18:11.824] [WiVRn] [info] 	t+5159µs RIGHT_GRIP (5950µs)
+09-07 18:18:11.824 17110 26065 I WiVRn   : [2026-09-07 18:18:11.824] [WiVRn] [info] 	t+8128µs HEAD (2982µs)
+09-07 18:18:11.824 17110 26065 I WiVRn   : [2026-09-07 18:18:11.824] [WiVRn] [info] 	t+8152µs LEFT_GRIP (2957µs)
+09-07 18:18:11.824 17110 26065 I WiVRn   : [2026-09-07 18:18:11.824] [WiVRn] [info] 	t+8159µs RIGHT_GRIP (2950µs)
+09-07 18:18:11.832 17110 25869 I WiVRn   : [2026-09-07 18:18:11.832] [WiVRn] [info] render: 167 iterations in 2.0 s (83.2/s), 167 submitted a layer, 109 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 12.0 ms
+09-07 18:18:11.832 17110 25869 I WiVRn   : [2026-09-07 18:18:11.832] [WiVRn] [info] render: this app's own GPU pass 1.5 ms per iteration
+09-07 18:18:11.832 17110 25869 I WiVRn   : [2026-09-07 18:18:11.832] [WiVRn] [info] render: defoveate 1088x1088 per eye x2 = 2.37 Mpx/frame at scale 0.50 atlas-mode 0; 58 re-presented from the cache (reduce_gpu_load on)
+09-07 18:18:11.832 17110 25869 I WiVRn   : [2026-09-07 18:18:11.832] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.28 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-07 18:18:11.832 17110 25869 I WiVRn   : [2026-09-07 18:18:11.832] [WiVRn] [info] render: per iteration fence 2.4 (worst 15.6) | queries 0.0 | submit 0.0 | whole render() 2.8 ms
+09-07 18:18:11.832 17110 25869 I WiVRn   : [2026-09-07 18:18:11.832] [WiVRn] [info] render: jit on | wake slack 43.2 ms | slept 0.9 ms mean (max 11.7, 167 of 167 iterations) | budget 16.3 = pass 15.3 + margin 1.0 | sleep cap 0.6 ms
+09-07 18:18:11.832 17110 25869 I WiVRn   : [2026-09-07 18:18:11.832] [WiVRn] [info] render: displayed pose age 69.2 ms mean (worst 97.7) over 167 frames | submit lead 39.4 ms mean (worst 23.7) | misses: 0 overrun 0 late 1 skipped refresh
+09-07 18:18:11.888 17110 25865 I PxrMetric: FPS=84/90,MTP=35.86ms,AppSW=off,FrmEarly=49,FrmLate=8,FrmCpu=0.21ms,FrmGpu=6.11ms,FrmTime=6.97ms,ATWGPU=1.08ms,VsyncDelay=1,GPU=84%/587Mhz,GPUTemp=63.2C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=8821
+09-07 18:18:12.020 17110 25869 I WiVRn   : [2026-09-07 18:18:12.020] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_FOCUSED => XR_SESSION_STATE_VISIBLE
+09-07 18:18:12.020 17110 25869 I WiVRn   : [2026-09-07 18:18:12.020] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_VISIBLE => XR_SESSION_STATE_SYNCHRONIZED
+09-07 18:18:12.020 17110 25869 I WiVRn   : [2026-09-07 18:18:12.020] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_SYNCHRONIZED => XR_SESSION_STATE_STOPPING
+09-07 18:18:12.022 17110 25869 I WiVRn   : [2026-09-07 18:18:12.022] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_STOPPING => XR_SESSION_STATE_IDLE
+09-07 18:18:12.842 17110 26065 I WiVRn   : [2026-09-07 18:18:12.842] [WiVRn] [info] Tracking pattern (11112µs):
+09-07 18:18:12.843 17110 26065 I WiVRn   : [2026-09-07 18:18:12.843] [WiVRn] [info] 	t+874µs HEAD (21350µs)
+09-07 18:18:12.843 17110 26065 I WiVRn   : [2026-09-07 18:18:12.843] [WiVRn] [info] 	t+4175µs LEFT_GRIP (29161µs)
+09-07 18:18:12.843 17110 26065 I WiVRn   : [2026-09-07 18:18:12.843] [WiVRn] [info] 	t+4180µs RIGHT_GRIP (29156µs)
+09-07 18:18:12.843 17110 26065 I WiVRn   : [2026-09-07 18:18:12.843] [WiVRn] [info] 	t+5986µs HEAD (27350µs)
+09-07 18:18:12.843 17110 26065 I WiVRn   : [2026-09-07 18:18:12.843] [WiVRn] [info] 	t+7175µs LEFT_GRIP (26161µs)
+09-07 18:18:12.843 17110 26065 I WiVRn   : [2026-09-07 18:18:12.843] [WiVRn] [info] 	t+7180µs RIGHT_GRIP (26156µs)
+09-07 18:18:12.843 17110 26065 I WiVRn   : [2026-09-07 18:18:12.843] [WiVRn] [info] 	t+8986µs HEAD (24350µs)
+09-07 18:18:12.870 17110 26060 I WiVRn   : [2026-09-07 18:18:12.870] [WiVRn] [info] nxwarp[0] net: 133 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 5563 decoded so far, 9636 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 18:18:12.870 17110 26060 I WiVRn   : [2026-09-07 18:18:12.870] [WiVRn] [info] nxwarp[0] net: 0.064 ms per datagram over 4027 datagrams (128.43 ms of every second)
+09-07 18:18:12.870 17110 26060 I WiVRn   : [2026-09-07 18:18:12.870] [WiVRn] [info] nxwarp[0] sel: stride 1, arrival 11.0 ms, dropped-late 211, withheld 113, decoded 5563
+09-07 18:18:12.870 17110 26060 I WiVRn   : [2026-09-07 18:18:12.870] [WiVRn] [info] nxwarp[0] rx: 209991 datagrams, placed 3338528 (+76874), late 1697 (+102), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 1
+09-07 18:18:13.703 17110 26063 I WiVRn   : [2026-09-07 18:18:13.703] [WiVRn] [info] nxwarp[0]: 162 frames in 2.0 s: 11848 B/frame, wait-prev 0.0 ms, wall 11.0 ms, nxvc passA 2.1 passB 7.4 gpu 9.5 ms; holes 0, refused 0
+09-07 18:18:13.703 17110 26063 I WiVRn   : [2026-09-07 18:18:13.703] [WiVRn] [info] nxwarp[0] gpu duty 768 ms/s (77% of one GPU) for decode alone; the display pass is extra
+09-07 18:18:13.703 17110 26063 I WiVRn   : [2026-09-07 18:18:13.703] [WiVRn] [info] nxwarp[0] passB 7.4 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 7.4; tiles skip 0 / coded 578 / dir 0 (eye pass 0)
+09-07 18:18:13.703 17110 26063 I WiVRn   : [2026-09-07 18:18:13.703] [WiVRn] [info] nxwarp[0]: 211 frames dropped late (queue kept to 1)
+09-07 18:18:13.703 17110 26063 I WiVRn   : [2026-09-07 18:18:13.703] [WiVRn] [info] nxwarp[0] stage: gap 1.4 | wait-prev 0.0 | submit 0.7 (qlock 0.0 + codec 0.7) | get_free 0.0 | fence-pre 0.0 | record 0.2 | qsubmit 0.1 | fence-post 10.0 | publish 0.0 ms; withheld 1, stride 1, arrival 11.0 ms
+09-07 18:18:13.703 17110 26063 I WiVRn   : [2026-09-07 18:18:13.703] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.05 ms/frame over 164 frames, buffer 12 kB held for 12 kB of unit (1.0x)
+09-07 18:18:13.703 17110 26063 I WiVRn   : [2026-09-07 18:18:13.703] [WiVRn] [info] nxwarp[0] fence-post 10.0 ms = nxvc gpu 9.5 + copy gpu 0.50 + queue -0.0 (over 162 frames with timestamps)
+09-07 18:18:13.875 17110 26065 I WiVRn   : [2026-09-07 18:18:13.874] [WiVRn] [info] Tracking pattern (11112µs):
+09-07 18:18:13.875 17110 26065 I WiVRn   : [2026-09-07 18:18:13.875] [WiVRn] [info] 	t+6117µs HEAD (16106µs)
+09-07 18:18:13.875 17110 26065 I WiVRn   : [2026-09-07 18:18:13.875] [WiVRn] [info] 	t+9117µs HEAD (13106µs)
+09-07 18:18:14.563 17110 25869 I WiVRn   : [2026-09-07 18:18:14.563] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_IDLE => XR_SESSION_STATE_READY
+09-07 18:18:14.564 17110 25869 I WiVRn   : [2026-09-07 18:18:14.564] [WiVRn] [info] Received event type XR_TYPE_EVENT_DATA_USER_PRESENCE_CHANGED_EXT
+09-07 18:18:14.566 17110 25869 I WiVRn   : [2026-09-07 18:18:14.566] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_READY => XR_SESSION_STATE_SYNCHRONIZED
+09-07 18:18:14.566 17110 25869 I WiVRn   : [2026-09-07 18:18:14.566] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_SYNCHRONIZED => XR_SESSION_STATE_VISIBLE
+09-07 18:18:14.567 17110 25869 I WiVRn   : [2026-09-07 18:18:14.567] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_VISIBLE => XR_SESSION_STATE_FOCUSED
+09-07 18:18:14.573 17110 26063 I WiVRn   : [2026-09-07 18:18:14.573] [WiVRn] [info] Stream scene ready at t=67727942869058
+09-07 18:18:14.579 17110 25865 I PxrMetric: FPS=83/90,MTP=39.54ms,AppSW=off,FrmEarly=10,FrmLate=1,FrmCpu=0.23ms,FrmGpu=6.43ms,FrmTime=7.44ms,ATWGPU=1.08ms,VsyncDelay=1,GPU=84%/587Mhz,GPUTemp=63.2C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=8836
+09-07 18:18:14.591 17110 26065 I WiVRn   : [2026-09-07 18:18:14.591] [WiVRn] [info] Tracking pattern (11107µs):
+09-07 18:18:14.591 17110 26065 I WiVRn   : [2026-09-07 18:18:14.591] [WiVRn] [info] 	t+6108µs HEAD (16106µs)
+09-07 18:18:14.591 17110 26065 I WiVRn   : [2026-09-07 18:18:14.591] [WiVRn] [info] 	t+8996µs LEFT_GRIP (2111µs)
+09-07 18:18:14.591 17110 26065 I WiVRn   : [2026-09-07 18:18:14.591] [WiVRn] [info] 	t+9108µs HEAD (13106µs)
+09-07 18:18:14.824 17110 26065 I WiVRn   : [2026-09-07 18:18:14.824] [WiVRn] [info] Tracking pattern (11107µs):
+09-07 18:18:14.824 17110 26065 I WiVRn   : [2026-09-07 18:18:14.824] [WiVRn] [info] 	t+5107µs HEAD (6000µs)
+09-07 18:18:14.824 17110 26065 I WiVRn   : [2026-09-07 18:18:14.824] [WiVRn] [info] 	t+5670µs LEFT_GRIP (5437µs)
+09-07 18:18:14.824 17110 26065 I WiVRn   : [2026-09-07 18:18:14.824] [WiVRn] [info] 	t+5677µs RIGHT_GRIP (5430µs)
+09-07 18:18:14.824 17110 26065 I WiVRn   : [2026-09-07 18:18:14.824] [WiVRn] [info] 	t+8107µs HEAD (3000µs)
+09-07 18:18:14.824 17110 26065 I WiVRn   : [2026-09-07 18:18:14.824] [WiVRn] [info] 	t+8670µs LEFT_GRIP (2437µs)
+09-07 18:18:14.824 17110 26065 I WiVRn   : [2026-09-07 18:18:14.824] [WiVRn] [info] 	t+8677µs RIGHT_GRIP (2430µs)
+09-07 18:18:14.824 17110 26065 I WiVRn   : [2026-09-07 18:18:14.824] [WiVRn] [info] 	t+11107µs HEAD (0µs)
+09-07 18:18:14.887 17110 26060 I WiVRn   : [2026-09-07 18:18:14.887] [WiVRn] [info] nxwarp[0] net: 178 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 5736 decoded so far, 9837 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 18:18:14.887 17110 26060 I WiVRn   : [2026-09-07 18:18:14.887] [WiVRn] [info] nxwarp[0] net: 0.088 ms per datagram over 3952 datagrams (171.73 ms of every second)
+09-07 18:18:14.887 17110 26060 I WiVRn   : [2026-09-07 18:18:14.887] [WiVRn] [info] nxwarp[0] sel: stride 1, arrival 13.1 ms, dropped-late 216, withheld 118, decoded 5736
+09-07 18:18:14.887 17110 26060 I WiVRn   : [2026-09-07 18:18:14.887] [WiVRn] [info] nxwarp[0] rx: 213943 datagrams, placed 3441412 (+102884), late 1697 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 1
+09-07 18:18:15.575 17110 25865 I PxrMetric: FPS=5/90,MTP=39.59ms,AppSW=off,FrmEarly=39,FrmLate=10,FrmCpu=0.23ms,FrmGpu=6.92ms,FrmTime=7.73ms,ATWGPU=1.31ms,VsyncDelay=2,GPU=99%/587Mhz,GPUTemp=63.2C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=8919
+09-07 18:18:15.713 17110 26063 I WiVRn   : [2026-09-07 18:18:15.713] [WiVRn] [info] nxwarp[0]: 139 frames in 2.0 s: 19194 B/frame, wait-prev 0.0 ms, wall 12.7 ms, nxvc passA 2.7 passB 8.3 gpu 11.0 ms; holes 0, refused 0
+09-07 18:18:15.713 17110 26063 I WiVRn   : [2026-09-07 18:18:15.713] [WiVRn] [info] nxwarp[0] gpu duty 762 ms/s (76% of one GPU) for decode alone; the display pass is extra
+09-07 18:18:15.713 17110 26063 I WiVRn   : [2026-09-07 18:18:15.713] [WiVRn] [info] nxwarp[0] passB 8.3 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 8.3; tiles skip 0 / coded 578 / dir 0 (eye pass 0)
+09-07 18:18:15.713 17110 26063 I WiVRn   : [2026-09-07 18:18:15.713] [WiVRn] [info] nxwarp[0]: 216 frames dropped late (queue kept to 1)
+09-07 18:18:15.713 17110 26063 I WiVRn   : [2026-09-07 18:18:15.713] [WiVRn] [info] nxwarp[0] stage: gap 1.8 | wait-prev 0.0 | submit 0.5 (qlock 0.0 + codec 0.5) | get_free 0.0 | fence-pre 0.0 | record 0.1 | qsubmit 0.0 | fence-post 12.1 | publish 0.0 ms; withheld 5, stride 1, arrival 19.8 ms
+09-07 18:18:15.713 17110 26063 I WiVRn   : [2026-09-07 18:18:15.713] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.04 ms/frame over 143 frames, buffer 19 kB held for 19 kB of unit (1.0x)
+09-07 18:18:15.713 17110 26063 I WiVRn   : [2026-09-07 18:18:15.713] [WiVRn] [info] nxwarp[0] fence-post 12.1 ms = nxvc gpu 11.0 + copy gpu 0.51 + queue 0.6 (over 139 frames with timestamps)
+09-07 18:18:15.826 17110 26065 I WiVRn   : [2026-09-07 18:18:15.826] [WiVRn] [info] Tracking pattern (11110µs):
+09-07 18:18:15.826 17110 26065 I WiVRn   : [2026-09-07 18:18:15.826] [WiVRn] [info] 	t+5626µs HEAD (5484µs)
+09-07 18:18:15.826 17110 26065 I WiVRn   : [2026-09-07 18:18:15.826] [WiVRn] [info] 	t+5668µs LEFT_GRIP (5441µs)
+09-07 18:18:15.826 17110 26065 I WiVRn   : [2026-09-07 18:18:15.826] [WiVRn] [info] 	t+5673µs RIGHT_GRIP (5437µs)
+09-07 18:18:15.826 17110 26065 I WiVRn   : [2026-09-07 18:18:15.826] [WiVRn] [info] 	t+8626µs HEAD (2484µs)
+09-07 18:18:15.826 17110 26065 I WiVRn   : [2026-09-07 18:18:15.826] [WiVRn] [info] 	t+8668µs LEFT_GRIP (2441µs)
+09-07 18:18:15.826 17110 26065 I WiVRn   : [2026-09-07 18:18:15.826] [WiVRn] [info] 	t+8673µs RIGHT_GRIP (2437µs)
+09-07 18:18:16.569 17110 25869 I WiVRn   : [2026-09-07 18:18:16.569] [WiVRn] [info] render: 174 iterations in 2.0 s (86.9/s), 173 submitted a layer, 99 new-source, 0 skipped by the repeat gate, 1 with nothing to show; display period 11.4 ms
+09-07 18:18:16.569 17110 25869 I WiVRn   : [2026-09-07 18:18:16.569] [WiVRn] [info] render: this app's own GPU pass 1.3 ms per iteration
+09-07 18:18:16.569 17110 25869 I WiVRn   : [2026-09-07 18:18:16.569] [WiVRn] [info] render: defoveate 1088x1088 per eye x2 = 2.37 Mpx/frame at scale 0.50 atlas-mode 0; 74 re-presented from the cache (reduce_gpu_load on)
+09-07 18:18:16.569 17110 25869 I WiVRn   : [2026-09-07 18:18:16.569] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.28 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-07 18:18:16.569 17110 25869 I WiVRn   : [2026-09-07 18:18:16.569] [WiVRn] [info] render: per iteration fence 1.1 (worst 13.6) | queries 0.0 | submit 0.0 | whole render() 1.5 ms
+09-07 18:18:16.569 17110 25869 I WiVRn   : [2026-09-07 18:18:16.569] [WiVRn] [info] render: jit on | wake slack 41.6 ms | slept 0.6 ms mean (max 11.7, 173 of 174 iterations) | budget 14.4 = pass 13.4 + margin 1.0 | sleep cap 11.7 ms
+09-07 18:18:16.569 17110 25869 I WiVRn   : [2026-09-07 18:18:16.569] [WiVRn] [info] render: displayed pose age 87.2 ms mean (worst 2620.1) over 173 frames | submit lead 39.5 ms mean (worst 27.3) | misses: 0 overrun 0 late 0 skipped refresh
+09-07 18:18:16.581 17110 25865 I PxrMetric: FPS=83/90,MTP=23.77ms,AppSW=off,FrmEarly=51,FrmLate=7,FrmCpu=0.24ms,FrmGpu=9.43ms,FrmTime=14.80ms,ATWGPU=1.29ms,VsyncDelay=1,GPU=71%/587Mhz,GPUTemp=62.8C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=9008
+09-07 18:18:16.826 17110 26065 I WiVRn   : [2026-09-07 18:18:16.826] [WiVRn] [info] Tracking pattern (11112µs):
+09-07 18:18:16.826 17110 26065 I WiVRn   : [2026-09-07 18:18:16.826] [WiVRn] [info] 	t+5100µs HEAD (6012µs)
+09-07 18:18:16.826 17110 26065 I WiVRn   : [2026-09-07 18:18:16.826] [WiVRn] [info] 	t+5181µs LEFT_GRIP (5930µs)
+09-07 18:18:16.826 17110 26065 I WiVRn   : [2026-09-07 18:18:16.826] [WiVRn] [info] 	t+5192µs RIGHT_GRIP (5920µs)
+09-07 18:18:16.826 17110 26065 I WiVRn   : [2026-09-07 18:18:16.826] [WiVRn] [info] 	t+8100µs HEAD (3012µs)
+09-07 18:18:16.826 17110 26065 I WiVRn   : [2026-09-07 18:18:16.826] [WiVRn] [info] 	t+8181µs LEFT_GRIP (2930µs)
+09-07 18:18:16.826 17110 26065 I WiVRn   : [2026-09-07 18:18:16.826] [WiVRn] [info] 	t+8192µs RIGHT_GRIP (2920µs)
+09-07 18:18:16.910 17110 26060 I WiVRn   : [2026-09-07 18:18:16.910] [WiVRn] [info] nxwarp[0] net: 98 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 5835 decoded so far, 10033 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 18:18:16.910 17110 26060 I WiVRn   : [2026-09-07 18:18:16.910] [WiVRn] [info] nxwarp[0] net: 0.036 ms per datagram over 4289 datagrams (75.83 ms of every second)
+09-07 18:18:16.910 17110 26060 I WiVRn   : [2026-09-07 18:18:16.910] [WiVRn] [info] nxwarp[0] sel: stride 1, arrival 20.0 ms, dropped-late 216, withheld 118, decoded 5835
+09-07 18:18:16.910 17110 26060 I WiVRn   : [2026-09-07 18:18:16.910] [WiVRn] [info] nxwarp[0] rx: 218232 datagrams, placed 3498056 (+56644), late 1697 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 1
+09-07 18:18:17.594 17110 25865 I PxrMetric: FPS=88/90,MTP=45.89ms,AppSW=off,FrmEarly=31,FrmLate=13,FrmCpu=0.26ms,FrmGpu=13.19ms,FrmTime=18.56ms,ATWGPU=1.19ms,VsyncDelay=2,GPU=97%/587Mhz,GPUTemp=64.3C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=9094
+09-07 18:18:17.734 17110 26063 I WiVRn   : [2026-09-07 18:18:17.734] [WiVRn] [info] nxwarp[0]: 104 frames in 2.0 s: 27616 B/frame, wait-prev 0.0 ms, wall 14.6 ms, nxvc passA 3.7 passB 9.2 gpu 12.8 ms; holes 0, refused 0
+09-07 18:18:17.734 17110 26063 I WiVRn   : [2026-09-07 18:18:17.734] [WiVRn] [info] nxwarp[0] gpu duty 661 ms/s (66% of one GPU) for decode alone; the display pass is extra
+09-07 18:18:17.734 17110 26063 I WiVRn   : [2026-09-07 18:18:17.734] [WiVRn] [info] nxwarp[0] passB 9.2 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 9.2; tiles skip 0 / coded 578 / dir 0 (eye pass 0)
+09-07 18:18:17.734 17110 26063 I WiVRn   : [2026-09-07 18:18:17.734] [WiVRn] [info] nxwarp[0]: 217 frames dropped late (queue kept to 1)
+09-07 18:18:17.734 17110 26063 I WiVRn   : [2026-09-07 18:18:17.734] [WiVRn] [info] nxwarp[0] stage: gap 4.8 | wait-prev 0.0 | submit 0.2 (qlock 0.0 + codec 0.2) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 14.3 | publish 0.0 ms; withheld 1, stride 1, arrival 18.7 ms
+09-07 18:18:17.734 17110 26063 I WiVRn   : [2026-09-07 18:18:17.734] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.03 ms/frame over 105 frames, buffer 27 kB held for 27 kB of unit (1.0x)
+09-07 18:18:17.734 17110 26063 I WiVRn   : [2026-09-07 18:18:17.734] [WiVRn] [info] nxwarp[0] fence-post 14.3 ms = nxvc gpu 12.8 + copy gpu 0.54 + queue 0.9 (over 104 frames with timestamps)
+09-07 18:18:17.826 17110 26065 I WiVRn   : [2026-09-07 18:18:17.826] [WiVRn] [info] Tracking pattern (11110µs):
+09-07 18:18:17.826 17110 26065 I WiVRn   : [2026-09-07 18:18:17.826] [WiVRn] [info] 	t+5061µs HEAD (6048µs)
+09-07 18:18:17.826 17110 26065 I WiVRn   : [2026-09-07 18:18:17.826] [WiVRn] [info] 	t+5205µs LEFT_GRIP (5904µs)
+09-07 18:18:17.826 17110 26065 I WiVRn   : [2026-09-07 18:18:17.826] [WiVRn] [info] 	t+5213µs RIGHT_GRIP (5897µs)
+09-07 18:18:17.826 17110 26065 I WiVRn   : [2026-09-07 18:18:17.826] [WiVRn] [info] 	t+8061µs HEAD (3048µs)
+09-07 18:18:17.826 17110 26065 I WiVRn   : [2026-09-07 18:18:17.826] [WiVRn] [info] 	t+8205µs LEFT_GRIP (2904µs)
+09-07 18:18:17.826 17110 26065 I WiVRn   : [2026-09-07 18:18:17.826] [WiVRn] [info] 	t+8213µs RIGHT_GRIP (2897µs)
+09-07 18:18:18.586 17110 25869 I WiVRn   : [2026-09-07 18:18:18.586] [WiVRn] [info] render: 170 iterations in 2.0 s (84.8/s), 170 submitted a layer, 111 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.9 ms
+09-07 18:18:18.586 17110 25869 I WiVRn   : [2026-09-07 18:18:18.586] [WiVRn] [info] render: this app's own GPU pass 1.5 ms per iteration
+09-07 18:18:18.586 17110 25869 I WiVRn   : [2026-09-07 18:18:18.586] [WiVRn] [info] render: defoveate 1088x1088 per eye x2 = 2.37 Mpx/frame at scale 0.50 atlas-mode 0; 59 re-presented from the cache (reduce_gpu_load on)
+09-07 18:18:18.586 17110 25869 I WiVRn   : [2026-09-07 18:18:18.586] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.28 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-07 18:18:18.586 17110 25869 I WiVRn   : [2026-09-07 18:18:18.586] [WiVRn] [info] render: per iteration fence 2.1 (worst 14.5) | queries 0.0 | submit 0.0 | whole render() 2.5 ms
+09-07 18:18:18.586 17110 25869 I WiVRn   : [2026-09-07 18:18:18.586] [WiVRn] [info] render: jit on | wake slack 40.8 ms | slept 0.7 ms mean (max 11.7, 170 of 170 iterations) | budget 16.0 = pass 15.0 + margin 1.0 | sleep cap 0.6 ms
+09-07 18:18:18.586 17110 25869 I WiVRn   : [2026-09-07 18:18:18.586] [WiVRn] [info] render: displayed pose age 68.3 ms mean (worst 99.9) over 170 frames | submit lead 37.6 ms mean (worst 21.6) | misses: 0 overrun 0 late 1 skipped refresh
+09-07 18:18:18.606 17110 25865 I PxrMetric: FPS=85/90,MTP=50.02ms,AppSW=off,FrmEarly=46,FrmLate=12,FrmCpu=0.27ms,FrmGpu=12.87ms,FrmTime=19.40ms,ATWGPU=1.13ms,VsyncDelay=3,GPU=77%/587Mhz,GPUTemp=64.3C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=9179
+09-07 18:18:18.826 17110 26065 I WiVRn   : [2026-09-07 18:18:18.826] [WiVRn] [info] Tracking pattern (11110µs):
+09-07 18:18:18.826 17110 26065 I WiVRn   : [2026-09-07 18:18:18.826] [WiVRn] [info] 	t+5143µs HEAD (5967µs)
+09-07 18:18:18.826 17110 26065 I WiVRn   : [2026-09-07 18:18:18.826] [WiVRn] [info] 	t+5192µs LEFT_GRIP (5917µs)
+09-07 18:18:18.826 17110 26065 I WiVRn   : [2026-09-07 18:18:18.826] [WiVRn] [info] 	t+5210µs RIGHT_GRIP (5899µs)
+09-07 18:18:18.826 17110 26065 I WiVRn   : [2026-09-07 18:18:18.826] [WiVRn] [info] 	t+8143µs HEAD (2967µs)
+09-07 18:18:18.826 17110 26065 I WiVRn   : [2026-09-07 18:18:18.826] [WiVRn] [info] 	t+8192µs LEFT_GRIP (2917µs)
+09-07 18:18:18.826 17110 26065 I WiVRn   : [2026-09-07 18:18:18.826] [WiVRn] [info] 	t+8210µs RIGHT_GRIP (2899µs)
+09-07 18:18:18.934 17110 26060 I WiVRn   : [2026-09-07 18:18:18.934] [WiVRn] [info] nxwarp[0] net: 119 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 5952 decoded so far, 10271 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 18:18:18.934 17110 26060 I WiVRn   : [2026-09-07 18:18:18.934] [WiVRn] [info] nxwarp[0] net: 0.030 ms per datagram over 4915 datagrams (72.99 ms of every second)
+09-07 18:18:18.934 17110 26060 I WiVRn   : [2026-09-07 18:18:18.934] [WiVRn] [info] nxwarp[0] sel: stride 1, arrival 18.0 ms, dropped-late 218, withheld 120, decoded 5952
+09-07 18:18:18.934 17110 26060 I WiVRn   : [2026-09-07 18:18:18.934] [WiVRn] [info] nxwarp[0] rx: 223147 datagrams, placed 3566838 (+68782), late 1697 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 1
+09-07 18:18:19.623 17110 25865 I PxrMetric: FPS=84/90,MTP=27.39ms,AppSW=off,FrmEarly=56,FrmLate=9,FrmCpu=0.23ms,FrmGpu=5.53ms,FrmTime=9.15ms,ATWGPU=1.11ms,VsyncDelay=2,GPU=92%/587Mhz,GPUTemp=64.7C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=9266
+09-07 18:18:19.746 17110 26063 I WiVRn   : [2026-09-07 18:18:19.746] [WiVRn] [info] nxwarp[0]: 110 frames in 2.0 s: 27403 B/frame, wait-prev 0.0 ms, wall 14.5 ms, nxvc passA 3.5 passB 9.3 gpu 12.8 ms; holes 0, refused 0
+09-07 18:18:19.747 17110 26063 I WiVRn   : [2026-09-07 18:18:19.747] [WiVRn] [info] nxwarp[0] gpu duty 699 ms/s (70% of one GPU) for decode alone; the display pass is extra
+09-07 18:18:19.747 17110 26063 I WiVRn   : [2026-09-07 18:18:19.747] [WiVRn] [info] nxwarp[0] passB 9.3 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 9.3; tiles skip 0 / coded 578 / dir 0 (eye pass 0)
+09-07 18:18:19.747 17110 26063 I WiVRn   : [2026-09-07 18:18:19.747] [WiVRn] [info] nxwarp[0]: 218 frames dropped late (queue kept to 1)
+09-07 18:18:19.747 17110 26063 I WiVRn   : [2026-09-07 18:18:19.747] [WiVRn] [info] nxwarp[0] stage: gap 3.8 | wait-prev 0.0 | submit 0.3 (qlock 0.0 + codec 0.3) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 14.2 | publish 0.0 ms; withheld 1, stride 1, arrival 21.5 ms
+09-07 18:18:19.747 17110 26063 I WiVRn   : [2026-09-07 18:18:19.747] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.03 ms/frame over 111 frames, buffer 27 kB held for 27 kB of unit (1.0x)
+09-07 18:18:19.747 17110 26063 I WiVRn   : [2026-09-07 18:18:19.747] [WiVRn] [info] nxwarp[0] fence-post 14.2 ms = nxvc gpu 12.8 + copy gpu 0.55 + queue 0.8 (over 110 frames with timestamps)
+09-07 18:18:19.826 17110 26065 I WiVRn   : [2026-09-07 18:18:19.826] [WiVRn] [info] Tracking pattern (11110µs):
+09-07 18:18:19.826 17110 26065 I WiVRn   : [2026-09-07 18:18:19.826] [WiVRn] [info] 	t+5880µs HEAD (5230µs)
+09-07 18:18:19.826 17110 26065 I WiVRn   : [2026-09-07 18:18:19.826] [WiVRn] [info] 	t+5948µs LEFT_GRIP (5162µs)
+09-07 18:18:19.826 17110 26065 I WiVRn   : [2026-09-07 18:18:19.826] [WiVRn] [info] 	t+5961µs RIGHT_GRIP (5149µs)
+09-07 18:18:19.826 17110 26065 I WiVRn   : [2026-09-07 18:18:19.826] [WiVRn] [info] 	t+8880µs HEAD (2230µs)
+09-07 18:18:19.826 17110 26065 I WiVRn   : [2026-09-07 18:18:19.826] [WiVRn] [info] 	t+8948µs LEFT_GRIP (2162µs)
+09-07 18:18:19.826 17110 26065 I WiVRn   : [2026-09-07 18:18:19.826] [WiVRn] [info] 	t+8961µs RIGHT_GRIP (2149µs)
+09-07 18:18:20.578 17110 25869 I WiVRn   : [2026-09-07 18:18:20.578] [WiVRn] [info] render: 174 iterations in 2.0 s (86.9/s), 174 submitted a layer, 102 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.5 ms
+09-07 18:18:20.578 17110 25869 I WiVRn   : [2026-09-07 18:18:20.578] [WiVRn] [info] render: this app's own GPU pass 1.4 ms per iteration
+09-07 18:18:20.578 17110 25869 I WiVRn   : [2026-09-07 18:18:20.578] [WiVRn] [info] render: defoveate 1088x1088 per eye x2 = 2.37 Mpx/frame at scale 0.50 atlas-mode 0; 72 re-presented from the cache (reduce_gpu_load on)
+09-07 18:18:20.578 17110 25869 I WiVRn   : [2026-09-07 18:18:20.578] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.28 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-07 18:18:20.578 17110 25869 I WiVRn   : [2026-09-07 18:18:20.578] [WiVRn] [info] render: per iteration fence 1.4 (worst 16.7) | queries 0.0 | submit 0.0 | whole render() 1.8 ms
+09-07 18:18:20.578 17110 25869 I WiVRn   : [2026-09-07 18:18:20.578] [WiVRn] [info] render: jit on | wake slack 41.7 ms | slept 0.9 ms mean (max 11.7, 174 of 174 iterations) | budget 17.0 = pass 16.0 + margin 1.0 | sleep cap 0.6 ms
+09-07 18:18:20.578 17110 25869 I WiVRn   : [2026-09-07 18:18:20.578] [WiVRn] [info] render: displayed pose age 69.9 ms mean (worst 88.8) over 174 frames | submit lead 38.9 ms mean (worst 21.3) | misses: 0 overrun 0 late 1 skipped refresh
+09-07 18:18:20.629 17110 25865 I PxrMetric: FPS=85/90,MTP=38.20ms,AppSW=off,FrmEarly=63,FrmLate=4,FrmCpu=0.21ms,FrmGpu=6.12ms,FrmTime=7.03ms,ATWGPU=1.12ms,VsyncDelay=2,GPU=99%/587Mhz,GPUTemp=64.3C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=9356
+09-07 18:18:20.826 17110 26065 I WiVRn   : [2026-09-07 18:18:20.826] [WiVRn] [info] Tracking pattern (11109µs):
+09-07 18:18:20.826 17110 26065 I WiVRn   : [2026-09-07 18:18:20.826] [WiVRn] [info] 	t+5185µs HEAD (5924µs)
+09-07 18:18:20.826 17110 26065 I WiVRn   : [2026-09-07 18:18:20.826] [WiVRn] [info] 	t+5242µs LEFT_GRIP (5867µs)
+09-07 18:18:20.826 17110 26065 I WiVRn   : [2026-09-07 18:18:20.826] [WiVRn] [info] 	t+5258µs RIGHT_GRIP (5851µs)
+09-07 18:18:20.826 17110 26065 I WiVRn   : [2026-09-07 18:18:20.826] [WiVRn] [info] 	t+8185µs HEAD (2924µs)
+09-07 18:18:20.826 17110 26065 I WiVRn   : [2026-09-07 18:18:20.826] [WiVRn] [info] 	t+8242µs LEFT_GRIP (2867µs)
+09-07 18:18:20.826 17110 26065 I WiVRn   : [2026-09-07 18:18:20.826] [WiVRn] [info] 	t+8258µs RIGHT_GRIP (2851µs)
+09-07 18:18:20.954 17110 26060 I WiVRn   : [2026-09-07 18:18:20.954] [WiVRn] [info] nxwarp[0] net: 101 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 6053 decoded so far, 10473 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 18:18:20.954 17110 26060 I WiVRn   : [2026-09-07 18:18:20.954] [WiVRn] [info] nxwarp[0] net: 0.035 ms per datagram over 4412 datagrams (76.81 ms of every second)
+09-07 18:18:20.954 17110 26060 I WiVRn   : [2026-09-07 18:18:20.954] [WiVRn] [info] nxwarp[0] sel: stride 1, arrival 16.7 ms, dropped-late 218, withheld 120, decoded 6053
+09-07 18:18:20.954 17110 26060 I WiVRn   : [2026-09-07 18:18:20.954] [WiVRn] [info] nxwarp[0] rx: 227559 datagrams, placed 3625216 (+58378), late 1697 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 1
+09-07 18:18:21.629 17110 25865 I PxrMetric: FPS=90/90,MTP=34.76ms,AppSW=off,FrmEarly=45,FrmLate=11,FrmCpu=0.22ms,FrmGpu=9.76ms,FrmTime=11.47ms,ATWGPU=1.05ms,VsyncDelay=2,GPU=99%/587Mhz,GPUTemp=65.5C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=9440
+09-07 18:18:21.748 17110 26063 I WiVRn   : [2026-09-07 18:18:21.747] [WiVRn] [info] nxwarp[0]: 107 frames in 2.0 s: 27565 B/frame, wait-prev 0.0 ms, wall 14.5 ms, nxvc passA 3.5 passB 9.3 gpu 12.8 ms; holes 0, refused 0
+09-07 18:18:21.748 17110 26063 I WiVRn   : [2026-09-07 18:18:21.748] [WiVRn] [info] nxwarp[0] gpu duty 685 ms/s (68% of one GPU) for decode alone; the display pass is extra
+09-07 18:18:21.748 17110 26063 I WiVRn   : [2026-09-07 18:18:21.748] [WiVRn] [info] nxwarp[0] passB 9.3 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 9.3; tiles skip 0 / coded 578 / dir 0 (eye pass 0)
+09-07 18:18:21.748 17110 26063 I WiVRn   : [2026-09-07 18:18:21.748] [WiVRn] [info] nxwarp[0]: 219 frames dropped late (queue kept to 1)
+09-07 18:18:21.748 17110 26063 I WiVRn   : [2026-09-07 18:18:21.748] [WiVRn] [info] nxwarp[0] stage: gap 4.2 | wait-prev 0.0 | submit 0.3 (qlock 0.0 + codec 0.3) | get_free 0.0 | fence-pre 0.0 | record 0.1 | qsubmit 0.0 | fence-post 14.2 | publish 0.0 ms; withheld 1, stride 1, arrival 14.0 ms
+09-07 18:18:21.748 17110 26063 I WiVRn   : [2026-09-07 18:18:21.748] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.03 ms/frame over 109 frames, buffer 27 kB held for 27 kB of unit (1.0x)
+09-07 18:18:21.748 17110 26063 I WiVRn   : [2026-09-07 18:18:21.748] [WiVRn] [info] nxwarp[0] fence-post 14.2 ms = nxvc gpu 12.8 + copy gpu 0.52 + queue 0.9 (over 107 frames with timestamps)
+09-07 18:18:21.826 17110 26065 I WiVRn   : [2026-09-07 18:18:21.826] [WiVRn] [info] Tracking pattern (11113µs):
+09-07 18:18:21.826 17110 26065 I WiVRn   : [2026-09-07 18:18:21.826] [WiVRn] [info] 	t+6082µs HEAD (5030µs)
+09-07 18:18:21.826 17110 26065 I WiVRn   : [2026-09-07 18:18:21.826] [WiVRn] [info] 	t+6162µs LEFT_GRIP (4950µs)
+09-07 18:18:21.826 17110 26065 I WiVRn   : [2026-09-07 18:18:21.826] [WiVRn] [info] 	t+6177µs RIGHT_GRIP (4935µs)
+09-07 18:18:21.826 17110 26065 I WiVRn   : [2026-09-07 18:18:21.826] [WiVRn] [info] 	t+9082µs HEAD (2030µs)
+09-07 18:18:21.826 17110 26065 I WiVRn   : [2026-09-07 18:18:21.826] [WiVRn] [info] 	t+9162µs LEFT_GRIP (1950µs)
+09-07 18:18:21.826 17110 26065 I WiVRn   : [2026-09-07 18:18:21.826] [WiVRn] [info] 	t+9177µs RIGHT_GRIP (1935µs)
+09-07 18:18:22.589 17110 25869 I WiVRn   : [2026-09-07 18:18:22.589] [WiVRn] [info] render: 166 iterations in 2.0 s (82.6/s), 166 submitted a layer, 110 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 12.1 ms
+09-07 18:18:22.589 17110 25869 I WiVRn   : [2026-09-07 18:18:22.589] [WiVRn] [info] render: this app's own GPU pass 1.5 ms per iteration
+09-07 18:18:22.589 17110 25869 I WiVRn   : [2026-09-07 18:18:22.589] [WiVRn] [info] render: defoveate 1088x1088 per eye x2 = 2.37 Mpx/frame at scale 0.50 atlas-mode 0; 56 re-presented from the cache (reduce_gpu_load on)
+09-07 18:18:22.589 17110 25869 I WiVRn   : [2026-09-07 18:18:22.589] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.28 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-07 18:18:22.589 17110 25869 I WiVRn   : [2026-09-07 18:18:22.589] [WiVRn] [info] render: per iteration fence 2.7 (worst 14.9) | queries 0.0 | submit 0.0 | whole render() 3.1 ms
+09-07 18:18:22.589 17110 25869 I WiVRn   : [2026-09-07 18:18:22.589] [WiVRn] [info] render: jit on | wake slack 41.7 ms | slept 0.6 ms mean (max 0.6, 166 of 166 iterations) | budget 16.4 = pass 15.4 + margin 1.0 | sleep cap 0.6 ms
+09-07 18:18:22.589 17110 25869 I WiVRn   : [2026-09-07 18:18:22.589] [WiVRn] [info] render: displayed pose age 68.5 ms mean (worst 100.1) over 166 frames | submit lead 38.0 ms mean (worst 21.7) | misses: 0 overrun 0 late 0 skipped refresh
+09-07 18:18:22.634 17110 25865 I PxrMetric: FPS=84/90,MTP=38.74ms,AppSW=off,FrmEarly=39,FrmLate=17,FrmCpu=0.21ms,FrmGpu=8.46ms,FrmTime=9.77ms,ATWGPU=1.09ms,VsyncDelay=2,GPU=99%/587Mhz,GPUTemp=64.7C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=9521
+09-07 18:18:22.826 17110 26065 I WiVRn   : [2026-09-07 18:18:22.826] [WiVRn] [info] Tracking pattern (11109µs):
+09-07 18:18:22.826 17110 26065 I WiVRn   : [2026-09-07 18:18:22.826] [WiVRn] [info] 	t+6244µs HEAD (4865µs)
+09-07 18:18:22.826 17110 26065 I WiVRn   : [2026-09-07 18:18:22.826] [WiVRn] [info] 	t+6300µs LEFT_GRIP (4808µs)
+09-07 18:18:22.826 17110 26065 I WiVRn   : [2026-09-07 18:18:22.826] [WiVRn] [info] 	t+6314µs RIGHT_GRIP (4794µs)
+09-07 18:18:22.826 17110 26065 I WiVRn   : [2026-09-07 18:18:22.826] [WiVRn] [info] 	t+9244µs HEAD (1865µs)
+09-07 18:18:22.826 17110 26065 I WiVRn   : [2026-09-07 18:18:22.826] [WiVRn] [info] 	t+9300µs LEFT_GRIP (1808µs)
+09-07 18:18:22.826 17110 26065 I WiVRn   : [2026-09-07 18:18:22.826] [WiVRn] [info] 	t+9314µs RIGHT_GRIP (1794µs)
+09-07 18:18:22.977 17110 26060 I WiVRn   : [2026-09-07 18:18:22.977] [WiVRn] [info] nxwarp[0] net: 117 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 6167 decoded so far, 10707 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 18:18:22.977 17110 26060 I WiVRn   : [2026-09-07 18:18:22.977] [WiVRn] [info] nxwarp[0] net: 0.029 ms per datagram over 4833 datagrams (70.41 ms of every second)
+09-07 18:18:22.977 17110 26060 I WiVRn   : [2026-09-07 18:18:22.977] [WiVRn] [info] nxwarp[0] sel: stride 1, arrival 19.5 ms, dropped-late 221, withheld 123, decoded 6167
+09-07 18:18:22.977 17110 26060 I WiVRn   : [2026-09-07 18:18:22.977] [WiVRn] [info] nxwarp[0] rx: 232392 datagrams, placed 3692842 (+67626), late 1697 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 1
