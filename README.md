@@ -153,6 +153,8 @@ The live client remains R8.
 
 A sanitized [native HEVC hardware and observed-latency baseline](bench/results/240fps-2026-09-07/live-atlas/native-hevc-latency/README.md) provides context for NX measurements; it is not a like-for-like pipeline or latency win claim.
 
+The matched [native CSV HEVC/NX comparison](bench/results/240fps-2026-09-07/live-atlas/native-csv-hevc-nx/README.md) is explicit: NX selection latency was 19.555 ms p50 versus 16.754 ms for hardware HEVC (same full-resolution checkerboard capture, different bitrate/post-processing), so NX did not win this test.
+
 The [pattern 2 visual appendix](bench/results/240fps-2026-09-07/live-atlas/pattern2-appendix/README.md) records the audited opt-in result: decoder GPU work fell in active windows, but renderer GPU rose and the opt-in screenshot has substantially worse cube-edge trails than opt-out, so it remains experimental and disabled by default.
 
 The [validated static-only pair](bench/results/240fps-2026-09-07/live-atlas/static-valid/README.md) confirms the banner and dimensions before capture. Its static-only restriction was a test condition (36 fresh sources/s, 13.8 ms decoder GPU) versus the unrestricted optimistic arm (82/s, 5.1 ms); the restriction was removed afterward. The unrestricted screenshot has worse cube-edge trails, so this remains an experimental result. The reusable [live preflight checker](tools/validate-live-probe.py) fails closed on missing identity, banners, dimensions, or timing data.

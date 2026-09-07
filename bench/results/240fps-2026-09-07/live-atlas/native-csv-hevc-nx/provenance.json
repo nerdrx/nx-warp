@@ -1,0 +1,50 @@
+{
+  "server_sha256": "e220c9c86e465a2363439d0ec4070a524286d87856326234d8f068f73a99d8b6",
+  "config_hevc": {
+    "encoder": {
+      "encoder": "vaapi",
+      "codec": "h265"
+    },
+    "quad-layers": false,
+    "bit-depth": 8,
+    "encoder-failover": false
+  },
+  "config_nx": {
+    "encoder": {
+      "encoder": "nxwarp",
+      "codec": "nxwarp",
+      "options": {
+        "backend": "vk",
+        "inter": "true",
+        "intra-period": "180",
+        "rc": "fixed",
+        "min-qp": "22",
+        "max-qp": "40",
+        "coded-vectors": "none",
+        "entropy": "auto",
+        "stereo-frame": "auto",
+        "atlas": "auto",
+        "qp": "40",
+        "pace": "auto"
+      }
+    },
+    "quad-layers": false
+  },
+  "nx_environment": {
+    "NXVC_VKE_ATLAS_OPTIMISTIC": "1"
+  },
+  "screenshots": {
+    "hevc-screen-06.png": {
+      "sha256": "fd913f2aed822e1a335d52ccaa5c6a30b01a8a6ede5549213da8e5985050beb9",
+      "source_files": [
+        "native-csv-hevc-screen-06.png"
+      ]
+    },
+    "nx-screen-06.png": {
+      "sha256": "77c711d495d905ff4471b4306679f4768d6546f3e231bca1827b3114e6687a39",
+      "source_files": [
+        "native-csv-nx-screen-06.png"
+      ]
+    }
+  }
+}
