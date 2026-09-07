@@ -47,7 +47,16 @@ from presentation frequency. The current Pico experiments use its 90 Hz mode;
 an experiment, not a 240 Hz result; the [full methods and limitations](docs/240FPS.md)
 define the fixtures and interpretation.
 
-**Latest result.** Two integration bugs were making sparse ATLAS frames expensive:
+**Latest result.** A reused frame header retained its PICTURE flag after the encoder
+returned to ATLAS. Clearing that per-frame flag restored the cheap path. In a
+55-second QP40/pace90 capture, median decoder GPU window means were **1.0 ms**
+and active-window fresh-source delivery was **89/s**. Session gaps reduced the
+aligned reported count to **66.08/s** over wall time; both screenshots were black.
+This is not verified visible 90 FPS. The [raw evidence and limitations](bench/results/240fps-2026-09-07/live-atlas/picture-reset/README.md)
+include the preceding failed run (29.5 ms decoder GPU, no render reports). An
+automated API regression checks PICTURE → ATLAS on a reused encoder.
+
+**Earlier integration results.** Two integration bugs were making sparse ATLAS frames expensive:
 intentional skips were treated as missing tiles, and frames with an empty final
 band lacked their completion marker. The [receipt correction](bench/results/240fps-2026-09-07/live-atlas/skip-receipt/README.md)
 removed most forced refreshes. The subsequent
