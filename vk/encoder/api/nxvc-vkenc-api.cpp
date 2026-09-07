@@ -239,6 +239,8 @@ int main(int argc, char **argv) {
     uint32_t effort = 0;
     /* create_info::snap_identity, in 1/16 luma samples; 0 = off. */
     uint32_t snap_identity = 0;
+    bool atlas = false, atlas_mode = false;
+    uint32_t atlas_picture_d = 0;
     /* 1 or 2.  As in nxvc-vkenc, `--w` is the FULL width either way, so a
      * stereo run passes the side-by-side pair and create() gets w/eyes. */
     uint32_t eyes = 1;
@@ -281,6 +283,9 @@ int main(int argc, char **argv) {
         else if (a == "--effort") effort = (uint32_t)std::atoi(next());
         else if (a == "--snap-identity")
             snap_identity = (uint32_t)std::atoi(next());
+        else if (a == "--atlas") atlas = true;
+        else if (a == "--atlas-mode") atlas_mode = true;
+        else if (a == "--atlas-picture-d") atlas_picture_d = (uint32_t)std::atoi(next());
         else if (a == "--entropy")
         {
             const std::string v = next();
@@ -404,6 +409,9 @@ int main(int argc, char **argv) {
      * refuses snap_identity without inter, and a harness that quietly zeroed it
      * would hide the refusal it exists to exercise. */
     ci.snap_identity = snap_identity;
+    ci.atlas = atlas ? 1u : 0u;
+    ci.atlas_mode = (atlas && atlas_mode) ? 1u : 0u;
+    ci.atlas_picture_d = atlas_picture_d;
 
     /* The image path needs a device the caller owns: the image has to live on
      * the encoder's device, and a device the library created is one this tool
