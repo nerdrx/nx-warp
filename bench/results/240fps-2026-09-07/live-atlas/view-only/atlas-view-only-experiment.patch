@@ -1,0 +1,38 @@
+diff --git a/vk/decoder/nxvc_vkdec.cpp b/vk/decoder/nxvc_vkdec.cpp
+index 8b681ff..286b341 100644
+--- a/vk/decoder/nxvc_vkdec.cpp
++++ b/vk/decoder/nxvc_vkdec.cpp
+@@ -3313,6 +3313,11 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
+     // contain it, over the range build_tile_order() partitioned for them.
+     // On a frame whose tiles are all one kind the other dispatch is empty and
+     // is not issued.
++    const bool atlas_view_only =
++        atlas_frame && d->atlas_view != NXVC_VKD_ATLAS_VIEW_NONE &&
++        !d->need_alpha_pass && std::getenv("NXVC_VKD_ATLAS_VIEW_ONLY");
++    const uint32_t pass_b_out_format =
++        atlas_view_only ? (uint32_t)nxvw::kOutNone : d->out_format;
+     const bool need_tile_pipelines =
+         !atlas_frame || !d->acoded.empty() ||
+         std::getenv("NXVC_VKD_ATLAS_FORCE_PIPELINES");
+@@ -3320,7 +3325,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
+     VkPipeline pipeBa[2] = {VK_NULL_HANDLE, VK_NULL_HANDLE};
+     for (int dir = 0; need_tile_pipelines && dir < 2; ++dir) {
+         if (dir == 1 && fp.push.intraDir == 0) break;
+-        if ((st = pipeline_b(d, d->out_format,
++        if ((st = pipeline_b(d, pass_b_out_format,
+                              fuse ? (int32_t)nxvw::kOutRgba8
+                                   : (int32_t)nxvw::kOutNone,
+                              fp.push.sparse, storeWords, dir,
+diff --git a/client/decoder/nxwarp/nxwarp_decoder.cpp b/client/decoder/nxwarp/nxwarp_decoder.cpp
+index bb757531..7dfcdb66 100644
+--- a/client/decoder/nxwarp/nxwarp_decoder.cpp
++++ b/client/decoder/nxwarp/nxwarp_decoder.cpp
+@@ -648,6 +648,8 @@ bool nxwarp_decoder::on_stream_header(std::span<const uint8_t> header)
+ #if defined(WIVRN_NXVC_ATLAS_DECODE) && defined(NXVC_VK_DECODER_ATLAS_TABLE_BUFFER)
+ 	if ((si.tools & (1ull << 31)) && si.color_transform == 0)
+ 	{
++		// TEMPORARY live atlas-view-only benchmark hook; remove after measurement.
++		setenv("NXVC_VKD_ATLAS_VIEW_ONLY", "1", 1);
+ 		if (nxvc_vk_decoder_set_atlas_view(nxvc, NXVC_VKD_ATLAS_VIEW_R8) == NXVC_VKD_OK)
+ 			atlas_view_active = true;
+ 		else
