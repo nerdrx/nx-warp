@@ -4,6 +4,7 @@
 // quality harness (tools/quality/README.md) can point --codec-cmd at either
 // binary and diff the results.  What it adds over nxv-dec is --icd, --device
 // and --stats.
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -68,6 +69,7 @@ int fail_no_icd(const char *why) {
 int main(int argc, char **argv) {
     std::string in, out, pix, icd, device, format = "auto";
     int frames = -1, quiet = 0, nv12 = 0, stats = 0, lds = 0;
+    int atlas_dump = 0;
     int decode_every = 1;
     // [v3] measurement knobs, see nxvc_vk_decoder_set_dir_sched /
     // _set_tile_sort in <nxvc/nxvc_vk.h>.  --dir-sched is a BITSTREAM
@@ -98,6 +100,11 @@ int main(int argc, char **argv) {
         else if (a == "--quiet") quiet = 1;
         else if (a == "--nv12") nv12 = 1;
         else if (a == "--stats") stats = 1;
+        // [ATLAS] Dump the first N table entries after every frame, as the
+        // raw 16 uints of [SYN] 13.12.1.  A device-only refusal says which
+        // tile it refused and nothing about WHY; the table says why, and the
+        // same command on the desktop gives the answer it should have been.
+        else if (a == "--atlas-dump") atlas_dump = std::atoi(val());
         else if (a == "--lds") lds = 1;
         else if (a == "--dir-sched") dir_sched = std::atoi(val());
         else if (a == "--tile-sort") tile_sort = 1;
@@ -331,6 +338,25 @@ int main(int argc, char **argv) {
                 std::fwrite(V.data(), 1, V.size(), fo);
             }
             if (si.alpha) std::fwrite(A.data(), 1, A.size(), fo);
+        }
+        if (atlas_dump > 0) {
+            const size_t tb = nxvc_vk_decoder_atlas_table_size(dec);
+            if (tb) {
+                std::vector<uint8_t> tab(tb);
+                if (nxvc_vk_decoder_atlas_table(dec, tab.data(), tb) ==
+                    NXVC_VKD_OK) {
+                    const size_t n =
+                        std::min((size_t)atlas_dump, tb / 64);
+                    for (size_t e = 0; e < n; ++e) {
+                        const uint32_t *w =
+                            (const uint32_t *)(tab.data() + e * 64);
+                        std::fprintf(stderr, "[atlas] entry %zu:", e);
+                        for (int k = 0; k < 16; ++k)
+                            std::fprintf(stderr, " %08x", w[k]);
+                        std::fprintf(stderr, "\n");
+                    }
+                }
+            }
         }
         if (stats) {
             nxvc_vkd_stats s;
