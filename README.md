@@ -77,6 +77,15 @@ The [R8 dirty-view reverse repeat](bench/results/240fps-2026-09-07/live-atlas/r8
 found no repeatable gain, so the temporary dirty-view setting was removed and
 the full path remains the default.
 
+The [higher source-rate probe](bench/results/240fps-2026-09-07/live-atlas/pace60/README.md)
+also argues for measuring delivery, not just decoding: targeting 60/s produced
+about 36 new sources/s in active windows, versus 45/s in the earlier 45/s run.
+Both used `atlas:auto`; these exploratory captures were not thermally matched.
+The [all-skip upload experiment](bench/results/240fps-2026-09-07/skip-uploads/README.md)
+was likewise rejected: less GPU work increased median total decode time.
+Live integration is maintained on WiVRn NX's
+[`atlas-live` branch](https://github.com/nerdrx/wivrn-nx/tree/atlas-live).
+
 The [live copy measurement](bench/results/240fps-2026-09-07/live-atlas/copy-elision/README.md)
 fell from 0.56 to 0.29 ms after removing a redundant image copy. Separately,
 [cold standalone pipeline setup](bench/results/240fps-2026-09-07/pipeline-demand/README.md)
@@ -88,8 +97,7 @@ fixture; the custom live renderer remains R8-only. On 2176×1088 stereo, warm
 frames 1–31 measured old-compute/direct-copy GPU medians of 1.095/0.755 ms and wall
 medians of 1.356/1.017 ms, with one dispatch removed. The first frame has no
 usable GPU timing, and the motion fixture failed with an invalid reference, so
-this is not a general performance claim. Some directional-INTRA fixtures still encounter a separate Pico decoder failure. Next work is to repeat matched off/atlas
-captures without session gaps and evaluate quality alongside cadence.
+this is not a general performance claim. Some directional-INTRA fixtures still encounter a separate Pico decoder failure. Next work is to identify why static tiles are recoded and why decoded frames fail to reach presentation, then repeat matched captures without session gaps.
 
 <figure>
   <img src="docs/figures/240fps/atlas-reference-frame15.png" alt="Reference-decoded atlas frame 15, not a headset screenshot" width="320">
