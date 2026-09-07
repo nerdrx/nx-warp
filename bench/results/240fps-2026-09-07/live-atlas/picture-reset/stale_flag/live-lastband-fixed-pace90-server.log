@@ -1,0 +1,1203 @@
+WiVRn nx-atlas-live-920ac878-dirty starting
+Removing stale file "/home/nerdrx/.config/openxr/1/active_runtime.json"
+Removing stale socket file "/run/user/1000/wivrn/comp_ipc"
+Service published: x0x0x0x0x0x
+Client connected
+Server started, PID 3087505
+Setting the OpenVR compatibility library to /opt/xrizer
+ INFO [ipc_server_main_common] WiVRn 'nx-atlas-live-920ac878-dirty' starting up...
+Listening for secondary paths on port 9757
+ INFO [vk_bundle] Vulkan instance created:
+	GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+	queue families: 1 3 1 (main, encode, transfer)
+
+ INFO [get_encoder_settings] nxwarp: both eyes on stream 0 as one 2176x1088 stereo frame (578 tiles), stream 1 has no encoder
+ INFO [compositor] compositor: lens mask on, margin 1 tile; the foveation pass flattens what it covers (0 of 0 tiles per eye so far)
+ INFO [comp_vulkan_formats_log] Supported formats:
+	VK_FORMAT_R16G16B16A16_UNORM: true
+	VK_FORMAT_R16G16B16A16_SFLOAT: true
+	VK_FORMAT_R16G16B16_UNORM: false
+	VK_FORMAT_R16G16B16_SFLOAT: false
+	VK_FORMAT_R8G8B8A8_SRGB: true
+	VK_FORMAT_B8G8R8A8_SRGB: true
+	VK_FORMAT_R8G8B8_SRGB: false
+	VK_FORMAT_R8G8B8A8_UNORM: true
+	VK_FORMAT_B8G8R8A8_UNORM: true
+	VK_FORMAT_R8G8B8_UNORM: false
+	VK_FORMAT_B8G8R8_UNORM: false
+	VK_FORMAT_R5G6B5_UNORM_PACK16: true
+	VK_FORMAT_R32_SFLOAT: true
+	VK_FORMAT_D32_SFLOAT: true
+	VK_FORMAT_D16_UNORM: true
+	VK_FORMAT_X8_D24_UNORM_PACK32: false
+	VK_FORMAT_D24_UNORM_S8_UINT: false
+	VK_FORMAT_D32_SFLOAT_S8_UINT: true
+	VK_FORMAT_S8_UINT: true
+ INFO [print_encoders] Encoder configuration:
+	* nxwarp (nxwarp 8-bit)
+	  size: 1088x1088
+	  bitrate: 48.7Mbit/s
+	* nxwarp (nxwarp 8-bit)
+	  size: 1088x544
+	  bitrate: 1.2Mbit/s
+ INFO [video_encoder_nxwarp] nxwarp: "entropy": "auto" -> lite (the headset advertises ENTROPY_LITE)
+ INFO [video_encoder_nxwarp] nxwarp: "snap-identity": 16/16 sample (still tiles become a copy on the headset; error bounded by 0.50 sample)
+ INFO [video_encoder_nxwarp] nxwarp: "planar": "rd" -> "off" (the GPU backend has no planar mode)
+ INFO [video_encoder_nxwarp] nxwarp: stream 0 tools 0x4c2200c05 (INTRA_DC_PLANE RES_LEVEL INTER WARP CTX_V2 CTX_V3 ENTROPY_LITE bit31 bit34), headset 0xdf77a1fff -- negotiated
+ INFO [video_encoder_nxwarp] nxwarp: stream 0 backend: nxvc_vk_encoder GPU compute encoder, nxvc_vk_encoder (E0/E3/E4/E5, intra only) (34x17 tiles, intra only, one QP per frame), reading the compositor image directly
+ INFO [video_encoder_nxwarp] nxwarp: stream 0 1088x1088, nxvc_vk_encoder GPU compute encoder, nxvc_vk_encoder (E0/E3/E4/E5, intra only) (34x17 tiles, intra only, one QP per frame), fixed QP 40, paced at a fixed 90.0 fps, 34x17 tiles in 3 band(s), 1166 bytes per transport tile
+ INFO [video_encoder_nxwarp] nxwarp: "entropy": "auto" -> lite (the headset advertises ENTROPY_LITE)
+ INFO [video_encoder_nxwarp] nxwarp: "snap-identity": 16/16 sample (still tiles become a copy on the headset; error bounded by 0.50 sample)
+ INFO [video_encoder_nxwarp] nxwarp: "planar": "rd" -> "off" (the GPU backend has no planar mode)
+ INFO [video_encoder_nxwarp] nxwarp: stream 2 tools 0x4c2200c05 (INTRA_DC_PLANE RES_LEVEL INTER WARP CTX_V2 CTX_V3 ENTROPY_LITE bit31 bit34), headset 0xdf77a1fff -- negotiated
+ INFO [video_encoder_nxwarp] nxwarp: stream 2 backend: nxvc_vk_encoder GPU compute encoder, nxvc_vk_encoder (E0/E3/E4/E5, intra only) (17x9 tiles, intra only, one QP per frame), reading the compositor image directly
+ INFO [video_encoder_nxwarp] nxwarp: stream 2 1088x544, nxvc_vk_encoder GPU compute encoder, nxvc_vk_encoder (E0/E3/E4/E5, intra only) (17x9 tiles, intra only, one QP per frame), fixed QP 40, paced at a fixed 90.0 fps, 17x9 tiles in 2 band(s), 1166 bytes per transport tile
+ INFO [wivrn_hmd] edge bleed: rendering 5.0% overscan, 1.35 deg left / 1.35 deg up on eye 0 (same encoded size, so about 4.8% less sharp)
+ INFO [pipewire_device] pipewire speaker stream created (quantum: 240 frames, 5.00 ms)
+ INFO [configure] Automatic bitrate enabled, AIMD (v1), ceiling 50.0 Mbit/s, floor 10.0 Mbit/s, radio trend on
+ INFO [set_pacing] Packet pacing enabled, spreading each frame over 40% of a frame period
+ INFO [apply_qos] Wi-Fi QoS marks enabled (video AF41 / AC_VI, control EF / AC_VO)
+ INFO [set_fec] Forward error correction enabled, one parity shard per 8 video shards
+ INFO [set_fec_adaptive] Adaptive error correction enabled, parity ratio between 16+1 and 4+1 with interleaved groups
+ INFO [set_shard_retransmit] Shard retransmission enabled, keeping 1024 kB of recently sent shards per stream
+ WARN [check_socket_path] path not found: /run/user/1000/SlimeVRRpc
+ WARN [check_socket_path] path not found: /run/user/1000/.flatpak/dev.slimevr.SlimeVR/xdg-run/SlimeVRRpc
+ WARN [check_socket_path] path not found: /home/nerdrx/.local/share/dev.slimevr.SlimeVR/SlimeVRRpc
+ERROR [solarxr_ipc_socket_find] failed to resolve socket path
+ INFO [u_linux_try_to_set_realtime_priority_on_thread] Raised priority of thread 'Multi Client Module' to policy: 'SCHED_FIFO', priority: '99'
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+ INFO [reset_stream] nxwarp: stream 0 resumed for a new client: transport sequence restarted, stream header resent, next frame coded without a reference
+ INFO [reset_stream] nxwarp: stream 2 resumed for a new client: transport sequence restarted, stream header resent, next frame coded without a reference
+ INFO [operator()] Updating interaction profiles: from 
+	XRT_DEVICE_TOUCH_CONTROLLER (left)  to XRT_DEVICE_EXT_HAND_INTERACTION
+	XRT_DEVICE_TOUCH_CONTROLLER (right) to XRT_DEVICE_EXT_HAND_INTERACTION
+
+ INFO [client_connected] Client 1 connected
+ INFO [ipc_handle_instance_describe_client] Client info:
+	id: 1
+	application_name: 'HelloXR'
+	pid: 3087586
+	extensions:
+		ext_hand_tracking_enabled: false
+		ext_hand_tracking_data_source_enabled: false
+		ext_eye_gaze_interaction_enabled: false
+		ext_future_enabled: false
+		ext_hand_interaction_enabled: false
+		htc_facial_tracking_enabled: false
+		fb_body_tracking_enabled: false
+		meta_body_tracking_full_body_enabled: false
+		meta_body_tracking_calibration_enabled: false
+		meta_body_tracking_fidelity_enabled: false
+		fb_face_tracking2_enabled: false
+		android_face_tracking_enabled: false
+ INFO [update_session_state_locked] Started native session, 1 active app session(s).
+ INFO [get_view_poses] geometry[eye 0]: panel fov L-51.99 R51.99 U51.99 D-51.99 -> rendered fov L-53.34 R53.34 U53.34 D-53.34 deg (overscan 0.050)
+ INFO [get_view_poses] geometry[eye 1]: panel fov L-51.99 R51.99 U51.99 D-51.99 -> rendered fov L-53.34 R53.34 U53.34 D-53.34 deg (overscan 0.050)
+ INFO [update_lens_mask] nxwarp: stream 0 lens mask: 0 of 289 tiles per eye masked (margin 1 tile, fov -53.3/53.3/53.3/-53.3 deg); flattened only: this backend has no skip-map input, so the tiles are coded as whatever the mode search makes of a constant grey
+ INFO [encode] nxwarp: stream 0 is at fixed QP 40 by configuration; the bitrate controller's 43360433 bit/s is ignored (unset "rc": "fixed" to honour it)
+ INFO [layer_commit] geometry[eye 0]: layer fov (what the app rendered, and what goes on the wire) L-53.34 R53.34 U53.34 D-53.34 deg
+ INFO [layer_commit] geometry[eye 1]: layer fov (what the app rendered, and what goes on the wire) L-53.34 R53.34 U53.34 D-53.34 deg
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 10344 aged 0 refresh 60 admitted 0 missing 0 no-ref 6936 displacement 0; R invalid 0 unconfirmed 10347 aged 0 refresh 57 admitted 0 missing 0 no-ref 6936 displacement 0
+ INFO [report_frame] nxwarp atlas: 80 frames, avg skip 0 intra 578 coded 578, atlas 80 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 80 frames in 2.0 s: 2.9 ms/frame (max 4.2), 55717 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 5 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 79 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 77 frame(s) since the last report; 35 of them cost an all-intra frame and 42 named a frame older than one already coded intra and cost nothing. Last was frame 117, dropped by the worker backlog
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 44 unconfirmed 7776 aged 0 refresh 64 admitted 4543 missing 0 no-ref 4913 displacement 0; R invalid 117 unconfirmed 7791 aged 0 refresh 72 admitted 4447 missing 0 no-ref 4913 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 8 aged 15078 refresh 97 admitted 17235 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 3 aged 15073 refresh 92 admitted 17245 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 14996 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 14973 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 169 frames, avg skip 490 intra 87 coded 87, atlas 169 picture 0, avg worst disp 5.3 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 169 frames in 2.0 s: 2.8 ms/frame (max 4.7), 9095 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 12 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 169 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 27 frame(s) since the last report; 18 of them cost an all-intra frame and 9 named a frame older than one already coded intra and cost nothing. Last was frame 153, dropped by the worker backlog
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15099 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15105 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15051 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15134 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 156 frames, avg skip 573 intra 4 coded 4, atlas 156 picture 0, avg worst disp 8.5 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 156 frames in 2.0 s: 2.6 ms/frame (max 4.8), 1033 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 24 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 156 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15053 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15026 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15175 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15074 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15149 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15225 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 152 frames, avg skip 572 intra 5 coded 5, atlas 152 picture 0, avg worst disp 8.9 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 152 frames in 2.0 s: 2.6 ms/frame (max 4.0), 1132 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 28 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 152 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 12804 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15173 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 14896 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 14852 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_STOPPING
+ INFO [operator()] Session state changed: XR_SESSION_STATE_IDLE
+ INFO [report_frame] nxwarp atlas: 154 frames, avg skip 561 intra 16 coded 16, atlas 154 picture 0, avg worst disp 7.3 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 154 frames in 2.0 s: 2.6 ms/frame (max 3.8), 1297 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 26 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 154 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 578 aged 10426 refresh 97 admitted 16665 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 573 aged 10479 refresh 92 admitted 16675 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 3 aged 15692 refresh 100 admitted 17237 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15684 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15730 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15699 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 574 intra 3 coded 3, atlas 181 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 2.7 ms/frame (max 4.0), 569 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15682 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15724 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+ INFO [operator()] Session state changed: XR_SESSION_STATE_READY
+ INFO [operator()] user presence changed to false
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 5 aged 15690 refresh 100 admitted 17235 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15684 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15730 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15699 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 574 intra 3 coded 3, atlas 181 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 2.7 ms/frame (max 4.2), 569 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15682 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15724 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15695 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15684 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15730 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15699 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 574 intra 3 coded 3, atlas 181 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 2.6 ms/frame (max 4.0), 568 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15682 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15724 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15695 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15684 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15730 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15699 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 574 intra 3 coded 3, atlas 180 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 2.6 ms/frame (max 4.7), 568 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15682 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15724 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15695 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15684 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15730 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15699 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 574 intra 3 coded 3, atlas 180 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 2.7 ms/frame (max 4.2), 568 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15682 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15724 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15695 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15684 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15730 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15699 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 574 intra 3 coded 3, atlas 180 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 2.8 ms/frame (max 4.4), 568 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15682 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15724 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15695 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15684 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+ INFO [operator()] Session state changed: XR_SESSION_STATE_STOPPING
+ INFO [operator()] Session state changed: XR_SESSION_STATE_IDLE
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15730 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 7 aged 15695 refresh 100 admitted 17233 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 574 intra 3 coded 3, atlas 180 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 2.9 ms/frame (max 4.6), 569 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15682 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15721 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 2 aged 15693 refresh 100 admitted 17238 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 1 aged 15683 refresh 97 admitted 17242 missing 0 no-ref 0 displacement 0
+ INFO [operator()] Session state changed: XR_SESSION_STATE_READY
+ INFO [operator()] user presence changed to false
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 12 aged 15718 refresh 92 admitted 17236 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 11 aged 15688 refresh 100 admitted 17229 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 574 intra 3 coded 3, atlas 180 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.5 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 3.5 ms/frame (max 6.2), 570 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15682 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15724 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15695 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15684 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15730 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15699 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 574 intra 3 coded 3, atlas 181 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 2.7 ms/frame (max 4.1), 568 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15682 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15724 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15695 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15684 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15730 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15699 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 574 intra 3 coded 3, atlas 180 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 3.6 ms/frame (max 6.0), 568 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15682 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15724 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15695 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15684 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15730 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15699 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 574 intra 3 coded 3, atlas 180 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 3.8 ms/frame (max 6.1), 568 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15682 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15724 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15695 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15684 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15730 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15699 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 574 intra 3 coded 3, atlas 180 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 4.0 ms/frame (max 6.2), 568 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15682 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15724 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15695 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15684 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_STOPPING
+ INFO [operator()] Session state changed: XR_SESSION_STATE_IDLE
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 3 aged 15730 refresh 92 admitted 17245 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 11 aged 15699 refresh 100 admitted 17229 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 574 intra 3 coded 3, atlas 181 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.0 ms/frame (max 7.4), 570 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 8 aged 15671 refresh 97 admitted 17235 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15713 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15695 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15684 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15730 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15699 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+ INFO [operator()] Session state changed: XR_SESSION_STATE_READY
+ INFO [operator()] user presence changed to false
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 574 intra 3 coded 3, atlas 181 picture 0, avg worst disp 3.4 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.5 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 3.5 ms/frame (max 5.9), 569 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 8 aged 15674 refresh 97 admitted 17235 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15724 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15695 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15684 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15730 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15699 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 574 intra 3 coded 3, atlas 180 picture 0, avg worst disp 6.3 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 2.6 ms/frame (max 4.7), 568 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15682 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15724 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15695 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15684 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15730 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15699 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 574 intra 3 coded 3, atlas 180 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 2.6 ms/frame (max 5.2), 568 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15682 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15724 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15695 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15684 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15730 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15699 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 574 intra 3 coded 3, atlas 181 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 2.7 ms/frame (max 4.9), 568 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15682 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15724 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15695 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15684 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15730 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15699 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 574 intra 3 coded 3, atlas 180 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 2.7 ms/frame (max 5.1), 568 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15682 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15724 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15695 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15684 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15730 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15699 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_STOPPING
+ INFO [operator()] Session state changed: XR_SESSION_STATE_IDLE
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 574 intra 3 coded 3, atlas 180 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 2.6 ms/frame (max 5.1), 568 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15682 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 3 aged 15721 refresh 92 admitted 17245 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15695 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15684 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15730 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15699 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 574 intra 3 coded 3, atlas 181 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 2.7 ms/frame (max 4.1), 568 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15682 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15724 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+ INFO [operator()] Session state changed: XR_SESSION_STATE_READY
+ INFO [operator()] user presence changed to false
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 2 aged 15693 refresh 100 admitted 17238 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 2 aged 15682 refresh 97 admitted 17241 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15730 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 3 aged 15696 refresh 100 admitted 17237 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 574 intra 3 coded 3, atlas 180 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.4 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 3.4 ms/frame (max 5.8), 569 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15682 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15724 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15695 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15684 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15730 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15699 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15682 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15724 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 574 intra 3 coded 3, atlas 181 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.3 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 3.3 ms/frame (max 5.9), 568 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15695 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15684 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15730 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15699 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15682 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15724 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 574 intra 3 coded 3, atlas 180 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 2.7 ms/frame (max 5.1), 568 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15695 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15684 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15730 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15699 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15682 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15724 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 574 intra 3 coded 3, atlas 181 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 2.6 ms/frame (max 3.9), 568 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15695 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15684 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15730 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15699 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15682 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15724 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 574 intra 3 coded 3, atlas 180 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 2.7 ms/frame (max 4.3), 568 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15695 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15684 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_STOPPING
+ INFO [operator()] Session state changed: XR_SESSION_STATE_IDLE
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15730 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15699 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15682 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15724 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 574 intra 3 coded 3, atlas 180 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 2.8 ms/frame (max 4.2), 568 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15695 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15684 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+ INFO [operator()] Session state changed: XR_SESSION_STATE_READY
+ INFO [operator()] user presence changed to false
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 3 aged 15727 refresh 92 admitted 17245 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 2 aged 15697 refresh 100 admitted 17238 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15682 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15724 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 574 intra 3 coded 3, atlas 181 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 2.6 ms/frame (max 4.3), 569 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15695 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15684 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15730 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15699 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15682 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15724 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 574 intra 3 coded 3, atlas 181 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 2.7 ms/frame (max 5.2), 568 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15695 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15684 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15730 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15699 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15682 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15724 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 574 intra 3 coded 3, atlas 181 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.1 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 3.1 ms/frame (max 4.8), 568 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15695 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15684 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15730 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15699 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15682 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15724 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 574 intra 3 coded 3, atlas 180 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 2.7 ms/frame (max 4.0), 568 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15695 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15684 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15730 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15699 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15682 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15724 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 574 intra 3 coded 3, atlas 180 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 2.7 ms/frame (max 4.2), 568 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15695 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15684 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_STOPPING
+ INFO [operator()] Session state changed: XR_SESSION_STATE_IDLE
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15730 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15699 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 2 aged 15680 refresh 97 admitted 17241 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15724 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 574 intra 3 coded 3, atlas 181 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 2.6 ms/frame (max 4.1), 568 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15695 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15684 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15730 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15699 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+ INFO [operator()] Session state changed: XR_SESSION_STATE_READY
+ INFO [operator()] user presence changed to false
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 6 aged 15676 refresh 97 admitted 17237 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 4 aged 15720 refresh 92 admitted 17244 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 574 intra 3 coded 3, atlas 181 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.5 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 2.5 ms/frame (max 5.2), 569 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15695 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15684 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15730 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15699 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15682 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15724 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 574 intra 3 coded 3, atlas 180 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 2.6 ms/frame (max 4.9), 568 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15695 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15684 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15730 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15699 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15682 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15724 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 574 intra 3 coded 3, atlas 181 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 2.7 ms/frame (max 5.1), 568 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 15695 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 15684 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 5179 aged 5271 refresh 59 admitted 6903 missing 286 no-ref 4913 displacement 0; R invalid 2 unconfirmed 5185 aged 5220 refresh 74 admitted 6877 missing 289 no-ref 4913 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 1450 unconfirmed 1171 aged 11145 refresh 97 admitted 14622 missing 0 no-ref 0 displacement 0; R invalid 1570 unconfirmed 1235 aged 11010 refresh 92 admitted 14443 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 421 intra 156 coded 156, atlas 180 picture 1, avg worst disp 1.5 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 2.7 ms/frame (max 4.1), 2856 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 74 frame(s) since the last report; 58 of them cost an all-intra frame and 16 named a frame older than one already coded intra and cost nothing. Last was frame 7245, dropped by the worker backlog
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 4258 unconfirmed 4035 aged 8939 refresh 100 admitted 8947 missing 0 no-ref 0 displacement 0; R invalid 4289 unconfirmed 4064 aged 8888 refresh 97 admitted 8890 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 7855 unconfirmed 5703 aged 3501 refresh 92 admitted 3690 missing 0 no-ref 0 displacement 0; R invalid 7989 unconfirmed 5779 aged 3275 refresh 100 admitted 3472 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 11290 unconfirmed 4847 aged 1047 refresh 97 admitted 1106 missing 0 no-ref 0 displacement 0; R invalid 11225 unconfirmed 4815 aged 1135 refresh 92 admitted 1208 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 136 intra 441 coded 441, atlas 180 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 2.7 ms/frame (max 4.5), 7146 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 110 frame(s) since the last report; 110 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 7425, dropped by the worker backlog
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 4355 unconfirmed 3025 aged 5591 refresh 100 admitted 9860 missing 0 no-ref 0 displacement 0; R invalid 4327 unconfirmed 3005 aged 5627 refresh 97 admitted 9911 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 20 unconfirmed 119 aged 16370 refresh 92 admitted 17109 missing 0 no-ref 0 displacement 0; R invalid 18 unconfirmed 99 aged 16426 refresh 100 admitted 17123 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 146 frames, avg skip 500 intra 77 coded 77, atlas 146 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 7.1 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 146 frames in 2.0 s: 7.1 ms/frame (max 204.9), 1687 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 1 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 146 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 83 frame(s) since the last report; 83 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 7573, dropped by the decode stride
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_STOPPING
+ INFO [operator()] Session state changed: XR_SESSION_STATE_IDLE
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 14 unconfirmed 210 aged 16209 refresh 97 admitted 17019 missing 0 no-ref 0 displacement 0; R invalid 40 unconfirmed 245 aged 16266 refresh 92 admitted 16963 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 52 unconfirmed 182 aged 16318 refresh 100 admitted 17006 missing 0 no-ref 0 displacement 0; R invalid 74 unconfirmed 228 aged 16047 refresh 97 admitted 16941 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 35 aged 16442 refresh 92 admitted 17213 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 34 aged 16488 refresh 100 admitted 17206 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 176 frames, avg skip 567 intra 10 coded 10, atlas 176 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 176 frames in 2.0 s: 4.9 ms/frame (max 19.5), 682 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 5 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 176 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 93 frame(s) since the last report; 93 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 7749, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 305 unconfirmed 538 aged 15895 refresh 97 admitted 16400 missing 0 no-ref 0 displacement 0; R invalid 203 unconfirmed 333 aged 16244 refresh 92 admitted 16712 missing 0 no-ref 0 displacement 0
+ INFO [operator()] Session state changed: XR_SESSION_STATE_READY
+ INFO [operator()] user presence changed to false
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 2190 unconfirmed 2277 aged 12389 refresh 100 admitted 12773 missing 0 no-ref 0 displacement 0; R invalid 1895 unconfirmed 1996 aged 13000 refresh 97 admitted 13352 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 4959 unconfirmed 4439 aged 7714 refresh 92 admitted 7850 missing 0 no-ref 0 displacement 0; R invalid 4707 unconfirmed 4243 aged 8146 refresh 100 admitted 8290 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 348 intra 229 coded 229, atlas 181 picture 0, avg worst disp 5.7 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.1 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 3.1 ms/frame (max 13.6), 3970 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 96 frame(s) since the last report; 96 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 7928, dropped by the worker backlog
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 7662 unconfirmed 5894 aged 3407 refresh 97 admitted 3687 missing 0 no-ref 0 displacement 0; R invalid 7867 unconfirmed 6056 aged 3232 refresh 92 admitted 3325 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 9591 unconfirmed 5597 aged 2036 refresh 100 admitted 2052 missing 0 no-ref 0 displacement 0; R invalid 9907 unconfirmed 5756 aged 1465 refresh 97 admitted 1580 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 11123 unconfirmed 4781 aged 1344 refresh 92 admitted 1344 missing 0 no-ref 0 displacement 0; R invalid 11380 unconfirmed 4886 aged 974 refresh 100 admitted 974 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 51 intra 526 coded 526, atlas 180 picture 0, avg worst disp 0.4 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 2.8 ms/frame (max 5.3), 8423 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 120 frame(s) since the last report; 120 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 8109, dropped by the worker backlog
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 10413 unconfirmed 4527 aged 298 refresh 97 admitted 2303 missing 0 no-ref 0 displacement 0; R invalid 10244 unconfirmed 4458 aged 603 refresh 92 admitted 2546 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 16 unconfirmed 285 aged 14122 refresh 100 admitted 16939 missing 0 no-ref 0 displacement 0; R invalid 36 unconfirmed 465 aged 13907 refresh 97 admitted 16742 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 130 frames, avg skip 462 intra 115 coded 115, atlas 130 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 9.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 130 frames in 2.0 s: 9.7 ms/frame (max 216.8), 2252 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 12 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 130 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 81 frame(s) since the last report; 81 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 8239, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 72 unconfirmed 693 aged 15679 refresh 92 admitted 16483 missing 0 no-ref 0 displacement 0; R invalid 68 unconfirmed 656 aged 15772 refresh 100 admitted 16516 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 8 unconfirmed 18 aged 16649 refresh 97 admitted 17217 missing 0 no-ref 0 displacement 0; R invalid 29 unconfirmed 31 aged 16569 refresh 92 admitted 17188 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 16717 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 16747 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 573 intra 4 coded 4, atlas 180 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 3.8 ms/frame (max 10.6), 588 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 121 frame(s) since the last report; 121 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 8420, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 16719 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 16733 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 827 unconfirmed 547 aged 15579 refresh 97 admitted 15869 missing 0 no-ref 0 displacement 0; R invalid 692 unconfirmed 414 aged 15849 refresh 92 admitted 16142 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 125 frames, avg skip 517 intra 60 coded 60, atlas 125 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 10.4 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 125 frames in 2.1 s: 10.4 ms/frame (max 51.5), 1432 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 10 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 125 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 82 frame(s) since the last report; 82 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 8545, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 1923 unconfirmed 1169 aged 13280 refresh 100 admitted 14148 missing 0 no-ref 0 displacement 0; R invalid 1776 unconfirmed 1079 aged 13562 refresh 97 admitted 14388 missing 0 no-ref 0 displacement 0
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_STOPPING
+ INFO [operator()] Session state changed: XR_SESSION_STATE_IDLE
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 14 unconfirmed 417 aged 15457 refresh 92 admitted 16817 missing 0 no-ref 0 displacement 0; R invalid 6 unconfirmed 329 aged 15662 refresh 100 admitted 16905 missing 0 no-ref 0 displacement 0
+ INFO [operator()] Session state changed: XR_SESSION_STATE_READY
+ INFO [operator()] user presence changed to false
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 44 unconfirmed 207 aged 16027 refresh 97 admitted 16992 missing 0 no-ref 0 displacement 0; R invalid 48 unconfirmed 204 aged 16152 refresh 92 admitted 16996 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 158 frames, avg skip 557 intra 20 coded 20, atlas 158 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 6.4 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 158 frames in 2.0 s: 6.4 ms/frame (max 58.3), 821 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 9 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 158 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 86 frame(s) since the last report; 86 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 8703, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 130 unconfirmed 207 aged 16239 refresh 100 admitted 16903 missing 0 no-ref 0 displacement 0; R invalid 123 unconfirmed 169 aged 16135 refresh 97 admitted 16951 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 50 unconfirmed 707 aged 15912 refresh 92 admitted 16491 missing 0 no-ref 0 displacement 0; R invalid 16 unconfirmed 612 aged 16096 refresh 100 admitted 16612 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 56 unconfirmed 350 aged 15872 refresh 97 admitted 16837 missing 0 no-ref 0 displacement 0; R invalid 28 unconfirmed 255 aged 16105 refresh 92 admitted 16965 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 169 frames, avg skip 559 intra 18 coded 18, atlas 169 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 6.1 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 169 frames in 2.0 s: 6.1 ms/frame (max 28.4), 803 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 8 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 169 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 107 frame(s) since the last report; 107 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 8871, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 738 unconfirmed 544 aged 15488 refresh 100 admitted 15958 missing 0 no-ref 0 displacement 0; R invalid 632 unconfirmed 470 aged 15587 refresh 97 admitted 16141 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 105 frames, avg skip 489 intra 88 coded 88, atlas 105 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 13.2 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 105 frames in 2.1 s: 13.2 ms/frame (max 57.6), 1846 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 11 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 105 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 70 frame(s) since the last report; 70 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 8977, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 2340 unconfirmed 1202 aged 13175 refresh 92 admitted 13690 missing 16 no-ref 0 displacement 0; R invalid 2244 unconfirmed 1153 aged 13329 refresh 100 admitted 13830 missing 13 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 263 unconfirmed 378 aged 14847 refresh 97 admitted 16602 missing 0 no-ref 0 displacement 0; R invalid 268 unconfirmed 331 aged 14872 refresh 92 admitted 16649 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 26 unconfirmed 242 aged 16263 refresh 100 admitted 16972 missing 0 no-ref 0 displacement 0; R invalid 64 unconfirmed 326 aged 16071 refresh 97 admitted 16853 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 165 frames, avg skip 559 intra 18 coded 18, atlas 165 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 6.3 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 165 frames in 2.0 s: 6.3 ms/frame (max 61.6), 801 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 3 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 165 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 107 frame(s) since the last report; 107 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 9141, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 124 unconfirmed 248 aged 16197 refresh 92 admitted 16876 missing 0 no-ref 0 displacement 0; R invalid 88 unconfirmed 229 aged 16234 refresh 100 admitted 16923 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 1650 unconfirmed 1033 aged 14209 refresh 97 admitted 14560 missing 0 no-ref 0 displacement 0; R invalid 1432 unconfirmed 887 aged 14528 refresh 92 admitted 14929 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 102 frames, avg skip 490 intra 87 coded 87, atlas 102 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 13.4 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 102 frames in 2.0 s: 13.4 ms/frame (max 56.1), 1833 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 12 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 102 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 68 frame(s) since the last report; 68 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 9244, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 1400 unconfirmed 953 aged 13124 refresh 100 admitted 14887 missing 0 no-ref 0 displacement 0; R invalid 1249 unconfirmed 859 aged 13400 refresh 97 admitted 15135 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 2 aged 16442 refresh 92 admitted 17246 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 4 aged 16488 refresh 100 admitted 17236 missing 0 no-ref 0 displacement 0
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_STOPPING
+ INFO [operator()] Session state changed: XR_SESSION_STATE_IDLE
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 36 unconfirmed 297 aged 16147 refresh 97 admitted 16910 missing 0 no-ref 0 displacement 0; R invalid 48 unconfirmed 362 aged 16153 refresh 92 admitted 16838 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 163 frames, avg skip 561 intra 16 coded 16, atlas 163 picture 0, avg worst disp 0.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 5.5 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 163 frames in 2.0 s: 5.5 ms/frame (max 62.4), 764 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 5 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 163 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 84 frame(s) since the last report; 84 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 9407, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 497 unconfirmed 764 aged 14988 refresh 100 admitted 15973 missing 6 no-ref 0 displacement 0; R invalid 570 unconfirmed 943 aged 14611 refresh 97 admitted 15726 missing 4 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 249 aged 16240 refresh 92 admitted 16999 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 235 aged 16296 refresh 100 admitted 17005 missing 0 no-ref 0 displacement 0
+ INFO [operator()] Session state changed: XR_SESSION_STATE_READY
+ INFO [operator()] user presence changed to false
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+ INFO [report_frame] nxwarp atlas: 166 frames, avg skip 555 intra 22 coded 22, atlas 166 picture 0, avg worst disp 10.8 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 5.1 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 166 frames in 2.0 s: 5.1 ms/frame (max 49.9), 855 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 5 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 166 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 86 frame(s) since the last report; 86 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 9573, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 8 unconfirmed 84 aged 16379 refresh 97 admitted 17151 missing 0 no-ref 0 displacement 0; R invalid 2 unconfirmed 70 aged 16540 refresh 92 admitted 17176 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 255 unconfirmed 319 aged 15686 refresh 100 admitted 16666 missing 0 no-ref 0 displacement 0; R invalid 332 unconfirmed 365 aged 15461 refresh 97 admitted 16546 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 16 aged 16428 refresh 92 admitted 17232 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 10 aged 16488 refresh 100 admitted 17230 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 174 frames, avg skip 565 intra 12 coded 12, atlas 174 picture 0, avg worst disp 13.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.4 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 174 frames in 2.0 s: 4.4 ms/frame (max 32.0), 706 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 2 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 174 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 94 frame(s) since the last report; 94 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 9747, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 20 unconfirmed 153 aged 16305 refresh 97 admitted 17070 missing 0 no-ref 0 displacement 0; R invalid 50 unconfirmed 162 aged 16460 refresh 92 admitted 17036 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 236 unconfirmed 375 aged 15520 refresh 100 admitted 16629 missing 0 no-ref 0 displacement 0; R invalid 238 unconfirmed 382 aged 15546 refresh 97 admitted 16623 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 8 unconfirmed 53 aged 16431 refresh 92 admitted 17187 missing 0 no-ref 0 displacement 0; R invalid 20 unconfirmed 70 aged 16455 refresh 100 admitted 17150 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 175 frames, avg skip 565 intra 12 coded 12, atlas 175 picture 0, avg worst disp 13.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 175 frames in 2.0 s: 4.6 ms/frame (max 28.9), 712 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 4 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 175 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 97 frame(s) since the last report; 97 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 9921, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 48 unconfirmed 202 aged 16258 refresh 97 admitted 16993 missing 0 no-ref 0 displacement 0; R invalid 56 unconfirmed 105 aged 16439 refresh 92 admitted 17087 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 279 unconfirmed 280 aged 15691 refresh 100 admitted 16681 missing 0 no-ref 0 displacement 0; R invalid 265 unconfirmed 271 aged 15677 refresh 97 admitted 16707 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 30 unconfirmed 191 aged 16268 refresh 92 admitted 17027 missing 0 no-ref 0 displacement 0; R invalid 54 unconfirmed 240 aged 16252 refresh 100 admitted 16946 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 177 frames, avg skip 562 intra 15 coded 15, atlas 177 picture 0, avg worst disp 13.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 5.2 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 177 frames in 2.0 s: 5.2 ms/frame (max 30.0), 758 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 2 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 177 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 116 frame(s) since the last report; 116 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 10099, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 111 unconfirmed 255 aged 16070 refresh 97 admitted 16877 missing 0 no-ref 0 displacement 0; R invalid 79 unconfirmed 201 aged 16297 refresh 92 admitted 16968 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 1584 unconfirmed 902 aged 14331 refresh 100 admitted 14754 missing 0 no-ref 0 displacement 0; R invalid 1498 unconfirmed 852 aged 14496 refresh 97 admitted 14893 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 108 frames, avg skip 493 intra 84 coded 84, atlas 108 picture 0, avg worst disp 13.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 12.4 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 108 frames in 2.1 s: 12.4 ms/frame (max 58.6), 1784 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 12 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 108 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 71 frame(s) since the last report; 71 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 10207, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 1559 unconfirmed 853 aged 13174 refresh 92 admitted 14836 missing 0 no-ref 0 displacement 0; R invalid 1536 unconfirmed 865 aged 13166 refresh 100 admitted 14839 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 32 unconfirmed 288 aged 16139 refresh 97 admitted 16923 missing 0 no-ref 0 displacement 0; R invalid 24 unconfirmed 242 aged 16320 refresh 92 admitted 16982 missing 0 no-ref 0 displacement 0
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_STOPPING
+ INFO [operator()] Session state changed: XR_SESSION_STATE_IDLE
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 68 unconfirmed 313 aged 16193 refresh 100 admitted 16859 missing 0 no-ref 0 displacement 0; R invalid 83 unconfirmed 432 aged 16048 refresh 97 admitted 16728 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 160 frames, avg skip 557 intra 20 coded 20, atlas 160 picture 0, avg worst disp 13.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 6.3 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 160 frames in 2.0 s: 6.3 ms/frame (max 60.8), 826 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 9 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 160 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 96 frame(s) since the last report; 96 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 10367, dropped by the decode stride
+ INFO [operator()] Session state changed: XR_SESSION_STATE_READY
+ INFO [operator()] user presence changed to false
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 745 unconfirmed 690 aged 15135 refresh 92 admitted 15813 missing 0 no-ref 0 displacement 0; R invalid 600 unconfirmed 528 aged 15389 refresh 100 admitted 16112 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 107 frames, avg skip 493 intra 84 coded 84, atlas 107 picture 0, avg worst disp 12.3 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 12.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 107 frames in 2.0 s: 12.8 ms/frame (max 58.2), 1794 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 11 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 107 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 66 frame(s) since the last report; 66 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 10474, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 2364 unconfirmed 1241 aged 13101 refresh 97 admitted 13638 missing 0 no-ref 0 displacement 0; R invalid 2134 unconfirmed 1129 aged 13406 refresh 92 admitted 13985 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 32 unconfirmed 241 aged 15370 refresh 100 admitted 16967 missing 0 no-ref 0 displacement 0; R invalid 12 unconfirmed 189 aged 15367 refresh 97 admitted 17042 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 48 unconfirmed 202 aged 16164 refresh 92 admitted 16998 missing 0 no-ref 0 displacement 0; R invalid 20 unconfirmed 150 aged 16294 refresh 100 admitted 17070 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 169 frames, avg skip 563 intra 14 coded 14, atlas 169 picture 0, avg worst disp 12.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 5.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 169 frames in 2.0 s: 5.7 ms/frame (max 60.6), 741 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 4 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 169 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 109 frame(s) since the last report; 109 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 10643, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 70 unconfirmed 297 aged 16082 refresh 97 admitted 16876 missing 0 no-ref 0 displacement 0; R invalid 61 unconfirmed 206 aged 16343 refresh 92 admitted 16981 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 1349 unconfirmed 764 aged 14715 refresh 100 admitted 15127 missing 0 no-ref 0 displacement 0; R invalid 1378 unconfirmed 785 aged 14658 refresh 97 admitted 15080 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 110 frames, avg skip 496 intra 81 coded 81, atlas 110 picture 0, avg worst disp 12.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 12.2 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 110 frames in 2.0 s: 12.2 ms/frame (max 56.2), 1750 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 11 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 110 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 73 frame(s) since the last report; 73 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 10753, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 1687 unconfirmed 972 aged 13049 refresh 92 admitted 14589 missing 0 no-ref 0 displacement 0; R invalid 1755 unconfirmed 1007 aged 12875 refresh 100 admitted 14478 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 46 unconfirmed 264 aged 16137 refresh 97 admitted 16933 missing 0 no-ref 0 displacement 0; R invalid 26 unconfirmed 197 aged 16352 refresh 92 admitted 17025 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 48 unconfirmed 170 aged 16318 refresh 100 admitted 17022 missing 0 no-ref 0 displacement 0; R invalid 56 unconfirmed 249 aged 16133 refresh 97 admitted 16938 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 167 frames, avg skip 560 intra 17 coded 17, atlas 167 picture 0, avg worst disp 12.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 6.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 167 frames in 2.0 s: 6.0 ms/frame (max 60.2), 780 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 2 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 167 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 108 frame(s) since the last report; 108 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 10918, dropped by the worker backlog
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 667 unconfirmed 412 aged 15648 refresh 92 admitted 16169 missing 0 no-ref 0 displacement 0; R invalid 547 unconfirmed 344 aged 15896 refresh 100 admitted 16349 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 2320 unconfirmed 1182 aged 13279 refresh 97 admitted 13741 missing 0 no-ref 0 displacement 0; R invalid 2206 unconfirmed 1123 aged 13406 refresh 92 admitted 13919 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 103 frames, avg skip 484 intra 93 coded 93, atlas 103 picture 0, avg worst disp 12.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 13.3 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 103 frames in 2.0 s: 13.3 ms/frame (max 57.1), 1921 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 10 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 103 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 69 frame(s) since the last report; 69 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 11023, dropped by the decode stride
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_STOPPING
+ INFO [operator()] Session state changed: XR_SESSION_STATE_IDLE
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 629 unconfirmed 594 aged 14282 refresh 100 admitted 16010 missing 7 no-ref 0 displacement 0; R invalid 615 unconfirmed 519 aged 14430 refresh 97 admitted 16100 missing 9 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 176 unconfirmed 663 aged 15542 refresh 92 admitted 16409 missing 0 no-ref 0 displacement 0; R invalid 168 unconfirmed 740 aged 15486 refresh 100 admitted 16332 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 148 frames, avg skip 545 intra 32 coded 32, atlas 148 picture 0, avg worst disp 10.9 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 7.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 148 frames in 2.0 s: 7.7 ms/frame (max 62.3), 1003 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 16 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 148 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 79 frame(s) since the last report; 79 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 11171, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 329 unconfirmed 489 aged 15611 refresh 97 admitted 16425 missing 0 no-ref 0 displacement 0; R invalid 258 unconfirmed 453 aged 15679 refresh 92 admitted 16537 missing 0 no-ref 0 displacement 0
+ INFO [operator()] Session state changed: XR_SESSION_STATE_READY
+ INFO [operator()] user presence changed to false
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 94 unconfirmed 261 aged 15688 refresh 100 admitted 16885 missing 0 no-ref 0 displacement 0; R invalid 66 unconfirmed 197 aged 15825 refresh 97 admitted 16980 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 42 unconfirmed 242 aged 16332 refresh 92 admitted 16964 missing 0 no-ref 0 displacement 0; R invalid 26 unconfirmed 221 aged 16318 refresh 100 admitted 16993 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 175 frames, avg skip 561 intra 16 coded 16, atlas 175 picture 0, avg worst disp 18.2 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 5.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 175 frames in 2.0 s: 5.0 ms/frame (max 31.5), 772 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 3 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 175 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 100 frame(s) since the last report; 100 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 11344, dropped by the worker backlog
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 313 unconfirmed 417 aged 15728 refresh 97 admitted 16513 missing 0 no-ref 0 displacement 0; R invalid 333 unconfirmed 389 aged 15910 refresh 92 admitted 16526 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 3 aged 16334 refresh 100 admitted 17237 missing 0 no-ref 0 displacement 0; R invalid 4 unconfirmed 4 aged 16299 refresh 97 admitted 17235 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 16719 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 16733 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 175 frames, avg skip 569 intra 8 coded 8, atlas 175 picture 0, avg worst disp 19.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 175 frames in 2.0 s: 3.7 ms/frame (max 29.8), 653 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 4 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 175 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 116 frame(s) since the last report; 116 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 11521, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 26 unconfirmed 152 aged 16484 refresh 97 admitted 17065 missing 0 no-ref 0 displacement 0; R invalid 8 unconfirmed 84 aged 16620 refresh 92 admitted 17156 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 9 unconfirmed 27 aged 16577 refresh 100 admitted 17204 missing 0 no-ref 0 displacement 0; R invalid 21 unconfirmed 32 aged 16579 refresh 97 admitted 17190 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 16719 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 16733 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 572 intra 5 coded 5, atlas 181 picture 0, avg worst disp 19.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.0 ms/frame (max 12.9), 598 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 120 frame(s) since the last report; 120 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 11702, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 30 unconfirmed 303 aged 16483 refresh 97 admitted 16910 missing 0 no-ref 0 displacement 0; R invalid 10 unconfirmed 147 aged 16623 refresh 92 admitted 17091 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 16495 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 4 unconfirmed 0 aged 16573 refresh 97 admitted 17239 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 16719 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 16733 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 179 frames, avg skip 572 intra 5 coded 5, atlas 179 picture 0, avg worst disp 19.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 179 frames in 2.0 s: 4.0 ms/frame (max 17.9), 609 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 2 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 179 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 118 frame(s) since the last report; 118 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 11881, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 32 unconfirmed 161 aged 16491 refresh 97 admitted 17050 missing 0 no-ref 0 displacement 0; R invalid 14 unconfirmed 91 aged 16623 refresh 92 admitted 17143 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 35 aged 16635 refresh 100 admitted 17205 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 30 aged 16671 refresh 97 admitted 17213 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 16719 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 5 aged 16733 refresh 100 admitted 17235 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 572 intra 5 coded 5, atlas 180 picture 0, avg worst disp 19.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 4.0 ms/frame (max 13.2), 599 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 119 frame(s) since the last report; 119 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 12061, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 32 unconfirmed 163 aged 16491 refresh 97 admitted 17048 missing 0 no-ref 0 displacement 0; R invalid 14 unconfirmed 91 aged 16623 refresh 92 admitted 17143 missing 0 no-ref 0 displacement 0
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_STOPPING
+ INFO [operator()] Session state changed: XR_SESSION_STATE_IDLE
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 12 unconfirmed 31 aged 16588 refresh 100 admitted 17197 missing 0 no-ref 0 displacement 0; R invalid 3 unconfirmed 23 aged 16666 refresh 97 admitted 17217 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 6 aged 16686 refresh 92 admitted 17242 missing 0 no-ref 0 displacement 0; R invalid 6 unconfirmed 17 aged 16678 refresh 100 admitted 17217 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 572 intra 5 coded 5, atlas 180 picture 0, avg worst disp 20.8 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 3.9 ms/frame (max 12.9), 602 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 119 frame(s) since the last report; 119 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 12241, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 44 unconfirmed 205 aged 16520 refresh 97 admitted 16994 missing 0 no-ref 0 displacement 0; R invalid 46 unconfirmed 195 aged 16578 refresh 92 admitted 17007 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 20 aged 16531 refresh 100 admitted 17220 missing 0 no-ref 0 displacement 0; R invalid 4 unconfirmed 16 aged 16495 refresh 97 admitted 17223 missing 0 no-ref 0 displacement 0
+ INFO [operator()] Session state changed: XR_SESSION_STATE_READY
+ INFO [operator()] user presence changed to false
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 11 aged 16719 refresh 92 admitted 17237 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 12 aged 16733 refresh 100 admitted 17228 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 178 frames, avg skip 571 intra 6 coded 6, atlas 178 picture 0, avg worst disp 19.5 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 178 frames in 2.0 s: 4.0 ms/frame (max 19.0), 615 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 2 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 178 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 117 frame(s) since the last report; 117 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 12419, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 8 unconfirmed 127 aged 16511 refresh 97 admitted 17108 missing 0 no-ref 0 displacement 0; R invalid 14 unconfirmed 107 aged 16627 refresh 92 admitted 17127 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 4 aged 16697 refresh 100 admitted 17236 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 5 aged 16613 refresh 97 admitted 17238 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 3 unconfirmed 1 aged 16705 refresh 92 admitted 17244 missing 0 no-ref 0 displacement 0; R invalid 15 unconfirmed 5 aged 16663 refresh 100 admitted 17220 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 573 intra 4 coded 4, atlas 180 picture 0, avg worst disp 19.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 3.9 ms/frame (max 12.6), 592 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 119 frame(s) since the last report; 119 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 12599, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 38 unconfirmed 174 aged 16479 refresh 97 admitted 17031 missing 0 no-ref 0 displacement 0; R invalid 14 unconfirmed 91 aged 16593 refresh 92 admitted 17143 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 10 unconfirmed 17 aged 16599 refresh 100 admitted 17213 missing 0 no-ref 0 displacement 0; R invalid 22 unconfirmed 24 aged 16567 refresh 97 admitted 17197 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 3 unconfirmed 1 aged 16699 refresh 92 admitted 17244 missing 0 no-ref 0 displacement 0; R invalid 6 unconfirmed 5 aged 16693 refresh 100 admitted 17229 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 572 intra 5 coded 5, atlas 181 picture 0, avg worst disp 19.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.1 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.1 ms/frame (max 13.3), 602 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 119 frame(s) since the last report; 119 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 12779, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 34 unconfirmed 164 aged 16481 refresh 97 admitted 17045 missing 0 no-ref 0 displacement 0; R invalid 8 unconfirmed 85 aged 16619 refresh 92 admitted 17155 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 641 unconfirmed 361 aged 15707 refresh 100 admitted 16238 missing 0 no-ref 0 displacement 0; R invalid 868 unconfirmed 478 aged 15421 refresh 97 admitted 15897 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 136 frames, avg skip 530 intra 47 coded 47, atlas 136 picture 0, avg worst disp 19.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 8.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 136 frames in 2.0 s: 8.9 ms/frame (max 43.3), 1229 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 14 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 136 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 90 frame(s) since the last report; 90 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 12916, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 1149 unconfirmed 658 aged 14169 refresh 92 admitted 15441 missing 0 no-ref 0 displacement 0; R invalid 1338 unconfirmed 742 aged 13715 refresh 100 admitted 15160 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 23 unconfirmed 83 aged 16479 refresh 97 admitted 17137 missing 0 no-ref 0 displacement 0; R invalid 2 unconfirmed 41 aged 16648 refresh 92 admitted 17205 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 16717 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 3 aged 16747 refresh 97 admitted 17240 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 174 frames, avg skip 570 intra 7 coded 7, atlas 174 picture 0, avg worst disp 19.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.3 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 174 frames in 2.0 s: 4.3 ms/frame (max 47.4), 628 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 1 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 174 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 115 frame(s) since the last report; 115 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 13090, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 12 unconfirmed 93 aged 16657 refresh 92 admitted 17143 missing 0 no-ref 0 displacement 0; R invalid 10 unconfirmed 53 aged 16676 refresh 100 admitted 17177 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 31 unconfirmed 103 aged 16413 refresh 97 admitted 17109 missing 0 no-ref 0 displacement 0; R invalid 18 unconfirmed 84 aged 16558 refresh 92 admitted 17146 missing 0 no-ref 0 displacement 0
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 16717 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 16747 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+ INFO [operator()] Session state changed: XR_SESSION_STATE_STOPPING
+ INFO [operator()] Session state changed: XR_SESSION_STATE_IDLE
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 572 intra 5 coded 5, atlas 180 picture 0, avg worst disp 19.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 4.0 ms/frame (max 13.5), 604 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 119 frame(s) since the last report; 119 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 13270, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 19 unconfirmed 209 aged 16631 refresh 92 admitted 17020 missing 0 no-ref 0 displacement 0; R invalid 16 unconfirmed 152 aged 16592 refresh 100 admitted 17072 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 53 unconfirmed 73 aged 16300 refresh 97 admitted 17117 missing 0 no-ref 0 displacement 0; R invalid 38 unconfirmed 72 aged 16390 refresh 92 admitted 17138 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 3 aged 16717 refresh 100 admitted 17237 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 4 aged 16747 refresh 97 admitted 17239 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 179 frames, avg skip 571 intra 6 coded 6, atlas 179 picture 0, avg worst disp 16.4 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.2 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 179 frames in 2.0 s: 4.2 ms/frame (max 20.0), 622 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 2 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 179 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 115 frame(s) since the last report; 115 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 13448, dropped by the decode stride
+ INFO [operator()] Session state changed: XR_SESSION_STATE_READY
+ INFO [operator()] user presence changed to false
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 3 unconfirmed 24 aged 16643 refresh 92 admitted 17221 missing 0 no-ref 0 displacement 0; R invalid 18 unconfirmed 43 aged 16546 refresh 100 admitted 17179 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 16655 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 16724 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 16717 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 16747 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 574 intra 3 coded 3, atlas 181 picture 0, avg worst disp 14.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.5 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 3.5 ms/frame (max 8.2), 573 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 116 frame(s) since the last report; 116 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 13630, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 10 unconfirmed 51 aged 16657 refresh 92 admitted 17187 missing 0 no-ref 0 displacement 0; R invalid 20 unconfirmed 86 aged 16562 refresh 100 admitted 17134 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 11 aged 16619 refresh 97 admitted 17232 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 9 aged 16656 refresh 92 admitted 17239 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 9 unconfirmed 6 aged 16657 refresh 100 admitted 17225 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 16747 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 573 intra 4 coded 4, atlas 180 picture 0, avg worst disp 14.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.3 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 4.3 ms/frame (max 9.3), 585 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 116 frame(s) since the last report; 116 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 13810, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 22 unconfirmed 75 aged 16657 refresh 92 admitted 17151 missing 0 no-ref 0 displacement 0; R invalid 2 unconfirmed 27 aged 16676 refresh 100 admitted 17211 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 12 unconfirmed 335 aged 16093 refresh 97 admitted 16896 missing 0 no-ref 0 displacement 0; R invalid 26 unconfirmed 220 aged 16388 refresh 92 admitted 17002 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 28 unconfirmed 498 aged 16220 refresh 100 admitted 16714 missing 0 no-ref 0 displacement 0; R invalid 26 unconfirmed 527 aged 16043 refresh 97 admitted 16690 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 169 frames, avg skip 557 intra 20 coded 20, atlas 169 picture 0, avg worst disp 14.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 7.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 169 frames in 2.0 s: 7.0 ms/frame (max 32.4), 833 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 6 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 169 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 106 frame(s) since the last report; 106 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 13979, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 1881 unconfirmed 1725 aged 13642 refresh 92 admitted 13642 missing 0 no-ref 0 displacement 0; R invalid 1687 unconfirmed 1537 aged 14016 refresh 100 admitted 14016 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 88 frames, avg skip 418 intra 159 coded 159, atlas 88 picture 0, avg worst disp 13.2 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 15.3 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 88 frames in 2.0 s: 15.3 ms/frame (max 92.8), 2907 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 6 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 88 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 57 frame(s) since the last report; 57 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 14066, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 2155 unconfirmed 1992 aged 10780 refresh 97 admitted 13096 missing 0 no-ref 0 displacement 0; R invalid 2050 unconfirmed 1904 aged 11071 refresh 92 admitted 13294 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 677 unconfirmed 639 aged 15696 refresh 100 admitted 15924 missing 0 no-ref 0 displacement 0; R invalid 665 unconfirmed 693 aged 15545 refresh 97 admitted 15885 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 118 frames, avg skip 511 intra 66 coded 66, atlas 118 picture 0, avg worst disp 13.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 11.2 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 118 frames in 2.0 s: 11.2 ms/frame (max 50.6), 1521 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 14 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 118 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 76 frame(s) since the last report; 76 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 14185, dropped by the decode stride
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_STOPPING
+ INFO [operator()] Session state changed: XR_SESSION_STATE_IDLE
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 1601 unconfirmed 869 aged 13431 refresh 92 admitted 14778 missing 0 no-ref 0 displacement 0; R invalid 1615 unconfirmed 878 aged 13391 refresh 100 admitted 14747 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 283 unconfirmed 583 aged 15662 refresh 97 admitted 16377 missing 0 no-ref 0 displacement 0; R invalid 267 unconfirmed 521 aged 15779 refresh 92 admitted 16460 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 21 aged 16396 refresh 100 admitted 17219 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 13 aged 16477 refresh 97 admitted 17230 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 166 frames, avg skip 563 intra 14 coded 14, atlas 166 picture 0, avg worst disp 13.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 5.1 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 166 frames in 2.0 s: 5.1 ms/frame (max 49.4), 737 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 8 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 166 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 107 frame(s) since the last report; 107 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 14351, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 4 unconfirmed 65 aged 16655 refresh 92 admitted 17179 missing 0 no-ref 0 displacement 0; R invalid 16 unconfirmed 136 aged 16558 refresh 100 admitted 17088 missing 0 no-ref 0 displacement 0
+ INFO [operator()] Session state changed: XR_SESSION_STATE_READY
+ INFO [operator()] user presence changed to false
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 913 unconfirmed 549 aged 15393 refresh 97 admitted 15781 missing 0 no-ref 0 displacement 0; R invalid 881 unconfirmed 524 aged 15475 refresh 92 admitted 15843 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 125 frames, avg skip 518 intra 59 coded 59, atlas 125 picture 0, avg worst disp 11.3 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 10.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 125 frames in 2.0 s: 10.0 ms/frame (max 49.0), 1406 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 11 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 125 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 80 frame(s) since the last report; 80 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 14476, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 1457 unconfirmed 850 aged 13511 refresh 100 admitted 14933 missing 0 no-ref 0 displacement 0; R invalid 1442 unconfirmed 833 aged 13485 refresh 97 admitted 14968 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 8 unconfirmed 10 aged 16588 refresh 92 admitted 17230 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 9 aged 16639 refresh 100 admitted 17231 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 16775 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 16731 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 172 frames, avg skip 570 intra 7 coded 7, atlas 172 picture 0, avg worst disp 7.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.2 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 172 frames in 2.0 s: 4.2 ms/frame (max 51.4), 629 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 4 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 172 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 114 frame(s) since the last report; 114 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 14648, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 26 unconfirmed 107 aged 16544 refresh 100 admitted 17107 missing 0 no-ref 0 displacement 0; R invalid 24 unconfirmed 96 aged 16591 refresh 97 admitted 17123 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 761 unconfirmed 494 aged 15580 refresh 92 admitted 15993 missing 0 no-ref 0 displacement 0; R invalid 734 unconfirmed 466 aged 15556 refresh 100 admitted 16040 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 129 frames, avg skip 524 intra 53 coded 53, atlas 129 picture 0, avg worst disp 7.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 9.4 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 129 frames in 2.0 s: 9.4 ms/frame (max 46.3), 1316 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 11 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 129 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 84 frame(s) since the last report; 84 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 14776, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 1313 unconfirmed 726 aged 13792 refresh 97 admitted 15204 missing 0 no-ref 0 displacement 0; R invalid 1368 unconfirmed 770 aged 13724 refresh 92 admitted 15110 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 8 unconfirmed 40 aged 16631 refresh 100 admitted 17192 missing 0 no-ref 0 displacement 0; R invalid 13 unconfirmed 80 aged 16499 refresh 97 admitted 17150 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 16719 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 16733 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 173 frames, avg skip 571 intra 6 coded 6, atlas 173 picture 0, avg worst disp 7.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.3 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 173 frames in 2.0 s: 4.3 ms/frame (max 49.4), 620 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 2 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 173 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 115 frame(s) since the last report; 115 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 14950, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 20 unconfirmed 81 aged 16573 refresh 97 admitted 17142 missing 0 no-ref 0 displacement 0; R invalid 10 unconfirmed 87 aged 16679 refresh 92 admitted 17151 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 10 aged 16729 refresh 100 admitted 17230 missing 0 no-ref 0 displacement 0; R invalid 16 unconfirmed 39 aged 16513 refresh 97 admitted 17188 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 16719 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 16733 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 573 intra 4 coded 4, atlas 180 picture 0, avg worst disp 7.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 3.7 ms/frame (max 11.7), 590 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 119 frame(s) since the last report; 119 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 15130, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 24 unconfirmed 70 aged 16573 refresh 97 admitted 17149 missing 0 no-ref 0 displacement 0; R invalid 12 unconfirmed 51 aged 16679 refresh 92 admitted 17185 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 33 aged 16715 refresh 100 admitted 17207 missing 0 no-ref 0 displacement 0; R invalid 12 unconfirmed 65 aged 16527 refresh 97 admitted 17166 missing 0 no-ref 0 displacement 0
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_STOPPING
+ INFO [operator()] Session state changed: XR_SESSION_STATE_IDLE
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 20 aged 16719 refresh 92 admitted 17228 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 20 aged 16733 refresh 100 admitted 17220 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 573 intra 4 coded 4, atlas 181 picture 0, avg worst disp 7.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 3.8 ms/frame (max 10.5), 594 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 120 frame(s) since the last report; 120 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 15311, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 12 unconfirmed 168 aged 16541 refresh 97 admitted 17063 missing 0 no-ref 0 displacement 0; R invalid 6 unconfirmed 108 aged 16675 refresh 92 admitted 17134 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 6 unconfirmed 76 aged 16587 refresh 100 admitted 17158 missing 0 no-ref 0 displacement 0; R invalid 16 unconfirmed 80 aged 16475 refresh 97 admitted 17147 missing 0 no-ref 0 displacement 0
+ INFO [operator()] Session state changed: XR_SESSION_STATE_READY
+ INFO [operator()] user presence changed to false
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 12 unconfirmed 29 aged 16639 refresh 92 admitted 17207 missing 0 no-ref 0 displacement 0; R invalid 9 unconfirmed 23 aged 16673 refresh 100 admitted 17208 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 571 intra 6 coded 6, atlas 180 picture 0, avg worst disp 7.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.3 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 4.3 ms/frame (max 14.8), 614 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 117 frame(s) since the last report; 117 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 15491, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 7 unconfirmed 62 aged 16587 refresh 97 admitted 17174 missing 0 no-ref 0 displacement 0; R invalid 18 unconfirmed 93 aged 16635 refresh 92 admitted 17137 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 564 unconfirmed 387 aged 15919 refresh 100 admitted 16289 missing 0 no-ref 0 displacement 0; R invalid 521 unconfirmed 372 aged 15822 refresh 97 admitted 16350 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 132 frames, avg skip 530 intra 47 coded 47, atlas 132 picture 0, avg worst disp 7.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 9.1 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 132 frames in 2.0 s: 9.1 ms/frame (max 46.2), 1238 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 13 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 132 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 85 frame(s) since the last report; 85 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 15623, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 1394 unconfirmed 784 aged 13851 refresh 92 admitted 15070 missing 0 no-ref 0 displacement 0; R invalid 1369 unconfirmed 750 aged 13871 refresh 100 admitted 15121 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 37 unconfirmed 120 aged 16287 refresh 97 admitted 17086 missing 0 no-ref 0 displacement 0; R invalid 23 unconfirmed 76 aged 16445 refresh 92 admitted 17149 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 16717 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 16747 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 174 frames, avg skip 570 intra 7 coded 7, atlas 174 picture 0, avg worst disp 7.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.5 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 174 frames in 2.0 s: 4.5 ms/frame (max 45.9), 626 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 1 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 174 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 115 frame(s) since the last report; 115 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 15797, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 10 unconfirmed 67 aged 16657 refresh 92 admitted 17171 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 29 aged 16676 refresh 100 admitted 17211 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 8 unconfirmed 77 aged 16509 refresh 97 admitted 17158 missing 0 no-ref 0 displacement 0; R invalid 16 unconfirmed 90 aged 16552 refresh 92 admitted 17142 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 16717 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 16747 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 573 intra 4 coded 4, atlas 181 picture 0, avg worst disp 7.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 3.7 ms/frame (max 9.9), 593 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 119 frame(s) since the last report; 119 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 15977, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 20 unconfirmed 72 aged 16657 refresh 92 admitted 17156 missing 0 no-ref 0 displacement 0; R invalid 2 unconfirmed 26 aged 16676 refresh 100 admitted 17212 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 16 unconfirmed 115 aged 16459 refresh 97 admitted 17112 missing 0 no-ref 0 displacement 0; R invalid 18 unconfirmed 96 aged 16568 refresh 92 admitted 17134 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 2 aged 16717 refresh 100 admitted 17238 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 2 aged 16747 refresh 97 admitted 17241 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 572 intra 5 coded 5, atlas 180 picture 0, avg worst disp 7.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 3.9 ms/frame (max 11.6), 599 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 119 frame(s) since the last report; 119 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 16157, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 26 unconfirmed 70 aged 16657 refresh 92 admitted 17152 missing 0 no-ref 0 displacement 0; R invalid 6 unconfirmed 29 aged 16676 refresh 100 admitted 17205 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 30 unconfirmed 120 aged 16447 refresh 97 admitted 17093 missing 0 no-ref 0 displacement 0; R invalid 24 unconfirmed 98 aged 16558 refresh 92 admitted 17126 missing 0 no-ref 0 displacement 0
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_STOPPING
+ INFO [operator()] Session state changed: XR_SESSION_STATE_IDLE
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 2 aged 16717 refresh 100 admitted 17238 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 7 aged 16747 refresh 97 admitted 17236 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 572 intra 5 coded 5, atlas 181 picture 0, avg worst disp 7.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.0 ms/frame (max 13.9), 605 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 120 frame(s) since the last report; 120 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 16339, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 23 unconfirmed 177 aged 16617 refresh 92 admitted 17048 missing 0 no-ref 0 displacement 0; R invalid 18 unconfirmed 122 aged 16612 refresh 100 admitted 17100 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 34 unconfirmed 156 aged 16299 refresh 97 admitted 17053 missing 0 no-ref 0 displacement 0; R invalid 32 unconfirmed 159 aged 16318 refresh 92 admitted 17057 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 9 aged 16717 refresh 100 admitted 17231 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 10 aged 16747 refresh 97 admitted 17233 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 176 frames, avg skip 570 intra 7 coded 7, atlas 176 picture 0, avg worst disp 7.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.2 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 176 frames in 2.0 s: 4.2 ms/frame (max 20.0), 629 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 4 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 176 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 113 frame(s) since the last report; 113 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 16515, dropped by the decode stride
+ INFO [operator()] Session state changed: XR_SESSION_STATE_READY
+ INFO [operator()] user presence changed to false
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 226 aged 16649 refresh 92 admitted 17022 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 305 aged 16558 refresh 100 admitted 16935 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 26 aged 16419 refresh 97 admitted 17217 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 23 aged 16402 refresh 92 admitted 17225 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 16717 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 16747 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 178 frames, avg skip 571 intra 6 coded 6, atlas 178 picture 0, avg worst disp 7.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 178 frames in 2.0 s: 4.0 ms/frame (max 19.6), 616 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 3 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 178 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 113 frame(s) since the last report; 113 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 16693, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 20 unconfirmed 72 aged 16657 refresh 92 admitted 17156 missing 0 no-ref 0 displacement 0; R invalid 30 unconfirmed 85 aged 16562 refresh 100 admitted 17125 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 850 unconfirmed 781 aged 15292 refresh 97 admitted 15612 missing 0 no-ref 0 displacement 0; R invalid 778 unconfirmed 644 aged 15507 refresh 92 admitted 15826 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 120 frames, avg skip 518 intra 59 coded 59, atlas 120 picture 0, avg worst disp 7.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 10.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 120 frames in 2.0 s: 10.8 ms/frame (max 50.6), 1414 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 14 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 120 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 78 frame(s) since the last report; 78 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 16813, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 1232 unconfirmed 699 aged 13871 refresh 100 admitted 15309 missing 0 no-ref 0 displacement 0; R invalid 1188 unconfirmed 712 aged 13941 refresh 97 admitted 15343 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 20 unconfirmed 111 aged 16336 refresh 92 admitted 17117 missing 0 no-ref 0 displacement 0; R invalid 24 unconfirmed 103 aged 16465 refresh 100 admitted 17113 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 4 aged 16775 refresh 97 admitted 17239 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 16731 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 176 frames, avg skip 571 intra 6 coded 6, atlas 176 picture 0, avg worst disp 7.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.3 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 176 frames in 2.0 s: 4.3 ms/frame (max 49.2), 620 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 3 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 176 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 116 frame(s) since the last report; 116 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 16988, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 23 unconfirmed 79 aged 16546 refresh 100 admitted 17138 missing 0 no-ref 0 displacement 0; R invalid 23 unconfirmed 80 aged 16459 refresh 97 admitted 17140 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 3 aged 16558 refresh 92 admitted 17245 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 7 aged 16671 refresh 100 admitted 17233 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 3 aged 16775 refresh 97 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 2 aged 16731 refresh 92 admitted 17246 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 573 intra 4 coded 4, atlas 180 picture 0, avg worst disp 7.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 3.6 ms/frame (max 9.9), 585 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 115 frame(s) since the last report; 115 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 17168, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 6 unconfirmed 64 aged 16566 refresh 100 admitted 17170 missing 0 no-ref 0 displacement 0; R invalid 8 unconfirmed 77 aged 16519 refresh 97 admitted 17158 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 32 aged 16434 refresh 92 admitted 17216 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 35 aged 16476 refresh 100 admitted 17205 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 8 unconfirmed 348 aged 16299 refresh 97 admitted 16887 missing 0 no-ref 0 displacement 0; R invalid 16 unconfirmed 257 aged 16464 refresh 92 admitted 16975 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 178 frames, avg skip 568 intra 9 coded 9, atlas 178 picture 0, avg worst disp 7.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.5 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 178 frames in 2.0 s: 4.5 ms/frame (max 19.6), 656 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 3 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 178 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 99 frame(s) since the last report; 99 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 17347, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 542 unconfirmed 408 aged 15710 refresh 100 admitted 16290 missing 0 no-ref 0 displacement 0; R invalid 567 unconfirmed 419 aged 15613 refresh 97 admitted 16257 missing 0 no-ref 0 displacement 0
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_STOPPING
+ INFO [operator()] Session state changed: XR_SESSION_STATE_IDLE
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 3202 unconfirmed 1759 aged 12047 refresh 92 admitted 12287 missing 0 no-ref 0 displacement 0; R invalid 3300 unconfirmed 1804 aged 11837 refresh 100 admitted 12136 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 96 frames, avg skip 442 intra 135 coded 135, atlas 96 picture 0, avg worst disp 6.4 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 13.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 96 frames in 2.0 s: 13.7 ms/frame (max 82.7), 2545 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 4 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 96 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 62 frame(s) since the last report; 62 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 17443, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 314 unconfirmed 363 aged 14323 refresh 97 admitted 16566 missing 0 no-ref 0 displacement 0; R invalid 331 unconfirmed 336 aged 14336 refresh 92 admitted 16581 missing 0 no-ref 0 displacement 0
+ INFO [operator()] Session state changed: XR_SESSION_STATE_READY
+ INFO [operator()] user presence changed to false
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 6 unconfirmed 5 aged 16677 refresh 100 admitted 17229 missing 0 no-ref 0 displacement 0; R invalid 13 unconfirmed 10 aged 16681 refresh 97 admitted 17220 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 172 frames, avg skip 571 intra 6 coded 6, atlas 172 picture 0, avg worst disp 9.9 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.3 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 172 frames in 2.0 s: 4.3 ms/frame (max 84.5), 615 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 2 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 172 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 111 frame(s) since the last report; 111 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 17615, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 16719 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 3 aged 16731 refresh 100 admitted 17237 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 43 unconfirmed 274 aged 16158 refresh 97 admitted 16926 missing 0 no-ref 0 displacement 0; R invalid 38 unconfirmed 216 aged 16377 refresh 92 admitted 16994 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 14 aged 16672 refresh 100 admitted 17226 missing 0 no-ref 0 displacement 0; R invalid 6 unconfirmed 17 aged 16689 refresh 97 admitted 17220 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 571 intra 6 coded 6, atlas 180 picture 0, avg worst disp 10.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.2 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 4.2 ms/frame (max 14.0), 620 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 119 frame(s) since the last report; 119 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 17795, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 2 aged 16719 refresh 92 admitted 17246 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 8 aged 16731 refresh 100 admitted 17232 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 30 unconfirmed 363 aged 16190 refresh 97 admitted 16850 missing 0 no-ref 0 displacement 0; R invalid 37 unconfirmed 285 aged 16354 refresh 92 admitted 16926 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 7 aged 16588 refresh 100 admitted 17233 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 6 aged 16630 refresh 97 admitted 17237 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 570 intra 7 coded 7, atlas 180 picture 0, avg worst disp 10.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.2 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 4.2 ms/frame (max 16.5), 629 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 1 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 119 frame(s) since the last report; 119 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 17975, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 16719 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 3 aged 16731 refresh 100 admitted 17237 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 36 unconfirmed 146 aged 16346 refresh 97 admitted 17061 missing 0 no-ref 0 displacement 0; R invalid 26 unconfirmed 120 aged 16490 refresh 92 admitted 17102 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 16712 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 16742 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 572 intra 5 coded 5, atlas 181 picture 0, avg worst disp 10.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 3.8 ms/frame (max 11.5), 595 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 119 frame(s) since the last report; 119 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 18155, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 16719 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 3 aged 16731 refresh 100 admitted 17237 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 111 unconfirmed 270 aged 16316 refresh 97 admitted 16862 missing 0 no-ref 0 displacement 0; R invalid 117 unconfirmed 250 aged 16422 refresh 92 admitted 16881 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 592 unconfirmed 402 aged 15153 refresh 100 admitted 16235 missing 11 no-ref 0 displacement 0; R invalid 589 unconfirmed 416 aged 15166 refresh 97 admitted 16224 missing 14 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 159 frames, avg skip 557 intra 20 coded 20, atlas 159 picture 0, avg worst disp 10.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 5.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 159 frames in 2.0 s: 5.7 ms/frame (max 33.2), 830 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 9 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 159 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 104 frame(s) since the last report; 104 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 18314, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 10 unconfirmed 67 aged 16657 refresh 92 admitted 17171 missing 0 no-ref 0 displacement 0; R invalid 28 unconfirmed 114 aged 16562 refresh 100 admitted 17098 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 47 aged 16487 refresh 97 admitted 17196 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 56 aged 16494 refresh 92 admitted 17192 missing 0 no-ref 0 displacement 0
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_STOPPING
+ INFO [operator()] Session state changed: XR_SESSION_STATE_IDLE
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 9 aged 16717 refresh 100 admitted 17231 missing 0 no-ref 0 displacement 0; R invalid 15 unconfirmed 20 aged 16647 refresh 97 admitted 17208 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 572 intra 5 coded 5, atlas 180 picture 0, avg worst disp 10.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 3.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 3.8 ms/frame (max 10.8), 601 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 113 frame(s) since the last report; 113 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 18494, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 12 unconfirmed 95 aged 16649 refresh 92 admitted 17141 missing 0 no-ref 0 displacement 0; R invalid 16 unconfirmed 169 aged 16558 refresh 100 admitted 17055 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 24 unconfirmed 590 aged 15823 refresh 97 admitted 16629 missing 0 no-ref 0 displacement 0; R invalid 30 unconfirmed 607 aged 15910 refresh 92 admitted 16611 missing 0 no-ref 0 displacement 0
+ INFO [operator()] Session state changed: XR_SESSION_STATE_READY
+ INFO [operator()] user presence changed to false
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 56 unconfirmed 380 aged 16211 refresh 100 admitted 16804 missing 0 no-ref 0 displacement 0; R invalid 60 unconfirmed 448 aged 16007 refresh 97 admitted 16735 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 170 frames, avg skip 559 intra 18 coded 18, atlas 170 picture 0, avg worst disp 10.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 5.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 170 frames in 2.0 s: 5.9 ms/frame (max 28.0), 795 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 8 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 170 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 98 frame(s) since the last report; 98 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 18665, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 540 unconfirmed 354 aged 15632 refresh 92 admitted 16354 missing 0 no-ref 0 displacement 0; R invalid 523 unconfirmed 342 aged 15785 refresh 100 admitted 16375 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 967 unconfirmed 1219 aged 13411 refresh 97 admitted 15057 missing 0 no-ref 0 displacement 0; R invalid 963 unconfirmed 1195 aged 13511 refresh 92 admitted 15090 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 16717 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 2 aged 16747 refresh 97 admitted 17241 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 161 frames, avg skip 537 intra 40 coded 40, atlas 161 picture 0, avg worst disp 10.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.5 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 161 frames in 2.0 s: 4.5 ms/frame (max 63.8), 1127 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 2 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 161 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 105 frame(s) since the last report; 105 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 18826, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 8 unconfirmed 162 aged 16467 refresh 92 admitted 17078 missing 0 no-ref 0 displacement 0; R invalid 24 unconfirmed 250 aged 16424 refresh 100 admitted 16966 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 16 aged 16621 refresh 97 admitted 17227 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 15 aged 16578 refresh 92 admitted 17233 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 6 aged 16717 refresh 100 admitted 17234 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 1 aged 16747 refresh 97 admitted 17242 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 572 intra 5 coded 5, atlas 181 picture 0, avg worst disp 10.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.3 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.3 ms/frame (max 15.5), 608 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 118 frame(s) since the last report; 118 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 19007, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 2 unconfirmed 566 aged 16145 refresh 92 admitted 16680 missing 0 no-ref 0 displacement 0; R invalid 10 unconfirmed 646 aged 16102 refresh 100 admitted 16584 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 34 unconfirmed 245 aged 16041 refresh 97 admitted 16964 missing 0 no-ref 0 displacement 0; R invalid 20 unconfirmed 197 aged 16228 refresh 92 admitted 17031 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 168 frames, avg skip 561 intra 16 coded 16, atlas 168 picture 0, avg worst disp 10.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 6.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 168 frames in 2.0 s: 6.6 ms/frame (max 30.4), 772 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 10 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 168 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 105 frame(s) since the last report; 105 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 19175, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 40 unconfirmed 187 aged 16370 refresh 100 admitted 17013 missing 0 no-ref 0 displacement 0; R invalid 48 unconfirmed 320 aged 16097 refresh 97 admitted 16875 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 1841 unconfirmed 950 aged 14107 refresh 92 admitted 14457 missing 0 no-ref 0 displacement 0; R invalid 1833 unconfirmed 958 aged 14126 refresh 100 admitted 14449 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 101 frames, avg skip 452 intra 125 coded 125, atlas 101 picture 0, avg worst disp 10.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 12.9 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 101 frames in 2.0 s: 12.9 ms/frame (max 82.2), 2409 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 4 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 101 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 67 frame(s) since the last report; 67 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 19276, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 2476 unconfirmed 1325 aged 11384 refresh 97 admitted 13442 missing 0 no-ref 0 displacement 0; R invalid 2533 unconfirmed 1367 aged 11316 refresh 92 admitted 13348 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 4 unconfirmed 68 aged 16637 refresh 100 admitted 17168 missing 0 no-ref 0 displacement 0; R invalid 8 unconfirmed 115 aged 16479 refresh 97 admitted 17120 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 16719 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 16733 refresh 100 admitted 17240 missing 0 no-ref 0 displacement 0
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_STOPPING
+ INFO [operator()] Session state changed: XR_SESSION_STATE_IDLE
+ INFO [report_frame] nxwarp atlas: 165 frames, avg skip 568 intra 9 coded 9, atlas 165 picture 0, avg worst disp 10.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 5.2 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 165 frames in 2.0 s: 5.2 ms/frame (max 83.9), 669 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 3 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 165 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 108 frame(s) since the last report; 108 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 19441, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 46 unconfirmed 296 aged 16460 refresh 97 admitted 16901 missing 0 no-ref 0 displacement 0; R invalid 36 unconfirmed 205 aged 16562 refresh 92 admitted 17007 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 16 aged 16469 refresh 100 admitted 17224 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 24 aged 16423 refresh 97 admitted 17219 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 11 aged 16719 refresh 92 admitted 17237 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 13 aged 16733 refresh 100 admitted 17227 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 178 frames, avg skip 571 intra 6 coded 6, atlas 178 picture 0, avg worst disp 10.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.1 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 178 frames in 2.0 s: 4.1 ms/frame (max 21.0), 623 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 2 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 178 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 111 frame(s) since the last report; 111 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 19619, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 4 unconfirmed 170 aged 16467 refresh 97 admitted 17069 missing 0 no-ref 0 displacement 0; R invalid 12 unconfirmed 154 aged 16515 refresh 92 admitted 17082 missing 0 no-ref 0 displacement 0
+ INFO [operator()] Session state changed: XR_SESSION_STATE_READY
+ INFO [operator()] user presence changed to false
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 36 unconfirmed 186 aged 16313 refresh 100 admitted 17018 missing 0 no-ref 0 displacement 0; R invalid 52 unconfirmed 239 aged 16070 refresh 97 admitted 16952 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 22 unconfirmed 810 aged 15690 refresh 92 admitted 16416 missing 0 no-ref 0 displacement 0; R invalid 18 unconfirmed 629 aged 15880 refresh 100 admitted 16593 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 166 frames, avg skip 560 intra 17 coded 17, atlas 166 picture 0, avg worst disp 10.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 6.2 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 166 frames in 2.0 s: 6.2 ms/frame (max 28.7), 781 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 8 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 166 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 93 frame(s) since the last report; 93 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 19785, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 1520 unconfirmed 822 aged 14603 refresh 97 admitted 14901 missing 0 no-ref 0 displacement 0; R invalid 1524 unconfirmed 824 aged 14728 refresh 92 admitted 14900 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 97 frames, avg skip 437 intra 140 coded 140, atlas 97 picture 0, avg worst disp 9.1 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 13.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 97 frames in 2.0 s: 13.0 ms/frame (max 88.9), 2630 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 5 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 97 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 65 frame(s) since the last report; 65 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 19882, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 3220 unconfirmed 1713 aged 10412 refresh 100 admitted 12307 missing 0 no-ref 0 displacement 0; R invalid 3088 unconfirmed 1672 aged 10662 refresh 97 admitted 12483 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 44 unconfirmed 149 aged 16052 refresh 92 admitted 17055 missing 0 no-ref 0 displacement 0; R invalid 71 unconfirmed 202 aged 16003 refresh 100 admitted 16967 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 16769 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 0 aged 16731 refresh 92 admitted 17248 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 165 frames, avg skip 565 intra 12 coded 12, atlas 165 picture 0, avg worst disp 8.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 5.1 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 165 frames in 2.0 s: 5.1 ms/frame (max 88.0), 703 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 2 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 165 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 108 frame(s) since the last report; 108 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 20047, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 6 unconfirmed 60 aged 16588 refresh 100 admitted 17174 missing 0 no-ref 0 displacement 0; R invalid 22 unconfirmed 131 aged 16527 refresh 97 admitted 17090 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 467 unconfirmed 370 aged 15881 refresh 92 admitted 16411 missing 0 no-ref 0 displacement 0; R invalid 431 unconfirmed 299 aged 16051 refresh 100 admitted 16510 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 149 frames, avg skip 546 intra 31 coded 31, atlas 149 picture 0, avg worst disp 8.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 7.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 149 frames in 2.0 s: 7.0 ms/frame (max 39.6), 988 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 13 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 149 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 97 frame(s) since the last report; 97 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 20195, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 658 unconfirmed 494 aged 14894 refresh 97 admitted 16091 missing 0 no-ref 0 displacement 0; R invalid 727 unconfirmed 505 aged 14774 refresh 92 admitted 16016 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 42 unconfirmed 245 aged 16366 refresh 100 admitted 16953 missing 0 no-ref 0 displacement 0; R invalid 26 unconfirmed 248 aged 16265 refresh 97 admitted 16969 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 26 aged 16670 refresh 92 admitted 17222 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 25 aged 16629 refresh 100 admitted 17215 missing 0 no-ref 0 displacement 0
+ INFO [report_frame] nxwarp atlas: 180 frames, avg skip 571 intra 6 coded 6, atlas 180 picture 0, avg worst disp 8.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.2 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 180 frames in 2.0 s: 4.2 ms/frame (max 12.7), 619 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 180 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 118 frame(s) since the last report; 118 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 20375, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 0 aged 16777 refresh 97 admitted 17243 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 2 aged 16727 refresh 92 admitted 17246 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 51 unconfirmed 204 aged 16396 refresh 100 admitted 16985 missing 0 no-ref 0 displacement 0; R invalid 60 unconfirmed 244 aged 16227 refresh 97 admitted 16939 missing 0 no-ref 0 displacement 0
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [operator()] Session state changed: XR_SESSION_STATE_SYNCHRONIZED
+ INFO [operator()] Session state changed: XR_SESSION_STATE_STOPPING
+ INFO [operator()] Session state changed: XR_SESSION_STATE_IDLE
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 3 unconfirmed 36 aged 16585 refresh 92 admitted 17209 missing 0 no-ref 0 displacement 0; R invalid 19 unconfirmed 52 aged 16531 refresh 100 admitted 17169 missing 0 no-ref 0 displacement 0
+ INFO [ipc_server_mainloop_poll] Got shutdown signal, shutting down.
+Terminated
+No longer listening for secondary paths
+ INFO [report_frame] nxwarp atlas: 181 frames, avg skip 566 intra 11 coded 11, atlas 181 picture 0, avg worst disp 8.0 q4
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 4.2 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 181 frames in 2.0 s: 4.2 ms/frame (max 11.5), 688 B/frame at fixed QP 40, paced to 90.0 fps (fixed by configuration), 0 composited frame(s) not sent
+ INFO [encode] nxwarp: stream 0 tile mapping: 181 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 105 frame(s) since the last report; 105 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 20536, dropped by the decode stride
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 531 aged 16404 refresh 97 admitted 16712 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 390 aged 16474 refresh 92 admitted 16858 missing 0 no-ref 0 displacement 0
+nxvc atlas admission/eye (first rejection; aged allowed): L invalid 0 unconfirmed 5361 aged 11879 refresh 100 admitted 11879 missing 0 no-ref 0 displacement 0; R invalid 0 unconfirmed 5055 aged 12188 refresh 97 admitted 12188 missing 0 no-ref 0 displacement 0
+ WARN [on_control_send_error] Primary control socket failed: Connection reset by peer

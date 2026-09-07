@@ -1,0 +1,1252 @@
+--------- beginning of main
+09-07 21:10:58.477  9890 24540 I WiVRn   : [2026-09-07 21:10:58.477] [WiVRn] [info] nxwarp[0] net: 180 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 1 queued for the worker, 7390 decoded so far, 8131 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 21:10:58.477  9890 24540 I WiVRn   : [2026-09-07 21:10:58.477] [WiVRn] [info] nxwarp[0] net: 0.014 ms per datagram over 12581 datagrams (90.82 ms of every second)
+09-07 21:10:58.477  9890 24540 I WiVRn   : [2026-09-07 21:10:58.477] [WiVRn] [info] nxwarp[0] sel: stride 1, arrival 11.0 ms, dropped-late 684, withheld 392, decoded 7390
+09-07 21:10:58.477  9890 24540 I WiVRn   : [2026-09-07 21:10:58.477] [WiVRn] [info] nxwarp[0] rx: 96567 datagrams, placed 346398 (+95368), late 802 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 1
+09-07 21:10:58.630  9890 24557 I WiVRn   : [2026-09-07 21:10:58.630] [WiVRn] [info] nxwarp[0]: 59 frames in 2.0 s: 8516 B/frame, wait-prev 0.0 ms, wall 34.3 ms, nxvc passA 2.7 passB 29.6 gpu 32.3 ms; holes 0, refused 0
+09-07 21:10:58.630  9890 24557 I WiVRn   : [2026-09-07 21:10:58.630] [WiVRn] [info] nxwarp[0] gpu duty 943 ms/s (94% of one GPU) for decode alone; the display pass is extra
+09-07 21:10:58.630  9890 24557 I WiVRn   : [2026-09-07 21:10:58.630] [WiVRn] [info] nxwarp[0] passB 29.6 ms = warp 0.1 + skip 0.6 + coded 9.4 + dir 0.0 + other 19.5; tiles skip 45 / coded 533 / dir 0 (eye pass 0)
+09-07 21:10:58.630  9890 24557 I WiVRn   : [2026-09-07 21:10:58.630] [WiVRn] [info] nxwarp[0]: 694 frames dropped late (queue kept to 1)
+09-07 21:10:58.630  9890 24557 I WiVRn   : [2026-09-07 21:10:58.630] [WiVRn] [info] nxwarp[0] stage: gap 0.0 | wait-prev 0.0 | submit 0.5 (qlock 0.0 + codec 0.5) | get_free 0.0 | fence-pre 0.0 | record 0.1 | qsubmit 0.0 | fence-post 33.7 | publish 0.0 ms; withheld 59, stride 1, arrival 11.0 ms
+09-07 21:10:58.630  9890 24557 I WiVRn   : [2026-09-07 21:10:58.630] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.04 ms/frame over 182 frames, buffer 8 kB held for 8 kB of unit (1.0x)
+09-07 21:10:58.630  9890 24557 I WiVRn   : [2026-09-07 21:10:58.630] [WiVRn] [info] nxwarp[0] fence-post 33.7 ms = nxvc gpu 32.3 + copy gpu 0.54 + queue 0.8 (over 59 frames with timestamps)
+09-07 21:10:58.630  9890 24557 I WiVRn   : [2026-09-07 21:10:58.630] [WiVRn] [info] nxwarp[0] atlas: frames 59, atlas 0, picture 59, avg dispatches 8.0, avg assembled 578.0, avg valid 578.0
+--------- beginning of system
+09-07 21:10:59.218  9890 24559 I WiVRn   : [2026-09-07 21:10:59.218] [WiVRn] [info] Tracking pattern (11116µs):
+09-07 21:10:59.218  9890 24559 I WiVRn   : [2026-09-07 21:10:59.218] [WiVRn] [info] 	t+11116µs HEAD (0µs)
+09-07 21:11:00.218  9890 24559 I WiVRn   : [2026-09-07 21:11:00.218] [WiVRn] [info] Tracking pattern (11116µs):
+09-07 21:11:00.218  9890 24559 I WiVRn   : [2026-09-07 21:11:00.218] [WiVRn] [info] 	t+8116µs HEAD (3000µs)
+09-07 21:11:00.218  9890 24559 I WiVRn   : [2026-09-07 21:11:00.218] [WiVRn] [info] 	t+11116µs HEAD (0µs)
+09-07 21:11:00.477  9890 24540 I WiVRn   : [2026-09-07 21:11:00.477] [WiVRn] [info] nxwarp[0] net: 129 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 7439 decoded so far, 8268 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 21:11:00.477  9890 24540 I WiVRn   : [2026-09-07 21:11:00.477] [WiVRn] [info] nxwarp[0] net: 0.026 ms per datagram over 3065 datagrams (39.45 ms of every second)
+09-07 21:11:00.477  9890 24540 I WiVRn   : [2026-09-07 21:11:00.477] [WiVRn] [info] nxwarp[0] sel: stride 2, arrival 11.6 ms, dropped-late 765, withheld 441, decoded 7439
+09-07 21:11:00.477  9890 24540 I WiVRn   : [2026-09-07 21:11:00.477] [WiVRn] [info] nxwarp[0] rx: 99632 datagrams, placed 358062 (+11664), late 802 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 1
+09-07 21:11:00.659  9890 24557 I WiVRn   : [2026-09-07 21:11:00.659] [WiVRn] [info] nxwarp[0]: 50 frames in 2.0 s: 1157 B/frame, wait-prev 0.0 ms, wall 32.5 ms, nxvc passA 1.8 passB 28.0 gpu 29.8 ms; holes 0, refused 0
+09-07 21:11:00.659  9890 24557 I WiVRn   : [2026-09-07 21:11:00.659] [WiVRn] [info] nxwarp[0] gpu duty 735 ms/s (74% of one GPU) for decode alone; the display pass is extra
+09-07 21:11:00.659  9890 24557 I WiVRn   : [2026-09-07 21:11:00.659] [WiVRn] [info] nxwarp[0] passB 28.0 ms = warp 0.0 + skip 5.9 + coded 1.0 + dir 0.0 + other 21.1; tiles skip 536 / coded 42 / dir 0 (eye pass 0)
+09-07 21:11:00.659  9890 24557 I WiVRn   : [2026-09-07 21:11:00.659] [WiVRn] [info] nxwarp[0]: 776 frames dropped late (queue kept to 1)
+09-07 21:11:00.659  9890 24557 I WiVRn   : [2026-09-07 21:11:00.659] [WiVRn] [info] nxwarp[0] stage: gap 8.1 | wait-prev 0.0 | submit 1.8 (qlock 0.0 + codec 1.8) | get_free 0.0 | fence-pre 0.0 | record 0.1 | qsubmit 0.0 | fence-post 30.6 | publish 0.0 ms; withheld 50, stride 1, arrival 11.0 ms
+09-07 21:11:00.659  9890 24557 I WiVRn   : [2026-09-07 21:11:00.659] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.01 ms/frame over 132 frames, buffer 1 kB held for 1 kB of unit (1.0x)
+09-07 21:11:00.659  9890 24557 I WiVRn   : [2026-09-07 21:11:00.659] [WiVRn] [info] nxwarp[0] fence-post 30.6 ms = nxvc gpu 29.8 + copy gpu 0.55 + queue 0.2 (over 50 frames with timestamps)
+09-07 21:11:00.659  9890 24557 I WiVRn   : [2026-09-07 21:11:00.659] [WiVRn] [info] nxwarp[0] atlas: frames 50, atlas 0, picture 50, avg dispatches 8.0, avg assembled 578.0, avg valid 578.0
+09-07 21:11:01.219  9890 24559 I WiVRn   : [2026-09-07 21:11:01.219] [WiVRn] [info] Tracking pattern (11116µs):
+09-07 21:11:01.219  9890 24559 I WiVRn   : [2026-09-07 21:11:01.219] [WiVRn] [info] 	t+5116µs HEAD (6000µs)
+09-07 21:11:01.219  9890 24559 I WiVRn   : [2026-09-07 21:11:01.219] [WiVRn] [info] 	t+8116µs HEAD (3000µs)
+09-07 21:11:01.219  9890 24559 I WiVRn   : [2026-09-07 21:11:01.219] [WiVRn] [info] 	t+11116µs HEAD (0µs)
+09-07 21:11:01.778  9890 25307 I WiVRn   : [2026-09-07 21:11:01.778] [WiVRn] [info] Sending query for _wivrn._tcp.local., type PTR
+09-07 21:11:02.208  9890 24559 I WiVRn   : [2026-09-07 21:11:02.208] [WiVRn] [info] Tracking pattern (11116µs):
+09-07 21:11:02.208  9890 24559 I WiVRn   : [2026-09-07 21:11:02.208] [WiVRn] [info] 	t+11116µs HEAD (0µs)
+09-07 21:11:02.477  9890 24540 I WiVRn   : [2026-09-07 21:11:02.477] [WiVRn] [info] nxwarp[0] net: 180 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 7499 decoded so far, 8448 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 21:11:02.477  9890 24540 I WiVRn   : [2026-09-07 21:11:02.477] [WiVRn] [info] nxwarp[0] net: 0.088 ms per datagram over 936 datagrams (41.41 ms of every second)
+09-07 21:11:02.477  9890 24540 I WiVRn   : [2026-09-07 21:11:02.477] [WiVRn] [info] nxwarp[0] sel: stride 3, arrival 11.1 ms, dropped-late 885, withheld 501, decoded 7499
+09-07 21:11:02.477  9890 24540 I WiVRn   : [2026-09-07 21:11:02.477] [WiVRn] [info] nxwarp[0] rx: 100568 datagrams, placed 358837 (+775), late 802 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 1
+09-07 21:11:02.683  9890 24557 I WiVRn   : [2026-09-07 21:11:02.683] [WiVRn] [info] nxwarp[0]: 61 frames in 2.0 s: 572 B/frame, wait-prev 0.0 ms, wall 31.2 ms, nxvc passA 1.5 passB 26.0 gpu 27.5 ms; holes 0, refused 0
+09-07 21:11:02.683  9890 24557 I WiVRn   : [2026-09-07 21:11:02.683] [WiVRn] [info] nxwarp[0] gpu duty 830 ms/s (83% of one GPU) for decode alone; the display pass is extra
+09-07 21:11:02.683  9890 24557 I WiVRn   : [2026-09-07 21:11:02.683] [WiVRn] [info] nxwarp[0] passB 26.0 ms = warp 0.0 + skip 6.5 + coded 0.1 + dir 0.0 + other 19.3; tiles skip 575 / coded 3 / dir 0 (eye pass 0)
+09-07 21:11:02.683  9890 24557 I WiVRn   : [2026-09-07 21:11:02.683] [WiVRn] [info] nxwarp[0]: 897 frames dropped late (queue kept to 1)
+09-07 21:11:02.683  9890 24557 I WiVRn   : [2026-09-07 21:11:02.683] [WiVRn] [info] nxwarp[0] stage: gap 2.0 | wait-prev 0.0 | submit 1.9 (qlock 0.0 + codec 1.9) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 29.2 | publish 0.0 ms; withheld 61, stride 2, arrival 11.2 ms
+09-07 21:11:02.683  9890 24557 I WiVRn   : [2026-09-07 21:11:02.683] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.00 ms/frame over 182 frames, buffer 1 kB held for 1 kB of unit (1.0x)
+09-07 21:11:02.683  9890 24557 I WiVRn   : [2026-09-07 21:11:02.683] [WiVRn] [info] nxwarp[0] fence-post 29.2 ms = nxvc gpu 27.5 + copy gpu 0.73 + queue 0.9 (over 61 frames with timestamps)
+09-07 21:11:02.683  9890 24557 I WiVRn   : [2026-09-07 21:11:02.683] [WiVRn] [info] nxwarp[0] atlas: frames 61, atlas 0, picture 61, avg dispatches 8.0, avg assembled 578.0, avg valid 578.0
+09-07 21:11:02.753  9890 24557 I WiVRn   : [2026-09-07 21:11:02.753] [WiVRn] [info] Stream scene ready at t=78096121962343
+09-07 21:11:02.763  9890 24361 I WiVRn   : [2026-09-07 21:11:02.763] [WiVRn] [info] MulticastLock released
+09-07 21:11:02.816  9890 24361 I WiVRn   : [2026-09-07 21:11:02.816] [WiVRn] [info] Loaded input profile pico-4
+09-07 21:11:02.816  9890 24361 I WiVRn   : [2026-09-07 21:11:02.816] [WiVRn] [info] Initializing offset of space aim_left to (-5, 0, 20) mm, (0, -0, 0)°
+09-07 21:11:02.816  9890 24361 I WiVRn   : [2026-09-07 21:11:02.816] [WiVRn] [info] Initializing offset of space aim_right to (5, 0, 20) mm, (0, -0, 0)°
+09-07 21:11:02.816  9890 24361 I WiVRn   : [2026-09-07 21:11:02.816] [WiVRn] [info] Initializing offset of space grip_left to (0, -20, -50) mm, (-30.000002, -0, 0)°
+09-07 21:11:02.816  9890 24361 I WiVRn   : [2026-09-07 21:11:02.816] [WiVRn] [info] Initializing offset of space grip_right to (0, -20, -50) mm, (-30.000002, -0, 0)°
+09-07 21:11:02.819  9890 24361 I WiVRn   : [2026-09-07 21:11:02.819] [WiVRn] [info] Font for de /system/fonts/PICOSans.ttf
+09-07 21:11:02.820  9890 24361 I WiVRn   : [2026-09-07 21:11:02.820] [WiVRn] [info] Font for es /system/fonts/PICOSans.ttf
+09-07 21:11:02.820  9890 24361 I WiVRn   : [2026-09-07 21:11:02.820] [WiVRn] [info] Font for fr /system/fonts/PICOSans.ttf
+09-07 21:11:02.820  9890 24361 I WiVRn   : [2026-09-07 21:11:02.820] [WiVRn] [info] Font for fr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:02.820  9890 24361 I WiVRn   : [2026-09-07 21:11:02.820] [WiVRn] [info] Font for it /system/fonts/PICOSans.ttf
+09-07 21:11:02.820  9890 24361 I WiVRn   : [2026-09-07 21:11:02.820] [WiVRn] [info] Font for ja /system/fonts/PICOSans.ttf
+09-07 21:11:02.820  9890 24361 I WiVRn   : [2026-09-07 21:11:02.820] [WiVRn] [info] Font for ja /system/fonts/PICOSansVFJP.ttf
+09-07 21:11:02.820  9890 24361 I WiVRn   : [2026-09-07 21:11:02.820] [WiVRn] [info] Font for ka /system/fonts/PICOSans.ttf
+09-07 21:11:02.820  9890 24361 I WiVRn   : [2026-09-07 21:11:02.820] [WiVRn] [info] Font for ka /system/fonts/NotoSansGeorgian-Regular.otf
+09-07 21:11:02.820  9890 24361 I WiVRn   : [2026-09-07 21:11:02.820] [WiVRn] [info] Font for ka /system/fonts/PICOSans.ttf
+09-07 21:11:02.820  9890 24361 I WiVRn   : [2026-09-07 21:11:02.820] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:02.820  9890 24361 I WiVRn   : [2026-09-07 21:11:02.820] [WiVRn] [info] Font for pl /system/fonts/Roboto-Regular.ttf
+09-07 21:11:02.820  9890 24361 I WiVRn   : [2026-09-07 21:11:02.820] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:02.820  9890 24361 I WiVRn   : [2026-09-07 21:11:02.820] [WiVRn] [info] Font for pl /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:02.820  9890 24361 I WiVRn   : [2026-09-07 21:11:02.820] [WiVRn] [info] Font for pl /system/fonts/Roboto-Regular.ttf
+09-07 21:11:02.820  9890 24361 I WiVRn   : [2026-09-07 21:11:02.820] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:02.820  9890 24361 I WiVRn   : [2026-09-07 21:11:02.820] [WiVRn] [info] Font for pt_BR /system/fonts/PICOSans.ttf
+09-07 21:11:02.820  9890 24361 I WiVRn   : [2026-09-07 21:11:02.820] [WiVRn] [info] Font for ru /system/fonts/PICOSans.ttf
+09-07 21:11:02.820  9890 24361 I WiVRn   : [2026-09-07 21:11:02.820] [WiVRn] [info] Font for ru /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:02.820  9890 24361 I WiVRn   : [2026-09-07 21:11:02.820] [WiVRn] [info] Font for ru /system/fonts/PICOSans.ttf
+09-07 21:11:02.820  9890 24361 I WiVRn   : [2026-09-07 21:11:02.820] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:02.820  9890 24361 I WiVRn   : [2026-09-07 21:11:02.820] [WiVRn] [info] Font for sk /system/fonts/Roboto-Regular.ttf
+09-07 21:11:02.820  9890 24361 I WiVRn   : [2026-09-07 21:11:02.820] [WiVRn] [info] Font for sk /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:02.820  9890 24361 I WiVRn   : [2026-09-07 21:11:02.820] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:02.820  9890 24361 I WiVRn   : [2026-09-07 21:11:02.820] [WiVRn] [info] Font for sk /system/fonts/Roboto-Regular.ttf
+09-07 21:11:02.820  9890 24361 I WiVRn   : [2026-09-07 21:11:02.820] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:02.820  9890 24361 I WiVRn   : [2026-09-07 21:11:02.820] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:02.820  9890 24361 I WiVRn   : [2026-09-07 21:11:02.820] [WiVRn] [info] Font for tr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:02.820  9890 24361 I WiVRn   : [2026-09-07 21:11:02.820] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:02.820  9890 24361 I WiVRn   : [2026-09-07 21:11:02.820] [WiVRn] [info] Font for tr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:02.820  9890 24361 I WiVRn   : [2026-09-07 21:11:02.820] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:02.821  9890 24361 I WiVRn   : [2026-09-07 21:11:02.821] [WiVRn] [info] Font for zh_CN /system/fonts/PICOSans.ttf
+09-07 21:11:02.821  9890 24361 I WiVRn   : [2026-09-07 21:11:02.821] [WiVRn] [info] Font for zh_CN /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:02.821  9890 24361 I WiVRn   : [2026-09-07 21:11:02.821] [WiVRn] [info] Font for zh_TW /system/fonts/PICOSans.ttf
+09-07 21:11:02.821  9890 24361 I WiVRn   : [2026-09-07 21:11:02.821] [WiVRn] [info] Font for zh_TW /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:02.827  9890 24361 I WiVRn   : [2026-09-07 21:11:02.827] [WiVRn] [info] Using font /system/fonts/PICOSans.ttf
+09-07 21:11:02.827  9890 24361 I WiVRn   : [2026-09-07 21:11:02.827] [WiVRn] [info] Using font /system/fonts/Roboto-Regular.ttf
+09-07 21:11:02.827  9890 24361 I WiVRn   : [2026-09-07 21:11:02.827] [WiVRn] [info] Using font /system/fonts/PICOSansVFJP.ttf
+09-07 21:11:02.847  9890 24361 I WiVRn   : [2026-09-07 21:11:02.847] [WiVRn] [info] Using font /system/fonts/NotoSansGeorgian-Regular.otf
+09-07 21:11:02.847  9890 24361 I WiVRn   : [2026-09-07 21:11:02.847] [WiVRn] [info] Using font /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:02.854  9890 24361 I WiVRn   : [2026-09-07 21:11:02.854] [WiVRn] [info] Performance level: CPU domain asked for sustained_high
+09-07 21:11:02.854  9890 24361 I WiVRn   : [2026-09-07 21:11:02.854] [WiVRn] [info] nxwarp: GPU performance level setting 2
+09-07 21:11:02.854  9890 24361 I WiVRn   : [2026-09-07 21:11:02.854] [WiVRn] [info] Performance level: GPU domain asked for boost
+09-07 21:11:02.883  9890 24361 I WiVRn   : [2026-09-07 21:11:02.883] [WiVRn] [info] Received event type Unknown
+09-07 21:11:03.216  9890 24559 I WiVRn   : [2026-09-07 21:11:03.216] [WiVRn] [info] Tracking pattern (11109µs):
+09-07 21:11:03.216  9890 24559 I WiVRn   : [2026-09-07 21:11:03.216] [WiVRn] [info] 	t+8109µs HEAD (3000µs)
+09-07 21:11:03.216  9890 24559 I WiVRn   : [2026-09-07 21:11:03.216] [WiVRn] [info] 	t+11109µs HEAD (0µs)
+09-07 21:11:03.774  9890 24361 I WiVRn   : [2026-09-07 21:11:03.774] [WiVRn] [info] Performance level: GPU domain asked for sustained_low
+09-07 21:11:03.774  9890 24361 I WiVRn   : [2026-09-07 21:11:03.774] [WiVRn] [info] Performance level: CPU domain asked for sustained_low
+09-07 21:11:03.775  9890 24361 I WiVRn   : [2026-09-07 21:11:03.775] [WiVRn] [info] Using panel size: 2160x2160
+09-07 21:11:03.776  9890 24361 I WiVRn   : [2026-09-07 21:11:03.776] [WiVRn] [info] Loaded input profile pico-4
+09-07 21:11:03.776  9890 24361 I WiVRn   : [2026-09-07 21:11:03.776] [WiVRn] [info] Initializing offset of space aim_left to (-5, 0, 20) mm, (0, -0, 0)°
+09-07 21:11:03.776  9890 24361 I WiVRn   : [2026-09-07 21:11:03.776] [WiVRn] [info] Initializing offset of space aim_right to (5, 0, 20) mm, (0, -0, 0)°
+09-07 21:11:03.776  9890 24361 I WiVRn   : [2026-09-07 21:11:03.776] [WiVRn] [info] Initializing offset of space grip_left to (0, -20, -50) mm, (-30.000002, -0, 0)°
+09-07 21:11:03.776  9890 24361 I WiVRn   : [2026-09-07 21:11:03.776] [WiVRn] [info] Initializing offset of space grip_right to (0, -20, -50) mm, (-30.000002, -0, 0)°
+09-07 21:11:03.777  9890 24361 I WiVRn   : [2026-09-07 21:11:03.777] [WiVRn] [info] Font for de /system/fonts/PICOSans.ttf
+09-07 21:11:03.777  9890 24361 I WiVRn   : [2026-09-07 21:11:03.777] [WiVRn] [info] Font for es /system/fonts/PICOSans.ttf
+09-07 21:11:03.777  9890 24361 I WiVRn   : [2026-09-07 21:11:03.777] [WiVRn] [info] Font for fr /system/fonts/PICOSans.ttf
+09-07 21:11:03.777  9890 24361 I WiVRn   : [2026-09-07 21:11:03.777] [WiVRn] [info] Font for fr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:03.777  9890 24361 I WiVRn   : [2026-09-07 21:11:03.777] [WiVRn] [info] Font for it /system/fonts/PICOSans.ttf
+09-07 21:11:03.778  9890 24361 I WiVRn   : [2026-09-07 21:11:03.778] [WiVRn] [info] Font for ja /system/fonts/PICOSans.ttf
+09-07 21:11:03.778  9890 24361 I WiVRn   : [2026-09-07 21:11:03.778] [WiVRn] [info] Font for ja /system/fonts/PICOSansVFJP.ttf
+09-07 21:11:03.778  9890 24361 I WiVRn   : [2026-09-07 21:11:03.778] [WiVRn] [info] Font for ka /system/fonts/PICOSans.ttf
+09-07 21:11:03.778  9890 24361 I WiVRn   : [2026-09-07 21:11:03.778] [WiVRn] [info] Font for ka /system/fonts/NotoSansGeorgian-Regular.otf
+09-07 21:11:03.778  9890 24361 I WiVRn   : [2026-09-07 21:11:03.778] [WiVRn] [info] Font for ka /system/fonts/PICOSans.ttf
+09-07 21:11:03.778  9890 24361 I WiVRn   : [2026-09-07 21:11:03.778] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:03.778  9890 24361 I WiVRn   : [2026-09-07 21:11:03.778] [WiVRn] [info] Font for pl /system/fonts/Roboto-Regular.ttf
+09-07 21:11:03.778  9890 24361 I WiVRn   : [2026-09-07 21:11:03.778] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:03.778  9890 24361 I WiVRn   : [2026-09-07 21:11:03.778] [WiVRn] [info] Font for pl /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:03.778  9890 24361 I WiVRn   : [2026-09-07 21:11:03.778] [WiVRn] [info] Font for pl /system/fonts/Roboto-Regular.ttf
+09-07 21:11:03.778  9890 24361 I WiVRn   : [2026-09-07 21:11:03.778] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:03.778  9890 24361 I WiVRn   : [2026-09-07 21:11:03.778] [WiVRn] [info] Font for pt_BR /system/fonts/PICOSans.ttf
+09-07 21:11:03.778  9890 24361 I WiVRn   : [2026-09-07 21:11:03.778] [WiVRn] [info] Font for ru /system/fonts/PICOSans.ttf
+09-07 21:11:03.778  9890 24361 I WiVRn   : [2026-09-07 21:11:03.778] [WiVRn] [info] Font for ru /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:03.778  9890 24361 I WiVRn   : [2026-09-07 21:11:03.778] [WiVRn] [info] Font for ru /system/fonts/PICOSans.ttf
+09-07 21:11:03.778  9890 24361 I WiVRn   : [2026-09-07 21:11:03.778] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:03.778  9890 24361 I WiVRn   : [2026-09-07 21:11:03.778] [WiVRn] [info] Font for sk /system/fonts/Roboto-Regular.ttf
+09-07 21:11:03.778  9890 24361 I WiVRn   : [2026-09-07 21:11:03.778] [WiVRn] [info] Font for sk /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:03.778  9890 24361 I WiVRn   : [2026-09-07 21:11:03.778] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:03.778  9890 24361 I WiVRn   : [2026-09-07 21:11:03.778] [WiVRn] [info] Font for sk /system/fonts/Roboto-Regular.ttf
+09-07 21:11:03.778  9890 24361 I WiVRn   : [2026-09-07 21:11:03.778] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:03.778  9890 24361 I WiVRn   : [2026-09-07 21:11:03.778] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:03.778  9890 24361 I WiVRn   : [2026-09-07 21:11:03.778] [WiVRn] [info] Font for tr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:03.778  9890 24361 I WiVRn   : [2026-09-07 21:11:03.778] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:03.778  9890 24361 I WiVRn   : [2026-09-07 21:11:03.778] [WiVRn] [info] Font for tr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:03.778  9890 24361 I WiVRn   : [2026-09-07 21:11:03.778] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:03.778  9890 24361 I WiVRn   : [2026-09-07 21:11:03.778] [WiVRn] [info] Font for zh_CN /system/fonts/PICOSans.ttf
+09-07 21:11:03.778  9890 24361 I WiVRn   : [2026-09-07 21:11:03.778] [WiVRn] [info] Font for zh_CN /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:03.779  9890 24361 I WiVRn   : [2026-09-07 21:11:03.779] [WiVRn] [info] Font for zh_TW /system/fonts/PICOSans.ttf
+09-07 21:11:03.779  9890 24361 I WiVRn   : [2026-09-07 21:11:03.779] [WiVRn] [info] Font for zh_TW /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:03.782  9890 24361 I WiVRn   : [2026-09-07 21:11:03.782] [WiVRn] [info] Using font /system/fonts/PICOSans.ttf
+09-07 21:11:03.782  9890 24361 I WiVRn   : [2026-09-07 21:11:03.782] [WiVRn] [info] Using font /system/fonts/Roboto-Regular.ttf
+09-07 21:11:03.783  9890 24361 I WiVRn   : [2026-09-07 21:11:03.783] [WiVRn] [info] Using font /system/fonts/PICOSansVFJP.ttf
+09-07 21:11:03.794  9890 24361 I WiVRn   : [2026-09-07 21:11:03.794] [WiVRn] [info] Using font /system/fonts/NotoSansGeorgian-Regular.otf
+09-07 21:11:03.794  9890 24361 I WiVRn   : [2026-09-07 21:11:03.794] [WiVRn] [info] Using font /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:03.869  9890 24361 I WiVRn   : [2026-09-07 21:11:03.869] [WiVRn] [info] MulticastLock acquired
+09-07 21:11:03.869  9890 24361 I WiVRn   : [2026-09-07 21:11:03.869] [WiVRn] [info] Local IPv6 address: 2003:c2:3701:81fc:b3c8:aefc:7af2:8a5a
+09-07 21:11:03.869  9890 24361 I WiVRn   : [2026-09-07 21:11:03.869] [WiVRn] [info] Local IPv6 address: 2003:c2:3701:81fc:616a:1ec4:5f3c:1dd5
+09-07 21:11:03.869  9890 24361 I WiVRn   : [2026-09-07 21:11:03.869] [WiVRn] [info] Local IPv6 address: fd3c:3d87:86b7:0:c7ff:60cd:b757:e773
+09-07 21:11:03.869  9890 24361 I WiVRn   : [2026-09-07 21:11:03.869] [WiVRn] [info] Local IPv6 address: fd3c:3d87:86b7:0:616a:1ec4:5f3c:1dd5
+09-07 21:11:03.869  9890 24361 I WiVRn   : [2026-09-07 21:11:03.869] [WiVRn] [info] Local IPv4 address: 192.168.1.248
+09-07 21:11:03.869  9890 24361 W WiVRn   : [2026-09-07 21:11:03.869] [WiVRn] [warning] unknown family 17
+09-07 21:11:03.869  9890 25383 I WiVRn   : [2026-09-07 21:11:03.869] [WiVRn] [info] Sending query for _wivrn._tcp.local., type PTR
+09-07 21:11:03.869  9890 24361 I WiVRn   : [2026-09-07 21:11:03.869] [WiVRn] [info] Performance level: CPU domain asked for sustained_high
+09-07 21:11:03.869  9890 24361 I WiVRn   : [2026-09-07 21:11:03.869] [WiVRn] [info] Performance level: GPU domain asked for boost
+09-07 21:11:03.982  9890 24361 I WiVRn   : [2026-09-07 21:11:03.982] [WiVRn] [info] Received event type Unknown
+09-07 21:11:04.216  9890 24559 I WiVRn   : [2026-09-07 21:11:04.216] [WiVRn] [info] Tracking pattern (11110µs):
+09-07 21:11:04.217  9890 24559 I WiVRn   : [2026-09-07 21:11:04.216] [WiVRn] [info] 	t+691µs HEAD (10418µs)
+09-07 21:11:04.217  9890 24559 I WiVRn   : [2026-09-07 21:11:04.217] [WiVRn] [info] 	t+3691µs HEAD (7418µs)
+09-07 21:11:04.217  9890 24559 I WiVRn   : [2026-09-07 21:11:04.217] [WiVRn] [info] 	t+6691µs HEAD (4418µs)
+09-07 21:11:04.217  9890 24559 I WiVRn   : [2026-09-07 21:11:04.217] [WiVRn] [info] 	t+9691µs HEAD (1418µs)
+09-07 21:11:04.482  9890 24540 I WiVRn   : [2026-09-07 21:11:04.482] [WiVRn] [info] nxwarp[0] net: 120 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 7541 decoded so far, 8583 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 21:11:04.482  9890 24540 I WiVRn   : [2026-09-07 21:11:04.482] [WiVRn] [info] nxwarp[0] net: 0.008 ms per datagram over 7914 datagrams (32.74 ms of every second)
+09-07 21:11:04.482  9890 24540 I WiVRn   : [2026-09-07 21:11:04.482] [WiVRn] [info] nxwarp[0] sel: stride 3, arrival 21.9 ms, dropped-late 964, withheld 542, decoded 7541
+09-07 21:11:04.482  9890 24540 I WiVRn   : [2026-09-07 21:11:04.482] [WiVRn] [info] nxwarp[0] rx: 108482 datagrams, placed 366422 (+7585), late 802 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 1
+09-07 21:11:04.749  9890 24557 I WiVRn   : [2026-09-07 21:11:04.749] [WiVRn] [info] nxwarp[0]: 38 frames in 2.1 s: 1667 B/frame, wait-prev 0.0 ms, wall 32.7 ms, nxvc passA 2.0 passB 28.6 gpu 30.6 ms; holes 0, refused 0
+09-07 21:11:04.749  9890 24557 I WiVRn   : [2026-09-07 21:11:04.749] [WiVRn] [info] nxwarp[0] gpu duty 562 ms/s (56% of one GPU) for decode alone; the display pass is extra
+09-07 21:11:04.749  9890 24557 I WiVRn   : [2026-09-07 21:11:04.749] [WiVRn] [info] nxwarp[0] passB 28.6 ms = warp 0.0 + skip 5.8 + coded 1.8 + dir 0.0 + other 21.0; tiles skip 487 / coded 76 / dir 0 (eye pass 0)
+09-07 21:11:04.749  9890 24557 I WiVRn   : [2026-09-07 21:11:04.749] [WiVRn] [info] nxwarp[0]: 971 frames dropped late (queue kept to 1)
+09-07 21:11:04.749  9890 24557 I WiVRn   : [2026-09-07 21:11:04.749] [WiVRn] [info] nxwarp[0] stage: gap 21.6 | wait-prev 0.0 | submit 1.3 (qlock 0.0 + codec 1.3) | get_free 0.0 | fence-pre 0.0 | record 0.1 | qsubmit 0.0 | fence-post 31.3 | publish 0.0 ms; withheld 37, stride 2, arrival 26.7 ms
+09-07 21:11:04.749  9890 24557 I WiVRn   : [2026-09-07 21:11:04.749] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.01 ms/frame over 111 frames, buffer 2 kB held for 2 kB of unit (1.0x)
+09-07 21:11:04.749  9890 24557 I WiVRn   : [2026-09-07 21:11:04.749] [WiVRn] [info] nxwarp[0] fence-post 31.4 ms = nxvc gpu 30.6 + copy gpu 0.38 + queue 0.4 (over 38 frames with timestamps)
+09-07 21:11:04.749  9890 24557 I WiVRn   : [2026-09-07 21:11:04.749] [WiVRn] [info] nxwarp[0] atlas: frames 38, atlas 0, picture 38, avg dispatches 8.0, avg assembled 578.0, avg valid 578.0
+09-07 21:11:05.016  9890 24361 I WiVRn   : [2026-09-07 21:11:05.016] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_FOCUSED => XR_SESSION_STATE_VISIBLE
+09-07 21:11:05.017  9890 24361 I WiVRn   : [2026-09-07 21:11:05.017] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_VISIBLE => XR_SESSION_STATE_SYNCHRONIZED
+09-07 21:11:05.017  9890 24361 I WiVRn   : [2026-09-07 21:11:05.017] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_SYNCHRONIZED => XR_SESSION_STATE_STOPPING
+09-07 21:11:05.018  9890 24361 I WiVRn   : [2026-09-07 21:11:05.018] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_STOPPING => XR_SESSION_STATE_IDLE
+09-07 21:11:05.223  9890 24559 I WiVRn   : [2026-09-07 21:11:05.223] [WiVRn] [info] Tracking pattern (11110µs):
+09-07 21:11:05.223  9890 24559 I WiVRn   : [2026-09-07 21:11:05.223] [WiVRn] [info] 	t+219µs HEAD (22001µs)
+09-07 21:11:05.223  9890 24559 I WiVRn   : [2026-09-07 21:11:05.223] [WiVRn] [info] 	t+2329µs HEAD (31001µs)
+09-07 21:11:05.223  9890 24559 I WiVRn   : [2026-09-07 21:11:05.223] [WiVRn] [info] 	t+3219µs HEAD (19001µs)
+09-07 21:11:05.223  9890 24559 I WiVRn   : [2026-09-07 21:11:05.223] [WiVRn] [info] 	t+5329µs HEAD (28001µs)
+09-07 21:11:05.223  9890 24559 I WiVRn   : [2026-09-07 21:11:05.223] [WiVRn] [info] 	t+8329µs HEAD (25001µs)
+09-07 21:11:05.223  9890 24559 I WiVRn   : [2026-09-07 21:11:05.223] [WiVRn] [info] 	t+10439µs HEAD (34001µs)
+09-07 21:11:05.863  9890 24361 I WiVRn   : [2026-09-07 21:11:05.863] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_IDLE => XR_SESSION_STATE_READY
+09-07 21:11:05.864  9890 24361 I WiVRn   : [2026-09-07 21:11:05.864] [WiVRn] [info] Received event type Unknown
+09-07 21:11:05.864  9890 24361 I WiVRn   : [2026-09-07 21:11:05.864] [WiVRn] [info] Received event type XR_TYPE_EVENT_DATA_USER_PRESENCE_CHANGED_EXT
+09-07 21:11:05.866  9890 24361 I WiVRn   : [2026-09-07 21:11:05.866] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_READY => XR_SESSION_STATE_SYNCHRONIZED
+09-07 21:11:05.866  9890 24361 I WiVRn   : [2026-09-07 21:11:05.866] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_SYNCHRONIZED => XR_SESSION_STATE_VISIBLE
+09-07 21:11:05.866  9890 24361 I WiVRn   : [2026-09-07 21:11:05.866] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_VISIBLE => XR_SESSION_STATE_FOCUSED
+09-07 21:11:05.968  9890 24361 I WiVRn   : [2026-09-07 21:11:05.968] [WiVRn] [info] Received event type Unknown
+09-07 21:11:06.216  9890 24559 I WiVRn   : [2026-09-07 21:11:06.216] [WiVRn] [info] Tracking pattern (11110µs):
+09-07 21:11:06.216  9890 24559 I WiVRn   : [2026-09-07 21:11:06.216] [WiVRn] [info] 	t+8110µs HEAD (3000µs)
+09-07 21:11:06.216  9890 24559 I WiVRn   : [2026-09-07 21:11:06.216] [WiVRn] [info] 	t+11110µs HEAD (0µs)
+09-07 21:11:06.495  9890 24540 I WiVRn   : [2026-09-07 21:11:06.495] [WiVRn] [info] nxwarp[0] net: 158 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 1 queued for the worker, 7611 decoded so far, 8744 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 21:11:06.495  9890 24540 I WiVRn   : [2026-09-07 21:11:06.495] [WiVRn] [info] nxwarp[0] net: 0.032 ms per datagram over 3311 datagrams (52.91 ms of every second)
+09-07 21:11:06.495  9890 24540 I WiVRn   : [2026-09-07 21:11:06.495] [WiVRn] [info] nxwarp[0] sel: stride 2, arrival 10.4 ms, dropped-late 1050, withheld 612, decoded 7611
+09-07 21:11:06.495  9890 24540 I WiVRn   : [2026-09-07 21:11:06.495] [WiVRn] [info] nxwarp[0] rx: 111793 datagrams, placed 369592 (+3170), late 802 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 1
+09-07 21:11:06.754  9890 24557 I WiVRn   : [2026-09-07 21:11:06.754] [WiVRn] [info] nxwarp[0]: 76 frames in 2.0 s: 697 B/frame, wait-prev 0.0 ms, wall 25.3 ms, nxvc passA 1.2 passB 20.3 gpu 21.6 ms; holes 0, refused 0
+09-07 21:11:06.754  9890 24557 I WiVRn   : [2026-09-07 21:11:06.754] [WiVRn] [info] nxwarp[0] gpu duty 817 ms/s (82% of one GPU) for decode alone; the display pass is extra
+09-07 21:11:06.754  9890 24557 I WiVRn   : [2026-09-07 21:11:06.754] [WiVRn] [info] nxwarp[0] passB 20.3 ms = warp 0.0 + skip 4.7 + coded 0.2 + dir 0.0 + other 15.4; tiles skip 566 / coded 12 / dir 0 (eye pass 0)
+09-07 21:11:06.755  9890 24557 I WiVRn   : [2026-09-07 21:11:06.755] [WiVRn] [info] nxwarp[0]: 1067 frames dropped late (queue kept to 1)
+09-07 21:11:06.755  9890 24557 I WiVRn   : [2026-09-07 21:11:06.755] [WiVRn] [info] nxwarp[0] stage: gap 1.1 | wait-prev 0.0 | submit 3.0 (qlock 0.0 + codec 3.0) | get_free 0.1 | fence-pre 0.0 | record 0.1 | qsubmit 0.1 | fence-post 22.1 | publish 0.0 ms; withheld 76, stride 1, arrival 11.2 ms
+09-07 21:11:06.755  9890 24557 I WiVRn   : [2026-09-07 21:11:06.755] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.01 ms/frame over 173 frames, buffer 1 kB held for 1 kB of unit (1.0x)
+09-07 21:11:06.755  9890 24557 I WiVRn   : [2026-09-07 21:11:06.755] [WiVRn] [info] nxwarp[0] fence-post 22.2 ms = nxvc gpu 21.6 + copy gpu 0.47 + queue 0.1 (over 76 frames with timestamps)
+09-07 21:11:06.755  9890 24557 I WiVRn   : [2026-09-07 21:11:06.755] [WiVRn] [info] nxwarp[0] atlas: frames 76, atlas 0, picture 76, avg dispatches 8.0, avg assembled 578.0, avg valid 578.0
+09-07 21:11:07.216  9890 24559 I WiVRn   : [2026-09-07 21:11:07.216] [WiVRn] [info] Tracking pattern (11110µs):
+09-07 21:11:07.216  9890 24559 I WiVRn   : [2026-09-07 21:11:07.216] [WiVRn] [info] 	t+11110µs HEAD (0µs)
+09-07 21:11:08.216  9890 24559 I WiVRn   : [2026-09-07 21:11:08.216] [WiVRn] [info] Tracking pattern (11110µs):
+09-07 21:11:08.216  9890 24559 I WiVRn   : [2026-09-07 21:11:08.216] [WiVRn] [info] 	t+5110µs HEAD (6000µs)
+09-07 21:11:08.216  9890 24559 I WiVRn   : [2026-09-07 21:11:08.216] [WiVRn] [info] 	t+8110µs HEAD (3000µs)
+09-07 21:11:08.216  9890 24559 I WiVRn   : [2026-09-07 21:11:08.216] [WiVRn] [info] 	t+11110µs HEAD (0µs)
+09-07 21:11:08.499  9890 24540 I WiVRn   : [2026-09-07 21:11:08.499] [WiVRn] [info] nxwarp[0] net: 169 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 1 queued for the worker, 7673 decoded so far, 8916 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 21:11:08.499  9890 24540 I WiVRn   : [2026-09-07 21:11:08.499] [WiVRn] [info] nxwarp[0] net: 0.023 ms per datagram over 3390 datagrams (39.26 ms of every second)
+09-07 21:11:08.499  9890 24540 I WiVRn   : [2026-09-07 21:11:08.499] [WiVRn] [info] nxwarp[0] sel: stride 2, arrival 12.2 ms, dropped-late 1157, withheld 674, decoded 7673
+09-07 21:11:08.499  9890 24540 I WiVRn   : [2026-09-07 21:11:08.499] [WiVRn] [info] nxwarp[0] rx: 115183 datagrams, placed 372775 (+3183), late 802 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 1
+09-07 21:11:08.770  9890 24557 I WiVRn   : [2026-09-07 21:11:08.770] [WiVRn] [info] nxwarp[0]: 62 frames in 2.0 s: 820 B/frame, wait-prev 0.0 ms, wall 32.3 ms, nxvc passA 1.9 passB 27.8 gpu 29.7 ms; holes 0, refused 0
+09-07 21:11:08.770  9890 24557 I WiVRn   : [2026-09-07 21:11:08.770] [WiVRn] [info] nxwarp[0] gpu duty 915 ms/s (92% of one GPU) for decode alone; the display pass is extra
+09-07 21:11:08.770  9890 24557 I WiVRn   : [2026-09-07 21:11:08.770] [WiVRn] [info] nxwarp[0] passB 27.8 ms = warp 0.0 + skip 6.6 + coded 0.4 + dir 0.0 + other 20.8; tiles skip 558 / coded 20 / dir 0 (eye pass 0)
+09-07 21:11:08.770  9890 24557 I WiVRn   : [2026-09-07 21:11:08.770] [WiVRn] [info] nxwarp[0]: 1174 frames dropped late (queue kept to 1)
+09-07 21:11:08.770  9890 24557 I WiVRn   : [2026-09-07 21:11:08.770] [WiVRn] [info] nxwarp[0] stage: gap 0.1 | wait-prev 0.0 | submit 1.7 (qlock 0.0 + codec 1.7) | get_free 0.0 | fence-pre 0.0 | record 0.1 | qsubmit 0.0 | fence-post 30.6 | publish 0.0 ms; withheld 62, stride 1, arrival 11.2 ms
+09-07 21:11:08.770  9890 24557 I WiVRn   : [2026-09-07 21:11:08.770] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.01 ms/frame over 169 frames, buffer 1 kB held for 1 kB of unit (1.0x)
+09-07 21:11:08.770  9890 24557 I WiVRn   : [2026-09-07 21:11:08.770] [WiVRn] [info] nxwarp[0] fence-post 30.6 ms = nxvc gpu 29.7 + copy gpu 0.54 + queue 0.3 (over 62 frames with timestamps)
+09-07 21:11:08.770  9890 24557 I WiVRn   : [2026-09-07 21:11:08.770] [WiVRn] [info] nxwarp[0] atlas: frames 62, atlas 0, picture 62, avg dispatches 8.0, avg assembled 578.0, avg valid 578.0
+09-07 21:11:08.839  9890 24557 I WiVRn   : [2026-09-07 21:11:08.839] [WiVRn] [info] Stream scene ready at t=78102208768278
+09-07 21:11:08.857  9890 24361 I WiVRn   : [2026-09-07 21:11:08.857] [WiVRn] [info] MulticastLock released
+09-07 21:11:08.875  9890 24361 I WiVRn   : [2026-09-07 21:11:08.875] [WiVRn] [info] Loaded input profile pico-4
+09-07 21:11:08.875  9890 24361 I WiVRn   : [2026-09-07 21:11:08.875] [WiVRn] [info] Initializing offset of space aim_left to (-5, 0, 20) mm, (0, -0, 0)°
+09-07 21:11:08.875  9890 24361 I WiVRn   : [2026-09-07 21:11:08.875] [WiVRn] [info] Initializing offset of space aim_right to (5, 0, 20) mm, (0, -0, 0)°
+09-07 21:11:08.875  9890 24361 I WiVRn   : [2026-09-07 21:11:08.875] [WiVRn] [info] Initializing offset of space grip_left to (0, -20, -50) mm, (-30.000002, -0, 0)°
+09-07 21:11:08.875  9890 24361 I WiVRn   : [2026-09-07 21:11:08.875] [WiVRn] [info] Initializing offset of space grip_right to (0, -20, -50) mm, (-30.000002, -0, 0)°
+09-07 21:11:08.878  9890 24361 I WiVRn   : [2026-09-07 21:11:08.878] [WiVRn] [info] Font for de /system/fonts/PICOSans.ttf
+09-07 21:11:08.878  9890 24361 I WiVRn   : [2026-09-07 21:11:08.878] [WiVRn] [info] Font for es /system/fonts/PICOSans.ttf
+09-07 21:11:08.878  9890 24361 I WiVRn   : [2026-09-07 21:11:08.878] [WiVRn] [info] Font for fr /system/fonts/PICOSans.ttf
+09-07 21:11:08.878  9890 24361 I WiVRn   : [2026-09-07 21:11:08.878] [WiVRn] [info] Font for fr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:08.878  9890 24361 I WiVRn   : [2026-09-07 21:11:08.878] [WiVRn] [info] Font for it /system/fonts/PICOSans.ttf
+09-07 21:11:08.878  9890 24361 I WiVRn   : [2026-09-07 21:11:08.878] [WiVRn] [info] Font for ja /system/fonts/PICOSans.ttf
+09-07 21:11:08.878  9890 24361 I WiVRn   : [2026-09-07 21:11:08.878] [WiVRn] [info] Font for ja /system/fonts/PICOSansVFJP.ttf
+09-07 21:11:08.878  9890 24361 I WiVRn   : [2026-09-07 21:11:08.878] [WiVRn] [info] Font for ka /system/fonts/PICOSans.ttf
+09-07 21:11:08.878  9890 24361 I WiVRn   : [2026-09-07 21:11:08.878] [WiVRn] [info] Font for ka /system/fonts/NotoSansGeorgian-Regular.otf
+09-07 21:11:08.878  9890 24361 I WiVRn   : [2026-09-07 21:11:08.878] [WiVRn] [info] Font for ka /system/fonts/PICOSans.ttf
+09-07 21:11:08.878  9890 24361 I WiVRn   : [2026-09-07 21:11:08.878] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:08.878  9890 24361 I WiVRn   : [2026-09-07 21:11:08.878] [WiVRn] [info] Font for pl /system/fonts/Roboto-Regular.ttf
+09-07 21:11:08.878  9890 24361 I WiVRn   : [2026-09-07 21:11:08.878] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:08.878  9890 24361 I WiVRn   : [2026-09-07 21:11:08.878] [WiVRn] [info] Font for pl /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:08.878  9890 24361 I WiVRn   : [2026-09-07 21:11:08.878] [WiVRn] [info] Font for pl /system/fonts/Roboto-Regular.ttf
+09-07 21:11:08.878  9890 24361 I WiVRn   : [2026-09-07 21:11:08.878] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:08.878  9890 24361 I WiVRn   : [2026-09-07 21:11:08.878] [WiVRn] [info] Font for pt_BR /system/fonts/PICOSans.ttf
+09-07 21:11:08.878  9890 24361 I WiVRn   : [2026-09-07 21:11:08.878] [WiVRn] [info] Font for ru /system/fonts/PICOSans.ttf
+09-07 21:11:08.878  9890 24361 I WiVRn   : [2026-09-07 21:11:08.878] [WiVRn] [info] Font for ru /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:08.878  9890 24361 I WiVRn   : [2026-09-07 21:11:08.878] [WiVRn] [info] Font for ru /system/fonts/PICOSans.ttf
+09-07 21:11:08.878  9890 24361 I WiVRn   : [2026-09-07 21:11:08.878] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:08.878  9890 24361 I WiVRn   : [2026-09-07 21:11:08.878] [WiVRn] [info] Font for sk /system/fonts/Roboto-Regular.ttf
+09-07 21:11:08.878  9890 24361 I WiVRn   : [2026-09-07 21:11:08.878] [WiVRn] [info] Font for sk /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:08.878  9890 24361 I WiVRn   : [2026-09-07 21:11:08.878] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:08.878  9890 24361 I WiVRn   : [2026-09-07 21:11:08.878] [WiVRn] [info] Font for sk /system/fonts/Roboto-Regular.ttf
+09-07 21:11:08.878  9890 24361 I WiVRn   : [2026-09-07 21:11:08.878] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:08.878  9890 24361 I WiVRn   : [2026-09-07 21:11:08.878] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:08.878  9890 24361 I WiVRn   : [2026-09-07 21:11:08.878] [WiVRn] [info] Font for tr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:08.878  9890 24361 I WiVRn   : [2026-09-07 21:11:08.878] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:08.878  9890 24361 I WiVRn   : [2026-09-07 21:11:08.878] [WiVRn] [info] Font for tr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:08.878  9890 24361 I WiVRn   : [2026-09-07 21:11:08.878] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:08.879  9890 24361 I WiVRn   : [2026-09-07 21:11:08.879] [WiVRn] [info] Font for zh_CN /system/fonts/PICOSans.ttf
+09-07 21:11:08.879  9890 24361 I WiVRn   : [2026-09-07 21:11:08.879] [WiVRn] [info] Font for zh_CN /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:08.879  9890 24361 I WiVRn   : [2026-09-07 21:11:08.879] [WiVRn] [info] Font for zh_TW /system/fonts/PICOSans.ttf
+09-07 21:11:08.879  9890 24361 I WiVRn   : [2026-09-07 21:11:08.879] [WiVRn] [info] Font for zh_TW /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:08.883  9890 24361 I WiVRn   : [2026-09-07 21:11:08.883] [WiVRn] [info] Using font /system/fonts/PICOSans.ttf
+09-07 21:11:08.883  9890 24361 I WiVRn   : [2026-09-07 21:11:08.883] [WiVRn] [info] Using font /system/fonts/Roboto-Regular.ttf
+09-07 21:11:08.884  9890 24361 I WiVRn   : [2026-09-07 21:11:08.884] [WiVRn] [info] Using font /system/fonts/PICOSansVFJP.ttf
+09-07 21:11:08.900  9890 24361 I WiVRn   : [2026-09-07 21:11:08.900] [WiVRn] [info] Using font /system/fonts/NotoSansGeorgian-Regular.otf
+09-07 21:11:08.900  9890 24361 I WiVRn   : [2026-09-07 21:11:08.900] [WiVRn] [info] Using font /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:08.909  9890 24361 I WiVRn   : [2026-09-07 21:11:08.909] [WiVRn] [info] Performance level: CPU domain asked for sustained_high
+09-07 21:11:08.909  9890 24361 I WiVRn   : [2026-09-07 21:11:08.909] [WiVRn] [info] nxwarp: GPU performance level setting 2
+09-07 21:11:08.909  9890 24361 I WiVRn   : [2026-09-07 21:11:08.909] [WiVRn] [info] Performance level: GPU domain asked for boost
+09-07 21:11:08.928  9890 24361 I WiVRn   : [2026-09-07 21:11:08.928] [WiVRn] [info] Received event type Unknown
+09-07 21:11:09.208  9890 24559 I WiVRn   : [2026-09-07 21:11:09.208] [WiVRn] [info] Tracking pattern (11111µs):
+09-07 21:11:09.208  9890 24559 I WiVRn   : [2026-09-07 21:11:09.208] [WiVRn] [info] 	t+5111µs HEAD (6000µs)
+09-07 21:11:09.208  9890 24559 I WiVRn   : [2026-09-07 21:11:09.208] [WiVRn] [info] 	t+8111µs HEAD (3000µs)
+09-07 21:11:09.208  9890 24559 I WiVRn   : [2026-09-07 21:11:09.208] [WiVRn] [info] 	t+11111µs HEAD (0µs)
+09-07 21:11:09.865  9890 24361 I WiVRn   : [2026-09-07 21:11:09.865] [WiVRn] [info] Performance level: GPU domain asked for sustained_low
+09-07 21:11:09.866  9890 24361 I WiVRn   : [2026-09-07 21:11:09.866] [WiVRn] [info] Performance level: CPU domain asked for sustained_low
+09-07 21:11:09.867  9890 24361 I WiVRn   : [2026-09-07 21:11:09.867] [WiVRn] [info] Using panel size: 2160x2160
+09-07 21:11:09.867  9890 24361 I WiVRn   : [2026-09-07 21:11:09.867] [WiVRn] [info] Loaded input profile pico-4
+09-07 21:11:09.867  9890 24361 I WiVRn   : [2026-09-07 21:11:09.867] [WiVRn] [info] Initializing offset of space aim_left to (-5, 0, 20) mm, (0, -0, 0)°
+09-07 21:11:09.867  9890 24361 I WiVRn   : [2026-09-07 21:11:09.867] [WiVRn] [info] Initializing offset of space aim_right to (5, 0, 20) mm, (0, -0, 0)°
+09-07 21:11:09.867  9890 24361 I WiVRn   : [2026-09-07 21:11:09.867] [WiVRn] [info] Initializing offset of space grip_left to (0, -20, -50) mm, (-30.000002, -0, 0)°
+09-07 21:11:09.867  9890 24361 I WiVRn   : [2026-09-07 21:11:09.867] [WiVRn] [info] Initializing offset of space grip_right to (0, -20, -50) mm, (-30.000002, -0, 0)°
+09-07 21:11:09.869  9890 24361 I WiVRn   : [2026-09-07 21:11:09.869] [WiVRn] [info] Font for de /system/fonts/PICOSans.ttf
+09-07 21:11:09.869  9890 24361 I WiVRn   : [2026-09-07 21:11:09.869] [WiVRn] [info] Font for es /system/fonts/PICOSans.ttf
+09-07 21:11:09.869  9890 24361 I WiVRn   : [2026-09-07 21:11:09.869] [WiVRn] [info] Font for fr /system/fonts/PICOSans.ttf
+09-07 21:11:09.869  9890 24361 I WiVRn   : [2026-09-07 21:11:09.869] [WiVRn] [info] Font for fr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:09.869  9890 24361 I WiVRn   : [2026-09-07 21:11:09.869] [WiVRn] [info] Font for it /system/fonts/PICOSans.ttf
+09-07 21:11:09.869  9890 24361 I WiVRn   : [2026-09-07 21:11:09.869] [WiVRn] [info] Font for ja /system/fonts/PICOSans.ttf
+09-07 21:11:09.869  9890 24361 I WiVRn   : [2026-09-07 21:11:09.869] [WiVRn] [info] Font for ja /system/fonts/PICOSansVFJP.ttf
+09-07 21:11:09.869  9890 24361 I WiVRn   : [2026-09-07 21:11:09.869] [WiVRn] [info] Font for ka /system/fonts/PICOSans.ttf
+09-07 21:11:09.869  9890 24361 I WiVRn   : [2026-09-07 21:11:09.869] [WiVRn] [info] Font for ka /system/fonts/NotoSansGeorgian-Regular.otf
+09-07 21:11:09.869  9890 24361 I WiVRn   : [2026-09-07 21:11:09.869] [WiVRn] [info] Font for ka /system/fonts/PICOSans.ttf
+09-07 21:11:09.869  9890 24361 I WiVRn   : [2026-09-07 21:11:09.869] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:09.869  9890 24361 I WiVRn   : [2026-09-07 21:11:09.869] [WiVRn] [info] Font for pl /system/fonts/Roboto-Regular.ttf
+09-07 21:11:09.869  9890 24361 I WiVRn   : [2026-09-07 21:11:09.869] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:09.869  9890 24361 I WiVRn   : [2026-09-07 21:11:09.869] [WiVRn] [info] Font for pl /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:09.869  9890 24361 I WiVRn   : [2026-09-07 21:11:09.869] [WiVRn] [info] Font for pl /system/fonts/Roboto-Regular.ttf
+09-07 21:11:09.869  9890 24361 I WiVRn   : [2026-09-07 21:11:09.869] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:09.869  9890 24361 I WiVRn   : [2026-09-07 21:11:09.869] [WiVRn] [info] Font for pt_BR /system/fonts/PICOSans.ttf
+09-07 21:11:09.869  9890 24361 I WiVRn   : [2026-09-07 21:11:09.869] [WiVRn] [info] Font for ru /system/fonts/PICOSans.ttf
+09-07 21:11:09.869  9890 24361 I WiVRn   : [2026-09-07 21:11:09.869] [WiVRn] [info] Font for ru /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:09.869  9890 24361 I WiVRn   : [2026-09-07 21:11:09.869] [WiVRn] [info] Font for ru /system/fonts/PICOSans.ttf
+09-07 21:11:09.869  9890 24361 I WiVRn   : [2026-09-07 21:11:09.869] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:09.869  9890 24361 I WiVRn   : [2026-09-07 21:11:09.869] [WiVRn] [info] Font for sk /system/fonts/Roboto-Regular.ttf
+09-07 21:11:09.869  9890 24361 I WiVRn   : [2026-09-07 21:11:09.869] [WiVRn] [info] Font for sk /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:09.869  9890 24361 I WiVRn   : [2026-09-07 21:11:09.869] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:09.869  9890 24361 I WiVRn   : [2026-09-07 21:11:09.869] [WiVRn] [info] Font for sk /system/fonts/Roboto-Regular.ttf
+09-07 21:11:09.869  9890 24361 I WiVRn   : [2026-09-07 21:11:09.869] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:09.869  9890 24361 I WiVRn   : [2026-09-07 21:11:09.869] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:09.869  9890 24361 I WiVRn   : [2026-09-07 21:11:09.869] [WiVRn] [info] Font for tr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:09.869  9890 24361 I WiVRn   : [2026-09-07 21:11:09.869] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:09.869  9890 24361 I WiVRn   : [2026-09-07 21:11:09.869] [WiVRn] [info] Font for tr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:09.869  9890 24361 I WiVRn   : [2026-09-07 21:11:09.869] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:09.870  9890 24361 I WiVRn   : [2026-09-07 21:11:09.870] [WiVRn] [info] Font for zh_CN /system/fonts/PICOSans.ttf
+09-07 21:11:09.870  9890 24361 I WiVRn   : [2026-09-07 21:11:09.870] [WiVRn] [info] Font for zh_CN /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:09.870  9890 24361 I WiVRn   : [2026-09-07 21:11:09.870] [WiVRn] [info] Font for zh_TW /system/fonts/PICOSans.ttf
+09-07 21:11:09.870  9890 24361 I WiVRn   : [2026-09-07 21:11:09.870] [WiVRn] [info] Font for zh_TW /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:09.874  9890 24361 I WiVRn   : [2026-09-07 21:11:09.874] [WiVRn] [info] Using font /system/fonts/PICOSans.ttf
+09-07 21:11:09.874  9890 24361 I WiVRn   : [2026-09-07 21:11:09.874] [WiVRn] [info] Using font /system/fonts/Roboto-Regular.ttf
+09-07 21:11:09.874  9890 24361 I WiVRn   : [2026-09-07 21:11:09.874] [WiVRn] [info] Using font /system/fonts/PICOSansVFJP.ttf
+09-07 21:11:09.889  9890 24361 I WiVRn   : [2026-09-07 21:11:09.889] [WiVRn] [info] Using font /system/fonts/NotoSansGeorgian-Regular.otf
+09-07 21:11:09.889  9890 24361 I WiVRn   : [2026-09-07 21:11:09.889] [WiVRn] [info] Using font /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:09.968  9890 24361 I WiVRn   : [2026-09-07 21:11:09.968] [WiVRn] [info] MulticastLock acquired
+09-07 21:11:09.969  9890 24361 I WiVRn   : [2026-09-07 21:11:09.969] [WiVRn] [info] Local IPv6 address: 2003:c2:3701:81fc:b3c8:aefc:7af2:8a5a
+09-07 21:11:09.969  9890 24361 I WiVRn   : [2026-09-07 21:11:09.969] [WiVRn] [info] Local IPv6 address: 2003:c2:3701:81fc:616a:1ec4:5f3c:1dd5
+09-07 21:11:09.969  9890 24361 I WiVRn   : [2026-09-07 21:11:09.969] [WiVRn] [info] Local IPv6 address: fd3c:3d87:86b7:0:c7ff:60cd:b757:e773
+09-07 21:11:09.969  9890 24361 I WiVRn   : [2026-09-07 21:11:09.969] [WiVRn] [info] Local IPv6 address: fd3c:3d87:86b7:0:616a:1ec4:5f3c:1dd5
+09-07 21:11:09.969  9890 24361 I WiVRn   : [2026-09-07 21:11:09.969] [WiVRn] [info] Local IPv4 address: 192.168.1.248
+09-07 21:11:09.969  9890 24361 W WiVRn   : [2026-09-07 21:11:09.969] [WiVRn] [warning] unknown family 17
+09-07 21:11:09.969  9890 25506 I WiVRn   : [2026-09-07 21:11:09.969] [WiVRn] [info] Sending query for _wivrn._tcp.local., type PTR
+09-07 21:11:09.970  9890 24361 I WiVRn   : [2026-09-07 21:11:09.970] [WiVRn] [info] Performance level: CPU domain asked for sustained_high
+09-07 21:11:09.970  9890 24361 I WiVRn   : [2026-09-07 21:11:09.970] [WiVRn] [info] Performance level: GPU domain asked for boost
+09-07 21:11:10.076  9890 24361 I WiVRn   : [2026-09-07 21:11:10.076] [WiVRn] [info] Received event type Unknown
+09-07 21:11:10.208  9890 24559 I WiVRn   : [2026-09-07 21:11:10.208] [WiVRn] [info] Tracking pattern (11106µs):
+09-07 21:11:10.208  9890 24559 I WiVRn   : [2026-09-07 21:11:10.208] [WiVRn] [info] 	t+2106µs HEAD (9000µs)
+09-07 21:11:10.208  9890 24559 I WiVRn   : [2026-09-07 21:11:10.208] [WiVRn] [info] 	t+5106µs HEAD (6000µs)
+09-07 21:11:10.208  9890 24559 I WiVRn   : [2026-09-07 21:11:10.208] [WiVRn] [info] 	t+8106µs HEAD (3000µs)
+09-07 21:11:10.208  9890 24559 I WiVRn   : [2026-09-07 21:11:10.208] [WiVRn] [info] 	t+10213µs HEAD (12000µs)
+09-07 21:11:10.208  9890 24559 I WiVRn   : [2026-09-07 21:11:10.208] [WiVRn] [info] 	t+11106µs HEAD (0µs)
+09-07 21:11:10.562  9890 24540 I WiVRn   : [2026-09-07 21:11:10.562] [WiVRn] [info] nxwarp[0] net: 105 frames closed in 2.1 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 7710 decoded so far, 9029 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 21:11:10.562  9890 24540 I WiVRn   : [2026-09-07 21:11:10.562] [WiVRn] [info] nxwarp[0] net: 0.008 ms per datagram over 8593 datagrams (34.51 ms of every second)
+09-07 21:11:10.562  9890 24540 I WiVRn   : [2026-09-07 21:11:10.562] [WiVRn] [info] nxwarp[0] sel: stride 3, arrival 21.6 ms, dropped-late 1227, withheld 710, decoded 7710
+09-07 21:11:10.562  9890 24540 I WiVRn   : [2026-09-07 21:11:10.562] [WiVRn] [info] nxwarp[0] rx: 123776 datagrams, placed 382058 (+9283), late 831 (+29), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 1
+09-07 21:11:10.774  9890 24557 I WiVRn   : [2026-09-07 21:11:10.774] [WiVRn] [info] nxwarp[0]: 31 frames in 2.0 s: 2154 B/frame, wait-prev 0.0 ms, wall 34.0 ms, nxvc passA 1.9 passB 30.1 gpu 32.0 ms; holes 0, refused 0
+09-07 21:11:10.774  9890 24557 I WiVRn   : [2026-09-07 21:11:10.774] [WiVRn] [info] nxwarp[0] gpu duty 495 ms/s (49% of one GPU) for decode alone; the display pass is extra
+09-07 21:11:10.774  9890 24557 I WiVRn   : [2026-09-07 21:11:10.774] [WiVRn] [info] nxwarp[0] passB 30.1 ms = warp 0.1 + skip 5.6 + coded 2.5 + dir 0.0 + other 22.0; tiles skip 452 / coded 109 / dir 0 (eye pass 0)
+09-07 21:11:10.774  9890 24557 I WiVRn   : [2026-09-07 21:11:10.774] [WiVRn] [info] nxwarp[0]: 1232 frames dropped late (queue kept to 1)
+09-07 21:11:10.774  9890 24557 I WiVRn   : [2026-09-07 21:11:10.774] [WiVRn] [info] nxwarp[0] stage: gap 30.7 | wait-prev 0.0 | submit 1.3 (qlock 0.0 + codec 1.3) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 32.6 | publish 0.0 ms; withheld 30, stride 2, arrival 26.9 ms
+09-07 21:11:10.774  9890 24557 I WiVRn   : [2026-09-07 21:11:10.774] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.01 ms/frame over 88 frames, buffer 2 kB held for 2 kB of unit (1.0x)
+09-07 21:11:10.774  9890 24557 I WiVRn   : [2026-09-07 21:11:10.774] [WiVRn] [info] nxwarp[0] fence-post 32.7 ms = nxvc gpu 32.0 + copy gpu 0.37 + queue 0.2 (over 31 frames with timestamps)
+09-07 21:11:10.774  9890 24557 I WiVRn   : [2026-09-07 21:11:10.774] [WiVRn] [info] nxwarp[0] atlas: frames 31, atlas 0, picture 31, avg dispatches 8.0, avg assembled 578.0, avg valid 578.0
+09-07 21:11:11.219  9890 24559 I WiVRn   : [2026-09-07 21:11:11.219] [WiVRn] [info] Tracking pattern (11106µs):
+09-07 21:11:11.219  9890 24559 I WiVRn   : [2026-09-07 21:11:11.219] [WiVRn] [info] 	t+2106µs HEAD (9000µs)
+09-07 21:11:11.219  9890 24559 I WiVRn   : [2026-09-07 21:11:11.219] [WiVRn] [info] 	t+5106µs HEAD (6000µs)
+09-07 21:11:11.219  9890 24559 I WiVRn   : [2026-09-07 21:11:11.219] [WiVRn] [info] 	t+7213µs HEAD (15000µs)
+09-07 21:11:11.219  9890 24559 I WiVRn   : [2026-09-07 21:11:11.219] [WiVRn] [info] 	t+8106µs HEAD (3000µs)
+09-07 21:11:11.219  9890 24559 I WiVRn   : [2026-09-07 21:11:11.219] [WiVRn] [info] 	t+10213µs HEAD (12000µs)
+09-07 21:11:11.219  9890 24559 I WiVRn   : [2026-09-07 21:11:11.219] [WiVRn] [info] 	t+11106µs HEAD (0µs)
+09-07 21:11:12.219  9890 24559 I WiVRn   : [2026-09-07 21:11:12.219] [WiVRn] [info] Tracking pattern (11106µs):
+09-07 21:11:12.219  9890 24559 I WiVRn   : [2026-09-07 21:11:12.219] [WiVRn] [info] 	t+11106µs HEAD (0µs)
+09-07 21:11:12.565  9890 24540 I WiVRn   : [2026-09-07 21:11:12.565] [WiVRn] [info] nxwarp[0] net: 165 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 1 queued for the worker, 7766 decoded so far, 9195 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 21:11:12.565  9890 24540 I WiVRn   : [2026-09-07 21:11:12.565] [WiVRn] [info] nxwarp[0] net: 0.023 ms per datagram over 3269 datagrams (37.29 ms of every second)
+09-07 21:11:12.565  9890 24540 I WiVRn   : [2026-09-07 21:11:12.565] [WiVRn] [info] nxwarp[0] sel: stride 2, arrival 11.1 ms, dropped-late 1334, withheld 766, decoded 7766
+09-07 21:11:12.565  9890 24540 I WiVRn   : [2026-09-07 21:11:12.565] [WiVRn] [info] nxwarp[0] rx: 127045 datagrams, placed 385146 (+3088), late 831 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 1
+09-07 21:11:12.807  9890 24557 I WiVRn   : [2026-09-07 21:11:12.807] [WiVRn] [info] nxwarp[0]: 61 frames in 2.0 s: 707 B/frame, wait-prev 0.0 ms, wall 32.7 ms, nxvc passA 1.8 passB 27.8 gpu 29.5 ms; holes 0, refused 0
+09-07 21:11:12.807  9890 24557 I WiVRn   : [2026-09-07 21:11:12.807] [WiVRn] [info] nxwarp[0] gpu duty 886 ms/s (89% of one GPU) for decode alone; the display pass is extra
+09-07 21:11:12.807  9890 24557 I WiVRn   : [2026-09-07 21:11:12.807] [WiVRn] [info] nxwarp[0] passB 27.8 ms = warp 0.0 + skip 6.5 + coded 0.4 + dir 0.0 + other 20.8; tiles skip 566 / coded 12 / dir 0 (eye pass 0)
+09-07 21:11:12.807  9890 24557 I WiVRn   : [2026-09-07 21:11:12.807] [WiVRn] [info] nxwarp[0]: 1349 frames dropped late (queue kept to 1)
+09-07 21:11:12.807  9890 24557 I WiVRn   : [2026-09-07 21:11:12.807] [WiVRn] [info] nxwarp[0] stage: gap 0.6 | wait-prev 0.0 | submit 2.1 (qlock 0.0 + codec 2.1) | get_free 0.0 | fence-pre 0.0 | record 0.2 | qsubmit 0.0 | fence-post 30.4 | publish 0.0 ms; withheld 61, stride 1, arrival 11.0 ms
+09-07 21:11:12.807  9890 24557 I WiVRn   : [2026-09-07 21:11:12.807] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.01 ms/frame over 179 frames, buffer 1 kB held for 1 kB of unit (1.0x)
+09-07 21:11:12.807  9890 24557 I WiVRn   : [2026-09-07 21:11:12.807] [WiVRn] [info] nxwarp[0] fence-post 30.4 ms = nxvc gpu 29.5 + copy gpu 0.53 + queue 0.3 (over 61 frames with timestamps)
+09-07 21:11:12.807  9890 24557 I WiVRn   : [2026-09-07 21:11:12.807] [WiVRn] [info] nxwarp[0] atlas: frames 61, atlas 0, picture 61, avg dispatches 8.0, avg assembled 578.0, avg valid 578.0
+09-07 21:11:12.878  9890 24557 I WiVRn   : [2026-09-07 21:11:12.878] [WiVRn] [info] Stream scene ready at t=78106247520099
+09-07 21:11:12.890  9890 24361 I WiVRn   : [2026-09-07 21:11:12.890] [WiVRn] [info] MulticastLock released
+09-07 21:11:12.913  9890 24361 I WiVRn   : [2026-09-07 21:11:12.913] [WiVRn] [info] Loaded input profile pico-4
+09-07 21:11:12.913  9890 24361 I WiVRn   : [2026-09-07 21:11:12.913] [WiVRn] [info] Initializing offset of space aim_left to (-5, 0, 20) mm, (0, -0, 0)°
+09-07 21:11:12.913  9890 24361 I WiVRn   : [2026-09-07 21:11:12.913] [WiVRn] [info] Initializing offset of space aim_right to (5, 0, 20) mm, (0, -0, 0)°
+09-07 21:11:12.913  9890 24361 I WiVRn   : [2026-09-07 21:11:12.913] [WiVRn] [info] Initializing offset of space grip_left to (0, -20, -50) mm, (-30.000002, -0, 0)°
+09-07 21:11:12.913  9890 24361 I WiVRn   : [2026-09-07 21:11:12.913] [WiVRn] [info] Initializing offset of space grip_right to (0, -20, -50) mm, (-30.000002, -0, 0)°
+09-07 21:11:12.944  9890 24361 I WiVRn   : [2026-09-07 21:11:12.944] [WiVRn] [info] Font for de /system/fonts/PICOSans.ttf
+09-07 21:11:12.944  9890 24361 I WiVRn   : [2026-09-07 21:11:12.944] [WiVRn] [info] Font for es /system/fonts/PICOSans.ttf
+09-07 21:11:12.944  9890 24361 I WiVRn   : [2026-09-07 21:11:12.944] [WiVRn] [info] Font for fr /system/fonts/PICOSans.ttf
+09-07 21:11:12.944  9890 24361 I WiVRn   : [2026-09-07 21:11:12.944] [WiVRn] [info] Font for fr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:12.944  9890 24361 I WiVRn   : [2026-09-07 21:11:12.944] [WiVRn] [info] Font for it /system/fonts/PICOSans.ttf
+09-07 21:11:12.945  9890 24361 I WiVRn   : [2026-09-07 21:11:12.945] [WiVRn] [info] Font for ja /system/fonts/PICOSans.ttf
+09-07 21:11:12.945  9890 24361 I WiVRn   : [2026-09-07 21:11:12.945] [WiVRn] [info] Font for ja /system/fonts/PICOSansVFJP.ttf
+09-07 21:11:12.945  9890 24361 I WiVRn   : [2026-09-07 21:11:12.945] [WiVRn] [info] Font for ka /system/fonts/PICOSans.ttf
+09-07 21:11:12.945  9890 24361 I WiVRn   : [2026-09-07 21:11:12.945] [WiVRn] [info] Font for ka /system/fonts/NotoSansGeorgian-Regular.otf
+09-07 21:11:12.945  9890 24361 I WiVRn   : [2026-09-07 21:11:12.945] [WiVRn] [info] Font for ka /system/fonts/PICOSans.ttf
+09-07 21:11:12.945  9890 24361 I WiVRn   : [2026-09-07 21:11:12.945] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:12.945  9890 24361 I WiVRn   : [2026-09-07 21:11:12.945] [WiVRn] [info] Font for pl /system/fonts/Roboto-Regular.ttf
+09-07 21:11:12.945  9890 24361 I WiVRn   : [2026-09-07 21:11:12.945] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:12.945  9890 24361 I WiVRn   : [2026-09-07 21:11:12.945] [WiVRn] [info] Font for pl /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:12.945  9890 24361 I WiVRn   : [2026-09-07 21:11:12.945] [WiVRn] [info] Font for pl /system/fonts/Roboto-Regular.ttf
+09-07 21:11:12.945  9890 24361 I WiVRn   : [2026-09-07 21:11:12.945] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:12.945  9890 24361 I WiVRn   : [2026-09-07 21:11:12.945] [WiVRn] [info] Font for pt_BR /system/fonts/PICOSans.ttf
+09-07 21:11:12.945  9890 24361 I WiVRn   : [2026-09-07 21:11:12.945] [WiVRn] [info] Font for ru /system/fonts/PICOSans.ttf
+09-07 21:11:12.945  9890 24361 I WiVRn   : [2026-09-07 21:11:12.945] [WiVRn] [info] Font for ru /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:12.945  9890 24361 I WiVRn   : [2026-09-07 21:11:12.945] [WiVRn] [info] Font for ru /system/fonts/PICOSans.ttf
+09-07 21:11:12.945  9890 24361 I WiVRn   : [2026-09-07 21:11:12.945] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:12.945  9890 24361 I WiVRn   : [2026-09-07 21:11:12.945] [WiVRn] [info] Font for sk /system/fonts/Roboto-Regular.ttf
+09-07 21:11:12.945  9890 24361 I WiVRn   : [2026-09-07 21:11:12.945] [WiVRn] [info] Font for sk /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:12.945  9890 24361 I WiVRn   : [2026-09-07 21:11:12.945] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:12.945  9890 24361 I WiVRn   : [2026-09-07 21:11:12.945] [WiVRn] [info] Font for sk /system/fonts/Roboto-Regular.ttf
+09-07 21:11:12.945  9890 24361 I WiVRn   : [2026-09-07 21:11:12.945] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:12.945  9890 24361 I WiVRn   : [2026-09-07 21:11:12.945] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:12.945  9890 24361 I WiVRn   : [2026-09-07 21:11:12.945] [WiVRn] [info] Font for tr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:12.945  9890 24361 I WiVRn   : [2026-09-07 21:11:12.945] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:12.945  9890 24361 I WiVRn   : [2026-09-07 21:11:12.945] [WiVRn] [info] Font for tr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:12.945  9890 24361 I WiVRn   : [2026-09-07 21:11:12.945] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:12.945  9890 24361 I WiVRn   : [2026-09-07 21:11:12.945] [WiVRn] [info] Font for zh_CN /system/fonts/PICOSans.ttf
+09-07 21:11:12.945  9890 24361 I WiVRn   : [2026-09-07 21:11:12.945] [WiVRn] [info] Font for zh_CN /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:12.945  9890 24361 I WiVRn   : [2026-09-07 21:11:12.945] [WiVRn] [info] Font for zh_TW /system/fonts/PICOSans.ttf
+09-07 21:11:12.945  9890 24361 I WiVRn   : [2026-09-07 21:11:12.945] [WiVRn] [info] Font for zh_TW /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:12.949  9890 24361 I WiVRn   : [2026-09-07 21:11:12.949] [WiVRn] [info] Using font /system/fonts/PICOSans.ttf
+09-07 21:11:12.949  9890 24361 I WiVRn   : [2026-09-07 21:11:12.949] [WiVRn] [info] Using font /system/fonts/Roboto-Regular.ttf
+09-07 21:11:12.950  9890 24361 I WiVRn   : [2026-09-07 21:11:12.950] [WiVRn] [info] Using font /system/fonts/PICOSansVFJP.ttf
+09-07 21:11:12.966  9890 24361 I WiVRn   : [2026-09-07 21:11:12.966] [WiVRn] [info] Using font /system/fonts/NotoSansGeorgian-Regular.otf
+09-07 21:11:12.966  9890 24361 I WiVRn   : [2026-09-07 21:11:12.966] [WiVRn] [info] Using font /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:12.978  9890 24361 I WiVRn   : [2026-09-07 21:11:12.978] [WiVRn] [info] Performance level: CPU domain asked for sustained_high
+09-07 21:11:12.978  9890 24361 I WiVRn   : [2026-09-07 21:11:12.978] [WiVRn] [info] nxwarp: GPU performance level setting 2
+09-07 21:11:12.978  9890 24361 I WiVRn   : [2026-09-07 21:11:12.978] [WiVRn] [info] Performance level: GPU domain asked for boost
+09-07 21:11:13.003  9890 24361 I WiVRn   : [2026-09-07 21:11:13.003] [WiVRn] [info] Received event type Unknown
+09-07 21:11:13.208  9890 24559 I WiVRn   : [2026-09-07 21:11:13.208] [WiVRn] [info] Tracking pattern (11111µs):
+09-07 21:11:13.209  9890 24559 I WiVRn   : [2026-09-07 21:11:13.209] [WiVRn] [info] 	t+5111µs HEAD (6000µs)
+09-07 21:11:13.209  9890 24559 I WiVRn   : [2026-09-07 21:11:13.209] [WiVRn] [info] 	t+8111µs HEAD (3000µs)
+09-07 21:11:13.209  9890 24559 I WiVRn   : [2026-09-07 21:11:13.209] [WiVRn] [info] 	t+11111µs HEAD (0µs)
+09-07 21:11:13.901  9890 24361 I WiVRn   : [2026-09-07 21:11:13.901] [WiVRn] [info] Performance level: GPU domain asked for sustained_low
+09-07 21:11:13.901  9890 24361 I WiVRn   : [2026-09-07 21:11:13.901] [WiVRn] [info] Performance level: CPU domain asked for sustained_low
+09-07 21:11:13.920  9890 24361 I WiVRn   : [2026-09-07 21:11:13.920] [WiVRn] [info] Using panel size: 2160x2160
+09-07 21:11:13.921  9890 24361 I WiVRn   : [2026-09-07 21:11:13.921] [WiVRn] [info] Loaded input profile pico-4
+09-07 21:11:13.921  9890 24361 I WiVRn   : [2026-09-07 21:11:13.921] [WiVRn] [info] Initializing offset of space aim_left to (-5, 0, 20) mm, (0, -0, 0)°
+09-07 21:11:13.921  9890 24361 I WiVRn   : [2026-09-07 21:11:13.921] [WiVRn] [info] Initializing offset of space aim_right to (5, 0, 20) mm, (0, -0, 0)°
+09-07 21:11:13.921  9890 24361 I WiVRn   : [2026-09-07 21:11:13.921] [WiVRn] [info] Initializing offset of space grip_left to (0, -20, -50) mm, (-30.000002, -0, 0)°
+09-07 21:11:13.921  9890 24361 I WiVRn   : [2026-09-07 21:11:13.921] [WiVRn] [info] Initializing offset of space grip_right to (0, -20, -50) mm, (-30.000002, -0, 0)°
+09-07 21:11:13.923  9890 24361 I WiVRn   : [2026-09-07 21:11:13.923] [WiVRn] [info] Font for de /system/fonts/PICOSans.ttf
+09-07 21:11:13.923  9890 24361 I WiVRn   : [2026-09-07 21:11:13.923] [WiVRn] [info] Font for es /system/fonts/PICOSans.ttf
+09-07 21:11:13.923  9890 24361 I WiVRn   : [2026-09-07 21:11:13.923] [WiVRn] [info] Font for fr /system/fonts/PICOSans.ttf
+09-07 21:11:13.923  9890 24361 I WiVRn   : [2026-09-07 21:11:13.923] [WiVRn] [info] Font for fr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:13.923  9890 24361 I WiVRn   : [2026-09-07 21:11:13.923] [WiVRn] [info] Font for it /system/fonts/PICOSans.ttf
+09-07 21:11:13.924  9890 24361 I WiVRn   : [2026-09-07 21:11:13.924] [WiVRn] [info] Font for ja /system/fonts/PICOSans.ttf
+09-07 21:11:13.924  9890 24361 I WiVRn   : [2026-09-07 21:11:13.924] [WiVRn] [info] Font for ja /system/fonts/PICOSansVFJP.ttf
+09-07 21:11:13.924  9890 24361 I WiVRn   : [2026-09-07 21:11:13.924] [WiVRn] [info] Font for ka /system/fonts/PICOSans.ttf
+09-07 21:11:13.924  9890 24361 I WiVRn   : [2026-09-07 21:11:13.924] [WiVRn] [info] Font for ka /system/fonts/NotoSansGeorgian-Regular.otf
+09-07 21:11:13.924  9890 24361 I WiVRn   : [2026-09-07 21:11:13.924] [WiVRn] [info] Font for ka /system/fonts/PICOSans.ttf
+09-07 21:11:13.924  9890 24361 I WiVRn   : [2026-09-07 21:11:13.924] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:13.924  9890 24361 I WiVRn   : [2026-09-07 21:11:13.924] [WiVRn] [info] Font for pl /system/fonts/Roboto-Regular.ttf
+09-07 21:11:13.924  9890 24361 I WiVRn   : [2026-09-07 21:11:13.924] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:13.924  9890 24361 I WiVRn   : [2026-09-07 21:11:13.924] [WiVRn] [info] Font for pl /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:13.924  9890 24361 I WiVRn   : [2026-09-07 21:11:13.924] [WiVRn] [info] Font for pl /system/fonts/Roboto-Regular.ttf
+09-07 21:11:13.924  9890 24361 I WiVRn   : [2026-09-07 21:11:13.924] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:13.924  9890 24361 I WiVRn   : [2026-09-07 21:11:13.924] [WiVRn] [info] Font for pt_BR /system/fonts/PICOSans.ttf
+09-07 21:11:13.924  9890 24361 I WiVRn   : [2026-09-07 21:11:13.924] [WiVRn] [info] Font for ru /system/fonts/PICOSans.ttf
+09-07 21:11:13.924  9890 24361 I WiVRn   : [2026-09-07 21:11:13.924] [WiVRn] [info] Font for ru /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:13.924  9890 24361 I WiVRn   : [2026-09-07 21:11:13.924] [WiVRn] [info] Font for ru /system/fonts/PICOSans.ttf
+09-07 21:11:13.924  9890 24361 I WiVRn   : [2026-09-07 21:11:13.924] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:13.924  9890 24361 I WiVRn   : [2026-09-07 21:11:13.924] [WiVRn] [info] Font for sk /system/fonts/Roboto-Regular.ttf
+09-07 21:11:13.924  9890 24361 I WiVRn   : [2026-09-07 21:11:13.924] [WiVRn] [info] Font for sk /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:13.924  9890 24361 I WiVRn   : [2026-09-07 21:11:13.924] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:13.924  9890 24361 I WiVRn   : [2026-09-07 21:11:13.924] [WiVRn] [info] Font for sk /system/fonts/Roboto-Regular.ttf
+09-07 21:11:13.924  9890 24361 I WiVRn   : [2026-09-07 21:11:13.924] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:13.924  9890 24361 I WiVRn   : [2026-09-07 21:11:13.924] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:13.924  9890 24361 I WiVRn   : [2026-09-07 21:11:13.924] [WiVRn] [info] Font for tr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:13.924  9890 24361 I WiVRn   : [2026-09-07 21:11:13.924] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:13.924  9890 24361 I WiVRn   : [2026-09-07 21:11:13.924] [WiVRn] [info] Font for tr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:13.924  9890 24361 I WiVRn   : [2026-09-07 21:11:13.924] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:13.924  9890 24361 I WiVRn   : [2026-09-07 21:11:13.924] [WiVRn] [info] Font for zh_CN /system/fonts/PICOSans.ttf
+09-07 21:11:13.924  9890 24361 I WiVRn   : [2026-09-07 21:11:13.924] [WiVRn] [info] Font for zh_CN /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:13.925  9890 24361 I WiVRn   : [2026-09-07 21:11:13.925] [WiVRn] [info] Font for zh_TW /system/fonts/PICOSans.ttf
+09-07 21:11:13.925  9890 24361 I WiVRn   : [2026-09-07 21:11:13.925] [WiVRn] [info] Font for zh_TW /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:13.928  9890 24361 I WiVRn   : [2026-09-07 21:11:13.928] [WiVRn] [info] Using font /system/fonts/PICOSans.ttf
+09-07 21:11:13.929  9890 24361 I WiVRn   : [2026-09-07 21:11:13.929] [WiVRn] [info] Using font /system/fonts/Roboto-Regular.ttf
+09-07 21:11:13.929  9890 24361 I WiVRn   : [2026-09-07 21:11:13.929] [WiVRn] [info] Using font /system/fonts/PICOSansVFJP.ttf
+09-07 21:11:13.945  9890 24361 I WiVRn   : [2026-09-07 21:11:13.945] [WiVRn] [info] Using font /system/fonts/NotoSansGeorgian-Regular.otf
+09-07 21:11:13.945  9890 24361 I WiVRn   : [2026-09-07 21:11:13.945] [WiVRn] [info] Using font /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:13.968  9890 24361 I WiVRn   : [2026-09-07 21:11:13.968] [WiVRn] [info] MulticastLock acquired
+09-07 21:11:13.969  9890 24361 I WiVRn   : [2026-09-07 21:11:13.969] [WiVRn] [info] Local IPv6 address: 2003:c2:3701:81fc:b3c8:aefc:7af2:8a5a
+09-07 21:11:13.969  9890 24361 I WiVRn   : [2026-09-07 21:11:13.969] [WiVRn] [info] Local IPv6 address: 2003:c2:3701:81fc:616a:1ec4:5f3c:1dd5
+09-07 21:11:13.969  9890 24361 I WiVRn   : [2026-09-07 21:11:13.969] [WiVRn] [info] Local IPv6 address: fd3c:3d87:86b7:0:c7ff:60cd:b757:e773
+09-07 21:11:13.969  9890 24361 I WiVRn   : [2026-09-07 21:11:13.969] [WiVRn] [info] Local IPv6 address: fd3c:3d87:86b7:0:616a:1ec4:5f3c:1dd5
+09-07 21:11:13.969  9890 24361 I WiVRn   : [2026-09-07 21:11:13.969] [WiVRn] [info] Local IPv4 address: 192.168.1.248
+09-07 21:11:13.969  9890 24361 W WiVRn   : [2026-09-07 21:11:13.969] [WiVRn] [warning] unknown family 17
+09-07 21:11:13.969  9890 25577 I WiVRn   : [2026-09-07 21:11:13.969] [WiVRn] [info] Sending query for _wivrn._tcp.local., type PTR
+09-07 21:11:13.969  9890 24361 I WiVRn   : [2026-09-07 21:11:13.969] [WiVRn] [info] Performance level: CPU domain asked for sustained_high
+09-07 21:11:13.969  9890 24361 I WiVRn   : [2026-09-07 21:11:13.969] [WiVRn] [info] Performance level: GPU domain asked for boost
+09-07 21:11:14.073  9890 24361 I WiVRn   : [2026-09-07 21:11:14.073] [WiVRn] [info] Received event type Unknown
+09-07 21:11:14.208  9890 24559 I WiVRn   : [2026-09-07 21:11:14.208] [WiVRn] [info] Tracking pattern (11108µs):
+09-07 21:11:14.208  9890 24559 I WiVRn   : [2026-09-07 21:11:14.208] [WiVRn] [info] 	t+1716µs HEAD (9392µs)
+09-07 21:11:14.208  9890 24559 I WiVRn   : [2026-09-07 21:11:14.208] [WiVRn] [info] 	t+4716µs HEAD (6392µs)
+09-07 21:11:14.208  9890 24559 I WiVRn   : [2026-09-07 21:11:14.208] [WiVRn] [info] 	t+7716µs HEAD (3392µs)
+09-07 21:11:14.208  9890 24559 I WiVRn   : [2026-09-07 21:11:14.208] [WiVRn] [info] 	t+9825µs HEAD (12392µs)
+09-07 21:11:14.208  9890 24559 I WiVRn   : [2026-09-07 21:11:14.208] [WiVRn] [info] 	t+10716µs HEAD (392µs)
+09-07 21:11:14.573  9890 24540 I WiVRn   : [2026-09-07 21:11:14.573] [WiVRn] [info] nxwarp[0] net: 102 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 7802 decoded so far, 9304 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 21:11:14.573  9890 24540 I WiVRn   : [2026-09-07 21:11:14.573] [WiVRn] [info] nxwarp[0] net: 0.007 ms per datagram over 8255 datagrams (30.74 ms of every second)
+09-07 21:11:14.573  9890 24540 I WiVRn   : [2026-09-07 21:11:14.573] [WiVRn] [info] nxwarp[0] sel: stride 3, arrival 21.7 ms, dropped-late 1402, withheld 801, decoded 7802
+09-07 21:11:14.573  9890 24540 I WiVRn   : [2026-09-07 21:11:14.573] [WiVRn] [info] nxwarp[0] rx: 135300 datagrams, placed 394077 (+8931), late 831 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 1
+09-07 21:11:14.741  9890 24557 I WiVRn   : [2026-09-07 21:11:14.741] [WiVRn] [info] Stream scene ready at t=78108110899109
+09-07 21:11:14.766  9890 24361 I WiVRn   : [2026-09-07 21:11:14.766] [WiVRn] [info] MulticastLock released
+09-07 21:11:14.794  9890 24361 I WiVRn   : [2026-09-07 21:11:14.794] [WiVRn] [info] Loaded input profile pico-4
+09-07 21:11:14.794  9890 24361 I WiVRn   : [2026-09-07 21:11:14.794] [WiVRn] [info] Initializing offset of space aim_left to (-5, 0, 20) mm, (0, -0, 0)°
+09-07 21:11:14.794  9890 24361 I WiVRn   : [2026-09-07 21:11:14.794] [WiVRn] [info] Initializing offset of space aim_right to (5, 0, 20) mm, (0, -0, 0)°
+09-07 21:11:14.794  9890 24361 I WiVRn   : [2026-09-07 21:11:14.794] [WiVRn] [info] Initializing offset of space grip_left to (0, -20, -50) mm, (-30.000002, -0, 0)°
+09-07 21:11:14.794  9890 24361 I WiVRn   : [2026-09-07 21:11:14.794] [WiVRn] [info] Initializing offset of space grip_right to (0, -20, -50) mm, (-30.000002, -0, 0)°
+09-07 21:11:14.796  9890 24361 I WiVRn   : [2026-09-07 21:11:14.796] [WiVRn] [info] Font for de /system/fonts/PICOSans.ttf
+09-07 21:11:14.796  9890 24361 I WiVRn   : [2026-09-07 21:11:14.796] [WiVRn] [info] Font for es /system/fonts/PICOSans.ttf
+09-07 21:11:14.796  9890 24361 I WiVRn   : [2026-09-07 21:11:14.796] [WiVRn] [info] Font for fr /system/fonts/PICOSans.ttf
+09-07 21:11:14.796  9890 24361 I WiVRn   : [2026-09-07 21:11:14.796] [WiVRn] [info] Font for fr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:14.796  9890 24361 I WiVRn   : [2026-09-07 21:11:14.796] [WiVRn] [info] Font for it /system/fonts/PICOSans.ttf
+09-07 21:11:14.796  9890 24361 I WiVRn   : [2026-09-07 21:11:14.796] [WiVRn] [info] Font for ja /system/fonts/PICOSans.ttf
+09-07 21:11:14.796  9890 24361 I WiVRn   : [2026-09-07 21:11:14.796] [WiVRn] [info] Font for ja /system/fonts/PICOSansVFJP.ttf
+09-07 21:11:14.796  9890 24361 I WiVRn   : [2026-09-07 21:11:14.796] [WiVRn] [info] Font for ka /system/fonts/PICOSans.ttf
+09-07 21:11:14.796  9890 24361 I WiVRn   : [2026-09-07 21:11:14.796] [WiVRn] [info] Font for ka /system/fonts/NotoSansGeorgian-Regular.otf
+09-07 21:11:14.796  9890 24361 I WiVRn   : [2026-09-07 21:11:14.796] [WiVRn] [info] Font for ka /system/fonts/PICOSans.ttf
+09-07 21:11:14.796  9890 24361 I WiVRn   : [2026-09-07 21:11:14.796] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:14.796  9890 24361 I WiVRn   : [2026-09-07 21:11:14.796] [WiVRn] [info] Font for pl /system/fonts/Roboto-Regular.ttf
+09-07 21:11:14.796  9890 24361 I WiVRn   : [2026-09-07 21:11:14.796] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:14.796  9890 24361 I WiVRn   : [2026-09-07 21:11:14.796] [WiVRn] [info] Font for pl /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:14.796  9890 24361 I WiVRn   : [2026-09-07 21:11:14.796] [WiVRn] [info] Font for pl /system/fonts/Roboto-Regular.ttf
+09-07 21:11:14.796  9890 24361 I WiVRn   : [2026-09-07 21:11:14.796] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:14.796  9890 24361 I WiVRn   : [2026-09-07 21:11:14.796] [WiVRn] [info] Font for pt_BR /system/fonts/PICOSans.ttf
+09-07 21:11:14.796  9890 24361 I WiVRn   : [2026-09-07 21:11:14.796] [WiVRn] [info] Font for ru /system/fonts/PICOSans.ttf
+09-07 21:11:14.796  9890 24361 I WiVRn   : [2026-09-07 21:11:14.796] [WiVRn] [info] Font for ru /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:14.796  9890 24361 I WiVRn   : [2026-09-07 21:11:14.796] [WiVRn] [info] Font for ru /system/fonts/PICOSans.ttf
+09-07 21:11:14.796  9890 24361 I WiVRn   : [2026-09-07 21:11:14.796] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:14.796  9890 24361 I WiVRn   : [2026-09-07 21:11:14.796] [WiVRn] [info] Font for sk /system/fonts/Roboto-Regular.ttf
+09-07 21:11:14.796  9890 24361 I WiVRn   : [2026-09-07 21:11:14.796] [WiVRn] [info] Font for sk /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:14.796  9890 24361 I WiVRn   : [2026-09-07 21:11:14.796] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:14.796  9890 24361 I WiVRn   : [2026-09-07 21:11:14.796] [WiVRn] [info] Font for sk /system/fonts/Roboto-Regular.ttf
+09-07 21:11:14.796  9890 24361 I WiVRn   : [2026-09-07 21:11:14.796] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:14.797  9890 24361 I WiVRn   : [2026-09-07 21:11:14.797] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:14.797  9890 24361 I WiVRn   : [2026-09-07 21:11:14.797] [WiVRn] [info] Font for tr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:14.797  9890 24361 I WiVRn   : [2026-09-07 21:11:14.797] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:14.797  9890 24361 I WiVRn   : [2026-09-07 21:11:14.797] [WiVRn] [info] Font for tr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:14.797  9890 24361 I WiVRn   : [2026-09-07 21:11:14.797] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:14.797  9890 24361 I WiVRn   : [2026-09-07 21:11:14.797] [WiVRn] [info] Font for zh_CN /system/fonts/PICOSans.ttf
+09-07 21:11:14.797  9890 24361 I WiVRn   : [2026-09-07 21:11:14.797] [WiVRn] [info] Font for zh_CN /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:14.797  9890 24361 I WiVRn   : [2026-09-07 21:11:14.797] [WiVRn] [info] Font for zh_TW /system/fonts/PICOSans.ttf
+09-07 21:11:14.797  9890 24361 I WiVRn   : [2026-09-07 21:11:14.797] [WiVRn] [info] Font for zh_TW /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:14.802  9890 24361 I WiVRn   : [2026-09-07 21:11:14.802] [WiVRn] [info] Using font /system/fonts/PICOSans.ttf
+09-07 21:11:14.802  9890 24361 I WiVRn   : [2026-09-07 21:11:14.802] [WiVRn] [info] Using font /system/fonts/Roboto-Regular.ttf
+09-07 21:11:14.802  9890 24361 I WiVRn   : [2026-09-07 21:11:14.802] [WiVRn] [info] Using font /system/fonts/PICOSansVFJP.ttf
+09-07 21:11:14.823  9890 24361 I WiVRn   : [2026-09-07 21:11:14.823] [WiVRn] [info] Using font /system/fonts/NotoSansGeorgian-Regular.otf
+09-07 21:11:14.823  9890 24361 I WiVRn   : [2026-09-07 21:11:14.823] [WiVRn] [info] Using font /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:14.831  9890 24361 I WiVRn   : [2026-09-07 21:11:14.831] [WiVRn] [info] Performance level: CPU domain asked for sustained_high
+09-07 21:11:14.831  9890 24361 I WiVRn   : [2026-09-07 21:11:14.831] [WiVRn] [info] nxwarp: GPU performance level setting 2
+09-07 21:11:14.831  9890 24361 I WiVRn   : [2026-09-07 21:11:14.831] [WiVRn] [info] Performance level: GPU domain asked for boost
+09-07 21:11:14.856  9890 24557 I WiVRn   : [2026-09-07 21:11:14.856] [WiVRn] [info] nxwarp[0]: 33 frames in 2.0 s: 2081 B/frame, wait-prev 0.0 ms, wall 34.1 ms, nxvc passA 2.2 passB 29.5 gpu 31.7 ms; holes 0, refused 0
+09-07 21:11:14.856  9890 24557 I WiVRn   : [2026-09-07 21:11:14.856] [WiVRn] [info] nxwarp[0] gpu duty 510 ms/s (51% of one GPU) for decode alone; the display pass is extra
+09-07 21:11:14.856  9890 24557 I WiVRn   : [2026-09-07 21:11:14.856] [WiVRn] [info] nxwarp[0] passB 29.5 ms = warp 0.0 + skip 5.4 + coded 2.3 + dir 0.0 + other 21.8; tiles skip 445 / coded 104 / dir 0 (eye pass 0)
+09-07 21:11:14.856  9890 24557 I WiVRn   : [2026-09-07 21:11:14.856] [WiVRn] [info] nxwarp[0]: 1408 frames dropped late (queue kept to 1)
+09-07 21:11:14.856  9890 24557 I WiVRn   : [2026-09-07 21:11:14.856] [WiVRn] [info] nxwarp[0] stage: gap 28.0 | wait-prev 0.0 | submit 1.4 (qlock 0.0 + codec 1.4) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 32.7 | publish 0.0 ms; withheld 31, stride 2, arrival 26.1 ms
+09-07 21:11:14.856  9890 24557 I WiVRn   : [2026-09-07 21:11:14.856] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.01 ms/frame over 92 frames, buffer 2 kB held for 2 kB of unit (1.0x)
+09-07 21:11:14.856  9890 24557 I WiVRn   : [2026-09-07 21:11:14.856] [WiVRn] [info] nxwarp[0] fence-post 32.7 ms = nxvc gpu 31.7 + copy gpu 0.59 + queue 0.4 (over 33 frames with timestamps)
+09-07 21:11:14.856  9890 24557 I WiVRn   : [2026-09-07 21:11:14.856] [WiVRn] [info] nxwarp[0] atlas: frames 33, atlas 0, picture 33, avg dispatches 8.0, avg assembled 578.0, avg valid 578.0
+09-07 21:11:14.879  9890 24361 I WiVRn   : [2026-09-07 21:11:14.879] [WiVRn] [info] Received event type Unknown
+09-07 21:11:15.208  9890 24559 I WiVRn   : [2026-09-07 21:11:15.208] [WiVRn] [info] Tracking pattern (11112µs):
+09-07 21:11:15.208  9890 24559 I WiVRn   : [2026-09-07 21:11:15.208] [WiVRn] [info] 	t+2112µs HEAD (9000µs)
+09-07 21:11:15.208  9890 24559 I WiVRn   : [2026-09-07 21:11:15.208] [WiVRn] [info] 	t+5112µs HEAD (6000µs)
+09-07 21:11:15.208  9890 24559 I WiVRn   : [2026-09-07 21:11:15.208] [WiVRn] [info] 	t+7225µs HEAD (15000µs)
+09-07 21:11:15.208  9890 24559 I WiVRn   : [2026-09-07 21:11:15.208] [WiVRn] [info] 	t+8112µs HEAD (3000µs)
+09-07 21:11:15.208  9890 24559 I WiVRn   : [2026-09-07 21:11:15.208] [WiVRn] [info] 	t+10225µs HEAD (12000µs)
+09-07 21:11:15.208  9890 24559 I WiVRn   : [2026-09-07 21:11:15.208] [WiVRn] [info] 	t+11112µs HEAD (0µs)
+09-07 21:11:15.753  9890 24361 I WiVRn   : [2026-09-07 21:11:15.753] [WiVRn] [info] Performance level: GPU domain asked for sustained_low
+09-07 21:11:15.753  9890 24361 I WiVRn   : [2026-09-07 21:11:15.753] [WiVRn] [info] Performance level: CPU domain asked for sustained_low
+09-07 21:11:15.754  9890 24361 I WiVRn   : [2026-09-07 21:11:15.754] [WiVRn] [info] Using panel size: 2160x2160
+09-07 21:11:15.755  9890 24361 I WiVRn   : [2026-09-07 21:11:15.755] [WiVRn] [info] Loaded input profile pico-4
+09-07 21:11:15.755  9890 24361 I WiVRn   : [2026-09-07 21:11:15.755] [WiVRn] [info] Initializing offset of space aim_left to (-5, 0, 20) mm, (0, -0, 0)°
+09-07 21:11:15.755  9890 24361 I WiVRn   : [2026-09-07 21:11:15.755] [WiVRn] [info] Initializing offset of space aim_right to (5, 0, 20) mm, (0, -0, 0)°
+09-07 21:11:15.755  9890 24361 I WiVRn   : [2026-09-07 21:11:15.755] [WiVRn] [info] Initializing offset of space grip_left to (0, -20, -50) mm, (-30.000002, -0, 0)°
+09-07 21:11:15.755  9890 24361 I WiVRn   : [2026-09-07 21:11:15.755] [WiVRn] [info] Initializing offset of space grip_right to (0, -20, -50) mm, (-30.000002, -0, 0)°
+09-07 21:11:15.789  9890 24361 I WiVRn   : [2026-09-07 21:11:15.789] [WiVRn] [info] Font for de /system/fonts/PICOSans.ttf
+09-07 21:11:15.789  9890 24361 I WiVRn   : [2026-09-07 21:11:15.789] [WiVRn] [info] Font for es /system/fonts/PICOSans.ttf
+09-07 21:11:15.789  9890 24361 I WiVRn   : [2026-09-07 21:11:15.789] [WiVRn] [info] Font for fr /system/fonts/PICOSans.ttf
+09-07 21:11:15.789  9890 24361 I WiVRn   : [2026-09-07 21:11:15.789] [WiVRn] [info] Font for fr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:15.789  9890 24361 I WiVRn   : [2026-09-07 21:11:15.789] [WiVRn] [info] Font for it /system/fonts/PICOSans.ttf
+09-07 21:11:15.789  9890 24361 I WiVRn   : [2026-09-07 21:11:15.789] [WiVRn] [info] Font for ja /system/fonts/PICOSans.ttf
+09-07 21:11:15.789  9890 24361 I WiVRn   : [2026-09-07 21:11:15.789] [WiVRn] [info] Font for ja /system/fonts/PICOSansVFJP.ttf
+09-07 21:11:15.789  9890 24361 I WiVRn   : [2026-09-07 21:11:15.789] [WiVRn] [info] Font for ka /system/fonts/PICOSans.ttf
+09-07 21:11:15.789  9890 24361 I WiVRn   : [2026-09-07 21:11:15.789] [WiVRn] [info] Font for ka /system/fonts/NotoSansGeorgian-Regular.otf
+09-07 21:11:15.789  9890 24361 I WiVRn   : [2026-09-07 21:11:15.789] [WiVRn] [info] Font for ka /system/fonts/PICOSans.ttf
+09-07 21:11:15.789  9890 24361 I WiVRn   : [2026-09-07 21:11:15.789] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:15.789  9890 24361 I WiVRn   : [2026-09-07 21:11:15.789] [WiVRn] [info] Font for pl /system/fonts/Roboto-Regular.ttf
+09-07 21:11:15.789  9890 24361 I WiVRn   : [2026-09-07 21:11:15.789] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:15.789  9890 24361 I WiVRn   : [2026-09-07 21:11:15.789] [WiVRn] [info] Font for pl /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:15.789  9890 24361 I WiVRn   : [2026-09-07 21:11:15.789] [WiVRn] [info] Font for pl /system/fonts/Roboto-Regular.ttf
+09-07 21:11:15.789  9890 24361 I WiVRn   : [2026-09-07 21:11:15.789] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:15.789  9890 24361 I WiVRn   : [2026-09-07 21:11:15.789] [WiVRn] [info] Font for pt_BR /system/fonts/PICOSans.ttf
+09-07 21:11:15.789  9890 24361 I WiVRn   : [2026-09-07 21:11:15.789] [WiVRn] [info] Font for ru /system/fonts/PICOSans.ttf
+09-07 21:11:15.789  9890 24361 I WiVRn   : [2026-09-07 21:11:15.789] [WiVRn] [info] Font for ru /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:15.789  9890 24361 I WiVRn   : [2026-09-07 21:11:15.789] [WiVRn] [info] Font for ru /system/fonts/PICOSans.ttf
+09-07 21:11:15.789  9890 24361 I WiVRn   : [2026-09-07 21:11:15.789] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:15.789  9890 24361 I WiVRn   : [2026-09-07 21:11:15.789] [WiVRn] [info] Font for sk /system/fonts/Roboto-Regular.ttf
+09-07 21:11:15.789  9890 24361 I WiVRn   : [2026-09-07 21:11:15.789] [WiVRn] [info] Font for sk /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:15.789  9890 24361 I WiVRn   : [2026-09-07 21:11:15.789] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:15.789  9890 24361 I WiVRn   : [2026-09-07 21:11:15.789] [WiVRn] [info] Font for sk /system/fonts/Roboto-Regular.ttf
+09-07 21:11:15.789  9890 24361 I WiVRn   : [2026-09-07 21:11:15.789] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:15.789  9890 24361 I WiVRn   : [2026-09-07 21:11:15.789] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:15.789  9890 24361 I WiVRn   : [2026-09-07 21:11:15.789] [WiVRn] [info] Font for tr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:15.789  9890 24361 I WiVRn   : [2026-09-07 21:11:15.789] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:15.789  9890 24361 I WiVRn   : [2026-09-07 21:11:15.789] [WiVRn] [info] Font for tr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:15.789  9890 24361 I WiVRn   : [2026-09-07 21:11:15.789] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:15.790  9890 24361 I WiVRn   : [2026-09-07 21:11:15.790] [WiVRn] [info] Font for zh_CN /system/fonts/PICOSans.ttf
+09-07 21:11:15.790  9890 24361 I WiVRn   : [2026-09-07 21:11:15.790] [WiVRn] [info] Font for zh_CN /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:15.790  9890 24361 I WiVRn   : [2026-09-07 21:11:15.790] [WiVRn] [info] Font for zh_TW /system/fonts/PICOSans.ttf
+09-07 21:11:15.790  9890 24361 I WiVRn   : [2026-09-07 21:11:15.790] [WiVRn] [info] Font for zh_TW /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:15.794  9890 24361 I WiVRn   : [2026-09-07 21:11:15.794] [WiVRn] [info] Using font /system/fonts/PICOSans.ttf
+09-07 21:11:15.794  9890 24361 I WiVRn   : [2026-09-07 21:11:15.794] [WiVRn] [info] Using font /system/fonts/Roboto-Regular.ttf
+09-07 21:11:15.794  9890 24361 I WiVRn   : [2026-09-07 21:11:15.794] [WiVRn] [info] Using font /system/fonts/PICOSansVFJP.ttf
+09-07 21:11:15.809  9890 24361 I WiVRn   : [2026-09-07 21:11:15.809] [WiVRn] [info] Using font /system/fonts/NotoSansGeorgian-Regular.otf
+09-07 21:11:15.809  9890 24361 I WiVRn   : [2026-09-07 21:11:15.809] [WiVRn] [info] Using font /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:15.843  9890 24361 I WiVRn   : [2026-09-07 21:11:15.843] [WiVRn] [info] MulticastLock acquired
+09-07 21:11:15.843  9890 24361 I WiVRn   : [2026-09-07 21:11:15.843] [WiVRn] [info] Local IPv6 address: 2003:c2:3701:81fc:b3c8:aefc:7af2:8a5a
+09-07 21:11:15.843  9890 24361 I WiVRn   : [2026-09-07 21:11:15.843] [WiVRn] [info] Local IPv6 address: 2003:c2:3701:81fc:616a:1ec4:5f3c:1dd5
+09-07 21:11:15.843  9890 24361 I WiVRn   : [2026-09-07 21:11:15.843] [WiVRn] [info] Local IPv6 address: fd3c:3d87:86b7:0:c7ff:60cd:b757:e773
+09-07 21:11:15.843  9890 24361 I WiVRn   : [2026-09-07 21:11:15.843] [WiVRn] [info] Local IPv6 address: fd3c:3d87:86b7:0:616a:1ec4:5f3c:1dd5
+09-07 21:11:15.843  9890 24361 I WiVRn   : [2026-09-07 21:11:15.843] [WiVRn] [info] Local IPv4 address: 192.168.1.248
+09-07 21:11:15.843  9890 24361 W WiVRn   : [2026-09-07 21:11:15.843] [WiVRn] [warning] unknown family 17
+09-07 21:11:15.844  9890 25608 I WiVRn   : [2026-09-07 21:11:15.844] [WiVRn] [info] Sending query for _wivrn._tcp.local., type PTR
+09-07 21:11:15.844  9890 24361 I WiVRn   : [2026-09-07 21:11:15.844] [WiVRn] [info] Performance level: CPU domain asked for sustained_high
+09-07 21:11:15.844  9890 24361 I WiVRn   : [2026-09-07 21:11:15.844] [WiVRn] [info] Performance level: GPU domain asked for boost
+09-07 21:11:15.950  9890 24361 I WiVRn   : [2026-09-07 21:11:15.950] [WiVRn] [info] Received event type Unknown
+09-07 21:11:16.007  9890 24361 I WiVRn   : [2026-09-07 21:11:16.007] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_FOCUSED => XR_SESSION_STATE_VISIBLE
+09-07 21:11:16.007  9890 24361 I WiVRn   : [2026-09-07 21:11:16.007] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_VISIBLE => XR_SESSION_STATE_SYNCHRONIZED
+09-07 21:11:16.007  9890 24361 I WiVRn   : [2026-09-07 21:11:16.007] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_SYNCHRONIZED => XR_SESSION_STATE_STOPPING
+09-07 21:11:16.012  9890 24361 I WiVRn   : [2026-09-07 21:11:16.012] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_STOPPING => XR_SESSION_STATE_IDLE
+09-07 21:11:16.228  9890 24559 I WiVRn   : [2026-09-07 21:11:16.228] [WiVRn] [info] Tracking pattern (11111µs):
+09-07 21:11:16.229  9890 24559 I WiVRn   : [2026-09-07 21:11:16.229] [WiVRn] [info] 	t+3643µs HEAD (29690µs)
+09-07 21:11:16.229  9890 24559 I WiVRn   : [2026-09-07 21:11:16.229] [WiVRn] [info] 	t+6643µs HEAD (26690µs)
+09-07 21:11:16.588  9890 24540 I WiVRn   : [2026-09-07 21:11:16.587] [WiVRn] [info] nxwarp[0] net: 163 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 7880 decoded so far, 9472 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 21:11:16.588  9890 24540 I WiVRn   : [2026-09-07 21:11:16.588] [WiVRn] [info] nxwarp[0] net: 0.033 ms per datagram over 2696 datagrams (44.26 ms of every second)
+09-07 21:11:16.588  9890 24540 I WiVRn   : [2026-09-07 21:11:16.588] [WiVRn] [info] nxwarp[0] sel: stride 2, arrival 10.6 ms, dropped-late 1486, withheld 878, decoded 7880
+09-07 21:11:16.588  9890 24540 I WiVRn   : [2026-09-07 21:11:16.588] [WiVRn] [info] nxwarp[0] rx: 137996 datagrams, placed 396730 (+2653), late 831 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 1
+09-07 21:11:16.878  9890 24557 I WiVRn   : [2026-09-07 21:11:16.878] [WiVRn] [info] nxwarp[0]: 86 frames in 2.0 s: 768 B/frame, wait-prev 0.0 ms, wall 22.7 ms, nxvc passA 1.1 passB 18.1 gpu 19.2 ms; holes 0, refused 0
+09-07 21:11:16.878  9890 24557 I WiVRn   : [2026-09-07 21:11:16.878] [WiVRn] [info] nxwarp[0] gpu duty 818 ms/s (82% of one GPU) for decode alone; the display pass is extra
+09-07 21:11:16.878  9890 24557 I WiVRn   : [2026-09-07 21:11:16.878] [WiVRn] [info] nxwarp[0] passB 18.1 ms = warp 0.0 + skip 4.4 + coded 0.2 + dir 0.0 + other 13.5; tiles skip 562 / coded 16 / dir 0 (eye pass 0)
+09-07 21:11:16.878  9890 24557 I WiVRn   : [2026-09-07 21:11:16.878] [WiVRn] [info] nxwarp[0]: 1499 frames dropped late (queue kept to 1)
+09-07 21:11:16.878  9890 24557 I WiVRn   : [2026-09-07 21:11:16.878] [WiVRn] [info] nxwarp[0] stage: gap 0.8 | wait-prev 0.0 | submit 3.0 (qlock 0.0 + codec 3.0) | get_free 0.0 | fence-pre 0.0 | record 0.1 | qsubmit 0.0 | fence-post 19.5 | publish 0.0 ms; withheld 86, stride 1, arrival 11.0 ms
+09-07 21:11:16.878  9890 24557 I WiVRn   : [2026-09-07 21:11:16.878] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.01 ms/frame over 177 frames, buffer 1 kB held for 1 kB of unit (1.0x)
+09-07 21:11:16.878  9890 24557 I WiVRn   : [2026-09-07 21:11:16.878] [WiVRn] [info] nxwarp[0] fence-post 19.6 ms = nxvc gpu 19.2 + copy gpu 0.32 + queue -0.0 (over 86 frames with timestamps)
+09-07 21:11:16.878  9890 24557 I WiVRn   : [2026-09-07 21:11:16.878] [WiVRn] [info] nxwarp[0] atlas: frames 86, atlas 0, picture 86, avg dispatches 8.0, avg assembled 578.0, avg valid 578.0
+09-07 21:11:17.234  9890 24559 I WiVRn   : [2026-09-07 21:11:17.234] [WiVRn] [info] Tracking pattern (11111µs):
+09-07 21:11:17.235  9890 24559 I WiVRn   : [2026-09-07 21:11:17.235] [WiVRn] [info] 	t+2229µs HEAD (19993µs)
+09-07 21:11:17.235  9890 24559 I WiVRn   : [2026-09-07 21:11:17.235] [WiVRn] [info] 	t+5229µs HEAD (16993µs)
+09-07 21:11:17.235  9890 24559 I WiVRn   : [2026-09-07 21:11:17.235] [WiVRn] [info] 	t+8229µs HEAD (13993µs)
+09-07 21:11:17.235  9890 24559 I WiVRn   : [2026-09-07 21:11:17.235] [WiVRn] [info] 	t+10340µs HEAD (22993µs)
+09-07 21:11:17.990  9890 24361 I WiVRn   : [2026-09-07 21:11:17.990] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_IDLE => XR_SESSION_STATE_READY
+09-07 21:11:17.991  9890 24361 I WiVRn   : [2026-09-07 21:11:17.991] [WiVRn] [info] Received event type Unknown
+09-07 21:11:17.991  9890 24361 I WiVRn   : [2026-09-07 21:11:17.991] [WiVRn] [info] Received event type XR_TYPE_EVENT_DATA_USER_PRESENCE_CHANGED_EXT
+09-07 21:11:17.993  9890 24361 I WiVRn   : [2026-09-07 21:11:17.993] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_READY => XR_SESSION_STATE_SYNCHRONIZED
+09-07 21:11:17.993  9890 24361 I WiVRn   : [2026-09-07 21:11:17.993] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_SYNCHRONIZED => XR_SESSION_STATE_VISIBLE
+09-07 21:11:17.993  9890 24361 I WiVRn   : [2026-09-07 21:11:17.993] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_VISIBLE => XR_SESSION_STATE_FOCUSED
+09-07 21:11:18.075  9890 24361 I WiVRn   : [2026-09-07 21:11:18.075] [WiVRn] [info] Received event type Unknown
+09-07 21:11:18.209  9890 24559 I WiVRn   : [2026-09-07 21:11:18.209] [WiVRn] [info] Tracking pattern (11111µs):
+09-07 21:11:18.209  9890 24559 I WiVRn   : [2026-09-07 21:11:18.209] [WiVRn] [info] 	t+8111µs HEAD (3000µs)
+09-07 21:11:18.209  9890 24559 I WiVRn   : [2026-09-07 21:11:18.209] [WiVRn] [info] 	t+11111µs HEAD (0µs)
+09-07 21:11:18.591  9890 24540 I WiVRn   : [2026-09-07 21:11:18.591] [WiVRn] [info] nxwarp[0] net: 166 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 7960 decoded so far, 9644 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 21:11:18.591  9890 24540 I WiVRn   : [2026-09-07 21:11:18.591] [WiVRn] [info] nxwarp[0] net: 0.041 ms per datagram over 3437 datagrams (70.88 ms of every second)
+09-07 21:11:18.591  9890 24540 I WiVRn   : [2026-09-07 21:11:18.591] [WiVRn] [info] nxwarp[0] sel: stride 2, arrival 10.7 ms, dropped-late 1572, withheld 957, decoded 7960
+09-07 21:11:18.591  9890 24540 I WiVRn   : [2026-09-07 21:11:18.591] [WiVRn] [info] nxwarp[0] rx: 141433 datagrams, placed 400438 (+3708), late 841 (+10), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 1
+09-07 21:11:18.889  9890 24557 I WiVRn   : [2026-09-07 21:11:18.889] [WiVRn] [info] nxwarp[0]: 77 frames in 2.0 s: 767 B/frame, wait-prev 0.0 ms, wall 24.9 ms, nxvc passA 1.2 passB 20.5 gpu 21.7 ms; holes 0, refused 0
+09-07 21:11:18.889  9890 24557 I WiVRn   : [2026-09-07 21:11:18.889] [WiVRn] [info] nxwarp[0] gpu duty 831 ms/s (83% of one GPU) for decode alone; the display pass is extra
+09-07 21:11:18.889  9890 24557 I WiVRn   : [2026-09-07 21:11:18.889] [WiVRn] [info] nxwarp[0] passB 20.5 ms = warp 0.0 + skip 4.7 + coded 0.3 + dir 0.0 + other 15.4; tiles skip 555 / coded 16 / dir 0 (eye pass 0)
+09-07 21:11:18.889  9890 24557 I WiVRn   : [2026-09-07 21:11:18.889] [WiVRn] [info] nxwarp[0]: 1590 frames dropped late (queue kept to 1)
+09-07 21:11:18.889  9890 24557 I WiVRn   : [2026-09-07 21:11:18.889] [WiVRn] [info] nxwarp[0] stage: gap 1.2 | wait-prev 0.0 | submit 2.6 (qlock 0.0 + codec 2.6) | get_free 0.0 | fence-pre 0.0 | record 0.1 | qsubmit 0.1 | fence-post 22.2 | publish 0.0 ms; withheld 76, stride 1, arrival 11.1 ms
+09-07 21:11:18.889  9890 24557 I WiVRn   : [2026-09-07 21:11:18.889] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.01 ms/frame over 168 frames, buffer 1 kB held for 1 kB of unit (1.0x)
+09-07 21:11:18.889  9890 24557 I WiVRn   : [2026-09-07 21:11:18.889] [WiVRn] [info] nxwarp[0] fence-post 22.3 ms = nxvc gpu 21.7 + copy gpu 0.35 + queue 0.2 (over 77 frames with timestamps)
+09-07 21:11:18.889  9890 24557 I WiVRn   : [2026-09-07 21:11:18.889] [WiVRn] [info] nxwarp[0] atlas: frames 77, atlas 0, picture 77, avg dispatches 8.0, avg assembled 578.0, avg valid 578.0
+09-07 21:11:18.958  9890 24557 I WiVRn   : [2026-09-07 21:11:18.958] [WiVRn] [info] Stream scene ready at t=78112327050462
+09-07 21:11:18.962  9890 24361 I WiVRn   : [2026-09-07 21:11:18.962] [WiVRn] [info] MulticastLock released
+09-07 21:11:18.992  9890 24361 I WiVRn   : [2026-09-07 21:11:18.992] [WiVRn] [info] Loaded input profile pico-4
+09-07 21:11:18.992  9890 24361 I WiVRn   : [2026-09-07 21:11:18.992] [WiVRn] [info] Initializing offset of space aim_left to (-5, 0, 20) mm, (0, -0, 0)°
+09-07 21:11:18.992  9890 24361 I WiVRn   : [2026-09-07 21:11:18.992] [WiVRn] [info] Initializing offset of space aim_right to (5, 0, 20) mm, (0, -0, 0)°
+09-07 21:11:18.992  9890 24361 I WiVRn   : [2026-09-07 21:11:18.992] [WiVRn] [info] Initializing offset of space grip_left to (0, -20, -50) mm, (-30.000002, -0, 0)°
+09-07 21:11:18.992  9890 24361 I WiVRn   : [2026-09-07 21:11:18.992] [WiVRn] [info] Initializing offset of space grip_right to (0, -20, -50) mm, (-30.000002, -0, 0)°
+09-07 21:11:18.994  9890 24361 I WiVRn   : [2026-09-07 21:11:18.994] [WiVRn] [info] Font for de /system/fonts/PICOSans.ttf
+09-07 21:11:18.994  9890 24361 I WiVRn   : [2026-09-07 21:11:18.994] [WiVRn] [info] Font for es /system/fonts/PICOSans.ttf
+09-07 21:11:18.994  9890 24361 I WiVRn   : [2026-09-07 21:11:18.994] [WiVRn] [info] Font for fr /system/fonts/PICOSans.ttf
+09-07 21:11:18.994  9890 24361 I WiVRn   : [2026-09-07 21:11:18.994] [WiVRn] [info] Font for fr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:18.994  9890 24361 I WiVRn   : [2026-09-07 21:11:18.994] [WiVRn] [info] Font for it /system/fonts/PICOSans.ttf
+09-07 21:11:18.994  9890 24361 I WiVRn   : [2026-09-07 21:11:18.994] [WiVRn] [info] Font for ja /system/fonts/PICOSans.ttf
+09-07 21:11:18.994  9890 24361 I WiVRn   : [2026-09-07 21:11:18.994] [WiVRn] [info] Font for ja /system/fonts/PICOSansVFJP.ttf
+09-07 21:11:18.994  9890 24361 I WiVRn   : [2026-09-07 21:11:18.994] [WiVRn] [info] Font for ka /system/fonts/PICOSans.ttf
+09-07 21:11:18.994  9890 24361 I WiVRn   : [2026-09-07 21:11:18.994] [WiVRn] [info] Font for ka /system/fonts/NotoSansGeorgian-Regular.otf
+09-07 21:11:18.994  9890 24361 I WiVRn   : [2026-09-07 21:11:18.994] [WiVRn] [info] Font for ka /system/fonts/PICOSans.ttf
+09-07 21:11:18.994  9890 24361 I WiVRn   : [2026-09-07 21:11:18.994] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:18.994  9890 24361 I WiVRn   : [2026-09-07 21:11:18.994] [WiVRn] [info] Font for pl /system/fonts/Roboto-Regular.ttf
+09-07 21:11:18.994  9890 24361 I WiVRn   : [2026-09-07 21:11:18.994] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:18.994  9890 24361 I WiVRn   : [2026-09-07 21:11:18.994] [WiVRn] [info] Font for pl /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:18.994  9890 24361 I WiVRn   : [2026-09-07 21:11:18.994] [WiVRn] [info] Font for pl /system/fonts/Roboto-Regular.ttf
+09-07 21:11:18.994  9890 24361 I WiVRn   : [2026-09-07 21:11:18.994] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:18.995  9890 24361 I WiVRn   : [2026-09-07 21:11:18.995] [WiVRn] [info] Font for pt_BR /system/fonts/PICOSans.ttf
+09-07 21:11:18.995  9890 24361 I WiVRn   : [2026-09-07 21:11:18.995] [WiVRn] [info] Font for ru /system/fonts/PICOSans.ttf
+09-07 21:11:18.995  9890 24361 I WiVRn   : [2026-09-07 21:11:18.995] [WiVRn] [info] Font for ru /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:18.995  9890 24361 I WiVRn   : [2026-09-07 21:11:18.995] [WiVRn] [info] Font for ru /system/fonts/PICOSans.ttf
+09-07 21:11:18.995  9890 24361 I WiVRn   : [2026-09-07 21:11:18.995] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:18.995  9890 24361 I WiVRn   : [2026-09-07 21:11:18.995] [WiVRn] [info] Font for sk /system/fonts/Roboto-Regular.ttf
+09-07 21:11:18.995  9890 24361 I WiVRn   : [2026-09-07 21:11:18.995] [WiVRn] [info] Font for sk /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:18.995  9890 24361 I WiVRn   : [2026-09-07 21:11:18.995] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:18.995  9890 24361 I WiVRn   : [2026-09-07 21:11:18.995] [WiVRn] [info] Font for sk /system/fonts/Roboto-Regular.ttf
+09-07 21:11:18.995  9890 24361 I WiVRn   : [2026-09-07 21:11:18.995] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:18.995  9890 24361 I WiVRn   : [2026-09-07 21:11:18.995] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:18.995  9890 24361 I WiVRn   : [2026-09-07 21:11:18.995] [WiVRn] [info] Font for tr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:18.995  9890 24361 I WiVRn   : [2026-09-07 21:11:18.995] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:18.995  9890 24361 I WiVRn   : [2026-09-07 21:11:18.995] [WiVRn] [info] Font for tr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:18.995  9890 24361 I WiVRn   : [2026-09-07 21:11:18.995] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:18.995  9890 24361 I WiVRn   : [2026-09-07 21:11:18.995] [WiVRn] [info] Font for zh_CN /system/fonts/PICOSans.ttf
+09-07 21:11:18.995  9890 24361 I WiVRn   : [2026-09-07 21:11:18.995] [WiVRn] [info] Font for zh_CN /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:18.995  9890 24361 I WiVRn   : [2026-09-07 21:11:18.995] [WiVRn] [info] Font for zh_TW /system/fonts/PICOSans.ttf
+09-07 21:11:18.995  9890 24361 I WiVRn   : [2026-09-07 21:11:18.995] [WiVRn] [info] Font for zh_TW /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:18.999  9890 24361 I WiVRn   : [2026-09-07 21:11:18.999] [WiVRn] [info] Using font /system/fonts/PICOSans.ttf
+09-07 21:11:19.000  9890 24361 I WiVRn   : [2026-09-07 21:11:19.000] [WiVRn] [info] Using font /system/fonts/Roboto-Regular.ttf
+09-07 21:11:19.000  9890 24361 I WiVRn   : [2026-09-07 21:11:19.000] [WiVRn] [info] Using font /system/fonts/PICOSansVFJP.ttf
+09-07 21:11:19.019  9890 24361 I WiVRn   : [2026-09-07 21:11:19.019] [WiVRn] [info] Using font /system/fonts/NotoSansGeorgian-Regular.otf
+09-07 21:11:19.019  9890 24361 I WiVRn   : [2026-09-07 21:11:19.019] [WiVRn] [info] Using font /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:19.028  9890 24361 I WiVRn   : [2026-09-07 21:11:19.028] [WiVRn] [info] Performance level: CPU domain asked for sustained_high
+09-07 21:11:19.028  9890 24361 I WiVRn   : [2026-09-07 21:11:19.028] [WiVRn] [info] nxwarp: GPU performance level setting 2
+09-07 21:11:19.028  9890 24361 I WiVRn   : [2026-09-07 21:11:19.028] [WiVRn] [info] Performance level: GPU domain asked for boost
+09-07 21:11:19.059  9890 24361 I WiVRn   : [2026-09-07 21:11:19.059] [WiVRn] [info] Received event type Unknown
+09-07 21:11:19.213  9890 24559 I WiVRn   : [2026-09-07 21:11:19.213] [WiVRn] [info] Tracking pattern (11111µs):
+09-07 21:11:19.213  9890 24559 I WiVRn   : [2026-09-07 21:11:19.213] [WiVRn] [info] 	t+8111µs HEAD (3000µs)
+09-07 21:11:19.213  9890 24559 I WiVRn   : [2026-09-07 21:11:19.213] [WiVRn] [info] 	t+11111µs HEAD (0µs)
+09-07 21:11:19.975  9890 24361 I WiVRn   : [2026-09-07 21:11:19.975] [WiVRn] [info] Performance level: GPU domain asked for sustained_low
+09-07 21:11:19.975  9890 24361 I WiVRn   : [2026-09-07 21:11:19.975] [WiVRn] [info] Performance level: CPU domain asked for sustained_low
+09-07 21:11:19.996  9890 24361 I WiVRn   : [2026-09-07 21:11:19.996] [WiVRn] [info] Using panel size: 2160x2160
+09-07 21:11:19.996  9890 24361 I WiVRn   : [2026-09-07 21:11:19.996] [WiVRn] [info] Loaded input profile pico-4
+09-07 21:11:19.996  9890 24361 I WiVRn   : [2026-09-07 21:11:19.996] [WiVRn] [info] Initializing offset of space aim_left to (-5, 0, 20) mm, (0, -0, 0)°
+09-07 21:11:19.996  9890 24361 I WiVRn   : [2026-09-07 21:11:19.996] [WiVRn] [info] Initializing offset of space aim_right to (5, 0, 20) mm, (0, -0, 0)°
+09-07 21:11:19.996  9890 24361 I WiVRn   : [2026-09-07 21:11:19.996] [WiVRn] [info] Initializing offset of space grip_left to (0, -20, -50) mm, (-30.000002, -0, 0)°
+09-07 21:11:19.996  9890 24361 I WiVRn   : [2026-09-07 21:11:19.996] [WiVRn] [info] Initializing offset of space grip_right to (0, -20, -50) mm, (-30.000002, -0, 0)°
+09-07 21:11:20.029  9890 24361 I WiVRn   : [2026-09-07 21:11:20.028] [WiVRn] [info] Font for de /system/fonts/PICOSans.ttf
+09-07 21:11:20.029  9890 24361 I WiVRn   : [2026-09-07 21:11:20.029] [WiVRn] [info] Font for es /system/fonts/PICOSans.ttf
+09-07 21:11:20.029  9890 24361 I WiVRn   : [2026-09-07 21:11:20.029] [WiVRn] [info] Font for fr /system/fonts/PICOSans.ttf
+09-07 21:11:20.029  9890 24361 I WiVRn   : [2026-09-07 21:11:20.029] [WiVRn] [info] Font for fr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:20.029  9890 24361 I WiVRn   : [2026-09-07 21:11:20.029] [WiVRn] [info] Font for it /system/fonts/PICOSans.ttf
+09-07 21:11:20.029  9890 24361 I WiVRn   : [2026-09-07 21:11:20.029] [WiVRn] [info] Font for ja /system/fonts/PICOSans.ttf
+09-07 21:11:20.029  9890 24361 I WiVRn   : [2026-09-07 21:11:20.029] [WiVRn] [info] Font for ja /system/fonts/PICOSansVFJP.ttf
+09-07 21:11:20.029  9890 24361 I WiVRn   : [2026-09-07 21:11:20.029] [WiVRn] [info] Font for ka /system/fonts/PICOSans.ttf
+09-07 21:11:20.029  9890 24361 I WiVRn   : [2026-09-07 21:11:20.029] [WiVRn] [info] Font for ka /system/fonts/NotoSansGeorgian-Regular.otf
+09-07 21:11:20.029  9890 24361 I WiVRn   : [2026-09-07 21:11:20.029] [WiVRn] [info] Font for ka /system/fonts/PICOSans.ttf
+09-07 21:11:20.029  9890 24361 I WiVRn   : [2026-09-07 21:11:20.029] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:20.029  9890 24361 I WiVRn   : [2026-09-07 21:11:20.029] [WiVRn] [info] Font for pl /system/fonts/Roboto-Regular.ttf
+09-07 21:11:20.029  9890 24361 I WiVRn   : [2026-09-07 21:11:20.029] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:20.029  9890 24361 I WiVRn   : [2026-09-07 21:11:20.029] [WiVRn] [info] Font for pl /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:20.029  9890 24361 I WiVRn   : [2026-09-07 21:11:20.029] [WiVRn] [info] Font for pl /system/fonts/Roboto-Regular.ttf
+09-07 21:11:20.029  9890 24361 I WiVRn   : [2026-09-07 21:11:20.029] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:20.029  9890 24361 I WiVRn   : [2026-09-07 21:11:20.029] [WiVRn] [info] Font for pt_BR /system/fonts/PICOSans.ttf
+09-07 21:11:20.029  9890 24361 I WiVRn   : [2026-09-07 21:11:20.029] [WiVRn] [info] Font for ru /system/fonts/PICOSans.ttf
+09-07 21:11:20.029  9890 24361 I WiVRn   : [2026-09-07 21:11:20.029] [WiVRn] [info] Font for ru /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:20.029  9890 24361 I WiVRn   : [2026-09-07 21:11:20.029] [WiVRn] [info] Font for ru /system/fonts/PICOSans.ttf
+09-07 21:11:20.029  9890 24361 I WiVRn   : [2026-09-07 21:11:20.029] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:20.029  9890 24361 I WiVRn   : [2026-09-07 21:11:20.029] [WiVRn] [info] Font for sk /system/fonts/Roboto-Regular.ttf
+09-07 21:11:20.029  9890 24361 I WiVRn   : [2026-09-07 21:11:20.029] [WiVRn] [info] Font for sk /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:20.029  9890 24361 I WiVRn   : [2026-09-07 21:11:20.029] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:20.029  9890 24361 I WiVRn   : [2026-09-07 21:11:20.029] [WiVRn] [info] Font for sk /system/fonts/Roboto-Regular.ttf
+09-07 21:11:20.029  9890 24361 I WiVRn   : [2026-09-07 21:11:20.029] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:20.029  9890 24361 I WiVRn   : [2026-09-07 21:11:20.029] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:20.029  9890 24361 I WiVRn   : [2026-09-07 21:11:20.029] [WiVRn] [info] Font for tr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:20.029  9890 24361 I WiVRn   : [2026-09-07 21:11:20.029] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:20.029  9890 24361 I WiVRn   : [2026-09-07 21:11:20.029] [WiVRn] [info] Font for tr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:20.029  9890 24361 I WiVRn   : [2026-09-07 21:11:20.029] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:20.029  9890 24361 I WiVRn   : [2026-09-07 21:11:20.029] [WiVRn] [info] Font for zh_CN /system/fonts/PICOSans.ttf
+09-07 21:11:20.029  9890 24361 I WiVRn   : [2026-09-07 21:11:20.029] [WiVRn] [info] Font for zh_CN /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:20.030  9890 24361 I WiVRn   : [2026-09-07 21:11:20.030] [WiVRn] [info] Font for zh_TW /system/fonts/PICOSans.ttf
+09-07 21:11:20.030  9890 24361 I WiVRn   : [2026-09-07 21:11:20.030] [WiVRn] [info] Font for zh_TW /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:20.034  9890 24361 I WiVRn   : [2026-09-07 21:11:20.034] [WiVRn] [info] Using font /system/fonts/PICOSans.ttf
+09-07 21:11:20.034  9890 24361 I WiVRn   : [2026-09-07 21:11:20.034] [WiVRn] [info] Using font /system/fonts/Roboto-Regular.ttf
+09-07 21:11:20.034  9890 24361 I WiVRn   : [2026-09-07 21:11:20.034] [WiVRn] [info] Using font /system/fonts/PICOSansVFJP.ttf
+09-07 21:11:20.051  9890 24361 I WiVRn   : [2026-09-07 21:11:20.051] [WiVRn] [info] Using font /system/fonts/NotoSansGeorgian-Regular.otf
+09-07 21:11:20.052  9890 24361 I WiVRn   : [2026-09-07 21:11:20.052] [WiVRn] [info] Using font /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:20.144  9890 24361 I WiVRn   : [2026-09-07 21:11:20.144] [WiVRn] [info] MulticastLock acquired
+09-07 21:11:20.144  9890 24361 I WiVRn   : [2026-09-07 21:11:20.144] [WiVRn] [info] Local IPv6 address: 2003:c2:3701:81fc:b3c8:aefc:7af2:8a5a
+09-07 21:11:20.144  9890 24361 I WiVRn   : [2026-09-07 21:11:20.144] [WiVRn] [info] Local IPv6 address: 2003:c2:3701:81fc:616a:1ec4:5f3c:1dd5
+09-07 21:11:20.144  9890 24361 I WiVRn   : [2026-09-07 21:11:20.144] [WiVRn] [info] Local IPv6 address: fd3c:3d87:86b7:0:c7ff:60cd:b757:e773
+09-07 21:11:20.144  9890 24361 I WiVRn   : [2026-09-07 21:11:20.144] [WiVRn] [info] Local IPv6 address: fd3c:3d87:86b7:0:616a:1ec4:5f3c:1dd5
+09-07 21:11:20.144  9890 24361 I WiVRn   : [2026-09-07 21:11:20.144] [WiVRn] [info] Local IPv4 address: 192.168.1.248
+09-07 21:11:20.144  9890 24361 W WiVRn   : [2026-09-07 21:11:20.144] [WiVRn] [warning] unknown family 17
+09-07 21:11:20.144  9890 25742 I WiVRn   : [2026-09-07 21:11:20.144] [WiVRn] [info] Sending query for _wivrn._tcp.local., type PTR
+09-07 21:11:20.145  9890 24361 I WiVRn   : [2026-09-07 21:11:20.145] [WiVRn] [info] Performance level: CPU domain asked for sustained_high
+09-07 21:11:20.145  9890 24361 I WiVRn   : [2026-09-07 21:11:20.145] [WiVRn] [info] Performance level: GPU domain asked for boost
+09-07 21:11:20.213  9890 24559 I WiVRn   : [2026-09-07 21:11:20.213] [WiVRn] [info] Tracking pattern (11110µs):
+09-07 21:11:20.213  9890 24559 I WiVRn   : [2026-09-07 21:11:20.213] [WiVRn] [info] 	t+11110µs HEAD (0µs)
+09-07 21:11:20.255  9890 24361 I WiVRn   : [2026-09-07 21:11:20.255] [WiVRn] [info] Received event type Unknown
+09-07 21:11:20.594  9890 24540 I WiVRn   : [2026-09-07 21:11:20.594] [WiVRn] [info] nxwarp[0] net: 174 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 8040 decoded so far, 9819 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 21:11:20.594  9890 24540 I WiVRn   : [2026-09-07 21:11:20.594] [WiVRn] [info] nxwarp[0] net: 0.022 ms per datagram over 2374 datagrams (26.35 ms of every second)
+09-07 21:11:20.594  9890 24540 I WiVRn   : [2026-09-07 21:11:20.594] [WiVRn] [info] nxwarp[0] sel: stride 2, arrival 10.8 ms, dropped-late 1666, withheld 1036, decoded 8040
+09-07 21:11:20.594  9890 24540 I WiVRn   : [2026-09-07 21:11:20.594] [WiVRn] [info] nxwarp[0] rx: 143807 datagrams, placed 402601 (+2163), late 841 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 1
+09-07 21:11:20.911  9890 24557 I WiVRn   : [2026-09-07 21:11:20.911] [WiVRn] [info] nxwarp[0]: 80 frames in 2.0 s: 677 B/frame, wait-prev 0.0 ms, wall 24.9 ms, nxvc passA 1.3 passB 21.5 gpu 22.8 ms; holes 0, refused 0
+09-07 21:11:20.911  9890 24557 I WiVRn   : [2026-09-07 21:11:20.911] [WiVRn] [info] nxwarp[0] gpu duty 904 ms/s (90% of one GPU) for decode alone; the display pass is extra
+09-07 21:11:20.911  9890 24557 I WiVRn   : [2026-09-07 21:11:20.911] [WiVRn] [info] nxwarp[0] passB 21.5 ms = warp 0.0 + skip 4.9 + coded 0.2 + dir 0.0 + other 16.4; tiles skip 561 / coded 10 / dir 0 (eye pass 0)
+09-07 21:11:20.911  9890 24557 I WiVRn   : [2026-09-07 21:11:20.911] [WiVRn] [info] nxwarp[0]: 1686 frames dropped late (queue kept to 1)
+09-07 21:11:20.911  9890 24557 I WiVRn   : [2026-09-07 21:11:20.911] [WiVRn] [info] nxwarp[0] stage: gap 0.4 | wait-prev 0.0 | submit 1.3 (qlock 0.0 + codec 1.3) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 23.5 | publish 0.0 ms; withheld 79, stride 1, arrival 11.1 ms
+09-07 21:11:20.911  9890 24557 I WiVRn   : [2026-09-07 21:11:20.911] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.00 ms/frame over 176 frames, buffer 1 kB held for 1 kB of unit (1.0x)
+09-07 21:11:20.911  9890 24557 I WiVRn   : [2026-09-07 21:11:20.911] [WiVRn] [info] nxwarp[0] fence-post 23.5 ms = nxvc gpu 22.8 + copy gpu 0.39 + queue 0.2 (over 80 frames with timestamps)
+09-07 21:11:20.911  9890 24557 I WiVRn   : [2026-09-07 21:11:20.911] [WiVRn] [info] nxwarp[0] atlas: frames 80, atlas 0, picture 80, avg dispatches 8.0, avg assembled 578.0, avg valid 578.0
+09-07 21:11:20.979  9890 24557 I WiVRn   : [2026-09-07 21:11:20.979] [WiVRn] [info] Stream scene ready at t=78114348752909
+09-07 21:11:20.989  9890 24361 I WiVRn   : [2026-09-07 21:11:20.989] [WiVRn] [info] MulticastLock released
+09-07 21:11:21.016  9890 24361 I WiVRn   : [2026-09-07 21:11:21.016] [WiVRn] [info] Loaded input profile pico-4
+09-07 21:11:21.016  9890 24361 I WiVRn   : [2026-09-07 21:11:21.016] [WiVRn] [info] Initializing offset of space aim_left to (-5, 0, 20) mm, (0, -0, 0)°
+09-07 21:11:21.016  9890 24361 I WiVRn   : [2026-09-07 21:11:21.016] [WiVRn] [info] Initializing offset of space aim_right to (5, 0, 20) mm, (0, -0, 0)°
+09-07 21:11:21.016  9890 24361 I WiVRn   : [2026-09-07 21:11:21.016] [WiVRn] [info] Initializing offset of space grip_left to (0, -20, -50) mm, (-30.000002, -0, 0)°
+09-07 21:11:21.016  9890 24361 I WiVRn   : [2026-09-07 21:11:21.016] [WiVRn] [info] Initializing offset of space grip_right to (0, -20, -50) mm, (-30.000002, -0, 0)°
+09-07 21:11:21.049  9890 24361 I WiVRn   : [2026-09-07 21:11:21.049] [WiVRn] [info] Font for de /system/fonts/PICOSans.ttf
+09-07 21:11:21.049  9890 24361 I WiVRn   : [2026-09-07 21:11:21.049] [WiVRn] [info] Font for es /system/fonts/PICOSans.ttf
+09-07 21:11:21.049  9890 24361 I WiVRn   : [2026-09-07 21:11:21.049] [WiVRn] [info] Font for fr /system/fonts/PICOSans.ttf
+09-07 21:11:21.049  9890 24361 I WiVRn   : [2026-09-07 21:11:21.049] [WiVRn] [info] Font for fr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:21.049  9890 24361 I WiVRn   : [2026-09-07 21:11:21.049] [WiVRn] [info] Font for it /system/fonts/PICOSans.ttf
+09-07 21:11:21.049  9890 24361 I WiVRn   : [2026-09-07 21:11:21.049] [WiVRn] [info] Font for ja /system/fonts/PICOSans.ttf
+09-07 21:11:21.049  9890 24361 I WiVRn   : [2026-09-07 21:11:21.049] [WiVRn] [info] Font for ja /system/fonts/PICOSansVFJP.ttf
+09-07 21:11:21.049  9890 24361 I WiVRn   : [2026-09-07 21:11:21.049] [WiVRn] [info] Font for ka /system/fonts/PICOSans.ttf
+09-07 21:11:21.049  9890 24361 I WiVRn   : [2026-09-07 21:11:21.049] [WiVRn] [info] Font for ka /system/fonts/NotoSansGeorgian-Regular.otf
+09-07 21:11:21.049  9890 24361 I WiVRn   : [2026-09-07 21:11:21.049] [WiVRn] [info] Font for ka /system/fonts/PICOSans.ttf
+09-07 21:11:21.049  9890 24361 I WiVRn   : [2026-09-07 21:11:21.049] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:21.049  9890 24361 I WiVRn   : [2026-09-07 21:11:21.049] [WiVRn] [info] Font for pl /system/fonts/Roboto-Regular.ttf
+09-07 21:11:21.049  9890 24361 I WiVRn   : [2026-09-07 21:11:21.049] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:21.049  9890 24361 I WiVRn   : [2026-09-07 21:11:21.049] [WiVRn] [info] Font for pl /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:21.049  9890 24361 I WiVRn   : [2026-09-07 21:11:21.049] [WiVRn] [info] Font for pl /system/fonts/Roboto-Regular.ttf
+09-07 21:11:21.049  9890 24361 I WiVRn   : [2026-09-07 21:11:21.049] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:21.049  9890 24361 I WiVRn   : [2026-09-07 21:11:21.049] [WiVRn] [info] Font for pt_BR /system/fonts/PICOSans.ttf
+09-07 21:11:21.049  9890 24361 I WiVRn   : [2026-09-07 21:11:21.049] [WiVRn] [info] Font for ru /system/fonts/PICOSans.ttf
+09-07 21:11:21.049  9890 24361 I WiVRn   : [2026-09-07 21:11:21.049] [WiVRn] [info] Font for ru /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:21.049  9890 24361 I WiVRn   : [2026-09-07 21:11:21.049] [WiVRn] [info] Font for ru /system/fonts/PICOSans.ttf
+09-07 21:11:21.049  9890 24361 I WiVRn   : [2026-09-07 21:11:21.049] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:21.049  9890 24361 I WiVRn   : [2026-09-07 21:11:21.049] [WiVRn] [info] Font for sk /system/fonts/Roboto-Regular.ttf
+09-07 21:11:21.049  9890 24361 I WiVRn   : [2026-09-07 21:11:21.049] [WiVRn] [info] Font for sk /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:21.049  9890 24361 I WiVRn   : [2026-09-07 21:11:21.049] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:21.049  9890 24361 I WiVRn   : [2026-09-07 21:11:21.049] [WiVRn] [info] Font for sk /system/fonts/Roboto-Regular.ttf
+09-07 21:11:21.049  9890 24361 I WiVRn   : [2026-09-07 21:11:21.049] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:21.049  9890 24361 I WiVRn   : [2026-09-07 21:11:21.049] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:21.049  9890 24361 I WiVRn   : [2026-09-07 21:11:21.049] [WiVRn] [info] Font for tr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:21.049  9890 24361 I WiVRn   : [2026-09-07 21:11:21.049] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:21.049  9890 24361 I WiVRn   : [2026-09-07 21:11:21.049] [WiVRn] [info] Font for tr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:21.049  9890 24361 I WiVRn   : [2026-09-07 21:11:21.049] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:21.050  9890 24361 I WiVRn   : [2026-09-07 21:11:21.050] [WiVRn] [info] Font for zh_CN /system/fonts/PICOSans.ttf
+09-07 21:11:21.050  9890 24361 I WiVRn   : [2026-09-07 21:11:21.050] [WiVRn] [info] Font for zh_CN /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:21.050  9890 24361 I WiVRn   : [2026-09-07 21:11:21.050] [WiVRn] [info] Font for zh_TW /system/fonts/PICOSans.ttf
+09-07 21:11:21.050  9890 24361 I WiVRn   : [2026-09-07 21:11:21.050] [WiVRn] [info] Font for zh_TW /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:21.055  9890 24361 I WiVRn   : [2026-09-07 21:11:21.055] [WiVRn] [info] Using font /system/fonts/PICOSans.ttf
+09-07 21:11:21.055  9890 24361 I WiVRn   : [2026-09-07 21:11:21.055] [WiVRn] [info] Using font /system/fonts/Roboto-Regular.ttf
+09-07 21:11:21.056  9890 24361 I WiVRn   : [2026-09-07 21:11:21.056] [WiVRn] [info] Using font /system/fonts/PICOSansVFJP.ttf
+09-07 21:11:21.074  9890 24361 I WiVRn   : [2026-09-07 21:11:21.074] [WiVRn] [info] Using font /system/fonts/NotoSansGeorgian-Regular.otf
+09-07 21:11:21.074  9890 24361 I WiVRn   : [2026-09-07 21:11:21.074] [WiVRn] [info] Using font /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:21.111  9890 24361 I WiVRn   : [2026-09-07 21:11:21.111] [WiVRn] [info] Performance level: CPU domain asked for sustained_high
+09-07 21:11:21.111  9890 24361 I WiVRn   : [2026-09-07 21:11:21.111] [WiVRn] [info] nxwarp: GPU performance level setting 2
+09-07 21:11:21.111  9890 24361 I WiVRn   : [2026-09-07 21:11:21.111] [WiVRn] [info] Performance level: GPU domain asked for boost
+09-07 21:11:21.119  9890 24361 I WiVRn   : [2026-09-07 21:11:21.119] [WiVRn] [info] Received event type Unknown
+--------- beginning of crash
+09-07 21:11:21.224  9890 24559 I WiVRn   : [2026-09-07 21:11:21.224] [WiVRn] [info] Tracking pattern (11108µs):
+09-07 21:11:21.224  9890 24559 I WiVRn   : [2026-09-07 21:11:21.224] [WiVRn] [info] 	t+8108µs HEAD (3000µs)
+09-07 21:11:21.224  9890 24559 I WiVRn   : [2026-09-07 21:11:21.224] [WiVRn] [info] 	t+11108µs HEAD (0µs)
+09-07 21:11:21.998  9890 24361 I WiVRn   : [2026-09-07 21:11:21.998] [WiVRn] [info] Performance level: GPU domain asked for sustained_low
+09-07 21:11:21.998  9890 24361 I WiVRn   : [2026-09-07 21:11:21.998] [WiVRn] [info] Performance level: CPU domain asked for sustained_low
+09-07 21:11:22.023  9890 24361 I WiVRn   : [2026-09-07 21:11:22.023] [WiVRn] [info] Using panel size: 2160x2160
+09-07 21:11:22.025  9890 24361 I WiVRn   : [2026-09-07 21:11:22.025] [WiVRn] [info] Loaded input profile pico-4
+09-07 21:11:22.025  9890 24361 I WiVRn   : [2026-09-07 21:11:22.025] [WiVRn] [info] Initializing offset of space aim_left to (-5, 0, 20) mm, (0, -0, 0)°
+09-07 21:11:22.025  9890 24361 I WiVRn   : [2026-09-07 21:11:22.025] [WiVRn] [info] Initializing offset of space aim_right to (5, 0, 20) mm, (0, -0, 0)°
+09-07 21:11:22.025  9890 24361 I WiVRn   : [2026-09-07 21:11:22.025] [WiVRn] [info] Initializing offset of space grip_left to (0, -20, -50) mm, (-30.000002, -0, 0)°
+09-07 21:11:22.025  9890 24361 I WiVRn   : [2026-09-07 21:11:22.025] [WiVRn] [info] Initializing offset of space grip_right to (0, -20, -50) mm, (-30.000002, -0, 0)°
+09-07 21:11:22.057  9890 24361 I WiVRn   : [2026-09-07 21:11:22.057] [WiVRn] [info] Font for de /system/fonts/PICOSans.ttf
+09-07 21:11:22.057  9890 24361 I WiVRn   : [2026-09-07 21:11:22.057] [WiVRn] [info] Font for es /system/fonts/PICOSans.ttf
+09-07 21:11:22.057  9890 24361 I WiVRn   : [2026-09-07 21:11:22.057] [WiVRn] [info] Font for fr /system/fonts/PICOSans.ttf
+09-07 21:11:22.057  9890 24361 I WiVRn   : [2026-09-07 21:11:22.057] [WiVRn] [info] Font for fr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:22.057  9890 24361 I WiVRn   : [2026-09-07 21:11:22.057] [WiVRn] [info] Font for it /system/fonts/PICOSans.ttf
+09-07 21:11:22.057  9890 24361 I WiVRn   : [2026-09-07 21:11:22.057] [WiVRn] [info] Font for ja /system/fonts/PICOSans.ttf
+09-07 21:11:22.057  9890 24361 I WiVRn   : [2026-09-07 21:11:22.057] [WiVRn] [info] Font for ja /system/fonts/PICOSansVFJP.ttf
+09-07 21:11:22.057  9890 24361 I WiVRn   : [2026-09-07 21:11:22.057] [WiVRn] [info] Font for ka /system/fonts/PICOSans.ttf
+09-07 21:11:22.057  9890 24361 I WiVRn   : [2026-09-07 21:11:22.057] [WiVRn] [info] Font for ka /system/fonts/NotoSansGeorgian-Regular.otf
+09-07 21:11:22.057  9890 24361 I WiVRn   : [2026-09-07 21:11:22.057] [WiVRn] [info] Font for ka /system/fonts/PICOSans.ttf
+09-07 21:11:22.057  9890 24361 I WiVRn   : [2026-09-07 21:11:22.057] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:22.057  9890 24361 I WiVRn   : [2026-09-07 21:11:22.057] [WiVRn] [info] Font for pl /system/fonts/Roboto-Regular.ttf
+09-07 21:11:22.057  9890 24361 I WiVRn   : [2026-09-07 21:11:22.057] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:22.057  9890 24361 I WiVRn   : [2026-09-07 21:11:22.057] [WiVRn] [info] Font for pl /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:22.057  9890 24361 I WiVRn   : [2026-09-07 21:11:22.057] [WiVRn] [info] Font for pl /system/fonts/Roboto-Regular.ttf
+09-07 21:11:22.057  9890 24361 I WiVRn   : [2026-09-07 21:11:22.057] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:22.057  9890 24361 I WiVRn   : [2026-09-07 21:11:22.057] [WiVRn] [info] Font for pt_BR /system/fonts/PICOSans.ttf
+09-07 21:11:22.057  9890 24361 I WiVRn   : [2026-09-07 21:11:22.057] [WiVRn] [info] Font for ru /system/fonts/PICOSans.ttf
+09-07 21:11:22.057  9890 24361 I WiVRn   : [2026-09-07 21:11:22.057] [WiVRn] [info] Font for ru /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:22.057  9890 24361 I WiVRn   : [2026-09-07 21:11:22.057] [WiVRn] [info] Font for ru /system/fonts/PICOSans.ttf
+09-07 21:11:22.057  9890 24361 I WiVRn   : [2026-09-07 21:11:22.057] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:22.057  9890 24361 I WiVRn   : [2026-09-07 21:11:22.057] [WiVRn] [info] Font for sk /system/fonts/Roboto-Regular.ttf
+09-07 21:11:22.057  9890 24361 I WiVRn   : [2026-09-07 21:11:22.057] [WiVRn] [info] Font for sk /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:22.057  9890 24361 I WiVRn   : [2026-09-07 21:11:22.057] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:22.057  9890 24361 I WiVRn   : [2026-09-07 21:11:22.057] [WiVRn] [info] Font for sk /system/fonts/Roboto-Regular.ttf
+09-07 21:11:22.057  9890 24361 I WiVRn   : [2026-09-07 21:11:22.057] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:22.057  9890 24361 I WiVRn   : [2026-09-07 21:11:22.057] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:22.057  9890 24361 I WiVRn   : [2026-09-07 21:11:22.057] [WiVRn] [info] Font for tr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:22.057  9890 24361 I WiVRn   : [2026-09-07 21:11:22.057] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:22.057  9890 24361 I WiVRn   : [2026-09-07 21:11:22.057] [WiVRn] [info] Font for tr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:22.057  9890 24361 I WiVRn   : [2026-09-07 21:11:22.057] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:22.058  9890 24361 I WiVRn   : [2026-09-07 21:11:22.058] [WiVRn] [info] Font for zh_CN /system/fonts/PICOSans.ttf
+09-07 21:11:22.058  9890 24361 I WiVRn   : [2026-09-07 21:11:22.058] [WiVRn] [info] Font for zh_CN /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:22.058  9890 24361 I WiVRn   : [2026-09-07 21:11:22.058] [WiVRn] [info] Font for zh_TW /system/fonts/PICOSans.ttf
+09-07 21:11:22.058  9890 24361 I WiVRn   : [2026-09-07 21:11:22.058] [WiVRn] [info] Font for zh_TW /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:22.062  9890 24361 I WiVRn   : [2026-09-07 21:11:22.062] [WiVRn] [info] Using font /system/fonts/PICOSans.ttf
+09-07 21:11:22.062  9890 24361 I WiVRn   : [2026-09-07 21:11:22.062] [WiVRn] [info] Using font /system/fonts/Roboto-Regular.ttf
+09-07 21:11:22.063  9890 24361 I WiVRn   : [2026-09-07 21:11:22.063] [WiVRn] [info] Using font /system/fonts/PICOSansVFJP.ttf
+09-07 21:11:22.078  9890 24361 I WiVRn   : [2026-09-07 21:11:22.078] [WiVRn] [info] Using font /system/fonts/NotoSansGeorgian-Regular.otf
+09-07 21:11:22.078  9890 24361 I WiVRn   : [2026-09-07 21:11:22.078] [WiVRn] [info] Using font /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:22.124  9890 24361 I WiVRn   : [2026-09-07 21:11:22.124] [WiVRn] [info] MulticastLock acquired
+09-07 21:11:22.125  9890 24361 I WiVRn   : [2026-09-07 21:11:22.125] [WiVRn] [info] Local IPv6 address: 2003:c2:3701:81fc:b3c8:aefc:7af2:8a5a
+09-07 21:11:22.125  9890 24361 I WiVRn   : [2026-09-07 21:11:22.125] [WiVRn] [info] Local IPv6 address: 2003:c2:3701:81fc:616a:1ec4:5f3c:1dd5
+09-07 21:11:22.125  9890 24361 I WiVRn   : [2026-09-07 21:11:22.125] [WiVRn] [info] Local IPv6 address: fd3c:3d87:86b7:0:c7ff:60cd:b757:e773
+09-07 21:11:22.125  9890 24361 I WiVRn   : [2026-09-07 21:11:22.125] [WiVRn] [info] Local IPv6 address: fd3c:3d87:86b7:0:616a:1ec4:5f3c:1dd5
+09-07 21:11:22.125  9890 24361 I WiVRn   : [2026-09-07 21:11:22.125] [WiVRn] [info] Local IPv4 address: 192.168.1.248
+09-07 21:11:22.125  9890 24361 W WiVRn   : [2026-09-07 21:11:22.125] [WiVRn] [warning] unknown family 17
+09-07 21:11:22.125  9890 25791 I WiVRn   : [2026-09-07 21:11:22.125] [WiVRn] [info] Sending query for _wivrn._tcp.local., type PTR
+09-07 21:11:22.125  9890 24361 I WiVRn   : [2026-09-07 21:11:22.125] [WiVRn] [info] Performance level: CPU domain asked for sustained_high
+09-07 21:11:22.126  9890 24361 I WiVRn   : [2026-09-07 21:11:22.126] [WiVRn] [info] Performance level: GPU domain asked for boost
+09-07 21:11:22.213  9890 24559 I WiVRn   : [2026-09-07 21:11:22.213] [WiVRn] [info] Tracking pattern (11114µs):
+09-07 21:11:22.213  9890 24559 I WiVRn   : [2026-09-07 21:11:22.213] [WiVRn] [info] 	t+11114µs HEAD (0µs)
+09-07 21:11:22.230  9890 24361 I WiVRn   : [2026-09-07 21:11:22.230] [WiVRn] [info] Received event type Unknown
+09-07 21:11:22.598  9890 24540 I WiVRn   : [2026-09-07 21:11:22.598] [WiVRn] [info] nxwarp[0] net: 175 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 1 queued for the worker, 8117 decoded so far, 9997 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 21:11:22.598  9890 24540 I WiVRn   : [2026-09-07 21:11:22.598] [WiVRn] [info] nxwarp[0] net: 0.024 ms per datagram over 2510 datagrams (29.71 ms of every second)
+09-07 21:11:22.598  9890 24540 I WiVRn   : [2026-09-07 21:11:22.598] [WiVRn] [info] nxwarp[0] sel: stride 2, arrival 11.8 ms, dropped-late 1763, withheld 1112, decoded 8117
+09-07 21:11:22.598  9890 24540 I WiVRn   : [2026-09-07 21:11:22.598] [WiVRn] [info] nxwarp[0] rx: 146317 datagrams, placed 404845 (+2244), late 841 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 1
+09-07 21:11:22.928  9890 24557 I WiVRn   : [2026-09-07 21:11:22.928] [WiVRn] [info] nxwarp[0]: 78 frames in 2.0 s: 681 B/frame, wait-prev 0.0 ms, wall 25.8 ms, nxvc passA 1.5 passB 21.6 gpu 23.1 ms; holes 0, refused 0
+09-07 21:11:22.928  9890 24557 I WiVRn   : [2026-09-07 21:11:22.928] [WiVRn] [info] nxwarp[0] gpu duty 894 ms/s (89% of one GPU) for decode alone; the display pass is extra
+09-07 21:11:22.928  9890 24557 I WiVRn   : [2026-09-07 21:11:22.928] [WiVRn] [info] nxwarp[0] passB 21.6 ms = warp 0.0 + skip 5.1 + coded 0.2 + dir 0.0 + other 16.3; tiles skip 561 / coded 11 / dir 0 (eye pass 0)
+09-07 21:11:22.928  9890 24557 I WiVRn   : [2026-09-07 21:11:22.928] [WiVRn] [info] nxwarp[0]: 1783 frames dropped late (queue kept to 1)
+09-07 21:11:22.928  9890 24557 I WiVRn   : [2026-09-07 21:11:22.928] [WiVRn] [info] nxwarp[0] stage: gap 0.1 | wait-prev 0.0 | submit 1.5 (qlock 0.0 + codec 1.5) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 24.1 | publish 0.0 ms; withheld 77, stride 1, arrival 11.2 ms
+09-07 21:11:22.928  9890 24557 I WiVRn   : [2026-09-07 21:11:22.928] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.01 ms/frame over 175 frames, buffer 1 kB held for 1 kB of unit (1.0x)
+09-07 21:11:22.928  9890 24557 I WiVRn   : [2026-09-07 21:11:22.928] [WiVRn] [info] nxwarp[0] fence-post 24.2 ms = nxvc gpu 23.1 + copy gpu 0.38 + queue 0.7 (over 78 frames with timestamps)
+09-07 21:11:22.928  9890 24557 I WiVRn   : [2026-09-07 21:11:22.928] [WiVRn] [info] nxwarp[0] atlas: frames 78, atlas 0, picture 78, avg dispatches 8.0, avg assembled 578.0, avg valid 578.0
+09-07 21:11:23.214  9890 24559 I WiVRn   : [2026-09-07 21:11:23.214] [WiVRn] [info] Tracking pattern (11114µs):
+09-07 21:11:23.214  9890 24559 I WiVRn   : [2026-09-07 21:11:23.214] [WiVRn] [info] 	t+8114µs HEAD (3000µs)
+09-07 21:11:23.214  9890 24559 I WiVRn   : [2026-09-07 21:11:23.214] [WiVRn] [info] 	t+11114µs HEAD (0µs)
+09-07 21:11:24.214  9890 24559 I WiVRn   : [2026-09-07 21:11:24.214] [WiVRn] [info] Tracking pattern (11114µs):
+09-07 21:11:24.214  9890 24559 I WiVRn   : [2026-09-07 21:11:24.214] [WiVRn] [info] 	t+11114µs HEAD (0µs)
+09-07 21:11:24.612  9890 24540 I WiVRn   : [2026-09-07 21:11:24.612] [WiVRn] [info] nxwarp[0] net: 177 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 8179 decoded so far, 10177 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 21:11:24.612  9890 24540 I WiVRn   : [2026-09-07 21:11:24.612] [WiVRn] [info] nxwarp[0] net: 0.027 ms per datagram over 3101 datagrams (41.20 ms of every second)
+09-07 21:11:24.612  9890 24540 I WiVRn   : [2026-09-07 21:11:24.612] [WiVRn] [info] nxwarp[0] sel: stride 2, arrival 10.7 ms, dropped-late 1879, withheld 1174, decoded 8179
+09-07 21:11:24.612  9890 24540 I WiVRn   : [2026-09-07 21:11:24.612] [WiVRn] [info] nxwarp[0] rx: 149418 datagrams, placed 407648 (+2803), late 841 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 1
+09-07 21:11:24.945  9890 24557 I WiVRn   : [2026-09-07 21:11:24.945] [WiVRn] [info] nxwarp[0]: 62 frames in 2.0 s: 733 B/frame, wait-prev 0.0 ms, wall 32.2 ms, nxvc passA 1.7 passB 27.5 gpu 29.3 ms; holes 0, refused 0
+09-07 21:11:24.945  9890 24557 I WiVRn   : [2026-09-07 21:11:24.945] [WiVRn] [info] nxwarp[0] gpu duty 899 ms/s (90% of one GPU) for decode alone; the display pass is extra
+09-07 21:11:24.945  9890 24557 I WiVRn   : [2026-09-07 21:11:24.945] [WiVRn] [info] nxwarp[0] passB 27.5 ms = warp 0.0 + skip 6.5 + coded 0.3 + dir 0.0 + other 20.7; tiles skip 564 / coded 14 / dir 0 (eye pass 0)
+09-07 21:11:24.945  9890 24557 I WiVRn   : [2026-09-07 21:11:24.945] [WiVRn] [info] nxwarp[0]: 1899 frames dropped late (queue kept to 1)
+09-07 21:11:24.945  9890 24557 I WiVRn   : [2026-09-07 21:11:24.945] [WiVRn] [info] nxwarp[0] stage: gap 0.3 | wait-prev 0.0 | submit 1.8 (qlock 0.0 + codec 1.8) | get_free 0.0 | fence-pre 0.0 | record 0.1 | qsubmit 0.0 | fence-post 30.3 | publish 0.0 ms; withheld 62, stride 1, arrival 11.0 ms
+09-07 21:11:24.945  9890 24557 I WiVRn   : [2026-09-07 21:11:24.945] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.01 ms/frame over 178 frames, buffer 1 kB held for 1 kB of unit (1.0x)
+09-07 21:11:24.945  9890 24557 I WiVRn   : [2026-09-07 21:11:24.945] [WiVRn] [info] nxwarp[0] fence-post 30.3 ms = nxvc gpu 29.3 + copy gpu 0.62 + queue 0.4 (over 62 frames with timestamps)
+09-07 21:11:24.945  9890 24557 I WiVRn   : [2026-09-07 21:11:24.945] [WiVRn] [info] nxwarp[0] atlas: frames 62, atlas 0, picture 62, avg dispatches 8.0, avg assembled 578.0, avg valid 578.0
+09-07 21:11:25.016  9890 24557 I WiVRn   : [2026-09-07 21:11:25.016] [WiVRn] [info] Stream scene ready at t=78118385135824
+09-07 21:11:25.019  9890 24361 I WiVRn   : [2026-09-07 21:11:25.019] [WiVRn] [info] MulticastLock released
+09-07 21:11:25.049  9890 24361 I WiVRn   : [2026-09-07 21:11:25.049] [WiVRn] [info] Loaded input profile pico-4
+09-07 21:11:25.049  9890 24361 I WiVRn   : [2026-09-07 21:11:25.049] [WiVRn] [info] Initializing offset of space aim_left to (-5, 0, 20) mm, (0, -0, 0)°
+09-07 21:11:25.049  9890 24361 I WiVRn   : [2026-09-07 21:11:25.049] [WiVRn] [info] Initializing offset of space aim_right to (5, 0, 20) mm, (0, -0, 0)°
+09-07 21:11:25.049  9890 24361 I WiVRn   : [2026-09-07 21:11:25.049] [WiVRn] [info] Initializing offset of space grip_left to (0, -20, -50) mm, (-30.000002, -0, 0)°
+09-07 21:11:25.049  9890 24361 I WiVRn   : [2026-09-07 21:11:25.049] [WiVRn] [info] Initializing offset of space grip_right to (0, -20, -50) mm, (-30.000002, -0, 0)°
+09-07 21:11:25.054  9890 24361 I WiVRn   : [2026-09-07 21:11:25.054] [WiVRn] [info] Font for de /system/fonts/PICOSans.ttf
+09-07 21:11:25.054  9890 24361 I WiVRn   : [2026-09-07 21:11:25.054] [WiVRn] [info] Font for es /system/fonts/PICOSans.ttf
+09-07 21:11:25.054  9890 24361 I WiVRn   : [2026-09-07 21:11:25.054] [WiVRn] [info] Font for fr /system/fonts/PICOSans.ttf
+09-07 21:11:25.054  9890 24361 I WiVRn   : [2026-09-07 21:11:25.054] [WiVRn] [info] Font for fr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:25.054  9890 24361 I WiVRn   : [2026-09-07 21:11:25.054] [WiVRn] [info] Font for it /system/fonts/PICOSans.ttf
+09-07 21:11:25.054  9890 24361 I WiVRn   : [2026-09-07 21:11:25.054] [WiVRn] [info] Font for ja /system/fonts/PICOSans.ttf
+09-07 21:11:25.055  9890 24361 I WiVRn   : [2026-09-07 21:11:25.055] [WiVRn] [info] Font for ja /system/fonts/PICOSansVFJP.ttf
+09-07 21:11:25.055  9890 24361 I WiVRn   : [2026-09-07 21:11:25.055] [WiVRn] [info] Font for ka /system/fonts/PICOSans.ttf
+09-07 21:11:25.055  9890 24361 I WiVRn   : [2026-09-07 21:11:25.055] [WiVRn] [info] Font for ka /system/fonts/NotoSansGeorgian-Regular.otf
+09-07 21:11:25.055  9890 24361 I WiVRn   : [2026-09-07 21:11:25.055] [WiVRn] [info] Font for ka /system/fonts/PICOSans.ttf
+09-07 21:11:25.055  9890 24361 I WiVRn   : [2026-09-07 21:11:25.055] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:25.055  9890 24361 I WiVRn   : [2026-09-07 21:11:25.055] [WiVRn] [info] Font for pl /system/fonts/Roboto-Regular.ttf
+09-07 21:11:25.055  9890 24361 I WiVRn   : [2026-09-07 21:11:25.055] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:25.055  9890 24361 I WiVRn   : [2026-09-07 21:11:25.055] [WiVRn] [info] Font for pl /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:25.055  9890 24361 I WiVRn   : [2026-09-07 21:11:25.055] [WiVRn] [info] Font for pl /system/fonts/Roboto-Regular.ttf
+09-07 21:11:25.055  9890 24361 I WiVRn   : [2026-09-07 21:11:25.055] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:25.055  9890 24361 I WiVRn   : [2026-09-07 21:11:25.055] [WiVRn] [info] Font for pt_BR /system/fonts/PICOSans.ttf
+09-07 21:11:25.055  9890 24361 I WiVRn   : [2026-09-07 21:11:25.055] [WiVRn] [info] Font for ru /system/fonts/PICOSans.ttf
+09-07 21:11:25.055  9890 24361 I WiVRn   : [2026-09-07 21:11:25.055] [WiVRn] [info] Font for ru /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:25.055  9890 24361 I WiVRn   : [2026-09-07 21:11:25.055] [WiVRn] [info] Font for ru /system/fonts/PICOSans.ttf
+09-07 21:11:25.055  9890 24361 I WiVRn   : [2026-09-07 21:11:25.055] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:25.055  9890 24361 I WiVRn   : [2026-09-07 21:11:25.055] [WiVRn] [info] Font for sk /system/fonts/Roboto-Regular.ttf
+09-07 21:11:25.055  9890 24361 I WiVRn   : [2026-09-07 21:11:25.055] [WiVRn] [info] Font for sk /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:25.055  9890 24361 I WiVRn   : [2026-09-07 21:11:25.055] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:25.055  9890 24361 I WiVRn   : [2026-09-07 21:11:25.055] [WiVRn] [info] Font for sk /system/fonts/Roboto-Regular.ttf
+09-07 21:11:25.055  9890 24361 I WiVRn   : [2026-09-07 21:11:25.055] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:25.055  9890 24361 I WiVRn   : [2026-09-07 21:11:25.055] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:25.055  9890 24361 I WiVRn   : [2026-09-07 21:11:25.055] [WiVRn] [info] Font for tr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:25.055  9890 24361 I WiVRn   : [2026-09-07 21:11:25.055] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:25.055  9890 24361 I WiVRn   : [2026-09-07 21:11:25.055] [WiVRn] [info] Font for tr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:25.055  9890 24361 I WiVRn   : [2026-09-07 21:11:25.055] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:25.056  9890 24361 I WiVRn   : [2026-09-07 21:11:25.056] [WiVRn] [info] Font for zh_CN /system/fonts/PICOSans.ttf
+09-07 21:11:25.056  9890 24361 I WiVRn   : [2026-09-07 21:11:25.056] [WiVRn] [info] Font for zh_CN /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:25.056  9890 24361 I WiVRn   : [2026-09-07 21:11:25.056] [WiVRn] [info] Font for zh_TW /system/fonts/PICOSans.ttf
+09-07 21:11:25.056  9890 24361 I WiVRn   : [2026-09-07 21:11:25.056] [WiVRn] [info] Font for zh_TW /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:25.062  9890 24361 I WiVRn   : [2026-09-07 21:11:25.062] [WiVRn] [info] Using font /system/fonts/PICOSans.ttf
+09-07 21:11:25.062  9890 24361 I WiVRn   : [2026-09-07 21:11:25.062] [WiVRn] [info] Using font /system/fonts/Roboto-Regular.ttf
+09-07 21:11:25.062  9890 24361 I WiVRn   : [2026-09-07 21:11:25.062] [WiVRn] [info] Using font /system/fonts/PICOSansVFJP.ttf
+09-07 21:11:25.077  9890 24361 I WiVRn   : [2026-09-07 21:11:25.077] [WiVRn] [info] Using font /system/fonts/NotoSansGeorgian-Regular.otf
+09-07 21:11:25.078  9890 24361 I WiVRn   : [2026-09-07 21:11:25.078] [WiVRn] [info] Using font /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:25.088  9890 24361 I WiVRn   : [2026-09-07 21:11:25.088] [WiVRn] [info] Performance level: CPU domain asked for sustained_high
+09-07 21:11:25.088  9890 24361 I WiVRn   : [2026-09-07 21:11:25.088] [WiVRn] [info] nxwarp: GPU performance level setting 2
+09-07 21:11:25.088  9890 24361 I WiVRn   : [2026-09-07 21:11:25.088] [WiVRn] [info] Performance level: GPU domain asked for boost
+09-07 21:11:25.099  9890 24361 I WiVRn   : [2026-09-07 21:11:25.099] [WiVRn] [info] Received event type Unknown
+09-07 21:11:25.213  9890 24559 I WiVRn   : [2026-09-07 21:11:25.213] [WiVRn] [info] Tracking pattern (11107µs):
+09-07 21:11:25.213  9890 24559 I WiVRn   : [2026-09-07 21:11:25.213] [WiVRn] [info] 	t+8107µs HEAD (3000µs)
+09-07 21:11:25.213  9890 24559 I WiVRn   : [2026-09-07 21:11:25.213] [WiVRn] [info] 	t+11107µs HEAD (0µs)
+09-07 21:11:26.050  9890 24361 I WiVRn   : [2026-09-07 21:11:26.050] [WiVRn] [info] Performance level: GPU domain asked for sustained_low
+09-07 21:11:26.050  9890 24361 I WiVRn   : [2026-09-07 21:11:26.050] [WiVRn] [info] Performance level: CPU domain asked for sustained_low
+09-07 21:11:26.084  9890 24361 I WiVRn   : [2026-09-07 21:11:26.084] [WiVRn] [info] Using panel size: 2160x2160
+09-07 21:11:26.084  9890 24361 I WiVRn   : [2026-09-07 21:11:26.084] [WiVRn] [info] Loaded input profile pico-4
+09-07 21:11:26.084  9890 24361 I WiVRn   : [2026-09-07 21:11:26.084] [WiVRn] [info] Initializing offset of space aim_left to (-5, 0, 20) mm, (0, -0, 0)°
+09-07 21:11:26.084  9890 24361 I WiVRn   : [2026-09-07 21:11:26.084] [WiVRn] [info] Initializing offset of space aim_right to (5, 0, 20) mm, (0, -0, 0)°
+09-07 21:11:26.084  9890 24361 I WiVRn   : [2026-09-07 21:11:26.084] [WiVRn] [info] Initializing offset of space grip_left to (0, -20, -50) mm, (-30.000002, -0, 0)°
+09-07 21:11:26.084  9890 24361 I WiVRn   : [2026-09-07 21:11:26.084] [WiVRn] [info] Initializing offset of space grip_right to (0, -20, -50) mm, (-30.000002, -0, 0)°
+09-07 21:11:26.086  9890 24361 I WiVRn   : [2026-09-07 21:11:26.086] [WiVRn] [info] Font for de /system/fonts/PICOSans.ttf
+09-07 21:11:26.086  9890 24361 I WiVRn   : [2026-09-07 21:11:26.086] [WiVRn] [info] Font for es /system/fonts/PICOSans.ttf
+09-07 21:11:26.086  9890 24361 I WiVRn   : [2026-09-07 21:11:26.086] [WiVRn] [info] Font for fr /system/fonts/PICOSans.ttf
+09-07 21:11:26.086  9890 24361 I WiVRn   : [2026-09-07 21:11:26.086] [WiVRn] [info] Font for fr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:26.086  9890 24361 I WiVRn   : [2026-09-07 21:11:26.086] [WiVRn] [info] Font for it /system/fonts/PICOSans.ttf
+09-07 21:11:26.086  9890 24361 I WiVRn   : [2026-09-07 21:11:26.086] [WiVRn] [info] Font for ja /system/fonts/PICOSans.ttf
+09-07 21:11:26.086  9890 24361 I WiVRn   : [2026-09-07 21:11:26.086] [WiVRn] [info] Font for ja /system/fonts/PICOSansVFJP.ttf
+09-07 21:11:26.086  9890 24361 I WiVRn   : [2026-09-07 21:11:26.086] [WiVRn] [info] Font for ka /system/fonts/PICOSans.ttf
+09-07 21:11:26.086  9890 24361 I WiVRn   : [2026-09-07 21:11:26.086] [WiVRn] [info] Font for ka /system/fonts/NotoSansGeorgian-Regular.otf
+09-07 21:11:26.086  9890 24361 I WiVRn   : [2026-09-07 21:11:26.086] [WiVRn] [info] Font for ka /system/fonts/PICOSans.ttf
+09-07 21:11:26.086  9890 24361 I WiVRn   : [2026-09-07 21:11:26.086] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:26.086  9890 24361 I WiVRn   : [2026-09-07 21:11:26.086] [WiVRn] [info] Font for pl /system/fonts/Roboto-Regular.ttf
+09-07 21:11:26.086  9890 24361 I WiVRn   : [2026-09-07 21:11:26.086] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:26.086  9890 24361 I WiVRn   : [2026-09-07 21:11:26.086] [WiVRn] [info] Font for pl /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:26.086  9890 24361 I WiVRn   : [2026-09-07 21:11:26.086] [WiVRn] [info] Font for pl /system/fonts/Roboto-Regular.ttf
+09-07 21:11:26.086  9890 24361 I WiVRn   : [2026-09-07 21:11:26.086] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:26.086  9890 24361 I WiVRn   : [2026-09-07 21:11:26.086] [WiVRn] [info] Font for pt_BR /system/fonts/PICOSans.ttf
+09-07 21:11:26.086  9890 24361 I WiVRn   : [2026-09-07 21:11:26.086] [WiVRn] [info] Font for ru /system/fonts/PICOSans.ttf
+09-07 21:11:26.086  9890 24361 I WiVRn   : [2026-09-07 21:11:26.086] [WiVRn] [info] Font for ru /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:26.086  9890 24361 I WiVRn   : [2026-09-07 21:11:26.086] [WiVRn] [info] Font for ru /system/fonts/PICOSans.ttf
+09-07 21:11:26.086  9890 24361 I WiVRn   : [2026-09-07 21:11:26.086] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:26.086  9890 24361 I WiVRn   : [2026-09-07 21:11:26.086] [WiVRn] [info] Font for sk /system/fonts/Roboto-Regular.ttf
+09-07 21:11:26.086  9890 24361 I WiVRn   : [2026-09-07 21:11:26.086] [WiVRn] [info] Font for sk /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:26.086  9890 24361 I WiVRn   : [2026-09-07 21:11:26.086] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:26.086  9890 24361 I WiVRn   : [2026-09-07 21:11:26.086] [WiVRn] [info] Font for sk /system/fonts/Roboto-Regular.ttf
+09-07 21:11:26.086  9890 24361 I WiVRn   : [2026-09-07 21:11:26.086] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:26.086  9890 24361 I WiVRn   : [2026-09-07 21:11:26.086] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:26.086  9890 24361 I WiVRn   : [2026-09-07 21:11:26.086] [WiVRn] [info] Font for tr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:26.086  9890 24361 I WiVRn   : [2026-09-07 21:11:26.086] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:26.086  9890 24361 I WiVRn   : [2026-09-07 21:11:26.086] [WiVRn] [info] Font for tr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:26.086  9890 24361 I WiVRn   : [2026-09-07 21:11:26.086] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:26.087  9890 24361 I WiVRn   : [2026-09-07 21:11:26.087] [WiVRn] [info] Font for zh_CN /system/fonts/PICOSans.ttf
+09-07 21:11:26.087  9890 24361 I WiVRn   : [2026-09-07 21:11:26.087] [WiVRn] [info] Font for zh_CN /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:26.087  9890 24361 I WiVRn   : [2026-09-07 21:11:26.087] [WiVRn] [info] Font for zh_TW /system/fonts/PICOSans.ttf
+09-07 21:11:26.087  9890 24361 I WiVRn   : [2026-09-07 21:11:26.087] [WiVRn] [info] Font for zh_TW /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:26.091  9890 24361 I WiVRn   : [2026-09-07 21:11:26.091] [WiVRn] [info] Using font /system/fonts/PICOSans.ttf
+09-07 21:11:26.091  9890 24361 I WiVRn   : [2026-09-07 21:11:26.091] [WiVRn] [info] Using font /system/fonts/Roboto-Regular.ttf
+09-07 21:11:26.092  9890 24361 I WiVRn   : [2026-09-07 21:11:26.092] [WiVRn] [info] Using font /system/fonts/PICOSansVFJP.ttf
+09-07 21:11:26.107  9890 24361 I WiVRn   : [2026-09-07 21:11:26.107] [WiVRn] [info] Using font /system/fonts/NotoSansGeorgian-Regular.otf
+09-07 21:11:26.107  9890 24361 I WiVRn   : [2026-09-07 21:11:26.107] [WiVRn] [info] Using font /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:26.163  9890 24361 I WiVRn   : [2026-09-07 21:11:26.163] [WiVRn] [info] MulticastLock acquired
+09-07 21:11:26.163  9890 24361 I WiVRn   : [2026-09-07 21:11:26.163] [WiVRn] [info] Local IPv6 address: 2003:c2:3701:81fc:b3c8:aefc:7af2:8a5a
+09-07 21:11:26.163  9890 24361 I WiVRn   : [2026-09-07 21:11:26.163] [WiVRn] [info] Local IPv6 address: 2003:c2:3701:81fc:616a:1ec4:5f3c:1dd5
+09-07 21:11:26.163  9890 24361 I WiVRn   : [2026-09-07 21:11:26.163] [WiVRn] [info] Local IPv6 address: fd3c:3d87:86b7:0:c7ff:60cd:b757:e773
+09-07 21:11:26.163  9890 24361 I WiVRn   : [2026-09-07 21:11:26.163] [WiVRn] [info] Local IPv6 address: fd3c:3d87:86b7:0:616a:1ec4:5f3c:1dd5
+09-07 21:11:26.164  9890 24361 I WiVRn   : [2026-09-07 21:11:26.164] [WiVRn] [info] Local IPv4 address: 192.168.1.248
+09-07 21:11:26.164  9890 24361 W WiVRn   : [2026-09-07 21:11:26.164] [WiVRn] [warning] unknown family 17
+09-07 21:11:26.164  9890 25855 I WiVRn   : [2026-09-07 21:11:26.164] [WiVRn] [info] Sending query for _wivrn._tcp.local., type PTR
+09-07 21:11:26.164  9890 24361 I WiVRn   : [2026-09-07 21:11:26.164] [WiVRn] [info] Performance level: CPU domain asked for sustained_high
+09-07 21:11:26.164  9890 24361 I WiVRn   : [2026-09-07 21:11:26.164] [WiVRn] [info] Performance level: GPU domain asked for boost
+09-07 21:11:26.224  9890 24559 I WiVRn   : [2026-09-07 21:11:26.224] [WiVRn] [info] Tracking pattern (11111µs):
+09-07 21:11:26.224  9890 24559 I WiVRn   : [2026-09-07 21:11:26.224] [WiVRn] [info] 	t+2517µs HEAD (8593µs)
+09-07 21:11:26.224  9890 24559 I WiVRn   : [2026-09-07 21:11:26.224] [WiVRn] [info] 	t+5517µs HEAD (5593µs)
+09-07 21:11:26.224  9890 24559 I WiVRn   : [2026-09-07 21:11:26.224] [WiVRn] [info] 	t+8517µs HEAD (2593µs)
+09-07 21:11:26.224  9890 24559 I WiVRn   : [2026-09-07 21:11:26.224] [WiVRn] [info] 	t+10629µs HEAD (11593µs)
+09-07 21:11:26.266  9890 24361 I WiVRn   : [2026-09-07 21:11:26.266] [WiVRn] [info] Received event type Unknown
+09-07 21:11:26.674  9890 24540 I WiVRn   : [2026-09-07 21:11:26.674] [WiVRn] [info] nxwarp[0] net: 108 frames closed in 2.1 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 8217 decoded so far, 10298 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 21:11:26.674  9890 24540 I WiVRn   : [2026-09-07 21:11:26.674] [WiVRn] [info] nxwarp[0] net: 0.008 ms per datagram over 8089 datagrams (32.03 ms of every second)
+09-07 21:11:26.674  9890 24540 I WiVRn   : [2026-09-07 21:11:26.674] [WiVRn] [info] nxwarp[0] sel: stride 3, arrival 21.6 ms, dropped-late 1950, withheld 1211, decoded 8217
+09-07 21:11:26.674  9890 24540 I WiVRn   : [2026-09-07 21:11:26.674] [WiVRn] [info] nxwarp[0] rx: 157507 datagrams, placed 416748 (+9100), late 841 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 1
+09-07 21:11:26.968  9890 24557 I WiVRn   : [2026-09-07 21:11:26.968] [WiVRn] [info] nxwarp[0]: 31 frames in 2.0 s: 2103 B/frame, wait-prev 0.0 ms, wall 34.5 ms, nxvc passA 1.8 passB 30.3 gpu 32.1 ms; holes 0, refused 0
+09-07 21:11:26.968  9890 24557 I WiVRn   : [2026-09-07 21:11:26.968] [WiVRn] [info] nxwarp[0] gpu duty 492 ms/s (49% of one GPU) for decode alone; the display pass is extra
+09-07 21:11:26.968  9890 24557 I WiVRn   : [2026-09-07 21:11:26.968] [WiVRn] [info] nxwarp[0] passB 30.3 ms = warp 0.0 + skip 5.8 + coded 2.2 + dir 0.0 + other 22.3; tiles skip 456 / coded 106 / dir 0 (eye pass 0)
+09-07 21:11:26.968  9890 24557 I WiVRn   : [2026-09-07 21:11:26.968] [WiVRn] [info] nxwarp[0]: 1957 frames dropped late (queue kept to 1)
+09-07 21:11:26.968  9890 24557 I WiVRn   : [2026-09-07 21:11:26.968] [WiVRn] [info] nxwarp[0] stage: gap 30.7 | wait-prev 0.0 | submit 1.3 (qlock 0.0 + codec 1.3) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.1 | fence-post 33.1 | publish 0.0 ms; withheld 30, stride 2, arrival 24.1 ms
+09-07 21:11:26.968  9890 24557 I WiVRn   : [2026-09-07 21:11:26.968] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.01 ms/frame over 89 frames, buffer 2 kB held for 2 kB of unit (1.0x)
+09-07 21:11:26.968  9890 24557 I WiVRn   : [2026-09-07 21:11:26.968] [WiVRn] [info] nxwarp[0] fence-post 33.1 ms = nxvc gpu 32.1 + copy gpu 0.65 + queue 0.3 (over 31 frames with timestamps)
+09-07 21:11:26.968  9890 24557 I WiVRn   : [2026-09-07 21:11:26.968] [WiVRn] [info] nxwarp[0] atlas: frames 31, atlas 0, picture 31, avg dispatches 8.0, avg assembled 578.0, avg valid 578.0
+09-07 21:11:27.213  9890 24559 I WiVRn   : [2026-09-07 21:11:27.213] [WiVRn] [info] Tracking pattern (11111µs):
+09-07 21:11:27.213  9890 24559 I WiVRn   : [2026-09-07 21:11:27.213] [WiVRn] [info] 	t+2111µs HEAD (9000µs)
+09-07 21:11:27.213  9890 24559 I WiVRn   : [2026-09-07 21:11:27.213] [WiVRn] [info] 	t+5111µs HEAD (6000µs)
+09-07 21:11:27.213  9890 24559 I WiVRn   : [2026-09-07 21:11:27.213] [WiVRn] [info] 	t+7223µs HEAD (15000µs)
+09-07 21:11:27.213  9890 24559 I WiVRn   : [2026-09-07 21:11:27.213] [WiVRn] [info] 	t+8111µs HEAD (3000µs)
+09-07 21:11:27.213  9890 24559 I WiVRn   : [2026-09-07 21:11:27.213] [WiVRn] [info] 	t+10223µs HEAD (12000µs)
+09-07 21:11:27.213  9890 24559 I WiVRn   : [2026-09-07 21:11:27.213] [WiVRn] [info] 	t+11111µs HEAD (0µs)
+09-07 21:11:28.006  9890 24361 I WiVRn   : [2026-09-07 21:11:28.006] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_FOCUSED => XR_SESSION_STATE_VISIBLE
+09-07 21:11:28.006  9890 24361 I WiVRn   : [2026-09-07 21:11:28.006] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_VISIBLE => XR_SESSION_STATE_SYNCHRONIZED
+09-07 21:11:28.007  9890 24361 I WiVRn   : [2026-09-07 21:11:28.007] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_SYNCHRONIZED => XR_SESSION_STATE_STOPPING
+09-07 21:11:28.009  9890 24361 I WiVRn   : [2026-09-07 21:11:28.009] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_STOPPING => XR_SESSION_STATE_IDLE
+09-07 21:11:28.211  9890 24559 I WiVRn   : [2026-09-07 21:11:28.211] [WiVRn] [info] Tracking pattern (11111µs):
+09-07 21:11:28.212  9890 24559 I WiVRn   : [2026-09-07 21:11:28.212] [WiVRn] [info] 	t+4938µs HEAD (17284µs)
+09-07 21:11:28.212  9890 24559 I WiVRn   : [2026-09-07 21:11:28.212] [WiVRn] [info] 	t+7938µs HEAD (14284µs)
+09-07 21:11:28.681  9890 24540 I WiVRn   : [2026-09-07 21:11:28.681] [WiVRn] [info] nxwarp[0] net: 160 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 8280 decoded so far, 10458 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 21:11:28.681  9890 24540 I WiVRn   : [2026-09-07 21:11:28.681] [WiVRn] [info] nxwarp[0] net: 0.037 ms per datagram over 3358 datagrams (62.06 ms of every second)
+09-07 21:11:28.681  9890 24540 I WiVRn   : [2026-09-07 21:11:28.681] [WiVRn] [info] nxwarp[0] sel: stride 2, arrival 10.3 ms, dropped-late 2046, withheld 1274, decoded 8280
+09-07 21:11:28.681  9890 24540 I WiVRn   : [2026-09-07 21:11:28.681] [WiVRn] [info] nxwarp[0] rx: 160865 datagrams, placed 420010 (+3262), late 842 (+1), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 1
+09-07 21:11:28.832  9890 24361 I WiVRn   : [2026-09-07 21:11:28.832] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_IDLE => XR_SESSION_STATE_READY
+09-07 21:11:28.833  9890 24361 I WiVRn   : [2026-09-07 21:11:28.833] [WiVRn] [info] Received event type Unknown
+09-07 21:11:28.833  9890 24361 I WiVRn   : [2026-09-07 21:11:28.833] [WiVRn] [info] Received event type XR_TYPE_EVENT_DATA_USER_PRESENCE_CHANGED_EXT
+09-07 21:11:28.834  9890 24361 I WiVRn   : [2026-09-07 21:11:28.834] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_READY => XR_SESSION_STATE_SYNCHRONIZED
+09-07 21:11:28.834  9890 24361 I WiVRn   : [2026-09-07 21:11:28.834] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_SYNCHRONIZED => XR_SESSION_STATE_VISIBLE
+09-07 21:11:28.834  9890 24361 I WiVRn   : [2026-09-07 21:11:28.834] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_VISIBLE => XR_SESSION_STATE_FOCUSED
+09-07 21:11:28.863  9890 24557 I WiVRn   : [2026-09-07 21:11:28.863] [WiVRn] [info] Stream scene ready at t=78122232332072
+09-07 21:11:28.874  9890 24361 I WiVRn   : [2026-09-07 21:11:28.874] [WiVRn] [info] MulticastLock released
+09-07 21:11:28.908  9890 24361 I WiVRn   : [2026-09-07 21:11:28.908] [WiVRn] [info] Loaded input profile pico-4
+09-07 21:11:28.908  9890 24361 I WiVRn   : [2026-09-07 21:11:28.908] [WiVRn] [info] Initializing offset of space aim_left to (-5, 0, 20) mm, (0, -0, 0)°
+09-07 21:11:28.908  9890 24361 I WiVRn   : [2026-09-07 21:11:28.908] [WiVRn] [info] Initializing offset of space aim_right to (5, 0, 20) mm, (0, -0, 0)°
+09-07 21:11:28.908  9890 24361 I WiVRn   : [2026-09-07 21:11:28.908] [WiVRn] [info] Initializing offset of space grip_left to (0, -20, -50) mm, (-30.000002, -0, 0)°
+09-07 21:11:28.908  9890 24361 I WiVRn   : [2026-09-07 21:11:28.908] [WiVRn] [info] Initializing offset of space grip_right to (0, -20, -50) mm, (-30.000002, -0, 0)°
+09-07 21:11:28.928  9890 24361 I WiVRn   : [2026-09-07 21:11:28.928] [WiVRn] [info] Font for de /system/fonts/PICOSans.ttf
+09-07 21:11:28.928  9890 24361 I WiVRn   : [2026-09-07 21:11:28.928] [WiVRn] [info] Font for es /system/fonts/PICOSans.ttf
+09-07 21:11:28.928  9890 24361 I WiVRn   : [2026-09-07 21:11:28.928] [WiVRn] [info] Font for fr /system/fonts/PICOSans.ttf
+09-07 21:11:28.928  9890 24361 I WiVRn   : [2026-09-07 21:11:28.928] [WiVRn] [info] Font for fr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:28.928  9890 24361 I WiVRn   : [2026-09-07 21:11:28.928] [WiVRn] [info] Font for it /system/fonts/PICOSans.ttf
+09-07 21:11:28.929  9890 24361 I WiVRn   : [2026-09-07 21:11:28.929] [WiVRn] [info] Font for ja /system/fonts/PICOSans.ttf
+09-07 21:11:28.929  9890 24361 I WiVRn   : [2026-09-07 21:11:28.929] [WiVRn] [info] Font for ja /system/fonts/PICOSansVFJP.ttf
+09-07 21:11:28.929  9890 24361 I WiVRn   : [2026-09-07 21:11:28.929] [WiVRn] [info] Font for ka /system/fonts/PICOSans.ttf
+09-07 21:11:28.929  9890 24361 I WiVRn   : [2026-09-07 21:11:28.929] [WiVRn] [info] Font for ka /system/fonts/NotoSansGeorgian-Regular.otf
+09-07 21:11:28.929  9890 24361 I WiVRn   : [2026-09-07 21:11:28.929] [WiVRn] [info] Font for ka /system/fonts/PICOSans.ttf
+09-07 21:11:28.929  9890 24361 I WiVRn   : [2026-09-07 21:11:28.929] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:28.929  9890 24361 I WiVRn   : [2026-09-07 21:11:28.929] [WiVRn] [info] Font for pl /system/fonts/Roboto-Regular.ttf
+09-07 21:11:28.929  9890 24361 I WiVRn   : [2026-09-07 21:11:28.929] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:28.929  9890 24361 I WiVRn   : [2026-09-07 21:11:28.929] [WiVRn] [info] Font for pl /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:28.929  9890 24361 I WiVRn   : [2026-09-07 21:11:28.929] [WiVRn] [info] Font for pl /system/fonts/Roboto-Regular.ttf
+09-07 21:11:28.929  9890 24361 I WiVRn   : [2026-09-07 21:11:28.929] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:28.929  9890 24361 I WiVRn   : [2026-09-07 21:11:28.929] [WiVRn] [info] Font for pt_BR /system/fonts/PICOSans.ttf
+09-07 21:11:28.929  9890 24361 I WiVRn   : [2026-09-07 21:11:28.929] [WiVRn] [info] Font for ru /system/fonts/PICOSans.ttf
+09-07 21:11:28.929  9890 24361 I WiVRn   : [2026-09-07 21:11:28.929] [WiVRn] [info] Font for ru /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:28.929  9890 24361 I WiVRn   : [2026-09-07 21:11:28.929] [WiVRn] [info] Font for ru /system/fonts/PICOSans.ttf
+09-07 21:11:28.929  9890 24361 I WiVRn   : [2026-09-07 21:11:28.929] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:28.929  9890 24361 I WiVRn   : [2026-09-07 21:11:28.929] [WiVRn] [info] Font for sk /system/fonts/Roboto-Regular.ttf
+09-07 21:11:28.929  9890 24361 I WiVRn   : [2026-09-07 21:11:28.929] [WiVRn] [info] Font for sk /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:28.929  9890 24361 I WiVRn   : [2026-09-07 21:11:28.929] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:28.929  9890 24361 I WiVRn   : [2026-09-07 21:11:28.929] [WiVRn] [info] Font for sk /system/fonts/Roboto-Regular.ttf
+09-07 21:11:28.929  9890 24361 I WiVRn   : [2026-09-07 21:11:28.929] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:28.929  9890 24361 I WiVRn   : [2026-09-07 21:11:28.929] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:28.929  9890 24361 I WiVRn   : [2026-09-07 21:11:28.929] [WiVRn] [info] Font for tr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:28.929  9890 24361 I WiVRn   : [2026-09-07 21:11:28.929] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:28.929  9890 24361 I WiVRn   : [2026-09-07 21:11:28.929] [WiVRn] [info] Font for tr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:28.929  9890 24361 I WiVRn   : [2026-09-07 21:11:28.929] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:28.929  9890 24361 I WiVRn   : [2026-09-07 21:11:28.929] [WiVRn] [info] Font for zh_CN /system/fonts/PICOSans.ttf
+09-07 21:11:28.929  9890 24361 I WiVRn   : [2026-09-07 21:11:28.929] [WiVRn] [info] Font for zh_CN /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:28.930  9890 24361 I WiVRn   : [2026-09-07 21:11:28.930] [WiVRn] [info] Font for zh_TW /system/fonts/PICOSans.ttf
+09-07 21:11:28.930  9890 24361 I WiVRn   : [2026-09-07 21:11:28.930] [WiVRn] [info] Font for zh_TW /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:28.934  9890 24361 I WiVRn   : [2026-09-07 21:11:28.934] [WiVRn] [info] Using font /system/fonts/PICOSans.ttf
+09-07 21:11:28.934  9890 24361 I WiVRn   : [2026-09-07 21:11:28.934] [WiVRn] [info] Using font /system/fonts/Roboto-Regular.ttf
+09-07 21:11:28.935  9890 24361 I WiVRn   : [2026-09-07 21:11:28.935] [WiVRn] [info] Using font /system/fonts/PICOSansVFJP.ttf
+09-07 21:11:28.955  9890 24361 I WiVRn   : [2026-09-07 21:11:28.955] [WiVRn] [info] Using font /system/fonts/NotoSansGeorgian-Regular.otf
+09-07 21:11:28.955  9890 24361 I WiVRn   : [2026-09-07 21:11:28.955] [WiVRn] [info] Using font /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:28.960  9890 24361 I WiVRn   : [2026-09-07 21:11:28.960] [WiVRn] [info] Performance level: CPU domain asked for sustained_high
+09-07 21:11:28.960  9890 24361 I WiVRn   : [2026-09-07 21:11:28.960] [WiVRn] [info] nxwarp: GPU performance level setting 2
+09-07 21:11:28.961  9890 24361 I WiVRn   : [2026-09-07 21:11:28.960] [WiVRn] [info] Performance level: GPU domain asked for boost
+09-07 21:11:28.972  9890 24557 I WiVRn   : [2026-09-07 21:11:28.972] [WiVRn] [info] nxwarp[0]: 73 frames in 2.0 s: 756 B/frame, wait-prev 0.0 ms, wall 27.0 ms, nxvc passA 1.4 passB 21.8 gpu 23.2 ms; holes 0, refused 0
+09-07 21:11:28.972  9890 24557 I WiVRn   : [2026-09-07 21:11:28.972] [WiVRn] [info] nxwarp[0] gpu duty 844 ms/s (84% of one GPU) for decode alone; the display pass is extra
+09-07 21:11:28.972  9890 24557 I WiVRn   : [2026-09-07 21:11:28.972] [WiVRn] [info] nxwarp[0] passB 21.8 ms = warp 0.0 + skip 4.9 + coded 0.3 + dir 0.0 + other 16.6; tiles skip 547 / coded 16 / dir 0 (eye pass 0)
+09-07 21:11:28.972  9890 24557 I WiVRn   : [2026-09-07 21:11:28.972] [WiVRn] [info] nxwarp[0]: 2059 frames dropped late (queue kept to 1)
+09-07 21:11:28.972  9890 24557 I WiVRn   : [2026-09-07 21:11:28.972] [WiVRn] [info] nxwarp[0] stage: gap 0.4 | wait-prev 0.0 | submit 3.2 (qlock 0.0 + codec 3.2) | get_free 0.0 | fence-pre 0.0 | record 0.1 | qsubmit 0.1 | fence-post 23.6 | publish 0.0 ms; withheld 71, stride 1, arrival 11.1 ms
+09-07 21:11:28.972  9890 24557 I WiVRn   : [2026-09-07 21:11:28.972] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.02 ms/frame over 175 frames, buffer 1 kB held for 1 kB of unit (1.0x)
+09-07 21:11:28.972  9890 24557 I WiVRn   : [2026-09-07 21:11:28.972] [WiVRn] [info] nxwarp[0] fence-post 23.7 ms = nxvc gpu 23.2 + copy gpu 0.43 + queue 0.1 (over 73 frames with timestamps)
+09-07 21:11:28.972  9890 24557 I WiVRn   : [2026-09-07 21:11:28.972] [WiVRn] [info] nxwarp[0] atlas: frames 73, atlas 0, picture 73, avg dispatches 8.0, avg assembled 578.0, avg valid 578.0
+09-07 21:11:28.975  9890 24361 I WiVRn   : [2026-09-07 21:11:28.975] [WiVRn] [info] Received event type Unknown
+09-07 21:11:29.032  9890 24361 I WiVRn   : [2026-09-07 21:11:29.032] [WiVRn] [info] Received event type Unknown
+09-07 21:11:29.212  9890 24559 I WiVRn   : [2026-09-07 21:11:29.212] [WiVRn] [info] Tracking pattern (11109µs):
+09-07 21:11:29.212  9890 24559 I WiVRn   : [2026-09-07 21:11:29.212] [WiVRn] [info] 	t+8109µs HEAD (3000µs)
+09-07 21:11:29.212  9890 24559 I WiVRn   : [2026-09-07 21:11:29.212] [WiVRn] [info] 	t+11109µs HEAD (0µs)
+09-07 21:11:30.033  9890 24361 I WiVRn   : [2026-09-07 21:11:30.033] [WiVRn] [info] Performance level: GPU domain asked for sustained_low
+09-07 21:11:30.033  9890 24361 I WiVRn   : [2026-09-07 21:11:30.033] [WiVRn] [info] Performance level: CPU domain asked for sustained_low
+09-07 21:11:30.035  9890 24361 I WiVRn   : [2026-09-07 21:11:30.035] [WiVRn] [info] Using panel size: 2160x2160
+09-07 21:11:30.035  9890 24361 I WiVRn   : [2026-09-07 21:11:30.035] [WiVRn] [info] Loaded input profile pico-4
+09-07 21:11:30.035  9890 24361 I WiVRn   : [2026-09-07 21:11:30.035] [WiVRn] [info] Initializing offset of space aim_left to (-5, 0, 20) mm, (0, -0, 0)°
+09-07 21:11:30.035  9890 24361 I WiVRn   : [2026-09-07 21:11:30.035] [WiVRn] [info] Initializing offset of space aim_right to (5, 0, 20) mm, (0, -0, 0)°
+09-07 21:11:30.035  9890 24361 I WiVRn   : [2026-09-07 21:11:30.035] [WiVRn] [info] Initializing offset of space grip_left to (0, -20, -50) mm, (-30.000002, -0, 0)°
+09-07 21:11:30.035  9890 24361 I WiVRn   : [2026-09-07 21:11:30.035] [WiVRn] [info] Initializing offset of space grip_right to (0, -20, -50) mm, (-30.000002, -0, 0)°
+09-07 21:11:30.038  9890 24361 I WiVRn   : [2026-09-07 21:11:30.038] [WiVRn] [info] Font for de /system/fonts/PICOSans.ttf
+09-07 21:11:30.038  9890 24361 I WiVRn   : [2026-09-07 21:11:30.038] [WiVRn] [info] Font for es /system/fonts/PICOSans.ttf
+09-07 21:11:30.038  9890 24361 I WiVRn   : [2026-09-07 21:11:30.038] [WiVRn] [info] Font for fr /system/fonts/PICOSans.ttf
+09-07 21:11:30.038  9890 24361 I WiVRn   : [2026-09-07 21:11:30.038] [WiVRn] [info] Font for fr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:30.038  9890 24361 I WiVRn   : [2026-09-07 21:11:30.038] [WiVRn] [info] Font for it /system/fonts/PICOSans.ttf
+09-07 21:11:30.039  9890 24361 I WiVRn   : [2026-09-07 21:11:30.039] [WiVRn] [info] Font for ja /system/fonts/PICOSans.ttf
+09-07 21:11:30.039  9890 24361 I WiVRn   : [2026-09-07 21:11:30.039] [WiVRn] [info] Font for ja /system/fonts/PICOSansVFJP.ttf
+09-07 21:11:30.039  9890 24361 I WiVRn   : [2026-09-07 21:11:30.039] [WiVRn] [info] Font for ka /system/fonts/PICOSans.ttf
+09-07 21:11:30.039  9890 24361 I WiVRn   : [2026-09-07 21:11:30.039] [WiVRn] [info] Font for ka /system/fonts/NotoSansGeorgian-Regular.otf
+09-07 21:11:30.039  9890 24361 I WiVRn   : [2026-09-07 21:11:30.039] [WiVRn] [info] Font for ka /system/fonts/PICOSans.ttf
+09-07 21:11:30.039  9890 24361 I WiVRn   : [2026-09-07 21:11:30.039] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:30.039  9890 24361 I WiVRn   : [2026-09-07 21:11:30.039] [WiVRn] [info] Font for pl /system/fonts/Roboto-Regular.ttf
+09-07 21:11:30.039  9890 24361 I WiVRn   : [2026-09-07 21:11:30.039] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:30.039  9890 24361 I WiVRn   : [2026-09-07 21:11:30.039] [WiVRn] [info] Font for pl /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:30.039  9890 24361 I WiVRn   : [2026-09-07 21:11:30.039] [WiVRn] [info] Font for pl /system/fonts/Roboto-Regular.ttf
+09-07 21:11:30.039  9890 24361 I WiVRn   : [2026-09-07 21:11:30.039] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-07 21:11:30.039  9890 24361 I WiVRn   : [2026-09-07 21:11:30.039] [WiVRn] [info] Font for pt_BR /system/fonts/PICOSans.ttf
+09-07 21:11:30.039  9890 24361 I WiVRn   : [2026-09-07 21:11:30.039] [WiVRn] [info] Font for ru /system/fonts/PICOSans.ttf
+09-07 21:11:30.039  9890 24361 I WiVRn   : [2026-09-07 21:11:30.039] [WiVRn] [info] Font for ru /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:30.039  9890 24361 I WiVRn   : [2026-09-07 21:11:30.039] [WiVRn] [info] Font for ru /system/fonts/PICOSans.ttf
+09-07 21:11:30.039  9890 24361 I WiVRn   : [2026-09-07 21:11:30.039] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:30.039  9890 24361 I WiVRn   : [2026-09-07 21:11:30.039] [WiVRn] [info] Font for sk /system/fonts/Roboto-Regular.ttf
+09-07 21:11:30.039  9890 24361 I WiVRn   : [2026-09-07 21:11:30.039] [WiVRn] [info] Font for sk /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:30.039  9890 24361 I WiVRn   : [2026-09-07 21:11:30.039] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:30.039  9890 24361 I WiVRn   : [2026-09-07 21:11:30.039] [WiVRn] [info] Font for sk /system/fonts/Roboto-Regular.ttf
+09-07 21:11:30.039  9890 24361 I WiVRn   : [2026-09-07 21:11:30.039] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-07 21:11:30.039  9890 24361 I WiVRn   : [2026-09-07 21:11:30.039] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:30.039  9890 24361 I WiVRn   : [2026-09-07 21:11:30.039] [WiVRn] [info] Font for tr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:30.039  9890 24361 I WiVRn   : [2026-09-07 21:11:30.039] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:30.039  9890 24361 I WiVRn   : [2026-09-07 21:11:30.039] [WiVRn] [info] Font for tr /system/fonts/Roboto-Regular.ttf
+09-07 21:11:30.039  9890 24361 I WiVRn   : [2026-09-07 21:11:30.039] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-07 21:11:30.039  9890 24361 I WiVRn   : [2026-09-07 21:11:30.039] [WiVRn] [info] Font for zh_CN /system/fonts/PICOSans.ttf
+09-07 21:11:30.039  9890 24361 I WiVRn   : [2026-09-07 21:11:30.039] [WiVRn] [info] Font for zh_CN /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:30.040  9890 24361 I WiVRn   : [2026-09-07 21:11:30.040] [WiVRn] [info] Font for zh_TW /system/fonts/PICOSans.ttf
+09-07 21:11:30.040  9890 24361 I WiVRn   : [2026-09-07 21:11:30.040] [WiVRn] [info] Font for zh_TW /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:30.044  9890 24361 I WiVRn   : [2026-09-07 21:11:30.044] [WiVRn] [info] Using font /system/fonts/PICOSans.ttf
+09-07 21:11:30.044  9890 24361 I WiVRn   : [2026-09-07 21:11:30.044] [WiVRn] [info] Using font /system/fonts/Roboto-Regular.ttf
+09-07 21:11:30.044  9890 24361 I WiVRn   : [2026-09-07 21:11:30.044] [WiVRn] [info] Using font /system/fonts/PICOSansVFJP.ttf
+09-07 21:11:30.061  9890 24361 I WiVRn   : [2026-09-07 21:11:30.061] [WiVRn] [info] Using font /system/fonts/NotoSansGeorgian-Regular.otf
+09-07 21:11:30.061  9890 24361 I WiVRn   : [2026-09-07 21:11:30.061] [WiVRn] [info] Using font /system/fonts/PICOSansSC-Regular.ttf
+09-07 21:11:30.126  9890 24361 I WiVRn   : [2026-09-07 21:11:30.126] [WiVRn] [info] MulticastLock acquired
+09-07 21:11:30.127  9890 24361 I WiVRn   : [2026-09-07 21:11:30.127] [WiVRn] [info] Local IPv6 address: 2003:c2:3701:81fc:b3c8:aefc:7af2:8a5a
+09-07 21:11:30.127  9890 24361 I WiVRn   : [2026-09-07 21:11:30.127] [WiVRn] [info] Local IPv6 address: 2003:c2:3701:81fc:616a:1ec4:5f3c:1dd5
+09-07 21:11:30.127  9890 24361 I WiVRn   : [2026-09-07 21:11:30.127] [WiVRn] [info] Local IPv6 address: fd3c:3d87:86b7:0:c7ff:60cd:b757:e773
+09-07 21:11:30.127  9890 24361 I WiVRn   : [2026-09-07 21:11:30.127] [WiVRn] [info] Local IPv6 address: fd3c:3d87:86b7:0:616a:1ec4:5f3c:1dd5
+09-07 21:11:30.127  9890 24361 I WiVRn   : [2026-09-07 21:11:30.127] [WiVRn] [info] Local IPv4 address: 192.168.1.248
+09-07 21:11:30.127  9890 24361 W WiVRn   : [2026-09-07 21:11:30.127] [WiVRn] [warning] unknown family 17
+09-07 21:11:30.127  9890 25967 I WiVRn   : [2026-09-07 21:11:30.127] [WiVRn] [info] Sending query for _wivrn._tcp.local., type PTR
+09-07 21:11:30.127  9890 24361 I WiVRn   : [2026-09-07 21:11:30.127] [WiVRn] [info] Performance level: CPU domain asked for sustained_high
+09-07 21:11:30.128  9890 24361 I WiVRn   : [2026-09-07 21:11:30.128] [WiVRn] [info] Performance level: GPU domain asked for boost
+09-07 21:11:30.212  9890 24559 I WiVRn   : [2026-09-07 21:11:30.212] [WiVRn] [info] Tracking pattern (11109µs):
+09-07 21:11:30.212  9890 24559 I WiVRn   : [2026-09-07 21:11:30.212] [WiVRn] [info] 	t+1818µs HEAD (9291µs)
+09-07 21:11:30.212  9890 24559 I WiVRn   : [2026-09-07 21:11:30.212] [WiVRn] [info] 	t+4818µs HEAD (6291µs)
+09-07 21:11:30.212  9890 24559 I WiVRn   : [2026-09-07 21:11:30.212] [WiVRn] [info] 	t+7818µs HEAD (3291µs)
+09-07 21:11:30.212  9890 24559 I WiVRn   : [2026-09-07 21:11:30.212] [WiVRn] [info] 	t+9928µs HEAD (12291µs)
+09-07 21:11:30.212  9890 24559 I WiVRn   : [2026-09-07 21:11:30.212] [WiVRn] [info] 	t+10818µs HEAD (291µs)
+09-07 21:11:30.234  9890 24361 I WiVRn   : [2026-09-07 21:11:30.234] [WiVRn] [info] Received event type Unknown
+09-07 21:11:30.730  9890 24540 I WiVRn   : [2026-09-07 21:11:30.730] [WiVRn] [info] nxwarp[0] net: 107 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 8322 decoded so far, 10579 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B
+09-07 21:11:30.730  9890 24540 I WiVRn   : [2026-09-07 21:11:30.730] [WiVRn] [info] nxwarp[0] net: 0.007 ms per datagram over 8367 datagrams (29.31 ms of every second)
+09-07 21:11:30.730  9890 24540 I WiVRn   : [2026-09-07 21:11:30.730] [WiVRn] [info] nxwarp[0] sel: stride 3, arrival 22.1 ms, dropped-late 2112, withheld 1313, decoded 8322
+09-07 21:11:30.730  9890 24540 I WiVRn   : [2026-09-07 21:11:30.730] [WiVRn] [info] nxwarp[0] rx: 169232 datagrams, placed 429101 (+9091), late 842 (+0), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 1
+09-07 21:11:30.992  9890 24557 I WiVRn   : [2026-09-07 21:11:30.992] [WiVRn] [info] nxwarp[0]: 33 frames in 2.0 s: 1943 B/frame, wait-prev 0.0 ms, wall 33.2 ms, nxvc passA 2.0 passB 29.1 gpu 31.1 ms; holes 0, refused 0
+09-07 21:11:30.992  9890 24557 I WiVRn   : [2026-09-07 21:11:30.992] [WiVRn] [info] nxwarp[0] gpu duty 508 ms/s (51% of one GPU) for decode alone; the display pass is extra
+09-07 21:11:30.992  9890 24557 I WiVRn   : [2026-09-07 21:11:30.992] [WiVRn] [info] nxwarp[0] passB 29.1 ms = warp 0.0 + skip 5.5 + coded 2.1 + dir 0.0 + other 21.4; tiles skip 467 / coded 95 / dir 0 (eye pass 0)
+09-07 21:11:30.992  9890 24557 I WiVRn   : [2026-09-07 21:11:30.992] [WiVRn] [info] nxwarp[0]: 2121 frames dropped late (queue kept to 1)
+09-07 21:11:30.992  9890 24557 I WiVRn   : [2026-09-07 21:11:30.992] [WiVRn] [info] nxwarp[0] stage: gap 28.0 | wait-prev 0.0 | submit 1.2 (qlock 0.0 + codec 1.2) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 31.9 | publish 0.0 ms; withheld 32, stride 2, arrival 14.8 ms
+09-07 21:11:30.992  9890 24557 I WiVRn   : [2026-09-07 21:11:30.992] [WiVRn] [info] nxwarp[0] reassembly (network thread): 0.01 ms/frame over 95 frames, buffer 2 kB held for 2 kB of unit (1.0x)
+09-07 21:11:30.992  9890 24557 I WiVRn   : [2026-09-07 21:11:30.992] [WiVRn] [info] nxwarp[0] fence-post 31.9 ms = nxvc gpu 31.1 + copy gpu 0.49 + queue 0.3 (over 33 frames with timestamps)
+09-07 21:11:30.992  9890 24557 I WiVRn   : [2026-09-07 21:11:30.992] [WiVRn] [info] nxwarp[0] atlas: frames 33, atlas 0, picture 33, avg dispatches 8.0, avg assembled 578.0, avg valid 578.0
+09-07 21:11:31.211  9890 24559 I WiVRn   : [2026-09-07 21:11:31.211] [WiVRn] [info] Tracking pattern (11109µs):
+09-07 21:11:31.212  9890 24559 I WiVRn   : [2026-09-07 21:11:31.212] [WiVRn] [info] 	t+2109µs HEAD (9000µs)
+09-07 21:11:31.212  9890 24559 I WiVRn   : [2026-09-07 21:11:31.212] [WiVRn] [info] 	t+5109µs HEAD (6000µs)
+09-07 21:11:31.212  9890 24559 I WiVRn   : [2026-09-07 21:11:31.212] [WiVRn] [info] 	t+7219µs HEAD (15000µs)
+09-07 21:11:31.212  9890 24559 I WiVRn   : [2026-09-07 21:11:31.212] [WiVRn] [info] 	t+8109µs HEAD (3000µs)
+09-07 21:11:31.212  9890 24559 I WiVRn   : [2026-09-07 21:11:31.212] [WiVRn] [info] 	t+10219µs HEAD (12000µs)
+09-07 21:11:31.212  9890 24559 I WiVRn   : [2026-09-07 21:11:31.212] [WiVRn] [info] 	t+11109µs HEAD (0µs)
