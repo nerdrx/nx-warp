@@ -1,5 +1,7 @@
 # 180 s ABBA live comparison
 
+**Dated caveat (2026-09-07): later review found the output-scale viewport bug. These timing results remain genuine, but both reduced-output and AUTO 0.50 captures used cropped/zoomed fields rather than equivalent full-field rendering. Corrected measurements are pending.**
+
 This matched ABBA sequence alternated the existing control APK
 `0582f10bd6a4c45da161981381122ad539b4deab212a1fdb1595ce8db23e8e99` with the
 combined handoff APK `c55a2fa1e49069a541bdd44f42c9a46f7576455cb800a12c986955321ecebc91`.

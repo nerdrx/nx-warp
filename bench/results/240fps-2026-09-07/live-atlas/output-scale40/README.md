@@ -1,5 +1,7 @@
 # Output scale 0.40 live experiment
 
+**Dated caveat (2026-09-07): subsequent review found the scaled viewport dimensions were passed to the grid while foveation runs remained unscaled. The timing numbers below are genuine, but the captured reduced-output renders were cropped/zoomed rather than equivalent full-field images. The AUTO 0.50 path has the same caveat. Corrected measurements are pending.**
+
 This matched exploratory experiment compares the existing R8 reverse baseline
 (see [direct R8 handoff](../direct-r8-handoff/README.md)) with an opt-in
 output scale of 0.40, producing 864 rather than 1088 pixels per eye. The

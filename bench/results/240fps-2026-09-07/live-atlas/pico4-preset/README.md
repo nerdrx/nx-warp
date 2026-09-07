@@ -1,5 +1,7 @@
 # Pico 4 automatic preset verification
 
+**Dated caveat (2026-09-07): the prior output-scale renders were cropped/zoomed because viewport dimensions were scaled while foveation runs were not. This applies to both the 0.40 preset and AUTO 0.50. Timing checks remain genuine; full-field corrected measurements are pending.**
+
 Client commit: `7c884d68` on WiVRn NX `atlas-live`.
 Signed APK SHA256: `b8ce06b966bb46cddaae58f63a5dbe03f6dbbbfe9439a8b6209a861aa1c04fee`.
 

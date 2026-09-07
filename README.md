@@ -151,6 +151,8 @@ was rejected: R16 reduced decoder GPU work but increased snapshot copies to
 and 2.7 ms respectively, with the same 89/s active fresh-source median.
 The live client remains R8.
 
+**Rendering caveat (2026-09-07): review found the earlier scaled-output captures, including AUTO 0.50, cropped/zoomed the field because viewport dimensions and foveation runs were inconsistent. Their timing numbers remain genuine, but they are not equivalent full-field rendering results; corrected measurements are pending.**
+
 A longer [180 s ABBA comparison](bench/results/240fps-2026-09-07/live-atlas/abba-180s/README.md) repeated the combined handoff stage savings in alternating order; cadence and report gaps still prevent an FPS or causal claim. The measured combination is now the default for `PICO 4` in [custom WiVRn NX](https://github.com/nerdrx/wivrn-nx/tree/atlas-live): direct R8 targets and 864×864 output for this stream. Explicit output-scale settings still take precedence; other headset models keep their defaults. This reduces output resolution to save GPU work.
 
 
