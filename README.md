@@ -151,18 +151,18 @@ was rejected: R16 reduced decoder GPU work but increased snapshot copies to
 and 2.7 ms respectively, with the same 89/s active fresh-source median.
 The live client remains R8.
 
-A longer [180 s ABBA comparison](bench/results/240fps-2026-09-07/live-atlas/abba-180s/README.md) repeated the combined handoff stage savings in alternating order; cadence and report gaps still prevent an FPS or causal claim. This motivates a forthcoming PICO4-only speed preset, with the default unchanged.
+A longer [180 s ABBA comparison](bench/results/240fps-2026-09-07/live-atlas/abba-180s/README.md) repeated the combined handoff stage savings in alternating order; cadence and report gaps still prevent an FPS or causal claim. The measured combination is now the default for `PICO 4` in [custom WiVRn NX](https://github.com/nerdrx/wivrn-nx/tree/atlas-live): direct R8 targets and 864×864 output for this stream. Explicit output-scale settings still take precedence; other headset models keep their defaults. This reduces output resolution to save GPU work.
 
 
-An opt-in [direct R8 handoff](bench/results/240fps-2026-09-07/live-atlas/direct-r8-handoff/README.md)
+The initial [direct R8 handoff](bench/results/240fps-2026-09-07/live-atlas/direct-r8-handoff/README.md)
 now writes into retired display-pool images, removing the image snapshot copy.
 In a control/probe/reverse sequence, copy GPU time was **0.28 / 0.01 / 0.28 ms**.
 Decoder wall time was **2.4 / 2.6 / 2.3 ms**, so this is a copy-stage saving,
-not an overall speedup; the default stays unchanged. These are medians of report-window
+not an overall speedup in isolation. The later repeated combined result above motivated the Pico preset. These are medians of report-window
 means under uncontrolled shared host load. The caller-owned output passed exact-pixel
 comparison and Vulkan synchronization validation on the host.
 
-The [output-scale 0.40 experiment](bench/results/240fps-2026-09-07/live-atlas/output-scale40/README.md) reduced the live display target from 1088 to 864 pixels per eye. Its matched active-window medians were 1.65 ms renderer GPU versus 2.55 ms baseline, but the run showed checkerboard ghosting/block artifacts and no end-to-end FPS gain; it remains opt-in and has no quality-equivalence claim.
+The [output-scale 0.40 experiment](bench/results/240fps-2026-09-07/live-atlas/output-scale40/README.md) reduced the live display target from 1088 to 864 pixels per eye. Its matched active-window medians were 1.65 ms renderer GPU versus 2.55 ms baseline, but the run showed checkerboard ghosting/block artifacts and no end-to-end FPS gain; there is no quality-equivalence claim.
 
 ![Output-scale 0.40 matched live measurements](docs/figures/240fps/output-scale40.png)
 
