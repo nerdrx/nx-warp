@@ -99,6 +99,17 @@ in `8868b201` shifts an older held window correctly across the 16-bit wire-id wr
 The [R8 dirty-view reverse repeat](bench/results/240fps-2026-09-07/live-atlas/r8-dirty/README.md)
 found no repeatable gain, so the temporary dirty-view setting was removed and
 the full path remains the default.
+A [later sparse-frame repeat](bench/results/240fps-2026-09-07/live-atlas/r8-dirty-sparse/README.md)
+measured full → dirty → full GPU window medians of **1.0 → 0.4 → 1.0 ms**,
+but active fresh-source rates of **89 → 59.25 → 88.5/s**. The server also sent fewer
+frames in the dirty run, and the user reported concurrent Counter-Strike play
+with unknown start time. This shared-load experiment does not isolate causality;
+the full path remains the default.
+
+<figure>
+  <img src="bench/results/240fps-2026-09-07/live-atlas/r8-dirty-sparse/dirty/live-picture-reset-dirty-pace90-screen-49.png" alt="Captured Pico checkerboard with visible block and ghost artifacts in the dirty-region experiment" width="620">
+  <figcaption>Actual Pico capture from the dirty-region experiment at 49 seconds. Visible artifacts are retained; this is not a quality or frame-rate proof.</figcaption>
+</figure>
 
 The [higher source-rate probe](bench/results/240fps-2026-09-07/live-atlas/pace60/README.md)
 also argues for measuring delivery, not just decoding: targeting 60/s produced

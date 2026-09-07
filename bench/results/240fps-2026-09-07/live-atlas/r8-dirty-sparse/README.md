@@ -1,6 +1,6 @@
 # R8 dirty sparse ATLAS comparison
 
-Three same-fixture QP40/pace90 captures compare the full path, an opt-in dirty path, and a full reverse-order repeat. The dirty server also encoded fewer frames because pace admission dropped work, so its lower decoder cost is not direct causal evidence for the dirty change. A concurrent Counter-Strike workload was active with uncontrolled start and load, further limiting causal interpretation.
+Three same-fixture QP40/pace90 captures compare the full path, an opt-in dirty path, and a full reverse-order repeat. The dirty server also encoded fewer frames because pace admission dropped work, so its lower decoder cost is not direct causal evidence for the dirty change. The user reported concurrent Counter-Strike play; its start time and overlap with each capture are unknown, further limiting causal interpretation.
 
 | arm | decoder GPU ms | active source/s | aligned wall-rate source/s | decoder windows | render windows |
 |---|---:|---:|---:|---:|---:|
@@ -16,3 +16,5 @@ All captures are approximately 55 seconds. These are observed report-window medi
 python3 summarize.py full/*measure.log dirty/*measure.log full-reverse/*measure.log --out summary.json
 MPLCONFIGDIR=/tmp/mpl python3 plot.py --full full/live-picture-reset-pace90-measure.log --dirty dirty/live-picture-reset-dirty-pace90-measure.log --reverse full-reverse/live-picture-reset-full-reverse-pace90-measure.log --out r8-dirty-sparse-windows
 ```
+
+**Decision:** retain the full path as default; keep dirty regions opt-in pending a controlled delivery comparison.
