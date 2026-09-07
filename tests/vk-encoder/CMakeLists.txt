@@ -308,6 +308,17 @@ if(TARGET nxvc-vkenc)
     # The same claim for the C ABI, which acid.cmake does not reach: the
     # library's own configuration mapping is what an integrator links.
     if(TARGET nxvc-vkenc-api)
+      if(TARGET nxv-info)
+        add_test(NAME vk.encoder.acid.api.atlas.transition COMMAND ${CMAKE_COMMAND}
+                 -DAPIENC=$<TARGET_FILE:nxvc-vkenc-api>
+                 -DVKENC=$<TARGET_FILE:nxvc-vkenc>
+                 -DNXVINFO=$<TARGET_FILE:nxv-info>
+                 -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/acid-api-atlas-transition
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/api_atlas_transition.cmake)
+        set_tests_properties(vk.encoder.acid.api.atlas.transition PROPERTIES
+                             SKIP_REGULAR_EXPRESSION "SKIP:")
+        list(APPEND NXENC_TESTS vk.encoder.acid.api.atlas.transition)
+      endif()
       add_test(NAME vk.encoder.acid.api COMMAND ${CMAKE_COMMAND}
                -DAPIENC=$<TARGET_FILE:nxvc-vkenc-api>
                -DVKENC=$<TARGET_FILE:nxvc-vkenc>
