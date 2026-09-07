@@ -73,6 +73,10 @@ restored tile reuse and cut decoder GPU time, but withheld frames and reduced
 fresh-source delivery, so confirmation remains required. The ACK merge correction
 in `8868b201` shifts an older held window correctly across the 16-bit wire-id wrap.
 
+The [R8 dirty-view reverse repeat](bench/results/240fps-2026-09-07/live-atlas/r8-dirty/README.md)
+found no repeatable gain, so the temporary dirty-view setting was removed and
+the full path remains the default.
+
 The [live copy measurement](bench/results/240fps-2026-09-07/live-atlas/copy-elision/README.md)
 fell from 0.56 to 0.29 ms after removing a redundant image copy. Separately,
 [cold standalone pipeline setup](bench/results/240fps-2026-09-07/pipeline-demand/README.md)
