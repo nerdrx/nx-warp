@@ -8,7 +8,7 @@ Three same-fixture QP40/pace90 captures compare the full path, an opt-in dirty p
 | dirty (opt-in) | 0.4 | 59.25 | 47.83 | 29 | 24 |
 | full-reverse | 1.0 | 88.5 | 68.07 | 29 | 23 |
 
-All captures are approximately 55 seconds. These are observed report-window medians and aligned report spans, not FPS claims. Visual QA is pending; no quality or live-scene claim is made here. Raw logs, manifests, patch, parser, chart, and hashes are retained.
+All captures are approximately 55 seconds. These are observed report-window medians and aligned report spans, not FPS claims. The dirty screenshot at 49 s shows the binocular checkerboard scene with block/ghost artifacts and cube edges; this is an authenticity observation, not a quality claim. The inspected full and full-reverse checkpoints are black; the remaining screenshots are retained without interpretation. Raw logs, manifests, patch, parser, chart, and hashes are retained.
 
 ![Decoder GPU and source-rate windows](r8-dirty-sparse-windows.png)
 
