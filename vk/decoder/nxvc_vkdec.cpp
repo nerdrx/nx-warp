@@ -335,6 +335,14 @@ struct nxvc_vk_decoder {
     bool atlas_modes = false;
     // Set per frame from frame flags bit 5, before build_warp_params().
     bool picture_frame = false;
+    // [diag] NXVC_VKD_ATLAS_SENTINEL: dispatch ONLY the sentinel op and none
+    // of the real atlas ops, so what the dump shows is what that one kernel
+    // wrote through binding 0 and nothing else.  Without the exclusion
+    // WRITEBACK runs afterwards on the same frame and zeroes the reserved
+    // words the sentinel lives in, which is exactly what made the first
+    // attempt read as a negative on the DESKTOP, where the write plainly
+    // works.
+    bool atlas_sentinel = false;
     // The last frame number decoded, which is where a base patch's entry sits
     // on the COMPOSITION clock -- not its `src_frame`, which is provenance.
     uint32_t last_frame = 0;
@@ -2490,6 +2498,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_parse_stream_header(
     // [SYN] 13.12.11: tool bit 34 says the stream may switch modes per frame,
     // which is what makes the second ring slot necessary.
     d->atlas_modes = d->atlas_mode && (d->si.tools & (1ull << 34)) != 0;
+    d->atlas_sentinel = std::getenv("NXVC_VKD_ATLAS_SENTINEL") != nullptr;
     st = make_resources(d);
     if (st) return st;
     // [inter] A new stream is a new reference ring and a new prediction
@@ -3151,9 +3160,15 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
         // steps.  An invalid entry costs one early return either way, but the
         // fill is what keeps that true after the first coded tile lands.
         if (fp.flags & 1u) {
-            vkCmdFillBuffer(d->cmd, d->bTable.buf, 0, d->bTable.size, 0u);
-            vkCmdFillBuffer(d->cmd, d->bAdv.buf, 0, d->bAdv.size,
-                            fp.frame_number);
+            // [diag] NXVC_VKD_NO_RESET_FILL isolates the reset frame's two
+            // fills, which are the ONLY thing frame 0 does that later frames
+            // do not -- and frame 0 is the only frame whose dispatches never
+            // execute on the Adreno.
+            if (!std::getenv("NXVC_VKD_NO_RESET_FILL")) {
+                vkCmdFillBuffer(d->cmd, d->bTable.buf, 0, d->bTable.size, 0u);
+                vkCmdFillBuffer(d->cmd, d->bAdv.buf, 0, d->bAdv.size,
+                                fp.frame_number);
+            }
             d->astate.reset(ntiles);
             d->astate.mark_all_advanced(fp.frame_number);
         }
@@ -3349,7 +3364,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     // stored the pixels and applies 13.12.3 step 3.  They are two ops of one
     // kernel because they share every buffer and every index derivation.
     auto atlas_tile_op = [&](uint32_t op) {
-        if (!d->atlas_mode) return;
+        if (!d->atlas_mode || d->atlas_sentinel) return;
         // MATERIALISE covers every ENTRY; the coded-tile ops walk the list.
         const bool all = op == NXVW_ATLAS_OP_MATERIALISE;
         if (!all && (!atlas_frame || d->acoded.empty())) return;
@@ -3476,6 +3491,27 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                        VK_ACCESS_TRANSFER_WRITE_BIT,
                        VK_ACCESS_SHADER_READ_BIT);
+    }
+
+    // [diag] NXVC_VKD_ATLAS_SENTINEL=1 dispatches the sentinel op over every
+    // entry before anything else touches the table.  If the dump then shows
+    // the sentinel, this kernel can write binding 0 through this set and the
+    // empty atlas is a logic problem; if it does not, the binding is.
+    if (d->atlas_mode && d->atlas_sentinel) {
+        nxvw::NxvwAtlasTilePush sp{};
+        sp.tileCount = ntiles;
+        sp.op = NXVW_ATLAS_OP_SENTINEL;
+        sp.colsPerEye = d->si.tiles_x;
+        sp.eyes = d->si.eyes;
+        vkCmdBindDescriptorSets(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                d->plAT, 0, 1, &d->dsetAT, 0, nullptr);
+        vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, d->pipeAT);
+        vkCmdPushConstants(d->cmd, d->plAT, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                           (uint32_t)sizeof sp, &sp);
+        vkCmdDispatch(d->cmd, (ntiles + 63u) / 64u, 1, 1);
+        buffer_barrier(d->cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
     }
 
     atlas_tile_op(NXVW_ATLAS_OP_MATGEN);
@@ -3849,6 +3885,17 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     //
     // Bit 0 is the refusal and bits 8-31 of the second word carry the FIRST
     // offending tile, so the report names a tile rather than a frame.
+    // [diag] The sentinel's other half.  It writes binding 0 AND increments a
+    // counter at binding 4, so these four words say which of the two happened:
+    // a non-zero word 3 means the kernel ran and its binding-0 write vanished;
+    // a zero word 3 means it never ran at all.
+    if (d->atlas_sentinel && d->bAStatus.mapped) {
+        const uint32_t *as = (const uint32_t *)d->bAStatus.mapped;
+        std::fprintf(stderr,
+                     "[atlas-status] flags=%08x first_tile=%08x "
+                     "valid_after_advance=%u sentinel_invocations=%u\n",
+                     as[0], as[1], as[2], as[3]);
+    }
     if (atlas_frame && d->bAStatus.mapped) {
         const uint32_t *as = (const uint32_t *)d->bAStatus.mapped;
         if (as[0] & NXVW_ATLAS_STATUS_INVALID_REF)

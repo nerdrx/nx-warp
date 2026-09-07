@@ -209,6 +209,14 @@ NXVW_AFN nxvw_atlas_col_of(int n, int cols_per_eye, int eyes) {
 // version 1.  A later coded tile at the same position clears it, which is the
 // scheduled refresh.
 #define NXVW_ATLAS_OP_BASE_PATCH 4u
+// [diag] Write a known value into every entry's LAST reserved word and nothing
+// else.  It answers one question and no other: can this kernel, through this
+// descriptor set, write binding 0 at all?  A device where the atlas table
+// stays zero after a frame that plainly ran MATGEN -- its 13.12.4 refusal
+// fired, which requires reading binding 0 and writing binding 4 -- has either
+// a table it cannot write or a table it is not writing to.
+#define NXVW_ATLAS_OP_SENTINEL 5u
+#define NXVW_ATLAS_SENTINEL_VALUE 0xA71A5EEDu
 
 // The status word MATGEN writes.  Bit 0 is the refusal; bits 8-31 carry the
 // FIRST offending tile index, so the report names a tile and not just a frame.

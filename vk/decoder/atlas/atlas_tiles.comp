@@ -105,13 +105,24 @@ void main() {
     // ASSEMBLE and MATERIALISE cover EVERY table entry, so their index is the
     // thread id itself; the two coded-tile ops walk the frame's coded list.
     uint n = (pc.op == NXVW_ATLAS_OP_ASSEMBLE ||
-              pc.op == NXVW_ATLAS_OP_MATERIALISE)
+              pc.op == NXVW_ATLAS_OP_MATERIALISE ||
+              pc.op == NXVW_ATLAS_OP_SENTINEL)
                  ? id
                  : coded[id];
     uint base = n * NXVW_ATLAS_ENTRY_UINTS;
     uint rec = uint(NXVW_WARP_HDR_UINTS) + n * uint(NXVW_WARP_TILE_UINTS);
     uint w0 = warp[rec + 0u];
     int mode = nxvw_wt_mode(w0);
+
+    if (pc.op == NXVW_ATLAS_OP_SENTINEL) {
+        // Binding 0, last word of the entry, and binding 4 beside it so a
+        // reader can tell "the kernel did not run" from "the kernel ran and
+        // its binding-0 writes vanished".
+        tbl[base + uint(NXVW_ATLAS_ENTRY_UINTS) - 1u] =
+            NXVW_ATLAS_SENTINEL_VALUE;
+        atomicAdd(status[3], 1u);
+        return;
+    }
 
     if (pc.op == NXVW_ATLAS_OP_BASE_PATCH) {
         // [SYN] 13.12.9.  The pixels have already been copied in; this is the
