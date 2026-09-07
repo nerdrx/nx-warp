@@ -5,3 +5,5 @@ The matched `atlas:auto` and `atlas:off` runs used APK `5a095bbc730a51f52522f4e3
 Both option configurations and the [Pico thermal snapshot](pico-thermal-1918.txt) are retained. Clock state was not captured, so thermal and frequency effects are uncontrolled. Screenshots ([atlas awake 1](atlas-awake-1.png), [atlas awake 8](atlas-awake-8.png), [off awake 1](off-awake-1.png), [off awake 8](off-awake-8.png)) are capture artifacts, not quality proof.
 
 Recompute with `python3 summarize.py`; it imports the parent `read_pair` parser. The ACK merge fix in `8868b201` is separately covered by the [ACK-only evidence](../ack-feedback/ack-only/README.md).
+
+The [window plot](fixed-qp40-window-results.png) shows all retained active 2 s windows; regenerate it with `python3 plot_windows.py`.
