@@ -2084,6 +2084,13 @@ void run_atlas_view() {
                 return;
             }
             off += used;
+            VkBuffer table_buffer = VK_NULL_HANDLE;
+            VkDeviceSize table_bytes = 0;
+            if (nxvc_vk_decoder_atlas_table_buffer(d, &table_buffer, &table_bytes) != NXVC_VKD_OK ||
+                !table_buffer || table_bytes != nxvc_vk_decoder_atlas_table_size(d)) {
+                std::printf("FAIL atlas-view: GPU table handle or size\n");
+                ++g_fail; nxvc_vk_decoder_destroy(d); return;
+            }
             if (std::getenv("NXVC_TEST_ATLAS_VIEW_TRACE")) {
                 nxvc_vkd_stats stats{};
                 nxvc_vk_decoder_stats(d, &stats);

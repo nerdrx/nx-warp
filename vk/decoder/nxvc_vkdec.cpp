@@ -1633,7 +1633,8 @@ nxvc_vkd_status make_resources(D *d) {
                           : 4;
         const VkDeviceSize listBytes =
             d->atlas_mode ? (VkDeviceSize)entries * 4 : 4;
-        if ((st = make_buf(d, d->bTable, tabBytes, kSsbo, false))) return st;
+        if ((st = make_buf(d, d->bTable, tabBytes,
+                           kSsbo | VK_BUFFER_USAGE_TRANSFER_SRC_BIT, false))) return st;
         if ((st = make_buf(d, d->bAdv, advBytes, kSsbo, false))) return st;
         if ((st = make_buf(d, d->bHRing, hringBytes, kSsbo, false))) return st;
         if ((st = make_buf(d, d->bASel, listBytes, kSsbo, false))) return st;
@@ -4355,6 +4356,17 @@ extern "C" nxvc_vkd_status nxvc_vk_atlas_write_tiles(
 extern "C" size_t nxvc_vk_decoder_atlas_table_size(const nxvc_vk_decoder *d) {
     if (!d || !d->atlas_mode) return 0;
     return (size_t)d->si.tile_count * NXVW_ATLAS_ENTRY_BYTES;
+}
+
+extern "C" nxvc_vkd_status nxvc_vk_decoder_atlas_table_buffer(
+    const nxvc_vk_decoder *d, VkBuffer *out, VkDeviceSize *bytes) {
+    if (!d || !out || !bytes) return NXVC_VKD_ERR_ARG;
+    *out = VK_NULL_HANDLE;
+    *bytes = 0;
+    if (!d->atlas_mode || !d->bTable.buf) return NXVC_VKD_ERR_UNSUPPORTED;
+    *out = d->bTable.buf;
+    *bytes = (VkDeviceSize)nxvc_vk_decoder_atlas_table_size(d);
+    return NXVC_VKD_OK;
 }
 
 extern "C" nxvc_vkd_status nxvc_vk_decoder_atlas_table(nxvc_vk_decoder *d,

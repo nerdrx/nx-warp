@@ -483,8 +483,10 @@ nxvc_vkd_atlas_view nxvc_vk_decoder_atlas_view(const nxvc_vk_decoder *dec);
  * `image[0]` is luma; under R8 `image[1]` is the interleaved CbCr and
  * `image[2]` is VK_NULL_HANDLE, under R16 `image[1]` and `image[2]` are Cb and
  * Cr.  Extents are over the eye PAIR, with eye `e` at column `e * (w / eyes)`.
- * Handles are owned by the decoder and valid until destroy or the next
- * nxvc_vk_decoder_parse_stream_header(). */
+ * Handles are decoder-owned and invalidated by destroy, stream-header reparse,
+ * or changing the atlas view mode. Contents change on subsequent decodes.
+ * Wait for decode completion before reading/copying and finish that read before
+ * the next decode; asynchronous display consumers must snapshot or serialize. */
 typedef struct nxvc_vkd_atlas_images {
     VkImage image[3];
     VkImageView view[3];
@@ -506,6 +508,16 @@ nxvc_vkd_status nxvc_vk_decoder_atlas_view_read(nxvc_vk_decoder *dec, int plane,
 /* Byte size of the per-tile table: 64 * tile_count, over the eye pair.  0 if
  * this is not an atlas stream. */
 size_t nxvc_vk_decoder_atlas_table_size(const nxvc_vk_decoder *dec);
+
+#define NXVC_VK_DECODER_ATLAS_TABLE_BUFFER 1
+/* Borrow the normative GPU table without a readback. No synchronization is
+ * performed. Wait for decode completion before reading/copying; finish that
+ * read before the next decode or atlas patch mutates the table. The buffer is
+ * decoder-owned and invalidated by stream-header reparse or destruction.
+ * A queued display consumer must snapshot it or serialize its use. */
+nxvc_vkd_status nxvc_vk_decoder_atlas_table_buffer(const nxvc_vk_decoder *dec,
+                                                  VkBuffer *out,
+                                                  VkDeviceSize *bytes);
 
 /* The whole table, [SYN] 13.12.1's layout exactly, including the 20 reserved
  * bytes a v1 decoder zeroes -- conformance compares all 64. */
