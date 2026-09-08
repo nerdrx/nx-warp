@@ -29,10 +29,8 @@ void main() {
     uint tile = gl_WorkGroupID.x, lid = gl_LocalInvocationID.x;
     nxe_init_tables(lid, 256u);
     barrier();
-    nxe_init_tables(lid, 256u);
-    barrier();
-    uint tx = (pc.width + 63u) / 64u, ty = (pc.height + 63u) / 64u;
-    uint nt = tx * ty;
+    // Dispatch covers every tile in both eyes; width/height are per eye.
+    uint nt = gl_NumWorkGroups.x;
     if (tile >= nt) return;
     uint ybase = tile * 2048u, cbase = nt * 2048u + tile * 512u;
     if (lid < 64u) {

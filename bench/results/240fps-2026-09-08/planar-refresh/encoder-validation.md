@@ -2,7 +2,7 @@
 
 Host: Radeon RX 7900 XTX. Build: `cmake --build build-vk`.
 
-- GPU R2/coarse PLANAR fit: two-frame pixel regression against `nxv-dec` passes. Every output sample is checked on neutral and two-region tiles.
+- GPU R2/coarse PLANAR fit: mono and stereo two-frame pixel regressions against `nxv-dec` passes. Every output sample is checked on neutral and two-region tiles.
 - Internal luma references match reference-decoded output for both frames, with ordinary INTER and with ATLAS.
 - Host-fit PLANAR through the Vulkan encoder, GPU-fit environment unset: all six R2/R3/R4 fine/coarse configurations pass two-frame reference-ring comparisons.
 - The encoder retains generic Pass B reconstruction. Serialized PLANAR bodies and padded reconstruction bodies have separate buffers.
@@ -15,3 +15,5 @@ Reproduce the pixel regression:
 ```sh
 python3 tests/vk-encoder/planar_gpu_fit.py --encoder build-vk/bin/nxvc-vkenc --decoder build-vk/bin/nxv-dec
 ```
+
+A final stereo check caught the GPU fit using per-eye dimensions for whole-buffer plane offsets. It now uses the complete dispatched tile count. Both eyes pass the per-sample regression; redundant table initialization was removed.
