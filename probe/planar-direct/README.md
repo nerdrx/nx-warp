@@ -67,3 +67,5 @@ python3 probe/planar-direct/validate.py --probe <build>/host/nx-planar-direct \
 This exercises exact, flat, compact, and rejection cases. Future integration must
 define mixed-frame handling and preserve the decoder's existing parser and
 reference-state semantics before this probe can become a decoder path.
+
+Runtime frame counts report parses and completed renders. They do not establish source or decoded-pixel uniqueness; use a fixture manifest with source hashes and verify its stream hash against the device input.

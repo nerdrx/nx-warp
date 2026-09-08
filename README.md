@@ -134,6 +134,12 @@ is fixed; large-motion performance and reconnect reliability remain open.
 | Renderer GPU timestamp diagnostic | **3.99 ms GPU interval p99**, **7.05 ms completion p99** | GPU command intervals and completion latency differ materially |
 | CPU completion polling | **324 repeated renders/s**, **7.52 ms p99**, about **7× CPU time** | A costly throughput tradeoff; disabled by default |
 
+### Motion proof attempt
+
+A new native **4352 × 2176** proof attempt still fails strict 240 Hz deadlines. The 30-second changing-pixel pan missed **41 / 7,200** deadlines. A separate rendered-camera trajectory (yaw ±60°, pitch ±25°, translation; 720 distinct input frames over three seconds) missed **3 / 720** deadlines, then **17 / 720** on repeat. Worst camera completion was **4.83 ms**, above the 4.17 ms budget. These offscreen PLANAR measurements exclude encoding, network and compositor latency.
+
+[Raw timings, verified input hashes, camera trajectory and actual Pico captures](bench/results/240fps-2026-09-08/motion-proof/README.md). Average throughput remains approximately 240 FPS; consistent delivery and live head-motion performance are not established.
+
 ### PLANAR refresh work
 
 An opt-in GPU fit now emits coarse two-region tiles without CPU fitting or an unused warp-prediction pass. Encoder references use a separate padded PLANAR buffer; host-fit and GPU-fit reference checks pass. On the native synthetic fixture, removing unused clears and selecting the exact zero-slope decoder kernel reduced median reconstruction wall time from roughly **31 ms to 10–11 ms**. This remains above the 240 Hz budget.

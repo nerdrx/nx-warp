@@ -1,0 +1,88 @@
+{
+  "all_7200": {
+    "count": 7200,
+    "deadline_misses": 41,
+    "deadline_ms": 4.166666666666667,
+    "max_ms": 5.066352,
+    "p50_ms": 1.930024,
+    "p95_ms": 3.20243055,
+    "p99_ms": 4.05206476
+  },
+  "camera_3s": {
+    "build_sha256_present": true,
+    "camera_log_identity_verified": true,
+    "camera_proof": {
+      "count": 720,
+      "deadline_misses": 3,
+      "deadline_ms": 4.166666666666667,
+      "max_ms": 4.830624,
+      "p50_ms": 1.8635925,
+      "p95_ms": 3.2645756000000006,
+      "p99_ms": 3.7365544899999996
+    },
+    "camera_proof_warm24": {
+      "count": 696,
+      "deadline_misses": 3,
+      "deadline_ms": 4.166666666666667,
+      "max_ms": 4.830624,
+      "p50_ms": 1.8608585,
+      "p95_ms": 3.2428382499999997,
+      "p99_ms": 3.7284004499999996
+    },
+    "camera_repeat": {
+      "count": 720,
+      "deadline_misses": 17,
+      "deadline_ms": 4.166666666666667,
+      "max_ms": 4.787499,
+      "p50_ms": 1.8959370000000002,
+      "p95_ms": 4.0266015,
+      "p99_ms": 4.26278711
+    },
+    "camera_repeat_warm24": {
+      "count": 696,
+      "deadline_misses": 17,
+      "deadline_ms": 4.166666666666667,
+      "max_ms": 4.787499,
+      "p50_ms": 1.8978125,
+      "p95_ms": 4.0376432499999995,
+      "p99_ms": 4.2686017
+    },
+    "device_file_sha256": {
+      "camera.nxv": "265a0d2d920555e1197b739e2ad9dfe9380cb0cd39b6f99018a1e102b1c88974",
+      "nx-planar-camera": "d36c96406a951ba19b1933b48d99b7b8777493f573f83255572dc5d91524cb99",
+      "tile.frag.spv": "6bd1a4ba51cbc19d7a0e4e7e68d47b3400d8722351c9cc630ac94780f1c162b0",
+      "tile.vert.spv": "7d37983e5af490a56c3436a9f1e5fd04df1256715fe2e0e9465066da4d78d68d"
+    },
+    "device_input_hash_matches_streamhash": true,
+    "device_state_present": true,
+    "distinct_source_frames": 720,
+    "manifest_frames": 720,
+    "repeat_log_identity_verified": true,
+    "streamhash": "265a0d2d920555e1197b739e2ad9dfe9380cb0cd39b6f99018a1e102b1c88974"
+  },
+  "deadline_definition": "total_ms > 1000/240; total_ms is probe scheduled-to-completion timing",
+  "device_manifest": {
+    "device_file_sha256": {
+      "/data/local/tmp/planar-direct/pan-7200.nxv": "c17a50a7e6fb698a720b1b73b27b418bcd194a178c92ae3005303350bb5c76ff",
+      "/data/local/tmp/planar-proof/nx-planar-direct": "624d9598b182802cbf54439b3aec27f8a0212187b386c6658bbf21d6f502333a",
+      "/data/local/tmp/planar-proof/tile.frag.spv": "6bd1a4ba51cbc19d7a0e4e7e68d47b3400d8722351c9cc630ac94780f1c162b0",
+      "/data/local/tmp/planar-proof/tile.vert.spv": "7d37983e5af490a56c3436a9f1e5fd04df1256715fe2e0e9465066da4d78d68d"
+    },
+    "log_identity_verified": true,
+    "stream_hash_matches_source_manifest": true
+  },
+  "source_frames": {
+    "distinct_source_frames": 7200,
+    "manifest_frames": 7200,
+    "stream_sha256": "c17a50a7e6fb698a720b1b73b27b418bcd194a178c92ae3005303350bb5c76ff"
+  },
+  "warm_24_plus": {
+    "count": 7176,
+    "deadline_misses": 41,
+    "deadline_ms": 4.166666666666667,
+    "max_ms": 5.066352,
+    "p50_ms": 1.9306729999999999,
+    "p95_ms": 3.2043039999999996,
+    "p99_ms": 4.054291
+  }
+}

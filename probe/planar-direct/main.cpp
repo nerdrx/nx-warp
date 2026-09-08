@@ -744,7 +744,7 @@ int main(int argc, char** argv) try {
                         x.bytes, x.parse, x.upload, x.render, x.timing.gpu, x.total,
                         x.timing.record, x.timing.submit, x.timing.fence, x.timing.query,
                         x.interval, x.arrival_late);
-        std::fprintf(stderr, "complete fresh_frames=%u repeated_frames=0 file_exhausted=%d\n", n,
+        std::fprintf(stderr, "complete parsed_frames=%u rendered_frames=%u file_exhausted=%d\n", n, n,
                      offset == data.size());
         if (argc > 4) {
             int last = int((n - 1) & 1u);
@@ -796,7 +796,7 @@ int main(int argc, char** argv) try {
     }
     if (argc > 4)
         p.readback(argv[4]);
-    std::fprintf(stderr, "complete fresh_frames=%u repeated_frames=0 file_exhausted=%d\n", n,
+    std::fprintf(stderr, "complete parsed_frames=%u rendered_frames=%u file_exhausted=%d\n", n, n,
                  offset == data.size());
     return 0;
 } catch (const std::exception& e) {

@@ -1,0 +1,36 @@
+{
+  "all_7200": {
+    "count": 7200,
+    "deadline_misses": 41,
+    "deadline_ms": 4.166666666666667,
+    "max_ms": 5.066352,
+    "p50_ms": 1.930024,
+    "p95_ms": 3.20243055,
+    "p99_ms": 4.05206476
+  },
+  "deadline_definition": "total_ms > 1000/240; total_ms is probe scheduled-to-completion timing",
+  "device_manifest": {
+    "device_file_sha256": {
+      "/data/local/tmp/planar-direct/pan-7200.nxv": "c17a50a7e6fb698a720b1b73b27b418bcd194a178c92ae3005303350bb5c76ff",
+      "/data/local/tmp/planar-proof/nx-planar-direct": "624d9598b182802cbf54439b3aec27f8a0212187b386c6658bbf21d6f502333a",
+      "/data/local/tmp/planar-proof/tile.frag.spv": "6bd1a4ba51cbc19d7a0e4e7e68d47b3400d8722351c9cc630ac94780f1c162b0",
+      "/data/local/tmp/planar-proof/tile.vert.spv": "7d37983e5af490a56c3436a9f1e5fd04df1256715fe2e0e9465066da4d78d68d"
+    },
+    "log_identity_verified": true,
+    "stream_hash_matches_source_manifest": true
+  },
+  "source_frames": {
+    "distinct_source_frames": 7200,
+    "manifest_frames": 7200,
+    "stream_sha256": "c17a50a7e6fb698a720b1b73b27b418bcd194a178c92ae3005303350bb5c76ff"
+  },
+  "warm_24_plus": {
+    "count": 7176,
+    "deadline_misses": 41,
+    "deadline_ms": 4.166666666666667,
+    "max_ms": 5.066352,
+    "p50_ms": 1.9306729999999999,
+    "p95_ms": 3.2043039999999996,
+    "p99_ms": 4.054291
+  }
+}
