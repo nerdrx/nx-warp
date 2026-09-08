@@ -93,6 +93,12 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 
 ## Measured results
 
+**Latest integration finding:** a real Pico session exposed a native-resolution
+pose-transition failure that the sparse/static-pose benchmarks missed. The encoder
+staging fix passes an old-fails/new-passes regression; moving-head live stability
+and the separately observed reconnect/shutdown failure remain unverified.
+[Failure analysis and regression](bench/results/240fps-2026-09-08/native-pose-transition/README.md).
+
 **Evidence snapshot: 2026-09-08.** The rows below use different fixtures and measurement scopes. They must not be added together or interpreted as one unified benchmark.
 
 | Experiment | Observed result | What it establishes |

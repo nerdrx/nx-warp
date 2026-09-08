@@ -590,7 +590,17 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
         {&d.b_out,     d.out_bytes, true},
         {&d.b_stage_src, d.src_bytes, true},
         {&d.b_stage_coef, d.coef_bytes, true},
-        {&d.b_stage_small, 1 << 20, true},
+        /* The ordinary uploads use fixed offsets below 1 MiB.  Atlas picture
+         * assembly also uploads its per-tile matrix records and can be much
+         * larger than the ordinary warp header, so reserve that tail from the
+         * actual frame sizes instead of imposing an unrelated 128 KiB cap. */
+        {&d.b_stage_small,
+         std::max({(size_t)1 << 20,
+                   (size_t)0xC0000u +
+                       (size_t)d.ntiles * sizeof(nxe_tile_job),
+                   ((size_t)1 << 20) + warp_b +
+                       (size_t)d.ntiles * 4u * sizeof(uint32_t)}),
+         true},
         {&d.b_rate,    (8 * 32 * 16 + 8) * 4, true},
         {&d.b_trelf,   (size_t)d.ntiles * 9 * 64 * 4 * 8, false},
         {&d.b_trelm,   (size_t)d.ntiles * 9 * 64 * 4 * 4, false},
@@ -2602,8 +2612,9 @@ bool VkEncoder::assemble_atlas_picture(Frame &f, const WarpBuildInfo &bi_in,
     }
 
     const size_t wb = wp.bytes();
-    if (wb > (size_t)(1 << 17)) { err = "assembly warp params too large"; return false; }
-    std::memcpy((uint8_t *)d.b_stage_small.map + (1 << 17), wp.w.data(), wb);
+    const size_t warp_stage_off = (size_t)1 << 20;
+    std::memcpy((uint8_t *)d.b_stage_small.map + warp_stage_off,
+                wp.w.data(), wb);
 
     /* Pass B's TILE RECORDS, built here on the host.  They normally come from
      * E1c, which has not run for the assembly and whose records still describe
@@ -2625,17 +2636,18 @@ bool VkEncoder::assemble_atlas_picture(Frame &f, const WarpBuildInfo &bi_in,
         recs[(size_t)t * 4u + 3u] = 0xffffffffu;
     }
     const size_t rb = recs.size() * sizeof(uint32_t);
-    if (rb > (size_t)(1 << 16)) { err = "assembly tile records too large"; return false; }
-    std::memcpy((uint8_t *)d.b_stage_small.map + (1 << 18), recs.data(), rb);
+    const size_t rec_stage_off = warp_stage_off + wb;
+    std::memcpy((uint8_t *)d.b_stage_small.map + rec_stage_off,
+                recs.data(), rb);
 
     nxvw::NxvwWarpPush push = warp_push(bi, d.ring);
 
     const bool tm = std::getenv("NXE_TIME") != nullptr;
     VkCommandBuffer cb = d.dev.begin();
     if (tm) gpu_ts_begin(d, cb, 14u);
-    VkBufferCopy cw{1 << 17, 0, wb};
+    VkBufferCopy cw{warp_stage_off, 0, wb};
     vkCmdCopyBuffer(cb, d.b_stage_small.buf, d.b_warp.buf, 1, &cw);
-    VkBufferCopy cr{1 << 18, 0, rb};
+    VkBufferCopy cr{rec_stage_off, 0, rb};
     vkCmdCopyBuffer(cb, d.b_stage_small.buf, d.b_tilerecs.buf, 1, &cr);
     /* The residual must be ZERO, or Pass B would add whatever the previous
      * frame left in the coefficient buffer to the assembled picture. */

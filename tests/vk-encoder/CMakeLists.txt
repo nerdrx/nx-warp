@@ -318,6 +318,16 @@ if(TARGET nxvc-vkenc)
         set_tests_properties(vk.encoder.acid.api.atlas.transition PROPERTIES
                              SKIP_REGULAR_EXPRESSION "SKIP:")
         list(APPEND NXENC_TESTS vk.encoder.acid.api.atlas.transition)
+        add_test(NAME vk.encoder.acid.api.atlas.native.transition COMMAND ${CMAKE_COMMAND}
+                 -DAPIENC=$<TARGET_FILE:nxvc-vkenc-api>
+                 -DVKENC=$<TARGET_FILE:nxvc-vkenc>
+                 -DNXVINFO=$<TARGET_FILE:nxv-info>
+                 -DNATIVE=ON
+                 -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/acid-api-atlas-native-transition
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/api_atlas_transition.cmake)
+        set_tests_properties(vk.encoder.acid.api.atlas.native.transition PROPERTIES
+                             SKIP_REGULAR_EXPRESSION "SKIP:" TIMEOUT 180)
+        list(APPEND NXENC_TESTS vk.encoder.acid.api.atlas.native.transition)
       endif()
       add_test(NAME vk.encoder.acid.api COMMAND ${CMAKE_COMMAND}
                -DAPIENC=$<TARGET_FILE:nxvc-vkenc-api>
