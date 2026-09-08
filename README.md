@@ -100,6 +100,11 @@ hashes; motion-phase median falls **98.56 → 64.71 ms**. This is a real but inc
 improvement: live motion performance and 240 Hz delivery remain unproven.
 [Implementation, validation and timing figure](bench/results/240fps-2026-09-08/materialized-copy/README.md).
 
+The live sender also now treats decoder-worker backlog as an overload signal;
+previously only deliberate decode-stride drops triggered immediate pacing backoff.
+[WiVRn NX change and limits](https://github.com/nerdrx/wivrn-nx/blob/atlas-live/docs/bench/backlog-pacing-20260908/README.md).
+Its live cadence benefit has not yet been measured.
+
 **Motion regression baseline:** isolated native-resolution Pico motion stress now
 reproduces the reported lag: the original 128-pixel rebuild threshold takes
 **94.24 ms median per moving-frame decode**, versus **1.39 ms** during static
