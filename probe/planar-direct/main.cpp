@@ -519,9 +519,12 @@ struct Probe {
         auto b = Clock::now();
         check(vkQueueSubmit(queue, 1, &submit, fence));
         pending_timing.submit = ms(b, Clock::now());
+        if (foveated && !image_initialized)
+            have_recorded_push = false;  // Do not replay the one-time image clear.
         image_initialized = true;
     }
     DrawTiming draw_spans(const Push& push, const std::vector<TileSpan>& spans) {
+        have_recorded_push = false;  // This recording replaces any cached full draw.
         auto record_start = Clock::now();
         begin();
         if (queries) {
@@ -737,6 +740,9 @@ int main(int argc, char** argv) try {
         si.width % 64 || si.height % 64)
         throw std::runtime_error("requires aligned 8-bit 420 CT_NONE without alpha");
     const bool foveated = std::getenv("NX_PLANAR_FOVEATED") != nullptr;
+    const bool foveated_single_pass = std::getenv("NX_PLANAR_FOVEATED_SINGLE_PASS") != nullptr;
+    if (foveated_single_pass && !foveated)
+        throw std::runtime_error("NX_PLANAR_FOVEATED_SINGLE_PASS requires NX_PLANAR_FOVEATED");
     if (foveated) {
         if (std::getenv("NX_PLANAR_ASYNC"))
             throw std::runtime_error("NX_PLANAR_FOVEATED is synchronous; reject NX_PLANAR_ASYNC");
@@ -897,6 +903,7 @@ int main(int argc, char** argv) try {
         foveated_max_rings = uint32_t(v);
     }
     std::vector<std::vector<TileSpan>> foveated_rings;
+    std::vector<std::vector<TileSpan>> foveated_prefixes;
     if (foveated) {
         const uint32_t cols = si.eyes * si.tiles_x;
         uint32_t max_ring = 0;
@@ -938,6 +945,14 @@ int main(int argc, char** argv) try {
                 }
             }
         }
+        if (foveated_single_pass) {
+            foveated_prefixes.resize(kBands);
+            for (uint32_t prefix = 0; prefix < kBands; ++prefix)
+                for (uint32_t ring = 0; ring <= prefix; ++ring)
+                    foveated_prefixes[prefix].insert(foveated_prefixes[prefix].end(),
+                                                     foveated_rings[ring].begin(),
+                                                     foveated_rings[ring].end());
+        }
     }
     double foveated_budget = pace_fps > 0.0 ? 1000.0 / pace_fps : 1000.0 / 90.0;
     if (const char* b = std::getenv("NX_PLANAR_FOVEATED_BUDGET_MS")) {
@@ -955,6 +970,8 @@ int main(int argc, char** argv) try {
         double ms;
     };
     std::vector<std::vector<BatchCost>> recent_costs(4);
+    std::vector<std::vector<BatchCost>> recent_prefix_costs(4);
+    double full_single_pass_cost = 0.5;
     uint64_t foveated_rendered_total = 0, foveated_skipped_total = 0;
     uint32_t foveated_bands_total = 0;
     benchmark_start = Clock::now();
@@ -980,9 +997,60 @@ int main(int argc, char** argv) try {
         uint32_t tiles_rendered = si.tile_count, tiles_skipped = 0, rings_rendered = 0;
         int64_t max_age = 0;
         if (!foveated || n == 0) {
-            timing = p.draw(push);
+            if (foveated_single_pass) {
+                auto render_start = Clock::now();
+                timing = p.draw(push);
+                full_single_pass_cost = ms(render_start, Clock::now());
+                recent_prefix_costs.back().push_back({n, full_single_pass_cost});
+                rings_rendered = 4;
+            } else {
+                timing = p.draw(push);
+            }
             if (foveated)
                 std::fill(last_rendered.begin(), last_rendered.end(), int64_t(n));
+        } else if (foveated_single_pass) {
+            const uint32_t max_prefix = foveated_max_rings >= 3 ? 4 : foveated_max_rings + 1;
+            uint32_t prefix = 0;
+            auto render_start = Clock::now();
+            for (uint32_t candidate = max_prefix; candidate >= 1; --candidate) {
+                auto& history = recent_prefix_costs[candidate - 1];
+                history.erase(std::remove_if(history.begin(), history.end(),
+                                             [&](const BatchCost& x) { return n - x.frame >= 32; }),
+                              history.end());
+                double estimate = 0.5;
+                if (!history.empty()) {
+                    for (const auto& cost : history)
+                        estimate = std::max(estimate, cost.ms * 1.25);
+                } else {
+                    const auto& spans = foveated_prefixes[candidate - 1];
+                    uint32_t tiles = 0;
+                    for (const TileSpan& s : spans)
+                        tiles += s.count;
+                    estimate += full_single_pass_cost * double(tiles) / double(si.tile_count);
+                }
+                double elapsed = ms(scheduled, Clock::now());
+                if (candidate == 1 || elapsed + estimate <= foveated_budget) {
+                    prefix = candidate;
+                    break;
+                }
+            }
+            timing = prefix == 4 ? p.draw(push) : p.draw_spans(push, foveated_prefixes[prefix - 1]);
+            double wallcost = ms(render_start, Clock::now());
+            recent_prefix_costs[prefix - 1].push_back({n, wallcost});
+            rings_rendered = prefix;
+            for (const TileSpan& s : foveated_prefixes[prefix - 1])
+                for (uint32_t t = s.first; t < s.first + s.count; ++t)
+                    last_rendered[t] = n;
+            tiles_rendered = 0;
+            for (int64_t age : last_rendered)
+                if (age == int64_t(n))
+                    ++tiles_rendered;
+            tiles_skipped = si.tile_count - tiles_rendered;
+            for (int64_t age : last_rendered)
+                max_age = std::max(max_age, int64_t(n) - age);
+            foveated_rendered_total += tiles_rendered;
+            foveated_skipped_total += tiles_skipped;
+            foveated_bands_total += rings_rendered;
         } else {
             auto render_start = Clock::now();
             DrawTiming accumulated{};
@@ -1058,10 +1126,10 @@ int main(int argc, char** argv) try {
     if (foveated)
         std::fprintf(stderr,
                      "foveated bands=4 budget_ms=%.3f rendered_tiles=%llu skipped_tiles=%llu "
-                     "submitted_bands=%u max_rings=%u\n",
+                     "submitted_bands=%u max_rings=%u single_pass=%d\n",
                      foveated_budget, static_cast<unsigned long long>(foveated_rendered_total),
                      static_cast<unsigned long long>(foveated_skipped_total), foveated_bands_total,
-                     foveated_max_rings);
+                     foveated_max_rings, foveated_single_pass);
     std::fprintf(stderr, "complete parsed_frames=%u rendered_frames=%u file_exhausted=%d\n", n, n,
                  offset == data.size());
     return 0;

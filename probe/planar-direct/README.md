@@ -106,3 +106,13 @@ includes all band submissions, CPU parsing/upload and scheduled-arrival delay.
 [90 Hz motion results and pixel-retention checks](../../bench/results/90fps-2026-09-08/centre-first/README.md)
 show why this remains opt-in: multiple render passes cost more than one full
 frame on the lightweight PLANAR renderer. It is not enabled in WiVRn NX.
+
+`NX_PLANAR_FOVEATED_SINGLE_PASS=1` (requires `NX_PLANAR_FOVEATED=1`) chooses
+a centre-first band prefix before submission, using recent per-prefix costs,
+and renders that prefix with one pass and one fence wait. This removes the
+between-band deadline checks and repeated attachment loads/stores. Initial
+unmeasured prefixes use a tile-scaled first-frame cost plus a 0.5 ms floor;
+measured prefixes use a 1.25× recent maximum with 32-frame expiry. The centre
+remains mandatory and the first frame remains complete. Centre-first here
+means admission priority, not guaranteed physical GPU execution order.
+See [single-pass measurements](../../bench/results/90fps-2026-09-08/single-pass/README.md).

@@ -93,7 +93,7 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 
 ## Measured results
 
-**90 Hz centre-first experiment:** four-band progressive rendering works and preserves skipped pixels, but is slower than a single full draw in the native Pico motion probe (about 5.0–5.2 ms versus 2.16 ms median). One repeat misses 2/720 deadlines; retained peripheral age remains a concern. It stays opt-in. [Raw results, implementation and actual captures](bench/results/90fps-2026-09-08/centre-first/README.md).
+**90 Hz centre-first optimization:** single-pass admission halves the earlier multi-pass median (5.32–5.45 → 2.73–2.76 ms), with zero deadline misses across two 720-frame native Pico motion runs. One run retains outer pixels for one frame; the other refreshes every tile. This remains an offscreen experiment, not live streaming proof. [Paired results and actual capture](bench/results/90fps-2026-09-08/single-pass/README.md).
 
 **Latest decoder improvement:** consecutive full-picture frames now reuse an
 already materialized reference. In the native Pico motion stress control,
