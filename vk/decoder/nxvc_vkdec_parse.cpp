@@ -12,6 +12,7 @@
 #include <cctype>
 #include <cstring>
 #include <string>
+#include <utility>
 
 #include "passA/syntax_constants.h"
 #include "passB/syntax_constants.h"
@@ -519,7 +520,32 @@ nxvc_vkd_status parse_frame(const StreamInfo &si, const uint8_t *buf,
 
     // --- frame header --------------------------------------------------
     BR br{buf, len, 0, true};
-    fp = FrameParse{};
+    // Reset scalar state from a fresh value while retaining all vector
+    // allocations.  The parser is called once per frame on the decoder's
+    // persistent FrameParse, and throwing its vectors away here turns every
+    // frame into a malloc/free cycle.  Swap first so `fresh` owns the old
+    // storage, clear those vectors, then move the fully defaulted object back.
+    // Keep this list in lockstep with FrameParse's vector fields.
+    FrameParse fresh{};
+    fresh.desc.swap(fp.desc);
+    fresh.desc_tile.swap(fp.desc_tile);
+    fresh.groups.swap(fp.groups);
+    fresh.cum.swap(fp.cum);
+    fresh.recs.swap(fp.recs);
+    fresh.zero_tiles.swap(fp.zero_tiles);
+    fresh.planar.swap(fp.planar);
+    fresh.row_bits.swap(fp.row_bits);
+    fresh.warp_tiles.swap(fp.warp_tiles);
+    fresh.desc.clear();
+    fresh.desc_tile.clear();
+    fresh.groups.clear();
+    fresh.cum.clear();
+    fresh.recs.clear();
+    fresh.zero_tiles.clear();
+    fresh.planar.clear();
+    fresh.row_bits.clear();
+    fresh.warp_tiles.clear();
+    fp = std::move(fresh);
     fp.frame_number = br.u16v();
     g_rjctx.frame_number = fp.frame_number;
     br.i += 26;  // pose, opaque to the codec (docs/SYNTAX.md 3.2)

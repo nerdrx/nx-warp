@@ -50,7 +50,8 @@ RGBA8-only.
 
 Usage is `nx-planar-direct STREAM SHADER_DIR [MAX_FRAMES] [READBACK_PREFIX]`.
 The supported environment switches are `NX_PLANAR_FLAT`,
-`NX_PLANAR_COMPACT`, `NX_PLANAR_TILE`, and `NX_PLANAR_SPIN` (approximation and
+`NX_PLANAR_COMPACT`, `NX_PLANAR_TILE`, `NX_PLANAR_GPU_PALETTE` (GPU palette
+calculation; implies tile rendering), and `NX_PLANAR_SPIN` (approximation and
 renderer arms), `NX_PLANAR_REUSE_COMMANDS` (command reuse),
 `NX_PLANAR_PACE_FPS` (scheduled admission), `NX_PLANAR_PACE_SPIN` (busy-wait admission; increases CPU use), `NX_PLANAR_QUEUE_PRIORITY=high|realtime` (explicit Vulkan queue priority; fails if denied), and `NX_PLANAR_ASYNC` (a wired
 two-slot asynchronous submission scope). These switches do not change the
@@ -69,3 +70,39 @@ define mixed-frame handling and preserve the decoder's existing parser and
 reference-state semantics before this probe can become a decoder path.
 
 Runtime frame counts report parses and completed renders. They do not establish source or decoded-pixel uniqueness; use a fixture manifest with source hashes and verify its stream hash against the device input.
+
+## Centre-first scheduling at panel cadence
+
+The current experiment targets the Pico panel cadence, 90 Hz (11.111 ms).
+This is a display-update experiment over self-contained all-PLANAR input,
+not permission to discard arbitrary production inter-frame reconstruction.
+Production reference updates require matching encoder/receiver state.
+
+Fixed foveation uses each eye's optical centre; it does not use eye tracking.
+The first frame initializes the complete image. Subsequent frames may keep
+previous outer pixels when the scheduler declines additional work. GPU work
+already submitted cannot be cancelled. Image age must be reported alongside
+latency: dropping outer updates alone does not establish usable motion.
+
+Full parsing and upload remain in scope even when outer rendering is skipped.
+Per-band submission, synchronization and attachment loads have a cost. Compare
+against a single full-frame draw at the same cadence before adopting this path.
+Higher centre quality needs an encoder quality map and is a separate experiment.
+
+Enable `NX_PLANAR_TILE=1 NX_PLANAR_FOVEATED=1 NX_PLANAR_PACE_FPS=90`.
+This mode requires stereo and rejects `NX_PLANAR_ASYNC`. It uses four square
+bands, symmetric within each eye. `NX_PLANAR_FOVEATED_BUDGET_MS` overrides the
+admission budget; it is not a hard execution-time guarantee. The centre is
+always admitted. Later bands use a 1.25× recent measured cost estimate, with
+samples expiring after 32 frames. This avoids permanently suppressing a band
+after one stall, but does not guarantee freshness under sustained overload.
+
+For deterministic retention validation, `NX_PLANAR_FOVEATED_MAX_RINGS=0`
+updates only the centre after the initial full frame (1 includes the next band,
+through 3 for all four). CSV output includes rendered/skipped tile counts,
+submitted band count and maximum pixel age in source-frame periods. Timing
+includes all band submissions, CPU parsing/upload and scheduled-arrival delay.
+
+[90 Hz motion results and pixel-retention checks](../../bench/results/90fps-2026-09-08/centre-first/README.md)
+show why this remains opt-in: multiple render passes cost more than one full
+frame on the lightweight PLANAR renderer. It is not enabled in WiVRn NX.

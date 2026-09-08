@@ -50,6 +50,9 @@ struct Push {
 struct DrawTiming {
     double gpu = -1, record = 0, submit = 0, fence = 0, query = 0;
 };
+struct TileSpan {
+    uint32_t first, count;
+};
 
 struct Probe {
     VkInstance instance{};
@@ -75,15 +78,18 @@ struct Probe {
     Buffer planar, records;
     uint32_t w{}, h{};
     bool spin = std::getenv("NX_PLANAR_SPIN") != nullptr;
-    bool tile_mode = std::getenv("NX_PLANAR_TILE") != nullptr;
-    bool compact = tile_mode || std::getenv("NX_PLANAR_COMPACT") != nullptr;
-    bool flat = compact || std::getenv("NX_PLANAR_FLAT") != nullptr;
+    bool gpu_palette = std::getenv("NX_PLANAR_GPU_PALETTE") != nullptr;
+    bool tile_mode = gpu_palette || std::getenv("NX_PLANAR_TILE") != nullptr;
+    bool foveated = std::getenv("NX_PLANAR_FOVEATED") != nullptr;
+    bool compact = !gpu_palette && (tile_mode || std::getenv("NX_PLANAR_COMPACT") != nullptr);
+    bool flat = !gpu_palette && (compact || std::getenv("NX_PLANAR_FLAT") != nullptr);
     bool reuse_commands = std::getenv("NX_PLANAR_REUSE_COMMANDS") != nullptr;
     bool queue_priority_requested = false;
     VkQueueGlobalPriorityEXT queue_priority = VK_QUEUE_GLOBAL_PRIORITY_HIGH_EXT;
     bool owns_context = true;
     bool have_recorded_push = false;
     Push recorded_push{};
+    bool image_initialized = false;
     uint32_t memory_type(uint32_t bits, VkMemoryPropertyFlags want) {
         VkPhysicalDeviceMemoryProperties p{};
         vkGetPhysicalDeviceMemoryProperties(physical, &p);
@@ -292,7 +298,8 @@ struct Probe {
         ic.arrayLayers = 1;
         ic.samples = VK_SAMPLE_COUNT_1_BIT;
         ic.tiling = VK_IMAGE_TILING_OPTIMAL;
-        ic.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+        ic.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+                   (foveated ? VK_IMAGE_USAGE_TRANSFER_DST_BIT : 0);
         check(vkCreateImage(device, &ic, nullptr, &image));
         VkMemoryRequirements mr{};
         vkGetImageMemoryRequirements(device, image, &mr);
@@ -310,12 +317,14 @@ struct Probe {
         VkAttachmentDescription ad{};
         ad.format = ic.format;
         ad.samples = VK_SAMPLE_COUNT_1_BIT;
-        ad.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        ad.loadOp = foveated ? VK_ATTACHMENT_LOAD_OP_LOAD : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         ad.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
         ad.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         ad.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-        ad.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        ad.finalLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        ad.initialLayout =
+            foveated ? VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED;
+        ad.finalLayout = foveated ? VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+                                  : VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
         VkAttachmentReference ar{0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
         VkSubpassDescription sub{};
         sub.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -324,9 +333,12 @@ struct Probe {
         VkSubpassDependency deps[2]{};
         deps[0].srcSubpass = VK_SUBPASS_EXTERNAL;
         deps[0].dstSubpass = 0;
-        deps[0].srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        deps[0].srcStageMask = foveated ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+                                        : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        deps[0].srcAccessMask = foveated ? VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT : 0;
         deps[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        deps[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        deps[0].dstAccessMask =
+            VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
         deps[1].srcSubpass = 0;
         deps[1].dstSubpass = VK_SUBPASS_EXTERNAL;
         deps[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -357,7 +369,9 @@ struct Probe {
         lc.pushConstantRangeCount = 1;
         lc.pPushConstantRanges = &pr;
         check(vkCreatePipelineLayout(device, &lc, nullptr, &layout));
-        VkShaderModule vs = shader(dir + (tile_mode ? "/tile.vert.spv" : "/planar.vert.spv")),
+        VkShaderModule vs = shader(dir + (gpu_palette ? "/gpu-palette.vert.spv"
+                                          : tile_mode ? "/tile.vert.spv"
+                                                      : "/planar.vert.spv")),
                        fs = shader(dir + (tile_mode ? "/tile.frag.spv"
                                           : compact ? "/compact.frag.spv"
                                           : flat    ? "/flat.frag.spv"
@@ -415,6 +429,29 @@ struct Probe {
         VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
         bi.flags = reuse_commands ? 0 : VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
         check(vkBeginCommandBuffer(cmd, &bi));
+        if (foveated && !image_initialized) {
+            VkImageMemoryBarrier to_clear{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+            to_clear.srcAccessMask = 0;
+            to_clear.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            to_clear.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            to_clear.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            to_clear.image = image;
+            to_clear.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+            vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                                 VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1,
+                                 &to_clear);
+            VkClearColorValue clear{};
+            vkCmdClearColorImage(cmd, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clear, 1,
+                                 &to_clear.subresourceRange);
+            to_clear.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            to_clear.dstAccessMask =
+                VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            to_clear.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            to_clear.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                 VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, nullptr, 0,
+                                 nullptr, 1, &to_clear);
+        }
     }
     DrawTiming submit_wait(bool end_command) {
         DrawTiming t;
@@ -482,6 +519,64 @@ struct Probe {
         auto b = Clock::now();
         check(vkQueueSubmit(queue, 1, &submit, fence));
         pending_timing.submit = ms(b, Clock::now());
+        image_initialized = true;
+    }
+    DrawTiming draw_spans(const Push& push, const std::vector<TileSpan>& spans) {
+        auto record_start = Clock::now();
+        begin();
+        if (queries) {
+            vkCmdResetQueryPool(cmd, queries, 0, 2);
+            vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, queries, 0);
+        }
+        VkRenderPassBeginInfo ri{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
+        ri.renderPass = pass;
+        ri.framebuffer = fb;
+        ri.renderArea = {{0, 0}, {w, h}};
+        vkCmdBeginRenderPass(cmd, &ri, VK_SUBPASS_CONTENTS_INLINE);
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &ds, 0,
+                                nullptr);
+        vkCmdPushConstants(cmd, layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                           0, sizeof(push), &push);
+        for (const TileSpan& s : spans)
+            vkCmdDraw(cmd, 6, s.count, 0, s.first);
+        vkCmdEndRenderPass(cmd);
+        if (queries)
+            vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, queries, 1);
+        check(vkEndCommandBuffer(cmd));
+        DrawTiming t;
+        t.record = ms(record_start, Clock::now());
+        check(vkResetFences(device, 1, &fence));
+        VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+        si.commandBufferCount = 1;
+        si.pCommandBuffers = &cmd;
+        auto submit_start = Clock::now();
+        check(vkQueueSubmit(queue, 1, &si, fence));
+        t.submit = ms(submit_start, Clock::now());
+        auto wait_start = Clock::now();
+        if (spin) {
+            VkResult status;
+            do {
+                status = vkGetFenceStatus(device, fence);
+            } while (status == VK_NOT_READY);
+            check(status);
+        } else
+            check(vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX));
+        t.fence = ms(wait_start, Clock::now());
+        auto query_start = Clock::now();
+        if (queries) {
+            uint64_t ticks[2]{};
+            check(vkGetQueryPoolResults(device, queries, 0, 2, sizeof(ticks), ticks,
+                                        sizeof(uint64_t),
+                                        VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT));
+            uint64_t delta = ticks[1] - ticks[0];
+            if (timestamp_bits < 64)
+                delta &= (uint64_t(1) << timestamp_bits) - 1;
+            t.gpu = double(delta) * timestamp_period / 1e6;
+        }
+        t.query = ms(query_start, Clock::now());
+        image_initialized = true;
+        return t;
     }
     DrawTiming finish_draw() {
         DrawTiming t = pending_timing;
@@ -514,6 +609,16 @@ struct Probe {
         return finish_draw();
     }
     void prepare(const nxvcvk::FrameParse& fp, uint32_t ntiles) {
+        if (gpu_palette) {
+            for (uint32_t t = 0; t < ntiles; ++t) {
+                const uint32_t header = fp.planar[26 * t];
+                if ((header & 3u) != 0u || (header & 8u) != 0u)
+                    throw std::runtime_error("gpu palette requires R2 coarse tiles");
+            }
+            std::memcpy(planar.ptr, fp.planar.data(), planar.bytes);
+            std::memcpy(records.ptr, fp.recs.data(), records.bytes);
+            return;
+        }
         if (!compact)
             std::memcpy(planar.ptr, fp.planar.data(), planar.bytes);
         if (!flat)
@@ -563,6 +668,18 @@ struct Probe {
     void readback(const std::string& path) {
         Buffer out = buffer(VkDeviceSize(w) * h * 4, VK_BUFFER_USAGE_TRANSFER_DST_BIT);
         begin();
+        if (foveated) {
+            VkImageMemoryBarrier to_src{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+            to_src.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            to_src.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+            to_src.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            to_src.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+            to_src.image = image;
+            to_src.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+            vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                                 VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1,
+                                 &to_src);
+        }
         VkBufferImageCopy copy{};
         copy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
         copy.imageExtent = {w, h, 1};
@@ -619,6 +736,16 @@ int main(int argc, char** argv) try {
     if (si.bit_depth != 8 || si.chroma != 0 || si.color_transform != 0 || si.alpha ||
         si.width % 64 || si.height % 64)
         throw std::runtime_error("requires aligned 8-bit 420 CT_NONE without alpha");
+    const bool foveated = std::getenv("NX_PLANAR_FOVEATED") != nullptr;
+    if (foveated) {
+        if (std::getenv("NX_PLANAR_ASYNC"))
+            throw std::runtime_error("NX_PLANAR_FOVEATED is synchronous; reject NX_PLANAR_ASYNC");
+        if (!std::getenv("NX_PLANAR_TILE") && !std::getenv("NX_PLANAR_GPU_PALETTE"))
+            throw std::runtime_error("NX_PLANAR_FOVEATED requires the tile renderer");
+        if (si.eyes != 2 || si.tiles_x == 0 || si.tiles_y == 0 ||
+            si.tile_count != 2u * si.tiles_x * si.tiles_y)
+            throw std::runtime_error("NX_PLANAR_FOVEATED requires a side-by-side 2-eye tile grid");
+    }
     nxvcvk::InterCtx inter;
     inter.resize(si.tile_count);
     Probe p;
@@ -629,14 +756,17 @@ int main(int argc, char** argv) try {
         double parse, upload, render, total, interval;
         DrawTiming timing;
         double arrival_late;
+        uint32_t tiles_rendered = 0, tiles_skipped = 0, rings_rendered = 0;
+        int64_t peripheral_age_max = 0;
     };
     std::vector<Sample> samples;
     samples.reserve(std::min(limit, 4096u));
     std::fprintf(stderr, "representation=%s\n",
-                 p.tile_mode ? "vertex-fed flat-region approximation"
-                 : p.compact ? "compact flat-region approximation"
-                 : p.flat    ? "flat-region approximation"
-                             : "exact PLANAR coded samples");
+                 p.gpu_palette ? "GPU vertex-fed flat-region approximation"
+                 : p.tile_mode ? "vertex-fed flat-region approximation"
+                 : p.compact   ? "compact flat-region approximation"
+                 : p.flat      ? "flat-region approximation"
+                               : "exact PLANAR coded samples");
     const char* pace_text = std::getenv("NX_PLANAR_PACE_FPS");
     char* pace_end = nullptr;
     errno = 0;
@@ -650,7 +780,8 @@ int main(int argc, char** argv) try {
             auto period = std::chrono::duration<double>(1.0 / pace_fps);
             scheduled = pace_origin + std::chrono::duration_cast<Clock::duration>(period * index);
             if (std::getenv("NX_PLANAR_PACE_SPIN")) {
-                while (Clock::now() < scheduled) {}
+                while (Clock::now() < scheduled) {
+                }
             } else
                 std::this_thread::sleep_until(scheduled);
             return std::max(0.0, ms(scheduled, Clock::now()));
@@ -700,9 +831,10 @@ int main(int argc, char** argv) try {
                 auto period = std::chrono::duration<double>(1.0 / pace_fps);
                 scheduled = pace_origin + std::chrono::duration_cast<Clock::duration>(period * n);
                 if (std::getenv("NX_PLANAR_PACE_SPIN")) {
-                while (Clock::now() < scheduled) {}
-            } else
-                std::this_thread::sleep_until(scheduled);
+                    while (Clock::now() < scheduled) {
+                    }
+                } else
+                    std::this_thread::sleep_until(scheduled);
             }
             double arrival_late = std::max(0.0, ms(scheduled, Clock::now()));
             auto start = Clock::now();
@@ -744,8 +876,8 @@ int main(int argc, char** argv) try {
                         x.bytes, x.parse, x.upload, x.render, x.timing.gpu, x.total,
                         x.timing.record, x.timing.submit, x.timing.fence, x.timing.query,
                         x.interval, x.arrival_late);
-        std::fprintf(stderr, "complete parsed_frames=%u rendered_frames=%u file_exhausted=%d\n", n, n,
-                     offset == data.size());
+        std::fprintf(stderr, "complete parsed_frames=%u rendered_frames=%u file_exhausted=%d\n", n,
+                     n, offset == data.size());
         if (argc > 4) {
             int last = int((n - 1) & 1u);
             slots[last]->readback(argv[4]);
@@ -755,6 +887,79 @@ int main(int argc, char** argv) try {
     auto benchmark_start = Clock::now();
     pace_origin = benchmark_start;
     auto previous_completion = benchmark_start;
+    uint32_t foveated_max_rings = UINT32_MAX;
+    if (const char* r = std::getenv("NX_PLANAR_FOVEATED_MAX_RINGS")) {
+        char* end = nullptr;
+        errno = 0;
+        unsigned long v = std::strtoul(r, &end, 10);
+        if (errno || end == r || *end || v > UINT32_MAX)
+            throw std::runtime_error("NX_PLANAR_FOVEATED_MAX_RINGS must be a nonnegative integer");
+        foveated_max_rings = uint32_t(v);
+    }
+    std::vector<std::vector<TileSpan>> foveated_rings;
+    if (foveated) {
+        const uint32_t cols = si.eyes * si.tiles_x;
+        uint32_t max_ring = 0;
+        for (uint32_t t = 0; t < si.tile_count; ++t) {
+            uint32_t row = t / cols, col = t % cols;
+            uint32_t local = col % si.tiles_x;
+            max_ring = std::max(max_ring,
+                                uint32_t(std::max(std::abs(2 * int(local) - int(si.tiles_x - 1)),
+                                                  std::abs(2 * int(row) - int(si.tiles_y - 1)))));
+        }
+        constexpr uint32_t kBands = 4;
+        foveated_rings.resize(kBands);
+        for (uint32_t ring = 0; ring < kBands; ++ring) {
+            for (uint32_t row = 0; row < si.tiles_y; ++row) {
+                uint32_t col = 0;
+                while (col < cols) {
+                    uint32_t local = col % si.tiles_x;
+                    uint32_t radius = std::max(std::abs(2 * int(local) - int(si.tiles_x - 1)),
+                                               std::abs(2 * int(row) - int(si.tiles_y - 1)));
+                    uint32_t band = std::min(kBands - 1, radius * kBands / (max_ring + 1));
+                    if (band != ring) {
+                        ++col;
+                        continue;
+                    }
+                    uint32_t first = row * cols + col, count = 0;
+                    do {
+                        ++count;
+                        ++col;
+                        if (col == cols)
+                            break;
+                        local = col % si.tiles_x;
+                        radius = std::max(std::abs(2 * int(local) - int(si.tiles_x - 1)),
+                                          std::abs(2 * int(row) - int(si.tiles_y - 1)));
+                        uint32_t next_band = std::min(kBands - 1, radius * kBands / (max_ring + 1));
+                        if (next_band != band)
+                            break;
+                    } while (true);
+                    foveated_rings[ring].push_back({first, count});
+                }
+            }
+        }
+    }
+    double foveated_budget = pace_fps > 0.0 ? 1000.0 / pace_fps : 1000.0 / 90.0;
+    if (const char* b = std::getenv("NX_PLANAR_FOVEATED_BUDGET_MS")) {
+        char* end = nullptr;
+        errno = 0;
+        foveated_budget = std::strtod(b, &end);
+        if (errno || end == b || *end || !std::isfinite(foveated_budget) || foveated_budget <= 0)
+            throw std::runtime_error("NX_PLANAR_FOVEATED_BUDGET_MS must be finite and positive");
+    }
+    std::vector<int64_t> last_rendered(si.tile_count, -1);
+    // A transient stall must not permanently disable the periphery. Keep a
+    // separate recent upper estimate for each band, expiring after 32 frames.
+    struct BatchCost {
+        uint32_t frame;
+        double ms;
+    };
+    std::vector<std::vector<BatchCost>> recent_costs(4);
+    uint64_t foveated_rendered_total = 0, foveated_skipped_total = 0;
+    uint32_t foveated_bands_total = 0;
+    benchmark_start = Clock::now();
+    pace_origin = benchmark_start;
+    previous_completion = benchmark_start;
     while (offset < data.size() && n < limit) {
         Clock::time_point scheduled;
         double arrival_late = admit(n, scheduled);
@@ -771,12 +976,63 @@ int main(int argc, char** argv) try {
         p.prepare(fp, si.tile_count);
         auto uploaded = Clock::now();
         Push push{fp.push.baseQp, fp.push.chromaQpOff, int32_t(p.w), int32_t(p.h)};
-        DrawTiming timing = p.draw(push);
+        DrawTiming timing{};
+        uint32_t tiles_rendered = si.tile_count, tiles_skipped = 0, rings_rendered = 0;
+        int64_t max_age = 0;
+        if (!foveated || n == 0) {
+            timing = p.draw(push);
+            if (foveated)
+                std::fill(last_rendered.begin(), last_rendered.end(), int64_t(n));
+        } else {
+            auto render_start = Clock::now();
+            DrawTiming accumulated{};
+            accumulated.gpu = p.queries ? 0 : -1;
+            for (uint32_t ring = 0; ring < foveated_rings.size(); ++ring) {
+                if (ring > foveated_max_rings)
+                    break;
+                if (foveated_rings[ring].empty())
+                    continue;
+                double elapsed = ms(scheduled, Clock::now());
+                auto& history = recent_costs[ring];
+                history.erase(std::remove_if(history.begin(), history.end(),
+                                             [&](const BatchCost& x) { return n - x.frame > 32; }),
+                              history.end());
+                double estimated_ms = 0.5;
+                for (const auto& cost : history)
+                    estimated_ms = std::max(estimated_ms, cost.ms * 1.25);
+                if (ring != 0 && elapsed + estimated_ms > foveated_budget)
+                    break;
+                timing = p.draw_spans(push, foveated_rings[ring]);
+                accumulated.record += timing.record;
+                accumulated.submit += timing.submit;
+                accumulated.fence += timing.fence;
+                accumulated.query += timing.query;
+                if (timing.gpu >= 0)
+                    accumulated.gpu += timing.gpu;
+                ++rings_rendered;
+                for (const TileSpan& s : foveated_rings[ring])
+                    for (uint32_t t = s.first; t < s.first + s.count; ++t)
+                        last_rendered[t] = n;
+                history.push_back({n, ms(render_start, Clock::now())});
+                render_start = Clock::now();
+            }
+            timing = accumulated;
+            tiles_rendered = 0;
+            for (int64_t age : last_rendered)
+                if (age == int64_t(n))
+                    ++tiles_rendered;
+            tiles_skipped = si.tile_count - tiles_rendered;
+            for (int64_t age : last_rendered)
+                max_age = std::max(max_age, int64_t(n) - age);
+            foveated_rendered_total += tiles_rendered;
+            foveated_skipped_total += tiles_skipped;
+            foveated_bands_total += rings_rendered;
+        }
         auto end = Clock::now();
         double total = ms(scheduled, end);
         samples.push_back({n, fp.frame_bytes, ms(start, parsed), ms(parsed, uploaded),
                            ms(uploaded, end), total, ms(previous_completion, end), timing,
-                           arrival_late});
+                           arrival_late, tiles_rendered, tiles_skipped, rings_rendered, max_age});
         previous_completion = end;
         offset += fp.frame_bytes;
         ++n;
@@ -788,14 +1044,24 @@ int main(int argc, char** argv) try {
                  ms(benchmark_start, benchmark_end),
                  1000.0 * n / ms(benchmark_start, benchmark_end));
     std::puts("frame,bytes,parse_ms,upload_ms,render_wait_ms,gpu_ms,total_ms,record_ms,submit_ms,"
-              "fence_ms,query_ms,interval_ms,arrival_late_ms");
+              "fence_ms,query_ms,interval_ms,arrival_late_ms,tiles_rendered,tiles_skipped,rings_"
+              "rendered,peripheral_age_max");
     for (const auto& x : samples) {
-        std::printf("%u,%u,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f\n", x.frame,
-                    x.bytes, x.parse, x.upload, x.render, x.timing.gpu, x.total, x.timing.record,
-                    x.timing.submit, x.timing.fence, x.timing.query, x.interval, x.arrival_late);
+        std::printf("%u,%u,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%u,%u,%u,%lld\n",
+                    x.frame, x.bytes, x.parse, x.upload, x.render, x.timing.gpu, x.total,
+                    x.timing.record, x.timing.submit, x.timing.fence, x.timing.query, x.interval,
+                    x.arrival_late, x.tiles_rendered, x.tiles_skipped, x.rings_rendered,
+                    static_cast<long long>(x.peripheral_age_max));
     }
     if (argc > 4)
         p.readback(argv[4]);
+    if (foveated)
+        std::fprintf(stderr,
+                     "foveated bands=4 budget_ms=%.3f rendered_tiles=%llu skipped_tiles=%llu "
+                     "submitted_bands=%u max_rings=%u\n",
+                     foveated_budget, static_cast<unsigned long long>(foveated_rendered_total),
+                     static_cast<unsigned long long>(foveated_skipped_total), foveated_bands_total,
+                     foveated_max_rings);
     std::fprintf(stderr, "complete parsed_frames=%u rendered_frames=%u file_exhausted=%d\n", n, n,
                  offset == data.size());
     return 0;

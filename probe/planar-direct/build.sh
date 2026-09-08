@@ -20,6 +20,8 @@ for stage in vert frag; do
  compile_shader "$HERE/tile.$stage" "$OUT/host/tile.$stage.spv" "$([ "$stage" = vert ] && echo vertex || echo fragment)"
  cp "$OUT/host/tile.$stage.spv" "$OUT/android/tile.$stage.spv"
 done
+compile_shader "$HERE/gpu-palette.vert" "$OUT/host/gpu-palette.vert.spv" vertex
+cp "$OUT/host/gpu-palette.vert.spv" "$OUT/android/gpu-palette.vert.spv"
 
 compile_shader "$HERE/compact.frag" "$OUT/host/compact.frag.spv" fragment
 cp "$OUT/host/compact.frag.spv" "$OUT/android/compact.frag.spv"

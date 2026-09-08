@@ -19,7 +19,7 @@
 
 The current work combines a Vulkan encoder, a Vulkan decoder and an atlas renderer tested on Pico 4. The priority is **low latency, full-resolution output and inexpensive reconstruction**, especially at low bitrate. Visual approximations are valid experiments when they preserve useful structure and measurably reduce cost. Quality, bitrate and power remain measured tradeoffs.
 
-The stretch target is **240 Hz / 4.17 ms per update**. Individual stages and repeated-render throughput have crossed parts of that budget; **consistent 240 Hz delivery has not been demonstrated**. This is a research prototype, with visible artifacts and incomplete quality gates, rather than a production-ready streaming release.
+The immediate target follows the Pico display: **90 Hz / 11.11 ms per update**, with centre-first correction scheduling under investigation. The stretch target remains **240 Hz / 4.17 ms per update**. Individual stages and repeated-render throughput have crossed parts of that budget; **consistent 240 Hz delivery has not been demonstrated**. This is a research prototype, with visible artifacts and incomplete quality gates, rather than a production-ready streaming release.
 
 > **Removing work beats optimizing work.**
 
@@ -92,6 +92,8 @@ Presentation       warp → warp → warp → warp → warp → …
 Stable references, disocclusion handling and bounded image age are essential. Queueing more work can increase throughput while making the displayed image older.
 
 ## Measured results
+
+**90 Hz centre-first experiment:** four-band progressive rendering works and preserves skipped pixels, but is slower than a single full draw in the native Pico motion probe (about 5.0–5.2 ms versus 2.16 ms median). One repeat misses 2/720 deadlines; retained peripheral age remains a concern. It stays opt-in. [Raw results, implementation and actual captures](bench/results/90fps-2026-09-08/centre-first/README.md).
 
 **Latest decoder improvement:** consecutive full-picture frames now reuse an
 already materialized reference. In the native Pico motion stress control,
