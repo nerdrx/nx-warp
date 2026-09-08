@@ -124,8 +124,9 @@ int main(int argc, char **argv) {
             img.plane[2] = V.data(); img.stride[2] = (int)cw;
             img.plane[3] = A.data(); img.stride[3] = (int)yw;
             size_t c2;
-            if (nxvc_decoder_decode_frame(dec, d.data() + off, d.size() - off,
-                                          &img, &c2) == NXVC_OK) {
+            st = nxvc_decoder_decode_frame(dec, d.data() + off, d.size() - off,
+                                           &img, &c2);
+            if (st == NXVC_OK) {
                 uint32_t count = 0;
                 const nxvc_tile_info *ti = nxvc_decoder_tiles(dec, &count);
                 for (uint32_t i = 0; i < count; ++i) {
@@ -152,6 +153,11 @@ int main(int argc, char **argv) {
                                 t.nsub_log2, t.payload_len, vec,
                                 t.concealed ? " CONCEALED" : "");
                 }
+            } else {
+                std::fprintf(stderr, "frame %d decode: %s\n", n,
+                             nxvc_status_string(st));
+                nxvc_decoder_destroy(dec);
+                return 1;
             }
         }
         off += consumed;

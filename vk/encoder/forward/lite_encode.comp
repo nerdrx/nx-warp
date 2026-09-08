@@ -219,7 +219,8 @@ void main() {
         // bit in the row header's skip bitmap, which E5 derives from the same
         // `mode`.  Zeroing the unit count rather than skipping the tile keeps
         // the barriers below workgroup-uniform, exactly as E4 does.
-        const bool skipped = job.mode == uint(NXE_MODE_WARP_SKIP);
+        const bool planar = job.mode == uint(NXE_MODE_PLANAR);
+        const bool skipped = job.mode == uint(NXE_MODE_WARP_SKIP) || planar;
         if (skipped) g_nunits = 0;
         // The payload starts after the two header words and the reserved
         // optional-field word.  Lite has no rANS flush states, so nothing
@@ -404,7 +405,22 @@ void main() {
 
         // ---- the 8-byte tile header and the sizes E2 prefix-sums.
         if (live && lid == 0u) {
-            if (skipped) {
+            if (planar) {
+                const uint plen = job.planar_bytes;
+                uint h0 = (job.col & 0xfffu) << 4;
+                h0 |= (job.eye & 1u) << 2;
+                h0 |= (plen & 0xffffu) << 16;
+                uint h1 = uint(NXE_MODE_PLANAR) & 7u;
+                h1 |= (job.chroma444 & 1u) << 5;
+                h1 |= uint(job.qp_delta & 0x3f) << 8;
+                slot.v[w0] = h0;
+                slot.v[w0 + 1u] = h1;
+                jobs[g_tile].payload_len = plen;
+                jobs[g_tile].tile_bytes = uint(NXE_TILE_HEADER_BYTES) + plen;
+                jobs[g_tile].nunits = 0u;
+                jobs[g_tile].flags = 1u;
+                sizes.v[g_tile] = uint(NXE_TILE_HEADER_BYTES) + plen;
+            } else if (skipped) {
                 jobs[g_tile].payload_len = 0u;
                 jobs[g_tile].tile_bytes = 0u;
                 jobs[g_tile].nunits = 0u;

@@ -364,14 +364,21 @@ void write_rec(uint tile, uint mode, int mvx, int mvy) {
                      mode == uint(NXE_MODE_WARP_MV) ||
                      mode == uint(NXE_MODE_STEREO);
     uint w1 = mode & 7u;
-    w1 |= (j.res_level & 3u) << 3;
-    w1 |= (j.chroma444 & 1u) << 5;
-    w1 |= (uint(j.qp_delta) & 0x3fu) << 8;
-    w1 |= (j.table_set & 7u) << 14;
-    w1 |= (j.nsub_log2 & 7u) << 17;
-    w1 |= (mvp ? 1u : 0u) << 20;
-    w1 |= (j.tskip & 1u) << 23;
-    w1 |= (j.wm_id & 3u) << 26;
+    if (mode == uint(NXE_MODE_PLANAR)) {
+        w1 |= (j.chroma444 & 1u) << 5;
+        w1 |= (uint(j.qp_delta) & 0x3fu) << 8;
+    } else {
+        w1 |= (j.res_level & 3u) << 3;
+        w1 |= (j.chroma444 & 1u) << 5;
+        w1 |= (uint(j.qp_delta) & 0x3fu) << 8;
+        w1 |= (j.table_set & 7u) << 14;
+        w1 |= (j.nsub_log2 & 7u) << 17;
+    }
+    if (mode != uint(NXE_MODE_PLANAR)) {
+        w1 |= (mvp ? 1u : 0u) << 20;
+        w1 |= (j.tskip & 1u) << 23;
+        w1 |= (j.wm_id & 3u) << 26;
+    }
     recs.v[tile * 4u + 0u] = w0;
     recs.v[tile * 4u + 1u] = w1;
     recs.v[tile * 4u + 2u] = 1u << 8;
@@ -382,7 +389,8 @@ void write_rec(uint tile, uint mode, int mvx, int mvy) {
     // that -- which is what keeps the encoder's reference the decoder's.
     const uint wb = uint(NXVW_WARP_HDR_UINTS) + tile * uint(NXVW_WARP_TILE_UINTS);
     warpw.v[wb + 0u] = (mode & 7u) |
-                       (mode == uint(NXE_MODE_INTRA) ? 0u : (1u << 3)) |
+                       ((mode == uint(NXE_MODE_INTRA) ||
+                         mode == uint(NXE_MODE_PLANAR)) ? 0u : (1u << 3)) |
                        (warpb.v[wb] & (1u << 4));
     warpw.v[wb + 3u] = uint(mvx);
     warpw.v[wb + 4u] = uint(mvy);
@@ -395,6 +403,13 @@ void main() {
 
     const uint b = uint(NXVW_WARP_HDR_UINTS) + tile * uint(NXVW_WARP_TILE_UINTS);
     const uint w0 = warpb.v[b];
+    // PLANAR is fitted by the host before this pass.  Preserve it: it has no
+    // reference or warp predictor, so it must bypass the inter decision and
+    // publish a zeroed inter-only record just like an intra tile.
+    if (jobs[tile].mode == uint(NXE_MODE_PLANAR)) {
+        if (lid == 0u) write_rec(tile, uint(NXE_MODE_PLANAR), 0, 0);
+        return;
+    }
     // Bit 3 is the record's `inter` flag.  Clear means the host already
     // decided this tile is INTRA -- no reference, or a refresh due -- and
     // Pass W wrote nothing for it, so there is no predictor to measure.

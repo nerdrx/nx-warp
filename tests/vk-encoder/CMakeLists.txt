@@ -269,6 +269,21 @@ if(TARGET nxvc-vkenc)
                            SKIP_REGULAR_EXPRESSION "SKIP:")
       list(APPEND NXENC_TESTS ${_name})
     endforeach()
+
+    if(TARGET nxv-info AND TARGET nxv-dec)
+      foreach(dev 0)
+        add_test(NAME vk.encoder.planar.inter.entropy.${dev}
+                 COMMAND ${CMAKE_COMMAND}
+                 -DVKENC=$<TARGET_FILE:nxvc-vkenc>
+                 -DNXVINFO=$<TARGET_FILE:nxv-info>
+                 -DNXVDEC=$<TARGET_FILE:nxv-dec>
+                 -DDEVICE=${dev}
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/planar_inter_lite.cmake)
+        set_tests_properties(vk.encoder.planar.inter.entropy.${dev} PROPERTIES
+                             SKIP_REGULAR_EXPRESSION "SKIP:")
+        list(APPEND NXENC_TESTS vk.encoder.planar.inter.entropy.${dev})
+      endforeach()
+    endif()
     # The same table again at ENTROPY_LITE (tool bit 30).  It is a separate
     # test rather than a wider loop because it is a different STREAM, not a
     # different setting: Lite turns sign hiding, custom tables and TAB_V2 off
