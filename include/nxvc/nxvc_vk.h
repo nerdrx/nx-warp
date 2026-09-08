@@ -509,6 +509,18 @@ typedef struct nxvc_vkd_atlas_images {
 nxvc_vkd_status nxvc_vk_decoder_set_atlas_borrowed_target(
     nxvc_vk_decoder *dec, const nxvc_vkd_atlas_images *target);
 
+/* Opt-in persistent-target catchup.  `generation` is a nonzero value unique
+ * for the lifetime of this decoder and must change whenever the caller
+ * destroys/recreates the target storage.  Generation zero disables caching
+ * and has the same full-refresh semantics as the legacy setter above.
+ * `initial_layout` describes both target planes before this decode; a newly
+ * allocated generation is discarded and fully populated. Reused targets must
+ * retain their prior pixels. The caller must finish all earlier sampling of
+ * the target before decoding into it. Output layout is GENERAL. */
+nxvc_vkd_status nxvc_vk_decoder_set_atlas_borrowed_target_generation(
+    nxvc_vk_decoder *dec, const nxvc_vkd_atlas_images *target,
+    uint64_t generation, VkImageLayout initial_layout);
+
 nxvc_vkd_status nxvc_vk_decoder_atlas_images(const nxvc_vk_decoder *dec,
                                              nxvc_vkd_atlas_images *out);
 

@@ -72,4 +72,14 @@ if(TARGET nxvc_vk_decoder)
   set_target_properties(nxvc-atlas-borrowed-r8-test PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
   add_test(NAME vk.decoder.atlas_borrowed_r8 COMMAND nxvc-atlas-borrowed-r8-test)
   set_tests_properties(vk.decoder.atlas_borrowed_r8 PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 300)
+
+  # The eight-frame generation/cache regression is an explicit target rather
+  # than an unconditional test: it needs the generated NXV fixture supplied
+  # as argv[1] (or NXVC_TEST_ATLAS_VIEW_INPUT), conventionally /tmp/atlas8.nxv
+  # from the metrics fixture generator. Do not make a normal CTest run depend
+  # on that file.
+  add_executable(nxvc-atlas-borrowed-r8-catchup-test test_borrowed_r8_catchup.cpp)
+  target_link_libraries(nxvc-atlas-borrowed-r8-catchup-test PRIVATE nxvc_vk_decoder)
+  target_include_directories(nxvc-atlas-borrowed-r8-catchup-test PRIVATE ${CMAKE_SOURCE_DIR}/include)
+  set_target_properties(nxvc-atlas-borrowed-r8-catchup-test PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 endif()
