@@ -1,0 +1,102 @@
+{
+  "warmup_s": 10.0,
+  "normalized_timestamps": "column 2 minus per-file common minimum nanoseconds",
+  "runs": [
+    {
+      "codec": "nx",
+      "file": "vertex0.csv.gz",
+      "stages": {
+        "blit": {
+          "count": 1532,
+          "p50_p95_p99_ms": [
+            11.093,
+            12.009,
+            16.069
+          ]
+        },
+        "decode_end": {
+          "count": 1558,
+          "p50_p95_p99_ms": [
+            8.191,
+            9.207,
+            11.018
+          ]
+        },
+        "receive_begin": {
+          "count": 1558,
+          "p50_p95_p99_ms": [
+            3.601,
+            4.309,
+            4.861
+          ]
+        }
+      },
+      "unmatched_arrivals_without_decode_or_selection": 0,
+      "warmup_s": 10.0
+    },
+    {
+      "codec": "nx",
+      "file": "vertex3a.csv.gz",
+      "stages": {
+        "blit": {
+          "count": 1360,
+          "p50_p95_p99_ms": [
+            11.702,
+            16.161,
+            17.28
+          ]
+        },
+        "decode_end": {
+          "count": 1427,
+          "p50_p95_p99_ms": [
+            6.226,
+            7.443,
+            9.099
+          ]
+        },
+        "receive_begin": {
+          "count": 1427,
+          "p50_p95_p99_ms": [
+            3.909,
+            4.569,
+            4.948
+          ]
+        }
+      },
+      "unmatched_arrivals_without_decode_or_selection": 0,
+      "warmup_s": 10.0
+    },
+    {
+      "codec": "nx",
+      "file": "vertex3b.csv.gz",
+      "stages": {
+        "blit": {
+          "count": 1446,
+          "p50_p95_p99_ms": [
+            8.292,
+            15.099,
+            17.029
+          ]
+        },
+        "decode_end": {
+          "count": 1477,
+          "p50_p95_p99_ms": [
+            5.992,
+            7.444,
+            9.467
+          ]
+        },
+        "receive_begin": {
+          "count": 1477,
+          "p50_p95_p99_ms": [
+            3.672,
+            4.247,
+            4.717
+          ]
+        }
+      },
+      "unmatched_arrivals_without_decode_or_selection": 0,
+      "warmup_s": 10.0
+    }
+  ]
+}

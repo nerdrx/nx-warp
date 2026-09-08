@@ -1,0 +1,71 @@
+{
+  "warmup_s": 10.0,
+  "runs": [
+    {
+      "codec": "nx",
+      "file": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/240fps-2026-09-08/atlas-vertex-warp/v3-final/vertex-v3-on.csv.gz",
+      "stages": {
+        "blit": {
+          "count": 1377,
+          "p50_p95_p99_ms": [
+            14.548,
+            16.067,
+            16.381
+          ]
+        },
+        "decode_end": {
+          "count": 1391,
+          "p50_p95_p99_ms": [
+            6.177,
+            9.473,
+            10.056
+          ]
+        },
+        "receive_begin": {
+          "count": 1391,
+          "p50_p95_p99_ms": [
+            3.729,
+            4.318,
+            4.717
+          ]
+        }
+      },
+      "unmatched_arrivals_without_decode_or_selection": 0,
+      "warmup_s": 10.0,
+      "arm": "on"
+    },
+    {
+      "codec": "nx",
+      "file": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/240fps-2026-09-08/atlas-vertex-warp/v3-final/vertex-v3-off.csv.gz",
+      "stages": {
+        "blit": {
+          "count": 1487,
+          "p50_p95_p99_ms": [
+            11.673,
+            16.006,
+            16.706
+          ]
+        },
+        "decode_end": {
+          "count": 1504,
+          "p50_p95_p99_ms": [
+            6.277,
+            13.0,
+            13.313
+          ]
+        },
+        "receive_begin": {
+          "count": 1504,
+          "p50_p95_p99_ms": [
+            3.734,
+            4.355,
+            4.707
+          ]
+        }
+      },
+      "unmatched_arrivals_without_decode_or_selection": 0,
+      "warmup_s": 10.0,
+      "arm": "off"
+    }
+  ]
+}

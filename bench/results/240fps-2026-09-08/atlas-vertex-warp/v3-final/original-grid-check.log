@@ -1,0 +1,29 @@
+no mask reproduces the original strip
+  ok   same vertex count
+  ok   every vertex identical to the original loop
+a mask that skips nothing is also the original strip
+  ok   all-zero mask changes nothing
+a mask of the wrong shape is ignored, not misapplied
+  ok   a stale mask draws the whole grid
+skipping the corners keeps every unmasked cell
+  ok   stays inside the buffer
+  ok   still draws something
+  ok   no unmasked cell was dropped
+a fully masked grid emits nothing rather than something wrong
+  ok   everything masked draws nothing
+asymmetric foveation reproduces the original strip exactly
+  ok   asymmetric grid identical to the original loop
+  ok   non-square output identical to the original loop
+reduced viewports retain the complete source field of view
+  ok   full source reaches both viewport edges without clipping
+  ok   full source reaches both viewport edges without clipping
+the lens cell mask never eats the overscan ring
+  ok   mask matches the grid shape
+  ok   overscan can only ever mask FEWER cells, never more
+  ok   the overscan mask is a subset of the no-overscan mask
+  ok   a round region masks something at 100 deg
+  ok   the centre cell is never masked
+a degenerate field of view masks nothing
+  ok   zero FOV yields an empty mask
+
+all checks passed

@@ -1,0 +1,27 @@
+{
+  "method": "float32 linear interpolation of homogeneous q before divide",
+  "results": [
+    {
+      "width": 2176,
+      "height": 2176,
+      "samples": 9248,
+      "qz_skipped": 0,
+      "max_source_error_px": 0.0005459150335692846
+    },
+    {
+      "width": 2173,
+      "height": 1089,
+      "samples": 4896,
+      "qz_skipped": 0,
+      "max_source_error_px": 0.00048828125
+    },
+    {
+      "width": 2176,
+      "height": 1088,
+      "samples": 4624,
+      "qz_skipped": 0,
+      "max_source_error_px": 0.0004901014451835995
+    }
+  ],
+  "conclusion": "small numerical error in this model; retain fragment invalid flag and abs(q.z)<1e-8 check; not bit-exact proof"
+}

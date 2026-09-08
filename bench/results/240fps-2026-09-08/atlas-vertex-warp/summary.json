@@ -1,0 +1,32 @@
+{
+  "warmup_s": 10.0,
+  "units": "GPU window means; no frame-level percentiles",
+  "apk_sha256": "9e04da71760c37600133444d7393956bfbb0d474a765b29cd097b9484ea67aca",
+  "source_patch": "reviewed-followup.patch (current diff includes later extent guard; not exact APK v1 source)",
+  "runs": {
+    "3a": {
+      "role": "vertex warp profile",
+      "windows": 9,
+      "gpu_ms_median": 2.9,
+      "gpu_duty_ms_per_s_median": 261.0,
+      "estimated_noncache_gpu_ms_median": 3.285,
+      "fresh_new_source_median": 177
+    },
+    "0": {
+      "role": "original control",
+      "windows": 8,
+      "gpu_ms_median": 6.25,
+      "gpu_duty_ms_per_s_median": 560.95,
+      "estimated_noncache_gpu_ms_median": 6.302,
+      "fresh_new_source_median": 177.5
+    },
+    "3b": {
+      "role": "vertex warp reverse/control arm",
+      "windows": 10,
+      "gpu_ms_median": 3.15,
+      "gpu_duty_ms_per_s_median": 281.925,
+      "estimated_noncache_gpu_ms_median": 3.204,
+      "fresh_new_source_median": 176
+    }
+  }
+}

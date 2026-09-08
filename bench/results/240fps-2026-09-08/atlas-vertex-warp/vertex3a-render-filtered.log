@@ -1,0 +1,135 @@
+# capture-start [2026-09-08 11:59:57.705]
+09-08 11:59:57.779  3241 10915 I WiVRn   : [2026-09-08 11:59:57.779] [WiVRn] [info] nxwarp[0]: decoupled display -- frames are published complete and the reprojection pass waits on nothing
+09-08 12:00:01.055  3241 10915 I WiVRn   : [2026-09-08 12:00:01.055] [WiVRn] [info] nxwarp[0]: atlas borrowed-target dirty catchup enabled
+09-08 12:00:01.055  3241 10915 I WiVRn   : [2026-09-08 12:00:01.055] [WiVRn] [info] nxwarp[0]: direct atlas targets true
+09-08 12:00:01.055  3241 10915 I WiVRn   : [2026-09-08 12:00:01.055] [WiVRn] [info] nxwarp[0]: real R8 atlas display with per-frame GPU snapshots
+09-08 12:00:01.055  3241 10915 I WiVRn   : [2026-09-08 12:00:01.055] [WiVRn] [info] nxwarp[0]: 2176x2176 per eye, 2 eyes, on Adreno (TM) 650, 68 x 34 tiles, 1166 bytes per tile
+09-08 12:00:01.994  3241 10917 I WiVRn   : [2026-09-08 12:00:01.994] [WiVRn] [info] nxwarp[0]: 1 frames in 4.2 s: 34204 B/frame, wait-prev 0.0 ms, wall 936.6 ms, nxvc passA 15.8 passB 47.4 gpu 63.2 ms; holes 2, refused 0
+09-08 12:00:01.994  3241 10917 I WiVRn   : [2026-09-08 12:00:01.994] [WiVRn] [info] nxwarp[0]: 113 frames dropped late (queue kept to 1)
+09-08 12:00:02.181  3241 10733 I WiVRn   : [2026-09-08 12:00:02.181] [WiVRn] [info] render: 1 iterations in 16.6 s (0.1/s), 1 submitted a layer, 1 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.1 ms
+09-08 12:00:02.181  3241 10733 I WiVRn   : [2026-09-08 12:00:02.181] [WiVRn] [info] render: selected source transitions forward 0 backward 0 repeat 0, greatest forward gap 0
+09-08 12:00:02.181  3241 10733 I WiVRn   : [2026-09-08 12:00:02.181] [WiVRn] [info] render: this app's own GPU pass 0.0 ms per iteration
+09-08 12:00:02.181  3241 10733 I WiVRn   : [2026-09-08 12:00:02.181] [WiVRn] [info] render: defoveate 2160x2160 per eye x2 = 9.33 Mpx/frame at scale 1.00 atlas-prototype 0; 0 re-presented from the cache (reduce_gpu_load on)
+09-08 12:00:02.181  3241 10733 I WiVRn   : [2026-09-08 12:00:02.181] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.28 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-08 12:00:02.181  3241 10733 I WiVRn   : [2026-09-08 12:00:02.181] [WiVRn] [info] render: per iteration fence 0.0 (worst 0.0) | queries 0.0 | submit 0.0 | whole render() 47.6 ms
+09-08 12:00:02.181  3241 10733 I WiVRn   : [2026-09-08 12:00:02.181] [WiVRn] [info] render: jit on | wake slack 80.2 ms | slept 0.0 ms mean (max 0.0, 0 of 1 iterations) | budget 1.0 = pass 0.0 + margin 1.0 | sleep cap 45.0 ms
+09-08 12:00:02.181  3241 10733 I WiVRn   : [2026-09-08 12:00:02.181] [WiVRn] [info] render: source display-time offset 241.1 ms mean (worst 241.1) over 1 frames | submit lead 0.0 ms mean (worst 0.0) | misses: 0 overrun 0 late 0 skipped refresh
+09-08 12:00:04.004  3241 10917 I WiVRn   : [2026-09-08 12:00:04.004] [WiVRn] [info] nxwarp[0]: 96 frames in 2.0 s: 3631 B/frame, wait-prev 0.0 ms, wall 4.1 ms, nxvc passA 0.8 passB 1.3 gpu 2.1 ms; holes 2, refused 0
+09-08 12:00:04.004  3241 10917 I WiVRn   : [2026-09-08 12:00:04.004] [WiVRn] [info] nxwarp[0]: 115 frames dropped late (queue kept to 1)
+09-08 12:00:04.145  3241 10733 I WiVRn   : [2026-09-08 12:00:04.145] [WiVRn] [info] render: 164 iterations in 2.0 s (81.6/s), 164 submitted a layer, 102 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 12.0 ms
+09-08 12:00:04.145  3241 10733 I WiVRn   : [2026-09-08 12:00:04.145] [WiVRn] [info] render: selected source transitions forward 102 backward 0 repeat 62, greatest forward gap 4
+09-08 12:00:04.145  3241 10733 I WiVRn   : [2026-09-08 12:00:04.145] [WiVRn] [info] render: this app's own GPU pass 2.1 ms per iteration
+09-08 12:00:04.145  3241 10733 I WiVRn   : [2026-09-08 12:00:04.145] [WiVRn] [info] render: defoveate 2160x2160 per eye x2 = 9.33 Mpx/frame at scale 1.00 atlas-prototype 0; 44 re-presented from the cache (reduce_gpu_load on)
+09-08 12:00:04.145  3241 10733 I WiVRn   : [2026-09-08 12:00:04.145] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.28 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-08 12:00:04.145  3241 10733 I WiVRn   : [2026-09-08 12:00:04.145] [WiVRn] [info] render: per iteration fence 0.0 (worst 1.5) | queries 0.0 | submit 0.0 | whole render() 0.7 ms
+09-08 12:00:04.145  3241 10733 I WiVRn   : [2026-09-08 12:00:04.145] [WiVRn] [info] render: jit on | wake slack 36.4 ms | slept 2.4 ms mean (max 17.0, 61 of 164 iterations) | budget 24.5 = pass 23.5 + margin 1.0 | sleep cap 0.5 ms
+09-08 12:00:04.145  3241 10733 I WiVRn   : [2026-09-08 12:00:04.145] [WiVRn] [info] render: source display-time offset 170.8 ms mean (worst 774.4) over 164 frames | submit lead 33.3 ms mean (worst 24.6) | misses: 0 overrun 0 late 4 skipped refresh
+09-08 12:00:06.013  3241 10917 I WiVRn   : [2026-09-08 12:00:06.013] [WiVRn] [info] nxwarp[0]: 181 frames in 2.0 s: 1951 B/frame, wait-prev 0.0 ms, wall 1.6 ms, nxvc passA 0.5 passB 0.5 gpu 0.9 ms; holes 2, refused 0
+09-08 12:00:06.013  3241 10917 I WiVRn   : [2026-09-08 12:00:06.013] [WiVRn] [info] nxwarp[0]: 115 frames dropped late (queue kept to 1)
+09-08 12:00:06.151  3241 10733 I WiVRn   : [2026-09-08 12:00:06.151] [WiVRn] [info] render: 180 iterations in 2.0 s (89.7/s), 180 submitted a layer, 178 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.1 ms
+09-08 12:00:06.151  3241 10733 I WiVRn   : [2026-09-08 12:00:06.151] [WiVRn] [info] render: selected source transitions forward 178 backward 0 repeat 2, greatest forward gap 2
+09-08 12:00:06.151  3241 10733 I WiVRn   : [2026-09-08 12:00:06.151] [WiVRn] [info] render: this app's own GPU pass 2.8 ms per iteration
+09-08 12:00:06.151  3241 10733 I WiVRn   : [2026-09-08 12:00:06.151] [WiVRn] [info] render: defoveate 2160x2160 per eye x2 = 9.33 Mpx/frame at scale 1.00 atlas-prototype 0; 2 re-presented from the cache (reduce_gpu_load on)
+09-08 12:00:06.151  3241 10733 I WiVRn   : [2026-09-08 12:00:06.151] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.28 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-08 12:00:06.151  3241 10733 I WiVRn   : [2026-09-08 12:00:06.151] [WiVRn] [info] render: per iteration fence 0.0 (worst 0.0) | queries 0.0 | submit 0.0 | whole render() 0.6 ms
+09-08 12:00:06.151  3241 10733 I WiVRn   : [2026-09-08 12:00:06.151] [WiVRn] [info] render: jit on | wake slack 31.4 ms | slept 0.5 ms mean (max 0.5, 180 of 180 iterations) | budget 21.5 = pass 20.5 + margin 1.0 | sleep cap 0.5 ms
+09-08 12:00:06.151  3241 10733 I WiVRn   : [2026-09-08 12:00:06.151] [WiVRn] [info] render: source display-time offset 26.3 ms mean (worst 36.8) over 180 frames | submit lead 30.3 ms mean (worst 29.3) | misses: 0 overrun 0 late 0 skipped refresh
+09-08 12:00:08.013  3241 10917 I WiVRn   : [2026-09-08 12:00:08.013] [WiVRn] [info] nxwarp[0]: 180 frames in 2.0 s: 1928 B/frame, wait-prev 0.0 ms, wall 1.5 ms, nxvc passA 0.5 passB 0.4 gpu 0.9 ms; holes 2, refused 0
+09-08 12:00:08.014  3241 10917 I WiVRn   : [2026-09-08 12:00:08.014] [WiVRn] [info] nxwarp[0]: 115 frames dropped late (queue kept to 1)
+09-08 12:00:08.151  3241 10733 I WiVRn   : [2026-09-08 12:00:08.151] [WiVRn] [info] render: 179 iterations in 2.0 s (89.5/s), 179 submitted a layer, 178 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.2 ms
+09-08 12:00:08.151  3241 10733 I WiVRn   : [2026-09-08 12:00:08.151] [WiVRn] [info] render: selected source transitions forward 178 backward 0 repeat 1, greatest forward gap 2
+09-08 12:00:08.151  3241 10733 I WiVRn   : [2026-09-08 12:00:08.151] [WiVRn] [info] render: this app's own GPU pass 3.3 ms per iteration
+09-08 12:00:08.151  3241 10733 I WiVRn   : [2026-09-08 12:00:08.151] [WiVRn] [info] render: defoveate 2160x2160 per eye x2 = 9.33 Mpx/frame at scale 1.00 atlas-prototype 0; 1 re-presented from the cache (reduce_gpu_load on)
+09-08 12:00:08.151  3241 10733 I WiVRn   : [2026-09-08 12:00:08.151] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.28 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-08 12:00:08.151  3241 10733 I WiVRn   : [2026-09-08 12:00:08.151] [WiVRn] [info] render: per iteration fence 0.0 (worst 1.6) | queries 0.0 | submit 0.0 | whole render() 0.5 ms
+09-08 12:00:08.151  3241 10733 I WiVRn   : [2026-09-08 12:00:08.151] [WiVRn] [info] render: jit on | wake slack 31.0 ms | slept 1.0 ms mean (max 11.7, 179 of 179 iterations) | budget 19.7 = pass 18.7 + margin 1.0 | sleep cap 0.5 ms
+09-08 12:00:08.151  3241 10733 I WiVRn   : [2026-09-08 12:00:08.151] [WiVRn] [info] render: source display-time offset 25.7 ms mean (worst 37.0) over 179 frames | submit lead 29.4 ms mean (worst 20.0) | misses: 0 overrun 0 late 1 skipped refresh
+09-08 12:00:10.014  3241 10917 I WiVRn   : [2026-09-08 12:00:10.014] [WiVRn] [info] nxwarp[0]: 180 frames in 2.0 s: 2065 B/frame, wait-prev 0.0 ms, wall 1.5 ms, nxvc passA 0.5 passB 0.4 gpu 0.9 ms; holes 2, refused 0
+09-08 12:00:10.014  3241 10917 I WiVRn   : [2026-09-08 12:00:10.014] [WiVRn] [info] nxwarp[0]: 115 frames dropped late (queue kept to 1)
+09-08 12:00:10.151  3241 10733 I WiVRn   : [2026-09-08 12:00:10.151] [WiVRn] [info] render: 179 iterations in 2.0 s (89.5/s), 179 submitted a layer, 177 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.2 ms
+09-08 12:00:10.151  3241 10733 I WiVRn   : [2026-09-08 12:00:10.151] [WiVRn] [info] render: selected source transitions forward 177 backward 0 repeat 2, greatest forward gap 2
+09-08 12:00:10.151  3241 10733 I WiVRn   : [2026-09-08 12:00:10.151] [WiVRn] [info] render: this app's own GPU pass 3.3 ms per iteration
+09-08 12:00:10.151  3241 10733 I WiVRn   : [2026-09-08 12:00:10.151] [WiVRn] [info] render: defoveate 2160x2160 per eye x2 = 9.33 Mpx/frame at scale 1.00 atlas-prototype 0; 2 re-presented from the cache (reduce_gpu_load on)
+09-08 12:00:10.151  3241 10733 I WiVRn   : [2026-09-08 12:00:10.151] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.28 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-08 12:00:10.151  3241 10733 I WiVRn   : [2026-09-08 12:00:10.151] [WiVRn] [info] render: per iteration fence 0.0 (worst 2.5) | queries 0.0 | submit 0.0 | whole render() 0.5 ms
+09-08 12:00:10.151  3241 10733 I WiVRn   : [2026-09-08 12:00:10.151] [WiVRn] [info] render: jit on | wake slack 30.6 ms | slept 0.8 ms mean (max 11.7, 179 of 179 iterations) | budget 17.9 = pass 16.9 + margin 1.0 | sleep cap 0.5 ms
+09-08 12:00:10.151  3241 10733 I WiVRn   : [2026-09-08 12:00:10.151] [WiVRn] [info] render: source display-time offset 25.8 ms mean (worst 37.1) over 179 frames | submit lead 29.2 ms mean (worst 17.6) | misses: 0 overrun 0 late 1 skipped refresh
+09-08 12:00:12.014  3241 10917 I WiVRn   : [2026-09-08 12:00:12.014] [WiVRn] [info] nxwarp[0]: 171 frames in 2.0 s: 2710 B/frame, wait-prev 0.0 ms, wall 2.2 ms, nxvc passA 0.6 passB 0.9 gpu 1.5 ms; holes 2, refused 0
+09-08 12:00:12.014  3241 10917 I WiVRn   : [2026-09-08 12:00:12.014] [WiVRn] [info] nxwarp[0]: 122 frames dropped late (queue kept to 1)
+09-08 12:00:12.014  3241 10917 I WiVRn   : [2026-09-08 12:00:12.014] [WiVRn] [info] nxwarp[0]: 3 of 171 frames measured a stall not attributable to decoding (worst wall 57.1 ms); clipped out of the reported decode cost and out of the stride
+09-08 12:00:13.861  3241 10733 I WiVRn   : [2026-09-08 12:00:13.860] [WiVRn] [info] render: 171 iterations in 2.0 s (85.0/s), 170 submitted a layer, 165 new-source, 0 skipped by the repeat gate, 1 with nothing to show; display period 11.8 ms
+09-08 12:00:13.861  3241 10733 I WiVRn   : [2026-09-08 12:00:13.861] [WiVRn] [info] render: selected source transitions forward 165 backward 0 repeat 5, greatest forward gap 53
+09-08 12:00:13.861  3241 10733 I WiVRn   : [2026-09-08 12:00:13.861] [WiVRn] [info] render: this app's own GPU pass 2.5 ms per iteration
+09-08 12:00:13.861  3241 10733 I WiVRn   : [2026-09-08 12:00:13.861] [WiVRn] [info] render: defoveate 2160x2160 per eye x2 = 9.33 Mpx/frame at scale 1.00 atlas-prototype 0; 5 re-presented from the cache (reduce_gpu_load on)
+09-08 12:00:13.861  3241 10733 I WiVRn   : [2026-09-08 12:00:13.861] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.28 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-08 12:00:13.861  3241 10733 I WiVRn   : [2026-09-08 12:00:13.861] [WiVRn] [info] render: per iteration fence 0.3 (worst 41.6) | queries 0.0 | submit 0.0 | whole render() 0.7 ms
+09-08 12:00:13.861  3241 10733 I WiVRn   : [2026-09-08 12:00:13.861] [WiVRn] [info] render: jit on | wake slack 33.5 ms | slept 1.4 ms mean (max 11.7, 85 of 171 iterations) | budget 23.3 = pass 22.3 + margin 1.0 | sleep cap 0.5 ms
+09-08 12:00:13.861  3241 10733 I WiVRn   : [2026-09-08 12:00:13.861] [WiVRn] [info] render: source display-time offset 29.9 ms mean (worst 126.0) over 170 frames | submit lead 31.3 ms mean (worst -11.3) | misses: 0 overrun 0 late 1 skipped refresh
+09-08 12:00:14.024  3241 10917 I WiVRn   : [2026-09-08 12:00:14.024] [WiVRn] [info] nxwarp[0]: 181 frames in 2.0 s: 1960 B/frame, wait-prev 0.0 ms, wall 1.6 ms, nxvc passA 0.5 passB 0.4 gpu 0.9 ms; holes 2, refused 0
+09-08 12:00:14.024  3241 10917 I WiVRn   : [2026-09-08 12:00:14.024] [WiVRn] [info] nxwarp[0]: 122 frames dropped late (queue kept to 1)
+09-08 12:00:15.864  3241 10733 I WiVRn   : [2026-09-08 12:00:15.864] [WiVRn] [info] render: 180 iterations in 2.0 s (89.9/s), 180 submitted a layer, 180 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.1 ms
+09-08 12:00:15.864  3241 10733 I WiVRn   : [2026-09-08 12:00:15.864] [WiVRn] [info] render: selected source transitions forward 180 backward 0 repeat 0, greatest forward gap 1
+09-08 12:00:15.864  3241 10733 I WiVRn   : [2026-09-08 12:00:15.864] [WiVRn] [info] render: this app's own GPU pass 2.8 ms per iteration
+09-08 12:00:15.864  3241 10733 I WiVRn   : [2026-09-08 12:00:15.864] [WiVRn] [info] render: defoveate 2160x2160 per eye x2 = 9.33 Mpx/frame at scale 1.00 atlas-prototype 0; 0 re-presented from the cache (reduce_gpu_load on)
+09-08 12:00:15.864  3241 10733 I WiVRn   : [2026-09-08 12:00:15.864] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.28 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-08 12:00:15.864  3241 10733 I WiVRn   : [2026-09-08 12:00:15.864] [WiVRn] [info] render: per iteration fence 0.0 (worst 0.0) | queries 0.0 | submit 0.0 | whole render() 0.5 ms
+09-08 12:00:15.864  3241 10733 I WiVRn   : [2026-09-08 12:00:15.864] [WiVRn] [info] render: jit on | wake slack 31.4 ms | slept 0.5 ms mean (max 0.5, 180 of 180 iterations) | budget 21.4 = pass 20.4 + margin 1.0 | sleep cap 0.5 ms
+09-08 12:00:15.864  3241 10733 I WiVRn   : [2026-09-08 12:00:15.864] [WiVRn] [info] render: source display-time offset 28.1 ms mean (worst 28.2) over 180 frames | submit lead 30.3 ms mean (worst 29.2) | misses: 0 overrun 0 late 0 skipped refresh
+09-08 12:00:16.024  3241 10917 I WiVRn   : [2026-09-08 12:00:16.024] [WiVRn] [info] nxwarp[0]: 180 frames in 2.0 s: 1850 B/frame, wait-prev 0.0 ms, wall 1.4 ms, nxvc passA 0.4 passB 0.4 gpu 0.9 ms; holes 2, refused 0
+09-08 12:00:16.024  3241 10917 I WiVRn   : [2026-09-08 12:00:16.024] [WiVRn] [info] nxwarp[0]: 122 frames dropped late (queue kept to 1)
+09-08 12:00:17.864  3241 10733 I WiVRn   : [2026-09-08 12:00:17.864] [WiVRn] [info] render: 179 iterations in 2.0 s (89.5/s), 179 submitted a layer, 178 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.2 ms
+09-08 12:00:17.864  3241 10733 I WiVRn   : [2026-09-08 12:00:17.864] [WiVRn] [info] render: selected source transitions forward 178 backward 0 repeat 1, greatest forward gap 2
+09-08 12:00:17.864  3241 10733 I WiVRn   : [2026-09-08 12:00:17.864] [WiVRn] [info] render: this app's own GPU pass 3.3 ms per iteration
+09-08 12:00:17.864  3241 10733 I WiVRn   : [2026-09-08 12:00:17.864] [WiVRn] [info] render: defoveate 2160x2160 per eye x2 = 9.33 Mpx/frame at scale 1.00 atlas-prototype 0; 1 re-presented from the cache (reduce_gpu_load on)
+09-08 12:00:17.864  3241 10733 I WiVRn   : [2026-09-08 12:00:17.864] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.28 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-08 12:00:17.864  3241 10733 I WiVRn   : [2026-09-08 12:00:17.864] [WiVRn] [info] render: per iteration fence 0.0 (worst 1.7) | queries 0.0 | submit 0.0 | whole render() 0.5 ms
+09-08 12:00:17.864  3241 10733 I WiVRn   : [2026-09-08 12:00:17.864] [WiVRn] [info] render: jit on | wake slack 31.2 ms | slept 1.1 ms mean (max 11.7, 179 of 179 iterations) | budget 19.6 = pass 18.6 + margin 1.0 | sleep cap 0.5 ms
+09-08 12:00:17.864  3241 10733 I WiVRn   : [2026-09-08 12:00:17.864] [WiVRn] [info] render: source display-time offset 27.8 ms mean (worst 39.3) over 179 frames | submit lead 29.6 ms mean (worst 20.0) | misses: 0 overrun 0 late 1 skipped refresh
+09-08 12:00:18.035  3241 10917 I WiVRn   : [2026-09-08 12:00:18.035] [WiVRn] [info] nxwarp[0]: 181 frames in 2.0 s: 1882 B/frame, wait-prev 0.0 ms, wall 1.5 ms, nxvc passA 0.5 passB 0.4 gpu 0.9 ms; holes 2, refused 0
+09-08 12:00:18.035  3241 10917 I WiVRn   : [2026-09-08 12:00:18.035] [WiVRn] [info] nxwarp[0]: 122 frames dropped late (queue kept to 1)
+09-08 12:00:19.864  3241 10733 I WiVRn   : [2026-09-08 12:00:19.864] [WiVRn] [info] render: 179 iterations in 2.0 s (89.5/s), 179 submitted a layer, 178 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.2 ms
+09-08 12:00:19.865  3241 10733 I WiVRn   : [2026-09-08 12:00:19.865] [WiVRn] [info] render: selected source transitions forward 178 backward 0 repeat 1, greatest forward gap 2
+09-08 12:00:19.865  3241 10733 I WiVRn   : [2026-09-08 12:00:19.865] [WiVRn] [info] render: this app's own GPU pass 3.3 ms per iteration
+09-08 12:00:19.865  3241 10733 I WiVRn   : [2026-09-08 12:00:19.865] [WiVRn] [info] render: defoveate 2160x2160 per eye x2 = 9.33 Mpx/frame at scale 1.00 atlas-prototype 0; 1 re-presented from the cache (reduce_gpu_load on)
+09-08 12:00:19.865  3241 10733 I WiVRn   : [2026-09-08 12:00:19.865] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.28 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-08 12:00:19.865  3241 10733 I WiVRn   : [2026-09-08 12:00:19.865] [WiVRn] [info] render: per iteration fence 0.0 (worst 2.5) | queries 0.0 | submit 0.0 | whole render() 0.5 ms
+09-08 12:00:19.865  3241 10733 I WiVRn   : [2026-09-08 12:00:19.865] [WiVRn] [info] render: jit on | wake slack 30.7 ms | slept 0.8 ms mean (max 11.7, 179 of 179 iterations) | budget 17.8 = pass 16.8 + margin 1.0 | sleep cap 0.6 ms
+09-08 12:00:19.865  3241 10733 I WiVRn   : [2026-09-08 12:00:19.865] [WiVRn] [info] render: source display-time offset 28.0 ms mean (worst 28.4) over 179 frames | submit lead 29.4 ms mean (worst 17.6) | misses: 0 overrun 0 late 1 skipped refresh
+09-08 12:00:20.035  3241 10917 I WiVRn   : [2026-09-08 12:00:20.035] [WiVRn] [info] nxwarp[0]: 180 frames in 2.0 s: 1941 B/frame, wait-prev 0.0 ms, wall 1.7 ms, nxvc passA 0.5 passB 0.4 gpu 0.9 ms; holes 2, refused 0
+09-08 12:00:20.035  3241 10917 I WiVRn   : [2026-09-08 12:00:20.035] [WiVRn] [info] nxwarp[0]: 122 frames dropped late (queue kept to 1)
+09-08 12:00:22.038  3241 10917 I WiVRn   : [2026-09-08 12:00:22.038] [WiVRn] [info] nxwarp[0]: 176 frames in 2.0 s: 1850 B/frame, wait-prev 0.0 ms, wall 2.1 ms, nxvc passA 0.5 passB 0.5 gpu 1.0 ms; holes 2, refused 0
+09-08 12:00:22.038  3241 10917 I WiVRn   : [2026-09-08 12:00:22.038] [WiVRn] [info] nxwarp[0]: 125 frames dropped late (queue kept to 1)
+09-08 12:00:22.038  3241 10917 I WiVRn   : [2026-09-08 12:00:22.038] [WiVRn] [info] nxwarp[0]: 1 of 176 frames measured a stall not attributable to decoding (worst wall 37.5 ms); clipped out of the reported decode cost and out of the stride
+09-08 12:00:24.039  3241 10917 I WiVRn   : [2026-09-08 12:00:24.039] [WiVRn] [info] nxwarp[0]: 180 frames in 2.0 s: 1113 B/frame, wait-prev 0.0 ms, wall 2.0 ms, nxvc passA 0.4 passB 0.2 gpu 0.6 ms; holes 2, refused 0
+09-08 12:00:24.039  3241 10917 I WiVRn   : [2026-09-08 12:00:24.039] [WiVRn] [info] nxwarp[0]: 125 frames dropped late (queue kept to 1)
+09-08 12:00:26.046  3241 10917 I WiVRn   : [2026-09-08 12:00:26.046] [WiVRn] [info] nxwarp[0]: 177 frames in 2.0 s: 2542 B/frame, wait-prev 0.0 ms, wall 2.3 ms, nxvc passA 0.5 passB 0.8 gpu 1.3 ms; holes 2, refused 0
+09-08 12:00:26.046  3241 10917 I WiVRn   : [2026-09-08 12:00:26.046] [WiVRn] [info] nxwarp[0]: 128 frames dropped late (queue kept to 1)
+09-08 12:00:26.046  3241 10917 I WiVRn   : [2026-09-08 12:00:26.046] [WiVRn] [info] nxwarp[0]: 1 of 177 frames measured a stall not attributable to decoding (worst wall 54.8 ms); clipped out of the reported decode cost and out of the stride
+09-08 12:00:26.436  3241 10733 I WiVRn   : [2026-09-08 12:00:26.436] [WiVRn] [info] render: 173 iterations in 2.0 s (86.2/s), 172 submitted a layer, 160 new-source, 0 skipped by the repeat gate, 1 with nothing to show; display period 11.6 ms
+09-08 12:00:26.436  3241 10733 I WiVRn   : [2026-09-08 12:00:26.436] [WiVRn] [info] render: selected source transitions forward 160 backward 0 repeat 12, greatest forward gap 285
+09-08 12:00:26.436  3241 10733 I WiVRn   : [2026-09-08 12:00:26.436] [WiVRn] [info] render: this app's own GPU pass 2.4 ms per iteration
+09-08 12:00:26.436  3241 10733 I WiVRn   : [2026-09-08 12:00:26.436] [WiVRn] [info] render: defoveate 2160x2160 per eye x2 = 9.33 Mpx/frame at scale 1.00 atlas-prototype 0; 12 re-presented from the cache (reduce_gpu_load on)
+09-08 12:00:26.436  3241 10733 I WiVRn   : [2026-09-08 12:00:26.436] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.28 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-08 12:00:26.436  3241 10733 I WiVRn   : [2026-09-08 12:00:26.436] [WiVRn] [info] render: per iteration fence 0.2 (worst 38.3) | queries 0.0 | submit 0.0 | whole render() 0.7 ms
+09-08 12:00:26.436  3241 10733 I WiVRn   : [2026-09-08 12:00:26.436] [WiVRn] [info] render: jit on | wake slack 33.6 ms | slept 1.7 ms mean (max 11.7, 111 of 173 iterations) | budget 23.0 = pass 22.0 + margin 1.0 | sleep cap 0.6 ms
+09-08 12:00:26.436  3241 10733 I WiVRn   : [2026-09-08 12:00:26.436] [WiVRn] [info] render: source display-time offset 30.0 ms mean (worst 117.3) over 172 frames | submit lead 31.1 ms mean (worst -6.9) | misses: 0 overrun 0 late 1 skipped refresh
+09-08 12:00:28.047  3241 10917 I WiVRn   : [2026-09-08 12:00:28.047] [WiVRn] [info] nxwarp[0]: 180 frames in 2.0 s: 1997 B/frame, wait-prev 0.0 ms, wall 1.9 ms, nxvc passA 0.5 passB 0.5 gpu 1.0 ms; holes 2, refused 0
+09-08 12:00:28.047  3241 10917 I WiVRn   : [2026-09-08 12:00:28.047] [WiVRn] [info] nxwarp[0]: 128 frames dropped late (queue kept to 1)
+09-08 12:00:28.437  3241 10733 I WiVRn   : [2026-09-08 12:00:28.437] [WiVRn] [info] render: 180 iterations in 2.0 s (90.0/s), 180 submitted a layer, 164 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.1 ms
+09-08 12:00:28.437  3241 10733 I WiVRn   : [2026-09-08 12:00:28.437] [WiVRn] [info] render: selected source transitions forward 164 backward 0 repeat 16, greatest forward gap 2
+09-08 12:00:28.437  3241 10733 I WiVRn   : [2026-09-08 12:00:28.437] [WiVRn] [info] render: this app's own GPU pass 2.9 ms per iteration
+09-08 12:00:28.437  3241 10733 I WiVRn   : [2026-09-08 12:00:28.437] [WiVRn] [info] render: defoveate 2160x2160 per eye x2 = 9.33 Mpx/frame at scale 1.00 atlas-prototype 0; 16 re-presented from the cache (reduce_gpu_load on)
+09-08 12:00:28.437  3241 10733 I WiVRn   : [2026-09-08 12:00:28.437] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.28 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-08 12:00:28.437  3241 10733 I WiVRn   : [2026-09-08 12:00:28.437] [WiVRn] [info] render: per iteration fence 0.0 (worst 0.0) | queries 0.0 | submit 0.0 | whole render() 0.4 ms
+09-08 12:00:28.437  3241 10733 I WiVRn   : [2026-09-08 12:00:28.437] [WiVRn] [info] render: jit on | wake slack 30.8 ms | slept 0.6 ms mean (max 0.6, 180 of 180 iterations) | budget 21.2 = pass 20.2 + margin 1.0 | sleep cap 0.6 ms
+09-08 12:00:28.437  3241 10733 I WiVRn   : [2026-09-08 12:00:28.437] [WiVRn] [info] render: source display-time offset 24.0 ms mean (worst 34.0) over 180 frames | submit lead 29.8 ms mean (worst 28.9) | misses: 0 overrun 0 late 0 skipped refresh
+09-08 12:00:30.051  3241 10917 I WiVRn   : [2026-09-08 12:00:30.051] [WiVRn] [info] nxwarp[0]: 180 frames in 2.0 s: 1983 B/frame, wait-prev 0.0 ms, wall 2.0 ms, nxvc passA 0.7 passB 0.5 gpu 1.2 ms; holes 2, refused 0
+09-08 12:00:30.051  3241 10917 I WiVRn   : [2026-09-08 12:00:30.051] [WiVRn] [info] nxwarp[0]: 128 frames dropped late (queue kept to 1)
+09-08 12:00:30.437  3241 10733 I WiVRn   : [2026-09-08 12:00:30.437] [WiVRn] [info] render: 179 iterations in 2.0 s (89.5/s), 179 submitted a layer, 158 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.2 ms
+09-08 12:00:30.437  3241 10733 I WiVRn   : [2026-09-08 12:00:30.437] [WiVRn] [info] render: selected source transitions forward 158 backward 0 repeat 21, greatest forward gap 2
+09-08 12:00:30.437  3241 10733 I WiVRn   : [2026-09-08 12:00:30.437] [WiVRn] [info] render: this app's own GPU pass 2.9 ms per iteration
+09-08 12:00:30.437  3241 10733 I WiVRn   : [2026-09-08 12:00:30.437] [WiVRn] [info] render: defoveate 2160x2160 per eye x2 = 9.33 Mpx/frame at scale 1.00 atlas-prototype 0; 21 re-presented from the cache (reduce_gpu_load on)
+09-08 12:00:30.437  3241 10733 I WiVRn   : [2026-09-08 12:00:30.437] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.28 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-08 12:00:30.437  3241 10733 I WiVRn   : [2026-09-08 12:00:30.437] [WiVRn] [info] render: per iteration fence 0.0 (worst 1.7) | queries 0.0 | submit 0.0 | whole render() 0.5 ms
+09-08 12:00:30.437  3241 10733 I WiVRn   : [2026-09-08 12:00:30.437] [WiVRn] [info] render: jit on | wake slack 30.8 ms | slept 1.0 ms mean (max 11.7, 179 of 179 iterations) | budget 19.4 = pass 18.4 + margin 1.0 | sleep cap 0.5 ms
+09-08 12:00:30.437  3241 10733 I WiVRn   : [2026-09-08 12:00:30.437] [WiVRn] [info] render: source display-time offset 25.3 ms mean (worst 34.0) over 179 frames | submit lead 29.2 ms mean (worst 19.6) | misses: 0 overrun 0 late 1 skipped refresh

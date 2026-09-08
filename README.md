@@ -59,13 +59,21 @@ and reproduction](bench/results/240fps-2026-09-08/unused-coefficient-readback/RE
 
 ![Measured encoder and selection latency before removing the coefficient copy, after removal, and after restoring it](bench/results/240fps-2026-09-08/unused-coefficient-readback/coefficient-copy-comparison.png)
 
-**Next bottleneck: rendering.** At the same native output resolution, an isolation
-experiment measured **6.25 / 6.15 ms** median render GPU window means in the
-original/restored controls. Bypassing tile homographies reduced that to **3.80 ms**;
-bypassing colour linearization reached **5.90 ms**. Both bypasses deliberately
-change the image and are diagnostics only. The result motivates moving matrix
-work out of each fragment; it is not a new usable performance result.
-[Diagnostic source, screenshots and reproducible window summaries](bench/results/240fps-2026-09-08/atlas-render-isolation/README.md).
+**Latest renderer result (2026-09-08).** Moving tile homographies into a mesh
+split at tile and foveation boundaries cut median render GPU window means from
+**6.25 ms to 2.90 / 3.15 ms** in two prototype runs around an original-path
+control. Both eyes still render at **2160×2160**, with the warp and colour
+conversion preserved. Estimated noncached window means were 6.30 ms versus
+3.29 / 3.20 ms. The retained implementation is opt-in; it removes the
+image-breaking modes used for the preceding [isolation experiment](bench/results/240fps-2026-09-08/atlas-render-isolation/README.md).
+The final cleaned build reproduced **3.10 ms enabled / 6.30 ms disabled**.
+
+The GPU saving did **not** produce a consistent encode-to-selection tail-latency
+gain in these runs. This is progress toward a 4.17 ms rendering budget, not
+demonstrated 240 FPS or photon latency. [Source, methods, screenshots and raw
+timings](bench/results/240fps-2026-09-08/atlas-vertex-warp/README.md).
+
+![Repeated native-resolution vertex warp GPU measurements](bench/results/240fps-2026-09-08/atlas-vertex-warp/render-comparison.png)
 
 **Earlier pipeline result (2026-09-08).** An opt-in persistent R8 target cache
 avoids rewriting unchanged output pixels. At **2160×2160 per eye** on Pico 4,
