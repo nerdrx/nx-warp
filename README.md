@@ -93,6 +93,8 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 
 ## Measured results
 
+**Graduated centre falloff:** the selected experiment keeps the native 512 × 512 centre, then uses **4 → 8 → 16 → 32-pixel PLANAR cells** outward. Paired Pico decode means were **10.206 ms graduated / 10.213 ms control**, with identical centre pixels. It remains a stepped two-colour approximation. [Before/after images, sampling diagram and rejected experiment](bench/results/90fps-2026-09-09/graduated-centre/README.md).
+
 **Native-detail centre experiment (September 9):** mixed frames retain native pixel sampling in a 512 × 512 centre per eye (optionally 1024 × 1024), with cheap two-colour PLANAR tiles outside. This corrects a limitation of the earlier all-flat mode: a native-sized output did not preserve native detail. A one-pixel stripe test retains 191.96 levels of alternating-column contrast, versus zero in the flat mode. The Pico quarter-centre decoder averages **10.83 ms**, with **13.92 ms p95**, in an isolated 60-frame test; this does **not** establish sustained 90 Hz streaming. [Settings, pixel proof and timings](bench/results/90fps-2026-09-09/centre-detail/README.md).
 
 The matching live Pico smoke test delivered **54.27 fresh updates/s** in short active windows; the full capture includes an XR interruption and averages 37.65/s. [Actual headset screenshot, logs and exclusions](bench/results/90fps-2026-09-09/centre-detail/live/README.md).

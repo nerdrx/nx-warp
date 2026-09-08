@@ -1733,20 +1733,37 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
                 const bool centre = d.gpu_planar_centre &&
                                     job.col >= col0 && job.col < col0 + centre_cols &&
                                     job.row >= row0 && job.row < row0 + centre_rows;
-                job.flags &= 0x7fffffffu;
-                job.mode = centre ? (uint32_t)NXE_MODE_INTRA :
-                                   (uint32_t)NXE_MODE_PLANAR;
-                if (centre) {
+                const uint32_t dx = job.col < col0 ? col0 - job.col :
+                                    job.col >= col0 + centre_cols ?
+                                        job.col - (col0 + centre_cols - 1u) : 0u;
+                const uint32_t dy = job.row < row0 ? row0 - job.row :
+                                    job.row >= row0 + centre_rows ?
+                                        job.row - (row0 + centre_rows - 1u) : 0u;
+                const uint32_t dist = std::max(dx, dy);
+                const bool use_intra = centre;
+                job.flags &= 0x0fffffffu;
+                job.res_level = 0;
+                if (use_intra) {
+                    job.mode = (uint32_t)NXE_MODE_INTRA;
                     job.flags |= 0x80000000u;
                     // Preserve centre detail and clear a stale delta when the
                     // frame QP changes between encodes. The signed six-bit
                     // range bottoms out at -32 for base QP values above 58.
                     job.qp_delta = std::max(-32, std::min(0,
                         26 - int(f.fp.base_qp)));
+                } else {
+                    job.mode = (uint32_t)NXE_MODE_PLANAR;
+                    if (d.cfg.planar_graduated && dist <= 2u)
+                        job.flags |= 0x10000000u; // fine 4x4 Y cells
+                    else if (d.cfg.planar_graduated && dist >= 8u)
+                        job.flags |= 0x20000000u;
+                    else if (d.cfg.planar_graduated && dist >= 4u)
+                        job.flags |= 0x40000000u;
                 }
                 // R2/coarse is a 27-byte transmitted body; b_planar is padded
                 // to 26 uints only for the fixed storage binding.
-                job.planar_bytes = centre ? 0u : 27u;
+                job.planar_bytes = use_intra ? 0u :
+                                   (d.cfg.planar_graduated && dist <= 2u ? 51u : 27u);
             }
         }
         std::memcpy((uint8_t *)d.b_stage_small.map + (1 << 19), f.jobs.data(),

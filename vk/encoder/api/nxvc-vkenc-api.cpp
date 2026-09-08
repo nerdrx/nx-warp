@@ -231,6 +231,7 @@ int main(int argc, char **argv) {
     bool planar_gpu_flat = false;
     bool planar_gpu_centre = false;
     bool centre_quarter = false;
+    bool centre_graduated = false;
     uint32_t intra_period = 180;
     std::string poses_path;
     int drop_at = -1;
@@ -283,6 +284,7 @@ int main(int argc, char **argv) {
         else if (a == "--planar-gpu-flat") planar_gpu_flat = true;
         else if (a == "--planar-gpu-centre") planar_gpu_centre = true;
         else if (a == "--centre-quarter") centre_quarter = true;
+        else if (a == "--centre-graduated") centre_graduated = true;
         else if (a == "--intra-period") intra_period = (uint32_t)std::atoi(next());
         else if (a == "--poses") poses_path = next();
         else if (a == "--drop-at") drop_at = std::atoi(next());
@@ -336,7 +338,7 @@ int main(int argc, char **argv) {
                      "usage: nxvc-vkenc-api --in f.yuv --w W --h H --out f.nxv\n"
                      "                      [--qp N] [--frames N] [--matrix N] [--timing]\n"
                      "                      [--image] [--qp-cycle a,b,c] [--lengths f]\n"
-                     "                      [--inter --planar-gpu-flat|--planar-gpu-centre (8-bit 420, 64-aligned)]\n"
+                     "                      [--inter --planar-gpu-flat|--planar-gpu-centre [--centre-quarter] [--centre-graduated]]\n"
                      "                      [--eyes 1|2, --w is the side-by-side pair]\n"
                      "                      [--effort 0|1] [--snap-identity N]\n");
         return 2;
@@ -407,13 +409,14 @@ int main(int argc, char **argv) {
         std::fprintf(stderr, "--planar-gpu-flat and --planar-gpu-centre are mutually exclusive\n");
         return 2;
     }
-    if (centre_quarter && !planar_gpu_centre) {
-        std::fprintf(stderr, "--centre-quarter requires --planar-gpu-centre\n");
+    if ((centre_quarter || centre_graduated) && !planar_gpu_centre) {
+        std::fprintf(stderr, "centre flags require --planar-gpu-centre\n");
         return 2;
     }
     ci.planar = planar_gpu_flat ? NXVC_VKE_PLANAR_GPU_FLAT :
                  planar_gpu_centre ? NXVC_VKE_PLANAR_GPU_CENTRE : 0;
-    ci.flags = centre_quarter ? NXVC_VKE_FLAG_CENTRE_QUARTER : 0;
+    ci.flags = (centre_quarter ? NXVC_VKE_FLAG_CENTRE_QUARTER : 0) |
+               (centre_graduated ? NXVC_VKE_FLAG_CENTRE_GRADUATED : 0);
     ci.intra_period = inter ? intra_period : 0u;
     ci.coded_vectors = inter ? coded_vectors : NXVC_VKE_CV_DEFAULT;
     ci.ref_sel = inter ? ref_sel : 0u;

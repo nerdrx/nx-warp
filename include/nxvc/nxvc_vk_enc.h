@@ -99,6 +99,8 @@ const char *nxvc_vk_encoder_status_string(nxvc_vke_status s);
 #define NXVC_VKE_PLANAR_GPU_CENTRE 4u
 /* create_info::flags: use a quarter-width/height centred INTRA rectangle. */
 #define NXVC_VKE_FLAG_CENTRE_QUARTER 1u
+/* create_info::flags: graduate PLANAR cell sizes around the native INTRA centre. */
+#define NXVC_VKE_FLAG_CENTRE_GRADUATED 2u
 
 typedef struct nxvc_vke_create_info {
     VkInstance instance;
@@ -428,7 +430,7 @@ typedef struct nxvc_vke_create_info {
      * Refused at create() on a stream that cannot carry the mode. */
     uint32_t planar;
 
-    uint32_t flags; /* NXVC_VKE_FLAG_CENTRE_QUARTER for GPU_CENTRE */
+    uint32_t flags; /* centre flags; valid only for GPU_CENTRE */
 } nxvc_vke_create_info;
 
 /* nxvc_vke_create_info::effort */

@@ -12,7 +12,7 @@ layout(std430, binding = 1) writeonly buffer Bodies { uint body[]; };
 layout(std430, binding = 2) readonly buffer Jobs { nxe_tile_job jobs[]; };
 layout(std430, binding = 3) writeonly buffer Recon { uint recon[]; };
 layout(push_constant) uniform PC { uint width, height, qp, chromaQPOffset; } pc;
-shared int cy[64], cu[64], cv[64];
+shared int cy[256], cu[256], cv[256];
 shared int gy, gu, gv, qy0, qy1, qu0, qu1, qv0, qv1;
 
 int read_sample(uint base, uint i) {
@@ -33,30 +33,63 @@ void main() {
     uint nt = gl_NumWorkGroups.x;
     if (tile >= nt) return;
     uint ybase = tile * 2048u, cbase = nt * 2048u + tile * 512u;
-    if (lid < 64u) {
-        uint cell = lid, cx = cell & 7u, cy0 = cell >> 3u;
+    uint cell = lid;
+    const bool fine = (jobs[tile].flags & 0x10000000u) != 0u;
+    const uint dim = fine ? 16u : 8u;
+    const uint cell_size = fine ? 4u : 8u;
+    const uint ccell_size = fine ? 2u : 4u;
+    if (lid < dim * dim) {
+        uint cx = cell % dim, cy0 = cell / dim;
         int sy = 0, su = 0, sv = 0;
-        for (uint j = 0u; j < 8u; ++j)
-            for (uint i = 0u; i < 8u; ++i)
-                sy += read_sample(ybase, (cy0 * 8u + j) * 64u + cx * 8u + i);
-        for (uint j = 0u; j < 4u; ++j)
-            for (uint i = 0u; i < 4u; ++i) {
-                uint ci = (cy0 * 4u + j) * 32u + cx * 4u + i;
+        for (uint j = 0u; j < cell_size; ++j)
+            for (uint i = 0u; i < cell_size; ++i)
+                sy += read_sample(ybase, (cy0 * cell_size + j) * 64u + cx * cell_size + i);
+        for (uint j = 0u; j < ccell_size; ++j)
+            for (uint i = 0u; i < ccell_size; ++i) {
+                uint ci = (cy0 * ccell_size + j) * 32u + cx * ccell_size + i;
                 su += read_sample(cbase, ci);
                 sv += read_sample(cbase + nt * 512u, ci);
             }
-        cy[cell] = (sy + 32) / 64;
-        cu[cell] = (su + 8) / 16;
-        cv[cell] = (sv + 8) / 16;
+        cy[cell] = (sy + int(cell_size * cell_size / 2u)) /
+                   int(cell_size * cell_size);
+        cu[cell] = (su + int(ccell_size * ccell_size / 2u)) /
+                   int(ccell_size * ccell_size);
+        cv[cell] = (sv + int(ccell_size * ccell_size / 2u)) /
+                   int(ccell_size * ccell_size);
+    }
+    barrier();
+    // Graduated outer rings may merge neighbouring 8x8 means before the
+    // palette split. Host-only job flags select 2x2 or 4x4 cell groups.
+    uint group = (jobs[tile].flags & 0x20000000u) != 0u ? 4u :
+                 (jobs[tile].flags & 0x40000000u) != 0u ? 2u : 1u;
+    int gsy = 0, gsu = 0, gsv = 0, gn = 0;
+    if (group > 1u && lid < dim * dim) {
+        uint cx0 = (cell % dim) / group * group;
+        uint cy0 = (cell / dim) / group * group;
+        for (uint yy = 0u; yy < group; ++yy)
+            for (uint xx = 0u; xx < group; ++xx) {
+                uint c = (cy0 + yy) * dim + cx0 + xx;
+                gsy += cy[c]; gsu += cu[c]; gsv += cv[c];
+            }
+        gn = int(group * group);
+    }
+    barrier();
+    if (group > 1u && lid < dim * dim) {
+        cy[cell] = (gsy + gn / 2) / gn;
+        cu[cell] = (gsu + gn / 2) / gn;
+        cv[cell] = (gsv + gn / 2) / gn;
     }
     barrier();
     if (lid == 0u) {
         gy = gu = gv = 0;
-        for (int i = 0; i < 64; ++i) { gy += cy[i]; gu += cu[i]; gv += cv[i]; }
-        gy = (gy + 32) / 64; gu = (gu + 32) / 64; gv = (gv + 32) / 64;
+        const int ncells = int(dim * dim);
+        for (int i = 0; i < ncells; ++i) { gy += cy[i]; gu += cu[i]; gv += cv[i]; }
+        gy = (gy + ncells / 2) / ncells;
+        gu = (gu + ncells / 2) / ncells;
+        gv = (gv + ncells / 2) / ncells;
         int sy0 = 0, sy1 = 0, su0 = 0, su1 = 0, sv0 = 0, sv1 = 0;
         int n0 = 0, n1 = 0;
-        for (int i = 0; i < 64; ++i) {
+        for (int i = 0; i < ncells; ++i) {
             if (cy[i] < gy) { sy0 += cy[i]; su0 += cu[i]; sv0 += cv[i]; ++n0; }
             else { sy1 += cy[i]; su1 += cu[i]; sv1 += cv[i]; ++n1; }
         }
@@ -77,27 +110,38 @@ void main() {
     barrier();
     if (lid == 0u) {
         uint dst = tile * 26u;
-        for (uint i = 0u; i < 26u; ++i) body[dst + i] = 0u;
-        uint b[29]; for (uint i = 0u; i < 29u; ++i) b[i] = 0u;
-        b[0] = 0u; // R=2, coarse 8x8 bitmap form
-        for (uint i = 0u; i < 64u; ++i)
-            if (cy[i] >= gy) b[1u + (i >> 3u)] |= 1u << (i & 7u);
-        b[9] = uint(qy0 & 255);  b[12] = uint(qu0 & 255); b[15] = uint(qv0 & 255);
-        b[18] = uint(qy1 & 255); b[21] = uint(qu1 & 255); b[24] = uint(qv1 & 255);
-        // The production serializer is byte packed; b_planar is only padded storage.
-        for (uint i = 0u; i < 7u; ++i)
-            body[dst + i] = b[i*4u] | (b[i*4u+1u] << 8u) |
-                            (b[i*4u+2u] << 16u) | (b[i*4u+3u] << 24u);
-        uint rd = tile * 26u;
-        for (uint i = 0u; i < 26u; ++i) recon[rd + i] = 0u;
-        recon[rd] = b[0];
-        for (uint i = 0u; i < 2u; ++i)
-            recon[rd + 1u + i] = b[1u + i*4u] |
-                (b[2u + i*4u] << 8u) | (b[3u + i*4u] << 16u) |
-                (b[4u + i*4u] << 24u);
-        for (uint i = 0u; i < 5u; ++i)
-            recon[rd + 17u + i] = b[9u + i*4u] |
-                (b[10u + i*4u] << 8u) | (b[11u + i*4u] << 16u) |
-                (b[12u + i*4u] << 24u);
+        uint packed[26]; for (uint i = 0u; i < 26u; ++i) packed[i] = 0u;
+        const uint map_bytes = fine ? 32u : 8u;
+        packed[0] = fine ? 8u : 0u; // R=2, fine bit when selected
+        for (uint i = 0u; i < dim * dim; ++i) {
+            if (cy[i] >= gy) {
+                const uint bit = i;
+                packed[((1u + bit / 8u) >> 2u)] |=
+                    1u << (((1u + bit / 8u) & 3u) * 8u + (bit & 7u));
+            }
+        }
+        const uint co = 1u + map_bytes;
+        const uint q[6] = {uint(qy0 & 255), uint(qu0 & 255), uint(qv0 & 255),
+                           uint(qy1 & 255), uint(qu1 & 255), uint(qv1 & 255)};
+        for (uint i = 0u; i < 6u; ++i)
+            packed[((co + i * 3u) >> 2u)] |=
+                q[i] << (((co + i * 3u) & 3u) * 8u);
+        for (uint i = 0u; i < 26u; ++i) body[dst + i] = packed[i];
+        // Reconstruct uses an expanded layout: header word, 16 map words,
+        // then 18 coefficient bytes. Serialized map/coefficients are unaligned.
+        uint expanded[26];
+        for (uint i = 0u; i < 26u; ++i) expanded[i] = 0u;
+        expanded[0] = fine ? 8u : 0u;
+        for (uint i = 0u; i < map_bytes; ++i) {
+            uint src_byte = 1u + i;
+            uint value = (packed[src_byte >> 2u] >> ((src_byte & 3u) * 8u)) & 255u;
+            expanded[1u + (i >> 2u)] |= value << ((i & 3u) * 8u);
+        }
+        for (uint i = 0u; i < 18u; ++i) {
+            uint src_byte = co + i;
+            uint value = (packed[src_byte >> 2u] >> ((src_byte & 3u) * 8u)) & 255u;
+            expanded[17u + (i >> 2u)] |= value << ((i & 3u) * 8u);
+        }
+        for (uint i = 0u; i < 26u; ++i) recon[dst + i] = expanded[i];
     }
 }

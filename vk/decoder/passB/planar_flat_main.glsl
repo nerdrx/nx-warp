@@ -1,5 +1,5 @@
 // Specialized kernel. The CPU selector proves every dispatched tile is
-// R2/coarse PLANAR with zero slopes, CT_NONE 8-bit 4:2:0, no alpha, res_level 0.
+// R2 coarse/fine PLANAR with zero slopes, CT_NONE 8-bit 4:2:0, no alpha, res_level 0.
 // Uses the production image store and fuses the identical packed ring write
 // into reconstruction; the ordinary second ring-store walk is disabled.
 int flatDc(int cb, int byteIndex, int qp) {
@@ -14,12 +14,12 @@ void main() {
     int qp = clamp(pc.p.baseQp + nxvw_rec_qp_delta(rec.w1), 0, 63);
     int base = tile * kPlanarUintsPerTile;
     int cb = base + kPlanarHeaderUints + kPlanarMapUints;
-    uint map0 = uPlanar.w[base + 1], map1 = uPlanar.w[base + 2];
+    bool fine = (uPlanar.w[base] & 8u) != 0u;
     nxvwIsInterTile = false;
     for (int plane = 0; plane < 3; ++plane) {
         int lg = plane == 0 ? 6 : 5;
         int size = 1 << lg;
-        int shift = lg - 3;
+        int shift = lg - (fine ? 4 : 3);
         int q = plane == 0 ? qp : clamp(qp + pc.p.chromaQpOff, 0, 63);
         int a = flatDc(cb, plane * 3, q);
         int b = flatDc(cb, 9 + plane * 3, q);
@@ -38,10 +38,11 @@ void main() {
         int oy = (tile / pc.p.tilesX) * size;
         for (int w = tid; w < (size * size / 2); w += 256) {
             int x = (w * 2) & (size - 1), y = (w * 2) >> lg;
-            int cell = (y >> shift) * 8 + (x >> shift);
-            uint map = cell < 32 ? map0 : map1;
+            int grid = 1 << (fine ? 4 : 3);
+            int cell = (y >> shift) * grid + (x >> shift);
+            uint map = uPlanar.w[base + 1 + (cell >> 5)];
             int value = ((map >> (cell & 31)) & 1u) == 0u ? a : b;
-            // A packed pair cannot cross a 4- or 8-pixel cell boundary.
+            // A packed pair cannot cross an aligned 2-, 4- or 8-pixel cell boundary.
             uint packed = pack16x2(value, value);
             sPlane[store + w] = packed;
             if (kRefRingStore != 0) {

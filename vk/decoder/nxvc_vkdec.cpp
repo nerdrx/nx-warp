@@ -3017,8 +3017,17 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
         for (uint32_t t = 0; t < ntiles; ++t) {
             if ((fp.recs[t].w1 & 7u) != nxvw::kModePlanar)
                 continue;
+            // The specialized shader reconstructs the coarse R2 form only;
+            // a finer PLANAR residual must stay on the general kernel even
+            // when its DC/slope bytes happen to be zero.
+            if (nxvw::nxvw_rec_res_level(fp.recs[t].w1) != 0)
+                continue;
             bool flat = true;
-            if (fp.planar[size_t(t) * 26] != 0) flat = false;
+            // R2 PLANAR has either the coarse 8x8 map (header 0) or the
+            // fine 16x16 map (header bit 3, header 8).  The parser has
+            // already rejected every other header bit/region shape.
+            const uint32_t header = fp.planar[size_t(t) * 26];
+            if (header != 0 && header != 8) flat = false;
             // The parser expands map storage to 16 words; coefficients begin
             // at word 17, not at the serialized stream's byte 9.
             for (size_t n = 0; n < 18; ++n)

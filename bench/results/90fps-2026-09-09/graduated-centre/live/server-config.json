@@ -1,0 +1,23 @@
+{
+  "encoder": {
+    "encoder": "nxwarp",
+    "codec": "nxwarp",
+    "options": {
+      "backend": "vk",
+      "inter": "true",
+      "intra-period": "180",
+      "rc": "auto",
+      "min-qp": "22",
+      "max-qp": "40",
+      "coded-vectors": "none",
+      "entropy": "auto",
+      "stereo-frame": "auto",
+      "planar": "prefer",
+      "planar-gpu-centre": "true",
+      "planar-centre-quarter": "true",
+      "planar-centre-graduated": "true"
+    }
+  },
+  "stream_scale": 1.0,
+  "quad-layers": false
+}

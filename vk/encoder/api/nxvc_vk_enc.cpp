@@ -282,15 +282,17 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_create(const nxvc_vke_create_info *ci
     const bool gpu_planar = ci->planar == NXVC_VKE_PLANAR_GPU_FLAT ||
                             ci->planar == NXVC_VKE_PLANAR_GPU_CENTRE ||
                             std::getenv("NXVC_ENC_PLANAR_GPU_FLAT") != nullptr;
-    if (ci->flags & ~NXVC_VKE_FLAG_CENTRE_QUARTER) {
+    if (ci->flags & ~(NXVC_VKE_FLAG_CENTRE_QUARTER |
+                      NXVC_VKE_FLAG_CENTRE_GRADUATED)) {
         delete e;
         return createerr(NXVC_VKE_ERR_ARG, "unknown Vulkan encoder flags");
     }
-    if ((ci->flags & NXVC_VKE_FLAG_CENTRE_QUARTER) != 0 &&
+    if ((ci->flags & (NXVC_VKE_FLAG_CENTRE_QUARTER |
+                      NXVC_VKE_FLAG_CENTRE_GRADUATED)) != 0 &&
         ci->planar != NXVC_VKE_PLANAR_GPU_CENTRE) {
         delete e;
         return createerr(NXVC_VKE_ERR_ARG,
-                         "CENTRE_QUARTER requires GPU_CENTRE PLANAR");
+                         "centre flags require GPU_CENTRE PLANAR");
     }
     if (ci->planar != 0 && ci->planar != NXVC_VKE_PLANAR_GPU_FLAT &&
         ci->planar != NXVC_VKE_PLANAR_GPU_CENTRE) {
@@ -310,6 +312,9 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_create(const nxvc_vke_create_info *ci
     e->cfg.planar_centre_quarter =
         e->cfg.planar_gpu_centre &&
         (ci->flags & NXVC_VKE_FLAG_CENTRE_QUARTER) != 0;
+    e->cfg.planar_graduated =
+        e->cfg.planar_gpu_centre &&
+        (ci->flags & NXVC_VKE_FLAG_CENTRE_GRADUATED) != 0;
     /* 0 means "the default", which is the reference's swept value.  Spelled
      * here rather than in the Config default so that a caller passing a
      * zeroed create_info gets the same 8 the harness does. */
@@ -594,7 +599,7 @@ void publish_frame(nxvc_vk_encoder *e, const uint8_t **out, size_t *out_len) {
         e->tiles[t].length = e->frame.tile_bytes[t];
         e->tiles[t].qp = uint8_t(e->cfg.qp);
         e->tiles[t].mode = uint8_t(e->frame.jobs[t].mode);
-        e->tiles[t].res_level = 0;
+        e->tiles[t].res_level = uint8_t(e->frame.jobs[t].res_level);
         e->tiles[t].ref_delta = 3; /* no temporal reference */
     }
     e->frame_number++;

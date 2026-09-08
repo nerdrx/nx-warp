@@ -20,3 +20,20 @@ The initial integration refreshes the entire image. The offscreen centre-first s
 Passing a codec build, rendering a fixture on the Pico, connecting the headset, and presenting fresh application frames are separate checks. A live result requires the installed client to log `direct PLANAR RGBA8 graphics output enabled`, publish decoded frames, and report positive stream-layer submissions and new-source updates. Panel refresh or repeated presentation alone is not source FPS.
 
 Report encoder time, receiver decode time, fresh-source cadence, compositor cost and dropped updates together. These measurements still do not establish motion-to-photon latency without a physical timing method.
+
+
+### Graduated centre sampling
+
+`NXVC_VKE_FLAG_CENTRE_GRADUATED` preserves the selected native INTRA centre.
+It adds a 128-pixel-wide band of fine PLANAR cells (4 pixels), then increases
+PLANAR cell sizes to 8, 16 and 32 pixels with distance. These are two-colour
+approximations, not full-colour downsampled images. Fine bodies carry a larger
+bitmap; coarsening cells does not shrink the fixed coarse body or avoid
+full-size output writes. Performance must therefore be measured.
+
+All tiles keep `res_level=0`. The specialized PLANAR decoder accepts validated
+R2 coarse or fine zero-slope tiles, with native INTRA reconstruction in the
+centre. Independent-frame restrictions still apply. This is a stepped, fixed
+image-space transition, not continuous or eye-tracked foveation. WiVRn exposes
+the opt-in flag as `planar-centre-graduated=true` alongside
+`planar-gpu-centre=true`.
