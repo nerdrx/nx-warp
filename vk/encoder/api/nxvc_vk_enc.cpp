@@ -280,11 +280,23 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_create(const nxvc_vke_create_info *ci
     e->cfg.atlas = ci->inter != 0 && ci->atlas != 0;
     e->cfg.atlas_mode = e->cfg.atlas && ci->atlas_mode != 0;
     const bool gpu_planar = ci->planar == NXVC_VKE_PLANAR_GPU_FLAT ||
+                            ci->planar == NXVC_VKE_PLANAR_GPU_CENTRE ||
                             std::getenv("NXVC_ENC_PLANAR_GPU_FLAT") != nullptr;
-    if (ci->planar != 0 && ci->planar != NXVC_VKE_PLANAR_GPU_FLAT) {
+    if (ci->flags & ~NXVC_VKE_FLAG_CENTRE_QUARTER) {
+        delete e;
+        return createerr(NXVC_VKE_ERR_ARG, "unknown Vulkan encoder flags");
+    }
+    if ((ci->flags & NXVC_VKE_FLAG_CENTRE_QUARTER) != 0 &&
+        ci->planar != NXVC_VKE_PLANAR_GPU_CENTRE) {
+        delete e;
+        return createerr(NXVC_VKE_ERR_ARG,
+                         "CENTRE_QUARTER requires GPU_CENTRE PLANAR");
+    }
+    if (ci->planar != 0 && ci->planar != NXVC_VKE_PLANAR_GPU_FLAT &&
+        ci->planar != NXVC_VKE_PLANAR_GPU_CENTRE) {
         delete e;
         return createerr(NXVC_VKE_ERR_UNSUPPORTED,
-                         "Vulkan PLANAR supports only off or GPU_FLAT");
+                         "Vulkan PLANAR supports only off, GPU_FLAT or GPU_CENTRE");
     }
     if (gpu_planar && (!e->cfg.inter || ci->bit_depth != 8 || ci->chroma != 0 ||
                        ci->width % 64u != 0 || ci->height % 64u != 0)) {
@@ -294,6 +306,10 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_create(const nxvc_vke_create_info *ci
     }
     e->cfg.planar = gpu_planar ? 2 : 0;
     e->cfg.planar_gpu_flat = gpu_planar;
+    e->cfg.planar_gpu_centre = ci->planar == NXVC_VKE_PLANAR_GPU_CENTRE;
+    e->cfg.planar_centre_quarter =
+        e->cfg.planar_gpu_centre &&
+        (ci->flags & NXVC_VKE_FLAG_CENTRE_QUARTER) != 0;
     /* 0 means "the default", which is the reference's swept value.  Spelled
      * here rather than in the Config default so that a caller passing a
      * zeroed create_info gets the same 8 the harness does. */

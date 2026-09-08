@@ -403,6 +403,12 @@ void main() {
 
     const uint b = uint(NXVW_WARP_HDR_UINTS) + tile * uint(NXVW_WARP_TILE_UINTS);
     const uint w0 = warpb.v[b];
+    // GPU-centre reserves the high host-only job flag for a forced INTRA
+    // tile. E3 overwrites flags later, so this never reaches the bitstream.
+    if ((jobs[tile].flags & 0x80000000u) != 0u) {
+        if (lid == 0u) write_rec(tile, uint(NXE_MODE_INTRA), 0, 0);
+        return;
+    }
     // PLANAR is fitted by the host before this pass.  Preserve it: it has no
     // reference or warp predictor, so it must bypass the inter decision and
     // publish a zeroed inter-only record just like an intra tile.

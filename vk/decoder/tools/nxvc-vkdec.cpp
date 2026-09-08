@@ -52,6 +52,8 @@ void usage() {
         "  --atlas-view none|r8|r16  generate the sampled atlas view for timing;\n"
         "                         requires --no-out, without --repeat\n"
         "  --dense                the pre-ADR-0026 dense coefficient layout\n"
+        "  --independent-tiles    omit pixel references; reject predictive,\n"
+        "                         concealed and ATLAS frames\n"
         "  --repeat N             decode the first frame N times and report\n"
         "                         the best per-pass device time.  A timing\n"
         "                         loop that needs no re-encode: push one\n"
@@ -77,6 +79,7 @@ int main(int argc, char **argv) {
     std::string in, out, pix, icd, device, format = "auto", atlas_view = "none";
     int frames = -1, quiet = 0, nv12 = 0, stats = 0, lds = 0;
     int decode_every = 1;
+    bool independent_tiles = false;
     // [v3] measurement knobs, see nxvc_vk_decoder_set_dir_sched /
     // _set_tile_sort in <nxvc/nxvc_vk.h>.  --dir-sched is a BITSTREAM
     // property: anything but 0 decodes a normal stream to different pixels.
@@ -114,6 +117,7 @@ int main(int argc, char **argv) {
         else if (a == "--no-out") no_out = 1;
         else if (a == "--throughput") throughput = 1;
         else if (a == "--dense") dense = 1;
+        else if (a == "--independent-tiles") independent_tiles = true;
         // The decoder reads this at create time.  It is an environment
         // variable rather than a create_info field because the store format
         // is a device-performance decision, not part of the C ABI's contract.
@@ -170,7 +174,8 @@ int main(int argc, char **argv) {
     nxvc_vk_decoder_create_info_default(&ci);
     ci.flags = (no_out ? 0u : (uint32_t)NXVC_VKD_FLAG_READBACK) |
                (lds ? (uint32_t)NXVC_VKD_FLAG_LDS_FALLBACK : 0u) |
-               (dense ? (uint32_t)NXVC_VKD_FLAG_DENSE_COEF : 0u);
+               (dense ? (uint32_t)NXVC_VKD_FLAG_DENSE_COEF : 0u) |
+               (independent_tiles ? (uint32_t)NXVC_VKD_FLAG_INDEPENDENT_TILES : 0u);
     ci.device_name = device.empty() ? nullptr : device.c_str();
     ci.output_format = format == "rgba8"      ? NXVC_VKD_OUT_RGBA8
                        : format == "rgb10a2"  ? NXVC_VKD_OUT_RGB10A2

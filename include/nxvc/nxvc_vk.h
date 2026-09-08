@@ -118,7 +118,14 @@ typedef enum nxvc_vkd_create_flags {
      * store of the same samples, but it is not a display format and is not
      * affected by this flag -- it is written from whichever Pass B dispatch
      * runs first. */
-    NXVC_VKD_FLAG_SPLIT_STORES = 1u << 6
+    NXVC_VKD_FLAG_SPLIT_STORES = 1u << 6,
+
+    /* The caller guarantees every submitted frame is complete and contains
+     * only independent INTRA/PLANAR tiles. The decoder rejects predictive,
+     * concealed, or ATLAS frames and disables its pixel reference ring; the
+     * output remains a complete decoded picture. There is no fallback to
+     * predictive reconstruction after this opt-in. */
+    NXVC_VKD_FLAG_INDEPENDENT_TILES = 1u << 7
 } nxvc_vkd_create_flags;
 
 /* --------------------------------------------------------------- create */

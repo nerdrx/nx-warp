@@ -93,6 +93,14 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 
 ## Measured results
 
+**Native-detail centre experiment (September 9):** mixed frames retain native pixel sampling in a 512 × 512 centre per eye (optionally 1024 × 1024), with cheap two-colour PLANAR tiles outside. This corrects a limitation of the earlier all-flat mode: a native-sized output did not preserve native detail. A one-pixel stripe test retains 191.96 levels of alternating-column contrast, versus zero in the flat mode. The Pico quarter-centre decoder averages **10.83 ms**, with **13.92 ms p95**, in an isolated 60-frame test; this does **not** establish sustained 90 Hz streaming. [Settings, pixel proof and timings](bench/results/90fps-2026-09-09/centre-detail/README.md).
+
+The matching live Pico smoke test delivered **54.27 fresh updates/s** in short active windows; the full capture includes an XR interruption and averages 37.65/s. [Actual headset screenshot, logs and exclusions](bench/results/90fps-2026-09-09/centre-detail/live/README.md).
+
+![One-pixel stripe detail: source, flat approximation and native-detail centre](bench/results/90fps-2026-09-09/centre-detail/centre-pixel-detail.png)
+
+*Controlled decoded-pixel comparison, not a headset screenshot. The centre uses ordinary INTRA coding; the periphery remains coarse. The stripe comparison uses the 1024-centre mode, while the timing above uses the smaller 512-centre mode.*
+
 **Live integration boundary:** the fast PLANAR renderer is now connected to custom WiVRn NX as an explicit opt-in. The earlier Pico benchmark numbers do not describe the installed streaming client. [Interface and supported frames](docs/integration/planar-direct.md). A 22-second live smoke test reported 87 fresh updates/s; visual and physical head-motion checks remain outstanding. [Live evidence and limitations](bench/results/90fps-2026-09-08/planar-direct-integration/live/README.md).
 
 **90 Hz centre-first optimization:** single-pass admission halves the earlier multi-pass median (5.32–5.45 → 2.73–2.76 ms), with zero deadline misses across two 720-frame native Pico motion runs. One run retains outer pixels for one frame; the other refreshes every tile. This remains an offscreen experiment, not live streaming proof. [Paired results and actual capture](bench/results/90fps-2026-09-08/single-pass/README.md).

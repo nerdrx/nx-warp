@@ -218,6 +218,7 @@ struct nxvc_vk_decoder {
     VkShaderModule smBCopy = VK_NULL_HANDLE;
     VkShaderModule smBPlanarFlat = VK_NULL_HANDLE;
     bool planar_flat_frame = false;
+    bool planar_flat_mixed_frame = false;
     VkShaderModule smB[2][2] = {{VK_NULL_HANDLE, VK_NULL_HANDLE},
                                 {VK_NULL_HANDLE, VK_NULL_HANDLE}};
     // [inter] Pass W: the predictor.  Its own set layout, because it binds
@@ -310,6 +311,10 @@ struct nxvc_vk_decoder {
     uint32_t order_nskip[2] = {0, 0};
     // [passb] Tiles of each eye whose prediction is a straight copy.
     uint32_t order_ncopy[2] = {0, 0};
+    // [planar] Leading flat PLANAR tiles inside the non-INTRA range.  This is
+    // per eye so mixed frames can use the flat module without changing any
+    // tile's address or reference-ring slot.
+    uint32_t order_nflat[2] = {0, 0};
     // [inter] Tiles dispatched on each Pass B module in eye pass 0, for the
     // per-module timestamps.
     uint32_t seg_tiles[4] = {0, 0, 0, 0};
@@ -1308,11 +1313,13 @@ nxvc_vkd_status pipeline_a(D *d, uint32_t lanes, uint32_t ctx_stride,
 //   no ring store     passB 0.069 ms   -- the ring store is 37 %
 //   no wpred hook     passB 0.078 ms   -- the predictor hook is 29 %
 //   neither           passB 0.068 ms
-static int32_t inter_pred_on(const D *, bool inter) {
-    return (inter && !std::getenv("NXVC_VKD_ABL_NOWPRED")) ? 1 : 0;
+static int32_t inter_pred_on(const D *d, bool inter) {
+    return (inter && !(d->flags & NXVC_VKD_FLAG_INDEPENDENT_TILES) &&
+            !std::getenv("NXVC_VKD_ABL_NOWPRED")) ? 1 : 0;
 }
-static int32_t ring_store_on(const D *, bool inter) {
-    return (inter && !std::getenv("NXVC_VKD_ABL_NORING")) ? 1 : 0;
+static int32_t ring_store_on(const D *d, bool inter) {
+    return (inter && !(d->flags & NXVC_VKD_FLAG_INDEPENDENT_TILES) &&
+            !std::getenv("NXVC_VKD_ABL_NORING")) ? 1 : 0;
 }
 
 nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2, int32_t sparse,
@@ -2096,6 +2103,7 @@ void build_tile_order(D *d, const FrameParse &fp, uint32_t ntiles,
     d->order_nodir[0] = d->order_nodir[1] = 0;
     d->order_nskip[0] = d->order_nskip[1] = 0;
     d->order_ncopy[0] = d->order_ncopy[1] = 0;
+    d->order_nflat[0] = d->order_nflat[1] = 0;
     // [passb] Whether each eye's LUMA plane matrix is exactly the identity.
     // Testing luma is enough: plane_homography() derives the chroma matrix by
     // halving h[2]/h[5] and doubling h[6]/h[7], and half_round(0) is 0 and
@@ -2242,11 +2250,19 @@ void build_tile_order(D *d, const FrameParse &fp, uint32_t ntiles,
             });
             d->order_nodir[pass] = (uint32_t)(mid - beg);
         }
+        auto flatMid = skipMid;
+        if (d->planar_flat_mixed_frame) {
+            flatMid = std::stable_partition(skipMid, mid, [&](uint32_t t) {
+                return (fp.recs[t].w1 & 7u) == nxvw::kModePlanar;
+            });
+            d->order_nflat[pass] = (uint32_t)(flatMid - skipMid);
+        }
         // `tile_sort` still applies, INSIDE each group: the two orders compose
         // because the partition is what a dispatch boundary needs and the sort
         // is what a warp scheduler wants, and neither cares about the other.
         sort_range(beg, skipMid);
-        sort_range(skipMid, mid);
+        sort_range(skipMid, flatMid);
+        sort_range(flatMid, mid);
         sort_range(mid, end);
     }
 }
@@ -2967,30 +2983,53 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
                       nxvcvk::last_parse_reject_text());
     if (st) return seterr(d, st, "frame: %s",
                           nxvc_vk_decoder_status_string(st));
+    if (d->flags & NXVC_VKD_FLAG_INDEPENDENT_TILES) {
+        if (d->atlas_mode)
+            return seterr(d, NXVC_VKD_ERR_UNSUPPORTED,
+                          "independent tiles rejects ATLAS frames");
+        if (fp.tiles_concealed != 0)
+            return seterr(d, NXVC_VKD_ERR_BITSTREAM,
+                          "independent tiles rejects concealed tiles");
+        for (uint32_t t = 0; t < fp.recs.size(); ++t) {
+            const uint32_t mode = fp.recs[t].w1 & 7u;
+            if (mode != nxvw::kModeIntra && mode != nxvw::kModePlanar)
+                return seterr(d, NXVC_VKD_ERR_UNSUPPORTED,
+                              "independent tiles rejects predictive tile %u", t);
+        }
+    }
     if (consumed) *consumed = fp.frame_bytes;
     fp.push.sparse = (d->flags & NXVC_VKD_FLAG_DENSE_COEF) ? 0 : 1;
     const double t_parse = now_ms();
 
     const uint32_t ntiles = d->si.tile_count;
     d->planar_flat_frame = false;
+    d->planar_flat_mixed_frame = false;
     if (d->smBPlanarFlat != VK_NULL_HANDLE &&
         d->out_format == uint32_t(nxvw::kOutYcbcr420) &&
         (d->si.tools & (1ull << 10)) != 0 && fp.any_planar &&
-        fp.tiles_planar == ntiles && fp.planar.size() == size_t(ntiles) * 26 &&
+        fp.planar.size() == size_t(ntiles) * 26 &&
         fp.push.chroma420 && !fp.push.colorTransform && !fp.push.alphaPresent &&
         d->si.width % 64 == 0 && d->si.height % 64 == 0) {
         auto byte = [&](size_t t, size_t n) {
             return uint8_t(fp.planar[t * 26 + (n >> 2)] >> ((n & 3) * 8));
         };
-        d->planar_flat_frame = true;
-        for (uint32_t t = 0; t < ntiles && d->planar_flat_frame; ++t) {
-            if (fp.planar[size_t(t) * 26] != 0) d->planar_flat_frame = false;
+        uint32_t flat_tiles = 0;
+        for (uint32_t t = 0; t < ntiles; ++t) {
+            if ((fp.recs[t].w1 & 7u) != nxvw::kModePlanar)
+                continue;
+            bool flat = true;
+            if (fp.planar[size_t(t) * 26] != 0) flat = false;
             // The parser expands map storage to 16 words; coefficients begin
             // at word 17, not at the serialized stream's byte 9.
             for (size_t n = 0; n < 18; ++n)
                 if (n % 3 != 0 && byte(t, 17 * 4 + n) != 0)
-                    d->planar_flat_frame = false;
+                    flat = false;
+            if (flat) ++flat_tiles;
         }
+        d->planar_flat_frame = flat_tiles == ntiles;
+        d->planar_flat_mixed_frame = !d->atlas_mode && flat_tiles != 0 &&
+                                     flat_tiles == fp.tiles_planar &&
+                                     flat_tiles != ntiles;
     }
     if ((st = ensure_bits(d, fp.frame_bytes))) return st;
 
@@ -3346,6 +3385,19 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
         (uint32_t)(fp.push.planeWords0 + fp.push.planeWords1 +
                    fp.push.planeWords2 + fp.push.planeWords3);
     const bool interStream = (d->si.tools & (1ull << 10)) != 0;
+    // A warp-present frame may still contain only INTRA/PLANAR tiles.  The
+    // parser's any_inter flag records the frame-level metadata, so do not
+    // submit an empty Pass W in that case: both tile kinds write their own
+    // ring samples and need no predictor.
+    bool has_prediction_tile = false;
+    for (uint32_t t = 0; t < ntiles; ++t) {
+        const uint32_t mode = fp.recs[t].w1 & 7u;
+        if (mode != nxvw::kModeIntra && mode != nxvw::kModePlanar) {
+            has_prediction_tile = true;
+            break;
+        }
+    }
+    const bool need_pass_w = fp.any_inter && (d->atlas_mode || has_prediction_tile);
     const uint32_t eyePasses = fp.any_stereo_tile ? d->si.eyes : 1u;
     const uint32_t tilesPerEye = ntiles / (fp.any_stereo_tile ? d->si.eyes : 1u);
 
@@ -3385,6 +3437,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
         std::getenv("NXVC_VKD_ATLAS_FORCE_PIPELINES");
     VkPipeline pipeB[2] = {VK_NULL_HANDLE, VK_NULL_HANDLE};
     VkPipeline pipeBa[2] = {VK_NULL_HANDLE, VK_NULL_HANDLE};
+    VkPipeline pipeBFlat[2] = {VK_NULL_HANDLE, VK_NULL_HANDLE};
     for (int dir = 0; need_tile_pipelines && dir < 2; ++dir) {
         if (dir == 1 && fp.push.intraDir == 0) break;
         if ((st = pipeline_b(d, d->out_format,
@@ -3404,6 +3457,20 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
                                  interStream ? 1 : 0, 0, &pipeBa[dir])))
                 return st;
         }
+    }
+    if (d->planar_flat_mixed_frame) {
+        // Flat PLANAR tiles are a subset of the non-INTRA range.  They use
+        // the same descriptor layout and ring store, only the specialized
+        // reconstruction module changes.
+        if ((st = pipeline_b(d, d->out_format,
+                             fuse ? (int32_t)nxvw::kOutRgba8
+                                  : (int32_t)nxvw::kOutNone,
+                             fp.push.sparse, storeWords, 0,
+                             (int32_t)fp.split4, (int32_t)fp.xform_large,
+                             inter_pred_on(d, interStream),
+                             ring_store_on(d, interStream),
+                             &pipeBFlat[0], 0, true)))
+            return st;
     }
     // [inter] The WARP_SKIP module, built only when the frame has skip tiles
     // to give it.  It carries no alpha companion: the alpha second store is
@@ -3448,7 +3515,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
         return st;
 
     VkPipeline pipeWp = VK_NULL_HANDLE;
-    if (fp.any_inter && need_tile_pipelines &&
+    if (need_pass_w && need_tile_pipelines &&
         (st = pipeline_w(d, &pipeWp))) return st;
 
     // [ATLAS] The two ops of the coded-tile kernel.  MATGEN runs BEFORE Pass W
@@ -3628,7 +3695,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
             (pipeBSkip != VK_NULL_HANDLE || atlas_frame)
                 ? d->order_nskip[pass]
                 : 0u;
-        if (fp.any_inter) {
+        if (need_pass_w) {
             if (d->have_timestamps && pass == 0 && d->ts_limit > 4)
                 vkCmdWriteTimestamp(d->cmd,
                                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
@@ -3744,10 +3811,26 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
                                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                                     d->queries, 6 + 2 * (uint32_t)g);
             }
-            vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                              segPipe[g]);
-            vkCmdDispatchBase(d->cmd, segBase[g], 0, 0, seg[g], 1, 1);
-            ++dispatches;
+            if (g == 2 && d->planar_flat_mixed_frame &&
+                d->order_nflat[pass] != 0) {
+                const uint32_t nf = d->order_nflat[pass];
+                vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                  pipeBFlat[0]);
+                vkCmdDispatchBase(d->cmd, segBase[g], 0, 0, nf, 1, 1);
+                ++dispatches;
+                if (seg[g] > nf) {
+                    vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                      segPipe[g]);
+                    vkCmdDispatchBase(d->cmd, segBase[g] + nf, 0, 0,
+                                      seg[g] - nf, 1, 1);
+                    ++dispatches;
+                }
+            } else {
+                vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                  segPipe[g]);
+                vkCmdDispatchBase(d->cmd, segBase[g], 0, 0, seg[g], 1, 1);
+                ++dispatches;
+            }
             if (segPipeA[g] != VK_NULL_HANDLE) {
                 vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
                                   segPipeA[g]);

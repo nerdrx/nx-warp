@@ -265,6 +265,8 @@ struct Config {
      * two encoders agree by construction rather than by test. */
     int planar = 0;
     bool planar_gpu_flat = false; // Explicit per-encoder GPU fitting opt-in.
+    bool planar_gpu_centre = false; // GPU PLANAR periphery with INTRA centre.
+    bool planar_centre_quarter = false; // Use quarter-size centre rectangle.
 
     /* Measure the integer rate model of nxe_rate.h against the bytes the
      * entropy coder actually produces, per tile, and print the distribution

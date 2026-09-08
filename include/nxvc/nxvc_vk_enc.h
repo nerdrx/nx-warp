@@ -95,6 +95,10 @@ const char *nxvc_vk_encoder_status_string(nxvc_vke_status s);
  * NXVC_VKE_ERR_ARG if it is not. */
 /* Explicit approximate, all-tile GPU PLANAR fitting; requires INTER. */
 #define NXVC_VKE_PLANAR_GPU_FLAT 3u
+/* Explicit GPU PLANAR fitting with a centered INTRA rectangle. */
+#define NXVC_VKE_PLANAR_GPU_CENTRE 4u
+/* create_info::flags: use a quarter-width/height centred INTRA rectangle. */
+#define NXVC_VKE_FLAG_CENTRE_QUARTER 1u
 
 typedef struct nxvc_vke_create_info {
     VkInstance instance;
@@ -417,12 +421,14 @@ typedef struct nxvc_vke_create_info {
      *      zero slopes, all tiles. Requires inter, 8-bit 4:2:0 and 64-pixel
      *      aligned dimensions. Unlike host modes 1/2 this is supported by
      *      the Vulkan image adapter; no process-global environment is needed.
+     *   4  NXVC_VKE_PLANAR_GPU_CENTRE: GPU two-region fit on the periphery
+     *      with a centered half-width/half-height INTRA rectangle.
      *
      * Host modes 1/2 are not supported by this Vulkan API and are refused.
      * Refused at create() on a stream that cannot carry the mode. */
     uint32_t planar;
 
-    uint32_t flags; /* reserved, pass 0 */
+    uint32_t flags; /* NXVC_VKE_FLAG_CENTRE_QUARTER for GPU_CENTRE */
 } nxvc_vke_create_info;
 
 /* nxvc_vke_create_info::effort */

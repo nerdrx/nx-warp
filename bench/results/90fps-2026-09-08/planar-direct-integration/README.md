@@ -27,3 +27,6 @@ SHA256 is recorded in `pico-api.run.log`; it was linked with the supplied
 decoder archive and a freshly compiled `vk/decoder/planar_direct.cpp` object.
 
 ![Actual Pico backend readback, motion frame 19](pico-api.frame19.png)
+
+For the subsequent mixed native-detail centre experiment, see the
+[September 9 evidence](../../90fps-2026-09-09/centre-detail/README.md).

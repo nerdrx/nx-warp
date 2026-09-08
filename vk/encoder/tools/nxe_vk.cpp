@@ -98,6 +98,7 @@ struct VkEncoder::Impl {
     vkmin::Pipeline p_e4l, p_e5l;
     bool entropy_lite = false;
     bool gpu_planar = false;
+    bool gpu_planar_centre = false;
     /* Pass W is the DECODER's warp_pred.comp; E1c is the mode decision. */
     vkmin::Pipeline p_w, p_dec, p_b;
     VkDescriptorSet s_b_full = VK_NULL_HANDLE;   /* Pass B over EVERY tile */
@@ -435,8 +436,9 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
                        const Adopt *adopt) {
     Impl &d = *p_;
     d.cfg = cfg;
-    d.gpu_planar = cfg.planar && (cfg.planar_gpu_flat ||
+    d.gpu_planar = cfg.planar && (cfg.planar_gpu_flat || cfg.planar_gpu_centre ||
         std::getenv("NXVC_ENC_PLANAR_GPU_FLAT") != nullptr);
+    d.gpu_planar_centre = d.gpu_planar && cfg.planar_gpu_centre;
     d.ntiles = f.fp.ntiles;
 
     if (cfg.nsub_log2 > 3) {
@@ -1717,13 +1719,36 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
         copy_up(cb, d.b_stage_small, d.b_params, &fp, sizeof fp, 0);
         copy_up(cb, d.b_stage_small, d.b_tabs, &f.tabs, sizeof f.tabs,
                 1 << 18);
-        if (gpu_planar)
+        if (gpu_planar) {
+            const uint32_t cols = f.fp.width / 64u;
+            const uint32_t rows = f.fp.height / 64u;
+            const uint32_t divisor = d.cfg.planar_centre_quarter ? 4u : 2u;
+            const uint32_t centre_cols = std::min(
+                cols, cols >= 2u ? std::max(2u, (cols / divisor) & ~1u) : cols);
+            const uint32_t centre_rows = std::min(
+                rows, rows >= 2u ? std::max(2u, (rows / divisor) & ~1u) : rows);
+            const uint32_t col0 = (cols - centre_cols) / 2u;
+            const uint32_t row0 = (rows - centre_rows) / 2u;
             for (auto &job : f.jobs) {
-                job.mode = (uint32_t)NXE_MODE_PLANAR;
+                const bool centre = d.gpu_planar_centre &&
+                                    job.col >= col0 && job.col < col0 + centre_cols &&
+                                    job.row >= row0 && job.row < row0 + centre_rows;
+                job.flags &= 0x7fffffffu;
+                job.mode = centre ? (uint32_t)NXE_MODE_INTRA :
+                                   (uint32_t)NXE_MODE_PLANAR;
+                if (centre) {
+                    job.flags |= 0x80000000u;
+                    // Preserve centre detail and clear a stale delta when the
+                    // frame QP changes between encodes. The signed six-bit
+                    // range bottoms out at -32 for base QP values above 58.
+                    job.qp_delta = std::max(-32, std::min(0,
+                        26 - int(f.fp.base_qp)));
+                }
                 // R2/coarse is a 27-byte transmitted body; b_planar is padded
                 // to 26 uints only for the fixed storage binding.
-                job.planar_bytes = 27u;
+                job.planar_bytes = centre ? 0u : 27u;
             }
+        }
         std::memcpy((uint8_t *)d.b_stage_small.map + (1 << 19), f.jobs.data(),
                     f.jobs.size() * sizeof(nxe_tile_job));
         VkBufferCopy cj{1 << 19, 0, f.jobs.size() * sizeof(nxe_tile_job)};

@@ -5,11 +5,13 @@ This experimental path connects the GPU flat-region encoder to a graphics render
 ## Contract
 
 - Encoder: `NXVC_VKE_PLANAR_GPU_FLAT` in `nxvc_vke_create_info.planar`; WiVRn option `planar-gpu-flat=true`, Vulkan backend, INTER enabled, atlas disabled.
+- Centre mode: `NXVC_VKE_PLANAR_GPU_CENTRE` emits a complete INTRA rectangle in the centre and GPU PLANAR tiles around it. At 2176x2176 per eye the default rectangle is 1024x1024 (16x16 tiles); `NXVC_VKE_FLAG_CENTRE_QUARTER` selects 512x512 (8x8 tiles). Centre tiles are capped at QP 26 to preserve detail when the frame QP is higher.
 - Stream: 8-bit 4:2:0, no color transform or alpha, one or two eyes, each eye's width and height divisible by 64.
 - Every tile carries a complete R2/coarse PLANAR body with zero slopes. Region masks preserve edges; each region has a constant color. This deliberately sacrifices texture detail.
 - Client opt-in: `adb shell setprop debug.wivrn.nx.planar_direct 1`. Reconnect using a matching custom client and server build.
 - Renderer: `nxvc::PlanarDirect` borrows the application's graphics queue and writes a free RGBA8 pool image. It validates the complete frame, renders all tiles, waits for completion, then publishes the image for compositor sampling.
 - Mixed, malformed or unsupported frames are rejected. The renderer does not update a generic decoder reference ring. Completed independent frames can be acknowledged without those references.
+- The public decoder flag `NXVC_VKD_FLAG_INDEPENDENT_TILES` is a separate opt-in for complete ordinary frames containing only INTRA and PLANAR tiles. With it set, the decoder rejects predictive, concealed and ATLAS frames, disables its pixel reference ring, and never falls back to predictive reconstruction. The direct PLANAR renderer remains restricted to all-flat PLANAR frames; centre mode needs the ordinary decoder path until a mixed renderer is implemented.
 
 The initial integration refreshes the entire image. The offscreen centre-first scheduler is not enabled here: retaining peripheral pixels across rotating pool images needs an explicit freshness policy. The pressure experiments already show that centre-only admission can starve the periphery.
 
