@@ -3469,7 +3469,8 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     // per-plane mid-grey.  That is 13.12.5's rule for an invalid entry, and it
     // is what lets validity stay DEVICE-side: no readback, no stall.
     if (copy_assembled) {
-        // MATERIALISE made every entry valid at identity, res_level zero.
+        // MATERIALISE or a complete INTRA refresh made every entry valid
+        // at identity, res_level zero.
         // With no intervening atlas advance, ASSEMBLE is exactly a slot copy.
         // Order both prior shader writes and transfer imports before the read;
         // the next predictor must see the completed copy into slot 1.
@@ -4022,7 +4023,16 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
         return seterr(d, NXVC_VKD_ERR_VULKAN, "queue submit: %s (%d)",
                       vkresult_name(submit_result), (int)submit_result);
     }
-    d->atlas_materialized = picture && !(fp.flags & 1u);
+    // WRITEBACK also leaves a complete identity atlas when every tile was
+    // accepted as INTRA at full resolution, including an intra reset.
+    // A partial update cannot establish this whole-slot proof.
+    const bool full_atlas_refresh = atlas_frame && d->acoded.size() == ntiles &&
+        fp.warp_tiles.size() == ntiles &&
+        std::all_of(fp.warp_tiles.begin(), fp.warp_tiles.end(), [](const auto &tile) {
+            return nxvw::nxvw_wt_res_level(tile.w0) == 0 &&
+                   nxvw::nxvw_wt_mode(tile.w0) == nxvw::kModeIntra;
+        });
+    d->atlas_materialized = (picture && !(fp.flags & 1u)) || full_atlas_refresh;
     const double t_submit = now_ms();
 
     d->stats.parse_ms = t_parse - t0;

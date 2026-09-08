@@ -105,6 +105,13 @@ previously only deliberate decode-stride drops triggered immediate pacing backof
 [WiVRn NX change and limits](https://github.com/nerdrx/wivrn-nx/blob/atlas-live/docs/bench/backlog-pacing-20260908/README.md).
 Its live cadence benefit has not yet been measured.
 
+The copy shortcut also covers a complete full-resolution INTRA refresh, with
+matching Pico output hashes. A paired-colour-plane shader experiment showed no
+speedup and remains disabled. [Follow-up tests and limits](bench/results/240fps-2026-09-08/intra-refresh-copy/README.md).
+The client now rebuilds decoders after seamless reconnect even when settings
+are unchanged; decoder recreation was observed, but resumed video remains unverified.
+[Reconnect evidence](https://github.com/nerdrx/wivrn-nx/blob/atlas-live/docs/bench/reconnect-decoder-reset-20260908/README.md).
+
 **Motion regression baseline:** isolated native-resolution Pico motion stress now
 reproduces the reported lag: the original 128-pixel rebuild threshold takes
 **94.24 ms median per moving-frame decode**, versus **1.39 ms** during static
