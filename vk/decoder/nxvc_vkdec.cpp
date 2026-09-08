@@ -4222,9 +4222,11 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_set_atlas_view(
         (d->ringOff[2] % 2 == 0) && (d->ringStride[0] % 2 == 0) &&
         (d->ringStride[1] % 2 == 0) && (d->ringStride[2] % 2 == 0);
     if (view == NXVC_VKD_ATLAS_VIEW_R8) {
-        if ((st = make_img(d, d->imgViewY, VK_FORMAT_R8_UNORM, VW, VH)))
+        if ((st = make_img(d, d->imgViewY, VK_FORMAT_R8_UNORM, VW, VH,
+                           VK_IMAGE_USAGE_SAMPLED_BIT)))
             return st;
-        if ((st = make_img(d, d->imgViewC, VK_FORMAT_R8G8_UNORM, VCW, VCH)))
+        if ((st = make_img(d, d->imgViewC, VK_FORMAT_R8G8_UNORM, VCW, VCH,
+                           VK_IMAGE_USAGE_SAMPLED_BIT)))
             return st;
         if ((st = make_img(d, d->imgViewCr, VK_FORMAT_R16_UINT, 1, 1)))
             return st;

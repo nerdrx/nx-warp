@@ -47,6 +47,18 @@ from presentation frequency. The current Pico experiments use its 90 Hz mode;
 an experiment, not a 240 Hz result; the [full methods and limitations](docs/240FPS.md)
 define the fixtures and interpretation.
 
+The standalone Pico sequence probe reached **177–178 completed decode-plus-render
+pairs/s** with an experimental color path; restoring SRGB returned to **149/s**.
+The original baseline was 143/s. The faster path still has **7.75 ms p99** and
+does not meet the 240-Hz deadline. These are offscreen sparse-motion results. [Evidence and raw timings](bench/results/240fps-2026-09-08/sequence-throughput/README.md).
+
+With four static-pose renders per correction, a longer run completed **24,000
+renders in 81.5 seconds**: **298 renders/s and 74.5 fresh corrections/s** after
+warmup. Only **67.6%** met 4.17 ms, so this establishes capacity, not smooth
+240-Hz delivery.
+
+![Offscreen rates; repeated renders and fresh corrections counted separately](bench/results/240fps-2026-09-08/sequence-throughput/cadence-comparison.png)
+
 **Latest encoder result (2026-09-08).** Removing an unused **55 MiB per-frame
 GPU→CPU coefficient copy** cut live native-resolution Lite encoding from
 **8.72 ms to 2.38 ms median**, with **3.49 ms p99**. Restoring the original

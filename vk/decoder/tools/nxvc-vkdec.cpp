@@ -7,6 +7,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <algorithm>
+#include <chrono>
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -56,6 +59,9 @@ void usage() {
         "  --no-out               skip the readback and the output file.\n"
         "                         With --repeat this leaves the two\n"
         "                         dispatches and nothing else in the submit\n"
+        "  --throughput           opt-in steady-clock sequential decode\n"
+        "                         throughput summary (requires --no-out;\n"
+        "                         excludes render/transport)\n"
         "  --quiet\n"
         "exit 0 decoded, 1 error, 2 usage, 77 no usable Vulkan ICD\n");
 }
@@ -79,7 +85,7 @@ int main(int argc, char **argv) {
     // already exclude the readback, but the readback shares the submission,
     // so --no-out is what makes the measured submit contain the two
     // dispatches alone.
-    int repeat = 0, no_out = 0, dense = 0;
+    int repeat = 0, no_out = 0, dense = 0, throughput = 0;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         auto val = [&]() -> const char * {
@@ -106,6 +112,7 @@ int main(int argc, char **argv) {
         else if (a == "--tile-sort") tile_sort = 1;
         else if (a == "--repeat") repeat = std::atoi(val());
         else if (a == "--no-out") no_out = 1;
+        else if (a == "--throughput") throughput = 1;
         else if (a == "--dense") dense = 1;
         // The decoder reads this at create time.  It is an environment
         // variable rather than a create_info field because the store format
@@ -118,6 +125,18 @@ int main(int argc, char **argv) {
         }
     }
     if (in.empty() || (out.empty() && !no_out)) { usage(); return 2; }
+    if (throughput && !no_out) {
+        std::fprintf(stderr, "--throughput requires --no-out\n");
+        return 2;
+    }
+    if (throughput && repeat != 0) {
+        std::fprintf(stderr, "--throughput cannot be combined with --repeat\n");
+        return 2;
+    }
+    if (throughput && decode_every != 1) {
+        std::fprintf(stderr, "--throughput requires --decode-every 1\n");
+        return 2;
+    }
     if ((atlas_view != "none" && atlas_view != "r8" && atlas_view != "r16") ||
         (atlas_view != "none" && (!no_out || repeat != 0))) {
         std::fprintf(stderr, "--atlas-view expects none|r8|r16 and requires "
@@ -305,7 +324,10 @@ int main(int argc, char **argv) {
         return 0;
     }
 
-    int n = 0, rc = 0;
+    int n = 0, rc = 0, completed = 0;
+    std::vector<double> throughput_ms;
+    std::chrono::steady_clock::time_point throughput_begin;
+    if (throughput) throughput_begin = std::chrono::steady_clock::now();
     while (off < data.size() && (frames < 0 || n < frames)) {
         /* A frame this client does not even try: skipped whole, from the
          * length in its own header ([SYN] 3.1, bytes 36-39), so the decoder
@@ -326,13 +348,21 @@ int main(int argc, char **argv) {
             ++n;
             continue;
         }
+        std::chrono::steady_clock::time_point frame_begin, frame_end;
+        if (throughput) frame_begin = std::chrono::steady_clock::now();
         st = nxvc_vk_decode_frame(dec, data.data() + off, data.size() - off,
                                   &consumed);
+        if (throughput) frame_end = std::chrono::steady_clock::now();
         if (st != NXVC_VKD_OK) {
             std::fprintf(stderr, "frame %d: %s\n", n,
                          nxvc_vk_decoder_last_error(dec));
             rc = st == NXVC_VKD_ERR_UNSUPPORTED ? 77 : 1;
             break;
+        }
+        if (throughput) {
+            throughput_ms.push_back(std::chrono::duration<double, std::milli>(
+                                        frame_end - frame_begin).count());
+            ++completed;
         }
         if (fo) {
             uint8_t *planes[4] = {Y.data(), U.data(), V.data(), A.data()};
@@ -377,11 +407,48 @@ int main(int argc, char **argv) {
         off += consumed;
         ++n;
     }
+    if (throughput && rc == 0 && (completed == 0 || (frames >= 0 && n < frames))) {
+        std::fprintf(stderr, "decode-throughput: incomplete input (%d of %d requested frames)\n",
+                     completed, frames);
+        rc = 1;
+    }
+    double throughput_seconds = 0.0;
+    if (throughput) {
+        throughput_seconds =
+            std::chrono::duration<double>(std::chrono::steady_clock::now() -
+                                          throughput_begin).count();
+    }
     if (fo) std::fclose(fo);
     if (!quiet && rc == 0)
         std::printf("%d frame(s), %ux%u %s%s on %s\n", n, yw, yh, want,
                     si.alpha ? " +alpha" : "",
                     nxvc_vk_decoder_device_name(dec));
+    if (throughput) {
+        if (throughput_ms.empty()) {
+            std::fprintf(stderr, "decode-throughput status failed: 0 completed frames\n");
+        } else {
+            std::vector<double> sorted = throughput_ms;
+            std::sort(sorted.begin(), sorted.end());
+            const auto percentile = [&sorted](double p) {
+                size_t i = (size_t)std::ceil(p * sorted.size()) - 1;
+                if (i >= sorted.size()) i = sorted.size() - 1;
+                return sorted[i];
+            };
+            const size_t deadline = (size_t)std::count_if(
+                throughput_ms.begin(), throughput_ms.end(),
+                [](double ms) { return ms <= 1000.0 / 240.0; });
+            const double deadline_ms = 1000.0 / 240.0;
+            std::fprintf(stderr,
+                         "decode-throughput status %s (decode-only, --no-out): %d frames, "
+                         "%.6f s, %.3f fps, frame wall ms max %.3f "
+                         "p50 %.3f p95 %.3f p99 %.3f, <=%.3fms %.1f%%\n",
+                         (rc == 0 ? "complete" : "failed"), completed,
+                         throughput_seconds,
+                         completed / throughput_seconds, sorted.back(),
+                         percentile(0.50), percentile(0.95), percentile(0.99),
+                         deadline_ms, 100.0 * deadline / throughput_ms.size());
+        }
+    }
     nxvc_vk_decoder_destroy(dec);
     if (rc) return rc;
     return n > 0 ? 0 : 1;
