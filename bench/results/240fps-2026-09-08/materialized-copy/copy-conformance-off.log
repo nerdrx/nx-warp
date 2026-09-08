@@ -1,0 +1,17 @@
+-- device: AMD Radeon RX 7900 XTX (RADV NAVI31)
+-- 95 conformance vectors from /run/media/nerdrx/Lex/claude/nx-warp/tests/vectors
+SKIP v77_lite_rice420_qp24: frame: unsupported
+SKIP v79_lite_rice444_dir: frame: unsupported
+-- 50 rejection vector(s)
+-- 9 synthetic streams from nxvc_encoder
+-- row_present: 8 frames, 28 row structures elided, 4585 B against 4914 B without the tool (1.1x), byte-identical to the reference and to itself
+-- modes-all-picture: 9 PICTURE frame(s), 1 ATLAS frame(s), atlas byte-identical to the reference
+-- modes-all-atlas: 0 PICTURE frame(s), 10 ATLAS frame(s), atlas byte-identical to the reference
+-- modes-picture-period2: 4 PICTURE frame(s), 6 ATLAS frame(s), atlas byte-identical to the reference
+-- stats v90_mode_alternate: 6 frames, 4 ATLAS / 2 PICTURE, frame_mode matches the wire on every frame (picture_frames 2)
+-- stats v91_mode_disp: 16 frames, 4 ATLAS / 12 PICTURE, frame_mode matches the wire on every frame (picture_frames 12)
+-- stats v92_mode_src_frame: 6 frames, 5 ATLAS / 1 PICTURE, frame_mode matches the wire on every frame (picture_frames 1)
+-- atlas-view: one-tap 8-bit (R8 194x130 + R8G8 97x65) and three-plane R16 carry the same picture, and both equal the atlas, over 25220 luma + 6305 chroma samples
+-- loss: 20 frames, 13 with drops, 40 tiles dropped, byte-identical to the reference
+-- loss-stereo: 20 frames, 14 with drops, 76 tiles dropped, byte-identical to the reference
+-- 161 stream(s) checked, 3 skipped, 0 failure(s)

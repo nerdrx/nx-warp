@@ -93,8 +93,15 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 
 ## Measured results
 
-**Latest integration finding:** isolated native-resolution Pico motion stress now
-reproduces the reported lag: the current 128-pixel rebuild threshold takes
+**Latest decoder improvement:** consecutive full-picture frames now reuse an
+already materialized reference. In the native Pico motion stress control,
+eligible-frame median decode time falls **121.82 → 66.11 ms** with matching output
+hashes; motion-phase median falls **98.56 → 64.71 ms**. This is a real but incomplete
+improvement: live motion performance and 240 Hz delivery remain unproven.
+[Implementation, validation and timing figure](bench/results/240fps-2026-09-08/materialized-copy/README.md).
+
+**Motion regression baseline:** isolated native-resolution Pico motion stress now
+reproduces the reported lag: the original 128-pixel rebuild threshold takes
 **94.24 ms median per moving-frame decode**, versus **1.39 ms** during static
 recovery. A matched decode-plus-render run completes only **17.18 fresh pairs/s**
 after two startup frames. This adversarial synthetic input changes pose while

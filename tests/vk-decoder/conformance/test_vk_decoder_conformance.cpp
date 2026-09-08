@@ -1909,8 +1909,13 @@ void count_modes(const std::vector<uint8_t> &s, size_t hdr_len, int *picture,
 
 void run_atlas_modes() {
     struct Arm { const char *name; int period; bool want_picture; };
-    const Arm arms[2] = {{"modes-all-picture", 1, true},
-                         {"modes-all-atlas", 0, false}};
+    const Arm arms[3] = {{"modes-all-picture", 1, true},
+                         {"modes-all-atlas", 0, false},
+                         // A period of two forces a PICTURE after one
+                         // intervening ATLAS frame.  Besides exercising both
+                         // wire modes, this is the invalidation case for the
+                         // decoder's materialised-slot fast path.
+                         {"modes-picture-period2", 2, true}};
     for (const Arm &a : arms) {
         ++g_checked;
         std::vector<uint8_t> stream;
@@ -1944,6 +1949,12 @@ void run_atlas_modes() {
         if (!a.want_picture && npic != 0) {
             std::printf("FAIL %s: %d PICTURE frame(s) in the arm that must "
                         "have none\n", a.name, npic);
+            ++g_fail;
+            continue;
+        }
+        if (a.period == 2 && (npic == 0 || natl == 0)) {
+            std::printf("FAIL %s: expected both PICTURE and ATLAS frames, "
+                        "got %d PICTURE, %d ATLAS\n", a.name, npic, natl);
             ++g_fail;
             continue;
         }

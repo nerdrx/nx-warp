@@ -340,6 +340,7 @@ struct nxvc_vk_decoder {
     // one switch: under it the reference is the atlas, the skip module and the
     // display store do not run, and the normative output is the atlas rather
     // than a picture.
+    bool atlas_materialized = false; // previous submitted frame rebuilt every entry
     bool atlas_mode = false;
     // [SYN] 13.12.11, tool bit 34.  The stream may carry PICTURE frames, so
     // the ring needs a SECOND slot: slot 0 is the atlas and slot 1 holds the
@@ -1670,6 +1671,7 @@ nxvc_vkd_status make_resources(D *d) {
         // The host mirror of that starts here; the device buffer is cleared
         // on the first frame that sets the flag.
         d->astate.reset(d->atlas_mode ? entries : 0u);
+        d->atlas_materialized = false;
         // [ATLAS] The display view's images are 1x1 placeholders until a view
         // is SELECTED: the two forms want different FORMATS, not merely
         // different sizes, so they are allocated by
@@ -2934,6 +2936,9 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
                       "no stream header parsed yet");
     const double t0 = now_ms();
 
+    const bool previous_materialized = d->atlas_materialized;
+    d->atlas_materialized = false;
+
     // ---- 1. host parse ------------------------------------------------
     FrameParse &fp = d->fp;
     nxvc_vkd_status st = nxvcvk::parse_frame(
@@ -2985,6 +2990,9 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     // back on, because a PICTURE frame really does reconstruct every tile.
     d->picture_frame = d->atlas_mode && fp.picture_frame != 0;
     const bool picture = d->picture_frame;
+    const bool copy_assembled = picture && d->atlas_modes &&
+        !(fp.flags & 1u) && previous_materialized &&
+        std::getenv("NXVC_VKD_ATLAS_FORCE_ASSEMBLE") == nullptr;
     const bool atlas_frame = d->atlas_mode && !picture;
     // [inter] The Pass W parameter block: the ring geometry and the four
     // conjugated matrices, then one record per tile.
@@ -3460,7 +3468,24 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     // entry is INVALID, which warp_pred.glsl already answers with the correct
     // per-plane mid-grey.  That is 13.12.5's rule for an invalid entry, and it
     // is what lets validity stay DEVICE-side: no readback, no stall.
-    if (picture) {
+    if (copy_assembled) {
+        // MATERIALISE made every entry valid at identity, res_level zero.
+        // With no intervening atlas advance, ASSEMBLE is exactly a slot copy.
+        // Order both prior shader writes and transfer imports before the read;
+        // the next predictor must see the completed copy into slot 1.
+        buffer_barrier(d->cmd,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT,
+                       VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT);
+        const VkDeviceSize slot_bytes = (VkDeviceSize)d->ringSlotU16 * 2;
+        VkBufferCopy c{0, slot_bytes, slot_bytes};
+        vkCmdCopyBuffer(d->cmd, d->bRing.buf, d->bRing.buf, 1, &c);
+        buffer_barrier(d->cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT,
+                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
+    } else if (picture) {
         VkPipeline pipeAsm = VK_NULL_HANDLE;
         if ((st = pipeline_b(d, (uint32_t)nxvw::kOutNone,
                              (int32_t)nxvw::kOutNone, fp.push.sparse,
@@ -3997,6 +4022,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
         return seterr(d, NXVC_VKD_ERR_VULKAN, "queue submit: %s (%d)",
                       vkresult_name(submit_result), (int)submit_result);
     }
+    d->atlas_materialized = picture && !(fp.flags & 1u);
     const double t_submit = now_ms();
 
     d->stats.parse_ms = t_parse - t0;
@@ -4453,6 +4479,7 @@ extern "C" nxvc_vkd_status nxvc_vk_atlas_write_tiles(
     if (applied) *applied = 0;
     if (superseded) *superseded = 0;
     if (!d) return NXVC_VKD_ERR_ARG;
+    d->atlas_materialized = false; // external atlas mutation drops whole-slot proof
     if (!d->atlas_mode)
         return seterr(d, NXVC_VKD_ERR_UNSUPPORTED,
                       "nxvc_vk_atlas_write_tiles: not an ATLAS stream");
