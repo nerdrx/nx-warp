@@ -1,4 +1,6 @@
-// Copied verbatim from wt-atlas-live-240/client/shaders/reprojection_atlas_r8.glsl; probe build compiles VERT_SHADER or FRAG_SHADER.
+// Derived from wt-atlas-live-240/client/shaders/reprojection_atlas_r8.glsl;
+// the probe adds the opt-in fast-sRGB approximation below. Build compiles
+// this source separately as VERT_SHADER or FRAG_SHADER.
 #version 450
 // R8 atlas-only display consumer; ordinary effects remain in reprojection.glsl.
 layout(push_constant) uniform pc { ivec4 rgb_rect; ivec4 a_rect; vec4 scale; vec4 bias; vec4 post; vec4 motion; vec4 glow; vec4 deband; };
@@ -6,6 +8,7 @@ layout(push_constant) uniform pc { ivec4 rgb_rect; ivec4 a_rect; vec4 scale; vec
 #ifdef VERT_SHADER
 layout(constant_id=6) const int atlas_eye=0;
 layout(constant_id=9) const bool atlas_vertex_warp=false;
+layout(constant_id=10) const bool atlas_fast_srgb=false;
 layout(location=0) in vec2 vPosition;
 layout(location=1) in uvec2 vUV;
 layout(location=2) in uint vTile;
@@ -52,6 +55,7 @@ layout(constant_id=6) const int atlas_eye=0;
 layout(constant_id=7) const bool lowpoly_enable=false;
 layout(constant_id=8) const bool lowpoly_full_kernel=false;
 layout(constant_id=9) const bool atlas_vertex_warp=false;
+layout(constant_id=10) const bool atlas_fast_srgb=false;
 layout(set=0,binding=0) uniform sampler2D rgb[alpha+1];
 layout(set=0,binding=3) uniform sampler2D atlas_y;
 layout(set=0,binding=4) uniform sampler2D atlas_cbcr;
@@ -63,7 +67,11 @@ layout(location=3) flat in uint inValid;
 layout(location=0) out vec4 outColor;
 // The decoder view spans both eyes horizontally; derive the geometry from the
 // actual snapshot so non-1088 streams and clipped edge tiles use the same table.
-vec3 srgb_linear(vec3 c) { return mix(c/12.92,pow((c+0.055)/1.055,vec3(2.4)),step(vec3(0.04045),c)); }
+vec3 srgb_linear(vec3 c) {
+ if (atlas_fast_srgb)
+  return c*(0.0125218351+c*(0.682174119+0.305304046*c));
+ return mix(c/12.92,pow((c+0.055)/1.055,vec3(2.4)),step(vec3(0.04045),c));
+}
 void main() {
 	vec2 luma_image=vec2(textureSize(atlas_y,0));
 	vec2 picture=vec2(luma_image.x*0.5,luma_image.y);

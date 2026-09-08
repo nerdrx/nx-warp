@@ -41,6 +41,7 @@ Optional environment switches (all disabled by default):
 |---|---|
 | `NX_SEQUENCE_ASYNC=1` | Submit decode without an intermediate CPU wait; same-queue barriers and the final render fence still enforce completion. |
 | `NX_SEQUENCE_UNORM=1` | Use UNORM output and omit the shader's inverse gamma conversion together. This requires separate compositor validation before live use. |
+| `NX_SEQUENCE_FAST_SRGB=1` | Approximate inverse gamma with a cubic; up to about 5/255 encoded grayscale error. Ignored when UNORM output omits inverse gamma entirely. |
 | `NX_SEQUENCE_FDM=1` | Request full center density and peripheral density 127/255. Fail closed if required device features or allocation are unavailable. |
 | `NX_SEQUENCE_RENDER_REPEATS=4` | Render each decoded source four times. This tests static-pose capacity, not fresh-frame throughput or pose-aware presentation. Values 1–8 accepted. |
 

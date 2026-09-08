@@ -83,6 +83,7 @@ struct Renderer::Impl {
     std::filesystem::path vspv, fspv;
     bool valid = false;
     VkFormat output_format = VK_FORMAT_R8G8B8A8_SRGB;
+    bool fast_srgb = false;
     uint32_t cached_aw = 0, cached_ah = 0;
 
     bool make_density() {
@@ -291,6 +292,10 @@ Renderer::Renderer(VkPhysicalDevice p, VkDevice d, VkQueue q, uint32_t qf, std::
       width_(w), height_(h) {
     impl_->vspv = std::move(v);
     impl_->fspv = std::move(f);
+    impl_->fast_srgb = std::getenv("NX_SEQUENCE_FAST_SRGB") &&
+                       std::atoi(std::getenv("NX_SEQUENCE_FAST_SRGB")) == 1;
+    if (impl_->fast_srgb)
+        std::fprintf(stderr, "nx-sequence fast-srgb=1 (approximate cubic)\n");
     if (const char* u = std::getenv("NX_SEQUENCE_UNORM"); u && std::atoi(u) == 1) {
         VkFormatProperties fp{};
         vkGetPhysicalDeviceFormatProperties(p, VK_FORMAT_R8G8B8A8_UNORM, &fp);
@@ -412,13 +417,16 @@ Renderer::Renderer(VkPhysicalDevice p, VkDevice d, VkQueue q, uint32_t qf, std::
         int eye;
         VkBool32 srgb;
         VkBool32 vertex;
+        VkBool32 fast_srgb;
     } spec{};
     VkSpecializationMapEntry me[] = {{1, offsetof(Spec, srgb), sizeof(VkBool32)},
                                      {6, offsetof(Spec, eye), sizeof(int)},
-                                     {9, offsetof(Spec, vertex), sizeof(VkBool32)}};
+                                     {9, offsetof(Spec, vertex), sizeof(VkBool32)},
+                                     {10, offsetof(Spec, fast_srgb), sizeof(VkBool32)}};
     spec.srgb = impl_->output_format == VK_FORMAT_R8G8B8A8_SRGB ? VK_TRUE : VK_FALSE;
     spec.vertex = VK_TRUE;
-    VkSpecializationInfo si2{3, me, sizeof(spec), &spec};
+    spec.fast_srgb = impl_->fast_srgb ? VK_TRUE : VK_FALSE;
+    VkSpecializationInfo si2{4, me, sizeof(spec), &spec};
     VkPipelineShaderStageCreateInfo st[2]{};
     st[0] = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
              nullptr,

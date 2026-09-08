@@ -97,3 +97,21 @@ a thermal qualification, or motion-to-photon latency proof.
 
 The long CSV includes every render. The manifest records fixture and binary
 hashes plus opt-ins; both final eye readbacks are retained as PNG files.
+
+## Additional controls
+
+Pinning only the benchmark process to the fastest CPU core did not help:
+cadence-4 throughput was 285.759 renders/s, render p99 7.109 ms, versus the
+unpinned short run's 304.453/s and 6.651 ms. Battery saver was already off.
+The affinity experiment ended with its process and is not a recommended setting.
+
+An optional cubic inverse-gamma approximation (`NX_SEQUENCE_FAST_SRGB=1`)
+retaining SRGB output reached 177.576 fresh pairs/s, p99 7.230 ms, with
+108/1080 steady renders within budget. It avoids the power function using
+`x*(0.0125218351+x*(0.682174119+0.305304046*x))`. Least-squares fitting
+constrains endpoints to zero and one; 65,537 uniformly sampled grayscale
+values yield maximum encoded round-trip error 4.979/255 and mean 0.658/255.
+This is an approximation with no spatial blur, not equivalent color decoding.
+It remains a benchmark-only experiment: the measured speed was comparable
+to the exact UNORM-output alternative, and no production color approximation
+was enabled. Host synchronization validation passed.
