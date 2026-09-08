@@ -1,0 +1,52 @@
+{
+  "initial": {
+    "hevc": {
+      "count": 2235,
+      "p50_p95_p99_ms": [
+        33.541,
+        41.237,
+        44.11
+      ],
+      "unmatched_arrivals": 2
+    },
+    "nx": {
+      "count": 1911,
+      "p50_p95_p99_ms": [
+        18.319,
+        21.672,
+        23.516
+      ],
+      "unmatched_arrivals": 0
+    }
+  },
+  "off": {
+    "count": 2094,
+    "p50_p95_p99_ms": [
+      31.168,
+      38.814,
+      41.362
+    ]
+  },
+  "reverse": {
+    "hevc": {
+      "count": 2337,
+      "p50_p95_p99_ms": [
+        21.822,
+        31.159,
+        33.322
+      ]
+    },
+    "nx": {
+      "count": 3273,
+      "p50_p95_p99_ms": [
+        17.633,
+        22.321,
+        23.256
+      ]
+    }
+  },
+  "stage": "encode-to-reported-render-selection (blit)",
+  "status": "two exploratory selected-pipeline runs; no 240 FPS, H264, quality, or causal claim",
+  "stream": 0,
+  "warmup_seconds": 10
+}

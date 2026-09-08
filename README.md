@@ -47,7 +47,33 @@ from presentation frequency. The current Pico experiments use its 90 Hz mode;
 an experiment, not a 240 Hz result; the [full methods and limitations](docs/240FPS.md)
 define the fixtures and interpretation.
 
-**Latest result.** A reused frame header retained its PICTURE flag after the encoder
+**Latest measured result (2026-09-08).** An opt-in persistent R8 target cache
+avoids rewriting unchanged output pixels. At **2160×2160 per eye** on Pico 4,
+NX had lower encode-start-to-render-selection latency than the custom WiVRn NX
+hardware HEVC route in two ordered comparisons:
+
+| Pipeline | First pair p50 / p95 / p99 (ms) | Reverse pair p50 / p95 / p99 (ms) |
+|---|---:|---:|
+| Hardware HEVC | 33.541 / 41.237 / 44.110 | 21.822 / 31.159 / 33.322 |
+| NX + target cache | **18.319 / 21.672 / 23.516** | **17.633 / 22.321 / 23.256** |
+
+The reverse pair reduces median selection latency by **19.2%** and p99 by
+**30.2%**. This is a pipeline result: HEVC reached decoded pixels sooner;
+NX spent less time between decode completion and selection. Bitrate, visual
+quality, stereo organization, and rendering paths differ. NX still shows
+visible tile seams and motion trails. These runs establish neither photon
+latency nor 240 FPS, and the new cache remains off by default.
+[Methods, mapped frame identities, raw relative timings, and repeat results](bench/results/240fps-2026-09-07/live-atlas/borrowed-cache-corrected/v2-live/README.md)
+make the result reproducible. Eight changing host GPU frames match a full
+reference across three recycled targets, with clean synchronization validation.
+
+![Repeated native-resolution encode-to-selection measurements](bench/results/240fps-2026-09-07/live-atlas/borrowed-cache-corrected/v2-live/pipeline-comparison.png)
+
+| Hardware HEVC, reverse run | NX cache, reverse run |
+|---|---|
+| ![HEVC checkerboard and moving cubes](bench/results/240fps-2026-09-07/live-atlas/borrowed-cache-corrected/v2-live/hevc-rev-screen-34.png) | ![NX checkerboard with visible seams and cube trails](bench/results/240fps-2026-09-07/live-atlas/borrowed-cache-corrected/v2-live/cache-rev-screen-29.png) |
+
+**Earlier result.** A reused frame header retained its PICTURE flag after the encoder
 returned to ATLAS. Clearing that per-frame flag restored the cheap path. In a
 55-second QP40/pace90 capture, median decoder GPU window means were **1.0 ms**
 and active-window fresh-source delivery was **89/s**. Session gaps reduced the
@@ -161,7 +187,7 @@ The [validated static-only pair](bench/results/240fps-2026-09-07/live-atlas/stat
 
 The [pair-variant experiment](bench/results/240fps-2026-09-07/live-atlas/pair-variant/README.md) is rejected: inferred pair activation increased selection p50 to 23.435 ms versus 20.146 ms for scalar, with no explicit variant banner and no retained optimization.
 
-The [borrowed-target dirty-catchup prototype](bench/results/240fps-2026-09-07/live-atlas/borrowed-cache-rejected/README.md) is rejected after a CPU staging `memcpy` crash before GPU submission; it supplies no speed result. A future implementation target is a validated GPU image handoff and frame-identity/coverage contract before omitting any NX tiles.
+The [borrowed-target dirty-catchup prototype](bench/results/240fps-2026-09-07/live-atlas/borrowed-cache-rejected/README.md) is rejected after a CPU staging `memcpy` crash before GPU submission; it supplies no speed result. The [corrected implementation](bench/results/240fps-2026-09-07/live-atlas/borrowed-cache-corrected/README.md) now preserves target generations and image layouts, with separate dirty-list staging and explicit timing identities.
 
 The current priority is the corrected [native full-resolution atlas run](bench/results/240fps-2026-09-07/live-atlas/native-resolution/README.md): grid normalization now preserves full field of view at 2160x2160 per eye, while the prior 0.40 output is no longer the default. Its fixed/auto measurements are exploratory and show feedback starvation in AUTO, not a performance or FPS claim.
 

@@ -1,0 +1,162 @@
+[
+  {
+    "codec": "hevc",
+    "file": "hevc-normalized.csv.gz",
+    "stages": {
+      "blit": {
+        "count": 2235,
+        "p50_p95_p99_ms": [
+          33.541,
+          41.237,
+          44.11
+        ]
+      },
+      "decode_end": {
+        "count": 2302,
+        "p50_p95_p99_ms": [
+          10.328,
+          16.509,
+          17.888
+        ]
+      },
+      "receive_begin": {
+        "count": 2721,
+        "p50_p95_p99_ms": [
+          4.355,
+          4.929,
+          5.467
+        ]
+      }
+    },
+    "unmatched_arrivals_without_decode_or_selection": 2,
+    "warmup_s": 10
+  },
+  {
+    "codec": "nx",
+    "file": "nx-normalized.csv.gz",
+    "stages": {
+      "blit": {
+        "count": 1911,
+        "p50_p95_p99_ms": [
+          18.319,
+          21.672,
+          23.516
+        ]
+      },
+      "decode_end": {
+        "count": 2028,
+        "p50_p95_p99_ms": [
+          14.671,
+          18.085,
+          18.663
+        ]
+      },
+      "receive_begin": {
+        "count": 2028,
+        "p50_p95_p99_ms": [
+          9.986,
+          10.698,
+          11.228
+        ]
+      }
+    },
+    "unmatched_arrivals_without_decode_or_selection": 0,
+    "warmup_s": 10
+  },
+  {
+    "codec": "hevc",
+    "file": "hevc-rev-normalized.csv.gz",
+    "stages": {
+      "blit": {
+        "count": 2337,
+        "p50_p95_p99_ms": [
+          21.822,
+          31.159,
+          33.322
+        ]
+      },
+      "decode_end": {
+        "count": 2358,
+        "p50_p95_p99_ms": [
+          10.244,
+          16.327,
+          17.104
+        ]
+      },
+      "receive_begin": {
+        "count": 2708,
+        "p50_p95_p99_ms": [
+          4.288,
+          4.863,
+          5.713
+        ]
+      }
+    },
+    "unmatched_arrivals_without_decode_or_selection": 0,
+    "warmup_s": 10
+  },
+  {
+    "codec": "nx",
+    "file": "nx-rev-normalized.csv.gz",
+    "stages": {
+      "blit": {
+        "count": 3273,
+        "p50_p95_p99_ms": [
+          17.633,
+          22.321,
+          23.256
+        ]
+      },
+      "decode_end": {
+        "count": 3438,
+        "p50_p95_p99_ms": [
+          15.369,
+          19.314,
+          20.697
+        ]
+      },
+      "receive_begin": {
+        "count": 3438,
+        "p50_p95_p99_ms": [
+          9.854,
+          10.697,
+          11.254
+        ]
+      }
+    },
+    "unmatched_arrivals_without_decode_or_selection": 0,
+    "warmup_s": 10
+  },
+  {
+    "codec": "nx",
+    "file": "nx-off-normalized.csv.gz",
+    "stages": {
+      "blit": {
+        "count": 2094,
+        "p50_p95_p99_ms": [
+          31.168,
+          38.814,
+          41.362
+        ]
+      },
+      "decode_end": {
+        "count": 2210,
+        "p50_p95_p99_ms": [
+          24.248,
+          32.15,
+          33.153
+        ]
+      },
+      "receive_begin": {
+        "count": 2210,
+        "p50_p95_p99_ms": [
+          9.797,
+          10.709,
+          15.844
+        ]
+      }
+    },
+    "unmatched_arrivals_without_decode_or_selection": 0,
+    "warmup_s": 10
+  }
+]
