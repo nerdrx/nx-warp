@@ -49,13 +49,19 @@ The design divides images into **64 × 64 tiles** and makes reusable content che
 The current atlas work separates stored tile content from the mapping used to render it. Reusing content can avoid full-picture reconstruction, while a tile-aware mesh moves warp calculations out of repeated fragment work. Changes to codec references still need explicit synchronization and correct feedback handling.
 
 ```mermaid
-flowchart LR
-    A["Rendered stereo frame<br/>and prediction inputs"] --> B["PC: Vulkan encoder"]
-    B --> C["Tile stream<br/>WiVRn NX transport"]
-    C --> D["Headset: Vulkan decoder"]
-    D --> E["Atlas content<br/>and tile mapping"]
-    E --> F["Native atlas renderer<br/>pose-aware warp"]
-    F --> G["OpenXR compositor"]
+flowchart TB
+    subgraph PC["PC"]
+        direction LR
+        A["Rendered stereo frame<br/>and prediction inputs"] --> B["Vulkan encoder"]
+    end
+    B --> C["Tile stream · WiVRn NX transport"]
+    subgraph HS["Headset"]
+        direction LR
+        D["Vulkan decoder"] --> E["Atlas content<br/>and tile mapping"]
+        E --> F["Native renderer<br/>pose-aware warp"]
+        F --> G["OpenXR compositor"]
+    end
+    C --> D
     D -. "receipt / reference feedback" .-> B
 ```
 
@@ -92,7 +98,7 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 | Experiment | Observed result | What it establishes |
 |---|---|---|
 | Remove unused encoder readback | **8.72 → 2.38 ms median**, **3.49 ms p99**; restored control 8.71 ms | An encoder-stage improvement; four fixture comparisons were bit-identical |
-| Native vertex warp | **6.30 → 3.10 ms**, median of GPU window means | Less renderer GPU work at native output; not frame-level p99 |
+| Opt-in native vertex warp | **6.30 → 3.10 ms**, median of GPU window means | Less renderer GPU work at native output; not frame-level p99 |
 | Sequential Pico decode + render | **177–178 completed pairs/s**, approximately **7.75 ms p99** | Improved offscreen sparse-motion performance; still over the 240 Hz deadline |
 | Four renders per correction, long run | **298 renders/s**, **74.5 fresh corrections/s**; **67.6%** within 4.17 ms | Repeated-render capacity over an 81.5-second capture; not paced 240 Hz delivery |
 | Renderer GPU timestamp diagnostic | **3.99 ms GPU interval p99**, **7.05 ms completion p99** | GPU command intervals and completion latency differ materially |
