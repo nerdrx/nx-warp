@@ -30,6 +30,7 @@ extern "C" {
 #include "E2_prefix_p1.spv.h"
 #include "E2_prefix_p2.spv.h"
 #include "E3_forward.spv.h"
+#include "Planar_fit.spv.h"
 #include "E4_lite_encode.spv.h"
 #include "E4_rans_encode.spv.h"
 #include "E5_packetize.spv.h"
@@ -60,6 +61,9 @@ struct VkEncoder::Impl {
      * Allocated always -- an unbound descriptor is illegal and 104 B a tile is
      * cheaper than a branch in create(). */
     vkmin::Buffer b_planar;
+    /* Pass B consumes the parser's padded 26-word representation, while E5
+     * consumes the byte-packed body above.  Keep these contracts separate. */
+    vkmin::Buffer b_planar_recon;
     /* The inter path: the four-slot reference ring, the parameter buffer
      * Pass W reads, and the predictor it writes.  Allocated even on an
      * intra-only stream, at four bytes each -- an unbound descriptor is
@@ -85,13 +89,15 @@ struct VkEncoder::Impl {
     std::vector<vkmin::Image> ph;   /* 1x1 placeholders, Pass B's 7 images */
     vkmin::Buffer b_stage_src, b_stage_coef, b_stage_small;
 
-    vkmin::Pipeline p_e3, p_e4, p_e5, p_e5z, p_e2[3];
+    vkmin::Pipeline p_e3, p_planar_fit, p_e4, p_e5, p_e5z, p_e2[3];
+    VkDescriptorSet s_planar_fit{};
     /* E4-lite (ENTROPY_LITE, 30) and the E5 variant that reads its payload
      * layout.  Both are created only when the stream carries the tool: they
      * share E4's and E5's descriptor set layouts, so what a Lite frame
      * changes is which pipeline is bound and nothing else. */
     vkmin::Pipeline p_e4l, p_e5l;
     bool entropy_lite = false;
+    bool gpu_planar = false;
     /* Pass W is the DECODER's warp_pred.comp; E1c is the mode decision. */
     vkmin::Pipeline p_w, p_dec, p_b;
     VkDescriptorSet s_b_full = VK_NULL_HANDLE;   /* Pass B over EVERY tile */
@@ -429,6 +435,7 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
                        const Adopt *adopt) {
     Impl &d = *p_;
     d.cfg = cfg;
+    d.gpu_planar = cfg.planar && std::getenv("NXVC_ENC_PLANAR_GPU_FLAT") != nullptr;
     d.ntiles = f.fp.ntiles;
 
     if (cfg.nsub_log2 > 3) {
@@ -578,6 +585,8 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
          * (it is the shared exact-integer one) and E5 only reads it. */
         {&d.b_planar,
          (size_t)std::max(d.ntiles, 1u) * NXE_PLANAR_BODY_UINTS * 4, true},
+        {&d.b_planar_recon,
+         d.cfg.planar ? (size_t)std::max(d.ntiles, 1u) * 26u * 4u : 4u, true},
         {&d.b_ring,    ring_bytes, false},
         {&d.b_warp,    warp_b,     false},
         {&d.b_wpred,   wpred_b,    false},
@@ -631,6 +640,13 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
     const std::vector<VkDescriptorType> sb6e(9, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
     if (!d.dev.create_pipeline(E3_forward_spv, sizeof E3_forward_spv, sb6e, 0,
                                d.p_e3, err, &si))
+        return false;
+    if (d.gpu_planar && !d.dev.create_pipeline(Planar_fit_spv, sizeof Planar_fit_spv,
+                               std::vector<VkDescriptorType>{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                                                              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                                                              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                                                              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},
+                               16, d.p_planar_fit, err))
         return false;
     if (!d.dev.create_pipeline(E4_rans_encode_spv, sizeof E4_rans_encode_spv,
                                sb9, 0, d.p_e4, err, &si))
@@ -719,6 +735,7 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
 
     d.pool = d.dev.create_descriptor_pool(13, 100, 10);
     d.s_e3 = d.dev.allocate_set(d.pool, d.p_e3.dsl);
+    if (d.gpu_planar) d.s_planar_fit = d.dev.allocate_set(d.pool, d.p_planar_fit.dsl);
     d.s_e4 = d.dev.allocate_set(d.pool, d.p_e4.dsl);
     d.s_e5 = d.dev.allocate_set(d.pool, d.p_e5.dsl);
     d.s_e5z = d.dev.allocate_set(d.pool, d.p_e5z.dsl);
@@ -729,6 +746,8 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
     write_set(h, d.s_e3, {d.b_params.buf, d.b_jobs.buf, d.b_src.buf,
                           d.b_coef.buf, d.b_modes.buf, d.b_wpred.buf,
                           d.b_rate.buf, d.b_trelf.buf, d.b_trelm.buf});
+    if (d.gpu_planar) write_set(h, d.s_planar_fit, {d.b_src.buf, d.b_planar.buf,
+                                                    d.b_jobs.buf, d.b_planar_recon.buf});
     write_set(h, d.s_e4, {d.b_params.buf, d.b_jobs.buf, d.b_coef.buf,
                           d.b_modes.buf, d.b_tabs.buf, d.b_slots.buf,
                           d.b_sizes.buf, d.b_ops.buf, d.b_slotops.buf});
@@ -824,7 +843,7 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
                          d.b_dummy.buf,
                          N, N, N,
                          d.b_wpred.buf, d.b_ring.buf, d.b_warp.buf,
-                         d.b_planar.buf},
+                         d.b_planar_recon.buf},
                         views);
         /* [SYN] 13.12.11 needs a SECOND Pass B binding: a PICTURE frame
          * reconstructs every tile, and the assembly of step 1 materialises
@@ -844,7 +863,7 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
                              d.b_dummy.buf,
                              N, N, N,
                              d.b_wpred.buf, d.b_ring.buf, d.b_warp.buf,
-                             d.b_planar.buf},
+                             d.b_planar_recon.buf},
                             views);
         }
     }
@@ -1045,6 +1064,15 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
                                     uint32_t array_layer, uint32_t src_layers,
                                     std::string &err) {
     Impl &d = *p_;
+    bool gpu_planar = d.gpu_planar && d.inter && f.fp.chroma420 && !f.fp.ycocgr &&
+                      f.fp.width % 64u == 0 && f.fp.height % 64u == 0;
+    for (const auto &job : f.jobs)
+        if (job.res_level != 0 || job.chroma444 != 0)
+            gpu_planar = false;
+    if (d.gpu_planar && !gpu_planar && image) {
+        err = "GPU PLANAR requires aligned full-resolution 4:2:0 tiles";
+        return false;
+    }
     /* The plane views before anything is recorded: a failure here is a
      * bring-up failure and there is nothing to unwind. */
     VkImageView src_y = VK_NULL_HANDLE, src_c = VK_NULL_HANDLE;
@@ -1478,7 +1506,7 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
          * on every eligible tile.  With them set on both sides the streams are
          * comparable byte for byte and what they compare is the fit.
          */
-        if (d.cfg.planar) {
+        if (d.cfg.planar && !gpu_planar) {
             static const int cfg_r = [] {
                 const char *v = std::getenv("NXVC_PLANAR_CONFIG");
                 return v ? std::atoi(v) : 0;
@@ -1494,6 +1522,7 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
             }();
             if (force && cfg_r >= 2) {
                 uint32_t *pb = (uint32_t *)d.b_planar.map;
+                uint32_t *pr = (uint32_t *)d.b_planar_recon.map;
                 const int np = 3;   /* Y, Co, Cg; alpha is never regionised */
                 for (uint32_t t = 0; t < d.ntiles; ++t) {
                     if (f.jobs[t].mode != (uint32_t)nxvw::kModeIntra) continue;
@@ -1514,6 +1543,15 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
                     const int len = nxe_planar_serialize(&rec, np, body);
                     std::memcpy(&pb[(size_t)t * NXE_PLANAR_BODY_UINTS], body,
                                 (size_t)len);
+                    /* Pass B has a fixed map capacity (16 words) even when
+                     * the serialized map is smaller. */
+                    uint32_t *rr = &pr[(size_t)t * 26u];
+                    std::memset(rr, 0, 26u * sizeof(*rr));
+                    rr[0] = body[0];
+                    const int map_bytes = nxe_planar_map_bytes(rec.regions, rec.fine);
+                    std::memcpy(&rr[1], body + 1, size_t(map_bytes));
+                    std::memcpy(&rr[17], body + 1 + map_bytes,
+                                size_t(len - 1 - map_bytes));
                     f.jobs[t].mode = (uint32_t)NXE_MODE_PLANAR;
                     f.jobs[t].planar_bytes = (uint32_t)len;
                 }
@@ -1673,6 +1711,13 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
         copy_up(cb, d.b_stage_small, d.b_params, &fp, sizeof fp, 0);
         copy_up(cb, d.b_stage_small, d.b_tabs, &f.tabs, sizeof f.tabs,
                 1 << 18);
+        if (gpu_planar)
+            for (auto &job : f.jobs) {
+                job.mode = (uint32_t)NXE_MODE_PLANAR;
+                // R2/coarse is a 27-byte transmitted body; b_planar is padded
+                // to 26 uints only for the fixed storage binding.
+                job.planar_bytes = 27u;
+            }
         std::memcpy((uint8_t *)d.b_stage_small.map + (1 << 19), f.jobs.data(),
                     f.jobs.size() * sizeof(nxe_tile_job));
         VkBufferCopy cj{1 << 19, 0, f.jobs.size() * sizeof(nxe_tile_job)};
@@ -1854,18 +1899,36 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
             }
             d.dev.barrier_compute_to_compute(cb);
         }
+        if (gpu_planar) {
+            uint32_t push[4] = {f.fp.width, f.fp.height, f.fp.base_qp,
+                                (uint32_t)f.fp.chroma_qp_off};
+            vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE,
+                              d.p_planar_fit.pipe);
+            vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                    d.p_planar_fit.layout, 0, 1,
+                                    &d.s_planar_fit, 0, nullptr);
+            vkCmdPushConstants(cb, d.p_planar_fit.layout,
+                               VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof push, push);
+            vkCmdDispatch(cb, d.ntiles, 1, 1);
+            d.dev.barrier_compute_to_compute(cb);
+        }
         if (d.inter) {
             /* Pass W, then the decision, then E3.  Two barriers: the
              * predictor has to be complete before it is measured, and the
              * modes have to be written before E3 reads them to decide whether
              * to code the tile at all. */
-            vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, d.p_w.pipe);
-            vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                    d.p_w.layout, 0, 1, &d.s_w, 0, nullptr);
-            vkCmdPushConstants(cb, d.p_w.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
-                               (uint32_t)sizeof d.wpush, &d.wpush);
-            vkCmdDispatch(cb, d.ntiles, 1, 1);
-            d.dev.barrier_compute_to_compute(cb);
+            // Complete PLANAR refreshes have no predictor consumer: E1c
+            // preserves their mode before reading wpred, and Pass B uses
+            // the region body directly. Keep reference reconstruction below.
+            if (!gpu_planar) {
+                vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, d.p_w.pipe);
+                vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                        d.p_w.layout, 0, 1, &d.s_w, 0, nullptr);
+                vkCmdPushConstants(cb, d.p_w.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                                   (uint32_t)sizeof d.wpush, &d.wpush);
+                vkCmdDispatch(cb, d.ntiles, 1, 1);
+                d.dev.barrier_compute_to_compute(cb);
+            }
 
             /* The indirect dispatch argument E1c counts up: (0, 1, 1).  It is
              * reset every frame, before the decision, because it is a running
@@ -1894,7 +1957,7 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
              * and what Pass B adds back.  A coded-vector tile predicted at the
              * skip vector would reconstruct to something the decoder does not
              * agree with. */
-            if (d.cfg.int_coded_vectors) {
+            if (d.cfg.int_coded_vectors && !gpu_planar) {
                 vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE,
                                   d.p_w.pipe);
                 vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE,

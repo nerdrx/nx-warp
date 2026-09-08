@@ -47,6 +47,7 @@
 #include "reconstruct_skip_store.spv.h"
 #include "reconstruct_copy.spv.h"
 #include "reconstruct_v1_x8.spv.h"
+#include "reconstruct_planar_flat.spv.h"
 #include "reconstruct_x8.spv.h"
 #include "warp_pred.spv.h"
 // [ATLAS] 13.12.3 step 1, and the coded-tile kernel that brackets Pass W.
@@ -215,6 +216,8 @@ struct nxvc_vk_decoder {
     VkShaderModule smBSkipStore = VK_NULL_HANDLE;
     // [passb] skip_kind == 3: the copy path for identity tiles.
     VkShaderModule smBCopy = VK_NULL_HANDLE;
+    VkShaderModule smBPlanarFlat = VK_NULL_HANDLE;
+    bool planar_flat_frame = false;
     VkShaderModule smB[2][2] = {{VK_NULL_HANDLE, VK_NULL_HANDLE},
                                 {VK_NULL_HANDLE, VK_NULL_HANDLE}};
     // [inter] Pass W: the predictor.  Its own set layout, because it binds
@@ -1130,6 +1133,11 @@ nxvc_vkd_status make_layouts(D *d) {
     sm.codeSize = sizeof(reconstruct_v1_x8_spv);
     sm.pCode = reconstruct_v1_x8_spv;
     VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smB[0][0]));
+    if (std::getenv("NXVC_VKD_PLANAR_FLAT")) {
+        sm.codeSize = sizeof(reconstruct_planar_flat_spv);
+        sm.pCode = reconstruct_planar_flat_spv;
+        VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smBPlanarFlat));
+    }
     sm.codeSize = sizeof(reconstruct_skip_spv);
     sm.pCode = reconstruct_skip_spv;
     VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smBSkip));
@@ -1311,7 +1319,7 @@ nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2, int32_t sparse,
                            uint32_t store_words, int32_t intra_dir,
                            int32_t split_tool, int32_t xform_large,
                            int32_t inter_pred, int32_t ring_store,
-                           VkPipeline *out, int skip_kind = 0) {
+                           VkPipeline *out, int skip_kind = 0, bool planar_flat = false) {
     const uint32_t sched = d->dir_sched;
     // `skip_kind` is 0, 1 or 2 and so needs TWO bits.  It had one, at 59, from
     // when it was a bool -- and 2 << 59 is bit 60, which is `split_tool`.  A
@@ -1321,6 +1329,7 @@ nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2, int32_t sparse,
     // out black, and only on a stream that sets one particular tool.
     // 57-58 is the free pair; every other field's shift is unchanged.
     uint64_t key = ((uint64_t)(uint32_t)skip_kind << 57) |
+                   ((uint64_t)(planar_flat ? 1u : 0u) << 55) |
                    ((uint64_t)(uint32_t)ring_store << 63) |
                    ((uint64_t)(uint32_t)inter_pred << 62) |
                    ((uint64_t)(uint32_t)xform_large << 61) |
@@ -1361,7 +1370,7 @@ nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2, int32_t sparse,
         ci.flags |= VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR;
     ci.stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
     ci.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-    ci.stage.module =
+    ci.stage.module = planar_flat ? d->smBPlanarFlat :
         skip_kind == 3 ? d->smBCopy
         : skip_kind == 2 ? d->smBSkipStore
         : skip_kind == 1
@@ -2433,6 +2442,7 @@ extern "C" void nxvc_vk_decoder_destroy(nxvc_vk_decoder *d) {
         if (d->smBSkipStore)
             vkDestroyShaderModule(d->dev, d->smBSkipStore, nullptr);
         if (d->smBCopy) vkDestroyShaderModule(d->dev, d->smBCopy, nullptr);
+        if (d->smBPlanarFlat) vkDestroyShaderModule(d->dev, d->smBPlanarFlat, nullptr);
         for (auto &kv : d->pipesA) vkDestroyPipeline(d->dev, kv.second, nullptr);
         for (auto &kv : d->pipesB) vkDestroyPipeline(d->dev, kv.second, nullptr);
         if (d->smA) vkDestroyShaderModule(d->dev, d->smA, nullptr);
@@ -2962,6 +2972,26 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     const double t_parse = now_ms();
 
     const uint32_t ntiles = d->si.tile_count;
+    d->planar_flat_frame = false;
+    if (d->smBPlanarFlat != VK_NULL_HANDLE &&
+        d->out_format == uint32_t(nxvw::kOutYcbcr420) &&
+        (d->si.tools & (1ull << 10)) != 0 && fp.any_planar &&
+        fp.tiles_planar == ntiles && fp.planar.size() == size_t(ntiles) * 26 &&
+        fp.push.chroma420 && !fp.push.colorTransform && !fp.push.alphaPresent &&
+        d->si.width % 64 == 0 && d->si.height % 64 == 0) {
+        auto byte = [&](size_t t, size_t n) {
+            return uint8_t(fp.planar[t * 26 + (n >> 2)] >> ((n & 3) * 8));
+        };
+        d->planar_flat_frame = true;
+        for (uint32_t t = 0; t < ntiles && d->planar_flat_frame; ++t) {
+            if (fp.planar[size_t(t) * 26] != 0) d->planar_flat_frame = false;
+            // The parser expands map storage to 16 words; coefficients begin
+            // at word 17, not at the serialized stream's byte 9.
+            for (size_t n = 0; n < 18; ++n)
+                if (n % 3 != 0 && byte(t, 17 * 4 + n) != 0)
+                    d->planar_flat_frame = false;
+        }
+    }
     if ((st = ensure_bits(d, fp.frame_bytes))) return st;
 
     // ---- 2. staging --------------------------------------------------
@@ -3179,9 +3209,12 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
     // unit lengths rather than its 12.5 KB of coefficient slots: a length of
     // zero already says "this unit coded nothing".
     // ATLAS leaves absent tiles in place; neither reconstruction pass reads
-    // their coefficient slots. Preserve coded PLANAR and all PICTURE clears.
+    // their coefficient slots. PLANAR reads its region body, never coefficients.
     const bool clear_absent_atlas = std::getenv("NXVC_VKD_ATLAS_FORCE_CLEAR") != nullptr;
     for (uint32_t t : fp.zero_tiles) {
+        if (nxvw::nxvw_rec_mode(fp.recs[t].w1) == nxvw::kModePlanar &&
+            !std::getenv("NXVC_VKD_PLANAR_FORCE_CLEAR"))
+            continue;
         if (atlas_frame && !clear_absent_atlas && (fp.recs[t].w2 & (1u << 8)) == 0)
             continue;
         if (fp.push.sparse)
@@ -3361,7 +3394,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
                              (int32_t)fp.split4, (int32_t)fp.xform_large,
                              inter_pred_on(d, interStream),
                              ring_store_on(d, interStream),
-                             &pipeB[dir])))
+                             &pipeB[dir], 0, d->planar_flat_frame)))
             return st;
         if (d->need_alpha_pass && !fuse) {
             if ((st = pipeline_b(d, (uint32_t)nxvw::kOutRgba8,

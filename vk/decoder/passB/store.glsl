@@ -135,9 +135,11 @@ void nxvwStoreTile(int tid, int tile, int tileX, int tileY, int res_level,
     // [inter] The reference-ring slot is a second store of the same samples,
     // in the coded domain rather than the display one.
     // vk/decoder/inter/inter_hook.glsl.
+#ifndef NXVW_PLANAR_FLAT_ONLY
     nxvwRefRingStore(tid, tile, tileX, tileY, res_level, chroma444, alpha_mode,
                      alphaValue, sb0,
                      sb1, sb2, sb3);
+#endif
 }
 
 #endif  // NXVW_PASSB_STORE_GLSL

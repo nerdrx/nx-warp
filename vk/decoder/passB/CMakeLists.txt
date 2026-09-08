@@ -71,6 +71,29 @@ foreach(_xl 1 0)
     VERBATIM)
 endforeach()
 endforeach()
+
+# Opt-in fixed all-PLANAR R2/coarse zero-slope module.  The host selects it
+# only after validating the complete frame; ordinary modules remain unchanged.
+set(_flat_out ${NXVW_PASSB_GEN}/reconstruct_planar_flat.spv.h)
+list(APPEND NXVW_PASSB_SPV_LIST ${_flat_out})
+add_custom_command(
+  OUTPUT ${_flat_out}
+  COMMAND ${CMAKE_COMMAND}
+          -DGLSLC=${NXVW_GLSLC}
+          -DSRC=${NXVW_PASSB_DIR}/reconstruct.comp
+          -DOUT=${_flat_out}
+          -DNAME=reconstruct_planar_flat
+          "-DDEFS=-DNXVW_INTRA_DIR=0 -DNXVW_XFORM_LARGE=0 -DNXVW_PLANAR_FLAT_ONLY=1"
+          -DINCDIR=${NXVW_PASSB_DIR}
+          -DSTYLE=plain
+          -DDEPFILE=${_flat_out}.d
+          -P ${NXVW_PASSB_GEN_SPV}
+  DEPFILE ${_flat_out}.d
+  DEPENDS ${NXVW_PASSB_DIR}/reconstruct.comp
+          ${NXVW_PASSB_DIR}/planar_flat_main.glsl
+          ${NXVW_PASSB_GEN_SPV} ${NXVW_PASSB_SPV_PASSES_CMAKE}
+  COMMENT "glslc reconstruct.comp (PLANAR flat) -> reconstruct_planar_flat.spv.h"
+  VERBATIM)
 # [inter] A fifth module: the WARP_SKIP kernel.
 #
 # A WARP_SKIP tile codes nothing -- no header, no payload, no coefficients --

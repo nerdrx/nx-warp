@@ -562,7 +562,10 @@ int main(int argc, char **argv) {
              * after the sample count and read slot (count & 3). */
             const size_t nsamp = (size_t)((cfg.w + 1) & ~1) * (size_t)cfg.h;
             std::vector<uint16_t> ring(nsamp, 0);
-            if (gpu.read_ring_luma((uint32_t)(n & 3), ring.data(), nsamp)) {
+            /* ATLAS always assembles the reference in slot 0; ordinary inter
+             * frames rotate through the four-frame ring. */
+            const uint32_t ring_slot = cfg.atlas ? 0u : (uint32_t)(n & 3);
+            if (gpu.read_ring_luma(ring_slot, ring.data(), nsamp)) {
                 char path[512];
                 std::snprintf(path, sizeof path, "%s.%d", rp, n);
                 if (std::FILE *rf = std::fopen(path, "wb")) {

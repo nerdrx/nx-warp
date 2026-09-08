@@ -25,6 +25,7 @@
 #include <chrono>
 #include <cstdarg>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <new>
 #include <string>
@@ -74,7 +75,8 @@ constexpr uint64_t kToolsEmitted =
     (1ull << 22) | /* SIGN_HIDE: sign data hiding, exact in E4              */
     (1ull << 25) | /* CTX_V3: the neighbour-conditioned model               */
     (1ull << 26) | /* TAB_V2: the compact transmitted table set             */
-    (1ull << 30);  /* ENTROPY_LITE: with create_info::entropy; see below     */
+    (1ull << 30) | /* ENTROPY_LITE: with create_info::entropy; see below     */
+    (1ull << 35);  /* PLANAR: explicit GPU-fit opt-in (API field pending)    */
 
 } // namespace
 
@@ -277,6 +279,16 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_create(const nxvc_vke_create_info *ci
     e->cfg.ref_confirm = ci->inter != 0 && ci->ref_confirm != 0;
     e->cfg.atlas = ci->inter != 0 && ci->atlas != 0;
     e->cfg.atlas_mode = e->cfg.atlas && ci->atlas_mode != 0;
+    /* The API's planar field belongs to the reference host-fit path, whose
+     * image adapter is not present here.  Only the explicit GPU experiment is
+     * mapped, and it requires INTER's E1 canonicalisation. */
+    const bool gpu_planar = std::getenv("NXVC_ENC_PLANAR_GPU_FLAT") != nullptr;
+    if (gpu_planar && !e->cfg.inter) {
+        delete e;
+        return createerr(NXVC_VKE_ERR_ARG,
+                         "NXVC_ENC_PLANAR_GPU_FLAT needs inter=1");
+    }
+    e->cfg.planar = gpu_planar ? 2 : 0;
     /* 0 means "the default", which is the reference's swept value.  Spelled
      * here rather than in the Config default so that a caller passing a
      * zeroed create_info gets the same 8 the harness does. */

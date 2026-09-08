@@ -159,6 +159,7 @@ function(nxenc_fwd_shader name src)
   set(NXENC_SPV_HEADERS ${NXENC_SPV_HEADERS} ${out} PARENT_SCOPE)
 endfunction()
 nxenc_fwd_shader(E3_forward      forward.comp)
+nxenc_fwd_shader(Planar_fit      planar_fit.comp)
 nxenc_fwd_shader(E4_rans_encode  rans_encode.comp)
 # E4-lite, ENTROPY_LITE (30).  A second module rather than a branch: see the
 # head of lite_encode.comp for why the two kernels have opposite shapes.
@@ -254,6 +255,7 @@ if(EXISTS ${NXENC_DEC_INTER}/warp_pred.comp)
     COMMENT "glslc (decoder) reconstruct.comp v1_x8 -> reconstruct_v1_x8.spv.h"
     VERBATIM)
   set(NXENC_SPV_HEADERS ${NXENC_SPV_HEADERS} ${_bout})
+
   set(NXENC_HAVE_PASSW 1)
 else()
   set(NXENC_HAVE_PASSW 0)

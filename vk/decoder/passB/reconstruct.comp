@@ -991,6 +991,9 @@ int predictOne(int mode, int A[NXVW_INTRA_REFS], int L[NXVW_INTRA_REFS],
 // hook whose nxvwRefRingStore() it calls, because it uses both.
 #include "store.glsl"
 
+#ifdef NXVW_PLANAR_FLAT_ONLY
+#include "planar_flat_main.glsl"
+#else
 void main() {
     int tid = int(gl_LocalInvocationID.x);
     // The tile this workgroup decodes.  Going through uOrder costs one uint
@@ -2147,3 +2150,5 @@ void main() {
                   nxvw_rec_alpha_value(rec.w2), planeStoreBase0,
                   planeStoreBase1, planeStoreBase2, planeStoreBase3);
 }
+
+#endif // NXVW_PLANAR_FLAT_ONLY
