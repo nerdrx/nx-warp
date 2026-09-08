@@ -44,6 +44,8 @@ Optional environment switches (all disabled by default):
 | `NX_SEQUENCE_FAST_SRGB=1` | Approximate inverse gamma with a cubic; up to about 5/255 encoded grayscale error. Ignored when UNORM output omits inverse gamma entirely. |
 | `NX_SEQUENCE_FDM=1` | Request full center density and peripheral density 127/255. Fail closed if required device features or allocation are unavailable. |
 | `NX_SEQUENCE_RENDER_REPEATS=4` | Render each decoded source four times. This tests static-pose capacity, not fresh-frame throughput or pose-aware presentation. Values 1–8 accepted. |
+| `NX_SEQUENCE_SPIN_US=4000` | Poll completion for at most this many microseconds, then block normally. Accepts 0–10000; zero retains ordinary blocking. CPU-intensive diagnostic, not a recommended Pico setting. |
+| `NX_SEQUENCE_GPU_TIMESTAMPS=1` | Collect optional renderer GPU timestamp intervals in CSV `gpu_ms`; blank means disabled or unavailable. Instrumented runs must be compared with a query-free control. |
 
 The decoder's `NXVC_VKD_ATLAS_VIEW_DIRTY=1` separately enables dirty atlas-view
 updates; it was enabled in every combined Pico run. GPU timestamp suppression
@@ -58,3 +60,12 @@ renders. CSV `frame` identifies the source frame, `render_index` its repeated
 render, and `total_ms` that render's wall time; asynchronous `decode_ms` is CPU
 submission time, not isolated decoder GPU time. No output readback, file write,
 or cleanup is included in capture timing.
+
+`process_cpu_s` measures process CPU time across the capture, including warmup;
+it excludes final image readback and cleanup. It is not GPU time or a power
+measurement. GPU timestamp intervals cover the renderer command interval and
+may include dependency stalls; they do not measure photon latency.
+
+When GPU queries are enabled, query retrieval occurs after the per-render wall
+timer; its CPU overhead remains included in source-cycle time and aggregate
+throughput. Compare instrumented runs with timestamp-disabled controls.

@@ -27,6 +27,9 @@ public:
               VkFence* completion = nullptr);
     bool wait();
     bool readback_ppm(uint32_t eye, const std::filesystem::path& path);
+    // Call after the draw fence completes. Returns its GPU command interval;
+    // false means queries are disabled, unsupported, or could not be read.
+    bool last_gpu_ms(double* milliseconds);
     VkImage output_image(uint32_t eye) const;
     VkImageView output_view(uint32_t eye) const;
     uint32_t width() const { return width_; }

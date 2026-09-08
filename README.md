@@ -57,6 +57,15 @@ renders in 81.5 seconds**: **298 renders/s and 74.5 fresh corrections/s** after
 warmup. Only **67.6%** met 4.17 ms, so this establishes capacity, not smooth
 240-Hz delivery.
 
+A controlled CPU-wait experiment raised repeated-render throughput to **324/s**,
+but render p99 remained **7.52 ms** and process CPU time increased about **7×**.
+It remains a diagnostic, disabled by default: higher average throughput alone
+does not satisfy the latency or power budget. [Controlled results](bench/results/240fps-2026-09-08/sequence-throughput/README.md).
+
+Optional GPU timestamps now separate renderer command intervals from CPU
+completion times. This makes scheduling costs visible while keeping the
+default benchmark free of renderer queries.
+
 ![Offscreen rates; repeated renders and fresh corrections counted separately](bench/results/240fps-2026-09-08/sequence-throughput/cadence-comparison.png)
 
 **Latest encoder result (2026-09-08).** Removing an unused **55 MiB per-frame

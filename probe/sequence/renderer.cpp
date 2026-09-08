@@ -79,6 +79,9 @@ struct Renderer::Impl {
     bool use_density = false;
     bool out_initialized[2]{};
     VkFence pending = VK_NULL_HANDLE;
+    VkQueryPool queries = VK_NULL_HANDLE;
+    float timestamp_period_ns = 0.0f;
+    uint32_t timestamp_valid_bits = 0;
     std::vector<Vertex> vertices;
     std::filesystem::path vspv, fspv;
     bool valid = false;
@@ -319,6 +322,31 @@ Renderer::Renderer(VkPhysicalDevice p, VkDevice d, VkQueue q, uint32_t qf, std::
     ca.commandBufferCount = 1;
     if (!ok(vkAllocateCommandBuffers(d, &ca, &impl_->cmd)))
         return;
+    VkPhysicalDeviceProperties device_props{};
+    vkGetPhysicalDeviceProperties(p, &device_props);
+    impl_->timestamp_period_ns = device_props.limits.timestampPeriod;
+    impl_->timestamp_valid_bits = 0;
+    const char* ts_env = std::getenv("NX_SEQUENCE_GPU_TIMESTAMPS");
+    const bool want_timestamps = ts_env && std::strcmp(ts_env, "1") == 0;
+    // timestampComputeAndGraphics is a capability bit; the counter width
+    // comes from the selected queue family properties.
+    uint32_t nq = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(p, &nq, nullptr);
+    std::vector<VkQueueFamilyProperties> qprops(nq);
+    vkGetPhysicalDeviceQueueFamilyProperties(p, &nq, qprops.data());
+    if (want_timestamps && device_props.limits.timestampComputeAndGraphics && qf < nq &&
+        qprops[qf].timestampValidBits)
+        impl_->timestamp_valid_bits = qprops[qf].timestampValidBits;
+    if (impl_->timestamp_valid_bits) {
+        VkQueryPoolCreateInfo qi{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
+        qi.queryType = VK_QUERY_TYPE_TIMESTAMP;
+        qi.queryCount = 2;
+        if (!ok(vkCreateQueryPool(d, &qi, nullptr, &impl_->queries)))
+            impl_->timestamp_valid_bits = 0;
+        else
+            std::fprintf(stderr, "nx-sequence gpu-timestamps=1 valid-bits=%u period-ns=%.3f\n",
+                         impl_->timestamp_valid_bits, impl_->timestamp_period_ns);
+    }
     VkDescriptorSetLayoutBinding b[] = {
         {3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
          VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
@@ -538,6 +566,8 @@ Renderer::~Renderer() {
         vkDestroyDescriptorPool(device_, impl_->dp, nullptr);
     if (impl_->pool)
         vkDestroyCommandPool(device_, impl_->pool, nullptr);
+    if (impl_->queries)
+        vkDestroyQueryPool(device_, impl_->queries, nullptr);
     delete impl_;
     impl_ = nullptr;
 }
@@ -617,6 +647,9 @@ bool Renderer::draw(const nxvc_vkd_atlas_images& a, VkBuffer table, VkDeviceSize
     VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     if (!ok(vkBeginCommandBuffer(x.cmd, &bi)))
         return false;
+    if (x.queries) {
+        vkCmdResetQueryPool(x.cmd, x.queries, 0, 2);
+    }
     VkImageMemoryBarrier ib[2]{};
     for (int i = 0; i < 2; ++i) {
         ib[i].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -641,6 +674,9 @@ bool Renderer::draw(const nxvc_vkd_atlas_images& a, VkBuffer table, VkDeviceSize
                          VK_PIPELINE_STAGE_VERTEX_SHADER_BIT |
                              VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
                          0, 0, nullptr, 1, &tb, 2, ib);
+    // TOP can precede dependency completion; this interval may include stalls.
+    if (x.queries)
+        vkCmdWriteTimestamp(x.cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, x.queries, 0);
     VkViewport vp{0, 0, float(width_), float(height_), 0, 1};
     VkRect2D sc{{0, 0}, {width_, height_}};
     VkBuffer vb = x.mesh;
@@ -688,6 +724,8 @@ bool Renderer::draw(const nxvc_vkd_atlas_images& a, VkBuffer table, VkDeviceSize
         vkCmdDraw(x.cmd, x.mesh_count, 1, 0, 0);
         vkCmdEndRenderPass(x.cmd);
     }
+    if (x.queries)
+        vkCmdWriteTimestamp(x.cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, x.queries, 1);
     if (!ok(vkEndCommandBuffer(x.cmd)))
         return false;
     VkFence f = VK_NULL_HANDLE;
@@ -716,6 +754,21 @@ bool Renderer::wait() {
     vkDestroyFence(device_, x.pending, nullptr);
     x.pending = VK_NULL_HANDLE;
     return r;
+}
+
+bool Renderer::last_gpu_ms(double* milliseconds) {
+    auto& x = *impl_;
+    if (!milliseconds || !x.queries || !x.timestamp_valid_bits)
+        return false;
+    uint64_t values[2]{};
+    if (vkGetQueryPoolResults(device_, x.queries, 0, 2, sizeof(values), values, sizeof(uint64_t),
+                              VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT) != VK_SUCCESS)
+        return false;
+    const uint64_t mask =
+        x.timestamp_valid_bits >= 64 ? ~uint64_t(0) : ((uint64_t(1) << x.timestamp_valid_bits) - 1);
+    const uint64_t delta = (values[1] - values[0]) & mask;
+    *milliseconds = double(delta) * double(x.timestamp_period_ns) / 1.0e6;
+    return true;
 }
 bool Renderer::readback_ppm(uint32_t eye, const std::filesystem::path& path) {
     auto& x = *impl_;

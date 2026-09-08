@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -144,6 +145,16 @@ int main(int argc, char** argv) {
     const size_t warmup = argc > 3 ? std::strtoull(argv[3], nullptr, 10) : 120;
     const char* async_env = std::getenv("NX_SEQUENCE_ASYNC");
     const bool async_submit = async_env && std::strcmp(async_env, "1") == 0;
+    size_t spin_us = 0;
+    if (const char* spin_env = std::getenv("NX_SEQUENCE_SPIN_US")) {
+        char* end = nullptr;
+        const unsigned long parsed = std::strtoul(spin_env, &end, 10);
+        if (!*spin_env || !end || *end || parsed > 10000) {
+            std::fprintf(stderr, "sequence: NX_SEQUENCE_SPIN_US must be an integer 0..10000\n");
+            return 2;
+        }
+        spin_us = parsed;
+    }
     const char* repeat_env = std::getenv("NX_SEQUENCE_RENDER_REPEATS");
     char* repeat_end = nullptr;
     const size_t render_repeats = repeat_env ? std::strtoull(repeat_env, &repeat_end, 10) : 1;
@@ -210,7 +221,9 @@ int main(int argc, char** argv) {
     std::vector<double> steady_milliseconds;
     std::vector<double> render_milliseconds_all;
     std::vector<double> steady_render_milliseconds;
+    std::vector<double> gpu_milliseconds_all;
     const auto outer_begin = std::chrono::steady_clock::now();
+    const std::clock_t cpu_begin = std::clock();
     std::chrono::steady_clock::time_point steady_begin = outer_begin;
     bool failed = false;
     size_t offset = header_bytes;
@@ -249,9 +262,22 @@ int main(int argc, char** argv) {
             const auto render_begin = std::chrono::steady_clock::now();
             VkFence fence = VK_NULL_HANDLE;
             const bool draw_ok = renderer->draw(images, table, table_bytes, &fence);
-            const VkResult render_status =
-                draw_ok ? vkWaitForFences(vk.device, 1, &fence, VK_TRUE, UINT64_MAX)
-                        : VK_ERROR_UNKNOWN;
+            VkResult render_status = VK_ERROR_UNKNOWN;
+            if (draw_ok) {
+                if (spin_us == 0) {
+                    render_status = vkWaitForFences(vk.device, 1, &fence, VK_TRUE, UINT64_MAX);
+                } else {
+                    const auto spin_deadline =
+                        std::chrono::steady_clock::now() + std::chrono::microseconds(spin_us);
+                    do {
+                        render_status = vkGetFenceStatus(vk.device, fence);
+                        if (render_status != VK_NOT_READY)
+                            break;
+                    } while (std::chrono::steady_clock::now() < spin_deadline);
+                    if (render_status == VK_NOT_READY)
+                        render_status = vkWaitForFences(vk.device, 1, &fence, VK_TRUE, UINT64_MAX);
+                }
+            }
             if (!draw_ok || render_status != VK_SUCCESS) {
                 std::fprintf(stderr, "sequence: renderer failed at frame %zu render %zu\n", frame,
                              render_index);
@@ -269,6 +295,8 @@ int main(int argc, char** argv) {
                                                           (render_index ? render_begin : begin))
                     .count();
             render_milliseconds_all.push_back(render_ms);
+            double gpu_ms = 0.0;
+            gpu_milliseconds_all.push_back(renderer->last_gpu_ms(&gpu_ms) ? gpu_ms : -1.0);
             if (frame + 1 > warmup)
                 steady_render_milliseconds.push_back(render_ms);
         }
@@ -287,6 +315,7 @@ int main(int argc, char** argv) {
             steady_milliseconds.push_back(pair_ms);
     }
     const auto capture_end = std::chrono::steady_clock::now();
+    const double cpu_seconds = double(std::clock() - cpu_begin) / double(CLOCKS_PER_SEC);
     if (failed)
         vkDeviceWaitIdle(vk.device);
     const bool readback_ok =
@@ -297,13 +326,16 @@ int main(int argc, char** argv) {
     const double outer_seconds = std::chrono::duration<double>(capture_end - outer_begin).count();
     {
         std::ofstream csv("timings.csv");
-        csv << "frame,render_index,decode_ms,render_ms,total_ms\n";
+        csv << "frame,render_index,decode_ms,render_ms,total_ms,gpu_ms\n";
         for (size_t i = 0; i < milliseconds.size(); ++i)
             for (size_t r = 0; r < render_repeats; ++r) {
                 const size_t ri = i * render_repeats + r;
                 csv << i << ',' << r << ',' << (r == 0 ? decode_milliseconds[i] : 0.0) << ','
                     << (render_milliseconds_all[ri] - (r == 0 ? decode_milliseconds[i] : 0.0))
-                    << ',' << render_milliseconds_all[ri] << '\n';
+                    << ',' << render_milliseconds_all[ri] << ',';
+                if (gpu_milliseconds_all[ri] >= 0.0)
+                    csv << gpu_milliseconds_all[ri];
+                csv << '\n';
             }
         if (failed || milliseconds.size() != requested)
             csv << "# incomplete\n";
@@ -330,13 +362,14 @@ int main(int argc, char** argv) {
         std::count_if(steady_render_milliseconds.begin(), steady_render_milliseconds.end(),
                       [](double x) { return x <= (1000.0 / 240.0); }));
     std::printf("completed_pairs %zu warmup_frames %zu render_repeats %zu completed_renders %zu "
+                "spin_us %zu process_cpu_s %.6f "
                 "elapsed_wall_s %.6f actual_fps %.3f render_steady_fps %.3f render_p50_ms %.3f "
                 "render_p95_ms %.3f render_p99_ms %.3f render_deadline_count %zu "
                 "steady_completed %zu steady_elapsed_s %.6f steady_fps %.3f steady_mean_pair_ms "
                 "%.3f steady_p50_ms %.3f steady_p95_ms %.3f steady_p99_ms %.3f "
                 "deadline_1000_over_240_ms %.6f steady_deadline_count %zu\n",
                 milliseconds.size(), warmup, render_repeats, render_milliseconds_all.size(),
-                outer_seconds, milliseconds.size() / outer_seconds,
+                spin_us, cpu_seconds, outer_seconds, milliseconds.size() / outer_seconds,
                 steady_render_milliseconds.size() / steady_seconds, render_percentile(.50),
                 render_percentile(.95), render_percentile(.99), render_deadline,
                 steady_milliseconds.size(), steady_seconds,
