@@ -1,5 +1,10 @@
 # Removing unused coefficient readback
 
+![Ordered original, optimized and restored latency measurements](coefficient-copy-comparison.png)
+
+Rebuild this figure with `python3 plot.py` (Matplotlib required). It reads
+`summary.json`; markers show p50, p95 and p99, not uncertainty intervals.
+
 Lite entropy does not select probability tables on the CPU. The live encoder
 nevertheless copied its entire coefficient allocation from device memory to
 host staging after every E3 submission. The new guard omits that copy when

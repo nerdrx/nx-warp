@@ -57,6 +57,8 @@ inside the 4.17 ms budget, not a demonstration of a 240 FPS complete pipeline;
 the Pico renderer remains over budget. [Profiler data, screenshots, checks,
 and reproduction](bench/results/240fps-2026-09-08/unused-coefficient-readback/README.md).
 
+![Measured encoder and selection latency before removing the coefficient copy, after removal, and after restoring it](bench/results/240fps-2026-09-08/unused-coefficient-readback/coefficient-copy-comparison.png)
+
 **Earlier pipeline result (2026-09-08).** An opt-in persistent R8 target cache
 avoids rewriting unchanged output pixels. At **2160×2160 per eye** on Pico 4,
 NX had lower encode-start-to-render-selection latency than the custom WiVRn NX
