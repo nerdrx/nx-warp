@@ -1,0 +1,91 @@
+{
+  "fixture": "4352x2176 synthetic all-PLANAR changing-pixel pan (~157 Mb/s)",
+  "deadline_ms": 4.166666666666667,
+  "warmup_excluded": 24,
+  "runs": {
+    "spin-80-first": {
+      "file": "pace-spin-7200.csv",
+      "frames": 7200,
+      "measured_frames": 7176,
+      "deadline_misses": 45,
+      "deadline_miss_pct": 0.6270903010033445,
+      "total_ms": {
+        "mean_ms": 2.276821521599777,
+        "median_ms": 2.0040310000000003,
+        "p95_ms": 3.337282,
+        "p99_ms": 4.004114,
+        "max_ms": 5.216499
+      },
+      "interval_ms": {
+        "mean_ms": 4.166709792084727,
+        "median_ms": 4.151927,
+        "p95_ms": 5.469063,
+        "p99_ms": 6.274062,
+        "max_ms": 7.477604
+      }
+    },
+    "spin-f0": {
+      "file": "pace-spin-f0-7200.csv",
+      "frames": 7200,
+      "measured_frames": 7176,
+      "deadline_misses": 59,
+      "deadline_miss_pct": 0.8221850613154961,
+      "total_ms": {
+        "mean_ms": 2.2453758072742476,
+        "median_ms": 1.9755715,
+        "p95_ms": 3.339,
+        "p99_ms": 4.123638,
+        "max_ms": 5.556508
+      },
+      "interval_ms": {
+        "mean_ms": 4.166770396181716,
+        "median_ms": 4.155547,
+        "p95_ms": 5.464115,
+        "p99_ms": 6.350938,
+        "max_ms": 7.902969
+      }
+    },
+    "spin-repeat": {
+      "file": "pace-spin-repeat-7200.csv",
+      "frames": 7200,
+      "measured_frames": 7176,
+      "deadline_misses": 34,
+      "deadline_miss_pct": 0.4738015607580825,
+      "total_ms": {
+        "mean_ms": 2.2106596241638794,
+        "median_ms": 1.9490805,
+        "p95_ms": 3.228327,
+        "p99_ms": 4.018013,
+        "max_ms": 5.159267
+      },
+      "interval_ms": {
+        "mean_ms": 4.166621215440356,
+        "median_ms": 4.1595055,
+        "p95_ms": 5.386875,
+        "p99_ms": 6.251719,
+        "max_ms": 7.076979
+      }
+    },
+    "sleep-control": {
+      "file": "pace-sleep-control-7200.csv",
+      "frames": 7200,
+      "measured_frames": 7176,
+      "deadline_misses": 444,
+      "deadline_miss_pct": 6.187290969899665,
+      "total_ms": {
+        "mean_ms": 2.7121429311594203,
+        "median_ms": 2.343747,
+        "p95_ms": 4.31098,
+        "p99_ms": 6.229366,
+        "max_ms": 13.339678
+      },
+      "interval_ms": {
+        "mean_ms": 4.166759545568562,
+        "median_ms": 4.14224,
+        "p95_ms": 5.882239,
+        "p99_ms": 6.769427,
+        "max_ms": 14.909479
+      }
+    }
+  }
+}

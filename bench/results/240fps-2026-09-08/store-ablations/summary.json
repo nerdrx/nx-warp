@@ -1,0 +1,633 @@
+{
+  "fixture": "D128",
+  "motion_frames": [
+    25,
+    95
+  ],
+  "runs": {
+    "ablation-0-control": {
+      "frames": [
+        25,
+        95
+      ],
+      "stats": {
+        "passB_ms": {
+          "count": 71,
+          "median_ms": 50.813,
+          "p95_ms": 110.407,
+          "p99_ms": 119.371
+        },
+        "gpu_ms": {
+          "count": 71,
+          "median_ms": 61.338,
+          "p95_ms": 119.909,
+          "p99_ms": 130.037
+        },
+        "total_ms": {
+          "count": 71,
+          "median_ms": 63.835,
+          "p95_ms": 122.397,
+          "p99_ms": 474.273
+        }
+      }
+    },
+    "ablation-1-no-predictor": {
+      "frames": [
+        25,
+        95
+      ],
+      "stats": {
+        "passB_ms": {
+          "count": 71,
+          "median_ms": 53.038,
+          "p95_ms": 107.57,
+          "p99_ms": 112.999
+        },
+        "gpu_ms": {
+          "count": 71,
+          "median_ms": 62.939,
+          "p95_ms": 117.837,
+          "p99_ms": 127.567
+        },
+        "total_ms": {
+          "count": 71,
+          "median_ms": 65.883,
+          "p95_ms": 119.939,
+          "p99_ms": 443.857
+        }
+      }
+    },
+    "ablation-2-no-ring": {
+      "frames": [
+        25,
+        95
+      ],
+      "stats": {
+        "passB_ms": {
+          "count": 71,
+          "median_ms": 38.423,
+          "p95_ms": 75.338,
+          "p99_ms": 81.211
+        },
+        "gpu_ms": {
+          "count": 71,
+          "median_ms": 47.975,
+          "p95_ms": 85.108,
+          "p99_ms": 90.831
+        },
+        "total_ms": {
+          "count": 71,
+          "median_ms": 51.133,
+          "p95_ms": 87.93,
+          "p99_ms": 402.825
+        }
+      }
+    },
+    "ablation-3-control": {
+      "frames": [
+        25,
+        95
+      ],
+      "stats": {
+        "passB_ms": {
+          "count": 71,
+          "median_ms": 49.015,
+          "p95_ms": 91.917,
+          "p99_ms": 96.227
+        },
+        "gpu_ms": {
+          "count": 71,
+          "median_ms": 58.551,
+          "p95_ms": 100.292,
+          "p99_ms": 104.811
+        },
+        "total_ms": {
+          "count": 71,
+          "median_ms": 60.73,
+          "p95_ms": 104.941,
+          "p99_ms": 419.804
+        }
+      }
+    },
+    "ablation-4-no-predictor": {
+      "frames": [
+        25,
+        95
+      ],
+      "stats": {
+        "passB_ms": {
+          "count": 71,
+          "median_ms": 52.782,
+          "p95_ms": 109.722,
+          "p99_ms": 115.076
+        },
+        "gpu_ms": {
+          "count": 71,
+          "median_ms": 62.568,
+          "p95_ms": 119.215,
+          "p99_ms": 126.084
+        },
+        "total_ms": {
+          "count": 71,
+          "median_ms": 66.241,
+          "p95_ms": 121.653,
+          "p99_ms": 463.075
+        }
+      }
+    },
+    "ablation-5-no-ring": {
+      "frames": [
+        25,
+        95
+      ],
+      "stats": {
+        "passB_ms": {
+          "count": 71,
+          "median_ms": 31.194,
+          "p95_ms": 58.967,
+          "p99_ms": 71.484
+        },
+        "gpu_ms": {
+          "count": 71,
+          "median_ms": 39.03,
+          "p95_ms": 66.572,
+          "p99_ms": 81.742
+        },
+        "total_ms": {
+          "count": 71,
+          "median_ms": 43.406,
+          "p95_ms": 71.093,
+          "p99_ms": 388.124
+        }
+      }
+    },
+    "fused-0-refresh": {
+      "frames": [
+        25,
+        95
+      ],
+      "stats": {
+        "passB_ms": {
+          "count": 71,
+          "median_ms": 53.182,
+          "p95_ms": 94.662,
+          "p99_ms": 110.929
+        },
+        "gpu_ms": {
+          "count": 71,
+          "median_ms": 63.102,
+          "p95_ms": 103.704,
+          "p99_ms": 125.457
+        },
+        "total_ms": {
+          "count": 71,
+          "median_ms": 66.278,
+          "p95_ms": 106.443,
+          "p99_ms": 434.74
+        }
+      }
+    },
+    "fused-1-fused": {
+      "frames": [
+        25,
+        95
+      ],
+      "stats": {
+        "passB_ms": {
+          "count": 71,
+          "median_ms": 51.702,
+          "p95_ms": 110.365,
+          "p99_ms": 124.937
+        },
+        "gpu_ms": {
+          "count": 71,
+          "median_ms": 61.916,
+          "p95_ms": 120.134,
+          "p99_ms": 135.958
+        },
+        "total_ms": {
+          "count": 71,
+          "median_ms": 64.975,
+          "p95_ms": 122.943,
+          "p99_ms": 482.351
+        }
+      }
+    },
+    "fused-2-refresh": {
+      "frames": [
+        25,
+        95
+      ],
+      "stats": {
+        "passB_ms": {
+          "count": 71,
+          "median_ms": 50.791,
+          "p95_ms": 92.831,
+          "p99_ms": 113.518
+        },
+        "gpu_ms": {
+          "count": 71,
+          "median_ms": 61.05,
+          "p95_ms": 101.349,
+          "p99_ms": 128.07
+        },
+        "total_ms": {
+          "count": 71,
+          "median_ms": 63.121,
+          "p95_ms": 103.55,
+          "p99_ms": 442.464
+        }
+      }
+    },
+    "fused-3-fused": {
+      "frames": [
+        25,
+        95
+      ],
+      "stats": {
+        "passB_ms": {
+          "count": 71,
+          "median_ms": 52.143,
+          "p95_ms": 109.763,
+          "p99_ms": 116.155
+        },
+        "gpu_ms": {
+          "count": 71,
+          "median_ms": 62.481,
+          "p95_ms": 119.55,
+          "p99_ms": 125.53
+        },
+        "total_ms": {
+          "count": 71,
+          "median_ms": 65.933,
+          "p95_ms": 123.063,
+          "p99_ms": 449.11
+        }
+      }
+    },
+    "output-0-off": {
+      "frames": [
+        25,
+        95
+      ],
+      "stats": {
+        "passB_ms": {
+          "count": 71,
+          "median_ms": 42.279,
+          "p95_ms": 107.333,
+          "p99_ms": 114.965
+        },
+        "gpu_ms": {
+          "count": 71,
+          "median_ms": 50.691,
+          "p95_ms": 116.473,
+          "p99_ms": 125.83
+        },
+        "total_ms": {
+          "count": 71,
+          "median_ms": 54.046,
+          "p95_ms": 119.968,
+          "p99_ms": 465.519
+        }
+      }
+    },
+    "output-1-on": {
+      "frames": [
+        25,
+        95
+      ],
+      "stats": {
+        "passB_ms": {
+          "count": 71,
+          "median_ms": 41.053,
+          "p95_ms": 72.517,
+          "p99_ms": 74.073
+        },
+        "gpu_ms": {
+          "count": 71,
+          "median_ms": 50.413,
+          "p95_ms": 82.756,
+          "p99_ms": 83.191
+        },
+        "total_ms": {
+          "count": 71,
+          "median_ms": 54.088,
+          "p95_ms": 85.249,
+          "p99_ms": 87.454
+        }
+      }
+    },
+    "output-2-off": {
+      "frames": [
+        25,
+        95
+      ],
+      "stats": {
+        "passB_ms": {
+          "count": 71,
+          "median_ms": 46.727,
+          "p95_ms": 109.085,
+          "p99_ms": 116.037
+        },
+        "gpu_ms": {
+          "count": 71,
+          "median_ms": 55.794,
+          "p95_ms": 119.647,
+          "p99_ms": 127.015
+        },
+        "total_ms": {
+          "count": 71,
+          "median_ms": 61.602,
+          "p95_ms": 122.124,
+          "p99_ms": 465.245
+        }
+      }
+    },
+    "output-3-on": {
+      "frames": [
+        25,
+        95
+      ],
+      "stats": {
+        "passB_ms": {
+          "count": 71,
+          "median_ms": 40.852,
+          "p95_ms": 67.735,
+          "p99_ms": 72.816
+        },
+        "gpu_ms": {
+          "count": 71,
+          "median_ms": 50.894,
+          "p95_ms": 75.687,
+          "p99_ms": 82.559
+        },
+        "total_ms": {
+          "count": 71,
+          "median_ms": 53.77,
+          "p95_ms": 78.318,
+          "p99_ms": 85.42
+        }
+      }
+    },
+    "ring-0-refresh": {
+      "frames": [
+        25,
+        95
+      ],
+      "stats": {
+        "passB_ms": {
+          "count": 71,
+          "median_ms": 50.929,
+          "p95_ms": 106.632,
+          "p99_ms": 117.275
+        },
+        "gpu_ms": {
+          "count": 71,
+          "median_ms": 61.276,
+          "p95_ms": 117.249,
+          "p99_ms": 126.686
+        },
+        "total_ms": {
+          "count": 71,
+          "median_ms": 64.652,
+          "p95_ms": 119.533,
+          "p99_ms": 470.612
+        }
+      }
+    },
+    "ring-1-ring-shift": {
+      "frames": [
+        25,
+        95
+      ],
+      "stats": {
+        "passB_ms": {
+          "count": 71,
+          "median_ms": 54.389,
+          "p95_ms": 122.183,
+          "p99_ms": 126.672
+        },
+        "gpu_ms": {
+          "count": 71,
+          "median_ms": 63.99,
+          "p95_ms": 132.356,
+          "p99_ms": 141.222
+        },
+        "total_ms": {
+          "count": 71,
+          "median_ms": 67.271,
+          "p95_ms": 134.39,
+          "p99_ms": 465.599
+        }
+      }
+    },
+    "ring-2-refresh": {
+      "frames": [
+        25,
+        95
+      ],
+      "stats": {
+        "passB_ms": {
+          "count": 71,
+          "median_ms": 45.495,
+          "p95_ms": 109.627,
+          "p99_ms": 118.226
+        },
+        "gpu_ms": {
+          "count": 71,
+          "median_ms": 55.639,
+          "p95_ms": 119.974,
+          "p99_ms": 130.077
+        },
+        "total_ms": {
+          "count": 71,
+          "median_ms": 60.271,
+          "p95_ms": 121.904,
+          "p99_ms": 462.492
+        }
+      }
+    },
+    "ring-3-ring-shift": {
+      "frames": [
+        25,
+        95
+      ],
+      "stats": {
+        "passB_ms": {
+          "count": 71,
+          "median_ms": 54.812,
+          "p95_ms": 122.63,
+          "p99_ms": 126.074
+        },
+        "gpu_ms": {
+          "count": 71,
+          "median_ms": 63.851,
+          "p95_ms": 132.829,
+          "p99_ms": 140.641
+        },
+        "total_ms": {
+          "count": 71,
+          "median_ms": 68.063,
+          "p95_ms": 135.762,
+          "p99_ms": 458.829
+        }
+      }
+    },
+    "ring-4-refresh": {
+      "frames": [
+        25,
+        95
+      ],
+      "stats": {
+        "passB_ms": {
+          "count": 71,
+          "median_ms": 43.695,
+          "p95_ms": 109.927,
+          "p99_ms": 115.183
+        },
+        "gpu_ms": {
+          "count": 71,
+          "median_ms": 53.475,
+          "p95_ms": 120.39,
+          "p99_ms": 127.098
+        },
+        "total_ms": {
+          "count": 71,
+          "median_ms": 57.957,
+          "p95_ms": 121.788,
+          "p99_ms": 466.303
+        }
+      }
+    },
+    "ring-5-ring-shift": {
+      "frames": [
+        25,
+        95
+      ],
+      "stats": {
+        "passB_ms": {
+          "count": 71,
+          "median_ms": 54.429,
+          "p95_ms": 122.654,
+          "p99_ms": 130.864
+        },
+        "gpu_ms": {
+          "count": 71,
+          "median_ms": 63.83,
+          "p95_ms": 132.929,
+          "p99_ms": 145.427
+        },
+        "total_ms": {
+          "count": 71,
+          "median_ms": 67.504,
+          "p95_ms": 134.557,
+          "p99_ms": 474.168
+        }
+      }
+    },
+    "ring8-0-refresh": {
+      "frames": [
+        25,
+        95
+      ],
+      "stats": {
+        "passB_ms": {
+          "count": 71,
+          "median_ms": 51.22,
+          "p95_ms": 109.062,
+          "p99_ms": 124.24
+        },
+        "gpu_ms": {
+          "count": 71,
+          "median_ms": 62.237,
+          "p95_ms": 119.857,
+          "p99_ms": 134.088
+        },
+        "total_ms": {
+          "count": 71,
+          "median_ms": 65.774,
+          "p95_ms": 122.289,
+          "p99_ms": 492.878
+        }
+      }
+    },
+    "ring8-1-ring8": {
+      "frames": [
+        25,
+        95
+      ],
+      "stats": {
+        "passB_ms": {
+          "count": 71,
+          "median_ms": 56.0,
+          "p95_ms": 98.958,
+          "p99_ms": 102.294
+        },
+        "gpu_ms": {
+          "count": 71,
+          "median_ms": 65.221,
+          "p95_ms": 107.842,
+          "p99_ms": 110.834
+        },
+        "total_ms": {
+          "count": 71,
+          "median_ms": 68.747,
+          "p95_ms": 112.912,
+          "p99_ms": 436.15
+        }
+      }
+    },
+    "ring8-2-refresh": {
+      "frames": [
+        25,
+        95
+      ],
+      "stats": {
+        "passB_ms": {
+          "count": 71,
+          "median_ms": 52.795,
+          "p95_ms": 109.243,
+          "p99_ms": 122.035
+        },
+        "gpu_ms": {
+          "count": 71,
+          "median_ms": 62.213,
+          "p95_ms": 119.188,
+          "p99_ms": 133.924
+        },
+        "total_ms": {
+          "count": 71,
+          "median_ms": 65.562,
+          "p95_ms": 122.163,
+          "p99_ms": 485.627
+        }
+      }
+    },
+    "ring8-3-ring8": {
+      "frames": [
+        25,
+        95
+      ],
+      "stats": {
+        "passB_ms": {
+          "count": 71,
+          "median_ms": 53.752,
+          "p95_ms": 99.257,
+          "p99_ms": 102.889
+        },
+        "gpu_ms": {
+          "count": 71,
+          "median_ms": 63.354,
+          "p95_ms": 107.965,
+          "p99_ms": 111.459
+        },
+        "total_ms": {
+          "count": 71,
+          "median_ms": 66.997,
+          "p95_ms": 112.582,
+          "p99_ms": 397.82
+        }
+      }
+    }
+  }
+}

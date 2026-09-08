@@ -1,0 +1,271 @@
+-- device: AMD Radeon RX 7900 XTX (RADV NAVI31)
+-- 95 conformance vectors from tests/vectors
+ok   v01_intra420_qp12
+ok   v02_intra420_qp24
+ok   v03_intra420_qp36
+ok   v04_intra420_qp51
+ok   v05_intra444_qp24
+ok   v06_gradient420_qp20
+ok   v07_checker420_qp28
+ok   v08_noise420_qp28
+ok   v09_flat420_qp28
+ok   v10_lossless420
+ok   v11_lossless444
+ok   v12_lossless444_alpha
+ok   v13_tskip420_qp16
+ok   v14_alpha420_qp24
+ok   v15_res_cycle420
+ok   v16_res_level2_420
+ok   v17_res_cycle444
+ok   v18_qpmap420
+ok   v19_qp_res_map420
+ok   v20_tile420_in444
+ok   v21_ycocgr444_qp24
+ok   v22_ycocgr_lossless
+ok   v23_custom_tables420
+ok   v24_nsub0_420
+ok   v25_nsub5_420
+ok   v26_nsub_auto_420
+ok   v27_matrix0_420
+ok   v28_matrix3_420
+ok   v29_odd_size_200x140
+ok   v30_tiny_64x64
+ok   v31_wide_320x64
+ok   v32_multiframe420
+ok   v33_wm_id444
+ok   v34_wm_id420_tables
+ok   v35_saturate420
+ok   v36_dir444_qp16
+ok   v37_dir420_qp28
+ok   v38_dir_ctxv2_444
+ok   v39_ctxv2_only_420
+ok   v40_dir_layer420
+ok   v41_dir_ctxv2_tables
+ok   v42_dir_res_tskip420
+ok   v43_sdh_only420
+ok   v44_default444
+ok   v57_split444_qp16
+ok   v58_split_res420
+ok   v59_cfl444_qp20
+ok   v60_cfl420_qp28
+ok   v61_default_v15_444
+ok   v62_tabv2_420
+ok   v63_ctxv3_444
+ok   v64_ctxv3_tab_res420
+ok   v65_ctxv3_tab_444
+ok   v68_xform16_420
+ok   v69_xform32_420
+ok   v70_xform32_444
+ok   v71_xform_auto_default
+ok   v72_xform32_res_cycle
+ok   v73_xform16_dir444
+ok   v76_lite_fixed420_qp24
+SKIP v77_lite_rice420_qp24: frame: unsupported
+ok   v78_lite_fixed444_dir
+SKIP v79_lite_rice444_dir: frame: unsupported
+ok   v80_lite_fixed_res_ts
+ok   v81_lite_lossless444
+ok   v82_planar_rd420
+ok   v83_planar_prefer420
+ok   v45_inter_identity
+ok   v46_inter_warp_mv
+ok   v47_inter_static_mv
+ok   v48_inter_warp_sweep
+ok   v49_inter_warp_border
+ok   v50_inter_skip_state
+ok   v51_inter_ref_sel1
+ok   v52_inter_ref_sel2
+ok   v53_inter_stereo
+ok   v54_inter_stereo_static
+ok   v55_inter_420
+ok   v56_inter_refresh
+ok   v66_inter_ctxv3
+ok   v67_inter_stereo_v3
+ok   v74_quad_mv
+ok   v75_inter_eff_all
+ok   v82_atlas_warp (atlas, 6 frames)
+ok   v83_atlas_420 (atlas, 5 frames)
+ok   v84_atlas_refresh_eff (atlas, 8 frames)
+skip v85_atlas_nbr: Phase 2 tools 0x280620c8d, correctly refused
+ok   v86_atlas_row_present (atlas, 6 frames)
+ok   v87_atlas_base_sourced (atlas, 5 frames)
+ok   v88_atlas_superseded (atlas, 5 frames)
+ok   v89_atlas_rp_1088 (atlas, 4 frames)
+ok   v90_mode_alternate (atlas, 6 frames)
+ok   v91_mode_disp (atlas, 16 frames)
+ok   v92_mode_src_frame (atlas, 6 frames)
+ok   v93_atlas_planar (atlas, 6 frames)
+ok   r01_bad_magic (VERSION)
+ok   r02_unknown_tool (VERSION)
+ok   r03_bit_depth_10 (UNSUPPORTED)
+ok   r04_tile_size_32 (UNSUPPORTED)
+ok   r05_payload_past_row (TRUNCATED)
+ok   r06_res_level3 (BITSTREAM)
+ok   r07_truncated_rans (TRUNCATED)
+ok   r08_skip_bitmap (BITSTREAM)
+ok   r09_reserved_tile_bit (BITSTREAM)
+ok   r10_mode_inter (UNSUPPORTED)
+ok   r11_wm_id_no_tool (BITSTREAM)
+ok   r12_row_index_wrong (BITSTREAM)
+ok   r13_frame_bytes_short (TRUNCATED)
+ok   r14_dir_layer_no_tool (BITSTREAM)
+ok   r15_ycocgr_420 (BITSTREAM)
+ok   r16_ctx_v2_short_table (BITSTREAM)
+ok   r17_lossless_sign_hide (BITSTREAM)
+ok   r30_cfl_no_dir_ctx (BITSTREAM)
+ok   r31_split_no_tool (BITSTREAM)
+ok   r32_split_with_tskip (BITSTREAM)
+ok   r33_tab_v2_no_tables (BITSTREAM)
+ok   r34_ctx_v3_no_v2 (BITSTREAM)
+ok   r35_ctx_v3_short_table (BITSTREAM)
+ok   r36_xform_size_three (BITSTREAM)
+ok   r37_xform_no_tool (BITSTREAM)
+ok   r38_xform_with_tskip (BITSTREAM)
+ok   r39_split_with_xform (BITSTREAM)
+ok   r44_planar_no_tool (BITSTREAM)
+ok   r45_planar_res_level (BITSTREAM)
+ok   r46_planar_nsub (BITSTREAM)
+ok   r47_planar_mv_present (BITSTREAM)
+ok   r48_planar_line_form (BITSTREAM)
+ok   r49_planar_regions (BITSTREAM)
+ok   r50_planar_body_bits (BITSTREAM)
+ok   r18_h22_not_one (BITSTREAM)
+ok   r19_entry_range (BITSTREAM)
+ok   r20_den_range (BITSTREAM)
+ok   r21_warp_no_flag (BITSTREAM)
+ok   r22_mode_reserved (BITSTREAM)
+ok   r23_intra_ref_sel (BITSTREAM)
+ok   r24_ref_sel_three (BITSTREAM)
+ok   r25_ref_slots_wrong (BITSTREAM)
+ok   r26_tool_catmullrom (VERSION)
+ok   r27_warp_without_inter (BITSTREAM)
+ok   r28_stereo_left_eye (BITSTREAM)
+ok   r29_disparity_reserved (BITSTREAM)
+ok   r40_quad_mv_no_tool (BITSTREAM)
+ok   r41_quad_mv_on_intra (BITSTREAM)
+ok   r42_dc_present_no_tool (BITSTREAM)
+ok   r43_dc_bitmap_empty (BITSTREAM)
+-- 50 rejection vector(s)
+-- 76 synthetic streams from nxvc_encoder
+ok   syn_qp00_420_pass
+ok   syn_qp00_444_pass
+ok   syn_qp00_444_pass_rgb10a2
+ok   syn_qp00_444_ycocgr
+ok   syn_qp00_444_ycocgr_rgb10a2
+ok   syn_qp08_420_pass
+ok   syn_qp08_444_pass
+ok   syn_qp08_444_pass_rgb10a2
+ok   syn_qp08_444_ycocgr
+ok   syn_qp08_444_ycocgr_rgb10a2
+ok   syn_qp16_420_pass
+ok   syn_qp16_444_pass
+ok   syn_qp16_444_pass_rgb10a2
+ok   syn_qp16_444_ycocgr
+ok   syn_qp16_444_ycocgr_rgb10a2
+ok   syn_qp24_420_pass
+ok   syn_qp24_444_pass
+ok   syn_qp24_444_pass_rgb10a2
+ok   syn_qp24_444_ycocgr
+ok   syn_qp24_444_ycocgr_rgb10a2
+ok   syn_qp32_420_pass
+ok   syn_qp32_444_pass
+ok   syn_qp32_444_pass_rgb10a2
+ok   syn_qp32_444_ycocgr
+ok   syn_qp32_444_ycocgr_rgb10a2
+ok   syn_qp40_420_pass
+ok   syn_qp40_444_pass
+ok   syn_qp40_444_pass_rgb10a2
+ok   syn_qp40_444_ycocgr
+ok   syn_qp40_444_ycocgr_rgb10a2
+ok   syn_qp51_420_pass
+ok   syn_qp51_444_pass
+ok   syn_qp51_444_pass_rgb10a2
+ok   syn_qp51_444_ycocgr
+ok   syn_qp51_444_ycocgr_rgb10a2
+ok   syn_qp63_420_pass
+ok   syn_qp63_444_pass
+ok   syn_qp63_444_pass_rgb10a2
+ok   syn_qp63_444_ycocgr
+ok   syn_qp63_444_ycocgr_rgb10a2
+ok   syn_res1_420
+ok   syn_res2_420
+ok   syn_res1_444
+ok   syn_res1_444_rgb10a2
+ok   syn_res2_444
+ok   syn_res2_444_rgb10a2
+ok   syn_nsub0
+ok   syn_nsub1
+ok   syn_nsub5
+ok   syn_nsub255
+ok   syn_tskip420
+ok   syn_tables420
+ok   syn_tile420_in444
+ok   syn_tile420_in444_rgb10a2
+ok   syn_alpha420
+ok   syn_alpha444
+ok   syn_lossless420
+ok   syn_lossless_ycocgr
+ok   syn_lossless_ycocgr_rgb10a2
+ok   syn_qpmap_resmap
+ok   syn_matrix0
+ok   syn_matrix1
+ok   syn_matrix2
+ok   syn_matrix3
+ok   syn_wm_id1
+ok   syn_wm_id2
+ok   syn_wm_id3
+ok   syn_wm_id2_444
+ok   syn_wm_id2_444_rgb10a2
+ok   syn_odd_200x140
+ok   syn_tiny_64x64
+ok   syn_tall_64x320
+ok   syn_multiframe
+ok   syn_v1tools_420
+ok   syn_v1tools_444
+ok   syn_v1tools_444_rgb10a2
+ok   syn_dir_only_420
+ok   syn_dir_only_444
+ok   syn_dir_only_444_rgb10a2
+ok   syn_ctxv2_only_420
+ok   syn_sdh_only_420
+ok   syn_dir_layer_420
+ok   syn_dir_layer_ctxv2_444
+ok   syn_dir_layer_ctxv2_444_rgb10a2
+ok   syn_xform16_420
+ok   syn_xform32_420
+ok   syn_xform16_444
+ok   syn_xform16_444_rgb10a2
+ok   syn_xform32_444
+ok   syn_xform32_444_rgb10a2
+ok   syn_xform32_dir_420
+ok   syn_xform16_dir_444
+ok   syn_xform16_dir_444_rgb10a2
+ok   syn_xform32_res_cycle_420
+ok   syn_xform16_res_cycle_444
+ok   syn_xform16_res_cycle_444_rgb10a2
+ok   syn_xform32_res2_420
+ok   syn_xform32_dir_res_444
+ok   syn_xform32_dir_res_444_rgb10a2
+ok   syn_xform_auto_420
+ok   syn_xform_auto_dir_444
+ok   syn_xform_auto_dir_444_rgb10a2
+ok   syn_dir_res_cycle_420
+ok   syn_dir_res_cycle_444
+ok   syn_dir_res_cycle_444_rgb10a2
+ok   syn_dir_tskip_420
+ok   syn_dir_layer_tskip_444
+ok   syn_dir_layer_tskip_444_rgb10a2
+-- row_present: 24 frames, 92 row structures elided, 5817 B against 6898 B without the tool (1.2x), byte-identical to the reference and to itself
+ok   modes-all-picture (atlas, 10 frames)
+-- modes-all-picture: 9 PICTURE frame(s), 1 ATLAS frame(s), atlas byte-identical to the reference
+ok   modes-all-atlas (atlas, 10 frames)
+-- modes-all-atlas: 0 PICTURE frame(s), 10 ATLAS frame(s), atlas byte-identical to the reference
+ok   modes-picture-period2 (atlas, 10 frames)
+-- modes-picture-period2: 4 PICTURE frame(s), 6 ATLAS frame(s), atlas byte-identical to the reference
+-- stats v90_mode_alternate: 6 frames, 4 ATLAS / 2 PICTURE, frame_mode matches the wire on every frame (picture_frames 2)
+-- stats v91_mode_disp: 16 frames, 4 ATLAS / 12 PICTURE, frame_mode matches the wire on every frame (picture_frames 12)
+-- stats v92_mode_src_frame: 6 frames, 5 ATLAS / 1 PICTURE, frame_mode matches the wire on every frame (picture_frames 1)
+-- atlas-view: one-tap 8-bit (R8 194x130 + R8G8 97x65) and three-plane R16 carry the same picture, and both equal the atlas, over 25220 luma + 6305 chroma samples
+-- loss: 100 frames, 66 with drops, 175 tiles dropped, byte-identical to the reference
+-- loss-stereo: 100 frames, 71 with drops, 336 tiles dropped, byte-identical to the reference
+-- 260 stream(s) checked, 3 skipped, 0 failure(s)

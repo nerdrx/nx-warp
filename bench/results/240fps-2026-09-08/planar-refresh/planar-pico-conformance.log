@@ -1,0 +1,406 @@
+-- device: Adreno (TM) 650
+-- 95 conformance vectors from /data/local/tmp/planar-vectors
+.. v01_intra420_qp12
+ok   v01_intra420_qp12
+.. v02_intra420_qp24
+ok   v02_intra420_qp24
+.. v03_intra420_qp36
+ok   v03_intra420_qp36
+.. v04_intra420_qp51
+ok   v04_intra420_qp51
+.. v05_intra444_qp24
+ok   v05_intra444_qp24
+.. v06_gradient420_qp20
+ok   v06_gradient420_qp20
+.. v07_checker420_qp28
+ok   v07_checker420_qp28
+.. v08_noise420_qp28
+ok   v08_noise420_qp28
+.. v09_flat420_qp28
+ok   v09_flat420_qp28
+.. v10_lossless420
+ok   v10_lossless420
+.. v11_lossless444
+ok   v11_lossless444
+.. v12_lossless444_alpha
+ok   v12_lossless444_alpha
+.. v13_tskip420_qp16
+ok   v13_tskip420_qp16
+.. v14_alpha420_qp24
+ok   v14_alpha420_qp24
+.. v15_res_cycle420
+ok   v15_res_cycle420
+.. v16_res_level2_420
+ok   v16_res_level2_420
+.. v17_res_cycle444
+ok   v17_res_cycle444
+.. v18_qpmap420
+ok   v18_qpmap420
+.. v19_qp_res_map420
+ok   v19_qp_res_map420
+.. v20_tile420_in444
+ok   v20_tile420_in444
+.. v21_ycocgr444_qp24
+ok   v21_ycocgr444_qp24
+.. v22_ycocgr_lossless
+ok   v22_ycocgr_lossless
+.. v23_custom_tables420
+ok   v23_custom_tables420
+.. v24_nsub0_420
+ok   v24_nsub0_420
+.. v25_nsub5_420
+ok   v25_nsub5_420
+.. v26_nsub_auto_420
+ok   v26_nsub_auto_420
+.. v27_matrix0_420
+ok   v27_matrix0_420
+.. v28_matrix3_420
+ok   v28_matrix3_420
+.. v29_odd_size_200x140
+ok   v29_odd_size_200x140
+.. v30_tiny_64x64
+ok   v30_tiny_64x64
+.. v31_wide_320x64
+ok   v31_wide_320x64
+.. v32_multiframe420
+ok   v32_multiframe420
+.. v33_wm_id444
+ok   v33_wm_id444
+.. v34_wm_id420_tables
+ok   v34_wm_id420_tables
+.. v35_saturate420
+ok   v35_saturate420
+.. v36_dir444_qp16
+FAIL v36_dir444_qp16 frame 0: plane Y/R (0,0) ref 115 gpu 0
+FAIL v36_dir444_qp16: 73728 mismatching samples
+.. v37_dir420_qp28
+FAIL v37_dir420_qp28 frame 0: plane Y/R (0,0) ref 117 gpu 0
+FAIL v37_dir420_qp28: 36864 mismatching samples
+.. v38_dir_ctxv2_444
+FAIL v38_dir_ctxv2_444 frame 0: plane Y/R (0,0) ref 115 gpu 0
+FAIL v38_dir_ctxv2_444: 73728 mismatching samples
+.. v39_ctxv2_only_420
+ok   v39_ctxv2_only_420
+.. v40_dir_layer420
+FAIL v40_dir_layer420 frame 0: plane Y/R (0,0) ref 13 gpu 0
+FAIL v40_dir_layer420: 36805 mismatching samples
+.. v41_dir_ctxv2_tables
+FAIL v41_dir_ctxv2_tables frame 0: plane Y/R (0,0) ref 17 gpu 0
+FAIL v41_dir_ctxv2_tables frame 1: plane Y/R (0,0) ref 17 gpu 0
+FAIL v41_dir_ctxv2_tables: 147450 mismatching samples
+.. v42_dir_res_tskip420
+FAIL v42_dir_res_tskip420 frame 0: plane Y/R (0,0) ref 14 gpu 0
+FAIL v42_dir_res_tskip420: 36864 mismatching samples
+.. v43_sdh_only420
+ok   v43_sdh_only420
+.. v44_default444
+FAIL v44_default444 frame 0: plane Y/R (0,0) ref 115 gpu 0
+FAIL v44_default444: 73728 mismatching samples
+.. v57_split444_qp16
+FAIL v57_split444_qp16 frame 0: plane Y/R (0,0) ref 115 gpu 0
+FAIL v57_split444_qp16: 73728 mismatching samples
+.. v58_split_res420
+FAIL v58_split_res420 frame 0: plane Y/R (0,0) ref 16 gpu 0
+FAIL v58_split_res420: 36861 mismatching samples
+.. v59_cfl444_qp20
+FAIL v59_cfl444_qp20 frame 0: plane Y/R (0,0) ref 116 gpu 0
+FAIL v59_cfl444_qp20: 73728 mismatching samples
+.. v60_cfl420_qp28
+FAIL v60_cfl420_qp28 frame 0: plane Y/R (0,0) ref 120 gpu 0
+FAIL v60_cfl420_qp28: 36864 mismatching samples
+.. v61_default_v15_444
+FAIL v61_default_v15_444 frame 0: plane Y/R (0,0) ref 115 gpu 0
+FAIL v61_default_v15_444: 73728 mismatching samples
+.. v62_tabv2_420
+ok   v62_tabv2_420
+.. v63_ctxv3_444
+ok   v63_ctxv3_444
+.. v64_ctxv3_tab_res420
+FAIL v64_ctxv3_tab_res420 frame 0: plane Y/R (0,0) ref 16 gpu 0
+FAIL v64_ctxv3_tab_res420 frame 1: plane Y/R (0,0) ref 16 gpu 0
+FAIL v64_ctxv3_tab_res420: 73728 mismatching samples
+.. v65_ctxv3_tab_444
+FAIL v65_ctxv3_tab_444 frame 0: plane Y/R (0,0) ref 116 gpu 0
+FAIL v65_ctxv3_tab_444: 73728 mismatching samples
+ok   v68_xform16_420 (tools 0x8000005 declined by this device, refused with VERSION)
+ok   v69_xform32_420 (tools 0x8000005 declined by this device, refused with VERSION)
+ok   v70_xform32_444 (tools 0x800000d declined by this device, refused with VERSION)
+ok   v71_xform_auto_default (tools 0x96200cd declined by this device, refused with VERSION)
+ok   v72_xform32_res_cycle (tools 0x8620005 declined by this device, refused with VERSION)
+ok   v73_xform16_dir444 (tools 0x822000d declined by this device, refused with VERSION)
+.. v76_lite_fixed420_qp24
+ok   v76_lite_fixed420_qp24
+.. v77_lite_rice420_qp24
+SKIP v77_lite_rice420_qp24: frame: unsupported
+.. v78_lite_fixed444_dir
+FAIL v78_lite_fixed444_dir frame 0: plane Y/R (0,0) ref 115 gpu 0
+FAIL v78_lite_fixed444_dir: 73728 mismatching samples
+.. v79_lite_rice444_dir
+SKIP v79_lite_rice444_dir: frame: unsupported
+.. v80_lite_fixed_res_ts
+FAIL v80_lite_fixed_res_ts frame 0: plane Y/R (0,0) ref 116 gpu 0
+FAIL v80_lite_fixed_res_ts: 36864 mismatching samples
+.. v81_lite_lossless444
+ok   v81_lite_lossless444
+.. v82_planar_rd420
+ok   v82_planar_rd420
+.. v83_planar_prefer420
+ok   v83_planar_prefer420
+.. v45_inter_identity
+FAIL v45_inter_identity frame 0: plane Y/R (0,0) ref 120 gpu 0
+FAIL v45_inter_identity frame 1: plane Y/R (0,0) ref 120 gpu 0
+FAIL v45_inter_identity frame 2: plane Y/R (0,0) ref 120 gpu 0
+FAIL v45_inter_identity frame 3: plane Y/R (0,0) ref 120 gpu 0
+FAIL v45_inter_identity: 196608 mismatching samples
+.. v46_inter_warp_mv
+FAIL v46_inter_warp_mv frame 0: plane Y/R (0,0) ref 123 gpu 0
+FAIL v46_inter_warp_mv frame 1: plane Y/R (0,0) ref 143 gpu 13
+FAIL v46_inter_warp_mv frame 2: plane Y/R (0,0) ref 150 gpu 7
+FAIL v46_inter_warp_mv frame 3: plane Y/R (0,0) ref 144 gpu 1
+FAIL v46_inter_warp_mv frame 4: plane Y/R (0,0) ref 136 gpu 0
+FAIL v46_inter_warp_mv: 245760 mismatching samples
+.. v47_inter_static_mv
+FAIL v47_inter_static_mv frame 0: plane Y/R (0,0) ref 121 gpu 0
+FAIL v47_inter_static_mv frame 1: plane Y/R (0,0) ref 123 gpu 0
+FAIL v47_inter_static_mv frame 2: plane Y/R (0,0) ref 124 gpu 0
+FAIL v47_inter_static_mv frame 3: plane Y/R (0,0) ref 124 gpu 0
+FAIL v47_inter_static_mv: 196608 mismatching samples
+.. v48_inter_warp_sweep
+FAIL v48_inter_warp_sweep frame 0: plane Y/R (0,0) ref 132 gpu 0
+FAIL v48_inter_warp_sweep frame 1: plane Y/R (0,0) ref 147 gpu 0
+FAIL v48_inter_warp_sweep frame 2: plane Y/R (0,0) ref 126 gpu 17
+FAIL v48_inter_warp_sweep frame 3: plane Y/R (0,0) ref 171 gpu 46
+FAIL v48_inter_warp_sweep frame 4: plane Y/R (0,0) ref 214 gpu 38
+FAIL v48_inter_warp_sweep frame 5: plane Y/R (0,0) ref 156 gpu 1
+FAIL v48_inter_warp_sweep: 294912 mismatching samples
+.. v49_inter_warp_border
+FAIL v49_inter_warp_border frame 0: plane Y/R (0,0) ref 132 gpu 0
+FAIL v49_inter_warp_border frame 1: plane Y/R (0,0) ref 128 gpu 4
+FAIL v49_inter_warp_border frame 2: plane Y/R (0,0) ref 165 gpu 4
+FAIL v49_inter_warp_border frame 3: plane Y/R (0,0) ref 244 gpu 51
+FAIL v49_inter_warp_border frame 4: plane Y/R (0,0) ref 173 gpu 0
+FAIL v49_inter_warp_border: 122879 mismatching samples
+.. v50_inter_skip_state
+FAIL v50_inter_skip_state frame 0: plane Y/R (0,0) ref 119 gpu 0
+FAIL v50_inter_skip_state frame 1: plane Y/R (0,0) ref 130 gpu 3
+FAIL v50_inter_skip_state frame 2: plane Y/R (0,0) ref 129 gpu 2
+FAIL v50_inter_skip_state frame 3: plane Y/R (0,0) ref 144 gpu 5
+FAIL v50_inter_skip_state: 196608 mismatching samples
+.. v51_inter_ref_sel1
+FAIL v51_inter_ref_sel1: GPU decode failed (queue submit: VK_ERROR_DEVICE_LOST (-4))
+.. v52_inter_ref_sel2
+FAIL v52_inter_ref_sel2: GPU decode failed (queue submit: VK_ERROR_DEVICE_LOST (-4))
+.. v53_inter_stereo
+FAIL v53_inter_stereo: GPU decode failed (queue submit: VK_ERROR_DEVICE_LOST (-4))
+.. v54_inter_stereo_static
+FAIL v54_inter_stereo_static: GPU decode failed (queue submit: VK_ERROR_DEVICE_LOST (-4))
+.. v55_inter_420
+FAIL v55_inter_420 frame 0: plane Y/R (0,0) ref 123 gpu 0
+FAIL v55_inter_420 frame 1: plane Y/R (0,0) ref 144 gpu 1
+FAIL v55_inter_420 frame 2: plane Y/R (0,0) ref 149 gpu 0
+FAIL v55_inter_420 frame 3: plane Y/R (0,0) ref 130 gpu 3
+FAIL v55_inter_420 frame 4: plane Y/R (0,0) ref 113 gpu 10
+FAIL v55_inter_420: 122880 mismatching samples
+.. v56_inter_refresh
+FAIL v56_inter_refresh: GPU decode failed (queue submit: VK_ERROR_DEVICE_LOST (-4))
+.. v66_inter_ctxv3
+FAIL v66_inter_ctxv3 frame 0: plane Y/R (0,0) ref 124 gpu 0
+FAIL v66_inter_ctxv3 frame 1: plane Y/R (0,0) ref 153 gpu 6
+FAIL v66_inter_ctxv3 frame 2: plane Y/R (0,0) ref 100 gpu 2
+FAIL v66_inter_ctxv3 frame 3: plane Y/R (0,0) ref 165 gpu 44
+FAIL v66_inter_ctxv3 frame 4: plane Y/R (0,0) ref 213 gpu 44
+FAIL v66_inter_ctxv3 frame 5: plane Y/R (0,0) ref 145 gpu 44
+FAIL v66_inter_ctxv3: 294907 mismatching samples
+.. v67_inter_stereo_v3
+FAIL v67_inter_stereo_v3: GPU decode failed (queue submit: VK_ERROR_DEVICE_LOST (-4))
+.. v74_quad_mv
+FAIL v74_quad_mv frame 0: plane Y/R (0,0) ref 123 gpu 0
+FAIL v74_quad_mv frame 1: plane Y/R (0,0) ref 148 gpu 5
+FAIL v74_quad_mv frame 2: plane Y/R (0,0) ref 146 gpu 10
+FAIL v74_quad_mv frame 3: plane Y/R (0,0) ref 137 gpu 48
+FAIL v74_quad_mv frame 4: plane Y/R (0,0) ref 123 gpu 37
+FAIL v74_quad_mv frame 5: plane Y/R (0,0) ref 129 gpu 20
+FAIL v74_quad_mv: 294912 mismatching samples
+.. v75_inter_eff_all
+FAIL v75_inter_eff_all frame 0: plane Y/R (0,0) ref 132 gpu 0
+FAIL v75_inter_eff_all frame 1: plane Y/R (0,0) ref 142 gpu 0
+FAIL v75_inter_eff_all frame 2: plane Y/R (0,0) ref 146 gpu 0
+FAIL v75_inter_eff_all frame 3: plane Y/R (0,0) ref 150 gpu 2
+FAIL v75_inter_eff_all frame 4: plane Y/R (0,0) ref 150 gpu 4
+FAIL v75_inter_eff_all frame 5: plane Y/R (0,0) ref 141 gpu 0
+FAIL v75_inter_eff_all frame 6: plane Y/R (0,0) ref 137 gpu 3
+FAIL v75_inter_eff_all frame 7: plane Y/R (0,0) ref 128 gpu 7
+FAIL v75_inter_eff_all: 393216 mismatching samples
+.. v82_atlas_warp
+FAIL v82_atlas_warp: frame 0: TABLE entry 0 uint 0: ref 0x00200000 gpu 0x00000000 (patched 0)
+FAIL v82_atlas_warp: the atlas differs from the reference at frame 0
+  ^ v82_atlas_warp frame 0: table entry 0 field C[0]: ref 0x00200000 gpu 0x00000000
+.. v83_atlas_420
+FAIL v83_atlas_420: frame 0: TABLE entry 0 uint 0: ref 0x00200000 gpu 0x00000000 (patched 0)
+FAIL v83_atlas_420: the atlas differs from the reference at frame 0
+  ^ v83_atlas_420 frame 0: table entry 0 field C[0]: ref 0x00200000 gpu 0x00000000
+.. v84_atlas_refresh_eff
+FAIL v84_atlas_refresh_eff: frame 0: TABLE entry 0 uint 0: ref 0x00200000 gpu 0x00000000 (patched 0)
+FAIL v84_atlas_refresh_eff: the atlas differs from the reference at frame 0
+  ^ v84_atlas_refresh_eff frame 0: table entry 0 field C[0]: ref 0x00200000 gpu 0x00000000
+skip v85_atlas_nbr: Phase 2 tools 0x280620c8d, correctly refused
+.. v86_atlas_row_present
+FAIL v86_atlas_row_present: frame 0: TABLE entry 0 uint 0: ref 0x00200000 gpu 0x00000000 (patched 0)
+FAIL v86_atlas_row_present: the atlas differs from the reference at frame 0
+  ^ v86_atlas_row_present frame 0: table entry 0 field C[0]: ref 0x00200000 gpu 0x00000000
+.. v87_atlas_base_sourced
+FAIL v87_atlas_base_sourced: frame 0: TABLE entry 0 uint 0: ref 0x00200000 gpu 0x00000000 (patched 0)
+FAIL v87_atlas_base_sourced: the atlas differs from the reference at frame 0
+  ^ v87_atlas_base_sourced frame 0: table entry 0 field C[0]: ref 0x00200000 gpu 0x00000000
+.. v88_atlas_superseded
+FAIL v88_atlas_superseded: frame 0: TABLE entry 0 uint 0: ref 0x00200000 gpu 0x00000000 (patched 0)
+FAIL v88_atlas_superseded: the atlas differs from the reference at frame 0
+  ^ v88_atlas_superseded frame 0: table entry 0 field C[0]: ref 0x00200000 gpu 0x00000000
+.. v89_atlas_rp_1088
+FAIL v89_atlas_rp_1088: frame 0: TABLE entry 0 uint 0: ref 0x00200000 gpu 0x00000000 (patched 0)
+FAIL v89_atlas_rp_1088: the atlas differs from the reference at frame 0
+  ^ v89_atlas_rp_1088 frame 0: table entry 0 field C[0]: ref 0x00200000 gpu 0x00000000
+.. v90_mode_alternate
+FAIL v90_mode_alternate: frame 0: TABLE entry 0 uint 0: ref 0x00200000 gpu 0x00000000 (patched 0)
+FAIL v90_mode_alternate: the atlas differs from the reference at frame 0
+  ^ v90_mode_alternate frame 0: table entry 0 field C[0]: ref 0x00200000 gpu 0x00000000
+.. v91_mode_disp
+FAIL v91_mode_disp: frame 0: TABLE entry 0 uint 0: ref 0x00200000 gpu 0x00000000 (patched 0)
+FAIL v91_mode_disp: the atlas differs from the reference at frame 0
+  ^ v91_mode_disp frame 0: table entry 0 field C[0]: ref 0x00200000 gpu 0x00000000
+.. v92_mode_src_frame
+FAIL v92_mode_src_frame: frame 0: TABLE entry 0 uint 0: ref 0x00200000 gpu 0x00000000 (patched 0)
+FAIL v92_mode_src_frame: the atlas differs from the reference at frame 0
+  ^ v92_mode_src_frame frame 0: table entry 0 field C[0]: ref 0x00200000 gpu 0x00000000
+.. v93_atlas_planar
+FAIL v93_atlas_planar: frame 0: TABLE entry 0 uint 0: ref 0x00200000 gpu 0x00000000 (patched 0)
+FAIL v93_atlas_planar: the atlas differs from the reference at frame 0
+  ^ v93_atlas_planar frame 0: table entry 0 field C[0]: ref 0x00200000 gpu 0x00000000
+ok   r01_bad_magic (VERSION)
+ok   r02_unknown_tool (VERSION)
+ok   r03_bit_depth_10 (UNSUPPORTED)
+ok   r04_tile_size_32 (UNSUPPORTED)
+ok   r05_payload_past_row (TRUNCATED)
+ok   r06_res_level3 (BITSTREAM)
+ok   r07_truncated_rans (TRUNCATED)
+ok   r08_skip_bitmap (BITSTREAM)
+ok   r09_reserved_tile_bit (BITSTREAM)
+ok   r10_mode_inter (UNSUPPORTED)
+ok   r11_wm_id_no_tool (BITSTREAM)
+ok   r12_row_index_wrong (BITSTREAM)
+ok   r13_frame_bytes_short (TRUNCATED)
+ok   r14_dir_layer_no_tool (BITSTREAM)
+ok   r15_ycocgr_420 (BITSTREAM)
+ok   r16_ctx_v2_short_table (BITSTREAM)
+ok   r17_lossless_sign_hide (BITSTREAM)
+ok   r30_cfl_no_dir_ctx (BITSTREAM)
+ok   r31_split_no_tool (BITSTREAM)
+ok   r32_split_with_tskip (BITSTREAM)
+ok   r33_tab_v2_no_tables (BITSTREAM)
+ok   r34_ctx_v3_no_v2 (BITSTREAM)
+ok   r35_ctx_v3_short_table (BITSTREAM)
+ok   r36_xform_size_three (BITSTREAM or, on a device without tools 0x8000005, VERSION)
+ok   r37_xform_no_tool (BITSTREAM)
+ok   r38_xform_with_tskip (BITSTREAM or, on a device without tools 0x8000007, VERSION)
+ok   r39_split_with_xform (BITSTREAM or, on a device without tools 0x8080005, VERSION)
+ok   r44_planar_no_tool (BITSTREAM)
+ok   r45_planar_res_level (BITSTREAM)
+ok   r46_planar_nsub (BITSTREAM)
+ok   r47_planar_mv_present (BITSTREAM)
+ok   r48_planar_line_form (BITSTREAM)
+ok   r49_planar_regions (BITSTREAM)
+ok   r50_planar_body_bits (BITSTREAM)
+ok   r18_h22_not_one (BITSTREAM)
+ok   r19_entry_range (BITSTREAM)
+ok   r20_den_range (BITSTREAM)
+ok   r21_warp_no_flag (BITSTREAM)
+ok   r22_mode_reserved (BITSTREAM)
+ok   r23_intra_ref_sel (BITSTREAM)
+ok   r24_ref_sel_three (BITSTREAM)
+ok   r25_ref_slots_wrong (BITSTREAM)
+ok   r26_tool_catmullrom (VERSION)
+ok   r27_warp_without_inter (BITSTREAM)
+ok   r28_stereo_left_eye (BITSTREAM)
+ok   r29_disparity_reserved (BITSTREAM)
+ok   r40_quad_mv_no_tool (BITSTREAM)
+ok   r41_quad_mv_on_intra (BITSTREAM)
+ok   r42_dc_present_no_tool (BITSTREAM)
+ok   r43_dc_bitmap_empty (BITSTREAM)
+-- 50 rejection vector(s)
+-- 76 synthetic streams from nxvc_encoder
+.. syn_qp00_420_pass
+FAIL syn_qp00_420_pass frame 0: plane Y/R (0,0) ref 114 gpu 0
+FAIL syn_qp00_420_pass: 36864 mismatching samples
+.. syn_qp00_444_pass
+FAIL syn_qp00_444_pass frame 0: plane Y/R (0,0) ref 114 gpu 0
+FAIL syn_qp00_444_pass: 73728 mismatching samples
+.. syn_qp00_444_pass_rgb10a2
+FAIL syn_qp00_444_pass_rgb10a2 frame 0: plane Y/R (0,0) ref 114 gpu 0
+FAIL syn_qp00_444_pass_rgb10a2: 73728 mismatching samples
+.. syn_qp00_444_ycocgr
+FAIL syn_qp00_444_ycocgr frame 0: plane Y/R (0,0) ref 113 gpu 0
+FAIL syn_qp00_444_ycocgr: 73728 mismatching samples
+.. syn_qp00_444_ycocgr_rgb10a2
+FAIL syn_qp00_444_ycocgr_rgb10a2 frame 0: plane Y/R (0,0) ref 113 gpu 0
+FAIL syn_qp00_444_ycocgr_rgb10a2: 73728 mismatching samples
+.. syn_qp08_420_pass
+FAIL syn_qp08_420_pass frame 0: plane Y/R (0,0) ref 114 gpu 0
+FAIL syn_qp08_420_pass: 36864 mismatching samples
+.. syn_qp08_444_pass
+FAIL syn_qp08_444_pass frame 0: plane Y/R (0,0) ref 114 gpu 0
+FAIL syn_qp08_444_pass: 73728 mismatching samples
+.. syn_qp08_444_pass_rgb10a2
+FAIL syn_qp08_444_pass_rgb10a2 frame 0: plane Y/R (0,0) ref 114 gpu 0
+FAIL syn_qp08_444_pass_rgb10a2: 73728 mismatching samples
+.. syn_qp08_444_ycocgr
+FAIL syn_qp08_444_ycocgr frame 0: plane Y/R (0,0) ref 114 gpu 0
+FAIL syn_qp08_444_ycocgr: 73728 mismatching samples
+.. syn_qp08_444_ycocgr_rgb10a2
+FAIL syn_qp08_444_ycocgr_rgb10a2 frame 0: plane Y/R (0,0) ref 114 gpu 0
+FAIL syn_qp08_444_ycocgr_rgb10a2: 73728 mismatching samples
+.. syn_qp16_420_pass
+FAIL syn_qp16_420_pass frame 0: plane Y/R (0,0) ref 115 gpu 0
+FAIL syn_qp16_420_pass: 36864 mismatching samples
+.. syn_qp16_444_pass
+FAIL syn_qp16_444_pass frame 0: plane Y/R (0,0) ref 115 gpu 0
+FAIL syn_qp16_444_pass: 73728 mismatching samples
+.. syn_qp16_444_pass_rgb10a2
+FAIL syn_qp16_444_pass_rgb10a2 frame 0: plane Y/R (0,0) ref 115 gpu 0
+FAIL syn_qp16_444_pass_rgb10a2: 73728 mismatching samples
+.. syn_qp16_444_ycocgr
+FAIL syn_qp16_444_ycocgr frame 0: plane Y/R (0,0) ref 115 gpu 0
+FAIL syn_qp16_444_ycocgr: 73728 mismatching samples
+.. syn_qp16_444_ycocgr_rgb10a2
+FAIL syn_qp16_444_ycocgr_rgb10a2 frame 0: plane Y/R (0,0) ref 115 gpu 0
+FAIL syn_qp16_444_ycocgr_rgb10a2: 73728 mismatching samples
+.. syn_qp24_420_pass
+FAIL syn_qp24_420_pass frame 0: plane Y/R (0,0) ref 114 gpu 0
+FAIL syn_qp24_420_pass: 36864 mismatching samples
+.. syn_qp24_444_pass
+FAIL syn_qp24_444_pass frame 0: plane Y/R (0,0) ref 114 gpu 0
+FAIL syn_qp24_444_pass: 73728 mismatching samples
+.. syn_qp24_444_pass_rgb10a2
+FAIL syn_qp24_444_pass_rgb10a2 frame 0: plane Y/R (0,0) ref 114 gpu 0
+FAIL syn_qp24_444_pass_rgb10a2: 73728 mismatching samples
+.. syn_qp24_444_ycocgr
+FAIL syn_qp24_444_ycocgr frame 0: plane Y/R (0,0) ref 118 gpu 0
+FAIL syn_qp24_444_ycocgr: 73728 mismatching samples
+.. syn_qp24_444_ycocgr_rgb10a2
+FAIL syn_qp24_444_ycocgr_rgb10a2 frame 0: plane Y/R (0,0) ref 118 gpu 0
+FAIL syn_qp24_444_ycocgr_rgb10a2: 73728 mismatching samples
+.. syn_qp32_420_pass
+FAIL syn_qp32_420_pass frame 0: plane Y/R (0,0) ref 119 gpu 0
+FAIL syn_qp32_420_pass: 36864 mismatching samples
+.. syn_qp32_444_pass
+FAIL syn_qp32_444_pass frame 0: plane Y/R (0,0) ref 119 gpu 0
+FAIL syn_qp32_444_pass: 73728 mismatching samples
+.. syn_qp32_444_pass_rgb10a2
+FAIL syn_qp32_444_pass_rgb10a2 frame 0: plane Y/R (0,0) ref 119 gpu 0
+FAIL syn_qp32_444_pass_rgb10a2: 73728 mismatching samples
+.. syn_qp32_444_ycocgr
+FAIL syn_qp32_444_ycocgr frame 0: plane Y/R (0,0) ref 115 gpu 0
+FAIL syn_qp32_444_ycocgr: 73728 mismatching samples
+.. syn_qp32_444_ycocgr_rgb10a2
+FAIL syn_qp32_444_ycocgr_rgb10a2 frame 0: plane Y/R (0,0) ref 115 gpu 0
+FAIL syn_qp32_444_ycocgr_rgb10a2: 73728 mismatching samples
+.. syn_qp40_420_pass

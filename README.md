@@ -134,13 +134,55 @@ is fixed; large-motion performance and reconnect reliability remain open.
 | Renderer GPU timestamp diagnostic | **3.99 ms GPU interval p99**, **7.05 ms completion p99** | GPU command intervals and completion latency differ materially |
 | CPU completion polling | **324 repeated renders/s**, **7.52 ms p99**, about **7× CPU time** | A costly throughput tradeoff; disabled by default |
 
+### PLANAR refresh work
+
+An opt-in GPU fit now emits coarse two-region tiles without CPU fitting or an unused warp-prediction pass. Encoder references use a separate padded PLANAR buffer; host-fit and GPU-fit reference checks pass. On the native synthetic fixture, removing unused clears and selecting the exact zero-slope decoder kernel reduced median reconstruction wall time from roughly **31 ms to 10–11 ms**. This remains above the 240 Hz budget.
+
+Host conformance passes **260 streams**, with three skips. Pico conformance remains incomplete: directional and related cases fail, and synthetic failures reproduce with both new decoder optimizations disabled. These results do **not** qualify the build for live use. [Logs, scope and encoder validation](bench/results/240fps-2026-09-08/planar-refresh/README.md).
+
+### PLANAR direct-render evidence
+
+The standalone PLANAR probe now has a paired 7,200-frame Android capture on a
+**4352 × 2176** full-resolution synthetic changing-pixel pan fixture at
+approximately **157 Mb/s**. The fixture is low complexity and all-PLANAR; the
+probe has no PC encoder, network, XR compositor, head-motion pose warp or live
+presentation path. With the queue-priority HIGH configuration, the paired runs
+average approximately **240 scheduled updates/s**, while about **9.3% of
+deadlines are missed**. This is a renderer and queueing diagnostic, not evidence
+of sustained 240 Hz delivery.
+
+![Actual Pico PLANAR async capture](bench/results/240fps-2026-09-08/planar-direct/async-capture.png)
+
+![PLANAR paced latency summary](bench/results/240fps-2026-09-08/planar-direct/paced7200-summary.png)
+
+![PLANAR paced latency trace](bench/results/240fps-2026-09-08/planar-direct/paced7200-trace.png)
+
+*Figure 3. Actual Pico output and scientific latency diagnostics from the
+standalone probe. `total_ms` is scheduled arrival to observed completion and
+drives the deadline-miss count; `interval_ms` measures cadence and includes
+inter-frame CPU cleanup. The plots exclude cold startup/device and pipeline
+creation from the timed window. [Archive, raw captures, summary and exact
+reproduction](bench/results/240fps-2026-09-08/planar-direct/README.md).*
+
+The experiment supports an approximate GPU PLANAR reconstruction direction and
+motivates reducing redundant decoder memory work. Those are research directions;
+no additional numerical decoder claim is made here pending matched validation.
+
+A same-binary pacing follow-up completed four HIGH-priority 7,200-frame runs on
+the same synthetic fixture. After excluding 24 warmup frames, the three busy-spin
+configurations missed **0.47–0.82%** of 240 Hz deadlines, compared with **6.19%**
+for the sleep control. The runs report approximately 240 scheduled updates/s,
+but this still does not establish consistent 240 Hz delivery. Busy-wait pacing
+trades CPU time and thermal headroom; power was not measured. [Raw captures,
+summary script, chart and binary/shader identities](bench/results/240fps-2026-09-08/planar-pacing/README.md).
+
 ### Removing an entire copy
 
 The encoder was reading back **55 MiB of unused coefficients per frame**. Removing that transfer cut measured live Lite encoding time without changing the compared bitstreams. The control was restored to check that the gain followed the change.
 
 ![Encoder time and selection latency before, after and after restoring the unused copy](bench/results/240fps-2026-09-08/unused-coefficient-readback/coefficient-copy-comparison.png)
 
-*Figure 3. Controlled removal of unused GPU→CPU work. The encoder result falls inside 4.17 ms; the full pipeline still has other costs. [Methods, profiler data, screenshots and bitstream checks](bench/results/240fps-2026-09-08/unused-coefficient-readback/README.md).*
+*Figure 4. Controlled removal of unused GPU→CPU work. The encoder result falls inside 4.17 ms; the full pipeline still has other costs. [Methods, profiler data, screenshots and bitstream checks](bench/results/240fps-2026-09-08/unused-coefficient-readback/README.md).*
 
 ### Moving warp work into the mesh
 
@@ -148,7 +190,7 @@ The native renderer splits its mesh at tile and foveation boundaries and perform
 
 ![Native-resolution renderer GPU measurements](bench/results/240fps-2026-09-08/atlas-vertex-warp/render-comparison.png)
 
-*Figure 4. Prototype renderer comparisons; the [final cleaned pair](bench/results/240fps-2026-09-08/atlas-vertex-warp/v3-final/README.md) is recorded separately. These GPU aggregates are not per-frame percentiles. [Implementation and experiments](bench/results/240fps-2026-09-08/atlas-vertex-warp/README.md).*
+*Figure 5. Prototype renderer comparisons; the [final cleaned pair](bench/results/240fps-2026-09-08/atlas-vertex-warp/v3-final/README.md) is recorded separately. These GPU aggregates are not per-frame percentiles. [Implementation and experiments](bench/results/240fps-2026-09-08/atlas-vertex-warp/README.md).*
 
 A subsequent live experiment removes a cancelling color-conversion pair using mutable UNORM attachment views over SRGB swapchain images. GPU window medians were **2.7 / 3.2 / 2.6 ms** for enabled / disabled / repeat, with no consistent selection-latency win. It remains opt-in. [WiVRn NX source, fallback behavior and captures](https://github.com/nerdrx/wivrn-nx/tree/atlas-live/docs/bench/atlas-unorm-20260908).
 
@@ -158,7 +200,7 @@ The long sequence test completed **24,000 offscreen renders in 81.5 seconds**, u
 
 ![Offscreen render rates and fresh correction rates shown separately](bench/results/240fps-2026-09-08/sequence-throughput/cadence-comparison.png)
 
-*Figure 5. Fresh corrections and repeated renders count different work. The sparse monochrome fixture is not a broad scene-quality test. [Raw CSVs, reproducible probe, timestamps and negative controls](bench/results/240fps-2026-09-08/sequence-throughput/README.md).*
+*Figure 6. Fresh corrections and repeated renders count different work. The sparse monochrome fixture is not a broad scene-quality test. [Raw CSVs, reproducible probe, timestamps and negative controls](bench/results/240fps-2026-09-08/sequence-throughput/README.md).*
 
 ### Comparison with hardware HEVC
 
@@ -180,7 +222,7 @@ Speed is the immediate Pico priority. The desired low-bitrate appearance preserv
 | ![Stereo room fixture with text, thin edges and moving figures](docs/assets/vrroom-mid.png) | ![Source, transform and planar tile comparison](docs/assets/lowpoly-panels.png) |
 | The rendered room corpus exercises stereo, head motion and independently moving content. | Planar tiles trade fidelity for hard-edged facets. The recorded experiment costs 2–4 dB; it is a visual choice, not a free quality gain. |
 
-*Figure 6. Existing research figures. [Settings, measurements and regeneration commands](docs/GALLERY.md).*
+*Figure 7. Existing research figures. [Settings, measurements and regeneration commands](docs/GALLERY.md).*
 
 Historical [reference-codec quality gates](tools/quality/reports/gates-v2-2026-09-04.md) failed on the tested band-limited material. Later timing wins do not close those gates. Live captures still show seams and motion trails, and sustained thermal behavior needs further qualification.
 

@@ -1,0 +1,49 @@
+-- device: Adreno (TM) 650
+-- 9 synthetic streams from nxvc_encoder
+.. syn_qp00_420_pass
+FAIL syn_qp00_420_pass frame 0: plane Y/R (0,0) ref 114 gpu 0
+FAIL syn_qp00_420_pass: 36864 mismatching samples
+.. syn_qp00_444_pass
+FAIL syn_qp00_444_pass frame 0: plane Y/R (0,0) ref 114 gpu 0
+FAIL syn_qp00_444_pass: 73728 mismatching samples
+.. syn_qp00_444_ycocgr
+FAIL syn_qp00_444_ycocgr frame 0: plane Y/R (0,0) ref 113 gpu 0
+FAIL syn_qp00_444_ycocgr: 73728 mismatching samples
+.. syn_qp24_420_pass
+FAIL syn_qp24_420_pass frame 0: plane Y/R (0,0) ref 114 gpu 0
+FAIL syn_qp24_420_pass: 36864 mismatching samples
+.. syn_qp24_444_pass
+FAIL syn_qp24_444_pass frame 0: plane Y/R (0,0) ref 114 gpu 0
+FAIL syn_qp24_444_pass: 73728 mismatching samples
+.. syn_qp24_444_ycocgr
+FAIL syn_qp24_444_ycocgr frame 0: plane Y/R (0,0) ref 118 gpu 0
+FAIL syn_qp24_444_ycocgr: 73728 mismatching samples
+.. syn_qp51_420_pass
+FAIL syn_qp51_420_pass frame 0: plane Y/R (0,0) ref 120 gpu 0
+FAIL syn_qp51_420_pass: 36864 mismatching samples
+.. syn_qp51_444_pass
+FAIL syn_qp51_444_pass frame 0: plane Y/R (0,0) ref 120 gpu 0
+FAIL syn_qp51_444_pass: 73728 mismatching samples
+.. syn_qp51_444_ycocgr
+FAIL syn_qp51_444_ycocgr frame 0: plane Y/R (0,0) ref 118 gpu 0
+FAIL syn_qp51_444_ycocgr: 73728 mismatching samples
+.. row_present
+FAIL row_present: GPU and reference diverge at frame 0 (tool on) / 0 (tool off)
+.. modes-all-picture
+FAIL modes-all-picture: frame 0: TABLE entry 0 uint 0: ref 0x00200000 gpu 0x00000000 (patched 0)
+FAIL modes-all-picture: the atlas differs from the reference at frame 0
+  ^ modes-all-picture frame 0: table entry 0 field C[0]: ref 0x00200000 gpu 0x00000000
+-- modes-all-picture: 9 PICTURE frame(s), 1 ATLAS frame(s), atlas byte-identical to the reference
+.. modes-all-atlas
+FAIL modes-all-atlas: frame 0: TABLE entry 0 uint 0: ref 0x00200000 gpu 0x00000000 (patched 0)
+FAIL modes-all-atlas: the atlas differs from the reference at frame 0
+  ^ modes-all-atlas frame 0: table entry 0 field C[0]: ref 0x00200000 gpu 0x00000000
+-- modes-all-atlas: 0 PICTURE frame(s), 10 ATLAS frame(s), atlas byte-identical to the reference
+.. modes-picture-period2
+FAIL modes-picture-period2: frame 0: TABLE entry 0 uint 0: ref 0x00200000 gpu 0x00000000 (patched 0)
+FAIL modes-picture-period2: the atlas differs from the reference at frame 0
+  ^ modes-picture-period2 frame 0: table entry 0 field C[0]: ref 0x00200000 gpu 0x00000000
+-- modes-picture-period2: 4 PICTURE frame(s), 6 ATLAS frame(s), atlas byte-identical to the reference
+.. atlas-view
+FAIL atlas-view: arm 0 frame 1 decode: atlas: tile 0 codes a non-INTRA mode against an INVALID entry ([SYN] 13.12.4)
+-- 14 stream(s) checked, 0 skipped, 14 failure(s)
