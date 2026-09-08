@@ -1,0 +1,11 @@
+Validation Warning: [ VALIDATION-SETTINGS ] | MessageID = 0x7f1922d7
+vkCreateInstance(): Application is using deprecated "enables" (VK_LAYER_ENABLES) layer settings.
+Deprecated settings and new settings cannot be mixed, and deprecated ones take precedence. Consider only using the new settings:
+  Deprecated: VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT | New: "validate_sync" (VK_LAYER_VALIDATE_SYNC=1)
+
+
+nx-sequence output=UNORM
+nx-sequence gpu-timestamps=1 valid-bits=64 period-ns=10.000
+device AMD Radeon RX 7900 XTX (RADV NAVI31) submit_mode async
+async timing: decode_ms is CPU submission; render_ms is fence completion remainder
+completed_pairs 16 warmup_frames 4 render_repeats 4 completed_renders 64 spin_us 0 process_cpu_s 0.083382 elapsed_wall_s 0.085747 actual_fps 186.595 render_steady_fps 2779.140 render_p50_ms 0.261 render_p95_ms 0.703 render_p99_ms 1.580 render_deadline_count 48 steady_completed 12 steady_elapsed_s 0.017272 steady_fps 694.785 steady_mean_pair_ms 1.439 steady_p50_ms 1.189 steady_p95_ms 2.991 steady_p99_ms 2.991 deadline_1000_over_240_ms 4.166667 steady_deadline_count 12

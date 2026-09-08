@@ -1,0 +1,5 @@
+nx-sequence output=UNORM
+nx-sequence gpu-timestamps=1 valid-bits=48 period-ns=52.083
+device Adreno (TM) 650 submit_mode async
+async timing: decode_ms is CPU submission; render_ms is fence completion remainder
+completed_pairs 1200 warmup_frames 120 render_repeats 4 completed_renders 4800 spin_us 0 process_cpu_s 1.958375 elapsed_wall_s 16.761646 actual_fps 71.592 render_steady_fps 300.188 render_p50_ms 2.944 render_p95_ms 6.161 render_p99_ms 7.047 render_deadline_count 2937 steady_completed 1080 steady_elapsed_s 14.390978 steady_fps 75.047 steady_mean_pair_ms 13.324 steady_p50_ms 13.900 steady_p95_ms 15.560 steady_p99_ms 17.461 deadline_1000_over_240_ms 4.166667 steady_deadline_count 0

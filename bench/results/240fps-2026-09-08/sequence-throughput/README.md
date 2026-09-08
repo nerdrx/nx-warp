@@ -115,3 +115,53 @@ This is an approximation with no spatial blur, not equivalent color decoding.
 It remains a benchmark-only experiment: the measured speed was comparable
 to the exact UNORM-output alternative, and no production color approximation
 was enabled. Host synchronization validation passed.
+
+## Spin-wait experiment (negative result)
+
+Three same-binary cadence-4 runs compare `spin_us=0` control, `spin_us=4000`,
+and restored `spin_us=0`. All decode 1200 frames and render each four times
+(4800 render iterations; 1080 steady decode rows). Spin improved repeated-render
+rate from 290.233/s to 324.370/s and fresh-correction rate from 72.558/s to
+81.093/s, but render p99 moved from 7.280 to 7.520 ms and total steady pair
+p99 from 17.056 to 16.195 ms; the restored run returned 300.456/75.114/s,
+7.237 ms, and 17.052 ms. No total pair met 4.166667 ms. CPU process time rose
+from 1.805 s (control) to 12.767 s (spin), about 7.1×, against 17.457 and
+15.332 s wall time. Individual render-iteration deadline fractions were 2919/4320 (67.57%),
+3303/4320 (76.46%), and 2950/4320 (68.29%) for control/spin/restored. This is therefore off by default and has no production
+recommendation. The spin rate is repeated static-pose work, not fresh 240-Hz
+corrections or presentation FPS.
+
+![Spin-wait comparison](spin-comparison.png)
+
+Recreate the chart with `python3 plot-spin.py`; it parses the copied aggregate
+logs and shows render throughput, p99, and CPU cost.
+
+The copied logs and compressed per-render CSVs are the raw records. Binary
+SHA-256: host `cd43fefec86a970a871168ee6ce9a24176b19a84331d775db2a4e0a4be49ceb5`;
+Android `ccd2315856264362bb631182a969efdcaa02beccd0a9bc47ce69b9a403d6c4e9`.
+
+## GPU timestamp diagnostic
+
+Three same-binary async+UNORM+dirty-catchup arms used 4 repeats and 120 warmup
+source frames: GPU timestamps were `0/1/0` for control/GPU/restored, with
+`spin_us=0`. The GPU-enabled arm reports pooled GPU p50/p95/p99 of
+1.694/3.060/3.986 ms; its corresponding wall `total_ms` percentiles are
+2.944/6.161/7.047 ms. GPU TOP→BOTTOM intervals may include dependency stalls and
+are not isolated shader time or whole decoder GPU time. The CSV timing query is
+outside each render timer but included in source-cycle wall throughput.
+
+Wall `total_ms` for `render_index=0` includes decode; indices 1–3 repeat the same pose. Host
+synchronization validation passed for 64 renders, apart from a deprecated
+settings warning. Reproduce the steady percentile extraction with
+`python3 summarize-gpu.py`; it excludes the first 120 source frames and uses
+the harness rule `ceil(p*n)-1`. This diagnostic establishes no end-to-end or
+240-Hz result.
+
+| Timestamp arm | Steady renders/s | Fresh corrections/s | Wall p99 ms |
+|---|---:|---:|---:|
+| Off control | 298.548 | 74.637 | 7.058 |
+| On | 300.188 | 75.047 | 7.047 |
+| Off restored | 299.410 | 74.853 | 7.504 |
+
+All arms processed 1,200 source frames. Android executable SHA-256:
+`1facc3ec25545493a8b76092ed1ea9240c6d03237222e8579e7331c4eb73b45c`.
