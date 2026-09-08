@@ -40,7 +40,7 @@ The immediate target follows the Pico display: **90 Hz / 11.11 ms per update**, 
 | Evidence | Controlled comparisons, raw timings, fixture/build identities and actual captures |
 | Open problems | Completion-time tails, correction scheduling, motion artifacts, compression quality and sustained thermal behavior |
 
-**Read next:** [Architecture](#architecture) · [Results](#measured-results) · [Measurement rules](#measurement-rules) · [Status](#status) · [Roadmap](#roadmap) · [Documentation](#documentation)
+**Read next:** [Architecture](#architecture) · [Results](#measured-results) · [Visual results](#visual-results) · [Measurement rules](#measurement-rules) · [Status](#status) · [Roadmap](#roadmap) · [Documentation](#documentation)
 
 ## Architecture
 
@@ -220,6 +220,60 @@ One native-resolution, reversed-order comparison measured encode-start-to-render
 | NX with experimental target cache | **17.633 ms** | **22.321 ms** | **23.256 ms** |
 
 This is a measured pipeline advantage under those conditions. **Bitrate, quality, stereo organization and rendering paths differed.** HEVC reached decoded pixels sooner; NX spent less time from decode completion to selection. An [earlier native comparison](bench/results/240fps-2026-09-07/live-atlas/native-csv-hevc-nx/README.md) favored HEVC. Neither establishes general codec superiority or photon latency. [Controlled pairs and canonical frame mapping](bench/results/240fps-2026-09-07/live-atlas/borrowed-cache-corrected/v2-live/README.md).
+
+## Visual results
+
+The following figures come from archived measurements and actual Pico GPU readbacks. The 90 Hz charts use native padded stereo **4352 × 2176**, synthetic camera motion and 720 source frames per run. They measure offscreen parsing, upload and rendering; they do not measure live WiVRn NX or motion-to-photon latency. [Full visual gallery and regeneration script](docs/visual-results/README.md).
+
+### Distribution, rather than average FPS
+
+![Latency distributions for full, multi-pass and single-pass rendering](docs/visual-results/01-latency-ecdf.png)
+
+*Single-pass scheduling moves the latency distribution toward the full-draw control. The dashed line is the 11.111 ms display-period budget. Each curve represents a separate run.*
+
+![Per-frame latency during synthetic motion](docs/visual-results/02-single-vs-full-timeseries.png)
+
+*Individual frames expose stalls that an average FPS number hides. Source frame order is preserved; no warmup samples are removed.*
+
+### Where the time goes
+
+![CPU parsing, upload and GPU timing distributions](docs/visual-results/03-stage-components.png)
+
+*Independent component medians and p99s. These bars must not be summed into an end-to-end percentile; fence waiting overlaps GPU execution.*
+
+![Exact deadline miss counts](docs/visual-results/04-deadline-misses.png)
+
+*Both final single-pass runs complete all 720 frames within 11.111 ms. This finite observation does not guarantee future deadlines or sustained thermal behavior.*
+
+### Speed and pixel freshness together
+
+![Skipped tile fractions and age during the final comparisons](docs/visual-results/05-skips-and-age.png)
+
+*Skipped work is useful only if retained content remains useful. Single A retains some outer pixels for one frame; Single B updates every tile.*
+
+![Historical scheduler starvation comparison](docs/visual-results/06-historical-v1-v2-starvation.png)
+
+*Historical controls: the first scheduler's lifetime-maximum estimate caused prolonged starvation. Expiring measurements helped, but did not establish a hard pixel-age bound. These are different runs from the final single-pass comparison.*
+
+![Artificial admission pressure exposes stale peripheral pixels](docs/visual-results/07-budget-pressure-age.png)
+
+*New failure case: imposing a 2 or 3 ms admission threshold at 90 Hz leaves the outermost pixels stale for almost eight seconds. The artificial threshold is separate from the 11.111 ms cadence. [Raw pressure-test results](bench/results/90fps-2026-09-08/budget-pressure/README.md).*
+
+### Real Pico output: complete versus retained pixels
+
+| Fresh complete frame | Forced centre-only update |
+|---|---|
+| ![Fresh frame 19 rendered on Pico](bench/results/90fps-2026-09-08/single-pass/single-all.png) | ![Frame 19 centre with initial outer pixels retained](bench/results/90fps-2026-09-08/centre-first/centre19.png) |
+
+*The forced-retention control is intentionally discontinuous: each centre contains frame 19 while its outside retains frame 0. Exact RGBA checks verify both regions. Captures are outside timing, and single-pass output matches the full-draw control.*
+
+### Camera-motion capture sequence
+
+| Forward view | Positive yaw | Negative yaw |
+|---|---|---|
+| ![Pico camera fixture, frame 0](bench/results/240fps-2026-09-08/motion-proof/camera-000.png) | ![Pico camera fixture, frame 75](bench/results/240fps-2026-09-08/motion-proof/camera-075.png) | ![Pico camera fixture, frame 225](bench/results/240fps-2026-09-08/motion-proof/camera-225.png) |
+
+*Actual readbacks from the earlier 240-FPS source trajectory, including approximately ±60° yaw. These historical images establish changing rendered views, not physical headset tracking or successful 240 Hz presentation. [Trajectory, identities and failed deadline tests](bench/results/240fps-2026-09-08/motion-proof/README.md).*
 
 ## Quality and visual research
 
