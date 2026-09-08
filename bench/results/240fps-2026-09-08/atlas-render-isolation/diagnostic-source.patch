@@ -1,0 +1,115 @@
+diff --git a/client/scenes/stream_defoveator.cpp b/client/scenes/stream_defoveator.cpp
+index ef9ce15b..486f0854 100644
+--- a/client/scenes/stream_defoveator.cpp
++++ b/client/scenes/stream_defoveator.cpp
+@@ -18,6 +18,7 @@
+  */
+ 
+ #include <cmath>
++#include <cstdlib>
+ #include <glm/gtc/packing.hpp>
+ #include "stream_defoveator.h"
+ 
+@@ -37,6 +38,9 @@
+ #include <vk_mem_alloc.h>
+ #include <vulkan/vulkan_core.h>
+ #include <vulkan/vulkan_raii.hpp>
++#ifdef __ANDROID__
++#include <sys/system_properties.h>
++#endif
+ 
+ struct stream_defoveator::vertex
+ {
+@@ -244,9 +248,10 @@ stream_defoveator::pipeline_t & stream_defoveator::ensure_pipeline(size_t view,
+ 	        VkBool32(fsr_baked),
+ 	        int32_t(atlas_r8 ? 1 : atlas_baked),
+ 	        int32_t(kAtlasTiles),
+-	        int32_t(view),
+-	        VkBool32(lowpoly_baked),
+-	        VkBool32(lowpoly_full_baked));
++		int32_t(view),
++		VkBool32(lowpoly_baked),
++		VkBool32(lowpoly_full_baked),
++		int32_t(atlas_r8 ? atlas_profile : 0));
+ 	auto fragment_shader = load_shader(device, atlas_r8 ? "reprojection_atlas_r8.frag" : "reprojection.frag");
+ 
+ 	vk::pipeline_builder pipeline_info{
+@@ -320,8 +325,19 @@ stream_defoveator::stream_defoveator(
+         device(device),
+         physical_device(physical_device),
+         output_images(std::move(output_images_)),
+-        output_extent(output_extent)
++	output_extent(output_extent)
+ {
++#ifdef __ANDROID__
++	char profile_value[PROP_VALUE_MAX] = {};
++	const int profile_len = __system_property_get("debug.wivrn.atlas_profile", profile_value);
++	if (profile_len > 0)
++		atlas_profile = std::clamp(std::atoi(profile_value), 0, 2);
++#else
++	if (const char * value = std::getenv("WIVRN_ATLAS_PROFILE"))
++		atlas_profile = std::clamp(std::atoi(value), 0, 2);
++#endif
++	if (atlas_profile)
++		spdlog::info("nxwarp atlas render profile {} enabled", atlas_profile);
+ 	// Create renderpass
+ 	vk::AttachmentDescription attachment{
+ 	        .format = format,
+diff --git a/client/scenes/stream_defoveator.h b/client/scenes/stream_defoveator.h
+index 2bb023e5..53475d93 100644
+--- a/client/scenes/stream_defoveator.h
++++ b/client/scenes/stream_defoveator.h
+@@ -97,6 +97,7 @@ private:
+ 	// [atlas prototype] whether the per-tile warp is compiled into the current
+ 	// pipelines, same specialization scheme as the two above.
+ 	int atlas_baked = 0;
++	int atlas_profile = 0;
+ 	static constexpr uint32_t kAtlasTiles = 17;
+ 	// The v1 configuration of ADR-0029: 1088x1088 per eye, 64x64 tiles, 17x17 = 289
+ 	// tiles. The atlas is the whole eye picture in the coded sample domain.
+diff --git a/client/shaders/reprojection_atlas_r8.glsl b/client/shaders/reprojection_atlas_r8.glsl
+index 0ff29d8f..961795d1 100644
+--- a/client/shaders/reprojection_atlas_r8.glsl
++++ b/client/shaders/reprojection_atlas_r8.glsl
+@@ -25,6 +25,7 @@ layout(constant_id=5) const int atlas_tiles=17;
+ layout(constant_id=6) const int atlas_eye=0;
+ layout(constant_id=7) const bool lowpoly_enable=false;
+ layout(constant_id=8) const bool lowpoly_full_kernel=false;
++layout(constant_id=9) const int atlas_profile=0;
+ layout(set=0,binding=0) uniform sampler2D rgb[alpha+1];
+ layout(set=0,binding=3) uniform sampler2D atlas_y;
+ layout(set=0,binding=4) uniform sampler2D atlas_cbcr;
+@@ -45,20 +46,25 @@ void main() {
+ 	cell=clamp(cell,ivec2(0),ivec2(tiles_x-1,int(ceil(picture.y/64.0))-1));
+ 	int idx=(cell.y*tiles_x*2+atlas_eye*tiles_x+cell.x)*16;
+  if (((tbl.e[idx+10]>>16u)&1u)==0u) { outColor=vec4(0); return; }
+- vec3 h=vec3((eye_uv-0.5)*picture,1.0);
+- vec3 r0=vec3(int(tbl.e[idx]),int(tbl.e[idx+1]),int(tbl.e[idx+2]))/2097152.0;
+- vec3 r1=vec3(int(tbl.e[idx+3]),int(tbl.e[idx+4]),int(tbl.e[idx+5]))/2097152.0;
+- vec3 r2=vec3(int(tbl.e[idx+6]),int(tbl.e[idx+7]),int(tbl.e[idx+8]))/536870912.0;
+- vec3 q=vec3(dot(r0,h),dot(r1,h),dot(r2,h));
+- if (abs(q.z)<1e-8) { outColor=vec4(0); return; }
+- vec2 src=clamp(q.xy/q.z+picture*0.5,vec2(0),picture-1.0);
++ vec2 src;
++ if (atlas_profile==1) {
++  src=clamp(eye_uv*picture,vec2(0),picture-1.0);
++ } else {
++  vec3 h=vec3((eye_uv-0.5)*picture,1.0);
++  vec3 r0=vec3(int(tbl.e[idx]),int(tbl.e[idx+1]),int(tbl.e[idx+2]))/2097152.0;
++  vec3 r1=vec3(int(tbl.e[idx+3]),int(tbl.e[idx+4]),int(tbl.e[idx+5]))/2097152.0;
++  vec3 r2=vec3(int(tbl.e[idx+6]),int(tbl.e[idx+7]),int(tbl.e[idx+8]))/536870912.0;
++  vec3 q=vec3(dot(r0,h),dot(r1,h),dot(r2,h));
++  if (abs(q.z)<1e-8) { outColor=vec4(0); return; }
++  src=clamp(q.xy/q.z+picture*0.5,vec2(0),picture-1.0);
++ }
+  vec2 lp=src+vec2(float(atlas_eye)*picture.x,0);
+  vec2 cp=src*0.5+vec2(float(atlas_eye)*picture.x*0.5,0);
+  float y=texture(atlas_y,(lp+0.5)/luma_image).r;
+  vec2 cbcr=texture(atlas_cbcr,(cp+0.5)/chroma_image).rg-0.5;
+  vec3 c=vec3(y+1.5748*cbcr.y,y-0.1873*cbcr.x-0.4681*cbcr.y,y+1.8556*cbcr.x);
+  c=clamp(c,0.0,1.0);
+- if (do_srgb) c=srgb_linear(c);
++ if (do_srgb && atlas_profile!=2) c=srgb_linear(c);
+  outColor=vec4(clamp(c,0.0,1.0)*scale.rgb+bias.rgb,1.0);
+ }
+ #endif

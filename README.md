@@ -59,6 +59,14 @@ and reproduction](bench/results/240fps-2026-09-08/unused-coefficient-readback/RE
 
 ![Measured encoder and selection latency before removing the coefficient copy, after removal, and after restoring it](bench/results/240fps-2026-09-08/unused-coefficient-readback/coefficient-copy-comparison.png)
 
+**Next bottleneck: rendering.** At the same native output resolution, an isolation
+experiment measured **6.25 / 6.15 ms** median render GPU window means in the
+original/restored controls. Bypassing tile homographies reduced that to **3.80 ms**;
+bypassing colour linearization reached **5.90 ms**. Both bypasses deliberately
+change the image and are diagnostics only. The result motivates moving matrix
+work out of each fragment; it is not a new usable performance result.
+[Diagnostic source, screenshots and reproducible window summaries](bench/results/240fps-2026-09-08/atlas-render-isolation/README.md).
+
 **Earlier pipeline result (2026-09-08).** An opt-in persistent R8 target cache
 avoids rewriting unchanged output pixels. At **2160×2160 per eye** on Pico 4,
 NX had lower encode-start-to-render-selection latency than the custom WiVRn NX
