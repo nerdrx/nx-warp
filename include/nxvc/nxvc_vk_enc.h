@@ -93,6 +93,9 @@ const char *nxvc_vk_encoder_status_string(nxvc_vke_status s);
  *
  * `queue` must be from a compute-capable family; create() checks and returns
  * NXVC_VKE_ERR_ARG if it is not. */
+/* Explicit approximate, all-tile GPU PLANAR fitting; requires INTER. */
+#define NXVC_VKE_PLANAR_GPU_FLAT 3u
+
 typedef struct nxvc_vke_create_info {
     VkInstance instance;
     VkPhysicalDevice physical_device;
@@ -410,6 +413,12 @@ typedef struct nxvc_vke_create_info {
      * rounding half away from zero, and the lowest-index tie rule -- so this
      * encoder and the reference agree byte for byte rather than approximately.
      *
+     *   3  NXVC_VKE_PLANAR_GPU_FLAT: approximate GPU two-region fit,
+     *      zero slopes, all tiles. Requires inter, 8-bit 4:2:0 and 64-pixel
+     *      aligned dimensions. Unlike host modes 1/2 this is supported by
+     *      the Vulkan image adapter; no process-global environment is needed.
+     *
+     * Host modes 1/2 are not supported by this Vulkan API and are refused.
      * Refused at create() on a stream that cannot carry the mode. */
     uint32_t planar;
 

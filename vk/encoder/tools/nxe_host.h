@@ -264,6 +264,7 @@ struct Config {
      * The fit is nxe_planar_host.h, which the REFERENCE includes too, so the
      * two encoders agree by construction rather than by test. */
     int planar = 0;
+    bool planar_gpu_flat = false; // Explicit per-encoder GPU fitting opt-in.
 
     /* Measure the integer rate model of nxe_rate.h against the bytes the
      * entropy coder actually produces, per tile, and print the distribution

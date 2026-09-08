@@ -1,0 +1,13 @@
+scope=OFFSCREEN backend validation only
+device=Pico Adreno (TM) 650 serial=PA8150MGGB110166G
+fixture=/data/local/tmp/planar-90/camera90.nxv
+reference=/run/media/nerdrx/Lex/claude/nx-scratch/90fps-centre-first/full19.rgba
+command=/data/local/tmp/nx-planar-direct-api /data/local/tmp/planar-90/camera90.nxv /data/local/tmp/planar-90 /data/local/tmp/planar-90/api-test
+frame19 parse_ms=0.395937 upload_ms=0.044375 gpu_ms=1.258750 total_ms=3.330521 tiles=2312
+motion720 frames=720 cadence_hz=90.000 wall_ms=2433.768065 avg_ms=3.380233 avg_gpu_ms=1.478123
+motion720 deadline_misses=0
+binary_sha256=63af86da99cbde3e5ab272acb5ab07f2227446d261a03162c005166a34072686
+readback_sha256=0c5d1523d2cf09ec1b077c9c8c85dc39310caa6293d90bd7e12b58cfe0a1accf
+reference_sha256=0c5d1523d2cf09ec1b077c9c8c85dc39310caa6293d90bd7e12b58cfe0a1accf
+fixture_sha256=dc55e3e1f5ad1f1c08b53d136ef9755c5ada562dc4614410c9718834795a98d4
+comparison=byte-exact; cmp_exit=0; diff_bytes=0; max_abs=0

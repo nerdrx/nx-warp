@@ -14,6 +14,39 @@ endif()
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/passB/CMakeLists.txt)
   add_subdirectory(passB)
 endif()
+
+# Reusable direct PLANAR presentation path.  It intentionally uses the same
+# safe SPIR-V generator as the decoder passes (and never glslc -O).
+if(NXVCVK_DECODER_BUILT OR (TARGET nxvw_passB_spv AND NXVW_GLSLC))
+  set(NXVCVK_PLANAR_DIR ${CMAKE_CURRENT_SOURCE_DIR}/planar_direct)
+  set(NXVCVK_PLANAR_GEN ${CMAKE_CURRENT_BINARY_DIR}/planar_direct/generated)
+  set(NXVCVK_PLANAR_GEN_RULE ${CMAKE_CURRENT_SOURCE_DIR}/../common/cmake/nxvc_gen_spv.cmake)
+  set(NXVCVK_PLANAR_SPV)
+  foreach(_stage vertex fragment)
+    set(_ext vert)
+    if(_stage STREQUAL fragment)
+      set(_ext frag)
+    endif()
+    set(_src ${NXVCVK_PLANAR_DIR}/tile.${_ext})
+    set(_name planar_direct_tile_${_ext})
+    set(_out ${NXVCVK_PLANAR_GEN}/${_name}.spv.h)
+    list(APPEND NXVCVK_PLANAR_SPV ${_out})
+    add_custom_command(
+      OUTPUT ${_out}
+      COMMAND ${CMAKE_COMMAND}
+              -DGLSLC=${NXVW_GLSLC} -DSRC=${_src} -DOUT=${_out}
+              -DNAME=${_name} -DINCDIR=${NXVCVK_PLANAR_DIR}
+              -DSTYLE=plain -DSTAGE=${_stage}
+              -DTARGET_ENV=vulkan1.1 -DDEPFILE=${_out}.d
+              -P ${NXVCVK_PLANAR_GEN_RULE}
+      DEPFILE ${_out}.d
+      DEPENDS ${_src} ${NXVCVK_PLANAR_GEN_RULE}
+              ${CMAKE_CURRENT_SOURCE_DIR}/../common/cmake/NxvcShaderPasses.cmake
+      COMMENT "glslc PLANAR direct ${_stage} -> ${_name}.spv.h"
+      VERBATIM)
+  endforeach()
+  add_custom_target(nxvc_vk_planar_direct_spv DEPENDS ${NXVCVK_PLANAR_SPV})
+endif()
 # inter/ comes after passB/: it reuses passB's glslc and shader-rule variables
 # rather than finding them a second time.
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/inter/CMakeLists.txt AND NXVW_GLSLC)
@@ -54,7 +87,8 @@ endif()
 
 set(NXVCVK_DEC_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/nxvc_vkdec_parse.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/nxvc_vkdec.cpp)
+  ${CMAKE_CURRENT_SOURCE_DIR}/nxvc_vkdec.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/planar_direct.cpp)
 
 # The SPIR-V of both kernels is embedded as a C array by each pass' own
 # gen_spv.cmake; the library only has to see the generated headers and depend
@@ -66,6 +100,9 @@ set(NXVCVK_DEC_GEN
   # [ATLAS] atlas_compose.spv.h and atlas_tiles.spv.h.  The library embeds
   # them like every other kernel; atlas/CMakeLists.txt is what generates them.
   ${CMAKE_CURRENT_BINARY_DIR}/atlas/generated)
+if(TARGET nxvc_vk_planar_direct_spv)
+  list(APPEND NXVCVK_DEC_GEN ${CMAKE_CURRENT_BINARY_DIR}/planar_direct/generated)
+endif()
 
 function(nxvcvk_dec_configure tgt)
   target_include_directories(${tgt} PUBLIC
@@ -95,6 +132,9 @@ if(Vulkan_FOUND OR (NXVCVK_DEC_INCLUDE AND NXVCVK_DEC_LIB))
   add_library(nxvc_vk_decoder STATIC ${NXVCVK_DEC_SRC})
   add_dependencies(nxvc_vk_decoder nxvw_passA_spv nxvw_passB_spv
                    nxvw_inter_spv nxvw_atlas_spv)
+  if(TARGET nxvc_vk_planar_direct_spv)
+    add_dependencies(nxvc_vk_decoder nxvc_vk_planar_direct_spv)
+  endif()
   nxvcvk_dec_configure(nxvc_vk_decoder)
   # Only headers are taken from passA/ and passB/ -- the layout structs, the
   # syntax constants and the inline geometry helpers are all `inline` or

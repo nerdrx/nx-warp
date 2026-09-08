@@ -1,0 +1,15 @@
+NDK=/run/media/nerdrx/Lex/claude/tools/android-sdk/ndk/29.0.14206865
+BIN=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin
+GEN=/run/media/nerdrx/Lex/claude/nx-scratch/wt-atlas-live-240/.cxx/RelWithDebInfo/4j55262a/arm64-v8a/nx-warp/build/vk/decoder/planar_direct/generated
+
+$BIN/aarch64-linux-android29-clang++ -std=c++20 -O2 \
+  -I/run/media/nerdrx/Lex/claude/tools/Vulkan-Headers-1.4.309/include \
+  -Iinclude -Ivk/decoder -Ivk/decoder/passA -Ivk/decoder/passB -I$GEN \
+  -c vk/decoder/planar_direct.cpp -o /tmp/planar_direct.o
+
+$BIN/aarch64-linux-android29-clang++ -std=c++17 -O2 \
+  -I/run/media/nerdrx/Lex/claude/tools/Vulkan-Headers-1.4.309/include \
+  -Iinclude -Ivk/decoder -Ivk/decoder/passA -Ivk/decoder/passB \
+  probe/planar-direct/direct-harness.cpp /tmp/planar_direct.o \
+  /run/media/nerdrx/Lex/claude/nx-scratch/wt-atlas-live-240/.cxx/RelWithDebInfo/4j55262a/arm64-v8a/nx-warp/build/vk/decoder/libnxvc_vk_decoder.a \
+  -lvulkan -llog -static-libstdc++ -o probe/planar-direct/build/android/nx-planar-direct-api

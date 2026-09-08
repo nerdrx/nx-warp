@@ -435,7 +435,8 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
                        const Adopt *adopt) {
     Impl &d = *p_;
     d.cfg = cfg;
-    d.gpu_planar = cfg.planar && std::getenv("NXVC_ENC_PLANAR_GPU_FLAT") != nullptr;
+    d.gpu_planar = cfg.planar && (cfg.planar_gpu_flat ||
+        std::getenv("NXVC_ENC_PLANAR_GPU_FLAT") != nullptr);
     d.ntiles = f.fp.ntiles;
 
     if (cfg.nsub_log2 > 3) {
@@ -1069,7 +1070,12 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
     for (const auto &job : f.jobs)
         if (job.res_level != 0 || job.chroma444 != 0)
             gpu_planar = false;
-    if (d.gpu_planar && !gpu_planar && image) {
+    /* GPU-flat emits a complete independent PLANAR frame.  Keep normal inter
+     * metadata bookkeeping, but atlas still needs reference reconstruction. */
+    const bool independent_gpu_planar = gpu_planar && !d.atlas;
+    /* Once GPU-flat is selected, every frame must stay independent PLANAR;
+     * falling back to a generic frame would leave the skipped ring stale. */
+    if (d.gpu_planar && !gpu_planar) {
         err = "GPU PLANAR requires aligned full-resolution 4:2:0 tiles";
         return false;
     }
@@ -1973,7 +1979,7 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
         vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE,
                                 d.p_e3.layout, 0, 1, &d.s_e3, 0, nullptr);
         vkCmdDispatch(cb, d.ntiles, 1, 1);
-        if (d.inter) {
+        if (d.inter && !independent_gpu_planar) {
             /* E3b: the reference store, and it is the DECODER'S Pass B --
              * byte-identical SPIR-V, kOutFormat kOutNone so it writes no
              * picture, kRefRingStore on so it writes the ring.  It runs over
@@ -2070,7 +2076,7 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
         // Lite has no host table selection. Unless checking coefficients or
         // running trellis, no CPU consumer needs this full-frame readback.
         // Keep coefficients on the GPU for the following entropy pass.
-        if (!d.entropy_lite || check || d.trellis) {
+        if ((!d.entropy_lite && !independent_gpu_planar) || check || d.trellis) {
             VkBufferCopy cc{0, 0, d.coef_bytes};
             vkCmdCopyBuffer(cb, d.b_coef.buf, d.b_stage_coef.buf, 1, &cc);
         }
@@ -2125,7 +2131,9 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
         for (uint32_t t = 0; t < d.ntiles; ++t) {
             f.jobs[t].mode = back[t].mode;
             f.jobs[t].mv = back[t].mv;
-            if (back[t].mode != (uint32_t)nxvw::kModeIntra) any_inter = true;
+            if (back[t].mode != (uint32_t)nxvw::kModeIntra &&
+                back[t].mode != (uint32_t)NXE_MODE_PLANAR)
+                any_inter = true;
         }
         /* What the CLIENT will hold, once this frame reaches it.  A frame
          * every tile of which came out INTRA reconstructs from nothing, so it
@@ -2347,7 +2355,7 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
     /* ENTROPY_LITE has no probability tables: the tile header's `table_set`
      * field names the VARIANT, which setup() already put on every job, and
      * running the choice here would overwrite it with a table index. */
-    if (!d.entropy_lite)
+    if (!d.entropy_lite && !independent_gpu_planar)
         choose_table_sets(f, check ? f.coef.data()
                                    : (const int16_t *)d.b_stage_coef.map);
     /* Custom tables (tool bit 6) are trained on the histogram the choice above
@@ -2355,7 +2363,7 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
      * rewrite f.tabs, f.fp.tables_present and f.fp.table_bytes, which is why
      * the parameter record and the tables are uploaded again below rather than
      * only before E3. */
-    if (!d.entropy_lite) train_table_sets(f);
+    if (!d.entropy_lite && !independent_gpu_planar) train_table_sets(f);
     /* Pass two, against the TRAINED sets -- and only when there are trained
      * sets to be against.  Without custom tables the tables never moved, so a
      * second pass reaches the same coefficients by the same arithmetic. */

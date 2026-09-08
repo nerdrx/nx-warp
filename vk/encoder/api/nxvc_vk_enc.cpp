@@ -76,7 +76,7 @@ constexpr uint64_t kToolsEmitted =
     (1ull << 25) | /* CTX_V3: the neighbour-conditioned model               */
     (1ull << 26) | /* TAB_V2: the compact transmitted table set             */
     (1ull << 30) | /* ENTROPY_LITE: with create_info::entropy; see below     */
-    (1ull << 35);  /* PLANAR: explicit GPU-fit opt-in (API field pending)    */
+    (1ull << 35);  /* PLANAR: explicit GPU-fit opt-in    */
 
 } // namespace
 
@@ -279,16 +279,21 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_create(const nxvc_vke_create_info *ci
     e->cfg.ref_confirm = ci->inter != 0 && ci->ref_confirm != 0;
     e->cfg.atlas = ci->inter != 0 && ci->atlas != 0;
     e->cfg.atlas_mode = e->cfg.atlas && ci->atlas_mode != 0;
-    /* The API's planar field belongs to the reference host-fit path, whose
-     * image adapter is not present here.  Only the explicit GPU experiment is
-     * mapped, and it requires INTER's E1 canonicalisation. */
-    const bool gpu_planar = std::getenv("NXVC_ENC_PLANAR_GPU_FLAT") != nullptr;
-    if (gpu_planar && !e->cfg.inter) {
+    const bool gpu_planar = ci->planar == NXVC_VKE_PLANAR_GPU_FLAT ||
+                            std::getenv("NXVC_ENC_PLANAR_GPU_FLAT") != nullptr;
+    if (ci->planar != 0 && ci->planar != NXVC_VKE_PLANAR_GPU_FLAT) {
+        delete e;
+        return createerr(NXVC_VKE_ERR_UNSUPPORTED,
+                         "Vulkan PLANAR supports only off or GPU_FLAT");
+    }
+    if (gpu_planar && (!e->cfg.inter || ci->bit_depth != 8 || ci->chroma != 0 ||
+                       ci->width % 64u != 0 || ci->height % 64u != 0)) {
         delete e;
         return createerr(NXVC_VKE_ERR_ARG,
-                         "NXVC_ENC_PLANAR_GPU_FLAT needs inter=1");
+                         "GPU PLANAR needs inter, 8-bit 420 and 64-aligned dimensions");
     }
     e->cfg.planar = gpu_planar ? 2 : 0;
+    e->cfg.planar_gpu_flat = gpu_planar;
     /* 0 means "the default", which is the reference's swept value.  Spelled
      * here rather than in the Config default so that a caller passing a
      * zeroed create_info gets the same 8 the harness does. */
