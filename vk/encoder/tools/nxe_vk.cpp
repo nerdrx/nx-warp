@@ -695,7 +695,9 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
         for (int i = 0; i < 9; ++i)
             bme[i] = {(uint32_t)i, (uint32_t)(i * 4), 4};
         VkSpecializationInfo bsi{9, bme, sizeof bspec, bspec};
-        std::vector<VkDescriptorType> bb(16, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+        /* Pass B's planar body is binding 16 even when the current stream has
+         * no PLANAR tiles; the shader interface is fixed by specialization. */
+        std::vector<VkDescriptorType> bb(17, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
         for (int i : {3, 4, 5, 6, 10, 11, 12})
             bb[(size_t)i] = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
         if (!d.dev.create_pipeline(reconstruct_v1_x8_spv,
@@ -811,7 +813,8 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
                          d.atlas ? d.b_order_coded.buf : d.b_order.buf,
                          d.b_dummy.buf,
                          N, N, N,
-                         d.b_wpred.buf, d.b_ring.buf, d.b_warp.buf},
+                         d.b_wpred.buf, d.b_ring.buf, d.b_warp.buf,
+                         d.b_planar.buf},
                         views);
         /* [SYN] 13.12.11 needs a SECOND Pass B binding: a PICTURE frame
          * reconstructs every tile, and the assembly of step 1 materialises
@@ -830,7 +833,8 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
                              d.b_order.buf,
                              d.b_dummy.buf,
                              N, N, N,
-                             d.b_wpred.buf, d.b_ring.buf, d.b_warp.buf},
+                             d.b_wpred.buf, d.b_ring.buf, d.b_warp.buf,
+                             d.b_planar.buf},
                             views);
         }
     }
@@ -1990,8 +1994,13 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
                              (size_t)d.ntiles * sizeof(nxe_tile_job)};
             vkCmdCopyBuffer(cb, d.b_jobs.buf, d.b_stage_small.buf, 1, &cjb);
         }
-        VkBufferCopy cc{0, 0, d.coef_bytes};
-        vkCmdCopyBuffer(cb, d.b_coef.buf, d.b_stage_coef.buf, 1, &cc);
+        // Lite has no host table selection. Unless checking coefficients or
+        // running trellis, no CPU consumer needs this full-frame readback.
+        // Keep coefficients on the GPU for the following entropy pass.
+        if (!d.entropy_lite || check || d.trellis) {
+            VkBufferCopy cc{0, 0, d.coef_bytes};
+            vkCmdCopyBuffer(cb, d.b_coef.buf, d.b_stage_coef.buf, 1, &cc);
+        }
         if (nxe_time) gpu_ts_end(d, cb, 10u);
         if (!d.dev.submit_and_wait(cb, err)) {
             std::fprintf(stderr, "E0/E3 submit: %s\n", err.c_str());

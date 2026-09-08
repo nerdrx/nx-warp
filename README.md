@@ -47,7 +47,17 @@ from presentation frequency. The current Pico experiments use its 90 Hz mode;
 an experiment, not a 240 Hz result; the [full methods and limitations](docs/240FPS.md)
 define the fixtures and interpretation.
 
-**Latest measured result (2026-09-08).** An opt-in persistent R8 target cache
+**Latest encoder result (2026-09-08).** Removing an unused **55 MiB per-frame
+GPU→CPU coefficient copy** cut live native-resolution Lite encoding from
+**8.72 ms to 2.38 ms median**, with **3.49 ms p99**. Restoring the original
+binary returned to 8.71 ms. Four fixture comparisons, including native stereo,
+produced identical bitstreams. Encode-to-render-selection median fell from
+18.96 to 10.95 ms in the corresponding runs. This is an encoder-stage result
+inside the 4.17 ms budget, not a demonstration of a 240 FPS complete pipeline;
+the Pico renderer remains over budget. [Profiler data, screenshots, checks,
+and reproduction](bench/results/240fps-2026-09-08/unused-coefficient-readback/README.md).
+
+**Earlier pipeline result (2026-09-08).** An opt-in persistent R8 target cache
 avoids rewriting unchanged output pixels. At **2160×2160 per eye** on Pico 4,
 NX had lower encode-start-to-render-selection latency than the custom WiVRn NX
 hardware HEVC route in two ordered comparisons:

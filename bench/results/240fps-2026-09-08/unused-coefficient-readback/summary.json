@@ -1,0 +1,131 @@
+[
+  {
+    "arm": "baseline",
+    "profile_all_frames": {
+      "frames": 2593,
+      "p50_p95_p99_ms": [
+        8.72,
+        10.054,
+        12.531
+      ],
+      "above_4_167_ms_percent": 100.0
+    },
+    "mapped_pipeline": {
+      "codec": "nx",
+      "warmup_s": 10,
+      "unmatched_arrivals_without_decode_or_selection": 0,
+      "stages": {
+        "receive_begin": {
+          "count": 1606,
+          "p50_p95_p99_ms": [
+            9.802,
+            10.573,
+            11.004
+          ]
+        },
+        "decode_end": {
+          "count": 1606,
+          "p50_p95_p99_ms": [
+            14.379,
+            19.816,
+            20.13
+          ]
+        },
+        "blit": {
+          "count": 1547,
+          "p50_p95_p99_ms": [
+            18.957,
+            21.515,
+            22.895
+          ]
+        }
+      }
+    }
+  },
+  {
+    "arm": "optimized",
+    "profile_all_frames": {
+      "frames": 2606,
+      "p50_p95_p99_ms": [
+        2.38,
+        2.7,
+        3.49
+      ],
+      "above_4_167_ms_percent": 0.499
+    },
+    "mapped_pipeline": {
+      "codec": "nx",
+      "warmup_s": 10,
+      "unmatched_arrivals_without_decode_or_selection": 0,
+      "stages": {
+        "receive_begin": {
+          "count": 1484,
+          "p50_p95_p99_ms": [
+            3.689,
+            4.239,
+            4.629
+          ]
+        },
+        "decode_end": {
+          "count": 1484,
+          "p50_p95_p99_ms": [
+            9.291,
+            13.933,
+            14.504
+          ]
+        },
+        "blit": {
+          "count": 1438,
+          "p50_p95_p99_ms": [
+            10.953,
+            15.781,
+            16.993
+          ]
+        }
+      }
+    }
+  },
+  {
+    "arm": "restored",
+    "profile_all_frames": {
+      "frames": 2600,
+      "p50_p95_p99_ms": [
+        8.71,
+        9.57,
+        11.84
+      ],
+      "above_4_167_ms_percent": 100.0
+    },
+    "mapped_pipeline": {
+      "codec": "nx",
+      "warmup_s": 10,
+      "unmatched_arrivals_without_decode_or_selection": 0,
+      "stages": {
+        "receive_begin": {
+          "count": 1445,
+          "p50_p95_p99_ms": [
+            9.83,
+            10.527,
+            11.049
+          ]
+        },
+        "decode_end": {
+          "count": 1445,
+          "p50_p95_p99_ms": [
+            14.956,
+            19.299,
+            20.485
+          ]
+        },
+        "blit": {
+          "count": 1395,
+          "p50_p95_p99_ms": [
+            16.628,
+            21.726,
+            23.123
+          ]
+        }
+      }
+    }
+  }
+]
