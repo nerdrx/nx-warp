@@ -1,0 +1,457 @@
+{
+  "source": "pico-*.log plus dense-d*.info",
+  "p95": "nearest-rank",
+  "phase_frames": {
+    "static": [
+      2,
+      23
+    ],
+    "motion": [
+      25,
+      95
+    ],
+    "recovery": [
+      96,
+      119
+    ]
+  },
+  "runs": {
+    "pico-d128-none": {
+      "source": "pico-d128-none.log",
+      "frames": 120,
+      "phases": {
+        "static": {
+          "count": 22,
+          "gpu_ms": {
+            "median": 0.867,
+            "p95": 1.636
+          },
+          "total_ms": {
+            "median": 1.847,
+            "p95": 3.212
+          }
+        },
+        "motion": {
+          "count": 71,
+          "gpu_ms": {
+            "median": 112.635,
+            "p95": 115.154
+          },
+          "total_ms": {
+            "median": 114.732,
+            "p95": 120.274
+          }
+        },
+        "recovery": {
+          "count": 24,
+          "gpu_ms": {
+            "median": 0.6565000000000001,
+            "p95": 1.807
+          },
+          "total_ms": {
+            "median": 1.0735000000000001,
+            "p95": 2.243
+          }
+        }
+      },
+      "modes": {
+        "ATLAS": {
+          "count": 80,
+          "gpu_ms": {
+            "median": 1.0995,
+            "p95": 49.266
+          },
+          "total_ms": {
+            "median": 2.293,
+            "p95": 54.036
+          }
+        },
+        "PICTURE": {
+          "count": 40,
+          "gpu_ms": {
+            "median": 113.9645,
+            "p95": 115.322
+          },
+          "total_ms": {
+            "median": 117.36449999999999,
+            "p95": 120.432
+          }
+        }
+      }
+    },
+    "pico-d128-q52-r8": {
+      "source": "pico-d128-q52-r8.log",
+      "frames": 120,
+      "phases": {
+        "static": {
+          "count": 22,
+          "gpu_ms": {
+            "median": 0.8135,
+            "p95": 0.889
+          },
+          "total_ms": {
+            "median": 1.444,
+            "p95": 2.345
+          }
+        },
+        "motion": {
+          "count": 71,
+          "gpu_ms": {
+            "median": 103.678,
+            "p95": 135.864
+          },
+          "total_ms": {
+            "median": 116.499,
+            "p95": 142.665
+          }
+        },
+        "recovery": {
+          "count": 24,
+          "gpu_ms": {
+            "median": 0.6505000000000001,
+            "p95": 1.815
+          },
+          "total_ms": {
+            "median": 1.1875,
+            "p95": 2.568
+          }
+        }
+      },
+      "modes": {
+        "ATLAS": {
+          "count": 80,
+          "gpu_ms": {
+            "median": 0.841,
+            "p95": 2.864
+          },
+          "total_ms": {
+            "median": 2.0735,
+            "p95": 7.106
+          }
+        },
+        "PICTURE": {
+          "count": 40,
+          "gpu_ms": {
+            "median": 124.9075,
+            "p95": 135.927
+          },
+          "total_ms": {
+            "median": 130.391,
+            "p95": 142.678
+          }
+        }
+      }
+    },
+    "pico-d128-r8-repeat": {
+      "source": "pico-d128-r8-repeat.log",
+      "frames": 120,
+      "phases": {
+        "static": {
+          "count": 22,
+          "gpu_ms": {
+            "median": 0.9205000000000001,
+            "p95": 1.906
+          },
+          "total_ms": {
+            "median": 1.3065,
+            "p95": 2.275
+          }
+        },
+        "motion": {
+          "count": 71,
+          "gpu_ms": {
+            "median": 91.011,
+            "p95": 119.409
+          },
+          "total_ms": {
+            "median": 95.443,
+            "p95": 123.995
+          }
+        },
+        "recovery": {
+          "count": 24,
+          "gpu_ms": {
+            "median": 0.6984999999999999,
+            "p95": 1.916
+          },
+          "total_ms": {
+            "median": 1.167,
+            "p95": 2.657
+          }
+        }
+      },
+      "modes": {
+        "ATLAS": {
+          "count": 80,
+          "gpu_ms": {
+            "median": 0.9384999999999999,
+            "p95": 47.083
+          },
+          "total_ms": {
+            "median": 2.019,
+            "p95": 51.132
+          }
+        },
+        "PICTURE": {
+          "count": 40,
+          "gpu_ms": {
+            "median": 113.57849999999999,
+            "p95": 119.579
+          },
+          "total_ms": {
+            "median": 116.108,
+            "p95": 124.026
+          }
+        }
+      }
+    },
+    "pico-d128-r8": {
+      "source": "pico-d128-r8.log",
+      "frames": 120,
+      "phases": {
+        "static": {
+          "count": 22,
+          "gpu_ms": {
+            "median": 0.7075,
+            "p95": 1.778
+          },
+          "total_ms": {
+            "median": 1.0605,
+            "p95": 3.096
+          }
+        },
+        "motion": {
+          "count": 71,
+          "gpu_ms": {
+            "median": 90.831,
+            "p95": 116.063
+          },
+          "total_ms": {
+            "median": 94.238,
+            "p95": 118.129
+          }
+        },
+        "recovery": {
+          "count": 24,
+          "gpu_ms": {
+            "median": 0.697,
+            "p95": 0.796
+          },
+          "total_ms": {
+            "median": 1.3865,
+            "p95": 1.886
+          }
+        }
+      },
+      "modes": {
+        "ATLAS": {
+          "count": 80,
+          "gpu_ms": {
+            "median": 0.745,
+            "p95": 54.101
+          },
+          "total_ms": {
+            "median": 1.646,
+            "p95": 58.982
+          }
+        },
+        "PICTURE": {
+          "count": 40,
+          "gpu_ms": {
+            "median": 93.566,
+            "p95": 116.134
+          },
+          "total_ms": {
+            "median": 97.3135,
+            "p95": 118.843
+          }
+        }
+      }
+    },
+    "pico-d4096-r8": {
+      "source": "pico-d4096-r8.log",
+      "frames": 120,
+      "phases": {
+        "static": {
+          "count": 22,
+          "gpu_ms": {
+            "median": 0.7015,
+            "p95": 1.361
+          },
+          "total_ms": {
+            "median": 1.2125,
+            "p95": 3.128
+          }
+        },
+        "motion": {
+          "count": 71,
+          "gpu_ms": {
+            "median": 54.833,
+            "p95": 59.56
+          },
+          "total_ms": {
+            "median": 58.481,
+            "p95": 63.953
+          }
+        },
+        "recovery": {
+          "count": 24,
+          "gpu_ms": {
+            "median": 0.711,
+            "p95": 1.852
+          },
+          "total_ms": {
+            "median": 1.1395,
+            "p95": 3.921
+          }
+        }
+      },
+      "modes": {
+        "ATLAS": {
+          "count": 120,
+          "gpu_ms": {
+            "median": 23.413,
+            "p95": 59.338
+          },
+          "total_ms": {
+            "median": 28.471,
+            "p95": 63.819
+          }
+        },
+        "PICTURE": {
+          "count": 0,
+          "gpu_ms": {
+            "median": null,
+            "p95": null
+          },
+          "total_ms": {
+            "median": null,
+            "p95": null
+          }
+        }
+      }
+    },
+    "pico-d8-r8": {
+      "source": "pico-d8-r8.log",
+      "frames": 120,
+      "phases": {
+        "static": {
+          "count": 22,
+          "gpu_ms": {
+            "median": 0.776,
+            "p95": 1.65
+          },
+          "total_ms": {
+            "median": 1.1925,
+            "p95": 2.433
+          }
+        },
+        "motion": {
+          "count": 71,
+          "gpu_ms": {
+            "median": 115.115,
+            "p95": 128.493
+          },
+          "total_ms": {
+            "median": 120.048,
+            "p95": 134.345
+          }
+        },
+        "recovery": {
+          "count": 24,
+          "gpu_ms": {
+            "median": 0.704,
+            "p95": 0.742
+          },
+          "total_ms": {
+            "median": 1.7515,
+            "p95": 2.257
+          }
+        }
+      },
+      "modes": {
+        "ATLAS": {
+          "count": 51,
+          "gpu_ms": {
+            "median": 0.718,
+            "p95": 1.65
+          },
+          "total_ms": {
+            "median": 1.705,
+            "p95": 6.741
+          }
+        },
+        "PICTURE": {
+          "count": 69,
+          "gpu_ms": {
+            "median": 115.355,
+            "p95": 128.493
+          },
+          "total_ms": {
+            "median": 120.066,
+            "p95": 134.345
+          }
+        }
+      }
+    }
+  },
+  "phases": {
+    "static": {
+      "count": 132,
+      "gpu_ms": {
+        "median": 0.789,
+        "p95": 1.65
+      },
+      "total_ms": {
+        "median": 1.31,
+        "p95": 3.096
+      }
+    },
+    "motion": {
+      "count": 426,
+      "gpu_ms": {
+        "median": 90.982,
+        "p95": 129.241
+      },
+      "total_ms": {
+        "median": 94.7425,
+        "p95": 138.705
+      }
+    },
+    "recovery": {
+      "count": 144,
+      "gpu_ms": {
+        "median": 0.69,
+        "p95": 1.815
+      },
+      "total_ms": {
+        "median": 1.353,
+        "p95": 2.568
+      }
+    }
+  },
+  "modes": {
+    "ATLAS": {
+      "count": 491,
+      "gpu_ms": {
+        "median": 0.916,
+        "p95": 57.917
+      },
+      "total_ms": {
+        "median": 2.131,
+        "p95": 62.417
+      }
+    },
+    "PICTURE": {
+      "count": 229,
+      "gpu_ms": {
+        "median": 114.547,
+        "p95": 134.356
+      },
+      "total_ms": {
+        "median": 118.129,
+        "p95": 140.844
+      }
+    }
+  }
+}

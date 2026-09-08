@@ -93,11 +93,16 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 
 ## Measured results
 
-**Latest integration finding:** a real Pico session exposed a native-resolution
-pose-transition failure that the sparse/static-pose benchmarks missed. The encoder
-staging fix passes an old-fails/new-passes regression; moving-head live stability
-and the separately observed reconnect/shutdown failure remain unverified.
-[Failure analysis and regression](bench/results/240fps-2026-09-08/native-pose-transition/README.md).
+**Latest integration finding:** isolated native-resolution Pico motion stress now
+reproduces the reported lag: the current 128-pixel rebuild threshold takes
+**94.24 ms median per moving-frame decode**, versus **1.39 ms** during static
+recovery. A matched decode-plus-render run completes only **17.18 fresh pairs/s**
+after two startup frames. This adversarial synthetic input changes pose while
+keeping pixels fixed; it is a regression stress case, not a rendered head-turn
+quality test. Earlier sparse/static results do not characterize this workload.
+[Motion timings and actual Pico offscreen captures](bench/results/240fps-2026-09-08/native-motion-stress/README.md).
+The [native pose-transition staging failure](bench/results/240fps-2026-09-08/native-pose-transition/README.md)
+is fixed; large-motion performance and reconnect reliability remain open.
 
 **Evidence snapshot: 2026-09-08.** The rows below use different fixtures and measurement scopes. They must not be added together or interpreted as one unified benchmark.
 

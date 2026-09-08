@@ -69,3 +69,8 @@ may include dependency stalls; they do not measure photon latency.
 When GPU queries are enabled, query retrieval occurs after the per-render wall
 timer; its CPU overhead remains included in source-cycle time and aggregate
 throughput. Compare instrumented runs with timestamp-disabled controls.
+
+`make-motion-fixture.py` adds native dense residual stress with static pixels and
+changing yaw metadata. Use `--atlas-picture-d` to compare picture rebuild policies
+and `--qp` for quantizer controls. This deliberately inconsistent input is not a
+physically rendered head turn. See the [motion regression evidence](../../bench/results/240fps-2026-09-08/native-motion-stress/README.md).
