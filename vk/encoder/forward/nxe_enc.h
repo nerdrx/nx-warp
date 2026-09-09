@@ -510,7 +510,7 @@ typedef struct nxe_tile_job {
     uint32_t payload_len;    /* written by E4 */
     uint32_t tile_bytes;     /* written by E4: 8 + payload_len */
     uint32_t nunits;         /* written by E3 */
-    uint32_t flags;
+    uint32_t flags;          /* host bit 27: independent PLANAR has no E3 consumer */
 
     /* The tile's motion vector, quarter LUMA samples, two int8 packed low
      * byte first: mv_x in bits 0-7, mv_y in 8-15.  Zero unless the mode is a

@@ -11,9 +11,20 @@ layout(std430, binding = 0) readonly buffer Src { uint src[]; };
 layout(std430, binding = 1) writeonly buffer Bodies { uint body[]; };
 layout(std430, binding = 2) readonly buffer Jobs { nxe_tile_job jobs[]; };
 layout(std430, binding = 3) writeonly buffer Recon { uint recon[]; };
-layout(push_constant) uniform PC { uint width, height, qp, chromaQPOffset; } pc;
+// Mode 0 is the historical path. Mode 1 only skips a fit; full-frame decode
+// remains possible and no WARP_SKIP is emitted. Reuse keeps old image-space samples
+// without per-tile pose metadata or motion correction. Meta stride is 64 uints/tile:
+// [0] state(valid|promoted), [1] lastRefresh, [2] lastCheck, [3] format key,
+// [4] age-at-refresh, [5] quiet count, [6..10] refresh/reuse/change/promote/
+// age stats, [12] job flags, [16..63] 48 samples from the last refresh.
+layout(std430, binding = 4) buffer CadenceMeta { uint meta[]; };
+layout(push_constant) uniform PC {
+    uint width, height, qp, chromaQPOffset, cadenceMode, frameNumber;
+} pc;
 shared int cy[256], cu[256], cv[256];
 shared int gy, gu, gv, qy0, qy1, qu0, qu1, qv0, qv1;
+shared int fp[48];
+shared uint cadenceReuse, cadenceRefresh, cadencePromote, cadenceQuiet;
 
 int read_sample(uint base, uint i) {
     uint w = src[base + (i >> 1u)];
@@ -33,12 +44,83 @@ void main() {
     uint nt = gl_NumWorkGroups.x;
     if (tile >= nt) return;
     uint ybase = tile * 2048u, cbase = nt * 2048u + tile * 512u;
+    uint mt = tile * 64u;
+    if ((pc.cadenceMode & 1u) != 0u && (jobs[tile].flags & 0x80000000u) != 0u) return;
+    if ((pc.cadenceMode & 1u) != 0u) {
+        if (lid < 48u) {
+            uint plane = lid / 16u, k = lid & 15u;
+            uint x = (k & 3u) * 16u + 8u, y = (k >> 2u) * 16u + 8u;
+            uint si = plane == 0u ? y * 64u + x :
+                      ((k >> 2u) * 8u + 4u) * 32u + (k & 3u) * 8u + 4u;
+            uint base = plane == 0u ? ybase : cbase + (plane - 1u) * nt * 512u;
+            fp[lid] = read_sample(base, si);
+        }
+        barrier();
+        if (lid == 0u) {
+            uint flags = jobs[tile].flags;
+            uint tileQP = uint(clamp(int(pc.qp) + jobs[tile].qp_delta, 0, 63));
+            uint key = tileQP | ((pc.chromaQPOffset & 255u) << 8u) |
+                       ((uint(jobs[tile].qp_delta) & 255u) << 16u);
+            uint state = meta[mt];
+            bool valid = (state & 1u) != 0u;
+            bool promoted = (state & 2u) != 0u;
+            bool native = (flags & 0x80000000u) != 0u;
+            bool keyChanged = meta[mt + 3u] != key || meta[mt + 12u] != flags;
+            uint age = pc.frameNumber - meta[mt + 1u];
+            bool force = !valid || keyChanged || age >= 4u ||
+                         ((pc.cadenceMode & 2u) != 0u);
+            int mad = 0;
+            if (valid && !force)
+                for (uint i = 0u; i < 48u; ++i)
+                    mad += abs(fp[i] - int(meta[mt + 16u + i]));
+            mad /= 48;
+            bool baseline2 = (flags & 0x10000000u) != 0u;
+            uint period = baseline2 ? 2u : 4u;
+            // Fixed spatial phases stagger both eyes without an atomic race.
+            uint phase = jobs[tile].col + 3u * jobs[tile].row;
+            bool due = (phase + pc.frameNumber) % period == 0u;
+            bool rotatingHalf = ((jobs[tile].col / 2u + jobs[tile].row + pc.frameNumber / 2u) & 1u) == 0u;
+            bool changed = mad >= 12;
+            bool quiet = mad <= 6;
+            uint quietCount = quiet ? min(meta[mt + 5u] + 1u, 3u) : 0u;
+            bool fast = changed || (promoted && quietCount < 3u);
+            bool promoteNow = !force && !due && fast && rotatingHalf &&
+                              (phase + pc.frameNumber) % (period / 2u) == 0u;
+            cadencePromote = promoteNow ? 1u : 0u;
+            cadenceQuiet = quietCount;
+            cadenceRefresh = (force || due || promoteNow) ? 1u : 0u;
+            cadenceReuse = cadenceRefresh == 0u ? 1u : 0u;
+            meta[mt] = (valid ? 1u : 0u) | (fast ? 2u : 0u);
+            meta[mt + 5u] = quietCount;
+        }
+        barrier();
+    } else {
+        if (lid == 0u) {
+            cadenceReuse = 0u;
+            cadenceRefresh = 1u;
+            cadencePromote = 0u;
+            cadenceQuiet = 0u;
+        }
+        barrier();
+    }
+    bool doFit = cadenceReuse == 0u;
+    // Reused body and recon are already complete in persistent buffers. This
+    // uniform return is the actual fit saving; it occurs before any reductions.
+    if (!doFit) {
+        if (lid == 0u) {
+            meta[mt + 2u] = pc.frameNumber;
+            meta[mt + 7u]++;
+            if (cadenceQuiet == 0u) meta[mt + 8u]++;
+            meta[mt + 10u] = pc.frameNumber - meta[mt + 1u];
+        }
+        return;
+    }
     uint cell = lid;
     const bool fine = (jobs[tile].flags & 0x10000000u) != 0u;
     const uint dim = fine ? 16u : 8u;
     const uint cell_size = fine ? 4u : 8u;
     const uint ccell_size = fine ? 2u : 4u;
-    if (lid < dim * dim) {
+    if (doFit && lid < dim * dim) {
         uint cx = cell % dim, cy0 = cell / dim;
         int sy = 0, su = 0, sv = 0;
         for (uint j = 0u; j < cell_size; ++j)
@@ -63,7 +145,7 @@ void main() {
     uint group = (jobs[tile].flags & 0x20000000u) != 0u ? 4u :
                  (jobs[tile].flags & 0x40000000u) != 0u ? 2u : 1u;
     int gsy = 0, gsu = 0, gsv = 0, gn = 0;
-    if (group > 1u && lid < dim * dim) {
+    if (doFit && group > 1u && lid < dim * dim) {
         uint cx0 = (cell % dim) / group * group;
         uint cy0 = (cell / dim) / group * group;
         for (uint yy = 0u; yy < group; ++yy)
@@ -74,13 +156,13 @@ void main() {
         gn = int(group * group);
     }
     barrier();
-    if (group > 1u && lid < dim * dim) {
+    if (doFit && group > 1u && lid < dim * dim) {
         cy[cell] = (gsy + gn / 2) / gn;
         cu[cell] = (gsu + gn / 2) / gn;
         cv[cell] = (gsv + gn / 2) / gn;
     }
     barrier();
-    if (lid == 0u) {
+    if (doFit && lid == 0u) {
         gy = gu = gv = 0;
         const int ncells = int(dim * dim);
         for (int i = 0; i < ncells; ++i) { gy += cy[i]; gu += cu[i]; gv += cv[i]; }
@@ -108,7 +190,7 @@ void main() {
         qv0 = quant(sv0, 128, stepC); qv1 = quant(sv1, 128, stepC);
     }
     barrier();
-    if (lid == 0u) {
+    if (doFit && lid == 0u) {
         uint dst = tile * 26u;
         uint packed[26]; for (uint i = 0u; i < 26u; ++i) packed[i] = 0u;
         const uint map_bytes = fine ? 32u : 8u;
@@ -143,5 +225,34 @@ void main() {
             expanded[17u + (i >> 2u)] |= value << ((i & 3u) * 8u);
         }
         for (uint i = 0u; i < 26u; ++i) recon[dst + i] = expanded[i];
+    }
+    barrier();
+    if ((pc.cadenceMode & 1u) != 0u && lid == 0u) {
+        uint flags = jobs[tile].flags;
+        bool native = (flags & 0x80000000u) != 0u;
+        if (!native) {
+            uint tileQP = uint(clamp(int(pc.qp) + jobs[tile].qp_delta, 0, 63));
+            uint key = tileQP | ((pc.chromaQPOffset & 255u) << 8u) |
+                       ((uint(jobs[tile].qp_delta) & 255u) << 16u);
+            uint state = meta[mt];
+            if (cadenceRefresh != 0u) {
+                uint promoted = cadencePromote != 0u ? 2u :
+                                ((state & 2u) != 0u && cadenceQuiet < 3u ? 2u : 0u);
+                meta[mt] = 1u | promoted;
+                meta[mt + 1u] = pc.frameNumber;
+                meta[mt + 2u] = pc.frameNumber;
+                meta[mt + 3u] = key;
+                meta[mt + 4u] = 0u;
+                meta[mt + 6u]++;
+                if (cadencePromote != 0u) meta[mt + 9u]++;
+                for (uint i = 0u; i < 48u; ++i) meta[mt + 16u + i] = uint(fp[i]);
+            } else {
+                meta[mt + 2u] = pc.frameNumber;
+                meta[mt + 7u]++;
+            }
+            if (cadenceQuiet == 0u) meta[mt + 8u]++;
+            meta[mt + 10u] = pc.frameNumber - meta[mt + 1u];
+            meta[mt + 12u] = flags;
+        }
     }
 }

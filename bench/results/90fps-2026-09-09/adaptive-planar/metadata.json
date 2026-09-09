@@ -1,0 +1,18 @@
+{
+  "source_base": "e7e37bf",
+  "fixture_small": "16 frames 1024x512 stereo, local motion; 128px native centre per eye",
+  "fixture_large": "32 frames 4352x2176 stereo, local motion; 512px native centre per eye",
+  "gpu_timing": "Vulkan timestamps; first 4 excluded; 28 samples per run; sequential before/after, not randomized",
+  "limits": "Not motion-to-photon latency, full-field head motion, thermal soak, or decoder skip measurement",
+  "sha256": {
+    "nx-scratch/adaptive-tiles/on.nxv": "d399084264322f423d7cd66ff50c8aa6a6d49e1092bb3eda0fe9846941721e0f",
+    "nx-scratch/adaptive-tiles/pico.yuv": "dedbd058b544509e269ef07a438d966b4e43daffd0a758386cf7ba8fc30b65ac",
+    "nx-scratch/adaptive-tiles/on-decoded.yuv": "dedbd058b544509e269ef07a438d966b4e43daffd0a758386cf7ba8fc30b65ac",
+    "nx-warp/build-vk/bin/nxvc-vkenc-api": "c21fc53d2b4213aa53c970fd3aa2aaee17b532d2e51310df5ed92dd75ab1ad99",
+    "pico-decoder": "722c7c1ed87a0e7982c5cab9a6dec6a8de052c59de375ee8639a04694d788ce5",
+    "live-server-after": "f7c85d5a659b98f0f3224ed4a4a6e6e3243013ed35391097c3a451a4085fb30e",
+    "live-server-accumulate": "500717771084f9160a3e18332f87498dde9c14911e3c15833864762b00e6f8c1"
+  },
+  "pacing_switch": "NXWARP_PACE_ACCUMULATE=1; temporal cache off",
+  "wivrn_source_base": "64afe113"
+}

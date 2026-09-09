@@ -96,6 +96,19 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 
 ## Measured results
 
+**Latest experiment:** [adaptive peripheral updates](bench/results/90fps-2026-09-09/adaptive-planar/README.md)
+keep native centres fresh and selectively reuse peripheral fits. Removing unused
+PLANAR transforms reduced full-resolution offline encode GPU time from about
+5.9–6.1 ms to 4.7–4.8 ms. Cadence caching itself adds little measured saving and
+remains opt-in; decoder skipping and motion-correct tile history are still open.
+Live Pico motion checks with fractional sender pacing deliver **81–82 fresh
+updates/s versus 75** in the control, with roughly 25% lower server encode time.
+Reported source offset is 57–59 ms versus 56 ms; **halved latency is not achieved**.
+These timings are not end-to-end latency.
+
+![Measured peripheral refresh/reuse counts](bench/results/90fps-2026-09-09/adaptive-planar/cadence.png)
+
+
 **Peripheral shading probe:** a coarser outer density map saved only **0.23 ms**
 of presentation GPU time and did not reduce source offset, so it was reverted.
 [Measured comparison](bench/results/90fps-2026-09-09/peripheral-density/README.md).

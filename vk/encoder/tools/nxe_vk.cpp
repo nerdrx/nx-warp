@@ -63,7 +63,9 @@ struct VkEncoder::Impl {
     vkmin::Buffer b_planar;
     /* Pass B consumes the parser's padded 26-word representation, while E5
      * consumes the byte-packed body above.  Keep these contracts separate. */
-    vkmin::Buffer b_planar_recon;
+    vkmin::Buffer b_planar_recon, b_planar_cadence;
+    bool planar_cadence = false;
+    bool planar_cadence_started = false;
     /* The inter path: the four-slot reference ring, the parameter buffer
      * Pass W reads, and the predictor it writes.  Allocated even on an
      * intra-only stream, at four bytes each -- an unbound descriptor is
@@ -439,6 +441,12 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
     d.gpu_planar = cfg.planar && (cfg.planar_gpu_flat || cfg.planar_gpu_centre ||
         std::getenv("NXVC_ENC_PLANAR_GPU_FLAT") != nullptr);
     d.gpu_planar_centre = d.gpu_planar && cfg.planar_gpu_centre;
+    const char *cadence = std::getenv("NXVC_PLANAR_CADENCE");
+    d.planar_cadence = cadence && std::strcmp(cadence, "1") == 0;
+    if (d.planar_cadence && (!d.gpu_planar_centre || !cfg.planar_graduated || cfg.atlas)) {
+        err = "PLANAR cadence requires independent graduated GPU PLANAR centre mode";
+        return false;
+    }
     d.ntiles = f.fp.ntiles;
 
     if (cfg.nsub_log2 > 3) {
@@ -588,6 +596,7 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
          * (it is the shared exact-integer one) and E5 only reads it. */
         {&d.b_planar,
          (size_t)std::max(d.ntiles, 1u) * NXE_PLANAR_BODY_UINTS * 4, true},
+        {&d.b_planar_cadence, d.planar_cadence ? size_t(std::max(d.ntiles, 1u)) * 64u * 4u : 4u, true},
         {&d.b_planar_recon,
          d.cfg.planar ? (size_t)std::max(d.ntiles, 1u) * 26u * 4u : 4u, true},
         {&d.b_ring,    ring_bytes, false},
@@ -621,6 +630,9 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
         if (!d.dev.create_buffer(m.size, kDevUsage, m.host, *m.b, err))
             return false;
 
+    if (d.planar_cadence)
+        std::memset(d.b_planar_cadence.map, 0, size_t(std::max(d.ntiles, 1u)) * 64u * 4u);
+
     /* Specialization: the directional-intra switch and the transform edge.
      * E3 has two pipelines only because the LDS footprint of the running
      * reconstruction is sized by the constant; the behaviour switch is the
@@ -645,11 +657,8 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
                                d.p_e3, err, &si))
         return false;
     if (d.gpu_planar && !d.dev.create_pipeline(Planar_fit_spv, sizeof Planar_fit_spv,
-                               std::vector<VkDescriptorType>{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                                                              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                                                              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                                                              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},
-                               16, d.p_planar_fit, err))
+                               std::vector<VkDescriptorType>(5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+                               24, d.p_planar_fit, err))
         return false;
     if (!d.dev.create_pipeline(E4_rans_encode_spv, sizeof E4_rans_encode_spv,
                                sb9, 0, d.p_e4, err, &si))
@@ -750,7 +759,7 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
                           d.b_coef.buf, d.b_modes.buf, d.b_wpred.buf,
                           d.b_rate.buf, d.b_trelf.buf, d.b_trelm.buf});
     if (d.gpu_planar) write_set(h, d.s_planar_fit, {d.b_src.buf, d.b_planar.buf,
-                                                    d.b_jobs.buf, d.b_planar_recon.buf});
+                                                    d.b_jobs.buf, d.b_planar_recon.buf, d.b_planar_cadence.buf});
     write_set(h, d.s_e4, {d.b_params.buf, d.b_jobs.buf, d.b_coef.buf,
                           d.b_modes.buf, d.b_tabs.buf, d.b_slots.buf,
                           d.b_sizes.buf, d.b_ops.buf, d.b_slotops.buf});
@@ -1741,7 +1750,7 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
                                         job.row - (row0 + centre_rows - 1u) : 0u;
                 const uint32_t dist = std::max(dx, dy);
                 const bool use_intra = centre;
-                job.flags &= 0x0fffffffu;
+                job.flags &= 0x07fffffffu;
                 job.res_level = 0;
                 if (use_intra) {
                     job.mode = (uint32_t)NXE_MODE_INTRA;
@@ -1753,6 +1762,11 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
                         26 - int(f.fp.base_qp)));
                 } else {
                     job.mode = (uint32_t)NXE_MODE_PLANAR;
+                    // E4/E5 use the PLANAR body, and this path skips reference
+                    // reconstruction and host table selection. Diagnostic and
+                    // trellis paths retain their historical coefficients.
+                    if (independent_gpu_planar && !check && !d.trellis)
+                        job.flags |= 0x08000000u;
                     if (d.cfg.planar_graduated && dist <= 2u)
                         job.flags |= 0x10000000u; // fine 4x4 Y cells
                     else if (d.cfg.planar_graduated && dist >= 8u)
@@ -1948,8 +1962,10 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
             d.dev.barrier_compute_to_compute(cb);
         }
         if (gpu_planar) {
-            uint32_t push[4] = {f.fp.width, f.fp.height, f.fp.base_qp,
-                                (uint32_t)f.fp.chroma_qp_off};
+            uint32_t push[6] = {f.fp.width, f.fp.height, f.fp.base_qp,
+                                (uint32_t)f.fp.chroma_qp_off,
+                                d.planar_cadence ? (d.planar_cadence_started ? 1u : 3u) : 0u, frame_number};
+            d.planar_cadence_started = true;
             vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE,
                               d.p_planar_fit.pipe);
             vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE,
@@ -2549,6 +2565,19 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
                      d.gpu_ms_1, d.gpu_ms_2, d.gpu_ms_asm,
                      d.gpu_ms_1 + d.gpu_ms_2 + d.gpu_ms_asm);
         d.gpu_ms_asm = 0.0;
+    }
+    if (d.planar_cadence && std::getenv("NXVC_PLANAR_CADENCE_TRACE")) {
+        const auto *meta = static_cast<const uint32_t *>(d.b_planar_cadence.map);
+        uint32_t refresh = 0, reuse = 0, hot = 0, max_age = 0;
+        for (uint32_t t = 0; t < d.ntiles; ++t) {
+            const auto *m = meta + t * 64u;
+            if (!(m[0] & 1u)) continue; // centre does not use this cache
+            const uint32_t age = frame_number - m[1];
+            refresh += age == 0; reuse += age != 0;
+            hot += (m[0] & 2u) != 0; max_age = std::max(max_age, age);
+        }
+        std::fprintf(stderr, "cadence: frame %u fit %u reuse %u hot %u max_age %u\n",
+                     frame_number, refresh, reuse, hot, max_age);
     }
     if (check) {
         std::vector<uint8_t> gpu = f.out;

@@ -1,6 +1,6 @@
-# Temporal tile updates: proposed next experiment
+# Temporal tile updates: adaptive encoder prototype
 
-**Design proposal, not implemented or benchmarked.** The target is lower latency
+**Opt-in encoder fit caching implemented; decoder skipping and pose-aware history remain proposed.** The target is lower latency
 for fresh centre pixels by doing less peripheral work, rather than presenting
 old centre frames more frequently.
 
@@ -13,11 +13,35 @@ At a 90 Hz display rate:
 | Outer ring | Every fourth frame, up to 22.5 Hz | Spread tiles across four phases |
 
 These are fractions of admitted source frames. If source throughput is below
-90 Hz, the absolute correction rates are lower. Give the ring boundaries a
+90 Hz, the absolute correction rates are lower. A future decoder scheduler should give the ring boundaries a
 transition band of mixed tile classes; do not switch an entire ring at once.
 Use a stable phase derived from tile coordinates, shared between corresponding
 eye regions. Centre updates take priority; stale or invalid tiles may override
 the ordinary schedule.
+
+## Current prototype
+
+`NXVC_PLANAR_CADENCE=1` enables caching only for independent graduated GPU
+PLANAR-centre encoding. The centre remains fresh; fine peripheral tiles use
+period 2 and other peripheral tiles period 4, counted in admitted source frames.
+A 48-sample Y/Cb/Cr fingerprint detects change against the last fitted tile.
+Mean absolute difference >=12 marks a tile hot; <=6 for three checks clears it.
+Hot tiles may refresh on the doubled cadence, subject to rotating half-tile
+eligibility. This bounds discretionary promotion; it is not a measured GPU
+budget or a guarantee that every changed tile immediately doubles its rate.
+
+First use, changed QP/flags, and age >=4 force a new fit. Every transmitted frame
+still contains independently decodable bodies, so dropping an entire frame does
+not desynchronize decoder references. Corresponding eyes share cadence phases,
+but content-driven promotion decisions remain per-eye. No tiny blur is enabled.
+
+This caches screen-space samples without historical tile poses. It is therefore
+an **offline approximation, disabled in the live profile**, not the required
+motion-correct decoder cache below. Sparse fingerprints can miss small changes.
+[Checks, timings and decoded images](../bench/results/90fps-2026-09-09/adaptive-planar/README.md)
+show preserved centre pixels, Pico/CPU decode equality and reduced fit counts.
+The larger measured saving came from independently bypassing unused PLANAR
+transforms; fit caching alone did not establish a useful latency improvement.
 
 ## Required cache contract
 

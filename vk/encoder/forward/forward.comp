@@ -898,11 +898,16 @@ void residual_blocks_dir(uint lid, int plane) {
 // -------------------------------------------------------------------- main
 void main() {
     uint lid = gl_LocalInvocationID.x;
+    uint tile = gl_WorkGroupID.x;
+    if (tile >= fp.ntiles) return;
+    nxe_tile_job job = jobs[tile];
+    // Host certifies no coefficient consumer for independent GPU PLANAR.
+    // This workgroup-uniform exit avoids transforms and table initialization.
+    if (job.mode == uint(NXE_MODE_PLANAR) && (job.flags & 0x08000000u) != 0u)
+        return;
     nxe_init_tables(lid, uint(NXE_E3_WG));
     barrier();
-    g_tile = gl_WorkGroupID.x;
-    if (g_tile >= fp.ntiles) return;
-    nxe_tile_job job = jobs[g_tile];
+    g_tile = tile;
     // A WARP_SKIP tile codes no residual, so E3 does not transform it and E4
     // gives it no units.  It does not simply return, though: its coefficient
     // slot has to be ZEROED.
