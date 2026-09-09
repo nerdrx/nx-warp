@@ -125,7 +125,13 @@ typedef enum nxvc_vkd_create_flags {
      * concealed, or ATLAS frames and disables its pixel reference ring; the
      * output remains a complete decoded picture. There is no fallback to
      * predictive reconstruction after this opt-in. */
-    NXVC_VKD_FLAG_INDEPENDENT_TILES = 1u << 7
+    NXVC_VKD_FLAG_INDEPENDENT_TILES = 1u << 7,
+    /* Experimental local output layout, not a bitstream tool. Requires
+     * INDEPENDENT_TILES, CT_NONE 8-bit 4:2:0 stereo 2176x2176 without alpha.
+     * Packs each axis to 928 samples: 512 native centre, each 832-pixel outer
+     * band represented by 208 samples (native coordinate mod 4 == 1).
+     * images()/plane_size()/read_planes() expose compact dimensions. */
+    NXVC_VKD_FLAG_COMPACT_CENTRE = 1u << 8
 } nxvc_vkd_create_flags;
 
 /* --------------------------------------------------------------- create */

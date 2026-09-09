@@ -236,7 +236,7 @@ struct Ctx {
 };
 int main(int argc, char** argv) {
     if (argc < 3) {
-        std::fprintf(stderr, "usage: %s input.nxv output.nv12\n", argv[0]);
+        std::fprintf(stderr, "usage: %s input.nxv output.nv12 [--compact]\n", argv[0]);
         return 2;
     }
     try {
@@ -252,6 +252,8 @@ int main(int argc, char** argv) {
         ci.queue_family = c.family;
         ci.output_format = NXVC_VKD_OUT_YCBCR420;
         ci.flags = NXVC_VKD_FLAG_INDEPENDENT_TILES;
+        if (argc > 3 && std::string(argv[3]) == "--compact")
+            ci.flags |= NXVC_VKD_FLAG_COMPACT_CENTRE;
         nxvc_vk_decoder* d = nullptr;
         if (nxvc_vk_decoder_create(&ci, &d) != NXVC_VKD_OK)
             throw std::runtime_error(nxvc_vk_decoder_last_create_error());
@@ -263,14 +265,17 @@ int main(int argc, char** argv) {
         if (nxvc_vk_decoder_stream_info(d, &si) != NXVC_VKD_OK || si.chroma != 0 ||
             si.color_transform != 0)
             throw std::runtime_error("input is not independent YCbCr420");
-        uint32_t ow = si.width * si.eyes;
-        Image imgs[2] = {c.make(ow, si.height), c.make(ow, si.height)};
+        nxvc_vkd_images output{};
+        if (nxvc_vk_decoder_images(d, &output) != NXVC_VKD_OK || output.count != 2)
+            throw std::runtime_error("missing output geometry");
+        uint32_t ow = output.width[0], oh = output.height[0];
+        Image imgs[2] = {c.make(ow, oh), c.make(ow, oh)};
         for (auto& im : imgs) {
             nxvc_vkd_output_images oi{{im.image, im.image},
                                       {im.y, im.uv},
                                       {VK_FORMAT_R8_UINT, VK_FORMAT_R8G8_UINT},
                                       {ow, ow / 2},
-                                      {si.height, si.height / 2},
+                                      {oh, oh / 2},
                                       VK_IMAGE_LAYOUT_UNDEFINED};
             if (nxvc_vk_decoder_set_borrowed_output(d, &oi) != NXVC_VKD_OK)
                 throw std::runtime_error(nxvc_vk_decoder_last_error(d));
@@ -280,7 +285,7 @@ int main(int argc, char** argv) {
                                    {imgs[0].y, imgs[0].uv},
                                    {VK_FORMAT_R8_UINT, VK_FORMAT_R8G8_UINT},
                                    {ow + 1, ow / 2},
-                                   {si.height, si.height / 2},
+                                   {oh, oh / 2},
                                    VK_IMAGE_LAYOUT_UNDEFINED};
         if (nxvc_vk_decoder_set_borrowed_output(d, &bad) == NXVC_VKD_OK)
             throw std::runtime_error("invalid dimensions accepted");
@@ -296,7 +301,7 @@ int main(int argc, char** argv) {
                                       {im.y, im.uv},
                                       {VK_FORMAT_R8_UINT, VK_FORMAT_R8G8_UINT},
                                       {ow, ow / 2},
-                                      {si.height, si.height / 2},
+                                      {oh, oh / 2},
                                       f < 2 ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_GENERAL};
             if (nxvc_vk_decoder_set_borrowed_output(d, &oi) != NXVC_VKD_OK)
                 throw std::runtime_error(nxvc_vk_decoder_last_error(d));
@@ -316,7 +321,7 @@ int main(int argc, char** argv) {
             }
             off += used;
             std::vector<uint8_t> y, uv;
-            c.read(im, ow, si.height, y, uv);
+            c.read(im, ow, oh, y, uv);
             out.write((char*)y.data(), y.size());
             out.write((char*)uv.data(), uv.size());
             if (!out)
@@ -329,7 +334,7 @@ int main(int argc, char** argv) {
         std::fprintf(stderr,
                      "borrowed-output: PASS: two targets, 3 frames, async NULL restore, invalid "
                      "geometry; NV12 %ux%u\n",
-                     ow, si.height);
+                     ow, oh);
         return 0;
     } catch (const std::exception& e) {
         std::fprintf(stderr, "borrowed-output: %s\n", e.what());

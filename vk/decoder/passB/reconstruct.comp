@@ -68,6 +68,9 @@ layout(constant_id = 5) const int kUnormStore = 0;
 //    such a frame decodes through exactly the kernel it did before the tool
 //    existed.
 layout(constant_id = 6) const int kSplitTool = 0;
+// Experimental packed centre/periphery output: 512 native centre, fourfold
+// subsampled 832-pixel outer bands (2176 -> 928 per eye).
+layout(constant_id = 9) const int kCompactCentre = 0;
 // The frame's INTRA_DIR tool bit is a *build* variant, not a specialization
 // constant and no longer a push constant.  It was a push constant, which meant
 // one pipeline carried both the v1 predictor and the directional wavefront and

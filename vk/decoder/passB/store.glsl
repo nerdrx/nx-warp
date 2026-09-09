@@ -51,6 +51,40 @@ void nxvwStoreTile(int tid, int tile, int tileX, int tileY, int res_level,
     // the stream carries them.  Luma is written at full resolution, Cb/Cr
     // interleaved at half.  Requires a 4:2:0 stream and colour_transform none.
     if (fmt == kOutYcbcr420) {
+        if (kCompactCentre != 0) {
+            // Visit compact pixels directly. Masking 15/16 native invocations
+            // scattered the remaining writes and made the first prototype slower.
+            int eye = tileX / 34, localX = tileX - eye * 34;
+            int stepX = localX >= 13 && localX < 21 ? 1 : 4;
+            int stepY = tileY >= 13 && tileY < 21 ? 1 : 4;
+            int packedX = eye * 928 + (localX < 13 ? localX * 16 :
+                          localX < 21 ? 208 + (localX - 13) * 64 : 720 + (localX - 21) * 16);
+            int packedY = tileY < 13 ? tileY * 16 :
+                          tileY < 21 ? 208 + (tileY - 13) * 64 : 720 + (tileY - 21) * 16;
+            int widthY = 64 / stepX, heightY = 64 / stepY;
+            for (int idx = tid; idx < widthY * heightY; idx += 256) {
+                int px = idx & (widthY - 1), py = idx >> (stepX == 1 ? 6 : 4);
+                int x = px * stepX + (stepX == 4 ? 1 : 0);
+                int y = py * stepY + (stepY == 4 ? 1 : 0);
+                int Y = clamp(planeAtFull(sb0, sizeP0, 64, x, y), 0, 255);
+                ivec2 dst = ivec2(packedX + px, packedY + py);
+                if (kUnormStore != 0) imageStore(uOutLumaN, dst, vec4(nxvw_unorm8(Y), 0, 0, 0));
+                else imageStore(uOutLuma, dst, uvec4(uint(Y), 0, 0, 0));
+            }
+            int widthC = 32 / stepX, heightC = 32 / stepY;
+            for (int idx = tid; idx < widthC * heightC; idx += 256) {
+                int px = idx & (widthC - 1), py = idx >> (stepX == 1 ? 5 : 3);
+                int x = px * stepX + (stepX == 4 ? 1 : 0);
+                int y = py * stepY + (stepY == 4 ? 1 : 0);
+                int Cb = clamp(planeAtFull(sb1, sizeP1, 32, x, y), 0, 255);
+                int Cr = clamp(planeAtFull(sb2, sizeP2, 32, x, y), 0, 255);
+                ivec2 dst = ivec2(packedX / 2 + px, packedY / 2 + py);
+                if (kUnormStore != 0) imageStore(uOutCbCrN, dst, vec4(nxvw_unorm8(Cb), nxvw_unorm8(Cr), 0, 0));
+                else imageStore(uOutCbCr, dst, uvec4(uint(Cb), uint(Cr), 0, 0));
+            }
+            continue;
+        }
+
         for (int k = 0; k < 16; ++k) {
             int idx = k * 256 + tid;
             int x = idx & 63, y = idx >> 6;
