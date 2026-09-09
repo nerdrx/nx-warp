@@ -1,0 +1,64 @@
+#version 450
+
+// Bounded shared-decision variant of sync_probe.comp. Exact geometry is intentional:
+// 1856x928, two 928-column eyes, 8x8 workgroups, and centre edges aligned to 8.
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(set = 0, binding = 0, std430) readonly buffer Guide { uint v[]; } guide;
+layout(set = 0, binding = 1, std430) readonly buffer History { uint v[]; } history;
+layout(set = 0, binding = 2, std430) readonly buffer Fresh { uint v[]; } fresh;
+layout(set = 0, binding = 3, std430) writeonly buffer Output { uint v[]; } output_image;
+layout(push_constant) uniform Params { uint width; uint height; uint guide_width; uint guide_height; int dx; uint age; uint reset; uint full_frame; uint threshold; uint centre_origin; uint centre_size; } p;
+shared uint keep[16];
+
+uint guide_at(uint eye, int x, int y) {
+    x = clamp(x, 0, int(p.guide_width)-1); y = clamp(y, 0, int(p.guide_height)-1);
+    return guide.v[eye*p.guide_width*p.guide_height + uint(y)*p.guide_width + uint(x)];
+}
+int packed_native(uint x) {
+    if (x < 208u) return int(4u*x+1u);
+    if (x < 720u) return int(832u+x-208u);
+    return int(1345u+4u*(x-720u));
+}
+// Nearest retained sample; ties select the upper sample.
+int native_packed(int n) {
+    if (n < 0 || n >= 2176) return -1;
+    if (n <= 830) return clamp((n+1)/4, 0, 207);
+    if (n <= 1343) return 208 + max(n-832, 0);
+    if (n == 1344) return 720;
+    return clamp(720+(n-1343)/4, 720, 927);
+}
+
+void main() {
+    uint x=gl_GlobalInvocationID.x, y=gl_GlobalInvocationID.y;
+    if (x>=p.width || y>=p.height) return;
+    uint i=y*p.width+x, eye=x/928u, ex=x%928u;
+    uint gx=ex*p.guide_width/928u, gy=y*p.guide_height/p.height, g=guide_at(eye,int(gx),int(gy));
+    bool centre=ex>=p.centre_origin && ex<p.centre_origin+p.centre_size &&
+                y>=p.centre_origin && y<p.centre_origin+p.centre_size;
+    // All these predicates are workgroup-uniform for the fixed, aligned geometry.
+    if (p.full_frame!=0u || centre) { output_image.v[i]=fresh.v[i]; return; }
+    if (p.reset!=0u || p.age!=1u) { output_image.v[i]=g; return; }
+
+    uint lid=gl_LocalInvocationID.y*8u+gl_LocalInvocationID.x;
+    uint block=(gl_LocalInvocationID.y/2u)*4u + gl_LocalInvocationID.x/2u;
+    uint bx=ex & ~1u, by=y & ~1u, base=by*p.width+eye*928u;
+    int sx=native_packed(packed_native(ex)-p.dx);
+    uint value_valid=(sx>=0 && sx<928) ? 1u : 0u;
+    uint value=value_valid!=0u ? history.v[y*p.width+eye*928u+uint(sx)] : 0u;
+    if ((gl_LocalInvocationID.x&1u)==0u && (gl_LocalInvocationID.y&1u)==0u) {
+        int s0=native_packed(packed_native(bx)-p.dx), s1=native_packed(packed_native(bx+1u)-p.dx);
+        uint valid=(s0>=0 && s1>=0) ? 1u : 0u;
+        uint mean=0u;
+        if (valid!=0u) {
+            uint row1=(by+1u)*p.width+eye*928u;
+            uint a=history.v[base+uint(s0)], b=history.v[base+uint(s1)];
+            uint c=history.v[row1+uint(s0)], d=history.v[row1+uint(s1)];
+            mean=(a+b+c+d)/4u;
+            uint delta=g>mean ? g-mean : mean-g;
+            valid=delta<=p.threshold ? 1u : 0u;
+        }
+        keep[block]=valid;
+    }
+    barrier();
+    output_image.v[i]=(value_valid!=0u && keep[block]!=0u) ? value : g;
+}

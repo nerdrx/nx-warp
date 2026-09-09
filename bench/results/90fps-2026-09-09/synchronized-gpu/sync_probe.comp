@@ -1,0 +1,71 @@
+#version 450
+
+// Standalone synchronized guide/history probe. Buffers deliberately use uint32
+// grayscale for exact validation; this is not the production NV12 cost model.
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(set = 0, binding = 0, std430) readonly buffer Guide { uint v[]; } guide;
+layout(set = 0, binding = 1, std430) readonly buffer History { uint v[]; } history;
+layout(set = 0, binding = 2, std430) readonly buffer Fresh { uint v[]; } fresh;
+layout(set = 0, binding = 3, std430) writeonly buffer Output { uint v[]; } output_image;
+
+layout(push_constant) uniform Params {
+    uint width; uint height; uint guide_width; uint guide_height;
+    int dx; uint age; uint reset; uint full_frame;
+    uint threshold; uint centre_origin; uint centre_size;
+} p;
+
+uint guide_at(uint eye, int x, int y) {
+    x = clamp(x, 0, int(p.guide_width) - 1);
+    y = clamp(y, 0, int(p.guide_height) - 1);
+    return guide.v[eye * p.guide_width * p.guide_height + uint(y) * p.guide_width + uint(x)];
+}
+
+int packed_native(uint x) {
+    if (x < 208u) return int(4u * x + 1u);
+    if (x < 720u) return int(832u + x - 208u);
+    return int(1345u + 4u * (x - 720u));
+}
+
+// Inverse of the retained native axis. Ties choose the upper retained sample.
+int native_packed(int n) {
+    if (n < 0 || n >= 2176) return -1;
+    if (n <= 830) return clamp((n + 1) / 4, 0, 207);
+    if (n <= 1343) return 208 + max(n - 832, 0);
+    if (n == 1344) return 720;
+    return clamp(720 + (n - 1343) / 4, 720, 927);
+}
+
+void main() {
+    uint x = gl_GlobalInvocationID.x, y = gl_GlobalInvocationID.y;
+    if (x >= p.width || y >= p.height) return;
+    uint i = y * p.width + x;
+    // Packed stereo: each eye occupies a 928-column half. Never sample across seam.
+    uint eye = x / (p.width / 2u), eye_x = x % (p.width / 2u);
+    uint gx = eye_x * p.guide_width / (p.width / 2u);
+    uint gy = y * p.guide_height / p.height;
+    uint g = guide_at(eye, int(gx), int(gy));
+    bool centre = eye_x >= p.centre_origin && eye_x < p.centre_origin + p.centre_size &&
+                  y >= p.centre_origin && y < p.centre_origin + p.centre_size;
+    if (p.full_frame != 0u || centre) {
+        output_image.v[i] = fresh.v[i];
+        return;
+    }
+    // dx is a synthetic native-domain translation, not a live pose model.
+    if (p.reset != 0u || p.age != 1u) { output_image.v[i] = g; return; }
+    int sx = native_packed(packed_native(eye_x) - p.dx);
+    if (sx < 0 || sx >= int(p.width / 2u)) { output_image.v[i] = g; return; }
+    uint base = y * p.width + eye * 928u + uint(sx);
+    uint value = history.v[base];
+    // Compare the same guide footprint after warping each retained sample.
+    uint bx = eye_x & ~1u, by = y & ~1u;
+    int s0 = native_packed(packed_native(bx) - p.dx);
+    int s1 = native_packed(packed_native(bx + 1u) - p.dx);
+    if (s0 < 0 || s1 < 0) { output_image.v[i] = g; return; }
+    uint row0 = by * p.width + eye * 928u;
+    uint row1 = (by + 1u) * p.width + eye * 928u;
+    uint a = history.v[row0 + uint(s0)], b = history.v[row0 + uint(s1)];
+    uint c = history.v[row1 + uint(s0)], d = history.v[row1 + uint(s1)];
+    uint mean = (a + b + c + d) / 4u;
+    uint delta = g > mean ? g - mean : mean - g;
+    output_image.v[i] = delta > p.threshold ? g : value;
+}

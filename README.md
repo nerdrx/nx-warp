@@ -99,8 +99,25 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 | Profile | Current status | Evidence and scope |
 |---|---|---|
 | **Live wider-ring profile** | Enabled opt-in on the custom WiVRn NX / Pico path | **77–82 fresh updates/s**, about **4.94 ms decode GPU time** and **2.04 ms server encode time**; native 512 × 512 centre with a 1024 × 1024 fine-detail boundary. [Live and fixture results](bench/results/90fps-2026-09-09/wide-ring/README.md) |
+| **Synchronized GPU probe** | Standalone Pico test; not live integrated | 14 exact-output checks; guide/history reconstruction costs 1.67–1.77 ms. [Scope and timings](bench/results/90fps-2026-09-09/synchronized-gpu/README.md) |
 | **CPU quality prototype** | **NOT integrated; not Pico measured**; separate quality experiment | Alternating-eye prototype results are recorded in the [experiment note](bench/results/90fps-2026-09-09/alternating-eye/README.md). [Trace image](bench/results/90fps-2026-09-09/alternating-eye/trace.png) |
 | **Stretch target** | 240 Hz remains unproven | The target is **4.17 ms per update**; no live 240 Hz delivery or physical-motion proof is established. [Motion-proof archive](bench/results/240fps-2026-09-08/motion-proof/README.md) |
+
+### Synchronized refresh now has a Pico GPU probe
+
+A [standalone Vulkan reconstruction probe](bench/results/90fps-2026-09-09/synchronized-gpu/README.md)
+keeps both centres fresh and switches both eyes between full detail and
+current-guide/warped-history reconstruction. **14 independent pixel checks pass
+on Pico**, including signed translation across the packed sampling boundaries,
+eye seams and invalid-history fallback.
+
+The simple guide/history pass costs **1.67–1.77 ms** in isolated Pico runs.
+Sharing guide decisions across pixels was exact but slower (**1.89 ms**) and was
+rejected. These are reconstruction costs, **not decoder savings or live latency**.
+The timed inputs are static; GPU motion-quality and complete pipeline integration
+remain open. The wider-ring streamer stays on its tested profile.
+
+![Pico reconstruction overhead, including the rejected variant](bench/results/90fps-2026-09-09/synchronized-gpu/gpu-cost.png)
 
 ### Alternating detail: useful history, uneven stereo error
 

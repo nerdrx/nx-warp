@@ -120,3 +120,17 @@ full-rate control. Demonstrate cache validity through loss and reconnect before
 live use. A lighter frame is useful only if the scheduling/cache overhead and
 visible stepping justify the saving. Physical latency still needs an independent
 measurement; a smaller predicted-display offset is insufficient.
+
+
+## Synchronized reconstruction on GPU
+
+A [standalone Pico Vulkan probe](../bench/results/90fps-2026-09-09/synchronized-gpu/README.md)
+now validates synchronized full/guide reconstruction at the packed stereo
+geometry. Fourteen cases match an independent NumPy oracle, including native
+coordinate mapping across sampling boundaries and fresh-centre/guide fallback.
+The guide/history pass costs 1.67–1.77 ms on isolated Pico runs; a shared-decision
+variant was slower and rejected. This adds reconstruction work and does not
+implement decoder skipping, pose-aware presentation or persistent history.
+The next integration question is how to fuse history sampling into presentation
+while omitting detail decode work. Static resident-input timings are not a
+live-motion, latency or sustained-throughput result.

@@ -1,0 +1,154 @@
+{
+  "checks": [
+    {
+      "case": 0,
+      "dx": -900,
+      "age": 1,
+      "reset": 0,
+      "full": 0,
+      "exact": true,
+      "sha256": "801f3c8fbca31b9f6c68d00b85cc88dab675a30815cd0249915b95da0ac749b7"
+    },
+    {
+      "case": 1,
+      "dx": -64,
+      "age": 1,
+      "reset": 0,
+      "full": 0,
+      "exact": true,
+      "sha256": "b94955102194516acac93a462aa8679e852e92473d14bea2b70b3c3a6f08bc7f"
+    },
+    {
+      "case": 2,
+      "dx": -3,
+      "age": 1,
+      "reset": 0,
+      "full": 0,
+      "exact": true,
+      "sha256": "74dd0052d0f6715254517cb19a5f3141914361777a403db60a383dfc3423bc9d"
+    },
+    {
+      "case": 3,
+      "dx": -1,
+      "age": 1,
+      "reset": 0,
+      "full": 0,
+      "exact": true,
+      "sha256": "47403ab00e17da3e45443c642dfd024faf9424ac15ad8c028b128941539767ef"
+    },
+    {
+      "case": 4,
+      "dx": 0,
+      "age": 1,
+      "reset": 0,
+      "full": 0,
+      "exact": true,
+      "sha256": "cf0c263e37c570b5d6e482de553338085e3cb07527e4a7a943600fa14f908d0c"
+    },
+    {
+      "case": 5,
+      "dx": 1,
+      "age": 1,
+      "reset": 0,
+      "full": 0,
+      "exact": true,
+      "sha256": "4c40c85f04cf9463f79481ae204cef5a21b7b2dcc1f22c081bb7ba9cf1482baf"
+    },
+    {
+      "case": 6,
+      "dx": 3,
+      "age": 1,
+      "reset": 0,
+      "full": 0,
+      "exact": true,
+      "sha256": "553ce6d000b117984f923c1256ec35985541cd379cb435b70f357a52cc2074ca"
+    },
+    {
+      "case": 7,
+      "dx": 64,
+      "age": 1,
+      "reset": 0,
+      "full": 0,
+      "exact": true,
+      "sha256": "ff9244802e34211f0abea30acfdf243a0b774187a26b0ab8e6cf90e0bd2547f4"
+    },
+    {
+      "case": 8,
+      "dx": 900,
+      "age": 1,
+      "reset": 0,
+      "full": 0,
+      "exact": true,
+      "sha256": "77e89b56059d5bb47e2b32f673cfe2a43904f6bee660703fd7fec3ec7d641661"
+    },
+    {
+      "case": 9,
+      "dx": 3,
+      "age": 1,
+      "reset": 1,
+      "full": 0,
+      "exact": true,
+      "sha256": "754add975aa39c31efdc0b155ad9da8e487dfdcfb66550880dde09894ee19ae9"
+    },
+    {
+      "case": 10,
+      "dx": 3,
+      "age": 0,
+      "reset": 0,
+      "full": 0,
+      "exact": true,
+      "sha256": "754add975aa39c31efdc0b155ad9da8e487dfdcfb66550880dde09894ee19ae9"
+    },
+    {
+      "case": 11,
+      "dx": 3,
+      "age": 2,
+      "reset": 0,
+      "full": 0,
+      "exact": true,
+      "sha256": "754add975aa39c31efdc0b155ad9da8e487dfdcfb66550880dde09894ee19ae9"
+    },
+    {
+      "case": 12,
+      "dx": 3,
+      "age": 1,
+      "reset": 0,
+      "full": 1,
+      "exact": true,
+      "sha256": "33374437af3bcf5239292fe6f6c2e9f15535bc57b5e568c2cc5f198f90b571fd"
+    },
+    {
+      "case": 13,
+      "dx": 3,
+      "age": 1,
+      "reset": 0,
+      "full": 0,
+      "exact": true,
+      "sha256": "eb111700db8497e1c9307786f0dcf3e676eb707c9976a5075743b143ddfd5b32"
+    }
+  ],
+  "timing": {
+    "full": {
+      "n": 120,
+      "mean_ms": 1.176211925,
+      "p50_ms": 0.993255,
+      "p95_ms": 2.692879,
+      "p99_ms": 2.9521106000000006
+    },
+    "guide_history": {
+      "n": 120,
+      "mean_ms": 1.893995916666667,
+      "p50_ms": 1.5211999999999999,
+      "p95_ms": 3.3181385,
+      "p99_ms": 3.8482507
+    },
+    "combined": {
+      "n": 240,
+      "mean_ms": 1.5351039208333332,
+      "p50_ms": 1.487995,
+      "p95_ms": 3.259059,
+      "p99_ms": 3.6507768999999937
+    }
+  },
+  "limits": "GPU reconstruction dispatch only; uint32 grayscale; resident static inputs. Excludes input creation/upload, decode, history-cache updates and presentation. Not full pipeline latency or motion quality."
+}
