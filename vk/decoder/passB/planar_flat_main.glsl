@@ -7,6 +7,14 @@ int flatDc(int cb, int byteIndex, int qp) {
     int c = int(word << (24 - (byteIndex & 3) * 8)) >> 24;
     return clamp(128 + dequant(c, dequantStep(nxvw_dc_qp(qp), kFlatWeight)), 0, 255);
 }
+
+int flatSample(int mapBase, int cellShift, int grid,
+               int x, int y, int a, int b) {
+    int cell = (y >> cellShift) * grid + (x >> cellShift);
+    uint map = uPlanar.w[mapBase + (cell >> 5)];
+    return ((map >> (cell & 31)) & 1u) == 0u ? a : b;
+}
+
 void main() {
     int tid = int(gl_LocalInvocationID.x);
     int tile = int(uOrder.i[gl_WorkGroupID.x]);
@@ -16,6 +24,62 @@ void main() {
     int cb = base + kPlanarHeaderUints + kPlanarMapUints;
     bool fine = (uPlanar.w[base] & 8u) != 0u;
     nxvwIsInterTile = false;
+
+    // Compact center output only needs the retained native samples.  Keep
+    // this before the shared reconstruction and store walk: flat PLANAR
+    // tiles are already represented by two DC values and a cell map, so the
+    // discarded 15/16 (or 3/4) samples need never touch sPlane.
+    if (kCompactCentre != 0) {
+        int tileX = tile % pc.p.tilesX;
+        int tileY = tile / pc.p.tilesX;
+        int eye = tileX / 34, localX = tileX - eye * 34;
+        int stepX = localX >= 13 && localX < 21 ? 1 : 4;
+        int stepY = tileY >= 13 && tileY < 21 ? 1 : 4;
+        int packedX = eye * 928 + (localX < 13 ? localX * 16 :
+                      localX < 21 ? 208 + (localX - 13) * 64 :
+                                    720 + (localX - 21) * 16);
+        int packedY = tileY < 13 ? tileY * 16 :
+                      tileY < 21 ? 208 + (tileY - 13) * 64 :
+                                   720 + (tileY - 21) * 16;
+        int grid = 1 << (fine ? 4 : 3);
+        int cellShiftY = 6 - (fine ? 4 : 3);
+        int cellShiftC = 5 - (fine ? 4 : 3);
+        int mapBase = base + 1;
+        int ay = flatDc(cb, 0, qp), by = flatDc(cb, 9, qp);
+        int ac = flatDc(cb, 3, clamp(qp + pc.p.chromaQpOff, 0, 63));
+        int bc = flatDc(cb, 12, clamp(qp + pc.p.chromaQpOff, 0, 63));
+        int ar = flatDc(cb, 6, clamp(qp + pc.p.chromaQpOff, 0, 63));
+        int br = flatDc(cb, 15, clamp(qp + pc.p.chromaQpOff, 0, 63));
+
+        int widthY = 64 / stepX, heightY = 64 / stepY;
+        for (int idx = tid; idx < widthY * heightY; idx += 256) {
+            int px = idx & (widthY - 1), py = idx >> (stepX == 1 ? 6 : 4);
+            int x = px * stepX + (stepX == 4 ? 1 : 0);
+            int y = py * stepY + (stepY == 4 ? 1 : 0);
+            int value = clamp(flatSample(mapBase, cellShiftY, grid,
+                                         x, y, ay, by), 0, 255);
+            ivec2 dst = ivec2(packedX + px, packedY + py);
+            if (kUnormStore != 0) imageStore(uOutLumaN, dst,
+                                              vec4(nxvw_unorm8(value), 0, 0, 0));
+            else imageStore(uOutLuma, dst, uvec4(uint(value), 0, 0, 0));
+        }
+        int widthC = 32 / stepX, heightC = 32 / stepY;
+        for (int idx = tid; idx < widthC * heightC; idx += 256) {
+            int px = idx & (widthC - 1), py = idx >> (stepX == 1 ? 5 : 3);
+            int x = px * stepX + (stepX == 4 ? 1 : 0);
+            int y = py * stepY + (stepY == 4 ? 1 : 0);
+            int cbv = clamp(flatSample(mapBase, cellShiftC, grid,
+                                       x, y, ac, bc), 0, 255);
+            int crv = clamp(flatSample(mapBase,
+                                       cellShiftC, grid, x, y, ar, br), 0, 255);
+            ivec2 dst = ivec2(packedX / 2 + px, packedY / 2 + py);
+            if (kUnormStore != 0) imageStore(uOutCbCrN, dst,
+                                              vec4(nxvw_unorm8(cbv), nxvw_unorm8(crv), 0, 0));
+            else imageStore(uOutCbCr, dst, uvec4(uint(cbv), uint(crv), 0, 0));
+        }
+        return;
+    }
+
     for (int plane = 0; plane < 3; ++plane) {
         int lg = plane == 0 ? 6 : 5;
         int size = 1 << lg;
