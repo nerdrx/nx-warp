@@ -1,0 +1,181 @@
+{
+  "run_order": [
+    "nx-scratch/motion-live/round-colour-remap-client.log",
+    "nx-scratch/motion-live/round-colour-remap-control-client.log"
+  ],
+  "analyzer": [
+    {
+      "file": "nx-scratch/motion-live/round-colour-remap-client.log",
+      "client": {
+        "n": 24,
+        "start": "00:34:27.938",
+        "end": "00:35:25.949",
+        "means": {
+          "fresh_per_s": 73.59183673469387,
+          "iterations": 167.95833333333334,
+          "iterations_per_s": 83.78750000000001,
+          "older_available": 0.0,
+          "own_gpu_ms": 6.283333333333334,
+          "source_offset_ms": 65.91250000000001,
+          "submit_lead_ms": 35.625,
+          "wait_attempts": 67.75,
+          "wait_successes": 45.791666666666664,
+          "wait_total_ms": 188.8065
+        }
+      },
+      "decoder": {
+        "n": 30,
+        "start": "00:34:27.726",
+        "end": "00:35:25.941",
+        "means": {
+          "copy_gpu_ms": 0.0,
+          "fence_post_ms": 7.703333333333333,
+          "frames": 154.83333333333334,
+          "frames_per_s": 77.40833333333333,
+          "nxvc_gpu_ms": 3.933333333333333,
+          "queue_ms": 3.7333333333333334
+        }
+      }
+    },
+    {
+      "file": "nx-scratch/motion-live/round-colour-remap-control-client.log",
+      "client": {
+        "n": 22,
+        "start": "00:35:51.029",
+        "end": "00:36:49.108",
+        "means": {
+          "fresh_per_s": 80.6017316017316,
+          "iterations": 170.63636363636363,
+          "iterations_per_s": 85.14545454545454,
+          "older_available": 0.0,
+          "own_gpu_ms": 5.713636363636364,
+          "source_offset_ms": 58.07727272727273,
+          "submit_lead_ms": 32.01363636363636,
+          "wait_attempts": 102.0,
+          "wait_successes": 92.27272727272727,
+          "wait_total_ms": 181.93540909090908
+        }
+      },
+      "decoder": {
+        "n": 30,
+        "start": "00:35:50.771",
+        "end": "00:36:48.973",
+        "means": {
+          "copy_gpu_ms": 0.0003333333333333333,
+          "fence_post_ms": 6.16,
+          "frames": 162.03333333333333,
+          "frames_per_s": 81.01149425287356,
+          "nxvc_gpu_ms": 3.61,
+          "queue_ms": 2.5
+        }
+      }
+    }
+  ],
+  "deltas_remap_minus_control": {
+    "client": {
+      "fresh_per_s": {
+        "control": 80.6017316017316,
+        "remap": 73.59183673469387,
+        "delta": -7.00989486703773,
+        "percent": -8.696953189138599
+      },
+      "iterations": {
+        "control": 170.63636363636363,
+        "remap": 167.95833333333334,
+        "delta": -2.678030303030283,
+        "percent": -1.5694370449298412
+      },
+      "iterations_per_s": {
+        "control": 85.14545454545454,
+        "remap": 83.78750000000001,
+        "delta": -1.3579545454545325,
+        "percent": -1.5948644031603523
+      },
+      "older_available": {
+        "control": 0.0,
+        "remap": 0.0,
+        "delta": 0.0,
+        "percent": null
+      },
+      "own_gpu_ms": {
+        "control": 5.713636363636364,
+        "remap": 6.283333333333334,
+        "delta": 0.5696969696969703,
+        "percent": 9.970830018562724
+      },
+      "source_offset_ms": {
+        "control": 58.07727272727273,
+        "remap": 65.91250000000001,
+        "delta": 7.8352272727272805,
+        "percent": 13.491038584957359
+      },
+      "submit_lead_ms": {
+        "control": 32.01363636363636,
+        "remap": 35.625,
+        "delta": 3.6113636363636417,
+        "percent": 11.280704245350012
+      },
+      "wait_attempts": {
+        "control": 102.0,
+        "remap": 67.75,
+        "delta": -34.25,
+        "percent": -33.57843137254902
+      },
+      "wait_successes": {
+        "control": 92.27272727272727,
+        "remap": 45.791666666666664,
+        "delta": -46.4810606060606,
+        "percent": -50.3735632183908
+      },
+      "wait_total_ms": {
+        "control": 181.93540909090908,
+        "remap": 188.8065,
+        "delta": 6.871090909090924,
+        "percent": 3.7766649952443245
+      }
+    },
+    "decoder": {
+      "copy_gpu_ms": {
+        "control": 0.0003333333333333333,
+        "remap": 0.0,
+        "delta": -0.0003333333333333333,
+        "percent": -100.0
+      },
+      "fence_post_ms": {
+        "control": 6.16,
+        "remap": 7.703333333333333,
+        "delta": 1.543333333333333,
+        "percent": 25.05411255411255
+      },
+      "frames": {
+        "control": 162.03333333333333,
+        "remap": 154.83333333333334,
+        "delta": -7.199999999999989,
+        "percent": -4.443530137831715
+      },
+      "frames_per_s": {
+        "control": 81.01149425287356,
+        "remap": 77.40833333333333,
+        "delta": -3.6031609195402297,
+        "percent": -4.447715664018161
+      },
+      "nxvc_gpu_ms": {
+        "control": 3.61,
+        "remap": 3.933333333333333,
+        "delta": 0.32333333333333325,
+        "percent": 8.956602031394274
+      },
+      "queue_ms": {
+        "control": 2.5,
+        "remap": 3.7333333333333334,
+        "delta": 1.2333333333333334,
+        "percent": 49.333333333333336
+      }
+    }
+  },
+  "scope": {
+    "pair": "one 60-second mode-3 remap/control pair",
+    "claims": "descriptive paired result, not a statistical proof",
+    "latency": "own GPU/source-offset measurements; not photon-to-photon latency"
+  }
+}

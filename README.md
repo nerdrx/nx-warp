@@ -97,6 +97,14 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 
 ## Measured results
 
+**Peripheral quality experiments (10 September):** [colour-aware palettes and rounded quality regions](bench/results/90fps-2026-09-10/round-colour/RESULTS.md) preserve chromatic edges that the brightness-only palette missed. On the synthetic colour fixture, U/V error falls about 30%; retained native-centre pixels are unchanged and Pico decoder readbacks match the CPU reference. This changes palette selection, not the 4:2:0 format.
+
+![Rounded per-eye quality policy](bench/results/90fps-2026-09-10/round-colour/policy-geometry.png)
+
+The selected block softening reuses the presentation sampler with **no extra texture reads**. A live motion pair measured 6.28 ms presentation GPU versus 5.71 ms without it; four-tap blur was rejected at 10.23 ms. [Measurements and limitations](bench/results/90fps-2026-09-10/round-colour/RESULTS.md#cheapest-presentation-softening).
+
+Optional Kuwahara approximations reduce extra samples from 16 to [8](bench/results/90fps-2026-09-10/kuwahara-eight-tap/RESULTS.md), [4](bench/results/90fps-2026-09-10/kuwahara-four-tap/RESULTS.md), and [2](bench/results/90fps-2026-09-10/kuwahara-two-tap/RESULTS.md). Isolated Pico RGBA probes measured about 38% lower draw time for eight taps versus sixteen, then a further 22% for four versus eight; the two-tap gain was smaller and varied between runs. These are approximate filters and GPU microbenchmarks, not live latency improvements.
+
 **Latest live tradeoff:** [decode queue priority](bench/results/90fps-2026-09-09/queue-priority/README.md) reduced the mean of two run medians from **27.44 to 24.48 ms encode-to-selection**, while fresh source selections fell from **76.52 to 72.67/s**. Four animated Pico runs; opt-in, with equal priority still the default. This is not photon latency.
 
 ![Live Pico latency and freshness tradeoff](bench/results/90fps-2026-09-09/queue-priority/comparison.png)

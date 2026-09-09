@@ -19,9 +19,10 @@ layout(std430, binding = 3) writeonly buffer Recon { uint recon[]; };
 // age stats, [12] job flags, [16..63] 48 samples from the last refresh.
 layout(std430, binding = 4) buffer CadenceMeta { uint meta[]; };
 layout(push_constant) uniform PC {
-    uint width, height, qp, chromaQPOffset, cadenceMode, frameNumber;
+    uint width, height, qp, chromaQPOffset, cadenceMode, frameNumber, colourAware;
 } pc;
 shared int cy[256], cu[256], cv[256];
+shared int splitAxis;
 shared int gy, gu, gv, qy0, qy1, qu0, qu1, qv0, qv1;
 shared int fp[48];
 shared uint cadenceReuse, cadenceRefresh, cadencePromote, cadenceQuiet;
@@ -169,10 +170,22 @@ void main() {
         gy = (gy + ncells / 2) / ncells;
         gu = (gu + ncells / 2) / ncells;
         gv = (gv + ncells / 2) / ncells;
+        splitAxis = 0;
+        if (pc.colourAware != 0u) {
+            int vy = 0, vu = 0, vv = 0;
+            for (int i = 0; i < ncells; ++i) {
+                int dy = cy[i] - gy, du = cu[i] - gu, dv = cv[i] - gv;
+                vy += dy * dy; vu += du * du; vv += dv * dv;
+            }
+            // Give brightness a modest preference, but preserve chromatic edges
+            // when they carry more information than the luminance split.
+            splitAxis = vu > 2 * vy ? 1 : 0;
+            if (vv > (splitAxis == 1 ? vu : 2 * vy)) splitAxis = 2;
+        }
         int sy0 = 0, sy1 = 0, su0 = 0, su1 = 0, sv0 = 0, sv1 = 0;
         int n0 = 0, n1 = 0;
         for (int i = 0; i < ncells; ++i) {
-            if (cy[i] < gy) { sy0 += cy[i]; su0 += cu[i]; sv0 += cv[i]; ++n0; }
+            if ((splitAxis == 0 ? cy[i] - gy : splitAxis == 1 ? cu[i] - gu : cv[i] - gv) < 0) { sy0 += cy[i]; su0 += cu[i]; sv0 += cv[i]; ++n0; }
             else { sy1 += cy[i]; su1 += cu[i]; sv1 += cv[i]; ++n1; }
         }
         // Empty regions fall back to the global mean, keeping the body valid.
@@ -196,7 +209,7 @@ void main() {
         const uint map_bytes = fine ? 32u : 8u;
         packed[0] = fine ? 8u : 0u; // R=2, fine bit when selected
         for (uint i = 0u; i < dim * dim; ++i) {
-            if (cy[i] >= gy) {
+            if ((splitAxis == 0 ? cy[i] - gy : splitAxis == 1 ? cu[i] - gu : cv[i] - gv) >= 0) {
                 const uint bit = i;
                 packed[((1u + bit / 8u) >> 2u)] |=
                     1u << (((1u + bit / 8u) & 3u) * 8u + (bit & 7u));

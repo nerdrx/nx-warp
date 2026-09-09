@@ -1,0 +1,181 @@
+{
+  "inputs": [
+    "/run/media/nerdrx/Lex/claude/nx-scratch/motion-live/round-colour-off-client.log",
+    "/run/media/nerdrx/Lex/claude/nx-scratch/motion-live/round-colour-on-client.log"
+  ],
+  "analyzer": [
+    {
+      "file": "/run/media/nerdrx/Lex/claude/nx-scratch/motion-live/round-colour-off-client.log",
+      "client": {
+        "n": 21,
+        "start": "00:29:18.497",
+        "end": "00:30:17.309",
+        "means": {
+          "fresh_per_s": 80.65419501133786,
+          "iterations": 171.28571428571428,
+          "iterations_per_s": 85.4047619047619,
+          "older_available": 0.0,
+          "own_gpu_ms": 5.70952380952381,
+          "source_offset_ms": 56.73809523809524,
+          "submit_lead_ms": 31.890476190476193,
+          "wait_attempts": 129.04761904761904,
+          "wait_successes": 116.80952380952381,
+          "wait_total_ms": 229.69271428571432
+        }
+      },
+      "decoder": {
+        "n": 29,
+        "start": "00:29:18.292",
+        "end": "00:30:16.468",
+        "means": {
+          "copy_gpu_ms": 0.0003448275862068966,
+          "fence_post_ms": 6.293103448275862,
+          "frames": 162.82758620689654,
+          "frames_per_s": 81.40669371196755,
+          "nxvc_gpu_ms": 3.6620689655172414,
+          "queue_ms": 2.596551724137931
+        }
+      }
+    },
+    {
+      "file": "/run/media/nerdrx/Lex/claude/nx-scratch/motion-live/round-colour-on-client.log",
+      "client": {
+        "n": 23,
+        "start": "00:30:39.502",
+        "end": "00:31:37.397",
+        "means": {
+          "fresh_per_s": 55.11794634597595,
+          "iterations": 125.26086956521739,
+          "iterations_per_s": 62.34782608695652,
+          "older_available": 0.0,
+          "own_gpu_ms": 10.226086956521739,
+          "source_offset_ms": 78.91304347826087,
+          "submit_lead_ms": 39.73478260869565,
+          "wait_attempts": 28.130434782608695,
+          "wait_successes": 12.347826086956522,
+          "wait_total_ms": 100.921
+        }
+      },
+      "decoder": {
+        "n": 30,
+        "start": "00:30:39.290",
+        "end": "00:31:37.583",
+        "means": {
+          "copy_gpu_ms": 0.0006666666666666666,
+          "fence_post_ms": 9.979999999999999,
+          "frames": 121.9,
+          "frames_per_s": 60.9421052631579,
+          "nxvc_gpu_ms": 3.7933333333333334,
+          "queue_ms": 6.166666666666667
+        }
+      }
+    }
+  ],
+  "deltas": {
+    "client": {
+      "fresh_per_s": {
+        "off": 80.65419501133786,
+        "on": 55.11794634597595,
+        "delta": -25.53624866536191,
+        "percent": -31.661401693702583
+      },
+      "iterations": {
+        "off": 171.28571428571428,
+        "on": 125.26086956521739,
+        "delta": -46.02484472049689,
+        "percent": -26.870217935235882
+      },
+      "iterations_per_s": {
+        "off": 85.4047619047619,
+        "on": 62.34782608695652,
+        "delta": -23.056935817805375,
+        "percent": -26.997248518199772
+      },
+      "older_available": {
+        "off": 0.0,
+        "on": 0.0,
+        "delta": 0.0,
+        "percent": null
+      },
+      "own_gpu_ms": {
+        "off": 5.70952380952381,
+        "on": 10.226086956521739,
+        "delta": 4.516563146997929,
+        "percent": 79.10577655292452
+      },
+      "source_offset_ms": {
+        "off": 56.73809523809524,
+        "on": 78.91304347826087,
+        "delta": 22.174948240165634,
+        "percent": 39.08299731795873
+      },
+      "submit_lead_ms": {
+        "off": 31.890476190476193,
+        "on": 39.73478260869565,
+        "delta": 7.84430641821946,
+        "percent": 24.597645928417
+      },
+      "wait_attempts": {
+        "off": 129.04761904761904,
+        "on": 28.130434782608695,
+        "delta": -100.91718426501035,
+        "percent": -78.20150810203755
+      },
+      "wait_successes": {
+        "off": 116.80952380952381,
+        "on": 12.347826086956522,
+        "delta": -104.4616977225673,
+        "percent": -89.42909303603396
+      },
+      "wait_total_ms": {
+        "off": 229.69271428571432,
+        "on": 100.921,
+        "delta": -128.77171428571432,
+        "percent": -56.0626028936797
+      }
+    },
+    "decoder": {
+      "copy_gpu_ms": {
+        "off": 0.0003448275862068966,
+        "on": 0.0006666666666666666,
+        "delta": 0.00032183908045977006,
+        "percent": 93.3333333333333
+      },
+      "fence_post_ms": {
+        "off": 6.293103448275862,
+        "on": 9.979999999999999,
+        "delta": 3.6868965517241366,
+        "percent": 58.586301369862994
+      },
+      "frames": {
+        "off": 162.82758620689654,
+        "on": 121.9,
+        "delta": -40.927586206896535,
+        "percent": -25.135535789919516
+      },
+      "frames_per_s": {
+        "off": 81.40669371196755,
+        "on": 60.9421052631579,
+        "delta": -20.46458844880965,
+        "percent": -25.138704835768515
+      },
+      "nxvc_gpu_ms": {
+        "off": 3.6620689655172414,
+        "on": 3.7933333333333334,
+        "delta": 0.13126436781609208,
+        "percent": 3.5844318895166385
+      },
+      "queue_ms": {
+        "off": 2.596551724137931,
+        "on": 6.166666666666667,
+        "delta": 3.570114942528736,
+        "percent": 137.49446657813195
+      }
+    }
+  },
+  "scope": {
+    "pair": "one 60-second off/on capture",
+    "claims": "descriptive paired result, not a statistical proof",
+    "latency": "own GPU/source-offset measurements; not photon-to-photon latency"
+  }
+}

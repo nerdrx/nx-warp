@@ -67,6 +67,7 @@ struct VkEncoder::Impl {
     bool planar_cadence = false;
     bool planar_cadence_started = false;
     bool planar_wide_ring = false;
+    bool planar_round = false, planar_colour = false;
     /* The inter path: the four-slot reference ring, the parameter buffer
      * Pass W reads, and the predictor it writes.  Allocated even on an
      * intra-only stream, at four bytes each -- an unbound descriptor is
@@ -444,6 +445,8 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
     d.gpu_planar_centre = d.gpu_planar && cfg.planar_gpu_centre;
     const char *wide_ring = std::getenv("NXVC_PLANAR_WIDE_RING");
     d.planar_wide_ring = wide_ring && std::strcmp(wide_ring, "1") == 0;
+    d.planar_round = std::getenv("NXVC_PLANAR_ROUND") && std::strcmp(std::getenv("NXVC_PLANAR_ROUND"), "1") == 0;
+    d.planar_colour = std::getenv("NXVC_PLANAR_COLOUR") && std::strcmp(std::getenv("NXVC_PLANAR_COLOUR"), "1") == 0;
     const char *cadence = std::getenv("NXVC_PLANAR_CADENCE");
     d.planar_cadence = cadence && std::strcmp(cadence, "1") == 0;
     if (d.planar_cadence && (!d.gpu_planar_centre || !cfg.planar_graduated || cfg.atlas)) {
@@ -661,7 +664,7 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
         return false;
     if (d.gpu_planar && !d.dev.create_pipeline(Planar_fit_spv, sizeof Planar_fit_spv,
                                std::vector<VkDescriptorType>(5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-                               24, d.p_planar_fit, err))
+                               28, d.p_planar_fit, err))
         return false;
     if (!d.dev.create_pipeline(E4_rans_encode_spv, sizeof E4_rans_encode_spv,
                                sb9, 0, d.p_e4, err, &si))
@@ -1742,7 +1745,7 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
             const uint32_t col0 = (cols - centre_cols) / 2u;
             const uint32_t row0 = (rows - centre_rows) / 2u;
             for (auto &job : f.jobs) {
-                const bool centre = d.gpu_planar_centre &&
+                bool centre = d.gpu_planar_centre &&
                                     job.col >= col0 && job.col < col0 + centre_cols &&
                                     job.row >= row0 && job.row < row0 + centre_rows;
                 const uint32_t dx = job.col < col0 ? col0 - job.col :
@@ -1751,7 +1754,19 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
                 const uint32_t dy = job.row < row0 ? row0 - job.row :
                                     job.row >= row0 + centre_rows ?
                                         job.row - (row0 + centre_rows - 1u) : 0u;
-                const uint32_t dist = std::max(dx, dy);
+                uint32_t dist = std::max(dx, dy);
+                if (d.planar_round && d.gpu_planar_centre) {
+                    // Elliptical radius in the existing compact centre allocation.
+                    // Keep its horizontal/vertical diameter; round off the corners.
+                    const double rx = (2.0 * job.col + 1.0 - (2.0 * col0 + centre_cols)) / centre_cols;
+                    const double ry = (2.0 * job.row + 1.0 - (2.0 * row0 + centre_rows)) / centre_rows;
+                    const double radius = std::sqrt(rx * rx + ry * ry);
+                    centre = radius <= 1.0;
+                    // Match outer-ring area to the former square (sqrt(pi)/2),
+                    // avoiding a loss of useful fine detail when rounding it.
+                    dist = uint32_t(std::ceil(std::max(0.0, radius * 0.886226925452758 - 1.0) *
+                                             std::min(centre_cols, centre_rows) * 0.5));
+                }
                 const bool use_intra = centre;
                 const bool fine = !use_intra && d.cfg.planar_graduated &&
                                   dist <= (d.planar_wide_ring ? 4u : 2u);
@@ -1970,9 +1985,9 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
             d.dev.barrier_compute_to_compute(cb);
         }
         if (gpu_planar) {
-            uint32_t push[6] = {f.fp.width, f.fp.height, f.fp.base_qp,
+            uint32_t push[7] = {f.fp.width, f.fp.height, f.fp.base_qp,
                                 (uint32_t)f.fp.chroma_qp_off,
-                                d.planar_cadence ? (d.planar_cadence_started ? 1u : 3u) : 0u, frame_number};
+                                d.planar_cadence ? (d.planar_cadence_started ? 1u : 3u) : 0u, frame_number, d.planar_colour ? 1u : 0u};
             d.planar_cadence_started = true;
             vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE,
                               d.p_planar_fit.pipe);

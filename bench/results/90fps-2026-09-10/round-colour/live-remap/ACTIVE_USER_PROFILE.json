@@ -1,0 +1,23 @@
+{
+  "purpose": "User requested sharper peripheral colour, rounded regions, and cheapest block softening. Keep low latency priority1/wait4000; Kuwahara remains off. Restore after isolated tests.",
+  "time_utc": "2026-09-09T22:37:41.072164+00:00",
+  "properties": {
+    "decode_priority": "1",
+    "ready_wait_us": "4000",
+    "trace_handoff": "0",
+    "fdm": "1",
+    "compact_centre": "1",
+    "planar_centre": "1",
+    "borrowed_output": "1",
+    "capture": "0",
+    "peripheral_smooth": "3",
+    "kuwahara_fast": "0"
+  },
+  "server_config": "config.planar-gpu-graduated-copybaseline90.json",
+  "server_env": {
+    "NXVC_PLANAR_WIDE_RING": "1",
+    "NXWARP_PACE_ACCUMULATE": "1",
+    "NXVC_PLANAR_ROUND": "1",
+    "NXVC_PLANAR_COLOUR": "1"
+  }
+}
