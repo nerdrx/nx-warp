@@ -58,6 +58,43 @@ references. Re-enabling the generic predictor could cost more than it saves.
 Evaluate an explicit independent-tile output cache against the existing atlas
 path before choosing the representation. No unsignalled decoder omissions.
 
+## Proposed low-resolution guide with retained detail
+
+A low-resolution current image could guide a separately retained full-resolution
+history. This is a new presentation/cache experiment, not implemented by the
+encoder fit cache above. The guide is not simply upscaled as the final image.
+
+1. Keep the native centre current in both eyes.
+2. Update a small stereo guide every admitted frame; refresh peripheral detail
+   less often and spread those repairs spatially.
+3. Reproject retained detail using its historical pose and available motion.
+   Compare the new guide with the downsampled prediction to identify changes.
+4. Reject bad history at disocclusions and changed objects. Use the fresh guide
+   as a temporary fallback and request a detail repair under the work budget.
+
+Alternating which eye receives a full-detail update is an optional later variant.
+It needs per-eye history age/pose tracking even if the wire picture remains a
+single stereo frame; corresponding features can otherwise differ between eyes
+during motion. Start with coordinated stereo peripheral repairs, then compare
+alternating-eye cadence against that control. A single pose describes neither
+mixed-age eye nor mixed-age tiles unless every retained sample is first moved
+into a common current-pose image. Rotation can use pose alone; robust translation
+and newly visible surfaces need more scene information or fresh pixels.
+
+The current independent compact path has no depth image in `view_info_t` and no
+partial decoder submission API. Its PLANAR periphery already skips entropy and
+transforms; shrinking that output saves only remaining sample/storage work.
+The native INTRA centre still incurs entropy and transform costs. To remove
+those costs, the encoder must emit a cheaper guide/detail representation or the
+decoder must explicitly support skipping unneeded independent units. Merely
+resizing a fully decoded image does not establish a decode-time saving.
+
+Keep presentation history separate from codec references. Do not re-enable
+WARP_SKIP against a modified reconstruction. Test fast rotation, translation,
+moving objects, stereo disagreement, disocclusions and packet loss; count guide,
+warp, repair and history-memory costs together. A quality-only presentation
+prototype can validate appearance, but cannot prove decoder savings.
+
 ## Tiny peripheral blend, tested separately
 
 Keep the centre unblended. After the cadence-only path works, try a short blend

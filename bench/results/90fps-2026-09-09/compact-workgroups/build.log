@@ -1,0 +1,11 @@
+[1/11] glslc reconstruct.comp (PLANAR flat) -> reconstruct_planar_flat.spv.h
+[2/11] glslc reconstruct.comp (WARP_SKIP only) -> reconstruct_skip.spv.h
+[3/11] glslc reconstruct.comp (copy path) -> reconstruct_copy.spv.h
+[4/11] glslc reconstruct.comp (WARP_SKIP + predict) -> reconstruct_skip_store.spv.h
+[5/11] glslc reconstruct.comp (dir=0 xl=0) -> reconstruct_v1_x8.spv.h
+[6/11] glslc reconstruct.comp (dir=1 xl=0) -> reconstruct_x8.spv.h
+[7/11] glslc reconstruct.comp (dir=0 xl=1) -> reconstruct_v1.spv.h
+[8/11] glslc reconstruct.comp (dir=1 xl=1) -> reconstruct.spv.h
+[9/11] Building CXX object vk/decoder/CMakeFiles/nxvc_vk_decoder.dir/nxvc_vkdec.cpp.o
+[10/11] Linking CXX static library vk/decoder/libnxvc_vk_decoder.a
+[11/11] Linking CXX executable bin/nxvc-vkdec; nxvgpu-{enc,dec} aliases for tools/quality --codec-cmd

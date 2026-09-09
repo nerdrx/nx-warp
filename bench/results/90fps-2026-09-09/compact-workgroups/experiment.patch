@@ -1,0 +1,97 @@
+diff --git a/vk/decoder/nxvc_vkdec.cpp b/vk/decoder/nxvc_vkdec.cpp
+index 1d5b77e..489f0e3 100644
+--- a/vk/decoder/nxvc_vkdec.cpp
++++ b/vk/decoder/nxvc_vkdec.cpp
+@@ -1334,14 +1334,25 @@ nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2, int32_t sparse,
+                            int32_t inter_pred, int32_t ring_store,
+                            VkPipeline *out, int skip_kind = 0, bool planar_flat = false) {
+     const uint32_t sched = d->dir_sched;
++    uint32_t flat_wg = 256;
++    if (planar_flat && d->compact_centre) {
++        const char *e = std::getenv("NXVC_VKD_FLAT_WG");
++        if (e && (!std::strcmp(e, "64") || !std::strcmp(e, "128") ||
++                  !std::strcmp(e, "256")))
++            flat_wg = (uint32_t)std::atoi(e);
++    }
+     // `skip_kind` is 0, 1 or 2 and so needs TWO bits.  It had one, at 59, from
+     // when it was a bool -- and 2 << 59 is bit 60, which is `split_tool`.  A
+     // frame with XFORM_4X4_SPLIT therefore handed the WARP_SKIP dispatch the
+     // GENERAL module out of this cache, which reads a WPred buffer that by
+     // then is deliberately not written for those tiles: the skip tiles came
+     // out black, and only on a stream that sets one particular tool.
+-    // 57-58 is the free pair; every other field's shift is unchanged.
++    // 57-58 is the free pair; bits 50-51 are also free and carry the compact
++    // flat workgroup selector (the value is otherwise always 256).
++    const uint64_t flat_wg_key = flat_wg == 64 ? 1ull :
++                                 flat_wg == 128 ? 2ull : 3ull;
+     uint64_t key = ((uint64_t)(uint32_t)skip_kind << 57) |
++                   (flat_wg_key << 50) |
+                    ((uint64_t)(planar_flat ? 1u : 0u) << 55) |
+                    ((uint64_t)(uint32_t)ring_store << 63) |
+                    ((uint64_t)(uint32_t)inter_pred << 62) |
+@@ -1363,16 +1374,17 @@ nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2, int32_t sparse,
+         return seterr(d, NXVC_VKD_ERR_UNSUPPORTED,
+                       "Pass B needs %zu B of shared memory, device offers %u B",
+                       lds, d->props.limits.maxComputeSharedMemorySize);
+-    const int32_t data[10] = {(int32_t)fmt,  (int32_t)store_words,
++    const int32_t data[11] = {(int32_t)fmt,  (int32_t)store_words,
+                              (int32_t)sched, fmt2,
+                              sparse,         (int32_t)d->unorm_store,
+                              split_tool,     inter_pred,
+-                             ring_store, (int32_t)d->compact_centre};
+-    VkSpecializationMapEntry me[10] = {{0, 0, 4},  {1, 4, 4},  {2, 8, 4},
++                             ring_store, (int32_t)d->compact_centre,
++                             (int32_t)flat_wg};
++    VkSpecializationMapEntry me[11] = {{0, 0, 4},  {1, 4, 4},  {2, 8, 4},
+                                       {3, 12, 4}, {4, 16, 4}, {5, 20, 4},
+                                       {6, 24, 4}, {7, 28, 4}, {8, 32, 4},
+-                                      {9, 36, 4}};
+-    VkSpecializationInfo spec{10, me, sizeof(data), data};
++                                      {9, 36, 4}, {10, 40, 4}};
++    VkSpecializationInfo spec{11, me, sizeof(data), data};
+     VkComputePipelineCreateInfo ci{
+         VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
+     // [inter] A frame that carries a STEREO tile runs Pass B once per eye,
+diff --git a/vk/decoder/passB/planar_flat_main.glsl b/vk/decoder/passB/planar_flat_main.glsl
+index ddab159..40ac632 100644
+--- a/vk/decoder/passB/planar_flat_main.glsl
++++ b/vk/decoder/passB/planar_flat_main.glsl
+@@ -52,7 +52,8 @@ void main() {
+         int br = flatDc(cb, 15, clamp(qp + pc.p.chromaQpOff, 0, 63));
+ 
+         int widthY = 64 / stepX, heightY = 64 / stepY;
+-        for (int idx = tid; idx < widthY * heightY; idx += 256) {
++        for (int idx = tid; idx < widthY * heightY;
++             idx += int(gl_WorkGroupSize.x)) {
+             int px = idx & (widthY - 1), py = idx >> (stepX == 1 ? 6 : 4);
+             int x = px * stepX + (stepX == 4 ? 1 : 0);
+             int y = py * stepY + (stepY == 4 ? 1 : 0);
+@@ -64,7 +65,8 @@ void main() {
+             else imageStore(uOutLuma, dst, uvec4(uint(value), 0, 0, 0));
+         }
+         int widthC = 32 / stepX, heightC = 32 / stepY;
+-        for (int idx = tid; idx < widthC * heightC; idx += 256) {
++        for (int idx = tid; idx < widthC * heightC;
++             idx += int(gl_WorkGroupSize.x)) {
+             int px = idx & (widthC - 1), py = idx >> (stepX == 1 ? 5 : 3);
+             int x = px * stepX + (stepX == 4 ? 1 : 0);
+             int y = py * stepY + (stepY == 4 ? 1 : 0);
+diff --git a/vk/decoder/passB/reconstruct.comp b/vk/decoder/passB/reconstruct.comp
+index 2277353..2d6e351 100644
+--- a/vk/decoder/passB/reconstruct.comp
++++ b/vk/decoder/passB/reconstruct.comp
+@@ -20,7 +20,14 @@
+ #include "syntax_constants.h"
+ #include "passB_layout.h"
+ 
++#ifdef NXVW_PLANAR_FLAT_ONLY
++// The flat compact experiment can specialize the x dimension down to the
++// number of retained samples' worth of lanes.  The default stays 256.
++layout(local_size_x = 256, local_size_x_id = 10, local_size_y = 1,
++       local_size_z = 1) in;
++#else
+ layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
++#endif
+ 
+ // ------------------------------------------------------ specialization
+ // 0: display format, kOutRgba8 or kOutRgb10A2.

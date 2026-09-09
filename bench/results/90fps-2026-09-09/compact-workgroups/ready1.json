@@ -1,0 +1,55 @@
+{
+  "client": {
+    "file": "nx-scratch/motion-live/ready1-paced-client.log",
+    "client": {
+      "n": 30,
+      "start": "20:17:12.404",
+      "end": "20:18:10.584",
+      "means": {
+        "fresh_per_s": 78.26666666666667,
+        "iterations": 177.1,
+        "iterations_per_s": 88.28999999999999,
+        "older_available": 0.0,
+        "own_gpu_ms": 5.459999999999999,
+        "source_offset_ms": 59.056666666666665,
+        "submit_lead_ms": 32.39666666666667,
+        "wait_attempts": 38.2,
+        "wait_successes": 17.633333333333333,
+        "wait_total_ms": 30.578233333333333
+      }
+    },
+    "decoder": {
+      "n": 30,
+      "start": "20:17:12.347",
+      "end": "20:18:10.542",
+      "means": {
+        "copy_gpu_ms": 0.0003333333333333333,
+        "fence_post_ms": 8.576666666666666,
+        "frames": 172.13333333333333,
+        "frames_per_s": 86.06666666666666,
+        "nxvc_gpu_ms": 5.239999999999999,
+        "queue_ms": 3.3133333333333335
+      }
+    }
+  },
+  "server": [
+    {
+      "file": "nx-scratch/motion-live/ready1-paced-server.log",
+      "raw_row_count": 44,
+      "last30_count": 30,
+      "last30_means": {
+        "encoded_fps": 86.05,
+        "encode_ms": 2.1566666666666667,
+        "encode_max_ms": 2.7733333333333334,
+        "bytes_per_frame": 130747.26666666666,
+        "qp_mean": 40.0,
+        "qp_min": 40.0,
+        "qp_max": 40.0,
+        "payload_mbit_s": 89.93920440000001,
+        "controller_allows_mbit_s": 76.3,
+        "paced_target_fps": 86.07666666666667,
+        "client_decode_ms": 9.7
+      }
+    }
+  ]
+}

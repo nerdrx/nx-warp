@@ -96,6 +96,11 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 
 ## Measured results
 
+**Follow-up:** [compact decoder workgroups and shorter ready waits](bench/results/90fps-2026-09-09/compact-workgroups/README.md)
+did not justify production changes. The next proposed architecture uses a
+[low-resolution guide with retained full-resolution detail](docs/TEMPORAL-TILES.md#proposed-low-resolution-guide-with-retained-detail),
+with explicit history poses and stereo-aware repairs. This is not implemented.
+
 **Latest experiment:** [adaptive peripheral updates](bench/results/90fps-2026-09-09/adaptive-planar/README.md)
 keep native centres fresh and selectively reuse peripheral fits. Removing unused
 PLANAR transforms reduced full-resolution offline encode GPU time from about
