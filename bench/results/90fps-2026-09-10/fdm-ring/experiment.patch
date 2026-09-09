@@ -1,0 +1,30 @@
+diff --git a/client/application.cpp b/client/application.cpp
+index d401cb29..c5bdc443 100644
+--- a/client/application.cpp
++++ b/client/application.cpp
+@@ -1062,7 +1062,7 @@ void application::initialize_vulkan()
+ 	if (const char * value = std::getenv("WIVRN_NX_FDM"))
+ 		fdm_mode = std::atoi(value);
+ #endif
+-	fdm_mode = std::clamp(fdm_mode, 0, 2);
++	fdm_mode = std::clamp(fdm_mode, 0, 3);
+ 	if (!fdm_mode)
+ 		device_create_info.unlink<vk::PhysicalDeviceFragmentDensityMapFeaturesEXT>();
+ 	const bool fdm_supported = fdm_mode && check_feature_flag(
+diff --git a/client/scenes/stream_defoveator.cpp b/client/scenes/stream_defoveator.cpp
+index a09bbc18..118803cf 100644
+--- a/client/scenes/stream_defoveator.cpp
++++ b/client/scenes/stream_defoveator.cpp
+@@ -412,7 +412,11 @@ stream_defoveator::stream_defoveator(
+ 					const float px = (x + .5f) * tw, py = (y + .5f) * th;
+ 					const float dx = std::abs(px - output_extent.width * .5f);
+ 					const float dy = std::abs(py - output_extent.height * .5f);
+-					const uint8_t d = application::get_fragment_density_map_mode() == 2 ? 255 : (std::max(dx, dy) <= 512.f ? 255 : (std::max(dx, dy) <= 768.f ? 128 : 64));
++					const float edge = std::max(dx, dy);
++					const int mode = application::get_fragment_density_map_mode();
++					const uint8_t d = mode == 2 ? 255 :
++					                  edge <= 512.f ? 255 :
++					                  mode == 3 ? 64 : (edge <= 768.f ? 128 : 64);
+ 					const size_t i = (size_t(y) * mw + x) * 2;
+ 					pixels[i + 0] = pixels[i + 1] = d;
+ 				}

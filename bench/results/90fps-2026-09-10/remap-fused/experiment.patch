@@ -1,0 +1,67 @@
+diff --git a/client/scenes/stream_defoveator.cpp b/client/scenes/stream_defoveator.cpp
+index a09bbc18..72861a73 100644
+--- a/client/scenes/stream_defoveator.cpp
++++ b/client/scenes/stream_defoveator.cpp
+@@ -56,7 +56,7 @@ static int peripheral_smooth_requested()
+ 	if (!smooth || !centre || centre[0] == '0')
+ 		return 0;
+ #endif
+-	return smooth[0] == '3' ? 3 : (smooth[0] == '2' ? 2 : (smooth[0] != '0' ? 1 : 0));
++	return smooth[0] == '4' ? 4 : (smooth[0] == '3' ? 3 : (smooth[0] == '2' ? 2 : (smooth[0] != '0' ? 1 : 0)));
+ }
+ 
+ static int lowpoly_tiny_requested()
+diff --git a/client/shaders/reprojection.glsl b/client/shaders/reprojection.glsl
+index 9754492c..f7c5a4be 100644
+--- a/client/shaders/reprojection.glsl
++++ b/client/shaders/reprojection.glsl
+@@ -203,18 +203,21 @@ layout(set = 0, binding = 1) uniform sampler2D motion_field;
+ // mix below never runs and the output is byte identical to not having the feature.
+ layout(set = 0, binding = 2) uniform sampler2D prev_rgb;
+ 
+-vec2 compact_map_uv(vec2 uv)
++vec2 compact_map_pixels(vec2 p)
+ {
+-	if (!compact_centre)
+-		return uv;
+ 	float eye = float(atlas_eye);
+-	vec2 p = uv * vec2(4352.0, 2176.0);
+ 	vec2 local = clamp(p - vec2(eye * 2176.0, 0.0), vec2(0.5), vec2(2175.5));
+ 	vec2 mapped = local * 0.25 + clamp(local - vec2(832.0), vec2(0.0), vec2(512.0)) * 0.75;
+ 	mapped = clamp(mapped, vec2(0.5), vec2(927.5));
+ 	return (mapped + vec2(eye * 928.0, 0.0)) / vec2(1856.0, 928.0);
+ }
+ 
++vec2 compact_map_uv(vec2 uv)
++{
++	if (!compact_centre) return uv;
++	return compact_map_pixels(uv * vec2(4352.0, 2176.0));
++}
++
+ vec4 sample_rgb(vec2 uv) { return texture(rgb[0], compact_map_uv(uv)); }
+ vec4 sample_prev(vec2 uv) { return texture(prev_rgb, compact_map_uv(uv)); }
+ 
+@@ -1052,7 +1055,8 @@ void main()
+ 	// Adjacent duplicate texels make the coordinate jumps colour-continuous.
+ 	// No extra texture reads: retain the ordinary sample for native tiles.
+ 	vec2 sample_uv = uv;
+-	if (peripheral_smooth == 3 && compact_centre && tile_radius_sq > 65536.0)
++	vec2 fused_sample_px = source_px;
++	if ((peripheral_smooth == 3 || peripheral_smooth == 4) && compact_centre && tile_radius_sq > 65536.0)
+ 	{
+ 		vec2 local_delta = abs(source_px - smooth_center * vec2(rgb_rect.zw));
+ 		vec2 stride = mix(vec2(4.0), vec2(1.0), lessThan(local_delta, vec2(256.0)));
+@@ -1063,8 +1067,12 @@ void main()
+ 		vec2 cell_minus_stride = vec2(1.0 / inv_cell) - stride;
+ 		vec2 filtered_px = source_px + (vec2(0.5) - phase) * cell_minus_stride;
+ 		sample_uv = filtered_px / vec2(rgb_rect.zw);
++		fused_sample_px = filtered_px;
+ 	}
+-	vec4 colour = sample_rgb(sample_uv);
++	bool fused_compact = peripheral_smooth == 4 && compact_centre &&
++	                     tile_radius_sq > 65536.0 && all(equal(vec2(rgb_rect.zw), vec2(4352.0, 2176.0)));
++	vec2 texture_uv = fused_compact ? compact_map_pixels(fused_sample_px) : compact_map_uv(sample_uv);
++	vec4 colour = texture(rgb[0], texture_uv);
+ 	bool smooth_outer = peripheral_smooth == 2
+ 	                    ? tile_radius > 256.0
+ 	                    : peripheral_smooth == 1 && smooth_distance > 64.0;
