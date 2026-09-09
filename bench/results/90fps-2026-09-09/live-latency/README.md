@@ -5,6 +5,8 @@ to the first recorded frame selection in the Pico render loop. This is measured
 software pipeline latency, **not motion-to-photon latency** and not the latency
 of the unintegrated synchronized-history prototype.
 
+[Frame-matched stage breakdown](../live-stage-audit/README.md) now separates packet arrival, worker delay, completion and selection for one common cohort. This is additional analysis of this capture, not a new latency result.
+
 ## Measurement
 
 The running custom WiVRn NX wider-ring profile completed a 90-second headless

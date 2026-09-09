@@ -1,0 +1,73 @@
+{
+  "source": "live-latency/timings.csv.gz (existing baseline; no new run)",
+  "baseline_validation": {
+    "codec": "nx",
+    "warmup_s": 10,
+    "unmatched_arrivals_without_decode_or_selection": 0,
+    "stages": {
+      "receive_begin": {
+        "count": 6712,
+        "p50_p95_p99_ms": [
+          5.581,
+          7.11,
+          8.044
+        ]
+      },
+      "decode_end": {
+        "count": 6712,
+        "p50_p95_p99_ms": [
+          21.596,
+          28.75,
+          31.122
+        ]
+      },
+      "blit": {
+        "count": 6456,
+        "p50_p95_p99_ms": [
+          27.646,
+          34.835,
+          37.609
+        ]
+      }
+    }
+  },
+  "common_selected_cohort": 6456,
+  "stages": {
+    "receive_begin \u2192 receive_end": {
+      "count": 6456,
+      "mean_ms": 5.351105855018587,
+      "p50_p95_p99_ms": [
+        5.194062499999999,
+        6.58953125,
+        7.700064849999999
+      ]
+    },
+    "receive_end \u2192 decode_begin": {
+      "count": 6456,
+      "mean_ms": 1.5017712586741017,
+      "p50_p95_p99_ms": [
+        0.345182,
+        6.20084675,
+        8.9008226
+      ]
+    },
+    "decode_begin \u2192 decode_end": {
+      "count": 6456,
+      "mean_ms": 9.65532014591078,
+      "p50_p95_p99_ms": [
+        10.2208075,
+        12.5813275,
+        13.00997705
+      ]
+    },
+    "decode_end \u2192 blit": {
+      "count": 6456,
+      "mean_ms": 4.597884554058241,
+      "p50_p95_p99_ms": [
+        5.6846355,
+        10.529857,
+        11.16788005
+      ]
+    }
+  }
+}
