@@ -96,6 +96,26 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 
 ## Measured results
 
+**Direct compact reconstruction (September 9):** flat PLANAR tiles now evaluate
+only the samples that reach the compact output. Decoder p50 is **8.23 → 7.27 ms**
+with byte-exact retained pixels in UINT and UNORM checks. Two live repeats
+measured **83.15 / 82.88 fresh updates/s**, versus **70.87/s** for the previous
+compact implementation, with the same centre and peripheral sampling settings.
+Source display-time offset was **70.76 → 68.95 / 69.33 ms**, not photon latency.
+The final APK repeated **83.60 updates/s**, with source offset **70.39 ms**;
+latency improvement is small and variable. These stationary tests still fall
+short of sustained 90 Hz.
+[Methods, tails, raw logs and diagnostic caveats](bench/results/90fps-2026-09-09/compact-direct/README.md).
+
+![Direct compact live comparison](bench/results/90fps-2026-09-09/compact-direct/live-comparison.png)
+
+Actual application-eye GPU captures now work before Pico's tracking overlay;
+they verify visible stereo output, not physical head-motion performance.
+The centre is sharp while the low-bitrate periphery remains deliberately coarse.
+[Left eye](bench/results/90fps-2026-09-09/compact-direct/direct-eye0.png) ·
+[Right eye](bench/results/90fps-2026-09-09/compact-direct/direct-eye1.png).
+
+
 **Compact-output experiment (September 9):** keep the native 512 × 512 centre
 while storing quarter-density outer axes in a 1856 × 928 stereo NV12 image.
 Pico decoder-only p50 fell **11.10 → 8.23 ms**, with byte-exact retained samples.

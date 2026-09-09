@@ -1,0 +1,118 @@
+[
+  {
+    "file": "nx-warp/bench/results/90fps-2026-09-09/compact-direct/live-baseline-client.log",
+    "client": {
+      "n": 30,
+      "start": "13:50:02.385",
+      "end": "13:51:00.547",
+      "means": {
+        "fresh_per_s": 70.86666666666666,
+        "iterations": 158.86666666666667,
+        "iterations_per_s": 79.20666666666666,
+        "own_gpu_ms": 7.466666666666667,
+        "source_offset_ms": 70.76,
+        "submit_lead_ms": 37.666666666666664
+      }
+    },
+    "decoder": {
+      "n": 30,
+      "start": "13:50:02.324",
+      "end": "13:51:00.510",
+      "means": {
+        "copy_gpu_ms": 0.0,
+        "fence_post_ms": 10.67,
+        "frames": 153.06666666666666,
+        "frames_per_s": 76.53333333333333,
+        "nxvc_gpu_ms": 4.723333333333333,
+        "queue_ms": 5.91
+      }
+    }
+  },
+  {
+    "file": "nx-warp/bench/results/90fps-2026-09-09/compact-direct/live-direct-client.log",
+    "client": {
+      "n": 30,
+      "start": "13:52:41.150",
+      "end": "13:53:39.291",
+      "means": {
+        "fresh_per_s": 83.15,
+        "iterations": 168.96666666666667,
+        "iterations_per_s": 84.28,
+        "own_gpu_ms": 8.23,
+        "source_offset_ms": 68.94666666666667,
+        "submit_lead_ms": 36.31666666666667
+      }
+    },
+    "decoder": {
+      "n": 30,
+      "start": "13:52:41.094",
+      "end": "13:53:39.234",
+      "means": {
+        "copy_gpu_ms": 0.0,
+        "fence_post_ms": 10.639999999999999,
+        "frames": 168.4,
+        "frames_per_s": 84.2,
+        "nxvc_gpu_ms": 3.506666666666667,
+        "queue_ms": 7.1
+      }
+    }
+  },
+  {
+    "file": "nx-warp/bench/results/90fps-2026-09-09/compact-direct/live-direct-repeat-client.log",
+    "client": {
+      "n": 30,
+      "start": "13:54:40.422",
+      "end": "13:55:38.596",
+      "means": {
+        "fresh_per_s": 82.88333333333334,
+        "iterations": 168.66666666666666,
+        "iterations_per_s": 84.08999999999999,
+        "own_gpu_ms": 8.22,
+        "source_offset_ms": 69.33333333333333,
+        "submit_lead_ms": 36.29666666666667
+      }
+    },
+    "decoder": {
+      "n": 30,
+      "start": "13:54:40.377",
+      "end": "13:55:38.551",
+      "means": {
+        "copy_gpu_ms": 0.0,
+        "fence_post_ms": 10.696666666666665,
+        "frames": 168.26666666666668,
+        "frames_per_s": 84.13333333333334,
+        "nxvc_gpu_ms": 3.51,
+        "queue_ms": 7.166666666666667
+      }
+    }
+  },
+  {
+    "file": "nx-warp/bench/results/90fps-2026-09-09/compact-direct/live-final-client.log",
+    "client": {
+      "n": 30,
+      "start": "14:02:03.021",
+      "end": "14:03:01.165",
+      "means": {
+        "fresh_per_s": 83.6,
+        "iterations": 168.5,
+        "iterations_per_s": 84.03999999999999,
+        "own_gpu_ms": 8.32,
+        "source_offset_ms": 70.39,
+        "submit_lead_ms": 36.416666666666664
+      }
+    },
+    "decoder": {
+      "n": 30,
+      "start": "14:02:02.954",
+      "end": "14:03:01.096",
+      "means": {
+        "copy_gpu_ms": 0.0006666666666666666,
+        "fence_post_ms": 10.776666666666667,
+        "frames": 168.1,
+        "frames_per_s": 84.05,
+        "nxvc_gpu_ms": 3.5,
+        "queue_ms": 7.23
+      }
+    }
+  }
+]

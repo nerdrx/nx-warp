@@ -1,0 +1,7 @@
+09-09 13:56:01.756 24032  1690 I WiVRn   : [2026-09-09 13:56:01.756] [WiVRn] [info] nxwarp[0] stage: gap 4.2 | wait-prev 0.0 | submit 0.8 (qlock 0.0 + codec 0.8) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 12.9 | publish 0.0 ms; withheld 0, stride 1, arrival 15.6 ms
+09-09 13:56:01.756 24032  1690 I WiVRn   : [2026-09-09 13:56:01.756] [WiVRn] [info] nxwarp[0] fence-post 12.9 ms = nxvc gpu 6.8 + copy gpu 0.00 + queue 6.2 (over 111 frames with timestamps)
+09-09 13:56:01.806 24032  1626 W Adreno-GSL: <wait_on_sync_fd:135>: fd 88: error 22 Invalid argument
+09-09 13:56:01.806 24032  1626 E WiVRn   : [2026-09-09 13:56:01.806] [WiVRn] [error] Caught exception in application_thread: "vk::Device::waitForFences: ErrorInitializationFailed"
+09-09 13:56:01.931 24032  1597 W Adreno-GSL: <wait_on_sync_fd:135>: fd 88: error 22 Invalid argument
+09-09 13:56:01.932 24032  1597 E libc++abi: terminating with uncaught exception of type vk::InitializationFailedError: vk::Device::waitForFences: ErrorInitializationFailed
+09-09 13:56:01.932 24032  1597 E libsigchain: xr_default_handler signal: 6, signo: 6
