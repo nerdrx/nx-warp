@@ -96,6 +96,15 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 
 ## Measured results
 
+**Latency follow-up (September 9):** disabling glow and dithering preserved the
+native centre and reduced presentation GPU work to **4.77 / 5.04 ms**, versus
+**5.37 ms** with them enabled. Source display-time offset measured **61.68 / 58.33 ms**
+versus **64.41 ms** in the intervening control, with **68.27 / 70.37** versus
+**63.92 fresh updates/s**. These sequential trials vary; **halving physical latency
+has not been demonstrated**. Removing packet spreading alone did not show the
+large benefit suggested by comparison with an earlier session.
+[Raw trials, controls, graph and capture](bench/results/90fps-2026-09-09/latency-probes/README.md).
+
 **Broad scene motion (September 9):** a moving 195-cube wall on the Pico exposes
 limits hidden by the earlier small scene. With the headset stationary, the
 FDM + 4 ms readiness-wait profile delivered **77.22 / 77.02 fresh updates/s**,
