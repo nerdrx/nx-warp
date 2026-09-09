@@ -1,0 +1,9 @@
+device: AMD Radeon RX 7900 XTX (RADV NAVI31) (driver 109060098, api 1.4.354)
+subgroup: size 64 (min 32 max 64), size_control 1
+corpus: entropy_lite/fixed, 128 tiles, 0.628 fields/pixel, 115713 payload bytes (904 B/tile), coef stride 6240
+cpu model: matches the encoder exactly
+[ballot/dense] coef_mismatch=0 cbf_mismatch=0 len_mismatch=0 mode_mismatch=0 status_bad=0  decode 0.035 ms (3.61 Mtile/s, 277 ns/tile)
+[ballot/sparse] coef_mismatch=0 cbf_mismatch=0 len_mismatch=0 mode_mismatch=0 status_bad=0  decode 0.034 ms (3.76 Mtile/s, 266 ns/tile)
+[lds/dense] coef_mismatch=0 cbf_mismatch=0 len_mismatch=0 mode_mismatch=0 status_bad=0  decode 0.034 ms (3.77 Mtile/s, 265 ns/tile)
+[lds/sparse] coef_mismatch=0 cbf_mismatch=0 len_mismatch=0 mode_mismatch=0 status_bad=0  decode 0.032 ms (4.05 Mtile/s, 247 ns/tile)
+PASSED

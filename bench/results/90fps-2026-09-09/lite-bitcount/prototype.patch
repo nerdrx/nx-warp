@@ -1,0 +1,41 @@
+diff --git a/vk/decoder/passA/rans_decode.comp b/vk/decoder/passA/rans_decode.comp
+index c555784..7cc8371 100644
+--- a/vk/decoder/passA/rans_decode.comp
++++ b/vk/decoder/passA/rans_decode.comp
+@@ -802,6 +802,17 @@ uint lite_get(uint bitpos, uint k) {
+     return (w << sh) >> (32u - k);
+ }
+ 
++// Count significance flags in bounded chunks. lite_get's four-byte funnel
++// permits at most 24 bits at any byte alignment (24 + 7 < 32).
++int lite_count_flags(uint bitpos, int count) {
++    int result = 0;
++    for (int p = 0; p < count; p += 24) {
++        uint width = uint(min(24, count - p));
++        result += bitCount(lite_get(bitpos + uint(p), width));
++    }
++    return result;
++}
++
+ // Unit `u`'s geometry, the same derivation begin_unit() makes -- but as a
+ // pure lookup, because the Lite path has no lane state machine to walk into.
+ void lite_unit(int u) {
+@@ -1097,16 +1108,12 @@ void lite_main() {
+             soff = s_ls + s_lsum[u];
+             if (g_u_kind == 1) {
+                 int n = g_u_nbx * g_u_nbx;
+-                int nonmpm = 0;
+-                for (int b = 0; b < n; ++b)
+-                    if (lite_get(soff + uint(b), 1u) == 0u) ++nonmpm;
++                int nonmpm = n - lite_count_flags(soff, n);
+                 bw = uint(nonmpm * kModeIdxBits);
+             } else {
+                 int L = int(s_lpp[u] & 0xffffu);
+                 int cls = int(s_lpp[u] >> 16u);
+-                int nnz = 1;  // position LAST is nonzero by construction
+-                for (int p = 0; p < L; ++p)
+-                    if (lite_get(soff + uint(p), 1u) != 0u) ++nnz;
++                int nnz = 1 + lite_count_flags(soff, L); // LAST is nonzero
+                 bw = uint(nnz * (kLiteMagBits[cls] + 1));
+             }
+         }

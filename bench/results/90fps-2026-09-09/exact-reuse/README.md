@@ -11,6 +11,15 @@ source and the installed Pico APK are unchanged by this experiment.
 
 ![Pico run means for reconstruction and standalone decode](timings.png)
 
+## Scope correction: entropy mode
+
+These fixtures used default **rANS**, while the active WiVRn NX session uses
+**LITE**. The measured reuse results remain valid for these fixtures, but the
+roughly 15 ms entropy-stage cost does not describe the live decoder. The
+[matching LITE follow-up](../lite-bitcount/README.md) measures around 2–3 ms in
+that stage. The earlier inference that entropy should dominate the next live
+optimization is withdrawn pending live stage attribution.
+
 ## Results
 
 Four alternating-order runs per condition; means below average the four run
