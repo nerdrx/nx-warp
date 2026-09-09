@@ -501,6 +501,28 @@ typedef struct nxvc_vkd_atlas_images {
     uint32_t width[3], height[3];
 } nxvc_vkd_atlas_images;
 
+/* Caller-owned direct YCbCr420 output. Both views must refer to the same
+ * mutable storage-capable VkImage on the adopted device (R8_UINT luma and
+ * R8G8_UINT interleaved CbCr aspects), for independent CT_NONE 8-bit 4:2:0
+ * without alpha or READBACK. The decoder transitions initial_layout to GENERAL
+ * within its submission. The caller ensures earlier users have retired, keeps
+ * storage alive until completion, and owns cross-queue synchronization.
+ * The decoder never destroys these handles. decoder_images() then reports the
+ * shared image twice with the supplied plane views; image transfers must use
+ * PLANE_0/PLANE_1 aspects, not COLOR as with decoder-owned images. */
+typedef struct nxvc_vkd_output_images {
+    VkImage image[2];
+    VkImageView view[2];
+    VkFormat format[2];
+    uint32_t width[2], height[2];
+    VkImageLayout initial_layout; /* UNDEFINED, GENERAL, SHADER_READ_ONLY or TRANSFER_SRC */
+} nxvc_vkd_output_images;
+
+nxvc_vkd_status nxvc_vk_decoder_set_borrowed_output(
+    nxvc_vk_decoder *dec, const nxvc_vkd_output_images *target);
+/* Passing NULL restores decoder-owned images. The setter waits for the prior
+ * submission before changing bindings; serialize it with decode calls. */
+
 /* Optional borrowed R8 display target. The caller owns storage-capable images
  * and views on the decoder's adopted VkDevice,
  * keeps them retired until the decode submission completes, and supplies them

@@ -328,8 +328,13 @@ struct nxvc_vk_decoder {
     uint32_t unorm_store = 0;
     // The image Pass B actually wrote, per store, whichever group is live.
     const Img &outRgba() const { return unorm_store ? imgRgbaN : imgRgba; }
-    const Img &outLuma() const { return unorm_store ? imgLumaN : imgLuma; }
-    const Img &outCbCr() const { return unorm_store ? imgCbCrN : imgCbCr; }
+    Img borrowed_luma{}, borrowed_cbcr{};
+    bool has_borrowed_output = false;
+    VkImageLayout borrowed_output_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+    const Img &outLuma() const { return has_borrowed_output ? borrowed_luma :
+                                        (unorm_store ? imgLumaN : imgLuma); }
+    const Img &outCbCr() const { return has_borrowed_output ? borrowed_cbcr :
+                                        (unorm_store ? imgCbCrN : imgCbCr); }
 
     // ---- stream state
     bool have_stream = false;
@@ -2551,6 +2556,9 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_parse_stream_header(
                           nxvc_vk_decoder_status_string(st));
     d->have_stream = true;
     d->resources_ready = false;
+    d->has_borrowed_output = false;
+    d->borrowed_luma = {};
+    d->borrowed_cbcr = {};
     // [ATLAS] The one switch, and it is set BEFORE make_resources() because
     // the allocation differs: the atlas is ONE ring slot, not four, and the
     // table and the H ring only exist for a stream that asked for them.
@@ -3282,8 +3290,17 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
 
     image_to_general(d->cmd, d->imgRgba.img);
     image_to_general(d->cmd, d->imgRgb10.img);
-    image_to_general(d->cmd, d->imgLuma.img);
-    image_to_general(d->cmd, d->imgCbCr.img);
+    if (d->has_borrowed_output) {
+        // Both plane views share one image: transition the retired pool slot
+        // once, within this submission, without an extra queue submit.
+        image_to_general(d->cmd, d->borrowed_luma.img,
+                         d->borrowed_output_layout == VK_IMAGE_LAYOUT_UNDEFINED,
+                         true, d->borrowed_output_layout);
+        d->borrowed_output_layout = VK_IMAGE_LAYOUT_GENERAL;
+    } else {
+        image_to_general(d->cmd, d->imgLuma.img);
+        image_to_general(d->cmd, d->imgCbCr.img);
+    }
     image_to_general(d->cmd, d->imgRgbaN.img);
     image_to_general(d->cmd, d->imgLumaN.img);
     image_to_general(d->cmd, d->imgCbCrN.img);
@@ -4430,6 +4447,68 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_set_atlas_borrowed_target(
     nxvc_vk_decoder *d, const nxvc_vkd_atlas_images *target) {
     return nxvc_vk_decoder_set_atlas_borrowed_target_generation(
         d, target, 0, VK_IMAGE_LAYOUT_UNDEFINED);
+}
+
+extern "C" nxvc_vkd_status nxvc_vk_decoder_set_borrowed_output(
+    nxvc_vk_decoder *d, const nxvc_vkd_output_images *target) {
+    if (!d) return NXVC_VKD_ERR_ARG;
+    nxvc_vkd_status wait_st = nxvc_vk_decoder_wait(d, UINT64_MAX);
+    if (wait_st) return wait_st;
+    if (!target) {
+        if (!d->has_borrowed_output) return NXVC_VKD_OK;
+        d->has_borrowed_output = false;
+        d->borrowed_luma = {};
+        d->borrowed_cbcr = {};
+    } else {
+        if (!(d->flags & NXVC_VKD_FLAG_INDEPENDENT_TILES) ||
+            !d->resources_ready || d->atlas_mode ||
+            d->out_format != (uint32_t)nxvw::kOutYcbcr420 ||
+            d->flags & NXVC_VKD_FLAG_READBACK || d->unorm_store ||
+            d->si.bit_depth != 8 || d->si.color_transform != 0 || d->si.chroma != 0 ||
+            d->si.alpha != 0 || target->image[0] == VK_NULL_HANDLE ||
+            target->image[0] != target->image[1] ||
+            target->view[0] == VK_NULL_HANDLE || target->view[1] == VK_NULL_HANDLE ||
+            (target->initial_layout != VK_IMAGE_LAYOUT_UNDEFINED &&
+             target->initial_layout != VK_IMAGE_LAYOUT_GENERAL &&
+             target->initial_layout != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL &&
+             target->initial_layout != VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) ||
+            target->format[0] != VK_FORMAT_R8_UINT ||
+            target->format[1] != VK_FORMAT_R8G8_UINT ||
+            target->width[0] != d->si.width * d->si.eyes ||
+            target->height[0] != d->si.height ||
+            target->width[1] != d->si.cw * d->si.eyes ||
+            target->height[1] != d->si.ch)
+            return seterr(d, NXVC_VKD_ERR_UNSUPPORTED,
+                          "borrowed output requires independent CT_NONE 4:2:0 UINT views");
+        d->borrowed_output_layout = target->initial_layout;
+        d->borrowed_luma.img = target->image[0];
+        d->borrowed_luma.view = target->view[0];
+        d->borrowed_luma.w = target->width[0];
+        d->borrowed_luma.h = target->height[0];
+        d->borrowed_luma.fmt = target->format[0];
+        d->borrowed_cbcr.img = target->image[1];
+        d->borrowed_cbcr.view = target->view[1];
+        d->borrowed_cbcr.w = target->width[1];
+        d->borrowed_cbcr.h = target->height[1];
+        d->borrowed_cbcr.fmt = target->format[1];
+        d->has_borrowed_output = true;
+    }
+    if (d->dsetB) {
+        VkDescriptorImageInfo ii[2] = {
+            {VK_NULL_HANDLE, d->outLuma().view, VK_IMAGE_LAYOUT_GENERAL},
+            {VK_NULL_HANDLE, d->outCbCr().view, VK_IMAGE_LAYOUT_GENERAL}};
+        VkWriteDescriptorSet w[2]{};
+        for (int i = 0; i < 2; ++i) {
+            w[i] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+            w[i].dstSet = d->dsetB;
+            w[i].dstBinding = (uint32_t)(5 + i);
+            w[i].descriptorCount = 1;
+            w[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+            w[i].pImageInfo = &ii[i];
+        }
+        vkUpdateDescriptorSets(d->dev, 2, w, 0, nullptr);
+    }
+    return NXVC_VKD_OK;
 }
 
 extern "C" nxvc_vkd_status nxvc_vk_decoder_set_atlas_borrowed_target_generation(
