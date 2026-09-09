@@ -115,6 +115,11 @@ The matching live Pico smoke test delivered **54.27 fresh updates/s** in short a
 
 **Live integration boundary:** the fast PLANAR renderer is now connected to custom WiVRn NX as an explicit opt-in. The earlier Pico benchmark numbers do not describe the installed streaming client. [Interface and supported frames](docs/integration/planar-direct.md). A 22-second live smoke test reported 87 fresh updates/s; visual and physical head-motion checks remain outstanding. [Live evidence and limitations](bench/results/90fps-2026-09-08/planar-direct-integration/live/README.md).
 
+Borrowed decoder output is separately opt-in with Android property
+`debug.wivrn.nx.borrowed_output=1`; changing it requires a reconnect. The
+three-frame Pico correctness probe and live copy/direct measurements
+are archived in the [borrowed-output evidence note](bench/results/90fps-2026-09-09/borrowed-output/README.md).
+
 **90 Hz centre-first optimization:** single-pass admission halves the earlier multi-pass median (5.32–5.45 → 2.73–2.76 ms), with zero deadline misses across two 720-frame native Pico motion runs. One run retains outer pixels for one frame; the other refreshes every tile. This remains an offscreen experiment, not live streaming proof. [Paired results and actual capture](bench/results/90fps-2026-09-08/single-pass/README.md).
 
 **Latest decoder improvement:** consecutive full-picture frames now reuse an
