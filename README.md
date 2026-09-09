@@ -97,6 +97,10 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 
 ## Measured results
 
+**Latest live tradeoff:** [decode queue priority](bench/results/90fps-2026-09-09/queue-priority/README.md) reduced the mean of two run medians from **27.44 to 24.48 ms encode-to-selection**, while fresh source selections fell from **76.52 to 72.67/s**. Four animated Pico runs; opt-in, with equal priority still the default. This is not photon latency.
+
+![Live Pico latency and freshness tradeoff](bench/results/90fps-2026-09-09/queue-priority/comparison.png)
+
 **Latest work-omission experiment:** [exact PLANAR reuse](bench/results/90fps-2026-09-09/exact-reuse/README.md) passes CPU-reference and dropped-frame checks. It saves about **0.30 ms** in a local-motion standalone decoder fixture, but shows **no full-motion decode-time gain**. The prototype remains archived; it is not a live latency improvement.
 
 ![Exact-reuse Pico experiment: reconstruction and standalone decode times](bench/results/90fps-2026-09-09/exact-reuse/timings.png)

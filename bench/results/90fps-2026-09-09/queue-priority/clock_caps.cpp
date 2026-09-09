@@ -1,0 +1,5 @@
+#include <vulkan/vulkan.h>
+#include <vector>
+#include <cstdio>
+#include <cstring>
+int main(){VkApplicationInfo a{VK_STRUCTURE_TYPE_APPLICATION_INFO};a.apiVersion=VK_API_VERSION_1_1;VkInstanceCreateInfo i{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};i.pApplicationInfo=&a;VkInstance v; if(vkCreateInstance(&i,nullptr,&v))return 1;uint32_t n=0;vkEnumeratePhysicalDevices(v,&n,nullptr);std::vector<VkPhysicalDevice>p(n);vkEnumeratePhysicalDevices(v,&n,p.data());for(auto d:p){VkPhysicalDeviceProperties props;vkGetPhysicalDeviceProperties(d,&props);printf("device=%s timestampPeriod=%.9g\n",props.deviceName,props.limits.timestampPeriod);uint32_t m=0;vkEnumerateDeviceExtensionProperties(d,nullptr,&m,nullptr);std::vector<VkExtensionProperties>e(m);vkEnumerateDeviceExtensionProperties(d,nullptr,&m,e.data());bool supported=false;for(auto x:e)if(strstr(x.extensionName,"calibrated_timestamps")){puts(x.extensionName);supported=true;}printf("calibrated_timestamps=%s\n",supported?"yes":"no");}vkDestroyInstance(v,nullptr);}

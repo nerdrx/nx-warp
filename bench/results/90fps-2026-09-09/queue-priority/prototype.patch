@@ -1,0 +1,21 @@
+diff --git a/client/application.cpp b/client/application.cpp
+index d47ce2b7..d401cb29 100644
+--- a/client/application.cpp
++++ b/client/application.cpp
+@@ -981,6 +981,16 @@ void application::initialize_vulkan()
+ 	// Equal priority: the decode is not less important than the frame it is
+ 	// decoded for, and a lower priority would only put it further behind.
+ 	float queuePriority[3] = {0.0f, 0.0f, 0.0f};
++#ifdef __ANDROID__
++    char priority_value[PROP_VALUE_MAX]{};
++    if (__system_property_get("debug.wivrn.nx.decode_priority", priority_value) > 0 &&
++        priority_value[0] == '1' && priority_value[1] == '\0') {
++        queuePriority[1] = queuePriority[2] = 1.0f;
++    }
++#endif
++    spdlog::info("NX queue priorities: render {} decode {} / {} ({} queues)",
++                 queuePriority[0], queuePriority[1], queuePriority[2], vk_queues_wanted);
++
+ 
+ 	vk::DeviceQueueCreateInfo queueCreateInfo{
+ 	        .queueFamilyIndex = vk_queue_family_index,

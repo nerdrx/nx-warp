@@ -88,3 +88,7 @@ statistics and figure. [status.json](status.json), [scene.log](scene.log),
 `span_test.cpp` links against `libnxvc_vk_decoder.a` and Vulkan; run it on a
 compatible PLANAR stream with assertions enabled. Its recorded result is
 [span-test.log](span-test.log).
+
+## Follow-up
+
+A [four-run queue-priority experiment](../queue-priority/README.md) measured about 3 ms lower selected-frame median latency with roughly 5% fewer fresh updates. It remains opt-in; direct host/GPU clock calibration is unavailable on this driver.
