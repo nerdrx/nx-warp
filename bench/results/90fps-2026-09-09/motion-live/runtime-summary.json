@@ -1,0 +1,352 @@
+[
+  {
+    "file": "baseline-client.log",
+    "window": {
+      "n": 30,
+      "start": "17:41:26.589",
+      "end": "17:42:24.789",
+      "means": {
+        "fresh_per_s": 68.23333333333333,
+        "iterations": 154.7,
+        "iterations_per_s": 77.08333333333333,
+        "older_available": 0.0,
+        "own_gpu_ms": 7.366666666666666,
+        "source_offset_ms": 72.01,
+        "submit_lead_ms": 38.230000000000004,
+        "wait_attempts": 0.0,
+        "wait_successes": 0.0,
+        "wait_total_ms": 0.0
+      }
+    },
+    "metrics": {
+      "gpu_clock_mhz": {
+        "n": 58,
+        "mean": 587.0,
+        "min": 587.0,
+        "max": 587.0
+      },
+      "gpu_temp_c": {
+        "n": 58,
+        "mean": 74.12758620689655,
+        "min": 72.5,
+        "max": 83.7
+      },
+      "gpu_percent": {
+        "n": 58,
+        "mean": 93.96551724137932,
+        "min": 21.0,
+        "max": 99.0
+      },
+      "fps_app": {
+        "n": 58,
+        "mean": 77.06896551724138,
+        "min": 75.0,
+        "max": 79.0
+      },
+      "fps_display": {
+        "n": 58,
+        "mean": 90.0,
+        "min": 90.0,
+        "max": 90.0
+      },
+      "mtp_ms_runtime_estimate": {
+        "n": 58,
+        "mean": 37.968275862068964,
+        "min": 25.75,
+        "max": 51.89
+      },
+      "frm_gpu_ms": {
+        "n": 58,
+        "mean": 12.297931034482758,
+        "min": 9.64,
+        "max": 13.69
+      },
+      "atw_gpu_ms": {
+        "n": 58,
+        "mean": 1.5541379310344827,
+        "min": 1.54,
+        "max": 1.6
+      }
+    }
+  },
+  {
+    "file": "fast-client.log",
+    "window": {
+      "n": 30,
+      "start": "17:43:26.784",
+      "end": "17:44:24.990",
+      "means": {
+        "fresh_per_s": 77.21666666666667,
+        "iterations": 162.03333333333333,
+        "iterations_per_s": 80.73666666666666,
+        "older_available": 0.0,
+        "own_gpu_ms": 7.0600000000000005,
+        "source_offset_ms": 70.45,
+        "submit_lead_ms": 36.84,
+        "wait_attempts": 16.2,
+        "wait_successes": 8.6,
+        "wait_total_ms": 47.673233333333336
+      }
+    },
+    "metrics": {
+      "gpu_clock_mhz": {
+        "n": 58,
+        "mean": 587.0,
+        "min": 587.0,
+        "max": 587.0
+      },
+      "gpu_temp_c": {
+        "n": 58,
+        "mean": 76.71551724137932,
+        "min": 74.0,
+        "max": 87.6
+      },
+      "gpu_percent": {
+        "n": 58,
+        "mean": 98.22413793103448,
+        "min": 86.0,
+        "max": 99.0
+      },
+      "fps_app": {
+        "n": 58,
+        "mean": 80.75862068965517,
+        "min": 77.0,
+        "max": 85.0
+      },
+      "fps_display": {
+        "n": 58,
+        "mean": 90.0,
+        "min": 90.0,
+        "max": 90.0
+      },
+      "mtp_ms_runtime_estimate": {
+        "n": 58,
+        "mean": 35.591379310344834,
+        "min": 26.1,
+        "max": 48.55
+      },
+      "frm_gpu_ms": {
+        "n": 58,
+        "mean": 11.87103448275862,
+        "min": 7.83,
+        "max": 12.65
+      },
+      "atw_gpu_ms": {
+        "n": 58,
+        "mean": 1.547241379310345,
+        "min": 1.54,
+        "max": 1.59
+      }
+    }
+  },
+  {
+    "file": "repeat-client.log",
+    "window": {
+      "n": 30,
+      "start": "17:45:25.564",
+      "end": "17:46:23.750",
+      "means": {
+        "fresh_per_s": 77.01666666666667,
+        "iterations": 162.23333333333332,
+        "iterations_per_s": 80.85333333333332,
+        "older_available": 0.0,
+        "own_gpu_ms": 7.04,
+        "source_offset_ms": 70.78999999999999,
+        "submit_lead_ms": 37.57,
+        "wait_attempts": 17.433333333333334,
+        "wait_successes": 9.233333333333333,
+        "wait_total_ms": 52.41126666666666
+      }
+    },
+    "metrics": {
+      "gpu_clock_mhz": {
+        "n": 58,
+        "mean": 587.0,
+        "min": 587.0,
+        "max": 587.0
+      },
+      "gpu_temp_c": {
+        "n": 58,
+        "mean": 77.7551724137931,
+        "min": 74.8,
+        "max": 86.1
+      },
+      "gpu_percent": {
+        "n": 58,
+        "mean": 97.43103448275862,
+        "min": 74.0,
+        "max": 99.0
+      },
+      "fps_app": {
+        "n": 58,
+        "mean": 80.86206896551724,
+        "min": 78.0,
+        "max": 84.0
+      },
+      "fps_display": {
+        "n": 58,
+        "mean": 90.0,
+        "min": 90.0,
+        "max": 90.0
+      },
+      "mtp_ms_runtime_estimate": {
+        "n": 58,
+        "mean": 37.76362068965517,
+        "min": 26.2,
+        "max": 53.26
+      },
+      "frm_gpu_ms": {
+        "n": 58,
+        "mean": 11.561551724137932,
+        "min": 7.67,
+        "max": 12.64
+      },
+      "atw_gpu_ms": {
+        "n": 58,
+        "mean": 1.5477586206896552,
+        "min": 1.54,
+        "max": 1.57
+      }
+    }
+  },
+  {
+    "file": "budget-client.log",
+    "window": {
+      "n": 30,
+      "start": "17:57:32.680",
+      "end": "17:58:30.881",
+      "means": {
+        "fresh_per_s": 77.9,
+        "iterations": 163.3,
+        "iterations_per_s": 81.36333333333333,
+        "older_available": 0.0,
+        "own_gpu_ms": 7.09,
+        "source_offset_ms": 70.32,
+        "submit_lead_ms": 36.65,
+        "wait_attempts": 15.233333333333333,
+        "wait_successes": 7.733333333333333,
+        "wait_total_ms": 46.20943333333333
+      }
+    },
+    "metrics": {
+      "gpu_clock_mhz": {
+        "n": 58,
+        "mean": 587.0,
+        "min": 587.0,
+        "max": 587.0
+      },
+      "gpu_temp_c": {
+        "n": 58,
+        "mean": 75.47586206896553,
+        "min": 73.3,
+        "max": 84.9
+      },
+      "gpu_percent": {
+        "n": 58,
+        "mean": 97.77586206896552,
+        "min": 80.0,
+        "max": 99.0
+      },
+      "fps_app": {
+        "n": 58,
+        "mean": 81.48275862068965,
+        "min": 78.0,
+        "max": 85.0
+      },
+      "fps_display": {
+        "n": 58,
+        "mean": 90.0,
+        "min": 90.0,
+        "max": 90.0
+      },
+      "mtp_ms_runtime_estimate": {
+        "n": 58,
+        "mean": 37.12741379310344,
+        "min": 27.64,
+        "max": 48.5
+      },
+      "frm_gpu_ms": {
+        "n": 58,
+        "mean": 11.450344827586207,
+        "min": 7.19,
+        "max": 12.86
+      },
+      "atw_gpu_ms": {
+        "n": 58,
+        "mean": 1.5562068965517242,
+        "min": 1.54,
+        "max": 1.61
+      }
+    }
+  },
+  {
+    "file": "budget-repeat-client.log",
+    "window": {
+      "n": 30,
+      "start": "17:59:21.690",
+      "end": "18:00:19.874",
+      "means": {
+        "fresh_per_s": 77.8,
+        "iterations": 163.4,
+        "iterations_per_s": 81.45333333333333,
+        "older_available": 0.0,
+        "own_gpu_ms": 7.073333333333333,
+        "source_offset_ms": 70.13000000000001,
+        "submit_lead_ms": 36.63333333333333,
+        "wait_attempts": 15.333333333333334,
+        "wait_successes": 7.533333333333333,
+        "wait_total_ms": 47.65763333333334
+      }
+    },
+    "metrics": {
+      "gpu_clock_mhz": {
+        "n": 58,
+        "mean": 587.0,
+        "min": 587.0,
+        "max": 587.0
+      },
+      "gpu_temp_c": {
+        "n": 58,
+        "mean": 77.42586206896551,
+        "min": 75.2,
+        "max": 87.2
+      },
+      "gpu_percent": {
+        "n": 58,
+        "mean": 98.56896551724138,
+        "min": 91.0,
+        "max": 99.0
+      },
+      "fps_app": {
+        "n": 58,
+        "mean": 81.5,
+        "min": 78.0,
+        "max": 84.0
+      },
+      "fps_display": {
+        "n": 58,
+        "mean": 90.0,
+        "min": 90.0,
+        "max": 90.0
+      },
+      "mtp_ms_runtime_estimate": {
+        "n": 58,
+        "mean": 36.65741379310345,
+        "min": 25.77,
+        "max": 45.79
+      },
+      "frm_gpu_ms": {
+        "n": 58,
+        "mean": 11.545172413793104,
+        "min": 8.86,
+        "max": 12.62
+      },
+      "atw_gpu_ms": {
+        "n": 58,
+        "mean": 1.5563793103448276,
+        "min": 1.54,
+        "max": 1.63
+      }
+    }
+  }
+]

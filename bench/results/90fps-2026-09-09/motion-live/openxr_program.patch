@@ -1,0 +1,90 @@
+diff --git a/src/tests/hello_xr/openxr_program.cpp b/src/tests/hello_xr/openxr_program.cpp
+index 1bd1656..51d7721 100644
+--- a/src/tests/hello_xr/openxr_program.cpp
++++ b/src/tests/hello_xr/openxr_program.cpp
+@@ -1004,12 +1004,14 @@ struct OpenXrProgram : IOpenXrProgram {
+         }
+ 
+         const bool benchViewScene = std::getenv("NXWARP_BENCH_VIEW_SCENE") != nullptr;
++        const bool benchFullField = std::getenv("NXWARP_BENCH_FULL_FIELD") != nullptr;
++        const bool benchSyntheticScene = benchViewScene || benchFullField;
+         std::vector<Cube> cubes;
+ 
+         // A deterministic, view-relative scene for headset benchmarks.  The anchor is
+         // the located left-eye pose, so it remains in gaze while the headset rests
+         // in any orientation; both views render the same world-space cubes.
+-        if (benchViewScene) {
++        if (benchViewScene && !benchFullField) {
+             const XrPosef anchor = m_views[0].pose;
+             static const XrTime epoch = predictedDisplayTime;
+             const float t = static_cast<float>(double(predictedDisplayTime - epoch) * 1.0e-9);
+@@ -1039,8 +1041,68 @@ struct OpenXrProgram : IOpenXrProgram {
+             }
+         }
+ 
++        // A denser deterministic stress scene. It is anchored to the located left-eye
++        // pose so a stationary headset still sees a moving full-field world; the
++        // predicted display clock drives the motion, not physical head movement.
++        if (benchFullField) {
++            const XrPosef anchor = m_views[0].pose;
++            static const XrTime epoch = predictedDisplayTime;
++            static uint64_t frameCounter = 0;
++            const float t = static_cast<float>(double(predictedDisplayTime - epoch) * 1.0e-9);
++            const auto rotate = [](const XrQuaternionf& q, XrVector3f v) {
++                const XrVector3f u{q.x, q.y, q.z};
++                const float s = q.w;
++                const float dotuv = u.x * v.x + u.y * v.y + u.z * v.z;
++                const float dotuu = u.x * u.x + u.y * u.y + u.z * u.z;
++                const XrVector3f cross{u.y * v.z - u.z * v.y, u.z * v.x - u.x * v.z, u.x * v.y - u.y * v.x};
++                return XrVector3f{2.0f * dotuv * u.x + (s * s - dotuu) * v.x + 2.0f * s * cross.x,
++                                  2.0f * dotuv * u.y + (s * s - dotuu) * v.y + 2.0f * s * cross.y,
++                                  2.0f * dotuv * u.z + (s * s - dotuu) * v.z + 2.0f * s * cross.z};
++            };
++            const auto multiply = [](const XrQuaternionf& a, const XrQuaternionf& b) {
++                return XrQuaternionf{a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
++                                     a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
++                                     a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
++                                     a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z};
++            };
++            const float swayX = 0.28f * std::sin(t * 0.71f);
++            const float swayY = 0.20f * std::cos(t * 0.53f);
++            const float globalYaw = 0.45f * std::sin(t * 0.37f);
++            const float globalPitch = 0.25f * std::sin(t * 0.29f + 0.6f);
++            const XrQuaternionf globalYawRotation{0, std::sin(globalYaw * 0.5f), 0,
++                                                   std::cos(globalYaw * 0.5f)};
++            const XrQuaternionf globalPitchRotation{std::sin(globalPitch * 0.5f), 0, 0,
++                                                      std::cos(globalPitch * 0.5f)};
++            const XrQuaternionf globalRotation = multiply(globalYawRotation, globalPitchRotation);
++            for (int row = -6; row <= 6; ++row) {
++                for (int col = -7; col <= 7; ++col) {
++                    const float phase = t * 0.63f + float(row * 17 + col * 11) * 0.071f;
++                    const XrVector3f local{float(col) * 0.54f + swayX + 0.10f * std::sin(phase),
++                                           float(row) * 0.48f + swayY + 0.10f * std::cos(phase * 1.17f),
++                                           -2.25f - 0.40f * float((row * 3 + col * 5 + 100) % 2)};
++                    XrPosef pose = anchor;
++                    const XrVector3f world = rotate(anchor.orientation, rotate(globalRotation, local));
++                    pose.position = {anchor.position.x + world.x, anchor.position.y + world.y,
++                                     anchor.position.z + world.z};
++                    const float yaw = phase * 0.31f;
++                    const float pitch = 0.22f * std::sin(t * 0.47f + phase);
++                    const XrQuaternionf yawRotation{0, std::sin(yaw * 0.5f), 0, std::cos(yaw * 0.5f)};
++                    const XrQuaternionf pitchRotation{std::sin(pitch * 0.5f), 0, 0, std::cos(pitch * 0.5f)};
++                    pose.orientation = multiply(anchor.orientation,
++                                                 multiply(globalRotation, multiply(yawRotation, pitchRotation)));
++                    cubes.push_back(Cube{pose, {0.56f, 0.50f, 0.26f}});
++                }
++            }
++            ++frameCounter;
++            if (frameCounter == 1)
++                Log::Write(Log::Level::Info, "NXWARP_BENCH_FULL_FIELD enabled: 195 animated cubes, synthetic predicted-time motion");
++            else if (frameCounter % 180 == 0)
++                Log::Write(Log::Level::Info, Fmt("NXWARP_BENCH_FULL_FIELD frame %llu t=%.2f s",
++                                                 static_cast<unsigned long long>(frameCounter), t));
++        }
++
+         for (XrSpace visualizedSpace : m_visualizedSpaces) {
+-            if (benchViewScene) break;
++            if (benchSyntheticScene) break;
+             XrSpaceLocation spaceLocation{XR_TYPE_SPACE_LOCATION};
+             res = xrLocateSpace(visualizedSpace, m_appSpace, predictedDisplayTime, &spaceLocation);
+             CHECK_XRRESULT(res, "xrLocateSpace");

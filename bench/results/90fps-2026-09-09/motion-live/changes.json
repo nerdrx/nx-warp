@@ -1,0 +1,44 @@
+{
+  "threshold": "> 8/255 in any RGB channel",
+  "captures": [
+    {
+      "file": "eye-start.png",
+      "relative_time": "0.000 s"
+    },
+    {
+      "file": "eye-mid.png",
+      "relative_time": "+9.015 s"
+    },
+    {
+      "file": "eye-later.png",
+      "relative_time": "+19.030 s"
+    }
+  ],
+  "comparisons": {
+    "start_to_mid": {
+      "whole_image_percent": 87.63541666666667,
+      "central_512_roi_percent": 87.19367980957031,
+      "threshold_rgb_code": 8,
+      "pixels": 4665600,
+      "central_512_bounds": [
+        824,
+        1336,
+        824,
+        1336
+      ]
+    },
+    "mid_to_later": {
+      "whole_image_percent": 89.7247085048011,
+      "central_512_roi_percent": 96.8292236328125,
+      "threshold_rgb_code": 8,
+      "pixels": 4665600,
+      "central_512_bounds": [
+        824,
+        1336,
+        824,
+        1336
+      ]
+    }
+  },
+  "note": "Captures are approximately 9\u201310 seconds apart; this is visual evidence, not a per-frame motion or photon-latency measurement."
+}

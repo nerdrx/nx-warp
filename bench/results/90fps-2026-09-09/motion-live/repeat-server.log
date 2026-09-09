@@ -1,0 +1,291 @@
+ WARN [on_control_send_error] Primary control socket failed: Socket shutdown
+ WARN [run_net] Exception in network thread: Socket shutdown, Session paused.
+ INFO [reconnect] Waiting for new connection
+No longer listening for secondary paths
+ INFO [quit_if_no_client] No OpenXR client connected, exiting
+ INFO [multi_main_loop] Already stopped, nothing to clean up.
+ INFO [mic_state_changed] Microphone state changed from PW_STREAM_STATE_PAUSED to PW_STREAM_STATE_UNCONNECTED
+ WARN [mic_state_changed] failed to update microphone state: Broken pipe
+ INFO [ipc_server_main_common] Server exiting: '0'
+Server exited, exit status 0
+Client connected
+Server started, PID 2904899
+ INFO [ipc_server_main_common] WiVRn 'nx-atlas-live-920ac878-dirty' starting up...
+Setting the OpenVR compatibility library to /opt/xrizer
+Listening for secondary paths on port 9757
+ INFO [vk_bundle] Vulkan instance created:
+	GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+	queue families: 1 3 1 (main, encode, transfer)
+
+ INFO [get_encoder_settings] nxwarp: both eyes on stream 0 as one 4352x2176 stereo frame (2312 tiles), stream 1 has no encoder
+ INFO [compositor] compositor: lens mask on, margin 1 tile; the foveation pass flattens what it covers (0 of 0 tiles per eye so far)
+ INFO [comp_vulkan_formats_log] Supported formats:
+	VK_FORMAT_R16G16B16A16_UNORM: true
+	VK_FORMAT_R16G16B16A16_SFLOAT: true
+	VK_FORMAT_R16G16B16_UNORM: false
+	VK_FORMAT_R16G16B16_SFLOAT: false
+	VK_FORMAT_R8G8B8A8_SRGB: true
+	VK_FORMAT_B8G8R8A8_SRGB: true
+	VK_FORMAT_R8G8B8_SRGB: false
+	VK_FORMAT_R8G8B8A8_UNORM: true
+	VK_FORMAT_B8G8R8A8_UNORM: true
+	VK_FORMAT_R8G8B8_UNORM: false
+	VK_FORMAT_B8G8R8_UNORM: false
+	VK_FORMAT_R5G6B5_UNORM_PACK16: true
+	VK_FORMAT_R32_SFLOAT: true
+	VK_FORMAT_D32_SFLOAT: true
+	VK_FORMAT_D16_UNORM: true
+	VK_FORMAT_X8_D24_UNORM_PACK32: false
+	VK_FORMAT_D24_UNORM_S8_UINT: false
+	VK_FORMAT_D32_SFLOAT_S8_UINT: true
+	VK_FORMAT_S8_UINT: true
+ INFO [print_encoders] Encoder configuration:
+	* nxwarp (nxwarp 8-bit)
+	  size: 2176x2176
+	  bitrate: 85.8Mbit/s
+	* nxwarp (nxwarp 8-bit)
+	  size: 2176x1088
+	  bitrate: 2.1Mbit/s
+ INFO [video_encoder_nxwarp] nxwarp: "planar-gpu-centre" enabled (mixed centre/periphery stream)
+ INFO [video_encoder_nxwarp] nxwarp: "entropy": "auto" -> lite (the headset advertises ENTROPY_LITE)
+ INFO [video_encoder_nxwarp] nxwarp: "snap-identity": 16/16 sample (still tiles become a copy on the headset; error bounded by 0.50 sample)
+ INFO [video_encoder_nxwarp] nxwarp: "planar": "prefer" (nxvc tool bit 35)
+ INFO [video_encoder_nxwarp] nxwarp: stream 0 tools 0x842200c05 (INTRA_DC_PLANE RES_LEVEL INTER WARP CTX_V2 CTX_V3 ENTROPY_LITE bit35), headset 0xdf77a1fff -- negotiated
+ INFO [video_encoder_nxwarp] nxwarp: stream 0 backend: nxvc_vk_encoder GPU compute encoder, nxvc_vk_encoder (E0/E3/E4/E5, intra only) (68x34 tiles, intra only, one QP per frame), reading the compositor image directly
+ INFO [video_encoder_nxwarp] nxwarp: stream 0 2176x2176, nxvc_vk_encoder GPU compute encoder, nxvc_vk_encoder (E0/E3/E4/E5, intra only) (68x34 tiles, intra only, one QP per frame), rate control from QP 28 in 22..40 at 90 Hz, send pacing follows the headset's decode cost, 15..90 fps, 68x34 tiles in 6 band(s), 1166 bytes per transport tile
+ INFO [video_encoder_nxwarp] nxwarp: "planar-gpu-centre" enabled (mixed centre/periphery stream)
+ INFO [video_encoder_nxwarp] nxwarp: "entropy": "auto" -> lite (the headset advertises ENTROPY_LITE)
+ INFO [video_encoder_nxwarp] nxwarp: "snap-identity": 16/16 sample (still tiles become a copy on the headset; error bounded by 0.50 sample)
+ INFO [video_encoder_nxwarp] nxwarp: "planar": "prefer" (nxvc tool bit 35)
+ INFO [video_encoder_nxwarp] nxwarp: stream 2 tools 0x842200c05 (INTRA_DC_PLANE RES_LEVEL INTER WARP CTX_V2 CTX_V3 ENTROPY_LITE bit35), headset 0xdf77a1fff -- negotiated
+ INFO [video_encoder_nxwarp] nxwarp: stream 2 backend: nxvc_vk_encoder GPU compute encoder, nxvc_vk_encoder (E0/E3/E4/E5, intra only) (34x17 tiles, intra only, one QP per frame), reading the compositor image directly
+ INFO [video_encoder_nxwarp] nxwarp: stream 2 2176x1088, nxvc_vk_encoder GPU compute encoder, nxvc_vk_encoder (E0/E3/E4/E5, intra only) (34x17 tiles, intra only, one QP per frame), rate control from QP 28 in 22..40 at 90 Hz, send pacing follows the headset's decode cost, 15..90 fps, 34x17 tiles in 3 band(s), 1166 bytes per transport tile
+ INFO [wivrn_hmd] edge bleed: rendering 5.0% overscan, 1.35 deg left / 1.35 deg up on eye 0 (same encoded size, so about 4.8% less sharp)
+ INFO [pipewire_device] pipewire speaker stream created (quantum: 240 frames, 5.00 ms)
+ INFO [mic_state_changed] Microphone state changed from PW_STREAM_STATE_UNCONNECTED to PW_STREAM_STATE_CONNECTING
+ INFO [pipewire_device] pipewire microphone stream created (quantum: 240 frames, 5.00 ms)
+ INFO [configure] Automatic bitrate enabled, AIMD (v1), ceiling 88.0 Mbit/s, floor 10.0 Mbit/s, radio trend on
+ INFO [set_pacing] Packet pacing enabled, spreading each frame over 40% of a frame period
+ INFO [apply_qos] Wi-Fi QoS marks enabled (video AF41 / AC_VI, control EF / AC_VO)
+ INFO [set_fec] Forward error correction enabled, one parity shard per 8 video shards
+ INFO [set_fec_adaptive] Adaptive error correction enabled, parity ratio between 16+1 and 4+1 with interleaved groups
+ INFO [set_shard_retransmit] Shard retransmission enabled, keeping 1024 kB of recently sent shards per stream
+ WARN [check_socket_path] path not found: /run/user/1000/SlimeVRRpc
+ WARN [check_socket_path] path not found: /run/user/1000/.flatpak/dev.slimevr.SlimeVR/xdg-run/SlimeVRRpc
+ WARN [check_socket_path] path not found: /home/nerdrx/.local/share/dev.slimevr.SlimeVR/SlimeVRRpc
+ERROR [solarxr_ipc_socket_find] failed to resolve socket path
+ INFO [u_linux_try_to_set_realtime_priority_on_thread] Raised priority of thread 'Multi Client Module' to policy: 'SCHED_FIFO', priority: '99'
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [reset_stream] nxwarp: stream 0 resumed for a new client: transport sequence restarted, stream header resent, next frame coded without a reference
+ INFO [reset_stream] nxwarp: stream 2 resumed for a new client: transport sequence restarted, stream header resent, next frame coded without a reference
+ INFO [mic_state_changed] Microphone state changed from PW_STREAM_STATE_CONNECTING to PW_STREAM_STATE_PAUSED
+ INFO [operator()] Updating interaction profiles: from 
+	XRT_DEVICE_TOUCH_CONTROLLER (left)  to XRT_DEVICE_EXT_HAND_INTERACTION
+	XRT_DEVICE_TOUCH_CONTROLLER (right) to XRT_DEVICE_EXT_HAND_INTERACTION
+
+ INFO [client_connected] Client 1 connected
+ INFO [ipc_handle_instance_describe_client] Client info:
+	id: 1
+	application_name: 'HelloXR'
+	pid: 2905197
+	extensions:
+		ext_hand_tracking_enabled: false
+		ext_hand_tracking_data_source_enabled: false
+		ext_eye_gaze_interaction_enabled: false
+		ext_future_enabled: false
+		ext_hand_interaction_enabled: false
+		htc_facial_tracking_enabled: false
+		fb_body_tracking_enabled: false
+		meta_body_tracking_full_body_enabled: false
+		meta_body_tracking_calibration_enabled: false
+		meta_body_tracking_fidelity_enabled: false
+		fb_face_tracking2_enabled: false
+		android_face_tracking_enabled: false
+ INFO [update_session_state_locked] Started native session, 1 active app session(s).
+ INFO [get_view_poses] geometry[eye 0]: panel fov L-51.99 R51.99 U51.99 D-51.99 -> rendered fov L-53.34 R53.34 U53.34 D-53.34 deg (overscan 0.050)
+ INFO [get_view_poses] geometry[eye 1]: panel fov L-51.99 R51.99 U51.99 D-51.99 -> rendered fov L-53.34 R53.34 U53.34 D-53.34 deg (overscan 0.050)
+ INFO [update_lens_mask] nxwarp: stream 0 lens mask: 111 of 1156 tiles per eye masked (margin 1 tile, fov -53.3/53.3/53.3/-53.3 deg); flattened only: this backend has no skip-map input, so the tiles are coded as whatever the mode search makes of a constant grey
+ INFO [encode] nxwarp: stream 0 rate control on: 76314363 bit/s is 105992 B/frame at 90 Hz, QP band 22..40
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.0 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 1 frames in 2.3 s: 2.0 ms/frame (max 2.0), 83056 B/frame at fixed QP 28, paced to 90.0 fps (client decode not reported yet), 0 composited frame(s) not sent
+ INFO [layer_commit] geometry[eye 0]: layer fov (what the app rendered, and what goes on the wire) L-53.34 R53.34 U53.34 D-53.34 deg
+ INFO [layer_commit] geometry[eye 1]: layer fov (what the app rendered, and what goes on the wire) L-53.34 R53.34 U53.34 D-53.34 deg
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 11.6 ms is over the 11.0 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +26 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.2 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 138 frames in 2.0 s: 2.2 ms/frame (max 3.1), 128817 B/frame vs 150309 target (-14%), QP 34.2 [22..40], controller allows 76.3 Mbit/s, paced to 63.6 fps (client decode 12.7 ms), 43 composited frame(s) not sent, binding: decode (decode 12.7 of 12.6 ms budget, floor +26)
+ INFO [encode] nxwarp: stream 0 tile mapping: 126 frame(s) with per-tile spans, 12 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 84 frame(s) since the last report; 84 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 130, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 172 frames in 2.0 s: 2.7 ms/frame (max 3.1), 145272 B/frame vs 153297 target (-5%), QP 24.0 [22..26], controller allows 76.3 Mbit/s, paced to 59.5 fps (client decode 13.1 ms), 9 composited frame(s) not sent, binding: bytes (decode 13.1 of 12.9 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 50 frame(s) with per-tile spans, 122 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 17 frame(s) since the last report; 17 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 307, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 168 frames in 2.0 s: 2.7 ms/frame (max 3.3), 148036 B/frame vs 144077 target (+3%), QP 24.6 [23..26], controller allows 76.3 Mbit/s, paced to 66.3 fps (client decode 12.6 ms), 12 composited frame(s) not sent, binding: bytes (decode 12.6 of 12.1 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 13 frame(s) with per-tile spans, 155 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 15 frame(s) since the last report; 15 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 470, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 171 frames in 2.0 s: 2.7 ms/frame (max 3.1), 146866 B/frame vs 147589 target (-0%), QP 22.6 [22..24], controller allows 76.3 Mbit/s, paced to 64.8 fps (client decode 12.6 ms), 9 composited frame(s) not sent, binding: bytes (decode 12.6 of 12.4 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 13 frame(s) with per-tile spans, 158 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 17 frame(s) since the last report; 17 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 640, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 172 frames in 2.0 s: 2.7 ms/frame (max 3.1), 148897 B/frame vs 149339 target (-0%), QP 22.2 [22..23], controller allows 76.3 Mbit/s (at min QP), paced to 61.1 fps (client decode 12.7 ms), 9 composited frame(s) not sent, binding: bytes (decode 12.7 of 12.5 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 0 frame(s) with per-tile spans, 172 with the fixed-chunk fallback ("tile-map": "auto", every frame too big for a transport slot)
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 18 frame(s) since the last report; 18 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 818, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 172 frames in 2.0 s: 2.7 ms/frame (max 3.1), 146305 B/frame vs 154853 target (-6%), QP 22.2 [22..24], controller allows 76.3 Mbit/s (at min QP), paced to 61.8 fps (client decode 13.1 ms), 9 composited frame(s) not sent, binding: bytes (decode 13.1 of 13.0 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 28 frame(s) with per-tile spans, 144 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 17 frame(s) since the last report; 17 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 991, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 169 frames in 2.0 s: 2.7 ms/frame (max 3.4), 147043 B/frame vs 157833 target (-7%), QP 22.3 [22..23], controller allows 76.3 Mbit/s (at min QP), paced to 60.7 fps (client decode 12.7 ms), 11 composited frame(s) not sent, binding: bytes (decode 12.7 of 13.2 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 71 frame(s) with per-tile spans, 98 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 15 frame(s) since the last report; 15 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 1157, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 173 frames in 2.0 s: 2.7 ms/frame (max 3.3), 133076 B/frame vs 139486 target (-5%), QP 22.1 [22..23], controller allows 76.3 Mbit/s (at min QP), paced to 68.6 fps (client decode 11.7 ms), 8 composited frame(s) not sent, binding: bytes (decode 11.7 of 11.7 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 117 frame(s) with per-tile spans, 56 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 14 frame(s) since the last report; 14 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 1319, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 172 frames in 2.0 s: 2.7 ms/frame (max 3.1), 141775 B/frame vs 141437 target (+0%), QP 22.0 [22..22], controller allows 76.3 Mbit/s (at min QP), paced to 67.8 fps (client decode 11.1 ms), 9 composited frame(s) not sent, binding: bytes (decode 11.1 of 11.9 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 51 frame(s) with per-tile spans, 121 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 15 frame(s) since the last report; 15 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 1489, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 170 frames in 2.0 s: 2.7 ms/frame (max 4.1), 148420 B/frame vs 156549 target (-5%), QP 22.7 [22..25], controller allows 76.3 Mbit/s, paced to 61.3 fps (client decode 11.8 ms), 10 composited frame(s) not sent, binding: bytes (decode 11.8 of 13.1 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 10 frame(s) with per-tile spans, 160 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 17 frame(s) since the last report; 17 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 1670, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 169 frames in 2.0 s: 2.8 ms/frame (max 3.8), 150433 B/frame vs 150524 target (-0%), QP 28.0 [23..40], controller allows 76.3 Mbit/s (at max QP), paced to 63.5 fps (client decode 12.8 ms), 12 composited frame(s) not sent, binding: bytes (decode 12.8 of 12.6 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 19 frame(s) with per-tile spans, 150 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 15 frame(s) since the last report; 15 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 1837, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 170 frames in 2.0 s: 2.7 ms/frame (max 3.1), 148701 B/frame vs 150859 target (-1%), QP 36.0 [30..40], controller allows 76.3 Mbit/s, paced to 63.4 fps (client decode 12.7 ms), 11 composited frame(s) not sent, binding: bytes (decode 12.7 of 12.7 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 52 frame(s) with per-tile spans, 118 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 16 frame(s) since the last report; 16 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 2008, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 168 frames in 2.0 s: 2.7 ms/frame (max 3.1), 148892 B/frame vs 154029 target (-3%), QP 25.0 [23..30], controller allows 76.3 Mbit/s, paced to 62.2 fps (client decode 12.4 ms), 12 composited frame(s) not sent, binding: bytes (decode 12.4 of 12.9 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 54 frame(s) with per-tile spans, 114 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 16 frame(s) since the last report; 16 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 2174, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 168 frames in 2.0 s: 2.7 ms/frame (max 3.2), 150412 B/frame vs 151666 target (-1%), QP 23.8 [23..25], controller allows 76.3 Mbit/s, paced to 63.6 fps (client decode 10.5 ms), 13 composited frame(s) not sent, binding: bytes (decode 10.5 of 12.7 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 13 frame(s) with per-tile spans, 155 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 16 frame(s) since the last report; 16 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 2343, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 171 frames in 2.0 s: 2.7 ms/frame (max 3.2), 148327 B/frame vs 151731 target (-2%), QP 24.4 [22..26], controller allows 76.3 Mbit/s, paced to 63.1 fps (client decode 12.8 ms), 9 composited frame(s) not sent, binding: bytes (decode 12.8 of 12.7 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 29 frame(s) with per-tile spans, 142 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 15 frame(s) since the last report; 15 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 2515, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 171 frames in 2.0 s: 2.7 ms/frame (max 3.0), 148455 B/frame vs 147753 target (+0%), QP 22.9 [22..25], controller allows 76.3 Mbit/s (at min QP), paced to 64.7 fps (client decode 12.5 ms), 10 composited frame(s) not sent, binding: bytes (decode 12.5 of 12.4 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 26 frame(s) with per-tile spans, 145 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 15 frame(s) since the last report; 15 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 2681, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 172 frames in 2.0 s: 2.7 ms/frame (max 3.0), 137563 B/frame vs 142820 target (-4%), QP 22.0 [22..22], controller allows 76.3 Mbit/s (at min QP), paced to 67.3 fps (client decode 10.7 ms), 8 composited frame(s) not sent, binding: bytes (decode 10.7 of 12.0 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 92 frame(s) with per-tile spans, 80 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 16 frame(s) since the last report; 16 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 2853, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 169 frames in 2.0 s: 2.7 ms/frame (max 3.1), 141796 B/frame vs 139412 target (+2%), QP 22.0 [22..23], controller allows 76.3 Mbit/s, paced to 68.5 fps (client decode 12.1 ms), 11 composited frame(s) not sent, binding: bytes (decode 12.1 of 11.7 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 86 frame(s) with per-tile spans, 83 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 17 frame(s) since the last report; 17 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 3033, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 169 frames in 2.0 s: 2.7 ms/frame (max 3.1), 149514 B/frame vs 156140 target (-4%), QP 23.0 [22..25], controller allows 76.3 Mbit/s (at min QP), paced to 61.6 fps (client decode 11.7 ms), 11 composited frame(s) not sent, binding: bytes (decode 11.7 of 13.1 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 20 frame(s) with per-tile spans, 149 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 16 frame(s) since the last report; 16 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 3198, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 171 frames in 2.0 s: 2.7 ms/frame (max 3.3), 142264 B/frame vs 141427 target (+1%), QP 22.0 [22..22], controller allows 76.3 Mbit/s (at min QP), paced to 67.4 fps (client decode 12.5 ms), 10 composited frame(s) not sent, binding: bytes (decode 12.5 of 11.9 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 35 frame(s) with per-tile spans, 136 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 15 frame(s) since the last report; 15 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 3365, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 171 frames in 2.0 s: 2.7 ms/frame (max 3.3), 132481 B/frame vs 143295 target (-8%), QP 22.0 [22..22], controller allows 76.3 Mbit/s (at min QP), paced to 67.3 fps (client decode 10.2 ms), 9 composited frame(s) not sent, binding: bytes (decode 10.2 of 12.0 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 73 frame(s) with per-tile spans, 98 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 16 frame(s) since the last report; 16 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 3531, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 173 frames in 2.0 s: 2.7 ms/frame (max 3.3), 142362 B/frame vs 154470 target (-8%), QP 22.1 [22..23], controller allows 76.3 Mbit/s, paced to 62.0 fps (client decode 12.8 ms), 8 composited frame(s) not sent, binding: bytes (decode 12.8 of 13.0 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 5 frame(s) with per-tile spans, 168 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 17 frame(s) since the last report; 17 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 3715, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 169 frames in 2.0 s: 2.7 ms/frame (max 3.1), 148764 B/frame vs 156256 target (-5%), QP 24.1 [22..26], controller allows 76.3 Mbit/s, paced to 61.3 fps (client decode 12.8 ms), 11 composited frame(s) not sent, binding: bytes (decode 12.8 of 13.1 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 20 frame(s) with per-tile spans, 149 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 17 frame(s) since the last report; 17 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 3884, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 168 frames in 2.0 s: 2.7 ms/frame (max 3.1), 152756 B/frame vs 143708 target (+6%), QP 23.9 [23..25], controller allows 76.3 Mbit/s, paced to 66.9 fps (client decode 10.8 ms), 12 composited frame(s) not sent, binding: bytes (decode 10.8 of 12.1 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 0 frame(s) with per-tile spans, 168 with the fixed-chunk fallback ("tile-map": "auto", every frame too big for a transport slot)
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 16 frame(s) since the last report; 16 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 4039, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 173 frames in 2.0 s: 2.7 ms/frame (max 3.1), 144601 B/frame vs 138803 target (+4%), QP 22.2 [22..24], controller allows 76.3 Mbit/s (at min QP), paced to 68.8 fps (client decode 12.1 ms), 8 composited frame(s) not sent, binding: bytes (decode 12.1 of 11.6 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 0 frame(s) with per-tile spans, 173 with the fixed-chunk fallback ("tile-map": "auto", every frame too big for a transport slot)
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 16 frame(s) since the last report; 16 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 4210, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 172 frames in 2.0 s: 2.6 ms/frame (max 3.1), 148189 B/frame vs 152792 target (-3%), QP 22.1 [22..23], controller allows 76.3 Mbit/s (at min QP), paced to 59.8 fps (client decode 12.8 ms), 9 composited frame(s) not sent, binding: bytes (decode 12.8 of 12.8 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 0 frame(s) with per-tile spans, 172 with the fixed-chunk fallback ("tile-map": "auto", every frame too big for a transport slot)
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 18 frame(s) since the last report; 18 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 4398, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 170 frames in 2.0 s: 2.7 ms/frame (max 3.3), 150436 B/frame vs 149990 target (+0%), QP 22.6 [22..24], controller allows 76.3 Mbit/s, paced to 60.6 fps (client decode 12.8 ms), 11 composited frame(s) not sent, binding: bytes (decode 12.8 of 12.6 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 1 frame(s) with per-tile spans, 169 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 16 frame(s) since the last report; 16 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 4568, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 170 frames in 2.0 s: 2.7 ms/frame (max 3.1), 148322 B/frame vs 157761 target (-6%), QP 22.2 [22..23], controller allows 76.3 Mbit/s (at min QP), paced to 60.7 fps (client decode 12.8 ms), 10 composited frame(s) not sent, binding: bytes (decode 12.8 of 13.2 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 15 frame(s) with per-tile spans, 155 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 15 frame(s) since the last report; 15 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 4737, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 169 frames in 2.0 s: 2.7 ms/frame (max 3.2), 149544 B/frame vs 153606 target (-3%), QP 22.7 [22..24], controller allows 76.3 Mbit/s (at min QP), paced to 62.3 fps (client decode 12.8 ms), 11 composited frame(s) not sent, binding: bytes (decode 12.8 of 12.9 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 47 frame(s) with per-tile spans, 122 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 14 frame(s) since the last report; 14 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 4904, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 172 frames in 2.0 s: 2.7 ms/frame (max 3.1), 143177 B/frame vs 139917 target (+2%), QP 22.0 [22..22], controller allows 76.3 Mbit/s (at min QP), paced to 68.2 fps (client decode 12.3 ms), 9 composited frame(s) not sent, binding: bytes (decode 12.3 of 11.7 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 39 frame(s) with per-tile spans, 133 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 15 frame(s) since the last report; 15 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 5075, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 173 frames in 2.0 s: 2.6 ms/frame (max 3.4), 142425 B/frame vs 139040 target (+2%), QP 22.1 [22..24], controller allows 76.3 Mbit/s, paced to 69.0 fps (client decode 10.8 ms), 7 composited frame(s) not sent, binding: bytes (decode 10.8 of 11.7 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 118 frame(s) with per-tile spans, 55 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 16 frame(s) since the last report; 16 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 5244, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 169 frames in 2.0 s: 2.7 ms/frame (max 3.1), 148248 B/frame vs 161670 target (-8%), QP 22.8 [22..24], controller allows 76.3 Mbit/s (at min QP), paced to 59.6 fps (client decode 12.8 ms), 11 composited frame(s) not sent, binding: bytes (decode 12.8 of 13.6 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 18 frame(s) with per-tile spans, 151 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 18 frame(s) since the last report; 18 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 5420, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 172 frames in 2.0 s: 2.7 ms/frame (max 3.2), 150480 B/frame vs 152183 target (-1%), QP 22.9 [22..24], controller allows 76.3 Mbit/s (at min QP), paced to 63.3 fps (client decode 10.9 ms), 9 composited frame(s) not sent, binding: bytes (decode 10.9 of 12.8 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 0 frame(s) with per-tile spans, 172 with the fixed-chunk fallback ("tile-map": "auto", every frame too big for a transport slot)
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 16 frame(s) since the last report; 16 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 5584, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 173 frames in 2.0 s: 2.7 ms/frame (max 3.1), 144474 B/frame vs 143923 target (+0%), QP 22.5 [22..24], controller allows 76.3 Mbit/s (at min QP), paced to 66.3 fps (client decode 12.7 ms), 7 composited frame(s) not sent, binding: bytes (decode 12.7 of 12.1 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 0 frame(s) with per-tile spans, 173 with the fixed-chunk fallback ("tile-map": "auto", every frame too big for a transport slot)
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 17 frame(s) since the last report; 17 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 5767, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 172 frames in 2.0 s: 2.7 ms/frame (max 3.2), 147357 B/frame vs 148813 target (-1%), QP 22.7 [22..25], controller allows 76.3 Mbit/s, paced to 64.3 fps (client decode 12.5 ms), 9 composited frame(s) not sent, binding: bytes (decode 12.5 of 12.5 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 0 frame(s) with per-tile spans, 172 with the fixed-chunk fallback ("tile-map": "auto", every frame too big for a transport slot)
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 16 frame(s) since the last report; 16 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 5927, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 168 frames in 2.0 s: 2.7 ms/frame (max 3.3), 150258 B/frame vs 148420 target (+1%), QP 26.2 [24..30], controller allows 76.3 Mbit/s, paced to 65.1 fps (client decode 10.3 ms), 12 composited frame(s) not sent, binding: bytes (decode 10.3 of 12.4 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 18 frame(s) with per-tile spans, 150 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 17 frame(s) since the last report; 17 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 6098, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 172 frames in 2.0 s: 2.7 ms/frame (max 3.3), 146853 B/frame vs 150656 target (-3%), QP 24.0 [22..26], controller allows 76.3 Mbit/s (at min QP), paced to 63.6 fps (client decode 12.2 ms), 9 composited frame(s) not sent, binding: bytes (decode 12.2 of 12.6 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 2 frame(s) with per-tile spans, 170 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 18 frame(s) since the last report; 18 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 6278, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 175 frames in 2.0 s: 2.6 ms/frame (max 3.1), 130121 B/frame vs 152234 target (-15%), QP 22.0 [22..22], controller allows 76.3 Mbit/s (at min QP), paced to 63.0 fps (client decode 12.2 ms), 5 composited frame(s) not sent, binding: bytes (decode 12.2 of 12.8 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 42 frame(s) with per-tile spans, 133 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 15 frame(s) since the last report; 15 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 6447, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 175 frames in 2.0 s: 2.6 ms/frame (max 3.1), 123768 B/frame vs 143822 target (-14%), QP 22.0 [22..22], controller allows 76.3 Mbit/s (at min QP), paced to 66.5 fps (client decode 12.1 ms), 5 composited frame(s) not sent, binding: bytes (decode 12.1 of 12.1 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 172 frame(s) with per-tile spans, 3 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 15 frame(s) since the last report; 15 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 6627, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 176 frames in 2.0 s: 2.6 ms/frame (max 3.1), 135769 B/frame vs 152909 target (-11%), QP 22.0 [22..22], controller allows 76.3 Mbit/s (at min QP), paced to 59.7 fps (client decode 12.8 ms), 6 composited frame(s) not sent, binding: bytes (decode 12.8 of 12.8 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 110 frame(s) with per-tile spans, 66 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 18 frame(s) since the last report; 18 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 6804, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 174 frames in 2.0 s: 2.6 ms/frame (max 3.0), 139407 B/frame vs 151722 target (-8%), QP 22.1 [22..23], controller allows 76.3 Mbit/s (at min QP), paced to 63.5 fps (client decode 10.7 ms), 6 composited frame(s) not sent, binding: bytes (decode 10.7 of 12.7 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 87 frame(s) with per-tile spans, 87 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 16 frame(s) since the last report; 16 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 6972, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 175 frames in 2.0 s: 2.6 ms/frame (max 3.1), 134646 B/frame vs 153218 target (-12%), QP 22.0 [22..22], controller allows 76.3 Mbit/s (at min QP), paced to 62.5 fps (client decode 12.5 ms), 5 composited frame(s) not sent, binding: bytes (decode 12.5 of 12.8 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 62 frame(s) with per-tile spans, 113 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 17 frame(s) since the last report; 17 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 7147, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 172 frames in 2.0 s: 2.6 ms/frame (max 3.1), 146452 B/frame vs 153287 target (-4%), QP 23.2 [22..25], controller allows 76.3 Mbit/s, paced to 62.4 fps (client decode 12.7 ms), 9 composited frame(s) not sent, binding: bytes (decode 12.7 of 12.9 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 23 frame(s) with per-tile spans, 149 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 16 frame(s) since the last report; 16 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 7323, dropped by the worker backlog
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 168 frames in 2.0 s: 2.7 ms/frame (max 3.1), 151628 B/frame vs 147727 target (+3%), QP 24.9 [23..27], controller allows 76.3 Mbit/s, paced to 65.7 fps (client decode 8.5 ms), 13 composited frame(s) not sent, binding: bytes (decode 8.5 of 12.4 ms budget, floor +0)
+ INFO [encode] nxwarp: stream 0 tile mapping: 11 frame(s) with per-tile spans, 157 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 16 frame(s) since the last report; 16 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 7485, dropped by the worker backlog
+ INFO [client_disconnected] Client 1 disconnected
+ INFO [update_session_state_locked] Stopped native session, 0 active app session(s).

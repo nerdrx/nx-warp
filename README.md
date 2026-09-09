@@ -96,7 +96,25 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 
 ## Measured results
 
-**Bounded readiness wait (September 9):** waiting briefly for a newer completed
+**Broad scene motion (September 9):** a moving 195-cube wall on the Pico exposes
+limits hidden by the earlier small scene. With the headset stationary, the
+FDM + 4 ms readiness-wait profile delivered **77.22 / 77.02 fresh updates/s**,
+compared with **68.23/s** for the original profile. Source display-time offset
+remained **~70 ms**; the earlier 13 ms improvement does not carry over to this workload.
+
+A server rate-control correction now accounts for frame-admission tolerance:
+the old byte budget assumed fewer frames than the sender actually admitted.
+Two corrected runs delivered **77.90 / 77.80 fresh updates/s** at **90.59 / 90.28
+Mbit/s estimated payload**, versus **98.57 Mbit/s** before. QP reached **40**,
+and payload still exceeds the **76.3 Mbit/s** allowance. This is an accounting
+fix with a quality cost, not a demonstrated latency improvement or strict bitrate cap.
+[Methods, raw motion logs, captures and reproduction](bench/results/90fps-2026-09-09/motion-live/README.md).
+
+![Broad motion timing comparison](bench/results/90fps-2026-09-09/motion-live/live-comparison.png)
+
+![Actual Pico captures of the animated scene](bench/results/90fps-2026-09-09/motion-live/motion-captures.png)
+
+**Earlier small-scene readiness wait (September 9):** waiting briefly for a newer completed
 frame recovers much of the fresh-frame loss from reduced-density shading.
 Two 4 ms-cap trials reached **86.37 / 85.95 fresh updates/s**, versus
 **83.82/s** for the original shading baseline. Source display-time offset fell
