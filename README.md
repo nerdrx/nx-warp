@@ -96,6 +96,13 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 
 ## Measured results
 
+**Peripheral shading probe:** a coarser outer density map saved only **0.23 ms**
+of presentation GPU time and did not reduce source offset, so it was reverted.
+[Measured comparison](bench/results/90fps-2026-09-09/peripheral-density/README.md).
+The next proposed approach is [staggered temporal tile updates](docs/TEMPORAL-TILES.md):
+full-rate centre, half-rate middle, quarter-rate periphery, followed by a separately
+tested small peripheral blend. **This tile scheduler is not implemented yet.**
+
 **Pacing audit:** experimental estimator changes were reverted after incomplete
 live trials. The benchmark now rejects stalled clients even when their processes
 survive. A restored 90-second run passed with **71.92 fresh updates/s** and

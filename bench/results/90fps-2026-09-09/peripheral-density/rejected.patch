@@ -1,0 +1,40 @@
+diff --git a/client/application.cpp b/client/application.cpp
+index d47ce2b7..8472e908 100644
+--- a/client/application.cpp
++++ b/client/application.cpp
+@@ -1052,7 +1052,7 @@ void application::initialize_vulkan()
+ 	if (const char * value = std::getenv("WIVRN_NX_FDM"))
+ 		fdm_mode = std::atoi(value);
+ #endif
+-	fdm_mode = std::clamp(fdm_mode, 0, 2);
++	fdm_mode = std::clamp(fdm_mode, 0, 3);
+ 	if (!fdm_mode)
+ 		device_create_info.unlink<vk::PhysicalDeviceFragmentDensityMapFeaturesEXT>();
+ 	const bool fdm_supported = fdm_mode && check_feature_flag(
+diff --git a/client/scenes/stream_defoveator.cpp b/client/scenes/stream_defoveator.cpp
+index b12ff875..6d39d8bd 100644
+--- a/client/scenes/stream_defoveator.cpp
++++ b/client/scenes/stream_defoveator.cpp
+@@ -396,7 +396,12 @@ stream_defoveator::stream_defoveator(
+ 					const float px = (x + .5f) * tw, py = (y + .5f) * th;
+ 					const float dx = std::abs(px - output_extent.width * .5f);
+ 					const float dy = std::abs(py - output_extent.height * .5f);
+-					const uint8_t d = application::get_fragment_density_map_mode() == 2 ? 255 : (std::max(dx, dy) <= 512.f ? 255 : (std::max(dx, dy) <= 768.f ? 128 : 64));
++					// Mode 3 preserves the full-density centre and spends fewer
++					// fragment invocations in the two peripheral bands.
++					const int mode = application::get_fragment_density_map_mode();
++					const float radius = std::max(dx, dy);
++					const uint8_t d = mode == 2 || radius <= 512.f ? 255 :
++					        (radius <= 768.f ? (mode == 3 ? 64 : 128) : (mode == 3 ? 32 : 64));
+ 					const size_t i = (size_t(y) * mw + x) * 2;
+ 					pixels[i + 0] = pixels[i + 1] = d;
+ 				}
+@@ -413,7 +418,7 @@ stream_defoveator::stream_defoveator(
+ 			auto q = application::get_queue().lock();
+ 			q->submit(vk::SubmitInfo{.commandBufferCount = 1, .pCommandBuffers = &*cb});
+ 			q->waitIdle();
+-			spdlog::info("Static FDM enabled: {}x{} map, texel {}x{}", mw, mh, tw, th);
++			spdlog::info("Static FDM enabled: {}x{} map, texel {}x{}, mode {}", mw, mh, tw, th, application::get_fragment_density_map_mode());
+ 		}
+ 	}
+ 

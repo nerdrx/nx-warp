@@ -1,0 +1,68 @@
+[
+  {
+    "file": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-09-09/peripheral-density/fdm1-control-client.log",
+    "client": {
+      "n": 30,
+      "start": "19:32:34.482",
+      "end": "19:33:32.653",
+      "means": {
+        "fresh_per_s": 74.9,
+        "iterations": 179.56666666666666,
+        "iterations_per_s": 89.53,
+        "older_available": 0.0,
+        "own_gpu_ms": 5.336666666666667,
+        "source_offset_ms": 55.833333333333336,
+        "submit_lead_ms": 30.146666666666665,
+        "wait_attempts": 115.7,
+        "wait_successes": 85.93333333333334,
+        "wait_total_ms": 274.36583333333334
+      }
+    },
+    "decoder": {
+      "n": 30,
+      "start": "19:32:34.476",
+      "end": "19:33:32.669",
+      "means": {
+        "copy_gpu_ms": 0.0,
+        "fence_post_ms": 7.423333333333333,
+        "frames": 154.83333333333334,
+        "frames_per_s": 77.41666666666667,
+        "nxvc_gpu_ms": 4.946666666666667,
+        "queue_ms": 2.45
+      }
+    }
+  },
+  {
+    "file": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-09-09/peripheral-density/fdm3-client.log",
+    "client": {
+      "n": 30,
+      "start": "19:30:15.311",
+      "end": "19:31:13.480",
+      "means": {
+        "fresh_per_s": 77.03333333333333,
+        "iterations": 179.66666666666666,
+        "iterations_per_s": 89.56333333333333,
+        "older_available": 0.0,
+        "own_gpu_ms": 5.1033333333333335,
+        "source_offset_ms": 57.21333333333334,
+        "submit_lead_ms": 30.59,
+        "wait_attempts": 96.23333333333333,
+        "wait_successes": 70.63333333333334,
+        "wait_total_ms": 215.96586666666664
+      }
+    },
+    "decoder": {
+      "n": 30,
+      "start": "19:30:15.312",
+      "end": "19:31:13.491",
+      "means": {
+        "copy_gpu_ms": 0.0003333333333333333,
+        "fence_post_ms": 7.803333333333333,
+        "frames": 157.13333333333333,
+        "frames_per_s": 78.56666666666666,
+        "nxvc_gpu_ms": 5.116666666666666,
+        "queue_ms": 2.6599999999999997
+      }
+    }
+  }
+]
