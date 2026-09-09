@@ -1,0 +1,36 @@
+09-09 14:54:13.752 15322 24558 F libc    : Fatal signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0x108 in tid 24558 (Thread-3), pid 15322 (u.wivrn.nx.warp)
+09-09 14:54:13.834 24642 24642 F DEBUG   : *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
+09-09 14:54:13.834 24642 24642 F DEBUG   : Build fingerprint: 'Pico/Phoenix_ovs/PICOA8110:10/5.13.7/smartcm.1761817909:user/dev-keys'
+09-09 14:54:13.834 24642 24642 F DEBUG   : Revision: '0'
+09-09 14:54:13.834 24642 24642 F DEBUG   : ABI: 'arm64'
+09-09 14:54:13.834 24642 24642 F DEBUG   : Timestamp: 2026-09-09 14:54:13+0200
+09-09 14:54:13.834 24642 24642 F DEBUG   : pid: 15322, ppid: 754, tid: 24558, name: Thread-3  >>> org.meumeu.wivrn.nx.warp <<<
+09-09 14:54:13.834 24642 24642 F DEBUG   : uid: 10143
+09-09 14:54:13.834 24642 24642 F DEBUG   : signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0x108
+09-09 14:54:13.834 24642 24642 F DEBUG   : Cause: null pointer dereference
+09-09 14:54:13.834 24642 24642 F DEBUG   :     x0  0000006f84a3ec00  x1  0000006f8698e180  x2  0000000000000000  x3  0000000000000000
+09-09 14:54:13.834 24642 24642 F DEBUG   :     x4  0000006f8de29a58  x5  000000000239b4b4  x6  fefeff6e8597fcdf  x7  7f7f7f7fffffffff
+09-09 14:54:13.834 24642 24642 F DEBUG   :     x8  0000000000000000  x9  0000006f91cbc000  x10 0000006f84a3ec00  x11 0000006f8698e120
+09-09 14:54:13.834 24642 24642 F DEBUG   :     x12 0000000000000000  x13 ffffff80ffffffd8  x14 0000000000000004  x15 ffffffffffffffff
+09-09 14:54:13.834 24642 24642 F DEBUG   :     x16 0000007084778658  x17 00000070841f2b80  x18 0000006f85dd6000  x19 0000006f84a3ec00
+09-09 14:54:13.834 24642 24642 F DEBUG   :     x20 0000006f8698e180  x21 0000000000000000  x22 000000000000002b  x23 0000006f8698fde0
+09-09 14:54:13.834 24642 24642 F DEBUG   :     x24 0000000000000000  x25 0000006f91cbc5a0  x26 0000000000000003  x27 0000006f91cbc348
+09-09 14:54:13.834 24642 24642 F DEBUG   :     x28 0000000000000001  x29 0000006f8698e170
+09-09 14:54:13.834 24642 24642 F DEBUG   :     sp  0000006f8698dfd0  lr  0000006f8de29a78  pc  0000006f8de9dfb8
+09-09 14:54:13.843 24642 24642 F DEBUG   : 
+09-09 14:54:13.843 24642 24642 F DEBUG   : backtrace:
+09-09 14:54:13.843 24642 24642 F DEBUG   :       #00 pc 0000000000155fb8  /vendor/lib64/hw/vulkan.kona.so (!!!0000!28ec6954d590de71a4dcf19d807e53!76b617b5a74!+112) (BuildId: 498bee18c754df4ee617b150722c3f73)
+09-09 14:54:13.843 24642 24642 F DEBUG   :       #01 pc 00000000000e1a74  /vendor/lib64/hw/vulkan.kona.so (qglinternal::vkBindImageMemory(VkDevice_T*, VkImage_T*, VkDeviceMemory_T*, unsigned long)+28) (BuildId: 498bee18c754df4ee617b150722c3f73)
+09-09 14:54:13.843 24642 24642 F DEBUG   :       #02 pc 00000000000a5194  /system/priv-app/XRRuntime/XRRuntime.apk (offset 0xfa5000) (BuildId: e81f47da732f1206f89eb59981cd26a2416bff68)
+09-09 14:54:13.843 24642 24642 F DEBUG   :       #03 pc 0000000000084968  /system/priv-app/XRRuntime/XRRuntime.apk (offset 0xfa5000) (BuildId: e81f47da732f1206f89eb59981cd26a2416bff68)
+09-09 14:54:13.843 24642 24642 F DEBUG   :       #04 pc 00000000000a2544  /system/priv-app/XRRuntime/XRRuntime.apk (offset 0xfa5000) (BuildId: e81f47da732f1206f89eb59981cd26a2416bff68)
+09-09 14:54:13.843 24642 24642 F DEBUG   :       #05 pc 0000000000081bac  /system/priv-app/XRRuntime/XRRuntime.apk (offset 0xfa5000) (BuildId: e81f47da732f1206f89eb59981cd26a2416bff68)
+09-09 14:54:13.843 24642 24642 F DEBUG   :       #06 pc 0000000000077664  /system/priv-app/XRRuntime/XRRuntime.apk (offset 0xfa5000) (BuildId: e81f47da732f1206f89eb59981cd26a2416bff68)
+09-09 14:54:13.843 24642 24642 F DEBUG   :       #07 pc 0000000000047b50  /system/priv-app/XRRuntime/XRRuntime.apk (offset 0xfa5000) (BuildId: e81f47da732f1206f89eb59981cd26a2416bff68)
+09-09 14:54:13.843 24642 24642 F DEBUG   :       #08 pc 000000000009e028  /data/app/org.meumeu.wivrn.nx.warp-c7hArJCTsdleMpoHUk6X9g==/base.apk!libopenxr_loader.so (offset 0x798000) (xrCreateSwapchain+88) (BuildId: 5a99ab19ba73caa744500d101b4aec5026008ec2)
+09-09 14:54:13.843 24642 24642 F DEBUG   :       #09 pc 000000000062eca0  /data/app/org.meumeu.wivrn.nx.warp-c7hArJCTsdleMpoHUk6X9g==/base.apk (offset 0x940000) (BuildId: a3852deff07f4be47e1721651cc635bdbd417aba)
+09-09 14:54:13.843 24642 24642 F DEBUG   :       #10 pc 00000000005b6fe0  /data/app/org.meumeu.wivrn.nx.warp-c7hArJCTsdleMpoHUk6X9g==/base.apk (offset 0x940000) (BuildId: a3852deff07f4be47e1721651cc635bdbd417aba)
+09-09 14:54:13.843 24642 24642 F DEBUG   :       #11 pc 00000000005ac7c8  /data/app/org.meumeu.wivrn.nx.warp-c7hArJCTsdleMpoHUk6X9g==/base.apk (offset 0x940000) (BuildId: a3852deff07f4be47e1721651cc635bdbd417aba)
+09-09 14:54:13.843 24642 24642 F DEBUG   :       #12 pc 00000000004518e8  /data/app/org.meumeu.wivrn.nx.warp-c7hArJCTsdleMpoHUk6X9g==/base.apk (offset 0x940000) (BuildId: a3852deff07f4be47e1721651cc635bdbd417aba)
+09-09 14:54:13.843 24642 24642 F DEBUG   :       #13 pc 00000000000ecd84  /apex/com.android.runtime/lib64/bionic/libc.so (__pthread_start(void*)+36) (BuildId: c531ce59e908b274babdd55c313f24d1)
+09-09 14:54:13.843 24642 24642 F DEBUG   :       #14 pc 000000000008b0e4  /apex/com.android.runtime/lib64/bionic/libc.so (__start_thread+64) (BuildId: c531ce59e908b274babdd55c313f24d1)

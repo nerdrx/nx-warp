@@ -96,6 +96,19 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 
 ## Measured results
 
+**Bounded readiness wait (September 9):** waiting briefly for a newer completed
+frame recovers much of the fresh-frame loss from reduced-density shading.
+Two 4 ms-cap trials reached **86.37 / 85.95 fresh updates/s**, versus
+**83.82/s** for the original shading baseline. Source display-time offset fell
+**70.52 → 57.08 / 57.19 ms**; this is not photon latency. The test profile is
+active on Pico, while both experimental switches default off. No sustained
+90-fresh-FPS or physical-motion proof yet. One baseline startup crashed during
+runtime swapchain creation; its retry passed, and the cause remains unresolved.
+[Methods, controls, raw logs and eye captures](bench/results/90fps-2026-09-09/ready-wait/README.md).
+
+![Readiness wait results](bench/results/90fps-2026-09-09/ready-wait/live-comparison.png)
+
+
 **Fragment-density map experiment (September 9):** an opt-in static FDM
 implementation cut presentation GPU time from **8.37 ms** in the baseline to **4.76 /
 5.01 ms** in two settled 90-second runs, while rendered cadence reached about

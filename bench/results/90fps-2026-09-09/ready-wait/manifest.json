@@ -1,0 +1,62 @@
+{
+  "date": "2026-09-09",
+  "wivrn_base": "3f81e87a",
+  "nx_commit": "d1d44849d191263620b04920b55e812117dff3d5",
+  "apk_sha256": {
+    "ready.apk": "0fe217c792dc27c357cb2e5700a31e1437ac7ac7adf3b7436f26ea7f53b34638",
+    "ready4.apk": "3814d7a21b86ca946bf9622cfa484298a497266395ee43fd39f1a41cd575563e"
+  },
+  "runs": {
+    "control": {
+      "apk": "ready.apk",
+      "fdm": 1,
+      "wait_us": 0
+    },
+    "wait2ms": {
+      "apk": "ready.apk",
+      "fdm": 1,
+      "wait_us": 2000
+    },
+    "wait4ms": {
+      "apk": "ready4.apk",
+      "fdm": 1,
+      "wait_us": 4000
+    },
+    "control4": {
+      "apk": "ready4.apk",
+      "fdm": 1,
+      "wait_us": 0
+    },
+    "baseline": {
+      "apk": "ready4.apk",
+      "fdm": 0,
+      "wait_us": 0,
+      "outcome": "startup crash; no complete measurement"
+    },
+    "repeat4": {
+      "apk": "ready4.apk",
+      "fdm": 1,
+      "wait_us": 4000
+    },
+    "baseline-retry": {
+      "apk": "ready4.apk",
+      "fdm": 0,
+      "wait_us": 0
+    }
+  },
+  "common": {
+    "jit": 1,
+    "capture": 0,
+    "compact_centre": 1,
+    "planar_centre": 1,
+    "borrowed_output": 1,
+    "peripheral_smooth": 0
+  },
+  "method": "90s stationary headless hello_xr through WiVRn NX, last30complete windows, no physical motion or photon measurement",
+  "wivrn_tested_commit": "a411fd48",
+  "active_profile": {
+    "fdm": 1,
+    "ready_wait_us": 4000,
+    "capture": 0
+  }
+}
