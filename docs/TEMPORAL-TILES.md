@@ -76,7 +76,12 @@ remain proposed. The guide is not simply upscaled as the final image.
 4. Reject bad history at disocclusions and changed objects. Use the fresh guide
    as a temporary fallback and request a detail repair under the work budget.
 
-Alternating which eye receives a full-detail update is an optional later variant.
+Alternating which eye receives a full-detail update now has a
+[CPU quality comparison](../bench/results/90fps-2026-09-09/alternating-eye/README.md).
+It spreads detail work across frames but increases the stereo residual proxy
+relative to synchronized controls at the same budget. Centres, balanced phases,
+lost-detail recovery and history reset are checked; GPU and live integration
+remain open. This is not an enabled alternate-resolution decoder.
 It needs per-eye history age/pose tracking even if the wire picture remains a
 single stereo frame; corresponding features can otherwise differ between eyes
 during motion. Start with coordinated stereo peripheral repairs, then compare

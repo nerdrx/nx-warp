@@ -96,6 +96,38 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 
 ## Measured results
 
+| Profile | Current status | Evidence and scope |
+|---|---|---|
+| **Live wider-ring profile** | Enabled opt-in on the custom WiVRn NX / Pico path | **77–82 fresh updates/s**, about **4.94 ms decode GPU time** and **2.04 ms server encode time**; native 512 × 512 centre with a 1024 × 1024 fine-detail boundary. [Live and fixture results](bench/results/90fps-2026-09-09/wide-ring/README.md) |
+| **CPU quality prototype** | **NOT integrated; not Pico measured**; separate quality experiment | Alternating-eye prototype results are recorded in the [experiment note](bench/results/90fps-2026-09-09/alternating-eye/README.md). [Trace image](bench/results/90fps-2026-09-09/alternating-eye/trace.png) |
+| **Stretch target** | 240 Hz remains unproven | The target is **4.17 ms per update**; no live 240 Hz delivery or physical-motion proof is established. [Motion-proof archive](bench/results/240fps-2026-09-08/motion-proof/README.md) |
+
+### Alternating detail: useful history, uneven stereo error
+
+The [alternating-eye CPU experiment](bench/results/90fps-2026-09-09/alternating-eye/README.md)
+keeps both centres fresh, refreshes one eye’s peripheral detail per frame, and
+uses a current half-resolution guide to validate warped history for the other.
+Synchronized controls refresh both eyes every second frame at the same average
+detail budget. Both cadence phases are tested because motion can align with the
+refresh rhythm.
+
+![Alternating versus synchronized detail schedule](bench/results/90fps-2026-09-09/alternating-eye/schedule.png)
+
+In the synthetic moving fixture, alternating history reduced peripheral MAE
+from **5.199** for fresh guides alone to **0.239**. Synchronized controls measured
+**0.212–0.267** at the same detail budget. Alternating had higher stereo residual
+error (**0.479 versus 0.306–0.389**), so better retained detail is not sufficient
+to choose it for VR. These are intensity errors on a 0–255 scale, not measured
+comfort or GPU savings.
+
+Centres, refresh budgets, lost-detail recovery, history reset and ambiguous
+checker motion have CPU checks. **GPU/codec integration and Pico validation
+remain open.** The live wider-ring profile is unchanged.
+
+![Cheap-eye reconstruction and error map](bench/results/90fps-2026-09-09/alternating-eye/comparison.png)
+
+![Alternating-eye CPU experiment trace](bench/results/90fps-2026-09-09/alternating-eye/trace.png)
+
 **Wider detail falloff:** the opt-in [wide PLANAR ring](bench/results/90fps-2026-09-09/wide-ring/README.md)
 expands the fine-detail boundary from 768×768 to 1024×1024 per eye and
 moves the coarser bands outward. The native 512×512 centre stays unchanged.
@@ -107,6 +139,9 @@ is enabled; these results show no demonstrated latency reduction.
 
 ![Wider ring geometry and decoded comparison](bench/results/90fps-2026-09-09/wide-ring/wide-ring.png)
 
+<details>
+<summary>Historical measured results and experiments</summary>
+
 **Follow-up:** [compact decoder workgroups and shorter ready waits](bench/results/90fps-2026-09-09/compact-workgroups/README.md)
 did not justify production changes. The next proposed architecture uses a
 [low-resolution guide with retained full-resolution detail](docs/TEMPORAL-TILES.md#cpu-quality-model-proposed-low-resolution-guide-with-retained-detail),
@@ -114,8 +149,8 @@ with explicit history poses and stereo-aware repairs. Its CPU quality model is
 implemented in the [guide-history fixture](bench/results/90fps-2026-09-09/guide-history/README.md);
 GPU and codec integration remain proposed.
 
-**Latest experiment:** [adaptive peripheral updates](bench/results/90fps-2026-09-09/adaptive-planar/README.md)
-keep native centres fresh and selectively reuse peripheral fits. Removing unused
+**Adaptive peripheral updates (historical, September 9):** the [experiment](bench/results/90fps-2026-09-09/adaptive-planar/README.md)
+keeps native centres fresh and selectively reuse peripheral fits. Removing unused
 PLANAR transforms reduced full-resolution offline encode GPU time from about
 5.9–6.1 ms to 4.7–4.8 ms. Cadence caching itself adds little measured saving and
 remains opt-in; decoder skipping and motion-correct tile history are still open.
@@ -261,7 +296,7 @@ are archived in the [borrowed-output evidence note](bench/results/90fps-2026-09-
 
 **90 Hz centre-first optimization:** single-pass admission halves the earlier multi-pass median (5.32–5.45 → 2.73–2.76 ms), with zero deadline misses across two 720-frame native Pico motion runs. One run retains outer pixels for one frame; the other refreshes every tile. This remains an offscreen experiment, not live streaming proof. [Paired results and actual capture](bench/results/90fps-2026-09-08/single-pass/README.md).
 
-**Latest decoder improvement:** consecutive full-picture frames now reuse an
+**Decoder materialized-reference improvement (historical, September 8):** consecutive full-picture frames now reuse an
 already materialized reference. In the native Pico motion stress control,
 eligible-frame median decode time falls **121.82 → 66.11 ms** with matching output
 hashes; motion-phase median falls **98.56 → 64.71 ms**. This is a real but incomplete
@@ -386,6 +421,8 @@ One native-resolution, reversed-order comparison measured encode-start-to-render
 | NX with experimental target cache | **17.633 ms** | **22.321 ms** | **23.256 ms** |
 
 This is a measured pipeline advantage under those conditions. **Bitrate, quality, stereo organization and rendering paths differed.** HEVC reached decoded pixels sooner; NX spent less time from decode completion to selection. An [earlier native comparison](bench/results/240fps-2026-09-07/live-atlas/native-csv-hevc-nx/README.md) favored HEVC. Neither establishes general codec superiority or photon latency. [Controlled pairs and canonical frame mapping](bench/results/240fps-2026-09-07/live-atlas/borrowed-cache-corrected/v2-live/README.md).
+
+</details>
 
 ## Visual results
 
