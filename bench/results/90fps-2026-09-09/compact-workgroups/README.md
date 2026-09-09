@@ -1,7 +1,15 @@
-# Compact decoder workgroup experiment — rejected for production
+# Compact decoder workgroup experiment — inconclusive
 
-The compact flat PLANAR shader was tested with 256, 128 and 64 threads per
-workgroup. Its existing direct compact store already avoids discarded samples,
+**Measurement correction:** the archived harness sets `NXVC_VKD_FLAT_WG`, but
+omits `NXVC_VKD_PLANAR_FLAT=1`, which is required to create the specialized
+shader module. The CLI does not enable it implicitly. There is no archived
+proof that the intended shader was active, so these timings do **not** establish
+an effect of workgroup size. The prior performance conclusion is withdrawn;
+the prototype remains out of production. A new test must explicitly enable
+and verify the path. Pixel equality and the separate ready-wait trial retain
+their original, narrower scopes.
+
+The intended experiment varied 256, 128 and 64 threads per workgroup. Its existing direct compact store already avoids discarded samples,
 so this changes scheduling rather than reconstruction or output resolution.
 Default/noncompact paths stayed at 256. `experiment.patch` contains the opt-in
 prototype against NX Warp da43dcc; it was removed from production after testing.

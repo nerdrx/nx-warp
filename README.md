@@ -1,6 +1,7 @@
 <div align="center">
 
-<img src="brand/nx-warp-logo.png" width="460" alt="NX Warp">
+<img src="brand/nx-wordmark-light.svg" width="150" alt="NX"><br>
+<strong>Warp</strong>
 
 ### VR-specific compression. GPU-native reconstruction. Latency first.
 
@@ -96,6 +97,10 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 
 ## Measured results
 
+**Latest work-omission experiment:** [exact PLANAR reuse](bench/results/90fps-2026-09-09/exact-reuse/README.md) passes CPU-reference and dropped-frame checks. It saves about **0.30 ms** in a local-motion standalone decoder fixture, but shows **no full-motion decode-time gain**. The prototype remains archived; it is not a live latency improvement.
+
+![Exact-reuse Pico experiment: reconstruction and standalone decode times](bench/results/90fps-2026-09-09/exact-reuse/timings.png)
+
 | Profile | Current status | Evidence and scope |
 |---|---|---|
 | **Live wider-ring profile** | Enabled opt-in on the custom WiVRn NX / Pico path | **77–82 fresh updates/s**, about **4.94 ms decode GPU time** and **2.04 ms server encode time**; native 512 × 512 centre with a 1024 × 1024 fine-detail boundary. [Live and fixture results](bench/results/90fps-2026-09-09/wide-ring/README.md) |
@@ -169,7 +174,9 @@ is enabled; these results show no demonstrated latency reduction.
 <summary>Historical measured results and experiments</summary>
 
 **Follow-up:** [compact decoder workgroups and shorter ready waits](bench/results/90fps-2026-09-09/compact-workgroups/README.md)
-did not justify production changes. The next proposed architecture uses a
+includes a corrected, inconclusive workgroup test: its harness did not explicitly
+enable the specialized shader. The shorter ready-wait trial showed no gain.
+The next proposed architecture uses a
 [low-resolution guide with retained full-resolution detail](docs/TEMPORAL-TILES.md#cpu-quality-model-proposed-low-resolution-guide-with-retained-detail),
 with explicit history poses and stereo-aware repairs. Its CPU quality model is
 implemented in the [guide-history fixture](bench/results/90fps-2026-09-09/guide-history/README.md);

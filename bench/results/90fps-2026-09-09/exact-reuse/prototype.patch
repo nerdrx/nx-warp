@@ -1,0 +1,130 @@
+diff --git a/vk/decoder/nxvc_vkdec.cpp b/vk/decoder/nxvc_vkdec.cpp
+index 1d5b77e..c013086 100644
+--- a/vk/decoder/nxvc_vkdec.cpp
++++ b/vk/decoder/nxvc_vkdec.cpp
+@@ -342,6 +342,12 @@ struct nxvc_vk_decoder {
+     StreamInfo si{};
+     FrameParse fp{};
+     bool resources_ready = false;
++    // Opt-in exact reconstruction reuse for decoder-owned compact UINT output.
++    // Keys describe a submitted image; reuse additionally requires completed GPU
++    // work and clean prior Pass A status. No borrowed target may use these keys.
++    bool exact_candidate = false;
++    std::vector<uint32_t> exact_keys;
++
+     // Byte layout of the staging buffer.
+     VkDeviceSize offBits = 0, offDesc = 0, offTables = 0, offRecs = 0,
+                  offWgt = 0, offOrder = 0, offACoded = 0, offADirty = 0;
+@@ -2568,6 +2574,8 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_parse_stream_header(
+     if (st) return seterr(d, st, "stream header: %s",
+                           nxvc_vk_decoder_status_string(st));
+     d->have_stream = true;
++    d->exact_candidate = false;
++    d->exact_keys.clear();
+     d->resources_ready = false;
+     d->has_borrowed_output = false;
+     d->borrowed_luma = {};
+@@ -2983,6 +2991,21 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
+                       "no stream header parsed yet");
+     const double t0 = now_ms();
+ 
++    const bool exact_requested = [] {
++        const char *e = std::getenv("NXVC_VKD_EXACT_REUSE");
++        return e && std::strcmp(e, "1") == 0;
++    }();
++    bool exact_previous = exact_requested && d->exact_candidate && frame_complete(d);
++    if (exact_previous && d->bStatus.mapped) {
++        const auto *status = static_cast<const uint32_t *>(d->bStatus.mapped);
++        for (const LaneGroup &g : d->fp.groups)
++            for (uint32_t i = g.first; i < g.limit; ++i)
++                if (status[i] != 0) exact_previous = false;
++    }
++    d->exact_candidate = false; // Every refusal below invalidates reuse.
++    std::vector<uint32_t> exact_next;
++    bool exact_active = false;
++
+     const bool previous_materialized = d->atlas_materialized;
+     d->atlas_materialized = false;
+ 
+@@ -3061,6 +3084,38 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
+                                      flat_tiles == fp.tiles_planar &&
+                                      flat_tiles != ntiles;
+     }
++    // The specialized flat shader reads the normalized 26 words, QP delta,
++    // base QP and chroma offset. Geometry/format are fixed by this allocation.
++    // Comparing all of those values proves identical reconstructed output;
++    // wire-byte identity is unnecessary after lossless parser normalization.
++    exact_active = exact_requested && !d->has_borrowed_output && !d->atlas_mode &&
++        d->compact_centre && !d->unorm_store && d->si.bit_depth == 8 &&
++        (d->flags & NXVC_VKD_FLAG_INDEPENDENT_TILES) &&
++        (d->planar_flat_frame || d->planar_flat_mixed_frame);
++    uint32_t exact_reused = 0, exact_eligible = 0;
++    if (exact_active) {
++        constexpr size_t stride = 29;
++        exact_next.assign(size_t(ntiles) * stride, ~uint32_t(0));
++        exact_previous = exact_previous && d->exact_keys.size() == exact_next.size();
++        for (uint32_t t = 0; t < ntiles; ++t) {
++            if ((fp.recs[t].w1 & 7u) != nxvw::kModePlanar) continue;
++            ++exact_eligible;
++            uint32_t *key = exact_next.data() + size_t(t) * stride;
++            std::memcpy(key, fp.planar.data() + size_t(t) * 26, 26 * sizeof(uint32_t));
++            key[26] = fp.recs[t].w1;
++            key[27] = uint32_t(fp.push.baseQp);
++            key[28] = uint32_t(fp.push.chromaQpOff);
++            if (exact_previous && std::memcmp(key,
++                    d->exact_keys.data() + size_t(t) * stride, stride * sizeof(uint32_t)) == 0) {
++                // Host-private dispatch marker; never serialized into the stream.
++                fp.planar[size_t(t) * 26] |= 0x80000000u;
++                ++exact_reused;
++            }
++        }
++        if (std::getenv("NXVC_VKD_EXACT_REUSE_TRACE"))
++            std::fprintf(stderr, "exact-reuse: frame %u reused %u eligible %u\n",
++                         fp.frame_number, exact_reused, exact_eligible);
++    }
+     if ((st = ensure_bits(d, fp.frame_bytes))) return st;
+ 
+     // ---- 2. staging --------------------------------------------------
+@@ -3311,8 +3366,8 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
+                          true, d->borrowed_output_layout);
+         d->borrowed_output_layout = VK_IMAGE_LAYOUT_GENERAL;
+     } else {
+-        image_to_general(d->cmd, d->imgLuma.img);
+-        image_to_general(d->cmd, d->imgCbCr.img);
++        image_to_general(d->cmd, d->imgLuma.img, !(exact_active && exact_previous));
++        image_to_general(d->cmd, d->imgCbCr.img, !(exact_active && exact_previous));
+     }
+     image_to_general(d->cmd, d->imgRgbaN.img);
+     image_to_general(d->cmd, d->imgLumaN.img);
+@@ -4178,6 +4233,10 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
+         return seterr(d, NXVC_VKD_ERR_VULKAN, "queue submit: %s (%d)",
+                       vkresult_name(submit_result), (int)submit_result);
+     }
++    if (exact_active) {
++        d->exact_keys.swap(exact_next);
++        d->exact_candidate = true; // Not reusable until frame_complete() succeeds.
++    }
+     // WRITEBACK also leaves a complete identity atlas when every tile was
+     // accepted as INTRA at full resolution, including an intra reset.
+     // A partial update cannot establish this whole-slot proof.
+@@ -4465,6 +4524,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_set_atlas_borrowed_target(
+ extern "C" nxvc_vkd_status nxvc_vk_decoder_set_borrowed_output(
+     nxvc_vk_decoder *d, const nxvc_vkd_output_images *target) {
+     if (!d) return NXVC_VKD_ERR_ARG;
++    d->exact_candidate = false;
+     nxvc_vkd_status wait_st = nxvc_vk_decoder_wait(d, UINT64_MAX);
+     if (wait_st) return wait_st;
+     if (!target) {
+diff --git a/vk/decoder/passB/planar_flat_main.glsl b/vk/decoder/passB/planar_flat_main.glsl
+index ddab159..d895406 100644
+--- a/vk/decoder/passB/planar_flat_main.glsl
++++ b/vk/decoder/passB/planar_flat_main.glsl
+@@ -21,6 +21,8 @@ void main() {
+     NxvwTileRec rec = uTiles.rec[tile];
+     int qp = clamp(pc.p.baseQp + nxvw_rec_qp_delta(rec.w1), 0, 63);
+     int base = tile * kPlanarUintsPerTile;
++    // Proven equal to this decoder-owned output by the host exact-key cache.
++    if ((uPlanar.w[base] & 0x80000000u) != 0u) return;
+     int cb = base + kPlanarHeaderUints + kPlanarMapUints;
+     bool fine = (uPlanar.w[base] & 8u) != 0u;
+     nxvwIsInterTile = false;
