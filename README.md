@@ -107,6 +107,8 @@ The selected block softening reuses the presentation sampler with **no extra tex
 
 **Cheaper outer shading:** [four moving-content Pico trials](bench/results/90fps-2026-09-10/fdm-ring/README.md) measured **6.47 → 6.09 ms presentation GPU time (6.0% less)** with the same full-density centre. Only the surrounding shading ring gets cheaper; fresh-update telemetry stayed similar. Source-time offset fell 63.92 → 60.06 ms, which is not a motion-to-photon measurement. A separate [coordinate-fusion attempt](bench/results/90fps-2026-09-10/remap-fused/README.md) regressed 5.3% and was reverted.
 
+The [shorter-wait follow-up](bench/results/90fps-2026-09-10/fdm-wait/README.md) was rejected: reducing the ready-frame wait from 4 ms to 1 ms lost **8.1% of fresh updates** while reducing source-time offset by only **0.29 ms**. The current profile retains 4 ms.
+
 Optional Kuwahara approximations reduce extra samples from 16 to [8](bench/results/90fps-2026-09-10/kuwahara-eight-tap/RESULTS.md), [4](bench/results/90fps-2026-09-10/kuwahara-four-tap/RESULTS.md), and [2](bench/results/90fps-2026-09-10/kuwahara-two-tap/RESULTS.md). Isolated Pico RGBA probes measured about 38% lower draw time for eight taps versus sixteen, then a further 22% for four versus eight; the two-tap gain was smaller and varied between runs. These are approximate filters and GPU microbenchmarks, not live latency improvements.
 
 **Latest live tradeoff:** [decode queue priority](bench/results/90fps-2026-09-09/queue-priority/README.md) reduced the mean of two run medians from **27.44 to 24.48 ms encode-to-selection**, while fresh source selections fell from **76.52 to 72.67/s**. Four animated Pico runs; opt-in, with equal priority still the default. This is not photon latency.
