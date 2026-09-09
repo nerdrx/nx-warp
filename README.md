@@ -103,6 +103,15 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 | **CPU quality prototype** | **NOT integrated; not Pico measured**; separate quality experiment | Alternating-eye prototype results are recorded in the [experiment note](bench/results/90fps-2026-09-09/alternating-eye/README.md). [Trace image](bench/results/90fps-2026-09-09/alternating-eye/trace.png) |
 | **Stretch target** | 240 Hz remains unproven | The target is **4.17 ms per update**; no live 240 Hz delivery or physical-motion proof is established. [Motion-proof archive](bench/results/240fps-2026-09-08/motion-proof/README.md) |
 
+### Measured live software latency
+
+A fresh [90-second Pico scene-motion capture](bench/results/90fps-2026-09-09/live-latency/README.md)
+measures **27.65 ms median / 34.84 ms p95 / 37.61 ms p99** from encode start to
+first render selection across **6,456 selected stereo frames**. Canonical frame
+IDs and WiVRn clock conversion are checked. This excludes application rendering
+before encode, later presentation work and scanout: **it is not motion-to-photon
+latency**. The synchronized-history prototype is not enabled in this baseline.
+
 ### Synchronized refresh now has a Pico GPU probe
 
 A [standalone Vulkan reconstruction probe](bench/results/90fps-2026-09-09/synchronized-gpu/README.md)
