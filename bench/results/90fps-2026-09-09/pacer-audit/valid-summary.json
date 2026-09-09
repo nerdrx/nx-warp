@@ -1,0 +1,68 @@
+[
+  {
+    "file": "nx-scratch/motion-live/pacer-budget-client.log",
+    "client": {
+      "n": 30,
+      "start": "19:13:50.804",
+      "end": "19:14:48.957",
+      "means": {
+        "fresh_per_s": 75.11666666666666,
+        "iterations": 179.43333333333334,
+        "iterations_per_s": 89.46666666666667,
+        "older_available": 0.0,
+        "own_gpu_ms": 5.316666666666666,
+        "source_offset_ms": 56.17333333333333,
+        "submit_lead_ms": 30.34,
+        "wait_attempts": 106.26666666666667,
+        "wait_successes": 77.06666666666666,
+        "wait_total_ms": 265.73266666666666
+      }
+    },
+    "decoder": {
+      "n": 30,
+      "start": "19:13:50.767",
+      "end": "19:14:48.925",
+      "means": {
+        "copy_gpu_ms": 0.0006666666666666666,
+        "fence_post_ms": 8.016666666666667,
+        "frames": 156.0,
+        "frames_per_s": 78.0,
+        "nxvc_gpu_ms": 5.016666666666667,
+        "queue_ms": 2.9699999999999998
+      }
+    }
+  },
+  {
+    "file": "nx-scratch/motion-live/pacer-restored-client.log",
+    "client": {
+      "n": 30,
+      "start": "19:25:01.276",
+      "end": "19:25:59.425",
+      "means": {
+        "fresh_per_s": 71.91666666666667,
+        "iterations": 179.43333333333334,
+        "iterations_per_s": 89.5,
+        "older_available": 0.0,
+        "own_gpu_ms": 5.073333333333333,
+        "source_offset_ms": 58.74666666666667,
+        "submit_lead_ms": 29.98,
+        "wait_attempts": 101.76666666666667,
+        "wait_successes": 66.16666666666667,
+        "wait_total_ms": 260.3306666666667
+      }
+    },
+    "decoder": {
+      "n": 30,
+      "start": "19:25:01.235",
+      "end": "19:25:59.455",
+      "means": {
+        "copy_gpu_ms": 0.0,
+        "fence_post_ms": 7.573333333333333,
+        "frames": 149.93333333333334,
+        "frames_per_s": 74.96666666666667,
+        "nxvc_gpu_ms": 4.946666666666667,
+        "queue_ms": 2.603333333333333
+      }
+    }
+  }
+]

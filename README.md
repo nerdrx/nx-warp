@@ -96,6 +96,12 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 
 ## Measured results
 
+**Pacing audit:** experimental estimator changes were reverted after incomplete
+live trials. The benchmark now rejects stalled clients even when their processes
+survive. A restored 90-second run passed with **71.92 fresh updates/s** and
+**58.75 ms source offset**; this is recovery evidence, not a new latency gain.
+[Failure records and validity checks](bench/results/90fps-2026-09-09/pacer-audit/README.md).
+
 **Latency follow-up (September 9):** disabling glow and dithering preserved the
 native centre and reduced presentation GPU work to **4.77 / 5.04 ms**, versus
 **5.37 ms** with them enabled. Source display-time offset measured **61.68 / 58.33 ms**

@@ -1,0 +1,122 @@
+diff --git a/server/compositor/pacer.cpp b/server/compositor/pacer.cpp
+index e4fb501b..fb67b825 100644
+--- a/server/compositor/pacer.cpp
++++ b/server/compositor/pacer.cpp
+@@ -51,10 +51,13 @@ pacer::pacer(uint64_t frame_duration) :
+ 	        while (not t.stop_requested())
+ 	        {
+ 		        samples.clear();
+-		        {
+-			        std::unique_lock lock(compute_mutex);
+-			        compute_cv.wait(lock);
+-			        for (const auto & time: frame_times_compute)
++		{
++			std::unique_lock lock(compute_mutex);
++			compute_cv.wait(lock, [&] { return compute_pending || t.stop_requested(); });
++			if (t.stop_requested())
++				break;
++			compute_pending = false;
++			for (const auto & time: frame_times_compute)
+ 			        {
+ 				        if (time.decoded > time.present)
+ 					        samples.push_back(time.decoded - time.present);
+@@ -62,11 +65,19 @@ pacer::pacer(uint64_t frame_duration) :
+ 		        }
+ 		        if (samples.empty())
+ 			        continue;
+-		        auto it = samples.begin() + (samples.size() * 995) / 1000;
+-		        std::ranges::nth_element(samples, it);
++		        std::ranges::sort(samples);
++		        const auto percentile = [&](size_t per_mille) {
++			        return samples[(samples.size() * per_mille) / 1000];
++		        };
+ 
+ 		        std::unique_lock lock(mutex);
+-		        safe_present_to_decoded_ns = *it + client_margin_ms.val * U_TIME_1MS_IN_NS;
++		        safe_present_to_decoded_ns = percentile(995) + client_margin_ms.val * U_TIME_1MS_IN_NS;
++		        U_LOG_IFL_I(U_LOGGING_INFO, "pacer budget: %zu samples, present-to-decoded p50 %.2f p95 %.2f p99.5 %.2f ms; safe %.2f wake-to-present %.2f render-to-display %.2f ms",
++		                samples.size(), double(percentile(500)) / 1e6,
++		                double(percentile(950)) / 1e6, double(percentile(995)) / 1e6,
++		                double(safe_present_to_decoded_ns) / 1e6,
++		                double(mean_wake_up_to_present_ns) / 1e6,
++		                double(mean_render_to_display_ns) / 1e6);
+ 	        }
+         })
+ {
+@@ -77,7 +88,11 @@ pacer::pacer(uint64_t frame_duration) :
+ pacer::~pacer()
+ {
+ 	u_var_remove_root(this);
+-	worker.request_stop();
++	{
++		std::lock_guard lock(compute_mutex);
++		worker.request_stop();
++		compute_pending = true;
++	}
+ 	compute_cv.notify_all();
+ }
+ 
+@@ -127,11 +142,17 @@ void pacer::predict(
+ 
+ void pacer::on_feedback(const wivrn::from_headset::feedback & feedback, const clock_offset & offset)
+ {
++	std::lock_guard lock(mutex);
++	auto & when = in_flight_frames[feedback.frame_index % in_flight_frames.size()];
++	if (++feedback_seen % 256 == 0)
++		U_LOG_IFL_I(U_LOGGING_INFO, "pacer feedback: stream %u frame %llu latest %lld repeats %u blitted %lld decoded %lld matched %d",
++		        unsigned(feedback.stream_index), (unsigned long long)feedback.frame_index,
++		        (long long)frame_id, unsigned(feedback.times_displayed),
++		        (long long)feedback.blitted, (long long)feedback.received_from_decoder,
++		        int(when.frame_id == feedback.frame_index));
+ 	if (feedback.times_displayed > 1 or not feedback.blitted)
+ 		return;
+ 
+-	std::lock_guard lock(mutex);
+-	auto & when = in_flight_frames[feedback.frame_index % in_flight_frames.size()];
+ 	if (when.frame_id != feedback.frame_index)
+ 		return;
+ 
+@@ -146,10 +167,12 @@ void pacer::on_feedback(const wivrn::from_headset::feedback & feedback, const cl
+ 
+ 	if (feedback.stream_index == 0)
+ 	{
+-		if (feedback.frame_index % 100 == 0)
++		if (++stream0_feedback_count == 100)
+ 		{
++			stream0_feedback_count = 0;
+ 			std::unique_lock lock(compute_mutex);
+ 			std::swap(frame_times, frame_times_compute);
++			compute_pending = true;
+ 			compute_cv.notify_all();
+ 		}
+ 		// adjust phase
+@@ -209,5 +232,6 @@ void pacer::reset()
+ {
+ 	std::lock_guard lock(mutex);
+ 	std::ranges::fill(frame_times, frame_time{});
++	stream0_feedback_count = 0;
+ }
+ } // namespace wivrn
+diff --git a/server/compositor/pacer.h b/server/compositor/pacer.h
+index 60ff8e18..f3045a62 100644
+--- a/server/compositor/pacer.h
++++ b/server/compositor/pacer.h
+@@ -50,6 +50,7 @@ private:
+ 	int64_t frame_duration_ns;
+ 	int64_t last_ns = 0;
+ 	int64_t frame_id = 0;
++	uint64_t feedback_seen = 0;
+ 
+ 	int64_t mean_wake_up_to_present_ns = 1'000'000;
+ 	int64_t safe_present_to_decoded_ns = 0;
+@@ -69,8 +70,10 @@ private:
+ 
+ 	std::mutex compute_mutex;
+ 	std::condition_variable compute_cv;
++	bool compute_pending = false;
+ 	std::vector<frame_time> frame_times_compute;
+ 	std::jthread worker;
++	uint32_t stream0_feedback_count = 0;
+ 
+ 	std::array<frame_info, 8> in_flight_frames;
+ 
