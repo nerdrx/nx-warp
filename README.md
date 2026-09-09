@@ -96,6 +96,20 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 
 ## Measured results
 
+**Fragment-density map experiment (September 9):** an opt-in static FDM
+implementation cut presentation GPU time from **8.37 ms** in the baseline to **4.76 /
+5.01 ms** in two settled 90-second runs, while rendered cadence reached about
+**89.6/s**. Fresh source updates regressed from **83.97/s** to **58.08 /
+61.12/s**; baseline behavior was restored and the FDM switch remains opt-in
+with default off. Source display-time offset was **69.74 → 55.25 / 55.41 ms**.
+These are last-30 approximately two-second window means, not frame percentiles,
+and source offset is not photon latency. Six
+90-second runs included a full-density attachment control, a JIT-off control,
+and a final baseline restoration check. There was no physical motion or photon
+measurement. [Methods, metrics, density map and live chart](bench/results/90fps-2026-09-09/fragment-density/README.md).
+
+![Fragment-density live comparison](bench/results/90fps-2026-09-09/fragment-density/live-comparison.png)
+
 **Direct compact reconstruction (September 9):** flat PLANAR tiles now evaluate
 only the samples that reach the compact output. Decoder p50 is **8.23 → 7.27 ms**
 with byte-exact retained pixels in UINT and UNORM checks. Two live repeats
