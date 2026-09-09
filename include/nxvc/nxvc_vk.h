@@ -426,6 +426,15 @@ nxvc_vkd_status nxvc_vk_decoder_images(const nxvc_vk_decoder *dec,
  * the pair -- a bench that prints them alongside a GPU/wall ratio can say
  * WHICH of the two is wrong, and this decoder shipped GPU times about 1.57x
  * high on one device for want of exactly that. */
+/* Optional measurement: raw masked device ticks spanning the latest decode.
+ * Returns 1 only for a completed frame with available queries; 0 otherwise,
+ * leaving outputs untouched. Does not wait for GPU completion. Query collection
+ * uses the same bounded polling as decoder_stats. Use timestamp_info's period
+ * and valid-bit mask for differences. These are not host-clock timestamps. */
+#define NXVC_VK_DECODER_GPU_SPAN 1
+int nxvc_vk_decoder_completed_gpu_span(const nxvc_vk_decoder *dec,
+                                      uint64_t *begin, uint64_t *end);
+
 nxvc_vkd_status nxvc_vk_decoder_timestamp_info(const nxvc_vk_decoder *dec,
                                                float *period_ns,
                                                uint32_t *valid_bits);

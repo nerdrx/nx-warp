@@ -1,0 +1,30 @@
+diff --git a/client/decoder/nxwarp/nxwarp_decoder.cpp b/client/decoder/nxwarp/nxwarp_decoder.cpp
+index b574c8d8..ce894220 100644
+--- a/client/decoder/nxwarp/nxwarp_decoder.cpp
++++ b/client/decoder/nxwarp/nxwarp_decoder.cpp
+@@ -2171,6 +2171,25 @@ void nxwarp_decoder::decode_unit(decode_job & job)
+ 		if ((r == vk::Result::eSuccess or r == vk::Result::eNotReady) and ts[1] > ts[0])
+ 		{
+ 			copy_gpu_ms = double(ts[1] - ts[0]) * ts_period_ns / 1e6;
++#ifdef NXVC_VK_DECODER_GPU_SPAN
++#ifdef __ANDROID__
++            char span_property[PROP_VALUE_MAX]{};
++            if (__system_property_get("debug.wivrn.nx.trace_handoff", span_property) > 0 &&
++                std::strcmp(span_property, "1") == 0 && r == vk::Result::eSuccess) {
++                uint64_t begin = 0, end = 0;
++                float period = 0;
++                uint32_t bits = 0;
++                nxvc_vk_decoder_timestamp_info(nxvc, &period, &bits);
++                if (bits && nxvc_vk_decoder_completed_gpu_span(nxvc, &begin, &end)) {
++                    const uint64_t mask = bits >= 64 ? ~uint64_t(0) : (uint64_t(1) << bits) - 1;
++                    const double gap = double((ts[0] - end) & mask) * period / 1e6;
++                    const double span = double((end - begin) & mask) * period / 1e6;
++                    spdlog::info("nxwarp[{}] handoff frame {}: decode_gpu {:.4f} gap_gpu {:.4f} output_gpu {:.4f} ms",
++                                 stream_index, job.frame_id, span, gap, copy_gpu_ms);
++                }
++            }
++#endif
++#endif
+ 			const uint64_t prev_end = g_last_copy_end_ts.load(std::memory_order_relaxed);
+ 			const uint32_t prev_stream = g_last_copy_stream.load(std::memory_order_relaxed);
+ 			if (prev_end and prev_stream != 0xffffffffu and prev_stream != stream_index)

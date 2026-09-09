@@ -58,7 +58,11 @@ across both submissions is not an evidenced fix for this Pico result.
 Likewise, deleting the completion wait would violate the current decoupled
 presentation contract: published frames must already be complete.
 
-## Next bounded experiment
+## Follow-up measurement
+
+The [new live handoff trace](../live-handoff/README.md) measures **0.0142 ms median / 0.0241 ms p99** between decode end and output start, with occasional long outliers. Typical submission fusion is therefore not supported as a multi-millisecond opportunity.
+
+## Original proposed experiment
 
 Instrument the decode submission and its following layout-transition submission
 with per-frame host and GPU endpoints. Attribute their gap before considering

@@ -188,6 +188,8 @@ struct nxvc_vk_decoder {
     // this would otherwise print every frame.
     uint64_t ts_dropped = 0;
     bool ts_pending = false;
+    bool gpu_span_valid = false;
+    uint64_t gpu_span_begin = 0, gpu_span_end = 0;
     bool astats_pending = false;
 
     VkDescriptorPool dpool = VK_NULL_HANDLE;
@@ -2569,6 +2571,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_parse_stream_header(
                           nxvc_vk_decoder_status_string(st));
     d->have_stream = true;
     d->resources_ready = false;
+    d->gpu_span_valid = false;
     d->has_borrowed_output = false;
     d->borrowed_luma = {};
     d->borrowed_cbcr = {};
@@ -2697,6 +2700,7 @@ static void collect_atlas_stats(D *d) {
 static void collect_timestamps(D *d) {
     if (!d->ts_pending) return;
     d->ts_pending = false;
+    d->gpu_span_valid = false;
     if (!d->have_timestamps || !d->queries) return;
     // [passb] 14, not 12: four Pass B segments occupy queries 6..13, and this
     // buffer is what vkGetQueryPoolResults is handed `sizeof ts` for.  At 12 it
@@ -2759,6 +2763,9 @@ static void collect_timestamps(D *d) {
     // positive delta rather than a number near 2^64.  `ts_mask` is all-ones on
     // a 64-bit family, so this is the identity there.
     const uint64_t m = d->ts_mask;
+    d->gpu_span_begin = ts[0] & m;
+    d->gpu_span_end = ts[3] & m;
+    d->gpu_span_valid = true;
     for (uint32_t i = 0; i < nq; ++i) ts[i] &= m;
     auto delta = [m](uint64_t b, uint64_t a) -> double {
         return (double)((b - a) & m);
@@ -2971,6 +2978,19 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_stats(const nxvc_vk_decoder *d,
     return NXVC_VKD_OK;
 }
 
+extern "C" int nxvc_vk_decoder_completed_gpu_span(const nxvc_vk_decoder *d,
+                                                      uint64_t *begin,
+                                                      uint64_t *end) {
+    if (!d || !begin || !end) return 0;
+    D *m = const_cast<D *>(d);
+    if (!frame_complete(m)) return 0;
+    if (m->ts_pending) collect_timestamps(m);
+    if (!m->gpu_span_valid) return 0;
+    *begin = m->gpu_span_begin;
+    *end = m->gpu_span_end;
+    return 1;
+}
+
 // --------------------------------------------------------------- decode
 extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
                                                    const uint8_t *bytes,
@@ -2982,6 +3002,7 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
         return seterr(d, NXVC_VKD_ERR_BITSTREAM,
                       "no stream header parsed yet");
     const double t0 = now_ms();
+    d->gpu_span_valid = false;
 
     const bool previous_materialized = d->atlas_materialized;
     d->atlas_materialized = false;
