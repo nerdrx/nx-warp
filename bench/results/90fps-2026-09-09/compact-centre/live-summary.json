@@ -1,0 +1,205 @@
+[
+  {
+    "file": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-09-09/compact-centre/logs/live-native-a-client.log",
+    "client": {
+      "n": 30,
+      "start": "13:26:31.365",
+      "end": "13:27:29.585",
+      "means": {
+        "fresh_per_s": 53.53333333333333,
+        "iterations": 141.36666666666667,
+        "iterations_per_s": 70.40333333333334,
+        "own_gpu_ms": 7.693333333333333,
+        "source_offset_ms": 75.11666666666666,
+        "submit_lead_ms": 39.11666666666667
+      }
+    },
+    "decoder": {
+      "n": 30,
+      "start": "13:26:31.372",
+      "end": "13:27:29.710",
+      "means": {
+        "copy_gpu_ms": 0.0003333333333333333,
+        "fence_post_ms": 12.436666666666667,
+        "frames": 110.5,
+        "frames_per_s": 55.25,
+        "nxvc_gpu_ms": 6.466666666666667,
+        "queue_ms": 5.9399999999999995
+      }
+    }
+  },
+  {
+    "file": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-09-09/compact-centre/logs/live-compact-a-recovered.log",
+    "client": {
+      "n": 30,
+      "start": "13:28:05.011",
+      "end": "13:29:03.270",
+      "means": {
+        "fresh_per_s": 45.7,
+        "iterations": 109.53333333333333,
+        "iterations_per_s": 54.53,
+        "own_gpu_ms": 12.173333333333334,
+        "source_offset_ms": 79.41333333333334,
+        "submit_lead_ms": 42.373333333333335
+      }
+    },
+    "decoder": {
+      "n": 30,
+      "start": "13:28:04.899",
+      "end": "13:29:03.217",
+      "means": {
+        "copy_gpu_ms": 0.0,
+        "fence_post_ms": 12.996666666666666,
+        "frames": 102.86666666666666,
+        "frames_per_s": 51.43333333333333,
+        "nxvc_gpu_ms": 4.783333333333333,
+        "queue_ms": 8.196666666666667
+      }
+    }
+  },
+  {
+    "file": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-09-09/compact-centre/logs/live-native-b-client.log",
+    "client": {
+      "n": 30,
+      "start": "13:29:44.564",
+      "end": "13:30:42.761",
+      "means": {
+        "fresh_per_s": 54.016666666666666,
+        "iterations": 138.86666666666667,
+        "iterations_per_s": 69.19333333333334,
+        "own_gpu_ms": 7.96,
+        "source_offset_ms": 72.53999999999999,
+        "submit_lead_ms": 38.85333333333333
+      }
+    },
+    "decoder": {
+      "n": 30,
+      "start": "13:29:44.554",
+      "end": "13:30:42.810",
+      "means": {
+        "copy_gpu_ms": 0.0,
+        "fence_post_ms": 12.346666666666666,
+        "frames": 112.96666666666667,
+        "frames_per_s": 56.483333333333334,
+        "nxvc_gpu_ms": 6.35,
+        "queue_ms": 5.97
+      }
+    }
+  },
+  {
+    "file": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-09-09/compact-centre/logs/live-compact-branchless-client.log",
+    "client": {
+      "n": 30,
+      "start": "13:31:57.823",
+      "end": "13:32:56.014",
+      "means": {
+        "fresh_per_s": 55.35,
+        "iterations": 138.9,
+        "iterations_per_s": 69.20666666666666,
+        "own_gpu_ms": 8.993333333333334,
+        "source_offset_ms": 72.68666666666667,
+        "submit_lead_ms": 39.34
+      }
+    },
+    "decoder": {
+      "n": 30,
+      "start": "13:31:57.851",
+      "end": "13:32:56.042",
+      "means": {
+        "copy_gpu_ms": 0.0,
+        "fence_post_ms": 11.58,
+        "frames": 124.73333333333333,
+        "frames_per_s": 62.36666666666667,
+        "nxvc_gpu_ms": 4.676666666666667,
+        "queue_ms": 6.873333333333333
+      }
+    }
+  },
+  {
+    "file": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-09-09/compact-centre/logs/live-native-final-client.log",
+    "client": {
+      "n": 30,
+      "start": "13:33:35.911",
+      "end": "13:34:34.137",
+      "means": {
+        "fresh_per_s": 53.88333333333333,
+        "iterations": 140.4,
+        "iterations_per_s": 69.92666666666668,
+        "own_gpu_ms": 7.86,
+        "source_offset_ms": 73.27,
+        "submit_lead_ms": 39.486666666666665
+      }
+    },
+    "decoder": {
+      "n": 30,
+      "start": "13:33:35.833",
+      "end": "13:34:34.126",
+      "means": {
+        "copy_gpu_ms": 0.0,
+        "fence_post_ms": 12.49,
+        "frames": 112.16666666666667,
+        "frames_per_s": 56.083333333333336,
+        "nxvc_gpu_ms": 6.376666666666667,
+        "queue_ms": 6.083333333333333
+      }
+    }
+  },
+  {
+    "file": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-09-09/compact-centre/logs/live-compact-bilinear-client.log",
+    "client": {
+      "n": 30,
+      "start": "13:35:18.014",
+      "end": "13:36:16.204",
+      "means": {
+        "fresh_per_s": 71.21666666666667,
+        "iterations": 159.26666666666668,
+        "iterations_per_s": 79.36999999999999,
+        "own_gpu_ms": 7.510000000000001,
+        "source_offset_ms": 69.98,
+        "submit_lead_ms": 37.919999999999995
+      }
+    },
+    "decoder": {
+      "n": 30,
+      "start": "13:35:17.992",
+      "end": "13:36:16.208",
+      "means": {
+        "copy_gpu_ms": 0.0,
+        "fence_post_ms": 10.889999999999999,
+        "frames": 152.63333333333333,
+        "frames_per_s": 76.31666666666666,
+        "nxvc_gpu_ms": 4.73,
+        "queue_ms": 6.116666666666666
+      }
+    }
+  },
+  {
+    "file": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-09-09/compact-centre/logs/live-compact-bilinear-repeat-client.log",
+    "client": {
+      "n": 30,
+      "start": "13:37:11.084",
+      "end": "13:38:09.235",
+      "means": {
+        "fresh_per_s": 72.25,
+        "iterations": 158.46666666666667,
+        "iterations_per_s": 79.02666666666667,
+        "own_gpu_ms": 7.62,
+        "source_offset_ms": 69.38000000000001,
+        "submit_lead_ms": 37.57666666666667
+      }
+    },
+    "decoder": {
+      "n": 30,
+      "start": "13:37:11.035",
+      "end": "13:38:09.187",
+      "means": {
+        "copy_gpu_ms": 0.0,
+        "fence_post_ms": 10.793333333333333,
+        "frames": 152.1,
+        "frames_per_s": 76.05,
+        "nxvc_gpu_ms": 4.71,
+        "queue_ms": 6.0600000000000005
+      }
+    }
+  }
+]

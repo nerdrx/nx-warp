@@ -96,6 +96,24 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 
 ## Measured results
 
+**Compact-output experiment (September 9):** keep the native 512 × 512 centre
+while storing quarter-density outer axes in a 1856 × 928 stereo NV12 image.
+Pico decoder-only p50 fell **11.10 → 8.23 ms**, with byte-exact retained samples.
+The first live mapper regressed; replacing branches recovered that loss.
+With the extra peripheral filter removed (hardware bilinear sampling remains),
+two settled live captures measured **71.22 / 72.25 fresh updates/s**, versus **53.88/s**
+for the same-APK full-size control, and source display-time offset
+**73.27 → 69.98 / 69.38 ms**. This changes peripheral quality; it is not an equal-quality
+comparison or photon-latency measurement. The stationary Pico had a tracking
+dialog covering its view, so visual and physical-motion validation are still
+outstanding. Compact output remains opt-in.
+[Methods, correctness, rejected variants and raw logs](bench/results/90fps-2026-09-09/compact-centre/README.md).
+
+![Compact output live comparison, including rejected mapper](bench/results/90fps-2026-09-09/compact-centre/live-comparison.png)
+
+![Native centre and compact stereo sampling layout](bench/results/90fps-2026-09-09/compact-centre/compact-centre-map.png)
+
+
 **Peripheral smoothing capture (September 9):** the archived Pico captures show
 the filter softening coarse PLANAR edges outside the protected centre. In a
 matched hello workload at pacing `.1`, the last 15 completed windows with
