@@ -1,0 +1,282 @@
+[
+  {
+    "run": 0,
+    "priority": 1,
+    "wait_us": 4000,
+    "latency": {
+      "codec": "nx",
+      "file": "/run/media/nerdrx/Lex/claude/nx-scratch/priority-wait/priority-wait-0-4000.csv",
+      "stages": {
+        "blit": {
+          "count": 3832,
+          "p50_p95_p99_ms": [
+            24.708,
+            33.88,
+            36.471
+          ]
+        },
+        "decode_end": {
+          "count": 4011,
+          "p50_p95_p99_ms": [
+            22.406,
+            27.768,
+            30.387
+          ]
+        },
+        "receive_begin": {
+          "count": 4011,
+          "p50_p95_p99_ms": [
+            5.653,
+            7.044,
+            7.909
+          ]
+        }
+      },
+      "unmatched_arrivals_without_decode_or_selection": 0,
+      "warmup_s": 10
+    },
+    "telemetry": {
+      "file": "/run/media/nerdrx/Lex/claude/nx-scratch/priority-wait/priority-wait-0-4000-client.log",
+      "client": {
+        "n": 30,
+        "start": "22:51:31.517",
+        "end": "22:52:29.528",
+        "means": {
+          "fresh_per_s": 74.22479674796747,
+          "iterations": 172.73333333333332,
+          "iterations_per_s": 86.13000000000001,
+          "older_available": 0.0,
+          "own_gpu_ms": 5.316666666666666,
+          "source_offset_ms": 58.20333333333333,
+          "submit_lead_ms": 29.673333333333336,
+          "wait_attempts": 89.86666666666666,
+          "wait_successes": 65.6,
+          "wait_total_ms": 217.75413333333333
+        }
+      },
+      "decoder": {
+        "n": 30,
+        "start": "22:51:31.332",
+        "end": "22:52:29.552",
+        "means": {
+          "copy_gpu_ms": 0.0,
+          "fence_post_ms": 8.626666666666667,
+          "frames": 155.16666666666666,
+          "frames_per_s": 77.57676767676769,
+          "nxvc_gpu_ms": 4.913333333333333,
+          "queue_ms": 3.69
+        }
+      }
+    }
+  },
+  {
+    "run": 1,
+    "priority": 1,
+    "wait_us": 2000,
+    "latency": {
+      "codec": "nx",
+      "file": "/run/media/nerdrx/Lex/claude/nx-scratch/priority-wait/priority-wait-1-2000.csv",
+      "stages": {
+        "blit": {
+          "count": 3681,
+          "p50_p95_p99_ms": [
+            24.795,
+            33.919,
+            36.334
+          ]
+        },
+        "decode_end": {
+          "count": 4106,
+          "p50_p95_p99_ms": [
+            22.238,
+            27.483,
+            30.04
+          ]
+        },
+        "receive_begin": {
+          "count": 4106,
+          "p50_p95_p99_ms": [
+            5.737,
+            7.951,
+            9.086
+          ]
+        }
+      },
+      "unmatched_arrivals_without_decode_or_selection": 0,
+      "warmup_s": 10
+    },
+    "telemetry": {
+      "file": "/run/media/nerdrx/Lex/claude/nx-scratch/priority-wait/priority-wait-1-2000-client.log",
+      "client": {
+        "n": 30,
+        "start": "22:52:37.305",
+        "end": "22:53:35.323",
+        "means": {
+          "fresh_per_s": 70.6081300813008,
+          "iterations": 172.1,
+          "iterations_per_s": 85.80333333333333,
+          "older_available": 0.0,
+          "own_gpu_ms": 5.03,
+          "source_offset_ms": 58.50333333333333,
+          "submit_lead_ms": 30.323333333333334,
+          "wait_attempts": 76.86666666666666,
+          "wait_successes": 46.0,
+          "wait_total_ms": 111.5808
+        }
+      },
+      "decoder": {
+        "n": 30,
+        "start": "22:52:37.117",
+        "end": "22:53:35.334",
+        "means": {
+          "copy_gpu_ms": 0.0003333333333333333,
+          "fence_post_ms": 8.386666666666667,
+          "frames": 158.56666666666666,
+          "frames_per_s": 79.27676767676768,
+          "nxvc_gpu_ms": 5.04,
+          "queue_ms": 3.3
+        }
+      }
+    }
+  },
+  {
+    "run": 2,
+    "priority": 1,
+    "wait_us": 2000,
+    "latency": {
+      "codec": "nx",
+      "file": "/run/media/nerdrx/Lex/claude/nx-scratch/priority-wait/priority-wait-2-2000.csv",
+      "stages": {
+        "blit": {
+          "count": 3671,
+          "p50_p95_p99_ms": [
+            24.338,
+            32.907,
+            35.237
+          ]
+        },
+        "decode_end": {
+          "count": 4118,
+          "p50_p95_p99_ms": [
+            22.002,
+            27.099,
+            29.865
+          ]
+        },
+        "receive_begin": {
+          "count": 4118,
+          "p50_p95_p99_ms": [
+            5.428,
+            6.85,
+            7.81
+          ]
+        }
+      },
+      "unmatched_arrivals_without_decode_or_selection": 0,
+      "warmup_s": 10
+    },
+    "telemetry": {
+      "file": "/run/media/nerdrx/Lex/claude/nx-scratch/priority-wait/priority-wait-2-2000-client.log",
+      "client": {
+        "n": 30,
+        "start": "22:53:43.144",
+        "end": "22:54:41.159",
+        "means": {
+          "fresh_per_s": 70.1081300813008,
+          "iterations": 172.06666666666666,
+          "iterations_per_s": 85.78666666666666,
+          "older_available": 0.0,
+          "own_gpu_ms": 5.010000000000001,
+          "source_offset_ms": 58.43,
+          "submit_lead_ms": 30.313333333333333,
+          "wait_attempts": 79.86666666666666,
+          "wait_successes": 48.03333333333333,
+          "wait_total_ms": 116.4542
+        }
+      },
+      "decoder": {
+        "n": 30,
+        "start": "22:53:42.957",
+        "end": "22:54:41.118",
+        "means": {
+          "copy_gpu_ms": 0.0,
+          "fence_post_ms": 8.396666666666667,
+          "frames": 158.26666666666668,
+          "frames_per_s": 79.12676767676768,
+          "nxvc_gpu_ms": 5.003333333333333,
+          "queue_ms": 3.3633333333333337
+        }
+      }
+    }
+  },
+  {
+    "run": 3,
+    "priority": 1,
+    "wait_us": 4000,
+    "latency": {
+      "codec": "nx",
+      "file": "/run/media/nerdrx/Lex/claude/nx-scratch/priority-wait/priority-wait-3-4000.csv",
+      "stages": {
+        "blit": {
+          "count": 3900,
+          "p50_p95_p99_ms": [
+            25.598,
+            33.66,
+            37.694
+          ]
+        },
+        "decode_end": {
+          "count": 4063,
+          "p50_p95_p99_ms": [
+            21.711,
+            28.265,
+            31.344
+          ]
+        },
+        "receive_begin": {
+          "count": 4063,
+          "p50_p95_p99_ms": [
+            5.448,
+            6.811,
+            7.851
+          ]
+        }
+      },
+      "unmatched_arrivals_without_decode_or_selection": 0,
+      "warmup_s": 10
+    },
+    "telemetry": {
+      "file": "/run/media/nerdrx/Lex/claude/nx-scratch/priority-wait/priority-wait-3-4000-client.log",
+      "client": {
+        "n": 30,
+        "start": "22:54:49.354",
+        "end": "22:55:47.356",
+        "means": {
+          "fresh_per_s": 75.49126984126984,
+          "iterations": 172.23333333333332,
+          "iterations_per_s": 85.89,
+          "older_available": 0.0,
+          "own_gpu_ms": 5.41,
+          "source_offset_ms": 58.05333333333333,
+          "submit_lead_ms": 29.970000000000002,
+          "wait_attempts": 80.0,
+          "wait_successes": 58.766666666666666,
+          "wait_total_ms": 193.61083333333332
+        }
+      },
+      "decoder": {
+        "n": 30,
+        "start": "22:54:49.168",
+        "end": "22:55:47.367",
+        "means": {
+          "copy_gpu_ms": 0.0003333333333333333,
+          "fence_post_ms": 8.513333333333334,
+          "frames": 156.86666666666667,
+          "frames_per_s": 78.4264705882353,
+          "nxvc_gpu_ms": 4.953333333333333,
+          "queue_ms": 3.533333333333333
+        }
+      }
+    }
+  }
+]

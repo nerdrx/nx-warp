@@ -91,3 +91,7 @@ server, scene and status logs. Recompute latency using
 Keep the hint available for low-latency experiments, with its freshness cost
 visible. The next candidate should preserve this latency reduction while
 recovering fresh delivery; do not promote priority 1 as a blanket default.
+
+## Ready-wait follow-up
+
+[Four additional motion runs](../priority-wait/README.md) found that a 2 ms ready-wait cap lost more fresh updates. The user test therefore uses priority 1 with the existing 4 ms wait, explicitly requested after the experiments.
