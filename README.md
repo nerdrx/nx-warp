@@ -96,10 +96,23 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 
 ## Measured results
 
+**Wider detail falloff:** the opt-in [wide PLANAR ring](bench/results/90fps-2026-09-09/wide-ring/README.md)
+expands the fine-detail boundary from 768×768 to 1024×1024 per eye and
+moves the coarser bands outward. The native 512×512 centre stays unchanged.
+These are wider 4-pixel PLANAR cells, **not a true half-resolution ring**.
+The 32-frame fixture costs 5.3% more bytes with identical decoded native centres.
+Two 90-second live Pico motion trials delivered 77–82 fresh updates/s, with
+about 4.94 ms decode GPU time and 2.04 ms server encode time. The wider profile
+is enabled; these results show no demonstrated latency reduction.
+
+![Wider ring geometry and decoded comparison](bench/results/90fps-2026-09-09/wide-ring/wide-ring.png)
+
 **Follow-up:** [compact decoder workgroups and shorter ready waits](bench/results/90fps-2026-09-09/compact-workgroups/README.md)
 did not justify production changes. The next proposed architecture uses a
-[low-resolution guide with retained full-resolution detail](docs/TEMPORAL-TILES.md#proposed-low-resolution-guide-with-retained-detail),
-with explicit history poses and stereo-aware repairs. This is not implemented.
+[low-resolution guide with retained full-resolution detail](docs/TEMPORAL-TILES.md#cpu-quality-model-proposed-low-resolution-guide-with-retained-detail),
+with explicit history poses and stereo-aware repairs. Its CPU quality model is
+implemented in the [guide-history fixture](bench/results/90fps-2026-09-09/guide-history/README.md);
+GPU and codec integration remain proposed.
 
 **Latest experiment:** [adaptive peripheral updates](bench/results/90fps-2026-09-09/adaptive-planar/README.md)
 keep native centres fresh and selectively reuse peripheral fits. Removing unused

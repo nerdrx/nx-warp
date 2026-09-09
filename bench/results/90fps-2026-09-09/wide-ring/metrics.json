@@ -1,0 +1,63 @@
+{
+  "fixture": {
+    "source": "../../../../../nx-scratch/adaptive-tiles/large.yuv",
+    "width": 4352,
+    "height": 2176,
+    "frames": 32,
+    "eyes": 2,
+    "format": "yuv420p"
+  },
+  "native_centre_512x512_per_eye_all_planes_all_frames_exact": {
+    "max_abs": {
+      "Y": 0,
+      "U": 0,
+      "V": 0
+    },
+    "mismatched": 0
+  },
+  "decoded_all_planes_all_frames_equal": false,
+  "streams": {
+    "default_bytes": 3246520,
+    "wide_bytes": 3418552,
+    "delta_bytes": 172032,
+    "default_sha256": "7a10f75b736118e41bc421882d4b6f5cb2b484fc44238d373dd312a7687ab2d6",
+    "wide_sha256": "b3fc7527c77d8b942bc9f955fb45c86f79c17685d8e506a97ca7fa2bf39a49fe"
+  },
+  "rings": [
+    {
+      "ring": "native centre 512x512",
+      "pixels": 524288,
+      "frames": 32,
+      "default_luma_mae": 1.7647415399551392,
+      "wide_luma_mae": 1.7647415399551392
+    },
+    {
+      "ring": "fine 4px PLANAR cells (dist 1-4)",
+      "pixels": 1572864,
+      "frames": 32,
+      "default_luma_mae": 9.971775531768799,
+      "wide_luma_mae": 9.904662926991781
+    },
+    {
+      "ring": "normal 8px cells (dist 5-7)",
+      "pixels": 1867776,
+      "frames": 32,
+      "default_luma_mae": 9.278303179824562,
+      "wide_luma_mae": 9.278303179824562
+    },
+    {
+      "ring": "merged 16px cells (dist 8-11)",
+      "pixels": 3407872,
+      "frames": 32,
+      "default_luma_mae": 15.49689190204327,
+      "wide_luma_mae": 9.346585787259615
+    },
+    {
+      "ring": "merged 32px cells (dist >=12)",
+      "pixels": 2097152,
+      "frames": 32,
+      "default_luma_mae": 15.947021484375,
+      "wide_luma_mae": 15.947021484375
+    }
+  ]
+}

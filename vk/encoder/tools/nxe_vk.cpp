@@ -66,6 +66,7 @@ struct VkEncoder::Impl {
     vkmin::Buffer b_planar_recon, b_planar_cadence;
     bool planar_cadence = false;
     bool planar_cadence_started = false;
+    bool planar_wide_ring = false;
     /* The inter path: the four-slot reference ring, the parameter buffer
      * Pass W reads, and the predictor it writes.  Allocated even on an
      * intra-only stream, at four bytes each -- an unbound descriptor is
@@ -441,6 +442,8 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
     d.gpu_planar = cfg.planar && (cfg.planar_gpu_flat || cfg.planar_gpu_centre ||
         std::getenv("NXVC_ENC_PLANAR_GPU_FLAT") != nullptr);
     d.gpu_planar_centre = d.gpu_planar && cfg.planar_gpu_centre;
+    const char *wide_ring = std::getenv("NXVC_PLANAR_WIDE_RING");
+    d.planar_wide_ring = wide_ring && std::strcmp(wide_ring, "1") == 0;
     const char *cadence = std::getenv("NXVC_PLANAR_CADENCE");
     d.planar_cadence = cadence && std::strcmp(cadence, "1") == 0;
     if (d.planar_cadence && (!d.gpu_planar_centre || !cfg.planar_graduated || cfg.atlas)) {
@@ -1750,6 +1753,8 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
                                         job.row - (row0 + centre_rows - 1u) : 0u;
                 const uint32_t dist = std::max(dx, dy);
                 const bool use_intra = centre;
+                const bool fine = !use_intra && d.cfg.planar_graduated &&
+                                  dist <= (d.planar_wide_ring ? 4u : 2u);
                 job.flags &= 0x07fffffffu;
                 job.res_level = 0;
                 if (use_intra) {
@@ -1767,17 +1772,20 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
                     // trellis paths retain their historical coefficients.
                     if (independent_gpu_planar && !check && !d.trellis)
                         job.flags |= 0x08000000u;
-                    if (d.cfg.planar_graduated && dist <= 2u)
+                    if (fine)
                         job.flags |= 0x10000000u; // fine 4x4 Y cells
-                    else if (d.cfg.planar_graduated && dist >= 8u)
+                    else if (d.cfg.planar_graduated && dist >=
+                             (d.planar_wide_ring ? 12u : 8u))
                         job.flags |= 0x20000000u;
-                    else if (d.cfg.planar_graduated && dist >= 4u)
+                    else if (d.cfg.planar_graduated && dist >=
+                             (d.planar_wide_ring ? 8u : 4u))
                         job.flags |= 0x40000000u;
+                    // Wide ring leaves distances 5..7 at the normal 8px size.
                 }
                 // R2/coarse is a 27-byte transmitted body; b_planar is padded
                 // to 26 uints only for the fixed storage binding.
                 job.planar_bytes = use_intra ? 0u :
-                                   (d.cfg.planar_graduated && dist <= 2u ? 51u : 27u);
+                                   (fine ? 51u : 27u);
             }
         }
         std::memcpy((uint8_t *)d.b_stage_small.map + (1 << 19), f.jobs.data(),

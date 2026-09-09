@@ -58,11 +58,15 @@ references. Re-enabling the generic predictor could cost more than it saves.
 Evaluate an explicit independent-tile output cache against the existing atlas
 path before choosing the representation. No unsignalled decoder omissions.
 
-## Proposed low-resolution guide with retained detail
+## CPU quality model; proposed low-resolution guide with retained detail
 
 A low-resolution current image could guide a separately retained full-resolution
-history. This is a new presentation/cache experiment, not implemented by the
-encoder fit cache above. The guide is not simply upscaled as the final image.
+history. The CPU quality model for this design is implemented in the
+[guide-history fixture](../bench/results/90fps-2026-09-09/guide-history/README.md),
+using a synthetic grayscale translation sequence. It measures guide/history
+quality, repair behavior and motion ambiguity; it is not a live or Pico output.
+GPU and codec integration, including decoder skipping and pose-aware history,
+remain proposed. The guide is not simply upscaled as the final image.
 
 1. Keep the native centre current in both eyes.
 2. Update a small stereo guide every admitted frame; refresh peripheral detail
