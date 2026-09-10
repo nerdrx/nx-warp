@@ -63,6 +63,14 @@ using nxvcvk::LaneGroup;
 using nxvcvk::StreamInfo;
 using nxvcvk::InterCtx;
 
+struct CompactLayout { uint32_t eye, centre, packed; };
+static CompactLayout compact_layout(const StreamInfo &si) {
+    const uint32_t cols = si.width / 64u;
+    const uint32_t cc = std::min(cols, cols >= 2u ? std::max(2u, (cols / 4u) & ~1u) : cols);
+    const uint32_t centre = cc * 64u;
+    return {si.width, centre, centre + (si.width - centre) / 4u};
+}
+
 // Pass A's push constants: num_tiles, frame_nplanes, coef_stride, cbf_words,
 // tools, [sparse] sparse.
 constexpr uint32_t kPassAPushUints = 6;
@@ -1354,6 +1362,7 @@ nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2, int32_t sparse,
                    ((uint64_t)(uint32_t)sparse << 48) |
                    ((uint64_t)(uint32_t)(fmt2 + 1) << 44) |
                    ((uint64_t)d->compact_centre << 54) |
+                   ((uint64_t)(d->compact_centre && d->si.width == 2688) << 53) |
                    ((uint64_t)fmt << 40) | ((uint64_t)sched << 32) | store_words;
     auto it = d->pipesB.find(key);
     if (it != d->pipesB.end()) {
@@ -1369,7 +1378,7 @@ nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2, int32_t sparse,
                              (int32_t)sched, fmt2,
                              sparse,         (int32_t)d->unorm_store,
                              split_tool,     inter_pred,
-                             ring_store, (int32_t)d->compact_centre};
+                             ring_store, d->compact_centre ? (d->si.width == 2688 ? 2 : 1) : 0};
     VkSpecializationMapEntry me[10] = {{0, 0, 4},  {1, 4, 4},  {2, 8, 4},
                                       {3, 12, 4}, {4, 16, 4}, {5, 20, 4},
                                       {6, 24, 4}, {7, 28, 4}, {8, 32, 4},
@@ -1484,9 +1493,9 @@ nxvc_vkd_status make_resources(D *d) {
         (!(d->flags & NXVC_VKD_FLAG_INDEPENDENT_TILES) ||
          d->out_format != (uint32_t)nxvw::kOutYcbcr420 || si.bit_depth != 8 ||
          si.chroma != 0 || si.color_transform != 0 || si.alpha != 0 ||
-         si.eyes != 2 || si.width != 2176 || si.height != 2176))
+         si.eyes != 2 || si.width != si.height || (si.width != 2176 && si.width != 2688)))
         return seterr(d, NXVC_VKD_ERR_UNSUPPORTED,
-                      "compact centre requires independent 8-bit 2176x2176 stereo CT_NONE 4:2:0 NV12");
+                      "compact centre requires independent 8-bit 2176x2176 or 2688x2688 stereo CT_NONE 4:2:0 NV12");
     // The two-plane path writes no alpha.  A stream that carries one gets a
     // second Pass B dispatch in the RGBA8 format, whose A channel is exactly
     // the alpha plane at its full 64x64-per-tile extent -- the same value the
@@ -1499,10 +1508,11 @@ nxvc_vkd_status make_resources(D *d) {
     // parse_stream_header() refuses eyes == 2 with a width that is not a
     // multiple of 64.  The chroma image follows the same rule -- CW is the
     // pair's chroma width, not one eye's.
-    const uint32_t W = d->compact_centre ? 1856u : si.width * si.eyes;
-    const uint32_t H = d->compact_centre ? 928u : si.height;
-    const uint32_t CW = d->compact_centre ? 928u : (si.cw * si.eyes);
-    const uint32_t CH = d->compact_centre ? 464u : si.ch;
+    const CompactLayout cl = compact_layout(si);
+    const uint32_t W = d->compact_centre ? cl.packed * si.eyes : si.width * si.eyes;
+    const uint32_t H = d->compact_centre ? cl.packed : si.height;
+    const uint32_t CW = d->compact_centre ? (cl.packed / 2u) * si.eyes : (si.cw * si.eyes);
+    const uint32_t CH = d->compact_centre ? cl.packed / 2u : si.ch;
 
     // ---- images
     nxvc_vkd_status st;
@@ -2655,11 +2665,13 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_plane_size(const nxvc_vk_decoder *d,
     // (codec_impl.inc: `*w = d->g.width * d->g.eyes`), so a stereo readback
     // is byte-comparable with nxv-dec's.
     if (plane == 1 || plane == 2) {
-        *w = d->compact_centre ? 928u : d->si.cw * d->si.eyes;
-        *h = d->compact_centre ? 464u : d->si.ch;
+        const CompactLayout cl = compact_layout(d->si);
+        *w = d->compact_centre ? (cl.packed / 2u) * d->si.eyes : d->si.cw * d->si.eyes;
+        *h = d->compact_centre ? cl.packed / 2u : d->si.ch;
     } else {
-        *w = d->compact_centre ? 1856u : d->si.width * d->si.eyes;
-        *h = d->compact_centre ? 928u : d->si.height;
+        const CompactLayout cl = compact_layout(d->si);
+        *w = d->compact_centre ? cl.packed * d->si.eyes : d->si.width * d->si.eyes;
+        *h = d->compact_centre ? cl.packed : d->si.height;
     }
     return NXVC_VKD_OK;
 }
@@ -4508,10 +4520,10 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_set_borrowed_output(
              target->initial_layout != VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) ||
             target->format[0] != VK_FORMAT_R8_UINT ||
             target->format[1] != VK_FORMAT_R8G8_UINT ||
-            target->width[0] != (d->compact_centre ? 1856u : d->si.width * d->si.eyes) ||
-            target->height[0] != (d->compact_centre ? 928u : d->si.height) ||
-            target->width[1] != (d->compact_centre ? 928u : d->si.cw * d->si.eyes) ||
-            target->height[1] != (d->compact_centre ? 464u : d->si.ch))
+            target->width[0] != (d->compact_centre ? compact_layout(d->si).packed * d->si.eyes : d->si.width * d->si.eyes) ||
+            target->height[0] != (d->compact_centre ? compact_layout(d->si).packed : d->si.height) ||
+            target->width[1] != (d->compact_centre ? (compact_layout(d->si).packed / 2u) * d->si.eyes : d->si.cw * d->si.eyes) ||
+            target->height[1] != (d->compact_centre ? compact_layout(d->si).packed / 2u : d->si.ch))
             return seterr(d, NXVC_VKD_ERR_UNSUPPORTED,
                           "borrowed output requires independent CT_NONE 4:2:0 UINT views");
         d->borrowed_output_layout = target->initial_layout;
@@ -4984,10 +4996,11 @@ extern "C" nxvc_vkd_status nxvc_vk_decoder_read_planes(
     // reference decoder writes (codec_impl.inc: `*w = d->g.width *
     // d->g.eyes`).  Both eyes are one raster here for exactly the reason
     // parse_stream_header() gives.
-    const uint32_t W = d->compact_centre ? 1856u : si.width * si.eyes;
-    const uint32_t H = d->compact_centre ? 928u : si.height;
-    const uint32_t CW = d->compact_centre ? 928u : si.cw * si.eyes;
-    const uint32_t CH = d->compact_centre ? 464u : si.ch;
+    const CompactLayout cl = compact_layout(si);
+    const uint32_t W = d->compact_centre ? cl.packed * si.eyes : si.width * si.eyes;
+    const uint32_t H = d->compact_centre ? cl.packed : si.height;
+    const uint32_t CW = d->compact_centre ? (cl.packed / 2u) * si.eyes : si.cw * si.eyes;
+    const uint32_t CH = d->compact_centre ? cl.packed / 2u : si.ch;
 
     if (d->out_format == (uint32_t)nxvw::kOutYcbcr420) {
         const uint8_t *Y = rb + d->rbLuma;

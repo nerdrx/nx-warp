@@ -54,13 +54,18 @@ void nxvwStoreTile(int tid, int tile, int tileX, int tileY, int res_level,
         if (kCompactCentre != 0) {
             // Visit compact pixels directly. Masking 15/16 native invocations
             // scattered the remaining writes and made the first prototype slower.
-            int eye = tileX / 34, localX = tileX - eye * 34;
-            int stepX = localX >= 13 && localX < 21 ? 1 : 4;
-            int stepY = tileY >= 13 && tileY < 21 ? 1 : 4;
-            int packedX = eye * 928 + (localX < 13 ? localX * 16 :
-                          localX < 21 ? 208 + (localX - 13) * 64 : 720 + (localX - 21) * 16);
-            int packedY = tileY < 13 ? tileY * 16 :
-                          tileY < 21 ? 208 + (tileY - 13) * 64 : 720 + (tileY - 21) * 16;
+            int cols = kCompactCentre == 2 ? 42 : 34, centreCols = kCompactCentre == 2 ? 10 : 8;
+            int centre0 = (cols - centreCols) / 2, packedCentre = centreCols * 64;
+            int packedEye = packedCentre + (cols * 64 - packedCentre) / 4;
+            int eye = tileX / cols, localX = tileX - eye * cols;
+            int stepX = localX >= centre0 && localX < centre0 + centreCols ? 1 : 4;
+            int stepY = tileY >= centre0 && tileY < centre0 + centreCols ? 1 : 4;
+            int packedX = eye * packedEye + (localX < centre0 ? localX * 16 :
+                          localX < centre0 + centreCols ? centre0 * 16 + (localX - centre0) * 64 :
+                          centre0 * 16 + packedCentre + (localX - centre0 - centreCols) * 16);
+            int packedY = tileY < centre0 ? tileY * 16 :
+                          tileY < centre0 + centreCols ? centre0 * 16 + (tileY - centre0) * 64 :
+                          centre0 * 16 + packedCentre + (tileY - centre0 - centreCols) * 16;
             int widthY = 64 / stepX, heightY = 64 / stepY;
             for (int idx = tid; idx < widthY * heightY; idx += 256) {
                 int px = idx & (widthY - 1), py = idx >> (stepX == 1 ? 6 : 4);

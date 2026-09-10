@@ -127,9 +127,9 @@ typedef enum nxvc_vkd_create_flags {
      * predictive reconstruction after this opt-in. */
     NXVC_VKD_FLAG_INDEPENDENT_TILES = 1u << 7,
     /* Experimental local output layout, not a bitstream tool. Requires
-     * INDEPENDENT_TILES, CT_NONE 8-bit 4:2:0 stereo 2176x2176 without alpha.
-     * Packs each axis to 928 samples: 512 native centre, each 832-pixel outer
-     * band represented by 208 samples (native coordinate mod 4 == 1).
+     * INDEPENDENT_TILES, CT_NONE 8-bit 4:2:0 stereo 2176x2176 or 2688x2688 without alpha.
+     * Packs each axis from its 64-pixel tile grid: an even quarter-width native
+     * centre and each outer band represented at one quarter rate.
      * images()/plane_size()/read_planes() expose compact dimensions. */
     NXVC_VKD_FLAG_COMPACT_CENTRE = 1u << 8
 } nxvc_vkd_create_flags;
