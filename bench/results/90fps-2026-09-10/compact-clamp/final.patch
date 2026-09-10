@@ -1,0 +1,14 @@
+diff --git a/client/shaders/reprojection.glsl b/client/shaders/reprojection.glsl
+index 9493ab8e..552de9f0 100644
+--- a/client/shaders/reprojection.glsl
++++ b/client/shaders/reprojection.glsl
+@@ -213,7 +213,8 @@ vec2 compact_map_uv(vec2 uv)
+ 		return uv;
+ 	float eye = float(atlas_eye);
+ 	vec2 p = uv * vec2(4352.0, 2176.0);
+-	vec2 local = clamp(p - vec2(eye * 2176.0, 0.0), vec2(0.5), vec2(2175.5));
++	// The final mapped clamp already saturates both out-of-eye ranges.
++	vec2 local = p - vec2(eye * 2176.0, 0.0);
+ 	vec2 mapped = local * 0.25 + clamp(local - vec2(832.0), vec2(0.0), vec2(512.0)) * 0.75;
+ 	mapped = clamp(mapped, vec2(0.5), vec2(927.5));
+ 	return (mapped + vec2(eye * 928.0, 0.0)) / vec2(1856.0, 928.0);

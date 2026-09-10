@@ -1,0 +1,158 @@
+{
+  "runs": [
+    {
+      "file": "nx-scratch/motion-live/compact-clamp-2a-client.log",
+      "client": {
+        "n": 18,
+        "start": "02:43:22.933",
+        "end": "02:44:08.954",
+        "means": {
+          "fresh_per_s": 89.30555555555556,
+          "iterations": 179.88888888888889,
+          "iterations_per_s": 89.76111111111112,
+          "older_available": 0.0,
+          "own_gpu_ms": 4.366666666666666,
+          "source_offset_ms": 52.827777777777776,
+          "submit_lead_ms": 32.166666666666664,
+          "wait_attempts": 23.333333333333332,
+          "wait_successes": 22.055555555555557,
+          "wait_total_ms": 34.690777777777775
+        }
+      },
+      "decoder": {
+        "n": 24,
+        "start": "02:43:23.076",
+        "end": "02:44:09.169",
+        "means": {
+          "copy_gpu_ms": 0.0,
+          "fence_post_ms": 5.208333333333333,
+          "frames": 176.41666666666666,
+          "frames_per_s": 88.20833333333333,
+          "nxvc_gpu_ms": 3.8833333333333333,
+          "queue_ms": 1.3041666666666667
+        }
+      },
+      "label": "compact-clamp-2a",
+      "mode": 2
+    },
+    {
+      "file": "nx-scratch/motion-live/compact-clamp-3a-client.log",
+      "client": {
+        "n": 18,
+        "start": "02:44:26.411",
+        "end": "02:45:12.765",
+        "means": {
+          "fresh_per_s": 89.0,
+          "iterations": 179.77777777777777,
+          "iterations_per_s": 89.73333333333333,
+          "older_available": 0.0,
+          "own_gpu_ms": 4.216666666666666,
+          "source_offset_ms": 52.23888888888889,
+          "submit_lead_ms": 31.994444444444444,
+          "wait_attempts": 18.38888888888889,
+          "wait_successes": 16.61111111111111,
+          "wait_total_ms": 27.367444444444445
+        }
+      },
+      "decoder": {
+        "n": 25,
+        "start": "02:44:25.175",
+        "end": "02:45:13.362",
+        "means": {
+          "copy_gpu_ms": 0.0,
+          "fence_post_ms": 4.756,
+          "frames": 174.12,
+          "frames_per_s": 87.06,
+          "nxvc_gpu_ms": 3.72,
+          "queue_ms": 1.008
+        }
+      },
+      "label": "compact-clamp-3a",
+      "mode": 3
+    },
+    {
+      "file": "nx-scratch/motion-live/compact-clamp-3b-client.log",
+      "client": {
+        "n": 20,
+        "start": "02:45:30.242",
+        "end": "02:46:16.248",
+        "means": {
+          "fresh_per_s": 89.25,
+          "iterations": 179.9,
+          "iterations_per_s": 89.765,
+          "older_available": 0.0,
+          "own_gpu_ms": 4.15,
+          "source_offset_ms": 51.81,
+          "submit_lead_ms": 31.735000000000003,
+          "wait_attempts": 17.15,
+          "wait_successes": 15.85,
+          "wait_total_ms": 24.2294
+        }
+      },
+      "decoder": {
+        "n": 25,
+        "start": "02:45:29.473",
+        "end": "02:46:17.616",
+        "means": {
+          "copy_gpu_ms": 0.0,
+          "fence_post_ms": 4.98,
+          "frames": 175.8,
+          "frames_per_s": 87.9,
+          "nxvc_gpu_ms": 3.84,
+          "queue_ms": 1.128
+        }
+      },
+      "label": "compact-clamp-3b",
+      "mode": 3
+    },
+    {
+      "file": "nx-scratch/motion-live/compact-clamp-2b-client.log",
+      "client": {
+        "n": 18,
+        "start": "02:46:33.869",
+        "end": "02:47:18.040",
+        "means": {
+          "fresh_per_s": 88.83333333333333,
+          "iterations": 180.0,
+          "iterations_per_s": 89.77222222222223,
+          "older_available": 0.0,
+          "own_gpu_ms": 4.283333333333333,
+          "source_offset_ms": 52.705555555555556,
+          "submit_lead_ms": 32.099999999999994,
+          "wait_attempts": 14.666666666666666,
+          "wait_successes": 12.444444444444445,
+          "wait_total_ms": 23.465666666666667
+        }
+      },
+      "decoder": {
+        "n": 24,
+        "start": "02:46:35.147",
+        "end": "02:47:21.288",
+        "means": {
+          "copy_gpu_ms": 0.0004166666666666667,
+          "fence_post_ms": 5.533333333333334,
+          "frames": 174.125,
+          "frames_per_s": 87.0625,
+          "nxvc_gpu_ms": 3.904166666666667,
+          "queue_ms": 1.5999999999999999
+        }
+      },
+      "label": "compact-clamp-2b",
+      "mode": 2
+    }
+  ],
+  "mean_of_run_means": {
+    "2": {
+      "own_gpu_ms": 4.324999999999999,
+      "fresh_per_s": 89.06944444444444,
+      "source_offset_ms": 52.766666666666666
+    },
+    "3": {
+      "own_gpu_ms": 4.183333333333334,
+      "fresh_per_s": 89.125,
+      "source_offset_ms": 52.02444444444444
+    }
+  },
+  "gpu_reduction_percent": 3.275529865125215,
+  "scope": "Four 60-second synthetic moving-content trials, ABBA order; omit first 10 seconds of available telemetry. Active render windows only, not wall-clock FPS or photon latency."
+}

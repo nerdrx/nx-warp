@@ -1,0 +1,15 @@
+from pathlib import Path
+import subprocess,json,sys
+root=Path('/run/media/nerdrx/Lex/claude');live=root/'nx-scratch/motion-live';out=Path(__file__).parent
+adb='/home/nerdrx/.local/bin/adb';pkg='org.meumeu.wivrn.nx.warp';statuses=[]
+try:
+ for label,mode in [('compact-clamp-2a','2'),('compact-clamp-3a','3'),('compact-clamp-3b','3'),('compact-clamp-2b','2')]:
+  subprocess.run([adb,'shell','setprop','debug.wivrn.nx.static_post',mode],check=True)
+  subprocess.run([sys.executable,str(live/'capture_live.py'),label,'3','4000','60','0','3'],cwd=root,check=True)
+  statuses.append(dict(json.loads((live/f'{label}-status.json').read_text()),static_post=int(mode)));(out/'statuses.json').write_text(json.dumps(statuses,indent=2)+'\n')
+finally:
+ subprocess.run([adb,'shell','setprop','debug.wivrn.nx.static_post','1'],check=True)
+ subprocess.run([adb,'shell','am','force-stop',pkg],check=True)
+ profile=json.loads((live/'ACTIVE_USER_PROFILE.json').read_text())
+ for k,v in profile['properties'].items():subprocess.run([adb,'shell','setprop','debug.wivrn.nx.'+k,v],check=True)
+ subprocess.run([adb,'shell','am','start','-a','android.intent.action.VIEW','-d','wivrn://192.168.1.2',pkg],check=True)
