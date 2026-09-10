@@ -103,3 +103,12 @@ remained zero, and no decoder exception was logged in this run. This does not
 establish that SHA2 caused the stall. Acceleration remains off while worker
 stability is investigated; the incomplete pair supports no performance claim.
 Raw logs and status files are retained under `logs/r4-sha-*`.
+
+A subsequent **300-second SHA2-off control completed**, with 150 render and
+149 decoder telemetry windows and advancing animation through the end.
+Post-warm-up means: **45.11 fresh selections/s**, **12.96 ms decode GPU**,
+**2.57 ms presentation GPU**, and **77.18 ms source-offset proxy**. This
+checks continuity for five minutes; it does not explain or resolve the earlier
+intermittent stalls. See `stability-off-summary.json`, `stability-off-status.json`
+and `stability-off-logs.tar.gz`. The client now has diagnostic-only worker-stage
+telemetry to locate a repeat stall; no recovery behavior was changed.
