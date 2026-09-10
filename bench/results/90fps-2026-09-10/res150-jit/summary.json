@@ -1,0 +1,158 @@
+{
+  "runs": [
+    {
+      "file": "nx-scratch/motion-live/res150-jit-base-a-client.log",
+      "client": {
+        "n": 54,
+        "start": "06:30:59.983",
+        "end": "06:32:46.314",
+        "means": {
+          "fresh_per_s": 71.9074074074074,
+          "iterations": 179.66666666666666,
+          "iterations_per_s": 89.54814814814816,
+          "older_available": 0.0,
+          "own_gpu_ms": 3.9666666666666663,
+          "source_offset_ms": 60.1925925925926,
+          "submit_lead_ms": 30.97962962962963,
+          "wait_attempts": 63.24074074074074,
+          "wait_successes": 27.38888888888889,
+          "wait_total_ms": 53.32096296296296
+        }
+      },
+      "decoder": {
+        "n": 55,
+        "start": "06:30:57.936",
+        "end": "06:32:46.290",
+        "means": {
+          "copy_gpu_ms": 0.0,
+          "fence_post_ms": 8.60909090909091,
+          "frames": 166.03636363636363,
+          "frames_per_s": 83.01818181818182,
+          "nxvc_gpu_ms": 6.349090909090909,
+          "queue_ms": 2.2381818181818183
+        }
+      },
+      "label": "res150-jit-base-a",
+      "mode": 5000
+    },
+    {
+      "file": "nx-scratch/motion-live/res150-jit-candidate-a-client.log",
+      "client": {
+        "n": 54,
+        "start": "06:33:03.535",
+        "end": "06:34:49.804",
+        "means": {
+          "fresh_per_s": 74.04629629629629,
+          "iterations": 179.1851851851852,
+          "iterations_per_s": 89.36666666666667,
+          "older_available": 0.0,
+          "own_gpu_ms": 3.9018518518518515,
+          "source_offset_ms": 61.294444444444444,
+          "submit_lead_ms": 31.5962962962963,
+          "wait_attempts": 51.31481481481482,
+          "wait_successes": 20.22222222222222,
+          "wait_total_ms": 44.74837037037037
+        }
+      },
+      "decoder": {
+        "n": 55,
+        "start": "06:33:01.495",
+        "end": "06:34:49.866",
+        "means": {
+          "copy_gpu_ms": 0.00018181818181818183,
+          "fence_post_ms": 8.627272727272727,
+          "frames": 164.3090909090909,
+          "frames_per_s": 82.15454545454546,
+          "nxvc_gpu_ms": 6.663636363636364,
+          "queue_ms": 1.9363636363636363
+        }
+      },
+      "label": "res150-jit-candidate-a",
+      "mode": 7500
+    },
+    {
+      "file": "nx-scratch/motion-live/res150-jit-candidate-b-client.log",
+      "client": {
+        "n": 54,
+        "start": "06:35:07.182",
+        "end": "06:36:53.476",
+        "means": {
+          "fresh_per_s": 71.61111111111111,
+          "iterations": 179.6851851851852,
+          "iterations_per_s": 89.59629629629629,
+          "older_available": 0.0,
+          "own_gpu_ms": 3.8722222222222222,
+          "source_offset_ms": 60.05185185185186,
+          "submit_lead_ms": 30.437037037037037,
+          "wait_attempts": 56.98148148148148,
+          "wait_successes": 20.51851851851852,
+          "wait_total_ms": 49.126296296296296
+        }
+      },
+      "decoder": {
+        "n": 54,
+        "start": "06:35:07.143",
+        "end": "06:36:53.473",
+        "means": {
+          "copy_gpu_ms": 0.00018518518518518518,
+          "fence_post_ms": 8.525925925925925,
+          "frames": 166.3148148148148,
+          "frames_per_s": 83.1574074074074,
+          "nxvc_gpu_ms": 6.34074074074074,
+          "queue_ms": 2.1685185185185185
+        }
+      },
+      "label": "res150-jit-candidate-b",
+      "mode": 7500
+    },
+    {
+      "file": "nx-scratch/motion-live/res150-jit-base-b-client.log",
+      "client": {
+        "n": 54,
+        "start": "06:37:10.662",
+        "end": "06:38:56.941",
+        "means": {
+          "fresh_per_s": 69.88888888888889,
+          "iterations": 179.8148148148148,
+          "iterations_per_s": 89.66666666666667,
+          "older_available": 0.0,
+          "own_gpu_ms": 3.9,
+          "source_offset_ms": 59.78148148148148,
+          "submit_lead_ms": 30.485185185185188,
+          "wait_attempts": 67.81481481481481,
+          "wait_successes": 27.77777777777778,
+          "wait_total_ms": 57.21809259259259
+        }
+      },
+      "decoder": {
+        "n": 55,
+        "start": "06:37:08.608",
+        "end": "06:38:56.952",
+        "means": {
+          "copy_gpu_ms": 0.00018181818181818183,
+          "fence_post_ms": 8.583636363636364,
+          "frames": 166.3090909090909,
+          "frames_per_s": 83.15454545454546,
+          "nxvc_gpu_ms": 6.212727272727273,
+          "queue_ms": 2.3454545454545452
+        }
+      },
+      "label": "res150-jit-base-b",
+      "mode": 5000
+    }
+  ],
+  "mean_of_run_means": {
+    "5000": {
+      "own_gpu_ms": 3.933333333333333,
+      "fresh_per_s": 70.89814814814815,
+      "source_offset_ms": 59.98703703703704
+    },
+    "7500": {
+      "own_gpu_ms": 3.887037037037037,
+      "fresh_per_s": 72.8287037037037,
+      "source_offset_ms": 60.67314814814815
+    }
+  },
+  "gpu_reduction_percent": 1.1770244821092235,
+  "scope": "Four 120-second synthetic moving-content trials, ABBA order; omit first 10 seconds of available telemetry. Active render windows only, not wall-clock FPS or photon latency."
+}

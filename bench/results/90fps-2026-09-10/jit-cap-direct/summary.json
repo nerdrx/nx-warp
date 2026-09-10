@@ -1,0 +1,158 @@
+{
+  "runs": [
+    {
+      "file": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-09-10/jit-cap-direct/jit-cap-direct-base-a-client.log",
+      "client": {
+        "n": 54,
+        "start": "06:03:07.561",
+        "end": "06:04:53.839",
+        "means": {
+          "fresh_per_s": 88.22222222222223,
+          "iterations": 180.24074074074073,
+          "iterations_per_s": 89.89259259259259,
+          "older_available": 0.0,
+          "own_gpu_ms": 4.151851851851852,
+          "source_offset_ms": 57.568518518518516,
+          "submit_lead_ms": 28.546296296296298,
+          "wait_attempts": 4.611111111111111,
+          "wait_successes": 0.8148148148148148,
+          "wait_total_ms": 4.361648148148148
+        }
+      },
+      "decoder": {
+        "n": 55,
+        "start": "06:03:05.525",
+        "end": "06:04:53.794",
+        "means": {
+          "copy_gpu_ms": 0.0,
+          "fence_post_ms": 6.867272727272727,
+          "frames": 177.63636363636363,
+          "frames_per_s": 88.81818181818181,
+          "nxvc_gpu_ms": 4.174545454545455,
+          "queue_ms": 2.661818181818182
+        }
+      },
+      "label": "jit-cap-direct-base-a",
+      "mode": 5000
+    },
+    {
+      "file": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-09-10/jit-cap-direct/jit-cap-direct-candidate-a-client.log",
+      "client": {
+        "n": 54,
+        "start": "06:05:11.105",
+        "end": "06:06:57.366",
+        "means": {
+          "fresh_per_s": 88.95370370370371,
+          "iterations": 180.42592592592592,
+          "iterations_per_s": 89.99074074074075,
+          "older_available": 0.0,
+          "own_gpu_ms": 4.298148148148148,
+          "source_offset_ms": 51.81481481481482,
+          "submit_lead_ms": 29.737037037037037,
+          "wait_attempts": 4.037037037037037,
+          "wait_successes": 1.5185185185185186,
+          "wait_total_ms": 3.384333333333333
+        }
+      },
+      "decoder": {
+        "n": 55,
+        "start": "06:05:09.068",
+        "end": "06:06:57.421",
+        "means": {
+          "copy_gpu_ms": 0.0,
+          "fence_post_ms": 6.858181818181818,
+          "frames": 179.87272727272727,
+          "frames_per_s": 89.93636363636364,
+          "nxvc_gpu_ms": 4.434545454545455,
+          "queue_ms": 2.4036363636363633
+        }
+      },
+      "label": "jit-cap-direct-candidate-a",
+      "mode": 7500
+    },
+    {
+      "file": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-09-10/jit-cap-direct/jit-cap-direct-candidate-b-client.log",
+      "client": {
+        "n": 54,
+        "start": "06:07:14.603",
+        "end": "06:09:00.855",
+        "means": {
+          "fresh_per_s": 88.92592592592592,
+          "iterations": 180.40740740740742,
+          "iterations_per_s": 89.99444444444444,
+          "older_available": 0.0,
+          "own_gpu_ms": 3.909259259259259,
+          "source_offset_ms": 48.1925925925926,
+          "submit_lead_ms": 27.755555555555556,
+          "wait_attempts": 6.277777777777778,
+          "wait_successes": 3.7222222222222223,
+          "wait_total_ms": 4.194018518518519
+        }
+      },
+      "decoder": {
+        "n": 54,
+        "start": "06:07:14.590",
+        "end": "06:09:00.884",
+        "means": {
+          "copy_gpu_ms": 0.0,
+          "fence_post_ms": 5.97037037037037,
+          "frames": 179.94444444444446,
+          "frames_per_s": 89.97222222222223,
+          "nxvc_gpu_ms": 4.559259259259259,
+          "queue_ms": 1.3907407407407406
+        }
+      },
+      "label": "jit-cap-direct-candidate-b",
+      "mode": 7500
+    },
+    {
+      "file": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-09-10/jit-cap-direct/jit-cap-direct-base-b-client.log",
+      "client": {
+        "n": 54,
+        "start": "06:09:18.189",
+        "end": "06:11:04.408",
+        "means": {
+          "fresh_per_s": 89.0,
+          "iterations": 180.35185185185185,
+          "iterations_per_s": 89.9962962962963,
+          "older_available": 0.0,
+          "own_gpu_ms": 3.964814814814815,
+          "source_offset_ms": 48.5037037037037,
+          "submit_lead_ms": 28.055555555555557,
+          "wait_attempts": 6.611111111111111,
+          "wait_successes": 4.2592592592592595,
+          "wait_total_ms": 4.373407407407408
+        }
+      },
+      "decoder": {
+        "n": 55,
+        "start": "06:09:16.164",
+        "end": "06:11:04.473",
+        "means": {
+          "copy_gpu_ms": 0.00036363636363636367,
+          "fence_post_ms": 6.0636363636363635,
+          "frames": 180.27272727272728,
+          "frames_per_s": 90.13636363636364,
+          "nxvc_gpu_ms": 4.549090909090909,
+          "queue_ms": 1.490909090909091
+        }
+      },
+      "label": "jit-cap-direct-base-b",
+      "mode": 5000
+    }
+  ],
+  "mean_of_run_means": {
+    "5000": {
+      "own_gpu_ms": 4.058333333333334,
+      "fresh_per_s": 88.61111111111111,
+      "source_offset_ms": 53.03611111111111
+    },
+    "7500": {
+      "own_gpu_ms": 4.103703703703704,
+      "fresh_per_s": 88.93981481481481,
+      "source_offset_ms": 50.00370370370371
+    }
+  },
+  "gpu_reduction_percent": -1.1179557380789351,
+  "scope": "Four 120-second synthetic moving-content trials, ABBA order; omit first 10 seconds of available telemetry. Active render windows only, not wall-clock FPS or photon latency."
+}
