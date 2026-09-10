@@ -101,6 +101,8 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 
 [Longer 64-thread validation](bench/results/90fps-2026-09-10/compact-flat64-long/README.md): decode GPU **6.56 → 5.93 ms**, source-offset proxy **2.88 ms lower**, but **~2.4% fewer fresh selections**. Retained for latency, not a fresh-FPS gain; vendor GPU temperature peaked at **84.5°C**.
 
+[Selection timing audit](bench/results/90fps-2026-09-10/selection-delay/README.md): at 2688² per eye, selecting a frame to entering the presentation pass takes **0.047 ms mean** across 8,514 calls. Moving selection later offers little room; this is diagnostic evidence, not an end-to-end latency win.
+
 **Selected decode improvement:** [64-thread compact flat PLANAR](bench/results/90fps-2026-09-10/compact-flat64/README.md) reduced **Pass B GPU time by 5.3%**, total decode GPU by **4.1%**, and source-offset proxy by **2.34 ms**, with essentially unchanged fresh delivery. A Pico fixture decoded byte-for-byte identically; startup failures and repeat methodology are disclosed.
 
 **New optimization baseline: 2688×2688 per eye.** [Pico measurements and both-eye captures](bench/results/90fps-2026-09-10/resolution150/README.md): **152.6% of previous encoded pixels**, roughly **71 fresh selections/s** versus **88/s** before. Decode GPU time grows **4.41 → 6.54 ms**; source-offset proxy grows **51.40 → 63.97 ms**. This is working higher-resolution support, not a 90/240 FPS success.
