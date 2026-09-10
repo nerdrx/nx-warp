@@ -97,6 +97,8 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 
 ## Measured results
 
+[Five-minute sustained run](bench/results/90fps-2026-09-10/res150-soak/README.md): **~71 fresh selections/s**, **~72 ms source-offset proxy**, zero session stops; vendor GPU temperature peaked at **81°C**. Sustained load is a remaining limitation.
+
 **New optimization baseline: 2688×2688 per eye.** [Pico measurements and both-eye captures](bench/results/90fps-2026-09-10/resolution150/README.md): **152.6% of previous encoded pixels**, roughly **71 fresh selections/s** versus **88/s** before. Decode GPU time grows **4.41 → 6.54 ms**; source-offset proxy grows **51.40 → 63.97 ms**. This is working higher-resolution support, not a 90/240 FPS success.
 
 **Current low-latency profile:** with the faster shader and continuous wake, [four new wait-budget trials](bench/results/90fps-2026-09-10/awake-wait/README.md) favor a **1 ms ready wait**: source-time offset **51.72 → 46.71 ms**, at about **1% fewer fresh updates** (89.08 → 88.17 per covered wall-second). All four runs had zero session stops. Source offset is a software proxy, not measured photon latency. The earlier shorter-wait rejection below concerns an older profile and remains historical evidence.

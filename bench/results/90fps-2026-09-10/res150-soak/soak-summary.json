@@ -1,0 +1,53 @@
+{
+  "vendor_gpu_temperature_C": {
+    "n": 301,
+    "min": 0.0,
+    "max": 81.0,
+    "first": 0.0,
+    "last": 79.1
+  },
+  "telemetry": {
+    "file": "nx-scratch/motion-live/res150-final-soak-client.log",
+    "client": {
+      "n": 144,
+      "start": "07:01:10.546",
+      "end": "07:05:57.394",
+      "means": {
+        "fresh_per_s": 71.11458333333333,
+        "iterations": 174.70138888888889,
+        "iterations_per_s": 87.09305555555555,
+        "older_available": 0.006944444444444444,
+        "own_gpu_ms": 4.81875,
+        "source_offset_ms": 71.86944444444445,
+        "submit_lead_ms": 34.14861111111111,
+        "wait_attempts": 36.9375,
+        "wait_successes": 4.472222222222222,
+        "wait_total_ms": 37.42084027777778
+      }
+    },
+    "decoder": {
+      "n": 143,
+      "start": "07:01:10.484",
+      "end": "07:05:55.655",
+      "means": {
+        "copy_gpu_ms": 0.00034965034965034965,
+        "fence_post_ms": 9.31958041958042,
+        "frames": 154.020979020979,
+        "frames_per_s": 76.9901764901765,
+        "nxvc_gpu_ms": 6.472027972027972,
+        "queue_ms": 2.818881118881119
+      }
+    }
+  },
+  "coverage": {
+    "file": "nx-scratch/motion-live/res150-final-soak-client.log",
+    "stopping_events": 0,
+    "post_warm_windows": 144,
+    "reported_seconds": 288.0,
+    "covered_wall_seconds": 288.8480000000018,
+    "max_window_gap_seconds": 2.019000000000233,
+    "fresh_per_reported_second": 71.11458333333333,
+    "fresh_per_covered_wall_second": 70.90580512934095,
+    "scope": "Logged render-window coverage after10s. Rounded reporting durations; not panel/photon timing. Includes gaps between windows."
+  }
+}
