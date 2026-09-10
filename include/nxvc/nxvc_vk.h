@@ -133,7 +133,9 @@ typedef enum nxvc_vkd_create_flags {
      * images()/plane_size()/read_planes() expose compact dimensions. */
     NXVC_VKD_FLAG_COMPACT_CENTRE = 1u << 8,
     /* Use the opt-in 64-lane compact-flat PLANAR shader variant. */
-    NXVC_VKD_FLAG_COMPACT_FLAT64 = 1u << 9
+    NXVC_VKD_FLAG_COMPACT_FLAT64 = 1u << 9,
+    /* Use the 1024x1024 native centre for compact 2688x2688 stereo output. */
+    NXVC_VKD_FLAG_COMPACT_LARGE_CENTRE = 1u << 10
 } nxvc_vkd_create_flags;
 
 /* --------------------------------------------------------------- create */

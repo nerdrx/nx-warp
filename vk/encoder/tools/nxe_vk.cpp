@@ -103,6 +103,7 @@ struct VkEncoder::Impl {
     bool entropy_lite = false;
     bool gpu_planar = false;
     bool gpu_planar_centre = false;
+    bool planar_large_centre = false;
     /* Pass W is the DECODER's warp_pred.comp; E1c is the mode decision. */
     vkmin::Pipeline p_w, p_dec, p_b;
     VkDescriptorSet s_b_full = VK_NULL_HANDLE;   /* Pass B over EVERY tile */
@@ -446,6 +447,8 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
     const char *wide_ring = std::getenv("NXVC_PLANAR_WIDE_RING");
     d.planar_wide_ring = wide_ring && std::strcmp(wide_ring, "1") == 0;
     d.planar_round = std::getenv("NXVC_PLANAR_ROUND") && std::strcmp(std::getenv("NXVC_PLANAR_ROUND"), "1") == 0;
+    d.planar_large_centre = std::getenv("NXVC_PLANAR_LARGE_CENTRE") &&
+                            std::strcmp(std::getenv("NXVC_PLANAR_LARGE_CENTRE"), "1") == 0;
     d.planar_colour = std::getenv("NXVC_PLANAR_COLOUR") && std::strcmp(std::getenv("NXVC_PLANAR_COLOUR"), "1") == 0;
     const char *cadence = std::getenv("NXVC_PLANAR_CADENCE");
     d.planar_cadence = cadence && std::strcmp(cadence, "1") == 0;
@@ -1738,10 +1741,15 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
             const uint32_t cols = f.fp.width / 64u;
             const uint32_t rows = f.fp.height / 64u;
             const uint32_t divisor = d.cfg.planar_centre_quarter ? 4u : 2u;
-            const uint32_t centre_cols = std::min(
+            uint32_t centre_cols = std::min(
                 cols, cols >= 2u ? std::max(2u, (cols / divisor) & ~1u) : cols);
-            const uint32_t centre_rows = std::min(
+            uint32_t centre_rows = std::min(
                 rows, rows >= 2u ? std::max(2u, (rows / divisor) & ~1u) : rows);
+            if (d.planar_large_centre && d.cfg.planar_centre_quarter &&
+                f.fp.width == 2688u && f.fp.height == 2688u) {
+                centre_cols = std::min(cols, 16u);
+                centre_rows = std::min(rows, 16u);
+            }
             const uint32_t col0 = (cols - centre_cols) / 2u;
             const uint32_t row0 = (rows - centre_rows) / 2u;
             for (auto &job : f.jobs) {

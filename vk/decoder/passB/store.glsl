@@ -54,7 +54,8 @@ void nxvwStoreTile(int tid, int tile, int tileX, int tileY, int res_level,
         if (kCompactCentre != 0) {
             // Visit compact pixels directly. Masking 15/16 native invocations
             // scattered the remaining writes and made the first prototype slower.
-            int cols = kCompactCentre == 2 ? 42 : 34, centreCols = kCompactCentre == 2 ? 10 : 8;
+            int cols = kCompactCentre == 2 || kCompactCentre == 3 ? 42 : 34,
+                centreCols = kCompactCentre == 3 ? 16 : (kCompactCentre == 2 ? 10 : 8);
             int centre0 = (cols - centreCols) / 2, packedCentre = centreCols * 64;
             int packedEye = packedCentre + (cols * 64 - packedCentre) / 4;
             int eye = tileX / cols, localX = tileX - eye * cols;

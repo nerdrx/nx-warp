@@ -109,6 +109,10 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 
 [Hardware SHA-256 experiment](bench/results/90fps-2026-09-10/sha2-transport/README.md): identical packet bytes with **42.6% less receiver processing** and packet spans **6.58 → 4.12 ms**. Full-stream source offset worsened **1.10 ms**, so this remains **opt-in and off in the selected profile** pending scheduling work.
 
+[Larger sharp centre](bench/results/90fps-2026-09-10/large-centre/README.md): optional **640 → 1024 px** native centre at 2688² per eye, with **80 → 208 native tiles** and a small spatial filter outside it. Host packing checks pass; this is a quality trial with **56% more packed pixels**, not a demonstrated latency win.
+
+![Larger native centre tile masks](bench/results/90fps-2026-09-10/large-centre/centre-layout.png)
+
 **Selected decode improvement:** [64-thread compact flat PLANAR](bench/results/90fps-2026-09-10/compact-flat64/README.md) reduced **Pass B GPU time by 5.3%**, total decode GPU by **4.1%**, and source-offset proxy by **2.34 ms**, with essentially unchanged fresh delivery. A Pico fixture decoded byte-for-byte identically; startup failures and repeat methodology are disclosed.
 
 **New optimization baseline: 2688×2688 per eye.** [Pico measurements and both-eye captures](bench/results/90fps-2026-09-10/resolution150/README.md): **152.6% of previous encoded pixels**, roughly **71 fresh selections/s** versus **88/s** before. Decode GPU time grows **4.41 → 6.54 ms**; source-offset proxy grows **51.40 → 63.97 ms**. This is working higher-resolution support, not a 90/240 FPS success.

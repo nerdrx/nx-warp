@@ -32,7 +32,8 @@ void main() {
     if (kCompactCentre != 0) {
         int tileX = tile % pc.p.tilesX;
         int tileY = tile / pc.p.tilesX;
-        int cols = kCompactCentre == 2 ? 42 : 34, centreCols = kCompactCentre == 2 ? 10 : 8;
+        int cols = kCompactCentre == 2 || kCompactCentre == 3 ? 42 : 34,
+            centreCols = kCompactCentre == 3 ? 16 : (kCompactCentre == 2 ? 10 : 8);
         int centre0 = (cols - centreCols) / 2, packedCentre = centreCols * 64;
         int packedEye = packedCentre + (cols * 64 - packedCentre) / 4;
         int eye = tileX / cols, localX = tileX - eye * cols;
