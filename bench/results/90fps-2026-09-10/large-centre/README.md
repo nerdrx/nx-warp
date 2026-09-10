@@ -1,5 +1,7 @@
 # Larger native centre and peripheral spatial smoothing
 
+**User-test regression:** the first WiVRn integration distorted the view: its client output pool still used the old 1152² extent while the larger decoder output was 1440². Host decoder-only checks missed this integration error. The live profile has been reverted to the previous 640px centre and smoothing mode 3. A client fix now queries the decoder output dimensions directly; larger-centre mode remains off pending integrated validation.
+
 User feedback at 2688² per eye: the native centre was too small and peripheral blocks were conspicuous. This is a **quality experiment**, with no new controlled Pico latency result yet.
 
 ![Encoder tile masks](centre-layout.png)
@@ -21,7 +23,7 @@ WiVRn smoothing mode 4 retains the single-sample cell interpolation from mode 3 
 
 Host RX 7900 XTX/RADV: a deterministic 2688² stereo fixture was encoded with the larger centre, then decoded to full-size and compact NV12. All **6,220,800 compact bytes** match the corresponding native luma and interleaved chroma samples, across both eyes and packing boundaries. Reproduce with `./run.sh /path/to/build/bin` (Python NumPy required). The runner enables the rounded mask, wide fine ring, and colour palette used by the selected profile. See [run log](run.log), [validation log](validation.log), [full comparison](full-exact.json), and [checker](validate.py). The default compact path also produces its expected 3,981,312-byte extent; this size check alone is not a full old-versus-new regression test.
 
-The selected specialized PLANAR flat64 kernel also produces identical bytes to the generic compact decoder on this fixture. Core encoder/decoder, WiVRn server, and Android release APK builds passed. The installed profile is for user testing; these checks do not establish fresh-frame rate, motion quality, or motion-to-photon latency.
+The selected specialized PLANAR flat64 kernel also produces identical bytes to the generic compact decoder on this fixture. Core encoder/decoder, WiVRn server, and Android release APK builds passed. The larger profile is currently disabled; these checks do not establish fresh-frame rate, motion quality, or motion-to-photon latency.
 
 ## Opt-in integration
 
