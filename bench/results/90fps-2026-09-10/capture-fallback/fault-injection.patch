@@ -1,0 +1,69 @@
+diff --git a/client/scenes/stream.cpp b/client/scenes/stream.cpp
+index 710fd48e..fd02ae4d 100644
+--- a/client/scenes/stream.cpp
++++ b/client/scenes/stream.cpp
+@@ -1932,7 +1932,7 @@ void scenes::stream::render(const XrFrameState & frame_state)
+ 			}
+ 			if (not swapchain)
+ 				setup_reprojection_swapchain(max_width, max_height);
+-			else if (capture_request and not swapchain.transfer_src())
++			else if (capture_request and *capture_request != capture_request_seen and not swapchain.transfer_src())
+ 				setup_reprojection_swapchain(max_width, max_height);
+ 			else if (swapchain.width() < max_width or swapchain.height() < max_height)
+ 			{
+@@ -2917,6 +2917,11 @@ void scenes::stream::setup_reprojection_swapchain(uint32_t swapchain_width, uint
+ 
+ 	const bool mutable_alias = atlas_unorm_render_enabled() && application::get_hmd_traits().needs_srgb_conversion;
+ 	swapchain = xr::swapchain(instance, session, device, swapchain_format, swapchain_width, swapchain_height, 1, views.size(), mutable_alias);
++	if (const auto capture = image_capture_request(); capture && !swapchain.transfer_src())
++	{
++		capture_request_seen = *capture;
++		spdlog::warn("NX capture {} unavailable; continuing normal presentation", *capture);
++	}
+ 	spdlog::info("Created stream swapchain: {}x{}", swapchain.width(), swapchain.height());
+ 	for (auto view: views)
+ 	{
+diff --git a/client/xr/swapchain.cpp b/client/xr/swapchain.cpp
+index 5450e5ee..b3394d96 100644
+--- a/client/xr/swapchain.cpp
++++ b/client/xr/swapchain.cpp
+@@ -96,26 +96,34 @@ xr::swapchain::swapchain(
+ 	};
+ 	create_info.next = format_list_next;
+ 
+-	XrResult result = xrCreateSwapchain(s, &create_info, &id);
++	XrResult result = ((create_info.usageFlags & XR_SWAPCHAIN_USAGE_TRANSFER_SRC_BIT) ? XR_ERROR_FEATURE_UNSUPPORTED : xrCreateSwapchain(s, &create_info, &id));
+ 	if (result != XR_SUCCESS && mutable_format)
+ 	{
+ 		if (format_list_next != nullptr)
+ 		{
+ 			spdlog::warn("XR mutable swapchain request rejected ({}); retrying without format list", static_cast<int>(result));
+ 			create_info.next = nullptr;
+-			result = xrCreateSwapchain(s, &create_info, &id);
++			result = ((create_info.usageFlags & XR_SWAPCHAIN_USAGE_TRANSFER_SRC_BIT) ? XR_ERROR_FEATURE_UNSUPPORTED : xrCreateSwapchain(s, &create_info, &id));
+ 		}
+ 		if (result != XR_SUCCESS)
+ 		{
+ 			spdlog::warn("Mutable XR swapchain unavailable ({}); using standard SRGB swapchain", static_cast<int>(result));
+ 			usage_flags &= ~XR_SWAPCHAIN_USAGE_MUTABLE_FORMAT_BIT;
+ 			create_info.usageFlags = usage_flags;
+-			CHECK_XR(xrCreateSwapchain(s, &create_info, &id));
++			result = ((create_info.usageFlags & XR_SWAPCHAIN_USAGE_TRANSFER_SRC_BIT) ? XR_ERROR_FEATURE_UNSUPPORTED : xrCreateSwapchain(s, &create_info, &id));
+ 			mutable_format = false;
+ 		}
+ 	}
+-	else
+-		CHECK_XR(result);
++	// Screenshot readback is optional. A runtime that rejects transfer usage
++	// must still get a chance to create a normal presentation swapchain.
++	if (result != XR_SUCCESS && (create_info.usageFlags & XR_SWAPCHAIN_USAGE_TRANSFER_SRC_BIT))
++	{
++		spdlog::warn("XR capture swapchain unavailable ({}); retrying without readback", static_cast<int>(result));
++		create_info.usageFlags &= ~XR_SWAPCHAIN_USAGE_TRANSFER_SRC_BIT;
++		result = ((create_info.usageFlags & XR_SWAPCHAIN_USAGE_TRANSFER_SRC_BIT) ? XR_ERROR_FEATURE_UNSUPPORTED : xrCreateSwapchain(s, &create_info, &id));
++	}
++	CHECK_XR(result);
++	transfer_src_ = (create_info.usageFlags & XR_SWAPCHAIN_USAGE_TRANSFER_SRC_BIT) != 0;
+ 	mutable_format_ = (create_info.usageFlags & XR_SWAPCHAIN_USAGE_MUTABLE_FORMAT_BIT) != 0;
+ 
+ 	auto images = details::enumerate<XrSwapchainImageVulkanKHR>(xrEnumerateSwapchainImages, id);
